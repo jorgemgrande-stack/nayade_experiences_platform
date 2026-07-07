@@ -90,7 +90,7 @@ describe("buildTransferConfirmationHtml", () => {
 
   it("incluye los datos de contacto de Náyade Experiences", () => {
     const html = buildTransferConfirmationHtml(mockData);
-    expect(html).toContain("reservas@skicenter.es");
+    expect(html).toContain("reservas@nayadeexperiences.es");
     expect(html).toContain("+34 639 57 66 27");
   });
 

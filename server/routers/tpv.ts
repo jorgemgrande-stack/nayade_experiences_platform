@@ -1,4 +1,4 @@
-﻿import { z } from "zod";
+import { z } from "zod";
 import { permissionProcedure, router } from "../_core/trpc";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
@@ -44,7 +44,7 @@ import { generateDocumentNumber } from "../documentNumbers";
 const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
 const db = drizzle(_pool);
 
-// ─── RBAC-AWARE PROCEDURES ────────────────────────────────────────────────────
+// --- RBAC-AWARE PROCEDURES ----------------------------------------------------
 // Fallback: legacy staff roles (admin + agente) for all TPV access.
 // RBAC expands access to commercial_agent / sales_cashier without touching fallback.
 const tpvAccessProc    = permissionProcedure("tpv.access",     ["admin", "agente"]);
@@ -52,7 +52,7 @@ const tpvSellProc      = permissionProcedure("tpv.sell",       ["admin", "agente
 const tpvOpenCloseProc = permissionProcedure("tpv.open_close", ["admin", "agente"]);
 const tpvBackofficeProc= permissionProcedure("tpv.backoffice", ["admin"]);
 
-// ─── HELPERS ─────────────────────────────────────────────────────────────────
+// --- HELPERS -----------------------------------------------------------------
 // generateTicketNumber y generateReservationRef reemplazadas por el helper centralizado
 async function generateTicketNumber(userId?: string): Promise<string> {
   return generateDocumentNumber("tpv", "tpv:createSale", userId ?? "system");
@@ -73,8 +73,8 @@ import { normalizeRegime, calcGeneralTax } from "../taxUtils";
 type FiscalData = { fiscalRegime: "reav" | "general" | "mixed"; taxRate: number; providerPercent: number; agencyMarginPercent: number };
 
 /**
- * Obtiene el régimen fiscal y porcentajes REAV de un producto consultando la BD.
- * Coerciona valores legacy "general_21" automáticamente.
+ * Obtiene el r�gimen fiscal y porcentajes REAV de un producto consultando la BD.
+ * Coerciona valores legacy "general_21" autom�ticamente.
  */
 async function getProductFiscalData(
   productType: string,
@@ -109,9 +109,9 @@ async function getProductFiscalData(
 }
 
 /**
- * Calcula la fiscalidad de una línea de venta.
- * Para régimen "general": base = precio / (1 + taxRate/100) — soporta 21%, 10%, etc.
- * Para REAV: usa calcularREAVSimple() — lógica separada, sin IVA repercutido.
+ * Calcula la fiscalidad de una l�nea de venta.
+ * Para r�gimen "general": base = precio / (1 + taxRate/100) � soporta 21%, 10%, etc.
+ * Para REAV: usa calcularREAVSimple() � l�gica separada, sin IVA repercutido.
  */
 function calcLineFiscal(
   lineTotal: number,
@@ -128,26 +128,26 @@ function calcLineFiscal(
   return { taxBase, taxAmount, taxRate, reavCost: 0, reavMargin: 0, reavTax: 0 };
 }
 
-// ─── EMAIL DE CIERRE DE CAJA ─────────────────────────────────────────────────
+// --- EMAIL DE CIERRE DE CAJA -------------------------------------------------
 
 /**
- * Compone y envía el email de cierre de caja para una sesión TPV ya cerrada.
+ * Compone y env�a el email de cierre de caja para una sesi�n TPV ya cerrada.
  *
  * Reutilizable desde:
- *   - El handler `closeSession` (envío automático al cerrar).
- *   - Scripts de re-envío manual (p.ej. para QA o reenviar a otro destinatario).
+ *   - El handler `closeSession` (env�o autom�tico al cerrar).
+ *   - Scripts de re-env�o manual (p.ej. para QA o reenviar a otro destinatario).
  *
  * Enriquece el email con el snapshot del Centro de Control Diario
- * (`getDailyControlCenter`) para incluir resumen ejecutivo del día y desglose
+ * (`getDailyControlCenter`) para incluir resumen ejecutivo del d�a y desglose
  * por canal con cobrado/pendiente/personas/ticket medio.
  *
  * No lanza si falla la llamada al Control Diario: degrada elegantemente al
- * formato clásico del email para no bloquear el aviso del cierre.
+ * formato cl�sico del email para no bloquear el aviso del cierre.
  *
- * @param sessionId  ID de la sesión TPV cerrada.
+ * @param sessionId  ID de la sesi�n TPV cerrada.
  * @param opts.toOverride  Destinatario alternativo (anula `admin_alerts`).
- *                         Útil para re-envíos de prueba.
- * @param opts.subjectPrefix Prefijo opcional al subject (p.ej. "[REENVÍO] ").
+ *                         �til para re-env�os de prueba.
+ * @param opts.subjectPrefix Prefijo opcional al subject (p.ej. "[REENV�O] ").
  */
 export async function sendCashCloseEmailForSession(
   sessionId: number,
@@ -159,9 +159,9 @@ export async function sendCashCloseEmailForSession(
   }
 
   const [session] = await db.select().from(cashSessions).where(eq(cashSessions.id, sessionId));
-  if (!session) throw new Error(`Sesión ${sessionId} no encontrada`);
+  if (!session) throw new Error(`Sesi�n ${sessionId} no encontrada`);
   if (session.status !== "closed") {
-    throw new Error(`Sesión ${sessionId} no está cerrada (status=${session.status})`);
+    throw new Error(`Sesi�n ${sessionId} no est� cerrada (status=${session.status})`);
   }
 
   const [register] = await db
@@ -169,10 +169,10 @@ export async function sendCashCloseEmailForSession(
     .from(cashRegisters)
     .where(eq(cashRegisters.id, session.registerId));
 
-  // Derivar fecha del día desde openedAt (clave para snapshot del Control Diario).
+  // Derivar fecha del d�a desde openedAt (clave para snapshot del Control Diario).
   const sessionDate = new Date(Number(session.openedAt)).toISOString().slice(0, 10);
 
-  // Reservas del día (excluyendo TPV físico) para el desglose por canal LEGACY,
+  // Reservas del d�a (excluyendo TPV f�sico) para el desglose por canal LEGACY,
   // que se usa como fallback si no llega snapshot del Control Diario.
   const dayReservations = await db
     .select({
@@ -193,7 +193,7 @@ export async function sendCashCloseEmailForSession(
     CRM: "CRM / Manual",
     EMAIL: "CRM / Manual",
     TRANSFERENCIA: "Transferencia",
-    CUPON: "Cupón / Descuento",
+    CUPON: "Cup�n / Descuento",
   };
   for (const r of dayReservations) {
     const ch = (r.channel ?? "OTRO").toUpperCase();
@@ -220,8 +220,8 @@ export async function sendCashCloseEmailForSession(
     else channelMap[ch].totalOtro += amt;
   }
 
-  // Snapshot operativo del día — alimenta el resumen ejecutivo y el desglose
-  // enriquecido por canal. Degradación elegante si falla (email sin extras).
+  // Snapshot operativo del d�a � alimenta el resumen ejecutivo y el desglose
+  // enriquecido por canal. Degradaci�n elegante si falla (email sin extras).
   let dailyControl = null as null | {
     kpis: {
       facturacionTotal: number; cobradoHoy: number; pendienteCobro: number;
@@ -281,20 +281,20 @@ export async function sendCashCloseEmailForSession(
   });
 
   const to = opts.toOverride || (await getBusinessEmail("admin_alerts"));
-  const subject = `${opts.subjectPrefix ?? ""}🔴 Cierre de caja — ${register?.name ?? "Caja"} — ${sessionDate} — Náyade Experiences`;
+  const subject = `${opts.subjectPrefix ?? ""}?? Cierre de caja � ${register?.name ?? "Caja"} � ${sessionDate} � N�yade Experiences`;
   await sendEmail({ to, subject, html });
   return { to, subject };
 }
 
-// ─── ROUTER ──────────────────────────────────────────────────────────────────
+// --- ROUTER ------------------------------------------------------------------
 
 export const tpvRouter = router({
-  // ── REGISTERS ──────────────────────────────────────────────────────────────
+  // -- REGISTERS --------------------------------------------------------------
   getRegisters: tpvAccessProc.query(async () => {
     return await db.select().from(cashRegisters).where(eq(cashRegisters.isActive, true));
   }),
 
-  // ── SESSIONS ───────────────────────────────────────────────────────────────
+  // -- SESSIONS ---------------------------------------------------------------
   getActiveSession: tpvAccessProc
     .input(z.object({ registerId: z.number() }))
     .query(async ({ input }) => {
@@ -334,7 +334,7 @@ export const tpvRouter = router({
       if (existing.length > 0) {
         throw new TRPCError({
           code: "CONFLICT",
-          message: "Ya existe una sesión abierta para esta caja",
+          message: "Ya existe una sesi�n abierta para esta caja",
         });
       }
       const [result] = await db.insert(cashSessions).values({
@@ -364,7 +364,7 @@ export const tpvRouter = router({
           const toEmail = await getBusinessEmail('admin_alerts');
           await sendEmail({
             to: toEmail,
-            subject: `🟢 Apertura de caja — ${register?.name ?? "Caja"} — Náyade Experiences`,
+            subject: `?? Apertura de caja � ${register?.name ?? "Caja"} � N�yade Experiences`,
             html,
           });
         }
@@ -388,15 +388,15 @@ export const tpvRouter = router({
         .select()
         .from(cashSessions)
         .where(eq(cashSessions.id, input.sessionId));
-      if (!session) throw new TRPCError({ code: "NOT_FOUND", message: "Sesión no encontrada" });
+      if (!session) throw new TRPCError({ code: "NOT_FOUND", message: "Sesi�n no encontrada" });
       if (session.status === "closed") {
-        throw new TRPCError({ code: "CONFLICT", message: "La sesión ya está cerrada" });
+        throw new TRPCError({ code: "CONFLICT", message: "La sesi�n ya est� cerrada" });
       }
 
-      // Calculate totals from payments — solo ventas confirmadas como 'paid'.
+      // Calculate totals from payments � solo ventas confirmadas como 'paid'.
       // Excluye 'cancelled' (anuladas por admin desde CRM, ventas de prueba, etc.)
-      // y 'pending' (rollback de createSale). Asume "anulación administrativa" —
-      // si en el futuro hay devoluciones físicas reales, deberá registrarse como
+      // y 'pending' (rollback de createSale). Asume "anulaci�n administrativa" �
+      // si en el futuro hay devoluciones f�sicas reales, deber� registrarse como
       // movimiento de caja separado.
       const salesRows = await db
         .select()
@@ -505,7 +505,7 @@ export const tpvRouter = router({
                 amount: String(Math.abs(cashDifference).toFixed(2)),
                 closureId,
                 sessionId: input.sessionId,
-                message: `Diferencia de ${cashDifference >= 0 ? "+" : ""}${cashDifference.toFixed(2)} € en cierre de sesión TPV #${input.sessionId}${cashDifference < 0 ? " (faltante)" : " (sobrante)"}`,
+                message: `Diferencia de ${cashDifference >= 0 ? "+" : ""}${cashDifference.toFixed(2)} � en cierre de sesi�n TPV #${input.sessionId}${cashDifference < 0 ? " (faltante)" : " (sobrante)"}`,
               });
             }
           }
@@ -514,7 +514,7 @@ export const tpvRouter = router({
         console.error("[TPV] Error creando cierre contable:", e);
       }
 
-      // Email de cierre con desglose multicanal y resumen operativo del día
+      // Email de cierre con desglose multicanal y resumen operativo del d�a
       // (no bloquea si falla).
       try {
         await sendCashCloseEmailForSession(input.sessionId);
@@ -529,9 +529,9 @@ export const tpvRouter = router({
     .input(z.object({ sessionId: z.number() }))
     .query(async ({ input }) => {
       const [session] = await db.select().from(cashSessions).where(eq(cashSessions.id, input.sessionId));
-      if (!session) throw new TRPCError({ code: "NOT_FOUND", message: "Sesión no encontrada" });
+      if (!session) throw new TRPCError({ code: "NOT_FOUND", message: "Sesi�n no encontrada" });
 
-      // Solo ventas 'paid' — alineado con closeSession y dailyControl.
+      // Solo ventas 'paid' � alineado con closeSession y dailyControl.
       const sales = await db.select().from(tpvSales).where(and(
         eq(tpvSales.sessionId, input.sessionId),
         eq(tpvSales.status, "paid"),
@@ -542,11 +542,11 @@ export const tpvRouter = router({
       const totalOut = movements.filter(m => m.type === "out").reduce((acc, m) => acc + parseFloat(String(m.amount)), 0);
       const totalIn = movements.filter(m => m.type === "in").reduce((acc, m) => acc + parseFloat(String(m.amount)), 0);
 
-      // Desglose por método de pago — MISMA lógica que closeSession (línea ~242)
+      // Desglose por m�todo de pago � MISMA l�gica que closeSession (l�nea ~242)
       // para que el modal de cierre muestre el "Efectivo esperado" correcto
-      // ANTES de cerrar. Sin esto, el frontend mostraba 0,00€ aunque hubiera
-      // cobros en cash y el cajero se confundía (caso real: sesión #18, 40€
-      // cobrados en efectivo aparecían como 0€ esperado).
+      // ANTES de cerrar. Sin esto, el frontend mostraba 0,00� aunque hubiera
+      // cobros en cash y el cajero se confund�a (caso real: sesi�n #18, 40�
+      // cobrados en efectivo aparec�an como 0� esperado).
       let totalCash = 0, totalCard = 0, totalBizum = 0, totalMixed = 0;
       const saleIds = sales.map((s) => s.id);
       if (saleIds.length > 0) {
@@ -570,7 +570,7 @@ export const tpvRouter = router({
       };
     }),
 
-  // ── CASH MOVEMENTS ─────────────────────────────────────────────────────────
+  // -- CASH MOVEMENTS ---------------------------------------------------------
   addCashMovement: tpvOpenCloseProc
     .input(
       z.object({
@@ -578,8 +578,8 @@ export const tpvRouter = router({
         type: z.enum(["out", "in"]),
         amount: z.number().positive(),
         reason: z.string().min(1),
-        // Para salidas: "gasto" (compra/proveedor → gasto real) o "traspaso"
-        // (llevar el efectivo a la Caja Central → movimiento interno, NO gasto).
+        // Para salidas: "gasto" (compra/proveedor ? gasto real) o "traspaso"
+        // (llevar el efectivo a la Caja Central ? movimiento interno, NO gasto).
         outKind: z.enum(["gasto", "traspaso"]).default("gasto"),
       })
     )
@@ -595,16 +595,16 @@ export const tpvRouter = router({
       const id = (result as any).insertId as number;
       const [movement] = await db.select().from(cashMovements).where(eq(cashMovements.id, id));
 
-      // Propagación a Contabilidad → Caja (fire-and-forget, no bloquea TPV).
+      // Propagaci�n a Contabilidad ? Caja (fire-and-forget, no bloquea TPV).
       //
-      // Retirada (out) → apunte 'expense' + gasto conciliado en expenses
+      // Retirada (out) ? apunte 'expense' + gasto conciliado en expenses
       //                  (la retirada es coste contable real).
-      // Entrada  (in)  → apunte 'income' en fin_cash_movements.
-      //                  NO genera ningún ingreso comercial: una entrada
-      //                  manual ("regularización", "cambio de billete",
+      // Entrada  (in)  ? apunte 'income' en fin_cash_movements.
+      //                  NO genera ning�n ingreso comercial: una entrada
+      //                  manual ("regularizaci�n", "cambio de billete",
       //                  "aporte de socio") es un ajuste de saldo, no una
-      //                  venta. Antes este branch no existía y las entradas
-      //                  quedaban huérfanas (solo en cash_movements TPV) sin
+      //                  venta. Antes este branch no exist�a y las entradas
+      //                  quedaban hu�rfanas (solo en cash_movements TPV) sin
       //                  reflejo en /admin/contabilidad/caja.
       if (input.type === "out") {
         (async () => {
@@ -613,15 +613,15 @@ export const tpvRouter = router({
             const cashAccountId = await getDefaultCashAccountId();
 
             if (input.outKind === "traspaso") {
-              // TRASPASO a Caja Central: NO es gasto. El efectivo sale del cajón
+              // TRASPASO a Caja Central: NO es gasto. El efectivo sale del caj�n
               // del TPV pero se conserva en la Caja Central (transfer_out + transfer_in).
               // No se crea ninguna fila en `expenses`.
               if (cashAccountId) {
                 await recordCashTransferToCentral({
                   fromAccountId: cashAccountId,
                   amount: input.amount,
-                  concept: `Traspaso a Caja Central — ${input.reason}`,
-                  notes: `Traspaso desde TPV sesión #${input.sessionId} por ${ctx.user.name ?? ctx.user.email}`,
+                  concept: `Traspaso a Caja Central � ${input.reason}`,
+                  notes: `Traspaso desde TPV sesi�n #${input.sessionId} por ${ctx.user.name ?? ctx.user.email}`,
                   createdBy: ctx.user.id ? Number(ctx.user.id) : undefined,
                 });
               }
@@ -629,7 +629,7 @@ export const tpvRouter = router({
             }
 
             // GASTO real: apunte 'expense' en caja + gasto conciliado en /gastos.
-            const concept = `Retirada de caja TPV — ${input.reason}`;
+            const concept = `Retirada de caja TPV � ${input.reason}`;
 
             // 1. Movimiento en /contabilidad/caja
             if (cashAccountId) {
@@ -640,7 +640,7 @@ export const tpvRouter = router({
                 amount: String(input.amount),
                 concept,
                 relatedEntityType: "manual",
-                notes: `Retirada registrada en TPV sesión #${input.sessionId} por ${ctx.user.name ?? ctx.user.email}`,
+                notes: `Retirada registrada en TPV sesi�n #${input.sessionId} por ${ctx.user.name ?? ctx.user.email}`,
                 createdBy: ctx.user.id ? Number(ctx.user.id) : undefined,
               });
               await db.update(finCashAccounts)
@@ -666,7 +666,7 @@ export const tpvRouter = router({
                 costCenterId: cc.id,
                 paymentMethod: "cash",
                 status: "conciliado",
-                notes: `Retirada de caja TPV — sesión #${input.sessionId}. Cajero: ${ctx.user.name ?? ctx.user.email}. Motivo: ${input.reason}`,
+                notes: `Retirada de caja TPV � sesi�n #${input.sessionId}. Cajero: ${ctx.user.name ?? ctx.user.email}. Motivo: ${input.reason}`,
                 source: "tpv",
                 createdBy: ctx.user.id ? Number(ctx.user.id) : undefined,
               });
@@ -679,7 +679,7 @@ export const tpvRouter = router({
         (async () => {
           try {
             const today = new Date().toISOString().slice(0, 10);
-            const concept = `Entrada de caja TPV — ${input.reason}`;
+            const concept = `Entrada de caja TPV � ${input.reason}`;
             const cashAccountId = await getDefaultCashAccountId();
             if (cashAccountId) {
               await db.insert(finCashMovements).values({
@@ -689,7 +689,7 @@ export const tpvRouter = router({
                 amount: String(input.amount),
                 concept,
                 relatedEntityType: "manual",
-                notes: `Entrada registrada en TPV sesión #${input.sessionId} por ${ctx.user.name ?? ctx.user.email}. Motivo: ${input.reason}`,
+                notes: `Entrada registrada en TPV sesi�n #${input.sessionId} por ${ctx.user.name ?? ctx.user.email}. Motivo: ${input.reason}`,
                 createdBy: ctx.user.id ? Number(ctx.user.id) : undefined,
               });
               await db.update(finCashAccounts)
@@ -705,7 +705,7 @@ export const tpvRouter = router({
       return movement;
     }),
 
-  // ── CATALOG ────────────────────────────────────────────────────────────────
+  // -- CATALOG ----------------------------------------------------------------
   getCatalog: tpvAccessProc.query(async () => {
     const [exps, pkgs, spas, rooms, legoPkgs] = await Promise.all([
       db.select({
@@ -787,7 +787,7 @@ export const tpvRouter = router({
     };
   }),
 
-  // ── SALES ──────────────────────────────────────────────────────────────────
+  // -- SALES ------------------------------------------------------------------
   createSale: tpvSellProc
     .input(
       z.object({
@@ -815,7 +815,7 @@ export const tpvRouter = router({
             isManual: z.boolean().optional().default(false),
             conceptText: z.string().max(500).optional(),
             legoPackLineIds: z.array(z.number()).optional(), // Para Lego Packs personalizados
-            legoPackLinePeople: z.record(z.number(), z.number()).optional(), // Personas por línea
+            legoPackLinePeople: z.record(z.number(), z.number()).optional(), // Personas por l�nea
           })
         ).min(1),
         payments: z.array(
@@ -829,7 +829,7 @@ export const tpvRouter = router({
       })
     )
     .mutation(async ({ input, ctx }) => {
-      // ── 1. Calcular totales básicos ────────────────────────────────────────
+      // -- 1. Calcular totales b�sicos ----------------------------------------
       const subtotal = input.items.reduce((acc, item) => {
         const lineTotal = item.unitPrice * item.quantity * (1 - item.discountPercent / 100);
         return acc + lineTotal;
@@ -841,17 +841,17 @@ export const tpvRouter = router({
       if (Math.abs(paymentsTotal - total) > 0.01) {
         throw new TRPCError({
           code: "BAD_REQUEST",
-          message: `Los pagos (${paymentsTotal.toFixed(2)}€) no coinciden con el total (${total.toFixed(2)}€)`,
+          message: `Los pagos (${paymentsTotal.toFixed(2)}�) no coinciden con el total (${total.toFixed(2)}�)`,
         });
       }
 
       // Manual items require admin role
       const hasManual = input.items.some(i => i.isManual);
       if (hasManual && (ctx as any).user?.role !== "admin") {
-        throw new TRPCError({ code: "FORBIDDEN", message: "Solo los administradores pueden añadir conceptos libres" });
+        throw new TRPCError({ code: "FORBIDDEN", message: "Solo los administradores pueden a�adir conceptos libres" });
       }
 
-      // ── 2. Calcular fiscalidad por línea ────────────────────────────────────
+      // -- 2. Calcular fiscalidad por l�nea ------------------------------------
       const linesFiscal: Array<{
         fiscalRegime: "reav" | "general" | "mixed";
         taxBase: number; taxAmount: number; taxRate: number;
@@ -883,12 +883,12 @@ export const tpvRouter = router({
       const sellerName = (ctx as any).user?.name ?? null;
       const sellerUserId = (ctx as any).user?.id ?? null;
 
-      // ── 3. Insertar venta con datos fiscales ─────────────────────────────────
+      // -- 3. Insertar venta con datos fiscales ---------------------------------
       // Bug #2 audit: insertamos con status='pending'. Solo cambia a 'paid' al
-      // final del flujo, cuando TODOS los pasos posteriores (líneas, pagos,
-      // reserva, factura, transacción contable, REAV) han completado sin error.
+      // final del flujo, cuando TODOS los pasos posteriores (l�neas, pagos,
+      // reserva, factura, transacci�n contable, REAV) han completado sin error.
       // Si algo falla, la fila queda 'pending' y el Control Diario la filtra
-      // automáticamente (NOT IN ('cancelled','refunded') — pending no aparece).
+      // autom�ticamente (NOT IN ('cancelled','refunded') � pending no aparece).
       const mainItemForDate = input.items[0]; // usado para serviceDate fallback
       const [saleResult] = await db.insert(tpvSales).values({
         ticketNumber,
@@ -918,7 +918,7 @@ export const tpvRouter = router({
       } as any);
       const saleId = (saleResult as any).insertId as number;
 
-      // ── 4. Insertar líneas con fiscalidad ───────────────────────────────────
+      // -- 4. Insertar l�neas con fiscalidad -----------------------------------
       for (let i = 0; i < input.items.length; i++) {
         const item = input.items[i];
         const lf   = linesFiscal[i];
@@ -947,7 +947,7 @@ export const tpvRouter = router({
         } as any);
       }
 
-      // ── 5. Insertar pagos ────────────────────────────────────────────────────
+      // -- 5. Insertar pagos ----------------------------------------------------
       const primaryPaymentMethod = input.payments[0]?.method ?? "other";
       for (const payment of input.payments) {
         const changeGiven = payment.method === "cash" && payment.amountTendered
@@ -965,11 +965,11 @@ export const tpvRouter = router({
         });
       }
 
-      // ── 6. Generar reserva automática siempre que haya producto principal ────
-      // Total de personas = Σ(quantity × participants). Esta fórmula es la única
+      // -- 6. Generar reserva autom�tica siempre que haya producto principal ----
+      // Total de personas = S(quantity � participants). Esta f�rmula es la �nica
       // fuente de verdad en TODO el flujo TPV (reserva, calendario, REAV, email, GHL).
-      // - Pase individual:     quantity=N, participants=1 → N personas
-      // - Pack para K personas: quantity=N, participants=K → N×K personas
+      // - Pase individual:     quantity=N, participants=1 ? N personas
+      // - Pack para K personas: quantity=N, participants=K ? N�K personas
       const totalPeople = input.items.reduce((sum, it) => sum + (it.quantity * (it.participants ?? 1)), 0);
 
       let reservationId: number | null = null;
@@ -977,10 +977,10 @@ export const tpvRouter = router({
       if (mainItem) {
         try {
           const reservationNumber = await generateReservationRef(String((ctx as any).user?.id ?? "system"));
-          const merchantOrder = reservationNumber; // reutilizamos el mismo número correlativo
+          const merchantOrder = reservationNumber; // reutilizamos el mismo n�mero correlativo
           const amountCents = Math.round(total * 100);
-          // Resumen de actividades ADICIONALES (extras) — NO incluye el item principal.
-          // El principal queda representado por productId/productName a nivel raíz de la reserva.
+          // Resumen de actividades ADICIONALES (extras) � NO incluye el item principal.
+          // El principal queda representado por productId/productName a nivel ra�z de la reserva.
           const extrasForReservation = input.items.slice(1).map(it => ({
             productId: it.productId,
             productName: it.productName,
@@ -992,7 +992,7 @@ export const tpvRouter = router({
             eventTime: it.eventTime,
           }));
           const productSummary = input.items.length > 1
-            ? `${mainItem.productName} (+${input.items.length - 1} más)`
+            ? `${mainItem.productName} (+${input.items.length - 1} m�s)`
             : mainItem.productName;
           const [resResult] = await db.insert(reservations).values({
             productId: mainItem.productId,
@@ -1014,10 +1014,10 @@ export const tpvRouter = router({
               `[ORIGEN_TPV] Ticket: ${ticketNumber}`,
               input.customerName ? `Cliente: ${input.customerName}` : null,
               input.customerEmail ? `Email: ${input.customerEmail}` : null,
-              input.customerPhone ? `Teléfono: ${input.customerPhone}` : null,
+              input.customerPhone ? `Tel�fono: ${input.customerPhone}` : null,
               input.items.length > 1 ? `Productos: ${input.items.map(i => i.productName).join(', ')}` : null,
               input.notes ? `Notas: ${input.notes}` : null,
-            ].filter(Boolean).join(' · '),
+            ].filter(Boolean).join(' � '),
             paymentMethod: primaryPaymentMethod === "card" ? "tarjeta_fisica" :
                            primaryPaymentMethod === "cash" ? "efectivo" : "otro",
             channel: "TPV_FISICO",
@@ -1040,11 +1040,11 @@ export const tpvRouter = router({
             });
           }
         } catch (e) {
-          console.error("[TPV] Error creando reserva automática:", e);
+          console.error("[TPV] Error creando reserva autom�tica:", e);
         }
       }
 
-      // ── 7. Registrar transacción unificada en el libro maestro ───────────────
+      // -- 7. Registrar transacci�n unificada en el libro maestro ---------------
       try {
         const methodMap: Record<string, string> = {
           cash: "efectivo", card: "tarjeta_fisica", bizum: "otro", other: "otro"
@@ -1058,7 +1058,7 @@ export const tpvRouter = router({
           currency: "EUR",
           paymentMethod: txMethod as any,
           status: "completado",
-          description: `Venta TPV ${ticketNumber}${mainItem ? ` — ${mainItem.productName}` : ""}`,
+          description: `Venta TPV ${ticketNumber}${mainItem ? ` � ${mainItem.productName}` : ""}`,
           processedAt: new Date(),
           clientName: input.customerName ?? null,
           clientEmail: input.customerEmail ?? null,
@@ -1077,10 +1077,10 @@ export const tpvRouter = router({
           operationStatus: "confirmada",
         } as any);
       } catch (e) {
-        console.error("[TPV] Error registrando transacción:", e);
+        console.error("[TPV] Error registrando transacci�n:", e);
       }
 
-      // ── 8. Crear expediente REAV automáticamente si hay líneas REAV ──────────
+      // -- 8. Crear expediente REAV autom�ticamente si hay l�neas REAV ----------
       let reavExpedientId: number | undefined;
       let reavExpedientNumber: string | undefined;
       if (hasReav) {
@@ -1095,7 +1095,7 @@ export const tpvRouter = router({
               .map(i => i.productName)
               .join(" | "),
             serviceDate: mainItem?.eventDate ?? new Date().toISOString().split("T")[0],
-            // Personas REAV = Σ(quantity × participants) de las líneas con fiscalRegime='reav'
+            // Personas REAV = S(quantity � participants) de las l�neas con fiscalRegime='reav'
             numberOfPax: input.items
               .filter((_, idx) => linesFiscal[idx]?.fiscalRegime === "reav")
               .reduce((sum, it) => sum + (it.quantity * (it.participants ?? 1)), 0),
@@ -1110,14 +1110,14 @@ export const tpvRouter = router({
             channel: "tpv",
             sourceRef: ticketNumber,
             internalNotes: [
-              `Expediente creado automáticamente desde TPV.`,
+              `Expediente creado autom�ticamente desde TPV.`,
               `Ticket: ${ticketNumber}`,
               input.customerName ? `Cliente: ${input.customerName}` : null,
               input.customerEmail ? `Email: ${input.customerEmail}` : null,
-              input.customerPhone ? `Teléfono: ${input.customerPhone}` : null,
-              `Importe REAV: ${reavSaleAmount.toFixed(2)}€`,
+              input.customerPhone ? `Tel�fono: ${input.customerPhone}` : null,
+              `Importe REAV: ${reavSaleAmount.toFixed(2)}�`,
               `Cajero: ${sellerName}`,
-            ].filter(Boolean).join(" · "),
+            ].filter(Boolean).join(" � "),
           });
           reavExpedientId = reavResult.id;
           reavExpedientNumber = reavResult.expedientNumber;
@@ -1133,7 +1133,7 @@ export const tpvRouter = router({
             title: `Ticket TPV ${ticketNumber}`,
             fileUrl: ticketViewUrl,
             mimeType: "text/html",
-            notes: `Ticket de venta TPV generado automáticamente. Fecha: ${new Date().toLocaleDateString("es-ES")}. Cajero: ${sellerName}.`,
+            notes: `Ticket de venta TPV generado autom�ticamente. Fecha: ${new Date().toLocaleDateString("es-ES")}. Cajero: ${sellerName}.`,
           });
           console.log(`[TPV] Expediente REAV ${reavExpedientNumber} creado para venta ${ticketNumber}`);
         } catch (e) {
@@ -1141,9 +1141,9 @@ export const tpvRouter = router({
         }
       }
 
-      // ── 8b. Registrar en calendario de operaciones (reservation_operational) ──────
-      // Esto permite que las ventas TPV aparezcan en el calendario del día y en
-      // las órdenes del día de los monitores, igual que las ventas CRM y Redsys.
+      // -- 8b. Registrar en calendario de operaciones (reservation_operational) ------
+      // Esto permite que las ventas TPV aparezcan en el calendario del d�a y en
+      // las �rdenes del d�a de los monitores, igual que las ventas CRM y Redsys.
       try {
         const serviceDate = mainItem?.eventDate ?? new Date().toISOString().split("T")[0];
         const people = totalPeople;
@@ -1151,7 +1151,7 @@ export const tpvRouter = router({
           : fiscalSummary === "reav_only" ? "reav" : "mixed";
         const paymentMethodForOp = primaryPaymentMethod === "cash" ? "efectivo"
           : primaryPaymentMethod === "card" ? "tarjeta_fisica" : "otro";
-        // Mapear método de pago TPV al enum de postConfirmOperation
+        // Mapear m�todo de pago TPV al enum de postConfirmOperation
         const opPaymentMethod: "efectivo" | "tarjeta_fisica" | "otro" =
           primaryPaymentMethod === "cash" ? "efectivo" :
           primaryPaymentMethod === "card" ? "tarjeta_fisica" : "otro";
@@ -1176,7 +1176,7 @@ export const tpvRouter = router({
           taxAmount: totalTaxAmount,
           reavMargin: totalReavMargin,
           fiscalRegime: fiscalRegimeForOp,
-          description: `Venta TPV ${ticketNumber}${mainItem ? ` — ${mainItem.productName}` : ""}`,
+          description: `Venta TPV ${ticketNumber}${mainItem ? ` � ${mainItem.productName}` : ""}`,
           quoteId: null,
           sourceChannel: opPaymentMethod,
         });
@@ -1184,7 +1184,7 @@ export const tpvRouter = router({
         console.error("[TPV] Error registrando en operaciones:", e);
       }
 
-      // ── 8b-bis. Movimiento de caja automático para ventas en efectivo ─────────
+      // -- 8b-bis. Movimiento de caja autom�tico para ventas en efectivo ---------
       if (primaryPaymentMethod === "cash" && reservationId) {
         try {
           const cashAccountId = await getDefaultCashAccountId();
@@ -1194,18 +1194,18 @@ export const tpvRouter = router({
               date: madridDateKey().slice(0, 10),
               type: "income",
               amount: total,
-              concept: `Cobro efectivo ${ticketNumber} — ${input.customerName || "Cliente TPV"}`,
+              concept: `Cobro efectivo ${ticketNumber} � ${input.customerName || "Cliente TPV"}`,
               relatedEntityType: "reservation",
               relatedEntityId: reservationId,
               createdBy: sellerUserId ?? undefined,
             });
           }
         } catch (e) {
-          console.error("[TPV] Error registrando movimiento de caja automático:", e);
+          console.error("[TPV] Error registrando movimiento de caja autom�tico:", e);
         }
       }
 
-      // ── 8c. Generar factura automática (solo pagos con tarjeta — efectivo requiere factura manual) ──
+      // -- 8c. Generar factura autom�tica (solo pagos con tarjeta � efectivo requiere factura manual) --
       if (primaryPaymentMethod !== "cash") {
         try {
           const invoiceNumber = await generateDocumentNumber("factura", "tpv:createSale", "system");
@@ -1254,21 +1254,21 @@ export const tpvRouter = router({
         }
       }
 
-      // ── 8b. CONFIRMAR venta TPV como pagada ──────────────────────────────────
-      // Punto de no retorno: si llegamos aquí los pasos críticos (líneas, pagos,
-      // reserva, transacción contable, REAV, factura) han completado. Marcamos la
+      // -- 8b. CONFIRMAR venta TPV como pagada ----------------------------------
+      // Punto de no retorno: si llegamos aqu� los pasos cr�ticos (l�neas, pagos,
+      // reserva, transacci�n contable, REAV, factura) han completado. Marcamos la
       // venta como 'paid' con paidAt. Si CUALQUIERA de los pasos anteriores hubiera
-      // lanzado una excepción no capturada, llegaríamos aquí y la fila se quedaría
-      // como 'pending' — invisible para el Control Diario hasta que se revise
+      // lanzado una excepci�n no capturada, llegar�amos aqu� y la fila se quedar�a
+      // como 'pending' � invisible para el Control Diario hasta que se revise
       // manualmente. Los pasos siguientes (email, GHL, logActivity) son
-      // fire-and-forget — su fallo no debe afectar el estado de la venta.
+      // fire-and-forget � su fallo no debe afectar el estado de la venta.
       await db.update(tpvSales)
         .set({ status: "paid", paidAt: Date.now() } as any)
         .where(eq(tpvSales.id, saleId));
 
-      // ── 9. Email de confirmación (cliente si hay email + siempre a reservas@) ─
+      // -- 9. Email de confirmaci�n (cliente si hay email + siempre a reservas@) -
       try {
-        // Recuperar publicToken de la reserva auto-generada para el botón "Ver tu reserva"
+        // Recuperar publicToken de la reserva auto-generada para el bot�n "Ver tu reserva"
         let reservationUrl: string | undefined;
         if (reservationId) {
           const [resForUrl] = await db.select({ publicToken: reservations.publicToken })
@@ -1278,8 +1278,8 @@ export const tpvRouter = router({
             reservationUrl = `${baseUrl}/presupuesto/${resForUrl.publicToken}`;
           }
         }
-        // Desglose para el email — solo si hay UN único producto (caso típico TPV).
-        // Con múltiples productos no tiene sentido un único "qty × unitPrice".
+        // Desglose para el email � solo si hay UN �nico producto (caso t�pico TPV).
+        // Con m�ltiples productos no tiene sentido un �nico "qty � unitPrice".
         const singleItem = input.items.length === 1 ? input.items[0] : null;
         const emailHtml = buildReservationConfirmHtml({
           merchantOrder: ticketNumber,
@@ -1287,7 +1287,7 @@ export const tpvRouter = router({
           customerName: input.customerName || "Cliente TPV",
           date: new Date().toLocaleDateString("es-ES"),
           people: totalPeople,
-          amount: `${total.toFixed(2).replace(".", ",")} €`,
+          amount: `${total.toFixed(2).replace(".", ",")} �`,
           reservationUrl,
           quantity:       singleItem?.quantity,
           unitPrice:      singleItem?.unitPrice,
@@ -1295,17 +1295,17 @@ export const tpvRouter = router({
           discount:       input.discountAmount > 0 ? input.discountAmount : undefined,
           discountReason: input.discountReason,
         });
-        const subject = `[TPV] Compra confirmada ${ticketNumber} — Náyade Experiences`;
+        const subject = `[TPV] Compra confirmada ${ticketNumber} � N�yade Experiences`;
         const saleNotifyEmail = await getBusinessEmail('reservations');
         await sendEmail({ to: saleNotifyEmail, subject, html: emailHtml });
         if (input.customerEmail) {
           await sendEmail({ to: input.customerEmail, cc: saleNotifyEmail, subject, html: emailHtml });
         }
       } catch (e) {
-        console.error("[TPV] Error enviando email de confirmación:", e);
+        console.error("[TPV] Error enviando email de confirmaci�n:", e);
       }
 
-      // ── 9. Registrar en el log de actividad del dashboard ─────────────────────────────────
+      // -- 9. Registrar en el log de actividad del dashboard ---------------------------------
       await logActivity(
         "reservation",
         reservationId ?? saleId,
@@ -1321,8 +1321,8 @@ export const tpvRouter = router({
         }
       ).catch(() => {});
 
-      // ── 9b. GHL: contacto + workflow para ventas TPV con email del cliente ─────
-      // Solo si hay email — sin email no podemos identificar al contacto en GHL.
+      // -- 9b. GHL: contacto + workflow para ventas TPV con email del cliente -----
+      // Solo si hay email � sin email no podemos identificar al contacto en GHL.
       if (input.customerEmail) {
         try {
           const ghlCreds = await getGHLCredentials();
@@ -1343,7 +1343,7 @@ export const tpvRouter = router({
 
             if (ghlContactId) {
               // Sincronizar presupuesto_url al contacto (WhatsApp lee este campo).
-              // Solo si la venta creó reserva (cuando hay producto principal).
+              // Solo si la venta cre� reserva (cuando hay producto principal).
               if (reservationId) {
                 const [resForUrl] = await db.select({ publicToken: reservations.publicToken })
                   .from(reservations).where(eq(reservations.id, reservationId)).limit(1);
@@ -1377,12 +1377,12 @@ export const tpvRouter = router({
             }
           }
         } catch (ghlErr: any) {
-          console.error("[TPV] Error en integración GHL:", ghlErr.message);
+          console.error("[TPV] Error en integraci�n GHL:", ghlErr.message);
         }
       }
 
-      // ── 9b. Guardar snapshots de Lego Packs ───────────────────────────────────
-      // Importar saveSnapshot dinámicamente para evitar circular dependency
+      // -- 9b. Guardar snapshots de Lego Packs -----------------------------------
+      // Importar saveSnapshot din�micamente para evitar circular dependency
       const { calculateLegoPackPrice } = await import("./legoPacks.ts");
       for (let i = 0; i < input.items.length; i++) {
         const item = input.items[i];
@@ -1406,7 +1406,7 @@ export const tpvRouter = router({
         }
       }
 
-      // ── 10. Devolver venta completa ───────────────────────────────────────────────────────────
+      // -- 10. Devolver venta completa -----------------------------------------------------------
       const [sale] = await db.select().from(tpvSales).where(eq(tpvSales.id, saleId));
       const items = await db.select().from(tpvSaleItems).where(eq(tpvSaleItems.saleId, saleId));
       const payments = await db.select().from(tpvSalePayments).where(eq(tpvSalePayments.saleId, saleId));
@@ -1433,7 +1433,7 @@ export const tpvRouter = router({
         .orderBy(desc(tpvSales.createdAt));
     }),
 
-  // ── BACKOFFICE ─────────────────────────────────────────────────────────────
+  // -- BACKOFFICE -------------------------------------------------------------
   getBackoffice: tpvBackofficeProc
     .input(
       z.object({
@@ -1454,8 +1454,8 @@ export const tpvRouter = router({
       const registers = await db.select().from(cashRegisters);
       const registerMap = Object.fromEntries(registers.map(r => [r.id, r.name]));
 
-      // Aggregate sales per session in one batch query — solo 'paid'
-      // (mismo criterio que cierre de caja para que cuadre con el histórico real).
+      // Aggregate sales per session in one batch query � solo 'paid'
+      // (mismo criterio que cierre de caja para que cuadre con el hist�rico real).
       const sessionIds = sessions.map(s => s.id);
       const salesRows = sessionIds.length > 0
         ? await db
@@ -1505,7 +1505,7 @@ export const tpvRouter = router({
       return Object.values(grouped).sort((a, b) => b.totalRevenue - a.totalRevenue);
     }),
 
-  // ── SEND TICKET EMAIL ─────────────────────────────────────────────────────
+  // -- SEND TICKET EMAIL -----------------------------------------------------
   sendTicketEmail: tpvSellProc
     .input(
       z.object({
@@ -1548,7 +1548,7 @@ export const tpvRouter = router({
         templateKey: "tpv_ticket",
         triggerEvent: "tpv_ticket",
         recipientEmail: input.email,
-        subject: `Tu ticket de compra ${sale.ticketNumber} — Náyade Experiences`,
+        subject: `Tu ticket de compra ${sale.ticketNumber} � N�yade Experiences`,
         html: emailHtml,
         relatedEntityType: "tpv_sale",
         relatedEntityId: sale.id,

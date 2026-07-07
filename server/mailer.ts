@@ -10,7 +10,7 @@
  *
  * Variables de entorno necesarias:
  *   BREVO_API_KEY   — clave API de Brevo (preferido en Railway)
- *   SMTP_FROM       — remitente visible, ej: "Skicenter <reservas@skicenter.es>"
+ *   SMTP_FROM       — remitente visible, ej: "Skicenter <reservas@nayadeexperiences.es>"
  *   SMTP_HOST/PORT/USER/PASS/SECURE — fallback SMTP (entornos locales o no-cloud)
  */
 
@@ -157,7 +157,7 @@ async function sendViaSMTP(params: MailParams): Promise<boolean> {
 // ─── CC global ───────────────────────────────────────────────────────────────
 // Dirección que recibe copia de TODOS los emails salientes.
 // Se puede sobreescribir con la variable de entorno GLOBAL_CC_EMAIL.
-const GLOBAL_CC_EMAIL = process.env.GLOBAL_CC_EMAIL ?? "reservas@skicenter.es";
+const GLOBAL_CC_EMAIL = process.env.GLOBAL_CC_EMAIL ?? "reservas@nayadeexperiences.es";
 
 function mergeGlobalCc(params: MailParams): MailParams {
   const existing = params.cc

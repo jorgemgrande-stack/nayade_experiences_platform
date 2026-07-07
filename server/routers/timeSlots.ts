@@ -1,7 +1,7 @@
-﻿/**
+/**
  * Router: Product Time Slots
- * Sistema modular de horarios por producto — completamente retrocompatible.
- * Si has_time_slots = false en el producto, este módulo no afecta ningún flujo existente.
+ * Sistema modular de horarios por producto � completamente retrocompatible.
+ * Si has_time_slots = false en el producto, este m�dulo no afecta ning�n flujo existente.
  */
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
@@ -14,7 +14,7 @@ import { eq, and, asc } from "drizzle-orm";
 const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
 const db = drizzle(_pool);
 
-// ─── Zod schemas ─────────────────────────────────────────────────────────────
+// --- Zod schemas -------------------------------------------------------------
 
 const timeSlotSchema = z.object({
   productId: z.number().int().positive(),
@@ -29,11 +29,11 @@ const timeSlotSchema = z.object({
   active: z.boolean().default(true),
 });
 
-// ─── Router ──────────────────────────────────────────────────────────────────
+// --- Router ------------------------------------------------------------------
 
 export const timeSlotsRouter = router({
 
-  // ── Public: get active time slots for a product ──────────────────────────
+  // -- Public: get active time slots for a product --------------------------
   getByProduct: publicProcedure
     .input(z.object({ productId: z.number().int().positive() }))
     .query(async ({ input }) => {
@@ -48,7 +48,7 @@ export const timeSlotsRouter = router({
       return slots;
     }),
 
-  // ── Admin: get all time slots for a product (including inactive) ─────────
+  // -- Admin: get all time slots for a product (including inactive) ---------
   getByProductAdmin: adminProcedure
     .input(z.object({ productId: z.number().int().positive() }))
     .query(async ({ input }) => {
@@ -60,7 +60,7 @@ export const timeSlotsRouter = router({
       return slots;
     }),
 
-  // ── Admin: create a time slot ────────────────────────────────────────────
+  // -- Admin: create a time slot --------------------------------------------
   create: adminProcedure
     .input(timeSlotSchema)
     .mutation(async ({ input }) => {
@@ -79,7 +79,7 @@ export const timeSlotsRouter = router({
       return { id: (result as any).insertId, success: true };
     }),
 
-  // ── Admin: update a time slot ────────────────────────────────────────────
+  // -- Admin: update a time slot --------------------------------------------
   update: adminProcedure
     .input(z.object({ id: z.number().int().positive() }).merge(timeSlotSchema.partial()))
     .mutation(async ({ input }) => {
@@ -104,7 +104,7 @@ export const timeSlotsRouter = router({
       return { success: true };
     }),
 
-  // ── Admin: delete a time slot ────────────────────────────────────────────
+  // -- Admin: delete a time slot --------------------------------------------
   delete: adminProcedure
     .input(z.object({ id: z.number().int().positive() }))
     .mutation(async ({ input }) => {
@@ -112,7 +112,7 @@ export const timeSlotsRouter = router({
       return { success: true };
     }),
 
-  // ── Admin: reorder time slots ────────────────────────────────────────────
+  // -- Admin: reorder time slots --------------------------------------------
   reorder: adminProcedure
     .input(z.object({
       items: z.array(z.object({ id: z.number().int(), sortOrder: z.number().int() }))
@@ -126,7 +126,7 @@ export const timeSlotsRouter = router({
       return { success: true };
     }),
 
-  // ── Admin: toggle has_time_slots on experience ───────────────────────────
+  // -- Admin: toggle has_time_slots on experience ---------------------------
   toggleProductTimeSlots: adminProcedure
     .input(z.object({
       productId: z.number().int().positive(),

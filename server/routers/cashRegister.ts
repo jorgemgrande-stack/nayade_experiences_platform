@@ -1,4 +1,4 @@
-﻿import { z } from "zod";
+import { z } from "zod";
 import { router, permissionProcedure } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { drizzle } from "drizzle-orm/mysql2";
@@ -34,7 +34,7 @@ function balanceDelta(type: string, amount: number): number {
 }
 
 export const cashRegisterRouter = router({
-  // ── Accounts ────────────────────────────────────────────────────────────────
+  // -- Accounts ----------------------------------------------------------------
   listAccounts: cashViewProc.query(async () => {
     return db.select().from(finCashAccounts).orderBy(finCashAccounts.name);
   }),
@@ -71,7 +71,7 @@ export const cashRegisterRouter = router({
       return { ok: true };
     }),
 
-  // ── Movements ──────────────────────────────────────────────────────────────
+  // -- Movements --------------------------------------------------------------
   listMovements: cashViewProc
     .input(z.object({
       accountId: z.number().optional(),
@@ -169,7 +169,7 @@ export const cashRegisterRouter = router({
       return { ok: true };
     }),
 
-  // ── Closures ───────────────────────────────────────────────────────────────
+  // -- Closures ---------------------------------------------------------------
   listClosures: cashViewProc
     .input(z.object({ accountId: z.number().optional() }))
     .query(async ({ input }) => {
@@ -243,7 +243,7 @@ export const cashRegisterRouter = router({
       return { ok: true, closingBalance };
     }),
 
-  // ── Summary ────────────────────────────────────────────────────────────────
+  // -- Summary ----------------------------------------------------------------
   getSummary: cashViewProc.query(async () => {
     const accounts = await db
       .select()
@@ -288,7 +288,7 @@ export const cashRegisterRouter = router({
     };
   }),
 
-  // ── Sincronización ─────────────────────────────────────────────────────────
+  // -- Sincronizaci�n ---------------------------------------------------------
   syncCheck: cashViewProc.query(async () => {
     // Reservas pagadas en efectivo
     const cashReservations = await db
@@ -368,7 +368,7 @@ export const cashRegisterRouter = router({
     };
   }),
 
-  // ── Alertas ────────────────────────────────────────────────────────────────
+  // -- Alertas ----------------------------------------------------------------
   listAlerts: cashViewProc
     .input(z.object({ includeResolved: z.boolean().default(false) }))
     .query(async ({ input }) => {
@@ -395,7 +395,7 @@ export const cashRegisterRouter = router({
     return { ok: true };
   }),
 
-  // ── Resolución de descuadres ────────────────────────────────────────────────
+  // -- Resoluci�n de descuadres ------------------------------------------------
   listClosureActions: cashViewProc
     .input(z.object({ closureId: z.number() }))
     .query(async ({ input }) => {
@@ -576,7 +576,7 @@ export const cashRegisterRouter = router({
       return { ok: true };
     }),
 
-  // ── Verificación de cierres ────────────────────────────────────────────────
+  // -- Verificaci�n de cierres ------------------------------------------------
   verifyCashClosures: cashViewProc.query(async () => {
     // Sesiones TPV cerradas sin cierre contable registrado
     const closedSessions = await db
@@ -617,7 +617,7 @@ export const cashRegisterRouter = router({
       ))
       .orderBy(desc(finCashAlerts.createdAt));
 
-    // Posibles duplicados (más de un cierre por sesión)
+    // Posibles duplicados (m�s de un cierre por sesi�n)
     const duplicates: Array<{ sessionId: number; count: number }> = [];
     if (sessionIds.length > 0) {
       const allClosures = await db
@@ -680,7 +680,7 @@ export const cashRegisterRouter = router({
           date: (r.bookingDate ?? madridDateKey()).slice(0, 10),
           type: "income",
           amount: (r.amountTotal ?? 0) / 100,
-          concept: `Cobro en efectivo ${r.reservationNumber ?? `#${r.id}`} — ${r.customerName}`,
+          concept: `Cobro en efectivo ${r.reservationNumber ?? `#${r.id}`} � ${r.customerName}`,
           relatedEntityType: "reservation",
           relatedEntityId: r.id,
           createdBy: userId,
@@ -713,7 +713,7 @@ export const cashRegisterRouter = router({
           date: (e.date ?? "").slice(0, 10),
           type: "expense",
           amount: parseFloat(e.amount),
-          concept: `Pago en efectivo — ${e.concept}`,
+          concept: `Pago en efectivo � ${e.concept}`,
           relatedEntityType: "expense",
           relatedEntityId: e.id,
           createdBy: userId,

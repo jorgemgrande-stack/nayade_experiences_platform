@@ -52,13 +52,13 @@ describe("buildQuoteHtml — botón CTA de aceptación", () => {
   it("muestra el bloque de contacto cuando NO se pasa paymentLinkUrl (sin botón CTA)", () => {
     const html = buildQuoteHtml({ ...BASE_DATA });
     expect(html).not.toContain("Confirmar y Pagar Ahora");
-    expect(html).toContain("reservas@skicenter.es");
+    expect(html).toContain("reservas@nayadeexperiences.es");
   });
 
   it("muestra el bloque de contacto cuando paymentLinkUrl es undefined", () => {
     const html = buildQuoteHtml({ ...BASE_DATA, paymentLinkUrl: undefined });
     expect(html).not.toContain("Confirmar y Pagar Ahora");
-    expect(html).toContain("reservas@skicenter.es");
+    expect(html).toContain("reservas@nayadeexperiences.es");
   });
 
   it("incluye los conceptos del presupuesto en el email", () => {

@@ -1,4 +1,4 @@
-﻿import { z } from "zod";
+import { z } from "zod";
 import { router, permissionProcedure } from "../_core/trpc";
 
 // RBAC-aware adminProcedure. Uses accounting.expenses.view as base permission;
@@ -27,7 +27,7 @@ import { calcGeneralTax } from "../taxUtils";
 import { TRPCError } from "@trpc/server";
 import { getDefaultCashAccountId, createCashMovementIfNotExists } from "./cashRegisterHelper";
 
-// ─── helpers ─────────────────────────────────────────────────────────────────
+// --- helpers -----------------------------------------------------------------
 function randomSuffix() {
   return Math.random().toString(36).slice(2, 8);
 }
@@ -48,7 +48,7 @@ function addYears(dateStr: string, n: number) {
   return d.toISOString().slice(0, 10);
 }
 
-// ─── Cost Centers ─────────────────────────────────────────────────────────────
+// --- Cost Centers -------------------------------------------------------------
 const costCentersRouter = router({
   list: adminProcedure.query(async () => {
     return db.select().from(costCenters).orderBy(costCenters.name);
@@ -77,7 +77,7 @@ const costCentersRouter = router({
     }),
 });
 
-// ─── Expense Categories ───────────────────────────────────────────────────────
+// --- Expense Categories -------------------------------------------------------
 const expenseCategoriesRouter = router({
   list: adminProcedure.query(async () => {
     return db.select().from(expenseCategories).orderBy(expenseCategories.name);
@@ -106,7 +106,7 @@ const expenseCategoriesRouter = router({
     }),
 });
 
-// ─── Expense Suppliers ────────────────────────────────────────────────────────
+// --- Expense Suppliers --------------------------------------------------------
 const expenseSuppliersRouter = router({
   list: adminProcedure.query(async () => {
     return db.select().from(expenseSuppliers).orderBy(expenseSuppliers.name);
@@ -153,7 +153,7 @@ const expenseSuppliersRouter = router({
     }),
 });
 
-// ─── Expenses ─────────────────────────────────────────────────────────────────
+// --- Expenses -----------------------------------------------------------------
 const expenseInputSchema = z.object({
   date: z.string().min(1),
   concept: z.string().min(1),
@@ -166,7 +166,7 @@ const expenseInputSchema = z.object({
   reservationId: z.number().nullable().optional(),
   productId: z.number().nullable().optional(),
   notes: z.string().optional(),
-  // ── Gestoría e Impuestos (Fase 0) — desglose fiscal del IVA soportado ──
+  // -- Gestor�a e Impuestos (Fase 0) � desglose fiscal del IVA soportado --
   taxRate: z.string().optional(),
   deductiblePercent: z.string().optional(),
   invoiceType: z.enum([
@@ -177,14 +177,14 @@ const expenseInputSchema = z.object({
   retentionPercent: z.string().optional(),
   accrualDate: z.string().optional(),
   // Tratamiento operativo: true = computa en P&L/EBITDA/KPIs;
-  // false = "solo fiscal" (gestoría/IVA/IS/tesorería sí, pero NO en KPIs operativos).
+  // false = "solo fiscal" (gestor�a/IVA/IS/tesorer�a s�, pero NO en KPIs operativos).
   // Default true para mantener compatibilidad con la UX existente.
   isOperational: z.boolean().default(true),
 });
 
 /**
  * Deriva el desglose fiscal de un gasto. El `amount` es el total CON IVA:
- * base = total / (1 + tipo/100). La retención se calcula sobre la base.
+ * base = total / (1 + tipo/100). La retenci�n se calcula sobre la base.
  * Marca el gasto como `revisado` porque el desglose llega del formulario.
  */
 function computeExpenseFiscal(input: { amount: string; taxRate?: string; retentionPercent?: string }) {
@@ -211,10 +211,10 @@ const expensesRouter = router({
       supplierId: z.number().optional(),
       status: z.enum(["pending", "justified", "accounted", "conciliado"]).optional(),
       paymentMethod: z.enum(["cash", "card", "transfer", "direct_debit", "tpv_cash"]).optional(),
-      // Filtro por imputación contable.
-      //   "all"          → ambos tipos (default, comportamiento histórico).
-      //   "operational"  → solo gastos que computan en P&L.
-      //   "tax_only"     → solo gastos "solo fiscales".
+      // Filtro por imputaci�n contable.
+      //   "all"          ? ambos tipos (default, comportamiento hist�rico).
+      //   "operational"  ? solo gastos que computan en P&L.
+      //   "tax_only"     ? solo gastos "solo fiscales".
       treatment: z.enum(["all", "operational", "tax_only"]).default("all"),
       limit: z.number().default(100),
       offset: z.number().default(0),
@@ -295,7 +295,7 @@ const expensesRouter = router({
               date: input.date.slice(0, 10),
               type: "expense",
               amount: parseFloat(input.amount),
-              concept: `Pago en efectivo — ${input.concept}`,
+              concept: `Pago en efectivo � ${input.concept}`,
               relatedEntityType: "expense",
               relatedEntityId: expenseId,
               createdBy: ctx.user.id,
@@ -328,7 +328,7 @@ const expensesRouter = router({
               date: data.date.slice(0, 10),
               type: "expense",
               amount: parseFloat(data.amount),
-              concept: `Pago en efectivo — ${data.concept}`,
+              concept: `Pago en efectivo � ${data.concept}`,
               relatedEntityType: "expense",
               relatedEntityId: id,
               createdBy: ctx.user.id,
@@ -350,7 +350,7 @@ const expensesRouter = router({
     }),
 
   /**
-   * Gestoría e Impuestos (Fase 0) — backfill del desglose fiscal.
+   * Gestor�a e Impuestos (Fase 0) � backfill del desglose fiscal.
    * Para los gastos antiguos sin `taxBase`, estima base/IVA al 21 % y los deja
    * en `fiscalReviewStatus = "pendiente"` para que se revisen manualmente.
    */
@@ -403,7 +403,7 @@ const expensesRouter = router({
       return { ok: true };
     }),
 
-  /** Devuelve el vínculo bancario confirmado de un gasto (si existe). */
+  /** Devuelve el v�nculo bancario confirmado de un gasto (si existe). */
   getExpenseBankLink: adminProcedure
     .input(z.object({ expenseId: z.number() }))
     .query(async ({ input }) => {
@@ -526,15 +526,15 @@ const expensesRouter = router({
     }),
 
   /**
-   * KPI de DISTORSIÓN FISCAL.
+   * KPI de DISTORSI�N FISCAL.
    *
    * Devuelve el volumen de gastos marcados como "solo fiscales" del mes y del
-   * año en curso, junto con su peso relativo sobre el gasto operativo del
+   * a�o en curso, junto con su peso relativo sobre el gasto operativo del
    * ejercicio. Pensado para alimentar dashboards (admin, contabilidad, P&L,
-   * gastos): permite detectar abuso, controlar gastos híbridos y entender
-   * cuánto "ruido fiscal" existe frente a la operación real del negocio.
+   * gastos): permite detectar abuso, controlar gastos h�bridos y entender
+   * cu�nto "ruido fiscal" existe frente a la operaci�n real del negocio.
    *
-   * Si no se pasa year/month se usan el año y mes en curso.
+   * Si no se pasa year/month se usan el a�o y mes en curso.
    */
   distortionKpi: adminProcedure
     .input(z.object({
@@ -590,7 +590,7 @@ const expensesRouter = router({
     }),
 });
 
-// ─── Recurring Expenses ───────────────────────────────────────────────────────
+// --- Recurring Expenses -------------------------------------------------------
 const recurringExpensesRouter = router({
   list: adminProcedure.query(async () => {
     return db.select().from(recurringExpenses).orderBy(recurringExpenses.nextExecutionDate);
@@ -674,7 +674,7 @@ const recurringExpensesRouter = router({
     }),
 });
 
-// ─── helpers for profitLoss ───────────────────────────────────────────────────
+// --- helpers for profitLoss ---------------------------------------------------
 async function _profitLossForPeriod(
   dateFrom: string,
   dateTo: string,
@@ -686,10 +686,10 @@ async function _profitLossForPeriod(
   if (conciliatedOnly) baseExpenseConditions.push(eq(expenses.status, "conciliado"));
 
   // Dos vistas posibles:
-  //   - "operational": excluye gastos isOperational=false (default — usado por
-  //     KPIs, EBITDA, márgenes, dashboards de explotación).
+  //   - "operational": excluye gastos isOperational=false (default � usado por
+  //     KPIs, EBITDA, m�rgenes, dashboards de explotaci�n).
   //   - "fiscal": incluye TODOS los gastos (vista contable/fiscal completa,
-  //     coherente con el cálculo del Impuesto de Sociedades).
+  //     coherente con el c�lculo del Impuesto de Sociedades).
   // Los gastos "solo fiscales" se contabilizan aparte (`excludedTaxOnly`) para
   // que el frontend pueda dar transparencia incluso en la vista operativa.
   const expenseConditions = view === "operational"
@@ -714,7 +714,7 @@ async function _profitLossForPeriod(
   const grossProfit = totalRevenue - totalExpenses;
   const grossMargin = totalRevenue > 0 ? (grossProfit / totalRevenue) * 100 : 0;
 
-  // Aviso de transparencia: cuántos gastos solo fiscales se han excluido del cálculo.
+  // Aviso de transparencia: cu�ntos gastos solo fiscales se han excluido del c�lculo.
   const excludedTaxOnly = {
     count: taxOnlyRows.length,
     amount: taxOnlyRows.reduce((s, r) => s + parseFloat(r.amount), 0),
@@ -767,13 +767,13 @@ async function _profitLossForPeriod(
   };
 }
 
-// ─── Profit & Loss (Cuenta de Resultados) ────────────────────────────────────
+// --- Profit & Loss (Cuenta de Resultados) ------------------------------------
 const profitLossRouter = router({
   /**
    * Cuenta de Resultados. Soporta dos vistas:
-   *   - "operational" (default): excluye gastos solo fiscales → P&L del negocio.
-   *   - "fiscal": incluye todos los gastos → vista contable/fiscal completa.
-   * La comparativa con el período anterior usa la MISMA vista para que las
+   *   - "operational" (default): excluye gastos solo fiscales ? P&L del negocio.
+   *   - "fiscal": incluye todos los gastos ? vista contable/fiscal completa.
+   * La comparativa con el per�odo anterior usa la MISMA vista para que las
    * cifras sean comparables.
    */
   report: adminProcedure
@@ -805,7 +805,7 @@ const profitLossRouter = router({
     }),
 });
 
-// ─── Email Ingestion sub-router ──────────────────────────────────────────────
+// --- Email Ingestion sub-router ----------------------------------------------
 const emailIngestionRouter = router({
   triggerSync: adminProcedure
     .mutation(async () => {
@@ -825,7 +825,7 @@ const emailIngestionRouter = router({
     }),
 });
 
-// ─── Main export ──────────────────────────────────────────────────────────────
+// --- Main export --------------------------------------------------------------
 export const expensesModuleRouter = router({
   costCenters: costCentersRouter,
   categories: expenseCategoriesRouter,

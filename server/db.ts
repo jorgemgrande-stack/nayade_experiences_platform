@@ -1,4 +1,4 @@
-﻿import { eq, desc, and, like, sql, isNull, inArray, or, lt } from "drizzle-orm";
+import { eq, desc, and, like, sql, isNull, inArray, or, lt } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
 import { nanoid } from "nanoid";
@@ -48,14 +48,14 @@ export async function getDb() {
   return _db;
 }
 
-/** Carga credenciales GHL: env vars → systemSettings → siteSettings (legacy). */
+/** Carga credenciales GHL: env vars ? systemSettings ? siteSettings (legacy). */
 export async function getGHLCredentials(): Promise<{ apiKey: string; locationId: string } | null> {
   let apiKey = process.env.GHL_API_KEY;
   let locationId = process.env.GHL_LOCATION_ID;
   if (!apiKey || !locationId) {
     const db = await getDb();
     if (db) {
-      // Fuente de verdad: systemSettings (desde Fase 1 de la reorganización)
+      // Fuente de verdad: systemSettings (desde Fase 1 de la reorganizaci�n)
       const sysRows = await db
         .select({ key: systemSettings.key, value: systemSettings.value })
         .from(systemSettings)
@@ -78,12 +78,12 @@ export async function getGHLCredentials(): Promise<{ apiKey: string; locationId:
   return { apiKey, locationId };
 }
 
-// ─── ACTIVITY LOG ────────────────────────────────────────────────────────────
+// --- ACTIVITY LOG ------------------------------------------------------------
 
 /**
- * Registra una acción en crm_activity_log.
- * Función centralizada para que TODOS los flujos del sistema
- * (CRM, web pública, Redsys, TPV, Ticketing, Anulaciones) puedan
+ * Registra una acci�n en crm_activity_log.
+ * Funci�n centralizada para que TODOS los flujos del sistema
+ * (CRM, web p�blica, Redsys, TPV, Ticketing, Anulaciones) puedan
  * escribir en el mismo log y aparecer en "Actividad reciente" del dashboard.
  */
 export async function logActivity(
@@ -112,7 +112,7 @@ export async function logActivity(
   }
 }
 
-// ─── USERS ────────────────────────────────────────────────────────────────────
+// --- USERS --------------------------------------------------------------------
 
 export async function upsertUser(user: InsertUser): Promise<void> {
   if (!user.openId) throw new Error("User openId is required for upsert");
@@ -157,7 +157,7 @@ export async function getAllUsers() {
   return db.select().from(users).orderBy(desc(users.createdAt));
 }
 
-// ─── PUBLIC QUERIES ───────────────────────────────────────────────────────────
+// --- PUBLIC QUERIES -----------------------------------------------------------
 
 export async function getFeaturedExperiences() {
   const db = await getDb();
@@ -186,7 +186,7 @@ export async function getPublicExperiences(params: {
 export async function getExperienceBySlug(slug: string) {
   const db = await getDb();
   if (!db) return null;
-  // Solo devuelve la experiencia si está publicada (isPublished=true)
+  // Solo devuelve la experiencia si est� publicada (isPublished=true)
   const result = await db.select().from(experiences)
     .where(and(eq(experiences.slug, slug), eq(experiences.isPublished, true)))
     .limit(1);
@@ -217,7 +217,7 @@ export async function getSlideshowItems() {
     .orderBy(slideshowItems.sortOrder);
 }
 
-// ─── LEADS ────────────────────────────────────────────────────────────────────
+// --- LEADS --------------------------------------------------------------------
 
 export async function createLead(data: {
   name: string;
@@ -249,7 +249,7 @@ export async function createLead(data: {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
-  // Resolve leadSourceCode → leadSourceId
+  // Resolve leadSourceCode ? leadSourceId
   let leadSourceId: number | null = null;
   if (data.leadSourceCode) {
     const [src] = await db
@@ -286,9 +286,9 @@ export async function createLead(data: {
   const leadId = Number(result[0].insertId);
 
   // 2. Upsert de cliente
-  // SELECT + INSERT/UPDATE explícito para evitar problemas con onDuplicateKeyUpdate.
-  // - Si no existe cliente con ese email → crea uno nuevo vinculado a este lead.
-  // - Si ya existe → actualiza el leadId y rellena campos vacíos.
+  // SELECT + INSERT/UPDATE expl�cito para evitar problemas con onDuplicateKeyUpdate.
+  // - Si no existe cliente con ese email ? crea uno nuevo vinculado a este lead.
+  // - Si ya existe ? actualiza el leadId y rellena campos vac�os.
   try {
     const [existingClient] = await db
       .select({ id: clients.id, name: clients.name, phone: clients.phone, company: clients.company })
@@ -297,7 +297,7 @@ export async function createLead(data: {
       .limit(1);
 
     if (existingClient) {
-      // Actualizar leadId y rellenar campos solo si están vacíos
+      // Actualizar leadId y rellenar campos solo si est�n vac�os
       await db.update(clients).set({
         leadId,
         name: existingClient.name?.trim() ? existingClient.name : data.name,
@@ -319,7 +319,7 @@ export async function createLead(data: {
       });
     }
   } catch (e) {
-    // No bloquear el lead si falla la creación del cliente
+    // No bloquear el lead si falla la creaci�n del cliente
     console.warn("[createLead] No se pudo crear/vincular cliente:", e);
   }
 
@@ -331,7 +331,7 @@ export async function createLead(data: {
 
   // 4. Sincronizar con GoHighLevel CRM (fire-and-forget, no bloquea el flujo)
   const ghlSource = data.source ?? "web";
-  // Excluir orígenes que ya sincronizan con GHL por su cuenta para evitar duplicados
+  // Excluir or�genes que ya sincronizan con GHL por su cuenta para evitar duplicados
   if (ghlSource === "ghl_webhook" || ghlSource === "vapi_llamada") return leadId;
   (async () => {
     const db = await getDb();
@@ -356,7 +356,7 @@ export async function createLead(data: {
       }
     }
 
-    if (!ghlApiKey || !ghlLocationId) return; // credenciales no configuradas — skip silencioso
+    if (!ghlApiKey || !ghlLocationId) return; // credenciales no configuradas � skip silencioso
 
     try {
       const ghlContactId = await createGHLContact(
@@ -380,7 +380,7 @@ export async function createLead(data: {
           .where(eq(leads.id, leadId));
         console.log(`[GHL] ghlContactId ${ghlContactId} persistido en lead #${leadId}`);
 
-        // Disparar workflow trigger de GHL si está configurado
+        // Disparar workflow trigger de GHL si est� configurado
         const webhookUrl = process.env.GHL_LEAD_WEBHOOK_URL;
         if (webhookUrl) {
           triggerGHLWorkflow(webhookUrl, {
@@ -394,14 +394,14 @@ export async function createLead(data: {
           }).catch(() => {}); // fire-and-forget
         }
       } else if (!ghlContactId && db) {
-        // GHL devolvió null — registrar el fallo en ghlWebhookLogs para trazabilidad
+        // GHL devolvi� null � registrar el fallo en ghlWebhookLogs para trazabilidad
         await db.insert(ghlWebhookLogs).values({
           event: "create_contact_failed",
           payload: { leadId, name: data.name, email: data.email, source: ghlSource },
           status: "error",
-          errorMessage: `createGHLContact devolvió null para lead #${leadId} (${data.email ?? data.name})`,
+          errorMessage: `createGHLContact devolvi� null para lead #${leadId} (${data.email ?? data.name})`,
         });
-        console.error(`[GHL] createGHLContact devolvió null para lead #${leadId} — fallo registrado en ghl_webhook_logs`);
+        console.error(`[GHL] createGHLContact devolvi� null para lead #${leadId} � fallo registrado en ghl_webhook_logs`);
       }
     } catch (err: any) {
       console.error(`[GHL] Error inesperado sincronizando lead #${leadId}:`, err);
@@ -419,7 +419,7 @@ export async function createLead(data: {
   return { id: leadId, success: true };
 }
 
-// ─── BOOKINGS ─────────────────────────────────────────────────────────────────
+// --- BOOKINGS -----------------------------------------------------------------
 
 export async function createBooking(data: {
   experienceId: number;
@@ -452,7 +452,7 @@ export async function createBooking(data: {
 }
 
 /**
- * Crea automáticamente un booking operativo a partir de una reserva pagada.
+ * Crea autom�ticamente un booking operativo a partir de una reserva pagada.
  * Se llama desde el callback de Redsys, confirmTransfer y confirmManualPayment.
  * Idempotente: si ya existe un booking con el mismo reservationId, no crea otro.
  */
@@ -492,7 +492,7 @@ export async function createBookingFromReservation(data: {
     numberOfPersons: data.people,
     totalAmount,
     status: "confirmado",
-    notes: data.notes ?? `Reserva automática desde ${data.sourceChannel} — ${data.productName}`,
+    notes: data.notes ?? `Reserva autom�tica desde ${data.sourceChannel} � ${data.productName}`,
     reservationId: data.reservationId,
     sourceChannel: data.sourceChannel,
   });
@@ -518,7 +518,7 @@ export async function updateBookingStatus(id: number, status: string, internalNo
   return { success: true };
 }
 
-// ──// ─── TRANSACTIONS ─────────────────────────────────────────────────────
+// --// --- TRANSACTIONS -----------------------------------------------------
 
 type TxFilters = {
   type?: string; status?: string;
@@ -615,14 +615,14 @@ export async function getAccountingReports(params: { from?: string; to?: string 
     count:   sql<number>`COUNT(*)`,
   }).from(transactions).where(where).groupBy((transactions as any).saleChannel);
 
-  // Por método de pago
+  // Por m�todo de pago
   const byMethod = await db.select({
     method: transactions.paymentMethod,
     total:  sql<string>`COALESCE(SUM(amount), 0)`,
     count:  sql<number>`COUNT(*)`,
   }).from(transactions).where(where).groupBy(transactions.paymentMethod);
 
-  // Por régimen fiscal
+  // Por r�gimen fiscal
   const byFiscal = await db.select({
     regime: (transactions as any).fiscalRegime,
     total:  sql<string>`COALESCE(SUM(amount), 0)`,
@@ -632,7 +632,7 @@ export async function getAccountingReports(params: { from?: string; to?: string 
     count:  sql<number>`COUNT(*)`,
   }).from(transactions).where(where).groupBy((transactions as any).fiscalRegime);
 
-  // Ventas por día (para gráfica)
+  // Ventas por d�a (para gr�fica)
   const byDay = await db.select({
     day:   sql<string>`DATE(createdAt)`,
     total: sql<string>`COALESCE(SUM(amount), 0)`,
@@ -720,7 +720,7 @@ export async function getDashboardMetrics() {
   };
 }
 
-// ─── CMS: SLIDESHOW ───────────────────────────────────────────────────────────
+// --- CMS: SLIDESHOW -----------------------------------------------------------
 
 export async function getAllSlideshowItems() {
   const db = await getDb();
@@ -781,7 +781,7 @@ export async function deleteSlideshowItem(id: number) {
   return { success: true };
 }
 
-// ─── CMS: MEDIA ───────────────────────────────────────────────────────────────
+// --- CMS: MEDIA ---------------------------------------------------------------
 
 export async function getAllMediaFiles() {
   const db = await getDb();
@@ -813,7 +813,7 @@ export async function deleteMediaFile(id: number) {
   return { success: true };
 }
 
-// ─── ADMIN: EXPERIENCES ───────────────────────────────────────────────────────
+// --- ADMIN: EXPERIENCES -------------------------------------------------------
 
 export async function getAllExperiences() {
   const db = await getDb();
@@ -882,7 +882,7 @@ export async function deleteExperience(id: number) {
   return { success: true };
 }
 
-// ─── ADMIN: CATEGORIES ────────────────────────────────────────────────────────
+// --- ADMIN: CATEGORIES --------------------------------------------------------
 
 export async function getAllCategories() {
   const db = await getDb();
@@ -927,7 +927,7 @@ export async function deleteCategory(id: number) {
   return { success: true };
 }
 
-// ─── ADMIN: LOCATIONS ─────────────────────────────────────────────────────────
+// --- ADMIN: LOCATIONS ---------------------------------------------------------
 
 export async function getAllLocations() {
   const db = await getDb();
@@ -968,7 +968,7 @@ export async function deleteLocation(id: number) {
   return { success: true };
 }
 
-// ─── HOME MODULES ─────────────────────────────────────────────────────────────
+// --- HOME MODULES -------------------------------------------------------------
 export async function getHomeModuleItems(moduleKey: string) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
@@ -1016,7 +1016,7 @@ export async function setHomeModuleItems(moduleKey: string, experienceIds: numbe
   return { success: true };
 }
 
-// ─── RESERVATIONS (Redsys) ────────────────────────────────────────────────────
+// --- RESERVATIONS (Redsys) ----------------------------------------------------
 export async function createReservation(data: {
   productId: number;
   productName: string;
@@ -1036,7 +1036,7 @@ export async function createReservation(data: {
   pricingType?: "per_person" | "per_unit";
   unitCapacity?: number;
   unitsBooked?: number;
-  // Meta CAPI attribution (optional — requieren marketing consent)
+  // Meta CAPI attribution (optional � requieren marketing consent)
   fbp?: string;
   fbc?: string;
   clientIpAddress?: string;
@@ -1055,7 +1055,7 @@ export async function createReservation(data: {
     amountTotal: data.amountTotal,
     amountPaid: 0,
     status: "pending_payment",
-    // Canal: reserva iniciada desde el checkout web → ONLINE_DIRECTO
+    // Canal: reserva iniciada desde el checkout web ? ONLINE_DIRECTO
     channel: "ONLINE_DIRECTO",
     statusReservation: "PENDIENTE_CONFIRMACION",
     statusPayment: "PENDIENTE",
@@ -1083,7 +1083,7 @@ export async function createReservation(data: {
   return { id: Number(result[0].insertId), merchantOrder: data.merchantOrder, reservationNumber };
 }
 
-// ─── VENTA PERDIDA LEAD ───────────────────────────────────────────────────────
+// --- VENTA PERDIDA LEAD -------------------------------------------------------
 // Crea un lead "venta_perdida" cuando un checkout ONLINE_DIRECTO falla o queda
 // abandonado sin completar el pago. Solo se crea uno por merchantOrder.
 export async function createVentaPerdidaLead(reservationGroup: Array<{
@@ -1154,7 +1154,7 @@ export async function createVentaPerdidaLead(reservationGroup: Array<{
     updatedAt: new Date(),
   });
 
-  console.log(`[VentaPerdida] Lead creado — merchantOrder: ${first.merchantOrder}, cliente: ${first.customerName}, importe: ${(totalCents / 100).toFixed(2)}€`);
+  console.log(`[VentaPerdida] Lead creado � merchantOrder: ${first.merchantOrder}, cliente: ${first.customerName}, importe: ${(totalCents / 100).toFixed(2)}�`);
 }
 
 export async function getReservationByMerchantOrder(merchantOrder: string) {
@@ -1166,7 +1166,7 @@ export async function getReservationByMerchantOrder(merchantOrder: string) {
   return result[0] ?? null;
 }
 
-/** Devuelve TODAS las reservas de un merchantOrder (útil para carrito multi-artículo) */
+/** Devuelve TODAS las reservas de un merchantOrder (�til para carrito multi-art�culo) */
 export async function getAllReservationsByMerchantOrder(merchantOrder: string) {
   const db = await getDb();
   if (!db) return [];
@@ -1184,8 +1184,8 @@ export async function updateReservationPayment(
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   const now = Date.now();
-  // Condición atómica: solo actualiza si sigue en pending_payment.
-  // Garantiza idempotencia ante IPNs duplicados — si MySQL actualiza 0 filas, ya fue procesada.
+  // Condici�n at�mica: solo actualiza si sigue en pending_payment.
+  // Garantiza idempotencia ante IPNs duplicados � si MySQL actualiza 0 filas, ya fue procesada.
   const result = await db.update(reservations).set({
     status,
     redsysResponse,
@@ -1231,7 +1231,7 @@ export async function getExperienceById(id: number) {
   return result[0] ?? null;
 }
 
-// ─── EXPERIENCE VARIANTS ──────────────────────────────────────────────────────
+// --- EXPERIENCE VARIANTS ------------------------------------------------------
 
 export async function getVariantsByExperience(experienceId: number) {
   const db = await getDb();
@@ -1296,7 +1296,7 @@ export async function deleteVariant(id: number) {
   return { success: true };
 }
 
-// ─── ADMIN: ACCIONES EXTENDIDAS (toggle, hard delete, clone) ─────────────────
+// --- ADMIN: ACCIONES EXTENDIDAS (toggle, hard delete, clone) -----------------
 
 export async function hardDeleteExperience(id: number) {
   const db = await getDb();
@@ -1317,7 +1317,7 @@ export async function cloneExperience(id: number, newName?: string) {
   if (!db) throw new Error("Database not available");
   const [orig] = await db.select().from(experiences).where(eq(experiences.id, id));
   if (!orig) throw new Error("Experience not found");
-  // Si se proporciona un nombre nuevo, generar slug desde ese nombre; si no, añadir sufijo
+  // Si se proporciona un nombre nuevo, generar slug desde ese nombre; si no, a�adir sufijo
   const resolvedTitle = newName?.trim() || orig.title + " (Copia)";
   const baseSlug = resolvedTitle
     .toLowerCase()
@@ -1500,7 +1500,7 @@ export async function clonePack(id: number) {
   return { success: true, id: Number(result[0].insertId), slug: newSlug };
 }
 
-// ─── USER MANAGEMENT (ADMIN) ─────────────────────────────────────────────────
+// --- USER MANAGEMENT (ADMIN) -------------------------------------------------
 
 export async function createInvitedUser(data: {
   name: string;
@@ -1578,7 +1578,7 @@ export async function deleteUser(userId: number) {
   return { success: true };
 }
 
-// ─── MENU ITEMS ──────────────────────────────────────────────────────────────
+// --- MENU ITEMS --------------------------------------------------------------
 
 export async function getAllMenuItems(zone: "header" | "footer" = "header") {
   const db = await getDb();
@@ -1647,7 +1647,7 @@ export async function reorderMenuItems(items: { id: number; sortOrder: number }[
   return { success: true };
 }
 
-// ─── REORDENACIÓN GENÉRICA ────────────────────────────────────────────────────
+// --- REORDENACI�N GEN�RICA ----------------------------------------------------
 
 export async function reorderExperiences(items: { id: number; sortOrder: number }[]) {
   const db = await getDb();
@@ -1704,7 +1704,7 @@ export async function reorderSlideshowItems(items: { id: number; sortOrder: numb
   return { success: true };
 }
 
-// ─── PAGES & PAGE BLOCKS ──────────────────────────────────────────────────────
+// --- PAGES & PAGE BLOCKS ------------------------------------------------------
 
 export async function getAllPages() {
   const db = await getDb();
@@ -1768,7 +1768,7 @@ export async function savePageBlocks(pageSlug: string, blocks: { id?: number; bl
 }
 
 
-// ─── DASHBOARD OVERVIEW ───────────────────────────────────────────────────────
+// --- DASHBOARD OVERVIEW -------------------------------------------------------
 export async function getDashboardOverview() {
   const db = await getDb();
   const empty = {
@@ -1823,7 +1823,7 @@ export async function getDashboardOverview() {
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
     const startOfMonthMs = startOfMonth.getTime();
 
-    // ── Ejecutar TODAS las queries en paralelo con Promise.all ──────────────
+    // -- Ejecutar TODAS las queries en paralelo con Promise.all --------------
     // Antes: 26 queries secuenciales (~2-4s). Ahora: 1 ronda paralela (~200-400ms)
     const todayISO = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
     const threeDaysAgo = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000);
@@ -1849,15 +1849,15 @@ export async function getDashboardOverview() {
       [partnerPendingAmt],
       [partnerPendingCnt],
     ] = await Promise.all([
-      // KPIs: Ingresos — reservas pagadas (amountTotal en céntimos → euros)
+      // KPIs: Ingresos � reservas pagadas (amountTotal en c�ntimos ? euros)
       db.select({ total: sql<string>`COALESCE(SUM(amount_total)/100.0, 0)` }).from(reservations).where(sql`status = 'paid' AND created_at >= ${startOfMonthMs}`),
       db.select({ total: sql<string>`COALESCE(SUM(amount_total)/100.0, 0)` }).from(reservations).where(sql`status = 'paid' AND created_at >= ${startOfLastMonth.getTime()} AND created_at <= ${endOfLastMonth.getTime()}`),
       db.select({ total: sql<string>`COALESCE(SUM(amount_total)/100.0, 0)` }).from(reservations).where(sql`status = 'paid'`),
-      // KPIs: Reservas (migrado desde bookings → reservations)
+      // KPIs: Reservas (migrado desde bookings ? reservations)
       db.select({ count: sql<number>`count(*)` }).from(reservations).where(sql`status IN ('paid','pending_payment') AND created_at >= ${startOfMonthMs}`),
       db.select({ count: sql<number>`count(*)` }).from(reservations).where(sql`status = 'pending_payment'`),
       db.select({ count: sql<number>`count(*)` }).from(reservations).where(sql`status = 'paid'`),
-      // KPIs: Leads — "sin gestionar" = admin no ha visto el lead aún (seenAt IS NULL)
+      // KPIs: Leads � "sin gestionar" = admin no ha visto el lead a�n (seenAt IS NULL)
       db.select({ count: sql<number>`count(*)` }).from(leads).where(sql`seenAt IS NULL`),
       db.select({ count: sql<number>`count(*)` }).from(leads),
       // KPIs: Presupuestos
@@ -1876,9 +1876,9 @@ export async function getDashboardOverview() {
       db.select({ count: sql<number>`count(*)` }).from(invoices),
       // Recent activity
       db.select({ id: crmActivityLog.id, entityType: crmActivityLog.entityType, action: crmActivityLog.action, actorName: crmActivityLog.actorName, entityId: crmActivityLog.entityId, details: crmActivityLog.details, createdAt: crmActivityLog.createdAt }).from(crmActivityLog).orderBy(desc(crmActivityLog.createdAt)).limit(10),
-      // Today's bookings (migrado desde bookings → reservations)
+      // Today's bookings (migrado desde bookings ? reservations)
       db.select({ id: reservations.id, bookingNumber: reservations.merchantOrder, clientName: reservations.customerName, scheduledDate: reservations.bookingDate, numberOfPersons: reservations.people, status: reservations.status, experienceId: reservations.productId }).from(reservations).where(sql`booking_date >= ${startOfToday.toISOString().slice(0,10)} AND booking_date <= ${endOfToday.toISOString().slice(0,10)} AND status NOT IN ('cancelled','failed')`).orderBy(reservations.bookingDate).limit(10),
-      // Upcoming bookings (migrado desde bookings → reservations)
+      // Upcoming bookings (migrado desde bookings ? reservations)
       db.select({ id: reservations.id, bookingNumber: reservations.merchantOrder, clientName: reservations.customerName, scheduledDate: reservations.bookingDate, numberOfPersons: reservations.people, status: reservations.status, experienceId: reservations.productId }).from(reservations).where(sql`booking_date > ${endOfToday.toISOString().slice(0,10)} AND booking_date <= ${in7Days.toISOString().slice(0,10)} AND status NOT IN ('cancelled','failed')`).orderBy(reservations.bookingDate).limit(5),
       // Top experiencias
       db.select({ productId: reservations.productId, productName: reservations.productName, count: sql<number>`count(*)`, revenue: sql<string>`COALESCE(SUM(amount_total), 0)` }).from(reservations).where(sql`status = 'paid' AND created_at >= ${startOfMonthMs}`).groupBy(reservations.productId, reservations.productName).orderBy(sql`count(*) DESC`).limit(5),
@@ -1886,23 +1886,23 @@ export async function getDashboardOverview() {
       db.select({ count: sql<number>`count(*)` }).from(reservations).where(sql`paymentMethod = 'transferencia' AND status = 'pending_payment'`),
       db.select({ count: sql<number>`count(*)` }).from(quotes).where(sql`validUntil IS NOT NULL AND validUntil <= ${in7Days} AND validUntil >= ${now} AND status IN ('enviado', 'visualizado')`),
       db.select({ count: sql<number>`count(*)` }).from(invoices).where(sql`status IN ('generada', 'enviada') AND issuedAt <= ${thirtyDaysAgo}`),
-      // Hoy en el complejo — Hotel (reservations con extrasJson que contiene checkIn, indica reserva hotelera)
+      // Hoy en el complejo � Hotel (reservations con extrasJson que contiene checkIn, indica reserva hotelera)
       db.select({ count: sql<number>`count(*)`, guests: sql<string>`COALESCE(SUM(people), 0)` }).from(reservations)
         .where(sql`booking_date = ${todayISO} AND status NOT IN ('cancelled','failed','draft') AND extras_json LIKE '%"checkIn"%'`),
-      // Hoy en el complejo — SPA (slots con reservas hoy)
+      // Hoy en el complejo � SPA (slots con reservas hoy)
       db.select({ slots: sql<number>`count(*)`, pax: sql<string>`COALESCE(SUM(bookedCount), 0)` }).from(spaSlots)
         .where(sql`date = ${todayISO} AND bookedCount > 0 AND status != 'bloqueado'`),
-      // Hoy en el complejo — Restaurantes (reservas de hoy activas)
+      // Hoy en el complejo � Restaurantes (reservas de hoy activas)
       db.select({ count: sql<number>`count(*)`, covers: sql<string>`COALESCE(SUM(guests), 0)` }).from(restaurantBookings)
         .where(sql`date = ${todayISO} AND status NOT IN ('cancelled','payment_failed','no_show')`),
       // Leads por atender = pendientes de enviar presupuesto Y sin contacto
-      // manual reciente. Definición:
-      //   · opportunityStatus = 'nueva' (aún no se ha enviado presupuesto)
-      //   · Y el admin no lo ha marcado como contactado en los últimos 3 días
-      //     (mediante el botón "Marcar como contactado" en CRM →
+      // manual reciente. Definici�n:
+      //   � opportunityStatus = 'nueva' (a�n no se ha enviado presupuesto)
+      //   � Y el admin no lo ha marcado como contactado en los �ltimos 3 d�as
+      //     (mediante el bot�n "Marcar como contactado" en CRM ?
       //     crm.leads.markContacted que setea lastContactAt = NOW()).
-      // Si el lead se marca contactado, sale del contador por 3 días — útil
-      // como recordatorio de chasing si en ese plazo no se envía presupuesto.
+      // Si el lead se marca contactado, sale del contador por 3 d�as � �til
+      // como recordatorio de chasing si en ese plazo no se env�a presupuesto.
       db.select({ count: sql<number>`count(*)` }).from(leads)
         .where(sql`opportunityStatus = 'nueva'
           AND (lastContactAt IS NULL OR lastContactAt < ${threeDaysAgo})`),
@@ -1972,7 +1972,7 @@ export async function getDashboardOverview() {
   }
 }
 
-// ─── REAV MODULE ─────────────────────────────────────────────────────────────
+// --- REAV MODULE -------------------------------------------------------------
 
 export async function generateExpedientNumber(): Promise<string> {
   const db = await getDb();
@@ -2031,7 +2031,7 @@ export async function createReavExpedient(data: {
 
 /**
  * Adjunta un documento (PDF, URL) a un expediente REAV.
- * Usado por TPV (ticket), CRM (factura/presupuesto) y online (confirmación).
+ * Usado por TPV (ticket), CRM (factura/presupuesto) y online (confirmaci�n).
  */
 export async function attachReavDocument(data: {
   expedientId: number;
@@ -2099,8 +2099,8 @@ export async function recalculateReavMargins(expedientId: number) {
   if (!db) return null;
   const exp = await getReavExpedientById(expedientId);
   if (!exp) return null;
-  // Si includesVat=false el importe es neto → coste real = amount × 1.21 (IVA no recuperable en REAV)
-  // Si includesVat=true (default) el importe ya incluye IVA → coste real = amount
+  // Si includesVat=false el importe es neto ? coste real = amount � 1.21 (IVA no recuperable en REAV)
+  // Si includesVat=true (default) el importe ya incluye IVA ? coste real = amount
   const totalCosts = exp.costs.reduce((sum, c) => {
     const amount = parseFloat(c.amount as string);
     const effectiveCost = c.includesVat ? amount : amount * 1.21;
@@ -2192,11 +2192,11 @@ export async function deleteReavExpedient(id: number): Promise<string> {
   return exp.expedientNumber;
 }
 
-// ─── UPSERT CLIENTE DESDE RESERVA ─────────────────────────────────────────────
+// --- UPSERT CLIENTE DESDE RESERVA ---------------------------------------------
 // Helper centralizado para crear/actualizar el registro de cliente cuando se
 // genera una reserva desde cualquier canal (TPV, Redsys IPN, CRM manual, etc.)
-// Si el email ya existe → actualiza nombre/teléfono solo si los campos están vacíos.
-// Si no existe → crea cliente nuevo con source = canal indicado.
+// Si el email ya existe ? actualiza nombre/tel�fono solo si los campos est�n vac�os.
+// Si no existe ? crea cliente nuevo con source = canal indicado.
 export async function upsertClientFromReservation({
   name,
   email,
@@ -2210,7 +2210,7 @@ export async function upsertClientFromReservation({
   source: string;
   leadId?: number | null;
 }) {
-  if (!email) return; // Sin email no podemos hacer upsert por clave única
+  if (!email) return; // Sin email no podemos hacer upsert por clave �nica
   const db = await getDb();
   if (!db) return;
   try {
@@ -2240,18 +2240,18 @@ export async function upsertClientFromReservation({
   }
 }
 
-// ─── POST-CONFIRM OPERATION — Capa de consolidación global ─────────────────────
+// --- POST-CONFIRM OPERATION � Capa de consolidaci�n global ---------------------
 // Este helper centraliza todos los efectos secundarios que deben ejecutarse
-// cuando una operación queda confirmada/pagada, independientemente del canal:
-//   • CRM (confirmPayment, confirmTransfer, confirmManualPayment)
-//   • TPV (createSale)
-//   • Redsys IPN (pago online)
-//   • Cupones (convertToReservation)
+// cuando una operaci�n queda confirmada/pagada, independientemente del canal:
+//   � CRM (confirmPayment, confirmTransfer, confirmManualPayment)
+//   � TPV (createSale)
+//   � Redsys IPN (pago online)
+//   � Cupones (convertToReservation)
 //
-// Garantiza: booking operativo en tabla bookings + transacción contable en transactions.
+// Garantiza: booking operativo en tabla bookings + transacci�n contable en transactions.
 // Es idempotente: si el booking ya existe para la reserva, no lo duplica.
 export async function postConfirmOperation(params: {
-  // Datos de la reserva/operación
+  // Datos de la reserva/operaci�n
   reservationId: number;
   productId: number;
   productName: string;
@@ -2263,7 +2263,7 @@ export async function postConfirmOperation(params: {
   customerName: string;
   customerEmail: string;
   customerPhone?: string | null;
-  // Datos de la transacción contable
+  // Datos de la transacci�n contable
   totalAmount: number;         // en euros (no centavos)
   paymentMethod: "redsys" | "transferencia" | "efectivo" | "otro" | "tarjeta" | "link_pago" | "tarjeta_fisica" | "tarjeta_redsys";
   saleChannel: "crm" | "tpv" | "online" | "admin" | "delegado";
@@ -2276,12 +2276,12 @@ export async function postConfirmOperation(params: {
   reavMargin?: number;
   fiscalRegime?: "reav" | "general" | "mixed";
   description?: string;
-  // Vínculo con presupuesto (CRM)
+  // V�nculo con presupuesto (CRM)
   quoteId?: number | null;
   sourceChannel?: "redsys" | "transferencia" | "efectivo" | "otro" | "tarjeta_fisica" | "tarjeta_redsys";
-  // Vínculo con TPV
+  // V�nculo con TPV
   tpvSaleId?: number | null;
-  // GHL: contacto para añadir tag reserva_confirmada
+  // GHL: contacto para a�adir tag reserva_confirmada
   ghlContactId?: string | null;
 }) {
   const db = await getDb();
@@ -2294,9 +2294,9 @@ export async function postConfirmOperation(params: {
   let bookingId: number | null = null;
   try {
     // La columna bookings.sourceChannel es un enum que solo admite
-    // manual|redsys|transferencia|efectivo|otro. Los métodos de tarjeta del TPV
-    // (tarjeta_fisica/tarjeta_redsys) no están en ese enum y provocaban
-    // "Data truncated for column 'sourceChannel'", abortando la creación del
+    // manual|redsys|transferencia|efectivo|otro. Los m�todos de tarjeta del TPV
+    // (tarjeta_fisica/tarjeta_redsys) no est�n en ese enum y provocaban
+    // "Data truncated for column 'sourceChannel'", abortando la creaci�n del
     // booking operativo (las ventas TPV con tarjeta no llegaban a Operaciones).
     // Normalizamos al conjunto permitido antes de insertar.
     const bookingSourceChannel: "redsys" | "transferencia" | "efectivo" | "otro" =
@@ -2321,10 +2321,10 @@ export async function postConfirmOperation(params: {
     console.error("[postConfirmOperation] Error creando booking operativo:", e);
   }
 
-  // 2. Crear transacción contable (idempotente por invoiceNumber si se proporciona)
+  // 2. Crear transacci�n contable (idempotente por invoiceNumber si se proporciona)
   let transactionId: number | null = null;
   try {
-    // Verificar si ya existe una transacción para esta reserva
+    // Verificar si ya existe una transacci�n para esta reserva
     const existingTx = await db.select({ id: transactions.id })
       .from(transactions)
       .where(eq((transactions as any).reservationId, params.reservationId))
@@ -2348,7 +2348,7 @@ export async function postConfirmOperation(params: {
         currency: "EUR",
         paymentMethod: (methodMap[params.paymentMethod] ?? "otro") as any,
         status: "completado",
-        description: params.description ?? `Operación confirmada — ${params.productName}`,
+        description: params.description ?? `Operaci�n confirmada � ${params.productName}`,
         processedAt: new Date(),
         clientName: params.customerName,
         clientEmail: params.customerEmail,
@@ -2372,7 +2372,7 @@ export async function postConfirmOperation(params: {
       transactionId = existingTx[0].id;
     }
   } catch (e) {
-    console.error("[postConfirmOperation] Error creando transacción contable:", e);
+    console.error("[postConfirmOperation] Error creando transacci�n contable:", e);
   }
 
   // 3. Crear/actualizar cliente en CRM (idempotente por email)
@@ -2406,10 +2406,10 @@ export async function postConfirmOperation(params: {
         reservationId: params.reservationId,
         reservationType: "activity",
         opStatus: "confirmado",
-        clientConfirmed: false, // El cliente aún no ha confirmado asistencia física
+        clientConfirmed: false, // El cliente a�n no ha confirmado asistencia f�sica
       } as any);
     } else {
-      // Si ya existe pero está en 'pendiente', actualizar a 'confirmado'
+      // Si ya existe pero est� en 'pendiente', actualizar a 'confirmado'
       const existing = existingOp[0];
       const [currentOp] = await db.select({ opStatus: reservationOperational.opStatus })
         .from(reservationOperational)
@@ -2430,7 +2430,7 @@ export async function postConfirmOperation(params: {
     getGHLCredentials().then(ghlCreds => {
       if (!ghlCreds) return;
       updateGHLContact(params.ghlContactId!, { tags: ["reserva_confirmada"] }, ghlCreds).catch(e => {
-        console.warn("[postConfirmOperation] Error añadiendo tag reserva_confirmada a GHL:", e);
+        console.warn("[postConfirmOperation] Error a�adiendo tag reserva_confirmada a GHL:", e);
       });
     });
   }

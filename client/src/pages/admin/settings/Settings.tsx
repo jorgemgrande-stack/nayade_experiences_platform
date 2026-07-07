@@ -173,7 +173,7 @@ function GHLSection({ plain = false }: { plain?: boolean }) {
 // ─── Email Preview Section ─────────────────────────────────────────────────────
 function EmailPreviewSection({ plain = false }: { plain?: boolean }) {
   const [templateId, setTemplateId] = useState("budget-user");
-  const [toEmail, setToEmail] = useState("reservas@skicenter.es");
+  const [toEmail, setToEmail] = useState("reservas@nayadeexperiences.es");
   const sendPreview = trpc.admin.sendEmailPreview.useMutation({
     onSuccess: (data) => toast.success(`Email enviado a ${data.to}`),
     onError: (err) => toast.error(`Error: ${err.message}`),
@@ -201,7 +201,7 @@ function EmailPreviewSection({ plain = false }: { plain?: boolean }) {
             type="email"
             value={toEmail}
             onChange={e => setToEmail(e.target.value)}
-            placeholder="reservas@skicenter.es"
+            placeholder="reservas@nayadeexperiences.es"
             className="font-display"
           />
         </div>
@@ -273,7 +273,7 @@ export default function Settings() {
   const [business, setBusiness] = useState({
     businessName: "Náyade Experiences",
     businessPhone: "+34 639 57 66 27",
-    businessEmail: "reservas@skicenter.es",
+    businessEmail: "reservas@nayadeexperiences.es",
     businessAddress: "Los Ángeles de San Rafael, Segovia",
     businessDescription: "El destino de aventuras del lago. Actividades náuticas, hotel y spa en el embalse de Los Ángeles de San Rafael, a 45 min de Madrid.",
     businessWebsite: "https://skicenter.es",
@@ -295,7 +295,7 @@ export default function Settings() {
   });
 
   const [notifications, setNotifications] = useState({
-    notifEmailBooking: "reservas@skicenter.es",
+    notifEmailBooking: "reservas@nayadeexperiences.es",
     notifEmailRestaurant: "restaurantes@skicenter.es",
     notifSmsEnabled: "false",
   });

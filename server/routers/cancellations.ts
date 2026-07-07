@@ -1,6 +1,6 @@
-﻿/**
- * Router: Solicitudes de Anulación
- * Módulo CRM para gestión completa del pipeline de anulaciones.
+/**
+ * Router: Solicitudes de Anulaci�n
+ * M�dulo CRM para gesti�n completa del pipeline de anulaciones.
  */
 import { z } from "zod";
 import { router, publicProcedure, protectedProcedure, permissionProcedure } from "../_core/trpc";
@@ -44,7 +44,7 @@ const db = drizzle(_pool);
 
 const getCopyEmail = () => getBusinessEmail('cancellations');
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+// --- Helpers -----------------------------------------------------------------
 
 function generateVoucherCode(): string {
   const year = new Date().getFullYear();
@@ -72,14 +72,14 @@ async function addLog(
   });
 }
 
-// ─── Propagación transversal al aprobar una anulación ───────────────────────
+// --- Propagaci�n transversal al aprobar una anulaci�n -----------------------
 /**
- * Propaga el impacto de una anulación aprobada a todos los módulos del sistema:
- * 1. Reserva → status = "cancelled"
- * 2. Contabilidad → transacción de devolución (importe negativo) si refundAmount > 0
- * 3. Operaciones → reservation_operational.opStatus = "anulado"
- * 4. REAV → expediente fiscalStatus = "anulado", operativeStatus = "anulado"
- * 5. Numeración → genera número ANU- y lo guarda en cancellation_requests
+ * Propaga el impacto de una anulaci�n aprobada a todos los m�dulos del sistema:
+ * 1. Reserva ? status = "cancelled"
+ * 2. Contabilidad ? transacci�n de devoluci�n (importe negativo) si refundAmount > 0
+ * 3. Operaciones ? reservation_operational.opStatus = "anulado"
+ * 4. REAV ? expediente fiscalStatus = "anulado", operativeStatus = "anulado"
+ * 5. Numeraci�n ? genera n�mero ANU- y lo guarda en cancellation_requests
  */
 async function propagateCancellation(params: {
   requestId: number;
@@ -91,14 +91,14 @@ async function propagateCancellation(params: {
 }): Promise<{ cancellationNumber: string; creditNoteNumber?: string }> {
   const { requestId, req, refundAmount, compensationType, adminUserId, adminUserName } = params;
 
-  // ── 1. Generar número ANU- (fuera de la tx, no se puede hacer rollback de numeración) ──
+  // -- 1. Generar n�mero ANU- (fuera de la tx, no se puede hacer rollback de numeraci�n) --
   const cancellationNumber = await generateDocumentNumber(
     "anulacion",
     `cancellations:acceptRequest:${compensationType}`,
     String(adminUserId)
   );
 
-  // Si hay factura vinculada, pre-generar el número de abono también fuera de la tx
+  // Si hay factura vinculada, pre-generar el n�mero de abono tambi�n fuera de la tx
   let creditNoteNumber: string | undefined;
   let originalInvoice: typeof invoices.$inferSelect | null = null;
 
@@ -122,14 +122,14 @@ async function propagateCancellation(params: {
     }
   }
 
-  // ── 2. Todo lo que afecta a otras tablas: dentro de transacción ACID ───────
+  // -- 2. Todo lo que afecta a otras tablas: dentro de transacci�n ACID -------
   await db.transaction(async (tx) => {
-    // Guardar el número ANU en la solicitud
+    // Guardar el n�mero ANU en la solicitud
     await tx.update(cancellationRequests)
       .set({ cancellationNumber })
       .where(eq(cancellationRequests.id, requestId));
 
-    // ── Cancelar la reserva vinculada ─────────────────────────────────────
+    // -- Cancelar la reserva vinculada -------------------------------------
     if (reservationId) {
       await tx.update(reservations)
         .set({
@@ -138,21 +138,21 @@ async function propagateCancellation(params: {
         })
         .where(eq(reservations.id, reservationId));
 
-      // ── Cancelar venta TPV vinculada (si la reserva nació de un TPV) ─────
-      // Sin esto, la venta TPV mantenía status="paid" e inflaba el control diario.
+      // -- Cancelar venta TPV vinculada (si la reserva naci� de un TPV) -----
+      // Sin esto, la venta TPV manten�a status="paid" e inflaba el control diario.
       // Bug #1 del audit: orphan TPV sales after reservation cancellation.
       await tx.update(tpvSales)
         .set({ status: "cancelled" })
         .where(eq(tpvSales.reservationId, reservationId));
 
-      // ── Marcar transacciones de ingreso originales como reversadas ───────
-      // Bug #3 del audit: el ingreso original seguía con status='completado'
-      // mientras se creaba una nueva transacción de reembolso, dejando ambos
-      // movimientos sueltos en el libro contable sin relación visible.
+      // -- Marcar transacciones de ingreso originales como reversadas -------
+      // Bug #3 del audit: el ingreso original segu�a con status='completado'
+      // mientras se creaba una nueva transacci�n de reembolso, dejando ambos
+      // movimientos sueltos en el libro contable sin relaci�n visible.
       //
-      // - Si hay devolución real → status='reembolsado' + operationStatus='reembolsada'
-      // - Si solo se anula sin devolución (bono o ninguna) → mantener status='completado'
-      //   (el dinero se quedó) pero operationStatus='anulada' para que la operativa
+      // - Si hay devoluci�n real ? status='reembolsado' + operationStatus='reembolsada'
+      // - Si solo se anula sin devoluci�n (bono o ninguna) ? mantener status='completado'
+      //   (el dinero se qued�) pero operationStatus='anulada' para que la operativa
       //   refleje que la reserva ya no existe.
       const hasRefund = compensationType === "devolucion" && refundAmount != null && refundAmount > 0;
       await tx.update(transactions)
@@ -166,12 +166,12 @@ async function propagateCancellation(params: {
           eq(transactions.status, "completado")
         ));
 
-      // ── Actualizar estado operativo ──────────────────────────────────────
+      // -- Actualizar estado operativo --------------------------------------
       await tx.update(reservationOperational)
         .set({ opStatus: "anulado", updatedBy: adminUserId })
         .where(eq(reservationOperational.reservationId, reservationId));
 
-      // ── Cerrar expediente REAV si existe ──────────────────────────────────
+      // -- Cerrar expediente REAV si existe ----------------------------------
       const [reavExp] = await tx.select({ id: reavExpedients.id })
         .from(reavExpedients)
         .where(eq(reavExpedients.reservationId, reservationId))
@@ -187,8 +187,8 @@ async function propagateCancellation(params: {
           .where(eq(reavExpedients.id, reavExp.id));
       }
 
-      // ── Factura rectificativa (abono) ─────────────────────────────────────
-      // Se genera siempre que exista factura válida, independientemente del tipo de compensación.
+      // -- Factura rectificativa (abono) -------------------------------------
+      // Se genera siempre que exista factura v�lida, independientemente del tipo de compensaci�n.
       // El importe del abono = resolvedAmount (parcial) o total de la factura (total).
       if (originalInvoice && creditNoteNumber) {
         const creditAmount = refundAmount && refundAmount > 0
@@ -213,7 +213,7 @@ async function propagateCancellation(params: {
           clientNif: originalInvoice.clientNif ?? undefined,
           clientAddress: originalInvoice.clientAddress ?? undefined,
           itemsJson: [{
-            description: `Abono por anulación ${cancellationNumber} — ${originalInvoice.invoiceNumber}`,
+            description: `Abono por anulaci�n ${cancellationNumber} � ${originalInvoice.invoiceNumber}`,
             quantity: 1,
             unitPrice: -Number(creditAmount),
             total: -Number(creditAmount),
@@ -225,7 +225,7 @@ async function propagateCancellation(params: {
           currency: originalInvoice.currency ?? "EUR",
           invoiceType: "abono",
           creditNoteForId: originalInvoice.id,
-          creditNoteReason: `Anulación de reserva. Expediente ${cancellationNumber}.`,
+          creditNoteReason: `Anulaci�n de reserva. Expediente ${cancellationNumber}.`,
           isAutomatic: false,
           status: "generada",
         } as any);
@@ -237,7 +237,7 @@ async function propagateCancellation(params: {
       }
     }
 
-    // ── Transacción contable de devolución (solo si hay importe a devolver) ─
+    // -- Transacci�n contable de devoluci�n (solo si hay importe a devolver) -
     if (compensationType === "devolucion" && refundAmount != null && refundAmount > 0) {
       const txNumber = await generateDocumentNumber(
         "factura",
@@ -252,7 +252,7 @@ async function propagateCancellation(params: {
         currency: "EUR",
         paymentMethod: "transferencia",
         status: "completado",
-        description: `Devolución por anulación ${cancellationNumber} — ${req.fullName}`,
+        description: `Devoluci�n por anulaci�n ${cancellationNumber} � ${req.fullName}`,
         processedAt: new Date(),
         clientName: req.fullName,
         clientEmail: req.email ?? undefined,
@@ -267,7 +267,7 @@ async function propagateCancellation(params: {
     }
   });
 
-  // ── 3. Log de propagación (fuera de tx — no crítico) ──────────────────────
+  // -- 3. Log de propagaci�n (fuera de tx � no cr�tico) ----------------------
   await addLog(
     requestId,
     "system_propagation",
@@ -287,7 +287,7 @@ async function propagateCancellation(params: {
   return { cancellationNumber, creditNoteNumber };
 }
 
-// ─── Partial line cancellation ────────────────────────────────────────────────
+// --- Partial line cancellation ------------------------------------------------
 
 type CancelledLineItem = { index: number; name: string; priceCents: number; quantity: number };
 
@@ -324,7 +324,7 @@ async function partialLineCancellation(params: {
           if (cancelQty == null) return extra; // not touched
           const remaining = (extra.quantity ?? 1) - cancelQty;
           if (remaining <= 0) return null; // fully cancelled
-          return { ...extra, quantity: remaining }; // partially cancelled — reduce quantity
+          return { ...extra, quantity: remaining }; // partially cancelled � reduce quantity
         })
         .filter(Boolean);
       const cancelledCents = cancelledItems.reduce((s, i) => s + i.priceCents * i.quantity, 0);
@@ -352,7 +352,7 @@ async function partialLineCancellation(params: {
             currency: "EUR",
             paymentMethod: "transferencia",
             status: "completado",
-            description: `Devolución línea anulada ${cancellationNumber} — ${req.fullName}`,
+            description: `Devoluci�n l�nea anulada ${cancellationNumber} � ${req.fullName}`,
             processedAt: new Date(),
             clientName: req.fullName,
             clientEmail: req.email ?? undefined,
@@ -386,7 +386,7 @@ async function partialLineCancellation(params: {
   return { cancellationNumber };
 }
 
-// ─── Email templates ──────────────────────────────────────────────────────────
+// --- Email templates ----------------------------------------------------------
 
 function emailAcuseRecibo(fullName: string, requestId: number, locator?: string, reason?: string): string {
   return buildCancellationReceivedHtml({ fullName, requestId, locator, reason });
@@ -404,17 +404,17 @@ function emailAceptacionBono(fullName: string, requestId: number, voucherCode: s
 function emailSolicitudDocumentacion(fullName: string, requestId: number, adminText: string): string {
   return buildCancellationDocumentationHtml({ fullName, requestId, adminText });
 }
-// ─── Admin procedure helper ───────────────────────────────────────────────────
+// --- Admin procedure helper ---------------------------------------------------
 
 const adminProcedure = permissionProcedure("crm.reservations.manage", ["admin"]).use(async ({ ctx, next }) => {
   await assertModuleEnabled("cancellations_module_enabled");
   return next({ ctx });
 });
 
-// ─── Router ───────────────────────────────────────────────────────────────────
+// --- Router -------------------------------------------------------------------
 
 export const cancellationsRouter = router({
-  // ── Crear solicitud (público — desde landing) ─────────────────────────────
+  // -- Crear solicitud (p�blico � desde landing) -----------------------------
   createRequest: publicProcedure
     .input(
       z.object({
@@ -432,7 +432,7 @@ export const cancellationsRouter = router({
     )
     .mutation(async ({ input }) => {
       if (!input.termsChecked) {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "Debes aceptar los términos" });
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Debes aceptar los t�rminos" });
       }
       if (input.reason === "otra" && !input.reasonDetail?.trim()) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "El campo explicativo es obligatorio para 'Otra'" });
@@ -458,9 +458,9 @@ export const cancellationsRouter = router({
 
       const requestId = (result as { insertId: number }).insertId;
 
-      // ── Auto-vinculación: buscar reserva por localizador ─────────────────
-      // Si el cliente proporcionó un localizador que coincide con una reserva real,
-      // vinculamos automáticamente para que la propagación no quede huérfana.
+      // -- Auto-vinculaci�n: buscar reserva por localizador -----------------
+      // Si el cliente proporcion� un localizador que coincide con una reserva real,
+      // vinculamos autom�ticamente para que la propagaci�n no quede hu�rfana.
       if (input.locator?.trim()) {
         try {
           const loc = input.locator.trim();
@@ -494,11 +494,11 @@ export const cancellationsRouter = router({
             });
           }
         } catch (linkErr) {
-          console.error("[cancellations] Error en auto-vinculación por localizador:", linkErr);
+          console.error("[cancellations] Error en auto-vinculaci�n por localizador:", linkErr);
         }
       }
 
-      // Log de creación
+      // Log de creaci�n
       await addLog(requestId, "created", {
         source: "landing_publica",
         reason: input.reason,
@@ -510,7 +510,7 @@ export const cancellationsRouter = router({
           templateKey: "cancellation_received",
           triggerEvent: "cancellation_request_submitted",
           recipientEmail: input.email,
-          subject: `Solicitud de anulación recibida — Ref. #${requestId}`,
+          subject: `Solicitud de anulaci�n recibida � Ref. #${requestId}`,
           html: emailAcuseRecibo(input.fullName, requestId),
           relatedEntityType: "cancellation_request",
           relatedEntityId: requestId,
@@ -518,13 +518,13 @@ export const cancellationsRouter = router({
         });
       }
 
-      // Notificación interna a reservas
+      // Notificaci�n interna a reservas
       const cancAdminEmail = await getCopyEmail();
-      const cancAdminSubject = `Nueva solicitud de anulación #${requestId} — ${input.fullName}`;
+      const cancAdminSubject = `Nueva solicitud de anulaci�n #${requestId} � ${input.fullName}`;
       await sendEmail({
         to: cancAdminEmail,
         subject: cancAdminSubject,
-        html: `<p>Nueva solicitud de anulación recibida desde la landing pública.</p>
+        html: `<p>Nueva solicitud de anulaci�n recibida desde la landing p�blica.</p>
                <p><strong>Cliente:</strong> ${input.fullName} (${input.email ?? "sin email"})</p>
                <p><strong>Motivo:</strong> ${input.reason}</p>
                <p><strong>Fecha actividad:</strong> ${input.activityDate}</p>`,
@@ -537,7 +537,7 @@ export const cancellationsRouter = router({
         requestId,
         "cancellation_request_received",
         null,
-        "Sistema (web pública)",
+        "Sistema (web p�blica)",
         {
           fullName: input.fullName,
           reason: input.reason,
@@ -546,7 +546,7 @@ export const cancellationsRouter = router({
         }
       ).catch(() => {});
 
-      // GHL — fire and forget
+      // GHL � fire and forget
       if (input.email) {
         setImmediate(async () => {
           try {
@@ -564,7 +564,7 @@ export const cancellationsRouter = router({
       return { success: true, requestId };
     }),
 
-  // ── Listado (admin) ─────────────────────────────────────────────────────────────────────────────
+  // -- Listado (admin) -----------------------------------------------------------------------------
   listRequests: adminProcedure
     .input(
       z.object({
@@ -647,7 +647,7 @@ export const cancellationsRouter = router({
           .where(whereClause),
       ]);
 
-      // KPIs — agregados en BD con COUNT GROUP BY, sin cargar toda la tabla en memoria
+      // KPIs � agregados en BD con COUNT GROUP BY, sin cargar toda la tabla en memoria
       const [kpiByOpStatus, kpiByResStatus, kpiByFinStatus] = await Promise.all([
         db.select({ status: cancellationRequests.operationalStatus, count: sql<number>`COUNT(*)` })
           .from(cancellationRequests).groupBy(cancellationRequests.operationalStatus),
@@ -676,7 +676,7 @@ export const cancellationsRouter = router({
       return { rows, kpis, total: Number(total) };
     }),
 
-  // ── Detalle de una solicitud ──────────────────────────────────────────────
+  // -- Detalle de una solicitud ----------------------------------------------
   getRequest: adminProcedure
     .input(z.object({ id: z.number() }))
     .query(async ({ input }) => {
@@ -737,8 +737,8 @@ export const cancellationsRouter = router({
           .where(eq(reservations.id, req.linkedReservationId));
 
         if (r) {
-          // Si extrasJson está vacío pero la reserva viene de un presupuesto,
-          // usamos las líneas del presupuesto como items cancelables
+          // Si extrasJson est� vac�o pero la reserva viene de un presupuesto,
+          // usamos las l�neas del presupuesto como items cancelables
           let cancellableItemsJson: string | null = null;
           const hasExtras = (() => { try { return JSON.parse(r.extrasJson ?? "[]").length > 0; } catch { return false; } })();
 
@@ -746,7 +746,7 @@ export const cancellationsRouter = router({
             // Resolver quoteId por varios caminos cuando reservations.quoteId es NULL
             let quoteId: number | null = r.quoteId ?? null;
 
-            // Fallback 1: linkedQuoteId en la propia solicitud de anulación
+            // Fallback 1: linkedQuoteId en la propia solicitud de anulaci�n
             if (!quoteId && req.linkedQuoteId) {
               quoteId = req.linkedQuoteId;
             }
@@ -769,7 +769,7 @@ export const cancellationsRouter = router({
                 .limit(1);
               if (q?.items && Array.isArray(q.items) && q.items.length > 0) {
                 const normalized = q.items.map((item: any) => ({
-                  name: item.description ?? "Línea",
+                  name: item.description ?? "L�nea",
                   price: Math.round((item.unitPrice ?? 0) * 100),
                   quantity: item.quantity ?? 1,
                 }));
@@ -785,7 +785,7 @@ export const cancellationsRouter = router({
       return { request: req, logs, voucher, linkedReservation };
     }),
 
-  // ── Actualizar notas internas ─────────────────────────────────────────────
+  // -- Actualizar notas internas ---------------------------------------------
   updateNotes: adminProcedure
     .input(z.object({ id: z.number(), adminNotes: z.string() }))
     .mutation(async ({ input, ctx }) => {
@@ -797,7 +797,7 @@ export const cancellationsRouter = router({
       return { success: true };
     }),
 
-  // ── Asignar responsable ───────────────────────────────────────────────────
+  // -- Asignar responsable ---------------------------------------------------
   assignUser: adminProcedure
     .input(z.object({ id: z.number(), userId: z.number() }))
     .mutation(async ({ input, ctx }) => {
@@ -809,7 +809,7 @@ export const cancellationsRouter = router({
       return { success: true };
     }),
 
-  // ── ACCIÓN: Rechazar solicitud ────────────────────────────────────────────
+  // -- ACCI�N: Rechazar solicitud --------------------------------------------
   rejectRequest: adminProcedure
     .input(
       z.object({
@@ -822,7 +822,7 @@ export const cancellationsRouter = router({
       const [req] = await db.select().from(cancellationRequests).where(eq(cancellationRequests.id, input.id));
       if (!req) throw new TRPCError({ code: "NOT_FOUND" });
 
-      // Al rechazar cerramos directamente el expediente — no hay pasos pendientes.
+      // Al rechazar cerramos directamente el expediente � no hay pasos pendientes.
       await db.update(cancellationRequests).set({
         operationalStatus: "cerrada",
         resolutionStatus: "rechazada",
@@ -843,7 +843,7 @@ export const cancellationsRouter = router({
           templateKey: "cancellation_rejected",
           triggerEvent: "cancellation_rejected",
           recipientEmail: req.email,
-          subject: `Resolución de tu solicitud de anulación #${input.id}`,
+          subject: `Resoluci�n de tu solicitud de anulaci�n #${input.id}`,
           html: emailRechazo(req.fullName, input.id, input.adminText),
           relatedEntityType: "cancellation_request",
           relatedEntityId: input.id,
@@ -852,7 +852,7 @@ export const cancellationsRouter = router({
         await addLog(input.id, "email_sent", { type: "rechazo", to: req.email }, ctx.user.id, ctx.user.name ?? "Admin");
       }
 
-      // GHL — fire and forget
+      // GHL � fire and forget
       if (req.email) {
         setImmediate(async () => {
           try {
@@ -871,7 +871,7 @@ export const cancellationsRouter = router({
       return { success: true };
     }),
 
-  // ── ACCIÓN: Aceptar solicitud (total o parcial) ───────────────────────────
+  // -- ACCI�N: Aceptar solicitud (total o parcial) ---------------------------
   acceptRequest: adminProcedure
     .input(
       z.object({
@@ -886,7 +886,7 @@ export const cancellationsRouter = router({
           priceCents: z.number(),
           quantity: z.number(),
         })).optional(),
-        // Devolución
+        // Devoluci�n
         refundAmount: z.number().optional(),
         refundNote: z.string().optional(),
         refundDate: z.string().optional(),
@@ -903,11 +903,11 @@ export const cancellationsRouter = router({
       const [req] = await db.select().from(cancellationRequests).where(eq(cancellationRequests.id, input.id));
       if (!req) throw new TRPCError({ code: "NOT_FOUND" });
 
-      // Guard idempotencia: no permitir doble aceptación
+      // Guard idempotencia: no permitir doble aceptaci�n
       if (req.resolutionStatus !== "sin_resolver") {
         throw new TRPCError({
           code: "PRECONDITION_FAILED",
-          message: `Esta solicitud ya tiene resolución: "${req.resolutionStatus}". No se puede aceptar de nuevo.`,
+          message: `Esta solicitud ya tiene resoluci�n: "${req.resolutionStatus}". No se puede aceptar de nuevo.`,
         });
       }
 
@@ -917,7 +917,7 @@ export const cancellationsRouter = router({
 
       if (input.compensationType === "devolucion") {
         if (!input.refundAmount || input.refundAmount <= 0) {
-          throw new TRPCError({ code: "BAD_REQUEST", message: "El importe de devolución es obligatorio" });
+          throw new TRPCError({ code: "BAD_REQUEST", message: "El importe de devoluci�n es obligatorio" });
         }
         financialStatus = "pendiente_devolucion";
 
@@ -943,7 +943,7 @@ export const cancellationsRouter = router({
             templateKey: "cancellation_accepted_refund",
             triggerEvent: "cancellation_accepted_refund",
             recipientEmail: req.email,
-            subject: `Aceptación de tu solicitud de anulación #${input.id}`,
+            subject: `Aceptaci�n de tu solicitud de anulaci�n #${input.id}`,
             html: emailAceptacionDevolucion(req.fullName, input.id, String(input.refundAmount), input.isPartial),
             relatedEntityType: "cancellation_request",
             relatedEntityId: input.id,
@@ -964,7 +964,7 @@ export const cancellationsRouter = router({
           requestId: input.id,
           code,
           type: "actividad",
-          activityName: input.activityName ?? "Actividad Náyade Experiences",
+          activityName: input.activityName ?? "Actividad N�yade Experiences",
           value: String(input.voucherValue),
           expiresAt: input.voucherExpiresAt ? new Date(input.voucherExpiresAt) : undefined,
           conditions: input.voucherConditions,
@@ -974,13 +974,13 @@ export const cancellationsRouter = router({
         });
         voucherId = (vResult as { insertId: number }).insertId;
 
-        // ── Registrar en discount_codes para que sea canjeable en reservas ──────
-        // El bono compensatorio se convierte en un código de descuento de importe
-        // fijo (tipo 'fixed') con uso único, vinculado al cliente y al voucher.
+        // -- Registrar en discount_codes para que sea canjeable en reservas ------
+        // El bono compensatorio se convierte en un c�digo de descuento de importe
+        // fijo (tipo 'fixed') con uso �nico, vinculado al cliente y al voucher.
         try {
-          const discountName = `Bono compensatorio #${input.id} — ${input.activityName ?? "Náyade Experiences"}`;
+          const discountName = `Bono compensatorio #${input.id} � ${input.activityName ?? "N�yade Experiences"}`;
           const discountDescription = [
-            `Bono emitido como compensación por anulación de reserva.`,
+            `Bono emitido como compensaci�n por anulaci�n de reserva.`,
             input.activityName ? `Actividad: ${input.activityName}.` : null,
             input.voucherConditions ? `Condiciones: ${input.voucherConditions}` : null,
           ].filter(Boolean).join(" ");
@@ -995,7 +995,7 @@ export const cancellationsRouter = router({
             status: "active",
             maxUses: 1,
             currentUses: 0,
-            observations: `Generado automáticamente desde anulación #${input.id}. Voucher ID: ${voucherId}.`,
+            observations: `Generado autom�ticamente desde anulaci�n #${input.id}. Voucher ID: ${voucherId}.`,
             origin: "voucher",
             compensationVoucherId: voucherId,
             clientEmail: req.email ?? undefined,
@@ -1033,10 +1033,10 @@ export const cancellationsRouter = router({
             templateKey: "cancellation_accepted_voucher",
             triggerEvent: "cancellation_accepted_voucher",
             recipientEmail: req.email,
-            subject: `Bono de compensación — Solicitud #${input.id}`,
+            subject: `Bono de compensaci�n � Solicitud #${input.id}`,
             html: emailAceptacionBono(
               req.fullName, input.id, code,
-              input.activityName ?? "Actividad Náyade Experiences",
+              input.activityName ?? "Actividad N�yade Experiences",
               String(input.voucherValue), expiresStr, input.isPartial
             ),
             relatedEntityType: "cancellation_request",
@@ -1047,7 +1047,7 @@ export const cancellationsRouter = router({
         }
       }
 
-      // GHL — fire and forget
+      // GHL � fire and forget
       if (req.email) {
         setImmediate(async () => {
           try {
@@ -1066,12 +1066,12 @@ export const cancellationsRouter = router({
         });
       }
 
-      // ── Propagación: bifurca según ámbito ────────────────────────────────────
+      // -- Propagaci�n: bifurca seg�n �mbito ------------------------------------
       let cancellationNumber: string;
       let creditNoteNumber: string | undefined;
 
       if (input.cancellationScope === "lineas" && input.cancelledItems?.length) {
-        // Anulación parcial de líneas — la reserva NO se cancela
+        // Anulaci�n parcial de l�neas � la reserva NO se cancela
         ({ cancellationNumber } = await partialLineCancellation({
           requestId: input.id,
           req,
@@ -1082,7 +1082,7 @@ export const cancellationsRouter = router({
           adminUserName: ctx.user.name ?? "Admin",
         }));
       } else {
-        // Anulación total — reserva pasa a cancelled, REAV, abono contable
+        // Anulaci�n total � reserva pasa a cancelled, REAV, abono contable
         ({ cancellationNumber, creditNoteNumber } = await propagateCancellation({
           requestId: input.id,
           req,
@@ -1096,7 +1096,7 @@ export const cancellationsRouter = router({
       return { success: true, voucherId, cancellationNumber, creditNoteNumber };
     }),
 
-  // ── ACCIÓN: Solicitar documentación ──────────────────────────────────────
+  // -- ACCI�N: Solicitar documentaci�n --------------------------------------
   requestDocumentation: adminProcedure
     .input(
       z.object({
@@ -1126,7 +1126,7 @@ export const cancellationsRouter = router({
           templateKey: "cancellation_documentation",
           triggerEvent: "cancellation_docs_requested",
           recipientEmail: req.email,
-          subject: `Documentación requerida — Solicitud #${input.id}`,
+          subject: `Documentaci�n requerida � Solicitud #${input.id}`,
           html: emailSolicitudDocumentacion(req.fullName, input.id, input.text),
           relatedEntityType: "cancellation_request",
           relatedEntityId: input.id,
@@ -1136,7 +1136,7 @@ export const cancellationsRouter = router({
         if (emailSent) {
           await addLog(input.id, "email_sent", { type: "solicitud_documentacion", to: req.email }, ctx.user.id, ctx.user.name ?? "Admin");
         } else {
-          console.error(`[Cancellations] requestDocumentation email FAILED for request #${input.id} → ${req.email}`);
+          console.error(`[Cancellations] requestDocumentation email FAILED for request #${input.id} ? ${req.email}`);
           await addLog(input.id, "email_failed", { type: "solicitud_documentacion", to: req.email }, ctx.user.id, ctx.user.name ?? "Admin");
         }
       }
@@ -1144,7 +1144,7 @@ export const cancellationsRouter = router({
       return { success: true, emailSent };
     }),
 
-  // ── ACCIÓN: Marcar incidencia ─────────────────────────────────────────────
+  // -- ACCI�N: Marcar incidencia ---------------------------------------------
   markIncidence: adminProcedure
     .input(
       z.object({
@@ -1172,7 +1172,7 @@ export const cancellationsRouter = router({
       return { success: true };
     }),
 
-  // ── ACCIÓN: Cambiar estado operativo ─────────────────────────────────────
+  // -- ACCI�N: Cambiar estado operativo -------------------------------------
   updateOperationalStatus: adminProcedure
     .input(
       z.object({
@@ -1199,7 +1199,7 @@ export const cancellationsRouter = router({
       return { success: true };
     }),
 
-  // ── ACCIÓN: Marcar devolución ejecutada ──────────────────────────────────
+  // -- ACCI�N: Marcar devoluci�n ejecutada ----------------------------------
   markRefundExecuted: adminProcedure
     .input(z.object({
       id: z.number(),
@@ -1213,19 +1213,19 @@ export const cancellationsRouter = router({
       if (req.compensationType !== "devolucion") {
         throw new TRPCError({
           code: "PRECONDITION_FAILED",
-          message: `Este expediente tiene compensación "${req.compensationType}", no una devolución económica.`,
+          message: `Este expediente tiene compensaci�n "${req.compensationType}", no una devoluci�n econ�mica.`,
         });
       }
       if (req.financialStatus === "devuelta_economicamente") {
         throw new TRPCError({
           code: "PRECONDITION_FAILED",
-          message: "La devolución ya fue marcada como ejecutada anteriormente.",
+          message: "La devoluci�n ya fue marcada como ejecutada anteriormente.",
         });
       }
       if (req.financialStatus !== "pendiente_devolucion") {
         throw new TRPCError({
           code: "PRECONDITION_FAILED",
-          message: `El estado financiero actual es "${req.financialStatus}". Solo se puede marcar como ejecutada cuando está en "pendiente_devolucion".`,
+          message: `El estado financiero actual es "${req.financialStatus}". Solo se puede marcar como ejecutada cuando est� en "pendiente_devolucion".`,
         });
       }
 
@@ -1239,13 +1239,13 @@ export const cancellationsRouter = router({
       await addLog(input.id, "refund_executed", { note: input.note, proofUrl: input.proofUrl, executedAt: executedAt.toISOString(), oldStatus: req.financialStatus }, ctx.user.id, ctx.user.name ?? "Admin");
 
       if (req.email) {
-        const amount = req.resolvedAmount != null ? Number(req.resolvedAmount).toFixed(2) : "—";
+        const amount = req.resolvedAmount != null ? Number(req.resolvedAmount).toFixed(2) : "�";
         const executedAtFormatted = executedAt.toLocaleDateString("es-ES", { day: "2-digit", month: "long", year: "numeric" });
         const refundResult = await sendManagedEmail({
           templateKey: "cancellation_refund_executed",
           triggerEvent: "cancellation_refund_executed",
           recipientEmail: req.email,
-          subject: `Devolución realizada — Solicitud #${input.id}`,
+          subject: `Devoluci�n realizada � Solicitud #${input.id}`,
           html: buildCancellationRefundExecutedHtml({
             fullName: req.fullName,
             requestId: input.id,
@@ -1260,14 +1260,14 @@ export const cancellationsRouter = router({
         if (emailSent) {
           await addLog(input.id, "email_sent", { type: "refund_executed_notification", to: req.email }, ctx.user.id, ctx.user.name ?? "Admin");
         } else {
-          console.error(`[Cancellations] markRefundExecuted email FAILED for request #${input.id} → ${req.email}`);
+          console.error(`[Cancellations] markRefundExecuted email FAILED for request #${input.id} ? ${req.email}`);
         }
       }
 
       return { success: true };
     }),
 
-  // ── ACCIÓN: Marcar bono enviado ───────────────────────────────────────────
+  // -- ACCI�N: Marcar bono enviado -------------------------------------------
   markVoucherSent: adminProcedure
     .input(z.object({ id: z.number(), voucherId: z.number() }))
     .mutation(async ({ input, ctx }) => {
@@ -1284,18 +1284,18 @@ export const cancellationsRouter = router({
       return { success: true };
     }),
 
-  // ── ACCIÓN: Cerrar expediente ─────────────────────────────────────────────
+  // -- ACCI�N: Cerrar expediente ---------------------------------------------
   closeRequest: adminProcedure
     .input(z.object({ id: z.number(), note: z.string().optional() }))
     .mutation(async ({ input, ctx }) => {
       const [req] = await db.select().from(cancellationRequests).where(eq(cancellationRequests.id, input.id));
       if (!req) throw new TRPCError({ code: "NOT_FOUND" });
 
-      // Validar que hay resolución antes de cerrar
+      // Validar que hay resoluci�n antes de cerrar
       if (req.resolutionStatus === "sin_resolver") {
         throw new TRPCError({
           code: "BAD_REQUEST",
-          message: "No se puede cerrar un expediente sin resolución. Rechaza o acepta primero la solicitud.",
+          message: "No se puede cerrar un expediente sin resoluci�n. Rechaza o acepta primero la solicitud.",
         });
       }
 
@@ -1314,7 +1314,7 @@ export const cancellationsRouter = router({
       return { success: true };
     }),
 
-  // ── Actualizar estado financiero manualmente ──────────────────────────────
+  // -- Actualizar estado financiero manualmente ------------------------------
   updateFinancialStatus: adminProcedure
     .input(
       z.object({
@@ -1331,14 +1331,14 @@ export const cancellationsRouter = router({
       return { success: true };
     }),
 
-  // ── ACCIÓN: Revertir resolución (deshacer aceptación o rechazo) ─────────────
+  // -- ACCI�N: Revertir resoluci�n (deshacer aceptaci�n o rechazo) -------------
   revertResolution: adminProcedure
     .input(z.object({ id: z.number(), reason: z.string().optional() }))
     .mutation(async ({ input, ctx }) => {
       const [req] = await db.select().from(cancellationRequests).where(eq(cancellationRequests.id, input.id));
       if (!req) throw new TRPCError({ code: "NOT_FOUND" });
       if (req.resolutionStatus === "sin_resolver") {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "Esta solicitud no tiene resolución que revertir." });
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Esta solicitud no tiene resoluci�n que revertir." });
       }
 
       const oldResolution = req.resolutionStatus;
@@ -1364,18 +1364,18 @@ export const cancellationsRouter = router({
       return { success: true };
     }),
 
-  // ── Enviar todos los templates de email a una dirección (test/auditoría) ────
+  // -- Enviar todos los templates de email a una direcci�n (test/auditor�a) ----
   sendTestEmails: adminProcedure
     .input(z.object({ to: z.string().email() }))
     .mutation(async ({ input }) => {
-      const SAMPLE_NAME = "Carlos García López";
+      const SAMPLE_NAME = "Carlos Garc�a L�pez";
       const SAMPLE_ID = 99;
       const SAMPLE_LOCATOR = "NYD-2026-TEST";
       const SAMPLE_DATE = "20 de abril de 2026";
 
       const templates: { subject: string; html: string }[] = [
         {
-          subject: `[1/8] Solicitud de anulación recibida — Ref. #${SAMPLE_ID}`,
+          subject: `[1/8] Solicitud de anulaci�n recibida � Ref. #${SAMPLE_ID}`,
           html: buildCancellationReceivedHtml({
             fullName: SAMPLE_NAME,
             requestId: SAMPLE_ID,
@@ -1384,31 +1384,31 @@ export const cancellationsRouter = router({
           }),
         },
         {
-          subject: `[2/8] Documentación requerida — Solicitud #${SAMPLE_ID}`,
+          subject: `[2/8] Documentaci�n requerida � Solicitud #${SAMPLE_ID}`,
           html: emailSolicitudDocumentacion(
             SAMPLE_NAME,
             SAMPLE_ID,
-            "Por favor, adjunta el parte meteorológico oficial de AEMET correspondiente al día de la actividad, o cualquier justificante oficial que acredite las condiciones adversas."
+            "Por favor, adjunta el parte meteorol�gico oficial de AEMET correspondiente al d�a de la actividad, o cualquier justificante oficial que acredite las condiciones adversas."
           ),
         },
         {
-          subject: `[3/8] Resolución de tu solicitud de anulación #${SAMPLE_ID} — RECHAZADA`,
+          subject: `[3/8] Resoluci�n de tu solicitud de anulaci�n #${SAMPLE_ID} � RECHAZADA`,
           html: emailRechazo(
             SAMPLE_NAME,
             SAMPLE_ID,
-            "Según nuestras condiciones generales, las cancelaciones por condiciones meteorológicas deben solicitarse con un mínimo de 24h de antelación a la actividad."
+            "Seg�n nuestras condiciones generales, las cancelaciones por condiciones meteorol�gicas deben solicitarse con un m�nimo de 24h de antelaci�n a la actividad."
           ),
         },
         {
-          subject: `[4/8] Aceptación de tu solicitud #${SAMPLE_ID} — Devolución TOTAL`,
+          subject: `[4/8] Aceptaci�n de tu solicitud #${SAMPLE_ID} � Devoluci�n TOTAL`,
           html: emailAceptacionDevolucion(SAMPLE_NAME, SAMPLE_ID, "405.00", false),
         },
         {
-          subject: `[5/8] Aceptación de tu solicitud #${SAMPLE_ID} — Devolución PARCIAL`,
+          subject: `[5/8] Aceptaci�n de tu solicitud #${SAMPLE_ID} � Devoluci�n PARCIAL`,
           html: emailAceptacionDevolucion(SAMPLE_NAME, SAMPLE_ID, "135.00", true),
         },
         {
-          subject: `[6/8] Bono de compensación TOTAL — Solicitud #${SAMPLE_ID}`,
+          subject: `[6/8] Bono de compensaci�n TOTAL � Solicitud #${SAMPLE_ID}`,
           html: emailAceptacionBono(
             SAMPLE_NAME,
             SAMPLE_ID,
@@ -1420,7 +1420,7 @@ export const cancellationsRouter = router({
           ),
         },
         {
-          subject: `[7/8] Bono de compensación PARCIAL — Solicitud #${SAMPLE_ID}`,
+          subject: `[7/8] Bono de compensaci�n PARCIAL � Solicitud #${SAMPLE_ID}`,
           html: emailAceptacionBono(
             SAMPLE_NAME,
             SAMPLE_ID,
@@ -1432,7 +1432,7 @@ export const cancellationsRouter = router({
           ),
         },
         {
-          subject: `[8/8] Devolución realizada — Solicitud #${SAMPLE_ID}`,
+          subject: `[8/8] Devoluci�n realizada � Solicitud #${SAMPLE_ID}`,
           html: buildCancellationRefundExecutedHtml({
             fullName: SAMPLE_NAME,
             requestId: SAMPLE_ID,
@@ -1452,7 +1452,7 @@ export const cancellationsRouter = router({
       return { total: templates.length, failed, results };
     }),
 
-  // ── Eliminar solicitud ────────────────────────────────────────────────────
+  // -- Eliminar solicitud ----------------------------------------------------
   deleteRequest: adminProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
@@ -1461,7 +1461,7 @@ export const cancellationsRouter = router({
       return { success: true };
     }),
 
-  // ── Contadores para sidebar badge ──────────────────────────────────────────
+  // -- Contadores para sidebar badge ------------------------------------------
   getCounters: adminProcedure
     .query(async () => {
       const rows = await db
@@ -1485,7 +1485,7 @@ export const cancellationsRouter = router({
       };
     }),
 
-  // ── Subir PDF de bono a S3 ────────────────────────────────────────────────
+  // -- Subir PDF de bono a S3 ------------------------------------------------
   uploadVoucherPdf: adminProcedure
     .input(
       z.object({
@@ -1503,7 +1503,7 @@ export const cancellationsRouter = router({
       return { url };
     }),
 
-  // ── Consultar impacto de una anulación (preview antes de aprobar) ────────────
+  // -- Consultar impacto de una anulaci�n (preview antes de aprobar) ------------
   getImpact: adminProcedure
     .input(z.object({ id: z.number() }))
     .query(async ({ input }) => {
@@ -1542,7 +1542,7 @@ export const cancellationsRouter = router({
       };
     }),
 
-  // ── Crear solicitud manual (admin) ─────────────────────────────────────────
+  // -- Crear solicitud manual (admin) -----------------------------------------
   createManualRequest: adminProcedure
     .input(
       z.object({
@@ -1600,13 +1600,13 @@ export const cancellationsRouter = router({
         { fullName: input.fullName, reason: input.reason, activityDate: input.activityDate }
       ).catch(() => {});
 
-      // Email acuse de recibo al cliente (mismo que en la landing pública)
+      // Email acuse de recibo al cliente (mismo que en la landing p�blica)
       if (input.email) {
         await sendManagedEmail({
           templateKey: "cancellation_received",
           triggerEvent: "cancellation_request_submitted_admin",
           recipientEmail: input.email,
-          subject: `Solicitud de anulación recibida — Ref. #${requestId}`,
+          subject: `Solicitud de anulaci�n recibida � Ref. #${requestId}`,
           html: emailAcuseRecibo(input.fullName, requestId, input.locator, input.reason),
           relatedEntityType: "cancellation_request",
           relatedEntityId: requestId,
@@ -1619,7 +1619,7 @@ export const cancellationsRouter = router({
       return { success: true, requestId };
     }),
 
-  // ── Vincular solicitud a reserva existente (admin) ──────────────────────────
+  // -- Vincular solicitud a reserva existente (admin) --------------------------
   linkToReservation: adminProcedure
     .input(
       z.object({
@@ -1658,7 +1658,7 @@ export const cancellationsRouter = router({
       return { success: true };
     }),
 
-  // ── Buscar reservas para vinculación (admin) ─────────────────────────────────
+  // -- Buscar reservas para vinculaci�n (admin) ---------------------------------
   searchReservations: adminProcedure
     .input(z.object({ query: z.string().min(1) }))
     .query(async ({ input }) => {
@@ -1691,7 +1691,7 @@ export const cancellationsRouter = router({
       return rows;
     }),
 
-  // ── Anular reserva directamente desde CRM (atajo ejecutivo) ─────────────────
+  // -- Anular reserva directamente desde CRM (atajo ejecutivo) -----------------
   // Crea la solicitud ya cerrada y ejecuta propagateCancellation en un solo paso.
   cancelReservationDirect: adminProcedure
     .input(
@@ -1705,7 +1705,7 @@ export const cancellationsRouter = router({
       })
     )
     .mutation(async ({ input, ctx }) => {
-      // ── Guardia: la reserva no debe tener ya una solicitud activa ─────────
+      // -- Guardia: la reserva no debe tener ya una solicitud activa ---------
       const [res] = await db.select({
         id: reservations.id,
         customerName: reservations.customerName,
@@ -1718,16 +1718,16 @@ export const cancellationsRouter = router({
 
       if (!res) throw new TRPCError({ code: "NOT_FOUND", message: "Reserva no encontrada" });
       if (res.status === "cancelled") {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "La reserva ya está anulada" });
+        throw new TRPCError({ code: "BAD_REQUEST", message: "La reserva ya est� anulada" });
       }
       if (res.cancellationRequestId) {
         throw new TRPCError({
           code: "BAD_REQUEST",
-          message: `La reserva ya tiene el expediente de anulación #${res.cancellationRequestId} abierto. Gestiona la anulación desde el módulo de Anulaciones.`,
+          message: `La reserva ya tiene el expediente de anulaci�n #${res.cancellationRequestId} abierto. Gestiona la anulaci�n desde el m�dulo de Anulaciones.`,
         });
       }
 
-      // ── Crear solicitud de anulación ya resuelta y cerrada ────────────────
+      // -- Crear solicitud de anulaci�n ya resuelta y cerrada ----------------
       const resolutionStatus = input.compensationType === "ninguna" ? "aceptada_total" : "aceptada_total";
       const financialStatus = input.compensationType === "devolucion"
         ? "pendiente_devolucion"
@@ -1768,7 +1768,7 @@ export const cancellationsRouter = router({
         reservationId: input.reservationId,
       }, ctx.user.id, ctx.user.name ?? "Admin");
 
-      // ── Propagar cancelación (reserva + factura abono + REAV + operaciones) ─
+      // -- Propagar cancelaci�n (reserva + factura abono + REAV + operaciones) -
       const reqRecord = await db.select().from(cancellationRequests).where(eq(cancellationRequests.id, requestId)).limit(1).then(r => r[0]);
 
       const { cancellationNumber, creditNoteNumber } = await propagateCancellation({
@@ -1789,21 +1789,21 @@ export const cancellationsRouter = router({
         { cancellationNumber, creditNoteNumber: creditNoteNumber ?? null, reason: input.reason }
       ).catch(() => {});
 
-      // Email de resolución al cliente (mismo template que acceptRequest)
+      // Email de resoluci�n al cliente (mismo template que acceptRequest)
       if (res.customerEmail) {
         if (input.compensationType === "devolucion" && input.refundAmount) {
           await sendEmail({
             to: res.customerEmail,
             cc: await getCopyEmail(),
-            subject: `Aceptación de tu solicitud de anulación #${requestId}`,
+            subject: `Aceptaci�n de tu solicitud de anulaci�n #${requestId}`,
             html: emailAceptacionDevolucion(res.customerName, requestId, String(input.refundAmount), false),
           }).catch(() => {});
         } else {
-          // Sin compensación o bono sin datos de voucher: notificamos la aceptación sin importe
+          // Sin compensaci�n o bono sin datos de voucher: notificamos la aceptaci�n sin importe
           await sendEmail({
             to: res.customerEmail,
             cc: await getCopyEmail(),
-            subject: `Aceptación de tu solicitud de anulación #${requestId}`,
+            subject: `Aceptaci�n de tu solicitud de anulaci�n #${requestId}`,
             html: emailAceptacionDevolucion(res.customerName, requestId, "0.00", false),
           }).catch(() => {});
         }
@@ -1813,11 +1813,11 @@ export const cancellationsRouter = router({
       return { success: true, requestId, cancellationNumber, creditNoteNumber };
     }),
 
-  // ── ACCIÓN: Registrar reclamación post-cierre del cliente ─────────────────
+  // -- ACCI�N: Registrar reclamaci�n post-cierre del cliente -----------------
   addClientReclamation: adminProcedure
     .input(z.object({
       id: z.number(),
-      description: z.string().min(1, "La descripción es obligatoria"),
+      description: z.string().min(1, "La descripci�n es obligatoria"),
     }))
     .mutation(async ({ input, ctx }) => {
       const [req] = await db.select().from(cancellationRequests).where(eq(cancellationRequests.id, input.id));
@@ -1834,7 +1834,7 @@ export const cancellationsRouter = router({
       return { success: true };
     }),
 
-  // ── GESTIÓN DE BONOS ─────────────────────────────────────────────────────
+  // -- GESTI�N DE BONOS -----------------------------------------------------
 
   getVoucherCounters: adminProcedure
     .query(async () => {
@@ -1900,7 +1900,7 @@ export const cancellationsRouter = router({
         .orderBy(desc(compensationVouchers.issuedAt))
         .limit(input.limit);
 
-      // Filtro de búsqueda en JS (evita complejidad JOIN para texto)
+      // Filtro de b�squeda en JS (evita complejidad JOIN para texto)
       if (input.search) {
         const s = input.search.toLowerCase();
         return rows.filter(r =>
@@ -1914,7 +1914,7 @@ export const cancellationsRouter = router({
       return rows;
     }),
 
-  // ── Ver detalle completo de un bono ──────────────────────────────────────────
+  // -- Ver detalle completo de un bono ------------------------------------------
   getVoucherById: adminProcedure
     .input(z.object({ id: z.number() }))
     .query(async ({ input }) => {
@@ -1950,7 +1950,7 @@ export const cancellationsRouter = router({
       return v;
     }),
 
-  // ── Eliminar bono permanentemente ─────────────────────────────────────────────
+  // -- Eliminar bono permanentemente ---------------------------------------------
   deleteVoucher: adminProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input, ctx }) => {
@@ -1967,7 +1967,7 @@ export const cancellationsRouter = router({
       return { success: true };
     }),
 
-  // ── Reenviar todos los emails de un expediente a una dirección concreta ──────
+  // -- Reenviar todos los emails de un expediente a una direcci�n concreta ------
   resendRequestEmails: adminProcedure
     .input(z.object({
       id: z.number(),
@@ -1982,7 +1982,7 @@ export const cancellationsRouter = router({
       // 1. Acuse de recibo
       const ackOk = await sendEmail({
         to: input.to,
-        subject: `Solicitud de anulación recibida — Ref. #${req.id}`,
+        subject: `Solicitud de anulaci�n recibida � Ref. #${req.id}`,
         html: buildCancellationReceivedHtml({
           fullName: req.fullName,
           requestId: req.id,
@@ -1992,11 +1992,11 @@ export const cancellationsRouter = router({
       });
       sent.push({ label: "Acuse de recibo", ok: ackOk });
 
-      // 2. Email de resolución (si la hay)
+      // 2. Email de resoluci�n (si la hay)
       if (req.resolutionStatus === "rechazada") {
         const ok = await sendEmail({
           to: input.to,
-          subject: `Resolución de tu solicitud de anulación #${req.id}`,
+          subject: `Resoluci�n de tu solicitud de anulaci�n #${req.id}`,
           html: emailRechazo(req.fullName, req.id, undefined),
         });
         sent.push({ label: "Rechazo", ok });
@@ -2005,13 +2005,13 @@ export const cancellationsRouter = router({
         const isPartial = req.resolutionStatus === "aceptada_parcial";
 
         if (req.compensationType === "devolucion") {
-          const amount = req.resolvedAmount != null ? Number(req.resolvedAmount).toFixed(2) : "—";
+          const amount = req.resolvedAmount != null ? Number(req.resolvedAmount).toFixed(2) : "�";
           const ok = await sendEmail({
             to: input.to,
-            subject: `Aceptación de tu solicitud de anulación #${req.id}`,
+            subject: `Aceptaci�n de tu solicitud de anulaci�n #${req.id}`,
             html: emailAceptacionDevolucion(req.fullName, req.id, amount, isPartial),
           });
-          sent.push({ label: "Aceptación devolución", ok });
+          sent.push({ label: "Aceptaci�n devoluci�n", ok });
 
         } else if (req.compensationType === "bono") {
           // Buscar el bono vinculado
@@ -2027,12 +2027,12 @@ export const cancellationsRouter = router({
               : "Sin caducidad";
             const ok = await sendEmail({
               to: input.to,
-              subject: `Bono de compensación — Solicitud #${req.id}`,
+              subject: `Bono de compensaci�n � Solicitud #${req.id}`,
               html: emailAceptacionBono(
                 req.fullName,
                 req.id,
                 voucher.code,
-                voucher.activityName ?? "Actividad Náyade Experiences",
+                voucher.activityName ?? "Actividad N�yade Experiences",
                 Number(voucher.value).toFixed(2),
                 expiresStr,
                 isPartial
@@ -2045,13 +2045,13 @@ export const cancellationsRouter = router({
         }
       }
 
-      // 3. Si ya está devuelto, también el email de confirmación de ejecución
+      // 3. Si ya est� devuelto, tambi�n el email de confirmaci�n de ejecuci�n
       if (req.financialStatus === "devuelta_economicamente" && req.refundExecutedAt) {
-        const amount = req.resolvedAmount != null ? Number(req.resolvedAmount).toFixed(2) : "—";
+        const amount = req.resolvedAmount != null ? Number(req.resolvedAmount).toFixed(2) : "�";
         const dateStr = new Date(req.refundExecutedAt).toLocaleDateString("es-ES", { day: "2-digit", month: "long", year: "numeric" });
         const ok = await sendEmail({
           to: input.to,
-          subject: `Devolución realizada — Solicitud #${req.id}`,
+          subject: `Devoluci�n realizada � Solicitud #${req.id}`,
           html: buildCancellationRefundExecutedHtml({
             fullName: req.fullName,
             requestId: req.id,
@@ -2059,7 +2059,7 @@ export const cancellationsRouter = router({
             executedAt: dateStr,
           }),
         });
-        sent.push({ label: "Devolución ejecutada", ok });
+        sent.push({ label: "Devoluci�n ejecutada", ok });
       }
 
       const failed = sent.filter(s => !s.ok).length;
@@ -2083,12 +2083,12 @@ export const cancellationsRouter = router({
       await sendEmail({
         to: req.email,
         cc: await getCopyEmail(),
-        subject: `Bono de compensación — Código ${voucher.code}`,
+        subject: `Bono de compensaci�n � C�digo ${voucher.code}`,
         html: buildCancellationAcceptedVoucherHtml({
           fullName: req.fullName,
           requestId: req.id,
           voucherCode: voucher.code,
-          activityName: voucher.activityName ?? "Actividad Náyade Experiences",
+          activityName: voucher.activityName ?? "Actividad N�yade Experiences",
           value: Number(voucher.value).toFixed(2),
           expiresAt: expiresStr,
           isPartial: false,
@@ -2148,7 +2148,7 @@ export const cancellationsRouter = router({
       return { success: true };
     }),
 
-  // ── Anulación masiva directa (solo para limpieza de datos de prueba) ────────
+  // -- Anulaci�n masiva directa (solo para limpieza de datos de prueba) --------
   batchCancelDirect: adminProcedure
     .input(z.object({
       reservationNumbers: z.array(z.string()).min(1).max(50),

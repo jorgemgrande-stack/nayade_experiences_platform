@@ -1,4 +1,4 @@
-﻿import "dotenv/config";
+import "dotenv/config";
 import mysql from "mysql2/promise";
 import { drizzle } from "drizzle-orm/mysql2";
 import { and, eq, gte, lte, inArray, ne, sql, not } from "drizzle-orm";
@@ -13,12 +13,12 @@ import {
   type CardTerminalBatch,
 } from "../../drizzle/schema";
 
-// ── Config ──────────────────────────────────────────────────────────────────
+// -- Config ------------------------------------------------------------------
 
 const TOLERANCE = parseFloat(process.env.CARD_BATCH_TOLERANCE ?? "0.01");
 const AUTO_RECONCILE = (process.env.AUTO_RECONCILE_CARD_BATCHES ?? "false") === "true";
 
-// ── DB ───────────────────────────────────────────────────────────────────────
+// -- DB -----------------------------------------------------------------------
 
 const _matchingPool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
 const _matchingDb = drizzle(_matchingPool);
@@ -27,11 +27,11 @@ function makeDb() {
   return _matchingDb;
 }
 
-// ── Concurrency ──────────────────────────────────────────────────────────────
+// -- Concurrency --------------------------------------------------------------
 
 let isRunning = false;
 
-// ── Date helpers ─────────────────────────────────────────────────────────────
+// -- Date helpers -------------------------------------------------------------
 
 function offsetDate(dateStr: string, days: number): string {
   const d = new Date(dateStr + "T12:00:00Z");
@@ -45,7 +45,7 @@ function dateDiffDays(fromDate: string, toDate: string): number {
   return Math.round((b.getTime() - a.getTime()) / (24 * 60 * 60 * 1000));
 }
 
-// ── Score calculation ────────────────────────────────────────────────────────
+// -- Score calculation --------------------------------------------------------
 
 interface MatchCandidate {
   bankMovementId: number;
@@ -115,7 +115,7 @@ async function scoreCandidates(
   return scored.sort((a, b) => b.score - a.score);
 }
 
-// ── Classify batch status from score ────────────────────────────────────────
+// -- Classify batch status from score ----------------------------------------
 
 function classifyStatus(score: number, diff: number, candidateCount: number): CardTerminalBatch["status"] {
   if (score >= 95 && diff < 0.001 && candidateCount === 1) return "auto_ready";
@@ -124,7 +124,7 @@ function classifyStatus(score: number, diff: number, candidateCount: number): Ca
   return "pending";
 }
 
-// ── Check if batch ops are all valid (no incidents, no unresolved issues) ────
+// -- Check if batch ops are all valid (no incidents, no unresolved issues) ----
 
 async function areBatchOpsValid(
   db: ReturnType<typeof makeDb>,
@@ -142,7 +142,7 @@ async function areBatchOpsValid(
   return ops.every(o => o.status !== "incidencia");
 }
 
-// ── Core matching function ───────────────────────────────────────────────────
+// -- Core matching function ---------------------------------------------------
 
 export async function matchBatchWithBankMovement(
   db: ReturnType<typeof makeDb>,
@@ -176,7 +176,7 @@ export async function matchBatchWithBankMovement(
   return { status, bankMovementId: best.bankMovementId, score: best.score };
 }
 
-// ── Auto-reconcile logic ─────────────────────────────────────────────────────
+// -- Auto-reconcile logic -----------------------------------------------------
 
 async function attemptAutoReconcile(
   db: ReturnType<typeof makeDb>,
@@ -230,7 +230,7 @@ async function attemptAutoReconcile(
     confidenceScore: batch.suggestedScore ?? 100,
     matchedBy: "auto-matching",
     matchedAt: new Date(),
-    notes: "Conciliación automática — score " + (batch.suggestedScore ?? 0) + "%",
+    notes: "Conciliaci�n autom�tica � score " + (batch.suggestedScore ?? 0) + "%",
   });
 
   await db.update(cardTerminalBatches)
@@ -260,13 +260,13 @@ async function attemptAutoReconcile(
   }
 
   await logAudit(db, batch.id, "auto_reconciled", batch.suggestedBankMovementId, batch.suggestedScore, true, "auto-matching",
-    `Conciliación automática. Score: ${batch.suggestedScore}%. Diferencia: ${diff.toFixed(2)}€`);
+    `Conciliaci�n autom�tica. Score: ${batch.suggestedScore}%. Diferencia: ${diff.toFixed(2)}�`);
 
   console.log(`[BatchMatching] Auto-reconciled batch ${batch.id} (${batch.batchDate}) with bm ${batch.suggestedBankMovementId}, score ${batch.suggestedScore}`);
   return true;
 }
 
-// ── Audit log helper ─────────────────────────────────────────────────────────
+// -- Audit log helper ---------------------------------------------------------
 
 async function logAudit(
   db: ReturnType<typeof makeDb>,
@@ -296,7 +296,7 @@ async function logAudit(
 // Bring type into scope for logAudit signature
 type CardTerminalBatchAuditLog = { action: "match_suggested" | "match_auto_ready" | "match_no_candidate" | "match_review_required" | "suggestion_accepted" | "suggestion_rejected" | "auto_reconciled" | "manual_reconciled" | "unreconciled" | "review_flagged" };
 
-// ── Main job ─────────────────────────────────────────────────────────────────
+// -- Main job -----------------------------------------------------------------
 
 export async function runMatchingJob(): Promise<{ processed: number; suggested: number; autoReady: number; autoReconciled: number; errors: string[] }> {
   const result = { processed: 0, suggested: 0, autoReady: 0, autoReconciled: 0, errors: [] as string[] };
@@ -361,12 +361,12 @@ export async function runMatchingJob(): Promise<{ processed: number; suggested: 
   return result;
 }
 
-// ── Cron + boot ──────────────────────────────────────────────────────────────
+// -- Cron + boot --------------------------------------------------------------
 
 export function startMatchingJob(): void {
   setImmediate(() => {
     runMatchingJob()
-      .then(r => console.log(`[BatchMatching] Boot run — processed: ${r.processed}, suggested: ${r.suggested}, auto_ready: ${r.autoReady}, auto_reconciled: ${r.autoReconciled}`))
+      .then(r => console.log(`[BatchMatching] Boot run � processed: ${r.processed}, suggested: ${r.suggested}, auto_ready: ${r.autoReady}, auto_reconciled: ${r.autoReconciled}`))
       .catch(e => console.error("[BatchMatching] Boot run error:", e));
   });
 
@@ -376,7 +376,7 @@ export function startMatchingJob(): void {
     try {
       const r = await runMatchingJob();
       if (r.processed > 0 || r.errors.length > 0) {
-        console.log(`[BatchMatching] Cron — processed: ${r.processed}, suggested: ${r.suggested}, auto_reconciled: ${r.autoReconciled}`);
+        console.log(`[BatchMatching] Cron � processed: ${r.processed}, suggested: ${r.suggested}, auto_reconciled: ${r.autoReconciled}`);
       }
       if (r.errors.length > 0) console.warn("[BatchMatching] Cron errors:", r.errors);
     } finally {

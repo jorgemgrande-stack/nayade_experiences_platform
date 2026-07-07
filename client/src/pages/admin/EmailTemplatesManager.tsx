@@ -53,7 +53,7 @@ export default function EmailTemplatesManager() {
   const [activeCategory, setActiveCategory] = useState<Category>("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [previewMode, setPreviewMode] = useState<"desktop" | "mobile">("desktop");
-  const [testEmail, setTestEmail] = useState("reservas@skicenter.es");
+  const [testEmail, setTestEmail] = useState("reservas@nayadeexperiences.es");
   const [mode, setMode] = useState<"view" | "edit" | "create">("view");
   const [editForm, setEditForm] = useState<EditForm | null>(null);
   const [createForm, setCreateForm] = useState<CreateForm>({

@@ -1,6 +1,6 @@
-﻿/**
+/**
  * Router: Suppliers & Settlements (Liquidaciones Proveedores)
- * Módulo v7.0 — Gestión completa de proveedores y liquidaciones
+ * M�dulo v7.0 � Gesti�n completa de proveedores y liquidaciones
  */
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
@@ -47,7 +47,7 @@ const adminProc = protectedProcedure.use(async ({ ctx, next }) => {
   return next({ ctx });
 });
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+// --- Helpers -----------------------------------------------------------------
 
 // generateSettlementNumber reemplazada por el helper centralizado
 // Ver server/documentNumbers.ts
@@ -73,13 +73,13 @@ async function generateSettlementPdfAndUpload(data: {
 }): Promise<{ url: string; key: string }> {
   const lineRows = data.lines.map((l) => `
     <tr>
-      <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;">${l.productName ?? "—"}</td>
-      <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:center;">${l.serviceDate ?? "—"}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;">${l.productName ?? "�"}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:center;">${l.serviceDate ?? "�"}</td>
       <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:center;">${l.paxCount}</td>
-      <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:right;">${parseFloat(l.saleAmount).toFixed(2)} €</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:right;">${parseFloat(l.saleAmount).toFixed(2)} �</td>
       <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:right;">${parseFloat(l.commissionPercent).toFixed(2)}%</td>
-      <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:right;">${parseFloat(l.commissionAmount).toFixed(2)} €</td>
-      <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:600;">${parseFloat(l.netAmountProvider).toFixed(2)} €</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:right;">${parseFloat(l.commissionAmount).toFixed(2)} �</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:600;">${parseFloat(l.netAmountProvider).toFixed(2)} �</td>
     </tr>`).join("");
 
   const html = `<!DOCTYPE html>
@@ -89,7 +89,7 @@ async function generateSettlementPdfAndUpload(data: {
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
   body { font-family: 'Helvetica Neue', Arial, sans-serif; color: #1a1a2e; background: #fff; }
-  /* ── ENCABEZADO ── */
+  /* -- ENCABEZADO -- */
   .doc-header { background: #1a3a6b; padding: 20px 40px; display: flex; align-items: center; justify-content: space-between; gap: 20px; }
   .logo-block { display: flex; align-items: center; gap: 16px; flex-shrink: 0; }
   .logo-block img { width: 90px; height: 90px; border-radius: 50%; border: 3px solid rgba(255,255,255,0.85); object-fit: cover; display: block; }
@@ -100,7 +100,7 @@ async function generateSettlementPdfAndUpload(data: {
   .doc-type-band { background: #7c3aed; padding: 8px 40px; display: flex; align-items: center; justify-content: space-between; }
   .doc-type-band .doc-label { color: #fff; font-size: 12px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; }
   .doc-type-band .doc-ref { color: #fff; font-size: 13px; font-weight: 700; }
-  /* ── CUERPO ── */
+  /* -- CUERPO -- */
   .body-content { padding: 28px 40px; }
   .parties { display: flex; gap: 28px; margin-bottom: 24px; }
   .party { flex: 1; background: #f8fafc; border-radius: 8px; padding: 14px 16px; border: 1px solid #e5e7eb; }
@@ -125,20 +125,20 @@ async function generateSettlementPdfAndUpload(data: {
 <body>
   <div class="doc-header">
     <div class="logo-block">
-      <img src="https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/logo-nayade_20a42bc4.jpg" alt="Náyade" />
+      <img src="https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/logo-nayade_20a42bc4.jpg" alt="N�yade" />
       <div class="brand-text">
-        <div class="brand-name">Náyade</div>
+        <div class="brand-name">N�yade</div>
         <div class="brand-sub">Experiences</div>
       </div>
     </div>
     <div class="company-info">
-      <strong>${data.companyData?.name ?? "Náyade Experiences S.L."}</strong>
-      ${data.companyData?.address ?? "Los Ángeles de San Rafael, Segovia"}<br/>
-      ${data.companyData?.email ?? "reservas@skicenter.es"} &middot; ${data.companyData?.phone ?? "+34 639 57 66 27"}
+      <strong>${data.companyData?.name ?? "N�yade Experiences S.L."}</strong>
+      ${data.companyData?.address ?? "Los �ngeles de San Rafael, Segovia"}<br/>
+      ${data.companyData?.email ?? "reservas@nayadeexperiences.es"} &middot; ${data.companyData?.phone ?? "+34 639 57 66 27"}
     </div>
   </div>
   <div class="doc-type-band">
-    <span class="doc-label">Liquidación de Proveedor</span>
+    <span class="doc-label">Liquidaci�n de Proveedor</span>
     <span class="doc-ref">${data.settlementNumber} &nbsp;&middot;&nbsp; ${data.issuedAt.toLocaleDateString("es-ES")}</span>
   </div>
 
@@ -146,8 +146,8 @@ async function generateSettlementPdfAndUpload(data: {
   <div class="parties">
     <div class="party">
       <h3>Emisor</h3>
-      <p><strong>${data.companyData?.name ?? "Náyade Experiences S.L."}</strong><br/>
-      ${data.companyData?.address ?? "Los Ángeles de San Rafael, Segovia"}<br/>
+      <p><strong>${data.companyData?.name ?? "N�yade Experiences S.L."}</strong><br/>
+      ${data.companyData?.address ?? "Los �ngeles de San Rafael, Segovia"}<br/>
       CIF: ${data.companyData?.cif ?? ""}</p>
     </div>
     <div class="party">
@@ -160,7 +160,7 @@ async function generateSettlementPdfAndUpload(data: {
   </div>
 
   <div class="period-badge">
-    Período de liquidación: <strong>${data.periodFrom}</strong> &mdash; <strong>${data.periodTo}</strong>
+    Per�odo de liquidaci�n: <strong>${data.periodFrom}</strong> &mdash; <strong>${data.periodTo}</strong>
   </div>
 
   <table>
@@ -170,8 +170,8 @@ async function generateSettlementPdfAndUpload(data: {
         <th style="text-align:center">Fecha</th>
         <th style="text-align:center">Pax</th>
         <th style="text-align:right">Venta bruta</th>
-        <th style="text-align:right">Comisión %</th>
-        <th style="text-align:right">Comisión €</th>
+        <th style="text-align:right">Comisi�n %</th>
+        <th style="text-align:right">Comisi�n �</th>
         <th style="text-align:right">Neto proveedor</th>
       </tr>
     </thead>
@@ -179,29 +179,29 @@ async function generateSettlementPdfAndUpload(data: {
   </table>
 
   <div class="totals-wrap"><table class="totals">
-    <tr><td>Total venta bruta</td><td>${parseFloat(data.grossAmount).toFixed(2)} €</td></tr>
-    <tr><td>Total comisión agencia</td><td>- ${parseFloat(data.commissionAmount).toFixed(2)} €</td></tr>
-    <tr class="total-row"><td>NETO A ABONAR AL PROVEEDOR</td><td>${parseFloat(data.netAmountProvider).toFixed(2)} €</td></tr>
+    <tr><td>Total venta bruta</td><td>${parseFloat(data.grossAmount).toFixed(2)} �</td></tr>
+    <tr><td>Total comisi�n agencia</td><td>- ${parseFloat(data.commissionAmount).toFixed(2)} �</td></tr>
+    <tr class="total-row"><td>NETO A ABONAR AL PROVEEDOR</td><td>${parseFloat(data.netAmountProvider).toFixed(2)} �</td></tr>
   </table></div>
 
   ${data.internalNotes ? `<div class="notes"><strong>Notas:</strong> ${data.internalNotes}</div>` : ""}
 
   </div>
   <div class="footer">
-    <p>${data.companyData?.name ?? "Náyade Experiences S.L."} &middot; www.skicenter.es</p>
-    <p>Documento de liquidación de servicios prestados por el proveedor durante el período indicado.</p>
+    <p>${data.companyData?.name ?? "N�yade Experiences S.L."} &middot; www.skicenter.es</p>
+    <p>Documento de liquidaci�n de servicios prestados por el proveedor durante el per�odo indicado.</p>
   </div>
 </body>
 </html>`;
 
-  // Generar PDF con puppeteer-core (funciona en producción desplegada)
+  // Generar PDF con puppeteer-core (funciona en producci�n desplegada)
   try {
     const pdfBuffer = await htmlToPdf(html);
     const key = `settlements/${data.settlementNumber}-${Date.now()}.pdf`;
     const { url } = await storagePut(key, pdfBuffer, "application/pdf");
     return { url, key };
   } catch (pdfErr) {
-    console.error("[PDF] Error generando liquidación PDF, guardando HTML como fallback:", pdfErr);
+    console.error("[PDF] Error generando liquidaci�n PDF, guardando HTML como fallback:", pdfErr);
     // Fallback: guardar HTML
     const key = `settlements/${data.settlementNumber}-${Date.now()}.html`;
     const { url } = await storagePut(key, Buffer.from(html), "text/html");
@@ -223,7 +223,7 @@ async function getNextSettlementSeq(year: number): Promise<number> {
   return seq + 1;
 }
 
-// ─── Zod schemas ─────────────────────────────────────────────────────────────
+// --- Zod schemas -------------------------------------------------------------
 
 const supplierSchema = z.object({
   fiscalName: z.string().min(1),
@@ -236,7 +236,7 @@ const supplierSchema = z.object({
   iban: z.string().optional(),
   paymentMethod: z.enum(["transferencia", "confirming", "efectivo", "compensacion"]).default("transferencia"),
   standardCommissionPercent: z.number().min(0).max(100).default(0),
-  // Configuración de liquidaciones
+  // Configuraci�n de liquidaciones
   settlementFrequency: z.enum(["quincenal", "mensual", "trimestral", "semestral", "anual", "manual"]).default("manual"),
   settlementDayOfMonth: z.number().int().min(1).max(28).default(1),
   autoGenerateSettlements: z.boolean().default(false),
@@ -257,10 +257,10 @@ const settlementLineInput = z.object({
   notes: z.string().optional(),
 });
 
-// ─── Suppliers router ─────────────────────────────────────────────────────────
+// --- Suppliers router ---------------------------------------------------------
 
 export const suppliersRouter = router({
-  // ── List all suppliers ──────────────────────────────────────────────────────
+  // -- List all suppliers ------------------------------------------------------
   list: adminProc
     .input(z.object({
       status: z.enum(["activo", "inactivo", "bloqueado", "all"]).default("all"),
@@ -283,7 +283,7 @@ export const suppliersRouter = router({
       return rows;
     }),
 
-  // ── Get single supplier ─────────────────────────────────────────────────────
+  // -- Get single supplier -----------------------------------------------------
   get: adminProc
     .input(z.object({ id: z.number() }))
     .query(async ({ input }) => {
@@ -292,7 +292,7 @@ export const suppliersRouter = router({
       return row;
     }),
 
-  // ── Create supplier ─────────────────────────────────────────────────────────
+  // -- Create supplier ---------------------------------------------------------
   create: adminProc
     .input(supplierSchema)
     .mutation(async ({ input }) => {
@@ -316,7 +316,7 @@ export const suppliersRouter = router({
       return { id: (result as any).insertId };
     }),
 
-  // ── Update supplier ─────────────────────────────────────────────────────────
+  // -- Update supplier ---------------------------------------------------------
   update: adminProc
     .input(z.object({ id: z.number() }).merge(supplierSchema))
     .mutation(async ({ input }) => {
@@ -341,7 +341,7 @@ export const suppliersRouter = router({
       return { ok: true };
     }),
 
-  // ── Delete supplier ─────────────────────────────────────────────────────────
+  // -- Delete supplier ---------------------------------------------------------
   delete: adminProc
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
@@ -349,7 +349,7 @@ export const suppliersRouter = router({
       return { ok: true };
     }),
 
-  // ── Get next settlement periods for a supplier ────────────────────────────
+  // -- Get next settlement periods for a supplier ----------------------------
   getNextPeriods: adminProc
     .input(z.object({ supplierId: z.number() }))
     .query(async ({ input }) => {
@@ -359,7 +359,7 @@ export const suppliersRouter = router({
       const freq = supplier.settlementFrequency;
       const dayOfMonth = supplier.settlementDayOfMonth ?? 1;
 
-      // Obtener la última liquidación del proveedor
+      // Obtener la �ltima liquidaci�n del proveedor
       const lastSettlements = await db
         .select({ periodTo: supplierSettlements.periodTo })
         .from(supplierSettlements)
@@ -370,14 +370,14 @@ export const suppliersRouter = router({
       const today = new Date();
       const todayStr = today.toISOString().split("T")[0];
 
-      // Aritmética de fechas sin zona horaria (opera sobre partes YYYY-MM-DD)
+      // Aritm�tica de fechas sin zona horaria (opera sobre partes YYYY-MM-DD)
       function _dateAddDays(dateStr: string, days: number): string {
         const [y, m, d] = dateStr.split("-").map(Number);
         const dt = new Date(Date.UTC(y, m - 1, d + days));
         return dt.toISOString().split("T")[0];
       }
       function _lastDayOfMonth(y: number, m: number): string {
-        // Date.UTC(y, m, 0) = último día del mes m (1-indexed)
+        // Date.UTC(y, m, 0) = �ltimo d�a del mes m (1-indexed)
         const dt = new Date(Date.UTC(y, m, 0));
         return dt.toISOString().split("T")[0];
       }
@@ -411,35 +411,35 @@ export const suppliersRouter = router({
       // Determinar inicio del primer periodo pendiente
       let currentFrom: string;
       if (lastSettlements.length > 0) {
-        // El siguiente periodo empieza el día después del último periodTo
+        // El siguiente periodo empieza el d�a despu�s del �ltimo periodTo
         const lastTo = new Date(lastSettlements[0].periodTo + "T00:00:00Z");
         lastTo.setDate(lastTo.getDate() + 1);
         currentFrom = lastTo.toISOString().split("T")[0];
       } else {
-        // Sin liquidaciones previas: empezar desde el primer día del mes actual
+        // Sin liquidaciones previas: empezar desde el primer d�a del mes actual
         const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
         currentFrom = firstDay.toISOString().split("T")[0];
       }
 
-      // Calcular hasta máximo 12 periodos pendientes (hasta hoy)
+      // Calcular hasta m�ximo 12 periodos pendientes (hasta hoy)
       const pendingPeriods: { from: string; to: string }[] = [];
       let iterations = 0;
       while (iterations < 24) {
         const periodTo = getPeriodEnd(currentFrom, freq);
-        if (periodTo > todayStr) break; // El periodo no ha terminado aún
+        if (periodTo > todayStr) break; // El periodo no ha terminado a�n
         pendingPeriods.push({ from: currentFrom, to: periodTo });
         currentFrom = addPeriod(currentFrom, freq);
         iterations++;
       }
 
-      // Próximo periodo futuro
+      // Pr�ximo periodo futuro
       const nextPeriodFrom = currentFrom;
       const nextPeriodTo = getPeriodEnd(currentFrom, freq);
 
       return { frequency: freq, dayOfMonth, pendingPeriods, nextPeriodFrom, nextPeriodTo };
     }),
 
-  // ── Generate pending settlements automatically ───────────────────────────
+  // -- Generate pending settlements automatically ---------------------------
   generatePending: adminProc
     .input(z.object({ supplierId: z.number() }))
     .mutation(async ({ input, ctx }) => {
@@ -449,12 +449,12 @@ export const suppliersRouter = router({
         throw new TRPCError({ code: "BAD_REQUEST", message: "Este proveedor tiene periodicidad manual. Crea las liquidaciones manualmente." });
       }
 
-      // Reutilizar la lógica de getNextPeriods para calcular periodos pendientes
+      // Reutilizar la l�gica de getNextPeriods para calcular periodos pendientes
       const freq = supplier.settlementFrequency;
       const today = new Date();
       const todayStr = today.toISOString().split("T")[0];
 
-      // Aritmética de fechas sin zona horaria
+      // Aritm�tica de fechas sin zona horaria
       function _dateAddDays2(dateStr: string, days: number): string {
         const [y, m, d] = dateStr.split("-").map(Number);
         return new Date(Date.UTC(y, m - 1, d + days)).toISOString().split("T")[0];
@@ -516,7 +516,7 @@ export const suppliersRouter = router({
         return { created: 0, message: "No hay periodos pendientes de liquidar." };
       }
 
-      // Crear una liquidación borrador por cada periodo pendiente
+      // Crear una liquidaci�n borrador por cada periodo pendiente
       const created: string[] = [];
       for (const period of pendingPeriods) {
         const settlementNumber = await generateSettlementNumber(String(ctx.user.id));
@@ -529,15 +529,15 @@ export const suppliersRouter = router({
           grossAmount: "0.00",
           commissionAmount: "0.00",
           netAmountProvider: "0.00",
-          internalNotes: `Generada automáticamente (${freq})`,
+          internalNotes: `Generada autom�ticamente (${freq})`,
         });
         created.push(settlementNumber);
       }
 
-      return { created: created.length, settlementNumbers: created, message: `${created.length} liquidación(es) creada(s) correctamente.` };
+      return { created: created.length, settlementNumbers: created, message: `${created.length} liquidaci�n(es) creada(s) correctamente.` };
     }),
 
-  // ── Get products linked to supplier ─────────────────────────────────────────
+  // -- Get products linked to supplier -----------------------------------------
   getProducts: adminProc
     .input(z.object({ supplierId: z.number() }))
     .query(async ({ input }) => {
@@ -570,7 +570,7 @@ export const suppliersRouter = router({
       return [...exps, ...pkgs];
     }),
 
-  // ── ADMIN: invitar usuario de proveedor (crea login con rol "supplier") ───────
+  // -- ADMIN: invitar usuario de proveedor (crea login con rol "supplier") -------
   inviteSupplierUser: adminProc
     .input(z.object({
       supplierId: z.number().int(),
@@ -611,27 +611,27 @@ export const suppliersRouter = router({
       const inviteUrl = `${origin}/supplier/activar?token=${token}`;
       await sendEmail({
         to: email,
-        subject: "Invitación al portal de proveedores — Skicenter",
+        subject: "Invitaci�n al portal de proveedores � Skicenter",
         html: `
           <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px;">
             <h2 style="color:#ea580c">Portal de Proveedores</h2>
             <p>Hola <strong>${name}</strong>,</p>
-            <p>Has sido invitado al portal de proveedores de <strong>Skicenter</strong>, donde podrás ver las ventas de tus productos por todos los canales y tus liquidaciones.</p>
+            <p>Has sido invitado al portal de proveedores de <strong>Skicenter</strong>, donde podr�s ver las ventas de tus productos por todos los canales y tus liquidaciones.</p>
             <p style="margin:24px 0">
               <a href="${inviteUrl}" style="background:#ea580c;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold">Activar mi cuenta</a>
             </p>
-            <p style="color:#666;font-size:13px">Este enlace caduca en 7 días.</p>
+            <p style="color:#666;font-size:13px">Este enlace caduca en 7 d�as.</p>
           </div>`,
       }).catch(() => {});
       return { ok: true, email };
     }),
 
-  // ── PÚBLICO: activar cuenta de proveedor por token (fijar contraseña) ──────────
+  // -- P�BLICO: activar cuenta de proveedor por token (fijar contrase�a) ----------
   activateSupplierInvite: publicProcedure
-    .input(z.object({ token: z.string(), password: z.string().min(6, "Mínimo 6 caracteres") }))
+    .input(z.object({ token: z.string(), password: z.string().min(6, "M�nimo 6 caracteres") }))
     .mutation(async ({ input }) => {
       const user = await getUserByInviteToken(input.token);
-      if (!user) throw new TRPCError({ code: "NOT_FOUND", message: "Enlace inválido o ya utilizado" });
+      if (!user) throw new TRPCError({ code: "NOT_FOUND", message: "Enlace inv�lido o ya utilizado" });
       if (user.inviteTokenExpiry && new Date() > user.inviteTokenExpiry) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "El enlace ha expirado. Pide uno nuevo al administrador." });
       }
@@ -643,10 +643,10 @@ export const suppliersRouter = router({
     }),
 });
 
-// ─── Settlements router ───────────────────────────────────────────────────────
+// --- Settlements router -------------------------------------------------------
 
 export const settlementsRouter = router({
-  // ── List settlements ────────────────────────────────────────────────────────
+  // -- List settlements --------------------------------------------------------
   list: adminProc
     .input(z.object({
       supplierId: z.number().optional(),
@@ -691,7 +691,7 @@ export const settlementsRouter = router({
       return rows;
     }),
 
-  // ── Get single settlement with lines and docs ───────────────────────────────
+  // -- Get single settlement with lines and docs -------------------------------
   get: adminProc
     .input(z.object({ id: z.number() }))
     .query(async ({ input }) => {
@@ -722,7 +722,7 @@ export const settlementsRouter = router({
         .leftJoin(suppliers, eq(supplierSettlements.supplierId, suppliers.id))
         .where(eq(supplierSettlements.id, input.id));
 
-      if (!settlement) throw new TRPCError({ code: "NOT_FOUND", message: "Liquidación no encontrada" });
+      if (!settlement) throw new TRPCError({ code: "NOT_FOUND", message: "Liquidaci�n no encontrada" });
 
       const lines = await db
         .select()
@@ -745,7 +745,7 @@ export const settlementsRouter = router({
       return { ...settlement, lines, docs, statusHistory };
     }),
 
-  // ── Preview: calculate lines for a period before creating ──────────────────
+  // -- Preview: calculate lines for a period before creating ------------------
   preview: adminProc
     .input(z.object({
       supplierId: z.number(),
@@ -803,7 +803,7 @@ export const settlementsRouter = router({
         source: "invoice" | "tpv_reservation" | "crm_reservation";
       }> = [];
 
-      // ── SOURCE 1: Facturas cobradas en el periodo ──────────────────────────
+      // -- SOURCE 1: Facturas cobradas en el periodo --------------------------
       const paidInvoices = await db
         .select()
         .from(invoices)
@@ -843,7 +843,7 @@ export const settlementsRouter = router({
         }
       }
 
-      // ── SOURCE 2: Reservas TPV pagadas en el periodo (sin factura formal) ──
+      // -- SOURCE 2: Reservas TPV pagadas en el periodo (sin factura formal) --
       // TPV reservations store items in extras_json; they may not have a formal invoice
       const tpvReservations = await db
         .select()
@@ -905,7 +905,7 @@ export const settlementsRouter = router({
         }
       }
 
-      // ── SOURCE 3: Reservas CRM confirmadas+pagadas (cualquier canal) ──────────
+      // -- SOURCE 3: Reservas CRM confirmadas+pagadas (cualquier canal) ----------
       // CRM reservations (ONLINE_ASISTIDO, ONLINE_DIRECTO, PARTNER, etc.) that are confirmed & paid
       // We look at booking_date (service date) to determine if they fall within the period
       const crmReservations = await db
@@ -968,7 +968,7 @@ export const settlementsRouter = router({
           }
         }
 
-        // If no invoice, try to match via quote items (presupuesto multi-línea)
+        // If no invoice, try to match via quote items (presupuesto multi-l�nea)
         if (res.quoteId) {
           const [quoteRow] = await db
             .select({ items: quotes.items })
@@ -1045,7 +1045,7 @@ export const settlementsRouter = router({
       return { lines, totals };
     }),
 
-  // ── Create settlement ───────────────────────────────────────────────────────
+  // -- Create settlement -------------------------------------------------------
   create: adminProc
     .input(z.object({
       supplierId: z.number(),
@@ -1112,13 +1112,13 @@ export const settlementsRouter = router({
         toStatus: "emitida",
         changedBy: ctx.user.id,
         changedByName: ctx.user.name ?? "Admin",
-        notes: "Liquidación creada",
+        notes: "Liquidaci�n creada",
       });
 
       return { id: settlementId, settlementNumber };
     }),
 
-  // ── Update status ───────────────────────────────────────────────────────────
+  // -- Update status -----------------------------------------------------------
   updateStatus: adminProc
     .input(z.object({
       id: z.number(),
@@ -1150,7 +1150,7 @@ export const settlementsRouter = router({
       return { ok: true };
     }),
 
-  // ── Update notes ────────────────────────────────────────────────────────────
+  // -- Update notes ------------------------------------------------------------
   updateNotes: adminProc
     .input(z.object({ id: z.number(), internalNotes: z.string() }))
     .mutation(async ({ input }) => {
@@ -1158,7 +1158,7 @@ export const settlementsRouter = router({
       return { ok: true };
     }),
 
-  // ── Recalculate settlement lines ────────────────────────────────────────────
+  // -- Recalculate settlement lines --------------------------------------------
   // Deletes existing lines and regenerates them from the current data sources
   recalculate: adminProc
     .input(z.object({ id: z.number() }))
@@ -1416,7 +1416,7 @@ export const settlementsRouter = router({
         }
 
         // SOURCE 4: Liquidaciones de plataformas externas (Groupon, Smartbox, etc.) pagadas en el periodo
-        // Vinculación: platform_settlements.paidAt en periodo + cupón.productRealId o platformProductId.experienceId del proveedor
+        // Vinculaci�n: platform_settlements.paidAt en periodo + cup�n.productRealId o platformProductId.experienceId del proveedor
         const paidPlatformSettlements = await db
           .select()
           .from(platformSettlements)
@@ -1427,7 +1427,7 @@ export const settlementsRouter = router({
           ));
 
         for (const ps of paidPlatformSettlements) {
-          // Obtener los cupones de esta liquidación de plataforma
+          // Obtener los cupones de esta liquidaci�n de plataforma
           const couponIds = (ps.couponIds as number[]) ?? [];
           if (couponIds.length === 0) continue;
 
@@ -1473,7 +1473,7 @@ export const settlementsRouter = router({
               reservationId: coupon.reservationId ?? undefined,
               productId: match.id,
               productName: coupon.couponCode
-                ? `[Cupón ${coupon.provider ?? "Plataforma"} ${coupon.couponCode}] ${match.title}`
+                ? `[Cup�n ${coupon.provider ?? "Plataforma"} ${coupon.couponCode}] ${match.title}`
                 : match.title,
               serviceDate: typeof serviceDate === "string" ? serviceDate.slice(0, 10) : periodFrom,
               paxCount: coupon.participants ?? 1,
@@ -1530,13 +1530,13 @@ export const settlementsRouter = router({
         toStatus: "recalculada",
         changedBy: ctx.user.id,
         changedByName: ctx.user.name ?? "Admin",
-        notes: `Recalculada: ${newLines.length} líneas generadas`,
+        notes: `Recalculada: ${newLines.length} l�neas generadas`,
       });
 
       return { ok: true, linesCount: newLines.length, grossAmount, commissionAmount, netAmountProvider };
     }),
 
-  // ── Add document ────────────────────────────────────────────────────────────
+  // -- Add document ------------------------------------------------------------
   addDocument: adminProc
     .input(z.object({
       settlementId: z.number(),
@@ -1559,7 +1559,7 @@ export const settlementsRouter = router({
       return { id: (result as any).insertId };
     }),
 
-  // ── Delete document ─────────────────────────────────────────────────────────
+  // -- Delete document ---------------------------------------------------------
   deleteDocument: adminProc
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
@@ -1567,7 +1567,7 @@ export const settlementsRouter = router({
       return { ok: true };
     }),
 
-  // ── Delete settlement ───────────────────────────────────────────────────────
+  // -- Delete settlement -------------------------------------------------------
   delete: adminProc
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
@@ -1578,7 +1578,7 @@ export const settlementsRouter = router({
       return { ok: true };
     }),
 
-  // ── KPI dashboard ───────────────────────────────────────────────────────────
+  // -- KPI dashboard -----------------------------------------------------------
   kpis: adminProc.query(async () => {
     const all = await db
       .select({
@@ -1624,7 +1624,7 @@ export const settlementsRouter = router({
     const bySupplier: Record<number, { name: string; gross: number; commission: number; count: number }> = {};
     for (const r of all) {
       if (!bySupplier[r.supplierId]) {
-        bySupplier[r.supplierId] = { name: r.supplierName ?? "—", gross: 0, commission: 0, count: 0 };
+        bySupplier[r.supplierId] = { name: r.supplierName ?? "�", gross: 0, commission: 0, count: 0 };
       }
       bySupplier[r.supplierId].gross += parseFloat(r.grossAmount ?? "0");
       bySupplier[r.supplierId].commission += parseFloat(r.commissionAmount ?? "0");
@@ -1647,7 +1647,7 @@ export const settlementsRouter = router({
     };
   }),
 
-  // ── Generate PDF ─────────────────────────────────────────────────────────────
+  // -- Generate PDF -------------------------------------------------------------
   generatePdf: adminProc
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
@@ -1685,16 +1685,16 @@ export const settlementsRouter = router({
         .where(sql`\`key\` IN ('legalCompanyName','legalCompanyCif','legalCompanyAddress','legalCompanyEmail','legalCompanyPhone')`);
       const s: Record<string, string> = Object.fromEntries(settingsRows.map(r => [r.key, r.value ?? ""]));
       const companyData = {
-        name: s.legalCompanyName || "Náyade Experiences S.L.",
+        name: s.legalCompanyName || "N�yade Experiences S.L.",
         cif: s.legalCompanyCif || "",
-        address: s.legalCompanyAddress || "Los Ángeles de San Rafael, Segovia",
-        email: s.legalCompanyEmail || "reservas@skicenter.es",
+        address: s.legalCompanyAddress || "Los �ngeles de San Rafael, Segovia",
+        email: s.legalCompanyEmail || "reservas@nayadeexperiences.es",
         phone: s.legalCompanyPhone || "+34 639 57 66 27",
       };
 
       const { url, key } = await generateSettlementPdfAndUpload({
         settlementNumber: settlement.settlementNumber,
-        supplierName: settlement.supplierName ?? "—",
+        supplierName: settlement.supplierName ?? "�",
         supplierNif: settlement.supplierNif,
         supplierAddress: settlement.supplierAddress,
         supplierIban: settlement.supplierIban,
@@ -1726,7 +1726,7 @@ export const settlementsRouter = router({
       return { url, key };
     }),
 
-  // ── Send settlement by email ─────────────────────────────────────────────────
+  // -- Send settlement by email -------------------------------------------------
   sendEmail: adminProc
     .input(z.object({
       id: z.number(),
@@ -1755,15 +1755,15 @@ export const settlementsRouter = router({
 
       await sendEmail({
         to: toEmail,
-        subject: `Liquidación ${settlement.settlementNumber} — Náyade Experiences`,
+        subject: `Liquidaci�n ${settlement.settlementNumber} � N�yade Experiences`,
         html: `
-          <h2>Liquidación de servicios</h2>
+          <h2>Liquidaci�n de servicios</h2>
           <p>Estimado/a ${settlement.supplierName},</p>
-          <p>Adjuntamos la liquidación <strong>${settlement.settlementNumber}</strong> correspondiente al periodo <strong>${settlement.periodFrom} — ${settlement.periodTo}</strong>.</p>
-          <p>Importe neto a abonar: <strong>${parseFloat(settlement.netAmountProvider ?? "0").toFixed(2)} €</strong></p>
-          ${settlement.pdfUrl ? `<p><a href="${settlement.pdfUrl}">Descargar liquidación en PDF</a></p>` : ""}
-          <p>Gracias por su colaboración.</p>
-          <p>Náyade Experiences</p>
+          <p>Adjuntamos la liquidaci�n <strong>${settlement.settlementNumber}</strong> correspondiente al periodo <strong>${settlement.periodFrom} � ${settlement.periodTo}</strong>.</p>
+          <p>Importe neto a abonar: <strong>${parseFloat(settlement.netAmountProvider ?? "0").toFixed(2)} �</strong></p>
+          ${settlement.pdfUrl ? `<p><a href="${settlement.pdfUrl}">Descargar liquidaci�n en PDF</a></p>` : ""}
+          <p>Gracias por su colaboraci�n.</p>
+          <p>N�yade Experiences</p>
         `,
       });
 

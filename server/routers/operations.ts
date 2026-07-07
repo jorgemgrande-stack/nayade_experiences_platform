@@ -1,4 +1,4 @@
-﻿import { z } from "zod";
+import { z } from "zod";
 import { router, protectedProcedure, adminProcedure, permissionProcedure } from "../_core/trpc";
 
 const operationsViewProc = permissionProcedure("operations.view", ["admin", "agente", "monitor"]);
@@ -24,8 +24,8 @@ import {
 const pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
 const db = drizzle(pool);
 
-// Carga las líneas (experiencias) de los Lego Packs cuyos ids se pasan, resolviendo
-// el título de la experiencia origen. Devuelve { legoPackId -> ExpandedPackLine[] }.
+// Carga las l�neas (experiencias) de los Lego Packs cuyos ids se pasan, resolviendo
+// el t�tulo de la experiencia origen. Devuelve { legoPackId -> ExpandedPackLine[] }.
 // Los productIds que NO son Lego Packs simplemente no aparecen en el mapa.
 async function loadLegoPackLines(packIds: number[]): Promise<Record<number, ExpandedPackLine[]>> {
   if (packIds.length === 0) return {};
@@ -64,7 +64,7 @@ async function loadLegoPackLines(packIds: number[]): Promise<Record<number, Expa
   return map;
 }
 
-// De los ids dados, devuelve cuáles corresponden a una EXPERIENCIA real. Sirve para
+// De los ids dados, devuelve cu�les corresponden a una EXPERIENCIA real. Sirve para
 // desambiguar el product_id de una reserva: si es una experiencia no debe expandirse
 // como Lego Pack aunque su id colisione con un lego_pack (ver buildPackExpansions).
 async function loadExperienceIds(ids: number[]): Promise<Set<number>> {
@@ -76,10 +76,10 @@ async function loadExperienceIds(ids: number[]): Promise<Set<number>> {
   return new Set((rows as any[]).map((r) => r.id));
 }
 
-// ─── MONITORS — solo lectura ──────────────────────────────────────────────────
-// La gestión completa (alta/edición/documentos) se trasladó al módulo
-// Personal/RRHH (router hr.employees, Fase 10). Aquí quedan solo las lecturas
-// que consume el módulo de Operaciones (calendario, actividades del día).
+// --- MONITORS � solo lectura --------------------------------------------------
+// La gesti�n completa (alta/edici�n/documentos) se traslad� al m�dulo
+// Personal/RRHH (router hr.employees, Fase 10). Aqu� quedan solo las lecturas
+// que consume el m�dulo de Operaciones (calendario, actividades del d�a).
 const monitorsRouter = router({
   list: adminProcedure
     .input(z.object({
@@ -115,7 +115,7 @@ const monitorsRouter = router({
 
 });
 
-// ─── CALENDAR (Unified) ───────────────────────────────────────────────────────
+// --- CALENDAR (Unified) -------------------------------------------------------
 const calendarRouter = router({
   getEvents: operationsViewProc
     .input(z.object({
@@ -168,14 +168,14 @@ const calendarRouter = router({
           AND (
             -- 1) la reserva madre cae en el rango
             (r.booking_date >= ? AND r.booking_date < DATE_ADD(?, INTERVAL 1 DAY))
-            -- 2) algún extra tiene su propia fecha de servicio (semilla del presupuesto) en el rango
+            -- 2) alg�n extra tiene su propia fecha de servicio (semilla del presupuesto) en el rango
             OR EXISTS (
               SELECT 1 FROM JSON_TABLE(
                 COALESCE(NULLIF(r.extras_json, ''), '[]'),
                 '$[*]' COLUMNS (sd CHAR(10) PATH '$.serviceDate')
               ) jx WHERE jx.sd >= ? AND jx.sd <= ?
             )
-            -- 3) el admin reprogramó algún componente (override en activities_op_json) al rango
+            -- 3) el admin reprogram� alg�n componente (override en activities_op_json) al rango
             OR EXISTS (
               SELECT 1 FROM JSON_TABLE(
                 COALESCE(ro.activities_op_json, CAST('[]' AS JSON)),
@@ -216,9 +216,9 @@ const calendarRouter = router({
       `, [fromDate, toDate]);
 
       // Cada reserva se expande en sus componentes datados (principal + extras),
-      // con la fecha EFECTIVA de cada uno (override admin → semilla presupuesto → madre).
-      // Además, si un componente es un Lego Pack, se adjuntan sus experiencias
-      // (`packExpansions`, indexado por la convención 0=principal, i+1=extra i).
+      // con la fecha EFECTIVA de cada uno (override admin ? semilla presupuesto ? madre).
+      // Adem�s, si un componente es un Lego Pack, se adjuntan sus experiencias
+      // (`packExpansions`, indexado por la convenci�n 0=principal, i+1=extra i).
       const actRows = activityRows as any[];
       const packIds = Array.from(new Set(actRows.flatMap((row) =>
         collectComponentProductIds(row.productId, parseReservationExtras(row.extrasJson)))));
@@ -240,12 +240,12 @@ const calendarRouter = router({
     }),
 });
 
-// ─── DAILY ORDERS ─────────────────────────────────────────────────────────────
+// --- DAILY ORDERS -------------------------------------------------------------
 const dailyOrdersRouter = router({
   getForDate: protectedProcedure
     .input(z.object({ date: z.string() }))
     .query(async ({ input }) => {
-      // booking_date is a DATE column — use input string directly (no Date conversion)
+      // booking_date is a DATE column � use input string directly (no Date conversion)
       // NEVER use new Date().toISOString(): the server runs in UTC-4 which shifts dates
       const dateStr = input.date.slice(0, 10);
 
@@ -411,12 +411,12 @@ const dailyOrdersRouter = router({
     }),
 });
 
-// ─── ACTIVITIES (Actividades del día) ─────────────────────────────────────────
+// --- ACTIVITIES (Actividades del d�a) -----------------------------------------
 const activitiesRouter = router({
   getForDate: protectedProcedure
     .input(z.object({ date: z.string() }))
     .query(async ({ input }) => {
-      // booking_date is a DATE column — use input string directly (no Date conversion)
+      // booking_date is a DATE column � use input string directly (no Date conversion)
       // Use DATE_FORMAT to return as plain string to avoid timezone offset issues
       const actDateStr = input.date.slice(0, 10);
 
@@ -454,16 +454,16 @@ const activitiesRouter = router({
         WHERE r.status IN ('paid', 'pending_payment')
           AND r.status_reservation NOT IN ('ANULADA')
           AND (
-            -- 1) la reserva madre es de este día
+            -- 1) la reserva madre es de este d�a
             r.booking_date = ?
-            -- 2) algún extra tiene su serviceDate (semilla presupuesto) en este día
+            -- 2) alg�n extra tiene su serviceDate (semilla presupuesto) en este d�a
             OR EXISTS (
               SELECT 1 FROM JSON_TABLE(
                 COALESCE(NULLIF(r.extras_json, ''), '[]'),
                 '$[*]' COLUMNS (sd CHAR(10) PATH '$.serviceDate')
               ) jx WHERE jx.sd = ?
             )
-            -- 3) el admin reprogramó un componente (override) a este día
+            -- 3) el admin reprogram� un componente (override) a este d�a
             OR EXISTS (
               SELECT 1 FROM JSON_TABLE(
                 COALESCE(ro.activities_op_json, CAST('[]' AS JSON)),
@@ -474,7 +474,7 @@ const activitiesRouter = router({
         ORDER BY r.booking_date ASC
       `, [actDateStr, actDateStr, actDateStr]);
 
-      // Fecha efectiva por componente (override admin → semilla presupuesto → madre)
+      // Fecha efectiva por componente (override admin ? semilla presupuesto ? madre)
       // y, si un componente es un Lego Pack, sus experiencias internas (`packExpansions`).
       const rowsArr = rows as any[];
       const packIds = Array.from(new Set(rowsArr.flatMap((row) =>
@@ -629,7 +629,7 @@ const activitiesRouter = router({
       if (input.arrivalTime !== undefined) updated.arrivalTime = input.arrivalTime;
       if (input.opNotes !== undefined) updated.opNotes = input.opNotes;
       if (input.consolidated !== undefined) updated.consolidated = input.consolidated;
-      // null/"" → limpiar override (hereda de nuevo); fecha válida → fijar override
+      // null/"" ? limpiar override (hereda de nuevo); fecha v�lida ? fijar override
       if (input.serviceDate !== undefined) updated.serviceDate = input.serviceDate || null;
 
       const newJson = idx >= 0
@@ -652,7 +652,7 @@ const activitiesRouter = router({
     }),
 });
 
-// ─── MAIN OPERATIONS ROUTER ───────────────────────────────────────────────────
+// --- MAIN OPERATIONS ROUTER ---------------------------------------------------
 export const operationsRouter = router({
   monitors: monitorsRouter,
   calendar: calendarRouter,

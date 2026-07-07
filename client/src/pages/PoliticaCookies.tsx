@@ -148,8 +148,8 @@ export default function PoliticaCookies() {
             <LegalSection number="8" title="Más información">
               <p>
                 Para cualquier consulta sobre el uso de cookies, puede contactar con nosotros en{" "}
-                <a href="mailto:reservas@skicenter.es" className="text-accent hover:underline">
-                  reservas@skicenter.es
+                <a href="mailto:reservas@nayadeexperiences.es" className="text-accent hover:underline">
+                  reservas@nayadeexperiences.es
                 </a>. Para más información sobre el tratamiento de sus datos personales, consulte nuestra{" "}
                 <Link href="/privacidad">
                   <span className="text-accent hover:underline cursor-pointer">Política de Privacidad</span>

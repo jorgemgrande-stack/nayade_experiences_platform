@@ -1,4 +1,4 @@
-﻿import { z } from "zod";
+import { z } from "zod";
 import { router } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { drizzle } from "drizzle-orm/mysql2";
@@ -20,7 +20,7 @@ const adminProc = protectedProcedure.use(async ({ ctx, next }) => {
   return next({ ctx });
 });
 
-// ── CaixaBank parser ──────────────────────────────────────────────────────────
+// -- CaixaBank parser ----------------------------------------------------------
 
 function parseExcelDate(v: unknown): string {
   if (v == null || v === "") return "";
@@ -102,7 +102,7 @@ function parseCaixaBankBuffer(buffer: Buffer, ext: string): ParsedRow[] {
         if (h === "fecha" && COL_MAP["fecha"] == null) COL_MAP["fecha"] = i;
         else if ((h === "fecha valor" || h === "f.valor" || h === "fechavalor") && COL_MAP["fechaValor"] == null) COL_MAP["fechaValor"] = i;
         else if (h === "movimiento" && COL_MAP["movimiento"] == null) COL_MAP["movimiento"] = i;
-        else if ((h === "más datos" || h === "mas datos" || h === "concepto" || h === "descripcion" || h === "descripción") && COL_MAP["masDatos"] == null) COL_MAP["masDatos"] = i;
+        else if ((h === "m�s datos" || h === "mas datos" || h === "concepto" || h === "descripcion" || h === "descripci�n") && COL_MAP["masDatos"] == null) COL_MAP["masDatos"] = i;
         else if (h === "importe" && COL_MAP["importe"] == null) COL_MAP["importe"] = i;
         else if (h === "saldo" && COL_MAP["saldo"] == null) COL_MAP["saldo"] = i;
       });
@@ -110,7 +110,7 @@ function parseCaixaBankBuffer(buffer: Buffer, ext: string): ParsedRow[] {
     }
   }
 
-  if (headerRow === -1) throw new Error("No se encontró cabecera válida (Fecha + Importe)");
+  if (headerRow === -1) throw new Error("No se encontr� cabecera v�lida (Fecha + Importe)");
   if (COL_MAP["fecha"] == null || COL_MAP["importe"] == null) throw new Error("Faltan columnas obligatorias: Fecha, Importe");
 
   const parsed: ParsedRow[] = [];
@@ -129,7 +129,7 @@ function parseCaixaBankBuffer(buffer: Buffer, ext: string): ParsedRow[] {
   return parsed;
 }
 
-// ── Expense auto-category suggestion ─────────────────────────────────────────
+// -- Expense auto-category suggestion -----------------------------------------
 
 const _EXPENSE_KEYWORD_CATS: Array<{ keywords: string[]; name: string }> = [
   { keywords: ["iberdrola", "endesa", "i-de redes", "electricidad"], name: "Electricidad" },
@@ -153,7 +153,7 @@ function _suggestExpenseCategoryName(text: string): string | null {
   return null;
 }
 
-// ── Router ────────────────────────────────────────────────────────────────────
+// -- Router --------------------------------------------------------------------
 
 export const bankMovementsRouter = router({
 
@@ -191,7 +191,7 @@ export const bankMovementsRouter = router({
             status: "error",
             errorMessage: msg,
           });
-        } catch (_) { /* tabla aún no disponible, ignorar */ }
+        } catch (_) { /* tabla a�n no disponible, ignorar */ }
         throw new TRPCError({ code: "BAD_REQUEST", message: msg });
       }
 
@@ -292,9 +292,9 @@ export const bankMovementsRouter = router({
       return { success: true };
     }),
 
-  // ── FASE 2A: Conciliación bancaria (solo transferencias) ──────────────────
+  // -- FASE 2A: Conciliaci�n bancaria (solo transferencias) ------------------
 
-  /** Busca presupuestos pendientes que podrían corresponder a un movimiento bancario. */
+  /** Busca presupuestos pendientes que podr�an corresponder a un movimiento bancario. */
   findMatches: adminProc
     .input(z.object({ bankMovementId: z.number() }))
     .query(async ({ input }) => {
@@ -349,7 +349,7 @@ export const bankMovementsRouter = router({
         .orderBy(desc(quotes.sentAt))
         .limit(200);
 
-      // Obtener leads para enriquecer con nombre/email/teléfono
+      // Obtener leads para enriquecer con nombre/email/tel�fono
       const leadIds = Array.from(new Set(allQuotes.map(q => q.leadId)));
       const leadsData = leadIds.length > 0
         ? await db.select({ id: leads.id, name: leads.name, email: leads.email, phone: leads.phone })
@@ -369,7 +369,7 @@ export const bankMovementsRouter = router({
 
           // +50 importe exacto
           if (Math.abs(qTotal - movAmount) < 0.02) score += 50;
-          // +20 fecha dentro de 7 días
+          // +20 fecha dentro de 7 d�as
           if (movDate && q.sentAt) {
             const diffDays = Math.abs((new Date(movDate).getTime() - new Date(q.sentAt).getTime()) / 86400000);
             if (diffDays <= 7) score += 20;
@@ -379,9 +379,9 @@ export const bankMovementsRouter = router({
             const nameParts = lead.name.toLowerCase().split(/\s+/);
             if (nameParts.some(p => p.length > 2 && concept.includes(p))) score += 15;
           }
-          // +10 número de presupuesto en concepto
+          // +10 n�mero de presupuesto en concepto
           if (q.quoteNumber && concept.includes(q.quoteNumber.toLowerCase())) score += 10;
-          // +10 email o teléfono en concepto
+          // +10 email o tel�fono en concepto
           if (lead?.email && concept.includes(lead.email.toLowerCase().split("@")[0])) score += 10;
           if (lead?.phone && concept.includes(lead.phone.replace(/\D/g, "").slice(-6))) score += 10;
           // -30 ya rechazado para este movimiento
@@ -408,7 +408,7 @@ export const bankMovementsRouter = router({
       return { movement, matches };
     }),
 
-  /** Devuelve los vínculos (confirmado + historial) de un movimiento. */
+  /** Devuelve los v�nculos (confirmado + historial) de un movimiento. */
   getLinks: adminProc
     .input(z.object({ bankMovementId: z.number() }))
     .query(async ({ input }) => {
@@ -420,7 +420,7 @@ export const bankMovementsRouter = router({
       return links;
     }),
 
-  /** Rechaza una propuesta de vínculo (no modifica presupuesto ni movimiento). */
+  /** Rechaza una propuesta de v�nculo (no modifica presupuesto ni movimiento). */
   rejectLink: adminProc
     .input(z.object({
       bankMovementId: z.number(),
@@ -465,9 +465,9 @@ export const bankMovementsRouter = router({
       return { success: true };
     }),
 
-  // ── GASTOS ↔ MOVIMIENTOS BANCARIOS ────────────────────────────────────────────
+  // -- GASTOS ? MOVIMIENTOS BANCARIOS --------------------------------------------
 
-  /** Estadísticas de gastos y movimientos bancarios para dashboards. */
+  /** Estad�sticas de gastos y movimientos bancarios para dashboards. */
   getExpenseStats: adminProc.query(async () => {
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
@@ -505,7 +505,7 @@ export const bankMovementsRouter = router({
     };
   }),
 
-  /** Devuelve movimientos negativos sin vínculo de gasto confirmado o ignorado. */
+  /** Devuelve movimientos negativos sin v�nculo de gasto confirmado o ignorado. */
   listExpenseCandidates: adminProc
     .input(z.object({ page: z.number().default(1), pageSize: z.number().default(30) }))
     .query(async ({ input }) => {
@@ -563,7 +563,7 @@ export const bankMovementsRouter = router({
           eq(bankMovementLinks.status, "confirmed"),
         ))
         .limit(1);
-      if (existing) throw new TRPCError({ code: "CONFLICT", message: "El movimiento ya está vinculado a un gasto" });
+      if (existing) throw new TRPCError({ code: "CONFLICT", message: "El movimiento ya est� vinculado a un gasto" });
 
       const amount = Math.abs(movAmt).toFixed(2);
       const now = new Date();
@@ -623,7 +623,7 @@ export const bankMovementsRouter = router({
           .where(and(eq(bankMovementLinks.entityType, "expense"), eq(bankMovementLinks.entityId, input.expenseId), eq(bankMovementLinks.status, "confirmed"))).limit(1),
       ]);
       if (existingMovLink) throw new TRPCError({ code: "CONFLICT", message: "El movimiento ya tiene un gasto vinculado" });
-      if (existingExpLink) throw new TRPCError({ code: "CONFLICT", message: "El gasto ya está vinculado a un movimiento" });
+      if (existingExpLink) throw new TRPCError({ code: "CONFLICT", message: "El gasto ya est� vinculado a un movimiento" });
 
       const now = new Date();
       await db.insert(bankMovementLinks).values({
@@ -669,7 +669,7 @@ export const bankMovementsRouter = router({
           eq(bankMovementLinks.status, "confirmed"),
         ))
         .limit(1);
-      if (!link) throw new TRPCError({ code: "NOT_FOUND", message: "No hay vínculo de gasto para deshacer" });
+      if (!link) throw new TRPCError({ code: "NOT_FOUND", message: "No hay v�nculo de gasto para deshacer" });
 
       const now = new Date();
       await db.update(bankMovementLinks)
@@ -684,13 +684,13 @@ export const bankMovementsRouter = router({
       return { success: true };
     }),
 
-  /** Conciliación manual para movimientos sin contrapartida en el sistema. */
+  /** Conciliaci�n manual para movimientos sin contrapartida en el sistema. */
   manuallyConciliate: adminProc
     .input(z.object({
       bankMovementId: z.number(),
       manualType: z.enum(["transferencia_interna", "comision_bancaria", "pago_impuesto", "ajuste_contable", "devolucion", "otro"]),
       counterparty: z.string().optional(),
-      notes: z.string().min(1, "La justificación es obligatoria"),
+      notes: z.string().min(1, "La justificaci�n es obligatoria"),
     }))
     .mutation(async ({ input, ctx }) => {
       const [movement] = await db.select().from(bankMovements).where(eq(bankMovements.id, input.bankMovementId));
@@ -704,7 +704,7 @@ export const bankMovementsRouter = router({
           eq(bankMovementLinks.status, "confirmed"),
         ))
         .limit(1);
-      if (existing) throw new TRPCError({ code: "CONFLICT", message: "El movimiento ya tiene una conciliación confirmada" });
+      if (existing) throw new TRPCError({ code: "CONFLICT", message: "El movimiento ya tiene una conciliaci�n confirmada" });
 
       const now = new Date();
       await db.insert(bankMovementLinks).values({
@@ -721,7 +721,7 @@ export const bankMovementsRouter = router({
           `[${input.manualType}]`,
           input.counterparty ? `Contraparte: ${input.counterparty}` : null,
           input.notes,
-        ].filter(Boolean).join(" · "),
+        ].filter(Boolean).join(" � "),
       });
 
       await db.update(bankMovements)
@@ -731,7 +731,7 @@ export const bankMovementsRouter = router({
       return { success: true };
     }),
 
-  /** Previsión de tesorería: saldo actual + ingresos/gastos pendientes. */
+  /** Previsi�n de tesorer�a: saldo actual + ingresos/gastos pendientes. */
   getCashflowForecast: adminProc.query(async () => {
     const now = new Date();
     const today = now.toISOString().slice(0, 10);
@@ -739,7 +739,7 @@ export const bankMovementsRouter = router({
     const in30d = new Date(now.getTime() + 30 * 86400000).toISOString().slice(0, 10);
 
     const [lastMovementRow, pendingExpRow, pendingRevRow, expIn7d, expIn30d] = await Promise.all([
-      // Último saldo bancario registrado
+      // �ltimo saldo bancario registrado
       db.select({ saldo: bankMovements.saldo, fecha: bankMovements.fecha })
         .from(bankMovements)
         .where(sql`${bankMovements.saldo} IS NOT NULL`)
@@ -759,12 +759,12 @@ export const bankMovementsRouter = router({
         .from(reservations)
         .where(inArray(reservations.status, ["pending_payment", "draft"])),
 
-      // Gastos venciendo en ≤7 días (aquellos con fecha <= today+7 y pending)
+      // Gastos venciendo en =7 d�as (aquellos con fecha <= today+7 y pending)
       db.select({ total: sql<string>`COALESCE(SUM(${expenses.amount}), 0)` })
         .from(expenses)
         .where(and(inArray(expenses.status, ["pending", "justified"]), lte(expenses.date, in7d))),
 
-      // Gastos venciendo en ≤30 días
+      // Gastos venciendo en =30 d�as
       db.select({ total: sql<string>`COALESCE(SUM(${expenses.amount}), 0)` })
         .from(expenses)
         .where(and(inArray(expenses.status, ["pending", "justified"]), lte(expenses.date, in30d))),
@@ -790,7 +790,7 @@ export const bankMovementsRouter = router({
     };
   }),
 
-  /** Desvincula una conciliación ya confirmada (no borra factura/reserva/presupuesto). */
+  /** Desvincula una conciliaci�n ya confirmada (no borra factura/reserva/presupuesto). */
   unlinkMovement: adminProc
     .input(z.object({
       bankMovementId: z.number(),
@@ -806,14 +806,14 @@ export const bankMovementsRouter = router({
         ))
         .limit(1);
 
-      if (!confirmedLink) throw new TRPCError({ code: "NOT_FOUND", message: "No hay conciliación confirmada para este movimiento." });
+      if (!confirmedLink) throw new TRPCError({ code: "NOT_FOUND", message: "No hay conciliaci�n confirmada para este movimiento." });
 
       const now = new Date();
       await db.update(bankMovementLinks)
         .set({ status: "unlinked", unlinkedAt: now, matchedBy: ctx.user.name ?? undefined, notes: input.notes ?? null })
         .where(eq(bankMovementLinks.id, confirmedLink.id));
 
-      // Devolver movimiento a pendiente de conciliación
+      // Devolver movimiento a pendiente de conciliaci�n
       await db.update(bankMovements)
         .set({ conciliationStatus: "pendiente" })
         .where(eq(bankMovements.id, input.bankMovementId));

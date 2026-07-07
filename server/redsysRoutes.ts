@@ -1,8 +1,8 @@
-﻿/**
- * Endpoint REST de notificación IPN de Redsys.
- * Redsys llama a este endpoint vía POST con los datos de la transacción.
+/**
+ * Endpoint REST de notificaci�n IPN de Redsys.
+ * Redsys llama a este endpoint v�a POST con los datos de la transacci�n.
  * NUNCA se marca una reserva como pagada solo por la URL de retorno OK.
- * Solo se actualiza el estado tras validar la firma aquí.
+ * Solo se actualiza el estado tras validar la firma aqu�.
  */
 import express from "express";
 import { validateRedsysNotification } from "./redsys";
@@ -27,7 +27,7 @@ import { generateDocumentNumber } from "./documentNumbers";
 import { checkAndConfirmInstallmentPlan } from "./routers/crm";
 import { syncLeadUrlsToGHL, createGHLContact, updateGHLContact, triggerGHLWorkflow } from "./ghl";
 
-// Pool de BD compartido para todo el módulo — evita crear/destruir conexiones por cada IPN
+// Pool de BD compartido para todo el m�dulo � evita crear/destruir conexiones por cada IPN
 const _sharedPool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
 const _db = drizzle(_sharedPool);
 
@@ -35,20 +35,20 @@ const redsysRouter = express.Router();
 
 /**
  * POST /api/redsys/notification
- * Redsys envía: Ds_SignatureVersion, Ds_MerchantParameters, Ds_Signature
+ * Redsys env�a: Ds_SignatureVersion, Ds_MerchantParameters, Ds_Signature
  */
 /**
- * GET /api/redsys/health — Test de conectividad. Permite verificar desde Redsys AdminCanales
- * o cualquier herramienta que el endpoint de notificación es accesible.
+ * GET /api/redsys/health � Test de conectividad. Permite verificar desde Redsys AdminCanales
+ * o cualquier herramienta que el endpoint de notificaci�n es accesible.
  */
 redsysRouter.get("/api/redsys/health", (_req, res) => {
   res.json({ ok: true, timestamp: new Date().toISOString(), service: "redsys-notification" });
 });
 
 /**
- * POST /api/redsys/echo — Echo sin validación de firma para test de conectividad.
+ * POST /api/redsys/echo � Echo sin validaci�n de firma para test de conectividad.
  * Loguea el contenido completo del POST y responde "OK".
- * Útil para configurar temporalmente en AdminCanales y verificar que Redsys puede llegar.
+ * �til para configurar temporalmente en AdminCanales y verificar que Redsys puede llegar.
  */
 redsysRouter.post("/api/redsys/echo", express.urlencoded({ extended: true }), (req, res) => {
   const ip = (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim() ?? req.ip;
@@ -67,7 +67,7 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
   const ip = (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim() ?? req.ip;
   const { Ds_SignatureVersion, Ds_MerchantParameters, Ds_Signature } = req.body;
 
-  console.log("[Redsys IPN] Notificación recibida:", {
+  console.log("[Redsys IPN] Notificaci�n recibida:", {
     ip,
     contentType: req.headers["content-type"],
     bodyKeys: Object.keys(req.body ?? {}),
@@ -77,7 +77,7 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
   });
 
   if (!Ds_SignatureVersion || !Ds_MerchantParameters || !Ds_Signature) {
-    console.error("[Redsys IPN] Parámetros faltantes en la notificación — bodyKeys:", Object.keys(req.body ?? {}));
+    console.error("[Redsys IPN] Par�metros faltantes en la notificaci�n � bodyKeys:", Object.keys(req.body ?? {}));
     return res.status(400).send("KO");
   }
 
@@ -88,7 +88,7 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
       Ds_Signature,
     });
 
-    console.log("[Redsys IPN] Resultado de validación:", {
+    console.log("[Redsys IPN] Resultado de validaci�n:", {
       isValid: result.isValid,
       isAuthorized: result.isAuthorized,
       merchantOrder: result.merchantOrder,
@@ -97,39 +97,39 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
     });
 
     if (!result.isValid) {
-      console.error("[Redsys IPN] Firma inválida — posible fraude o error de configuración");
+      console.error("[Redsys IPN] Firma inv�lida � posible fraude o error de configuraci�n");
       return res.status(400).send("KO");
     }
 
     // RESPONDER OK INMEDIATAMENTE tras validar la firma HMAC (sin esperar BD).
-    // Redsys modo Síncrono: timeout ~10s. Si MySQL está bajo presión (OOM kills),
-    // las queries pueden tardar y Redsys descartaría la notificación definitivamente.
-    // La firma HMAC ya garantiza autenticidad del pago — el resto va en background.
+    // Redsys modo S�ncrono: timeout ~10s. Si MySQL est� bajo presi�n (OOM kills),
+    // las queries pueden tardar y Redsys descartar�a la notificaci�n definitivamente.
+    // La firma HMAC ya garantiza autenticidad del pago � el resto va en background.
     res.send("OK");
 
-    // ── Procesamiento en background (res ya enviado) ──────────────────────────
+    // -- Procesamiento en background (res ya enviado) --------------------------
 
-    // Verificar que la reserva existe — fetch ALL para manejar carritos multi-artículo
+    // Verificar que la reserva existe � fetch ALL para manejar carritos multi-art�culo
     const allCartReservations = await getAllReservationsByMerchantOrder(result.merchantOrder);
     if (allCartReservations.length === 0) {
       console.error("[Redsys IPN] Reserva no encontrada para merchantOrder:", result.merchantOrder);
-      return; // Firma válida pero sin reserva → log y salir
+      return; // Firma v�lida pero sin reserva ? log y salir
     }
     const reservation = allCartReservations[0];
 
     // Validar importe: el total Redsys no puede SUPERAR la suma de todas las reservas del carrito.
-    // Permite que sea MENOR (descuentos con código promo). La firma HMAC ya garantiza autenticidad.
-    // BUG FIX: antes se comparaba solo con la primera reserva → KO en multi-artículo y descuentos.
+    // Permite que sea MENOR (descuentos con c�digo promo). La firma HMAC ya garantiza autenticidad.
+    // BUG FIX: antes se comparaba solo con la primera reserva ? KO en multi-art�culo y descuentos.
     const totalExpectedCents = allCartReservations.reduce((sum, r) => sum + (r.amountTotal ?? 0), 0);
     if (result.isAuthorized && result.amount > totalExpectedCents) {
-      console.error(`[Redsys IPN] Importe excede total de reservas — máx esperado: ${totalExpectedCents}, recibido: ${result.amount} — merchantOrder: ${result.merchantOrder}`);
-      return; // Anomalía registrada — ya respondimos OK, firma era válida
+      console.error(`[Redsys IPN] Importe excede total de reservas � m�x esperado: ${totalExpectedCents}, recibido: ${result.amount} � merchantOrder: ${result.merchantOrder}`);
+      return; // Anomal�a registrada � ya respondimos OK, firma era v�lida
     }
-    console.log(`[Redsys IPN] Importe validado — redsys: ${result.amount}, total reservas: ${totalExpectedCents}, artículos: ${allCartReservations.length}`);
+    console.log(`[Redsys IPN] Importe validado � redsys: ${result.amount}, total reservas: ${totalExpectedCents}, art�culos: ${allCartReservations.length}`);
 
-    // Actualización atómica: solo procede si la reserva sigue en pending_payment.
+    // Actualizaci�n at�mica: solo procede si la reserva sigue en pending_payment.
     // affectedRows === 0 puede significar IPN duplicada O race condition con el
-    // abandoned-checkout job (que canceló la reserva mientras el cliente estaba en Redsys).
+    // abandoned-checkout job (que cancel� la reserva mientras el cliente estaba en Redsys).
     const newStatus = result.isAuthorized ? "paid" : "failed";
     const redsysResponseJson = JSON.stringify(result.rawData);
 
@@ -143,8 +143,8 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
 
     if (affectedRows === 0) {
       if (result.isAuthorized) {
-        // Comprobar si es race condition: el abandoned-checkout job canceló la reserva
-        // mientras el cliente estaba en Redsys pagando (más de 10 min en el formulario).
+        // Comprobar si es race condition: el abandoned-checkout job cancel� la reserva
+        // mientras el cliente estaba en Redsys pagando (m�s de 10 min en el formulario).
         const cancelledReservation = await getReservationByMerchantOrder(result.merchantOrder);
         if (cancelledReservation?.status === "cancelled") {
           const now = Date.now();
@@ -159,21 +159,21 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
             updatedAt: now,
           } as any).where(eq(reservations.merchantOrder, result.merchantOrder));
           affectedRows = 1;
-          console.log(`[Redsys IPN] Race condition resuelta: reserva ${result.merchantOrder} fue cancelada por cleanup job pero Redsys confirmó el pago — restaurada a paid`);
+          console.log(`[Redsys IPN] Race condition resuelta: reserva ${result.merchantOrder} fue cancelada por cleanup job pero Redsys confirm� el pago � restaurada a paid`);
         } else {
-          console.log(`[Redsys IPN] IPN duplicada o ya procesada para ${result.merchantOrder} (estado: ${cancelledReservation?.status ?? "no encontrada"}) — sin downstream`);
-          return; // Ya respondimos OK — nada más que hacer
+          console.log(`[Redsys IPN] IPN duplicada o ya procesada para ${result.merchantOrder} (estado: ${cancelledReservation?.status ?? "no encontrada"}) � sin downstream`);
+          return; // Ya respondimos OK � nada m�s que hacer
         }
       } else {
-        console.log(`[Redsys IPN] Pago fallido IPN duplicada para ${result.merchantOrder} — sin downstream`);
+        console.log(`[Redsys IPN] Pago fallido IPN duplicada para ${result.merchantOrder} � sin downstream`);
         return; // Ya respondimos OK
       }
     }
 
     console.log(`[Redsys IPN] Reserva ${result.merchantOrder} actualizada a: ${newStatus}`);
 
-    // Para carritos multi-artículo: distribuir amountPaid proporcionalmente por reserva.
-    // updateReservationPayment graba el importe total en todas las reservas → incorrecto.
+    // Para carritos multi-art�culo: distribuir amountPaid proporcionalmente por reserva.
+    // updateReservationPayment graba el importe total en todas las reservas ? incorrecto.
     if (result.isAuthorized && affectedRows > 0 && allCartReservations.length > 1) {
       for (const resv of allCartReservations) {
         const proportionalPaid = totalExpectedCents > 0
@@ -189,19 +189,19 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
     // Procesar downstream en background (res ya enviado al inicio del handler)
     const updatedReservation = await getReservationByMerchantOrder(result.merchantOrder);
 
-    // ── Pago fallido ──────────────────────────────────────────────────────────
+    // -- Pago fallido ----------------------------------------------------------
     if (!result.isAuthorized) {
       try {
         const allFailed = await getAllReservationsByMerchantOrder(result.merchantOrder);
 
-        // Caso A: checkout directo sin presupuesto → Lead "Venta Perdida"
+        // Caso A: checkout directo sin presupuesto ? Lead "Venta Perdida"
         const isDirectCheckout = allFailed.length > 0 &&
           allFailed.every(r => (r as any).channel === "ONLINE_DIRECTO" && !(r as any).quoteId);
         if (isDirectCheckout) {
           await createVentaPerdidaLead(allFailed as any);
         }
 
-        // Caso B: reserva vinculada a un presupuesto → marcar quote como pago_fallido
+        // Caso B: reserva vinculada a un presupuesto ? marcar quote como pago_fallido
         const quoteReservation = allFailed.find(r => (r as any).quoteId);
         if (quoteReservation) {
           const quoteId = (quoteReservation as any).quoteId as number;
@@ -211,7 +211,7 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
           if (currentQuote) {
             await _db.update(quotes).set({
               status: "pago_fallido",
-              // Garantizar viewedAt: si el cliente llegó a Redsys, definitivamente vio el presupuesto
+              // Garantizar viewedAt: si el cliente lleg� a Redsys, definitivamente vio el presupuesto
               viewedAt: currentQuote.viewedAt ?? now,
               updatedAt: now,
             }).where(eq(quotes.id, quoteId));
@@ -227,7 +227,7 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
       }
     }
 
-    // ── Meta CAPI — Purchase server-side (deduplicado con el cliente por event_id) ──
+    // -- Meta CAPI � Purchase server-side (deduplicado con el cliente por event_id) --
     if (result.isAuthorized && updatedReservation?.id) {
       try {
         const valueEur = (updatedReservation.amountTotal ?? 0) / 100;
@@ -261,17 +261,17 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
             // fbp/fbc persistidos al crear la reserva (con consent del usuario)
             fbp: resv.fbp ?? undefined,
             fbc: resv.fbc ?? undefined,
-            // external_id = merchantOrder hasheado → permite matching y conversiones offline
+            // external_id = merchantOrder hasheado ? permite matching y conversiones offline
             external_id: result.merchantOrder,
           },
         });
-        console.log(`[Meta CAPI] Purchase enviado para ${result.merchantOrder} — fbp=${!!resv.fbp} fbc=${!!resv.fbc} ip=${!!resv.clientIpAddress}`);
+        console.log(`[Meta CAPI] Purchase enviado para ${result.merchantOrder} � fbp=${!!resv.fbp} fbc=${!!resv.fbc} ip=${!!resv.clientIpAddress}`);
       } catch (capiErr: any) {
         console.error('[Meta CAPI] Failed to send Purchase from IPN:', capiErr.message);
       }
     }
 
-    // ── Crear/actualizar cliente en el CRM cuando el pago es exitoso ──────────
+    // -- Crear/actualizar cliente en el CRM cuando el pago es exitoso ----------
     if (result.isAuthorized && updatedReservation?.customerName) {
       await upsertClientFromReservation({
         name: updatedReservation.customerName,
@@ -281,7 +281,7 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
       });
     }
 
-    // ── Detectar si la reserva corresponde a una cuota de plan de pagos ──────────
+    // -- Detectar si la reserva corresponde a una cuota de plan de pagos ----------
     let linkedInstallmentId: number | null = null;
     let linkedInstallmentQuoteId: number | null = null;
     let allRequiredInstallmentsPaid = false;
@@ -306,7 +306,7 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
             updatedAt: new Date(),
           }).where(eq(paymentInstallments.id, linkedInst.id));
 
-          // Verificar si todas las cuotas requeridas están pagadas
+          // Verificar si todas las cuotas requeridas est�n pagadas
           const allInstallments = await _db.select({
             id: paymentInstallments.id,
             status: paymentInstallments.status,
@@ -325,7 +325,7 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
       }
     }
 
-    // ── Si la reserva viene de un presupuesto, confirmar según el tipo de pago ──
+    // -- Si la reserva viene de un presupuesto, confirmar seg�n el tipo de pago --
     const isInstallmentPayment = linkedInstallmentId !== null;
 
     if (result.isAuthorized && updatedReservation?.quoteSource === "presupuesto" && updatedReservation?.quoteId) {
@@ -338,7 +338,7 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
           console.error("[Redsys IPN] Error en checkAndConfirmInstallmentPlan:", e);
         }
       } else {
-        // Pago único (sin plan fraccionado): flujo clásico — generar factura completa ahora
+        // Pago �nico (sin plan fraccionado): flujo cl�sico � generar factura completa ahora
         try {
           const [quote] = await _db.select().from(quotes).where(eq(quotes.id, updatedReservation.quoteId));
           if (quote && !quote.paidAt) {
@@ -353,8 +353,8 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
             const taxRateRedsys = bdRedsys.length === 1 ? bdRedsys[0].rate : 21;
 
             // Producto principal + actividades extra del presupuesto. Garantiza
-            // que una reserva multi-línea conserve TODAS sus actividades en
-            // Operaciones (calendario y actividades del día).
+            // que una reserva multi-l�nea conserve TODAS sus actividades en
+            // Operaciones (calendario y actividades del d�a).
             const resProdRedsys = reservationProductFromQuoteItems(
               items, (items as { productId?: number }[]).find(i => i.productId)?.productId ?? updatedReservation.productId ?? 0);
 
@@ -429,19 +429,19 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
                   templateKey: "confirmation",
                   triggerEvent: "redsys_payment_confirmed",
                   recipientEmail: clientEmail,
-                  subject: `✅ Reserva confirmada — ${quote.quoteNumber} — ${getSystemSettingSync("brand_name", "Skicenter")}`,
+                  subject: `? Reserva confirmada � ${quote.quoteNumber} � ${getSystemSettingSync("brand_name", "Skicenter")}`,
                   html,
                   relatedEntityType: "quote",
                   relatedEntityId: quote.id,
                   quoteId: quote.id,
                   extraCc: COPY_EMAIL,
                 });
-                const copySubject = `[COPIA] Reserva confirmada — ${quote.quoteNumber} — ${clientName}`;
+                const copySubject = `[COPIA] Reserva confirmada � ${quote.quoteNumber} � ${clientName}`;
                 await sendEmail({ to: COPY_EMAIL, subject: copySubject, html });
                 logDirectEmail({ templateKey: "confirmation", triggerEvent: "redsys_payment_confirmed_admin_copy", recipientEmail: COPY_EMAIL, subject: copySubject, sent: true, isAutomatic: true }).catch(() => {});
-                console.log(`[Redsys IPN] Email de confirmación enviado a ${clientEmail}`);
+                console.log(`[Redsys IPN] Email de confirmaci�n enviado a ${clientEmail}`);
               } catch (emailErr) {
-                console.error("[Redsys IPN] Error al enviar email de confirmación:", emailErr);
+                console.error("[Redsys IPN] Error al enviar email de confirmaci�n:", emailErr);
               }
             }
 
@@ -463,15 +463,15 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
         }
       }
     }
-    // ── Booking operativo + transacción contable + REAV para CADA artículo del carrito ──
-    // Usamos getAllReservationsByMerchantOrder para procesar carritos con múltiples artículos.
-    // postConfirmOperation es idempotente: no duplica si ya existe booking/transacción.
+    // -- Booking operativo + transacci�n contable + REAV para CADA art�culo del carrito --
+    // Usamos getAllReservationsByMerchantOrder para procesar carritos con m�ltiples art�culos.
+    // postConfirmOperation es idempotente: no duplica si ya existe booking/transacci�n.
     if (result.isAuthorized) {
       const allReservations = await getAllReservationsByMerchantOrder(result.merchantOrder);
       const { getExperienceById: getExpById } = await import("./db");
 
       for (const resv of allReservations) {
-        // Booking operativo + transacción contable
+        // Booking operativo + transacci�n contable
         try {
           const amountEuros = (resv.amountPaid ?? resv.amountTotal) / 100;
           await postConfirmOperation({
@@ -488,26 +488,26 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
             paymentMethod: "tarjeta_redsys",
             saleChannel: "online",
             reservationRef: resv.merchantOrder,
-            description: `Pago online Redsys — ${resv.merchantOrder} — ${resv.productName}`,
+            description: `Pago online Redsys � ${resv.merchantOrder} � ${resv.productName}`,
             quoteId: resv.quoteId ?? null,
             sourceChannel: "redsys",
           });
-          console.log(`[Redsys IPN] Booking operativo + transacción creados para reserva ${resv.id} (${resv.productName})`);
+          console.log(`[Redsys IPN] Booking operativo + transacci�n creados para reserva ${resv.id} (${resv.productName})`);
         } catch (bookingErr) {
           console.error(`[Redsys IPN] Error en postConfirmOperation para reserva ${resv.id}:`, bookingErr);
         }
 
-        // REAV — solo para reservas directas (no de presupuesto) con régimen REAV
+        // REAV � solo para reservas directas (no de presupuesto) con r�gimen REAV
         if (!resv.quoteId) {
           try {
             const product = await getExpById(resv.productId);
             if (product && (product as any).fiscalRegime === "reav") {
               const amountEuros = (resv.amountPaid ?? resv.amountTotal) / 100;
 
-              // P3+P4: validar config antes de crear expediente — nunca usar 60/40 silencioso
+              // P3+P4: validar config antes de crear expediente � nunca usar 60/40 silencioso
               const configErrors = validarConfiguracionREAV(product as any);
               if (configErrors.length > 0) {
-                console.error(`[Redsys IPN] Producto ${resv.productId} (${resv.productName}) tiene config REAV inválida — expediente NO creado: ${configErrors.join("; ")}`);
+                console.error(`[Redsys IPN] Producto ${resv.productId} (${resv.productName}) tiene config REAV inv�lida � expediente NO creado: ${configErrors.join("; ")}`);
               } else {
                 const reavProviderPct = parseFloat(String((product as any).providerPercent));
                 const reavMargenPct = parseFloat(String((product as any).agencyMarginPercent));
@@ -526,33 +526,33 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
                   channel: "online",
                   sourceRef: resv.merchantOrder,
                   internalNotes: [
-                    `Expediente creado automáticamente tras pago online Redsys.`,
+                    `Expediente creado autom�ticamente tras pago online Redsys.`,
                     `Reserva: ${resv.merchantOrder}`,
                     resv.customerName ? `Cliente: ${resv.customerName}` : null,
                     resv.customerEmail ? `Email: ${resv.customerEmail}` : null,
-                    resv.customerPhone ? `Teléfono: ${resv.customerPhone}` : null,
-                    `Importe: ${amountEuros.toFixed(2)}€`,
-                  ].filter(Boolean).join(" · "),
+                    resv.customerPhone ? `Tel�fono: ${resv.customerPhone}` : null,
+                    `Importe: ${amountEuros.toFixed(2)}�`,
+                  ].filter(Boolean).join(" � "),
                 });
                 await _db.update(reservations).set({ reavExpedientId: reavResult.id } as any).where(eq(reservations.id, resv.id));
                 await attachReavDocument({
                   expedientId: reavResult.id,
                   side: "client",
                   docType: "otro",
-                  title: `Confirmación de reserva ${resv.merchantOrder}`,
+                  title: `Confirmaci�n de reserva ${resv.merchantOrder}`,
                   fileUrl: `/reserva/ok?order=${resv.merchantOrder}`,
                   mimeType: "text/html",
-                  notes: `Confirmación de pago online generada automáticamente. Producto: ${resv.productName}.`,
+                  notes: `Confirmaci�n de pago online generada autom�ticamente. Producto: ${resv.productName}.`,
                 });
                 console.log(`[Redsys IPN] Expediente REAV ${reavResult.expedientNumber} creado para reserva ${resv.id} (${resv.productName})`);
-              } // end else (config válida)
+              } // end else (config v�lida)
             }
           } catch (reavErr) {
             console.error(`[Redsys IPN] Error al crear expediente REAV para reserva ${resv.id}:`, reavErr);
           }
         }
 
-        // ── Factura automática para compras directas web (ONLINE_DIRECTO, sin quoteId) ──
+        // -- Factura autom�tica para compras directas web (ONLINE_DIRECTO, sin quoteId) --
         if (!resv.quoteId) {
           try {
             const productForInv = await getExpById(resv.productId);
@@ -605,8 +605,8 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
       }
     }
 
-    // ── GHL: crear/actualizar contacto para compras online directas ──────────
-    // Para reservas ONLINE_DIRECTO sin quoteId, el cliente puede no tener GHL todavía.
+    // -- GHL: crear/actualizar contacto para compras online directas ----------
+    // Para reservas ONLINE_DIRECTO sin quoteId, el cliente puede no tener GHL todav�a.
     // Creamos/actualizamos el contacto y disparamos el workflow configurado en GHL_RESERVATION_WEBHOOK_URL.
     if (result.isAuthorized) {
       try {
@@ -623,7 +623,7 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
             }, ghlCreds);
             if (ghlContactId) {
               console.log(`[Redsys IPN] GHL contacto upserted para ${resv.customerEmail}: ${ghlContactId}`);
-              // Sincronizar presupuesto_url (público) en el contacto para que el
+              // Sincronizar presupuesto_url (p�blico) en el contacto para que el
               // workflow WhatsApp pueda usar {{contact.presupuesto_url}}.
               const publicToken = (resv as any).publicToken;
               if (publicToken) {
@@ -656,23 +656,23 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
             }
           }
         } else {
-          console.log("[Redsys IPN] GHL no configurado — saltando integración GHL para compra online");
+          console.log("[Redsys IPN] GHL no configurado � saltando integraci�n GHL para compra online");
         }
       } catch (ghlErr: any) {
-        console.error("[Redsys IPN] Error en integración GHL online:", ghlErr.message);
+        console.error("[Redsys IPN] Error en integraci�n GHL online:", ghlErr.message);
       }
     }
 
-    // Solo enviar el email estándar de reserva para reservas directas.
-    // Las reservas de presupuesto ya reciben el email de confirmación de presupuesto arriba.
+    // Solo enviar el email est�ndar de reserva para reservas directas.
+    // Las reservas de presupuesto ya reciben el email de confirmaci�n de presupuesto arriba.
     const isQuoteReservation = updatedReservation?.quoteSource === "presupuesto" && !!updatedReservation?.quoteId;
     if (updatedReservation) {
       if (result.isAuthorized) {
         // Pago AUTORIZADO: enviar el email de "reserva pagada" SOLO para reservas
-        // directas. Las de presupuesto ya recibieron su email de confirmación
-        // más arriba. Clave: con un pago autorizado NUNCA se entra en el bloque
-        // `else` de fallo — antes una reserva de presupuesto pagada caía ahí y
-        // recibía por error el email de "Pago no completado".
+        // directas. Las de presupuesto ya recibieron su email de confirmaci�n
+        // m�s arriba. Clave: con un pago autorizado NUNCA se entra en el bloque
+        // `else` de fallo � antes una reserva de presupuesto pagada ca�a ah� y
+        // recib�a por error el email de "Pago no completado".
         if (!isQuoteReservation) sendReservationPaidNotifications({
           id: updatedReservation.id,
           merchantOrder: updatedReservation.merchantOrder,
@@ -727,27 +727,27 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
     }
     // res.send("OK") ya fue enviado antes del downstream
   } catch (error) {
-    console.error("[Redsys IPN] Error procesando notificación:", error);
-    // Solo enviar KO si aún no se ha respondido (affectedRows === 0 ya retornó OK)
+    console.error("[Redsys IPN] Error procesando notificaci�n:", error);
+    // Solo enviar KO si a�n no se ha respondido (affectedRows === 0 ya retorn� OK)
     if (!res.headersSent) return res.status(500).send("KO");
   }
 });
 
 /**
  * POST /api/redsys/restaurant-notification
- * IPN de Redsys para reservas de restaurante (depósito de 5€/comensal)
+ * IPN de Redsys para reservas de restaurante (dep�sito de 5�/comensal)
  */
 redsysRouter.post("/api/redsys/restaurant-notification", express.urlencoded({ extended: true }), async (req, res) => {
   const { Ds_SignatureVersion, Ds_MerchantParameters, Ds_Signature } = req.body;
 
-  console.log("[Redsys Restaurant IPN] Notificación recibida:", {
+  console.log("[Redsys Restaurant IPN] Notificaci�n recibida:", {
     Ds_SignatureVersion,
     Ds_MerchantParameters: Ds_MerchantParameters?.slice(0, 50) + "...",
     Ds_Signature: Ds_Signature?.slice(0, 20) + "...",
   });
 
   if (!Ds_SignatureVersion || !Ds_MerchantParameters || !Ds_Signature) {
-    console.error("[Redsys Restaurant IPN] Parámetros faltantes");
+    console.error("[Redsys Restaurant IPN] Par�metros faltantes");
     return res.status(400).send("KO");
   }
 
@@ -758,7 +758,7 @@ redsysRouter.post("/api/redsys/restaurant-notification", express.urlencoded({ ex
       Ds_Signature,
     });
 
-    console.log("[Redsys Restaurant IPN] Validación:", {
+    console.log("[Redsys Restaurant IPN] Validaci�n:", {
       isValid: result.isValid,
       isAuthorized: result.isAuthorized,
       merchantOrder: result.merchantOrder,
@@ -766,7 +766,7 @@ redsysRouter.post("/api/redsys/restaurant-notification", express.urlencoded({ ex
     });
 
     if (!result.isValid) {
-      console.error("[Redsys Restaurant IPN] Firma inválida");
+      console.error("[Redsys Restaurant IPN] Firma inv�lida");
       return res.status(400).send("KO");
     }
 
@@ -777,8 +777,8 @@ redsysRouter.post("/api/redsys/restaurant-notification", express.urlencoded({ ex
     }
 
     if (result.isAuthorized) {
-      // Actualización atómica: solo procede si paymentStatus sigue en "pending".
-      // affectedRows === 0 → IPN duplicada o ya procesada.
+      // Actualizaci�n at�mica: solo procede si paymentStatus sigue en "pending".
+      // affectedRows === 0 ? IPN duplicada o ya procesada.
       const { affectedRows } = await updateBookingPaymentAtomic(booking.id, {
         paymentStatus: "paid",
         status: "confirmed",
@@ -786,20 +786,20 @@ redsysRouter.post("/api/redsys/restaurant-notification", express.urlencoded({ ex
         paidAt: new Date(),
       });
       if (affectedRows === 0) {
-        console.log(`[Redsys Restaurant IPN] IPN duplicada o ya procesada para ${result.merchantOrder} — respondiendo OK sin downstream`);
+        console.log(`[Redsys Restaurant IPN] IPN duplicada o ya procesada para ${result.merchantOrder} � respondiendo OK sin downstream`);
         return res.send("OK");
       }
       await addBookingLog(
         booking.id,
         "payment_confirmed",
-        `Pago Redsys confirmado. Código: ${result.responseCode}. Importe: ${result.amount / 100}€`,
+        `Pago Redsys confirmado. C�digo: ${result.responseCode}. Importe: ${result.amount / 100}�`,
       );
       await notifyOwner({
         title: `Pago confirmado: Reserva ${booking.locator}`,
-        content: `${booking.guestName} — ${booking.guests} pax — ${booking.date} ${booking.time} — ${booking.depositAmount}€ pagado`,
+        content: `${booking.guestName} � ${booking.guests} pax � ${booking.date} ${booking.time} � ${booking.depositAmount}� pagado`,
       }).catch(() => {});
 
-      // Crear transacción contable para el depósito del restaurante (idempotente por reservationRef)
+      // Crear transacci�n contable para el dep�sito del restaurante (idempotente por reservationRef)
       try {
         const existingTx = await _db.select({ id: transactions.id })
           .from(transactions)
@@ -815,12 +815,12 @@ redsysRouter.post("/api/redsys/restaurant-notification", express.urlencoded({ ex
             currency: "EUR",
             paymentMethod: "tarjeta_redsys",
             status: "completado",
-            description: `Depósito reserva restaurante ${booking.locator} — ${booking.guests} pax — ${booking.date} ${booking.time}`,
+            description: `Dep�sito reserva restaurante ${booking.locator} � ${booking.guests} pax � ${booking.date} ${booking.time}`,
             processedAt: new Date(),
             clientName: booking.guestName,
             clientEmail: booking.guestEmail,
             clientPhone: booking.guestPhone ?? null,
-            productName: `Depósito restaurante — ${booking.guests} pax`,
+            productName: `Dep�sito restaurante � ${booking.guests} pax`,
             saleChannel: "online",
             fiscalRegime: "general",
             operationStatus: "confirmada",
@@ -828,7 +828,7 @@ redsysRouter.post("/api/redsys/restaurant-notification", express.urlencoded({ ex
           } as any);
         }
       } catch (txErr) {
-        console.error("[Redsys Restaurant IPN] Error creando transacción contable:", txErr);
+        console.error("[Redsys Restaurant IPN] Error creando transacci�n contable:", txErr);
       }
 
       await logActivity(
@@ -848,7 +848,7 @@ redsysRouter.post("/api/redsys/restaurant-notification", express.urlencoded({ ex
       await addBookingLog(
         booking.id,
         "payment_failed",
-        `Pago Redsys fallido. Código: ${result.responseCode}`,
+        `Pago Redsys fallido. C�digo: ${result.responseCode}`,
       );
       await logActivity(
         "reservation",
@@ -868,12 +868,12 @@ redsysRouter.post("/api/redsys/restaurant-notification", express.urlencoded({ ex
   }
 });
 
-// ─── DIAGNÓSTICO Y RECUPERACIÓN ADMINISTRATIVA ────────────────────────────────
+// --- DIAGN�STICO Y RECUPERACI�N ADMINISTRATIVA --------------------------------
 
 function requireRecoveryToken(req: express.Request, res: express.Response): boolean {
   const RECOVERY_TOKEN = process.env.RECOVERY_TOKEN;
   if (!RECOVERY_TOKEN || req.query.token !== RECOVERY_TOKEN) {
-    res.status(401).json({ error: "Unauthorized — falta o el token es incorrecto" });
+    res.status(401).json({ error: "Unauthorized � falta o el token es incorrecto" });
     return false;
   }
   return true;
@@ -881,7 +881,7 @@ function requireRecoveryToken(req: express.Request, res: express.Response): bool
 
 /**
  * GET /api/admin/diagnose-order/:merchantOrder?token=<RECOVERY_TOKEN>
- * Devuelve el estado completo de una orden: reserva, booking, transacción, factura, cliente.
+ * Devuelve el estado completo de una orden: reserva, booking, transacci�n, factura, cliente.
  */
 redsysRouter.get("/api/admin/diagnose-order/:merchantOrder", async (req, res) => {
   if (!requireRecoveryToken(req, res)) return;
@@ -1009,7 +1009,7 @@ redsysRouter.get("/api/admin/diagnose-reservation/:reservationNumber", async (re
           .from(leads).where(eq(leads.id, c.leadId)).limit(1);
         ghlContactId = lead?.ghlContactId ?? null;
       }
-      // También intentar buscar lead directo por email (por si no hay leadId en client)
+      // Tambi�n intentar buscar lead directo por email (por si no hay leadId en client)
       if (!ghlContactId && resv.customerEmail) {
         const [leadByEmail] = await _db
           .select({ ghlContactId: leads.ghlContactId })
@@ -1023,14 +1023,14 @@ redsysRouter.get("/api/admin/diagnose-reservation/:reservationNumber", async (re
       ghlContactId,
       tagReservaConfirmadaEnviado: false,
       reason: !ghlContactId
-        ? "Sin ghlContactId — el cliente no tiene lead vinculado a GHL. Tag reserva_confirmada NO enviado."
+        ? "Sin ghlContactId � el cliente no tiene lead vinculado a GHL. Tag reserva_confirmada NO enviado."
         : resv.quoteId
-          ? "Reserva de presupuesto — GHL sync via syncLeadUrlsToGHL (quote path)"
+          ? "Reserva de presupuesto � GHL sync via syncLeadUrlsToGHL (quote path)"
           : channel === "ONLINE_DIRECTO"
-            ? "BUG: ONLINE_DIRECTO — postConfirmOperation se llama sin ghlContactId → tag reserva_confirmada NO enviado aunque el cliente tenga GHL"
-            : `Canal '${channel}' — revisar si postConfirmOperation incluye ghlContactId`,
+            ? "BUG: ONLINE_DIRECTO � postConfirmOperation se llama sin ghlContactId ? tag reserva_confirmada NO enviado aunque el cliente tenga GHL"
+            : `Canal '${channel}' � revisar si postConfirmOperation incluye ghlContactId`,
     };
-    // Para presupuestos paid, la URL de factura/presupuesto SÍ se sincroniza
+    // Para presupuestos paid, la URL de factura/presupuesto S� se sincroniza
     if (resv.quoteId && resv.status === "paid" && ghlContactId) {
       ghlSent.tagReservaConfirmadaEnviado = true;
     }
@@ -1063,7 +1063,7 @@ redsysRouter.get("/api/admin/diagnose-reservation/:reservationNumber", async (re
 
 /**
  * POST /api/admin/recover-order/:merchantOrder?token=<RECOVERY_TOKEN>
- * Re-ejecuta el downstream del IPN para una orden pagada cuyo downstream falló.
+ * Re-ejecuta el downstream del IPN para una orden pagada cuyo downstream fall�.
  * IDEMPOTENTE: no duplica bookings ni transacciones ya existentes.
  */
 redsysRouter.post("/api/admin/recover-order/:merchantOrder", async (req, res) => {
@@ -1077,7 +1077,7 @@ redsysRouter.post("/api/admin/recover-order/:merchantOrder", async (req, res) =>
       .where(eq(reservations.merchantOrder, merchantOrder));
 
     if (allReservations.length === 0) {
-      return res.status(404).json({ error: `No se encontró ninguna reserva con merchantOrder=${merchantOrder}` });
+      return res.status(404).json({ error: `No se encontr� ninguna reserva con merchantOrder=${merchantOrder}` });
     }
 
     const primary = allReservations[0];
@@ -1087,11 +1087,11 @@ redsysRouter.post("/api/admin/recover-order/:merchantOrder", async (req, res) =>
     if (primary.status !== "paid") {
       if (!force) {
         return res.status(400).json({
-          error: `La reserva no está en estado paid (actual: ${primary.status}). Usa ?force=true para forzar la recuperación de una reserva cancelada con pago confirmado externamente.`,
+          error: `La reserva no est� en estado paid (actual: ${primary.status}). Usa ?force=true para forzar la recuperaci�n de una reserva cancelada con pago confirmado externamente.`,
           reservation: { id: primary.id, status: primary.status },
         });
       }
-      // force=true: el pago fue confirmado por Redsys pero el IPN llegó cuando la reserva ya
+      // force=true: el pago fue confirmado por Redsys pero el IPN lleg� cuando la reserva ya
       // estaba cancelada (race con el stale job). Corregir estado antes de recuperar downstream.
       const now = Date.now();
       await _db.update(reservations).set({
@@ -1102,7 +1102,7 @@ redsysRouter.post("/api/admin/recover-order/:merchantOrder", async (req, res) =>
         statusPayment: "PAGADO",
         updatedAt: now,
       } as any).where(eq(reservations.id, primary.id));
-      log.push(`⚠️ Reserva ${primary.id} forzada a estado paid (estaba ${primary.status}). amountPaid=${primary.amountTotal}`);
+      log.push(`?? Reserva ${primary.id} forzada a estado paid (estaba ${primary.status}). amountPaid=${primary.amountTotal}`);
     }
 
     // 1. Upsert cliente en CRM
@@ -1113,17 +1113,17 @@ redsysRouter.post("/api/admin/recover-order/:merchantOrder", async (req, res) =>
         phone: primary.customerPhone ?? null,
         source: "redsys",
       });
-      log.push(`✅ Cliente procesado: ${primary.customerName} (${primary.customerEmail ?? "sin email"})`);
+      log.push(`? Cliente procesado: ${primary.customerName} (${primary.customerEmail ?? "sin email"})`);
     }
 
-    // 2. Flujo presupuesto (si aplica y no procesado aún)
+    // 2. Flujo presupuesto (si aplica y no procesado a�n)
     const isPresupuesto = primary.quoteSource === "presupuesto" && !!primary.quoteId;
     if (isPresupuesto) {
       const [quote] = await _db.select().from(quotes).where(eq(quotes.id, primary.quoteId!));
       if (!quote) {
-        log.push(`⚠️ Presupuesto quoteId=${primary.quoteId} no encontrado`);
+        log.push(`?? Presupuesto quoteId=${primary.quoteId} no encontrado`);
       } else if (quote.paidAt) {
-        log.push(`ℹ️ Presupuesto ${quote.quoteNumber} ya estaba marcado como pagado (paidAt=${quote.paidAt})`);
+        log.push(`?? Presupuesto ${quote.quoteNumber} ya estaba marcado como pagado (paidAt=${quote.paidAt})`);
       } else {
         try {
           const [lead] = await _db.select().from(leads).where(eq(leads.id, quote.leadId)).limit(1);
@@ -1177,8 +1177,8 @@ redsysRouter.post("/api/admin/recover-order/:merchantOrder", async (req, res) =>
               .where(eq(leads.id, lead.id));
           }
 
-          log.push(`✅ Factura creada: ${invoiceNumber}`);
-          log.push(`✅ Presupuesto ${quote.quoteNumber} marcado aceptado/pagado`);
+          log.push(`? Factura creada: ${invoiceNumber}`);
+          log.push(`? Presupuesto ${quote.quoteNumber} marcado aceptado/pagado`);
 
           const clientEmail = lead?.email ?? primary.customerEmail;
           if (clientEmail) {
@@ -1205,22 +1205,22 @@ redsysRouter.post("/api/admin/recover-order/:merchantOrder", async (req, res) =>
               templateKey: "confirmation",
               triggerEvent: "redsys_payment_confirmed_recovery",
               recipientEmail: clientEmail,
-              subject: `✅ Reserva confirmada — ${quote.quoteNumber} — ${getSystemSettingSync("brand_name", "Skicenter")}`,
+              subject: `? Reserva confirmada � ${quote.quoteNumber} � ${getSystemSettingSync("brand_name", "Skicenter")}`,
               html,
               relatedEntityType: "quote",
               relatedEntityId: quote.id,
               quoteId: quote.id,
               extraCc: COPY_EMAIL,
             });
-            log.push(`✅ Email de confirmación enviado a ${clientEmail}`);
+            log.push(`? Email de confirmaci�n enviado a ${clientEmail}`);
           }
         } catch (e: any) {
-          log.push(`❌ Error en flujo presupuesto: ${e.message}`);
+          log.push(`? Error en flujo presupuesto: ${e.message}`);
         }
       }
     }
 
-    // 3. Booking operativo + transacción contable para CADA reserva (idempotente)
+    // 3. Booking operativo + transacci�n contable para CADA reserva (idempotente)
     for (const resv of allReservations) {
       try {
         const amountEuros = ((resv.amountPaid ?? resv.amountTotal) ?? 0) / 100;
@@ -1238,13 +1238,13 @@ redsysRouter.post("/api/admin/recover-order/:merchantOrder", async (req, res) =>
           paymentMethod: "tarjeta_redsys",
           saleChannel: "online",
           reservationRef: resv.merchantOrder,
-          description: `Recuperación downstream Redsys — ${resv.merchantOrder} — ${resv.productName}`,
+          description: `Recuperaci�n downstream Redsys � ${resv.merchantOrder} � ${resv.productName}`,
           quoteId: resv.quoteId ?? null,
           sourceChannel: "redsys",
         });
-        log.push(`✅ postConfirmOperation ejecutado para reserva ${resv.id} (${resv.productName})`);
+        log.push(`? postConfirmOperation ejecutado para reserva ${resv.id} (${resv.productName})`);
       } catch (e: any) {
-        log.push(`❌ postConfirmOperation falló para reserva ${resv.id}: ${e.message}`);
+        log.push(`? postConfirmOperation fall� para reserva ${resv.id}: ${e.message}`);
       }
     }
 
@@ -1255,10 +1255,10 @@ redsysRouter.post("/api/admin/recover-order/:merchantOrder", async (req, res) =>
 });
 
 /**
- * POST /reserva/ok — Redsys redirige aquí tras el pago exitoso.
- * Redsys envía un POST con Ds_MerchantParameters (base64 JSON) que contiene Ds_Order.
+ * POST /reserva/ok � Redsys redirige aqu� tras el pago exitoso.
+ * Redsys env�a un POST con Ds_MerchantParameters (base64 JSON) que contiene Ds_Order.
  * Extraemos el order y hacemos redirect 303 al SPA con ?order= para que React lo procese.
- * Esto resuelve el caso donde AdminCanales tiene una URL OK sin parámetros dinámicos.
+ * Esto resuelve el caso donde AdminCanales tiene una URL OK sin par�metros din�micos.
  */
 redsysRouter.post("/reserva/ok", express.urlencoded({ extended: true }), (req, res) => {
   const { Ds_MerchantParameters } = req.body as Record<string, string | undefined>;
@@ -1275,12 +1275,12 @@ redsysRouter.post("/reserva/ok", express.urlencoded({ extended: true }), (req, r
       console.error("[Redsys Return OK] Error decodificando Ds_MerchantParameters:", e);
     }
   }
-  // Sin order extraíble — redirigir igualmente al SPA (mostrará "Enlace inválido")
+  // Sin order extra�ble � redirigir igualmente al SPA (mostrar� "Enlace inv�lido")
   return res.redirect(303, "/reserva/ok");
 });
 
 /**
- * POST /reserva/error — Redsys redirige aquí tras el pago fallido o cancelado.
+ * POST /reserva/error � Redsys redirige aqu� tras el pago fallido o cancelado.
  */
 redsysRouter.post("/reserva/error", express.urlencoded({ extended: true }), (req, res) => {
   const { Ds_MerchantParameters } = req.body as Record<string, string | undefined>;

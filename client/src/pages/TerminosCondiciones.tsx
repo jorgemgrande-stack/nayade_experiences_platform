@@ -102,7 +102,7 @@ export default function TerminosCondiciones() {
                 <Link href="/solicitar-anulacion">
                   <span className="text-accent hover:underline cursor-pointer">Solicitar Anulación</span>
                 </Link>{" "}
-                o contactar directamente con reservas@skicenter.es indicando el localizador de reserva.
+                o contactar directamente con reservas@nayadeexperiences.es indicando el localizador de reserva.
               </p>
               <p>
                 En caso de cancelación por causas de fuerza mayor debidamente acreditadas (enfermedad grave, fallecimiento

@@ -727,7 +727,7 @@ export default function CanjearCupon() {
                 { q: "¿Qué proveedores son válidos?", a: "Aceptamos cupones de Groupon, Wonderbox, SmartBox y otros proveedores de experiencias. Si tienes dudas, contáctanos." },
                 { q: "¿Puedo enviar varios cupones a la vez?", a: "Sí, puedes añadir hasta 5 cupones en un mismo formulario. Ideal si tienes cupones para toda la familia." },
                 { q: "¿Cuánto tiempo tengo para canjear?", a: "Depende de la fecha de caducidad de tu cupón. Revisa las condiciones del proveedor. Recomendamos canjear con al menos 7 días de antelación." },
-                { q: "¿Puedo cambiar la fecha una vez confirmada?", a: "Sí, con 48h de antelación y sujeto a disponibilidad. Contacta con nosotros en reservas@skicenter.es." },
+                { q: "¿Puedo cambiar la fecha una vez confirmada?", a: "Sí, con 48h de antelación y sujeto a disponibilidad. Contacta con nosotros en reservas@nayadeexperiences.es." },
               ].map(({ q, a }) => (
                 <div key={q} className="border-b border-white/[0.06] pb-4 last:border-0 last:pb-0">
                   <p className="text-white/70 font-medium mb-1">{q}</p>

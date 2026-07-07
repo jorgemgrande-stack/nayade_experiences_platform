@@ -48,8 +48,8 @@ export default function CondicionesCancelacion() {
                   <span className="text-accent hover:underline cursor-pointer">Solicitar Anulación</span>
                 </Link>{" "}
                 o mediante correo electrónico a{" "}
-                <a href="mailto:reservas@skicenter.es" className="text-accent hover:underline">
-                  reservas@skicenter.es
+                <a href="mailto:reservas@nayadeexperiences.es" className="text-accent hover:underline">
+                  reservas@nayadeexperiences.es
                 </a>{" "}
                 indicando el localizador de reserva.
               </p>
@@ -227,7 +227,7 @@ export default function CondicionesCancelacion() {
               </p>
               <InfoTable rows={[
                 ["Formulario online", "skicenter.es/solicitar-anulacion"],
-                ["Email", "reservas@skicenter.es"],
+                ["Email", "reservas@nayadeexperiences.es"],
                 ["Horario de atención", "Lun–Dom · 10:00–20:00 (Temporada Abril–Octubre)"],
               ]} />
               <p>

@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { useParams, useLocation } from "wouter";
 import PublicLayout from "@/components/PublicLayout";
 import { Button } from "@/components/ui/button";
@@ -10,8 +10,8 @@ import {
   CheckCircle, Loader2, ArrowLeft,
 } from "lucide-react";
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
-const DAYS = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
+// -- Helpers ------------------------------------------------------------------
+const DAYS = ["Dom", "Lun", "Mar", "Mi�", "Jue", "Vie", "S�b"];
 const MONTHS = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
 
 function formatDate(d: Date) {
@@ -22,7 +22,7 @@ function parseDate(s: string) {
   return new Date(y, m-1, d);
 }
 
-// ── Componente principal ──────────────────────────────────────────────────────
+// -- Componente principal ------------------------------------------------------
 export default function RestaurantBooking() {
   const { slug } = useParams<{ slug: string }>();
   const [, navigate] = useLocation();
@@ -98,12 +98,12 @@ export default function RestaurantBooking() {
     return formatDate(d) === selectedDate;
   }
 
-  // Validación del formulario
+  // Validaci�n del formulario
   function validate() {
     const e: Record<string, string> = {};
     if (!form.guestName.trim()) e.guestName = "El nombre es obligatorio";
     if (!form.guestEmail.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.guestEmail)) {
-      e.guestEmail = "Email inválido";
+      e.guestEmail = "Email inv�lido";
     }
     setErrors(e);
     return Object.keys(e).length === 0;
@@ -145,7 +145,7 @@ export default function RestaurantBooking() {
         <AlertCircle className="w-12 h-12 text-amber-500" />
         <h2 className="text-2xl font-heading font-bold">Reservas no disponibles online</h2>
         <p className="text-muted-foreground max-w-md">
-          Este restaurante no acepta reservas online. Por favor, llámanos al{" "}
+          Este restaurante no acepta reservas online. Por favor, ll�manos al{" "}
           <a href={phoneTel} className="text-accent font-semibold">{phone}</a>.
         </p>
         <Button variant="outline" onClick={() => navigate(`/restaurantes/${slug}`)}>
@@ -155,7 +155,7 @@ export default function RestaurantBooking() {
     </PublicLayout>
   );
 
-  // ── STEP 3: Confirmación ──────────────────────────────────────────────────
+  // -- STEP 3: Confirmaci�n --------------------------------------------------
   if (step === 3) return (
     <PublicLayout>
       <div className="min-h-screen bg-background flex items-center justify-center px-4 py-16">
@@ -163,7 +163,7 @@ export default function RestaurantBooking() {
           <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
             <CheckCircle className="w-8 h-8 text-green-600" />
           </div>
-          <h2 className="text-2xl font-heading font-bold text-foreground mb-2">¡Reserva recibida!</h2>
+          <h2 className="text-2xl font-heading font-bold text-foreground mb-2">�Reserva recibida!</h2>
           <p className="text-muted-foreground font-display mb-6">
             Hemos recibido tu solicitud. Te confirmaremos por email en breve.
           </p>
@@ -189,13 +189,13 @@ export default function RestaurantBooking() {
               <span className="font-semibold">{guests}</span>
             </div>
             <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">Depósito</span>
-              <span className="font-semibold text-accent">{depositAmount} €</span>
+              <span className="text-muted-foreground">Dep�sito</span>
+              <span className="font-semibold text-accent">{depositAmount} �</span>
             </div>
           </div>
           <p className="text-xs text-muted-foreground mb-6">
             Guarda el localizador <strong>{locator}</strong> para gestionar tu reserva.
-            El depósito se descontará de tu consumición el día de la visita.
+            El dep�sito se descontar� de tu consumici�n el d�a de la visita.
           </p>
           <Button className="w-full bg-accent hover:bg-accent/90 text-white rounded-full" onClick={() => navigate("/restaurantes")}>
             Volver a restaurantes
@@ -227,7 +227,7 @@ export default function RestaurantBooking() {
             {[
               { n: 1, label: "Fecha y turno" },
               { n: 2, label: "Tus datos" },
-              { n: 3, label: "Confirmación" },
+              { n: 3, label: "Confirmaci�n" },
             ].map(({ n, label }) => (
               <div key={n} className="flex items-center gap-2">
                 <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-colors ${
@@ -242,26 +242,26 @@ export default function RestaurantBooking() {
 
         <div className="max-w-3xl mx-auto px-4 py-8">
 
-          {/* ── STEP 1: Fecha y turno ── */}
+          {/* -- STEP 1: Fecha y turno -- */}
           {step === 1 && (
             <div className="space-y-6">
               {/* Selector de comensales */}
               <div className="bg-card rounded-2xl border border-border/40 p-5">
                 <h3 className="font-heading font-bold text-foreground mb-4 flex items-center gap-2">
-                  <Users className="w-5 h-5 text-accent" /> Número de comensales
+                  <Users className="w-5 h-5 text-accent" /> N�mero de comensales
                 </h3>
                 <div className="flex items-center gap-4">
                   <button
                     onClick={() => setGuests(g => Math.max(1, g-1))}
                     className="w-10 h-10 rounded-full border border-border/60 flex items-center justify-center hover:bg-muted transition-colors text-lg font-bold"
-                  >−</button>
+                  >-</button>
                   <span className="text-2xl font-heading font-bold w-8 text-center">{guests}</span>
                   <button
                     onClick={() => setGuests(g => Math.min(restaurant.maxGroupSize ?? 20, g+1))}
                     className="w-10 h-10 rounded-full border border-border/60 flex items-center justify-center hover:bg-muted transition-colors text-lg font-bold"
                   >+</button>
                   <span className="text-sm text-muted-foreground font-display ml-2">
-                    Máx. {restaurant.maxGroupSize ?? 20} personas
+                    M�x. {restaurant.maxGroupSize ?? 20} personas
                   </span>
                 </div>
               </div>
@@ -321,7 +321,7 @@ export default function RestaurantBooking() {
               {selectedDate && (
                 <div className="bg-card rounded-2xl border border-border/40 p-5">
                   <h3 className="font-heading font-bold text-foreground mb-4 flex items-center gap-2">
-                    <Clock className="w-5 h-5 text-accent" /> Turnos disponibles — {selectedDate}
+                    <Clock className="w-5 h-5 text-accent" /> Turnos disponibles � {selectedDate}
                   </h3>
                   {loadingAvail ? (
                     <div className="flex items-center gap-2 text-muted-foreground">
@@ -356,7 +356,7 @@ export default function RestaurantBooking() {
                             >
                               <div className="font-heading font-bold text-foreground">{shift.shiftName}</div>
                               <div className="text-sm text-muted-foreground font-display mt-1">
-                                {shift.startTime} – {shift.endTime}
+                                {shift.startTime} � {shift.endTime}
                               </div>
                               <div className={`text-xs mt-2 font-display font-semibold ${
                                 available ? "text-green-600" : "text-red-500"
@@ -393,13 +393,13 @@ export default function RestaurantBooking() {
                           const tableUpMins = nsh * 60 + nsm - 30;
                           const tuh = String(Math.floor(tableUpMins / 60)).padStart(2, "0");
                           const tum = String(tableUpMins % 60).padStart(2, "0");
-                          tableUpMsg = `La mesa deberá quedar libre a las ${tuh}:${tum} (30 min antes del inicio del turno ${nextShift.shiftName}).`;
+                          tableUpMsg = `La mesa deber� quedar libre a las ${tuh}:${tum} (30 min antes del inicio del turno ${nextShift.shiftName}).`;
                         }
                         return (
                           <div className="bg-card rounded-xl border border-border/40 p-4 space-y-3">
                             <p className="text-sm font-display font-semibold text-foreground flex items-center gap-2">
                               <Clock className="w-4 h-4 text-accent" />
-                              Elige tu hora — turno <span className="text-accent">{shift.shiftName}</span>
+                              Elige tu hora � turno <span className="text-accent">{shift.shiftName}</span>
                             </p>
                             <div className="flex flex-wrap gap-2">
                               {slots.map(slot => (
@@ -431,15 +431,15 @@ export default function RestaurantBooking() {
                 </div>
               )}
 
-              {/* Depósito info */}
+              {/* Dep�sito info */}
               {restaurant.depositPerGuest && Number(restaurant.depositPerGuest) > 0 && (
                 <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/40 rounded-2xl p-4 flex gap-3">
                   <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
                   <div className="text-sm font-display">
-                    <p className="font-semibold text-amber-800 dark:text-amber-300">Depósito de reserva</p>
+                    <p className="font-semibold text-amber-800 dark:text-amber-300">Dep�sito de reserva</p>
                     <p className="text-amber-700 dark:text-amber-400 mt-0.5">
-                      Se requiere un depósito de <strong>{restaurant.depositPerGuest} €/comensal</strong> para confirmar la reserva.
-                      El importe se descuenta de tu consumición el día de la visita.
+                      Se requiere un dep�sito de <strong>{restaurant.depositPerGuest} �/comensal</strong> para confirmar la reserva.
+                      El importe se descuenta de tu consumici�n el d�a de la visita.
                     </p>
                   </div>
                 </div>
@@ -457,7 +457,7 @@ export default function RestaurantBooking() {
             </div>
           )}
 
-          {/* ── STEP 2: Datos del cliente ── */}
+          {/* -- STEP 2: Datos del cliente -- */}
           {step === 2 && (
             <form onSubmit={handleSubmit} className="space-y-6">
               {/* Resumen */}
@@ -467,7 +467,7 @@ export default function RestaurantBooking() {
                 <span className="flex items-center gap-1.5"><Users className="w-4 h-4 text-accent" />{guests} comensales</span>
                 {restaurant.depositPerGuest && Number(restaurant.depositPerGuest) > 0 && (
                   <span className="flex items-center gap-1.5 font-semibold text-accent">
-                    Depósito: {(Number(restaurant.depositPerGuest) * guests).toFixed(2)} €
+                    Dep�sito: {(Number(restaurant.depositPerGuest) * guests).toFixed(2)} �
                   </span>
                 )}
               </div>
@@ -514,7 +514,7 @@ export default function RestaurantBooking() {
                     {errors.guestEmail && <p className="text-red-500 text-xs mt-1">{errors.guestEmail}</p>}
                   </div>
                   <div>
-                    <label className="text-sm font-display text-muted-foreground mb-1 block">Teléfono</label>
+                    <label className="text-sm font-display text-muted-foreground mb-1 block">Tel�fono</label>
                     <div className="relative">
                       <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                       <input
@@ -552,13 +552,13 @@ export default function RestaurantBooking() {
                     onChange={e => setForm(f => ({ ...f, specialRequests: e.target.value }))}
                     rows={2}
                     className="w-full px-4 py-2.5 rounded-xl border border-border/60 bg-background text-foreground text-sm font-display focus:outline-none focus:ring-2 focus:ring-accent/50 resize-none"
-                    placeholder="Mesa junto a la ventana, decoración especial..."
+                    placeholder="Mesa junto a la ventana, decoraci�n especial..."
                   />
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   {[
                     { key: "highchair", icon: Baby, label: "Necesito trona" },
-                    { key: "birthday", icon: Cake, label: "Celebración de cumpleaños" },
+                    { key: "birthday", icon: Cake, label: "Celebraci�n de cumplea�os" },
                     { key: "accessibility", icon: Accessibility, label: "Necesito accesibilidad" },
                   ].map(({ key, icon: Icon, label }) => (
                     <button
@@ -578,10 +578,10 @@ export default function RestaurantBooking() {
                 </div>
               </div>
 
-              {/* Política de cancelación */}
+              {/* Pol�tica de cancelaci�n */}
               {restaurant.cancellationPolicy && (
                 <div className="bg-muted/50 rounded-2xl p-4 text-sm text-muted-foreground font-display">
-                  <p className="font-semibold text-foreground mb-1">Política de cancelación</p>
+                  <p className="font-semibold text-foreground mb-1">Pol�tica de cancelaci�n</p>
                   <p>{restaurant.cancellationPolicy}</p>
                 </div>
               )}

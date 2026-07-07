@@ -1,7 +1,7 @@
-﻿/**
+/**
  * Lego Packs Router
- * Gestión de packs compuestos preconfigurados por el administrador.
- * El cliente solo puede activar/desactivar líneas opcionales.
+ * Gesti�n de packs compuestos preconfigurados por el administrador.
+ * El cliente solo puede activar/desactivar l�neas opcionales.
  */
 import { z } from "zod";
 import { router, protectedProcedure, adminProcedure, publicProcedure } from "../_core/trpc";
@@ -22,7 +22,7 @@ import {
 const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
 const db = drizzle(_pool);
 
-// ─── Input schemas ─────────────────────────────────────────────────────────────
+// --- Input schemas -------------------------------------------------------------
 
 const legoPackInput = z.object({
   slug: z.string().min(1).max(256),
@@ -75,7 +75,7 @@ const legoPackLineInput = z.object({
   frontendNote: z.string().optional().nullable(),
 });
 
-// ─── Helpers ───────────────────────────────────────────────────────────────────
+// --- Helpers -------------------------------------------------------------------
 
 /**
  * Calculates the price of a Lego Pack given its lines and the active line IDs
@@ -230,10 +230,10 @@ export async function calculateLegoPackPrice(
   return { lines: result, totalOriginal, totalDiscount, totalFinal };
 }
 
-// ─── Router ────────────────────────────────────────────────────────────────────
+// --- Router --------------------------------------------------------------------
 
 export const legoPacksRouter = router({
-  // ── List all Lego Packs ────────────────────────────────────────────────────
+  // -- List all Lego Packs ----------------------------------------------------
   list: adminProcedure
     .input(z.object({
       isPublished: z.boolean().optional(),
@@ -265,7 +265,7 @@ export const legoPacksRouter = router({
       return rows.map((r: LegoPack) => ({ ...r, lineCount: lineCounts[r.id] ?? 0 }));
     }),
 
-  // ── Public list (for frontend/TPV) ────────────────────────────────────────
+  // -- Public list (for frontend/TPV) ----------------------------------------
   listPublic: publicProcedure
     .query(async () => {
       return db
@@ -275,7 +275,7 @@ export const legoPacksRouter = router({
         .orderBy(asc(legoPacks.sortOrder));
     }),
 
-  // ── Public list by category ───────────────────────────────────────────────
+  // -- Public list by category -----------------------------------------------
   listPublicByCategory: publicProcedure
     .input(z.object({ category: z.enum(["dia", "escolar", "empresa", "estancia"]) }))
     .query(async ({ input }) => {
@@ -289,12 +289,12 @@ export const legoPacksRouter = router({
         ))
         .orderBy(asc(legoPacks.sortOrder));
 
-      // Calcular precio mínimo para cada pack (solo líneas requeridas activas)
+      // Calcular precio m�nimo para cada pack (solo l�neas requeridas activas)
       const withPricing = await Promise.all(
         packsList.map(async (pack) => {
           try {
             const pricing = await calculateLegoPackPrice(pack.id);
-            // Precio mínimo = total de líneas requeridas con descuento
+            // Precio m�nimo = total de l�neas requeridas con descuento
             const minPrice = pricing.totalFinal > 0 ? pricing.totalFinal : null;
             return { ...pack, minPrice };
           } catch {
@@ -306,7 +306,7 @@ export const legoPacksRouter = router({
       return withPricing;
     }),
 
-  // ── Get single Lego Pack with lines ───────────────────────────────────────
+  // -- Get single Lego Pack with lines ---------------------------------------
   get: adminProcedure
     .input(z.object({ id: z.number() }))
     .query(async ({ input }) => {
@@ -320,7 +320,7 @@ export const legoPacksRouter = router({
       return { ...pack, lines };
     }),
 
-  // ── Get by slug (public) ───────────────────────────────────────────────────
+  // -- Get by slug (public) ---------------------------------------------------
   getBySlug: publicProcedure
     .input(z.object({ slug: z.string() }))
     .query(async ({ input }) => {
@@ -338,7 +338,7 @@ export const legoPacksRouter = router({
       return { ...pack, lines, pricing };
     }),
 
-  // ── Debug endpoint to check line count ────────────────────────────────────
+  // -- Debug endpoint to check line count ------------------------------------
   getLineCount: publicProcedure
     .input(z.object({ packId: z.number() }))
     .query(async ({ input }) => {
@@ -369,7 +369,7 @@ export const legoPacksRouter = router({
       };
     }),
 
-  // ── Create Lego Pack ───────────────────────────────────────────────────────
+  // -- Create Lego Pack -------------------------------------------------------
   create: adminProcedure
     .input(legoPackInput)
     .mutation(async ({ input }) => {
@@ -382,7 +382,7 @@ export const legoPacksRouter = router({
       return { id: (result as any).insertId };
     }),
 
-  // ── Update Lego Pack ───────────────────────────────────────────────────────
+  // -- Update Lego Pack -------------------------------------------------------
   update: adminProcedure
     .input(legoPackInput.extend({ id: z.number() }))
     .mutation(async ({ input }) => {
@@ -395,7 +395,7 @@ export const legoPacksRouter = router({
       return { ok: true };
     }),
 
-  // ── Delete Lego Pack ───────────────────────────────────────────────────────
+  // -- Delete Lego Pack -------------------------------------------------------
   delete: adminProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
@@ -404,7 +404,7 @@ export const legoPacksRouter = router({
       return { ok: true };
     }),
 
-  // ── Toggle published ───────────────────────────────────────────────────────
+  // -- Toggle published -------------------------------------------------------
   togglePublished: adminProcedure
     .input(z.object({ id: z.number(), isPublished: z.boolean() }))
     .mutation(async ({ input }) => {
@@ -412,7 +412,7 @@ export const legoPacksRouter = router({
       return { ok: true };
     }),
 
-  // ── Reorder packs ─────────────────────────────────────────────────────────
+  // -- Reorder packs ---------------------------------------------------------
   reorder: adminProcedure
     .input(z.array(z.object({ id: z.number(), sortOrder: z.number() })))
     .mutation(async ({ input }) => {
@@ -422,7 +422,7 @@ export const legoPacksRouter = router({
       return { ok: true };
     }),
 
-  // ── Lines: Add ────────────────────────────────────────────────────────────
+  // -- Lines: Add ------------------------------------------------------------
   addLine: adminProcedure
     .input(legoPackLineInput)
     .mutation(async ({ input }) => {
@@ -434,7 +434,7 @@ export const legoPacksRouter = router({
       return { id: (result as any).insertId };
     }),
 
-  // ── Lines: Update ─────────────────────────────────────────────────────────
+  // -- Lines: Update ---------------------------------------------------------
   updateLine: adminProcedure
     .input(legoPackLineInput.extend({ id: z.number() }))
     .mutation(async ({ input }) => {
@@ -447,7 +447,7 @@ export const legoPacksRouter = router({
       return { ok: true };
     }),
 
-  // ── Lines: Delete ─────────────────────────────────────────────────────────
+  // -- Lines: Delete ---------------------------------------------------------
   deleteLine: adminProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
@@ -455,7 +455,7 @@ export const legoPacksRouter = router({
       return { ok: true };
     }),
 
-  // ── Lines: Reorder ────────────────────────────────────────────────────────
+  // -- Lines: Reorder --------------------------------------------------------
   reorderLines: adminProcedure
     .input(z.array(z.object({ id: z.number(), sortOrder: z.number() })))
     .mutation(async ({ input }) => {
@@ -465,7 +465,7 @@ export const legoPacksRouter = router({
       return { ok: true };
     }),
 
-  // ── Calculate price ───────────────────────────────────────────────────────
+  // -- Calculate price -------------------------------------------------------
   // Used by TPV, presupuestos, and frontend to get the price breakdown
   calculatePrice: publicProcedure
     .input(z.object({
@@ -476,7 +476,7 @@ export const legoPacksRouter = router({
       return calculateLegoPackPrice(input.legoPackId, input.activeLineIds);
     }),
 
-  // ── Save snapshot ─────────────────────────────────────────────────────────
+  // -- Save snapshot ---------------------------------------------------------
   // Called when an operation (reservation, quote, tpv_sale, invoice) is created
   saveSnapshot: protectedProcedure
     .input(z.object({
@@ -502,7 +502,7 @@ export const legoPacksRouter = router({
       return { id: (result as any).insertId, ...pricing };
     }),
 
-  // ── Get snapshot for operation ─────────────────────────────────────────────
+  // -- Get snapshot for operation ---------------------------------------------
   getSnapshot: protectedProcedure
     .input(z.object({
       operationType: z.enum(["reservation", "quote", "tpv_sale", "invoice"]),
@@ -520,7 +520,7 @@ export const legoPacksRouter = router({
       return rows;
     }),
 
-  // ── Auditoría completa de configuración ──────────────────────────────────
+  // -- Auditor�a completa de configuraci�n ----------------------------------
   audit: adminProcedure
     .query(async () => {
       const allPacks = await db.select().from(legoPacks).orderBy(asc(legoPacks.sortOrder));
@@ -566,22 +566,22 @@ export const legoPacksRouter = router({
         const errors: string[] = [];
         const warnings: string[] = [];
 
-        // ── Pack-level checks ────────────────────────────────────────────────
+        // -- Pack-level checks ------------------------------------------------
         if (!pack.isActive) errors.push("Pack desactivado (isActive=false)");
-        if (!pack.isPublished) warnings.push("No publicado — invisible en la web pública");
-        if (!pack.isOnlineSale && !pack.isPresentialSale) errors.push("Sin canal de venta: ni isOnlineSale ni isPresentialSale están activos");
-        else if (!pack.isOnlineSale && pack.isPresentialSale) warnings.push("Solo venta presencial (isOnlineSale=false) — no aparece en web");
-        if (!pack.coverImageUrl) warnings.push("Sin imagen de portada (coverImageUrl vacío)");
-        if (!pack.shortDescription && !pack.description) warnings.push("Sin descripción (ni shortDescription ni description)");
-        if (!pack.priceLabel) warnings.push("Sin etiqueta de precio (priceLabel vacío) — el listado público no mostrará precio orientativo");
-        if (packLines.length === 0) errors.push("Sin líneas configuradas — no se puede vender");
-        else if (activePackLines.length === 0) errors.push("Todas las líneas están desactivadas — precio total = 0€");
+        if (!pack.isPublished) warnings.push("No publicado � invisible en la web p�blica");
+        if (!pack.isOnlineSale && !pack.isPresentialSale) errors.push("Sin canal de venta: ni isOnlineSale ni isPresentialSale est�n activos");
+        else if (!pack.isOnlineSale && pack.isPresentialSale) warnings.push("Solo venta presencial (isOnlineSale=false) � no aparece en web");
+        if (!pack.coverImageUrl) warnings.push("Sin imagen de portada (coverImageUrl vac�o)");
+        if (!pack.shortDescription && !pack.description) warnings.push("Sin descripci�n (ni shortDescription ni description)");
+        if (!pack.priceLabel) warnings.push("Sin etiqueta de precio (priceLabel vac�o) � el listado p�blico no mostrar� precio orientativo");
+        if (packLines.length === 0) errors.push("Sin l�neas configuradas � no se puede vender");
+        else if (activePackLines.length === 0) errors.push("Todas las l�neas est�n desactivadas � precio total = 0�");
 
         if (pack.discountPercent && pack.discountExpiresAt && new Date(pack.discountExpiresAt) < now) {
-          warnings.push(`Descuento del ${pack.discountPercent}% configurado pero caducó el ${new Date(pack.discountExpiresAt).toLocaleDateString("es-ES")}`);
+          warnings.push(`Descuento del ${pack.discountPercent}% configurado pero caduc� el ${new Date(pack.discountExpiresAt).toLocaleDateString("es-ES")}`);
         }
 
-        // ── Line-level checks ────────────────────────────────────────────────
+        // -- Line-level checks ------------------------------------------------
         const lineReports = [];
         let pricingTotal = 0;
         let anyActiveLineHasPrice = false;
@@ -594,9 +594,9 @@ export const legoPacksRouter = router({
           const sourceName = src?.title ?? "(producto no encontrado)";
 
           if (!src) {
-            lineErrors.push(`Producto origen no existe (${line.sourceType} id=${line.sourceId}) — HUÉRFANO`);
+            lineErrors.push(`Producto origen no existe (${line.sourceType} id=${line.sourceId}) � HU�RFANO`);
           } else {
-            if (!src.isActive) lineErrors.push(`Producto origen "${src.title}" está desactivado`);
+            if (!src.isActive) lineErrors.push(`Producto origen "${src.title}" est� desactivado`);
           }
 
           const rawBase = parseFloat(src?.basePrice ?? "0");
@@ -608,20 +608,20 @@ export const legoPacksRouter = router({
           const finalPrice = basePrice * qty - discAmt;
 
           if (basePrice === 0 && line.isActive) {
-            lineErrors.push("Sin precio: ni el producto origen tiene basePrice > 0 ni hay overridePrice → se venderá a 0€");
+            lineErrors.push("Sin precio: ni el producto origen tiene basePrice > 0 ni hay overridePrice ? se vender� a 0�");
           }
 
           if (line.isRequired && line.isOptional) {
-            lineErrors.push("Flags contradictorios: isRequired=true AND isOptional=true simultáneamente");
+            lineErrors.push("Flags contradictorios: isRequired=true AND isOptional=true simult�neamente");
           }
           if (!line.isRequired && !line.isOptional) {
-            lineWarnings.push("Ni required ni optional: la línea existe pero no tiene rol definido para el cliente");
+            lineWarnings.push("Ni required ni optional: la l�nea existe pero no tiene rol definido para el cliente");
           }
           if (line.isRequired && !line.isClientVisible) {
-            lineWarnings.push("Línea obligatoria oculta al cliente (isRequired=true + isClientVisible=false)");
+            lineWarnings.push("L�nea obligatoria oculta al cliente (isRequired=true + isClientVisible=false)");
           }
           if (line.isActive && pack.availabilityMode === "strict" && src && !src.isActive) {
-            errors.push(`Modo strict + producto de línea "${src.title}" desactivado → pack NUNCA disponible`);
+            errors.push(`Modo strict + producto de l�nea "${src.title}" desactivado ? pack NUNCA disponible`);
           }
 
           if (line.isActive) {
@@ -639,10 +639,10 @@ export const legoPacksRouter = router({
         }
 
         if (activePackLines.length > 0 && !anyActiveLineHasPrice) {
-          errors.push("Ninguna línea activa tiene precio configurado → el pack se vendería a 0€");
+          errors.push("Ninguna l�nea activa tiene precio configurado ? el pack se vender�a a 0�");
         }
 
-        // ── Sellability final verdict ────────────────────────────────────────
+        // -- Sellability final verdict ----------------------------------------
         const isSellable =
           pack.isActive &&
           pack.isPublished &&
@@ -675,7 +675,7 @@ export const legoPacksRouter = router({
       };
     }),
 
-  // ── Stats for reports ─────────────────────────────────────────────────────
+  // -- Stats for reports -----------------------------------------------------
   stats: adminProcedure
     .query(async () => {
       const snapshots = await db.select().from(legoPackSnapshots);

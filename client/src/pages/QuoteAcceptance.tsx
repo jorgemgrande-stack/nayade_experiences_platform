@@ -1,12 +1,12 @@
-﻿/**
- * QuoteAcceptance — Página pública de aceptación de presupuesto
+/**
+ * QuoteAcceptance � P�gina p�blica de aceptaci�n de presupuesto
  * Ruta: /presupuesto/:token
  *
  * Flujo:
- * 1. Carga el presupuesto por token (getByToken) → marca como "visualizado"
- * 2. Muestra resumen de líneas con precios CONGELADOS
- * 3. Cliente puede ACEPTAR (→ pago Redsys) o RECHAZAR
- * 4. Tras aceptar: formulario Redsys se envía automáticamente
+ * 1. Carga el presupuesto por token (getByToken) ? marca como "visualizado"
+ * 2. Muestra resumen de l�neas con precios CONGELADOS
+ * 3. Cliente puede ACEPTAR (? pago Redsys) o RECHAZAR
+ * 4. Tras aceptar: formulario Redsys se env�a autom�ticamente
  */
 import { useState, useEffect } from "react";
 import { useParams, useLocation } from "wouter";
@@ -34,7 +34,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-// ─── Helpers ────────────────────────────────────────────────────────────────
+// --- Helpers ----------------------------------------------------------------
 
 function formatCurrency(value: string | number | null | undefined): string {
   const n = Number(value ?? 0);
@@ -42,11 +42,11 @@ function formatCurrency(value: string | number | null | undefined): string {
 }
 
 function formatDate(d: Date | string | null | undefined): string {
-  if (!d) return "—";
+  if (!d) return "�";
   return new Date(d).toLocaleDateString("es-ES", { day: "2-digit", month: "long", year: "numeric" });
 }
 
-// ─── Status Badge ────────────────────────────────────────────────────────────
+// --- Status Badge ------------------------------------------------------------
 
 function StatusBadge({ status, isExpired }: { status: string; isExpired: boolean }) {
   if (isExpired) return <Badge className="bg-red-100 text-red-700 border-red-200">Expirado</Badge>;
@@ -64,7 +64,7 @@ function StatusBadge({ status, isExpired }: { status: string; isExpired: boolean
   return <Badge className={`${s.cls} border text-xs font-medium`}>{s.label}</Badge>;
 }
 
-// ─── Redsys auto-submit form ─────────────────────────────────────────────────
+// --- Redsys auto-submit form -------------------------------------------------
 
 function RedsysAutoForm({ html }: { html: string }) {
   // The HTML from buildRedsysForm contains a <form> with hidden inputs + auto-submit script
@@ -76,7 +76,7 @@ function RedsysAutoForm({ html }: { html: string }) {
   );
 }
 
-// ─── Main Component ──────────────────────────────────────────────────────────
+// --- Main Component ----------------------------------------------------------
 
 export default function QuoteAcceptance() {
   const { token } = useParams<{ token: string }>();
@@ -89,7 +89,7 @@ export default function QuoteAcceptance() {
   const [redsysForm, setRedsysForm] = useState<{ url: string; Ds_MerchantParameters: string; Ds_Signature: string; Ds_SignatureVersion: string } | null>(null);
   const [showConditions, setShowConditions] = useState(false);
 
-  // ── Redsys auto-submit effect ──
+  // -- Redsys auto-submit effect --
   // useEffect ensures the form is submitted after render, not during it.
   // The empty-dependency array on redsysForm means it only fires when redsysForm changes.
   useEffect(() => {
@@ -113,13 +113,13 @@ export default function QuoteAcceptance() {
     form.submit();
   }, [redsysForm]);
 
-  // ── Load quote ──
+  // -- Load quote --
   const { data: quote, isLoading, error } = trpc.crm.quotes.getByToken.useQuery(
     { token: token ?? "" },
     { enabled: !!token, retry: false }
   );
 
-  // ── Mutations ──
+  // -- Mutations --
   const rejectMutation = trpc.crm.quotes.rejectByToken.useMutation({
     onSuccess: () => {
       setRejected(true);
@@ -130,13 +130,13 @@ export default function QuoteAcceptance() {
 
   const payMutation = trpc.crm.quotes.payWithToken.useMutation({
     onSuccess: (data) => {
-      // Store Redsys form data — the render effect will auto-submit
+      // Store Redsys form data � the render effect will auto-submit
       setRedsysForm(data.redsysForm as { url: string; Ds_MerchantParameters: string; Ds_Signature: string; Ds_SignatureVersion: string });
     },
     onError: (e) => toast.error(e.message),
   });
 
-  // ── Loading ──
+  // -- Loading --
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-[#0a1628] to-[#1a3a6b] flex items-center justify-center">
@@ -148,23 +148,23 @@ export default function QuoteAcceptance() {
     );
   }
 
-  // ── Error / not found ──
+  // -- Error / not found --
   if (error || !quote) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-[#0a1628] to-[#1a3a6b] flex items-center justify-center p-4">
         <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full text-center">
           <AlertTriangle className="w-14 h-14 text-red-500 mx-auto mb-4" />
-          <h1 className="text-xl font-bold text-gray-900 mb-2">Enlace no válido</h1>
+          <h1 className="text-xl font-bold text-gray-900 mb-2">Enlace no v�lido</h1>
           <p className="text-gray-500 text-sm">
             Este enlace de presupuesto no existe o ha sido desactivado. Si crees que es un error,
             contacta con nosotros.
           </p>
           <div className="mt-6 flex flex-col gap-2 text-sm text-gray-500">
             <a href="tel:+34639576627" className="flex items-center justify-center gap-2 hover:text-orange-500">
-              <Phone className="w-4 h-4" /> Llamar a Náyade Experiences
+              <Phone className="w-4 h-4" /> Llamar a N�yade Experiences
             </a>
-            <a href="mailto:reservas@skicenter.es" className="flex items-center justify-center gap-2 hover:text-orange-500">
-              <Mail className="w-4 h-4" /> reservas@skicenter.es
+            <a href="mailto:reservas@nayadeexperiences.es" className="flex items-center justify-center gap-2 hover:text-orange-500">
+              <Mail className="w-4 h-4" /> reservas@nayadeexperiences.es
             </a>
           </div>
         </div>
@@ -185,7 +185,7 @@ export default function QuoteAcceptance() {
     return map[s] ?? s;
   }
 
-  // ── Already paid ──
+  // -- Already paid --
   if (quote.isPaid) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-[#0a1628] via-[#0d1f3c] to-[#1a3a6b]">
@@ -197,8 +197,8 @@ export default function QuoteAcceptance() {
                 <span className="text-orange-400 font-bold text-sm">N</span>
               </div>
               <div>
-                <p className="text-white font-semibold text-sm">Náyade Experiences</p>
-                <p className="text-white/50 text-xs">Skicenter — Reserva confirmada</p>
+                <p className="text-white font-semibold text-sm">N�yade Experiences</p>
+                <p className="text-white/50 text-xs">Skicenter � Reserva confirmada</p>
               </div>
             </div>
             <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 border text-xs font-medium">
@@ -214,14 +214,14 @@ export default function QuoteAcceptance() {
               <CheckCircle className="w-8 h-8 text-emerald-400" />
             </div>
             <div>
-              <h1 className="text-white text-xl font-bold">¡Reserva confirmada!</h1>
+              <h1 className="text-white text-xl font-bold">�Reserva confirmada!</h1>
               <p className="text-white/60 text-sm mt-0.5">
-                Tu pago ha sido procesado correctamente. Recibirás la factura en tu email.
+                Tu pago ha sido procesado correctamente. Recibir�s la factura en tu email.
               </p>
             </div>
           </div>
 
-          {/* Quote detail card — same layout as pending state */}
+          {/* Quote detail card � same layout as pending state */}
           <div className="bg-white rounded-2xl shadow-xl overflow-hidden">
             <div className="bg-gradient-to-r from-[#1a3a6b] to-[#0d2a5e] px-6 py-5">
               <div className="flex items-start justify-between">
@@ -286,7 +286,7 @@ export default function QuoteAcceptance() {
                 {Number(quote.discount) > 0 && (
                   <div className="flex justify-between w-48">
                     <span className="text-gray-500">Descuento</span>
-                    <span className="text-emerald-600">−{formatCurrency(quote.discount)}</span>
+                    <span className="text-emerald-600">-{formatCurrency(quote.discount)}</span>
                   </div>
                 )}
                 {Number(quote.tax) > 0 && (
@@ -320,7 +320,7 @@ export default function QuoteAcceptance() {
                     <div key={inst.id} className={`px-6 py-4 flex items-center justify-between ${isPaid ? "bg-emerald-50" : ""}`}>
                       <div className="flex items-center gap-3">
                         <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${isPaid ? "bg-emerald-500 text-white" : "bg-purple-100 text-purple-700"}`}>
-                          {isPaid ? "✓" : inst.installmentNumber}
+                          {isPaid ? "?" : inst.installmentNumber}
                         </div>
                         <div>
                           <p className="text-sm font-medium text-gray-800">Cuota {inst.installmentNumber}</p>
@@ -360,13 +360,13 @@ export default function QuoteAcceptance() {
 
           {/* Footer */}
           <div className="text-center text-white/40 text-xs pb-8 space-y-1">
-            <p>¿Tienes dudas? Contacta con nosotros</p>
+            <p>�Tienes dudas? Contacta con nosotros</p>
             <div className="flex justify-center gap-4">
               <a href={phoneTel} className="hover:text-orange-400 flex items-center gap-1">
                 <Phone className="w-3 h-3" /> {phone}
               </a>
-              <a href="mailto:reservas@skicenter.es" className="hover:text-orange-400 flex items-center gap-1">
-                <Mail className="w-3 h-3" /> reservas@skicenter.es
+              <a href="mailto:reservas@nayadeexperiences.es" className="hover:text-orange-400 flex items-center gap-1">
+                <Mail className="w-3 h-3" /> reservas@nayadeexperiences.es
               </a>
             </div>
           </div>
@@ -375,7 +375,7 @@ export default function QuoteAcceptance() {
     );
   }
 
-  // ── Rejected ──
+  // -- Rejected --
   if (quote.isRejected || rejected) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-[#0a1628] to-[#1a3a6b] flex items-center justify-center p-4">
@@ -383,12 +383,12 @@ export default function QuoteAcceptance() {
           <XCircle className="w-16 h-16 text-red-400 mx-auto mb-4" />
           <h1 className="text-xl font-bold text-gray-900 mb-2">Presupuesto rechazado</h1>
           <p className="text-gray-500 text-sm">
-            Has rechazado este presupuesto. Si cambias de opinión o quieres hablar con nosotros,
+            Has rechazado este presupuesto. Si cambias de opini�n o quieres hablar con nosotros,
             no dudes en contactarnos.
           </p>
           <div className="mt-6 flex flex-col gap-2 text-sm text-gray-500">
             <a href="tel:+34639576627" className="flex items-center justify-center gap-2 hover:text-orange-500">
-              <Phone className="w-4 h-4" /> Llamar a Náyade Experiences
+              <Phone className="w-4 h-4" /> Llamar a N�yade Experiences
             </a>
           </div>
         </div>
@@ -396,7 +396,7 @@ export default function QuoteAcceptance() {
     );
   }
 
-  // ── Expired ──
+  // -- Expired --
   if (quote.isExpired) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-[#0a1628] to-[#1a3a6b] flex items-center justify-center p-4">
@@ -404,12 +404,12 @@ export default function QuoteAcceptance() {
           <Clock className="w-16 h-16 text-amber-400 mx-auto mb-4" />
           <h1 className="text-xl font-bold text-gray-900 mb-2">Presupuesto expirado</h1>
           <p className="text-gray-500 text-sm">
-            Este presupuesto expiró el {formatDate(quote.validUntil)}. Contacta con nosotros para
+            Este presupuesto expir� el {formatDate(quote.validUntil)}. Contacta con nosotros para
             solicitar uno nuevo.
           </p>
           <div className="mt-6 flex flex-col gap-2 text-sm text-gray-500">
             <a href="tel:+34639576627" className="flex items-center justify-center gap-2 hover:text-orange-500">
-              <Phone className="w-4 h-4" /> Llamar a Náyade Experiences
+              <Phone className="w-4 h-4" /> Llamar a N�yade Experiences
             </a>
           </div>
         </div>
@@ -417,7 +417,7 @@ export default function QuoteAcceptance() {
     );
   }
 
-  // ── Main view ──
+  // -- Main view --
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#0a1628] via-[#0d1f3c] to-[#1a3a6b]">
       {/* Redsys auto-submit is handled via useEffect above */}
@@ -430,8 +430,8 @@ export default function QuoteAcceptance() {
               <span className="text-orange-400 font-bold text-sm">N</span>
             </div>
             <div>
-              <p className="text-white font-semibold text-sm">Náyade Experiences</p>
-              <p className="text-white/50 text-xs">Skicenter — Presupuesto personalizado</p>
+              <p className="text-white font-semibold text-sm">N�yade Experiences</p>
+              <p className="text-white/50 text-xs">Skicenter � Presupuesto personalizado</p>
             </div>
           </div>
           <StatusBadge status={quote.status} isExpired={quote.isExpired} />
@@ -446,9 +446,9 @@ export default function QuoteAcceptance() {
           <div className="bg-orange-50 border border-orange-200 rounded-xl px-5 py-4 flex gap-3 items-start">
             <AlertTriangle className="w-5 h-5 text-orange-500 flex-shrink-0 mt-0.5" />
             <div>
-              <p className="text-orange-800 font-semibold text-sm">El pago anterior no se completó</p>
+              <p className="text-orange-800 font-semibold text-sm">El pago anterior no se complet�</p>
               <p className="text-orange-600 text-xs mt-0.5">
-                Puedes intentarlo de nuevo con otra tarjeta o método de pago. El presupuesto sigue siendo válido.
+                Puedes intentarlo de nuevo con otra tarjeta o m�todo de pago. El presupuesto sigue siendo v�lido.
               </p>
             </div>
           </div>
@@ -476,7 +476,7 @@ export default function QuoteAcceptance() {
               </div>
               {quote.validUntil && (
                 <div>
-                  <span className="text-gray-400 text-xs uppercase tracking-wide">Válido hasta</span>
+                  <span className="text-gray-400 text-xs uppercase tracking-wide">V�lido hasta</span>
                   <p className="font-medium text-gray-800">{formatDate(quote.validUntil)}</p>
                 </div>
               )}
@@ -517,7 +517,7 @@ export default function QuoteAcceptance() {
               {Number(quote.discount) > 0 && (
                 <div className="flex justify-between w-48">
                   <span className="text-gray-500">Descuento</span>
-                  <span className="text-emerald-600">−{formatCurrency(quote.discount)}</span>
+                  <span className="text-emerald-600">-{formatCurrency(quote.discount)}</span>
                 </div>
               )}
               {Number(quote.tax) > 0 && (
@@ -556,7 +556,7 @@ export default function QuoteAcceptance() {
                   <div key={inst.id} className={`px-6 py-4 flex items-center justify-between ${isPaid ? "bg-emerald-50" : isOverdue ? "bg-red-50" : ""}`}>
                     <div className="flex items-center gap-3">
                       <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${isPaid ? "bg-emerald-500 text-white" : isOverdue ? "bg-red-500 text-white" : "bg-purple-100 text-purple-700"}`}>
-                        {isPaid ? "✓" : inst.installmentNumber}
+                        {isPaid ? "?" : inst.installmentNumber}
                       </div>
                       <div>
                         <p className="text-sm font-medium text-gray-800">
@@ -598,7 +598,7 @@ export default function QuoteAcceptance() {
               className="w-full flex items-center justify-between px-5 py-4 text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors"
               onClick={() => setShowConditions(!showConditions)}
             >
-              <span>Condiciones y términos</span>
+              <span>Condiciones y t�rminos</span>
               {showConditions ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
             </button>
             {showConditions && (
@@ -609,12 +609,12 @@ export default function QuoteAcceptance() {
           </div>
         )}
 
-        {/* CTA — Accept / Reject */}
+        {/* CTA � Accept / Reject */}
         {canAct && (
           <div className="bg-white rounded-2xl shadow-xl p-6 space-y-4">
             <div className="flex items-center gap-2 text-sm text-gray-500 mb-2">
               <ShieldCheck className="w-4 h-4 text-emerald-500" />
-              <span>Pago seguro procesado por Redsys · SSL cifrado</span>
+              <span>Pago seguro procesado por Redsys � SSL cifrado</span>
             </div>
 
             {/* Accept button */}
@@ -626,14 +626,14 @@ export default function QuoteAcceptance() {
               {payMutation.isPending ? (
                 <><Loader2 className="w-5 h-5 mr-2 animate-spin" /> Preparando pago...</>
               ) : installmentPlan ? (
-                <><CreditCard className="w-5 h-5 mr-2" /> Pagar 1ª cuota: {formatCurrency(payAmountEuros)}</>
+                <><CreditCard className="w-5 h-5 mr-2" /> Pagar 1� cuota: {formatCurrency(payAmountEuros)}</>
               ) : (
                 <><CreditCard className="w-5 h-5 mr-2" /> Aceptar y pagar {formatCurrency(quote.total)}</>
               )}
             </Button>
             {installmentPlan && (
               <p className="text-center text-xs text-gray-400">
-                Importe total del presupuesto: {formatCurrency(quote.total)} · Pago fraccionado en {installmentPlan.installments.length} cuotas
+                Importe total del presupuesto: {formatCurrency(quote.total)} � Pago fraccionado en {installmentPlan.installments.length} cuotas
               </p>
             )}
 
@@ -643,11 +643,11 @@ export default function QuoteAcceptance() {
                 className="w-full text-sm text-gray-400 hover:text-red-500 transition-colors py-2"
                 onClick={() => setShowRejectForm(true)}
               >
-                No me interesa — Rechazar presupuesto
+                No me interesa � Rechazar presupuesto
               </button>
             ) : (
               <div className="border border-red-200 rounded-xl p-4 bg-red-50 space-y-3">
-                <p className="text-sm font-medium text-red-700">¿Seguro que quieres rechazar este presupuesto?</p>
+                <p className="text-sm font-medium text-red-700">�Seguro que quieres rechazar este presupuesto?</p>
                 <Textarea
                   placeholder="Motivo del rechazo (opcional)..."
                   className="text-sm resize-none"
@@ -680,12 +680,12 @@ export default function QuoteAcceptance() {
 
         {/* Footer */}
         <div className="text-center text-white/40 text-xs pb-8 space-y-1">
-          <p>¿Tienes dudas? Contacta con nosotros</p>
+          <p>�Tienes dudas? Contacta con nosotros</p>
           <div className="flex justify-center gap-4">
             <a href="tel:+34639576627" className="hover:text-orange-400 flex items-center gap-1">
-              <Phone className="w-3 h-3" /> Teléfono
+              <Phone className="w-3 h-3" /> Tel�fono
             </a>
-            <a href="mailto:reservas@skicenter.es" className="hover:text-orange-400 flex items-center gap-1">
+            <a href="mailto:reservas@nayadeexperiences.es" className="hover:text-orange-400 flex items-center gap-1">
               <Mail className="w-3 h-3" /> Email
             </a>
           </div>

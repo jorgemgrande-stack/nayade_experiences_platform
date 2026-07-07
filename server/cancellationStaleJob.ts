@@ -1,7 +1,7 @@
-ï»¿/**
+/**
  * cancellationStaleJob.ts
- * Job programado que se ejecuta cada 6 horas y envÃ­a una alerta interna
- * para expedientes de anulaciÃ³n que llevan mÃ¡s de 48h en estado "recibida"
+ * Job programado que se ejecuta cada 6 horas y envía una alerta interna
+ * para expedientes de anulación que llevan más de 48h en estado "recibida"
  * sin ninguna actividad del equipo.
  */
 import cron from "node-cron";
@@ -21,7 +21,7 @@ async function runCancellationStaleJob() {
   try {
     const cutoff = new Date(Date.now() - STALE_HOURS * 60 * 60 * 1000);
 
-    // Expedientes en "recibida" creados hace mÃ¡s de 48h â€” aÃºn sin tocar
+    // Expedientes en "recibida" creados hace más de 48h — aún sin tocar
     const stale = await db
       .select({
         id: cancellationRequests.id,
@@ -43,7 +43,7 @@ async function runCancellationStaleJob() {
 
     if (stale.length === 0) return;
 
-    // Filtrar los que ya tienen algÃºn log de acciÃ³n admin (excluir el log "created")
+    // Filtrar los que ya tienen algún log de acción admin (excluir el log "created")
     const staleIds = stale.map((r) => r.id);
     const touched = await db
       .select({ requestId: cancellationLogs.requestId })
@@ -66,17 +66,17 @@ async function runCancellationStaleJob() {
         return `<tr>
           <td style="padding:4px 8px;border:1px solid #333;">#${r.id}</td>
           <td style="padding:4px 8px;border:1px solid #333;">${r.fullName}</td>
-          <td style="padding:4px 8px;border:1px solid #333;">${r.email ?? "â€”"}</td>
+          <td style="padding:4px 8px;border:1px solid #333;">${r.email ?? "—"}</td>
           <td style="padding:4px 8px;border:1px solid #333;">${r.reason}</td>
-          <td style="padding:4px 8px;border:1px solid #333;">${r.locator ?? "â€”"}</td>
+          <td style="padding:4px 8px;border:1px solid #333;">${r.locator ?? "—"}</td>
           <td style="padding:4px 8px;border:1px solid #333;">${hours}h sin atender</td>
         </tr>`;
       })
       .join("");
 
     const html = `
-      <h2 style="color:#d97706;">âš  Anulaciones sin atender (mÃ¡s de ${STALE_HOURS}h)</h2>
-      <p>Los siguientes expedientes de anulaciÃ³n llevan mÃ¡s de ${STALE_HOURS} horas en estado <strong>recibida</strong> sin ninguna acciÃ³n del equipo:</p>
+      <h2 style="color:#d97706;">? Anulaciones sin atender (más de ${STALE_HOURS}h)</h2>
+      <p>Los siguientes expedientes de anulación llevan más de ${STALE_HOURS} horas en estado <strong>recibida</strong> sin ninguna acción del equipo:</p>
       <table style="border-collapse:collapse;width:100%;font-size:13px;">
         <thead>
           <tr style="background:#1a1a1a;color:#fff;">
@@ -90,11 +90,11 @@ async function runCancellationStaleJob() {
         </thead>
         <tbody>${rows}</tbody>
       </table>
-      <p style="margin-top:16px;">Gestiona estos expedientes en <a href="${process.env.APP_URL ?? getSystemSettingSync('brand_website_url', '')}/admin/crm?tab=anulaciones">CRM â†’ Anulaciones</a>.</p>
+      <p style="margin-top:16px;">Gestiona estos expedientes en <a href="${process.env.APP_URL ?? getSystemSettingSync('brand_website_url', '')}/admin/crm?tab=anulaciones">CRM ? Anulaciones</a>.</p>
     `;
 
     const copyEmail = await getBusinessEmail('cancellations');
-    const staleSubject = `âš  ${trulyStale.length} anulaciÃ³n${trulyStale.length > 1 ? "es" : ""} sin atender (>48h)`;
+    const staleSubject = `? ${trulyStale.length} anulación${trulyStale.length > 1 ? "es" : ""} sin atender (>48h)`;
     await sendEmail({ to: copyEmail, subject: staleSubject, html }).catch(() => {});
     logDirectEmail({ templateKey: "cancellation_stale_alert", triggerEvent: "stale_cancellations_alert", recipientEmail: copyEmail, subject: staleSubject, sent: true, isAutomatic: true }).catch(() => {});
 

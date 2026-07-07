@@ -1,6 +1,6 @@
 /**
  * Script de envío de todas las plantillas de email de usuario
- * a reservas@skicenter.es para verificación visual.
+ * a reservas@nayadeexperiences.es para verificación visual.
  *
  * Ejecutar con: pnpm tsx send_previews.ts
  */
@@ -30,7 +30,7 @@ import {
   buildPendingPaymentReminderHtml,
 } from "./server/emailTemplates";
 
-const TO = "reservas@skicenter.es";
+const TO = "reservas@nayadeexperiences.es";
 const SMTP_HOST = process.env.SMTP_HOST!;
 const SMTP_PORT = parseInt(process.env.SMTP_PORT ?? "465", 10);
 const SMTP_USER = process.env.SMTP_USER!;

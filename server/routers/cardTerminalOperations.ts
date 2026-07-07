@@ -1,4 +1,4 @@
-﻿import { z } from "zod";
+import { z } from "zod";
 import { router } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { drizzle } from "drizzle-orm/mysql2";
@@ -19,7 +19,7 @@ const adminProc = protectedProcedure.use(({ ctx, next }) => {
   return next({ ctx });
 });
 
-// ── Comercia Global Payments (CaixaBank) TPV parser ──────────────────────────
+// -- Comercia Global Payments (CaixaBank) TPV parser --------------------------
 
 function parseExcelDate(v: unknown): Date | null {
   if (v == null || v === "") return null;
@@ -90,14 +90,14 @@ function parseTpvBuffer(buffer: Buffer): ParsedTpvRow[] {
   let headerRow = -1;
 
   const HEADER_ALIASES: Record<string, string[]> = {
-    fecha: ["fecha", "date", "f.operacion", "f. operacion", "fecha operacion", "fecha operación"],
-    operationNumber: ["nº operacion", "nº operación", "no operacion", "no operación", "num operacion", "num operación", "transaccion", "transacción", "nº transaccion", "nº transacción", "operacion", "operación"],
-    commerceCode: ["codigo comercio", "código comercio", "cod comercio", "cód comercio", "comercio"],
-    terminalCode: ["terminal", "num terminal", "nº terminal", "codigo terminal", "código terminal"],
-    operationType: ["tipo op", "tipo operacion", "tipo operación", "tipo"],
+    fecha: ["fecha", "date", "f.operacion", "f. operacion", "fecha operacion", "fecha operaci�n"],
+    operationNumber: ["n� operacion", "n� operaci�n", "no operacion", "no operaci�n", "num operacion", "num operaci�n", "transaccion", "transacci�n", "n� transaccion", "n� transacci�n", "operacion", "operaci�n"],
+    commerceCode: ["codigo comercio", "c�digo comercio", "cod comercio", "c�d comercio", "comercio"],
+    terminalCode: ["terminal", "num terminal", "n� terminal", "codigo terminal", "c�digo terminal"],
+    operationType: ["tipo op", "tipo operacion", "tipo operaci�n", "tipo"],
     amount: ["importe"],
     card: ["tarjeta"],
-    authorizationCode: ["autorizacion", "autorización", "cod autorizacion", "cod. autorizacion"],
+    authorizationCode: ["autorizacion", "autorizaci�n", "cod autorizacion", "cod. autorizacion"],
   };
 
   for (let r = 0; r < Math.min(rows.length, 20); r++) {
@@ -117,7 +117,7 @@ function parseTpvBuffer(buffer: Buffer): ParsedTpvRow[] {
     break;
   }
 
-  if (headerRow === -1) throw new Error("No se encontró cabecera válida (columna Importe requerida)");
+  if (headerRow === -1) throw new Error("No se encontr� cabecera v�lida (columna Importe requerida)");
   if (COL_MAP["amount"] == null) throw new Error("Falta columna obligatoria: Importe");
   if (COL_MAP["fecha"] == null) throw new Error("Falta columna obligatoria: Fecha");
 
@@ -157,7 +157,7 @@ function parseTpvBuffer(buffer: Buffer): ParsedTpvRow[] {
   return parsed;
 }
 
-// ── Auto-link helper ─────────────────────────────────────────────────────────
+// -- Auto-link helper ---------------------------------------------------------
 
 // Exported for unit-testing the time window boundary logic.
 export function isWithinTpvWindow(saleCreatedAtMs: number, opDatetime: Date): boolean {
@@ -174,7 +174,7 @@ async function tryAutoLink(
 ): Promise<{ linkedEntityType: "reservation" | "quote" | "none"; linkedEntityId: number | null }> {
   if (!operationNumber) return { linkedEntityType: "none", linkedEntityId: null };
 
-  const searchPattern = `%Nº operación TPV: ${operationNumber}%`;
+  const searchPattern = `%N� operaci�n TPV: ${operationNumber}%`;
 
   // 1. Buscar en reservations.notes
   const [res] = await db
@@ -242,7 +242,7 @@ async function tryAutoLink(
   return { linkedEntityType: "none", linkedEntityId: null };
 }
 
-// ── Router ────────────────────────────────────────────────────────────────────
+// -- Router --------------------------------------------------------------------
 
 export const cardTerminalOperationsRouter = router({
 
@@ -398,12 +398,12 @@ export const cardTerminalOperationsRouter = router({
     .input(z.object({
       search: z.string().optional(),
       amountEur: z.number().optional(),
-      // Tipo de la operación que se está vinculando. Las DEVOLUCION y
+      // Tipo de la operaci�n que se est� vinculando. Las DEVOLUCION y
       // ANULACION POR NATURALEZA se vinculan a reservas que ya tienen una
-      // VENTA previa vinculada (la devolución es DE algo). Si filtramos
-      // como con las ventas, esas reservas quedarían fuera del buscador.
-      // Caso real: cto #2004 (DEVOLUCION 45€) no podía vincularse a
-      // RES-2026-0196 porque la reserva ya tenía 2 VENTAS vinculadas.
+      // VENTA previa vinculada (la devoluci�n es DE algo). Si filtramos
+      // como con las ventas, esas reservas quedar�an fuera del buscador.
+      // Caso real: cto #2004 (DEVOLUCION 45�) no pod�a vincularse a
+      // RES-2026-0196 porque la reserva ya ten�a 2 VENTAS vinculadas.
       operationType: z.enum(["VENTA", "DEVOLUCION", "ANULACION", "OTRO"]).optional(),
     }))
     .query(async ({ input }) => {
@@ -411,7 +411,7 @@ export const cardTerminalOperationsRouter = router({
 
       // Solo excluimos reservas ya vinculadas cuando es una VENTA (o no se
       // indica tipo). Para DEVOLUCION/ANULACION/OTRO mostramos todas las
-      // reservas, incluidas las que ya tienen vínculos.
+      // reservas, incluidas las que ya tienen v�nculos.
       const excludeAlreadyLinked = !input.operationType
         || input.operationType === "VENTA";
       if (excludeAlreadyLinked) {
@@ -432,7 +432,7 @@ export const cardTerminalOperationsRouter = router({
       }
       // Filtro por importe: para VENTA el importe debe COINCIDIR (es el
       // mismo cobro). Para DEVOLUCION/ANULACION no aplicamos este filtro
-      // porque el importe puede ser parcial (devolución parcial) y aún así
+      // porque el importe puede ser parcial (devoluci�n parcial) y a�n as�
       // estar vinculada a la reserva original.
       if (input.amountEur !== undefined && (!input.operationType || input.operationType === "VENTA")) {
         conditions.push(eq(reservations.amountTotal, Math.round(input.amountEur * 100)) as any);

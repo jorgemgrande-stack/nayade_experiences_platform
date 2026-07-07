@@ -1,11 +1,11 @@
-﻿/**
+/**
  * settlementExportRoutes.ts
  * Endpoint REST para exportar liquidaciones de proveedor en formato XLSX.
  * GET /api/settlements/:id/export-excel
  *
  * Genera un libro Excel con dos hojas:
- *   1. "Cabecera"  — datos generales de la liquidación y del proveedor
- *   2. "Líneas"    — detalle de cada servicio liquidado
+ *   1. "Cabecera"  � datos generales de la liquidaci�n y del proveedor
+ *   2. "L�neas"    � detalle de cada servicio liquidado
  *
  * El archivo se sirve como descarga directa (Content-Disposition: attachment).
  */
@@ -27,7 +27,7 @@ const db = drizzle(_pool);
 
 const settlementExportRouter = Router();
 
-// ─── Auth middleware ──────────────────────────────────────────────────────────
+// --- Auth middleware ----------------------------------------------------------
 async function requireAuth(req: Request, res: Response, next: NextFunction) {
   const raw = req.headers.cookie ?? "";
   const cookies = Object.fromEntries(
@@ -44,20 +44,20 @@ async function requireAuth(req: Request, res: Response, next: NextFunction) {
   }
   const userId = await verifySessionToken(token);
   if (!userId) {
-    res.status(401).json({ error: "Sesión inválida o expirada" });
+    res.status(401).json({ error: "Sesi�n inv�lida o expirada" });
     return;
   }
   next();
 }
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+// --- Helpers -----------------------------------------------------------------
 
 function fmt(value: string | null | undefined): number {
   return parseFloat(value ?? "0") || 0;
 }
 
 function fmtDate(value: string | Date | null | undefined): string {
-  if (!value) return "—";
+  if (!value) return "�";
   try {
     return new Date(value).toLocaleDateString("es-ES");
   } catch {
@@ -83,7 +83,7 @@ const S_TITLE = { font: { bold: true, sz: 14, color: { rgb: "1A3A6B" } } };
 const S_SECTION = { font: { bold: true, sz: 11, color: { rgb: "1A3A6B" } } };
 const S_LABEL = { font: { bold: true, sz: 10 } };
 const S_TOTAL_LABEL = { font: { bold: true, sz: 12, color: { rgb: "7C3AED" } } };
-const S_TOTAL_VALUE = { font: { bold: true, sz: 12, color: { rgb: "7C3AED" } }, numFmt: '#,##0.00 "€"' };
+const S_TOTAL_VALUE = { font: { bold: true, sz: 12, color: { rgb: "7C3AED" } }, numFmt: '#,##0.00 "�"' };
 const S_COL_HEADER = {
   font: { bold: true, color: { rgb: "FFFFFF" }, sz: 11 },
   fill: { patternType: "solid", fgColor: { rgb: "1A3A6B" } },
@@ -95,12 +95,12 @@ const S_TOT_CELL = {
 const S_TOT_EUR = {
   font: { bold: true, color: { rgb: "FFFFFF" }, sz: 11 },
   fill: { patternType: "solid", fgColor: { rgb: "7C3AED" } },
-  numFmt: '#,##0.00 "€"',
+  numFmt: '#,##0.00 "�"',
 };
-const S_EUR = { numFmt: '#,##0.00 "€"' };
+const S_EUR = { numFmt: '#,##0.00 "�"' };
 const S_PCT = { numFmt: '0.00"%"' };
 
-// ─── Endpoint ─────────────────────────────────────────────────────────────────
+// --- Endpoint -----------------------------------------------------------------
 
 settlementExportRouter.get(
   "/api/settlements/:id/export-excel",
@@ -108,11 +108,11 @@ settlementExportRouter.get(
   async (req: Request, res: Response) => {
     const id = parseInt(req.params.id, 10);
     if (isNaN(id)) {
-      res.status(400).json({ error: "ID inválido" });
+      res.status(400).json({ error: "ID inv�lido" });
       return;
     }
 
-    // ── Fetch settlement + supplier ──────────────────────────────────────────
+    // -- Fetch settlement + supplier ------------------------------------------
     const [settlement] = await db
       .select({
         id: supplierSettlements.id,
@@ -139,46 +139,46 @@ settlementExportRouter.get(
       .where(eq(supplierSettlements.id, id));
 
     if (!settlement) {
-      res.status(404).json({ error: "Liquidación no encontrada" });
+      res.status(404).json({ error: "Liquidaci�n no encontrada" });
       return;
     }
 
-    // ── Fetch lines ──────────────────────────────────────────────────────────
+    // -- Fetch lines ----------------------------------------------------------
     const lines = await db
       .select()
       .from(settlementLines)
       .where(eq(settlementLines.settlementId, id));
 
-    // ── Build workbook ───────────────────────────────────────────────────────
+    // -- Build workbook -------------------------------------------------------
     const wb = XLSX.utils.book_new();
 
-    // ── Sheet 1: Cabecera ────────────────────────────────────────────────────
+    // -- Sheet 1: Cabecera ----------------------------------------------------
     const headerRows: XLSX.CellObject[][] = [
-      [mkCell("LIQUIDACIÓN DE PROVEEDOR — NÁYADE EXPERIENCES", S_TITLE), mkCell(""), mkCell(""), mkCell("")],
+      [mkCell("LIQUIDACI�N DE PROVEEDOR � N�YADE EXPERIENCES", S_TITLE), mkCell(""), mkCell(""), mkCell("")],
       [mkCell(""), mkCell(""), mkCell(""), mkCell("")],
-      [mkCell("Número de liquidación", S_LABEL), mkCell(settlement.settlementNumber), mkCell(""), mkCell("")],
-      [mkCell("Estado", S_LABEL), mkCell(settlement.status ?? "—"), mkCell(""), mkCell("")],
-      [mkCell("Período desde", S_LABEL), mkCell(settlement.periodFrom ?? "—"), mkCell(""), mkCell("")],
-      [mkCell("Período hasta", S_LABEL), mkCell(settlement.periodTo ?? "—"), mkCell(""), mkCell("")],
-      [mkCell("Fecha de emisión", S_LABEL), mkCell(fmtDate(settlement.createdAt)), mkCell(""), mkCell("")],
+      [mkCell("N�mero de liquidaci�n", S_LABEL), mkCell(settlement.settlementNumber), mkCell(""), mkCell("")],
+      [mkCell("Estado", S_LABEL), mkCell(settlement.status ?? "�"), mkCell(""), mkCell("")],
+      [mkCell("Per�odo desde", S_LABEL), mkCell(settlement.periodFrom ?? "�"), mkCell(""), mkCell("")],
+      [mkCell("Per�odo hasta", S_LABEL), mkCell(settlement.periodTo ?? "�"), mkCell(""), mkCell("")],
+      [mkCell("Fecha de emisi�n", S_LABEL), mkCell(fmtDate(settlement.createdAt)), mkCell(""), mkCell("")],
       [mkCell("Fecha de abono", S_LABEL), mkCell(fmtDate(settlement.paidAt)), mkCell(""), mkCell("")],
       [mkCell(""), mkCell(""), mkCell(""), mkCell("")],
       [mkCell("DATOS DEL PROVEEDOR", S_SECTION), mkCell(""), mkCell(""), mkCell("")],
-      [mkCell("Razón social", S_LABEL), mkCell(settlement.supplierName ?? "—"), mkCell(""), mkCell("")],
-      [mkCell("NIF / CIF", S_LABEL), mkCell(settlement.supplierNif ?? "—"), mkCell(""), mkCell("")],
-      [mkCell("Dirección fiscal", S_LABEL), mkCell(settlement.supplierAddress ?? "—"), mkCell(""), mkCell("")],
-      [mkCell("IBAN", S_LABEL), mkCell(settlement.supplierIban ?? "—"), mkCell(""), mkCell("")],
-      [mkCell("Email", S_LABEL), mkCell(settlement.supplierEmail ?? "—"), mkCell(""), mkCell("")],
-      [mkCell("Teléfono", S_LABEL), mkCell(settlement.supplierPhone ?? "—"), mkCell(""), mkCell("")],
+      [mkCell("Raz�n social", S_LABEL), mkCell(settlement.supplierName ?? "�"), mkCell(""), mkCell("")],
+      [mkCell("NIF / CIF", S_LABEL), mkCell(settlement.supplierNif ?? "�"), mkCell(""), mkCell("")],
+      [mkCell("Direcci�n fiscal", S_LABEL), mkCell(settlement.supplierAddress ?? "�"), mkCell(""), mkCell("")],
+      [mkCell("IBAN", S_LABEL), mkCell(settlement.supplierIban ?? "�"), mkCell(""), mkCell("")],
+      [mkCell("Email", S_LABEL), mkCell(settlement.supplierEmail ?? "�"), mkCell(""), mkCell("")],
+      [mkCell("Tel�fono", S_LABEL), mkCell(settlement.supplierPhone ?? "�"), mkCell(""), mkCell("")],
       [mkCell(""), mkCell(""), mkCell(""), mkCell("")],
-      [mkCell("RESUMEN ECONÓMICO", S_SECTION), mkCell(""), mkCell(""), mkCell("")],
+      [mkCell("RESUMEN ECON�MICO", S_SECTION), mkCell(""), mkCell(""), mkCell("")],
       [mkCell("Total venta bruta", S_LABEL), mkCell(fmt(settlement.grossAmount), S_EUR), mkCell(""), mkCell("")],
-      [mkCell("Total comisión agencia", S_LABEL), mkCell(fmt(settlement.commissionAmount), S_EUR), mkCell(""), mkCell("")],
+      [mkCell("Total comisi�n agencia", S_LABEL), mkCell(fmt(settlement.commissionAmount), S_EUR), mkCell(""), mkCell("")],
       [mkCell("NETO A ABONAR AL PROVEEDOR", S_TOTAL_LABEL), mkCell(fmt(settlement.netAmountProvider), S_TOTAL_VALUE), mkCell(""), mkCell("")],
       [mkCell(""), mkCell(""), mkCell(""), mkCell("")],
-      [mkCell("Notas internas", S_LABEL), mkCell(settlement.internalNotes ?? "—"), mkCell(""), mkCell("")],
+      [mkCell("Notas internas", S_LABEL), mkCell(settlement.internalNotes ?? "�"), mkCell(""), mkCell("")],
       [mkCell(""), mkCell(""), mkCell(""), mkCell("")],
-      [mkCell("Emisor", S_LABEL), mkCell("Náyade Experiences S.L."), mkCell(""), mkCell("")],
+      [mkCell("Emisor", S_LABEL), mkCell("N�yade Experiences S.L."), mkCell(""), mkCell("")],
       [mkCell("Generado el", S_LABEL), mkCell(fmtDate(new Date())), mkCell(""), mkCell("")],
     ];
 
@@ -186,16 +186,16 @@ settlementExportRouter.get(
     wsHeader["!cols"] = [{ wch: 32 }, { wch: 42 }, { wch: 20 }, { wch: 20 }];
     XLSX.utils.book_append_sheet(wb, wsHeader, "Cabecera");
 
-    // ── Sheet 2: Líneas ──────────────────────────────────────────────────────
+    // -- Sheet 2: L�neas ------------------------------------------------------
     const colHeaders = [
       "Servicio / Producto",
       "Fecha servicio",
       "Pax",
       "Tipo coste",
-      "Venta bruta (€)",
-      "Comisión %",
-      "Comisión (€)",
-      "Neto proveedor (€)",
+      "Venta bruta (�)",
+      "Comisi�n %",
+      "Comisi�n (�)",
+      "Neto proveedor (�)",
       "Notas",
     ];
 
@@ -205,10 +205,10 @@ settlementExportRouter.get(
 
     for (const l of lines) {
       linesRows.push([
-        mkCell(l.productName ?? "—"),
-        mkCell(l.serviceDate ?? "—"),
+        mkCell(l.productName ?? "�"),
+        mkCell(l.serviceDate ?? "�"),
         mkCell(l.paxCount ?? 0),
-        mkCell(l.costType ?? "—"),
+        mkCell(l.costType ?? "�"),
         mkCell(fmt(l.saleAmount), S_EUR),
         mkCell(fmt(l.commissionPercent), S_PCT),
         mkCell(fmt(l.commissionAmount), S_EUR),
@@ -242,14 +242,14 @@ settlementExportRouter.get(
       { wch: 6 },  // Pax
       { wch: 14 }, // Tipo coste
       { wch: 18 }, // Venta bruta
-      { wch: 12 }, // Comisión %
-      { wch: 18 }, // Comisión €
+      { wch: 12 }, // Comisi�n %
+      { wch: 18 }, // Comisi�n �
       { wch: 22 }, // Neto proveedor
       { wch: 32 }, // Notas
     ];
-    XLSX.utils.book_append_sheet(wb, wsLines, "Líneas");
+    XLSX.utils.book_append_sheet(wb, wsLines, "L�neas");
 
-    // ── Serialize & send ─────────────────────────────────────────────────────
+    // -- Serialize & send -----------------------------------------------------
     const buffer = XLSX.write(wb, { type: "buffer", bookType: "xlsx" }) as Buffer;
     const filename = `Liquidacion-${settlement.settlementNumber}-${settlement.periodFrom ?? "periodo"}.xlsx`;
 

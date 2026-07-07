@@ -1,5 +1,5 @@
-ï»¿/**
- * Helpers compartidos para el mÃ³dulo Caja.
+/**
+ * Helpers compartidos para el módulo Caja.
  * Importar desde crm.ts, expenses.ts y cashRegister.ts.
  * Siempre opera con try/catch para no bloquear flujos principales.
  */
@@ -111,13 +111,13 @@ export interface CashMovementParams {
 }
 
 /**
- * Crea un movimiento de caja sÃ³lo si no existe ya uno para la misma entidad+tipo.
- * Es seguro llamarlo mÃºltiples veces: es idempotente.
+ * Crea un movimiento de caja sólo si no existe ya uno para la misma entidad+tipo.
+ * Es seguro llamarlo múltiples veces: es idempotente.
  */
 export async function createCashMovementIfNotExists(
   params: CashMovementParams,
 ): Promise<{ created: boolean }> {
-  // DeduplicaciÃ³n por entidad + tipo de movimiento
+  // Deduplicación por entidad + tipo de movimiento
   const [existing] = await db
     .select({ id: finCashMovements.id })
     .from(finCashMovements)

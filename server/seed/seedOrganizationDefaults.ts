@@ -1,4 +1,4 @@
-﻿/**
+/**
  * seedOrganizationDefaults
  *
  * Creates the DB records needed for a new organization (tenant).

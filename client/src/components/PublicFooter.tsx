@@ -63,7 +63,7 @@ export default function PublicFooter() {
               </div>
               <div className="flex items-center gap-3 text-sm">
                 <Mail className="w-4 h-4 text-accent flex-shrink-0" />
-                <a href="mailto:reservas@skicenter.es" className="text-white/65 hover:text-accent transition-colors">reservas@skicenter.es</a>
+                <a href="mailto:reservas@nayadeexperiences.es" className="text-white/65 hover:text-accent transition-colors">reservas@nayadeexperiences.es</a>
               </div>
               <div className="flex items-start gap-3 text-sm">
                 <Clock className="w-4 h-4 text-accent mt-0.5 flex-shrink-0" />

@@ -1,4 +1,4 @@
-ï»¿import { useParams, Link } from "wouter";
+import { useParams, Link } from "wouter";
 import { useState, useEffect } from "react";
 import { useMarketingConsent } from "@/hooks/useMarketingConsent";
 import { trackEvent } from "@/lib/meta-pixel/client";
@@ -25,7 +25,7 @@ const CATEGORY_META: Record<string, {
   icon: React.ComponentType<{ className?: string }>;
 }> = {
   dia: {
-    label: "Lego Packs de DÃ­a", href: "/lego-packs/dia",
+    label: "Lego Packs de Día", href: "/lego-packs/dia",
     gradient: "from-sky-600 to-blue-800",
     text: "text-sky-700", bg: "bg-sky-50", border: "border-sky-200",
     icon: Sun,
@@ -94,7 +94,7 @@ export default function LegoPackDetail() {
     totalFinal: number;
   } | undefined;
 
-  // Precio base: usa customPackPrice si el cliente personalizÃ³ el pack
+  // Precio base: usa customPackPrice si el cliente personalizó el pack
   const basePrice = customPackPrice ?? pricing?.totalFinal ?? 0;
 
   // Descuento activo a nivel de pack
@@ -109,7 +109,7 @@ export default function LegoPackDetail() {
   const effectivePrice = discountedPrice ?? basePrice;
   const totalEstimado = effectivePrice * people;
 
-  // LÃ­neas visibles del pack (para "QuÃ© incluye")
+  // Líneas visibles del pack (para "Qué incluye")
   const visibleLines = (pricing?.lines ?? []).filter((l) => l.isClientVisible);
 
   // Imagen principal
@@ -158,7 +158,7 @@ export default function LegoPackDetail() {
 
   return (
     <PublicLayout forcePublicLight>
-      {/* Hero â€” foto de fondo como en PackDetail */}
+      {/* Hero — foto de fondo como en PackDetail */}
       <section className="relative text-white overflow-hidden" style={{ minHeight: '420px' }}>
         <div className="absolute inset-0">
           {heroImage ? (
@@ -168,7 +168,7 @@ export default function LegoPackDetail() {
           )}
           {/* Overlay oscuro para legibilidad */}
           <div className="absolute inset-0 bg-black/50" />
-          {/* Banda de color de categorÃ­a en la parte inferior */}
+          {/* Banda de color de categoría en la parte inferior */}
           <div className={`absolute bottom-0 left-0 right-0 h-1.5 bg-gradient-to-r ${meta.gradient}`} />
         </div>
         <div className="relative container max-w-6xl pt-8 pb-12">
@@ -205,9 +205,9 @@ export default function LegoPackDetail() {
         <div className="container max-w-6xl grid lg:grid-cols-3 gap-8 items-start">
           {/* Columna izquierda */}
           <div className="lg:col-span-2 space-y-6">
-            {/* DescripciÃ³n */}
+            {/* Descripción */}
             <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
-              <h2 className="text-xl font-black text-slate-900 mb-3">DescripciÃ³n</h2>
+              <h2 className="text-xl font-black text-slate-900 mb-3">Descripción</h2>
               <p className="text-slate-600 leading-relaxed">
                 {pack.description || pack.shortDescription}
               </p>
@@ -223,8 +223,8 @@ export default function LegoPackDetail() {
                     <Users className={`w-4 h-4 ${meta.text}`} />
                     <span>
                       {(pack as any).maxPersons
-                        ? `${(pack as any).minPersons}â€“${(pack as any).maxPersons} personas`
-                        : `MÃ­n. ${(pack as any).minPersons} personas`}
+                        ? `${(pack as any).minPersons}–${(pack as any).maxPersons} personas`
+                        : `Mín. ${(pack as any).minPersons} personas`}
                     </span>
                   </div>
                 )}
@@ -237,7 +237,7 @@ export default function LegoPackDetail() {
               </div>
             </div>
 
-            {/* QuÃ© incluye â€” Selector interactivo de lÃ­neas */}
+            {/* Qué incluye — Selector interactivo de líneas */}
             {visibleLines.length > 0 && (
               <div className={`${meta.bg} border ${meta.border} rounded-2xl p-5`}>
                 <h3 className="font-black text-slate-900 mb-4 flex items-center gap-2">
@@ -278,7 +278,7 @@ export default function LegoPackDetail() {
             )}
           </div>
 
-          {/* Widget de precio â€” idÃ©ntico a PackDetail */}
+          {/* Widget de precio — idéntico a PackDetail */}
           <div className="sticky top-28">
             <div className="bg-white rounded-2xl border border-slate-200 shadow-lg p-6 relative overflow-hidden">
               {/* Ribbon de descuento */}
@@ -296,17 +296,17 @@ export default function LegoPackDetail() {
                 {discountedPrice ? (
                   <div className="flex items-baseline gap-2">
                     <span className="text-4xl font-black text-orange-500">
-                      {discountedPrice.toFixed(0)}â‚¬
+                      {discountedPrice.toFixed(0)}€
                     </span>
                     <span className="text-lg text-slate-400 line-through">
-                      {basePrice.toFixed(0)}â‚¬
+                      {basePrice.toFixed(0)}€
                     </span>
                     <span className="text-slate-500 text-sm">/persona</span>
                   </div>
                 ) : (
                   <div className="flex items-baseline gap-2">
                     <span className="text-4xl font-black text-slate-900">
-                      {basePrice > 0 ? `${basePrice.toFixed(0)}â‚¬` : "Consultar"}
+                      {basePrice > 0 ? `${basePrice.toFixed(0)}€` : "Consultar"}
                     </span>
                     {basePrice > 0 && (
                       <span className="text-slate-500 text-sm">/persona</span>
@@ -330,13 +330,13 @@ export default function LegoPackDetail() {
               {pack.isOnlineSale && (
                 <div className="mb-4">
                   <label className="text-sm font-semibold text-slate-700 block mb-2">
-                    NÃºmero de personas
+                    Número de personas
                   </label>
                   <div className="flex items-center gap-3">
                     <button
                       onClick={() => setPeople(Math.max(1, people - 1))}
                       className="w-9 h-9 rounded-full border border-slate-300 flex items-center justify-center text-lg font-bold hover:bg-slate-100 transition-colors"
-                    >âˆ’</button>
+                    >-</button>
                     <span className="text-xl font-black w-8 text-center">{people}</span>
                     <button
                       onClick={() => setPeople(people + 1)}
@@ -350,12 +350,12 @@ export default function LegoPackDetail() {
               {pack.isOnlineSale && basePrice > 0 && (
                 <div className="bg-slate-50 rounded-xl p-3 mb-5 text-sm">
                   <div className="flex justify-between text-slate-600 mb-1">
-                    <span>{effectivePrice.toFixed(0)}â‚¬ Ã— {people} personas</span>
-                    <span>{totalEstimado.toFixed(0)}â‚¬</span>
+                    <span>{effectivePrice.toFixed(0)}€ × {people} personas</span>
+                    <span>{totalEstimado.toFixed(0)}€</span>
                   </div>
                   <div className="flex justify-between font-black text-slate-900 text-base border-t border-slate-200 pt-2 mt-2">
                     <span>Total estimado</span>
-                    <span className="text-orange-600">{totalEstimado.toFixed(0)}â‚¬</span>
+                    <span className="text-orange-600">{totalEstimado.toFixed(0)}€</span>
                   </div>
                 </div>
               )}
@@ -377,14 +377,14 @@ export default function LegoPackDetail() {
                 </div>
               )}
 
-              {/* BotÃ³n AÃ±adir al carrito */}
+              {/* Botón Añadir al carrito */}
               {pack.isOnlineSale ? (
                 <Button
                   size="lg"
                   className="w-full bg-orange-500 hover:bg-orange-600 text-white font-black text-base mb-3"
                   onClick={() => {
                     if (!selectedDate) {
-                      toast.info("Selecciona una fecha antes de aÃ±adir al carrito");
+                      toast.info("Selecciona una fecha antes de añadir al carrito");
                       return;
                     }
                     addItem({
@@ -404,10 +404,10 @@ export default function LegoPackDetail() {
                       legoPackLineNames: Object.keys(legoPackLineNames).length > 0 ? legoPackLineNames : undefined,
                     });
                     openCart();
-                    toast.success("Lego Pack aÃ±adido al carrito");
+                    toast.success("Lego Pack añadido al carrito");
                   }}
                 >
-                  <ShoppingCart className="w-5 h-5 mr-2" /> AÃ±adir al carrito
+                  <ShoppingCart className="w-5 h-5 mr-2" /> Añadir al carrito
                 </Button>
               ) : null}
 
@@ -424,14 +424,14 @@ export default function LegoPackDetail() {
                 >
                   <Phone className="w-4 h-4" /> {phone}
                 </a>
-                <p className="text-xs text-slate-400">CancelaciÃ³n gratuita hasta 48h antes</p>
+                <p className="text-xs text-slate-400">Cancelación gratuita hasta 48h antes</p>
               </div>
             </div>
           </div>
         </div>
       </section>
 
-      {/* GalerÃ­a adicional â€” image1..4 del gestor */}
+      {/* Galería adicional — image1..4 del gestor */}
       {(() => {
         const galleryImgs = [
           (pack as any).image1,
@@ -443,7 +443,7 @@ export default function LegoPackDetail() {
         return (
           <section className="py-10 bg-slate-50 border-t border-slate-100">
             <div className="container max-w-6xl">
-              <h2 className="text-2xl font-black text-slate-900 mb-6">GalerÃ­a</h2>
+              <h2 className="text-2xl font-black text-slate-900 mb-6">Galería</h2>
               <div className={`grid gap-3 ${galleryImgs.length === 1 ? "grid-cols-1 max-w-lg" : galleryImgs.length === 2 ? "grid-cols-2" : "grid-cols-2 sm:grid-cols-3"}`}>
                 {galleryImgs.map((img, i) => (
                   <img
@@ -459,14 +459,14 @@ export default function LegoPackDetail() {
         );
       })()}
 
-      {/* ReseÃ±as de clientes */}
+      {/* Reseñas de clientes */}
       <section className="py-12 bg-white border-t border-slate-100">
         <div className="container max-w-5xl">
           <ReviewSection entityType="pack" entityId={pack.id} theme="auto" />
         </div>
       </section>
 
-      {/* MÃ¡s Lego Packs de la misma categorÃ­a */}
+      {/* Más Lego Packs de la misma categoría */}
       {(() => {
         const others = (relatedPacks ?? [])
           .filter((p: any) => p.id !== pack.id)
@@ -477,7 +477,7 @@ export default function LegoPackDetail() {
             <div className="container max-w-6xl">
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-2xl font-black text-slate-900">
-                  MÃ¡s {meta.label}
+                  Más {meta.label}
                 </h2>
                 <Link href={meta.href} className={`text-sm font-semibold ${meta.text} hover:underline flex items-center gap-1`}>
                   Ver todos <ArrowRight className="w-4 h-4" />
@@ -506,7 +506,7 @@ export default function LegoPackDetail() {
                           {minP && minP > 0 && (
                             <div className="absolute bottom-3 right-3">
                               <span className="text-xs font-black px-2.5 py-1 rounded-full bg-orange-500 text-white shadow">
-                                Desde {minP.toFixed(0)}â‚¬
+                                Desde {minP.toFixed(0)}€
                               </span>
                             </div>
                           )}

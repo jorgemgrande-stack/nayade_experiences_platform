@@ -1,4 +1,4 @@
-﻿import mysql from "mysql2/promise";
+import mysql from "mysql2/promise";
 import { drizzle } from "drizzle-orm/mysql2";
 import { and, desc, eq, gte, lte, sql } from "drizzle-orm";
 import { z } from "zod";

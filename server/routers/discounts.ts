@@ -1,7 +1,7 @@
-﻿import { z } from "zod";
+import { z } from "zod";
 import { publicProcedure, router, permissionProcedure } from "../_core/trpc";
 
-// RBAC-aware procedures. Fallback legacy: view→admin+agente, manage→admin only.
+// RBAC-aware procedures. Fallback legacy: view?admin+agente, manage?admin only.
 const discViewProc   = permissionProcedure("discounts.view",   ["admin", "agente"]);
 const discManageProc = permissionProcedure("discounts.manage", ["admin"]);
 import { drizzle } from "drizzle-orm/mysql2";
@@ -13,16 +13,16 @@ import { TRPCError } from "@trpc/server";
 const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
 const db = drizzle(_pool);
 
-// ─── HELPERS ─────────────────────────────────────────────────────────────────
+// --- HELPERS -----------------------------------------------------------------
 
-/** Comprueba si un código ha caducado por fecha o por usos */
+/** Comprueba si un c�digo ha caducado por fecha o por usos */
 function isCodeExpired(code: typeof discountCodes.$inferSelect): boolean {
   if (code.expiresAt && new Date(code.expiresAt) < new Date()) return true;
   if (code.maxUses !== null && code.currentUses >= code.maxUses) return true;
   return false;
 }
 
-/** Valida un código y devuelve tipo + importe/porcentaje de descuento o lanza error */
+/** Valida un c�digo y devuelve tipo + importe/porcentaje de descuento o lanza error */
 export async function validateAndGetDiscount(codeStr: string): Promise<{
   id: number;
   code: string;
@@ -38,14 +38,14 @@ export async function validateAndGetDiscount(codeStr: string): Promise<{
     .limit(1);
 
   if (!row) {
-    throw new TRPCError({ code: "NOT_FOUND", message: "Código de descuento no encontrado" });
+    throw new TRPCError({ code: "NOT_FOUND", message: "C�digo de descuento no encontrado" });
   }
   if (row.status === "inactive") {
-    throw new TRPCError({ code: "BAD_REQUEST", message: "El código de descuento está inactivo" });
+    throw new TRPCError({ code: "BAD_REQUEST", message: "El c�digo de descuento est� inactivo" });
   }
   if (isCodeExpired(row)) {
     await db.update(discountCodes).set({ status: "expired" }).where(eq(discountCodes.id, row.id));
-    throw new TRPCError({ code: "BAD_REQUEST", message: "El código de descuento ha caducado o alcanzó su límite de usos" });
+    throw new TRPCError({ code: "BAD_REQUEST", message: "El c�digo de descuento ha caducado o alcanz� su l�mite de usos" });
   }
   return {
     id: row.id,
@@ -57,7 +57,7 @@ export async function validateAndGetDiscount(codeStr: string): Promise<{
   };
 }
 
-/** Registra el uso de un código y actualiza el contador */
+/** Registra el uso de un c�digo y actualiza el contador */
 export async function recordDiscountUse(params: {
   discountCodeId: number;
   code: string;
@@ -87,9 +87,9 @@ export async function recordDiscountUse(params: {
     .set({ currentUses: sql`current_uses + 1` })
     .where(eq(discountCodes.id, params.discountCodeId));
 
-  // ── Sincronizar bono compensatorio si este código proviene de uno ────────────
-  // Cuando el código es de origin='voucher' y alcanza maxUses, marcamos el voucher
-  // como 'canjeado' automáticamente, sin intervención manual del admin.
+  // -- Sincronizar bono compensatorio si este c�digo proviene de uno ------------
+  // Cuando el c�digo es de origin='voucher' y alcanza maxUses, marcamos el voucher
+  // como 'canjeado' autom�ticamente, sin intervenci�n manual del admin.
   try {
     const [updated] = await db
       .select({
@@ -114,15 +114,15 @@ export async function recordDiscountUse(params: {
         .where(eq(compensationVouchers.id, updated.compensationVoucherId));
     }
   } catch (e) {
-    // No crítico: el descuento ya se registró correctamente
+    // No cr�tico: el descuento ya se registr� correctamente
     console.error("[discounts] Error sincronizando estado del bono compensatorio:", e);
   }
 }
 
-// ─── ROUTER ──────────────────────────────────────────────────────────────────
+// --- ROUTER ------------------------------------------------------------------
 
 export const discountsRouter = router({
-  /** Validar un código (acceso público para checkout online y TPV) */
+  /** Validar un c�digo (acceso p�blico para checkout online y TPV) */
   validate: publicProcedure
     .input(z.object({ code: z.string().min(1), amount: z.number().optional() }))
     .mutation(async ({ input }) => {
@@ -131,7 +131,7 @@ export const discountsRouter = router({
     }),
 
   /**
-   * Verificar un bono compensatorio por código (acceso público).
+   * Verificar un bono compensatorio por c�digo (acceso p�blico).
    * Devuelve el estado del voucher sin modificar nada.
    */
   verifyVoucher: publicProcedure
@@ -139,7 +139,7 @@ export const discountsRouter = router({
     .query(async ({ input }) => {
       const normalizedCode = input.code.toUpperCase().trim();
 
-      // Buscar en discount_codes el código
+      // Buscar en discount_codes el c�digo
       const [dc] = await db
         .select()
         .from(discountCodes)
@@ -180,7 +180,7 @@ export const discountsRouter = router({
       };
     }),
 
-  /** Listar todos los códigos (admin) */
+  /** Listar todos los c�digos (admin) */
   list: discViewProc
     .input(z.object({
       search: z.string().optional(),
@@ -212,16 +212,16 @@ export const discountsRouter = router({
       return { items, total: Number(countResult[0]?.count ?? 0) };
     }),
 
-  /** Obtener un código por ID (admin) */
+  /** Obtener un c�digo por ID (admin) */
   getById: discViewProc
     .input(z.object({ id: z.number() }))
     .query(async ({ input }) => {
       const [row] = await db.select().from(discountCodes).where(eq(discountCodes.id, input.id));
-      if (!row) throw new TRPCError({ code: "NOT_FOUND", message: "Código no encontrado" });
+      if (!row) throw new TRPCError({ code: "NOT_FOUND", message: "C�digo no encontrado" });
       return row;
     }),
 
-  /** Crear un código (admin) */
+  /** Crear un c�digo (admin) */
   create: discManageProc
     .input(z.object({
       code: z.string().min(2).max(50).transform(v => v.toUpperCase().trim()),
@@ -236,7 +236,7 @@ export const discountsRouter = router({
       // Verificar unicidad
       const [existing] = await db.select({ id: discountCodes.id })
         .from(discountCodes).where(eq(discountCodes.code, input.code));
-      if (existing) throw new TRPCError({ code: "CONFLICT", message: "Ya existe un código con ese nombre" });
+      if (existing) throw new TRPCError({ code: "CONFLICT", message: "Ya existe un c�digo con ese nombre" });
 
       await db.insert(discountCodes).values({
         code: input.code,
@@ -253,7 +253,7 @@ export const discountsRouter = router({
       return created;
     }),
 
-  /** Actualizar un código (admin) */
+  /** Actualizar un c�digo (admin) */
   update: discManageProc
     .input(z.object({
       id: z.number(),
@@ -280,7 +280,7 @@ export const discountsRouter = router({
       return updated;
     }),
 
-  /** Activar/desactivar un código (admin) */
+  /** Activar/desactivar un c�digo (admin) */
   toggleStatus: discManageProc
     .input(z.object({ id: z.number(), active: z.boolean() }))
     .mutation(async ({ input }) => {
@@ -290,12 +290,12 @@ export const discountsRouter = router({
       return { success: true };
     }),
 
-  /** Duplicar un código (admin) */
+  /** Duplicar un c�digo (admin) */
   duplicate: discManageProc
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
       const [original] = await db.select().from(discountCodes).where(eq(discountCodes.id, input.id));
-      if (!original) throw new TRPCError({ code: "NOT_FOUND", message: "Código no encontrado" });
+      if (!original) throw new TRPCError({ code: "NOT_FOUND", message: "C�digo no encontrado" });
       const newCode = `${original.code}-COPIA-${Date.now().toString().slice(-4)}`;
       await db.insert(discountCodes).values({
         code: newCode,
@@ -312,12 +312,12 @@ export const discountsRouter = router({
       return created;
     }),
 
-  /** Eliminar un código (admin) — solo si no tiene usos */
+  /** Eliminar un c�digo (admin) � solo si no tiene usos */
   delete: discManageProc
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
       const [row] = await db.select().from(discountCodes).where(eq(discountCodes.id, input.id));
-      if (!row) throw new TRPCError({ code: "NOT_FOUND", message: "Código no encontrado" });
+      if (!row) throw new TRPCError({ code: "NOT_FOUND", message: "C�digo no encontrado" });
       if (row.currentUses > 0) {
         // Soft delete: desactivar en lugar de eliminar
         await db.update(discountCodes).set({ status: "inactive" }).where(eq(discountCodes.id, input.id));
@@ -327,7 +327,7 @@ export const discountsRouter = router({
       return { success: true, softDeleted: false };
     }),
 
-  /** Historial de usos de un código (admin) */
+  /** Historial de usos de un c�digo (admin) */
   getUses: discViewProc
     .input(z.object({ discountCodeId: z.number() }))
     .query(async ({ input }) => {

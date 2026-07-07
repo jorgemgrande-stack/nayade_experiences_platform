@@ -1,7 +1,7 @@
-﻿/**
- * Ticketing Router — Pipeline de Cupones & Plataformas
- * Flujo: Recibido → Pendiente → Reserva generada
- * Financiero: Pendiente canjear → Canjeado | Incidencia
+/**
+ * Ticketing Router � Pipeline de Cupones & Plataformas
+ * Flujo: Recibido ? Pendiente ? Reserva generada
+ * Financiero: Pendiente canjear ? Canjeado | Incidencia
  */
 import { router, protectedProcedure, publicProcedure } from "../_core/trpc";
 import { checkRbacOrLegacy } from "../_core/rbac";
@@ -36,7 +36,7 @@ const db = drizzle(_pool);
 
 const getCopyEmail = () => getSystemSettingSync("email_reservations", "reservas@nayadeexperiences.es");
 
-// ─── PROVEEDORES FIJOS ────────────────────────────────────────────────────────
+// --- PROVEEDORES FIJOS --------------------------------------------------------
 export const FIXED_PROVIDERS = [
   "Groupon",
   "Smartbox",
@@ -49,18 +49,18 @@ export const FIXED_PROVIDERS = [
 
 type FixedProvider = typeof FIXED_PROVIDERS[number];
 
-// ─── STATUS TYPES ─────────────────────────────────────────────────────────────
+// --- STATUS TYPES -------------------------------------------------------------
 type StatusOperational = "recibido" | "pendiente" | "reserva_generada";
 type StatusFinancial = "pendiente_canjear" | "canjeado" | "incidencia";
 
-// ─── EMAIL HELPER ─────────────────────────────────────────────────────────────
+// --- EMAIL HELPER -------------------------------------------------------------
 async function sendEmail(opts: { to: string; subject: string; html: string }) {
   const sent = await sharedSendEmail(opts);
   if (!sent) console.warn("[Ticketing] SMTP not configured, skipping email");
   else await sharedSendEmail({ to: getCopyEmail(), subject: `[COPIA] ${opts.subject}`, html: opts.html });
 }
 
-// ─── ADMIN PROCEDURE (RBAC-aware) ────────────────────────────────────────────
+// --- ADMIN PROCEDURE (RBAC-aware) --------------------------------------------
 // Uses ticketing.manage permission; fallback: admin or agente (legacy behavior).
 // assertModuleEnabled preserved. Zero changes to individual procedure definitions.
 const adminProc = protectedProcedure.use(async ({ ctx, next }) => {
@@ -77,7 +77,7 @@ const adminProc = protectedProcedure.use(async ({ ctx, next }) => {
   return next({ ctx });
 });
 
-// ─── OCR ENGINE ──────────────────────────────────────────────────────────────
+// --- OCR ENGINE --------------------------------------------------------------
 async function runOcrExtraction(attachmentUrl: string, formData: {
   couponCode: string;
   securityCode?: string;
@@ -89,15 +89,15 @@ async function runOcrExtraction(attachmentUrl: string, formData: {
   rawData: Record<string, unknown>;
 }> {
   try {
-    const prompt = `Analiza esta imagen/PDF de un cupón y extrae la siguiente información en JSON:
-- coupon_code: código del cupón
-- security_code: código de seguridad
+    const prompt = `Analiza esta imagen/PDF de un cup�n y extrae la siguiente informaci�n en JSON:
+- coupon_code: c�digo del cup�n
+- security_code: c�digo de seguridad
 - product_name: nombre del producto/experiencia
 - customer_name: nombre del cliente
 - expiry_date: fecha de caducidad (si aparece)
 - provider: proveedor (Groupon, Smartbox, etc.)
 
-Responde SOLO con JSON válido, sin texto adicional.`;
+Responde SOLO con JSON v�lido, sin texto adicional.`;
 
     const response = await invokeLLM({
       messages: [
@@ -163,7 +163,7 @@ Responde SOLO con JSON válido, sin texto adicional.`;
   }
 }
 
-// ─── DUPLICATE CHECK ─────────────────────────────────────────────────────────
+// --- DUPLICATE CHECK ---------------------------------------------------------
 async function checkDuplicates(
   couponCode: string,
   securityCode?: string,
@@ -183,7 +183,7 @@ async function checkDuplicates(
     .limit(1);
 
   if (hardDupes.length > 0) {
-    return { hardDuplicate: true, softDuplicate: false, notes: "Código de cupón duplicado (hard)" };
+    return { hardDuplicate: true, softDuplicate: false, notes: "C�digo de cup�n duplicado (hard)" };
   }
 
   const softNotes: string[] = [];
@@ -201,7 +201,7 @@ async function checkDuplicates(
       .from(couponRedemptions)
       .where(and(eq(couponRedemptions.phone, phone), eq(couponRedemptions.productTicketingId, productTicketingId)))
       .limit(1);
-    if (phoneProdDupes.length > 0) softNotes.push("Mismo teléfono y producto");
+    if (phoneProdDupes.length > 0) softNotes.push("Mismo tel�fono y producto");
   }
 
   return {
@@ -211,7 +211,7 @@ async function checkDuplicates(
   };
 }
 
-// ─── EMAIL TEMPLATES ─────────────────────────────────────────────────────────
+// --- EMAIL TEMPLATES ---------------------------------------------------------
 function buildRedemptionConfirmationHtml(data: {
   customerName: string;
   email: string;
@@ -243,10 +243,10 @@ function buildInternalAlertHtml(data: {
 }) {
   return buildCouponInternalAlertHtml({ customerName: data.customerName, email: data.email, phone: data.phone, coupons: data.coupons, submissionId: data.submissionId, requestedDate: data.requestedDate, requestDate: data.requestDate });
 }
-// ─── ROUTER ───────────────────────────────────────────────────────────────────
+// --- ROUTER -------------------------------------------------------------------
 export const ticketingRouter = router({
 
-  // ── PRODUCTOS TICKETING ──────────────────────────────────────────────────
+  // -- PRODUCTOS TICKETING --------------------------------------------------
   listProducts: adminProc.query(async () => {
     return db.select().from(ticketingProducts).orderBy(desc(ticketingProducts.createdAt));
   }),
@@ -309,7 +309,7 @@ export const ticketingRouter = router({
       return { success: true };
     }),
 
-  /** Público: listar productos activos de plataforma para el formulario de canje */
+  /** P�blico: listar productos activos de plataforma para el formulario de canje */
   listActiveProducts: publicProcedure
     .input(z.object({ provider: z.string().default("Groupon") }))
     .query(async ({ input }) => {
@@ -336,8 +336,8 @@ export const ticketingRouter = router({
         .filter((r) => !r.expiresAt || r.expiresAt > now);
     }),
 
-  // ── UPLOAD ADJUNTO CUPÓN (base64, público) ───────────────────────────────
-  /** Público: recibe archivo en base64 → intenta subir a storage; si no está
+  // -- UPLOAD ADJUNTO CUP�N (base64, p�blico) -------------------------------
+  /** P�blico: recibe archivo en base64 ? intenta subir a storage; si no est�
    *  configurado, devuelve la data URL para guardarla directamente en DB. */
   uploadCouponAttachment: publicProcedure
     .input(z.object({
@@ -361,17 +361,17 @@ export const ticketingRouter = router({
         const random = Math.random().toString(36).substring(2, 10);
         const key = `nayade/coupons/${ts}-${random}.${ext}`;
         const { url } = await storagePut(key, buffer, input.mimeType);
-        // Si la URL es local (/local-storage/...) también aceptamos — son archivos en /tmp
+        // Si la URL es local (/local-storage/...) tambi�n aceptamos � son archivos en /tmp
         return { url };
       } catch {
-        // Storage no configurado → guardar como data URL en DB (MEDIUMTEXT soporta ~16MB)
+        // Storage no configurado ? guardar como data URL en DB (MEDIUMTEXT soporta ~16MB)
         const dataUrl = `data:${input.mimeType};base64,${input.base64Data}`;
         return { url: dataUrl };
       }
     }),
 
-  // ── SOLICITUDES DE CANJE (MULTI-CUPÓN) ───────────────────────────────────
-  /** Público: crear múltiples cupones en un mismo envío */
+  // -- SOLICITUDES DE CANJE (MULTI-CUP�N) -----------------------------------
+  /** P�blico: crear m�ltiples cupones en un mismo env�o */
   createSubmission: publicProcedure
     .input(z.object({
       provider: z.string().default("Groupon"),
@@ -400,10 +400,10 @@ export const ticketingRouter = router({
       for (const coupon of input.coupons) {
         const dupCheck = await checkDuplicates(coupon.couponCode, coupon.securityCode, input.email, input.phone, input.requestedDate, coupon.productTicketingId);
         if (dupCheck.hardDuplicate) {
-          results.push({ couponCode: coupon.couponCode, accepted: false, reason: "Código duplicado" });
+          results.push({ couponCode: coupon.couponCode, accepted: false, reason: "C�digo duplicado" });
           continue;
         }
-        let productName = "Experiencia Náyade";
+        let productName = "Experiencia N�yade";
         if (coupon.productTicketingId) {
           const [prod] = await db.select({ name: ticketingProducts.name }).from(ticketingProducts).where(eq(ticketingProducts.id, coupon.productTicketingId)).limit(1);
           if (prod) productName = prod.name;
@@ -448,7 +448,7 @@ export const ticketingRouter = router({
         }
       }
 
-      // Upsert cliente en CRM — siempre, independientemente de si los cupones son válidos
+      // Upsert cliente en CRM � siempre, independientemente de si los cupones son v�lidos
       // (el simple hecho de rellenar el formulario debe crear el cliente)
       try {
         const [existingCuponClient] = await db.select({ id: clients.id, name: clients.name, phone: clients.phone }).from(clients).where(eq(clients.email, input.email)).limit(1);
@@ -468,7 +468,7 @@ export const ticketingRouter = router({
       if (validResults.length > 0) {
         const acceptedIds = results.filter(r => r.accepted && r.redemptionId).map(r => r.redemptionId!);
         try {
-          // GHL — fire and forget
+          // GHL � fire and forget
           setImmediate(async () => {
             try {
               const creds = await getGHLCredentials();
@@ -481,7 +481,7 @@ export const ticketingRouter = router({
             } catch { /* silent */ }
           });
 
-          // Email confirmación cliente
+          // Email confirmaci�n cliente
           try {
             const now = new Date();
             const requestDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
@@ -490,13 +490,13 @@ export const ticketingRouter = router({
               templateKey: "coupon_received",
               triggerEvent: "coupon_received",
               recipientEmail: input.email,
-              subject: `Hemos recibido tu solicitud de canje — ${input.provider}`,
+              subject: `Hemos recibido tu solicitud de canje � ${input.provider}`,
               html: confirmHtml,
               relatedEntityType: "coupon_redemption",
               relatedEntityId: acceptedIds[0],
-            }).catch(e => console.error("[createSubmission] Error enviando email confirmación:", e));
+            }).catch(e => console.error("[createSubmission] Error enviando email confirmaci�n:", e));
           } catch (e) {
-            console.error("[createSubmission] Error construyendo email confirmación:", e);
+            console.error("[createSubmission] Error construyendo email confirmaci�n:", e);
           }
 
           // Alerta interna
@@ -511,7 +511,7 @@ export const ticketingRouter = router({
                 templateKey: "coupon_internal_alert",
                 triggerEvent: "coupon_internal_alert",
                 recipientEmail: alertEmail,
-                subject: `[Ticketing] Nuevo envío: ${validResults.length} cupón${validResults.length > 1 ? "es" : ""} — ${input.customerName}`,
+                subject: `[Ticketing] Nuevo env�o: ${validResults.length} cup�n${validResults.length > 1 ? "es" : ""} � ${input.customerName}`,
                 html: alertHtml,
                 relatedEntityType: "coupon_redemption",
                 relatedEntityId: acceptedIds[0],
@@ -529,7 +529,7 @@ export const ticketingRouter = router({
       return { success: true, submissionId, results, totalAccepted: validResults.length, totalRejected: results.length - validResults.length };
     }),
 
-  /** Admin: alta manual de cupón */
+  /** Admin: alta manual de cup�n */
   createManualRedemption: adminProc
     .input(z.object({
       provider: z.string().default("Groupon"),
@@ -550,8 +550,8 @@ export const ticketingRouter = router({
     }))
     .mutation(async ({ input, ctx }) => {
       const dupCheck = await checkDuplicates(input.couponCode, input.securityCode, input.email, input.phone, input.requestedDate, input.productTicketingId);
-      if (dupCheck.hardDuplicate) throw new TRPCError({ code: "CONFLICT", message: "Código de cupón duplicado." });
-      let productName = "Experiencia Náyade";
+      if (dupCheck.hardDuplicate) throw new TRPCError({ code: "CONFLICT", message: "C�digo de cup�n duplicado." });
+      let productName = "Experiencia N�yade";
       if (input.productTicketingId) {
         const [prod] = await db.select({ name: ticketingProducts.name }).from(ticketingProducts).where(eq(ticketingProducts.id, input.productTicketingId)).limit(1);
         if (prod) productName = prod.name;
@@ -582,7 +582,7 @@ export const ticketingRouter = router({
         createdByAdminId: ctx.user.id,
       });
       const redemptionId = (result as { insertId: number }).insertId;
-      // Upsert cliente en CRM — SELECT + INSERT/UPDATE
+      // Upsert cliente en CRM � SELECT + INSERT/UPDATE
       try {
         const [existingAdminClient] = await db.select({ id: clients.id, name: clients.name, phone: clients.phone }).from(clients).where(eq(clients.email, input.email)).limit(1);
         if (existingAdminClient) {
@@ -608,7 +608,7 @@ export const ticketingRouter = router({
       return { success: true, redemptionId, submissionId, softDuplicate: dupCheck.softDuplicate };
     }),
 
-  // ── PIPELINE — LISTADO Y FILTROS ─────────────────────────────────────────
+  // -- PIPELINE � LISTADO Y FILTROS -----------------------------------------
   /** Admin: listar cupones con filtros de pipeline */
   listCoupons: adminProc
     .input(z.object({
@@ -648,7 +648,7 @@ export const ticketingRouter = router({
       return { items, total, page: input.page, pageSize: input.pageSize, totalPages: Math.ceil(total / input.pageSize) };
     }),
 
-  /** Admin: obtener detalle de un cupón */
+  /** Admin: obtener detalle de un cup�n */
   getRedemption: adminProc
     .input(z.object({ id: z.number() }))
     .query(async ({ input }) => {
@@ -667,8 +667,8 @@ export const ticketingRouter = router({
       return { ...item, ticketingProduct, realProduct };
     }),
 
-  // ── PIPELINE — ACCIONES ───────────────────────────────────────────────────
-  /** Admin: actualizar estado de un cupón */
+  // -- PIPELINE � ACCIONES ---------------------------------------------------
+  /** Admin: actualizar estado de un cup�n */
   updateCouponStatus: adminProc
     .input(z.object({
       id: z.number(),
@@ -682,7 +682,7 @@ export const ticketingRouter = router({
       return { success: true };
     }),
 
-  /** Admin: posponer cupón — estado Pendiente + email automático */
+  /** Admin: posponer cup�n � estado Pendiente + email autom�tico */
   postponeCoupon: adminProc
     .input(z.object({
       id: z.number(),
@@ -692,7 +692,7 @@ export const ticketingRouter = router({
       const [item] = await db.select().from(couponRedemptions).where(eq(couponRedemptions.id, input.id)).limit(1);
       if (!item) throw new TRPCError({ code: "NOT_FOUND" });
 
-      let productName = "Experiencia Náyade";
+      let productName = "Experiencia N�yade";
       if (item.productTicketingId) {
         const [tp] = await db.select({ name: ticketingProducts.name }).from(ticketingProducts).where(eq(ticketingProducts.id, item.productTicketingId)).limit(1);
         if (tp) productName = tp.name;
@@ -702,12 +702,12 @@ export const ticketingRouter = router({
         .set({ statusOperational: "pendiente", notes: input.notes ?? item.notes, adminUserId: ctx.user.id })
         .where(eq(couponRedemptions.id, input.id));
 
-      // Email automático al cliente
+      // Email autom�tico al cliente
       sendManagedEmail({
         templateKey: "coupon_postponed",
         triggerEvent: "coupon_postponed",
         recipientEmail: item.email,
-        subject: `Información sobre tu solicitud de canje — ${item.provider}`,
+        subject: `Informaci�n sobre tu solicitud de canje � ${item.provider}`,
         html: buildPostponeEmailHtml({
           customerName: item.customerName,
           couponCode: item.couponCode,
@@ -719,7 +719,7 @@ export const ticketingRouter = router({
         relatedEntityId: item.id,
       }).catch(console.error);
 
-      // GHL — fire and forget
+      // GHL � fire and forget
       setImmediate(async () => {
         try {
           const creds = await getGHLCredentials();
@@ -747,7 +747,7 @@ export const ticketingRouter = router({
         .set({ statusFinancial: "incidencia", notes: input.notes ?? null, adminUserId: ctx.user.id })
         .where(eq(couponRedemptions.id, input.id));
 
-      // GHL — fire and forget
+      // GHL � fire and forget
       setImmediate(async () => {
         try {
           const creds = await getGHLCredentials();
@@ -766,7 +766,7 @@ export const ticketingRouter = router({
       return { success: true };
     }),
 
-  /** Admin: convertir cupón en reserva real */
+  /** Admin: convertir cup�n en reserva real */
   convertToReservation: adminProc
     .input(z.object({
       id: z.number(),
@@ -784,12 +784,12 @@ export const ticketingRouter = router({
         throw new TRPCError({ code: "CONFLICT", message: "Esta solicitud ya tiene una reserva generada" });
       }
       if (item.statusFinancial !== "canjeado") {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "El cupón debe estar marcado como canjeado por la plataforma antes de poder convertirlo en reserva" });
+        throw new TRPCError({ code: "BAD_REQUEST", message: "El cup�n debe estar marcado como canjeado por la plataforma antes de poder convertirlo en reserva" });
       }
 
       // Resolver producto: primero por platformProductId, luego por productRealId
       let resolvedExperienceId: number | null = null;
-      let resolvedProductName = "Experiencia Náyade";
+      let resolvedProductName = "Experiencia N�yade";
       let resolvedPvpPrice = "0";
       let resolvedNetPrice = "0";
 
@@ -802,14 +802,14 @@ export const ticketingRouter = router({
           .limit(1);
         if (pp) {
           resolvedExperienceId = pp.experienceId ?? null;
-          resolvedProductName = pp.externalProductName ?? pp.expTitle ?? "Experiencia Náyade";
+          resolvedProductName = pp.externalProductName ?? pp.expTitle ?? "Experiencia N�yade";
           resolvedPvpPrice = pp.pvpPrice ?? "0";
           resolvedNetPrice = pp.netPrice ?? "0";
         }
       } else if (input.productRealId) {
         const [expRow] = await db.select({ title: experiences.title, basePrice: experiences.basePrice }).from(experiences).where(eq(experiences.id, input.productRealId)).limit(1);
         resolvedExperienceId = input.productRealId;
-        resolvedProductName = expRow?.title ?? "Experiencia Náyade";
+        resolvedProductName = expRow?.title ?? "Experiencia N�yade";
         resolvedPvpPrice = expRow?.basePrice ?? "0";
       }
 
@@ -826,7 +826,7 @@ export const ticketingRouter = router({
       const merchantOrder = `TKT-${Date.now()}`;
       const now = Date.now();
       const providerTag = input.providerTag ?? item.provider;
-      const couponNotes = `Canje cupón ${providerTag} — Código: ${item.couponCode} — Producto: ${resolvedProductName}${input.notes ? ` — ${input.notes}` : ""}`;
+      const couponNotes = `Canje cup�n ${providerTag} � C�digo: ${item.couponCode} � Producto: ${resolvedProductName}${input.notes ? ` � ${input.notes}` : ""}`;
       const reservationNumber = await generateReservationNumber();
       const [resResult] = await db.insert(reservations).values({
         productId: resolvedExperienceId ?? 0,
@@ -854,7 +854,7 @@ export const ticketingRouter = router({
       });
       const reservationId = (resResult as { insertId: number }).insertId;
 
-      // Actualizar cupón con todos los datos de trazabilidad
+      // Actualizar cup�n con todos los datos de trazabilidad
       // statusFinancial se mantiene "canjeado" (ya verificado arriba)
       await db.update(couponRedemptions)
         .set({
@@ -866,12 +866,12 @@ export const ticketingRouter = router({
         })
         .where(eq(couponRedemptions.id, input.id));
 
-      // Enviar email de confirmación al cliente con los datos de la reserva
+      // Enviar email de confirmaci�n al cliente con los datos de la reserva
       const bookingDateFormatted = input.reservationDate
         ? new Date(input.reservationDate).toLocaleDateString("es-ES", { weekday: "long", year: "numeric", month: "long", day: "numeric" })
         : "Por confirmar";
       const totalAmount = (parseFloat(resolvedPvpPrice) * input.participants).toFixed(2).replace(".", ",");
-      // Recuperar publicToken de la reserva recién creada para el botón "Ver tu reserva"
+      // Recuperar publicToken de la reserva reci�n creada para el bot�n "Ver tu reserva"
       const [resForUrl] = await db.select({ publicToken: reservations.publicToken })
         .from(reservations).where(eq(reservations.id, reservationId)).limit(1);
       const baseUrl = process.env.APP_URL ?? "https://www.skicenter.es";
@@ -882,17 +882,17 @@ export const ticketingRouter = router({
         customerName: item.customerName,
         date: bookingDateFormatted,
         people: input.participants,
-        amount: `${totalAmount} €`,
-        extras: `Cupón ${item.provider ?? ""} — Código: ${item.couponCode}`,
+        amount: `${totalAmount} �`,
+        extras: `Cup�n ${item.provider ?? ""} � C�digo: ${item.couponCode}`,
         reservationUrl,
       });
       sendEmail({
         to: item.email,
-        subject: `✅ Reserva confirmada — ${resolvedProductName} | Náyade Experiences`,
+        subject: `? Reserva confirmada � ${resolvedProductName} | N�yade Experiences`,
         html: confirmHtml,
       }).catch(console.error);
 
-      // BUG FIX (cupón convertToReservation): Crear booking operativo + transacción contable
+      // BUG FIX (cup�n convertToReservation): Crear booking operativo + transacci�n contable
       try {
         const pvpTotal = parseFloat(resolvedPvpPrice) * input.participants;
         const netTotal = parseFloat(resolvedNetPrice) * input.participants;
@@ -910,7 +910,7 @@ export const ticketingRouter = router({
           paymentMethod: "otro",
           saleChannel: "delegado",
           reservationRef: merchantOrder,
-          description: `Cupón ${item.provider ?? "externo"} — ${item.couponCode} — ${resolvedProductName}`,
+          description: `Cup�n ${item.provider ?? "externo"} � ${item.couponCode} � ${resolvedProductName}`,
           sourceChannel: "otro",
         });
       } catch (e) {
@@ -934,7 +934,7 @@ export const ticketingRouter = router({
         }
       ).catch(() => {});
 
-      // GHL — fire and forget
+      // GHL � fire and forget
       setImmediate(async () => {
         try {
           const creds = await getGHLCredentials();
@@ -951,7 +951,7 @@ export const ticketingRouter = router({
           }
           if (!ghlId) return;
 
-          // Tag siempre — independiente de si el contacto ya existía
+          // Tag siempre � independiente de si el contacto ya exist�a
           await updateGHLContact(ghlId, { tags: ["cupon_convertido"] }, creds);
 
           // Sincronizar presupuesto_url al contacto (WhatsApp lee {{contact.presupuesto_url}})
@@ -997,7 +997,7 @@ export const ticketingRouter = router({
       const [item] = await db.select().from(couponRedemptions).where(eq(couponRedemptions.id, input.id)).limit(1);
       if (!item) throw new TRPCError({ code: "NOT_FOUND" });
       if (!item.attachmentUrl) throw new TRPCError({ code: "BAD_REQUEST", message: "No hay adjunto para analizar" });
-      let productName = "Experiencia Náyade";
+      let productName = "Experiencia N�yade";
       if (item.productTicketingId) {
         const [tp] = await db.select({ name: ticketingProducts.name }).from(ticketingProducts).where(eq(ticketingProducts.id, item.productTicketingId)).limit(1);
         if (tp) productName = tp.name;
@@ -1007,7 +1007,7 @@ export const ticketingRouter = router({
       return { score: ocr.score, status: ocr.status, rawData: ocr.rawData };
     }),
 
-  // ── DASHBOARD MÉTRICAS ────────────────────────────────────────────────────
+  // -- DASHBOARD M�TRICAS ----------------------------------------------------
   getDashboardStats: adminProc.query(async () => {
     const [total] = await db.select({ count: count() }).from(couponRedemptions);
 
@@ -1042,7 +1042,7 @@ export const ticketingRouter = router({
     };
   }),
 
-  // ── EMAIL CONFIG ─────────────────────────────────────────────────────────
+  // -- EMAIL CONFIG ---------------------------------------------------------
   getEmailConfig: adminProc.query(async () => {
     const [cfg] = await db.select().from(couponEmailConfig).limit(1);
     return cfg ?? { id: 0, autoSendCouponReceived: true, autoSendCouponValidated: true, autoSendInternalAlert: true, emailMode: "per_submission" as const, internalAlertEmail: getCopyEmail(), updatedAt: new Date() };
@@ -1066,7 +1066,7 @@ export const ticketingRouter = router({
       return { success: true };
     }),
 
-  // ── CONCILIACIÓN FINANCIERA ───────────────────────────────────────────────
+  // -- CONCILIACI�N FINANCIERA -----------------------------------------------
   updateFinancial: adminProc
     .input(z.object({
       id: z.number(),
@@ -1084,7 +1084,7 @@ export const ticketingRouter = router({
       return { success: true };
     }),
 
-  /** Admin: subir adjunto de cupón */
+  /** Admin: subir adjunto de cup�n */
   uploadAttachment: adminProc
     .input(z.object({
       id: z.number(),
@@ -1100,7 +1100,7 @@ export const ticketingRouter = router({
       return { url };
     }),
 
-  /** Admin: marcar cupón como canjeado + convertir en reserva si no la tiene ya */
+  /** Admin: marcar cup�n como canjeado + convertir en reserva si no la tiene ya */
   markAsRedeemed: adminProc
     .input(z.object({
       id: z.number(),
@@ -1116,7 +1116,7 @@ export const ticketingRouter = router({
       const [item] = await db.select().from(couponRedemptions).where(eq(couponRedemptions.id, input.id)).limit(1);
       if (!item) throw new TRPCError({ code: "NOT_FOUND" });
 
-      // ── 1. Subir comprobante si se adjuntó ────────────────────────────────
+      // -- 1. Subir comprobante si se adjunt� --------------------------------
       let justificantUrl: string | null = null;
       if (input.justificantBase64 && input.justificantFileName && input.justificantMimeType) {
         const buffer = Buffer.from(input.justificantBase64, "base64");
@@ -1129,11 +1129,11 @@ export const ticketingRouter = router({
         }
       }
 
-      // ── 2. Crear reserva en CRM si no existe ya ───────────────────────────
+      // -- 2. Crear reserva en CRM si no existe ya ---------------------------
       let reservationId = item.reservationId ?? null;
       if (!reservationId && input.reservationDate) {
         let resolvedExperienceId: number | null = null;
-        let resolvedProductName = "Experiencia Náyade";
+        let resolvedProductName = "Experiencia N�yade";
         let resolvedPvpPrice = "0";
         let resolvedNetPrice = "0";
 
@@ -1146,7 +1146,7 @@ export const ticketingRouter = router({
             .limit(1);
           if (pp) {
             resolvedExperienceId = pp.experienceId ?? null;
-            resolvedProductName = pp.externalProductName ?? pp.expTitle ?? "Experiencia Náyade";
+            resolvedProductName = pp.externalProductName ?? pp.expTitle ?? "Experiencia N�yade";
             resolvedPvpPrice = pp.pvpPrice ?? "0";
             resolvedNetPrice = pp.netPrice ?? "0";
           }
@@ -1161,7 +1161,7 @@ export const ticketingRouter = router({
 
         const merchantOrder = `TKT-${Date.now()}`;
         const now = Date.now();
-        const couponNotes = `Canje cupón ${item.provider} — Código: ${item.couponCode} — Producto: ${resolvedProductName}${input.notes ? ` — ${input.notes}` : ""}`;
+        const couponNotes = `Canje cup�n ${item.provider} � C�digo: ${item.couponCode} � Producto: ${resolvedProductName}${input.notes ? ` � ${input.notes}` : ""}`;
         const reservationNumber = await generateReservationNumber();
         const [resResult] = await db.insert(reservations).values({
           productId: resolvedExperienceId ?? 0,
@@ -1206,7 +1206,7 @@ export const ticketingRouter = router({
             paymentMethod: "otro",
             saleChannel: "delegado",
             reservationRef: merchantOrder,
-            description: `Cupón ${item.provider ?? "externo"} — ${item.couponCode} — ${resolvedProductName}`,
+            description: `Cup�n ${item.provider ?? "externo"} � ${item.couponCode} � ${resolvedProductName}`,
             sourceChannel: "otro",
           });
         } catch (e) {
@@ -1217,8 +1217,8 @@ export const ticketingRouter = router({
           provider: item.provider, couponCode: item.couponCode, productName: resolvedProductName, customerName: item.customerName,
         });
 
-        // Enviar email de confirmación al cliente (mismo correo que convertToReservation).
-        // Antes esta vía (canjear + generar reserva en un paso) no enviaba ningún email.
+        // Enviar email de confirmaci�n al cliente (mismo correo que convertToReservation).
+        // Antes esta v�a (canjear + generar reserva en un paso) no enviaba ning�n email.
         const bookingDateFormatted = input.reservationDate
           ? new Date(input.reservationDate).toLocaleDateString("es-ES", { weekday: "long", year: "numeric", month: "long", day: "numeric" })
           : "Por confirmar";
@@ -1233,18 +1233,18 @@ export const ticketingRouter = router({
           customerName: item.customerName,
           date: bookingDateFormatted,
           people: input.participants,
-          amount: `${totalAmount} €`,
-          extras: `Cupón ${item.provider ?? ""} — Código: ${item.couponCode}`,
+          amount: `${totalAmount} �`,
+          extras: `Cup�n ${item.provider ?? ""} � C�digo: ${item.couponCode}`,
           reservationUrl,
         });
         sendEmail({
           to: item.email,
-          subject: `✅ Reserva confirmada — ${resolvedProductName} | Náyade Experiences`,
+          subject: `? Reserva confirmada � ${resolvedProductName} | N�yade Experiences`,
           html: confirmHtml,
         }).catch(console.error);
       }
 
-      // ── 3. Marcar canjeado + reserva_generada si aplica ───────────────────
+      // -- 3. Marcar canjeado + reserva_generada si aplica -------------------
       const updateData: Record<string, unknown> = {
         statusFinancial: "canjeado",
         statusOperational: reservationId ? "reserva_generada" : item.statusOperational,
@@ -1261,10 +1261,10 @@ export const ticketingRouter = router({
     }),
 
   /**
-   * Admin: regenerar la operación (booking + transacción + operativa) y reenviar el
-   * email de confirmación de una reserva de cupón cuya operación no se creó por el
-   * bug histórico de markAsRedeemed (postConfirmOperation con argumentos erróneos).
-   * Idempotente: postConfirmOperation no duplica booking/transacción/operativa si ya existen.
+   * Admin: regenerar la operaci�n (booking + transacci�n + operativa) y reenviar el
+   * email de confirmaci�n de una reserva de cup�n cuya operaci�n no se cre� por el
+   * bug hist�rico de markAsRedeemed (postConfirmOperation con argumentos err�neos).
+   * Idempotente: postConfirmOperation no duplica booking/transacci�n/operativa si ya existen.
    */
   regenerateReservationOperation: adminProc
     .input(z.object({ reservationId: z.number() }))
@@ -1272,10 +1272,10 @@ export const ticketingRouter = router({
       const [r] = await db.select().from(reservations).where(eq(reservations.id, input.reservationId)).limit(1);
       if (!r) throw new TRPCError({ code: "NOT_FOUND", message: "Reserva no encontrada" });
       if (r.originSource !== "coupon_redemption") {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "Solo se puede regenerar la operación de reservas de cupón" });
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Solo se puede regenerar la operaci�n de reservas de cup�n" });
       }
 
-      // Datos del cupón origen (proveedor + código) para el email.
+      // Datos del cup�n origen (proveedor + c�digo) para el email.
       let provider = r.platformName ?? "";
       let couponCode = "";
       if (r.redemptionId) {
@@ -1285,9 +1285,9 @@ export const ticketingRouter = router({
       }
 
       const pvpTotal = (r.amountTotal ?? 0) / 100;   // euros (PVP total)
-      const netCents = r.amountPaid ?? 0;            // neto, ya en céntimos
+      const netCents = r.amountPaid ?? 0;            // neto, ya en c�ntimos
 
-      // 1. Regenerar booking + transacción + operativa (idempotente).
+      // 1. Regenerar booking + transacci�n + operativa (idempotente).
       let bookingId: number | null = null;
       let transactionId: number | null = null;
       try {
@@ -1305,17 +1305,17 @@ export const ticketingRouter = router({
           paymentMethod: "otro",
           saleChannel: "delegado",
           reservationRef: r.merchantOrder,
-          description: `Cupón ${provider || "externo"} — ${couponCode} — ${r.productName}`,
+          description: `Cup�n ${provider || "externo"} � ${couponCode} � ${r.productName}`,
           sourceChannel: "otro",
         });
         bookingId = res.bookingId;
         transactionId = res.transactionId;
       } catch (e) {
         console.error("[regenerateReservationOperation] postConfirmOperation:", e);
-        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Error regenerando la operación contable/operativa" });
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Error regenerando la operaci�n contable/operativa" });
       }
 
-      // 2. Reenviar email de confirmación al cliente.
+      // 2. Reenviar email de confirmaci�n al cliente.
       let emailSent = false;
       if (r.customerEmail) {
         const bookingDateFormatted = r.bookingDate
@@ -1331,14 +1331,14 @@ export const ticketingRouter = router({
           customerName: r.customerName,
           date: bookingDateFormatted,
           people: r.people,
-          amount: `${totalAmountStr} €`,
-          extras: `Cupón ${provider} — Código: ${couponCode}`,
+          amount: `${totalAmountStr} �`,
+          extras: `Cup�n ${provider} � C�digo: ${couponCode}`,
           reservationUrl,
         });
         try {
           await sendEmail({
             to: r.customerEmail,
-            subject: `✅ Reserva confirmada — ${r.productName} | Náyade Experiences`,
+            subject: `? Reserva confirmada � ${r.productName} | N�yade Experiences`,
             html: confirmHtml,
           });
           emailSent = true;
@@ -1350,18 +1350,18 @@ export const ticketingRouter = router({
       return { success: true, bookingId, transactionId, emailSent };
     }),
 
-  /** Admin: eliminar un cupón por ID (borrado físico) */
+  /** Admin: eliminar un cup�n por ID (borrado f�sico) */
   deleteRedemption: adminProc
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
       const [item] = await db.select({ id: couponRedemptions.id, couponCode: couponRedemptions.couponCode })
         .from(couponRedemptions).where(eq(couponRedemptions.id, input.id)).limit(1);
-      if (!item) throw new TRPCError({ code: "NOT_FOUND", message: "Cupón no encontrado" });
+      if (!item) throw new TRPCError({ code: "NOT_FOUND", message: "Cup�n no encontrado" });
       await db.delete(couponRedemptions).where(eq(couponRedemptions.id, input.id));
       return { success: true, deletedId: input.id, couponCode: item.couponCode };
     }),
 
-  // ── PLATAFORMAS ───────────────────────────────────────────────────────────
+  // -- PLATAFORMAS -----------------------------------------------------------
   listPlatforms: adminProc.query(async () => {
     return db.select().from(platforms).orderBy(platforms.name);
   }),
@@ -1432,7 +1432,7 @@ export const ticketingRouter = router({
       return { success: true };
     }),
 
-  // ── PRODUCTOS DE PLATAFORMA ───────────────────────────────────────────────
+  // -- PRODUCTOS DE PLATAFORMA -----------------------------------------------
   listPlatformProducts: adminProc
     .input(z.object({ platformId: z.number() }))
     .query(async ({ input }) => {
@@ -1532,7 +1532,7 @@ export const ticketingRouter = router({
       return { success: true };
     }),
 
-  /** Estadísticas de cupones por producto de plataforma */
+  /** Estad�sticas de cupones por producto de plataforma */
   getProductStats: adminProc
     .input(z.object({ platformId: z.number() }))
     .query(async ({ input }) => {
@@ -1591,9 +1591,9 @@ export const ticketingRouter = router({
         statsMap[p.id] = { total: 0, canjeados: 0, pendientes: 0, incidencias: 0, anulados: 0, pvpTotal: 0, netoTotal: 0, customerNames: [] };
       }
 
-      // 5. Agregar cada cupón al producto correcto
+      // 5. Agregar cada cup�n al producto correcto
       for (const c of allCoupons) {
-        // Primero intentar por platformProductId; si no, fallback al único producto (si solo hay uno)
+        // Primero intentar por platformProductId; si no, fallback al �nico producto (si solo hay uno)
         let targetId: number | null = (c.platformProductId != null && statsMap[c.platformProductId]) ? c.platformProductId : null;
         if (!targetId && prods.length === 1) targetId = prods[0].id;
         if (!targetId) continue;
@@ -1617,7 +1617,7 @@ export const ticketingRouter = router({
       return statsMap;
     }),
 
-  // ── LIQUIDACIONES DE PLATAFORMA ───────────────────────────────────────────────
+  // -- LIQUIDACIONES DE PLATAFORMA -----------------------------------------------
   listSettlements: adminProc
     .input(z.object({ platformId: z.number().optional() }))
     .query(async ({ input }) => {
@@ -1650,7 +1650,7 @@ export const ticketingRouter = router({
       return rows;
     }),
 
-  /** Devuelve los cupones individuales incluidos en una liquidación */
+  /** Devuelve los cupones individuales incluidos en una liquidaci�n */
   getSettlementCoupons: adminProc
     .input(z.object({ settlementId: z.number() }))
     .query(async ({ input }) => {
@@ -1677,7 +1677,7 @@ export const ticketingRouter = router({
       return rows;
     }),
 
-  /** Genera una liquidación agrupando los cupones canjeados del periodo que aún no tienen liquidación */
+  /** Genera una liquidaci�n agrupando los cupones canjeados del periodo que a�n no tienen liquidaci�n */
   generateSettlement: adminProc
     .input(z.object({
       platformId: z.number(),
@@ -1694,7 +1694,7 @@ export const ticketingRouter = router({
         .limit(1);
       if (!platformRow) throw new TRPCError({ code: "NOT_FOUND", message: "Plataforma no encontrada" });
 
-      // Liberar cupones cuya liquidación fue borrada sin pasar por deleteSettlement
+      // Liberar cupones cuya liquidaci�n fue borrada sin pasar por deleteSettlement
       await db.execute(sql`
         UPDATE coupon_redemptions
         SET settlementId = NULL
@@ -1739,7 +1739,7 @@ export const ticketingRouter = router({
       });
       const settlementId = (result as { insertId: number }).insertId;
 
-      // Vincular cupones a esta liquidación
+      // Vincular cupones a esta liquidaci�n
       if (couponIds.length > 0) {
         await db.update(couponRedemptions)
           .set({ settlementId })
@@ -1749,7 +1749,7 @@ export const ticketingRouter = router({
       return { id: settlementId, totalCoupons: couponIds.length, netTotal, totalAmount };
     }),
 
-  /** Lista los cupones incluidos en una liquidación */
+  /** Lista los cupones incluidos en una liquidaci�n */
   listSettlementCoupons: adminProc
     .input(z.object({ settlementId: z.number() }))
     .query(async ({ input }) => {
@@ -1831,7 +1831,7 @@ export const ticketingRouter = router({
   deleteSettlement: adminProc
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
-      // Liberar los cupones vinculados antes de borrar la liquidación
+      // Liberar los cupones vinculados antes de borrar la liquidaci�n
       await db.update(couponRedemptions)
         .set({ settlementId: null })
         .where(eq(couponRedemptions.settlementId, input.id));
@@ -1839,7 +1839,7 @@ export const ticketingRouter = router({
       return { success: true };
     }),
 
-  /** Admin: avanzar estado de liquidación en un paso (pendiente→emitida→pagada) */
+  /** Admin: avanzar estado de liquidaci�n en un paso (pendiente?emitida?pagada) */
   advanceSettlementStatus: adminProc
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
@@ -1851,7 +1851,7 @@ export const ticketingRouter = router({
       if (!settlement) throw new TRPCError({ code: "NOT_FOUND" });
       const transitions: Record<string, string> = { pendiente: "emitida", emitida: "pagada" };
       const nextStatus = transitions[settlement.status ?? "pendiente"];
-      if (!nextStatus) throw new TRPCError({ code: "BAD_REQUEST", message: "La liquidación ya está en estado final (Pagada)" });
+      if (!nextStatus) throw new TRPCError({ code: "BAD_REQUEST", message: "La liquidaci�n ya est� en estado final (Pagada)" });
       const updateData: Record<string, unknown> = { status: nextStatus };
       if (nextStatus === "emitida") updateData.emittedAt = new Date();
       if (nextStatus === "pagada") updateData.paidAt = new Date();
@@ -1859,8 +1859,8 @@ export const ticketingRouter = router({
       return { success: true, newStatus: nextStatus };
     }),
 
-  // ── CANJE PÚBLICO ─────────────────────────────────────────────────────────
-  /** Público: crear solicitud de canje individual (desde /canjear-cupon) */
+  // -- CANJE P�BLICO ---------------------------------------------------------
+  /** P�blico: crear solicitud de canje individual (desde /canjear-cupon) */
   createRedemption: publicProcedure
     .input(z.object({
       provider: z.string().default("Groupon"),
@@ -1880,9 +1880,9 @@ export const ticketingRouter = router({
     .mutation(async ({ input }) => {
       const dupCheck = await checkDuplicates(input.couponCode, input.securityCode, input.email, input.phone, input.requestedDate, input.productTicketingId);
       if (dupCheck.hardDuplicate) {
-        throw new TRPCError({ code: "CONFLICT", message: "Este código de cupón ya ha sido registrado. Si crees que es un error, contacta con nosotros." });
+        throw new TRPCError({ code: "CONFLICT", message: "Este c�digo de cup�n ya ha sido registrado. Si crees que es un error, contacta con nosotros." });
       }
-      let productName = "Experiencia Náyade";
+      let productName = "Experiencia N�yade";
       if (input.productTicketingId) {
         const [prod] = await db.select({ name: ticketingProducts.name }).from(ticketingProducts).where(eq(ticketingProducts.id, input.productTicketingId)).limit(1);
         if (prod) productName = prod.name;
@@ -1910,7 +1910,7 @@ export const ticketingRouter = router({
       });
       const redemptionId = (result as { insertId: number }).insertId;
 
-      // GHL — fire and forget
+      // GHL � fire and forget
       setImmediate(async () => {
         try {
           const creds = await getGHLCredentials();
@@ -1923,7 +1923,7 @@ export const ticketingRouter = router({
         } catch { /* silent */ }
       });
 
-      // Upsert cliente en CRM — SELECT + INSERT/UPDATE
+      // Upsert cliente en CRM � SELECT + INSERT/UPDATE
       try {
         const [existingClient2] = await db.select({ id: clients.id, name: clients.name, phone: clients.phone }).from(clients).where(eq(clients.email, input.email)).limit(1);
         if (existingClient2) {
@@ -1947,11 +1947,11 @@ export const ticketingRouter = router({
       try {
         await sendEmail({
           to: input.email,
-          subject: `Hemos recibido tu solicitud de canje — ${input.provider}`,
+          subject: `Hemos recibido tu solicitud de canje � ${input.provider}`,
           html: buildRedemptionConfirmationHtml({ customerName: input.customerName, email: input.email, phone: input.phone, coupons: [{ couponCode: input.couponCode, provider: input.provider }], submissionId, requestedDate: input.requestedDate }),
         });
       } catch { /* silent */ }
-      return { success: true, redemptionId, softDuplicate: dupCheck.softDuplicate, message: "Solicitud registrada correctamente. Recibirás un email de confirmación." };
+      return { success: true, redemptionId, softDuplicate: dupCheck.softDuplicate, message: "Solicitud registrada correctamente. Recibir�s un email de confirmaci�n." };
     }),
 });
 

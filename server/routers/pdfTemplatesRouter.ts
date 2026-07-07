@@ -1,4 +1,4 @@
-﻿import { z } from "zod";
+import { z } from "zod";
 import { router, adminProcedure } from "../_core/trpc";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
@@ -9,7 +9,7 @@ import { buildQuotePdfHtml } from "../emailTemplates";
 const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
 const db = drizzle(_pool);
 
-// ─── System PDF Templates (seed data) ────────────────────────────────────────
+// --- System PDF Templates (seed data) ----------------------------------------
 const SYSTEM_PDF_TEMPLATES = [
   {
     id: "invoice",
@@ -18,13 +18,13 @@ const SYSTEM_PDF_TEMPLATES = [
     category: "facturacion",
     headerColor: "#0a1628",
     accentColor: "#f97316",
-    companyName: "Náyade Experiences S.L.",
+    companyName: "N�yade Experiences S.L.",
     companyNif: "B-XXXXXXXX",
-    companyAddress: "Embalse de Los Ángeles, Ávila",
+    companyAddress: "Embalse de Los �ngeles, �vila",
     companyPhone: "+34 639 57 66 27",
-    companyEmail: "reservas@skicenter.es",
-    footerText: "Gracias por confiar en Náyade Experiences · www.skicenter.es",
-    legalText: "Documento emitido conforme a la normativa fiscal española.",
+    companyEmail: "reservas@nayadeexperiences.es",
+    footerText: "Gracias por confiar en N�yade Experiences � www.skicenter.es",
+    legalText: "Documento emitido conforme a la normativa fiscal espa�ola.",
     showLogo: true,
     showWatermark: false,
     variables: JSON.stringify(["invoiceNumber","clientName","clientEmail","clientNif","items","subtotal","taxRate","taxAmount","total","issuerName","issuerCif","issuerAddress","bookingDate"]),
@@ -61,7 +61,7 @@ const SYSTEM_PDF_TEMPLATES = [
 <div class="page">
   <div class="header">
     <div class="logo-area">
-      <h1>NÁYADE</h1>
+      <h1>N�YADE</h1>
       <p>EXPERIENCES</p>
     </div>
     <div class="invoice-meta">
@@ -85,19 +85,19 @@ const SYSTEM_PDF_TEMPLATES = [
     </div>
   </div>
   <table>
-    <thead><tr><th>Descripción</th><th style="text-align:center">Cant.</th><th style="text-align:right">Precio unit.</th><th style="text-align:right">Total</th></tr></thead>
+    <thead><tr><th>Descripci�n</th><th style="text-align:center">Cant.</th><th style="text-align:right">Precio unit.</th><th style="text-align:right">Total</th></tr></thead>
     <tbody>{{itemRows}}</tbody>
   </table>
   <div class="totals-wrap">
     <table class="totals">
-      <tr><td>Subtotal</td><td style="text-align:right">{{subtotal}} €</td></tr>
-      <tr><td>IVA ({{taxRate}}%)</td><td style="text-align:right">{{taxAmount}} €</td></tr>
-      <tr class="total-row"><td>TOTAL</td><td style="text-align:right">{{total}} €</td></tr>
+      <tr><td>Subtotal</td><td style="text-align:right">{{subtotal}} �</td></tr>
+      <tr><td>IVA ({{taxRate}}%)</td><td style="text-align:right">{{taxAmount}} �</td></tr>
+      <tr class="total-row"><td>TOTAL</td><td style="text-align:right">{{total}} �</td></tr>
     </table>
   </div>
   <div class="footer">
-    <p>Gracias por confiar en Náyade Experiences · www.skicenter.es</p>
-    <p>Documento emitido por <strong>{{issuerName}}</strong> — CIF: {{issuerCif}} — {{issuerAddress}}</p>
+    <p>Gracias por confiar en N�yade Experiences � www.skicenter.es</p>
+    <p>Documento emitido por <strong>{{issuerName}}</strong> � CIF: {{issuerCif}} � {{issuerAddress}}</p>
   </div>
 </div>
 </body>
@@ -110,13 +110,13 @@ const SYSTEM_PDF_TEMPLATES = [
     category: "presupuestos",
     headerColor: "#0a1628",
     accentColor: "#f97316",
-    companyName: "Náyade Experiences S.L.",
+    companyName: "N�yade Experiences S.L.",
     companyNif: "B-XXXXXXXX",
-    companyAddress: "Embalse de Los Ángeles, Ávila",
+    companyAddress: "Embalse de Los �ngeles, �vila",
     companyPhone: "+34 639 57 66 27",
-    companyEmail: "reservas@skicenter.es",
-    footerText: "Náyade Experiences · www.skicenter.es",
-    legalText: "Presupuesto válido según condiciones indicadas. Sujeto a disponibilidad.",
+    companyEmail: "reservas@nayadeexperiences.es",
+    footerText: "N�yade Experiences � www.skicenter.es",
+    legalText: "Presupuesto v�lido seg�n condiciones indicadas. Sujeto a disponibilidad.",
     showLogo: true,
     showWatermark: false,
     variables: JSON.stringify(["quoteNumber","title","clientName","clientEmail","items","subtotal","discount","tax","total","validUntil","notes","conditions","paymentLinkUrl","issuerName","issuerCif","issuerAddress"]),
@@ -128,7 +128,7 @@ const SYSTEM_PDF_TEMPLATES = [
       clientPhone: "+34 600 000 000",
       items: [
         { description: "Pack Cable Ski Experience (5 pax)", quantity: 5, unitPrice: 35, total: 175 },
-        { description: "Menú Náyade (8 pax)", quantity: 8, unitPrice: 28, total: 224 },
+        { description: "Men� N�yade (8 pax)", quantity: 8, unitPrice: 28, total: 224 },
       ],
       subtotal: "399",
       discount: "0",
@@ -136,12 +136,12 @@ const SYSTEM_PDF_TEMPLATES = [
       total: "482.79",
       validUntil: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
       notes: "Precio especial por grupo. Incluye alquiler de neopreno.",
-      conditions: "Reserva sujeta a disponibilidad. Cancelación gratuita hasta 48h antes.",
+      conditions: "Reserva sujeta a disponibilidad. Cancelaci�n gratuita hasta 48h antes.",
       paymentLinkUrl: "https://skicenter.es/pago/PRE-2026-001",
       createdAt: new Date(),
-      issuerName: "Náyade Experiences S.L.",
+      issuerName: "N�yade Experiences S.L.",
       issuerCif: "B-XXXXXXXX",
-      issuerAddress: "Embalse de Los Ángeles, Ávila",
+      issuerAddress: "Embalse de Los �ngeles, �vila",
     }),
   },
   {
@@ -151,12 +151,12 @@ const SYSTEM_PDF_TEMPLATES = [
     category: "tpv",
     headerColor: "#0a1628",
     accentColor: "#f97316",
-    companyName: "Náyade Experiences S.L.",
+    companyName: "N�yade Experiences S.L.",
     companyNif: "B-XXXXXXXX",
-    companyAddress: "Embalse de Los Ángeles, Ávila",
+    companyAddress: "Embalse de Los �ngeles, �vila",
     companyPhone: "+34 639 57 66 27",
-    companyEmail: "reservas@skicenter.es",
-    footerText: "Gracias por su visita · Náyade Experiences",
+    companyEmail: "reservas@nayadeexperiences.es",
+    footerText: "Gracias por su visita � N�yade Experiences",
     legalText: "Conserve este ticket como justificante de compra.",
     showLogo: true,
     showWatermark: false,
@@ -189,12 +189,12 @@ const SYSTEM_PDF_TEMPLATES = [
 <body>
 <div class="ticket">
   <div class="ticket-header">
-    <h1>NÁYADE</h1>
+    <h1>N�YADE</h1>
     <p>EXPERIENCES</p>
     <div class="ticket-badge">Ticket de Compra</div>
   </div>
   <div class="ticket-body">
-    <div class="ticket-row"><span class="label">Nº Ticket</span><span class="value">{{ticketNumber}}</span></div>
+    <div class="ticket-row"><span class="label">N� Ticket</span><span class="value">{{ticketNumber}}</span></div>
     <div class="ticket-row"><span class="label">Cliente</span><span class="value">{{clientName}}</span></div>
     <div class="ticket-row"><span class="label">Fecha</span><span class="value">{{paidAt}}</span></div>
     <div class="ticket-row"><span class="label">Forma de pago</span><span class="value">{{paymentMethod}}</span></div>
@@ -204,11 +204,11 @@ const SYSTEM_PDF_TEMPLATES = [
       <tbody>{{itemRows}}</tbody>
     </table>
     <hr class="divider"/>
-    <div class="total-row"><span>TOTAL</span><span>{{total}} €</span></div>
+    <div class="total-row"><span>TOTAL</span><span>{{total}} �</span></div>
     <div class="ticket-row" style="margin-top:8px;"><span class="label">Atendido por</span><span class="value">{{operatorName}}</span></div>
   </div>
   <div class="ticket-footer">
-    <p>Gracias por su visita · Náyade Experiences</p>
+    <p>Gracias por su visita � N�yade Experiences</p>
     <p>Conserve este ticket como justificante de compra</p>
   </div>
 </div>
@@ -217,18 +217,18 @@ const SYSTEM_PDF_TEMPLATES = [
   },
   {
     id: "settlement",
-    name: "Liquidación de Proveedor",
-    description: "Documento de liquidación económica emitido a proveedores con desglose de ventas, comisiones y neto a pagar.",
+    name: "Liquidaci�n de Proveedor",
+    description: "Documento de liquidaci�n econ�mica emitido a proveedores con desglose de ventas, comisiones y neto a pagar.",
     category: "proveedores",
     headerColor: "#0a1628",
     accentColor: "#f97316",
-    companyName: "Náyade Experiences S.L.",
+    companyName: "N�yade Experiences S.L.",
     companyNif: "B-XXXXXXXX",
-    companyAddress: "Embalse de Los Ángeles, Ávila",
+    companyAddress: "Embalse de Los �ngeles, �vila",
     companyPhone: "+34 639 57 66 27",
-    companyEmail: "reservas@skicenter.es",
-    footerText: "Náyade Experiences · www.skicenter.es",
-    legalText: "Liquidación emitida conforme al contrato de colaboración vigente.",
+    companyEmail: "reservas@nayadeexperiences.es",
+    footerText: "N�yade Experiences � www.skicenter.es",
+    legalText: "Liquidaci�n emitida conforme al contrato de colaboraci�n vigente.",
     showLogo: true,
     showWatermark: false,
     variables: JSON.stringify(["settlementNumber","supplierName","supplierNif","supplierAddress","supplierIban","periodFrom","periodTo","grossAmount","commissionAmount","netAmountProvider","lines","issuedAt"]),
@@ -266,13 +266,13 @@ const SYSTEM_PDF_TEMPLATES = [
 <div class="page">
   <div class="header">
     <div class="logo-area">
-      <h1>NÁYADE</h1>
+      <h1>N�YADE</h1>
       <p>EXPERIENCES</p>
     </div>
     <div class="doc-meta">
       <div class="doc-number">{{settlementNumber}}</div>
-      <div class="doc-period">Período: {{periodFrom}} — {{periodTo}}</div>
-      <div style="margin-top:8px;display:inline-block;background:#dbeafe;color:#1e40af;padding:3px 10px;border-radius:4px;font-size:11px;font-weight:600;">LIQUIDACIÓN DE PROVEEDOR</div>
+      <div class="doc-period">Per�odo: {{periodFrom}} � {{periodTo}}</div>
+      <div style="margin-top:8px;display:inline-block;background:#dbeafe;color:#1e40af;padding:3px 10px;border-radius:4px;font-size:11px;font-weight:600;">LIQUIDACI�N DE PROVEEDOR</div>
     </div>
   </div>
   <div class="parties">
@@ -291,17 +291,17 @@ const SYSTEM_PDF_TEMPLATES = [
     </div>
   </div>
   <table>
-    <thead><tr><th>Servicio</th><th>Fecha</th><th>Pax</th><th style="text-align:right">Venta</th><th style="text-align:right">Comisión</th><th style="text-align:right">Neto</th></tr></thead>
+    <thead><tr><th>Servicio</th><th>Fecha</th><th>Pax</th><th style="text-align:right">Venta</th><th style="text-align:right">Comisi�n</th><th style="text-align:right">Neto</th></tr></thead>
     <tbody>{{settlementRows}}</tbody>
   </table>
   <div class="summary-box">
-    <div class="summary-row"><span>Total ventas brutas</span><span>{{grossAmount}} €</span></div>
-    <div class="summary-row"><span>Comisión Náyade</span><span>- {{commissionAmount}} €</span></div>
-    <div class="summary-row total"><span>NETO A PAGAR AL PROVEEDOR</span><span>{{netAmountProvider}} €</span></div>
+    <div class="summary-row"><span>Total ventas brutas</span><span>{{grossAmount}} �</span></div>
+    <div class="summary-row"><span>Comisi�n N�yade</span><span>- {{commissionAmount}} �</span></div>
+    <div class="summary-row total"><span>NETO A PAGAR AL PROVEEDOR</span><span>{{netAmountProvider}} �</span></div>
   </div>
   <div class="footer">
-    <p>Náyade Experiences · www.skicenter.es</p>
-    <p>Liquidación emitida conforme al contrato de colaboración vigente.</p>
+    <p>N�yade Experiences � www.skicenter.es</p>
+    <p>Liquidaci�n emitida conforme al contrato de colaboraci�n vigente.</p>
   </div>
 </div>
 </body>
@@ -309,7 +309,7 @@ const SYSTEM_PDF_TEMPLATES = [
   },
 ];
 
-// ─── Helper: seed PDF templates to DB if empty ───────────────────────────────
+// --- Helper: seed PDF templates to DB if empty -------------------------------
 async function ensurePdfTemplatesSeeded() {
   const existing = await db.select({ id: pdfTemplates.id }).from(pdfTemplates).limit(1);
   if (existing.length > 0) return;
@@ -338,9 +338,9 @@ async function ensurePdfTemplatesSeeded() {
   }
 }
 
-// ─── Router ───────────────────────────────────────────────────────────────────
+// --- Router -------------------------------------------------------------------
 export const pdfTemplatesRouter = router({
-  // ── Listar todas las plantillas PDF ──────────────────────────────────────
+  // -- Listar todas las plantillas PDF --------------------------------------
   list: adminProcedure.query(async () => {
     await ensurePdfTemplatesSeeded();
     return db.select({
@@ -354,7 +354,7 @@ export const pdfTemplatesRouter = router({
     }).from(pdfTemplates).orderBy(pdfTemplates.category, pdfTemplates.name);
   }),
 
-  // ── Obtener una plantilla completa ────────────────────────────────────────
+  // -- Obtener una plantilla completa ----------------------------------------
   get: adminProcedure
     .input(z.object({ id: z.string() }))
     .query(async ({ input }) => {
@@ -364,7 +364,7 @@ export const pdfTemplatesRouter = router({
       return rows[0];
     }),
 
-  // ── Guardar cambios en una plantilla ─────────────────────────────────────
+  // -- Guardar cambios en una plantilla -------------------------------------
   save: adminProcedure
     .input(z.object({
       id: z.string(),
@@ -392,10 +392,10 @@ export const pdfTemplatesRouter = router({
       return { success: true };
     }),
 
-  // ── Crear nueva plantilla personalizada ──────────────────────────────────
+  // -- Crear nueva plantilla personalizada ----------------------------------
   create: adminProcedure
     .input(z.object({
-      id: z.string().min(1).regex(/^[a-z0-9_]+$/, "Solo letras minúsculas, números y guiones bajos"),
+      id: z.string().min(1).regex(/^[a-z0-9_]+$/, "Solo letras min�sculas, n�meros y guiones bajos"),
       name: z.string().min(1),
       description: z.string().optional(),
       category: z.string().default("general"),
@@ -424,7 +424,7 @@ export const pdfTemplatesRouter = router({
       return { success: true, id: input.id };
     }),
 
-  // ── Eliminar plantilla personalizada ─────────────────────────────────────
+  // -- Eliminar plantilla personalizada -------------------------------------
   delete: adminProcedure
     .input(z.object({ id: z.string() }))
     .mutation(async ({ input }) => {
@@ -435,7 +435,7 @@ export const pdfTemplatesRouter = router({
       return { success: true };
     }),
 
-  // ── Restaurar plantilla del sistema a valores originales ─────────────────
+  // -- Restaurar plantilla del sistema a valores originales -----------------
   restore: adminProcedure
     .input(z.object({ id: z.string() }))
     .mutation(async ({ input }) => {

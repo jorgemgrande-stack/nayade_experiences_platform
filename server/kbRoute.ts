@@ -1,8 +1,8 @@
-﻿/**
- * GET /kb  — Knowledge Base pública de Skicenter
- * Devuelve toda la información del negocio en texto plano estructurado,
+/**
+ * GET /kb  � Knowledge Base p�blica de Skicenter
+ * Devuelve toda la informaci�n del negocio en texto plano estructurado,
  * optimizado para ser usado como contexto en agentes de IA (GHL, etc.).
- * No requiere autenticación. Se actualiza automáticamente desde la BD.
+ * No requiere autenticaci�n. Se actualiza autom�ticamente desde la BD.
  */
 import { Router } from "express";
 import { drizzle } from "drizzle-orm/mysql2";
@@ -37,7 +37,7 @@ function fmtPrice(p: string | number | null | undefined): string {
   if (p == null) return "";
   const n = typeof p === "string" ? parseFloat(p) : p;
   if (isNaN(n)) return "";
-  return `${n.toFixed(2)} €`;
+  return `${n.toFixed(2)} �`;
 }
 
 function arr(v: unknown): string[] {
@@ -99,16 +99,16 @@ kbRouter.get("/kb", async (_req, res) => {
     }
 
     const lines: string[] = [];
-    const sep = "─".repeat(60);
+    const sep = "-".repeat(60);
 
     lines.push("=".repeat(60));
-    lines.push("NAYADE EXPERIENCES — BASE DE CONOCIMIENTO");
+    lines.push("NAYADE EXPERIENCES � BASE DE CONOCIMIENTO");
     lines.push(`Actualizado: ${new Date().toLocaleString("es-ES", { timeZone: "Europe/Madrid" })}`);
     lines.push("=".repeat(60));
     lines.push("");
 
-    // ── INFORMACIÓN GENERAL ──────────────────────────────────────────────────
-    lines.push("## INFORMACIÓN GENERAL");
+    // -- INFORMACI�N GENERAL --------------------------------------------------
+    lines.push("## INFORMACI�N GENERAL");
     lines.push(sep);
     const generalKeys = ["company_name", "tagline", "about", "phone", "email", "whatsapp", "address", "schedule", "cancellation_policy", "booking_policy", "faqs"];
     for (const key of generalKeys) {
@@ -125,34 +125,34 @@ kbRouter.get("/kb", async (_req, res) => {
     }
     lines.push("");
 
-    // ── UBICACIONES ──────────────────────────────────────────────────────────
+    // -- UBICACIONES ----------------------------------------------------------
     lines.push("## UBICACIONES / INSTALACIONES");
     lines.push(sep);
     for (const loc of locs) {
       lines.push(`### ${loc.name}`);
-      if (loc.address) lines.push(`Dirección: ${loc.address}`);
+      if (loc.address) lines.push(`Direcci�n: ${loc.address}`);
       if (loc.description) lines.push(strip(loc.description));
       lines.push("");
     }
 
-    // ── ACTIVIDADES / EXPERIENCIAS ────────────────────────────────────────────
+    // -- ACTIVIDADES / EXPERIENCIAS --------------------------------------------
     lines.push("## ACTIVIDADES Y EXPERIENCIAS");
     lines.push(sep);
     for (const exp of exps.sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))) {
       lines.push(`### ${exp.title}`);
       const loc = locMap[exp.locationId];
-      if (loc) lines.push(`Instalación: ${loc.name}`);
+      if (loc) lines.push(`Instalaci�n: ${loc.name}`);
       const cat = catMap[exp.categoryId];
-      if (cat) lines.push(`Categoría: ${cat}`);
+      if (cat) lines.push(`Categor�a: ${cat}`);
       if (exp.shortDescription) lines.push(strip(exp.shortDescription));
       if (exp.description) lines.push(strip(exp.description));
       lines.push(`Precio base: ${fmtPrice(exp.basePrice)} por persona`);
       if (exp.discountPercent && parseFloat(exp.discountPercent) > 0) {
         lines.push(`Descuento activo: ${exp.discountPercent}%`);
       }
-      if (exp.duration) lines.push(`Duración: ${exp.duration}`);
-      if (exp.minPersons) lines.push(`Mínimo de personas: ${exp.minPersons}`);
-      if (exp.maxPersons) lines.push(`Máximo de personas: ${exp.maxPersons}`);
+      if (exp.duration) lines.push(`Duraci�n: ${exp.duration}`);
+      if (exp.minPersons) lines.push(`M�nimo de personas: ${exp.minPersons}`);
+      if (exp.maxPersons) lines.push(`M�ximo de personas: ${exp.maxPersons}`);
       if (exp.difficulty) lines.push(`Dificultad: ${exp.difficulty}`);
       const inc = arr(exp.includes);
       if (inc.length) lines.push(`Incluye: ${inc.join(", ")}`);
@@ -174,7 +174,7 @@ kbRouter.get("/kb", async (_req, res) => {
       lines.push("");
     }
 
-    // ── HOTEL / ALOJAMIENTO ───────────────────────────────────────────────────
+    // -- HOTEL / ALOJAMIENTO ---------------------------------------------------
     if (roomTypesData.length > 0) {
       lines.push("## HOTEL Y ALOJAMIENTO");
       lines.push(sep);
@@ -183,18 +183,18 @@ kbRouter.get("/kb", async (_req, res) => {
         if (rt.shortDescription) lines.push(strip(rt.shortDescription));
         if (rt.description) lines.push(strip(rt.description));
         lines.push(`Precio base: desde ${fmtPrice(rt.basePrice)} / noche`);
-        lines.push(`Capacidad: ${rt.maxAdults} adultos + ${rt.maxChildren} niños (máx ${rt.maxOccupancy} personas)`);
-        if (rt.surfaceM2) lines.push(`Superficie: ${rt.surfaceM2} m²`);
+        lines.push(`Capacidad: ${rt.maxAdults} adultos + ${rt.maxChildren} ni�os (m�x ${rt.maxOccupancy} personas)`);
+        if (rt.surfaceM2) lines.push(`Superficie: ${rt.surfaceM2} m�`);
         const amenities = arr(rt.amenities);
         if (amenities.length) lines.push(`Servicios: ${amenities.join(", ")}`);
         if (rt.discountPercent && parseFloat(rt.discountPercent) > 0) {
           lines.push(`Descuento activo: ${rt.discountPercent}% ${rt.discountLabel ?? ""}`);
         }
 
-        // Tarifas específicas
+        // Tarifas espec�ficas
         const rates = roomRatesData.filter((r) => r.roomTypeId === rt.id);
         if (rates.length) {
-          const DAYS = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
+          const DAYS = ["Dom", "Lun", "Mar", "Mi�", "Jue", "Vie", "S�b"];
           for (const rate of rates) {
             const season = rate.seasonId ? seasonMap[rate.seasonId] : null;
             const day = rate.dayOfWeek != null ? DAYS[rate.dayOfWeek] : null;
@@ -209,7 +209,7 @@ kbRouter.get("/kb", async (_req, res) => {
       }
     }
 
-    // ── SPA ───────────────────────────────────────────────────────────────────
+    // -- SPA -------------------------------------------------------------------
     if (spaData.length > 0) {
       lines.push("## SPA Y TRATAMIENTOS");
       lines.push(sep);
@@ -219,7 +219,7 @@ kbRouter.get("/kb", async (_req, res) => {
         lines.push(`### ${cat.name}`);
         if (cat.description) lines.push(strip(cat.description));
         for (const t of treatments.sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))) {
-          lines.push(`  - ${t.name}: ${fmtPrice(t.price)} | ${t.durationMinutes} min | máx ${t.maxPersons} personas`);
+          lines.push(`  - ${t.name}: ${fmtPrice(t.price)} | ${t.durationMinutes} min | m�x ${t.maxPersons} personas`);
           if (t.shortDescription) lines.push(`    ${strip(t.shortDescription)}`);
           const bens = arr(t.benefits);
           if (bens.length) lines.push(`    Beneficios: ${bens.join(", ")}`);
@@ -237,12 +237,12 @@ kbRouter.get("/kb", async (_req, res) => {
       }
     }
 
-    // ── PACKS ─────────────────────────────────────────────────────────────────
+    // -- PACKS -----------------------------------------------------------------
     if (packsData.length > 0) {
       lines.push("## PACKS Y EXPERIENCIAS COMBINADAS");
       lines.push(sep);
       const packCategories: Record<string, string> = {
-        dia: "Packs de día",
+        dia: "Packs de d�a",
         escolar: "Packs escolares",
         empresa: "Packs empresa",
       };
@@ -256,9 +256,9 @@ kbRouter.get("/kb", async (_req, res) => {
           if (p.shortDescription) lines.push(strip(p.shortDescription));
           if (p.description) lines.push(strip(p.description));
           lines.push(`Precio: ${fmtPrice(p.basePrice)}${p.priceLabel ? ` (${p.priceLabel})` : ""}`);
-          if (p.duration) lines.push(`Duración: ${p.duration}`);
-          if (p.minPersons) lines.push(`Mínimo: ${p.minPersons} personas`);
-          if (p.maxPersons) lines.push(`Máximo: ${p.maxPersons} personas`);
+          if (p.duration) lines.push(`Duraci�n: ${p.duration}`);
+          if (p.minPersons) lines.push(`M�nimo: ${p.minPersons} personas`);
+          if (p.maxPersons) lines.push(`M�ximo: ${p.maxPersons} personas`);
           if (p.targetAudience) lines.push(`Dirigido a: ${p.targetAudience}`);
           if (p.schedule) lines.push(`Horario/Programa: ${strip(p.schedule)}`);
           const inc = arr(p.includes);
@@ -266,41 +266,41 @@ kbRouter.get("/kb", async (_req, res) => {
           const exc = arr(p.excludes);
           if (exc.length) lines.push(`No incluye: ${exc.join(", ")}`);
           if (p.note) lines.push(`Nota: ${strip(p.note)}`);
-          if (p.hasStay) lines.push("Incluye alojamiento: sí");
+          if (p.hasStay) lines.push("Incluye alojamiento: s�");
           lines.push("");
         }
       }
     }
 
-    // ── RESTAURACIÓN ─────────────────────────────────────────────────────────
+    // -- RESTAURACI�N ---------------------------------------------------------
     if (restData.length > 0) {
-      lines.push("## RESTAURACIÓN");
+      lines.push("## RESTAURACI�N");
       lines.push(sep);
       for (const r of restData) {
         lines.push(`### ${r.name}`);
         if (r.shortDesc) lines.push(strip(r.shortDesc));
         if (r.longDesc) lines.push(strip(r.longDesc));
-        if (r.location) lines.push(`Dirección: ${r.location}`);
-        if (r.phone) lines.push(`Teléfono: ${r.phone}`);
+        if (r.location) lines.push(`Direcci�n: ${r.location}`);
+        if (r.phone) lines.push(`Tel�fono: ${r.phone}`);
         if (r.email) lines.push(`Email: ${r.email}`);
         if (r.cuisine) lines.push(`Cocina: ${r.cuisine}`);
-        lines.push(`Capacidad máxima: ${r.maxGroupSize} comensales`);
+        lines.push(`Capacidad m�xima: ${r.maxGroupSize} comensales`);
         const shifts = shiftsByRest.get(r.id) ?? [];
         if (shifts.length) {
-          const DAY_NAMES = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
+          const DAY_NAMES = ["Domingo", "Lunes", "Martes", "Mi�rcoles", "Jueves", "Viernes", "S�bado"];
           lines.push("Turnos:");
           for (const sh of shifts) {
             const days = (sh.daysOfWeek as number[] | null)?.map((d) => DAY_NAMES[d]).join(", ") ?? "";
-            lines.push(`  - ${sh.name}: ${sh.startTime}–${sh.endTime}${days ? ` (${days})` : ""} | max ${sh.maxCapacity} personas`);
+            lines.push(`  - ${sh.name}: ${sh.startTime}�${sh.endTime}${days ? ` (${days})` : ""} | max ${sh.maxCapacity} personas`);
           }
         }
         lines.push("");
       }
     }
 
-    // ── PÁGINAS ESTÁTICAS (política de cancelación, FAQs, etc.) ──────────────
+    // -- P�GINAS EST�TICAS (pol�tica de cancelaci�n, FAQs, etc.) --------------
     if (pages.length > 0) {
-      lines.push("## POLÍTICAS Y PÁGINAS INFORMATIVAS");
+      lines.push("## POL�TICAS Y P�GINAS INFORMATIVAS");
       lines.push(sep);
       for (const page of pages) {
         lines.push(`### ${page.title} (/${page.slug})`);
@@ -323,7 +323,7 @@ kbRouter.get("/kb", async (_req, res) => {
   }
 });
 
-// También disponible como JSON si se prefiere
+// Tambi�n disponible como JSON si se prefiere
 kbRouter.get("/kb.json", async (_req, res) => {
   try {
     const [

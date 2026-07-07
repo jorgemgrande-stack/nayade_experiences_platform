@@ -1,4 +1,4 @@
-﻿import { z } from "zod";
+import { z } from "zod";
 import { router } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { drizzle } from "drizzle-orm/mysql2";
@@ -460,7 +460,7 @@ export const cardTerminalBatchesRouter = router({
         ))
         .limit(1);
       if (existingLink.length > 0) {
-        throw new TRPCError({ code: "CONFLICT", message: "Este movimiento bancario ya está conciliado con otra remesa" });
+        throw new TRPCError({ code: "CONFLICT", message: "Este movimiento bancario ya est� conciliado con otra remesa" });
       }
 
       const batchNet = parseFloat(String(batch.totalNet));
@@ -596,7 +596,7 @@ export const cardTerminalBatchesRouter = router({
       };
     }),
 
-  // ── Alert / stats procedures ────────────────────────���────────────────────
+  // -- Alert / stats procedures ------------------------???--------------------
 
   getCriticalAlerts: adminProc
     .query(async () => {
@@ -742,7 +742,7 @@ export const cardTerminalBatchesRouter = router({
           eq(cardTerminalBatchOperations.batchId, input.batchId)
         ))
         .limit(1);
-      if (!batchOp) throw new TRPCError({ code: "NOT_FOUND", message: "Operación no encontrada en esta remesa" });
+      if (!batchOp) throw new TRPCError({ code: "NOT_FOUND", message: "Operaci�n no encontrada en esta remesa" });
 
       await db.delete(cardTerminalBatchOperations)
         .where(eq(cardTerminalBatchOperations.id, input.batchOpId));
@@ -804,7 +804,7 @@ export const cardTerminalBatchesRouter = router({
         score: null,
         autoReconciled: false,
         performedBy: String(ctx.user.id),
-        notes: `Operación ${batchOp.cardTerminalOperationId} eliminada de la remesa. Nuevo neto: ${totalNet.toFixed(2)} €`,
+        notes: `Operaci�n ${batchOp.cardTerminalOperationId} eliminada de la remesa. Nuevo neto: ${totalNet.toFixed(2)} �`,
       }).catch(() => {});
 
       return { success: true, newTotalNet: totalNet, remainingOps: remainingOps.length };
@@ -813,7 +813,7 @@ export const cardTerminalBatchesRouter = router({
   justifyDifference: adminProc
     .input(z.object({
       batchId: z.number(),
-      justification: z.string().min(5, "La justificación debe tener al menos 5 caracteres"),
+      justification: z.string().min(5, "La justificaci�n debe tener al menos 5 caracteres"),
     }))
     .mutation(async ({ input, ctx }) => {
       const [batch] = await db.select()
@@ -840,7 +840,7 @@ export const cardTerminalBatchesRouter = router({
         score: null,
         autoReconciled: false,
         performedBy: String(ctx.user.id),
-        notes: `Diferencia de ${batch.differenceAmount} € justificada: ${input.justification}`,
+        notes: `Diferencia de ${batch.differenceAmount} � justificada: ${input.justification}`,
       }).catch(() => {});
 
       return { success: true };
