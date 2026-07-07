@@ -154,6 +154,9 @@ export default function TpvScreen() {
   // Modal de selector Lego Packs
   const [showLegoPackSelector, setShowLegoPackSelector] = useState(false);
   const [pendingLegoPackId, setPendingLegoPackId] = useState<number | null>(null);
+  const [pendingLegoPackLineIds, setPendingLegoPackLineIds] = useState<number[]>([]);
+  const [pendingLegoPackLinePeople, setPendingLegoPackLinePeople] = useState<Record<number, number>>({});
+  const [pendingLegoPackLineNames, setPendingLegoPackLineNames] = useState<Record<number, string>>({});
   // Modal de concepto libre (solo admin)
   const [showManualModal, setShowManualModal] = useState(false);
   const [manualConcept, setManualConcept] = useState("");
@@ -373,7 +376,11 @@ export default function TpvScreen() {
           item.variantName ? `Variante: ${item.variantName}` : null,
           item.selectedTimeSlotLabel ? `Horario: ${item.selectedTimeSlotLabel}${item.selectedTime ? ` (${item.selectedTime})` : ""}` : null,
           item.product.productType === 'legoPack' && item.legoPackLineIds
-            ? `Líneas: ${item.legoPackLineIds.map(id => `ID${id}(${item.legoPackLinePeople?.[id] ?? 1}p)`).join(', ')}`
+            ? `Líneas: ${item.legoPackLineIds.map(id => {
+                const name = pendingLegoPackLineNames[id] || `Línea${id}`;
+                const people = item.legoPackLinePeople?.[id] ?? 1;
+                return `${name}(${people}p)`;
+              }).join(', ')}`
             : null,
           item.notes ?? null,
         ].filter(Boolean).join(" · ") || undefined,
@@ -740,10 +747,11 @@ export default function TpvScreen() {
                           <p className="font-semibold text-gray-300">Líneas personalizadas:</p>
                           {item.legoPackLineIds.map((lineId) => {
                             const peopleCount = item.legoPackLinePeople?.[lineId] ?? 1;
-                            // Nota: aquí faltaría el nombre de la línea, necesitaríamos un query
+                            // Usar el nombre guardado o el ID como fallback
+                            const lineName = pendingLegoPackLineNames[lineId] || `Línea ${lineId}`;
                             return (
                               <p key={lineId} className="text-gray-500 ml-2">
-                                Línea {lineId}: {peopleCount} {peopleCount === 1 ? 'persona' : 'personas'}
+                                {lineName}: {peopleCount} {peopleCount === 1 ? 'persona' : 'personas'}
                               </p>
                             );
                           })}
@@ -1088,11 +1096,14 @@ export default function TpvScreen() {
             </DialogHeader>
             <LegoPackLineSelector
               packId={pendingLegoPackId}
-              onConfirm={(activeLineIds, customPrice, linePeople) => {
+              onConfirm={(activeLineIds, customPrice, linePeople, lineNames) => {
                 // Obtener el producto pendiente para añadir al carrito
                 const legoPackProduct = allProducts.find(p => p.id === pendingLegoPackId);
                 if (legoPackProduct) {
                   _addToCartDirect(legoPackProduct, undefined, undefined, undefined, undefined, undefined, customPrice, activeLineIds, linePeople);
+                  setPendingLegoPackLineIds(activeLineIds);
+                  setPendingLegoPackLinePeople(linePeople);
+                  setPendingLegoPackLineNames(lineNames);
                 }
                 setShowLegoPackSelector(false);
                 setPendingLegoPackId(null);

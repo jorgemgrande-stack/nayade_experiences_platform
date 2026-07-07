@@ -51,6 +51,8 @@ export default function LegoPackDetail() {
   const [selectedDate, setSelectedDate] = useState("");
   const [selectedLineIds, setSelectedLineIds] = useState<number[]>([]);
   const [customPackPrice, setCustomPackPrice] = useState<number | null>(null);
+  const [legoPackLinePeople, setLegoPackLinePeople] = useState<Record<number, number>>({});
+  const [legoPackLineNames, setLegoPackLineNames] = useState<Record<number, string>>({});
   const { addItem, openCart } = useCart();
   const hasConsent = useMarketingConsent();
 
@@ -245,9 +247,11 @@ export default function LegoPackDetail() {
                   packId={pack.id}
                   initialActiveLineIds={selectedLineIds.length > 0 ? selectedLineIds : undefined}
                   initialLines={pricing?.lines}
-                  onConfirm={(activeIds, customPrice) => {
+                  onConfirm={(activeIds, customPrice, linePeople, lineNames) => {
                     setSelectedLineIds(activeIds);
                     setCustomPackPrice(customPrice);
+                    setLegoPackLinePeople(linePeople);
+                    setLegoPackLineNames(lineNames);
                   }}
                   gradientClass={meta.gradient}
                   textColorClass={meta.text}
@@ -395,6 +399,9 @@ export default function LegoPackDetail() {
                       pricePerPerson: effectivePrice,
                       estimatedTotal: effectivePrice * people,
                       extras: [],
+                      legoPackLineIds: selectedLineIds.length > 0 ? selectedLineIds : undefined,
+                      legoPackLinePeople: Object.keys(legoPackLinePeople).length > 0 ? legoPackLinePeople : undefined,
+                      legoPackLineNames: Object.keys(legoPackLineNames).length > 0 ? legoPackLineNames : undefined,
                     });
                     openCart();
                     toast.success("Lego Pack añadido al carrito");

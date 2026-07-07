@@ -58,6 +58,12 @@ export interface CartItem {
   pricingType?: "per_person" | "per_unit";
   /** Personas por unidad (para per_unit) */
   unitCapacity?: number;
+  /** IDs de líneas personalizadas en Lego Packs */
+  legoPackLineIds?: number[];
+  /** Personas por línea en Lego Packs */
+  legoPackLinePeople?: Record<number, number>;
+  /** Nombres de las líneas (para mostrar) */
+  legoPackLineNames?: Record<number, string>;
 }
 
 interface CartContextValue {
