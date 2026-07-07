@@ -67,6 +67,8 @@ interface CartItem {
   isManual?: boolean;
   variantId?: number;
   variantName?: string;
+  legoPackLineIds?: number[]; // Para Lego Packs personalizados
+  legoPackLinePeople?: Record<number, number>; // Personas por línea
 }
 
 type PaymentMethod = "cash" | "card" | "bizum" | "other";
@@ -257,6 +259,8 @@ export default function TpvScreen() {
     variantId?: number,
     variantName?: string,
     variantPrice?: number,
+    legoPackLineIds?: number[],
+    legoPackLinePeople?: Record<number, number>,
   ) => {
     const basePrice = parseFloat(String(product.basePrice ?? "0"));
     const price = variantPrice !== undefined ? variantPrice : basePrice;
@@ -286,6 +290,8 @@ export default function TpvScreen() {
           selectedTime: slotTime,
           variantId,
           variantName,
+          legoPackLineIds,
+          legoPackLinePeople,
         },
       ]);
     }
@@ -366,6 +372,9 @@ export default function TpvScreen() {
         notes: [
           item.variantName ? `Variante: ${item.variantName}` : null,
           item.selectedTimeSlotLabel ? `Horario: ${item.selectedTimeSlotLabel}${item.selectedTime ? ` (${item.selectedTime})` : ""}` : null,
+          item.product.productType === 'legoPack' && item.legoPackLineIds
+            ? `Líneas: ${item.legoPackLineIds.map(id => `ID${id}(${item.legoPackLinePeople?.[id] ?? 1}p)`).join(', ')}`
+            : null,
           item.notes ?? null,
         ].filter(Boolean).join(" · ") || undefined,
         isManual: item.isManual ?? false,
@@ -724,6 +733,22 @@ export default function TpvScreen() {
                         </div>
                         <span className="text-sm font-bold text-violet-400">{lineTotal.toFixed(2)}€</span>
                       </div>
+
+                      {/* Desglose de líneas para Lego Pack */}
+                      {item.product.productType === 'legoPack' && item.legoPackLineIds && item.legoPackLineIds.length > 0 && (
+                        <div className="text-xs text-gray-400 border-t border-gray-700 pt-2 space-y-1">
+                          <p className="font-semibold text-gray-300">Líneas personalizadas:</p>
+                          {item.legoPackLineIds.map((lineId) => {
+                            const peopleCount = item.legoPackLinePeople?.[lineId] ?? 1;
+                            // Nota: aquí faltaría el nombre de la línea, necesitaríamos un query
+                            return (
+                              <p key={lineId} className="text-gray-500 ml-2">
+                                Línea {lineId}: {peopleCount} {peopleCount === 1 ? 'persona' : 'personas'}
+                              </p>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
                   );
                 })
@@ -1063,11 +1088,11 @@ export default function TpvScreen() {
             </DialogHeader>
             <LegoPackLineSelector
               packId={pendingLegoPackId}
-              onConfirm={(activeLineIds, customPrice) => {
+              onConfirm={(activeLineIds, customPrice, linePeople) => {
                 // Obtener el producto pendiente para añadir al carrito
                 const legoPackProduct = allProducts.find(p => p.id === pendingLegoPackId);
                 if (legoPackProduct) {
-                  _addToCartDirect(legoPackProduct, undefined, undefined, undefined, undefined, undefined, customPrice);
+                  _addToCartDirect(legoPackProduct, undefined, undefined, undefined, undefined, undefined, customPrice, activeLineIds, linePeople);
                 }
                 setShowLegoPackSelector(false);
                 setPendingLegoPackId(null);

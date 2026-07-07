@@ -35,7 +35,7 @@ export interface LegoPackLineSelectorProps {
   packId: number;
   initialActiveLineIds?: number[];
   initialLines?: LegoPackLineWithPricing[];
-  onConfirm: (activeLineIds: number[], customPrice: number) => void;
+  onConfirm: (activeLineIds: number[], customPrice: number, linePeople: Record<number, number>) => void;
   onCancel?: () => void;
   isModal?: boolean;
   gradientClass?: string;
@@ -123,7 +123,7 @@ export function LegoPackLineSelector({
       const peopleCount = linePeople[line.lineId] ?? 1;
       return sum + line.finalPrice * peopleCount;
     }, 0);
-    onConfirm(Array.from(selectedLineIds), totalWithPeople);
+    onConfirm(Array.from(selectedLineIds), totalWithPeople, linePeople);
   };
 
   // Mostrar loading solo si estamos cargando las líneas iniciales
