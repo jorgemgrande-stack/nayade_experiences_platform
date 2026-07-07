@@ -94,7 +94,7 @@ export function LegoPackLineSelector({
     setQuantities(initialQty);
   }, [lines]);
 
-  const [numberOfPeople, setNumberOfPeople] = useState(1);
+  const [linePeople, setLinePeople] = useState<Record<number, number>>({});
 
   const toggleLine = (lineId: number, isOptional: boolean) => {
     if (!isOptional) return; // Solo se puede toggle si es opcional
@@ -117,9 +117,13 @@ export function LegoPackLineSelector({
       toast.error("Selecciona al menos una actividad");
       return;
     }
-    const basePrice = pricing?.totalFinal ?? allLinesPricing?.totalFinal ?? 0;
-    const finalPrice = basePrice * numberOfPeople;
-    onConfirm(Array.from(selectedLineIds), finalPrice);
+    // Calcular precio total considerando personas por línea
+    const totalWithPeople = (pricing?.lines ?? []).reduce((sum, line) => {
+      if (!selectedLineIds.has(line.lineId)) return sum;
+      const peopleCount = linePeople[line.lineId] ?? 1;
+      return sum + line.finalPrice * peopleCount;
+    }, 0);
+    onConfirm(Array.from(selectedLineIds), totalWithPeople);
   };
 
   // Mostrar loading solo si estamos cargando las líneas iniciales
@@ -150,33 +154,6 @@ export function LegoPackLineSelector({
           <p className="text-sm text-slate-600">Activa o desactiva las actividades opcionales</p>
         </div>
       )}
-
-      {/* Número de personas */}
-      <div className="mb-4 p-3 rounded-lg bg-slate-50 border border-slate-200">
-        <label className="text-sm font-semibold text-slate-700 block mb-2">Número de personas</label>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setNumberOfPeople(Math.max(1, numberOfPeople - 1))}
-            className="p-1 hover:bg-slate-200 rounded"
-          >
-            <Minus className="w-4 h-4" />
-          </button>
-          <input
-            type="number"
-            min="1"
-            value={numberOfPeople}
-            onChange={(e) => setNumberOfPeople(Math.max(1, parseInt(e.target.value) || 1))}
-            className="w-12 text-center border border-slate-200 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-sky-500"
-          />
-          <button
-            onClick={() => setNumberOfPeople(numberOfPeople + 1)}
-            className="p-1 hover:bg-slate-200 rounded"
-          >
-            <Plus className="w-4 h-4" />
-          </button>
-          <span className="text-xs text-slate-600 ml-auto">Total: {(pricing?.totalFinal ?? 0).toFixed(2)} € × {numberOfPeople} = <span className="font-bold">{((pricing?.totalFinal ?? 0) * numberOfPeople).toFixed(2)} €</span></span>
-        </div>
-      </div>
 
       {/* Líneas */}
       <div className="space-y-3">
@@ -213,28 +190,31 @@ export function LegoPackLineSelector({
               )}
             </div>
 
-            {/* Controles de cantidad */}
-            {selectedLineIds.has(line.lineId) && line.isQuantityEditable && (
-              <div className="flex items-center gap-1 bg-white rounded border border-slate-200 px-2 py-1">
-                <button
-                  onClick={() => updateQuantity(line.lineId, (quantities[line.lineId] ?? 1) - 1)}
-                  className="p-0.5 hover:bg-slate-100 rounded"
-                >
-                  <Minus className="w-3 h-3" />
-                </button>
-                <input
-                  type="number"
-                  min="1"
-                  value={quantities[line.lineId] ?? line.quantity}
-                  onChange={(e) => updateQuantity(line.lineId, parseInt(e.target.value) || 1)}
-                  className="w-8 text-center text-sm border-0 focus:ring-0 p-0"
-                />
-                <button
-                  onClick={() => updateQuantity(line.lineId, (quantities[line.lineId] ?? 1) + 1)}
-                  className="p-0.5 hover:bg-slate-100 rounded"
-                >
-                  <Plus className="w-3 h-3" />
-                </button>
+            {/* Controles: Personas (cuando está seleccionada) */}
+            {selectedLineIds.has(line.lineId) && (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-slate-600 font-medium">Personas:</span>
+                <div className="flex items-center gap-1 bg-white rounded border border-slate-200 px-2 py-1">
+                  <button
+                    onClick={() => setLinePeople(p => ({ ...p, [line.lineId]: Math.max(1, (p[line.lineId] ?? 1) - 1) }))}
+                    className="p-0.5 hover:bg-slate-100 rounded"
+                  >
+                    <Minus className="w-3 h-3" />
+                  </button>
+                  <input
+                    type="number"
+                    min="1"
+                    value={linePeople[line.lineId] ?? 1}
+                    onChange={(e) => setLinePeople(p => ({ ...p, [line.lineId]: Math.max(1, parseInt(e.target.value) || 1) }))}
+                    className="w-8 text-center text-sm border-0 focus:ring-0 p-0"
+                  />
+                  <button
+                    onClick={() => setLinePeople(p => ({ ...p, [line.lineId]: (p[line.lineId] ?? 1) + 1 }))}
+                    className="p-0.5 hover:bg-slate-100 rounded"
+                  >
+                    <Plus className="w-3 h-3" />
+                  </button>
+                </div>
               </div>
             )}
 
@@ -274,14 +254,34 @@ export function LegoPackLineSelector({
           gradientClass.includes('violet') ? 'bg-violet-50 border-violet-200' :
           'bg-slate-50 border-slate-200'
         }`}>
-          <div className="flex justify-between items-baseline mb-2">
-            <span className="text-sm font-semibold text-slate-700">Precio total:</span>
+          <div className="space-y-2 mb-3 text-xs text-slate-600">
+            {pricing.lines.map((line) => {
+              if (!selectedLineIds.has(line.lineId)) return null;
+              const people = linePeople[line.lineId] ?? 1;
+              const lineTotal = line.finalPrice * people;
+              return (
+                <div key={line.lineId} className="flex justify-between">
+                  <span>{line.sourceName} × {people} {people === 1 ? 'persona' : 'personas'}</span>
+                  <span className="font-medium">{lineTotal.toFixed(2)} €</span>
+                </div>
+              );
+            })}
+          </div>
+          <div className="flex justify-between items-baseline border-t pt-2">
+            <span className="text-sm font-semibold text-slate-700">Total:</span>
             <span className={`text-2xl font-black ${textColorClass}`}>
-              {pricing.totalFinal.toFixed(2)} €
+              {(() => {
+                const total = pricing.lines.reduce((sum, line) => {
+                  if (!selectedLineIds.has(line.lineId)) return sum;
+                  const people = linePeople[line.lineId] ?? 1;
+                  return sum + line.finalPrice * people;
+                }, 0);
+                return total.toFixed(2);
+              })()} €
             </span>
           </div>
           {pricing.totalDiscount > 0 && (
-            <div className="text-xs text-green-700 font-medium">
+            <div className="text-xs text-green-700 font-medium mt-2">
               Ahorro: -{pricing.totalDiscount.toFixed(2)} €
             </div>
           )}
