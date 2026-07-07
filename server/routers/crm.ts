@@ -1,5 +1,5 @@
 /**
- * CRM Router — Skicenter
+ * CRM Router ï¿½ Skicenter
  * Ciclo completo: Lead ? Presupuesto ? Pago Redsys ? Reserva ? Factura PDF
  */
 
@@ -70,11 +70,11 @@ import { getSystemSettingSync, getBusinessEmail } from "../config";
 import { groupTaxBreakdown, totalTaxAmount } from "../taxUtils";
 import { reservationProductFromQuoteItems } from "../reservationUtils";
 
-// DB helper — usa la misma pool que el resto del servidor
+// DB helper ï¿½ usa la misma pool que el resto del servidor
 const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
 const db = drizzle(_pool);
 
-// Email helper — delega en el helper compartido mailer.ts
+// Email helper ï¿½ delega en el helper compartido mailer.ts
 async function sendEmail({ to, subject, html }: { to: string; subject: string; html: string }) {
   const sent = await sharedSendEmail({ to, subject, html });
   if (!sent) { console.warn("SMTP not configured, skipping email"); return; }
@@ -172,7 +172,7 @@ async function sendQuoteEmail(quote: {
     installmentPlan: quote.installmentPlan ?? undefined,
   });
 
-  const quoteSubject = `Tu propuesta de Náyade Experiences — ${quote.quoteNumber}`;
+  const quoteSubject = `Tu propuesta de Nï¿½yade Experiences ï¿½ ${quote.quoteNumber}`;
   await sendManagedEmail({
     templateKey: "quote",
     triggerEvent: "quote_sent",
@@ -221,7 +221,7 @@ async function sendConfirmationEmail(data: {
     installmentPlan: data.installmentPlan,
   });
 
-  const confSubject = `? Reserva confirmada — ${data.reservationRef} · Náyade Experiences`;
+  const confSubject = `? Reserva confirmada ï¿½ ${data.reservationRef} ï¿½ Nï¿½yade Experiences`;
   await sendManagedEmail({
     templateKey: "confirmation",
     triggerEvent: "reservation_confirmed",
@@ -257,9 +257,9 @@ async function sendInternalNotification(data: {
       <table style="width:100%;border-collapse:collapse;">
         <tr><td style="padding:8px 0;color:#6b7280;font-size:13px;width:140px;">Referencia</td><td style="padding:8px 0;font-weight:600;color:#111827;">${data.reservationRef}</td></tr>
         <tr><td style="padding:8px 0;color:#6b7280;font-size:13px;">Email</td><td style="padding:8px 0;color:#111827;">${data.clientEmail}</td></tr>
-        <tr><td style="padding:8px 0;color:#6b7280;font-size:13px;">Teléfono</td><td style="padding:8px 0;color:#111827;">${data.clientPhone || "—"}</td></tr>
+        <tr><td style="padding:8px 0;color:#6b7280;font-size:13px;">Telï¿½fono</td><td style="padding:8px 0;color:#111827;">${data.clientPhone || "ï¿½"}</td></tr>
         <tr><td style="padding:8px 0;color:#6b7280;font-size:13px;">Producto</td><td style="padding:8px 0;color:#111827;">${data.quoteTitle}</td></tr>
-        <tr><td style="padding:8px 0;color:#6b7280;font-size:13px;">Importe</td><td style="padding:8px 0;font-size:18px;font-weight:800;color:#16a34a;">${Number(data.total).toFixed(2)} €</td></tr>
+        <tr><td style="padding:8px 0;color:#6b7280;font-size:13px;">Importe</td><td style="padding:8px 0;font-size:18px;font-weight:800;color:#16a34a;">${Number(data.total).toFixed(2)} ï¿½</td></tr>
         <tr><td style="padding:8px 0;color:#6b7280;font-size:13px;">Fecha pago</td><td style="padding:8px 0;color:#111827;">${data.paidAt.toLocaleString("es-ES")}</td></tr>
       </table>
       <div style="margin-top:24px;text-align:center;">
@@ -271,12 +271,12 @@ async function sendInternalNotification(data: {
 </html>`;
 
   const internalRecipient = await getBusinessEmail('reservations');
-  const internalSubject = `?? Compra efectuada "${data.clientName}" — ${data.reservationRef}`;
+  const internalSubject = `?? Compra efectuada "${data.clientName}" ï¿½ ${data.reservationRef}`;
   await sharedSendEmail({ to: internalRecipient, subject: internalSubject, html });
   logDirectEmail({ templateKey: "confirmation", triggerEvent: "reservation_confirmed_admin", recipientEmail: internalRecipient, subject: internalSubject, sent: true }).catch(() => {});
 }
 
-// --- Email: Confirmación de pago por transferencia bancaria (al cliente) ----
+// --- Email: Confirmaciï¿½n de pago por transferencia bancaria (al cliente) ----
 async function sendTransferConfirmationEmail(data: {
   clientName: string;
   clientEmail: string;
@@ -311,7 +311,7 @@ async function sendTransferConfirmationEmail(data: {
 
   await sendEmail({
     to: data.clientEmail,
-    subject: `?? Pago por transferencia confirmado — ${data.invoiceNumber} · Náyade Experiences`,
+    subject: `?? Pago por transferencia confirmado ï¿½ ${data.invoiceNumber} ï¿½ Nï¿½yade Experiences`,
     html,
   });
 }
@@ -322,15 +322,15 @@ const staff = staffProcedure;
 const admin = adminProcedure;
 
 /**
- * El producto es la fuente de verdad fiscal. Para cada línea de presupuesto con
+ * El producto es la fuente de verdad fiscal. Para cada lï¿½nea de presupuesto con
  * `productId`, sobreescribe `fiscalRegime`/`taxRate` con los valores reales del
- * producto en BD, impidiendo que el cliente fuerce un régimen distinto al del
- * catálogo. Las líneas manuales (sin `productId`) se devuelven intactas.
+ * producto en BD, impidiendo que el cliente fuerce un rï¿½gimen distinto al del
+ * catï¿½logo. Las lï¿½neas manuales (sin `productId`) se devuelven intactas.
  *
- * El `productId` de una línea CRM puede referir a una experiencia, un pack o un
+ * El `productId` de una lï¿½nea CRM puede referir a una experiencia, un pack o un
  * legoPack. Los legoPacks no tienen modelo fiscal propio ? siempre general 21%.
- * Si un mismo `productId` existe en más de una tabla la línea es ambigua (no se
- * sabe a qué producto refiere) y se respeta el valor del cliente.
+ * Si un mismo `productId` existe en mï¿½s de una tabla la lï¿½nea es ambigua (no se
+ * sabe a quï¿½ producto refiere) y se respeta el valor del cliente.
  */
 async function sanitizeQuoteItemsFiscal<
   T extends { productId?: number; fiscalRegime?: "reav" | "general"; taxRate?: number }
@@ -352,7 +352,7 @@ async function sanitizeQuoteItemsFiscal<
     const inExp = expById.get(it.productId);
     const inPk = pkById.get(it.productId);
     const inLego = legoIds.has(it.productId);
-    // Coincidencia en más de una tabla ? ambiguo ? respetar valor del cliente.
+    // Coincidencia en mï¿½s de una tabla ? ambiguo ? respetar valor del cliente.
     if ([inExp, inPk, inLego].filter(Boolean).length > 1) return it;
     if (inLego) return { ...it, fiscalRegime: "general", taxRate: 21 };
     const prod = inExp ?? inPk;
@@ -385,7 +385,7 @@ export async function checkAndConfirmInstallmentPlan(quoteId: number, userId: nu
   const total = parseFloat((subtotal + taxAmount).toFixed(2));
 
   // -- FASE 1: Confirmar reserva cuando se pagan las cuotas obligatorias ------
-  // Idempotente: sólo si el quote aún no está aceptado
+  // Idempotente: sï¿½lo si el quote aï¿½n no estï¿½ aceptado
   if (quote.status !== "aceptado") {
     let [reservation] = await db.select().from(reservations)
       .where(and(eq(reservations.quoteId, quoteId), ne(reservations.status, "cancelled")))
@@ -396,7 +396,7 @@ export async function checkAndConfirmInstallmentPlan(quoteId: number, userId: nu
     const totalAmountCents = installments.reduce((s, i) => s + i.amountCents, 0);
 
     if (!reservation) {
-      // Pago manual de la primera cuota: no existe reserva previa — crearla ahora
+      // Pago manual de la primera cuota: no existe reserva previa ï¿½ crearla ahora
       const mainProductId = (items as { productId?: number }[]).find(i => i.productId)?.productId ?? lead?.experienceId ?? 0;
       const serviceDate = quote.activityDate
         ? String(quote.activityDate).slice(0, 10)
@@ -426,7 +426,7 @@ export async function checkAndConfirmInstallmentPlan(quoteId: number, userId: nu
         quoteId,
         quoteSource: "presupuesto",
         paymentMethod: "otro",
-        notes: `Plan fraccionado — confirmado desde presupuesto ${quote.quoteNumber}`,
+        notes: `Plan fraccionado ï¿½ confirmado desde presupuesto ${quote.quoteNumber}`,
         createdAt: Date.now(),
         updatedAt: Date.now(),
         paidAt: Date.now(),
@@ -434,7 +434,7 @@ export async function checkAndConfirmInstallmentPlan(quoteId: number, userId: nu
       const newReservationId = (resResult as { insertId: number }).insertId;
       const [newRes] = await db.select().from(reservations).where(eq(reservations.id, newReservationId)).limit(1);
       reservation = newRes;
-      console.log(`[checkAndConfirmInstallmentPlan] Reserva ${reservationNumber} creada para plan fraccionado manual — quoteId=${quoteId}`);
+      console.log(`[checkAndConfirmInstallmentPlan] Reserva ${reservationNumber} creada para plan fraccionado manual ï¿½ quoteId=${quoteId}`);
     } else if (reservation.status !== "paid") {
       await db.update(reservations)
         .set({ status: "paid", amountPaid: paidAmountCents, updatedAt: Date.now() } as any)
@@ -451,7 +451,7 @@ export async function checkAndConfirmInstallmentPlan(quoteId: number, userId: nu
       await db.update(leads).set({ opportunityStatus: "ganada", status: "convertido", updatedAt: now }).where(eq(leads.id, lead.id));
     }
 
-    // Crear pendingPayments para cuotas aún sin pagar
+    // Crear pendingPayments para cuotas aï¿½n sin pagar
     const stillPending = installments.filter(i => i.status === "pending");
     if (stillPending.length > 0) {
       const nowMs = Date.now();
@@ -465,7 +465,7 @@ export async function checkAndConfirmInstallmentPlan(quoteId: number, userId: nu
           productName: quote.title ?? undefined,
           amountCents: inst.amountCents,
           dueDate: inst.dueDate ?? undefined,
-          reason: `Plan fraccionado — Cuota #${inst.installmentNumber}${inst.notes ? `: ${inst.notes}` : ""}`,
+          reason: `Plan fraccionado ï¿½ Cuota #${inst.installmentNumber}${inst.notes ? `: ${inst.notes}` : ""}`,
           status: "pending",
           createdBy: userId,
           createdAt: nowMs,
@@ -480,11 +480,11 @@ export async function checkAndConfirmInstallmentPlan(quoteId: number, userId: nu
       action: "confirmed_by_installments",
       actorId: userId,
       actorName: userName,
-      details: { message: "Cuotas obligatorias pagadas — reserva confirmada, plan activo" },
+      details: { message: "Cuotas obligatorias pagadas ï¿½ reserva confirmada, plan activo" },
       createdAt: now,
     });
 
-    // Email de confirmación solo si quedan cuotas pendientes (si todas pagadas, Fase 2 envía el email con factura)
+    // Email de confirmaciï¿½n solo si quedan cuotas pendientes (si todas pagadas, Fase 2 envï¿½a el email con factura)
     if (!allInstallmentsPaid && lead?.email) {
       try {
         await sendConfirmationEmail({
@@ -506,18 +506,18 @@ export async function checkAndConfirmInstallmentPlan(quoteId: number, userId: nu
           },
         });
       } catch (emailErr) {
-        console.error("[_checkAndConfirmReservation] Error enviando email confirmación:", emailErr);
+        console.error("[_checkAndConfirmReservation] Error enviando email confirmaciï¿½n:", emailErr);
       }
     }
   }
 
-  // -- FASE 2: Generar factura sólo cuando TODAS las cuotas están pagadas -----
+  // -- FASE 2: Generar factura sï¿½lo cuando TODAS las cuotas estï¿½n pagadas -----
   if (allInstallmentsPaid) {
     // Re-leer el quote para verificar idempotencia (evitar doble factura en llamadas concurrentes)
     const [freshQuote] = await db.select().from(quotes).where(eq(quotes.id, quoteId)).limit(1);
     if (freshQuote?.paidAt) return;
 
-    // Usar la reserva MÁS ANTIGUA (la original del primer pago), no la más reciente.
+    // Usar la reserva Mï¿½S ANTIGUA (la original del primer pago), no la mï¿½s reciente.
     // En planes multi-cuota, payWithToken crea una nueva reserva por cada pago, pero la
     // factura debe vincularse a la reserva original (la que el cliente ve como "su reserva").
     const [reservation] = await db.select().from(reservations)
@@ -593,7 +593,7 @@ export async function checkAndConfirmInstallmentPlan(quoteId: number, userId: nu
       action: "invoice_generated",
       actorId: userId,
       actorName: userName,
-      details: { invoiceNumber, message: "Plan de pagos completado — factura generada" },
+      details: { invoiceNumber, message: "Plan de pagos completado ï¿½ factura generada" },
       createdAt: now,
     });
 
@@ -707,8 +707,8 @@ export const crmRouter = router({
         db.select({ cnt: count() }).from(leads).where(gte(leads.createdAt, startOfDay)),
         db.select({ cnt: count() }).from(leads).where(gte(leads.createdAt, startOfWeek)),
         db.select({ cnt: count() }).from(leads).where(isNull(leads.seenAt)),
-        // Valor económico por estado: suma del presupuesto más reciente de cada lead
-        // "nueva": lead sin presupuesto aún ? usa leads.budget (estimación del cliente)
+        // Valor econï¿½mico por estado: suma del presupuesto mï¿½s reciente de cada lead
+        // "nueva": lead sin presupuesto aï¿½n ? usa leads.budget (estimaciï¿½n del cliente)
         db.select({ total: sum(leads.budget) }).from(leads).where(eq(leads.opportunityStatus, "nueva")),
         // "enviada": presupuesto ya enviado ? suma quotes.total (importe real del presupuesto)
         db.select({ total: sum(quotes.total) }).from(quotes)
@@ -807,8 +807,8 @@ export const crmRouter = router({
     // --- Marcar un lead como contactado -------------------------------------
     // Setea lastContactAt = NOW(). El dashboard usa este campo para sacar
     // temporalmente al lead del contador "leads por atender": si el lead
-    // sigue en opportunityStatus='nueva' y han pasado >3 días desde el
-    // último contacto manual, vuelve a aparecer como pendiente (chasing).
+    // sigue en opportunityStatus='nueva' y han pasado >3 dï¿½as desde el
+    // ï¿½ltimo contacto manual, vuelve a aparecer como pendiente (chasing).
     markContacted: staff
       .input(z.object({ id: z.number(), note: z.string().optional() }))
       .mutation(async ({ input, ctx }) => {
@@ -821,7 +821,7 @@ export const crmRouter = router({
           updatedAt: new Date(),
         };
 
-        // Si el admin escribe una nota, se añade al historial interno.
+        // Si el admin escribe una nota, se aï¿½ade al historial interno.
         if (input.note?.trim()) {
           const existing = (lead.internalNotes as { text: string; authorId: number; authorName: string; createdAt: string }[]) ?? [];
           updateData.internalNotes = [
@@ -888,7 +888,7 @@ export const crmRouter = router({
               fiscalRegime: z.enum(["reav", "general"]).optional(),
               taxRate: z.number().optional(),
               productId: z.number().optional(),
-              serviceDate: z.string().optional(), // YYYY-MM-DD: fecha de servicio propia de la línea
+              serviceDate: z.string().optional(), // YYYY-MM-DD: fecha de servicio propia de la lï¿½nea
             })
           ),
           subtotal: z.number(),
@@ -906,7 +906,7 @@ export const crmRouter = router({
         if (!lead) throw new TRPCError({ code: "NOT_FOUND", message: "Lead no encontrado" });
 
         const quoteNumber = await generateQuoteNumber("crm:createQuote", String(ctx.user.id));
-        // Producto = fuente de verdad fiscal: revalidar régimen/IVA de cada línea contra BD.
+        // Producto = fuente de verdad fiscal: revalidar rï¿½gimen/IVA de cada lï¿½nea contra BD.
         const items = await sanitizeQuoteItemsFiscal(input.items);
         // Precios ya incluyen IVA: extraer cuota con groupTaxBreakdown
         const breakdown = groupTaxBreakdown(items.filter(i => i.fiscalRegime !== "reav"));
@@ -945,7 +945,7 @@ export const crmRouter = router({
         return { success: true, quoteId, quoteNumber };
       }),
 
-    // --- Generar presupuesto automáticamente desde activitiesJson del lead -------------------------
+    // --- Generar presupuesto automï¿½ticamente desde activitiesJson del lead -------------------------
     generateFromLead: staff
       .input(z.object({
         leadId: z.number(),
@@ -976,11 +976,11 @@ export const crmRouter = router({
           if (!productName) {
             throw new TRPCError({
               code: "BAD_REQUEST",
-              message: "Este lead no tiene actividades ni producto seleccionado. Añade los conceptos manualmente.",
+              message: "Este lead no tiene actividades ni producto seleccionado. Aï¿½ade los conceptos manualmente.",
             });
           }
 
-          // Buscar en packs (día, escolar, empresa)
+          // Buscar en packs (dï¿½a, escolar, empresa)
           const [foundPack] = await db.select().from(packs)
             .where(and(eq(packs.title, productName), eq(packs.isActive, true)))
             .limit(1);
@@ -988,7 +988,7 @@ export const crmRouter = router({
           if (foundPack) {
             const unitPrice = parseFloat(String(foundPack.basePrice));
             quoteItems.push({
-              description: `${foundPack.title}${foundPack.subtitle ? ` — ${foundPack.subtitle}` : ""}`,
+              description: `${foundPack.title}${foundPack.subtitle ? ` ï¿½ ${foundPack.subtitle}` : ""}`,
               quantity: qty,
               unitPrice,
               total: parseFloat((unitPrice * qty).toFixed(2)),
@@ -1005,7 +1005,7 @@ export const crmRouter = router({
             if (foundLego) {
               const unitPrice = parseFloat(String((foundLego as any).basePrice ?? (foundLego as any).price ?? 0));
               quoteItems.push({
-                description: `${foundLego.title}${(foundLego as any).subtitle ? ` — ${(foundLego as any).subtitle}` : ""}`,
+                description: `${foundLego.title}${(foundLego as any).subtitle ? ` ï¿½ ${(foundLego as any).subtitle}` : ""}`,
                 quantity: qty,
                 unitPrice,
                 total: parseFloat((unitPrice * qty).toFixed(2)),
@@ -1031,7 +1031,7 @@ export const crmRouter = router({
                   productId: foundExp.id,
                 });
               } else {
-                // Producto no encontrado en BD: crear línea vacía con nombre del producto
+                // Producto no encontrado en BD: crear lï¿½nea vacï¿½a con nombre del producto
                 quoteItems.push({
                   description: productName,
                   quantity: qty,
@@ -1069,25 +1069,25 @@ export const crmRouter = router({
             const modifier = parseFloat(String(matchedVariant.priceModifier ?? "0"));
             if (matchedVariant.priceType === "per_person") {
               unitPrice = modifier;
-              description = `${act.experienceTitle} — ${matchedVariant.name} (${act.participants} pax)`;
+              description = `${act.experienceTitle} ï¿½ ${matchedVariant.name} (${act.participants} pax)`;
             } else if (matchedVariant.priceType === "fixed") {
               unitPrice = modifier;
-              description = `${act.experienceTitle} — ${matchedVariant.name}`;
+              description = `${act.experienceTitle} ï¿½ ${matchedVariant.name}`;
             } else if (matchedVariant.priceType === "percentage") {
               unitPrice = basePrice * (1 + modifier / 100);
-              description = `${act.experienceTitle} — ${matchedVariant.name}`;
+              description = `${act.experienceTitle} ï¿½ ${matchedVariant.name}`;
             }
           } else if (variants.length > 0) {
             // Hay variantes pero ninguna seleccionada: usar precio base
             description = `${act.experienceTitle} (precio base)`;
           }
 
-          // Añadir detalles contextuales a la descripción
+          // Aï¿½adir detalles contextuales a la descripciï¿½n
           const detailParts: string[] = [];
           if (act.details?.duration) detailParts.push(String(act.details.duration));
           if (act.details?.jumps) detailParts.push(`${act.details.jumps} saltos`);
           if (act.details?.notes) detailParts.push(String(act.details.notes));
-          if (detailParts.length > 0) description += ` • ${detailParts.join(" · ")}`;
+          if (detailParts.length > 0) description += ` ï¿½ ${detailParts.join(" ï¿½ ")}`;
 
            const quantity = act.participants;
           const total = parseFloat((unitPrice * quantity).toFixed(2));
@@ -1095,7 +1095,7 @@ export const crmRouter = router({
           const itemTaxRate = exp?.taxRate != null ? parseFloat(String(exp.taxRate)) : 21;
           quoteItems.push({ description, quantity, unitPrice: parseFloat(unitPrice.toFixed(2)), total, fiscalRegime: itemFiscalRegime, taxRate: itemTaxRate, productId: act.experienceId });
         }
-        // 3. Calcular totales — IVA ya incluido en precios, se extrae con groupTaxBreakdown
+        // 3. Calcular totales ï¿½ IVA ya incluido en precios, se extrae con groupTaxBreakdown
         const subtotal = parseFloat(quoteItems.reduce((s, i) => s + i.total, 0).toFixed(2));
         const taxBreakdown = groupTaxBreakdown(quoteItems);
         const taxAmount = parseFloat(totalTaxAmount(taxBreakdown).toFixed(2));
@@ -1104,14 +1104,14 @@ export const crmRouter = router({
         // 4. Crear el presupuesto en borrador
         const quoteNumber = await generateQuoteNumber("crm:createQuote", String(ctx.user.id));
         const validUntil = new Date();
-        validUntil.setDate(validUntil.getDate() + 15); // válido 15 días
+        validUntil.setDate(validUntil.getDate() + 15); // vï¿½lido 15 dï¿½as
 
         const [result] = await db.insert(quotes).values({
           quoteNumber,
           leadId: input.leadId,
           agentId: ctx.user.id,
           title: `Propuesta para ${lead.name}`,
-          description: `Generado automáticamente desde las actividades seleccionadas en el formulario.`,
+          description: `Generado automï¿½ticamente desde las actividades seleccionadas en el formulario.`,
           items: quoteItems,
           subtotal: String(subtotal),
           discount: "0",
@@ -1119,7 +1119,7 @@ export const crmRouter = router({
           total: String(total),
           validUntil,
           activityDate: lead.preferredDate ? new Date(lead.preferredDate).toISOString().split("T")[0] : null,
-          conditions: input.conditions ?? "Presupuesto válido por 15 días. Sujeto a disponibilidad.",
+          conditions: input.conditions ?? "Presupuesto vï¿½lido por 15 dï¿½as. Sujeto a disponibilidad.",
           status: "borrador",
           isAutoGenerated: true,
           createdAt: new Date(),
@@ -1137,7 +1137,7 @@ export const crmRouter = router({
         return { success: true, quoteId, quoteNumber, itemCount: quoteItems.length, subtotal, total };
       }),
 
-    // --- Previsualizar líneas desde activitiesJson (sin guardar en BD) ---------------------------
+    // --- Previsualizar lï¿½neas desde activitiesJson (sin guardar en BD) ---------------------------
     previewFromLead: staffProcedure
       .input(z.object({ leadId: z.number() }))
       .query(async ({ input }) => {
@@ -1160,13 +1160,13 @@ export const crmRouter = router({
             .where(and(eq(packs.title, productName), eq(packs.isActive, true))).limit(1);
           if (foundPack) {
             const unitPrice = parseFloat(String(foundPack.basePrice));
-            return { items: [{ description: `${foundPack.title}${foundPack.subtitle ? ` — ${foundPack.subtitle}` : ""}`, quantity: qty, unitPrice, total: parseFloat((unitPrice * qty).toFixed(2)), fiscalRegime: (foundPack.fiscalRegime === "reav" ? "reav" : "general") as "reav" | "general", productId: foundPack.id }], hasActivities: true, fromSelectedProduct: true };
+            return { items: [{ description: `${foundPack.title}${foundPack.subtitle ? ` ï¿½ ${foundPack.subtitle}` : ""}`, quantity: qty, unitPrice, total: parseFloat((unitPrice * qty).toFixed(2)), fiscalRegime: (foundPack.fiscalRegime === "reav" ? "reav" : "general") as "reav" | "general", productId: foundPack.id }], hasActivities: true, fromSelectedProduct: true };
           }
           const [foundLego] = await db.select().from(legoPacks)
             .where(and(eq(legoPacks.title, productName), eq(legoPacks.isActive, true))).limit(1);
           if (foundLego) {
             const unitPrice = parseFloat(String((foundLego as any).basePrice ?? (foundLego as any).price ?? 0));
-            return { items: [{ description: `${foundLego.title}${(foundLego as any).subtitle ? ` — ${(foundLego as any).subtitle}` : ""}`, quantity: qty, unitPrice, total: parseFloat((unitPrice * qty).toFixed(2)), fiscalRegime: "general" as const, productId: foundLego.id }], hasActivities: true, fromSelectedProduct: true };
+            return { items: [{ description: `${foundLego.title}${(foundLego as any).subtitle ? ` ï¿½ ${(foundLego as any).subtitle}` : ""}`, quantity: qty, unitPrice, total: parseFloat((unitPrice * qty).toFixed(2)), fiscalRegime: "general" as const, productId: foundLego.id }], hasActivities: true, fromSelectedProduct: true };
           }
           const [foundExp] = await db.select().from(experiences)
             .where(and(eq(experiences.title, productName), eq(experiences.isActive, true))).limit(1);
@@ -1191,13 +1191,13 @@ export const crmRouter = router({
             const modifier = parseFloat(String(matchedVariant.priceModifier ?? "0"));
             if (matchedVariant.priceType === "per_person") {
               unitPrice = modifier;
-              description = `${act.experienceTitle} — ${matchedVariant.name} (${act.participants} pax)`;
+              description = `${act.experienceTitle} ï¿½ ${matchedVariant.name} (${act.participants} pax)`;
             } else if (matchedVariant.priceType === "fixed") {
               unitPrice = modifier;
-              description = `${act.experienceTitle} — ${matchedVariant.name}`;
+              description = `${act.experienceTitle} ï¿½ ${matchedVariant.name}`;
             } else if (matchedVariant.priceType === "percentage") {
               unitPrice = basePrice * (1 + modifier / 100);
-              description = `${act.experienceTitle} — ${matchedVariant.name}`;
+              description = `${act.experienceTitle} ï¿½ ${matchedVariant.name}`;
             }
           } else if (variants.length > 0) {
             description = `${act.experienceTitle} (precio base)`;
@@ -1206,7 +1206,7 @@ export const crmRouter = router({
           if (act.details?.duration) detailParts.push(String(act.details.duration));
           if (act.details?.jumps) detailParts.push(`${act.details.jumps} saltos`);
           if (act.details?.notes) detailParts.push(String(act.details.notes));
-          if (detailParts.length > 0) description += ` • ${detailParts.join(" · ")}`;
+          if (detailParts.length > 0) description += ` ï¿½ ${detailParts.join(" ï¿½ ")}`;
           const quantity = act.participants;
           const total = parseFloat((unitPrice * quantity).toFixed(2));
           const itemFiscalRegime = exp?.fiscalRegime === "reav" ? "reav" : "general";
@@ -1237,7 +1237,7 @@ export const crmRouter = router({
         })).optional(),
       }))
       .mutation(async ({ input, ctx }) => {
-        // Usar createLead de db.ts para que se cree el cliente automáticamente
+        // Usar createLead de db.ts para que se cree el cliente automï¿½ticamente
         const { source: _source, activitiesJson: _acts, ...leadInput } = input;
         const result = await createLead({
           ...leadInput,
@@ -1270,7 +1270,7 @@ export const crmRouter = router({
           templateKey: "budget_request_user",
           triggerEvent: "lead_submitted",
           recipientEmail: input.email,
-          subject: "Solicitud de presupuesto recibida — Náyade Experiences",
+          subject: "Solicitud de presupuesto recibida ï¿½ Nï¿½yade Experiences",
           html: buildBudgetRequestUserHtml(emailData),
           relatedEntityType: "lead",
           relatedEntityId: result.id,
@@ -1281,11 +1281,12 @@ export const crmRouter = router({
           templateKey: "budget_request_admin",
           triggerEvent: "lead_submitted",
           recipientEmail: adminEmail,
-          subject: `?? Nueva solicitud — ${input.name} (${input.selectedCategory ?? "Sin categoría"})`,
+          subject: `?? Nueva solicitud ï¿½ ${input.name} (${input.selectedCategory ?? "Sin categorï¿½a"})`,
           html: buildBudgetRequestAdminHtml(emailData),
           relatedEntityType: "lead",
           relatedEntityId: result.id,
           leadId: result.id,
+          forceCustomer: true,
         }).catch(err => console.error("[leads.create] Email al admin fallido:", err));
 
         return result;
@@ -1351,7 +1352,7 @@ export const crmRouter = router({
 
     create: admin
       .input(z.object({
-        code: z.string().min(1).max(50).regex(/^[A-Z0-9_]+$/, "Código solo mayúsculas, números y guión bajo"),
+        code: z.string().min(1).max(50).regex(/^[A-Z0-9_]+$/, "Cï¿½digo solo mayï¿½sculas, nï¿½meros y guiï¿½n bajo"),
         name: z.string().min(1).max(100),
         description: z.string().optional(),
         color: z.string().optional(),
@@ -1548,7 +1549,7 @@ export const crmRouter = router({
                 fiscalRegime: z.enum(["reav", "general"]).optional(),
                 taxRate: z.number().optional(),
                 productId: z.number().optional(),
-                serviceDate: z.string().optional(), // YYYY-MM-DD: fecha de servicio propia de la línea
+                serviceDate: z.string().optional(), // YYYY-MM-DD: fecha de servicio propia de la lï¿½nea
               })
             )
             .optional(),
@@ -1563,17 +1564,17 @@ export const crmRouter = router({
         })
       )
       .mutation(async ({ input, ctx }) => {
-        // `taxRate` global se ignora: la fiscalidad la define cada línea (producto = fuente de verdad).
+        // `taxRate` global se ignora: la fiscalidad la define cada lï¿½nea (producto = fuente de verdad).
         const { id, taxRate: _ignoredGlobalTaxRate, ...rest } = input;
         const updateData: Record<string, unknown> = { updatedAt: new Date() };
 
         if (rest.title !== undefined) updateData.title = rest.title;
         if (rest.description !== undefined) updateData.description = rest.description;
         if (rest.items !== undefined) {
-          // Producto = fuente de verdad fiscal: revalidar régimen/IVA contra BD.
+          // Producto = fuente de verdad fiscal: revalidar rï¿½gimen/IVA contra BD.
           const sanitized = await sanitizeQuoteItemsFiscal(rest.items);
           updateData.items = sanitized;
-          // IVA recalculado por línea (PVP con IVA incluido); nunca un IVA global.
+          // IVA recalculado por lï¿½nea (PVP con IVA incluido); nunca un IVA global.
           const breakdown = groupTaxBreakdown(sanitized.filter(i => i.fiscalRegime !== "reav"));
           updateData.tax = String(totalTaxAmount(breakdown));
         }
@@ -1594,7 +1595,7 @@ export const crmRouter = router({
       .input(
         z.object({
           id: z.number(),
-          /** URL base del frontend (window.location.origin) para construir el enlace de aceptación */
+          /** URL base del frontend (window.location.origin) para construir el enlace de aceptaciï¿½n */
           origin: z.string().url().optional(),
         })
       )
@@ -1605,7 +1606,7 @@ export const crmRouter = router({
         const [lead] = await db.select().from(leads).where(eq(leads.id, quote.leadId));
         if (!lead) throw new TRPCError({ code: "NOT_FOUND", message: "Lead asociado no encontrado" });
 
-        // Generar token único de aceptación si no existe ya
+        // Generar token ï¿½nico de aceptaciï¿½n si no existe ya
         const { randomBytes } = await import("crypto");
         const token = quote.paymentLinkToken ?? randomBytes(32).toString("hex");
         const origin = input.origin ?? "https://www.skicenter.es";
@@ -1629,7 +1630,7 @@ export const crmRouter = router({
           .set({ opportunityStatus: "enviada", status: "contactado", lastContactAt: new Date(), seenAt: new Date(), updatedAt: new Date() })
           .where(eq(leads.id, quote.leadId));
 
-        // Send email con el enlace de aceptación
+        // Send email con el enlace de aceptaciï¿½n
         let quoteInstallmentPlan = null;
         if (quote.paymentPlanId) {
           const planInsts = await db.select({
@@ -1689,7 +1690,7 @@ export const crmRouter = router({
         const [lead] = await db.select().from(leads).where(eq(leads.id, quote.leadId));
         if (!lead) throw new TRPCError({ code: "NOT_FOUND" });
 
-        // Si el presupuesto no tiene token de aceptación, generarlo ahora
+        // Si el presupuesto no tiene token de aceptaciï¿½n, generarlo ahora
         const { randomBytes } = await import("crypto");
         let paymentLinkUrl = quote.paymentLinkUrl;
         if (!paymentLinkUrl || !quote.paymentLinkToken) {
@@ -1805,12 +1806,12 @@ export const crmRouter = router({
           redsysOrderId: z.string().optional(),
           paidAmount: z.number().optional(),
           paymentMethod: z.enum(["redsys", "transferencia", "efectivo", "otro", "tarjeta_fisica", "tarjeta_redsys"]).optional(),
-          tpvOperationNumber: z.string().optional(), // Nº operación TPV (tarjeta)
-          paymentNote: z.string().optional(),        // Justificación (efectivo) o nota interna
+          tpvOperationNumber: z.string().optional(), // Nï¿½ operaciï¿½n TPV (tarjeta)
+          paymentNote: z.string().optional(),        // Justificaciï¿½n (efectivo) o nota interna
           transferProofUrl: z.string().optional(),   // URL S3 del justificante de transferencia
           transferProofKey: z.string().optional(),   // Key S3 del justificante de transferencia
           bankMovementId: z.number().optional(),     // Vincular movimiento bancario conciliado
-          cardTerminalOperationId: z.number().optional(), // Vincular operación TPV (tarjeta)
+          cardTerminalOperationId: z.number().optional(), // Vincular operaciï¿½n TPV (tarjeta)
         })
       )
       .mutation(async ({ input, ctx }) => {
@@ -1819,7 +1820,7 @@ export const crmRouter = router({
         const [lead] = await db.select().from(leads).where(eq(leads.id, quote.leadId));
         if (!lead) throw new TRPCError({ code: "NOT_FOUND" });
 
-        // Idempotencia: si el presupuesto ya está pagado, devolver la factura existente sin duplicar
+        // Idempotencia: si el presupuesto ya estï¿½ pagado, devolver la factura existente sin duplicar
         if (quote.paidAt || quote.status === "aceptado") {
           const [existingInv] = await db.select().from(invoices)
             .where(eq(invoices.quoteId, quote.id))
@@ -1844,7 +1845,7 @@ export const crmRouter = router({
         const invoiceNumber = await generateInvoiceNumber("crm:invoice", String(ctx.user.id));
         const items = (quote.items as { description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: "reav" | "general" }[]) ?? [];
         const subtotal = Number(quote.subtotal);
-        // Solo líneas general llevan IVA
+        // Solo lï¿½neas general llevan IVA
         const bdInv = groupTaxBreakdown(items.filter(i => i.fiscalRegime !== "reav"));
         const taxAmount = totalTaxAmount(bdInv);
         const taxRate = bdInv.length === 1 ? bdInv[0].rate : 21;
@@ -1872,7 +1873,7 @@ export const crmRouter = router({
           console.error("PDF generation failed:", e);
         }
         // Insert invoice record
-        // Determinar productId principal desde las líneas del presupuesto
+        // Determinar productId principal desde las lï¿½neas del presupuesto
         const mainProductId = (items as { productId?: number }[]).find(i => i.productId)?.productId ?? lead.experienceId ?? 0;
 
         const [invResult] = await db.insert(invoices).values({
@@ -1929,16 +1930,16 @@ export const crmRouter = router({
           transferProofUrl: input.transferProofUrl ?? null,
           notes: [
             `Generado desde presupuesto ${quote.quoteNumber}`,
-            input.tpvOperationNumber ? `Nº operación TPV: ${input.tpvOperationNumber}` : null,
+            input.tpvOperationNumber ? `Nï¿½ operaciï¿½n TPV: ${input.tpvOperationNumber}` : null,
             input.paymentNote ? `Nota: ${input.paymentNote}` : null,
             input.transferProofUrl ? `Justificante transferencia adjunto` : null,
-          ].filter(Boolean).join(" — "),
+          ].filter(Boolean).join(" ï¿½ "),
           createdAt: Date.now(),
           updatedAt: Date.now(),
           paidAt: Date.now(),
         });
         const reservationId = (resResult as { insertId: number }).insertId;
-        // FIX: Vincular factura ? reserva recién creadass
+        // FIX: Vincular factura ? reserva reciï¿½n creadass
         await db.update(invoices).set({ reservationId, updatedAt: now }).where(eq(invoices.id, invoiceId));
         await db.update(reservations).set({ invoiceId, invoiceNumber, updatedAt: Date.now() } as any).where(eq(reservations.id, reservationId));
 
@@ -2017,7 +2018,7 @@ export const crmRouter = router({
           console.error("Internal notification failed:", e);
         }
 
-        // -- Crear expediente REAV automáticamente si hay líneas REAV -------------
+        // -- Crear expediente REAV automï¿½ticamente si hay lï¿½neas REAV -------------
         const reavLines = items.filter(i => i.fiscalRegime === "reav");
         let reavExpedientId: number | undefined;
         let reavExpedientNumber: string | undefined;
@@ -2025,9 +2026,9 @@ export const crmRouter = router({
           try {
             const reavSaleAmount = reavLines.reduce((s, i) => s + i.total, 0);
 
-            // -- P5+P3+P4: calcular por línea con los porcentajes de cada producto --
-            // Cada línea REAV puede tener un producto con porcentajes distintos.
-            // Si la config es inválida no se usa fallback 60/40 — se registra la advertencia.
+            // -- P5+P3+P4: calcular por lï¿½nea con los porcentajes de cada producto --
+            // Cada lï¿½nea REAV puede tener un producto con porcentajes distintos.
+            // Si la config es invï¿½lida no se usa fallback 60/40 ï¿½ se registra la advertencia.
             let totalEstimatedCost = 0;
             let totalEstimatedMargin = 0;
             const configWarnings: string[] = [];
@@ -2051,13 +2052,13 @@ export const crmRouter = router({
                     lineMargenPct = parseFloat(String(prod.agencyMarginPercent));
                   } else {
                     configWarnings.push(`Producto ${productId} (${line.description}): ${errores.join("; ")}`);
-                    console.warn(`[confirmPayment] REAV config inválida en producto ${productId}:`, errores);
+                    console.warn(`[confirmPayment] REAV config invï¿½lida en producto ${productId}:`, errores);
                   }
                 } else if (prod) {
                   configWarnings.push(`Producto ${productId} (${line.description}): fiscalRegime no es "reav" (es "${prod.fiscalRegime}").`);
                 }
               } else {
-                configWarnings.push(`Línea "${line.description}": sin productId, no se pueden obtener porcentajes REAV.`);
+                configWarnings.push(`Lï¿½nea "${line.description}": sin productId, no se pueden obtener porcentajes REAV.`);
               }
 
               if (lineCostePct !== null && lineMargenPct !== null) {
@@ -2065,8 +2066,8 @@ export const crmRouter = router({
                 totalEstimatedCost += lineCalc.costeProveedor;
                 totalEstimatedMargin += lineCalc.margenAgencia;
               } else {
-                // Sin config válida: coste y margen estimados quedan en 0 (visible en expediente)
-                configWarnings.push(`Línea "${line.description}" (${line.total.toFixed(2)}€): coste/margen estimados no calculados — revisar configuración del producto.`);
+                // Sin config vï¿½lida: coste y margen estimados quedan en 0 (visible en expediente)
+                configWarnings.push(`Lï¿½nea "${line.description}" (${line.total.toFixed(2)}ï¿½): coste/margen estimados no calculados ï¿½ revisar configuraciï¿½n del producto.`);
               }
             }
 
@@ -2097,16 +2098,16 @@ export const crmRouter = router({
               channel: "crm",
               sourceRef: invoiceNumber,
               internalNotes: [
-                `Expediente creado automáticamente al confirmar pago del presupuesto ${quote.quoteNumber ?? quote.id}.`,
+                `Expediente creado automï¿½ticamente al confirmar pago del presupuesto ${quote.quoteNumber ?? quote.id}.`,
                 clientName ? `Cliente: ${clientName}` : null,
                 clientEmail ? `Email: ${clientEmail}` : null,
-                clientPhone ? `Teléfono: ${clientPhone}` : null,
+                clientPhone ? `Telï¿½fono: ${clientPhone}` : null,
                 clientDni ? `DNI/NIF: ${clientDni}` : null,
                 `Factura: ${invoiceNumber}`,
-                `Importe REAV: ${reavSaleAmount.toFixed(2)}€`,
+                `Importe REAV: ${reavSaleAmount.toFixed(2)}ï¿½`,
                 `Agente: ${ctx.user.name ?? ctx.user.email}`,
-                configWarnings.length > 0 ? `? REVISAR CONFIGURACIÓN REAV: ${configWarnings.join(" | ")}` : null,
-              ].filter(Boolean).join(" · "),
+                configWarnings.length > 0 ? `? REVISAR CONFIGURACIï¿½N REAV: ${configWarnings.join(" | ")}` : null,
+              ].filter(Boolean).join(" ï¿½ "),
             });
             reavExpedientId = reavResult.id;
             reavExpedientNumber = reavResult.expedientNumber;
@@ -2119,7 +2120,7 @@ export const crmRouter = router({
                 title: `Factura ${invoiceNumber}`,
                 fileUrl: pdfUrl,
                 mimeType: "application/pdf",
-                notes: `Factura generada automáticamente al confirmar pago. Presupuesto: ${quote.quoteNumber ?? quote.id}.`,
+                notes: `Factura generada automï¿½ticamente al confirmar pago. Presupuesto: ${quote.quoteNumber ?? quote.id}.`,
                 uploadedBy: ctx.user.id,
               });
             }
@@ -2142,7 +2143,7 @@ export const crmRouter = router({
           }
         }
 
-        // -- BUG #2 + #3 FIX: Crear booking operativo + transacción contable ---------
+        // -- BUG #2 + #3 FIX: Crear booking operativo + transacciï¿½n contable ---------
         try {
           const bdForTx = groupTaxBreakdown(items.filter(i => i.fiscalRegime !== "reav"));
           const taxAmountForTx = totalTaxAmount(bdForTx);
@@ -2171,7 +2172,7 @@ export const crmRouter = router({
             taxAmount: taxAmountForTx,
             reavMargin: reavSubtotalForTx,
             fiscalRegime: fiscalRegimeForTx,
-            description: `Pago CRM — ${quote.quoteNumber} — ${lead.name}`,
+            description: `Pago CRM ï¿½ ${quote.quoteNumber} ï¿½ ${lead.name}`,
             quoteId: quote.id,
             sourceChannel: "otro",
             ghlContactId: (lead as any).ghlContactId ?? null,
@@ -2181,7 +2182,7 @@ export const crmRouter = router({
           console.error("[confirmPayment] Error en postConfirmOperation:", e);
         }
 
-        // -- Conciliación bancaria opcional --------------------------------------
+        // -- Conciliaciï¿½n bancaria opcional --------------------------------------
         if (input.bankMovementId) {
           const [bm] = await db.select().from(bankMovements).where(eq(bankMovements.id, input.bankMovementId));
           if (bm && bm.conciliationStatus !== "conciliado") {
@@ -2206,7 +2207,7 @@ export const crmRouter = router({
           }
         }
 
-        // -- Vinculación operación TPV opcional ------------------------------
+        // -- Vinculaciï¿½n operaciï¿½n TPV opcional ------------------------------
         if (input.cardTerminalOperationId) {
           const [tpvOp] = await db.select().from(cardTerminalOperations).where(eq(cardTerminalOperations.id, input.cardTerminalOperationId));
           if (tpvOp && tpvOp.status !== "conciliado") {
@@ -2225,7 +2226,7 @@ export const crmRouter = router({
           }
         }
 
-        // -- Caja: movimiento automático si pago en efectivo -----------------
+        // -- Caja: movimiento automï¿½tico si pago en efectivo -----------------
         if ((input.paymentMethod ?? "efectivo") === "efectivo") {
           try {
             const cashAccountId = await getDefaultCashAccountId();
@@ -2235,7 +2236,7 @@ export const crmRouter = router({
                 date: now.toISOString().slice(0, 10),
                 type: "income",
                 amount: total,
-                concept: `Cobro en efectivo ${quote.quoteNumber} — ${lead.name}`,
+                concept: `Cobro en efectivo ${quote.quoteNumber} ï¿½ ${lead.name}`,
                 relatedEntityType: "reservation",
                 relatedEntityId: reservationId,
                 createdBy: ctx.user.id,
@@ -2327,7 +2328,7 @@ export const crmRouter = router({
         return { success: true, reservationId, reservationRef, status: "pending_payment" };
       }),
 
-    // --- ESCENARIO B: Confirmación manual por transferencia bancaria ----------
+    // --- ESCENARIO B: Confirmaciï¿½n manual por transferencia bancaria ----------
     // Paso 1: Subir el justificante (JPG/PNG/PDF) a S3
     uploadTransferProof: staff
       .input(
@@ -2377,7 +2378,7 @@ export const crmRouter = router({
         z.object({
           quoteId: z.number(),
           paidAmount: z.number().optional(),
-          bankMovementId: z.number().optional(), // FASE 2A: vínculo bancario opcional
+          bankMovementId: z.number().optional(), // FASE 2A: vï¿½nculo bancario opcional
         })
       )
       .mutation(async ({ input, ctx }) => {
@@ -2397,11 +2398,11 @@ export const crmRouter = router({
         if (input.bankMovementId) {
           const [movement] = await db.select().from(bankMovements).where(eq(bankMovements.id, input.bankMovementId));
           if (!movement) throw new TRPCError({ code: "NOT_FOUND", message: "Movimiento bancario no encontrado." });
-          if (movement.status === "ignorado") throw new TRPCError({ code: "BAD_REQUEST", message: "El movimiento bancario está marcado como ignorado." });
-          if (movement.conciliationStatus === "conciliado") throw new TRPCError({ code: "BAD_REQUEST", message: "Este movimiento bancario ya está conciliado con otro pago." });
+          if (movement.status === "ignorado") throw new TRPCError({ code: "BAD_REQUEST", message: "El movimiento bancario estï¿½ marcado como ignorado." });
+          if (movement.conciliationStatus === "conciliado") throw new TRPCError({ code: "BAD_REQUEST", message: "Este movimiento bancario ya estï¿½ conciliado con otro pago." });
           const existingConfirmed = await db.select({ id: bankMovementLinks.id }).from(bankMovementLinks)
             .where(and(eq(bankMovementLinks.bankMovementId, input.bankMovementId), eq(bankMovementLinks.status, "confirmed"))).limit(1);
-          if (existingConfirmed.length > 0) throw new TRPCError({ code: "BAD_REQUEST", message: "Este movimiento bancario ya tiene una conciliación confirmada." });
+          if (existingConfirmed.length > 0) throw new TRPCError({ code: "BAD_REQUEST", message: "Este movimiento bancario ya tiene una conciliaciï¿½n confirmada." });
         }
         const [lead] = await db.select().from(leads).where(eq(leads.id, quote.leadId));
         if (!lead) throw new TRPCError({ code: "NOT_FOUND" });
@@ -2421,7 +2422,7 @@ export const crmRouter = router({
         const invoiceNumber = await generateInvoiceNumber("crm:invoice", String(ctx.user.id));
         const items = (quote.items as { description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: "reav" | "general" }[]) ?? [];
         const subtotal = Number(quote.subtotal);
-        // Solo líneas general llevan IVA
+        // Solo lï¿½neas general llevan IVA
         const bdT = groupTaxBreakdown(items.filter(i => i.fiscalRegime !== "reav"));
         const taxAmount = totalTaxAmount(bdT);
         const taxRate = bdT.length === 1 ? bdT[0].rate : 21;
@@ -2447,7 +2448,7 @@ export const crmRouter = router({
         } catch (e) {
           console.error("PDF generation failed:", e);
         }
-        // Determinar productId principal desde las líneas del presupuesto
+        // Determinar productId principal desde las lï¿½neas del presupuesto
         const mainProductIdT = (items as { productId?: number }[]).find(i => i.productId)?.productId ?? lead.experienceId ?? 0;
 
         const [invResult] = await db.insert(invoices).values({
@@ -2507,7 +2508,7 @@ export const crmRouter = router({
         });
         const reservationId = (resResult as { insertId: number }).insertId;
 
-        // FIX: Vincular factura ? reserva recién creadas
+        // FIX: Vincular factura ? reserva reciï¿½n creadas
         await db.update(invoices).set({ reservationId, updatedAt: now }).where(eq(invoices.id, invoiceId));
         await db.update(reservations).set({ invoiceId, invoiceNumber, updatedAt: Date.now() } as any).where(eq(reservations.id, reservationId));
 
@@ -2537,7 +2538,7 @@ export const crmRouter = router({
         });
         await logActivity("lead", quote.leadId, "opportunity_won", ctx.user.id, ctx.user.name, { quoteId: quote.id, method: "transferencia" });
         await logActivity("invoice", invoiceId, "invoice_generated", ctx.user.id, ctx.user.name, { pdfUrl });
-        // -- BUG #2 + #3 FIX (confirmTransfer): Crear booking operativo + transacción contable ----
+        // -- BUG #2 + #3 FIX (confirmTransfer): Crear booking operativo + transacciï¿½n contable ----
         try {
           const generalSubtotalT = items.filter(i => i.fiscalRegime !== "reav").reduce((s, i) => s + i.total, 0);
           const reavSubtotalT = items.filter(i => i.fiscalRegime === "reav").reduce((s, i) => s + i.total, 0);
@@ -2565,7 +2566,7 @@ export const crmRouter = router({
             taxAmount: taxAmountT,
             reavMargin: reavSubtotalT,
             fiscalRegime: fiscalRegimeT,
-            description: `Transferencia CRM — ${quote.quoteNumber} — ${lead.name}`,
+            description: `Transferencia CRM ï¿½ ${quote.quoteNumber} ï¿½ ${lead.name}`,
             quoteId: quote.id,
             sourceChannel: "transferencia",
             ghlContactId: (lead as any).ghlContactId ?? null,
@@ -2601,14 +2602,14 @@ export const crmRouter = router({
           });
         } catch (e) { console.error("Internal notification failed:", e); }
 
-        // -- Crear expediente REAV automáticamente si hay líneas REAV -------------
+        // -- Crear expediente REAV automï¿½ticamente si hay lï¿½neas REAV -------------
         const reavLinesTransfer = items.filter(i => i.fiscalRegime === "reav");
         let reavExpedientIdT: number | undefined;
         let reavExpedientNumberT: string | undefined;
         if (reavLinesTransfer.length > 0) {
           try {
             const reavSaleAmountT = reavLinesTransfer.reduce((s, i) => s + i.total, 0);
-            // -- Obtener porcentajes REAV desde el producto (origen único de verdad) --
+            // -- Obtener porcentajes REAV desde el producto (origen ï¿½nico de verdad) --
             let reavCostePctT = 60; // fallback conservador
             let reavMargenPctT = 40;
             const firstReavLineT = reavLinesTransfer[0] as any;
@@ -2625,7 +2626,7 @@ export const crmRouter = router({
                   reavCostePctT = parseFloat(String(reavProductT.providerPercent ?? 60));
                   reavMargenPctT = parseFloat(String(reavProductT.agencyMarginPercent ?? 40));
                 } else {
-                  console.warn("[confirmTransfer] Configuración REAV inválida, usando fallback 60/40:", erroresT);
+                  console.warn("[confirmTransfer] Configuraciï¿½n REAV invï¿½lida, usando fallback 60/40:", erroresT);
                 }
               }
             }
@@ -2653,15 +2654,15 @@ export const crmRouter = router({
               channel: "crm",
               sourceRef: invoiceNumber,
               internalNotes: [
-                `Expediente creado automáticamente al confirmar transferencia del presupuesto ${quote.quoteNumber ?? quote.id}.`,
+                `Expediente creado automï¿½ticamente al confirmar transferencia del presupuesto ${quote.quoteNumber ?? quote.id}.`,
                 clientNameT ? `Cliente: ${clientNameT}` : null,
                 clientEmailT ? `Email: ${clientEmailT}` : null,
-                clientPhoneT ? `Teléfono: ${clientPhoneT}` : null,
+                clientPhoneT ? `Telï¿½fono: ${clientPhoneT}` : null,
                 clientDniT ? `DNI/NIF: ${clientDniT}` : null,
                 `Factura: ${invoiceNumber}`,
-                `Importe REAV: ${reavSaleAmountT.toFixed(2)}€`,
+                `Importe REAV: ${reavSaleAmountT.toFixed(2)}ï¿½`,
                 `Agente: ${ctx.user.name ?? ctx.user.email}`,
-              ].filter(Boolean).join(" · "),
+              ].filter(Boolean).join(" ï¿½ "),
             });
             reavExpedientIdT = reavResultT.id;
             reavExpedientNumberT = reavResultT.expedientNumber;
@@ -2696,7 +2697,7 @@ export const crmRouter = router({
           }
         }
 
-        // FASE 2A: crear vínculo bancario y marcar movimiento como conciliado
+        // FASE 2A: crear vï¿½nculo bancario y marcar movimiento como conciliado
         if (input.bankMovementId) {
           try {
             const now2 = new Date();
@@ -2718,7 +2719,7 @@ export const crmRouter = router({
               bankMovementId: input.bankMovementId, invoiceId, invoiceNumber,
             });
           } catch (e) {
-            console.error("[confirmTransfer] Error al crear vínculo bancario:", e);
+            console.error("[confirmTransfer] Error al crear vï¿½nculo bancario:", e);
           }
         }
 
@@ -2735,7 +2736,7 @@ export const crmRouter = router({
         await db.delete(crmActivityLog).where(and(eq(crmActivityLog.entityType, "quote"), eq(crmActivityLog.entityId, input.id)));
         await db.delete(invoices).where(eq(invoices.quoteId, input.id));
         await db.delete(quotes).where(eq(quotes.id, input.id));
-        // Si el lead asociado no tiene más presupuestos, volver a estado "nueva"
+        // Si el lead asociado no tiene mï¿½s presupuestos, volver a estado "nueva"
         if (quote.leadId) {
           const remaining = await db.select({ cnt: count() }).from(quotes).where(eq(quotes.leadId, quote.leadId));
           if ((remaining[0]?.cnt ?? 0) === 0) {
@@ -2826,7 +2827,7 @@ export const crmRouter = router({
           issuerAddress: `${legalQ.address}, ${legalQ.zip} ${legalQ.city} (${legalQ.province})`,
         });
 
-        // Generar PDF con puppeteer-core (funciona en producción desplegada)
+        // Generar PDF con puppeteer-core (funciona en producciï¿½n desplegada)
         const ts = Date.now();
         try {
           const pdfBuffer = await htmlToPdf(html);
@@ -2871,7 +2872,7 @@ export const crmRouter = router({
               fiscalRegime: z.enum(["reav", "general"]).optional(),
               taxRate: z.number().optional(),
               productId: z.number().optional(),
-              serviceDate: z.string().optional(), // YYYY-MM-DD: fecha de servicio propia de la línea
+              serviceDate: z.string().optional(), // YYYY-MM-DD: fecha de servicio propia de la lï¿½nea
             })
           ),
           subtotal: z.number(),
@@ -2899,7 +2900,7 @@ export const crmRouter = router({
         if (existingLead) {
           leadId = existingLead.id;
         } else {
-          // Sin lead — buscar cliente existente que ya tenga leadId (p.ej. vino por reserva)
+          // Sin lead ï¿½ buscar cliente existente que ya tenga leadId (p.ej. vino por reserva)
           const [existingClient] = await db
             .select({ leadId: clients.leadId })
             .from(clients)
@@ -2909,7 +2910,7 @@ export const crmRouter = router({
           if (existingClient?.leadId) {
             leadId = existingClient.leadId;
           } else {
-            // Cliente nuevo sin historial — crear lead silencioso
+            // Cliente nuevo sin historial ï¿½ crear lead silencioso
             const [leadResult] = await db.insert(leads).values({
               name: input.clientName,
               email: input.clientEmail,
@@ -2927,7 +2928,7 @@ export const crmRouter = router({
           }
         }
 
-        // 2. Upsert de cliente — nunca sobreescribe leadId si ya tiene uno válido
+        // 2. Upsert de cliente ï¿½ nunca sobreescribe leadId si ya tiene uno vï¿½lido
         try {
           await db.insert(clients).values({
             leadId,
@@ -2954,9 +2955,9 @@ export const crmRouter = router({
 
         // 3. Crear el presupuesto
         const quoteNumber = await generateQuoteNumber("crm:createQuote", String(ctx.user.id));
-        // Producto = fuente de verdad fiscal: revalidar régimen/IVA de cada línea contra BD.
+        // Producto = fuente de verdad fiscal: revalidar rï¿½gimen/IVA de cada lï¿½nea contra BD.
         const items = await sanitizeQuoteItemsFiscal(input.items);
-        // IVA por línea (PVP con IVA incluido); nunca un IVA global de la operación.
+        // IVA por lï¿½nea (PVP con IVA incluido); nunca un IVA global de la operaciï¿½n.
         const taxAmount = totalTaxAmount(groupTaxBreakdown(items.filter(i => i.fiscalRegime !== "reav")));
 
         const [quoteResult] = await db.insert(quotes).values({
@@ -2984,7 +2985,7 @@ export const crmRouter = router({
 
         // 4. Enviar inmediatamente si se solicita
         if (input.sendNow) {
-          // Generar token de aceptación SIEMPRE antes de enviar el email
+          // Generar token de aceptaciï¿½n SIEMPRE antes de enviar el email
           const { randomBytes } = await import("crypto");
           const token = randomBytes(32).toString("hex");
           const origin = input.origin ?? "https://www.skicenter.es";
@@ -3062,11 +3063,11 @@ export const crmRouter = router({
         return { success: true, quoteId, quoteNumber, leadId, sent: input.sendNow };
       }),
 
-    // --- FLUJO PÚBLICO: Aceptación de presupuesto por token ---------------------
+    // --- FLUJO Pï¿½BLICO: Aceptaciï¿½n de presupuesto por token ---------------------
 
     /**
      * Carga un presupuesto por su paymentLinkToken.
-     * Endpoint público — no requiere autenticación.
+     * Endpoint pï¿½blico ï¿½ no requiere autenticaciï¿½n.
      * Registra viewedAt y actualiza status a 'visualizado' si era 'enviado'.
      */
     getByToken: publicProcedure
@@ -3079,7 +3080,7 @@ export const crmRouter = router({
           .limit(1);
 
         // Si no es un token de quote, probar tabla reservations (Fase 2 del
-        // plan "Ver tu reserva" — los emails de confirmación de cualquier
+        // plan "Ver tu reserva" ï¿½ los emails de confirmaciï¿½n de cualquier
         // canal apuntan a esta URL, incluyendo reservas sin presupuesto).
         if (!quote) {
           const [reservation] = await db
@@ -3087,7 +3088,7 @@ export const crmRouter = router({
             .from(reservations)
             .where(eq(reservations.publicToken, input.token))
             .limit(1);
-          if (!reservation) throw new TRPCError({ code: "NOT_FOUND", message: "Presupuesto no encontrado o enlace inválido" });
+          if (!reservation) throw new TRPCError({ code: "NOT_FOUND", message: "Presupuesto no encontrado o enlace invï¿½lido" });
 
           // Buscar factura asociada (por reservationId o por invoiceId guardado en la reserva)
           let invoicePdfUrl: string | null = null;
@@ -3101,7 +3102,7 @@ export const crmRouter = router({
             }
           }
 
-          // Construir items desde extrasJson si existe, o un único item con el productName
+          // Construir items desde extrasJson si existe, o un ï¿½nico item con el productName
           let items: { description: string; quantity: number; unitPrice: number; total: number }[] = [];
           try {
             const extras = reservation.extrasJson ? JSON.parse(String(reservation.extrasJson)) : null;
@@ -3113,7 +3114,7 @@ export const crmRouter = router({
                 total: parseFloat(String(e.unitPrice ?? 0)) * (e.quantity ?? 1),
               }));
             }
-          } catch { /* extrasJson inválido — usar fallback */ }
+          } catch { /* extrasJson invï¿½lido ï¿½ usar fallback */ }
           if (items.length === 0) {
             const amountEur = (reservation.amountTotal ?? 0) / 100;
             items = [{
@@ -3160,7 +3161,7 @@ export const crmRouter = router({
         }
 
         // Marcar como visualizado si llega por primera vez (solo desde "enviado")
-        // Si ya está en pago_fallido o estados posteriores, no se degrada el estado
+        // Si ya estï¿½ en pago_fallido o estados posteriores, no se degrada el estado
         if (quote.status === "enviado") {
           await db
             .update(quotes)
@@ -3274,8 +3275,8 @@ export const crmRouter = router({
 
     /**
      * Inicia el pago Redsys para un presupuesto por token.
-     * Los precios están CONGELADOS — se usan los del presupuesto, nunca los del catálogo.
-     * Devuelve el formulario Redsys para que el frontend lo envíe.
+     * Los precios estï¿½n CONGELADOS ï¿½ se usan los del presupuesto, nunca los del catï¿½logo.
+     * Devuelve el formulario Redsys para que el frontend lo envï¿½e.
      */
     payWithToken: publicProcedure
       .input(z.object({
@@ -3307,15 +3308,15 @@ export const crmRouter = router({
           await db.update(quotes).set({ viewedAt: new Date(), updatedAt: new Date() }).where(eq(quotes.id, quote.id));
         }
 
-        // Precios CONGELADOS del presupuesto — nunca recalculados
+        // Precios CONGELADOS del presupuesto ï¿½ nunca recalculados
         const totalEuros = Number(quote.total);
         if (!(totalEuros > 0)) {
-          throw new TRPCError({ code: "BAD_REQUEST", message: `El presupuesto tiene un importe inválido (${quote.total}). Contacta con el equipo.` });
+          throw new TRPCError({ code: "BAD_REQUEST", message: `El presupuesto tiene un importe invï¿½lido (${quote.total}). Contacta con el equipo.` });
         }
 
         // Si hay plan de pagos, cobrar la siguiente cuota pendiente:
-        // 1º prioridad: cuotas requeridas para confirmar reserva
-        // 2º prioridad: cualquier cuota pendiente (cuotas posteriores a la confirmación)
+        // 1ï¿½ prioridad: cuotas requeridas para confirmar reserva
+        // 2ï¿½ prioridad: cualquier cuota pendiente (cuotas posteriores a la confirmaciï¿½n)
         let amountCents = Math.round(totalEuros * 100);
         let firstRequiredInstallment: { id: number; amountCents: number; installmentNumber: number } | null = null;
 
@@ -3336,7 +3337,7 @@ export const crmRouter = router({
             firstRequiredInstallment = requiredInst;
             amountCents = requiredInst.amountCents;
           } else {
-            // No quedan requeridas — buscar la próxima cuota pendiente (plan en curso)
+            // No quedan requeridas ï¿½ buscar la prï¿½xima cuota pendiente (plan en curso)
             const [nextInst] = await db
               .select({ id: paymentInstallments.id, amountCents: paymentInstallments.amountCents, installmentNumber: paymentInstallments.installmentNumber })
               .from(paymentInstallments)
@@ -3347,7 +3348,7 @@ export const crmRouter = router({
               .orderBy(paymentInstallments.installmentNumber)
               .limit(1);
             if (!nextInst) {
-              throw new TRPCError({ code: "BAD_REQUEST", message: "No hay cuotas pendientes de pago. El plan está completamente cobrado." });
+              throw new TRPCError({ code: "BAD_REQUEST", message: "No hay cuotas pendientes de pago. El plan estï¿½ completamente cobrado." });
             }
             firstRequiredInstallment = nextInst;
             amountCents = nextInst.amountCents;
@@ -3359,7 +3360,7 @@ export const crmRouter = router({
         const customerPhone = input.customerPhone ?? lead.phone ?? "";
 
         // Reutilizar reserva pending_payment existente si el presupuesto ya fue convertido
-        // o si el pago anterior falló y el cliente reintenta con una nueva tarjeta.
+        // o si el pago anterior fallï¿½ y el cliente reintenta con una nueva tarjeta.
         if ((quote.status === "convertido_carrito" || quote.status === "pago_fallido") && quote.redsysOrderId) {
           const [existingReservation] = await db
             .select()
@@ -3371,7 +3372,7 @@ export const crmRouter = router({
             const redsysForm = buildRedsysForm({
               amount: amountCents,
               merchantOrder: existingReservation.merchantOrder,
-              productDescription: `Presupuesto ${quote.quoteNumber} — ${quote.title}`,
+              productDescription: `Presupuesto ${quote.quoteNumber} ï¿½ ${quote.title}`,
               notifyUrl: `${SITE_URL}/api/redsys/notification`,
               okUrl: `${SITE_URL}/reserva/ok?order=${existingReservation.merchantOrder}`,
               koUrl: `${SITE_URL}/reserva/error?order=${existingReservation.merchantOrder}`,
@@ -3387,7 +3388,7 @@ export const crmRouter = router({
           }
         }
 
-        // Generar merchantOrder único para Redsys (máx 12 chars)
+        // Generar merchantOrder ï¿½nico para Redsys (mï¿½x 12 chars)
         const merchantOrder = generateMerchantOrder();
 
         // Guardar pre-reserva con estado pending_payment
@@ -3421,8 +3422,8 @@ export const crmRouter = router({
         });
         const reservationId = (resResult as { insertId: number }).insertId;
 
-        // Actualizar quote: solo cambiar a convertido_carrito si aún no está confirmado (aceptado)
-        // Un quote "aceptado" ya pasó la Fase 1 — no debe degradarse de estado
+        // Actualizar quote: solo cambiar a convertido_carrito si aï¿½n no estï¿½ confirmado (aceptado)
+        // Un quote "aceptado" ya pasï¿½ la Fase 1 ï¿½ no debe degradarse de estado
         await db
           .update(quotes)
           .set({
@@ -3451,7 +3452,7 @@ export const crmRouter = router({
         const redsysForm = buildRedsysForm({
           amount: amountCents,
           merchantOrder,
-          productDescription: `Presupuesto ${quote.quoteNumber} — ${quote.title}`,
+          productDescription: `Presupuesto ${quote.quoteNumber} ï¿½ ${quote.title}`,
           notifyUrl: `${SITE_URL}/api/redsys/notification`,
           okUrl: `${SITE_URL}/reserva/ok?order=${merchantOrder}`,
           koUrl: `${SITE_URL}/reserva/error?order=${merchantOrder}`,
@@ -3469,8 +3470,8 @@ export const crmRouter = router({
   }),
 
   // --- PLANES DE PAGO FRACCIONADO ----------------------------------------------
-  // Estos procedimientos son NUEVOS y no tocan ningún flujo existente de pago.
-  // El flujo de pago completo clásico sigue intacto si paymentPlanId === null.
+  // Estos procedimientos son NUEVOS y no tocan ningï¿½n flujo existente de pago.
+  // El flujo de pago completo clï¿½sico sigue intacto si paymentPlanId === null.
 
   paymentPlans: router({
 
@@ -3491,7 +3492,7 @@ export const crmRouter = router({
         const [quote] = await db.select().from(quotes).where(eq(quotes.id, input.quoteId)).limit(1);
         if (!quote) throw new TRPCError({ code: "NOT_FOUND", message: "Presupuesto no encontrado" });
 
-        // No permitir si el presupuesto ya está completamente pagado (plan finalizado)
+        // No permitir si el presupuesto ya estï¿½ completamente pagado (plan finalizado)
         if (quote.paidAt) {
           throw new TRPCError({ code: "BAD_REQUEST", message: "No se puede modificar el plan de un presupuesto ya cerrado (todas las cuotas cobradas)" });
         }
@@ -3514,17 +3515,17 @@ export const crmRouter = router({
           await db.delete(paymentPlans).where(eq(paymentPlans.id, quote.paymentPlanId));
         }
 
-        // Validar que la suma de cuotas == total del presupuesto (tolerancia ±1 céntimo por redondeo)
+        // Validar que la suma de cuotas == total del presupuesto (tolerancia ï¿½1 cï¿½ntimo por redondeo)
         const totalQuoteCents = Math.round(Number(quote.total) * 100);
         const sumInstallments = input.installments.reduce((s, i) => s + i.amountCents, 0);
         if (Math.abs(sumInstallments - totalQuoteCents) > 1) {
           throw new TRPCError({
             code: "BAD_REQUEST",
-            message: `La suma de las cuotas (${(sumInstallments / 100).toFixed(2)}€) no coincide con el total del presupuesto (${(totalQuoteCents / 100).toFixed(2)}€)`,
+            message: `La suma de las cuotas (${(sumInstallments / 100).toFixed(2)}ï¿½) no coincide con el total del presupuesto (${(totalQuoteCents / 100).toFixed(2)}ï¿½)`,
           });
         }
 
-        // Validar que al menos una cuota esté marcada como obligatoria para confirmar
+        // Validar que al menos una cuota estï¿½ marcada como obligatoria para confirmar
         const hasRequired = input.installments.some(i => i.isRequiredForConfirmation);
         if (!hasRequired) {
           throw new TRPCError({ code: "BAD_REQUEST", message: "Al menos una cuota debe ser obligatoria para confirmar la reserva" });
@@ -3622,8 +3623,8 @@ export const crmRouter = router({
         const [inst] = await db.select().from(paymentInstallments)
           .where(eq(paymentInstallments.id, input.installmentId)).limit(1);
         if (!inst) throw new TRPCError({ code: "NOT_FOUND", message: "Cuota no encontrada" });
-        if (inst.status === "paid") throw new TRPCError({ code: "BAD_REQUEST", message: "Esta cuota ya está pagada" });
-        if (inst.status === "cancelled") throw new TRPCError({ code: "BAD_REQUEST", message: "Esta cuota está cancelada" });
+        if (inst.status === "paid") throw new TRPCError({ code: "BAD_REQUEST", message: "Esta cuota ya estï¿½ pagada" });
+        if (inst.status === "cancelled") throw new TRPCError({ code: "BAD_REQUEST", message: "Esta cuota estï¿½ cancelada" });
 
         const now = new Date();
         await db.update(paymentInstallments).set({
@@ -3633,9 +3634,9 @@ export const crmRouter = router({
           paidBy: `admin:${ctx.user.id}`,
           notes: [
             input.paymentNote,
-            input.tpvOperationNumber ? `Nº operación TPV: ${input.tpvOperationNumber}` : null,
+            input.tpvOperationNumber ? `Nï¿½ operaciï¿½n TPV: ${input.tpvOperationNumber}` : null,
             input.transferProofUrl ? `Justificante: ${input.transferProofUrl}` : null,
-          ].filter(Boolean).join(" · ") || inst.notes,
+          ].filter(Boolean).join(" ï¿½ ") || inst.notes,
           updatedAt: now,
         }).where(eq(paymentInstallments.id, input.installmentId));
 
@@ -3667,7 +3668,7 @@ export const crmRouter = router({
           console.error("[confirmInstallment] Error actualizando pendingPayments:", ppErr);
         }
 
-        // Enviar email de confirmación de pago al cliente
+        // Enviar email de confirmaciï¿½n de pago al cliente
         try {
           const [quote] = await db.select({ leadId: quotes.leadId, quoteNumber: quotes.quoteNumber, title: quotes.title })
             .from(quotes).where(eq(quotes.id, inst.quoteId)).limit(1);
@@ -3683,10 +3684,10 @@ export const crmRouter = router({
                 quoteNumber: quote.quoteNumber ?? "",
                 installmentNumber: inst.installmentNumber,
                 totalInstallments: allInstallments.length,
-                amountFormatted: `${(inst.amountCents / 100).toLocaleString("es-ES", { minimumFractionDigits: 2 })} €`,
+                amountFormatted: `${(inst.amountCents / 100).toLocaleString("es-ES", { minimumFractionDigits: 2 })} ï¿½`,
                 dueDate: inst.dueDate,
               });
-              const instSubject = `? Pago recibido — Cuota ${inst.installmentNumber}/${allInstallments.length} — ${quote.quoteNumber}`;
+              const instSubject = `? Pago recibido ï¿½ Cuota ${inst.installmentNumber}/${allInstallments.length} ï¿½ ${quote.quoteNumber}`;
               await sendManagedEmail({
                 templateKey: "installment_reminder",
                 triggerEvent: "installment_paid",
@@ -3710,7 +3711,7 @@ export const crmRouter = router({
         return { success: true };
       }),
 
-    // Obtener cuotas próximas a vencer o vencidas (para dashboard)
+    // Obtener cuotas prï¿½ximas a vencer o vencidas (para dashboard)
     upcoming: staff
       .input(z.object({
         daysAhead: z.number().default(7),
@@ -3724,7 +3725,7 @@ export const crmRouter = router({
 
         // Solo se incluyen cuotas de presupuestos que ya tienen una reserva
         // creada (existe compromiso real de pago). Un presupuesto sin reserva
-        // — aunque tenga plan fraccionado — no genera aviso de incidencia.
+        // ï¿½ aunque tenga plan fraccionado ï¿½ no genera aviso de incidencia.
         const conditions = [
           ne(paymentInstallments.status, "paid"),
           ne(paymentInstallments.status, "cancelled"),
@@ -3779,7 +3780,7 @@ export const crmRouter = router({
         const [quote] = await db.select().from(quotes).where(eq(quotes.id, input.quoteId)).limit(1);
         if (!quote) throw new TRPCError({ code: "NOT_FOUND", message: "Presupuesto no encontrado" });
         if (!quote.paymentPlanId) throw new TRPCError({ code: "BAD_REQUEST", message: "Este presupuesto no tiene plan de pagos" });
-        if (quote.paidAt) throw new TRPCError({ code: "BAD_REQUEST", message: "El plan ya está completamente cobrado" });
+        if (quote.paidAt) throw new TRPCError({ code: "BAD_REQUEST", message: "El plan ya estï¿½ completamente cobrado" });
 
         // Verificar que hay cuotas pendientes
         const [nextPending] = await db
@@ -3815,11 +3816,11 @@ export const crmRouter = router({
               quoteNumber: quote.quoteNumber ?? "",
               installmentNumber: nextPending.installmentNumber,
               totalInstallments: allInstallments.length,
-              amountFormatted: `${(nextPending.amountCents / 100).toLocaleString("es-ES", { minimumFractionDigits: 2 })} €`,
+              amountFormatted: `${(nextPending.amountCents / 100).toLocaleString("es-ES", { minimumFractionDigits: 2 })} ï¿½`,
               dueDate: nextPending.dueDate,
               paymentUrl,
             });
-            const linkSubject = `?? Enlace de pago — Cuota ${nextPending.installmentNumber}/${allInstallments.length} — ${quote.quoteNumber}`;
+            const linkSubject = `?? Enlace de pago ï¿½ Cuota ${nextPending.installmentNumber}/${allInstallments.length} ï¿½ ${quote.quoteNumber}`;
             await sendManagedEmail({
               templateKey: "installment_reminder",
               triggerEvent: "installment_link_sent",
@@ -3846,7 +3847,7 @@ export const crmRouter = router({
         return { paymentUrl, installmentNumber: nextPending.installmentNumber, amountCents: nextPending.amountCents };
       }),
 
-    // Marcar cuotas vencidas automáticamente (llamado por job)
+    // Marcar cuotas vencidas automï¿½ticamente (llamado por job)
     markOverdue: staff
       .input(z.object({}))
       .mutation(async ({ ctx }) => {
@@ -3871,7 +3872,7 @@ export const crmRouter = router({
       const [quote] = await db.select().from(quotes).where(eq(quotes.id, input.quoteId)).limit(1);
       if (!quote) throw new TRPCError({ code: "NOT_FOUND", message: "Presupuesto no encontrado" });
 
-      // Construir eventos sintéticos desde los campos del quote
+      // Construir eventos sintï¿½ticos desde los campos del quote
       type TimelineEvent = {
         id: string;
         type: "created" | "sent" | "viewed" | "reminder" | "accepted" | "rejected" | "paid" | "lost" | "expired" | "activity";
@@ -3898,20 +3899,20 @@ export const crmRouter = router({
           id: "sent",
           type: "sent",
           label: "Enviado al cliente",
-          detail: "Email con enlace de aceptación",
+          detail: "Email con enlace de aceptaciï¿½n",
           timestamp: new Date(quote.sentAt).getTime(),
         });
       }
 
-      // 3. Recordatorios automáticos (estimamos desde lastReminderAt y reminderCount)
+      // 3. Recordatorios automï¿½ticos (estimamos desde lastReminderAt y reminderCount)
       if (quote.reminderCount && quote.reminderCount > 0 && quote.lastReminderAt) {
-        // Si hay 2 recordatorios, el primero fue ~48h después del envío
+        // Si hay 2 recordatorios, el primero fue ~48h despuï¿½s del envï¿½o
         if (quote.reminderCount >= 2 && quote.sentAt) {
           const firstReminderTs = new Date(quote.sentAt).getTime() + 48 * 60 * 60 * 1000;
           events.push({
             id: "reminder_1",
             type: "reminder",
-            label: "Recordatorio automático #1",
+            label: "Recordatorio automï¿½tico #1",
             detail: "Presupuesto no abierto en 48h",
             timestamp: firstReminderTs,
           });
@@ -3919,8 +3920,8 @@ export const crmRouter = router({
         events.push({
           id: "reminder_last",
           type: "reminder",
-          label: `Recordatorio automático #${quote.reminderCount}`,
-          detail: "Reenvío automático del sistema",
+          label: `Recordatorio automï¿½tico #${quote.reminderCount}`,
+          detail: "Reenvï¿½o automï¿½tico del sistema",
           timestamp: new Date(quote.lastReminderAt).getTime(),
         });
       }
@@ -3931,7 +3932,7 @@ export const crmRouter = router({
           id: "viewed",
           type: "viewed",
           label: "Abierto por el cliente",
-          detail: "El cliente visualizó el presupuesto",
+          detail: "El cliente visualizï¿½ el presupuesto",
           timestamp: new Date(quote.viewedAt).getTime(),
         });
       }
@@ -3942,7 +3943,7 @@ export const crmRouter = router({
           id: "accepted",
           type: "accepted",
           label: "Presupuesto aceptado",
-          detail: "El cliente aceptó el presupuesto",
+          detail: "El cliente aceptï¿½ el presupuesto",
           timestamp: new Date(quote.acceptedAt).getTime(),
         });
       }
@@ -3975,7 +3976,7 @@ export const crmRouter = router({
         .limit(20);
 
       for (const log of activityLogs) {
-        // Evitar duplicados con eventos sintéticos ya añadidos
+        // Evitar duplicados con eventos sintï¿½ticos ya aï¿½adidos
         const isDuplicate = events.some(e =>
           Math.abs(e.timestamp - new Date(log.createdAt).getTime()) < 2000 &&
           (e.type === "sent" || e.type === "paid" || e.type === "accepted")
@@ -3992,7 +3993,7 @@ export const crmRouter = router({
         }
       }
 
-      // Ordenar cronológicamente
+      // Ordenar cronolï¿½gicamente
       events.sort((a, b) => a.timestamp - b.timestamp);
 
       return {
@@ -4003,9 +4004,9 @@ export const crmRouter = router({
       };
     }),
 
-    // --- Aplicar código de descuento / bono a un presupuesto -----------------
+    // --- Aplicar cï¿½digo de descuento / bono a un presupuesto -----------------
     // El descuento se registra en quotes.discount, se recalcula el total,
-    // y se marca el código como usado (sincronizando el bono si origin=voucher).
+    // y se marca el cï¿½digo como usado (sincronizando el bono si origin=voucher).
     applyDiscountCode: staff
       .input(z.object({
         id: z.number(),
@@ -4024,18 +4025,18 @@ export const crmRouter = router({
           throw new TRPCError({ code: "BAD_REQUEST", message: "Este presupuesto ya tiene un descuento aplicado" });
         }
 
-        // 2. Validar el código
+        // 2. Validar el cï¿½digo
         const [dc] = await db.select().from(discountCodes)
           .where(eq(discountCodes.code, normalizedCode))
           .limit(1);
 
-        if (!dc) throw new TRPCError({ code: "NOT_FOUND", message: "Código no encontrado" });
-        if (dc.status === "inactive") throw new TRPCError({ code: "BAD_REQUEST", message: "El código está inactivo" });
+        if (!dc) throw new TRPCError({ code: "NOT_FOUND", message: "Cï¿½digo no encontrado" });
+        if (dc.status === "inactive") throw new TRPCError({ code: "BAD_REQUEST", message: "El cï¿½digo estï¿½ inactivo" });
         if (dc.expiresAt && new Date(dc.expiresAt) < new Date()) {
-          throw new TRPCError({ code: "BAD_REQUEST", message: "El código ha caducado" });
+          throw new TRPCError({ code: "BAD_REQUEST", message: "El cï¿½digo ha caducado" });
         }
         if (dc.maxUses !== null && dc.currentUses >= dc.maxUses) {
-          throw new TRPCError({ code: "BAD_REQUEST", message: "El código ya ha alcanzado el límite de usos" });
+          throw new TRPCError({ code: "BAD_REQUEST", message: "El cï¿½digo ya ha alcanzado el lï¿½mite de usos" });
         }
 
         // 3. Calcular importe del descuento
@@ -4062,7 +4063,7 @@ export const crmRouter = router({
           updatedAt: new Date(),
         }).where(eq(quotes.id, input.id));
 
-        // 6. Registrar uso del código (también sincroniza el bono si origin=voucher)
+        // 6. Registrar uso del cï¿½digo (tambiï¿½n sincroniza el bono si origin=voucher)
         await recordDiscountUse({
           discountCodeId: dc.id,
           code: dc.code,
@@ -4128,7 +4129,7 @@ export const crmRouter = router({
 
         if (input.channel) {
           if (input.channel === "coupon") {
-            // Filtrar por origen cupón (cualquier plataforma)
+            // Filtrar por origen cupï¿½n (cualquier plataforma)
             conditions.push(eq(reservations.originSource, "coupon_redemption"));
           } else {
             conditions.push(eq(reservations.channel, input.channel as
@@ -4158,12 +4159,12 @@ export const crmRouter = router({
 
         const where = conditions.length ? and(...conditions) : undefined;
 
-        // Subquery agregada de operaciones del datáfono por reserva.
+        // Subquery agregada de operaciones del datï¿½fono por reserva.
         // Garantiza 1 fila por reservation_id incluso cuando hay varias cto
         // vinculadas a la misma reserva (caso real RES-2026-0196: dos
-        // procesos de auto-vinculación enlazaron operaciones distintas a la
+        // procesos de auto-vinculaciï¿½n enlazaron operaciones distintas a la
         // misma reserva, causando duplicado visual en el listado del CRM).
-        // Devolvemos MAX(operation_number) para que el link "ver operación"
+        // Devolvemos MAX(operation_number) para que el link "ver operaciï¿½n"
         // siga apuntando a un valor concreto y funcional.
         const ctoAgg = db
           .select({
@@ -4225,7 +4226,7 @@ export const crmRouter = router({
         // Servicio hoy (bookingDate = hoy, cualquier estado activo)
         db.select({ cnt: count() }).from(reservations)
           .where(and(eq(reservations.bookingDate, todayStr), sql`${reservations.status} != 'cancelled'`)),
-        // Importe servicio hoy: usa amountTotal cuando está disponible, si no cae a pendingPayments.amountCents
+        // Importe servicio hoy: usa amountTotal cuando estï¿½ disponible, si no cae a pendingPayments.amountCents
         // (las reservas placeholder del flujo pendingPayments tienen amountTotal=0)
         db.select({
           total: sql<number>`
@@ -4239,7 +4240,7 @@ export const crmRouter = router({
         .from(sql`reservations r`)
         .leftJoin(sql`pending_payments pp`, sql`pp.reservation_id = r.id AND pp.status = 'paid'`)
         .where(sql`r.booking_date = ${todayStr} AND r.status != 'cancelled'`),
-        // Próximas 7 días (servicio confirmado)
+        // Prï¿½ximas 7 dï¿½as (servicio confirmado)
         db.select({ cnt: count() }).from(reservations)
           .where(and(eq(reservations.status, "paid"), sql`${reservations.bookingDate} > ${todayStr}`, sql`${reservations.bookingDate} <= ${endOfWeekStr}`)),
         db.select({ total: sum(reservations.amountTotal) }).from(reservations)
@@ -4274,12 +4275,12 @@ export const crmRouter = router({
       };
     }),
 
-    // --- Auditoría: reservas pagadas sin factura o sin expediente REAV ------
+    // --- Auditorï¿½a: reservas pagadas sin factura o sin expediente REAV ------
     auditOrphans: staff.query(async () => {
       // 1. Reservas pagadas sin factura asociada
       // Excluir canal PARTNER: se facturan mediante liquidaciones agrupadas, nunca tienen factura individual
-      // Intentamos filtrar las exentas (columna invoice_exempt, añadida por migración 0091).
-      // Si la columna aún no existe en MySQL (migración pendiente), reintentamos sin el filtro.
+      // Intentamos filtrar las exentas (columna invoice_exempt, aï¿½adida por migraciï¿½n 0091).
+      // Si la columna aï¿½n no existe en MySQL (migraciï¿½n pendiente), reintentamos sin el filtro.
       const baseSelect = db
         .select({
           id: reservations.id,
@@ -4302,7 +4303,7 @@ export const crmRouter = router({
       try {
         paidRes = await baseSelect.where(and(baseWhere, sql`(COALESCE(\`invoice_exempt\`, 0) = 0)`));
       } catch {
-        // Columna invoice_exempt no existe aún — mostramos todo sin filtrar exentas
+        // Columna invoice_exempt no existe aï¿½n ï¿½ mostramos todo sin filtrar exentas
         paidRes = await baseSelect.where(baseWhere);
       }
 
@@ -4325,7 +4326,7 @@ export const crmRouter = router({
       for (const inv of linkedInvoices) {
         if (inv.reservationId) invoicedResIds.add(inv.reservationId);
       }
-      // También cubrir la relación por quoteId: si la factura tiene quoteId, marcar todas las reservas de ese quote
+      // Tambiï¿½n cubrir la relaciï¿½n por quoteId: si la factura tiene quoteId, marcar todas las reservas de ese quote
       const invoicedQuoteIds = new Set(linkedInvoices.map(i => i.quoteId).filter((q): q is number => q != null));
       for (const r of paidRes) {
         if (r.quoteId && invoicedQuoteIds.has(r.quoteId)) invoicedResIds.add(r.id);
@@ -4395,13 +4396,13 @@ export const crmRouter = router({
       .input(z.object({ reservationId: z.number(), exempt: z.boolean() }))
       .mutation(async ({ input }) => {
         // Asegurar que la columna existe antes de actualizar.
-        // La migración 0091 puede no haber aplicado en algunos entornos.
+        // La migraciï¿½n 0091 puede no haber aplicado en algunos entornos.
         try {
           await db.execute(
             sql`ALTER TABLE \`reservations\` ADD COLUMN \`invoice_exempt\` tinyint(1) NOT NULL DEFAULT 0`
           );
         } catch {
-          // Columna ya existe — ignorar
+          // Columna ya existe ï¿½ ignorar
         }
         await db.execute(
           sql`UPDATE \`reservations\` SET \`invoice_exempt\` = ${input.exempt ? 1 : 0} WHERE \`id\` = ${input.reservationId}`
@@ -4416,7 +4417,7 @@ export const crmRouter = router({
         if (!reservation) throw new TRPCError({ code: "NOT_FOUND" });
 
         // Buscar facturas por reservationId O por quoteId (planes de pago multi-cuota
-        // vinculan la factura a la reserva de la última cuota, no necesariamente a la primera)
+        // vinculan la factura a la reserva de la ï¿½ltima cuota, no necesariamente a la primera)
         const invoiceCondition = reservation.quoteId
           ? or(eq(invoices.reservationId, input.id), eq(invoices.quoteId, reservation.quoteId))
           : eq(invoices.reservationId, input.id);
@@ -4449,15 +4450,15 @@ export const crmRouter = router({
         const [current] = await db.select().from(reservations).where(eq(reservations.id, id));
         if (!current) throw new TRPCError({ code: "NOT_FOUND" });
 
-        // GUARD: cancelar una reserva NO puede hacerse por este endpoint —
-        // dejaba huérfanas la operativa, los REAV, las transacciones y
+        // GUARD: cancelar una reserva NO puede hacerse por este endpoint ï¿½
+        // dejaba huï¿½rfanas la operativa, los REAV, las transacciones y
         // facturas. El flujo correcto es Anular (cancellations.requestCancellation
         // ? approveRequest), que propaga el estado a todas las tablas
         // dependientes y deja trazabilidad completa.
         if (fields.status === "cancelled") {
           throw new TRPCError({
             code: "PRECONDITION_FAILED",
-            message: "Para anular una reserva usa el botón 'Anular reserva' (módulo Anulaciones). El cambio rápido a 'cancelled' está bloqueado para preservar trazabilidad y cascada en operativa, REAV y contabilidad.",
+            message: "Para anular una reserva usa el botï¿½n 'Anular reserva' (mï¿½dulo Anulaciones). El cambio rï¿½pido a 'cancelled' estï¿½ bloqueado para preservar trazabilidad y cascada en operativa, REAV y contabilidad.",
           });
         }
 
@@ -4469,7 +4470,7 @@ export const crmRouter = router({
         if (fields.channel !== undefined) updateData.channel = fields.channel;
         if (fields.channelDetail !== undefined) updateData.channelDetail = fields.channelDetail;
 
-        // Si cambia status (a algo distinto de cancelled), registrar también
+        // Si cambia status (a algo distinto de cancelled), registrar tambiï¿½n
         // en `reservations.changesLog` para trazabilidad in-row.
         if (fields.status !== undefined && fields.status !== current.status) {
           const existingLog = Array.isArray(current.changesLog) ? current.changesLog : [];
@@ -4506,13 +4507,13 @@ export const crmRouter = router({
         const [current] = await db.select().from(reservations).where(eq(reservations.id, input.id));
         if (!current) throw new TRPCError({ code: "NOT_FOUND" });
 
-        // GUARD: marcar como ANULADA por aquí dejaba sin propagar la cascada
-        // a operativa/REAV/transacciones/abonos. La anulación correcta vive
+        // GUARD: marcar como ANULADA por aquï¿½ dejaba sin propagar la cascada
+        // a operativa/REAV/transacciones/abonos. La anulaciï¿½n correcta vive
         // en cancellations.requestCancellation + approveRequest.
         if (input.statusReservation === "ANULADA") {
           throw new TRPCError({
             code: "PRECONDITION_FAILED",
-            message: "Para anular una reserva usa el botón 'Anular reserva' (módulo Anulaciones). El cambio directo a 'ANULADA' está bloqueado para preservar trazabilidad y cascada en operativa, REAV y contabilidad.",
+            message: "Para anular una reserva usa el botï¿½n 'Anular reserva' (mï¿½dulo Anulaciones). El cambio directo a 'ANULADA' estï¿½ bloqueado para preservar trazabilidad y cascada en operativa, REAV y contabilidad.",
           });
         }
         const now = Date.now();
@@ -4527,8 +4528,8 @@ export const crmRouter = router({
         const updateData: Record<string, unknown> = { updatedAt: now, changesLog: [...existingLog, logEntry] };
         if (input.statusReservation !== undefined) updateData.statusReservation = input.statusReservation;
         if (input.statusPayment !== undefined) updateData.statusPayment = input.statusPayment;
-        // Sincronizar status legacy según los estados nuevos.
-        // Nota: el caso ANULADA se descartó arriba (guard) — la anulación
+        // Sincronizar status legacy segï¿½n los estados nuevos.
+        // Nota: el caso ANULADA se descartï¿½ arriba (guard) ï¿½ la anulaciï¿½n
         // correcta vive en cancellations.requestCancellation/approveRequest.
         if (input.statusPayment === "PAGADO") {
           updateData.status = "paid";
@@ -4589,7 +4590,7 @@ export const crmRouter = router({
         return { ok: true };
       }),
 
-    // --- Reenviar email de confirmación al cliente --------------------------
+    // --- Reenviar email de confirmaciï¿½n al cliente --------------------------
     resendConfirmation: staff
       .input(z.object({ id: z.number() }))
       .mutation(async ({ input, ctx }) => {
@@ -4619,7 +4620,7 @@ export const crmRouter = router({
             invoiceUrl: null,
             reservationUrl,
           });
-          subject = `?? Confirmación de reserva — ${res.productName} · Náyade Experiences`;
+          subject = `?? Confirmaciï¿½n de reserva ï¿½ ${res.productName} ï¿½ Nï¿½yade Experiences`;
         } else {
           html = buildConfirmationHtml({
             clientName: res.customerName,
@@ -4637,7 +4638,7 @@ export const crmRouter = router({
             contactPhone: "+34 639 57 66 27",
             reservationUrl,
           });
-          subject = `? Confirmación de reserva — ${res.productName} · Náyade Experiences`;
+          subject = `? Confirmaciï¿½n de reserva ï¿½ ${res.productName} ï¿½ Nï¿½yade Experiences`;
         }
         await sendEmail({ to: res.customerEmail ?? "", subject, html });
         await db.insert(crmActivityLog).values({
@@ -4664,15 +4665,15 @@ export const crmRouter = router({
         const [res] = await db.select().from(reservations).where(eq(reservations.id, input.reservationId));
         if (!res) throw new TRPCError({ code: "NOT_FOUND", message: "Reserva no encontrada" });
         if (res.invoiceId) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Esta reserva ya tiene factura generada" });
-        // ?? GUARD: Reservas Groupon/Smartbox/etc. (canje de cupón) no son
-        // facturables desde el CRM — su liquidación pertenece al flujo de
-        // conciliación del proveedor. Tras la normalización del canal, el
+        // ?? GUARD: Reservas Groupon/Smartbox/etc. (canje de cupï¿½n) no son
+        // facturables desde el CRM ï¿½ su liquidaciï¿½n pertenece al flujo de
+        // conciliaciï¿½n del proveedor. Tras la normalizaciï¿½n del canal, el
         // ENUM ya no incluye "groupon"; identificamos estas reservas por
         // originSource = 'coupon_redemption'.
         if (res.originSource === "coupon_redemption") {
           throw new TRPCError({
             code: "FORBIDDEN",
-            message: "Las reservas procedentes de canje de cupón Groupon no pueden facturarse desde el CRM. Su liquidación económica pertenece al flujo de conciliación del proveedor ticketing.",
+            message: "Las reservas procedentes de canje de cupï¿½n Groupon no pueden facturarse desde el CRM. Su liquidaciï¿½n econï¿½mica pertenece al flujo de conciliaciï¿½n del proveedor ticketing.",
           });
         }
 
@@ -4701,7 +4702,7 @@ export const crmRouter = router({
         const bdTpv = groupTaxBreakdown(items.filter(i => i.fiscalRegime !== "reav"));
         const taxAmount = totalTaxAmount(bdTpv);
         const taxRate = bdTpv.length === 1 ? bdTpv[0].rate : 21;
-        // El total de las líneas ya incluye el IVA: la base imponible se EXTRAE
+        // El total de las lï¿½neas ya incluye el IVA: la base imponible se EXTRAE
         // (total - IVA) y el total se mantiene en el bruto. No se suma el IVA encima.
         const total = parseFloat(items.reduce((s, i) => s + i.total, 0).toFixed(2));
         const subtotal = parseFloat((total - taxAmount).toFixed(2));
@@ -4768,7 +4769,7 @@ export const crmRouter = router({
           await db.update(tpvSales).set({ invoiceId }).where(eq(tpvSales.id, tpvSale.id));
         }
 
-        // 7. Attach invoice PDF to existing REAV expedient (if any) — NO new expedient created
+        // 7. Attach invoice PDF to existing REAV expedient (if any) ï¿½ NO new expedient created
         if (pdfUrl) {
           const reavRows = await db.select({ id: reavExpedients.id })
             .from(reavExpedients)
@@ -4803,28 +4804,28 @@ export const crmRouter = router({
 
     // --- Eliminar reserva ---------------------------------------------------
     //
-    // Hard-delete con CASCADA atómica. Política por tabla:
-    //   · reservation_operational ? DELETE (operativa pura, sin valor fiscal)
-    //   · reav_expedients         ? UPDATE op_status='anulado' (preserva
-    //                                el expediente para auditoría fiscal aunque
+    // Hard-delete con CASCADA atï¿½mica. Polï¿½tica por tabla:
+    //   ï¿½ reservation_operational ? DELETE (operativa pura, sin valor fiscal)
+    //   ï¿½ reav_expedients         ? UPDATE op_status='anulado' (preserva
+    //                                el expediente para auditorï¿½a fiscal aunque
     //                                la reserva desaparezca de `reservations`)
-    //   · tpvSales                ? UPDATE status='cancelled' (preserva el
+    //   ï¿½ tpvSales                ? UPDATE status='cancelled' (preserva el
     //                                ticket TPV para arqueo y control diario)
-    //   · crm_activity_log        ? DELETE (rastro de UI, sin valor legal)
-    //   · reservations            ? DELETE (hard-delete, igual que antes)
+    //   ï¿½ crm_activity_log        ? DELETE (rastro de UI, sin valor legal)
+    //   ï¿½ reservations            ? DELETE (hard-delete, igual que antes)
     //
     // Guards: si la reserva tiene cobros contabilizados (transactions con
-    // status='completado') o está en una liquidación de partner (partner_
+    // status='completado') o estï¿½ en una liquidaciï¿½n de partner (partner_
     // billing_batch_items), se BLOQUEA el borrado. El flujo correcto en ese
     // caso es Anular (que preserva todo el rastro). Antes del fix, el
-    // borrado dejaba huérfanas las filas en `reservation_operational` y
+    // borrado dejaba huï¿½rfanas las filas en `reservation_operational` y
     // `reav_expedients`, ensuciando informes operativos y fiscales.
     delete: staff
       .input(z.object({ id: z.number() }))
       .mutation(async ({ input }) => {
         const [res] = await db.select({ id: reservations.id, status: reservations.status }).from(reservations).where(eq(reservations.id, input.id));
         if (!res) throw new TRPCError({ code: "NOT_FOUND", message: "Reserva no encontrada" });
-        if (res.status === "paid") throw new TRPCError({ code: "PRECONDITION_FAILED", message: "No se puede eliminar una reserva pagada. Cancélala primero desde Editar." });
+        if (res.status === "paid") throw new TRPCError({ code: "PRECONDITION_FAILED", message: "No se puede eliminar una reserva pagada. Cancï¿½lala primero desde Editar." });
 
         const [billingItem] = await db
           .select({ id: partnerBillingBatchItems.id, batchId: partnerBillingBatchItems.batchId })
@@ -4834,7 +4835,7 @@ export const crmRouter = router({
         if (billingItem) {
           throw new TRPCError({
             code: "PRECONDITION_FAILED",
-            message: `No se puede eliminar: forma parte de la liquidación del partner #${billingItem.batchId}. Anúlala desde Editar para preservar el rastro contable.`,
+            message: `No se puede eliminar: forma parte de la liquidaciï¿½n del partner #${billingItem.batchId}. Anï¿½lala desde Editar para preservar el rastro contable.`,
           });
         }
 
@@ -4850,7 +4851,7 @@ export const crmRouter = router({
         if (completedTx) {
           throw new TRPCError({
             code: "PRECONDITION_FAILED",
-            message: "No se puede eliminar: tiene cobros contabilizados. Anúlala desde Editar para registrar el reembolso.",
+            message: "No se puede eliminar: tiene cobros contabilizados. Anï¿½lala desde Editar para registrar el reembolso.",
           });
         }
 
@@ -4872,7 +4873,7 @@ export const crmRouter = router({
       }),
 
     // Misma cascada que `delete`, en lote. Salta las que no se puedan borrar
-    // (status='paid', liquidación pendiente o cobros contabilizados) y
+    // (status='paid', liquidaciï¿½n pendiente o cobros contabilizados) y
     // devuelve el desglose de saltadas con motivo.
     bulkDelete: staff
       .input(z.object({ ids: z.array(z.number()).min(1) }))
@@ -4885,7 +4886,7 @@ export const crmRouter = router({
           if (r.status === "paid") skippedReasons.push({ id: r.id, reason: "pagada" });
         }
 
-        // Filtrar las que están en una liquidación o tienen cobros contabilizados.
+        // Filtrar las que estï¿½n en una liquidaciï¿½n o tienen cobros contabilizados.
         if (candidates.length > 0) {
           const inBilling = await db
             .select({ reservationId: partnerBillingBatchItems.reservationId })
@@ -4893,7 +4894,7 @@ export const crmRouter = router({
             .where(inArray(partnerBillingBatchItems.reservationId, candidates));
           const billingSet = new Set(inBilling.map(b => b.reservationId));
           for (const id of candidates) {
-            if (billingSet.has(id)) skippedReasons.push({ id, reason: "en liquidación de partner" });
+            if (billingSet.has(id)) skippedReasons.push({ id, reason: "en liquidaciï¿½n de partner" });
           }
           candidates = candidates.filter(id => !billingSet.has(id));
         }
@@ -4940,12 +4941,12 @@ export const crmRouter = router({
       .mutation(async ({ input, ctx }) => {
         // GUARD: cancelar en lote dejaba reservas en estado "zombie"
         // (cancelled + PAGADO + CONFIRMADA + op_status confirmado) sin
-        // ningún rastro en logs. Caso real documentado: RES-2026-0157.
-        // Para anular, usa el módulo de Anulaciones (1 reserva a la vez).
+        // ningï¿½n rastro en logs. Caso real documentado: RES-2026-0157.
+        // Para anular, usa el mï¿½dulo de Anulaciones (1 reserva a la vez).
         if (input.status === "cancelled") {
           throw new TRPCError({
             code: "PRECONDITION_FAILED",
-            message: "Para anular reservas usa el botón 'Anular reserva' (módulo Anulaciones, 1 a 1). El bulk update a 'cancelled' está bloqueado para preservar trazabilidad y cascada en operativa, REAV y contabilidad.",
+            message: "Para anular reservas usa el botï¿½n 'Anular reserva' (mï¿½dulo Anulaciones, 1 a 1). El bulk update a 'cancelled' estï¿½ bloqueado para preservar trazabilidad y cascada en operativa, REAV y contabilidad.",
           });
         }
 
@@ -4984,7 +4985,7 @@ export const crmRouter = router({
 
     // --- Crear reserva manual (admin) -----------------------------------------------------------------------------
     // Crea una reserva directa sin pasar por presupuesto, ejecutando el mismo
-    // postConfirmOperation que los flujos automáticos (CRM, Redsys, Ticketing, TPV).
+    // postConfirmOperation que los flujos automï¿½ticos (CRM, Redsys, Ticketing, TPV).
     createManual: staff
       .input(
         z.object({
@@ -4998,7 +4999,7 @@ export const crmRouter = router({
           // Servicio
           bookingDate: z.string().min(1),   // YYYY-MM-DD
           people: z.number().min(1),
-          // Económico
+          // Econï¿½mico
           amountTotal: z.number().min(0),    // en euros
           amountPaid: z.number().min(0),     // en euros
           paymentMethod: z.enum(["efectivo", "transferencia", "redsys", "otro"]).default("efectivo"),
@@ -5020,10 +5021,10 @@ export const crmRouter = router({
           source: "admin",
         });
 
-        // 2. Generar número de factura
+        // 2. Generar nï¿½mero de factura
         const invoiceNumber = await generateInvoiceNumber("crm:manual", String(ctx.user.id));
 
-        // 3. Construir líneas de factura
+        // 3. Construir lï¿½neas de factura
         const unitPrice = input.people > 0 ? input.amountTotal / input.people : input.amountTotal;
         const items = [{
           description: input.productName,
@@ -5113,7 +5114,7 @@ export const crmRouter = router({
         // 7. Actualizar reservationId en la factura
         await db.update(invoices).set({ reservationId }).where(eq(invoices.id, invoiceId));
 
-        // 8. postConfirmOperation: booking + transacción + reservation_operational
+        // 8. postConfirmOperation: booking + transacciï¿½n + reservation_operational
         try {
           await postConfirmOperation({
             reservationId,
@@ -5135,10 +5136,10 @@ export const crmRouter = router({
           console.error("[createManual] postConfirmOperation error:", e);
         }
 
-        // 9. Email de confirmación al cliente
+        // 9. Email de confirmaciï¿½n al cliente
         if (input.sendConfirmationEmail && input.customerEmail) {
           try {
-            // Recuperar publicToken de la reserva recién creada (lo genera MySQL por DEFAULT)
+            // Recuperar publicToken de la reserva reciï¿½n creada (lo genera MySQL por DEFAULT)
             const [resRow] = await db.select({ publicToken: reservations.publicToken })
               .from(reservations).where(eq(reservations.id, reservationId)).limit(1);
             const base = process.env.APP_URL ?? "https://www.skicenter.es";
@@ -5156,7 +5157,7 @@ export const crmRouter = router({
             });
             await sendEmail({
               to: input.customerEmail,
-              subject: `? Confirmación de reserva — ${input.productName} · Náyade Experiences`,
+              subject: `? Confirmaciï¿½n de reserva ï¿½ ${input.productName} ï¿½ Nï¿½yade Experiences`,
               html,
             });
           } catch (e) {
@@ -5187,7 +5188,7 @@ export const crmRouter = router({
               // 1. Actualizar campos personalizados del contacto en GHL
               //    para que el workflow pueda usarlos en plantillas (WhatsApp, email, etc.)
               // Sincronizar invoice + presupuesto_url (publicToken) en el contacto.
-              // El workflow WhatsApp lee {{contact.presupuesto_url}} para el botón.
+              // El workflow WhatsApp lee {{contact.presupuesto_url}} para el botï¿½n.
               const [resForUrl] = await db.select({ publicToken: reservations.publicToken })
                 .from(reservations).where(eq(reservations.id, reservationId)).limit(1);
               const baseUrl = process.env.APP_URL ?? "https://www.skicenter.es";
@@ -5229,7 +5230,7 @@ export const crmRouter = router({
             }
           }
         } catch (ghlErr: any) {
-          console.error("[createManual] Error en integración GHL:", ghlErr.message);
+          console.error("[createManual] Error en integraciï¿½n GHL:", ghlErr.message);
         }
 
         // 11. Registrar actividad
@@ -5271,9 +5272,9 @@ export const crmRouter = router({
         const amountEur = (res.amountPaid ?? res.amountTotal) / 100;
         const channelLabels: Record<string, string> = {
           ONLINE_DIRECTO: "Online Directo", ONLINE_ASISTIDO: "Online Asistido",
-          VENTA_DELEGADA: "Venta Delegada", TPV_FISICO: "TPV Físico",
+          VENTA_DELEGADA: "Venta Delegada", TPV_FISICO: "TPV Fï¿½sico",
           PARTNER: "Partner", MANUAL: "Manual", API: "API",
-          web: "Web", crm: "CRM", telefono: "Teléfono", email: "Email",
+          web: "Web", crm: "CRM", telefono: "Telï¿½fono", email: "Email",
           otro: "Otro", tpv: "TPV", groupon: "Groupon",
         };
         const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
@@ -5295,14 +5296,14 @@ export const crmRouter = router({
         </style></head><body>
           <div class="header">
             <h1>Reserva #${res.merchantOrder}${res.dateModified ? '<span class="tag">?? FECHA MODIFICADA</span>' : ""}</h1>
-            <p>Náyade Experiences • Los Ángeles de San Rafael, Segovia</p>
+            <p>Nï¿½yade Experiences ï¿½ Los ï¿½ngeles de San Rafael, Segovia</p>
           </div>
           <div style="padding:0 0 0 0;">
             <div class="section">
               <h2>Cliente</h2>
               <div class="row"><span class="label">Nombre</span><span class="value">${res.customerName}</span></div>
               ${res.customerEmail ? `<div class="row"><span class="label">Email</span><span class="value">${res.customerEmail}</span></div>` : ""}
-              ${res.customerPhone ? `<div class="row"><span class="label">Teléfono</span><span class="value">${res.customerPhone}</span></div>` : ""}
+              ${res.customerPhone ? `<div class="row"><span class="label">Telï¿½fono</span><span class="value">${res.customerPhone}</span></div>` : ""}
             </div>
             <div class="section">
               <h2>Actividad</h2>
@@ -5321,17 +5322,17 @@ export const crmRouter = router({
                 <span class="label">Estado pago</span>
                 <span class="value">${res.statusPayment ?? "PENDIENTE"}</span>
               </div>
-              <div class="row"><span class="label">Canal</span><span class="value">${channelLabels[res.channel ?? ""] ?? res.channel ?? ""}${res.channelDetail ? " — " + res.channelDetail : ""}</span></div>
-              <div class="row"><span class="label">Método de pago</span><span class="value">${({ tarjeta_fisica: "Tarjeta Física", tarjeta_redsys: "Tarjeta Redsys", redsys: "Tarjeta Redsys", tarjeta: "Tarjeta", transferencia: "Transferencia", efectivo: "Efectivo", otro: "Otro" } as Record<string, string>)[res.paymentMethod ?? ""] ?? res.paymentMethod ?? "—"}</span></div>
+              <div class="row"><span class="label">Canal</span><span class="value">${channelLabels[res.channel ?? ""] ?? res.channel ?? ""}${res.channelDetail ? " ï¿½ " + res.channelDetail : ""}</span></div>
+              <div class="row"><span class="label">Mï¿½todo de pago</span><span class="value">${({ tarjeta_fisica: "Tarjeta Fï¿½sica", tarjeta_redsys: "Tarjeta Redsys", redsys: "Tarjeta Redsys", tarjeta: "Tarjeta", transferencia: "Transferencia", efectivo: "Efectivo", otro: "Otro" } as Record<string, string>)[res.paymentMethod ?? ""] ?? res.paymentMethod ?? "ï¿½"}</span></div>
               <div class="row"><span class="label">Fecha de compra</span><span class="value">${new Date(res.createdAt).toLocaleDateString("es-ES")}</span></div>
             </div>
             <div class="total-box">
               <div class="row"><span class="label">Importe total</span></div>
-              <div class="amount">${amountEur.toFixed(2)} €</div>
+              <div class="amount">${amountEur.toFixed(2)} ï¿½</div>
               ${res.invoiceNumber ? `<div style="margin-top:8px;font-size:12px;color:#6b7280;">Factura: ${res.invoiceNumber}</div>` : ""}
             </div>
           </div>
-          <div class="footer">Generado por Náyade Experiences CRM • ${new Date().toLocaleDateString("es-ES")}</div>
+          <div class="footer">Generado por Nï¿½yade Experiences CRM ï¿½ ${new Date().toLocaleDateString("es-ES")}</div>
         </body></html>`;
         const pdfBuffer = await htmlToPdf(html);
         const key = `reservations/pdf-${res.merchantOrder}-${Date.now()}.pdf`;
@@ -5435,7 +5436,7 @@ export const crmRouter = router({
         }
         const whereClause = conditions.length ? and(...conditions) : undefined;
 
-        // Condiciones base solo sobre facturas originales (no abonos) para el cálculo neto
+        // Condiciones base solo sobre facturas originales (no abonos) para el cï¿½lculo neto
         const facturaOnlyConditions = [...conditions, eq(invoices.invoiceType, "factura")];
         const abonoOnlyConditions = [...conditions, eq(invoices.invoiceType, "abono")];
 
@@ -5455,7 +5456,7 @@ export const crmRouter = router({
           }).from(invoices).where(and(...(abonoOnlyConditions.length ? abonoOnlyConditions : [eq(invoices.invoiceType, "abono")]))),
         ]);
 
-        // Enriquecer filas: para facturas abonadas ? buscar su nº de abono; para abonos ? nº de factura original
+        // Enriquecer filas: para facturas abonadas ? buscar su nï¿½ de abono; para abonos ? nï¿½ de factura original
         const abonadaIds = rows.filter(r => r.status === "abonada").map(r => r.id);
         const abonoRows = rows.filter(r => r.invoiceType === "abono" && r.creditNoteForId);
         const originalIds = abonoRows.map(r => r.creditNoteForId!);
@@ -5486,9 +5487,9 @@ export const crmRouter = router({
 
         const enrichedRows = rows.map(r => ({
           ...r,
-          // Si esta factura está abonada, el nº del abono emitido
+          // Si esta factura estï¿½ abonada, el nï¿½ del abono emitido
           creditNoteNumber: r.status === "abonada" ? (creditNoteMap[r.id] ?? null) : null,
-          // Si este documento ES un abono, el nº de la factura original que rectifica
+          // Si este documento ES un abono, el nï¿½ de la factura original que rectifica
           originalInvoiceNumber: r.invoiceType === "abono" ? (originalInvoiceMap[r.id] ?? null) : null,
         }));
 
@@ -5520,7 +5521,7 @@ export const crmRouter = router({
       .mutation(async ({ input, ctx }) => {
         const [invoice] = await db.select().from(invoices).where(eq(invoices.id, input.invoiceId));
         if (!invoice) throw new TRPCError({ code: "NOT_FOUND" });
-        if (invoice.status === "cobrada") throw new TRPCError({ code: "BAD_REQUEST", message: "La factura ya está marcada como cobrada" });
+        if (invoice.status === "cobrada") throw new TRPCError({ code: "BAD_REQUEST", message: "La factura ya estï¿½ marcada como cobrada" });
 
         const now = new Date();
         await db.update(invoices).set({
@@ -5612,7 +5613,7 @@ export const crmRouter = router({
           }
         }
 
-        // -- PARIDAD: Crear expediente REAV si hay líneas REAV ---------------------
+        // -- PARIDAD: Crear expediente REAV si hay lï¿½neas REAV ---------------------
         const reavLines = items.filter(i => i.fiscalRegime === "reav");
         let reavExpedientId: number | undefined;
         let reavExpedientNumber: string | undefined;
@@ -5641,7 +5642,7 @@ export const crmRouter = router({
                     reavCostePct = parseFloat(String(reavProduct.providerPercent ?? 60));
                     reavMargenPct = parseFloat(String(reavProduct.agencyMarginPercent ?? 40));
                   } else {
-                    console.warn("[confirmManualPayment] Configuración REAV inválida, usando fallback 60/40:", errores);
+                    console.warn("[confirmManualPayment] Configuraciï¿½n REAV invï¿½lida, usando fallback 60/40:", errores);
                   }
                 }
               }
@@ -5664,13 +5665,13 @@ export const crmRouter = router({
                 channel: "crm",
                 sourceRef: invoice.invoiceNumber,
                 internalNotes: [
-                  `Expediente creado automáticamente al confirmar pago manual de la factura ${invoice.invoiceNumber}.`,
+                  `Expediente creado automï¿½ticamente al confirmar pago manual de la factura ${invoice.invoiceNumber}.`,
                   invoice.clientName ? `Cliente: ${invoice.clientName}` : null,
                   invoice.clientEmail ? `Email: ${invoice.clientEmail}` : null,
-                  invoice.clientPhone ? `Teléfono: ${invoice.clientPhone}` : null,
-                  `Importe REAV: ${reavSaleAmount.toFixed(2)}€`,
+                  invoice.clientPhone ? `Telï¿½fono: ${invoice.clientPhone}` : null,
+                  `Importe REAV: ${reavSaleAmount.toFixed(2)}ï¿½`,
                   `Agente: ${ctx.user.name ?? ctx.user.email}`,
-                ].filter(Boolean).join(" · "),
+                ].filter(Boolean).join(" ï¿½ "),
               });
               reavExpedientId = reavResult.id;
               reavExpedientNumber = reavResult.expedientNumber;
@@ -5683,7 +5684,7 @@ export const crmRouter = router({
                   title: `Factura ${invoice.invoiceNumber}`,
                   fileUrl: finalPdfUrl,
                   mimeType: "application/pdf",
-                  notes: `Factura generada al confirmar pago manual. Método: ${input.paymentMethod}.`,
+                  notes: `Factura generada al confirmar pago manual. Mï¿½todo: ${input.paymentMethod}.`,
                   uploadedBy: ctx.user.id,
                 });
               }
@@ -5710,7 +5711,7 @@ export const crmRouter = router({
           }
         }
 
-        // -- Crear booking operativo + transacción contable ------------------------
+        // -- Crear booking operativo + transacciï¿½n contable ------------------------
         if (invoice.reservationId) {
           try {
             const [res] = await db.select().from(reservations).where(eq(reservations.id, invoice.reservationId));
@@ -5741,7 +5742,7 @@ export const crmRouter = router({
                 taxAmount: taxAmountForTx,
                 reavMargin: reavSubtotalForTx,
                 fiscalRegime: fiscalRegimeForTx,
-                description: `Pago manual — ${invoice.invoiceNumber} — ${res.customerName}`,
+                description: `Pago manual ï¿½ ${invoice.invoiceNumber} ï¿½ ${res.customerName}`,
                 quoteId: invoice.quoteId ?? null,
                 sourceChannel: input.paymentMethod as "transferencia" | "efectivo" | "otro",
               });
@@ -5761,7 +5762,7 @@ export const crmRouter = router({
         const [original] = await db.select().from(invoices).where(eq(invoices.id, input.invoiceId));
         if (!original) throw new TRPCError({ code: "NOT_FOUND" });
         if (original.invoiceType === "abono") throw new TRPCError({ code: "BAD_REQUEST", message: "No se puede abonar una factura de abono" });
-        if (original.status === "anulada") throw new TRPCError({ code: "BAD_REQUEST", message: "La factura ya está anulada" });
+        if (original.status === "anulada") throw new TRPCError({ code: "BAD_REQUEST", message: "La factura ya estï¿½ anulada" });
 
         const now = new Date();
         const year = now.getFullYear();
@@ -5837,22 +5838,22 @@ export const crmRouter = router({
 
         try {
           const subject = invoice.invoiceType === "abono"
-            ? `Factura de abono ${invoice.invoiceNumber} — Náyade Experiences`
-            : `Tu factura ${invoice.invoiceNumber} — Náyade Experiences`;
+            ? `Factura de abono ${invoice.invoiceNumber} ï¿½ Nï¿½yade Experiences`
+            : `Tu factura ${invoice.invoiceNumber} ï¿½ Nï¿½yade Experiences`;
 
           const items = (invoice.itemsJson as { description: string; quantity: number; unitPrice: number; total: number }[]) ?? [];
           const htmlBody = `
             <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
-              <h2 style="color:#f97316;">Náyade Experiences</h2>
+              <h2 style="color:#f97316;">Nï¿½yade Experiences</h2>
               <p>Estimado/a <strong>${invoice.clientName}</strong>,</p>
               <p>Adjuntamos ${invoice.invoiceType === "abono" ? "la factura de abono" : "tu factura"} <strong>${invoice.invoiceNumber}</strong>.</p>
               <table style="width:100%;border-collapse:collapse;margin:16px 0;">
-                <tr style="background:#f3f4f6;"><th style="padding:8px;text-align:left;">Descripción</th><th style="padding:8px;text-align:right;">Cant.</th><th style="padding:8px;text-align:right;">Precio</th><th style="padding:8px;text-align:right;">Total</th></tr>
-                ${items.map(i => `<tr><td style="padding:8px;border-bottom:1px solid #e5e7eb;">${i.description}</td><td style="padding:8px;text-align:right;border-bottom:1px solid #e5e7eb;">${i.quantity}</td><td style="padding:8px;text-align:right;border-bottom:1px solid #e5e7eb;">${Number(i.unitPrice).toFixed(2)} €</td><td style="padding:8px;text-align:right;border-bottom:1px solid #e5e7eb;">${Number(i.total).toFixed(2)} €</td></tr>`).join("")}
+                <tr style="background:#f3f4f6;"><th style="padding:8px;text-align:left;">Descripciï¿½n</th><th style="padding:8px;text-align:right;">Cant.</th><th style="padding:8px;text-align:right;">Precio</th><th style="padding:8px;text-align:right;">Total</th></tr>
+                ${items.map(i => `<tr><td style="padding:8px;border-bottom:1px solid #e5e7eb;">${i.description}</td><td style="padding:8px;text-align:right;border-bottom:1px solid #e5e7eb;">${i.quantity}</td><td style="padding:8px;text-align:right;border-bottom:1px solid #e5e7eb;">${Number(i.unitPrice).toFixed(2)} ï¿½</td><td style="padding:8px;text-align:right;border-bottom:1px solid #e5e7eb;">${Number(i.total).toFixed(2)} ï¿½</td></tr>`).join("")}
               </table>
-              <p><strong>Subtotal:</strong> ${Number(invoice.subtotal).toFixed(2)} € | <strong>IVA (${invoice.taxRate}%):</strong> ${Number(invoice.taxAmount).toFixed(2)} € | <strong>TOTAL: ${Number(invoice.total).toFixed(2)} €</strong></p>
-              ${invoice.pdfUrl ? `<p>Encontrarás tu factura <strong>adjunta a este correo</strong> en PDF.${invoice.pdfUrl ? ` También puedes <a href="${invoice.pdfUrl}" style="color:#f97316;">descargarla aquí</a>.` : ""}</p>` : ""}
-              <hr/><p style="color:#6b7280;font-size:12px;">Náyade Experiences · ${COPY_EMAIL} · +34 639 57 66 27 (también WhatsApp)</p>
+              <p><strong>Subtotal:</strong> ${Number(invoice.subtotal).toFixed(2)} ï¿½ | <strong>IVA (${invoice.taxRate}%):</strong> ${Number(invoice.taxAmount).toFixed(2)} ï¿½ | <strong>TOTAL: ${Number(invoice.total).toFixed(2)} ï¿½</strong></p>
+              ${invoice.pdfUrl ? `<p>Encontrarï¿½s tu factura <strong>adjunta a este correo</strong> en PDF.${invoice.pdfUrl ? ` Tambiï¿½n puedes <a href="${invoice.pdfUrl}" style="color:#f97316;">descargarla aquï¿½</a>.` : ""}</p>` : ""}
+              <hr/><p style="color:#6b7280;font-size:12px;">Nï¿½yade Experiences ï¿½ ${COPY_EMAIL} ï¿½ +34 639 57 66 27 (tambiï¿½n WhatsApp)</p>
             </div>`;
 
           // El PDF se adjunta al correo (Brevo lo descarga del CDN), para que el
@@ -5889,7 +5890,7 @@ export const crmRouter = router({
         const [invoice] = await db.select().from(invoices).where(eq(invoices.id, input.invoiceId));
         if (!invoice) throw new TRPCError({ code: "NOT_FOUND" });
         if (["anulada", "abonada"].includes(invoice.status)) {
-          throw new TRPCError({ code: "BAD_REQUEST", message: `La factura ya está ${invoice.status}` });
+          throw new TRPCError({ code: "BAD_REQUEST", message: `La factura ya estï¿½ ${invoice.status}` });
         }
         const now = new Date();
         await db.update(invoices).set({ status: "anulada", updatedAt: now }).where(eq(invoices.id, input.invoiceId));
@@ -6087,7 +6088,7 @@ export const crmRouter = router({
             ? eq(reservations.customerEmail, client.email)
             : null;
 
-      // Reservas primero — necesitamos sus IDs para ampliar la búsqueda de facturas
+      // Reservas primero ï¿½ necesitamos sus IDs para ampliar la bï¿½squeda de facturas
       const clientReservations = reservationCondition
         ? await db.select().from(reservations).where(reservationCondition).orderBy(desc(reservations.createdAt))
         : [];
@@ -6148,13 +6149,13 @@ export const crmRouter = router({
             .limit(200)
         : [];
 
-      // KPIs — totalSpentCents desde facturas activas (fuente de verdad del cobro real)
+      // KPIs ï¿½ totalSpentCents desde facturas activas (fuente de verdad del cobro real)
       const totalSpentCents = dedupedInvoices
         .filter((inv) => inv.status !== "anulada" && inv.status !== "abonada")
         .reduce((acc, inv) => acc + Math.round(parseFloat(inv.total ?? "0") * 100), 0);
 
-      // -- Conversaciones WhatsApp (por teléfono o email) --------------------
-      // GHL puede guardar teléfonos con o sin '+'; se normaliza eliminándolo en ambos lados.
+      // -- Conversaciones WhatsApp (por telï¿½fono o email) --------------------
+      // GHL puede guardar telï¿½fonos con o sin '+'; se normaliza eliminï¿½ndolo en ambos lados.
       const waConditions: any[] = [];
       if (client.phone) {
         const normalizedPhone = client.phone.replace(/^\+/, "");
@@ -6175,7 +6176,7 @@ export const crmRouter = router({
             .orderBy(desc(ghlConversations.lastMessageAt))
         : [];
 
-      // -- Llamadas Vapi (por leadId, teléfono o email) ----------------------
+      // -- Llamadas Vapi (por leadId, telï¿½fono o email) ----------------------
       const vapiConditions: any[] = [];
       if (resolvedLeadId) vapiConditions.push(eq(vapiCalls.linkedLeadId, resolvedLeadId));
       if (client.phone) vapiConditions.push(eq(vapiCalls.phoneNumber, client.phone));
@@ -6229,7 +6230,7 @@ export const crmRouter = router({
     }),
   }),
 
-  // --- PRODUCTS SEARCH (para líneas de presupuesto) ----------------------------
+  // --- PRODUCTS SEARCH (para lï¿½neas de presupuesto) ----------------------------
   products: router({
     search: staff.input(z.object({
       q: z.string().optional(),
@@ -6406,7 +6407,7 @@ export const crmRouter = router({
           const html = buildPendingPaymentHtml({
             clientName: input.clientName,
             productName: input.productName,
-            amountFormatted: (input.amountCents / 100).toLocaleString("es-ES", { minimumFractionDigits: 2 }) + " €",
+            amountFormatted: (input.amountCents / 100).toLocaleString("es-ES", { minimumFractionDigits: 2 }) + " ï¿½",
             dueDate: dueDateFormatted,
             ibanInfo: legal.iban ? `Banco: Skicenter\nIBAN: ${legal.iban}\nConcepto: Reserva ${input.productName}` : undefined,
             origin: input.origin ?? "",
@@ -6415,7 +6416,7 @@ export const crmRouter = router({
             templateKey: "pending_payment",
             triggerEvent: "pending_payment",
             recipientEmail: input.clientEmail,
-            subject: `Reserva confirmada — Pago pendiente hasta el ${dueDateFormatted}`,
+            subject: `Reserva confirmada ï¿½ Pago pendiente hasta el ${dueDateFormatted}`,
             html,
             relatedEntityType: "pending_payment",
             relatedEntityId: ppId,
@@ -6462,7 +6463,7 @@ export const crmRouter = router({
       .mutation(async ({ input, ctx }) => {
         const [pp] = await db.select().from(pendingPayments).where(eq(pendingPayments.id, input.id));
         if (!pp) throw new TRPCError({ code: "NOT_FOUND" });
-        if (pp.status !== "pending") throw new TRPCError({ code: "BAD_REQUEST", message: "Este pago ya no está pendiente" });
+        if (pp.status !== "pending") throw new TRPCError({ code: "BAD_REQUEST", message: "Este pago ya no estï¿½ pendiente" });
         await db.update(pendingPayments).set({
           status: "paid",
           paymentMethod: input.paymentMethod,
@@ -6489,7 +6490,7 @@ export const crmRouter = router({
             updatedAt: Date.now(),
           }).where(eq(reservations.id, pp.reservationId));
 
-          // 2. Registrar transacción contable + booking operativo (igual que todos los demás flujos de cobro)
+          // 2. Registrar transacciï¿½n contable + booking operativo (igual que todos los demï¿½s flujos de cobro)
           try {
             await postConfirmOperation({
               reservationId: pp.reservationId,
@@ -6505,7 +6506,7 @@ export const crmRouter = router({
               paymentMethod: input.paymentMethod,
               saleChannel: "crm",
               quoteId: pp.quoteId ?? null,
-              description: `Pago pendiente confirmado — ${pp.productName} — ${pp.clientName}`,
+              description: `Pago pendiente confirmado ï¿½ ${pp.productName} ï¿½ ${pp.clientName}`,
               sellerUserId: ctx.user.id,
               sellerName: ctx.user.name,
             });
@@ -6513,7 +6514,7 @@ export const crmRouter = router({
             console.error("[pendingPayments.confirm] Error en postConfirmOperation:", e);
           }
         }
-        // Generar factura si la reserva no tiene una aún
+        // Generar factura si la reserva no tiene una aï¿½n
         if (pp.reservationId) {
           try {
             const [resForInv] = await db.select().from(reservations).where(eq(reservations.id, pp.reservationId));
@@ -6541,7 +6542,7 @@ export const crmRouter = router({
               await db.update(reservations).set({ invoiceId, invoiceNumber, updatedAt: Date.now() } as any).where(eq(reservations.id, pp.reservationId));
               console.log(`[pendingPayments.confirm] Factura ${invoiceNumber} generada para reserva ${pp.reservationId}`);
 
-              // Crear expediente REAV si el producto tiene régimen REAV
+              // Crear expediente REAV si el producto tiene rï¿½gimen REAV
               try {
                 const productId = resForInv.productId;
                 if (productId && productId > 0) {
@@ -6572,13 +6573,13 @@ export const crmRouter = router({
                       channel: "crm",
                       sourceRef: invoiceNumber,
                       internalNotes: [
-                        `Expediente creado automáticamente al confirmar pago pendiente.`,
+                        `Expediente creado automï¿½ticamente al confirmar pago pendiente.`,
                         `Cliente: ${pp.clientName}`,
                         pp.clientEmail ? `Email: ${pp.clientEmail}` : null,
                         `Factura: ${invoiceNumber}`,
                         `Agente: ${ctx.user.name ?? ctx.user.email}`,
-                        reavErrors.length > 0 ? `? Config REAV incompleta — revisar producto ${productId}` : null,
-                      ].filter(Boolean).join(" · "),
+                        reavErrors.length > 0 ? `? Config REAV incompleta ï¿½ revisar producto ${productId}` : null,
+                      ].filter(Boolean).join(" ï¿½ "),
                     });
                     if (pdfUrl && reavResult?.id) {
                       await attachReavDocument({
@@ -6632,7 +6633,7 @@ export const crmRouter = router({
         const html = buildPendingPaymentReminderHtml({
           clientName: pp.clientName,
           productName: pp.productName ?? "Actividad Nayade",
-          amountFormatted: (pp.amountCents / 100).toLocaleString("es-ES", { minimumFractionDigits: 2 }) + " €",
+          amountFormatted: (pp.amountCents / 100).toLocaleString("es-ES", { minimumFractionDigits: 2 }) + " ï¿½",
           dueDate: dueDateFormatted,
           ibanInfo: legal.iban ? `Banco: Skicenter\nIBAN: ${legal.iban}\nConcepto: Reserva ${pp.productName}` : undefined,
           origin: "",
@@ -6676,7 +6677,7 @@ export const crmRouter = router({
       }),
   }),
 
-  // --- CATALOG SEARCH (autocomplete en líneas de presupuesto) ------------------
+  // --- CATALOG SEARCH (autocomplete en lï¿½neas de presupuesto) ------------------
   catalog: router({
     search: staff
       .input(z.object({ q: z.string().min(1) }))
@@ -6704,7 +6705,7 @@ export const crmRouter = router({
           .from(packs)
           .where(like(packs.title, term))
           .limit(6);
-        // Buscar en legoPacks (sin basePrice — precio 0 por defecto, se edita manualmente)
+        // Buscar en legoPacks (sin basePrice ï¿½ precio 0 por defecto, se edita manualmente)
         const legoRows = await db
           .select({
             id: legoPacks.id,
