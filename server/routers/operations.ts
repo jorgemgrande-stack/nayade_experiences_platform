@@ -12,6 +12,9 @@ import {
   reservationOperational,
   legoPackLines,
   experiences,
+  legoPackSnapshots,
+  tpvSales,
+  tpvSaleItems,
 } from "../../drizzle/schema";
 import {
   reservationComponentDates,
@@ -24,8 +27,8 @@ import {
 const pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
 const db = drizzle(pool);
 
-// Carga las líneas (experiencias) de los Lego Packs cuyos ids se pasan, resolviendo
-// el título de la experiencia origen. Devuelve { legoPackId -> ExpandedPackLine[] }.
+// Carga las lï¿½neas (experiencias) de los Lego Packs cuyos ids se pasan, resolviendo
+// el tï¿½tulo de la experiencia origen. Devuelve { legoPackId -> ExpandedPackLine[] }.
 // Los productIds que NO son Lego Packs simplemente no aparecen en el mapa.
 async function loadLegoPackLines(packIds: number[]): Promise<Record<number, ExpandedPackLine[]>> {
   if (packIds.length === 0) return {};
@@ -64,7 +67,7 @@ async function loadLegoPackLines(packIds: number[]): Promise<Record<number, Expa
   return map;
 }
 
-// De los ids dados, devuelve cuáles corresponden a una EXPERIENCIA real. Sirve para
+// De los ids dados, devuelve cuï¿½les corresponden a una EXPERIENCIA real. Sirve para
 // desambiguar el product_id de una reserva: si es una experiencia no debe expandirse
 // como Lego Pack aunque su id colisione con un lego_pack (ver buildPackExpansions).
 async function loadExperienceIds(ids: number[]): Promise<Set<number>> {
@@ -76,10 +79,88 @@ async function loadExperienceIds(ids: number[]): Promise<Set<number>> {
   return new Set((rows as any[]).map((r) => r.id));
 }
 
-// --- MONITORS — solo lectura --------------------------------------------------
-// La gestión completa (alta/edición/documentos) se trasladó al módulo
-// Personal/RRHH (router hr.employees, Fase 10). Aquí quedan solo las lecturas
-// que consume el módulo de Operaciones (calendario, actividades del día).
+// Carga los snapshots de Lego Packs vendidos en TPV para una fecha especifica
+// Devuelve un array de actividades derivadas de las lineas del Lego Pack
+async function loadTpvLegoPackActivities(dateStr: string): Promise<any[]> {
+  // Obtener todas las ventas TPV de Lego Packs para esta fecha
+  const [tpvRows] = await pool.execute<any[]>(`
+    SELECT
+      ts.id AS saleId,
+      tsi.id AS saleItemId,
+      tsi.product_id AS legoPackId,
+      tsi.product_name AS legoPackName,
+      tsi.unit_price AS unitPrice,
+      ts.customer_name AS clientName,
+      ts.customer_email AS clientEmail,
+      ts.customer_phone AS clientPhone,
+      DATE_FORMAT(ts.created_at, '%Y-%m-%d %H:%i:%S') AS createdAt,
+      DATE_FORMAT(ts.service_date, '%Y-%m-%d') AS scheduledDate,
+      ts.notes
+    FROM tpv_sales ts
+    JOIN tpv_sale_items tsi ON ts.id = tsi.sale_id
+    WHERE tsi.product_type = 'legoPack'
+      AND DATE_FORMAT(ts.service_date, '%Y-%m-%d') = ?
+      AND ts.status = 'completed'
+    ORDER BY ts.created_at DESC
+  `, [dateStr]);
+
+  if (!tpvRows || tpvRows.length === 0) return [];
+
+  const activities: any[] = [];
+
+  // Para cada venta de Lego Pack, cargar sus lineas desde el snapshot
+  for (const row of tpvRows as any[]) {
+    const snapshots = await db
+      .select()
+      .from(legoPackSnapshots)
+      .where(
+        and(
+          eq(legoPackSnapshots.legoPackId, row.legoPackId),
+          eq(legoPackSnapshots.operationType, 'tpv_sale'),
+          eq(legoPackSnapshots.operationId, row.saleId)
+        )
+      );
+
+    if (snapshots.length > 0) {
+      const snapshot = snapshots[0];
+      const lines = JSON.parse(String(snapshot.linesSnapshot || '[]'));
+
+      // Crear una actividad para cada linea seleccionada del Lego Pack
+      for (const line of lines) {
+        if (line.isActiveInOperation) {
+          activities.push({
+            id: `tpv-${row.saleId}-${line.lineId}`,
+            clientName: row.clientName,
+            clientEmail: row.clientEmail,
+            clientPhone: row.clientPhone,
+            createdAt: row.createdAt,
+            scheduledDate: row.scheduledDate,
+            numberOfPersons: 1,
+            status: 'paid',
+            activityTitle: line.sourceName || `Actividad ${line.lineId}`,
+            eventType: 'legoPack',
+            parentActivityId: row.saleId,
+            parentActivityTitle: row.legoPackName,
+            legoPackLineId: line.lineId,
+            clientConfirmed: null,
+            arrivalTime: null,
+            opNotes: null,
+            monitorId: null,
+            opStatus: null,
+            monitorName: null,
+          });
+        }
+      }
+    }
+  }
+
+  return activities;
+}
+
+// --- MONITORS ï¿½ solo lectura --------------------------------------------------
+// La gestiï¿½n completa (alta/ediciï¿½n/documentos) se trasladï¿½ al mï¿½dulo
+// Personal/RRHH (router hr.employees, Fase 10). Aquï¿½ quedan solo las lecturas
+// que consume el mï¿½dulo de Operaciones (calendario, actividades del dï¿½a).
 const monitorsRouter = router({
   list: adminProcedure
     .input(z.object({
@@ -168,14 +249,14 @@ const calendarRouter = router({
           AND (
             -- 1) la reserva madre cae en el rango
             (r.booking_date >= ? AND r.booking_date < DATE_ADD(?, INTERVAL 1 DAY))
-            -- 2) algún extra tiene su propia fecha de servicio (semilla del presupuesto) en el rango
+            -- 2) algï¿½n extra tiene su propia fecha de servicio (semilla del presupuesto) en el rango
             OR EXISTS (
               SELECT 1 FROM JSON_TABLE(
                 COALESCE(NULLIF(r.extras_json, ''), '[]'),
                 '$[*]' COLUMNS (sd CHAR(10) PATH '$.serviceDate')
               ) jx WHERE jx.sd >= ? AND jx.sd <= ?
             )
-            -- 3) el admin reprogramó algún componente (override en activities_op_json) al rango
+            -- 3) el admin reprogramï¿½ algï¿½n componente (override en activities_op_json) al rango
             OR EXISTS (
               SELECT 1 FROM JSON_TABLE(
                 COALESCE(ro.activities_op_json, CAST('[]' AS JSON)),
@@ -217,8 +298,8 @@ const calendarRouter = router({
 
       // Cada reserva se expande en sus componentes datados (principal + extras),
       // con la fecha EFECTIVA de cada uno (override admin ? semilla presupuesto ? madre).
-      // Además, si un componente es un Lego Pack, se adjuntan sus experiencias
-      // (`packExpansions`, indexado por la convención 0=principal, i+1=extra i).
+      // Ademï¿½s, si un componente es un Lego Pack, se adjuntan sus experiencias
+      // (`packExpansions`, indexado por la convenciï¿½n 0=principal, i+1=extra i).
       const actRows = activityRows as any[];
       const packIds = Array.from(new Set(actRows.flatMap((row) =>
         collectComponentProductIds(row.productId, parseReservationExtras(row.extrasJson)))));
@@ -233,8 +314,19 @@ const calendarRouter = router({
         packExpansions: buildPackExpansions(row.productId, parseReservationExtras(row.extrasJson), packLinesByPackId, experienceIds),
       }));
 
+      // Cargar actividades de Lego Packs vendidos en TPV para el rango de fechas
+      const tpvLegoPackActivities: any[] = [];
+      let currentDate = new Date(fromDate);
+      const endDate = new Date(toDate);
+      while (currentDate <= endDate) {
+        const dateStr = currentDate.toISOString().slice(0, 10);
+        const dayActivities = await loadTpvLegoPackActivities(dateStr);
+        tpvLegoPackActivities.push(...dayActivities);
+        currentDate.setDate(currentDate.getDate() + 1);
+      }
+
       return {
-        activities: activitiesWithDates,
+        activities: [...activitiesWithDates, ...tpvLegoPackActivities],
         restaurants: restaurantRows || [],
       };
     }),
@@ -245,7 +337,7 @@ const dailyOrdersRouter = router({
   getForDate: protectedProcedure
     .input(z.object({ date: z.string() }))
     .query(async ({ input }) => {
-      // booking_date is a DATE column — use input string directly (no Date conversion)
+      // booking_date is a DATE column ï¿½ use input string directly (no Date conversion)
       // NEVER use new Date().toISOString(): the server runs in UTC-4 which shifts dates
       const dateStr = input.date.slice(0, 10);
 
@@ -312,8 +404,11 @@ const dailyOrdersRouter = router({
         ORDER BY rb.bookingDate ASC, rb.bookingTime ASC
       `, [dateStr]);
 
+      // Cargar actividades de Lego Packs vendidos en TPV para esta fecha
+      const tpvLegoPackActivities = await loadTpvLegoPackActivities(dateStr);
+
       return {
-        activities: activityRows || [],
+        activities: [...(activityRows || []), ...tpvLegoPackActivities],
         restaurants: restaurantRows || [],
         date: input.date,
       };
@@ -411,12 +506,12 @@ const dailyOrdersRouter = router({
     }),
 });
 
-// --- ACTIVITIES (Actividades del día) -----------------------------------------
+// --- ACTIVITIES (Actividades del dï¿½a) -----------------------------------------
 const activitiesRouter = router({
   getForDate: protectedProcedure
     .input(z.object({ date: z.string() }))
     .query(async ({ input }) => {
-      // booking_date is a DATE column — use input string directly (no Date conversion)
+      // booking_date is a DATE column ï¿½ use input string directly (no Date conversion)
       // Use DATE_FORMAT to return as plain string to avoid timezone offset issues
       const actDateStr = input.date.slice(0, 10);
 
@@ -454,16 +549,16 @@ const activitiesRouter = router({
         WHERE r.status IN ('paid', 'pending_payment')
           AND r.status_reservation NOT IN ('ANULADA')
           AND (
-            -- 1) la reserva madre es de este día
+            -- 1) la reserva madre es de este dï¿½a
             r.booking_date = ?
-            -- 2) algún extra tiene su serviceDate (semilla presupuesto) en este día
+            -- 2) algï¿½n extra tiene su serviceDate (semilla presupuesto) en este dï¿½a
             OR EXISTS (
               SELECT 1 FROM JSON_TABLE(
                 COALESCE(NULLIF(r.extras_json, ''), '[]'),
                 '$[*]' COLUMNS (sd CHAR(10) PATH '$.serviceDate')
               ) jx WHERE jx.sd = ?
             )
-            -- 3) el admin reprogramó un componente (override) a este día
+            -- 3) el admin reprogramï¿½ un componente (override) a este dï¿½a
             OR EXISTS (
               SELECT 1 FROM JSON_TABLE(
                 COALESCE(ro.activities_op_json, CAST('[]' AS JSON)),
@@ -629,7 +724,7 @@ const activitiesRouter = router({
       if (input.arrivalTime !== undefined) updated.arrivalTime = input.arrivalTime;
       if (input.opNotes !== undefined) updated.opNotes = input.opNotes;
       if (input.consolidated !== undefined) updated.consolidated = input.consolidated;
-      // null/"" ? limpiar override (hereda de nuevo); fecha válida ? fijar override
+      // null/"" ? limpiar override (hereda de nuevo); fecha vï¿½lida ? fijar override
       if (input.serviceDate !== undefined) updated.serviceDate = input.serviceDate || null;
 
       const newJson = idx >= 0
