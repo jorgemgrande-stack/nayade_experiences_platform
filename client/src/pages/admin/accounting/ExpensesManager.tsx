@@ -1,7 +1,7 @@
 import { toast } from "sonner";
 /**
  * ExpensesManager — Gestión de Gastos
- * v21.0 — Módulo Financiero Skicenter
+ * v21.0 — Módulo Financiero Nayade Experiences
  */
 import { useState, useRef, useEffect } from "react";
 import AdminLayout from "@/components/AdminLayout";

@@ -48,7 +48,7 @@ export default function PoliticaPrivacidad() {
             <LegalSection number="2" title="Finalidad del tratamiento">
               <p>Los datos personales recogidos se tratarán con las siguientes finalidades:</p>
               <ul>
-                <li>Gestionar la relación contractual derivada de la contratación de los servicios ofrecidos en Skicenter (actividades acuáticas, packs, hotel, spa y restauración).</li>
+                <li>Gestionar la relación contractual derivada de la contratación de los servicios ofrecidos en Nayade Experiences (actividades acuáticas, packs, hotel, spa y restauración).</li>
                 <li>Dar respuesta a consultas o solicitudes de información recibidas a través de los formularios del sitio web.</li>
                 <li>Remitir boletines (newsletters), comunicaciones comerciales, promociones y publicidad del sector de turismo activo y experiencias de ocio.</li>
                 <li>Gestionar reservas, pagos y la prestación de los servicios contratados.</li>
@@ -68,7 +68,7 @@ export default function PoliticaPrivacidad() {
             <LegalSection number="4" title="Legitimación">
               <p>El tratamiento de los datos se basa en:</p>
               <ul>
-                <li><strong>La ejecución de un contrato:</strong> cuando el usuario contrata servicios a través del sitio web o en las instalaciones de Skicenter.</li>
+                <li><strong>La ejecución de un contrato:</strong> cuando el usuario contrata servicios a través del sitio web o en las instalaciones de Nayade Experiences.</li>
                 <li><strong>El consentimiento expreso del usuario:</strong> al aceptar la presente política de privacidad, al marcar casillas habilitadas o al enviar formularios.</li>
                 <li><strong>Interés legítimo:</strong> para el envío de comunicaciones comerciales a clientes con relación contractual previa sobre servicios similares a los contratados.</li>
               </ul>
@@ -82,7 +82,7 @@ export default function PoliticaPrivacidad() {
                 de cupones como Groupon o Smartbox, o servicios administrativos).
               </p>
               <p>
-                Skicenter trabaja con proveedores que cumplen la normativa vigente en materia de protección
+                Nayade Experiences trabaja con proveedores que cumplen la normativa vigente en materia de protección
                 de datos. En ningún caso se cederán datos a terceros con fines de marketing sin el consentimiento
                 expreso del usuario.
               </p>
@@ -111,7 +111,7 @@ export default function PoliticaPrivacidad() {
 
             <LegalSection number="7" title="Seguridad y confidencialidad">
               <p>
-                Skicenter adopta las medidas técnicas y organizativas necesarias para garantizar la seguridad,
+                Nayade Experiences adopta las medidas técnicas y organizativas necesarias para garantizar la seguridad,
                 integridad y confidencialidad de los datos personales, de acuerdo con lo establecido en el RGPD y la
                 LOPDGDD. No obstante, ningún sistema de transmisión o almacenamiento de datos es completamente seguro
                 y no puede garantizarse la ausencia absoluta de accesos no autorizados.
@@ -121,7 +121,7 @@ export default function PoliticaPrivacidad() {
             <LegalSection number="8" title="Comunicaciones comerciales">
               <p>
                 De acuerdo con la Ley 34/2002 de Servicios de la Sociedad de la Información y Comercio Electrónico
-                (LSSI-CE), Skicenter no enviará comunicaciones comerciales sin el consentimiento previo del
+                (LSSI-CE), Nayade Experiences no enviará comunicaciones comerciales sin el consentimiento previo del
                 usuario. En el caso de clientes con relación contractual previa, podrá enviar comunicaciones sobre
                 servicios similares a los inicialmente contratados, con opción de darse de baja en cualquier momento
                 a través del enlace incluido en cada comunicación.
@@ -130,7 +130,7 @@ export default function PoliticaPrivacidad() {
 
             <LegalSection number="9" title="Cookies">
               <p>
-                Skicenter podrá utilizar cookies propias y de terceros para mejorar la experiencia de
+                Nayade Experiences podrá utilizar cookies propias y de terceros para mejorar la experiencia de
                 navegación, analizar el tráfico y personalizar el contenido. El usuario puede configurar su navegador
                 para rechazar las cookies o recibir avisos al respecto. Para más información, consulte nuestra{" "}
                 <Link href="/politica-de-cookies">
@@ -141,7 +141,7 @@ export default function PoliticaPrivacidad() {
 
             <LegalSection number="10" title="Modificaciones">
               <p>
-                Skicenter podrá modificar la presente política para adaptarla a novedades legislativas o a
+                Nayade Experiences podrá modificar la presente política para adaptarla a novedades legislativas o a
                 cambios en sus servicios. La fecha de última actualización figurará siempre en el encabezado del
                 presente documento. Se recomienda al usuario revisar periódicamente esta política.
               </p>

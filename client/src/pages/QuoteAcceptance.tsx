@@ -198,7 +198,7 @@ export default function QuoteAcceptance() {
               </div>
               <div>
                 <p className="text-white font-semibold text-sm">Náyade Experiences</p>
-                <p className="text-white/50 text-xs">Skicenter — Reserva confirmada</p>
+                <p className="text-white/50 text-xs">Nayade Experiences — Reserva confirmada</p>
               </div>
             </div>
             <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 border text-xs font-medium">
@@ -431,7 +431,7 @@ export default function QuoteAcceptance() {
             </div>
             <div>
               <p className="text-white font-semibold text-sm">Náyade Experiences</p>
-              <p className="text-white/50 text-xs">Skicenter — Presupuesto personalizado</p>
+              <p className="text-white/50 text-xs">Nayade Experiences — Presupuesto personalizado</p>
             </div>
           </div>
           <StatusBadge status={quote.status} isExpired={quote.isExpired} />

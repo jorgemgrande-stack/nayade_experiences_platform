@@ -139,7 +139,7 @@ export default function PoliticaCookies() {
 
             <LegalSection number="7" title="Actualizaciones de esta política">
               <p>
-                Skicenter podrá modificar la presente Política de Cookies para adaptarla a cambios
+                Nayade Experiences podrá modificar la presente Política de Cookies para adaptarla a cambios
                 legislativos, técnicos o de los servicios prestados. Se recomienda al usuario revisar periódicamente
                 esta política. La fecha de última actualización figura siempre en el encabezado del documento.
               </p>

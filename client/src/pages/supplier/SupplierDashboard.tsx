@@ -70,7 +70,7 @@ export default function SupplierDashboard() {
       {/* Header */}
       <header className="sticky top-0 z-40 bg-[#0a1628]/95 border-b border-white/[0.07] backdrop-blur-md">
         <div className="max-w-5xl mx-auto px-4 flex items-center justify-between h-14">
-          <img src={LOGO} alt="Skicenter" className="h-7 w-auto object-contain" />
+          <img src={LOGO} alt="Nayade Experiences" className="h-7 w-auto object-contain" />
           <div className="hidden sm:flex flex-col items-center">
             <span className="text-xs font-bold text-orange-400 uppercase tracking-wider">{supplierName}</span>
             <span className="text-[11px] text-white/40">{(user as any).name ?? (user as any).email}</span>
@@ -205,7 +205,7 @@ export default function SupplierDashboard() {
 
       <footer className="border-t border-white/[0.06] py-4 mt-8">
         <div className="max-w-5xl mx-auto px-4 text-[11px] text-white/25">
-          Portal de Proveedores · Skicenter
+          Portal de Proveedores · Nayade Experiences
         </div>
       </footer>
     </div>

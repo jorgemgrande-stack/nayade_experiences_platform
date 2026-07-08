@@ -41,7 +41,7 @@ function AnnouncementsModal({ partnerId }: { partnerId: number }) {
         <div className="flex items-center justify-between px-5 py-4 border-b border-amber-500/20">
           <div className="flex items-center gap-2">
             <BellRing className="w-5 h-5 text-amber-400 animate-pulse" />
-            <span className="font-semibold text-white text-sm">Avisos de Skicenter</span>
+            <span className="font-semibold text-white text-sm">Avisos de Nayade Experiences</span>
           </div>
           <button onClick={dismiss} className="text-white/40 hover:text-white/80 transition-colors">
             <X className="w-4 h-4" />
@@ -148,7 +148,7 @@ function PartnerLayoutInner({ user, location, navigate, logout, children, bgImag
           <div className="flex items-center justify-between h-14">
             {/* Logo */}
             <Link href="/partner/dashboard" className="flex items-center gap-2.5">
-              <img src={brandLogo} alt="Skicenter" className="h-7 w-auto object-contain" />
+              <img src={brandLogo} alt="Nayade Experiences" className="h-7 w-auto object-contain" />
             </Link>
 
             {/* Partner + usuario */}
@@ -234,7 +234,7 @@ function PartnerLayoutInner({ user, location, navigate, logout, children, bgImag
       {/* Footer */}
       <footer className="border-t border-white/[0.06] py-4 mt-8">
         <div className="max-w-5xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2 text-[11px] text-white/25">
-          <span>Portal de Colaboradores · Skicenter</span>
+          <span>Portal de Colaboradores · Nayade Experiences</span>
           <div className="flex items-center gap-4">
             <a href={`tel:${NAYADE_PHONE}`} className="hover:text-white/50 transition-colors flex items-center gap-1">
               <Phone className="w-3 h-3" /> {NAYADE_PHONE}

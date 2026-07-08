@@ -1701,7 +1701,7 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
   const [showClientSuggestions, setShowClientSuggestions] = useState(false);
 
   // Paso 2: líneas de presupuesto
-  const [title, setTitle] = useState("Presupuesto Skicenter");
+  const [title, setTitle] = useState("Presupuesto Nayade Experiences");
   const [conditions, setConditions] = useState("Presupuesto válido por 15 días. Sujeto a disponibilidad.");
   const [validUntil, setValidUntil] = useState(() => {
     const d = new Date();
@@ -1839,7 +1839,7 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
     setClientCompany(c.company ?? "");
     setClientSearch("");
     setShowClientSuggestions(false);
-    setTitle(`Presupuesto Skicenter - ${c.name}`);
+    setTitle(`Presupuesto Nayade Experiences - ${c.name}`);
   };
 
   return (
@@ -1899,7 +1899,7 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label className="text-foreground/65 text-xs">Nombre *</Label>
-              <Input value={clientName} onChange={(e) => { setClientName(e.target.value); setTitle(`Presupuesto Skicenter - ${e.target.value}`); }}
+              <Input value={clientName} onChange={(e) => { setClientName(e.target.value); setTitle(`Presupuesto Nayade Experiences - ${e.target.value}`); }}
                 className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1 text-sm" placeholder="Nombre completo" />
             </div>
             <div>
@@ -2175,7 +2175,7 @@ function QuoteBuilderModal({
   onClose: () => void;
 }) {
   const utils = trpc.useUtils();
-  const [title, setTitle] = useState(`Presupuesto Skicenter - ${leadName}`);
+  const [title, setTitle] = useState(`Presupuesto Nayade Experiences - ${leadName}`);
   const [description, setDescription] = useState("");
   const [conditions, setConditions] = useState("Presupuesto válido por 15 días. Sujeto a disponibilidad.");
   const [validUntil, setValidUntil] = useState(() => {
