@@ -45,7 +45,7 @@ function makeDb() {
 
 // TEXT NORMALIZATION
 // Strips accents (NFD decompose + remove combining marks) so all patterns can use plain ASCII.
-// Example: "Transacci�n" -> "TRANSACCION", "N�mero" -> "NUMERO"
+// Example: "Transacción" -> "TRANSACCION", "Número" -> "NUMERO"
 
 function normalizeText(raw: string): string {
   return raw
@@ -96,11 +96,11 @@ function makeDuplicateKey(
   _amount: number,
   _dt: Date
 ): string {
-  // Solo terminal + operationNumber: son los �nicos campos estables entre
+  // Solo terminal + operationNumber: son los únicos campos estables entre
   // fuentes distintas (ticket individual vs resumen diario). En el resumen,
   // la hora suele quedar a 00:00 y el commerceCode puede faltar; usarlos en
-  // la clave provocaba que el mismo n�mero de operaci�n se insertase dos veces.
-  // Comercia garantiza que operation_number es �nico por terminal.
+  // la clave provocaba que el mismo número de operación se insertase dos veces.
+  // Comercia garantiza que operation_number es único por terminal.
   return [
     normalizeStr(terminalCode),
     normalizeStr(operationNumber),
@@ -108,7 +108,7 @@ function makeDuplicateKey(
 }
 
 // PARSER HELPERS
-// All functions expect text already passed through normalizeText() � plain ASCII uppercase.
+// All functions expect text already passed through normalizeText() — plain ASCII uppercase.
 
 interface ParsedOperation {
   operationNumber: string;
@@ -165,7 +165,7 @@ function extractAmount(text: string): number | null {
 }
 
 function extractDate(text: string): Date | null {
-  // Priority: date + time  � e.g. "FECHA: 24/04/2026 12:34"
+  // Priority: date + time  — e.g. "FECHA: 24/04/2026 12:34"
   const withTime = text.match(/(\d{1,2})[/\-](\d{1,2})[/\-](\d{4})\s+(\d{1,2}:\d{2})/);
   if (withTime) {
     const [, d, mo, y, time] = withTime;
@@ -209,7 +209,7 @@ function extractCommerce(text: string): string | null {
   return null;
 }
 
-// Op.: VENTA / Op.: DEVOLUCION / Op.: ANULACION � read the explicit type field first
+// Op.: VENTA / Op.: DEVOLUCION / Op.: ANULACION — read the explicit type field first
 function extractOperationType(text: string): ParsedOperation["operationType"] {
   const explicit = text.match(/OP\.[:\s]+(VENTA|DEVOLUCION|ANULACION|OTRO)/);
   if (explicit) {
@@ -303,7 +303,7 @@ async function createProvisionalBankMovement(
     duplicateKey: dupKey,
     status: "pendiente",
     conciliationStatus: "pendiente",
-    notes: `Provisional � generado automaticamente desde email Comercia del ${batchDate}.`,
+    notes: `Provisional — generado automaticamente desde email Comercia del ${batchDate}.`,
   });
 }
 
@@ -398,7 +398,7 @@ async function createBatchFromEmail(
         amount: String(op.amount),
         operationType: op.operationType,
       });
-    } catch { /* duplicate � skip */ }
+    } catch { /* duplicate — skip */ }
     // Only advance pendiente ? included_in_batch; leave conciliado/settled untouched
     if (op.status === "pendiente") {
       await db.update(cardTerminalOperations)
@@ -566,7 +566,7 @@ async function tryAutoLink(
   operationDatetime: Date,
   now: Date
 ): Promise<boolean> {
-  const pattern = `%N� operaci�n TPV: ${operationNumber}%`;
+  const pattern = `%Nº operación TPV: ${operationNumber}%`;
 
   // 1. Buscar en reservations.notes (aplica a pagos Redsys online)
   const [res] = await db
@@ -603,7 +603,7 @@ async function tryAutoLink(
   }
 
   // 3. Fallback: buscar en tpv_sales por importe + ventana [-2h, +30min]
-  // Aplica a cobros del TPV f�sico donde tpv_sales ya sabe qu� reserva es.
+  // Aplica a cobros del TPV físico donde tpv_sales ya sabe qué reserva es.
   const opMs = operationDatetime.getTime();
   const [sale] = await db
     .select({ id: tpvSales.id, reservationId: tpvSales.reservationId })
@@ -660,12 +660,12 @@ function emptyResult(extra?: Partial<IngestionResult>): IngestionResult {
 
 export async function runEmailIngestion(retryErrors = false): Promise<IngestionResult> {
   if (isRunning) {
-    console.log("[EmailTPV] Already running � skipping");
+    console.log("[EmailTPV] Already running — skipping");
     return emptyResult({ errors: ["Already running"] });
   }
 
   if (!IMAP_PASS) {
-    console.warn("[EmailTPV] IMAP_TPV_PASS not set � skipping");
+    console.warn("[EmailTPV] IMAP_TPV_PASS not set — skipping");
     return emptyResult({ errors: ["IMAP_TPV_PASS not configured"] });
   }
 
@@ -686,7 +686,7 @@ export async function runEmailIngestion(retryErrors = false): Promise<IngestionR
     const lock = await client.getMailboxLock(IMAP_MAILBOX);
 
     try {
-      // Search by date window instead of seen flag � DB messageId handles dedup.
+      // Search by date window instead of seen flag — DB messageId handles dedup.
       // This also catches emails already marked read externally (e.g. opened in Outlook).
       const since = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
       const uids: number[] = [];
@@ -898,7 +898,7 @@ export function startEmailIngestionJob(): void {
     runEmailIngestion(false)
       .then((r) =>
         console.log(
-          `[EmailTPV] Boot run � checked: ${r.messagesChecked}, inserted: ${r.operationsInserted}, linked: ${r.operationsLinked}`
+          `[EmailTPV] Boot run — checked: ${r.messagesChecked}, inserted: ${r.operationsInserted}, linked: ${r.operationsLinked}`
         )
       )
       .catch((e) => console.error("[EmailTPV] Boot run error:", e));
@@ -909,7 +909,7 @@ export function startEmailIngestionJob(): void {
       const r = await runEmailIngestion(false);
       if (r.messagesChecked > 0 || r.errors.length > 0) {
         console.log(
-          `[EmailTPV] Cron � checked: ${r.messagesChecked}, inserted: ${r.operationsInserted}, dupes: ${r.operationsDuplicate}, linked: ${r.operationsLinked}`
+          `[EmailTPV] Cron — checked: ${r.messagesChecked}, inserted: ${r.operationsInserted}, dupes: ${r.operationsDuplicate}, linked: ${r.operationsLinked}`
         );
       }
       if (r.errors.length > 0) console.warn("[EmailTPV] Cron errors:", r.errors);
