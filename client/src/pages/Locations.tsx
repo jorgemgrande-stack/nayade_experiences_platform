@@ -14,7 +14,7 @@ export default function Locations() {
       <section className="relative h-[50vh] min-h-[380px] overflow-hidden">
         <img
           src="https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/start_245b3bb4.png"
-          alt="Los ¡ngeles de San Rafael"
+          alt="Los √Ångeles de San Rafael"
           className="w-full h-full object-cover object-center"
         />
         <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/40 to-black/70" />
@@ -22,13 +22,13 @@ export default function Locations() {
           <div className="container">
             <div className="max-w-2xl text-white">
               <span className="inline-block bg-accent/90 text-white text-xs font-display font-bold uppercase tracking-widest px-4 py-1.5 rounded-full mb-4">
-                CÛmo Llegar
+                C√≥mo Llegar
               </span>
               <h1 className="text-5xl md:text-6xl font-heading font-bold leading-tight mb-4">
-                Nuestra UbicaciÛn
+                Nuestra Ubicaci√≥n
               </h1>
               <p className="text-xl text-white/85 font-display">
-                Los ¡ngeles de San Rafael, Segovia ∑ A solo 45 minutos de Madrid.
+                Los √Ångeles de San Rafael, Segovia ¬∑ A solo 45 minutos de Madrid.
               </p>
             </div>
           </div>
@@ -40,10 +40,10 @@ export default function Locations() {
         <div className="container">
           <div className="mb-8 text-center">
             <h2 className="text-3xl font-heading font-bold text-foreground mb-2">
-              EncuÈntranos en el <span className="text-accent">Embalse de Los ¡ngeles</span>
+              Encu√©ntranos en el <span className="text-accent">Embalse de Los √Ångeles</span>
             </h2>
             <p className="text-muted-foreground font-display max-w-xl mx-auto">
-              Carretera de Los ¡ngeles de San Rafael, Segovia. Aparcamiento gratuito en las instalaciones.
+              Carretera de Los √Ångeles de San Rafael, Segovia. Aparcamiento gratuito en las instalaciones.
             </p>
           </div>
           <div className="rounded-2xl overflow-hidden border border-border/50 shadow-lg">
@@ -55,10 +55,10 @@ export default function Locations() {
               allowFullScreen
               loading="lazy"
               referrerPolicy="no-referrer-when-downgrade"
-              title="Mapa N·yade Experiences ó Los ¡ngeles de San Rafael"
+              title="Mapa N√°yade Experiences ‚Äî Los √Ångeles de San Rafael"
             />
           </div>
-          {/* BotÛn Google Maps */}
+          {/* Bot√≥n Google Maps */}
           <div className="mt-4 flex justify-center">
             <a
               href="https://www.google.com/maps?q=40.786805332143686,-4.245348599918632"
@@ -73,7 +73,7 @@ export default function Locations() {
         </div>
       </section>
 
-      {/* Mapa esquem·tico de rutas */}
+      {/* Mapa esquem√°tico de rutas */}
       <section className="py-12 bg-[#0a1628] border-t border-white/5">
         <div className="container">
           <div className="mb-6 text-center">
@@ -81,13 +81,13 @@ export default function Locations() {
               Rutas de Acceso
             </h2>
             <p className="text-white/60 font-display text-sm max-w-xl mx-auto">
-              Desde Madrid por la A-6 salida AP-61 direcciÛn Los ¡ngeles de San Rafael. Desde Segovia por la N-603.
+              Desde Madrid por la A-6 salida AP-61 direcci√≥n Los √Ångeles de San Rafael. Desde Segovia por la N-603.
             </p>
           </div>
           <div className="rounded-2xl overflow-hidden border border-white/10 shadow-2xl">
             <img
               src="https://www.skicenter.es/local-storage/nayade/uploads/1777833809837-j285hn.png"
-              alt="Mapa de rutas de acceso a N·yade Experiences ó Los ¡ngeles de San Rafael, Segovia"
+              alt="Mapa de rutas de acceso a N√°yade Experiences ‚Äî Los √Ångeles de San Rafael, Segovia"
               className="w-full h-auto object-contain"
               loading="lazy"
             />
@@ -95,11 +95,11 @@ export default function Locations() {
         </div>
       </section>
 
-      {/* CÛmo llegar */}
+      {/* C√≥mo llegar */}
       <section className="py-14 bg-muted/30 border-t border-border/30">
         <div className="container">
           <h2 className="text-2xl font-heading font-bold text-foreground mb-8 text-center">
-            CÛmo Llegar
+            C√≥mo Llegar
           </h2>
           <div className="grid md:grid-cols-3 gap-6">
             {/* En coche */}
@@ -110,15 +110,15 @@ export default function Locations() {
               <h3 className="font-heading font-bold text-foreground mb-2">En Coche</h3>
               <ul className="space-y-2 text-sm text-muted-foreground font-display">
                 <li className="flex items-start gap-2">
-                  <span className="text-accent font-bold shrink-0">∑</span>
-                  Desde Madrid: A-6 direcciÛn La CoruÒa, salida Guadarrama, N-603 hasta Los ¡ngeles de San Rafael. <strong className="text-foreground">~45 min</strong>
+                  <span className="text-accent font-bold shrink-0">¬∑</span>
+                  Desde Madrid: A-6 direcci√≥n La Coru√±a, salida Guadarrama, N-603 hasta Los √Ångeles de San Rafael. <strong className="text-foreground">~45 min</strong>
                 </li>
                 <li className="flex items-start gap-2">
-                  <span className="text-accent font-bold shrink-0">∑</span>
-                  Desde Segovia: N-603 direcciÛn Madrid. <strong className="text-foreground">~30 min</strong>
+                  <span className="text-accent font-bold shrink-0">¬∑</span>
+                  Desde Segovia: N-603 direcci√≥n Madrid. <strong className="text-foreground">~30 min</strong>
                 </li>
                 <li className="flex items-start gap-2">
-                  <span className="text-accent font-bold shrink-0">∑</span>
+                  <span className="text-accent font-bold shrink-0">¬∑</span>
                   Aparcamiento gratuito en las instalaciones.
                 </li>
               </ul>
@@ -132,16 +132,16 @@ export default function Locations() {
               <h3 className="font-heading font-bold text-foreground mb-2">En Tren + Bus</h3>
               <ul className="space-y-2 text-sm text-muted-foreground font-display">
                 <li className="flex items-start gap-2">
-                  <span className="text-accent font-bold shrink-0">∑</span>
-                  Tren CercanÌas C-8 Madrid-Cercedilla (45 min).
+                  <span className="text-accent font-bold shrink-0">¬∑</span>
+                  Tren Cercan√≠as C-8 Madrid-Cercedilla (45 min).
                 </li>
                 <li className="flex items-start gap-2">
-                  <span className="text-accent font-bold shrink-0">∑</span>
-                  Bus desde Cercedilla hasta Los ¡ngeles de San Rafael (~20 min).
+                  <span className="text-accent font-bold shrink-0">¬∑</span>
+                  Bus desde Cercedilla hasta Los √Ångeles de San Rafael (~20 min).
                 </li>
                 <li className="flex items-start gap-2">
-                  <span className="text-accent font-bold shrink-0">∑</span>
-                  TambiÈn bus directo desde Segovia.
+                  <span className="text-accent font-bold shrink-0">¬∑</span>
+                  Tambi√©n bus directo desde Segovia.
                 </li>
               </ul>
             </div>
@@ -154,20 +154,20 @@ export default function Locations() {
               <h3 className="font-heading font-bold text-foreground mb-2">Horarios</h3>
               <ul className="space-y-2 text-sm text-muted-foreground font-display">
                 <li className="flex items-start gap-2">
-                  <span className="text-accent font-bold shrink-0">∑</span>
-                  <span><strong className="text-foreground">Temporada:</strong> Abril ñ Octubre 2026</span>
+                  <span className="text-accent font-bold shrink-0">¬∑</span>
+                  <span><strong className="text-foreground">Temporada:</strong> Abril ‚Äì Octubre 2026</span>
                 </li>
                 <li className="flex items-start gap-2">
-                  <span className="text-accent font-bold shrink-0">∑</span>
-                  <span><strong className="text-foreground">Deportes acu·ticos:</strong> 10:00 ñ 20:00</span>
+                  <span className="text-accent font-bold shrink-0">¬∑</span>
+                  <span><strong className="text-foreground">Deportes acu√°ticos:</strong> 10:00 ‚Äì 20:00</span>
                 </li>
                 <li className="flex items-start gap-2">
-                  <span className="text-accent font-bold shrink-0">∑</span>
-                  <span><strong className="text-foreground">Restaurantes:</strong> 10:00 ñ 23:00</span>
+                  <span className="text-accent font-bold shrink-0">¬∑</span>
+                  <span><strong className="text-foreground">Restaurantes:</strong> 10:00 ‚Äì 23:00</span>
                 </li>
                 <li className="flex items-start gap-2">
-                  <span className="text-accent font-bold shrink-0">∑</span>
-                  <span><strong className="text-foreground">SPA & Hotel:</strong> Todo el aÒo</span>
+                  <span className="text-accent font-bold shrink-0">¬∑</span>
+                  <span><strong className="text-foreground">SPA & Hotel:</strong> Todo el a√±o</span>
                 </li>
               </ul>
             </div>
@@ -175,7 +175,7 @@ export default function Locations() {
         </div>
       </section>
 
-      {/* Contacto r·pido */}
+      {/* Contacto r√°pido */}
       <section className="py-12 bg-background border-t border-border/30">
         <div className="container">
           <div className="grid md:grid-cols-3 gap-6 text-center">
@@ -183,17 +183,17 @@ export default function Locations() {
               <div className="w-10 h-10 rounded-full bg-accent/10 flex items-center justify-center">
                 <MapPin className="w-5 h-5 text-accent" />
               </div>
-              <h3 className="font-heading font-bold text-foreground">DirecciÛn</h3>
+              <h3 className="font-heading font-bold text-foreground">Direcci√≥n</h3>
               <p className="text-muted-foreground font-display text-sm">
-                Carretera de Los ¡ngeles de San Rafael<br />
-                Los ¡ngeles de San Rafael, Segovia
+                Carretera de Los √Ångeles de San Rafael<br />
+                Los √Ångeles de San Rafael, Segovia
               </p>
             </div>
             <div className="flex flex-col items-center gap-3">
               <div className="w-10 h-10 rounded-full bg-accent/10 flex items-center justify-center">
                 <Phone className="w-5 h-5 text-accent" />
               </div>
-              <h3 className="font-heading font-bold text-foreground">TelÈfono</h3>
+              <h3 className="font-heading font-bold text-foreground">Tel√©fono</h3>
               <a href={phoneTel} className="text-accent font-display font-semibold hover:underline">
                 {phone}
               </a>

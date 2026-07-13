@@ -1,16 +1,16 @@
 /**
- * Sistema de numeración correlativa centralizado
+ * Sistema de numeraciÃ³n correlativa centralizado
  *
- * Genera números únicos, auditables y correlativos para todos los tipos
+ * Genera nÃºmeros Ãºnicos, auditables y correlativos para todos los tipos
  * de documento del sistema: presupuestos, facturas, reservas, TPV, cupones,
  * liquidaciones y anulaciones.
  *
  * Reglas:
- * - Nunca reutiliza números
- * - Nunca modifica números ya emitidos
- * - Reinicio anual automático
- * - Registro de auditoría en document_number_logs
- * - Usa UPDATE atómico con SELECT para evitar race conditions
+ * - Nunca reutiliza nÃºmeros
+ * - Nunca modifica nÃºmeros ya emitidos
+ * - Reinicio anual automÃ¡tico
+ * - Registro de auditorÃ­a en document_number_logs
+ * - Usa UPDATE atÃ³mico con SELECT para evitar race conditions
  */
 
 import { drizzle } from "drizzle-orm/mysql2";
@@ -18,8 +18,8 @@ import mysql from "mysql2/promise";
 import { eq, and, sql } from "drizzle-orm";
 import { documentCounters, documentNumberLogs } from "../drizzle/schema";
 
-// Pool lazy: se crea la primera vez que se necesita, no al importar el módulo.
-// Esto evita crash en arranque si DATABASE_URL aún no está disponible.
+// Pool lazy: se crea la primera vez que se necesita, no al importar el mÃ³dulo.
+// Esto evita crash en arranque si DATABASE_URL aÃºn no estÃ¡ disponible.
 let _pool: ReturnType<typeof mysql.createPool> | null = null;
 let _db: ReturnType<typeof drizzle> | null = null;
 let _tablesReady = false;
@@ -35,7 +35,7 @@ function getDb() {
   return _db;
 }
 
-// Crea las tablas si no existen — idempotente, corre una sola vez por proceso.
+// Crea las tablas si no existen â€” idempotente, corre una sola vez por proceso.
 // Protege contra entornos donde las migraciones no se han aplicado (ej: Railway
 // con schema parcial).
 async function ensureTables(db: ReturnType<typeof drizzle>): Promise<void> {
@@ -92,18 +92,18 @@ const DEFAULT_PREFIXES: Record<DocumentType, string> = {
   propuesta: "PROP",
 };
 
-// Padding de 4 dígitos para mantener compatibilidad con el formato actual
+// Padding de 4 dÃ­gitos para mantener compatibilidad con el formato actual
 const SEQUENCE_PADDING = 4;
 
-// --- Función principal --------------------------------------------------------
+// --- FunciÃ³n principal --------------------------------------------------------
 
 /**
- * Genera el siguiente número correlativo para el tipo de documento indicado.
+ * Genera el siguiente nÃºmero correlativo para el tipo de documento indicado.
  *
  * @param documentType - Tipo de documento (presupuesto, factura, etc.)
- * @param context - Contexto de generación para auditoría (ej: 'crm:confirmPayment')
+ * @param context - Contexto de generaciÃ³n para auditorÃ­a (ej: 'crm:confirmPayment')
  * @param generatedBy - ID de usuario o 'system'
- * @returns Número formateado, ej: "FAC-2026-0005"
+ * @returns NÃºmero formateado, ej: "FAC-2026-0005"
  */
 export async function generateDocumentNumber(
   documentType: DocumentType,
@@ -115,7 +115,7 @@ export async function generateDocumentNumber(
 
   await ensureTables(db!);
 
-  // Paso 1: Incrementar el contador de forma atómica usando UPDATE + SELECT
+  // Paso 1: Incrementar el contador de forma atÃ³mica usando UPDATE + SELECT
   // Primero intentamos incrementar el registro existente
   const updateResult = await db
     .update(documentCounters)
@@ -130,9 +130,9 @@ export async function generateDocumentNumber(
   const affected = (updateResult as unknown as { affectedRows: number }[])?.[0]?.affectedRows ?? 0;
 
   if (affected === 0) {
-    // No existe el contador para este año ? crear con valor 1.
-    // En caso de inserción concurrente (dos peticiones simultáneas al inicio de año),
-    // el segundo INSERT fallará con ER_DUP_ENTRY — en ese caso reintentamos el UPDATE.
+    // No existe el contador para este aÃ±o ? crear con valor 1.
+    // En caso de inserciÃ³n concurrente (dos peticiones simultÃ¡neas al inicio de aÃ±o),
+    // el segundo INSERT fallarÃ¡ con ER_DUP_ENTRY â€” en ese caso reintentamos el UPDATE.
     const prefix = DEFAULT_PREFIXES[documentType];
     try {
       await db.insert(documentCounters).values({
@@ -144,7 +144,7 @@ export async function generateDocumentNumber(
     } catch (insertErr: unknown) {
       const mysqlErr = insertErr as { code?: string };
       if (mysqlErr?.code === "ER_DUP_ENTRY") {
-        // Otra petición concurrente ya creó el contador — reintentar el incremento
+        // Otra peticiÃ³n concurrente ya creÃ³ el contador â€” reintentar el incremento
         await db
           .update(documentCounters)
           .set({ currentNumber: sql`current_number + 1` })
@@ -180,7 +180,7 @@ export async function generateDocumentNumber(
   const prefix = counter.prefix;
   const documentNumber = `${prefix}-${year}-${String(sequence).padStart(SEQUENCE_PADDING, "0")}`;
 
-  // Paso 3: Registrar en el log de auditoría (no bloquea si falla)
+  // Paso 3: Registrar en el log de auditorÃ­a (no bloquea si falla)
   try {
     await db.insert(documentNumberLogs).values({
       documentType,
@@ -191,18 +191,18 @@ export async function generateDocumentNumber(
       context: context ?? null,
     });
   } catch (logErr) {
-    console.error("[documentNumbers] Error al registrar en log de auditoría:", logErr);
-    // No lanzar error — el número ya fue generado correctamente
+    console.error("[documentNumbers] Error al registrar en log de auditorÃ­a:", logErr);
+    // No lanzar error â€” el nÃºmero ya fue generado correctamente
   }
 
   return documentNumber;
 }
 
-// --- Función de consulta (sin efecto secundario) ------------------------------
+// --- FunciÃ³n de consulta (sin efecto secundario) ------------------------------
 
 /**
  * Devuelve el estado actual de todos los contadores.
- * Solo lectura, no genera números.
+ * Solo lectura, no genera nÃºmeros.
  */
 export async function getAllCounters() {
   return getDb().select().from(documentCounters).orderBy(documentCounters.documentType);
@@ -229,8 +229,8 @@ export async function updateCounterPrefix(
 }
 
 /**
- * Resetea manualmente el contador a un valor específico (solo admin, con auditoría).
- * USAR CON EXTREMA PRECAUCIÓN — solo para correcciones de inicio de año.
+ * Resetea manualmente el contador a un valor especÃ­fico (solo admin, con auditorÃ­a).
+ * USAR CON EXTREMA PRECAUCIÃ“N â€” solo para correcciones de inicio de aÃ±o.
  */
 export async function resetCounter(
   documentType: DocumentType,
@@ -261,7 +261,7 @@ export async function resetCounter(
 }
 
 /**
- * Devuelve el historial de generación de números para un tipo de documento.
+ * Devuelve el historial de generaciÃ³n de nÃºmeros para un tipo de documento.
  */
 export async function getDocumentNumberLogs(documentType?: DocumentType, limit = 100) {
   const db = getDb();

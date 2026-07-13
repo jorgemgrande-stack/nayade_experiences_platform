@@ -24,19 +24,19 @@ export default function Restaurantes() {
     <PublicLayout>
       {/* Hero */}
       <section className="relative h-[50vh] min-h-[380px] overflow-hidden">
-        <img src={CDN_HERO} alt="Restaurantes N·yade" className="w-full h-full object-cover" />
+        <img src={CDN_HERO} alt="Restaurantes N√°yade" className="w-full h-full object-cover" />
         <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/35 to-black/70" />
         <div className="absolute inset-0 flex items-center">
           <div className="container">
             <div className="max-w-2xl text-white">
               <span className="inline-block bg-accent/90 text-white text-xs font-display font-bold uppercase tracking-widest px-4 py-1.5 rounded-full mb-5">
-                GastronomÌa & Ocio
+                Gastronom√≠a & Ocio
               </span>
               <h1 className="text-5xl md:text-6xl font-heading font-bold leading-tight mb-4">
-                Restaurantes N·yade
+                Restaurantes N√°yade
               </h1>
               <p className="text-xl text-white/85 font-display leading-relaxed">
-                Cuatro espacios ˙nicos para cada momento del dÌa. GastronomÌa de calidad con las mejores vistas al embalse.
+                Cuatro espacios √∫nicos para cada momento del d√≠a. Gastronom√≠a de calidad con las mejores vistas al embalse.
               </p>
             </div>
           </div>
@@ -47,7 +47,7 @@ export default function Restaurantes() {
       <section className="py-14 bg-white border-b border-border/30">
         <div className="container text-center max-w-3xl mx-auto">
           <p className="text-lg text-muted-foreground font-display leading-relaxed">
-            Desde el restaurante principal con vistas panor·micas hasta el bar de cÛcteles junto al lago, cada espacio de N·yade tiene su propio car·cter. Elige el que mejor encaje con tu momento.
+            Desde el restaurante principal con vistas panor√°micas hasta el bar de c√≥cteles junto al lago, cada espacio de N√°yade tiene su propio car√°cter. Elige el que mejor encaje con tu momento.
           </p>
         </div>
       </section>
@@ -95,7 +95,7 @@ export default function Restaurantes() {
                       )}
                       <div className="flex flex-wrap gap-3">
                         {ext ? (
-                          // Restaurante gestionado en la web del Hotel N·yade.
+                          // Restaurante gestionado en la web del Hotel N√°yade.
                           <a href={ext}>
                             <Button className="bg-accent hover:bg-accent/90 text-white font-display font-semibold rounded-full px-7 shadow-md shadow-accent/20">
                               <Utensils className="w-4 h-4 mr-2" /> Ver Restaurante <ArrowRight className="w-4 h-4 ml-2" />
@@ -135,14 +135,14 @@ export default function Restaurantes() {
               <div className="w-10 h-10 rounded-full bg-accent/10 flex items-center justify-center">
                 <MapPin className="w-5 h-5 text-accent" />
               </div>
-              <h3 className="font-heading font-bold text-foreground">UbicaciÛn</h3>
-              <p className="text-muted-foreground font-display text-sm">Los ¡ngeles de San Rafael, Segovia ∑ A 45 min de Madrid</p>
+              <h3 className="font-heading font-bold text-foreground">Ubicaci√≥n</h3>
+              <p className="text-muted-foreground font-display text-sm">Los √Ångeles de San Rafael, Segovia ¬∑ A 45 min de Madrid</p>
             </div>
             <div className="flex flex-col items-center gap-3">
               <div className="w-10 h-10 rounded-full bg-accent/10 flex items-center justify-center">
                 <Phone className="w-5 h-5 text-accent" />
               </div>
-              <h3 className="font-heading font-bold text-foreground">Reservas telefÛnicas</h3>
+              <h3 className="font-heading font-bold text-foreground">Reservas telef√≥nicas</h3>
               <a href={phoneTel} className="text-accent font-display font-semibold hover:underline">{phone}</a>
             </div>
             <div className="flex flex-col items-center gap-3">
@@ -150,7 +150,7 @@ export default function Restaurantes() {
                 <Clock className="w-5 h-5 text-accent" />
               </div>
               <h3 className="font-heading font-bold text-foreground">Horario general</h3>
-              <p className="text-muted-foreground font-display text-sm">Abierto todos los dÌas ∑ 10:00ñ23:00</p>
+              <p className="text-muted-foreground font-display text-sm">Abierto todos los d√≠as ¬∑ 10:00‚Äì23:00</p>
             </div>
           </div>
         </div>

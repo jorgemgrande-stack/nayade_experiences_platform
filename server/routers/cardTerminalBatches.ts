@@ -460,7 +460,7 @@ export const cardTerminalBatchesRouter = router({
         ))
         .limit(1);
       if (existingLink.length > 0) {
-        throw new TRPCError({ code: "CONFLICT", message: "Este movimiento bancario ya está conciliado con otra remesa" });
+        throw new TRPCError({ code: "CONFLICT", message: "Este movimiento bancario ya estÃ¡ conciliado con otra remesa" });
       }
 
       const batchNet = parseFloat(String(batch.totalNet));
@@ -742,7 +742,7 @@ export const cardTerminalBatchesRouter = router({
           eq(cardTerminalBatchOperations.batchId, input.batchId)
         ))
         .limit(1);
-      if (!batchOp) throw new TRPCError({ code: "NOT_FOUND", message: "Operación no encontrada en esta remesa" });
+      if (!batchOp) throw new TRPCError({ code: "NOT_FOUND", message: "OperaciÃ³n no encontrada en esta remesa" });
 
       await db.delete(cardTerminalBatchOperations)
         .where(eq(cardTerminalBatchOperations.id, input.batchOpId));
@@ -804,7 +804,7 @@ export const cardTerminalBatchesRouter = router({
         score: null,
         autoReconciled: false,
         performedBy: String(ctx.user.id),
-        notes: `Operación ${batchOp.cardTerminalOperationId} eliminada de la remesa. Nuevo neto: ${totalNet.toFixed(2)} €`,
+        notes: `OperaciÃ³n ${batchOp.cardTerminalOperationId} eliminada de la remesa. Nuevo neto: ${totalNet.toFixed(2)} â‚¬`,
       }).catch(() => {});
 
       return { success: true, newTotalNet: totalNet, remainingOps: remainingOps.length };
@@ -813,7 +813,7 @@ export const cardTerminalBatchesRouter = router({
   justifyDifference: adminProc
     .input(z.object({
       batchId: z.number(),
-      justification: z.string().min(5, "La justificación debe tener al menos 5 caracteres"),
+      justification: z.string().min(5, "La justificaciÃ³n debe tener al menos 5 caracteres"),
     }))
     .mutation(async ({ input, ctx }) => {
       const [batch] = await db.select()
@@ -840,7 +840,7 @@ export const cardTerminalBatchesRouter = router({
         score: null,
         autoReconciled: false,
         performedBy: String(ctx.user.id),
-        notes: `Diferencia de ${batch.differenceAmount} € justificada: ${input.justification}`,
+        notes: `Diferencia de ${batch.differenceAmount} â‚¬ justificada: ${input.justification}`,
       }).catch(() => {});
 
       return { success: true };

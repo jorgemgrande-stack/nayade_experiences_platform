@@ -4,8 +4,8 @@
  * GET /api/settlements/:id/export-excel
  *
  * Genera un libro Excel con dos hojas:
- *   1. "Cabecera"  ó datos generales de la liquidaciÛn y del proveedor
- *   2. "LÌneas"    ó detalle de cada servicio liquidado
+ *   1. "Cabecera"  ‚Äî datos generales de la liquidaci√≥n y del proveedor
+ *   2. "L√≠neas"    ‚Äî detalle de cada servicio liquidado
  *
  * El archivo se sirve como descarga directa (Content-Disposition: attachment).
  */
@@ -44,7 +44,7 @@ async function requireAuth(req: Request, res: Response, next: NextFunction) {
   }
   const userId = await verifySessionToken(token);
   if (!userId) {
-    res.status(401).json({ error: "SesiÛn inv·lida o expirada" });
+    res.status(401).json({ error: "Sesi√≥n inv√°lida o expirada" });
     return;
   }
   next();
@@ -57,7 +57,7 @@ function fmt(value: string | null | undefined): number {
 }
 
 function fmtDate(value: string | Date | null | undefined): string {
-  if (!value) return "ó";
+  if (!value) return "‚Äî";
   try {
     return new Date(value).toLocaleDateString("es-ES");
   } catch {
@@ -83,7 +83,7 @@ const S_TITLE = { font: { bold: true, sz: 14, color: { rgb: "1A3A6B" } } };
 const S_SECTION = { font: { bold: true, sz: 11, color: { rgb: "1A3A6B" } } };
 const S_LABEL = { font: { bold: true, sz: 10 } };
 const S_TOTAL_LABEL = { font: { bold: true, sz: 12, color: { rgb: "7C3AED" } } };
-const S_TOTAL_VALUE = { font: { bold: true, sz: 12, color: { rgb: "7C3AED" } }, numFmt: '#,##0.00 "Ä"' };
+const S_TOTAL_VALUE = { font: { bold: true, sz: 12, color: { rgb: "7C3AED" } }, numFmt: '#,##0.00 "‚Ç¨"' };
 const S_COL_HEADER = {
   font: { bold: true, color: { rgb: "FFFFFF" }, sz: 11 },
   fill: { patternType: "solid", fgColor: { rgb: "1A3A6B" } },
@@ -95,9 +95,9 @@ const S_TOT_CELL = {
 const S_TOT_EUR = {
   font: { bold: true, color: { rgb: "FFFFFF" }, sz: 11 },
   fill: { patternType: "solid", fgColor: { rgb: "7C3AED" } },
-  numFmt: '#,##0.00 "Ä"',
+  numFmt: '#,##0.00 "‚Ç¨"',
 };
-const S_EUR = { numFmt: '#,##0.00 "Ä"' };
+const S_EUR = { numFmt: '#,##0.00 "‚Ç¨"' };
 const S_PCT = { numFmt: '0.00"%"' };
 
 // --- Endpoint -----------------------------------------------------------------
@@ -108,7 +108,7 @@ settlementExportRouter.get(
   async (req: Request, res: Response) => {
     const id = parseInt(req.params.id, 10);
     if (isNaN(id)) {
-      res.status(400).json({ error: "ID inv·lido" });
+      res.status(400).json({ error: "ID inv√°lido" });
       return;
     }
 
@@ -139,7 +139,7 @@ settlementExportRouter.get(
       .where(eq(supplierSettlements.id, id));
 
     if (!settlement) {
-      res.status(404).json({ error: "LiquidaciÛn no encontrada" });
+      res.status(404).json({ error: "Liquidaci√≥n no encontrada" });
       return;
     }
 
@@ -154,31 +154,31 @@ settlementExportRouter.get(
 
     // -- Sheet 1: Cabecera ----------------------------------------------------
     const headerRows: XLSX.CellObject[][] = [
-      [mkCell("LIQUIDACI”N DE PROVEEDOR ó N¡YADE EXPERIENCES", S_TITLE), mkCell(""), mkCell(""), mkCell("")],
+      [mkCell("LIQUIDACI√ìN DE PROVEEDOR ‚Äî N√ÅYADE EXPERIENCES", S_TITLE), mkCell(""), mkCell(""), mkCell("")],
       [mkCell(""), mkCell(""), mkCell(""), mkCell("")],
-      [mkCell("N˙mero de liquidaciÛn", S_LABEL), mkCell(settlement.settlementNumber), mkCell(""), mkCell("")],
-      [mkCell("Estado", S_LABEL), mkCell(settlement.status ?? "ó"), mkCell(""), mkCell("")],
-      [mkCell("PerÌodo desde", S_LABEL), mkCell(settlement.periodFrom ?? "ó"), mkCell(""), mkCell("")],
-      [mkCell("PerÌodo hasta", S_LABEL), mkCell(settlement.periodTo ?? "ó"), mkCell(""), mkCell("")],
-      [mkCell("Fecha de emisiÛn", S_LABEL), mkCell(fmtDate(settlement.createdAt)), mkCell(""), mkCell("")],
+      [mkCell("N√∫mero de liquidaci√≥n", S_LABEL), mkCell(settlement.settlementNumber), mkCell(""), mkCell("")],
+      [mkCell("Estado", S_LABEL), mkCell(settlement.status ?? "‚Äî"), mkCell(""), mkCell("")],
+      [mkCell("Per√≠odo desde", S_LABEL), mkCell(settlement.periodFrom ?? "‚Äî"), mkCell(""), mkCell("")],
+      [mkCell("Per√≠odo hasta", S_LABEL), mkCell(settlement.periodTo ?? "‚Äî"), mkCell(""), mkCell("")],
+      [mkCell("Fecha de emisi√≥n", S_LABEL), mkCell(fmtDate(settlement.createdAt)), mkCell(""), mkCell("")],
       [mkCell("Fecha de abono", S_LABEL), mkCell(fmtDate(settlement.paidAt)), mkCell(""), mkCell("")],
       [mkCell(""), mkCell(""), mkCell(""), mkCell("")],
       [mkCell("DATOS DEL PROVEEDOR", S_SECTION), mkCell(""), mkCell(""), mkCell("")],
-      [mkCell("RazÛn social", S_LABEL), mkCell(settlement.supplierName ?? "ó"), mkCell(""), mkCell("")],
-      [mkCell("NIF / CIF", S_LABEL), mkCell(settlement.supplierNif ?? "ó"), mkCell(""), mkCell("")],
-      [mkCell("DirecciÛn fiscal", S_LABEL), mkCell(settlement.supplierAddress ?? "ó"), mkCell(""), mkCell("")],
-      [mkCell("IBAN", S_LABEL), mkCell(settlement.supplierIban ?? "ó"), mkCell(""), mkCell("")],
-      [mkCell("Email", S_LABEL), mkCell(settlement.supplierEmail ?? "ó"), mkCell(""), mkCell("")],
-      [mkCell("TelÈfono", S_LABEL), mkCell(settlement.supplierPhone ?? "ó"), mkCell(""), mkCell("")],
+      [mkCell("Raz√≥n social", S_LABEL), mkCell(settlement.supplierName ?? "‚Äî"), mkCell(""), mkCell("")],
+      [mkCell("NIF / CIF", S_LABEL), mkCell(settlement.supplierNif ?? "‚Äî"), mkCell(""), mkCell("")],
+      [mkCell("Direcci√≥n fiscal", S_LABEL), mkCell(settlement.supplierAddress ?? "‚Äî"), mkCell(""), mkCell("")],
+      [mkCell("IBAN", S_LABEL), mkCell(settlement.supplierIban ?? "‚Äî"), mkCell(""), mkCell("")],
+      [mkCell("Email", S_LABEL), mkCell(settlement.supplierEmail ?? "‚Äî"), mkCell(""), mkCell("")],
+      [mkCell("Tel√©fono", S_LABEL), mkCell(settlement.supplierPhone ?? "‚Äî"), mkCell(""), mkCell("")],
       [mkCell(""), mkCell(""), mkCell(""), mkCell("")],
-      [mkCell("RESUMEN ECON”MICO", S_SECTION), mkCell(""), mkCell(""), mkCell("")],
+      [mkCell("RESUMEN ECON√ìMICO", S_SECTION), mkCell(""), mkCell(""), mkCell("")],
       [mkCell("Total venta bruta", S_LABEL), mkCell(fmt(settlement.grossAmount), S_EUR), mkCell(""), mkCell("")],
-      [mkCell("Total comisiÛn agencia", S_LABEL), mkCell(fmt(settlement.commissionAmount), S_EUR), mkCell(""), mkCell("")],
+      [mkCell("Total comisi√≥n agencia", S_LABEL), mkCell(fmt(settlement.commissionAmount), S_EUR), mkCell(""), mkCell("")],
       [mkCell("NETO A ABONAR AL PROVEEDOR", S_TOTAL_LABEL), mkCell(fmt(settlement.netAmountProvider), S_TOTAL_VALUE), mkCell(""), mkCell("")],
       [mkCell(""), mkCell(""), mkCell(""), mkCell("")],
-      [mkCell("Notas internas", S_LABEL), mkCell(settlement.internalNotes ?? "ó"), mkCell(""), mkCell("")],
+      [mkCell("Notas internas", S_LABEL), mkCell(settlement.internalNotes ?? "‚Äî"), mkCell(""), mkCell("")],
       [mkCell(""), mkCell(""), mkCell(""), mkCell("")],
-      [mkCell("Emisor", S_LABEL), mkCell("N·yade Experiences S.L."), mkCell(""), mkCell("")],
+      [mkCell("Emisor", S_LABEL), mkCell("N√°yade Experiences S.L."), mkCell(""), mkCell("")],
       [mkCell("Generado el", S_LABEL), mkCell(fmtDate(new Date())), mkCell(""), mkCell("")],
     ];
 
@@ -186,16 +186,16 @@ settlementExportRouter.get(
     wsHeader["!cols"] = [{ wch: 32 }, { wch: 42 }, { wch: 20 }, { wch: 20 }];
     XLSX.utils.book_append_sheet(wb, wsHeader, "Cabecera");
 
-    // -- Sheet 2: LÌneas ------------------------------------------------------
+    // -- Sheet 2: L√≠neas ------------------------------------------------------
     const colHeaders = [
       "Servicio / Producto",
       "Fecha servicio",
       "Pax",
       "Tipo coste",
-      "Venta bruta (Ä)",
-      "ComisiÛn %",
-      "ComisiÛn (Ä)",
-      "Neto proveedor (Ä)",
+      "Venta bruta (‚Ç¨)",
+      "Comisi√≥n %",
+      "Comisi√≥n (‚Ç¨)",
+      "Neto proveedor (‚Ç¨)",
       "Notas",
     ];
 
@@ -205,10 +205,10 @@ settlementExportRouter.get(
 
     for (const l of lines) {
       linesRows.push([
-        mkCell(l.productName ?? "ó"),
-        mkCell(l.serviceDate ?? "ó"),
+        mkCell(l.productName ?? "‚Äî"),
+        mkCell(l.serviceDate ?? "‚Äî"),
         mkCell(l.paxCount ?? 0),
-        mkCell(l.costType ?? "ó"),
+        mkCell(l.costType ?? "‚Äî"),
         mkCell(fmt(l.saleAmount), S_EUR),
         mkCell(fmt(l.commissionPercent), S_PCT),
         mkCell(fmt(l.commissionAmount), S_EUR),
@@ -242,12 +242,12 @@ settlementExportRouter.get(
       { wch: 6 },  // Pax
       { wch: 14 }, // Tipo coste
       { wch: 18 }, // Venta bruta
-      { wch: 12 }, // ComisiÛn %
-      { wch: 18 }, // ComisiÛn Ä
+      { wch: 12 }, // Comisi√≥n %
+      { wch: 18 }, // Comisi√≥n ‚Ç¨
       { wch: 22 }, // Neto proveedor
       { wch: 32 }, // Notas
     ];
-    XLSX.utils.book_append_sheet(wb, wsLines, "LÌneas");
+    XLSX.utils.book_append_sheet(wb, wsLines, "L√≠neas");
 
     // -- Serialize & send -----------------------------------------------------
     const buffer = XLSX.write(wb, { type: "buffer", bookType: "xlsx" }) as Buffer;

@@ -166,7 +166,7 @@ const expenseInputSchema = z.object({
   reservationId: z.number().nullable().optional(),
   productId: z.number().nullable().optional(),
   notes: z.string().optional(),
-  // -- Gestoría e Impuestos (Fase 0) — desglose fiscal del IVA soportado --
+  // -- GestorÃ­a e Impuestos (Fase 0) â€” desglose fiscal del IVA soportado --
   taxRate: z.string().optional(),
   deductiblePercent: z.string().optional(),
   invoiceType: z.enum([
@@ -177,14 +177,14 @@ const expenseInputSchema = z.object({
   retentionPercent: z.string().optional(),
   accrualDate: z.string().optional(),
   // Tratamiento operativo: true = computa en P&L/EBITDA/KPIs;
-  // false = "solo fiscal" (gestoría/IVA/IS/tesorería sí, pero NO en KPIs operativos).
+  // false = "solo fiscal" (gestorÃ­a/IVA/IS/tesorerÃ­a sÃ­, pero NO en KPIs operativos).
   // Default true para mantener compatibilidad con la UX existente.
   isOperational: z.boolean().default(true),
 });
 
 /**
  * Deriva el desglose fiscal de un gasto. El `amount` es el total CON IVA:
- * base = total / (1 + tipo/100). La retención se calcula sobre la base.
+ * base = total / (1 + tipo/100). La retenciÃ³n se calcula sobre la base.
  * Marca el gasto como `revisado` porque el desglose llega del formulario.
  */
 function computeExpenseFiscal(input: { amount: string; taxRate?: string; retentionPercent?: string }) {
@@ -211,8 +211,8 @@ const expensesRouter = router({
       supplierId: z.number().optional(),
       status: z.enum(["pending", "justified", "accounted", "conciliado"]).optional(),
       paymentMethod: z.enum(["cash", "card", "transfer", "direct_debit", "tpv_cash"]).optional(),
-      // Filtro por imputación contable.
-      //   "all"          ? ambos tipos (default, comportamiento histórico).
+      // Filtro por imputaciÃ³n contable.
+      //   "all"          ? ambos tipos (default, comportamiento histÃ³rico).
       //   "operational"  ? solo gastos que computan en P&L.
       //   "tax_only"     ? solo gastos "solo fiscales".
       treatment: z.enum(["all", "operational", "tax_only"]).default("all"),
@@ -295,7 +295,7 @@ const expensesRouter = router({
               date: input.date.slice(0, 10),
               type: "expense",
               amount: parseFloat(input.amount),
-              concept: `Pago en efectivo — ${input.concept}`,
+              concept: `Pago en efectivo â€” ${input.concept}`,
               relatedEntityType: "expense",
               relatedEntityId: expenseId,
               createdBy: ctx.user.id,
@@ -328,7 +328,7 @@ const expensesRouter = router({
               date: data.date.slice(0, 10),
               type: "expense",
               amount: parseFloat(data.amount),
-              concept: `Pago en efectivo — ${data.concept}`,
+              concept: `Pago en efectivo â€” ${data.concept}`,
               relatedEntityType: "expense",
               relatedEntityId: id,
               createdBy: ctx.user.id,
@@ -350,7 +350,7 @@ const expensesRouter = router({
     }),
 
   /**
-   * Gestoría e Impuestos (Fase 0) — backfill del desglose fiscal.
+   * GestorÃ­a e Impuestos (Fase 0) â€” backfill del desglose fiscal.
    * Para los gastos antiguos sin `taxBase`, estima base/IVA al 21 % y los deja
    * en `fiscalReviewStatus = "pendiente"` para que se revisen manualmente.
    */
@@ -403,7 +403,7 @@ const expensesRouter = router({
       return { ok: true };
     }),
 
-  /** Devuelve el vínculo bancario confirmado de un gasto (si existe). */
+  /** Devuelve el vÃ­nculo bancario confirmado de un gasto (si existe). */
   getExpenseBankLink: adminProcedure
     .input(z.object({ expenseId: z.number() }))
     .query(async ({ input }) => {
@@ -526,15 +526,15 @@ const expensesRouter = router({
     }),
 
   /**
-   * KPI de DISTORSIÓN FISCAL.
+   * KPI de DISTORSIÃ“N FISCAL.
    *
    * Devuelve el volumen de gastos marcados como "solo fiscales" del mes y del
-   * año en curso, junto con su peso relativo sobre el gasto operativo del
+   * aÃ±o en curso, junto con su peso relativo sobre el gasto operativo del
    * ejercicio. Pensado para alimentar dashboards (admin, contabilidad, P&L,
-   * gastos): permite detectar abuso, controlar gastos híbridos y entender
-   * cuánto "ruido fiscal" existe frente a la operación real del negocio.
+   * gastos): permite detectar abuso, controlar gastos hÃ­bridos y entender
+   * cuÃ¡nto "ruido fiscal" existe frente a la operaciÃ³n real del negocio.
    *
-   * Si no se pasa year/month se usan el año y mes en curso.
+   * Si no se pasa year/month se usan el aÃ±o y mes en curso.
    */
   distortionKpi: adminProcedure
     .input(z.object({
@@ -686,10 +686,10 @@ async function _profitLossForPeriod(
   if (conciliatedOnly) baseExpenseConditions.push(eq(expenses.status, "conciliado"));
 
   // Dos vistas posibles:
-  //   - "operational": excluye gastos isOperational=false (default — usado por
-  //     KPIs, EBITDA, márgenes, dashboards de explotación).
+  //   - "operational": excluye gastos isOperational=false (default â€” usado por
+  //     KPIs, EBITDA, mÃ¡rgenes, dashboards de explotaciÃ³n).
   //   - "fiscal": incluye TODOS los gastos (vista contable/fiscal completa,
-  //     coherente con el cálculo del Impuesto de Sociedades).
+  //     coherente con el cÃ¡lculo del Impuesto de Sociedades).
   // Los gastos "solo fiscales" se contabilizan aparte (`excludedTaxOnly`) para
   // que el frontend pueda dar transparencia incluso en la vista operativa.
   const expenseConditions = view === "operational"
@@ -714,7 +714,7 @@ async function _profitLossForPeriod(
   const grossProfit = totalRevenue - totalExpenses;
   const grossMargin = totalRevenue > 0 ? (grossProfit / totalRevenue) * 100 : 0;
 
-  // Aviso de transparencia: cuántos gastos solo fiscales se han excluido del cálculo.
+  // Aviso de transparencia: cuÃ¡ntos gastos solo fiscales se han excluido del cÃ¡lculo.
   const excludedTaxOnly = {
     count: taxOnlyRows.length,
     amount: taxOnlyRows.reduce((s, r) => s + parseFloat(r.amount), 0),
@@ -773,7 +773,7 @@ const profitLossRouter = router({
    * Cuenta de Resultados. Soporta dos vistas:
    *   - "operational" (default): excluye gastos solo fiscales ? P&L del negocio.
    *   - "fiscal": incluye todos los gastos ? vista contable/fiscal completa.
-   * La comparativa con el período anterior usa la MISMA vista para que las
+   * La comparativa con el perÃ­odo anterior usa la MISMA vista para que las
    * cifras sean comparables.
    */
   report: adminProcedure

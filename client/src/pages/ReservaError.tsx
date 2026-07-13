@@ -1,7 +1,7 @@
 /**
- * /reserva/error — Página de retorno cuando Redsys indica error o cancelación.
- * Muestra mensaje claro, datos básicos de la reserva y opción de reintentar.
- * El estado de la reserva se actualiza ÚNICAMENTE por el endpoint IPN.
+ * /reserva/error â€” PÃ¡gina de retorno cuando Redsys indica error o cancelaciÃ³n.
+ * Muestra mensaje claro, datos bÃ¡sicos de la reserva y opciÃ³n de reintentar.
+ * El estado de la reserva se actualiza ÃšNICAMENTE por el endpoint IPN.
  */
 import { useEffect, useState } from "react";
 import { Link } from "wouter";
@@ -12,24 +12,24 @@ import { usePublicPhone } from "@/hooks/usePublicPhone";
 
 const REDSYS_ERROR_MESSAGES: Record<string, string> = {
   "0180": "Tarjeta ajena al servicio.",
-  "0184": "Error en la autenticación del titular.",
-  "0190": "Denegación sin especificar motivo.",
-  "0191": "Fecha de caducidad errónea.",
-  "0202": "Tarjeta en excepción transitoria o bajo sospecha de fraude.",
+  "0184": "Error en la autenticaciÃ³n del titular.",
+  "0190": "DenegaciÃ³n sin especificar motivo.",
+  "0191": "Fecha de caducidad errÃ³nea.",
+  "0202": "Tarjeta en excepciÃ³n transitoria o bajo sospecha de fraude.",
   "0904": "Comercio no registrado en FUC.",
   "0909": "Error de sistema.",
   "0912": "Emisor no disponible.",
   "0913": "Pedido repetido.",
-  "9064": "Número de posiciones de la tarjeta incorrecto.",
-  "9078": "No existe método de pago válido para esa tarjeta.",
+  "9064": "NÃºmero de posiciones de la tarjeta incorrecto.",
+  "9078": "No existe mÃ©todo de pago vÃ¡lido para esa tarjeta.",
   "9093": "Tarjeta no existente.",
   "9094": "Rechazo servidores internacionales.",
   "9218": "El comercio no permite operaciones seguras.",
   "9253": "Tarjeta no cumple el check-digit.",
   "9912": "Emisor no disponible.",
   "9915": "Has cancelado el proceso de pago.",
-  "9997": "Se está procesando otra transacción con la misma tarjeta.",
-  "9999": "Operación redirigida al emisor para autenticar.",
+  "9997": "Se estÃ¡ procesando otra transacciÃ³n con la misma tarjeta.",
+  "9999": "OperaciÃ³n redirigida al emisor para autenticar.",
 };
 
 export default function ReservaError() {
@@ -66,8 +66,8 @@ export default function ReservaError() {
           </h1>
           <p className="text-muted-foreground">
             {isCancelled
-              ? "Has cancelado el proceso de pago. No se ha realizado ningún cargo en tu tarjeta."
-              : "El banco no ha podido procesar el pago. No se ha realizado ningún cargo en tu tarjeta."}
+              ? "Has cancelado el proceso de pago. No se ha realizado ningÃºn cargo en tu tarjeta."
+              : "El banco no ha podido procesar el pago. No se ha realizado ningÃºn cargo en tu tarjeta."}
           </p>
         </div>
 
@@ -78,11 +78,11 @@ export default function ReservaError() {
               <div>
                 {errorCode && (
                   <p className="text-sm font-semibold text-red-700 mb-1">
-                    Código de error: {errorCode}
+                    CÃ³digo de error: {errorCode}
                   </p>
                 )}
                 <p className="text-sm text-red-600">
-                  {errorMessage ?? "El banco ha rechazado la operación. Prueba con otra tarjeta o contacta con tu banco."}
+                  {errorMessage ?? "El banco ha rechazado la operaciÃ³n. Prueba con otra tarjeta o contacta con tu banco."}
                 </p>
               </div>
             </div>
@@ -107,7 +107,7 @@ export default function ReservaError() {
             <div className="flex justify-between">
               <span className="text-muted-foreground">Importe</span>
               <span className="font-medium text-foreground">
-                {reservation.amountTotal ? (reservation.amountTotal / 100).toFixed(2) + "€" : "—"}
+                {reservation.amountTotal ? (reservation.amountTotal / 100).toFixed(2) + "â‚¬" : "â€”"}
               </span>
             </div>
             {merchantOrder && (
@@ -120,12 +120,12 @@ export default function ReservaError() {
         )}
 
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-8">
-          <h3 className="font-semibold text-amber-800 mb-2 text-sm">¿Qué puedo hacer?</h3>
+          <h3 className="font-semibold text-amber-800 mb-2 text-sm">Â¿QuÃ© puedo hacer?</h3>
           <ul className="space-y-1 text-sm text-amber-700">
-            <li>• Comprueba que los datos de la tarjeta son correctos.</li>
-            <li>• Verifica que tienes saldo o límite disponible.</li>
-            <li>• Prueba con otra tarjeta de crédito o débito.</li>
-            <li>• Si el problema persiste, contacta con tu banco.</li>
+            <li>â€¢ Comprueba que los datos de la tarjeta son correctos.</li>
+            <li>â€¢ Verifica que tienes saldo o lÃ­mite disponible.</li>
+            <li>â€¢ Prueba con otra tarjeta de crÃ©dito o dÃ©bito.</li>
+            <li>â€¢ Si el problema persiste, contacta con tu banco.</li>
           </ul>
         </div>
 
@@ -154,7 +154,7 @@ export default function ReservaError() {
         </div>
 
         <div className="text-center text-sm text-muted-foreground pt-6 border-t border-border">
-          <p className="mb-3">¿Necesitas ayuda? Estamos aquí para ti:</p>
+          <p className="mb-3">Â¿Necesitas ayuda? Estamos aquÃ­ para ti:</p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <a href={phoneTel} className="flex items-center gap-2 hover:text-accent transition-colors">
               <Phone className="w-4 h-4" /> {phone}

@@ -1,7 +1,7 @@
 /**
  * Router: Product Time Slots
- * Sistema modular de horarios por producto — completamente retrocompatible.
- * Si has_time_slots = false en el producto, este módulo no afecta ningún flujo existente.
+ * Sistema modular de horarios por producto â€” completamente retrocompatible.
+ * Si has_time_slots = false en el producto, este mÃ³dulo no afecta ningÃºn flujo existente.
  */
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";

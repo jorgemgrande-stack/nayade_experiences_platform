@@ -22,7 +22,7 @@ import ActivityModal, { ActivityEntry, ModalState, getFamilyForSlug } from "@/co
 // --- Assets -------------------------------------------------------------------
 const HERO_BG = "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/nayade/uploads/1774088145054-jpwq7l.png";
 
-// --- CategorÌas ---------------------------------------------------------------
+// --- Categor√≠as ---------------------------------------------------------------
 const STATIC_CATEGORIES = [
   { id: "Experiencias", label: "Experiencias", icon: "??" },
   { id: "LegoPacks", label: "Lego Packs", icon: "??" },
@@ -33,17 +33,17 @@ const STATIC_CATEGORIES = [
 ];
 
 const STATIC_PRODUCTS: Record<string, string[]> = {
-  Hotel: ["HabitaciÛn Est·ndar", "HabitaciÛn Superior", "Suite Lago", "Suite Premium"],
+  Hotel: ["Habitaci√≥n Est√°ndar", "Habitaci√≥n Superior", "Suite Lago", "Suite Premium"],
   Spa: ["Circuito SPA", "Masaje Relajante", "Tratamiento Facial", "Pack Pareja SPA"],
-  "Pack colegios": ["Pack Escolar B·sico", "Pack Escolar Aventura", "Pack Escolar N·utico"],
-  "Pack teambuilding": ["Teambuilding B·sico", "Teambuilding Premium", "Jornada Corporativa Completa"],
+  "Pack colegios": ["Pack Escolar B√°sico", "Pack Escolar Aventura", "Pack Escolar N√°utico"],
+  "Pack teambuilding": ["Teambuilding B√°sico", "Teambuilding Premium", "Jornada Corporativa Completa"],
 };
 
 const SPECIAL_OPTION = "__special__";
 
 // --- Chips decorativos --------------------------------------------------------
 const EXP_CHIPS = [
-  { icon: Waves, label: "Deportes acu·ticos", color: "text-sky-300" },
+  { icon: Waves, label: "Deportes acu√°ticos", color: "text-sky-300" },
   { icon: TreePine, label: "Aventura", color: "text-emerald-300" },
   { icon: Heart, label: "Parejas", color: "text-rose-300" },
   { icon: Users, label: "Familias", color: "text-amber-300" },
@@ -96,21 +96,21 @@ export default function BudgetRequest() {
       trackLeadFormSubmit('presupuesto');
       setSubmitted(true);
     },
-    onError: () => toast.error("Error al enviar. Por favor, intÈntalo de nuevo."),
+    onError: () => toast.error("Error al enviar. Por favor, int√©ntalo de nuevo."),
   });
 
-  // --- ValidaciÛn -----------------------------------------------------------
+  // --- Validaci√≥n -----------------------------------------------------------
   const validate = () => {
     const e: Record<string, string> = {};
     if (!formData.name.trim() || formData.name.trim().length < 2) e.name = "Introduce tu nombre";
-    if (!formData.email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) e.email = "Email no v·lido";
-    if (!formData.phone.trim() || formData.phone.trim().length < 6) e.phone = "TelÈfono no v·lido";
+    if (!formData.email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) e.email = "Email no v√°lido";
+    if (!formData.phone.trim() || formData.phone.trim().length < 6) e.phone = "Tel√©fono no v√°lido";
     if (!formData.arrivalDate) e.arrivalDate = "Selecciona una fecha";
-    if (!selectedCategory) e.category = "Selecciona una categorÌa";
+    if (!selectedCategory) e.category = "Selecciona una categor√≠a";
     if (selectedCategory === "Experiencias") {
       if (selectedActivities.length === 0) e.product = "Selecciona al menos una experiencia";
     } else {
-      if (!selectedProduct) e.product = "Selecciona una opciÛn";
+      if (!selectedProduct) e.product = "Selecciona una opci√≥n";
     }
     setErrors(e);
     return Object.keys(e).length === 0;
@@ -123,7 +123,7 @@ export default function BudgetRequest() {
 
     const productSummary = selectedCategory === "Experiencias"
       ? selectedActivities.map((a) => a.experienceTitle).join(", ")
-      : (selectedProduct === SPECIAL_OPTION ? "PeticiÛn especial / Propuesta personalizada" : selectedProduct);
+      : (selectedProduct === SPECIAL_OPTION ? "Petici√≥n especial / Propuesta personalizada" : selectedProduct);
 
     await submitBudget.mutateAsync({
       name: formData.name.trim(),
@@ -153,7 +153,7 @@ export default function BudgetRequest() {
     setErrors((p) => ({ ...p, category: "", product: "" }));
   };
 
-  // --- GestiÛn de actividades -----------------------------------------------
+  // --- Gesti√≥n de actividades -----------------------------------------------
   const openActivityModal = useCallback((exp: { id: number; title: string; slug: string }) => {
     const family = getFamilyForSlug(exp.slug);
     setModalState({ open: true, experienceId: exp.id, experienceTitle: exp.title, family, slug: exp.slug });
@@ -178,7 +178,7 @@ export default function BudgetRequest() {
     setSelectedActivities((prev) => prev.filter((a) => a.experienceId !== experienceId));
   }, []);
 
-  // --- Pantalla de Èxito ----------------------------------------------------
+  // --- Pantalla de √©xito ----------------------------------------------------
   if (submitted) {
     return (
       <PublicLayout>
@@ -189,10 +189,10 @@ export default function BudgetRequest() {
             <div className="w-24 h-24 rounded-full bg-white/10 border border-white/20 flex items-center justify-center mx-auto mb-8">
               <CheckCircle className="w-12 h-12 text-emerald-400" />
             </div>
-            <h2 className="text-5xl font-heading font-bold text-white mb-4">°Perfecto!</h2>
-            <p className="text-xl text-white/75 mb-3 font-display">Tu experiencia est· en camino.</p>
+            <h2 className="text-5xl font-heading font-bold text-white mb-4">¬°Perfecto!</h2>
+            <p className="text-xl text-white/75 mb-3 font-display">Tu experiencia est√° en camino.</p>
             <p className="text-white/55 mb-10 leading-relaxed">
-              Nuestro equipo te enviar· una propuesta personalizada en
+              Nuestro equipo te enviar√° una propuesta personalizada en
               <strong className="text-amber-400"> menos de 24 horas</strong>.
             </p>
             {selectedActivities.length > 0 && (
@@ -202,13 +202,13 @@ export default function BudgetRequest() {
                   <div key={a.experienceId} className="flex items-center gap-2 text-sm text-white/70 mb-1.5">
                     <div className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
                     <span>{a.experienceTitle}</span>
-                    <span className="text-white/35">∑ {a.participants} personas</span>
+                    <span className="text-white/35">¬∑ {a.participants} personas</span>
                   </div>
                 ))}
               </div>
             )}
             <div className="grid grid-cols-3 gap-3 mb-10">
-              {[{ icon: Zap, label: "Respuesta r·pida" }, { icon: Star, label: "A tu medida" }, { icon: Shield, label: "Sin compromiso" }].map(({ icon: Icon, label }) => (
+              {[{ icon: Zap, label: "Respuesta r√°pida" }, { icon: Star, label: "A tu medida" }, { icon: Shield, label: "Sin compromiso" }].map(({ icon: Icon, label }) => (
                 <div key={label} className="bg-white/10 rounded-2xl p-4 border border-white/10 text-center">
                   <Icon className="w-5 h-5 text-amber-400 mx-auto mb-2" />
                   <span className="text-white/60 text-xs">{label}</span>
@@ -216,7 +216,7 @@ export default function BudgetRequest() {
               ))}
             </div>
             <Button asChild className="bg-amber-500 hover:bg-amber-400 text-white font-semibold h-12 px-8 rounded-full">
-              <Link href="/">Explorar m·s experiencias <ArrowRight className="ml-2 w-4 h-4" /></Link>
+              <Link href="/">Explorar m√°s experiencias <ArrowRight className="ml-2 w-4 h-4" /></Link>
             </Button>
           </div>
         </div>
@@ -237,14 +237,14 @@ export default function BudgetRequest() {
       )}
 
       {/* ----------------------------------------------------------------------
-          HERO SPLIT ó Pantalla completa: claim izquierda + formulario derecha
+          HERO SPLIT ‚Äî Pantalla completa: claim izquierda + formulario derecha
       ---------------------------------------------------------------------- */}
       <section className="relative min-h-screen flex items-stretch overflow-hidden">
 
         {/* Fondo aspiracional */}
         <img
           src={HERO_BG}
-          alt="N·yade Experiences"
+          alt="N√°yade Experiences"
           className="absolute inset-0 w-full h-full object-cover object-center"
           style={{ animation: "slowZoom 25s ease-in-out infinite alternate" }}
         />
@@ -259,17 +259,17 @@ export default function BudgetRequest() {
           <div className="flex-1 text-white lg:py-24">
             <span className="inline-flex items-center gap-2 bg-amber-500/90 text-white text-xs font-display font-bold uppercase tracking-widest px-5 py-2 rounded-full mb-6 shadow-lg">
               <Sparkles className="w-3.5 h-3.5" />
-              A 40 min de Madrid ∑ Temporada 2026
+              A 40 min de Madrid ¬∑ Temporada 2026
             </span>
 
             <h1 className="text-4xl md:text-5xl xl:text-6xl font-heading font-black leading-[1.05] mb-5">
-              DiseÒamos<br />
+              Dise√±amos<br />
               <span className="text-amber-400">tu experiencia</span><br />
               perfecta
             </h1>
 
             <p className="text-lg md:text-xl text-white/70 font-display font-light mb-8 leading-relaxed max-w-md">
-              Actividades acu·ticas, relax, escapadas y aventura en el embalse de Los ¡ngeles de San Rafael.
+              Actividades acu√°ticas, relax, escapadas y aventura en el embalse de Los √Ångeles de San Rafael.
             </p>
 
             {/* Chips de tipos */}
@@ -314,8 +314,8 @@ export default function BudgetRequest() {
 
               {/* Encabezado del formulario */}
               <div className="px-7 pt-6 pb-4 border-b border-white/[0.07]">
-                <h2 className="text-white font-heading font-bold text-xl">CuÈntanos quÈ quieres vivir</h2>
-                <p className="text-white/45 text-sm mt-1">Recibir·s tu propuesta en menos de 24h</p>
+                <h2 className="text-white font-heading font-bold text-xl">Cu√©ntanos qu√© quieres vivir</h2>
+                <p className="text-white/45 text-sm mt-1">Recibir√°s tu propuesta en menos de 24h</p>
               </div>
 
               {/* Formulario con scroll interno si es necesario */}
@@ -348,10 +348,10 @@ export default function BudgetRequest() {
                     </div>
                   </div>
 
-                  {/* TelÈfono + Fecha */}
+                  {/* Tel√©fono + Fecha */}
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <Label className="text-white/50 text-xs mb-1.5 block">TelÈfono <span className="text-amber-400">*</span></Label>
+                      <Label className="text-white/50 text-xs mb-1.5 block">Tel√©fono <span className="text-amber-400">*</span></Label>
                       <Input
                         type="tel" value={formData.phone}
                         onChange={(e) => { setFormData({ ...formData, phone: e.target.value }); setErrors({ ...errors, phone: "" }); }}
@@ -384,7 +384,7 @@ export default function BudgetRequest() {
                       />
                     </div>
                     <div>
-                      <Label className="text-white/50 text-xs mb-1.5 block flex items-center gap-1"><Users className="w-3 h-3" /> NiÒos</Label>
+                      <Label className="text-white/50 text-xs mb-1.5 block flex items-center gap-1"><Users className="w-3 h-3" /> Ni√±os</Label>
                       <Input type="number" min="0" max="200" value={formData.children}
                         onChange={(e) => setFormData({ ...formData, children: e.target.value })}
                         className="h-10 bg-white/[0.07] border-white/10 text-white rounded-xl text-sm focus:border-amber-500/50"
@@ -393,9 +393,9 @@ export default function BudgetRequest() {
                     </div>
                   </div>
 
-                  {/* Selector de categorÌa */}
+                  {/* Selector de categor√≠a */}
                   <div>
-                    <Label className="text-white/50 text-xs mb-2 block">øQuÈ quieres vivir? <span className="text-amber-400">*</span></Label>
+                    <Label className="text-white/50 text-xs mb-2 block">¬øQu√© quieres vivir? <span className="text-amber-400">*</span></Label>
                     <div className="flex flex-wrap gap-1.5">
                       {STATIC_CATEGORIES.map((cat) => (
                         <button key={cat.id} type="button" onClick={() => handleCategorySelect(cat.id)}
@@ -412,13 +412,13 @@ export default function BudgetRequest() {
                     {errors.category && <p className="text-red-400 text-xs mt-1.5">{errors.category}</p>}
                   </div>
 
-                  {/* -- Selector de experiencias (m˙ltiple) ------------------- */}
+                  {/* -- Selector de experiencias (m√∫ltiple) ------------------- */}
                   {selectedCategory === "Experiencias" && (
                     <div className="p-3 bg-white/[0.04] border border-white/[0.08] rounded-2xl space-y-3">
                       <p className="text-white/40 text-xs flex items-center gap-1">
                         <ChevronRight className="w-3 h-3 text-amber-400" />
                         Selecciona las actividades <span className="text-amber-400">*</span>
-                        <span className="text-white/25 ml-1">ó puedes elegir varias</span>
+                        <span className="text-white/25 ml-1">‚Äî puedes elegir varias</span>
                       </p>
 
                       {/* Lista de experiencias */}
@@ -447,16 +447,16 @@ export default function BudgetRequest() {
                       {/* Resumen de actividades seleccionadas */}
                       {selectedActivities.length > 0 && (
                         <div className="mt-2 space-y-1.5 border-t border-white/[0.06] pt-2.5">
-                          <p className="text-white/30 text-xs mb-1.5">Actividades aÒadidas:</p>
+                          <p className="text-white/30 text-xs mb-1.5">Actividades a√±adidas:</p>
                           {selectedActivities.map((act) => (
                             <div key={act.experienceId} className="flex items-center justify-between bg-white/[0.06] rounded-xl px-3 py-2">
                               <div className="flex-1 min-w-0">
                                 <span className="text-white/80 text-xs font-medium truncate block">{act.experienceTitle}</span>
                                 <span className="text-white/35 text-xs">
                                   {act.participants} persona{act.participants !== 1 ? "s" : ""}
-                                  {act.details.duracion ? ` ∑ ${act.details.duracion}` : ""}
-                                  {act.details.saltos ? ` ∑ ${act.details.saltos} salto${Number(act.details.saltos) !== 1 ? "s" : ""}` : ""}
-                                  {act.details.tipo ? ` ∑ ${act.details.tipo}` : ""}
+                                  {act.details.duracion ? ` ¬∑ ${act.details.duracion}` : ""}
+                                  {act.details.saltos ? ` ¬∑ ${act.details.saltos} salto${Number(act.details.saltos) !== 1 ? "s" : ""}` : ""}
+                                  {act.details.tipo ? ` ¬∑ ${act.details.tipo}` : ""}
                                 </span>
                               </div>
                               <div className="flex items-center gap-1 ml-2 shrink-0">
@@ -483,7 +483,7 @@ export default function BudgetRequest() {
                     <div className="p-3 bg-white/[0.04] border border-white/[0.08] rounded-2xl">
                       <p className="text-white/40 text-xs mb-2 flex items-center gap-1">
                         <ChevronRight className="w-3 h-3 text-amber-400" />
-                        OpciÛn <span className="text-amber-400">*</span>
+                        Opci√≥n <span className="text-amber-400">*</span>
                       </p>
                       <div className="flex flex-wrap gap-1.5">
                         {products.map((product: string) => (
@@ -521,7 +521,7 @@ export default function BudgetRequest() {
                       onChange={(e) => setFormData({ ...formData, comments: e.target.value })}
                       className="bg-white/[0.07] border-white/10 text-white placeholder:text-white/20 rounded-xl text-sm resize-none focus:border-amber-500/50"
                       rows={2}
-                      placeholder="OcasiÛn especial, preferencias, grupo grandeÖ"
+                      placeholder="Ocasi√≥n especial, preferencias, grupo grande‚Ä¶"
                     />
                   </div>
 
@@ -533,7 +533,7 @@ export default function BudgetRequest() {
                       {submitBudget.isPending ? (
                         <span className="flex items-center gap-2">
                           <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                          Preparando tu propuestaÖ
+                          Preparando tu propuesta‚Ä¶
                         </span>
                       ) : (
                         <span className="flex items-center gap-2">
@@ -543,7 +543,7 @@ export default function BudgetRequest() {
                       )}
                     </Button>
                     <p className="text-white/25 text-xs text-center mt-2.5">
-                      Sin compromiso ∑ Respuesta en &lt;24h ∑{" "}
+                      Sin compromiso ¬∑ Respuesta en &lt;24h ¬∑{" "}
                       <Link href="/privacidad" className="underline hover:text-amber-400">Privacidad</Link>
                     </p>
                   </div>
@@ -555,7 +555,7 @@ export default function BudgetRequest() {
                 <a href={phoneTel} className="flex items-center gap-1.5 hover:text-amber-400 transition-colors">
                   <Phone className="w-3.5 h-3.5" /> {phone}
                 </a>
-                <span className="hidden sm:block text-white/15">∑</span>
+                <span className="hidden sm:block text-white/15">¬∑</span>
                 <a href="mailto:reservas@nayadeexperiences.es" className="flex items-center gap-1.5 hover:text-amber-400 transition-colors">
                   <Mail className="w-3.5 h-3.5" /> reservas@nayadeexperiences.es
                 </a>
@@ -566,15 +566,15 @@ export default function BudgetRequest() {
       </section>
 
       {/* ----------------------------------------------------------------------
-          SECCI”N LIGERA DE BENEFICIOS
+          SECCI√ìN LIGERA DE BENEFICIOS
       ---------------------------------------------------------------------- */}
       <section className="py-14 bg-background border-t border-border/30">
         <div className="container">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6 text-center">
             {[
-              { icon: Zap, title: "Respuesta en 24h", desc: "Propuesta personalizada en menos de un dÌa.", color: "text-amber-500", bg: "bg-amber-500/10" },
-              { icon: Star, title: "100% personalizado", desc: "DiseÒamos la experiencia seg˙n tus necesidades.", color: "text-sky-500", bg: "bg-sky-500/10" },
-              { icon: Shield, title: "Sin compromiso", desc: "Solicita sin ninguna obligaciÛn.", color: "text-emerald-500", bg: "bg-emerald-500/10" },
+              { icon: Zap, title: "Respuesta en 24h", desc: "Propuesta personalizada en menos de un d√≠a.", color: "text-amber-500", bg: "bg-amber-500/10" },
+              { icon: Star, title: "100% personalizado", desc: "Dise√±amos la experiencia seg√∫n tus necesidades.", color: "text-sky-500", bg: "bg-sky-500/10" },
+              { icon: Shield, title: "Sin compromiso", desc: "Solicita sin ninguna obligaci√≥n.", color: "text-emerald-500", bg: "bg-emerald-500/10" },
               { icon: Heart, title: "Para todos", desc: "Parejas, familias, grupos y empresas.", color: "text-rose-500", bg: "bg-rose-500/10" },
             ].map(({ icon: Icon, title, desc, color, bg }) => (
               <div key={title} className="group">

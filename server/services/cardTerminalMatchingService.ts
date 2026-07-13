@@ -230,7 +230,7 @@ async function attemptAutoReconcile(
     confidenceScore: batch.suggestedScore ?? 100,
     matchedBy: "auto-matching",
     matchedAt: new Date(),
-    notes: "ConciliaciÛn autom·tica ó score " + (batch.suggestedScore ?? 0) + "%",
+    notes: "Conciliaci√≥n autom√°tica ‚Äî score " + (batch.suggestedScore ?? 0) + "%",
   });
 
   await db.update(cardTerminalBatches)
@@ -260,7 +260,7 @@ async function attemptAutoReconcile(
   }
 
   await logAudit(db, batch.id, "auto_reconciled", batch.suggestedBankMovementId, batch.suggestedScore, true, "auto-matching",
-    `ConciliaciÛn autom·tica. Score: ${batch.suggestedScore}%. Diferencia: ${diff.toFixed(2)}Ä`);
+    `Conciliaci√≥n autom√°tica. Score: ${batch.suggestedScore}%. Diferencia: ${diff.toFixed(2)}‚Ç¨`);
 
   console.log(`[BatchMatching] Auto-reconciled batch ${batch.id} (${batch.batchDate}) with bm ${batch.suggestedBankMovementId}, score ${batch.suggestedScore}`);
   return true;
@@ -366,7 +366,7 @@ export async function runMatchingJob(): Promise<{ processed: number; suggested: 
 export function startMatchingJob(): void {
   setImmediate(() => {
     runMatchingJob()
-      .then(r => console.log(`[BatchMatching] Boot run ó processed: ${r.processed}, suggested: ${r.suggested}, auto_ready: ${r.autoReady}, auto_reconciled: ${r.autoReconciled}`))
+      .then(r => console.log(`[BatchMatching] Boot run ‚Äî processed: ${r.processed}, suggested: ${r.suggested}, auto_ready: ${r.autoReady}, auto_reconciled: ${r.autoReconciled}`))
       .catch(e => console.error("[BatchMatching] Boot run error:", e));
   });
 
@@ -376,7 +376,7 @@ export function startMatchingJob(): void {
     try {
       const r = await runMatchingJob();
       if (r.processed > 0 || r.errors.length > 0) {
-        console.log(`[BatchMatching] Cron ó processed: ${r.processed}, suggested: ${r.suggested}, auto_reconciled: ${r.autoReconciled}`);
+        console.log(`[BatchMatching] Cron ‚Äî processed: ${r.processed}, suggested: ${r.suggested}, auto_reconciled: ${r.autoReconciled}`);
       }
       if (r.errors.length > 0) console.warn("[BatchMatching] Cron errors:", r.errors);
     } finally {

@@ -31,9 +31,9 @@ const difficultyColors: Record<string, string> = {
 };
 
 const difficultyLabels: Record<string, string> = {
-  facil: "Fácil",
+  facil: "FÃ¡cil",
   moderado: "Moderado",
-  dificil: "Difícil",
+  dificil: "DifÃ­cil",
   experto: "Experto",
 };
 
@@ -72,7 +72,7 @@ export default function ExperienceDetail() {
 
   const submitLead = trpc.public.submitLead.useMutation({
     onSuccess: () => {
-      toast.success("¡Solicitud enviada! Nos pondremos en contacto contigo pronto.");
+      toast.success("Â¡Solicitud enviada! Nos pondremos en contacto contigo pronto.");
       setShowBookingModal(false);
       if (hasConsent) {
         trackEvent('Contact', { content_name: 'Experiencia' }, { email: formData.email, phone: formData.phone }).catch(() => {});
@@ -80,7 +80,7 @@ export default function ExperienceDetail() {
       setFormData({ name: "", email: "", phone: "", date: "", message: "" });
     },
     onError: () => {
-      toast.error("Error al enviar la solicitud. Por favor, inténtalo de nuevo.");
+      toast.error("Error al enviar la solicitud. Por favor, intÃ©ntalo de nuevo.");
     },
   });
 
@@ -104,13 +104,13 @@ export default function ExperienceDetail() {
     ? parseFloat(String(selectedVariant.priceModifier ?? exp?.basePrice ?? "0"))
     : parseFloat(String(exp?.basePrice ?? "0"));
 
-  // Precio "desde": mínimo de todas las variantes (o basePrice si no hay variantes)
+  // Precio "desde": mÃ­nimo de todas las variantes (o basePrice si no hay variantes)
   const minVariantPrice = variants.length > 0
     ? Math.min(...variants.map(v => parseFloat(String(v.priceModifier ?? exp?.basePrice ?? "0"))))
     : parseFloat(String(exp?.basePrice ?? "0"));
   const displayFromPrice = Math.min(minVariantPrice, parseFloat(String(exp?.basePrice ?? "0")));
 
-  // Construir galería desde image1..4 (BD) o gallery (legacy) o fallback estático
+  // Construir galerÃ­a desde image1..4 (BD) o gallery (legacy) o fallback estÃ¡tico
   const dbGallery = [
     (exp as Record<string, unknown> | undefined)?.image1,
     (exp as Record<string, unknown> | undefined)?.image2,
@@ -129,7 +129,7 @@ export default function ExperienceDetail() {
   const unitsNeeded = isPerUnit ? Math.ceil(persons / unitCapacity!) : persons;
   const totalPrice = effectivePricePerPerson * unitsNeeded;
   const priceUnitLabel = isPerUnit ? "unidad" : "persona";
-  const priceSuffix = isPerUnit ? "€/u." : "€/p.";
+  const priceSuffix = isPerUnit ? "â‚¬/u." : "â‚¬/p.";
 
   // Descuento activo en la experiencia
   const discountedFromPrice = getDiscountedPrice(
@@ -177,7 +177,7 @@ export default function ExperienceDetail() {
           <div className="text-center max-w-md">
             <div className="text-6xl mb-4">??</div>
             <h1 className="text-2xl font-bold mb-2">Experiencia no encontrada</h1>
-            <p className="text-muted-foreground mb-6">Esta experiencia no está disponible o ha sido eliminada del catálogo.</p>
+            <p className="text-muted-foreground mb-6">Esta experiencia no estÃ¡ disponible o ha sido eliminada del catÃ¡logo.</p>
             <Link href="/experiencias">
               <Button className="bg-accent hover:bg-accent/90">
                 Ver todas las experiencias
@@ -276,7 +276,7 @@ export default function ExperienceDetail() {
               {exp.minPersons && (
                 <span className="flex items-center gap-2">
                   <Users className="w-4 h-4 text-accent" />
-                  {exp.minPersons}{exp.maxPersons ? `–${exp.maxPersons}` : "+"} personas
+                  {exp.minPersons}{exp.maxPersons ? `â€“${exp.maxPersons}` : "+"} personas
                 </span>
               )}
               <span className="flex items-center gap-2">
@@ -285,13 +285,13 @@ export default function ExperienceDetail() {
               </span>
               <span className="flex items-center gap-2">
                 <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
-                4.9 (124 reseñas)
+                4.9 (124 reseÃ±as)
               </span>
             </div>
 
             {/* Description */}
             <div className="mb-8">
-              <h2 className="text-xl font-display font-semibold text-foreground mb-4">Descripción</h2>
+              <h2 className="text-xl font-display font-semibold text-foreground mb-4">DescripciÃ³n</h2>
               <div className="text-muted-foreground leading-relaxed whitespace-pre-line">
                 {exp.description ?? exp.shortDescription}
               </div>
@@ -356,12 +356,12 @@ export default function ExperienceDetail() {
                   </span>
                   {discountedFromPrice ? (
                     <div className="flex items-baseline gap-2 mt-1">
-                      <span className="text-4xl font-display font-bold text-orange-500">{discountedFromPrice.toFixed(0)}€</span>
-                      <span className="text-lg text-muted-foreground line-through">{displayFromPrice.toFixed(0)}€</span>
+                      <span className="text-4xl font-display font-bold text-orange-500">{discountedFromPrice.toFixed(0)}â‚¬</span>
+                      <span className="text-lg text-muted-foreground line-through">{displayFromPrice.toFixed(0)}â‚¬</span>
                     </div>
                   ) : (
                     <div className="flex items-baseline gap-1.5 mt-1">
-                      <span className="text-4xl font-display font-bold text-foreground">{displayFromPrice.toFixed(0)}€</span>
+                      <span className="text-4xl font-display font-bold text-foreground">{displayFromPrice.toFixed(0)}â‚¬</span>
                       {variants.length > 0 && (
                         <span className="text-xs text-muted-foreground">/ {priceUnitLabel}</span>
                       )}
@@ -381,12 +381,12 @@ export default function ExperienceDetail() {
 
                 {/* Lista de modalidades reales (variantes definidas en admin).
                    Cuando hay variantes, ELLAS son la fuente de verdad de los
-                   precios — no se inyecta una "Estándar" sintética con el
+                   precios â€” no se inyecta una "EstÃ¡ndar" sintÃ©tica con el
                    basePrice porque crea ruido y suele duplicar el precio de
-                   alguna variante (ej. "Adulto 7€" = basePrice). El basePrice
+                   alguna variante (ej. "Adulto 7â‚¬" = basePrice). El basePrice
                    se sigue mostrando arriba como "Precio por persona desde X".
                    Cuando NO hay variantes, este bloque no se renderiza y el
-                   precio único es el basePrice mostrado arriba. */}
+                   precio Ãºnico es el basePrice mostrado arriba. */}
                 {variants.length > 0 && (
                   <div className="mb-5">
                     <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 flex items-center gap-1">
@@ -419,7 +419,7 @@ export default function ExperienceDetail() {
                 {/* Persons Selector */}
                 <div className="mb-5">
                   <Label className="text-sm font-medium text-foreground mb-2 block">
-                    Número de personas
+                    NÃºmero de personas
                   </Label>
                   <div className="flex items-center gap-3">
                     <button
@@ -449,20 +449,20 @@ export default function ExperienceDetail() {
                   <div className="flex items-center justify-between text-sm text-muted-foreground mb-1">
                     <span>
                       {isPerUnit
-                        ? <>{effectivePricePerPerson.toFixed(0)}€ × {unitsNeeded} {unitsNeeded === 1 ? "unidad" : "unidades"} <span className="opacity-60">({persons} pers.)</span></>
-                        : <>{effectivePricePerPerson.toFixed(0)}€ × {persons} personas</>
+                        ? <>{effectivePricePerPerson.toFixed(0)}â‚¬ Ã— {unitsNeeded} {unitsNeeded === 1 ? "unidad" : "unidades"} <span className="opacity-60">({persons} pers.)</span></>
+                        : <>{effectivePricePerPerson.toFixed(0)}â‚¬ Ã— {persons} personas</>
                       }
                       {selectedVariant && <span className="block text-xs text-orange-600">{selectedVariant.name}</span>}
                     </span>
-                    <span>{totalPrice.toFixed(0)}€</span>
+                    <span>{totalPrice.toFixed(0)}â‚¬</span>
                   </div>
                   <div className="flex items-center justify-between font-display font-bold text-foreground">
                     <span>Total estimado</span>
-                    <span className="text-xl text-accent">{totalPrice.toFixed(0)}€</span>
+                    <span className="text-xl text-accent">{totalPrice.toFixed(0)}â‚¬</span>
                   </div>
                 </div>
 
-                {/* Selector de horarios (time slots) — solo si el producto los tiene configurados */}
+                {/* Selector de horarios (time slots) â€” solo si el producto los tiene configurados */}
                 {hasTimeSlotsEnabled && timeSlots.length > 0 && (
                   <div className="mb-5">
                     <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 flex items-center gap-1">
@@ -486,7 +486,7 @@ export default function ExperienceDetail() {
                             >
                               <span className="block text-xs font-medium">{slot.label}</span>
                               {slot.startTime && slot.endTime && (
-                                <span className="text-xs opacity-70">{slot.startTime}–{slot.endTime}</span>
+                                <span className="text-xs opacity-70">{slot.startTime}â€“{slot.endTime}</span>
                               )}
                             </button>
                           ))}
@@ -521,12 +521,12 @@ export default function ExperienceDetail() {
                             <span className="block text-xs font-medium">{slot.label}</span>
                             {slot.startTime && (
                               <span className="text-xs opacity-70">
-                                {slot.startTime}{slot.endTime ? `–${slot.endTime}` : ""}
+                                {slot.startTime}{slot.endTime ? `â€“${slot.endTime}` : ""}
                               </span>
                             )}
                             {slot.priceOverride && (
                               <span className="block text-xs text-orange-600 font-bold mt-0.5">
-                                {parseFloat(slot.priceOverride).toFixed(0)}€/p.
+                                {parseFloat(slot.priceOverride).toFixed(0)}â‚¬/p.
                               </span>
                             )}
                           </button>
@@ -550,20 +550,20 @@ export default function ExperienceDetail() {
                     className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary"
                   />
                 </div>
-                {/* CTA principal: Añadir al carrito (único botón de compra) */}
+                {/* CTA principal: AÃ±adir al carrito (Ãºnico botÃ³n de compra) */}
                 {exp.basePrice && parseFloat(String(exp?.basePrice ?? "0")) > 0 ? (
                   <Button
                     onClick={() => {
                       if (!selectedDate) {
-                        toast.info("Selecciona una fecha antes de añadir al carrito");
+                        toast.info("Selecciona una fecha antes de aÃ±adir al carrito");
                         return;
                       }
                       if (variants.some(v => v.isRequired) && selectedVariantId === undefined) {
-                        toast.info("Selecciona una modalidad antes de añadir al carrito");
+                        toast.info("Selecciona una modalidad antes de aÃ±adir al carrito");
                         return;
                       }
                       if (hasTimeSlotsEnabled && timeSlots.length > 0 && !selectedTimeSlotId) {
-                        toast.info("Selecciona un horario antes de añadir al carrito");
+                        toast.info("Selecciona un horario antes de aÃ±adir al carrito");
                         return;
                       }
                       if (hasTimeSlotsEnabled && slotType === "flexible" && selectedTimeSlotId && !selectedTime) {
@@ -597,7 +597,7 @@ export default function ExperienceDetail() {
                     style={{ background: 'linear-gradient(135deg, #f97316, #f59e0b)', color: '#fff' }}
                   >
                     <ShoppingCart className="mr-2 w-4 h-4" />
-                    Añadir al carrito
+                    AÃ±adir al carrito
                   </Button>
                 ) : null}
                 {/* CTA secundario: Solicitar Presupuesto ? /presupuesto */}
@@ -621,7 +621,7 @@ export default function ExperienceDetail() {
                   </div>
                   <div className="flex items-center gap-3 text-sm text-muted-foreground">
                     <Shield className="w-4 h-4 text-accent shrink-0" />
-                    <span>Cancelación gratuita hasta 48h antes</span>
+                    <span>CancelaciÃ³n gratuita hasta 48h antes</span>
                   </div>
                 </div>
               </div>
@@ -649,7 +649,7 @@ export default function ExperienceDetail() {
                 />
               </div>
               <div>
-                <Label htmlFor="phone">Teléfono</Label>
+                <Label htmlFor="phone">TelÃ©fono</Label>
                 <Input
                   id="phone"
                   value={formData.phone}
@@ -685,7 +685,7 @@ export default function ExperienceDetail() {
                 id="message"
                 value={formData.message}
                 onChange={(e) => setFormData({ ...formData, message: e.target.value })}
-                placeholder="Cuéntanos más sobre tu grupo o necesidades especiales..."
+                placeholder="CuÃ©ntanos mÃ¡s sobre tu grupo o necesidades especiales..."
                 className="mt-1"
                 rows={3}
               />
@@ -693,7 +693,7 @@ export default function ExperienceDetail() {
             <div className="bg-muted/50 rounded-lg p-3 text-sm">
               <div className="flex justify-between font-semibold">
                 <span>Total estimado ({persons} personas)</span>
-                <span className="text-accent">{totalPrice.toFixed(0)}€</span>
+                <span className="text-accent">{totalPrice.toFixed(0)}â‚¬</span>
               </div>
             </div>
             <Button
@@ -704,13 +704,13 @@ export default function ExperienceDetail() {
               {isSubmitting ? "Enviando..." : "Confirmar Solicitud"}
             </Button>
             <p className="text-xs text-muted-foreground text-center">
-              Recibirás confirmación por email. Nuestro equipo se pondrá en contacto contigo.
+              RecibirÃ¡s confirmaciÃ³n por email. Nuestro equipo se pondrÃ¡ en contacto contigo.
             </p>
           </form>
         </DialogContent>
       </Dialog>
 
-      {/* Reseñas de clientes */}
+      {/* ReseÃ±as de clientes */}
       {dbExp && (
         <section className="py-12 bg-muted border-t border-border">
           <div className="container max-w-5xl">

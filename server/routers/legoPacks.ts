@@ -1,7 +1,7 @@
 /**
  * Lego Packs Router
- * Gestión de packs compuestos preconfigurados por el administrador.
- * El cliente solo puede activar/desactivar líneas opcionales.
+ * GestiÃ³n de packs compuestos preconfigurados por el administrador.
+ * El cliente solo puede activar/desactivar lÃ­neas opcionales.
  */
 import { z } from "zod";
 import { router, protectedProcedure, adminProcedure, publicProcedure } from "../_core/trpc";
@@ -289,12 +289,12 @@ export const legoPacksRouter = router({
         ))
         .orderBy(asc(legoPacks.sortOrder));
 
-      // Calcular precio mínimo para cada pack (solo líneas requeridas activas)
+      // Calcular precio mÃ­nimo para cada pack (solo lÃ­neas requeridas activas)
       const withPricing = await Promise.all(
         packsList.map(async (pack) => {
           try {
             const pricing = await calculateLegoPackPrice(pack.id);
-            // Precio mínimo = total de líneas requeridas con descuento
+            // Precio mÃ­nimo = total de lÃ­neas requeridas con descuento
             const minPrice = pricing.totalFinal > 0 ? pricing.totalFinal : null;
             return { ...pack, minPrice };
           } catch {
@@ -520,7 +520,7 @@ export const legoPacksRouter = router({
       return rows;
     }),
 
-  // -- Auditoría completa de configuración ----------------------------------
+  // -- AuditorÃ­a completa de configuraciÃ³n ----------------------------------
   audit: adminProcedure
     .query(async () => {
       const allPacks = await db.select().from(legoPacks).orderBy(asc(legoPacks.sortOrder));
@@ -568,17 +568,17 @@ export const legoPacksRouter = router({
 
         // -- Pack-level checks ------------------------------------------------
         if (!pack.isActive) errors.push("Pack desactivado (isActive=false)");
-        if (!pack.isPublished) warnings.push("No publicado — invisible en la web pública");
-        if (!pack.isOnlineSale && !pack.isPresentialSale) errors.push("Sin canal de venta: ni isOnlineSale ni isPresentialSale están activos");
-        else if (!pack.isOnlineSale && pack.isPresentialSale) warnings.push("Solo venta presencial (isOnlineSale=false) — no aparece en web");
-        if (!pack.coverImageUrl) warnings.push("Sin imagen de portada (coverImageUrl vacío)");
-        if (!pack.shortDescription && !pack.description) warnings.push("Sin descripción (ni shortDescription ni description)");
-        if (!pack.priceLabel) warnings.push("Sin etiqueta de precio (priceLabel vacío) — el listado público no mostrará precio orientativo");
-        if (packLines.length === 0) errors.push("Sin líneas configuradas — no se puede vender");
-        else if (activePackLines.length === 0) errors.push("Todas las líneas están desactivadas — precio total = 0€");
+        if (!pack.isPublished) warnings.push("No publicado â€” invisible en la web pÃºblica");
+        if (!pack.isOnlineSale && !pack.isPresentialSale) errors.push("Sin canal de venta: ni isOnlineSale ni isPresentialSale estÃ¡n activos");
+        else if (!pack.isOnlineSale && pack.isPresentialSale) warnings.push("Solo venta presencial (isOnlineSale=false) â€” no aparece en web");
+        if (!pack.coverImageUrl) warnings.push("Sin imagen de portada (coverImageUrl vacÃ­o)");
+        if (!pack.shortDescription && !pack.description) warnings.push("Sin descripciÃ³n (ni shortDescription ni description)");
+        if (!pack.priceLabel) warnings.push("Sin etiqueta de precio (priceLabel vacÃ­o) â€” el listado pÃºblico no mostrarÃ¡ precio orientativo");
+        if (packLines.length === 0) errors.push("Sin lÃ­neas configuradas â€” no se puede vender");
+        else if (activePackLines.length === 0) errors.push("Todas las lÃ­neas estÃ¡n desactivadas â€” precio total = 0â‚¬");
 
         if (pack.discountPercent && pack.discountExpiresAt && new Date(pack.discountExpiresAt) < now) {
-          warnings.push(`Descuento del ${pack.discountPercent}% configurado pero caducó el ${new Date(pack.discountExpiresAt).toLocaleDateString("es-ES")}`);
+          warnings.push(`Descuento del ${pack.discountPercent}% configurado pero caducÃ³ el ${new Date(pack.discountExpiresAt).toLocaleDateString("es-ES")}`);
         }
 
         // -- Line-level checks ------------------------------------------------
@@ -594,9 +594,9 @@ export const legoPacksRouter = router({
           const sourceName = src?.title ?? "(producto no encontrado)";
 
           if (!src) {
-            lineErrors.push(`Producto origen no existe (${line.sourceType} id=${line.sourceId}) — HUÉRFANO`);
+            lineErrors.push(`Producto origen no existe (${line.sourceType} id=${line.sourceId}) â€” HUÃ‰RFANO`);
           } else {
-            if (!src.isActive) lineErrors.push(`Producto origen "${src.title}" está desactivado`);
+            if (!src.isActive) lineErrors.push(`Producto origen "${src.title}" estÃ¡ desactivado`);
           }
 
           const rawBase = parseFloat(src?.basePrice ?? "0");
@@ -608,20 +608,20 @@ export const legoPacksRouter = router({
           const finalPrice = basePrice * qty - discAmt;
 
           if (basePrice === 0 && line.isActive) {
-            lineErrors.push("Sin precio: ni el producto origen tiene basePrice > 0 ni hay overridePrice ? se venderá a 0€");
+            lineErrors.push("Sin precio: ni el producto origen tiene basePrice > 0 ni hay overridePrice ? se venderÃ¡ a 0â‚¬");
           }
 
           if (line.isRequired && line.isOptional) {
-            lineErrors.push("Flags contradictorios: isRequired=true AND isOptional=true simultáneamente");
+            lineErrors.push("Flags contradictorios: isRequired=true AND isOptional=true simultÃ¡neamente");
           }
           if (!line.isRequired && !line.isOptional) {
-            lineWarnings.push("Ni required ni optional: la línea existe pero no tiene rol definido para el cliente");
+            lineWarnings.push("Ni required ni optional: la lÃ­nea existe pero no tiene rol definido para el cliente");
           }
           if (line.isRequired && !line.isClientVisible) {
-            lineWarnings.push("Línea obligatoria oculta al cliente (isRequired=true + isClientVisible=false)");
+            lineWarnings.push("LÃ­nea obligatoria oculta al cliente (isRequired=true + isClientVisible=false)");
           }
           if (line.isActive && pack.availabilityMode === "strict" && src && !src.isActive) {
-            errors.push(`Modo strict + producto de línea "${src.title}" desactivado ? pack NUNCA disponible`);
+            errors.push(`Modo strict + producto de lÃ­nea "${src.title}" desactivado ? pack NUNCA disponible`);
           }
 
           if (line.isActive) {
@@ -639,7 +639,7 @@ export const legoPacksRouter = router({
         }
 
         if (activePackLines.length > 0 && !anyActiveLineHasPrice) {
-          errors.push("Ninguna línea activa tiene precio configurado ? el pack se vendería a 0€");
+          errors.push("Ninguna lÃ­nea activa tiene precio configurado ? el pack se venderÃ­a a 0â‚¬");
         }
 
         // -- Sellability final verdict ----------------------------------------

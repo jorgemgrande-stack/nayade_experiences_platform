@@ -1,6 +1,6 @@
 /**
  * Router: Suppliers & Settlements (Liquidaciones Proveedores)
- * MÛdulo v7.0 ó GestiÛn completa de proveedores y liquidaciones
+ * M√≥dulo v7.0 ‚Äî Gesti√≥n completa de proveedores y liquidaciones
  */
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
@@ -73,13 +73,13 @@ async function generateSettlementPdfAndUpload(data: {
 }): Promise<{ url: string; key: string }> {
   const lineRows = data.lines.map((l) => `
     <tr>
-      <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;">${l.productName ?? "ó"}</td>
-      <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:center;">${l.serviceDate ?? "ó"}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;">${l.productName ?? "‚Äî"}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:center;">${l.serviceDate ?? "‚Äî"}</td>
       <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:center;">${l.paxCount}</td>
-      <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:right;">${parseFloat(l.saleAmount).toFixed(2)} Ä</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:right;">${parseFloat(l.saleAmount).toFixed(2)} ‚Ç¨</td>
       <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:right;">${parseFloat(l.commissionPercent).toFixed(2)}%</td>
-      <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:right;">${parseFloat(l.commissionAmount).toFixed(2)} Ä</td>
-      <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:600;">${parseFloat(l.netAmountProvider).toFixed(2)} Ä</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:right;">${parseFloat(l.commissionAmount).toFixed(2)} ‚Ç¨</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:600;">${parseFloat(l.netAmountProvider).toFixed(2)} ‚Ç¨</td>
     </tr>`).join("");
 
   const html = `<!DOCTYPE html>
@@ -125,20 +125,20 @@ async function generateSettlementPdfAndUpload(data: {
 <body>
   <div class="doc-header">
     <div class="logo-block">
-      <img src="https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/logo-nayade_20a42bc4.jpg" alt="N·yade" />
+      <img src="https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/logo-nayade_20a42bc4.jpg" alt="N√°yade" />
       <div class="brand-text">
-        <div class="brand-name">N·yade</div>
+        <div class="brand-name">N√°yade</div>
         <div class="brand-sub">Experiences</div>
       </div>
     </div>
     <div class="company-info">
-      <strong>${data.companyData?.name ?? "N·yade Experiences S.L."}</strong>
-      ${data.companyData?.address ?? "Los ¡ngeles de San Rafael, Segovia"}<br/>
+      <strong>${data.companyData?.name ?? "N√°yade Experiences S.L."}</strong>
+      ${data.companyData?.address ?? "Los √Ångeles de San Rafael, Segovia"}<br/>
       ${data.companyData?.email ?? "reservas@nayadeexperiences.es"} &middot; ${data.companyData?.phone ?? "+34 639 57 66 27"}
     </div>
   </div>
   <div class="doc-type-band">
-    <span class="doc-label">LiquidaciÛn de Proveedor</span>
+    <span class="doc-label">Liquidaci√≥n de Proveedor</span>
     <span class="doc-ref">${data.settlementNumber} &nbsp;&middot;&nbsp; ${data.issuedAt.toLocaleDateString("es-ES")}</span>
   </div>
 
@@ -146,8 +146,8 @@ async function generateSettlementPdfAndUpload(data: {
   <div class="parties">
     <div class="party">
       <h3>Emisor</h3>
-      <p><strong>${data.companyData?.name ?? "N·yade Experiences S.L."}</strong><br/>
-      ${data.companyData?.address ?? "Los ¡ngeles de San Rafael, Segovia"}<br/>
+      <p><strong>${data.companyData?.name ?? "N√°yade Experiences S.L."}</strong><br/>
+      ${data.companyData?.address ?? "Los √Ångeles de San Rafael, Segovia"}<br/>
       CIF: ${data.companyData?.cif ?? ""}</p>
     </div>
     <div class="party">
@@ -160,7 +160,7 @@ async function generateSettlementPdfAndUpload(data: {
   </div>
 
   <div class="period-badge">
-    PerÌodo de liquidaciÛn: <strong>${data.periodFrom}</strong> &mdash; <strong>${data.periodTo}</strong>
+    Per√≠odo de liquidaci√≥n: <strong>${data.periodFrom}</strong> &mdash; <strong>${data.periodTo}</strong>
   </div>
 
   <table>
@@ -170,8 +170,8 @@ async function generateSettlementPdfAndUpload(data: {
         <th style="text-align:center">Fecha</th>
         <th style="text-align:center">Pax</th>
         <th style="text-align:right">Venta bruta</th>
-        <th style="text-align:right">ComisiÛn %</th>
-        <th style="text-align:right">ComisiÛn Ä</th>
+        <th style="text-align:right">Comisi√≥n %</th>
+        <th style="text-align:right">Comisi√≥n ‚Ç¨</th>
         <th style="text-align:right">Neto proveedor</th>
       </tr>
     </thead>
@@ -179,29 +179,29 @@ async function generateSettlementPdfAndUpload(data: {
   </table>
 
   <div class="totals-wrap"><table class="totals">
-    <tr><td>Total venta bruta</td><td>${parseFloat(data.grossAmount).toFixed(2)} Ä</td></tr>
-    <tr><td>Total comisiÛn agencia</td><td>- ${parseFloat(data.commissionAmount).toFixed(2)} Ä</td></tr>
-    <tr class="total-row"><td>NETO A ABONAR AL PROVEEDOR</td><td>${parseFloat(data.netAmountProvider).toFixed(2)} Ä</td></tr>
+    <tr><td>Total venta bruta</td><td>${parseFloat(data.grossAmount).toFixed(2)} ‚Ç¨</td></tr>
+    <tr><td>Total comisi√≥n agencia</td><td>- ${parseFloat(data.commissionAmount).toFixed(2)} ‚Ç¨</td></tr>
+    <tr class="total-row"><td>NETO A ABONAR AL PROVEEDOR</td><td>${parseFloat(data.netAmountProvider).toFixed(2)} ‚Ç¨</td></tr>
   </table></div>
 
   ${data.internalNotes ? `<div class="notes"><strong>Notas:</strong> ${data.internalNotes}</div>` : ""}
 
   </div>
   <div class="footer">
-    <p>${data.companyData?.name ?? "N·yade Experiences S.L."} &middot; www.skicenter.es</p>
-    <p>Documento de liquidaciÛn de servicios prestados por el proveedor durante el perÌodo indicado.</p>
+    <p>${data.companyData?.name ?? "N√°yade Experiences S.L."} &middot; www.skicenter.es</p>
+    <p>Documento de liquidaci√≥n de servicios prestados por el proveedor durante el per√≠odo indicado.</p>
   </div>
 </body>
 </html>`;
 
-  // Generar PDF con puppeteer-core (funciona en producciÛn desplegada)
+  // Generar PDF con puppeteer-core (funciona en producci√≥n desplegada)
   try {
     const pdfBuffer = await htmlToPdf(html);
     const key = `settlements/${data.settlementNumber}-${Date.now()}.pdf`;
     const { url } = await storagePut(key, pdfBuffer, "application/pdf");
     return { url, key };
   } catch (pdfErr) {
-    console.error("[PDF] Error generando liquidaciÛn PDF, guardando HTML como fallback:", pdfErr);
+    console.error("[PDF] Error generando liquidaci√≥n PDF, guardando HTML como fallback:", pdfErr);
     // Fallback: guardar HTML
     const key = `settlements/${data.settlementNumber}-${Date.now()}.html`;
     const { url } = await storagePut(key, Buffer.from(html), "text/html");
@@ -236,7 +236,7 @@ const supplierSchema = z.object({
   iban: z.string().optional(),
   paymentMethod: z.enum(["transferencia", "confirming", "efectivo", "compensacion"]).default("transferencia"),
   standardCommissionPercent: z.number().min(0).max(100).default(0),
-  // ConfiguraciÛn de liquidaciones
+  // Configuraci√≥n de liquidaciones
   settlementFrequency: z.enum(["quincenal", "mensual", "trimestral", "semestral", "anual", "manual"]).default("manual"),
   settlementDayOfMonth: z.number().int().min(1).max(28).default(1),
   autoGenerateSettlements: z.boolean().default(false),
@@ -359,7 +359,7 @@ export const suppliersRouter = router({
       const freq = supplier.settlementFrequency;
       const dayOfMonth = supplier.settlementDayOfMonth ?? 1;
 
-      // Obtener la ˙ltima liquidaciÛn del proveedor
+      // Obtener la √∫ltima liquidaci√≥n del proveedor
       const lastSettlements = await db
         .select({ periodTo: supplierSettlements.periodTo })
         .from(supplierSettlements)
@@ -370,14 +370,14 @@ export const suppliersRouter = router({
       const today = new Date();
       const todayStr = today.toISOString().split("T")[0];
 
-      // AritmÈtica de fechas sin zona horaria (opera sobre partes YYYY-MM-DD)
+      // Aritm√©tica de fechas sin zona horaria (opera sobre partes YYYY-MM-DD)
       function _dateAddDays(dateStr: string, days: number): string {
         const [y, m, d] = dateStr.split("-").map(Number);
         const dt = new Date(Date.UTC(y, m - 1, d + days));
         return dt.toISOString().split("T")[0];
       }
       function _lastDayOfMonth(y: number, m: number): string {
-        // Date.UTC(y, m, 0) = ˙ltimo dÌa del mes m (1-indexed)
+        // Date.UTC(y, m, 0) = √∫ltimo d√≠a del mes m (1-indexed)
         const dt = new Date(Date.UTC(y, m, 0));
         return dt.toISOString().split("T")[0];
       }
@@ -411,28 +411,28 @@ export const suppliersRouter = router({
       // Determinar inicio del primer periodo pendiente
       let currentFrom: string;
       if (lastSettlements.length > 0) {
-        // El siguiente periodo empieza el dÌa despuÈs del ˙ltimo periodTo
+        // El siguiente periodo empieza el d√≠a despu√©s del √∫ltimo periodTo
         const lastTo = new Date(lastSettlements[0].periodTo + "T00:00:00Z");
         lastTo.setDate(lastTo.getDate() + 1);
         currentFrom = lastTo.toISOString().split("T")[0];
       } else {
-        // Sin liquidaciones previas: empezar desde el primer dÌa del mes actual
+        // Sin liquidaciones previas: empezar desde el primer d√≠a del mes actual
         const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
         currentFrom = firstDay.toISOString().split("T")[0];
       }
 
-      // Calcular hasta m·ximo 12 periodos pendientes (hasta hoy)
+      // Calcular hasta m√°ximo 12 periodos pendientes (hasta hoy)
       const pendingPeriods: { from: string; to: string }[] = [];
       let iterations = 0;
       while (iterations < 24) {
         const periodTo = getPeriodEnd(currentFrom, freq);
-        if (periodTo > todayStr) break; // El periodo no ha terminado a˙n
+        if (periodTo > todayStr) break; // El periodo no ha terminado a√∫n
         pendingPeriods.push({ from: currentFrom, to: periodTo });
         currentFrom = addPeriod(currentFrom, freq);
         iterations++;
       }
 
-      // PrÛximo periodo futuro
+      // Pr√≥ximo periodo futuro
       const nextPeriodFrom = currentFrom;
       const nextPeriodTo = getPeriodEnd(currentFrom, freq);
 
@@ -449,12 +449,12 @@ export const suppliersRouter = router({
         throw new TRPCError({ code: "BAD_REQUEST", message: "Este proveedor tiene periodicidad manual. Crea las liquidaciones manualmente." });
       }
 
-      // Reutilizar la lÛgica de getNextPeriods para calcular periodos pendientes
+      // Reutilizar la l√≥gica de getNextPeriods para calcular periodos pendientes
       const freq = supplier.settlementFrequency;
       const today = new Date();
       const todayStr = today.toISOString().split("T")[0];
 
-      // AritmÈtica de fechas sin zona horaria
+      // Aritm√©tica de fechas sin zona horaria
       function _dateAddDays2(dateStr: string, days: number): string {
         const [y, m, d] = dateStr.split("-").map(Number);
         return new Date(Date.UTC(y, m - 1, d + days)).toISOString().split("T")[0];
@@ -516,7 +516,7 @@ export const suppliersRouter = router({
         return { created: 0, message: "No hay periodos pendientes de liquidar." };
       }
 
-      // Crear una liquidaciÛn borrador por cada periodo pendiente
+      // Crear una liquidaci√≥n borrador por cada periodo pendiente
       const created: string[] = [];
       for (const period of pendingPeriods) {
         const settlementNumber = await generateSettlementNumber(String(ctx.user.id));
@@ -529,12 +529,12 @@ export const suppliersRouter = router({
           grossAmount: "0.00",
           commissionAmount: "0.00",
           netAmountProvider: "0.00",
-          internalNotes: `Generada autom·ticamente (${freq})`,
+          internalNotes: `Generada autom√°ticamente (${freq})`,
         });
         created.push(settlementNumber);
       }
 
-      return { created: created.length, settlementNumbers: created, message: `${created.length} liquidaciÛn(es) creada(s) correctamente.` };
+      return { created: created.length, settlementNumbers: created, message: `${created.length} liquidaci√≥n(es) creada(s) correctamente.` };
     }),
 
   // -- Get products linked to supplier -----------------------------------------
@@ -611,27 +611,27 @@ export const suppliersRouter = router({
       const inviteUrl = `${origin}/supplier/activar?token=${token}`;
       await sendEmail({
         to: email,
-        subject: "InvitaciÛn al portal de proveedores ó Skicenter",
+        subject: "Invitaci√≥n al portal de proveedores ‚Äî Skicenter",
         html: `
           <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px;">
             <h2 style="color:#ea580c">Portal de Proveedores</h2>
             <p>Hola <strong>${name}</strong>,</p>
-            <p>Has sido invitado al portal de proveedores de <strong>Skicenter</strong>, donde podr·s ver las ventas de tus productos por todos los canales y tus liquidaciones.</p>
+            <p>Has sido invitado al portal de proveedores de <strong>Skicenter</strong>, donde podr√°s ver las ventas de tus productos por todos los canales y tus liquidaciones.</p>
             <p style="margin:24px 0">
               <a href="${inviteUrl}" style="background:#ea580c;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold">Activar mi cuenta</a>
             </p>
-            <p style="color:#666;font-size:13px">Este enlace caduca en 7 dÌas.</p>
+            <p style="color:#666;font-size:13px">Este enlace caduca en 7 d√≠as.</p>
           </div>`,
       }).catch(() => {});
       return { ok: true, email };
     }),
 
-  // -- P⁄BLICO: activar cuenta de proveedor por token (fijar contraseÒa) ----------
+  // -- P√öBLICO: activar cuenta de proveedor por token (fijar contrase√±a) ----------
   activateSupplierInvite: publicProcedure
-    .input(z.object({ token: z.string(), password: z.string().min(6, "MÌnimo 6 caracteres") }))
+    .input(z.object({ token: z.string(), password: z.string().min(6, "M√≠nimo 6 caracteres") }))
     .mutation(async ({ input }) => {
       const user = await getUserByInviteToken(input.token);
-      if (!user) throw new TRPCError({ code: "NOT_FOUND", message: "Enlace inv·lido o ya utilizado" });
+      if (!user) throw new TRPCError({ code: "NOT_FOUND", message: "Enlace inv√°lido o ya utilizado" });
       if (user.inviteTokenExpiry && new Date() > user.inviteTokenExpiry) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "El enlace ha expirado. Pide uno nuevo al administrador." });
       }
@@ -722,7 +722,7 @@ export const settlementsRouter = router({
         .leftJoin(suppliers, eq(supplierSettlements.supplierId, suppliers.id))
         .where(eq(supplierSettlements.id, input.id));
 
-      if (!settlement) throw new TRPCError({ code: "NOT_FOUND", message: "LiquidaciÛn no encontrada" });
+      if (!settlement) throw new TRPCError({ code: "NOT_FOUND", message: "Liquidaci√≥n no encontrada" });
 
       const lines = await db
         .select()
@@ -968,7 +968,7 @@ export const settlementsRouter = router({
           }
         }
 
-        // If no invoice, try to match via quote items (presupuesto multi-lÌnea)
+        // If no invoice, try to match via quote items (presupuesto multi-l√≠nea)
         if (res.quoteId) {
           const [quoteRow] = await db
             .select({ items: quotes.items })
@@ -1112,7 +1112,7 @@ export const settlementsRouter = router({
         toStatus: "emitida",
         changedBy: ctx.user.id,
         changedByName: ctx.user.name ?? "Admin",
-        notes: "LiquidaciÛn creada",
+        notes: "Liquidaci√≥n creada",
       });
 
       return { id: settlementId, settlementNumber };
@@ -1416,7 +1416,7 @@ export const settlementsRouter = router({
         }
 
         // SOURCE 4: Liquidaciones de plataformas externas (Groupon, Smartbox, etc.) pagadas en el periodo
-        // VinculaciÛn: platform_settlements.paidAt en periodo + cupÛn.productRealId o platformProductId.experienceId del proveedor
+        // Vinculaci√≥n: platform_settlements.paidAt en periodo + cup√≥n.productRealId o platformProductId.experienceId del proveedor
         const paidPlatformSettlements = await db
           .select()
           .from(platformSettlements)
@@ -1427,7 +1427,7 @@ export const settlementsRouter = router({
           ));
 
         for (const ps of paidPlatformSettlements) {
-          // Obtener los cupones de esta liquidaciÛn de plataforma
+          // Obtener los cupones de esta liquidaci√≥n de plataforma
           const couponIds = (ps.couponIds as number[]) ?? [];
           if (couponIds.length === 0) continue;
 
@@ -1473,7 +1473,7 @@ export const settlementsRouter = router({
               reservationId: coupon.reservationId ?? undefined,
               productId: match.id,
               productName: coupon.couponCode
-                ? `[CupÛn ${coupon.provider ?? "Plataforma"} ${coupon.couponCode}] ${match.title}`
+                ? `[Cup√≥n ${coupon.provider ?? "Plataforma"} ${coupon.couponCode}] ${match.title}`
                 : match.title,
               serviceDate: typeof serviceDate === "string" ? serviceDate.slice(0, 10) : periodFrom,
               paxCount: coupon.participants ?? 1,
@@ -1530,7 +1530,7 @@ export const settlementsRouter = router({
         toStatus: "recalculada",
         changedBy: ctx.user.id,
         changedByName: ctx.user.name ?? "Admin",
-        notes: `Recalculada: ${newLines.length} lÌneas generadas`,
+        notes: `Recalculada: ${newLines.length} l√≠neas generadas`,
       });
 
       return { ok: true, linesCount: newLines.length, grossAmount, commissionAmount, netAmountProvider };
@@ -1624,7 +1624,7 @@ export const settlementsRouter = router({
     const bySupplier: Record<number, { name: string; gross: number; commission: number; count: number }> = {};
     for (const r of all) {
       if (!bySupplier[r.supplierId]) {
-        bySupplier[r.supplierId] = { name: r.supplierName ?? "ó", gross: 0, commission: 0, count: 0 };
+        bySupplier[r.supplierId] = { name: r.supplierName ?? "‚Äî", gross: 0, commission: 0, count: 0 };
       }
       bySupplier[r.supplierId].gross += parseFloat(r.grossAmount ?? "0");
       bySupplier[r.supplierId].commission += parseFloat(r.commissionAmount ?? "0");
@@ -1685,16 +1685,16 @@ export const settlementsRouter = router({
         .where(sql`\`key\` IN ('legalCompanyName','legalCompanyCif','legalCompanyAddress','legalCompanyEmail','legalCompanyPhone')`);
       const s: Record<string, string> = Object.fromEntries(settingsRows.map(r => [r.key, r.value ?? ""]));
       const companyData = {
-        name: s.legalCompanyName || "N·yade Experiences S.L.",
+        name: s.legalCompanyName || "N√°yade Experiences S.L.",
         cif: s.legalCompanyCif || "",
-        address: s.legalCompanyAddress || "Los ¡ngeles de San Rafael, Segovia",
+        address: s.legalCompanyAddress || "Los √Ångeles de San Rafael, Segovia",
         email: s.legalCompanyEmail || "reservas@nayadeexperiences.es",
         phone: s.legalCompanyPhone || "+34 639 57 66 27",
       };
 
       const { url, key } = await generateSettlementPdfAndUpload({
         settlementNumber: settlement.settlementNumber,
-        supplierName: settlement.supplierName ?? "ó",
+        supplierName: settlement.supplierName ?? "‚Äî",
         supplierNif: settlement.supplierNif,
         supplierAddress: settlement.supplierAddress,
         supplierIban: settlement.supplierIban,
@@ -1755,15 +1755,15 @@ export const settlementsRouter = router({
 
       await sendEmail({
         to: toEmail,
-        subject: `LiquidaciÛn ${settlement.settlementNumber} ó N·yade Experiences`,
+        subject: `Liquidaci√≥n ${settlement.settlementNumber} ‚Äî N√°yade Experiences`,
         html: `
-          <h2>LiquidaciÛn de servicios</h2>
+          <h2>Liquidaci√≥n de servicios</h2>
           <p>Estimado/a ${settlement.supplierName},</p>
-          <p>Adjuntamos la liquidaciÛn <strong>${settlement.settlementNumber}</strong> correspondiente al periodo <strong>${settlement.periodFrom} ó ${settlement.periodTo}</strong>.</p>
-          <p>Importe neto a abonar: <strong>${parseFloat(settlement.netAmountProvider ?? "0").toFixed(2)} Ä</strong></p>
-          ${settlement.pdfUrl ? `<p><a href="${settlement.pdfUrl}">Descargar liquidaciÛn en PDF</a></p>` : ""}
-          <p>Gracias por su colaboraciÛn.</p>
-          <p>N·yade Experiences</p>
+          <p>Adjuntamos la liquidaci√≥n <strong>${settlement.settlementNumber}</strong> correspondiente al periodo <strong>${settlement.periodFrom} ‚Äî ${settlement.periodTo}</strong>.</p>
+          <p>Importe neto a abonar: <strong>${parseFloat(settlement.netAmountProvider ?? "0").toFixed(2)} ‚Ç¨</strong></p>
+          ${settlement.pdfUrl ? `<p><a href="${settlement.pdfUrl}">Descargar liquidaci√≥n en PDF</a></p>` : ""}
+          <p>Gracias por su colaboraci√≥n.</p>
+          <p>N√°yade Experiences</p>
         `,
       });
 

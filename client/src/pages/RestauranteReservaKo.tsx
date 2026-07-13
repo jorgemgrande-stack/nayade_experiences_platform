@@ -1,5 +1,5 @@
 /**
- * /restaurantes/reserva-ko — Retorno tras pago fallido/cancelado en Redsys.
+ * /restaurantes/reserva-ko â€” Retorno tras pago fallido/cancelado en Redsys.
  * Lee el localizador de la URL (?locator=NR-XXXXX) y muestra opciones de reintento.
  */
 import { useEffect, useState } from "react";
@@ -38,12 +38,12 @@ export default function RestauranteReservaKo() {
           Pago no completado
         </h1>
         <p className="text-muted-foreground mb-8 max-w-sm mx-auto">
-          El banco ha rechazado o cancelado la transacción.
-          <strong className="text-foreground"> No se ha realizado ningún cargo</strong> en tu cuenta.
-          Tu reserva queda en espera — puedes intentarlo de nuevo.
+          El banco ha rechazado o cancelado la transacciÃ³n.
+          <strong className="text-foreground"> No se ha realizado ningÃºn cargo</strong> en tu cuenta.
+          Tu reserva queda en espera â€” puedes intentarlo de nuevo.
         </p>
 
-        {/* Datos de la reserva si están disponibles */}
+        {/* Datos de la reserva si estÃ¡n disponibles */}
         {data && (
           <div className="bg-muted/50 rounded-xl p-5 mb-8 text-left space-y-2.5 text-sm">
             <div className="flex justify-between items-center">
@@ -56,7 +56,7 @@ export default function RestauranteReservaKo() {
             </div>
             <div className="flex justify-between items-center">
               <span className="text-muted-foreground">Fecha</span>
-              <span className="font-medium text-foreground">{data.date} · {data.time}</span>
+              <span className="font-medium text-foreground">{data.date} Â· {data.time}</span>
             </div>
             <div className="flex justify-between items-center">
               <span className="text-muted-foreground">Comensales</span>
@@ -76,20 +76,20 @@ export default function RestauranteReservaKo() {
           <h3 className="font-semibold text-foreground mb-3 text-sm">Posibles causas del error:</h3>
           <ul className="space-y-1.5 text-sm text-muted-foreground">
             <li className="flex items-start gap-2">
-              <span className="text-amber-500 mt-0.5">·</span>
-              Fondos insuficientes o límite de tarjeta superado.
+              <span className="text-amber-500 mt-0.5">Â·</span>
+              Fondos insuficientes o lÃ­mite de tarjeta superado.
             </li>
             <li className="flex items-start gap-2">
-              <span className="text-amber-500 mt-0.5">·</span>
+              <span className="text-amber-500 mt-0.5">Â·</span>
               Datos de la tarjeta incorrectos o tarjeta caducada.
             </li>
             <li className="flex items-start gap-2">
-              <span className="text-amber-500 mt-0.5">·</span>
+              <span className="text-amber-500 mt-0.5">Â·</span>
               Pago bloqueado por el banco (contacta con tu entidad).
             </li>
             <li className="flex items-start gap-2">
-              <span className="text-amber-500 mt-0.5">·</span>
-              Sesión de pago expirada (más de 15 minutos).
+              <span className="text-amber-500 mt-0.5">Â·</span>
+              SesiÃ³n de pago expirada (mÃ¡s de 15 minutos).
             </li>
           </ul>
         </div>
@@ -113,7 +113,7 @@ export default function RestauranteReservaKo() {
 
         {/* Contacto */}
         <div className="pt-8 border-t border-border text-sm text-muted-foreground">
-          <p className="mb-3">¿Necesitas ayuda? Contacta con nosotros:</p>
+          <p className="mb-3">Â¿Necesitas ayuda? Contacta con nosotros:</p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <a href={phoneTel} className="flex items-center gap-2 hover:text-accent transition-colors">
               <Phone className="w-4 h-4" /> {phone}
@@ -123,7 +123,7 @@ export default function RestauranteReservaKo() {
             </a>
           </div>
           <p className="mt-4 text-xs">
-            También puedes{" "}
+            TambiÃ©n puedes{" "}
             <Link href="/restaurantes" className="text-accent hover:underline inline-flex items-center gap-1">
               <UtensilsCrossed className="w-3 h-3" /> ver todos los restaurantes
             </Link>

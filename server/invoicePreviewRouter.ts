@@ -3,7 +3,7 @@
  * GET /api/invoices/preview?n=FAC-2026-XXXX
  *
  * Genera y sirve el HTML de una factura on-demand desde BD.
- * No necesita almacenamiento externo — los datos están en la tabla `invoices`.
+ * No necesita almacenamiento externo â€” los datos estÃ¡n en la tabla `invoices`.
  */
 
 import { Router } from "express";
@@ -21,7 +21,7 @@ const invoicePreviewRouter = Router();
 invoicePreviewRouter.get("/api/invoices/preview", async (req, res) => {
   const n = (req.query.n as string | undefined)?.trim();
   if (!n) {
-    res.status(400).send("Parámetro 'n' (número de factura) requerido.");
+    res.status(400).send("ParÃ¡metro 'n' (nÃºmero de factura) requerido.");
     return;
   }
 

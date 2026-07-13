@@ -35,7 +35,7 @@ import { getFeatureFlag } from "../config";
 // --- RATE LIMITERS ------------------------------------------------------------
 
 /**
- * Formularios p˙blicos de lead/presupuesto: 10 req/min por IP.
+ * Formularios p√∫blicos de lead/presupuesto: 10 req/min por IP.
  * Protege submitLead y submitBudget contra spam y bots.
  */
 const leadRateLimit = rateLimit({
@@ -50,8 +50,8 @@ const leadRateLimit = rateLimit({
 });
 
 /**
- * AutenticaciÛn local: 5 req/min por IP.
- * Previene ataques de fuerza bruta en login y recuperaciÛn de contraseÒa.
+ * Autenticaci√≥n local: 5 req/min por IP.
+ * Previene ataques de fuerza bruta en login y recuperaci√≥n de contrase√±a.
  */
 const authRateLimit = rateLimit({
   windowMs: 60 * 1000,
@@ -66,8 +66,8 @@ const authRateLimit = rateLimit({
 
 /**
  * Endpoints de pago Redsys (IPN): 30 req/min por IP.
- * Las notificaciones IPN legÌtimas de Redsys son infrecuentes; este lÌmite
- * bloquea intentos de replay o fuzzing del endpoint de notificaciÛn.
+ * Las notificaciones IPN leg√≠timas de Redsys son infrecuentes; este l√≠mite
+ * bloquea intentos de replay o fuzzing del endpoint de notificaci√≥n.
  */
 const redsysRateLimit = rateLimit({
   windowMs: 60 * 1000,
@@ -95,7 +95,7 @@ const uploadRateLimit = rateLimit({
   },
 });
 
-// Modo de autenticaciÛn: LOCAL_AUTH=true usa email+password local en lugar de Manus OAuth
+// Modo de autenticaci√≥n: LOCAL_AUTH=true usa email+password local en lugar de Manus OAuth
 const USE_LOCAL_AUTH = process.env.LOCAL_AUTH === "true";
 
 function isPortAvailable(port: number): Promise<boolean> {
@@ -127,24 +127,24 @@ async function startServer() {
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
   if (USE_LOCAL_AUTH) {
-    // Rate limiting en endpoints de autenticaciÛn (5 req/min por IP)
+    // Rate limiting en endpoints de autenticaci√≥n (5 req/min por IP)
     app.use("/api/auth/login", authRateLimit);
     app.use("/api/auth/forgot-password", authRateLimit);
     // Modo local: rutas de auth propias (login/logout/me) en lugar de Manus OAuth
     app.use(createLocalAuthRouter());
     app.use(createPasswordResetRouter());
-    console.log("[Auth] Modo LOCAL_AUTH activado ó usando email+password local");
+    console.log("[Auth] Modo LOCAL_AUTH activado ‚Äî usando email+password local");
   } else {
     // Modo Manus: OAuth callback
     registerOAuthRoutes(app);
   }
 
-  // Rate limiting en formularios p˙blicos de lead/presupuesto (10 req/min por IP)
+  // Rate limiting en formularios p√∫blicos de lead/presupuesto (10 req/min por IP)
   app.use("/api/trpc/submitLead", leadRateLimit);
   app.use("/api/trpc/submitBudget", leadRateLimit);
 
   // -- AUDIT: log ALL incoming requests to /api/redsys/* ------------------------
-  // Este middleware corre ANTES del rate-limiter para capturar si la peticiÛn llega.
+  // Este middleware corre ANTES del rate-limiter para capturar si la petici√≥n llega.
   app.use("/api/redsys", (req, _res, next) => {
     const ts = new Date().toISOString();
     const ip = (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim() ?? req.ip;
@@ -163,10 +163,10 @@ async function startServer() {
   app.use("/api/upload", uploadRateLimit);
   app.use("/api/upload-media", uploadRateLimit);
 
-  // Middleware de protecciÛn: bloquea rutas /api/trpc de procedimientos protegidos
-  // si no hay sesiÛn v·lida. Funciona en ambos modos (local y Manus OAuth).
+  // Middleware de protecci√≥n: bloquea rutas /api/trpc de procedimientos protegidos
+  // si no hay sesi√≥n v√°lida. Funciona en ambos modos (local y Manus OAuth).
   app.use("/api/trpc", createAuthGuardMiddleware(USE_LOCAL_AUTH));
-  // Servir archivos del storage local (fallback cuando S3/Forge no est· configurado)
+  // Servir archivos del storage local (fallback cuando S3/Forge no est√° configurado)
   const localStorageDir = process.env.LOCAL_STORAGE_PATH ?? "/tmp/local-storage";
   app.use("/local-storage", express.static(localStorageDir));
   // File upload endpoint
@@ -174,18 +174,18 @@ async function startServer() {
 
   // Redsys IPN notification endpoint
   app.use(redsysRouter);
-  // Meta Conversions API proxy (recibe eventos del cliente para envÌo server-side)
+  // Meta Conversions API proxy (recibe eventos del cliente para env√≠o server-side)
   app.use(metaCapiRouter);
   // Settlement Excel export endpoint
   app.use(settlementExportRouter);
   // Invoice HTML on-demand preview (no storage required)
   app.use(invoicePreviewRouter);
   app.use(kbRouter);
-  // GHL webhook receiver (leads/contactos ó existente)
+  // GHL webhook receiver (leads/contactos ‚Äî existente)
   app.use(ghlWebhookRouter);
-  // GHL Inbox ó WhatsApp conversations, mensajes y SSE
+  // GHL Inbox ‚Äî WhatsApp conversations, mensajes y SSE
   app.use(ghlInboxRouter);
-  // VAPI webhook receiver (lead + presupuesto sÌncrono)
+  // VAPI webhook receiver (lead + presupuesto s√≠ncrono)
   app.use(vapiWebhookRouter);
   // tRPC API
   app.use(
@@ -195,7 +195,7 @@ async function startServer() {
       createContext: USE_LOCAL_AUTH ? createLocalContext : createContext,
     })
   );
-  // Sitemap din·mico (debe ir ANTES de serveStatic para que Express lo intercepte)
+  // Sitemap din√°mico (debe ir ANTES de serveStatic para que Express lo intercepte)
   app.use(sitemapRouter);
   // development mode uses Vite, production mode uses static files
   if (process.env.NODE_ENV === "development") {
@@ -224,37 +224,37 @@ async function runMigrations() {
     const { resolve } = await import("path");
     const pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
     const db = drizzle(pool);
-    // En producciÛn el binario est· en dist/, las migraciones en drizzle/ (mismo nivel que package.json)
+    // En producci√≥n el binario est√° en dist/, las migraciones en drizzle/ (mismo nivel que package.json)
     const migrationsFolder = resolve(process.cwd(), "drizzle");
     await migrate(db, { migrationsFolder });
     await pool.end();
     console.log("[DB] Migraciones aplicadas correctamente");
   } catch (err: any) {
-    console.error("[DB] Error al aplicar migraciones (cÛdigo:", err?.code, "):", err?.message ?? err);
-    // No abortamos el arranque ó si la BD ya est· al dÌa, el error es esperado.
-    // Las migraciones usar·n IF NOT EXISTS para ser idempotentes.
+    console.error("[DB] Error al aplicar migraciones (c√≥digo:", err?.code, "):", err?.message ?? err);
+    // No abortamos el arranque ‚Äî si la BD ya est√° al d√≠a, el error es esperado.
+    // Las migraciones usar√°n IF NOT EXISTS para ser idempotentes.
   }
 }
 
-// --- SEED: garantizar flags y settings crÌticos independiente de migraciones --
+// --- SEED: garantizar flags y settings cr√≠ticos independiente de migraciones --
 async function ensureCriticalSeeds() {
   try {
     const mysql = await import("mysql2/promise");
     const conn = await mysql.default.createConnection(process.env.DATABASE_URL!);
 
-    // Feature flag omitido por migraciÛn ya marcada como aplicada en __drizzle_migrations
+    // Feature flag omitido por migraci√≥n ya marcada como aplicada en __drizzle_migrations
     await conn.execute(
       `INSERT IGNORE INTO feature_flags (\`key\`, \`name\`, description, module, enabled, default_enabled, risk_level)
        VALUES (?, ?, ?, ?, 1, 1, 'medium')`,
       [
         "card_terminal_matching_enabled",
-        "Job conciliaciÛn dat·fono",
-        "Ejecuta el job periÛdico que concilia batches de dat·fono con movimientos bancarios",
+        "Job conciliaci√≥n dat√°fono",
+        "Ejecuta el job peri√≥dico que concilia batches de dat√°fono con movimientos bancarios",
         "card_terminal",
       ]
     );
 
-    // TelÈfono de contacto ó forzar el n˙mero actual si est· vacÌo o es uno de los antiguos
+    // Tel√©fono de contacto ‚Äî forzar el n√∫mero actual si est√° vac√≠o o es uno de los antiguos
     await conn.execute(
       `UPDATE system_settings
        SET value = ?
@@ -275,13 +275,13 @@ async function ensureCriticalSeeds() {
        WHERE originSource = 'admin_manual_entry' AND statusOperational = 'recibido'`
     );
 
-    // CorrecciÛn de email en HTML de plantillas de email almacenado en BD
+    // Correcci√≥n de email en HTML de plantillas de email almacenado en BD
     await conn.execute(
       `UPDATE email_templates
        SET body_html = REPLACE(body_html, 'contacto@tuempresa.com', 'reservas@nayadeexperiences.es')
        WHERE body_html LIKE '%contacto@tuempresa.com%'`
     );
-    // CorrecciÛn de los telÈfonos antiguos (930 y 911) en el HTML de plantillas de email ? n˙mero actual
+    // Correcci√≥n de los tel√©fonos antiguos (930 y 911) en el HTML de plantillas de email ? n√∫mero actual
     await conn.execute(
       `UPDATE email_templates
        SET body_html = REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(body_html,
@@ -294,7 +294,7 @@ async function ensureCriticalSeeds() {
     );
 
     // Refactor fiscal: migrar general_21 ? general en todas las tablas afectadas.
-    // Desactivamos strict mode para esta sesiÛn: MySQL lanza WARN_DATA_TRUNCATED
+    // Desactivamos strict mode para esta sesi√≥n: MySQL lanza WARN_DATA_TRUNCATED
     // (errno 1265) en modo estricto al comparar ENUM con un valor que ya no existe.
     await conn.execute(`SET SESSION sql_mode = REPLACE(REPLACE(@@SESSION.sql_mode, 'STRICT_TRANS_TABLES', ''), 'STRICT_ALL_TABLES', '')`);
     for (const tbl of ["experiences", "packs", "room_types", "spa_treatments"]) {
@@ -305,7 +305,7 @@ async function ensureCriticalSeeds() {
         [tbl, col]
       ) as any[];
       const colType: string = (colRows as any[])[0]?.COLUMN_TYPE ?? "";
-      // Corregir datos: CAST evita comparaciÛn ENUM estricta; OR col+0=0 cubre filas
+      // Corregir datos: CAST evita comparaci√≥n ENUM estricta; OR col+0=0 cubre filas
       // que quedaron como '' por un ALTER previo parcialmente aplicado.
       await conn.execute(`UPDATE \`${tbl}\` SET \`${col}\` = 'general' WHERE CAST(\`${col}\` AS CHAR) = 'general_21' OR \`${col}\` + 0 = 0`);
       if (colType.includes("general_21")) {
@@ -348,7 +348,7 @@ async function ensureCriticalSeeds() {
       const hasBreakdown = await conn.execute(`SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='invoices' AND COLUMN_NAME='taxBreakdown'`) as any[];
       if (!((hasBreakdown as any[][])[0] as any[]).length) {
         await conn.execute(`ALTER TABLE \`invoices\` ADD COLUMN \`taxBreakdown\` JSON NULL`);
-        console.log("[DB] Columna taxBreakdown aÒadida a invoices");
+        console.log("[DB] Columna taxBreakdown a√±adida a invoices");
       }
     }
 
@@ -424,15 +424,15 @@ async function ensureCriticalSeeds() {
     `);
     console.log("[DB] Tablas proposals/proposal_options verificadas");
 
-    // --- CMS: seed p·gina Inicio ---------------------------------------------
+    // --- CMS: seed p√°gina Inicio ---------------------------------------------
     await conn.execute(
       `INSERT IGNORE INTO static_pages (slug, title, metaTitle, metaDescription, isPublished)
        VALUES (?, ?, ?, ?, 1)`,
       [
         "inicio",
-        "Inicio ó N·yade Experiences",
-        "N·yade Experiences | Actividades acu·ticas, Hotel y SPA en el Lago de Bolarque",
-        "Experiencias acu·ticas, hotel con vistas al lago, SPA y packs personalizados a 40 min de Madrid. Temporada Abril ó Octubre 2026.",
+        "Inicio ‚Äî N√°yade Experiences",
+        "N√°yade Experiences | Actividades acu√°ticas, Hotel y SPA en el Lago de Bolarque",
+        "Experiencias acu√°ticas, hotel con vistas al lago, SPA y packs personalizados a 40 min de Madrid. Temporada Abril ‚Äî Octubre 2026.",
       ]
     );
     const [existingBlocks] = await conn.execute(
@@ -440,17 +440,17 @@ async function ensureCriticalSeeds() {
     ) as any[];
     if ((existingBlocks as any[])[0]?.cnt === 0) {
       const blocks: [string, string, number, string][] = [
-        ["inicio", "hero", 1, JSON.stringify({ title: "DiseÒamos tu experiencia perfecta", subtitle: "Actividades acu·ticas, relax, escapadas y aventura en el embalse de Los Angeles de San Rafael. A 40 min de Madrid.", imageUrl: "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/embalse-verano_64368cd4.jpg", ctaText: "Solicitar Presupuesto", ctaUrl: "/presupuesto", overlayOpacity: 55 })],
+        ["inicio", "hero", 1, JSON.stringify({ title: "Dise√±amos tu experiencia perfecta", subtitle: "Actividades acu√°ticas, relax, escapadas y aventura en el embalse de Los Angeles de San Rafael. A 40 min de Madrid.", imageUrl: "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/embalse-verano_64368cd4.jpg", ctaText: "Solicitar Presupuesto", ctaUrl: "/presupuesto", overlayOpacity: 55 })],
         ["inicio", "features", 2, JSON.stringify({ title: "Por que Skicenter", items: [{ icon: "??", title: "A 45 min de Madrid", description: "Acceso directo por la AP-6" }, { icon: "??", title: "+10 Actividades", description: "El mayor catalogo acuatico de la Sierra" }, { icon: "??", title: "Hotel + SPA + Lago", description: "Todo en un mismo enclave" }, { icon: "??", title: "Entorno Natural Unico", description: "Sierra de Guadarrama a 1.200 m" }, { icon: "??", title: "Para Todos", description: "Familias, parejas, grupos y empresas" }, { icon: "???", title: "Monitores Certificados", description: "Seguridad y profesionalidad" }, { icon: "??", title: "Reserva Online 24h", description: "Descuento del 10% online" }, { icon: "?", title: "Packs Personalizados", description: "A medida para cada grupo" }] })],
         ["inicio", "image_text", 3, JSON.stringify({ title: "Actividades Acuaticas", body: "Blob Jump, Banana Ski, Cableski, Kayak, Paddle Surf, Hidrobicis, Aventura Hinchable y mucho mas. Mas de 10 actividades en el lago para todos los niveles y edades. Reserva online con un 10% de descuento.", imageUrl: "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/blob-jump2_94e0b06d.jpg", imagePosition: "right", ctaText: "Ver todas las experiencias", ctaUrl: "/experiencias" })],
-        ["inicio", "image_text", 4, JSON.stringify({ title: "Lego Packs ó Tu experiencia a medida", body: "Combina actividades, almuerzo y acceso al club en un Lego Pack personalizado. Disponibles para dias sueltos, escapadas en pareja, excursiones escolares, teambuilding de empresa y packs con alojamiento incluido.", imageUrl: "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/kayak-grupo_b3eca02d.jpg", imagePosition: "left", ctaText: "Ver Lego Packs", ctaUrl: "/lego-packs" })],
-        ["inicio", "image_text", 5, JSON.stringify({ title: "Hotel Nayade ó Vistas al Lago", body: "Alojate en el corazon de la naturaleza con vistas directas al embalse. Habitaciones desde 130 EUR/noche. Habitacion Doble Estandar, Superior, Familiar y Junior Suite Premium. Packs con actividades incluidas con descuento.", imageUrl: "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/d049863d-3421-411f-a64f-64eb34408da9_145ab8b4.png", imagePosition: "right", ctaText: "Ver Hotel", ctaUrl: "/hotel" })],
+        ["inicio", "image_text", 4, JSON.stringify({ title: "Lego Packs ‚Äî Tu experiencia a medida", body: "Combina actividades, almuerzo y acceso al club en un Lego Pack personalizado. Disponibles para dias sueltos, escapadas en pareja, excursiones escolares, teambuilding de empresa y packs con alojamiento incluido.", imageUrl: "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/kayak-grupo_b3eca02d.jpg", imagePosition: "left", ctaText: "Ver Lego Packs", ctaUrl: "/lego-packs" })],
+        ["inicio", "image_text", 5, JSON.stringify({ title: "Hotel Nayade ‚Äî Vistas al Lago", body: "Alojate en el corazon de la naturaleza con vistas directas al embalse. Habitaciones desde 130 EUR/noche. Habitacion Doble Estandar, Superior, Familiar y Junior Suite Premium. Packs con actividades incluidas con descuento.", imageUrl: "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/d049863d-3421-411f-a64f-64eb34408da9_145ab8b4.png", imagePosition: "right", ctaText: "Ver Hotel", ctaUrl: "/hotel" })],
         ["inicio", "image_text", 6, JSON.stringify({ title: "SPA y Bienestar", body: "Circuito SPA, masajes relajantes, tratamientos faciales y packs especiales para parejas. El complemento perfecto para tu estancia en el lago. Reserva por separado o combinado con Hotel.", imageUrl: "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/spa4_0e502ffb.png", imagePosition: "left", ctaText: "Ver SPA", ctaUrl: "/spa" })],
         ["inicio", "gallery", 7, JSON.stringify({ title: "Descubre Nayade", images: ["https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/blob-jump2_94e0b06d.jpg", "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/cableski_53f05d4a.jpg", "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/canoa-lago_b18c5886.jpg", "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/paddle-surf_78ab1b6f.jpg", "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/banana-ski_43cb68d6.jpg", "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/spa2_f1c857bc.png"] })],
-        ["inicio", "accordion", 8, JSON.stringify({ title: "Lo que dicen nuestros clientes", items: [{ question: "Maria G. ó Familia ∑ Madrid ?????", answer: "Una experiencia increible para toda la familia. Los ninos no paraban de hablar del Blob Jump durante semanas. El hotel es precioso y el personal muy atento." }, { question: "Carlos M. ó Empresa ∑ Barcelona ?????", answer: "Organizamos el team building de empresa aqui y fue un exito total. Las actividades de cableski y la gymkhana acuatica superaron todas las expectativas del equipo." }, { question: "Laura y Javi ó Pareja ∑ Segovia ?????", answer: "El fin de semana romantico fue perfecto. Actividades de dia, spa por la tarde y cena con vistas al lago. No podiamos pedir mas. Volveremos sin duda." }] })],
+        ["inicio", "accordion", 8, JSON.stringify({ title: "Lo que dicen nuestros clientes", items: [{ question: "Maria G. ‚Äî Familia ¬∑ Madrid ?????", answer: "Una experiencia increible para toda la familia. Los ninos no paraban de hablar del Blob Jump durante semanas. El hotel es precioso y el personal muy atento." }, { question: "Carlos M. ‚Äî Empresa ¬∑ Barcelona ?????", answer: "Organizamos el team building de empresa aqui y fue un exito total. Las actividades de cableski y la gymkhana acuatica superaron todas las expectativas del equipo." }, { question: "Laura y Javi ‚Äî Pareja ¬∑ Segovia ?????", answer: "El fin de semana romantico fue perfecto. Actividades de dia, spa por la tarde y cena con vistas al lago. No podiamos pedir mas. Volveremos sin duda." }] })],
         ["inicio", "cta", 9, JSON.stringify({ title: "Tienes un Cupon Regalo o Voucher?", subtitle: "Canjea tu experiencia de Groupon, Wonderbox, El Corte Ingles o LetsBonus de forma rapida y sencilla. Rellena el formulario online, adjunta tu cupon y nuestro equipo te confirmara fecha y detalles en menos de 24h.", ctaText: "Canjear mi Cupon Ahora", ctaUrl: "/canjear-cupon", bgColor: "dark" })],
         ["inicio", "cta", 10, JSON.stringify({ title: "Colegios, AMPAs y Campamentos", subtitle: "Disenamos programas educativos y de aventura para grupos escolares en el Lago de Bolarque. Seguridad certificada, monitores titulados y actividades adaptadas a cada edad. Presupuesto gratuito en menos de 24h.", ctaText: "Solicitar Programa Escolar", ctaUrl: "/colegios", bgColor: "dark" })],
-        ["inicio", "cta", 11, JSON.stringify({ title: "Listo para Vivir la Aventura?", subtitle: "Reserva online con un 10% de descuento. Temporada Abril ó Octubre 2026.", ctaText: "Explorar Experiencias", ctaUrl: "/experiencias", bgColor: "orange" })],
+        ["inicio", "cta", 11, JSON.stringify({ title: "Listo para Vivir la Aventura?", subtitle: "Reserva online con un 10% de descuento. Temporada Abril ‚Äî Octubre 2026.", ctaText: "Explorar Experiencias", ctaUrl: "/experiencias", bgColor: "orange" })],
         ["inicio", "spacer", 12, JSON.stringify({ height: 40 })],
       ];
       for (const [pageSlug, blockType, sortOrder, data] of blocks) {
@@ -463,13 +463,13 @@ async function ensureCriticalSeeds() {
     }
 
     await conn.end();
-    console.log("[DB] Seeds crÌticos verificados");
+    console.log("[DB] Seeds cr√≠ticos verificados");
   } catch (err) {
-    console.error("[DB] Error en seeds crÌticos:", err);
+    console.error("[DB] Error en seeds cr√≠ticos:", err);
   }
 }
 
-// --- MIGRATE: site_settings ? system_settings (fuente de verdad ˙nica) -------
+// --- MIGRATE: site_settings ? system_settings (fuente de verdad √∫nica) -------
 async function migrateSiteSettingsToSystemSettings() {
   try {
     const mysql = await import("mysql2/promise");
@@ -477,22 +477,22 @@ async function migrateSiteSettingsToSystemSettings() {
 
     // 1. Seed nuevas claves en system_settings (INSERT IGNORE preserva valores existentes)
     const seeds: [string, string, string, string, string, number, number][] = [
-      ["site_business_email",           "string", "negocio",       "Email de contacto",                        "Email p˙blico de contacto del negocio",                      0, 0],
-      ["site_business_description",     "string", "negocio",       "DescripciÛn breve del negocio",            "Usada en SEO y cabeceras de email",                          0, 1],
-      ["site_schedule_high_open",       "string", "horarios",      "Temporada alta ó apertura",                "Hora de apertura en temporada alta (HH:MM)",                 0, 1],
-      ["site_schedule_high_close",      "string", "horarios",      "Temporada alta ó cierre",                  "Hora de cierre en temporada alta (HH:MM)",                   0, 1],
-      ["site_schedule_low_open",        "string", "horarios",      "Temporada baja ó apertura",                "Hora de apertura en temporada baja (HH:MM)",                 0, 1],
-      ["site_schedule_low_close",       "string", "horarios",      "Temporada baja ó cierre",                  "Hora de cierre en temporada baja (HH:MM)",                   0, 1],
-      ["site_schedule_days",            "string", "horarios",      "DÌas de apertura",                         "Texto libre de dÌas operativos (ej: Lunes a Domingo)",       0, 1],
-      ["site_payment_currency",         "string", "pagos",         "Moneda",                                   "CÛdigo ISO de la moneda principal (EUR, USDÖ)",              0, 0],
-      ["site_payment_deposit_restaurant","number","pagos",         "DepÛsito por comensal en restaurante (Ä)", "Importe del depÛsito en reservas de restaurante",            0, 0],
-      ["site_legal_name",               "string", "fiscal",        "RazÛn social",                             "Nombre legal de la empresa facturadora",                     0, 0],
-      ["site_legal_phone",              "string", "fiscal",        "TelÈfono fiscal",                          "TelÈfono registrado ante la Agencia Tributaria",             0, 0],
-      ["site_legal_zip",                "string", "fiscal",        "CÛdigo postal",                            "CP del domicilio fiscal",                                    0, 0],
+      ["site_business_email",           "string", "negocio",       "Email de contacto",                        "Email p√∫blico de contacto del negocio",                      0, 0],
+      ["site_business_description",     "string", "negocio",       "Descripci√≥n breve del negocio",            "Usada en SEO y cabeceras de email",                          0, 1],
+      ["site_schedule_high_open",       "string", "horarios",      "Temporada alta ‚Äî apertura",                "Hora de apertura en temporada alta (HH:MM)",                 0, 1],
+      ["site_schedule_high_close",      "string", "horarios",      "Temporada alta ‚Äî cierre",                  "Hora de cierre en temporada alta (HH:MM)",                   0, 1],
+      ["site_schedule_low_open",        "string", "horarios",      "Temporada baja ‚Äî apertura",                "Hora de apertura en temporada baja (HH:MM)",                 0, 1],
+      ["site_schedule_low_close",       "string", "horarios",      "Temporada baja ‚Äî cierre",                  "Hora de cierre en temporada baja (HH:MM)",                   0, 1],
+      ["site_schedule_days",            "string", "horarios",      "D√≠as de apertura",                         "Texto libre de d√≠as operativos (ej: Lunes a Domingo)",       0, 1],
+      ["site_payment_currency",         "string", "pagos",         "Moneda",                                   "C√≥digo ISO de la moneda principal (EUR, USD‚Ä¶)",              0, 0],
+      ["site_payment_deposit_restaurant","number","pagos",         "Dep√≥sito por comensal en restaurante (‚Ç¨)", "Importe del dep√≥sito en reservas de restaurante",            0, 0],
+      ["site_legal_name",               "string", "fiscal",        "Raz√≥n social",                             "Nombre legal de la empresa facturadora",                     0, 0],
+      ["site_legal_phone",              "string", "fiscal",        "Tel√©fono fiscal",                          "Tel√©fono registrado ante la Agencia Tributaria",             0, 0],
+      ["site_legal_zip",                "string", "fiscal",        "C√≥digo postal",                            "CP del domicilio fiscal",                                    0, 0],
       ["site_legal_city",               "string", "fiscal",        "Municipio",                                "Ciudad del domicilio fiscal",                                0, 0],
       ["site_legal_province",           "string", "fiscal",        "Provincia",                                "Provincia del domicilio fiscal",                             0, 0],
       ["site_legal_email",              "string", "fiscal",        "Email fiscal",                             "Email registrado en la Agencia Tributaria",                  0, 0],
-      ["site_legal_iban",               "string", "fiscal",        "IBAN (para liquidaciones)",                "N˙mero de cuenta que aparece en documentos de liquidaciÛn",  0, 0],
+      ["site_legal_iban",               "string", "fiscal",        "IBAN (para liquidaciones)",                "N√∫mero de cuenta que aparece en documentos de liquidaci√≥n",  0, 0],
       ["site_notif_email_restaurant",   "string", "emails",        "Email de alertas de restaurante",          "Recibe notificaciones de nuevas reservas de restaurante",    0, 0],
       ["site_ghl_api_key",              "string", "integraciones", "GoHighLevel API Key",                      "Credencial de API de GoHighLevel",                           1, 0],
       ["site_ghl_location_id",          "string", "integraciones", "GoHighLevel Location ID",                  "Location ID del workspace de GoHighLevel",                   0, 0],
@@ -506,7 +506,7 @@ async function migrateSiteSettingsToSystemSettings() {
       );
     }
 
-    // 2. Migrar datos existentes de site_settings ? system_settings (solo si destino vacÌo)
+    // 2. Migrar datos existentes de site_settings ? system_settings (solo si destino vac√≠o)
     const KEY_MAP: Record<string, string> = {
       businessName:             "brand_name",
       businessPhone:            "brand_phone",
@@ -552,16 +552,16 @@ async function migrateSiteSettingsToSystemSettings() {
           [row.value, sysKey],
         );
       }
-      console.log("[DB] MigraciÛn site_settings ? system_settings completada");
+      console.log("[DB] Migraci√≥n site_settings ? system_settings completada");
     }
 
     await conn.end();
   } catch (err) {
-    console.error("[DB] Error en migraciÛn site_settings:", err);
+    console.error("[DB] Error en migraci√≥n site_settings:", err);
   }
 }
 
-// --- SEED: restaurar experiencias si la tabla est· vacÌa ----------------------
+// --- SEED: restaurar experiencias si la tabla est√° vac√≠a ----------------------
 async function seedExperiencesIfEmpty() {
   try {
     const mysql = await import("mysql2/promise");
@@ -576,19 +576,19 @@ async function seedExperiencesIfEmpty() {
       return;
     }
 
-    console.log("[Seed] Tabla de experiencias vacÌa ó restaurando productos...");
+    console.log("[Seed] Tabla de experiencias vac√≠a ‚Äî restaurando productos...");
 
     const CDN = "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/nayade/uploads";
 
-    // CategorÌas
+    // Categor√≠as
     await conn.execute(`INSERT IGNORE INTO categories (slug,name,isActive,sortOrder) VALUES
-      ('actividades-acuaticas','Actividades Acu·ticas',1,1),
-      ('deportes-acuaticos','Deportes Acu·ticos',1,2),
+      ('actividades-acuaticas','Actividades Acu√°ticas',1,1),
+      ('deportes-acuaticos','Deportes Acu√°ticos',1,2),
       ('spa-bienestar','SPA & Bienestar',1,3),
-      ('piscina','Piscina & BaÒo',1,4)`);
+      ('piscina','Piscina & Ba√±o',1,4)`);
 
     await conn.execute(`INSERT IGNORE INTO locations (slug,name,address,isActive,sortOrder) VALUES
-      ('los-angeles-de-san-rafael','Los ¡ngeles de San Rafael','Club N·utico Los ¡ngeles de San Rafael, Segovia',1,1)`);
+      ('los-angeles-de-san-rafael','Los √Ångeles de San Rafael','Club N√°utico Los √Ångeles de San Rafael, Segovia',1,1)`);
 
     const [[cat1]] = await conn.execute("SELECT id FROM categories WHERE slug='actividades-acuaticas'") as any;
     const [[cat2]] = await conn.execute("SELECT id FROM categories WHERE slug='deportes-acuaticos'") as any;
@@ -599,18 +599,18 @@ async function seedExperiencesIfEmpty() {
     const A = cat1.id, D = cat2.id, S = cat3.id, P = cat4.id, L = loc.id;
 
     const experiences = [
-      { slug:"paseo-en-barco", title:"Paseo en Barco", shortDescription:"Navega por las tranquilas aguas del embalse rodeado de vegetaciÛn y vistas panor·micas a la Sierra de Guadarrama.", description:"Una experiencia ˙nica surcando las apacibles aguas del embalse de Los ¡ngeles de San Rafael. A bordo disfrutar·s de paisajes de ensueÒo, rodeado de vegetaciÛn frondosa y con las cumbres de la Sierra de Guadarrama como telÛn de fondo.", coverImageUrl:`${CDN}/1775049168929-vx1e7i.png`, image1:`${CDN}/1775049168929-vx1e7i.png`, image2:`${CDN}/1775049603095-8rkwvh.png`, image3:`${CDN}/1775049607679-rxudag.png`, image4:`${CDN}/1775049612665-6ts80x.png`, basePrice:"15.00", duration:"20 minutos", minPersons:1, maxPersons:50, difficulty:"facil", isFeatured:0, isActive:1, isPublished:1, isPresentialSale:1, categoryId:A, locationId:L, includes:'["Seguro de accidentes"]', excludes:'[]', sortOrder:1 },
-      { slug:"entrada-general-piscina-club-nautico", title:"Entrada General Piscina Club N·utico", shortDescription:"Rel·jate en nuestra piscina a orillas del embalse con amplias zonas de sol·rium y baÒo.", description:"Disfruta de la piscina del Club N·utico de Los ¡ngeles de San Rafael con vistas a la Sierra de Guadarrama. Amplias zonas de sol·rium, acceso al lago y todas las comodidades para una jornada de descanso en familia o con amigos.", coverImageUrl:`${CDN}/1774281603494-er84vo.png`, image1:`${CDN}/1774281603494-er84vo.png`, image2:`${CDN}/1774281608106-4fqd45.png`, image3:`${CDN}/1774281619410-lefaql.png`, image4:null, basePrice:"7.00", duration:null, minPersons:11, maxPersons:100, difficulty:"facil", isFeatured:0, isActive:1, isPublished:1, isPresentialSale:1, categoryId:P, locationId:L, includes:'["Acceso a las instalaciones","Seguro de accidentes"]', excludes:'["Acceso a BahÌa VIP"]', sortOrder:2 },
-      { slug:"alquiler-dia-completo-tabla-de-wakeboard", title:"Alquiler DÌa Completo Tabla de Wakeboard", shortDescription:"Alquila tu tabla de wakeboard para todo el dÌa y disfruta del embalse a tu ritmo combinando velocidad, equilibrio y adrenalina.", description:"Vive la experiencia del wakeboard durante un dÌa completo en el embalse de Los ¡ngeles de San Rafael. La tabla te permitir· deslizarte sobre el agua combinando velocidad, equilibrio y adrenalina. MÌnimo 2 personas.", coverImageUrl:`${CDN}/1775074493261-jccylv.jpg`, image1:`${CDN}/1775074493261-jccylv.jpg`, image2:`${CDN}/1775074605323-iygad1.webp`, image3:null, image4:null, basePrice:"45.00", duration:"1 dÌa", minPersons:1, maxPersons:5, difficulty:"facil", isFeatured:0, isActive:1, isPublished:1, isPresentialSale:1, categoryId:D, locationId:L, includes:'["Tabla de wakeboard","Fijaciones/herrajes","Chaleco salvavidas","Seguro de accidentes"]', excludes:'["Neopreno"]', sortOrder:3 },
-      { slug:"cableski-wakeboard", title:"Cableski & Wakeboard", shortDescription:"El sistema de cable aÈreo continuo te propulsar· sobre el agua haciendo wakeboard o esquÌ acu·tico. °Una experiencia que engancha desde la primera vuelta!", description:"El cableski de N·yade te permite practicar wakeboard o esquÌ acu·tico impulsado por un sistema de cable aÈreo continuo, sin necesidad de lancha motora. No hace falta experiencia previa. Disponible por vueltas o en formato media jornada/jornada completa.", coverImageUrl:`${CDN}/1773766863713-7gry6r.jpg`, image1:`${CDN}/1773766863713-7gry6r.jpg`, image2:`${CDN}/1773766869680-r66be7.png`, image3:`${CDN}/1773766880496-2l6cdm.png`, image4:`${CDN}/1773766883661-g2yblj.png`, basePrice:"30.00", duration:null, minPersons:1, maxPersons:100, difficulty:"moderado", isFeatured:0, isActive:1, isPublished:1, isPresentialSale:1, categoryId:D, locationId:L, includes:'["EsquÌs, mono-ski o kneeboard","Chaleco salvavidas/protector","Seguro de accidentes"]', excludes:'["Tabla de wakeboard","Neopreno"]', sortOrder:4 },
-      { slug:"blob-jump", title:"Blob Jump", shortDescription:"L·nzate desde una plataforma elevada sobre un giant blob inflable y sal despedido al aire antes de caer al lago. °Pura adrenalina!", description:"El Blob Jump es la actividad m·s impactante de N·yade. Te lanzas desde una plataforma elevada sobre un enorme colchÛn inflable (blob) que propulsa al compaÒero del extremo opuesto por los aires antes de caer al embalse. Disponible por saltos individuales o en bonos de 3 y 5 saltos.", coverImageUrl:`${CDN}/1773762402377-dymd02.png`, image1:`${CDN}/1773762402377-dymd02.png`, image2:`${CDN}/1773762413686-d56xu2.png`, image3:null, image4:null, basePrice:"8.00", duration:null, minPersons:1, maxPersons:20, difficulty:"dificil", isFeatured:1, isActive:1, isPublished:1, isPresentialSale:1, categoryId:A, locationId:L, includes:'["Equipo protector (parachoques)","Seguro de accidentes","Chaleco salvavidas"]', excludes:'["Casco"]', sortOrder:5 },
-      { slug:"canoas-kayaks", title:"Canoas & Kayaks", shortDescription:"Explora el embalse en canoa o kayak a tu propio ritmo. Deporte, paisaje y tranquilidad con vistas a la Sierra de Guadarrama.", description:"Navega por el embalse de Los ¡ngeles de San Rafael en canoa o kayak y descubre rincones ˙nicos a tu ritmo. Actividad perfecta para todos los niveles que combina ejercicio suave, naturaleza y vistas espectaculares. Disponible en 1, 2 o 3 horas y FÛrmula Familiar.", coverImageUrl:`${CDN}/1775063728570-x1kzd8.png`, image1:`${CDN}/1775063728570-x1kzd8.png`, image2:`${CDN}/1775063736967-y2tlnu.png`, image3:`${CDN}/1775063750522-nke2gs.png`, image4:`${CDN}/1775063846540-gcz3jp.png`, basePrice:"12.00", duration:"1 hora", minPersons:2, maxPersons:4, difficulty:"facil", isFeatured:1, isActive:1, isPublished:1, isPresentialSale:1, categoryId:A, locationId:L, includes:'["EmbarcaciÛn para 2 pasajeros","Remos para 2 personas","Chaleco salvavidas","Seguro de accidentes"]', excludes:'["Bolsa impermeable"]', sortOrder:6 },
-      { slug:"paddle-surf", title:"Paddle Surf", shortDescription:"Practica el stand-up paddleboarding en las tranquilas aguas del embalse. Equilibrio, calma y diversiÛn para todos los niveles.", description:"El Paddle Surf (SUP) es perfecto para disfrutar del embalse de manera activa y serena. De pie sobre la tabla, remando con una pala, explorar·s las orillas del embalse. Accesible para principiantes y apto para toda la familia. Sesiones de 1 hora, 2 horas o FÛrmula Familiar.", coverImageUrl:`${CDN}/1773774376430-cmec06.png`, image1:`${CDN}/1773774376430-cmec06.png`, image2:`${CDN}/1773774379647-stk79l.jpg`, image3:`${CDN}/1773774382023-qz52s0.jpg`, image4:`${CDN}/1773774392088-2ldmdb.jpg`, basePrice:"20.00", duration:"1 hora", minPersons:1, maxPersons:6, difficulty:"facil", isFeatured:1, isActive:1, isPublished:1, isPresentialSale:1, categoryId:A, locationId:L, includes:'["Tabla individual","Remo/pala","Chaleco salvavidas","Seguro de accidentes"]', excludes:'["Bolsa estanca impermeable"]', sortOrder:7 },
-      { slug:"banana-ski-donuts-copia-dRMV", title:"Donuts Ski", shortDescription:"La actividad m·s divertida para grupos: flota sobre un donut inflable remolcado por una lancha a alta velocidad, con giros y salpicones garantizados.", description:"El Donuts Ski es la actividad m·s divertida de N·yade. Subidos en un flotador circular de goma, ser·s remolcado por una lancha a alta velocidad por el embalse. Giros inesperados, saltos y salpicones constantes hacen de esta experiencia una risa garantizada. Grupos de 2 a 8 personas.", coverImageUrl:`${CDN}/1773863507321-ywvj6b.png`, image1:`${CDN}/1773863507321-ywvj6b.png`, image2:`${CDN}/1775034710820-bwhf5y.jpg`, image3:`${CDN}/1773702422261-h5ajd3.png`, image4:`${CDN}/1773702434768-wegear.png`, basePrice:"35.00", duration:"20 minutos", minPersons:2, maxPersons:8, difficulty:"moderado", isFeatured:1, isActive:1, isPublished:1, isPresentialSale:1, categoryId:A, locationId:L, includes:'["Equipo y flotador","Chaleco salvavidas","Seguro de accidentes"]', excludes:'["Neopreno"]', sortOrder:8 },
-      { slug:"circuito-spa", title:"Circuito SPA Hidrotermal", shortDescription:"Circuito hidrotÈrmico completo con piscinas a distintas temperaturas, sauna finlandesa, baÒo turco y duchas de contraste.", description:"El Circuito SPA Hidrotermal de N·yade te ofrece una experiencia de bienestar completa. Incluye piscinas a diferentes temperaturas, chorros cervicales y lumbares, sauna finlandesa, baÒo turco y duchas de contraste. Precio especial para clientes del hotel.", coverImageUrl:`${CDN}/1773867774581-gde9k3.png`, image1:`${CDN}/1773867774581-gde9k3.png`, image2:`${CDN}/1773867780249-4it3ac.png`, image3:`${CDN}/1773867847070-xh6y0d.png`, image4:`${CDN}/1773867967358-gmcgyp.png`, basePrice:"18.00", duration:null, minPersons:6, maxPersons:20, difficulty:"facil", isFeatured:1, isActive:1, isPublished:1, isPresentialSale:1, categoryId:S, locationId:L, includes:'["Acceso a todo el circuito hidrotermal","Piscinas a distintas temperaturas","Sauna finlandesa","BaÒo turco","Duchas de contraste","Seguro de accidentes"]', excludes:'[]', sortOrder:9 },
-      { slug:"banana-ski-donuts", title:"Banana Ski", shortDescription:"La actividad m·s divertida y apta para todos los p˙blicos: sentados en el flotador banana, la lancha os arrastrar· a alta velocidad por el embalse.", description:"El Banana Ski es la actividad m·s popular de N·yade, ideal para grupos y familias. Sentados en un flotador en forma de banana, la lancha motora os remolcar· a alta velocidad. Risas y emociones garantizadas. MÌnimo 4 personas para la tarifa est·ndar.", coverImageUrl:`${CDN}/1773702396972-kd9hrk.png`, image1:`${CDN}/1773702396972-kd9hrk.png`, image2:`${CDN}/1773702409563-u54xhb.png`, image3:`${CDN}/1773702422261-h5ajd3.png`, image4:`${CDN}/1773702434768-wegear.png`, basePrice:"15.00", duration:"20 minutos", minPersons:4, maxPersons:8, difficulty:"moderado", isFeatured:1, isActive:1, isPublished:1, isPresentialSale:1, categoryId:A, locationId:L, includes:'["Seguro de accidentes"]', excludes:'[]', sortOrder:10 },
-      { slug:"hidropedales", title:"Hidrobicis", shortDescription:"Pedalea sobre el agua y explora el embalse a tu ritmo. Una actividad tranquila y relajante perfecta para toda la familia.", description:"Las hidrobicis (hidropedales) son la opciÛn perfecta para disfrutar del embalse de forma relajada. Pedaleando sobre el agua explorar·s los rincones m·s tranquilos. Ideal para familias con niÒos. Sesiones de 1 hora, 2 horas o FÛrmula Familiar.", coverImageUrl:`${CDN}/1773777174336-io6lvw.jpg`, image1:`${CDN}/1773777174336-io6lvw.jpg`, image2:`${CDN}/1773777177100-p1hzuw.jpg`, image3:`${CDN}/1773777198906-716boe.png`, image4:null, basePrice:"20.00", duration:"1 hora", minPersons:2, maxPersons:4, difficulty:"moderado", isFeatured:1, isActive:1, isPublished:1, isPresentialSale:1, categoryId:A, locationId:L, includes:'["Hidropedal","Chaleco salvavidas","Seguro de accidentes"]', excludes:'["Neopreno"]', sortOrder:11 },
-      { slug:"aventura-hinchable", title:"Aventura Hinchable Acu·tica", shortDescription:"Parque inflable flotante en el lago con toboganes, trampolines y circuitos de obst·culos. °DiversiÛn garantizada para todas las edades!", description:"La Aventura Hinchable Acu·tica es el parque de atracciones flotante de N·yade: un enorme recorrido inflable en el embalse con toboganes, trampolines y circuitos de obst·culos. DiversiÛn para toda la familia. Sesiones de 30 y 60 minutos.", coverImageUrl:`${CDN}/1773778862239-e30o1s.png`, image1:`${CDN}/1773778862239-e30o1s.png`, image2:`${CDN}/1773778867350-w70k1r.png`, image3:`${CDN}/1773779017020-g7xxyf.png`, image4:null, basePrice:"8.00", duration:"1 hora", minPersons:1, maxPersons:30, difficulty:"facil", isFeatured:1, isActive:1, isPublished:1, isPresentialSale:1, categoryId:A, locationId:L, includes:'["Seguro de accidentes"]', excludes:'[]', sortOrder:12 },
+      { slug:"paseo-en-barco", title:"Paseo en Barco", shortDescription:"Navega por las tranquilas aguas del embalse rodeado de vegetaci√≥n y vistas panor√°micas a la Sierra de Guadarrama.", description:"Una experiencia √∫nica surcando las apacibles aguas del embalse de Los √Ångeles de San Rafael. A bordo disfrutar√°s de paisajes de ensue√±o, rodeado de vegetaci√≥n frondosa y con las cumbres de la Sierra de Guadarrama como tel√≥n de fondo.", coverImageUrl:`${CDN}/1775049168929-vx1e7i.png`, image1:`${CDN}/1775049168929-vx1e7i.png`, image2:`${CDN}/1775049603095-8rkwvh.png`, image3:`${CDN}/1775049607679-rxudag.png`, image4:`${CDN}/1775049612665-6ts80x.png`, basePrice:"15.00", duration:"20 minutos", minPersons:1, maxPersons:50, difficulty:"facil", isFeatured:0, isActive:1, isPublished:1, isPresentialSale:1, categoryId:A, locationId:L, includes:'["Seguro de accidentes"]', excludes:'[]', sortOrder:1 },
+      { slug:"entrada-general-piscina-club-nautico", title:"Entrada General Piscina Club N√°utico", shortDescription:"Rel√°jate en nuestra piscina a orillas del embalse con amplias zonas de sol√°rium y ba√±o.", description:"Disfruta de la piscina del Club N√°utico de Los √Ångeles de San Rafael con vistas a la Sierra de Guadarrama. Amplias zonas de sol√°rium, acceso al lago y todas las comodidades para una jornada de descanso en familia o con amigos.", coverImageUrl:`${CDN}/1774281603494-er84vo.png`, image1:`${CDN}/1774281603494-er84vo.png`, image2:`${CDN}/1774281608106-4fqd45.png`, image3:`${CDN}/1774281619410-lefaql.png`, image4:null, basePrice:"7.00", duration:null, minPersons:11, maxPersons:100, difficulty:"facil", isFeatured:0, isActive:1, isPublished:1, isPresentialSale:1, categoryId:P, locationId:L, includes:'["Acceso a las instalaciones","Seguro de accidentes"]', excludes:'["Acceso a Bah√≠a VIP"]', sortOrder:2 },
+      { slug:"alquiler-dia-completo-tabla-de-wakeboard", title:"Alquiler D√≠a Completo Tabla de Wakeboard", shortDescription:"Alquila tu tabla de wakeboard para todo el d√≠a y disfruta del embalse a tu ritmo combinando velocidad, equilibrio y adrenalina.", description:"Vive la experiencia del wakeboard durante un d√≠a completo en el embalse de Los √Ångeles de San Rafael. La tabla te permitir√° deslizarte sobre el agua combinando velocidad, equilibrio y adrenalina. M√≠nimo 2 personas.", coverImageUrl:`${CDN}/1775074493261-jccylv.jpg`, image1:`${CDN}/1775074493261-jccylv.jpg`, image2:`${CDN}/1775074605323-iygad1.webp`, image3:null, image4:null, basePrice:"45.00", duration:"1 d√≠a", minPersons:1, maxPersons:5, difficulty:"facil", isFeatured:0, isActive:1, isPublished:1, isPresentialSale:1, categoryId:D, locationId:L, includes:'["Tabla de wakeboard","Fijaciones/herrajes","Chaleco salvavidas","Seguro de accidentes"]', excludes:'["Neopreno"]', sortOrder:3 },
+      { slug:"cableski-wakeboard", title:"Cableski & Wakeboard", shortDescription:"El sistema de cable a√©reo continuo te propulsar√° sobre el agua haciendo wakeboard o esqu√≠ acu√°tico. ¬°Una experiencia que engancha desde la primera vuelta!", description:"El cableski de N√°yade te permite practicar wakeboard o esqu√≠ acu√°tico impulsado por un sistema de cable a√©reo continuo, sin necesidad de lancha motora. No hace falta experiencia previa. Disponible por vueltas o en formato media jornada/jornada completa.", coverImageUrl:`${CDN}/1773766863713-7gry6r.jpg`, image1:`${CDN}/1773766863713-7gry6r.jpg`, image2:`${CDN}/1773766869680-r66be7.png`, image3:`${CDN}/1773766880496-2l6cdm.png`, image4:`${CDN}/1773766883661-g2yblj.png`, basePrice:"30.00", duration:null, minPersons:1, maxPersons:100, difficulty:"moderado", isFeatured:0, isActive:1, isPublished:1, isPresentialSale:1, categoryId:D, locationId:L, includes:'["Esqu√≠s, mono-ski o kneeboard","Chaleco salvavidas/protector","Seguro de accidentes"]', excludes:'["Tabla de wakeboard","Neopreno"]', sortOrder:4 },
+      { slug:"blob-jump", title:"Blob Jump", shortDescription:"L√°nzate desde una plataforma elevada sobre un giant blob inflable y sal despedido al aire antes de caer al lago. ¬°Pura adrenalina!", description:"El Blob Jump es la actividad m√°s impactante de N√°yade. Te lanzas desde una plataforma elevada sobre un enorme colch√≥n inflable (blob) que propulsa al compa√±ero del extremo opuesto por los aires antes de caer al embalse. Disponible por saltos individuales o en bonos de 3 y 5 saltos.", coverImageUrl:`${CDN}/1773762402377-dymd02.png`, image1:`${CDN}/1773762402377-dymd02.png`, image2:`${CDN}/1773762413686-d56xu2.png`, image3:null, image4:null, basePrice:"8.00", duration:null, minPersons:1, maxPersons:20, difficulty:"dificil", isFeatured:1, isActive:1, isPublished:1, isPresentialSale:1, categoryId:A, locationId:L, includes:'["Equipo protector (parachoques)","Seguro de accidentes","Chaleco salvavidas"]', excludes:'["Casco"]', sortOrder:5 },
+      { slug:"canoas-kayaks", title:"Canoas & Kayaks", shortDescription:"Explora el embalse en canoa o kayak a tu propio ritmo. Deporte, paisaje y tranquilidad con vistas a la Sierra de Guadarrama.", description:"Navega por el embalse de Los √Ångeles de San Rafael en canoa o kayak y descubre rincones √∫nicos a tu ritmo. Actividad perfecta para todos los niveles que combina ejercicio suave, naturaleza y vistas espectaculares. Disponible en 1, 2 o 3 horas y F√≥rmula Familiar.", coverImageUrl:`${CDN}/1775063728570-x1kzd8.png`, image1:`${CDN}/1775063728570-x1kzd8.png`, image2:`${CDN}/1775063736967-y2tlnu.png`, image3:`${CDN}/1775063750522-nke2gs.png`, image4:`${CDN}/1775063846540-gcz3jp.png`, basePrice:"12.00", duration:"1 hora", minPersons:2, maxPersons:4, difficulty:"facil", isFeatured:1, isActive:1, isPublished:1, isPresentialSale:1, categoryId:A, locationId:L, includes:'["Embarcaci√≥n para 2 pasajeros","Remos para 2 personas","Chaleco salvavidas","Seguro de accidentes"]', excludes:'["Bolsa impermeable"]', sortOrder:6 },
+      { slug:"paddle-surf", title:"Paddle Surf", shortDescription:"Practica el stand-up paddleboarding en las tranquilas aguas del embalse. Equilibrio, calma y diversi√≥n para todos los niveles.", description:"El Paddle Surf (SUP) es perfecto para disfrutar del embalse de manera activa y serena. De pie sobre la tabla, remando con una pala, explorar√°s las orillas del embalse. Accesible para principiantes y apto para toda la familia. Sesiones de 1 hora, 2 horas o F√≥rmula Familiar.", coverImageUrl:`${CDN}/1773774376430-cmec06.png`, image1:`${CDN}/1773774376430-cmec06.png`, image2:`${CDN}/1773774379647-stk79l.jpg`, image3:`${CDN}/1773774382023-qz52s0.jpg`, image4:`${CDN}/1773774392088-2ldmdb.jpg`, basePrice:"20.00", duration:"1 hora", minPersons:1, maxPersons:6, difficulty:"facil", isFeatured:1, isActive:1, isPublished:1, isPresentialSale:1, categoryId:A, locationId:L, includes:'["Tabla individual","Remo/pala","Chaleco salvavidas","Seguro de accidentes"]', excludes:'["Bolsa estanca impermeable"]', sortOrder:7 },
+      { slug:"banana-ski-donuts-copia-dRMV", title:"Donuts Ski", shortDescription:"La actividad m√°s divertida para grupos: flota sobre un donut inflable remolcado por una lancha a alta velocidad, con giros y salpicones garantizados.", description:"El Donuts Ski es la actividad m√°s divertida de N√°yade. Subidos en un flotador circular de goma, ser√°s remolcado por una lancha a alta velocidad por el embalse. Giros inesperados, saltos y salpicones constantes hacen de esta experiencia una risa garantizada. Grupos de 2 a 8 personas.", coverImageUrl:`${CDN}/1773863507321-ywvj6b.png`, image1:`${CDN}/1773863507321-ywvj6b.png`, image2:`${CDN}/1775034710820-bwhf5y.jpg`, image3:`${CDN}/1773702422261-h5ajd3.png`, image4:`${CDN}/1773702434768-wegear.png`, basePrice:"35.00", duration:"20 minutos", minPersons:2, maxPersons:8, difficulty:"moderado", isFeatured:1, isActive:1, isPublished:1, isPresentialSale:1, categoryId:A, locationId:L, includes:'["Equipo y flotador","Chaleco salvavidas","Seguro de accidentes"]', excludes:'["Neopreno"]', sortOrder:8 },
+      { slug:"circuito-spa", title:"Circuito SPA Hidrotermal", shortDescription:"Circuito hidrot√©rmico completo con piscinas a distintas temperaturas, sauna finlandesa, ba√±o turco y duchas de contraste.", description:"El Circuito SPA Hidrotermal de N√°yade te ofrece una experiencia de bienestar completa. Incluye piscinas a diferentes temperaturas, chorros cervicales y lumbares, sauna finlandesa, ba√±o turco y duchas de contraste. Precio especial para clientes del hotel.", coverImageUrl:`${CDN}/1773867774581-gde9k3.png`, image1:`${CDN}/1773867774581-gde9k3.png`, image2:`${CDN}/1773867780249-4it3ac.png`, image3:`${CDN}/1773867847070-xh6y0d.png`, image4:`${CDN}/1773867967358-gmcgyp.png`, basePrice:"18.00", duration:null, minPersons:6, maxPersons:20, difficulty:"facil", isFeatured:1, isActive:1, isPublished:1, isPresentialSale:1, categoryId:S, locationId:L, includes:'["Acceso a todo el circuito hidrotermal","Piscinas a distintas temperaturas","Sauna finlandesa","Ba√±o turco","Duchas de contraste","Seguro de accidentes"]', excludes:'[]', sortOrder:9 },
+      { slug:"banana-ski-donuts", title:"Banana Ski", shortDescription:"La actividad m√°s divertida y apta para todos los p√∫blicos: sentados en el flotador banana, la lancha os arrastrar√° a alta velocidad por el embalse.", description:"El Banana Ski es la actividad m√°s popular de N√°yade, ideal para grupos y familias. Sentados en un flotador en forma de banana, la lancha motora os remolcar√° a alta velocidad. Risas y emociones garantizadas. M√≠nimo 4 personas para la tarifa est√°ndar.", coverImageUrl:`${CDN}/1773702396972-kd9hrk.png`, image1:`${CDN}/1773702396972-kd9hrk.png`, image2:`${CDN}/1773702409563-u54xhb.png`, image3:`${CDN}/1773702422261-h5ajd3.png`, image4:`${CDN}/1773702434768-wegear.png`, basePrice:"15.00", duration:"20 minutos", minPersons:4, maxPersons:8, difficulty:"moderado", isFeatured:1, isActive:1, isPublished:1, isPresentialSale:1, categoryId:A, locationId:L, includes:'["Seguro de accidentes"]', excludes:'[]', sortOrder:10 },
+      { slug:"hidropedales", title:"Hidrobicis", shortDescription:"Pedalea sobre el agua y explora el embalse a tu ritmo. Una actividad tranquila y relajante perfecta para toda la familia.", description:"Las hidrobicis (hidropedales) son la opci√≥n perfecta para disfrutar del embalse de forma relajada. Pedaleando sobre el agua explorar√°s los rincones m√°s tranquilos. Ideal para familias con ni√±os. Sesiones de 1 hora, 2 horas o F√≥rmula Familiar.", coverImageUrl:`${CDN}/1773777174336-io6lvw.jpg`, image1:`${CDN}/1773777174336-io6lvw.jpg`, image2:`${CDN}/1773777177100-p1hzuw.jpg`, image3:`${CDN}/1773777198906-716boe.png`, image4:null, basePrice:"20.00", duration:"1 hora", minPersons:2, maxPersons:4, difficulty:"moderado", isFeatured:1, isActive:1, isPublished:1, isPresentialSale:1, categoryId:A, locationId:L, includes:'["Hidropedal","Chaleco salvavidas","Seguro de accidentes"]', excludes:'["Neopreno"]', sortOrder:11 },
+      { slug:"aventura-hinchable", title:"Aventura Hinchable Acu√°tica", shortDescription:"Parque inflable flotante en el lago con toboganes, trampolines y circuitos de obst√°culos. ¬°Diversi√≥n garantizada para todas las edades!", description:"La Aventura Hinchable Acu√°tica es el parque de atracciones flotante de N√°yade: un enorme recorrido inflable en el embalse con toboganes, trampolines y circuitos de obst√°culos. Diversi√≥n para toda la familia. Sesiones de 30 y 60 minutos.", coverImageUrl:`${CDN}/1773778862239-e30o1s.png`, image1:`${CDN}/1773778862239-e30o1s.png`, image2:`${CDN}/1773778867350-w70k1r.png`, image3:`${CDN}/1773779017020-g7xxyf.png`, image4:null, basePrice:"8.00", duration:"1 hora", minPersons:1, maxPersons:30, difficulty:"facil", isFeatured:1, isActive:1, isPublished:1, isPresentialSale:1, categoryId:A, locationId:L, includes:'["Seguro de accidentes"]', excludes:'[]', sortOrder:12 },
     ];
 
     for (const exp of experiences) {
@@ -644,19 +644,19 @@ async function ensurePricingColumns() {
 
     if (!found.has("pricing_type")) {
       await conn.execute("ALTER TABLE `experiences` ADD COLUMN `pricing_type` ENUM('per_person','per_unit') NOT NULL DEFAULT 'per_person'");
-      console.log("[DB] ? Columna pricing_type aÒadida");
+      console.log("[DB] ? Columna pricing_type a√±adida");
     }
     if (!found.has("unit_capacity")) {
       await conn.execute("ALTER TABLE `experiences` ADD COLUMN `unit_capacity` INT NULL");
-      console.log("[DB] ? Columna unit_capacity aÒadida");
+      console.log("[DB] ? Columna unit_capacity a√±adida");
     }
     if (!found.has("max_units")) {
       await conn.execute("ALTER TABLE `experiences` ADD COLUMN `max_units` INT NULL");
-      console.log("[DB] ? Columna max_units aÒadida");
+      console.log("[DB] ? Columna max_units a√±adida");
     }
     if (!found.has("has_time_slots")) {
       await conn.execute("ALTER TABLE `experiences` ADD COLUMN `has_time_slots` BOOLEAN NOT NULL DEFAULT false");
-      console.log("[DB] ? Columna has_time_slots aÒadida");
+      console.log("[DB] ? Columna has_time_slots a√±adida");
     }
 
     // Check reservations columns too
@@ -668,15 +668,15 @@ async function ensurePricingColumns() {
     const foundRes = new Set(resCols.map((c: any) => c.COLUMN_NAME));
     if (!foundRes.has("pricing_type")) {
       await conn.execute("ALTER TABLE `reservations` ADD COLUMN `pricing_type` VARCHAR(16) NULL");
-      console.log("[DB] ? reservations.pricing_type aÒadida");
+      console.log("[DB] ? reservations.pricing_type a√±adida");
     }
     if (!foundRes.has("unit_capacity")) {
       await conn.execute("ALTER TABLE `reservations` ADD COLUMN `unit_capacity` INT NULL");
-      console.log("[DB] ? reservations.unit_capacity aÒadida");
+      console.log("[DB] ? reservations.unit_capacity a√±adida");
     }
     if (!foundRes.has("units_booked")) {
       await conn.execute("ALTER TABLE `reservations` ADD COLUMN `units_booked` INT NULL");
-      console.log("[DB] ? reservations.units_booked aÒadida");
+      console.log("[DB] ? reservations.units_booked a√±adida");
     }
 
     // Check leads.cart_metadata column
@@ -687,7 +687,7 @@ async function ensurePricingColumns() {
     ) as any[];
     if (leadsCols.length === 0) {
       await conn.execute("ALTER TABLE `leads` ADD COLUMN `cart_metadata` JSON NULL");
-      console.log("[DB] ? leads.cart_metadata aÒadida");
+      console.log("[DB] ? leads.cart_metadata a√±adida");
     }
 
     // Asegurar que el enum de quotes.status incluye 'pago_fallido'
@@ -713,7 +713,7 @@ async function ensurePricingColumns() {
     ) as any[];
     if ((quotePlanCol as any[]).length === 0) {
       await conn.execute("ALTER TABLE `quotes` ADD COLUMN `payment_plan_id` INT NULL");
-      console.log("[DB] ? quotes.payment_plan_id aÒadida");
+      console.log("[DB] ? quotes.payment_plan_id a√±adida");
     }
 
     // Tabla payment_plans
@@ -776,9 +776,9 @@ async function ensurePricingColumns() {
       const [rows] = await conn.execute(
         "SELECT id, pricing_type, unit_capacity, max_units, has_time_slots FROM experiences LIMIT 1"
       ) as any[];
-      console.log(`[DB] ? Test query OK ó ${rows.length} fila(s)`);
+      console.log(`[DB] ? Test query OK ‚Äî ${rows.length} fila(s)`);
     } catch (qErr: any) {
-      console.error("[DB] ? Test query FALL”:", qErr.message);
+      console.error("[DB] ? Test query FALL√ì:", qErr.message);
     }
 
     // -- Columnas de anulaciones parciales ------------------------------------
@@ -793,13 +793,13 @@ async function ensurePricingColumns() {
       await conn.execute(
         "ALTER TABLE `cancellation_requests` ADD COLUMN `cancellation_scope` VARCHAR(10) NOT NULL DEFAULT 'total' AFTER `cancellation_number`"
       );
-      console.log("[DB] ? cancellation_requests.cancellation_scope aÒadida");
+      console.log("[DB] ? cancellation_requests.cancellation_scope a√±adida");
     }
     if (!foundCancel.has("cancelled_items_json")) {
       await conn.execute(
         "ALTER TABLE `cancellation_requests` ADD COLUMN `cancelled_items_json` TEXT NULL AFTER `cancellation_scope`"
       );
-      console.log("[DB] ? cancellation_requests.cancelled_items_json aÒadida");
+      console.log("[DB] ? cancellation_requests.cancelled_items_json a√±adida");
     }
 
     await conn.end();
@@ -831,39 +831,39 @@ async function ensureLeadSourceColumn() {
       )
     `);
 
-    // 2. Seed data (INSERT IGNORE ó idempotente)
+    // 2. Seed data (INSERT IGNORE ‚Äî idempotente)
     await conn.execute(`
       INSERT IGNORE INTO \`crm_lead_sources\` (\`code\`, \`name\`, \`description\`, \`color\`, \`icon\`, \`sort_order\`, \`is_active\`, \`is_system\`) VALUES
         ('LANDING_FORM',       'Formulario web',         'Lead enviado desde el formulario de presupuesto de la landing page', '#3B82F6', 'Globe',        10, 1, 1),
         ('HOME_FORM',          'Formulario experiencia', 'Lead enviado desde la ficha de experiencia del sitio web',           '#8B5CF6', 'LayoutList',   20, 1, 1),
         ('GHL_WHATSAPP',       'WhatsApp / GHL',         'Lead captado mediante WhatsApp gestionado por GoHighLevel',          '#22C55E', 'MessageCircle',30, 1, 1),
-        ('VAPI_CALL',          'Llamada IA (Vapi)',       'Lead generado autom·ticamente por el agente de voz Vapi',            '#F59E0B', 'Phone',        40, 1, 1),
+        ('VAPI_CALL',          'Llamada IA (Vapi)',       'Lead generado autom√°ticamente por el agente de voz Vapi',            '#F59E0B', 'Phone',        40, 1, 1),
         ('CRM_MANUAL',         'Alta manual CRM',         'Lead creado directamente por un agente comercial desde el CRM',      '#6B7280', 'UserPlus',     50, 1, 1),
         ('CHECKOUT_ABANDONED', 'Pago abandonado',         'Lead generado al detectar un carrito con pago fallido o abandonado', '#EF4444', 'ShoppingCart', 60, 1, 1),
         ('PARTNERS',           'Portal de partners',      'Lead enviado desde el portal de partners o agencias',                '#14B8A6', 'Building2',    70, 1, 1),
         ('PRESUPUESTO_DIRECTO','Presupuesto directo',     'Lead creado a partir de un presupuesto generado internamente',        '#A855F7', 'FileText',     80, 1, 1),
         ('REFERIDO',           'Referido / boca a boca', 'Lead referido por un cliente o contacto existente',                  '#EC4899', 'Heart',        90, 1, 0),
         ('REDES_SOCIALES',     'Redes sociales',          'Lead proveniente de Instagram, Facebook, LinkedIn u otras RRSS',     '#F97316', 'Share2',      100, 1, 0),
-        ('EMAIL_MARKETING',    'Email marketing',         'Lead captado a travÈs de campaÒas de email marketing',               '#0EA5E9', 'Mail',        110, 1, 0),
-        ('EVENTO_PRESENCIAL',  'Evento presencial',       'Lead conocido en feria, evento o presentaciÛn presencial',           '#84CC16', 'Calendar',    120, 1, 0),
-        ('PUBLICIDAD',         'Publicidad (Ads)',         'Lead procedente de campaÒas de Google Ads, Meta Ads, etc.',          '#F43F5E', 'TrendingUp',  130, 1, 0),
-        ('OTRO',               'Otro',                    'Origen no clasificado en las categorÌas anteriores',                 '#9CA3AF', 'HelpCircle',  999, 1, 0)
+        ('EMAIL_MARKETING',    'Email marketing',         'Lead captado a trav√©s de campa√±as de email marketing',               '#0EA5E9', 'Mail',        110, 1, 0),
+        ('EVENTO_PRESENCIAL',  'Evento presencial',       'Lead conocido en feria, evento o presentaci√≥n presencial',           '#84CC16', 'Calendar',    120, 1, 0),
+        ('PUBLICIDAD',         'Publicidad (Ads)',         'Lead procedente de campa√±as de Google Ads, Meta Ads, etc.',          '#F43F5E', 'TrendingUp',  130, 1, 0),
+        ('OTRO',               'Otro',                    'Origen no clasificado en las categor√≠as anteriores',                 '#9CA3AF', 'HelpCircle',  999, 1, 0)
     `);
 
-    // 3. AÒadir columna lead_source_id a leads si no existe
+    // 3. A√±adir columna lead_source_id a leads si no existe
     const [leadCols] = await conn.execute(
       `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'leads' AND COLUMN_NAME = 'lead_source_id'`
     ) as any[];
     if (!(leadCols as any[]).length) {
       await conn.execute("ALTER TABLE `leads` ADD COLUMN `lead_source_id` INT NULL");
-      console.log("[DB] ? leads.lead_source_id aÒadida");
+      console.log("[DB] ? leads.lead_source_id a√±adida");
 
-      // 4. Crear Ìndice
+      // 4. Crear √≠ndice
       await conn.execute("CREATE INDEX `idx_leads_lead_source_id` ON `leads` (`lead_source_id`)");
-      console.log("[DB] ? Õndice idx_leads_lead_source_id creado");
+      console.log("[DB] ? √çndice idx_leads_lead_source_id creado");
 
-      // 5. Backfill ó mapear source legacy ? lead_source_id
+      // 5. Backfill ‚Äî mapear source legacy ? lead_source_id
       await conn.execute(`UPDATE \`leads\` SET \`lead_source_id\` = (SELECT \`id\` FROM \`crm_lead_sources\` WHERE \`code\` = 'LANDING_FORM')       WHERE \`source\` IN ('landing_presupuesto','web')    AND \`lead_source_id\` IS NULL`);
       await conn.execute(`UPDATE \`leads\` SET \`lead_source_id\` = (SELECT \`id\` FROM \`crm_lead_sources\` WHERE \`code\` = 'HOME_FORM')          WHERE \`source\` = 'web_experiencia'                 AND \`lead_source_id\` IS NULL`);
       await conn.execute(`UPDATE \`leads\` SET \`lead_source_id\` = (SELECT \`id\` FROM \`crm_lead_sources\` WHERE \`code\` = 'GHL_WHATSAPP')       WHERE \`source\` = 'ghl_webhook'                     AND \`lead_source_id\` IS NULL`);
@@ -874,17 +874,17 @@ async function ensureLeadSourceColumn() {
       await conn.execute(`UPDATE \`leads\` SET \`lead_source_id\` = (SELECT \`id\` FROM \`crm_lead_sources\` WHERE \`code\` = 'CRM_MANUAL')         WHERE \`lead_source_id\` IS NULL`);
       console.log("[DB] ? Backfill lead_source_id completado");
     } else {
-      console.log("[DB] leads.lead_source_id ya existe ó nada que hacer");
+      console.log("[DB] leads.lead_source_id ya existe ‚Äî nada que hacer");
     }
 
-    // AÒadir preferred_time si no existe
+    // A√±adir preferred_time si no existe
     const [timeCols] = await conn.execute(
       `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'leads' AND COLUMN_NAME = 'preferred_time'`
     ) as any[];
     if (!(timeCols as any[]).length) {
       await conn.execute("ALTER TABLE `leads` ADD COLUMN `preferred_time` VARCHAR(10) NULL");
-      console.log("[DB] ? leads.preferred_time aÒadida");
+      console.log("[DB] ? leads.preferred_time a√±adida");
     }
 
     await conn.end();
@@ -897,7 +897,7 @@ async function ensureTicketingChannel() {
   try {
     const mysql = await import("mysql2/promise");
     const conn = await mysql.default.createConnection(process.env.DATABASE_URL!);
-    // Verificar si 'TICKETING' ya est· en el ENUM de reservations.channel
+    // Verificar si 'TICKETING' ya est√° en el ENUM de reservations.channel
     const [rows] = await conn.execute(
       `SELECT COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS
        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'reservations' AND COLUMN_NAME = 'channel'`
@@ -911,7 +911,7 @@ async function ensureTicketingChannel() {
           'web','crm','telefono','email','otro','tpv','groupon'
         ) DEFAULT 'ONLINE_DIRECTO'
       `);
-      console.log("[DB] ? ENUM reservations.channel: valor TICKETING aÒadido");
+      console.log("[DB] ? ENUM reservations.channel: valor TICKETING a√±adido");
     }
     await conn.end();
   } catch (err: any) {
@@ -934,23 +934,23 @@ async function ensureExpenseEmailIngestionSchema() {
 
     if (!foundExpCols.has("source")) {
       await conn.execute("ALTER TABLE `expenses` ADD COLUMN `source` VARCHAR(32) NOT NULL DEFAULT 'manual'");
-      console.log("[DB] ? expenses.source aÒadida");
+      console.log("[DB] ? expenses.source a√±adida");
     }
     if (!foundExpCols.has("emailMessageId")) {
       await conn.execute("ALTER TABLE `expenses` ADD COLUMN `emailMessageId` VARCHAR(512) NULL");
-      console.log("[DB] ? expenses.emailMessageId aÒadida");
+      console.log("[DB] ? expenses.emailMessageId a√±adida");
     }
     if (!foundExpCols.has("emailFrom")) {
       await conn.execute("ALTER TABLE `expenses` ADD COLUMN `emailFrom` VARCHAR(256) NULL");
-      console.log("[DB] ? expenses.emailFrom aÒadida");
+      console.log("[DB] ? expenses.emailFrom a√±adida");
     }
     if (!foundExpCols.has("missingAttachment")) {
       await conn.execute("ALTER TABLE `expenses` ADD COLUMN `missingAttachment` BOOLEAN NOT NULL DEFAULT FALSE");
-      console.log("[DB] ? expenses.missingAttachment aÒadida");
+      console.log("[DB] ? expenses.missingAttachment a√±adida");
     }
 
-    // -- GestorÌa e Impuestos (Fase 0) ó desglose fiscal del IVA soportado --
-    // MigraciÛn 0111. Se re-asegura en cada arranque para que el deploy no la pierda.
+    // -- Gestor√≠a e Impuestos (Fase 0) ‚Äî desglose fiscal del IVA soportado --
+    // Migraci√≥n 0111. Se re-asegura en cada arranque para que el deploy no la pierda.
     const [expFiscalCols] = await conn.execute(
       `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'expenses'
@@ -975,7 +975,7 @@ async function ensureExpenseEmailIngestionSchema() {
     for (const [col, ddl] of Object.entries(expFiscalDdl)) {
       if (!foundExpFiscal.has(col)) {
         await conn.execute(`ALTER TABLE \`expenses\` ADD COLUMN \`${col}\` ${ddl}`);
-        console.log(`[DB] ? expenses.${col} aÒadida (fiscal)`);
+        console.log(`[DB] ? expenses.${col} a√±adida (fiscal)`);
       }
     }
 
@@ -1006,55 +1006,55 @@ async function ensureExpenseEmailIngestionSchema() {
       [
         "expense_email_ingestion_enabled",
         "Ingesta gastos por email",
-        "Activa el job periÛdico que lee emails con asunto #gasto y crea gastos autom·ticamente",
+        "Activa el job peri√≥dico que lee emails con asunto #gasto y crea gastos autom√°ticamente",
         "expenses",
       ]
     );
 
-    // Feature flag ó mÛdulo de Email Comercial (bandeja IMAP/SMTP multi-cuenta)
+    // Feature flag ‚Äî m√≥dulo de Email Comercial (bandeja IMAP/SMTP multi-cuenta)
     await conn.execute(
       `INSERT IGNORE INTO feature_flags (\`key\`, \`name\`, description, module, enabled, default_enabled, risk_level)
        VALUES (?, ?, ?, ?, 0, 0, 'low')`,
       [
         "commercial_email_enabled",
         "Email Comercial",
-        "Activa la bandeja de email comercial con sincronizaciÛn IMAP multi-cuenta y el mÛdulo de configuraciÛn de cuentas.",
+        "Activa la bandeja de email comercial con sincronizaci√≥n IMAP multi-cuenta y el m√≥dulo de configuraci√≥n de cuentas.",
         "commercial_email",
       ]
     );
 
-    // Feature flag ó job centralizado de automatizaciones de email (cola email_scheduled_jobs)
+    // Feature flag ‚Äî job centralizado de automatizaciones de email (cola email_scheduled_jobs)
     await conn.execute(
       `INSERT IGNORE INTO feature_flags (\`key\`, \`name\`, description, module, enabled, default_enabled, risk_level)
        VALUES (?, ?, ?, ?, 0, 0, 'medium')`,
       [
         "email_automation_job_enabled",
         "Cron automatizaciones email",
-        "Procesa la cola email_scheduled_jobs cada 10 min ó envÌa recordatorios programados por reglas de automatizaciÛn.",
+        "Procesa la cola email_scheduled_jobs cada 10 min ‚Äî env√≠a recordatorios programados por reglas de automatizaci√≥n.",
         "email",
       ]
     );
 
-    // El feature flag commercial_followup_job_enabled se eliminÛ en Fase 5
+    // El feature flag commercial_followup_job_enabled se elimin√≥ en Fase 5
     // junto con commercialFollowupJob. emailAutomationJob lo sustituye.
 
-    // Feature flag ó job de revinculaciÛn de dat·fono (no estaba en ninguna migraciÛn)
+    // Feature flag ‚Äî job de revinculaci√≥n de dat√°fono (no estaba en ninguna migraci√≥n)
     await conn.execute(
       `INSERT IGNORE INTO feature_flags (\`key\`, \`name\`, description, module, enabled, default_enabled, risk_level)
        VALUES (?, ?, ?, ?, 1, 1, 'low')`,
       [
         "card_terminal_relink_enabled",
-        "Job revinculaciÛn dat·fono",
-        "Reintenta periÛdicamente vincular batches de dat·fono sin conciliar.",
+        "Job revinculaci√≥n dat√°fono",
+        "Reintenta peri√≥dicamente vincular batches de dat√°fono sin conciliar.",
         "card_terminal",
       ]
     );
 
-    // Feature flags ó MÛdulo Partners / Colaboradores (Fase 1)
+    // Feature flags ‚Äî M√≥dulo Partners / Colaboradores (Fase 1)
     await conn.execute(
       `INSERT IGNORE INTO feature_flags (\`key\`, \`name\`, description, module, enabled, default_enabled, risk_level)
        VALUES (?, ?, ?, ?, 1, 1, 'low')`,
-      ["partners_module_enabled", "MÛdulo Partners", "Activa el mÛdulo de Partners/Colaboradores en el admin.", "partners"]
+      ["partners_module_enabled", "M√≥dulo Partners", "Activa el m√≥dulo de Partners/Colaboradores en el admin.", "partners"]
     );
     await conn.execute(
       `INSERT IGNORE INTO feature_flags (\`key\`, \`name\`, description, module, enabled, default_enabled, risk_level)
@@ -1064,17 +1064,17 @@ async function ensureExpenseEmailIngestionSchema() {
     await conn.execute(
       `INSERT IGNORE INTO feature_flags (\`key\`, \`name\`, description, module, enabled, default_enabled, risk_level)
        VALUES (?, ?, ?, ?, 0, 0, 'medium')`,
-      ["partners_billing_enabled", "Partners: FacturaciÛn agrupada", "Activa la facturaciÛn agrupada por periodos para partners (Fase 4).", "partners"]
+      ["partners_billing_enabled", "Partners: Facturaci√≥n agrupada", "Activa la facturaci√≥n agrupada por periodos para partners (Fase 4).", "partners"]
     );
     await conn.execute(
       `INSERT IGNORE INTO feature_flags (\`key\`, \`name\`, description, module, enabled, default_enabled, risk_level)
        VALUES (?, ?, ?, ?, 0, 0, 'high')`,
-      ["partners_commissions_enabled", "Partners: Comisiones", "Activa el c·lculo y liquidaciÛn de comisiones para partners (Fase 5).", "partners"]
+      ["partners_commissions_enabled", "Partners: Comisiones", "Activa el c√°lculo y liquidaci√≥n de comisiones para partners (Fase 5).", "partners"]
     );
 
-    // MÛdulo Partners ó asegurar tabla con schema correcto
+    // M√≥dulo Partners ‚Äî asegurar tabla con schema correcto
     // Si la tabla tiene un schema antiguo incompatible (detectado por columna 'access_key'),
-    // la eliminamos y la recreamos. La tabla est· vacÌa (todos los inserts fallaron).
+    // la eliminamos y la recreamos. La tabla est√° vac√≠a (todos los inserts fallaron).
     {
       const [oldCols] = await conn.execute(
         `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
@@ -1146,7 +1146,7 @@ async function ensureExpenseEmailIngestionSchema() {
         \`createdAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     `);
-    // Columnas adicionales en tablas existentes ó verificar con INFORMATION_SCHEMA antes de aÒadir
+    // Columnas adicionales en tablas existentes ‚Äî verificar con INFORMATION_SCHEMA antes de a√±adir
     const partnerColsToAdd: Array<{ table: string; column: string; ddl: string }> = [
       // Columnas en otras tablas
       { table: "users",        column: "partnerId",              ddl: "int NULL" },
@@ -1163,7 +1163,7 @@ async function ensureExpenseEmailIngestionSchema() {
       { table: "tpv_sale_items", column: "is_manual",          ddl: "boolean NOT NULL DEFAULT false" },
       { table: "tpv_sale_items", column: "concept_text",       ddl: "varchar(500) NULL" },
       { table: "coupon_redemptions", column: "ghlContactId",   ddl: "varchar(128) NULL" },
-      // Columnas de partners que pueden faltar si la tabla se creÛ con schema anterior
+      // Columnas de partners que pueden faltar si la tabla se cre√≥ con schema anterior
       { table: "partners", column: "fiscalName",                   ddl: "varchar(256) NULL" },
       { table: "partners", column: "nif",                          ddl: "varchar(32) NULL" },
       { table: "partners", column: "address",                      ddl: "text NULL" },
@@ -1206,9 +1206,9 @@ async function ensureExpenseEmailIngestionSchema() {
        enum('user','admin','monitor','agente','adminrest','controler','partner_admin','partner_user','supplier','employee','gestoria')
        NOT NULL DEFAULT 'user'`
     ).catch(() => {});
-    console.log("[DB] ? MÛdulo Partners: tablas y columnas verificadas");
+    console.log("[DB] ? M√≥dulo Partners: tablas y columnas verificadas");
 
-    // Tablas del sistema de comunicaciones (migraciÛn 0086 ó creaciÛn program·tica por si no aplicÛ)
+    // Tablas del sistema de comunicaciones (migraci√≥n 0086 ‚Äî creaci√≥n program√°tica por si no aplic√≥)
     await conn.execute(`
       CREATE TABLE IF NOT EXISTS \`email_template_configs\` (
         \`id\`             INT AUTO_INCREMENT PRIMARY KEY,
@@ -1318,7 +1318,7 @@ async function ensureExpenseEmailIngestionSchema() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     `);
 
-    // Limpiar reglas de budget_request_user sembradas anteriormente: en su dÌa se
+    // Limpiar reglas de budget_request_user sembradas anteriormente: en su d√≠a se
     // crearon como copia de las reglas comerciales, pero el seguimiento de quotes
     // ahora vive enteramente en email_automation_rules con templateKey
     // commercial_reminder_1/2/3, no en budget_request_user.
@@ -1326,13 +1326,13 @@ async function ensureExpenseEmailIngestionSchema() {
       `DELETE FROM email_automation_rules
        WHERE templateKey = 'budget_request_user'
          AND name IN (
-           'Recordatorio 24h ó solicitud sin respuesta',
-           'Recordatorio 72h ó seguimiento comercial',
-           '⁄ltima oportunidad 120h'
+           'Recordatorio 24h ‚Äî solicitud sin respuesta',
+           'Recordatorio 72h ‚Äî seguimiento comercial',
+           '√öltima oportunidad 120h'
          )`
     );
 
-    // Tablas del mÛdulo de Email Comercial
+    // Tablas del m√≥dulo de Email Comercial
     await conn.execute(`
       CREATE TABLE IF NOT EXISTS \`email_accounts\` (
         \`id\`                  INT AUTO_INCREMENT PRIMARY KEY,
@@ -1406,7 +1406,7 @@ async function ensureExpenseEmailIngestionSchema() {
     `);
     console.log("[DB] Tablas email_accounts y commercial_emails verificadas");
 
-    // Columna de metadatos de adjuntos (aÒadida en mayo 2026)
+    // Columna de metadatos de adjuntos (a√±adida en mayo 2026)
     await conn.execute(
       "ALTER TABLE commercial_emails ADD COLUMN IF NOT EXISTS attachments_meta JSON NULL"
     ).catch(() => {});
@@ -1420,9 +1420,9 @@ async function ensureExpenseEmailIngestionSchema() {
 
 /**
  * Asegura que reservations.public_token exista en BD + un trigger que auto-genere
- * el token en cada INSERT futuro. Necesario porque la migraciÛn 0094 usaba
- * `DEFAULT (SHA2(...))` que la versiÛn MySQL de Railway no aceptaba y fallaba
- * silenciosamente. Esta funciÛn se ejecuta al arrancar ó autocommit garantizado.
+ * el token en cada INSERT futuro. Necesario porque la migraci√≥n 0094 usaba
+ * `DEFAULT (SHA2(...))` que la versi√≥n MySQL de Railway no aceptaba y fallaba
+ * silenciosamente. Esta funci√≥n se ejecuta al arrancar ‚Äî autocommit garantizado.
  */
 async function ensureReservationPublicToken() {
   try {
@@ -1440,10 +1440,10 @@ async function ensureReservationPublicToken() {
       await conn.execute(
         `ALTER TABLE \`reservations\` ADD COLUMN \`public_token\` VARCHAR(128) DEFAULT NULL`
       );
-      console.log("[DB] ? reservations.public_token aÒadida");
+      console.log("[DB] ? reservations.public_token a√±adida");
     }
 
-    // Justificante de reserva delegada (migraciÛn 0117). Idempotente.
+    // Justificante de reserva delegada (migraci√≥n 0117). Idempotente.
     for (const [col, ddl] of [
       ["delegation_proof_url", "TEXT NULL"],
       ["delegation_proof_key", "VARCHAR(512) NULL"],
@@ -1467,14 +1467,14 @@ async function ensureReservationPublicToken() {
       console.log(`[DB] ? reservations.public_token backfilled (${missing} filas)`);
     }
 
-    // 3. Trigger BEFORE INSERT ó auto-generar token si no se pasa explÌcitamente
+    // 3. Trigger BEFORE INSERT ‚Äî auto-generar token si no se pasa expl√≠citamente
     const [trgs] = await conn.execute(
       `SELECT TRIGGER_NAME FROM INFORMATION_SCHEMA.TRIGGERS
        WHERE TRIGGER_SCHEMA = DATABASE() AND TRIGGER_NAME = 'reservations_set_public_token'`
     ) as any[];
 
     if (trgs.length === 0) {
-      // conn.query (no .execute) ó CREATE TRIGGER no se soporta en
+      // conn.query (no .execute) ‚Äî CREATE TRIGGER no se soporta en
       // prepared statements de mysql2.
       await conn.query(
         `CREATE TRIGGER \`reservations_set_public_token\`
@@ -1516,7 +1516,7 @@ async function ensureRefundColumns() {
     for (const col of colsToEnsure) {
       if (!found.has(col.name)) {
         await conn.execute(`ALTER TABLE \`cancellation_requests\` ADD COLUMN \`${col.name}\` ${col.ddl}`);
-        console.log(`[DB] ? cancellation_requests.${col.name} aÒadida`);
+        console.log(`[DB] ? cancellation_requests.${col.name} a√±adida`);
       }
     }
 
@@ -1540,36 +1540,36 @@ async function ensureDiscountColumns() {
 
     if (!found.has("discount_type")) {
       await conn.execute("ALTER TABLE `discount_codes` ADD COLUMN `discount_type` enum('percent','fixed') NOT NULL DEFAULT 'percent'");
-      console.log("[DB] ? discount_codes.discount_type aÒadida");
+      console.log("[DB] ? discount_codes.discount_type a√±adida");
     }
     if (!found.has("discount_amount")) {
       await conn.execute("ALTER TABLE `discount_codes` ADD COLUMN `discount_amount` decimal(10,2) NULL");
-      console.log("[DB] ? discount_codes.discount_amount aÒadida");
+      console.log("[DB] ? discount_codes.discount_amount a√±adida");
     }
     if (!found.has("origin")) {
       await conn.execute("ALTER TABLE `discount_codes` ADD COLUMN `origin` enum('manual','voucher') NOT NULL DEFAULT 'manual'");
-      console.log("[DB] ? discount_codes.origin aÒadida");
+      console.log("[DB] ? discount_codes.origin a√±adida");
     }
     if (!found.has("compensation_voucher_id")) {
       await conn.execute("ALTER TABLE `discount_codes` ADD COLUMN `compensation_voucher_id` int NULL");
-      console.log("[DB] ? discount_codes.compensation_voucher_id aÒadida");
+      console.log("[DB] ? discount_codes.compensation_voucher_id a√±adida");
     }
     if (!found.has("client_email")) {
       await conn.execute("ALTER TABLE `discount_codes` ADD COLUMN `client_email` varchar(256) NULL");
-      console.log("[DB] ? discount_codes.client_email aÒadida");
+      console.log("[DB] ? discount_codes.client_email a√±adida");
     }
     if (!found.has("client_name")) {
       await conn.execute("ALTER TABLE `discount_codes` ADD COLUMN `client_name` varchar(256) NULL");
-      console.log("[DB] ? discount_codes.client_name aÒadida");
+      console.log("[DB] ? discount_codes.client_name a√±adida");
     }
 
-    // Corregir retroactivamente bonos de compensaciÛn: si discount_amount > 0 y discount_type = 'percent' ? fijar como 'fixed'
+    // Corregir retroactivamente bonos de compensaci√≥n: si discount_amount > 0 y discount_type = 'percent' ? fijar como 'fixed'
     const [fixed] = await conn.execute(
       `UPDATE \`discount_codes\` SET \`discount_type\` = 'fixed'
        WHERE \`origin\` = 'voucher' AND \`discount_amount\` > 0 AND \`discount_type\` = 'percent'`
     ) as any[];
     if ((fixed as any).affectedRows > 0) {
-      console.log(`[DB] ? ${(fixed as any).affectedRows} cÛdigo(s) bono corregidos a discount_type='fixed'`);
+      console.log(`[DB] ? ${(fixed as any).affectedRows} c√≥digo(s) bono corregidos a discount_type='fixed'`);
     }
 
     await conn.end();
@@ -1582,7 +1582,7 @@ async function ensureDiscountColumns() {
 async function wipeTestDataIfRequested() {
   if (process.env.WIPE_TEST_DATA !== "true" || process.env.NODE_ENV === "production") return;
 
-  console.log("[Wipe] ??  WIPE_TEST_DATA=true detectado ó limpiando datos de prueba...");
+  console.log("[Wipe] ??  WIPE_TEST_DATA=true detectado ‚Äî limpiando datos de prueba...");
   const mysql = await import("mysql2/promise");
   const conn = await mysql.default.createConnection(process.env.DATABASE_URL!);
 
@@ -1594,7 +1594,7 @@ async function wipeTestDataIfRequested() {
       await conn.execute(`DELETE FROM \`${table}\``);
       console.log(`[Wipe] ? ${table}: ${cnt} registros eliminados`);
     } else {
-      console.log(`[Wipe] ó ${table}: ya vacÌa`);
+      console.log(`[Wipe] ‚Äî ${table}: ya vac√≠a`);
     }
   }
 
@@ -1611,7 +1611,7 @@ async function wipeTestDataIfRequested() {
 
     // Parent tables
     await wipe("pending_payments");        // Pagos Pendientes
-    await wipe("daily_orders");            // Calendario / Actividades del dÌa
+    await wipe("daily_orders");            // Calendario / Actividades del d√≠a
     await wipe("invoices");                // Facturas
     await wipe("bookings");                // Reservas
     await wipe("reservations");            // Reservas principal
@@ -1619,8 +1619,8 @@ async function wipeTestDataIfRequested() {
     await wipe("leads");                   // Leads
 
     await conn.execute("SET FOREIGN_KEY_CHECKS=1");
-    console.log("[Wipe] ? Limpieza completada. REAV, liquidaciones, transacciones y cat·logo intactos.");
-    console.log("[Wipe] ??  Retira la variable WIPE_TEST_DATA del entorno para el prÛximo deploy.");
+    console.log("[Wipe] ? Limpieza completada. REAV, liquidaciones, transacciones y cat√°logo intactos.");
+    console.log("[Wipe] ??  Retira la variable WIPE_TEST_DATA del entorno para el pr√≥ximo deploy.");
   } catch (err: any) {
     await conn.execute("SET FOREIGN_KEY_CHECKS=1").catch(() => {});
     console.error("[Wipe] ? Error durante la limpieza:", err.message);
@@ -1631,11 +1631,11 @@ async function wipeTestDataIfRequested() {
 
 // --- ABANDONED CHECKOUT CLEANUP -----------------------------------------------
 // Cada 20 minutos busca reservas pending_payment+ONLINE_DIRECTO sin pago durante
-// m·s de 60 minutos. Las convierte en leads "Venta Perdida" y las cancela.
-// Esto cubre el caso en que el cliente abandona el pago sin que Redsys envÌe IPN.
+// m√°s de 60 minutos. Las convierte en leads "Venta Perdida" y las cancela.
+// Esto cubre el caso en que el cliente abandona el pago sin que Redsys env√≠e IPN.
 function startAbandonedCheckoutCleanup() {
   const CHECK_INTERVAL_MS        = 10 * 60 * 1000;  // 10 min
-  const STALE_DIRECT_MS          = 90 * 60 * 1000;  // Flujo 2: compra directa ? Venta Perdida tras 90 min (Redsys expira a los 30 min; 90 min garantiza que el IPN llegÛ)
+  const STALE_DIRECT_MS          = 90 * 60 * 1000;  // Flujo 2: compra directa ? Venta Perdida tras 90 min (Redsys expira a los 30 min; 90 min garantiza que el IPN lleg√≥)
   const STALE_QUOTE_MS           = 60 * 60 * 1000;  // Flujo 1: presupuesto ? pago_fallido tras 60 min
 
   let _abandonedPool: any = null;
@@ -1706,8 +1706,8 @@ function startAbandonedCheckoutCleanup() {
 
           const now = new Date();
 
-          // Marcar la reserva como failed para que el prÛximo intento genere un nuevo merchantOrder
-          // Sin esto, payWithToken reutiliza el mismo merchantOrder y Redsys devuelve "N˙mero de pedido repetido"
+          // Marcar la reserva como failed para que el pr√≥ximo intento genere un nuevo merchantOrder
+          // Sin esto, payWithToken reutiliza el mismo merchantOrder y Redsys devuelve "N√∫mero de pedido repetido"
           await db.update(reservations).set({ status: "failed", updatedAt: Date.now() } as any)
             .where(eq(reservations.id, resv.id));
 
@@ -1735,14 +1735,14 @@ function startAbandonedCheckoutCleanup() {
     setTimeout(run, CHECK_INTERVAL_MS);
   }
 
-  // Primera ejecuciÛn tras arranque completo (evita competir con las migraciones)
+  // Primera ejecuci√≥n tras arranque completo (evita competir con las migraciones)
   setTimeout(run, CHECK_INTERVAL_MS);
-  console.log("[AbandonedCheckout] Job iniciado ó checkeo de checkouts abandonados cada 20 min");
+  console.log("[AbandonedCheckout] Job iniciado ‚Äî checkeo de checkouts abandonados cada 20 min");
 }
 
 // --- INSTALLMENT OVERDUE + REMINDER JOB --------------------------------------
-// Cada hora: marca como 'overdue' las cuotas vencidas y envÌa recordatorio
-// por email a los clientes con cuotas que vencen en 3 dÌas.
+// Cada hora: marca como 'overdue' las cuotas vencidas y env√≠a recordatorio
+// por email a los clientes con cuotas que vencen en 3 d√≠as.
 function startInstallmentOverdueJob() {
   const CHECK_INTERVAL_MS = 60 * 60 * 1000; // 1 hora
 
@@ -1778,7 +1778,7 @@ function startInstallmentOverdueJob() {
         console.log(`[InstallmentJob] ${overdueCount} cuota(s) marcadas como vencidas`);
       }
 
-      // 2. Enviar recordatorio por email a cuotas que vencen en exactamente 3 dÌas
+      // 2. Enviar recordatorio por email a cuotas que vencen en exactamente 3 d√≠as
       const reminderDate = new Date();
       reminderDate.setDate(reminderDate.getDate() + 3);
       const reminderDateStr = reminderDate.toISOString().split("T")[0];
@@ -1820,7 +1820,7 @@ function startInstallmentOverdueJob() {
             quoteNumber: inst.quoteNumber ?? "",
             installmentNumber: inst.installmentNumber,
             totalInstallments: allInstallments.length,
-            amountFormatted: `${(inst.amountCents / 100).toLocaleString("es-ES", { minimumFractionDigits: 2 })} Ä`,
+            amountFormatted: `${(inst.amountCents / 100).toLocaleString("es-ES", { minimumFractionDigits: 2 })} ‚Ç¨`,
             dueDate: inst.dueDate,
           });
           await sendEmail({
@@ -1832,7 +1832,7 @@ function startInstallmentOverdueJob() {
             .update(paymentInstallments)
             .set({ remindersSent: (inst.remindersSent ?? 0) + 1, lastReminderAt: new Date(), updatedAt: new Date() })
             .where(eq(paymentInstallments.id, inst.id));
-          console.log(`[InstallmentJob] Recordatorio enviado a ${inst.clientEmail} ó cuota #${inst.installmentNumber} de ${inst.quoteNumber}`);
+          console.log(`[InstallmentJob] Recordatorio enviado a ${inst.clientEmail} ‚Äî cuota #${inst.installmentNumber} de ${inst.quoteNumber}`);
         } catch (emailErr: any) {
           console.error(`[InstallmentJob] Error enviando recordatorio cuota ${inst.id}:`, emailErr.message);
         }
@@ -1843,8 +1843,8 @@ function startInstallmentOverdueJob() {
     setTimeout(run, CHECK_INTERVAL_MS);
   }
 
-  setTimeout(run, 5 * 60 * 1000); // Primera ejecuciÛn 5 min tras arranque
-  console.log("[InstallmentJob] Job iniciado ó cuotas vencidas + recordatorios cada hora");
+  setTimeout(run, 5 * 60 * 1000); // Primera ejecuci√≥n 5 min tras arranque
+  console.log("[InstallmentJob] Job iniciado ‚Äî cuotas vencidas + recordatorios cada hora");
 }
 
 async function fixBrokenInvoicePdfUrls() {
@@ -1878,7 +1878,7 @@ async function conditionallyStartJob(
   if (enabled) {
     start();
   } else {
-    console.log(`[Jobs] '${label}' desactivado ó feature flag '${flagKey}' est· inactivo`);
+    console.log(`[Jobs] '${label}' desactivado ‚Äî feature flag '${flagKey}' est√° inactivo`);
   }
 }
 
@@ -1897,7 +1897,7 @@ runMigrations()
   .then(() => seedExperiencesIfEmpty())
   .then(() => startServer())
   // quoteReminderJob y commercialFollowupJob borrados en Fase 5.
-  // Toda la lÛgica de recordatorios la gestiona ahora emailAutomationJob
+  // Toda la l√≥gica de recordatorios la gestiona ahora emailAutomationJob
   // (auto-scheduling + procesamiento de email_scheduled_jobs).
   .then(() => conditionallyStartJob("abandoned_checkout_cleanup_enabled",  startAbandonedCheckoutCleanup, "Abandoned Checkout"))
   .then(() => conditionallyStartJob("installment_overdue_job_enabled",     startInstallmentOverdueJob,    "Installment Overdue"))
