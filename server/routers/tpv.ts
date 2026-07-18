@@ -816,7 +816,7 @@ export const tpvRouter = router({
             isManual: z.boolean().optional().default(false),
             conceptText: z.string().max(500).optional(),
             legoPackLineIds: z.array(z.number()).optional(), // Para Lego Packs personalizados
-            legoPackLinePeople: z.record(z.number(), z.number()).optional(), // Personas por línea
+            legoPackLinePeople: z.record(z.string(), z.number()).optional(), // Personas por línea (claves = lineId serializado como string en JSON)
           })
         ).min(1),
         payments: z.array(
