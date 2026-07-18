@@ -1634,7 +1634,7 @@ export type TpvSale = typeof tpvSales.$inferSelect;
 export const tpvSaleItems = mysqlTable("tpv_sale_items", {
   id: int("id").autoincrement().primaryKey(),
   saleId: int("saleId").notNull(),
-  productType: mysqlEnum("productType_tsi", ["experience", "pack", "spa", "hotel", "restaurant", "extra"]).notNull(),
+  productType: mysqlEnum("productType_tsi", ["experience", "pack", "spa", "hotel", "restaurant", "extra", "legoPack"]).notNull(),
   productId: int("productId").notNull(),
   productName: varchar("productName", { length: 300 }).notNull(),
   quantity: int("quantity").notNull().default(1),

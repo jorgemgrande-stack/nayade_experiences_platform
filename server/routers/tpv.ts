@@ -27,6 +27,7 @@ import {
   reservations,
   transactions,
   legoPacks,
+  legoPackSnapshots,
   finCashAccounts,
   finCashMovements,
   finCashClosures,
