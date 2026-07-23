@@ -1383,18 +1383,21 @@ export const tpvRouter = router({
       }
 
       // -- 9b. Guardar snapshots de Lego Packs -----------------------------------
-      // Importar saveSnapshot dinámicamente para evitar circular dependency
+      // Se guarda contra la RESERVA (no contra la venta TPV): es lo que consume
+      // el módulo de Operaciones (`buildPackExpansions`) para saber qué líneas
+      // opcionales del pack se seleccionaron de verdad, en vez de expandir el
+      // catálogo completo del pack como si todo estuviera incluido.
       const { calculateLegoPackPrice } = await import("./legoPacks.ts");
       for (let i = 0; i < input.items.length; i++) {
         const item = input.items[i];
-        if (item.productType === "legoPack" && item.legoPackLineIds && item.legoPackLineIds.length > 0) {
+        if (item.productType === "legoPack" && item.legoPackLineIds && item.legoPackLineIds.length > 0 && reservationId) {
           try {
             const pricing = await calculateLegoPackPrice(item.productId, item.legoPackLineIds);
             await db.insert(legoPackSnapshots).values({
               legoPackId: item.productId,
               legoPackTitle: item.productName,
-              operationType: "tpv_sale",
-              operationId: saleId,
+              operationType: "reservation",
+              operationId: reservationId,
               linesSnapshot: pricing.lines as any,
               totalOriginal: String(pricing.totalOriginal.toFixed(2)),
               totalDiscount: String(pricing.totalDiscount.toFixed(2)),

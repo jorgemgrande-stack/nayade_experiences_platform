@@ -209,22 +209,30 @@ export function collectComponentProductIds(
  * mismo número puede existir en ambas tablas; sin discriminador de tipo en la reserva,
  * un product_id de experiencia podría colisionar con un lego_pack y expandirse por error.
  * Regla "la experiencia manda": si el id es una experiencia, nunca se trata como pack.
+ *
+ * `selectedLinesByPackId`: si la reserva tiene un snapshot de líneas realmente
+ * seleccionadas por el cliente/cajero (Lego Packs con líneas opcionales — ver
+ * `lego_pack_snapshots`), se usa ese subconjunto en vez del catálogo completo del
+ * pack. Sin snapshot (reservas antiguas, o packs sin selección parcial), se sigue
+ * devolviendo el catálogo completo tal como antes.
  */
 export function buildPackExpansions(
   mainProductId: number | null | undefined,
   extras: ReservationExtra[],
   packLinesByPackId: Record<number, ExpandedPackLine[]>,
   experienceIds?: Set<number> | null,
+  selectedLinesByPackId?: Record<number, ExpandedPackLine[]> | null,
 ): Record<number, ExpandedPackLine[]> {
   const out: Record<number, ExpandedPackLine[]> = {};
   const isExperience = (id: number) => experienceIds?.has(id) ?? false;
+  const linesFor = (pid: number) => selectedLinesByPackId?.[pid] ?? packLinesByPackId[pid];
   if (mainProductId != null && !isExperience(mainProductId) && packLinesByPackId[mainProductId]?.length) {
-    out[0] = packLinesByPackId[mainProductId];
+    out[0] = linesFor(mainProductId);
   }
   extras.forEach((ex, i) => {
     const pid = ex?.productId;
     if (pid != null && !isExperience(pid) && packLinesByPackId[pid]?.length) {
-      out[i + 1] = packLinesByPackId[pid];
+      out[i + 1] = linesFor(pid);
     }
   });
   return out;

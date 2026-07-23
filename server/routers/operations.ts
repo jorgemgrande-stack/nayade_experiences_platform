@@ -11,6 +11,7 @@ import {
   monitorPayroll,
   reservationOperational,
   legoPackLines,
+  legoPackSnapshots,
   experiences,
 } from "../../drizzle/schema";
 import {
@@ -74,6 +75,44 @@ async function loadExperienceIds(ids: number[]): Promise<Set<number>> {
     .from(experiences)
     .where(inArray(experiences.id, ids));
   return new Set((rows as any[]).map((r) => r.id));
+}
+
+// De las reservas dadas, carga qué líneas de sus Lego Packs quedaron REALMENTE
+// seleccionadas (venta TPV con líneas opcionales elegidas por el cajero/cliente).
+// Sin snapshot, buildPackExpansions cae al catálogo completo del pack (comportamiento
+// previo). Devuelve { reservationId -> { legoPackId -> líneas seleccionadas } }.
+async function loadSelectedPackLinesByReservation(
+  reservationIds: number[],
+): Promise<Record<number, Record<number, ExpandedPackLine[]>>> {
+  const map: Record<number, Record<number, ExpandedPackLine[]>> = {};
+  if (reservationIds.length === 0) return map;
+  const rows = await db
+    .select({
+      operationId: legoPackSnapshots.operationId,
+      legoPackId: legoPackSnapshots.legoPackId,
+      linesSnapshot: legoPackSnapshots.linesSnapshot,
+    })
+    .from(legoPackSnapshots)
+    .where(and(
+      eq(legoPackSnapshots.operationType, "reservation"),
+      inArray(legoPackSnapshots.operationId, reservationIds),
+    ));
+
+  for (const r of rows as any[]) {
+    const lines: ExpandedPackLine[] = (Array.isArray(r.linesSnapshot) ? r.linesSnapshot : [])
+      .filter((l: any) => l.isActiveInOperation)
+      .map((l: any) => ({
+        lineId: l.lineId,
+        title: l.sourceName ?? l.internalName ?? "Experiencia",
+        quantity: l.quantity ?? 1,
+        sourceType: l.sourceType,
+        sourceId: l.sourceId,
+        groupLabel: l.groupLabel ?? null,
+        isOptional: !!l.isOptional,
+      }));
+    (map[r.operationId] ??= {})[r.legoPackId] = lines;
+  }
+  return map;
 }
 
 // --- MONITORS — solo lectura --------------------------------------------------
@@ -222,15 +261,16 @@ const calendarRouter = router({
       const actRows = activityRows as any[];
       const packIds = Array.from(new Set(actRows.flatMap((row) =>
         collectComponentProductIds(row.productId, parseReservationExtras(row.extrasJson)))));
-      const [packLinesByPackId, experienceIds] = await Promise.all([
+      const [packLinesByPackId, experienceIds, selectedPackLinesByReservation] = await Promise.all([
         loadLegoPackLines(packIds),
         loadExperienceIds(packIds),
+        loadSelectedPackLinesByReservation(actRows.map((row) => row.id)),
       ]);
 
       const activitiesWithDates = actRows.map((row) => ({
         ...row,
         componentDates: reservationComponentDates(row.scheduledDate, row.extrasJson, row.activitiesOpJson),
-        packExpansions: buildPackExpansions(row.productId, parseReservationExtras(row.extrasJson), packLinesByPackId, experienceIds),
+        packExpansions: buildPackExpansions(row.productId, parseReservationExtras(row.extrasJson), packLinesByPackId, experienceIds, selectedPackLinesByReservation[row.id]),
       }));
 
       return {
@@ -479,16 +519,17 @@ const activitiesRouter = router({
       const rowsArr = rows as any[];
       const packIds = Array.from(new Set(rowsArr.flatMap((row) =>
         collectComponentProductIds(row.productId, parseReservationExtras(row.extrasJson)))));
-      const [packLinesByPackId, experienceIds] = await Promise.all([
+      const [packLinesByPackId, experienceIds, selectedPackLinesByReservation] = await Promise.all([
         loadLegoPackLines(packIds),
         loadExperienceIds(packIds),
+        loadSelectedPackLinesByReservation(rowsArr.map((row) => row.id)),
       ]);
 
       return rowsArr.map((row) => ({
         ...row,
         viewDate: actDateStr,
         componentDates: reservationComponentDates(row.scheduledDate, row.extrasJson, row.activitiesOpJson),
-        packExpansions: buildPackExpansions(row.productId, parseReservationExtras(row.extrasJson), packLinesByPackId, experienceIds),
+        packExpansions: buildPackExpansions(row.productId, parseReservationExtras(row.extrasJson), packLinesByPackId, experienceIds, selectedPackLinesByReservation[row.id]),
       }));
     }),
 
