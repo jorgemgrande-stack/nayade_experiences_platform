@@ -135,7 +135,7 @@ import {
   buildTransferConfirmationHtml,
 } from "./emailTemplates";
 import { getDb } from "./db";
-import { siteSettings, systemSettings, packs, legoPacks as legoPacksTable, reservations as reservationsSchema, reservationOperational as reservationOperationalSchema, discountCodes, users as usersTable } from "../drizzle/schema";
+import { siteSettings, systemSettings, packs, legoPacks as legoPacksTable, legoPackSnapshots, reservations as reservationsSchema, reservationOperational as reservationOperationalSchema, discountCodes, users as usersTable } from "../drizzle/schema";
 
 // ─── Pricing helper (per_person | per_unit) ───────────────────────────────────
 /**
@@ -1798,6 +1798,9 @@ export const appRouter = router({
             price: z.number(),
             quantity: z.number(),
           })).default([]),
+          // Lego Packs configurables: líneas opcionales realmente elegidas por el cliente
+          legoPackLineIds: z.array(z.number()).optional(),
+          legoPackLinePeople: z.record(z.string(), z.number()).optional(),
         })).min(1).max(20),
         customerName: z.string().min(2),
         customerEmail: z.string().email(),
@@ -1823,6 +1826,14 @@ export const appRouter = router({
           pricingType?: "per_person" | "per_unit";
           unitCapacity?: number;
           unitsBooked?: number;
+          legoPackSnapshot?: {
+            legoPackId: number;
+            legoPackTitle: string;
+            lines: unknown;
+            totalOriginal: number;
+            totalDiscount: number;
+            totalFinal: number;
+          };
         }> = [];
         const productNames: string[] = [];
         for (const item of input.items) {
@@ -1834,7 +1845,7 @@ export const appRouter = router({
             const [packRow] = await dbInst.select().from(legoPacksTable).where(eq(legoPacksTable.id, item.productId)).limit(1);
             if (!packRow) throw new TRPCError({ code: "NOT_FOUND", message: `Producto ${item.productId} no encontrado` });
             if (!packRow.isOnlineSale) throw new TRPCError({ code: "BAD_REQUEST", message: `El pack "${packRow.title}" no está disponible para venta online` });
-            const pricing = await calculateLegoPackPrice(item.productId);
+            const pricing = await calculateLegoPackPrice(item.productId, item.legoPackLineIds);
             const packPricePerPerson = pricing.totalFinal;
             if (!(packPricePerPerson > 0)) throw new TRPCError({ code: "BAD_REQUEST", message: `El pack "${packRow.title}" no tiene precio configurado` });
             const extrasTotal = item.extras.reduce((s, e) => s + e.price * e.quantity, 0);
@@ -1848,6 +1859,14 @@ export const appRouter = router({
               extrasJson: JSON.stringify(item.extras),
               amountTotal: itemAmountCents,
               pricingType: "per_person",
+              legoPackSnapshot: item.legoPackLineIds && item.legoPackLineIds.length > 0 ? {
+                legoPackId: item.productId,
+                legoPackTitle: packRow.title,
+                lines: pricing.lines,
+                totalOriginal: pricing.totalOriginal,
+                totalDiscount: pricing.totalDiscount,
+                totalFinal: pricing.totalFinal,
+              } : undefined,
             });
             productNames.push(packRow.title);
             continue;
@@ -1894,8 +1913,9 @@ export const appRouter = router({
         // 3. Crear una reserva por cada artículo, todas con el mismo merchantOrder
         const cartClientIp = ((ctx.req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim()) ?? ctx.req.socket?.remoteAddress ?? undefined;
         const cartClientUa = (ctx.req.headers["user-agent"] as string | undefined) ?? undefined;
-        for (const item of itemsWithPrices) {
-          await createReservation({
+        const dbForSnapshots = await getDb();
+        for (const { legoPackSnapshot, ...item } of itemsWithPrices) {
+          const { id: reservationId } = await createReservation({
             ...item,
             customerName: input.customerName,
             customerEmail: input.customerEmail,
@@ -1911,6 +1931,25 @@ export const appRouter = router({
             clientIpAddress: cartClientIp,
             clientUserAgent: cartClientUa,
           });
+          // Guardar snapshot de líneas seleccionadas de Lego Pack: es lo que consume
+          // el módulo de Operaciones (`buildPackExpansions`) para mostrar solo lo
+          // realmente elegido, en vez de expandir el catálogo completo del pack.
+          if (legoPackSnapshot && dbForSnapshots) {
+            try {
+              await dbForSnapshots.insert(legoPackSnapshots).values({
+                legoPackId: legoPackSnapshot.legoPackId,
+                legoPackTitle: legoPackSnapshot.legoPackTitle,
+                operationType: "reservation",
+                operationId: reservationId,
+                linesSnapshot: legoPackSnapshot.lines as any,
+                totalOriginal: String(legoPackSnapshot.totalOriginal.toFixed(2)),
+                totalDiscount: String(legoPackSnapshot.totalDiscount.toFixed(2)),
+                totalFinal: String(legoPackSnapshot.totalFinal.toFixed(2)),
+              });
+            } catch (err) {
+              console.error(`[Checkout] Error guardando snapshot de Lego Pack: ${err}`);
+            }
+          }
         }
         // 3b. Aplicar descuento por código si se proporcionó — validar SIEMPRE en servidor
         let finalAmountCents = totalAmountCents;
