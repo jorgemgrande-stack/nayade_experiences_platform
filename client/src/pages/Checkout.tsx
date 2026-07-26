@@ -107,6 +107,8 @@ export default function Checkout() {
           people: i.people,
           variantId: i.variantId,
           extras: i.extras,
+          legoPackLineIds: i.legoPackLineIds,
+          legoPackLinePeople: i.legoPackLinePeople,
         })),
         customerName: name.trim(),
         customerEmail: email.trim(),
