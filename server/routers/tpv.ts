@@ -715,6 +715,7 @@ export const tpvRouter = router({
         basePrice: experiences.basePrice,
         coverImageUrl: experiences.coverImageUrl,
         discountPercent: experiences.discountPercent,
+        discountExpiresAt: experiences.discountExpiresAt,
         categoryId: experiences.categoryId,
         isActive: experiences.isActive,
         hasTimeSlots: experiences.hasTimeSlots,
@@ -726,6 +727,7 @@ export const tpvRouter = router({
         basePrice: packs.basePrice,
         coverImageUrl: packs.image1,
         discountPercent: packs.discountPercent,
+        discountExpiresAt: packs.discountExpiresAt,
         isActive: packs.isActive,
       }).from(packs).where(and(eq(packs.isActive, true), eq(packs.isPresentialSale, true))),
 
@@ -735,6 +737,7 @@ export const tpvRouter = router({
         basePrice: spaTreatments.price,
         coverImageUrl: spaTreatments.coverImageUrl,
         discountPercent: spaTreatments.discountPercent,
+        discountExpiresAt: spaTreatments.discountExpiresAt,
         isActive: spaTreatments.isActive,
       }).from(spaTreatments).where(and(eq(spaTreatments.isActive, true), eq(spaTreatments.isPresentialSale, true))),
 
@@ -744,6 +747,7 @@ export const tpvRouter = router({
         basePrice: roomTypes.basePrice,
         coverImageUrl: roomTypes.coverImageUrl,
         discountPercent: roomTypes.discountPercent,
+        discountExpiresAt: roomTypes.discountExpiresAt,
         isActive: roomTypes.isActive,
       }).from(roomTypes).where(and(eq(roomTypes.isActive, true), eq(roomTypes.isPresentialSale, true))),
 
@@ -784,7 +788,7 @@ export const tpvRouter = router({
       packs: pkgs.map(p => ({ ...p, productType: "pack" as const })),
       spa: spas.map(p => ({ ...p, productType: "spa" as const })),
       hotel: rooms.map(p => ({ ...p, productType: "hotel" as const })),
-      legoPacks: legoPkgs.map(p => ({ ...p, basePrice: null, discountPercent: null, productType: "legoPack" as const })),
+      legoPacks: legoPkgs.map(p => ({ ...p, basePrice: null, discountPercent: null, discountExpiresAt: null, productType: "legoPack" as const })),
     };
   }),
 

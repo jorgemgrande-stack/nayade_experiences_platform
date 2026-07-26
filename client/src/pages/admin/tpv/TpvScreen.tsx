@@ -45,6 +45,7 @@ interface CatalogProduct {
   basePrice: string | null;
   coverImageUrl: string | null;
   discountPercent: string | null;
+  discountExpiresAt: Date | string | null;
   productType: ProductType;
   categoryId?: number | null;
   hasTimeSlots?: boolean | null;
@@ -112,6 +113,17 @@ const FILTER_ICONS: Record<string, React.ReactNode> = {
   hotel: <Star className="w-3 h-3" />,
   legoPack: <Zap className="w-3 h-3" />,
 };
+
+/** Descuento vigente del producto (0 si no hay descuento o ya caducó). */
+function getActiveDiscountPercent(product: CatalogProduct): number {
+  const pct = parseFloat(String(product.discountPercent ?? "0"));
+  if (!pct || pct <= 0) return 0;
+  if (product.discountExpiresAt) {
+    const exp = new Date(product.discountExpiresAt);
+    if (!isNaN(exp.getTime()) && exp.getTime() < Date.now()) return 0;
+  }
+  return pct;
+}
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
@@ -267,7 +279,7 @@ export default function TpvScreen() {
   ) => {
     const basePrice = parseFloat(String(product.basePrice ?? "0"));
     const price = variantPrice !== undefined ? variantPrice : basePrice;
-    const discount = parseFloat(String(product.discountPercent ?? "0"));
+    const discount = getActiveDiscountPercent(product);
     const existing = cart.find(
       (i) => i.product.id === product.id && i.product.productType === product.productType
         && i.selectedTimeSlotId === slotId && i.variantId === variantId
@@ -561,7 +573,7 @@ export default function TpvScreen() {
               )}
               {filteredProducts.map((product) => {
                 const price = parseFloat(String(product.basePrice ?? "0"));
-                const discount = parseFloat(String(product.discountPercent ?? "0"));
+                const discount = getActiveDiscountPercent(product);
                 const finalPrice = discount > 0 ? price * (1 - discount / 100) : price;
                 return (
                   <button
@@ -1011,7 +1023,7 @@ export default function TpvScreen() {
                     if (manualConcept.trim() && price >= 0.01 && price <= 10000) {
                       setCart(prev => [...prev, {
                         id: `manual-${Date.now()}`,
-                        product: { id: 0, title: manualConcept.trim(), basePrice: String(price), coverImageUrl: null, discountPercent: null, productType: "extra" as const },
+                        product: { id: 0, title: manualConcept.trim(), basePrice: String(price), coverImageUrl: null, discountPercent: null, discountExpiresAt: null, productType: "extra" as const },
                         quantity: 1, unitPrice: price, discountPercent: 0, participants: 1, isManual: true,
                       }]);
                       setShowManualModal(false);
@@ -1029,7 +1041,7 @@ export default function TpvScreen() {
                 if (!manualConcept.trim() || isNaN(price) || price < 0.01 || price > 10000) return;
                 setCart(prev => [...prev, {
                   id: `manual-${Date.now()}`,
-                  product: { id: 0, title: manualConcept.trim(), basePrice: String(price), coverImageUrl: null, discountPercent: null, productType: "extra" as const },
+                  product: { id: 0, title: manualConcept.trim(), basePrice: String(price), coverImageUrl: null, discountPercent: null, discountExpiresAt: null, productType: "extra" as const },
                   quantity: 1, unitPrice: price, discountPercent: 0, participants: 1, isManual: true,
                 }]);
                 setShowManualModal(false);
