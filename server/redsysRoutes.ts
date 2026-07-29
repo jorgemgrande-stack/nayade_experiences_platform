@@ -687,7 +687,13 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
           extrasJson: updatedReservation.extrasJson,
           status: newStatus,
           publicToken: (updatedReservation as any).publicToken ?? null,
-        }).catch(err => console.error("[Redsys IPN] Error en notificaciones:", err));
+        })
+          // Trazabilidad: marca confirmationEmailSentAt para que sea una señal
+          // fiable en todos los canales, sin cambiar el envío ya existente.
+          .then(() => _db.update(reservations)
+            .set({ confirmationEmailSentAt: new Date() } as any)
+            .where(eq(reservations.id, updatedReservation.id)))
+          .catch(err => console.error("[Redsys IPN] Error en notificaciones:", err));
       } else {
         // Pago NO autorizado (result.isAuthorized === false): email de pago
         // fallido. Aplica tanto a reservas directas como de presupuesto.
@@ -1241,6 +1247,9 @@ redsysRouter.post("/api/admin/recover-order/:merchantOrder", async (req, res) =>
           description: `Recuperación downstream Redsys — ${resv.merchantOrder} — ${resv.productName}`,
           quoteId: resv.quoteId ?? null,
           sourceChannel: "redsys",
+          // Reservas directas recuperadas no tenían ningún email de confirmación
+          // (gap real). Las de presupuesto ya lo recibieron arriba (isPresupuesto).
+          sendConfirmationEmail: !isPresupuesto,
         });
         log.push(`? postConfirmOperation ejecutado para reserva ${resv.id} (${resv.productName})`);
       } catch (e: any) {

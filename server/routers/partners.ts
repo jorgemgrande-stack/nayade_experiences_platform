@@ -678,7 +678,13 @@ export const partnersRouter = router({
             to: input.customerEmail,
             subject: `✅ Reserva confirmada — ${input.productName} · Náyade Experiences`,
             html,
-          }).catch((e: any) => console.error("[Partners] Error enviando email cliente:", e?.message));
+          })
+            // Trazabilidad: evita un segundo envío si más tarde se toca esta
+            // reserva desde el editor genérico de CRM.
+            .then(() => db.update(reservations)
+              .set({ confirmationEmailSentAt: new Date() } as any)
+              .where(eq(reservations.id, reservationId)))
+            .catch((e: any) => console.error("[Partners] Error enviando email cliente:", e?.message));
         } catch (emailErr: any) {
           console.error("[Partners] Error preparando email cliente:", emailErr?.message);
         }
@@ -949,6 +955,11 @@ export const partnersRouter = router({
             ? `✅ Reserva confirmada — ${created.length} actividades · Náyade Experiences`
             : `✅ Reserva confirmada — ${created[0].line.productName} · Náyade Experiences`;
           sendEmail({ to: input.customerEmail, subject, html })
+            // Trazabilidad: evita un segundo envío si más tarde se toca alguna
+            // de estas reservas desde el editor genérico de CRM.
+            .then(() => Promise.all(created.map(c => db.update(reservations)
+              .set({ confirmationEmailSentAt: new Date() } as any)
+              .where(eq(reservations.id, c.reservationId)))))
             .catch((e: any) => console.error("[Partners] Error enviando email cliente:", e?.message));
         } catch (emailErr: any) {
           console.error("[Partners] Error preparando email cliente:", emailErr?.message);

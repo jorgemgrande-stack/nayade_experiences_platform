@@ -326,6 +326,10 @@ export interface ReservationConfirmData {
   subtotal?: number;           // subtotal antes de descuento, en €
   discount?: number;           // importe del descuento, en € (omitir o 0 si no hay)
   discountReason?: string;     // motivo legible del descuento (ej. "Código WELCOME10 (-10%)")
+  /** true si la reserva queda confirmada pero el pago aún está pendiente de cobro
+   *  (ej. presupuesto convertido a reserva por el admin sin cobro inmediato).
+   *  Por defecto false: mantiene el copy actual de "pago procesado correctamente". */
+  paymentPending?: boolean;
 }
 
 export function buildReservationConfirmHtml(d: ReservationConfirmData): string {
@@ -334,10 +338,12 @@ export function buildReservationConfirmHtml(d: ReservationConfirmData): string {
     <tr><td style="padding:28px 32px 0;">
       <p style="color:#1e293b;font-size:17px;margin:0 0 8px;font-family:Arial,sans-serif;">Hola <strong>${d.customerName}</strong>,</p>
       <p style="color:#6b7280;font-size:15px;margin:0 0 16px;line-height:1.7;font-family:Arial,sans-serif;">
-        Tu reserva ha sido <strong style="color:#166534;">confirmada</strong> y el pago procesado correctamente.
+        Tu reserva ha sido <strong style="color:#166534;">confirmada</strong>${d.paymentPending ? "" : " y el pago procesado correctamente"}.
         &#161;Te esperamos para vivir una experiencia &uacute;nica en el embalse de Los &Aacute;ngeles de San Rafael!
       </p>
-      ${statusBlock("success", "Pago procesado correctamente", "Tu plaza est&aacute; reservada. Recibir&aacute;s toda la informaci&oacute;n necesaria para el d&iacute;a de tu visita.")}
+      ${d.paymentPending
+        ? statusBlock("success", "Reserva confirmada", "Tu plaza est&aacute; reservada. El pago queda pendiente de gesti&oacute;n con nuestro equipo.")
+        : statusBlock("success", "Pago procesado correctamente", "Tu plaza est&aacute; reservada. Recibir&aacute;s toda la informaci&oacute;n necesaria para el d&iacute;a de tu visita.")}
     </td></tr>
     ${detailsCard(`
       ${detailRow(SVG.star,     "Experiencia",  d.productName)}

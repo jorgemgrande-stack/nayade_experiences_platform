@@ -20,8 +20,14 @@ vi.mock("./_core/notification", () => ({
   notifyOwner: vi.fn().mockResolvedValue(true),
 }));
 
-import { sendReservationPaidNotifications, sendReservationFailedNotifications } from "./reservationEmails";
+// Mock de getDb para confirmReservationAndNotify
+vi.mock("./db", () => ({
+  getDb: vi.fn(),
+}));
+
+import { sendReservationPaidNotifications, sendReservationFailedNotifications, confirmReservationAndNotify } from "./reservationEmails";
 import { notifyOwner } from "./_core/notification";
+import { getDb } from "./db";
 import nodemailer from "nodemailer";
 
 const mockReservation = {
@@ -127,5 +133,66 @@ describe("sendReservationFailedNotifications", () => {
         subject: expect.stringContaining("no completado"),
       })
     );
+  });
+});
+
+describe("confirmReservationAndNotify", () => {
+  function mockDbWithRow(row: Record<string, unknown> | null) {
+    const updateWhere = vi.fn().mockResolvedValue(undefined);
+    const updateSet = vi.fn().mockReturnValue({ where: updateWhere });
+    const db = {
+      select: vi.fn().mockReturnThis(),
+      from: vi.fn().mockReturnThis(),
+      where: vi.fn().mockReturnThis(),
+      limit: vi.fn().mockResolvedValue(row ? [row] : []),
+      update: vi.fn().mockReturnValue({ set: updateSet }),
+    };
+    (getDb as any).mockResolvedValue(db);
+    return { db, updateSet };
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.env.SMTP_HOST = "smtp.example.com";
+    process.env.SMTP_USER = "user@example.com";
+    process.env.SMTP_PASS = "password";
+    process.env.SMTP_PORT = "587";
+  });
+
+  it("envía el email y marca confirmationEmailSentAt la primera vez", async () => {
+    const { db, updateSet } = mockDbWithRow({ ...mockReservation, confirmationEmailSentAt: null });
+
+    await confirmReservationAndNotify(mockReservation.id);
+
+    expect(notifyOwner).toHaveBeenCalledOnce();
+    expect(db.update).toHaveBeenCalledOnce();
+    expect(updateSet).toHaveBeenCalledWith(
+      expect.objectContaining({ confirmationEmailSentAt: expect.any(Date) })
+    );
+  });
+
+  it("no reenvía si confirmationEmailSentAt ya tiene valor", async () => {
+    const { db } = mockDbWithRow({ ...mockReservation, confirmationEmailSentAt: new Date() });
+
+    await confirmReservationAndNotify(mockReservation.id);
+
+    expect(notifyOwner).not.toHaveBeenCalled();
+    expect(db.update).not.toHaveBeenCalled();
+  });
+
+  it("no envía nada si la reserva no tiene email de cliente", async () => {
+    const { db } = mockDbWithRow({ ...mockReservation, customerEmail: null, confirmationEmailSentAt: null });
+
+    await confirmReservationAndNotify(mockReservation.id);
+
+    expect(notifyOwner).not.toHaveBeenCalled();
+    expect(db.update).not.toHaveBeenCalled();
+  });
+
+  it("no falla si la reserva no existe", async () => {
+    mockDbWithRow(null);
+
+    await expect(confirmReservationAndNotify(999)).resolves.not.toThrow();
+    expect(notifyOwner).not.toHaveBeenCalled();
   });
 });
