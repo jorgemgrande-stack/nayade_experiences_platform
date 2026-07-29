@@ -733,6 +733,10 @@ export const reservations = mysqlTable("reservations", {
   // URL: https://www.nayadeexperiences.es/presupuesto/{publicToken}
   // Se genera automáticamente al crear cada reserva (todos los canales).
   publicToken: varchar("public_token", { length: 128 }).unique(),
+  // Marca de trazabilidad: cuándo se envió el email de confirmación al cliente,
+  // sin importar el canal. Sirve de guarda de idempotencia y de señal fiable
+  // para saber si una reserva se quedó sin notificar.
+  confirmationEmailSentAt: timestamp("confirmation_email_sent_at"),
 });
 
 // ─── PRODUCT TIME SLOTS ────────────────────────────────────────────────────────
