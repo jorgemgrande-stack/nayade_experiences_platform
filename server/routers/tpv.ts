@@ -1305,6 +1305,14 @@ export const tpvRouter = router({
         await sendEmail({ to: saleNotifyEmail, subject, html: emailHtml });
         if (input.customerEmail) {
           await sendEmail({ to: input.customerEmail, cc: saleNotifyEmail, subject, html: emailHtml });
+          // Trazabilidad: marca confirmationEmailSentAt para que sea una señal
+          // fiable en todos los canales y evitar un segundo envío si más tarde
+          // se toca esta reserva desde el editor genérico de CRM.
+          if (reservationId) {
+            await db.update(reservations)
+              .set({ confirmationEmailSentAt: new Date() } as any)
+              .where(eq(reservations.id, reservationId));
+          }
         }
       } catch (e) {
         console.error("[TPV] Error enviando email de confirmación:", e);

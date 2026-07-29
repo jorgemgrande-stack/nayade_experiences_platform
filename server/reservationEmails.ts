@@ -5,11 +5,14 @@
  * 1. Notificación interna al equipo Náyade (Manus Notification Service) — siempre activo
  * 2. Email al cliente via Brevo HTTP API / SMTP fallback
  */
+import { eq } from "drizzle-orm";
 import { notifyOwner } from "./_core/notification";
 import { buildReservationConfirmHtml, buildReservationFailedHtml } from "./emailTemplates";
 import { sendEmail } from "./mailer";
 import { sendManagedEmail, logDirectEmail } from "./emailManager";
 import { getBusinessEmail, getSystemSettingSync } from "./config";
+import { getDb } from "./db";
+import { reservations } from "../drizzle/schema";
 
 export interface ReservationEmailData {
   id: number;
@@ -25,6 +28,9 @@ export interface ReservationEmailData {
   extrasJson?: string | null;
   status: string;
   publicToken?: string | null;  // Para construir botón "Ver tu reserva"
+  /** true si la reserva queda confirmada pero el pago aún está pendiente
+   *  (ver ReservationConfirmData.paymentPending en emailTemplates.ts). */
+  paymentPending?: boolean;
 }
 
 function reservationPublicUrl(publicToken?: string | null): string | undefined {
@@ -80,7 +86,7 @@ export async function sendReservationPaidNotifications(
     await notifyOwner({
       title: `Reserva pagada - ${reservation.productName}`,
       content: [
-        `Reserva confirmada con pago Redsys`,
+        `Reserva confirmada`,
         `Referencia: ${reservation.merchantOrder}`,
         `Producto: ${reservation.productName}`,
         `Fecha: ${date}`,
@@ -113,6 +119,7 @@ export async function sendReservationPaidNotifications(
     amount,
     extras,
     reservationUrl: reservationPublicUrl(reservation.publicToken),
+    paymentPending: reservation.paymentPending,
   });
 
   try {
@@ -136,6 +143,48 @@ export async function sendReservationPaidNotifications(
   } catch (error) {
     console.error(`[ReservationEmails] Error enviando email al cliente:`, error);
   }
+}
+
+/**
+ * Punto único de entrada para "reserva confirmada → enviar email al cliente",
+ * sin importar el canal de origen (TPV, ticketing/cupones, partners, CRM,
+ * Redsys, o cualquier canal futuro). Recibe solo el id de la reserva —ya
+ * insertada en BD por el canal que sea— y se encarga de todo:
+ *
+ * - Idempotente: si `confirmationEmailSentAt` ya tiene valor, no reenvía.
+ * - No hace nada si la reserva no tiene email de cliente.
+ * - Marca `confirmationEmailSentAt` tras el envío para que no se repita y
+ *   para dejar trazabilidad fiable (hoy varios canales usan `sendEmail`
+ *   directo, que no queda registrado en ningún sitio consultable).
+ */
+export async function confirmReservationAndNotify(reservationId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  const [row] = await db.select().from(reservations).where(eq(reservations.id, reservationId)).limit(1);
+  if (!row) return;
+  if (row.confirmationEmailSentAt) return;
+  if (!row.customerEmail) return;
+
+  await sendReservationPaidNotifications({
+    id: row.id,
+    merchantOrder: row.merchantOrder ?? row.reservationNumber ?? String(row.id),
+    productName: row.productName ?? "",
+    bookingDate: row.bookingDate ?? "",
+    people: row.people ?? 1,
+    amountTotal: row.amountTotal ?? 0,
+    amountPaid: row.amountPaid ?? 0,
+    customerName: row.customerName ?? "",
+    customerEmail: row.customerEmail,
+    customerPhone: row.customerPhone,
+    extrasJson: row.extrasJson,
+    status: row.status,
+    publicToken: row.publicToken,
+    paymentPending: row.status !== "paid",
+  });
+
+  await db.update(reservations)
+    .set({ confirmationEmailSentAt: new Date() } as any)
+    .where(eq(reservations.id, reservationId));
 }
 
 /**

@@ -890,7 +890,13 @@ export const ticketingRouter = router({
         to: item.email,
         subject: `? Reserva confirmada — ${resolvedProductName} | Náyade Experiences`,
         html: confirmHtml,
-      }).catch(console.error);
+      })
+        // Trazabilidad: evita un segundo envío si más tarde se toca esta
+        // reserva desde el editor genérico de CRM.
+        .then(() => db.update(reservations)
+          .set({ confirmationEmailSentAt: new Date() } as any)
+          .where(eq(reservations.id, reservationId)))
+        .catch(console.error);
 
       // BUG FIX (cupón convertToReservation): Crear booking operativo + transacción contable
       try {
@@ -1237,11 +1243,18 @@ export const ticketingRouter = router({
           extras: `Cupón ${item.provider ?? ""} — Código: ${item.couponCode}`,
           reservationUrl,
         });
+        const newReservationId = reservationId;
         sendEmail({
           to: item.email,
           subject: `? Reserva confirmada — ${resolvedProductName} | Náyade Experiences`,
           html: confirmHtml,
-        }).catch(console.error);
+        })
+          // Trazabilidad: evita un segundo envío si más tarde se toca esta
+          // reserva desde el editor genérico de CRM.
+          .then(() => db.update(reservations)
+            .set({ confirmationEmailSentAt: new Date() } as any)
+            .where(eq(reservations.id, newReservationId)))
+          .catch(console.error);
       }
 
       // -- 3. Marcar canjeado + reserva_generada si aplica -------------------

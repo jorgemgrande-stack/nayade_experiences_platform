@@ -7,6 +7,7 @@ const SITE_URL = (process.env.APP_URL ?? 'https://www.skicenter.es').trim();
 
 import { router, protectedProcedure, publicProcedure, staffProcedure, adminProcedure } from "../_core/trpc";
 import { createLead, createBookingFromReservation, createReavExpedient, attachReavDocument, upsertClientFromReservation, postConfirmOperation, getGHLCredentials } from "../db";
+import { confirmReservationAndNotify } from "../reservationEmails";
 import { calcularREAVSimple, validarConfiguracionREAV } from "../reav";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
@@ -2325,6 +2326,11 @@ export const crmRouter = router({
         await logActivity("quote", quote.id, "converted_to_reservation_manual", ctx.user.id, ctx.user.name, { reservationId, status: "pending_payment" });
         await logActivity("lead", quote.leadId, "opportunity_won_manual", ctx.user.id, ctx.user.name, { quoteId: quote.id });
 
+        // Email de confirmación al cliente (reserva confirmada, pago pendiente).
+        confirmReservationAndNotify(reservationId).catch(e =>
+          console.error("[crm.convertToReservation] Error enviando email de confirmación:", e)
+        );
+
         return { success: true, reservationId, reservationRef, status: "pending_payment" };
       }),
 
@@ -4493,6 +4499,14 @@ export const crmRouter = router({
           details: { fields: Object.keys(fields), statusFrom: current.status, statusTo: fields.status },
           createdAt: new Date(),
         });
+
+        // Email de confirmación al cliente solo en la transición a "paid".
+        if (fields.status === "paid" && current.status !== "paid") {
+          confirmReservationAndNotify(id).catch(e =>
+            console.error("[crm.reservations.update] Error enviando email de confirmación:", e)
+          );
+        }
+
         return { ok: true };
       }),
 
@@ -4548,6 +4562,14 @@ export const crmRouter = router({
           details: { from: logEntry.from, to: logEntry.to },
           createdAt: new Date(),
         });
+
+        // Email de confirmación al cliente solo en la transición a "PAGADO".
+        if (input.statusPayment === "PAGADO" && current.statusPayment !== "PAGADO") {
+          confirmReservationAndNotify(input.id).catch(e =>
+            console.error("[crm.reservations.updateStatuses] Error enviando email de confirmación:", e)
+          );
+        }
+
         return { ok: true };
       }),
 
@@ -4978,6 +5000,13 @@ export const crmRouter = router({
             details: { from: r.status, to: input.status },
             createdAt: new Date(),
           });
+
+          // Email de confirmación al cliente solo en la transición a "paid".
+          if (input.status === "paid" && r.status !== "paid") {
+            confirmReservationAndNotify(r.id).catch(e =>
+              console.error("[crm.reservations.bulkUpdateStatus] Error enviando email de confirmación:", e)
+            );
+          }
         }
 
         return { updated: rows.filter(r => r.status !== input.status).length };
@@ -6509,6 +6538,8 @@ export const crmRouter = router({
               description: `Pago pendiente confirmado — ${pp.productName} — ${pp.clientName}`,
               sellerUserId: ctx.user.id,
               sellerName: ctx.user.name,
+              // Este flujo hoy no envía ningún email de confirmación al cliente — gap real.
+              sendConfirmationEmail: true,
             });
           } catch (e) {
             console.error("[pendingPayments.confirm] Error en postConfirmOperation:", e);

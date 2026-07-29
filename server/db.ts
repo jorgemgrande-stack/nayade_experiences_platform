@@ -2283,6 +2283,15 @@ export async function postConfirmOperation(params: {
   tpvSaleId?: number | null;
   // GHL: contacto para añadir tag reserva_confirmada
   ghlContactId?: string | null;
+  // Email de confirmación centralizado (confirmReservationAndNotify). Default
+  // false: la mayoría de callers (TPV, ticketing, CRM confirmPayment/
+  // confirmTransfer/createManual/confirmManualPayment) ya envían su propio
+  // email con su propia plantilla ANTES o DESPUÉS de llamar aquí — activarlo
+  // por defecto duplicaría esos envíos. Pásalo en true solo desde un caller
+  // que hoy NO envíe ningún email de confirmación (es idempotente igualmente:
+  // confirmReservationAndNotify no reenvía si confirmationEmailSentAt ya
+  // tiene valor).
+  sendConfirmationEmail?: boolean;
 }) {
   const db = await getDb();
   if (!db) return { bookingId: null, transactionId: null };
@@ -2433,6 +2442,18 @@ export async function postConfirmOperation(params: {
         console.warn("[postConfirmOperation] Error añadiendo tag reserva_confirmada a GHL:", e);
       });
     });
+  }
+
+  // 6. Email de confirmación al cliente — solo si el caller lo pide
+  // explícitamente (ver sendConfirmationEmail arriba). No debe romper la
+  // operación si falla.
+  if (params.sendConfirmationEmail) {
+    try {
+      const { confirmReservationAndNotify } = await import("./reservationEmails");
+      await confirmReservationAndNotify(params.reservationId);
+    } catch (e) {
+      console.error("[postConfirmOperation] Error enviando email de confirmación:", e);
+    }
   }
 
   return { bookingId, transactionId };
