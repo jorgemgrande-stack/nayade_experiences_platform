@@ -419,9 +419,35 @@ export default function ExpensesManager() {
    * Exporta los gastos filtrados a CSV (compatible Excel ES con BOM y `;`).
    * Incluye la columna "Imputación Operativa" para que la gestoría pueda
    * distinguir gastos operativos vs solo fiscales en su reporting.
+   *
+   * Pide al servidor el conjunto COMPLETO que coincide con los filtros del
+   * servidor (fecha/categoría/centro de coste/estado/imputación) — `filtered`
+   * solo contiene la página actualmente cargada (PAGE_SIZE=50), y exportar
+   * directamente desde ahí truncaba el CSV aunque el contador de arriba
+   * mostrara el total real.
    */
-  function exportToCSV() {
-    if (filtered.length === 0) {
+  async function exportToCSV() {
+    if (total === 0) {
+      toast.error("No hay gastos para exportar con los filtros actuales");
+      return;
+    }
+    const full = await utils.financial.expenses.list.fetch({
+      dateFrom: filterDateFrom || undefined,
+      dateTo: filterDateTo || undefined,
+      categoryId: filterCategory !== "all" ? Number(filterCategory) : undefined,
+      costCenterId: filterCostCenter !== "all" ? Number(filterCostCenter) : undefined,
+      status: filterStatus !== "all" ? (filterStatus as "pending" | "justified" | "accounted") : undefined,
+      treatment: filterTreatment,
+      limit: total,
+      offset: 0,
+    });
+    // Mismos filtros de solo-cliente (búsqueda + origen) que aplica `filtered`.
+    const toExport = (full.items as any[]).filter((e) => {
+      if (search && !e.concept.toLowerCase().includes(search.toLowerCase())) return false;
+      if (filterSource === "email" && e.source !== "email") return false;
+      return true;
+    });
+    if (toExport.length === 0) {
       toast.error("No hay gastos para exportar con los filtros actuales");
       return;
     }
@@ -436,7 +462,7 @@ export default function ExpensesManager() {
       // CSV ES: si tiene `;`, `"`, salto de línea → encerrar en comillas y doblar comillas.
       return /[;"\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
     };
-    const rows = filtered.map((e: any) => [
+    const rows = toExport.map((e: any) => [
       e.date,
       e.concept,
       getSupplierName(e.supplierId),
@@ -467,7 +493,7 @@ export default function ExpensesManager() {
     a.download = `gastos-${ts}.csv`;
     a.click();
     URL.revokeObjectURL(url);
-    toast.success(`${filtered.length} gasto(s) exportado(s)`);
+    toast.success(`${toExport.length} gasto(s) exportado(s)`);
   }
 
   function openCreateFromMovement(m: NonNullable<typeof bankCandidatesQ.data>["data"][number]) {
