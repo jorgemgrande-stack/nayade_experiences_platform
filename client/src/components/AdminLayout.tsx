@@ -17,6 +17,7 @@ import { useLocation as useWouterLocation } from "wouter";
 import { getLoginUrl } from "@/const";
 import { trpc } from "@/lib/trpc";
 import { useTheme } from "@/contexts/ThemeContext";
+import MaintenanceModeControl from "./admin/MaintenanceModeControl";
 
 // flagKey: if set, item is hidden when that feature_flag is disabled.
 // Missing flag or flags not yet loaded → item shown (safe default).
@@ -629,6 +630,7 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
             <h1 className="font-display font-semibold text-base sm:text-lg text-foreground truncate min-w-0">{title}</h1>
           )}
           <div className="ml-auto flex items-center gap-2 sm:gap-3 shrink-0">
+            {userRole === "admin" && <MaintenanceModeControl />}
             <Button variant="ghost" size="icon" className="w-9 h-9">
               <Search className="w-4 h-4" />
             </Button>
