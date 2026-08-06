@@ -1,0 +1,6 @@
+-- Modo mantenimiento de la web pública: toggle + mensaje editable desde /admin.
+-- Solo datos (no altera esquema) — se aplica a mano contra la BD de producción,
+-- siguiendo la convención ya establecida para este proyecto (0118+).
+INSERT IGNORE INTO `system_settings` (`key`, `value`, `value_type`, `category`, `label`, `description`, `is_sensitive`, `is_public`) VALUES
+  ('site_maintenance_mode_enabled', 'false', 'boolean', 'mantenimiento', 'Modo mantenimiento (web pública)', 'Si está activo, la web pública muestra el aviso de mantenimiento y bloquea el acceso a todas las rutas excepto /admin y el login. El panel de administración sigue funcionando con normalidad.', false, true),
+  ('site_maintenance_message', 'Aviso importante\n\nReservas online temporalmente no disponibles\n\nEn estos momentos, el servicio de reservas a través de Náyade Experiences se encuentra temporalmente desactivado.\n\nPara información sobre actividades, servicios o nuevas reservas en Hotel Náyade, rogamos contactar directamente con el establecimiento.\n\nGracias por vuestra comprensión', 'string', 'mantenimiento', 'Mensaje de mantenimiento', 'Texto mostrado en la web pública cuando el modo mantenimiento está activo.', false, true);
