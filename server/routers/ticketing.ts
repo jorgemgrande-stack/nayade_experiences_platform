@@ -29,6 +29,7 @@ import { createGHLContact, updateGHLContact, syncLeadUrlsToGHL, triggerGHLWorkfl
 import { assertModuleEnabled } from "../_core/flagGuard";
 import { getSystemSettingSync } from "../config";
 import { legacyDb, legacyPool } from "../_core/legacyDb";
+import { integrationEnv } from "../_core/tenantConfig";
 
 const _pool = legacyPool();
 const db = legacyDb();
@@ -971,7 +972,7 @@ export const ticketingRouter = router({
           }
 
           // Disparar workflow de reserva
-          const webhookUrl = process.env.GHL_RESERVATION_WEBHOOK_URL;
+          const webhookUrl = integrationEnv("GHL_RESERVATION_WEBHOOK_URL");
           if (webhookUrl) {
             await triggerGHLWorkflow(webhookUrl, {
               contactId: ghlId,

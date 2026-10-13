@@ -8,11 +8,12 @@
 import type { Request, Response } from 'express';
 import { Router } from 'express';
 import crypto from 'node:crypto';
+import { integrationEnv } from "./_core/tenantConfig";
 
 const PIXEL_ID = process.env.VITE_META_PIXEL_ID;
-const ACCESS_TOKEN = process.env.META_CAPI_ACCESS_TOKEN;
-const API_VERSION = process.env.META_API_VERSION || 'v21.0';
-const TEST_EVENT_CODE = process.env.META_CAPI_TEST_EVENT_CODE;
+const ACCESS_TOKEN = integrationEnv("META_CAPI_ACCESS_TOKEN");
+const API_VERSION = integrationEnv("META_API_VERSION") || 'v21.0';
+const TEST_EVENT_CODE = integrationEnv("META_CAPI_TEST_EVENT_CODE");
 
 // ─── Helpers de hashing PII ───────────────────────────────────────────────────
 

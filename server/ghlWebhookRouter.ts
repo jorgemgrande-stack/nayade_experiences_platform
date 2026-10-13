@@ -15,6 +15,7 @@ import { eq } from "drizzle-orm";
 import { ghlWebhookLogs } from "../drizzle/schema";
 import { createLead } from "./db";
 import { legacyDb, legacyPool } from "./_core/legacyDb";
+import { integrationEnv } from "./_core/tenantConfig";
 
 const _pool = legacyPool();
 const _db = legacyDb();
@@ -45,7 +46,7 @@ ghlWebhookRouter.post("/api/ghl/webhook", express.json({ limit: "1mb" }), async 
   // IMPORTANTE: usar GHL_LEAD_WEBHOOK_SECRET (NO GHL_WEBHOOK_SECRET) para no
   // colisionar con el secreto del inbox webhook. El workflow de GHL llama a este
   // endpoint sin secreto — el check solo se activa si se configura esta variable.
-  const secret = process.env.GHL_LEAD_WEBHOOK_SECRET || "";
+  const secret = integrationEnv("GHL_LEAD_WEBHOOK_SECRET") || "";
   if (secret) {
     const provided =
       (req.headers["x-ghl-secret"] as string | undefined) ??

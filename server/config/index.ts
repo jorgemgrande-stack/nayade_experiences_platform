@@ -124,6 +124,9 @@ export async function warmConfigCache(): Promise<void> {
     "brand_accent_color", "brand_website_url", "brand_support_phone", "brand_location",
     "cash_register_tolerance", "cash_alert_threshold",
     "bank_match_tolerance", "card_terminal_tolerance", "card_batch_tolerance",
+    // Integraciones por tenant (multiempresa): credenciales de cobro y correo
+    "redsys_environment", "redsys_merchant_code", "redsys_merchant_key", "redsys_merchant_terminal",
+    "seo_description", "email_cc_all",
   ];
   await Promise.all(keys.map(k => getSystemSetting(k, "").catch(() => {})));
 }

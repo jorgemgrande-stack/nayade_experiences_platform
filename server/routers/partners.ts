@@ -18,6 +18,7 @@ import { storagePut } from "../storage";
 import { htmlToPdf } from "../pdfGenerator";
 import { createGHLContact, triggerGHLWorkflow, syncLeadUrlsToGHL } from "../ghl";
 import { legacyDb, legacyPool } from "../_core/legacyDb";
+import { integrationEnv } from "../_core/tenantConfig";
 
 const _pool = legacyPool();
 const db = legacyDb();
@@ -721,7 +722,7 @@ export const partnersRouter = router({
                 credentials: ghlCreds,
               });
             }
-            const webhookUrl = process.env.GHL_RESERVATION_WEBHOOK_URL;
+            const webhookUrl = integrationEnv("GHL_RESERVATION_WEBHOOK_URL");
             if (webhookUrl) {
               await triggerGHLWorkflow(webhookUrl, {
                 contactId: ghlContactId,

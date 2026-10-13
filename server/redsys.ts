@@ -11,6 +11,8 @@
  */
 
 import crypto from "crypto";
+import { isMultiTenant } from "./_core/tenant";
+import { getSystemSettingSync } from "./config";
 
 // ─── Configuración ────────────────────────────────────────────────────────────
 
@@ -20,20 +22,23 @@ const REDSYS_URLS = {
 };
 
 export function getRedsysUrl(): string {
-  const env = process.env.REDSYS_ENVIRONMENT ?? "test";
+  // Multiempresa: la cuenta de cobro es del tenant (sus ajustes), nunca la del entorno
+  const env = isMultiTenant() ? getSystemSettingSync("redsys_environment", "test") : (process.env.REDSYS_ENVIRONMENT ?? "test");
   return env === "production" ? REDSYS_URLS.production : REDSYS_URLS.test;
 }
 
 export function getMerchantCode(): string {
+  if (isMultiTenant()) return getSystemSettingSync("redsys_merchant_code", "");
   return process.env.REDSYS_MERCHANT_CODE ?? "";
 }
 
 export function getMerchantKey(): string {
+  if (isMultiTenant()) return getSystemSettingSync("redsys_merchant_key", "");
   return process.env.REDSYS_MERCHANT_KEY ?? "";
 }
 
 export function getMerchantTerminal(): string {
-  const t = process.env.REDSYS_MERCHANT_TERMINAL ?? "001";
+  const t = isMultiTenant() ? getSystemSettingSync("redsys_merchant_terminal", "001") : (process.env.REDSYS_MERCHANT_TERMINAL ?? "001");
   // Redsys requires terminal as 3-digit zero-padded string (e.g. "001")
   return t.padStart(3, "0");
 }

@@ -9,6 +9,7 @@ import { eq, desc, and, sql, isNotNull } from "drizzle-orm";
 import { vapiCalls } from "../../drizzle/schema";
 import { createLead } from "../db";
 import { legacyDb, legacyPool } from "../_core/legacyDb";
+import { integrationEnv } from "../_core/tenantConfig";
 
 const _pool = legacyPool();
 const db = legacyDb();
@@ -54,13 +55,13 @@ async function getVapiCredentials(): Promise<{ apiKey: string; webhookSecret: st
     const map: Record<string, string> = {};
     for (const r of (rows as any[])) map[r.key] = r.value ?? "";
     return {
-      apiKey: process.env.VAPI_API_KEY || map.vapiApiKey || "",
-      webhookSecret: process.env.VAPI_WEBHOOK_SECRET || map.vapiWebhookSecret || "",
+      apiKey: integrationEnv("VAPI_API_KEY") || map.vapiApiKey || "",
+      webhookSecret: integrationEnv("VAPI_WEBHOOK_SECRET") || map.vapiWebhookSecret || "",
     };
   } catch {
     return {
-      apiKey: process.env.VAPI_API_KEY || "",
-      webhookSecret: process.env.VAPI_WEBHOOK_SECRET || "",
+      apiKey: integrationEnv("VAPI_API_KEY") || "",
+      webhookSecret: integrationEnv("VAPI_WEBHOOK_SECRET") || "",
     };
   }
 }
@@ -219,8 +220,8 @@ export const vapiCallsRouter = router({
     ).catch(() => [[]]);
     const map: Record<string, string> = {};
     for (const r of (rows as any[])) map[r.key] = r.value ?? "";
-    const apiKey = process.env.VAPI_API_KEY || map.vapiApiKey || "";
-    const webhookSecret = process.env.VAPI_WEBHOOK_SECRET || map.vapiWebhookSecret || "";
+    const apiKey = integrationEnv("VAPI_API_KEY") || map.vapiApiKey || "";
+    const webhookSecret = integrationEnv("VAPI_WEBHOOK_SECRET") || map.vapiWebhookSecret || "";
     return {
       hasApiKey: !!apiKey,
       apiKeyMasked: apiKey ? `${apiKey.slice(0, 8)}…${apiKey.slice(-4)}` : "",

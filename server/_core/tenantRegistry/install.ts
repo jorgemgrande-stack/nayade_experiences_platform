@@ -12,6 +12,7 @@ import type { Express } from "express";
 import { getTenantMode, isMultiTenant } from "../tenant";
 import { getErm, installErmFromEnv } from "../erm/runtime";
 import { configureModuleAccess } from "../modules/runtime";
+import { warmConfigCache } from "../../config";
 import { configureSupport, createSupportRouter, supportReadOnlyGuard } from "../support/session";
 import { writableTenantLister } from "./jobs";
 import { createTenantRuntime, type TenantRuntime } from "./runtime";
@@ -55,6 +56,10 @@ export function installTenantBinding(app: Express): void {
   // Tasa y concurrencia por tenant: ya con el contexto ligado
   const erm = getErm();
   if (erm) app.use(erm.guard);
+  // Precarga los ajustes del tenant (lecturas síncronas: Redsys, remitente de correo…)
+  app.use((_req, _res, next) => {
+    warmConfigCache().then(() => next(), () => next());
+  });
   // Soporte: lectura impuesta en el borde y puerta de entrada
   app.use(supportReadOnlyGuard());
   app.use(createSupportRouter());
