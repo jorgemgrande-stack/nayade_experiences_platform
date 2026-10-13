@@ -25,6 +25,7 @@ import type { EntitlementAdmin } from "../_core/modules/mysqlEntitlements";
 import type { QuotaAdmin } from "../_core/erm/mysqlQuotas";
 import { ModuleError } from "../_core/modules/contract";
 import { authenticate, getAuth, requireScope, type ServiceToken } from "./auth";
+import { SsoError, type SsoService } from "./sso";
 import { signSupportToken } from "../_core/support/session";
 import { TEMPLATES } from "../_core/templates/catalog";
 import { renderMetrics } from "./metrics";
@@ -50,6 +51,8 @@ export interface ControlPlaneDeps {
   perMinute?: number;
   /** Acceso delegado de soporte (requiere SUPPORT_JWT_SECRET). */
   support?: Pick<SupportAdmin, "create" | "revoke">;
+  /** SSO corporativo (OIDC → sesión corta). */
+  sso?: SsoService;
   /** CRM comercial (leads, oportunidades, contratos…). */
   crm?: { service: CrmService; store: CrmStore };
   /** Orígenes del navegador autorizados (CORS). Vacío = ninguno. Nunca comodín. */
@@ -138,7 +141,26 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
       keyGenerator: (req) => (req.headers.authorization ?? "anon").slice(0, 80),
     }),
   );
-  router.use(authenticate(d.tokens));
+  // Intercambio de id_token OIDC por sesión (sin autenticación previa; con límite de tasa)
+  if (d.sso) {
+    router.post(
+      "/auth/oidc",
+      wrap(async (req, res) => {
+        const b = z.object({ idToken: z.string().min(20).max(8192) }).parse(req.body);
+        try {
+          res.json(await d.sso!.exchange(b.idToken));
+        } catch (e) {
+          if (e instanceof SsoError) return void res.status(e.code === "not_authorized" ? 403 : 401).json({ error: e.code });
+          throw e;
+        }
+      }),
+    );
+  }
+  router.use(authenticate(d.tokens, d.sso ? (t) => d.sso!.verifySession(t) : undefined));
+  router.get("/auth/me", (req, res) => {
+    const a = getAuth(req)!;
+    res.json({ actor: a.actor, scopes: Array.from(a.scopes) });
+  });
   const actor = (req: Request) => getAuth(req)!.actor;
 
   // ── Tenants ────────────────────────────────────────────────────────────────

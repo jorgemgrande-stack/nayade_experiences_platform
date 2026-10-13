@@ -36,6 +36,8 @@ import { CrmService } from "../crm/service";
 import { createContractActivation } from "../crm/activation";
 import { createControlPlaneApp } from "./api";
 import { parseTokens } from "./auth";
+import { SsoService, parseSsoUsers } from "./sso";
+import { createRemoteJWKSet } from "jose";
 
 async function main() {
   const tokens = parseTokens(process.env.CP_TOKENS);
@@ -77,6 +79,16 @@ async function main() {
     ? new MysqlUsageStore(mysql.createPool({ uri: process.env.ERM_DATABASE_URL, connectionLimit: 2 }))
     : undefined;
 
+  let sso: SsoService | undefined;
+  if (process.env.CP_OIDC_ISSUER && process.env.CP_OIDC_CLIENT_ID && process.env.CP_OIDC_JWKS_URL && process.env.CP_SESSION_SECRET) {
+    sso = new SsoService({
+      issuer: process.env.CP_OIDC_ISSUER,
+      clientId: process.env.CP_OIDC_CLIENT_ID,
+      sessionSecret: process.env.CP_SESSION_SECRET,
+      users: parseSsoUsers(process.env.CP_OIDC_USERS),
+      getKey: createRemoteJWKSet(new URL(process.env.CP_OIDC_JWKS_URL)),
+    });
+  }
   let crm: { service: CrmService; store: MysqlCrmStore } | undefined;
   if (process.env.CRM_DATABASE_URL) {
     const store = new MysqlCrmStore(mysql.createPool({ uri: process.env.CRM_DATABASE_URL, connectionLimit: 4 }));
@@ -88,6 +100,7 @@ async function main() {
   }
 
   const app = createControlPlaneApp({
+    sso,
     crm,
     tokens,
     registry,

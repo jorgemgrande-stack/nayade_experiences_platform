@@ -74,11 +74,24 @@ function match(tokens: ServiceToken[], presented: string): ServiceToken | null {
   return found;
 }
 
-export function authenticate(tokens: ServiceToken[]): RequestHandler {
-  return (req: Request, res: Response, next: NextFunction) => {
+/** Verificador de sesiones SSO (JWT propio). */
+export type SessionVerifier = (token: string) => Promise<{ email: string; scopes: Scope[] } | null>;
+
+export function authenticate(tokens: ServiceToken[], sessions?: SessionVerifier): RequestHandler {
+  return async (req: Request, res: Response, next: NextFunction) => {
     const header = req.headers.authorization ?? "";
-    const m = /^Bearer\s+(\S{16,256})$/.exec(header);
-    const t = m ? match(tokens, m[1]) : null;
+    const m = /^Bearer\s+(\S{16,2048})$/.exec(header);
+    // Sesión SSO (JWT: tres segmentos) o token de servicio (hash)
+    if (m && sessions && m[1].split(".").length === 3) {
+      const s = await sessions(m[1]);
+      if (s) {
+        authed.set(req, { tokenId: `sso:${s.email}`, actor: { type: "operator", id: s.email }, scopes: new Set(s.scopes) });
+        return next();
+      }
+      res.status(401).json({ error: "unauthorized" });
+      return;
+    }
+    const t = m && m[1].length <= 256 ? match(tokens, m[1]) : null;
     if (!t) {
       res.status(401).json({ error: "unauthorized" });
       return;
