@@ -242,6 +242,11 @@ export class TenantRegistryService {
     });
   }
 
+  /** Descifra el DSN de una referencia concreta (BD pendiente en el alta). Nunca se registra. */
+  decryptDatabase(ref: TenantDatabaseRef): string {
+    return decryptDsn(ref.dsnCipher, ref.keyId, ref.tenantId, this.ring());
+  }
+
   /** Descifra el DSN activo (uso interno del resolvedor de conexiones; nunca se registra). */
   async getActiveDsn(tenantId: string): Promise<string | null> {
     const ref = await this.store.getActiveDatabase(tenantId);
