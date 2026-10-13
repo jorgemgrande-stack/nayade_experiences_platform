@@ -48,6 +48,11 @@ export class ModuleRegistry {
     this.modules.set(m.id, m);
   }
 
+  /** Retira un módulo (carga fallida). */
+  unregister(id: string): void {
+    this.modules.delete(id);
+  }
+
   get(id: string): ModuleManifest | undefined {
     return this.modules.get(id);
   }

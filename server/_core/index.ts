@@ -12,8 +12,9 @@ import { scheduleTenantInterval, setJobFlag } from "./tenantRegistry/scheduler";
 import { isMultiTenant } from "./tenant";
 import { localStorageTenantGuard } from "./tenantStorage";
 import { registerBuiltinModules } from "./modules/builtin";
-import { getModuleAccess } from "./modules/runtime";
+import { getModuleAccess, getModuleRegistry } from "./modules/runtime";
 import { moduleRouteGuard } from "./modules/routeGuard";
+import { loadModules, modulesFromEnv } from "./modules/loader";
 import { registerOAuthRoutes } from "./oauth";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
@@ -201,6 +202,10 @@ async function startServer() {
   // si no hay sesión válida. Funciona en ambos modos (local y Manus OAuth).
   // Licencias de módulos sectoriales: se comprueban en servidor antes de ejecutar el procedimiento
   registerBuiltinModules();
+  // Módulos externos (repositorios propios): ELEPHANT_MODULES=ruta1,ruta2. Un módulo defectuoso
+  // se omite sin afectar al Core.
+  const moduleReport = await loadModules(modulesFromEnv(), { app, registry: getModuleRegistry(), access: getModuleAccess() });
+  for (const f of moduleReport.failed) console.error(JSON.stringify({ ctx: "Modules", event: "load_failed", spec: f.spec, error: f.error }));
   app.use("/api/trpc", moduleRouteGuard(getModuleAccess));
   app.use("/api/trpc", createAuthGuardMiddleware(USE_LOCAL_AUTH));
   // Servir archivos del storage local (fallback cuando S3/Forge no está configurado)
