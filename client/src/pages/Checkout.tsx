@@ -115,6 +115,7 @@ export default function Checkout() {
         customerPhone: phone.trim() || undefined,
         origin: window.location.origin,
         discountCodeId: promoData?.id,
+          discountCode: promoData?.code,
         // Meta CAPI attribution — solo si el usuario aceptó marketing consent
         fbp: hasConsent ? getFbp() : undefined,
         fbc: hasConsent ? getFbc() : undefined,
