@@ -23,6 +23,7 @@ import { eq, desc, and, sql } from "drizzle-orm";
 import { ghlConversations, ghlMessages, ghlWebhookEvents, siteSettings } from "../../drizzle/schema";
 import { ghlInboxEmitter } from "../ghlInboxEvents";
 import { createHash, timingSafeEqual } from "crypto";
+import rateLimit from "express-rate-limit";
 import { requireStaff, getAuthUser } from "../_core/expressAuth";
 import type { Response } from "express";
 
@@ -489,6 +490,36 @@ const SSE_MAX_PER_USER = 10;
 const SSE_MAX_TOTAL = 100;
 const sseConnections = { total: 0, byUser: new Map<number, number>() };
 
+// ─── Validación, límites y auditoría de operaciones de envío ──────────────────
+
+const GHL_ID_RE = /^[A-Za-z0-9_-]{4,64}$/;
+const PHONE_RE = /^[+(]*[0-9][0-9 ()+\-.]{5,24}$/;
+const MAX_MESSAGE_LEN = 4096;
+
+/** Límite por usuario autenticado (el guard de /api/ghl ya garantiza la sesión). */
+function perUserLimit(limit: number, windowMs: number) {
+  return rateLimit({
+    windowMs,
+    limit,
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: (req) => `u:${getAuthUser(req)?.id ?? "anon"}`,
+    handler: (_req, res) => {
+      res.status(429).json({ ok: false, message: "Demasiadas operaciones seguidas. Espera un momento e inténtalo de nuevo." });
+    },
+  });
+}
+const replyLimiter = perUserLimit(30, 60_000);
+const newConversationLimiter = perUserLimit(10, 60_000);
+// La UI sincroniza sola cada 60 s por pestaña abierta: margen para varias pestañas y sincronización manual.
+const syncLimiter = perUserLimit(12, 60_000);
+const readLimiter = perUserLimit(60, 60_000);
+
+/** Registro de auditoría de operaciones de envío: nunca incluye el cuerpo del mensaje ni teléfonos. */
+function audit(req: express.Request, op: string, ctx: Record<string, unknown> = {}) {
+  log("info", "audit", { op, userId: getAuthUser(req)?.id ?? null, ...ctx });
+}
+
 // ─── Router ───────────────────────────────────────────────────────────────────
 
 const ghlInboxRouter = express.Router();
@@ -628,13 +659,20 @@ ghlInboxRouter.get("/api/ghl/inbox/stream", (req, res: Response) => {
 // ── POST /api/ghl/conversations/:ghlConvId/reply ──────────────────────────────
 ghlInboxRouter.post(
   "/api/ghl/conversations/:ghlConvId/reply",
-  express.json({ limit: "512kb" }),
+  replyLimiter,
+  express.json({ limit: "64kb" }),
   async (req, res) => {
     const { ghlConvId } = req.params;
     const { message } = req.body ?? {};
 
-    if (!message?.trim()) {
-      return res.status(400).json({ ok: false, error: "El mensaje no puede estar vacío" });
+    if (typeof ghlConvId !== "string" || !GHL_ID_RE.test(ghlConvId)) {
+      return res.status(400).json({ ok: false, message: "Conversación no válida" });
+    }
+    if (typeof message !== "string" || !message.trim()) {
+      return res.status(400).json({ ok: false, error: "El mensaje no puede estar vacío", message: "El mensaje no puede estar vacío" });
+    }
+    if (message.length > MAX_MESSAGE_LEN) {
+      return res.status(400).json({ ok: false, message: `El mensaje supera los ${MAX_MESSAGE_LEN} caracteres` });
     }
 
     const replyCreds = await getInboxCredentials();
@@ -653,6 +691,11 @@ ghlInboxRouter.post(
       [ghlConvId]
     ).catch(() => [[]]);
     const ghlContactId: string | null = (convRows as any[])[0]?.ghlContactId ?? null;
+    // Solo se responde a conversaciones que existen en el inbox local (no a ids arbitrarios).
+    if (!(convRows as any[])[0]) {
+      return res.status(404).json({ ok: false, message: "Conversación no encontrada" });
+    }
+    audit(req, "reply", { conversationId: ghlConvId, chars: message.length });
 
     try {
       const ghlRes = await fetch(`${GHL_BASE_URL}/conversations/messages`, {
@@ -676,7 +719,7 @@ ghlInboxRouter.post(
         log("warn", "Error al enviar mensaje via GHL API", { status: ghlRes.status, body: errText.slice(0, 200) });
         return res.status(200).json({
           ok: false,
-          message: `El envío de WhatsApp desde Nayade todavía no está habilitado para esta cuenta GHL. (${ghlRes.status}: ${errText.slice(0, 100)})`,
+          message: `El envío de WhatsApp desde Nayade todavía no está habilitado para esta cuenta GHL. (${ghlRes.status})`,
         });
       }
 
@@ -725,14 +768,14 @@ ghlInboxRouter.post(
       log("error", "Excepción enviando mensaje GHL", { error: err.message });
       return res.status(200).json({
         ok: false,
-        message: `El envío de WhatsApp desde Nayade todavía no está habilitado para esta cuenta GHL. (${err.message})`,
+        message: `El envío de WhatsApp desde Nayade todavía no está habilitado para esta cuenta GHL.`,
       });
     }
   }
 );
 
 // ── GET /api/ghl/templates — listar plantillas WhatsApp aprobadas ─────────────
-ghlInboxRouter.get("/api/ghl/templates", async (req, res) => {
+ghlInboxRouter.get("/api/ghl/templates", readLimiter, async (req, res) => {
   const creds = await getInboxCredentials();
   if (!creds) return res.status(200).json({ ok: false, templates: [], message: "Sin credenciales" });
   const { token, locationId } = creds;
@@ -745,15 +788,26 @@ ghlInboxRouter.get("/api/ghl/templates", async (req, res) => {
     const templates: any[] = data?.templates ?? data?.data ?? [];
     return res.status(200).json({ ok: true, templates });
   } catch (err: any) {
-    return res.status(200).json({ ok: false, templates: [], message: err.message });
+    return res.status(200).json({ ok: false, templates: [], message: "No se pudieron obtener las plantillas" });
   }
 });
 
 // ── POST /api/ghl/conversations/new — iniciar nueva conversación ──────────────
-ghlInboxRouter.post("/api/ghl/conversations/new", express.json({ limit: "512kb" }), async (req, res) => {
+ghlInboxRouter.post("/api/ghl/conversations/new", newConversationLimiter, express.json({ limit: "64kb" }), async (req, res) => {
   const { phone, contactName, message, templateId } = req.body ?? {};
 
-  if (!phone?.trim()) return res.status(400).json({ ok: false, message: "Teléfono requerido" });
+  if (typeof phone !== "string" || !phone.trim()) return res.status(400).json({ ok: false, message: "Teléfono requerido" });
+  if (!PHONE_RE.test(phone.trim())) return res.status(400).json({ ok: false, message: "Teléfono no válido" });
+  if (message != null && (typeof message !== "string" || message.length > MAX_MESSAGE_LEN)) {
+    return res.status(400).json({ ok: false, message: "Mensaje no válido" });
+  }
+  if (templateId != null && (typeof templateId !== "string" || !GHL_ID_RE.test(templateId))) {
+    return res.status(400).json({ ok: false, message: "Plantilla no válida" });
+  }
+  if (contactName != null && (typeof contactName !== "string" || contactName.length > 120)) {
+    return res.status(400).json({ ok: false, message: "Nombre no válido" });
+  }
+  audit(req, "new", { hasTemplate: !!templateId, chars: typeof message === "string" ? message.length : 0 });
   // message y templateId son opcionales: si no vienen solo se crea/recupera la conversación
 
   const creds = await getInboxCredentials();
@@ -784,7 +838,7 @@ ghlInboxRouter.post("/api/ghl/conversations/new", express.json({ limit: "512kb" 
       });
       if (!createRes.ok) {
         const t = await createRes.text();
-        return res.status(200).json({ ok: false, message: `Error creando contacto: ${t.slice(0, 120)}` });
+        return res.status(200).json({ ok: false, message: "No se pudo crear el contacto en GHL" });
       }
       const cd: any = await createRes.json();
       contactId = cd?.contact?.id ?? cd?.id ?? null;
@@ -803,7 +857,7 @@ ghlInboxRouter.post("/api/ghl/conversations/new", express.json({ limit: "512kb" 
     const conversationId: string | null =
       convData?.conversation?.id ?? convData?.id ?? convData?.conversationId ?? null;
     if (!conversationId) {
-      return res.status(200).json({ ok: false, message: `No se pudo crear conversación en GHL: ${JSON.stringify(convData).slice(0, 120)}` });
+      return res.status(200).json({ ok: false, message: "No se pudo crear la conversación en GHL" });
     }
 
     // 4. Guardar conversación en BD local (siempre)
@@ -838,7 +892,7 @@ ghlInboxRouter.post("/api/ghl/conversations/new", express.json({ limit: "512kb" 
 
       if (!msgRes.ok) {
         const errText = await msgRes.text();
-        return res.status(200).json({ ok: false, message: `Error enviando mensaje: ${errText.slice(0, 150)}` });
+        return res.status(200).json({ ok: false, message: `No se pudo enviar el mensaje (${msgRes.status})` });
       }
       const msgData: any = await msgRes.json();
       // GHL devuelve `messageId` (no `message.id`); ver comentario en /reply.
@@ -875,12 +929,13 @@ ghlInboxRouter.post("/api/ghl/conversations/new", express.json({ limit: "512kb" 
     return res.status(200).json({ ok: true, conversationId, contactId, messageId: null });
   } catch (err: any) {
     log("error", "Error creando nueva conversación GHL", { error: err.message });
-    return res.status(200).json({ ok: false, message: err.message });
+    return res.status(200).json({ ok: false, message: "No se pudo crear la conversación" });
   }
 });
 
 // ── POST /api/ghl/inbox/sync — sincronización manual ─────────────────────────
-ghlInboxRouter.post("/api/ghl/inbox/sync", express.json({ limit: "128kb" }), async (req, res) => {
+ghlInboxRouter.post("/api/ghl/inbox/sync", syncLimiter, express.json({ limit: "128kb" }), async (req, res) => {
+  audit(req, "sync");
   const syncCreds = await getInboxCredentials();
   if (!syncCreds) {
     return res.status(200).json({
@@ -907,7 +962,7 @@ ghlInboxRouter.post("/api/ghl/inbox/sync", express.json({ limit: "128kb" }), asy
       log("warn", "Error al sincronizar desde GHL API", { status: ghlRes.status, body: errText.slice(0, 200) });
       return res.status(200).json({
         ok: false,
-        message: `Error al conectar con GHL: HTTP ${ghlRes.status} — ${errText.slice(0, 120)}`,
+        message: `Error al conectar con GHL (HTTP ${ghlRes.status})`,
       });
     }
 
@@ -952,7 +1007,8 @@ ghlInboxRouter.post("/api/ghl/inbox/sync", express.json({ limit: "128kb" }), asy
     // ── Delta-delete: purgar conversaciones que ya no existen en GHL ─────────
     // Solo si GHL devolvió < 100 resultados (set completo, sin paginación pendiente)
     let purged = 0;
-    if (conversations.length < 100) {
+    // Salvaguarda: una respuesta vacía no debe interpretarse como «todo ha desaparecido».
+    if (conversations.length > 0 && conversations.length < 100) {
       const ghlIds = new Set(conversations.map((c: any) => c.id).filter(Boolean));
       const [localRows]: any = await _pool.execute(
         "SELECT ghlConversationId FROM ghl_conversations"
@@ -971,12 +1027,12 @@ ghlInboxRouter.post("/api/ghl/inbox/sync", express.json({ limit: "128kb" }), asy
     return res.status(200).json({ ok: true, upserted, purged, total: conversations.length });
   } catch (err: any) {
     log("error", "Excepción en sync GHL", { error: err.message });
-    return res.status(200).json({ ok: false, message: err.message });
+    return res.status(200).json({ ok: false, message: "Error al sincronizar con GHL" });
   }
 });
 
 // ── GET /api/ghl/inbox/health — diagnóstico sin autenticación ─────────────────
-ghlInboxRouter.get("/api/ghl/inbox/health", async (req, res) => {
+ghlInboxRouter.get("/api/ghl/inbox/health", readLimiter, async (req, res) => {
   const result: Record<string, any> = { ok: false, tables: {}, credentials: {}, lastEvent: null };
   try {
     const tables = ["ghl_conversations", "ghl_messages", "ghl_webhook_events"];
