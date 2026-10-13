@@ -123,6 +123,8 @@ import {
   generateMerchantOrder,
 } from "./redsys";
 import { sendInviteEmail } from "./inviteEmail";
+import { getTrustedBaseUrl } from "./_core/publicUrl";
+import { toPublicUser } from "./_core/publicUser";
 import { testGHLConnection } from "./ghl";
 import { sendCapiEvent } from "./metaCapiRoute";
 import { sendEmail } from "./mailer";
@@ -237,7 +239,7 @@ export const appRouter = router({
   fiscalAudit: fiscalAuditRouter,
   pdfTemplates: pdfTemplatesRouter,
   auth: router({
-    me: publicProcedure.query((opts) => opts.ctx.user),
+    me: publicProcedure.query((opts) => toPublicUser(opts.ctx.user)),
     logout: publicProcedure.mutation(({ ctx }) => {
       const cookieOptions = getSessionCookieOptions(ctx.req);
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
@@ -1342,13 +1344,13 @@ export const appRouter = router({
   //   // ─── ADMIN: USERS ─────────────────────────────────────────────────────
   admin: router({
     getUsers: adminProcedure.query(async () => {
-      return getAllUsers();
+      return (await getAllUsers()).map((u) => toPublicUser(u));
     }),
     createUser: adminProcedure.input(z.object({
       name: z.string().min(2),
       email: z.string().email(),
       role: z.enum(["user", "admin", "monitor", "agente", "adminrest", "controler"]),
-      origin: z.string(),
+      origin: z.string().optional(), // ignorado: el enlace usa una URL de confianza
       rbacRoleKeys: z.array(z.string().min(1).max(64)).optional(),
     })).mutation(async ({ input }) => {
       const { nanoid } = await import("nanoid");
@@ -1362,7 +1364,7 @@ export const appRouter = router({
         inviteTokenExpiry: expiry,
       });
       // Send invite email
-      const setPasswordUrl = `${input.origin}/establecer-contrasena?token=${token}`;
+      const setPasswordUrl = `${getTrustedBaseUrl()}/establecer-contrasena?token=${token}`;
       await sendInviteEmail({ name: input.name, email: input.email, setPasswordUrl, role: input.role });
       // Assign RBAC roles — fail-safe: never breaks legacy user creation.
       // If rbacRoleKeys not provided, fall back to the legacy role key (keys match 1:1).
@@ -1406,13 +1408,13 @@ export const appRouter = router({
       email: z.string().email(),
       name: z.string(),
       role: z.string().optional(),
-      origin: z.string(),
+      origin: z.string().optional(), // ignorado: el enlace usa una URL de confianza
     })).mutation(async ({ input }) => {
       const { nanoid } = await import("nanoid");
       const token = nanoid(48);
       const expiry = new Date(Date.now() + 72 * 60 * 60 * 1000);
       await resendUserInvite(input.userId, token, expiry);
-      const setPasswordUrl = `${input.origin}/establecer-contrasena?token=${token}`;
+      const setPasswordUrl = `${getTrustedBaseUrl()}/establecer-contrasena?token=${token}`;
       await sendInviteEmail({ name: input.name, email: input.email, setPasswordUrl, role: input.role ?? "user" });
       return { success: true };
     }),
