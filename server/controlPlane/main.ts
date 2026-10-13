@@ -1,0 +1,94 @@
+/**
+ * Punto de entrada del servicio del plano de control (proceso SEPARADO del Core).
+ *
+ *   pnpm exec tsx server/controlPlane/main.ts
+ *
+ * Variables:
+ *   CP_PORT                     puerto (defecto 4100)
+ *   CP_TOKENS                   JSON [{ id, sha256, scopes[] }] (solo hashes)
+ *   REGISTRY_ADMIN_DATABASE_URL BD del registro con usuario de ESCRITURA
+ *   REGISTRY_KEYS / REGISTRY_ACTIVE_KEY_ID   claves de cifrado de DSN
+ *   CP_PLATFORM_TARGET          host CNAME de la plataforma (verificación de dominios)
+ *   ERM_DATABASE_URL            (opcional) métricas de uso
+ *   PROVISIONING_DB_ADMIN_URL   (opcional) servidor MySQL para crear BD de tenants
+ *   BILLING_DATABASE_URL        (opcional) BD comercial
+ *
+ * Sin CP_TOKENS válidos el servicio NO arranca (nunca queda abierto).
+ */
+import path from "node:path";
+import mysql from "mysql2/promise";
+import { EntitlementAdmin } from "../_core/modules/mysqlEntitlements";
+import { QuotaAdmin } from "../_core/erm/mysqlQuotas";
+import { MysqlUsageStore } from "../_core/erm/usage";
+import { keyringFromEnv } from "../_core/tenantRegistry/crypto";
+import { MysqlTenantRegistryStore } from "../_core/tenantRegistry/mysqlStore";
+import { TenantRegistryService } from "../_core/tenantRegistry/service";
+import { ProvisioningService } from "../_core/provisioning/service";
+import {
+  MysqlDatabaseProvisioner,
+  MysqlProvisioningStore,
+  MysqlSchemaApplier,
+  MysqlTenantSeeder,
+} from "../_core/provisioning/mysqlAdapters";
+import { createControlPlaneApp } from "./api";
+import { parseTokens } from "./auth";
+
+async function main() {
+  const tokens = parseTokens(process.env.CP_TOKENS);
+  if (tokens.length === 0) throw new Error("CP_TOKENS vacío o no válido: el plano de control no arranca sin tokens");
+  const regUrl = process.env.REGISTRY_ADMIN_DATABASE_URL;
+  if (!regUrl) throw new Error("Falta REGISTRY_ADMIN_DATABASE_URL");
+
+  const pool = mysql.createPool({ uri: regUrl, connectionLimit: 5 });
+  const store = new MysqlTenantRegistryStore(pool);
+  const ring = keyringFromEnv(process.env);
+  const registry = new TenantRegistryService(store, () => ring);
+  const entitlements = new EntitlementAdmin(pool);
+  const quotas = new QuotaAdmin(pool);
+
+  let provisioning: ProvisioningService | undefined;
+  if (process.env.PROVISIONING_DB_ADMIN_URL) {
+    const adminUrl = new URL(process.env.PROVISIONING_DB_ADMIN_URL);
+    const adminPool = mysql.createPool({ uri: process.env.PROVISIONING_DB_ADMIN_URL, connectionLimit: 2 });
+    provisioning = new ProvisioningService({
+      registry,
+      reader: store,
+      databases: new MysqlDatabaseProvisioner(adminPool, {
+        host: process.env.PROVISIONING_DB_HOST ?? adminUrl.hostname,
+        port: Number(process.env.PROVISIONING_DB_PORT ?? (adminUrl.port || 3306)),
+        alias: process.env.PROVISIONING_DB_ALIAS,
+      }),
+      schema: new MysqlSchemaApplier({
+        baselinePath: path.resolve(process.cwd(), "db/baseline/0000_baseline.sql"),
+        migrationsDir: path.resolve(process.cwd(), "db/migrations"),
+      }),
+      seeder: new MysqlTenantSeeder(),
+      entitlements,
+      quotas,
+      store: new MysqlProvisioningStore(pool),
+    });
+  }
+
+  const usage = process.env.ERM_DATABASE_URL
+    ? new MysqlUsageStore(mysql.createPool({ uri: process.env.ERM_DATABASE_URL, connectionLimit: 2 }))
+    : undefined;
+
+  const app = createControlPlaneApp({
+    tokens,
+    registry,
+    reader: store,
+    entitlements,
+    quotas,
+    provisioning,
+    usage,
+    platformTarget: process.env.CP_PLATFORM_TARGET ?? "",
+  });
+
+  const port = Number(process.env.CP_PORT ?? 4100);
+  app.listen(port, () => console.log(JSON.stringify({ ctx: "ControlPlane", event: "listening", port })));
+}
+
+main().catch((e) => {
+  console.error(e instanceof Error ? e.message : "error");
+  process.exit(1);
+});
