@@ -1,8 +1,6 @@
 import { z } from "zod";
 import { router, permissionProcedure } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
-import { drizzle } from "drizzle-orm/mysql2";
-import mysql from "mysql2/promise";
 import { eq, and, gte, lte, desc, sql, inArray, or, isNull, notInArray } from "drizzle-orm";
 import { finCashAccounts, finCashMovements, finCashClosures, finCashAlerts, finCashClosureActions, reservations, expenses } from "../../drizzle/schema";
 import { cashSessions } from "../../drizzle/schema";
@@ -10,9 +8,10 @@ import { createCashMovementIfNotExists } from "./cashRegisterHelper";
 import { getSystemSetting } from "../config";
 import { assertModuleEnabled } from "../_core/flagGuard";
 import { madridDateKey } from "../utils/timezone";
+import { legacyDb, legacyPool } from "../_core/legacyDb";
 
-const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
-const db = drizzle(_pool);
+const _pool = legacyPool();
+const db = legacyDb();
 
 // RBAC-aware procedures. Fallback: admin only (cash module is admin-only by default).
 const cashViewProc   = permissionProcedure("accounting.cash.view",   ["admin"]).use(async ({ ctx, next }) => {
