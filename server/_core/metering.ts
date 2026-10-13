@@ -58,10 +58,12 @@ export function meter(
   quantity = 1,
   unit = "count",
   meta?: Record<string, MeterValue>,
+  /** Tenant explícito (p. ej. en callbacks donde el contexto asíncrono ya no existe). */
+  tenantId?: string,
 ): void {
   try {
     if (!Number.isFinite(quantity)) return;
-    sink.record({ tenantId: getTenantIdOrDefault(), metric, quantity, unit, at: Date.now(), meta });
+    sink.record({ tenantId: tenantId ?? getTenantIdOrDefault(), metric, quantity, unit, at: Date.now(), meta });
   } catch {
     // Medir no puede afectar a la operación medida.
   }

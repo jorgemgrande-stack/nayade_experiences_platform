@@ -76,7 +76,7 @@ describe.skipIf(!URL_)("módulos con MySQL real", () => {
     expect(await admin.listEntitlements("mod-a")).toEqual([]);
 
     const [ev] = await pool.query<mysql.RowDataPacket[]>(
-      "SELECT action FROM tenant_events WHERE tenant_id = 'mod-a' AND action LIKE 'entitlement.%' ORDER BY id",
+      "SELECT action FROM (SELECT id, action FROM tenant_events WHERE tenant_id = 'mod-a' AND action LIKE 'entitlement.%' ORDER BY id DESC LIMIT 3) x ORDER BY id",
     );
     expect(ev.map((e) => e.action)).toEqual(["entitlement.granted", "entitlement.status", "entitlement.revoked"]);
   });

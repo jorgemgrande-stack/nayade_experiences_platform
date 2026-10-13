@@ -6,6 +6,7 @@
 import { ENV } from './_core/env';
 import { Metrics, meter } from "./_core/metering";
 import { scopeStorageKey } from "./_core/tenantStorage";
+import { enforceQuota } from "./_core/erm/runtime";
 import {
   S3Client,
   PutObjectCommand,
@@ -157,6 +158,8 @@ export async function storagePut(
   contentType = "application/octet-stream"
 ): Promise<{ key: string; url: string }> {
   const bytes = typeof data === "string" ? Buffer.byteLength(data) : data.byteLength;
+  // Cuota de escritura del tenant (lanza QuotaExceededError si un límite duro se superaría)
+  await enforceQuota(Metrics.STORAGE_WRITE_BYTES, bytes);
   let backend: "forge" | "s3" | "local";
   let result: { key: string; url: string };
   if (useForge()) {

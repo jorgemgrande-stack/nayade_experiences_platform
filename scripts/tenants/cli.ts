@@ -13,6 +13,10 @@
  *   pnpm exec tsx scripts/tenants/cli.ts db-register <tenant> --dsn-env VAR       [--apply]
  *   pnpm exec tsx scripts/tenants/cli.ts db-activate <tenant> <idBD>              [--apply]
  *   pnpm exec tsx scripts/tenants/cli.ts rotate-keys                              [--apply]
+ *   pnpm exec tsx scripts/tenants/cli.ts quotas <tenant>
+ *   pnpm exec tsx scripts/tenants/cli.ts quota-set <tenant> <metrica> <minute|hour|day|month> <limite> [--soft] [--apply]
+ *   pnpm exec tsx scripts/tenants/cli.ts quota-remove <tenant> <metrica> <periodo> [--apply]
+ *   pnpm exec tsx scripts/tenants/cli.ts usage <tenant> [--days 30] [--csv]   (requiere ERM_DATABASE_URL)
  *   pnpm exec tsx scripts/tenants/cli.ts entitlements <tenant>
  *   pnpm exec tsx scripts/tenants/cli.ts entitlement-grant <tenant> <modulo> [--until 2027-01-31] [--apply]
  *   pnpm exec tsx scripts/tenants/cli.ts entitlement-status <tenant> <modulo> <active|suspended|expired> [--apply]
@@ -32,6 +36,9 @@ import { TenantRegistryService, type Actor } from "../../server/_core/tenantRegi
 import { verifyDomainOwnership } from "../../server/_core/tenantRegistry/domainVerification";
 import type { TenantStatus } from "../../server/_core/tenantRegistry/contract";
 import { EntitlementAdmin } from "../../server/_core/modules/mysqlEntitlements";
+import { QuotaAdmin } from "../../server/_core/erm/mysqlQuotas";
+import { MysqlUsageStore } from "../../server/_core/erm/usage";
+import type { QuotaPeriod } from "../../server/_core/erm/types";
 import type { EntitlementStatus } from "../../server/_core/modules/entitlements";
 
 const args = process.argv.slice(2);
@@ -154,6 +161,49 @@ async function main() {
       }
       case "rotate-keys": {
         await write("re-cifrar credenciales con la clave activa", async () => ({ rotadas: await svc.rotateKeys(actor) }));
+        break;
+      }
+      case "quotas": {
+        const id = pos[0] ?? die("Falta <tenant>");
+        console.table(await new QuotaAdmin(pool).listQuotas(id));
+        break;
+      }
+      case "quota-set": {
+        const [id, metric, period, limit] = [
+          pos[0] ?? die("Falta <tenant>"),
+          pos[1] ?? die("Falta <metrica>"),
+          (pos[2] ?? die("Falta <periodo>")) as QuotaPeriod,
+          Number(pos[3] ?? die("Falta <limite>")),
+        ];
+        await write(`cuota ${metric}/${period}=${limit} para ${id}`, () =>
+          new QuotaAdmin(pool).set({ tenantId: id, metric, period, limit, enforcement: flag("--soft") ? "soft" : "hard" }, actor),
+        );
+        break;
+      }
+      case "quota-remove": {
+        const [id, metric, period] = [pos[0] ?? die("Falta <tenant>"), pos[1] ?? die("Falta <metrica>"), (pos[2] ?? die("Falta <periodo>")) as QuotaPeriod];
+        await write(`quitar cuota ${metric}/${period} de ${id}`, () => new QuotaAdmin(pool).remove(id, metric, period, actor));
+        break;
+      }
+      case "usage": {
+        const id = pos[0] ?? die("Falta <tenant>");
+        const eurl = process.env.ERM_DATABASE_URL ?? die("Falta ERM_DATABASE_URL");
+        const epool = mysql.createPool({ uri: eurl, connectionLimit: 1 });
+        try {
+          const days = Number(opt("--days") ?? 30);
+          const to = Date.now() + 3_600_000;
+          const rows = await new MysqlUsageStore(epool).list(id, to - days * 86_400_000, to);
+          if (flag("--csv")) {
+            console.log("hour_start,metric,quantity");
+            for (const r of rows) console.log(`${new Date(r.hourStart).toISOString()},${r.metric},${r.quantity}`);
+          } else {
+            const totals = new Map<string, number>();
+            for (const r of rows) totals.set(r.metric, (totals.get(r.metric) ?? 0) + r.quantity);
+            console.table(Array.from(totals.entries()).map(([metrica, total]) => ({ metrica, total })));
+          }
+        } finally {
+          await epool.end();
+        }
         break;
       }
       case "entitlements": {
