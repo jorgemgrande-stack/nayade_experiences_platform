@@ -96,3 +96,62 @@ jobs:
             echo ""
             echo "Este CI es informativo: un resultado 'failure' no bloquea el PR."
           } >> "$GITHUB_STEP_SUMMARY"
+
+  baseline:
+    name: Baseline de esquema (informativo)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: ci_only
+          MYSQL_DATABASE: baseline
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h127.0.0.1 -uroot -pci_only"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    env:
+      DRIFT_DATABASE_URL: mysql://root:ci_only@127.0.0.1:3306/baseline
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Instalar dependencias
+        run: pnpm install --frozen-lockfile
+
+      - name: Aplicar la baseline a una base de datos vacía
+        id: apply
+        continue-on-error: true
+        run: mysql -h127.0.0.1 -uroot -pci_only baseline < db/baseline/0000_baseline.sql
+
+      - name: Auditar contra drizzle/schema.ts
+        id: audit
+        continue-on-error: true
+        run: |
+          pnpm exec tsx scripts/audit-schema-drift.ts --json drift.json
+          node scripts/ci/assert-no-missing-columns.cjs drift.json
+
+      - name: Resumen
+        if: always()
+        run: |
+          {
+            echo "## Baseline de esquema"
+            echo ""
+            echo "| Paso | Resultado |"
+            echo "|---|---|"
+            echo "| Aplicar baseline a MySQL vacío | ${{ steps.apply.outcome }} |"
+            echo "| Sin columnas que falten frente a schema.ts | ${{ steps.audit.outcome }} |"
+          } >> "$GITHUB_STEP_SUMMARY"
