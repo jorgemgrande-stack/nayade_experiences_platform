@@ -10,7 +10,9 @@
  */
 import type { Express } from "express";
 import { getTenantMode, isMultiTenant } from "../tenant";
+import { writableTenantLister } from "./jobs";
 import { createTenantRuntime, type TenantRuntime } from "./runtime";
+import { setJobTenantLister } from "./scheduler";
 import { shadowMiddleware } from "./shadow";
 import { bindTenantMiddleware, resolveTenantMiddleware } from "./tenantMiddleware";
 
@@ -32,6 +34,8 @@ export function installTenantResolution(app: Express, env: NodeJS.ProcessEnv = p
     app.use(shadowMiddleware(rt.resolver, { currentTenantId: env.TENANT_SHADOW_CURRENT_ID || "nayade" }));
   } else {
     app.use(resolveTenantMiddleware(rt.resolver));
+    // Las tareas programadas recorren los tenants con escrituras del registro
+    setJobTenantLister(writableTenantLister(rt.reader));
   }
   return rt;
 }

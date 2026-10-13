@@ -8,6 +8,7 @@ import { isLeadProcedurePath, localStorageSecurityHeaders } from "./publicEndpoi
 import { createHealthRouter } from "./health";
 import { requestMeter } from "./requestMeter";
 import { installTenantBinding, installTenantResolution } from "./tenantRegistry/install";
+import { scheduleTenantInterval } from "./tenantRegistry/scheduler";
 import { localStorageTenantGuard } from "./tenantStorage";
 import { registerOAuthRoutes } from "./oauth";
 import { appRouter } from "../routers";
@@ -1670,22 +1671,14 @@ function startAbandonedCheckoutCleanup() {
   const STALE_DIRECT_MS          = 90 * 60 * 1000;  // Flujo 2: compra directa ? Venta Perdida tras 90 min (Redsys expira a los 30 min; 90 min garantiza que el IPN llegó)
   const STALE_QUOTE_MS           = 60 * 60 * 1000;  // Flujo 1: presupuesto ? pago_fallido tras 60 min
 
-  let _abandonedPool: any = null;
-  let _abandonedDb: any = null;
-
   async function run() {
     try {
-      const mysql = await import("mysql2/promise");
-      const { drizzle } = await import("drizzle-orm/mysql2");
       const { reservations, quotes } = await import("../../drizzle/schema");
       const { eq, and, lte, isNotNull } = await import("drizzle-orm");
-      const { createVentaPerdidaLead, logActivity } = await import("../db");
+      const { createVentaPerdidaLead, logActivity, getDb } = await import("../db");
 
-      if (!_abandonedPool) {
-        _abandonedPool = mysql.default.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
-        _abandonedDb = drizzle(_abandonedPool);
-      }
-      const db = _abandonedDb;
+      // BD del tenant en curso (la tarea corre dentro de su contexto)
+      const db = (await getDb())!;
 
       const staleDirectThreshold = Date.now() - STALE_DIRECT_MS;
       const staleQuoteThreshold  = Date.now() - STALE_QUOTE_MS;
@@ -1764,11 +1757,10 @@ function startAbandonedCheckoutCleanup() {
     } catch (err: any) {
       console.error("[AbandonedCheckout] Error en limpieza:", err.message, err.cause ?? "");
     }
-    setTimeout(run, CHECK_INTERVAL_MS);
   }
 
   // Primera ejecución tras arranque completo (evita competir con las migraciones)
-  setTimeout(run, CHECK_INTERVAL_MS);
+  scheduleTenantInterval("abandoned-checkout", CHECK_INTERVAL_MS, CHECK_INTERVAL_MS, run);
   console.log("[AbandonedCheckout] Job iniciado — checkeo de checkouts abandonados cada 20 min");
 }
 
@@ -1778,23 +1770,15 @@ function startAbandonedCheckoutCleanup() {
 function startInstallmentOverdueJob() {
   const CHECK_INTERVAL_MS = 60 * 60 * 1000; // 1 hora
 
-  let _installmentPool: any = null;
-  let _installmentDb: any = null;
-
   async function run() {
     try {
-      const mysql = await import("mysql2/promise");
-      const { drizzle } = await import("drizzle-orm/mysql2");
+      const { getDb } = await import("../db");
       const { paymentInstallments, quotes, leads } = await import("../../drizzle/schema");
       const { eq, and, lte, lt, ne, sql } = await import("drizzle-orm");
       const { sendEmail } = await import("../mailer");
       const { buildInstallmentReminderHtml } = await import("../emailTemplates");
 
-      if (!_installmentPool) {
-        _installmentPool = mysql.default.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
-        _installmentDb = drizzle(_installmentPool);
-      }
-      const db = _installmentDb;
+      const db = (await getDb())!;
       const todayStr = new Date().toISOString().split("T")[0];
 
       // 1. Marcar como vencidas cuotas pending cuya fecha de vencimiento ha pasado
@@ -1872,10 +1856,10 @@ function startInstallmentOverdueJob() {
     } catch (err: any) {
       console.error("[InstallmentJob] Error en job:", err.message);
     }
-    setTimeout(run, CHECK_INTERVAL_MS);
   }
 
-  setTimeout(run, 5 * 60 * 1000); // Primera ejecución 5 min tras arranque
+  // Primera ejecución 5 min tras arranque
+  scheduleTenantInterval("installment-overdue", CHECK_INTERVAL_MS, 5 * 60 * 1000, run);
   console.log("[InstallmentJob] Job iniciado — cuotas vencidas + recordatorios cada hora");
 }
 

@@ -11,6 +11,7 @@ import {
   type CardTerminalBatch,
 } from "../../drizzle/schema";
 import { legacyDb, legacyPool } from "../_core/legacyDb";
+import { scheduleTenantCron } from "../_core/tenantRegistry/scheduler";
 
 // -- Config ------------------------------------------------------------------
 
@@ -369,7 +370,7 @@ export function startMatchingJob(): void {
       .catch(e => console.error("[BatchMatching] Boot run error:", e));
   });
 
-  cron.schedule("*/10 * * * *", async () => {
+  scheduleTenantCron("*/10 * * * *", "card-terminal-matching", async () => {
     if (isRunning) return;
     isRunning = true;
     try {

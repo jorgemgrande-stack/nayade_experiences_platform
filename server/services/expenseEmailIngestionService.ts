@@ -22,6 +22,7 @@ import cron from "node-cron";
 import { expenses, expenseFiles, expenseEmailIngestionLogs } from "../../drizzle/schema";
 import { storagePut } from "../storage";
 import { legacyDb, legacyPool } from "../_core/legacyDb";
+import { scheduleTenantCron } from "../_core/tenantRegistry/scheduler";
 
 // ─── CONFIG ──────────────────────────────────────────────────────────────────
 
@@ -336,7 +337,7 @@ export function startExpenseEmailIngestionJob(): void {
       .catch(e => console.error("[ExpenseMailIngestion] Boot run error:", e));
   });
 
-  cron.schedule("*/10 * * * *", () => {
+  scheduleTenantCron("*/10 * * * *", "expense-email-ingestion", () => {
     runExpenseEmailIngestion()
       .then(r => {
         if (r.processed > 0 || r.errors > 0) {
