@@ -86,6 +86,11 @@ jobs:
         continue-on-error: true
         run: pnpm exec tsx scripts/db/migrate.ts verify
 
+      - name: Ratchet de deuda técnica (la deuda no puede aumentar)
+        id: ratchet
+        continue-on-error: true
+        run: node scripts/ci/ratchet.cjs
+
       - name: Resumen
         if: always()
         run: |
@@ -99,6 +104,7 @@ jobs:
             echo "| Build | ${{ steps.build.outcome }} |"
             echo "| Higiene | ${{ steps.hygiene.outcome }} |"
             echo "| Migraciones nuevas (verify) | ${{ steps.migrations.outcome }} |"
+            echo "| Ratchet de deuda | ${{ steps.ratchet.outcome }} |"
             echo ""
             echo "Este CI es informativo: un resultado 'failure' no bloquea el PR."
           } >> "$GITHUB_STEP_SUMMARY"
