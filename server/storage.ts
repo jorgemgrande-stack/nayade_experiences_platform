@@ -4,6 +4,7 @@
 //  3. Fallback local     (/tmp/local-storage — útil en Railway sin S3 configurado)
 
 import { ENV } from './_core/env';
+import { Metrics, meter } from "./_core/metering";
 import {
   S3Client,
   PutObjectCommand,
@@ -153,10 +154,22 @@ export async function storagePut(
   data: Buffer | Uint8Array | string,
   contentType = "application/octet-stream"
 ): Promise<{ key: string; url: string }> {
-  if (useForge()) return forgePut(relKey, data, contentType);
-  if (ENV.s3AccessKey && ENV.s3SecretKey) return s3Put(relKey, data, contentType);
-  // Fallback: almacenamiento local cuando ni Forge ni S3 están configurados
-  return localPut(normalizeKey(relKey), data);
+  const bytes = typeof data === "string" ? Buffer.byteLength(data) : data.byteLength;
+  let backend: "forge" | "s3" | "local";
+  let result: { key: string; url: string };
+  if (useForge()) {
+    backend = "forge";
+    result = await forgePut(relKey, data, contentType);
+  } else if (ENV.s3AccessKey && ENV.s3SecretKey) {
+    backend = "s3";
+    result = await s3Put(relKey, data, contentType);
+  } else {
+    // Fallback: almacenamiento local cuando ni Forge ni S3 están configurados
+    backend = "local";
+    result = await localPut(normalizeKey(relKey), data);
+  }
+  meter(Metrics.STORAGE_WRITE_BYTES, bytes, "byte", { backend });
+  return result;
 }
 
 export async function storageGet(relKey: string): Promise<{ key: string; url: string }> {

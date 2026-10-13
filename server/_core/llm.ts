@@ -1,4 +1,5 @@
 import { ENV } from "./env";
+import { Metrics, meter } from "./metering";
 
 export type Role = "system" | "user" | "assistant" | "tool" | "function";
 
@@ -328,5 +329,11 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
     );
   }
 
-  return (await response.json()) as InvokeResult;
+  const result = (await response.json()) as InvokeResult;
+  const usage = result.usage as
+    | { prompt_tokens?: number; completion_tokens?: number }
+    | undefined;
+  if (usage?.prompt_tokens) meter(Metrics.LLM_TOKENS_INPUT, usage.prompt_tokens, "token");
+  if (usage?.completion_tokens) meter(Metrics.LLM_TOKENS_OUTPUT, usage.completion_tokens, "token");
+  return result;
 }

@@ -2,6 +2,7 @@ import { eq, desc, and, like, sql, isNull, inArray, or, lt } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
 import { nanoid } from "nanoid";
+import { getTenantDatabase } from "./_core/dbRegistry";
 import {
   users, InsertUser,
   experiences, categories, locations, experienceVariants,
@@ -33,19 +34,12 @@ export async function generateReservationNumber(): Promise<string> {
   return generateDocumentNumber("reserva", "db:createReservation", "system");
 }
 
-let _db: ReturnType<typeof drizzle> | null = null;
-
+/**
+ * Base de datos del tenant actual. En modo single (por defecto) es la BD de siempre
+ * (DATABASE_URL); la resolución por tenant vive en _core/dbRegistry.
+ */
 export async function getDb() {
-  if (!_db && process.env.DATABASE_URL) {
-    try {
-      const pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 10 });
-      _db = drizzle(pool);
-    } catch (error) {
-      console.warn("[Database] Failed to connect:", error);
-      _db = null;
-    }
-  }
-  return _db;
+  return getTenantDatabase();
 }
 
 /** Carga credenciales GHL: env vars ? systemSettings ? siteSettings (legacy). */
