@@ -13,6 +13,10 @@
  *   pnpm exec tsx scripts/tenants/cli.ts db-register <tenant> --dsn-env VAR       [--apply]
  *   pnpm exec tsx scripts/tenants/cli.ts db-activate <tenant> <idBD>              [--apply]
  *   pnpm exec tsx scripts/tenants/cli.ts rotate-keys                              [--apply]
+ *   pnpm exec tsx scripts/tenants/cli.ts provision <tenant> --name "Nombre" --admin-email a@b.c --domain elephantsource.es
+ *        [--modules hotel,spa] [--trial-days 15] [--apply]      (PROVISIONING_DB_ADMIN_URL, PROVISIONING_DB_HOST[/PORT])
+ *   pnpm exec tsx scripts/tenants/cli.ts provision-status <tenant>
+ *   pnpm exec tsx scripts/tenants/cli.ts provision-abort <tenant> --reason "..." [--apply]
  *   pnpm exec tsx scripts/tenants/cli.ts quotas <tenant>
  *   pnpm exec tsx scripts/tenants/cli.ts quota-set <tenant> <metrica> <minute|hour|day|month> <limite> [--soft] [--apply]
  *   pnpm exec tsx scripts/tenants/cli.ts quota-remove <tenant> <metrica> <periodo> [--apply]
@@ -37,6 +41,14 @@ import { verifyDomainOwnership } from "../../server/_core/tenantRegistry/domainV
 import type { TenantStatus } from "../../server/_core/tenantRegistry/contract";
 import { EntitlementAdmin } from "../../server/_core/modules/mysqlEntitlements";
 import { QuotaAdmin } from "../../server/_core/erm/mysqlQuotas";
+import path from "node:path";
+import { ProvisioningService } from "../../server/_core/provisioning/service";
+import {
+  MysqlDatabaseProvisioner,
+  MysqlProvisioningStore,
+  MysqlSchemaApplier,
+  MysqlTenantSeeder,
+} from "../../server/_core/provisioning/mysqlAdapters";
 import { MysqlUsageStore } from "../../server/_core/erm/usage";
 import type { QuotaPeriod } from "../../server/_core/erm/types";
 import type { EntitlementStatus } from "../../server/_core/modules/entitlements";
@@ -161,6 +173,55 @@ async function main() {
       }
       case "rotate-keys": {
         await write("re-cifrar credenciales con la clave activa", async () => ({ rotadas: await svc.rotateKeys(actor) }));
+        break;
+      }
+      case "provision":
+      case "provision-status":
+      case "provision-abort": {
+        const id = pos[0] ?? die("Falta <tenant>");
+        const adminUrl = process.env.PROVISIONING_DB_ADMIN_URL ?? die("Falta PROVISIONING_DB_ADMIN_URL");
+        const dbHost = process.env.PROVISIONING_DB_HOST ?? new URL(adminUrl).hostname;
+        const dbPort = Number(process.env.PROVISIONING_DB_PORT ?? (new URL(adminUrl).port || 3306));
+        const adminPool = mysql.createPool({ uri: adminUrl, connectionLimit: 2 });
+        try {
+          const prov = new ProvisioningService({
+            registry: svc,
+            reader: store,
+            databases: new MysqlDatabaseProvisioner(adminPool, { host: dbHost, port: dbPort, alias: process.env.PROVISIONING_DB_ALIAS ?? dbHost }),
+            schema: new MysqlSchemaApplier({
+              baselinePath: path.resolve(process.cwd(), "db/baseline/0000_baseline.sql"),
+              migrationsDir: path.resolve(process.cwd(), "db/migrations"),
+            }),
+            seeder: new MysqlTenantSeeder(),
+            entitlements: new EntitlementAdmin(pool),
+            quotas: new QuotaAdmin(pool),
+            store: new MysqlProvisioningStore(pool),
+          });
+          if (cmd === "provision-status") {
+            print((await prov.status(id)) ?? "sin alta");
+          } else if (cmd === "provision-abort") {
+            const reason = opt("--reason") ?? die("Falta --reason");
+            await write(`abortar el alta de ${id} (elimina su BD)`, async () => {
+              await prov.abort(id, actor, reason);
+              return { aborted: id };
+            });
+          } else {
+            const req = {
+              tenantId: id,
+              displayName: opt("--name") ?? die("Falta --name"),
+              adminEmail: opt("--admin-email") ?? die("Falta --admin-email"),
+              platformDomain: opt("--domain") ?? die("Falta --domain"),
+              modules: (opt("--modules") ?? "").split(",").filter(Boolean),
+              trialDays: opt("--trial-days") ? Number(opt("--trial-days")) : undefined,
+            };
+            await write(`alta de ${id} (BD, esquema, administrador, dominio, licencias)`, async () => {
+              // La invitación del administrador se muestra una sola vez en esta salida (no se persiste)
+              return prov.run(req, actor);
+            });
+          }
+        } finally {
+          await adminPool.end();
+        }
         break;
       }
       case "quotas": {
