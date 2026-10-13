@@ -8,6 +8,7 @@ import { isLeadProcedurePath, localStorageSecurityHeaders } from "./publicEndpoi
 import { createHealthRouter } from "./health";
 import { requestMeter } from "./requestMeter";
 import { installTenantBinding, installTenantResolution } from "./tenantRegistry/install";
+import { localStorageTenantGuard } from "./tenantStorage";
 import { registerOAuthRoutes } from "./oauth";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
@@ -198,6 +199,7 @@ async function startServer() {
   const localStorageDir = process.env.LOCAL_STORAGE_PATH ?? "/tmp/local-storage";
   // Los ficheros subidos nunca deben ejecutarse en el origen de la aplicación.
   app.use("/local-storage", localStorageSecurityHeaders);
+  app.use("/local-storage", localStorageTenantGuard());
   app.use("/local-storage", express.static(localStorageDir));
   // File upload endpoint
   app.use(uploadRouter);

@@ -18,6 +18,7 @@
 import { S3Client, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { writeFile, mkdir } from "fs/promises";
+import { scopeStorageKey } from "../_core/tenantStorage";
 import path from "path";
 
 function getS3Config() {
@@ -51,7 +52,7 @@ export async function storagePut(
   contentType?: string
 ): Promise<{ key: string; url: string }> {
   const cfg = getS3Config();
-  const key = relKey.replace(/^\/+/, "");
+  const key = scopeStorageKey(relKey);
 
   if (!cfg.bucket || !cfg.accessKey) {
     // Fallback: almacenamiento local en /tmp/local-storage
@@ -89,7 +90,7 @@ export async function storageGet(
   expiresIn = 3600
 ): Promise<{ key: string; url: string }> {
   const cfg = getS3Config();
-  const key = relKey.replace(/^\/+/, "");
+  const key = scopeStorageKey(relKey);
 
   if (!cfg.bucket || !cfg.accessKey) {
     return { key, url: `/local-storage/${key}` };
