@@ -13,6 +13,10 @@
  *   pnpm exec tsx scripts/tenants/cli.ts db-register <tenant> --dsn-env VAR       [--apply]
  *   pnpm exec tsx scripts/tenants/cli.ts db-activate <tenant> <idBD>              [--apply]
  *   pnpm exec tsx scripts/tenants/cli.ts rotate-keys                              [--apply]
+ *   pnpm exec tsx scripts/tenants/cli.ts entitlements <tenant>
+ *   pnpm exec tsx scripts/tenants/cli.ts entitlement-grant <tenant> <modulo> [--until 2027-01-31] [--apply]
+ *   pnpm exec tsx scripts/tenants/cli.ts entitlement-status <tenant> <modulo> <active|suspended|expired> [--apply]
+ *   pnpm exec tsx scripts/tenants/cli.ts entitlement-revoke <tenant> <modulo> [--apply]
  *
  * Conexión: REGISTRY_ADMIN_DATABASE_URL (usuario de escritura; nunca se imprime) y
  * REGISTRY_KEYS / REGISTRY_ACTIVE_KEY_ID. El DSN de una BD se pasa SIEMPRE por variable de
@@ -27,6 +31,8 @@ import { MysqlTenantRegistryStore } from "../../server/_core/tenantRegistry/mysq
 import { TenantRegistryService, type Actor } from "../../server/_core/tenantRegistry/service";
 import { verifyDomainOwnership } from "../../server/_core/tenantRegistry/domainVerification";
 import type { TenantStatus } from "../../server/_core/tenantRegistry/contract";
+import { EntitlementAdmin } from "../../server/_core/modules/mysqlEntitlements";
+import type { EntitlementStatus } from "../../server/_core/modules/entitlements";
 
 const args = process.argv.slice(2);
 const cmd = args[0];
@@ -148,6 +154,31 @@ async function main() {
       }
       case "rotate-keys": {
         await write("re-cifrar credenciales con la clave activa", async () => ({ rotadas: await svc.rotateKeys(actor) }));
+        break;
+      }
+      case "entitlements": {
+        const id = pos[0] ?? die("Falta <tenant>");
+        print(await new EntitlementAdmin(pool).listEntitlements(id));
+        break;
+      }
+      case "entitlement-grant": {
+        const [id, mod] = [pos[0] ?? die("Falta <tenant>"), pos[1] ?? die("Falta <modulo>")];
+        const until = opt("--until");
+        const validUntil = until ? new Date(until) : null;
+        if (validUntil && Number.isNaN(validUntil.getTime())) die("--until no es una fecha válida");
+        await write(`conceder ${mod} a ${id}`, () => new EntitlementAdmin(pool).grant(id, mod, actor, { validUntil }));
+        break;
+      }
+      case "entitlement-status": {
+        const [id, mod, st] = [pos[0] ?? die("Falta <tenant>"), pos[1] ?? die("Falta <modulo>"), pos[2] ?? die("Falta <estado>")];
+        await write(`${mod} de ${id} a ${st}`, () =>
+          new EntitlementAdmin(pool).setStatus(id, mod, st as EntitlementStatus, actor),
+        );
+        break;
+      }
+      case "entitlement-revoke": {
+        const [id, mod] = [pos[0] ?? die("Falta <tenant>"), pos[1] ?? die("Falta <modulo>")];
+        await write(`revocar ${mod} de ${id}`, () => new EntitlementAdmin(pool).revoke(id, mod, actor));
         break;
       }
       default:
