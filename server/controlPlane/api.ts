@@ -27,6 +27,7 @@ import { ModuleError } from "../_core/modules/contract";
 import { authenticate, getAuth, requireScope, type ServiceToken } from "./auth";
 import { signSupportToken } from "../_core/support/session";
 import { TEMPLATES } from "../_core/templates/catalog";
+import { renderMetrics } from "./metrics";
 import type { SupportAdmin } from "../_core/support/grants";
 
 export interface ControlPlaneDeps {
@@ -296,6 +297,15 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         .parse(req.body);
       await d.quotas.set({ tenantId: id, ...b }, actor(req));
       res.json({ quotas: await d.quotas.listQuotas(id) });
+    }),
+  );
+
+  // ── Métricas (Prometheus) ──────────────────────────────────────────────────
+  router.get(
+    "/metrics",
+    requireScope("usage:read"),
+    wrap(async (_req, res) => {
+      res.type("text/plain; version=0.0.4").send(await renderMetrics({ reader: d.reader, usage: d.usage, entitlements: d.entitlements }));
     }),
   );
 
