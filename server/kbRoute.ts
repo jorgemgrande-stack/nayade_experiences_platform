@@ -7,7 +7,7 @@
 import { Router } from "express";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import {
   experiences,
   experienceVariants,
@@ -24,6 +24,7 @@ import {
   restaurants,
   restaurantShifts,
 } from "../drizzle/schema";
+import { KB_PUBLIC_SETTING_KEYS, pickPublicKbSettings } from "./kbPublicSettings";
 
 const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
 const db = drizzle(_pool);
@@ -76,13 +77,13 @@ kbRouter.get("/kb", async (_req, res) => {
       db.select().from(spaCategories).where(eq(spaCategories.isActive, true)),
       db.select().from(spaTreatments).where(eq(spaTreatments.isActive, true)),
       db.select().from(packs).where(eq(packs.isActive, true)),
-      db.select().from(siteSettings),
+      db.select().from(siteSettings).where(inArray(siteSettings.key, [...KB_PUBLIC_SETTING_KEYS])),
       db.select().from(staticPages).where(eq(staticPages.isPublished, true)),
       db.select().from(restaurants),
       db.select().from(restaurantShifts),
     ]);
 
-    const settingsMap = Object.fromEntries(settings.map((s) => [s.key, s.value ?? ""]));
+    const settingsMap = pickPublicKbSettings(settings);
     const catMap = Object.fromEntries(cats.map((c) => [c.id, c.name]));
     const locMap = Object.fromEntries(locs.map((l) => [l.id, l]));
     const varsByExp = new Map<number, typeof variants>();
@@ -118,9 +119,9 @@ kbRouter.get("/kb", async (_req, res) => {
       }
     }
     // Remaining settings that might have useful info
-    for (const s of settings) {
-      if (!generalKeys.includes(s.key) && s.value && s.type === "text") {
-        lines.push(`${s.key.replace(/_/g, " ").toUpperCase()}: ${strip(s.value)}`);
+    for (const [key, value] of Object.entries(settingsMap)) {
+      if (!generalKeys.includes(key) && value) {
+        lines.push(`${key.replace(/_/g, " ").toUpperCase()}: ${strip(value)}`);
       }
     }
     lines.push("");
@@ -343,7 +344,7 @@ kbRouter.get("/kb.json", async (_req, res) => {
       db.select().from(spaTreatments).where(eq(spaTreatments.isActive, true)),
       db.select().from(spaCategories).where(eq(spaCategories.isActive, true)),
       db.select().from(packs).where(eq(packs.isActive, true)),
-      db.select().from(siteSettings),
+      db.select().from(siteSettings).where(inArray(siteSettings.key, [...KB_PUBLIC_SETTING_KEYS])),
     ]);
 
     const catMap = Object.fromEntries(cats.map((c) => [c.id, c.name]));
@@ -353,7 +354,7 @@ kbRouter.get("/kb.json", async (_req, res) => {
     res.setHeader("Cache-Control", "public, max-age=300");
     res.json({
       generatedAt: new Date().toISOString(),
-      settings: Object.fromEntries(settings.map((s) => [s.key, s.value])),
+      settings: pickPublicKbSettings(settings),
       locations: locs.map((l) => ({
         name: l.name,
         address: l.address,
