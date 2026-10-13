@@ -17,6 +17,7 @@ import { buildPasswordResetHtml } from "./emailTemplates";
 import { sendEmail } from "./mailer";
 import { logDirectEmail } from "./emailManager";
 import { getSystemSettingSync } from "./config";
+import { getTrustedBaseUrl } from "./_core/publicUrl";
 
 // ─── Configuración ────────────────────────────────────────────────────────────
 const TOKEN_EXPIRY_MINUTES = 60; // El enlace caduca en 1 hora
@@ -28,8 +29,13 @@ async function sendResetEmail(to: string, resetUrl: string, name: string) {
   const sent = await sendEmail({ to, subject: resetSubject, html });
   logDirectEmail({ templateKey: "password_reset", triggerEvent: "password_reset_requested", recipientEmail: to, subject: resetSubject, sent }).catch(() => {});
   if (!sent) {
-    // Fallback: imprimir en consola para desarrollo
-    console.log(`\n[PasswordReset] 📧 Enlace de recuperación para ${to}:\n  ${resetUrl}\n`);
+    if (process.env.NODE_ENV !== "production") {
+      // Solo en desarrollo: imprimir el enlace en consola
+      console.log(`\n[PasswordReset] 📧 Enlace de recuperación para ${to}:\n  ${resetUrl}\n`);
+    } else {
+      // En producción el enlace contiene un token: nunca va a los logs
+      console.warn("[PasswordReset] No se pudo enviar el e-mail de recuperación.");
+    }
   }
 }
 
@@ -44,7 +50,8 @@ export function createPasswordResetRouter(): Router {
    * Siempre responde 200 (no revela si el email existe).
    */
   router.post("/api/auth/forgot-password", async (req: Request, res: Response) => {
-    const { email, origin } = req.body ?? {};
+    // El `origin` del cuerpo se ignora a propósito: el enlace se construye con una URL de confianza.
+    const { email } = req.body ?? {};
 
     if (!email || typeof email !== "string") {
       res.status(400).json({ error: "Email obligatorio." });
@@ -89,9 +96,7 @@ export function createPasswordResetRouter(): Router {
       });
 
       // Construir URL de reset
-      const baseUrl = (origin && typeof origin === "string")
-        ? origin.replace(/\/$/, "")
-        : (process.env.APP_URL ?? "http://localhost:3000");
+      const baseUrl = getTrustedBaseUrl();
       const resetUrl = `${baseUrl}/nueva-contrasena?token=${rawToken}`;
 
       await sendResetEmail(user.email ?? email, resetUrl, user.name ?? "");
