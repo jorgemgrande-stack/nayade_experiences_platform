@@ -126,6 +126,8 @@ export class ModuleAccess {
 
   /** Disponibilidad efectiva: licencia + dependencias + flag operativo. */
   async isModuleAvailable(moduleId: string, tenantId: string = getTenantId()): Promise<boolean> {
+    // Sin licenciamiento (single) todo lo instalado está disponible: ni licencias ni flags
+    if (!this.enforcing()) return !!this.registry.get(moduleId);
     for (const id of this.registry.withDependencies(moduleId)) {
       if (!(await this.licensed(tenantId, id))) return false;
     }

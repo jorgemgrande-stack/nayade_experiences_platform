@@ -11,6 +11,9 @@ import { installTenantBinding, installTenantResolution } from "./tenantRegistry/
 import { scheduleTenantInterval, setJobFlag } from "./tenantRegistry/scheduler";
 import { isMultiTenant } from "./tenant";
 import { localStorageTenantGuard } from "./tenantStorage";
+import { registerBuiltinModules } from "./modules/builtin";
+import { getModuleAccess } from "./modules/runtime";
+import { moduleRouteGuard } from "./modules/routeGuard";
 import { registerOAuthRoutes } from "./oauth";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
@@ -196,6 +199,9 @@ async function startServer() {
 
   // Middleware de protección: bloquea rutas /api/trpc de procedimientos protegidos
   // si no hay sesión válida. Funciona en ambos modos (local y Manus OAuth).
+  // Licencias de módulos sectoriales: se comprueban en servidor antes de ejecutar el procedimiento
+  registerBuiltinModules();
+  app.use("/api/trpc", moduleRouteGuard(getModuleAccess));
   app.use("/api/trpc", createAuthGuardMiddleware(USE_LOCAL_AUTH));
   // Servir archivos del storage local (fallback cuando S3/Forge no está configurado)
   const localStorageDir = process.env.LOCAL_STORAGE_PATH ?? "/tmp/local-storage";
