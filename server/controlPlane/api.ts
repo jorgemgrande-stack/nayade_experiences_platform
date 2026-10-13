@@ -28,6 +28,9 @@ import { authenticate, getAuth, requireScope, type ServiceToken } from "./auth";
 import { signSupportToken } from "../_core/support/session";
 import { TEMPLATES } from "../_core/templates/catalog";
 import { renderMetrics } from "./metrics";
+import { createCrmRouter } from "../crm/api";
+import type { CrmService } from "../crm/service";
+import type { CrmStore } from "../crm/store";
 import type { SupportAdmin } from "../_core/support/grants";
 
 export interface ControlPlaneDeps {
@@ -47,6 +50,8 @@ export interface ControlPlaneDeps {
   perMinute?: number;
   /** Acceso delegado de soporte (requiere SUPPORT_JWT_SECRET). */
   support?: Pick<SupportAdmin, "create" | "revoke">;
+  /** CRM comercial (leads, oportunidades, contratos…). */
+  crm?: { service: CrmService; store: CrmStore };
   /** Orígenes del navegador autorizados (CORS). Vacío = ninguno. Nunca comodín. */
   allowedOrigins?: string[];
   supportSecret?: string;
@@ -299,6 +304,8 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
       res.json({ quotas: await d.quotas.listQuotas(id) });
     }),
   );
+
+  if (d.crm) router.use("/crm", createCrmRouter(d.crm.service, d.crm.store));
 
   // ── Métricas (Prometheus) ──────────────────────────────────────────────────
   router.get(
