@@ -110,7 +110,7 @@ describe.skipIf(!URL_)("aprovisionamiento con MySQL real", () => {
     expect(Number(tables[0].n)).toBeGreaterThanOrEqual(152);
 
     const t = await store.getTenant(ID);
-    expect(t).toMatchObject({ status: "trial", baselineVersion: null, schemaVersion: "0000_baseline" });
+    expect(t).toMatchObject({ status: "trial", baselineVersion: null, schemaVersion: "0001_integration_credentials" });
 
     // El DSN registrado conecta con el usuario propio y solo ve su BD
     const dsn = (await svc.getActiveDsn(ID))!;

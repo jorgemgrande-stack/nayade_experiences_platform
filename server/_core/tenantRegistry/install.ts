@@ -13,10 +13,11 @@ import { getTenantMode, isMultiTenant } from "../tenant";
 import { getErm, installErmFromEnv } from "../erm/runtime";
 import { configureModuleAccess } from "../modules/runtime";
 import { warmConfigCache } from "../../config";
+import { warmIntegrationCreds } from "../credentials/runtime";
 import { configureSupport, createSupportRouter, supportReadOnlyGuard } from "../support/session";
 import { writableTenantLister } from "./jobs";
 import { createTenantRuntime, type TenantRuntime } from "./runtime";
-import { setJobTenantLister } from "./scheduler";
+import { setJobPrelude, setJobTenantLister } from "./scheduler";
 import { shadowMiddleware } from "./shadow";
 import { bindTenantMiddleware, resolveTenantMiddleware } from "./tenantMiddleware";
 
@@ -40,6 +41,8 @@ export function installTenantResolution(app: Express, env: NodeJS.ProcessEnv = p
     app.use(resolveTenantMiddleware(rt.resolver));
     // Las tareas programadas recorren los tenants con escrituras del registro
     setJobTenantLister(writableTenantLister(rt.reader));
+    // Las tareas también necesitan las credenciales del tenant en curso
+    setJobPrelude(() => Promise.all([warmConfigCache(), warmIntegrationCreds()]).then(() => undefined));
     // Las licencias de módulos se leen del registro (solo lectura)
     configureModuleAccess(rt.entitlements);
     // Medición + cuotas por tenant (límites del registro; consumo en ERM_DATABASE_URL)
@@ -58,7 +61,7 @@ export function installTenantBinding(app: Express): void {
   if (erm) app.use(erm.guard);
   // Precarga los ajustes del tenant (lecturas síncronas: Redsys, remitente de correo…)
   app.use((_req, _res, next) => {
-    warmConfigCache().then(() => next(), () => next());
+    Promise.all([warmConfigCache(), warmIntegrationCreds()]).then(() => next(), () => next());
   });
   // Soporte: lectura impuesta en el borde y puerta de entrada
   app.use(supportReadOnlyGuard());

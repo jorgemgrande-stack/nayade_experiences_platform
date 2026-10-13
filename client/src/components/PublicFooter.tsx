@@ -1,6 +1,7 @@
 import { Link } from "wouter";
 import { Anchor, Mail, Phone, MapPin, Instagram, Facebook, Youtube, Clock } from "lucide-react";
 import { usePublicPhone } from "@/hooks/usePublicPhone";
+import { TenantFooter, useTenantTheme } from "@/components/TenantTheme";
 
 const colExperiencias = [
   { label: "Blob Jump", href: "/experiencias/blob-jump" },
@@ -33,6 +34,9 @@ const colServicios = [
 
 export default function PublicFooter() {
   const { phone, phoneTel } = usePublicPhone();
+  const { theme } = useTenantTheme();
+  // Multiempresa: pie del propio tenant, nunca el de otra empresa
+  if (theme?.neutralSite) return <TenantFooter theme={theme} />;
 
   return (
     <footer className="bg-lago-dark text-white">

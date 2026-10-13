@@ -10,6 +10,7 @@ import MaintenanceGate from "./components/MaintenanceGate";
 import { MetaPixelLoader } from "./components/MetaPixelLoader";
 import { GA4Loader } from "./components/GA4Loader";
 import { ThemeProvider } from "./contexts/ThemeContext";
+import { HomeGate, SlugGate, TenantThemeLoader } from "./components/TenantTheme";
 
 // ── PUBLIC PAGES (carga inmediata — visibles sin autenticación) ──────────────
 import Home from "./pages/Home";
@@ -136,6 +137,8 @@ const GlobalCalendar = lazy(() => import("./pages/admin/restaurants/GlobalCalend
 // Users & Settings
 const UsersManager = lazy(() => import("./pages/admin/users/UsersManager"));
 const Settings = lazy(() => import("./pages/admin/settings/Settings"));
+const BrandTheme = lazy(() => import("./pages/admin/settings/BrandTheme"));
+const IntegrationsSettings = lazy(() => import("./pages/admin/settings/Integrations"));
 const AdvancedSettings = lazy(() => import("./pages/admin/settings/AdvancedSettings"));
 const ConfigPanel = lazy(() => import("./pages/admin/settings/ConfigPanel"));
 const ConfigStatus = lazy(() => import("./pages/admin/settings/ConfigStatus"));
@@ -202,7 +205,7 @@ function Router() {
   return (
     <Switch>
       {/* ── PUBLIC ROUTES ── */}
-      <Route path="/" component={Home} />
+      <Route path="/">{() => <HomeGate Fallback={Home} />}</Route>
       <Route path="/experiencias" component={Experiences} />
       <Route path="/experiencias/:slug" component={ExperienceDetail} />
       <Route path="/galeria" component={Gallery} />
@@ -410,6 +413,8 @@ function Router() {
       {/* Users & Settings */}
       <Route path="/admin/usuarios">{() => <Suspense fallback={<AdminLoadingFallback />}><UsersManager /></Suspense>}</Route>
       <Route path="/admin/configuracion">{() => <Suspense fallback={<AdminLoadingFallback />}><ConfigPanel /></Suspense>}</Route>
+      <Route path="/admin/configuracion/marca">{() => <Suspense fallback={<AdminLoadingFallback />}><BrandTheme /></Suspense>}</Route>
+      <Route path="/admin/configuracion/integraciones">{() => <Suspense fallback={<AdminLoadingFallback />}><IntegrationsSettings /></Suspense>}</Route>
       <Route path="/admin/configuracion/sitio">{() => <Suspense fallback={<AdminLoadingFallback />}><Settings /></Suspense>}</Route>
       <Route path="/admin/configuracion/estado">{() => <Suspense fallback={<AdminLoadingFallback />}><ConfigStatus /></Suspense>}</Route>
       <Route path="/admin/configuracion/avanzado">{() => <Suspense fallback={<AdminLoadingFallback />}><AdvancedSettings /></Suspense>}</Route>
@@ -419,6 +424,8 @@ function Router() {
 
       {/* 404 */}
       <Route path="/404" component={NotFound} />
+      {/* Multiempresa: páginas propias del tenant; en un solo tenant sigue siendo 404 */}
+      <Route path="/:slug">{(p) => <SlugGate slug={p.slug} />}</Route>
       <Route component={NotFound} />
     </Switch>
   );
@@ -428,6 +435,7 @@ function App() {
   return (
     <ErrorBoundary>
       <ThemeProvider>
+        <TenantThemeLoader />
         <TooltipProvider>
           <Toaster richColors position="top-right" />
           <ScrollToTop />
