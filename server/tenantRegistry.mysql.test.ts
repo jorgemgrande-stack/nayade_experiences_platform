@@ -27,9 +27,7 @@ describe.skipIf(!URL_)("registro MySQL (integración)", () => {
 
   beforeAll(async () => {
     pool = mysql.createPool({ uri: URL_!, multipleStatements: true, connectionLimit: 5 });
-    await pool.query(
-      "DROP TABLE IF EXISTS tenant_events, tenant_databases, tenant_domains, tenants, registry_meta",
-    );
+    await pool.query("SET FOREIGN_KEY_CHECKS=0; DROP TABLE IF EXISTS tenant_events, tenant_databases, tenant_domains, tenant_entitlements, tenant_quotas, tenant_provisioning, support_grants, tenants, registry_meta; SET FOREIGN_KEY_CHECKS=1");
     // El script usa triggers: se ejecuta sentencia a sentencia (sin DELIMITER)
     const sql = fs.readFileSync(path.resolve(__dirname, "../db/registry/0000_registry.sql"), "utf8");
     const noComments = sql.replace(/^--.*$/gm, "");

@@ -49,7 +49,7 @@ describe.skipIf(!URL_)("aislamiento con MySQL real", () => {
       await admin.query(`INSERT INTO ${d}.items VALUES (1, ?)`, [`dato-de-${d}`]);
     }
     // Registro limpio
-    await admin.query("DROP TABLE IF EXISTS tenant_events, tenant_databases, tenant_domains, tenants, registry_meta");
+    await admin.query("SET FOREIGN_KEY_CHECKS=0; DROP TABLE IF EXISTS tenant_events, tenant_databases, tenant_domains, tenant_entitlements, tenant_quotas, tenant_provisioning, support_grants, tenants, registry_meta; SET FOREIGN_KEY_CHECKS=1");
     const ddl = fs.readFileSync(path.resolve(__dirname, "../db/registry/0000_registry.sql"), "utf8").replace(/^--.*$/gm, "");
     for (const stmt of ddl.split(/;\s*(?:\r?\n|$)/).map((s) => s.trim()).filter(Boolean)) await admin.query(stmt);
 
