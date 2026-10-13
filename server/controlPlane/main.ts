@@ -31,6 +31,9 @@ import {
   MysqlTenantSeeder,
 } from "../_core/provisioning/mysqlAdapters";
 import { SupportAdmin } from "../_core/support/grants";
+import { MysqlCrmStore } from "../crm/mysqlStore";
+import { CrmService } from "../crm/service";
+import { createContractActivation } from "../crm/activation";
 import { createControlPlaneApp } from "./api";
 import { parseTokens } from "./auth";
 
@@ -74,7 +77,18 @@ async function main() {
     ? new MysqlUsageStore(mysql.createPool({ uri: process.env.ERM_DATABASE_URL, connectionLimit: 2 }))
     : undefined;
 
+  let crm: { service: CrmService; store: MysqlCrmStore } | undefined;
+  if (process.env.CRM_DATABASE_URL) {
+    const store = new MysqlCrmStore(mysql.createPool({ uri: process.env.CRM_DATABASE_URL, connectionLimit: 4 }));
+    const activation =
+      provisioning && process.env.CP_PLATFORM_DOMAIN
+        ? createContractActivation({ provisioning, platformDomain: process.env.CP_PLATFORM_DOMAIN, actor: { type: "crm", id: "crm-contracts" } })
+        : undefined;
+    crm = { service: new CrmService({ store, activation }), store };
+  }
+
   const app = createControlPlaneApp({
+    crm,
     tokens,
     registry,
     reader: store,
