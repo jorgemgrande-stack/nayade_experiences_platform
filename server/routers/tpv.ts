@@ -1,7 +1,5 @@
 import { z } from "zod";
 import { permissionProcedure, router } from "../_core/trpc";
-import { drizzle } from "drizzle-orm/mysql2";
-import mysql from "mysql2/promise";
 import { buildReservationConfirmHtml, buildTpvTicketHtml, buildCashOpenHtml, buildCashCloseHtml, type ChannelSummary } from "../emailTemplates";
 import { sendEmail } from "../mailer";
 import { sendManagedEmail } from "../emailManager";
@@ -42,8 +40,8 @@ import { eq, and, desc, sql, gte, lte, inArray } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { generateDocumentNumber } from "../documentNumbers";
 
-const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
-const db = drizzle(_pool);
+const _pool = legacyPool();
+const db = legacyDb();
 
 // --- RBAC-AWARE PROCEDURES ----------------------------------------------------
 // Fallback: legacy staff roles (admin + agente) for all TPV access.
@@ -70,6 +68,7 @@ function generateTransactionNumber(): string {
 }
 
 import { normalizeRegime, calcGeneralTax } from "../taxUtils";
+import { legacyDb, legacyPool } from "../_core/legacyDb";
 
 type FiscalData = { fiscalRegime: "reav" | "general" | "mixed"; taxRate: number; providerPercent: number; agencyMarginPercent: number };
 
