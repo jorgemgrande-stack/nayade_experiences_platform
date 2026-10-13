@@ -3,6 +3,8 @@ import { initTRPC, TRPCError } from "@trpc/server";
 import superjson from "superjson";
 import type { TrpcContext } from "./context";
 import { checkRbacOrLegacy, getUserPermissions } from "./rbac";
+import { ModuleError } from "./modules/contract";
+import type { ModuleAccess } from "./modules/entitlements";
 
 const t = initTRPC.context<TrpcContext>().create({
   transformer: superjson,
@@ -249,3 +251,22 @@ export const gestoriaProcedure = t.procedure.use(
     return next({ ctx: { ...ctx, user: ctx.user } });
   }),
 );
+
+/**
+ * Exige que el módulo esté disponible (licencia + dependencias + flag) para el tenant actual.
+ * Uso: `staffProcedure.use(requireModule(access, "hotel"))`. La comprobación es de servidor.
+ */
+export function requireModule(access: ModuleAccess, moduleId: string) {
+  return t.middleware(async ({ next }) => {
+    try {
+      await access.assertModule(moduleId);
+    } catch (e) {
+      const notLicensed = e instanceof ModuleError && e.code === "not_licensed";
+      throw new TRPCError({
+        code: notLicensed ? "FORBIDDEN" : "INTERNAL_SERVER_ERROR",
+        message: notLicensed ? `Módulo no disponible: ${moduleId}` : "No se pudo verificar la licencia del módulo",
+      });
+    }
+    return next();
+  });
+}

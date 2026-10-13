@@ -10,6 +10,7 @@
  */
 import type { Express } from "express";
 import { getTenantMode, isMultiTenant } from "../tenant";
+import { configureModuleAccess } from "../modules/runtime";
 import { writableTenantLister } from "./jobs";
 import { createTenantRuntime, type TenantRuntime } from "./runtime";
 import { setJobTenantLister } from "./scheduler";
@@ -36,6 +37,8 @@ export function installTenantResolution(app: Express, env: NodeJS.ProcessEnv = p
     app.use(resolveTenantMiddleware(rt.resolver));
     // Las tareas programadas recorren los tenants con escrituras del registro
     setJobTenantLister(writableTenantLister(rt.reader));
+    // Las licencias de módulos se leen del registro (solo lectura)
+    configureModuleAccess(rt.entitlements);
   }
   return rt;
 }
