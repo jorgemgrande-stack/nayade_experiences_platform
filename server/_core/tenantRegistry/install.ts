@@ -12,6 +12,7 @@ import type { Express } from "express";
 import { getTenantMode, isMultiTenant } from "../tenant";
 import { getErm, installErmFromEnv } from "../erm/runtime";
 import { configureModuleAccess } from "../modules/runtime";
+import { configureSupport, createSupportRouter, supportReadOnlyGuard } from "../support/session";
 import { writableTenantLister } from "./jobs";
 import { createTenantRuntime, type TenantRuntime } from "./runtime";
 import { setJobTenantLister } from "./scheduler";
@@ -42,6 +43,8 @@ export function installTenantResolution(app: Express, env: NodeJS.ProcessEnv = p
     configureModuleAccess(rt.entitlements);
     // Medición + cuotas por tenant (límites del registro; consumo en ERM_DATABASE_URL)
     installErmFromEnv(rt.quotas, env);
+    // Acceso delegado de soporte (inactivo sin SUPPORT_JWT_SECRET)
+    configureSupport(rt.support, env.SUPPORT_JWT_SECRET);
   }
   return rt;
 }
@@ -52,4 +55,7 @@ export function installTenantBinding(app: Express): void {
   // Tasa y concurrencia por tenant: ya con el contexto ligado
   const erm = getErm();
   if (erm) app.use(erm.guard);
+  // Soporte: lectura impuesta en el borde y puerta de entrada
+  app.use(supportReadOnlyGuard());
+  app.use(createSupportRouter());
 }

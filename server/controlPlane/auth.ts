@@ -19,6 +19,7 @@ export const SCOPES = [
   "billing:read",
   "billing:write",
   "usage:read",
+  "support:write",
 ] as const;
 export type Scope = (typeof SCOPES)[number];
 
