@@ -2,8 +2,6 @@ import { z } from "zod";
 import { router, protectedProcedure, adminProcedure, permissionProcedure } from "../_core/trpc";
 
 const operationsViewProc = permissionProcedure("operations.view", ["admin", "agente", "monitor"]);
-import mysql from "mysql2/promise";
-import { drizzle } from "drizzle-orm/mysql2";
 import { eq, and, desc, asc, inArray } from "drizzle-orm";
 import {
   monitors,
@@ -21,9 +19,10 @@ import {
   parseReservationExtras,
   type ExpandedPackLine,
 } from "../reservationUtils";
+import { legacyDb, legacyPool } from "../_core/legacyDb";
 
-const pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
-const db = drizzle(pool);
+const pool = legacyPool();
+const db = legacyDb();
 
 // Carga las líneas (experiencias) de los Lego Packs cuyos ids se pasan, resolviendo
 // el título de la experiencia origen. Devuelve { legoPackId -> ExpandedPackLine[] }.
