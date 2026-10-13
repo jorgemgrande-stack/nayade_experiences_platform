@@ -306,6 +306,39 @@ export const appRouter = router({
       return getPublicCategories();
     }),
 
+    // Identidad corporativa pública del tenant (marca, logotipo, colores, contacto)
+    getTheme: publicProcedure.query(async () => {
+      const { getSystemSetting } = await import("./config");
+      const { buildTheme } = await import("./_core/theme");
+      const { isMultiTenant } = await import("./_core/tenant");
+      const keys = [
+        "brand_name", "brand_logo_url", "brand_favicon_url", "theme_primary_color", "theme_accent_color",
+        "brand_primary_color", "brand_accent_color", "theme_font_family", "theme_radius", "brand_show_powered_by",
+        "brand_phone", "email_reservations", "site_business_email", "brand_location",
+      ];
+      const vals: Record<string, string> = {};
+      await Promise.all(keys.map(async (k) => { vals[k] = await getSystemSetting(k, ""); }));
+      return buildTheme((k) => vals[k] || undefined, { multi: isMultiTenant() });
+    }),
+
+    // Página estática del tenant, con HTML saneado (lista blanca)
+    getTenantPage: publicProcedure
+      .input(z.object({ slug: z.string().regex(/^[a-z0-9-]{1,64}$/) }))
+      .query(async ({ input }) => {
+        const db = await getDb();
+        if (!db) return null;
+        const { staticPages } = await import("../drizzle/schema");
+        const { sanitizeRichHtml } = await import("./_core/htmlSanitize");
+        const [row] = await db.select().from(staticPages).where(eq(staticPages.slug, input.slug)).limit(1);
+        if (!row || !row.isPublished) return null;
+        return {
+          slug: row.slug,
+          title: row.title,
+          html: sanitizeRichHtml(row.content ?? ""),
+          metaDescription: row.metaDescription ?? null,
+        };
+      }),
+
     getLocations: publicProcedure.query(async () => {
       return getPublicLocations();
     }),

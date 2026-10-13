@@ -9,6 +9,7 @@ import { usePublicPhone } from "@/hooks/usePublicPhone";
 import CartIcon from "@/components/CartIcon";
 import CartDrawer from "@/components/CartDrawer";
 import { trackPhoneClick } from "@/lib/ga4";
+import { TenantBrand, useTenantTheme } from "@/components/TenantTheme";
 
 // Fallback estático por si la BD no responde aún
 const FALLBACK_NAV = [
@@ -162,6 +163,7 @@ export default function PublicNav() {
   const [location, setLocation] = useLocation();
 
   const { phone, phoneTel } = usePublicPhone();
+  const { theme: tenantTheme } = useTenantTheme();
 
   // Cargar menú desde la BD
   const { data: menuData } = trpc.public.getMenuItems.useQuery(
@@ -230,6 +232,10 @@ export default function PublicNav() {
 
           {/* Logo */}
           <Link href="/" className="flex items-center gap-2.5 cursor-pointer">
+            {tenantTheme?.neutralSite ? (
+              <TenantBrand theme={tenantTheme} />
+            ) : (
+              <>
             <img
               src="https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/nayade_blue_e9563f49.png"
               alt="Náyade Experiences"
@@ -243,6 +249,8 @@ export default function PublicNav() {
                 Experiences
               </span>
             </div>
+              </>
+            )}
           </Link>
 
           {/* Navegación desktop */}

@@ -10,6 +10,7 @@ import MaintenanceGate from "./components/MaintenanceGate";
 import { MetaPixelLoader } from "./components/MetaPixelLoader";
 import { GA4Loader } from "./components/GA4Loader";
 import { ThemeProvider } from "./contexts/ThemeContext";
+import { HomeGate, SlugGate, TenantThemeLoader } from "./components/TenantTheme";
 
 // ── PUBLIC PAGES (carga inmediata — visibles sin autenticación) ──────────────
 import Home from "./pages/Home";
@@ -202,7 +203,7 @@ function Router() {
   return (
     <Switch>
       {/* ── PUBLIC ROUTES ── */}
-      <Route path="/" component={Home} />
+      <Route path="/">{() => <HomeGate Fallback={Home} />}</Route>
       <Route path="/experiencias" component={Experiences} />
       <Route path="/experiencias/:slug" component={ExperienceDetail} />
       <Route path="/galeria" component={Gallery} />
@@ -419,6 +420,8 @@ function Router() {
 
       {/* 404 */}
       <Route path="/404" component={NotFound} />
+      {/* Multiempresa: páginas propias del tenant; en un solo tenant sigue siendo 404 */}
+      <Route path="/:slug">{(p) => <SlugGate slug={p.slug} />}</Route>
       <Route component={NotFound} />
     </Switch>
   );
@@ -428,6 +431,7 @@ function App() {
   return (
     <ErrorBoundary>
       <ThemeProvider>
+        <TenantThemeLoader />
         <TooltipProvider>
           <Toaster richColors position="top-right" />
           <ScrollToTop />

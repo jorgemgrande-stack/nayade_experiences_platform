@@ -44,6 +44,8 @@ const PUBLIC_TRPC_ROUTES = new Set([
   "public.submitBudget",
   "public.getPublicPage",
   "public.getPublicPageBlocks",
+  "public.getTheme",
+  "public.getTenantPage",
 
   // ── CMS público ───────────────────────────────────────────────────────────
   "cms.getSiteSettings",
