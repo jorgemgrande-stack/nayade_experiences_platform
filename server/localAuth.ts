@@ -13,6 +13,7 @@
 import bcrypt from "bcryptjs";
 import express, { type Request, type Response, type Router } from "express";
 import { SignJWT, jwtVerify } from "jose";
+import { sessionTenantAllowed, sessionTenantClaim } from "./_core/tenantRegistry/sessionBinding";
 import { getDb } from "./db";
 import { users } from "../drizzle/schema";
 import { eq } from "drizzle-orm";
@@ -29,7 +30,7 @@ function getSecret(): Uint8Array {
 
 // ─── Helpers JWT ──────────────────────────────────────────────────────────────
 export async function signSessionToken(userId: number): Promise<string> {
-  return new SignJWT({ sub: String(userId) })
+  return new SignJWT({ sub: String(userId), ...sessionTenantClaim() })
     .setProtectedHeader({ alg: JWT_ALGO })
     .setIssuedAt()
     .setExpirationTime("30d")
@@ -39,6 +40,8 @@ export async function signSessionToken(userId: number): Promise<string> {
 export async function verifySessionToken(token: string): Promise<number | null> {
   try {
     const { payload } = await jwtVerify(token, getSecret(), { algorithms: [JWT_ALGO] });
+    // El tenant de la sesión debe coincidir con el resuelto por el servidor (host → registro)
+    if (!sessionTenantAllowed(payload.tid)) return null;
     const id = parseInt(String(payload.sub ?? ""), 10);
     return isNaN(id) ? null : id;
   } catch {

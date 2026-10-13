@@ -7,6 +7,7 @@ import rateLimit from "express-rate-limit";
 import { isLeadProcedurePath, localStorageSecurityHeaders } from "./publicEndpointGuards";
 import { createHealthRouter } from "./health";
 import { requestMeter } from "./requestMeter";
+import { installTenantBinding, installTenantResolution } from "./tenantRegistry/install";
 import { registerOAuthRoutes } from "./oauth";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
@@ -129,9 +130,12 @@ async function startServer() {
   app.use(createHealthRouter());
   // Medición de peticiones (destino nulo por defecto: sin efecto hasta que exista un Resource Manager).
   app.use(requestMeter);
+  // Registro de tenants: inactivo con TENANT_MODE=single (por defecto); shadow solo observa.
+  installTenantResolution(app);
   // Configure body parser with larger size limit for file uploads
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
+  installTenantBinding(app);
 
   if (USE_LOCAL_AUTH) {
     // Rate limiting en endpoints de autenticación (5 req/min por IP)
