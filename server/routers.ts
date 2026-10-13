@@ -177,6 +177,8 @@ import { ticketingRouter } from "./routers/ticketing";
 import { cancellationsRouter } from "./routers/cancellations";
 import { emailTemplatesRouter } from "./routers/emailTemplatesRouter";
 import { pdfTemplatesRouter } from "./routers/pdfTemplatesRouter";
+import { integrationsRouter } from "./routers/integrations";
+import { modulesRouter } from "./routers/modulesRouter";
 import { operationsRouter } from "./routers/operations";
 import { hrRouter } from "./routers/hr";
 import { bankMovementsRouter } from "./routers/bankMovements";
@@ -239,6 +241,8 @@ export const appRouter = router({
   gestoria: gestoriaRouter,
   fiscalAudit: fiscalAuditRouter,
   pdfTemplates: pdfTemplatesRouter,
+  integrations: integrationsRouter,
+  modules: modulesRouter,
   auth: router({
     me: publicProcedure.query((opts) => toPublicUser(opts.ctx.user)),
     logout: publicProcedure.mutation(({ ctx }) => {

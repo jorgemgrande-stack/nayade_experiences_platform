@@ -71,6 +71,8 @@ describe.skipIf(!URL_)("aplicación real en multiempresa", () => {
     process.env.REGISTRY_DATABASE_URL = URL_!;
     process.env.REGISTRY_KEYS = `k1:${crypto.randomBytes(32).toString("base64")}`;
     process.env.REGISTRY_ACTIVE_KEY_ID = "k1";
+    process.env.INTEGRATION_KEYS = `ik1:${crypto.randomBytes(32).toString("base64")}`;
+    process.env.INTEGRATION_ACTIVE_KEY_ID = "ik1";
     process.env.JWT_SECRET = "jwt-secret-de-prueba-" + run;
     process.env.DATABASE_URL = "mysql://nadie:nada@127.0.0.1:1/no_debe_usarse";
 
@@ -132,12 +134,18 @@ describe.skipIf(!URL_)("aplicación real en multiempresa", () => {
     const { createLocalContext } = await import("./_core/context.local");
     const { closeAllDatabases } = await import("./_core/dbRegistry");
 
+    const { configureModuleAccess, getModuleAccess } = await import("./_core/modules/runtime");
+    const { registerBuiltinModules } = await import("./_core/modules/builtin");
+    const { moduleRouteGuard } = await import("./_core/modules/routeGuard");
     const rt = createTenantRuntime(process.env, { pollMs: 3_600_000 })!;
+    registerBuiltinModules();
+    configureModuleAccess(rt.entitlements);
     const app = express();
     app.use(resolveTenantMiddleware(rt.resolver, { log: () => undefined }));
     app.use(express.json());
     app.use(bindTenantMiddleware());
     app.use(createLocalAuthRouter());
+    app.use("/api/trpc", moduleRouteGuard(getModuleAccess));
     app.use("/api/trpc", createExpressMiddleware({ router: appRouter, createContext: createLocalContext }));
     server = http.createServer(app);
     await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
@@ -193,6 +201,53 @@ describe.skipIf(!URL_)("aplicación real en multiempresa", () => {
     expect(lb.status).toBe(200);
   });
 
+  it("credenciales de integración por tenant: cifradas, enmascaradas y aisladas", async () => {
+    const la = await call(hostA, "POST", "/api/auth/login", { body: { email: `admin@${A}.example`, password: PASS_A } });
+    const save = await call(hostA, "POST", trpc("integrations.save"), {
+      cookie: la.cookie,
+      body: { json: { provider: "vapi", values: { apiKey: "vapi-clave-secreta-de-A-1234" } } },
+    });
+    expect(save.status).toBe(200);
+
+    const listA = await call(hostA, "GET", trpc("integrations.list"), { cookie: la.cookie });
+    const text = JSON.stringify(listA.json);
+    expect(text).not.toContain("vapi-clave-secreta");
+    expect(text).toContain("••••1234");
+
+    // En BD: cifrado (no contiene el texto plano)
+    const [rows] = await admin.query<mysql.RowDataPacket[]>(
+      "SELECT value FROM `es_" + A.replace(/-/g, "_") + "`.integration_credentials WHERE provider = 'vapi' AND field = 'apiKey'",
+    );
+    expect(String(rows[0].value)).not.toContain("vapi-clave");
+
+    // El tenant B no ve nada de A
+    const lb = await call(hostB, "POST", "/api/auth/login", { body: { email: `admin@${B}.example`, password: PASS_B } });
+    const listB = await call(hostB, "GET", trpc("integrations.list"), { cookie: lb.cookie });
+    const vapiB = (listB.json?.result?.data?.json as any[]).find((p) => p.id === "vapi");
+    expect(vapiB.configured).toBe(false);
+
+    // Sin sesión no hay acceso
+    const anon = await call(hostA, "GET", trpc("integrations.list"));
+    expect(anon.status).toBeGreaterThanOrEqual(401);
+  });
+
+  it("módulos: solo lo licenciado; el router de hotel responde 403 sin licencia", async () => {
+    const la = await call(hostA, "POST", "/api/auth/login", { body: { email: `admin@${A}.example`, password: PASS_A } });
+    const act = await call(hostA, "GET", trpc("modules.active"), { cookie: la.cookie });
+    const mods = (act.json?.result?.data?.json?.modules ?? []) as string[];
+    expect(mods.sort()).toEqual(["cms", "commerce", "tpv"]);
+    const hotel = await call(hostA, "GET", trpc("hotel.getRoomTypes"), { cookie: la.cookie });
+    expect(hotel.status).toBe(403);
+  });
+
+  it("tema público del tenant y página propia saneada", async () => {
+    const th = await call(hostA, "GET", trpc("public.getTheme"));
+    expect(th.status).toBe(200);
+    expect(th.json.result.data.json).toMatchObject({ neutralSite: true, brandName: A });
+    const pg = await call(hostA, "GET", trpc("public.getTenantPage") + "?input=" + encodeURIComponent(JSON.stringify({ json: { slug: "inicio" } })));
+    expect(pg.status).toBe(200);
+  });
+
   it("un procedimiento de administración con la sesión de A no opera sobre B", async () => {
     const la = await call(hostA, "POST", "/api/auth/login", { body: { email: `admin@${A}.example`, password: PASS_A } });
     const ok = await call(hostA, "GET", trpc("cms.getSiteSettings"), { cookie: la.cookie });
@@ -202,3 +257,4 @@ describe.skipIf(!URL_)("aplicación real en multiempresa", () => {
     expect(denied.status).toBeGreaterThanOrEqual(401);
   });
 });
+

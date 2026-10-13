@@ -23,8 +23,14 @@ export interface JobRunRecord {
 }
 
 let lister: TenantLister | undefined;
+let prelude: (() => Promise<void>) | undefined;
 const running = new Set<string>();
 const last = new Map<string, JobRunRecord>();
+
+/** Preparación previa a cada ejecución, ya dentro del contexto del tenant (credenciales, ajustes). */
+export function setJobPrelude(p: (() => Promise<void>) | null): void {
+  prelude = p ?? undefined;
+}
 
 /** Origen del listado de tenants para el modo multi (lo fija `installTenantResolution`). */
 export function setJobTenantLister(l: TenantLister | null): void {
@@ -66,6 +72,7 @@ export async function runTenantJob(name: string, handler: () => Promise<unknown>
         }
         running.add(key);
         try {
+          if (prelude) await prelude().catch(() => undefined);
           await handler();
           const durationMs = Date.now() - startedAt;
           last.set(key, { job: name, tenantId, startedAt, durationMs, outcome: "ok" });

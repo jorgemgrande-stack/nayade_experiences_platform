@@ -209,6 +209,7 @@ const navItems = [
     icon: BedDouble,
     roles: ["admin"],
     flagKey: "hotel_module_enabled",
+    moduleKey: "hotel",
   },
   {
     label: "SPA",
@@ -216,6 +217,7 @@ const navItems = [
     icon: Sparkles,
     roles: ["admin"],
     flagKey: "spa_module_enabled",
+    moduleKey: "spa",
   },
   {
     label: "Restaurantes",
@@ -223,6 +225,7 @@ const navItems = [
     icon: UtensilsCrossed,
     roles: ["admin", "adminrest"],
     flagKey: "restaurants_module_enabled",
+    moduleKey: "restaurants",
     children: [
       { label: "Reservas", href: "/admin/restaurantes/reservas" },
       { label: "Calendario Global", href: "/admin/restaurantes/calendario" },
@@ -255,6 +258,8 @@ const navItems = [
     children: [
       { label: "Ajustes del sistema",  href: "/admin/configuracion" },
       { label: "Datos del negocio",   href: "/admin/configuracion/sitio" },
+      { label: "Marca y tema",        href: "/admin/configuracion/marca" },
+      { label: "Integraciones",       href: "/admin/configuracion/integraciones" },
       { label: "Estado del sistema",  href: "/admin/configuracion/estado" },
       { label: "Onboarding",          href: "/admin/onboarding" },
       { label: "Plantillas de Email", href: "/admin/plantillas-email" },
@@ -366,9 +371,22 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
     return flagsMap.get(flagKey) !== false;
   };
 
+  // Módulos disponibles para este tenant (licencia + dependencias + flag), desde el servidor.
+  // Mientras carga, o si falla, se muestra todo (la autorización real está en el servidor).
+  const { data: modulesData } = trpc.modules.active.useQuery(undefined, {
+    enabled: isAuthenticated,
+    staleTime: 120_000,
+    retry: false,
+  });
+  const isModuleVisible = (moduleKey?: string) => {
+    if (!moduleKey || !modulesData) return true;
+    return modulesData.modules.includes(moduleKey);
+  };
+
   const filteredNav = navItems
     .filter((item) => item.roles.includes(userRole))
-    .filter((item) => isFlagVisible((item as { flagKey?: string }).flagKey));
+    .filter((item) => isFlagVisible((item as { flagKey?: string }).flagKey))
+    .filter((item) => isModuleVisible((item as { moduleKey?: string }).moduleKey));
 
   // ── Feed unificado de notificaciones (polling cada 60s) ─────────────────
   // El endpoint `notifications.feed` agrega 6 fuentes (leads, quotes,
