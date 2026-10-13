@@ -58,6 +58,27 @@ export class MysqlDatabaseProvisioner implements DatabaseProvisioner {
 export class MysqlSchemaApplier implements SchemaApplier {
   constructor(private opts: { baselinePath: string; migrationsDir: string }) {}
 
+  /** Migraciones pendientes (sin aplicar nada). Incluye el baseline si la BD está vacía. */
+  async plan(dsn: string): Promise<string[]> {
+    const { migrations } = loadMigrations(this.opts.migrationsDir);
+    const conn = await mysql.createConnection({ uri: dsn });
+    try {
+      let applied = new Set<string>();
+      try {
+        const [rows] = await conn.query<mysql.RowDataPacket[]>(`SELECT id FROM \`${TABLE}\``);
+        applied = new Set(rows.map((r) => r.id as string));
+      } catch {
+        /* sin historial: todo pendiente */
+      }
+      const pending: string[] = [];
+      if (!applied.has(BASELINE_ID)) pending.push(BASELINE_ID);
+      for (const m of migrations) if (!applied.has(m.id)) pending.push(m.id);
+      return pending;
+    } finally {
+      await conn.end().catch(() => undefined);
+    }
+  }
+
   async apply(dsn: string): Promise<{ baselineVersion: string; schemaVersion: string }> {
     const { migrations, errors } = loadMigrations(this.opts.migrationsDir);
     const problems = [...errors.filter((e) => !/No existe/.test(e)), ...validateMigrations(migrations)];
