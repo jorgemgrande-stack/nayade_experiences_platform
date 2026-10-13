@@ -9,8 +9,6 @@ import { validateRedsysNotification } from "./redsys";
 import { sendCapiEvent } from "./metaCapiRoute";
 import { updateReservationPayment, getReservationByMerchantOrder, getAllReservationsByMerchantOrder, createReavExpedient, attachReavDocument, upsertClientFromReservation, postConfirmOperation, createVentaPerdidaLead, getGHLCredentials } from "./db";
 import { calcularREAVSimple, validarConfiguracionREAV } from "./reav";
-import { drizzle } from "drizzle-orm/mysql2";
-import mysql from "mysql2/promise";
 import { quotes, leads, invoices, reservations, transactions, paymentInstallments, bookings, clients } from "../drizzle/schema";
 import { eq } from "drizzle-orm";
 import { sendReservationPaidNotifications, sendReservationFailedNotifications } from "./reservationEmails";
@@ -28,10 +26,11 @@ import { resolveSessionUser } from "./_core/expressAuth";
 import { secureEqual } from "./_core/signedLinks";
 import { checkAndConfirmInstallmentPlan } from "./routers/crm";
 import { syncLeadUrlsToGHL, createGHLContact, updateGHLContact, triggerGHLWorkflow } from "./ghl";
+import { legacyDb, legacyPool } from "./_core/legacyDb";
 
 // Pool de BD compartido para todo el módulo — evita crear/destruir conexiones por cada IPN
-const _sharedPool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
-const _db = drizzle(_sharedPool);
+const _sharedPool = legacyPool();
+const _db = legacyDb();
 
 const redsysRouter = express.Router();
 
