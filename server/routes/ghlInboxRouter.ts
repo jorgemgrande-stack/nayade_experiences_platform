@@ -26,11 +26,12 @@ import rateLimit from "express-rate-limit";
 import { requireStaff, getAuthUser } from "../_core/expressAuth";
 import type { Response } from "express";
 import { legacyDb, legacyPool } from "../_core/legacyDb";
+import { integrationEnv } from "../_core/tenantConfig";
 
 const _pool = legacyPool();
 const db = legacyDb();
 
-const GHL_BASE_URL = process.env.GHL_BASE_URL ?? "https://services.leadconnectorhq.com";
+const GHL_BASE_URL = integrationEnv("GHL_BASE_URL") ?? "https://services.leadconnectorhq.com";
 const GHL_API_VERSION = "2021-07-28";
 
 // ─── Auto-creación de tablas ─────────────────────────────────────────────────
@@ -230,13 +231,13 @@ async function getInboxCredentials(): Promise<{ token: string; locationId: strin
     const sysMap: Record<string, string> = {};
     for (const r of (sysRows as any[])) sysMap[r.key] = r.value ?? "";
 
-    const token = process.env.GHL_PRIVATE_INTEGRATION_TOKEN
+    const token = integrationEnv("GHL_PRIVATE_INTEGRATION_TOKEN")
       || map.ghlInboxToken
       || sysMap.site_ghl_api_key || map.ghlApiKey || "";
-    const locationId = process.env.GHL_LOCATION_ID
+    const locationId = integrationEnv("GHL_LOCATION_ID")
       || map.ghlInboxLocationId
       || sysMap.site_ghl_location_id || map.ghlLocationId || "";
-    const webhookSecret = process.env.GHL_WEBHOOK_SECRET || map.ghlInboxWebhookSecret || "";
+    const webhookSecret = integrationEnv("GHL_WEBHOOK_SECRET") || map.ghlInboxWebhookSecret || "";
     if (!token || !locationId) return null;
     return { token, locationId, webhookSecret };
   } catch {
@@ -542,7 +543,7 @@ ghlInboxRouter.post(
       "SELECT `value` FROM site_settings WHERE `key` = 'ghlInboxWebhookSecret' LIMIT 1"
     ).catch(() => [[]]);
     const dbSecret = (secretRows as any[])[0]?.value ?? "";
-    const secret = process.env.GHL_WEBHOOK_SECRET || dbSecret;
+    const secret = integrationEnv("GHL_WEBHOOK_SECRET") || dbSecret;
     if (!secret && process.env.NODE_ENV === "production") {
       log("warn", "Webhook ignorado — secreto no configurado (fail-closed en producción)");
       return res.status(200).json({ ok: true });

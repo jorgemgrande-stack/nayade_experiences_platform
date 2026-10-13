@@ -19,6 +19,7 @@ import { createLead } from "./db";
 import { generateDocumentNumber } from "./documentNumbers";
 import { extractFromTranscript } from "./routers/vapiCalls";
 import { legacyDb, legacyPool } from "./_core/legacyDb";
+import { integrationEnv } from "./_core/tenantConfig";
 
 const _pool = legacyPool();
 const _db = legacyDb();
@@ -135,7 +136,7 @@ vapiWebhookRouter.post("/api/vapi/webhook", express.json({ limit: "1mb" }), asyn
     "SELECT `value` FROM site_settings WHERE `key` = 'vapiWebhookSecret' LIMIT 1"
   ).catch(() => [[]]);
   const dbSecret = (secretRows as any[])[0]?.value ?? "";
-  const secret = process.env.VAPI_WEBHOOK_SECRET || dbSecret || process.env.GHL_WEBHOOK_SECRET || "";
+  const secret = integrationEnv("VAPI_WEBHOOK_SECRET") || dbSecret || integrationEnv("GHL_WEBHOOK_SECRET") || "";
   if (secret) {
     const provided =
       (req.headers["x-vapi-secret"] as string | undefined) ??

@@ -29,6 +29,7 @@ import {
 import { ENV } from "./_core/env";
 import { createGHLContact, getGHLTagsFromSource, updateGHLContact, triggerGHLWorkflow } from "./ghl";
 import { generateDocumentNumber } from "./documentNumbers";
+import { integrationEnv } from "./_core/tenantConfig";
 
 export async function generateReservationNumber(): Promise<string> {
   return generateDocumentNumber("reserva", "db:createReservation", "system");
@@ -44,8 +45,8 @@ export async function getDb() {
 
 /** Carga credenciales GHL: env vars ? systemSettings ? siteSettings (legacy). */
 export async function getGHLCredentials(): Promise<{ apiKey: string; locationId: string } | null> {
-  let apiKey = process.env.GHL_API_KEY;
-  let locationId = process.env.GHL_LOCATION_ID;
+  let apiKey = integrationEnv("GHL_API_KEY");
+  let locationId = integrationEnv("GHL_LOCATION_ID");
   if (!apiKey || !locationId) {
     const db = await getDb();
     if (db) {
@@ -329,8 +330,8 @@ export async function createLead(data: {
   if (ghlSource === "ghl_webhook" || ghlSource === "vapi_llamada") return leadId;
   (async () => {
     const db = await getDb();
-    let ghlApiKey = process.env.GHL_API_KEY;
-    let ghlLocationId = process.env.GHL_LOCATION_ID;
+    let ghlApiKey = integrationEnv("GHL_API_KEY");
+    let ghlLocationId = integrationEnv("GHL_LOCATION_ID");
     if ((!ghlApiKey || !ghlLocationId) && db) {
       // Fuente de verdad: systemSettings
       const sysRows = await db
@@ -375,7 +376,7 @@ export async function createLead(data: {
         console.log(`[GHL] ghlContactId ${ghlContactId} persistido en lead #${leadId}`);
 
         // Disparar workflow trigger de GHL si está configurado
-        const webhookUrl = process.env.GHL_LEAD_WEBHOOK_URL;
+        const webhookUrl = integrationEnv("GHL_LEAD_WEBHOOK_URL");
         if (webhookUrl) {
           triggerGHLWorkflow(webhookUrl, {
             contactId: ghlContactId,

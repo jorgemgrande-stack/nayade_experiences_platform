@@ -1,3 +1,4 @@
+import { integrationEnv } from "./_core/tenantConfig";
 /**
  * GoHighLevel CRM Integration Helper
  * Crea/actualiza contactos en GHL cuando se genera un lead en la plataforma.
@@ -95,8 +96,8 @@ export async function createGHLContact(
   payload: GHLContactPayload,
   overrideCredentials?: { apiKey: string; locationId: string }
 ): Promise<string | null> {
-  const apiKey = overrideCredentials?.apiKey ?? process.env.GHL_API_KEY;
-  const locationId = overrideCredentials?.locationId ?? process.env.GHL_LOCATION_ID;
+  const apiKey = overrideCredentials?.apiKey ?? integrationEnv("GHL_API_KEY");
+  const locationId = overrideCredentials?.locationId ?? integrationEnv("GHL_LOCATION_ID");
 
   if (!apiKey || !locationId) {
     ghlLog("warn", "create_contact", "Credenciales GHL no configuradas — integración omitida");
@@ -189,7 +190,7 @@ export async function updateGHLContact(
   },
   overrideCredentials?: { apiKey: string; locationId: string }
 ): Promise<boolean> {
-  const apiKey = overrideCredentials?.apiKey ?? process.env.GHL_API_KEY;
+  const apiKey = overrideCredentials?.apiKey ?? integrationEnv("GHL_API_KEY");
   if (!apiKey) {
     ghlLog("warn", "update_contact", "Credenciales GHL no configuradas — update omitido", { contactId });
     return false;

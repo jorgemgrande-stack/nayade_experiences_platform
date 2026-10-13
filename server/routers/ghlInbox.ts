@@ -9,6 +9,7 @@ import { eq, desc, and, or, like, isNotNull, sql } from "drizzle-orm";
 import { ghlConversations, ghlMessages, ghlWebhookEvents, siteSettings } from "../../drizzle/schema";
 import { getGHLCredentials } from "../db";
 import { legacyDb, legacyPool } from "../_core/legacyDb";
+import { integrationEnv } from "../_core/tenantConfig";
 
 const _pool = legacyPool();
 const db = legacyDb();
@@ -233,7 +234,7 @@ export const ghlInboxRouter = router({
       const map: Record<string, string> = {};
       for (const r of (rawRows as any[])) map[r.key] = r.value ?? "";
       const token = map.ghlInboxToken || "";
-      const secret = process.env.GHL_WEBHOOK_SECRET || map.ghlInboxWebhookSecret || "";
+      const secret = integrationEnv("GHL_WEBHOOK_SECRET") || map.ghlInboxWebhookSecret || "";
       return {
         hasToken: !!token,
         tokenMasked: token ? `${token.slice(0, 10)}…${token.slice(-4)}` : "",
@@ -324,17 +325,17 @@ export const ghlInboxRouter = router({
           );
           const sysMap: Record<string, string> = {};
           for (const r of (sysRows as any[])) sysMap[r.key] = r.value ?? "";
-          const token = process.env.GHL_PRIVATE_INTEGRATION_TOKEN
+          const token = integrationEnv("GHL_PRIVATE_INTEGRATION_TOKEN")
             || map.ghlInboxToken
             || sysMap.site_ghl_api_key || map.ghlApiKey || "";
-          const locId = process.env.GHL_LOCATION_ID
+          const locId = integrationEnv("GHL_LOCATION_ID")
             || map.ghlInboxLocationId
             || sysMap.site_ghl_location_id || map.ghlLocationId || "";
           return {
             hasToken: !!token,
             hasLocation: !!locId,
-            webhookEnabled: process.env.GHL_WEBHOOK_ENABLED !== "false",
-            webhookSecret: process.env.GHL_WEBHOOK_SECRET || "",
+            webhookEnabled: integrationEnv("GHL_WEBHOOK_ENABLED") !== "false",
+            webhookSecret: integrationEnv("GHL_WEBHOOK_SECRET") || "",
           };
         })(),
       };
