@@ -15,6 +15,7 @@
  */
 
 import nodemailer from "nodemailer";
+import { Metrics, meter } from "./_core/metering";
 import { getSystemSettingSync } from "./config";
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
@@ -179,10 +180,15 @@ export async function sendEmail(params: MailParams): Promise<boolean> {
   // Intentar primero con Brevo API
   if (process.env.BREVO_API_KEY) {
     const ok = await sendViaBrevoApi(enriched);
-    if (ok) return true;
+    if (ok) {
+      meter(Metrics.EMAIL_SENT, 1, "count", { channel: "brevo", ok: true });
+      return true;
+    }
     console.warn("[Mailer] Brevo API falló, intentando SMTP...");
   }
 
   // Fallback SMTP
-  return sendViaSMTP(enriched);
+  const sent = await sendViaSMTP(enriched);
+  meter(Metrics.EMAIL_SENT, 1, "count", { channel: "smtp", ok: sent });
+  return sent;
 }

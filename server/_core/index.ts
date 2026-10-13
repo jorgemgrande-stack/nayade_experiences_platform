@@ -6,6 +6,7 @@ import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import rateLimit from "express-rate-limit";
 import { isLeadProcedurePath, localStorageSecurityHeaders } from "./publicEndpointGuards";
 import { createHealthRouter } from "./health";
+import { requestMeter } from "./requestMeter";
 import { registerOAuthRoutes } from "./oauth";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
@@ -126,6 +127,8 @@ async function startServer() {
   app.set("trust proxy", 1);
   // Salud (liveness/readiness): antes de cualquier middleware pesado, sin autenticación.
   app.use(createHealthRouter());
+  // Medición de peticiones (destino nulo por defecto: sin efecto hasta que exista un Resource Manager).
+  app.use(requestMeter);
   // Configure body parser with larger size limit for file uploads
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
