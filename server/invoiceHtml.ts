@@ -54,8 +54,36 @@ export async function getLegalCompanySettings(): Promise<{
   };
 }
 
-export async function buildInvoiceHtml(invoice: InvoiceHtmlParams): Promise<string> {
-  const legal = await getLegalCompanySettings();
+function escapeHtml(v: unknown): string {
+  return String(v ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+/** Escapa los textos que proceden de usuarios (cliente, conceptos) antes de interpolarlos. */
+function escapeInvoiceParams(p: InvoiceHtmlParams): InvoiceHtmlParams {
+  return {
+    ...p,
+    invoiceNumber: escapeHtml(p.invoiceNumber),
+    clientName: escapeHtml(p.clientName),
+    clientEmail: escapeHtml(p.clientEmail),
+    clientPhone: p.clientPhone == null ? p.clientPhone : escapeHtml(p.clientPhone),
+    clientNif: p.clientNif == null ? p.clientNif : escapeHtml(p.clientNif),
+    clientAddress: p.clientAddress == null ? p.clientAddress : escapeHtml(p.clientAddress),
+    discountReason: p.discountReason == null ? p.discountReason : escapeHtml(p.discountReason),
+    itemsJson: (p.itemsJson ?? []).map((i) => ({ ...i, description: escapeHtml(i.description) })),
+  };
+}
+
+export async function buildInvoiceHtml(rawInvoice: InvoiceHtmlParams): Promise<string> {
+  const invoice = escapeInvoiceParams(rawInvoice);
+  const rawLegal = await getLegalCompanySettings();
+  const legal = Object.fromEntries(
+    Object.entries(rawLegal).map(([k, v]) => [k, escapeHtml(v)]),
+  ) as typeof rawLegal;
   const legalAddressFull = `${legal.address}, ${legal.zip} ${legal.city} (${legal.province})`;
 
   const reavItems    = invoice.itemsJson.filter(i => i.fiscalRegime === "reav");

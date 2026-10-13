@@ -12,6 +12,9 @@ import mysql from "mysql2/promise";
 import { eq } from "drizzle-orm";
 import { invoices } from "../drizzle/schema";
 import { buildInvoiceHtml } from "./invoiceHtml";
+import { resolveSessionUser } from "./_core/expressAuth";
+import { checkRbacOrLegacy } from "./_core/rbac";
+import { verifyInvoiceLink } from "./_core/signedLinks";
 
 const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
 const db = drizzle(_pool);
@@ -25,10 +28,24 @@ invoicePreviewRouter.get("/api/invoices/preview", async (req, res) => {
     return;
   }
 
+  // Acceso: enlace firmado (el número correlativo por sí solo es enumerable) o sesión del equipo.
+  let allowed = verifyInvoiceLink(n, req.query.sig);
+  if (!allowed) {
+    const user = await resolveSessionUser(req);
+    allowed =
+      !!user &&
+      user.isActive !== false &&
+      (await checkRbacOrLegacy(user.id, String(user.role), "crm.view", ["admin", "agente"]));
+  }
+  if (!allowed) {
+    res.status(401).send("Acceso no autorizado a la factura.");
+    return;
+  }
+
   try {
     const [invoice] = await db.select().from(invoices).where(eq(invoices.invoiceNumber, n)).limit(1);
     if (!invoice) {
-      res.status(404).send(`Factura ${n} no encontrada.`);
+      res.status(404).send("Factura no encontrada.");
       return;
     }
 
@@ -50,6 +67,9 @@ invoicePreviewRouter.get("/api/invoices/preview", async (req, res) => {
     });
 
     res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.setHeader("Cache-Control", "private, no-store");
+    res.setHeader("X-Robots-Tag", "noindex, nofollow");
+    res.setHeader("Referrer-Policy", "no-referrer");
     res.send(html);
   } catch (err) {
     console.error("[InvoicePreview] Error:", err);

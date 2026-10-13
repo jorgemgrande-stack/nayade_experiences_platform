@@ -6,6 +6,7 @@
 const SITE_URL = (process.env.APP_URL ?? 'https://www.skicenter.es').trim();
 
 import { router, protectedProcedure, publicProcedure, staffProcedure, adminProcedure } from "../_core/trpc";
+import { invoicePreviewPath } from "../_core/signedLinks";
 import { createLead, createBookingFromReservation, createReavExpedient, attachReavDocument, upsertClientFromReservation, postConfirmOperation, getGHLCredentials } from "../db";
 import { confirmReservationAndNotify } from "../reservationEmails";
 import { calcularREAVSimple, validarConfiguracionREAV } from "../reav";
@@ -119,7 +120,7 @@ async function generateInvoicePdf(invoice: {
 }): Promise<{ url: string; key: string }> {
   // Sin almacenamiento externo (S3/Forge) ? URL on-demand desde BD, sin archivos temporales
   if (!hasExternalStorage()) {
-    const url = `/api/invoices/preview?n=${encodeURIComponent(invoice.invoiceNumber)}`;
+    const url = invoicePreviewPath(invoice.invoiceNumber);
     return { url, key: "" };
   }
 
@@ -131,7 +132,7 @@ async function generateInvoicePdf(invoice: {
     return { url, key };
   } catch (pdfErr) {
     console.error("[PDF] Error generando factura PDF, usando vista on-demand:", pdfErr);
-    const url = `/api/invoices/preview?n=${encodeURIComponent(invoice.invoiceNumber)}`;
+    const url = invoicePreviewPath(invoice.invoiceNumber);
     return { url, key: "" };
   }
 }
