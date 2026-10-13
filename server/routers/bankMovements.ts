@@ -1,16 +1,15 @@
 import { z } from "zod";
 import { router } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
-import { drizzle } from "drizzle-orm/mysql2";
-import mysql from "mysql2/promise";
 import { and, count, desc, eq, gte, lte, ne, inArray, isNull, or, sql, sum } from "drizzle-orm";
 import { protectedProcedure } from "../_core/trpc";
 import { bankFileImports, bankMovements, bankMovementLinks, quotes, leads, expenses, reservations } from "../../drizzle/schema";
 import * as XLSX from "xlsx";
 import { assertModuleEnabled } from "../_core/flagGuard";
+import { legacyDb, legacyPool } from "../_core/legacyDb";
 
-const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
-const db = drizzle(_pool);
+const _pool = legacyPool();
+const db = legacyDb();
 
 const adminProc = protectedProcedure.use(async ({ ctx, next }) => {
   if ((ctx.user as { role: string }).role !== "admin") {

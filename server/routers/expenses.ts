@@ -5,10 +5,8 @@ import { router, permissionProcedure } from "../_core/trpc";
 // anyPermissionProcedure covers both view and manage semantics since today only
 // admin has either, and admin has all permissions. Fallback: users.role === "admin".
 const adminProcedure = permissionProcedure("accounting.expenses.view", ["admin"]);
-import { drizzle } from "drizzle-orm/mysql2";
-import mysql from "mysql2/promise";
-const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
-const db = drizzle(_pool);
+const _pool = legacyPool();
+const db = legacyDb();
 import {
   costCenters,
   expenseCategories,
@@ -26,6 +24,7 @@ import { storagePut } from "../storage";
 import { calcGeneralTax } from "../taxUtils";
 import { TRPCError } from "@trpc/server";
 import { getDefaultCashAccountId, createCashMovementIfNotExists } from "./cashRegisterHelper";
+import { legacyDb, legacyPool } from "../_core/legacyDb";
 
 // --- helpers -----------------------------------------------------------------
 function randomSuffix() {
