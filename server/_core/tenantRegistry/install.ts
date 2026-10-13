@@ -10,6 +10,7 @@
  */
 import type { Express } from "express";
 import { getTenantMode, isMultiTenant } from "../tenant";
+import { getErm, installErmFromEnv } from "../erm/runtime";
 import { configureModuleAccess } from "../modules/runtime";
 import { writableTenantLister } from "./jobs";
 import { createTenantRuntime, type TenantRuntime } from "./runtime";
@@ -39,10 +40,16 @@ export function installTenantResolution(app: Express, env: NodeJS.ProcessEnv = p
     setJobTenantLister(writableTenantLister(rt.reader));
     // Las licencias de módulos se leen del registro (solo lectura)
     configureModuleAccess(rt.entitlements);
+    // Medición + cuotas por tenant (límites del registro; consumo en ERM_DATABASE_URL)
+    installErmFromEnv(rt.quotas, env);
   }
   return rt;
 }
 
 export function installTenantBinding(app: Express): void {
-  if (isMultiTenant()) app.use(bindTenantMiddleware());
+  if (!isMultiTenant()) return;
+  app.use(bindTenantMiddleware());
+  // Tasa y concurrencia por tenant: ya con el contexto ligado
+  const erm = getErm();
+  if (erm) app.use(erm.guard);
 }

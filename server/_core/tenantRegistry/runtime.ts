@@ -14,6 +14,7 @@ import { getTenantMode } from "../tenant";
 import { keyringFromEnv } from "./crypto";
 import { accessPolicy } from "./lifecycle";
 import { MysqlEntitlementReader } from "../modules/mysqlEntitlements";
+import { MysqlQuotaReader } from "../erm/mysqlQuotas";
 import { MysqlTenantRegistryStore } from "./mysqlStore";
 import { TenantResolver } from "./resolver";
 import { TenantRegistryService } from "./service";
@@ -25,6 +26,8 @@ export interface TenantRuntime {
   service: TenantRegistryService;
   /** Licencias de módulos (solo lectura). */
   entitlements: MysqlEntitlementReader;
+  /** Cuotas de recursos (solo lectura). */
+  quotas: MysqlQuotaReader;
   /** Detiene el sondeo y cierra el pool del registro. */
   close(): Promise<void>;
 }
@@ -82,6 +85,7 @@ export function createTenantRuntime(
     reader: store,
     service,
     entitlements: new MysqlEntitlementReader(pool),
+    quotas: new MysqlQuotaReader(pool),
     async close() {
       clearInterval(timer);
       setConnectionResolver(null);

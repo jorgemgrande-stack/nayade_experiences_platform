@@ -16,6 +16,9 @@
 
 import nodemailer from "nodemailer";
 import { Metrics, meter } from "./_core/metering";
+import { enforceQuota } from "./_core/erm/runtime";
+import { QuotaExceededError } from "./_core/erm/types";
+import { isMultiTenant } from "./_core/tenant";
 import { getSystemSettingSync } from "./config";
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
@@ -164,7 +167,9 @@ function mergeGlobalCc(params: MailParams): MailParams {
   const existing = params.cc
     ? (Array.isArray(params.cc) ? params.cc : [params.cc])
     : [];
-  const merged = [...new Set([...existing, GLOBAL_CC_EMAIL])];
+  // En multiempresa la copia global es un ajuste del propio tenant: nunca la dirección de Náyade
+  const cc = isMultiTenant() ? getSystemSettingSync("email_cc_all", "") : GLOBAL_CC_EMAIL;
+  const merged = [...new Set([...existing, ...(cc ? [cc] : [])])];
   return { ...params, cc: merged };
 }
 
@@ -175,6 +180,14 @@ function mergeGlobalCc(params: MailParams): MailParams {
  * Devuelve true si el envío fue exitoso.
  */
 export async function sendEmail(params: MailParams): Promise<boolean> {
+  try {
+    await enforceQuota(Metrics.EMAIL_SENT, 1);
+  } catch (e) {
+    if (e instanceof QuotaExceededError) {
+      console.warn("[Mailer] Cuota de envíos excedida: no se envía");
+      return false;
+    }
+  }
   const enriched = mergeGlobalCc(params);
 
   // Intentar primero con Brevo API

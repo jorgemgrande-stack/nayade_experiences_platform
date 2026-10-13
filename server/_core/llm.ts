@@ -1,5 +1,6 @@
 import { ENV } from "./env";
 import { Metrics, meter } from "./metering";
+import { enforceQuota } from "./erm/runtime";
 
 export type Role = "system" | "user" | "assistant" | "tool" | "function";
 
@@ -268,6 +269,8 @@ const normalizeResponseFormat = ({
 
 export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
   assertApiKey();
+  // Cuota mensual de tokens del tenant (cantidad 0: solo comprueba que no esté ya excedida)
+  await enforceQuota(Metrics.LLM_TOKENS_INPUT, 0);
 
   const {
     messages,

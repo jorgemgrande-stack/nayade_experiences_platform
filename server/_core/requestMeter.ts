@@ -4,6 +4,7 @@
  */
 import type { NextFunction, Request, Response } from "express";
 import { Metrics, meter } from "./metering";
+import { getResolvedTenant } from "./tenantRegistry/tenantMiddleware";
 
 /** Agrupa la ruta en una familia estable: nunca la ruta completa ni parámetros. */
 export function routeGroup(url: string): string {
@@ -25,14 +26,16 @@ export function requestMeter(req: Request, res: Response, next: NextFunction): v
   const t0 = Date.now();
   res.once("finish", () => {
     const group = routeGroup(req.originalUrl || req.url || "");
+    // El contexto asíncrono puede no existir al terminar la respuesta: se usa el tenant resuelto
+    const tenantId = getResolvedTenant(req)?.tenantId;
     meter(Metrics.HTTP_REQUEST, 1, "count", {
       group,
       method: req.method,
       status: statusClass(res.statusCode),
-    });
-    meter(Metrics.HTTP_REQUEST_MS, Date.now() - t0, "ms", { group });
+    }, tenantId);
+    meter(Metrics.HTTP_REQUEST_MS, Date.now() - t0, "ms", { group }, tenantId);
     const len = Number(res.getHeader("content-length"));
-    if (Number.isFinite(len) && len > 0) meter(Metrics.HTTP_RESPONSE_BYTES, len, "byte", { group });
+    if (Number.isFinite(len) && len > 0) meter(Metrics.HTTP_RESPONSE_BYTES, len, "byte", { group }, tenantId);
   });
   next();
 }
