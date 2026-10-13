@@ -108,6 +108,7 @@ beforeAll(async () => {
     platformTarget: "edge.elephantsource.es",
     verifyDomain: async () => ({ ok: true, cname: true, txt: true, pending: [] }),
     perMinute: 1000,
+    allowedOrigins: ["https://crm.elephantsource.es"],
   });
   server = http.createServer(app);
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
@@ -138,6 +139,29 @@ describe("autenticación y ámbitos", () => {
     expect(parseTokens(JSON.stringify([{ id: "x", sha256: "no-hash", scopes: [] }]))).toEqual([]);
     expect(parseTokens(JSON.stringify([{ id: "x", sha256: hashToken("a".repeat(20)), scopes: ["root"] }]))).toEqual([]);
     expect(parseTokens("no json")).toEqual([]);
+  });
+});
+
+describe("CORS", () => {
+  it("solo refleja orígenes permitidos y responde al preflight sin autenticación", async () => {
+    const ok = await call("OPTIONS", "/cp/v1/tenants", { headers: { origin: "https://crm.elephantsource.es" } });
+    expect(ok.status).toBe(204);
+    const raw = await new Promise<http.IncomingHttpHeaders>((resolve) => {
+      const r = http.request({ host: "127.0.0.1", port, path: "/cp/v1/tenants", method: "OPTIONS", headers: { origin: "https://crm.elephantsource.es" } }, (res) => {
+        res.resume();
+        resolve(res.headers);
+      });
+      r.end();
+    });
+    expect(raw["access-control-allow-origin"]).toBe("https://crm.elephantsource.es");
+    const bad = await new Promise<http.IncomingHttpHeaders>((resolve) => {
+      const r = http.request({ host: "127.0.0.1", port, path: "/cp/v1/tenants", method: "OPTIONS", headers: { origin: "https://evil.example" } }, (res) => {
+        res.resume();
+        resolve(res.headers);
+      });
+      r.end();
+    });
+    expect(bad["access-control-allow-origin"]).toBeUndefined();
   });
 });
 

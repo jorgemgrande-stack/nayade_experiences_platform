@@ -45,6 +45,8 @@ export interface ControlPlaneDeps {
   perMinute?: number;
   /** Acceso delegado de soporte (requiere SUPPORT_JWT_SECRET). */
   support?: Pick<SupportAdmin, "create" | "revoke">;
+  /** Orígenes del navegador autorizados (CORS). Vacío = ninguno. Nunca comodín. */
+  allowedOrigins?: string[];
   supportSecret?: string;
 }
 
@@ -90,6 +92,20 @@ const wrap =
 export function createControlPlaneApp(d: ControlPlaneDeps): Express {
   const app = express();
   app.disable("x-powered-by");
+  // CORS: solo orígenes explícitos; sin comodines y sin credenciales (el token va en cabecera)
+  const origins = new Set((d.allowedOrigins ?? []).filter((o) => /^https?:\/\/[^*]+$/.test(o)));
+  app.use((req, res, next) => {
+    const o = req.headers.origin;
+    if (typeof o === "string" && origins.has(o)) {
+      res.setHeader("Access-Control-Allow-Origin", o);
+      res.setHeader("Vary", "Origin");
+      res.setHeader("Access-Control-Allow-Headers", "authorization, content-type");
+      res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+      res.setHeader("Access-Control-Max-Age", "600");
+    }
+    if (req.method === "OPTIONS") return void res.status(204).end();
+    next();
+  });
   app.use(express.json({ limit: "256kb", verify: (req, _res, buf) => void ((req as any).rawBody = buf.toString("utf8")) }));
 
   // Webhook del proveedor de pagos: autenticado por firma, no por token
