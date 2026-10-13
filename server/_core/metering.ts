@@ -41,6 +41,7 @@ export const Metrics = {
   LLM_TOKENS_INPUT: "llm.tokens.input",
   LLM_TOKENS_OUTPUT: "llm.tokens.output",
   JOB_RUN_MS: "job.run.ms",
+  TENANT_SHADOW: "tenant.shadow",
 } as const;
 
 const noopSink: MeterSink = { record() {} };

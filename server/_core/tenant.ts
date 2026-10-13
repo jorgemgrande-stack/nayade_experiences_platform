@@ -21,7 +21,11 @@ export type TenantContext = {
   tenantId: string;
 };
 
-export type TenantMode = "single" | "multi";
+/**
+ * single: un tenant (hoy). shadow: igual que single en datos, pero resuelve el dominio en el
+ * registro y compara SIN efecto (verificación previa a multi). multi: tenant por dominio.
+ */
+export type TenantMode = "single" | "shadow" | "multi";
 
 export const DEFAULT_TENANT_ID = "default";
 
@@ -30,7 +34,13 @@ const TENANT_ID_RE = /^[a-z0-9][a-z0-9_-]{0,62}$/;
 const storage = new AsyncLocalStorage<TenantContext>();
 
 export function getTenantMode(): TenantMode {
-  return process.env.TENANT_MODE === "multi" ? "multi" : "single";
+  const m = process.env.TENANT_MODE;
+  return m === "multi" ? "multi" : m === "shadow" ? "shadow" : "single";
+}
+
+/** Solo `multi` cambia el comportamiento de datos: `shadow` actúa como `single`. */
+export function isMultiTenant(): boolean {
+  return getTenantMode() === "multi";
 }
 
 export function isValidTenantId(id: unknown): id is string {
@@ -65,7 +75,7 @@ export function peekTenantContext(): TenantContext | undefined {
 export function getTenantId(): string {
   const ctx = storage.getStore();
   if (ctx) return ctx.tenantId;
-  if (getTenantMode() === "single") return DEFAULT_TENANT_ID;
+  if (!isMultiTenant()) return DEFAULT_TENANT_ID;
   throw new TenantResolutionError("Operación sin tenant resuelto en modo multi-tenant");
 }
 

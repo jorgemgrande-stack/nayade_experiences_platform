@@ -13,7 +13,7 @@
  */
 import mysql from "mysql2/promise";
 import { drizzle } from "drizzle-orm/mysql2";
-import { DEFAULT_TENANT_ID, TenantResolutionError, getTenantId, getTenantMode } from "./tenant";
+import { DEFAULT_TENANT_ID, TenantResolutionError, getTenantId, isMultiTenant } from "./tenant";
 
 const createDatabase = (pool: mysql.Pool) => drizzle(pool);
 export type Database = ReturnType<typeof createDatabase>;
@@ -36,7 +36,7 @@ export function setConnectionResolver(r: ConnectionResolver | null): void {
 }
 
 async function resolveUri(tenantId: string): Promise<string | null> {
-  if (getTenantMode() === "single") {
+  if (!isMultiTenant()) {
     // Un único tenant: la BD de siempre, para cualquier identificador.
     return process.env.DATABASE_URL ?? null;
   }
@@ -54,7 +54,7 @@ async function resolveUri(tenantId: string): Promise<string | null> {
  */
 export async function getTenantDatabase(tenantId?: string): Promise<Database | null> {
   const id = tenantId ?? getTenantId();
-  const key = getTenantMode() === "single" ? DEFAULT_TENANT_ID : id;
+  const key = !isMultiTenant() ? DEFAULT_TENANT_ID : id;
 
   const existing = entries.get(key);
   if (existing) return existing.db;
@@ -90,7 +90,7 @@ async function createEntry(id: string, key: string): Promise<Database | null> {
  * síncrono sin tenant sería justo el riesgo de fuga entre clientes que se quiere evitar.
  */
 function getSingleEntrySync(): Entry | null {
-  if (getTenantMode() !== "single") {
+  if (isMultiTenant()) {
     throw new TenantResolutionError(
       "Acceso heredado a la base de datos no disponible en modo multi-tenant: usar getDb() con tenant resuelto",
     );
