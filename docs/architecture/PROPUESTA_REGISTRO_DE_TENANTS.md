@@ -1,6 +1,6 @@
 # Propuesta: registro central de tenants
 
-**Estado:** propuesta para revisión. **No hay implementación.** Cualquier código parte de este documento una vez aprobado.
+**Estado:** decisiones R1–R6 **aprobadas**. Implementación incremental en `server/_core/tenantRegistry/` y `db/registry/` (inactiva mientras `TENANT_MODE=single`; no se modifica la infraestructura de producción para implantar el registro).
 
 ## 0. Principios (decididos)
 1. Registro central, **independiente** de las bases de datos operativas.
@@ -133,12 +133,24 @@ Todas las cachés de la aplicación (ajustes, flags, HTML, emisores SSE, almacen
 3. Activar `multi` primero en preproducción con 2 tenants de prueba; suite de aislamiento cruzado obligatoria.
 4. Activar en producción cuando la sombra no muestre discrepancias.
 
-## 8. Decisiones que necesito de ti
-| # | Decisión | Recomendación |
+## 8. Decisiones aprobadas
+| # | Decisión | Resolución |
 |---|---|---|
-| R1 | ¿Dónde vive el registro? | BD/instancia **separada** de las de tenants (aislamiento de fallos) |
-| R2 | Dominio base de subdominios de prueba | Un dominio de plataforma propio (decisión comercial/infra) |
-| R3 | Verificación de dominio propio | CNAME a la plataforma + registro TXT con token |
-| R4 | Clave de cifrado de DSN | Variable de entorno con `key_id` ahora; KMS más adelante |
-| R5 | Emisión de TLS para dominios propios | Delegada en el proveedor (Railway/CDN); fuera del Core |
-| R6 | ¿Antigüedad máxima aceptable de caché si el registro cae? | 10 min |
+| R1 | Dónde vive el registro | BD **separada**; el Core solo la lee (usuario de solo lectura); las escrituras son auditadas y pasan por el servicio central |
+| R2 | Dominio base de plataforma | `elephantsource.es` provisional, **configurable**; pendiente verificar titularidad y DNS |
+| R3 | Verificación de dominio propio | CNAME + TXT (`_elephant-verify.<dominio>` = `elephant-verify=<token>`) |
+| R4 | Cifrado de DSN | AES-256-GCM con `key_id`, ligado al tenant (AAD), preparado para KMS |
+| R5 | TLS de dominios propios | Delegado en el proveedor; fuera del Core |
+| R6 | Caché si el registro cae | Hasta 10 min de continuidad; invalidación activa y revocación inmediata de estados críticos |
+
+## 9. Requisitos adicionales aprobados
+1. Separación estricta: **registro** (hechos operativos) / **datos operativos** (BD del tenant) / **gestión comercial** (futuro CRM). El registro no contiene planes, módulos contratados, facturación ni datos de consumo.
+2. El identificador de tenant es **inmutable** y será la clave de las métricas del futuro Elephant Resource Manager.
+3. Ningún dominio desconocido puede usar una BD por defecto.
+4. Se valida la correspondencia dominio ↔ tenant ↔ sesión ↔ conexión de BD.
+5. Suite de pruebas de aislamiento entre tenants.
+6. **Modo sombra** antes de activar multiempresa.
+7. Sin cambios en la infraestructura de producción para implantar el registro.
+
+## 10. Estado de implementación
+Contrato, ciclo de vida, cifrado, servicio, resolutor, modo sombra y almacén MySQL (con pruebas de integración contra MySQL real) están implementados por PRs pequeños; pendientes: integración del resolutor con `dbRegistry`, middleware de contexto de tenant, vinculación de sesión (`tid`), CLI de operador y suite de aislamiento completa.
