@@ -31,6 +31,16 @@ describe("tema por tenant", () => {
     expect(buildTheme(get({ theme_font_family: "x; } body { display:none" }), { multi: true }).fontFamily).toBeNull();
   });
 
+  it("single ignora brand_*_color heredados (no altera el aspecto existente)", () => {
+    const t = buildTheme(get({ brand_primary_color: "#0a1628", brand_accent_color: "#f97316" }), { multi: false });
+    expect(t.primaryColor).toBeNull();
+    expect(t.accentColor).toBeNull();
+    const m = buildTheme(get({ brand_primary_color: "#0a1628" }), { multi: true });
+    expect(m.primaryColor).toBe("#0a1628");
+    const explicit = buildTheme(get({ theme_primary_color: "#112233", brand_primary_color: "#0a1628" }), { multi: false });
+    expect(explicit.primaryColor).toBe("#112233");
+  });
+
   it("single no cambia el sitio: sin sitio neutro ni marca de plataforma por defecto", () => {
     const t = buildTheme(get({}), { multi: false });
     expect(t.neutralSite).toBe(false);

@@ -63,8 +63,10 @@ export function buildTheme(
     brandName: text(get("brand_name"), 120),
     logoUrl: safeHttpUrl(get("brand_logo_url")),
     faviconUrl: safeHttpUrl(get("brand_favicon_url")),
-    primaryColor: safeColor(get("theme_primary_color") ?? get("brand_primary_color")),
-    accentColor: safeColor(get("theme_accent_color") ?? get("brand_accent_color")),
+    // En single solo cuentan los ajustes `theme_*` explícitos: `brand_*_color` ya existen en
+    // instalaciones previas y no deben alterar su aspecto (p. ej. Náyade).
+    primaryColor: safeColor(get("theme_primary_color") ?? (opts.multi ? get("brand_primary_color") : undefined)),
+    accentColor: safeColor(get("theme_accent_color") ?? (opts.multi ? get("brand_accent_color") : undefined)),
     fontFamily: FONT.test(font) ? font : null,
     radius: RADIUS.test(radius) ? radius : null,
     neutralSite: opts.multi,
