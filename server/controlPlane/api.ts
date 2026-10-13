@@ -26,6 +26,7 @@ import type { QuotaAdmin } from "../_core/erm/mysqlQuotas";
 import { ModuleError } from "../_core/modules/contract";
 import { authenticate, getAuth, requireScope, type ServiceToken } from "./auth";
 import { signSupportToken } from "../_core/support/session";
+import { TEMPLATES } from "../_core/templates/catalog";
 import type { SupportAdmin } from "../_core/support/grants";
 
 export interface ControlPlaneDeps {
@@ -295,6 +296,17 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         .parse(req.body);
       await d.quotas.set({ tenantId: id, ...b }, actor(req));
       res.json({ quotas: await d.quotas.listQuotas(id) });
+    }),
+  );
+
+  // ── Plantillas ─────────────────────────────────────────────────────────────
+  router.get(
+    "/templates",
+    requireScope("tenants:read"),
+    wrap(async (_req, res) => {
+      res.json({
+        templates: TEMPLATES.map((t) => ({ id: t.id, name: t.name, description: t.description, sector: t.sector, recommendedModules: t.recommendedModules })),
+      });
     }),
   );
 
