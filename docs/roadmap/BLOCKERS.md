@@ -10,3 +10,9 @@
 | B6 | Tarifas/catálogo de precios definitivos | Facturación SaaS (Fase 06) | Catálogo parametrizable sin precios |
 | B7 | Backup verificado de la BD de producción antes de cualquier migración real | Migraciones en BD reales | Pendiente |
 | B8 | Decidir purga del historial git (secretos antiguos) | Higiene del repositorio | Pendiente del operador |
+| B9 | Definir `INTEGRATION_KEYS` / `INTEGRATION_ACTIVE_KEY_ID` (32 bytes base64) y `REGISTRY_KEYS` en el entorno de producción | Guardar credenciales de integraciones por tenant | Pendiente del operador |
+| B10 | Cliente OIDC del IdP corporativo (issuer, client id, JWKS) y lista de operadores (`CP_OIDC_USERS`) | SSO de Big Elephant CRM | Pendiente del operador |
+| B11 | Elegir proveedor de pagos (adaptador Stripe listo) y tarifas; autorizar `BILLING_CHARGES_ENABLED=true` | Cobros reales | Pendiente (decisión comercial) |
+| B12 | Alojamiento del plano de control (`server/controlPlane/main.ts`) y de la SPA del CRM; BD del registro/ERM/CRM/comercial | Poner en marcha el plano de control | Pendiente (coste de infraestructura) |
+| B13 | Dominio/remitente de plataforma para correo (`PLATFORM_MAIL_FROM`, SPF/DKIM) | Correo transaccional de tenants sin remitente propio | Pendiente |
+| B14 | Extracción de hotel/spa/restaurants a repositorios: requiere plugin de routers tRPC tipado en el cliente | Independencia total de módulos sectoriales | Diseño pendiente (ver DECISIONS) |
