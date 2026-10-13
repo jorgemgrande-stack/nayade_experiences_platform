@@ -81,6 +81,11 @@ jobs:
             console.log(orphans.length ? orphans.join("\n") : "(ninguna)");
           '
 
+      - name: Verificar migraciones nuevas (db/migrations)
+        id: migrations
+        continue-on-error: true
+        run: pnpm exec tsx scripts/db/migrate.ts verify
+
       - name: Resumen
         if: always()
         run: |
@@ -93,6 +98,7 @@ jobs:
             echo "| Tests (vitest) | ${{ steps.tests.outcome }} |"
             echo "| Build | ${{ steps.build.outcome }} |"
             echo "| Higiene | ${{ steps.hygiene.outcome }} |"
+            echo "| Migraciones nuevas (verify) | ${{ steps.migrations.outcome }} |"
             echo ""
             echo "Este CI es informativo: un resultado 'failure' no bloquea el PR."
           } >> "$GITHUB_STEP_SUMMARY"
