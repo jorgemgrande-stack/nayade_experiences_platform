@@ -3,14 +3,13 @@
  * Importar desde crm.ts, expenses.ts y cashRegister.ts.
  * Siempre opera con try/catch para no bloquear flujos principales.
  */
-import { drizzle } from "drizzle-orm/mysql2";
-import mysql from "mysql2/promise";
 import { eq, and } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import { finCashAccounts, finCashMovements } from "../../drizzle/schema";
+import { legacyDb, legacyPool } from "../_core/legacyDb";
 
-const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
-const db = drizzle(_pool);
+const _pool = legacyPool();
+const db = legacyDb();
 
 /** Devuelve el id de la cuenta de caja principal activa, o null si no existe. */
 export async function getDefaultCashAccountId(): Promise<number | null> {

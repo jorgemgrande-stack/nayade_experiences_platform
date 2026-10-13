@@ -21,8 +21,6 @@
  */
 
 import cron from "node-cron";
-import { drizzle } from "drizzle-orm/mysql2";
-import mysql from "mysql2/promise";
 import { eq, and, lte, isNull, sql, count } from "drizzle-orm";
 import {
   emailScheduledJobs,
@@ -43,6 +41,7 @@ import {
   buildCommercialReminder3Html,
   type CommercialReminderEmailData,
 } from "./emailTemplates";
+import { legacyDb, legacyPool } from "./_core/legacyDb";
 
 const COMMERCIAL_TEMPLATE_BUILDERS: Record<string, (d: CommercialReminderEmailData) => string> = {
   commercial_reminder_1: buildCommercialReminder1Html,
@@ -50,8 +49,8 @@ const COMMERCIAL_TEMPLATE_BUILDERS: Record<string, (d: CommercialReminderEmailDa
   commercial_reminder_3: buildCommercialReminder3Html,
 };
 
-const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
-const db = drizzle(_pool);
+const _pool = legacyPool();
+const db = legacyDb();
 
 function log(level: "info" | "warn" | "error", msg: string, ctx?: object) {
   const entry = { ts: new Date().toISOString(), context: "EmailAutomationJob", msg, ...ctx };

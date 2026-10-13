@@ -4,14 +4,13 @@ import { publicProcedure, router, permissionProcedure } from "../_core/trpc";
 // RBAC-aware procedures. Fallback legacy: view?admin+agente, manage?admin only.
 const discViewProc   = permissionProcedure("discounts.view",   ["admin", "agente"]);
 const discManageProc = permissionProcedure("discounts.manage", ["admin"]);
-import { drizzle } from "drizzle-orm/mysql2";
-import mysql from "mysql2/promise";
 import { discountCodes, discountCodeUses, compensationVouchers } from "../../drizzle/schema";
 import { eq, desc, like, and, or, sql } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
+import { legacyDb, legacyPool } from "../_core/legacyDb";
 
-const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
-const db = drizzle(_pool);
+const _pool = legacyPool();
+const db = legacyDb();
 
 // --- HELPERS -----------------------------------------------------------------
 

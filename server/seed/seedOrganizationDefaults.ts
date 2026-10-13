@@ -8,18 +8,17 @@
  * and system_settings. For now it only creates the organization row
  * and its onboarding_status record.
  */
-import mysql from "mysql2/promise";
-import { drizzle } from "drizzle-orm/mysql2";
 import { organizations, onboardingStatus } from "../../drizzle/schema";
 import { eq } from "drizzle-orm";
+import { legacyDb, legacyPool } from "../_core/legacyDb";
 
 export async function seedOrganizationDefaults(
   name: string,
   slug: string,
   ownerUserId?: number,
 ): Promise<{ orgId: number }> {
-  const pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
-  const db = drizzle(pool);
+  const pool = legacyPool();
+  const db = legacyDb();
 
   try {
     // Check slug uniqueness

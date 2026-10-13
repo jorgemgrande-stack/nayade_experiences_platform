@@ -20,8 +20,6 @@
 import { z } from "zod";
 import { router, staffProcedure } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
-import { drizzle } from "drizzle-orm/mysql2";
-import mysql from "mysql2/promise";
 import { and, desc, eq, gte, isNull, lte, or, sql, inArray, not, lt } from "drizzle-orm";
 import {
   leads,
@@ -34,9 +32,10 @@ import {
   bankMovements,
   adminNotificationDismissals,
 } from "../../drizzle/schema";
+import { legacyDb, legacyPool } from "../_core/legacyDb";
 
-const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
-const db = drizzle(_pool);
+const _pool = legacyPool();
+const db = legacyDb();
 
 // ─── Tipos del feed ─────────────────────────────────────────────────────────
 

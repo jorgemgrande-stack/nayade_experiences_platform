@@ -5,14 +5,13 @@
 
 import { z } from "zod";
 import { staffProcedure, router } from "../_core/trpc";
-import { drizzle } from "drizzle-orm/mysql2";
-import mysql from "mysql2/promise";
 import { eq, desc, and, sql, isNotNull } from "drizzle-orm";
 import { vapiCalls } from "../../drizzle/schema";
 import { createLead } from "../db";
+import { legacyDb, legacyPool } from "../_core/legacyDb";
 
-const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
-const db = drizzle(_pool);
+const _pool = legacyPool();
+const db = legacyDb();
 
 const VAPI_BASE_URL = "https://api.vapi.ai";
 

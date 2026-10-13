@@ -6,8 +6,6 @@
 import { z } from "zod";
 import { router, protectedProcedure, adminProcedure, publicProcedure } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
-import { drizzle } from "drizzle-orm/mysql2";
-import mysql from "mysql2/promise";
 import { eq, and, asc, inArray, sql } from "drizzle-orm";
 import {
   legoPacks,
@@ -18,9 +16,10 @@ import {
   type LegoPack,
   type LegoPackLine,
 } from "../../drizzle/schema";
+import { legacyDb, legacyPool } from "../_core/legacyDb";
 
-const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
-const db = drizzle(_pool);
+const _pool = legacyPool();
+const db = legacyDb();
 
 // --- Input schemas -------------------------------------------------------------
 

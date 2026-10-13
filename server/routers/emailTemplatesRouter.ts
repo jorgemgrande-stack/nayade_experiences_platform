@@ -6,15 +6,13 @@
 import { router, protectedProcedure, permissionProcedure } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { drizzle } from "drizzle-orm/mysql2";
-import mysql from "mysql2/promise";
 import { emailTemplates } from "../../drizzle/schema";
 import { eq } from "drizzle-orm";
 
 import { sendEmail } from "../mailer";
 
-const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
-const db = drizzle(_pool);
+const _pool = legacyPool();
+const db = legacyDb();
 import {
   buildReservationConfirmHtml,
   buildReservationFailedHtml,
@@ -47,6 +45,7 @@ import {
   buildCashOpenHtml,
   buildCashCloseHtml,
 } from "../emailTemplates";
+import { legacyDb, legacyPool } from "../_core/legacyDb";
 
 // --- Admin guard --------------------------------------------------------------
 const adminProcedure = permissionProcedure("settings.manage", ["admin"]);

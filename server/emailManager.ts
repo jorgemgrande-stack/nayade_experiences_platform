@@ -12,8 +12,6 @@
  * Se puede llamar progresivamente desde los routers que ya existen.
  */
 
-import { drizzle } from "drizzle-orm/mysql2";
-import mysql from "mysql2/promise";
 import { eq, and } from "drizzle-orm";
 import {
   emailTemplateConfigs,
@@ -24,9 +22,10 @@ import {
 } from "../drizzle/schema";
 import { sendEmail } from "./mailer";
 import { getSystemSettingSync } from "./config";
+import { legacyDb, legacyPool } from "./_core/legacyDb";
 
-const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
-const db = drizzle(_pool);
+const _pool = legacyPool();
+const db = legacyDb();
 
 // Templates excluidos del auto-scheduling de sendManagedEmail.
 // - "quote": el envío del presupuesto en sí. No queremos que enviar un quote

@@ -1,13 +1,12 @@
 import { z } from "zod";
 import { router, adminProcedure } from "../_core/trpc";
-import { drizzle } from "drizzle-orm/mysql2";
-import mysql from "mysql2/promise";
 import { pdfTemplates } from "../../drizzle/schema";
 import { eq } from "drizzle-orm";
 import { buildQuotePdfHtml } from "../emailTemplates";
+import { legacyDb, legacyPool } from "../_core/legacyDb";
 
-const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
-const db = drizzle(_pool);
+const _pool = legacyPool();
+const db = legacyDb();
 
 // --- System PDF Templates (seed data) ----------------------------------------
 const SYSTEM_PDF_TEMPLATES = [

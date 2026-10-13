@@ -5,14 +5,13 @@
 
 import { z } from "zod";
 import { staffProcedure, router } from "../_core/trpc";
-import { drizzle } from "drizzle-orm/mysql2";
-import mysql from "mysql2/promise";
 import { eq, desc, and, or, like, isNotNull, sql } from "drizzle-orm";
 import { ghlConversations, ghlMessages, ghlWebhookEvents, siteSettings } from "../../drizzle/schema";
 import { getGHLCredentials } from "../db";
+import { legacyDb, legacyPool } from "../_core/legacyDb";
 
-const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
-const db = drizzle(_pool);
+const _pool = legacyPool();
+const db = legacyDb();
 
 export const ghlInboxRouter = router({
   // ─── Listar conversaciones ────────────────────────────────────────────────

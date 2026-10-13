@@ -12,17 +12,16 @@
  * Secreto opcional: variable VAPI_WEBHOOK_SECRET (header x-vapi-secret o ?secret=).
  */
 import express from "express";
-import { drizzle } from "drizzle-orm/mysql2";
-import mysql from "mysql2/promise";
 import { eq } from "drizzle-orm";
 import { randomBytes } from "crypto";
 import { quotes, ghlWebhookLogs, vapiCalls } from "../drizzle/schema";
 import { createLead } from "./db";
 import { generateDocumentNumber } from "./documentNumbers";
 import { extractFromTranscript } from "./routers/vapiCalls";
+import { legacyDb, legacyPool } from "./_core/legacyDb";
 
-const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
-const _db = drizzle(_pool);
+const _pool = legacyPool();
+const _db = legacyDb();
 
 const VAPI_BASE_URL = "https://api.vapi.ai";
 

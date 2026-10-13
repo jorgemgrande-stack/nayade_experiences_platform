@@ -3,15 +3,14 @@
  * Usado por generateInvoicePdf (crm.ts) y por el endpoint de vista previa.
  */
 
-import { drizzle } from "drizzle-orm/mysql2";
-import mysql from "mysql2/promise";
 import { sql } from "drizzle-orm";
 import { siteSettings } from "../drizzle/schema";
 import { getSystemSettingSync } from "./config";
 import { groupTaxBreakdown, totalTaxAmount, type TaxBreakdownLine } from "./taxUtils";
+import { legacyDb, legacyPool } from "./_core/legacyDb";
 
-const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
-const db = drizzle(_pool);
+const _pool = legacyPool();
+const db = legacyDb();
 
 export interface InvoiceHtmlParams {
   invoiceNumber: string;
