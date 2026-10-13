@@ -7,6 +7,8 @@
  * POST /api/ghl/conversations/:id/reply — enviar mensaje outbound vía GHL API
  *
  * Seguridad:
+ *  - Todo /api/ghl/* exige sesión del equipo (permiso crm.view) salvo los webhooks
+ *    entrantes de GHL, que validan un secreto compartido. Denegar por defecto.
  *  - Validación de header x-ghl-secret si GHL_WEBHOOK_SECRET está configurado
  *  - Validación de locationId contra GHL_LOCATION_ID
  *  - Body limitado a 2mb
@@ -20,6 +22,8 @@ import mysql from "mysql2/promise";
 import { eq, desc, and, sql } from "drizzle-orm";
 import { ghlConversations, ghlMessages, ghlWebhookEvents, siteSettings } from "../../drizzle/schema";
 import { ghlInboxEmitter } from "../ghlInboxEvents";
+import { createHash, timingSafeEqual } from "crypto";
+import { requireStaff, getAuthUser } from "../_core/expressAuth";
 import type { Response } from "express";
 
 const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
@@ -470,9 +474,32 @@ async function processWebhookEvent(eventRowId: number, payload: any, eventType: 
   }
 }
 
+// ─── Seguridad ────────────────────────────────────────────────────────────────
+
+/** Comparación de secretos en tiempo constante (compara hashes de igual longitud). */
+function secretsMatch(provided: unknown, expected: string): boolean {
+  if (typeof provided !== "string" || provided === "") return false;
+  const a = createHash("sha256").update(provided).digest();
+  const b = createHash("sha256").update(expected).digest();
+  return timingSafeEqual(a, b);
+}
+
+/** Límites de conexiones SSE abiertas (varias pestañas por usuario son legítimas). */
+const SSE_MAX_PER_USER = 10;
+const SSE_MAX_TOTAL = 100;
+const sseConnections = { total: 0, byUser: new Map<number, number>() };
+
 // ─── Router ───────────────────────────────────────────────────────────────────
 
 const ghlInboxRouter = express.Router();
+
+// Webhooks entrantes de GHL: públicos por diseño (se autentican con un secreto compartido).
+// TODO lo demás bajo /api/ghl exige sesión del equipo: una ruta nueva nace protegida.
+const GHL_PUBLIC_WEBHOOK_PATHS = new Set(["/inbox/webhook", "/webhook"]);
+ghlInboxRouter.use("/api/ghl", (req, res, next) => {
+  if (GHL_PUBLIC_WEBHOOK_PATHS.has(req.path)) return next();
+  return requireStaff(req, res, next);
+});
 
 // ── POST /api/ghl/inbox/webhook ───────────────────────────────────────────────
 ghlInboxRouter.post(
@@ -485,11 +512,15 @@ ghlInboxRouter.post(
     ).catch(() => [[]]);
     const dbSecret = (secretRows as any[])[0]?.value ?? "";
     const secret = process.env.GHL_WEBHOOK_SECRET || dbSecret;
+    if (!secret && process.env.NODE_ENV === "production") {
+      log("warn", "Webhook ignorado — secreto no configurado (fail-closed en producción)");
+      return res.status(200).json({ ok: true });
+    }
     if (secret) {
       const provided =
         (req.headers["x-ghl-secret"] as string | undefined) ??
         (req.query.secret as string | undefined);
-      if (provided !== secret) {
+      if (!secretsMatch(provided, secret)) {
         log("warn", "Webhook con secreto inválido — ignorado silenciosamente");
         return res.status(200).json({ ok: true }); // Siempre 200 para evitar reintentos de GHL
       }
@@ -545,20 +576,27 @@ ghlInboxRouter.post(
 
 // ── GET /api/ghl/inbox/stream — SSE para actualizaciones en tiempo real ────────
 ghlInboxRouter.get("/api/ghl/inbox/stream", (req, res: Response) => {
-  // Autenticación básica: el frontend debe enviar el cookie/header de sesión.
-  // En producción el authGuard middleware ya protege /api/trpc; el SSE es un
-  // endpoint Express independiente — verificamos la presencia de la sesión.
-  // Si no hay sesión, devolvemos 401.
-  const sessionCookie = req.cookies?.["nayade_session"] ?? req.headers["x-session-token"];
-  // En Railway con LOCAL_AUTH el cookie puede tener otro nombre — permitimos
-  // la conexión si está en el mismo dominio (SameSite cookie). En desarrollo
-  // permitimos siempre para no bloquear el desarrollo local.
-  // Para no complicar la autenticación SSE, usamos un token de query param.
-  const streamToken = req.query.token as string | undefined;
-  const expectedStreamToken = process.env.GHL_STREAM_TOKEN ?? "nayade-ghl-stream";
-  if (streamToken !== expectedStreamToken && process.env.NODE_ENV === "production") {
-    return res.status(401).send("Unauthorized");
+  // La sesión del equipo ya fue validada por el guard de /api/ghl (cookie).
+  // EventSource same-origin envía la cookie automáticamente: no hay token en la URL.
+  // Aquí solo se limitan las conexiones abiertas.
+  const sseUserId = getAuthUser(req)?.id ?? -1;
+  if (
+    sseConnections.total >= SSE_MAX_TOTAL ||
+    (sseConnections.byUser.get(sseUserId) ?? 0) >= SSE_MAX_PER_USER
+  ) {
+    return res.status(429).send("Demasiadas conexiones abiertas");
   }
+  sseConnections.total++;
+  sseConnections.byUser.set(sseUserId, (sseConnections.byUser.get(sseUserId) ?? 0) + 1);
+  let sseReleased = false;
+  const releaseSse = () => {
+    if (sseReleased) return;
+    sseReleased = true;
+    sseConnections.total = Math.max(0, sseConnections.total - 1);
+    const left = (sseConnections.byUser.get(sseUserId) ?? 1) - 1;
+    if (left <= 0) sseConnections.byUser.delete(sseUserId);
+    else sseConnections.byUser.set(sseUserId, left);
+  };
 
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
@@ -583,6 +621,7 @@ ghlInboxRouter.get("/api/ghl/inbox/stream", (req, res: Response) => {
   req.on("close", () => {
     clearInterval(heartbeat);
     ghlInboxEmitter.off("update", onUpdate);
+    releaseSse();
   });
 });
 

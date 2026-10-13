@@ -44,7 +44,7 @@ export function WhatsAppNotification() {
 
     function connect() {
       try {
-        es = new EventSource("/api/ghl/inbox/stream?token=nayade-ghl-stream");
+        es = new EventSource("/api/ghl/inbox/stream");
         es.onmessage = (e) => {
           try {
             const payload = JSON.parse(e.data);
