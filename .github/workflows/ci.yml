@@ -167,3 +167,56 @@ jobs:
             echo "| Aplicar baseline a MySQL vacío | ${{ steps.apply.outcome }} |"
             echo "| Sin columnas que falten frente a schema.ts | ${{ steps.audit.outcome }} |"
           } >> "$GITHUB_STEP_SUMMARY"
+
+  # Suites propias de la transformación SaaS: BLOQUEANTES (sin continue-on-error).
+  # Incluye las pruebas de integración con MySQL real (aislamiento, aprovisionamiento,
+  # facturación, copias verificadas, aplicación real en multiempresa).
+  core-suites:
+    name: Suites del Core multiempresa (bloqueante)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: ci_only
+          MYSQL_DATABASE: registry_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h127.0.0.1 -uroot -pci_only"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
+    env:
+      NODE_ENV: test
+      LOCAL_AUTH: "true"
+      JWT_SECRET: ci-only-placeholder-not-a-secret-000000000000
+      EMAIL_ENCRYPTION_KEY: ci-only-placeholder-not-a-secret-000000000000
+      REGISTRY_TEST_DATABASE_URL: mysql://root:ci_only@127.0.0.1:3306/registry_test
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Instalar dependencias
+        run: pnpm install --frozen-lockfile
+
+      - name: Suites propias (unitarias + integración MySQL)
+        run: >-
+          pnpm exec vitest run
+          server/tenant server/erm server/modules server/moduleRouteGuard
+          server/provisioning server/billing server/support server/controlPlane
+          server/backup server/ops server/multiTenantApp
+          server/legacyDb server/migrationRunner server/poolConsolidation
+          server/kbRoute server/ghlInboxRouter server/documentAccess
+          server/accountSecurity server/sessionAndUploads server/redsys.security
+          server/rbac server/health
