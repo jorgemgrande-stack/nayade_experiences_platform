@@ -19,6 +19,7 @@
 
 import type { Request, Response, NextFunction } from "express";
 import { verifySessionToken } from "./localAuth";
+import { getSupportIdentity } from "./_core/support/session";
 import { sdk } from "./_core/sdk";
 
 // ─── Rutas tRPC completamente públicas (no requieren sesión) ─────────────────
@@ -208,6 +209,7 @@ export function createAuthGuardMiddleware(useLocalAuth: boolean) {
         const userId = await verifySessionToken(token);
         authenticated = userId !== null;
       }
+      if (!authenticated) authenticated = (await getSupportIdentity(req)) !== null;
     } else {
       // Modo Manus OAuth: usar el SDK de Manus para verificar la sesión
       try {

@@ -25,6 +25,8 @@ import type { EntitlementAdmin } from "../_core/modules/mysqlEntitlements";
 import type { QuotaAdmin } from "../_core/erm/mysqlQuotas";
 import { ModuleError } from "../_core/modules/contract";
 import { authenticate, getAuth, requireScope, type ServiceToken } from "./auth";
+import { signSupportToken } from "../_core/support/session";
+import type { SupportAdmin } from "../_core/support/grants";
 
 export interface ControlPlaneDeps {
   tokens: ServiceToken[];
@@ -41,6 +43,9 @@ export interface ControlPlaneDeps {
   verifyDomain?: typeof verifyDomainOwnership;
   /** Límite de peticiones por minuto y token (por defecto 120). */
   perMinute?: number;
+  /** Acceso delegado de soporte (requiere SUPPORT_JWT_SECRET). */
+  support?: Pick<SupportAdmin, "create" | "revoke">;
+  supportSecret?: string;
 }
 
 const idSchema = z.string().regex(/^[a-z0-9][a-z0-9_-]{0,62}$/);
@@ -360,6 +365,47 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
       wrap(async (req, res) => {
         const id = idSchema.parse(req.params.id);
         res.json({ subscription: await d.billingStore!.getSubscriptionByTenant(id), invoices: await d.billingStore!.listInvoices(id) });
+      }),
+    );
+  }
+
+  // ── Soporte delegado ───────────────────────────────────────────────────────
+  if (d.support && d.supportSecret) {
+    router.post(
+      "/tenants/:id/support-access",
+      requireScope("support:write"),
+      wrap(async (req, res) => {
+        const id = idSchema.parse(req.params.id);
+        const b = z
+          .object({
+            operator: z.string().min(2).max(100),
+            reason: z.string().min(5).max(300),
+            minutes: z.number().int().min(1).max(240),
+            readOnly: z.boolean().default(true),
+          })
+          .parse(req.body);
+        const t = await d.reader.getTenant(id);
+        if (!t) throw new RegistryError("not_found", "Tenant no encontrado");
+        if (t.status === "deleted" || t.status === "deleting") throw new RegistryError("conflict", "El tenant no admite acceso");
+        const g = await d.support!.create({ tenantId: id, ...b });
+        const token = await signSupportToken(g, d.supportSecret!);
+        const primary = (await d.reader.listDomains(id)).find((x) => x.isPrimary && x.status === "active");
+        res.status(201).json({
+          grantId: g.id,
+          expiresAt: new Date(g.expiresAt).toISOString(),
+          readOnly: g.readOnly,
+          enterUrl: primary ? `https://${primary.domain}/_support/enter?t=${token}` : null,
+          token: primary ? undefined : token,
+        });
+      }),
+    );
+    router.delete(
+      "/support-access/:grantId",
+      requireScope("support:write"),
+      wrap(async (req, res) => {
+        const operator = z.string().min(2).max(100).parse(req.query.operator ?? getAuth(req)!.tokenId);
+        await d.support!.revoke(z.string().regex(/^[a-f0-9]{32}$/).parse(req.params.grantId), operator);
+        res.status(204).end();
       }),
     );
   }

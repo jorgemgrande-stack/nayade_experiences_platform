@@ -14,6 +14,7 @@ import bcrypt from "bcryptjs";
 import express, { type Request, type Response, type Router } from "express";
 import { SignJWT, jwtVerify } from "jose";
 import { sessionTenantAllowed, sessionTenantClaim } from "./_core/tenantRegistry/sessionBinding";
+import { getSupportUser } from "./_core/support/session";
 import { getDb } from "./db";
 import { users } from "../drizzle/schema";
 import { eq } from "drizzle-orm";
@@ -64,6 +65,10 @@ export async function getUserFromRequest(req: Request) {
       cookies[name] = value; // cookie mal codificada: no debe tumbar la petición
     }
   }
+  // Soporte delegado (solo si está configurado y hay una concesión vigente para este tenant)
+  const support = await getSupportUser(req);
+  if (support) return support as unknown as typeof users.$inferSelect;
+
   const token = cookies[COOKIE_NAME];
   if (!token) return null;
 

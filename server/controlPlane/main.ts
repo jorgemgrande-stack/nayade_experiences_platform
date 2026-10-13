@@ -30,6 +30,7 @@ import {
   MysqlSchemaApplier,
   MysqlTenantSeeder,
 } from "../_core/provisioning/mysqlAdapters";
+import { SupportAdmin } from "../_core/support/grants";
 import { createControlPlaneApp } from "./api";
 import { parseTokens } from "./auth";
 
@@ -82,6 +83,8 @@ async function main() {
     provisioning,
     usage,
     platformTarget: process.env.CP_PLATFORM_TARGET ?? "",
+    support: new SupportAdmin(pool),
+    supportSecret: process.env.SUPPORT_JWT_SECRET && process.env.SUPPORT_JWT_SECRET.length >= 32 ? process.env.SUPPORT_JWT_SECRET : undefined,
   });
 
   const port = Number(process.env.CP_PORT ?? 4100);
