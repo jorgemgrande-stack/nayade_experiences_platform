@@ -1,9 +1,9 @@
 # Estado de ejecución
 
 > Fuente de verdad para reanudar en otra sesión. Se actualiza al cerrar cada bloque.
-> Última actualización: 2026-10-14 (tras PR #47).
+> Última actualización: 2026-10-14 (tras PR #58+ y #59).
 
-**Producción:** `TENANT_MODE=single`. Último despliegue verificado: `main` @ #47 (sondas 200/401 esperadas, 0 errores en logs; tareas programadas arrancando).
+**Producción:** `TENANT_MODE=single`. Último despliegue verificado en `main` (sondas 200/401 esperadas, 0 errores en logs). `/api/trpc/public.getTheme` no altera el aspecto de Náyade.
 
 ## Worktrees (Window 2)
 `C:\Users\jgran\Documents\nayade_worktrees\{core-saas,core-int,core-pools,core-work}`; Window 1: `prod-features`.
@@ -30,15 +30,23 @@ PR pequeño → CI informativo → `gh pr merge --merge` → esperar despliegue 
 | SEO por tenant en multi | I·T·M·D | `tenantSeo.ts` |
 | Licencias en routers sectoriales (hotel/spa/restaurants) | I·T·M·D | `moduleRouteGuard`; single sin cambios |
 | Prueba E2E multi-tenant con la app real (2 empresas, baseline completo) | I·T | `multiTenantApp.mysql.test.ts` |
-| Big Elephant CRM (repo `jorgemgrande-stack/big-elephant-crm`) | I·T | SPA inicial: empresas, dominios, licencias, cuotas, auditoría, soporte, alta |
+
+| Tema/marca por tenant, sitio neutro, branding Big Elephant | I·T·M·D | `public.getTheme`, `getTenantPage`, páginas admin Marca y tema |
+| Bóveda de credenciales + Integraciones (UI) | I·T·M·D | `integrations.*`, migración `0001_integration_credentials` |
+| Navegación por módulos (`modules.active`) | I·T·M·D | `AdminLayout` oculta sectores sin licencia |
+| CRM comercial (leads→contratos→alta) | I·T·M·D | `/cp/v1/crm`, BD `db/crm`; SPA con panel, leads, oportunidades, empresas, contratos, tareas |
+| SSO OIDC del plano de control | I·T·M·D | `/cp/v1/auth/oidc`; SPA con Google Identity Services opcional |
+| SDK y cargador de módulos externos + plantilla | I·T·M·D | repo `elephant-module-template`; `ELEPHANT_MODULES` |
+| Incidencias, alertas y retención | I·T·M·D | registro 0005; `/cp/v1/incidents`, CLI |
+| Adaptador de pagos (Stripe) con cobros apagados | I·T (PR) | doble candado |
 
 ## Cola (siguiente, en orden)
-1. Fase 07: plantillas CMS iniciales (5), tema/marca por tenant en el cliente, navegación dinámica por módulos (cliente). Coordinar con Ventana 1.
-2. Fase 06: adaptador real de proveedor de pagos y tarifas definitivas (bloqueado por decisión comercial); webhooks reales.
-3. Fase 09: CRM comercial (leads, oportunidades, tickets), SSO/roles internos, despliegue de la SPA.
-4. Fase 01B restante: pools/DDL de arranque de `_core/index.ts` (modo single), RBAC y pruebas Redsys ampliadas, CI estricto sobre las suites propias.
-5. Extracción de módulos sectoriales a repositorios propios (hotel/spa/restaurants) sobre el contrato de módulos.
-6. Configuración por tenant de integraciones (correo, GHL, VAPI, Redsys) en lugar de variables de entorno globales.
+1. Plugin de routers tRPC tipado para extraer hotel/spa/restaurants (B14).
+2. Despliegue del plano de control y del CRM (B12) y alta real de operadores SSO (B10).
+3. Elegir proveedor de pagos y tarifas (B11) → activar cobros con autorización.
+4. Facturación SaaS en el CRM (suscripciones/facturas visibles) y tickets de soporte.
+5. Cifrado de campo de las credenciales heredadas en `system_settings` (GHL/VAPI de Náyade) con migración controlada.
+6. Fase 01B: pools/DDL de arranque de `_core/index.ts` en modo single, RBAC y pruebas Redsys ampliadas.
 
 ## Deuda conocida
 - tsc: ~106–118 errores preexistentes (línea base); tests: 18 fallos preexistentes (BD real/otros).

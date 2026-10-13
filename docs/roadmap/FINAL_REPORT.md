@@ -1,6 +1,21 @@
-# Informe técnico y ejecutivo (corte 2026-10-14)
+# Informe técnico y ejecutivo (corte 2026-10-14, 2.ª tanda)
 
 > Corte intermedio de la ejecución autónoma. El trabajo continúa; este documento refleja lo comprobado hasta la fecha.
+
+## 0. Segunda tanda (PR #53–#59 y repositorios nuevos)
+
+Implementado, probado, fusionado y desplegado (inactivo salvo lo indicado):
+
+- **Tematización por tenant** (#53, hotfix #54): marca, logotipo, favicon, colores, tipografía y radio por tenant; sitio público neutro en multi (páginas propias con HTML saneado, pie y marca del tenant); identificación discreta «Plataforma Big Elephant». En single no cambia el aspecto de Náyade (verificado en producción).
+- **Navegación dinámica** (#53): `modules.active`; el panel oculta los sectores sin licencia; la autorización real sigue en servidor.
+- **Integraciones por tenant** (#53): bóveda AES-256-GCM (AAD tenant|proveedor|campo), `integrations.*` (guardar, probar, borrar) y pantallas de administración; `integrationEnv()` lee la bóveda en multi. Probado con la aplicación real sobre dos BD.
+- **CRM comercial** (#55): leads, empresas, contactos, oportunidades con embudo, contratos y tareas; activar un contrato aprovisiona el tenant y arranca la prueba. SPA en `big-elephant-crm`.
+- **SSO** (#56): OIDC → sesión corta con ámbitos y lista explícita de operadores; SPA con Google Identity Services opcional.
+- **Módulos independientes** (#57 + repo `elephant-module-template`): SDK, cargador ESM con aislamiento de fallos, instalador de migraciones por tenant (aprovisionamiento y `migrate-all`), plantilla con CI.
+- **Alertas, incidencias y retención** (#58): reglas, deduplicación, ack/resolve, webhook, retención con dry-run.
+- **Pagos** (#59): adaptador Stripe por HTTP, idempotencia, webhooks firmados; **cobros desactivados por defecto** (doble candado).
+
+Pendiente de esta tanda: extracción física de hotel/spa/restaurants (requiere plugin de routers tRPC tipado), despliegue del plano de control y del CRM, elección de proveedor y tarifas, facturación visible en el CRM y tickets de soporte. Ver `BLOCKERS.md` B9–B14.
 
 ## A. Resumen ejecutivo
 
@@ -26,7 +41,7 @@ Lo que **no** está hecho o activado: la activación multiempresa real en produc
 
 ## C. Código e integración
 
-- Repositorio Core: PR #2–#51 fusionados en `main` (merge commits), desplegados por Railway uno a uno con sondas y revisión de logs.
+- Repositorio Core: PR #2–#59 fusionados en `main` (merge commits), desplegados por Railway uno a uno con sondas y revisión de logs.
 - Repositorio CRM: `jorgemgrande-stack/big-elephant-crm` (privado), `main` con CI.
 - Detalle por componente y rutas: `docs/architecture/ELEPHANT_SOURCE_ARQUITECTURA.md`.
 
