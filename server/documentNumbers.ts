@@ -14,25 +14,15 @@
  */
 
 import { drizzle } from "drizzle-orm/mysql2";
-import mysql from "mysql2/promise";
+import { legacyDb } from "./_core/legacyDb";
 import { eq, and, sql } from "drizzle-orm";
 import { documentCounters, documentNumberLogs } from "../drizzle/schema";
 
-// Pool lazy: se crea la primera vez que se necesita, no al importar el módulo.
-// Esto evita crash en arranque si DATABASE_URL aún no está disponible.
-let _pool: ReturnType<typeof mysql.createPool> | null = null;
-let _db: ReturnType<typeof drizzle> | null = null;
+// Base de datos del registro (pool compartido, resolución perezosa).
 let _tablesReady = false;
 
 function getDb() {
-  if (!_db) {
-    if (!process.env.DATABASE_URL) {
-      throw new Error("[documentNumbers] DATABASE_URL is not defined");
-    }
-    _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
-    _db = drizzle(_pool);
-  }
-  return _db;
+  return legacyDb();
 }
 
 // Crea las tablas si no existen — idempotente, corre una sola vez por proceso.

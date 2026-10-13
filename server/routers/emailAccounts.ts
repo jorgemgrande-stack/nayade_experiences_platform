@@ -6,10 +6,10 @@ import { z } from "zod";
 import { staffProcedure, router } from "../_core/trpc";
 import { ImapFlow } from "imapflow";
 import nodemailer from "nodemailer";
-import mysql from "mysql2/promise";
+import { legacyPool } from "../_core/legacyDb";
 import { encryptPassword, decryptPassword } from "../utils/emailCrypto";
 
-const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
+const _pool = legacyPool();
 
 // ─── Zod schemas ─────────────────────────────────────────────────────────────
 

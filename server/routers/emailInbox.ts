@@ -4,11 +4,11 @@
  */
 import { z } from "zod";
 import { staffProcedure, router } from "../_core/trpc";
-import mysql from "mysql2/promise";
+import { legacyPool } from "../_core/legacyDb";
 import { sendViaAccountSmtp } from "../services/commercialEmailService";
 import { randomBytes } from "crypto";
 
-const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
+const _pool = legacyPool();
 
 function parseJsonField(val: any): any {
   if (!val) return [];
