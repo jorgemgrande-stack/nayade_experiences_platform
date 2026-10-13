@@ -36,6 +36,11 @@ import { CrmService } from "../crm/service";
 import { createContractActivation } from "../crm/activation";
 import { createControlPlaneApp } from "./api";
 import { parseTokens } from "./auth";
+import fs from "node:fs";
+import { MysqlBillingStore } from "../_core/billing/mysqlStore";
+import { SubscriptionService } from "../_core/billing/service";
+import { createPaymentProvider } from "../_core/billing/providers";
+import { RegistryTenantEffects } from "../_core/billing/effects";
 import { SsoService, parseSsoUsers } from "./sso";
 import { createRemoteJWKSet } from "jose";
 
@@ -79,6 +84,22 @@ async function main() {
     ? new MysqlUsageStore(mysql.createPool({ uri: process.env.ERM_DATABASE_URL, connectionLimit: 2 }))
     : undefined;
 
+  // Facturación: requiere BD comercial y catálogo; los cobros siguen apagados salvo
+  // BILLING_PROVIDER + BILLING_CHARGES_ENABLED=true (ver server/_core/billing/providers.ts).
+  let billing: SubscriptionService | undefined;
+  let billingStore: MysqlBillingStore | undefined;
+  if (process.env.BILLING_DATABASE_URL && process.env.BILLING_CATALOG_FILE) {
+    billingStore = new MysqlBillingStore(mysql.createPool({ uri: process.env.BILLING_DATABASE_URL, connectionLimit: 3 }));
+    const cfg = createPaymentProvider(process.env);
+    billing = new SubscriptionService({
+      catalog: JSON.parse(fs.readFileSync(process.env.BILLING_CATALOG_FILE, "utf8")),
+      store: billingStore,
+      provider: cfg.provider,
+      chargesEnabled: cfg.chargesEnabled,
+      effects: new RegistryTenantEffects(registry, store, entitlements, quotas),
+    });
+    console.log(JSON.stringify({ ctx: "Billing", provider: cfg.kind, chargesEnabled: cfg.chargesEnabled }));
+  }
   let sso: SsoService | undefined;
   if (process.env.CP_OIDC_ISSUER && process.env.CP_OIDC_CLIENT_ID && process.env.CP_OIDC_JWKS_URL && process.env.CP_SESSION_SECRET) {
     sso = new SsoService({
@@ -100,6 +121,8 @@ async function main() {
   }
 
   const app = createControlPlaneApp({
+    billing,
+    billingStore,
     sso,
     crm,
     tokens,

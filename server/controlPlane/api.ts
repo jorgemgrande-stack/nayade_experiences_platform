@@ -123,7 +123,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
     app.post(
       "/cp/v1/billing/webhook",
       wrap(async (req, res) => {
-        const sig = String(req.headers["x-signature"] ?? "");
+        const sig = String(req.headers["stripe-signature"] ?? req.headers["x-signature"] ?? "");
         const out = await d.billing!.handleWebhook((req as any).rawBody ?? "", sig);
         res.json(out);
       }),
