@@ -5,6 +5,9 @@ import { nanoid } from "nanoid";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import viteConfig from "../../vite.config";
+import { isMultiTenant } from "./tenant";
+import { buildTenantMeta } from "./tenantSeo";
+import { getSystemSetting } from "../config";
 
 export async function setupVite(app: Express, server: Server) {
   const serverOptions = {
@@ -126,9 +129,14 @@ function resolveRouteMeta(pathname: string): { meta: RouteMeta; canonical: strin
 // Cache the built index.html so we only read it from disk once per process.
 let _htmlCache: string | null = null;
 
-function injectSeoMeta(html: string, pathname: string): string {
-  const { meta, canonical } = resolveRouteMeta(pathname);
-  const imageUrl = meta.image ?? DEFAULT_OG_IMAGE;
+function injectSeoMeta(
+  html: string,
+  pathname: string,
+  override?: { meta: RouteMeta; canonical: string },
+): string {
+  // `override` (multi): metadatos del tenant, ya escapados; sin él, las rutas de Náyade (single)
+  const { meta, canonical } = override ?? resolveRouteMeta(pathname);
+  const imageUrl = meta.image ?? (override ? "" : DEFAULT_OG_IMAGE);
 
   return html
     .replace(/<title>[^<]*<\/title>/, `<title>${meta.title}</title>`)
@@ -189,7 +197,7 @@ export function serveStatic(app: Express) {
   app.use(express.static(distPath));
 
   // SPA fallback: inject route-specific SEO meta before sending index.html
-  app.use("*", (req, res) => {
+  app.use("*", async (req, res) => {
     const indexPath = path.resolve(distPath, "index.html");
     if (!_htmlCache) {
       try {
@@ -200,7 +208,26 @@ export function serveStatic(app: Express) {
     }
     // req.path is "/" for all routes under app.use("*") — use originalUrl instead
     const pathname = req.originalUrl.split("?")[0] || "/";
-    const html = injectSeoMeta(_htmlCache, pathname);
+    let override: { meta: RouteMeta; canonical: string } | undefined;
+    if (isMultiTenant()) {
+      // Multiempresa: nunca el SEO fijo de otra empresa; salen de los ajustes del tenant
+      const [brandName, description, logoUrl, ogImageUrl] = await Promise.all([
+        getSystemSetting("brand_name", ""),
+        getSystemSetting("seo_description", ""),
+        getSystemSetting("brand_logo_url", ""),
+        getSystemSetting("seo_og_image_url", ""),
+      ]);
+      const m = buildTenantMeta({
+        settings: { brandName, description, logoUrl, ogImageUrl },
+        host: req.headers.host,
+        pathname,
+      });
+      override = {
+        meta: { title: m.title, description: m.description, h1: m.h1, body: m.body, image: m.image },
+        canonical: m.canonical,
+      };
+    }
+    const html = injectSeoMeta(_htmlCache, pathname, override);
     res.set("Content-Type", "text/html").send(html);
   });
 }
