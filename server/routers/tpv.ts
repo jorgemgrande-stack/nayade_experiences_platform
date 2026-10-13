@@ -69,6 +69,7 @@ function generateTransactionNumber(): string {
 
 import { normalizeRegime, calcGeneralTax } from "../taxUtils";
 import { legacyDb, legacyPool } from "../_core/legacyDb";
+import { integrationEnv } from "../_core/tenantConfig";
 
 type FiscalData = { fiscalRegime: "reav" | "general" | "mixed"; taxRate: number; providerPercent: number; agencyMarginPercent: number };
 
@@ -1370,7 +1371,7 @@ export const tpvRouter = router({
                   });
                 }
               }
-              const webhookUrl = process.env.GHL_RESERVATION_WEBHOOK_URL;
+              const webhookUrl = integrationEnv("GHL_RESERVATION_WEBHOOK_URL");
               if (webhookUrl) {
                 await triggerGHLWorkflow(webhookUrl, {
                   contactId: ghlContactId,

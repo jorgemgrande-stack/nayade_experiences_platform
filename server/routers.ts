@@ -201,6 +201,7 @@ import { publicExpensesRouter } from "./routers/publicExpenses";
 import { fiscalAuditRouter } from "./routers/fiscalAuditRouter";
 import { getAllCounters, updateCounterPrefix, resetCounter, getDocumentNumberLogs } from "./documentNumbers";
 import type { DocumentType } from "./documentNumbers";
+import { integrationEnv } from "./_core/tenantConfig";
 const adminProcedure = permissionProcedure("settings.manage", ["admin"]);
 
 
@@ -816,8 +817,8 @@ export const appRouter = router({
 
     getGHLStatus: adminProcedure.query(async () => {
       const db = await getDb();
-      const envKey = process.env.GHL_API_KEY;
-      const envLoc = process.env.GHL_LOCATION_ID;
+      const envKey = integrationEnv("GHL_API_KEY");
+      const envLoc = integrationEnv("GHL_LOCATION_ID");
       let dbKey = "";
       let dbLoc = "";
       if (db) {
