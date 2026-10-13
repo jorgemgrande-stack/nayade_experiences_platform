@@ -202,6 +202,18 @@ import type { DocumentType } from "./documentNumbers";
 const adminProcedure = permissionProcedure("settings.manage", ["admin"]);
 
 
+/**
+ * Extras de una reserva online.
+ * No existe un catálogo de extras en servidor, así que el precio de un extra NO puede
+ * proceder del cliente (hasta ahora se sumaba tal cual, admitiendo importes negativos).
+ * Ningún cliente actual envía extras (siempre []); se rechaza cualquier extra hasta que
+ * exista un catálogo y se recalcule por id en servidor.
+ */
+const noClientPricedExtras = z
+  .array(z.object({ name: z.string(), price: z.number(), quantity: z.number() }))
+  .max(0, "Los extras no están disponibles en la reserva online.")
+  .default([]);
+
 export const appRouter = router({
   system: systemRouter,
   publicExpenses: publicExpensesRouter,
@@ -1623,11 +1635,7 @@ export const appRouter = router({
         bookingDate: z.string(),
         people: z.number().min(1).max(100),
         variantId: z.number().optional(),
-        extras: z.array(z.object({
-          name: z.string(),
-          price: z.number(),
-          quantity: z.number(),
-        })).default([]),
+        extras: noClientPricedExtras,
         customerName: z.string().min(2),
         customerEmail: z.string().email(),
         customerPhone: z.string().optional(),
@@ -1680,7 +1688,7 @@ export const appRouter = router({
         const { totalEuros: baseTotal, unitsBooked } = calcPricing(
           pricePerPerson, input.people, pricingType, unitCapacity, maxUnits
         );
-        // SECURITY NOTE: Los extras no se validan contra BD porque no existe tabla de catálogo de extras.
+        // Los extras con precio del cliente se rechazan en el esquema de entrada (noClientPricedExtras).
         const extrasTotal = input.extras.reduce((sum, e) => sum + e.price * e.quantity, 0);
         const totalEuros = baseTotal + extrasTotal;
         const amountCents = Math.round(totalEuros * 100); // Redsys usa céntimos
@@ -1793,11 +1801,7 @@ export const appRouter = router({
           bookingDate: z.string(),
           people: z.number().min(1).max(100),
           variantId: z.number().optional(),
-          extras: z.array(z.object({
-            name: z.string(),
-            price: z.number(),
-            quantity: z.number(),
-          })).default([]),
+          extras: noClientPricedExtras,
           // Lego Packs configurables: líneas opcionales realmente elegidas por el cliente
           legoPackLineIds: z.array(z.number()).optional(),
           legoPackLinePeople: z.record(z.string(), z.number()).optional(),
@@ -1807,6 +1811,8 @@ export const appRouter = router({
         customerPhone: z.string().optional(),
         origin: z.string().url(),
         discountCodeId: z.number().optional(),
+        /** Código tal como lo validó el cliente; debe coincidir con el id (el id es enumerable). */
+        discountCode: z.string().max(50).optional(),
         // discountPercent ya no se acepta del cliente — se consulta en BD por discountCodeId
         // Meta CAPI attribution (solo si el cliente aceptó marketing consent)
         fbp: z.string().max(255).optional(),
@@ -1907,6 +1913,28 @@ export const appRouter = router({
             unitsBooked: itemUnits || undefined,
           });
           productNames.push(product.title);
+        }
+        // 1b. Un descuento por id exige conocer el código (el id es enumerable). Se valida
+        // ANTES de crear reservas para no dejar pre-reservas huérfanas si se rechaza.
+        if (input.discountCodeId) {
+          const dbCheck = await getDb();
+          const [codeRow] = dbCheck
+            ? await dbCheck
+                .select({ code: discountCodes.code })
+                .from(discountCodes)
+                .where(eq(discountCodes.id, input.discountCodeId))
+                .limit(1)
+            : [];
+          if (
+            codeRow &&
+            (!input.discountCode ||
+              codeRow.code.toUpperCase() !== input.discountCode.toUpperCase().trim())
+          ) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "El código de descuento no es válido. Vuelve a aplicarlo e inténtalo de nuevo.",
+            });
+          }
         }
         // 2. Generar un merchantOrder único para todo el carrito
         const merchantOrder = generateMerchantOrder();
