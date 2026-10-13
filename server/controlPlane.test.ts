@@ -241,6 +241,15 @@ describe("operaciones", () => {
     expect(r.json.error).toBe("invalid_signature");
   });
 
+  it("métricas en formato Prometheus, sin identificadores de tenant", async () => {
+    const r = await call("GET", "/cp/v1/metrics", { token: FULL });
+    expect(r.status).toBe(200);
+    expect(r.text).toContain("# TYPE elephant_tenants gauge");
+    expect(r.text).toMatch(/elephant_tenants\{status="[a-z]+"\} \d+/);
+    expect(r.text).not.toContain("acme");
+    expect((await call("GET", "/cp/v1/metrics", { token: READ })).status).toBe(403);
+  });
+
   it("rutas inexistentes → 404 genérico; el servicio no anuncia su tecnología", async () => {
     const r = await call("GET", "/otra-cosa");
     expect(r.status).toBe(404);
