@@ -22,6 +22,11 @@ export interface TenantSeeder {
   seedTemplate?(dsn: string, templateId: string): Promise<void>;
 }
 
+export interface ModuleInstaller {
+  /** Aplica las migraciones de los módulos indicados (y sus dependencias) a la BD del tenant. Idempotente. */
+  install(dsn: string, moduleIds: string[]): Promise<{ installed: string[] }>;
+}
+
 export interface ProvisioningStore {
   get(tenantId: string): Promise<ProvisioningRecord | null>;
   put(rec: ProvisioningRecord): Promise<void>;

@@ -26,6 +26,11 @@ export interface MigrationDeps {
   registry: Pick<TenantRegistryService, "getActiveDsn" | "setSchemaVersion">;
   schema: SchemaApplier & { plan?: (dsn: string) => Promise<string[]> };
   actor: Actor;
+  /** Módulos externos: instalación y licencias del tenant (opcional). */
+  modules?: {
+    install(dsn: string, moduleIds: string[]): Promise<{ installed: string[] }>;
+    licensedFor(tenantId: string): Promise<string[]>;
+  };
 }
 
 export async function migrateAllTenants(
@@ -47,6 +52,7 @@ export async function migrateAllTenants(
       }
       const before = d.schema.plan ? await d.schema.plan(dsn) : [];
       const v = await d.schema.apply(dsn);
+      if (d.modules) await d.modules.install(dsn, await d.modules.licensedFor(tenantId));
       await d.registry.setSchemaVersion(tenantId, v.schemaVersion, d.actor);
       return { tenantId, outcome: before.length || !d.schema.plan ? "migrated" : "up_to_date", pending: before, schemaVersion: v.schemaVersion };
     } catch (e) {

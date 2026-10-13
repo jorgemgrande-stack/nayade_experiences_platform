@@ -11,6 +11,7 @@ export const PROVISION_STEPS = [
   "database", // BD física + usuario propio + DSN cifrado en el registro
   "schema", // baseline + migraciones
   "activate_database", // la BD pasa a activa
+  "modules", // migraciones de los módulos contratados
   "admin", // administrador inicial (invitación)
   "domain", // subdominio de plataforma activo
   "branding", // marca

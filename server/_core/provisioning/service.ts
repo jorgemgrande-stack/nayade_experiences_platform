@@ -6,7 +6,7 @@
 import { RegistryError } from "../tenantRegistry/contract";
 import type { Actor, TenantRegistryService } from "../tenantRegistry/service";
 import type { TenantRegistryReader } from "../tenantRegistry/store";
-import type { DatabaseProvisioner, ProvisioningStore, SchemaApplier, TenantSeeder, WelcomeNotifier } from "./ports";
+import type { DatabaseProvisioner, ModuleInstaller, ProvisioningStore, SchemaApplier, TenantSeeder, WelcomeNotifier } from "./ports";
 import {
   PROVISION_STEPS,
   ProvisioningError,
@@ -37,6 +37,8 @@ export interface ProvisioningDeps {
   quotas: QuotaSetter;
   store: ProvisioningStore;
   welcome?: WelcomeNotifier;
+  /** Instala las migraciones de los módulos contratados (opcional). */
+  modules?: ModuleInstaller;
   now?: () => number;
   /** Reintentos por paso dentro de una misma ejecución. */
   maxAttemptsPerStep?: number;
@@ -207,6 +209,12 @@ export class ProvisioningService {
         if (!latest) throw new ProvisioningError("conflict", "No hay base de datos pendiente de activar");
         await this.d.registry.activateDatabase(id, latest.id, actor);
         return;
+      }
+      case "modules": {
+        const ids = r.modules ?? [];
+        if (!this.d.modules || ids.length === 0) return { info: { installed: 0 } };
+        const out = await this.d.modules.install(await this.dsn(id), ids);
+        return { info: { installed: out.installed.length } };
       }
       case "admin": {
         const dsn = await this.dsn(id);
