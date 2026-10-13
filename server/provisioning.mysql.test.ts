@@ -94,6 +94,7 @@ describe.skipIf(!URL_)("aprovisionamiento con MySQL real", () => {
         platformDomain: "elephantsource.es",
         modules: ["hotel"],
         brand: { name: "Prov Real", primaryColor: "#112233" },
+        templateId: "hotel",
         quotas: [{ metric: "email.sent", period: "day", limit: 100, enforcement: "hard" }],
       },
       OP,
@@ -119,6 +120,11 @@ describe.skipIf(!URL_)("aprovisionamiento con MySQL real", () => {
       expect(u).toEqual([{ email: "admin@prov-real.example", role: "admin" }]);
       const [s] = await conn.query<mysql.RowDataPacket[]>("SELECT value FROM system_settings WHERE `key` = 'brand_name'");
       expect(s[0].value).toBe("Prov Real");
+      const [pg] = await conn.query<mysql.RowDataPacket[]>("SELECT slug, content FROM static_pages ORDER BY slug");
+      expect(pg.map((p) => p.slug)).toEqual(expect.arrayContaining(["habitaciones", "inicio", "politica-de-privacidad"]));
+      expect(pg.find((p) => p.slug === "inicio")!.content).toContain("Prov Real");
+      const [mn] = await conn.query<mysql.RowDataPacket[]>("SELECT COUNT(*) AS n FROM menu_items");
+      expect(Number(mn[0].n)).toBeGreaterThan(3);
       // aislamiento de privilegios: no puede leer la BD del registro
       await expect(conn.query("SELECT * FROM registry_test.tenants")).rejects.toThrow();
     } finally {

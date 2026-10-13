@@ -15,6 +15,7 @@ import mysql from "mysql2/promise";
 import { loadMigrations, splitStatements, validateMigrations } from "../../../scripts/db/migrationLib";
 import type { DatabaseProvisioner, ProvisioningStore, SchemaApplier, TenantSeeder } from "./ports";
 import type { ProvisioningRecord } from "./types";
+import { getTemplate, renderTemplateText } from "../templates/catalog";
 
 const TABLE = "__elephant_migrations";
 const BASELINE_ID = "0000_baseline";
@@ -145,6 +146,38 @@ export class MysqlTenantSeeder implements TenantSeeder {
         [openId, input.name, input.email, inviteToken, new Date(Date.now() + 7 * 86_400_000)],
       );
       return { created: true, inviteToken };
+    } finally {
+      await conn.end().catch(() => undefined);
+    }
+  }
+
+  /** Siembra una plantilla inicial sin pisar lo que el tenant ya tenga. */
+  async seedTemplate(dsn: string, templateId: string): Promise<void> {
+    const tpl = getTemplate(templateId);
+    if (!tpl) throw new Error(`Plantilla desconocida: ${templateId}`);
+    const conn = await mysql.createConnection({ uri: dsn });
+    try {
+      const [b] = await conn.query<mysql.RowDataPacket[]>("SELECT value FROM system_settings WHERE `key` = 'brand_name' LIMIT 1");
+      const brand = String(b[0]?.value ?? "") || "Mi empresa";
+      for (const [key, value] of Object.entries(tpl.settings)) {
+        await conn.query(
+          "INSERT IGNORE INTO system_settings (`key`, value, category, label) VALUES (?, ?, 'theme', ?)",
+          [key, value, key],
+        );
+      }
+      for (const p of tpl.pages) {
+        await conn.query(
+          "INSERT IGNORE INTO static_pages (slug, title, content, metaTitle, metaDescription, isPublished) VALUES (?,?,?,?,?,1)",
+          [p.slug, p.title, renderTemplateText(p.content, brand), p.title, p.metaDescription ? renderTemplateText(p.metaDescription, brand) : null],
+        );
+      }
+      const [m] = await conn.query<mysql.RowDataPacket[]>("SELECT COUNT(*) AS n FROM menu_items");
+      if (Number(m[0].n) === 0) {
+        let order = 0;
+        for (const it of tpl.menu) {
+          await conn.query("INSERT INTO menu_items (label, url, menuZone, sortOrder, isActive) VALUES (?,?,?,?,1)", [it.label, it.url, it.zone, order++]);
+        }
+      }
     } finally {
       await conn.end().catch(() => undefined);
     }
