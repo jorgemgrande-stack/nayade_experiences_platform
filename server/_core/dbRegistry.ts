@@ -29,6 +29,8 @@ const inflight = new Map<string, Promise<Database | null>>();
 let resolver: ConnectionResolver | null = null;
 
 const POOL_CONNECTION_LIMIT = 10;
+/** Máximo de pools simultáneos en modo multi (se expulsa el menos usado). */
+const MAX_TENANT_POOLS = 50;
 
 /** Configura cómo se resuelve la conexión de cada tenant (modo multi). */
 export function setConnectionResolver(r: ConnectionResolver | null): void {
@@ -57,7 +59,14 @@ export async function getTenantDatabase(tenantId?: string): Promise<Database | n
   const key = !isMultiTenant() ? DEFAULT_TENANT_ID : id;
 
   const existing = entries.get(key);
-  if (existing) return existing.db;
+  if (existing) {
+    // Recencia para la expulsión LRU: Map conserva el orden de inserción
+    if (isMultiTenant()) {
+      entries.delete(key);
+      entries.set(key, existing);
+    }
+    return existing.db;
+  }
 
   let creating = inflight.get(key);
   if (!creating) {
@@ -75,6 +84,7 @@ async function createEntry(id: string, key: string): Promise<Database | null> {
     const pool = mysql.createPool({ uri, connectionLimit: POOL_CONNECTION_LIMIT });
     const db = createDatabase(pool);
     entries.set(key, { pool, db });
+    if (isMultiTenant()) evictLeastRecentlyUsed();
     return db;
   } catch (error) {
     console.warn("[Database] Failed to connect:", error instanceof Error ? error.message : "error");
@@ -111,6 +121,31 @@ export function getSingleTenantDatabaseSync(): Database | null {
 
 export function getSingleTenantPoolSync(): mysql.Pool | null {
   return getSingleEntrySync()?.pool ?? null;
+}
+
+function evictLeastRecentlyUsed(): void {
+  while (entries.size > MAX_TENANT_POOLS) {
+    const oldest = entries.keys().next();
+    if (oldest.done) return;
+    void evictTenantDatabase(oldest.value);
+  }
+}
+
+/**
+ * Cierra y olvida el pool de un tenant (cambio de BD activa, suspensión, baja). La siguiente
+ * petición vuelve a resolver la conexión en el registro.
+ */
+export async function evictTenantDatabase(tenantId: string): Promise<boolean> {
+  const e = entries.get(tenantId);
+  if (!e) return false;
+  entries.delete(tenantId);
+  await e.pool.end().catch(() => undefined);
+  return true;
+}
+
+/** Tenants con pool abierto (diagnóstico y pruebas). */
+export function openTenantPools(): string[] {
+  return Array.from(entries.keys());
 }
 
 /** Cierra y olvida los pools (apagado ordenado y pruebas). */
