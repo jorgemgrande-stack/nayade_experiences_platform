@@ -41,6 +41,22 @@ function parseSender(raw: string): { name: string; email: string } {
   return { name: getSystemSettingSync("brand_name", "Skicenter"), email: raw.trim() };
 }
 
+/**
+ * Remitente en multiempresa: NUNCA el de Náyade ni el buzón global de la plataforma como
+ * propio. Se usa el remitente verificado del tenant (`email_noreply_sender`) o, si no lo
+ * tiene, el remitente de plataforma (`PLATFORM_MAIL_FROM`) con el nombre del tenant y
+ * `Reply-To` hacia el correo del propio tenant. Sin ninguno, no se envía (falla cerrado).
+ */
+export function resolveTenantSender(): { from: string; replyTo?: string } | null {
+  const brand = getSystemSettingSync("brand_name", "");
+  const own = getSystemSettingSync("email_noreply_sender", "");
+  const platform = process.env.PLATFORM_MAIL_FROM ?? "";
+  const address = own || platform;
+  if (!address || !brand) return null;
+  const replyTo = getSystemSettingSync("email_reservations", "") || undefined;
+  return { from: `${brand.replace(/[<>"]/g, "")} <${address}>`, replyTo };
+}
+
 // ─── Modo 1: Brevo HTTP API ───────────────────────────────────────────────────
 async function sendViaBrevoApi(params: MailParams): Promise<boolean> {
   const apiKey = process.env.BREVO_API_KEY;
@@ -48,9 +64,21 @@ async function sendViaBrevoApi(params: MailParams): Promise<boolean> {
 
   const noreplyEmail = getSystemSettingSync("email_noreply_sender", "");
   const brandName = getSystemSettingSync("brand_name", "Skicenter");
-  const fromRaw = params.from
-    ?? process.env.SMTP_FROM
-    ?? (noreplyEmail ? `${brandName} <${noreplyEmail}>` : `${brandName} <noreply@example.com>`);
+  let replyToEmail: string | undefined;
+  let fromRaw: string;
+  if (isMultiTenant()) {
+    const t = resolveTenantSender();
+    if (!t) {
+      console.warn("[Mailer] Tenant sin remitente configurado: no se envía");
+      return false;
+    }
+    fromRaw = t.from;
+    replyToEmail = t.replyTo;
+  } else {
+    fromRaw = params.from
+      ?? process.env.SMTP_FROM
+      ?? (noreplyEmail ? `${brandName} <${noreplyEmail}>` : `${brandName} <noreply@example.com>`);
+  }
   const sender = parseSender(fromRaw);
 
   const toList = Array.isArray(params.to)
@@ -63,6 +91,7 @@ async function sendViaBrevoApi(params: MailParams): Promise<boolean> {
 
   const body = {
     sender,
+    ...(replyToEmail ? { replyTo: { email: replyToEmail } } : {}),
     to: toList,
     subject: params.subject,
     htmlContent: params.html,
@@ -170,7 +199,7 @@ function mergeGlobalCc(params: MailParams): MailParams {
   // En multiempresa la copia global es un ajuste del propio tenant: nunca la dirección de Náyade
   const cc = isMultiTenant() ? getSystemSettingSync("email_cc_all", "") : GLOBAL_CC_EMAIL;
   const merged = [...new Set([...existing, ...(cc ? [cc] : [])])];
-  return { ...params, cc: merged };
+  return { ...params, cc: merged.length ? merged : undefined };
 }
 
 // ─── API pública ──────────────────────────────────────────────────────────────
@@ -200,7 +229,8 @@ export async function sendEmail(params: MailParams): Promise<boolean> {
     console.warn("[Mailer] Brevo API falló, intentando SMTP...");
   }
 
-  // Fallback SMTP
+  // Fallback SMTP: el buzón SMTP del entorno es de la plataforma/Náyade; en multiempresa no se usa
+  if (isMultiTenant()) return false;
   const sent = await sendViaSMTP(enriched);
   meter(Metrics.EMAIL_SENT, 1, "count", { channel: "smtp", ok: sent });
   return sent;
