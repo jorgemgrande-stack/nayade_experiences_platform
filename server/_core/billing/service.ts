@@ -26,6 +26,12 @@ export interface BillingDeps {
   notifier?: BillingNotifier;
   now?: () => number;
   id?: () => string;
+  /**
+   * Interruptor general de cobros. `false`: se emiten facturas pero NO se cobra, y no se
+   * degrada ni suspende a nadie por impago (hasta elegir proveedor y tarifas). Por defecto `true`
+   * en el motor; la fábrica de producción lo fija a `false` salvo configuración explícita.
+   */
+  chargesEnabled?: boolean;
 }
 
 function addInterval(from: number, interval: Interval): number {
@@ -106,7 +112,7 @@ export class SubscriptionService {
   }
 
   /** Convierte la prueba (o reactiva) cobrando el primer periodo. */
-  async subscribe(tenantId: string, opts: { customerId?: string | null } = {}): Promise<{ subscription: Subscription; invoice: Invoice; paid: boolean }> {
+  async subscribe(tenantId: string, opts: { customerId?: string | null } = {}): Promise<{ subscription: Subscription; invoice: Invoice; paid: boolean; chargesDisabled?: boolean }> {
     const sub = await this.mustSub(tenantId);
     if (!["trialing", "suspended", "past_due"].includes(sub.status)) {
       throw new BillingError("invalid_state", `No se puede contratar desde ${sub.status}`);
@@ -137,6 +143,7 @@ export class SubscriptionService {
     }
     if (sub.status !== "active") throw new BillingError("invalid_state", "Solo se cambia de plan inmediato con la suscripción activa");
 
+    if (!this.chargesOn()) throw new BillingError("invalid_state", "Cobros desactivados: el cambio inmediato no está disponible");
     const cur = this.plan(sub.planId);
     if (cur.interval !== next.interval) throw new BillingError("invalid_plan", "El cambio inmediato exige el mismo intervalo");
     if (cur.priceCents === null || next.priceCents === null) throw new BillingError("no_price", "Plan sin tarifa definida");
@@ -163,6 +170,7 @@ export class SubscriptionService {
     const price = this.d.catalog.modules.find((m) => m.moduleId === moduleId && m.interval === plan.interval);
     if (!price) throw new BillingError("invalid_plan", `Módulo no disponible: ${moduleId}`);
     if (sub.status === "active") {
+      if (!this.chargesOn()) throw new BillingError("invalid_state", "Cobros desactivados: no se pueden contratar módulos");
       if (price.priceCents === null) throw new BillingError("no_price", "Módulo sin tarifa definida");
       const t = this.now();
       const remaining = Math.max(0, sub.currentPeriodEnd - t) / (sub.currentPeriodEnd - sub.currentPeriodStart);
@@ -213,6 +221,7 @@ export class SubscriptionService {
           await this.suspend(sub, "trial_expired");
           out.suspended++;
         } else if (sub.status === "active" && t >= sub.currentPeriodEnd) {
+          if (!this.chargesOn() && !sub.cancelAtPeriodEnd) continue; // sin cobros: no se renueva ni se factura
           if (sub.cancelAtPeriodEnd) {
             await this.end(sub);
             out.ended++;
@@ -222,6 +231,7 @@ export class SubscriptionService {
             else out.pastDue++;
           }
         } else if (sub.status === "past_due") {
+          if (!this.chargesOn()) continue;
           if (sub.graceEnd !== null && t >= sub.graceEnd) {
             await this.suspend(sub, "unpaid");
             out.suspended++;
@@ -356,10 +366,18 @@ export class SubscriptionService {
     return r.ok;
   }
 
-  private async chargePeriod(sub: Subscription, start: number, end: number) {
+  private chargesOn(): boolean {
+    return this.d.chargesEnabled !== false;
+  }
+
+  private async chargePeriod(sub: Subscription, start: number, end: number): Promise<{ subscription: Subscription; invoice: Invoice; paid: boolean; chargesDisabled?: boolean }> {
     const plan = this.plan(sub.pendingPlanId ?? sub.planId);
     const lines = this.periodLines(sub, plan);
     const invoice = await this.issueInvoice(sub, lines, start, start, end);
+    if (!this.chargesOn()) {
+      // Cobros desactivados: factura abierta, sin cobro y sin cambio de estado
+      return { subscription: sub, invoice, paid: false, chargesDisabled: true };
+    }
     const paid = await this.collect(sub, invoice);
     if (paid) {
       if (sub.pendingPlanId) {
