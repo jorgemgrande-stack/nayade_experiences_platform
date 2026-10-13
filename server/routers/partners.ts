@@ -7,8 +7,6 @@
 import { z } from "zod";
 import { adminProcedure, partnerProcedure, publicProcedure, router } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
-import { drizzle } from "drizzle-orm/mysql2";
-import mysql from "mysql2/promise";
 import { partners, users, leads, partnerBillingBatches, partnerBillingBatchItems, experiences, transactions, siteSettings } from "../../drizzle/schema";
 import { eq, desc, and, gte, lte, notInArray, inArray, sql } from "drizzle-orm";
 import { randomBytes } from "crypto";
@@ -19,9 +17,10 @@ import { reservations } from "../../drizzle/schema";
 import { storagePut } from "../storage";
 import { htmlToPdf } from "../pdfGenerator";
 import { createGHLContact, triggerGHLWorkflow, syncLeadUrlsToGHL } from "../ghl";
+import { legacyDb, legacyPool } from "../_core/legacyDb";
 
-const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
-const db = drizzle(_pool);
+const _pool = legacyPool();
+const db = legacyDb();
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 

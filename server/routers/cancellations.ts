@@ -6,8 +6,6 @@ import { z } from "zod";
 import { router, publicProcedure, protectedProcedure, permissionProcedure } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { assertModuleEnabled } from "../_core/flagGuard";
-import { drizzle } from "drizzle-orm/mysql2";
-import mysql from "mysql2/promise";
 import {
   cancellationRequests,
   cancellationLogs,
@@ -39,8 +37,9 @@ import { generateDocumentNumber } from "../documentNumbers";
 import { logActivity, getGHLCredentials } from "../db";
 import { createGHLContact, updateGHLContact } from "../ghl";
 import { getBusinessEmail } from "../config";
-const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
-const db = drizzle(_pool);
+import { legacyDb, legacyPool } from "../_core/legacyDb";
+const _pool = legacyPool();
+const db = legacyDb();
 
 const getCopyEmail = () => getBusinessEmail('cancellations');
 
