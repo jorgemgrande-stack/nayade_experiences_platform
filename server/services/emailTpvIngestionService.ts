@@ -1,6 +1,4 @@
 import "dotenv/config";
-import mysql from "mysql2/promise";
-import { drizzle } from "drizzle-orm/mysql2";
 import { eq, like, and, gte, lte, inArray, sql } from "drizzle-orm";
 import { ImapFlow } from "imapflow";
 import { simpleParser } from "mailparser";
@@ -18,6 +16,7 @@ import {
   bankFileImports,
 } from "../../drizzle/schema";
 import { madridStartOfDayUtc, madridEndOfDayUtc } from "../utils/timezone";
+import { legacyDb, legacyPool } from "../_core/legacyDb";
 
 // CONFIG
 
@@ -36,8 +35,8 @@ let isRunning = false;
 
 // DB
 
-const _emailTpvPool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
-const _emailTpvDb = drizzle(_emailTpvPool);
+const _emailTpvPool = legacyPool();
+const _emailTpvDb = legacyDb();
 
 function makeDb() {
   return _emailTpvDb;

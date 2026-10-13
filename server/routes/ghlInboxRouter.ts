@@ -17,8 +17,6 @@
  */
 
 import express from "express";
-import { drizzle } from "drizzle-orm/mysql2";
-import mysql from "mysql2/promise";
 import { eq, desc, and, sql } from "drizzle-orm";
 import { ghlConversations, ghlMessages, ghlWebhookEvents, siteSettings } from "../../drizzle/schema";
 import { ghlInboxEmitter } from "../ghlInboxEvents";
@@ -26,9 +24,10 @@ import { createHash, timingSafeEqual } from "crypto";
 import rateLimit from "express-rate-limit";
 import { requireStaff, getAuthUser } from "../_core/expressAuth";
 import type { Response } from "express";
+import { legacyDb, legacyPool } from "../_core/legacyDb";
 
-const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
-const db = drizzle(_pool);
+const _pool = legacyPool();
+const db = legacyDb();
 
 const GHL_BASE_URL = process.env.GHL_BASE_URL ?? "https://services.leadconnectorhq.com";
 const GHL_API_VERSION = "2021-07-28";
