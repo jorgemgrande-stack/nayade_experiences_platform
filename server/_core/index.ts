@@ -8,7 +8,8 @@ import { isLeadProcedurePath, localStorageSecurityHeaders } from "./publicEndpoi
 import { createHealthRouter } from "./health";
 import { requestMeter } from "./requestMeter";
 import { installTenantBinding, installTenantResolution } from "./tenantRegistry/install";
-import { scheduleTenantInterval } from "./tenantRegistry/scheduler";
+import { scheduleTenantInterval, setJobFlag } from "./tenantRegistry/scheduler";
+import { isMultiTenant } from "./tenant";
 import { localStorageTenantGuard } from "./tenantStorage";
 import { registerOAuthRoutes } from "./oauth";
 import { appRouter } from "../routers";
@@ -1898,32 +1899,65 @@ async function conditionallyStartJob(
   }
 }
 
-runMigrations()
-  .then(() => ensureCriticalSeeds())
-  .then(() => migrateSiteSettingsToSystemSettings())
-  .then(() => ensurePricingColumns())
-  .then(() => ensureRefundColumns())
-  .then(() => ensureReservationPublicToken())
-  .then(() => ensureDiscountColumns())
-  .then(() => ensureLeadSourceColumn())
-  .then(() => ensureTicketingChannel())
-  .then(() => ensureExpenseEmailIngestionSchema())
-  .then(() => fixBrokenInvoicePdfUrls())
-  .then(() => wipeTestDataIfRequested())
-  .then(() => seedExperiencesIfEmpty())
-  .then(() => startServer())
-  // quoteReminderJob y commercialFollowupJob borrados en Fase 5.
-  // Toda la lógica de recordatorios la gestiona ahora emailAutomationJob
-  // (auto-scheduling + procesamiento de email_scheduled_jobs).
-  .then(() => conditionallyStartJob("abandoned_checkout_cleanup_enabled",  startAbandonedCheckoutCleanup, "Abandoned Checkout"))
-  .then(() => conditionallyStartJob("installment_overdue_job_enabled",     startInstallmentOverdueJob,    "Installment Overdue"))
-  .then(() => conditionallyStartJob("cancellation_stale_job_enabled",      startCancellationStaleJob,     "Cancellation Stale"))
-  .then(() => conditionallyStartJob("email_ingestion_enabled",             startEmailIngestionJob,              "Email Ingestion"))
-  .then(() => conditionallyStartJob("expense_email_ingestion_enabled",     startExpenseEmailIngestionJob,       "Expense Email Ingestion"))
-  .then(() => conditionallyStartJob("commercial_email_enabled",            startCommercialEmailSyncJob,          "Commercial Email Sync"))
-  .then(() => conditionallyStartJob("card_terminal_matching_enabled", startMatchingJob, "Card Terminal Matching", true))
-  .then(() => conditionallyStartJob("card_terminal_relink_enabled",   startRelinkJob,   "Card Terminal Relink",   true))
-  .then(() => conditionallyStartJob("email_automation_job_enabled",   startEmailAutomationJob, "Email Automation"))
-  .then(() => conditionallyStartJob("tax_reminder_job_enabled",       startTaxReminderJob,     "Tax Reminder", true))
-  .catch(console.error);
+// Tabla única de tareas programadas (nombre del programador, flag, arranque).
+const SCHEDULED_JOBS: Array<{ name: string; flag: string; start: () => void; label: string; def: boolean }> = [
+  { name: "abandoned-checkout", flag: "abandoned_checkout_cleanup_enabled", start: startAbandonedCheckoutCleanup, label: "Abandoned Checkout", def: false },
+  { name: "installment-overdue", flag: "installment_overdue_job_enabled", start: startInstallmentOverdueJob, label: "Installment Overdue", def: false },
+  { name: "cancellation-stale", flag: "cancellation_stale_job_enabled", start: startCancellationStaleJob, label: "Cancellation Stale", def: false },
+  { name: "email-tpv-ingestion", flag: "email_ingestion_enabled", start: startEmailIngestionJob, label: "Email Ingestion", def: false },
+  { name: "expense-email-ingestion", flag: "expense_email_ingestion_enabled", start: startExpenseEmailIngestionJob, label: "Expense Email Ingestion", def: false },
+  { name: "commercial-email-sync", flag: "commercial_email_enabled", start: startCommercialEmailSyncJob, label: "Commercial Email Sync", def: false },
+  { name: "card-terminal-matching", flag: "card_terminal_matching_enabled", start: startMatchingJob, label: "Card Terminal Matching", def: true },
+  { name: "card-terminal-relink", flag: "card_terminal_relink_enabled", start: startRelinkJob, label: "Card Terminal Relink", def: true },
+  { name: "email-automation", flag: "email_automation_job_enabled", start: startEmailAutomationJob, label: "Email Automation", def: false },
+  { name: "tax-reminder", flag: "tax_reminder_job_enabled", start: startTaxReminderJob, label: "Tax Reminder", def: true },
+];
+
+/**
+ * Modo single/shadow: comportamiento de siempre (migraciones y DDL de arranque contra la BD
+ * única, flags evaluados una vez al arrancar).
+ */
+function bootSingleTenant(): void {
+  runMigrations()
+    .then(() => ensureCriticalSeeds())
+    .then(() => migrateSiteSettingsToSystemSettings())
+    .then(() => ensurePricingColumns())
+    .then(() => ensureRefundColumns())
+    .then(() => ensureReservationPublicToken())
+    .then(() => ensureDiscountColumns())
+    .then(() => ensureLeadSourceColumn())
+    .then(() => ensureTicketingChannel())
+    .then(() => ensureExpenseEmailIngestionSchema())
+    .then(() => fixBrokenInvoicePdfUrls())
+    .then(() => wipeTestDataIfRequested())
+    .then(() => seedExperiencesIfEmpty())
+    .then(() => startServer())
+
+    // quoteReminderJob y commercialFollowupJob borrados en Fase 5.
+    // Toda la lógica de recordatorios la gestiona ahora emailAutomationJob
+    // (auto-scheduling + procesamiento de email_scheduled_jobs).
+    .then(async () => {
+      for (const j of SCHEDULED_JOBS) await conditionallyStartJob(j.flag, j.start, j.label, j.def);
+    })
+    .catch(console.error);
+}
+
+/**
+ * Modo multi: no existe una BD de arranque. Nada de DDL ni semillas contra DATABASE_URL: el
+ * esquema de cada tenant lo gestiona el aprovisionamiento / ejecutor de migraciones. Las tareas
+ * se registran una vez y evalúan su flag dentro del contexto de cada tenant.
+ */
+function bootMultiTenant(): void {
+  startServer()
+    .then(() => {
+      for (const j of SCHEDULED_JOBS) {
+        setJobFlag(j.name, j.flag, j.def);
+        j.start();
+      }
+    })
+    .catch(console.error);
+}
+
+if (isMultiTenant()) bootMultiTenant();
+else bootSingleTenant();
 

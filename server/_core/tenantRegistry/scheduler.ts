@@ -9,6 +9,7 @@
  *  - Resultado de la última ejecución por tarea/tenant consultable (`jobStatus()`).
  */
 import cron from "node-cron";
+import { getFeatureFlag } from "../../config";
 import { Metrics, meter } from "../metering";
 import { runForEachTenant, type TenantJobResult, type TenantLister } from "./jobs";
 
@@ -32,6 +33,16 @@ export function setJobTenantLister(l: TenantLister | null): void {
 
 const keyOf = (job: string, tenantId: string) => `${job}\u0000${tenantId}`;
 
+/**
+ * Feature flag que habilita cada tarea. Se evalúa dentro del contexto de cada tenant, justo
+ * antes de ejecutar: un tenant puede tener una tarea activa y otro no.
+ */
+const jobFlags = new Map<string, { key: string; fallback: boolean }>();
+
+export function setJobFlag(job: string, flagKey: string, fallback = false): void {
+  jobFlags.set(job, { key: flagKey, fallback });
+}
+
 export function jobStatus(): JobRunRecord[] {
   return Array.from(last.values());
 }
@@ -45,6 +56,11 @@ export async function runTenantJob(name: string, handler: () => Promise<unknown>
         const key = keyOf(name, tenantId);
         const startedAt = Date.now();
         if (running.has(key)) {
+          last.set(key, { job: name, tenantId, startedAt, durationMs: 0, outcome: "skipped" });
+          return;
+        }
+        const flag = jobFlags.get(name);
+        if (flag && !(await getFeatureFlag(flag.key, flag.fallback))) {
           last.set(key, { job: name, tenantId, startedAt, durationMs: 0, outcome: "skipped" });
           return;
         }
