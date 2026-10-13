@@ -160,7 +160,15 @@ router.post("/api/upload-coupon", (req: Request, res: Response) => {
         return;
       }
       const { buffer, mimetype, originalname } = req.file;
-      const ext = originalname.split(".").pop() || "jpg";
+      // La extensión sale del tipo MIME ya validado, no del nombre que envía el cliente.
+      const COUPON_EXT: Record<string, string> = {
+        "image/jpeg": "jpg",
+        "image/jpg": "jpg",
+        "image/png": "png",
+        "image/webp": "webp",
+        "application/pdf": "pdf",
+      };
+      const ext = COUPON_EXT[mimetype] ?? "bin";
       const timestamp = Date.now();
       const random = Math.random().toString(36).substring(2, 10);
       const key = `nayade/coupons/${timestamp}-${random}.${ext}`;

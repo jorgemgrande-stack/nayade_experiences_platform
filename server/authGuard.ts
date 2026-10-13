@@ -175,7 +175,14 @@ function getCookie(req: Request, name: string): string | undefined {
     raw.split(";").map(c => {
       const idx = c.indexOf("=");
       if (idx === -1) return [c.trim(), ""];
-      return [c.slice(0, idx).trim(), decodeURIComponent(c.slice(idx + 1).trim())];
+      const rawValue = c.slice(idx + 1).trim();
+      let value = rawValue;
+      try {
+        value = decodeURIComponent(rawValue);
+      } catch {
+        // Cookie mal codificada (p. ej. "%"): se conserva sin decodificar en vez de lanzar
+      }
+      return [c.slice(0, idx).trim(), value];
     })
   );
   return cookies[name];
