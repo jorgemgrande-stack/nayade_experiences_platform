@@ -262,6 +262,20 @@ export function validateRedsysNotification(
   const merchantOrder =
     rawData.Ds_Order ?? rawData.DS_MERCHANT_ORDER ?? "";
 
+  // Sin una clave de comercio utilizable NO se puede validar nada: con clave vacía o muy
+  // corta, deriveKey() usa un relleno de ceros conocido y cualquiera podría firmar un IPN.
+  if (Buffer.from(getMerchantKey().trim(), "base64").length < 8) {
+    return {
+      isValid: false,
+      isAuthorized: false,
+      merchantOrder,
+      responseCode: rawData.Ds_Response ?? "",
+      amount: 0,
+      authCode: "",
+      rawData,
+    };
+  }
+
   // Verificar firma
   const expectedSignature = signParams(Ds_MerchantParameters, merchantOrder);
   // Normalizar base64url → base64 estándar (Redsys puede enviar base64url con - y _)
