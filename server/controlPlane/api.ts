@@ -29,6 +29,8 @@ import { SsoError, type SsoService } from "./sso";
 import { signSupportToken } from "../_core/support/session";
 import { TEMPLATES } from "../_core/templates/catalog";
 import { renderMetrics } from "./metrics";
+import type { IncidentService } from "../_core/ops/incidents";
+import type { AlertRunResult } from "../_core/ops/alerts";
 import { createCrmRouter } from "../crm/api";
 import type { CrmService } from "../crm/service";
 import type { CrmStore } from "../crm/store";
@@ -51,6 +53,8 @@ export interface ControlPlaneDeps {
   perMinute?: number;
   /** Acceso delegado de soporte (requiere SUPPORT_JWT_SECRET). */
   support?: Pick<SupportAdmin, "create" | "revoke">;
+  /** Incidencias operativas y evaluación de alertas. */
+  ops?: { incidents: IncidentService; runAlerts?: () => Promise<AlertRunResult> };
   /** SSO corporativo (OIDC → sesión corta). */
   sso?: SsoService;
   /** CRM comercial (leads, oportunidades, contratos…). */
@@ -326,6 +330,39 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
       res.json({ quotas: await d.quotas.listQuotas(id) });
     }),
   );
+
+  if (d.ops) {
+    const ops = d.ops;
+    router.get(
+      "/incidents",
+      requireScope("ops:read"),
+      wrap(async (req, res) => {
+        const status = z.enum(["open", "acknowledged", "resolved"]).optional().parse(req.query.status);
+        res.json({ incidents: await ops.incidents.list({ status, limit: 200 }) });
+      }),
+    );
+    router.post(
+      "/incidents/:id/ack",
+      requireScope("ops:write"),
+      wrap(async (req, res) => {
+        res.json({ incident: await ops.incidents.acknowledge(z.coerce.number().int().positive().parse(req.params.id), getAuth(req)!.actor.id) });
+      }),
+    );
+    router.post(
+      "/incidents/:id/resolve",
+      requireScope("ops:write"),
+      wrap(async (req, res) => {
+        res.json({ incident: await ops.incidents.resolve(z.coerce.number().int().positive().parse(req.params.id), getAuth(req)!.actor.id) });
+      }),
+    );
+    if (ops.runAlerts) {
+      router.post(
+        "/alerts/run",
+        requireScope("ops:write"),
+        wrap(async (_req, res) => void res.json(await ops.runAlerts!())),
+      );
+    }
+  }
 
   if (d.crm) router.use("/crm", createCrmRouter(d.crm.service, d.crm.store));
 

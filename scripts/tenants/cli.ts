@@ -21,6 +21,9 @@
  *   pnpm exec tsx scripts/tenants/cli.ts diagnose <tenant>
  *   pnpm exec tsx scripts/tenants/cli.ts backup <tenant> --out <dir>
  *   pnpm exec tsx scripts/tenants/cli.ts backup-verify <manifest.json> --scratch-dsn-env VAR   (BD de pruebas prescindible)
+ *   pnpm exec tsx scripts/tenants/cli.ts incidents [--status open|acknowledged|resolved]
+ *   pnpm exec tsx scripts/tenants/cli.ts alerts-run                       (evalúa reglas y abre/cierra incidencias)
+ *   pnpm exec tsx scripts/tenants/cli.ts retention [--backups <dir>] [--apply]   (ERM_DATABASE_URL para uso)
  *   pnpm exec tsx scripts/tenants/cli.ts quotas <tenant>
  *   pnpm exec tsx scripts/tenants/cli.ts quota-set <tenant> <metrica> <minute|hour|day|month> <limite> [--soft] [--apply]
  *   pnpm exec tsx scripts/tenants/cli.ts quota-remove <tenant> <metrica> <periodo> [--apply]
@@ -46,6 +49,9 @@ import type { TenantStatus } from "../../server/_core/tenantRegistry/contract";
 import { EntitlementAdmin } from "../../server/_core/modules/mysqlEntitlements";
 import { QuotaAdmin } from "../../server/_core/erm/mysqlQuotas";
 import path from "node:path";
+import { IncidentService, MysqlIncidentStore, webhookNotifier } from "../../server/_core/ops/incidents";
+import { runAlerts } from "../../server/_core/ops/alerts";
+import { runRetention, scanBackups } from "../../server/_core/ops/retention";
 import { migrateAllTenants } from "../../server/_core/ops/tenantMigrations";
 import { diagnoseTenant } from "../../server/_core/ops/diagnostics";
 import { backupDatabase, verifyBackup } from "../../server/_core/ops/backup";
@@ -268,6 +274,39 @@ async function main() {
         const rep = await verifyBackup(scratch, path.resolve(manifest));
         print(rep);
         if (!rep.ok) process.exitCode = 1;
+        break;
+      }
+      case "incidents": {
+        const inc = new IncidentService(new MysqlIncidentStore(pool));
+        const st = opt("--status") as "open" | "acknowledged" | "resolved" | undefined;
+        console.table((await inc.list({ status: st })).map((i) => ({ id: i.id, sev: i.severity, estado: i.status, tenant: i.tenantId ?? "", titulo: i.title, veces: i.occurrences })));
+        break;
+      }
+      case "alerts-run": {
+        const inc = new IncidentService(
+          new MysqlIncidentStore(pool),
+          process.env.CP_ALERT_WEBHOOK ? webhookNotifier(process.env.CP_ALERT_WEBHOOK) : undefined,
+        );
+        const r = await runAlerts({
+          reader: store,
+          incidents: inc,
+          quotas: new QuotaAdmin(pool),
+          entitlements: new EntitlementAdmin(pool),
+        });
+        print({ abiertas: r.raised, resueltas: r.resolved, activas: r.active });
+        break;
+      }
+      case "retention": {
+        const backupDir = opt("--backups");
+        const usageUrl = process.env.ERM_DATABASE_URL;
+        const usagePool = usageUrl ? mysql.createPool({ uri: usageUrl, connectionLimit: 1 }) : undefined;
+        try {
+          const rep = await runRetention({ backupDir: backupDir ? path.resolve(backupDir) : undefined, usagePool, registryPool: pool }, { apply: APPLY });
+          print({ ...rep, copiasEncontradas: backupDir ? scanBackups(path.resolve(backupDir)).length : 0 });
+          if (!APPLY) console.log("[dry-run] usa --apply para ejecutar");
+        } finally {
+          await usagePool?.end();
+        }
         break;
       }
       case "quotas": {

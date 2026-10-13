@@ -41,6 +41,8 @@ import { MysqlBillingStore } from "../_core/billing/mysqlStore";
 import { SubscriptionService } from "../_core/billing/service";
 import { createPaymentProvider } from "../_core/billing/providers";
 import { RegistryTenantEffects } from "../_core/billing/effects";
+import { IncidentService, MysqlIncidentStore, webhookNotifier } from "../_core/ops/incidents";
+import { runAlerts } from "../_core/ops/alerts";
 import { SsoService, parseSsoUsers } from "./sso";
 import { createRemoteJWKSet } from "jose";
 
@@ -110,6 +112,16 @@ async function main() {
       getKey: createRemoteJWKSet(new URL(process.env.CP_OIDC_JWKS_URL)),
     });
   }
+  const incidents = new IncidentService(
+    new MysqlIncidentStore(pool),
+    process.env.CP_ALERT_WEBHOOK ? webhookNotifier(process.env.CP_ALERT_WEBHOOK) : undefined,
+  );
+  const evaluate = () => runAlerts({ reader: store, incidents, usage, quotas, entitlements });
+  if (process.env.CP_ALERTS_EVERY_SECONDS) {
+    const every = Math.max(30, Number(process.env.CP_ALERTS_EVERY_SECONDS)) * 1000;
+    const t = setInterval(() => void evaluate().catch(() => undefined), every);
+    t.unref?.();
+  }
   let crm: { service: CrmService; store: MysqlCrmStore } | undefined;
   if (process.env.CRM_DATABASE_URL) {
     const store = new MysqlCrmStore(mysql.createPool({ uri: process.env.CRM_DATABASE_URL, connectionLimit: 4 }));
@@ -123,6 +135,7 @@ async function main() {
   const app = createControlPlaneApp({
     billing,
     billingStore,
+    ops: { incidents, runAlerts: evaluate },
     sso,
     crm,
     tokens,
