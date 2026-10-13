@@ -74,3 +74,16 @@ export function requirePermission(permissionKey: string, fallbackRoles: string[]
 
 /** Acceso del equipo comercial: mismo criterio que `staffProcedure` (permiso crm.view). */
 export const requireStaff = requirePermission("crm.view", ["admin", "agente"]);
+
+/**
+ * Exige sesión activa con rol heredado `admin`.
+ * Equivale al `adminProc` (role === "admin") de los routers de proveedores y liquidaciones.
+ */
+export async function requireAdminRole(req: Request, res: Response, next: NextFunction) {
+  const user = await resolveSessionUser(req);
+  if (!user || user.isActive === false) return deny(res, 401, "No autenticado.");
+  if (String(user.role) !== "admin") return deny(res, 403, "Se requiere rol de administrador.");
+  (req as Request & { authUser?: SessionUser }).authUser = user;
+  res.setHeader("Cache-Control", "no-store");
+  next();
+}

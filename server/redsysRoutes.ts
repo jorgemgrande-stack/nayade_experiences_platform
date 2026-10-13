@@ -24,6 +24,8 @@ import { groupTaxBreakdown, totalTaxAmount } from "./taxUtils";
 import { reservationProductFromQuoteItems } from "./reservationUtils";
 import { getBusinessEmail, getSystemSettingSync } from "./config";
 import { generateDocumentNumber } from "./documentNumbers";
+import { resolveSessionUser } from "./_core/expressAuth";
+import { secureEqual } from "./_core/signedLinks";
 import { checkAndConfirmInstallmentPlan } from "./routers/crm";
 import { syncLeadUrlsToGHL, createGHLContact, updateGHLContact, triggerGHLWorkflow } from "./ghl";
 
@@ -876,21 +878,25 @@ redsysRouter.post("/api/redsys/restaurant-notification", express.urlencoded({ ex
 
 // --- DIAGNÓSTICO Y RECUPERACIÓN ADMINISTRATIVA --------------------------------
 
-function requireRecoveryToken(req: express.Request, res: express.Response): boolean {
-  const RECOVERY_TOKEN = process.env.RECOVERY_TOKEN;
-  if (!RECOVERY_TOKEN || req.query.token !== RECOVERY_TOKEN) {
-    res.status(401).json({ error: "Unauthorized — falta o el token es incorrecto" });
-    return false;
-  }
-  return true;
+/**
+ * Acceso a las rutas administrativas: sesión de administrador, o el token de recuperación
+ * enviado en la cabecera `x-recovery-token` (nunca en la URL: acaba en logs y en el historial).
+ */
+async function requireRecoveryAccess(req: express.Request, res: express.Response): Promise<boolean> {
+  const expected = process.env.RECOVERY_TOKEN;
+  if (expected && secureEqual(req.headers["x-recovery-token"], expected)) return true;
+  const user = await resolveSessionUser(req);
+  if (user && user.isActive !== false && String(user.role) === "admin") return true;
+  res.status(401).json({ error: "No autorizado" });
+  return false;
 }
 
 /**
- * GET /api/admin/diagnose-order/:merchantOrder?token=<RECOVERY_TOKEN>
+ * GET /api/admin/diagnose-order/:merchantOrder (sesión admin o cabecera x-recovery-token)
  * Devuelve el estado completo de una orden: reserva, booking, transacción, factura, cliente.
  */
 redsysRouter.get("/api/admin/diagnose-order/:merchantOrder", async (req, res) => {
-  if (!requireRecoveryToken(req, res)) return;
+  if (!(await requireRecoveryAccess(req, res))) return;
   const { merchantOrder } = req.params;
 
   try {
@@ -982,11 +988,11 @@ redsysRouter.get("/api/admin/diagnose-order/:merchantOrder", async (req, res) =>
 });
 
 /**
- * GET /api/admin/diagnose-reservation/:reservationNumber?token=<RECOVERY_TOKEN>
+ * GET /api/admin/diagnose-reservation/:reservationNumber (sesión admin o cabecera x-recovery-token)
  * Busca una reserva por su reservationNumber (ej: RES-2026-0121) e incluye ghlContactId del cliente.
  */
 redsysRouter.get("/api/admin/diagnose-reservation/:reservationNumber", async (req, res) => {
-  if (!requireRecoveryToken(req, res)) return;
+  if (!(await requireRecoveryAccess(req, res))) return;
   const { reservationNumber } = req.params;
   try {
     const [resv] = await _db.select().from(reservations)
@@ -1068,12 +1074,12 @@ redsysRouter.get("/api/admin/diagnose-reservation/:reservationNumber", async (re
 });
 
 /**
- * POST /api/admin/recover-order/:merchantOrder?token=<RECOVERY_TOKEN>
+ * POST /api/admin/recover-order/:merchantOrder (sesión admin o cabecera x-recovery-token)
  * Re-ejecuta el downstream del IPN para una orden pagada cuyo downstream falló.
  * IDEMPOTENTE: no duplica bookings ni transacciones ya existentes.
  */
 redsysRouter.post("/api/admin/recover-order/:merchantOrder", async (req, res) => {
-  if (!requireRecoveryToken(req, res)) return;
+  if (!(await requireRecoveryAccess(req, res))) return;
   const { merchantOrder } = req.params;
 
   const log: string[] = [];

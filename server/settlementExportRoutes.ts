@@ -20,35 +20,15 @@ import {
   settlementLines,
   suppliers,
 } from "../drizzle/schema";
-import { verifySessionToken } from "./localAuth";
+import { requireAdminRole } from "./_core/expressAuth";
 
 const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
 const db = drizzle(_pool);
 
 const settlementExportRouter = Router();
 
-// --- Auth middleware ----------------------------------------------------------
-async function requireAuth(req: Request, res: Response, next: NextFunction) {
-  const raw = req.headers.cookie ?? "";
-  const cookies = Object.fromEntries(
-    raw.split(";").map(c => {
-      const idx = c.indexOf("=");
-      if (idx === -1) return [c.trim(), ""];
-      return [c.slice(0, idx).trim(), decodeURIComponent(c.slice(idx + 1).trim())];
-    })
-  );
-  const token = cookies["nayade_session"];
-  if (!token) {
-    res.status(401).json({ error: "No autenticado" });
-    return;
-  }
-  const userId = await verifySessionToken(token);
-  if (!userId) {
-    res.status(401).json({ error: "Sesión inválida o expirada" });
-    return;
-  }
-  next();
-}
+// --- Auth: sesión activa con rol admin (como el resto de operaciones de liquidaciones) ---
+const requireAuth = requireAdminRole;
 
 // --- Helpers -----------------------------------------------------------------
 
