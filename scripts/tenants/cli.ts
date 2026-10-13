@@ -17,6 +17,10 @@
  *        [--modules hotel,spa] [--trial-days 15] [--apply]      (PROVISIONING_DB_ADMIN_URL, PROVISIONING_DB_HOST[/PORT])
  *   pnpm exec tsx scripts/tenants/cli.ts provision-status <tenant>
  *   pnpm exec tsx scripts/tenants/cli.ts provision-abort <tenant> --reason "..." [--apply]
+ *   pnpm exec tsx scripts/tenants/cli.ts migrate-all [--only a,b] [--apply]     (dry-run por defecto; canario primero)
+ *   pnpm exec tsx scripts/tenants/cli.ts diagnose <tenant>
+ *   pnpm exec tsx scripts/tenants/cli.ts backup <tenant> --out <dir>
+ *   pnpm exec tsx scripts/tenants/cli.ts backup-verify <manifest.json> --scratch-dsn-env VAR   (BD de pruebas prescindible)
  *   pnpm exec tsx scripts/tenants/cli.ts quotas <tenant>
  *   pnpm exec tsx scripts/tenants/cli.ts quota-set <tenant> <metrica> <minute|hour|day|month> <limite> [--soft] [--apply]
  *   pnpm exec tsx scripts/tenants/cli.ts quota-remove <tenant> <metrica> <periodo> [--apply]
@@ -42,6 +46,9 @@ import type { TenantStatus } from "../../server/_core/tenantRegistry/contract";
 import { EntitlementAdmin } from "../../server/_core/modules/mysqlEntitlements";
 import { QuotaAdmin } from "../../server/_core/erm/mysqlQuotas";
 import path from "node:path";
+import { migrateAllTenants } from "../../server/_core/ops/tenantMigrations";
+import { diagnoseTenant } from "../../server/_core/ops/diagnostics";
+import { backupDatabase, verifyBackup } from "../../server/_core/ops/backup";
 import { ProvisioningService } from "../../server/_core/provisioning/service";
 import {
   MysqlDatabaseProvisioner,
@@ -222,6 +229,45 @@ async function main() {
         } finally {
           await adminPool.end();
         }
+        break;
+      }
+      case "migrate-all": {
+        const schema = new MysqlSchemaApplier({
+          baselinePath: path.resolve(process.cwd(), "db/baseline/0000_baseline.sql"),
+          migrationsDir: path.resolve(process.cwd(), "db/migrations"),
+        });
+        const only = opt("--only")?.split(",").filter(Boolean);
+        const res = await migrateAllTenants({ reader: store, registry: svc, schema, actor }, { apply: APPLY, only });
+        console.table(res.map((r) => ({ tenant: r.tenantId, resultado: r.outcome, pendientes: (r.pending ?? []).length, esquema: r.schemaVersion ?? "", error: r.error ?? "" })));
+        if (!APPLY) console.log("[dry-run] usa --apply para migrar");
+        if (res.some((r) => r.outcome === "failed")) process.exitCode = 1;
+        break;
+      }
+      case "diagnose": {
+        const id = pos[0] ?? die("Falta <tenant>");
+        const rep = await diagnoseTenant(
+          { reader: store, registry: svc, entitlements: new EntitlementAdmin(pool), quotas: new QuotaAdmin(pool) },
+          id,
+        );
+        print(rep);
+        if (!rep.ok) process.exitCode = 1;
+        break;
+      }
+      case "backup": {
+        const id = pos[0] ?? die("Falta <tenant>");
+        const out = opt("--out") ?? die("Falta --out <directorio>");
+        const dsn = (await svc.getActiveDsn(id)) ?? die("El tenant no tiene BD activa");
+        const m = await backupDatabase(dsn, { tenantId: id, outDir: path.resolve(out) });
+        print({ file: m.file, bytes: m.bytes, tables: Object.keys(m.tables).length, sha256: m.sha256 });
+        break;
+      }
+      case "backup-verify": {
+        const manifest = pos[0] ?? die("Falta <manifest.json>");
+        const envName = opt("--scratch-dsn-env") ?? die("Falta --scratch-dsn-env <VARIABLE>");
+        const scratch = process.env[envName] ?? die(`La variable ${envName} no está definida`);
+        const rep = await verifyBackup(scratch, path.resolve(manifest));
+        print(rep);
+        if (!rep.ok) process.exitCode = 1;
         break;
       }
       case "quotas": {
