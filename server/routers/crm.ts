@@ -12,8 +12,6 @@ import { confirmReservationAndNotify } from "../reservationEmails";
 import { calcularREAVSimple, validarConfiguracionREAV } from "../reav";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { drizzle } from "drizzle-orm/mysql2";
-import mysql from "mysql2/promise";
 import {
   leads,
   quotes,
@@ -73,8 +71,8 @@ import { groupTaxBreakdown, totalTaxAmount } from "../taxUtils";
 import { reservationProductFromQuoteItems } from "../reservationUtils";
 
 // DB helper — usa la misma pool que el resto del servidor
-const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
-const db = drizzle(_pool);
+const _pool = legacyPool();
+const db = legacyDb();
 
 // Email helper — delega en el helper compartido mailer.ts
 async function sendEmail({ to, subject, html }: { to: string; subject: string; html: string }) {
@@ -87,6 +85,7 @@ async function sendEmail({ to, subject, html }: { to: string; subject: string; h
 
 // logActivity ahora viene de db.ts (centralizado)
 import { logActivity } from "../db";
+import { legacyDb, legacyPool } from "../_core/legacyDb";
 
 // generateInvoiceNumber y generateQuoteNumber reemplazadas por el helper centralizado
 // Ver server/documentNumbers.ts
