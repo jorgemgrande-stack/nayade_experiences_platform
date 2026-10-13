@@ -10,16 +10,13 @@
 import { ImapFlow } from "imapflow";
 import { simpleParser } from "mailparser";
 import cron from "node-cron";
-import mysql from "mysql2/promise";
+import type mysql from "mysql2/promise";
+import { legacyPool } from "../_core/legacyDb";
 import nodemailer from "nodemailer";
 import { decryptPassword } from "../utils/emailCrypto";
 
-let _pool: mysql.Pool | null = null;
 function getPool(): mysql.Pool {
-  if (!_pool) {
-    _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
-  }
-  return _pool;
+  return legacyPool();
 }
 
 // ─── Auto-create tables ───────────────────────────────────────────────────────

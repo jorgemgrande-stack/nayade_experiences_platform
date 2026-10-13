@@ -15,7 +15,6 @@
  * Feature flag: expense_email_ingestion_enabled
  */
 
-import mysql from "mysql2/promise";
 import { eq, desc } from "drizzle-orm";
 import { ImapFlow } from "imapflow";
 import { simpleParser } from "mailparser";
@@ -93,7 +92,7 @@ function isAcceptedAttachment(contentType: string, filename: string): boolean {
 }
 
 async function getOrCreateDefaultCategoryId(): Promise<number> {
-  const pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
+  const pool = legacyPool();
   try {
     const [rows] = await pool.query("SELECT id FROM expense_categories WHERE name = 'Sin clasificar' LIMIT 1") as any[];
     const found = (rows as any[])[0];
@@ -104,12 +103,12 @@ async function getOrCreateDefaultCategoryId(): Promise<number> {
     ) as any[];
     return (res as any).insertId;
   } finally {
-    await pool.end();
+    // pool compartido del registro: no se cierra aquí
   }
 }
 
 async function getDefaultCostCenterId(): Promise<number> {
-  const pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
+  const pool = legacyPool();
   try {
     const [rows] = await pool.query("SELECT id FROM cost_centers ORDER BY id ASC LIMIT 1") as any[];
     const first = (rows as any[])[0];
@@ -120,7 +119,7 @@ async function getDefaultCostCenterId(): Promise<number> {
     ) as any[];
     return (res as any).insertId;
   } finally {
-    await pool.end();
+    // pool compartido del registro: no se cierra aquí
   }
 }
 
@@ -240,7 +239,7 @@ export async function runExpenseEmailIngestion(): Promise<{ processed: number; d
           const hasAttachments = validAttachments.length > 0;
 
           // Crear el gasto
-          const rawPool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
+          const rawPool = legacyPool();
           let expenseId: number;
           try {
             const [expRes] = await rawPool.query(
@@ -262,7 +261,7 @@ export async function runExpenseEmailIngestion(): Promise<{ processed: number; d
             ) as any[];
             expenseId = (expRes as any).insertId;
           } finally {
-            await rawPool.end();
+            // pool compartido del registro: no se cierra aquí
           }
 
           // Guardar adjuntos en S3/local

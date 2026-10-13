@@ -1,16 +1,9 @@
 import { eq, and, gte, lte, like, or, desc, asc, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import mysql from "mysql2/promise";
-
-let _db: ReturnType<typeof drizzle> | null = null;
+import { legacyDb } from "./_core/legacyDb";
 
 async function getDb() {
-  if (!_db && process.env.DATABASE_URL) {
-    const pool = mysql.createPool({ uri: process.env.DATABASE_URL, connectionLimit: 10 });
-    _db = drizzle(pool);
-  }
-  if (!_db) throw new Error("DATABASE_URL not configured");
-  return _db;
+  return legacyDb();
 }
 import {
   restaurants, restaurantShifts, restaurantClosures,
