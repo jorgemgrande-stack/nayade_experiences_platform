@@ -20,6 +20,7 @@ import express from "express";
 import { eq, desc, and, sql } from "drizzle-orm";
 import { ghlConversations, ghlMessages, ghlWebhookEvents, siteSettings } from "../../drizzle/schema";
 import { ghlInboxEmitter } from "../ghlInboxEvents";
+import { getTenantIdOrDefault } from "../_core/tenant";
 import { createHash, timingSafeEqual } from "crypto";
 import rateLimit from "express-rate-limit";
 import { requireStaff, getAuthUser } from "../_core/expressAuth";
@@ -487,7 +488,7 @@ function secretsMatch(provided: unknown, expected: string): boolean {
 /** Límites de conexiones SSE abiertas (varias pestañas por usuario son legítimas). */
 const SSE_MAX_PER_USER = 10;
 const SSE_MAX_TOTAL = 100;
-const sseConnections = { total: 0, byUser: new Map<number, number>() };
+const sseConnections = { total: 0, byUser: new Map<string, number>() };
 
 // ─── Validación, límites y auditoría de operaciones de envío ──────────────────
 
@@ -609,7 +610,8 @@ ghlInboxRouter.get("/api/ghl/inbox/stream", (req, res: Response) => {
   // La sesión del equipo ya fue validada por el guard de /api/ghl (cookie).
   // EventSource same-origin envía la cookie automáticamente: no hay token en la URL.
   // Aquí solo se limitan las conexiones abiertas.
-  const sseUserId = getAuthUser(req)?.id ?? -1;
+  // Clave por tenant+usuario: el mismo id numérico puede existir en dos empresas
+  const sseUserId = `${getTenantIdOrDefault()}:${getAuthUser(req)?.id ?? -1}`;
   if (
     sseConnections.total >= SSE_MAX_TOTAL ||
     (sseConnections.byUser.get(sseUserId) ?? 0) >= SSE_MAX_PER_USER

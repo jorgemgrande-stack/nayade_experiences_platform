@@ -6,7 +6,7 @@
  * Funciona perfectamente en Railway (instancia única de Node.js).
  */
 
-import { EventEmitter } from "events";
+import { TenantEventEmitter } from "./_core/tenantScope";
 
 export interface GhlInboxEvent {
   type: "conversation_updated" | "message_received" | "sync_complete";
@@ -14,7 +14,6 @@ export interface GhlInboxEvent {
   timestamp: number;
 }
 
-class GhlInboxEmitter extends EventEmitter {}
-
-export const ghlInboxEmitter = new GhlInboxEmitter();
-ghlInboxEmitter.setMaxListeners(200); // permite hasta 200 conexiones SSE simultáneas
+// Emisor aislado por tenant: un evento de una empresa nunca llega a las conexiones SSE de otra.
+// Hasta 200 conexiones SSE simultáneas.
+export const ghlInboxEmitter = new TenantEventEmitter(200);
