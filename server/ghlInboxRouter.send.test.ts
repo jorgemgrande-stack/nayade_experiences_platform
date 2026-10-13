@@ -10,6 +10,11 @@ import http from "node:http";
 import type { AddressInfo } from "node:net";
 import express from "express";
 
+// El router usa el pool compartido del registro: necesita una DATABASE_URL (el driver está simulado)
+vi.hoisted(() => {
+  process.env.DATABASE_URL ||= "mysql://test:test@127.0.0.1:3306/test";
+});
+
 const state = vi.hoisted(() => ({
   conversationRows: [] as any[],
   localConversations: [] as any[],
