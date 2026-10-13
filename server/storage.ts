@@ -5,6 +5,7 @@
 
 import { ENV } from './_core/env';
 import { Metrics, meter } from "./_core/metering";
+import { scopeStorageKey } from "./_core/tenantStorage";
 import {
   S3Client,
   PutObjectCommand,
@@ -53,8 +54,9 @@ async function localPut(
   return { key, url };
 }
 
+// Valida la clave (sin `..`) y la ubica en el espacio del tenant en modo multi.
 function normalizeKey(relKey: string): string {
-  return relKey.replace(/^\/+/, "");
+  return scopeStorageKey(relKey);
 }
 
 // ─── Forge helpers ────────────────────────────────────────────────────────────

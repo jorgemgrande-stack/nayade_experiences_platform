@@ -42,6 +42,7 @@ import {
   type CommercialReminderEmailData,
 } from "./emailTemplates";
 import { legacyDb, legacyPool } from "./_core/legacyDb";
+import { scheduleTenantCron } from "./_core/tenantRegistry/scheduler";
 
 const COMMERCIAL_TEMPLATE_BUILDERS: Record<string, (d: CommercialReminderEmailData) => string> = {
   commercial_reminder_1: buildCommercialReminder1Html,
@@ -575,7 +576,7 @@ async function finalize(
 
 export function startEmailAutomationJob(): void {
   log("info", "Iniciando cron email_automation_job (*/10 * * * *)");
-  cron.schedule("*/10 * * * *", async () => {
+  scheduleTenantCron("*/10 * * * *", "email-automation", async () => {
     try {
       await runEmailAutomationJob();
     } catch (err: any) {

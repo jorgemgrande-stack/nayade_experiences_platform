@@ -14,6 +14,7 @@ import type mysql from "mysql2/promise";
 import { legacyPool } from "../_core/legacyDb";
 import nodemailer from "nodemailer";
 import { decryptPassword } from "../utils/emailCrypto";
+import { scheduleTenantCron } from "../_core/tenantRegistry/scheduler";
 
 function getPool(): mysql.Pool {
   return legacyPool();
@@ -513,7 +514,7 @@ export async function startCommercialEmailSyncJob(): Promise<void> {
 
   // Every 5 minutes — individual accounts control their own interval but we
   // check every 5 min and skip accounts whose last_sync_at is recent enough.
-  cron.schedule("*/5 * * * *", () => {
+  scheduleTenantCron("*/5 * * * *", "commercial-email-sync", () => {
     runCommercialEmailSync().catch(err =>
       console.error("[CommercialEmail] Error en sync cron:", err.message),
     );

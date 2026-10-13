@@ -17,6 +17,7 @@ import {
 } from "../../drizzle/schema";
 import { madridStartOfDayUtc, madridEndOfDayUtc } from "../utils/timezone";
 import { legacyDb, legacyPool } from "../_core/legacyDb";
+import { scheduleTenantCron } from "../_core/tenantRegistry/scheduler";
 
 // CONFIG
 
@@ -903,7 +904,7 @@ export function startEmailIngestionJob(): void {
       .catch((e) => console.error("[EmailTPV] Boot run error:", e));
   });
 
-  cron.schedule("*/5 * * * *", async () => {
+  scheduleTenantCron("*/5 * * * *", "email-tpv-ingestion", async () => {
     try {
       const r = await runEmailIngestion(false);
       if (r.messagesChecked > 0 || r.errors.length > 0) {

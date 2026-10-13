@@ -11,6 +11,7 @@ import { sendEmail } from "./mailer";
 import { logDirectEmail } from "./emailManager";
 import { getBusinessEmail, getSystemSettingSync } from "./config";
 import { legacyDb, legacyPool } from "./_core/legacyDb";
+import { scheduleTenantCron } from "./_core/tenantRegistry/scheduler";
 const STALE_HOURS = 48;
 
 async function runCancellationStaleJob() {
@@ -111,7 +112,7 @@ async function runCancellationStaleJob() {
  */
 export function startCancellationStaleJob() {
   console.log("[CancellationStale] Job de expedientes sin atender iniciado (cada 6h)");
-  cron.schedule("0 8,14,20,2 * * *", () => {
+  scheduleTenantCron("0 8,14,20,2 * * *", "cancellation-stale", () => {
     runCancellationStaleJob().catch(console.error);
   });
 }

@@ -21,6 +21,7 @@ import {
   quotes,
 } from "../../drizzle/schema";
 import { legacyDb, legacyPool } from "../_core/legacyDb";
+import { scheduleTenantCron } from "../_core/tenantRegistry/scheduler";
 
 const _pool = legacyPool();
 const db = legacyDb();
@@ -148,7 +149,7 @@ export function startRelinkJob(): void {
       .catch(e => console.error("[CardRelink] Boot error:", e));
   });
 
-  cron.schedule("*/15 * * * *", async () => {
+  scheduleTenantCron("*/15 * * * *", "card-terminal-relink", async () => {
     if (isRunning) return;
     isRunning = true;
     try {

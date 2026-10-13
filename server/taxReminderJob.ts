@@ -18,6 +18,7 @@ import { taxObligations, taxSettings } from "../drizzle/schema";
 import { sendEmail } from "./mailer";
 import { getBusinessEmail } from "./config";
 import { legacyDb, legacyPool } from "./_core/legacyDb";
+import { scheduleTenantCron } from "./_core/tenantRegistry/scheduler";
 
 const _pool = legacyPool();
 const db = legacyDb();
@@ -114,7 +115,7 @@ export async function runTaxReminderJob(): Promise<{ checked: number; sent: numb
 
 export function startTaxReminderJob(): void {
   console.log("[Jobs] Iniciando cron tax_reminder_job (0 8 * * *)");
-  cron.schedule("0 8 * * *", async () => {
+  scheduleTenantCron("0 8 * * *", "tax-reminder", async () => {
     try {
       await runTaxReminderJob();
     } catch (err: any) {
