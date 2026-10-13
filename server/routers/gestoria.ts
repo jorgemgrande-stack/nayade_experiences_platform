@@ -8,8 +8,6 @@
 import { z } from "zod";
 import { router, permissionProcedure, publicProcedure, gestoriaProcedure } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
-import { drizzle } from "drizzle-orm/mysql2";
-import mysql from "mysql2/promise";
 import { randomBytes } from "crypto";
 import { eq, asc, desc, and, gte, lte } from "drizzle-orm";
 import {
@@ -38,12 +36,13 @@ import {
   compute111, compute190, lines111, type Labor111,
   computeCorporate, lines200,
 } from "../gestoriaTax";
+import { legacyDb, legacyPool } from "../_core/legacyDb";
 
 /** Línea de desglose para persistir en tax_obligation_lines. */
 type EstimateLine = { concept: string; base: string; rate: string | null; amount: string; sourceType: string };
 
-const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
-const db = drizzle(_pool);
+const _pool = legacyPool();
+const db = legacyDb();
 
 const gestoriaView = permissionProcedure("gestoria.view", ["admin"]);
 const gestoriaManage = permissionProcedure("gestoria.manage", ["admin"]);

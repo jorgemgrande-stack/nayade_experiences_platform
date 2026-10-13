@@ -12,8 +12,6 @@
  *   3. tpv_sales           – importe exacto + ventana temporal [-2h, +30min]
  */
 
-import mysql from "mysql2/promise";
-import { drizzle } from "drizzle-orm/mysql2";
 import { and, eq, gte, like, lte } from "drizzle-orm";
 import cron from "node-cron";
 import {
@@ -22,9 +20,10 @@ import {
   reservations,
   quotes,
 } from "../../drizzle/schema";
+import { legacyDb, legacyPool } from "../_core/legacyDb";
 
-const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
-const db = drizzle(_pool);
+const _pool = legacyPool();
+const db = legacyDb();
 
 let isRunning = false;
 

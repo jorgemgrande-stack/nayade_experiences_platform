@@ -82,6 +82,37 @@ async function createEntry(id: string, key: string): Promise<Database | null> {
   }
 }
 
+/**
+ * Acceso SÍNCRONO a la base de datos única de hoy, solo para el código heredado que crea su
+ * conexión en el momento de importar el módulo (ver _core/legacyDb).
+ *
+ * Solo existe en modo `single`: en `multi` no hay una única base de datos, y un acceso
+ * síncrono sin tenant sería justo el riesgo de fuga entre clientes que se quiere evitar.
+ */
+function getSingleEntrySync(): Entry | null {
+  if (getTenantMode() !== "single") {
+    throw new TenantResolutionError(
+      "Acceso heredado a la base de datos no disponible en modo multi-tenant: usar getDb() con tenant resuelto",
+    );
+  }
+  const existing = entries.get(DEFAULT_TENANT_ID);
+  if (existing) return existing;
+  const uri = process.env.DATABASE_URL;
+  if (!uri) return null;
+  const pool = mysql.createPool({ uri, connectionLimit: POOL_CONNECTION_LIMIT });
+  const entry = { pool, db: createDatabase(pool) };
+  entries.set(DEFAULT_TENANT_ID, entry);
+  return entry;
+}
+
+export function getSingleTenantDatabaseSync(): Database | null {
+  return getSingleEntrySync()?.db ?? null;
+}
+
+export function getSingleTenantPoolSync(): mysql.Pool | null {
+  return getSingleEntrySync()?.pool ?? null;
+}
+
 /** Cierra y olvida los pools (apagado ordenado y pruebas). */
 export async function closeAllDatabases(): Promise<void> {
   const all = Array.from(entries.values());

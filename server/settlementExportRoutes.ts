@@ -12,8 +12,6 @@
 
 import { Router, Request, Response, NextFunction } from "express";
 import * as XLSX from "xlsx";
-import { drizzle } from "drizzle-orm/mysql2";
-import mysql from "mysql2/promise";
 import { eq } from "drizzle-orm";
 import {
   supplierSettlements,
@@ -21,9 +19,10 @@ import {
   suppliers,
 } from "../drizzle/schema";
 import { requireAdminRole } from "./_core/expressAuth";
+import { legacyDb, legacyPool } from "./_core/legacyDb";
 
-const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
-const db = drizzle(_pool);
+const _pool = legacyPool();
+const db = legacyDb();
 
 const settlementExportRouter = Router();
 

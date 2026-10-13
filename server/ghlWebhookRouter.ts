@@ -11,14 +11,13 @@
  * Siempre devuelve HTTP 200 — GHL reintentaría en caso de fallo.
  */
 import express from "express";
-import { drizzle } from "drizzle-orm/mysql2";
-import mysql from "mysql2/promise";
 import { eq } from "drizzle-orm";
 import { ghlWebhookLogs } from "../drizzle/schema";
 import { createLead } from "./db";
+import { legacyDb, legacyPool } from "./_core/legacyDb";
 
-const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
-const _db = drizzle(_pool);
+const _pool = legacyPool();
+const _db = legacyDb();
 
 // Eventos que generan un lead en la plataforma (incluye variantes de GHL)
 const LEAD_EVENTS = new Set([

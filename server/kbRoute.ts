@@ -5,8 +5,6 @@
  * No requiere autenticación. Se actualiza automáticamente desde la BD.
  */
 import { Router } from "express";
-import { drizzle } from "drizzle-orm/mysql2";
-import mysql from "mysql2/promise";
 import { eq, and, inArray } from "drizzle-orm";
 import {
   experiences,
@@ -25,9 +23,10 @@ import {
   restaurantShifts,
 } from "../drizzle/schema";
 import { KB_PUBLIC_SETTING_KEYS, pickPublicKbSettings } from "./kbPublicSettings";
+import { legacyDb, legacyPool } from "./_core/legacyDb";
 
-const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
-const db = drizzle(_pool);
+const _pool = legacyPool();
+const db = legacyDb();
 
 function strip(html: string | null | undefined): string {
   if (!html) return "";

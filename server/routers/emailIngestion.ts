@@ -1,5 +1,3 @@
-import mysql from "mysql2/promise";
-import { drizzle } from "drizzle-orm/mysql2";
 import { and, desc, eq, gte, lte, sql } from "drizzle-orm";
 import { z } from "zod";
 import { router, protectedProcedure } from "../_core/trpc";
@@ -7,9 +5,10 @@ import { TRPCError } from "@trpc/server";
 import { emailIngestionLogs } from "../../drizzle/schema";
 import { runEmailIngestion } from "../services/emailTpvIngestionService";
 import { assertModuleEnabled } from "../_core/flagGuard";
+import { legacyDb, legacyPool } from "../_core/legacyDb";
 
-const pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
-const db = drizzle(pool);
+const pool = legacyPool();
+const db = legacyDb();
 
 const adminProc = protectedProcedure.use(async ({ ctx, next }) => {
   if (ctx.user.role !== "admin") {

@@ -7,14 +7,13 @@
 //
 // Es una ESTIMACIÓN: la liquidación oficial la realiza la gestoría.
 
-import { drizzle } from "drizzle-orm/mysql2";
-import mysql from "mysql2/promise";
 import { and, gte, lt, lte, ne, or, isNull, isNotNull, inArray } from "drizzle-orm";
 import { invoices, reavExpedients, expenses, hrIrpfLedger } from "../drizzle/schema";
 import { calcGeneralTax } from "./taxUtils";
+import { legacyDb, legacyPool } from "./_core/legacyDb";
 
-const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
-const db = drizzle(_pool);
+const _pool = legacyPool();
+const db = legacyDb();
 
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 

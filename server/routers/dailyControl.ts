@@ -10,8 +10,6 @@
 import { z } from "zod";
 import { router, permissionProcedure } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
-import { drizzle } from "drizzle-orm/mysql2";
-import mysql from "mysql2/promise";
 import { and, desc, eq, gte, lt, sql } from "drizzle-orm";
 import {
   reservations,
@@ -23,9 +21,10 @@ import {
   cashMovements,
 } from "../../drizzle/schema";
 import { madridStartOfDayUtc, madridEndOfDayUtc } from "../utils/timezone";
+import { legacyDb, legacyPool } from "../_core/legacyDb";
 
-const pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
-const db = drizzle(pool);
+const pool = legacyPool();
+const db = legacyDb();
 
 const dailyControlProc = permissionProcedure("accounting.daily_control", ["admin", "controler"]);
 

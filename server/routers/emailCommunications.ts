@@ -6,8 +6,6 @@
 import { router, protectedProcedure } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { drizzle } from "drizzle-orm/mysql2";
-import mysql from "mysql2/promise";
 import {
   emailTemplateConfigs,
   emailAutomationRules,
@@ -18,9 +16,10 @@ import {
 import { eq, and, desc, asc, gte, lte, like, count, sql, inArray } from "drizzle-orm";
 import { sendEmail } from "../mailer";
 import { runEmailAutomationJob } from "../emailAutomationJob";
+import { legacyDb, legacyPool } from "../_core/legacyDb";
 
-const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
-const db = drizzle(_pool);
+const _pool = legacyPool();
+const db = legacyDb();
 
 const staff = protectedProcedure;
 

@@ -7,17 +7,16 @@
  */
 
 import { Router } from "express";
-import { drizzle } from "drizzle-orm/mysql2";
-import mysql from "mysql2/promise";
 import { eq } from "drizzle-orm";
 import { invoices } from "../drizzle/schema";
 import { buildInvoiceHtml } from "./invoiceHtml";
 import { resolveSessionUser } from "./_core/expressAuth";
 import { checkRbacOrLegacy } from "./_core/rbac";
 import { verifyInvoiceLink } from "./_core/signedLinks";
+import { legacyDb, legacyPool } from "./_core/legacyDb";
 
-const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
-const db = drizzle(_pool);
+const _pool = legacyPool();
+const db = legacyDb();
 
 const invoicePreviewRouter = Router();
 

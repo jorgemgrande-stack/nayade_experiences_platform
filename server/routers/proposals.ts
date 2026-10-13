@@ -6,8 +6,6 @@
 import { router, staffProcedure, publicProcedure } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { drizzle } from "drizzle-orm/mysql2";
-import mysql from "mysql2/promise";
 import { proposals, proposalOptions, leads, quotes } from "../../drizzle/schema";
 import { eq, desc, and, gte, lte, inArray, like, or, count } from "drizzle-orm";
 import { sendEmail as sharedSendEmail } from "../mailer";
@@ -19,9 +17,10 @@ import { buildProposalHtml } from "../emailTemplates";
 import { getSystemSettingSync, getBusinessEmail } from "../config";
 import { logActivity } from "../db";
 import { groupTaxBreakdown, totalTaxAmount } from "../taxUtils";
+import { legacyDb, legacyPool } from "../_core/legacyDb";
 
-const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
-const db = drizzle(_pool);
+const _pool = legacyPool();
+const db = legacyDb();
 
 async function sendEmail(args: { to: string; subject: string; html: string }): Promise<boolean> {
   if (!args.to) { console.warn("[proposals] Lead sin email, no se puede enviar"); return false; }

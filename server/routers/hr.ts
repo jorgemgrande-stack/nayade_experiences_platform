@@ -12,8 +12,6 @@
 import { z } from "zod";
 import { router, permissionProcedure, publicProcedure, employeeProcedure } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
-import mysql from "mysql2/promise";
-import { drizzle } from "drizzle-orm/mysql2";
 import { eq, desc, asc, and, gte, lte, isNull, ne, sql, inArray, like } from "drizzle-orm";
 import { randomBytes } from "crypto";
 import {
@@ -39,12 +37,13 @@ import {
 import { sendEmail } from "../mailer";
 import { getUserByInviteToken, setUserPassword } from "../db";
 import { getDefaultCashAccountId, createCashMovementIfNotExists } from "./cashRegisterHelper";
+import { legacyDb, legacyPool } from "../_core/legacyDb";
 
 // Permisos: lecturas RRHH accesibles para admin (con fallback a rol legacy).
 const hrViewProc = permissionProcedure("hr.view", ["admin"]);
 
-const pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
-const db = drizzle(pool);
+const pool = legacyPool();
+const db = legacyDb();
 
 // ─── EMPLOYEES (lecturas + portal access management) ─────────────────────────
 const employeesRouter = router({

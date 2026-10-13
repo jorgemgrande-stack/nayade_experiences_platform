@@ -1,16 +1,15 @@
 import { eq, desc, and, gte, lte, inArray } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/mysql2";
-import mysql from "mysql2/promise";
 import {
   roomTypes, roomRates, roomRateSeasons, roomBlocks,
   InsertRoomType, RoomType,
 } from "../drizzle/schema";
+import { legacyDb, legacyPool } from "./_core/legacyDb";
 
 // Pool persistente reutilizable. Ver nota en server/db/reviewsDb.ts:
 // el patrón anterior `createConnection()` per-request acumulaba
 // conexiones idle hasta el wait_timeout del servidor MySQL.
-const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
-const _db = drizzle(_pool);
+const _pool = legacyPool();
+const _db = legacyDb();
 
 async function getDb() {
   return _db;

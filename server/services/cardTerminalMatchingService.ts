@@ -1,6 +1,4 @@
 import "dotenv/config";
-import mysql from "mysql2/promise";
-import { drizzle } from "drizzle-orm/mysql2";
 import { and, eq, gte, lte, inArray, ne, sql, not } from "drizzle-orm";
 import cron from "node-cron";
 import {
@@ -12,6 +10,7 @@ import {
   bankMovementLinks,
   type CardTerminalBatch,
 } from "../../drizzle/schema";
+import { legacyDb, legacyPool } from "../_core/legacyDb";
 
 // -- Config ------------------------------------------------------------------
 
@@ -20,8 +19,8 @@ const AUTO_RECONCILE = (process.env.AUTO_RECONCILE_CARD_BATCHES ?? "false") === 
 
 // -- DB -----------------------------------------------------------------------
 
-const _matchingPool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
-const _matchingDb = drizzle(_matchingPool);
+const _matchingPool = legacyPool();
+const _matchingDb = legacyDb();
 
 function makeDb() {
   return _matchingDb;

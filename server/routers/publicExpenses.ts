@@ -1,8 +1,6 @@
 import { z } from "zod";
 import { router, publicProcedure } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
-import { drizzle } from "drizzle-orm/mysql2";
-import mysql from "mysql2/promise";
 import {
   expenseCategories,
   expenseFiles,
@@ -11,9 +9,10 @@ import {
 } from "../../drizzle/schema";
 import { and, eq } from "drizzle-orm";
 import { storagePut } from "../storage";
+import { legacyDb, legacyPool } from "../_core/legacyDb";
 
-const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
-const db = drizzle(_pool);
+const _pool = legacyPool();
+const db = legacyDb();
 
 function randomSuffix() {
   return Math.random().toString(36).slice(2, 8);

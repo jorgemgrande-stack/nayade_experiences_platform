@@ -8,17 +8,16 @@
 // coste laboral se expone como COMPOSICIÓN del gasto, no como una resta extra.
 // La única resta sobre el EBITDA es el Impuesto de Sociedades.
 
-import { drizzle } from "drizzle-orm/mysql2";
-import mysql from "mysql2/promise";
 import { eq, like, ne, and, gte, lte, sql } from "drizzle-orm";
 import {
   hrPayslips, taxSettings, taxObligations, taxDeferralInstallments, finCashAccounts,
   expenses,
 } from "../drizzle/schema";
 import { computeCorporate, compute390, compute190 } from "./gestoriaTax";
+import { legacyDb, legacyPool } from "./_core/legacyDb";
 
-const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
-const db = drizzle(_pool);
+const _pool = legacyPool();
+const db = legacyDb();
 
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 

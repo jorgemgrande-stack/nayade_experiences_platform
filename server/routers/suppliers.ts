@@ -7,8 +7,6 @@ import { TRPCError } from "@trpc/server";
 import { protectedProcedure, publicProcedure, router } from "../_core/trpc";
 import { randomBytes } from "crypto";
 import { getUserByInviteToken, setUserPassword } from "../db";
-import { drizzle } from "drizzle-orm/mysql2";
-import mysql from "mysql2/promise";
 import {
   suppliers,
   supplierSettlements,
@@ -35,9 +33,10 @@ import { storagePut } from "../storage";
 import { generateDocumentNumber } from "../documentNumbers";
 import { htmlToPdf } from "../pdfGenerator";
 import { assertModuleEnabled } from "../_core/flagGuard";
+import { legacyDb, legacyPool } from "../_core/legacyDb";
 
-const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
-const db = drizzle(_pool);
+const _pool = legacyPool();
+const db = legacyDb();
 
 const adminProc = protectedProcedure.use(async ({ ctx, next }) => {
   if ((ctx.user as { role: string }).role !== "admin") {

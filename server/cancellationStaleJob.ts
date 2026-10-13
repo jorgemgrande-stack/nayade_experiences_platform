@@ -5,18 +5,17 @@
  * sin ninguna actividad del equipo.
  */
 import cron from "node-cron";
-import { drizzle } from "drizzle-orm/mysql2";
-import mysql from "mysql2/promise";
 import { and, eq, lt, sql } from "drizzle-orm";
 import { cancellationRequests, cancellationLogs } from "../drizzle/schema";
 import { sendEmail } from "./mailer";
 import { logDirectEmail } from "./emailManager";
 import { getBusinessEmail, getSystemSettingSync } from "./config";
+import { legacyDb, legacyPool } from "./_core/legacyDb";
 const STALE_HOURS = 48;
 
 async function runCancellationStaleJob() {
-  const pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
-  const db = drizzle(pool);
+  const pool = legacyPool();
+  const db = legacyDb();
 
   try {
     const cutoff = new Date(Date.now() - STALE_HOURS * 60 * 60 * 1000);

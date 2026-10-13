@@ -16,13 +16,13 @@
  */
 
 import mysql from "mysql2/promise";
-import { drizzle } from "drizzle-orm/mysql2";
 import { eq, desc } from "drizzle-orm";
 import { ImapFlow } from "imapflow";
 import { simpleParser } from "mailparser";
 import cron from "node-cron";
 import { expenses, expenseFiles, expenseEmailIngestionLogs } from "../../drizzle/schema";
 import { storagePut } from "../storage";
+import { legacyDb, legacyPool } from "../_core/legacyDb";
 
 // ─── CONFIG ──────────────────────────────────────────────────────────────────
 
@@ -46,8 +46,8 @@ let isRunning = false;
 
 // ─── DB ──────────────────────────────────────────────────────────────────────
 
-const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
-const db = drizzle(_pool);
+const _pool = legacyPool();
+const db = legacyDb();
 
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
 

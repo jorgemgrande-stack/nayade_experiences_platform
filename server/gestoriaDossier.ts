@@ -5,14 +5,13 @@
 // listos para enviar a la gestoría externa.
 
 import JSZip from "jszip";
-import { drizzle } from "drizzle-orm/mysql2";
-import mysql from "mysql2/promise";
 import { eq, asc } from "drizzle-orm";
 import { taxObligations, taxSettings } from "../drizzle/schema";
 import { compute303, compute111, computeCorporate } from "./gestoriaTax";
+import { legacyDb, legacyPool } from "./_core/legacyDb";
 
-const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
-const db = drizzle(_pool);
+const _pool = legacyPool();
+const db = legacyDb();
 
 /** CSV con separador ';' y BOM UTF-8 (compatible con Excel en español). */
 function csv(rows: (string | number)[][]): string {

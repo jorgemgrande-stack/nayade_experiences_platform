@@ -1,8 +1,6 @@
 import { z } from "zod";
 import { router } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
-import { drizzle } from "drizzle-orm/mysql2";
-import mysql from "mysql2/promise";
 import { and, count, desc, eq, gte, lte, inArray, sql, sum } from "drizzle-orm";
 import { protectedProcedure } from "../_core/trpc";
 import {
@@ -15,9 +13,10 @@ import {
 } from "../../drizzle/schema";
 import { runMatchingJob } from "../services/cardTerminalMatchingService";
 import { assertModuleEnabled } from "../_core/flagGuard";
+import { legacyDb, legacyPool } from "../_core/legacyDb";
 
-const pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
-const db = drizzle(pool);
+const pool = legacyPool();
+const db = legacyDb();
 
 const adminProc = protectedProcedure.use(async ({ ctx, next }) => {
   if ((ctx.user as { role: string }).role !== "admin") {

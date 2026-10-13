@@ -1,7 +1,7 @@
-import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
 import { reviews, reservations, bookings, type Review } from "../../drizzle/schema";
 import { eq, and, desc, count, avg, or } from "drizzle-orm";
+import { legacyDb, legacyPool } from "../_core/legacyDb";
 
 // Pool persistente top-level (1 sola conexión reutilizable). Antes,
 // getDb() hacía `mysql.createConnection()` por cada petición y no la
@@ -9,8 +9,8 @@ import { eq, and, desc, count, avg, or } from "drizzle-orm";
 // reseñas acumulaba una conexión idle hasta el wait_timeout (8h) del
 // servidor. Era la causa principal de los "Too many connections" en
 // Railway. Conservamos la firma async de getDb() para no tocar callers.
-const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
-const _db = drizzle(_pool);
+const _pool = legacyPool();
+const _db = legacyDb();
 
 async function getDb() {
   return _db;
