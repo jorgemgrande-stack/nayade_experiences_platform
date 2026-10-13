@@ -4,6 +4,7 @@ import { createServer } from "http";
 import net from "net";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import rateLimit from "express-rate-limit";
+import { isLeadProcedurePath, localStorageSecurityHeaders } from "./publicEndpointGuards";
 import { registerOAuthRoutes } from "./oauth";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
@@ -140,8 +141,11 @@ async function startServer() {
   }
 
   // Rate limiting en formularios públicos de lead/presupuesto (10 req/min por IP)
-  app.use("/api/trpc/submitLead", leadRateLimit);
-  app.use("/api/trpc/submitBudget", leadRateLimit);
+  // Los procedimientos reales son public.submitLead, public.submitBudget y
+  // public.submitColegiosLead (y pueden venir agrupados: "a,public.submitLead").
+  app.use("/api/trpc", (req, res, next) =>
+    isLeadProcedurePath(req.path) ? leadRateLimit(req, res, next) : next(),
+  );
 
   // -- AUDIT: log ALL incoming requests to /api/redsys/* ------------------------
   // Este middleware corre ANTES del rate-limiter para capturar si la petición llega.
@@ -162,12 +166,28 @@ async function startServer() {
   // Rate limiting en endpoint de subida de archivos (20 req/min por IP)
   app.use("/api/upload", uploadRateLimit);
   app.use("/api/upload-media", uploadRateLimit);
+  // Subida pública de cupones (sin sesión): mismo límite que el resto de subidas
+  app.use("/api/upload-coupon", uploadRateLimit);
+  // Proxy de eventos a Meta CAPI: público; un visitante legítimo envía varios eventos por
+  // sesión (vista, carrito, compra), así que el límite es holgado: evita el uso como proxy abierto.
+  app.use(
+    "/api/meta-capi",
+    rateLimit({
+      windowMs: 60 * 1000,
+      max: 120,
+      standardHeaders: true,
+      legacyHeaders: false,
+      message: { error: "Demasiadas solicitudes.", code: "RATE_LIMIT_EXCEEDED" },
+    }),
+  );
 
   // Middleware de protección: bloquea rutas /api/trpc de procedimientos protegidos
   // si no hay sesión válida. Funciona en ambos modos (local y Manus OAuth).
   app.use("/api/trpc", createAuthGuardMiddleware(USE_LOCAL_AUTH));
   // Servir archivos del storage local (fallback cuando S3/Forge no está configurado)
   const localStorageDir = process.env.LOCAL_STORAGE_PATH ?? "/tmp/local-storage";
+  // Los ficheros subidos nunca deben ejecutarse en el origen de la aplicación.
+  app.use("/local-storage", localStorageSecurityHeaders);
   app.use("/local-storage", express.static(localStorageDir));
   // File upload endpoint
   app.use(uploadRouter);

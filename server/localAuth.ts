@@ -49,9 +49,18 @@ export async function verifySessionToken(token: string): Promise<number | null> 
 /** Extrae el usuario de la cookie de sesión (para usar en createContext). */
 export async function getUserFromRequest(req: Request) {
   const raw = req.headers.cookie ?? "";
-  const cookies = Object.fromEntries(
-    raw.split(";").map(c => c.trim().split("=").map(decodeURIComponent))
-  );
+  const cookies: Record<string, string> = {};
+  for (const part of raw.split(";")) {
+    const idx = part.indexOf("=");
+    if (idx === -1) continue;
+    const name = part.slice(0, idx).trim();
+    const value = part.slice(idx + 1).trim();
+    try {
+      cookies[name] = decodeURIComponent(value);
+    } catch {
+      cookies[name] = value; // cookie mal codificada: no debe tumbar la petición
+    }
+  }
   const token = cookies[COOKIE_NAME];
   if (!token) return null;
 
@@ -62,7 +71,10 @@ export async function getUserFromRequest(req: Request) {
   if (!db) return null;
 
   const rows = await db.select().from(users).where(eq(users.id, userId)).limit(1);
-  return rows[0] ?? null;
+  const user = rows[0] ?? null;
+  // Un usuario desactivado pierde el acceso aunque su JWT siga vigente (30 días).
+  if (user && user.isActive === false) return null;
+  return user;
 }
 
 // ─── Router Express ───────────────────────────────────────────────────────────
