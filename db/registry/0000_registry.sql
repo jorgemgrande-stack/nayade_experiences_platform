@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS tenants (
   registry_version INT          NOT NULL DEFAULT 1,
   created_at       TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   updated_at       TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
-  CONSTRAINT chk_tenant_id CHECK (id REGEXP '^[a-z0-9][a-z0-9_-]{0,62}$')
+  CONSTRAINT chk_tenant_id CHECK (REGEXP_LIKE(id, '^[a-z0-9][a-z0-9_-]{0,62}$', 'c'))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS tenant_domains (
@@ -48,7 +48,7 @@ CREATE TABLE IF NOT EXISTS tenant_domains (
   UNIQUE KEY uq_one_primary_per_tenant (tenant_id, primary_flag),
   KEY idx_domains_tenant (tenant_id),
   CONSTRAINT fk_domains_tenant FOREIGN KEY (tenant_id) REFERENCES tenants (id),
-  CONSTRAINT chk_domain_lower CHECK (domain = LOWER(domain))
+  CONSTRAINT chk_domain_lower CHECK (CAST(domain AS BINARY) = CAST(LOWER(domain) AS BINARY))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS tenant_databases (
