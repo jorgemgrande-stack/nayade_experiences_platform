@@ -112,8 +112,14 @@ export interface Opportunity {
   closedAt: number | null;
 }
 
+export type BillingInterval = "month" | "year";
+/** `manual`: firma registrada por un operador (papel o fuera del sistema). `electronic`: reservado para un proveedor de firma futuro. */
+export type SignatureMethod = "manual" | "electronic";
+
 export interface Contract {
   id: number;
+  /** Identificador comercial único (CT-AAAA-NNNNNN). */
+  reference: string | null;
   companyId: number;
   opportunityId: number | null;
   planId: string | null;
@@ -127,6 +133,32 @@ export interface Contract {
   signedAt: number | null;
   /** Tenant creado al activar el contrato. */
   tenantId: string | null;
+  /** Condiciones comerciales pactadas (texto). */
+  conditions: string | null;
+  billingInterval: BillingInterval | null;
+  renewalDate: number | null;
+  autoRenew: boolean;
+  /** Días de preaviso para no renovar. */
+  noticeDays: number | null;
+  /** Versión vigente de las condiciones (cada cambio de términos crea una versión inmutable). */
+  version: number;
+  /** Contrato al que renueva. */
+  previousContractId: number | null;
+  signatureMethod: SignatureMethod | null;
+  /** Referencia externa de la firma (documento firmado, id del proveedor futuro). */
+  signatureRef: string | null;
+  createdAt: number;
+  updatedAt: number | null;
+}
+
+/** Instantánea inmutable de los términos de un contrato en una versión. */
+export interface ContractVersion {
+  id: number;
+  contractId: number;
+  version: number;
+  snapshot: Record<string, unknown>;
+  reason: string | null;
+  author: string;
   createdAt: number;
 }
 

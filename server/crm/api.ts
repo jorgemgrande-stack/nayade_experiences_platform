@@ -101,6 +101,19 @@ const opportunityBody = {
   nextActionAt: time.nullable().optional(),
 };
 
+const contractTerms = {
+  planId: nullStr(64),
+  modules: z.array(z.string().max(32)).max(30).optional(),
+  amountCents: z.number().int().min(0).nullable().optional(),
+  currency: z.string().length(3).optional(),
+  startDate: time.nullable().optional(),
+  renewalDate: time.nullable().optional(),
+  billingInterval: z.enum(["month", "year"]).nullable().optional(),
+  autoRenew: z.boolean().optional(),
+  noticeDays: z.number().int().min(0).max(365).nullable().optional(),
+  conditions: nullStr(20000),
+};
+
 export function createCrmRouter(crm: CrmService, store: CrmStore): Router {
   const r = express.Router();
   const who = (req: Request) => `${getAuth(req)!.actor.type}:${getAuth(req)!.actor.id}`;
@@ -252,14 +265,33 @@ export function createCrmRouter(crm: CrmService, store: CrmStore): Router {
   }));
 
   // ── Contratos ──
-  r.get("/contracts", requireScope("crm:read"), wrap(async (_q, res) => void res.json({ contracts: await store.list("contracts", {}, { desc: true, limit: 1000 }) })));
+  r.get("/contracts", requireScope("crm:read"), wrap(async (req, res) => {
+    const f = page
+      .extend({
+        status: z.enum(["draft", "sent", "signed", "active", "cancelled"]).optional(),
+        companyId: id.optional(),
+        // Renovaciones próximas: contratos activos cuya renovación vence antes de esta fecha (ms)
+        renewalBefore: z.coerce.number().int().min(0).optional(),
+      })
+      .parse(req.query);
+    const p = await crm.listContracts(f);
+    res.json({ contracts: p.items, total: p.total, limit: p.limit, offset: p.offset });
+  }));
+  r.get("/contracts/:id", requireScope("crm:read"), wrap(async (req, res) => void res.json(await crm.getContract(id.parse(req.params.id)))));
   r.post("/contracts", requireScope("crm:write"), wrap(async (req, res) => {
-    const b = z.object({ companyId: id, opportunityId: id.optional(), planId: optStr(64), modules: z.array(z.string().max(32)).max(30).optional(), amountCents: z.number().int().min(0).optional(), currency: optStr(3) }).parse(req.body);
-    res.status(201).json({ contract: await crm.createContract(b, who(req)) });
+    const b = z.object({ companyId: id, opportunityId: id.optional(), ...contractTerms }).strict().parse(req.body);
+    res.status(201).json({ contract: await crm.createContract(b as Parameters<CrmService["createContract"]>[0], who(req)) });
+  }));
+  r.patch("/contracts/:id", requireScope("crm:write"), wrap(async (req, res) => {
+    const b = z.object({ ...contractTerms, reason: optStr(300) }).strict().parse(req.body);
+    res.json({ contract: await crm.updateContract(id.parse(req.params.id), b as Parameters<CrmService["updateContract"]>[1], who(req)) });
   }));
   r.post("/contracts/:id/status", requireScope("crm:write"), wrap(async (req, res) => {
-    const b = z.object({ status: z.enum(["draft", "sent", "signed", "active", "cancelled"]) }).parse(req.body);
-    res.json({ contract: await crm.setContractStatus(id.parse(req.params.id), b.status, who(req)) });
+    const b = z.object({ status: z.enum(["draft", "sent", "signed", "active", "cancelled"]), signatureRef: optStr(200) }).parse(req.body);
+    res.json({ contract: await crm.setContractStatus(id.parse(req.params.id), b.status, who(req), { signatureRef: b.signatureRef }) });
+  }));
+  r.post("/contracts/:id/renew", requireScope("crm:write"), wrap(async (req, res) => {
+    res.status(201).json({ contract: await crm.renewContract(id.parse(req.params.id), who(req)) });
   }));
 
   // ── Actividad ──
