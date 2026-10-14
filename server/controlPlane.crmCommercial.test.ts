@@ -59,8 +59,8 @@ describe("empresas", () => {
     const u = await crm.updateCompany(c.id, { status: "inactive", phone: "600111222", owner: "ana" }, "op");
     expect(u).toMatchObject({ status: "inactive", phone: "600111222", owner: "ana", updatedAt: now });
     const tl = await crm.timeline("company", c.id);
-    expect(tl[0].summary).toContain("status active → inactive");
-    expect(tl[0].summary).toContain("phone");
+    expect(tl[0].summary).toContain("estado active → inactive");
+    expect(tl[0].summary).toContain("teléfono");
     expect(tl[0].summary).not.toContain("600111222"); // datos personales fuera del historial
     const n = tl.length;
     await crm.updateCompany(c.id, { status: "inactive" }, "op");
@@ -119,7 +119,7 @@ describe("leads", () => {
     await expect(crm.updateLead(l.id, { email: null, phone: null }, "op")).rejects.toMatchObject({ code: "invalid_input" });
     const u = await crm.updateLead(l.id, { priority: "urgent", owner: "ana", notes: "Llamar el lunes" }, "op");
     expect(u).toMatchObject({ priority: "urgent", owner: "ana", notes: "Llamar el lunes" });
-    expect((await crm.timeline("lead", l.id))[0].summary).toContain("priority high → urgent");
+    expect((await crm.timeline("lead", l.id))[0].summary).toContain("prioridad high → urgent");
     expect((await crm.listLeads({ priority: "urgent" })).total).toBe(1);
     expect((await crm.listLeads({ q: "marta" })).total).toBe(1);
   });

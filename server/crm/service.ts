@@ -64,6 +64,21 @@ export interface DuplicateMatch {
   reason: "email" | "phone" | "company_name" | "tax_id";
 }
 
+/** Nombres legibles para el historial (los valores de datos personales no se registran). */
+const FIELD_LABEL: Record<string, string> = {
+  name: "nombre", legalName: "razón social", taxId: "NIF", email: "correo", phone: "teléfono", website: "web",
+  sector: "sector", address: "dirección", city: "ciudad", postalCode: "código postal", country: "país",
+  billingEmail: "correo de facturación", notes: "notas", owner: "responsable", status: "estado",
+  firstName: "nombre", lastName: "apellidos", role: "cargo", isPrimary: "principal", companyName: "empresa",
+  source: "origen", priority: "prioridad", companyId: "empresa", title: "título", amountCents: "importe",
+  currency: "moneda", expectedClose: "cierre estimado", planId: "plan", modules: "módulos", contactId: "contacto",
+  nextAction: "próxima acción", nextActionAt: "fecha de próxima acción",
+};
+const STAGE_NAME: Record<OpportunityStage, string> = {
+  prospecting: "Nuevo", contacted: "Contactado", qualification: "Cualificación", demo: "Demostración",
+  proposal: "Propuesta enviada", negotiation: "Negociación", won: "Ganada", lost: "Perdida",
+};
+
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MODULE_RE = /^[a-z][a-z0-9_]{1,31}$/;
 const SCAN_LIMIT = 5000;
@@ -725,7 +740,7 @@ export class CrmService {
       closedAt: final ? this.now() : null,
       updatedAt: this.now(),
     });
-    await this.log("opportunity", id, "note", `Etapa: ${o.stage} → ${to}${to === "lost" ? ` (motivo: ${clean(opts.lostReason)})` : ""}`, author);
+    await this.log("opportunity", id, "note", `Etapa: ${STAGE_NAME[o.stage]} → ${STAGE_NAME[to]}${to === "lost" ? ` (motivo: ${clean(opts.lostReason)})` : ""}`, author);
     return upd;
   }
 
@@ -854,8 +869,12 @@ export class CrmService {
 
   /** Resumen de cambios para el historial: nombres de campo y, para los no personales, sus valores. */
   private describeChanges<T>(changed: (keyof T)[], before: T, after: T, showValues: (keyof T)[]): string {
+    const show = (v: unknown) => (v === true ? "sí" : v === false ? "no" : String(v ?? "—"));
     return `Actualizado: ${changed
-      .map((k) => (showValues.includes(k) ? `${String(k)} ${String(before[k] ?? "—")} → ${String(after[k] ?? "—")}` : String(k)))
+      .map((k) => {
+        const label = FIELD_LABEL[String(k)] ?? String(k);
+        return showValues.includes(k) ? `${label} ${show(before[k])} → ${show(after[k])}` : label;
+      })
       .join(", ")}`;
   }
 
