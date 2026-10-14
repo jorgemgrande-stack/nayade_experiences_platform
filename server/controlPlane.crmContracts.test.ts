@@ -114,6 +114,21 @@ describe("contratos v2", () => {
   });
 });
 
+describe("activación de contratos: errores claros", () => {
+  it("sin contacto con correo → invalid_input; fallo del alta → conflict con el motivo, y el contrato sigue firmado", async () => {
+    const co = await crm.createCompany({ name: "Sin contacto" }, "op");
+    await crm.createContact(co.id, { firstName: "Sin correo", phone: "600" }, "op");
+    const c = await crm.createContract({ companyId: co.id, planId: "base" }, "op");
+    for (const st of ["sent", "signed"] as const) await crm.setContractStatus(c.id, st, "op");
+    await expect(crm.setContractStatus(c.id, "active", "op")).rejects.toMatchObject({ code: "invalid_input", message: expect.stringContaining("contacto activo con correo") });
+    await crm.createContact(co.id, { firstName: "Ana", email: "ana@sin.example" }, "op");
+    const failing = new CrmService({ store, now: () => now, activation: { activate: async () => { throw new Error("BD no disponible"); } } });
+    await expect(failing.setContractStatus(c.id, "active", "op")).rejects.toMatchObject({ code: "conflict", message: expect.stringContaining("BD no disponible") });
+    expect((await store.get("contracts", c.id))!.status).toBe("signed");
+    expect((await crm.setContractStatus(c.id, "active", "op")).status).toBe("active");
+  });
+});
+
 describe("API de contratos v2", () => {
   let server: http.Server;
   let port: number;
