@@ -34,6 +34,8 @@ import type { AlertRunResult } from "../_core/ops/alerts";
 import { createCrmRouter } from "../crm/api";
 import type { CrmService } from "../crm/service";
 import type { CrmStore } from "../crm/store";
+import type { TicketService } from "../_core/support/tickets";
+import { createTicketsRouter } from "./tickets";
 import type { SupportAdmin } from "../_core/support/grants";
 
 export interface ControlPlaneDeps {
@@ -55,6 +57,8 @@ export interface ControlPlaneDeps {
   support?: Pick<SupportAdmin, "create" | "revoke">;
   /** Incidencias operativas y evaluación de alertas. */
   ops?: { incidents: IncidentService; runAlerts?: () => Promise<AlertRunResult> };
+  /** Tickets de soporte de clientes. */
+  tickets?: TicketService;
   /** SSO corporativo (OIDC → sesión corta). */
   sso?: SsoService;
   /** CRM comercial (leads, oportunidades, contratos…). */
@@ -365,6 +369,25 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
   }
 
   if (d.crm) router.use("/crm", createCrmRouter(d.crm.service, d.crm.store));
+
+  if (d.tickets) {
+    const tickets = d.tickets;
+    router.use("/tickets", createTicketsRouter(tickets));
+    // Vista por empresa: el tenant de la ruta fuerza el filtro y valida su existencia.
+    router.get(
+      "/tenants/:id/tickets",
+      requireScope("tickets:read"),
+      wrap(async (req, res) => {
+        const id = idSchema.parse(req.params.id);
+        if (!(await d.reader.getTenant(id))) throw new RegistryError("not_found", "Tenant no encontrado");
+        const status = z.enum(["open", "in_progress", "waiting_customer", "resolved", "closed"]).optional().parse(req.query.status);
+        const limit = z.coerce.number().int().min(1).max(200).default(50).parse(req.query.limit);
+        const offset = z.coerce.number().int().min(0).max(100_000).default(0).parse(req.query.offset);
+        const { items, total } = await tickets.list({ tenantId: id, status, limit, offset });
+        res.json({ tickets: items, total, limit, offset });
+      }),
+    );
+  }
 
   // ── Métricas (Prometheus) ──────────────────────────────────────────────────
   router.get(
