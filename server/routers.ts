@@ -204,6 +204,7 @@ import { fiscalAuditRouter } from "./routers/fiscalAuditRouter";
 import { getAllCounters, updateCounterPrefix, resetCounter, getDocumentNumberLogs } from "./documentNumbers";
 import type { DocumentType } from "./documentNumbers";
 import { integrationEnv } from "./_core/tenantConfig";
+import { protectLegacySecret, revealLegacySecret } from "./_core/credentials/legacyFields";
 const adminProcedure = permissionProcedure("settings.manage", ["admin"]);
 
 
@@ -839,8 +840,9 @@ export const appRouter = router({
         };
         for (const [camelKey, value] of Object.entries(input.settings)) {
           const sysKey = KEY_MAP[camelKey] ?? camelKey;
+          const stored = sysKey === "site_ghl_api_key" ? protectLegacySecret("system_settings", sysKey, value ?? "") : (value ?? "");
           await db.update(systemSettings)
-            .set({ value: value ?? "" })
+            .set({ value: stored })
             .where(eq(systemSettings.key, sysKey));
         }
         return { ok: true };
@@ -864,7 +866,7 @@ export const appRouter = router({
           .from(systemSettings)
           .where(sqlDrizzle`${systemSettings.key} IN ('site_ghl_api_key','site_ghl_location_id')`);
         const map = Object.fromEntries(rows.map((r: any) => [r.key, r.value]));
-        dbKey = map.site_ghl_api_key ?? "";
+        dbKey = revealLegacySecret("system_settings", "site_ghl_api_key", map.site_ghl_api_key);
         dbLoc = map.site_ghl_location_id ?? "";
       }
       return {
