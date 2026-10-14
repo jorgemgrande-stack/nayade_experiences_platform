@@ -45,7 +45,7 @@ PR pequeño → CI informativo → `gh pr merge --merge` → esperar despliegue 
 2. Despliegue del plano de control y del CRM (B12) y alta real de operadores SSO (B10).
 3. Elegir proveedor de pagos y tarifas (B11) → activar cobros con autorización.
 4. Facturación SaaS en el CRM (suscripciones/facturas visibles) y tickets de soporte.
-5. Cifrado de campo de las credenciales heredadas en `system_settings` (GHL/VAPI de Náyade) con migración controlada.
+5. Cifrado de campo de las credenciales heredadas en `system_settings` (GHL/VAPI de Náyade): **implementado y probado, NO ejecutado** (lectores compatibles + CLI `scripts/legacy-credentials.ts`; procedimiento en `docs/operations/CIFRADO_CREDENCIALES_HEREDADAS.md`). Pendiente: claves de producción (B9), backup verificado (B7) y autorización para ejecutar.
 6. Fase 01B: pools/DDL de arranque de `_core/index.ts` en modo single, RBAC y pruebas Redsys ampliadas.
 
 ## Deuda conocida

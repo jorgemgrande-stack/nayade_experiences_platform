@@ -27,6 +27,7 @@ import { requireStaff, getAuthUser } from "../_core/expressAuth";
 import type { Response } from "express";
 import { legacyDb, legacyPool } from "../_core/legacyDb";
 import { integrationEnv } from "../_core/tenantConfig";
+import { revealLegacySecret } from "../_core/credentials/legacyFields";
 
 const _pool = legacyPool();
 const db = legacyDb();
@@ -222,14 +223,14 @@ async function getInboxCredentials(): Promise<{ token: string; locationId: strin
       "SELECT `key`, `value` FROM site_settings WHERE `key` IN ('ghlInboxToken','ghlInboxLocationId','ghlApiKey','ghlLocationId','ghlInboxWebhookSecret')"
     );
     const map: Record<string, string> = {};
-    for (const r of (rawRows as any[])) map[r.key] = r.value ?? "";
+    for (const r of (rawRows as any[])) map[r.key] = revealLegacySecret("site_settings", r.key, r.value);
 
     // Credenciales principales GHL: systemSettings es la fuente de verdad desde Fase 1
     const [sysRows]: any = await _pool.execute(
       "SELECT `key`, `value` FROM system_settings WHERE `key` IN ('site_ghl_api_key','site_ghl_location_id')"
     );
     const sysMap: Record<string, string> = {};
-    for (const r of (sysRows as any[])) sysMap[r.key] = r.value ?? "";
+    for (const r of (sysRows as any[])) sysMap[r.key] = revealLegacySecret("system_settings", r.key, r.value);
 
     const token = integrationEnv("GHL_PRIVATE_INTEGRATION_TOKEN")
       || map.ghlInboxToken
@@ -542,7 +543,7 @@ ghlInboxRouter.post(
     const [secretRows]: any = await _pool.execute(
       "SELECT `value` FROM site_settings WHERE `key` = 'ghlInboxWebhookSecret' LIMIT 1"
     ).catch(() => [[]]);
-    const dbSecret = (secretRows as any[])[0]?.value ?? "";
+    const dbSecret = revealLegacySecret("site_settings", "ghlInboxWebhookSecret", (secretRows as any[])[0]?.value);
     const secret = integrationEnv("GHL_WEBHOOK_SECRET") || dbSecret;
     if (!secret && process.env.NODE_ENV === "production") {
       log("warn", "Webhook ignorado — secreto no configurado (fail-closed en producción)");
