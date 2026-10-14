@@ -16,6 +16,19 @@ El plano de control es un proceso aparte del Core de Náyade, con sus propias ba
 2. **Migrar el registro** (plan y después ejecución):
    `REGISTRY_ADMIN_DATABASE_URL=… pnpm tsx scripts/registry-migrate.ts` → revisar → `… --execute`.
    Comprueba `registry_meta.schema_version` = última (`0006` con tickets).
+   - **Privilegios del usuario de migración**: `CREATE`, `ALTER`, `INDEX`, `REFERENCES`, `INSERT`, `UPDATE`, `DELETE`,
+     `SELECT` y `TRIGGER` sobre la BD del registro. La `0000` crea los triggers de auditoría inmutable de
+     `tenant_events`: con el binlog activo (defecto de MySQL 8) crear triggers exige además `SUPER`. Si no se dispone de
+     él, la alternativa (`log_bin_trust_function_creators=1`) es una decisión de administración del servidor que debe
+     tomarse y documentarse de forma explícita; el aplicador nunca la activa.
+   - **Sin privilegios suficientes** el comando termina con `RegistryMigrationError [privileges]` y código 1, y la
+     versión fallida **no** queda registrada.
+   - **Integridad**: cada versión solo se registra tras verificar en `information_schema` sus tablas y triggers (con
+     su definición). El plan informa en `incomplete`/`issues` de versiones registradas a las que les faltan objetos
+     (p. ej. un registro migrado con una versión anterior del aplicador); `--execute` las reaplica junto con las
+     posteriores. Los ficheros son idempotentes y no borran datos (solo recrean triggers).
+   - **Recuperación**: corregir los privilegios y repetir el plan y `--execute`. Si la verificación final no pasa, el
+     comando falla (`[incomplete]`) con la lista de objetos ausentes: no poner en marcha el plano de control.
 3. **Secretos** (generar con `openssl rand -base64 32`; no reutilizar los de Náyade):
    `REGISTRY_KEYS`, `REGISTRY_ACTIVE_KEY_ID`, `INTEGRATION_KEYS`, `INTEGRATION_ACTIVE_KEY_ID`, `CP_SESSION_SECRET`, `SUPPORT_JWT_SECRET` (≥ 32).
 4. **Tokens de servicio**: `CP_TOKENS` = JSON `[{id, sha256, scopes}]` (guardar solo el hash SHA-256 del token; ámbitos mínimos).

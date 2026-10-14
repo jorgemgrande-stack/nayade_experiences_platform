@@ -2,6 +2,7 @@
  * Aplicador de migraciones del registro contra MySQL real (opt-in; BD aislada creada y borrada aquí).
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -75,6 +76,133 @@ d("migraciones del registro (MySQL)", () => {
       await p2.end();
       await admin.query(`DROP DATABASE IF EXISTS ${fresh}`);
       fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  /** BD aislada adicional; se borra al terminar la prueba. */
+  async function isolatedDb(suffix: string) {
+    const name = `${DB}_${suffix}`;
+    await admin.query(`DROP DATABASE IF EXISTS ${name}`);
+    await admin.query(`CREATE DATABASE ${name}`);
+    const u = new URL(url!);
+    u.pathname = `/${name}`;
+    const p = mysql.createPool({ uri: u.toString(), connectionLimit: 1, multipleStatements: true });
+    return {
+      name,
+      url: u,
+      pool: p,
+      drop: async () => {
+        await p.end();
+        await admin.query(`DROP DATABASE IF EXISTS ${name}`);
+      },
+    };
+  }
+
+  it("detecta una 0000 registrada pero incompleta (triggers ausentes o alterados) y la repara sin perder datos", async () => {
+    const db = await isolatedDb("partial");
+    try {
+      const files = listRegistryMigrations(DIR);
+      const last = files[files.length - 1].version;
+      await migrateRegistry(db.pool, DIR, { dryRun: false });
+      await db.pool.query("INSERT INTO tenants (id, display_name) VALUES ('t-audit', 'Auditoría')");
+      await db.pool.query("INSERT INTO tenant_events (tenant_id, actor_type, actor_id, action) VALUES ('t-audit', 'system', 'test', 'created')");
+
+      // Estado que dejaba el fallo: versión registrada, triggers de auditoría ausentes o neutralizados.
+      await db.pool.query("DROP TRIGGER trg_events_no_delete");
+      await db.pool.query("DROP TRIGGER trg_events_no_update");
+      await db.pool.query("CREATE TRIGGER trg_events_no_update BEFORE UPDATE ON tenant_events FOR EACH ROW SET @x = 1");
+
+      const plan = await migrateRegistry(db.pool, DIR);
+      expect(plan.current).toBe(last);
+      expect(plan.incomplete).toEqual(["0000"]);
+      expect(plan.issues).toEqual(
+        expect.arrayContaining([
+          { version: "0000", kind: "missing_trigger", object: "trg_events_no_delete" },
+          { version: "0000", kind: "trigger_mismatch", object: "trg_events_no_update" },
+        ]),
+      );
+      expect(plan.pending).toEqual(files.map((f) => f.version));
+
+      const fix = await migrateRegistry(db.pool, DIR, { dryRun: false });
+      expect(fix.applied).toEqual(files.map((f) => f.version));
+      const again = await migrateRegistry(db.pool, DIR);
+      expect(again).toMatchObject({ current: last, pending: [], incomplete: [], issues: [] });
+
+      const [ev] = await db.pool.query<mysql.RowDataPacket[]>("SELECT COUNT(*) AS n FROM tenant_events");
+      expect(Number(ev[0].n)).toBe(1); // datos intactos
+      await expect(db.pool.query("UPDATE tenant_events SET action = 'x'")).rejects.toMatchObject({ sqlState: "45000" });
+      await expect(db.pool.query("DELETE FROM tenant_events")).rejects.toMatchObject({ sqlState: "45000" });
+    } finally {
+      await db.drop();
+    }
+  });
+
+  it("con un usuario sin SUPER y binlog activo falla explícitamente sin registrar la 0000 y se recupera después", async (ctx) => {
+    const [vars] = await admin.query<mysql.RowDataPacket[]>(
+      "SELECT @@log_bin AS logBin, @@log_bin_trust_function_creators AS trust",
+    );
+    // Reproduce el fallo solo en las condiciones en que ocurre (las de MySQL por defecto, como en CI).
+    if (!(Number(vars[0].logBin) === 1 && Number(vars[0].trust) === 0)) ctx.skip();
+
+    const db = await isolatedDb("limited");
+    const user = `regmig_${Date.now().toString(36)}`;
+    const password = `p_${Math.random().toString(36).slice(2)}A9`;
+    await admin.query(`CREATE USER ?@'%' IDENTIFIED BY ?`, [user, password]);
+    await admin.query(`GRANT ALL PRIVILEGES ON \`${db.name}\`.* TO ?@'%'`, [user]);
+    const u = new URL(db.url.toString());
+    u.username = user;
+    u.password = password;
+    const limited = mysql.createPool({ uri: u.toString(), connectionLimit: 1, multipleStatements: true });
+    try {
+      await expect(migrateRegistry(limited, DIR, { dryRun: false })).rejects.toMatchObject({
+        name: "RegistryMigrationError",
+        code: "privileges",
+      });
+      // La 0000 no consta como aplicada aunque su SQL la registre al principio.
+      const [v] = await db.pool.query<mysql.RowDataPacket[]>("SELECT v FROM registry_meta WHERE k = 'schema_version'");
+      expect(v).toHaveLength(0);
+      const [trg] = await db.pool.query<mysql.RowDataPacket[]>(
+        "SELECT COUNT(*) AS n FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA = DATABASE()",
+      );
+      expect(Number(trg[0].n)).toBe(0);
+
+      // Recuperación controlada: un administrador con privilegios suficientes completa la cadena.
+      const files = listRegistryMigrations(DIR);
+      const done = await migrateRegistry(db.pool, DIR, { dryRun: false });
+      expect(done.applied).toEqual(files.map((f) => f.version));
+      // El usuario limitado ya ve el registro íntegro y no tiene nada pendiente.
+      const check = await migrateRegistry(limited, DIR);
+      expect(check).toMatchObject({ current: files[files.length - 1].version, pending: [], incomplete: [] });
+    } finally {
+      await limited.end();
+      await admin.query(`DROP USER IF EXISTS ?@'%'`, [user]);
+      await db.drop();
+    }
+  });
+
+  it("el comando del runbook (scripts/registry-migrate.ts) planifica y ejecuta de principio a fin", async () => {
+    const db = await isolatedDb("cli");
+    const root = path.resolve(__dirname, "..");
+    const run = (args: string[]) =>
+      spawnSync(process.execPath, [path.join(root, "node_modules/tsx/dist/cli.mjs"), "scripts/registry-migrate.ts", ...args], {
+        cwd: root,
+        env: { ...process.env, REGISTRY_ADMIN_DATABASE_URL: db.url.toString() },
+        encoding: "utf8",
+        timeout: 60_000,
+      });
+    try {
+      const files = listRegistryMigrations(DIR);
+      const plan = run([]);
+      expect(plan.status, plan.stderr).toBe(0);
+      expect(JSON.parse(plan.stdout)).toMatchObject({ dryRun: true, current: null, pending: files.map((f) => f.version) });
+
+      const exec = run(["--execute"]);
+      expect(exec.status, exec.stderr).toBe(0);
+      expect(JSON.parse(exec.stdout).applied).toEqual(files.map((f) => f.version));
+      const [v] = await db.pool.query<mysql.RowDataPacket[]>("SELECT v FROM registry_meta WHERE k = 'schema_version'");
+      expect(v[0].v).toBe(files[files.length - 1].version);
+    } finally {
+      await db.drop();
     }
   });
 });
