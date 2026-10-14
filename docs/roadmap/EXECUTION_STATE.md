@@ -44,7 +44,7 @@ PR pequeño → CI informativo → `gh pr merge --merge` → esperar despliegue 
 1. Plugin de routers tRPC tipado para extraer hotel/spa/restaurants (B14).
 2. Despliegue del plano de control y del CRM (B12) y alta real de operadores SSO (B10).
 3. Elegir proveedor de pagos y tarifas (B11) → activar cobros con autorización.
-4. Facturación SaaS en el CRM (suscripciones/facturas visibles) y tickets de soporte.
+4. ~~Facturación SaaS en el CRM~~ — hecha (2026-10-14, repo CRM `75291e8`: pestaña Facturación con suscripción, facturas, prueba, cambio de plan y cancelación). Pendiente: tickets de soporte y endpoint de catálogo de planes en `/cp/v1` (hoy el plan se indica por id).
 5. Cifrado de campo de las credenciales heredadas en `system_settings` (GHL/VAPI de Náyade) con migración controlada.
 6. Fase 01B: pools/DDL de arranque de `_core/index.ts` en modo single, RBAC y pruebas Redsys ampliadas.
 
