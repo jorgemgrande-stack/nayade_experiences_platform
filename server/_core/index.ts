@@ -10,6 +10,7 @@ import { requestMeter } from "./requestMeter";
 import { installTenantBinding, installTenantResolution } from "./tenantRegistry/install";
 import { scheduleTenantInterval, setJobFlag } from "./tenantRegistry/scheduler";
 import { isMultiTenant } from "./tenant";
+import { closeStartupConnections, openStartupConnection } from "./startupConnections";
 import { localStorageTenantGuard } from "./tenantStorage";
 import { registerBuiltinModules } from "./modules/builtin";
 import { getModuleAccess, getModuleRegistry } from "./modules/runtime";
@@ -268,11 +269,14 @@ async function runMigrations() {
     const { migrate } = await import("drizzle-orm/mysql2/migrator");
     const { resolve } = await import("path");
     const pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
-    const db = drizzle(pool);
-    // En producción el binario está en dist/, las migraciones en drizzle/ (mismo nivel que package.json)
-    const migrationsFolder = resolve(process.cwd(), "drizzle");
-    await migrate(db, { migrationsFolder });
-    await pool.end();
+    try {
+      const db = drizzle(pool);
+      // En producción el binario está en dist/, las migraciones en drizzle/ (mismo nivel que package.json)
+      const migrationsFolder = resolve(process.cwd(), "drizzle");
+      await migrate(db, { migrationsFolder });
+    } finally {
+      await pool.end().catch(() => undefined);
+    }
     console.log("[DB] Migraciones aplicadas correctamente");
   } catch (err: any) {
     console.error("[DB] Error al aplicar migraciones (código:", err?.code, "):", err?.message ?? err);
@@ -285,7 +289,7 @@ async function runMigrations() {
 async function ensureCriticalSeeds() {
   try {
     const mysql = await import("mysql2/promise");
-    const conn = await mysql.default.createConnection(process.env.DATABASE_URL!);
+    const conn = await openStartupConnection();
 
     // Feature flag omitido por migración ya marcada como aplicada en __drizzle_migrations
     await conn.execute(
@@ -518,7 +522,7 @@ async function ensureCriticalSeeds() {
 async function migrateSiteSettingsToSystemSettings() {
   try {
     const mysql = await import("mysql2/promise");
-    const conn = await mysql.default.createConnection(process.env.DATABASE_URL!);
+    const conn = await openStartupConnection();
 
     // 1. Seed nuevas claves en system_settings (INSERT IGNORE preserva valores existentes)
     const seeds: [string, string, string, string, string, number, number][] = [
@@ -610,7 +614,7 @@ async function migrateSiteSettingsToSystemSettings() {
 async function seedExperiencesIfEmpty() {
   try {
     const mysql = await import("mysql2/promise");
-    const conn = await mysql.default.createConnection(process.env.DATABASE_URL!);
+    const conn = await openStartupConnection();
 
     // Comprobar si ya hay experiencias
     const [rows] = await conn.execute("SELECT COUNT(*) as cnt FROM experiences") as any[];
@@ -677,7 +681,7 @@ async function seedExperiencesIfEmpty() {
 async function ensurePricingColumns() {
   try {
     const mysql = await import("mysql2/promise");
-    const conn = await mysql.default.createConnection(process.env.DATABASE_URL!);
+    const conn = await openStartupConnection();
 
     const [cols] = await conn.execute(
       `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
@@ -856,7 +860,7 @@ async function ensurePricingColumns() {
 async function ensureLeadSourceColumn() {
   try {
     const mysql = await import("mysql2/promise");
-    const conn = await mysql.default.createConnection(process.env.DATABASE_URL!);
+    const conn = await openStartupConnection();
 
     // 1. Crear tabla crm_lead_sources si no existe
     await conn.execute(`
@@ -941,7 +945,7 @@ async function ensureLeadSourceColumn() {
 async function ensureTicketingChannel() {
   try {
     const mysql = await import("mysql2/promise");
-    const conn = await mysql.default.createConnection(process.env.DATABASE_URL!);
+    const conn = await openStartupConnection();
     // Verificar si 'TICKETING' ya está en el ENUM de reservations.channel
     const [rows] = await conn.execute(
       `SELECT COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS
@@ -967,7 +971,7 @@ async function ensureTicketingChannel() {
 async function ensureExpenseEmailIngestionSchema() {
   try {
     const mysql = await import("mysql2/promise");
-    const conn = await mysql.default.createConnection(process.env.DATABASE_URL!);
+    const conn = await openStartupConnection();
 
     // Columnas nuevas en expenses (ingesta email)
     const [expCols] = await conn.execute(
@@ -1472,7 +1476,7 @@ async function ensureExpenseEmailIngestionSchema() {
 async function ensureReservationPublicToken() {
   try {
     const mysql = await import("mysql2/promise");
-    const conn = await mysql.default.createConnection(process.env.DATABASE_URL!);
+    const conn = await openStartupConnection();
 
     // 1. Columna
     const [cols] = await conn.execute(
@@ -1539,7 +1543,7 @@ async function ensureReservationPublicToken() {
 async function ensureRefundColumns() {
   try {
     const mysql = await import("mysql2/promise");
-    const conn = await mysql.default.createConnection(process.env.DATABASE_URL!);
+    const conn = await openStartupConnection();
 
     const colsToEnsure: Array<{ name: string; ddl: string }> = [
       { name: "refund_executed_at",   ddl: "TIMESTAMP NULL" },
@@ -1574,7 +1578,7 @@ async function ensureRefundColumns() {
 async function ensureDiscountColumns() {
   try {
     const mysql = await import("mysql2/promise");
-    const conn = await mysql.default.createConnection(process.env.DATABASE_URL!);
+    const conn = await openStartupConnection();
 
     const [cols] = await conn.execute(
       `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
@@ -1629,7 +1633,7 @@ async function wipeTestDataIfRequested() {
 
   console.log("[Wipe] ??  WIPE_TEST_DATA=true detectado — limpiando datos de prueba...");
   const mysql = await import("mysql2/promise");
-  const conn = await mysql.default.createConnection(process.env.DATABASE_URL!);
+  const conn = await openStartupConnection();
 
   // Helper: count + truncate with log
   async function wipe(table: string) {
@@ -1880,7 +1884,7 @@ async function fixBrokenInvoicePdfUrls() {
     const mysql = await import("mysql2/promise");
     const { drizzle } = await import("drizzle-orm/mysql2");
     const { sql } = await import("drizzle-orm");
-    const conn = await mysql.default.createConnection(process.env.DATABASE_URL!);
+    const conn = await openStartupConnection();
     const db = drizzle(conn);
     const result = await db.execute(sql`
       UPDATE invoices
@@ -1942,6 +1946,8 @@ function bootSingleTenant(): void {
     .then(() => fixBrokenInvoicePdfUrls())
     .then(() => wipeTestDataIfRequested())
     .then(() => seedExperiencesIfEmpty())
+    // Cierra las conexiones de DDL/semillas que hayan quedado abiertas por una excepción.
+    .finally(() => closeStartupConnections().catch(() => undefined))
     .then(() => startServer())
 
     // quoteReminderJob y commercialFollowupJob borrados en Fase 5.
