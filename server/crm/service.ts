@@ -3,21 +3,30 @@
  *
  * Flujo: lead → (conversión) empresa + contacto + oportunidad → contrato → activación
  * (aprovisiona el tenant y arranca la suscripción mediante el puerto de activación).
+ *
+ * Fases de una empresa: prospecto (sin venta), cliente (oportunidad ganada o contrato firmado/
+ * activo) y tenant (aprovisionada en la plataforma). Registrar leads o empresas no crea tenants.
  */
 import type { CrmStore } from "./store";
 import {
   CONTRACT_TRANSITIONS,
   CrmError,
+  OPEN_STAGES,
+  STAGES,
   STAGE_PROBABILITY,
   STAGE_TRANSITIONS,
   type Activity,
   type ActivityKind,
   type Company,
+  type CompanyLifecycle,
+  type CompanyStatus,
   type Contact,
+  type ContactStatus,
   type Contract,
   type ContractStatus,
   type EntityType,
   type Lead,
+  type LeadPriority,
   type LeadStatus,
   type Opportunity,
   type OpportunityStage,
@@ -34,11 +43,149 @@ export interface CrmDeps {
   now?: () => number;
 }
 
+export interface Page<T> {
+  items: T[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface PageOpts {
+  limit?: number;
+  offset?: number;
+}
+
+export type CompanyView = Company & { lifecycle: CompanyLifecycle };
+
+export interface DuplicateMatch {
+  type: "lead" | "contact" | "company";
+  id: number;
+  label: string;
+  reason: "email" | "phone" | "company_name" | "tax_id";
+}
+
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const MODULE_RE = /^[a-z][a-z0-9_]{1,31}$/;
+const SCAN_LIMIT = 5000;
+
 const clean = (s: string | null | undefined, max = 300): string | null => {
   const t = (s ?? "").trim();
   return t ? t.slice(0, max) : null;
 };
+/** Minúsculas, sin acentos ni espacios repetidos (búsqueda y deduplicación). */
+export const normalizeText = (s: string | null | undefined): string =>
+  (s ?? "")
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+/** Nombre de empresa comparable: sin forma jurídica ni puntuación. */
+export const normalizeCompanyName = (s: string | null | undefined): string =>
+  normalizeText(s)
+    .replace(/[.,]/g, " ")
+    .replace(/\b(s\s?l\s?u?|s\s?a\s?u?|s\s?l\s?l|s\s?c\s?p?|ltd|llc|inc|gmbh|sas)\b/g, " ")
+    .replace(/[^a-z0-9ñ ]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+/** Teléfono comparable: últimos 9 dígitos (ignora prefijo internacional y formato). */
+export const normalizePhone = (s: string | null | undefined): string => {
+  const d = (s ?? "").replace(/\D/g, "");
+  return d.length >= 6 ? d.slice(-9) : "";
+};
+
+function validEmail(v: string | null, field = "Correo"): string | null {
+  if (v && !EMAIL_RE.test(v)) throw new CrmError("invalid_input", `${field} no válido`);
+  return v ? v.toLowerCase() : null;
+}
+function validCountry(v: string | null): string | null {
+  if (!v) return null;
+  const c = v.toUpperCase();
+  if (!/^[A-Z]{2}$/.test(c)) throw new CrmError("invalid_input", "País no válido (código ISO de 2 letras)");
+  return c;
+}
+function validWebsite(v: string | null): string | null {
+  if (!v) return null;
+  try {
+    const u = new URL(/^https?:\/\//i.test(v) ? v : `https://${v}`);
+    if (!/^https?:$/.test(u.protocol)) throw new Error();
+    return u.toString();
+  } catch {
+    throw new CrmError("invalid_input", "Web no válida");
+  }
+}
+function validModules(list: string[] | undefined): string[] {
+  const out = Array.from(new Set((list ?? []).map((m) => m.trim()).filter(Boolean)));
+  const bad = out.find((m) => !MODULE_RE.test(m));
+  if (bad) throw new CrmError("invalid_input", `Módulo no válido: ${bad}`);
+  return out;
+}
+function paginate<T>(rows: T[], o: PageOpts): Page<T> {
+  const limit = Math.min(500, Math.max(1, Math.floor(o.limit ?? 50)));
+  const offset = Math.max(0, Math.floor(o.offset ?? 0));
+  return { items: rows.slice(offset, offset + limit), total: rows.length, limit, offset };
+}
+function splitName(full: string): { firstName: string; lastName: string | null } {
+  const parts = full.trim().split(/\s+/);
+  return { firstName: parts[0], lastName: parts.length > 1 ? parts.slice(1).join(" ") : null };
+}
+const has = <T extends object>(o: T, k: keyof T) => Object.prototype.hasOwnProperty.call(o, k) && o[k] !== undefined;
+
+export interface CompanyInput {
+  name?: string;
+  legalName?: string | null;
+  taxId?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  website?: string | null;
+  sector?: string | null;
+  address?: string | null;
+  city?: string | null;
+  postalCode?: string | null;
+  country?: string | null;
+  billingEmail?: string | null;
+  notes?: string | null;
+  owner?: string | null;
+  status?: CompanyStatus;
+}
+
+export interface ContactInput {
+  firstName?: string;
+  lastName?: string | null;
+  name?: string;
+  email?: string | null;
+  phone?: string | null;
+  role?: string | null;
+  isPrimary?: boolean;
+  status?: ContactStatus;
+  notes?: string | null;
+  companyId?: number | null;
+}
+
+export interface LeadInput {
+  name?: string;
+  email?: string | null;
+  phone?: string | null;
+  companyName?: string | null;
+  source?: string | null;
+  owner?: string | null;
+  notes?: string | null;
+  priority?: LeadPriority;
+  companyId?: number | null;
+}
+
+export interface OpportunityInput {
+  title?: string;
+  amountCents?: number | null;
+  currency?: string;
+  expectedClose?: number | null;
+  owner?: string | null;
+  planId?: string | null;
+  modules?: string[];
+  contactId?: number | null;
+  nextAction?: string | null;
+  nextActionAt?: number | null;
+}
 
 export class CrmService {
   private now: () => number;
@@ -49,19 +196,244 @@ export class CrmService {
     this.store = d.store;
   }
 
+  // ── Empresas ───────────────────────────────────────────────────────────────
+
+  async createCompany(input: CompanyInput & { name: string }, author: string): Promise<Company> {
+    const fields = this.companyFields(input);
+    if (!fields.name) throw new CrmError("invalid_input", "El nombre es obligatorio");
+    await this.assertCompanyUnique(fields.name, fields.taxId ?? null);
+    const c = await this.store.insert("companies", {
+      name: fields.name,
+      legalName: fields.legalName ?? null,
+      taxId: fields.taxId ?? null,
+      email: fields.email ?? null,
+      phone: fields.phone ?? null,
+      website: fields.website ?? null,
+      sector: fields.sector ?? null,
+      address: fields.address ?? null,
+      city: fields.city ?? null,
+      postalCode: fields.postalCode ?? null,
+      country: fields.country ?? null,
+      billingEmail: fields.billingEmail ?? null,
+      notes: fields.notes ?? null,
+      tenantId: null,
+      owner: fields.owner ?? clean(author, 100),
+      status: fields.status ?? "active",
+      createdAt: this.now(),
+      updatedAt: null,
+    });
+    await this.log("company", c.id, "note", "Empresa creada", author);
+    return c;
+  }
+
+  async updateCompany(id: number, input: CompanyInput, author: string): Promise<Company> {
+    const cur = await this.must("companies", id);
+    const fields = this.companyFields(input);
+    if (has(input, "name") && !fields.name) throw new CrmError("invalid_input", "El nombre es obligatorio");
+    if ((fields.name && normalizeCompanyName(fields.name) !== normalizeCompanyName(cur.name)) || (fields.taxId && fields.taxId !== cur.taxId)) {
+      await this.assertCompanyUnique(fields.name ?? cur.name, fields.taxId ?? null, id);
+    }
+    const changed = (Object.keys(fields) as (keyof typeof fields)[]).filter((k) => fields[k] !== cur[k]);
+    if (!changed.length) return cur;
+    const patch: Partial<Company> = { updatedAt: this.now() };
+    for (const k of changed) (patch as Record<string, unknown>)[k] = fields[k];
+    const upd = await this.store.update("companies", id, patch);
+    await this.log("company", id, "note", this.describeChanges(changed, cur, upd, ["status", "owner"]), author);
+    return upd;
+  }
+
+  async getCompany(id: number): Promise<CompanyView> {
+    const c = await this.must("companies", id);
+    return (await this.withLifecycle([c]))[0];
+  }
+
+  async listCompanies(
+    f: { q?: string; status?: CompanyStatus; lifecycle?: CompanyLifecycle; owner?: string } & PageOpts = {},
+  ): Promise<Page<CompanyView>> {
+    let rows = await this.withLifecycle(await this.store.list("companies", f.status ? { status: f.status } : {}, { desc: true, limit: SCAN_LIMIT }));
+    const q = normalizeText(f.q);
+    if (q) {
+      rows = rows.filter((c) =>
+        [c.name, c.legalName, c.taxId, c.email, c.city, c.tenantId].some((v) => normalizeText(v).includes(q)),
+      );
+    }
+    if (f.lifecycle) rows = rows.filter((c) => c.lifecycle === f.lifecycle);
+    if (f.owner) rows = rows.filter((c) => c.owner === f.owner);
+    return paginate(rows, f);
+  }
+
+  private async withLifecycle(companies: Company[]): Promise<CompanyView[]> {
+    if (!companies.length) return [];
+    const [contracts, opps] = await Promise.all([
+      this.store.list("contracts", {}, { limit: SCAN_LIMIT }),
+      this.store.list("opportunities", { stage: "won" }, { limit: SCAN_LIMIT }),
+    ]);
+    const customers = new Set<number>([
+      ...contracts.filter((c) => c.status === "signed" || c.status === "active").map((c) => c.companyId),
+      ...opps.map((o) => o.companyId),
+    ]);
+    return companies.map((c) => ({
+      ...c,
+      lifecycle: c.tenantId ? "tenant" : customers.has(c.id) ? "customer" : "prospect",
+    }));
+  }
+
+  private companyFields(input: CompanyInput) {
+    const out: Partial<Omit<Company, "id" | "tenantId" | "createdAt" | "updatedAt">> = {};
+    if (has(input, "name")) out.name = clean(input.name, 200) ?? "";
+    if (has(input, "legalName")) out.legalName = clean(input.legalName, 200);
+    if (has(input, "taxId")) {
+      const t = clean(input.taxId, 40)?.toUpperCase().replace(/\s+/g, "") ?? null;
+      if (t && !/^[A-Z0-9-]{3,40}$/.test(t)) throw new CrmError("invalid_input", "Identificador fiscal no válido");
+      out.taxId = t;
+    }
+    if (has(input, "email")) out.email = validEmail(clean(input.email, 320));
+    if (has(input, "billingEmail")) out.billingEmail = validEmail(clean(input.billingEmail, 320), "Correo de facturación");
+    if (has(input, "phone")) out.phone = clean(input.phone, 40);
+    if (has(input, "website")) out.website = validWebsite(clean(input.website, 300));
+    if (has(input, "sector")) out.sector = clean(input.sector, 100);
+    if (has(input, "address")) out.address = clean(input.address, 300);
+    if (has(input, "city")) out.city = clean(input.city, 120);
+    if (has(input, "postalCode")) out.postalCode = clean(input.postalCode, 20);
+    if (has(input, "country")) out.country = validCountry(clean(input.country, 10));
+    if (has(input, "notes")) out.notes = clean(input.notes, 5000);
+    if (has(input, "owner")) out.owner = clean(input.owner, 100);
+    if (has(input, "status")) out.status = input.status;
+    return out;
+  }
+
+  private async assertCompanyUnique(name: string, taxId: string | null, exceptId?: number) {
+    const all = await this.store.list("companies", {}, { limit: SCAN_LIMIT });
+    const n = normalizeCompanyName(name);
+    for (const c of all) {
+      if (c.id === exceptId) continue;
+      if (taxId && c.taxId && c.taxId === taxId) throw new CrmError("conflict", `Ya existe una empresa con ese identificador fiscal (#${c.id})`);
+      if (n && normalizeCompanyName(c.name) === n) throw new CrmError("conflict", `Ya existe una empresa con ese nombre (#${c.id})`);
+    }
+  }
+
+  // ── Contactos ──────────────────────────────────────────────────────────────
+
+  async createContact(companyId: number, input: ContactInput, author: string): Promise<Contact> {
+    await this.must("companies", companyId);
+    const f = this.contactFields(input);
+    const name = f.name ?? "";
+    if (!name) throw new CrmError("invalid_input", "El nombre es obligatorio");
+    await this.assertContactEmailFree(companyId, f.email ?? null);
+    const existing = await this.store.list("contacts", { companyId });
+    const primary = input.isPrimary === true || !existing.some((c) => c.isPrimary);
+    if (primary) await this.clearPrimary(companyId);
+    const c = await this.store.insert("contacts", {
+      companyId,
+      name,
+      firstName: f.firstName ?? null,
+      lastName: f.lastName ?? null,
+      email: f.email ?? null,
+      phone: f.phone ?? null,
+      role: f.role ?? null,
+      isPrimary: primary,
+      status: f.status ?? "active",
+      notes: f.notes ?? null,
+      createdAt: this.now(),
+      updatedAt: null,
+    });
+    await this.log("company", companyId, "note", `Contacto añadido: ${c.name}${primary ? " (principal)" : ""}`, author);
+    return c;
+  }
+
+  async updateContact(id: number, input: ContactInput, author: string): Promise<Contact> {
+    const cur = await this.must("contacts", id);
+    const f = this.contactFields(input, cur);
+    if (has(input, "companyId") && input.companyId !== cur.companyId) {
+      if (input.companyId !== null && input.companyId !== undefined) await this.must("companies", input.companyId);
+      (f as Partial<Contact>).companyId = input.companyId ?? null;
+      (f as Partial<Contact>).isPrimary = false;
+    }
+    const companyId = (f as Partial<Contact>).companyId !== undefined ? (f as Partial<Contact>).companyId! : cur.companyId;
+    if (f.email && f.email !== cur.email && companyId) await this.assertContactEmailFree(companyId, f.email, id);
+    if (input.isPrimary === true && companyId) {
+      if ((f.status ?? cur.status) !== "active") throw new CrmError("invalid_input", "Un contacto inactivo no puede ser el principal");
+      await this.clearPrimary(companyId, id);
+      (f as Partial<Contact>).isPrimary = true;
+    } else if (input.isPrimary === false) {
+      (f as Partial<Contact>).isPrimary = false;
+    }
+    if (f.status === "inactive") (f as Partial<Contact>).isPrimary = false;
+    const changed = (Object.keys(f) as (keyof Contact)[]).filter((k) => (f as Partial<Contact>)[k] !== cur[k]);
+    if (!changed.length) return cur;
+    const patch: Partial<Contact> = { updatedAt: this.now() };
+    for (const k of changed) (patch as Record<string, unknown>)[k] = (f as Partial<Contact>)[k];
+    const upd = await this.store.update("contacts", id, patch);
+    if (upd.companyId) await this.log("company", upd.companyId, "note", `Contacto ${upd.name}: ${this.describeChanges(changed, cur, upd, ["status", "isPrimary"])}`, author);
+    return upd;
+  }
+
+  async listContacts(f: { q?: string; companyId?: number; status?: ContactStatus } & PageOpts = {}): Promise<Page<Contact>> {
+    const filter: Partial<Contact> = {};
+    if (f.companyId) filter.companyId = f.companyId;
+    if (f.status) filter.status = f.status;
+    let rows = await this.store.list("contacts", filter, { desc: true, limit: SCAN_LIMIT });
+    const q = normalizeText(f.q);
+    if (q) {
+      const qp = normalizePhone(f.q);
+      rows = rows.filter(
+        (c) => [c.name, c.email, c.role].some((v) => normalizeText(v).includes(q)) || (qp !== "" && normalizePhone(c.phone) === qp),
+      );
+    }
+    rows.sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary));
+    return paginate(rows, f);
+  }
+
+  private contactFields(input: ContactInput, cur?: Contact) {
+    const out: Partial<Pick<Contact, "name" | "firstName" | "lastName" | "email" | "phone" | "role" | "status" | "notes">> = {};
+    if (has(input, "firstName") || has(input, "lastName") || has(input, "name")) {
+      let first = has(input, "firstName") ? clean(input.firstName, 100) : (cur?.firstName ?? null);
+      let last = has(input, "lastName") ? clean(input.lastName, 150) : (cur?.lastName ?? null);
+      if (!first && has(input, "name") && clean(input.name, 200)) {
+        const s = splitName(clean(input.name, 200)!);
+        first = s.firstName.slice(0, 100);
+        last = s.lastName?.slice(0, 150) ?? null;
+      }
+      if (!first) throw new CrmError("invalid_input", "El nombre es obligatorio");
+      out.firstName = first;
+      out.lastName = last;
+      out.name = [first, last].filter(Boolean).join(" ").slice(0, 200);
+    }
+    if (has(input, "email")) out.email = validEmail(clean(input.email, 320));
+    if (has(input, "phone")) out.phone = clean(input.phone, 40);
+    if (has(input, "role")) out.role = clean(input.role, 100);
+    if (has(input, "status")) out.status = input.status;
+    if (has(input, "notes")) out.notes = clean(input.notes, 5000);
+    return out;
+  }
+
+  private async clearPrimary(companyId: number, exceptId?: number) {
+    for (const c of await this.store.list("contacts", { companyId, isPrimary: true })) {
+      if (c.id !== exceptId) await this.store.update("contacts", c.id, { isPrimary: false, updatedAt: this.now() });
+    }
+  }
+
+  private async assertContactEmailFree(companyId: number, email: string | null, exceptId?: number) {
+    if (!email) return;
+    const dup = (await this.store.list("contacts", { companyId })).find((c) => c.id !== exceptId && c.email?.toLowerCase() === email);
+    if (dup) throw new CrmError("conflict", `La empresa ya tiene un contacto con ese correo (#${dup.id})`);
+  }
+
   // ── Leads ──────────────────────────────────────────────────────────────────
 
-  async createLead(input: { name: string; email?: string; phone?: string; companyName?: string; source?: string; owner?: string; notes?: string }, author: string): Promise<Lead> {
+  async createLead(input: LeadInput & { name: string }, author: string): Promise<Lead> {
     const name = clean(input.name, 200);
     if (!name) throw new CrmError("invalid_input", "El nombre es obligatorio");
-    const email = clean(input.email, 320);
-    if (email && !EMAIL_RE.test(email)) throw new CrmError("invalid_input", "Correo no válido");
+    const email = validEmail(clean(input.email, 320));
     if (!email && !clean(input.phone, 40)) throw new CrmError("invalid_input", "Indica un correo o un teléfono");
     // Deduplicación por correo: un lead abierto con el mismo correo no se duplica
     if (email) {
-      const dup = (await this.store.list("leads", {})).find((l) => l.email?.toLowerCase() === email.toLowerCase() && l.status !== "converted" && l.status !== "disqualified");
+      const dup = (await this.store.list("leads", {}, { limit: SCAN_LIMIT })).find(
+        (l) => l.email?.toLowerCase() === email && l.status !== "converted" && l.status !== "disqualified",
+      );
       if (dup) throw new CrmError("conflict", `Ya existe un lead abierto con ese correo (#${dup.id})`);
     }
+    if (input.companyId) await this.must("companies", input.companyId);
     const lead = await this.store.insert("leads", {
       source: clean(input.source, 60),
       name,
@@ -69,97 +441,275 @@ export class CrmService {
       phone: clean(input.phone, 40),
       companyName: clean(input.companyName, 200),
       status: "new",
+      priority: input.priority ?? "normal",
       owner: clean(input.owner, 100),
-      notes: clean(input.notes, 2000),
+      notes: clean(input.notes, 5000),
+      companyId: input.companyId ?? null,
       convertedCompanyId: null,
       convertedOpportunityId: null,
       createdAt: this.now(),
+      updatedAt: null,
     });
     await this.log("lead", lead.id, "note", "Lead creado", author);
     return lead;
   }
 
+  async updateLead(id: number, input: LeadInput, author: string): Promise<Lead> {
+    const cur = await this.must("leads", id);
+    const out: Partial<Lead> = {};
+    // Un lead convertido conserva sus datos de origen: solo admite notas, responsable y prioridad.
+    const locked = cur.status === "converted";
+    const editable: (keyof LeadInput)[] = locked
+      ? ["notes", "owner", "priority"]
+      : ["name", "email", "phone", "companyName", "source", "owner", "notes", "priority", "companyId"];
+    for (const k of Object.keys(input) as (keyof LeadInput)[]) {
+      if (input[k] !== undefined && !editable.includes(k)) throw new CrmError("invalid_state", `El lead convertido no admite cambios en «${k}»`);
+    }
+    if (has(input, "name")) {
+      out.name = clean(input.name, 200) ?? "";
+      if (!out.name) throw new CrmError("invalid_input", "El nombre es obligatorio");
+    }
+    if (has(input, "email")) out.email = validEmail(clean(input.email, 320));
+    if (has(input, "phone")) out.phone = clean(input.phone, 40);
+    if (has(input, "companyName")) out.companyName = clean(input.companyName, 200);
+    if (has(input, "source")) out.source = clean(input.source, 60);
+    if (has(input, "owner")) out.owner = clean(input.owner, 100);
+    if (has(input, "notes")) out.notes = clean(input.notes, 5000);
+    if (has(input, "priority")) out.priority = input.priority;
+    if (has(input, "companyId")) {
+      if (input.companyId) await this.must("companies", input.companyId);
+      out.companyId = input.companyId ?? null;
+    }
+    const email = out.email !== undefined ? out.email : cur.email;
+    const phone = out.phone !== undefined ? out.phone : cur.phone;
+    if (!email && !phone) throw new CrmError("invalid_input", "Indica un correo o un teléfono");
+    if (out.email && out.email !== cur.email) {
+      const dup = (await this.store.list("leads", {}, { limit: SCAN_LIMIT })).find(
+        (l) => l.id !== id && l.email?.toLowerCase() === out.email && l.status !== "converted" && l.status !== "disqualified",
+      );
+      if (dup) throw new CrmError("conflict", `Ya existe un lead abierto con ese correo (#${dup.id})`);
+    }
+    const changed = (Object.keys(out) as (keyof Lead)[]).filter((k) => out[k] !== cur[k]);
+    if (!changed.length) return cur;
+    const patch: Partial<Lead> = { updatedAt: this.now() };
+    for (const k of changed) (patch as Record<string, unknown>)[k] = out[k];
+    const upd = await this.store.update("leads", id, patch);
+    await this.log("lead", id, "note", this.describeChanges(changed, cur, upd, ["priority", "owner", "source"]), author);
+    return upd;
+  }
+
+  async listLeads(
+    f: { q?: string; status?: LeadStatus; priority?: LeadPriority; owner?: string } & PageOpts = {},
+  ): Promise<Page<Lead>> {
+    const filter: Partial<Lead> = {};
+    if (f.status) filter.status = f.status;
+    if (f.priority) filter.priority = f.priority;
+    let rows = await this.store.list("leads", filter, { desc: true, limit: SCAN_LIMIT });
+    if (f.owner) rows = rows.filter((l) => l.owner === f.owner);
+    const q = normalizeText(f.q);
+    if (q) {
+      const qp = normalizePhone(f.q);
+      rows = rows.filter(
+        (l) => [l.name, l.email, l.companyName, l.source].some((v) => normalizeText(v).includes(q)) || (qp !== "" && normalizePhone(l.phone) === qp),
+      );
+    }
+    return paginate(rows, f);
+  }
+
+  /** Posibles duplicados de un lead/contacto/empresa por correo, teléfono, nombre de empresa o NIF. */
+  async findDuplicates(input: { email?: string | null; phone?: string | null; companyName?: string | null; taxId?: string | null; excludeLeadId?: number }): Promise<DuplicateMatch[]> {
+    const email = clean(input.email, 320)?.toLowerCase() ?? "";
+    const phone = normalizePhone(input.phone);
+    const company = normalizeCompanyName(input.companyName);
+    const taxId = clean(input.taxId, 40)?.toUpperCase().replace(/\s+/g, "") ?? "";
+    if (!email && !phone && !company && !taxId) return [];
+    const out: DuplicateMatch[] = [];
+    const [leads, contacts, companies] = await Promise.all([
+      this.store.list("leads", {}, { limit: SCAN_LIMIT }),
+      this.store.list("contacts", {}, { limit: SCAN_LIMIT }),
+      this.store.list("companies", {}, { limit: SCAN_LIMIT }),
+    ]);
+    for (const l of leads) {
+      if (l.id === input.excludeLeadId) continue;
+      const reason = email && l.email?.toLowerCase() === email ? "email" : phone && normalizePhone(l.phone) === phone ? "phone" : company && normalizeCompanyName(l.companyName) === company ? "company_name" : null;
+      if (reason) out.push({ type: "lead", id: l.id, label: `${l.name} (${l.status})`, reason });
+    }
+    for (const c of contacts) {
+      const reason = email && c.email?.toLowerCase() === email ? "email" : phone && normalizePhone(c.phone) === phone ? "phone" : null;
+      if (reason) out.push({ type: "contact", id: c.id, label: c.name, reason });
+    }
+    for (const c of companies) {
+      const reason = taxId && c.taxId === taxId ? "tax_id" : company && normalizeCompanyName(c.name) === company ? "company_name" : null;
+      if (reason) out.push({ type: "company", id: c.id, label: c.name, reason });
+    }
+    return out;
+  }
+
   async setLeadStatus(id: number, status: Exclude<LeadStatus, "converted">, author: string): Promise<Lead> {
     const lead = await this.must("leads", id);
     if (lead.status === "converted") throw new CrmError("invalid_state", "El lead ya está convertido");
-    const upd = await this.store.update("leads", id, { status });
+    if (lead.status === status) return lead;
+    const upd = await this.store.update("leads", id, { status, updatedAt: this.now() });
     await this.log("lead", id, "note", `Estado: ${lead.status} → ${status}`, author);
     return upd;
   }
 
   async convertLead(
     id: number,
-    input: { companyName?: string; opportunity?: { title: string; amountCents?: number; currency?: string; expectedClose?: number } },
+    input: {
+      companyId?: number;
+      companyName?: string;
+      opportunity?: { title: string; amountCents?: number; currency?: string; expectedClose?: number; planId?: string; modules?: string[] };
+    },
     author: string,
   ): Promise<{ company: Company; contact: Contact; opportunity: Opportunity | null; lead: Lead }> {
     const lead = await this.must("leads", id);
     if (lead.status === "converted") throw new CrmError("invalid_state", "El lead ya está convertido");
     if (lead.status === "disqualified") throw new CrmError("invalid_state", "El lead está descartado");
-    const companyName = clean(input.companyName, 200) ?? lead.companyName ?? lead.name;
-
-    // Reutiliza la empresa si ya existe con el mismo nombre
-    let company = (await this.store.list("companies")).find((c) => c.name.toLowerCase() === companyName.toLowerCase()) ?? null;
-    if (!company) {
-      company = await this.store.insert("companies", {
-        name: companyName,
-        taxId: null,
-        website: null,
-        sector: null,
-        address: null,
-        notes: null,
-        tenantId: null,
-        owner: lead.owner,
-        createdAt: this.now(),
-      });
+    if (input.opportunity) {
+      // Valida antes de escribir nada: una conversión no queda a medias por datos incorrectos
+      if (!clean(input.opportunity.title, 200)) throw new CrmError("invalid_input", "El título es obligatorio");
+      validModules(input.opportunity.modules);
     }
-    const contact = await this.store.insert("contacts", {
-      companyId: company.id,
-      name: lead.name,
-      email: lead.email,
-      phone: lead.phone,
-      role: null,
-      createdAt: this.now(),
-    });
+
+    const targetId = input.companyId ?? lead.companyId ?? null;
+    let company: Company | null = targetId ? await this.must("companies", targetId) : null;
+    if (!company) {
+      const companyName = clean(input.companyName, 200) ?? lead.companyName ?? lead.name;
+      // Reutiliza la empresa si ya existe con el mismo nombre (sin forma jurídica ni acentos)
+      const n = normalizeCompanyName(companyName);
+      company = (await this.store.list("companies", {}, { limit: SCAN_LIMIT })).find((c) => normalizeCompanyName(c.name) === n) ?? null;
+      if (!company) {
+        company = await this.createCompany({ name: companyName, owner: lead.owner, email: null }, author);
+      }
+    }
+
+    // Reutiliza el contacto de la empresa con el mismo correo; si no, lo crea con los datos del lead
+    const companyContacts = await this.store.list("contacts", { companyId: company.id });
+    let contact =
+      (lead.email ? companyContacts.find((c) => c.email?.toLowerCase() === lead.email!.toLowerCase()) : undefined) ?? null;
+    if (!contact) {
+      const { firstName, lastName } = splitName(lead.name);
+      contact = await this.createContact(
+        company.id,
+        { firstName, lastName, email: lead.email, phone: lead.phone, notes: lead.notes },
+        author,
+      );
+    }
+
     let opportunity: Opportunity | null = null;
     if (input.opportunity) {
-      opportunity = await this.createOpportunity({ companyId: company.id, ...input.opportunity, owner: lead.owner ?? undefined }, author);
+      opportunity = await this.createOpportunity(
+        { companyId: company.id, contactId: contact.id, ...input.opportunity, owner: lead.owner ?? undefined },
+        author,
+      );
+      await this.log("opportunity", opportunity.id, "note", `Origen: lead #${lead.id}${lead.source ? ` (${lead.source})` : ""}`, author);
     }
     const upd = await this.store.update("leads", id, {
       status: "converted",
       convertedCompanyId: company.id,
       convertedOpportunityId: opportunity?.id ?? null,
+      updatedAt: this.now(),
     });
     await this.log("lead", id, "note", `Convertido en empresa #${company.id}`, author);
+    await this.log(
+      "company",
+      company.id,
+      "note",
+      `Desde lead #${lead.id}${lead.source ? ` (origen: ${lead.source})` : ""}${lead.notes ? `. Notas del lead: ${lead.notes}` : ""}`,
+      author,
+    );
     return { company, contact, opportunity, lead: upd };
   }
 
   // ── Oportunidades ──────────────────────────────────────────────────────────
 
-  async createOpportunity(
-    input: { companyId: number; title: string; amountCents?: number; currency?: string; expectedClose?: number; owner?: string },
-    author: string,
-  ): Promise<Opportunity> {
+  async createOpportunity(input: OpportunityInput & { companyId: number; title: string }, author: string): Promise<Opportunity> {
     await this.must("companies", input.companyId);
-    const title = clean(input.title, 200);
-    if (!title) throw new CrmError("invalid_input", "El título es obligatorio");
-    if (input.amountCents !== undefined && (!Number.isInteger(input.amountCents) || input.amountCents < 0)) {
-      throw new CrmError("invalid_input", "Importe no válido");
-    }
+    const f = await this.opportunityFields(input, input.companyId);
+    if (!f.title) throw new CrmError("invalid_input", "El título es obligatorio");
     const o = await this.store.insert("opportunities", {
       companyId: input.companyId,
-      title,
+      contactId: f.contactId ?? null,
+      title: f.title,
       stage: "prospecting",
-      amountCents: input.amountCents ?? null,
-      currency: (input.currency ?? "EUR").toUpperCase().slice(0, 3),
-      expectedClose: input.expectedClose ?? null,
+      amountCents: f.amountCents ?? null,
+      currency: f.currency ?? "EUR",
+      expectedClose: f.expectedClose ?? null,
       probability: STAGE_PROBABILITY.prospecting,
-      owner: clean(input.owner, 100),
+      owner: f.owner ?? null,
+      planId: f.planId ?? null,
+      modules: f.modules ?? [],
+      nextAction: f.nextAction ?? null,
+      nextActionAt: f.nextActionAt ?? null,
       lostReason: null,
       createdAt: this.now(),
+      updatedAt: null,
       closedAt: null,
     });
     await this.log("opportunity", o.id, "note", "Oportunidad creada", author);
     return o;
+  }
+
+  async updateOpportunity(id: number, input: OpportunityInput, author: string): Promise<Opportunity> {
+    const cur = await this.must("opportunities", id);
+    const f = await this.opportunityFields(input, cur.companyId);
+    if (has(input, "title") && !f.title) throw new CrmError("invalid_input", "El título es obligatorio");
+    const changed = (Object.keys(f) as (keyof Opportunity)[]).filter((k) => JSON.stringify((f as Partial<Opportunity>)[k]) !== JSON.stringify(cur[k]));
+    if (!changed.length) return cur;
+    const patch: Partial<Opportunity> = { updatedAt: this.now() };
+    for (const k of changed) (patch as Record<string, unknown>)[k] = (f as Partial<Opportunity>)[k];
+    const upd = await this.store.update("opportunities", id, patch);
+    await this.log("opportunity", id, "note", this.describeChanges(changed, cur, upd, ["owner", "planId", "nextAction"]), author);
+    return upd;
+  }
+
+  async listOpportunities(
+    f: { q?: string; stage?: OpportunityStage; owner?: string; companyId?: number; open?: boolean } & PageOpts = {},
+  ): Promise<Page<Opportunity>> {
+    const filter: Partial<Opportunity> = {};
+    if (f.stage) filter.stage = f.stage;
+    if (f.companyId) filter.companyId = f.companyId;
+    let rows = await this.store.list("opportunities", filter, { desc: true, limit: SCAN_LIMIT });
+    if (f.owner) rows = rows.filter((o) => o.owner === f.owner);
+    if (f.open) rows = rows.filter((o) => OPEN_STAGES.includes(o.stage));
+    const q = normalizeText(f.q);
+    if (q) rows = rows.filter((o) => normalizeText(o.title).includes(q) || normalizeText(o.planId).includes(q));
+    return paginate(rows, f);
+  }
+
+  private async opportunityFields(input: OpportunityInput, companyId: number) {
+    const out: Partial<Omit<Opportunity, "id" | "companyId" | "stage" | "probability" | "lostReason" | "createdAt" | "updatedAt" | "closedAt">> = {};
+    if (has(input, "title")) out.title = clean(input.title, 200) ?? "";
+    if (has(input, "amountCents")) {
+      const a = input.amountCents;
+      if (a !== null && (!Number.isInteger(a) || a! < 0)) throw new CrmError("invalid_input", "Importe no válido");
+      out.amountCents = a ?? null;
+    }
+    if (has(input, "currency")) {
+      const c = (input.currency ?? "").toUpperCase();
+      if (!/^[A-Z]{3}$/.test(c)) throw new CrmError("invalid_input", "Moneda no válida");
+      out.currency = c;
+    }
+    if (has(input, "expectedClose")) out.expectedClose = this.validTime(input.expectedClose, "Fecha de cierre");
+    if (has(input, "owner")) out.owner = clean(input.owner, 100);
+    if (has(input, "planId")) {
+      const p = clean(input.planId, 64);
+      if (p && !/^[a-z0-9][a-z0-9_-]{0,63}$/.test(p)) throw new CrmError("invalid_input", "Plan no válido");
+      out.planId = p;
+    }
+    if (has(input, "modules")) out.modules = validModules(input.modules);
+    if (has(input, "contactId")) {
+      if (input.contactId) {
+        const c = await this.must("contacts", input.contactId);
+        // El contacto debe pertenecer a la empresa de la oportunidad (no se enlazan datos ajenos)
+        if (c.companyId !== companyId) throw new CrmError("invalid_input", "El contacto no pertenece a la empresa");
+      }
+      out.contactId = input.contactId ?? null;
+    }
+    if (has(input, "nextAction")) out.nextAction = clean(input.nextAction, 300);
+    if (has(input, "nextActionAt")) out.nextActionAt = this.validTime(input.nextActionAt, "Fecha de la próxima acción");
+    return out;
   }
 
   async moveStage(id: number, to: OpportunityStage, author: string, opts: { lostReason?: string } = {}): Promise<Opportunity> {
@@ -173,15 +723,15 @@ export class CrmService {
       probability: STAGE_PROBABILITY[to],
       lostReason: to === "lost" ? clean(opts.lostReason) : null,
       closedAt: final ? this.now() : null,
+      updatedAt: this.now(),
     });
-    await this.log("opportunity", id, "note", `Etapa: ${o.stage} → ${to}`, author);
+    await this.log("opportunity", id, "note", `Etapa: ${o.stage} → ${to}${to === "lost" ? ` (motivo: ${clean(opts.lostReason)})` : ""}`, author);
     return upd;
   }
 
   async pipeline() {
-    const opps = await this.store.list("opportunities");
-    const stages: OpportunityStage[] = ["prospecting", "proposal", "negotiation", "won", "lost"];
-    return stages.map((stage) => {
+    const opps = await this.store.list("opportunities", {}, { limit: SCAN_LIMIT });
+    return STAGES.map((stage) => {
       const rows = opps.filter((o) => o.stage === stage);
       const total = rows.reduce((a, o) => a + (o.amountCents ?? 0), 0);
       const weighted = rows.reduce((a, o) => a + Math.round(((o.amountCents ?? 0) * o.probability) / 100), 0);
@@ -204,7 +754,7 @@ export class CrmService {
       companyId: input.companyId,
       opportunityId: input.opportunityId ?? null,
       planId: clean(input.planId, 64),
-      modules: (input.modules ?? []).filter((m) => /^[a-z][a-z0-9_]{1,31}$/.test(m)),
+      modules: (input.modules ?? []).filter((m) => MODULE_RE.test(m)),
       status: "draft",
       amountCents: input.amountCents ?? null,
       currency: (input.currency ?? "EUR").toUpperCase().slice(0, 3),
@@ -233,9 +783,10 @@ export class CrmService {
     if (!this.d.activation) throw new CrmError("invalid_state", "La activación de contratos no está configurada");
     if (!c.planId) throw new CrmError("invalid_input", "El contrato necesita un plan");
     const company = await this.must("companies", c.companyId);
-    const contact = (await this.store.list("contacts", { companyId: company.id }))[0] ?? null;
+    const contacts = (await this.store.list("contacts", { companyId: company.id })).filter((x) => x.status !== "inactive");
+    const contact = contacts.find((x) => x.isPrimary) ?? contacts[0] ?? null;
     const { tenantId } = await this.d.activation.activate({ contract: c, company, contact });
-    await this.store.update("companies", company.id, { tenantId });
+    await this.store.update("companies", company.id, { tenantId, updatedAt: this.now() });
     const upd = await this.store.update("contracts", c.id, { status: "active", tenantId, startDate: c.startDate ?? this.now() });
     await this.log("contract", c.id, "note", `Contrato activo; tenant ${tenantId}`, author);
     await this.log("company", company.id, "note", `Alta de plataforma: ${tenantId}`, author);
@@ -265,11 +816,12 @@ export class CrmService {
   async completeTask(id: number): Promise<Activity> {
     const a = await this.must("activities", id);
     if (a.kind !== "task") throw new CrmError("invalid_state", "No es una tarea");
+    if (a.doneAt !== null) return a;
     return this.store.update("activities", id, { doneAt: this.now() });
   }
 
   async tasks(opts: { author?: string; until?: number; includeDone?: boolean } = {}): Promise<Activity[]> {
-    const all = await this.store.list("activities", { kind: "task" });
+    const all = await this.store.list("activities", { kind: "task" }, { limit: SCAN_LIMIT });
     return all
       .filter((a) => (opts.includeDone ? true : a.doneAt === null))
       .filter((a) => !opts.author || a.author === opts.author)
@@ -282,17 +834,30 @@ export class CrmService {
   }
 
   async dashboard() {
-    const leads = await this.store.list("leads");
+    const leads = await this.store.list("leads", {}, { limit: SCAN_LIMIT });
     const byStatus: Record<string, number> = {};
     for (const l of leads) byStatus[l.status] = (byStatus[l.status] ?? 0) + 1;
     const now = this.now();
     const overdue = (await this.tasks({ until: now })).length;
-    const contracts = await this.store.list("contracts");
+    const contracts = await this.store.list("contracts", {}, { limit: SCAN_LIMIT });
     const mrrCents = contracts.filter((c) => c.status === "active").reduce((a, c) => a + (c.amountCents ?? 0), 0);
     return { leadsByStatus: byStatus, pipeline: await this.pipeline(), overdueTasks: overdue, activeContracts: contracts.filter((c) => c.status === "active").length, contractedCents: mrrCents };
   }
 
   // ── Internos ───────────────────────────────────────────────────────────────
+
+  private validTime(v: number | null | undefined, field: string): number | null {
+    if (v === null || v === undefined) return null;
+    if (!Number.isInteger(v) || v < 0) throw new CrmError("invalid_input", `${field} no válida`);
+    return v;
+  }
+
+  /** Resumen de cambios para el historial: nombres de campo y, para los no personales, sus valores. */
+  private describeChanges<T>(changed: (keyof T)[], before: T, after: T, showValues: (keyof T)[]): string {
+    return `Actualizado: ${changed
+      .map((k) => (showValues.includes(k) ? `${String(k)} ${String(before[k] ?? "—")} → ${String(after[k] ?? "—")}` : String(k)))
+      .join(", ")}`;
+  }
 
   private async must<K extends Parameters<CrmStore["get"]>[0]>(table: K, id: number) {
     const r = await this.store.get(table, id);
