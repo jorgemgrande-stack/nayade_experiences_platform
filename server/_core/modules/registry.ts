@@ -16,6 +16,12 @@ export function validateManifest(m: ModuleManifest): void {
   if (!m.name?.trim()) throw new ModuleError("invalid_manifest", `${m.id}: falta el nombre`);
   if (!parseVersion(m.version)) throw new ModuleError("invalid_manifest", `${m.id}: versión no válida`);
   if (!m.coreRange) throw new ModuleError("invalid_manifest", `${m.id}: falta coreRange`);
+  for (const r of m.resources ?? []) {
+    if (!/^[a-z][a-z0-9_.]{1,63}$/.test(r)) throw new ModuleError("invalid_manifest", `${m.id}: recurso no válido (${r})`);
+  }
+  if (m.source?.repository && !/^https:\/\/\S+$/.test(m.source.repository)) {
+    throw new ModuleError("invalid_manifest", `${m.id}: el repositorio debe ser una URL https`);
+  }
   for (const p of m.permissions ?? []) {
     if (!PERMISSION_KEY_RE.test(p.key) || !p.key.startsWith(`${m.id}.`)) {
       throw new ModuleError("invalid_manifest", `${m.id}: el permiso ${p.key} debe empezar por "${m.id}."`);
