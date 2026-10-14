@@ -13,6 +13,7 @@ import type { CrmService } from "./service";
 import type { CrmStore, Tables } from "./store";
 import type { BillingStore } from "../_core/billing/ports";
 import { billingSummary } from "./dashboard";
+import type { CrmOnboarding } from "./onboarding";
 
 const wrap =
   (fn: (req: Request, res: Response) => Promise<void>) =>
@@ -116,7 +117,11 @@ const contractTerms = {
   conditions: nullStr(20000),
 };
 
-export function createCrmRouter(crm: CrmService, store: CrmStore, opts: { billing?: Pick<BillingStore, "listSubscriptions"> } = {}): Router {
+export function createCrmRouter(
+  crm: CrmService,
+  store: CrmStore,
+  opts: { billing?: Pick<BillingStore, "listSubscriptions">; onboarding?: CrmOnboarding } = {},
+): Router {
   const r = express.Router();
   const who = (req: Request) => `${getAuth(req)!.actor.type}:${getAuth(req)!.actor.id}`;
 
@@ -131,6 +136,36 @@ export function createCrmRouter(crm: CrmService, store: CrmStore, opts: { billin
   r.get("/duplicates", requireScope("crm:read"), wrap(async (req, res) => {
     const q = z.object({ email: optStr(320), phone: optStr(40), companyName: optStr(200), taxId: optStr(40) }).parse(req.query);
     res.json({ duplicates: await crm.findDuplicates(q) });
+  }));
+
+  // ── Onboarding (alta de plataforma desde la ficha comercial) ──
+  r.get("/onboarding/config", requireScope("crm:read"), wrap(async (_q, res) => {
+    res.json(opts.onboarding ? { available: true, ...opts.onboarding.config() } : { available: false });
+  }));
+  r.get("/onboarding/check", requireScope("crm:read"), wrap(async (req, res) => {
+    if (!opts.onboarding) throw new CrmError("invalid_state", "El aprovisionamiento no está configurado");
+    const q = z.object({ tenantId: z.string().min(1).max(63), companyId: id.optional() }).parse(req.query);
+    res.json(await opts.onboarding.check(q.tenantId, q.companyId));
+  }));
+  r.post("/companies/:id/onboard", requireScope("crm:write"), requireScope("provisioning:write"), wrap(async (req, res) => {
+    const b = z
+      .object({
+        tenantId: z.string().min(1).max(63),
+        adminContactId: id,
+        planId: optStr(64),
+        modules: z.array(z.string().max(32)).max(30).optional(),
+        templateId: optStr(64),
+        trialDays: z.number().int().min(1).max(90).optional(),
+      })
+      .strict()
+      .parse(req.body);
+    // Iniciar la prueba de un plan es una operación de facturación: exige además billing:write
+    if (b.planId && !getAuth(req)!.scopes.has("billing:write")) {
+      return void res.status(403).json({ error: "forbidden", message: "Ámbito requerido: billing:write" });
+    }
+    if (!opts.onboarding) throw new CrmError("invalid_state", "El aprovisionamiento no está configurado");
+    const r = await opts.onboarding.onboard(id.parse(req.params.id), b, getAuth(req)!.actor);
+    res.status(r.status === "completed" ? 201 : 202).json(r);
   }));
 
   // ── Leads ──
