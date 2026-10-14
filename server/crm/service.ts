@@ -1033,7 +1033,40 @@ export class CrmService {
     const overdue = (await this.tasks({ until: now })).length;
     const contracts = await this.store.list("contracts", {}, { limit: SCAN_LIMIT });
     const mrrCents = contracts.filter((c) => c.status === "active").reduce((a, c) => a + (c.amountCents ?? 0), 0);
-    return { leadsByStatus: byStatus, pipeline: await this.pipeline(), overdueTasks: overdue, activeContracts: contracts.filter((c) => c.status === "active").length, contractedCents: mrrCents };
+    const pipeline = await this.pipeline();
+    const opps = await this.store.list("opportunities", {}, { limit: SCAN_LIMIT });
+    const open = opps.filter((o) => OPEN_STAGES.includes(o.stage));
+    const monthStart = Date.UTC(new Date(now).getUTCFullYear(), new Date(now).getUTCMonth(), 1);
+    const wonMonth = opps.filter((o) => o.stage === "won" && (o.closedAt ?? 0) >= monthStart);
+    const companies = await this.withLifecycle(await this.store.list("companies", {}, { limit: SCAN_LIMIT }));
+    const renewalHorizon = now + 30 * 86_400_000;
+    const metrics = {
+      activeLeads: leads.filter((l) => l.status === "new" || l.status === "contacted" || l.status === "qualified").length,
+      openOpportunities: open.length,
+      pipelineOpenCents: open.reduce((a, o) => a + (o.amountCents ?? 0), 0),
+      pipelineWeightedCents: open.reduce((a, o) => a + Math.round(((o.amountCents ?? 0) * o.probability) / 100), 0),
+      overdueNextActions: open.filter((o) => o.nextActionAt !== null && o.nextActionAt < now).length,
+      wonThisMonth: { count: wonMonth.length, amountCents: wonMonth.reduce((a, o) => a + (o.amountCents ?? 0), 0) },
+      pendingContracts: {
+        draft: contracts.filter((c) => c.status === "draft").length,
+        sent: contracts.filter((c) => c.status === "sent").length,
+        signed: contracts.filter((c) => c.status === "signed").length,
+      },
+      renewalsNext30Days: contracts.filter((c) => c.status === "active" && c.renewalDate !== null && c.renewalDate <= renewalHorizon).length,
+      overdueTasks: overdue,
+      activeCustomers: companies.filter((c) => c.status === "active" && c.lifecycle !== "prospect").length,
+      customersWithPlatform: companies.filter((c) => c.status === "active" && c.lifecycle === "tenant").length,
+      prospects: companies.filter((c) => c.status === "active" && c.lifecycle === "prospect").length,
+    };
+    return {
+      leadsByStatus: byStatus,
+      pipeline,
+      overdueTasks: overdue,
+      activeContracts: contracts.filter((c) => c.status === "active").length,
+      contractedCents: mrrCents,
+      metrics,
+      generatedAt: now,
+    };
   }
 
   // ── Internos ───────────────────────────────────────────────────────────────
