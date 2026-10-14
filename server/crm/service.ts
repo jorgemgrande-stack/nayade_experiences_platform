@@ -973,9 +973,17 @@ export class CrmService {
     if (!this.d.activation) throw new CrmError("invalid_state", "La activación de contratos no está configurada");
     if (!c.planId) throw new CrmError("invalid_input", "El contrato necesita un plan");
     const company = await this.must("companies", c.companyId);
-    const contacts = (await this.store.list("contacts", { companyId: company.id })).filter((x) => x.status !== "inactive");
+    // El administrador de la plataforma sale de un contacto activo con correo (preferente el principal)
+    const contacts = (await this.store.list("contacts", { companyId: company.id })).filter((x) => x.status !== "inactive" && x.email);
     const contact = contacts.find((x) => x.isPrimary) ?? contacts[0] ?? null;
-    const { tenantId } = await this.d.activation.activate({ contract: c, company, contact });
+    if (!contact) throw new CrmError("invalid_input", "El contrato necesita un contacto activo con correo (será el administrador de la plataforma)");
+    let tenantId: string;
+    try {
+      ({ tenantId } = await this.d.activation.activate({ contract: c, company, contact }));
+    } catch (e) {
+      // Un fallo del alta no es un error interno: el contrato sigue firmado y se puede reintentar
+      throw new CrmError("conflict", `No se pudo activar: ${e instanceof Error ? e.message : "error del alta"}`);
+    }
     await this.store.update("companies", company.id, { tenantId, updatedAt: this.now() });
     const startDate = c.startDate ?? this.now();
     const renewalDate = c.renewalDate ?? (c.billingInterval ? addInterval(startDate, c.billingInterval) : null);
