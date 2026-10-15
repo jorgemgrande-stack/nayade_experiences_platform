@@ -36,11 +36,14 @@ Orden: 1) desplegar este código (lectores compatibles) → 2) definir claves �
 2. **Plan** (solo lectura): `LEGACY_CREDENTIALS_DATABASE_URL=… pnpm tsx scripts/legacy-credentials.ts plan`
    → estados `plaintext | encrypted | empty | absent | unreadable` por campo.
 3. **Simulacro**: `… apply` (sin `--execute`) → informe de lo que cifraría; no escribe.
-4. **Ejecución**: `… apply --execute --backup-confirmed`. Idempotente y reanudable (relanzar es seguro); cada fila se
+4. **Tabla de auditoría** (una vez, carril explícito; el script ya no ejecuta DDL y sin ella se niega a escribir):
+   `MIGRATE_DATABASE_URL=… pnpm tsx scripts/db/migrate.ts up --dir db/migrations` (dry-run) → revisar →
+   `… up --dir db/migrations --apply --confirm-database <bd>` (aplica `0002_legacy_credential_audit` y lo anterior pendiente).
+5. **Ejecución**: `… apply --execute --backup-confirmed`. Idempotente y reanudable (relanzar es seguro); cada fila se
    verifica descifrando antes de escribir y solo se actualiza si el valor sigue siendo el leído (conflicto → no se pisa).
    La auditoría queda en `legacy_credential_audit` (fecha, actor, tabla, clave, acción, `keyId`; sin valores).
-5. **Verificación**: `… plan` → ningún `plaintext`; comprobar `/api/ghl/templates` (401 esperado), inbox GHL y creación de lead con GHL.
-6. **Después**, en ventana aparte, rotar las credenciales externas (runbook de rotación): ya se guardarán cifradas.
+6. **Verificación**: `… plan` → ningún `plaintext`; comprobar `/api/ghl/templates` (401 esperado), inbox GHL y creación de lead con GHL.
+7. **Después**, en ventana aparte, rotar las credenciales externas (runbook de rotación): ya se guardarán cifradas.
 
 ## Reversión
 - Inmediata y sin pérdida: `… rollback --execute --backup-confirmed` restaura el texto plano desde el cifrado (requiere las claves).
