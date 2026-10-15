@@ -199,8 +199,10 @@ export class ProvisioningService {
       case "schema": {
         const dsn = await this.dsn(id);
         const v = await this.d.schema.apply(dsn);
+        // Triggers que la baseline no puede llevar: los crea la conexión de administración
+        const triggers = this.d.databases.ensureTriggers ? await this.d.databases.ensureTriggers(id) : [];
         await this.d.registry.setSchemaVersion(id, v.schemaVersion, actor);
-        return { info: { baseline: v.baselineVersion, schema: v.schemaVersion } };
+        return { info: { baseline: v.baselineVersion, schema: v.schemaVersion, triggersCreated: triggers.length } };
       }
       case "activate_database": {
         if (await this.d.reader.getActiveDatabase(id)) return;
