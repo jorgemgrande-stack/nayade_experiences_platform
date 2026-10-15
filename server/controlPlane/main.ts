@@ -19,6 +19,7 @@ import path from "node:path";
 import mysql from "mysql2/promise";
 import { EntitlementAdmin } from "../_core/modules/mysqlEntitlements";
 import { QuotaAdmin } from "../_core/erm/mysqlQuotas";
+import { parseDefaultQuotas } from "../_core/erm/quota";
 import { MysqlUsageStore } from "../_core/erm/usage";
 import { keyringFromEnv } from "../_core/tenantRegistry/crypto";
 import { MysqlTenantRegistryStore } from "../_core/tenantRegistry/mysqlStore";
@@ -145,6 +146,7 @@ async function main() {
     quotas,
     provisioning,
     usage,
+    quotaDefaults: parseDefaultQuotas(process.env.ERM_DEFAULT_QUOTAS) ?? undefined,
     platformTarget: process.env.CP_PLATFORM_TARGET ?? "",
     support: new SupportAdmin(pool),
     allowedOrigins: (process.env.CP_ALLOWED_ORIGINS ?? "").split(",").map((x) => x.trim()).filter(Boolean),
