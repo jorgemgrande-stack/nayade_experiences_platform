@@ -1,12 +1,15 @@
 /**
  * CRM con MySQL real (opt-in): esquema, mapeo de columnas (JSON, BIGINT) y flujo completo.
  */
+import crypto from "node:crypto";
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import mysql from "mysql2/promise";
 import { MysqlCrmStore } from "./crm/mysqlStore";
 import { CrmService } from "./crm/service";
+import { WebRequestService } from "./crm/webRequests";
+import { DuplicateKeyError } from "./crm/store";
 import { loadMigrations, splitStatements } from "../scripts/db/migrationLib";
 
 const CRM_MIGRATIONS = path.resolve(__dirname, "../db/crm/migrations");
@@ -111,9 +114,49 @@ describe.skipIf(!URL_)("CRM con MySQL real", () => {
     expect(r).toMatchObject({ previousContractId: c.id, startDate: act.renewalDate, status: "draft" });
   });
 
+  it("solicitudes web: JSON opcional, claves únicas en BD e idempotencia entre instancias", async () => {
+    const st = new MysqlCrmStore(pool);
+    const crmSvc = new CrmService({ store: st });
+    // Dos instancias del servicio (p. ej. dos réplicas): la BD es la que garantiza la unicidad
+    const a = new WebRequestService({ store: st, crm: crmSvc });
+    const b = new WebRequestService({ store: st, crm: crmSvc });
+    const input = {
+      type: "trial" as const,
+      name: "Web MySQL",
+      email: "web@mysql.example",
+      company: "Empresa Web",
+      configuration: { plan: "business", extensions: [], industries: ["spa"], interests: [] },
+      marketingConsent: true,
+      privacyVersion: "2026-10-borrador",
+    };
+    const k = crypto.randomUUID();
+    const [r1, r2] = await Promise.all([a.receive(input, { idempotencyKey: k, ipHash: "a".repeat(64) }), b.receive(input, { idempotencyKey: k, ipHash: "a".repeat(64) })]);
+    expect(r1.request.reference).toBe(r2.request.reference);
+    expect([r1.outcome, r2.outcome].sort()).toEqual(["created", "replayed"]);
+    const [[n]] = (await pool.query<mysql.RowDataPacket[]>("SELECT COUNT(*) AS n FROM crm_lead_requests WHERE idempotency_key = ?", [k])) as any;
+    expect(Number(n.n)).toBe(1);
+    const stored = (await st.get("leadRequests", r1.request.id))!;
+    expect(stored).toMatchObject({ configuration: { plan: "business", industries: ["spa"] }, utm: null, marketingConsent: true, attendedAt: null, leadId: r1.request.leadId });
+    // Sin configuración se guarda NULL, no una lista vacía
+    const c = await a.receive({ ...input, type: "contact", configuration: null, message: "Hola" }, { idempotencyKey: crypto.randomUUID(), ipHash: null });
+    const [[raw]] = (await pool.query<mysql.RowDataPacket[]>("SELECT configuration FROM crm_lead_requests WHERE id = ?", [c.request.id])) as any;
+    expect(raw.configuration).toBeNull();
+    expect((await st.get("leadRequests", c.request.id))!.configuration).toBeNull();
+    // La clave única de la BD se traduce a DuplicateKeyError
+    await expect(st.insert("leadRequests", { ...stored, reference: "SOL-OTRAREF1" } as never)).rejects.toBeInstanceOf(DuplicateKeyError);
+    // La FK impide solicitudes huérfanas
+    await expect(pool.query("INSERT INTO crm_lead_requests (lead_id, reference, type, privacy_accepted_at, privacy_version, idempotency_key, payload_hash, created_at) VALUES (999999, 'SOL-HUERFANA', 'contact', 1, 'v', ?, ?, 1)", [crypto.randomUUID(), "x".repeat(64)])).rejects.toMatchObject({ code: "ER_NO_REFERENCED_ROW_2" });
+    // Atender desde el CRM
+    const v = await a.setStatus(r1.request.id, "attended", "operator:laura");
+    expect(v.attendedAt).toEqual(expect.any(Number));
+    expect((await st.get("leads", r1.request.leadId))!.status).toBe("contacted");
+  });
+
   it("las migraciones del CRM se revierten y se vuelven a aplicar conservando los datos base", async () => {
     const [[before]] = (await pool.query<mysql.RowDataPacket[]>("SELECT COUNT(*) AS n FROM crm_companies")) as any;
     await runCrmMigrations(pool, "down");
+    const [reqTable] = await pool.query<mysql.RowDataPacket[]>("SHOW TABLES LIKE 'crm_lead_requests'");
+    expect(reqTable).toHaveLength(0);
     const [cols] = await pool.query<mysql.RowDataPacket[]>("SHOW COLUMNS FROM crm_contacts LIKE 'is_primary'");
     expect(cols).toHaveLength(0);
     const [[stage]] = (await pool.query<mysql.RowDataPacket[]>("SELECT COUNT(*) AS n FROM crm_opportunities WHERE stage = 'qualification'")) as any;

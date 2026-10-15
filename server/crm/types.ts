@@ -218,3 +218,56 @@ export const CONTRACT_TRANSITIONS: Record<ContractStatus, ContractStatus[]> = {
   active: ["cancelled"],
   cancelled: [],
 };
+
+// ── Solicitudes desde la web pública ──────────────────────────────────────────
+
+export type LeadRequestType = "trial" | "onboarding" | "contact" | "configuration" | "extension_info" | "module_info";
+export type LeadRequestStatus = "pending" | "attended" | "discarded";
+export const LEAD_REQUEST_TYPES: LeadRequestType[] = ["trial", "onboarding", "contact", "configuration", "extension_info", "module_info"];
+export const LEAD_REQUEST_STATUSES: LeadRequestStatus[] = ["pending", "attended", "discarded"];
+export const LEAD_REQUEST_LABEL: Record<LeadRequestType, string> = {
+  trial: "Prueba gratuita de 15 días",
+  onboarding: "Sesión de onboarding",
+  contact: "Contacto comercial",
+  configuration: "Configuración de Construye tu Elephant",
+  extension_info: "Información sobre una extensión",
+  module_info: "Información sobre un módulo sectorial",
+};
+
+/** Configuración elegida en «Construye tu Elephant» (ids del catálogo de la web). */
+export interface RequestConfiguration {
+  plan: string | null;
+  extensions: string[];
+  industries: string[];
+  /** Piezas en hoja de ruta marcadas como interés (no contratables). */
+  interests: string[];
+}
+
+/**
+ * Solicitud recibida desde la web. Cuelga de un lead: el lead es la entidad comercial (estado,
+ * responsable, historial, conversión); la solicitud guarda lo propio de cada envío.
+ * Preparada para automatizar la prueba en el futuro (tipo `trial` + estado), sin aprovisionar nada hoy.
+ */
+export interface LeadRequest {
+  id: number;
+  leadId: number;
+  reference: string;
+  type: LeadRequestType;
+  status: LeadRequestStatus;
+  sector: string | null;
+  message: string | null;
+  configuration: RequestConfiguration | null;
+  interest: string | null;
+  preferredTime: string | null;
+  sourcePage: string | null;
+  utm: Record<string, string> | null;
+  privacyAcceptedAt: number;
+  privacyVersion: string;
+  marketingConsent: boolean;
+  idempotencyKey: string;
+  payloadHash: string;
+  ipHash: string | null;
+  attendedAt: number | null;
+  attendedBy: string | null;
+  createdAt: number;
+}
