@@ -77,6 +77,56 @@ describe.skipIf(!URL_)("web comercial con MySQL real", () => {
     expect(ev.map((r) => r.action)).toEqual(expect.arrayContaining(["create", "save", "publish", "approve", "retire"]));
   });
 
+  it("aprobaciones simultáneas de precios distintos del mismo producto: un único precio vigente y auditoría completa", async () => {
+    await svc.create({ kind: "product", key: "concurrencia", family: "core_plan", draft: plan }, "a");
+    const first = await svc.addPrice("concurrencia", { kind: "monthly", amountCents: 1000, taxRateBp: 2100 }, "a");
+    await svc.approvePrice(first.id, "jefa");
+    const drafts = await Promise.all(
+      Array.from({ length: 8 }, (_, i) => svc.addPrice("concurrencia", { kind: "monthly", amountCents: 2000 + i, taxRateBp: 2100 }, "a")),
+    );
+    const results = await Promise.allSettled(drafts.map((d, i) => svc.approvePrice(d.id, `admin${i}`)));
+    expect(results.filter((r) => r.status === "rejected")).toEqual([]);
+    const [rows] = await pool.query<mysql.RowDataPacket[]>(
+      "SELECT p.id, p.status FROM web_prices p JOIN web_entries e ON e.id = p.entry_id WHERE e.entry_key = 'concurrencia' AND p.kind = 'monthly'",
+    );
+    expect(rows.filter((r) => r.status === "approved")).toHaveLength(1);
+    expect(rows.filter((r) => r.status === "retired")).toHaveLength(8);
+    expect(rows.filter((r) => r.status === "draft")).toHaveLength(0);
+    const [ev] = await pool.query<mysql.RowDataPacket[]>("SELECT action, COUNT(*) AS n FROM web_events WHERE entity = 'price' AND entity_key LIKE 'concurrencia#%' GROUP BY action");
+    const n = Object.fromEntries(ev.map((r) => [r.action, Number(r.n)]));
+    expect(n).toMatchObject({ approve: 9, retire: 8 });
+  });
+
+  it("la misma aprobación lanzada dos veces a la vez: una gana y la otra recibe estado no válido", async () => {
+    const d = await svc.addPrice("concurrencia", { kind: "yearly", amountCents: 50000, taxRateBp: 2100 }, "a");
+    const results = await Promise.allSettled([svc.approvePrice(d.id, "a"), svc.approvePrice(d.id, "b")]);
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    expect(results.find((r) => r.status === "rejected")).toMatchObject({ reason: { code: "invalid_state" } });
+    const [ev] = await pool.query<mysql.RowDataPacket[]>("SELECT COUNT(*) AS n FROM web_events WHERE action = 'approve' AND entity_key = ?", [`concurrencia#${d.id}`]);
+    expect(Number(ev[0].n)).toBe(1);
+  });
+
+  it("aprobar y borrar a la vez el mismo borrador nunca deja un borrado fantasma", async () => {
+    const d = await svc.addPrice("concurrencia", { kind: "one_time", amountCents: 700, taxRateBp: 2100 }, "a");
+    const [ap, del] = await Promise.allSettled([svc.approvePrice(d.id, "a"), svc.deletePrice(d.id, "b")]);
+    const [rows] = await pool.query<mysql.RowDataPacket[]>("SELECT status FROM web_prices WHERE id = ?", [d.id]);
+    if (ap.status === "fulfilled") {
+      expect(rows[0].status).toBe("approved");
+      expect(del.status).toBe("rejected");
+    } else {
+      expect(rows).toHaveLength(0);
+      expect(del.status).toBe("fulfilled");
+    }
+  });
+
+  it("la BD rechaza dos precios vigentes equivalentes aunque se salte el servicio (migración 0005)", async () => {
+    const d = await svc.addPrice("concurrencia", { kind: "monthly", amountCents: 3000, taxRateBp: 2100 }, "a");
+    await expect(pool.query("UPDATE web_prices SET status = 'approved' WHERE id = ?", [d.id])).rejects.toMatchObject({ code: "ER_DUP_ENTRY" });
+    // Otra moneda sí puede tener su propio precio vigente
+    const usd = await svc.addPrice("concurrencia", { kind: "monthly", amountCents: 3000, currency: "USD", taxRateBp: 0 }, "a");
+    await expect(pool.query("UPDATE web_prices SET status = 'approved' WHERE id = ?", [usd.id])).resolves.toBeTruthy();
+  });
+
   it("restricciones de la BD: clave única, importe no negativo y FK", async () => {
     await expect(svc.create({ kind: "product", key: "business", family: "core_plan", draft: plan }, "a")).rejects.toMatchObject({ code: "conflict" });
     await expect(pool.query("INSERT INTO web_prices (entry_id, kind, amount_cents, tax_rate_bp, created_at, created_by) VALUES (1, 'monthly', -5, 2100, 1, 'x')")).rejects.toBeTruthy();

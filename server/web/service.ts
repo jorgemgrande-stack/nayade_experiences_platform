@@ -25,7 +25,7 @@ import {
   type PriceKind,
   type ProductDraft,
 } from "./schemas";
-import { DuplicateEntryError, VersionConflictError, type WebEntry, type WebPrice, type WebStore } from "./store";
+import { DuplicateEntryError, PriceStateError, VersionConflictError, type WebEntry, type WebPrice, type WebStore } from "./store";
 
 export class WebError extends Error {
   constructor(
@@ -296,16 +296,15 @@ export class WebAdminService {
     if (p.status !== "draft") throw new WebError("invalid_state", "Solo se aprueban precios en borrador");
     const entry = (await this.d.store.listEntries({ kind: "product" })).find((e) => e.id === p.entryId)!;
     if ((entry.draft as ProductDraft).technicalStatus === "planned") throw new WebError("invalid_state", "Un producto en hoja de ruta no puede tener precio vigente: no es contratable");
-    const now = this.now();
-    // Un solo precio vigente por tipo, moneda y unidad: el anterior se retira (y queda en el historial)
-    for (const old of await this.d.store.listPrices(p.entryId)) {
-      if (old.status === "approved" && old.kind === p.kind && old.currency === p.currency && old.unit === p.unit) {
-        await this.d.store.setPriceStatus(old.id, { status: "retired", approvedAt: old.approvedAt, approvedBy: old.approvedBy, retiredAt: now, retiredBy: author });
-        await this.audit("price", `${entry.key}#${old.id}`, "retire", author, `Sustituido por #${p.id}`);
-      }
+    // Un solo precio vigente por tipo, moneda y unidad: el anterior se retira (y queda en el
+    // historial) en la misma transacción que la aprobación, con su auditoría.
+    let out: WebPrice;
+    try {
+      ({ approved: out } = await this.d.store.approvePrice(id, { author, now: this.now(), entryKey: entry.key, detail: `${p.kind} ${p.amountCents} ${p.currency}` }));
+    } catch (err) {
+      if (err instanceof PriceStateError) throw new WebError("invalid_state", "Otra persona cambió este precio antes: recarga para ver su estado actual");
+      throw err;
     }
-    const out = await this.d.store.setPriceStatus(id, { status: "approved", approvedAt: now, approvedBy: author, retiredAt: null, retiredBy: null });
-    await this.audit("price", `${entry.key}#${id}`, "approve", author, `${p.kind} ${p.amountCents} ${p.currency}`);
     if (entry.publication === "published") await this.notify();
     return out;
   }
@@ -323,7 +322,7 @@ export class WebAdminService {
   async deletePrice(id: number, author: string): Promise<void> {
     const p = await this.mustPrice(id);
     if (p.status !== "draft") throw new WebError("invalid_state", "Los precios aprobados o retirados no se borran: forman parte del historial");
-    await this.d.store.deleteDraftPrice(id);
+    if (!(await this.d.store.deleteDraftPrice(id))) throw new WebError("invalid_state", "Otra persona cambió este precio antes: recarga para ver su estado actual");
     await this.audit("price", `#${id}`, "delete", author, "Borrador de precio eliminado");
   }
 

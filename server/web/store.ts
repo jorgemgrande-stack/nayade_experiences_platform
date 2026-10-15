@@ -70,6 +70,19 @@ export class DuplicateEntryError extends Error {
     super("duplicate_entry");
   }
 }
+/** El precio ya no está en el estado esperado (otra persona lo aprobó, retiró o borró antes). */
+export class PriceStateError extends Error {
+  constructor(public current: PriceStatus | null) {
+    super("price_state");
+  }
+}
+export interface ApprovePriceInput {
+  author: string;
+  now: number;
+  /** Clave del producto, para la auditoría. */
+  entryKey: string;
+  detail: string;
+}
 
 export interface WebStore {
   listEntries(f?: { kind?: EntryKind }): Promise<WebEntry[]>;
@@ -85,7 +98,13 @@ export interface WebStore {
   insertPrice(p: Omit<WebPrice, "id">): Promise<WebPrice>;
   /** Solo cambia estado y sellos de aprobación/retirada: el importe es inmutable. */
   setPriceStatus(id: number, p: Pick<WebPrice, "status" | "approvedAt" | "approvedBy" | "retiredAt" | "retiredBy">): Promise<WebPrice>;
-  deleteDraftPrice(id: number): Promise<void>;
+  /**
+   * Aprueba un precio en borrador y retira el vigente del mismo tipo, moneda y unidad en UNA
+   * operación atómica (con su auditoría). Si el precio ya no está en borrador: `PriceStateError`.
+   */
+  approvePrice(id: number, a: ApprovePriceInput): Promise<{ approved: WebPrice; retired: WebPrice[] }>;
+  /** `false` si ya no era un borrador (nada se borra). */
+  deleteDraftPrice(id: number): Promise<boolean>;
   addEvent(e: Omit<WebEvent, "id">): Promise<void>;
   listEvents(f?: { entity?: string; key?: string; limit?: number }): Promise<WebEvent[]>;
 }
@@ -152,8 +171,28 @@ export class MemoryWebStore implements WebStore {
     this.prices.set(id, next);
     return clone(next);
   }
+  // Sin `await` intermedios: en memoria la operación es atómica.
+  async approvePrice(id: number, a: ApprovePriceInput) {
+    const p = this.prices.get(id);
+    if (!p || p.status !== "draft") throw new PriceStateError(p?.status ?? null);
+    const retired: WebPrice[] = [];
+    for (const old of Array.from(this.prices.values())) {
+      if (old.entryId === p.entryId && old.status === "approved" && old.kind === p.kind && old.currency === p.currency && old.unit === p.unit) {
+        const r = { ...old, status: "retired" as const, retiredAt: a.now, retiredBy: a.author };
+        this.prices.set(old.id, r);
+        retired.push(clone(r));
+        this.events.push({ id: ++this.seq, entity: "price", entityKey: `${a.entryKey}#${old.id}`, action: "retire", author: a.author, detail: `Sustituido por #${id}`, createdAt: a.now });
+      }
+    }
+    const approved = { ...p, status: "approved" as const, approvedAt: a.now, approvedBy: a.author, retiredAt: null, retiredBy: null };
+    this.prices.set(id, approved);
+    this.events.push({ id: ++this.seq, entity: "price", entityKey: `${a.entryKey}#${id}`, action: "approve", author: a.author, detail: a.detail, createdAt: a.now });
+    return { approved: clone(approved), retired };
+  }
   async deleteDraftPrice(id: number) {
-    if (this.prices.get(id)?.status === "draft") this.prices.delete(id);
+    if (this.prices.get(id)?.status !== "draft") return false;
+    this.prices.delete(id);
+    return true;
   }
   async addEvent(e: Omit<WebEvent, "id">) {
     this.events.push({ ...e, id: ++this.seq });
@@ -307,8 +346,48 @@ export class MysqlWebStore implements WebStore {
     await this.pool.query("UPDATE web_prices SET status = ?, approved_at = ?, approved_by = ?, retired_at = ?, retired_by = ? WHERE id = ?", [p.status, p.approvedAt, p.approvedBy, p.retiredAt, p.retiredBy, id]);
     return (await this.getPrice(id))!;
   }
+  /**
+   * Una sola transacción: bloquea la fila del producto (serializa las aprobaciones concurrentes
+   * del mismo producto), relee sus precios bajo bloqueo, retira el vigente equivalente, aprueba y
+   * audita. El índice único de la migración 0005 respalda la invariante en la propia BD.
+   */
+  async approvePrice(id: number, a: ApprovePriceInput) {
+    const c = await this.pool.getConnection();
+    try {
+      await c.beginTransaction();
+      const [heads] = await c.query<mysql.RowDataPacket[]>("SELECT entry_id FROM web_prices WHERE id = ?", [id]);
+      if (!heads[0]) throw new PriceStateError(null);
+      const entryId = Number(heads[0].entry_id);
+      await c.query("SELECT id FROM web_entries WHERE id = ? FOR UPDATE", [entryId]);
+      const [rows] = await c.query<mysql.RowDataPacket[]>("SELECT * FROM web_prices WHERE entry_id = ? FOR UPDATE", [entryId]);
+      const all = rows.map(priceRow);
+      const p = all.find((x) => x.id === id);
+      if (!p || p.status !== "draft") throw new PriceStateError(p?.status ?? null);
+      const olds = all.filter((x) => x.status === "approved" && x.kind === p.kind && x.currency === p.currency && x.unit === p.unit);
+      for (const old of olds) {
+        await c.query("UPDATE web_prices SET status = 'retired', retired_at = ?, retired_by = ? WHERE id = ? AND status = 'approved'", [a.now, a.author, old.id]);
+        await c.query("INSERT INTO web_events (entity, entity_key, action, author, detail, created_at) VALUES ('price', ?, 'retire', ?, ?, ?)", [`${a.entryKey}#${old.id}`, a.author, `Sustituido por #${id}`, a.now]);
+      }
+      const [res] = await c.query<mysql.ResultSetHeader>(
+        "UPDATE web_prices SET status = 'approved', approved_at = ?, approved_by = ?, retired_at = NULL, retired_by = NULL WHERE id = ? AND status = 'draft'",
+        [a.now, a.author, id],
+      );
+      if (res.affectedRows !== 1) throw new PriceStateError(null);
+      await c.query("INSERT INTO web_events (entity, entity_key, action, author, detail, created_at) VALUES ('price', ?, 'approve', ?, ?, ?)", [`${a.entryKey}#${id}`, a.author, a.detail, a.now]);
+      await c.commit();
+      const [after] = await c.query<mysql.RowDataPacket[]>("SELECT * FROM web_prices WHERE entry_id = ?", [entryId]);
+      const byId = new Map(after.map((r) => [Number(r.id), priceRow(r)]));
+      return { approved: byId.get(id)!, retired: olds.map((o) => byId.get(o.id)!) };
+    } catch (err) {
+      await c.rollback().catch(() => undefined);
+      throw err;
+    } finally {
+      c.release();
+    }
+  }
   async deleteDraftPrice(id: number) {
-    await this.pool.query("DELETE FROM web_prices WHERE id = ? AND status = 'draft'", [id]);
+    const [res] = await this.pool.query<mysql.ResultSetHeader>("DELETE FROM web_prices WHERE id = ? AND status = 'draft'", [id]);
+    return res.affectedRows === 1;
   }
   async addEvent(e: Omit<WebEvent, "id">) {
     await this.pool.query("INSERT INTO web_events (entity, entity_key, action, author, detail, created_at) VALUES (?,?,?,?,?,?)", [e.entity, e.entityKey, e.action, e.author, e.detail, e.createdAt]);
