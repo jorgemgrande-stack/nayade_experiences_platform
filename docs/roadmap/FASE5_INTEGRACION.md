@@ -278,6 +278,88 @@ D2, D3 y D6 se autorizaron para corregirlos. Ninguno de estos PR está fusionado
 
 Se ha simulado la secuencia completa de 20 ramas de Core sobre `main`: no hay conflictos. Sobre el árbol resultante pasan las suites bloqueantes del CI (603 pruebas unitarias y 69 con MySQL real).
 
+## 9. Fase 5.2: preparación de la integración controlada
+
+### 9.1 Railway: despliegue automático confirmado
+
+Fuentes: API de despliegues de GitHub y `railway deployment list`, ambas solo de lectura.
+
+- **Cada push a `main` despliega Náyade en producción.**
+  - Proyecto «Nayade Experiences», entorno `production`, servicio `nayade_experiences_platform`.
+  - Origen: rama `main`, con motivo `deploy`.
+  - El despliegue se crea unos **4 segundos después de la fusión**, sin esperar al CI.
+  - **Incluye fusiones de solo documentación** (#60 y #61 desplegaron).
+- **Despliegue activo:** `baeca78` (`SUCCESS`, `www.nayadeexperiences.es`), que coincide con la cabeza de `main`: no hay divergencia.
+- **Otros proyectos:** la web y el CRM no tienen despliegue (ni GitHub Deployments, ni webhooks, ni servicio en Railway; su CI solo compila y prueba). Los entornos «amused-caring» y «authentic-creation» llevan inactivos desde abril y agosto.
+- **Consecuencia para el arranque:** cada fusión del Core reinicia Náyade, y hasta que se despliegue #79 **ese reinicio vuelve a ejecutar las migraciones y el DDL del arranque**.
+
+### 9.2 Plan de esquema de solo lectura en producción
+
+- **Preparado y verificado en local:** #83.
+  - Guarda en el cliente y sesión `READ ONLY` en el servidor.
+  - El registro general de MySQL confirma que solo se envían `SET SESSION`/`START TRANSACTION READ ONLY`, `SELECT` y `ROLLBACK`.
+  - No imprime secretos.
+- **No ejecutado:**
+  - `railway ssh` exige una clave SSH registrada en la cuenta;
+  - la CLI ofreció una clave de otro proyecto y fue rechazada;
+  - no se han registrado claves ni usado claves ajenas.
+
+### 9.3 Correcciones de la fase
+
+| Punto | PR / commit | Base |
+|---|---|---|
+| D5 (opción B): relleno `CT-AAAA-NNNNNN` sin truncar, igual que el código | commits en #68 | — |
+| Trigger `reservations_set_public_token` en tenants nuevos (con la conexión de administración; la baseline no puede llevarlo) | #84 | `main` |
+| DDL bajo demanda (numeración, email comercial, `setInvoiceExempt`) → mantenimiento explícito | #85 | #79 |
+| Plan de esquema de solo lectura | #83 | #79 |
+
+**Simulación completa:** 24 ramas del Core sin conflictos. Sobre el árbol resultante:
+
+- suites bloqueantes: 673 pruebas unitarias y 72 con MySQL;
+- arranque real y mantenimiento con la baseline de producción: correctos.
+
+El orden de §9.4 produce **el mismo árbol final**.
+
+### 9.4 Orden exacto recomendado
+
+**Cada paso del Core es un despliegue verificado de Náyade.**
+
+**0. Bloque 1, sin despliegue:** web #1 → #2 → #3.
+
+- Tras fusionar cada uno, cambiar la base del siguiente a `main` (`gh pr edit <n> --base main`) y esperar al CI.
+- **Reversión:** `git revert -m 1 <merge>`.
+
+**1. Antes del primer despliegue del Core:** ejecutar el plan de solo lectura (#83) en producción (requiere autorización y una clave SSH).
+
+**2. Core, por orden:**
+
+| Paso | PR | Qué hacer |
+|---|---|---|
+| 2.1 | #79 (arranque sin DDL) | Verificar en los logs `[Schema] ✓`, `Server running` y el registro de los jobs. |
+| 2.2 | #85, luego #83 | Cambiar su base a `main` antes de fusionarlos. |
+| 2.3 | #74 y #78 | Documentación (cada uno es un redespliegue de código idéntico). |
+| 2.4 | Bloque 2 | #62, #72, #73, #71, #67 → #68 → #69 → #70, #80, #84. |
+| 2.5 | Bloque 3 | #63, #64 → #82, #65, #66 → #81, #75. |
+| 2.6 | Bloque 4 | #76 → #77. |
+
+En los pasos 2.4 a 2.6, cada PR apilado se cambia de base a `main` cuando se fusiona su base.
+
+**Después de cada despliegue del Core:**
+
+- el despliegue está en `SUCCESS`;
+- los logs no muestran errores nuevos;
+- aparece `[Schema] ✓` (a partir de 2.1);
+- `/healthz` y `/readyz` responden;
+- se comprueban los flujos críticos (reserva y factura).
+
+**Si algo falla:** `git revert -m 1 <merge>`, que despliega automáticamente el estado anterior. No se encadenan correcciones (CLAUDE.md).
+
+**Alternativas que requieren decidir y cambiar Railway:**
+
+- desactivar el despliegue automático y desplegar a mano por bloques;
+- configurar *watch paths*, para que la documentación no despliegue;
+- activar «esperar al CI».
+
 ## Anexo: cómo se ha comprobado
 
 - **Inventario:** `gh pr list --json …` en cada repo, más `git rev-list` y `git diff --name-only base...head` por PR, con clasificación de archivos sensibles: migraciones, arranque e infraestructura, seguridad, facturación y aprovisionamiento.
