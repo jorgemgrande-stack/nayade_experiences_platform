@@ -440,6 +440,31 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
 
   // ── Facturación ────────────────────────────────────────────────────────────
   if (d.billing && d.billingStore) {
+    // Debe registrarse antes de `/billing/:id` para que "plans" no se interprete como id de empresa.
+    router.get(
+      "/billing/plans",
+      requireScope("billing:read"),
+      wrap(async (_req, res) => {
+        const c = d.billing!.getCatalog();
+        res.json({
+          plans: c.plans.map((p) => ({
+            id: p.id,
+            name: p.name,
+            kind: p.kind,
+            interval: p.interval,
+            priceCents: p.priceCents,
+            currency: p.currency,
+            includedModules: p.includedModules,
+            maxCustomDomains: p.maxCustomDomains,
+            quotas: p.quotas,
+            billable: p.priceCents !== null,
+          })),
+          modules: c.modules,
+          trialDays: c.trialDays,
+          graceDays: c.graceDays,
+        });
+      }),
+    );
     router.post(
       "/billing/:id/trial",
       requireScope("billing:write"),
