@@ -22,8 +22,10 @@ import {
   type CompanyStatus,
   type Contact,
   type ContactStatus,
+  type BillingInterval,
   type Contract,
   type ContractStatus,
+  type ContractVersion,
   type EntityType,
   type Lead,
   type LeadPriority,
@@ -72,7 +74,8 @@ const FIELD_LABEL: Record<string, string> = {
   firstName: "nombre", lastName: "apellidos", role: "cargo", isPrimary: "principal", companyName: "empresa",
   source: "origen", priority: "prioridad", companyId: "empresa", title: "título", amountCents: "importe",
   currency: "moneda", expectedClose: "cierre estimado", planId: "plan", modules: "módulos", contactId: "contacto",
-  nextAction: "próxima acción", nextActionAt: "fecha de próxima acción",
+  nextAction: "próxima acción", nextActionAt: "fecha de próxima acción", conditions: "condiciones", billingInterval: "periodicidad",
+  startDate: "inicio", renewalDate: "renovación", autoRenew: "renovación automática", noticeDays: "preaviso",
 };
 const STAGE_NAME: Record<OpportunityStage, string> = {
   prospecting: "Nuevo", contacted: "Contactado", qualification: "Cualificación", demo: "Demostración",
@@ -200,6 +203,38 @@ export interface OpportunityInput {
   contactId?: number | null;
   nextAction?: string | null;
   nextActionAt?: number | null;
+}
+
+export interface ContractInput {
+  planId?: string | null;
+  modules?: string[];
+  amountCents?: number | null;
+  currency?: string;
+  startDate?: number | null;
+  endDate?: number;
+  renewalDate?: number | null;
+  billingInterval?: BillingInterval | null;
+  autoRenew?: boolean;
+  noticeDays?: number | null;
+  conditions?: string | null;
+  previousContractId?: number;
+}
+
+/** Términos que se versionan (instantánea de cada versión). */
+const CONTRACT_TERM_KEYS = ["planId", "modules", "amountCents", "currency", "billingInterval", "startDate", "renewalDate", "autoRenew", "noticeDays", "conditions"] as const;
+const CONTRACT_NAME: Record<ContractStatus, string> = { draft: "Borrador", sent: "Enviado", signed: "Firmado", active: "Activo", cancelled: "Cancelado" };
+
+/**
+ * Referencia comercial única: CT-<año UTC de la creación>-<id con al menos 6 dígitos, sin truncar>.
+ * Misma regla que el relleno de db/crm/migrations/0002 (año de created_at).
+ */
+export const contractReference = (id: number, now: number) => `CT-${new Date(now).getUTCFullYear()}-${String(id).padStart(6, "0")}`;
+/** Suma un periodo de facturación (mes/año natural, en UTC). */
+export function addInterval(ms: number, interval: BillingInterval): number {
+  const d = new Date(ms);
+  if (interval === "month") d.setUTCMonth(d.getUTCMonth() + 1);
+  else d.setUTCFullYear(d.getUTCFullYear() + 1);
+  return d.getTime();
 }
 
 export class CrmService {
@@ -756,53 +791,214 @@ export class CrmService {
 
   // ── Contratos ──────────────────────────────────────────────────────────────
 
-  async createContract(
-    input: { companyId: number; opportunityId?: number; planId?: string; modules?: string[]; amountCents?: number; currency?: string; startDate?: number; endDate?: number },
-    author: string,
-  ): Promise<Contract> {
+  async createContract(input: ContractInput & { companyId: number; opportunityId?: number }, author: string): Promise<Contract> {
     await this.must("companies", input.companyId);
     if (input.opportunityId) {
       const o = await this.must("opportunities", input.opportunityId);
       if (o.companyId !== input.companyId) throw new CrmError("invalid_input", "La oportunidad no pertenece a la empresa");
     }
+    const terms = this.contractTerms(input);
+    this.assertDates({ startDate: terms.startDate ?? null, renewalDate: terms.renewalDate ?? null });
     const c = await this.store.insert("contracts", {
+      reference: null,
       companyId: input.companyId,
       opportunityId: input.opportunityId ?? null,
-      planId: clean(input.planId, 64),
-      modules: (input.modules ?? []).filter((m) => MODULE_RE.test(m)),
+      planId: terms.planId ?? null,
+      modules: terms.modules ?? [],
       status: "draft",
-      amountCents: input.amountCents ?? null,
-      currency: (input.currency ?? "EUR").toUpperCase().slice(0, 3),
-      startDate: input.startDate ?? null,
+      amountCents: terms.amountCents ?? null,
+      currency: terms.currency ?? "EUR",
+      startDate: terms.startDate ?? null,
       endDate: input.endDate ?? null,
       documentUrl: null,
       signedAt: null,
       tenantId: null,
+      conditions: terms.conditions ?? null,
+      billingInterval: terms.billingInterval ?? null,
+      renewalDate: terms.renewalDate ?? null,
+      autoRenew: terms.autoRenew ?? false,
+      noticeDays: terms.noticeDays ?? null,
+      version: 1,
+      previousContractId: input.previousContractId ?? null,
+      signatureMethod: null,
+      signatureRef: null,
       createdAt: this.now(),
+      updatedAt: null,
     });
-    await this.log("contract", c.id, "note", "Contrato creado", author);
-    return c;
+    // La referencia se deriva de (id, createdAt): si la segunda escritura falla, se deshace el alta
+    // para no dejar contratos sin referencia (y el relleno de la 0002 reconstruiría la misma).
+    let withRef: Contract;
+    try {
+      withRef = await this.store.update("contracts", c.id, { reference: contractReference(c.id, c.createdAt) });
+    } catch (err) {
+      await this.store.remove("contracts", c.id).catch(() => undefined);
+      throw err;
+    }
+    await this.snapshot(withRef, input.previousContractId ? `Renovación del contrato #${input.previousContractId}` : "Versión inicial", author);
+    await this.log("contract", c.id, "note", `Contrato ${withRef.reference} creado`, author);
+    return withRef;
   }
 
-  async setContractStatus(id: number, to: ContractStatus, author: string): Promise<Contract> {
+  /**
+   * Cambia los términos. Solo en borrador o enviado (un contrato enviado vuelve a borrador y hay
+   * que reenviarlo); firmados y activos son inmutables: los cambios van en una renovación.
+   * Cada cambio de términos crea una versión nueva con su instantánea.
+   */
+  async updateContract(id: number, input: ContractInput & { reason?: string }, author: string): Promise<Contract> {
+    const cur = await this.must("contracts", id);
+    if (cur.status !== "draft" && cur.status !== "sent") {
+      throw new CrmError("invalid_state", "Un contrato firmado, activo o cancelado no se modifica: crea una renovación");
+    }
+    const terms = this.contractTerms(input);
+    const changed = (Object.keys(terms) as (keyof Contract)[]).filter((k) => JSON.stringify((terms as Partial<Contract>)[k]) !== JSON.stringify(cur[k]));
+    if (!changed.length) return cur;
+    const patch: Partial<Contract> = { updatedAt: this.now(), version: cur.version + 1 };
+    for (const k of changed) (patch as Record<string, unknown>)[k] = (terms as Partial<Contract>)[k];
+    if (cur.status === "sent") patch.status = "draft";
+    this.assertDates({ startDate: patch.startDate !== undefined ? patch.startDate : cur.startDate, renewalDate: patch.renewalDate !== undefined ? patch.renewalDate : cur.renewalDate });
+    const upd = await this.store.update("contracts", id, patch);
+    await this.snapshot(upd, clean(input.reason, 300) ?? `Cambios: ${changed.map((k) => FIELD_LABEL[String(k)] ?? String(k)).join(", ")}`, author);
+    await this.log(
+      "contract",
+      id,
+      "note",
+      `Versión ${upd.version}: ${this.describeChanges(changed, cur, upd, ["planId", "billingInterval", "autoRenew"])}${cur.status === "sent" ? " (vuelve a borrador)" : ""}`,
+      author,
+    );
+    return upd;
+  }
+
+  async setContractStatus(id: number, to: ContractStatus, author: string, opts: { signatureRef?: string } = {}): Promise<Contract> {
     const c = await this.must("contracts", id);
     if (c.status === to) return c;
     if (!CONTRACT_TRANSITIONS[c.status].includes(to)) throw new CrmError("invalid_state", `Transición no permitida: ${c.status} → ${to}`);
     if (to === "active") return this.activateContract(c, author);
-    const upd = await this.store.update("contracts", id, { status: to, ...(to === "signed" ? { signedAt: this.now() } : {}) });
-    await this.log("contract", id, "note", `Estado: ${c.status} → ${to}`, author);
+    const patch: Partial<Contract> = { status: to, updatedAt: this.now() };
+    if (to === "signed") {
+      // Firma registrada por el operador (aún no hay firma electrónica): queda trazada
+      patch.signedAt = this.now();
+      patch.signatureMethod = "manual";
+      patch.signatureRef = clean(opts.signatureRef, 200);
+    }
+    const upd = await this.store.update("contracts", id, patch);
+    await this.log("contract", id, "note", `Estado: ${CONTRACT_NAME[c.status]} → ${CONTRACT_NAME[to]}${to === "signed" ? " (firma registrada manualmente)" : ""}`, author);
     return upd;
+  }
+
+  /** Crea el contrato de renovación (borrador) con los mismos términos y el periodo siguiente. */
+  async renewContract(id: number, author: string): Promise<Contract> {
+    const c = await this.must("contracts", id);
+    if (c.status !== "active" && c.status !== "signed") throw new CrmError("invalid_state", "Solo se renuevan contratos firmados o activos");
+    const open = (await this.store.list("contracts", { previousContractId: id })).find((x) => x.status !== "cancelled");
+    if (open) throw new CrmError("conflict", `Ya existe la renovación ${open.reference ?? `#${open.id}`}`);
+    const start = c.renewalDate ?? this.now();
+    const next = await this.createContract(
+      {
+        companyId: c.companyId,
+        planId: c.planId ?? undefined,
+        modules: c.modules,
+        amountCents: c.amountCents ?? undefined,
+        currency: c.currency,
+        billingInterval: c.billingInterval ?? undefined,
+        startDate: start,
+        renewalDate: c.billingInterval ? addInterval(start, c.billingInterval) : undefined,
+        autoRenew: c.autoRenew,
+        noticeDays: c.noticeDays ?? undefined,
+        conditions: c.conditions ?? undefined,
+        previousContractId: c.id,
+      },
+      author,
+    );
+    await this.log("contract", c.id, "note", `Renovación creada: ${next.reference}`, author);
+    return next;
+  }
+
+  async getContract(id: number): Promise<{ contract: Contract; versions: ContractVersion[]; timeline: Activity[] }> {
+    const contract = await this.must("contracts", id);
+    const versions = (await this.store.list("contractVersions", { contractId: id })).sort((a, b) => b.version - a.version);
+    return { contract, versions, timeline: await this.timeline("contract", id) };
+  }
+
+  async listContracts(
+    f: { q?: string; status?: ContractStatus; companyId?: number; renewalBefore?: number } & PageOpts = {},
+  ): Promise<Page<Contract>> {
+    const filter: Partial<Contract> = {};
+    if (f.status) filter.status = f.status;
+    if (f.companyId) filter.companyId = f.companyId;
+    let rows = await this.store.list("contracts", filter, { desc: true, limit: SCAN_LIMIT });
+    if (f.renewalBefore !== undefined) {
+      rows = rows
+        .filter((c) => c.status === "active" && c.renewalDate !== null && c.renewalDate <= f.renewalBefore!)
+        .sort((a, b) => a.renewalDate! - b.renewalDate!);
+    }
+    const q = normalizeText(f.q);
+    if (q) rows = rows.filter((c) => normalizeText(c.reference).includes(q) || normalizeText(c.planId).includes(q));
+    return paginate(rows, f);
+  }
+
+  private contractTerms(input: ContractInput) {
+    const out: Partial<Pick<Contract, "planId" | "modules" | "amountCents" | "currency" | "startDate" | "renewalDate" | "billingInterval" | "autoRenew" | "noticeDays" | "conditions">> = {};
+    if (has(input, "planId")) {
+      const p = clean(input.planId, 64);
+      if (p && !/^[a-z0-9][a-z0-9_-]{0,63}$/.test(p)) throw new CrmError("invalid_input", "Plan no válido");
+      out.planId = p;
+    }
+    // Contratos: los módulos con formato no válido se descartan (comportamiento existente)
+    if (has(input, "modules")) out.modules = Array.from(new Set((input.modules ?? []).map((m) => m.trim()).filter((m) => MODULE_RE.test(m))));
+    if (has(input, "amountCents")) {
+      const a = input.amountCents;
+      if (a !== null && (!Number.isInteger(a) || a! < 0)) throw new CrmError("invalid_input", "Importe no válido");
+      out.amountCents = a ?? null;
+    }
+    if (has(input, "currency")) {
+      const c = (input.currency ?? "").toUpperCase();
+      if (!/^[A-Z]{3}$/.test(c)) throw new CrmError("invalid_input", "Moneda no válida");
+      out.currency = c;
+    }
+    if (has(input, "startDate")) out.startDate = this.validTime(input.startDate, "Fecha de inicio");
+    if (has(input, "renewalDate")) out.renewalDate = this.validTime(input.renewalDate, "Fecha de renovación");
+    if (has(input, "billingInterval")) out.billingInterval = input.billingInterval ?? null;
+    if (has(input, "autoRenew")) out.autoRenew = Boolean(input.autoRenew);
+    if (has(input, "noticeDays")) {
+      const n = input.noticeDays;
+      if (n !== null && (!Number.isInteger(n) || n! < 0 || n! > 365)) throw new CrmError("invalid_input", "Preaviso no válido (0–365 días)");
+      out.noticeDays = n ?? null;
+    }
+    if (has(input, "conditions")) out.conditions = clean(input.conditions, 20000);
+    return out;
+  }
+
+  private assertDates(c: { startDate: number | null; renewalDate: number | null }) {
+    if (c.startDate !== null && c.renewalDate !== null && c.renewalDate <= c.startDate) {
+      throw new CrmError("invalid_input", "La renovación debe ser posterior al inicio");
+    }
+  }
+
+  private async snapshot(c: Contract, reason: string, author: string) {
+    const snapshot: Record<string, unknown> = {};
+    for (const k of CONTRACT_TERM_KEYS) snapshot[k] = c[k];
+    await this.store.insert("contractVersions", { contractId: c.id, version: c.version, snapshot, reason, author: author.slice(0, 100), createdAt: this.now() });
   }
 
   private async activateContract(c: Contract, author: string): Promise<Contract> {
     if (!this.d.activation) throw new CrmError("invalid_state", "La activación de contratos no está configurada");
     if (!c.planId) throw new CrmError("invalid_input", "El contrato necesita un plan");
     const company = await this.must("companies", c.companyId);
-    const contacts = (await this.store.list("contacts", { companyId: company.id })).filter((x) => x.status !== "inactive");
+    // El administrador de la plataforma sale de un contacto activo con correo (preferente el principal)
+    const contacts = (await this.store.list("contacts", { companyId: company.id })).filter((x) => x.status !== "inactive" && x.email);
     const contact = contacts.find((x) => x.isPrimary) ?? contacts[0] ?? null;
-    const { tenantId } = await this.d.activation.activate({ contract: c, company, contact });
+    if (!contact) throw new CrmError("invalid_input", "El contrato necesita un contacto activo con correo (será el administrador de la plataforma)");
+    let tenantId: string;
+    try {
+      ({ tenantId } = await this.d.activation.activate({ contract: c, company, contact }));
+    } catch (e) {
+      // Un fallo del alta no es un error interno: el contrato sigue firmado y se puede reintentar
+      throw new CrmError("conflict", `No se pudo activar: ${e instanceof Error ? e.message : "error del alta"}`);
+    }
     await this.store.update("companies", company.id, { tenantId, updatedAt: this.now() });
-    const upd = await this.store.update("contracts", c.id, { status: "active", tenantId, startDate: c.startDate ?? this.now() });
+    const startDate = c.startDate ?? this.now();
+    const renewalDate = c.renewalDate ?? (c.billingInterval ? addInterval(startDate, c.billingInterval) : null);
+    const upd = await this.store.update("contracts", c.id, { status: "active", tenantId, startDate, renewalDate, updatedAt: this.now() });
     await this.log("contract", c.id, "note", `Contrato activo; tenant ${tenantId}`, author);
     await this.log("company", company.id, "note", `Alta de plataforma: ${tenantId}`, author);
     return upd;

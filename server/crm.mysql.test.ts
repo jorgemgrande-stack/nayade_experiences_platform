@@ -92,7 +92,26 @@ describe.skipIf(!URL_)("CRM con MySQL real", () => {
     expect(o).toMatchObject({ stage: "qualification", modules: ["hotel", "spa"], nextActionAt: 1_800_000_000_000, contactId: r.contact.id });
   });
 
-  it("la migración 0001 se revierte y se vuelve a aplicar conservando los datos base", async () => {
+  it("contratos v2: referencia única, versiones JSON, firma registrada y renovación", async () => {
+    const co = await crm.createCompany({ name: "Contratos MySQL" }, "t");
+    await crm.createContact(co.id, { firstName: "Eva", email: "eva@ct.example" }, "t");
+    const c = await crm.createContract({ companyId: co.id, planId: "base", billingInterval: "month", autoRenew: true, conditions: "Condición ñ", noticeDays: 15 }, "t");
+    expect(c.reference).toMatch(/^CT-\d{4}-\d{6}$/);
+    const v2 = await crm.updateContract(c.id, { amountCents: 2500, reason: "Precio pactado" }, "t");
+    expect(v2).toMatchObject({ version: 2, autoRenew: true, noticeDays: 15 });
+    const d = await crm.getContract(c.id);
+    expect(d.versions.map((v) => v.version)).toEqual([2, 1]);
+    expect(d.versions[0].snapshot).toMatchObject({ amountCents: 2500, autoRenew: true, conditions: "Condición ñ" });
+    await expect(pool.query("UPDATE crm_contracts SET reference = (SELECT r FROM (SELECT reference AS r FROM crm_contracts WHERE id = ?) x) WHERE id <> ? LIMIT 1", [c.id, c.id])).rejects.toMatchObject({ code: "ER_DUP_ENTRY" });
+    for (const st of ["sent", "signed", "active"] as const) await crm.setContractStatus(c.id, st, "t", { signatureRef: "papel" });
+    const act = (await crm.getContract(c.id)).contract;
+    expect(act).toMatchObject({ status: "active", signatureMethod: "manual", signatureRef: "papel" });
+    expect(act.renewalDate).toBeGreaterThan(act.startDate!);
+    const r = await crm.renewContract(c.id, "t");
+    expect(r).toMatchObject({ previousContractId: c.id, startDate: act.renewalDate, status: "draft" });
+  });
+
+  it("las migraciones del CRM se revierten y se vuelven a aplicar conservando los datos base", async () => {
     const [[before]] = (await pool.query<mysql.RowDataPacket[]>("SELECT COUNT(*) AS n FROM crm_companies")) as any;
     await runCrmMigrations(pool, "down");
     const [cols] = await pool.query<mysql.RowDataPacket[]>("SHOW COLUMNS FROM crm_contacts LIKE 'is_primary'");
