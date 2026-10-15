@@ -2,7 +2,7 @@
  * Aplicador de migraciones del registro contra MySQL real (opt-in; BD aislada creada y borrada aquí).
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -123,7 +123,12 @@ d("migraciones del registro (MySQL)", () => {
       );
       expect(plan.pending).toEqual(files.map((f) => f.version));
 
-      const fix = await migrateRegistry(db.pool, DIR, { dryRun: false });
+      // Sin --repair no se reaplica en cascada: se detiene sin tocar nada
+      await expect(migrateRegistry(db.pool, DIR, { dryRun: false })).rejects.toMatchObject({ code: "incomplete" });
+      const [still] = await db.pool.query<mysql.RowDataPacket[]>("SELECT COUNT(*) AS n FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA = DATABASE() AND TRIGGER_NAME = 'trg_events_no_delete'");
+      expect(Number(still[0].n)).toBe(0);
+
+      const fix = await migrateRegistry(db.pool, DIR, { dryRun: false, repair: true });
       expect(fix.applied).toEqual(files.map((f) => f.version));
       const again = await migrateRegistry(db.pool, DIR);
       expect(again).toMatchObject({ current: last, pending: [], incomplete: [], issues: [] });
@@ -180,23 +185,76 @@ d("migraciones del registro (MySQL)", () => {
     }
   });
 
+  const root = path.resolve(__dirname, "..");
+  const cliEnv = (env: Record<string, string>) => {
+    const base = { ...process.env };
+    delete base.REGISTRY_MIGRATE_URL;
+    delete base.REGISTRY_ADMIN_DATABASE_URL;
+    return { ...base, ...env };
+  };
+  const runCli = (env: Record<string, string>, args: string[]) =>
+    spawnSync(process.execPath, [path.join(root, "node_modules/tsx/dist/cli.mjs"), "scripts/registry-migrate.ts", ...args], {
+      cwd: root,
+      env: cliEnv(env),
+      encoding: "utf8",
+      timeout: 60_000,
+    });
+  const runCliAsync = (env: Record<string, string>, args: string[]) =>
+    new Promise<{ status: number | null; stdout: string; stderr: string }>((resolve) => {
+      const p = spawn(process.execPath, [path.join(root, "node_modules/tsx/dist/cli.mjs"), "scripts/registry-migrate.ts", ...args], { cwd: root, env: cliEnv(env) });
+      let stdout = "";
+      let stderr = "";
+      p.stdout.on("data", (b) => (stdout += b));
+      p.stderr.on("data", (b) => (stderr += b));
+      p.on("close", (status) => resolve({ status, stdout, stderr }));
+    });
+
+  it("el CLI no usa la URL del plano de control y exige identificar la BD para ejecutar", async () => {
+    const db = await isolatedDb("guard");
+    try {
+      const old = runCli({ REGISTRY_ADMIN_DATABASE_URL: db.url.toString() }, ["--execute"]);
+      expect(old.status).toBe(2);
+      expect(old.stderr).toMatch(/Ya no se usa REGISTRY_ADMIN_DATABASE_URL/);
+      const env = { REGISTRY_MIGRATE_URL: db.url.toString() };
+      const noConfirm = runCli(env, ["--execute"]);
+      expect(noConfirm.status).toBe(2);
+      expect(noConfirm.stderr).toMatch(`--confirm-database ${db.name}`);
+      const wrong = runCli(env, ["--execute", "--confirm-database", "registro_produccion"]);
+      expect(wrong.status).toBe(2);
+      const [t] = await db.pool.query<mysql.RowDataPacket[]>("SHOW TABLES");
+      expect(t).toHaveLength(0);
+    } finally {
+      await db.drop();
+    }
+  });
+
+  it("dos ejecuciones simultáneas: una aplica, la otra espera al bloqueo y no encuentra nada pendiente", async () => {
+    const db = await isolatedDb("race");
+    try {
+      const files = listRegistryMigrations(DIR);
+      const env = { REGISTRY_MIGRATE_URL: db.url.toString() };
+      const args = ["--execute", "--confirm-database", db.name];
+      const [a, b] = await Promise.all([runCliAsync(env, args), runCliAsync(env, args)]);
+      expect([a.status, b.status], a.stderr + b.stderr).toEqual([0, 0]);
+      const applied = [a, b].map((r) => JSON.parse(r.stdout).applied.length).sort((x, y) => x - y);
+      expect(applied).toEqual([0, files.length]);
+      const plan = runCli(env, []);
+      expect(JSON.parse(plan.stdout)).toMatchObject({ current: files[files.length - 1].version, pending: [], incomplete: [] });
+    } finally {
+      await db.drop();
+    }
+  });
+
   it("el comando del runbook (scripts/registry-migrate.ts) planifica y ejecuta de principio a fin", async () => {
     const db = await isolatedDb("cli");
-    const root = path.resolve(__dirname, "..");
-    const run = (args: string[]) =>
-      spawnSync(process.execPath, [path.join(root, "node_modules/tsx/dist/cli.mjs"), "scripts/registry-migrate.ts", ...args], {
-        cwd: root,
-        env: { ...process.env, REGISTRY_ADMIN_DATABASE_URL: db.url.toString() },
-        encoding: "utf8",
-        timeout: 60_000,
-      });
+    const run = (args: string[]) => runCli({ REGISTRY_MIGRATE_URL: db.url.toString() }, args);
     try {
       const files = listRegistryMigrations(DIR);
       const plan = run([]);
       expect(plan.status, plan.stderr).toBe(0);
       expect(JSON.parse(plan.stdout)).toMatchObject({ dryRun: true, current: null, pending: files.map((f) => f.version) });
 
-      const exec = run(["--execute"]);
+      const exec = run(["--execute", "--confirm-database", db.name]);
       expect(exec.status, exec.stderr).toBe(0);
       expect(JSON.parse(exec.stdout).applied).toEqual(files.map((f) => f.version));
       const [v] = await db.pool.query<mysql.RowDataPacket[]>("SELECT v FROM registry_meta WHERE k = 'schema_version'");
