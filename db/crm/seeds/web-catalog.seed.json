@@ -1,0 +1,716 @@
+{
+  "_comment": "Semilla del catálogo comercial y contenidos (importada de la web v2). Solo borradores, sin precios: nada se publica ni se inventa.",
+  "entries": [
+    {
+      "kind": "product",
+      "key": "essential",
+      "family": "core_plan",
+      "sortOrder": 0,
+      "draft": {
+        "name": "Essential",
+        "tagline": "Lo esencial para empezar con buen pie.",
+        "description": "",
+        "technicalStatus": "available",
+        "activation": {
+          "kind": "plan",
+          "ref": null
+        },
+        "billingModel": "subscription",
+        "billingNote": "Nombre y contenido provisionales, pendientes de aprobación. Sin enlazar todavía a un plan de facturación.",
+        "includes": [
+          "Núcleo empresarial",
+          "Web y CMS",
+          "Comercio y reservas",
+          "TPV",
+          "Soporte por tickets"
+        ],
+        "presentation": {
+          "forWho": "Empresas que dan el primer paso: web, venta y administración básicas.",
+          "highlight": false,
+          "icon": "core",
+          "color": "var(--ink)"
+        }
+      }
+    },
+    {
+      "kind": "product",
+      "key": "business",
+      "family": "core_plan",
+      "sortOrder": 1,
+      "draft": {
+        "name": "Business",
+        "tagline": "Para equipos que crecen y quieren su sector a medida.",
+        "description": "",
+        "technicalStatus": "available",
+        "activation": {
+          "kind": "plan",
+          "ref": null
+        },
+        "billingModel": "subscription",
+        "billingNote": "Nombre y contenido provisionales, pendientes de aprobación. Sin enlazar todavía a un plan de facturación.",
+        "includes": [
+          "Todo lo de Essential",
+          "Módulos sectoriales compatibles",
+          "Más usuarios y recursos",
+          "Sesión de onboarding"
+        ],
+        "presentation": {
+          "forWho": "Negocios con equipo y operaciones diarias que suman módulos de su sector.",
+          "highlight": true,
+          "icon": "core",
+          "color": "var(--ink)"
+        }
+      }
+    },
+    {
+      "kind": "product",
+      "key": "enterprise",
+      "family": "core_plan",
+      "sortOrder": 2,
+      "draft": {
+        "name": "Enterprise",
+        "tagline": "Varias sedes, más volumen, acompañamiento a medida.",
+        "description": "",
+        "technicalStatus": "available",
+        "activation": {
+          "kind": "plan",
+          "ref": null
+        },
+        "billingModel": "subscription",
+        "billingNote": "Nombre y contenido provisionales, pendientes de aprobación. Sin enlazar todavía a un plan de facturación.",
+        "includes": [
+          "Todo lo de Business",
+          "Varios módulos sectoriales",
+          "Límites a medida",
+          "Acompañamiento dedicado"
+        ],
+        "presentation": {
+          "forWho": "Grupos y empresas con varias líneas de negocio o necesidades especiales.",
+          "highlight": false,
+          "icon": "core",
+          "color": "var(--ink)"
+        }
+      }
+    },
+    {
+      "kind": "product",
+      "key": "whatsapp",
+      "family": "extension",
+      "sortOrder": 100,
+      "draft": {
+        "name": "WhatsApp y mensajería",
+        "tagline": "Atiende a tus clientes donde ya están.",
+        "description": "Bandeja de conversaciones de WhatsApp conectada con tus clientes y leads.",
+        "technicalStatus": "partial",
+        "activation": {
+          "kind": "feature",
+          "ref": null
+        },
+        "billingModel": "recurring_addon",
+        "billingNote": "Cuota recurrente del complemento + Consumo variable",
+        "thirdPartyCosts": "Cuenta y costes de GoHighLevel y de mensajería de WhatsApp, aparte.",
+        "presentation": {
+          "icon": "quote",
+          "color": "#2b8a3e",
+          "today": "Disponible a través de GoHighLevel (bandeja de WhatsApp y captación de leads). La conexión directa con la API de WhatsApp Business está en hoja de ruta."
+        }
+      }
+    },
+    {
+      "kind": "product",
+      "key": "voice-ai",
+      "family": "extension",
+      "sortOrder": 101,
+      "draft": {
+        "name": "Telefonía con IA",
+        "tagline": "Un agente de voz que atiende cuando tu equipo no puede.",
+        "description": "Recepción de llamadas con un agente de voz con inteligencia artificial y registro de cada llamada.",
+        "technicalStatus": "available",
+        "activation": {
+          "kind": "feature",
+          "ref": null
+        },
+        "billingModel": "recurring_addon",
+        "billingNote": "Cuota recurrente del complemento + Consumo variable",
+        "thirdPartyCosts": "Minutos y servicios del proveedor de voz, aparte.",
+        "presentation": {
+          "icon": "support",
+          "color": "#5f3dc4",
+          "today": "Disponible con el proveedor Vapi: llamadas registradas en la plataforma."
+        }
+      }
+    },
+    {
+      "kind": "product",
+      "key": "email-automation",
+      "family": "extension",
+      "sortOrder": 102,
+      "draft": {
+        "name": "Automatizaciones de correo",
+        "tagline": "El seguimiento que nunca se olvida.",
+        "description": "Reglas que envían correos en el momento justo: recordatorios, seguimiento de presupuestos, confirmaciones.",
+        "technicalStatus": "available",
+        "activation": {
+          "kind": "feature",
+          "ref": null
+        },
+        "billingModel": "recurring_addon",
+        "billingNote": "Cuota recurrente del complemento + Paquetes de créditos o capacidad",
+        "thirdPartyCosts": null,
+        "presentation": {
+          "icon": "mail",
+          "color": "#1098ad",
+          "today": "Disponible: plantillas, reglas de automatización, cola de envíos y preferencias por cliente."
+        }
+      }
+    },
+    {
+      "kind": "product",
+      "key": "email-marketing",
+      "family": "extension",
+      "sortOrder": 103,
+      "draft": {
+        "name": "Email marketing",
+        "tagline": "Campañas a tus listas de clientes.",
+        "description": "Campañas y boletines a segmentos de clientes con medición de resultados.",
+        "technicalStatus": "planned",
+        "activation": {
+          "kind": "none",
+          "ref": null
+        },
+        "billingModel": "recurring_addon",
+        "billingNote": "Cuota recurrente del complemento + Paquetes de créditos o capacidad",
+        "thirdPartyCosts": null,
+        "presentation": {
+          "icon": "layers",
+          "color": "#e64980",
+          "today": "En hoja de ruta: hoy la plataforma envía correos automáticos y transaccionales, no campañas masivas."
+        }
+      }
+    },
+    {
+      "kind": "product",
+      "key": "meta",
+      "family": "extension",
+      "sortOrder": 104,
+      "draft": {
+        "name": "Meta Business",
+        "tagline": "Mide qué campañas te traen clientes.",
+        "description": "Envío de conversiones a Meta para medir y optimizar tus campañas.",
+        "technicalStatus": "partial",
+        "activation": {
+          "kind": "feature",
+          "ref": null
+        },
+        "billingModel": "recurring_addon",
+        "billingNote": "Cuota recurrente del complemento",
+        "thirdPartyCosts": "El presupuesto publicitario se paga directamente a Meta.",
+        "presentation": {
+          "icon": "chart",
+          "color": "#3b5bdb",
+          "today": "Disponible la API de conversiones de Meta. La gestión de campañas desde la plataforma está en hoja de ruta."
+        }
+      }
+    },
+    {
+      "kind": "product",
+      "key": "google-ads",
+      "family": "extension",
+      "sortOrder": 105,
+      "draft": {
+        "name": "Google Ads",
+        "tagline": "Campañas de búsqueda con seguimiento real.",
+        "description": "Seguimiento de campañas y conversiones de Google Ads.",
+        "technicalStatus": "planned",
+        "activation": {
+          "kind": "none",
+          "ref": null
+        },
+        "billingModel": "recurring_addon",
+        "billingNote": "Cuota recurrente del complemento",
+        "thirdPartyCosts": "El presupuesto publicitario se paga directamente a Google.",
+        "presentation": {
+          "icon": "rocket",
+          "color": "#f08c00",
+          "today": "En hoja de ruta. Hoy puedes registrar «Publicidad» como origen de tus leads."
+        }
+      }
+    },
+    {
+      "kind": "product",
+      "key": "integrations",
+      "family": "extension",
+      "sortOrder": 106,
+      "draft": {
+        "name": "Integraciones",
+        "tagline": "Conecta lo que ya usas.",
+        "description": "Conexiones con plataformas externas de comunicación, pagos y marketing.",
+        "technicalStatus": "partial",
+        "activation": {
+          "kind": "feature",
+          "ref": null
+        },
+        "billingModel": "recurring_addon",
+        "billingNote": "Cuota recurrente del complemento + Servicio de implantación",
+        "thirdPartyCosts": null,
+        "presentation": {
+          "icon": "plug",
+          "color": "#0ca678",
+          "today": "Disponibles: GoHighLevel, correo IMAP/SMTP, Redsys y Meta. Un catálogo abierto de integraciones está en hoja de ruta."
+        }
+      }
+    },
+    {
+      "kind": "product",
+      "key": "analytics",
+      "family": "extension",
+      "sortOrder": 107,
+      "draft": {
+        "name": "Analítica avanzada",
+        "tagline": "Informes a medida de tu negocio.",
+        "description": "Constructor de informes, cuadros de mando personalizados y exportación.",
+        "technicalStatus": "planned",
+        "activation": {
+          "kind": "none",
+          "ref": null
+        },
+        "billingModel": "recurring_addon",
+        "billingNote": "Cuota recurrente del complemento",
+        "thirdPartyCosts": null,
+        "presentation": {
+          "icon": "chart",
+          "color": "#ae3ec9",
+          "today": "En hoja de ruta. Hoy incluye los paneles e informes del núcleo."
+        }
+      }
+    },
+    {
+      "kind": "product",
+      "key": "hotel",
+      "family": "industry_module",
+      "sortOrder": 200,
+      "draft": {
+        "name": "Hoteles y alojamientos",
+        "tagline": "",
+        "description": "Módulo disponible.",
+        "technicalStatus": "available",
+        "activation": {
+          "kind": "module",
+          "ref": "hotel"
+        },
+        "billingModel": "recurring_addon",
+        "dependencies": [],
+        "presentation": {
+          "icon": "hotel",
+          "color": "var(--c-hotel)",
+          "sectorSlug": "alojamiento",
+          "moduleSlug": "hotel",
+          "note": "Módulo disponible."
+        }
+      }
+    },
+    {
+      "kind": "product",
+      "key": "restaurants",
+      "family": "industry_module",
+      "sortOrder": 201,
+      "draft": {
+        "name": "Restaurantes",
+        "tagline": "",
+        "description": "Módulo disponible.",
+        "technicalStatus": "available",
+        "activation": {
+          "kind": "module",
+          "ref": "restaurants"
+        },
+        "billingModel": "recurring_addon",
+        "dependencies": [],
+        "presentation": {
+          "icon": "food",
+          "color": "var(--c-food)",
+          "sectorSlug": "restauracion",
+          "moduleSlug": "restauracion",
+          "note": "Módulo disponible."
+        }
+      }
+    },
+    {
+      "kind": "product",
+      "key": "spa",
+      "family": "industry_module",
+      "sortOrder": 202,
+      "draft": {
+        "name": "Spa y bienestar",
+        "tagline": "",
+        "description": "Módulo disponible.",
+        "technicalStatus": "available",
+        "activation": {
+          "kind": "module",
+          "ref": "spa"
+        },
+        "billingModel": "recurring_addon",
+        "dependencies": [],
+        "presentation": {
+          "icon": "spa",
+          "color": "var(--c-spa)",
+          "sectorSlug": "spa-y-bienestar",
+          "moduleSlug": "spa-y-bienestar",
+          "note": "Módulo disponible."
+        }
+      }
+    },
+    {
+      "kind": "product",
+      "key": "activities",
+      "family": "industry_module",
+      "sortOrder": 203,
+      "draft": {
+        "name": "Actividades y experiencias",
+        "tagline": "",
+        "description": "Funciona hoy dentro del núcleo (experiencias, packs, cupones, operaciones). Empaquetarlo como módulo propio está pendiente.",
+        "technicalStatus": "partial",
+        "activation": {
+          "kind": "feature",
+          "ref": null
+        },
+        "billingModel": "recurring_addon",
+        "dependencies": [],
+        "presentation": {
+          "icon": "activity",
+          "color": "var(--c-activity)",
+          "sectorSlug": "actividades-y-experiencias",
+          "moduleSlug": null,
+          "note": "Funciona hoy dentro del núcleo (experiencias, packs, cupones, operaciones). Empaquetarlo como módulo propio está pendiente."
+        }
+      }
+    },
+    {
+      "kind": "product",
+      "key": "ski",
+      "family": "industry_module",
+      "sortOrder": 204,
+      "draft": {
+        "name": "Escuelas de esquí",
+        "tagline": "",
+        "description": "En hoja de ruta: no existe todavía como módulo.",
+        "technicalStatus": "planned",
+        "activation": {
+          "kind": "none",
+          "ref": null
+        },
+        "billingModel": "recurring_addon",
+        "dependencies": [],
+        "presentation": {
+          "icon": "activity",
+          "color": "#1971c2",
+          "sectorSlug": null,
+          "moduleSlug": null,
+          "note": "En hoja de ruta: no existe todavía como módulo."
+        }
+      }
+    },
+    {
+      "kind": "product",
+      "key": "retail",
+      "family": "industry_module",
+      "sortOrder": 205,
+      "draft": {
+        "name": "Comercio y retail",
+        "tagline": "",
+        "description": "Venta online y TPV ya incluidos en Elephant Core. Funciones específicas de retail (inventario avanzado, multitienda) en hoja de ruta.",
+        "technicalStatus": "partial",
+        "activation": {
+          "kind": "none",
+          "ref": null
+        },
+        "billingModel": "recurring_addon",
+        "dependencies": [],
+        "presentation": {
+          "icon": "shop",
+          "color": "var(--c-shop)",
+          "sectorSlug": null,
+          "moduleSlug": null,
+          "note": "Venta online y TPV ya incluidos en Elephant Core. Funciones específicas de retail (inventario avanzado, multitienda) en hoja de ruta."
+        }
+      }
+    },
+    {
+      "kind": "product",
+      "key": "implantacion",
+      "family": "service",
+      "sortOrder": 300,
+      "draft": {
+        "name": "Implantación",
+        "tagline": "",
+        "description": "Configuración inicial, carga de datos y puesta en marcha.",
+        "technicalStatus": "available",
+        "activation": {
+          "kind": "service",
+          "ref": null
+        },
+        "billingModel": "one_time",
+        "billingNote": "Servicio de implantación",
+        "presentation": {
+          "icon": "support",
+          "color": "var(--c-spa)"
+        }
+      }
+    },
+    {
+      "kind": "product",
+      "key": "formacion",
+      "family": "service",
+      "sortOrder": 301,
+      "draft": {
+        "name": "Formación y acompañamiento",
+        "tagline": "",
+        "description": "Sesiones para tu equipo y seguimiento de los primeros meses.",
+        "technicalStatus": "available",
+        "activation": {
+          "kind": "service",
+          "ref": null
+        },
+        "billingModel": "one_time",
+        "billingNote": "Formación y acompañamiento",
+        "presentation": {
+          "icon": "support",
+          "color": "var(--c-spa)"
+        }
+      }
+    },
+    {
+      "kind": "product",
+      "key": "gestionado",
+      "family": "service",
+      "sortOrder": 302,
+      "draft": {
+        "name": "Servicios gestionados",
+        "tagline": "",
+        "description": "Nos ocupamos de tareas recurrentes (contenidos, campañas, mantenimiento) por ti.",
+        "technicalStatus": "available",
+        "activation": {
+          "kind": "service",
+          "ref": null
+        },
+        "billingModel": "recurring_addon",
+        "billingNote": "Servicio gestionado recurrente",
+        "presentation": {
+          "icon": "support",
+          "color": "var(--c-spa)"
+        }
+      }
+    },
+    {
+      "kind": "faq",
+      "key": "general",
+      "draft": {
+        "items": [
+          {
+            "q": "¿Qué es Elephant Source y qué es Big Elephant?",
+            "a": "Elephant Source es la plataforma de gestión: un núcleo empresarial común (administración, personal, clientes, web, venta y TPV) que se amplía con módulos por sector. Big Elephant es la empresa que la desarrolla, la comercializa y te acompaña.",
+            "topic": "producto"
+          },
+          {
+            "q": "¿Qué módulos sectoriales hay disponibles?",
+            "a": "Hoy: Hotel, Spa y bienestar y Restauración, además de los módulos incluidos en la base (Web y CMS, Comercio y reservas, TPV). Las actividades y experiencias forman parte del núcleo. No anunciamos módulos que todavía no existen.",
+            "topic": "producto"
+          },
+          {
+            "q": "¿Puedo empezar con poco e ir añadiendo?",
+            "a": "Sí. La idea es justo esa: empiezas con el núcleo y activas módulos cuando los necesitas, sin cambiar de herramienta ni migrar datos.",
+            "topic": "producto"
+          },
+          {
+            "q": "¿Cómo funciona la prueba gratuita de 15 días?",
+            "a": "Durante la fase de lanzamiento, nuestro equipo crea tu entorno a partir de tu solicitud y te acompaña en la configuración inicial. Tienes 15 días para probarlo con tus datos. El alta totalmente autónoma, con verificación por correo, está en desarrollo.",
+            "topic": "prueba"
+          },
+          {
+            "q": "¿Qué pasa con mis datos si contrato?",
+            "a": "Si contratas cualquier plan, incluido el más básico, conservas tu entorno y todo lo que hayas configurado durante la prueba.",
+            "topic": "prueba"
+          },
+          {
+            "q": "¿Y si no contrato?",
+            "a": "Al terminar la prueba, el entorno se suspende y tienes 7 días adicionales para contratar y recuperar el acceso. Después se programa su eliminación conforme a las condiciones de prueba. Hoy ninguna eliminación se hace sin la revisión de nuestro equipo.",
+            "topic": "prueba"
+          },
+          {
+            "q": "¿Cuánto cuesta?",
+            "a": "Estamos cerrando los precios de los planes. No publicamos importes hasta tenerlos aprobados; mientras tanto, cuéntanos tu caso y te preparamos una propuesta.",
+            "topic": "precios"
+          },
+          {
+            "q": "¿Hay permanencia?",
+            "a": "Las condiciones de contratación se publicarán junto con los precios. Te las daremos por escrito antes de que contrates.",
+            "topic": "precios"
+          },
+          {
+            "q": "¿Mis datos están separados de los de otras empresas?",
+            "a": "Sí. La plataforma está diseñada para que cada empresa tenga su propio entorno y su propia base de datos. Las contraseñas se guardan con algoritmos de hash, nunca en claro, y los accesos de administración quedan auditados.",
+            "topic": "seguridad"
+          },
+          {
+            "q": "¿Qué soporte tengo?",
+            "a": "Soporte por tickets con seguimiento, y sesiones de onboarding con nuestro equipo para ponerte en marcha.",
+            "topic": "seguridad"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "menu",
+      "key": "main",
+      "draft": {
+        "items": [
+          {
+            "label": "Plataforma",
+            "href": "/plataforma"
+          },
+          {
+            "label": "Extensiones",
+            "href": "/extensiones"
+          },
+          {
+            "label": "Sectores",
+            "href": "/sectores"
+          },
+          {
+            "label": "Precios",
+            "href": "/precios"
+          },
+          {
+            "label": "Construye tu Elephant",
+            "href": "/construye-tu-elephant"
+          }
+        ],
+        "groups": []
+      }
+    },
+    {
+      "kind": "menu",
+      "key": "footer",
+      "draft": {
+        "items": [],
+        "groups": [
+          {
+            "title": "Producto",
+            "links": [
+              {
+                "label": "Elephant Core",
+                "href": "/plataforma"
+              },
+              {
+                "label": "Extensiones",
+                "href": "/extensiones"
+              },
+              {
+                "label": "Soluciones por sector",
+                "href": "/sectores"
+              },
+              {
+                "label": "Catálogo de módulos",
+                "href": "/modulos"
+              },
+              {
+                "label": "Precios",
+                "href": "/precios"
+              },
+              {
+                "label": "Construye tu Elephant",
+                "href": "/construye-tu-elephant"
+              }
+            ]
+          },
+          {
+            "title": "Empezar",
+            "links": [
+              {
+                "label": "Prueba gratuita",
+                "href": "/prueba-gratuita"
+              },
+              {
+                "label": "Sesión de onboarding",
+                "href": "/onboarding"
+              },
+              {
+                "label": "Contacto",
+                "href": "/contacto"
+              },
+              {
+                "label": "Preguntas frecuentes",
+                "href": "/preguntas-frecuentes"
+              }
+            ]
+          },
+          {
+            "title": "Confianza",
+            "links": [
+              {
+                "label": "Quiénes somos",
+                "href": "/nosotros"
+              },
+              {
+                "label": "Seguridad",
+                "href": "/seguridad"
+              },
+              {
+                "label": "Soporte",
+                "href": "/soporte"
+              }
+            ]
+          },
+          {
+            "title": "Legal",
+            "links": [
+              {
+                "label": "Privacidad",
+                "href": "/legal/privacidad"
+              },
+              {
+                "label": "Cookies",
+                "href": "/legal/cookies"
+              },
+              {
+                "label": "Condiciones del servicio",
+                "href": "/legal/condiciones"
+              },
+              {
+                "label": "Prueba y eliminación de datos",
+                "href": "/legal/prueba-y-datos"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "kind": "seo",
+      "key": "routes",
+      "draft": {
+        "routes": []
+      }
+    },
+    {
+      "kind": "forms",
+      "key": "settings",
+      "draft": {
+        "types": {
+          "trial": {
+            "enabled": true,
+            "intro": null
+          },
+          "onboarding": {
+            "enabled": true,
+            "intro": null
+          },
+          "contact": {
+            "enabled": true,
+            "intro": null
+          }
+        },
+        "privacyVersion": "2026-10-borrador"
+      }
+    }
+  ]
+}
