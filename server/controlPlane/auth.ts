@@ -24,6 +24,8 @@ export const SCOPES = [
   "crm:write",
   "ops:read",
   "ops:write",
+  "tickets:read",
+  "tickets:write",
 ] as const;
 export type Scope = (typeof SCOPES)[number];
 
