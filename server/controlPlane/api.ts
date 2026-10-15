@@ -10,6 +10,8 @@
  */
 import express, { type Express, type NextFunction, type Request, type Response } from "express";
 import rateLimit from "express-rate-limit";
+import { DEFAULT_QUOTAS, type DefaultQuota } from "../_core/erm/quota";
+import { UNMEASURED, WARNING_RATIO, tenantResources, type ResourceState } from "../_core/erm/overview";
 import { z } from "zod";
 import { RegistryError } from "../_core/tenantRegistry/contract";
 import type { TenantRegistryService } from "../_core/tenantRegistry/service";
@@ -49,6 +51,8 @@ export interface ControlPlaneDeps {
   billing?: SubscriptionService;
   billingStore?: BillingStore;
   usage?: UsageStore;
+  /** Cuotas por defecto de plataforma (ERM_DEFAULT_QUOTAS); por defecto, las del ERM. */
+  quotaDefaults?: DefaultQuota[];
   /** Destino CNAME de la plataforma para verificar dominios propios. */
   platformTarget: string;
   verifyDomain?: typeof verifyDomainOwnership;
@@ -338,6 +342,77 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
     }),
   );
 
+  router.delete(
+    "/tenants/:id/quotas/:metric/:period",
+    requireScope("quotas:write"),
+    wrap(async (req, res) => {
+      // Retira el override del tenant: vuelve a aplicar el valor por defecto (cambio auditado)
+      const id = idSchema.parse(req.params.id);
+      const metric = z.string().regex(/^[a-z][a-z0-9_.]{1,63}$/).parse(req.params.metric);
+      const period = periodSchema.parse(req.params.period);
+      if (!(await d.quotas.listQuotas(id)).some((q) => q.metric === metric && q.period === period)) {
+        throw new RegistryError("not_found", "El tenant no tiene esa cuota propia");
+      }
+      await d.quotas.remove(id, metric, period, actor(req));
+      res.json({ quotas: await d.quotas.listQuotas(id) });
+    }),
+  );
+
+  router.get(
+    "/tenants/:id/quotas/history",
+    requireScope("tenants:read"),
+    wrap(async (req, res) => {
+      const id = idSchema.parse(req.params.id);
+      if (!(await d.reader.getTenant(id))) throw new RegistryError("not_found", "Tenant no encontrado");
+      const events = (await d.reader.listEvents(id, 500)).filter((e) => e.action.startsWith("quota."));
+      res.json({
+        history: events.map((e) => ({ at: e.at, action: e.action, actor: `${e.actorType}:${e.actorId}`, details: e.details })),
+      });
+    }),
+  );
+
+  // ── Resource Manager: consumo frente a límites ─────────────────────────────
+  const quotaDefaults = d.quotaDefaults ?? DEFAULT_QUOTAS;
+  const rankState: Record<ResourceState, number> = { not_applicable: 0, ok: 1, warning: 2, exceeded: 3 };
+  const notConfigured = { available: false, reason: "Medición no configurada (ERM_DATABASE_URL)", unmeasured: UNMEASURED };
+  router.get(
+    "/tenants/:id/resources",
+    requireScope("usage:read"),
+    wrap(async (req, res) => {
+      const id = idSchema.parse(req.params.id);
+      if (!(await d.reader.getTenant(id))) throw new RegistryError("not_found", "Tenant no encontrado");
+      if (!d.usage) return void res.json(notConfigured);
+      const r = await tenantResources({ quotas: d.quotas, usage: d.usage, defaults: quotaDefaults }, id, Date.now());
+      res.json({ available: true, ...r, thresholds: { warning: WARNING_RATIO, exceeded: 1 }, unmeasured: UNMEASURED });
+    }),
+  );
+  router.get(
+    "/resources/overview",
+    requireScope("usage:read"),
+    requireScope("tenants:read"),
+    wrap(async (req, res) => {
+      if (!d.usage) return void res.json(notConfigured);
+      const onlyAlerts = req.query.alerts === "1";
+      const now = Date.now();
+      const tenants = (await d.reader.listTenants()).filter((t) => t.status !== "deleted");
+      const rows = [];
+      for (const t of tenants) {
+        const r = await tenantResources({ quotas: d.quotas, usage: d.usage, defaults: quotaDefaults }, t.id, now);
+        if (onlyAlerts && r.worst !== "warning" && r.worst !== "exceeded") continue;
+        rows.push({ ...r, displayName: t.displayName, status: t.status });
+      }
+      rows.sort((a, b) => rankState[b.worst] - rankState[a.worst] || (b.maxRatio ?? -1) - (a.maxRatio ?? -1));
+      res.json({
+        available: true,
+        generatedAt: now,
+        thresholds: { warning: WARNING_RATIO, exceeded: 1 },
+        measurementLagSeconds: 15,
+        tenants: rows,
+        unmeasured: UNMEASURED,
+      });
+    }),
+  );
+
   if (d.ops) {
     const ops = d.ops;
     router.get(
@@ -345,7 +420,8 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
       requireScope("ops:read"),
       wrap(async (req, res) => {
         const status = z.enum(["open", "acknowledged", "resolved"]).optional().parse(req.query.status);
-        res.json({ incidents: await ops.incidents.list({ status, limit: 200 }) });
+        const tenantId = idSchema.optional().parse(req.query.tenantId);
+        res.json({ incidents: await ops.incidents.list({ status, tenantId, limit: 200 }) });
       }),
     );
     router.post(
