@@ -32,6 +32,7 @@ import {
   MysqlTenantSeeder,
 } from "../_core/provisioning/mysqlAdapters";
 import { SupportAdmin } from "../_core/support/grants";
+import { MysqlWebStore } from "../web/store";
 import { MysqlCrmStore } from "../crm/mysqlStore";
 import { CrmService } from "../crm/service";
 import { createContractActivation } from "../crm/activation";
@@ -139,6 +140,27 @@ async function main() {
   const operators = await operatorAuthFromEnv(pool, process.env);
   console.log(JSON.stringify({ ctx: "OperatorAuth", enabled: !!operators.service, ...(operators.reason ? { reason: operators.reason } : {}), passwordReset: !!operators.service?.resetAvailable }));
 
+  // Web comercial (catálogo y contenidos): misma BD del CRM; solo si la migración 0004 está aplicada
+  let web: { store: MysqlWebStore; onPublish?: (version: string) => void } | undefined;
+  if (process.env.CRM_DATABASE_URL) {
+    const webPool = mysql.createPool({ uri: process.env.CRM_DATABASE_URL, connectionLimit: 3 });
+    const ready = await webPool.query("SELECT 1 FROM web_entries LIMIT 0").then(() => true, () => false);
+    const hook = process.env.CP_WEB_PUBLISH_HOOK ?? "";
+    // Solo https, o http a la propia máquina (desarrollo local)
+    const hookOk = /^https:\/\//.test(hook) || /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?\//.test(hook);
+    if (ready) {
+      web = {
+        store: new MysqlWebStore(webPool),
+        // Aviso de publicación (p. ej. hook de regeneración de la web); nunca bloquea ni deshace nada
+        onPublish: hookOk
+          ? (version) =>
+              void fetch(hook, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ version }), signal: AbortSignal.timeout(5000) }).catch(() => undefined)
+          : undefined,
+      };
+    } else await webPool.end();
+    console.log(JSON.stringify({ ctx: "WebAdmin", enabled: ready, ...(ready ? { publishHook: hookOk } : { reason: "migration_0004_missing" }) }));
+  }
+
   // API pública de captación de la web comercial: solo con CRM, orígenes explícitos y secreto propio
   const publicOrigins = (process.env.CP_PUBLIC_ORIGINS ?? "").split(",").map((x) => x.trim()).filter(Boolean);
   const publicSecret = process.env.CP_PUBLIC_FORM_SECRET ?? "";
@@ -172,6 +194,7 @@ async function main() {
     cookieSecure: operators.cookieSecure,
     trustProxy: process.env.CP_TRUST_PROXY ? Number(process.env.CP_TRUST_PROXY) || process.env.CP_TRUST_PROXY : undefined,
     publicIntake,
+    web,
   });
 
   const port = Number(process.env.CP_PORT ?? 4100);

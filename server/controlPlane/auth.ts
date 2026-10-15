@@ -34,6 +34,10 @@ export const SCOPES = [
   // Gestión de operadores humanos: solo con sesión de operador, nunca con token de servicio
   "operators:read",
   "operators:write",
+  // Web comercial: editar borradores y publicar son permisos distintos
+  "web:read",
+  "web:write",
+  "web:publish",
 ] as const;
 export type Scope = (typeof SCOPES)[number];
 
