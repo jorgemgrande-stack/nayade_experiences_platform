@@ -46,4 +46,4 @@ MIGRATE_DATABASE_URL=mysql://... pnpm exec tsx scripts/db/migrate.ts down --step
 4. `up` en dry-run; revisar; `up --apply --confirm-database <nombre>`.
 5. Verificar la aplicación (`/readyz`, flujos críticos). Si falla: `down`.
 
-> El arranque de la aplicación **no** ejecuta este carril. Retirar `runMigrations()` del arranque se hará en un cambio aparte, una vez verificado este flujo en producción.
+> El arranque de la aplicación **no** ejecuta este carril ni, desde `fix/startup-sin-migraciones`, las migraciones de drizzle ni el DDL `ensure*`: solo comprueba el esquema. Ver `docs/runbooks/MANTENIMIENTO_ESQUEMA.md`.
