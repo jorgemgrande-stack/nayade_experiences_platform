@@ -10,6 +10,7 @@ import { ghlConversations, ghlMessages, ghlWebhookEvents, siteSettings } from ".
 import { getGHLCredentials } from "../db";
 import { legacyDb, legacyPool } from "../_core/legacyDb";
 import { integrationEnv } from "../_core/tenantConfig";
+import { protectLegacySecret, revealLegacySecret } from "../_core/credentials/legacyFields";
 
 const _pool = legacyPool();
 const db = legacyDb();
@@ -232,7 +233,7 @@ export const ghlInboxRouter = router({
         "SELECT `key`, `value` FROM site_settings WHERE `key` IN ('ghlInboxToken','ghlInboxLocationId','ghlInboxWebhookSecret')"
       );
       const map: Record<string, string> = {};
-      for (const r of (rawRows as any[])) map[r.key] = r.value ?? "";
+      for (const r of (rawRows as any[])) map[r.key] = revealLegacySecret("site_settings", r.key, r.value);
       const token = map.ghlInboxToken || "";
       const secret = integrationEnv("GHL_WEBHOOK_SECRET") || map.ghlInboxWebhookSecret || "";
       return {
@@ -252,7 +253,7 @@ export const ghlInboxRouter = router({
     .mutation(async ({ input }) => {
       await _pool.execute(
         "INSERT INTO site_settings (`key`, `value`, `type`, updatedAt) VALUES (?, ?, 'text', NOW()) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`), updatedAt = NOW()",
-        ["ghlInboxToken", input.token]
+        ["ghlInboxToken", protectLegacySecret("site_settings", "ghlInboxToken", input.token)]
       );
       await _pool.execute(
         "INSERT INTO site_settings (`key`, `value`, `type`, updatedAt) VALUES (?, ?, 'text', NOW()) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`), updatedAt = NOW()",
@@ -260,7 +261,7 @@ export const ghlInboxRouter = router({
       );
       await _pool.execute(
         "INSERT INTO site_settings (`key`, `value`, `type`, updatedAt) VALUES (?, ?, 'text', NOW()) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`), updatedAt = NOW()",
-        ["ghlInboxWebhookSecret", input.webhookSecret]
+        ["ghlInboxWebhookSecret", protectLegacySecret("site_settings", "ghlInboxWebhookSecret", input.webhookSecret)]
       );
       return { ok: true };
     }),
@@ -318,13 +319,13 @@ export const ghlInboxRouter = router({
             "SELECT `key`, `value` FROM site_settings WHERE `key` IN ('ghlInboxToken','ghlInboxLocationId','ghlApiKey','ghlLocationId')"
           );
           const map: Record<string, string> = {};
-          for (const r of (rawRows as any[])) map[r.key] = r.value ?? "";
+          for (const r of (rawRows as any[])) map[r.key] = revealLegacySecret("site_settings", r.key, r.value);
           // Fuente de verdad desde Fase 1: systemSettings
           const [sysRows]: any = await _pool.execute(
             "SELECT `key`, `value` FROM system_settings WHERE `key` IN ('site_ghl_api_key','site_ghl_location_id')"
           );
           const sysMap: Record<string, string> = {};
-          for (const r of (sysRows as any[])) sysMap[r.key] = r.value ?? "";
+          for (const r of (sysRows as any[])) sysMap[r.key] = revealLegacySecret("system_settings", r.key, r.value);
           const token = integrationEnv("GHL_PRIVATE_INTEGRATION_TOKEN")
             || map.ghlInboxToken
             || sysMap.site_ghl_api_key || map.ghlApiKey || "";
