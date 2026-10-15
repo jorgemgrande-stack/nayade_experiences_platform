@@ -146,6 +146,7 @@ async function main() {
     provisioning,
     usage,
     platformTarget: process.env.CP_PLATFORM_TARGET ?? "",
+    platformDomain: process.env.CP_PLATFORM_DOMAIN || undefined,
     support: new SupportAdmin(pool),
     allowedOrigins: (process.env.CP_ALLOWED_ORIGINS ?? "").split(",").map((x) => x.trim()).filter(Boolean),
     supportSecret: process.env.SUPPORT_JWT_SECRET && process.env.SUPPORT_JWT_SECRET.length >= 32 ? process.env.SUPPORT_JWT_SECRET : undefined,
