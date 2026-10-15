@@ -224,7 +224,10 @@ export interface ContractInput {
 const CONTRACT_TERM_KEYS = ["planId", "modules", "amountCents", "currency", "billingInterval", "startDate", "renewalDate", "autoRenew", "noticeDays", "conditions"] as const;
 const CONTRACT_NAME: Record<ContractStatus, string> = { draft: "Borrador", sent: "Enviado", signed: "Firmado", active: "Activo", cancelled: "Cancelado" };
 
-/** Referencia comercial única derivada del id: CT-AAAA-NNNNNN. */
+/**
+ * Referencia comercial única: CT-<año UTC de la creación>-<id con al menos 6 dígitos, sin truncar>.
+ * Misma regla que el relleno de db/crm/migrations/0002 (año de created_at).
+ */
 export const contractReference = (id: number, now: number) => `CT-${new Date(now).getUTCFullYear()}-${String(id).padStart(6, "0")}`;
 /** Suma un periodo de facturación (mes/año natural, en UTC). */
 export function addInterval(ms: number, interval: BillingInterval): number {
@@ -822,7 +825,15 @@ export class CrmService {
       createdAt: this.now(),
       updatedAt: null,
     });
-    const withRef = await this.store.update("contracts", c.id, { reference: contractReference(c.id, this.now()) });
+    // La referencia se deriva de (id, createdAt): si la segunda escritura falla, se deshace el alta
+    // para no dejar contratos sin referencia (y el relleno de la 0002 reconstruiría la misma).
+    let withRef: Contract;
+    try {
+      withRef = await this.store.update("contracts", c.id, { reference: contractReference(c.id, c.createdAt) });
+    } catch (err) {
+      await this.store.remove("contracts", c.id).catch(() => undefined);
+      throw err;
+    }
     await this.snapshot(withRef, input.previousContractId ? `Renovación del contrato #${input.previousContractId}` : "Versión inicial", author);
     await this.log("contract", c.id, "note", `Contrato ${withRef.reference} creado`, author);
     return withRef;

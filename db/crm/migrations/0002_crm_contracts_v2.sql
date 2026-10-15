@@ -18,7 +18,12 @@ ALTER TABLE crm_contracts
   ADD KEY idx_contract_renewal (renewal_date),
   ADD KEY idx_contract_previous (previous_contract_id);
 
-UPDATE crm_contracts SET reference = CONCAT('CT-', LPAD(id, 6, '0')) WHERE reference IS NULL;
+-- Relleno de los contratos existentes con la MISMA regla que el código (contractReference):
+-- CT-<año UTC de created_at>-<id con al menos 6 dígitos, sin truncar>. Solo toca referencias NULL.
+-- DATE_ADD sobre una fecha literal no depende de la zona horaria de la sesión.
+UPDATE crm_contracts
+   SET reference = CONCAT('CT-', YEAR(DATE_ADD('1970-01-01', INTERVAL FLOOR(created_at / 1000) SECOND)), '-', LPAD(id, GREATEST(6, CHAR_LENGTH(id)), '0'))
+ WHERE reference IS NULL;
 
 CREATE TABLE IF NOT EXISTS crm_contract_versions (
   id          INT AUTO_INCREMENT PRIMARY KEY,
