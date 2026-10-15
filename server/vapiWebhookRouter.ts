@@ -87,7 +87,7 @@ function extractCallData(payload: any): {
 }
 
 // Crea las tablas si no existen (auto-heal para Railway)
-async function initVapiTables(): Promise<void> {
+export async function initVapiTables(): Promise<void> {
   try {
     await _pool.execute(`
       CREATE TABLE IF NOT EXISTS vapi_calls (
@@ -126,7 +126,8 @@ async function initVapiTables(): Promise<void> {
   }
 }
 
-initVapiTables();
+// Ya no se ejecuta al cargar el módulo: el arranque no modifica el esquema. Lo ejecuta el
+// mantenimiento explícito (`--schema-maintenance`, ver server/_core/schemaMaintenance.ts).
 
 const vapiWebhookRouter = express.Router();
 

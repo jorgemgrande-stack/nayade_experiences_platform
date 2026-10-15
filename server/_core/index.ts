@@ -10,6 +10,8 @@ import { requestMeter } from "./requestMeter";
 import { installTenantBinding, installTenantResolution } from "./tenantRegistry/install";
 import { scheduleTenantInterval, setJobFlag } from "./tenantRegistry/scheduler";
 import { isMultiTenant } from "./tenant";
+import { checkAppSchema, describeSchemaReport } from "./schemaCheck";
+import { isSchemaMaintenanceCommand, runSchemaMaintenance, schemaCheckMode, type MaintenanceStep } from "./schemaMaintenance";
 import { localStorageTenantGuard } from "./tenantStorage";
 import { registerBuiltinModules } from "./modules/builtin";
 import { getModuleAccess, getModuleRegistry } from "./modules/runtime";
@@ -29,8 +31,8 @@ import settlementExportRouter from "../settlementExportRoutes";
 import invoicePreviewRouter from "../invoicePreviewRouter";
 import { kbRouter } from "../kbRoute";
 import ghlWebhookRouter from "../ghlWebhookRouter";
-import ghlInboxRouter from "../routes/ghlInboxRouter";
-import vapiWebhookRouter from "../vapiWebhookRouter";
+import ghlInboxRouter, { initGhlTables } from "../routes/ghlInboxRouter";
+import vapiWebhookRouter, { initVapiTables } from "../vapiWebhookRouter";
 import { sitemapRouter } from "../sitemapRouter";
 import { startCancellationStaleJob } from "../cancellationStaleJob";
 import { startEmailAutomationJob } from "../emailAutomationJob";
@@ -1925,20 +1927,64 @@ const SCHEDULED_JOBS: Array<{ name: string; flag: string; start: () => void; lab
 ];
 
 /**
- * Modo single/shadow: comportamiento de siempre (migraciones y DDL de arranque contra la BD
- * única, flags evaluados una vez al arrancar).
+ * Pasos de esquema que antes corrían en CADA arranque (migraciones de drizzle, DDL `ensure*` y
+ * semillas críticas). Ya no se ejecutan al arrancar: solo con el mantenimiento explícito
+ * (`--schema-maintenance --apply`, ver schemaMaintenance.ts), en el mismo orden.
+ */
+const SCHEMA_MAINTENANCE_STEPS: MaintenanceStep[] = [
+  { name: "drizzle", run: runMigrations },
+  { name: "ensureCriticalSeeds", run: ensureCriticalSeeds },
+  { name: "migrateSiteSettingsToSystemSettings", run: migrateSiteSettingsToSystemSettings },
+  { name: "ensurePricingColumns", run: ensurePricingColumns },
+  { name: "ensureRefundColumns", run: ensureRefundColumns },
+  { name: "ensureReservationPublicToken", run: ensureReservationPublicToken },
+  { name: "ensureDiscountColumns", run: ensureDiscountColumns },
+  { name: "ensureLeadSourceColumn", run: ensureLeadSourceColumn },
+  { name: "ensureTicketingChannel", run: ensureTicketingChannel },
+  { name: "ensureExpenseEmailIngestionSchema", run: ensureExpenseEmailIngestionSchema },
+  // Antes se ejecutaban al importar sus módulos (también en cada arranque)
+  { name: "initGhlTables", run: initGhlTables },
+  { name: "initVapiTables", run: initVapiTables },
+];
+
+/**
+ * Comprobación de esquema al arrancar, SOLO LECTURA: el arranque ya no modifica el esquema.
+ * SCHEMA_CHECK = warn (por defecto: avisa y arranca, como antes ante una migración fallida),
+ * strict (no arranca si el esquema no está al día) u off.
+ */
+async function verifySchemaOnStartup(): Promise<void> {
+  const mode = schemaCheckMode(process.env.SCHEMA_CHECK);
+  if (mode === "off") {
+    console.warn("[Schema] Comprobación de esquema desactivada (SCHEMA_CHECK=off)");
+    return;
+  }
+  let report: Awaited<ReturnType<typeof checkAppSchema>>;
+  try {
+    const mysql = await import("mysql2/promise");
+    const conn = await mysql.default.createConnection(process.env.DATABASE_URL!);
+    try {
+      report = await checkAppSchema(conn);
+    } finally {
+      await conn.end().catch(() => undefined);
+    }
+  } catch (err: any) {
+    console.error("[Schema] No se pudo comprobar el esquema (código:", err?.code, "):", err?.message ?? err);
+    if (mode === "strict") process.exit(1);
+    return;
+  }
+  for (const line of describeSchemaReport(report)) (report.ok ? console.log : console.error)(line);
+  if (!report.ok && mode === "strict") {
+    console.error("[Schema] SCHEMA_CHECK=strict: no se arranca con el esquema desactualizado.");
+    process.exit(1);
+  }
+}
+
+/**
+ * Modo single/shadow: comprueba el esquema (sin modificarlo) contra la BD única y arranca; flags
+ * evaluados una vez al arrancar.
  */
 function bootSingleTenant(): void {
-  runMigrations()
-    .then(() => ensureCriticalSeeds())
-    .then(() => migrateSiteSettingsToSystemSettings())
-    .then(() => ensurePricingColumns())
-    .then(() => ensureRefundColumns())
-    .then(() => ensureReservationPublicToken())
-    .then(() => ensureDiscountColumns())
-    .then(() => ensureLeadSourceColumn())
-    .then(() => ensureTicketingChannel())
-    .then(() => ensureExpenseEmailIngestionSchema())
+  verifySchemaOnStartup()
     .then(() => fixBrokenInvoicePdfUrls())
     .then(() => wipeTestDataIfRequested())
     .then(() => seedExperiencesIfEmpty())
@@ -1969,6 +2015,23 @@ function bootMultiTenant(): void {
     .catch(console.error);
 }
 
-if (isMultiTenant()) bootMultiTenant();
+if (isSchemaMaintenanceCommand(process.argv)) {
+  if (isMultiTenant()) {
+    console.error("[Mantenimiento] En modo multi el esquema de cada tenant lo gestiona el aprovisionamiento: no hay BD de arranque.");
+    process.exit(2);
+  }
+  runSchemaMaintenance({
+    argv: process.argv,
+    databaseUrl: process.env.DATABASE_URL,
+    connect: async (url) => (await import("mysql2/promise")).default.createConnection(url),
+    steps: SCHEMA_MAINTENANCE_STEPS,
+  }).then(
+    (code) => process.exit(code),
+    (err) => {
+      console.error("[Mantenimiento] Error:", err?.message ?? err);
+      process.exit(1);
+    },
+  );
+} else if (isMultiTenant()) bootMultiTenant();
 else bootSingleTenant();
 
