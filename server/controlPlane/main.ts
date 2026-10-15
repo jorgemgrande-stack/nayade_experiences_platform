@@ -47,6 +47,7 @@ import { MysqlTicketStore, TicketService } from "../_core/support/tickets";
 import { runAlerts } from "../_core/ops/alerts";
 import { SsoService, parseSsoUsers } from "./sso";
 import { createRemoteJWKSet } from "jose";
+import { operatorAuthFromEnv } from "./operatorSetup";
 
 async function main() {
   const tokens = parseTokens(process.env.CP_TOKENS);
@@ -134,6 +135,10 @@ async function main() {
     crm = { service: new CrmService({ store, activation }), store };
   }
 
+  // Operadores humanos (usuario y contraseña): solo si la migración 0007 está aplicada
+  const operators = await operatorAuthFromEnv(pool, process.env);
+  console.log(JSON.stringify({ ctx: "OperatorAuth", enabled: !!operators.service, ...(operators.reason ? { reason: operators.reason } : {}), passwordReset: !!operators.service?.resetAvailable }));
+
   const tickets = new TicketService(new MysqlTicketStore(pool), async (id) => (await store.getTenant(id)) !== null);
 
   const app = createControlPlaneApp({
@@ -156,6 +161,9 @@ async function main() {
     support: new SupportAdmin(pool),
     allowedOrigins: (process.env.CP_ALLOWED_ORIGINS ?? "").split(",").map((x) => x.trim()).filter(Boolean),
     supportSecret: process.env.SUPPORT_JWT_SECRET && process.env.SUPPORT_JWT_SECRET.length >= 32 ? process.env.SUPPORT_JWT_SECRET : undefined,
+    operators: operators.service,
+    cookieSecure: operators.cookieSecure,
+    trustProxy: process.env.CP_TRUST_PROXY ? Number(process.env.CP_TRUST_PROXY) || process.env.CP_TRUST_PROXY : undefined,
   });
 
   const port = Number(process.env.CP_PORT ?? 4100);
