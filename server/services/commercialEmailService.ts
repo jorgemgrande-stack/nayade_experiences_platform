@@ -505,7 +505,7 @@ export async function sendViaAccountSmtp(
 // ─── Cron job ─────────────────────────────────────────────────────────────────
 
 export async function startCommercialEmailSyncJob(): Promise<void> {
-  await initCommercialEmailTables();
+  // Sin DDL al arrancar el job: initCommercialEmailTables es un paso del mantenimiento explícito.
 
   // Boot run
   runCommercialEmailSync().catch(err =>

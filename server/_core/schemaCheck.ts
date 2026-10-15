@@ -59,13 +59,26 @@ export function readDrizzleMigrations(folder: string): DrizzleMigration[] {
   return metas.map((m, i) => ({ tag: journal.entries[i]?.tag ?? `#${i}`, folderMillis: m.folderMillis, hash: m.hash }));
 }
 
-/** Tablas y columnas que declara `drizzle/schema.ts`. */
+/**
+ * Columnas que el código usa con SQL directo y que NO declara `schema.ts` (existen en producción y
+ * en la baseline). Antes se creaban bajo demanda; ahora las garantiza el mantenimiento explícito.
+ */
+export const REQUIRED_EXTRA_COLUMNS: ReadonlyArray<readonly [table: string, column: string]> = [
+  ["reservations", "invoice_exempt"], // setInvoiceExempt / informes (migración 0091)
+  ["commercial_emails", "attachments_meta"], // email comercial
+];
+
+/** Tablas y columnas que declara `drizzle/schema.ts`, más las requeridas fuera de él. */
 export function expectedSchema(): Map<string, string[]> {
   const out = new Map<string, string[]>();
   for (const v of Object.values(schema)) {
     if (!is(v, MySqlTable)) continue;
     const cfg = getTableConfig(v);
     out.set(cfg.name, cfg.columns.map((c) => c.name));
+  }
+  for (const [t, c] of REQUIRED_EXTRA_COLUMNS) {
+    const cols = out.get(t);
+    if (cols && !cols.includes(c)) cols.push(c);
   }
   return out;
 }

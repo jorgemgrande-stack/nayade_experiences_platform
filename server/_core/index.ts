@@ -37,7 +37,8 @@ import { startEmailAutomationJob } from "../emailAutomationJob";
 import { startTaxReminderJob } from "../taxReminderJob";
 import { startEmailIngestionJob } from "../services/emailTpvIngestionService";
 import { startExpenseEmailIngestionJob } from "../services/expenseEmailIngestionService";
-import { startCommercialEmailSyncJob } from "../services/commercialEmailService";
+import { initCommercialEmailTables, startCommercialEmailSyncJob } from "../services/commercialEmailService";
+import { ensureDocumentNumberTables } from "../documentNumbers";
 import { startMatchingJob } from "../services/cardTerminalMatchingService";
 import { startRelinkJob } from "../services/cardTerminalRelinkService";
 import { serveStatic, setupVite } from "./vite";
@@ -1945,7 +1946,33 @@ const SCHEMA_MAINTENANCE_STEPS: MaintenanceStep[] = [
   // Antes se ejecutaban al importar sus módulos (también en cada arranque)
   { name: "initGhlTables", run: initGhlTables },
   { name: "initVapiTables", run: initVapiTables },
+  // Antes se ejecutaban bajo demanda durante operaciones normales (numeración, job de email, CRM)
+  { name: "ensureDocumentNumberTables", run: ensureDocumentNumberTables },
+  { name: "initCommercialEmailTables", run: initCommercialEmailTables },
+  { name: "ensureInvoiceExemptColumn", run: ensureInvoiceExemptColumn },
 ];
+
+/** reservations.invoice_exempt (migración 0091; antes se intentaba crear en cada setInvoiceExempt). */
+async function ensureInvoiceExemptColumn(): Promise<void> {
+  try {
+    const mysql = await import("mysql2/promise");
+    const url = process.env.DATABASE_URL!;
+    const conn = await mysql.default.createConnection(url);
+    try {
+      const [cols] = (await conn.query(
+        "SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'reservations' AND COLUMN_NAME = 'invoice_exempt'",
+      )) as any[];
+      if ((cols as any[]).length === 0) {
+        await conn.query("ALTER TABLE `reservations` ADD COLUMN `invoice_exempt` tinyint(1) NOT NULL DEFAULT 0");
+        console.log("[DB] reservations.invoice_exempt añadida");
+      }
+    } finally {
+      await conn.end().catch(() => undefined);
+    }
+  } catch (err: any) {
+    console.error("[DB] Error en ensureInvoiceExemptColumn:", err.message);
+  }
+}
 
 /**
  * Comprobación de esquema al arrancar, SOLO LECTURA: el arranque ya no modifica el esquema.

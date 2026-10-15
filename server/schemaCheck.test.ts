@@ -6,6 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   KNOWN_ABSENT_TABLES,
+  REQUIRED_EXTRA_COLUMNS,
   checkAppSchema,
   compareSchema,
   describeSchemaReport,
@@ -96,6 +97,12 @@ describe("checkAppSchema (arranque)", () => {
     expect(r.pendingMigrations).toEqual(files.slice(-2).map((f) => f.tag));
     expect(describeSchemaReport(r).join("\n")).toMatch(/2 migración\(es\) de drizzle pendiente/);
   });
+  it("vigila también las columnas que usa el código fuera de schema.ts (antes creadas bajo demanda)", async () => {
+    for (const [t, c] of REQUIRED_EXTRA_COLUMNS) {
+      const r = await checkAppSchema(fakeConn({ dropColumn: `${t}.${c}` }) as any, { migrationsFolder: DRIZZLE });
+      expect(r).toMatchObject({ ok: false, missingColumns: [`${t}.${c}`] });
+    }
+  });
   it("columna ausente → no ok; sin registro de drizzle → todas pendientes", async () => {
     const r = await checkAppSchema(fakeConn({ dropColumn: "users.email" }) as any, { migrationsFolder: DRIZZLE });
     expect(r).toMatchObject({ ok: false, missingColumns: ["users.email"] });
@@ -176,5 +183,30 @@ describe("mantenimiento explícito (--schema-maintenance)", () => {
     expect(schemaCheckMode("cualquier")).toBe("warn");
     expect(schemaCheckMode("strict")).toBe("strict");
     expect(schemaCheckMode("off")).toBe("off");
+  });
+});
+
+describe("sin DDL en operaciones normales (guarda de regresión)", () => {
+  const src = (rel: string) => fs.readFileSync(path.resolve(__dirname, rel), "utf8");
+  const fnBody = (code: string, name: string) => {
+    const i = code.indexOf(`function ${name}(`);
+    expect(i).toBeGreaterThan(-1);
+    return code.slice(i, code.indexOf("\n}", i));
+  };
+  it("generar un número de documento no ejecuta DDL", () => {
+    expect(fnBody(src("documentNumbers.ts"), "generateDocumentNumber")).not.toMatch(/ensureTables|CREATE TABLE/);
+  });
+  it("arrancar el job de email comercial no ejecuta DDL", () => {
+    expect(fnBody(src("services/commercialEmailService.ts"), "startCommercialEmailSyncJob")).not.toMatch(/initCommercialEmailTables\(|CREATE TABLE|ALTER TABLE/);
+  });
+  it("setInvoiceExempt no ejecuta ALTER TABLE", () => {
+    const crm = src("routers/crm.ts");
+    const i = crm.indexOf("setInvoiceExempt:");
+    expect(crm.slice(i, crm.indexOf("}),", i))).not.toMatch(/ALTER TABLE/);
+  });
+  it("los tres pasos están en el mantenimiento explícito", () => {
+    const idx = src("_core/index.ts");
+    const steps = idx.slice(idx.indexOf("const SCHEMA_MAINTENANCE_STEPS"), idx.indexOf("];", idx.indexOf("const SCHEMA_MAINTENANCE_STEPS")));
+    for (const n of ["ensureDocumentNumberTables", "initCommercialEmailTables", "ensureInvoiceExemptColumn"]) expect(steps).toContain(`run: ${n}`);
   });
 });
