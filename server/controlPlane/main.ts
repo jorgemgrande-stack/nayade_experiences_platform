@@ -139,6 +139,13 @@ async function main() {
   const operators = await operatorAuthFromEnv(pool, process.env);
   console.log(JSON.stringify({ ctx: "OperatorAuth", enabled: !!operators.service, ...(operators.reason ? { reason: operators.reason } : {}), passwordReset: !!operators.service?.resetAvailable }));
 
+  // API pública de captación de la web comercial: solo con CRM, orígenes explícitos y secreto propio
+  const publicOrigins = (process.env.CP_PUBLIC_ORIGINS ?? "").split(",").map((x) => x.trim()).filter(Boolean);
+  const publicSecret = process.env.CP_PUBLIC_FORM_SECRET ?? "";
+  const publicReason = !crm ? "crm_not_configured" : !publicOrigins.length ? "no_origins" : publicSecret.length < 32 ? "secret_missing_or_short" : null;
+  const publicIntake = publicReason ? undefined : { origins: publicOrigins, secret: publicSecret };
+  console.log(JSON.stringify({ ctx: "PublicIntake", enabled: !!publicIntake, ...(publicReason ? { reason: publicReason } : { origins: publicOrigins }) }));
+
   const tickets = new TicketService(new MysqlTicketStore(pool), async (id) => (await store.getTenant(id)) !== null);
 
   const app = createControlPlaneApp({
@@ -164,6 +171,7 @@ async function main() {
     operators: operators.service,
     cookieSecure: operators.cookieSecure,
     trustProxy: process.env.CP_TRUST_PROXY ? Number(process.env.CP_TRUST_PROXY) || process.env.CP_TRUST_PROXY : undefined,
+    publicIntake,
   });
 
   const port = Number(process.env.CP_PORT ?? 4100);
