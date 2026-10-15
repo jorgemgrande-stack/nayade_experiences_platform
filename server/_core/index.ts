@@ -10,8 +10,6 @@ import { requestMeter } from "./requestMeter";
 import { installTenantBinding, installTenantResolution } from "./tenantRegistry/install";
 import { scheduleTenantInterval, setJobFlag } from "./tenantRegistry/scheduler";
 import { isMultiTenant } from "./tenant";
-import { checkAppSchema, describeSchemaReport } from "./schemaCheck";
-import { isSchemaMaintenanceCommand, runSchemaMaintenance, schemaCheckMode, type MaintenanceStep } from "./schemaMaintenance";
 import { localStorageTenantGuard } from "./tenantStorage";
 import { registerBuiltinModules } from "./modules/builtin";
 import { getModuleAccess, getModuleRegistry } from "./modules/runtime";
@@ -44,6 +42,8 @@ import { startMatchingJob } from "../services/cardTerminalMatchingService";
 import { startRelinkJob } from "../services/cardTerminalRelinkService";
 import { serveStatic, setupVite } from "./vite";
 import { getFeatureFlag } from "../config";
+import { checkAppSchema, describeSchemaReport } from "./schemaCheck";
+import { isSchemaMaintenanceCommand, runSchemaMaintenance, schemaCheckMode, type MaintenanceStep } from "./schemaMaintenance";
 
 // --- RATE LIMITERS ------------------------------------------------------------
 
