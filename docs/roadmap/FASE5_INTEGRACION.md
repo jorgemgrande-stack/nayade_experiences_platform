@@ -249,11 +249,34 @@ Solo hay migraciones pendientes en el registro y en el CRM. **Ninguna toca la BD
 | D2 | Abrir el PR que retira las migraciones del arranque de la app (M1). Es un cambio de arranque de Náyade, aislado y con su propio deploy verificado. |
 | D3 | Corregir los ejecutores (M2, M3, M4 y M7) en PR propios **antes** del Bloque 3. |
 | D4 | Si, cuándo y con qué backup se ejecuta el cifrado de credenciales heredadas en la BD de Náyade. |
-| D5 | Formato de referencia de los contratos existentes: `CT-NNNNNN` (relleno actual) o `CT-AAAA-NNNNNN` (código). |
+| D5 | Formato de referencia de los contratos existentes: `CT-NNNNNN` (relleno actual) o `CT-AAAA-NNNNNN` (código). Análisis y recomendación (opción B) en `docs/architecture/REFERENCIAS_CONTRATO.md`. |
 | D6 | Corregir la aprobación atómica de precios en #77 antes de fusionarlo. |
 | D7 | Alojamiento y puesta en marcha del plano de control (B12), siempre con la facturación **apagada**. |
 | D8 | Aprobar el diseño de precios contratados y su plan de transición (documento de arquitectura) antes de tocar el motor de facturación. |
 | D9 | Si el CRM y la web tienen despliegue propio (no consta en los repositorios); confirmar antes de fusionar en sus `main`. |
+
+## 8. Fase 5.1: correcciones preventivas (estado)
+
+D2, D3 y D6 se autorizaron para corregirlos. Ninguno de estos PR está fusionado y ninguno se ha desplegado.
+
+| Problema | Corrección | PR / rama | Base |
+|---|---|---|---|
+| M1: la app migra y ejecuta DDL en cada arranque (también GHL y VAPI al importar sus módulos) | El arranque solo comprueba (`SCHEMA_CHECK`). El mantenimiento explícito `--schema-maintenance` usa confirmación, bloqueo y parada segura | #79 `fix/startup-sin-migraciones` | `main` |
+| M3: `--dir` por defecto; confirmación que un túnel se saltaba; carrera de doble aplicación (reproducida); `status` que escribía | Carriles explícitos ligados a la BD, `--confirm-database` siempre, relectura tras el bloqueo, marca de migración a medias y `resolve` | #80 `fix/migrate-runner-safety` | `main` |
+| M4: el CI no verificaba el CRM | `verify` de todos los carriles en la suite bloqueante | #80 | `main` |
+| M2: el registro sin bloqueo ni confirmación, con variable compartida y reaplicación en cascada | `REGISTRY_MIGRATE_URL`, `--confirm-database`, `GET_LOCK` y `--repair` explícito | #81 `fix/registry-migrate-safety` | #66 |
+| M7: DDL de `legacy_credential_audit` dentro del script | `db/migrations/0002`; el script se niega sin la tabla y antes de escribir | #82 `fix/legacy-audit-migration` | #64 |
+| F17: aprobación de precios no atómica | Transacción con `FOR UPDATE` e índice único (CRM 0005) | commits en #77 | — |
+| M6 / D5: formato `CT-…` | **Solo análisis:** `docs/architecture/REFERENCIAS_CONTRATO.md` | — | — |
+
+**Orden de integración actualizado.** Es el del §4, con estas inserciones:
+
+- #80 antes del Bloque 3;
+- #82 justo después de #64;
+- #79 justo después de #65, en un deploy propio;
+- #81 justo después de #66.
+
+Se ha simulado la secuencia completa de 20 ramas de Core sobre `main`: no hay conflictos. Sobre el árbol resultante pasan las suites bloqueantes del CI (603 pruebas unitarias y 69 con MySQL real).
 
 ## Anexo: cómo se ha comprobado
 
