@@ -8,6 +8,11 @@ export interface DatabaseProvisioner {
    */
   ensureDatabase(tenantId: string): Promise<{ dsn: string; serverAlias: string }>;
   dropDatabase(tenantId: string): Promise<void>;
+  /**
+   * Crea con privilegios de administración los triggers que la baseline no puede llevar (ver
+   * tenantTriggers.ts). Idempotente: no toca los que ya existen. Devuelve los creados.
+   */
+  ensureTriggers?(tenantId: string): Promise<string[]>;
 }
 
 export interface SchemaApplier {

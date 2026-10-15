@@ -12,6 +12,9 @@ Las migraciones de `drizzle/` **no pueden construir una BD vacía** (ver `docs/d
 - **Diferencia deliberada** con producción: el `DEFAULT` de `internalAlertEmail` es `''` (en producción llevaba el correo de un cliente concreto).
 - Contiene `CREATE TABLE IF NOT EXISTS` y es idempotente.
 
+## Triggers (no van en la baseline)
+`SHOW CREATE TABLE` no incluye triggers y, con el binlog activo (defecto de MySQL 8), el usuario propio del tenant no puede crearlos (error 1419: exige SUPER). Por eso el aprovisionamiento los crea **con la conexión de administración**, justo después de aplicar la baseline, con `DEFINER` = usuario del tenant: `server/_core/provisioning/tenantTriggers.ts` (hoy, `reservations_set_public_token`, que genera el token público de cada reserva). Es idempotente y no toca triggers existentes. El usuario de administración del aprovisionamiento necesita `TRIGGER` y poder fijar el `DEFINER` (`SET_USER_ID`/`SET_ANY_DEFINER` o `SUPER`).
+
 ## Carencias conocidas respecto a `drizzle/schema.ts`
 Producción no tiene las 4 tablas `rbac_*` que declara `schema.ts` (RBAC nunca se aplicó). Para un tenant nuevo que use RBAC habrá que añadirlas **y sembrarlas** en un paso explícito antes de activarlo.
 
