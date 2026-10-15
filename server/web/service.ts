@@ -107,7 +107,7 @@ export class WebAdminService {
       publication: e.publication,
       draftVersion: e.draftVersion,
       publishedVersion: e.publishedVersion,
-      pendingChanges: e.publication !== "published" || e.publishedVersion !== e.draftVersion,
+      pendingChanges: hasPendingChanges(e),
       updatedAt: e.updatedAt,
       updatedBy: e.updatedBy,
       publishedAt: e.publishedAt,
@@ -126,7 +126,7 @@ export class WebAdminService {
 
   async overview() {
     const [entries, prices, events] = await Promise.all([this.d.store.listEntries(), this.d.store.listPrices(), this.d.store.listEvents({ limit: 20 })]);
-    const pending = entries.filter((e) => e.publication !== "published" || e.publishedVersion !== e.draftVersion);
+    const pending = entries.filter(hasPendingChanges);
     return {
       published: entries.filter((e) => e.publication === "published").length,
       drafts: entries.filter((e) => e.publication === "draft").length,
@@ -432,6 +432,11 @@ export class WebAdminService {
       /* un aviso fallido nunca deshace una publicación */
     }
   }
+}
+
+/** Pendiente de publicar: borrador nunca publicado o publicada con cambios posteriores. Lo retirado no lo está: se retiró a propósito. */
+function hasPendingChanges(e: WebEntry): boolean {
+  return e.publication === "draft" || (e.publication === "published" && e.publishedVersion !== e.draftVersion);
 }
 
 /** ¿Seguir las dependencias desde `start` vuelve a `start`? (con el borrador nuevo de `start`) */

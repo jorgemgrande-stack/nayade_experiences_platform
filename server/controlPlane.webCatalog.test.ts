@@ -391,3 +391,19 @@ describe("semilla del catálogo", () => {
     expect(site.catalog.products.find((p) => p.key === "ski")).toMatchObject({ technicalStatus: "planned" });
   });
 });
+
+describe("panel de la web", () => {
+  it("lo retirado no cuenta como pendiente de publicar; un borrador o una publicada con cambios, sí", async () => {
+    const store = new MemoryWebStore();
+    const svc = new WebAdminService({ store, refs: { moduleIds: [], planIds: () => null } });
+    await svc.create({ kind: "product", key: "business", family: "core_plan", draft: plan() }, A);
+    await svc.create({ kind: "product", key: "otro", family: "core_plan", draft: plan({ name: "Otro" }) }, A);
+    await svc.publish("product", "business", 1, A);
+    expect((await svc.overview()).pendingChanges.map((p) => p.key)).toEqual(["otro"]);
+    await svc.save("product", "business", { draft: plan({ tagline: "cambio" }), expectedVersion: 1 }, A);
+    expect((await svc.overview()).pendingChanges.map((p) => p.key).sort()).toEqual(["business", "otro"]);
+    await svc.publish("product", "business", 2, A);
+    await svc.unpublish("product", "business", A);
+    expect((await svc.overview()).pendingChanges.map((p) => p.key)).toEqual(["otro"]);
+  });
+});
