@@ -44,7 +44,7 @@ describe("CLI scripts/registry-migrate.ts", () => {
   const run = (env: Record<string, string | undefined>) =>
     spawnSync(process.execPath, [TSX, SCRIPT], {
       cwd: ROOT,
-      env: { ...process.env, REGISTRY_ADMIN_DATABASE_URL: undefined, ...env },
+      env: { ...process.env, REGISTRY_ADMIN_DATABASE_URL: undefined, REGISTRY_MIGRATE_URL: undefined, ...env },
       encoding: "utf8",
       timeout: 60_000,
     });
@@ -52,12 +52,12 @@ describe("CLI scripts/registry-migrate.ts", () => {
   it("sin URL termina con código 2", () => {
     const r = run({});
     expect(r.status).toBe(2);
-    expect(r.stderr).toContain("Falta REGISTRY_ADMIN_DATABASE_URL");
+    expect(r.stderr).toContain("Falta REGISTRY_MIGRATE_URL");
   });
 
   it("arranca como módulo ESM: resuelve el directorio de migraciones sin __dirname", () => {
     // Puerto cerrado: el proceso debe llegar a intentar la conexión (antes fallaba con ReferenceError).
-    const r = run({ REGISTRY_ADMIN_DATABASE_URL: "mysql://nadie:nada@127.0.0.1:1/registro" });
+    const r = run({ REGISTRY_MIGRATE_URL: "mysql://nadie:nada@127.0.0.1:1/registro" });
     expect(r.status).toBe(1);
     expect(r.stderr).not.toMatch(/__dirname|ReferenceError/);
     expect(r.stderr).toMatch(/ECONNREFUSED|connect/i);

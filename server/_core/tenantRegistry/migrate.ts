@@ -8,8 +8,10 @@
  *    incompleta, el marcador vuelve a la versión anterior verificada.
  *  - Antes de aplicar nada se verifica la integridad de las versiones ya registradas: una migración
  *    que consta como aplicada pero a la que le faltan objetos (p. ej. triggers de auditoría no
- *    creados por falta de privilegios) se detecta y se vuelve a aplicar, junto con las posteriores.
- *    Los ficheros son idempotentes y no destruyen datos (`IF NOT EXISTS`; solo se recrean triggers).
+ *    creados por falta de privilegios) se detecta y el plan la muestra. Volver a aplicarla (junto con
+ *    las posteriores) exige `repair: true` explícito: nunca se reaplica en cascada sin que una persona
+ *    haya revisado la causa. Los ficheros son idempotentes y no destruyen datos (`IF NOT EXISTS`;
+ *    solo se recrean triggers).
  *  - Los errores de privilegios de MySQL se informan como tales (`privileges`); nunca se activa
  *    `log_bin_trust_function_creators` ni se rebaja ninguna comprobación.
  *  - Por defecto es un plan (no escribe). Si no puede garantizarse la integridad, falla.
@@ -189,7 +191,7 @@ function migrationError(version: string, e: any): RegistryMigrationError {
 export async function migrateRegistry(
   pool: Pick<mysql.Pool, "query">,
   dir: string,
-  opts: { dryRun?: boolean } = {},
+  opts: { dryRun?: boolean; repair?: boolean } = {},
 ): Promise<RegistryMigrationResult> {
   const dryRun = opts.dryRun !== false;
   const files = listRegistryMigrations(dir);
@@ -212,6 +214,14 @@ export async function migrateRegistry(
     dryRun,
   };
   if (dryRun) return result;
+  if (incomplete.length && !opts.repair) {
+    throw new RegistryMigrationError(
+      "incomplete",
+      `Versiones registradas con objetos ausentes o alterados: ${incomplete.join(", ")}. No se reaplican en cascada ` +
+        `sin --repair: revisa antes la causa (privilegios, cambios manuales) y repite con --repair.`,
+      issues,
+    );
+  }
 
   for (const f of pending) {
     const idx = files.indexOf(f);
