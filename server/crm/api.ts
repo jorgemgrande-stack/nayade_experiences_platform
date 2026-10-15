@@ -8,7 +8,8 @@
 import express, { type NextFunction, type Request, type Response, type Router } from "express";
 import { z } from "zod";
 import { getAuth, requireScope } from "../controlPlane/auth";
-import { COMPANY_STATUSES, CrmError, LEAD_PRIORITIES, LEAD_STATUSES, STAGES, type EntityType } from "./types";
+import { COMPANY_STATUSES, CrmError, LEAD_PRIORITIES, LEAD_REQUEST_STATUSES, LEAD_REQUEST_TYPES, LEAD_STATUSES, STAGES, type EntityType, type LeadRequestStatus, type LeadRequestType } from "./types";
+import type { WebRequestService } from "./webRequests";
 import type { CrmService } from "./service";
 import type { CrmStore, Tables } from "./store";
 import type { BillingStore } from "../_core/billing/ports";
@@ -120,7 +121,14 @@ const contractTerms = {
 export function createCrmRouter(
   crm: CrmService,
   store: CrmStore,
-  opts: { billing?: Pick<BillingStore, "listSubscriptions">; onboarding?: CrmOnboarding } = {},
+  opts: {
+    billing?: Pick<BillingStore, "listSubscriptions">;
+    onboarding?: CrmOnboarding;
+    /** Solicitudes recibidas desde la web pública (cuelgan de los leads). */
+    requests?: WebRequestService;
+    /** Personas que pueden ser responsables comerciales (operadores activos con permisos de CRM). */
+    assignees?: () => Promise<Array<{ value: string; label: string }>>;
+  } = {},
 ): Router {
   const r = express.Router();
   const who = (req: Request) => `${getAuth(req)!.actor.type}:${getAuth(req)!.actor.id}`;
@@ -130,7 +138,35 @@ export function createCrmRouter(
     // Datos de suscripciones solo con facturación configurada y el ámbito billing:read
     const canBilling = getAuth(req)!.scopes.has("billing:read");
     const billing = opts.billing && canBilling ? billingSummary(await opts.billing.listSubscriptions(), Date.now()) : null;
-    res.json({ ...base, billing, billingUnavailable: billing ? null : !opts.billing ? "not_configured" : "forbidden" });
+    const webRequests = opts.requests ? await opts.requests.summary() : null;
+    res.json({ ...base, billing, billingUnavailable: billing ? null : !opts.billing ? "not_configured" : "forbidden", webRequests });
+  }));
+
+  // ── Responsables comerciales disponibles ──
+  r.get("/assignees", requireScope("crm:read"), wrap(async (_req, res) => {
+    res.json({ assignees: opts.assignees ? await opts.assignees() : [] });
+  }));
+
+  // ── Solicitudes de la web (bandeja = leads con solicitudes; no es un circuito aparte) ──
+  r.get("/requests", requireScope("crm:read"), wrap(async (req, res) => {
+    const f = z
+      .object({
+        q: z.string().max(100).optional(),
+        type: z.enum(LEAD_REQUEST_TYPES as [string, ...string[]]).optional(),
+        status: z.enum(LEAD_REQUEST_STATUSES as [string, ...string[]]).optional(),
+        owner: optStr(100),
+        limit: z.coerce.number().int().min(1).max(100).default(25),
+        offset: z.coerce.number().int().min(0).max(100_000).default(0),
+      })
+      .parse(req.query);
+    if (!opts.requests) return void res.json({ available: false, requests: [], total: 0, limit: f.limit, offset: f.offset });
+    const p = await opts.requests.list({ ...f, type: f.type as LeadRequestType | undefined, status: f.status as LeadRequestStatus | undefined });
+    res.json({ available: true, requests: p.rows, total: p.total, limit: f.limit, offset: f.offset });
+  }));
+  r.post("/requests/:id/status", requireScope("crm:write"), wrap(async (req, res) => {
+    if (!opts.requests) throw new CrmError("invalid_state", "Las solicitudes web no están configuradas");
+    const b = z.object({ status: z.enum(LEAD_REQUEST_STATUSES as [string, ...string[]]) }).strict().parse(req.body);
+    res.json({ request: await opts.requests.setStatus(id.parse(req.params.id), b.status as LeadRequestStatus, who(req)) });
   }));
 
   r.get("/duplicates", requireScope("crm:read"), wrap(async (req, res) => {
@@ -184,7 +220,7 @@ export function createCrmRouter(
     const lid = id.parse(req.params.id);
     const lead = await store.get("leads", lid);
     if (!lead) throw new CrmError("not_found", "Lead no encontrado");
-    res.json({ lead, timeline: await crm.timeline("lead", lid) });
+    res.json({ lead, timeline: await crm.timeline("lead", lid), requests: opts.requests ? await opts.requests.forLead(lid) : [] });
   }));
   r.post("/leads", requireScope("crm:write"), wrap(async (req, res) => {
     const b = z.object(leadBody).strict().parse(req.body);

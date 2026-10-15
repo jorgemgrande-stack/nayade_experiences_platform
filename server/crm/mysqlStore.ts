@@ -3,11 +3,13 @@
  * marcas de tiempo se guardan como BIGINT (ms) y `modules` como JSON.
  */
 import type mysql from "mysql2/promise";
-import type { CrmStore, Tables } from "./store";
+import { DuplicateKeyError, type CrmStore, type Tables } from "./store";
 
-type Col = { prop: string; col: string; json?: boolean; bool?: boolean };
+type Col = { prop: string; col: string; json?: boolean; bool?: boolean; nullableJson?: boolean };
 const t = (prop: string, col?: string, json = false): Col => ({ prop, col: col ?? prop.replace(/[A-Z]/g, (c) => "_" + c.toLowerCase()), json });
 const b = (prop: string): Col => ({ ...t(prop), bool: true });
+/** JSON que puede ser NULL (objeto opcional), a diferencia de las listas JSON. */
+const jn = (prop: string): Col => ({ ...t(prop), json: true, nullableJson: true });
 
 const DEFS: Record<keyof Tables, { table: string; cols: Col[] }> = {
   companies: {
@@ -48,17 +50,25 @@ const DEFS: Record<keyof Tables, { table: string; cols: Col[] }> = {
     table: "crm_activities",
     cols: [t("entityType"), t("entityId"), t("kind"), t("summary"), t("dueAt"), t("doneAt"), t("author"), t("createdAt")],
   },
+  leadRequests: {
+    table: "crm_lead_requests",
+    cols: [
+      t("leadId"), t("reference"), t("type"), t("status"), t("sector"), t("message"), jn("configuration"), t("interest"), t("preferredTime"),
+      t("sourcePage"), jn("utm"), t("privacyAcceptedAt"), t("privacyVersion"), b("marketingConsent"), t("idempotencyKey"), t("payloadHash"),
+      t("ipHash"), t("attendedAt"), t("attendedBy"), t("createdAt"),
+    ],
+  },
 };
 
 /** Claves ajenas numéricas (taxId, tenantId o planId son texto). */
-const NUMERIC_IDS = new Set(["companyId", "contactId", "opportunityId", "entityId", "convertedCompanyId", "convertedOpportunityId", "contractId", "previousContractId"]);
-const NUMERIC = new Set(["createdAt", "updatedAt", "dueAt", "doneAt", "closedAt", "expectedClose", "startDate", "endDate", "signedAt", "amountCents", "nextActionAt", "renewalDate", "noticeDays", "version"]);
+const NUMERIC_IDS = new Set(["leadId", "companyId", "contactId", "opportunityId", "entityId", "convertedCompanyId", "convertedOpportunityId", "contractId", "previousContractId"]);
+const NUMERIC = new Set(["createdAt", "updatedAt", "dueAt", "doneAt", "closedAt", "expectedClose", "startDate", "endDate", "signedAt", "amountCents", "nextActionAt", "renewalDate", "noticeDays", "version", "privacyAcceptedAt", "attendedAt"]);
 
 function fromRow(table: keyof Tables, r: Record<string, unknown>): any {
   const out: Record<string, unknown> = { id: Number(r.id) };
   for (const c of DEFS[table].cols) {
     let v = r[c.col];
-    if (c.json) v = typeof v === "string" ? JSON.parse(v) : (v ?? []);
+    if (c.json) v = typeof v === "string" ? JSON.parse(v) : (v ?? (c.nullableJson ? null : []));
     else if (c.bool) v = v === null || v === undefined ? false : Number(v) === 1;
     else if (v !== null && v !== undefined && NUMERIC.has(c.prop)) v = Number(v);
     else if (v !== null && v !== undefined && NUMERIC_IDS.has(c.prop)) v = Number(v);
@@ -67,7 +77,8 @@ function fromRow(table: keyof Tables, r: Record<string, unknown>): any {
   return out;
 }
 
-const toValue = (c: Col, v: unknown) => (c.json ? JSON.stringify(v ?? []) : c.bool ? (v ? 1 : 0) : (v ?? null));
+const toValue = (c: Col, v: unknown) =>
+  c.json ? (c.nullableJson && (v === null || v === undefined) ? null : JSON.stringify(v ?? [])) : c.bool ? (v ? 1 : 0) : (v ?? null);
 
 export class MysqlCrmStore implements CrmStore {
   constructor(private pool: Pick<mysql.Pool, "query">) {}
@@ -75,10 +86,16 @@ export class MysqlCrmStore implements CrmStore {
   async insert<T extends keyof Tables>(table: T, row: Omit<Tables[T], "id">): Promise<Tables[T]> {
     const d = DEFS[table];
     const cols = d.cols.filter((c) => c.prop in (row as object));
-    const [res] = await this.pool.query<mysql.ResultSetHeader>(
-      `INSERT INTO ${d.table} (${cols.map((c) => c.col).join(",")}) VALUES (${cols.map(() => "?").join(",")})`,
-      cols.map((c) => toValue(c, (row as Record<string, unknown>)[c.prop])),
-    );
+    let res: mysql.ResultSetHeader;
+    try {
+      [res] = await this.pool.query<mysql.ResultSetHeader>(
+        `INSERT INTO ${d.table} (${cols.map((c) => c.col).join(",")}) VALUES (${cols.map(() => "?").join(",")})`,
+        cols.map((c) => toValue(c, (row as Record<string, unknown>)[c.prop])),
+      );
+    } catch (e) {
+      if ((e as { code?: string }).code === "ER_DUP_ENTRY") throw new DuplicateKeyError();
+      throw e;
+    }
     return (await this.get(table, res.insertId))!;
   }
 
