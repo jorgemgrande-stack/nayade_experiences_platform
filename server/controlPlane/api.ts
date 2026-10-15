@@ -9,6 +9,9 @@
  *    persistentes): solo hechos operativos del registro.
  */
 import express, { type Express, type NextFunction, type Request, type Response } from "express";
+import { BUILTIN_MODULES } from "../_core/modules/builtin";
+import { CORE_VERSION } from "../_core/modules/runtime";
+import { assertCanActivate, assertCanDeactivate, buildCatalog, tenantModules, type ModulePriceRef, type PlanRef } from "../_core/modules/catalog";
 import rateLimit from "express-rate-limit";
 import { DEFAULT_QUOTAS, type DefaultQuota } from "../_core/erm/quota";
 import { UNMEASURED, WARNING_RATIO, tenantResources, type ResourceState } from "../_core/erm/overview";
@@ -96,7 +99,10 @@ function httpStatus(e: unknown): { status: number; code: string } {
   if (e instanceof BillingError) {
     return { status: e.code === "not_found" ? 404 : e.code === "invalid_signature" ? 400 : 409, code: e.code };
   }
-  if (e instanceof ModuleError) return { status: e.code === "not_found" ? 404 : 400, code: e.code };
+  if (e instanceof ModuleError) {
+    const conflict = e.code === "missing_dependency" || e.code === "dependency_active" || e.code === "dependency_inactive";
+    return { status: e.code === "not_found" ? 404 : conflict ? 409 : 400, code: e.code };
+  }
   if (e instanceof z.ZodError) return { status: 400, code: "invalid_request" };
   return { status: 500, code: "internal_error" };
 }
@@ -300,6 +306,9 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         .object({ status: z.enum(["active", "suspended", "expired"]).optional(), validUntil: z.string().datetime().nullable().optional() })
         .parse(req.body ?? {});
       const mod = req.params.module;
+      if (!body.status || body.status === "active") {
+        assertCanActivate(BUILTIN_MODULES, await d.entitlements.listEntitlements(id), mod, Date.now());
+      }
       await d.entitlements.grant(id, mod, actor(req), { validUntil: body.validUntil ? new Date(body.validUntil) : null });
       if (body.status && body.status !== "active") await d.entitlements.setStatus(id, mod, body.status, actor(req));
       res.json({ entitlements: await d.entitlements.listEntitlements(id) });
@@ -311,8 +320,47 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
     requireScope("entitlements:write"),
     wrap(async (req, res) => {
       const id = idSchema.parse(req.params.id);
+      assertCanDeactivate(BUILTIN_MODULES, await d.entitlements.listEntitlements(id), req.params.module, Date.now());
       await d.entitlements.revoke(id, req.params.module, actor(req));
       res.status(204).end();
+    }),
+  );
+
+  // ── Catálogo de módulos (marketplace) ──────────────────────────────────────
+  /** Catálogo comercial si el motor de facturación lo expone (PR #62: getCatalog). */
+  const billingCatalog = () => {
+    const b = d.billing as unknown as { getCatalog?: () => { plans: PlanRef[]; modules: ModulePriceRef[] } } | undefined;
+    return typeof b?.getCatalog === "function" ? b.getCatalog() : null;
+  };
+  router.get(
+    "/modules",
+    requireScope("tenants:read"),
+    wrap(async (_req, res) => {
+      const tenants = (await d.reader.listTenants()).filter((t) => t.status !== "deleted" && t.status !== "archived");
+      const now = Date.now();
+      const counts = new Map<string, number>();
+      for (const t of tenants) {
+        for (const e of await d.entitlements.listEntitlements(t.id)) {
+          if (e.status === "active" && (!e.validUntil || e.validUntil.getTime() > now)) counts.set(e.moduleId, (counts.get(e.moduleId) ?? 0) + 1);
+        }
+      }
+      const cat = billingCatalog();
+      res.json({
+        ...buildCatalog({ manifests: BUILTIN_MODULES, coreVersion: CORE_VERSION, plans: cat?.plans, modulePrices: cat?.modules, activeCounts: counts, tenantCount: tenants.length }),
+        commercialCatalog: cat !== null,
+      });
+    }),
+  );
+  router.get(
+    "/tenants/:id/modules",
+    requireScope("tenants:read"),
+    wrap(async (req, res) => {
+      const id = idSchema.parse(req.params.id);
+      if (!(await d.reader.getTenant(id))) throw new RegistryError("not_found", "Tenant no encontrado");
+      const cat = billingCatalog();
+      const sub = d.billingStore ? await d.billingStore.getSubscriptionByTenant(id) : null;
+      const planModules = [...(cat?.plans.find((p) => p.id === sub?.planId)?.includedModules ?? []), ...(sub?.modules ?? [])];
+      res.json({ modules: tenantModules(BUILTIN_MODULES, await d.entitlements.listEntitlements(id), Date.now(), planModules) });
     }),
   );
 
