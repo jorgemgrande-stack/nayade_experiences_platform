@@ -41,7 +41,7 @@ export function readOnlyGuard<C extends { query: (...a: any[]) => any }>(conn: C
   });
 }
 
-/** Objetos que crea el DDL del arranque o bajo demanda y que no figuran en schema.ts. */
+/** Objetos que creaba el DDL del arranque o bajo demanda (presencia en la BD real). */
 const EXTRA_TABLES = [
   "document_counters", "document_number_logs", "email_accounts", "commercial_emails",
   "ghl_conversations", "ghl_messages", "ghl_webhook_events", "vapi_calls", "proposals", "proposal_options",
@@ -77,12 +77,12 @@ export async function runPlan(conn: { query: (...a: any[]) => any }, out: (l: st
 
     const tables = new Set((await q("SELECT TABLE_NAME AS n FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE()")).map((r: any) => String(r.n)));
     out(`[Plan] Tablas totales: ${tables.size}`);
-    out(`[Plan] Tablas fuera de schema.ts creadas por DDL de arranque/bajo demanda: ${EXTRA_TABLES.map((t) => `${t}=${tables.has(t) ? "sí" : "NO"}`).join(", ")}`);
+    out(`[Plan] Tablas que creaba el DDL de arranque o bajo demanda: ${EXTRA_TABLES.map((t) => `${t}=${tables.has(t) ? "sí" : "NO"}`).join(", ")}`);
     const cols = await q(
       "SELECT TABLE_NAME AS t, COLUMN_NAME AS c FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME IN ('reservations','commercial_emails','invoices')",
     );
     const has = new Set(cols.map((r: any) => `${r.t}.${r.c}`));
-    out(`[Plan] Columnas fuera de schema.ts: ${EXTRA_COLUMNS.map(([t, c]) => `${t}.${c}=${has.has(`${t}.${c}`) ? "sí" : "NO"}`).join(", ")}`);
+    out(`[Plan] Columnas que creaba el DDL de arranque o bajo demanda: ${EXTRA_COLUMNS.map(([t, c]) => `${t}.${c}=${has.has(`${t}.${c}`) ? "sí" : "NO"}`).join(", ")}`);
     return report;
   } finally {
     await conn.query("ROLLBACK");
