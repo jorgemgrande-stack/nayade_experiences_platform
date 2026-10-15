@@ -68,6 +68,11 @@ Pasos, en orden:
 10. `ensureExpenseEmailIngestionSchema`
 11. `initGhlTables`
 12. `initVapiTables`
+13. `ensureDocumentNumberTables`: antes se ejecutaba al generar el primer número de documento de cada proceso.
+14. `initCommercialEmailTables`: antes, al arrancar el job de email comercial (incluía el `ALTER` de `attachments_meta`).
+15. `ensureInvoiceExemptColumn`: antes, un `ALTER TABLE reservations` en **cada** llamada a `setInvoiceExempt`. Ahora comprueba primero y solo añade la columna si falta.
+
+Además de `schema.ts`, la comprobación del arranque vigila las columnas que el código usa fuera de él: `reservations.invoice_exempt` y `commercial_emails.attachments_meta` (`REQUIRED_EXTRA_COLUMNS` en `schemaCheck.ts`).
 
 ## Procedimiento en producción (requiere autorización)
 
@@ -81,12 +86,8 @@ Pasos, en orden:
 - seguir el procedimiento anterior antes de desplegar; o
 - añadir un `preDeployCommand` en `railway.toml`. Es un cambio de configuración de Railway, en un PR propio y con autorización.
 
-## Fuera de este cambio (riesgo residual documentado)
+## DDL en tiempo de ejecución
 
-Hay DDL que **no** se ejecuta al arrancar, sino bajo demanda en tiempo de ejecución. No se toca aquí:
+No queda DDL de la app de Náyade conocido fuera del mantenimiento explícito. Unas pruebas de regresión (`server/schemaCheck.test.ts`) impiden que vuelva a la numeración de documentos, al job de email comercial o a `setInvoiceExempt`.
 
-- `documentNumbers.ts` (`CREATE TABLE IF NOT EXISTS` al generar números);
-- `commercialEmailService.ts` (al sincronizar, con el flag desactivado por defecto);
-- `routers/crm.ts` → `setInvoiceExempt` (`ALTER TABLE reservations ADD COLUMN invoice_exempt` en cada llamada; en producción la columna ya existe y el error se ignora).
-
-Conviene llevarlos al carril explícito en cambios aparte.
+Siguen existiendo carriles propios que **no** son de la app de Náyade: el aprovisionamiento de tenants, los registros del plano de control y `_core/modules/migrations.ts`, que gestiona las migraciones de módulos.

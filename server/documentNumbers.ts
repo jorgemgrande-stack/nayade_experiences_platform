@@ -25,9 +25,8 @@ function getDb() {
   return legacyDb();
 }
 
-// Crea las tablas si no existen — idempotente, corre una sola vez por proceso.
-// Protege contra entornos donde las migraciones no se han aplicado (ej: Railway
-// con schema parcial).
+// Crea las tablas si no existen — idempotente. Ya NO se ejecuta al generar números: solo desde el
+// mantenimiento explícito (ensureDocumentNumberTables en --schema-maintenance).
 async function ensureTables(db: ReturnType<typeof drizzle>): Promise<void> {
   if (_tablesReady) return;
   await db.execute(sql`
@@ -55,6 +54,11 @@ async function ensureTables(db: ReturnType<typeof drizzle>): Promise<void> {
     )
   `);
   _tablesReady = true;
+}
+
+/** Paso del mantenimiento explícito de esquema (no se llama en tiempo de ejecución). */
+export async function ensureDocumentNumberTables(): Promise<void> {
+  await ensureTables(getDb()!);
 }
 
 // --- Tipos --------------------------------------------------------------------
@@ -103,7 +107,7 @@ export async function generateDocumentNumber(
   const db = getDb();
   const year = new Date().getFullYear();
 
-  await ensureTables(db!);
+  // Sin DDL aquí: las tablas las garantiza el mantenimiento explícito y las vigila el arranque.
 
   // Paso 1: Incrementar el contador de forma atómica usando UPDATE + SELECT
   // Primero intentamos incrementar el registro existente
