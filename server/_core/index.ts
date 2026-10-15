@@ -42,7 +42,7 @@ import { startMatchingJob } from "../services/cardTerminalMatchingService";
 import { startRelinkJob } from "../services/cardTerminalRelinkService";
 import { serveStatic, setupVite } from "./vite";
 import { getFeatureFlag } from "../config";
-import { checkAppSchema, describeSchemaReport } from "./schemaCheck";
+import { checkAppSchemaAt, describeSchemaReport } from "./schemaCheck";
 import { isSchemaMaintenanceCommand, runSchemaMaintenance, schemaCheckMode, type MaintenanceStep } from "./schemaMaintenance";
 
 // --- RATE LIMITERS ------------------------------------------------------------
@@ -1958,15 +1958,9 @@ async function verifySchemaOnStartup(): Promise<void> {
     console.warn("[Schema] Comprobación de esquema desactivada (SCHEMA_CHECK=off)");
     return;
   }
-  let report: Awaited<ReturnType<typeof checkAppSchema>>;
+  let report: Awaited<ReturnType<typeof checkAppSchemaAt>>;
   try {
-    const mysql = await import("mysql2/promise");
-    const conn = await mysql.default.createConnection(process.env.DATABASE_URL!);
-    try {
-      report = await checkAppSchema(conn);
-    } finally {
-      await conn.end().catch(() => undefined);
-    }
+    report = await checkAppSchemaAt(process.env.DATABASE_URL!);
   } catch (err: any) {
     console.error("[Schema] No se pudo comprobar el esquema (código:", err?.code, "):", err?.message ?? err);
     if (mode === "strict") process.exit(1);

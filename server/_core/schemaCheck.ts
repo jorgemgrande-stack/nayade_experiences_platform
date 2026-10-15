@@ -128,6 +128,17 @@ export async function checkAppSchema(conn: Queryable, opts: { migrationsFolder?:
   };
 }
 
+/** Abre una conexión propia, comprueba y la cierra siempre (también si falla). */
+export async function checkAppSchemaAt(url: string, opts: { migrationsFolder?: string } = {}): Promise<SchemaReport> {
+  const mysql = await import("mysql2/promise");
+  const conn = await mysql.default.createConnection(url);
+  try {
+    return await checkAppSchema(conn, opts);
+  } finally {
+    await conn.end().catch(() => undefined);
+  }
+}
+
 const list = (xs: string[], n = 8) => (xs.length > n ? `${xs.slice(0, n).join(", ")} … (+${xs.length - n})` : xs.join(", "));
 
 /** Líneas de log legibles (sin datos sensibles). */
