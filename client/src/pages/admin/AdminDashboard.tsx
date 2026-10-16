@@ -14,6 +14,9 @@ import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { getLoginUrl, isLocalAuth } from "@/const";
 import { cn } from "@/lib/utils";
+import { usePanelSubscription } from "@/hooks/usePanelSubscription";
+import { PanelLoading } from "@/components/admin/PanelStates";
+import EssentialHome from "./home/EssentialHome";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function fmt(n: number) {
@@ -256,7 +259,22 @@ function SectionLabel({ label }: { label: string }) {
 }
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
+// Empresas con licencias por capacidad: inicio por tareas (EssentialHome). Modo single (Náyade) o
+// empresas sin licencias por capacidad: el dashboard de siempre, sin cambios.
 export default function AdminDashboard() {
+  const sub = usePanelSubscription();
+  if (sub.mode === "tasks") return <EssentialHome />;
+  if (sub.mode === "loading") {
+    return (
+      <AdminLayout>
+        <PanelLoading label="Cargando el inicio…" />
+      </AdminLayout>
+    );
+  }
+  return <LegacyDashboard />;
+}
+
+function LegacyDashboard() {
   const { user, isAuthenticated, loading } = useAuth();
 
   const todayStr = useMemo(() => {
