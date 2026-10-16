@@ -9,6 +9,9 @@ import { getAuth, requireScope } from "../controlPlane/auth";
 import { ENTRY_KINDS, FAMILIES, PRICE_KINDS, type EntryKind, type PriceKind } from "./schemas";
 import { WebError, type WebAdminService } from "./service";
 import { issuePreviewToken } from "./publicSite";
+import { quote } from "../catalog/quote";
+import { parseQuoteRequest } from "../catalog/request";
+import { quoteCatalogFromSite } from "../catalog/snapshot";
 
 const wrap =
   (fn: (req: Request, res: Response) => Promise<void>) =>
@@ -108,6 +111,17 @@ export function createWebAdminRouter(svc: WebAdminService, opts: { previewSecret
   }));
 
   // ── Sitio tal y como lo vería la web (publicado o vista previa), para la consola ──
+  // Catálogo de Elephant Source para el CRM (lo publicado, en el formato del cotizador) y cotización
+  // de propuestas: el mismo cálculo que la web, admitiendo lo ya contratado («owned»).
+  r.get("/catalog", requireScope("web:read"), wrap(async (_req, res) => {
+    const site = await svc.site("published");
+    res.json({ catalog: quoteCatalogFromSite(site), capabilities: site.catalog.capabilities });
+  }));
+  r.post("/quote", requireScope("web:read"), wrap(async (req, res) => {
+    const parsed = parseQuoteRequest(req.body, { allowOwned: true });
+    if (!parsed.ok) return void res.status(400).json({ error: "invalid_input", message: parsed.message });
+    res.json(quote(quoteCatalogFromSite(await svc.site("published")), parsed.value));
+  }));
   r.get("/site", requireScope("web:read"), wrap(async (req, res) => {
     const q = z.object({ mode: z.enum(["published", "preview"]).default("published") }).parse(req.query);
     res.json(await svc.site(q.mode));

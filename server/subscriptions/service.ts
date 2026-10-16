@@ -56,6 +56,7 @@ export class SubscriptionService {
     const product = await this.d.catalog.product(spec.productKey);
     if (!product) bad(`El producto «${spec.productKey}» no existe o no está publicado`);
     if (product.technicalStatus === "planned") state(`«${product.name}» está en hoja de ruta: no es contratable`);
+    if (product.commercialStatus === "coming_soon" || product.commercialStatus === "unpublished") state(`«${product.name}» aún no se puede contratar (${product.commercialStatus === "coming_soon" ? "próximamente" : "no publicado"})`);
     if (!allowed.includes(product.family)) bad(`«${product.name}» es de la familia ${product.family}; aquí se esperaba ${allowed.join(" o ")}`);
     const price = await this.d.catalog.price(spec.priceId);
     if (!price || price.productKey !== product.key) bad("El precio no pertenece a ese producto");

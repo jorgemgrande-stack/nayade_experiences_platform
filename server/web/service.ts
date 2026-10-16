@@ -8,13 +8,17 @@
  *  - Un producto solo se publica si sus dependencias están publicadas y sus referencias técnicas
  *    (módulo de licencia o plan de facturación) existen; no se despublica si otro publicado depende de él.
  *  - Precios inmutables: aprobar uno nuevo retira el anterior del mismo tipo (el historial queda).
- *    Un producto en hoja de ruta no puede tener precio aprobado (no es contratable).
+ *    Un producto en hoja de ruta PUEDE tener precio aprobado (la web muestra el portfolio con sus
+ *    tarifas), pero no es contratable: lo decide su estado comercial (`catalog.commercialStatus`).
+ *  - Honestidad: «Disponible» (commercialStatus available) exige estado técnico «available».
  *  - El catálogo público solo contiene lo publicado y nunca datos internos (costes, márgenes, notas).
  *  - Nada de esto toca facturación ni contratos: los contratos guardan su propio importe.
  */
 import crypto from "node:crypto";
 import { ZodError } from "zod";
+import { CAPABILITY_IDS } from "../catalog/capabilities";
 import {
+  BUNDLE_FAMILIES,
   DRAFT_SCHEMAS,
   FAMILIES,
   KEY_RE,
@@ -42,10 +46,12 @@ export interface WebRefs {
   moduleIds: string[];
   /** Planes del catálogo de facturación, si está configurado (null = no se puede comprobar). */
   planIds: () => string[] | null;
+  /** Ids estables de capacidades (por defecto, el registro de server/catalog/capabilities.ts). */
+  capabilityIds?: readonly string[];
 }
 
 /** Singletons de contenido: claves fijas que la web sabe consumir. */
-export const DOCUMENT_KEYS: Record<Exclude<EntryKind, "product" | "promotion">, string[]> = {
+export const DOCUMENT_KEYS: Record<Exclude<EntryKind, "product" | "promotion" | "capability">, string[]> = {
   faq: ["general"],
   menu: ["main", "footer"],
   seo: ["routes"],
@@ -66,7 +72,12 @@ export interface SiteDocument {
   version: string;
   generatedAt: number;
   preview: boolean;
-  catalog: { products: Array<Record<string, unknown> & { key: string; family: string; sortOrder: number; prices: PublicPrice[] }>; promotions: Array<Record<string, unknown>> };
+  catalog: {
+    products: Array<Record<string, unknown> & { key: string; family: string; sortOrder: number; prices: PublicPrice[] }>;
+    promotions: Array<Record<string, unknown>>;
+    /** Capacidades publicadas (ids estables y textos). */
+    capabilities: Array<Record<string, unknown> & { key: string; sortOrder: number }>;
+  };
   content: {
     faq: Record<string, unknown> | null;
     menus: Record<string, Record<string, unknown>>;
@@ -153,6 +164,8 @@ export class WebAdminService {
     if (!KEY_RE.test(input.key)) throw new WebError("invalid_input", "Clave no válida: minúsculas, números y guiones");
     if (input.kind === "product") {
       if (!FAMILIES.includes(input.family as Family)) throw new WebError("invalid_input", "Familia no válida");
+    } else if (input.kind === "capability") {
+      if (!this.capabilityIds().includes(input.key)) throw new WebError("invalid_input", "Capacidad desconocida: la clave debe ser un id del registro de capacidades");
     } else if (input.kind !== "promotion") {
       if (!DOCUMENT_KEYS[input.kind].includes(input.key)) throw new WebError("invalid_input", `Clave no admitida para ${input.kind}: ${DOCUMENT_KEYS[input.kind].join(", ")}`);
     }
@@ -215,6 +228,7 @@ export class WebAdminService {
     if (cur.draftVersion !== expectedVersion) throw new WebError("version_conflict", `El borrador cambió (versión actual ${cur.draftVersion}). Revísalo antes de publicar.`, { current: cur.draftVersion });
     const draft = this.parse(kind, cur.draft);
     if (kind === "product") await this.checkPublishable(cur, draft as ProductDraft);
+    if (kind === "capability" && !this.capabilityIds().includes(key)) throw new WebError("invalid_state", "Capacidad desconocida en el registro");
     if (kind === "promotion") {
       const missing: string[] = [];
       for (const p of (draft as { products: string[] }).products) if ((await this.d.store.getEntry("product", p))?.publication !== "published") missing.push(p);
@@ -238,10 +252,14 @@ export class WebAdminService {
   async unpublish(kind: EntryKind, key: string, author: string): Promise<WebEntry> {
     const cur = await this.must(kind, key);
     if (cur.publication !== "published") throw new WebError("invalid_state", "No está publicada");
-    if (kind === "product") {
-      const dependents = (await this.d.store.listEntries({ kind: "product" })).filter(
-        (e) => e.publication === "published" && e.key !== key && (((e.published as { dependencies?: string[] })?.dependencies ?? []).includes(key) || ((e.published as { compatibleWith?: string[] })?.compatibleWith ?? []).includes(key)),
-      );
+    if (kind === "product" || kind === "capability") {
+      const refsOf = (e: WebEntry) => {
+        const p = (e.published ?? {}) as { dependencies?: string[]; compatibleWith?: string[]; catalog?: { bundleOf?: string[]; inherits?: string | null; capabilities?: string[] } };
+        return kind === "capability"
+          ? p.catalog?.capabilities ?? []
+          : [...(p.dependencies ?? []), ...(p.compatibleWith ?? []), ...(p.catalog?.bundleOf ?? []), ...(p.catalog?.inherits ? [p.catalog.inherits] : [])];
+      };
+      const dependents = (await this.d.store.listEntries({ kind: "product" })).filter((e) => e.publication === "published" && e.key !== key && refsOf(e).includes(key));
       const promos = (await this.d.store.listEntries({ kind: "promotion" })).filter((e) => e.publication === "published" && ((e.published as { products?: string[] })?.products ?? []).includes(key));
       if (dependents.length || promos.length) {
         const list = [...dependents.map((e) => e.key), ...promos.map((e) => `promoción ${e.key}`)];
@@ -295,7 +313,6 @@ export class WebAdminService {
     const p = await this.mustPrice(id);
     if (p.status !== "draft") throw new WebError("invalid_state", "Solo se aprueban precios en borrador");
     const entry = (await this.d.store.listEntries({ kind: "product" })).find((e) => e.id === p.entryId)!;
-    if ((entry.draft as ProductDraft).technicalStatus === "planned") throw new WebError("invalid_state", "Un producto en hoja de ruta no puede tener precio vigente: no es contratable");
     // Un solo precio vigente por tipo, moneda y unidad: el anterior se retira (y queda en el
     // historial) en la misma transacción que la aprobación, con su auditoría.
     let out: WebPrice;
@@ -341,7 +358,7 @@ export class WebAdminService {
       .map((e) => {
         const b = body(e) as Record<string, unknown> & { technicalStatus?: string };
         const own = prices.filter((p) => p.entryId === e.id);
-        const list = b.technicalStatus === "planned" ? [] : [...own.filter((p) => p.status === "approved").map((p) => publicPrice(p)), ...(preview ? own.filter((p) => p.status === "draft").map((p) => publicPrice(p, true)) : [])];
+        const list = [...own.filter((p) => p.status === "approved").map((p) => publicPrice(p)), ...(preview ? own.filter((p) => p.status === "draft").map((p) => publicPrice(p, true)) : [])];
         return { ...b, key: e.key, family: e.family as string, sortOrder: e.sortOrder, prices: list };
       });
     const productKeys = new Set(products.map((p) => p.key));
@@ -360,7 +377,8 @@ export class WebAdminService {
       pages: Object.fromEntries(DOCUMENT_KEYS.page.map((k) => [k, doc("page", k)]).filter(([, v]) => v)) as Record<string, Record<string, unknown>>,
       forms: doc("forms", "settings"),
     };
-    const catalog = { products, promotions };
+    const capabilities = entries.filter((e) => e.kind === "capability" && visible(e)).map((e) => ({ ...(body(e) as Record<string, unknown>), key: e.key, sortOrder: e.sortOrder }));
+    const catalog = { products, promotions, capabilities };
     const version = crypto.createHash("sha256").update(JSON.stringify({ catalog, content, preview })).digest("hex").slice(0, 16);
     return { version, generatedAt: now, preview, catalog, content };
   }
@@ -387,6 +405,20 @@ export class WebAdminService {
     // Un módulo sectorial disponible apunta a un módulo de licencia real. Un plan comercial puede no estar
     // enlazado aún a un plan de facturación (ref null): hoy nada se contrata automáticamente.
     if (d.activation.kind === "module" && !d.activation.ref && d.technicalStatus !== "planned") throw new WebError("invalid_input", "Indica el módulo de licencia");
+    const cat = d.catalog;
+    if (cat.commercialStatus === "available" && d.technicalStatus !== "available") throw new WebError("invalid_input", "«Disponible» exige que el producto esté técnicamente disponible: usa «Solicitar activación» o «Próximamente»");
+    if (BUNDLE_FAMILIES.includes(family) && cat.bundleOf.length < 2) throw new WebError("invalid_input", "Un paquete incluye al menos dos productos");
+    if (!BUNDLE_FAMILIES.includes(family) && cat.bundleOf.length) throw new WebError("invalid_input", "Solo los paquetes tienen componentes");
+    if (cat.inherits && family !== "core_plan") throw new WebError("invalid_input", "Solo un plan de Elephant Core hereda de otro plan");
+    if (family === "addon" && !cat.addonFor) throw new WebError("invalid_input", "Un complemento de cantidad indica la métrica que amplía");
+    if (family !== "addon" && cat.addonFor) throw new WebError("invalid_input", "Solo los complementos de cantidad amplían una métrica");
+    const unknown = cat.capabilities.filter((x) => !this.capabilityIds().includes(x));
+    if (unknown.length) throw new WebError("invalid_input", `Capacidades desconocidas: ${unknown.join(", ")}`);
+    if (new Set(cat.capabilities).size !== cat.capabilities.length) throw new WebError("invalid_input", "Capacidades repetidas");
+  }
+
+  private capabilityIds(): readonly string[] {
+    return this.d.refs.capabilityIds ?? CAPABILITY_IDS;
   }
 
   /** Antes de publicar: referencias técnicas y dependencias publicadas. */
@@ -406,6 +438,19 @@ export class WebAdminService {
       else if (p.publication !== "published") problems.push(`el plan compatible «${c}» no está publicado`);
     }
     if (hasCycle(cur.key, d.dependencies, products)) problems.push("las dependencias forman un ciclo");
+    for (const b of d.catalog.bundleOf) {
+      if (b === cur.key) problems.push("un paquete no se incluye a sí mismo");
+      else if (products.find((p) => p.key === b)?.publication !== "published") problems.push(`el componente «${b}» no está publicado`);
+    }
+    if (d.catalog.inherits) {
+      const base = products.find((p) => p.key === d.catalog.inherits);
+      if (!base || base.family !== "core_plan") problems.push(`«${d.catalog.inherits}» no es un plan de Elephant Core`);
+      else if (base.publication !== "published") problems.push(`el plan base «${d.catalog.inherits}» no está publicado`);
+    }
+    if (d.catalog.capabilities.length) {
+      const caps = await this.d.store.listEntries({ kind: "capability" });
+      for (const x of d.catalog.capabilities) if (caps.find((e) => e.key === x)?.publication !== "published") problems.push(`la capacidad «${x}» no está publicada`);
+    }
     if (problems.length) throw new WebError("invalid_state", `No se puede publicar: ${problems.join("; ")}`, { problems });
   }
 

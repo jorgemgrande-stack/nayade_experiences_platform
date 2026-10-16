@@ -13,6 +13,9 @@
 import crypto from "node:crypto";
 import express, { type Router } from "express";
 import rateLimit, { ipKeyGenerator } from "express-rate-limit";
+import { quote } from "../catalog/quote";
+import { parseQuoteRequest } from "../catalog/request";
+import { quoteCatalogFromSite } from "../catalog/snapshot";
 import type { WebAdminService } from "./service";
 
 const PREVIEW_TTL_MS = 30 * 60 * 1000;
@@ -74,6 +77,19 @@ export function createPublicSiteRouter(cfg: { service: WebAdminService; secret: 
     if (!checkPreviewToken(cfg.secret, token, now())) return void res.status(401).json({ error: "invalid_token" });
     try {
       res.json(await cfg.service.site("preview"));
+    } catch {
+      unavailable(res);
+    }
+  });
+
+  // Cotización del configurador: SIEMPRE sobre el catálogo publicado (precios aprobados). Un solo
+  // cálculo para la web, el CRM y las pruebas (server/catalog/quote.ts). No guarda nada.
+  r.post("/quote", async (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    const parsed = parseQuoteRequest(req.body, { allowOwned: false });
+    if (!parsed.ok) return void res.status(400).json({ error: "invalid_input", message: parsed.message });
+    try {
+      res.json(quote(quoteCatalogFromSite(await cfg.service.site("published")), parsed.value));
     } catch {
       unavailable(res);
     }

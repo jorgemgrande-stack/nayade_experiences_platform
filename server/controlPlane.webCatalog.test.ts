@@ -18,6 +18,8 @@ import { ROLE_SCOPES } from "./controlPlane/operatorRoles";
 import { MemoryTenantRegistryStore } from "./_core/tenantRegistry/memoryStore";
 import { TenantRegistryService } from "./_core/tenantRegistry/service";
 import { keyringFromEnv } from "./_core/tenantRegistry/crypto";
+import { BUILTIN_MODULES } from "./_core/modules/builtin";
+import { seedElephantSource } from "./catalog/seed";
 
 const T0 = Date.UTC(2026, 9, 16, 9);
 const A = "operator:ana";
@@ -144,7 +146,13 @@ describe("WebAdminService", () => {
 
     await svc.create({ kind: "product", key: "ski", family: "industry_module", draft: hotel({ technicalStatus: "planned", activation: { kind: "none", ref: null } }) }, A);
     const ps = await svc.addPrice("ski", { kind: "monthly", amountCents: 100, taxRateBp: 2100 }, A);
-    await expect(svc.approvePrice(ps.id, A)).rejects.toThrow(/hoja de ruta/);
+    // Catálogo de Elephant Source: un producto en hoja de ruta PUEDE tener tarifa aprobada (la web
+    // muestra el portfolio con precios); no es contratable por su estado comercial, no por el precio.
+    expect((await svc.approvePrice(ps.id, A)).status).toBe("approved");
+    // …y «Disponible» con estado técnico «planned» se rechaza
+    await expect(
+      svc.save("product", "ski", { draft: hotel({ technicalStatus: "planned", activation: { kind: "none", ref: null }, catalog: { commercialStatus: "available" } }), expectedVersion: 1 }, A),
+    ).rejects.toThrow(/Disponible/);
   });
 
   it("cambiar precios no altera contratos existentes (guardan su importe)", async () => {
@@ -405,5 +413,64 @@ describe("panel de la web", () => {
     await svc.publish("product", "business", 2, A);
     await svc.unpublish("product", "business", A);
     expect((await svc.overview()).pendingChanges.map((p) => p.key)).toEqual(["otro"]);
+  });
+});
+
+describe("cotizador por API (catálogo de Elephant Source)", () => {
+  it("público: cotiza sobre lo publicado, valida la entrada y no admite «owned»; CRM: con permiso y con lo ya contratado", async () => {
+    const app = await start();
+    try {
+      const svc = new WebAdminService({ store: app.webStore, refs: { moduleIds: BUILTIN_MODULES.map((m) => m.id), planIds: () => null } });
+      await seedElephantSource(svc, app.webStore);
+      const pub = await app.call("POST", "/public/site/quote", { body: { plan: "business", interval: "year", items: [{ key: "hotel-net-complete" }], users: 17 } });
+      expect(pub.status).toBe(200);
+      expect(pub.headers["cache-control"]).toBe("no-store");
+      expect(pub.json.totals).toMatchObject({ yearlyCents: 75900, monthlyCents: 11900 + 1000 });
+      expect(pub.json.contractable).toBe("not_available");
+      expect((await app.call("POST", "/public/site/quote", { body: { plan: "essential", interval: "semana" } })).status).toBe(400);
+      expect((await app.call("POST", "/public/site/quote", { body: { plan: "essential", interval: "month", owned: ["connect-voice"] } })).status).toBe(400);
+      // Admin: sin token 401; con web:read, cotiza con lo ya contratado y lista el catálogo
+      expect((await app.call("POST", "/web/quote", { body: { plan: "essential", interval: "month" } })).status).toBe(401);
+      const crm = await app.call("POST", "/web/quote", { token: TOK.read, body: { plan: "essential", interval: "month", items: [{ key: "connect-pack-communications" }], owned: ["connect-voice"] } });
+      expect(crm.json.lines.find((l: { key: string }) => l.key === "connect-pack-communications").replaces).toEqual(["connect-voice"]);
+      const cat = await app.call("GET", "/web/catalog", { token: TOK.read });
+      expect(cat.json.capabilities).toHaveLength(74);
+      expect(cat.json.catalog.products.find((p: { key: string }) => p.key === "essential").commercialStatus).toBe("on_request");
+      // Si la BD cae: 503 explícito, nunca un precio inventado
+      app.webStore.fail = true;
+      expect((await app.call("POST", "/public/site/quote", { body: { plan: "essential", interval: "month" } })).status).toBe(503);
+    } finally {
+      await app.close();
+    }
+  });
+});
+
+describe("contratos con configuración cotizada (Elephant Source)", () => {
+  it("el servidor cotiza y fija plan, periodicidad e importe; ignora importes enviados; rechaza configuraciones inválidas; versiona", async () => {
+    const app = await start();
+    try {
+      const svc = new WebAdminService({ store: app.webStore, refs: { moduleIds: BUILTIN_MODULES.map((m) => m.id), planIds: () => null } });
+      await seedElephantSource(svc, app.webStore);
+      const co = await app.call("POST", "/crm/companies", { token: TOK.crm, body: { name: "Hotel Prueba SL" } });
+      expect(co.status).toBe(201);
+      const companyId = co.json.company.id;
+      const request = { plan: "business", interval: "year", items: [{ key: "restaurant-net-bookings" }, { key: "connect-voice" }], users: 17 };
+      const c = await app.call("POST", "/crm/contracts", { token: TOK.crm, body: { companyId, amountCents: 1, configuration: { request } } });
+      expect(c.status).toBe(201);
+      // anual: 759 € + 12 × (19 + 39 + 2 × 5) €
+      expect(c.json.contract).toMatchObject({ planId: "business", billingInterval: "year", currency: "EUR", amountCents: 75_900 + 12 * 6_800 });
+      expect(c.json.contract.configuration.quote).toMatchObject({ contractable: "request", totals: { yearlyCents: 75_900, monthlyCents: 6_800 } });
+      expect(c.json.contract.configuration.request).toMatchObject(request);
+      const bad = await app.call("POST", "/crm/contracts", { token: TOK.crm, body: { companyId, configuration: { request: { plan: "essential", interval: "month", items: [{ key: "ski-net-courses" }] } } } });
+      expect(bad.status).toBe(400);
+      expect(bad.json.errors.join()).toMatch(/requiere/);
+      const upd = await app.call("PATCH", `/crm/contracts/${c.json.contract.id}`, { token: TOK.crm, body: { configuration: { request: { plan: "essential", interval: "month" } } } });
+      expect(upd.json.contract).toMatchObject({ planId: "essential", billingInterval: "month", amountCents: 2_900, version: 2 });
+      const detail = await app.call("GET", `/crm/contracts/${c.json.contract.id}`, { token: TOK.crm });
+      const snaps = (detail.json.versions ?? []).map((v: { snapshot: { configuration?: { request: { plan: string } } } }) => v.snapshot.configuration?.request.plan);
+      expect(snaps).toEqual(expect.arrayContaining(["business", "essential"]));
+    } finally {
+      await app.close();
+    }
   });
 });

@@ -5,12 +5,27 @@
  */
 import { z } from "zod";
 
-export const ENTRY_KINDS = ["product", "promotion", "faq", "menu", "seo", "page", "forms"] as const;
+export const ENTRY_KINDS = ["product", "promotion", "faq", "menu", "seo", "page", "forms", "capability"] as const;
 export type EntryKind = (typeof ENTRY_KINDS)[number];
 
-/** Familia comercial (categoría de producto). */
-export const FAMILIES = ["core_plan", "extension", "industry_module", "usage", "service"] as const;
+/**
+ * Familia comercial (categoría de producto). Las cinco primeras son las originales; las de Elephant
+ * Source (catálogo oficial v1) añaden los submódulos y paquetes de Elephant Net, las extensiones y
+ * paquetes de Elephant Connect, los extras con capacidad propia y los complementos de cantidad.
+ */
+export const FAMILIES = ["core_plan", "extension", "industry_module", "usage", "service", "net_module", "net_bundle", "connect", "connect_bundle", "extra", "addon"] as const;
 export type Family = (typeof FAMILIES)[number];
+/** Familias que son paquetes: su precio sustituye al de sus componentes (`catalog.bundleOf`). */
+export const BUNDLE_FAMILIES: readonly Family[] = ["net_bundle", "connect_bundle"];
+/**
+ * Estado COMERCIAL (qué puede hacer el visitante), independiente del técnico:
+ *  - unpublished: no se muestra
+ *  - coming_soon: «Próximamente» (se muestra con su precio aprobado, no se contrata)
+ *  - on_request: «Solicitar activación» (lo activa el equipo tras revisarlo)
+ *  - available: «Disponible» (contratable directamente; exige estado técnico «available»)
+ */
+export const COMMERCIAL_STATUS = ["unpublished", "coming_soon", "on_request", "available"] as const;
+export type CommercialStatus = (typeof COMMERCIAL_STATUS)[number];
 /** Mecanismo técnico de activación (independiente de la familia y de la facturación). */
 export const ACTIVATIONS = ["plan", "module", "feature", "usage", "service", "none"] as const;
 /** Modalidad de facturación. */
@@ -26,6 +41,8 @@ const text = (max: number) => z.string().trim().max(max);
 const optText = (max: number) => z.string().trim().max(max).nullable().default(null);
 /** Enlace interno (/ruta) o https. Nada de javascript:, data: ni http en claro. */
 const href = z.string().trim().max(300).regex(/^(\/[^\s]*|https:\/\/[^\s]+|mailto:[^\s@]+@[^\s]+)$/);
+/** Métrica de consumo o cupo (users, sites, storage_gb…), igual que las de ERM. */
+const metric = z.string().regex(/^[a-z][a-z0-9_.]{1,63}$/);
 
 export const productDraft = z
   .object({
@@ -60,11 +77,46 @@ export const productDraft = z
       })
       .strict()
       .prefault({}),
+    /** Modelo comercial de Elephant Source (todo opcional: las entradas anteriores siguen siendo válidas). */
+    catalog: z
+      .object({
+        commercialStatus: z.enum(COMMERCIAL_STATUS).default("on_request"),
+        /** Capacidades (ids estables de server/catalog/capabilities.ts) que concede el producto. */
+        capabilities: z.array(entryKey).max(80).default([]),
+        /** Planes acumulativos: Business hereda de Essential y Enterprise de Business. */
+        inherits: entryKey.nullable().default(null),
+        /** Familia Net o grupo Connect (hotel, ski, travel…, communications…). */
+        group: entryKey.nullable().default(null),
+        /** Ámbito de la licencia: toda la empresa o por sede. */
+        scope: z.enum(["company", "site"]).default("company"),
+        /** Componentes de un paquete: el paquete los sustituye y no se cobran aparte. */
+        bundleOf: z.array(entryKey).max(20).default([]),
+        /** Cupos incluidos (null = configurable por contrato). Los límites nunca borran datos. */
+        quotas: z.array(z.object({ metric, included: z.number().int().min(0).nullable(), unit: text(20).default("") }).strict()).max(20).default([]),
+        /** Complemento de cantidad: cada unidad suma `step` a la métrica, solo para esos planes (vacío = todos). */
+        addonFor: z.object({ metric, step: z.number().int().min(1), plans: z.array(entryKey).max(5).default([]) }).strict().nullable().default(null),
+        /** Unidad de cobro legible («por sede», «por integración»…). */
+        chargeUnit: optText(60),
+      })
+      .strict()
+      .prefault({}),
     /** Solo para el equipo: nunca se publica. */
     internal: z.object({ notes: optText(2000), costCents: z.number().int().min(0).nullable().default(null), marginNote: optText(300) }).strict().prefault({}),
   })
   .strict();
 export type ProductDraft = z.infer<typeof productDraft>;
+
+/** Capacidad comercial: la clave es un id estable del registro de capacidades. */
+export const capabilityDraft = z
+  .object({
+    name: text(120).min(1),
+    description: text(600).default(""),
+    tier: z.enum(["essential", "business", "enterprise", "extra"]),
+    group: entryKey,
+    technicalStatus: z.enum(TECHNICAL_STATUS),
+  })
+  .strict();
+export type CapabilityDraft = z.infer<typeof capabilityDraft>;
 
 export const promotionDraft = z
   .object({
@@ -113,6 +165,7 @@ export const DRAFT_SCHEMAS: Record<EntryKind, z.ZodTypeAny> = {
   seo: seoDraft,
   page: pageDraft,
   forms: formsDraft,
+  capability: capabilityDraft,
 };
 
 /** Proyección pública: quita todo lo interno. */
