@@ -14,7 +14,10 @@ El plano de control es un proceso aparte del Core de Náyade, con sus propias ba
 ## 2. Orden de puesta en marcha
 1. **Crear** las bases de datos vacías y un usuario con permisos solo sobre ellas.
 2. **Migrar el registro** (plan y después ejecución):
-   `REGISTRY_ADMIN_DATABASE_URL=… pnpm tsx scripts/registry-migrate.ts` → revisar → `… --execute`.
+   `REGISTRY_MIGRATE_URL=… pnpm tsx scripts/registry-migrate.ts` → revisar → `… --execute --confirm-database <bd>`
+   (más `--allow-remote` si el servidor no es local). `REGISTRY_MIGRATE_URL` es **propia de la migración** (usuario de
+   migración); el script se niega a usar `REGISTRY_ADMIN_DATABASE_URL`, la del plano de control en marcha. Toma un
+   bloqueo (`GET_LOCK`) y lee el estado después de obtenerlo: dos ejecuciones simultáneas no se pisan.
    Comprueba `registry_meta.schema_version` = última (`0006` con tickets).
    - **Privilegios del usuario de migración**: `CREATE`, `ALTER`, `INDEX`, `REFERENCES`, `INSERT`, `UPDATE`, `DELETE`,
      `SELECT` y `TRIGGER` sobre la BD del registro. La `0000` crea los triggers de auditoría inmutable de
@@ -25,8 +28,9 @@ El plano de control es un proceso aparte del Core de Náyade, con sus propias ba
      versión fallida **no** queda registrada.
    - **Integridad**: cada versión solo se registra tras verificar en `information_schema` sus tablas y triggers (con
      su definición). El plan informa en `incomplete`/`issues` de versiones registradas a las que les faltan objetos
-     (p. ej. un registro migrado con una versión anterior del aplicador); `--execute` las reaplica junto con las
-     posteriores. Los ficheros son idempotentes y no borran datos (solo recrean triggers).
+     (p. ej. un registro migrado con una versión anterior del aplicador). `--execute` **se niega** a reaplicarlas: hay
+     que revisar la causa (privilegios, cambios manuales) y repetir con `--execute --repair`, que las reaplica junto con
+     las posteriores. Los ficheros son idempotentes y no borran datos (solo recrean triggers).
    - **Recuperación**: corregir los privilegios y repetir el plan y `--execute`. Si la verificación final no pasa, el
      comando falla (`[incomplete]`) con la lista de objetos ausentes: no poner en marcha el plano de control.
 3. **Secretos** (generar con `openssl rand -base64 32`; no reutilizar los de Náyade):
@@ -40,7 +44,8 @@ El plano de control es un proceso aparte del Core de Náyade, con sus propias ba
 | Variable | Obligatoria | Uso |
 |---|---|---|
 | `CP_TOKENS` | sí | tokens de servicio con ámbitos (si falta, el proceso **no arranca**) |
-| `REGISTRY_ADMIN_DATABASE_URL` | sí | BD del registro (lectura/escritura) |
+| `REGISTRY_ADMIN_DATABASE_URL` | sí | BD del registro (lectura/escritura) del proceso en marcha |
+| `REGISTRY_MIGRATE_URL` | solo al migrar | BD del registro para `scripts/registry-migrate.ts` (usuario de migración); no se deja en el entorno del proceso |
 | `REGISTRY_KEYS`, `REGISTRY_ACTIVE_KEY_ID` | sí | cifrado de DSN de tenants |
 | `CP_ALLOWED_ORIGINS` | CRM web | orígenes CORS exactos |
 | `CP_PLATFORM_TARGET`, `CP_PLATFORM_DOMAIN` | dominios/alta | CNAME de plataforma y dominio de subdominios |
