@@ -192,6 +192,8 @@ import { notificationsRouter } from "./routers/notifications";
 import { emailIngestionRouter } from "./routers/emailIngestion";
 import { configRouter } from "./routers/configRouter";
 import { onboardingRouter } from "./routers/onboardingRouter";
+import { setupWizardRouter } from "./routers/setupWizard";
+import { assertSeatAvailable } from "./setupWizardDb";
 import { dailyControlRouter } from "./routers/dailyControl";
 import { proposalsRouter } from "./routers/proposals";
 import { commercialFollowupRouter } from "./routers/commercialFollowup";
@@ -235,6 +237,7 @@ export const appRouter = router({
   emailIngestion: emailIngestionRouter,
   config: configRouter,
   onboarding: onboardingRouter,
+  setupWizard: setupWizardRouter,
   cancellations: cancellationsRouter,
   proposals: proposalsRouter,
   emailTemplates: emailTemplatesRouter,
@@ -1395,6 +1398,8 @@ export const appRouter = router({
       origin: z.string().optional(), // ignorado: el enlace usa una URL de confianza
       rbacRoleKeys: z.array(z.string().min(1).max(64)).optional(),
     })).mutation(async ({ input }) => {
+      // Límite de usuarios del plan contratado (multiempresa con licencias), comprobado aquí
+      await assertSeatAvailable();
       const { nanoid } = await import("nanoid");
       const token = nanoid(48);
       const expiry = new Date(Date.now() + 72 * 60 * 60 * 1000); // 72h
@@ -1443,6 +1448,9 @@ export const appRouter = router({
     toggleUserActive: adminProcedure.input(z.object({
       userId: z.number(),
     })).mutation(async ({ input }) => {
+      // Reactivar un usuario ocupa una plaza del plan
+      const target = (await getAllUsers()).find((u) => u.id === input.userId);
+      if (target && !target.isActive) await assertSeatAvailable();
       return toggleUserActive(input.userId);
     }),
     resendInvite: adminProcedure.input(z.object({

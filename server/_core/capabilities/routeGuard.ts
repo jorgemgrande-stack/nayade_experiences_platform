@@ -30,6 +30,9 @@ export const TRPC_ROUTER_CAPABILITIES: Record<string, string> = {
   tpv: "bill-cash",
   cashRegister: "bill-cash",
   emailTemplates: "comms-email",
+  // Usuarios y asistente inicial: en solo lectura (prueba vencida) no se invita ni se reconfigura
+  admin: "admin-users",
+  setupWizard: "admin-panel",
   // Elephant Connect y extras
   hr: "people-hr",
   gestoria: "tax-filings",

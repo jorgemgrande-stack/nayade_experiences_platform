@@ -53,6 +53,18 @@ export class CapabilityAccess {
       throw e;
     }
   }
+  /**
+   * Licencias del tenant en curso (con la misma caché), para mostrar el plan y aplicar sus límites.
+   * `null` fuera de multiempresa. Lanza si no puede leerse (quien llama decide si falla cerrado).
+   */
+  async grants(tenantId?: string) {
+    if (getTenantMode() !== "multi") return null;
+    return this.load(tenantId ?? getTenantId());
+  }
+  /** Reloj de las decisiones (las pruebas lo fijan). */
+  currentTime(): number {
+    return this.now();
+  }
   /** Decisión para el tenant actual. Lanza si no puede verificarse (quien llama falla cerrado). */
   async check(capabilityId: string, o: { write: boolean; siteId?: string | null; tenantId?: string }): Promise<Decision> {
     if (!this.enforcing()) return { allowed: true, status: "active" };
