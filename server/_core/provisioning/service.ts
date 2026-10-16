@@ -58,6 +58,9 @@ export function validateRequest(r: ProvisionRequest): void {
   if (r.trialDays !== undefined && !(r.trialDays >= 1 && r.trialDays <= 90)) {
     throw new ProvisioningError("invalid_request", "Días de prueba fuera de rango");
   }
+  if (r.serverAlias !== undefined && !/^[a-z0-9][a-z0-9_.-]{0,63}$/.test(r.serverAlias)) {
+    throw new ProvisioningError("invalid_request", "Servidor de base de datos no válido");
+  }
 }
 
 export class ProvisioningService {
@@ -242,7 +245,7 @@ export class ProvisioningService {
       }
       case "database": {
         // Idempotente: reutiliza la BD y rota su credencial; re-registra el DSN cifrado
-        const { dsn, serverAlias } = await this.d.databases.ensureDatabase(id);
+        const { dsn, serverAlias } = await this.d.databases.ensureDatabase(id, r.serverAlias ? { serverAlias: r.serverAlias } : undefined);
         const pending = (await this.d.reader.listDatabases(id)).filter((x) => x.state === "pending");
         if (!pending.length && !(await this.d.reader.getActiveDatabase(id))) {
           await this.d.registry.registerDatabase(id, dsn, actor, { serverAlias });

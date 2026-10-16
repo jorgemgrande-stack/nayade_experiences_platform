@@ -11,6 +11,8 @@
  *   CP_PLATFORM_TARGET          host CNAME de la plataforma (verificación de dominios)
  *   ERM_DATABASE_URL            (opcional) métricas de uso
  *   PROVISIONING_DB_ADMIN_URL   (opcional) servidor MySQL para crear BD de tenants
+ *   PROVISIONING_DB_SERVERS     (opcional) varios servidores MySQL (ver server/_core/provisioning/servers.ts)
+ *   BACKUP_MAX_AGE_HOURS        (opcional) antigüedad máxima de la última copia antes de alertar (36)
  *   BILLING_DATABASE_URL        (opcional) BD comercial
  *
  * Sin CP_TOKENS válidos el servicio NO arranca (nunca queda abierto).
@@ -25,12 +27,9 @@ import { keyringFromEnv } from "../_core/tenantRegistry/crypto";
 import { MysqlTenantRegistryStore } from "../_core/tenantRegistry/mysqlStore";
 import { TenantRegistryService } from "../_core/tenantRegistry/service";
 import { ProvisioningService } from "../_core/provisioning/service";
-import {
-  MysqlDatabaseProvisioner,
-  MysqlProvisioningStore,
-  MysqlSchemaApplier,
-  MysqlTenantSeeder,
-} from "../_core/provisioning/mysqlAdapters";
+import { MysqlProvisioningStore, MysqlSchemaApplier, MysqlTenantSeeder } from "../_core/provisioning/mysqlAdapters";
+import { DatabaseServers, MultiServerDatabaseProvisioner, parseDatabaseServers, registryServerUsage } from "../_core/provisioning/servers";
+import { MysqlBackupInventory } from "../_core/ops/backupInventory";
 import { SupportAdmin } from "../_core/support/grants";
 import { MysqlWebStore } from "../web/store";
 import { MysqlSubscriptionStore } from "../subscriptions/store";
@@ -73,17 +72,15 @@ async function main() {
   const quotas = new QuotaAdmin(pool);
 
   let provisioning: ProvisioningService | undefined;
-  if (process.env.PROVISIONING_DB_ADMIN_URL) {
-    const adminUrl = new URL(process.env.PROVISIONING_DB_ADMIN_URL);
-    const adminPool = mysql.createPool({ uri: process.env.PROVISIONING_DB_ADMIN_URL, connectionLimit: 2 });
+  // Uno o varios servidores MySQL (PROVISIONING_DB_SERVERS, o PROVISIONING_DB_ADMIN_URL como único servidor)
+  const dbServers = parseDatabaseServers(process.env);
+  if (dbServers) {
+    const servers = new DatabaseServers(dbServers);
+    console.log(JSON.stringify({ ctx: "Provisioning", servers: servers.aliases(), placement: dbServers.placement }));
     provisioning = new ProvisioningService({
       registry,
       reader: store,
-      databases: new MysqlDatabaseProvisioner(adminPool, {
-        host: process.env.PROVISIONING_DB_HOST ?? adminUrl.hostname,
-        port: Number(process.env.PROVISIONING_DB_PORT ?? (adminUrl.port || 3306)),
-        alias: process.env.PROVISIONING_DB_ALIAS,
-      }),
+      databases: new MultiServerDatabaseProvisioner(servers, { usage: () => registryServerUsage(pool) }),
       schema: new MysqlSchemaApplier({
         baselinePath: path.resolve(process.cwd(), "db/baseline/0000_baseline.sql"),
         migrationsDir: path.resolve(process.cwd(), "db/migrations"),
@@ -131,7 +128,22 @@ async function main() {
   );
   // Alertas por repetición de fallos (altas, correo, contratación): incidencias deduplicadas `rate:*`
   configureFailureAlerts(new FailureAlerts({ incidents }));
-  const evaluate = () => runAlerts({ reader: store, incidents, usage, quotas, entitlements });
+  // Inventario de copias (registro 0010): alimenta la alerta backup.stale y /cp/v1/backups
+  const backupsReady = await pool.query("SELECT 1 FROM backup_inventory LIMIT 0").then(() => true, () => false);
+  const backupInventory = backupsReady ? new MysqlBackupInventory(pool) : undefined;
+  const maxAgeHours = Number(process.env.BACKUP_MAX_AGE_HOURS ?? 36);
+  const backupMaxAgeMs = (Number.isFinite(maxAgeHours) && maxAgeHours >= 1 ? maxAgeHours : 36) * 3_600_000;
+  console.log(JSON.stringify({ ctx: "Backups", inventory: backupsReady, maxAgeHours: backupMaxAgeMs / 3_600_000, ...(backupsReady ? {} : { reason: "registry_migration_0010_missing" }) }));
+  const evaluate = () =>
+    runAlerts({
+      reader: store,
+      incidents,
+      usage,
+      quotas,
+      entitlements,
+      lastBackupAt: backupInventory ? () => backupInventory.lastSuccess("tenant") : undefined,
+      backupMaxAgeMs,
+    });
   if (process.env.CP_ALERTS_EVERY_SECONDS) {
     const every = Math.max(30, Number(process.env.CP_ALERTS_EVERY_SECONDS)) * 1000;
     // Un fallo de la evaluación no puede pasar desapercibido: la monitorización quedaría muerta
@@ -232,6 +244,7 @@ async function main() {
     billing,
     billingStore,
     ops: { incidents, runAlerts: evaluate },
+    backups: backupInventory ? { inventory: backupInventory, maxAgeMs: backupMaxAgeMs } : undefined,
     health: { registryPing: async () => void (await pool.query("SELECT 1")) },
     sso,
     crm,
