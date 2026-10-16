@@ -229,7 +229,7 @@ jobs:
           server/rbac server/health
           server/crm server/subscriptions server/trials server/nayadeBundle
           server/legacyCredentials server/schemaCheck server/schemaPlanReadonly
-          server/startupConnections
+          server/startupConnections server/catalog server/capabilities server/organization
 
       # Las pruebas con MySQL comparten una base de datos: se ejecutan una a una
       - name: Suites de integración con MySQL real (en serie)

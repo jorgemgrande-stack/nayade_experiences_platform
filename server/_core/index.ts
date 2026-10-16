@@ -15,6 +15,8 @@ import { localStorageTenantGuard } from "./tenantStorage";
 import { registerBuiltinModules } from "./modules/builtin";
 import { getModuleAccess, getModuleRegistry } from "./modules/runtime";
 import { moduleRouteGuard } from "./modules/routeGuard";
+import { capabilityRouteGuard } from "./capabilities/routeGuard";
+import { getCapabilityAccess } from "./capabilities/access";
 import { loadModules, modulesFromEnv } from "./modules/loader";
 import { registerOAuthRoutes } from "./oauth";
 import { appRouter } from "../routers";
@@ -211,6 +213,8 @@ async function startServer() {
   const moduleReport = await loadModules(modulesFromEnv(), { app, registry: getModuleRegistry(), access: getModuleAccess() });
   for (const f of moduleReport.failed) console.error(JSON.stringify({ ctx: "Modules", event: "load_failed", spec: f.spec, error: f.error }));
   app.use("/api/trpc", moduleRouteGuard(getModuleAccess));
+  // Licencias por capacidad (catálogo de Elephant Source): solo en multi y con CAPABILITY_ENFORCEMENT=on
+  app.use("/api/trpc", capabilityRouteGuard(getCapabilityAccess));
   app.use("/api/trpc", createAuthGuardMiddleware(USE_LOCAL_AUTH));
   // Servir archivos del storage local (fallback cuando S3/Forge no está configurado)
   const localStorageDir = process.env.LOCAL_STORAGE_PATH ?? "/tmp/local-storage";

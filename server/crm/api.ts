@@ -367,12 +367,22 @@ export function createCrmRouter(
    * cotiza con el catálogo publicado y de ahí salen plan, periodicidad, moneda e importe (mensual o,
    * si es anual, el coste anualizado). Nunca se aceptan importes calculados fuera.
    */
-  const withConfiguration = async (b: Record<string, unknown>, res: Response): Promise<boolean> => {
-    if (!("configuration" in b) || b.configuration === undefined) return true;
+  const withConfiguration = async (b: Record<string, unknown>, res: Response, current?: { configuration?: ContractConfiguration | null }): Promise<boolean> => {
+    if (!("configuration" in b) || b.configuration === undefined) {
+      // Un contrato configurado no se desalinea a mano: plan, importe, periodicidad y moneda salen de la cotización
+      const touched = ["planId", "amountCents", "billingInterval", "currency"].filter((k) => b[k] !== undefined);
+      if (current?.configuration && touched.length) return void res.status(409).json({ error: "invalid_state", message: `El contrato tiene configuración cotizada: cambia la configuración (no ${touched.join(", ")}) o quítala con configuration: null` }), false;
+      return true;
+    }
     if (b.configuration === null) return true;
     if (!opts.quote) return void res.status(409).json({ error: "unavailable", message: "Catálogo de Elephant Source no disponible: no se puede cotizar" }), false;
     const parsed = parseQuoteRequest((b.configuration as { request?: unknown }).request, { allowOwned: true });
     if (!parsed.ok) return void res.status(400).json({ error: "invalid_input", message: parsed.message }), false;
+    // Misma petición que la vigente: no se recotiza (no crea una versión nueva sin cambios)
+    if (current?.configuration && JSON.stringify(current.configuration.request) === JSON.stringify(parsed.value)) {
+      delete b.configuration;
+      return true;
+    }
     const q = await opts.quote(parsed.value);
     if (!q.ok) return void res.status(400).json({ error: "invalid_configuration", message: q.errors.join("; "), errors: q.errors }), false;
     const configuration: ContractConfiguration = {
@@ -404,11 +414,12 @@ export function createCrmRouter(
   }));
   r.patch("/contracts/:id", requireScope("crm:write"), wrap(async (req, res) => {
     const b = z.object({ ...contractTerms, reason: optStr(300), configuration: configurationField }).strict().parse(req.body);
-    if (!(await withConfiguration(b, res))) return;
+    const current = await store.get("contracts", id.parse(req.params.id));
+    if (!(await withConfiguration(b, res, current ?? undefined))) return;
     res.json({ contract: await crm.updateContract(id.parse(req.params.id), b as Parameters<CrmService["updateContract"]>[1], who(req)) });
   }));
   r.post("/contracts/:id/status", requireScope("crm:write"), wrap(async (req, res) => {
-    const b = z.object({ status: z.enum(["draft", "sent", "signed", "active", "cancelled"]), signatureRef: optStr(200) }).parse(req.body);
+    const b = z.object({ status: z.enum(["draft", "sent", "signed", "active", "cancelled"]), signatureRef: optStr(200), approvalReason: optStr(300) }).parse(req.body);
     const cid = id.parse(req.params.id);
     // Activar un contrato crea el tenant y concede licencias: exige los mismos permisos que el alta
     // (/companies/:id/onboard), no solo crm:write.
@@ -418,7 +429,7 @@ export function createCrmRouter(
       const missing = (contract?.planId ? (["provisioning:write", "billing:write"] as const) : (["provisioning:write"] as const)).filter((s) => !scopes.has(s));
       if (missing.length) return void res.status(403).json({ error: "forbidden", message: `Ámbito requerido: ${missing.join(", ")}` });
     }
-    res.json({ contract: await crm.setContractStatus(cid, b.status, who(req), { signatureRef: b.signatureRef }) });
+    res.json({ contract: await crm.setContractStatus(cid, b.status, who(req), { signatureRef: b.signatureRef, approvalReason: b.approvalReason }) });
   }));
   r.post("/contracts/:id/renew", requireScope("crm:write"), wrap(async (req, res) => {
     res.status(201).json({ contract: await crm.renewContract(id.parse(req.params.id), who(req)) });

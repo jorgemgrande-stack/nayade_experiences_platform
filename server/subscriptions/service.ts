@@ -133,6 +133,14 @@ export class SubscriptionService {
       contract = await this.d.crm.contract(input.contractId);
       if (!contract || contract.companyId !== input.companyId) bad("El contrato no pertenece a esa empresa");
       if (!["signed", "active"].includes(contract.status)) state("Solo se suscribe un contrato firmado o activo");
+      const cfg = contract.configuration?.request;
+      if (cfg) {
+        if (cfg.plan !== input.plan.productKey) bad(`El contrato acordó el plan «${cfg.plan}», no «${input.plan.productKey}»`);
+        if (cfg.interval !== input.interval) bad(`El contrato acordó periodicidad ${cfg.interval === "year" ? "anual" : "mensual"}`);
+        const agreed = new Set(cfg.items.map((i) => i.key));
+        const extra = (input.addons ?? []).map((a) => a.productKey).filter((k) => !agreed.has(k));
+        if (extra.length) bad(`Complementos fuera de lo contratado: ${extra.join(", ")}`);
+      }
     }
     const currency = (input.currency ?? contract?.currency ?? "EUR").toUpperCase();
     if (!/^[A-Z]{3}$/.test(currency)) bad("Moneda no válida");
@@ -279,6 +287,23 @@ export class SubscriptionService {
    * Reactivación: deshace una cancelación programada o, si ya está cancelada, abre un periodo nuevo
    * desde ahora con las MISMAS condiciones contratadas (no relee el catálogo).
    */
+  /**
+   * Fin anticipado de la prueba (conversión): la suscripción pasa a activa y empieza su primer periodo
+   * de pago hoy, con las mismas condiciones contratadas. No cobra nada (modo sombra).
+   */
+  async endTrial(id: number, input: { reason?: string | null }, expectedVersion: number, actor: string) {
+    return this.d.store.mutate(id, expectedVersion, actor, this.now(), async (_tx, sub) => {
+      if (sub.status !== "trialing") state("La suscripción no está en periodo de prueba");
+      const start = this.now();
+      const anchorDay = new Date(start).getUTCDate();
+      return {
+        patch: { status: "active", trialEnd: null, anchorDay, currentPeriodStart: start, currentPeriodEnd: periodEnd(start, sub.interval, anchorDay) },
+        event: { kind: "trial_ended", before: { trialEnd: sub.trialEnd }, after: { currentPeriodStart: start }, reason: input.reason ?? null },
+        result: { ended: true },
+      };
+    });
+  }
+
   async reactivate(id: number, input: { reason?: string | null }, expectedVersion: number, actor: string) {
     return this.d.store.mutate(id, expectedVersion, actor, this.now(), async (tx, sub) => {
       if (sub.status !== "canceled") {

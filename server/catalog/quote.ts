@@ -304,7 +304,8 @@ export function quote(catalog: QuoteCatalog, req: QuoteRequest): QuoteResult {
     .filter((p) => p?.thirdPartyCosts)
     .map((p) => ({ key: p.key, text: p.thirdPartyCosts! }));
   const charged = lines.filter((l) => l.status !== "included_in_bundle");
-  const blocking = Array.from(new Set(lines.filter((l) => l.commercialStatus === "coming_soon" || l.commercialStatus === "unpublished").map((l) => l.name)));
+  const notYet = (l: QuoteLine) => l.commercialStatus === "coming_soon" || l.commercialStatus === "unpublished" || byKey.get(l.key)?.technicalStatus === "planned";
+  const blocking = Array.from(new Set(lines.filter(notYet).map((l) => l.name)));
   const contractable: QuoteResult["contractable"] = blocking.length ? "not_available" : charged.every((l) => l.commercialStatus === "available") && !lines.some((l) => l.status === "no_price") ? "self_service" : "request";
 
   const monthlyCents = lines.filter((l) => l.interval === "month").reduce((a, l) => a + l.amountCents, 0);
