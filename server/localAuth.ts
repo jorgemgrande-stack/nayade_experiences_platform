@@ -121,12 +121,27 @@ export async function getUserFromRequest(req: Request) {
 /** Fallo de inicio de sesión: solo el motivo; nunca el correo, la contraseña ni si la cuenta existe. */
 const loginFailed = (reason: string) => opsLog("warn", "Auth", "login_failed", { reason });
 
+/**
+ * Express 4 no captura los rechazos de los manejadores async: un fallo de la base de datos (p. ej. una
+ * BD sin tablas) quedaba como rechazo no gestionado y, con Node 22, tumbaba el proceso entero. Este
+ * envoltorio lo convierte en una respuesta genérica (503) sin detalles internos y deja constancia
+ * solo del tipo de error.
+ */
+export function safeAuthRoute(handler: (req: Request, res: Response) => Promise<void>) {
+  return (req: Request, res: Response): void => {
+    handler(req, res).catch((err: unknown) => {
+      console.error(`[Auth] Error no controlado en ${req.method} ${req.path}: ${err instanceof Error ? err.name : "error"}`);
+      if (!res.headersSent) res.status(503).json({ error: "Servicio no disponible temporalmente. Inténtalo más tarde." });
+    });
+  };
+}
+
 // ─── Router Express ───────────────────────────────────────────────────────────
 export function createLocalAuthRouter(): Router {
   const router = express.Router();
 
   /** POST /api/auth/login */
-  router.post("/api/auth/login", async (req: Request, res: Response) => {
+  router.post("/api/auth/login", safeAuthRoute(async (req: Request, res: Response) => {
     const { email, password } = req.body ?? {};
 
     if (!email || !password || typeof email !== "string" || typeof password !== "string") {
@@ -215,7 +230,7 @@ export function createLocalAuthRouter(): Router {
       role: user.role,
       avatarUrl: user.avatarUrl,
     });
-  });
+  }));
 
   /** POST /api/auth/logout */
   router.post("/api/auth/logout", (_req: Request, res: Response) => {
@@ -224,7 +239,7 @@ export function createLocalAuthRouter(): Router {
   });
 
   /** GET /api/auth/me — útil para el cliente si quiere verificar sesión vía REST */
-  router.get("/api/auth/me", async (req: Request, res: Response) => {
+  router.get("/api/auth/me", safeAuthRoute(async (req: Request, res: Response) => {
     const user = await getUserFromRequest(req);
     if (!user) {
       res.status(401).json({ error: "No autenticado." });
@@ -237,7 +252,7 @@ export function createLocalAuthRouter(): Router {
       role: user.role,
       avatarUrl: user.avatarUrl,
     });
-  });
+  }));
 
   return router;
 }
