@@ -83,7 +83,7 @@
     "node-cron": "^4.2.1",
     "nodemailer": "^8.0.2",
     "pdf-parse": "^1.1.1",
-    "puppeteer-core": "^24.40.0",
+    "puppeteer-core": "^25.14.0",
     "react": "^19.2.1",
     "react-day-picker": "^9.11.1",
     "react-dom": "^19.2.1",
