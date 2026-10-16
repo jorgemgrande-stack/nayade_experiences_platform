@@ -193,3 +193,21 @@ describe("aplicación de licencias desde la suscripción", () => {
     await expect(licensing.preview(s.id, { activate: true })).rejects.toThrow(/plataforma/);
   });
 });
+
+describe("suscripción y configuración del contrato", () => {
+  it("el alta debe coincidir con el plan, la periodicidad y los complementos acordados", async () => {
+    const webStore = new MemoryWebStore();
+    const web = new WebAdminService({ store: webStore, refs: { moduleIds: BUILTIN_MODULES.map((m) => m.id), planIds: () => null }, now: () => NOW });
+    await seedElephantSource(web, webStore);
+    const price = async (key: string) => (await webStore.listPrices((await webStore.getEntry("product", key))!.id)).find((p) => p.status === "approved" && p.kind === "monthly")!.id;
+    const crm: CrmPort = {
+      company: async () => ({ id: 1, name: "Acme" }),
+      contract: async () => ({ id: 10, reference: null, companyId: 1, status: "signed", amountCents: null, currency: "EUR", billingInterval: "month", tenantId: "acme", configuration: { request: { plan: "essential", interval: "month", items: [{ key: "connect-voice" }] } } }),
+    };
+    const subs = new SubscriptionService({ store: new MemorySubscriptionStore(), catalog: catalogFromWebStore(webStore), crm, now: () => NOW });
+    const base = { companyId: 1, contractId: 10, interval: "month" as const };
+    await expect(subs.create({ ...base, plan: { productKey: "business", priceId: await price("business") } }, "t")).rejects.toThrow(/acordó el plan/);
+    await expect(subs.create({ ...base, plan: { productKey: "essential", priceId: await price("essential") }, addons: [{ productKey: "connect-people", priceId: await price("connect-people") }] }, "t")).rejects.toThrow(/fuera de lo contratado/);
+    expect((await subs.create({ ...base, plan: { productKey: "essential", priceId: await price("essential") }, addons: [{ productKey: "connect-voice", priceId: await price("connect-voice") }] }, "t")).status).toBe("active");
+  });
+});

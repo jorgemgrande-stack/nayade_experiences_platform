@@ -133,6 +133,14 @@ export class SubscriptionService {
       contract = await this.d.crm.contract(input.contractId);
       if (!contract || contract.companyId !== input.companyId) bad("El contrato no pertenece a esa empresa");
       if (!["signed", "active"].includes(contract.status)) state("Solo se suscribe un contrato firmado o activo");
+      const cfg = contract.configuration?.request;
+      if (cfg) {
+        if (cfg.plan !== input.plan.productKey) bad(`El contrato acordó el plan «${cfg.plan}», no «${input.plan.productKey}»`);
+        if (cfg.interval !== input.interval) bad(`El contrato acordó periodicidad ${cfg.interval === "year" ? "anual" : "mensual"}`);
+        const agreed = new Set(cfg.items.map((i) => i.key));
+        const extra = (input.addons ?? []).map((a) => a.productKey).filter((k) => !agreed.has(k));
+        if (extra.length) bad(`Complementos fuera de lo contratado: ${extra.join(", ")}`);
+      }
     }
     const currency = (input.currency ?? contract?.currency ?? "EUR").toUpperCase();
     if (!/^[A-Z]{3}$/.test(currency)) bad("Moneda no válida");

@@ -38,6 +38,8 @@ export interface CatalogPort {
 }
 
 export interface ContractInfo {
+  /** Configuración cotizada (si el contrato la tiene): plan y periodicidad acordados. */
+  configuration?: { request: { plan: string; interval: Interval; items: Array<{ key: string }> } } | null;
   id: number;
   reference: string | null;
   companyId: number;
@@ -80,8 +82,11 @@ export function catalogFromWebStore(store: WebStore): CatalogPort {
       dependencies?: string[];
       compatibleWith?: string[];
       catalog?: { commercialStatus?: CatalogProduct["commercialStatus"] };
+      billingModel?: string;
     };
-    const family = CONTRACT_FAMILY[e.family];
+    // Un «servicio» con cuota recurrente (alojamiento web) se contrata como complemento recurrente;
+    // los servicios de pago único siguen siendo «service»
+    const family = e.family === "service" && p.billingModel === "recurring_addon" ? "extension" : CONTRACT_FAMILY[e.family];
     if (!family) return null;
     return {
       key: e.key,
@@ -130,7 +135,7 @@ export function crmFromStore(store: CrmStore): CrmPort {
     contract: async (id) => {
       const c = await store.get("contracts", id);
       return c
-        ? { id: c.id, reference: c.reference, companyId: c.companyId, status: c.status, amountCents: c.amountCents, currency: c.currency, billingInterval: c.billingInterval, tenantId: c.tenantId }
+        ? { id: c.id, reference: c.reference, companyId: c.companyId, status: c.status, amountCents: c.amountCents, currency: c.currency, billingInterval: c.billingInterval, tenantId: c.tenantId, configuration: c.configuration ?? null }
         : null;
     },
   };
