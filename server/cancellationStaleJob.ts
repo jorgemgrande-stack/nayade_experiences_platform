@@ -12,6 +12,7 @@ import { logDirectEmail } from "./emailManager";
 import { getBusinessEmail, getSystemSettingSync } from "./config";
 import { legacyDb, legacyPool } from "./_core/legacyDb";
 import { scheduleTenantCron } from "./_core/tenantRegistry/scheduler";
+import { isMultiTenant } from "./_core/tenant";
 const STALE_HOURS = 48;
 
 async function runCancellationStaleJob() {
@@ -102,7 +103,8 @@ async function runCancellationStaleJob() {
   } catch (err) {
     console.error("[CancellationStale] Error en job:", err);
   } finally {
-    await pool.end().catch(() => {});
+    // Multiempresa: es el pool compartido de la empresa (arrendado por el programador): no se cierra
+    if (!isMultiTenant()) await pool.end().catch(() => {});
   }
 }
 
@@ -113,7 +115,9 @@ async function runCancellationStaleJob() {
 export function startCancellationStaleJob() {
   console.log("[CancellationStale] Job de expedientes sin atender iniciado (cada 6h)");
   scheduleTenantCron("0 8,14,20,2 * * *", "cancellation-stale", () => {
-    runCancellationStaleJob().catch(console.error);
+    const job = runCancellationStaleJob().catch(console.error);
+    // Multiempresa: se espera a que termine dentro del contexto y el arriendo de su empresa
+    if (isMultiTenant()) return job;
   });
 }
 
