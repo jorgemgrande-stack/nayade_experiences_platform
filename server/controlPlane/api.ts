@@ -47,6 +47,11 @@ import { createTicketsRouter } from "./tickets";
 import type { SupportAdmin } from "../_core/support/grants";
 import { createPublicIntakeRouter, type PublicIntakeConfig } from "../crm/publicApi";
 import { WebRequestService } from "../crm/webRequests";
+import { WebAdminService } from "../web/service";
+import type { WebStore } from "../web/store";
+import { createWebAdminRouter } from "../web/api";
+import { createPublicSiteRouter } from "../web/publicSite";
+import { Metrics } from "../_core/metering";
 
 export interface ControlPlaneDeps {
   tokens: ServiceToken[];
@@ -91,6 +96,11 @@ export interface ControlPlaneDeps {
    * configuración no se monta: ninguna ruta pública existe por defecto.
    */
   publicIntake?: Omit<PublicIntakeConfig, "service" | "origins"> & { origins: string[] };
+  /**
+   * Web comercial: catálogo y contenidos administrados desde el CRM (BD del CRM, migración 0004).
+   * La lectura pública (/cp/v1/public/site) además requiere `publicIntake` (orígenes y secreto).
+   */
+  web?: { store: WebStore; onPublish?: (version: string) => void };
 }
 
 const idSchema = z.string().regex(/^[a-z0-9][a-z0-9_-]{0,62}$/);
@@ -217,6 +227,22 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
   if (operatorRoutes) router.use(createPublicAuthRouter(operatorRoutes));
   // Solicitudes comerciales de la web: cuelgan de los leads del CRM
   const webRequests = d.crm ? new WebRequestService({ store: d.crm.store, crm: d.crm.service }) : undefined;
+  // Catálogo y contenidos de la web comercial (las referencias técnicas se leen del Core, no se copian)
+  const webAdmin = d.web
+    ? new WebAdminService({
+        store: d.web.store,
+        onPublish: d.web.onPublish,
+        refs: {
+          moduleIds: BUILTIN_MODULES.map((m) => m.id),
+          planIds: () => {
+            const b = d.billing as unknown as { getCatalog?: () => { plans: Array<{ id: string }> } } | undefined;
+            return typeof b?.getCatalog === "function" ? b.getCatalog().plans.map((p) => p.id) : null;
+          },
+        },
+      })
+    : undefined;
+  // Lectura pública del sitio (solo lo publicado): antes del router de captación, que exige Origin
+  if (webAdmin && d.publicIntake) router.use("/public/site", createPublicSiteRouter({ service: webAdmin, secret: d.publicIntake.secret }));
   // Captación pública desde la web: única ruta sin autenticación que escribe (solo solicitudes)
   if (webRequests && d.publicIntake) router.use("/public", createPublicIntakeRouter({ ...d.publicIntake, origins: publicOrigins, service: webRequests }));
   router.use(
@@ -559,6 +585,20 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
             .map((o) => ({ value: o.displayName, label: o.displayName }))
       : undefined;
     router.use("/crm", createCrmRouter(d.crm.service, d.crm.store, { billing: d.billingStore, onboarding, requests: webRequests, assignees }));
+  }
+
+  if (webAdmin) {
+    router.use(
+      "/web",
+      createWebAdminRouter(webAdmin, {
+        previewSecret: d.publicIntake?.secret,
+        refs: async () => ({
+          modules: BUILTIN_MODULES.map((m) => ({ id: m.id, name: m.name, kind: m.kind, includedInBase: !!m.includedInBase })),
+          plans: billingCatalog()?.plans.map((p) => ({ id: p.id, name: p.name })) ?? null,
+          metrics: Object.values(Metrics),
+        }),
+      }),
+    );
   }
 
   if (d.tickets) {
