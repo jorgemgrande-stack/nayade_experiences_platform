@@ -86,6 +86,26 @@ Restaurar la copia sobre una base nueva y apuntar el servicio a ella, o restaura
 | Ejecución | ✓ (`tenant_capabilities`, `tenant_capability_events`, `tenant_sites`, `tenant_fiscal_entities`) |
 | Reversión manual | ✓ (el plan vuelve a mostrar `0008` y `0009` pendientes) |
 
+## Carril de la app (`db/migrations`): BLOQUEA EL DESPLIEGUE
+Estas migraciones se aplican en **cada** base de empresa: la de Náyade en producción y las aprovisionadas.
+
+| Migración | Contenido | Qué pasa si no se aplica antes de desplegar |
+|---|---|---|
+| `0003_ski_rental` | Tablas del módulo Ski Rental. Aditiva y reversible. | El módulo falla (no está instalado ni licenciado en ninguna empresa); el resto no se ve afectado. |
+| `0004_inventory_holds` | 8 columnas NULL y un índice en `reservations` (retención de plazas de spa y hotel). Aditiva y reversible. | **Fallan la reserva y la disponibilidad de spa y hotel.** Hay que aplicarla antes de desplegar. |
+
+```bash
+MIGRATE_DATABASE_URL=mysql://…/<bd_empresa> pnpm exec tsx scripts/db/migrate.ts status --dir db/migrations
+MIGRATE_DATABASE_URL=mysql://…/<bd_empresa> pnpm exec tsx scripts/db/migrate.ts up --dir db/migrations --apply --confirm-database <bd_empresa> [--allow-remote]
+```
+
+**Comprobación previa obligatoria:**
+- Ejecutar `status` sobre una copia de la base de Náyade antes que nada.
+- En las bases aprovisionadas desde la baseline, el ejecutor rechaza operar porque ve `0000_baseline` registrada fuera del carril (limitación detectada por el PR de Ski Rental). Debe resolverse antes de migrar empresas aprovisionadas.
+
+**Reservas anteriores a `0004`:** quedan sin recurso (NULL) y no cuentan en la ocupación calculada.
+- **Spa:** su aforo tampoco las contaba antes, así que no se pierde nada.
+- **Hotel:** las reservas futuras ya existentes no restarán disponibilidad hasta que se asocien a su tipo de habitación. **Antes de abrir ventas**, hay que revisar la reconciliación (`hotel.adminReconcileInventory`, en modo informe) y asociar las reservas vivas.
+
 ## Pendiente
 - **Ejecución real:** requiere acceso a las bases y una persona responsable de la copia. Además, **la copia de producción debe ensayarse primero en una base aislada** con este mismo procedimiento.
-- Las migraciones nuevas de los PR de sobreventa (hotel y spa) y de Ski Rental (carril de la app) se documentan en sus PR y no forman parte de esta tanda.
