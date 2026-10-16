@@ -1,4 +1,5 @@
 import { router, publicProcedure, protectedProcedure, permissionProcedure } from "../_core/trpc";
+import { publicBaseUrl } from "../_core/productIdentity";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import {
@@ -14,7 +15,7 @@ import { createReservation } from "../db";
 import { buildRedsysForm, generateMerchantOrder } from "../redsys";
 import { assertModuleEnabled } from "../_core/flagGuard";
 
-const SITE_URL = (process.env.APP_URL ?? 'https://www.skicenter.es').trim();
+const SITE_URL = publicBaseUrl();
 
 const adminProcedure = permissionProcedure("settings.manage", ["admin"]).use(async ({ ctx, next }) => {
   await assertModuleEnabled("hotel_module_enabled");

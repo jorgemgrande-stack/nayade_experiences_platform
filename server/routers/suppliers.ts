@@ -3,6 +3,7 @@
  * Módulo v7.0 — Gestión completa de proveedores y liquidaciones
  */
 import { z } from "zod";
+import { publicBaseUrl } from "../_core/productIdentity";
 import { TRPCError } from "@trpc/server";
 import { protectedProcedure, publicProcedure, router } from "../_core/trpc";
 import { randomBytes } from "crypto";
@@ -606,7 +607,7 @@ export const suppliersRouter = router({
         if (nu) await db.update(users).set({ ...(({ supplierId: input.supplierId }) as any) }).where(eq(users.id, nu.id));
       }
 
-      const origin = process.env.APP_URL ?? "https://www.skicenter.es";
+      const origin = publicBaseUrl();
       const inviteUrl = `${origin}/supplier/activar?token=${token}`;
       await sendEmail({
         to: email,

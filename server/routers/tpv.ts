@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { publicBaseUrl } from "../_core/productIdentity";
 import { permissionProcedure, router } from "../_core/trpc";
 import { buildReservationConfirmHtml, buildTpvTicketHtml, buildCashOpenHtml, buildCashCloseHtml, type ChannelSummary } from "../emailTemplates";
 import { sendEmail } from "../mailer";
@@ -1279,7 +1280,7 @@ export const tpvRouter = router({
           const [resForUrl] = await db.select({ publicToken: reservations.publicToken })
             .from(reservations).where(eq(reservations.id, reservationId)).limit(1);
           if (resForUrl?.publicToken) {
-            const baseUrl = process.env.APP_URL ?? "https://www.skicenter.es";
+            const baseUrl = publicBaseUrl();
             reservationUrl = `${baseUrl}/presupuesto/${resForUrl.publicToken}`;
           }
         }
@@ -1361,7 +1362,7 @@ export const tpvRouter = router({
                 const [resForUrl] = await db.select({ publicToken: reservations.publicToken })
                   .from(reservations).where(eq(reservations.id, reservationId)).limit(1);
                 if (resForUrl?.publicToken) {
-                  const base = process.env.APP_URL ?? "https://www.skicenter.es";
+                  const base = publicBaseUrl();
                   syncLeadUrlsToGHL({
                     ghlContactId,
                     quoteUrl: `${base}/presupuesto/${resForUrl.publicToken}`,

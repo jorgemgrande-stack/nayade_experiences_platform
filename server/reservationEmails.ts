@@ -6,6 +6,7 @@
  * 2. Email al cliente via Brevo HTTP API / SMTP fallback
  */
 import { eq } from "drizzle-orm";
+import { publicBaseUrl } from "./_core/productIdentity";
 import { notifyOwner } from "./_core/notification";
 import { buildReservationConfirmHtml, buildReservationFailedHtml } from "./emailTemplates";
 import { sendEmail } from "./mailer";
@@ -35,7 +36,7 @@ export interface ReservationEmailData {
 
 function reservationPublicUrl(publicToken?: string | null): string | undefined {
   if (!publicToken) return undefined;
-  const base = process.env.APP_URL ?? "https://www.skicenter.es";
+  const base = publicBaseUrl();
   return `${base}/presupuesto/${publicToken}`;
 }
 

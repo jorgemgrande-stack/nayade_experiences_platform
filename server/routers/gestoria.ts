@@ -6,6 +6,7 @@
 // El motor de cálculo (303/390/111/190/200/202) llega en fases posteriores.
 
 import { z } from "zod";
+import { publicBaseUrl } from "../_core/productIdentity";
 import { router, permissionProcedure, publicProcedure, gestoriaProcedure } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { randomBytes } from "crypto";
@@ -634,7 +635,7 @@ export const gestoriaRouter = router({
           } as any);
         }
 
-        const origin = process.env.APP_URL ?? "https://www.skicenter.es";
+        const origin = publicBaseUrl();
         const inviteUrl = `${origin}/gestoria/activar?token=${token}`;
         try {
           await sendEmail({
