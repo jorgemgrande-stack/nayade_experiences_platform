@@ -1,0 +1,2 @@
+# Los ganchos de git son scripts de shell: siempre LF, también en Windows
+.githooks/* text eol=lf

@@ -1,0 +1,17 @@
+# Configuración de gitleaks (CI y gancho pre-commit): reglas por defecto más excepciones revisadas.
+title = "nayade_experiences_platform"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Valores ficticios conocidos y ficheros generados"
+paths = [
+  '''(^|/)pnpm-lock\.yaml$''',
+]
+regexes = [
+  # Marcadores de posición del CI (no son secretos)
+  '''ci-only-placeholder-not-a-secret[0-9-]*''',
+  # Clave pública de pruebas de Redsys, publicada en su documentación
+  '''sq7HjrUOBfKmC576ILgskD5srU870gJ7''',
+]

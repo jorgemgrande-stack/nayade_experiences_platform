@@ -1,0 +1,14 @@
+#!/bin/sh
+# Gancho pre-commit: bloquea ficheros sensibles y secretos ANTES de que entren en un commit.
+# Activación (una vez por clon): git config core.hooksPath .githooks
+# Saltárselo (git commit --no-verify) no evita el CI: el mismo control es bloqueante allí.
+HOOK_DIR=$(cd "$(dirname "$0")" && pwd)
+node "$HOOK_DIR/../scripts/ci/sensitive-files.mjs" --staged || exit 1
+if command -v gitleaks >/dev/null 2>&1; then
+  gitleaks git --pre-commit --staged --redact --no-banner --config "$HOOK_DIR/../.gitleaks.toml" || {
+    echo "✗ gitleaks ha encontrado un posible secreto en lo preparado. Retíralo; si es un valor ficticio de prueba, márcalo con un comentario gitleaks:allow." >&2
+    exit 1
+  }
+else
+  echo "aviso: gitleaks no está instalado; solo se han comprobado los nombres de fichero (el CI escanea el contenido)." >&2
+fi
