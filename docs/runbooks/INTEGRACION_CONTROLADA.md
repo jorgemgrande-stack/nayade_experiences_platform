@@ -31,8 +31,9 @@
 | 0.1 | Web #1 `feat/web-primera-entrega` → `main` | fusionar con *merge commit* | no | no | CI de la web en verde (tipos, veracidad, E2E) |
 | 0.2 | Web #2 | `gh pr edit 2 --base main`, esperar al CI y fusionar | no | no | idem |
 | 0.3 | Web #3 | `gh pr edit 3 --base main`, esperar al CI y fusionar | no | no | idem; `pnpm build` local con `CATALOG_REQUIRED=0` |
+| 0.4 | Web #4 (endurecimiento: XSS en JSON, enlaces, tarifas y tiempos máximos) | `gh pr edit 4 --base main`, esperar al CI y fusionar | no | no | idem |
 
-Verificado el 16/10: #1 → #2 → #3 sobre `main` no tiene conflictos y el árbol final es idéntico a la punta de #3.
+Verificado el 16/10: #1 → #2 → #3 sobre `main` no tiene conflictos y el árbol final es idéntico a la punta de #3. #4 se apila sobre #3.
 
 **Comandos** (con autorización):
 ```bash
@@ -40,6 +41,7 @@ cd bigelephant-web
 gh pr merge 1 --merge
 gh pr edit 2 --base main && gh pr checks 2 --watch && gh pr merge 2 --merge
 gh pr edit 3 --base main && gh pr checks 3 --watch && gh pr merge 3 --merge
+gh pr edit 4 --base main && gh pr checks 4 --watch && gh pr merge 4 --merge
 ```
 
 ### Paso 1 · Plan de esquema de solo lectura en producción (antes de cualquier fusión del Core)
@@ -56,6 +58,7 @@ Cada fila es **una fusión y un despliegue verificado** (§3). Los PR apilados s
 
 | # | PR | Riesgo | Cambia arranque/build | Migr. CP | Migr. Náyade |
 |---|---|---|---|---|---|
+| 2.0 | **#91** CI: pruebas SaaS a la lista bloqueante | bajo | no (solo CI) | — | no |
 | 2.1 | **#79** arranque sin DDL | alto | **sí** (`index.ts`) | — | no; el arranque solo comprueba |
 | 2.2 | #85 DDL bajo demanda → mantenimiento | medio | sí (`index.ts`) | — | no |
 | 2.3 | #83 plan de solo lectura (herramienta) | bajo | no | — | no |
@@ -80,12 +83,21 @@ Cada fila es **una fusión y un despliegue verificado** (§3). Los PR apilados s
 | 2.22 | #75 operadores y Argon2 | alto | `package.json` + `pnpm-lock` (**dependencia nativa `@node-rs/argon2`**) | registro 0007 | no |
 | 2.23 | #76 captación web | medio-alto | `controlPlane/main.ts` | CRM 0003 | no |
 | 2.24 | #77 catálogo comercial | medio-alto | `controlPlane/main.ts` | CRM 0004 y 0005 | no |
+| 2.25 | #88 guarda del binario de Náyade (prueba) | bajo | no | — | no |
+| 2.26 | #89 dejar de versionar `.manus/` | bajo | no (no está en el binario) | — | no |
+| 2.27 | #90 seguridad del plano de control | medio | `Dockerfile.controlplane` (no es la imagen de Náyade) | — | no |
+| 2.28 | #86 motor de suscripciones v1 (modo sombra) | medio | `controlPlane/main.ts` | CRM 0006 | no |
+| 2.29 | #87 prueba de 15 días (sin conectar) | bajo | no | CRM 0007 | no |
+
+**#91 va antes que todo**, para que cada PR posterior se valide con la lista bloqueante completa. **#86 y #90** tienen base #77 y **#87** base #86: se cambian a `main` cuando #77 esté fusionado. **#88, #89 y #91** tienen base `main`.
 
 **Base de #75:** `integration/core-2026-10-15`, una rama que no es un PR. Cuando estén fusionados #62–#73, se cambia su base a `main`. El 16/10 se simuló la secuencia completa (24 ramas) sin conflictos; el árbol resultante solo difiere de la punta de #77 en los ficheros de las correcciones de las fases 5.1 y 5.2.
 
 ### Paso 3 · CRM (sin despliegue)
 
-CRM #1 → #2 → #3 → #4, #5, #6, #7 (base `integration/crm-2026-10-15`; cambiar a `main`), #8, #9 y #10. Simulado el 16/10: sin conflictos y con el árbol final idéntico a la punta de #10.
+CRM #1 → #2 → #3 → #4, #5, #6, #7 (base `integration/crm-2026-10-15`; cambiar a `main`), #8, #9, #10, #11 (suscripciones en modo sombra) y #12 (correcciones de la auditoría). Simulado el 16/10: sin conflictos y con el árbol final idéntico a la punta de #10. #11 y #12 se apilan sobre #10.
+
+**Compatibilidad:** con #90, activar un contrato exige `provisioning:write` (y `billing:write` si tiene plan). Los operadores admin ya los tienen; hay que revisar los tokens de servicio que activen contratos.
 
 ## 3. Qué comprobar en cada despliegue del Core
 
@@ -144,7 +156,7 @@ CRM #1 → #2 → #3 → #4, #5, #6, #7 (base `integration/crm-2026-10-15`; camb
 
 ## 7. Comprobaciones posteriores a la integración completa
 
-- **Simulación previa en local:** sobre `main` con los 24 PR del Core pasan las suites bloqueantes (574 pruebas unitarias en la lista del CI y 72 con MySQL).
+- **Simulación previa en local:** sobre `main` con los 24 PR del Core pasan las suites bloqueantes (574 pruebas unitarias en la lista del CI y 72 con MySQL). Con #88, #89, #90, #86 y #87 encima, y la lista ampliada de #91: 703 unitarias y 85 con MySQL.
 - **Arranque real** con la baseline de producción: `[Schema] ✓` y la app arranca.
 - **Mantenimiento:** 15 pasos idempotentes.
 - **Después de cada paso real:** §3.
@@ -156,3 +168,8 @@ CRM #1 → #2 → #3 → #4, #5, #6, #7 (base `integration/crm-2026-10-15`; camb
 - **CRM:** 10 ramas sin conflictos; árbol final idéntico a la punta de #10.
 - **Web:** 3 ramas sin conflictos; árbol final idéntico a la punta de #3.
 - **Suite completa de Vitest** (sin MySQL), sobre `main` y sobre la integración: **los mismos 4 ficheros y 18 pruebas fallan en ambos**. Son fallos preexistentes; el CI los trata como informativos. La integración añade 190 pruebas, todas en verde: **sin regresiones**.
+
+### Ampliación de la operación nocturna (16/10/2026)
+
+- **Core:** sobre el árbol de 24 ramas (`80dbc0d`) se fusionan #88 → #89 → #90 → #86 → #87 **sin conflictos**. Árbol `738d552`. #89 tenía un conflicto trivial con #66 en `.gitignore`, que se ha evitado en el propio PR. Con la lista bloqueante ampliada (#91): **703 superadas y 1 omitida**; MySQL en serie: **85/85**. La guarda del binario confirma que Náyade no incluye el plano de control, las suscripciones ni las pruebas gratuitas.
+- **Hallazgo de CI (corregido en #91):** 9 ficheros de pruebas de la transformación SaaS no estaban en la lista bloqueante. Hasta que #91 entre, el «CI en verde» de #64, #65, #79, #83, #86, #87 y #88 no cubre esas pruebas; en local pasan.
