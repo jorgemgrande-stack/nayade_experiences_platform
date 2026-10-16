@@ -474,3 +474,32 @@ describe("contratos con configuración cotizada (Elephant Source)", () => {
     }
   });
 });
+
+describe("contratos configurados: reglas del servidor", () => {
+  it("coherencia, sin versiones vacías, aprobación de «Solicitar activación» y bloqueo de «Próximamente»", async () => {
+    const app = await start();
+    try {
+      const svc = new WebAdminService({ store: app.webStore, refs: { moduleIds: BUILTIN_MODULES.map((m) => m.id), planIds: () => null } });
+      await seedElephantSource(svc, app.webStore);
+      const companyId = (await app.call("POST", "/crm/companies", { token: TOK.crm, body: { name: "Reglas SL" } })).json.company.id;
+      const request = { plan: "essential", interval: "month", items: [{ key: "connect-voice" }] };
+      const c = (await app.call("POST", "/crm/contracts", { token: TOK.crm, body: { companyId, configuration: { request } } })).json.contract;
+      // No se desalinea a mano
+      expect((await app.call("PATCH", `/crm/contracts/${c.id}`, { token: TOK.crm, body: { amountCents: 1 } })).status).toBe(409);
+      // Misma petición: sin versión nueva
+      const same = await app.call("PATCH", `/crm/contracts/${c.id}`, { token: TOK.crm, body: { configuration: { request } } });
+      expect(same.json.contract.version).toBe(c.version);
+      // Voice es «Solicitar activación»: enviar exige aprobación con motivo
+      expect((await app.call("POST", `/crm/contracts/${c.id}/status`, { token: TOK.crm, body: { status: "sent" } })).status).toBe(400);
+      const sent = await app.call("POST", `/crm/contracts/${c.id}/status`, { token: TOK.crm, body: { status: "sent", approvalReason: "Revisada la configuración de telefonía" } });
+      expect(sent.json.contract.status).toBe("sent");
+      // Un producto «Próximamente» bloquea enviar, firmar y activar
+      const ski = (await app.call("POST", "/crm/contracts", { token: TOK.crm, body: { companyId, configuration: { request: { plan: "essential", interval: "month", items: [{ key: "ski-net-rental" }] } } } })).json.contract;
+      const blocked = await app.call("POST", `/crm/contracts/${ski.id}/status`, { token: TOK.crm, body: { status: "sent", approvalReason: "x".repeat(10) } });
+      expect(blocked.status).toBe(409);
+      expect(blocked.json.message).toMatch(/Ski Net/);
+    } finally {
+      await app.close();
+    }
+  });
+});

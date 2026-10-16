@@ -250,3 +250,15 @@ describe("motor de suscripciones sobre el catálogo de Elephant Source", () => {
     expect(offer.find((p) => p.key === "essential")!.prices.map((p) => [p.kind, p.amountCents]).sort()).toEqual([["monthly", 2900], ["yearly", 27900]]);
   });
 });
+
+describe("correcciones de los límites detectados en el CRM", () => {
+  it("lo que está en hoja de ruta no es contratable aunque se pueda solicitar (Enterprise)", async () => {
+    const { svc } = await seeded();
+    const cat = quoteCatalogFromSite(await svc.site("published"));
+    expect(quote(cat, { plan: "enterprise", interval: "month" })).toMatchObject({ contractable: "not_available", blocking: ["Enterprise"] });
+  });
+  it("los servicios con cuota recurrente (alojamiento) se suscriben como complemento recurrente", async () => {
+    const { store } = await seeded();
+    expect(await catalogFromWebStore(store).product("service-hosting-basic")).toMatchObject({ family: "extension" });
+  });
+});

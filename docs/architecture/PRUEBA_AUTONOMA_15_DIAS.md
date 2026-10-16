@@ -1,12 +1,37 @@
-# Prueba autónoma de 15 días: arquitectura preparada
+# Prueba autónoma de 15 días (Essential)
 
-**Estado:** el modelo de estados, la persistencia y las reglas de seguridad están implementados y probados (`server/trials/`, migración CRM 0007).
+**Estado:** conectada de punta a punta en la rama `feat/elephant-licensing`, **apagada por defecto**:
+- `server/trials/onboarding.ts` orquesta el flujo;
+- `server/trials/api.ts` expone las rutas;
+- la prueba completa por HTTP está en `server/controlPlane.trials.test.ts`.
 
-**No está conectado a nada:**
-- no hay ruta pública;
-- no se envían correos;
-- no se aprovisiona automáticamente;
-- **nunca** se suspende ni se elimina nada de forma automática.
+**Qué hace:**
+1. **Registro** público con antiabuso y respuesta genérica.
+2. **Verificación** del correo.
+3. **Aprovisionamiento** de la plataforma, con su usuario administrador.
+4. **Empresa** en el CRM.
+5. **Suscripción Essential en prueba** (sin tarjeta ni cobro: modo sombra).
+6. **Licencias Essential** con caducidad al final de la prueba.
+7. **Avisos** (3, 1 y 0 días antes): se calculan, y su envío es una acción explícita.
+8. **Vencimiento:** solo lectura, los datos se conservan.
+9. **Conversión:** termina la prueba, cambia de plan si se pide y aplica las licencias sin caducidad.
+
+**Interruptores (todos apagados por defecto):**
+
+| Variable | Efecto |
+|---|---|
+| `CP_PUBLIC_TRIAL_ENABLED=1` | Crea las rutas públicas `/cp/v1/public/trial` y `/verify` |
+| `CP_TRIAL_AUTO_PROVISION=1` | La verificación activa la prueba en el acto. Si no, la activa un operador con `POST /cp/v1/trials/:id/activate` |
+
+**Comunicaciones:** por defecto **no se envía nada**. El aviso solo deja constancia en el registro de arranque, sin correo ni token. Conectar un proveedor de correo requiere autorización.
+
+**Lo que sigue sin ser automático:** suspender, vencer o eliminar. Lo decide una persona (`/cp/v1/trials/review`).
+
+**Configuración guiada** (paso 8 del encargo): el alta deja la plataforma con su administrador invitado y la marca básica. El asistente de configuración dentro de la app **no existe todavía**: está pendiente.
+
+---
+
+*Diseño original (modelo de estados, datos y seguridad):*
 
 ## 1. Flujo previsto
 

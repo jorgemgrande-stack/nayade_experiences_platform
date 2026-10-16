@@ -34,6 +34,9 @@ import {
 import { SupportAdmin } from "../_core/support/grants";
 import { MysqlWebStore } from "../web/store";
 import { MysqlSubscriptionStore } from "../subscriptions/store";
+import { MysqlCapabilityStore } from "../_core/capabilities/store";
+import { MysqlTrialStore } from "../trials/store";
+import { MysqlOrganizationStore } from "../organization/service";
 import { MysqlCrmStore } from "../crm/mysqlStore";
 import { CrmService } from "../crm/service";
 import { createContractActivation } from "../crm/activation";
@@ -162,6 +165,15 @@ async function main() {
     console.log(JSON.stringify({ ctx: "WebAdmin", enabled: ready, ...(ready ? { publishHook: hookOk } : { reason: "migration_0004_missing" }) }));
   }
 
+  // Licencias por capacidad (registro): solo si la migración 0008 del registro está aplicada
+  const capabilitiesReady = await pool.query("SELECT 1 FROM tenant_capabilities LIMIT 0").then(() => true, () => false);
+  const capabilities = capabilitiesReady ? new MysqlCapabilityStore(pool) : undefined;
+  console.log(JSON.stringify({ ctx: "Capabilities", enabled: capabilitiesReady, ...(capabilitiesReady ? {} : { reason: "registry_migration_0008_missing" }) }));
+  // Sedes y entidades fiscales: solo si la migración 0009 del registro está aplicada
+  const organizationReady = await pool.query("SELECT 1 FROM tenant_sites LIMIT 0").then(() => true, () => false);
+  const organization = organizationReady ? new MysqlOrganizationStore(pool) : undefined;
+  console.log(JSON.stringify({ ctx: "Organization", enabled: organizationReady, ...(organizationReady ? {} : { reason: "registry_migration_0009_missing" }) }));
+
   // Suscripciones en modo sombra: misma BD del CRM; solo si la migración 0006 está aplicada
   let subscriptions: { store: MysqlSubscriptionStore } | undefined;
   if (process.env.CRM_DATABASE_URL && web) {
@@ -170,6 +182,18 @@ async function main() {
     if (ready) subscriptions = { store: new MysqlSubscriptionStore(subsPool) };
     else await subsPool.end();
     console.log(JSON.stringify({ ctx: "Subscriptions", enabled: ready, mode: "shadow", ...(ready ? {} : { reason: "migration_0006_missing" }) }));
+  }
+
+  // Prueba gratuita de Essential: misma BD del CRM; solo si la migración 0007 está aplicada. Las rutas
+  // públicas y la activación automática solo con CP_PUBLIC_TRIAL_ENABLED=1 / CP_TRIAL_AUTO_PROVISION=1.
+  // No se envía ningún correo: el aviso por defecto solo deja constancia sin datos personales.
+  let trials: { store: MysqlTrialStore; publicEnabled: boolean; autoProvision: boolean } | undefined;
+  if (process.env.CRM_DATABASE_URL && subscriptions) {
+    const trialPool = mysql.createPool({ uri: process.env.CRM_DATABASE_URL, connectionLimit: 3 });
+    const ready = await trialPool.query("SELECT 1 FROM trial_requests LIMIT 0").then(() => true, () => false);
+    if (ready) trials = { store: new MysqlTrialStore(trialPool), publicEnabled: process.env.CP_PUBLIC_TRIAL_ENABLED === "1", autoProvision: process.env.CP_TRIAL_AUTO_PROVISION === "1" };
+    else await trialPool.end();
+    console.log(JSON.stringify({ ctx: "Trials", enabled: ready, publicEnabled: trials?.publicEnabled ?? false, autoProvision: trials?.autoProvision ?? false, ...(ready ? {} : { reason: "migration_0007_missing" }) }));
   }
 
   // API pública de captación de la web comercial: solo con CRM, orígenes explícitos y secreto propio
@@ -207,6 +231,9 @@ async function main() {
     publicIntake,
     web,
     subscriptions,
+    capabilities,
+    trials,
+    organization,
   });
 
   const port = Number(process.env.CP_PORT ?? 4100);

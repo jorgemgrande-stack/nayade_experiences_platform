@@ -58,6 +58,21 @@ import { ShadowBillingService } from "../subscriptions/shadow";
 import type { SubscriptionStore } from "../subscriptions/store";
 import { Metrics } from "../_core/metering";
 import { quote, type QuoteRequest } from "../catalog/quote";
+import { CAPABILITY_STATUSES } from "../_core/capabilities/model";
+import type { CapabilityStore } from "../_core/capabilities/store";
+import { LicensingError, LicensingService } from "../licensing/service";
+import { TrialService, type TrialLimits } from "../trials/service";
+import type { TrialStore } from "../trials/store";
+import { TrialOnboardingService, type TrialNotifier } from "../trials/onboarding";
+import { createPublicTrialRouter, createTrialAdminRouter } from "../trials/api";
+import { OrganizationError, OrganizationService, type OrganizationStore } from "../organization/service";
+
+/** Aviso por defecto: NO envía nada; solo deja constancia (sin correo ni token) de que hay un aviso pendiente. */
+const logOnlyTrialNotifier: TrialNotifier = {
+  verification: async (_to, l) => void console.log(JSON.stringify({ ctx: "Trials", event: "verification_not_sent", trialId: l.trialId })),
+  welcome: async (_to, i) => void console.log(JSON.stringify({ ctx: "Trials", event: "welcome_not_sent", tenantId: i.tenantId })),
+  expiryNotice: async (_to, i) => void console.log(JSON.stringify({ ctx: "Trials", event: "expiry_notice_not_sent", trialId: i.trialId, daysLeft: i.daysLeft })),
+};
 import { quoteCatalogFromSite } from "../catalog/snapshot";
 
 export interface ControlPlaneDeps {
@@ -113,6 +128,16 @@ export interface ControlPlaneDeps {
    * aprobados del catálogo). Nunca cobra, emite facturas fiscales ni toca licencias.
    */
   subscriptions?: { store: SubscriptionStore; now?: () => number };
+  /** Licencias por capacidad (registro, migración 0008). Sin ellas no se aplican licencias desde suscripciones. */
+  capabilities?: CapabilityStore;
+  /**
+   * Prueba gratuita de Essential (CRM 0007). Las rutas públicas solo existen con `publicEnabled`
+   * (por defecto NO); `notify` es el único canal de comunicaciones (por defecto, solo un registro
+   * sin datos personales ni tokens: no se envía nada).
+   */
+  trials?: { store: TrialStore; publicEnabled?: boolean; autoProvision?: boolean; notify?: TrialNotifier; limits?: Partial<TrialLimits> };
+  /** Sedes y entidades fiscales (registro 0009), con los límites del plan contratado. */
+  organization?: OrganizationStore;
 }
 
 const idSchema = z.string().regex(/^[a-z0-9][a-z0-9_-]{0,62}$/);
@@ -256,6 +281,10 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
   // Lectura pública del sitio (solo lo publicado): antes del router de captación, que exige Origin
   if (webAdmin && d.publicIntake) router.use("/public/site", createPublicSiteRouter({ service: webAdmin, secret: d.publicIntake.secret }));
   // Captación pública desde la web: única ruta sin autenticación que escribe (solo solicitudes)
+  // Prueba gratuita pública: reservada ANTES del router de captación (que responde 404 a lo demás);
+  // el router real se asigna más abajo, cuando existen suscripciones y licencias.
+  let publicTrial: express.Router | null = null;
+  router.use("/public/trial", (req, res, next) => (publicTrial ? publicTrial(req, res, next) : void res.status(404).json({ error: "not_found" })));
   if (webRequests && d.publicIntake) router.use("/public", createPublicIntakeRouter({ ...d.publicIntake, origins: publicOrigins, service: webRequests }));
   router.use(
     authenticate(
@@ -618,6 +647,143 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
     const crmPort = crmFromStore(d.crm.store);
     const svc = new ContractSubscriptionService({ store: d.subscriptions.store, catalog: catalogFromWebStore(d.web.store), crm: crmPort, now: d.subscriptions.now });
     const shadowBilling = new ShadowBillingService({ store: d.subscriptions.store, crm: crmPort, now: d.subscriptions.now });
+    if (d.capabilities) {
+      // Licencias por capacidad: Elephant Control es la autoridad técnica. Antes del router de
+      // suscripciones (que responde 404 a lo que no conoce).
+      const licensing = new LicensingService({
+        capabilities: d.capabilities,
+        subscriptions: d.subscriptions.store,
+        crm: crmPort,
+        catalog: async () => quoteCatalogFromSite(await webAdmin!.site("published")),
+        now: d.subscriptions.now,
+      });
+      const licErr = (res: express.Response, e: unknown) => {
+        if (e instanceof LicensingError) return void res.status(e.code === "not_found" ? 404 : e.code === "invalid_state" ? 409 : 400).json({ error: e.code, message: e.message });
+        throw e;
+      };
+      const subId = z.coerce.number().int().positive();
+      const licBody = z.object({ activate: z.boolean().default(true), reason: z.string().trim().max(300).optional() }).strict();
+      router.post(
+        "/subscriptions/:id/licences/preview",
+        requireScope("subscriptions:read"),
+        wrap(async (req, res) => {
+          const b = licBody.parse(req.body ?? {});
+          try {
+            res.json(await licensing.preview(subId.parse(req.params.id), { activate: b.activate }));
+          } catch (e) {
+            licErr(res, e);
+          }
+        }),
+      );
+      router.post(
+        "/subscriptions/:id/licences/apply",
+        requireScope("subscriptions:write"),
+        requireScope("entitlements:write"),
+        wrap(async (req, res) => {
+          const b = licBody.parse(req.body ?? {});
+          const a = getAuth(req)!.actor;
+          try {
+            res.json(await licensing.apply(subId.parse(req.params.id), { activate: b.activate, actor: `${a.type}:${a.id}`, reason: b.reason ?? null }));
+          } catch (e) {
+            licErr(res, e);
+          }
+        }),
+      );
+      router.get(
+        "/tenants/:id/capabilities",
+        requireScope("tenants:read"),
+        wrap(async (req, res) => {
+          const id = idSchema.parse(req.params.id);
+          if (!(await d.reader.getTenant(id))) throw new RegistryError("not_found", "Tenant no encontrado");
+          const [capabilities, events] = await Promise.all([licensing.list(id), licensing.events(id)]);
+          res.json({ capabilities, events });
+        }),
+      );
+      router.put(
+        "/tenants/:id/capabilities/:capability",
+        requireScope("entitlements:write"),
+        wrap(async (req, res) => {
+          const id = idSchema.parse(req.params.id);
+          if (!(await d.reader.getTenant(id))) throw new RegistryError("not_found", "Tenant no encontrado");
+          const b = z.object({ status: z.enum(CAPABILITY_STATUSES), reason: z.string().trim().min(5).max(300), siteId: z.string().regex(/^[a-z0-9][a-z0-9-]{0,62}$/).optional() }).strict().parse(req.body);
+          const a = getAuth(req)!.actor;
+          try {
+            res.json({ events: await licensing.setStatus(id, req.params.capability, b.status, { actor: `${a.type}:${a.id}`, reason: b.reason, siteId: b.siteId }) });
+          } catch (e) {
+            licErr(res, e);
+          }
+        }),
+      );
+    }
+    if (d.organization) {
+      const org = new OrganizationService({ store: d.organization, subscriptions: d.subscriptions.store, catalog: async () => quoteCatalogFromSite(await webAdmin!.site("published")), now: d.subscriptions.now });
+      const orgErr = (res: express.Response, e: unknown) => {
+        if (e instanceof OrganizationError) return void res.status(e.code === "not_found" ? 404 : e.code === "invalid_input" ? 400 : e.code === "limit" ? 422 : 409).json({ error: e.code, message: e.message });
+        throw e;
+      };
+      const tenantOf = async (req: express.Request) => {
+        const id = idSchema.parse(req.params.id);
+        if (!(await d.reader.getTenant(id))) throw new RegistryError("not_found", "Tenant no encontrado");
+        return id;
+      };
+      const orgRoute = (fn: (req: express.Request, tenantId: string, actor: string) => Promise<unknown>) =>
+        wrap(async (req, res) => {
+          const tenantId = await tenantOf(req);
+          const a = getAuth(req)!.actor;
+          try {
+            res.json(await fn(req, tenantId, `${a.type}:${a.id}`));
+          } catch (e) {
+            orgErr(res, e);
+          }
+        });
+      const slug = z.string().regex(/^[a-z0-9][a-z0-9-]{0,62}$/);
+      router.get("/tenants/:id/organization", requireScope("tenants:read"), orgRoute((_req, t) => org.overview(t)));
+      router.post(
+        "/tenants/:id/fiscal-entities",
+        requireScope("tenants:write"),
+        orgRoute((req, t, actor) => {
+          const b = z.object({ entityId: slug, legalName: z.string().max(200), taxId: z.string().max(32), country: z.string().length(2).optional(), address: z.string().max(300).nullable().optional() }).strict().parse(req.body);
+          return org.createFiscalEntity(t, b, actor);
+        }),
+      );
+      router.post("/tenants/:id/fiscal-entities/:entity/archive", requireScope("tenants:write"), orgRoute((req, t) => org.archiveFiscalEntity(t, slug.parse(req.params.entity))));
+      router.post(
+        "/tenants/:id/sites",
+        requireScope("tenants:write"),
+        orgRoute((req, t, actor) => {
+          const b = z.object({ siteId: slug, name: z.string().max(160), fiscalEntityId: slug.nullable().optional() }).strict().parse(req.body);
+          return org.createSite(t, b, actor);
+        }),
+      );
+      router.post("/tenants/:id/sites/:site/archive", requireScope("tenants:write"), orgRoute((req, t) => org.archiveSite(t, slug.parse(req.params.site))));
+    }
+    if (d.capabilities && d.trials && d.provisioning && d.platformDomain) {
+      const crmD = d.crm;
+      const trialService = new TrialService({ store: d.trials.store, subscriptions: d.subscriptions.store, now: d.subscriptions.now, limits: d.trials.limits });
+      const catalogPort = catalogFromWebStore(d.web.store);
+      const licensingForTrials = new LicensingService({ capabilities: d.capabilities, subscriptions: d.subscriptions.store, crm: crmPort, catalog: async () => quoteCatalogFromSite(await webAdmin!.site("published")), now: d.subscriptions.now });
+      const provisioning = d.provisioning;
+      const platformDomain = d.platformDomain;
+      const onboarding = new TrialOnboardingService({
+        trials: trialService,
+        provision: (req) => provisioning.run(req, { type: "crm", id: "trial-onboarding" }),
+        platformDomain,
+        companies: {
+          byTenant: async (tenantId) => (await crmD.store.list("companies", { tenantId }, { limit: 1 }))[0] ?? null,
+          create: async (input, actor) => {
+            const c = await crmD.service.createCompany({ name: input.name, email: input.email }, actor);
+            return crmD.store.update("companies", c.id, { tenantId: input.tenantId });
+          },
+        },
+        subscriptions: svc,
+        licensing: licensingForTrials,
+        priceOf: async (key, kind) => (await catalogPort.offer()).find((p) => p.key === key)?.prices.find((x) => x.kind === kind && x.status === "approved")?.id ?? null,
+        notify: d.trials.notify ?? logOnlyTrialNotifier,
+        now: d.subscriptions.now,
+      });
+      router.use("/trials", createTrialAdminRouter({ onboarding, trials: trialService, store: d.trials.store }));
+      if (d.trials.publicEnabled) publicTrial = createPublicTrialRouter({ onboarding, autoProvision: !!d.trials.autoProvision });
+    }
     router.use("/subscriptions", createSubscriptionsRouter(svc, shadowBilling));
   }
 

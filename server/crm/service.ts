@@ -863,10 +863,22 @@ export class CrmService {
     return upd;
   }
 
-  async setContractStatus(id: number, to: ContractStatus, author: string, opts: { signatureRef?: string } = {}): Promise<Contract> {
+  async setContractStatus(id: number, to: ContractStatus, author: string, opts: { signatureRef?: string; approvalReason?: string } = {}): Promise<Contract> {
     const c = await this.must("contracts", id);
     if (c.status === to) return c;
     if (!CONTRACT_TRANSITIONS[c.status].includes(to)) throw new CrmError("invalid_state", `Transición no permitida: ${c.status} → ${to}`);
+    const q = c.configuration?.quote;
+    if (q && (to === "sent" || to === "signed" || to === "active")) {
+      // Lo «Próximamente» o no publicado no se contrata: hay que quitarlo de la configuración
+      if (q.blocking.length) throw new CrmError("invalid_state", `La configuración incluye productos que aún no se pueden contratar: ${q.blocking.join(", ")}`);
+      // «Solicitar activación»: exige una aprobación explícita con motivo, registrada en esta operación
+      const onRequest = q.lines.filter((l) => l.commercialStatus === "on_request").map((l) => l.name);
+      if (onRequest.length && to !== "active") {
+        const reason = clean(opts.approvalReason, 300);
+        if (!reason || reason.length < 5) throw new CrmError("invalid_input", `Requiere aprobación de activación (motivo de al menos 5 caracteres) para: ${onRequest.join(", ")}`);
+        await this.log("contract", id, "note", `Aprobada la activación de ${onRequest.join(", ")}: ${reason}`, author);
+      }
+    }
     if (to === "active") return this.activateContract(c, author);
     const patch: Partial<Contract> = { status: to, updatedAt: this.now() };
     if (to === "signed") {

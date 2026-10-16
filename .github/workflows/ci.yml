@@ -221,6 +221,7 @@ jobs:
           server/kbRoute server/ghlInboxRouter server/documentAccess
           server/accountSecurity server/sessionAndUploads server/redsys.security
           server/rbac server/health
+          server/catalog server/capabilities server/subscriptions server/trials server/crm server/organization
 
       # Las pruebas con MySQL comparten una base de datos: se ejecutan una a una
       - name: Suites de integración con MySQL real (en serie)
