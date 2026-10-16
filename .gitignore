@@ -115,3 +115,6 @@ temp/
 
 # Webdev artifacts (checkpoint zips, migrations, etc.)
 .webdev/
+
+# Exportaciones de la plataforma anterior (Manus): contienen datos de producción. Nunca se versionan.
+.manus/
