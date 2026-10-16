@@ -17,6 +17,8 @@ export interface CatalogProduct {
   activationRef: string | null;
   dependencies: string[];
   compatibleWith: string[];
+  /** Paquetes: componentes que sustituye (catálogo `bundleOf`). */
+  bundleOf: string[];
 }
 export interface CatalogPrice {
   id: number;
@@ -81,7 +83,7 @@ export function catalogFromWebStore(store: WebStore): CatalogPort {
       activation: { kind: string; ref: string | null };
       dependencies?: string[];
       compatibleWith?: string[];
-      catalog?: { commercialStatus?: CatalogProduct["commercialStatus"] };
+      catalog?: { commercialStatus?: CatalogProduct["commercialStatus"]; bundleOf?: string[] };
       billingModel?: string;
     };
     // Un «servicio» con cuota recurrente (alojamiento web) se contrata como complemento recurrente;
@@ -98,6 +100,7 @@ export function catalogFromWebStore(store: WebStore): CatalogPort {
       activationRef: p.activation?.ref ?? null,
       dependencies: p.dependencies ?? [],
       compatibleWith: p.compatibleWith ?? [],
+      bundleOf: p.catalog?.bundleOf ?? [],
     };
   };
   const priceOf = (x: Awaited<ReturnType<WebStore["getPrice"]>>, key: string): CatalogPrice | null =>

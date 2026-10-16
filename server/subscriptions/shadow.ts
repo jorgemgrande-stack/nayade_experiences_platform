@@ -2,17 +2,20 @@
  * Facturación en MODO SOMBRA: calcula, registra y compara. Nunca cobra ni emite facturas fiscales.
  *
  * Para el periodo vigente [S, E) de una suscripción:
- *  - renewal:   partidas recurrentes vigentes en S, con su precio CONTRATADO (instantánea);
- *  - proration: partidas recurrentes que empiezan dentro del periodo (alta o subida a mitad), por la
- *               fracción restante; en una subida de plan se descuenta la parte no consumida del plan
- *               anterior. Nunca negativo (sin abonos, D-S3);
+ *  - renewal:   partidas recurrentes vigentes en S, con su precio CONTRATADO (instantánea). Con
+ *               intervalos mixtos, las partidas de periodicidad más corta que el Core (mensuales en
+ *               un plan anual) renuevan aparte en cada uno de SUS periodos ya empezados (concepto
+ *               `interval:month`, con el periodo propio);
+ *  - proration: partidas recurrentes que empiezan dentro de SU periodo (alta o subida a mitad), por la
+ *               fracción restante de ese periodo; en una subida de plan se descuenta la parte no
+ *               consumida del plan anterior. Nunca negativo (sin abonos, D-S3);
  *  - one_time:  servicios de pago único que empiezan en el periodo;
  *  - usage:     consumos del periodo, solo cuando el periodo ha terminado (no se factura a medias).
  * Cada factura es única por (suscripción, tipo, periodo, concepto): repetir la simulación devuelve la
  * misma, sin duplicar. Si el recálculo no coincide con lo registrado, se informa (`drift`).
  */
 import type { CrmPort } from "./ports";
-import { coverage, isRecurring, lineAmounts, recurringKind, stableHash } from "./pricing";
+import { coverage, intervalMonths, isRecurring, itemInterval, itemPeriodAt, itemPeriods, lineAmounts, recurringKind, stableHash } from "./pricing";
 import type { SubscriptionStore } from "./store";
 import { SubscriptionError, type ShadowInvoice, type ShadowInvoiceKind, type ShadowLine, type Subscription, type SubscriptionItem } from "./types";
 
@@ -68,7 +71,7 @@ export class ShadowBillingService {
     // Durante la prueba solo se factura la parte del periodo posterior a su fin
     const billable = sub.trialEnd !== null && sub.trialEnd > S ? coverage(S, E, sub.trialEnd, null) : 1;
     const contract = sub.contractId ? await this.d.crm.contract(sub.contractId) : null;
-    const make = (kind: ShadowInvoiceKind, dedupeKey: string, lines: ShadowLine[], input: unknown): Draft => {
+    const make = (kind: ShadowInvoiceKind, dedupeKey: string, lines: ShadowLine[], input: unknown, period = { start: S, end: E }): Draft => {
       const sum = (k: keyof ShadowLine) => lines.reduce((a, l) => a + (l[k] as number), 0);
       let subtotal = sum("grossCents");
       let discount = sum("discountCents");
@@ -76,12 +79,12 @@ export class ShadowBillingService {
       let total = sum("totalCents");
       if (total < 0) [subtotal, discount, tax, total] = [0, 0, 0, 0]; // sin abonos (D-S3)
       // Comparación con el contrato: base imponible del periodo frente al importe pactado
-      const compare = kind === "renewal" && contract?.amountCents != null && contract.billingInterval === sub.interval && contract.currency === sub.currency;
+      const compare = kind === "renewal" && dedupeKey === "" && contract?.amountCents != null && contract.billingInterval === sub.interval && contract.currency === sub.currency;
       return {
         subscriptionId: sub.id,
         kind,
-        periodStart: S,
-        periodEnd: E,
+        periodStart: period.start,
+        periodEnd: period.end,
         dedupeKey,
         currency: sub.currency,
         subtotalCents: subtotal,
@@ -89,7 +92,7 @@ export class ShadowBillingService {
         taxCents: tax,
         totalCents: total,
         lines,
-        inputHash: stableHash({ kind, S, E, billable, input }),
+        inputHash: stableHash({ kind, S: period.start, E: period.end, billable, input }),
         contractAmountCents: compare ? contract!.amountCents : null,
         contractDiffCents: compare ? subtotal - discount - contract!.amountCents! : null,
         paymentStatus: "none",
@@ -106,10 +109,23 @@ export class ShadowBillingService {
       pending.push("Periodo íntegramente en prueba: sin importe");
     }
 
-    // Prorrateos: recurrentes que empiezan dentro del periodo
+    // Intervalos mixtos: las partidas de periodicidad más corta que el Core renuevan en cada uno de
+    // sus periodos ya empezados, con su propio periodo y concepto
+    if (intervalMonths(sub.interval) > 1) {
+      for (const p of itemPeriods(sub, "month").filter((x) => x.start <= this.now())) {
+        const monthly = items.filter((i) => i.priceKind === "monthly" && i.effectiveFrom <= p.start && (i.effectiveTo === null || i.effectiveTo > p.start));
+        const part = sub.trialEnd !== null && sub.trialEnd > p.start ? coverage(p.start, p.end, sub.trialEnd, null) : 1;
+        if (!monthly.length || part === 0) continue;
+        drafts.push(make("renewal", "interval:month", monthly.map((i) => line(i, p.start, part, `${i.productName} · periodo mensual`)), { part, items: monthly.map(itemInput) }, p));
+      }
+    }
+
+    // Prorrateos: recurrentes que empiezan dentro de SU periodo (no en una renovación suya)
     for (const i of items.filter((x) => isRecurring(x.priceKind) && x.effectiveFrom > S && x.effectiveFrom < E)) {
-      // Fracción restante del periodo (sin la parte en prueba)
-      const frac = coverage(S, E, Math.max(i.effectiveFrom, sub.trialEnd ?? 0), i.effectiveTo);
+      const own = itemPeriodAt(sub, itemInterval(i.priceKind)!, i.effectiveFrom);
+      if (i.effectiveFrom <= own.start) continue;
+      // Fracción restante de su periodo (sin la parte en prueba)
+      const frac = coverage(own.start, own.end, Math.max(i.effectiveFrom, sub.trialEnd ?? 0), i.effectiveTo);
       const lines = [line(i, i.effectiveFrom, frac, `${i.productName} · alta a mitad de periodo`)];
       const inputs = [itemInput(i)];
       // Subida de plan: se descuenta la parte no consumida del plan que se cobró en la renovación
@@ -120,7 +136,7 @@ export class ShadowBillingService {
           inputs.push(itemInput(prev));
         }
       }
-      drafts.push(make("proration", `item:${i.id}`, lines, inputs));
+      drafts.push(make("proration", `item:${i.id}`, lines, inputs, own));
     }
 
     // Servicios de pago único

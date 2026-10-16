@@ -11,6 +11,10 @@
  *  - Prueba (`trialing`): licencias con caducidad al final de la prueba; al vencer sin conversión,
  *    el Core las trata como solo lectura (se consultan los datos, no se opera).
  *  - Cancelada: las licencias de esa suscripción pasan a `cancelled` (los datos no se tocan).
+ *  - Caducidad por partida (intervalos mixtos): una capacidad que solo conceden partidas con fin
+ *    fijado (baja de un complemento, bajada de plan programada) caduca entonces (`validUntil`),
+ *    salvo que otra partida ya programada la siga concediendo sin hueco (p. ej. el paquete que
+ *    sustituye a sus componentes). Al reaplicar tras ese fin, pasa a `cancelled` sin tocar el resto.
  *  - Nunca cobra ni toca la suscripción.
  */
 import { COMPANY_WIDE, type CapabilityGrant, type CapabilityStatus } from "../_core/capabilities/model";
@@ -66,23 +70,39 @@ export class LicensingService {
     if (!tenantId) throw new LicensingError("invalid_state", "La suscripción no tiene plataforma (tenant): activa el contrato o da de alta la plataforma antes");
     const source = `subscription:${sub.id}`;
     const now = this.now();
-    const items = (await this.d.subscriptions.items(sub.id)).filter((i) => i.effectiveFrom <= now && (i.effectiveTo === null || i.effectiveTo > now));
+    const all = await this.d.subscriptions.items(sub.id);
+    const items = all.filter((i) => i.effectiveFrom <= now && (i.effectiveTo === null || i.effectiveTo > now));
     const catalog = await this.d.catalog();
     const byKey = new Map(catalog.products.map((p) => [p.key, p]));
 
+    const capsOf = (p: QuoteCatalogProduct | undefined, out = new Set<string>(), depth = 0): Set<string> => {
+      if (!p || depth > 10) return out;
+      p.capabilities.forEach((c) => CAPABILITY_IDS.includes(c) && out.add(c));
+      if (p.inherits) capsOf(byKey.get(p.inherits), out, depth + 1);
+      for (const comp of p.bundleOf) capsOf(byKey.get(comp), out, depth + 1);
+      return out;
+    };
     const grants = new Map<string, Set<string>>();
-    const grant = (cap: string, by: string) => {
-      if (!CAPABILITY_IDS.includes(cap)) return;
-      if (!grants.has(cap)) grants.set(cap, new Set());
-      grants.get(cap)!.add(by);
+    if (sub.status !== "canceled") {
+      for (const it of items) {
+        for (const cap of Array.from(capsOf(byKey.get(it.productKey)))) {
+          if (!grants.has(cap)) grants.set(cap, new Set());
+          grants.get(cap)!.add(it.productKey);
+        }
+      }
+    }
+    // Caducidad de cada capacidad: fin de las partidas que la conceden, encadenando las ya
+    // programadas que empiezan antes de ese fin (sin hueco); null si alguna no tiene fin
+    const capUntil = (cap: string): number | null => {
+      const grantors = all.filter((i) => capsOf(byKey.get(i.productKey)).has(cap));
+      let until: number | null = Math.max(...items.filter((i) => grantors.includes(i)).map((i) => i.effectiveTo ?? Infinity));
+      for (let guard = 0; until !== Infinity && guard < 50; guard++) {
+        const next = grantors.filter((i) => i.effectiveFrom > now && i.effectiveFrom <= until! && (i.effectiveTo === null || i.effectiveTo > until!));
+        if (!next.length) break;
+        until = Math.max(...next.map((i) => i.effectiveTo ?? Infinity));
+      }
+      return until === Infinity ? null : until;
     };
-    const expand = (p: QuoteCatalogProduct | undefined, by: string, depth = 0) => {
-      if (!p || depth > 10) return;
-      p.capabilities.forEach((c) => grant(c, by));
-      if (p.inherits) expand(byKey.get(p.inherits), by, depth + 1);
-      for (const comp of p.bundleOf) expand(byKey.get(comp), by, depth + 1);
-    };
-    if (sub.status !== "canceled") for (const it of items) expand(byKey.get(it.productKey), it.productKey);
 
     const validUntil = sub.status === "trialing" ? sub.trialEnd : null;
     const target: CapabilityStatus = o.activate ? "active" : "contracted";
@@ -92,7 +112,9 @@ export class LicensingService {
       const cur = current.find((g) => g.capabilityId === cap && g.siteId === COMPANY_WIDE);
       // No se rebaja lo que un operador dejó activo con este mismo origen al pedir solo «contratado»
       const status: CapabilityStatus = !o.activate && cur?.source === source && cur.status === "active" ? "active" : target;
-      changes.push({ capabilityId: cap, siteId: COMPANY_WIDE, status, validUntil, source });
+      const own = capUntil(cap);
+      const until = own === null ? validUntil : validUntil === null ? own : Math.min(own, validUntil);
+      changes.push({ capabilityId: cap, siteId: COMPANY_WIDE, status, validUntil: until, source });
     }
     for (const g of current) {
       if (g.source === source && !grants.has(g.capabilityId) && g.status !== "cancelled") changes.push({ capabilityId: g.capabilityId, siteId: g.siteId, status: "cancelled", validUntil: g.validUntil, source });
