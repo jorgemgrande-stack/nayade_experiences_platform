@@ -13,6 +13,7 @@
  */
 
 import { eq, and } from "drizzle-orm";
+import { isMultiTenant } from "./_core/tenant";
 import {
   emailTemplateConfigs,
   emailAutomationRules,
@@ -92,7 +93,9 @@ export async function sendManagedEmail(opts: ManagedEmailOptions): Promise<Manag
   const sendToAdmin = config?.sendToAdmin ?? false;
   const adminCopyEmail =
     config?.adminCopyEmail ??
-    getSystemSettingSync("email_reservations", process.env.GLOBAL_CC_EMAIL ?? "");
+    // En multiempresa nunca se cae en el buzón global: las copias con datos de clientes de una
+    // empresa no pueden acabar en la dirección de otra
+    getSystemSettingSync("email_reservations", isMultiTenant() ? "" : (process.env.GLOBAL_CC_EMAIL ?? ""));
 
   // 2. Verificar si está activa
   if (!isActive) {

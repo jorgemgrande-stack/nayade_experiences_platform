@@ -21,13 +21,13 @@ import { eq, desc, and, sql } from "drizzle-orm";
 import { ghlConversations, ghlMessages, ghlWebhookEvents, siteSettings } from "../../drizzle/schema";
 import { ghlInboxEmitter } from "../ghlInboxEvents";
 import { getTenantIdOrDefault } from "../_core/tenant";
-import { createHash, timingSafeEqual } from "crypto";
 import rateLimit from "express-rate-limit";
 import { requireStaff, getAuthUser } from "../_core/expressAuth";
 import type { Response } from "express";
 import { legacyDb, legacyPool } from "../_core/legacyDb";
 import { integrationEnv } from "../_core/tenantConfig";
 import { revealLegacySecret } from "../_core/credentials/legacyFields";
+import { checkWebhookSecret } from "../_core/webhookSecret";
 
 const _pool = legacyPool();
 const db = legacyDb();
@@ -479,14 +479,6 @@ async function processWebhookEvent(eventRowId: number, payload: any, eventType: 
 
 // ─── Seguridad ────────────────────────────────────────────────────────────────
 
-/** Comparación de secretos en tiempo constante (compara hashes de igual longitud). */
-function secretsMatch(provided: unknown, expected: string): boolean {
-  if (typeof provided !== "string" || provided === "") return false;
-  const a = createHash("sha256").update(provided).digest();
-  const b = createHash("sha256").update(expected).digest();
-  return timingSafeEqual(a, b);
-}
-
 /** Límites de conexiones SSE abiertas (varias pestañas por usuario son legítimas). */
 const SSE_MAX_PER_USER = 10;
 const SSE_MAX_TOTAL = 100;
@@ -544,19 +536,18 @@ ghlInboxRouter.post(
       "SELECT `value` FROM site_settings WHERE `key` = 'ghlInboxWebhookSecret' LIMIT 1"
     ).catch(() => [[]]);
     const dbSecret = revealLegacySecret("site_settings", "ghlInboxWebhookSecret", (secretRows as any[])[0]?.value);
-    const secret = integrationEnv("GHL_WEBHOOK_SECRET") || dbSecret;
-    if (!secret && process.env.NODE_ENV === "production") {
-      log("warn", "Webhook ignorado — secreto no configurado (fail-closed en producción)");
-      return res.status(200).json({ ok: true });
+    // Sin secreto configurado (y de longitud suficiente) el webhook está inactivo en cualquier entorno.
+    const auth = checkWebhookSecret(
+      (req.headers["x-ghl-secret"] as string | undefined) ?? (req.query.secret as string | undefined),
+      integrationEnv("GHL_WEBHOOK_SECRET") || dbSecret,
+    );
+    if (auth === "inactive") {
+      log("warn", "Webhook ignorado — secreto no configurado o demasiado corto (webhook inactivo)");
+      return res.status(200).json({ ok: true, ignored: true });
     }
-    if (secret) {
-      const provided =
-        (req.headers["x-ghl-secret"] as string | undefined) ??
-        (req.query.secret as string | undefined);
-      if (!secretsMatch(provided, secret)) {
-        log("warn", "Webhook con secreto inválido — ignorado silenciosamente");
-        return res.status(200).json({ ok: true }); // Siempre 200 para evitar reintentos de GHL
-      }
+    if (auth === "invalid") {
+      log("warn", "Webhook con secreto inválido — ignorado silenciosamente");
+      return res.status(200).json({ ok: true }); // Siempre 200 para evitar reintentos de GHL
     }
 
     const payload = req.body ?? {};

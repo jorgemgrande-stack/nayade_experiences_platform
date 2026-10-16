@@ -7,6 +7,7 @@ import { SignJWT, jwtVerify } from "jose";
 import type { User } from "../../drizzle/schema";
 import * as db from "../db";
 import { ENV } from "./env";
+import { isMultiTenant } from "./tenant";
 import type {
   ExchangeTokenRequest,
   ExchangeTokenResponse,
@@ -254,6 +255,11 @@ class SDKServer {
   }
 
   async authenticateRequest(req: Request): Promise<User> {
+    // Las sesiones de este modo (OAuth de Manus) no van ligadas a una empresa: en multiempresa no
+    // se aceptan (allí rige LOCAL_AUTH, con el tenant en la sesión).
+    if (isMultiTenant()) {
+      throw ForbiddenError("Modo de autenticación no disponible en multiempresa");
+    }
     // Regular authentication flow
     const cookies = this.parseCookies(req.headers.cookie);
     const sessionCookie = cookies.get(COOKIE_NAME);
