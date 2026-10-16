@@ -19,6 +19,7 @@ import { requireSessionSecret, sessionSecret, SessionSecretMissingError } from "
 import { isCrossOriginUnsafe } from "./_core/requestOrigin";
 import { loginLockRemaining, recordLoginFailure, recordLoginSuccess } from "./_core/loginThrottle";
 import { createHash } from "crypto";
+import { opsLog } from "./_core/ops/log";
 import { getDb } from "./db";
 import { users } from "../drizzle/schema";
 import { eq } from "drizzle-orm";
@@ -117,6 +118,9 @@ export async function getUserFromRequest(req: Request) {
   return user;
 }
 
+/** Fallo de inicio de sesión: solo el motivo; nunca el correo, la contraseña ni si la cuenta existe. */
+const loginFailed = (reason: string) => opsLog("warn", "Auth", "login_failed", { reason });
+
 // ─── Router Express ───────────────────────────────────────────────────────────
 export function createLocalAuthRouter(): Router {
   const router = express.Router();
@@ -131,12 +135,14 @@ export function createLocalAuthRouter(): Router {
     }
     // Login CSRF: no se aceptan inicios de sesión enviados desde otro origen
     if (isCrossOriginUnsafe(req)) {
+      loginFailed("cross_origin");
       res.status(403).json({ error: "Origen no permitido." });
       return;
     }
     const normalizedEmail = email.toLowerCase().trim();
     const lockMs = loginLockRemaining(normalizedEmail);
     if (lockMs > 0) {
+      loginFailed("locked");
       res.setHeader("Retry-After", String(Math.ceil(lockMs / 1000)));
       res.status(429).json({ error: "Demasiados intentos fallidos. Espera unos minutos antes de volver a intentarlo.", code: "RATE_LIMIT_EXCEEDED" });
       return;
@@ -144,6 +150,7 @@ export function createLocalAuthRouter(): Router {
 
     const db = await getDb();
     if (!db) {
+      loginFailed("db_unavailable");
       res.status(503).json({ error: "Base de datos no disponible." });
       return;
     }
@@ -159,6 +166,7 @@ export function createLocalAuthRouter(): Router {
     const valid = await bcrypt.compare(password, user?.passwordHash || DUMMY_HASH);
     if (!user || !user.passwordHash || !valid) {
       recordLoginFailure(normalizedEmail);
+      loginFailed("invalid_credentials");
       res.status(401).json({ error: "Credenciales incorrectas." });
       return;
     }
@@ -166,6 +174,7 @@ export function createLocalAuthRouter(): Router {
 
     // El estado de la cuenta solo se revela a quien conoce la contraseña
     if (!user.isActive) {
+      loginFailed("account_inactive");
       res.status(403).json({ error: "Cuenta desactivada. Contacta con el administrador." });
       return;
     }
@@ -186,6 +195,7 @@ export function createLocalAuthRouter(): Router {
         return;
       }
       console.error("[Auth] No se pudo emitir la sesión");
+      loginFailed("session_error");
       res.status(500).json({ error: "Error interno. Inténtalo más tarde." });
       return;
     }

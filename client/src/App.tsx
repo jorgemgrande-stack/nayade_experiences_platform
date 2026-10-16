@@ -144,6 +144,7 @@ const ConfigPanel = lazy(() => import("./pages/admin/settings/ConfigPanel"));
 const ConfigStatus = lazy(() => import("./pages/admin/settings/ConfigStatus"));
 const OnboardingWizard = lazy(() => import("./pages/admin/onboarding/OnboardingWizard"));
 const SubscriptionPage = lazy(() => import("./pages/admin/subscription/SubscriptionPage"));
+const HelpCenter = lazy(() => import("./pages/admin/help/HelpCenter"));
 const PrimerosPasos = lazy(() => import("./pages/admin/setup/PrimerosPasos"));
 
 // CRM
@@ -425,6 +426,8 @@ function Router() {
       <Route path="/admin/primeros-pasos">{() => <Suspense fallback={<AdminLoadingFallback />}><PrimerosPasos /></Suspense>}</Route>
       <Route path="/admin/numeracion">{() => <Suspense fallback={<AdminLoadingFallback />}><DocumentNumbersAdmin /></Suspense>}</Route>
       <Route path="/admin/suscripcion">{() => <Suspense fallback={<AdminLoadingFallback />}><SubscriptionPage /></Suspense>}</Route>
+      <Route path="/admin/ayuda">{() => <Suspense fallback={<AdminLoadingFallback />}><HelpCenter /></Suspense>}</Route>
+      <Route path="/admin/ayuda/:id">{() => <Suspense fallback={<AdminLoadingFallback />}><HelpCenter /></Suspense>}</Route>
 
       {/* 404 */}
       <Route path="/404" component={NotFound} />

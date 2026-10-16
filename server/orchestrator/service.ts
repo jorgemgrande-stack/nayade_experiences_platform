@@ -35,6 +35,8 @@ import type { TrialService } from "../trials/service";
 import { nextOrderState, type OrderAction } from "./machine";
 import type { TestPaymentPort } from "./payments";
 import type { OrderStore } from "./store";
+import { opsLog } from "../_core/ops/log";
+import { recordFailure } from "../_core/ops/failureAlerts";
 import { OrderError, type CommercialOrder, type Confirmation, type OrderPatch, type OrderPayment, type OrderQuote, type OrderState, type PaymentPurpose } from "./types";
 
 export const GRACE_DAYS = 7;
@@ -596,7 +598,8 @@ export class CommercialOrchestrator {
       await this.afterPayment(r.payment, "system:payments");
     } catch (e) {
       // El pago ya consta (misma transacción que el evento); el efecto en el pedido lo retoma `review`
-      console.error("[Orders] efecto del pago pendiente de revisión:", e instanceof Error ? e.name : "error");
+      opsLog("error", "Orders", "payment_effect_pending", { orderId: r.payment.orderId, error: e instanceof Error ? e.name : "error" });
+      recordFailure("orders.failed");
     }
     return { status: "processed" as const, outcome: r.outcome };
   }

@@ -10,6 +10,8 @@
 import type { NextFunction, Request, RequestHandler, Response } from "express";
 import { procedureNames } from "../modules/routeGuard";
 import type { CapabilityAccess } from "./access";
+import { opsLog } from "../ops/log";
+import { recordFailure } from "../ops/failureAlerts";
 
 /** procedimiento, sub-router o namespace tRPC → capacidad (ids de server/catalog/capabilities.ts). */
 export const TRPC_ROUTER_CAPABILITIES: Record<string, string> = {
@@ -92,12 +94,15 @@ export function capabilityRouteGuard(getAccess: () => CapabilityAccess, map: Rec
       for (const cap of Array.from(needed)) {
         const d = await access.check(cap, { write });
         if (!d.allowed) {
+          opsLog("warn", "Licensing", "capability_denied", { capability: cap, status: d.status ?? null, write });
           res.status(403).json({ error: { json: { message: d.reason, code: -32003, data: { code: "FORBIDDEN", httpStatus: 403, capability: cap, status: d.status } } } });
           return;
         }
       }
       next();
     } catch {
+      opsLog("error", "Licensing", "capability_check_failed", { write });
+      recordFailure("licensing.check_failed");
       res.status(503).json({ error: { json: { message: "No se pudo verificar la licencia", code: -32603, data: { code: "INTERNAL_SERVER_ERROR", httpStatus: 503 } } } });
     }
   };

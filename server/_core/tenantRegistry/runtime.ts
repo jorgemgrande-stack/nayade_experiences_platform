@@ -38,6 +38,8 @@ export interface TenantRuntime {
   identity: TenantIdentitySource;
   /** Concesiones de soporte delegado (solo lectura). */
   support: MysqlSupportReader;
+  /** Comprueba que la BD del registro responde (salud); rechaza si no. */
+  ping(): Promise<void>;
   /** Detiene el sondeo y cierra el pool del registro. */
   close(): Promise<void>;
 }
@@ -102,6 +104,9 @@ export function createTenantRuntime(
     quotas: new MysqlQuotaReader(pool),
     support: new MysqlSupportReader(pool),
     identity: registryIdentitySource(store, new MysqlOrganizationStore(pool)),
+    async ping() {
+      await pool.query("SELECT 1");
+    },
     async close() {
       clearInterval(timer);
       setConnectionResolver(null);

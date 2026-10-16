@@ -18,6 +18,11 @@ import nodemailer from "nodemailer";
 import { Metrics, meter } from "./_core/metering";
 import { enforceQuota } from "./_core/erm/runtime";
 import { QuotaExceededError } from "./_core/erm/types";
+import { maskEmail, opsLog } from "./_core/ops/log";
+import { recordFailure } from "./_core/ops/failureAlerts";
+
+/** Destinatarios para los logs: nunca la dirección completa. */
+const maskTo = (to: string | string[]) => (Array.isArray(to) ? to : [to]).map(maskEmail).join(", ");
 import { isMultiTenant } from "./_core/tenant";
 import { getSystemSettingSync } from "./config";
 import { brandName, tenantCommsConfig } from "./tenantBrand";
@@ -117,15 +122,16 @@ async function sendViaBrevoApi(params: MailParams): Promise<boolean> {
 
     if (res.ok) {
       const json = await res.json() as { messageId?: string };
-      console.log(`[Mailer] ✓ Brevo API → ${Array.isArray(params.to) ? params.to.join(", ") : params.to} | messageId: ${json.messageId ?? "—"}`);
+      console.log(`[Mailer] ✓ Brevo API → ${maskTo(params.to)} | messageId: ${json.messageId ?? "—"}`);
       return true;
     }
 
-    const errText = await res.text();
-    console.error(`[Mailer] ✗ Brevo API error ${res.status}: ${errText}`);
+    // El cuerpo del error del proveedor puede repetir destinatarios: solo el código de estado
+    await res.text().catch(() => "");
+    opsLog("error", "Mailer", "provider_error", { channel: "brevo", httpStatus: res.status });
     return false;
   } catch (err) {
-    console.error("[Mailer] ✗ Brevo API fetch error:", err);
+    opsLog("error", "Mailer", "provider_error", { channel: "brevo", error: err instanceof Error ? err.name : "error" });
     return false;
   }
 }
@@ -178,10 +184,10 @@ async function sendViaSMTP(params: MailParams): Promise<boolean> {
         ? { attachments: params.attachments.map(a => ({ filename: a.name, path: a.url })) }
         : {}),
     });
-    console.log(`[Mailer] ✓ SMTP → ${Array.isArray(params.to) ? params.to.join(", ") : params.to}`);
+    console.log(`[Mailer] ✓ SMTP → ${maskTo(params.to)}`);
     return true;
   } catch (err) {
-    console.error("[Mailer] ✗ SMTP error:", err);
+    opsLog("error", "Mailer", "provider_error", { channel: "smtp", error: err instanceof Error ? err.name : "error", code: (err as { code?: unknown })?.code ?? null });
     return false;
   }
 }
@@ -229,8 +235,15 @@ export async function sendEmail(params: MailParams): Promise<boolean> {
   }
 
   // Fallback SMTP: el buzón SMTP del entorno es de la plataforma/Náyade; en multiempresa no se usa
-  if (isMultiTenant()) return false;
+  if (isMultiTenant()) return mailFailed("no_channel_left");
   const sent = await sendViaSMTP(enriched);
   meter(Metrics.EMAIL_SENT, 1, "count", { channel: "smtp", ok: sent });
-  return sent;
+  return sent || mailFailed("smtp_failed");
+}
+
+/** Envío definitivamente fallido: evento estructurado (sin destinatarios ni asunto) y alerta por repetición. */
+function mailFailed(reason: string): false {
+  opsLog("error", "Mailer", "send_failed", { reason });
+  recordFailure("mail.send_failed");
+  return false;
 }

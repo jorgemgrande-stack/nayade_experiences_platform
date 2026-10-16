@@ -6,7 +6,7 @@ import {
   Bell, Search, User, BedDouble, Sparkles, UtensilsCrossed, AlertCircle,
   UserPlus, FileCheck, ChevronRight, Receipt, Truck, Monitor, Tag, Ticket,
   Sun, Moon, ExternalLink, Target, MessageCircle, Bot, Mail, Building2,
-  Briefcase, Globe, CreditCard, ShoppingCart, Rocket, ArrowUpRight,
+  Briefcase, Globe, CreditCard, ShoppingCart, Rocket, ArrowUpRight, HelpCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -24,6 +24,7 @@ import {
   LEGACY_SECTIONS, TASK_NAV, resolveNav,
   type NavIcon, type ResolvedItem, type ResolvedSection,
 } from "@shared/adminNav";
+import { helpForLocation } from "@shared/helpCenter";
 
 /** Iconos del menú (el modelo de navegación vive en shared/adminNav.ts, sin React). */
 const NAV_ICONS: Record<NavIcon, React.ComponentType<{ className?: string }>> = {
@@ -31,7 +32,7 @@ const NAV_ICONS: Record<NavIcon, React.ComponentType<{ className?: string }>> = 
   target: Target, calendar: Calendar, briefcase: Briefcase, chart: BarChart3, receipt: Receipt,
   monitor: Monitor, truck: Truck, bed: BedDouble, sparkles: Sparkles, utensils: UtensilsCrossed,
   tag: Tag, users: Users, settings: Settings, globe: Globe, creditCard: CreditCard,
-  shoppingCart: ShoppingCart, rocket: Rocket, message: MessageCircle, bot: Bot, mail: Mail,
+  shoppingCart: ShoppingCart, rocket: Rocket, message: MessageCircle, bot: Bot, mail: Mail, help: HelpCircle,
 };
 
 /** Etiqueta y color por rol */
@@ -168,6 +169,8 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
           capabilityState: subscription.mode === "tasks" ? subscription.capabilityState : () => "active",
         });
   const isTaskNav = subscription.mode === "tasks";
+  // Ayuda contextual de la pantalla actual (contenido en shared/helpCenter.ts)
+  const contextHelp = isTaskNav ? helpForLocation(location, currentSearch) : undefined;
   const upgradeUrl = subscription.data?.upgradeUrl ?? null;
   const trialInfo = subscription.data?.trial ?? null;
   // Una empresa nueva sin logo propio no hereda el de la instalación original: se muestra su inicial.
@@ -718,6 +721,32 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
                 </div>
               </PopoverContent>
             </Popover>
+            {isTaskNav && (
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="ghost" size="sm" className="h-9 px-2 sm:px-3 text-xs gap-1.5" aria-label={contextHelp ? `Ayuda sobre esta pantalla: ${contextHelp.title}` : "Ayuda"}>
+                    <HelpCircle className="w-4 h-4" aria-hidden="true" />
+                    <span className="hidden sm:inline">Ayuda</span>
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent align="end" className="w-[min(20rem,calc(100vw-2rem))] p-4">
+                  {contextHelp ? (
+                    <>
+                      <p className="text-sm font-semibold text-foreground">{contextHelp.title}</p>
+                      <p className="mt-1 text-sm text-muted-foreground">{contextHelp.summary}</p>
+                      <Link href={`/admin/ayuda/${contextHelp.id}`} className="mt-3 inline-flex text-sm font-medium text-primary underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded">
+                        Ver la guía paso a paso
+                      </Link>
+                    </>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">Guías breves para crear clientes, productos, presupuestos, pedidos y facturas, invitar a tu equipo y gestionar tu suscripción.</p>
+                  )}
+                  <Link href="/admin/ayuda" className="mt-2 block text-sm font-medium text-primary underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded">
+                    Centro de ayuda y contacto
+                  </Link>
+                </PopoverContent>
+              </Popover>
+            )}
             {userRole !== "adminrest" && (
               <Link href="/" target="_blank">
                 <Button variant="outline" size="sm" className="text-xs hidden sm:inline-flex">

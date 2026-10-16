@@ -9,6 +9,8 @@ import { getAuth, requireScope } from "../controlPlane/auth";
 import type { SubscriptionService } from "./service";
 import type { ShadowBillingService } from "./shadow";
 import { SubscriptionError } from "./types";
+import { opsLog } from "../_core/ops/log";
+import { recordFailure } from "../_core/ops/failureAlerts";
 
 const wrap =
   (fn: (req: Request, res: Response) => Promise<void>) =>
@@ -19,7 +21,8 @@ const wrap =
         return void res.status(status).json({ error: e.code, message: e.message, ...(e.details ? { details: e.details } : {}) });
       }
       if (e instanceof z.ZodError) return void res.status(400).json({ error: "invalid_request", message: e.issues.map((i) => i.path.join(".") || i.message).join(", ") });
-      console.error("[Subscriptions] error interno:", e instanceof Error ? e.name : "error");
+      opsLog("error", "Subscriptions", "internal_error", { method: req.method, error: e instanceof Error ? e.name : "error" });
+      recordFailure("orders.failed");
       res.status(500).json({ error: "internal_error", message: "Error interno" });
     });
   };
