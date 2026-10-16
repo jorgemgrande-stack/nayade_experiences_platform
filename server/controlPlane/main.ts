@@ -54,6 +54,7 @@ import { RegistryTenantEffects } from "../_core/billing/effects";
 import { IncidentService, MysqlIncidentStore, webhookNotifier } from "../_core/ops/incidents";
 import { MysqlTicketStore, TicketService } from "../_core/support/tickets";
 import { runAlerts } from "../_core/ops/alerts";
+import { FailureAlerts, configureFailureAlerts } from "../_core/ops/failureAlerts";
 import { SsoService, parseSsoUsers } from "./sso";
 import { createRemoteJWKSet } from "jose";
 import { operatorAuthFromEnv } from "./operatorSetup";
@@ -128,6 +129,8 @@ async function main() {
     new MysqlIncidentStore(pool),
     process.env.CP_ALERT_WEBHOOK ? webhookNotifier(process.env.CP_ALERT_WEBHOOK) : undefined,
   );
+  // Alertas por repetición de fallos (altas, correo, contratación): incidencias deduplicadas `rate:*`
+  configureFailureAlerts(new FailureAlerts({ incidents }));
   const evaluate = () => runAlerts({ reader: store, incidents, usage, quotas, entitlements });
   if (process.env.CP_ALERTS_EVERY_SECONDS) {
     const every = Math.max(30, Number(process.env.CP_ALERTS_EVERY_SECONDS)) * 1000;
@@ -229,6 +232,7 @@ async function main() {
     billing,
     billingStore,
     ops: { incidents, runAlerts: evaluate },
+    health: { registryPing: async () => void (await pool.query("SELECT 1")) },
     sso,
     crm,
     tokens,

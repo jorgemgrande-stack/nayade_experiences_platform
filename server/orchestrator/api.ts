@@ -17,6 +17,8 @@ import { SubscriptionError } from "../subscriptions/types";
 import { TrialError } from "../trials/service";
 import { PaymentSignatureError } from "./payments";
 import type { CommercialOrchestrator } from "./service";
+import { opsLog } from "../_core/ops/log";
+import { recordFailure } from "../_core/ops/failureAlerts";
 import { ORDER_STATES, OrderError } from "./types";
 
 const STATUS: Record<string, number> = { not_found: 404, invalid_input: 400, invalid_state: 409, conflict: 409, forbidden: 403, unavailable: 409, version_conflict: 409, limit: 429 };
@@ -28,7 +30,8 @@ const wrap =
         return void res.status(STATUS[e.code] ?? 400).json({ error: e.code, message: e.message });
       }
       if (e instanceof z.ZodError) return void res.status(400).json({ error: "invalid_request", message: e.issues.map((i) => i.path.join(".") || i.message).join(", ") });
-      console.error("[Orders] error interno:", e instanceof Error ? e.name : "error");
+      opsLog("error", "Orders", "internal_error", { method: req.method, error: e instanceof Error ? e.name : "error" });
+      recordFailure("orders.failed");
       res.status(500).json({ error: "internal_error", message: "Error interno" });
     });
   };
@@ -102,7 +105,8 @@ export function paymentsWebhookHandler(svc: CommercialOrchestrator) {
       .then((out) => void res.json(out))
       .catch((e) => {
         if (e instanceof PaymentSignatureError) return void res.status(400).json({ error: "invalid_signature" });
-        console.error("[Orders] error al procesar un evento de pago:", e instanceof Error ? e.name : "error");
+        opsLog("error", "Orders", "payment_event_failed", { error: e instanceof Error ? e.name : "error" });
+        recordFailure("orders.failed");
         // 500: el proveedor reintenta; si el evento llegó a registrarse, el reintento es un duplicado sin efecto
         res.status(500).json({ error: "internal_error" });
       });
