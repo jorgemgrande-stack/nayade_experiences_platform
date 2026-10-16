@@ -61,6 +61,17 @@ import { quote, type QuoteRequest } from "../catalog/quote";
 import { CAPABILITY_STATUSES } from "../_core/capabilities/model";
 import type { CapabilityStore } from "../_core/capabilities/store";
 import { LicensingError, LicensingService } from "../licensing/service";
+import { TrialService, type TrialLimits } from "../trials/service";
+import type { TrialStore } from "../trials/store";
+import { TrialOnboardingService, type TrialNotifier } from "../trials/onboarding";
+import { createPublicTrialRouter, createTrialAdminRouter } from "../trials/api";
+
+/** Aviso por defecto: NO envía nada; solo deja constancia (sin correo ni token) de que hay un aviso pendiente. */
+const logOnlyTrialNotifier: TrialNotifier = {
+  verification: async (_to, l) => void console.log(JSON.stringify({ ctx: "Trials", event: "verification_not_sent", trialId: l.trialId })),
+  welcome: async (_to, i) => void console.log(JSON.stringify({ ctx: "Trials", event: "welcome_not_sent", tenantId: i.tenantId })),
+  expiryNotice: async (_to, i) => void console.log(JSON.stringify({ ctx: "Trials", event: "expiry_notice_not_sent", trialId: i.trialId, daysLeft: i.daysLeft })),
+};
 import { quoteCatalogFromSite } from "../catalog/snapshot";
 
 export interface ControlPlaneDeps {
@@ -118,6 +129,12 @@ export interface ControlPlaneDeps {
   subscriptions?: { store: SubscriptionStore; now?: () => number };
   /** Licencias por capacidad (registro, migración 0008). Sin ellas no se aplican licencias desde suscripciones. */
   capabilities?: CapabilityStore;
+  /**
+   * Prueba gratuita de Essential (CRM 0007). Las rutas públicas solo existen con `publicEnabled`
+   * (por defecto NO); `notify` es el único canal de comunicaciones (por defecto, solo un registro
+   * sin datos personales ni tokens: no se envía nada).
+   */
+  trials?: { store: TrialStore; publicEnabled?: boolean; autoProvision?: boolean; notify?: TrialNotifier; limits?: Partial<TrialLimits> };
 }
 
 const idSchema = z.string().regex(/^[a-z0-9][a-z0-9_-]{0,62}$/);
@@ -261,6 +278,10 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
   // Lectura pública del sitio (solo lo publicado): antes del router de captación, que exige Origin
   if (webAdmin && d.publicIntake) router.use("/public/site", createPublicSiteRouter({ service: webAdmin, secret: d.publicIntake.secret }));
   // Captación pública desde la web: única ruta sin autenticación que escribe (solo solicitudes)
+  // Prueba gratuita pública: reservada ANTES del router de captación (que responde 404 a lo demás);
+  // el router real se asigna más abajo, cuando existen suscripciones y licencias.
+  let publicTrial: express.Router | null = null;
+  router.use("/public/trial", (req, res, next) => (publicTrial ? publicTrial(req, res, next) : void res.status(404).json({ error: "not_found" })));
   if (webRequests && d.publicIntake) router.use("/public", createPublicIntakeRouter({ ...d.publicIntake, origins: publicOrigins, service: webRequests }));
   router.use(
     authenticate(
@@ -690,6 +711,33 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
           }
         }),
       );
+    }
+    if (d.capabilities && d.trials && d.provisioning && d.platformDomain) {
+      const crmD = d.crm;
+      const trialService = new TrialService({ store: d.trials.store, subscriptions: d.subscriptions.store, now: d.subscriptions.now, limits: d.trials.limits });
+      const catalogPort = catalogFromWebStore(d.web.store);
+      const licensingForTrials = new LicensingService({ capabilities: d.capabilities, subscriptions: d.subscriptions.store, crm: crmPort, catalog: async () => quoteCatalogFromSite(await webAdmin!.site("published")), now: d.subscriptions.now });
+      const provisioning = d.provisioning;
+      const platformDomain = d.platformDomain;
+      const onboarding = new TrialOnboardingService({
+        trials: trialService,
+        provision: (req) => provisioning.run(req, { type: "crm", id: "trial-onboarding" }),
+        platformDomain,
+        companies: {
+          byTenant: async (tenantId) => (await crmD.store.list("companies", { tenantId }, { limit: 1 }))[0] ?? null,
+          create: async (input, actor) => {
+            const c = await crmD.service.createCompany({ name: input.name, email: input.email }, actor);
+            return crmD.store.update("companies", c.id, { tenantId: input.tenantId });
+          },
+        },
+        subscriptions: svc,
+        licensing: licensingForTrials,
+        priceOf: async (key, kind) => (await catalogPort.offer()).find((p) => p.key === key)?.prices.find((x) => x.kind === kind && x.status === "approved")?.id ?? null,
+        notify: d.trials.notify ?? logOnlyTrialNotifier,
+        now: d.subscriptions.now,
+      });
+      router.use("/trials", createTrialAdminRouter({ onboarding, trials: trialService, store: d.trials.store }));
+      if (d.trials.publicEnabled) publicTrial = createPublicTrialRouter({ onboarding, autoProvision: !!d.trials.autoProvision });
     }
     router.use("/subscriptions", createSubscriptionsRouter(svc, shadowBilling));
   }
