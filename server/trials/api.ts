@@ -115,7 +115,11 @@ export function createTrialAdminRouter(o: { onboarding: TrialOnboardingService; 
   r.get(
     "/:id",
     requireScope("subscriptions:read"),
-    wrap(async (req, res) => void res.json({ trial: TrialService.view(await o.trials.must(id.parse(req.params.id))) })),
+    wrap(async (req, res) => {
+      const trial = await o.trials.must(id.parse(req.params.id));
+      // Historial de la prueba (registro, verificación, activación, prórrogas, caducidad…)
+      res.json({ trial: TrialService.view(trial), events: await o.store.events(trial.id) });
+    }),
   );
   r.get(
     "/:id/events",

@@ -14,7 +14,7 @@
 export type NavIcon =
   | "dashboard" | "image" | "package" | "file" | "building" | "target" | "calendar" | "briefcase" | "chart"
   | "receipt" | "monitor" | "truck" | "bed" | "sparkles" | "utensils" | "tag" | "users" | "settings"
-  | "globe" | "creditCard" | "shoppingCart" | "rocket" | "message" | "bot" | "mail";
+  | "globe" | "creditCard" | "shoppingCart" | "rocket" | "message" | "bot" | "mail" | "help";
 
 export interface NavLeaf {
   label: string;
@@ -364,6 +364,11 @@ export const TASK_NAV: NavSection[] = [
     id: "suscripcion",
     label: "Suscripción",
     items: [{ label: "Plan y uso", href: "/admin/suscripcion", key: "t-suscripcion", icon: "rocket", roles: ADMIN }],
+  },
+  {
+    id: "ayuda",
+    label: null,
+    items: [{ label: "Ayuda", href: "/admin/ayuda", key: "t-ayuda", icon: "help", roles: ["admin", "agente", "monitor", "adminrest", "controler"] }],
   },
 ];
 

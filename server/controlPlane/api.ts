@@ -80,6 +80,9 @@ const logOnlyTrialNotifier: TrialNotifier = {
   expiryNotice: async (_to, i) => void console.log(JSON.stringify({ ctx: "Trials", event: "expiry_notice_not_sent", trialId: i.trialId, daysLeft: i.daysLeft })),
 };
 import { quoteCatalogFromSite } from "../catalog/snapshot";
+import { rebindRequestContext, requestIdMiddleware, requestIdOf } from "../_core/ops/requestContext";
+import { opsLog } from "../_core/ops/log";
+import { diagnoseTenant } from "../_core/ops/diagnostics";
 
 export interface ControlPlaneDeps {
   tokens: ServiceToken[];
@@ -104,6 +107,8 @@ export interface ControlPlaneDeps {
   support?: Pick<SupportAdmin, "create" | "revoke">;
   /** Incidencias operativas y evaluación de alertas. */
   ops?: { incidents: IncidentService; runAlerts?: () => Promise<AlertRunResult> };
+  /** Comprobación de la BD del registro para `/readyz` (sin ella, `/readyz` solo indica que el proceso vive). */
+  health?: { registryPing: () => Promise<void>; timeoutMs?: number };
   /** Tickets de soporte de clientes. */
   tickets?: TicketService;
   /** SSO corporativo (OIDC → sesión corta). */
@@ -187,7 +192,7 @@ const wrap =
   (req: Request, res: Response, next: NextFunction) => {
     fn(req, res).catch((e) => {
       const { status, code } = httpStatus(e);
-      if (status === 500) console.error("[ControlPlane] error interno:", e instanceof Error ? e.name : "error");
+      if (status === 500) opsLog("error", "ControlPlane", "internal_error", { method: req.method, error: e instanceof Error ? e.name : "error" });
       // Mensaje genérico en errores internos; los de dominio son seguros y útiles
       const message = status === 500 ? "Error interno" : e instanceof z.ZodError ? e.issues.map((i) => i.path.join(".")).join(", ") : (e as Error).message;
       res.status(status).json({ error: code, message });
@@ -199,6 +204,8 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
   const app = express();
   app.disable("x-powered-by");
   if (d.trustProxy !== undefined) app.set("trust proxy", d.trustProxy);
+  // Identificador de correlación: aceptado solo si es seguro (si no, se genera) y devuelto siempre
+  app.use(requestIdMiddleware);
   // CORS: solo orígenes explícitos, nunca comodín. Con operadores, credenciales (cookie de sesión)
   // únicamente para esos orígenes; los tokens de servicio siguen en la cabecera Authorization.
   const origins = new Set((d.allowedOrigins ?? []).filter((o) => /^https?:\/\/[^*]+$/.test(o)));
@@ -210,7 +217,8 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
       if (typeof o === "string" && publicOrigins.has(o)) {
         res.setHeader("Access-Control-Allow-Origin", o);
         res.setHeader("Vary", "Origin");
-        res.setHeader("Access-Control-Allow-Headers", "content-type, idempotency-key");
+        res.setHeader("Access-Control-Allow-Headers", "content-type, idempotency-key, x-request-id");
+        res.setHeader("Access-Control-Expose-Headers", "X-Request-Id");
         res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
         res.setHeader("Access-Control-Max-Age", "600");
       }
@@ -220,7 +228,8 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
     if (typeof o === "string" && origins.has(o)) {
       res.setHeader("Access-Control-Allow-Origin", o);
       res.setHeader("Vary", "Origin");
-      res.setHeader("Access-Control-Allow-Headers", d.operators ? "authorization, content-type, x-csrf-token" : "authorization, content-type");
+      res.setHeader("Access-Control-Allow-Headers", d.operators ? "authorization, content-type, x-csrf-token, x-request-id" : "authorization, content-type, x-request-id");
+      res.setHeader("Access-Control-Expose-Headers", "X-Request-Id");
       if (d.operators) res.setHeader("Access-Control-Allow-Credentials", "true");
       res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
       res.setHeader("Access-Control-Max-Age", "600");
@@ -229,6 +238,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
     next();
   });
   app.use(express.json({ limit: "256kb", verify: (req, _res, buf) => void ((req as any).rawBody = buf.toString("utf8")) }));
+  app.use(rebindRequestContext);
 
   // Webhook del proveedor de pagos: autenticado por firma, no por token
   if (d.billing) {
@@ -324,7 +334,8 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
   });
   // Sesión, cierre de sesión, contraseña propia y gestión de operadores
   if (operatorRoutes) router.use(createOperatorRouter(operatorRoutes));
-  const actor = (req: Request) => getAuth(req)!.actor;
+  // La auditoría del registro (tenant_events.request_id) guarda el identificador de correlación
+  const actor = (req: Request) => ({ ...getAuth(req)!.actor, requestId: requestIdOf(req) });
 
   // ── Tenants ────────────────────────────────────────────────────────────────
   router.get(
@@ -604,6 +615,18 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         tenants: rows,
         unmeasured: UNMEASURED,
       });
+    }),
+  );
+
+  // Diagnóstico de una empresa (registro, dominios, BD de la empresa, esquema, licencias): solo operadores
+  router.get(
+    "/tenants/:id/diagnostics",
+    requireScope("ops:read"),
+    wrap(async (req, res) => {
+      const id = idSchema.parse(req.params.id);
+      const out = await diagnoseTenant({ reader: d.reader, registry: d.registry, entitlements: d.entitlements, quotas: d.quotas }, id);
+      if (!out.ok) opsLog("warn", "Diagnostics", "tenant_not_healthy", { tenantId: id, failed: out.checks.filter((c) => !c.ok).map((c) => c.name) });
+      res.json(out);
     }),
   );
 
@@ -1102,6 +1125,27 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
 
   app.use("/cp/v1", router);
   app.get("/healthz", (_req, res) => void res.json({ ok: true }));
+  // Readiness: BD del registro. Sin detalles internos (solo un estado por comprobación).
+  app.get("/readyz", (_req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    if (!d.health) return void res.json({ status: "ready", checks: {} });
+    const ms = d.health.timeoutMs ?? 3000;
+    Promise.race([d.health.registryPing(), new Promise((_r, rej) => setTimeout(() => rej(new Error("timeout")), ms).unref?.())]).then(
+      () => void res.json({ status: "ready", checks: { registry: "ok" } }),
+      () => {
+        opsLog("error", "Health", "registry_unavailable", {});
+        res.status(503).json({ status: "degraded", checks: { registry: "error" } });
+      },
+    );
+  });
   app.use((_req, res) => void res.status(404).json({ error: "not_found" }));
+  // Errores no capturados por las rutas (p. ej. los que delegan con `next(e)`): JSON genérico y log estructurado
+  app.use((e: unknown, req: Request, res: Response, _next: NextFunction) => {
+    const status = (e as { status?: number; statusCode?: number })?.status ?? (e as { statusCode?: number })?.statusCode;
+    if (typeof status === "number" && status >= 400 && status < 500) return void res.status(status).json({ error: "invalid_request" });
+    opsLog("error", "ControlPlane", "unhandled_error", { method: req.method, error: e instanceof Error ? e.name : "error" });
+    if (res.headersSent) return;
+    res.status(500).json({ error: "internal_error", message: "Error interno" });
+  });
   return app;
 }

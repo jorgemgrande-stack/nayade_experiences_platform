@@ -21,6 +21,9 @@ import { writableTenantLister } from "./jobs";
 import { createTenantRuntime, type TenantRuntime } from "./runtime";
 import { setJobPrelude, setJobTenantLister } from "./scheduler";
 import { shadowMiddleware } from "./shadow";
+import { configureHealthChecks } from "../health";
+import { getTenantDatabase } from "../dbRegistry";
+import { sql } from "drizzle-orm";
 import { bindTenantMiddleware, resolveTenantMiddleware } from "./tenantMiddleware";
 
 export function installTenantResolution(app: Express, env: NodeJS.ProcessEnv = process.env): TenantRuntime | null {
@@ -41,6 +44,21 @@ export function installTenantResolution(app: Express, env: NodeJS.ProcessEnv = p
     app.use(shadowMiddleware(rt.resolver, { currentTenantId: env.TENANT_SHADOW_CURRENT_ID || "nayade" }));
   } else {
     app.use(resolveTenantMiddleware(rt.resolver));
+    // Salud (/readyz): BD del registro y, si el host es de una empresa servible, la BD de esa empresa
+    const runtime = rt;
+    configureHealthChecks({
+      registryPing: () => runtime.ping(),
+      tenantPing: async (req) => {
+        const r = await runtime.resolver.resolveHost(req.headers.host);
+        if (r.kind !== "resolved" || (!r.tenant.policy.admin && !r.tenant.policy.publicWeb)) return null;
+        const tenantId = r.tenant.tenantId;
+        return async () => {
+          const db = await getTenantDatabase(tenantId);
+          if (!db) throw new Error("sin conexión");
+          await db.execute(sql`SELECT 1`);
+        };
+      },
+    });
     // Las tareas programadas recorren los tenants con escrituras del registro
     setJobTenantLister(writableTenantLister(rt.reader));
     // Las tareas también necesitan las credenciales del tenant en curso

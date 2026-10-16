@@ -4,6 +4,8 @@
  * del registro) y compensación explícita (`abort`).
  */
 import { RegistryError } from "../tenantRegistry/contract";
+import { opsLog } from "../ops/log";
+import { recordFailure } from "../ops/failureAlerts";
 import type { Actor, TenantRegistryService } from "../tenantRegistry/service";
 import type { TenantRegistryReader } from "../tenantRegistry/store";
 import type { DatabaseProvisioner, ModuleInstaller, ProvisioningListFilter, ProvisioningStore, SchemaApplier, TenantSeeder, WelcomeNotifier } from "./ports";
@@ -173,6 +175,14 @@ export class ProvisioningService {
         rec.status = "failed";
         rec.lastError = `${step}: ${msg}`;
         await this.save(rec);
+        // Sin datos de la solicitud (correo, nombre): solo empresa, paso, intento y tipo de error
+        opsLog("error", "Provisioning", "step_failed", {
+          tenantId: rec.tenantId,
+          step,
+          attempts: rec.attempts,
+          error: lastErr instanceof RegistryError ? `RegistryError:${lastErr.code}` : lastErr instanceof Error ? lastErr.name : "error",
+        });
+        recordFailure("provisioning.failed", rec.tenantId);
         return { ...this.result(rec), failedStep: step, error: msg };
       }
       await this.save(rec); // checkpoint tras cada paso

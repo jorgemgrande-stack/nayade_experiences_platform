@@ -8,6 +8,7 @@ import { isLeadProcedurePath, localStorageSecurityHeaders } from "./publicEndpoi
 import { createHealthRouter } from "./health";
 import { securityHeaders } from "./securityHeaders";
 import { requestMeter } from "./requestMeter";
+import { rebindRequestContext, requestIdMiddleware } from "./ops/requestContext";
 import { installTenantBinding, installTenantResolution } from "./tenantRegistry/install";
 import { scheduleTenantInterval, setJobFlag } from "./tenantRegistry/scheduler";
 import { isMultiTenant } from "./tenant";
@@ -142,6 +143,8 @@ async function startServer() {
   app.set("trust proxy", 1);
   // Cabeceras de seguridad comunes (sin CSP completa: ver securityHeaders.ts)
   app.disable("x-powered-by");
+  // Identificador de correlación (X-Request-Id): seguro o generado, devuelto y añadido a los logs
+  app.use(requestIdMiddleware);
   app.use(securityHeaders);
   // Salud (liveness/readiness): antes de cualquier middleware pesado, sin autenticación.
   app.use(createHealthRouter());
@@ -153,6 +156,7 @@ async function startServer() {
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
   installTenantBinding(app);
+  app.use(rebindRequestContext);
 
   if (USE_LOCAL_AUTH) {
     // Rate limiting en endpoints de autenticación (5 req/min por IP)

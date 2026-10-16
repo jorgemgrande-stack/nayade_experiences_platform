@@ -15,6 +15,8 @@
  */
 import nodemailer from "nodemailer";
 import type { TrialNotifier } from "./onboarding";
+import { opsLog } from "../_core/ops/log";
+import { recordFailure } from "../_core/ops/failureAlerts";
 
 export interface OutgoingEmail {
   to: string;
@@ -98,7 +100,7 @@ function domainOf(email: string): string {
 }
 
 export function createEmailTrialNotifier(o: EmailTrialNotifierOptions): TrialNotifier {
-  const log = o.log ?? ((e) => console.log(JSON.stringify({ ctx: "Trials", ...e })));
+  const log = o.log ?? (({ event, ...rest }) => opsLog(String(event).endsWith("_failed") ? "error" : "info", "Trials", String(event), rest));
   const allowed = new Set((o.allowedDomains ?? []).map((d) => d.trim().toLowerCase()).filter(Boolean));
   const t = trialEmails(o);
 
@@ -111,6 +113,7 @@ export function createEmailTrialNotifier(o: EmailTrialNotifierOptions): TrialNot
       log({ event: `${mail.tag}_sent`, provider: o.port.name, mode: o.mode, ...ref });
     } catch (e) {
       log({ event: `${mail.tag}_failed`, provider: o.port.name, error: e instanceof Error ? e.name : "error", ...ref });
+      recordFailure("mail.send_failed");
     }
   }
 
