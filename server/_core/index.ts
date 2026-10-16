@@ -1777,6 +1777,18 @@ function startAbandonedCheckoutCleanup() {
         }
       }
 
+      // -- Caso C: plazas de spa/hotel — liberar retenciones caducadas o de reservas anuladas y
+      //    confirmar las de reservas pagadas por otra vía (idempotente) --
+      try {
+        const { syncInventoryHolds } = await import("../inventoryHoldsDb");
+        const s = await syncInventoryHolds();
+        if (s.released || s.confirmed || s.conflicts) {
+          console.log(`[AbandonedCheckout] Retenciones de plazas: ${s.released} liberadas (${s.expired} caducadas), ${s.confirmed} confirmadas, ${s.conflicts} en conflicto`);
+        }
+      } catch (invErr: any) {
+        console.error("[AbandonedCheckout] Error sincronizando retenciones de plazas:", invErr.message);
+      }
+
     } catch (err: any) {
       console.error("[AbandonedCheckout] Error en limpieza:", err.message, err.cause ?? "");
     }

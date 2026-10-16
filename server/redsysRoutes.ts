@@ -29,6 +29,7 @@ import { checkAndConfirmInstallmentPlan } from "./routers/crm";
 import { syncLeadUrlsToGHL, createGHLContact, updateGHLContact, triggerGHLWorkflow } from "./ghl";
 import { legacyDb, legacyPool } from "./_core/legacyDb";
 import { integrationEnv } from "./_core/tenantConfig";
+import { applyPaymentToInventoryHolds } from "./inventoryHoldsDb";
 
 // Pool de BD compartido para todo el módulo — evita crear/destruir conexiones por cada IPN
 const _sharedPool = legacyPool();
@@ -174,6 +175,14 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
     }
 
     console.log(`[Redsys IPN] Reserva ${result.merchantOrder} actualizada a: ${newStatus}`);
+
+    // Plazas de spa/hotel: el pago confirma la retención y el fallo la libera (idempotente; si esto
+    // fallara, la sincronización de la tarea de checkouts abandonados lo corrige)
+    try {
+      await applyPaymentToInventoryHolds(result.merchantOrder, result.isAuthorized);
+    } catch (invErr: any) {
+      console.error("[Redsys IPN] Error actualizando la retención de plazas:", invErr.message);
+    }
 
     // Para carritos multi-artículo: distribuir amountPaid proporcionalmente por reserva.
     // updateReservationPayment graba el importe total en todas las reservas ? incorrecto.

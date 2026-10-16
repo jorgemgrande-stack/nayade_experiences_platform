@@ -38,6 +38,7 @@ import { logActivity, getGHLCredentials } from "../db";
 import { createGHLContact, updateGHLContact } from "../ghl";
 import { getBusinessEmail } from "../config";
 import { legacyDb, legacyPool } from "../_core/legacyDb";
+import { releaseInventoryHold } from "../inventoryHoldsDb";
 const _pool = legacyPool();
 const db = legacyDb();
 
@@ -265,6 +266,13 @@ async function propagateCancellation(params: {
       } as any);
     }
   });
+
+  // -- Liberar la plaza de spa/hotel retenida por la reserva (idempotente; un fallo aquí lo corrige
+  //    la sincronización de retenciones, así que no se revierte la anulación por ello) -------------
+  if (reservationId) {
+    await releaseInventoryHold(reservationId, "cancelada").catch((err) =>
+      console.error(`[Cancellations] Error liberando la plaza de la reserva ${reservationId}:`, err?.message));
+  }
 
   // -- 3. Log de propagación (fuera de tx — no crítico) ----------------------
   await addLog(

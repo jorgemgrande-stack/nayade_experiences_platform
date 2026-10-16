@@ -11,7 +11,7 @@ import {
   searchAvailability, getRoomCalendar, resolveNightlyPrice,
 } from "../hotelDb";
 import { getRatingsByEntityType } from "../db/reviewsDb";
-import { createReservation } from "../db";
+import { holdHotelRoomAndCreateReservation, releaseInventoryHold, reconcileInventory } from "../inventoryHoldsDb";
 import { buildRedsysForm, generateMerchantOrder } from "../redsys";
 import { assertModuleEnabled } from "../_core/flagGuard";
 
@@ -287,6 +287,14 @@ export const hotelRouter = router({
     }))
     .query(({ input }) => getRoomCalendar(input.roomTypeId, input.year, input.month)),
 
+  /**
+   * Reconciliación del hotel: sincroniza las retenciones con su reserva (con `apply: true`) e informa de
+   * noches con más habitaciones ocupadas que capacidad y de pagos sin plaza (conflictos).
+   */
+  adminReconcileInventory: adminProcedure
+    .input(z.object({ apply: z.boolean().default(false) }))
+    .mutation(({ input }) => reconcileInventory({ apply: input.apply, kind: "hotel_room" })),
+
   // ── BOOKING ───────────────────────────────────────────────────────────────
 
   /**
@@ -357,30 +365,44 @@ export const hotelRouter = router({
         pricePerNight,
       });
 
-      await createReservation({
-        productId: input.roomTypeId,
-        productName: `Hotel: ${room.name} (${nights} noche${nights > 1 ? 's' : ''})`,
-        bookingDate: input.checkIn,
-        people: input.adults + input.children,
-        extrasJson: bookingDetails,
-        amountTotal: amountCents,
-        customerName: input.customerName,
-        customerEmail: input.customerEmail,
-        customerPhone: input.customerPhone,
-        merchantOrder,
-        notes: input.notes,
-      });
+      //    La habitación queda retenida cada noche de la estancia en la misma transacción que crea
+      //    la reserva: si en alguna noche no queda ninguna libre, no se crea nada.
+      const held = await holdHotelRoomAndCreateReservation(
+        { roomTypeId: input.roomTypeId, checkIn: input.checkIn, checkOut: input.checkOut, units: 1 },
+        {
+          productId: input.roomTypeId,
+          productName: `Hotel: ${room.name} (${nights} noche${nights > 1 ? 's' : ''})`,
+          bookingDate: input.checkIn,
+          people: input.adults + input.children,
+          extrasJson: bookingDetails,
+          amountTotal: amountCents,
+          customerName: input.customerName,
+          customerEmail: input.customerEmail,
+          customerPhone: input.customerPhone,
+          merchantOrder,
+          notes: input.notes,
+        },
+      );
+      if (!held.ok) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "No quedan habitaciones de este tipo disponibles para esas fechas" });
+      }
 
-      // 7. Construir el formulario Redsys
-      const redsysForm = buildRedsysForm({
-        amount: amountCents,
-        merchantOrder,
-        productDescription: `Hotel Náyade: ${room.name} · ${nights} noche${nights > 1 ? 's' : ''} · ${input.adults} adulto${input.adults > 1 ? 's' : ''}`,
-        notifyUrl: `${SITE_URL}/api/redsys/notification`,
-        okUrl: `${SITE_URL}/reserva/ok?order=${merchantOrder}`,
-        koUrl: `${SITE_URL}/reserva/error?order=${merchantOrder}`,
-        holderName: input.customerName,
-      });
+      // 7. Construir el formulario Redsys (si falla, la habitación no se queda retenida hasta que caduque)
+      let redsysForm;
+      try {
+        redsysForm = buildRedsysForm({
+          amount: amountCents,
+          merchantOrder,
+          productDescription: `Hotel Náyade: ${room.name} · ${nights} noche${nights > 1 ? 's' : ''} · ${input.adults} adulto${input.adults > 1 ? 's' : ''}`,
+          notifyUrl: `${SITE_URL}/api/redsys/notification`,
+          okUrl: `${SITE_URL}/reserva/ok?order=${merchantOrder}`,
+          koUrl: `${SITE_URL}/reserva/error?order=${merchantOrder}`,
+          holderName: input.customerName,
+        });
+      } catch (err) {
+        await releaseInventoryHold(held.reservation.id, "pago_fallido").catch(() => undefined);
+        throw err;
+      }
 
       return {
         merchantOrder,
