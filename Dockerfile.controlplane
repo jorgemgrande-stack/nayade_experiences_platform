@@ -20,6 +20,9 @@ COPY --from=builder /app/dist-cp ./dist-cp
 COPY package.json ./
 # Migraciones del registro y utilidades operativas (aplicación explícita, nunca al arrancar)
 COPY db/registry ./db/registry
+# El aprovisionamiento lee en tiempo de ejecución la baseline y las migraciones de los tenants
+COPY db/baseline ./db/baseline
+COPY db/migrations ./db/migrations
 
 ENV NODE_ENV=production
 ENV CP_PORT=4100
