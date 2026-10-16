@@ -7,6 +7,7 @@
  *    responde un error claro (412), nunca un error interno. Alta de usuarios sin romperse.
  *  - Solo lectura: entra en el panel (resumen de suscripción) y consulta; no modifica.
  *  - TPV: una empresa nueva no tiene cajas; se crea la primera y aparece en la lista.
+ *  - Plano de control: listado de altas (MysqlProvisioningStore.list) por estado y paginado.
  *
  *   REGISTRY_TEST_DATABASE_URL=mysql://root:clave@127.0.0.1:3306/registry_test \
  *     pnpm vitest run server/pulidoEssential.mysql.test.ts
@@ -36,6 +37,7 @@ describe.skipIf(!URL_)("pulido Essential en una empresa nueva (aplicación real)
   let closeAll: () => Promise<void>;
   let dsn = "";
   let owner = "";
+  let provStore: { list: (f: { status?: any; limit: number; offset: number }) => Promise<{ items: Array<{ tenantId: string; status: string }>; total: number }> };
   const host = `${T}.elephantsource.es`;
 
   function call(method: string, p: string, opts: { cookie?: string; body?: unknown } = {}) {
@@ -140,7 +142,7 @@ describe.skipIf(!URL_)("pulido Essential en una empresa nueva (aplicación real)
       seeder: new prov.MysqlTenantSeeder(),
       entitlements: new EntitlementAdmin(admin),
       quotas: new QuotaAdmin(admin),
-      store: new prov.MysqlProvisioningStore(admin),
+      store: (provStore = new prov.MysqlProvisioningStore(admin)),
     });
     const r = await p.run({ tenantId: T, displayName: "Empresa Pulido", adminEmail: `admin@${T}.example`, platformDomain: "elephantsource.es" }, { type: "operator", id: "test" });
     expect(r.status).toBe("completed");
@@ -236,6 +238,18 @@ describe.skipIf(!URL_)("pulido Essential en una empresa nueva (aplicación real)
       const r = await m("crm.clients.create", { name: "No debe crearse", email: `no-${run}@cliente.example` }, lectura);
       expect(r.status).toBe(403);
       expect((await m("tpv.createRegister", { name: "Caja intrusa" }, lectura)).status).toBe(403);
+    });
+  });
+
+  describe("plano de control: listado de altas en MySQL", () => {
+    it("filtra por estado y pagina (los más recientes primero)", async () => {
+      const done = await provStore.list({ status: "completed", limit: 200, offset: 0 });
+      expect(done.items.map((x) => x.tenantId)).toContain(T);
+      expect(done.items.every((x) => x.status === "completed")).toBe(true);
+      expect(done.total).toBeGreaterThanOrEqual(1);
+      const page = await provStore.list({ limit: 1, offset: 0 });
+      expect(page.items).toHaveLength(1);
+      expect((await provStore.list({ status: "aborted", limit: 5, offset: 0 })).items.every((x) => x.status === "aborted")).toBe(true);
     });
   });
 

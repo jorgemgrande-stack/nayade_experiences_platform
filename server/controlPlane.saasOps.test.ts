@@ -6,6 +6,7 @@
  *  - GET  /provisioning?status= (listado global paginado, sin datos personales)
  *  - POST /provisioning/:id/retry (idempotente, con la petición guardada)
  *  - GET  /crm/requests?companyId=
+ * Y los correos de la prueba y de la conversión: solo por el puerto de avisos; nada sale por SMTP.
  *
  * Aprovisionamiento REAL con registro en memoria (solo la creación física de la BD y el sembrado son
  * dobles), catálogo oficial, suscripciones, licencias por capacidad y un buzón en memoria.
@@ -281,3 +282,51 @@ describe("Operación SaaS: endpoints del plano de control", () => {
   });
 });
 
+describe("correos de la prueba y del orquestador: solo por el puerto de avisos, nada real", () => {
+  it("la conversión de prueba a pago no envía nada; los avisos van por el puerto (aquí, un buzón en memoria)", async () => {
+    await call("POST", "/public/trial", { body: { email: "eva@casa.example", companyName: "Casa Eva", idempotencyKey: key() } });
+    const v = outbox.filter((m) => m.kind === "verification").at(-1)!;
+    await call("POST", "/public/trial/verify", { body: { id: v.data.trialId, token: v.data.token } });
+    const sent = outbox.length;
+    const r = await call("POST", `/trials/${v.data.trialId}/convert`, { token: OPS, body: {} });
+    expect(r.status).toBe(200);
+    expect(r.json.trial.state).toBe("converted");
+    expect(outbox.length).toBe(sent);
+    expect(smtp.createTransport + smtp.sendMail).toBe(0);
+  });
+
+  it("sin puerto configurado: el aviso por defecto solo deja constancia (sin correo ni token en el registro)", async () => {
+    const logs: string[] = [];
+    const spy = vi.spyOn(console, "log").mockImplementation((...a: unknown[]) => void logs.push(a.map(String).join(" ")));
+    try {
+      const r = await call("POST", "/public/trial", { port: quietPort, body: { email: "sin@aviso.example", companyName: "Sin Aviso", idempotencyKey: key() } });
+      expect(r.status).toBe(202);
+    } finally {
+      spy.mockRestore();
+    }
+    expect(logs.some((l) => l.includes("verification_not_sent"))).toBe(true);
+    expect(logs.join("\n")).not.toMatch(/sin@aviso\.example|token/i);
+    expect(smtp.createTransport + smtp.sendMail).toBe(0);
+  });
+
+  it("el correo de la prueba está apagado por defecto y no se enciende a medias", () => {
+    expect(trialNotifierFromEnv({})).toBeNull();
+    expect(trialNotifierFromEnv({ CP_TRIAL_EMAIL_MODE: "cualquiera" })).toBeNull();
+    // «live» sin URL de verificación o sin SMTP completo: queda apagado
+    expect(trialNotifierFromEnv({ CP_TRIAL_EMAIL_MODE: "live" })?.mode).toBe("off");
+    expect(trialNotifierFromEnv({ CP_TRIAL_EMAIL_MODE: "live", CP_TRIAL_VERIFY_URL: "https://web.example/verificar" })?.mode).toBe("off");
+    expect(smtp.createTransport).toBe(0);
+  });
+
+  it("el orquestador y la conversión no tienen vía propia de correo; el alta no lleva aviso de bienvenida en el plano de control", () => {
+    const read = (p: string) => fs.readFileSync(path.join(__dirname, p), "utf8");
+    for (const f of fs.readdirSync(path.join(__dirname, "orchestrator")).filter((x) => x.endsWith(".ts") && !x.includes(".test."))) {
+      expect(read(`orchestrator/${f}`), f).not.toMatch(/nodemailer|from "\.\.\/mailer"|sendEmail|smtpEmailPort/);
+    }
+    expect(read("trials/onboarding.ts")).not.toMatch(/nodemailer|mailer|sendEmail/);
+    // Los avisos de la prueba solo salen por `notify` (por defecto, el que no envía nada)
+    expect(read("controlPlane/api.ts")).toContain("notify: d.trials.notify ?? logOnlyTrialNotifier");
+    // El servicio del plano de control no conecta el aviso de bienvenida del aprovisionamiento
+    expect(read("controlPlane/main.ts")).not.toMatch(/welcome\s*:/);
+  });
+});
