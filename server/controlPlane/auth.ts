@@ -38,6 +38,9 @@ export const SCOPES = [
   "web:read",
   "web:write",
   "web:publish",
+  // Suscripciones (modo sombra): consultar y operar son permisos distintos
+  "subscriptions:read",
+  "subscriptions:write",
 ] as const;
 export type Scope = (typeof SCOPES)[number];
 

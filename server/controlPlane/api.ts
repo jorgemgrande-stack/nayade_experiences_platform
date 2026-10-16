@@ -51,6 +51,11 @@ import { WebAdminService } from "../web/service";
 import type { WebStore } from "../web/store";
 import { createWebAdminRouter } from "../web/api";
 import { createPublicSiteRouter } from "../web/publicSite";
+import { createSubscriptionsRouter } from "../subscriptions/api";
+import { catalogFromWebStore, crmFromStore } from "../subscriptions/ports";
+import { SubscriptionService as ContractSubscriptionService } from "../subscriptions/service";
+import { ShadowBillingService } from "../subscriptions/shadow";
+import type { SubscriptionStore } from "../subscriptions/store";
 import { Metrics } from "../_core/metering";
 
 export interface ControlPlaneDeps {
@@ -101,6 +106,11 @@ export interface ControlPlaneDeps {
    * La lectura pública (/cp/v1/public/site) además requiere `publicIntake` (orígenes y secreto).
    */
   web?: { store: WebStore; onPublish?: (version: string) => void };
+  /**
+   * Suscripciones v1 en MODO SOMBRA (BD del CRM, migración 0006). Requiere `crm` y `web` (precios
+   * aprobados del catálogo). Nunca cobra, emite facturas fiscales ni toca licencias.
+   */
+  subscriptions?: { store: SubscriptionStore; now?: () => number };
 }
 
 const idSchema = z.string().regex(/^[a-z0-9][a-z0-9_-]{0,62}$/);
@@ -599,6 +609,13 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         }),
       }),
     );
+  }
+
+  if (d.subscriptions && d.crm && d.web) {
+    const crmPort = crmFromStore(d.crm.store);
+    const svc = new ContractSubscriptionService({ store: d.subscriptions.store, catalog: catalogFromWebStore(d.web.store), crm: crmPort, now: d.subscriptions.now });
+    const shadowBilling = new ShadowBillingService({ store: d.subscriptions.store, crm: crmPort, now: d.subscriptions.now });
+    router.use("/subscriptions", createSubscriptionsRouter(svc, shadowBilling));
   }
 
   if (d.tickets) {
