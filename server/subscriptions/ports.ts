@@ -11,6 +11,8 @@ export interface CatalogProduct {
   name: string;
   family: Family;
   technicalStatus: "available" | "partial" | "planned";
+  /** Estado comercial del catálogo de Elephant Source (las entradas anteriores: «on_request»). */
+  commercialStatus: "unpublished" | "coming_soon" | "on_request" | "available";
   activationKind: string;
   activationRef: string | null;
   dependencies: string[];
@@ -50,6 +52,24 @@ export interface CrmPort {
   contract(id: number): Promise<ContractInfo | null>;
 }
 
+/**
+ * Familias del catálogo de Elephant Source → familias contractuales del motor. Un paquete se
+ * contrata como un complemento más (con el precio del paquete); sus componentes no se añaden aparte.
+ */
+const CONTRACT_FAMILY: Record<string, Family> = {
+  core_plan: "core_plan",
+  extension: "extension",
+  industry_module: "industry_module",
+  usage: "usage",
+  service: "service",
+  net_module: "industry_module",
+  net_bundle: "industry_module",
+  connect: "extension",
+  connect_bundle: "extension",
+  extra: "extension",
+  addon: "extension",
+};
+
 export function catalogFromWebStore(store: WebStore): CatalogPort {
   const productOf = (e: Awaited<ReturnType<WebStore["getEntry"]>>): CatalogProduct | null => {
     if (!e || e.kind !== "product" || e.publication !== "published" || !e.published || !e.family) return null;
@@ -59,12 +79,16 @@ export function catalogFromWebStore(store: WebStore): CatalogPort {
       activation: { kind: string; ref: string | null };
       dependencies?: string[];
       compatibleWith?: string[];
+      catalog?: { commercialStatus?: CatalogProduct["commercialStatus"] };
     };
+    const family = CONTRACT_FAMILY[e.family];
+    if (!family) return null;
     return {
       key: e.key,
       name: p.name,
-      family: e.family as Family,
+      family,
       technicalStatus: p.technicalStatus,
+      commercialStatus: p.catalog?.commercialStatus ?? "on_request",
       activationKind: p.activation?.kind ?? "none",
       activationRef: p.activation?.ref ?? null,
       dependencies: p.dependencies ?? [],

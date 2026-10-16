@@ -57,6 +57,8 @@ import { SubscriptionService as ContractSubscriptionService } from "../subscript
 import { ShadowBillingService } from "../subscriptions/shadow";
 import type { SubscriptionStore } from "../subscriptions/store";
 import { Metrics } from "../_core/metering";
+import { quote, type QuoteRequest } from "../catalog/quote";
+import { quoteCatalogFromSite } from "../catalog/snapshot";
 
 export interface ControlPlaneDeps {
   tokens: ServiceToken[];
@@ -594,7 +596,8 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
             .filter((o) => o.status === "active" && ["superadmin", "admin", "sales"].includes(o.role))
             .map((o) => ({ value: o.displayName, label: o.displayName }))
       : undefined;
-    router.use("/crm", createCrmRouter(d.crm.service, d.crm.store, { billing: d.billingStore, onboarding, requests: webRequests, assignees }));
+    const crmQuote = webAdmin ? async (r: QuoteRequest) => quote(quoteCatalogFromSite(await webAdmin!.site("published")), r) : undefined;
+    router.use("/crm", createCrmRouter(d.crm.service, d.crm.store, { billing: d.billingStore, onboarding, requests: webRequests, assignees, quote: crmQuote }));
   }
 
   if (webAdmin) {

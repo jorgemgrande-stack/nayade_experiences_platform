@@ -116,6 +116,34 @@ export type BillingInterval = "month" | "year";
 /** `manual`: firma registrada por un operador (papel o fuera del sistema). `electronic`: reservado para un proveedor de firma futuro. */
 export type SignatureMethod = "manual" | "electronic";
 
+/**
+ * Configuración cotizada del catálogo de Elephant Source: la petición y el resultado que calculó el
+ * SERVIDOR al guardar (nunca importes enviados por el cliente).
+ */
+export interface ContractConfiguration {
+  request: {
+    plan: string;
+    interval: "month" | "year";
+    items: Array<{ key: string; quantity?: number }>;
+    owned?: string[];
+    users?: number;
+    sites?: number;
+    storageGb?: number;
+    fiscalEntities?: number;
+  };
+  quote: {
+    catalogVersion: string;
+    currency: string;
+    lines: Array<{ key: string; name: string; family: string; quantity: number; unitCents: number | null; amountCents: number; interval: "month" | "year"; status: string; commercialStatus: string; note: string | null }>;
+    totals: { monthlyCents: number; yearlyCents: number; annualizedCents: number; taxRateBp: number; monthlyTaxCents: number; yearlyTaxCents: number; annualizedTaxCents: number };
+    capabilities: string[];
+    contractable: "self_service" | "request" | "not_available";
+    blocking: string[];
+    warnings: string[];
+  };
+  quotedAt: number;
+}
+
 export interface Contract {
   id: number;
   /** Identificador comercial único (CT-AAAA-NNNNNN). */
@@ -144,6 +172,8 @@ export interface Contract {
   version: number;
   /** Contrato al que renueva. */
   previousContractId: number | null;
+  /** Configuración cotizada (catálogo de Elephant Source); null en contratos anteriores. */
+  configuration?: ContractConfiguration | null;
   signatureMethod: SignatureMethod | null;
   /** Referencia externa de la firma (documento firmado, id del proveedor futuro). */
   signatureRef: string | null;

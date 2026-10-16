@@ -15,6 +15,9 @@ import type { CrmStore, Tables } from "./store";
 import type { BillingStore } from "../_core/billing/ports";
 import { billingSummary } from "./dashboard";
 import type { CrmOnboarding } from "./onboarding";
+import type { ContractConfiguration } from "./types";
+import { parseQuoteRequest } from "../catalog/request";
+import type { QuoteRequest, QuoteResult } from "../catalog/quote";
 
 const wrap =
   (fn: (req: Request, res: Response) => Promise<void>) =>
@@ -128,6 +131,8 @@ export function createCrmRouter(
     requests?: WebRequestService;
     /** Personas que pueden ser responsables comerciales (operadores activos con permisos de CRM). */
     assignees?: () => Promise<Array<{ value: string; label: string }>>;
+    /** Cotizador sobre el catálogo publicado (contratos con configuración de Elephant Source). */
+    quote?: (r: QuoteRequest) => Promise<QuoteResult>;
   } = {},
 ): Router {
   const r = express.Router();
@@ -357,12 +362,49 @@ export function createCrmRouter(
     res.json({ contracts: p.items, total: p.total, limit: p.limit, offset: p.offset });
   }));
   r.get("/contracts/:id", requireScope("crm:read"), wrap(async (req, res) => void res.json(await crm.getContract(id.parse(req.params.id)))));
+  /**
+   * Configuración de Elephant Source en un contrato: el cliente envía SOLO la petición; el servidor
+   * cotiza con el catálogo publicado y de ahí salen plan, periodicidad, moneda e importe (mensual o,
+   * si es anual, el coste anualizado). Nunca se aceptan importes calculados fuera.
+   */
+  const withConfiguration = async (b: Record<string, unknown>, res: Response): Promise<boolean> => {
+    if (!("configuration" in b) || b.configuration === undefined) return true;
+    if (b.configuration === null) return true;
+    if (!opts.quote) return void res.status(409).json({ error: "unavailable", message: "Catálogo de Elephant Source no disponible: no se puede cotizar" }), false;
+    const parsed = parseQuoteRequest((b.configuration as { request?: unknown }).request, { allowOwned: true });
+    if (!parsed.ok) return void res.status(400).json({ error: "invalid_input", message: parsed.message }), false;
+    const q = await opts.quote(parsed.value);
+    if (!q.ok) return void res.status(400).json({ error: "invalid_configuration", message: q.errors.join("; "), errors: q.errors }), false;
+    const configuration: ContractConfiguration = {
+      request: parsed.value as ContractConfiguration["request"],
+      quote: {
+        catalogVersion: q.catalogVersion,
+        currency: q.currency,
+        lines: q.lines.map((l) => ({ key: l.key, name: l.name, family: l.family, quantity: l.quantity, unitCents: l.unitCents, amountCents: l.amountCents, interval: l.interval, status: l.status, commercialStatus: l.commercialStatus, note: l.note })),
+        totals: q.totals,
+        capabilities: q.capabilities,
+        contractable: q.contractable,
+        blocking: q.blocking,
+        warnings: q.warnings,
+      },
+      quotedAt: Date.now(),
+    };
+    b.configuration = configuration;
+    b.planId = parsed.value.plan;
+    b.billingInterval = parsed.value.interval;
+    b.currency = q.currency;
+    b.amountCents = parsed.value.interval === "month" ? q.totals.monthlyCents : q.totals.annualizedCents;
+    return true;
+  };
+  const configurationField = z.object({ request: z.unknown() }).strict().nullable().optional();
   r.post("/contracts", requireScope("crm:write"), wrap(async (req, res) => {
-    const b = z.object({ companyId: id, opportunityId: id.optional(), ...contractTerms }).strict().parse(req.body);
+    const b = z.object({ companyId: id, opportunityId: id.optional(), ...contractTerms, configuration: configurationField }).strict().parse(req.body);
+    if (!(await withConfiguration(b, res))) return;
     res.status(201).json({ contract: await crm.createContract(b as Parameters<CrmService["createContract"]>[0], who(req)) });
   }));
   r.patch("/contracts/:id", requireScope("crm:write"), wrap(async (req, res) => {
-    const b = z.object({ ...contractTerms, reason: optStr(300) }).strict().parse(req.body);
+    const b = z.object({ ...contractTerms, reason: optStr(300), configuration: configurationField }).strict().parse(req.body);
+    if (!(await withConfiguration(b, res))) return;
     res.json({ contract: await crm.updateContract(id.parse(req.params.id), b as Parameters<CrmService["updateContract"]>[1], who(req)) });
   }));
   r.post("/contracts/:id/status", requireScope("crm:write"), wrap(async (req, res) => {

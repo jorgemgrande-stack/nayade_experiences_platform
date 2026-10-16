@@ -40,6 +40,8 @@ const DEFS: Record<keyof Tables, { table: string; cols: Col[] }> = {
       t("reference"), t("companyId"), t("opportunityId"), t("planId"), t("modules", "modules", true), t("status"), t("amountCents"), t("currency"),
       t("startDate"), t("endDate"), t("documentUrl"), t("signedAt"), t("tenantId"), t("conditions"), t("billingInterval"), t("renewalDate"),
       b("autoRenew"), t("noticeDays"), t("version"), t("previousContractId"), t("signatureMethod"), t("signatureRef"), t("createdAt"), t("updatedAt"),
+      // Migración 0009; solo se escribe si el contrato la trae
+      jn("configuration"),
     ],
   },
   contractVersions: {
