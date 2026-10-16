@@ -3,6 +3,7 @@
  * Módulo CRM para gestión completa del pipeline de anulaciones.
  */
 import { z } from "zod";
+import { legacyBrandText } from "../tenantBrand";
 import { router, publicProcedure, protectedProcedure, permissionProcedure } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { assertModuleEnabled } from "../_core/flagGuard";
@@ -963,7 +964,7 @@ export const cancellationsRouter = router({
           requestId: input.id,
           code,
           type: "actividad",
-          activityName: input.activityName ?? "Actividad Náyade Experiences",
+          activityName: input.activityName ?? `Actividad ${legacyBrandText("Náyade Experiences")}`,
           value: String(input.voucherValue),
           expiresAt: input.voucherExpiresAt ? new Date(input.voucherExpiresAt) : undefined,
           conditions: input.voucherConditions,
@@ -977,7 +978,7 @@ export const cancellationsRouter = router({
         // El bono compensatorio se convierte en un código de descuento de importe
         // fijo (tipo 'fixed') con uso único, vinculado al cliente y al voucher.
         try {
-          const discountName = `Bono compensatorio #${input.id} — ${input.activityName ?? "Náyade Experiences"}`;
+          const discountName = `Bono compensatorio #${input.id} — ${input.activityName ?? legacyBrandText("Náyade Experiences")}`;
           const discountDescription = [
             `Bono emitido como compensación por anulación de reserva.`,
             input.activityName ? `Actividad: ${input.activityName}.` : null,
@@ -1035,7 +1036,7 @@ export const cancellationsRouter = router({
             subject: `Bono de compensación — Solicitud #${input.id}`,
             html: emailAceptacionBono(
               req.fullName, input.id, code,
-              input.activityName ?? "Actividad Náyade Experiences",
+              input.activityName ?? `Actividad ${legacyBrandText("Náyade Experiences")}`,
               String(input.voucherValue), expiresStr, input.isPartial
             ),
             relatedEntityType: "cancellation_request",
@@ -2031,7 +2032,7 @@ export const cancellationsRouter = router({
                 req.fullName,
                 req.id,
                 voucher.code,
-                voucher.activityName ?? "Actividad Náyade Experiences",
+                voucher.activityName ?? `Actividad ${legacyBrandText("Náyade Experiences")}`,
                 Number(voucher.value).toFixed(2),
                 expiresStr,
                 isPartial
@@ -2087,7 +2088,7 @@ export const cancellationsRouter = router({
           fullName: req.fullName,
           requestId: req.id,
           voucherCode: voucher.code,
-          activityName: voucher.activityName ?? "Actividad Náyade Experiences",
+          activityName: voucher.activityName ?? `Actividad ${legacyBrandText("Náyade Experiences")}`,
           value: Number(voucher.value).toFixed(2),
           expiresAt: expiresStr,
           isPartial: false,

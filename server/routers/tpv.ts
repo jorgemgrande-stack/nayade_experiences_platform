@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { legacyBrandText } from "../tenantBrand";
 import { publicBaseUrl } from "../_core/productIdentity";
 import { permissionProcedure, router } from "../_core/trpc";
 import { buildReservationConfirmHtml, buildTpvTicketHtml, buildCashOpenHtml, buildCashCloseHtml, type ChannelSummary } from "../emailTemplates";
@@ -283,7 +284,7 @@ export async function sendCashCloseEmailForSession(
   });
 
   const to = opts.toOverride || (await getBusinessEmail("admin_alerts"));
-  const subject = `${opts.subjectPrefix ?? ""}?? Cierre de caja — ${register?.name ?? "Caja"} — ${sessionDate} — Náyade Experiences`;
+  const subject = `${opts.subjectPrefix ?? ""}?? Cierre de caja — ${register?.name ?? "Caja"} — ${sessionDate} — ${legacyBrandText("Náyade Experiences")}`;
   await sendEmail({ to, subject, html });
   return { to, subject };
 }
@@ -366,7 +367,7 @@ export const tpvRouter = router({
           const toEmail = await getBusinessEmail('admin_alerts');
           await sendEmail({
             to: toEmail,
-            subject: `?? Apertura de caja — ${register?.name ?? "Caja"} — Náyade Experiences`,
+            subject: `?? Apertura de caja — ${register?.name ?? "Caja"} — ${legacyBrandText("Náyade Experiences")}`,
             html,
           });
         }
@@ -1301,7 +1302,7 @@ export const tpvRouter = router({
           discount:       input.discountAmount > 0 ? input.discountAmount : undefined,
           discountReason: input.discountReason,
         });
-        const subject = `[TPV] Compra confirmada ${ticketNumber} — Náyade Experiences`;
+        const subject = `[TPV] Compra confirmada ${ticketNumber} — ${legacyBrandText("Náyade Experiences")}`;
         const saleNotifyEmail = await getBusinessEmail('reservations');
         await sendEmail({ to: saleNotifyEmail, subject, html: emailHtml });
         if (input.customerEmail) {
@@ -1565,7 +1566,7 @@ export const tpvRouter = router({
         templateKey: "tpv_ticket",
         triggerEvent: "tpv_ticket",
         recipientEmail: input.email,
-        subject: `Tu ticket de compra ${sale.ticketNumber} — Náyade Experiences`,
+        subject: `Tu ticket de compra ${sale.ticketNumber} — ${legacyBrandText("Náyade Experiences")}`,
         html: emailHtml,
         relatedEntityType: "tpv_sale",
         relatedEntityId: sale.id,

@@ -17,6 +17,8 @@ import { MysqlEntitlementReader } from "../modules/mysqlEntitlements";
 import { MysqlCapabilityStore } from "../capabilities/store";
 import { MysqlQuotaReader } from "../erm/mysqlQuotas";
 import { MysqlSupportReader } from "../support/grants";
+import { MysqlOrganizationStore } from "../../organization/service";
+import { invalidateTenantIdentity, registryIdentitySource, type TenantIdentitySource } from "../tenantIdentity";
 import { MysqlTenantRegistryStore } from "./mysqlStore";
 import { TenantResolver } from "./resolver";
 import { TenantRegistryService } from "./service";
@@ -32,6 +34,8 @@ export interface TenantRuntime {
   capabilities: MysqlCapabilityStore;
   /** Cuotas de recursos (solo lectura). */
   quotas: MysqlQuotaReader;
+  /** Identidad de cada empresa: dominio público y entidad fiscal (solo lectura). */
+  identity: TenantIdentitySource;
   /** Concesiones de soporte delegado (solo lectura). */
   support: MysqlSupportReader;
   /** Detiene el sondeo y cierra el pool del registro. */
@@ -79,7 +83,10 @@ export function createTenantRuntime(
   // Invalidación activa: cambios de versión/estado → caché de dominios y pool del tenant
   const timer = setInterval(async () => {
     try {
-      for (const id of await resolver.refreshVersions()) await evictTenantDatabase(id);
+      for (const id of await resolver.refreshVersions()) {
+        invalidateTenantIdentity(id);
+        await evictTenantDatabase(id);
+      }
     } catch {
       /* el registro caído lo gestiona el propio resolutor (continuidad acotada) */
     }
@@ -94,6 +101,7 @@ export function createTenantRuntime(
     capabilities: new MysqlCapabilityStore(pool),
     quotas: new MysqlQuotaReader(pool),
     support: new MysqlSupportReader(pool),
+    identity: registryIdentitySource(store, new MysqlOrganizationStore(pool)),
     async close() {
       clearInterval(timer);
       setConnectionResolver(null);

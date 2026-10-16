@@ -10,6 +10,8 @@
  */
 import dns from "node:dns/promises";
 import { normalizeHost } from "./host";
+import type { Actor, TenantRegistryService } from "./service";
+import type { TenantRegistryReader } from "./store";
 
 export const VERIFY_LABEL = "_elephant-verify";
 
@@ -68,4 +70,22 @@ export async function verifyDomainOwnership(
   }
 
   return { ok: cname && txt, cname, txt, pending };
+}
+
+/**
+ * Comprueba un dominio propio pendiente y registra el resultado (verificado o fallido) por el único
+ * camino de escritura del registro. `null` si el dominio no existe o no está pendiente.
+ */
+export async function verifyAndRecordDomain(
+  deps: { reader: Pick<TenantRegistryReader, "resolveDomain">; service: Pick<TenantRegistryService, "recordDomainVerification"> },
+  input: { domain: string; platformTarget: string },
+  actor: Actor,
+  lookup: DnsLookup = systemDns,
+): Promise<VerificationResult | null> {
+  const host = normalizeHost(input.domain);
+  const r = host ? await deps.reader.resolveDomain(host) : null;
+  if (!r || r.domain.status !== "pending_verification" || !r.domain.verificationToken) return null;
+  const v = await verifyDomainOwnership({ domain: r.domain.domain, token: r.domain.verificationToken, platformTarget: input.platformTarget }, lookup);
+  await deps.service.recordDomainVerification(r.domain.domain, v, actor);
+  return v;
 }

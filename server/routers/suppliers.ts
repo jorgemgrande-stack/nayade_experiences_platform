@@ -4,6 +4,8 @@
  */
 import { z } from "zod";
 import { publicBaseUrl } from "../_core/productIdentity";
+import { isMultiTenant } from "../_core/tenant";
+import { legacyBrandSetting, legacyBrandText, legacySiteHost, tenantIssuerData } from "../tenantBrand";
 import { TRPCError } from "@trpc/server";
 import { protectedProcedure, publicProcedure, router } from "../_core/trpc";
 import { randomBytes } from "crypto";
@@ -125,9 +127,9 @@ async function generateSettlementPdfAndUpload(data: {
 <body>
   <div class="doc-header">
     <div class="logo-block">
-      <img src="https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/logo-nayade_20a42bc4.jpg" alt="Náyade" />
+      <img src="${legacyBrandSetting("brand_logo_url", "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/logo-nayade_20a42bc4.jpg")}" alt="${legacyBrandText("Náyade")}" />
       <div class="brand-text">
-        <div class="brand-name">Náyade</div>
+        <div class="brand-name">${legacyBrandText("Náyade")}</div>
         <div class="brand-sub">Experiences</div>
       </div>
     </div>
@@ -188,7 +190,7 @@ async function generateSettlementPdfAndUpload(data: {
 
   </div>
   <div class="footer">
-    <p>${data.companyData?.name ?? "Náyade Experiences S.L."} &middot; www.skicenter.es</p>
+    <p>${data.companyData?.name ?? "Náyade Experiences S.L."} &middot; ${legacySiteHost("www.skicenter.es")}</p>
     <p>Documento de liquidación de servicios prestados por el proveedor durante el período indicado.</p>
   </div>
 </body>
@@ -611,12 +613,12 @@ export const suppliersRouter = router({
       const inviteUrl = `${origin}/supplier/activar?token=${token}`;
       await sendEmail({
         to: email,
-        subject: "Invitación al portal de proveedores — Skicenter",
+        subject: `Invitación al portal de proveedores — ${legacyBrandText("Skicenter")}`,
         html: `
           <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px;">
             <h2 style="color:#ea580c">Portal de Proveedores</h2>
             <p>Hola <strong>${name}</strong>,</p>
-            <p>Has sido invitado al portal de proveedores de <strong>Skicenter</strong>, donde podrás ver las ventas de tus productos por todos los canales y tus liquidaciones.</p>
+            <p>Has sido invitado al portal de proveedores de <strong>${legacyBrandText("Skicenter")}</strong>, donde podrás ver las ventas de tus productos por todos los canales y tus liquidaciones.</p>
             <p style="margin:24px 0">
               <a href="${inviteUrl}" style="background:#ea580c;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold">Activar mi cuenta</a>
             </p>
@@ -1684,7 +1686,7 @@ export const settlementsRouter = router({
       const settingsRows = await db.select().from(siteSettings)
         .where(sql`\`key\` IN ('legalCompanyName','legalCompanyCif','legalCompanyAddress','legalCompanyEmail','legalCompanyPhone')`);
       const s: Record<string, string> = Object.fromEntries(settingsRows.map(r => [r.key, r.value ?? ""]));
-      const companyData = {
+      const companyData = isMultiTenant() ? await tenantIssuerData(s) : {
         name: s.legalCompanyName || "Náyade Experiences S.L.",
         cif: s.legalCompanyCif || "",
         address: s.legalCompanyAddress || "Los Ángeles de San Rafael, Segovia",
@@ -1755,7 +1757,7 @@ export const settlementsRouter = router({
 
       await sendEmail({
         to: toEmail,
-        subject: `Liquidación ${settlement.settlementNumber} — Náyade Experiences`,
+        subject: `Liquidación ${settlement.settlementNumber} — ${legacyBrandText("Náyade Experiences")}`,
         html: `
           <h2>Liquidación de servicios</h2>
           <p>Estimado/a ${settlement.supplierName},</p>
@@ -1763,7 +1765,7 @@ export const settlementsRouter = router({
           <p>Importe neto a abonar: <strong>${parseFloat(settlement.netAmountProvider ?? "0").toFixed(2)} €</strong></p>
           ${settlement.pdfUrl ? `<p><a href="${settlement.pdfUrl}">Descargar liquidación en PDF</a></p>` : ""}
           <p>Gracias por su colaboración.</p>
-          <p>Náyade Experiences</p>
+          <p>${legacyBrandText("Náyade Experiences")}</p>
         `,
       });
 

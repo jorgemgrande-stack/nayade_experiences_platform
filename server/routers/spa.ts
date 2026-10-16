@@ -1,7 +1,6 @@
 import { router, publicProcedure, protectedProcedure, permissionProcedure } from "../_core/trpc";
 import { publicBaseUrl } from "../_core/productIdentity";
 
-const SITE_URL = publicBaseUrl();
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import {
@@ -410,9 +409,9 @@ export const spaRouter = router({
         merchantOrder,
         productDescription: `SPA ${treatment.name} · ${input.date} ${input.time} · ${input.persons}p`,
         holderName: input.customerName,
-        notifyUrl: `${SITE_URL}/api/redsys/notification`,
-        okUrl: `${SITE_URL}/reserva/ok?order=${merchantOrder}`,
-        koUrl: `${SITE_URL}/reserva/error?order=${merchantOrder}`,
+        notifyUrl: `${publicBaseUrl()}/api/redsys/notification`,
+        okUrl: `${publicBaseUrl()}/reserva/ok?order=${merchantOrder}`,
+        koUrl: `${publicBaseUrl()}/reserva/error?order=${merchantOrder}`,
       });
 
       return { reservationId: reservation.id, merchantOrder, redsysForm };

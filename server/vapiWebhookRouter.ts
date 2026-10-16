@@ -12,6 +12,7 @@
  * Secreto opcional: variable VAPI_WEBHOOK_SECRET (header x-vapi-secret o ?secret=).
  */
 import express from "express";
+import { legacyBrandText, legacyUrl } from "./tenantBrand";
 import { eq } from "drizzle-orm";
 import { randomBytes } from "crypto";
 import { quotes, ghlWebhookLogs, vapiCalls } from "../drizzle/schema";
@@ -251,7 +252,7 @@ vapiWebhookRouter.post("/api/vapi/webhook", express.json({ limit: "1mb" }), asyn
     // 5. Generar presupuesto borrador con URL pública
     const quoteNumber = await generateDocumentNumber("presupuesto", "vapi:quote", "system");
     const token = randomBytes(32).toString("hex");
-    const origin = (
+    const origin = legacyUrl(
       process.env.APP_URL ??
       (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : "https://www.skicenter.es")
     ).replace(/\/+$/, "");
@@ -264,7 +265,7 @@ vapiWebhookRouter.post("/api/vapi/webhook", express.json({ limit: "1mb" }), asyn
       quoteNumber,
       leadId,
       agentId: 0, // sistema — sin usuario autenticado
-      title: `Presupuesto Skicenter — ${name}`,
+      title: `Presupuesto ${legacyBrandText("Skicenter")} — ${name}`,
       status: "borrador",
       items: [],
       subtotal: "0",
