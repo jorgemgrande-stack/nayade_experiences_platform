@@ -38,7 +38,9 @@ describe("contenido del centro de ayuda", () => {
 
   it("no documenta como disponible nada inexistente ni promete horarios", () => {
     const text = JSON.stringify(HELP_ARTICLES).toLowerCase();
-    for (const banned of ["etiqueta", "blog", "chat en vivo", "ticket de soporte", "abrir un ticket", "24/7", "24 horas", "horario de atención", "respuesta en", "garantiza"]) {
+    // El blog ya existe (cms-blog) y tiene su guía
+    expect(getHelpArticle("publicar-blog")?.contexts).toEqual([{ path: "/admin/cms/blog" }]);
+    for (const banned of ["etiqueta", "chat en vivo", "ticket de soporte", "abrir un ticket", "24/7", "24 horas", "horario de atención", "respuesta en", "garantiza"]) {
       expect(text, banned).not.toContain(banned);
     }
   });

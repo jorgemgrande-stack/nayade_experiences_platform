@@ -3,7 +3,7 @@
  *
  * Reglas del contenido:
  *  - Describe la interfaz REAL actual, con los textos literales de menús, pestañas y botones.
- *  - No presenta como disponible nada que no exista (p. ej. etiquetas del CRM, blog, chat en vivo,
+ *  - No presenta como disponible nada que no exista (p. ej. etiquetas del CRM, chat en vivo,
  *    cambio de plan dentro del panel).
  *  - No promete horarios ni tiempos de respuesta del soporte.
  *
@@ -216,6 +216,25 @@ export const HELP_ARTICLES: HelpArticle[] = [
     ],
     notes: ["Por seguridad, la pantalla responde lo mismo exista o no el email."],
     links: [{ label: "Recuperar contraseña", href: "/recuperar-contrasena" }],
+  },
+  {
+    id: "publicar-blog",
+    title: "Publicar en el blog de tu web",
+    summary: "Escribe entradas desde Web › Blog con «Nueva entrada»; solo las publicadas aparecen en la dirección /blog de tu web.",
+    contexts: [{ path: "/admin/cms/blog" }],
+    steps: [
+      "En el menú, ve a Web › Blog y pulsa «Nueva entrada» (si aún no tienes ninguna, «Crear la primera entrada»).",
+      "Escribe el título: la dirección de la entrada se propone sola (puedes cambiarla; solo minúsculas, números y guiones). Añade un extracto y el texto de la entrada.",
+      "Opcionalmente, sube una imagen destacada con su texto alternativo, indica el autor y una categoría, y rellena el título y la descripción SEO.",
+      "Pulsa «Vista previa» para ver cómo quedará el texto en la web (no guarda nada).",
+      "En Estado elige «Borrador (no se ve en la web)» o «Publicada» y pulsa «Guardar borrador» o «Publicar». Con una fecha de publicación futura, el botón es «Programar publicación» y la entrada aparece en la web a esa hora.",
+      "Pulsa «Ver el blog» para abrir tu blog público.",
+    ],
+    notes: [
+      "Los borradores y las entradas programadas nunca se ven en la web ni en el sitemap.",
+      "El texto admite HTML básico, como las páginas; los scripts y estilos se eliminan al publicar.",
+    ],
+    links: [{ label: "Ir al blog", href: "/admin/cms/blog" }],
   },
 ];
 

@@ -11,16 +11,16 @@ Fecha: 2026-10-16. Rama `test/essential-capacidades`.
 | Estado | Nº | Capacidades |
 |---|---|---|
 | FUNCIONAL | 6 | crm-contacts, crm-leads, cms-pages-forms, bill-payments, admin-panel, shop-orders* |
-| FUNCIONAL CON LIMITACIONES | 20 | crm-accounts, crm-activity, crm-quotes, shop-catalog, shop-variants, shop-store, shop-checkout, shop-coupons, cms-editor, cms-domain, cms-seo, bill-invoices, bill-series, bill-taxes, bill-cash, bill-reports, admin-users, comms-email, auto-basic, comms-whatsapp-links |
+| FUNCIONAL CON LIMITACIONES | 21 | crm-accounts, crm-activity, crm-quotes, shop-catalog, shop-variants, shop-store, shop-checkout, shop-coupons, cms-editor, cms-domain, cms-blog, cms-seo, bill-invoices, bill-series, bill-taxes, bill-cash, bill-reports, admin-users, comms-email, auto-basic, comms-whatsapp-links |
 | INCOMPLETA | 1 | crm-tasks |
 | BLOQUEADA | 0 | — (ver bloqueantes de lanzamiento más abajo) |
-| NO IMPLEMENTADA | 2 | crm-tags, cms-blog |
+| NO IMPLEMENTADA | 1 | crm-tags |
 
 \* shop-orders funciona; la devolución se registra, pero el reembolso se ejecuta fuera de la plataforma (ver la matriz).
 
 Para venderlo como completo hace falta:
 
-1. **Implementar** las etiquetas del CRM (`crm-tags`) y el blog (`cms-blog`), o sacarlos de Essential en el catálogo comercial. No existe código de ninguno de los dos.
+1. **Implementar** las etiquetas del CRM (`crm-tags`), o sacarlas de Essential en el catálogo comercial. No existe código. ~~El blog (`cms-blog`)~~ **Implementado (rama `feat/cms-blog`):** ver su fila en la matriz.
 2. **Completar `crm-tasks`.** Faltan tareas internas con fecha y responsable. Hoy solo hay seguimiento comercial de presupuestos.
 3. ~~**Completar `comms-whatsapp-links` y corregir la fuga de marca del botón de WhatsApp.**~~ **Resuelto en la integración (PR #113):** el botón usa el número de la propia empresa (`public.getTheme` → `contact.whatsapp`, desde su teléfono) y no aparece si no lo tiene; en instalación única, igual que antes. Prueba: `essential.admin.mysql.test.ts`.
 4. **Requisitos de plataforma**, de los que dependen varias capacidades:
@@ -104,7 +104,7 @@ Guardián: `TRPC_ROUTER_CAPABILITIES` en `server/_core/capabilities/routeGuard.t
 | CMS y editor | cms-editor | `cms.*`, `homeModules.*`, `gallery.*` · `/admin/cms/*`, `/admin/configuracion/sitio` | administración | `cms`, `homeModules`, `gallery` | web › «cms-editor» | FUNCIONAL CON LIMITACIONES | La subida de medios (`/api/upload-media`) necesita S3 y no se ha probado. El contenido de una página se edita por bloques: `cms.upsertPage` no guarda HTML. `cms.updateSiteSettings` respondía bien en una empresa nueva pero no guardaba nada (corregido con la siembra). |
 | Web con dominio propio | cms-domain | Plano de control `POST /cp/v1/tenants/:id/domains`, `…/verify`, `…/activate` (operador) | operador | No aplica (registro) | web › «cms-domain» (DNS falso; la web y el sitemap se sirven en el dominio verificado) | FUNCIONAL CON LIMITACIONES | Sin autoservicio en el panel de la empresa: lo gestiona el operador. |
 | Páginas y formularios de contacto | cms-pages-forms | `public.submitLead`, `public.getPublicPage`, `public.getPublicPageBlocks`, `public.getTenantPage` · `/contacto`, `/pagina/:slug`, `/:slug` | pública | Público, sin guardián | web › «cms-pages-forms» | FUNCIONAL | Los borradores se servían públicamente (corregido). Formularios fijos (contacto y presupuesto), sin constructor (eso es Business). |
-| Blog | cms-blog | — | — | — | web › «cms-blog» (ni procedimientos ni tablas) | NO IMPLEMENTADA | — |
+| Blog | cms-blog | `blog.*` (`blog.publicList` y `blog.publicGet` públicos, solo lo publicado) · `/blog`, `/blog/:slug`, panel `/admin/cms/blog` (Web › Blog) · tabla `blog_posts` (`db/migrations/0007_blog_posts.sql`) | administración (`settings.manage`, como las páginas); lectura pública | `blog` → cms-blog, también lo público (solo lectura: se sigue leyendo; sin contratar: 403 y fuera del sitemap) | web › «cms-blog» (crear, publicar, programar, borrador invisible, HTML saneado, sitemap, permisos, licencia, aislamiento A/B) | FUNCIONAL CON LIMITACIONES | El texto se escribe en HTML básico en un área de texto (no es el editor de bloques de las páginas); se sanea con la misma lista blanca. La imagen destacada usa la subida de medios (necesita S3). Las empresas ya existentes y la instalación única necesitan aplicar la migración 0007 (mientras tanto, el blog público sale vacío y el panel lo indica). Sin RSS, comentarios ni etiquetas. |
 | SEO técnico básico | cms-seo | `/sitemap.xml`, `/robots.txt`, `metaTitle`/`metaDescription` por página, `seo_description` (`buildTenantMeta`) | pública / administración | Sin guardián | web › «cms-seo» | FUNCIONAL CON LIMITACIONES | Antes el sitemap llevaba `https://skicenter.es` y rutas de Náyade, y `robots.txt` apuntaba al sitemap de Náyade (corregido en multi). No hay datos estructurados, `canonical` ni `hreflang`. La inyección de metadatos solo se aplica al HTML inicial. |
 
 ### Facturación (solo empresas sintéticas)
