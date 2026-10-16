@@ -1,4 +1,4 @@
--- Reversión de 0003_inventory_holds (se pierde qué franja/habitación retiene cada reserva; la ocupación
+-- Reversión de 0004_inventory_holds (se pierde qué franja/habitación retiene cada reserva; la ocupación
 -- de spa sigue en spa_slots.bookedCount). Retirar antes el código que usa estas columnas.
 DROP INDEX idx_reservations_inventory ON reservations;
 ALTER TABLE reservations

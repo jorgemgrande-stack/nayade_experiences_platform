@@ -11,7 +11,7 @@
  * Idempotencia: confirmar o liberar es una transición condicionada al estado actual de la retención, leído
  * con bloqueo; repetirla (p. ej. una notificación de Redsys duplicada) no mueve el contador dos veces.
  *
- * Las columnas de la retención (migración db/migrations/0003_inventory_holds) no están en
+ * Las columnas de la retención (migración db/migrations/0004_inventory_holds) no están en
  * `drizzle/schema.ts` a propósito: así el resto del código de reservas no depende de que la migración
  * esté aplicada. Se leen y escriben aquí con SQL explícito.
  */
