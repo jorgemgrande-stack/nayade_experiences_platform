@@ -23,6 +23,7 @@ import { MysqlTenantRegistryStore } from "./mysqlStore";
 import { TenantResolver } from "./resolver";
 import { TenantRegistryService } from "./service";
 import type { TenantRegistryReader } from "./store";
+import { fixedPoolOptions } from "../dbPoolConfig";
 
 export interface TenantRuntime {
   resolver: TenantResolver;
@@ -74,7 +75,8 @@ export function createTenantRuntime(
     return null;
   }
 
-  const pool = mysql.createPool({ uri: url, connectionLimit: 5 });
+  // Pool fijo del registro (fuera del presupuesto de empresas): DB_REGISTRY_POOL_CONNECTIONS
+  const pool = mysql.createPool({ uri: url, ...fixedPoolOptions("DB_REGISTRY_POOL_CONNECTIONS", 5, env) });
   const store = new MysqlTenantRegistryStore(pool);
   const ring = keyringFromEnv(env);
   const service = new TenantRegistryService(store, () => ring);

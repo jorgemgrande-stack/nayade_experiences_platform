@@ -47,6 +47,7 @@ import { createContractActivation } from "../crm/activation";
 import { createControlPlaneApp } from "./api";
 import { parseTokens } from "./auth";
 import fs from "node:fs";
+import { fixedPoolOptions } from "../_core/dbPoolConfig";
 import { MysqlBillingStore } from "../_core/billing/mysqlStore";
 import { SubscriptionService } from "../_core/billing/service";
 import { createPaymentProvider } from "../_core/billing/providers";
@@ -65,7 +66,8 @@ async function main() {
   const regUrl = process.env.REGISTRY_ADMIN_DATABASE_URL;
   if (!regUrl) throw new Error("Falta REGISTRY_ADMIN_DATABASE_URL");
 
-  const pool = mysql.createPool({ uri: regUrl, connectionLimit: 5 });
+  // Tamaños de los pools fijos configurables por entorno (ver docs/runbooks/OPERACIONES_MULTITENANT.md)
+  const pool = mysql.createPool({ uri: regUrl, ...fixedPoolOptions("CP_REGISTRY_POOL_CONNECTIONS", 5) });
   const store = new MysqlTenantRegistryStore(pool);
   const ring = keyringFromEnv(process.env);
   const registry = new TenantRegistryService(store, () => ring);
@@ -75,7 +77,7 @@ async function main() {
   let provisioning: ProvisioningService | undefined;
   if (process.env.PROVISIONING_DB_ADMIN_URL) {
     const adminUrl = new URL(process.env.PROVISIONING_DB_ADMIN_URL);
-    const adminPool = mysql.createPool({ uri: process.env.PROVISIONING_DB_ADMIN_URL, connectionLimit: 2 });
+    const adminPool = mysql.createPool({ uri: process.env.PROVISIONING_DB_ADMIN_URL, ...fixedPoolOptions("CP_PROVISIONING_POOL_CONNECTIONS", 2) });
     provisioning = new ProvisioningService({
       registry,
       reader: store,
@@ -96,7 +98,7 @@ async function main() {
   }
 
   const usage = process.env.ERM_DATABASE_URL
-    ? new MysqlUsageStore(mysql.createPool({ uri: process.env.ERM_DATABASE_URL, connectionLimit: 2 }))
+    ? new MysqlUsageStore(mysql.createPool({ uri: process.env.ERM_DATABASE_URL, ...fixedPoolOptions("CP_ERM_POOL_CONNECTIONS", 2) }))
     : undefined;
 
   // Facturación: requiere BD comercial y catálogo; los cobros siguen apagados salvo
@@ -104,7 +106,7 @@ async function main() {
   let billing: SubscriptionService | undefined;
   let billingStore: MysqlBillingStore | undefined;
   if (process.env.BILLING_DATABASE_URL && process.env.BILLING_CATALOG_FILE) {
-    billingStore = new MysqlBillingStore(mysql.createPool({ uri: process.env.BILLING_DATABASE_URL, connectionLimit: 3 }));
+    billingStore = new MysqlBillingStore(mysql.createPool({ uri: process.env.BILLING_DATABASE_URL, ...fixedPoolOptions("CP_BILLING_POOL_CONNECTIONS", 3) }));
     const cfg = createPaymentProvider(process.env);
     billing = new SubscriptionService({
       catalog: JSON.parse(fs.readFileSync(process.env.BILLING_CATALOG_FILE, "utf8")),
@@ -138,9 +140,14 @@ async function main() {
     const t = setInterval(() => void evaluate().catch((e) => console.error(JSON.stringify({ ctx: "Alerts", event: "evaluate_failed", error: e instanceof Error ? e.name : "error" }))), every);
     t.unref?.();
   }
+  // Un único pool para la BD del CRM (CRM, web, suscripciones, pruebas y pedidos) en lugar de cinco
+  // pools fijos (17 conexiones): tamaño CP_CRM_POOL_CONNECTIONS, 8 por defecto.
+  const crmPool = process.env.CRM_DATABASE_URL
+    ? mysql.createPool({ uri: process.env.CRM_DATABASE_URL, ...fixedPoolOptions("CP_CRM_POOL_CONNECTIONS", 8) })
+    : null;
   let crm: { service: CrmService; store: MysqlCrmStore } | undefined;
-  if (process.env.CRM_DATABASE_URL) {
-    const store = new MysqlCrmStore(mysql.createPool({ uri: process.env.CRM_DATABASE_URL, connectionLimit: 4 }));
+  if (crmPool) {
+    const store = new MysqlCrmStore(crmPool);
     const activation =
       provisioning && process.env.CP_PLATFORM_DOMAIN
         ? createContractActivation({ provisioning, platformDomain: process.env.CP_PLATFORM_DOMAIN, actor: { type: "crm", id: "crm-contracts" } })
@@ -154,8 +161,8 @@ async function main() {
 
   // Web comercial (catálogo y contenidos): misma BD del CRM; solo si la migración 0004 está aplicada
   let web: { store: MysqlWebStore; onPublish?: (version: string) => void } | undefined;
-  if (process.env.CRM_DATABASE_URL) {
-    const webPool = mysql.createPool({ uri: process.env.CRM_DATABASE_URL, connectionLimit: 3 });
+  if (crmPool) {
+    const webPool = crmPool;
     const ready = await webPool.query("SELECT 1 FROM web_entries LIMIT 0").then(() => true, () => false);
     const hook = process.env.CP_WEB_PUBLISH_HOOK ?? "";
     // Solo https, o http a la propia máquina (desarrollo local)
@@ -169,7 +176,7 @@ async function main() {
               void fetch(hook, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ version }), signal: AbortSignal.timeout(5000) }).catch(() => undefined)
           : undefined,
       };
-    } else await webPool.end();
+    }
     console.log(JSON.stringify({ ctx: "WebAdmin", enabled: ready, ...(ready ? { publishHook: hookOk } : { reason: "migration_0004_missing" }) }));
   }
 
@@ -184,11 +191,10 @@ async function main() {
 
   // Suscripciones en modo sombra: misma BD del CRM; solo si la migración 0006 está aplicada
   let subscriptions: { store: MysqlSubscriptionStore } | undefined;
-  if (process.env.CRM_DATABASE_URL && web) {
-    const subsPool = mysql.createPool({ uri: process.env.CRM_DATABASE_URL, connectionLimit: 4 });
+  if (crmPool && web) {
+    const subsPool = crmPool;
     const ready = await subsPool.query("SELECT 1 FROM subscriptions LIMIT 0").then(() => true, () => false);
     if (ready) subscriptions = { store: new MysqlSubscriptionStore(subsPool) };
-    else await subsPool.end();
     console.log(JSON.stringify({ ctx: "Subscriptions", enabled: ready, mode: "shadow", ...(ready ? {} : { reason: "migration_0006_missing" }) }));
   }
 
@@ -197,24 +203,22 @@ async function main() {
   // No se envía ningún correo salvo con CP_TRIAL_EMAIL_MODE=sandbox|live y SMTP configurado; por defecto el
   // aviso solo deja constancia sin datos personales.
   let trials: { store: MysqlTrialStore; publicEnabled: boolean; autoProvision: boolean; notify?: TrialNotifier } | undefined;
-  if (process.env.CRM_DATABASE_URL && subscriptions) {
-    const trialPool = mysql.createPool({ uri: process.env.CRM_DATABASE_URL, connectionLimit: 3 });
+  if (crmPool && subscriptions) {
+    const trialPool = crmPool;
     const ready = await trialPool.query("SELECT 1 FROM trial_requests LIMIT 0").then(() => true, () => false);
     const email = ready ? trialNotifierFromEnv(process.env) : null;
     if (ready) trials = { store: new MysqlTrialStore(trialPool), publicEnabled: process.env.CP_PUBLIC_TRIAL_ENABLED === "1", autoProvision: process.env.CP_TRIAL_AUTO_PROVISION === "1", notify: email?.notifier };
-    else await trialPool.end();
     console.log(JSON.stringify({ ctx: "Trials", enabled: ready, publicEnabled: trials?.publicEnabled ?? false, autoProvision: trials?.autoProvision ?? false, email: { mode: email?.mode ?? "off", provider: email?.provider ?? null, ...(email?.reason ? { reason: email.reason } : {}) }, ...(ready ? {} : { reason: "migration_0007_missing" }) }));
   }
 
   // Orquestador comercial: APAGADO salvo CP_ORCHESTRATOR_ENABLED=1 y con la migración 0010 del CRM.
   // Pagos solo de prueba (CP_PAYMENTS_PROVIDER=simulated + secreto); el cobro automático no existe.
   let orders: { store: MysqlOrderStore; payments: TestPaymentPort | null } | undefined;
-  if (process.env.CP_ORCHESTRATOR_ENABLED === "1" && process.env.CRM_DATABASE_URL && subscriptions && capabilities) {
+  if (process.env.CP_ORCHESTRATOR_ENABLED === "1" && crmPool && subscriptions && capabilities) {
     const payments = testPaymentsFromEnv(process.env);
-    const ordersPool = mysql.createPool({ uri: process.env.CRM_DATABASE_URL, connectionLimit: 3 });
+    const ordersPool = crmPool;
     const ready = await ordersPool.query("SELECT 1 FROM commercial_orders LIMIT 0").then(() => true, () => false);
     if (ready) orders = { store: new MysqlOrderStore(ordersPool), payments: payments.provider };
-    else await ordersPool.end();
     console.log(JSON.stringify({ ctx: "Orders", enabled: ready, payments: { provider: payments.provider?.kind ?? null, mode: "test", autoCharge: false, ...(payments.reason ? { reason: payments.reason } : {}) }, ...(ready ? {} : { reason: "migration_0010_missing" }) }));
   }
 

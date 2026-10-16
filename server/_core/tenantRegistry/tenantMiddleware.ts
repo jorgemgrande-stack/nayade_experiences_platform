@@ -16,7 +16,7 @@
  */
 import type { NextFunction, Request, RequestHandler, Response } from "express";
 import { Metrics, meter } from "../metering";
-import { leaseTenantDatabase } from "../dbRegistry";
+import { DbCapacityError, leaseTenantDatabase } from "../dbRegistry";
 import { runWithTenant } from "../tenant";
 import type { ResolvedTenant, TenantResolver } from "./resolver";
 
@@ -106,7 +106,12 @@ export function bindTenantMiddleware(opts: Pick<TenantMiddlewareOptions, "exempt
           res.once("close", lease.release);
           next();
         },
-        () => {
+        (err) => {
+          // Presupuesto de conexiones agotado: 503 con Retry-After, nunca por encima del límite
+          if (err instanceof DbCapacityError) {
+            console.warn(JSON.stringify({ ctx: "TenantBinding", event: "db_capacity_exhausted" }));
+            return send(res, 503, err.retryAfterSeconds);
+          }
           console.warn(JSON.stringify({ ctx: "TenantBinding", event: "db_lease_failed" }));
           next();
         },

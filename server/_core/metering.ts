@@ -42,6 +42,12 @@ export const Metrics = {
   LLM_TOKENS_OUTPUT: "llm.tokens.output",
   JOB_RUN_MS: "job.run.ms",
   TENANT_SHADOW: "tenant.shadow",
+  /** Espera por hueco en el presupuesto de conexiones (ms) hasta obtenerlo. */
+  DB_POOL_WAIT_MS: "db.pool.wait.ms",
+  /** Peticiones/jobs rechazados por presupuesto de conexiones agotado (503). */
+  DB_POOL_REJECTED: "db.pool.rejected",
+  /** Pools de empresa cerrados por presión (lru) o inactividad (idle). */
+  DB_POOL_EVICTED: "db.pool.evicted",
 } as const;
 
 const noopSink: MeterSink = { record() {} };
