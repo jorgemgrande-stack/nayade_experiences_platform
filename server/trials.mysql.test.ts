@@ -49,6 +49,21 @@ describe.skipIf(!URL_)("prueba autónoma con MySQL real", () => {
     expect(Number(n[0].n)).toBe(1);
   });
 
+  it("más altas simultáneas que conexiones del pool: todas terminan (sin bloqueo por agotamiento del pool)", async () => {
+    const u = new URL(URL_!);
+    u.pathname = `/${DB}`;
+    const small = mysql.createPool({ uri: u.toString(), connectionLimit: 2 });
+    try {
+      const s2 = new TrialService({ store: new MysqlTrialStore(small), limits: { perIp24h: 100, perDomain30d: 100 } });
+      const all = Promise.all(Array.from({ length: 6 }, (_, i) => s2.register({ email: `pool${i}@pool${i}.example`, companyName: `Pool ${i}`, configuration: { plan: null, addons: [] }, idempotencyKey: key(200 + i) })));
+      const timeout = new Promise<never>((_, rej) => setTimeout(() => rej(new Error("bloqueo: el pool se agotó")), 10_000));
+      const r = await Promise.race([all, timeout]);
+      expect(r.every((x) => x.created)).toBe(true);
+    } finally {
+      await small.end();
+    }
+  }, 20_000);
+
   it("la misma clave a la vez: una alta y las demás devuelven la existente", async () => {
     const r = await Promise.all(Array.from({ length: 4 }, () => svc.register({ email: "idem@acme.es", companyName: "Acme", configuration: { plan: null, addons: [] }, idempotencyKey: key(50) })));
     expect(r.filter((x) => x.created)).toHaveLength(1);
