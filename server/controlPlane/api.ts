@@ -488,7 +488,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
     }
   }
 
-  if (d.crm) router.use("/crm", createCrmRouter(d.crm.service, d.crm.store));
+  if (d.crm) router.use("/crm", createCrmRouter(d.crm.service, d.crm.store, { billing: d.billingStore }));
 
   // ── Métricas (Prometheus) ──────────────────────────────────────────────────
   router.get(
