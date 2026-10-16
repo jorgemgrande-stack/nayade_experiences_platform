@@ -70,6 +70,8 @@ export interface ControlPlaneDeps {
   verifyDomain?: typeof verifyDomainOwnership;
   /** Límite de peticiones por minuto y token (por defecto 120). */
   perMinute?: number;
+  /** Tope de peticiones por minuto y IP para todo el plano de control (por defecto 600). */
+  perIpMinute?: number;
   /** Acceso delegado de soporte (requiere SUPPORT_JWT_SECRET). */
   support?: Pick<SupportAdmin, "create" | "revoke">;
   /** Incidencias operativas y evaluación de alertas. */
@@ -193,6 +195,17 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
   }
 
   const router = express.Router();
+  // Tope por IP antes que nada: sin él, cada cabecera Authorization inventada estrenaría un cubo nuevo
+  // (probar tokens o /auth/oidc sin límite).
+  router.use(
+    rateLimit({
+      windowMs: 60_000,
+      limit: d.perIpMinute ?? 600,
+      standardHeaders: true,
+      legacyHeaders: false,
+      keyGenerator: (req) => `ip:${ipKeyGenerator(req.ip ?? "")}`,
+    }),
+  );
   router.use(
     rateLimit({
       windowMs: 60_000,
@@ -201,7 +214,8 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
       legacyHeaders: false,
       // Por token o por sesión de operador (no un cubo común); sin credenciales, por IP
       keyGenerator: (req) => {
-        if (req.headers.authorization) return req.headers.authorization.slice(0, 80);
+        // Nunca el token en claro como clave del limitador
+        if (req.headers.authorization) return `tok:${hashToken(req.headers.authorization).slice(0, 24)}`;
         const c = readCookie(req, SESSION_COOKIE);
         return c ? `session:${hashToken(c).slice(0, 24)}` : `ip:${ipKeyGenerator(req.ip ?? "")}`;
       },
@@ -286,7 +300,8 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
     requireScope("tenants:read"),
     wrap(async (req, res) => {
       const id = idSchema.parse(req.params.id);
-      res.json({ events: await d.reader.listEvents(id, Math.min(500, Number(req.query.limit ?? 100))) });
+      const limit = z.coerce.number().int().min(1).max(500).default(100).parse(req.query.limit ?? undefined);
+      res.json({ events: await d.reader.listEvents(id, limit) });
     }),
   );
 
@@ -382,9 +397,11 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         .object({ status: z.enum(["active", "suspended", "expired"]).optional(), validUntil: z.string().datetime().nullable().optional() })
         .parse(req.body ?? {});
       const mod = req.params.module;
-      if (!body.status || body.status === "active") {
-        assertCanActivate(BUILTIN_MODULES, await d.entitlements.listEntitlements(id), mod, Date.now());
-      }
+      if (!BUILTIN_MODULES.some((m) => m.id === mod)) return void res.status(404).json({ error: "not_found", message: "Módulo desconocido" });
+      const current = await d.entitlements.listEntitlements(id);
+      // Activar comprueba dependencias; suspender o caducar, que nada activo dependa de él (igual que DELETE)
+      if (!body.status || body.status === "active") assertCanActivate(BUILTIN_MODULES, current, mod, Date.now());
+      else assertCanDeactivate(BUILTIN_MODULES, current, mod, Date.now());
       await d.entitlements.grant(id, mod, actor(req), { validUntil: body.validUntil ? new Date(body.validUntil) : null });
       if (body.status && body.status !== "active") await d.entitlements.setStatus(id, mod, body.status, actor(req));
       res.json({ entitlements: await d.entitlements.listEntitlements(id) });
@@ -761,7 +778,8 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         const id = idSchema.parse(req.params.id);
         const b = z
           .object({
-            operator: z.string().min(2).max(100),
+            // Se ignora: el acceso queda a nombre de la identidad AUTENTICADA (auditoría no falsificable)
+            operator: z.string().min(2).max(100).optional(),
             reason: z.string().min(5).max(300),
             minutes: z.number().int().min(1).max(240),
             readOnly: z.boolean().default(true),
@@ -770,7 +788,8 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         const t = await d.reader.getTenant(id);
         if (!t) throw new RegistryError("not_found", "Tenant no encontrado");
         if (t.status === "deleted" || t.status === "deleting") throw new RegistryError("conflict", "El tenant no admite acceso");
-        const g = await d.support!.create({ tenantId: id, ...b });
+        const a = getAuth(req)!.actor;
+        const g = await d.support!.create({ tenantId: id, ...b, operator: `${a.type}:${a.id}` });
         const token = await signSupportToken(g, d.supportSecret!);
         const primary = (await d.reader.listDomains(id)).find((x) => x.isPrimary && x.status === "active");
         res.status(201).json({
@@ -786,7 +805,8 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
       "/support-access/:grantId",
       requireScope("support:write"),
       wrap(async (req, res) => {
-        const operator = z.string().min(2).max(100).parse(req.query.operator ?? getAuth(req)!.tokenId);
+        const a = getAuth(req)!.actor;
+        const operator = `${a.type}:${a.id}`; // nunca el nombre que envíe quien llama
         await d.support!.revoke(z.string().regex(/^[a-f0-9]{32}$/).parse(req.params.grantId), operator);
         res.status(204).end();
       }),
@@ -800,7 +820,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
       requireScope("usage:read"),
       wrap(async (req, res) => {
         const id = idSchema.parse(req.params.id);
-        const days = Math.min(90, Math.max(1, Number(req.query.days ?? 30)));
+        const days = z.coerce.number().int().min(1).max(90).default(30).parse(req.query.days ?? undefined);
         const to = Date.now() + 3_600_000;
         const rows = await d.usage!.list(id, to - days * 86_400_000, to);
         const totals: Record<string, number> = {};
