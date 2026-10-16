@@ -168,6 +168,7 @@ describe("API", () => {
   let port: number;
   const FULL = "crm-full-token-aaaaaaaaaaaaaaaaaaaa";
   const READ = "crm-read-token-bbbbbbbbbbbbbbbbbbbb";
+  const PROV = "crm-prov-token-cccccccccccccccccccc";
 
   beforeAll(async () => {
     const reg = new MemoryTenantRegistryStore();
@@ -177,6 +178,7 @@ describe("API", () => {
       tokens: [
         { id: "ana", sha256: hashToken(FULL), scopes: ["crm:read", "crm:write"] },
         { id: "viewer", sha256: hashToken(READ), scopes: ["crm:read"] },
+        { id: "altas", sha256: hashToken(PROV), scopes: ["crm:read", "crm:write", "provisioning:write", "billing:write"] },
       ],
       registry: new TenantRegistryService(reg, () => ring),
       reader: reg,
@@ -235,7 +237,8 @@ describe("API", () => {
     expect((await call("POST", `/opportunities/${opp.id}/stage`, FULL, { stage: "lost" })).status).toBe(400);
     const ct = await call("POST", "/contracts", FULL, { companyId: conv.json.company.id, opportunityId: opp.id, planId: "base", modules: ["spa"] });
     expect(ct.status).toBe(201);
-    expect((await call("POST", `/contracts/${ct.json.contract.id}/status`, FULL, { status: "active" })).status).toBe(409);
+    expect((await call("POST", `/contracts/${ct.json.contract.id}/status`, FULL, { status: "active" })).status).toBe(403);
+    expect((await call("POST", `/contracts/${ct.json.contract.id}/status`, PROV, { status: "active" })).status).toBe(409);
     const dash = await call("GET", "/dashboard", READ);
     expect(dash.json.leadsByStatus.converted).toBe(1);
     expect((await call("GET", "/companies/99999", FULL)).status).toBe(404);
