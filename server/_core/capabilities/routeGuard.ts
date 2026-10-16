@@ -1,24 +1,40 @@
 /**
  * Aplicación de licencias por capacidad a las rutas tRPC existentes del Core.
  *
- * Cada namespace se asocia a la capacidad del catálogo que lo licencia. Las consultas (GET) se
- * permiten en `read_only`; las mutaciones (POST) exigen la capacidad activa. Lo no listado no se
- * comprueba aquí (auth, públicos, sistema). En modo `single` no se aplica.
+ * Cada ruta se asocia a la capacidad del catálogo que la licencia. La clave puede ser el procedimiento
+ * completo (`reservations.createAndPay`), un sub-router (`crm.invoices`) o el namespace (`crm`):
+ * gana la más específica. Las consultas (GET) se permiten en `read_only`; las mutaciones (POST)
+ * exigen la capacidad activa. Lo no listado no se comprueba aquí (auth, públicos, sistema). En modo
+ * `single` no se aplica.
  */
 import type { NextFunction, Request, RequestHandler, Response } from "express";
 import { procedureNames } from "../modules/routeGuard";
 import type { CapabilityAccess } from "./access";
 
-/** namespace tRPC → capacidad (ids de server/catalog/capabilities.ts). */
+/** procedimiento, sub-router o namespace tRPC → capacidad (ids de server/catalog/capabilities.ts). */
 export const TRPC_ROUTER_CAPABILITIES: Record<string, string> = {
   // Essential (todos los planes): CRM, ecommerce, CMS, facturación, administración
   crm: "crm-leads",
+  "crm.clients": "crm-contacts",
+  "crm.leads": "crm-leads",
+  "crm.leadSources": "crm-leads",
+  "crm.pipeline": "crm-leads",
+  "crm.quotes": "crm-quotes",
+  "crm.paymentPlans": "crm-quotes",
+  "crm.timeline": "crm-quotes",
+  "crm.products": "shop-catalog",
+  "crm.catalog": "shop-catalog",
+  "crm.reservations": "shop-orders",
+  "crm.invoices": "bill-invoices",
+  "crm.pendingPayments": "bill-payments",
   proposals: "crm-quotes",
   commercialFollowup: "crm-tasks",
   products: "shop-catalog",
   packs: "shop-catalog",
   timeSlots: "shop-catalog",
   reservations: "shop-orders",
+  "reservations.createAndPay": "shop-checkout",
+  "reservations.cartCheckout": "shop-checkout",
   bookings: "shop-orders",
   cancellations: "shop-orders",
   discounts: "shop-coupons",
@@ -30,6 +46,11 @@ export const TRPC_ROUTER_CAPABILITIES: Record<string, string> = {
   tpv: "bill-cash",
   cashRegister: "bill-cash",
   emailTemplates: "comms-email",
+  emailCommunications: "auto-basic",
+  admin: "admin-users",
+  config: "admin-panel",
+  onboarding: "admin-panel",
+  notifications: "admin-panel",
   // Elephant Connect y extras
   hr: "people-hr",
   gestoria: "tax-filings",
@@ -48,11 +69,17 @@ export const TRPC_ROUTER_CAPABILITIES: Record<string, string> = {
   reav: "travel-net",
 };
 
+/** Capacidad que licencia un procedimiento: procedimiento completo, después sub-router, después namespace. */
+export function capabilityForProcedure(proc: string, map: Record<string, string> = TRPC_ROUTER_CAPABILITIES): string | undefined {
+  const parts = proc.split(".");
+  return map[proc] ?? (parts.length > 2 ? map[`${parts[0]}.${parts[1]}`] : undefined) ?? map[parts[0]];
+}
+
 export function capabilityRouteGuard(getAccess: () => CapabilityAccess, map: Record<string, string> = TRPC_ROUTER_CAPABILITIES): RequestHandler {
   return async (req: Request, res: Response, next: NextFunction) => {
     const needed = new Set<string>();
     for (const proc of procedureNames(req.url ?? "")) {
-      const cap = map[proc.split(".")[0]];
+      const cap = capabilityForProcedure(proc, map);
       if (cap) needed.add(cap);
     }
     if (needed.size === 0) return next();

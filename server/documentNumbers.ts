@@ -211,15 +211,16 @@ export async function updateCounterPrefix(
   year: number,
   newPrefix: string
 ): Promise<void> {
-  await getDb()
-    .update(documentCounters)
-    .set({ prefix: newPrefix })
-    .where(
-      and(
-        eq(documentCounters.documentType, documentType),
-        eq(documentCounters.year, year)
-      )
-    );
+  const db = getDb();
+  const where = and(eq(documentCounters.documentType, documentType), eq(documentCounters.year, year));
+  const [existing] = await db.select({ id: documentCounters.id }).from(documentCounters).where(where).limit(1);
+  // Serie aún sin usar (empresa nueva o año nuevo): se crea vacía con el prefijo elegido; antes el
+  // cambio se perdía y el primer documento salía con el prefijo por defecto.
+  if (!existing) {
+    await db.insert(documentCounters).values({ documentType, year, currentNumber: 0, prefix: newPrefix });
+    return;
+  }
+  await db.update(documentCounters).set({ prefix: newPrefix }).where(where);
 }
 
 /**

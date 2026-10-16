@@ -9,9 +9,9 @@ import type { AddressInfo } from "node:net";
 import { decide, type CapabilityGrant } from "./_core/capabilities/model";
 import { MemoryCapabilityStore } from "./_core/capabilities/store";
 import { CapabilityAccess } from "./_core/capabilities/access";
-import { capabilityRouteGuard } from "./_core/capabilities/routeGuard";
+import { capabilityRouteGuard, capabilityForProcedure, TRPC_ROUTER_CAPABILITIES } from "./_core/capabilities/routeGuard";
 import { LicensingService } from "./licensing/service";
-import { capabilitiesOfTier } from "./catalog/capabilities";
+import { capabilitiesOfTier, CAPABILITY_IDS } from "./catalog/capabilities";
 import { seedElephantSource } from "./catalog/seed";
 import { quoteCatalogFromSite } from "./catalog/snapshot";
 import { WebAdminService } from "./web/service";
@@ -66,6 +66,24 @@ describe("acceso en el Core", () => {
     expect((await a.check("people-hr", { write: true, tenantId: "acme" })).allowed).toBe(true);
     t += 10_000;
     await expect(a.check("people-hr", { write: true, tenantId: "acme" })).rejects.toThrow();
+  });
+});
+
+describe("mapa de rutas → capacidad", () => {
+  it("gana la clave más específica: procedimiento, después sub-router, después namespace", () => {
+    expect(capabilityForProcedure("crm.invoices.listAll")).toBe("bill-invoices");
+    expect(capabilityForProcedure("crm.clients.create")).toBe("crm-contacts");
+    expect(capabilityForProcedure("crm.reservations.createManual")).toBe("shop-orders");
+    expect(capabilityForProcedure("crm.pendingPayments.confirm")).toBe("bill-payments");
+    expect(capabilityForProcedure("crm.leads.list")).toBe("crm-leads");
+    expect(capabilityForProcedure("reservations.createAndPay")).toBe("shop-checkout");
+    expect(capabilityForProcedure("reservations.getAll")).toBe("shop-orders");
+    expect(capabilityForProcedure("admin.createUser")).toBe("admin-users");
+    expect(capabilityForProcedure("auth.me")).toBeUndefined();
+    expect(capabilityForProcedure("public.submitLead")).toBeUndefined();
+  });
+  it("todas las capacidades del mapa existen en el catálogo", () => {
+    for (const cap of Object.values(TRPC_ROUTER_CAPABILITIES)) expect(CAPABILITY_IDS).toContain(cap);
   });
 });
 

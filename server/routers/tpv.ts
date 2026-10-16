@@ -297,6 +297,16 @@ export const tpvRouter = router({
     return await db.select().from(cashRegisters).where(eq(cashRegisters.isActive, true));
   }),
 
+  // Alta de caja: una empresa nueva no trae ninguna y sin caja no se puede abrir sesión
+  createRegister: tpvBackofficeProc
+    .input(z.object({ name: z.string().trim().min(1).max(100), location: z.string().trim().max(200).optional() }))
+    .mutation(async ({ input }) => {
+      const [result] = await db.insert(cashRegisters).values({ name: input.name, location: input.location || null, isActive: true, createdAt: Date.now() });
+      const id = (result as any).insertId as number;
+      const [register] = await db.select().from(cashRegisters).where(eq(cashRegisters.id, id));
+      return register;
+    }),
+
   // -- SESSIONS ---------------------------------------------------------------
   getActiveSession: tpvAccessProc
     .input(z.object({ registerId: z.number() }))
@@ -323,6 +333,8 @@ export const tpvRouter = router({
       })
     )
     .mutation(async ({ input, ctx }) => {
+      const [register] = await db.select({ id: cashRegisters.id }).from(cashRegisters).where(and(eq(cashRegisters.id, input.registerId), eq(cashRegisters.isActive, true)));
+      if (!register) throw new TRPCError({ code: "NOT_FOUND", message: "La caja no existe o está desactivada" });
       // Check no open session exists
       const existing = await db
         .select()

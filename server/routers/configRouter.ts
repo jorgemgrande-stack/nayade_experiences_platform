@@ -36,7 +36,7 @@ function validateSettingValue(key: string, value: string, valueType: string): vo
 
   if (valueType === "string") {
     // Email fields
-    if (key.startsWith("email_")) {
+    if (key.startsWith("email_") && key !== "email_from_name") {
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(value))
         throw new TRPCError({ code: "BAD_REQUEST", message: "Dirección de email inválida" });
     }

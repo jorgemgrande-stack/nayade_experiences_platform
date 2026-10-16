@@ -3,7 +3,7 @@
  * Gestión de configuraciones de plantillas, reglas de automatización,
  * log global de emails, cola de jobs y preferencias por cliente.
  */
-import { router, protectedProcedure } from "../_core/trpc";
+import { router, staffProcedure } from "../_core/trpc";
 import { legacyBrandText } from "../tenantBrand";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
@@ -22,7 +22,8 @@ import { legacyDb, legacyPool } from "../_core/legacyDb";
 const _pool = legacyPool();
 const db = legacyDb();
 
-const staff = protectedProcedure;
+// Equipo comercial (crm.view; legado: admin | agente). Antes bastaba cualquier sesión.
+const staff = staffProcedure;
 
 // ─── Catálogo estático (source of truth para keys + metadatos) ───────────────
 // Lista de todas las plantillas conocidas. La DB solo guarda overrides.

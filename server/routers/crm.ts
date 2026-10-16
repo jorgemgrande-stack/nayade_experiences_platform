@@ -5051,12 +5051,16 @@ export const crmRouter = router({
 
         // 3. Construir líneas de factura
         const unitPrice = input.people > 0 ? input.amountTotal / input.people : input.amountTotal;
+        // Tipo de IVA del producto (régimen general); antes se aplicaba siempre el 21 %
+        const [manualProduct] = await db.select({ fiscalRegime: experiences.fiscalRegime, taxRate: experiences.taxRate }).from(experiences).where(eq(experiences.id, input.productId)).limit(1);
+        const manualRate = manualProduct?.fiscalRegime === "general" && manualProduct.taxRate != null ? parseFloat(String(manualProduct.taxRate)) : NaN;
         const items = [{
           description: input.productName,
           quantity: input.people,
           unitPrice,
           total: input.amountTotal,
           fiscalRegime: "general" as const,
+          ...(Number.isFinite(manualRate) ? { taxRate: manualRate } : {}),
         }];
         const bdManual = groupTaxBreakdown(items);
         const taxAmount = totalTaxAmount(bdManual);
@@ -5993,8 +5997,8 @@ export const crmRouter = router({
     })).mutation(async ({ input }) => {
       try {
         const [result] = await db.execute(sql`
-          INSERT INTO \`clients\` (\`name\`, \`email\`, \`phone\`, \`company\`, \`nif\`, \`source\`)
-          VALUES (${input.name}, ${input.email}, ${input.phone ?? ""}, ${input.company ?? ""}, ${input.nif ?? ""}, 'manual')
+          INSERT INTO \`clients\` (\`name\`, \`email\`, \`phone\`, \`company\`, \`nif\`, \`address\`, \`notes\`, \`source\`)
+          VALUES (${input.name}, ${input.email}, ${input.phone ?? ""}, ${input.company ?? ""}, ${input.nif ?? ""}, ${input.address ?? null}, ${input.notes ?? null}, 'manual')
         `);
         return { id: (result as any).insertId };
       } catch (e: any) {
