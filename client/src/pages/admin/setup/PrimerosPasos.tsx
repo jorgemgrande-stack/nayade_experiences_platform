@@ -604,15 +604,18 @@ function OperationStep({ disabled, onCreated }: { disabled: boolean; onCreated: 
 
 // ─── Paso 6: usuarios ─────────────────────────────────────────────────────────
 
+/** Roles del producto: empleado (agente), administrador y solo lectura. */
+type InviteRole = "agente" | "admin" | "readonly";
+
 function UsersStep({ disabled, onInvited }: { disabled: boolean; onInvited: () => void }) {
   const utils = trpc.useUtils();
   const seats = trpc.setupWizard.seats.useQuery();
-  const [v, setV] = useState({ name: "", email: "", role: "user" as "user" | "admin" });
+  const [v, setV] = useState({ name: "", email: "", role: "agente" as InviteRole });
   const [errors, setErrors] = useState<{ name?: string; email?: string }>({});
   const invite = trpc.admin.createUser.useMutation({
     onSuccess: async () => {
       toast.success(`Invitación enviada a ${v.email}`);
-      setV({ name: "", email: "", role: "user" });
+      setV({ name: "", email: "", role: "agente" });
       await utils.setupWizard.seats.invalidate();
       onInvited();
     },
@@ -651,9 +654,10 @@ function UsersStep({ disabled, onInvited }: { disabled: boolean; onInvited: () =
           <Input id="us-email" type="email" value={v.email} onChange={(e) => setV((x) => ({ ...x, email: e.target.value }))} aria-invalid={!!errors.email} aria-required aria-describedby={describedBy("us-email", errors.email)} disabled={disabled || full} />
         </Field>
         <Field id="us-role" label="Permisos">
-          <select id="us-role" className={selectClass} value={v.role} onChange={(e) => setV((x) => ({ ...x, role: e.target.value as "user" | "admin" }))} disabled={disabled || full}>
-            <option value="user">Empleado</option>
+          <select id="us-role" className={selectClass} value={v.role} onChange={(e) => setV((x) => ({ ...x, role: e.target.value as InviteRole }))} disabled={disabled || full}>
+            <option value="agente">Empleado</option>
             <option value="admin">Administrador</option>
+            <option value="readonly">Solo lectura</option>
           </select>
         </Field>
       </div>

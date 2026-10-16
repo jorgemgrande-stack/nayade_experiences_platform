@@ -17,8 +17,12 @@ import { PRODUCTS } from "./catalog/elephantSourceV1";
 
 export const CORE_PLANS = ["essential", "business", "enterprise"] as const;
 export type CorePlan = (typeof CORE_PLANS)[number];
-/** Roles que ocupan una plaza de usuario del panel (los portales de socios o proveedores no). */
-export const SEAT_ROLES = ["user", "admin", "monitor", "agente", "adminrest", "controler"] as const;
+/**
+ * Roles que ocupan una plaza de usuario del panel: el personal, incluido el de solo lectura. No la ocupan
+ * `user` (sin acceso al panel: cuentas de cliente o con el acceso retirado) ni los portales de socios o
+ * proveedores.
+ */
+export const SEAT_ROLES = ["admin", "monitor", "agente", "adminrest", "controler", "readonly"] as const;
 const BASE_CAPABILITY = "admin-panel";
 const DAY = 86_400_000;
 

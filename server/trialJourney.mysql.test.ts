@@ -415,11 +415,11 @@ describe.skipIf(!URL_)("prueba gratuita de Essential de punta a punta (MySQL rea
 
   it("usuarios: invitaciones hasta el límite de Essential (3) comprobado en el servidor", async () => {
     for (const n of [1, 2]) {
-      const r = await m(tenantId, "admin.createUser", { name: `Empleado ${n}`, email: `empleado${n}-${run}@ferreteria.example`, role: "user" }, cookie);
+      const r = await m(tenantId, "admin.createUser", { name: `Empleado ${n}`, email: `empleado${n}-${run}@ferreteria.example`, role: "agente" }, cookie);
       expect(r.status).toBe(200);
       expect(appMail.some((x) => x.to === `empleado${n}-${run}@ferreteria.example`)).toBe(true);
     }
-    const over = await m(tenantId, "admin.createUser", { name: "Empleado 3", email: `empleado3-${run}@ferreteria.example`, role: "user" }, cookie);
+    const over = await m(tenantId, "admin.createUser", { name: "Empleado 3", email: `empleado3-${run}@ferreteria.example`, role: "agente" }, cookie);
     expect(over.status).toBe(403);
     expect(over.raw).toMatch(/Essential incluye 3 usuarios/);
     expect(appMail.some((x) => x.to === `empleado3-${run}@ferreteria.example`)).toBe(false);
@@ -427,7 +427,7 @@ describe.skipIf(!URL_)("prueba gratuita de Essential de punta a punta (MySQL rea
     const users = data(await q(tenantId, "admin.getUsers", undefined, cookie)) as Array<{ id: number; email: string }>;
     const e1 = users.find((x) => x.email.startsWith("empleado1"))!;
     expect((await m(tenantId, "admin.toggleUserActive", { userId: e1.id }, cookie)).status).toBe(200);
-    expect((await m(tenantId, "admin.createUser", { name: "Empleado 3", email: `empleado3-${run}@ferreteria.example`, role: "user" }, cookie)).status).toBe(200);
+    expect((await m(tenantId, "admin.createUser", { name: "Empleado 3", email: `empleado3-${run}@ferreteria.example`, role: "agente" }, cookie)).status).toBe(200);
     expect((await m(tenantId, "admin.toggleUserActive", { userId: e1.id }, cookie)).status).toBe(403);
     expect(data(await q(tenantId, "setupWizard.seats", undefined, cookie))).toMatchObject({ used: 3, limit: 3, available: 0, plan: "essential" });
   });
@@ -511,7 +511,7 @@ describe.skipIf(!URL_)("prueba gratuita de Essential de punta a punta (MySQL rea
     expect(st.licence).toMatchObject({ readOnly: true, daysLeft: 0 });
     for (const [proc, input] of [
       ["crm.clients.create", { name: "Cliente Dos", email: "cliente@dos.example" }],
-      ["admin.createUser", { name: "Empleado 4", email: `empleado4-${run}@ferreteria.example`, role: "user" }],
+      ["admin.createUser", { name: "Empleado 4", email: `empleado4-${run}@ferreteria.example`, role: "agente" }],
       ["setupWizard.saveActivity", { activity: "servicios" }],
       ["products.createCategory", { slug: "otra", name: "Otra" }],
     ] as const) {
