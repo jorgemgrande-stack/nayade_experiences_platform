@@ -300,7 +300,7 @@ export class MysqlWebStore implements WebStore {
       );
       if (res.affectedRows !== 1) {
         await c.rollback();
-        throw new VersionConflictError((await this.byId(this.pool, id)).draftVersion);
+        throw new VersionConflictError((await this.byId(c, id)).draftVersion);
       }
       await c.query("INSERT INTO web_entry_versions (entry_id, version, snapshot, author, created_at) VALUES (?,?,?,?,?)", [id, expected + 1, JSON.stringify(draft), author, now]);
       await c.commit();

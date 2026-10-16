@@ -2265,6 +2265,13 @@ export const crmRouter = router({
         if (!quote) throw new TRPCError({ code: "NOT_FOUND" });
         const [lead] = await db.select().from(leads).where(eq(leads.id, quote.leadId));
         if (!lead) throw new TRPCError({ code: "NOT_FOUND", message: "Lead asociado no encontrado" });
+        // Idempotente: un presupuesto ya convertido (doble clic, reintento) no genera otro pedido
+        const [existing] = await db
+          .select({ id: reservations.id, merchantOrder: reservations.merchantOrder, status: reservations.status })
+          .from(reservations)
+          .where(and(eq(reservations.quoteId, input.quoteId), ne(reservations.status, "cancelled")))
+          .limit(1);
+        if (existing) return { success: true, reservationId: existing.id, reservationRef: existing.merchantOrder, status: existing.status };
 
         const now = new Date();
         const reservationRef = `RES-${Date.now().toString(36).toUpperCase()}`;

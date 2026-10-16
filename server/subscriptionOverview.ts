@@ -114,10 +114,12 @@ export function buildSubscriptionOverview(o: {
   const planProduct = planHit ? PRODUCTS.find((p) => p.key === planHit.key && p.family === "core_plan") : undefined;
   const plan = planHit && planProduct ? { key: planHit.key, name: planProduct.draft.name } : null;
 
-  // Prueba: licencias con origen `trial:` y caducidad; manda la primera que vence
-  const trialGrants = o.grants.filter((g) => g.source.startsWith("trial:") && g.validUntil !== null && g.status !== "cancelled");
+  // Prueba: licencias con caducidad, de origen `trial:` o de una suscripción en prueba (la prueba
+  // pública aplica `subscription:<id>` hasta el fin de la prueba); manda la primera que vence. Una
+  // suscripción de pago aplica sus licencias sin caducidad.
+  const trialGrants = o.grants.filter((g) => (g.source.startsWith("trial:") || g.source.startsWith("subscription:")) && g.validUntil !== null && g.status !== "cancelled");
   const trialEnd = trialGrants.length ? Math.min(...trialGrants.map((g) => g.validUntil as number)) : null;
-  const hasSubscription = o.grants.some((g) => g.source.startsWith("subscription:") && g.status !== "cancelled");
+  const hasSubscription = o.grants.some((g) => g.source.startsWith("subscription:") && g.validUntil === null && g.status !== "cancelled");
   const trial = trialEnd !== null && !hasSubscription ? { endsAt: trialEnd, daysLeft: Math.max(0, Math.ceil((trialEnd - o.now) / DAY)) } : null;
 
   const statuses = new Set(caps.map((c) => c.status));

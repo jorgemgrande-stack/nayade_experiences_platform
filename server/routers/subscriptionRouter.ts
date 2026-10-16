@@ -27,7 +27,7 @@ export const subscriptionRouter = router({
       throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "No se pudo consultar la suscripción. Inténtalo de nuevo en unos minutos." });
     }
     const usedUsers = await countPanelUsers();
-    return buildSubscriptionOverview({ mode, enforcing: access.enforcing(), grants, now: Date.now(), usedUsers, upgradeUrl });
+    return buildSubscriptionOverview({ mode, enforcing: access.enforcing(), grants, now: access.currentTime(), usedUsers, upgradeUrl });
   }),
   /** Canal de ayuda (correo configurable): disponible también en solo lectura o con la prueba vencida. */
   supportContact: protectedProcedure.query(async ({ ctx }) => {
