@@ -84,6 +84,17 @@ describe("tarifas oficiales v1 (sin IVA)", () => {
   });
 });
 
+describe("paquetes Connect (composición aprobada por negocio)", () => {
+  it("cada paquete incluye exactamente los servicios aprobados", () => {
+    const of = (k: string) => PRODUCTS.find((p) => p.key === k)!.draft.catalog.bundleOf;
+    expect(of("connect-pack-communications")).toEqual(["connect-whatsapp-ai", "connect-voice", "connect-reception-ai"]);
+    expect(of("connect-pack-marketing")).toEqual(["connect-ads-manager", "connect-campaigns", "connect-seo-control", "connect-geo-control"]);
+    expect(of("connect-pack-finance")).toEqual(["connect-tax", "connect-finance-sync", "connect-partners"]);
+    expect(of("connect-pack-ai")).toEqual(["connect-copilot", "connect-automations"]);
+    for (const p of PRODUCTS.filter((x) => x.family === "connect_bundle")) expect(p.draft.internal.notes).not.toContain("PROPUESTA");
+  });
+});
+
 describe("semilla en el catálogo comercial", () => {
   it("crea y publica capacidades y productos con sus precios aprobados, y repetirla no cambia nada", async () => {
     const { store, svc, report } = await seeded();

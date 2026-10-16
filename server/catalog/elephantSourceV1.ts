@@ -16,8 +16,9 @@
  *   - on_request («Solicitar activación»): hay código reutilizable y el equipo puede activarlo tras revisarlo.
  *   - coming_soon («Próximamente»): no hay código, o el que hay tiene defectos que impiden venderlo.
  *
+ * Composición de los paquetes Connect: APROBADA por negocio (16/10/2026).
+ *
  * Marcado como PROPUESTA (pendiente de aprobación de negocio, ver internal.notes):
- *   - composición de los paquetes Connect (el catálogo oficial fija su precio, no su contenido);
  *   - dependencias entre submódulos de cada Net;
  *   - qué incluye Travel Net Complete respecto a los conectores (se asume 1 integración).
  */
@@ -280,7 +281,7 @@ const CONNECT: SeedProduct[] = [
   connect({ key: "connect-geo-control", name: "Elephant GEO Control", group: "marketing", tagline: "Visibilidad en motores de IA generativa (GEO).", tech: "planned", commercial: "coming_soon", monthly: 29, capabilities: ["geo-control"], icon: "compass" }),
   connect({ key: "connect-automations", name: "Automatizaciones avanzadas", group: "ai", tagline: "Reglas, flujos y automatizaciones avanzadas.", tech: "partial", commercial: "coming_soon", monthly: 29, capabilities: ["automations-advanced"], icon: "workflow", notes: "Hay un motor de automatizaciones de correo reutilizable (apagado por defecto y sin pruebas)." }),
 ];
-const connectBundle = (p: Omit<P, "family">) => product({ ...p, family: "connect_bundle", notes: `Composición: ${PROPOSAL}` });
+const connectBundle = (p: Omit<P, "family">) => product({ ...p, family: "connect_bundle", notes: "Composición aprobada por negocio (16/10/2026)." });
 const CONNECT_BUNDLES: SeedProduct[] = [
   connectBundle({ key: "connect-pack-communications", name: "Paquete Communications", group: "communications", tagline: "WhatsApp AI, Voice y Reception AI.", tech: "partial", commercial: "coming_soon", monthly: 99, bundleOf: ["connect-whatsapp-ai", "connect-voice", "connect-reception-ai"], icon: "messages" }),
   connectBundle({ key: "connect-pack-marketing", name: "Paquete Marketing", group: "marketing", tagline: "Ads Manager, Campaigns, SEO Control y GEO Control.", tech: "planned", commercial: "coming_soon", monthly: 79, bundleOf: ["connect-ads-manager", "connect-campaigns", "connect-seo-control", "connect-geo-control"], icon: "megaphone" }),
