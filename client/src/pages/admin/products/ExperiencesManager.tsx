@@ -987,7 +987,7 @@ export default function ExperiencesManager() {
             <div className="flex gap-3 pt-2">
               <Button type="button" variant="outline" onClick={() => setShowModal(false)} className="flex-1">Cancelar</Button>
               <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending} className="flex-1" style={{ background: "linear-gradient(135deg,#f97316,#f59e0b)", color: "#fff", border: "none", fontWeight: 600 }}>
-                {editingId ? "Guardar Cambios" : "Crear Experiencia"}
+                {editingId ? "Guardar Cambios" : isNewCompany ? "Crear producto" : "Crear Experiencia"}
               </Button>
             </div>
           </form>

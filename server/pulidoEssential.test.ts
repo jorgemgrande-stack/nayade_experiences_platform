@@ -167,3 +167,16 @@ describe("Inicio de Essential: acceso al asistente de primeros pasos", () => {
     expect(fs.readFileSync(path.join(__dirname, "../client/src/App.tsx"), "utf8")).toContain(`path="/admin/primeros-pasos"`);
   });
 });
+
+describe("productos: textos y convención de precio unificados (Essential)", () => {
+  it("gestor y asistente: «Crear producto» y precio con impuestos incluidos en ambos", () => {
+    const manager = fs.readFileSync(path.join(__dirname, "../client/src/pages/admin/products/ExperiencesManager.tsx"), "utf8");
+    const wizard = fs.readFileSync(path.join(__dirname, "../client/src/pages/admin/setup/PrimerosPasos.tsx"), "utf8");
+    expect(manager).toContain(`isNewCompany ? "Crear producto" : "Crear Experiencia"`);
+    expect(manager).toContain(`"Precio (€, impuestos incluidos)"`);
+    expect(wizard).toContain(`label="Precio (€, impuestos incluidos)"`);
+    expect(wizard).not.toContain("sin impuestos");
+    // Lo que se guarda no cambia: el asistente envía el precio tal cual como basePrice
+    expect(wizard).toContain("basePrice: price.toFixed(2)");
+  });
+});

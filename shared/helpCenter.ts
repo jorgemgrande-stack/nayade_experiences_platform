@@ -83,12 +83,12 @@ export const HELP_ARTICLES: HelpArticle[] = [
       "En el menú, ve a Catálogo y comercio › Productos y servicios.",
       "Pulsa «Nuevo producto». Se abre «Nuevo producto o servicio».",
       "Campos obligatorios: Nombre, Precio (€, impuestos incluidos), Categoría y Lugar de servicio o venta. Opcionales: imágenes (hasta 4, máximo 10 MB cada una), Tipo de precio (Por persona / Por unidad), Activo, Destacado en Home y la dirección en la web.",
-      "Pulsa el botón de guardar del final del formulario (se llama «Crear Experiencia»). Un aviso confirma que el producto se ha creado.",
+      "Pulsa el botón de guardar del final del formulario (se llama «Crear producto»). Un aviso confirma que el producto se ha creado.",
       "Si necesitas una categoría nueva, ve a Catálogo y comercio › Categorías, pulsa «Nueva Categoría», rellena Nombre y Slug y pulsa «Crear Categoría».",
       "Para precios alternativos de un mismo producto, ve a Variantes y precios, pulsa «Nueva Variante», elige el producto, el nombre de la variante y el tipo de precio (Precio fijo, Por persona o Porcentaje) y pulsa «Crear Variante».",
     ],
     notes: [
-      "En el asistente de primeros pasos el primer producto se crea con «Precio sin impuestos» y el tipo de IVA; si no existen, se crean la categoría «General» y el lugar «Principal».",
+      "En el asistente de primeros pasos el primer producto se crea con «Precio (€, impuestos incluidos)» y el tipo de IVA, la misma convención que el gestor de productos; si no existen, se crean la categoría «General» y el lugar «Principal».",
     ],
     links: [
       { label: "Ir a Productos y servicios", href: "/admin/productos/experiencias" },

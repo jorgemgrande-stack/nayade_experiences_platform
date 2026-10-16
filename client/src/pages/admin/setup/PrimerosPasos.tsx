@@ -36,7 +36,8 @@ const HELP: Record<SetupStep, string> = {
   company: "Estos datos aparecen en tus presupuestos y facturas. Los puedes cambiar más tarde en Configuración.",
   activity: "Solo adapta los textos y ejemplos del panel. No activa módulos ni contrata nada.",
   client: "Tus clientes quedan en el CRM con su historial. Puedes importar o añadir más después.",
-  product: "El precio se indica sin impuestos; el impuesto se suma en presupuestos y facturas.",
+  // Misma convención que el gestor de productos: el precio guardado es el precio final, con el impuesto incluido
+  product: "El precio se indica con impuestos incluidos (precio final); el impuesto se desglosa en presupuestos y facturas.",
   operation: "Un presupuesto se envía al cliente para que lo acepte; un pedido o reserva es una venta confirmada.",
   users: "Cada persona entra con su propio usuario. El número de usuarios depende de tu plan.",
   finish: "Puedes volver a este asistente cuando quieras desde su enlace.",
@@ -505,7 +506,7 @@ function ProductStep({ noun, example, disabled, onCreated }: { noun: string; exa
         <Field id="pr-title" label="Nombre" error={errors.title} hint={`Por ejemplo: ${example}`} required>
           <Input id="pr-title" value={v.title} onChange={(e) => setV((x) => ({ ...x, title: e.target.value }))} aria-invalid={!!errors.title} aria-required aria-describedby={describedBy("pr-title", errors.title, `Por ejemplo: ${example}`)} disabled={disabled} />
         </Field>
-        <Field id="pr-price" label="Precio sin impuestos" error={errors.price} required>
+        <Field id="pr-price" label="Precio (€, impuestos incluidos)" error={errors.price} required>
           <Input id="pr-price" inputMode="decimal" value={v.price} onChange={(e) => setV((x) => ({ ...x, price: e.target.value }))} aria-invalid={!!errors.price} aria-required aria-describedby={describedBy("pr-price", errors.price)} disabled={disabled} />
         </Field>
         <Field id="pr-tax" label="Impuesto (IVA)" error={errors.tax} required>
