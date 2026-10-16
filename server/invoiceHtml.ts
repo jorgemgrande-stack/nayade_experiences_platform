@@ -8,7 +8,7 @@ import { siteSettings } from "../drizzle/schema";
 import { isMultiTenant } from "./_core/tenant";
 import { tenantPublicUrl, warmTenantIdentity } from "./_core/tenantIdentity";
 import { brandName, brandSetting, formatLegalAddress, resolveLegalCompany, tenantFiscalIdentity } from "./tenantBrand";
-import { getSystemSettingSync } from "./config";
+import { getSystemSetting, getSystemSettingSync } from "./config";
 import { groupTaxBreakdown, totalTaxAmount, type TaxBreakdownLine } from "./taxUtils";
 import { legacyDb, legacyPool } from "./_core/legacyDb";
 
@@ -46,7 +46,14 @@ export async function getLegalCompanySettings(): Promise<{
   // single: respaldos heredados (sin cambios). multi: entidad fiscal de la empresa en el registro.
   const multi = isMultiTenant();
   if (multi) await warmTenantIdentity();
-  return resolveLegalCompany(s, { multi, fiscal: multi ? tenantFiscalIdentity() : null });
+  const fiscal = multi ? tenantFiscalIdentity() : null;
+  if (multi && !fiscal) {
+    // Empresa de alta autoservicio sin entidad fiscal en el registro: los datos fiscales que guardó
+    // en «Primeros pasos» (ajustes de la propia empresa). Sin ellos la factura saldría sin emisor.
+    const own: Record<string, string> = { legalCompanyName: "site_legal_name", legalCompanyCif: "brand_nif", legalCompanyAddress: "brand_address", legalCompanyCity: "site_legal_city", legalCompanyZip: "site_legal_zip", legalCompanyProvince: "site_legal_province", legalCompanyEmail: "site_legal_email", legalCompanyPhone: "site_legal_phone", legalCompanyIban: "site_legal_iban" };
+    for (const [k, sys] of Object.entries(own)) if (!s[k]) s[k] = await getSystemSetting(sys, "");
+  }
+  return resolveLegalCompany(s, { multi, fiscal });
 }
 
 function escapeHtml(v: unknown): string {

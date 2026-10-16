@@ -19,6 +19,8 @@ import { TENANT_TRIGGERS, createTriggerSql } from "./tenantTriggers";
 import { getTemplate, renderTemplateText } from "../templates/catalog";
 
 const TABLE = "__elephant_migrations";
+/** Bloqueo con nombre de la aplicación del esquema, por base de datos (expresión SQL). */
+const SCHEMA_LOCK = "MD5(CONCAT('es_provision_schema:', DATABASE()))";
 const BASELINE_ID = "0000_baseline";
 
 export function databaseNameFor(tenantId: string, prefix = "es_"): string {
@@ -111,7 +113,10 @@ export class MysqlSchemaApplier implements SchemaApplier {
            duration_ms INT NOT NULL DEFAULT 0
          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
       );
-      const [lock] = await conn.query<mysql.RowDataPacket[]>("SELECT GET_LOCK('es_provision_schema', 30) AS got");
+      // El nombre del bloqueo es global al servidor MySQL: incluye la BD de la empresa (dos aplicaciones
+      // sobre la MISMA BD se excluyen; empresas distintas se aprovisionan en paralelo) y se resume con
+      // MD5 para no superar los 64 caracteres permitidos.
+      const [lock] = await conn.query<mysql.RowDataPacket[]>(`SELECT GET_LOCK(${SCHEMA_LOCK}, 30) AS got`);
       if (!lock[0]?.got) throw new Error("No se pudo obtener el bloqueo de esquema");
       try {
         const [rows] = await conn.query<mysql.RowDataPacket[]>(`SELECT id FROM \`${TABLE}\``);
@@ -140,7 +145,7 @@ export class MysqlSchemaApplier implements SchemaApplier {
         }
         return { baselineVersion: BASELINE_ID, schemaVersion: last };
       } finally {
-        await conn.query("SELECT RELEASE_LOCK('es_provision_schema')").catch(() => undefined);
+        await conn.query(`SELECT RELEASE_LOCK(${SCHEMA_LOCK})`).catch(() => undefined);
       }
     } finally {
       await conn.end().catch(() => undefined);

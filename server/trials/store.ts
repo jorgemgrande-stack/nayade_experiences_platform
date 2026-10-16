@@ -185,7 +185,10 @@ export class MysqlTrialStore implements TrialStore {
       );
       await c.query("INSERT INTO trial_events (trial_id, action, from_state, to_state, version, actor, created_at) VALUES (?, 'registered', NULL, ?, 1, ?, ?)", [res.insertId, t.state, actor, t.createdAt]);
       await c.commit();
-      return (await this.get(res.insertId))!;
+      // Con la MISMA conexión: pedir otra al pool mientras se retiene esta bloquea para siempre cuando
+      // hay tantas altas simultáneas como conexiones (cada una espera una conexión que nadie suelta)
+      const [after] = await c.query<mysql.RowDataPacket[]>("SELECT * FROM trial_requests WHERE id = ?", [res.insertId]);
+      return row(after[0]);
     } catch (e) {
       await c.rollback().catch(() => undefined);
       if (dup(e, "uq_trial_idempotency")) throw new TrialConflict("duplicate_key", "Solicitud repetida");
