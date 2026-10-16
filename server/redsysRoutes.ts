@@ -5,6 +5,7 @@
  * Solo se actualiza el estado tras validar la firma aquí.
  */
 import express from "express";
+import { publicBaseUrl } from "./_core/productIdentity";
 import { validateRedsysNotification } from "./redsys";
 import { sendCapiEvent } from "./metaCapiRoute";
 import { updateReservationPayment, getReservationByMerchantOrder, getAllReservationsByMerchantOrder, createReavExpedient, attachReavDocument, upsertClientFromReservation, postConfirmOperation, createVentaPerdidaLead, getGHLCredentials } from "./db";
@@ -408,7 +409,7 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
             const COPY_EMAIL  = await getBusinessEmail('reservations');
             if (clientEmail) {
               try {
-                const base = process.env.APP_URL ?? "https://www.skicenter.es";
+                const base = publicBaseUrl();
                 // Preferir el token de la reserva (todos los canales), fallback al token del presupuesto.
                 const tokenForUrl = (updatedReservation as any).publicToken ?? quote.paymentLinkToken;
                 const reservationUrl = tokenForUrl ? `${base}/presupuesto/${tokenForUrl}` : undefined;
@@ -452,7 +453,7 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
               syncLeadUrlsToGHL({
                 ghlContactId: (lead as any)?.ghlContactId,
                 quoteUrl: quote.paymentLinkToken
-                  ? `${process.env.APP_URL ?? "https://www.skicenter.es"}/presupuesto/${quote.paymentLinkToken}`
+                  ? `${publicBaseUrl()}/presupuesto/${quote.paymentLinkToken}`
                   : undefined,
                 invoiceNumber,
                 quoteNumber: quote.quoteNumber,
@@ -629,7 +630,7 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
               // workflow WhatsApp pueda usar {{contact.presupuesto_url}}.
               const publicToken = (resv as any).publicToken;
               if (publicToken) {
-                const base = process.env.APP_URL ?? "https://www.skicenter.es";
+                const base = publicBaseUrl();
                 syncLeadUrlsToGHL({
                   ghlContactId,
                   quoteUrl: `${base}/presupuesto/${publicToken}`,
@@ -1195,7 +1196,7 @@ redsysRouter.post("/api/admin/recover-order/:merchantOrder", async (req, res) =>
           const clientEmail = lead?.email ?? primary.customerEmail;
           if (clientEmail) {
             const COPY_EMAIL = await getBusinessEmail("reservations");
-            const base = process.env.APP_URL ?? "https://www.skicenter.es";
+            const base = publicBaseUrl();
             const tokenForUrl = (primary as any).publicToken ?? quote.paymentLinkToken;
             const reservationUrl = tokenForUrl ? `${base}/presupuesto/${tokenForUrl}` : undefined;
             const html = buildConfirmationHtml({

@@ -5,6 +5,7 @@
  * Fase 2: Portal del partner — activación de cuenta, creación de leads, listado.
  */
 import { z } from "zod";
+import { publicBaseUrl } from "../_core/productIdentity";
 import { adminProcedure, partnerProcedure, publicProcedure, router } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { partners, users, leads, partnerBillingBatches, partnerBillingBatchItems, experiences, transactions, siteSettings } from "../../drizzle/schema";
@@ -435,7 +436,7 @@ export const partnersRouter = router({
       }
 
       // Enviar email de invitación
-      const origin = process.env.APP_URL ?? "https://www.skicenter.es";
+      const origin = publicBaseUrl();
       const inviteUrl = `${origin}/partner/activar?token=${token}`;
       await sendEmail({
         to: input.email,
@@ -658,7 +659,7 @@ export const partnersRouter = router({
         try {
           const [resForUrl] = await db.select({ publicToken: reservations.publicToken })
             .from(reservations).where(eq(reservations.id, reservationId)).limit(1);
-          const baseUrl = process.env.APP_URL ?? "https://www.skicenter.es";
+          const baseUrl = publicBaseUrl();
           const reservationUrl = resForUrl?.publicToken ? `${baseUrl}/presupuesto/${resForUrl.publicToken}` : undefined;
           const bookingDateFormatted = (() => {
             try {
@@ -713,7 +714,7 @@ export const partnersRouter = router({
             const [resForUrl] = await db.select({ publicToken: reservations.publicToken })
               .from(reservations).where(eq(reservations.id, reservationId)).limit(1);
             if (resForUrl?.publicToken) {
-              const base = process.env.APP_URL ?? "https://www.skicenter.es";
+              const base = publicBaseUrl();
               syncLeadUrlsToGHL({
                 ghlContactId,
                 quoteUrl: `${base}/presupuesto/${resForUrl.publicToken}`,
@@ -916,7 +917,7 @@ export const partnersRouter = router({
           const first = created[0];
           const [resForUrl] = await db.select({ publicToken: reservations.publicToken })
             .from(reservations).where(eq(reservations.id, first.reservationId)).limit(1);
-          const baseUrl = process.env.APP_URL ?? "https://www.skicenter.es";
+          const baseUrl = publicBaseUrl();
           const reservationUrl = resForUrl?.publicToken ? `${baseUrl}/presupuesto/${resForUrl.publicToken}` : undefined;
           const fmtDate = (s: string) => {
             try {

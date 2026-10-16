@@ -1,4 +1,5 @@
 import z from "zod";
+import { publicBaseUrl } from "../_core/productIdentity";
 import { router, publicProcedure, protectedProcedure, adminrestProcedure } from "../_core/trpc";
 import { getBusinessEmail } from "../config";
 import { sendEmail } from "../mailer";
@@ -17,7 +18,7 @@ import {
 import { notifyOwner } from "../_core/notification";
 import { buildRedsysForm, generateMerchantOrder, getRedsysUrl } from "../redsys";
 
-const SITE_URL = (process.env.APP_URL ?? 'https://www.skicenter.es').trim();
+const SITE_URL = publicBaseUrl();
 import { buildRestaurantPaymentLinkHtml, buildRestaurantConfirmHtml } from "../emailTemplates";
 import { sendManagedEmail } from "../emailManager";
 

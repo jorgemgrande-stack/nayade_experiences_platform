@@ -1,6 +1,7 @@
 import { COOKIE_NAME } from "@shared/const";
+import { publicBaseUrl } from "./_core/productIdentity";
 
-const SITE_URL = (process.env.APP_URL ?? 'https://www.skicenter.es').trim();
+const SITE_URL = publicBaseUrl();
 import JSZip from "jszip";
 import {
   getActiveGalleryItems,
