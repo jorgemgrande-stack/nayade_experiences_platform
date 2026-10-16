@@ -75,6 +75,12 @@ export function createPublicTrialRouter(o: { onboarding: TrialOnboardingService;
           endsAt: out.activation?.trial.endsAt ?? null,
         });
       } catch (e) {
+        // Doble clic o dos pestañas: la otra petición (con el mismo enlace válido, ya comprobado) ganó
+        // la carrera. Se informa del estado en curso sin repetir nada.
+        if (e instanceof TrialError && e.code === "conflict") {
+          const state = await o.onboarding.stateOf(b.id);
+          return void res.status(202).json({ state, activationPending: true, domain: null, endsAt: null });
+        }
         // Mismo mensaje para «no existe», «token incorrecto» y «caducado»
         if (e instanceof TrialError && (e.code === "not_found" || e.code === "forbidden" || e.code === "invalid_state")) return void res.status(403).json({ error: "invalid_link", message: "El enlace no es válido o ha caducado" });
         throw e;
@@ -120,6 +126,11 @@ export function createTrialAdminRouter(o: { onboarding: TrialOnboardingService; 
       const out = await o.onboarding.activate(id.parse(req.params.id), who(req));
       res.json({ ...out, trial: TrialService.view(out.trial) });
     }),
+  );
+  r.post(
+    "/:id/resend-access",
+    requireScope("provisioning:write"),
+    wrap(async (req, res) => void res.json(await o.onboarding.resendAccess(id.parse(req.params.id)))),
   );
   r.post(
     "/:id/expire",

@@ -144,6 +144,7 @@ const ConfigPanel = lazy(() => import("./pages/admin/settings/ConfigPanel"));
 const ConfigStatus = lazy(() => import("./pages/admin/settings/ConfigStatus"));
 const OnboardingWizard = lazy(() => import("./pages/admin/onboarding/OnboardingWizard"));
 const SubscriptionPage = lazy(() => import("./pages/admin/subscription/SubscriptionPage"));
+const PrimerosPasos = lazy(() => import("./pages/admin/setup/PrimerosPasos"));
 
 // CRM
 const CRMDashboard = lazy(() => import("./pages/admin/crm/CRMDashboard"));
@@ -421,6 +422,7 @@ function Router() {
       <Route path="/admin/configuracion/avanzado">{() => <Suspense fallback={<AdminLoadingFallback />}><AdvancedSettings /></Suspense>}</Route>
       <Route path="/admin/configuracion/email">{() => <Suspense fallback={<AdminLoadingFallback />}><EmailAccountsSettings /></Suspense>}</Route>
       <Route path="/admin/onboarding">{() => <Suspense fallback={<AdminLoadingFallback />}><OnboardingWizard /></Suspense>}</Route>
+      <Route path="/admin/primeros-pasos">{() => <Suspense fallback={<AdminLoadingFallback />}><PrimerosPasos /></Suspense>}</Route>
       <Route path="/admin/numeracion">{() => <Suspense fallback={<AdminLoadingFallback />}><DocumentNumbersAdmin /></Suspense>}</Route>
       <Route path="/admin/suscripcion">{() => <Suspense fallback={<AdminLoadingFallback />}><SubscriptionPage /></Suspense>}</Route>
 

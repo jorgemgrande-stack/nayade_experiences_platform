@@ -51,6 +51,8 @@ export const TRPC_ROUTER_CAPABILITIES: Record<string, string> = {
   config: "admin-panel",
   onboarding: "admin-panel",
   notifications: "admin-panel",
+  // Asistente inicial: en solo lectura (prueba vencida) no se reconfigura
+  setupWizard: "admin-panel",
   // Elephant Connect y extras
   hr: "people-hr",
   gestoria: "tax-filings",

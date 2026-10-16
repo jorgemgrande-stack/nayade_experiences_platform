@@ -63,6 +63,8 @@ export class ProvisioningService {
   private readonly maxAttempts: number;
   private readonly sleep: (ms: number) => Promise<void>;
 
+  private readonly inflight = new Map<string, Promise<unknown>>();
+
   constructor(private d: ProvisioningDeps) {
     this.now = d.now ?? Date.now;
     this.maxAttempts = d.maxAttemptsPerStep ?? 3;
@@ -79,6 +81,32 @@ export class ProvisioningService {
    */
   async run(request: ProvisionRequest, actor: Actor): Promise<ProvisionResult> {
     validateRequest(request);
+    // Dos altas simultáneas del mismo tenant (p. ej. doble verificación) se serializan en este
+    // proceso: la segunda espera y reanuda sobre el estado ya persistido, sin pasos en paralelo.
+    const prev = this.inflight.get(request.tenantId) ?? Promise.resolve();
+    const mine = prev.then(() => this.runSerialized(request, actor));
+    const tail = mine.catch(() => undefined);
+    this.inflight.set(request.tenantId, tail);
+    try {
+      return await mine;
+    } finally {
+      if (this.inflight.get(request.tenantId) === tail) this.inflight.delete(request.tenantId);
+    }
+  }
+
+  /**
+   * Invitación nueva para el administrador inicial de un alta completada, solo si aún no la aceptó.
+   * Devuelve `null` si ya definió su contraseña (que use la recuperación de contraseña).
+   */
+  async reissueAdminInvite(tenantId: string): Promise<string | null> {
+    const rec = await this.d.store.get(tenantId);
+    if (!rec || rec.status !== "completed") throw new ProvisioningError("not_found", "No hay un alta completada para ese tenant");
+    if (!this.d.seeder.reissueAdminInvite) return null;
+    const out = await this.d.seeder.reissueAdminInvite(await this.dsn(tenantId), { email: rec.request.adminEmail.toLowerCase() });
+    return out?.inviteToken ?? null;
+  }
+
+  private async runSerialized(request: ProvisionRequest, actor: Actor): Promise<ProvisionResult> {
     let rec = await this.d.store.get(request.tenantId);
     if (rec?.status === "aborted") throw new ProvisioningError("aborted", "El alta fue abortada");
     if (rec && rec.request.displayName !== request.displayName.trim() && rec.status !== "failed") {
@@ -258,6 +286,12 @@ export class ProvisioningService {
       case "activate": {
         const t = await this.d.reader.getTenant(id);
         if (t?.status === "provisioning") await this.d.registry.setStatus(id, "trial", actor, {});
+        // Alta reanudada: la invitación se creó en una ejecución anterior y se perdió con ella. Se
+        // emite una nueva (solo si el administrador no la aceptó) para que pueda entrar.
+        if (!runCtx.inviteToken && this.d.seeder.reissueAdminInvite) {
+          const again = await this.d.seeder.reissueAdminInvite(await this.dsn(id), { email: r.adminEmail.toLowerCase() });
+          if (again) runCtx.inviteToken = again.inviteToken;
+        }
         if (this.d.welcome) {
           try {
             await this.d.welcome.notify({ tenantId: id, adminEmail: r.adminEmail, domain, inviteToken: runCtx.inviteToken });

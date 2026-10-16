@@ -12,6 +12,8 @@ import { tenantPublicUrl } from "./tenantIdentity";
  * En multiempresa el enlace es la URL pública de la empresa EN CURSO según el registro (su dominio
  * propio verificado o su subdominio), no la de la instalación: el token solo vale en su base de datos.
  */
+import { tenantPublicUrl } from "./tenantIdentity";
+
 export function getTrustedBaseUrl(): string {
   if (isMultiTenant()) {
     const tenantUrl = tenantPublicUrl();
