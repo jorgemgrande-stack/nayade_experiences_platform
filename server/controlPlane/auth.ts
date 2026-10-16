@@ -41,6 +41,10 @@ export const SCOPES = [
   // Suscripciones (modo sombra): consultar y operar son permisos distintos
   "subscriptions:read",
   "subscriptions:write",
+  // Pedidos de contratación (orquestador): consultar, operar y aprobar sin pago son permisos distintos
+  "orders:read",
+  "orders:write",
+  "orders:approve",
 ] as const;
 export type Scope = (typeof SCOPES)[number];
 
