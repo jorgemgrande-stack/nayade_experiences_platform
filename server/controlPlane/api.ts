@@ -58,6 +58,9 @@ import { ShadowBillingService } from "../subscriptions/shadow";
 import type { SubscriptionStore } from "../subscriptions/store";
 import { Metrics } from "../_core/metering";
 import { quote, type QuoteRequest } from "../catalog/quote";
+import { CAPABILITY_STATUSES } from "../_core/capabilities/model";
+import type { CapabilityStore } from "../_core/capabilities/store";
+import { LicensingError, LicensingService } from "../licensing/service";
 import { quoteCatalogFromSite } from "../catalog/snapshot";
 
 export interface ControlPlaneDeps {
@@ -113,6 +116,8 @@ export interface ControlPlaneDeps {
    * aprobados del catálogo). Nunca cobra, emite facturas fiscales ni toca licencias.
    */
   subscriptions?: { store: SubscriptionStore; now?: () => number };
+  /** Licencias por capacidad (registro, migración 0008). Sin ellas no se aplican licencias desde suscripciones. */
+  capabilities?: CapabilityStore;
 }
 
 const idSchema = z.string().regex(/^[a-z0-9][a-z0-9_-]{0,62}$/);
@@ -618,6 +623,74 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
     const crmPort = crmFromStore(d.crm.store);
     const svc = new ContractSubscriptionService({ store: d.subscriptions.store, catalog: catalogFromWebStore(d.web.store), crm: crmPort, now: d.subscriptions.now });
     const shadowBilling = new ShadowBillingService({ store: d.subscriptions.store, crm: crmPort, now: d.subscriptions.now });
+    if (d.capabilities) {
+      // Licencias por capacidad: Elephant Control es la autoridad técnica. Antes del router de
+      // suscripciones (que responde 404 a lo que no conoce).
+      const licensing = new LicensingService({
+        capabilities: d.capabilities,
+        subscriptions: d.subscriptions.store,
+        crm: crmPort,
+        catalog: async () => quoteCatalogFromSite(await webAdmin!.site("published")),
+        now: d.subscriptions.now,
+      });
+      const licErr = (res: express.Response, e: unknown) => {
+        if (e instanceof LicensingError) return void res.status(e.code === "not_found" ? 404 : e.code === "invalid_state" ? 409 : 400).json({ error: e.code, message: e.message });
+        throw e;
+      };
+      const subId = z.coerce.number().int().positive();
+      const licBody = z.object({ activate: z.boolean().default(true), reason: z.string().trim().max(300).optional() }).strict();
+      router.post(
+        "/subscriptions/:id/licences/preview",
+        requireScope("subscriptions:read"),
+        wrap(async (req, res) => {
+          const b = licBody.parse(req.body ?? {});
+          try {
+            res.json(await licensing.preview(subId.parse(req.params.id), { activate: b.activate }));
+          } catch (e) {
+            licErr(res, e);
+          }
+        }),
+      );
+      router.post(
+        "/subscriptions/:id/licences/apply",
+        requireScope("subscriptions:write"),
+        requireScope("entitlements:write"),
+        wrap(async (req, res) => {
+          const b = licBody.parse(req.body ?? {});
+          const a = getAuth(req)!.actor;
+          try {
+            res.json(await licensing.apply(subId.parse(req.params.id), { activate: b.activate, actor: `${a.type}:${a.id}`, reason: b.reason ?? null }));
+          } catch (e) {
+            licErr(res, e);
+          }
+        }),
+      );
+      router.get(
+        "/tenants/:id/capabilities",
+        requireScope("tenants:read"),
+        wrap(async (req, res) => {
+          const id = idSchema.parse(req.params.id);
+          if (!(await d.reader.getTenant(id))) throw new RegistryError("not_found", "Tenant no encontrado");
+          const [capabilities, events] = await Promise.all([licensing.list(id), licensing.events(id)]);
+          res.json({ capabilities, events });
+        }),
+      );
+      router.put(
+        "/tenants/:id/capabilities/:capability",
+        requireScope("entitlements:write"),
+        wrap(async (req, res) => {
+          const id = idSchema.parse(req.params.id);
+          if (!(await d.reader.getTenant(id))) throw new RegistryError("not_found", "Tenant no encontrado");
+          const b = z.object({ status: z.enum(CAPABILITY_STATUSES), reason: z.string().trim().min(5).max(300), siteId: z.string().regex(/^[a-z0-9][a-z0-9-]{0,62}$/).optional() }).strict().parse(req.body);
+          const a = getAuth(req)!.actor;
+          try {
+            res.json({ events: await licensing.setStatus(id, req.params.capability, b.status, { actor: `${a.type}:${a.id}`, reason: b.reason, siteId: b.siteId }) });
+          } catch (e) {
+            licErr(res, e);
+          }
+        }),
+      );
+    }
     router.use("/subscriptions", createSubscriptionsRouter(svc, shadowBilling));
   }
 

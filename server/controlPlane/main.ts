@@ -34,6 +34,7 @@ import {
 import { SupportAdmin } from "../_core/support/grants";
 import { MysqlWebStore } from "../web/store";
 import { MysqlSubscriptionStore } from "../subscriptions/store";
+import { MysqlCapabilityStore } from "../_core/capabilities/store";
 import { MysqlCrmStore } from "../crm/mysqlStore";
 import { CrmService } from "../crm/service";
 import { createContractActivation } from "../crm/activation";
@@ -162,6 +163,11 @@ async function main() {
     console.log(JSON.stringify({ ctx: "WebAdmin", enabled: ready, ...(ready ? { publishHook: hookOk } : { reason: "migration_0004_missing" }) }));
   }
 
+  // Licencias por capacidad (registro): solo si la migración 0008 del registro está aplicada
+  const capabilitiesReady = await pool.query("SELECT 1 FROM tenant_capabilities LIMIT 0").then(() => true, () => false);
+  const capabilities = capabilitiesReady ? new MysqlCapabilityStore(pool) : undefined;
+  console.log(JSON.stringify({ ctx: "Capabilities", enabled: capabilitiesReady, ...(capabilitiesReady ? {} : { reason: "registry_migration_0008_missing" }) }));
+
   // Suscripciones en modo sombra: misma BD del CRM; solo si la migración 0006 está aplicada
   let subscriptions: { store: MysqlSubscriptionStore } | undefined;
   if (process.env.CRM_DATABASE_URL && web) {
@@ -207,6 +213,7 @@ async function main() {
     publicIntake,
     web,
     subscriptions,
+    capabilities,
   });
 
   const port = Number(process.env.CP_PORT ?? 4100);
