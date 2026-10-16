@@ -164,12 +164,17 @@ describe.skipIf(!URL_)("Essential — Administración y comunicaciones (aplicaci
     expect(isLicenseDenied(lic.noneQuery, "auto-basic")).toBe(true);
   });
 
-  it("comms-whatsapp-links: solo existe el registro manual de contactos por WhatsApp (sin número ni enlace configurable en servidor)", async () => {
+  it("comms-whatsapp-links: registro manual de contactos y número de WhatsApp propio de cada empresa (sin él, no hay enlace)", async () => {
     const q = await ess.m("a", "crm.quotes.createDirect", { clientName: "Cliente WA", clientEmail: "wa@cliente-a.example", title: "WA", items: [{ description: "S", quantity: 1, unitPrice: 10, total: 10 }], subtotal: 10, total: 10 }, agA);
     const quoteId = data(q).quoteId;
     expect((await ess.m("a", "commercialFollowup.addNote", { quoteId, note: "Enviado por WhatsApp", channel: "whatsapp" }, agA)).status).toBe(200);
     expect((await ess.sql("a", "SELECT channel FROM quote_internal_notes WHERE quoteId = ?", [quoteId]))[0].channel).toBe("whatsapp");
-    const theme = data(await ess.q("a", "public.getTheme"));
-    expect(JSON.stringify(theme)).not.toMatch(/wa\.me|whatsapp/i);
+    // Sin número configurado no hay WhatsApp (ni el de otra empresa)
+    expect(data(await ess.q("a", "public.getTheme")).contact.whatsapp).toBeNull();
+    expect(JSON.stringify(data(await ess.q("a", "public.getTheme")))).not.toMatch(LEFTOVERS);
+    // Con su teléfono (ajuste editable del negocio), cada empresa expone su WhatsApp y solo el suyo
+    expect((await ess.m("a", "config.updateSystemSetting", { key: "brand_phone", value: "+34 600 11 22 33" }, admA)).status).toBe(200);
+    expect(data(await ess.q("a", "public.getTheme")).contact.whatsapp).toBe("34600112233");
+    expect(data(await ess.q("b", "public.getTheme")).contact.whatsapp).toBeNull();
   });
 });

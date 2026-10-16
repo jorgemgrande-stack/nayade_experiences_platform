@@ -11,8 +11,8 @@ Fecha: 2026-10-16. Rama `test/essential-capacidades`.
 | Estado | Nº | Capacidades |
 |---|---|---|
 | FUNCIONAL | 6 | crm-contacts, crm-leads, cms-pages-forms, bill-payments, admin-panel, shop-orders* |
-| FUNCIONAL CON LIMITACIONES | 19 | crm-accounts, crm-activity, crm-quotes, shop-catalog, shop-variants, shop-store, shop-checkout, shop-coupons, cms-editor, cms-domain, cms-seo, bill-invoices, bill-series, bill-taxes, bill-cash, bill-reports, admin-users, comms-email, auto-basic |
-| INCOMPLETA | 2 | crm-tasks, comms-whatsapp-links |
+| FUNCIONAL CON LIMITACIONES | 20 | crm-accounts, crm-activity, crm-quotes, shop-catalog, shop-variants, shop-store, shop-checkout, shop-coupons, cms-editor, cms-domain, cms-seo, bill-invoices, bill-series, bill-taxes, bill-cash, bill-reports, admin-users, comms-email, auto-basic, comms-whatsapp-links |
+| INCOMPLETA | 1 | crm-tasks |
 | BLOQUEADA | 0 | — (ver bloqueantes de lanzamiento más abajo) |
 | NO IMPLEMENTADA | 2 | crm-tags, cms-blog |
 
@@ -22,12 +22,12 @@ Para venderlo como completo hace falta:
 
 1. **Implementar** las etiquetas del CRM (`crm-tags`) y el blog (`cms-blog`), o sacarlos de Essential en el catálogo comercial. No existe código de ninguno de los dos.
 2. **Completar `crm-tasks`.** Faltan tareas internas con fecha y responsable. Hoy solo hay seguimiento comercial de presupuestos.
-3. **Completar `comms-whatsapp-links` y corregir una fuga de marca en el cliente.** `client/src/components/WhatsAppFloatingButton.tsx` lleva escrito el número y el texto de Náyade, y `PublicLayout` lo pinta en **todas** las páginas públicas de cualquier empresa, incluidas las páginas propias de una empresa nueva (`TenantPage` usa `PublicLayout`). **Es bloqueante para el lanzamiento comercial.** El servidor ya expone `brand_phone` en `public.getTheme`. El cliente debe usarlo y ocultar el botón si está vacío. Es tarea del agente que reorganiza el panel; aquí no se toca `client/`.
+3. ~~**Completar `comms-whatsapp-links` y corregir la fuga de marca del botón de WhatsApp.**~~ **Resuelto en la integración (PR #113):** el botón usa el número de la propia empresa (`public.getTheme` → `contact.whatsapp`, desde su teléfono) y no aparece si no lo tiene; en instalación única, igual que antes. Prueba: `essential.admin.mysql.test.ts`.
 4. **Requisitos de plataforma**, de los que dependen varias capacidades:
    - Proveedor de correo de la plataforma (`BREVO_API_KEY`) más el remitente propio de cada empresa.
    - Almacenamiento S3 para los PDF y la subida de medios. Para facturas hay vista bajo demanda sin S3.
    - Cuenta Redsys propia de cada empresa (Integraciones) para el cobro online.
-5. **Botones que faltan en el panel**, en el cliente: alta de caja del TPV (`tpv.createRegister`, nuevo).
+5. ~~**Botones que faltan en el panel**: alta de caja del TPV.~~ **Resuelto (PR #113):** botón «Nueva caja». Queda que la pantalla del TPV usa siempre la caja 1 (sin selector).
 6. **Rellenar los datos que faltan a las empresas ya aprovisionadas** antes de esta rama. No tienen las filas de ajustes ni los flags que ahora siembra el aprovisionamiento (ver «Correcciones»). Hay que ejecutar la misma siembra (`INSERT IGNORE`) contra ellas.
 
 ## Método
@@ -125,7 +125,7 @@ Guardián: `TRPC_ROUTER_CAPABILITIES` en `server/_core/capabilities/routeGuard.t
 | Panel administrativo | admin-panel | `config.*`, `onboarding.*`, `notifications.*`, `accounting.getOverview` · `/admin`, `/admin/configuracion/*` | administración | `config`, `onboarding`, `notifications` → admin-panel (antes, sin guardián) | admin › «admin-panel» | FUNCIONAL | Antes una empresa nueva no tenía filas de ajustes ni de flags: el panel no mostraba ni guardaba nada (`NOT_FOUND`) y no se podía activar ningún módulo (corregido con la siembra). |
 | Usuarios y permisos estándar | admin-users | `admin.*`, `public.setPassword` · `/admin/usuarios` | administración | `admin` → admin-users (antes, sin guardián) | admin › «admin-users» (×2) | FUNCIONAL CON LIMITACIONES | Funcionan los roles estándar fijos. Los roles RBAC granulares no existen en una empresa nueva (las tablas `rbac_*` no están en la baseline) y `assignRbacRole` falla. |
 | Correo transaccional | comms-email | `emailTemplates.*`, `server/mailer.ts` · `/admin/plantillas-email` | administración | `emailTemplates` → comms-email | admin › «comms-email» | FUNCIONAL CON LIMITACIONES | Depende del proveedor de la plataforma (`BREVO_API_KEY`) y del remitente de la empresa; sin remitente no se envía nada. No hay SMTP propio por empresa. Las invitaciones y la recuperación de contraseña enlazaban a `APP_URL` en lugar de a la URL de la empresa (corregido). |
-| Enlaces de WhatsApp | comms-whatsapp-links | Registro manual `commercialFollowup.addNote` con `channel: "whatsapp"` | comercial | Hereda crm-tasks | admin › «comms-whatsapp-links» | INCOMPLETA | El servidor no tiene número ni enlace configurable. **El botón flotante del cliente lleva el número de Náyade en todas las empresas (bloqueante, ver arriba).** |
+| Enlaces de WhatsApp | comms-whatsapp-links | Registro manual `commercialFollowup.addNote` con `channel: "whatsapp"`; botón público con el número de la empresa (`public.getTheme` → `contact.whatsapp`) | comercial | Hereda crm-tasks | admin › «comms-whatsapp-links» | FUNCIONAL CON LIMITACIONES | Enlace manual (sin API de WhatsApp). El número sale del teléfono de la empresa; sin él no hay botón. |
 | Automatizaciones básicas | auto-basic | `emailCommunications.*`, tareas por empresa (`scheduleTenantInterval`), `notifications.feed` · `/admin/atencion-comercial` | comercial (antes, cualquier sesión) | `emailCommunications` → auto-basic (antes, sin guardián) | admin › «auto-basic» | FUNCIONAL CON LIMITACIONES | Solo automatizaciones de correo sobre presupuestos y reservas. La tarea programada se siembra apagada (`email_automation_job_enabled`) y la activa la empresa en Estado del sistema. Antes no podía activarse porque faltaba la fila. |
 
 ## Correcciones hechas (servidor)
