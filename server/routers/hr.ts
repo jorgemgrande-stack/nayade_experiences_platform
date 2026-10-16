@@ -10,6 +10,7 @@
  */
 
 import { z } from "zod";
+import { publicBaseUrl } from "../_core/productIdentity";
 import { router, permissionProcedure, publicProcedure, employeeProcedure } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { eq, desc, asc, and, gte, lte, isNull, ne, sql, inArray, like } from "drizzle-orm";
@@ -385,7 +386,7 @@ const employeesRouter = router({
         .where(eq(employees.id, employee.id));
 
       // URL de activación
-      const origin = process.env.APP_URL ?? "https://www.skicenter.es";
+      const origin = publicBaseUrl();
       const inviteUrl = `${origin}/empleado/activar?token=${token}`;
 
       let emailSent = false;

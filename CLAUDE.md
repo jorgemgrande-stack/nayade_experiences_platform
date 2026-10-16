@@ -1,12 +1,21 @@
 # CLAUDE.md — Guía de Contexto para Claude
 
-Este archivo proporciona a Claude (en VS Code o cualquier entorno de desarrollo) todo el contexto necesario para trabajar de forma efectiva en el proyecto **Skicenter Platform**. Léelo al inicio de cada sesión de trabajo.
+Este archivo proporciona a Claude (en VS Code o cualquier entorno de desarrollo) todo el contexto necesario para trabajar de forma efectiva en el **Core de Elephant Source**. Léelo al inicio de cada sesión de trabajo.
 
 ---
 
 ## Identidad del Proyecto
 
-**Skicenter** es una plataforma integral de gestión para escuelas de esquí. Proporciona un sistema completo de reservas online, lecciones y cursos, alquiler de equipos, gestión de profesores, administración de estudiantes, gestión de TPV, CRM, facturación y RRHH. Esta plataforma gestiona la web pública, las reservas online, el panel de administración y todos los módulos operativos necesarios para la gestión de una escuela de esquí profesional.
+Este repositorio (nombre histórico `nayade_experiences_platform`; destino: `elephant-core`) es **Elephant Core**, el núcleo SaaS de **Elephant Source** (Big Elephant).
+
+**Contiene:**
+- la aplicación de gestión que usa cada empresa cliente: CRM, ecommerce y reservas, TPV, facturación, CMS, administración, RRHH…;
+- el **plano de control** (`/cp/v1`, Elephant Control): empresas, licencias, catálogo y tarifas, suscripciones, pruebas gratuitas.
+
+**Lo que hay que saber antes de tocar nada:**
+- **La aplicación sigue en producción** como la instalación histórica de **Náyade Experiences** (`www.nayadeexperiences.es`, una sola empresa, `TENANT_MODE=single`). Sirve tráfico real: las reglas operativas de abajo existen por eso.
+- **«Skicenter» no es este producto.** Aparece solo como marca y dominio por defecto heredados; no hay código de escuelas de esquí (eso será Elephant Ski Net, un módulo aparte). La identidad del producto vive en `server/_core/productIdentity.ts`; la marca de cada cliente, en su configuración.
+- **Catálogo y tarifas oficiales:** `server/catalog/` (ver `docs/runbooks/CATALOGO_ELEPHANT_SOURCE.md`).
 
 ---
 

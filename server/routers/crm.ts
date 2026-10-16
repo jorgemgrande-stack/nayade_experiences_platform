@@ -3,9 +3,10 @@
  * Ciclo completo: Lead ? Presupuesto ? Pago Redsys ? Reserva ? Factura PDF
  */
 
-const SITE_URL = (process.env.APP_URL ?? 'https://www.skicenter.es').trim();
+const SITE_URL = publicBaseUrl();
 
 import { router, protectedProcedure, publicProcedure, staffProcedure, adminProcedure } from "../_core/trpc";
+import { publicBaseUrl } from "../_core/productIdentity";
 import { invoicePreviewPath } from "../_core/signedLinks";
 import { createLead, createBookingFromReservation, createReavExpedient, attachReavDocument, upsertClientFromReservation, postConfirmOperation, getGHLCredentials } from "../db";
 import { confirmReservationAndNotify } from "../reservationEmails";
@@ -4613,7 +4614,7 @@ export const crmRouter = router({
         const [res] = await db.select().from(reservations).where(eq(reservations.id, input.id));
         if (!res) throw new TRPCError({ code: "NOT_FOUND", message: "Reserva no encontrada" });
         const isTransfer = res.paymentMethod === "transferencia";
-        const base = process.env.APP_URL ?? "https://www.skicenter.es";
+        const base = publicBaseUrl();
         const reservationUrl = (res as any).publicToken ? `${base}/presupuesto/${(res as any).publicToken}` : undefined;
         let html: string;
         let subject: string;
@@ -5165,7 +5166,7 @@ export const crmRouter = router({
             // Recuperar publicToken de la reserva recién creada (lo genera MySQL por DEFAULT)
             const [resRow] = await db.select({ publicToken: reservations.publicToken })
               .from(reservations).where(eq(reservations.id, reservationId)).limit(1);
-            const base = process.env.APP_URL ?? "https://www.skicenter.es";
+            const base = publicBaseUrl();
             const reservationUrl = resRow?.publicToken ? `${base}/presupuesto/${resRow.publicToken}` : undefined;
             const html = buildConfirmationHtml({
               clientName: input.customerName,
@@ -5214,7 +5215,7 @@ export const crmRouter = router({
               // El workflow WhatsApp lee {{contact.presupuesto_url}} para el botón.
               const [resForUrl] = await db.select({ publicToken: reservations.publicToken })
                 .from(reservations).where(eq(reservations.id, reservationId)).limit(1);
-              const baseUrl = process.env.APP_URL ?? "https://www.skicenter.es";
+              const baseUrl = publicBaseUrl();
               const publicReservationUrl = resForUrl?.publicToken
                 ? `${baseUrl}/presupuesto/${resForUrl.publicToken}`
                 : undefined;
