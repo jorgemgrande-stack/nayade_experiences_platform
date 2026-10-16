@@ -37,6 +37,7 @@ import { renderMetrics } from "./metrics";
 import type { IncidentService } from "../_core/ops/incidents";
 import type { AlertRunResult } from "../_core/ops/alerts";
 import { createCrmRouter } from "../crm/api";
+import { CrmOnboarding } from "../crm/onboarding";
 import type { CrmService } from "../crm/service";
 import type { CrmStore } from "../crm/store";
 import type { SupportAdmin } from "../_core/support/grants";
@@ -64,6 +65,8 @@ export interface ControlPlaneDeps {
   ops?: { incidents: IncidentService; runAlerts?: () => Promise<AlertRunResult> };
   /** SSO corporativo (OIDC → sesión corta). */
   sso?: SsoService;
+  /** Dominio base de los subdominios de plataforma (onboarding desde el CRM). */
+  platformDomain?: string;
   /** CRM comercial (leads, oportunidades, contratos…). */
   crm?: { service: CrmService; store: CrmStore };
   /** Orígenes del navegador autorizados (CORS). Vacío = ninguno. Nunca comodín. */
@@ -488,7 +491,13 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
     }
   }
 
-  if (d.crm) router.use("/crm", createCrmRouter(d.crm.service, d.crm.store, { billing: d.billingStore }));
+  if (d.crm) {
+    const onboarding =
+      d.provisioning && d.platformDomain
+        ? new CrmOnboarding({ store: d.crm.store, crm: d.crm.service, provisioning: d.provisioning, registry: d.reader, billing: d.billing, platformDomain: d.platformDomain })
+        : undefined;
+    router.use("/crm", createCrmRouter(d.crm.service, d.crm.store, { billing: d.billingStore, onboarding }));
+  }
 
   // ── Métricas (Prometheus) ──────────────────────────────────────────────────
   router.get(
