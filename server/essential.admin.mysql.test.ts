@@ -62,6 +62,10 @@ describe.skipIf(!URL_)("Essential — Administración y comunicaciones (aplicaci
 
   it("comms-email: sin remitente propio no se envía nada; con él, el correo sale con la marca de la empresa y sin restos de otra", async () => {
     ess.mails.length = 0;
+    // Essential incluye 3 plazas y admin, agente y controler ya las ocupan: el alta se rechaza hasta liberar una
+    const full = await ess.m("a", "admin.createUser", { name: "Nueva Persona", email: "nueva@empresa-a.example", role: "agente" }, admA);
+    expect(full.status).toBe(403);
+    expect((await ess.m("a", "admin.toggleUserActive", { userId: await ess.userId("a", "controler") }, admA)).status).toBe(200);
     const r = await ess.m("a", "admin.createUser", { name: "Nueva Persona", email: "nueva@empresa-a.example", role: "agente" }, admA);
     expect(r.status).toBe(200);
     expect(ess.mails).toHaveLength(0);
@@ -98,6 +102,9 @@ describe.skipIf(!URL_)("Essential — Administración y comunicaciones (aplicaci
   });
 
   it("admin-users: alta por invitación, activación con contraseña, cambio de rol y baja; sesión aislada por empresa; licencia", async () => {
+    // Libera la plaza que ocupa el alta de la prueba anterior (límite de 3 usuarios de Essential)
+    const nueva = (await ess.sql("a", "SELECT id FROM users WHERE email = 'nueva@empresa-a.example'"))[0].id;
+    expect((await ess.m("a", "admin.toggleUserActive", { userId: nueva }, admA)).status).toBe(200);
     const r = await ess.m("a", "admin.createUser", { name: "Comercial Dos", email: "comercial2@empresa-a.example", role: "agente" }, admA);
     expect(r.status).toBe(200);
     const token = data(r).token as string;
@@ -136,11 +143,13 @@ describe.skipIf(!URL_)("Essential — Administración y comunicaciones (aplicaci
   });
 
   it("auto-basic: regla de automatización propia, ejecución bajo demanda y avisos internos; permisos corregidos; aislamiento; licencia", async () => {
-    const r = await ess.m("a", "emailCommunications.createRule", { templateKey: "quote", name: "Recordatorio de presupuesto", delayHours: 48 }, agA);
+    // Configurar reglas y lanzar envíos es de administración; el equipo comercial las consulta
+    expect(errCode(await ess.m("a", "emailCommunications.createRule", { templateKey: "quote", name: "x", delayHours: 1 }, agA))).toBe("FORBIDDEN");
+    const r = await ess.m("a", "emailCommunications.createRule", { templateKey: "quote", name: "Recordatorio de presupuesto", delayHours: 48 }, admA);
     expect(r.status).toBe(200);
     expect((await ess.sql("a", "SELECT name, delayHours FROM email_automation_rules"))[0]).toEqual({ name: "Recordatorio de presupuesto", delayHours: 48 });
     expect((await ess.sql("b", "SELECT COUNT(*) AS n FROM email_automation_rules"))[0].n).toBe(0);
-    const run = await ess.m("a", "emailCommunications.runAutomationJobNow", undefined, agA);
+    const run = await ess.m("a", "emailCommunications.runAutomationJobNow", undefined, admA);
     expect(run.status).toBe(200);
     // Antes cualquier sesión (incluido un usuario sin rol) podía crear reglas y lanzar envíos
     expect(errCode(await ess.m("a", "emailCommunications.createRule", { templateKey: "quote", name: "x", delayHours: 1 }, userA))).toBe("FORBIDDEN");
@@ -148,7 +157,7 @@ describe.skipIf(!URL_)("Essential — Administración y comunicaciones (aplicaci
 
     const lic = await licenseMatrix(ess, "auto-basic", {
       query: () => ess.q("a", "emailCommunications.listRules", {}, agA),
-      mutation: () => ess.m("a", "emailCommunications.runAutomationJobNow", undefined, agA),
+      mutation: () => ess.m("a", "emailCommunications.runAutomationJobNow", undefined, admA),
     });
     expect(lic.readOnlyQuery?.status).toBe(200);
     expect(isLicenseDenied(lic.readOnlyMutation, "auto-basic")).toBe(true);
