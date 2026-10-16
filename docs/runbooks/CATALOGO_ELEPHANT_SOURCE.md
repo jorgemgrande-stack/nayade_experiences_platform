@@ -102,7 +102,7 @@ pnpm exec tsx scripts/catalog/export-snapshot.ts ../bigelephant-web/src/data/cat
   - AI Suite = Copilot avanzado + Automatizaciones avanzadas.
 - Dependencias entre submódulos de cada Net (por ejemplo, Channel Manager requiere PMS, y Cursillos requiere Escuela).
 - Travel Net Complete incluye 1 integración de conectores.
-- Los complementos sin tarifa anual (Net, Connect, extras) se cotizan **mensuales** también en una contratación anual. Además, el motor de suscripciones exige hoy que todas las partidas tengan el intervalo de la suscripción: falta admitir intervalos mixtos.
+- Los complementos sin tarifa anual (Net, Connect, extras) se cotizan **mensuales** también en una contratación anual. El motor de suscripciones ya admite estos intervalos mixtos (plan anual con complementos mensuales, cada uno con su periodo y su renovación; ver `docs/architecture/SUSCRIPCIONES_PRECIOS_CONTRATADOS.md`, «Intervalos mixtos»). Pendiente: retirar el bloqueo equivalente en el CRM (otro repositorio).
 
 Todas están en `internal.notes` de cada producto. Esas notas nunca se publican.
 
