@@ -226,6 +226,16 @@ export function serveStatic(app: Express) {
         meta: { title: m.title, description: m.description, h1: m.h1, body: m.body, image: m.image },
         canonical: m.canonical,
       };
+      // Blog: título, descripción e imagen de la entrada publicada (nunca de un borrador)
+      if (pathname === "/blog" || pathname.startsWith("/blog/")) {
+        try {
+          const { blogMetaForRequest } = await import("../blogSeo");
+          const b = await blogMetaForRequest(pathname, brandName);
+          if (b) override.meta = { ...b, image: b.image ?? m.image };
+        } catch {
+          /* SEO genérico de la empresa */
+        }
+      }
     }
     const html = injectSeoMeta(_htmlCache, pathname, override);
     res.set("Content-Type", "text/html").send(html);

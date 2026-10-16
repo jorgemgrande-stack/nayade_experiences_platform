@@ -117,9 +117,107 @@ describe.skipIf(!URL_)("Essential — Web y CMS (aplicación real, dos empresas 
     expect(Object.keys((appRouter as any)._def.procedures).filter((p) => /domain/i.test(p))).toEqual([]);
   });
 
-  it("cms-blog: no existe ningún procedimiento ni tabla de blog (NO IMPLEMENTADA)", async () => {
-    const { appRouter } = await import("./routers");
-    expect(Object.keys((appRouter as any)._def.procedures).filter((p) => /blog|[.](list|create|update|get)Posts?$/i.test(p))).toEqual([]);
-    expect(await ess.sql("a", "SHOW TABLES LIKE '%blog%'")).toEqual([]);
+  it("cms-blog: crear, publicar y programar; lo público solo ve lo publicado; sitemap; permisos; licencia; aislamiento A/B", async () => {
+    // La tabla llega a las empresas nuevas con la baseline + db/migrations
+    expect((await ess.sql("a", "SHOW TABLES LIKE 'blog_posts'")).length).toBe(1);
+
+    // Validación
+    expect(errCode(await ess.m("a", "blog.create", { title: " ", slug: "Mal Slug", status: "draft" }, admA))).toBe("BAD_REQUEST");
+    expect(errCode(await ess.m("a", "blog.create", { title: "X", slug: "x", status: "draft", featuredImageUrl: "javascript:alert(1)" }, admA))).toBe("BAD_REQUEST");
+
+    // Borrador, publicada (con HTML a sanear) y programada
+    const draft = await ess.m("a", "blog.create", { title: "Borrador secreto", slug: "borrador-secreto", content: "<p>Aún no</p>", status: "draft" }, admA);
+    expect(draft.status).toBe(200);
+    expect(data(draft).visibleStatus).toBe("draft");
+    const pub = await ess.m("a", "blog.create", {
+      title: "Abrimos temporada", slug: "abrimos-temporada", excerpt: "Novedades de A", category: "Noticias", status: "published",
+      content: '<h2>Hola</h2><script>alert(1)</script><p onclick="robar()">Texto</p>', metaDescription: "Descripción SEO de A",
+      featuredImageUrl: "https://cdn.example/a.jpg", featuredImageAlt: "Foto de A",
+    }, admA);
+    expect(pub.status).toBe(200);
+    expect(data(pub).visibleStatus).toBe("published");
+    const fut = await ess.m("a", "blog.create", { title: "Futura", slug: "futura", status: "published", publishedAt: Date.now() + 86_400_000 }, admA);
+    expect(data(fut).visibleStatus).toBe("scheduled");
+    // Slug único
+    expect(errCode(await ess.m("a", "blog.create", { title: "Otra", slug: "abrimos-temporada", status: "draft" }, admA))).toBe("CONFLICT");
+    const [row] = await ess.sql("a", "SELECT author_name, author_user_id, status, published_at FROM blog_posts WHERE slug = 'abrimos-temporada'");
+    expect(row.status).toBe("published");
+    expect(Number(row.author_user_id)).toBe(await ess.userId("a", "admin"));
+    expect(Number(row.published_at)).toBeGreaterThan(0);
+
+    // Público (sin sesión): solo la publicada con fecha alcanzada
+    const list = data(await ess.q("a", "blog.publicList", { page: 1 }));
+    expect(list.items.map((i: any) => i.slug)).toEqual(["abrimos-temporada"]);
+    expect(list.total).toBe(1);
+    expect(list.categories).toEqual(["Noticias"]);
+    expect(data(await ess.q("a", "blog.publicList", { page: 1, category: "Otra" })).items).toEqual([]);
+    const detail = data(await ess.q("a", "blog.publicGet", { slug: "abrimos-temporada" }));
+    expect(detail.title).toBe("Abrimos temporada");
+    expect(detail.html).toContain("<h2>Hola</h2>");
+    expect(detail.html).not.toMatch(/<script|onclick/i);
+    expect(data(await ess.q("a", "blog.publicGet", { slug: "borrador-secreto" })) ?? null).toBeNull();
+    expect(data(await ess.q("a", "blog.publicGet", { slug: "futura" })) ?? null).toBeNull();
+
+    // Panel: las tres con su estado; publicar el borrador lo hace visible y despublicarlo lo oculta
+    const adminList = data(await ess.q("a", "blog.list", undefined, admA));
+    expect(Object.fromEntries(adminList.map((p: any) => [p.slug, p.visibleStatus]))).toEqual({ "borrador-secreto": "draft", "abrimos-temporada": "published", futura: "scheduled" });
+    const draftId = data(draft).id;
+    const base = { title: "Borrador secreto", slug: "borrador-secreto", content: "<p>Ya sí</p>" };
+    expect((await ess.m("a", "blog.update", { id: draftId, ...base, status: "published" }, admA)).status).toBe(200);
+    expect(data(await ess.q("a", "blog.publicGet", { slug: "borrador-secreto" }))?.html).toBe("<p>Ya sí</p>");
+    expect((await ess.m("a", "blog.update", { id: draftId, ...base, status: "draft" }, admA)).status).toBe(200);
+    expect(data(await ess.q("a", "blog.publicGet", { slug: "borrador-secreto" })) ?? null).toBeNull();
+    // Vista previa: saneada y sin guardar nada
+    expect(data(await ess.m("a", "blog.preview", { content: "<p>Previa</p><script>x</script>" }, admA)).html).toBe("<p>Previa</p>");
+
+    // Sitemap de A: /blog y la publicada; nunca borradores ni programadas
+    const sm = await ess.call("a", "GET", "/sitemap.xml");
+    expect(sm.status).toBe(200);
+    // URL pública de A (su dominio principal: el propio, si la prueba de cms-domain ya lo activó)
+    const baseA = /<loc>(https:\/\/[^<]+?)\/<\/loc>/.exec(sm.text)![1];
+    expect(baseA).toContain(ess.ids.a);
+    expect(sm.text).toContain(`<loc>${baseA}/blog</loc>`);
+    expect(sm.text).toContain(`<loc>${baseA}/blog/abrimos-temporada</loc>`);
+    expect(sm.text).not.toContain("borrador-secreto");
+    expect(sm.text).not.toContain("/blog/futura");
+
+    // Permisos: el blog lo gestiona administración (como las páginas); sin sesión, 401
+    expect(errCode(await ess.m("a", "blog.create", { title: "X", slug: "x", status: "draft" }, agA))).toBe("FORBIDDEN");
+    expect(errCode(await ess.q("a", "blog.list", undefined, agA))).toBe("FORBIDDEN");
+    expect((await ess.q("a", "blog.list")).status).toBe(401);
+
+    // Aislamiento: B no ve ni toca nada de A
+    expect(data(await ess.q("b", "blog.publicList", { page: 1 })).items).toEqual([]);
+    expect(data(await ess.q("b", "blog.publicGet", { slug: "abrimos-temporada" })) ?? null).toBeNull();
+    expect(data(await ess.q("b", "blog.list", undefined, admB))).toEqual([]);
+    expect(errCode(await ess.m("b", "blog.update", { id: draftId, ...base, status: "published" }, admB))).toBe("NOT_FOUND");
+    expect(errCode(await ess.m("b", "blog.remove", { id: draftId }, admB))).toBe("NOT_FOUND");
+    const smB = await ess.call("b", "GET", "/sitemap.xml");
+    expect(smB.text).not.toContain("abrimos-temporada");
+    expect(smB.text).not.toContain(ess.ids.a);
+    expect((await ess.sql("b", "SELECT COUNT(*) AS n FROM blog_posts"))[0].n).toBe(0);
+
+    // Licencia: en solo lectura se lee (también la web) y no se modifica; sin contratar, ni lo uno ni lo otro
+    const lic = await licenseMatrix(ess, "cms-blog", {
+      query: () => ess.q("a", "blog.publicList", { page: 1 }),
+      mutation: () => ess.m("a", "blog.create", { title: "Bloqueada", slug: "bloqueada", status: "draft" }, admA),
+    });
+    expect(lic.readOnlyQuery?.status).toBe(200);
+    expect(isLicenseDenied(lic.readOnlyMutation, "cms-blog")).toBe(true);
+    expect(isLicenseDenied(lic.noneQuery, "cms-blog")).toBe(true);
+    expect(isLicenseDenied(lic.noneMutation, "cms-blog")).toBe(true);
+    expect((await ess.sql("a", "SELECT COUNT(*) AS n FROM blog_posts WHERE slug = 'bloqueada'"))[0].n).toBe(0);
+    try {
+      await ess.setCapability("a", "cms-blog", null);
+      const smNone = await ess.call("a", "GET", "/sitemap.xml");
+      expect(smNone.status).toBe(200);
+      expect(smNone.text).not.toContain("/blog");
+    } finally {
+      await ess.setCapability("a", "cms-blog", "active");
+    }
+
+    // Eliminar
+    expect((await ess.m("a", "blog.remove", { id: draftId }, admA)).status).toBe(200);
+    expect((await ess.sql("a", "SELECT COUNT(*) AS n FROM blog_posts"))[0].n).toBe(2);
   });
 });
