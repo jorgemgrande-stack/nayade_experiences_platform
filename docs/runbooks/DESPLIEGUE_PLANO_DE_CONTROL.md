@@ -57,6 +57,7 @@ El plano de control es un proceso aparte del Core de Náyade, con sus propias ba
 | `CP_OIDC_ISSUER/CLIENT_ID/JWKS_URL`, `CP_OIDC_USERS` | SSO | |
 | `CP_ALERT_WEBHOOK`, `CP_ALERTS_EVERY_SECONDS` | alertas | webhook https |
 | `SUPPORT_JWT_SECRET` | soporte delegado | ≥ 32 caracteres |
+| `CP_PUBLIC_ORIGINS`, `CP_PUBLIC_FORM_SECRET` | captación web | orígenes exactos de la web comercial y secreto propio (≥ 32) de la API pública `/cp/v1/public`; sin ambos (y sin CRM) la API pública **no se monta**. Ver `CAPTACION_WEB.md` |
 
 ## 4. Verificación posterior
 - `GET /cp/v1/auth/me` → 200 con token válido, 401 sin él.

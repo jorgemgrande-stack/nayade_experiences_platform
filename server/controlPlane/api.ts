@@ -45,6 +45,8 @@ import type { CrmStore } from "../crm/store";
 import type { TicketService } from "../_core/support/tickets";
 import { createTicketsRouter } from "./tickets";
 import type { SupportAdmin } from "../_core/support/grants";
+import { createPublicIntakeRouter, type PublicIntakeConfig } from "../crm/publicApi";
+import { WebRequestService } from "../crm/webRequests";
 
 export interface ControlPlaneDeps {
   tokens: ServiceToken[];
@@ -84,6 +86,11 @@ export interface ControlPlaneDeps {
   cookieSecure?: "auto" | boolean;
   /** Proxies de confianza delante del servicio (`trust proxy` de Express): IP real y HTTPS. */
   trustProxy?: number | string;
+  /**
+   * API pública de captación de la web comercial (/cp/v1/public/*). Requiere `crm`. Sin esta
+   * configuración no se monta: ninguna ruta pública existe por defecto.
+   */
+  publicIntake?: Omit<PublicIntakeConfig, "service" | "origins"> & { origins: string[] };
 }
 
 const idSchema = z.string().regex(/^[a-z0-9][a-z0-9_-]{0,62}$/);
@@ -135,8 +142,21 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
   // CORS: solo orígenes explícitos, nunca comodín. Con operadores, credenciales (cookie de sesión)
   // únicamente para esos orígenes; los tokens de servicio siguen en la cabecera Authorization.
   const origins = new Set((d.allowedOrigins ?? []).filter((o) => /^https?:\/\/[^*]+$/.test(o)));
+  // La API pública tiene su propia lista de orígenes (la web), sin credenciales ni cabeceras de sesión
+  const publicOrigins = new Set((d.publicIntake?.origins ?? []).filter((o) => /^https?:\/\/[^*]+$/.test(o)));
   app.use((req, res, next) => {
     const o = req.headers.origin;
+    if (req.path.startsWith("/cp/v1/public/")) {
+      if (typeof o === "string" && publicOrigins.has(o)) {
+        res.setHeader("Access-Control-Allow-Origin", o);
+        res.setHeader("Vary", "Origin");
+        res.setHeader("Access-Control-Allow-Headers", "content-type, idempotency-key");
+        res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+        res.setHeader("Access-Control-Max-Age", "600");
+      }
+      if (req.method === "OPTIONS") return void res.status(204).end();
+      return next();
+    }
     if (typeof o === "string" && origins.has(o)) {
       res.setHeader("Access-Control-Allow-Origin", o);
       res.setHeader("Vary", "Origin");
@@ -195,6 +215,10 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
   const operatorRoutes = d.operators ? { service: d.operators, allowedOrigins: origins, cookieSecure: d.cookieSecure } : null;
   // Login y restablecimiento de contraseña de operadores: sin sesión previa
   if (operatorRoutes) router.use(createPublicAuthRouter(operatorRoutes));
+  // Solicitudes comerciales de la web: cuelgan de los leads del CRM
+  const webRequests = d.crm ? new WebRequestService({ store: d.crm.store, crm: d.crm.service }) : undefined;
+  // Captación pública desde la web: única ruta sin autenticación que escribe (solo solicitudes)
+  if (webRequests && d.publicIntake) router.use("/public", createPublicIntakeRouter({ ...d.publicIntake, origins: publicOrigins, service: webRequests }));
   router.use(
     authenticate(
       d.tokens,
@@ -526,7 +550,15 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
       d.provisioning && d.platformDomain
         ? new CrmOnboarding({ store: d.crm.store, crm: d.crm.service, provisioning: d.provisioning, registry: d.reader, billing: d.billing, platformDomain: d.platformDomain })
         : undefined;
-    router.use("/crm", createCrmRouter(d.crm.service, d.crm.store, { billing: d.billingStore, onboarding }));
+    // Responsables posibles: operadores activos con permisos de escritura en el CRM
+    const ops = d.operators;
+    const assignees = ops
+      ? async () =>
+          (await ops.list())
+            .filter((o) => o.status === "active" && ["superadmin", "admin", "sales"].includes(o.role))
+            .map((o) => ({ value: o.displayName, label: o.displayName }))
+      : undefined;
+    router.use("/crm", createCrmRouter(d.crm.service, d.crm.store, { billing: d.billingStore, onboarding, requests: webRequests, assignees }));
   }
 
   if (d.tickets) {
