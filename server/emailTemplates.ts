@@ -34,6 +34,30 @@ const getBrandLogo  = () => brandSetting("brand_logo_url",     LOGO_URL_FALLBACK
 const getBrandHero  = () => brandSetting("brand_hero_image_url", HERO_IMG_FALLBACK);
 const getBrandName  = () => brandSetting("brand_name",         "Skicenter");
 const getBrandShort = () => brandSetting("brand_short_name",   "Náyade");
+// En multiempresa la cabecera y el pie llevan la identidad de la empresa en curso, nunca la de Náyade.
+// En instalación única (Náyade) todo queda exactamente como antes.
+const escAttr = (v: string) => v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+/** Logotipo de la cabecera: en multi, sin logotipo propio no se pinta (nunca el de otra empresa). */
+function headerLogo(mso: boolean): string {
+  if (isMultiTenant() && !getBrandLogo()) return "";
+  return mso
+    ? `<table cellpadding="0" cellspacing="0" border="0"><tr>
+                <td align="center" style="border:3px solid #ffffff;padding:4px;background-color:#1e3a6e;">
+                  <img src="${getBrandLogo()}" alt="${isMultiTenant() ? escAttr(getBrandName()) : legacyBrandText("Nayade")}" width="72" height="72" style="display:block;border:0;" />
+                </td>
+              </tr></table>`
+    : `<table cellpadding="0" cellspacing="0" border="0"><tr>
+              <td align="center" style="display:inline-block;border-radius:50%;border:3px solid rgba(255,255,255,0.85);padding:4px;background:rgba(255,255,255,0.12);">
+                <img src="${getBrandLogo()}" alt="${isMultiTenant() ? escAttr(getBrandName()) : legacyBrandText("Náyade")}" width="72" height="72"
+                     style="display:block;border-radius:50%;border:0;" />
+              </td>
+            </tr></table>`;
+}
+/** Nombre grande de la cabecera y su línea secundaria («NÁYADE» / «EXPERIENCES» en single). */
+function headerBrand(): { title: string; subtitle: string } {
+  if (!isMultiTenant()) return { title: "N&Aacute;YADE", subtitle: "EXPERIENCES" };
+  return { title: escAttr(getBrandName()), subtitle: "" };
+}
 const BRAND_BLUE     = "#0a1628";
 const BRAND_MID_BLUE = "#1e3a6e";
 const BRAND_ORANGE   = "#f97316";
@@ -81,14 +105,10 @@ function emailHeader(subtitle?: string, tagline?: string): string {
         <table width="600" cellpadding="0" cellspacing="0" border="0">
           <tr>
             <td align="center" style="padding:36px 40px 28px;background-color:#0d1f3c;">
-              <table cellpadding="0" cellspacing="0" border="0"><tr>
-                <td align="center" style="border:3px solid #ffffff;padding:4px;background-color:#1e3a6e;">
-                  <img src="${getBrandLogo()}" alt="${legacyBrandText("Nayade")}" width="72" height="72" style="display:block;border:0;" />
-                </td>
-              </tr></table>
+              ${headerLogo(true)}
               <table width="100%" cellpadding="0" cellspacing="0" border="0">
-                <tr><td align="center" style="color:#ffffff;font-size:28px;font-weight:900;letter-spacing:5px;font-family:Georgia,serif;padding-top:12px;">N&Aacute;YADE</td></tr>
-                <tr><td align="center" style="color:#c8d8f0;font-size:10px;letter-spacing:6px;text-transform:uppercase;font-family:Arial,sans-serif;padding-top:2px;">EXPERIENCES</td></tr>
+                <tr><td align="center" style="color:#ffffff;font-size:28px;font-weight:900;letter-spacing:5px;font-family:Georgia,serif;padding-top:12px;">${headerBrand().title}</td></tr>
+                ${headerBrand().subtitle ? `<tr><td align="center" style="color:#c8d8f0;font-size:10px;letter-spacing:6px;text-transform:uppercase;font-family:Arial,sans-serif;padding-top:2px;">${headerBrand().subtitle}</td></tr>` : ""}
               </table>
               ${subtitle ? `<table cellpadding="0" cellspacing="0" border="0" style="margin-top:14px;">
                 <tr><td align="center" style="background-color:${BRAND_ORANGE};color:#ffffff;font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;padding:6px 20px;font-family:Arial,sans-serif;">${subtitle}</td></tr>
@@ -111,15 +131,10 @@ function emailHeader(subtitle?: string, tagline?: string): string {
              style="background-color:${BRAND_BLUE};background-image:url('${getBrandHero()}');background-size:cover;background-position:center top;">
         <tr>
           <td align="center" style="padding:36px 40px 28px;background:linear-gradient(180deg,rgba(10,22,40,0.72) 0%,rgba(10,22,40,0.88) 100%);">
-            <table cellpadding="0" cellspacing="0" border="0"><tr>
-              <td align="center" style="display:inline-block;border-radius:50%;border:3px solid rgba(255,255,255,0.85);padding:4px;background:rgba(255,255,255,0.12);">
-                <img src="${getBrandLogo()}" alt="${legacyBrandText("Náyade")}" width="72" height="72"
-                     style="display:block;border-radius:50%;border:0;" />
-              </td>
-            </tr></table>
+            ${headerLogo(false)}
             <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:14px;">
-              <tr><td align="center" style="color:#ffffff;font-size:30px;font-weight:900;letter-spacing:5px;font-family:Georgia,'Times New Roman',serif;text-shadow:0 2px 12px rgba(0,0,0,0.5);">N&Aacute;YADE</td></tr>
-              <tr><td align="center" style="color:rgba(255,255,255,0.65);font-size:10px;letter-spacing:7px;text-transform:uppercase;margin-top:2px;font-family:Arial,sans-serif;padding-top:2px;">EXPERIENCES</td></tr>
+              <tr><td align="center" style="color:#ffffff;font-size:30px;font-weight:900;letter-spacing:5px;font-family:Georgia,'Times New Roman',serif;text-shadow:0 2px 12px rgba(0,0,0,0.5);">${headerBrand().title}</td></tr>
+              ${headerBrand().subtitle ? `<tr><td align="center" style="color:rgba(255,255,255,0.65);font-size:10px;letter-spacing:7px;text-transform:uppercase;margin-top:2px;font-family:Arial,sans-serif;padding-top:2px;">${headerBrand().subtitle}</td></tr>` : ""}
             </table>
             ${subtitle ? `<table cellpadding="0" cellspacing="0" border="0" style="margin-top:14px;">
               <tr><td align="center" style="background:${BRAND_ORANGE};color:#ffffff;font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;padding:6px 20px;border-radius:20px;font-family:Arial,sans-serif;">${subtitle}</td></tr>
@@ -145,6 +160,7 @@ function emailHeader(subtitle?: string, tagline?: string): string {
 
 // ─── COMPONENTE 7: Footer beige arena con claim de marca ──────────────────────
 function emailFooter(): string {
+  if (isMultiTenant()) return tenantEmailFooter();
   return `
   <tr>
     <td style="padding:0;">
@@ -188,6 +204,33 @@ function emailFooter(): string {
   </tr>`;
 }
 
+/**
+ * Pie en multiempresa: los datos de contacto y el nombre de la empresa en curso. Solo lo que tenga
+ * configurado (sin respaldos heredados de otra empresa) y sin el lema de Náyade.
+ */
+function tenantEmailFooter(): string {
+  const phone = brandSetting("brand_support_phone", "") || brandSetting("brand_phone", "");
+  const email = brandSetting("email_reservations", "");
+  const location = brandSetting("brand_location", "");
+  const name = getBrandName();
+  const contact = [
+    phone ? `${SVG.phone}&nbsp;<a href="tel:${escAttr(phone.replace(/\s/g, ""))}" style="color:#8b6914;text-decoration:none;font-weight:600;">${escAttr(phone)}</a>` : "",
+    email ? `${SVG.mail}&nbsp;<a href="mailto:${escAttr(email)}" style="color:#8b6914;text-decoration:none;font-weight:600;">${escAttr(email)}</a>` : "",
+  ].filter(Boolean).join("&nbsp;&nbsp;&nbsp;");
+  return `
+  <tr>
+    <td style="padding:0;">
+      <table width="600" cellpadding="0" cellspacing="0" border="0" style="background:${BRAND_SAND};"><tr>
+        <td style="padding:24px 40px 20px;text-align:center;">
+          ${contact ? `<p style="color:#6b5c3e;font-size:13px;margin:0 0 6px;font-family:Arial,sans-serif;line-height:1.8;">${contact}</p>` : ""}
+          ${location ? `<p style="color:#8b7355;font-size:12px;margin:0 0 12px;font-family:Arial,sans-serif;">${SVG.map}&nbsp;${escAttr(location)}</p>` : ""}
+          ${name ? `<p style="color:#7a6448;font-size:11px;margin:0;font-family:Arial,sans-serif;letter-spacing:1px;">&copy; ${new Date().getFullYear()} ${escAttr(name.toUpperCase())}</p>` : ""}
+        </td>
+      </tr></table>
+    </td>
+  </tr>`;
+}
+
 // ─── COMPONENTE: Wrapper HTML completo ───────────────────────────────────────
 function emailWrapper(title: string, bodyRows: string): string {
   return `<!DOCTYPE html>
@@ -197,7 +240,7 @@ function emailWrapper(title: string, bodyRows: string): string {
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta http-equiv="X-UA-Compatible" content="IE=edge" />
   <meta name="x-apple-disable-message-reformatting" />
-  <title>${title}</title>
+  <title>${title.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</title>
   <!--[if mso]>
   <noscript>
     <xml>
@@ -632,16 +675,17 @@ const ROLE_LABELS: Record<string, string> = {
   monitor:   "Monitor",
   agente:    "Agente Comercial",
   user:      "Usuario",
+  readonly:  "Solo lectura",
 };
 
 export function buildInviteHtml(d: InviteEmailData): string {
   const roleLabel = ROLE_LABELS[d.role] ?? d.role;
   const body = `
-    ${emailHeader("Bienvenido al Equipo", "Plataforma de Gesti&oacute;n N&aacute;yade")}
+    ${emailHeader("Bienvenido al Equipo", isMultiTenant() ? `Plataforma de Gesti&oacute;n de ${escAttr(getBrandName())}` : "Plataforma de Gesti&oacute;n N&aacute;yade")}
     <tr><td style="padding:28px 32px 0;">
       <h2 style="color:${BRAND_BLUE};font-size:22px;margin:0 0 12px;font-weight:700;font-family:Georgia,serif;">&#161;Hola ${d.name}!</h2>
       <p style="color:#6b7280;font-size:15px;line-height:1.7;margin:0 0 16px;font-family:Arial,sans-serif;">
-        Se ha creado una cuenta para ti en la plataforma de gesti&oacute;n de <strong>N&aacute;yade Experiences</strong>
+        Se ha creado una cuenta para ti en la plataforma de gesti&oacute;n de <strong>${isMultiTenant() ? escAttr(getBrandName()) : "N&aacute;yade Experiences"}</strong>
         con el rol de:
       </p>
       <table cellpadding="0" cellspacing="0" style="margin-bottom:20px;"><tr>
