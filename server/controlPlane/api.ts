@@ -12,7 +12,7 @@ import express, { type Express, type NextFunction, type Request, type Response }
 import { BUILTIN_MODULES } from "../_core/modules/builtin";
 import { CORE_VERSION } from "../_core/modules/runtime";
 import { assertCanActivate, assertCanDeactivate, buildCatalog, tenantModules, type ModulePriceRef, type PlanRef } from "../_core/modules/catalog";
-import rateLimit from "express-rate-limit";
+import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import { DEFAULT_QUOTAS, type DefaultQuota } from "../_core/erm/quota";
 import { UNMEASURED, WARNING_RATIO, tenantResources, type ResourceState } from "../_core/erm/overview";
 import { z } from "zod";
@@ -29,7 +29,9 @@ import type { UsageStore } from "../_core/erm/types";
 import type { EntitlementAdmin } from "../_core/modules/mysqlEntitlements";
 import type { QuotaAdmin } from "../_core/erm/mysqlQuotas";
 import { ModuleError } from "../_core/modules/contract";
-import { authenticate, getAuth, requireScope, type ServiceToken } from "./auth";
+import { SESSION_COOKIE, authenticate, getAuth, hashToken, readCookie, requireScope, type ServiceToken } from "./auth";
+import type { OperatorAuthService } from "./operatorAuth";
+import { createOperatorRouter, createPublicAuthRouter } from "./operatorApi";
 import { SsoError, type SsoService } from "./sso";
 import { signSupportToken } from "../_core/support/session";
 import { TEMPLATES } from "../_core/templates/catalog";
@@ -76,6 +78,12 @@ export interface ControlPlaneDeps {
   /** Orígenes del navegador autorizados (CORS). Vacío = ninguno. Nunca comodín. */
   allowedOrigins?: string[];
   supportSecret?: string;
+  /** Operadores humanos con usuario y contraseña (sesión por cookie HttpOnly + CSRF). */
+  operators?: OperatorAuthService;
+  /** Atributo Secure de la cookie de sesión: `auto` (HTTPS) por defecto. */
+  cookieSecure?: "auto" | boolean;
+  /** Proxies de confianza delante del servicio (`trust proxy` de Express): IP real y HTTPS. */
+  trustProxy?: number | string;
 }
 
 const idSchema = z.string().regex(/^[a-z0-9][a-z0-9_-]{0,62}$/);
@@ -123,14 +131,17 @@ const wrap =
 export function createControlPlaneApp(d: ControlPlaneDeps): Express {
   const app = express();
   app.disable("x-powered-by");
-  // CORS: solo orígenes explícitos; sin comodines y sin credenciales (el token va en cabecera)
+  if (d.trustProxy !== undefined) app.set("trust proxy", d.trustProxy);
+  // CORS: solo orígenes explícitos, nunca comodín. Con operadores, credenciales (cookie de sesión)
+  // únicamente para esos orígenes; los tokens de servicio siguen en la cabecera Authorization.
   const origins = new Set((d.allowedOrigins ?? []).filter((o) => /^https?:\/\/[^*]+$/.test(o)));
   app.use((req, res, next) => {
     const o = req.headers.origin;
     if (typeof o === "string" && origins.has(o)) {
       res.setHeader("Access-Control-Allow-Origin", o);
       res.setHeader("Vary", "Origin");
-      res.setHeader("Access-Control-Allow-Headers", "authorization, content-type");
+      res.setHeader("Access-Control-Allow-Headers", d.operators ? "authorization, content-type, x-csrf-token" : "authorization, content-type");
+      if (d.operators) res.setHeader("Access-Control-Allow-Credentials", "true");
       res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
       res.setHeader("Access-Control-Max-Age", "600");
     }
@@ -158,8 +169,12 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
       limit: d.perMinute ?? 120,
       standardHeaders: true,
       legacyHeaders: false,
-      // Por token (no por IP): el plano de control se llama desde pocos orígenes de confianza
-      keyGenerator: (req) => (req.headers.authorization ?? "anon").slice(0, 80),
+      // Por token o por sesión de operador (no un cubo común); sin credenciales, por IP
+      keyGenerator: (req) => {
+        if (req.headers.authorization) return req.headers.authorization.slice(0, 80);
+        const c = readCookie(req, SESSION_COOKIE);
+        return c ? `session:${hashToken(c).slice(0, 24)}` : `ip:${ipKeyGenerator(req.ip ?? "")}`;
+      },
     }),
   );
   // Intercambio de id_token OIDC por sesión (sin autenticación previa; con límite de tasa)
@@ -177,11 +192,22 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
       }),
     );
   }
-  router.use(authenticate(d.tokens, d.sso ? (t) => d.sso!.verifySession(t) : undefined));
+  const operatorRoutes = d.operators ? { service: d.operators, allowedOrigins: origins, cookieSecure: d.cookieSecure } : null;
+  // Login y restablecimiento de contraseña de operadores: sin sesión previa
+  if (operatorRoutes) router.use(createPublicAuthRouter(operatorRoutes));
+  router.use(
+    authenticate(
+      d.tokens,
+      d.sso ? (t) => d.sso!.verifySession(t) : undefined,
+      d.operators ? { operators: d.operators, allowedOrigins: origins } : undefined,
+    ),
+  );
   router.get("/auth/me", (req, res) => {
     const a = getAuth(req)!;
     res.json({ actor: a.actor, scopes: Array.from(a.scopes) });
   });
+  // Sesión, cierre de sesión, contraseña propia y gestión de operadores
+  if (operatorRoutes) router.use(createOperatorRouter(operatorRoutes));
   const actor = (req: Request) => getAuth(req)!.actor;
 
   // ── Tenants ────────────────────────────────────────────────────────────────
