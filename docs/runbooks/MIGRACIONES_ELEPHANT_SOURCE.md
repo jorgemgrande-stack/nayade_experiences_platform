@@ -93,6 +93,14 @@ Estas migraciones se aplican en **cada** base de empresa: la de Náyade en produ
 |---|---|---|
 | `0003_ski_rental` | Tablas del módulo Ski Rental. Aditiva y reversible. | El módulo falla (no está instalado ni licenciado en ninguna empresa); el resto no se ve afectado. |
 | `0004_inventory_holds` | 8 columnas NULL y un índice en `reservations` (retención de plazas de spa y hotel). Aditiva y reversible. | **Fallan la reserva y la disponibilidad de spa y hotel.** Hay que aplicarla antes de desplegar. |
+| `0005_document_counters_unique` | Índice único `document_counters (document_type, year)`. Si ya hay series duplicadas, MySQL lo rechaza sin cambiar nada: **ejecutar antes la consulta de duplicados de la cabecera**. | Dos altas simultáneas a principio de año podrían crear dos series. La numeración ya es atómica igualmente. |
+| `0006_readonly_role` | Amplía el ENUM `users.role` con `readonly`. | No se puede asignar «Solo lectura». |
+| `0007_blog_posts` | Tabla `blog_posts` (capacidad `cms-blog`). | El blog aparece vacío y el panel indica «El blog no está instalado». |
+| `0008_crm_tags_tasks` | Tablas de etiquetas y tareas del CRM. | Etiquetas y tareas no disponibles; la campana de avisos sale vacía. |
+
+**Carril CRM del plano de control:** `0010_commercial_orders` (orquestador de contratación). Hay que aplicarla antes de activar `CP_ORCHESTRATOR_ENABLED=1`. Va en el mismo procedimiento que la 0008 y la 0009 de ese carril.
+
+**Empresas aprovisionadas antes de esta versión:** además de las migraciones, necesitan la siembra de ajustes y flags que ahora hace el aprovisionamiento (`INSERT IGNORE`, ver `docs/elephant-source/ESSENTIAL_CAPACIDADES.md`).
 
 ```bash
 MIGRATE_DATABASE_URL=mysql://…/<bd_empresa> pnpm exec tsx scripts/db/migrate.ts status --dir db/migrations
