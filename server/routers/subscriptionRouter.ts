@@ -11,6 +11,7 @@ import { getTenantMode } from "../_core/tenant";
 import { getCapabilityAccess } from "../_core/capabilities/access";
 import { buildSubscriptionOverview } from "../subscriptionOverview";
 import { countPanelUsers, PANEL_ROLES } from "../subscriptionDb";
+import { resolveSupportContact } from "../supportContact";
 
 export const subscriptionRouter = router({
   overview: protectedProcedure.query(async ({ ctx }) => {
@@ -27,5 +28,10 @@ export const subscriptionRouter = router({
     }
     const usedUsers = await countPanelUsers();
     return buildSubscriptionOverview({ mode, enforcing: access.enforcing(), grants, now: Date.now(), usedUsers, upgradeUrl });
+  }),
+  /** Canal de ayuda (correo configurable): disponible también en solo lectura o con la prueba vencida. */
+  supportContact: protectedProcedure.query(async ({ ctx }) => {
+    if (!(PANEL_ROLES as readonly string[]).includes(String(ctx.user.role))) throw new TRPCError({ code: "FORBIDDEN" });
+    return resolveSupportContact();
   }),
 });

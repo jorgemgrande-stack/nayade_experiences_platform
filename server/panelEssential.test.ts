@@ -210,7 +210,7 @@ describe("menú del panel", () => {
   it("empresa Essential: grupos por tareas, sin módulos no contratados", () => {
     const o = buildSubscriptionOverview({ mode: "multi", enforcing: true, grants: essentialTrial(NOW + 5 * DAY), now: NOW });
     const resolved = resolveNav(TASK_NAV, { ...allVisible, capabilityState: capabilityStateFrom(o) });
-    expect(resolved.map((s) => s.label)).toEqual([null, "Clientes y ventas", "Catálogo y comercio", "Web", "Facturación", "Organización", "Suscripción"]);
+    expect(resolved.map((s) => s.label)).toEqual([null, "Clientes y ventas", "Catálogo y comercio", "Web", "Facturación", "Organización", "Suscripción", null]);
     const l = labels(resolved);
     for (const must of ["Inicio", "Clientes", "Presupuestos", "Pedidos", "Productos y servicios", "Páginas", "Facturas", "Usuarios y permisos", "Datos de la empresa", "Plan y uso"]) expect(l).toContain(must);
     for (const not of ["Personal", "Impuestos y gestoría", "Hotel", "Restaurantes", "WhatsApp", "Llamadas IA", "Proveedores", "Viajes (REAV)"]) expect(l).not.toContain(not);
@@ -233,12 +233,12 @@ describe("menú del panel", () => {
 
   it("sin licencias: solo Inicio y Suscripción (nada no contratado aparece como activo)", () => {
     const resolved = resolveNav(TASK_NAV, { ...allVisible, capabilityState: () => null });
-    expect(labels(resolved)).toEqual(["Inicio", "Plan y uso"]);
+    expect(labels(resolved)).toEqual(["Inicio", "Plan y uso", "Ayuda"]);
   });
 
   it("agente comercial: solo ventas y facturación de cara al cliente", () => {
     const resolved = resolveNav(TASK_NAV, { ...allVisible, role: "agente" });
-    expect(resolved.map((s) => s.id)).toEqual(["inicio", "ventas", "facturacion", "contratados"]);
+    expect(resolved.map((s) => s.id)).toEqual(["inicio", "ventas", "facturacion", "contratados", "ayuda"]);
     expect(labels(resolved)).not.toContain("Usuarios y permisos");
     expect(labels(resolved)).not.toContain("Plan y uso");
   });
