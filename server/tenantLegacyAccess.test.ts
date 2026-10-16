@@ -32,6 +32,7 @@ vi.mock("drizzle-orm/mysql2", () => ({
 import { legacyDb, legacyPool } from "./_core/legacyDb";
 import {
   _resetRegistryForTests,
+  DbCapacityError,
   evictTenantDatabase,
   getTenantDatabase,
   leaseTenantDatabase,
@@ -149,6 +150,9 @@ describe("multi", () => {
   });
 
   it("la expulsión LRU no cierra un pool arrendado; el resto sí se expulsa", async () => {
+    // Máximo de 50 pools con presupuesto holgado (el límite que manda aquí es el de pools)
+    process.env.DB_TENANT_POOLS_MAX = "50";
+    process.env.DB_TENANT_CONNECTION_BUDGET = "1000";
     let release!: () => void;
     const gate = new Promise<void>((r) => (release = r));
     const running = withTenantDb("t0", async () => {
@@ -165,12 +169,18 @@ describe("multi", () => {
     expect(await running).toBe(dsn("t0"));
   });
 
-  it("si todos están arrendados se supera el máximo temporalmente en vez de cerrar uno en uso", async () => {
+  it("si todos están arrendados no se cierra ninguno en uso ni se supera el presupuesto: espera y 503", async () => {
+    process.env.DB_TENANT_CONNECTION_BUDGET = "12"; // 3 pools de 4 conexiones
+    process.env.DB_TENANT_BUDGET_WAIT_MS = "20";
     const leases = [];
-    for (let i = 0; i < 52; i++) leases.push(await runWithTenant(`p${i}`, () => leaseTenantDatabase()));
-    expect(openTenantPools().length).toBe(52);
+    for (let i = 0; i < 3; i++) leases.push(await runWithTenant(`p${i}`, () => leaseTenantDatabase()));
+    await expect(runWithTenant("p3", () => leaseTenantDatabase())).rejects.toBeInstanceOf(DbCapacityError);
+    expect(openTenantPools().length).toBe(3);
     expect(created.pools.every((p) => p.end.mock.calls.length === 0)).toBe(true);
     for (const l of leases) l.release();
+    // Liberados: el siguiente expulsa al menos reciente y entra
+    await runWithTenant("p3", () => leaseTenantDatabase()).then((l) => l.release());
+    expect(openTenantPools()).toEqual(["p1", "p2", "p3"]);
   });
 
   it("invalidar (evictTenantDatabase) un pool en uso aplaza el cierre hasta liberar el arriendo", async () => {
