@@ -8,6 +8,7 @@
  * Un job que se ejecute en `multi` sin pasar por aquí no tiene contexto y `getTenantId()`
  * lanza: fallo seguro, nunca «alguna» base de datos.
  */
+import { withTenantDb } from "../dbRegistry";
 import { Metrics, meter } from "../metering";
 import { DEFAULT_TENANT_ID, isMultiTenant, runWithTenant } from "../tenant";
 import { accessPolicy } from "./lifecycle";
@@ -41,7 +42,8 @@ export async function runForEachTenant(
   const results: TenantJobResult[] = [];
   for (const tenantId of await listTenants()) {
     try {
-      await runWithTenant(tenantId, () => job(tenantId));
+      // Con el pool del tenant precargado y arrendado: el código heredado (legacyDb) funciona
+      await withTenantDb(tenantId, () => job(tenantId));
       results.push({ tenantId, ok: true });
     } catch (e) {
       // Sin datos del tenant ni del error más allá del mensaje

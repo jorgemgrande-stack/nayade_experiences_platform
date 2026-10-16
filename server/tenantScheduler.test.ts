@@ -1,10 +1,13 @@
 import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
 import { runTenantJob, scheduleTenantInterval, setJobTenantLister, jobStatus } from "./_core/tenantRegistry/scheduler";
 import { getTenantId } from "./_core/tenant";
+import { closeAllDatabases, setConnectionResolver } from "./_core/dbRegistry";
 
-afterEach(() => {
+afterEach(async () => {
   delete process.env.TENANT_MODE;
   setJobTenantLister(null);
+  setConnectionResolver(null);
+  await closeAllDatabases();
   vi.useRealTimers();
 });
 
@@ -31,6 +34,18 @@ describe("scheduler: multi", () => {
   beforeEach(() => {
     process.env.TENANT_MODE = "multi";
     setJobTenantLister(async () => ["a", "b", "c"]);
+    // Cada ejecución precarga el pool de su tenant (mysql2 no conecta hasta la primera consulta)
+    setConnectionResolver((id) => `mysql://u:p@127.0.0.1:1/db_${id}`);
+  });
+
+  it("un tenant sin base de datos resoluble queda en error sin ejecutar la tarea", async () => {
+    setConnectionResolver((id) => (id === "b" ? null : `mysql://u:p@127.0.0.1:1/db_${id}`));
+    const ran: string[] = [];
+    const r = await runTenantJob("t-nodb", async () => {
+      ran.push(getTenantId());
+    });
+    expect(ran.sort()).toEqual(["a", "c"]);
+    expect(r.find((x) => x.tenantId === "b")).toMatchObject({ ok: false });
   });
 
   it("una ejecución por tenant, cada una en su contexto", async () => {
