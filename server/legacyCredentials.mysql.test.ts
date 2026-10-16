@@ -5,7 +5,10 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import crypto from "node:crypto";
 import mysql from "mysql2/promise";
-import { applyLegacyEncryption, planLegacyCredentials, rollbackLegacyEncryption } from "./_core/credentials/legacyMigration";
+import fs from "node:fs";
+import path from "node:path";
+import { applyLegacyEncryption, LegacyAuditTableMissingError, planLegacyCredentials, rollbackLegacyEncryption } from "./_core/credentials/legacyMigration";
+import { splitStatements } from "../scripts/db/migrationLib";
 import { decryptLegacy } from "./_core/credentials/legacyFields";
 import type { Keyring } from "./_core/credentials/vault";
 
@@ -28,9 +31,21 @@ d("credenciales heredadas (MySQL)", () => {
     await pool?.end();
   });
 
-  it("cifra, audita, es idempotente y revierte con datos reales de BD", async () => {
+  const migration = (suffix = "") =>
+    splitStatements(fs.readFileSync(path.resolve(__dirname, `../db/migrations/0002_legacy_credential_audit${suffix}.sql`), "utf8"));
+
+  it("sin la tabla de auditoría no escribe nada; el código nunca la crea", async () => {
     await pool.query("INSERT INTO system_settings VALUES ('site_ghl_api_key','pit-AAAA-1111'),('otra','no-tocar')");
     await pool.query("INSERT INTO site_settings VALUES ('ghlInboxToken','tok-BBBB'),('ghlInboxWebhookSecret','')");
+    await expect(applyLegacyEncryption(pool, { ring, actor: "test", dryRun: false, persistAudit: true })).rejects.toBeInstanceOf(LegacyAuditTableMissingError);
+    const [still] = await pool.query<mysql.RowDataPacket[]>("SELECT `value` FROM system_settings WHERE `key`='site_ghl_api_key'");
+    expect(still[0].value).toBe("pit-AAAA-1111");
+    const [t] = await pool.query<mysql.RowDataPacket[]>("SHOW TABLES LIKE 'legacy_credential_audit'");
+    expect(t).toHaveLength(0);
+  });
+
+  it("cifra, audita, es idempotente y revierte con datos reales de BD", async () => {
+    for (const s of migration()) await pool.query(s); // db/migrations/0002
 
     const dry = await applyLegacyEncryption(pool, { ring, actor: "test" });
     expect(dry.summary.encrypted).toBe(2);
@@ -56,5 +71,8 @@ d("credenciales heredadas (MySQL)", () => {
     expect(rb.summary.restored).toBe(2);
     const [back] = await pool.query<mysql.RowDataPacket[]>("SELECT `value` FROM system_settings WHERE `key`='site_ghl_api_key'");
     expect(back[0].value).toBe("pit-AAAA-1111");
+    for (const s of migration(".down")) await pool.query(s);
+    const [gone] = await pool.query<mysql.RowDataPacket[]>("SHOW TABLES LIKE 'legacy_credential_audit'");
+    expect(gone).toHaveLength(0);
   });
 });

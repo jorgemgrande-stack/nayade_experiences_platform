@@ -25,6 +25,7 @@ import {
 } from "./_core/provisioning/mysqlAdapters";
 import { EntitlementAdmin } from "./_core/modules/mysqlEntitlements";
 import { QuotaAdmin } from "./_core/erm/mysqlQuotas";
+import { loadMigrations } from "../scripts/db/migrationLib";
 
 const URL_ = process.env.REGISTRY_TEST_DATABASE_URL;
 const OP: Actor = { type: "operator", id: "test" };
@@ -110,7 +111,9 @@ describe.skipIf(!URL_)("aprovisionamiento con MySQL real", () => {
     expect(Number(tables[0].n)).toBeGreaterThanOrEqual(152);
 
     const t = await store.getTenant(ID);
-    expect(t).toMatchObject({ status: "trial", baselineVersion: null, schemaVersion: "0001_integration_credentials" });
+    // Última migración del carril de la app (no fija: el carril crece)
+    const appMigrations = loadMigrations(path.resolve(__dirname, "../db/migrations")).migrations;
+    expect(t).toMatchObject({ status: "trial", baselineVersion: null, schemaVersion: appMigrations[appMigrations.length - 1].id });
 
     // El DSN registrado conecta con el usuario propio y solo ve su BD
     const dsn = (await svc.getActiveDsn(ID))!;

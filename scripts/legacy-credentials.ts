@@ -14,7 +14,12 @@
  */
 import mysql from "mysql2/promise";
 import { keyringFromEnv } from "../server/_core/credentials/vault";
-import { applyLegacyEncryption, planLegacyCredentials, rollbackLegacyEncryption } from "../server/_core/credentials/legacyMigration";
+import {
+  applyLegacyEncryption,
+  LegacyAuditTableMissingError,
+  planLegacyCredentials,
+  rollbackLegacyEncryption,
+} from "../server/_core/credentials/legacyMigration";
 
 async function main() {
   const [cmd, ...flags] = process.argv.slice(2);
@@ -49,7 +54,8 @@ async function main() {
   }
 }
 
+// Solo el nombre del error (nunca su contenido, que podría arrastrar valores), salvo errores propios sin datos.
 main().catch((e) => {
-  console.error(e instanceof Error ? e.name : "error");
+  console.error(e instanceof LegacyAuditTableMissingError ? e.message : e instanceof Error ? e.name : "error");
   process.exit(1);
 });

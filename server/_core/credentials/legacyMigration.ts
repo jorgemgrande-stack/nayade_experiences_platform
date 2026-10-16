@@ -86,23 +86,34 @@ export async function planLegacyCredentials(pool: Pool, ring: Keyring | null): P
   return out;
 }
 
-export async function ensureAuditTable(pool: Pool): Promise<void> {
-  await pool.query(
-    `CREATE TABLE IF NOT EXISTS legacy_credential_audit (
-       id INT AUTO_INCREMENT PRIMARY KEY,
-       at BIGINT NOT NULL,
-       actor VARCHAR(100) NOT NULL,
-       table_name VARCHAR(40) NOT NULL,
-       setting_key VARCHAR(100) NOT NULL,
-       action VARCHAR(20) NOT NULL,
-       key_id VARCHAR(60) NULL,
-       code VARCHAR(40) NULL
-     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+/**
+ * La tabla de auditoría la crea la migración `db/migrations/0002_legacy_credential_audit` (carril
+ * explícito); este código nunca ejecuta DDL. Sin ella no se escribe nada: un cifrado sin auditoría
+ * no es aceptable.
+ */
+export class LegacyAuditTableMissingError extends Error {
+  constructor() {
+    super(
+      "Falta la tabla legacy_credential_audit: aplica antes db/migrations (0002_legacy_credential_audit) con " +
+        "scripts/db/migrate.ts. No se ha modificado ningún valor.",
+    );
+    this.name = "LegacyAuditTableMissingError";
+  }
+}
+
+export async function auditTableExists(pool: Pool): Promise<boolean> {
+  const [rows] = await pool.query<mysql.RowDataPacket[]>(
+    "SELECT 1 AS ok FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'legacy_credential_audit'",
   );
+  return rows.length > 0;
+}
+
+/** Comprobación previa a cualquier escritura cuando se va a persistir la auditoría. */
+async function assertAuditReady(pool: Pool, dryRun: boolean, persist?: boolean): Promise<void> {
+  if (!dryRun && persist && !(await auditTableExists(pool))) throw new LegacyAuditTableMissingError();
 }
 
 async function persistAudit(pool: Pool, entries: AuditEntry[]): Promise<void> {
-  await ensureAuditTable(pool);
   for (const e of entries) {
     await pool.query(
       "INSERT INTO legacy_credential_audit (at, actor, table_name, setting_key, action, key_id, code) VALUES (?,?,?,?,?,?,?)",
@@ -124,6 +135,7 @@ export interface RunOptions {
 /** Cifra los valores heredados en claro. */
 export async function applyLegacyEncryption(pool: Pool, o: RunOptions): Promise<MigrationReport> {
   const dryRun = o.dryRun !== false;
+  await assertAuditReady(pool, dryRun, o.persistAudit);
   const now = o.now ?? Date.now;
   const entries: AuditEntry[] = [];
   const add = (f: { table: LegacyTable; key: string }, action: FieldAction, extra: Partial<AuditEntry> = {}) =>
@@ -154,6 +166,7 @@ export async function applyLegacyEncryption(pool: Pool, o: RunOptions): Promise<
 /** Restaura el texto plano (reversión). */
 export async function rollbackLegacyEncryption(pool: Pool, o: RunOptions): Promise<MigrationReport> {
   const dryRun = o.dryRun !== false;
+  await assertAuditReady(pool, dryRun, o.persistAudit);
   const now = o.now ?? Date.now;
   const entries: AuditEntry[] = [];
   const add = (f: { table: LegacyTable; key: string }, action: FieldAction, extra: Partial<AuditEntry> = {}) =>

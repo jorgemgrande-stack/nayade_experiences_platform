@@ -12,7 +12,7 @@ import {
   protectLegacySecret,
   revealLegacySecret,
 } from "./_core/credentials/legacyFields";
-import { applyLegacyEncryption, planLegacyCredentials, rollbackLegacyEncryption } from "./_core/credentials/legacyMigration";
+import { applyLegacyEncryption, LegacyAuditTableMissingError, planLegacyCredentials, rollbackLegacyEncryption } from "./_core/credentials/legacyMigration";
 import type { Keyring } from "./_core/credentials/vault";
 
 const k1 = crypto.randomBytes(32);
@@ -27,9 +27,10 @@ const envFor = (active = "k1"): NodeJS.ProcessEnv => ({
 const SECRET = "ghl-secret-SUPER-VALUE-12345";
 
 /** Pool mínimo en memoria que entiende las consultas del migrador. */
-function fakePool(seed: Record<string, string | null>) {
+function fakePool(seed: Record<string, string | null>, opts: { auditTable?: boolean } = {}) {
   const data = new Map<string, string | null>(Object.entries(seed)); // "tabla.clave" → valor
   const audit: unknown[][] = [];
+  const auditTable = opts.auditTable !== false;
   let failUpdates = 0;
   return {
     data,
@@ -38,6 +39,7 @@ function fakePool(seed: Record<string, string | null>) {
       failUpdates = n;
     },
     async query(sql: string, args: unknown[] = []): Promise<any> {
+      if (sql.includes("information_schema.TABLES")) return [auditTable ? [{ ok: 1 }] : [], []];
       const table = /`(system_settings|site_settings)`/.exec(sql)?.[1];
       if (sql.startsWith("SELECT")) {
         const k = `${table}.${args[0]}`;
@@ -60,7 +62,7 @@ function fakePool(seed: Record<string, string | null>) {
         audit.push(args);
         return [{}, []];
       }
-      return [{}, []]; // CREATE TABLE
+      return [{}, []];
     },
   };
 }
@@ -137,6 +139,20 @@ describe("migración", () => {
     expect(rep.summary.encrypted).toBe(2);
     expect(pool.data.get("system_settings.site_ghl_api_key")).toBe(SECRET);
     expect(JSON.stringify(rep)).not.toContain(SECRET);
+  });
+
+  it("sin la tabla de auditoría (migración 0002) se niega a ejecutar sin tocar ningún valor", async () => {
+    const pool = fakePool(seed(), { auditTable: false });
+    const before = new Map(pool.data);
+    await expect(applyLegacyEncryption(pool as any, { ring: ring(), actor: "op", dryRun: false, persistAudit: true })).rejects.toBeInstanceOf(
+      LegacyAuditTableMissingError,
+    );
+    await expect(rollbackLegacyEncryption(pool as any, { ring: ring(), actor: "op", dryRun: false, persistAudit: true })).rejects.toBeInstanceOf(
+      LegacyAuditTableMissingError,
+    );
+    expect(pool.data).toEqual(before);
+    // El simulacro no necesita la tabla
+    expect((await applyLegacyEncryption(pool as any, { ring: ring(), actor: "op" })).dryRun).toBe(true);
   });
 
   it("aplica, es idempotente y deja todo verificable", async () => {
