@@ -52,7 +52,7 @@ export interface WebPrice {
 }
 export interface WebEvent {
   id: number;
-  entity: "product" | "promotion" | "faq" | "menu" | "seo" | "page" | "forms" | "price" | "preview";
+  entity: "product" | "promotion" | "faq" | "menu" | "seo" | "page" | "forms" | "capability" | "price" | "preview";
   entityKey: string;
   action: string;
   author: string;

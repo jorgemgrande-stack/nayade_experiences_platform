@@ -18,6 +18,8 @@ import { ROLE_SCOPES } from "./controlPlane/operatorRoles";
 import { MemoryTenantRegistryStore } from "./_core/tenantRegistry/memoryStore";
 import { TenantRegistryService } from "./_core/tenantRegistry/service";
 import { keyringFromEnv } from "./_core/tenantRegistry/crypto";
+import { BUILTIN_MODULES } from "./_core/modules/builtin";
+import { seedElephantSource } from "./catalog/seed";
 
 const T0 = Date.UTC(2026, 9, 16, 9);
 const A = "operator:ana";
@@ -144,7 +146,13 @@ describe("WebAdminService", () => {
 
     await svc.create({ kind: "product", key: "ski", family: "industry_module", draft: hotel({ technicalStatus: "planned", activation: { kind: "none", ref: null } }) }, A);
     const ps = await svc.addPrice("ski", { kind: "monthly", amountCents: 100, taxRateBp: 2100 }, A);
-    await expect(svc.approvePrice(ps.id, A)).rejects.toThrow(/hoja de ruta/);
+    // Catálogo de Elephant Source: un producto en hoja de ruta PUEDE tener tarifa aprobada (la web
+    // muestra el portfolio con precios); no es contratable por su estado comercial, no por el precio.
+    expect((await svc.approvePrice(ps.id, A)).status).toBe("approved");
+    // …y «Disponible» con estado técnico «planned» se rechaza
+    await expect(
+      svc.save("product", "ski", { draft: hotel({ technicalStatus: "planned", activation: { kind: "none", ref: null }, catalog: { commercialStatus: "available" } }), expectedVersion: 1 }, A),
+    ).rejects.toThrow(/Disponible/);
   });
 
   it("cambiar precios no altera contratos existentes (guardan su importe)", async () => {
@@ -407,3 +415,4 @@ describe("panel de la web", () => {
     expect((await svc.overview()).pendingChanges.map((p) => p.key)).toEqual(["otro"]);
   });
 });
+
