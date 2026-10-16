@@ -34,6 +34,36 @@ export function periodEnd(start: number, interval: Interval, anchorDay: number):
 /** Tipo de precio recurrente que corresponde a una periodicidad. */
 export const recurringKind = (i: Interval): PriceKind => (i === "year" ? "yearly" : "monthly");
 export const isRecurring = (k: PriceKind) => k === "monthly" || k === "yearly";
+/** Periodicidad PROPIA de una partida (la de su precio aceptado); null si no es recurrente. */
+export const itemInterval = (k: PriceKind): Interval | null => (k === "yearly" ? "year" : k === "monthly" ? "month" : null);
+
+/**
+ * Intervalos mixtos: el periodo de la suscripción es el del plan Core. Una partida con la misma
+ * periodicidad comparte ese periodo; una de periodicidad más corta (complemento mensual en un plan
+ * anual) lo divide en periodos consecutivos con el mismo anclaje, de modo que renueva por su cuenta
+ * cada mes y su última renovación coincide con la del Core. Nunca hay una partida con periodicidad
+ * más larga que la del Core (se rechaza al contratar).
+ */
+export function itemPeriods(sub: { interval: Interval; anchorDay: number; currentPeriodStart: number; currentPeriodEnd: number }, interval: Interval): Array<{ start: number; end: number }> {
+  const S = sub.currentPeriodStart;
+  const E = sub.currentPeriodEnd;
+  const total = intervalMonths(sub.interval);
+  const step = intervalMonths(interval);
+  if (step >= total) return [{ start: S, end: E }];
+  const out: Array<{ start: number; end: number }> = [];
+  for (let k = step, start = S; k <= total; k += step) {
+    const end = k >= total ? E : addMonthsUTC(S, k, sub.anchorDay);
+    out.push({ start, end });
+    start = end;
+  }
+  return out;
+}
+
+/** Periodo propio de la partida que contiene `at` (el primero o el último si cae fuera). */
+export function itemPeriodAt(sub: Parameters<typeof itemPeriods>[0], interval: Interval, at: number): { start: number; end: number } {
+  const all = itemPeriods(sub, interval);
+  return all.find((p) => at < p.end) ?? all[all.length - 1];
+}
 
 /** ¿El descuento sigue vigente en el instante `at`? */
 export const discountActive = (d: Discount | null, at: number): d is Discount => !!d && (d.endsAt === null || d.endsAt > at);

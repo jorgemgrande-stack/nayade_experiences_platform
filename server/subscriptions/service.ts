@@ -6,11 +6,21 @@
  *    coherente con la familia y la periodicidad; misma moneda que la suscripción.
  *  - Dependencias y compatibilidad del catálogo comprobadas en cada cambio.
  *  - Toda operación exige la versión leída (concurrencia optimista) y queda en el historial.
+ *  - Intervalos mixtos: el plan Core fija la periodicidad y el periodo de la suscripción; cada
+ *    complemento recurrente tiene la SUYA (la de su precio aceptado), nunca más larga que la del Core
+ *    (un plan anual admite complementos mensuales; uno mensual, no anuales). Cada partida renueva en
+ *    su propio periodo (`itemPeriodAt`) y su baja «a fin de periodo» es al final del SUYO, sin tocar
+ *    al Core. El cambio de plan sigue su regla: subida inmediata prorrateada sobre el periodo del
+ *    Core, bajada a fin de periodo, sin abonos (D-S3).
+ *  - Paquetes: sustituyen a los componentes ya contratados (`bundleReplaces`, la regla del
+ *    cotizador) a partir del fin del periodo en curso de esos componentes, sin solapes ni dobles
+ *    cobros; un componente incluido en un paquete vivo no se contrata aparte.
  *  - Nada de esto cobra, emite facturas fiscales ni toca licencias: `licencePlan` solo CALCULA qué
  *    licencias corresponderían (adaptador de lectura), no las aplica.
  */
+import { bundleReplaces } from "../catalog/quote";
 import type { CatalogPort, CatalogProduct, CrmPort } from "./ports";
-import { isRecurring, monthlyEquivalent, periodEnd, recurringKind } from "./pricing";
+import { intervalMonths, isRecurring, itemInterval, itemPeriodAt, monthlyEquivalent, periodEnd, recurringKind } from "./pricing";
 import type { NewItem, SubscriptionStore, SubscriptionTx } from "./store";
 import { SubscriptionError, type Discount, type Family, type Interval, type Subscription, type SubscriptionItem } from "./types";
 
@@ -62,8 +72,15 @@ export class SubscriptionService {
     if (!price || price.productKey !== product.key) bad("El precio no pertenece a ese producto");
     if (price.status !== "approved") state("Solo se aceptan precios aprobados y vigentes");
     if (price.currency !== sub.currency) bad(`El precio está en ${price.currency} y la suscripción en ${sub.currency}`);
-    const expectedKind = product.family === "service" ? "one_time" : product.family === "usage" ? "usage" : recurringKind(sub.interval);
-    if (price.kind !== expectedKind) bad(`Para «${product.name}» con periodicidad ${sub.interval === "year" ? "anual" : "mensual"} se necesita un precio ${expectedKind}`);
+    // El plan Core marca la periodicidad; un complemento recurrente lleva la suya, nunca más larga
+    const own = itemInterval(price.kind);
+    const addonRecurring = product.family !== "core_plan" && product.family !== "service" && product.family !== "usage";
+    if (addonRecurring && own) {
+      if (intervalMonths(own) > intervalMonths(sub.interval)) bad(`«${product.name}»: un complemento anual exige un plan Core anual (la periodicidad de un complemento no puede ser más larga que la del plan)`);
+    } else {
+      const expectedKind = product.family === "service" ? "one_time" : product.family === "usage" ? "usage" : recurringKind(sub.interval);
+      if (price.kind !== expectedKind) bad(`Para «${product.name}» con periodicidad ${sub.interval === "year" ? "anual" : "mensual"} se necesita un precio ${expectedKind}`);
+    }
     const quantity = spec.quantity ?? 1;
     if (!Number.isInteger(quantity) || quantity < 1 || quantity > 10_000) bad("Cantidad entre 1 y 10.000");
     return {
@@ -98,8 +115,12 @@ export class SubscriptionService {
     if (!plan) state("Una suscripción necesita exactamente un plan Core");
     if (items.filter((i) => i.family === "core_plan").length > 1) state("Solo puede haber un plan Core a la vez");
     const problems: string[] = [];
-    for (const i of items) {
-      const p = await this.d.catalog.product(i.productKey);
+    // Lo incluido en un paquete cuenta como presente (igual que en el cotizador)
+    const products = await Promise.all(items.map((i) => this.d.catalog.product(i.productKey)));
+    for (const p of products) for (const c of p?.bundleOf ?? []) keys.add(c);
+    for (let n = 0; n < items.length; n++) {
+      const i = items[n];
+      const p = products[n];
       if (!p) continue; // producto retirado del catálogo: la partida contratada sigue valiendo
       for (const dep of p.dependencies) if (!keys.has(dep)) problems.push(`«${p.name}» requiere «${dep}»`);
       if (i.family !== "core_plan" && p.compatibleWith.length && !p.compatibleWith.includes(plan.productKey)) {
@@ -155,6 +176,10 @@ export class SubscriptionService {
     for (const a of input.addons ?? []) addons.push(await this.snapshot(a, ADDON_FAMILIES, sub, start, actor));
     const all = [plan.item, ...addons.map((a) => a.item)];
     if (new Set(all.map((i) => i.productKey)).size !== all.length) bad("Un producto no puede contratarse dos veces en la misma suscripción");
+    const inBundle = new Map<string, string>();
+    for (const a of addons) for (const c of a.product.bundleOf) inBundle.set(c, a.product.name);
+    const twice = all.find((i) => inBundle.has(i.productKey));
+    if (twice) bad(`«${twice.productName}» ya está incluido en el paquete «${inBundle.get(twice.productKey)}»`);
     await this.checkComposition(all);
     return this.d.store.create(
       {
@@ -189,6 +214,11 @@ export class SubscriptionService {
   }
   private effectAt(sub: Subscription, when: When) {
     return when === "now" ? Math.max(this.now(), sub.currentPeriodStart) : sub.currentPeriodEnd;
+  }
+  /** Como `effectAt`, pero «a fin de periodo» es el fin del periodo PROPIO de la partida. */
+  private itemEffectAt(sub: Subscription, item: Pick<SubscriptionItem, "priceKind">, when: When) {
+    const own = itemInterval(item.priceKind);
+    return when === "now" || !own ? this.effectAt(sub, when) : itemPeriodAt(sub, own, this.now()).end;
   }
   private assertNoScheduled(items: SubscriptionItem[], sub: Subscription, family?: Family) {
     const future = items.filter((i) => i.effectiveFrom > this.now() && (!family || i.family === family));
@@ -232,16 +262,33 @@ export class SubscriptionService {
       this.assertOpen(sub);
       const items = await tx.items();
       const probe = await this.snapshot(input.item, ADDON_FAMILIES, sub, 0, actor);
-      const when: When = probe.item.family === "usage" || probe.item.family === "service" ? "now" : (input.when ?? "now");
-      const at = this.effectAt(sub, when);
+      // Paquete con componentes ya contratados: los sustituye al final de su periodo en curso
+      const liveNow = items.filter((i) => i.effectiveTo === null || i.effectiveTo > this.now());
+      const replacedKeys = bundleReplaces(probe.product.bundleOf, new Set(liveNow.map((i) => i.productKey)));
+      const replaced = liveNow.filter((i) => replacedKeys.includes(i.productKey));
+      if (replaced.length && input.when === "now") state("Un paquete que sustituye componentes ya contratados entra en vigor al final de su periodo en curso (sin solapes ni abonos)");
+      if (replaced.some((i) => i.priceKind !== probe.item.priceKind)) state("El paquete y los componentes que sustituye deben tener la misma periodicidad");
+      const when: When = probe.item.family === "usage" || probe.item.family === "service" ? "now" : replaced.length ? "period_end" : (input.when ?? "now");
+      const at = this.itemEffectAt(sub, probe.item, when);
       const live = items.filter((i) => i.effectiveTo === null || i.effectiveTo > at);
       if (live.some((i) => i.productKey === probe.item.productKey)) state(`«${probe.item.productName}» ya está contratado`);
+      for (const i of live) {
+        const b = await this.d.catalog.product(i.productKey);
+        if (b?.bundleOf.includes(probe.item.productKey)) state(`«${probe.item.productName}» ya está incluido en el paquete «${b.name}»`);
+      }
       const next = { ...probe.item, effectiveFrom: at };
-      await this.checkComposition([...activeAt(items, at), next]);
+      await this.checkComposition([...activeAt(items, at).filter((i) => !replaced.some((r) => r.id === i.id)), next]);
+      // Una baja ya programada antes de esa fecha se respeta (nunca se alarga una partida)
+      for (const r of replaced) if (r.effectiveTo === null || r.effectiveTo > at) await tx.endItem(r.id, Math.max(r.effectiveFrom, at));
       const created = await tx.insertItem(next);
       return {
         patch: {},
-        event: { kind: "item_added", before: null, after: { item: created.productKey, family: created.family, priceId: created.priceId, unitAmountCents: created.unitAmountCents, effectiveFrom: at }, reason: input.reason ?? null },
+        event: {
+          kind: "item_added",
+          before: replaced.length ? { replaced: replaced.map((r) => ({ item: r.productKey, priceId: r.priceId, effectiveTo: at })) } : null,
+          after: { item: created.productKey, family: created.family, priceId: created.priceId, unitAmountCents: created.unitAmountCents, effectiveFrom: at },
+          reason: input.reason ?? null,
+        },
         result: created,
       };
     });
@@ -257,7 +304,9 @@ export class SubscriptionService {
       if (it.family === "core_plan") state("El plan Core no se quita: cambia de plan o cancela la suscripción");
       if (it.family === "service" && it.effectiveFrom <= this.now()) state("Un servicio de pago único ya prestado no se puede quitar");
       if (it.effectiveTo !== null && it.effectiveTo <= this.now()) state("La partida ya no está vigente");
-      const at = this.effectAt(sub, input.when ?? "period_end");
+      // A fin del periodo PROPIO de la partida: un complemento mensual de un plan anual se va al
+      // acabar su mes, sin esperar a la renovación del Core
+      const at = this.itemEffectAt(sub, it, input.when ?? "period_end");
       const remaining = activeAt(items, at).filter((i) => i.id !== it.id);
       await this.checkComposition(remaining);
       await tx.endItem(it.id, at);
@@ -329,8 +378,10 @@ export class SubscriptionService {
   }
 
   /**
-   * Cambio de periodicidad a partir de la próxima renovación: cada partida recurrente vigente
-   * necesita su precio aprobado del nuevo tipo (mensual ↔ anual).
+   * Cambio de periodicidad a partir de la próxima renovación: el plan Core (y todo complemento cuya
+   * periodicidad quedaría más larga que la nueva) necesita su precio aprobado del nuevo tipo
+   * (mensual ↔ anual). Los demás complementos conservan la suya si no se indica otro precio
+   * (intervalos mixtos: p. ej. pasar a plan anual manteniendo los complementos mensuales).
    */
   async changeInterval(id: number, input: { interval: Interval; prices: Array<{ itemId: number; priceId: number }>; reason?: string | null }, expectedVersion: number, actor: string) {
     return this.d.store.mutate(id, expectedVersion, actor, this.now(), async (tx, sub) => {
@@ -342,10 +393,11 @@ export class SubscriptionService {
       const at = sub.currentPeriodEnd;
       const recurring = activeAt(items, this.now()).filter((i) => isRecurring(i.priceKind) && (i.effectiveTo === null || i.effectiveTo > at));
       const map = new Map(input.prices.map((p) => [p.itemId, p.priceId]));
-      const missing = recurring.filter((i) => !map.has(i.id));
+      const mustChange = (i: SubscriptionItem) => i.family === "core_plan" || intervalMonths(itemInterval(i.priceKind)!) > intervalMonths(input.interval);
+      const missing = recurring.filter((i) => !map.has(i.id) && mustChange(i));
       if (missing.length) bad(`Falta el precio ${input.interval === "year" ? "anual" : "mensual"} de: ${missing.map((i) => i.productName).join(", ")}`);
       const created: SubscriptionItem[] = [];
-      for (const i of recurring) {
+      for (const i of recurring.filter((x) => map.has(x.id))) {
         const snap = await this.snapshot({ productKey: i.productKey, priceId: map.get(i.id)!, quantity: i.quantity, discount: i.discount }, [i.family], { interval: input.interval, currency: sub.currency }, at, actor);
         await tx.endItem(i.id, at);
         created.push(await tx.insertItem(snap.item));
@@ -426,7 +478,7 @@ export class SubscriptionService {
     const [items, events, shadowInvoices] = await Promise.all([this.d.store.items(id), this.d.store.events(id), this.d.store.shadowInvoices(id)]);
     const company = await this.d.crm.company(subscription.companyId);
     const contract = subscription.contractId ? await this.d.crm.contract(subscription.contractId) : null;
-    return { subscription, company, contract, items, events, shadowInvoices, licencePlan: licencePlan(subscription, items, this.now()) };
+    return { subscription, company, contract, items, events, shadowInvoices, schedule: itemSchedule(subscription, items, this.now()), licencePlan: licencePlan(subscription, items, this.now()) };
   }
 
   list(f?: { companyId?: number; status?: Subscription["status"] }) {
@@ -451,8 +503,26 @@ export function licencePlan(sub: Subscription, items: SubscriptionItem[], now: n
     plan: live.find((i) => i.family === "core_plan" && i.activationKind === "plan")?.activationRef ?? null,
     modules: live
       .filter((i) => i.activationKind === "module" && i.activationRef)
-      .map((i) => ({ moduleId: i.activationRef!, source: i.productKey, validUntil: sub.cancelAt ?? sub.currentPeriodEnd })),
+      .map((i) => ({ moduleId: i.activationRef!, source: i.productKey, validUntil: Math.min(ownPeriod(sub, i, now).end, i.effectiveTo ?? Infinity, sub.cancelAt ?? Infinity) })),
   };
+}
+
+const ownPeriod = (sub: Subscription, i: SubscriptionItem, now: number) => itemPeriodAt(sub, itemInterval(i.priceKind) ?? sub.interval, now);
+
+/**
+ * Periodicidad, periodo en curso y próxima renovación de cada partida recurrente vigente (o ya
+ * programada). `renewsAt` es null si la partida termina en ese periodo (baja, sustitución o
+ * cancelación de la suscripción).
+ */
+export function itemSchedule(sub: Subscription, items: SubscriptionItem[], now: number) {
+  if (sub.status === "canceled") return [];
+  return items
+    .filter((i) => isRecurring(i.priceKind) && (i.effectiveTo === null || i.effectiveTo > now))
+    .map((i) => {
+      const p = ownPeriod(sub, i, Math.max(now, i.effectiveFrom));
+      const ends = (i.effectiveTo !== null && i.effectiveTo <= p.end) || (sub.cancelAt !== null && sub.cancelAt <= p.end);
+      return { itemId: i.id, productKey: i.productKey, interval: itemInterval(i.priceKind)!, periodStart: Math.max(p.start, i.effectiveFrom), periodEnd: Math.min(p.end, i.effectiveTo ?? Infinity), renewsAt: ends ? null : p.end };
+    });
 }
 
 export type { SubscriptionTx };

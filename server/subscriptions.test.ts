@@ -247,7 +247,8 @@ describe("cambios de suscripción", () => {
   it("cambio de periodicidad a la próxima renovación con precios anuales aprobados", async () => {
     const s = await base({ addons: [{ productKey: "telefonia", priceId: P.telM }] });
     const items = (await subs.detail(s.id)).items;
-    await expect(subs.changeInterval(s.id, { interval: "year", prices: [{ itemId: items[0].id, priceId: P.busY }] }, 1, A)).rejects.toThrow(/Falta el precio anual/);
+    // El plan Core siempre necesita su precio anual (los complementos pueden quedarse mensuales)
+    await expect(subs.changeInterval(s.id, { interval: "year", prices: [{ itemId: items[1].id, priceId: P.telY }] }, 1, A)).rejects.toThrow(/Falta el precio anual de: Business/);
     await subs.changeInterval(
       s.id,
       { interval: "year", prices: [{ itemId: items[0].id, priceId: P.busY }, { itemId: items[1].id, priceId: P.telY }] },

@@ -233,7 +233,7 @@ export function quote(catalog: QuoteCatalog, req: QuoteRequest): QuoteResult {
     const note = req.interval === "year" && interval === "month" ? "Sin tarifa anual: se factura mensualmente" : null;
     const l = line(p, qty, pr.amountCents, interval, "charged", note);
     if (BUNDLE_FAMILIES.has(p.family)) {
-      const replaced = p.bundleOf.filter((c) => owned.has(c));
+      const replaced = bundleReplaces(p.bundleOf, owned);
       if (replaced.length) {
         l.replaces = replaced;
         l.note = [l.note, `Sustituye a lo ya contratado: ${replaced.map((c) => byKey.get(c)?.name ?? c).join(", ")} (deja de cobrarse aparte)`].filter(Boolean).join(". ");
@@ -335,6 +335,14 @@ export function quote(catalog: QuoteCatalog, req: QuoteRequest): QuoteResult {
     contractable,
     blocking,
   };
+}
+
+/**
+ * Componentes de un paquete que ya están contratados: el paquete los sustituye (dejan de cobrarse
+ * aparte). Misma regla en el cotizador y en el motor de suscripciones.
+ */
+export function bundleReplaces(bundleOf: string[], owned: { has(key: string): boolean }): string[] {
+  return bundleOf.filter((c) => owned.has(c));
 }
 
 function pickPrice(p: QuoteCatalogProduct, interval: "month" | "year"): QuoteCatalogPrice | undefined {

@@ -181,6 +181,24 @@ describe.skipIf(!URL_)("suscripciones con MySQL real", () => {
     expect((await pay.webhook({ id: "evt_fail", key, status: "failed", ref: "sim" })).status).toBe("duplicate");
   });
 
+  it("intervalos mixtos (plan anual + complemento mensual): una renovación por periodo propio, sin duplicar entre conexiones", async () => {
+    const y = await web.addPrice("business", { kind: "yearly", amountCents: 99000, taxRateBp: 2100 }, A);
+    await web.approvePrice(y.id, A);
+    const s = await subs.create({ companyId: 1, interval: "year", plan: { productKey: "business", priceId: y.id }, addons: [{ productKey: "telefonia", priceId: P.telM }] }, A);
+    clock = T0 + 40 * 86_400_000; // segundo mes empezado
+    const runs = await Promise.all(Array.from({ length: 4 }, () => shadow.simulateCurrent(s.id, A)));
+    expect(runs.flatMap((r) => r.results).filter((x) => x.created)).toHaveLength(3);
+    const [rows] = await pool.query<mysql.RowDataPacket[]>("SELECT kind, dedupe_key, period_start, period_end, subtotal_cents FROM shadow_invoices WHERE subscription_id = ? ORDER BY period_start, dedupe_key", [s.id]);
+    expect(rows.map((r) => [r.kind, r.dedupe_key, Number(r.subtotal_cents)])).toEqual([
+      ["renewal", "", 99000],
+      ["renewal", "interval:month", 2000],
+      ["renewal", "interval:month", 2000],
+    ]);
+    expect(Number(rows[0].period_end)).toBe(s.currentPeriodEnd);
+    expect(Number(rows[2].period_start)).toBe(Number(rows[1].period_end));
+    clock = T0;
+  });
+
   it("consumos idempotentes por clave única en la BD", async () => {
     const [r] = await pool.query<mysql.RowDataPacket[]>("SELECT id FROM subscription_items LIMIT 1");
     const rec = { itemId: Number(r[0].id), periodStart: 1, quantity: 5, source: "erm", idempotencyKey: "erm:k:0001", createdAt: 1 };
