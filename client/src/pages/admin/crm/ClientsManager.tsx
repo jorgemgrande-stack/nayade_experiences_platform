@@ -17,6 +17,9 @@ import {
 } from "lucide-react";
 import AdminLayout from "@/components/AdminLayout";
 import { Link } from "wouter";
+import { ClipboardList } from "lucide-react";
+import { usePanelSubscription } from "@/hooks/usePanelSubscription";
+import { EntityTagsDialog, TagChip, useCrmCanWrite } from "@/components/admin/crm/CrmParts";
 
 // ─── TYPES ───────────────────────────────────────────────────────────────────
 
@@ -885,10 +888,28 @@ export default function ClientsManager() {
   const [deleteClientId, setDeleteClientId] = useState<number | null>(null);
 
   const searchInput = useMemo(() => ({ q: search, limit: 50 }), [search]);
+  // Etiquetas (crm-tags) y tareas (crm-tasks): empresas con licencias por capacidad cuyo plan las
+  // incluye (la instalación de siempre no las muestra hasta tener aplicada la migración 0008)
+  const sub = usePanelSubscription();
+  const canTags = sub.isLicensed && sub.can("crm-tags");
+  const canTasks = sub.isLicensed && sub.can("crm-tasks");
+  const canWriteTags = useCrmCanWrite("crm-tags");
+  const [tagFilter, setTagFilter] = useState<number | null>(() => {
+    const n = Number(new URLSearchParams(window.location.search).get("etiqueta"));
+    return Number.isInteger(n) && n > 0 ? n : null;
+  });
+  const [tagsClient, setTagsClient] = useState<ClientRow | null>(null);
+  const tagCatalog = trpc.crmTags.list.useQuery(undefined, { enabled: canTags });
   const { data: clientsData, isLoading, isError, error: listError, refetch } = trpc.crm.clients.list.useQuery(
-    { search, limit: 50 }
+    { search, limit: 50, ...(canTags && tagFilter ? { tagId: tagFilter } : {}) }
   );
   const clientsList = clientsData?.items as ClientRow[] | undefined;
+  const visibleIds = useMemo(() => (clientsList ?? []).map((c) => c.id), [clientsList]);
+  const clientTags = trpc.crmTags.forEntities.useQuery(
+    { entityType: "client", ids: visibleIds },
+    { enabled: canTags && visibleIds.length > 0 },
+  );
+  const tagFilterName = tagCatalog.data?.find((t) => t.id === tagFilter)?.name;
   const utils = trpc.useUtils();
 
   // Acceso directo «Nuevo cliente» (inicio del panel): /admin/crm/clientes?nuevo=1
@@ -1033,15 +1054,32 @@ export default function ClientsManager() {
         </div>
 
         {/* Search */}
-        <div className="relative mb-4">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
-          <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Buscar por nombre, email o empresa..."
-            aria-label="Buscar clientes por nombre, email o empresa"
-            className="pl-9 bg-white/5 border-white/10 text-white placeholder:text-white/30"
-          />
+        <div className="flex flex-col sm:flex-row gap-3 mb-4">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Buscar por nombre, email o empresa..."
+              aria-label="Buscar clientes por nombre, email o empresa"
+              className="pl-9 bg-white/5 border-white/10 text-white placeholder:text-white/30"
+            />
+          </div>
+          {canTags && (
+            <div className="flex items-center gap-2 sm:w-64">
+              <label htmlFor="clients-tag-filter" className="sr-only">Filtrar por etiqueta</label>
+              <Tag className="w-4 h-4 text-white/40 shrink-0" aria-hidden="true" />
+              <select
+                id="clients-tag-filter"
+                value={tagFilter ?? ""}
+                onChange={(e) => setTagFilter(e.target.value ? Number(e.target.value) : null)}
+                className="h-9 w-full rounded-md border border-white/10 bg-[#0d1526] px-3 text-sm text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
+              >
+                <option value="">Todas las etiquetas</option>
+                {(tagCatalog.data ?? []).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </select>
+            </div>
+          )}
         </div>
 
         {/* Table */}
@@ -1086,6 +1124,13 @@ export default function ClientsManager() {
                             Borrar búsqueda
                           </Button>
                         </>
+                      ) : canTags && tagFilter ? (
+                        <>
+                          <p className="text-white/80 text-sm">Ningún cliente tiene la etiqueta {tagFilterName ? `«${tagFilterName}»` : "elegida"}</p>
+                          <Button size="sm" variant="outline" onClick={() => setTagFilter(null)} className="border-white/20 text-white">
+                            Quitar filtro de etiqueta
+                          </Button>
+                        </>
                       ) : (
                         <>
                           <p className="text-white/80 text-sm font-medium">Todavía no tienes clientes</p>
@@ -1115,6 +1160,11 @@ export default function ClientsManager() {
                             <span className="text-white/25 text-[10px]">NIF: {client.nif}</span>
                           )}
                         </div>
+                        {canTags && (clientTags.data?.[client.id]?.length ?? 0) > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {clientTags.data![client.id].map((t) => <TagChip key={t.id} name={t.name} color={t.color} />)}
+                          </div>
+                        )}
                       </div>
                     </div>
                   </td>
@@ -1181,6 +1231,24 @@ export default function ClientsManager() {
                         title="Ver historial completo">
                         <History className="w-3.5 h-3.5" />
                       </Button>
+                      {canTags && (
+                        <Button size="sm" variant="ghost"
+                          className="text-sky-300 hover:text-sky-200 h-7 px-2"
+                          onClick={() => setTagsClient(client)}
+                          title="Etiquetas"
+                          aria-label={`Etiquetas de ${client.name}`}>
+                          <Tag className="w-3.5 h-3.5" aria-hidden="true" />
+                        </Button>
+                      )}
+                      {canTasks && (
+                        <Link
+                          href={`/admin/crm/tareas?vinculo=client&id=${client.id}&nombre=${encodeURIComponent(client.name)}`}
+                          className="inline-flex items-center h-7 px-2 rounded-md text-amber-300 hover:text-amber-200 hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
+                          title="Tareas"
+                          aria-label={`Tareas de ${client.name}`}>
+                          <ClipboardList className="w-3.5 h-3.5" aria-hidden="true" />
+                        </Link>
+                      )}
                       {!client.isConverted && (
                         <Button size="sm" variant="ghost"
                           className="text-green-400 hover:text-green-300 h-7 px-2"
@@ -1209,6 +1277,18 @@ export default function ClientsManager() {
           </table>
         </div>
       </div>
+
+      {tagsClient && (
+        <EntityTagsDialog
+          open
+          onOpenChange={(o) => !o && setTagsClient(null)}
+          entityType="client"
+          entityId={tagsClient.id}
+          entityName={tagsClient.name}
+          current={(clientTags.data?.[tagsClient.id] ?? []).map((t) => t.id)}
+          readOnly={!canWriteTags}
+        />
+      )}
 
       {/* Client History Modal */}
       <Dialog open={historyClient !== null} onOpenChange={(o) => !o && setHistoryClient(null)}>

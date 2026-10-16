@@ -38,7 +38,8 @@ describe("contenido del centro de ayuda", () => {
 
   it("no documenta como disponible nada inexistente ni promete horarios", () => {
     const text = JSON.stringify(HELP_ARTICLES).toLowerCase();
-    for (const banned of ["etiqueta", "blog", "chat en vivo", "ticket de soporte", "abrir un ticket", "24/7", "24 horas", "horario de atención", "respuesta en", "garantiza"]) {
+    // Las etiquetas del CRM ya existen (crm-tags): se documentan en «etiquetas-clientes»
+    for (const banned of ["blog", "chat en vivo", "ticket de soporte", "abrir un ticket", "24/7", "24 horas", "horario de atención", "respuesta en", "garantiza"]) {
       expect(text, banned).not.toContain(banned);
     }
   });
@@ -68,6 +69,8 @@ describe("ayuda contextual", () => {
     expect(helpForLocation("/admin/usuarios/")?.id).toBe("invitar-empleados");
     expect(helpForLocation("/admin/suscripcion")?.id).toBe("consultar-suscripcion");
     expect(helpForLocation("/admin/productos/variantes")?.id).toBe("crear-productos");
+    expect(helpForLocation("/admin/crm/etiquetas")?.id).toBe("etiquetas-clientes");
+    expect(helpForLocation("/admin/crm/tareas")?.id).toBe("tareas-recordatorios");
     expect(helpForLocation("/admin/crm", "tab=leads")).toBeUndefined();
     expect(helpForLocation("/admin/gestoria")).toBeUndefined();
   });

@@ -201,7 +201,7 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
     onSuccess: () => utils.notifications.feed.invalidate(),
   });
 
-  type FeedKind = "lead" | "quote" | "cancellation" | "pending_payment" | "tpv_alert" | "upcoming_reservation";
+  type FeedKind = "lead" | "quote" | "cancellation" | "pending_payment" | "tpv_alert" | "upcoming_reservation" | "task";
   const severityColor: Record<string, string> = {
     info:     "text-sky-400",
     warning:  "text-amber-400",

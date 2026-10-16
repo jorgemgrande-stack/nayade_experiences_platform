@@ -24,6 +24,7 @@ const FEED_LABELS: Record<string, string> = {
   pending_payment: "Cobros vencidos",
   tpv_alert: "Avisos de caja y TPV",
   upcoming_reservation: "Pedidos para mañana",
+  task: "Tareas para hoy o vencidas",
 };
 
 function Section({ id, title, description, children, className }: { id: string; title: string; description?: string; children: React.ReactNode; className?: string }) {
@@ -74,9 +75,13 @@ export default function EssentialHome() {
   const users = trpc.admin.getUsers.useQuery(undefined, { enabled: isAdmin, retry: 1 });
   const settings = trpc.cms.getSiteSettings.useQuery(undefined, { enabled: canSettings, retry: 1 });
   const feed = trpc.notifications.feed.useQuery(undefined, { enabled: isSales, refetchInterval: 60_000, refetchIntervalInBackground: false });
+  const canTasks = isSales && sub.can("crm-tasks");
+  const taskSummary = trpc.crmTasks.summary.useQuery(undefined, { enabled: canTasks, retry: 1 });
 
   const firstName = (user?.name ?? "").trim().split(/\s+/)[0];
   const pending = (feed.data?.sections ?? []).filter((s) => s.total > 0);
+  // Mis tareas pendientes (además de las de hoy o vencidas que ya avisa el feed)
+  const myTasks = canTasks ? taskSummary.data?.minePending ?? 0 : 0;
 
   // Primeros pasos: cada paso se marca con datos reales
   const fiscalMissing = settings.data ? missingFiscalFields(settings.data as Record<string, string>) : null;
@@ -206,13 +211,32 @@ export default function EssentialHome() {
                   <span className="sr-only">Cargando pendientes…</span>
                   {[0, 1, 2].map((i) => <div key={i} className="h-10 rounded-lg bg-muted animate-pulse" />)}
                 </div>
-              ) : pending.length === 0 ? (
+              ) : pending.length === 0 && myTasks === 0 ? (
                 <div className="flex items-start gap-3 text-sm text-muted-foreground">
                   <Inbox className="w-5 h-5 shrink-0" aria-hidden="true" />
-                  <p>No tienes nada pendiente. Cuando entren oportunidades, haya presupuestos sin respuesta o cobros vencidos, aparecerán aquí.</p>
+                  <p>No tienes nada pendiente. Cuando entren oportunidades, haya presupuestos sin respuesta, cobros vencidos o tareas asignadas a ti, aparecerán aquí.</p>
                 </div>
               ) : (
                 <ul className="divide-y divide-border">
+                  {myTasks > 0 && (
+                    <li>
+                      <Link
+                        href="/admin/crm/tareas"
+                        className="flex items-center gap-3 py-2.5 text-sm hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+                      >
+                        <span className="min-w-[28px] h-7 px-2 rounded-full text-xs font-semibold flex items-center justify-center bg-sky-100 text-sky-900 dark:bg-sky-500/20 dark:text-sky-200">
+                          {myTasks}
+                        </span>
+                        <span className="flex-1 text-foreground">
+                          Mis tareas pendientes
+                          {(taskSummary.data?.mineOverdue ?? 0) > 0 && (
+                            <span className="ml-1 font-medium text-red-700 dark:text-red-300">({taskSummary.data!.mineOverdue} {taskSummary.data!.mineOverdue === 1 ? "vencida" : "vencidas"})</span>
+                          )}
+                        </span>
+                        <ArrowRight className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
+                      </Link>
+                    </li>
+                  )}
                   {pending.map((s) => (
                     <li key={s.kind}>
                       <Link

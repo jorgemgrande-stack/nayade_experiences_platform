@@ -150,6 +150,8 @@ const PrimerosPasos = lazy(() => import("./pages/admin/setup/PrimerosPasos"));
 // CRM
 const CRMDashboard = lazy(() => import("./pages/admin/crm/CRMDashboard"));
 const ClientsManager = lazy(() => import("./pages/admin/crm/ClientsManager"));
+const CrmTags = lazy(() => import("./pages/admin/crm/CrmTags"));
+const CrmTasks = lazy(() => import("./pages/admin/crm/CrmTasks"));
 const ProposalsPage = lazy(() => import("./pages/admin/crm/ProposalsPage"));
 const CommercialFollowupDashboard = lazy(() => import("./pages/admin/commercial/CommercialFollowupDashboard"));
 const WhatsAppGHLInbox = lazy(() => import("./pages/admin/commercial/WhatsAppGHLInbox"));
@@ -410,6 +412,8 @@ function Router() {
       <Route path="/admin/crm/presupuestos">{() => <Suspense fallback={<AdminLoadingFallback />}><CRMDashboard /></Suspense>}</Route>
       <Route path="/admin/crm/reservas">{() => <Suspense fallback={<AdminLoadingFallback />}><CRMDashboard /></Suspense>}</Route>
       <Route path="/admin/crm/clientes">{() => <Suspense fallback={<AdminLoadingFallback />}><ClientsManager /></Suspense>}</Route>
+      <Route path="/admin/crm/etiquetas">{() => <Suspense fallback={<AdminLoadingFallback />}><CrmTags /></Suspense>}</Route>
+      <Route path="/admin/crm/tareas">{() => <Suspense fallback={<AdminLoadingFallback />}><CrmTasks /></Suspense>}</Route>
       <Route path="/admin/crm/propuestas">{() => <Suspense fallback={<AdminLoadingFallback />}><ProposalsPage /></Suspense>}</Route>
       <Route path="/admin/crm/anulaciones">{() => { window.location.replace("/admin/crm"); return null; }}</Route>
 

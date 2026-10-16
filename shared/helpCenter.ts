@@ -3,8 +3,8 @@
  *
  * Reglas del contenido:
  *  - Describe la interfaz REAL actual, con los textos literales de menús, pestañas y botones.
- *  - No presenta como disponible nada que no exista (p. ej. etiquetas del CRM, blog, chat en vivo,
- *    cambio de plan dentro del panel).
+ *  - No presenta como disponible nada que no exista (p. ej. blog, chat en vivo, cambio de plan
+ *    dentro del panel).
  *  - No promete horarios ni tiempos de respuesta del soporte.
  *
  * Si cambia una pantalla, actualiza aquí el artículo correspondiente y la fecha de revisión.
@@ -68,6 +68,45 @@ export const HELP_ARTICLES: HelpArticle[] = [
       "Los clientes también se crean automáticamente cuando llega una solicitud, y puedes crear uno al vuelo al registrar un pedido.",
     ],
     links: [{ label: "Ir a Clientes", href: "/admin/crm/clientes" }],
+  },
+  {
+    id: "etiquetas-clientes",
+    title: "Etiquetar clientes y filtrar por etiqueta",
+    summary: "Crea etiquetas en Clientes y ventas › Etiquetas, asígnalas desde el listado de clientes y filtra por ellas.",
+    contexts: [{ path: "/admin/crm/etiquetas" }],
+    steps: [
+      "En el menú, ve a Clientes y ventas › Etiquetas y pulsa «Nueva etiqueta».",
+      "Escribe el nombre (no puede repetirse) y, si quieres, elige un color. Pulsa «Crear etiqueta».",
+      "En Clientes y ventas › Clientes, pulsa el botón de etiqueta de un cliente y marca las que quieras asignar. Los cambios se guardan al momento.",
+      "Para ver solo los clientes con una etiqueta, elígela en el desplegable «Todas las etiquetas» junto al buscador, o pulsa «Ver clientes» en la pantalla de etiquetas.",
+    ],
+    notes: [
+      "Al eliminar una etiqueta se quita de todos los clientes que la llevan; los clientes no se borran.",
+      "Los usuarios de solo lectura ven las etiquetas, pero no pueden crearlas ni asignarlas.",
+    ],
+    links: [
+      { label: "Ir a Etiquetas", href: "/admin/crm/etiquetas" },
+      { label: "Ir a Clientes", href: "/admin/crm/clientes" },
+    ],
+  },
+  {
+    id: "tareas-recordatorios",
+    title: "Tareas y recordatorios del equipo",
+    summary: "Apunta tareas internas con fecha y responsable en Clientes y ventas › Tareas; las de hoy y las vencidas aparecen en el Inicio.",
+    contexts: [{ path: "/admin/crm/tareas" }],
+    steps: [
+      "En el menú, ve a Clientes y ventas › Tareas y pulsa «Nueva tarea».",
+      "Escribe el título y, si quieres, una descripción, la fecha en «Vence el», el responsable y la prioridad.",
+      "Para relacionarla con un cliente, una oportunidad o un presupuesto, elige el tipo en «Vincular a», búscalo y selecciónalo. Pulsa «Crear tarea».",
+      "En «Mis tareas» ves las tuyas; en «Todo el equipo», las de todos. Marca «Solo vencidas» para ver lo atrasado.",
+      "Pulsa el círculo de una tarea para marcarla como hecha (y otra vez para reabrirla).",
+    ],
+    notes: [
+      "Las tareas pasadas de fecha se marcan como «Vencida». En el Inicio verás «Mis tareas pendientes» y, en los avisos, las «Tareas para hoy o vencidas».",
+      "Son recordatorios internos: no se envía ningún correo al cliente ni al responsable.",
+      "Desde el listado de clientes, el botón de tareas abre las tareas vinculadas a ese cliente.",
+    ],
+    links: [{ label: "Ir a Tareas", href: "/admin/crm/tareas" }],
   },
   {
     id: "crear-productos",

@@ -263,6 +263,8 @@ export const TASK_NAV: NavSection[] = [
         ],
       },
       { label: "Pedidos", href: "/admin/crm?tab=reservations", key: "t-pedidos", icon: "shoppingCart", roles: SALES, capabilities: ["shop-orders"] },
+      { label: "Tareas", href: "/admin/crm/tareas", key: "t-tareas", icon: "calendar", roles: SALES, capabilities: ["crm-tasks"] },
+      { label: "Etiquetas", href: "/admin/crm/etiquetas", key: "t-etiquetas", icon: "tag", roles: SALES, capabilities: ["crm-tags"] },
     ],
   },
   {

@@ -11,17 +11,17 @@ Fecha: 2026-10-16. Rama `test/essential-capacidades`.
 | Estado | Nº | Capacidades |
 |---|---|---|
 | FUNCIONAL | 6 | crm-contacts, crm-leads, cms-pages-forms, bill-payments, admin-panel, shop-orders* |
-| FUNCIONAL CON LIMITACIONES | 20 | crm-accounts, crm-activity, crm-quotes, shop-catalog, shop-variants, shop-store, shop-checkout, shop-coupons, cms-editor, cms-domain, cms-seo, bill-invoices, bill-series, bill-taxes, bill-cash, bill-reports, admin-users, comms-email, auto-basic, comms-whatsapp-links |
-| INCOMPLETA | 1 | crm-tasks |
+| FUNCIONAL CON LIMITACIONES | 22 | crm-accounts, crm-activity, crm-tags, crm-quotes, crm-tasks, shop-catalog, shop-variants, shop-store, shop-checkout, shop-coupons, cms-editor, cms-domain, cms-seo, bill-invoices, bill-series, bill-taxes, bill-cash, bill-reports, admin-users, comms-email, auto-basic, comms-whatsapp-links |
+| INCOMPLETA | 0 | — |
 | BLOQUEADA | 0 | — (ver bloqueantes de lanzamiento más abajo) |
-| NO IMPLEMENTADA | 2 | crm-tags, cms-blog |
+| NO IMPLEMENTADA | 1 | cms-blog |
 
 \* shop-orders funciona; la devolución se registra, pero el reembolso se ejecuta fuera de la plataforma (ver la matriz).
 
 Para venderlo como completo hace falta:
 
-1. **Implementar** las etiquetas del CRM (`crm-tags`) y el blog (`cms-blog`), o sacarlos de Essential en el catálogo comercial. No existe código de ninguno de los dos.
-2. **Completar `crm-tasks`.** Faltan tareas internas con fecha y responsable. Hoy solo hay seguimiento comercial de presupuestos.
+1. **Implementar** el blog (`cms-blog`), o sacarlo de Essential en el catálogo comercial. No existe código. ~~Etiquetas del CRM (`crm-tags`)~~ **Resuelto (rama `feat/crm-etiquetas-tareas`):** catálogo por empresa, asignación a clientes y oportunidades y filtro de listados. Requiere aplicar la migración `0008_crm_tags_tasks`.
+2. ~~**Completar `crm-tasks`.**~~ **Resuelto (rama `feat/crm-etiquetas-tareas`):** tareas internas con vencimiento, responsable, estado, prioridad y vínculo a cliente, oportunidad o presupuesto; «Mis tareas», vencidas destacadas, pendientes en el Inicio y en la campana de avisos (sin correos). Misma migración `0008`.
 3. ~~**Completar `comms-whatsapp-links` y corregir la fuga de marca del botón de WhatsApp.**~~ **Resuelto en la integración (PR #113):** el botón usa el número de la propia empresa (`public.getTheme` → `contact.whatsapp`, desde su teléfono) y no aparece si no lo tiene; en instalación única, igual que antes. Prueba: `essential.admin.mysql.test.ts`.
 4. **Requisitos de plataforma**, de los que dependen varias capacidades:
    - Proveedor de correo de la plataforma (`BREVO_API_KEY`) más el remitente propio de cada empresa.
@@ -81,10 +81,10 @@ Guardián: `TRPC_ROUTER_CAPABILITIES` en `server/_core/capabilities/routeGuard.t
 | Clientes y contactos | crm-contacts | `crm.clients.*` · `/admin/crm/clientes` (`ClientsManager`) | comercial | `crm.clients` → crm-contacts (antes crm-leads) | crm › «crm-contacts / crm-accounts» | FUNCIONAL | Antes no se guardaban la dirección ni las notas del alta (corregido). |
 | Fichas de empresa y particulares | crm-accounts | La misma ficha `clients` (campos `company`, `nif`) | comercial | Comparte con crm-contacts | crm › «crm-contacts / crm-accounts» | FUNCIONAL CON LIMITACIONES | No hay tipo de ficha empresa/particular ni relación contacto ↔ empresa: es una sola ficha con campos de empresa. |
 | Historial de actividad | crm-activity | `crm_activity_log`, que se escribe solo en altas y notas · `crm.leads.get`, `crm.clients.getHistory`, `crm.timeline.get` · dentro de CRM y Clientes | comercial | Sin capacidad propia: hereda crm-leads o crm-quotes | crm › «crm-activity» | FUNCIONAL CON LIMITACIONES | Sin pantalla propia ni registro manual de actividad sobre un cliente. `entityType` solo admite lead, quote, reservation e invoice. |
-| Etiquetas y segmentación | crm-tags | — | — | — | crm › «crm-tags» (ningún procedimiento) | NO IMPLEMENTADA | Existe la columna `clients.tags`, pero no la usa nadie. La única segmentación es por origen, prioridad y estado del lead. |
+| Etiquetas y segmentación | crm-tags | `crmTags.*` (catálogo, `assign`/`unassign`, `forEntities`) y filtro `tagId` en `crm.clients.list` y `crm.leads.list` · `/admin/crm/etiquetas` (`CrmTags`) y listado de clientes (filtro, chips y diálogo de etiquetas) | comercial (admin y agente escriben; `readonly` solo consulta) | `crmTags` → crm-tags | crm › «crm-tags» (operación, persistencia, solo lectura → 403, licencia, aislamiento A/B) | FUNCIONAL CON LIMITACIONES | Tablas `crm_tags` y `crm_tag_links` (migración `0008`). Nombre único sin distinguir mayúsculas ni acentos; paleta de 6 colores. Las oportunidades admiten etiquetas y filtro en el servidor, pero la pantalla de Oportunidades aún no los muestra (solo Clientes). Sin asignación masiva. La columna heredada `clients.tags` sigue sin uso. |
 | Leads y oportunidades | crm-leads | `crm.leads.*`, `crm.leadSources.*`, `crm.pipeline.summary` · `/admin/crm`, `/admin/crm/leads` | comercial (orígenes: administración) | `crm.leads` → crm-leads | crm › «crm-leads» | FUNCIONAL | El origen `CRM_MANUAL` no está sembrado: `leadSourceId` queda vacío. |
 | Presupuestos y propuestas | crm-quotes | `crm.quotes.*`, `proposals.*` · `/admin/crm/presupuestos`, `/admin/crm/propuestas` | comercial | `crm.quotes`, `proposals` → crm-quotes | crm › «crm-quotes» | FUNCIONAL CON LIMITACIONES | El envío necesita remitente propio. El PDF necesita S3 (o la vista bajo demanda). El enlace de pago necesita Redsys. El envío no se ha probado aquí de extremo a extremo. |
-| Recordatorios y tareas | crm-tasks | `commercialFollowup.*` · `/admin/atencion-comercial` | comercial (antes, cualquier sesión) | `commercialFollowup` → crm-tasks | crm › «crm-tasks» | INCOMPLETA | No existe una entidad de tareas (fecha, responsable, aviso). Solo hay estado y notas de seguimiento de un presupuesto y recordatorios automáticos al cliente. |
+| Recordatorios y tareas | crm-tasks | `crmTasks.*` (`list` con «Mis tareas»/equipo, vencidas y por entidad; `summary`, `assignees`, `create`, `update`, `setStatus`, `delete`) · `/admin/crm/tareas` (`CrmTasks`), Inicio (pendientes) y campana (`notifications.feed`, sección `task`). Además, `commercialFollowup.*` · `/admin/atencion-comercial` | comercial (admin y agente escriben; `readonly` solo consulta) | `crmTasks`, `commercialFollowup` → crm-tasks | crm › «crm-tasks: seguimiento comercial…» y «crm-tasks: tareas internas…» (operación, persistencia, solo lectura → 403, licencia, aislamiento A/B, avisos sin correo) | FUNCIONAL CON LIMITACIONES | Tabla `crm_tasks` (migración `0008`). Vencimiento por día (sin hora) con la fecha del servidor. Responsables: usuarios activos admin o agente. Sin avisos por correo (decisión: solo Inicio y campana), sin tareas recurrentes. Las fichas de oportunidad y presupuesto no tienen aún botón de «Tareas» (se vinculan desde el formulario de la tarea). |
 
 ### Comercio
 
