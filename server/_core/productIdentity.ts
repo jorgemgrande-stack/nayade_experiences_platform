@@ -8,9 +8,10 @@
  * Compatibilidad: la instalación histórica (una sola empresa) construía sus enlaces con
  * `process.env.APP_URL ?? "https://www.skicenter.es"` en ~25 sitios. `publicBaseUrl()` centraliza ese
  * comportamiento SIN cambiarlo (mismo respaldo heredado) para poder retirarlo en un único punto.
- * Pendiente (multiempresa): URL pública de la empresa en curso desde el registro.
+ * Multiempresa: la URL de la empresa en curso sale del registro (ver `tenantIdentity.ts`).
  */
 import { isMultiTenant } from "./tenant";
+import { tenantPublicUrl } from "./tenantIdentity";
 
 export const PRODUCT = {
   name: "Elephant Source",
@@ -24,12 +25,17 @@ export const LEGACY_PUBLIC_URL_FALLBACK = "https://www.skicenter.es";
 /**
  * URL pública de la instalación para enlaces (pagos, presupuestos, correos).
  *  - Con APP_URL: esa URL (sin espacios).
- *  - Sin APP_URL: el respaldo heredado, exactamente como antes. Varios routers la leen AL IMPORTARSE,
- *    así que no puede lanzar: un error aquí impediría arrancar.
- * Pendiente (multiempresa): la URL de la empresa en curso (su dominio en el registro), resuelta por
- * petición y no al importar. Mientras tanto, en multi se avisa una vez si falta APP_URL.
+ *  - Sin APP_URL: el respaldo heredado, exactamente como antes. No puede lanzar: un error aquí
+ *    rompería el envío de enlaces.
+ *  - Multi: la URL de la empresa en curso (su dominio propio verificado y activo, o su subdominio de
+ *    plataforma), resuelta por petición desde la instantánea precargada del registro. Sin
+ *    instantánea, el comportamiento anterior (y se avisa una vez si falta APP_URL).
  */
 export function publicBaseUrl(): string {
+  if (isMultiTenant()) {
+    const tenantUrl = tenantPublicUrl();
+    if (tenantUrl) return tenantUrl;
+  }
   const configured = (process.env.APP_URL ?? "").trim();
   if (configured) return configured;
   if (isMultiTenant() && !warned) {

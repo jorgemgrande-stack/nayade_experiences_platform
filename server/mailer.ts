@@ -20,6 +20,7 @@ import { enforceQuota } from "./_core/erm/runtime";
 import { QuotaExceededError } from "./_core/erm/types";
 import { isMultiTenant } from "./_core/tenant";
 import { getSystemSettingSync } from "./config";
+import { brandName, tenantCommsConfig } from "./tenantBrand";
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 export interface MailParams {
@@ -38,23 +39,21 @@ function parseSender(raw: string): { name: string; email: string } {
   // Formatos: "Nombre <email>" o solo "email"
   const match = raw.match(/^(.+?)\s*<(.+?)>$/);
   if (match) return { name: match[1].trim(), email: match[2].trim() };
-  return { name: getSystemSettingSync("brand_name", "Skicenter"), email: raw.trim() };
+  return { name: brandName(), email: raw.trim() };
 }
 
 /**
  * Remitente en multiempresa: NUNCA el de Náyade ni el buzón global de la plataforma como
- * propio. Se usa el remitente verificado del tenant (`email_noreply_sender`) o, si no lo
- * tiene, el remitente de plataforma (`PLATFORM_MAIL_FROM`) con el nombre del tenant y
- * `Reply-To` hacia el correo del propio tenant. Sin ninguno, no se envía (falla cerrado).
+ * propio. Se usa la configuración de comunicaciones del tenant (`tenantCommsConfig`: remitente
+ * verificado, nombre y responder-a) o, sin remitente propio, el de plataforma
+ * (`PLATFORM_MAIL_FROM`) con el nombre del tenant y `Reply-To` hacia el correo del propio
+ * tenant. Sin remitente o sin nombre, no se envía (falla cerrado).
  */
 export function resolveTenantSender(): { from: string; replyTo?: string } | null {
-  const brand = getSystemSettingSync("brand_name", "");
-  const own = getSystemSettingSync("email_noreply_sender", "");
-  const platform = process.env.PLATFORM_MAIL_FROM ?? "";
-  const address = own || platform;
-  if (!address || !brand) return null;
-  const replyTo = getSystemSettingSync("email_reservations", "") || undefined;
-  return { from: `${brand.replace(/[<>"]/g, "")} <${address}>`, replyTo };
+  const c = tenantCommsConfig();
+  const address = c.fromEmail || (process.env.PLATFORM_MAIL_FROM ?? "");
+  if (!address || !c.fromName) return null;
+  return { from: `${c.fromName} <${address}>`, replyTo: c.replyTo ?? undefined };
 }
 
 // ─── Modo 1: Brevo HTTP API ───────────────────────────────────────────────────

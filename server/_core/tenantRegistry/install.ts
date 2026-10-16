@@ -15,6 +15,7 @@ import { configureModuleAccess } from "../modules/runtime";
 import { configureCapabilityAccess } from "../capabilities/access";
 import { warmConfigCache } from "../../config";
 import { warmIntegrationCreds } from "../credentials/runtime";
+import { configureTenantIdentity, warmTenantIdentity } from "../tenantIdentity";
 import { configureSupport, createSupportRouter, supportReadOnlyGuard } from "../support/session";
 import { writableTenantLister } from "./jobs";
 import { createTenantRuntime, type TenantRuntime } from "./runtime";
@@ -43,7 +44,9 @@ export function installTenantResolution(app: Express, env: NodeJS.ProcessEnv = p
     // Las tareas programadas recorren los tenants con escrituras del registro
     setJobTenantLister(writableTenantLister(rt.reader));
     // Las tareas también necesitan las credenciales del tenant en curso
-    setJobPrelude(() => Promise.all([warmConfigCache(), warmIntegrationCreds()]).then(() => undefined));
+    setJobPrelude(() => Promise.all([warmConfigCache(), warmIntegrationCreds(), warmTenantIdentity()]).then(() => undefined));
+    // Marca, URL pública y entidad fiscal de cada empresa (registro, solo lectura)
+    configureTenantIdentity(rt.identity);
     // Las licencias de módulos se leen del registro (solo lectura)
     configureModuleAccess(rt.entitlements);
     // Licencias por capacidad (catálogo de Elephant Source); se aplican con CAPABILITY_ENFORCEMENT=on
@@ -62,9 +65,9 @@ export function installTenantBinding(app: Express): void {
   // Tasa y concurrencia por tenant: ya con el contexto ligado
   const erm = getErm();
   if (erm) app.use(erm.guard);
-  // Precarga los ajustes del tenant (lecturas síncronas: Redsys, remitente de correo…)
+  // Precarga los ajustes y la identidad del tenant (lecturas síncronas: Redsys, remitente, URL pública…)
   app.use((_req, _res, next) => {
-    Promise.all([warmConfigCache(), warmIntegrationCreds()]).then(() => next(), () => next());
+    Promise.all([warmConfigCache(), warmIntegrationCreds(), warmTenantIdentity()]).then(() => next(), () => next());
   });
   // Soporte: lectura impuesta en el borde y puerta de entrada
   app.use(supportReadOnlyGuard());

@@ -398,7 +398,8 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         token: r.domain.verificationToken,
         platformTarget: d.platformTarget,
       });
-      if (v.ok && r.domain.status === "pending_verification") await d.registry.markDomainVerified(r.domain.domain, actor(req));
+      // Verificado o fallido: queda registrado (estado visible para la empresa)
+      if (r.domain.status === "pending_verification") await d.registry.recordDomainVerification(r.domain.domain, v, actor(req));
       res.json({ verified: v.ok, cname: v.cname, txt: v.txt, pending: v.pending });
     }),
   );

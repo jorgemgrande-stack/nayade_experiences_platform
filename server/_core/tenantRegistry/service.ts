@@ -150,6 +150,24 @@ export class TenantRegistryService {
     });
   }
 
+  /**
+   * Resultado de una comprobación DNS (`verifyDomainOwnership`): si es correcta, verifica; si no,
+   * deja constancia del fallo (estado «fallido» mientras siga pendiente). Las instrucciones
+   * pendientes contienen el token: solo se audita cuántas faltan.
+   */
+  async recordDomainVerification(domain: string, result: { ok: boolean; pending: string[] }, actor: Actor): Promise<TenantDomain> {
+    if (result.ok) return this.markDomainVerified(domain, actor);
+    return this.store.transaction(async (tx) => {
+      const r = await this.mustDomain(tx, domain);
+      if (r.domain.status !== "pending_verification") return r.domain;
+      await this.audit(tx, actor, r.tenant.id, "domain.verification_failed", "pending_verification", "pending_verification", {
+        domain: r.domain.domain,
+        missing: result.pending.length,
+      });
+      return r.domain;
+    });
+  }
+
   async activateDomain(domain: string, actor: Actor): Promise<TenantDomain> {
     return this.store.transaction(async (tx) => {
       const r = await this.mustDomain(tx, domain);
