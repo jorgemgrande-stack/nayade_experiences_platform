@@ -16,6 +16,7 @@
 import type { ProvisionRequest, ProvisionResult } from "../_core/provisioning/types";
 import type { LicensingService } from "../licensing/service";
 import type { SubscriptionService } from "../subscriptions/service";
+import { nextState } from "./machine";
 import { TrialError, type TrialService } from "./service";
 
 const DAY = 86_400_000;
@@ -41,7 +42,7 @@ export interface TrialOnboardingDeps {
   platformDomain: string;
   companies: CompanyPort;
   subscriptions: Pick<SubscriptionService, "create" | "list" | "detail" | "endTrial" | "changePlan">;
-  licensing: Pick<LicensingService, "apply">;
+  licensing: Pick<LicensingService, "apply"> & Partial<Pick<LicensingService, "list" | "setStatus">>;
   /** Id del precio aprobado vigente de un producto (catálogo publicado). */
   priceOf: (productKey: string, kind: "monthly" | "yearly") => Promise<number | null>;
   notify: TrialNotifier;
@@ -206,6 +207,46 @@ export class TrialOnboardingService {
   async expire(trialId: number, actor: string) {
     const t = await this.d.trials.must(trialId);
     return this.d.trials.markExpired(t.id, t.version, actor);
+  }
+
+  /**
+   * Suspensión (decisión humana, con motivo): la prueba pasa a «suspendida» y sus licencias quedan
+   * suspendidas (la empresa no puede entrar a operar). Nada se borra. Primero se comprueban el estado y
+   * la versión, luego las licencias (idempotente) y por último la transición: si algo falla a medias,
+   * repetir la petición termina el trabajo sin duplicar nada.
+   */
+  async suspend(trialId: number, o: { reason: string; expectedVersion: number; actor: string }) {
+    const t = await this.d.trials.must(trialId);
+    if (t.version !== o.expectedVersion) throw new TrialError("conflict", "La solicitud cambió mientras tanto; recarga");
+    if (!nextState(t.state, "suspend")) throw new TrialError("invalid_state", `No se puede suspender una prueba en «${t.state}»`);
+    if (!o.reason.trim() || o.reason.trim().length < 5) throw new TrialError("invalid_input", "Indica el motivo de la suspensión (mínimo 5 caracteres)");
+    if (t.tenantId) {
+      if (!this.d.licensing.list || !this.d.licensing.setStatus) throw new TrialError("invalid_state", "La gestión de licencias no está disponible");
+      const reason = `Suspensión de la prueba #${t.id}: ${o.reason.trim()}`.slice(0, 300);
+      for (const g of await this.d.licensing.list(t.tenantId)) {
+        if (g.status === "active" || g.status === "read_only") await this.d.licensing.setStatus(t.tenantId, g.capabilityId, "suspended", { actor: o.actor, reason, siteId: g.siteId });
+      }
+    }
+    return this.d.trials.suspend(t.id, t.version, o.reason, o.actor);
+  }
+
+  /**
+   * Reactivación: exige que quede plazo (si no, ampliar o convertir). Reaplica las licencias de la
+   * suscripción de la prueba (vuelven a «activas» con la caducidad del final de la prueba).
+   */
+  async reactivate(trialId: number, o: { expectedVersion: number; actor: string }) {
+    const t = await this.d.trials.must(trialId);
+    if (t.version !== o.expectedVersion) throw new TrialError("conflict", "La solicitud cambió mientras tanto; recarga");
+    if (!nextState(t.state, "reactivate")) throw new TrialError("invalid_state", `No se puede reactivar una prueba en «${t.state}»`);
+    if (t.endsAt === null || t.endsAt <= this.now()) throw new TrialError("invalid_state", "La prueba ha vencido: amplíala o conviértela en suscripción");
+    let licencesChanged = 0;
+    if (t.tenantId) {
+      const company = await this.d.companies.byTenant(t.tenantId);
+      const sub = company ? (await this.d.subscriptions.list({ companyId: company.id })).find((s) => s.status !== "canceled") : undefined;
+      if (!sub) throw new TrialError("invalid_state", "La prueba no tiene suscripción: no se pueden reactivar sus licencias");
+      licencesChanged = (await this.d.licensing.apply(sub.id, { activate: true, actor: o.actor, reason: `Reactivación de la prueba #${t.id}` })).applied.length;
+    }
+    return { trial: await this.d.trials.reactivate(t.id, t.version, o.actor), licencesChanged };
   }
 
   /**

@@ -160,11 +160,13 @@ export function createCrmRouter(
         type: z.enum(LEAD_REQUEST_TYPES as [string, ...string[]]).optional(),
         status: z.enum(LEAD_REQUEST_STATUSES as [string, ...string[]]).optional(),
         owner: optStr(100),
+        companyId: z.coerce.number().int().positive().optional(),
         limit: z.coerce.number().int().min(1).max(100).default(25),
         offset: z.coerce.number().int().min(0).max(100_000).default(0),
       })
       .parse(req.query);
     if (!opts.requests) return void res.json({ available: false, requests: [], total: 0, limit: f.limit, offset: f.offset });
+    if (f.companyId !== undefined && !(await store.get("companies", f.companyId))) throw new CrmError("not_found", "Empresa no encontrada");
     const p = await opts.requests.list({ ...f, type: f.type as LeadRequestType | undefined, status: f.status as LeadRequestStatus | undefined });
     res.json({ available: true, requests: p.rows, total: p.total, limit: f.limit, offset: f.offset });
   }));

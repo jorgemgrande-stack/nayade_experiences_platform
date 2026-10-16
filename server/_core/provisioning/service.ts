@@ -6,7 +6,7 @@
 import { RegistryError } from "../tenantRegistry/contract";
 import type { Actor, TenantRegistryService } from "../tenantRegistry/service";
 import type { TenantRegistryReader } from "../tenantRegistry/store";
-import type { DatabaseProvisioner, ModuleInstaller, ProvisioningStore, SchemaApplier, TenantSeeder, WelcomeNotifier } from "./ports";
+import type { DatabaseProvisioner, ModuleInstaller, ProvisioningListFilter, ProvisioningStore, SchemaApplier, TenantSeeder, WelcomeNotifier } from "./ports";
 import {
   PROVISION_STEPS,
   ProvisioningError,
@@ -73,6 +73,24 @@ export class ProvisioningService {
 
   async status(tenantId: string): Promise<ProvisioningRecord | null> {
     return this.d.store.get(tenantId);
+  }
+
+  /** Listado global de altas (los más recientes primero), filtrable por estado. */
+  async list(f: ProvisioningListFilter): Promise<{ items: ProvisioningRecord[]; total: number }> {
+    if (!this.d.store.list) throw new ProvisioningError("conflict", "El listado de altas no está disponible");
+    return this.d.store.list(f);
+  }
+
+  /**
+   * Reintento de un alta con la petición GUARDADA (quien reintenta no puede cambiarla). Idempotente:
+   * reanuda en el primer paso no completado; un alta ya completada se devuelve tal cual sin repetir
+   * nada; una abortada no se reanuda.
+   */
+  async retry(tenantId: string, actor: Actor): Promise<ProvisionResult> {
+    const rec = await this.d.store.get(tenantId);
+    if (!rec) throw new ProvisioningError("not_found", "Sin alta para ese tenant");
+    if (rec.status === "aborted") throw new ProvisioningError("aborted", "El alta fue abortada: no se puede reintentar");
+    return this.run(rec.request, actor);
   }
 
   /**

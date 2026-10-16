@@ -213,7 +213,11 @@ export class WebRequestService {
 
   // ── Uso desde el CRM ───────────────────────────────────────────────────────
 
-  async list(f: { type?: LeadRequestType; status?: LeadRequestStatus; owner?: string; q?: string; limit?: number; offset?: number } = {}): Promise<{ rows: InboxRow[]; total: number }> {
+  /**
+   * Bandeja de solicitudes. `companyId`: solo las de leads de esa empresa (enlazados a ella o ya
+   * convertidos en ella), para la ficha de la empresa en el CRM.
+   */
+  async list(f: { type?: LeadRequestType; status?: LeadRequestStatus; owner?: string; q?: string; companyId?: number; limit?: number; offset?: number } = {}): Promise<{ rows: InboxRow[]; total: number }> {
     const filter: Partial<LeadRequest> = {};
     if (f.type) filter.type = f.type;
     if (f.status) filter.status = f.status;
@@ -226,6 +230,7 @@ export class WebRequestService {
     let rows: InboxRow[] = requests.flatMap((r) => {
       const l = byId.get(r.leadId);
       if (!l) return [];
+      if (f.companyId !== undefined && l.companyId !== f.companyId && l.convertedCompanyId !== f.companyId) return [];
       return [{ request: view(r), lead: { id: l.id, name: l.name, email: l.email, phone: l.phone, companyName: l.companyName, status: l.status, owner: l.owner, priority: l.priority } }];
     });
     if (f.owner === "-") rows = rows.filter((x) => !x.lead.owner);

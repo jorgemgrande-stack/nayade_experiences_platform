@@ -38,9 +38,17 @@ export interface ModuleInstaller {
   install(dsn: string, moduleIds: string[]): Promise<{ installed: string[] }>;
 }
 
+export interface ProvisioningListFilter {
+  status?: ProvisioningRecord["status"];
+  limit: number;
+  offset: number;
+}
+
 export interface ProvisioningStore {
   get(tenantId: string): Promise<ProvisioningRecord | null>;
   put(rec: ProvisioningRecord): Promise<void>;
+  /** Listado global (los más recientes primero). Opcional: sin él no hay listado. */
+  list?(f: ProvisioningListFilter): Promise<{ items: ProvisioningRecord[]; total: number }>;
 }
 
 export class MemoryProvisioningStore implements ProvisioningStore {
@@ -51,6 +59,12 @@ export class MemoryProvisioningStore implements ProvisioningStore {
   }
   async put(rec: ProvisioningRecord) {
     this.rows.set(rec.tenantId, JSON.parse(JSON.stringify(rec)));
+  }
+  async list(f: ProvisioningListFilter) {
+    const all = Array.from(this.rows.values())
+      .filter((r) => !f.status || r.status === f.status)
+      .sort((a, b) => b.updatedAt - a.updatedAt || a.tenantId.localeCompare(b.tenantId));
+    return { items: all.slice(f.offset, f.offset + f.limit).map((r) => JSON.parse(JSON.stringify(r)) as ProvisioningRecord), total: all.length };
   }
 }
 

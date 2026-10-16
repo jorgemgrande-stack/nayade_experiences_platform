@@ -5,9 +5,9 @@
  * revelan si un correo ya tiene prueba (respuesta genérica), con campo trampa y límite por IP.
  *
  * De operador (`/cp/v1/trials`): listado, revisión (vencidas, ampliaciones y avisos debidos),
- * activación (crea plataforma y licencias: exige provisioning:write, subscriptions:write y
- * entitlements:write), vencimiento, ampliación, conversión, rechazo, cancelación y envío explícito de
- * avisos.
+ * historial de eventos, activación (crea plataforma y licencias: exige provisioning:write,
+ * subscriptions:write y entitlements:write), vencimiento, ampliación, suspensión y reactivación (con sus
+ * licencias), conversión, rechazo, cancelación y envío explícito de avisos.
  */
 import express, { type NextFunction, type Request, type Response, type Router } from "express";
 import rateLimit, { ipKeyGenerator } from "express-rate-limit";
@@ -116,6 +116,34 @@ export function createTrialAdminRouter(o: { onboarding: TrialOnboardingService; 
     "/:id",
     requireScope("subscriptions:read"),
     wrap(async (req, res) => void res.json({ trial: TrialService.view(await o.trials.must(id.parse(req.params.id))) })),
+  );
+  r.get(
+    "/:id/events",
+    requireScope("subscriptions:read"),
+    wrap(async (req, res) => {
+      const t = await o.trials.must(id.parse(req.params.id));
+      res.json({ trialId: t.id, state: t.state, events: await o.store.events(t.id) });
+    }),
+  );
+  // Suspender y reactivar cambian también las licencias de la empresa: exigen entitlements:write
+  r.post(
+    "/:id/suspend",
+    requireScope("subscriptions:write"),
+    requireScope("entitlements:write"),
+    wrap(async (req, res) => {
+      const b = z.object({ reason: z.string().trim().min(5).max(300), expectedVersion: z.number().int().min(1) }).strict().parse(req.body);
+      res.json({ trial: TrialService.view(await o.onboarding.suspend(id.parse(req.params.id), { reason: b.reason, expectedVersion: b.expectedVersion, actor: who(req) })) });
+    }),
+  );
+  r.post(
+    "/:id/reactivate",
+    requireScope("subscriptions:write"),
+    requireScope("entitlements:write"),
+    wrap(async (req, res) => {
+      const b = z.object({ expectedVersion: z.number().int().min(1) }).strict().parse(req.body);
+      const out = await o.onboarding.reactivate(id.parse(req.params.id), { expectedVersion: b.expectedVersion, actor: who(req) });
+      res.json({ trial: TrialService.view(out.trial), licencesChanged: out.licencesChanged });
+    }),
   );
   r.post(
     "/:id/activate",

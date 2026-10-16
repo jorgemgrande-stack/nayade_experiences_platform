@@ -910,6 +910,46 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         res.status(r.status === "completed" ? 201 : 202).json(r);
       }),
     );
+    // Listado global de altas para Operación SaaS (sin datos personales: ni el correo del administrador)
+    const provisioningStatus = z.enum(["pending", "running", "failed", "completed", "aborted"]);
+    router.get(
+      "/provisioning",
+      requireScope("tenants:read"),
+      wrap(async (req, res) => {
+        const status = provisioningStatus.optional().parse(req.query.status);
+        const limit = z.coerce.number().int().min(1).max(200).default(50).parse(req.query.limit);
+        const offset = z.coerce.number().int().min(0).max(100_000).default(0).parse(req.query.offset);
+        const { items, total } = await d.provisioning!.list({ status, limit, offset });
+        res.json({
+          provisioning: items.map((r) => {
+            const failed = Object.entries(r.steps).find(([, s]) => s?.state === "failed")?.[0] ?? null;
+            return {
+              tenantId: r.tenantId,
+              displayName: r.request.displayName,
+              status: r.status,
+              attempts: r.attempts,
+              completedSteps: Object.values(r.steps).filter((s) => s?.state === "done").length,
+              failedStep: r.status === "failed" ? failed : null,
+              lastError: r.lastError,
+              updatedAt: r.updatedAt,
+            };
+          }),
+          total,
+          limit,
+          offset,
+        });
+      }),
+    );
+    // Reintento idempotente con la petición GUARDADA (el cuerpo no se admite: no se puede cambiar el alta)
+    router.post(
+      "/provisioning/:id/retry",
+      requireScope("provisioning:write"),
+      wrap(async (req, res) => {
+        if (req.body && Object.keys(req.body).length) throw new ProvisioningError("invalid_request", "El reintento usa la petición guardada: no admite cuerpo");
+        const r = await d.provisioning!.retry(idSchema.parse(req.params.id), actor(req));
+        res.status(r.status === "completed" ? 200 : 202).json(r);
+      }),
+    );
     router.get(
       "/provisioning/:id",
       requireScope("tenants:read"),

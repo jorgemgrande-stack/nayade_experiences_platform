@@ -13,7 +13,7 @@ import fs from "node:fs";
 import path from "node:path";
 import mysql from "mysql2/promise";
 import { loadMigrations, splitStatements, validateMigrations } from "../../../scripts/db/migrationLib";
-import type { DatabaseProvisioner, ProvisioningStore, SchemaApplier, TenantSeeder } from "./ports";
+import type { DatabaseProvisioner, ProvisioningListFilter, ProvisioningStore, SchemaApplier, TenantSeeder } from "./ports";
 import type { ProvisioningRecord } from "./types";
 import { TENANT_TRIGGERS, createTriggerSql } from "./tenantTriggers";
 import { getTemplate, renderTemplateText } from "../templates/catalog";
@@ -337,6 +337,29 @@ export class MysqlProvisioningStore implements ProvisioningStore {
       attempts: Number(r.attempts),
       lastError: r.last_error ?? null,
       updatedAt: new Date(r.updated_at).getTime(),
+    };
+  }
+
+  async list(f: ProvisioningListFilter): Promise<{ items: ProvisioningRecord[]; total: number }> {
+    const where = f.status ? "WHERE status = ?" : "";
+    const args = f.status ? [f.status] : [];
+    const [rows] = await this.pool.query<mysql.RowDataPacket[]>(
+      `SELECT tenant_id, request, steps, status, attempts, last_error, updated_at FROM tenant_provisioning ${where} ORDER BY updated_at DESC, tenant_id LIMIT ? OFFSET ?`,
+      [...args, f.limit, f.offset],
+    );
+    const [[c]] = await this.pool.query<mysql.RowDataPacket[]>(`SELECT COUNT(*) AS n FROM tenant_provisioning ${where}`, args);
+    const parse = (v: unknown) => (typeof v === "string" ? JSON.parse(v) : v);
+    return {
+      items: rows.map((r) => ({
+        tenantId: r.tenant_id,
+        request: parse(r.request),
+        steps: parse(r.steps),
+        status: r.status,
+        attempts: Number(r.attempts),
+        lastError: r.last_error ?? null,
+        updatedAt: new Date(r.updated_at).getTime(),
+      })),
+      total: Number(c.n),
     };
   }
 

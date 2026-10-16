@@ -10,6 +10,7 @@
 import type mysql from "mysql2/promise";
 import type { QuoteCatalog } from "../catalog/quote";
 import type { SubscriptionStore } from "../subscriptions/store";
+import { includedUsers } from "../planSeats";
 
 export interface Site {
   tenantId: string;
@@ -166,8 +167,8 @@ export class MysqlOrganizationStore implements OrganizationStore {
 }
 
 const ID_RE = /^[a-z0-9][a-z0-9-]{0,62}$/;
-/** Límites por defecto sin suscripción (mínimo de Essential). */
-const FALLBACK = { sites: 1, fiscal_entities: 1 };
+/** Límites por defecto sin suscripción (mínimo de Essential; usuarios, los del catálogo oficial). */
+const FALLBACK = { sites: 1, fiscal_entities: 1, users: includedUsers("essential") ?? 3 };
 
 export class OrganizationService {
   private now: () => number;
@@ -183,7 +184,7 @@ export class OrganizationService {
   }
 
   /** Límites vigentes del tenant según su suscripción viva (null = por contrato, sin tope técnico). */
-  async limits(tenantId: string): Promise<{ sites: number | null; fiscal_entities: number | null; source: string }> {
+  async limits(tenantId: string): Promise<{ sites: number | null; fiscal_entities: number | null; users: number | null; source: string }> {
     const sub = (await this.d.subscriptions.list({})).find((s) => s.tenantId === tenantId && s.status !== "canceled");
     if (!sub) return { ...FALLBACK, source: "sin suscripción (mínimo de Essential)" };
     const now = this.now();
@@ -205,12 +206,30 @@ export class OrganizationService {
       }, 0);
     const sites = quota("sites");
     const fiscal = quota("fiscal_entities");
-    return { sites: sites === null ? null : sites + extra("sites"), fiscal_entities: fiscal === null ? null : fiscal + extra("fiscal_entities"), source: `suscripción #${sub.id}` };
+    const users = quota("users");
+    return {
+      sites: sites === null ? null : sites + extra("sites"),
+      fiscal_entities: fiscal === null ? null : fiscal + extra("fiscal_entities"),
+      users: users === null ? null : users + extra("users"),
+      source: `suscripción #${sub.id}`,
+    };
   }
 
   async overview(tenantId: string) {
     const [sites, fiscalEntities, limits] = await Promise.all([this.d.store.sites(tenantId), this.d.store.fiscalEntities(tenantId), this.limits(tenantId)]);
-    return { sites, fiscalEntities, limits, used: { sites: sites.filter((s) => s.status === "active").length, fiscal_entities: fiscalEntities.filter((f) => f.status === "active").length } };
+    return {
+      sites,
+      fiscalEntities,
+      limits,
+      used: {
+        sites: sites.filter((s) => s.status === "active").length,
+        fiscal_entities: fiscalEntities.filter((f) => f.status === "active").length,
+        // Los usuarios viven en la base de datos de cada empresa, a la que el plano de control no accede
+        // (solo guarda su DSN cifrado para el aprovisionamiento): no se cuentan aquí. El recuento real lo
+        // aplica la propia empresa al invitar (planSeats). null = no disponible desde el plano de control.
+        users: null as number | null,
+      },
+    };
   }
 
   async createFiscalEntity(tenantId: string, input: { entityId: string; legalName: string; taxId: string; country?: string; address?: string | null }, actor: string) {
