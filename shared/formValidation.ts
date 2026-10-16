@@ -173,3 +173,14 @@ export function validateProductForm(f: ProductFormInput, labels: { location: str
   if (disc !== null && (!Number.isFinite(disc) || disc < 0 || disc > 100)) out.discountPercent = "El descuento debe estar entre 0 y 100.";
   return out;
 }
+
+/** Alta de caja del TPV (los mismos límites que `tpv.createRegister` en el servidor). */
+export function validateCashRegisterForm(f: { name: string; location: string }, existingNames: string[] = []): Partial<Record<"name" | "location", string>> {
+  const out: Partial<Record<"name" | "location", string>> = {};
+  const name = f.name.trim();
+  if (!name) out.name = "Indica el nombre de la caja.";
+  else if (name.length > 100) out.name = "El nombre no puede superar los 100 caracteres.";
+  else if (existingNames.some((n) => n.trim().toLowerCase() === name.toLowerCase())) out.name = "Ya existe una caja con ese nombre.";
+  if (f.location.trim().length > 200) out.location = "La ubicación no puede superar los 200 caracteres.";
+  return out;
+}

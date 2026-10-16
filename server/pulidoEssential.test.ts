@@ -1,12 +1,15 @@
 /**
  * Pulido del recorrido Essential (defectos detectados en la integración), lógica pura y cableado:
  *  - WhatsApp de la web pública por empresa (nunca el de Náyade en multi; en single, el de siempre).
+ *  - CRM: aplicar un bono a un presupuesto llama a un procedimiento que existe.
+ *  - TPV: alta de caja desde el panel (validación y cableado).
  */
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { buildTheme, whatsappNumber } from "./_core/theme";
 import { LEGACY_WHATSAPP_PHONE, LEGACY_WHATSAPP_URL, whatsappTarget } from "../shared/whatsappButton";
+import { validateCashRegisterForm } from "../shared/formValidation";
 
 const themeOf = (s: Record<string, string>, multi: boolean) => buildTheme((k) => s[k] || undefined, { multi });
 
@@ -61,5 +64,29 @@ describe("CRM: aplicar un bono a un presupuesto", () => {
     const used = Array.from(new Set(Array.from(src.matchAll(/trpc\.crm\.([a-zA-Z]+)\.([a-zA-Z]+)\.use(?:Query|Mutation)/g), (m) => `crm.${m[1]}.${m[2]}`)));
     expect(used.length).toBeGreaterThan(10);
     expect(used.filter((p) => !procedures[p])).toEqual([]);
+  });
+});
+
+describe("TPV: alta de caja desde el panel", () => {
+  it("validación del formulario (mismos límites que el servidor)", () => {
+    expect(validateCashRegisterForm({ name: "", location: "" })).toEqual({ name: "Indica el nombre de la caja." });
+    expect(validateCashRegisterForm({ name: "   ", location: "" }).name).toBeDefined();
+    expect(validateCashRegisterForm({ name: "x".repeat(101), location: "" }).name).toMatch(/100/);
+    expect(validateCashRegisterForm({ name: "Caja 1", location: "y".repeat(201) }).location).toMatch(/200/);
+    expect(validateCashRegisterForm({ name: " caja recepción ", location: "" }, ["Caja Recepción"]).name).toBe("Ya existe una caja con ese nombre.");
+    expect(validateCashRegisterForm({ name: "Caja recepción", location: "Planta baja" }, ["Barra"])).toEqual({});
+  });
+
+  it("el panel de cajas ofrece «Nueva caja» (con estado vacío) y llama a tpv.createRegister", async () => {
+    const { appRouter } = await import("./routers");
+    const procedures = (appRouter as unknown as { _def: { procedures: Record<string, unknown> } })._def.procedures;
+    expect(procedures["tpv.createRegister"]).toBeDefined();
+    expect(procedures["tpv.getRegisters"]).toBeDefined();
+    const src = fs.readFileSync(path.join(__dirname, "../client/src/pages/admin/tpv/TpvBackoffice.tsx"), "utf8");
+    expect(src).toContain("trpc.tpv.createRegister.useMutation");
+    expect(src).toContain("trpc.tpv.getRegisters.useQuery");
+    expect(src).toContain("Nueva caja");
+    expect(src).toContain("Todavía no hay ninguna caja");
+    expect(src).toContain("validateCashRegisterForm");
   });
 });

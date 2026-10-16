@@ -11,12 +11,18 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { PanelEmpty, PanelError, PanelLoading, errorMessage } from "@/components/admin/PanelStates";
+import { usePanelSubscription } from "@/hooks/usePanelSubscription";
+import { validateCashRegisterForm } from "@shared/formValidation";
+import { toast } from "sonner";
 import { Link } from "wouter";
 import {
   Receipt, TrendingUp, CreditCard, Banknote, Smartphone,
   Calendar, Clock, User, ChevronRight, ExternalLink, Search,
   ArrowUpRight, ArrowDownLeft, CheckCircle, XCircle, BookOpen,
-  Phone, Mail, FileText,
+  Phone, Mail, FileText, Plus, MapPin,
 } from "lucide-react";
 
 const METHOD_ICONS: Record<string, React.ReactNode> = {
@@ -51,6 +57,45 @@ export default function TpvBackoffice() {
 
   const selectedSession = sessions?.find((s: any) => s.id === selectedSessionId);
 
+  // ── Cajas: una empresa nueva no trae ninguna y sin caja no se puede abrir sesión ──
+  const utils = trpc.useUtils();
+  const sub = usePanelSubscription();
+  const canManageCash = sub.canWrite("bill-cash");
+  const registersQ = trpc.tpv.getRegisters.useQuery();
+  const registers = registersQ.data ?? [];
+  const [showNewRegister, setShowNewRegister] = useState(false);
+  const [regForm, setRegForm] = useState({ name: "", location: "" });
+  const [regSubmitted, setRegSubmitted] = useState(false);
+  const [regServerError, setRegServerError] = useState<string | null>(null);
+  const regErrors = validateCashRegisterForm(regForm, registers.map((r) => r.name));
+  const createRegister = trpc.tpv.createRegister.useMutation({
+    onSuccess: (r) => {
+      utils.tpv.getRegisters.invalidate();
+      setShowNewRegister(false);
+      setRegForm({ name: "", location: "" });
+      setRegSubmitted(false);
+      toast.success(`Caja «${r?.name ?? regForm.name.trim()}» creada`);
+    },
+    // El diálogo sigue abierto con lo escrito para poder corregir y reintentar
+    onError: (e) => setRegServerError(errorMessage(e, "No se ha podido crear la caja.")),
+  });
+  const openNewRegister = () => {
+    setRegForm({ name: "", location: "" });
+    setRegSubmitted(false);
+    setRegServerError(null);
+    setShowNewRegister(true);
+  };
+  const submitNewRegister = () => {
+    setRegSubmitted(true);
+    setRegServerError(null);
+    if (regErrors.name || regErrors.location) {
+      document.getElementById(regErrors.name ? "register-name" : "register-location")?.focus();
+      return;
+    }
+    createRegister.mutate({ name: regForm.name.trim(), location: regForm.location.trim() || undefined });
+  };
+  const showRegErr = (k: "name" | "location") => (regSubmitted ? regErrors[k] : undefined);
+
   return (
     <AdminLayout>
       <div className="p-6 space-y-6">
@@ -72,6 +117,103 @@ export default function TpvBackoffice() {
             </Button>
           </Link>
         </div>
+
+        {/* Cajas */}
+        <section aria-labelledby="tpv-cajas" className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 id="tpv-cajas" className="text-sm font-semibold text-gray-400 uppercase tracking-wider">Cajas</h2>
+            <Button
+              onClick={openNewRegister}
+              disabled={!canManageCash}
+              title={canManageCash ? undefined : "Tu plan está en solo lectura: no se pueden crear cajas"}
+              className="bg-violet-600 hover:bg-violet-500 text-white gap-2 focus-visible:ring-2 focus-visible:ring-violet-300"
+            >
+              <Plus className="w-4 h-4" aria-hidden="true" />
+              Nueva caja
+            </Button>
+          </div>
+          {registersQ.isLoading ? (
+            <PanelLoading label="Cargando cajas…" className="py-6" />
+          ) : registersQ.isError ? (
+            <PanelError error={registersQ.error} onRetry={() => registersQ.refetch()} title="No se han podido cargar las cajas" />
+          ) : registers.length === 0 ? (
+            <PanelEmpty
+              icon={<Receipt className="w-6 h-6" />}
+              title="Todavía no hay ninguna caja"
+              description="Crea tu primera caja para poder abrir sesión en el TPV y cobrar ventas presenciales."
+            >
+              <Button onClick={openNewRegister} disabled={!canManageCash} className="bg-violet-600 hover:bg-violet-500 text-white gap-2">
+                <Plus className="w-4 h-4" aria-hidden="true" />
+                Crear la primera caja
+              </Button>
+            </PanelEmpty>
+          ) : (
+            <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+              {registers.map((r) => (
+                <li key={r.id} className="rounded-xl p-3 border border-gray-800 bg-gray-900">
+                  <p className="text-sm font-medium text-white">{r.name}</p>
+                  {r.location && (
+                    <p className="flex items-center gap-1 text-xs text-gray-400 mt-0.5">
+                      <MapPin className="w-3 h-3" aria-hidden="true" />
+                      {r.location}
+                    </p>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        <Dialog open={showNewRegister} onOpenChange={(o) => { if (!createRegister.isPending) setShowNewRegister(o); }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Nueva caja</DialogTitle>
+              <DialogDescription>Cada caja tiene sus propias sesiones de apertura y cierre.</DialogDescription>
+            </DialogHeader>
+            <form
+              noValidate
+              className="space-y-4"
+              onSubmit={(e) => { e.preventDefault(); submitNewRegister(); }}
+            >
+              <div className="space-y-1.5">
+                <Label htmlFor="register-name">Nombre <span aria-hidden="true">*</span></Label>
+                <Input
+                  id="register-name"
+                  value={regForm.name}
+                  maxLength={100}
+                  required
+                  autoComplete="off"
+                  placeholder="Ej.: Caja recepción"
+                  aria-invalid={!!showRegErr("name")}
+                  aria-describedby={showRegErr("name") ? "register-name-error" : undefined}
+                  onChange={(e) => setRegForm((f) => ({ ...f, name: e.target.value }))}
+                />
+                {showRegErr("name") && <p id="register-name-error" role="alert" className="text-sm text-red-600">{showRegErr("name")}</p>}
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="register-location">Ubicación (opcional)</Label>
+                <Input
+                  id="register-location"
+                  value={regForm.location}
+                  maxLength={200}
+                  autoComplete="off"
+                  placeholder="Ej.: Planta baja"
+                  aria-invalid={!!showRegErr("location")}
+                  aria-describedby={showRegErr("location") ? "register-location-error" : undefined}
+                  onChange={(e) => setRegForm((f) => ({ ...f, location: e.target.value }))}
+                />
+                {showRegErr("location") && <p id="register-location-error" role="alert" className="text-sm text-red-600">{showRegErr("location")}</p>}
+              </div>
+              {regServerError && <p role="alert" className="text-sm text-red-600">{regServerError}</p>}
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setShowNewRegister(false)} disabled={createRegister.isPending}>Cancelar</Button>
+                <Button type="submit" disabled={createRegister.isPending} className="bg-violet-600 hover:bg-violet-500 text-white">
+                  {createRegister.isPending ? "Creando…" : "Crear caja"}
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Sessions list */}
