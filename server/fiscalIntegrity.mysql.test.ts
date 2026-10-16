@@ -2,7 +2,8 @@
  * Integridad fiscal con la aplicación REAL sobre MySQL (opt-in, REGISTRY_TEST_DATABASE_URL): una empresa
  * aprovisionada desde la baseline, login de administrador y llamadas tRPC reales.
  *  - Una factura emitida no se borra (FORBIDDEN) y sigue existiendo.
- *  - Los abonos se numeran con el numerador central (serie ABN), sin duplicados con concurrencia.
+ *  - Los abonos siguen en la serie vigente ABO-AAAA-MM-nnnn (sin cambio de serie fiscal), sin duplicados con
+ *    concurrencia y continuando tras los números ya emitidos, que no se tocan.
  *  - El total abonado nunca supera lo facturado, tampoco con abonos simultáneos.
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
@@ -20,6 +21,8 @@ const run = crypto.randomBytes(3).toString("hex");
 const T = `fis-${run}`;
 const PASS = "clave-fiscal-" + run;
 const YEAR = new Date().getFullYear();
+const ABO = `ABO-${YEAR}-${String(new Date().getMonth() + 1).padStart(2, "0")}-`;
+const ABO_RE = new RegExp(`^${ABO}\\d{4}$`);
 
 describe.skipIf(!URL_)("integridad fiscal (routers reales)", () => {
   let admin: mysql.Pool;
@@ -153,14 +156,14 @@ describe.skipIf(!URL_)("integridad fiscal (routers reales)", () => {
     expect(rows).toHaveLength(1);
   });
 
-  it("abonos simultáneos: numeración ABN sin duplicados y nunca más de lo facturado", async () => {
+  it("abonos simultáneos: numeración ABO sin duplicados y nunca más de lo facturado", async () => {
     const id = await invoice(`FAC-${YEAR}-9002`, 121);
     // Cuatro abonos de 50 a la vez sobre 121: como mucho caben dos
     const results = await Promise.all([1, 2, 3, 4].map(() => mutate("crm.invoices.createCreditNote", { invoiceId: id, reason: "Abono parcial", partialAmount: 50 })));
     const okNumbers = results.filter((r) => r.status === 200).map((r) => r.json.result.data.json.creditNoteNumber as string);
     expect(okNumbers).toHaveLength(2);
     expect(new Set(okNumbers).size).toBe(2);
-    for (const n of okNumbers) expect(n).toMatch(new RegExp(`^ABN-${YEAR}-\\d{4}$`));
+    for (const n of okNumbers) expect(n).toMatch(ABO_RE);
     const [[sum]] = (await tenantDb.query<mysql.RowDataPacket[]>("SELECT SUM(ABS(total)) AS s FROM invoices WHERE creditNoteForId = ?", [id])) as unknown as [[{ s: string }]];
     expect(Number(sum.s)).toBe(100);
     // Lo pendiente (21) cierra la factura; después ya no se puede abonar
@@ -173,5 +176,37 @@ describe.skipIf(!URL_)("integridad fiscal (routers reales)", () => {
   it("importes no válidos: cero, negativo o por encima de lo pendiente", async () => {
     const id = await invoice(`FAC-${YEAR}-9003`, 50);
     for (const partialAmount of [0, -10, 60]) expect((await mutate("crm.invoices.createCreditNote", { invoiceId: id, reason: "x", partialAmount })).status, String(partialAmount)).toBe(400);
+  });
+
+  it("abono total: cubre todo lo facturado y cierra la factura", async () => {
+    const id = await invoice(`FAC-${YEAR}-9004`, 242);
+    const r = ok(await mutate("crm.invoices.createCreditNote", { invoiceId: id, reason: "Abono total" }));
+    expect(r.creditNoteNumber).toMatch(ABO_RE);
+    const [[cn]] = (await tenantDb.query<mysql.RowDataPacket[]>("SELECT total FROM invoices WHERE id = ?", [r.creditNoteId])) as unknown as [[{ total: string }]];
+    expect(Number(cn.total)).toBe(-242);
+    const [[st]] = (await tenantDb.query<mysql.RowDataPacket[]>("SELECT status FROM invoices WHERE id = ?", [id])) as unknown as [[{ status: string }]];
+    expect(st.status).toBe("abonada");
+  });
+
+  it("los abonos ya emitidos se conservan y la serie continúa tras el mayor (también con huecos)", async () => {
+    // Un abono antiguo con un número alto (hueco en la serie): el siguiente es ese + 1, no un recuento
+    const legacyId = await invoice(`${ABO}0500`, 10);
+    await tenantDb.query("UPDATE invoices SET invoiceType = 'abono', total = '-10.00' WHERE id = ?", [legacyId]);
+    const [before] = await tenantDb.query<mysql.RowDataPacket[]>("SELECT id, invoiceNumber, total, status FROM invoices WHERE invoiceType = 'abono' ORDER BY id");
+    const id = await invoice(`FAC-${YEAR}-9005`, 30);
+    const r = ok(await mutate("crm.invoices.createCreditNote", { invoiceId: id, reason: "Tras hueco", partialAmount: 5 }));
+    expect(r.creditNoteNumber).toBe(`${ABO}0501`);
+    const [after] = await tenantDb.query<mysql.RowDataPacket[]>("SELECT id, invoiceNumber, total, status FROM invoices WHERE invoiceType = 'abono' AND id <> ? ORDER BY id", [r.creditNoteId]);
+    expect(after).toEqual(before);
+  });
+
+  it("abonos simultáneos de facturas distintas: ningún número duplicado (reintento por índice único)", async () => {
+    const ids = await Promise.all([9006, 9007, 9008, 9009, 9010, 9011].map((n) => invoice(`FAC-${YEAR}-${n}`, 100)));
+    const results = await Promise.all(ids.map((invoiceId) => mutate("crm.invoices.createCreditNote", { invoiceId, reason: "Simultáneo", partialAmount: 10 })));
+    const numbers = results.map((r) => ok(r).creditNoteNumber as string);
+    expect(new Set(numbers).size).toBe(ids.length);
+    for (const n of numbers) expect(n).toMatch(ABO_RE);
+    const [dups] = await tenantDb.query<mysql.RowDataPacket[]>("SELECT invoiceNumber FROM invoices GROUP BY invoiceNumber HAVING COUNT(*) > 1");
+    expect(dups).toHaveLength(0);
   });
 });

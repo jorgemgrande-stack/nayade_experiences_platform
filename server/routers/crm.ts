@@ -51,6 +51,7 @@ import type { SQL } from "drizzle-orm";
 import { sendEmail as sharedSendEmail } from "../mailer";
 import { sendManagedEmail, logDirectEmail } from "../emailManager";
 import { generateDocumentNumber } from "../documentNumbers";
+import { nextCreditNoteNumber, withCreditNoteNumberRetry } from "../creditNoteNumber";
 import { htmlToPdf } from "../pdfGenerator";
 import { buildRedsysForm, generateMerchantOrder } from "../redsys";
 import { storagePut, hasExternalStorage } from "../storage";
@@ -5784,8 +5785,9 @@ export const crmRouter = router({
       }))
       .mutation(async ({ input, ctx }) => {
         // Una transacción que BLOQUEA la factura original: dos abonos simultáneos se serializan y nunca
-        // abonan entre los dos más de lo facturado
-        const done = await db.transaction(async (tx) => {
+        // abonan entre los dos más de lo facturado. Si otro abono simultáneo (de otra factura) toma el mismo
+        // número, el índice único lo rechaza y la transacción completa se reintenta.
+        const done = await withCreditNoteNumberRetry(() => db.transaction(async (tx) => {
           const [original] = await tx.select().from(invoices).where(eq(invoices.id, input.invoiceId)).for("update");
           if (!original) throw new TRPCError({ code: "NOT_FOUND" });
           if (original.invoiceType === "abono") throw new TRPCError({ code: "BAD_REQUEST", message: "No se puede abonar una factura de abono" });
@@ -5802,9 +5804,9 @@ export const crmRouter = router({
           if (!(creditTotal > 0)) throw new TRPCError({ code: "BAD_REQUEST", message: "El importe del abono debe ser mayor que cero" });
           if (creditTotal - remaining > 0.005) throw new TRPCError({ code: "BAD_REQUEST", message: `El abono (${creditTotal.toFixed(2)}) supera lo pendiente de abonar (${remaining.toFixed(2)})` });
 
-          // Numeración: el numerador central y atómico (serie «ABN», la misma que las anulaciones), nunca
-          // un recuento de filas (con dos abonos simultáneos daba el mismo número)
-          const creditNoteNumber = await generateDocumentNumber("abono", "crm:createCreditNote", String(ctx.user.id));
+          // Numeración en la serie vigente ABO-AAAA-MM-nnnn: máximo del mes + 1, único por índice (nunca un
+          // recuento de filas, que con dos abonos simultáneos daba el mismo número)
+          const creditNoteNumber = await nextCreditNoteNumber(tx, now);
 
           const origTaxRate = parseFloat(String(original.taxRate ?? "21"));
           const creditDivisor = 1 + origTaxRate / 100;
@@ -5853,7 +5855,7 @@ export const crmRouter = router({
           }
 
           return { creditNoteId, creditNoteNumber };
-        });
+        }));
 
         await logActivity("invoice", input.invoiceId, "credit_note_created", ctx.user.id, ctx.user.name, { creditNoteId: done.creditNoteId, creditNoteNumber: done.creditNoteNumber, reason: input.reason });
         return { success: true, creditNoteId: done.creditNoteId, creditNoteNumber: done.creditNoteNumber };
