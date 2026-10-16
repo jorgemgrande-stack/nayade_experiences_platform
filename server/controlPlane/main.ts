@@ -123,7 +123,8 @@ async function main() {
   const evaluate = () => runAlerts({ reader: store, incidents, usage, quotas, entitlements });
   if (process.env.CP_ALERTS_EVERY_SECONDS) {
     const every = Math.max(30, Number(process.env.CP_ALERTS_EVERY_SECONDS)) * 1000;
-    const t = setInterval(() => void evaluate().catch(() => undefined), every);
+    // Un fallo de la evaluación no puede pasar desapercibido: la monitorización quedaría muerta
+    const t = setInterval(() => void evaluate().catch((e) => console.error(JSON.stringify({ ctx: "Alerts", event: "evaluate_failed", error: e instanceof Error ? e.name : "error" }))), every);
     t.unref?.();
   }
   let crm: { service: CrmService; store: MysqlCrmStore } | undefined;

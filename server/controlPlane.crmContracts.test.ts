@@ -134,6 +134,7 @@ describe("API de contratos v2", () => {
   let port: number;
   const FULL = "ct-full-token-aaaaaaaaaaaaaaaaaaaaaa";
   const READ = "ct-read-token-bbbbbbbbbbbbbbbbbbbbbb";
+  const PROV = "ct-prov-token-cccccccccccccccccccccc";
   let companyId: number;
 
   beforeAll(async () => {
@@ -146,6 +147,7 @@ describe("API de contratos v2", () => {
       tokens: [
         { id: "ana", sha256: hashToken(FULL), scopes: ["crm:read", "crm:write"] },
         { id: "viewer", sha256: hashToken(READ), scopes: ["crm:read"] },
+        { id: "altas", sha256: hashToken(PROV), scopes: ["crm:read", "crm:write", "provisioning:write", "billing:write"] },
       ],
       registry: new TenantRegistryService(reg, () => ring),
       reader: reg,
@@ -213,7 +215,9 @@ describe("API de contratos v2", () => {
     await call("POST", `/contracts/${c.id}/status`, FULL, { status: "sent" });
     const s = await call("POST", `/contracts/${c.id}/status`, FULL, { status: "signed", signatureRef: "Papel firmado" });
     expect(s.json.contract).toMatchObject({ status: "signed", signatureMethod: "manual", signatureRef: "Papel firmado" });
-    expect((await call("POST", `/contracts/${c.id}/status`, FULL, { status: "active" })).status).toBe(409);
+    // Activar crea un tenant: crm:write no basta (403); con provisioning:write llega a la activación (409: no configurada)
+    expect((await call("POST", `/contracts/${c.id}/status`, FULL, { status: "active" })).status).toBe(403);
+    expect((await call("POST", `/contracts/${c.id}/status`, PROV, { status: "active" })).status).toBe(409);
     const r = await call("POST", `/contracts/${c.id}/renew`, FULL);
     expect(r.status).toBe(201);
     expect(r.json.contract.previousContractId).toBe(c.id);

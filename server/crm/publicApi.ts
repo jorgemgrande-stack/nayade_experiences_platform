@@ -220,12 +220,17 @@ export function createPublicIntakeRouter(cfg: PublicIntakeConfig): Router {
         }
         out = { outcome: "replayed", request: replay };
       } else {
-        out = await cfg.service.receive(input, { idempotencyKey, ipHash: ip });
-      }
-      if (out.outcome === "created") {
+        // El ticket se reserva ANTES de esperar: dos envíos simultáneos no pueden usarlo dos veces
         usedNonces.set(t.nonce, t.expiresAt);
-        perEmail.set(email, [...hour, now()]);
+        try {
+          out = await cfg.service.receive(input, { idempotencyKey, ipHash: ip });
+        } catch (e) {
+          usedNonces.delete(t.nonce);
+          throw e;
+        }
+        if (out.outcome !== "created") usedNonces.delete(t.nonce);
       }
+      if (out.outcome === "created") perEmail.set(email, [...hour, now()]);
       audit({ event: "accepted", outcome: out.outcome, type: out.request.type, ip: ip.slice(0, 16) });
       res.status(out.outcome === "created" ? 201 : 200).json({
         status: "received",

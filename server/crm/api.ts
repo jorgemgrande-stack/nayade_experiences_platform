@@ -367,7 +367,16 @@ export function createCrmRouter(
   }));
   r.post("/contracts/:id/status", requireScope("crm:write"), wrap(async (req, res) => {
     const b = z.object({ status: z.enum(["draft", "sent", "signed", "active", "cancelled"]), signatureRef: optStr(200) }).parse(req.body);
-    res.json({ contract: await crm.setContractStatus(id.parse(req.params.id), b.status, who(req), { signatureRef: b.signatureRef }) });
+    const cid = id.parse(req.params.id);
+    // Activar un contrato crea el tenant y concede licencias: exige los mismos permisos que el alta
+    // (/companies/:id/onboard), no solo crm:write.
+    if (b.status === "active") {
+      const contract = await store.get("contracts", cid);
+      const scopes = getAuth(req)!.scopes;
+      const missing = (contract?.planId ? (["provisioning:write", "billing:write"] as const) : (["provisioning:write"] as const)).filter((s) => !scopes.has(s));
+      if (missing.length) return void res.status(403).json({ error: "forbidden", message: `Ámbito requerido: ${missing.join(", ")}` });
+    }
+    res.json({ contract: await crm.setContractStatus(cid, b.status, who(req), { signatureRef: b.signatureRef }) });
   }));
   r.post("/contracts/:id/renew", requireScope("crm:write"), wrap(async (req, res) => {
     res.status(201).json({ contract: await crm.renewContract(id.parse(req.params.id), who(req)) });
@@ -391,7 +400,7 @@ export function createCrmRouter(
     res.status(201).json({ activity: a });
   }));
   r.get("/tasks", requireScope("crm:read"), wrap(async (req, res) => {
-    const until = req.query.until ? Number(req.query.until) : undefined;
+    const until = req.query.until ? z.coerce.number().int().min(0).parse(req.query.until) : undefined;
     res.json({ tasks: await crm.tasks({ until, includeDone: req.query.done === "1" }) });
   }));
   r.post("/tasks/:id/done", requireScope("crm:write"), wrap(async (req, res) => void res.json({ task: await crm.completeTask(id.parse(req.params.id)) })));
