@@ -265,7 +265,8 @@ describe.skipIf(!URL_)("sobreventa de spa y hotel (routers reales)", () => {
     const search = ok(await query("hotel.searchAvailability", { checkIn: "2027-04-10", checkOut: "2027-04-13", adults: 2, children: 0 }));
     expect(search.find((s: any) => s.id === room).availableUnits).toBe(0);
     const cal = ok(await query("hotel.getRoomCalendar", { roomTypeId: room, year: 2027, month: 4 }));
-    expect(cal.find((d: any) => d.date === "2027-04-10").available).toBe(0);
+    // La noche del 11 es la única que ocupan todas las estancias posibles (la ganadora es cualquiera de las 8)
+    expect(cal.find((d: any) => d.date === "2027-04-11").available).toBe(0);
     expect(cal.find((d: any) => d.date === "2027-04-20").available).toBe(2);
     // Una estancia que no solapa sigue disponible
     ok(await bookHotel(room, "2027-04-13", "2027-04-15", 210));
