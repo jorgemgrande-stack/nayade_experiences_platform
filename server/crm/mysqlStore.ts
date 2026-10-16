@@ -34,7 +34,15 @@ const DEFS: Record<keyof Tables, { table: string; cols: Col[] }> = {
   },
   contracts: {
     table: "crm_contracts",
-    cols: [t("companyId"), t("opportunityId"), t("planId"), t("modules", "modules", true), t("status"), t("amountCents"), t("currency"), t("startDate"), t("endDate"), t("documentUrl"), t("signedAt"), t("tenantId"), t("createdAt")],
+    cols: [
+      t("reference"), t("companyId"), t("opportunityId"), t("planId"), t("modules", "modules", true), t("status"), t("amountCents"), t("currency"),
+      t("startDate"), t("endDate"), t("documentUrl"), t("signedAt"), t("tenantId"), t("conditions"), t("billingInterval"), t("renewalDate"),
+      b("autoRenew"), t("noticeDays"), t("version"), t("previousContractId"), t("signatureMethod"), t("signatureRef"), t("createdAt"), t("updatedAt"),
+    ],
+  },
+  contractVersions: {
+    table: "crm_contract_versions",
+    cols: [t("contractId"), t("version"), t("snapshot", "snapshot", true), t("reason"), t("author"), t("createdAt")],
   },
   activities: {
     table: "crm_activities",
@@ -43,8 +51,8 @@ const DEFS: Record<keyof Tables, { table: string; cols: Col[] }> = {
 };
 
 /** Claves ajenas numéricas (taxId, tenantId o planId son texto). */
-const NUMERIC_IDS = new Set(["companyId", "contactId", "opportunityId", "entityId", "convertedCompanyId", "convertedOpportunityId"]);
-const NUMERIC = new Set(["createdAt", "updatedAt", "dueAt", "doneAt", "closedAt", "expectedClose", "startDate", "endDate", "signedAt", "amountCents", "nextActionAt"]);
+const NUMERIC_IDS = new Set(["companyId", "contactId", "opportunityId", "entityId", "convertedCompanyId", "convertedOpportunityId", "contractId", "previousContractId"]);
+const NUMERIC = new Set(["createdAt", "updatedAt", "dueAt", "doneAt", "closedAt", "expectedClose", "startDate", "endDate", "signedAt", "amountCents", "nextActionAt", "renewalDate", "noticeDays", "version"]);
 
 function fromRow(table: keyof Tables, r: Record<string, unknown>): any {
   const out: Record<string, unknown> = { id: Number(r.id) };

@@ -1,5 +1,5 @@
 /** Puerto de persistencia del CRM + implementación en memoria (pruebas/desarrollo). */
-import type { Activity, Company, Contact, Contract, Lead, Opportunity } from "./types";
+import type { Activity, Company, Contact, Contract, ContractVersion, Lead, Opportunity } from "./types";
 
 export interface CrmStore {
   insert<T extends keyof Tables>(table: T, row: Omit<Tables[T], "id">): Promise<Tables[T]>;
@@ -15,6 +15,7 @@ export interface Tables {
   leads: Lead;
   opportunities: Opportunity;
   contracts: Contract;
+  contractVersions: ContractVersion;
   activities: Activity;
 }
 
@@ -25,6 +26,7 @@ export class MemoryCrmStore implements CrmStore {
     leads: new Map(),
     opportunities: new Map(),
     contracts: new Map(),
+    contractVersions: new Map(),
     activities: new Map(),
   };
   private seq = 0;
