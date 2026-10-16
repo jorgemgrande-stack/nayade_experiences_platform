@@ -43,6 +43,8 @@ export const TRPC_ROUTER_CAPABILITIES: Record<string, string> = {
   cancellations: "shop-orders",
   discounts: "shop-coupons",
   cms: "cms-editor",
+  // Blog, también su parte pública: sin contratar no se sirve; en solo lectura se sigue leyendo
+  blog: "cms-blog",
   homeModules: "cms-editor",
   gallery: "cms-editor",
   accounting: "bill-reports",

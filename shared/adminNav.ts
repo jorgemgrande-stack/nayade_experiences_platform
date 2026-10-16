@@ -283,6 +283,7 @@ export const TASK_NAV: NavSection[] = [
     label: "Web",
     items: [
       { label: "Páginas", href: "/admin/cms/paginas", key: "t-paginas", icon: "globe", roles: ADMIN, capabilities: ["cms-pages-forms", "cms-editor"] },
+      { label: "Blog", href: "/admin/cms/blog", key: "t-blog", icon: "file", roles: ADMIN, capabilities: ["cms-blog"] },
       {
         label: "Contenido", href: "/admin/cms", key: "t-contenido", icon: "image", roles: ADMIN, capabilities: ["cms-editor"],
         children: [

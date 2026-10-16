@@ -211,6 +211,7 @@ import { emailCommunicationsRouter } from "./routers/emailCommunications";
 import { partnersRouter } from "./routers/partners";
 import { publicExpensesRouter } from "./routers/publicExpenses";
 import { fiscalAuditRouter } from "./routers/fiscalAuditRouter";
+import { blogRouter } from "./routers/blog";
 import { getAllCounters, updateCounterPrefix, resetCounter, getDocumentNumberLogs } from "./documentNumbers";
 import type { DocumentType } from "./documentNumbers";
 import { integrationEnv } from "./_core/tenantConfig";
@@ -2262,6 +2263,7 @@ export const appRouter = router({
   hotel: hotelRouter,
   spa: spaRouter,
   reviews: reviewsRouter,
+  blog: blogRouter,
   restaurants: restaurantsRouter,
   skiRental: skiRentalRouter,
   crm: crmRouter,

@@ -38,8 +38,9 @@ describe("contenido del centro de ayuda", () => {
 
   it("no documenta como disponible nada inexistente ni promete horarios", () => {
     const text = JSON.stringify(HELP_ARTICLES).toLowerCase();
-    // Las etiquetas del CRM ya existen (crm-tags): se documentan en «etiquetas-clientes»
-    for (const banned of ["blog", "chat en vivo", "ticket de soporte", "abrir un ticket", "24/7", "24 horas", "horario de atención", "respuesta en", "garantiza"]) {
+    // El blog (cms-blog) y las etiquetas del CRM (crm-tags) ya existen y tienen su guía
+    expect(getHelpArticle("publicar-blog")?.contexts).toEqual([{ path: "/admin/cms/blog" }]);
+    for (const banned of ["chat en vivo", "ticket de soporte", "abrir un ticket", "24/7", "24 horas", "horario de atención", "respuesta en", "garantiza"]) {
       expect(text, banned).not.toContain(banned);
     }
   });

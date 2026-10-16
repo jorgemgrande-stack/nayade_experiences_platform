@@ -50,6 +50,8 @@ import PoliticaPrivacidad from "./pages/PoliticaPrivacidad";
 import TerminosCondiciones from "./pages/TerminosCondiciones";
 import PoliticaCookies from "./pages/PoliticaCookies";
 import CondicionesCancelacion from "./pages/CondicionesCancelacion";
+import Blog from "./pages/Blog";
+import BlogPost from "./pages/BlogPost";
 
 // ── ADMIN PAGES (lazy — solo se cargan cuando el usuario navega a /admin) ────
 const AdminDashboard = lazy(() => import("./pages/admin/AdminDashboard"));
@@ -61,6 +63,7 @@ const PagesManager = lazy(() => import("./pages/admin/cms/PagesManager"));
 const MultimediaManager = lazy(() => import("./pages/admin/cms/MultimediaManager"));
 const HomeModulesManager = lazy(() => import("./pages/admin/cms/HomeModulesManager"));
 const GalleryManager = lazy(() => import("./pages/admin/cms/GalleryManager"));
+const BlogManager = lazy(() => import("./pages/admin/cms/BlogManager"));
 
 // Products
 const ExperiencesManager = lazy(() => import("./pages/admin/products/ExperiencesManager"));
@@ -266,6 +269,9 @@ function Router() {
       <Route path="/condiciones-cancelacion" component={CondicionesCancelacion} />
       {/* ── DYNAMIC PAGES (CMS) ── */}
       <Route path="/pagina/:slug" component={DynamicPage} />
+      {/* ── BLOG (entradas publicadas de la empresa) ── */}
+      <Route path="/blog" component={Blog} />
+      <Route path="/blog/:slug" component={BlogPost} />
 
       {/* ── ADMIN ROUTES (lazy loaded) ── */}
       <Route path="/admin">
@@ -284,6 +290,7 @@ function Router() {
       <Route path="/admin/cms/multimedia">{() => <Suspense fallback={<AdminLoadingFallback />}><MultimediaManager /></Suspense>}</Route>
       <Route path="/admin/cms/modulos-home">{() => <Suspense fallback={<AdminLoadingFallback />}><HomeModulesManager /></Suspense>}</Route>
       <Route path="/admin/cms/galeria">{() => <Suspense fallback={<AdminLoadingFallback />}><GalleryManager /></Suspense>}</Route>
+      <Route path="/admin/cms/blog">{() => <Suspense fallback={<AdminLoadingFallback />}><BlogManager /></Suspense>}</Route>
 
       {/* Products */}
       <Route path="/admin/productos">{() => <Suspense fallback={<AdminLoadingFallback />}><ExperiencesManager /></Suspense>}</Route>
