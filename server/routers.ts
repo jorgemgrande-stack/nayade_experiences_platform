@@ -165,6 +165,7 @@ import { hotelRouter } from "./routers/hotel";
 import { spaRouter } from "./routers/spa";
 import { reviewsRouter } from "./routers/reviews";
 import { restaurantsRouter } from "./routers/restaurants";
+import { skiRentalRouter } from "./skiRental/router";
 import { crmRouter } from "./routers/crm";
 import { suppliersRouter, settlementsRouter } from "./routers/suppliers";
 import { supplierPortalRouter } from "./routers/supplierPortal";
@@ -2218,6 +2219,7 @@ export const appRouter = router({
   spa: spaRouter,
   reviews: reviewsRouter,
   restaurants: restaurantsRouter,
+  skiRental: skiRentalRouter,
   crm: crmRouter,
   commercialFollowup: commercialFollowupRouter,
   ghlInbox: ghlInboxRouter,
