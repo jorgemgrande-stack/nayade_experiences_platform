@@ -2,6 +2,8 @@
  * Pulido del recorrido Essential (defectos detectados en la integración), lógica pura y cableado:
  *  - WhatsApp de la web pública por empresa (nunca el de Náyade en multi; en single, el de siempre).
  */
+import fs from "node:fs";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { buildTheme, whatsappNumber } from "./_core/theme";
 import { LEGACY_WHATSAPP_PHONE, LEGACY_WHATSAPP_URL, whatsappTarget } from "../shared/whatsappButton";
@@ -45,5 +47,19 @@ describe("botón de WhatsApp de la web pública", () => {
     expect(whatsappNumber("0034600112233")).toBe("34600112233");
     expect(whatsappNumber("<script>")).toBeNull();
     expect(whatsappNumber("")).toBeNull();
+  });
+});
+
+describe("CRM: aplicar un bono a un presupuesto", () => {
+  it("el panel llama a un procedimiento que existe (crm.timeline.applyDiscountCode)", async () => {
+    const { appRouter } = await import("./routers");
+    const procedures = (appRouter as unknown as { _def: { procedures: Record<string, unknown> } })._def.procedures;
+    expect(procedures["crm.timeline.applyDiscountCode"]).toBeDefined();
+    const src = fs.readFileSync(path.join(__dirname, "../client/src/pages/admin/crm/CRMDashboard.tsx"), "utf8");
+    expect(src).toContain("trpc.crm.timeline.applyDiscountCode.useMutation");
+    // Toda llamada trpc.crm.<grupo>.<procedimiento> del panel CRM existe en el servidor
+    const used = Array.from(new Set(Array.from(src.matchAll(/trpc\.crm\.([a-zA-Z]+)\.([a-zA-Z]+)\.use(?:Query|Mutation)/g), (m) => `crm.${m[1]}.${m[2]}`)));
+    expect(used.length).toBeGreaterThan(10);
+    expect(used.filter((p) => !procedures[p])).toEqual([]);
   });
 });

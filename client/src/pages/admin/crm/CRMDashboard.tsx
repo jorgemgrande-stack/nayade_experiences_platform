@@ -2809,7 +2809,7 @@ function QuoteEditModal({
     { enabled: !!bonoQueryCode }
   );
 
-  const applyDiscountCodeMut = trpc.crm.quotes.applyDiscountCode.useMutation({
+  const applyDiscountCodeMut = trpc.crm.timeline.applyDiscountCode.useMutation({
     onSuccess: (result) => {
       toast.success(`Bono ${result.code} aplicado — ${result.discountEur.toFixed(2)} € descontados`);
       setDiscount(result.discountEur);
