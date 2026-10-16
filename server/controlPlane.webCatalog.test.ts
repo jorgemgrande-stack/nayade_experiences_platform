@@ -416,3 +416,31 @@ describe("panel de la web", () => {
   });
 });
 
+describe("cotizador por API (catálogo de Elephant Source)", () => {
+  it("público: cotiza sobre lo publicado, valida la entrada y no admite «owned»; CRM: con permiso y con lo ya contratado", async () => {
+    const app = await start();
+    try {
+      const svc = new WebAdminService({ store: app.webStore, refs: { moduleIds: BUILTIN_MODULES.map((m) => m.id), planIds: () => null } });
+      await seedElephantSource(svc, app.webStore);
+      const pub = await app.call("POST", "/public/site/quote", { body: { plan: "business", interval: "year", items: [{ key: "hotel-net-complete" }], users: 17 } });
+      expect(pub.status).toBe(200);
+      expect(pub.headers["cache-control"]).toBe("no-store");
+      expect(pub.json.totals).toMatchObject({ yearlyCents: 75900, monthlyCents: 11900 + 1000 });
+      expect(pub.json.contractable).toBe("not_available");
+      expect((await app.call("POST", "/public/site/quote", { body: { plan: "essential", interval: "semana" } })).status).toBe(400);
+      expect((await app.call("POST", "/public/site/quote", { body: { plan: "essential", interval: "month", owned: ["connect-voice"] } })).status).toBe(400);
+      // Admin: sin token 401; con web:read, cotiza con lo ya contratado y lista el catálogo
+      expect((await app.call("POST", "/web/quote", { body: { plan: "essential", interval: "month" } })).status).toBe(401);
+      const crm = await app.call("POST", "/web/quote", { token: TOK.read, body: { plan: "essential", interval: "month", items: [{ key: "connect-pack-communications" }], owned: ["connect-voice"] } });
+      expect(crm.json.lines.find((l: { key: string }) => l.key === "connect-pack-communications").replaces).toEqual(["connect-voice"]);
+      const cat = await app.call("GET", "/web/catalog", { token: TOK.read });
+      expect(cat.json.capabilities).toHaveLength(74);
+      expect(cat.json.catalog.products.find((p: { key: string }) => p.key === "essential").commercialStatus).toBe("on_request");
+      // Si la BD cae: 503 explícito, nunca un precio inventado
+      app.webStore.fail = true;
+      expect((await app.call("POST", "/public/site/quote", { body: { plan: "essential", interval: "month" } })).status).toBe(503);
+    } finally {
+      await app.close();
+    }
+  });
+});
