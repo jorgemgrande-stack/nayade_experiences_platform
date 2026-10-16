@@ -38,7 +38,7 @@ const GHL_API_VERSION = "2021-07-28";
 // Garantiza que las tablas existen aunque la migración de Drizzle no haya corrido.
 // CREATE TABLE IF NOT EXISTS es idempotente y seguro en producción.
 
-async function initGhlTables(): Promise<void> {
+export async function initGhlTables(): Promise<void> {
   try {
     await _pool.execute(`
       CREATE TABLE IF NOT EXISTS ghl_conversations (
@@ -111,8 +111,8 @@ async function initGhlTables(): Promise<void> {
   }
 }
 
-// Ejecutar al cargar el módulo (asíncrono, no bloquea arranque)
-initGhlTables();
+// Ya no se ejecuta al cargar el módulo: el arranque no modifica el esquema. Lo ejecuta el
+// mantenimiento explícito (`--schema-maintenance`, ver server/_core/schemaMaintenance.ts).
 
 function log(level: "info" | "warn" | "error", msg: string, ctx?: object) {
   const entry = { ts: new Date().toISOString(), context: "GHLInbox", msg, ...ctx };
