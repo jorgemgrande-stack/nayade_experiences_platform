@@ -14,7 +14,8 @@ import type mysql from "mysql2/promise";
 import { legacyPool } from "../_core/legacyDb";
 import nodemailer from "nodemailer";
 import { decryptPassword } from "../utils/emailCrypto";
-import { scheduleTenantCron } from "../_core/tenantRegistry/scheduler";
+import { runTenantJob, scheduleTenantCron } from "../_core/tenantRegistry/scheduler";
+import { isMultiTenant } from "../_core/tenant";
 
 function getPool(): mysql.Pool {
   return legacyPool();
@@ -507,17 +508,20 @@ export async function sendViaAccountSmtp(
 export async function startCommercialEmailSyncJob(): Promise<void> {
   // Sin DDL al arrancar el job: initCommercialEmailTables es un paso del mantenimiento explícito.
 
-  // Boot run
-  runCommercialEmailSync().catch(err =>
+  // Boot run (multiempresa: por empresa, dentro de su contexto)
+  if (isMultiTenant()) void runTenantJob("commercial-email-sync", () => runCommercialEmailSync());
+  else runCommercialEmailSync().catch(err =>
     console.error("[CommercialEmail] Error en sync inicial:", err.message),
   );
 
   // Every 5 minutes — individual accounts control their own interval but we
   // check every 5 min and skip accounts whose last_sync_at is recent enough.
   scheduleTenantCron("*/5 * * * *", "commercial-email-sync", () => {
-    runCommercialEmailSync().catch(err =>
+    const sync = runCommercialEmailSync().catch(err =>
       console.error("[CommercialEmail] Error en sync cron:", err.message),
     );
+    // Multiempresa: se espera a que termine dentro del contexto y el arriendo de su empresa
+    if (isMultiTenant()) return sync;
   });
 
   console.log("[CommercialEmail] Servicio de sync de email comercial iniciado");

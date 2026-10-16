@@ -10,7 +10,8 @@ import { securityHeaders } from "./securityHeaders";
 import { requestMeter } from "./requestMeter";
 import { rebindRequestContext, requestIdMiddleware } from "./ops/requestContext";
 import { installTenantBinding, installTenantResolution } from "./tenantRegistry/install";
-import { scheduleTenantInterval, setJobFlag } from "./tenantRegistry/scheduler";
+import { scheduleTenantInterval } from "./tenantRegistry/scheduler";
+import { startScheduledJobsMulti } from "./tenantRegistry/jobPolicy";
 import { isMultiTenant } from "./tenant";
 import { closeStartupConnections, openStartupConnection } from "./startupConnections";
 import { localStorageTenantGuard } from "./tenantStorage";
@@ -2057,12 +2058,8 @@ function bootSingleTenant(): void {
  */
 function bootMultiTenant(): void {
   startServer()
-    .then(() => {
-      for (const j of SCHEDULED_JOBS) {
-        setJobFlag(j.name, j.flag, j.def);
-        j.start();
-      }
-    })
+    // Por empresa o desactivadas en multiempresa según su política (ver jobPolicy.ts)
+    .then(() => startScheduledJobsMulti(SCHEDULED_JOBS))
     .catch(console.error);
 }
 
