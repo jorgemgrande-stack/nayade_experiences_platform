@@ -1434,7 +1434,9 @@ export const appRouter = router({
         : [input.role];
       if (result.id) {
         const db = await getDb();
-        if (db) {
+        // Sin tablas RBAC (empresas nuevas y producción): el acceso lo da el rol del usuario
+        const { rbacTablesAvailable } = await import("./rbacAvailability");
+        if (db && (await rbacTablesAvailable(db).catch(() => false))) {
           const { sql } = await import("drizzle-orm");
           for (const roleKey of rbacKeysToAssign) {
             try {
@@ -1505,6 +1507,13 @@ export const appRouter = router({
       return deleteUser(input.userId);
     }),
     // ─── RBAC Phase 3: user role assignments ─────────────────────────────────
+    /** ¿Ofrece el panel la gestión de roles RBAC? Solo si la empresa tiene sus tablas. */
+    getRbacStatus: adminProcedure.query(async () => {
+      const db = await getDb();
+      if (!db) return { available: false };
+      const { rbacTablesAvailable } = await import("./rbacAvailability");
+      return { available: await rbacTablesAvailable(db).catch(() => false) };
+    }),
     getRbacUsersData: adminProcedure.query(async () => {
       const db = await getDb();
       if (!db) return {} as Record<number, { roles: Array<{ key: string; name: string; isLegacy: boolean }>; permissions: string[] }>;
@@ -1554,6 +1563,8 @@ export const appRouter = router({
     })).mutation(async ({ input }) => {
       const db = await getDb();
       if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB no disponible" });
+      const { rbacTablesAvailable, RBAC_UNAVAILABLE_MESSAGE } = await import("./rbacAvailability");
+      if (!(await rbacTablesAvailable(db))) throw new TRPCError({ code: "PRECONDITION_FAILED", message: RBAC_UNAVAILABLE_MESSAGE });
       const { sql } = await import("drizzle-orm");
       const roleResult = await db.execute(sql`SELECT id FROM rbac_roles WHERE \`key\` = ${input.roleKey} AND is_active = 1`);
       const roleRow = (roleResult as any[][])[0]?.[0] as { id: number } | undefined;
@@ -1567,6 +1578,8 @@ export const appRouter = router({
     })).mutation(async ({ input, ctx }) => {
       const db = await getDb();
       if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB no disponible" });
+      const { rbacTablesAvailable, RBAC_UNAVAILABLE_MESSAGE } = await import("./rbacAvailability");
+      if (!(await rbacTablesAvailable(db))) throw new TRPCError({ code: "PRECONDITION_FAILED", message: RBAC_UNAVAILABLE_MESSAGE });
       const { sql } = await import("drizzle-orm");
       if (input.roleKey === 'admin') {
         // Guard 1: can't remove last RBAC admin globally

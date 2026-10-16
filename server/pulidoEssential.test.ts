@@ -3,6 +3,7 @@
  *  - WhatsApp de la web pública por empresa (nunca el de Náyade en multi; en single, el de siempre).
  *  - CRM: aplicar un bono a un presupuesto llama a un procedimiento que existe.
  *  - TPV: alta de caja desde el panel (validación y cableado).
+ *  - RBAC granular solo con sus tablas; rol «solo lectura» en el panel.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -10,6 +11,9 @@ import { describe, expect, it } from "vitest";
 import { buildTheme, whatsappNumber } from "./_core/theme";
 import { LEGACY_WHATSAPP_PHONE, LEGACY_WHATSAPP_URL, whatsappTarget } from "../shared/whatsappButton";
 import { validateCashRegisterForm } from "../shared/formValidation";
+import { LEGACY_SECTIONS, TASK_NAV, resolveNav, type NavContext } from "../shared/adminNav";
+import { RBAC_TABLES, rbacTablesAvailable } from "./rbacAvailability";
+import { PANEL_ROLES } from "./subscriptionDb";
 
 const themeOf = (s: Record<string, string>, multi: boolean) => buildTheme((k) => s[k] || undefined, { multi });
 
@@ -88,5 +92,41 @@ describe("TPV: alta de caja desde el panel", () => {
     expect(src).toContain("Nueva caja");
     expect(src).toContain("Todavía no hay ninguna caja");
     expect(src).toContain("validateCashRegisterForm");
+  });
+});
+
+describe("RBAC y rol «solo lectura»", () => {
+  const ctx = (role: string): NavContext => ({ role, isFlagVisible: () => true, isModuleVisible: () => true, capabilityState: () => "active" });
+  const labelsOf = (s: ReturnType<typeof resolveNav>) => s.flatMap((x) => x.items.map((i) => i.label));
+
+  it("solo lectura ve el menú del empleado (agente), todo marcado como solo lectura", () => {
+    for (const nav of [LEGACY_SECTIONS, TASK_NAV]) {
+      const ro = resolveNav(nav, ctx("readonly"));
+      expect(labelsOf(ro)).toEqual(labelsOf(resolveNav(nav, ctx("agente"))));
+      expect(labelsOf(ro).length).toBeGreaterThan(0);
+      expect(ro.every((s) => s.items.every((i) => i.readOnly && (i.children ?? []).every((c) => c.readOnly)))).toBe(true);
+      // Nada de administración
+      expect(labelsOf(ro)).not.toContain("Usuarios");
+    }
+    // El resto de roles no cambia
+    expect(resolveNav(TASK_NAV, ctx("agente")).every((s) => s.items.every((i) => !i.readOnly))).toBe(true);
+  });
+
+  it("el panel deja entrar a solo lectura (instalación única y multiempresa)", () => {
+    const read = (p: string) => fs.readFileSync(path.join(__dirname, "..", p), "utf8");
+    expect(read("client/src/components/AdminLayout.tsx")).toContain(`["admin", "agente", "monitor", "adminrest", "controler", "readonly"].includes(userRole)`);
+    expect(read("client/src/hooks/usePanelSubscription.ts")).toMatch(/PANEL_ROLES = \[[^\]]*"readonly"/);
+    expect(PANEL_ROLES).toContain("readonly");
+    const users = read("client/src/components/admin/UsersManager.tsx");
+    expect(users).toContain(`value: "readonly"`);
+    expect(users).toContain("trpc.admin.getRbacStatus.useQuery");
+  });
+
+  it("disponibilidad de RBAC: solo con las cuatro tablas en la base de datos de la empresa", async () => {
+    const fake = (n: number) => ({ execute: async () => [[{ n }], []] as unknown });
+    expect(await rbacTablesAvailable(fake(4))).toBe(true);
+    expect(await rbacTablesAvailable(fake(3))).toBe(false);
+    expect(await rbacTablesAvailable(fake(0))).toBe(false);
+    expect(RBAC_TABLES).toHaveLength(4);
   });
 });

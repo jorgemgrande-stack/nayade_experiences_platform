@@ -96,6 +96,11 @@ const roleCapabilities: Record<string, string[]> = {
     "Sin acceso al panel de administración",
     "Solo acceso al portal público",
   ],
+  readonly: [
+    "Consulta lo mismo que un agente comercial",
+    "No puede crear, modificar ni borrar nada",
+    "Ocupa una plaza de usuario del plan",
+  ],
   commercial_agent: [
     "CRM: leads, presupuestos y reservas",
     "Operaciones: calendario y actividades",
@@ -152,6 +157,14 @@ const ROLES = [
     color: "bg-purple-100 text-purple-800 border-purple-200",
     dotColor: "bg-purple-500",
     icon: BarChart3,
+  },
+  {
+    value: "readonly",
+    label: "Solo lectura",
+    description: "Consulta sin modificar nada",
+    color: "bg-slate-100 text-slate-700 border-slate-200",
+    dotColor: "bg-slate-500",
+    icon: Eye,
   },
   {
     value: "user",
@@ -249,6 +262,7 @@ const LEGACY_RBAC_SUGGESTION: Record<string, string[]> = {
   adminrest: ["adminrest"],
   controler: ["controler"],
   user:      ["user"],
+  readonly:  [],
 };
 
 // ─── RBAC: permisos en vivo desde base de datos ───────────────────────────────
@@ -411,8 +425,11 @@ export default function UsersManager() {
   const availableRoles = ROLES.filter((r) => r.value !== "adminrest" || sub.can("restaurant-net"));
   const [createSubmitted, setCreateSubmitted] = useState(false);
   const [createServerError, setCreateServerError] = useState<string | null>(null);
-  const { data: rbacPermMap = {} } = trpc.admin.getRbacRolePermissions.useQuery();
-  const { data: rbacUserData = {} } = trpc.admin.getRbacUsersData.useQuery();
+  // RBAC granular solo si la empresa tiene sus tablas (las empresas nuevas no): si no, el rol del usuario manda
+  const { data: rbacStatus } = trpc.admin.getRbacStatus.useQuery();
+  const rbacAvailable = rbacStatus?.available === true;
+  const { data: rbacPermMap = {} } = trpc.admin.getRbacRolePermissions.useQuery(undefined, { enabled: rbacAvailable });
+  const { data: rbacUserData = {} } = trpc.admin.getRbacUsersData.useQuery(undefined, { enabled: rbacAvailable });
 
   // ─── FASE 4: contadores y detección de último admin ───────────────────────
   const roleCounts = useMemo(() => {
@@ -588,7 +605,7 @@ export default function UsersManager() {
       ...form,
       role: form.role as any,
       origin: window.location.origin,
-      rbacRoleKeys: createRbacRoles.length > 0 ? createRbacRoles : undefined,
+      rbacRoleKeys: rbacAvailable && createRbacRoles.length > 0 ? createRbacRoles : undefined,
     });
   };
 
@@ -842,19 +859,23 @@ export default function UsersManager() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end" className="w-52">
-                          <DropdownMenuItem
-                            onClick={() => { setRbacManageTarget({ id: user.id, name: user.name ?? user.email ?? "Usuario" }); setAddRoleKey(""); }}
-                            className="gap-2"
-                          >
-                            <Shield className="w-4 h-4 text-indigo-600" />
-                            Roles RBAC
-                            {(rbacUserData[user.id]?.roles ?? []).length > 0 && (
-                              <span className="ml-auto text-[10px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-200 rounded-full px-1.5">
-                                {rbacUserData[user.id].roles.length}
-                              </span>
-                            )}
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
+                          {rbacAvailable && (
+                            <>
+                              <DropdownMenuItem
+                                onClick={() => { setRbacManageTarget({ id: user.id, name: user.name ?? user.email ?? "Usuario" }); setAddRoleKey(""); }}
+                                className="gap-2"
+                              >
+                                <Shield className="w-4 h-4 text-indigo-600" />
+                                Roles RBAC
+                                {(rbacUserData[user.id]?.roles ?? []).length > 0 && (
+                                  <span className="ml-auto text-[10px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-200 rounded-full px-1.5">
+                                    {rbacUserData[user.id].roles.length}
+                                  </span>
+                                )}
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                            </>
+                          )}
                           {!user.inviteAccepted && (
                             <DropdownMenuItem
                               onClick={() => resendInvite.mutate({ userId: user.id, email: user.email ?? "", name: user.name ?? "", role: user.role, origin: window.location.origin })}
@@ -912,7 +933,7 @@ export default function UsersManager() {
 
         {/* ── RBAC Role Manager Dialog ── */}
         <Dialog
-          open={!!rbacManageTarget}
+          open={rbacAvailable && !!rbacManageTarget}
           onOpenChange={(open) => { if (!open) { setRbacManageTarget(null); setAddRoleKey(""); } }}
         >
           <DialogContent className="sm:max-w-lg">
@@ -1113,7 +1134,8 @@ export default function UsersManager() {
                 </p>
               )}
 
-              {/* ── Roles avanzados RBAC ── */}
+              {/* ── Roles avanzados RBAC (solo si la empresa los tiene) ── */}
+              {rbacAvailable && (
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <Label className="flex items-center gap-1.5 text-sm">
@@ -1189,6 +1211,7 @@ export default function UsersManager() {
                   </p>
                 )}
               </div>
+              )}
 
               <div className="rounded-lg bg-blue-50 border border-blue-200 p-3 text-sm text-blue-700">
                 Se enviará un email automático con un enlace para establecer contraseña. El enlace expira en 72 horas.

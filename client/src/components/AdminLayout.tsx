@@ -42,6 +42,7 @@ const ROLE_META: Record<string, { label: string; color: string }> = {
   adminrest: { label: "Gestor Restaurantes",   color: "text-orange-400" },
   controler: { label: "Controler",             color: "text-purple-400" },
   user:      { label: "Usuario",               color: "text-gray-400" },
+  readonly:  { label: "Solo lectura",          color: "text-gray-400" },
 };
 
 interface AdminLayoutProps {
@@ -248,7 +249,7 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
   }
 
   // ── Role not allowed for any admin section ──
-  if (!["admin", "agente", "monitor", "adminrest", "controler"].includes(userRole)) {
+  if (!["admin", "agente", "monitor", "adminrest", "controler", "readonly"].includes(userRole)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center max-w-sm px-4">

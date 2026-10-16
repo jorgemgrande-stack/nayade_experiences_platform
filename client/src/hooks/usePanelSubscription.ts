@@ -2,7 +2,8 @@ import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { capabilityStateFrom, navMode } from "@shared/adminNav";
 
-const PANEL_ROLES = ["admin", "agente", "monitor", "adminrest", "controler"];
+// `readonly` (solo lectura) entra en el panel y ve lo mismo que el equipo, sin poder modificar nada
+const PANEL_ROLES = ["admin", "agente", "monitor", "adminrest", "controler", "readonly"];
 
 /**
  * Suscripción de la empresa en curso (plan, prueba y licencias) para el panel.

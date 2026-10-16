@@ -380,13 +380,22 @@ function capsState(caps: string[] | undefined, ctx: NavContext): "active" | "rea
   return best;
 }
 
+/**
+ * Rol «solo lectura»: ve las mismas entradas que un empleado (agente), todas marcadas como solo
+ * lectura. El servidor rechaza cualquier modificación suya.
+ */
+export const READONLY_ROLE = "readonly";
+const navRoleOf = (role: string) => (role === READONLY_ROLE ? "agente" : role);
+
 /** Aplica rol, flags, módulos y licencias. Un grupo sin entradas visibles desaparece. */
 export function resolveNav(sections: NavSection[], ctx: NavContext): ResolvedSection[] {
   const out: ResolvedSection[] = [];
+  const role = navRoleOf(ctx.role);
+  const forceReadOnly = ctx.role === READONLY_ROLE;
   for (const section of sections) {
     const items: ResolvedItem[] = [];
     for (const item of section.items) {
-      if (!item.roles.includes(ctx.role)) continue;
+      if (!item.roles.includes(role)) continue;
       if (!ctx.isFlagVisible(item.flagKey)) continue;
       if (!ctx.isModuleVisible(item.moduleKey)) continue;
       const state = capsState(item.capabilities, ctx);
@@ -395,15 +404,15 @@ export function resolveNav(sections: NavSection[], ctx: NavContext): ResolvedSec
       if (item.children) {
         children = [];
         for (const ch of item.children) {
-          if (ch.roles && !ch.roles.includes(ctx.role)) continue;
+          if (ch.roles && !ch.roles.includes(role)) continue;
           if (!ctx.isFlagVisible(ch.flagKey)) continue;
           const cs = capsState(ch.capabilities, ctx);
           if (!cs) continue;
-          children.push({ ...ch, readOnly: cs === "read_only" });
+          children.push({ ...ch, readOnly: forceReadOnly || cs === "read_only" });
         }
         if (children.length === 0) continue;
       }
-      items.push({ ...item, readOnly: state === "read_only", children });
+      items.push({ ...item, readOnly: forceReadOnly || state === "read_only", children });
     }
     if (items.length) out.push({ id: section.id, label: section.label, items });
   }
