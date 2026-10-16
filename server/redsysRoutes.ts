@@ -21,7 +21,8 @@ import { sendEmail } from "./mailer";
 import { sendManagedEmail, logDirectEmail } from "./emailManager";
 import { groupTaxBreakdown, totalTaxAmount } from "./taxUtils";
 import { reservationProductFromQuoteItems } from "./reservationUtils";
-import { getBusinessEmail, getSystemSettingSync } from "./config";
+import { getBusinessEmail } from "./config";
+import { brandName, legacyBrandSetting, legacyUrl } from "./tenantBrand";
 import { generateDocumentNumber } from "./documentNumbers";
 import { resolveSessionUser } from "./_core/expressAuth";
 import { secureEqual } from "./_core/signedLinks";
@@ -242,7 +243,7 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
         await sendCapiEvent({
           event_name: 'Purchase',
           event_id: `purchase_${result.merchantOrder}`,
-          event_source_url: process.env.PUBLIC_SITE_URL || 'https://skicenter.es',
+          event_source_url: legacyUrl(process.env.PUBLIC_SITE_URL || 'https://skicenter.es'),
           custom_data: {
             content_ids: [String(updatedReservation.productId ?? updatedReservation.id)],
             content_name: resv.productName ?? undefined,
@@ -425,14 +426,14 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
                   bookingDate: updatedReservation.bookingDate ?? undefined,
                   selectedTime: (updatedReservation as any).selectedTime ?? undefined,
                   contactEmail: COPY_EMAIL,
-                  contactPhone: "+34 639 57 66 27",
+                  contactPhone: legacyBrandSetting("brand_support_phone", "+34 639 57 66 27"),
                   reservationUrl,
                 });
                 await sendManagedEmail({
                   templateKey: "confirmation",
                   triggerEvent: "redsys_payment_confirmed",
                   recipientEmail: clientEmail,
-                  subject: `? Reserva confirmada — ${quote.quoteNumber} — ${getSystemSettingSync("brand_name", "Skicenter")}`,
+                  subject: `? Reserva confirmada — ${quote.quoteNumber} — ${brandName()}`,
                   html,
                   relatedEntityType: "quote",
                   relatedEntityId: quote.id,
@@ -1211,14 +1212,14 @@ redsysRouter.post("/api/admin/recover-order/:merchantOrder", async (req, res) =>
               bookingDate: primary.bookingDate ?? undefined,
               selectedTime: primary.selectedTime ?? undefined,
               contactEmail: COPY_EMAIL,
-              contactPhone: "+34 639 57 66 27",
+              contactPhone: legacyBrandSetting("brand_support_phone", "+34 639 57 66 27"),
               reservationUrl,
             });
             await sendManagedEmail({
               templateKey: "confirmation",
               triggerEvent: "redsys_payment_confirmed_recovery",
               recipientEmail: clientEmail,
-              subject: `? Reserva confirmada — ${quote.quoteNumber} — ${getSystemSettingSync("brand_name", "Skicenter")}`,
+              subject: `? Reserva confirmada — ${quote.quoteNumber} — ${brandName()}`,
               html,
               relatedEntityType: "quote",
               relatedEntityId: quote.id,

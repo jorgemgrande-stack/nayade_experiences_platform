@@ -1,4 +1,5 @@
 import { router, publicProcedure, protectedProcedure, permissionProcedure } from "../_core/trpc";
+import { legacyBrandText } from "../tenantBrand";
 import { publicBaseUrl } from "../_core/productIdentity";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
@@ -15,7 +16,6 @@ import { createReservation } from "../db";
 import { buildRedsysForm, generateMerchantOrder } from "../redsys";
 import { assertModuleEnabled } from "../_core/flagGuard";
 
-const SITE_URL = publicBaseUrl();
 
 const adminProcedure = permissionProcedure("settings.manage", ["admin"]).use(async ({ ctx, next }) => {
   await assertModuleEnabled("hotel_module_enabled");
@@ -375,10 +375,10 @@ export const hotelRouter = router({
       const redsysForm = buildRedsysForm({
         amount: amountCents,
         merchantOrder,
-        productDescription: `Hotel Náyade: ${room.name} · ${nights} noche${nights > 1 ? 's' : ''} · ${input.adults} adulto${input.adults > 1 ? 's' : ''}`,
-        notifyUrl: `${SITE_URL}/api/redsys/notification`,
-        okUrl: `${SITE_URL}/reserva/ok?order=${merchantOrder}`,
-        koUrl: `${SITE_URL}/reserva/error?order=${merchantOrder}`,
+        productDescription: `Hotel ${legacyBrandText("Náyade")}: ${room.name} · ${nights} noche${nights > 1 ? 's' : ''} · ${input.adults} adulto${input.adults > 1 ? 's' : ''}`,
+        notifyUrl: `${publicBaseUrl()}/api/redsys/notification`,
+        okUrl: `${publicBaseUrl()}/reserva/ok?order=${merchantOrder}`,
+        koUrl: `${publicBaseUrl()}/reserva/error?order=${merchantOrder}`,
         holderName: input.customerName,
       });
 

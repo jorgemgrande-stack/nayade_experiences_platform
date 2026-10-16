@@ -11,7 +11,8 @@ import { notifyOwner } from "./_core/notification";
 import { buildReservationConfirmHtml, buildReservationFailedHtml } from "./emailTemplates";
 import { sendEmail } from "./mailer";
 import { sendManagedEmail, logDirectEmail } from "./emailManager";
-import { getBusinessEmail, getSystemSettingSync } from "./config";
+import { getBusinessEmail } from "./config";
+import { brandName, legacyBrandText } from "./tenantBrand";
 import { getDb } from "./db";
 import { reservations } from "../drizzle/schema";
 
@@ -110,7 +111,7 @@ export async function sendReservationPaidNotifications(
   const adminEmail = process.env.ADMIN_EMAIL;
   const bccList = [copyEmail, ...(adminEmail ? [adminEmail] : [])];
 
-  const confirmSubject = `✅ Reserva confirmada — ${reservation.productName} — ${getSystemSettingSync("brand_name", "Skicenter")}`;
+  const confirmSubject = `✅ Reserva confirmada — ${reservation.productName} — ${brandName()}`;
   const confirmHtml = buildReservationConfirmHtml({
     merchantOrder: reservation.merchantOrder,
     productName: reservation.productName,
@@ -221,7 +222,7 @@ export async function sendReservationFailedNotifications(
       templateKey: "reservation_failed",
       triggerEvent: "reservation_payment_failed",
       recipientEmail: reservation.customerEmail,
-      subject: `❌ Pago no completado — ${reservation.productName} — Náyade Experiences`,
+      subject: `❌ Pago no completado — ${reservation.productName} — ${legacyBrandText("Náyade Experiences")}`,
       html: buildReservationFailedHtml({
         merchantOrder: reservation.merchantOrder,
         productName: reservation.productName,

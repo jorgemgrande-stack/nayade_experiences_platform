@@ -1,7 +1,7 @@
 import { COOKIE_NAME } from "@shared/const";
+import { legacyBrandText } from "./tenantBrand";
 import { publicBaseUrl } from "./_core/productIdentity";
 
-const SITE_URL = publicBaseUrl();
 import JSZip from "jszip";
 import {
   getActiveGalleryItems,
@@ -443,7 +443,7 @@ export const appRouter = router({
           templateKey: "budget_request_user",
           triggerEvent: "lead_submitted",
           recipientEmail: input.email,
-          subject: "Solicitud de presupuesto recibida — Náyade Experiences",
+          subject: `Solicitud de presupuesto recibida — ${legacyBrandText("Náyade Experiences")}`,
           html: buildBudgetRequestUserHtml(emailData),
           relatedEntityType: "lead",
           relatedEntityId: lead.id,
@@ -543,7 +543,7 @@ export const appRouter = router({
           templateKey: "budget_request_user",
           triggerEvent: "lead_submitted",
           recipientEmail: input.email,
-          subject: "Solicitud recibida — Náyade Experiences",
+          subject: `Solicitud recibida — ${legacyBrandText("Náyade Experiences")}`,
           html: buildBudgetRequestUserHtml({
             name: input.name,
             email: input.email,
@@ -1609,15 +1609,15 @@ export const appRouter = router({
           html: buildBudgetRequestAdminHtml({ name: "Carlos Pedraza", email: input.to, phone: "+34 600 000 000", arrivalDate: "23 de marzo de 2026", adults: 5, children: 2, selectedCategory: "Packs de Experiencias", selectedProduct: "Pack Cable Ski Experience", comments: "Queremos hacer el pack completo para una despedida de soltero", submittedAt: new Date().toLocaleString("es-ES"), activitiesJson: [] }),
         },
         "reservation-confirm": {
-          subject: "[PREVIEW] Reserva Confirmada — Náyade Experiences",
+          subject: `[PREVIEW] Reserva Confirmada — ${legacyBrandText("Náyade Experiences")}`,
           html: buildReservationConfirmHtml({ merchantOrder: "NE20260323001", productName: "Pack Cable Ski Experience", customerName: "Carlos Pedraza", date: "23 de marzo de 2026", people: 5, amount: "175,00 €", extras: "Alquiler de neopreno x5" }),
         },
         "reservation-failed": {
-          subject: "[PREVIEW] Pago No Completado — Náyade Experiences",
+          subject: `[PREVIEW] Pago No Completado — ${legacyBrandText("Náyade Experiences")}`,
           html: buildReservationFailedHtml({ merchantOrder: "NE20260323001", productName: "Pack Cable Ski Experience", customerName: "Carlos Pedraza", responseCode: "0190" }),
         },
         "restaurant-confirm": {
-          subject: "[PREVIEW] Reserva en Restaurante — Náyade Experiences",
+          subject: `[PREVIEW] Reserva en Restaurante — ${legacyBrandText("Náyade Experiences")}`,
           html: buildRestaurantConfirmHtml({ guestName: "Carlos Pedraza", restaurantName: "Restaurante Náyade", date: "23 de marzo de 2026", time: "14:00", guests: 8, locator: "REST-2026-001", depositAmount: "80", requiresPayment: false }),
         },
         "restaurant-payment": {
@@ -1625,19 +1625,19 @@ export const appRouter = router({
           html: buildRestaurantPaymentLinkHtml({ guestName: "Carlos Pedraza", guestEmail: input.to, restaurantName: "Restaurante Náyade", date: "23 de marzo de 2026", time: "14:00", guests: 8, locator: "REST-2026-001", depositAmount: "80", redsysUrl: "https://sis.redsys.es/sis/realizarPago", merchantParams: "BASE64PARAMS", signatureVersion: "HMAC_SHA256_V1", signature: "SIGNATURE" }),
         },
         "password-reset": {
-          subject: "[PREVIEW] Recuperar contraseña — Náyade Experiences",
+          subject: `[PREVIEW] Recuperar contraseña — ${legacyBrandText("Náyade Experiences")}`,
           html: buildPasswordResetHtml({ name: "Carlos Pedraza", resetUrl: "https://skicenter.es/reset?token=abc123", expiryMinutes: 30 }),
         },
         "quote": {
-          subject: "[PREVIEW] Presupuesto PRE-2026-001 — Náyade Experiences",
+          subject: `[PREVIEW] Presupuesto PRE-2026-001 — ${legacyBrandText("Náyade Experiences")}`,
           html: buildQuoteHtml({ quoteNumber: "PRE-2026-001", title: "Pack Cable Ski Experience + Restaurante", clientName: "Carlos Pedraza", items: [{ description: "Pack Cable Ski Experience (5 pax)", quantity: 5, unitPrice: 35, total: 175 }, { description: "Menú Náyade (8 pax)", quantity: 8, unitPrice: 28, total: 224 }], subtotal: "399", discount: "0", tax: "83.79", total: "482.79", validUntil: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), notes: "Precio especial por grupo. Incluye alquiler de neopreno.", conditions: "Reserva sujeta a disponibilidad. Cancelación gratuita hasta 48h antes.", paymentLinkUrl: "https://skicenter.es/pago/PRE-2026-001" }),
         },
         "confirmation": {
-          subject: "[PREVIEW] Reserva Confirmada FAC-2026-001 — Náyade Experiences",
+          subject: `[PREVIEW] Reserva Confirmada FAC-2026-001 — ${legacyBrandText("Náyade Experiences")}`,
           html: buildConfirmationHtml({ clientName: "Carlos Pedraza", reservationRef: "FAC-2026-001", quoteNumber: "PRE-2026-001", quoteTitle: "Pack Cable Ski Experience + Restaurante", items: [{ description: "Pack Cable Ski Experience (5 pax)", quantity: 5, unitPrice: 35, total: 175 }, { description: "Menú Náyade (8 pax)", quantity: 8, unitPrice: 28, total: 224 }], subtotal: "399", taxAmount: "83.79", total: "482.79", invoiceUrl: "https://cdn.skicenter.es/facturas/FAC-2026-001.pdf", bookingDate: "23 de marzo de 2026" }),
         },
         "transfer-confirm": {
-          subject: "[PREVIEW] Pago por transferencia confirmado — Náyade Experiences",
+          subject: `[PREVIEW] Pago por transferencia confirmado — ${legacyBrandText("Náyade Experiences")}`,
           html: buildTransferConfirmationHtml({ clientName: "Carlos Pedraza", invoiceNumber: "FAC-2026-001", reservationRef: "RES-2026-001", quoteTitle: "Pack Cable Ski Experience + Restaurante", quoteNumber: "PRE-2026-001", items: [{ description: "Pack Cable Ski Experience (5 pax)", quantity: 5, unitPrice: 35, total: 175 }, { description: "Menú Náyade (8 pax)", quantity: 8, unitPrice: 28, total: 224 }], subtotal: "399", taxAmount: "83.79", total: "482.79", invoiceUrl: "https://cdn.skicenter.es/facturas/FAC-2026-001.pdf", confirmedBy: "Admin Náyade", confirmedAt: new Date() }),
         },
       };
@@ -1777,9 +1777,9 @@ export const appRouter = router({
           amount: amountCents,
           merchantOrder,
           productDescription: pricingDesc,
-          notifyUrl: `${SITE_URL}/api/redsys/notification`,
-          okUrl: `${SITE_URL}/reserva/ok?order=${merchantOrder}`,
-          koUrl: `${SITE_URL}/reserva/error?order=${merchantOrder}`,
+          notifyUrl: `${publicBaseUrl()}/api/redsys/notification`,
+          okUrl: `${publicBaseUrl()}/reserva/ok?order=${merchantOrder}`,
+          koUrl: `${publicBaseUrl()}/reserva/error?order=${merchantOrder}`,
           holderName: input.customerName,
         });
 
@@ -2050,14 +2050,14 @@ export const appRouter = router({
         // 4. Construir el formulario Redsys con el importe total
         const description = productNames.length === 1
           ? productNames[0]
-          : `${productNames.length} experiencias — Náyade`;
+          : `${productNames.length} experiencias — ${legacyBrandText("Náyade")}`;
         const redsysForm = buildRedsysForm({
           amount: finalAmountCents,
           merchantOrder,
           productDescription: description.slice(0, 125),
-          notifyUrl: `${SITE_URL}/api/redsys/notification`,
-          okUrl: `${SITE_URL}/reserva/ok?order=${merchantOrder}`,
-          koUrl: `${SITE_URL}/reserva/error?order=${merchantOrder}`,
+          notifyUrl: `${publicBaseUrl()}/api/redsys/notification`,
+          okUrl: `${publicBaseUrl()}/reserva/ok?order=${merchantOrder}`,
+          koUrl: `${publicBaseUrl()}/reserva/error?order=${merchantOrder}`,
           holderName: input.customerName,
         });
         return {

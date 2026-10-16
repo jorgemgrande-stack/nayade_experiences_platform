@@ -16,7 +16,7 @@ import { users, passwordResetTokens } from "../drizzle/schema";
 import { buildPasswordResetHtml } from "./emailTemplates";
 import { sendEmail } from "./mailer";
 import { logDirectEmail } from "./emailManager";
-import { getSystemSettingSync } from "./config";
+import { brandName } from "./tenantBrand";
 import { getTrustedBaseUrl } from "./_core/publicUrl";
 
 // ─── Configuración ────────────────────────────────────────────────────────────
@@ -25,7 +25,7 @@ const BCRYPT_ROUNDS = 12;
 
 async function sendResetEmail(to: string, resetUrl: string, name: string) {
   const html = buildPasswordResetHtml({ name: name ?? "", resetUrl, expiryMinutes: TOKEN_EXPIRY_MINUTES });
-  const resetSubject = `Recuperar contraseña — ${getSystemSettingSync("brand_name", "Skicenter")}`;
+  const resetSubject = `Recuperar contraseña — ${brandName()}`;
   const sent = await sendEmail({ to, subject: resetSubject, html });
   logDirectEmail({ templateKey: "password_reset", triggerEvent: "password_reset_requested", recipientEmail: to, subject: resetSubject, sent }).catch(() => {});
   if (!sent) {

@@ -5,6 +5,9 @@
 
 import { sql } from "drizzle-orm";
 import { siteSettings } from "../drizzle/schema";
+import { isMultiTenant } from "./_core/tenant";
+import { tenantPublicUrl, warmTenantIdentity } from "./_core/tenantIdentity";
+import { brandName, brandSetting, formatLegalAddress, resolveLegalCompany, tenantFiscalIdentity } from "./tenantBrand";
 import { getSystemSettingSync } from "./config";
 import { groupTaxBreakdown, totalTaxAmount, type TaxBreakdownLine } from "./taxUtils";
 import { legacyDb, legacyPool } from "./_core/legacyDb";
@@ -40,17 +43,10 @@ export async function getLegalCompanySettings(): Promise<{
   const rows = await db.select().from(siteSettings)
     .where(sql`\`key\` IN ('legalCompanyName','legalCompanyCif','legalCompanyAddress','legalCompanyCity','legalCompanyZip','legalCompanyProvince','legalCompanyEmail','legalCompanyPhone','legalCompanyIban')`);
   const s: Record<string, string> = Object.fromEntries(rows.map(r => [r.key, r.value ?? ""]));
-  return {
-    name:     s.legalCompanyName     || "Iron Elephant Consulting S.L.",
-    cif:      s.legalCompanyCif      || "B26987875",
-    address:  s.legalCompanyAddress  || "C/ Corazón de María 57, 1º D",
-    city:     s.legalCompanyCity     || "Madrid",
-    zip:      s.legalCompanyZip      || "28002",
-    province: s.legalCompanyProvince || "Madrid",
-    email:    s.legalCompanyEmail    || "",
-    phone:    s.legalCompanyPhone    || "",
-    iban:     s.legalCompanyIban     || "",
-  };
+  // single: respaldos heredados (sin cambios). multi: entidad fiscal de la empresa en el registro.
+  const multi = isMultiTenant();
+  if (multi) await warmTenantIdentity();
+  return resolveLegalCompany(s, { multi, fiscal: multi ? tenantFiscalIdentity() : null });
 }
 
 function escapeHtml(v: unknown): string {
@@ -83,7 +79,9 @@ export async function buildInvoiceHtml(rawInvoice: InvoiceHtmlParams): Promise<s
   const legal = Object.fromEntries(
     Object.entries(rawLegal).map(([k, v]) => [k, escapeHtml(v)]),
   ) as typeof rawLegal;
-  const legalAddressFull = `${legal.address}, ${legal.zip} ${legal.city} (${legal.province})`;
+  const legalAddressFull = formatLegalAddress(legal);
+  // multi: si la empresa no fija su web, su URL pública del registro (nunca la de otra instalación)
+  const websiteUrl = getSystemSettingSync("brand_website_url", "") || (isMultiTenant() ? escapeHtml(tenantPublicUrl() ?? "") : "");
 
   const reavItems    = invoice.itemsJson.filter(i => i.fiscalRegime === "reav");
   const generalItems = invoice.itemsJson.filter(i => i.fiscalRegime !== "reav");
@@ -159,10 +157,10 @@ export async function buildInvoiceHtml(rawInvoice: InvoiceHtmlParams): Promise<s
 <body>
   <div class="doc-header">
     <div class="logo-block">
-      <img src="${getSystemSettingSync("brand_logo_url", "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/logo-nayade_20a42bc4.jpg")}" alt="${getSystemSettingSync("brand_short_name", "Náyade")}" />
+      <img src="${brandSetting("brand_logo_url", "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/logo-nayade_20a42bc4.jpg")}" alt="${brandSetting("brand_short_name", "Náyade")}" />
       <div class="brand-text">
-        <div class="brand-name">${getSystemSettingSync("brand_short_name", "Náyade")}</div>
-        <div class="brand-sub">${getSystemSettingSync("brand_name", "Skicenter").replace(getSystemSettingSync("brand_short_name", ""), "").trim() || "Experiences"}</div>
+        <div class="brand-name">${brandSetting("brand_short_name", "Náyade")}</div>
+        <div class="brand-sub">${brandName().replace(brandSetting("brand_short_name", ""), "").trim() || (isMultiTenant() ? "" : "Experiences")}</div>
       </div>
     </div>
     <div class="company-info">
@@ -225,7 +223,7 @@ export async function buildInvoiceHtml(rawInvoice: InvoiceHtmlParams): Promise<s
   </table></div>
   </div>
   <div class="footer">
-    <p>Gracias por confiar en ${getSystemSettingSync("brand_name", "Skicenter")}${getSystemSettingSync("brand_website_url", "") ? " &middot; " + getSystemSettingSync("brand_website_url", "") : ""}</p>
+    <p>Gracias por confiar en ${escapeHtml(brandName())}${websiteUrl ? " &middot; " + websiteUrl : ""}</p>
     <p>Documento emitido por <strong>${legal.name}</strong> &mdash; CIF: ${legal.cif} &mdash; ${legalAddressFull}</p>
   </div>
 </body>
