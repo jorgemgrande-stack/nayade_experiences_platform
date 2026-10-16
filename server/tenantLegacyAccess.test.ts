@@ -192,6 +192,15 @@ describe("multi", () => {
     expect(created.pools.filter((p) => p.uri === dsn("a"))).toHaveLength(2);
   });
 
+  it("trabajo en segundo plano tras liberar el arriendo: sigue viendo SU tenant, nunca otro", async () => {
+    let later!: Promise<string>;
+    await withTenantDb("a", async () => {
+      later = new Promise((r) => setTimeout(() => void uriOf().then(r), 10));
+    });
+    expect(await withTenantDb("b", () => uriOf())).toBe(dsn("b"));
+    expect(await later).toBe(dsn("a"));
+  });
+
   it("sin arriendos, invalidar cierra en el acto (como hasta ahora)", async () => {
     await withTenantDb("a", async () => undefined);
     await evictTenantDatabase("a");
