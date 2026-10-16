@@ -11,8 +11,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Mail, ArrowLeft, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
+import { AuthBrandMark, useAuthBrand } from "@/components/AuthBrandMark";
 
 export default function ForgotPassword() {
+  // Marca de la empresa que sirve el dominio (en instalación única, la de siempre)
+  const brand = useAuthBrand();
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
@@ -58,13 +61,7 @@ export default function ForgotPassword() {
             backgroundImage: "radial-gradient(circle at 30% 50%, #f5a623 0%, transparent 50%), radial-gradient(circle at 70% 20%, #3b82f6 0%, transparent 40%)"
           }}
         />
-        <div className="relative z-10 flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-[#f5a623] flex items-center justify-center font-bold text-[#0d1b2a] text-lg">N</div>
-          <div>
-            <div className="text-white font-bold text-lg leading-tight">NÁYADE</div>
-            <div className="text-[#f5a623] text-xs tracking-widest uppercase">Experiences</div>
-          </div>
-        </div>
+        <AuthBrandMark brand={brand} className="relative z-10" />
         <div className="relative z-10">
           <h1 className="text-4xl font-bold text-white leading-tight mb-4">
             ¿Olvidaste tu<br />
@@ -75,7 +72,7 @@ export default function ForgotPassword() {
           </p>
         </div>
         <div className="relative z-10 text-slate-500 text-sm">
-          Los Ángeles de San Rafael, Segovia · A 45 min de Madrid
+          {brand.location}
         </div>
       </div>
 
@@ -83,13 +80,7 @@ export default function ForgotPassword() {
       <div className="w-full lg:w-1/2 flex items-center justify-center p-6 lg:p-12">
         <div className="w-full max-w-md">
           {/* Logo móvil */}
-          <div className="flex items-center gap-3 mb-8 lg:hidden">
-            <div className="w-10 h-10 rounded-xl bg-[#f5a623] flex items-center justify-center font-bold text-[#0d1b2a] text-lg">N</div>
-            <div>
-              <div className="text-white font-bold text-lg leading-tight">NÁYADE</div>
-              <div className="text-[#f5a623] text-xs tracking-widest uppercase">Experiences</div>
-            </div>
-          </div>
+          <AuthBrandMark brand={brand} className="mb-8 lg:hidden" />
 
           {sent ? (
             /* Estado: email enviado */

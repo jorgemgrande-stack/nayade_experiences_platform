@@ -4,6 +4,7 @@
  *  - CRM: aplicar un bono a un presupuesto llama a un procedimiento que existe.
  *  - TPV: alta de caja desde el panel (validación y cableado).
  *  - RBAC granular solo con sus tablas; rol «solo lectura» en el panel.
+ *  - Páginas de acceso (login y contraseñas) con la marca de la empresa.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -11,6 +12,7 @@ import { describe, expect, it } from "vitest";
 import { buildTheme, whatsappNumber } from "./_core/theme";
 import { LEGACY_WHATSAPP_PHONE, LEGACY_WHATSAPP_URL, whatsappTarget } from "../shared/whatsappButton";
 import { validateCashRegisterForm } from "../shared/formValidation";
+import { authBrand, LEGACY_AUTH_BRAND } from "../shared/authBrand";
 import { LEGACY_SECTIONS, TASK_NAV, resolveNav, type NavContext } from "../shared/adminNav";
 import { RBAC_TABLES, rbacTablesAvailable } from "./rbacAvailability";
 import { PANEL_ROLES } from "./subscriptionDb";
@@ -128,5 +130,29 @@ describe("RBAC y rol «solo lectura»", () => {
     expect(await rbacTablesAvailable(fake(3))).toBe(false);
     expect(await rbacTablesAvailable(fake(0))).toBe(false);
     expect(RBAC_TABLES).toHaveLength(4);
+  });
+});
+
+describe("páginas de acceso con la marca de la empresa", () => {
+  it("single (Náyade): la marca de siempre", () => {
+    const b = authBrand(themeOf({ brand_name: "Otra", brand_logo_url: "https://cdn.otra.example/l.png" }, false));
+    expect(b).toEqual(LEGACY_AUTH_BRAND);
+    expect(b).toMatchObject({ name: "NÁYADE", tagline: "Experiences", fullName: "Náyade Experiences" });
+  });
+
+  it("multi: nombre, logotipo y dirección de la empresa; sin nada de Náyade", () => {
+    const b = authBrand(themeOf({ brand_name: "montaña Ejemplo", brand_logo_url: "https://cdn.montana.example/logo.png", brand_location: "Calle Cumbre 1" }, true));
+    expect(b).toMatchObject({ name: "montaña Ejemplo", initial: "M", tagline: "", fullName: "montaña Ejemplo", location: "Calle Cumbre 1", logoUrl: "https://cdn.montana.example/logo.png" });
+    expect(JSON.stringify(b)).not.toMatch(/n[aá]yade|San Rafael|manus\.space/i);
+    // Empresa recién creada sin datos y tema aún sin cargar: marca vacía, nunca la de otra empresa
+    for (const t of [themeOf({}, true), null]) expect(JSON.stringify(authBrand(t))).not.toMatch(/n[aá]yade|San Rafael|manus\.space/i);
+  });
+
+  it("login, recuperar, restablecer y establecer contraseña usan la marca del tema (sin textos fijos de Náyade)", () => {
+    for (const page of ["Login", "ForgotPassword", "ResetPassword", "SetPassword"]) {
+      const src = fs.readFileSync(path.join(__dirname, `../client/src/pages/${page}.tsx`), "utf8");
+      expect(src, page).toContain("useAuthBrand()");
+      expect(src, page).not.toMatch(/NÁYADE|Náyade|San Rafael|nayade_logo/);
+    }
   });
 });
