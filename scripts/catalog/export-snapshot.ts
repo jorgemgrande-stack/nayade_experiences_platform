@@ -7,7 +7,10 @@
  *
  * Determinista: misma semilla → mismo fichero (y misma `version`).
  */
+import crypto from "node:crypto";
 import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { BUILTIN_MODULES } from "../../server/_core/modules/builtin";
 import { CATALOG_VERSION, NET_FAMILIES } from "../../server/catalog/elephantSourceV1";
 import { seedElephantSource } from "../../server/catalog/seed";
@@ -15,6 +18,12 @@ import { WebAdminService } from "../../server/web/service";
 import { MemoryWebStore } from "../../server/web/store";
 
 const FIXED_NOW = Date.UTC(2026, 9, 16);
+
+/** SHA-256 de server/catalog/quote.ts con finales de línea LF (igual en Windows y en Linux). */
+function quoteEngineSha256(): string {
+  const src = fs.readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../server/catalog/quote.ts"), "utf8").split("\r\n").join("\n");
+  return crypto.createHash("sha256").update(src).digest("hex");
+}
 
 async function main() {
   const out = process.argv[2];
@@ -29,6 +38,9 @@ async function main() {
   const doc = {
     _generated: `GENERADO desde nayade_experiences_platform (server/catalog/elephantSourceV1.ts, ${CATALOG_VERSION}). No editar a mano: regenerar con scripts/catalog/export-snapshot.ts.`,
     catalogVersion: CATALOG_VERSION,
+    // Huella del cotizador (server/catalog/quote.ts, finales de línea LF): la web guarda una copia
+    // generada y su CI comprueba que coincide; así nunca calcula con una versión distinta.
+    quoteEngineSha256: quoteEngineSha256(),
     netFamilies: NET_FAMILIES,
     site: { version: site.version, generatedAt: site.generatedAt, preview: false, catalog: site.catalog, content: site.content },
   };
