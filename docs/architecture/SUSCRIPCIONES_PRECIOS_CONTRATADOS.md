@@ -159,6 +159,17 @@ billing_events_v2 (provider_event_id VARCHAR(255) PK, status ENUM('processing','
 | **Baja de la suscripción** | `cancel_at_period_end`; al llegar el fin de periodo, `canceled`. **Toda ruta de cobro comprueba el estado**, de modo que no hay reintentos ni renovaciones después. Las facturas `open` pendientes pasan a `void` con evento. |
 | **Enmienda de precio** (cambio de tarifa para un cliente existente) | Solo explícita, por un operador con `billing:write`, con **preaviso** (`noticeDays` del contrato), efectiva desde un periodo futuro, auditada y con una nueva versión del contrato en el CRM. El catálogo nunca dispara enmiendas. |
 
+### Intervalos mixtos (implementado en `server/subscriptions/`, sin migración)
+
+- El **plan Core** fija la periodicidad y el periodo de la suscripción. Cada complemento recurrente tiene la **suya**, que es la de su precio aceptado (`price_kind` de la partida, que ya existía): no hace falta columna nueva. Un complemento nunca tiene periodicidad más larga que el Core (plan anual + complementos mensuales, sí; plan mensual + complemento anual, no).
+- **Periodo propio:** los complementos mensuales de un plan anual dividen el año del Core en 12 periodos con el mismo anclaje; renuevan cada mes por su cuenta (factura sombra `renewal` con concepto `interval:month` y su propio periodo) y el último coincide con la renovación del Core. El detalle de la suscripción expone `schedule` (periodicidad, periodo en curso y `renewsAt` de cada partida).
+- **Baja o vencimiento de un complemento:** «a fin de periodo» es el fin del periodo **del complemento** (su mes), no el del Core. Sin abonos (D-S3). El Core no cambia.
+- **Cambio de plan a mitad de periodo:** la regla existente sin cambios: subida inmediata prorrateada sobre el periodo del Core (se descuenta la parte no consumida del plan anterior), bajada al fin del periodo del Core. Los complementos conservan su precio y su calendario.
+- **Cambio de periodicidad:** solo el plan Core (y lo que quedaría más largo que la nueva) necesita precio nuevo; los demás complementos conservan el suyo.
+- **Paquetes con componentes ya contratados:** misma regla que el cotizador (`bundleReplaces`, `owned → replaces`): el paquete sustituye a los componentes al final de su periodo en curso, sin solapes ni dobles cobros; un componente cubierto por un paquete vivo no se contrata aparte.
+- **Licencias:** una capacidad que solo conceden partidas con fin fijado caduca entonces (`valid_until`), salvo que otra partida ya programada la siga concediendo sin hueco; al reaplicar después, pasa a `cancelled` sin tocar el resto.
+- Lo ya registrado nunca cambia (las facturas sombra son únicas por periodo y concepto) y nada de esto cobra.
+
 ## 5. Relación con el catálogo, el CRM y las licencias
 
 - **Catálogo comercial (#77):** `web_prices.id` es la **versión de precio aceptada**. Un precio `retired` sigue valiendo para quien lo contrató. Hay que corregir antes la aprobación no atómica (F17): una transacción con `SELECT … FOR UPDATE` sobre la entrada, o una restricción única con columna generada.
