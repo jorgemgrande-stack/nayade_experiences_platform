@@ -23,7 +23,7 @@ import {
 export type NewSubscription = Omit<Subscription, "id" | "reference" | "version" | "updatedAt" | "updatedBy">;
 export type NewItem = Omit<SubscriptionItem, "id" | "subscriptionId">;
 export type SubscriptionPatch = Partial<
-  Pick<Subscription, "status" | "pendingInterval" | "interval" | "anchorDay" | "currentPeriodStart" | "currentPeriodEnd" | "trialEnd" | "cancelAt" | "canceledAt" | "tenantId">
+  Pick<Subscription, "status" | "pendingInterval" | "interval" | "anchorDay" | "currentPeriodStart" | "currentPeriodEnd" | "trialEnd" | "cancelAt" | "canceledAt" | "tenantId" | "contractId">
 >;
 export interface EventDraft {
   kind: EventKind;
@@ -400,6 +400,7 @@ const PATCH_COLS: Record<keyof SubscriptionPatch, string> = {
   cancelAt: "cancel_at",
   canceledAt: "canceled_at",
   tenantId: "tenant_id",
+  contractId: "contract_id",
 };
 
 export class MysqlSubscriptionStore implements SubscriptionStore {
