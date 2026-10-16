@@ -333,7 +333,7 @@ export const appRouter = router({
       const keys = [
         "brand_name", "brand_logo_url", "brand_favicon_url", "theme_primary_color", "theme_accent_color",
         "brand_primary_color", "brand_accent_color", "theme_font_family", "theme_radius", "brand_show_powered_by",
-        "brand_phone", "email_reservations", "site_business_email", "brand_location",
+        "brand_phone", "brand_whatsapp", "email_reservations", "site_business_email", "brand_location",
       ];
       const vals: Record<string, string> = {};
       await Promise.all(keys.map(async (k) => { vals[k] = await getSystemSetting(k, ""); }));
