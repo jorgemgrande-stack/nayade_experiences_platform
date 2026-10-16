@@ -1,4 +1,7 @@
 import { useState, useMemo } from "react";
+import { usePanelSubscription } from "@/hooks/usePanelSubscription";
+import { PanelEmpty, PanelError, PanelLoading, errorMessage } from "@/components/admin/PanelStates";
+import { validateEmail } from "@shared/formValidation";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Button } from "@/components/ui/button";
@@ -402,7 +405,12 @@ export default function UsersManager() {
   const { user: currentUser } = useAuth();
   const utils = trpc.useUtils();
 
-  const { data: users = [], isLoading } = trpc.admin.getUsers.useQuery();
+  const { data: users = [], isLoading, isError: usersIsError, error: usersError, refetch: refetchUsers } = trpc.admin.getUsers.useQuery();
+  // Empresas con licencias por capacidad: solo los roles que aplican a lo contratado
+  const sub = usePanelSubscription();
+  const availableRoles = ROLES.filter((r) => r.value !== "adminrest" || sub.can("restaurant-net"));
+  const [createSubmitted, setCreateSubmitted] = useState(false);
+  const [createServerError, setCreateServerError] = useState<string | null>(null);
   const { data: rbacPermMap = {} } = trpc.admin.getRbacRolePermissions.useQuery();
   const { data: rbacUserData = {} } = trpc.admin.getRbacUsersData.useQuery();
 
@@ -427,9 +435,11 @@ export default function UsersManager() {
       setShowCreate(false);
       setForm({ name: "", email: "", role: "user" });
       setCreateRbacRoles(LEGACY_RBAC_SUGGESTION["user"]);
+      setCreateSubmitted(false);
       toast.success("Usuario creado", { description: "Se ha enviado el email de invitación." });
     },
-    onError: (e) => toast.error("Error", { description: e.message }),
+    // El diálogo sigue abierto con los datos escritos para poder corregir y reintentar
+    onError: (e) => { setCreateServerError(errorMessage(e, e.message || "No se ha podido crear el usuario.")); toast.error("No se ha podido crear el usuario", { description: e.message }); },
   });
 
   const changeRole = trpc.admin.changeUserRole.useMutation({
@@ -491,6 +501,10 @@ export default function UsersManager() {
   // ─── UI state ───────────────────────────────────────────────────────────────
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState({ name: "", email: "", role: "user" as Role });
+  const createErrors = {
+    name: !form.name.trim() ? "Indica el nombre de la persona." : null,
+    email: validateEmail(form.email, true),
+  };
   const [createRbacRoles, setCreateRbacRoles] = useState<string[]>(LEGACY_RBAC_SUGGESTION["user"]);
   const [deleteTarget, setDeleteTarget] = useState<{ id: number; name: string } | null>(null);
   const [passwordTarget, setPasswordTarget] = useState<{ id: number; name: string } | null>(null);
@@ -564,8 +578,10 @@ export default function UsersManager() {
   );
 
   const handleCreate = () => {
-    if (!form.name.trim() || !form.email.trim()) {
-      toast.error("Campos requeridos", { description: "Nombre y email son obligatorios." });
+    setCreateSubmitted(true);
+    setCreateServerError(null);
+    if (createErrors.name || createErrors.email) {
+      document.getElementById(createErrors.name ? "new-name" : "new-email")?.focus();
       return;
     }
     createUser.mutate({
@@ -577,11 +593,11 @@ export default function UsersManager() {
   };
 
   if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-20">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
-      </div>
-    );
+    return <PanelLoading label="Cargando usuarios…" className="py-20" />;
+  }
+
+  if (usersIsError) {
+    return <PanelError error={usersError} onRetry={() => refetchUsers()} title="No se han podido cargar los usuarios" />;
   }
 
   return (
@@ -589,7 +605,7 @@ export default function UsersManager() {
       <div className="space-y-6">
 
         {/* ── Header ── */}
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-xl font-bold text-gray-900">Gestión de Usuarios</h2>
             <p className="text-sm text-gray-500 mt-0.5">
@@ -601,6 +617,20 @@ export default function UsersManager() {
             Nuevo usuario
           </Button>
         </div>
+
+        {/* Estado vacío útil: solo existe el usuario actual */}
+        {users.length <= 1 && (
+          <PanelEmpty
+            icon={<UserPlus className="w-6 h-6" />}
+            title="Por ahora solo estás tú"
+            description="Invita a las personas de tu equipo: cada una entrará con su propio usuario y solo verá lo que su rol le permita."
+          >
+            <Button onClick={() => { setShowCreate(true); setCreateRbacRoles(LEGACY_RBAC_SUGGESTION[form.role] ?? []); }} className="bg-blue-700 hover:bg-blue-800 text-white gap-2">
+              <UserPlus className="w-4 h-4" aria-hidden="true" />
+              Invitar a alguien
+            </Button>
+          </PanelEmpty>
+        )}
 
         {/* ── FASE 4: Contadores por rol + último admin indicator ── */}
         <div className="flex flex-wrap gap-2">
@@ -1007,7 +1037,7 @@ export default function UsersManager() {
         </Dialog>
 
         {/* ── Create User Dialog ── */}
-        <Dialog open={showCreate} onOpenChange={(open) => { setShowCreate(open); if (!open) { setForm({ name: "", email: "", role: "user" }); setCreateRbacRoles(LEGACY_RBAC_SUGGESTION["user"]); } }}>
+        <Dialog open={showCreate} onOpenChange={(open) => { setShowCreate(open); if (!open) { setForm({ name: "", email: "", role: "user" }); setCreateRbacRoles(LEGACY_RBAC_SUGGESTION["user"]); setCreateSubmitted(false); setCreateServerError(null); } }}>
           <DialogContent className="sm:max-w-lg flex flex-col max-h-[90vh]">
             <DialogHeader className="shrink-0">
               <DialogTitle className="flex items-center gap-2">
@@ -1016,13 +1046,30 @@ export default function UsersManager() {
               </DialogTitle>
             </DialogHeader>
             <div className="space-y-4 py-2 overflow-y-auto flex-1 pr-1">
+              {createServerError && (
+                <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+                  {createServerError} Los datos siguen en el formulario.
+                </div>
+              )}
               <div className="space-y-1.5">
                 <Label htmlFor="new-name">Nombre completo *</Label>
-                <Input id="new-name" placeholder="Ej: María García" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} />
+                <Input
+                  id="new-name" placeholder="Ej: María García" autoComplete="name" aria-required="true"
+                  value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                  aria-invalid={createSubmitted && createErrors.name ? true : undefined}
+                  aria-describedby={createSubmitted && createErrors.name ? "new-name-error" : undefined}
+                />
+                {createSubmitted && createErrors.name && <p id="new-name-error" className="text-xs text-red-700">{createErrors.name}</p>}
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="new-email">Email *</Label>
-                <Input id="new-email" type="email" placeholder="maria@ejemplo.com" value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} />
+                <Input
+                  id="new-email" type="email" placeholder="maria@ejemplo.com" autoComplete="email" aria-required="true"
+                  value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+                  aria-invalid={createSubmitted && createErrors.email ? true : undefined}
+                  aria-describedby={createSubmitted && createErrors.email ? "new-email-error" : undefined}
+                />
+                {createSubmitted && createErrors.email && <p id="new-email-error" className="text-xs text-red-700">{createErrors.email}</p>}
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="new-role">Rol</Label>
@@ -1031,7 +1078,7 @@ export default function UsersManager() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="w-80">
-                    {ROLES.map((r) => (
+                    {availableRoles.map((r) => (
                       <SelectItem key={r.value} value={r.value}>
                         <div className="py-1 space-y-1">
                           <div className="flex items-center gap-2">

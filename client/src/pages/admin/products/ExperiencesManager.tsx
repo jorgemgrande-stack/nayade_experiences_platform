@@ -1,4 +1,8 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
+import { Link } from "wouter";
+import { usePanelSubscription } from "@/hooks/usePanelSubscription";
+import { PanelError, errorMessage } from "@/components/admin/PanelStates";
+import { validateProductForm } from "@shared/formValidation";
 import { Plus, Pencil, Trash2, Star, Eye, EyeOff, Search, ImageIcon, X, MoreVertical, Copy, PowerOff, Power, ChevronUp, ChevronDown } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
@@ -150,20 +154,54 @@ export default function ExperiencesManager() {
   const [cloneName, setCloneName] = useState("");
   const [localOrder, setLocalOrder] = useState<number[]>([]);
 
-  const { data: experiences, refetch } = trpc.products.getAll.useQuery();
+  const { data: experiences, refetch, isLoading: listLoading, isError: listIsError, error: listError } = trpc.products.getAll.useQuery();
+
+  // Empresas con licencias por capacidad: vocabulario genérico y sin los campos que no aplican a su plan
+  const sub = usePanelSubscription();
+  const isNewCompany = sub.isLicensed;
+  const noun = isNewCompany ? "producto" : "experiencia";
+  const Noun = isNewCompany ? "Producto" : "Experiencia";
+  const showSuppliers = sub.can("supplier-settlements");
+  const showReav = sub.can("travel-net") || form.fiscalRegime === "reav";
+  const showDifficulty = !isNewCompany;
+  const locationLabel = isNewCompany ? "Lugar de servicio o venta" : "Ubicación";
+
+  // Errores por campo (tras el primer intento) y error del servidor; ante un error no se cierra ni se vacía el formulario
+  const [submitted, setSubmitted] = useState(false);
+  const [serverError, setServerError] = useState<string | null>(null);
 
   // Sincronizar orden local cuando llegan datos
   const utils = trpc.useUtils();
   const { data: categories } = trpc.products.getCategories.useQuery();
   const { data: locations } = trpc.products.getLocations.useQuery();
 
+  // Acceso directo «Nuevo producto» (inicio del panel): ?nuevo=1
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (url.searchParams.get("nuevo") !== "1") return;
+    openCreate();
+    url.searchParams.delete("nuevo");
+    window.history.replaceState({}, "", url.toString());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Si solo hay una categoría o una ubicación, se preselecciona al crear
+  useEffect(() => {
+    if (!showModal || editingId) return;
+    setForm((f) => ({
+      ...f,
+      categoryId: f.categoryId || (categories?.length === 1 ? String(categories[0].id) : ""),
+      locationId: f.locationId || (locations?.length === 1 ? String(locations[0].id) : ""),
+    }));
+  }, [showModal, editingId, categories, locations]);
+
   const createMutation = trpc.products.create.useMutation({
-    onSuccess: () => { toast.success("Experiencia creada"); refetch(); setShowModal(false); setForm(emptyForm); },
-    onError: (e) => toast.error(e.message || "Error al crear la experiencia"),
+    onSuccess: () => { toast.success(`${Noun} creado`); refetch(); setShowModal(false); setForm(emptyForm); setSubmitted(false); },
+    onError: (e) => { setServerError(errorMessage(e, e.message || `No se ha podido crear el ${noun}.`)); toast.error(`No se ha podido crear el ${noun}`); },
   });
   const updateMutation = trpc.products.update.useMutation({
-    onSuccess: () => { toast.success("Experiencia actualizada"); refetch(); setShowModal(false); setEditingId(null); },
-    onError: (e) => toast.error(e.message || "Error al actualizar"),
+    onSuccess: () => { toast.success(`${Noun} actualizado`); refetch(); setShowModal(false); setEditingId(null); setSubmitted(false); },
+    onError: (e) => { setServerError(errorMessage(e, e.message || "No se han podido guardar los cambios.")); toast.error("No se han podido guardar los cambios"); },
   });
   const deleteMutation = trpc.products.delete.useMutation({
     onSuccess: () => { toast.success("Experiencia desactivada"); refetch(); },
@@ -186,7 +224,7 @@ export default function ExperiencesManager() {
     onError: () => toast.error("Error al guardar el orden"),
   });
 
-  const openCreate = () => { setEditingId(null); setForm(emptyForm); setShowModal(true); };
+  const openCreate = () => { setEditingId(null); setForm(emptyForm); setSubmitted(false); setServerError(null); setShowModal(true); };
   const openEdit = (exp: Record<string, unknown>) => {
     setEditingId(Number(exp.id));
     setForm({
@@ -229,13 +267,26 @@ export default function ExperiencesManager() {
       isPresentialSale: Boolean((exp as Record<string,unknown>).isPresentialSale),
       hasTimeSlots: Boolean((exp as Record<string,unknown>).hasTimeSlots),
     });
+    setSubmitted(false);
+    setServerError(null);
     setShowModal(true);
   };
 
+  const formErrors = validateProductForm(form, { location: isNewCompany ? "el lugar de servicio o venta" : "la ubicación" });
+  const err = (k: keyof typeof formErrors) => (submitted ? formErrors[k] : undefined);
+  const errProps = (k: keyof typeof formErrors, id: string) =>
+    err(k) ? { "aria-invalid": true as const, "aria-describedby": `${id}-error` } : {};
+  const ErrorText = ({ k, id }: { k: keyof typeof formErrors; id: string }) =>
+    err(k) ? <p id={`${id}-error`} className="text-xs text-destructive mt-1">{err(k)}</p> : null;
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.title || !form.basePrice || !form.categoryId || !form.locationId) {
-      toast.error("Rellena los campos obligatorios"); return;
+    setSubmitted(true);
+    setServerError(null);
+    const firstError = (["title", "basePrice", "categoryId", "locationId", "minPersons", "maxPersons", "unitCapacity", "discountPercent"] as const).find((k) => formErrors[k]);
+    if (firstError) {
+      document.getElementById(firstError)?.focus();
+      return;
     }
     const data = {
       slug: form.slug || form.title.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, ""),
@@ -309,45 +360,74 @@ export default function ExperiencesManager() {
   };
 
   return (
-    <AdminLayout title="Gestión de Experiencias">
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+    <AdminLayout title={isNewCompany ? "Productos y servicios" : "Gestión de Experiencias"}>
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
+        <div className="flex items-center gap-3 min-w-0 flex-1 sm:flex-none">
+          <div className="relative w-full sm:w-64">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" aria-hidden="true" />
             <Input
-              placeholder="Buscar experiencias..."
+              placeholder={isNewCompany ? "Buscar productos..." : "Buscar experiencias..."}
+              aria-label={isNewCompany ? "Buscar productos por nombre" : "Buscar experiencias por nombre"}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="pl-9 w-64"
+              className="pl-9 w-full"
             />
           </div>
         </div>
         <Button onClick={openCreate} style={{ background: "linear-gradient(135deg,#f97316,#f59e0b)", color: "#fff", border: "none", borderRadius: "10px", fontWeight: 600 }}>
-          <Plus className="w-4 h-4 mr-2" />
-          Nueva Experiencia
+          <Plus className="w-4 h-4 mr-2" aria-hidden="true" />
+          {isNewCompany ? "Nuevo producto" : "Nueva Experiencia"}
         </Button>
       </div>
 
       {/* Table */}
       <div className="bg-card rounded-2xl border border-border/50 overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full">
+          <table className="w-full min-w-[640px]">
+            <caption className="sr-only">{isNewCompany ? "Listado de productos y servicios" : "Listado de experiencias"}</caption>
             <thead>
               <tr className="border-b border-border bg-muted/30">
-                <th className="text-center px-3 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide w-16">Orden</th>
-                <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Experiencia</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Precio</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Dificultad</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Estado</th>
-                <th className="text-right px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Acciones</th>
+                <th scope="col" className="text-center px-3 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide w-16">Orden</th>
+                <th scope="col" className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">{Noun}</th>
+                <th scope="col" className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Precio</th>
+                {showDifficulty && <th scope="col" className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Dificultad</th>}
+                <th scope="col" className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Estado</th>
+                <th scope="col" className="text-right px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Acciones</th>
               </tr>
             </thead>
             <tbody>
-              {filtered.length === 0 ? (
+              {listLoading ? (
+                <tr><td colSpan={6} className="text-center py-12 text-muted-foreground text-sm" role="status">Cargando…</td></tr>
+              ) : listIsError ? (
                 <tr>
-                  <td colSpan={6} className="text-center py-12">
-                    <ImageIcon className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
-                    <p className="text-muted-foreground">No hay experiencias. Crea la primera.</p>
+                  <td colSpan={6} className="p-6">
+                    <PanelError error={listError} onRetry={() => refetch()} title={isNewCompany ? "No se han podido cargar los productos" : "No se han podido cargar las experiencias"} />
+                  </td>
+                </tr>
+              ) : filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="text-center py-12 px-4">
+                    <ImageIcon className="w-10 h-10 text-muted-foreground mx-auto mb-3" aria-hidden="true" />
+                    {search.trim() ? (
+                      <>
+                        <p className="text-foreground">Nada coincide con «{search.trim()}».</p>
+                        <Button type="button" variant="outline" size="sm" className="mt-3" onClick={() => setSearch("")}>Borrar búsqueda</Button>
+                      </>
+                    ) : (
+                      <>
+                        <p className="text-foreground font-medium">{isNewCompany ? "Todavía no tienes productos ni servicios" : "No hay experiencias. Crea la primera."}</p>
+                        {isNewCompany && (
+                          <p className="text-sm text-muted-foreground mt-1 max-w-md mx-auto">
+                            Crea lo que vendes para poder añadirlo a presupuestos, pedidos y a tu tienda online.
+                            {(categories?.length ?? 0) === 0 && <> Antes necesitarás al menos una <Link href="/admin/productos/categorias" className="underline underline-offset-4">categoría</Link>.</>}
+                          </p>
+                        )}
+                        <Button type="button" size="sm" className="mt-4" onClick={openCreate}>
+                          <Plus className="w-4 h-4 mr-1.5" aria-hidden="true" />
+                          {isNewCompany ? "Crear el primer producto" : "Crear experiencia"}
+                        </Button>
+                      </>
+                    )}
                   </td>
                 </tr>
               ) : (
@@ -397,13 +477,15 @@ export default function ExperiencesManager() {
                     <td className="px-4 py-4">
                       <span className="font-semibold text-foreground">{parseFloat(exp.basePrice).toFixed(0)}€</span>
                     </td>
-                    <td className="px-4 py-4">
-                      {exp.difficulty && (
-                        <Badge className={cn("text-xs", difficultyColors[exp.difficulty] ?? "")}>
-                          {difficultyLabels[exp.difficulty] ?? exp.difficulty}
-                        </Badge>
-                      )}
-                    </td>
+                    {showDifficulty && (
+                      <td className="px-4 py-4">
+                        {exp.difficulty && (
+                          <Badge className={cn("text-xs", difficultyColors[exp.difficulty] ?? "")}>
+                            {difficultyLabels[exp.difficulty] ?? exp.difficulty}
+                          </Badge>
+                        )}
+                      </td>
+                    )}
                     <td className="px-4 py-4">
                       <div className="flex flex-col gap-1">
                         <Badge className={exp.isActive ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-700"}>
@@ -418,8 +500,8 @@ export default function ExperiencesManager() {
                       <div className="flex items-center gap-1 justify-end">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" className="w-8 h-8">
-                              <MoreVertical className="w-3.5 h-3.5" />
+                            <Button variant="ghost" size="icon" className="w-8 h-8" aria-label={`Acciones de ${exp.title}`}>
+                              <MoreVertical className="w-3.5 h-3.5" aria-hidden="true" />
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end" className="w-44">
@@ -457,9 +539,18 @@ export default function ExperiencesManager() {
       <Dialog open={showModal} onOpenChange={setShowModal}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="font-display">{editingId ? "Editar Experiencia" : "Nueva Experiencia"}</DialogTitle>
+            <DialogTitle className="font-display">{editingId ? `Editar ${noun}` : isNewCompany ? "Nuevo producto o servicio" : "Nueva Experiencia"}</DialogTitle>
           </DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-5 mt-2">
+          <form onSubmit={handleSubmit} noValidate className="space-y-5 mt-2">
+            <p className="text-xs text-muted-foreground">Los campos marcados con * son obligatorios.</p>
+            {serverError && (
+              <div role="alert" className="rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-foreground">
+                {serverError} Tus datos siguen en el formulario: corrígelos y vuelve a intentarlo.
+              </div>
+            )}
+            {submitted && Object.keys(formErrors).length > 0 && (
+              <p role="alert" className="text-sm text-destructive">Revisa los campos marcados antes de guardar.</p>
+            )}
             {/* 4 zonas de upload de imágenes */}
             <div>
               <Label className="text-sm font-semibold mb-2 block">Imágenes del carrusel (hasta 4)</Label>
@@ -470,64 +561,83 @@ export default function ExperiencesManager() {
                 <ImageUploadZone label="Imagen 4" value={form.image4} onChange={(url) => setForm(f => ({ ...f, image4: url }))} index={4} />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="col-span-2">
-                <Label htmlFor="title">Título *</Label>
-                <Input id="title" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} required className="mt-1" />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="sm:col-span-2">
+                <Label htmlFor="title">{isNewCompany ? "Nombre" : "Título"} *</Label>
+                <Input id="title" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} aria-required="true" className="mt-1" {...errProps("title", "title")} />
+                <ErrorText k="title" id="title" />
               </div>
               <div>
-                <Label htmlFor="slug">Slug (URL)</Label>
-                <Input id="slug" value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value })} className="mt-1" placeholder="auto-generado" />
+                <Label htmlFor="slug">{isNewCompany ? "Dirección en la web" : "Slug (URL)"}</Label>
+                <Input id="slug" value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value })} className="mt-1" placeholder="Se genera a partir del nombre" aria-describedby="slug-hint" />
+                <p id="slug-hint" className="text-xs text-muted-foreground mt-1">Opcional. Solo letras minúsculas, números y guiones.</p>
               </div>
               <div>
-                <Label htmlFor="basePrice">Precio Base (€) *</Label>
-                <Input id="basePrice" type="number" step="0.01" value={form.basePrice} onChange={(e) => setForm({ ...form, basePrice: e.target.value })} required className="mt-1" />
+                <Label htmlFor="basePrice">{isNewCompany ? "Precio (€, impuestos incluidos)" : "Precio Base (€)"} *</Label>
+                <Input id="basePrice" type="number" inputMode="decimal" min="0" step="0.01" value={form.basePrice} onChange={(e) => setForm({ ...form, basePrice: e.target.value })} aria-required="true" className="mt-1" {...errProps("basePrice", "basePrice")} />
+                <ErrorText k="basePrice" id="basePrice" />
               </div>
               <div>
-                <Label>Categoría *</Label>
+                <Label htmlFor="categoryId">Categoría *</Label>
                 <Select value={form.categoryId} onValueChange={(v) => setForm({ ...form, categoryId: v })}>
-                  <SelectTrigger className="mt-1"><SelectValue placeholder="Seleccionar..." /></SelectTrigger>
+                  <SelectTrigger id="categoryId" className="mt-1" aria-required="true" {...errProps("categoryId", "categoryId")}><SelectValue placeholder="Seleccionar..." /></SelectTrigger>
                   <SelectContent>
                     {(categories ?? []).map((c) => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
+                <ErrorText k="categoryId" id="categoryId" />
+                {(categories?.length ?? 0) === 0 && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    No hay categorías. <Link href="/admin/productos/categorias" className="underline underline-offset-4">Crea una categoría</Link> y vuelve aquí.
+                  </p>
+                )}
               </div>
               <div>
-                <Label>Ubicación *</Label>
+                <Label htmlFor="locationId">{locationLabel} *</Label>
                 <Select value={form.locationId} onValueChange={(v) => setForm({ ...form, locationId: v })}>
-                  <SelectTrigger className="mt-1"><SelectValue placeholder="Seleccionar..." /></SelectTrigger>
+                  <SelectTrigger id="locationId" className="mt-1" aria-required="true" {...errProps("locationId", "locationId")}><SelectValue placeholder="Seleccionar..." /></SelectTrigger>
                   <SelectContent>
                     {(locations ?? []).map((l) => <SelectItem key={l.id} value={String(l.id)}>{l.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
+                <ErrorText k="locationId" id="locationId" />
+                {(locations?.length ?? 0) === 0 && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    No hay ninguno. <Link href="/admin/productos/ubicaciones" className="underline underline-offset-4">Añade uno</Link> (por ejemplo, tu tienda u oficina).
+                  </p>
+                )}
               </div>
               <div>
                 <Label htmlFor="duration">Duración</Label>
-                <Input id="duration" value={form.duration} onChange={(e) => setForm({ ...form, duration: e.target.value })} className="mt-1" placeholder="Ej: 1 día" />
+                <Input id="duration" value={form.duration} onChange={(e) => setForm({ ...form, duration: e.target.value })} className="mt-1" placeholder={isNewCompany ? "Opcional. Ej: 1 hora" : "Ej: 1 día"} />
+              </div>
+              {showDifficulty && (
+                <div>
+                  <Label htmlFor="difficulty">Dificultad</Label>
+                  <Select value={form.difficulty} onValueChange={(v) => setForm({ ...form, difficulty: v })}>
+                    <SelectTrigger id="difficulty" className="mt-1"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="facil">Fácil</SelectItem>
+                      <SelectItem value="moderado">Moderado</SelectItem>
+                      <SelectItem value="dificil">Difícil</SelectItem>
+                      <SelectItem value="experto">Experto</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+              <div>
+                <Label htmlFor="minPersons">{isNewCompany ? "Cantidad mínima" : "Mín. Personas"}</Label>
+                <Input id="minPersons" type="number" inputMode="numeric" min="1" value={form.minPersons} onChange={(e) => setForm({ ...form, minPersons: e.target.value })} className="mt-1" {...errProps("minPersons", "minPersons")} />
+                <ErrorText k="minPersons" id="minPersons" />
               </div>
               <div>
-                <Label>Dificultad</Label>
-                <Select value={form.difficulty} onValueChange={(v) => setForm({ ...form, difficulty: v })}>
-                  <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="facil">Fácil</SelectItem>
-                    <SelectItem value="moderado">Moderado</SelectItem>
-                    <SelectItem value="dificil">Difícil</SelectItem>
-                    <SelectItem value="experto">Experto</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label htmlFor="minPersons">Mín. Personas</Label>
-                <Input id="minPersons" type="number" value={form.minPersons} onChange={(e) => setForm({ ...form, minPersons: e.target.value })} className="mt-1" />
-              </div>
-              <div>
-                <Label htmlFor="maxPersons">Máx. Personas</Label>
-                <Input id="maxPersons" type="number" value={form.maxPersons} onChange={(e) => setForm({ ...form, maxPersons: e.target.value })} className="mt-1" />
+                <Label htmlFor="maxPersons">{isNewCompany ? "Cantidad máxima" : "Máx. Personas"}</Label>
+                <Input id="maxPersons" type="number" inputMode="numeric" min="1" value={form.maxPersons} onChange={(e) => setForm({ ...form, maxPersons: e.target.value })} className="mt-1" placeholder={isNewCompany ? "Sin límite" : undefined} {...errProps("maxPersons", "maxPersons")} />
+                <ErrorText k="maxPersons" id="maxPersons" />
               </div>
 
               {/* Tipo de Pricing */}
-              <div className="col-span-2">
+              <div className="sm:col-span-2">
                 <div className="rounded-xl border border-border bg-muted/40 p-4 space-y-3">
                   <div className="flex items-center gap-2">
                     <span className="inline-flex items-center justify-center w-6 h-6 rounded-lg bg-accent/15 text-accent text-xs font-bold">€</span>
@@ -539,7 +649,7 @@ export default function ExperiencesManager() {
                       <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="per_person">Por persona</SelectItem>
-                        <SelectItem value="per_unit">Por unidad (canoa, moto de agua, etc.)</SelectItem>
+                        <SelectItem value="per_unit">{isNewCompany ? "Por unidad" : "Por unidad (canoa, moto de agua, etc.)"}</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -549,7 +659,8 @@ export default function ExperiencesManager() {
                         <div>
                           <Label htmlFor="unitCapacity" className="text-xs text-muted-foreground mb-1 block">Personas por unidad *</Label>
                           <Input id="unitCapacity" type="number" min="1" value={form.unitCapacity}
-                            onChange={(e) => setForm({ ...form, unitCapacity: e.target.value })} placeholder="Ej: 2" />
+                            onChange={(e) => setForm({ ...form, unitCapacity: e.target.value })} placeholder="Ej: 2" {...errProps("unitCapacity", "unitCapacity")} />
+                          <ErrorText k="unitCapacity" id="unitCapacity" />
                         </div>
                         <div>
                           <Label htmlFor="maxUnits" className="text-xs text-muted-foreground mb-1 block">Máx. unidades disponibles</Label>
@@ -567,11 +678,11 @@ export default function ExperiencesManager() {
                 </div>
               </div>
 
-              <div className="col-span-2">
+              <div className="sm:col-span-2">
                 <Label htmlFor="shortDescription">Descripción Corta</Label>
                 <Input id="shortDescription" value={form.shortDescription} onChange={(e) => setForm({ ...form, shortDescription: e.target.value })} className="mt-1" />
               </div>
-              <div className="col-span-2">
+              <div className="sm:col-span-2">
                 <Label htmlFor="description">Descripción Completa</Label>
                 <Textarea id="description" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="mt-1" rows={4} />
               </div>
@@ -621,9 +732,11 @@ export default function ExperiencesManager() {
                           onChange={(e) => setForm({ ...form, discountPercent: e.target.value })}
                           placeholder="Ej: 10"
                           className="pr-8"
+                          {...errProps("discountPercent", "discountPercent")}
                         />
-                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">%</span>
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm" aria-hidden="true">%</span>
                       </div>
+                      <ErrorText k="discountPercent" id="discountPercent" />
                     </div>
                     <div>
                       <Label htmlFor="discountExpiresAt" className="text-xs text-muted-foreground">Válido hasta</Label>
@@ -666,7 +779,7 @@ export default function ExperiencesManager() {
                     >
                       <option value="iva21">IVA 21%</option>
                       <option value="iva10">IVA 10%</option>
-                      <option value="reav">REAV — Régimen Especial Agencias de Viaje</option>
+                      {showReav && <option value="reav">REAV — Régimen Especial Agencias de Viaje</option>}
                     </select>
                     <p className="text-[10px] text-muted-foreground mt-1">El PVP se entiende como precio final con impuestos incluidos.</p>
                   </div>
@@ -716,8 +829,9 @@ export default function ExperiencesManager() {
                 )}
               </div>
 
-              {/* Proveedor y Liquidaciones */}
-              <div className="col-span-2">
+              {/* Proveedor y Liquidaciones (solo con el módulo de proveedores contratado) */}
+              {showSuppliers && (
+              <div className="sm:col-span-2">
                 <Label className="text-sm font-semibold text-violet-700 flex items-center gap-1.5 mb-3">
                   <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-violet-100 text-violet-600 text-xs">🏢</span>
                   Proveedor y Liquidaciones
@@ -775,6 +889,7 @@ export default function ExperiencesManager() {
                   <Label className="text-sm text-slate-600">Incluir en liquidaciones automáticas</Label>
                 </div>
               </div>
+              )}
 
               {/* Time Slots Panel */}
               {editingId && (

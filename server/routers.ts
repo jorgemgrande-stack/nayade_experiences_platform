@@ -181,6 +181,7 @@ import { emailTemplatesRouter } from "./routers/emailTemplatesRouter";
 import { pdfTemplatesRouter } from "./routers/pdfTemplatesRouter";
 import { integrationsRouter } from "./routers/integrations";
 import { modulesRouter } from "./routers/modulesRouter";
+import { subscriptionRouter } from "./routers/subscriptionRouter";
 import { operationsRouter } from "./routers/operations";
 import { hrRouter } from "./routers/hr";
 import { bankMovementsRouter } from "./routers/bankMovements";
@@ -246,6 +247,7 @@ export const appRouter = router({
   pdfTemplates: pdfTemplatesRouter,
   integrations: integrationsRouter,
   modules: modulesRouter,
+  subscription: subscriptionRouter,
   auth: router({
     me: publicProcedure.query((opts) => toPublicUser(opts.ctx.user)),
     logout: publicProcedure.mutation(({ ctx }) => {

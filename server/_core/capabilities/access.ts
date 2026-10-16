@@ -53,6 +53,13 @@ export class CapabilityAccess {
       throw e;
     }
   }
+  /**
+   * Licencias del tenant actual, para PRESENTACIÓN (menú y página de suscripción del panel).
+   * No autoriza nada: la autorización sigue siendo `check` en cada operación. Lanza si no puede leerse.
+   */
+  async list(tenantId?: string) {
+    return this.load(tenantId ?? getTenantId());
+  }
   /** Decisión para el tenant actual. Lanza si no puede verificarse (quien llama falla cerrado). */
   async check(capabilityId: string, o: { write: boolean; siteId?: string | null; tenantId?: string }): Promise<Decision> {
     if (!this.enforcing()) return { allowed: true, status: "active" };
