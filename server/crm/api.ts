@@ -11,6 +11,8 @@ import { getAuth, requireScope } from "../controlPlane/auth";
 import { COMPANY_STATUSES, CrmError, LEAD_PRIORITIES, LEAD_STATUSES, STAGES, type EntityType } from "./types";
 import type { CrmService } from "./service";
 import type { CrmStore, Tables } from "./store";
+import type { BillingStore } from "../_core/billing/ports";
+import { billingSummary } from "./dashboard";
 
 const wrap =
   (fn: (req: Request, res: Response) => Promise<void>) =>
@@ -114,11 +116,17 @@ const contractTerms = {
   conditions: nullStr(20000),
 };
 
-export function createCrmRouter(crm: CrmService, store: CrmStore): Router {
+export function createCrmRouter(crm: CrmService, store: CrmStore, opts: { billing?: Pick<BillingStore, "listSubscriptions"> } = {}): Router {
   const r = express.Router();
   const who = (req: Request) => `${getAuth(req)!.actor.type}:${getAuth(req)!.actor.id}`;
 
-  r.get("/dashboard", requireScope("crm:read"), wrap(async (_q, res) => void res.json(await crm.dashboard())));
+  r.get("/dashboard", requireScope("crm:read"), wrap(async (req, res) => {
+    const base = await crm.dashboard();
+    // Datos de suscripciones solo con facturación configurada y el ámbito billing:read
+    const canBilling = getAuth(req)!.scopes.has("billing:read");
+    const billing = opts.billing && canBilling ? billingSummary(await opts.billing.listSubscriptions(), Date.now()) : null;
+    res.json({ ...base, billing, billingUnavailable: billing ? null : !opts.billing ? "not_configured" : "forbidden" });
+  }));
 
   r.get("/duplicates", requireScope("crm:read"), wrap(async (req, res) => {
     const q = z.object({ email: optStr(320), phone: optStr(40), companyName: optStr(200), taxId: optStr(40) }).parse(req.query);
