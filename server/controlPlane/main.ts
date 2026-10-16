@@ -43,6 +43,7 @@ import { SubscriptionService } from "../_core/billing/service";
 import { createPaymentProvider } from "../_core/billing/providers";
 import { RegistryTenantEffects } from "../_core/billing/effects";
 import { IncidentService, MysqlIncidentStore, webhookNotifier } from "../_core/ops/incidents";
+import { MysqlTicketStore, TicketService } from "../_core/support/tickets";
 import { runAlerts } from "../_core/ops/alerts";
 import { SsoService, parseSsoUsers } from "./sso";
 import { createRemoteJWKSet } from "jose";
@@ -133,7 +134,10 @@ async function main() {
     crm = { service: new CrmService({ store, activation }), store };
   }
 
+  const tickets = new TicketService(new MysqlTicketStore(pool), async (id) => (await store.getTenant(id)) !== null);
+
   const app = createControlPlaneApp({
+    tickets,
     billing,
     billingStore,
     ops: { incidents, runAlerts: evaluate },

@@ -39,6 +39,8 @@ PR pequeño → CI informativo → `gh pr merge --merge` → esperar despliegue 
 | SDK y cargador de módulos externos + plantilla | I·T·M·D | repo `elephant-module-template`; `ELEPHANT_MODULES` |
 | Incidencias, alertas y retención | I·T·M·D | registro 0005; `/cp/v1/incidents`, CLI |
 | Adaptador de pagos (Stripe) con cobros apagados | I·T (PR) | doble candado |
+| Tickets de soporte (`/cp/v1/tickets`, pestañas en el CRM) | I·T (PR #63) | registro 0006; ámbitos `tickets:read/write`; pruebas en MySQL real |
+| Catálogo de planes (`/cp/v1/billing/plans`) + selector en el CRM | I·T (PR #62) | |
 
 ## Cola (siguiente, en orden)
 1. Plugin de routers tRPC tipado para extraer hotel/spa/restaurants (B14).
