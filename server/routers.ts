@@ -121,6 +121,7 @@ import {
 } from "./db";
 import {
   buildRedsysForm,
+  isRedsysConfigured,
   validateRedsysNotification,
   generateMerchantOrder,
 } from "./redsys";
@@ -607,12 +608,15 @@ export const appRouter = router({
       .input(z.object({ slug: z.string() }))
       .query(async ({ input }) => {
         const page = await getPageBySlug(input.slug);
-        return page || null;
+        // Un borrador no es público
+        return page && page.isPublished ? page : null;
       }),
 
     getPublicPageBlocks: publicProcedure
       .input(z.object({ slug: z.string() }))
       .query(async ({ input }) => {
+        const page = await getPageBySlug(input.slug);
+        if (page && !page.isPublished) return [];
         return getPageBlocks(input.slug);
       }),
   }),
@@ -1708,6 +1712,8 @@ export const appRouter = router({
         fbc: z.string().max(255).optional(),
       }))
       .mutation(async ({ input, ctx }) => {
+        // Sin pasarela configurada no se crea una pre-reserva que nunca podrá pagarse
+        if (!isRedsysConfigured()) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "El pago online no está configurado en esta empresa." });
         // 1. Obtener el producto y validar que existe y tiene precio
         const { getExperienceById, getVariantsByExperience } = await import("./db");
         const product = await getExperienceById(input.productId);
@@ -1877,6 +1883,7 @@ export const appRouter = router({
         fbc: z.string().max(255).optional(),
       }))
       .mutation(async ({ input, ctx }) => {
+        if (!isRedsysConfigured()) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "El pago online no está configurado en esta empresa." });
         const { getExperienceById: getExpById, getVariantsByExperience: getVariants } = await import("./db");
         // 1. Calcular el importe total de todos los artículos en backend
         let totalAmountCents = 0;
@@ -2523,7 +2530,7 @@ export const appRouter = router({
     /** Actualizar el prefijo de una serie */
     updatePrefix: adminProcedure
       .input(z.object({
-        documentType: z.enum(["presupuesto", "factura", "reserva", "tpv", "cupon", "liquidacion", "anulacion"]),
+        documentType: z.enum(["presupuesto", "factura", "reserva", "tpv", "cupon", "liquidacion", "anulacion", "propuesta"]),
         year: z.number().int().min(2020).max(2099),
         newPrefix: z.string().min(1).max(16).regex(/^[A-Z0-9-]+$/, "Solo mayúsculas, números y guiones"),
       }))
@@ -2535,7 +2542,7 @@ export const appRouter = router({
     /** Resetear manualmente un contador (solo para correcciones de inicio de año) */
     resetCounter: adminProcedure
       .input(z.object({
-        documentType: z.enum(["presupuesto", "factura", "reserva", "tpv", "cupon", "liquidacion", "anulacion"]),
+        documentType: z.enum(["presupuesto", "factura", "reserva", "tpv", "cupon", "liquidacion", "anulacion", "propuesta"]),
         year: z.number().int().min(2020).max(2099),
         newValue: z.number().int().min(0),
       }))
@@ -2547,7 +2554,7 @@ export const appRouter = router({
     /** Historial de generación de números */
     getLogs: adminProcedure
       .input(z.object({
-        documentType: z.enum(["presupuesto", "factura", "reserva", "tpv", "cupon", "liquidacion", "anulacion"]).optional(),
+        documentType: z.enum(["presupuesto", "factura", "reserva", "tpv", "cupon", "liquidacion", "anulacion", "propuesta"]).optional(),
         limit: z.number().int().min(1).max(500).default(100),
       }))
       .query(async ({ input }) => {
