@@ -15,7 +15,6 @@
  *   valor (antes se hacían UPDATE y SELECT por separado, en conexiones del pool que podían ser distintas).
  */
 
-import { drizzle } from "drizzle-orm/mysql2";
 import type mysql from "mysql2/promise";
 import { legacyDb, legacyPool } from "./_core/legacyDb";
 import { eq, and, sql } from "drizzle-orm";
@@ -30,7 +29,7 @@ function getDb() {
 
 // Crea las tablas si no existen — idempotente. Ya NO se ejecuta al generar números: solo desde el
 // mantenimiento explícito (ensureDocumentNumberTables en --schema-maintenance).
-async function ensureTables(db: ReturnType<typeof drizzle>): Promise<void> {
+async function ensureTables(db: ReturnType<typeof getDb>): Promise<void> {
   if (_tablesReady) return;
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS \`document_counters\` (

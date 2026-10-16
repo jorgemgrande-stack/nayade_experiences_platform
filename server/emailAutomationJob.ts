@@ -441,7 +441,7 @@ export async function runEmailAutomationJob(forceRun = false): Promise<Automatio
       // renderizamos con el builder usando datos reales del quote — el bodyHtml
       // seedeado en email_templates tiene datos de ejemplo hardcodeados.
       // Para el resto, prioridad: email_templates.bodyHtml > rule.emailBody.
-      const commercialBuilder = COMMERCIAL_TEMPLATE_BUILDERS[job.templateKey];
+      const commercialBuilder = COMMERCIAL_TEMPLATE_BUILDERS[job.templateKey] as ((d: CommercialReminderEmailData) => string) | undefined;
       const useCommercialBuilder = commercialBuilder && commercialEmailData;
 
       const resolvedSubject = rule.emailSubject ?? template?.subject ?? null;

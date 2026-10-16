@@ -59,11 +59,11 @@ export function loadMigrations(dir: string): { migrations: Migration[]; errors: 
     else ups.set(id, { number: Number(m[1]), name: m[2], up: body });
   }
 
-  for (const id of downs.keys()) {
+  for (const id of Array.from(downs.keys())) {
     if (!ups.has(id)) errors.push(`${id}.down.sql: no existe la migración ${id}.sql`);
   }
 
-  const migrations: Migration[] = [...ups.entries()]
+  const migrations: Migration[] = Array.from(ups.entries())
     .map(([id, u]) => {
       const down = downs.get(id) ?? null;
       return {

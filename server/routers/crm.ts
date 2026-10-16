@@ -5152,7 +5152,7 @@ export const crmRouter = router({
             customerEmail: input.customerEmail,
             customerPhone: input.customerPhone ?? null,
             totalAmount: input.amountPaid,
-            paymentMethod: input.paymentMethod === "tarjeta_fisica" ? "tarjeta_fisica" : input.paymentMethod === "tarjeta_redsys" ? "tarjeta_redsys" : input.paymentMethod === "redsys" ? "redsys" : input.paymentMethod === "transferencia" ? "transferencia" : input.paymentMethod === "efectivo" ? "efectivo" : "otro",
+            paymentMethod: (input.paymentMethod as string) === "tarjeta_fisica" ? "tarjeta_fisica" : (input.paymentMethod as string) === "tarjeta_redsys" ? "tarjeta_redsys" : input.paymentMethod === "redsys" ? "redsys" : input.paymentMethod === "transferencia" ? "transferencia" : input.paymentMethod === "efectivo" ? "efectivo" : "otro",
             saleChannel: "admin",
             invoiceNumber,
             reservationRef: merchantOrder,

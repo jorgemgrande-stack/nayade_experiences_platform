@@ -98,10 +98,10 @@ export default function ConfigStatus() {
 
   // Active modules (flags enabled)
   const activeModules = flags.filter(f => f.enabled && f.module !== "general");
-  const moduleGroups = [...new Set(activeModules.map(f => f.module))].sort();
+  const moduleGroups = Array.from(new Set(activeModules.map(f => f.module))).sort();
 
   // Env summary
-  const envGroups = [...new Set(env.map(e => e.group))];
+  const envGroups = Array.from(new Set(env.map(e => e.group)));
   const envByGroup = (group: string) => env.filter(e => e.group === group);
 
   return (

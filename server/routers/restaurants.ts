@@ -35,7 +35,7 @@ async function sendRestaurantPaymentEmail(params: {
   merchantParams: string;
   signature: string;
   signatureVersion: string;
-  origin: string;
+  origin?: string;
   bookingId: number;
 }) {
   await sendManagedEmail({
