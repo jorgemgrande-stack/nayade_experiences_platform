@@ -33,6 +33,7 @@ import {
 } from "../_core/provisioning/mysqlAdapters";
 import { SupportAdmin } from "../_core/support/grants";
 import { MysqlWebStore } from "../web/store";
+import { MysqlSubscriptionStore } from "../subscriptions/store";
 import { MysqlCrmStore } from "../crm/mysqlStore";
 import { CrmService } from "../crm/service";
 import { createContractActivation } from "../crm/activation";
@@ -162,6 +163,16 @@ async function main() {
     console.log(JSON.stringify({ ctx: "WebAdmin", enabled: ready, ...(ready ? { publishHook: hookOk } : { reason: "migration_0004_missing" }) }));
   }
 
+  // Suscripciones en modo sombra: misma BD del CRM; solo si la migración 0006 está aplicada
+  let subscriptions: { store: MysqlSubscriptionStore } | undefined;
+  if (process.env.CRM_DATABASE_URL && web) {
+    const subsPool = mysql.createPool({ uri: process.env.CRM_DATABASE_URL, connectionLimit: 4 });
+    const ready = await subsPool.query("SELECT 1 FROM subscriptions LIMIT 0").then(() => true, () => false);
+    if (ready) subscriptions = { store: new MysqlSubscriptionStore(subsPool) };
+    else await subsPool.end();
+    console.log(JSON.stringify({ ctx: "Subscriptions", enabled: ready, mode: "shadow", ...(ready ? {} : { reason: "migration_0006_missing" }) }));
+  }
+
   // API pública de captación de la web comercial: solo con CRM, orígenes explícitos y secreto propio
   const publicOrigins = (process.env.CP_PUBLIC_ORIGINS ?? "").split(",").map((x) => x.trim()).filter(Boolean);
   const publicSecret = process.env.CP_PUBLIC_FORM_SECRET ?? "";
@@ -196,6 +207,7 @@ async function main() {
     trustProxy: process.env.CP_TRUST_PROXY ? Number(process.env.CP_TRUST_PROXY) || process.env.CP_TRUST_PROXY : undefined,
     publicIntake,
     web,
+    subscriptions,
   });
 
   const port = Number(process.env.CP_PORT ?? 4100);
