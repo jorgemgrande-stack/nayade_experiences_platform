@@ -70,7 +70,7 @@ describe("CRM: aplicar un bono a un presupuesto", () => {
     const used = Array.from(new Set(Array.from(src.matchAll(/trpc\.crm\.([a-zA-Z]+)\.([a-zA-Z]+)\.use(?:Query|Mutation)/g), (m) => `crm.${m[1]}.${m[2]}`)));
     expect(used.length).toBeGreaterThan(10);
     expect(used.filter((p) => !procedures[p])).toEqual([]);
-  });
+  }, 60_000); // importa el router completo: con la máquina cargada supera los 5 s por defecto
 });
 
 describe("TPV: alta de caja desde el panel", () => {
