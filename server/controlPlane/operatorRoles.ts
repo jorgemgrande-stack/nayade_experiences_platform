@@ -16,13 +16,14 @@ export const ROLE_LABEL: Record<OperatorRole, string> = {
   readonly: "Solo lectura",
 };
 
-const READ: Scope[] = ["tenants:read", "billing:read", "usage:read", "crm:read", "ops:read", "tickets:read", "web:read"];
+const READ: Scope[] = ["tenants:read", "billing:read", "usage:read", "crm:read", "ops:read", "tickets:read", "web:read", "subscriptions:read"];
 
 export const ROLE_SCOPES: Record<OperatorRole, readonly Scope[]> = {
   superadmin: SCOPES,
   admin: SCOPES,
   // Comercial edita borradores de la web; publicar queda para administración
-  sales: ["crm:read", "crm:write", "tenants:read", "billing:read", "usage:read", "tickets:read", "web:read", "web:write"],
+  // Comercial consulta suscripciones; operar sobre ellas queda para administración
+  sales: ["crm:read", "crm:write", "tenants:read", "billing:read", "usage:read", "tickets:read", "web:read", "web:write", "subscriptions:read"],
   support: ["tickets:read", "tickets:write", "support:write", "tenants:read", "usage:read", "ops:read", "crm:read", "web:read"],
   readonly: READ,
 };
