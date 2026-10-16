@@ -154,6 +154,8 @@ describe("CORS", () => {
       r.end();
     });
     expect(raw["access-control-allow-origin"]).toBe("https://crm.elephantsource.es");
+    // Las ediciones del CRM usan PATCH: el navegador debe poder enviarlas
+    expect(String(raw["access-control-allow-methods"])).toMatch(/\bPATCH\b/);
     const bad = await new Promise<http.IncomingHttpHeaders>((resolve) => {
       const r = http.request({ host: "127.0.0.1", port, path: "/cp/v1/tenants", method: "OPTIONS", headers: { origin: "https://evil.example" } }, (res) => {
         res.resume();
