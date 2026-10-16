@@ -55,6 +55,22 @@ describe.skipIf(!URL_)("licencias por capacidad con MySQL real", () => {
     expect(ev.map((e) => [e.capabilityId, e.fromStatus, e.toStatus])).toEqual(expect.arrayContaining([["crm-leads", null, "active"], ["people-hr", null, "contracted"]]));
   });
 
+  it("altas simultáneas de empresas distintas: ninguna falla por interbloqueo (se reintenta) y cada una recibe lo suyo", async () => {
+    const registry = new TenantRegistryService(new MysqlTenantRegistryStore(pool), () =>
+      keyringFromEnv({ REGISTRY_KEYS: `k1:${crypto.randomBytes(32).toString("base64")}`, REGISTRY_ACTIVE_KEY_ID: "k1" } as NodeJS.ProcessEnv),
+    );
+    const ids = Array.from({ length: 8 }, (_, i) => `par-${i}`);
+    for (const id of ids) await registry.createTenant({ id, displayName: id }, { type: "operator", id: "test" });
+    const caps = ["crm-contacts", "crm-accounts", "crm-leads", "crm-quotes", "shop-catalog", "shop-orders", "cms-editor", "bill-invoices", "admin-panel", "admin-users"];
+    for (let round = 0; round < 3; round++) {
+      const r = await Promise.allSettled(
+        ids.map((id) => store.apply(id, caps.map((c) => ({ capabilityId: c, siteId: "", status: "active" as const, validUntil: 1_900_000_000_000 + round, source: "subscription:1" })), { actor: "t", reason: null, now: 100 + round })),
+      );
+      expect(r.filter((x) => x.status === "rejected").map((x) => String((x as PromiseRejectedResult).reason))).toEqual([]);
+    }
+    for (const id of ids) expect((await store.list(id)).every((g) => g.validUntil === 1_900_000_000_002)).toBe(true);
+  });
+
   it("aplicaciones concurrentes sobre el mismo tenant se serializan sin perder historial", async () => {
     const statuses = ["active", "suspended", "read_only", "active", "suspended", "active"] as const;
     await Promise.all(statuses.map((s, i) => store.apply("acme", [{ capabilityId: "tax-filings", siteId: "", status: s, validUntil: null, source: "operator" }], { actor: `op:${i}`, reason: "carrera", now: 10 + i })));

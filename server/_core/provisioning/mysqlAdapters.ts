@@ -167,6 +167,21 @@ export class MysqlTenantSeeder implements TenantSeeder {
     }
   }
 
+  async reissueAdminInvite(dsn: string, input: { email: string }): Promise<{ inviteToken: string } | null> {
+    const conn = await mysql.createConnection({ uri: dsn });
+    try {
+      const inviteToken = crypto.randomBytes(32).toString("hex");
+      // Solo si la invitación sigue sin aceptar (sin contraseña): nunca se toca una cuenta en uso
+      const [res] = await conn.query<mysql.ResultSetHeader>(
+        "UPDATE users SET inviteToken = ?, inviteTokenExpiry = ? WHERE email = ? AND role = 'admin' AND inviteAccepted = 0 AND passwordHash IS NULL",
+        [inviteToken, new Date(Date.now() + 7 * 86_400_000), input.email.toLowerCase()],
+      );
+      return res.affectedRows > 0 ? { inviteToken } : null;
+    } finally {
+      await conn.end().catch(() => undefined);
+    }
+  }
+
   /** Siembra una plantilla inicial sin pisar lo que el tenant ya tenga. */
   async seedTemplate(dsn: string, templateId: string): Promise<void> {
     const tpl = getTemplate(templateId);

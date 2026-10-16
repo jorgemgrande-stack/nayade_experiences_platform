@@ -45,8 +45,16 @@ export interface TrialOnboardingDeps {
   /** Id del precio aprobado vigente de un producto (catálogo publicado). */
   priceOf: (productKey: string, kind: "monthly" | "yearly") => Promise<number | null>;
   notify: TrialNotifier;
+  /**
+   * Invitación nueva para el propietario si la original se perdió (alta reanudada) y aún no definió
+   * su contraseña; `null` si ya entró. Opcional: sin él no se puede reenviar el acceso.
+   */
+  reissueInvite?: (tenantId: string) => Promise<string | null>;
   now?: () => number;
 }
+
+/** Longitud máxima de un identificador de tenant (TENANT_ID_RE del aprovisionamiento). */
+const TENANT_ID_MAX = 42;
 
 /** Identificador de plataforma estable para una prueba: `t<id>-<empresa>`. */
 export function trialTenantId(trialId: number, companyName: string): string {
@@ -58,7 +66,11 @@ export function trialTenantId(trialId: number, companyName: string): string {
     .replace(/^-+|-+$/g, "")
     .slice(0, 40)
     .replace(/-+$/g, "");
-  return `t${trialId}${slug ? `-${slug}` : ""}`;
+  const prefix = `t${trialId}`;
+  // El aprovisionamiento admite como mucho 42 caracteres: se recorta el nombre, nunca el número
+  const cut = slug.slice(0, Math.max(0, TENANT_ID_MAX - prefix.length - 1)).replace(/-+$/g, "");
+  // Sin letras aprovechables (p. ej. solo símbolos) el identificador «t7» sería demasiado corto
+  return `${prefix}-${cut || "empresa"}`;
 }
 
 export class TrialOnboardingService {
@@ -86,8 +98,46 @@ export class TrialOnboardingService {
     }
   }
 
-  /** Activa (o reanuda) la prueba. Idempotente y recuperable. */
+  /**
+   * Activa (o reanuda) la prueba. Idempotente y recuperable. Las activaciones simultáneas de la misma
+   * prueba (verificación repetida, operador a la vez) se serializan en este proceso: la segunda
+   * reanuda sobre lo que dejó la primera y no crea nada dos veces.
+   */
   async activate(trialId: number, actor: string) {
+    const prev = this.inflight.get(trialId) ?? Promise.resolve();
+    const mine = prev.then(() => this.activateSerialized(trialId, actor));
+    const tail = mine.catch(() => undefined);
+    this.inflight.set(trialId, tail);
+    try {
+      return await mine;
+    } finally {
+      if (this.inflight.get(trialId) === tail) this.inflight.delete(trialId);
+    }
+  }
+
+  /**
+   * Reenvía al propietario el acceso a su plataforma: invitación nueva (la anterior queda anulada)
+   * mientras no haya definido su contraseña. Si ya la definió, no se envía nada: que use «¿Olvidaste
+   * tu contraseña?» en su propio dominio.
+   */
+  async resendAccess(trialId: number) {
+    const t = await this.d.trials.must(trialId);
+    if (!t.tenantId || !["active", "expired", "suspended", "converted"].includes(t.state)) throw new TrialError("invalid_state", "La prueba todavía no tiene plataforma");
+    if (!this.d.reissueInvite) throw new TrialError("invalid_state", "El reenvío de acceso no está disponible");
+    const token = await this.d.reissueInvite(t.tenantId);
+    if (!token) return { sent: false as const, reason: "already_accepted" as const };
+    await this.d.notify.welcome(t.email, { tenantId: t.tenantId, domain: `${t.tenantId}.${this.d.platformDomain}`, inviteToken: token });
+    return { sent: true as const };
+  }
+
+  /** Estado actual de una prueba (sin datos personales), para respuestas públicas. */
+  async stateOf(trialId: number) {
+    return (await this.d.trials.must(trialId)).state;
+  }
+
+  private inflight = new Map<number, Promise<unknown>>();
+
+  private async activateSerialized(trialId: number, actor: string) {
     let t = await this.d.trials.must(trialId);
     if (!["verified", "provisioning", "active"].includes(t.state)) throw new TrialError("invalid_state", `La prueba está en «${t.state}»: no se puede activar`);
     const tenantId = t.tenantId ?? trialTenantId(t.id, t.companyName);
@@ -109,8 +159,12 @@ export class TrialOnboardingService {
       }
       domain = result.domain ?? null;
       t = await this.d.trials.markProvisioned(t.id, t.version, tenantId, actor);
-      // La invitación del administrador solo existe en la ejecución que lo creó
-      if (result.adminInviteToken) await this.d.notify.welcome(t.email, { tenantId, domain, inviteToken: result.adminInviteToken });
+      // La invitación del administrador solo existe en la ejecución que lo creó. Si el alta ya estaba
+      // completada (la prueba se quedó a medias tras ella), se emite una nueva para no dejar al
+      // propietario sin acceso.
+      // Un fallo aquí no deshace la activación: el acceso se puede reenviar después (resendAccess)
+      const inviteToken = result.adminInviteToken ?? (this.d.reissueInvite ? await this.d.reissueInvite(tenantId).catch(() => null) : null);
+      if (inviteToken) await this.d.notify.welcome(t.email, { tenantId, domain, inviteToken });
     }
 
     // 2. Empresa en el CRM (enlazada a la plataforma)

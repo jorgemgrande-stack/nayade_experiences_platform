@@ -23,6 +23,12 @@ export interface SchemaApplier {
 export interface TenantSeeder {
   /** Crea el administrador inicial con una invitación; idempotente por correo. */
   seedAdmin(dsn: string, input: { email: string; name: string }): Promise<{ created: boolean; inviteToken?: string }>;
+  /**
+   * Emite una invitación nueva para el administrador inicial SOLO si todavía no la aceptó (sin
+   * contraseña): la anterior queda invalidada. `null` si ya entró o no existe. Sirve para recuperar
+   * el acceso cuando la invitación original se perdió (alta reanudada tras un fallo).
+   */
+  reissueAdminInvite?(dsn: string, input: { email: string }): Promise<{ inviteToken: string } | null>;
   seedBranding(dsn: string, settings: Record<string, string>): Promise<void>;
   seedTemplate?(dsn: string, templateId: string): Promise<void>;
 }

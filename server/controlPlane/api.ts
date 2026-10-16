@@ -41,6 +41,7 @@ import type { AlertRunResult } from "../_core/ops/alerts";
 import { createCrmRouter } from "../crm/api";
 import { CrmOnboarding } from "../crm/onboarding";
 import type { CrmService } from "../crm/service";
+import { CrmError } from "../crm/types";
 import type { CrmStore } from "../crm/store";
 import type { TicketService } from "../_core/support/tickets";
 import { createTicketsRouter } from "./tickets";
@@ -789,7 +790,15 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         companies: {
           byTenant: async (tenantId) => (await crmD.store.list("companies", { tenantId }, { limit: 1 }))[0] ?? null,
           create: async (input, actor) => {
-            const c = await crmD.service.createCompany({ name: input.name, email: input.email }, actor);
+            let c: { id: number };
+            try {
+              c = await crmD.service.createCompany({ name: input.name, email: input.email }, actor);
+            } catch (e) {
+              // Otra empresa (otra prueba o un cliente) ya se llama así: se distingue por su plataforma
+              // en lugar de dejar la prueba sin activar para siempre
+              if (!(e instanceof CrmError && e.code === "conflict")) throw e;
+              c = await crmD.service.createCompany({ name: `${input.name} (${input.tenantId})`, email: input.email }, actor);
+            }
             return crmD.store.update("companies", c.id, { tenantId: input.tenantId });
           },
         },
@@ -797,6 +806,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         licensing: licensingForTrials,
         priceOf: async (key, kind) => (await catalogPort.offer()).find((p) => p.key === key)?.prices.find((x) => x.kind === kind && x.status === "approved")?.id ?? null,
         notify: d.trials.notify ?? logOnlyTrialNotifier,
+        reissueInvite: (tenantId) => provisioning.reissueAdminInvite(tenantId),
         now: d.subscriptions.now,
       });
       router.use("/trials", createTrialAdminRouter({ onboarding, trials: trialService, store: d.trials.store }));

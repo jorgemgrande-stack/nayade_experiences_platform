@@ -73,12 +73,28 @@ export class MysqlCapabilityStore implements CapabilityStore {
     return rows.map(row);
   }
   async apply(tenantId: string, changes: CapabilityChange[], meta: { actor: string; reason: string | null; now: number }) {
+    // Altas simultáneas de empresas DISTINTAS pueden chocar en los bloqueos de hueco del índice
+    // (tablas casi vacías): MySQL aborta una con un interbloqueo. La transacción es atómica e
+    // idempotente, así que se repite entera.
+    for (let attempt = 1; ; attempt++) {
+      try {
+        return await this.applyOnce(tenantId, changes, meta);
+      } catch (e) {
+        if ((e as { errno?: number }).errno !== 1213 || attempt >= 4) throw e;
+        await new Promise((r) => setTimeout(r, 20 * attempt + Math.floor(Math.random() * 30)));
+      }
+    }
+  }
+  private async applyOnce(tenantId: string, changes: CapabilityChange[], meta: { actor: string; reason: string | null; now: number }) {
     const c = await this.pool.getConnection();
     try {
       await c.beginTransaction();
       // Serializa las aplicaciones concurrentes del mismo tenant
       await c.query("SELECT id FROM tenants WHERE id = ? FOR UPDATE", [tenantId]);
-      const [rows] = await c.query<mysql.RowDataPacket[]>("SELECT * FROM tenant_capabilities WHERE tenant_id = ? FOR UPDATE", [tenantId]);
+      // Lectura sin bloqueo: el bloqueo de la fila del tenant ya serializa a quien escribe aquí, y la
+      // instantánea se toma ahora (tras obtenerlo). Un FOR UPDATE sobre un rango vacío dejaba bloqueos
+      // de hueco que chocaban con las altas de OTRAS empresas (interbloqueos).
+      const [rows] = await c.query<mysql.RowDataPacket[]>("SELECT * FROM tenant_capabilities WHERE tenant_id = ?", [tenantId]);
       const current = new Map(rows.map(row).map((g) => [`${g.capabilityId}\u0000${g.siteId}`, g]));
       const out: CapabilityEvent[] = [];
       for (const ch of changes) {
