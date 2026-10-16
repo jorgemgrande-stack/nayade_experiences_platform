@@ -444,3 +444,33 @@ describe("cotizador por API (catálogo de Elephant Source)", () => {
     }
   });
 });
+
+describe("contratos con configuración cotizada (Elephant Source)", () => {
+  it("el servidor cotiza y fija plan, periodicidad e importe; ignora importes enviados; rechaza configuraciones inválidas; versiona", async () => {
+    const app = await start();
+    try {
+      const svc = new WebAdminService({ store: app.webStore, refs: { moduleIds: BUILTIN_MODULES.map((m) => m.id), planIds: () => null } });
+      await seedElephantSource(svc, app.webStore);
+      const co = await app.call("POST", "/crm/companies", { token: TOK.crm, body: { name: "Hotel Prueba SL" } });
+      expect(co.status).toBe(201);
+      const companyId = co.json.company.id;
+      const request = { plan: "business", interval: "year", items: [{ key: "restaurant-net-bookings" }, { key: "connect-voice" }], users: 17 };
+      const c = await app.call("POST", "/crm/contracts", { token: TOK.crm, body: { companyId, amountCents: 1, configuration: { request } } });
+      expect(c.status).toBe(201);
+      // anual: 759 € + 12 × (19 + 39 + 2 × 5) €
+      expect(c.json.contract).toMatchObject({ planId: "business", billingInterval: "year", currency: "EUR", amountCents: 75_900 + 12 * 6_800 });
+      expect(c.json.contract.configuration.quote).toMatchObject({ contractable: "request", totals: { yearlyCents: 75_900, monthlyCents: 6_800 } });
+      expect(c.json.contract.configuration.request).toMatchObject(request);
+      const bad = await app.call("POST", "/crm/contracts", { token: TOK.crm, body: { companyId, configuration: { request: { plan: "essential", interval: "month", items: [{ key: "ski-net-courses" }] } } } });
+      expect(bad.status).toBe(400);
+      expect(bad.json.errors.join()).toMatch(/requiere/);
+      const upd = await app.call("PATCH", `/crm/contracts/${c.json.contract.id}`, { token: TOK.crm, body: { configuration: { request: { plan: "essential", interval: "month" } } } });
+      expect(upd.json.contract).toMatchObject({ planId: "essential", billingInterval: "month", amountCents: 2_900, version: 2 });
+      const detail = await app.call("GET", `/crm/contracts/${c.json.contract.id}`, { token: TOK.crm });
+      const snaps = (detail.json.versions ?? []).map((v: { snapshot: { configuration?: { request: { plan: string } } } }) => v.snapshot.configuration?.request.plan);
+      expect(snaps).toEqual(expect.arrayContaining(["business", "essential"]));
+    } finally {
+      await app.close();
+    }
+  });
+});

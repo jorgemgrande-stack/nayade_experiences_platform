@@ -24,6 +24,7 @@ import {
   type ContactStatus,
   type BillingInterval,
   type Contract,
+  type ContractConfiguration,
   type ContractStatus,
   type ContractVersion,
   type EntityType,
@@ -76,6 +77,7 @@ const FIELD_LABEL: Record<string, string> = {
   currency: "moneda", expectedClose: "cierre estimado", planId: "plan", modules: "módulos", contactId: "contacto",
   nextAction: "próxima acción", nextActionAt: "fecha de próxima acción", conditions: "condiciones", billingInterval: "periodicidad",
   startDate: "inicio", renewalDate: "renovación", autoRenew: "renovación automática", noticeDays: "preaviso",
+  configuration: "configuración",
 };
 const STAGE_NAME: Record<OpportunityStage, string> = {
   prospecting: "Nuevo", contacted: "Contactado", qualification: "Cualificación", demo: "Demostración",
@@ -218,10 +220,12 @@ export interface ContractInput {
   noticeDays?: number | null;
   conditions?: string | null;
   previousContractId?: number;
+  /** Configuración cotizada (la calcula la API con el cotizador; ver server/catalog/quote.ts). */
+  configuration?: ContractConfiguration | null;
 }
 
 /** Términos que se versionan (instantánea de cada versión). */
-const CONTRACT_TERM_KEYS = ["planId", "modules", "amountCents", "currency", "billingInterval", "startDate", "renewalDate", "autoRenew", "noticeDays", "conditions"] as const;
+const CONTRACT_TERM_KEYS = ["planId", "modules", "amountCents", "currency", "billingInterval", "startDate", "renewalDate", "autoRenew", "noticeDays", "conditions", "configuration"] as const;
 const CONTRACT_NAME: Record<ContractStatus, string> = { draft: "Borrador", sent: "Enviado", signed: "Firmado", active: "Activo", cancelled: "Cancelado" };
 
 /** Referencia comercial única derivada del id: CT-AAAA-NNNNNN. */
@@ -821,6 +825,8 @@ export class CrmService {
       signatureRef: null,
       createdAt: this.now(),
       updatedAt: null,
+      // Solo si viene: así los contratos sin configuración no dependen de la migración 0009
+      ...(terms.configuration !== undefined ? { configuration: terms.configuration } : {}),
     });
     const withRef = await this.store.update("contracts", c.id, { reference: contractReference(c.id, this.now()) });
     await this.snapshot(withRef, input.previousContractId ? `Renovación del contrato #${input.previousContractId}` : "Versión inicial", author);
@@ -894,6 +900,7 @@ export class CrmService {
         autoRenew: c.autoRenew,
         noticeDays: c.noticeDays ?? undefined,
         conditions: c.conditions ?? undefined,
+        ...(c.configuration ? { configuration: c.configuration } : {}),
         previousContractId: c.id,
       },
       author,
@@ -926,7 +933,8 @@ export class CrmService {
   }
 
   private contractTerms(input: ContractInput) {
-    const out: Partial<Pick<Contract, "planId" | "modules" | "amountCents" | "currency" | "startDate" | "renewalDate" | "billingInterval" | "autoRenew" | "noticeDays" | "conditions">> = {};
+    const out: Partial<Pick<Contract, "planId" | "modules" | "amountCents" | "currency" | "startDate" | "renewalDate" | "billingInterval" | "autoRenew" | "noticeDays" | "conditions" | "configuration">> = {};
+    if (has(input, "configuration")) out.configuration = input.configuration ?? null;
     if (has(input, "planId")) {
       const p = clean(input.planId, 64);
       if (p && !/^[a-z0-9][a-z0-9_-]{0,63}$/.test(p)) throw new CrmError("invalid_input", "Plan no válido");

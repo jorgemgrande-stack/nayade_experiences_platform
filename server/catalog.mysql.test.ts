@@ -14,6 +14,8 @@ import { quoteCatalogFromSite } from "./catalog/snapshot";
 import { quote } from "./catalog/quote";
 import { PRODUCTS } from "./catalog/elephantSourceV1";
 import { loadMigrations, splitStatements } from "../scripts/db/migrationLib";
+import { CrmService } from "./crm/service";
+import { MysqlCrmStore } from "./crm/mysqlStore";
 
 const URL_ = process.env.REGISTRY_TEST_DATABASE_URL;
 const DIR = path.resolve(__dirname, "../db/crm/migrations");
@@ -69,6 +71,23 @@ describe.skipIf(!URL_)("catálogo de Elephant Source con MySQL real", () => {
     expect(r.ok).toBe(true);
     expect(r.totals.yearlyCents).toBe(75_900);
     expect(r.totals.monthlyCents).toBe(5_900 + 4_500 + 1_200);
+  });
+
+  it("contrato con configuración cotizada (migración 0009): se guarda, se lee y entra en la versión", async () => {
+    const crm = new CrmService({ store: new MysqlCrmStore(pool) });
+    const co = await crm.createCompany({ name: "Empresa Prueba" }, "t");
+    const cat = quoteCatalogFromSite(await svc.site("published"));
+    const q = quote(cat, { plan: "essential", interval: "month", items: [{ key: "connect-people" }] });
+    const configuration = { request: { plan: "essential", interval: "month" as const, items: [{ key: "connect-people" }] }, quote: { catalogVersion: q.catalogVersion, currency: q.currency, lines: q.lines, totals: q.totals, capabilities: q.capabilities, contractable: q.contractable, blocking: q.blocking, warnings: q.warnings }, quotedAt: 1 };
+    const c = await crm.createContract({ companyId: co.id, planId: "essential", billingInterval: "month", amountCents: q.totals.monthlyCents, configuration }, "t");
+    const again = await new MysqlCrmStore(pool).get("contracts", c.id);
+    expect(again!.configuration!.quote.totals.monthlyCents).toBe(2900 + 1900);
+    const [[v]] = (await pool.query<mysql.RowDataPacket[]>("SELECT snapshot FROM crm_contract_versions WHERE contract_id = ?", [c.id])) as unknown as [[{ snapshot: string | Record<string, unknown> }]];
+    const snap = typeof v.snapshot === "string" ? JSON.parse(v.snapshot) : v.snapshot;
+    expect(snap.configuration.request.items).toEqual([{ key: "connect-people" }]);
+    // Un contrato sin configuración sigue funcionando igual (null)
+    const plain = await crm.createContract({ companyId: co.id, planId: "essential" }, "t");
+    expect((await new MysqlCrmStore(pool).get("contracts", plain.id))!.configuration).toBeNull();
   });
 
   it("la reversión de 0008 retira solo las capacidades y vuelve a aplicarse limpia", async () => {
