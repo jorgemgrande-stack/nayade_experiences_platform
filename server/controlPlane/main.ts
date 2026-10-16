@@ -39,6 +39,8 @@ import { MysqlTrialStore } from "../trials/store";
 import { trialNotifierFromEnv } from "../trials/emailNotifier";
 import type { TrialNotifier } from "../trials/onboarding";
 import { MysqlOrganizationStore } from "../organization/service";
+import { MysqlOrderStore } from "../orchestrator/store";
+import { testPaymentsFromEnv, type TestPaymentPort } from "../orchestrator/payments";
 import { MysqlCrmStore } from "../crm/mysqlStore";
 import { CrmService } from "../crm/service";
 import { createContractActivation } from "../crm/activation";
@@ -201,6 +203,18 @@ async function main() {
     console.log(JSON.stringify({ ctx: "Trials", enabled: ready, publicEnabled: trials?.publicEnabled ?? false, autoProvision: trials?.autoProvision ?? false, email: { mode: email?.mode ?? "off", provider: email?.provider ?? null, ...(email?.reason ? { reason: email.reason } : {}) }, ...(ready ? {} : { reason: "migration_0007_missing" }) }));
   }
 
+  // Orquestador comercial: APAGADO salvo CP_ORCHESTRATOR_ENABLED=1 y con la migración 0010 del CRM.
+  // Pagos solo de prueba (CP_PAYMENTS_PROVIDER=simulated + secreto); el cobro automático no existe.
+  let orders: { store: MysqlOrderStore; payments: TestPaymentPort | null } | undefined;
+  if (process.env.CP_ORCHESTRATOR_ENABLED === "1" && process.env.CRM_DATABASE_URL && subscriptions && capabilities) {
+    const payments = testPaymentsFromEnv(process.env);
+    const ordersPool = mysql.createPool({ uri: process.env.CRM_DATABASE_URL, connectionLimit: 3 });
+    const ready = await ordersPool.query("SELECT 1 FROM commercial_orders LIMIT 0").then(() => true, () => false);
+    if (ready) orders = { store: new MysqlOrderStore(ordersPool), payments: payments.provider };
+    else await ordersPool.end();
+    console.log(JSON.stringify({ ctx: "Orders", enabled: ready, payments: { provider: payments.provider?.kind ?? null, mode: "test", autoCharge: false, ...(payments.reason ? { reason: payments.reason } : {}) }, ...(ready ? {} : { reason: "migration_0010_missing" }) }));
+  }
+
   // API pública de captación de la web comercial: solo con CRM, orígenes explícitos y secreto propio
   const publicOrigins = (process.env.CP_PUBLIC_ORIGINS ?? "").split(",").map((x) => x.trim()).filter(Boolean);
   const publicSecret = process.env.CP_PUBLIC_FORM_SECRET ?? "";
@@ -239,6 +253,7 @@ async function main() {
     capabilities,
     trials,
     organization,
+    orders,
   });
 
   const port = Number(process.env.CP_PORT ?? 4100);

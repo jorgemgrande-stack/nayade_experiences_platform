@@ -81,6 +81,8 @@ export type EventKind =
   | "cancel_undone"
   | "reactivated"
   | "trial_ended"
+  | "trial_converted"
+  | "contract_linked"
   | "interval_change_scheduled"
   | "renewed"
   | "canceled";

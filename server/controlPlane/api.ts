@@ -66,6 +66,11 @@ import type { TrialStore } from "../trials/store";
 import { TrialOnboardingService, type TrialNotifier } from "../trials/onboarding";
 import { createPublicTrialRouter, createTrialAdminRouter } from "../trials/api";
 import { OrganizationError, OrganizationService, type OrganizationStore } from "../organization/service";
+import { CommercialOrchestrator } from "../orchestrator/service";
+import type { OrderStore } from "../orchestrator/store";
+import type { TestPaymentPort } from "../orchestrator/payments";
+import { createOrdersRouter, paymentsWebhookHandler } from "../orchestrator/api";
+import { createContractActivation } from "../crm/activation";
 
 /** Aviso por defecto: NO envía nada; solo deja constancia (sin correo ni token) de que hay un aviso pendiente. */
 const logOnlyTrialNotifier: TrialNotifier = {
@@ -140,6 +145,11 @@ export interface ControlPlaneDeps {
   trials?: { store: TrialStore; publicEnabled?: boolean; autoProvision?: boolean; notify?: TrialNotifier; limits?: Partial<TrialLimits> };
   /** Sedes y entidades fiscales (registro 0009), con los límites del plan contratado. */
   organization?: OrganizationStore;
+  /**
+   * Orquestador comercial (CRM 0010). Requiere suscripciones, CRM, web y licencias por capacidad. Los
+   * pagos son SOLO de prueba (`payments`); sin ellos, los pedidos se confirman por aprobación administrativa.
+   */
+  orders?: { store: OrderStore; payments?: TestPaymentPort | null; graceDays?: number };
 }
 
 const idSchema = z.string().regex(/^[a-z0-9][a-z0-9_-]{0,62}$/);
@@ -801,6 +811,29 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
       });
       router.use("/trials", createTrialAdminRouter({ onboarding, trials: trialService, store: d.trials.store }));
       if (d.trials.publicEnabled) publicTrial = createPublicTrialRouter({ onboarding, autoProvision: !!d.trials.autoProvision });
+    }
+    if (d.orders && d.capabilities) {
+      // Orquestador comercial: encadena contrato → confirmación → suscripción → licencias → activación
+      const orchestrator = new CommercialOrchestrator({
+        store: d.orders.store,
+        crm: d.crm.service,
+        crmStore: d.crm.store,
+        subscriptions: svc,
+        subscriptionStore: d.subscriptions.store,
+        shadow: shadowBilling,
+        catalog: catalogFromWebStore(d.web.store),
+        quote: async (r) => quote(quoteCatalogFromSite(await webAdmin!.site("published")), r),
+        licensing: new LicensingService({ capabilities: d.capabilities, subscriptions: d.subscriptions.store, crm: crmPort, catalog: async () => quoteCatalogFromSite(await webAdmin!.site("published")), now: d.subscriptions.now }),
+        capabilities: d.capabilities,
+        platform: d.provisioning && d.platformDomain ? createContractActivation({ provisioning: d.provisioning, platformDomain: d.platformDomain, actor: { type: "crm", id: "orchestrator" } }) : undefined,
+        trials: d.trials ? new TrialService({ store: d.trials.store, subscriptions: d.subscriptions.store, now: d.subscriptions.now, limits: d.trials.limits }) : undefined,
+        payments: d.orders.payments ?? null,
+        graceDays: d.orders.graceDays,
+        now: d.subscriptions.now,
+      });
+      router.use("/orders", createOrdersRouter(orchestrator));
+      // Webhook del proveedor de PRUEBAS: autenticado por firma (antes del montaje del router con tokens)
+      if (d.orders.payments) app.post("/cp/v1/payments/test/webhook", paymentsWebhookHandler(orchestrator));
     }
     router.use("/subscriptions", createSubscriptionsRouter(svc, shadowBilling));
   }

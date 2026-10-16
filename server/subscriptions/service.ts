@@ -130,6 +130,22 @@ export class SubscriptionService {
     if (problems.length) state(problems.join("; "), { problems });
   }
 
+  /** Contrato firmado o activo de la empresa cuya configuración (si la tiene) coincide con lo que se suscribe. */
+  private async agreedContract(companyId: number, contractId: number, input: { interval: Interval; plan: ItemSpec; addons?: ItemSpec[] }) {
+    const contract = await this.d.crm.contract(contractId);
+    if (!contract || contract.companyId !== companyId) bad("El contrato no pertenece a esa empresa");
+    if (!["signed", "active"].includes(contract.status)) state("Solo se suscribe un contrato firmado o activo");
+    const cfg = contract.configuration?.request;
+    if (cfg) {
+      if (cfg.plan !== input.plan.productKey) bad(`El contrato acordó el plan «${cfg.plan}», no «${input.plan.productKey}»`);
+      if (cfg.interval !== input.interval) bad(`El contrato acordó periodicidad ${cfg.interval === "year" ? "anual" : "mensual"}`);
+      const agreed = new Set(cfg.items.map((i) => i.key));
+      const extra = (input.addons ?? []).map((a) => a.productKey).filter((k) => !agreed.has(k));
+      if (extra.length) bad(`Complementos fuera de lo contratado: ${extra.join(", ")}`);
+    }
+    return contract;
+  }
+
   // ── Alta ───────────────────────────────────────────────────────────────────
 
   async create(
@@ -149,20 +165,7 @@ export class SubscriptionService {
   ): Promise<Subscription> {
     const company = await this.d.crm.company(input.companyId);
     if (!company) bad("La empresa no existe");
-    let contract = null;
-    if (input.contractId) {
-      contract = await this.d.crm.contract(input.contractId);
-      if (!contract || contract.companyId !== input.companyId) bad("El contrato no pertenece a esa empresa");
-      if (!["signed", "active"].includes(contract.status)) state("Solo se suscribe un contrato firmado o activo");
-      const cfg = contract.configuration?.request;
-      if (cfg) {
-        if (cfg.plan !== input.plan.productKey) bad(`El contrato acordó el plan «${cfg.plan}», no «${input.plan.productKey}»`);
-        if (cfg.interval !== input.interval) bad(`El contrato acordó periodicidad ${cfg.interval === "year" ? "anual" : "mensual"}`);
-        const agreed = new Set(cfg.items.map((i) => i.key));
-        const extra = (input.addons ?? []).map((a) => a.productKey).filter((k) => !agreed.has(k));
-        if (extra.length) bad(`Complementos fuera de lo contratado: ${extra.join(", ")}`);
-      }
-    }
+    const contract = input.contractId ? await this.agreedContract(input.companyId, input.contractId, input) : null;
     const currency = (input.currency ?? contract?.currency ?? "EUR").toUpperCase();
     if (!/^[A-Z]{3}$/.test(currency)) bad("Moneda no válida");
     const trialDays = input.trialDays ?? 0;
@@ -349,6 +352,63 @@ export class SubscriptionService {
         patch: { status: "active", trialEnd: null, anchorDay, currentPeriodStart: start, currentPeriodEnd: periodEnd(start, sub.interval, anchorDay) },
         event: { kind: "trial_ended", before: { trialEnd: sub.trialEnd }, after: { currentPeriodStart: start }, reason: input.reason ?? null },
         result: { ended: true },
+      };
+    });
+  }
+
+  /**
+   * Conversión de una prueba en la suscripción CONTRATADA, en una sola operación: se enlaza el contrato
+   * firmado, termina la prueba, se cierran las partidas de prueba y entran las acordadas (plan,
+   * complementos y periodicidad del contrato) con su instantánea de precio. Misma suscripción y mismo
+   * tenant: nada se borra. No cobra nada (modo sombra).
+   */
+  async convertTrial(id: number, input: { contractId: number; interval: Interval; plan: ItemSpec; addons?: ItemSpec[]; reason?: string | null }, expectedVersion: number, actor: string) {
+    const current = await this.must(id);
+    await this.agreedContract(current.companyId, input.contractId, input);
+    return this.d.store.mutate(id, expectedVersion, actor, this.now(), async (tx, sub) => {
+      if (sub.status !== "trialing") state("La suscripción no está en periodo de prueba");
+      const start = this.now();
+      const anchorDay = new Date(start).getUTCDate();
+      const shape = { interval: input.interval, currency: sub.currency };
+      const plan = await this.snapshot(input.plan, ["core_plan"], shape, start, actor);
+      const addons = [];
+      for (const a of input.addons ?? []) addons.push(await this.snapshot(a, ADDON_FAMILIES, shape, start, actor));
+      const next = [plan.item, ...addons.map((a) => a.item)];
+      if (new Set(next.map((i) => i.productKey)).size !== next.length) bad("Un producto no puede contratarse dos veces en la misma suscripción");
+      await this.checkComposition(next);
+      const items = await tx.items();
+      const closed = items.filter((i) => i.effectiveTo === null || i.effectiveTo > start);
+      for (const i of closed) await tx.endItem(i.id, Math.max(i.effectiveFrom, start));
+      for (const i of next) await tx.insertItem(i);
+      return {
+        patch: { status: "active", trialEnd: null, contractId: input.contractId, interval: input.interval, pendingInterval: null, anchorDay, currentPeriodStart: start, currentPeriodEnd: periodEnd(start, input.interval, anchorDay) },
+        event: {
+          kind: "trial_converted",
+          before: { trialEnd: sub.trialEnd, contractId: sub.contractId, interval: sub.interval, items: closed.map((i) => i.productKey) },
+          after: { contractId: input.contractId, interval: input.interval, plan: plan.item.productKey, addons: addons.map((a) => a.item.productKey), currentPeriodStart: start },
+          reason: input.reason ?? null,
+        },
+        result: { converted: true },
+      };
+    });
+  }
+
+  /**
+   * Enlaza la suscripción con el contrato que la formaliza ahora (p. ej. la renovación firmada que
+   * recoge un cambio de plan). El contrato debe ser de la misma empresa y estar firmado o activo.
+   */
+  async linkContract(id: number, input: { contractId: number; reason?: string | null }, expectedVersion: number, actor: string) {
+    const current = await this.must(id);
+    const contract = await this.d.crm.contract(input.contractId);
+    if (!contract || contract.companyId !== current.companyId) bad("El contrato no pertenece a esa empresa");
+    if (!["signed", "active"].includes(contract.status)) state("Solo se enlaza un contrato firmado o activo");
+    return this.d.store.mutate(id, expectedVersion, actor, this.now(), async (_tx, sub) => {
+      if (sub.status === "canceled") state("La suscripción está cancelada");
+      if (sub.contractId === input.contractId) state("La suscripción ya está enlazada a ese contrato");
+      return {
+        patch: { contractId: input.contractId },
+        event: { kind: "contract_linked", before: { contractId: sub.contractId }, after: { contractId: input.contractId }, reason: input.reason ?? null },
+        result: { linked: true },
       };
     });
   }
