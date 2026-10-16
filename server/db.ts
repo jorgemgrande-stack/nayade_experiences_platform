@@ -1037,11 +1037,14 @@ export async function createReservation(data: {
   fbc?: string;
   clientIpAddress?: string;
   clientUserAgent?: string;
-}) {
-  const db = await getDb();
+  // Número ya generado fuera de la transacción (no ocupar una segunda conexión del pool dentro de ella)
+  reservationNumber?: string;
+}, exec?: Pick<NonNullable<Awaited<ReturnType<typeof getDb>>>, "insert">) {
+  // `exec`: transacción en curso (retención de plazas de spa/hotel: la reserva nace dentro de ella)
+  const db = exec ?? await getDb();
   if (!db) throw new Error("Database not available");
   const now = Date.now();
-  const reservationNumber = await generateReservationNumber();
+  const reservationNumber = data.reservationNumber ?? await generateReservationNumber();
   const result = await db.insert(reservations).values({
     productId: data.productId,
     productName: data.productName,

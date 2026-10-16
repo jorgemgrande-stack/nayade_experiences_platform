@@ -193,7 +193,8 @@ d("ejecutor de migraciones contra MySQL real", () => {
   }, 60_000);
 
   it("el carril real db/migrations se aplica, se revierte y se vuelve a aplicar", async () => {
-    const t = await freshDb("app", ["users"]);
+    // El carril se aplica sobre la baseline: 0004 amplía `reservations`, que aquí basta con que exista
+    const t = await freshDb("app", ["users", "reservations"]);
     const args = (cmd: string) => [cmd, "--dir", "db/migrations", "--apply", "--confirm-database", t.db];
     const up = await cli(t.url, args("up"));
     expect(up.status, up.stderr).toBe(0);
