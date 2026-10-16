@@ -81,6 +81,18 @@ describe("resumen de suscripción (servidor)", () => {
     ]);
   });
 
+  it("prueba pública (suscripción en prueba con caducidad): estado «trial», no «active»; tras pagar, «active»", () => {
+    const trialing = capabilitiesOfTier("essential").map((id) => grant(id, { source: "subscription:4", validUntil: NOW + 15 * DAY }));
+    const o = buildSubscriptionOverview({ mode: "multi", enforcing: true, grants: trialing, now: NOW });
+    expect(o.state).toBe("trial");
+    expect(o.trial).toEqual({ endsAt: NOW + 15 * DAY, daysLeft: 15 });
+    expect(buildSubscriptionOverview({ mode: "multi", enforcing: true, grants: trialing, now: NOW + 16 * DAY }).state).toBe("trial_expired");
+    const paid = capabilitiesOfTier("essential").map((id) => grant(id, { source: "subscription:4", validUntil: null }));
+    const p = buildSubscriptionOverview({ mode: "multi", enforcing: true, grants: paid, now: NOW + 16 * DAY });
+    expect(p.state).toBe("active");
+    expect(p.trial).toBeNull();
+  });
+
   it("prueba vencida: todo en solo lectura y 0 días", () => {
     const o = buildSubscriptionOverview({ mode: "multi", enforcing: true, grants: essentialTrial(NOW - DAY), now: NOW });
     expect(o.state).toBe("trial_expired");
