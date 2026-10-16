@@ -23,6 +23,7 @@ import { expenses, expenseFiles, expenseEmailIngestionLogs } from "../../drizzle
 import { storagePut } from "../storage";
 import { legacyDb, legacyPool } from "../_core/legacyDb";
 import { scheduleTenantCron } from "../_core/tenantRegistry/scheduler";
+import { isMultiTenant } from "../_core/tenant";
 
 // ─── CONFIG ──────────────────────────────────────────────────────────────────
 
@@ -128,6 +129,13 @@ async function getDefaultCostCenterId(): Promise<number> {
 
 export async function runExpenseEmailIngestion(): Promise<{ processed: number; duplicated: number; errors: number }> {
   const result = { processed: 0, duplicated: 0, errors: 0 };
+
+  // Multiempresa: el buzón IMAP sale del entorno (global); volcarlo en la BD de cualquier
+  // empresa sería una fuga entre empresas. Bloqueado hasta tener credenciales por tenant.
+  if (isMultiTenant()) {
+    console.warn("[ExpenseMailIngestion] No disponible en multiempresa (credenciales IMAP globales)");
+    return result;
+  }
 
   if (!IMAP_PASS) {
     console.warn("[ExpenseMailIngestion] IMAP_EXPENSE_PASS no configurada — job desactivado");
