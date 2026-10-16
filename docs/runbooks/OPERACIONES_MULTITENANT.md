@@ -11,7 +11,7 @@ Todas las órdenes salen de `scripts/tenants/cli.ts` (dry-run por defecto; `--ap
 ## Copias de seguridad y restauración
 - `backup <tenant> --out <dir>`: volcado lógico consistente (gzip) + manifiesto con filas y checksum por tabla.
 - `backup-verify <manifest> --scratch-dsn-env VAR`: restaura en una BD **de pruebas** y compara filas/checksum. **Una copia solo es válida tras verificarse.**
-- Frecuencia y retención: definir con el operador (pendiente de política); almacenar fuera del servidor de BD.
+- Copias programadas (todas las empresas, registro, CRM y ficheros; cifradas, inventariadas, con retención y restauración individual): ver [BACKUPS_Y_RECUPERACION.md](BACKUPS_Y_RECUPERACION.md).
 - Restauración real: crear BD vacía nueva, `restoreBackup`, comprobar, y cambiar la BD activa del tenant con `db-register` + `db-activate` (sin corte).
 
 ## Diagnóstico

@@ -4,9 +4,10 @@ import type { ProvisioningRecord } from "./types";
 export interface DatabaseProvisioner {
   /**
    * Crea (si no existe) la base de datos del tenant y un usuario propio con permisos solo
-   * sobre ella. Idempotente: puede llamarse de nuevo y devuelve un DSN válido.
+   * sobre ella. Idempotente: puede llamarse de nuevo y devuelve un DSN válido. `serverAlias`: servidor
+   * pedido de forma explícita (solo aprovisionadores con varios servidores).
    */
-  ensureDatabase(tenantId: string): Promise<{ dsn: string; serverAlias: string }>;
+  ensureDatabase(tenantId: string, opts?: { serverAlias?: string }): Promise<{ dsn: string; serverAlias: string }>;
   dropDatabase(tenantId: string): Promise<void>;
   /**
    * Crea con privilegios de administración los triggers que la baseline no puede llevar (ver

@@ -83,6 +83,8 @@ import { quoteCatalogFromSite } from "../catalog/snapshot";
 import { rebindRequestContext, requestIdMiddleware, requestIdOf } from "../_core/ops/requestContext";
 import { opsLog } from "../_core/ops/log";
 import { diagnoseTenant } from "../_core/ops/diagnostics";
+import type { BackupInventory, BackupRecord } from "../_core/ops/backupInventory";
+import { BACKUP_TENANT_STATUSES } from "../_core/ops/backupJob";
 
 export interface ControlPlaneDeps {
   tokens: ServiceToken[];
@@ -105,6 +107,8 @@ export interface ControlPlaneDeps {
   perIpMinute?: number;
   /** Acceso delegado de soporte (requiere SUPPORT_JWT_SECRET). */
   support?: Pick<SupportAdmin, "create" | "revoke">;
+  /** Inventario de copias de seguridad (registro, migración 0010). Sin él no hay rutas `/backups`. */
+  backups?: { inventory: Pick<BackupInventory, "list" | "latestAttempts" | "lastSuccess">; maxAgeMs?: number };
   /** Incidencias operativas y evaluación de alertas. */
   ops?: { incidents: IncidentService; runAlerts?: () => Promise<AlertRunResult> };
   /** Comprobación de la BD del registro para `/readyz` (sin ella, `/readyz` solo indica que el proceso vive). */
@@ -629,6 +633,92 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
       res.json(out);
     }),
   );
+
+  // Copias de seguridad (inventario del registro, migración 0010): solo lectura para operadores
+  if (d.backups) {
+    const bk = d.backups;
+    const maxAge = bk.maxAgeMs ?? 36 * 3_600_000;
+    const view = (r: BackupRecord) => ({
+      id: r.id,
+      status: r.status,
+      startedAt: r.startedAt,
+      finishedAt: r.finishedAt,
+      durationMs: r.durationMs,
+      serverAlias: r.serverAlias,
+      schemaVersion: r.schemaVersion,
+      bytes: r.bytes,
+      sha256: r.sha256,
+      keyId: r.keyId,
+      storage: r.storageKind,
+      location: r.location,
+      tables: r.tablesCount,
+      rows: r.rowsCount,
+      error: r.error,
+    });
+    router.get(
+      "/backups",
+      requireScope("ops:read"),
+      wrap(async (_req, res) => {
+        const now = Date.now();
+        const [tenants, latest, okTenant, okRegistry, okCrm] = await Promise.all([
+          d.reader.listTenants(),
+          bk.inventory.latestAttempts(),
+          bk.inventory.lastSuccess("tenant"),
+          bk.inventory.lastSuccess("registry"),
+          bk.inventory.lastSuccess("crm"),
+        ]);
+        const lastOf = (kind: string, id: string) => latest.find((r) => r.targetKind === kind && r.targetId === id) ?? null;
+        const row = (kind: string, id: string, lastOk: number | undefined) => {
+          const last = lastOf(kind, id);
+          return {
+            lastSuccessAt: lastOk ?? null,
+            ageHours: lastOk ? Math.round(((now - lastOk) / 3_600_000) * 10) / 10 : null,
+            fresh: !!lastOk && now - lastOk <= maxAge,
+            lastAttempt: last ? view(last) : null,
+            lastError: last?.status === "failed" ? last.error : null,
+          };
+        };
+        const rows = tenants
+          .filter((t) => (BACKUP_TENANT_STATUSES as readonly string[]).includes(t.status))
+          .map((t) => ({ tenantId: t.id, displayName: t.displayName, status: t.status, ...row("tenant", t.id, okTenant[t.id]) }))
+          .sort((a, b) => Number(a.fresh) - Number(b.fresh) || (a.lastSuccessAt ?? 0) - (b.lastSuccessAt ?? 0) || a.tenantId.localeCompare(b.tenantId));
+        res.json({
+          generatedAt: now,
+          maxAgeHours: maxAge / 3_600_000,
+          summary: {
+            tenants: rows.length,
+            fresh: rows.filter((r) => r.fresh).length,
+            stale: rows.filter((r) => !r.fresh && r.lastSuccessAt).length,
+            never: rows.filter((r) => !r.lastSuccessAt).length,
+            lastAttemptFailed: rows.filter((r) => r.lastAttempt?.status === "failed").length,
+          },
+          platform: { registry: row("registry", "registry", okRegistry.registry), crm: row("crm", "crm", okCrm.crm) },
+          tenants: rows,
+        });
+      }),
+    );
+    router.get(
+      "/tenants/:id/backups",
+      requireScope("ops:read"),
+      wrap(async (req, res) => {
+        const id = idSchema.parse(req.params.id);
+        const limit = z.coerce.number().int().min(1).max(500).default(50).parse(req.query.limit ?? undefined);
+        const [copies, files, okList] = await Promise.all([
+          bk.inventory.list({ targetKind: "tenant", targetId: id, limit }),
+          bk.inventory.list({ targetKind: "files", targetId: id, limit: 10 }),
+          bk.inventory.list({ targetKind: "tenant", targetId: id, status: "ok", limit: 1 }),
+        ]);
+        const lastOk = okList[0] ?? null;
+        res.json({
+          tenantId: id,
+          lastSuccessAt: lastOk?.finishedAt ?? null,
+          fresh: !!lastOk?.finishedAt && Date.now() - lastOk.finishedAt <= maxAge,
+          backups: copies.map(view),
+          files: files.map(view),
+        });
+      }),
+    );
+  }
 
   if (d.ops) {
     const ops = d.ops;
