@@ -87,6 +87,23 @@ export class TrialOnboardingService {
     return { trialId: r.trial.id, created: r.created, state: r.trial.state };
   }
 
+  /**
+   * Alta asistida por operador (beta privada): crea la solicitud de una empresa invitada, la da por
+   * verificada (el operador responde de la dirección de correo) y la activa. No depende del registro
+   * público ni envía correos: devuelve el enlace de acceso del propietario para entregarlo por un canal
+   * acordado. Idempotente por `idempotencyKey`, como el registro.
+   */
+  async registerByOperator(input: { email: string; companyName: string; idempotencyKey: string }, actor: string) {
+    const r = await this.d.trials.register({ email: input.email, companyName: input.companyName, configuration: { plan: ESSENTIAL_PLAN, addons: [] }, idempotencyKey: input.idempotencyKey, ip: null });
+    if (r.created && r.verificationToken) await this.d.trials.verify(r.trial.id, r.verificationToken);
+    const t = await this.d.trials.must(r.trial.id);
+    if (t.state === "pending_verification") throw new TrialError("conflict", "Esa solicitud ya existe y está pendiente de que el interesado verifique su correo");
+    let inviteToken: string | null = null;
+    const out = await this.activate(t.id, actor, (token) => void (inviteToken = token));
+    const accessUrl = out.domain && inviteToken ? `https://${out.domain}/establecer-contrasena?token=${encodeURIComponent(inviteToken)}` : null;
+    return { ...out, accessUrl };
+  }
+
   /** Verificación; con `autoProvision` activa la prueba en el acto. */
   async verify(trialId: number, token: string, o: { autoProvision: boolean }) {
     const t = await this.d.trials.verify(trialId, token);
@@ -104,9 +121,9 @@ export class TrialOnboardingService {
    * prueba (verificación repetida, operador a la vez) se serializan en este proceso: la segunda
    * reanuda sobre lo que dejó la primera y no crea nada dos veces.
    */
-  async activate(trialId: number, actor: string) {
+  async activate(trialId: number, actor: string, onInvite?: (token: string) => void) {
     const prev = this.inflight.get(trialId) ?? Promise.resolve();
-    const mine = prev.then(() => this.activateSerialized(trialId, actor));
+    const mine = prev.then(() => this.activateSerialized(trialId, actor, onInvite));
     const tail = mine.catch(() => undefined);
     this.inflight.set(trialId, tail);
     try {
@@ -138,7 +155,7 @@ export class TrialOnboardingService {
 
   private inflight = new Map<number, Promise<unknown>>();
 
-  private async activateSerialized(trialId: number, actor: string) {
+  private async activateSerialized(trialId: number, actor: string, onInvite?: (token: string) => void) {
     let t = await this.d.trials.must(trialId);
     if (!["verified", "provisioning", "active"].includes(t.state)) throw new TrialError("invalid_state", `La prueba está en «${t.state}»: no se puede activar`);
     const tenantId = t.tenantId ?? trialTenantId(t.id, t.companyName);
@@ -165,7 +182,10 @@ export class TrialOnboardingService {
       // propietario sin acceso.
       // Un fallo aquí no deshace la activación: el acceso se puede reenviar después (resendAccess)
       const inviteToken = result.adminInviteToken ?? (this.d.reissueInvite ? await this.d.reissueInvite(tenantId).catch(() => null) : null);
-      if (inviteToken) await this.d.notify.welcome(t.email, { tenantId, domain, inviteToken });
+      if (inviteToken) {
+        onInvite?.(inviteToken);
+        await this.d.notify.welcome(t.email, { tenantId, domain, inviteToken });
+      }
     }
 
     // 2. Empresa en el CRM (enlazada a la plataforma)

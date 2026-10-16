@@ -149,6 +149,22 @@ export function createTrialAdminRouter(o: { onboarding: TrialOnboardingService; 
       res.json({ trial: TrialService.view(out.trial), licencesChanged: out.licencesChanged });
     }),
   );
+  // Alta asistida por operador (beta privada): sin registro público ni correo; devuelve el enlace de acceso
+  r.post(
+    "/",
+    requireScope("provisioning:write"),
+    requireScope("subscriptions:write"),
+    requireScope("entitlements:write"),
+    wrap(async (req, res) => {
+      const b = z
+        .object({ email: z.string().trim().email().max(254), companyName: z.string().trim().min(2).max(160), idempotencyKey: z.string().min(8).max(80) })
+        .strict()
+        .parse(req.body);
+      res.setHeader("Cache-Control", "no-store");
+      const out = await o.onboarding.registerByOperator(b, who(req));
+      res.status(201).json({ ...out, trial: TrialService.view(out.trial) });
+    }),
+  );
   r.post(
     "/:id/activate",
     requireScope("provisioning:write"),

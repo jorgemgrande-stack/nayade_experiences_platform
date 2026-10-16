@@ -224,4 +224,23 @@ describe("prueba gratuita de Essential de punta a punta", () => {
   it("sin habilitar la ruta pública no existe; sin permisos de alta no se activa", async () => {
     expect((await call("POST", "/trials/1/activate")).status).toBe(401);
   });
+
+  it("alta asistida por operador (beta privada): sin correo; plataforma, licencias y enlace de acceso; idempotente", async () => {
+    outbox.length = 0;
+    const body = { email: "ana@beta.example", companyName: "Beta Invitada SL", idempotencyKey: "operador-beta-0001" };
+    expect((await call("POST", "/trials", { body })).status).toBe(401);
+    const r = await call("POST", "/trials", { token: ADMIN, body });
+    expect(r.status).toBe(201);
+    expect(r.json.trial.state).toBe("active");
+    expect(r.json.accessUrl).toMatch(new RegExp(`^https://${r.json.tenantId}\\.elephant\\.test/establecer-contrasena\\?token=`));
+    expect(r.json.capabilities).toBeGreaterThan(0);
+    expect(outbox.filter((m) => m.kind === "verification")).toHaveLength(0);
+    expect((await caps.list(r.json.tenantId)).length).toBe(r.json.capabilities);
+    // La misma petición no crea nada más
+    const again = await call("POST", "/trials", { token: ADMIN, body });
+    expect(again.status).toBe(201);
+    expect(again.json.tenantId).toBe(r.json.tenantId);
+    expect(again.json.accessUrl).toBeNull();
+    expect((await call("POST", "/trials", { token: ADMIN, body: { ...body, email: "no-es-correo" } })).status).toBe(400);
+  });
 });
