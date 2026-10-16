@@ -161,6 +161,11 @@ export class MysqlTenantSeeder implements TenantSeeder {
          VALUES (?, ?, ?, 'local', 'admin', 1, ?, ?, 0)`,
         [openId, input.name, input.email, inviteToken, new Date(Date.now() + 7 * 86_400_000)],
       );
+      // Propietario de la empresa: el administrador del alta. Ajuste sensible (no editable desde el panel).
+      await conn.query(
+        "INSERT IGNORE INTO system_settings (`key`, value, category, label, is_sensitive, is_public) VALUES ('company_owner_email', ?, 'general', 'Propietario de la empresa', 1, 0)",
+        [input.email],
+      );
       return { created: true, inviteToken };
     } finally {
       await conn.end().catch(() => undefined);

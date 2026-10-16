@@ -9,9 +9,49 @@ import { QuotaExceededError } from "./erm/types";
 
 const t = initTRPC.context<TrpcContext>().create({
   transformer: superjson,
+  errorFormatter: ({ shape, error }) => sanitizeErrorShape(shape, error),
 });
 
 export const router = t.router;
+
+/** Texto propio de errores de BD/infraestructura: nunca debe llegar al cliente. */
+const INTERNAL_DETAIL_RE = /Failed query|\bER_[A-Z_]+|ECONNREFUSED|ETIMEDOUT|PROTOCOL_|Unknown column|Table '|doesn't exist|SQL syntax|sqlMessage|TenantResolutionError|base de datos no configurada/i;
+
+function looksInternal(error: TRPCError): boolean {
+  const cause = error.cause as (Error & { code?: unknown; sqlMessage?: unknown; sql?: unknown }) | undefined;
+  if (cause && (typeof cause.sqlMessage === "string" || typeof cause.sql === "string")) return true;
+  if (cause && typeof cause.code === "string" && /^(ER_|ECONN|ETIMEDOUT|PROTOCOL_)/.test(cause.code)) return true;
+  return INTERNAL_DETAIL_RE.test(error.message);
+}
+
+/**
+ * Errores al cliente sin trazas internas:
+ *  - la pila (`stack`) solo se envía en desarrollo;
+ *  - un error interno con detalle de BD/infraestructura (consulta SQL, tabla, conexión) se
+ *    sustituye por un mensaje genérico. Los mensajes funcionales de los procedimientos no cambian.
+ */
+export function sanitizeErrorShape<S extends { message: string; data: object }>(shape: S, error: TRPCError): S {
+  const data: Record<string, unknown> = { ...(shape.data as Record<string, unknown>) };
+  if (process.env.NODE_ENV !== "development") delete data.stack;
+  if (error.code === "INTERNAL_SERVER_ERROR" && looksInternal(error)) {
+    return { ...shape, message: "Error interno. Inténtalo más tarde.", data };
+  }
+  return { ...shape, data };
+}
+
+/**
+ * Rol «solo lectura» (`readonly`): puede consultar lo que consulta el equipo, pero ninguna mutación
+ * se ejecuta, sea cual sea el procedimiento (defensa global, no depende de cada router).
+ * Única excepción: cerrar la propia sesión.
+ */
+export const READONLY_ROLE = "readonly";
+const READONLY_ALLOWED_MUTATIONS = new Set(["auth.logout"]);
+const readOnlyGuard = t.middleware(({ ctx, type, path, next }) => {
+  if (type === "mutation" && ctx.user && (ctx.user.role as string) === READONLY_ROLE && !READONLY_ALLOWED_MUTATIONS.has(path)) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Tu usuario es de solo lectura: no puede modificar datos." });
+  }
+  return next();
+});
 
 /**
  * Una cuota dura superada (Resource Manager) se devuelve como 429 TOO_MANY_REQUESTS con un mensaje
@@ -28,7 +68,7 @@ export const quotaErrors = t.middleware(async ({ next }) => {
   return r;
 });
 
-const baseProcedure = t.procedure.use(quotaErrors);
+const baseProcedure = t.procedure.use(quotaErrors).use(readOnlyGuard);
 export const publicProcedure = baseProcedure;
 
 const requireUser = t.middleware(async opts => {
@@ -88,7 +128,8 @@ export const staffProcedure = baseProcedure.use(
       ctx.user.id,
       ctx.user.role as string,
       "crm.view",
-      ["admin", "agente"],
+      // `readonly` consulta lo mismo que el equipo; sus mutaciones las bloquea readOnlyGuard
+      ["admin", "agente", READONLY_ROLE],
     );
     if (!allowed) {
       throw new TRPCError({ code: "FORBIDDEN", message: "Acceso restringido al equipo" });

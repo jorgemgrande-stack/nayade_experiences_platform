@@ -6,6 +6,7 @@ import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import rateLimit from "express-rate-limit";
 import { isLeadProcedurePath, localStorageSecurityHeaders } from "./publicEndpointGuards";
 import { createHealthRouter } from "./health";
+import { securityHeaders } from "./securityHeaders";
 import { requestMeter } from "./requestMeter";
 import { installTenantBinding, installTenantResolution } from "./tenantRegistry/install";
 import { scheduleTenantInterval, setJobFlag } from "./tenantRegistry/scheduler";
@@ -139,6 +140,9 @@ async function startServer() {
   const server = createServer(app);
   // Confiar en el proxy de Railway (necesario para que express-rate-limit identifique IPs correctamente)
   app.set("trust proxy", 1);
+  // Cabeceras de seguridad comunes (sin CSP completa: ver securityHeaders.ts)
+  app.disable("x-powered-by");
+  app.use(securityHeaders);
   // Salud (liveness/readiness): antes de cualquier middleware pesado, sin autenticación.
   app.use(createHealthRouter());
   // Medición de peticiones (destino nulo por defecto: sin efecto hasta que exista un Resource Manager).

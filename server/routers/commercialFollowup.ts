@@ -2,7 +2,7 @@
  * commercialFollowup.ts — Router tRPC para el módulo Atención Comercial.
  * Gestión de seguimiento de presupuestos no convertidos.
  */
-import { router, protectedProcedure } from "../_core/trpc";
+import { router, staffProcedure } from "../_core/trpc";
 import { legacyBrandText } from "../tenantBrand";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
@@ -30,7 +30,7 @@ import { legacyDb, legacyPool } from "../_core/legacyDb";
 const _pool = legacyPool();
 const db = legacyDb();
 
-const staff = protectedProcedure;
+const staff = staffProcedure;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 

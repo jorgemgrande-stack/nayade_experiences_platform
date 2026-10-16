@@ -239,7 +239,7 @@ jobs:
           server/startupConnections server/catalog server/capabilities server/organization
           server/productIdentity server/creditNoteNumber server/sdk server/skiRental
           server/tenantIdentity server/inventoryHolds server/orchestrator server/panelEssential
-          server/tscBaseline
+          server/tscBaseline server/securityLaunch
 
       # Las pruebas con MySQL comparten una base de datos: se ejecutan una a una
       - name: Suites de integración con MySQL real (en serie)

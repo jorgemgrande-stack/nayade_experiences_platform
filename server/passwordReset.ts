@@ -10,6 +10,7 @@
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import express, { type Request, type Response, type Router } from "express";
+import rateLimit from "express-rate-limit";
 import { and, eq, gt, isNull } from "drizzle-orm";
 import { getDb } from "./db";
 import { users, passwordResetTokens } from "../drizzle/schema";
@@ -38,6 +39,21 @@ async function sendResetEmail(to: string, resetUrl: string, name: string) {
     }
   }
 }
+
+/** Filas afectadas de un UPDATE de drizzle/mysql2 ([ResultSetHeader, …]). */
+export function affectedRows(result: unknown): number {
+  const header = Array.isArray(result) ? result[0] : result;
+  return Number((header as { affectedRows?: number } | undefined)?.affectedRows ?? 0);
+}
+
+/** Canje y validación de enlaces: límite por IP (el token no es adivinable, pero se evita el sondeo). */
+const tokenRateLimit = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Demasiados intentos. Espera 1 minuto antes de volver a intentarlo.", code: "RATE_LIMIT_EXCEEDED" },
+});
 
 // ─── Router Express ───────────────────────────────────────────────────────────
 export function createPasswordResetRouter(): Router {
@@ -112,10 +128,10 @@ export function createPasswordResetRouter(): Router {
    * POST /api/auth/reset-password
    * Body: { token: string, password: string }
    */
-  router.post("/api/auth/reset-password", async (req: Request, res: Response) => {
+  router.post("/api/auth/reset-password", tokenRateLimit, async (req: Request, res: Response) => {
     const { token, password } = req.body ?? {};
 
-    if (!token || !password) {
+    if (!token || !password || typeof token !== "string") {
       res.status(400).json({ error: "Token y contraseña son obligatorios." });
       return;
     }
@@ -154,18 +170,23 @@ export function createPasswordResetRouter(): Router {
         return;
       }
 
-      // Actualizar contraseña
+      // Consumir el token de forma atómica ANTES de cambiar la contraseña: dos peticiones
+      // simultáneas con el mismo enlace no pueden usarlo ambas (un solo uso real).
+      const consumed = await db
+        .update(passwordResetTokens)
+        .set({ usedAt: now })
+        .where(and(eq(passwordResetTokens.id, resetToken.id), isNull(passwordResetTokens.usedAt)));
+      if (affectedRows(consumed) !== 1) {
+        res.status(400).json({ error: "El enlace no es válido o ha expirado. Solicita uno nuevo." });
+        return;
+      }
+
+      // Actualizar contraseña (las sesiones abiertas con la anterior quedan revocadas: claim pwv)
       const passwordHash = await bcrypt.hash(String(password), BCRYPT_ROUNDS);
       await db
         .update(users)
         .set({ passwordHash, updatedAt: now })
         .where(eq(users.id, resetToken.userId));
-
-      // Marcar token como usado
-      await db
-        .update(passwordResetTokens)
-        .set({ usedAt: now })
-        .where(eq(passwordResetTokens.id, resetToken.id));
 
       res.json({ ok: true, message: "Contraseña actualizada correctamente." });
     } catch (err) {
@@ -178,10 +199,10 @@ export function createPasswordResetRouter(): Router {
    * GET /api/auth/validate-reset-token?token=xxx
    * Verifica si un token es válido sin consumirlo.
    */
-  router.get("/api/auth/validate-reset-token", async (req: Request, res: Response) => {
-    const token = req.query.token as string;
+  router.get("/api/auth/validate-reset-token", tokenRateLimit, async (req: Request, res: Response) => {
+    const token = req.query.token;
 
-    if (!token) {
+    if (!token || typeof token !== "string") {
       res.status(400).json({ valid: false, error: "Token requerido." });
       return;
     }

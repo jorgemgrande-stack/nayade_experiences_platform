@@ -31,6 +31,7 @@ import { syncLeadUrlsToGHL, createGHLContact, updateGHLContact, triggerGHLWorkfl
 import { legacyDb, legacyPool } from "./_core/legacyDb";
 import { integrationEnv } from "./_core/tenantConfig";
 import { applyPaymentToInventoryHolds } from "./inventoryHoldsDb";
+import { isMultiTenant } from "./_core/tenant";
 
 // Pool de BD compartido para todo el módulo — evita crear/destruir conexiones por cada IPN
 const _sharedPool = legacyPool();
@@ -894,7 +895,8 @@ redsysRouter.post("/api/redsys/restaurant-notification", express.urlencoded({ ex
  * enviado en la cabecera `x-recovery-token` (nunca en la URL: acaba en logs y en el historial).
  */
 async function requireRecoveryAccess(req: express.Request, res: express.Response): Promise<boolean> {
-  const expected = process.env.RECOVERY_TOKEN;
+  // Token global de entorno: en multiempresa daría acceso a todas las empresas. Solo en instalación única.
+  const expected = isMultiTenant() ? undefined : process.env.RECOVERY_TOKEN;
   if (expected && secureEqual(req.headers["x-recovery-token"], expected)) return true;
   const user = await resolveSessionUser(req);
   if (user && user.isActive !== false && String(user.role) === "admin") return true;
