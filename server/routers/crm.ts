@@ -5782,67 +5782,80 @@ export const crmRouter = router({
         partialAmount: z.number().optional(), // if undefined ? full credit note
       }))
       .mutation(async ({ input, ctx }) => {
-        const [original] = await db.select().from(invoices).where(eq(invoices.id, input.invoiceId));
-        if (!original) throw new TRPCError({ code: "NOT_FOUND" });
-        if (original.invoiceType === "abono") throw new TRPCError({ code: "BAD_REQUEST", message: "No se puede abonar una factura de abono" });
-        if (original.status === "anulada") throw new TRPCError({ code: "BAD_REQUEST", message: "La factura ya está anulada" });
+        // Una transacción que BLOQUEA la factura original: dos abonos simultáneos se serializan y nunca
+        // abonan entre los dos más de lo facturado
+        const done = await db.transaction(async (tx) => {
+          const [original] = await tx.select().from(invoices).where(eq(invoices.id, input.invoiceId)).for("update");
+          if (!original) throw new TRPCError({ code: "NOT_FOUND" });
+          if (original.invoiceType === "abono") throw new TRPCError({ code: "BAD_REQUEST", message: "No se puede abonar una factura de abono" });
+          if (original.status === "anulada") throw new TRPCError({ code: "BAD_REQUEST", message: "La factura ya está anulada" });
 
-        const now = new Date();
-        const year = now.getFullYear();
-        const month = String(now.getMonth() + 1).padStart(2, "0");
-        const seq = await db.select({ cnt: count() }).from(invoices)
-          .where(and(like(invoices.invoiceNumber, `ABO-${year}-${month}-%`), eq(invoices.invoiceType, "abono")));
-        const seqNum = String((seq[0]?.cnt ?? 0) + 1).padStart(4, "0");
-        const creditNoteNumber = `ABO-${year}-${month}-${seqNum}`;
+          const now = new Date();
+          // Lo ya abonado de esta factura: el total abonado nunca supera lo facturado
+          const previous = await tx.select({ total: invoices.total }).from(invoices)
+            .where(and(eq(invoices.creditNoteForId, original.id), eq(invoices.invoiceType, "abono")));
+          const alreadyCredited = previous.reduce((a, r) => a + Math.abs(Number(r.total)), 0);
+          const remaining = Math.round((Number(original.total) - alreadyCredited) * 100) / 100;
+          if (remaining <= 0) throw new TRPCError({ code: "BAD_REQUEST", message: "Esta factura ya está abonada por completo" });
+          const creditTotal = input.partialAmount ?? remaining;
+          if (!(creditTotal > 0)) throw new TRPCError({ code: "BAD_REQUEST", message: "El importe del abono debe ser mayor que cero" });
+          if (creditTotal - remaining > 0.005) throw new TRPCError({ code: "BAD_REQUEST", message: `El abono (${creditTotal.toFixed(2)}) supera lo pendiente de abonar (${remaining.toFixed(2)})` });
 
-        const creditTotal = input.partialAmount ?? Number(original.total);
-        const origTaxRate = parseFloat(String(original.taxRate ?? "21"));
-        const creditDivisor = 1 + origTaxRate / 100;
-        const creditSubtotal = creditTotal / creditDivisor;
-        const creditTax = creditTotal - creditSubtotal;
+          // Numeración: el numerador central y atómico (serie «ABN», la misma que las anulaciones), nunca
+          // un recuento de filas (con dos abonos simultáneos daba el mismo número)
+          const creditNoteNumber = await generateDocumentNumber("abono", "crm:createCreditNote", String(ctx.user.id));
 
-        // Negate items for credit note
-        const creditItems = (original.itemsJson as { description: string; quantity: number; unitPrice: number; total: number }[]).map(item => ({
-          ...item,
-          unitPrice: -Math.abs(item.unitPrice),
-          total: -Math.abs(item.total),
-        }));
+          const origTaxRate = parseFloat(String(original.taxRate ?? "21"));
+          const creditDivisor = 1 + origTaxRate / 100;
+          const creditSubtotal = creditTotal / creditDivisor;
+          const creditTax = creditTotal - creditSubtotal;
 
-        const [result] = await db.insert(invoices).values({
-          invoiceNumber: creditNoteNumber,
-          invoiceType: "abono",
-          quoteId: original.quoteId,
-          reservationId: original.reservationId,
-          clientName: original.clientName,
-          clientEmail: original.clientEmail,
-          clientPhone: original.clientPhone,
-          clientNif: original.clientNif,
-          clientAddress: original.clientAddress,
-          itemsJson: creditItems,
-          subtotal: String(-creditSubtotal),
-          taxRate: original.taxRate,
-          taxAmount: String(-creditTax),
-          total: String(-creditTotal),
-          currency: original.currency,
-          status: "generada",
-          creditNoteForId: original.id,
-          creditNoteReason: input.reason,
-          isAutomatic: false,
-          issuedAt: now,
-          createdAt: now,
-          updatedAt: now,
+          // Negate items for credit note
+          const creditItems = (original.itemsJson as { description: string; quantity: number; unitPrice: number; total: number }[]).map(item => ({
+            ...item,
+            unitPrice: -Math.abs(item.unitPrice),
+            total: -Math.abs(item.total),
+          }));
+
+          const [result] = await tx.insert(invoices).values({
+            invoiceNumber: creditNoteNumber,
+            invoiceType: "abono",
+            quoteId: original.quoteId,
+            reservationId: original.reservationId,
+            clientName: original.clientName,
+            clientEmail: original.clientEmail,
+            clientPhone: original.clientPhone,
+            clientNif: original.clientNif,
+            clientAddress: original.clientAddress,
+            itemsJson: creditItems,
+            subtotal: String(-creditSubtotal),
+            taxRate: original.taxRate,
+            taxAmount: String(-creditTax),
+            total: String(-creditTotal),
+            currency: original.currency,
+            status: "generada",
+            creditNoteForId: original.id,
+            creditNoteReason: input.reason,
+            isAutomatic: false,
+            issuedAt: now,
+            createdAt: now,
+            updatedAt: now,
+          });
+          const creditNoteId = (result as any).insertId;
+
+          // Abonada solo cuando el total abonado cubre la factura (un abono parcial no la cierra)
+          if (creditTotal - remaining > -0.005) {
+            await tx.update(invoices).set({
+              status: "abonada",
+              updatedAt: now,
+            }).where(eq(invoices.id, input.invoiceId));
+          }
+
+          return { creditNoteId, creditNoteNumber };
         });
-        const creditNoteId = (result as any).insertId;
 
-        // Mark original as abonada
-        await db.update(invoices).set({
-          status: "abonada",
-          updatedAt: now,
-        }).where(eq(invoices.id, input.invoiceId));
-
-        await logActivity("invoice", input.invoiceId, "credit_note_created", ctx.user.id, ctx.user.name, { creditNoteId, creditNoteNumber, reason: input.reason });
-
-        return { success: true, creditNoteId, creditNoteNumber };
+        await logActivity("invoice", input.invoiceId, "credit_note_created", ctx.user.id, ctx.user.name, { creditNoteId: done.creditNoteId, creditNoteNumber: done.creditNoteNumber, reason: input.reason });
+        return { success: true, creditNoteId: done.creditNoteId, creditNoteNumber: done.creditNoteNumber };
       }),
 
     // --- Reenviar factura por email --------------------------------------------
@@ -5926,27 +5939,10 @@ export const crmRouter = router({
       .mutation(async ({ input, ctx }) => {
         const [invoice] = await db.select().from(invoices).where(eq(invoices.id, input.invoiceId));
         if (!invoice) throw new TRPCError({ code: "NOT_FOUND" });
-
-        // Desvincular reservas asociadas (limpiar invoiceId e invoiceNumber)
-        await db.update(reservations)
-          .set({ invoiceId: null, invoiceNumber: null, updatedAt: Date.now() } as any)
-          .where(eq(reservations.invoiceId, input.invoiceId));
-
-        // Si hay presupuesto vinculado, revertir a estado anterior al pago
-        if (invoice.quoteId) {
-          await db.update(quotes)
-            .set({ status: "enviado", paidAt: null, invoiceNumber: null, updatedAt: new Date() } as any)
-            .where(eq(quotes.id, invoice.quoteId));
-        }
-
-        // Eliminar la factura
-        await db.delete(invoices).where(eq(invoices.id, input.invoiceId));
-
-        await logActivity("invoice", invoice.id, "invoice_deleted", ctx.user.id, ctx.user.name, {
-          invoiceNumber: invoice.invoiceNumber,
-          quoteId: invoice.quoteId ?? null,
-        });
-        return { success: true };
+        // Integridad fiscal: una factura emitida (todas lo están: no hay borradores) no se borra; se
+        // anula o se rectifica con un abono, y el número de la serie queda consumido.
+        await logActivity("invoice", invoice.id, "invoice_delete_refused", ctx.user.id, ctx.user.name, { invoiceNumber: invoice.invoiceNumber });
+        throw new TRPCError({ code: "FORBIDDEN", message: "Las facturas emitidas no se pueden borrar: anúlala o emite un abono (factura rectificativa)." });
       }),
   }),
 
