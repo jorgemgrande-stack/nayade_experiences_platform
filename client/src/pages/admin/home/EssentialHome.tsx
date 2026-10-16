@@ -13,6 +13,7 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 import { usePanelSubscription } from "@/hooks/usePanelSubscription";
 import { PanelError } from "@/components/admin/PanelStates";
+import { SetupWizardLink } from "@/components/SetupWizardLink";
 import { missingFiscalFields } from "@shared/formValidation";
 import { cn } from "@/lib/utils";
 
@@ -190,6 +191,9 @@ export default function EssentialHome() {
             ))}
           </nav>
         )}
+
+        {/* Asistente de configuración inicial (/admin/primeros-pasos): se oculta solo al terminarlo */}
+        <SetupWizardLink className="self-start" />
 
         <div className="grid gap-6 lg:grid-cols-2">
           {/* Pendientes */}
