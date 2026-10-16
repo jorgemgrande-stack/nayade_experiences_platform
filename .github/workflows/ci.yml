@@ -84,7 +84,7 @@ jobs:
       - name: Verificar migraciones nuevas (db/migrations)
         id: migrations
         continue-on-error: true
-        run: pnpm exec tsx scripts/db/migrate.ts verify
+        run: pnpm exec tsx scripts/db/migrate.ts verify --dir db/migrations
 
       - name: Ratchet de deuda técnica (la deuda no puede aumentar)
         id: ratchet
@@ -209,6 +209,12 @@ jobs:
 
       - name: Instalar dependencias
         run: pnpm install --frozen-lockfile
+
+      # Todos los carriles de migraciones (app y, si existe, CRM): verify no usa base de datos.
+      - name: Verificar migraciones (todos los carriles)
+        run: |
+          pnpm exec tsx scripts/db/migrate.ts verify --dir db/migrations
+          if [ -d db/crm/migrations ]; then pnpm exec tsx scripts/db/migrate.ts verify --dir db/crm/migrations; fi
 
       - name: Suites propias unitarias (en paralelo)
         run: >-
