@@ -197,7 +197,7 @@ function mergeGlobalCc(params: MailParams): MailParams {
     : [];
   // En multiempresa la copia global es un ajuste del propio tenant: nunca la dirección de Náyade
   const cc = isMultiTenant() ? getSystemSettingSync("email_cc_all", "") : GLOBAL_CC_EMAIL;
-  const merged = [...new Set([...existing, ...(cc ? [cc] : [])])];
+  const merged = Array.from(new Set([...existing, ...(cc ? [cc] : [])]));
   return { ...params, cc: merged.length ? merged : undefined };
 }
 

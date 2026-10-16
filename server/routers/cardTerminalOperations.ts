@@ -366,7 +366,7 @@ export const cardTerminalOperationsRouter = router({
         .filter(r => r.linkedEntityType === "reservation" && r.linkedEntityId)
         .map(r => r.linkedEntityId!);
 
-      const reservationNumberMap: Record<number, string> = {};
+      const reservationNumberMap: Record<number, string | null> = {};
       if (reservationIds.length > 0) {
         const resRows = await db
           .select({ id: reservations.id, reservationNumber: reservations.reservationNumber })

@@ -24,6 +24,7 @@ function ghlLog(
     httpStatus?: number;
     errorBody?: string;
     stack?: string;
+    url?: string; // admitido pero no se registra: la URL del webhook puede llevar credenciales
   }
 ) {
   const entry = {

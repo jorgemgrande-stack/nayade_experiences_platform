@@ -8,7 +8,7 @@
  * - Feature flag: commercial_email_enabled
  */
 import { ImapFlow } from "imapflow";
-import { simpleParser } from "mailparser";
+import { simpleParser, type AddressObject } from "mailparser";
 import cron from "node-cron";
 import type mysql from "mysql2/promise";
 import { legacyPool } from "../_core/legacyDb";
@@ -214,13 +214,13 @@ async function syncFolder(
         const fromEmail = (fromAddr?.address ?? "").toLowerCase().slice(0, 319);
         const fromName = (fromAddr?.name ?? "").slice(0, 254) || null;
 
+        // mailparser devuelve un AddressObject o, con varias cabeceras, una lista de ellos
+        const addrValues = (x: AddressObject | AddressObject[]) => (Array.isArray(x) ? x : [x]).flatMap((o) => o.value);
         const toArr = parsed.to
-          ? (Array.isArray(parsed.to.value) ? parsed.to.value : [parsed.to.value])
-              .map((a: any) => a?.address ?? "").filter(Boolean)
+          ? addrValues(parsed.to).map((a: any) => a?.address ?? "").filter(Boolean)
           : [];
         const ccArr = parsed.cc
-          ? (Array.isArray(parsed.cc.value) ? parsed.cc.value : [parsed.cc.value])
-              .map((a: any) => a?.address ?? "").filter(Boolean)
+          ? addrValues(parsed.cc).map((a: any) => a?.address ?? "").filter(Boolean)
           : [];
 
         const bodyHtml = parsed.html || null;

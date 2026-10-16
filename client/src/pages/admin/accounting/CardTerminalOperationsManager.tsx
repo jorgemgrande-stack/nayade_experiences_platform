@@ -256,7 +256,7 @@ export default function CardTerminalOperationsManager() {
     setImportResult(null);
     try {
       const buffer = await file.arrayBuffer();
-      const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)));
+      const base64 = btoa(String.fromCharCode(...Array.from(new Uint8Array(buffer))));
       await importMut.mutateAsync({
         fileName: file.name,
         fileType: file.name.split(".").pop()?.toLowerCase() ?? "xlsx",

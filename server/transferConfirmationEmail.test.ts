@@ -58,10 +58,19 @@ describe("buildTransferConfirmationHtml", () => {
     expect(html).toContain("143.39");
   });
 
-  it("incluye el enlace de descarga de la factura PDF cuando se proporciona", () => {
+  // El botón propio «Descargar Factura» se sustituyó a propósito por «Ver tu reserva» (portal del cliente,
+  // desde donde se descarga la factura): invoiceUrl es un campo heredado que ya no se pinta.
+  it("incluye el botón «Ver tu reserva» con la URL pública cuando se proporciona", () => {
+    const html = buildTransferConfirmationHtml({ ...mockData, reservationUrl: "https://reservas.example/presupuesto/tok-123" });
+    expect(html).toContain("Ver tu reserva");
+    expect(html).toContain("https://reservas.example/presupuesto/tok-123");
+    expect(html).not.toContain("Descargar Factura");
+  });
+
+  it("no pinta el enlace heredado invoiceUrl ni el botón sin URL pública de la reserva", () => {
     const html = buildTransferConfirmationHtml(mockData);
-    expect(html).toContain("https://cdn.example.com/invoices/FAC-2026-0001.pdf");
-    expect(html).toContain("Descargar Factura");
+    expect(html).not.toContain("https://cdn.example.com/invoices/FAC-2026-0001.pdf");
+    expect(html).not.toContain("Ver tu reserva");
   });
 
   it("no incluye el bloque de descarga si no hay URL de factura", () => {

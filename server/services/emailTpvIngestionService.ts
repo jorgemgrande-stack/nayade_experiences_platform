@@ -348,7 +348,7 @@ async function createBatchFromEmail(
       gte(cardTerminalOperations.operationDatetime, madridStartOfDayUtc(batchDate)),
       lte(cardTerminalOperations.operationDatetime, madridEndOfDayUtc(batchDate)),
     ));
-  const mergedOpIds = [...new Set([...opIds, ...dayOps.map(o => o.id)])];
+  const mergedOpIds = Array.from(new Set([...opIds, ...dayOps.map(o => o.id)]));
 
   let batchId: number;
   if (existing.length > 0) {

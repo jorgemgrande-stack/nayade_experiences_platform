@@ -180,12 +180,15 @@ function processSource3CRMReservations(
 ): SettlementLine[] {
   const productIdSet = new Set(products.map((p) => p.id));
   const lines: SettlementLine[] = [];
-  const crmChannels = ["crm", "web", "telefono", "email", "otro"];
+  // Igual que suppliers.ts (SOURCE 3): cualquier canal (ONLINE_DIRECTO, VENTA_DELEGADA, PARTNER… y los
+  // heredados crm/web/telefono…), salvo el TPV, que ya cubre SOURCE 2. La lista anterior solo admitía los
+  // nombres de canal heredados, previos a la migración 0033 que introdujo los canales actuales.
+  const tpvChannels = ["TPV_FISICO", "tpv"];
 
   const crmReservations = reservations.filter(
     (r) =>
       r.status === "paid" &&
-      crmChannels.includes(r.channel) &&
+      !tpvChannels.includes(r.channel) &&
       (r.paidAt ?? 0) >= periodFromMs &&
       (r.paidAt ?? 0) <= periodToMs
   );

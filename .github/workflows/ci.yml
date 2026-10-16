@@ -52,6 +52,12 @@ jobs:
         continue-on-error: true
         run: pnpm check
 
+      # Informativo: falla solo si aparecen errores de tipos NUEVOS fuera de docs/ci/TSC_BASELINE.txt
+      - name: Línea base de tipos (sin errores nuevos)
+        id: tscbaseline
+        continue-on-error: true
+        run: node scripts/ci/tsc-baseline.mjs
+
       - name: Tests (vitest)
         id: tests
         continue-on-error: true
@@ -100,6 +106,7 @@ jobs:
             echo "| Paso | Resultado |"
             echo "|---|---|"
             echo "| Tipos (tsc) | ${{ steps.typecheck.outcome }} |"
+            echo "| Línea base de tipos (sin errores nuevos) | ${{ steps.tscbaseline.outcome }} |"
             echo "| Tests (vitest) | ${{ steps.tests.outcome }} |"
             echo "| Build | ${{ steps.build.outcome }} |"
             echo "| Higiene | ${{ steps.hygiene.outcome }} |"
@@ -232,6 +239,7 @@ jobs:
           server/startupConnections server/catalog server/capabilities server/organization
           server/productIdentity server/creditNoteNumber server/sdk server/skiRental
           server/tenantIdentity server/inventoryHolds server/orchestrator server/panelEssential
+          server/tscBaseline
 
       # Las pruebas con MySQL comparten una base de datos: se ejecutan una a una
       - name: Suites de integración con MySQL real (en serie)

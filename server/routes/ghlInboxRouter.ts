@@ -211,7 +211,7 @@ const MESSAGE_EVENTS = new Set([
 const CONVERSATION_EVENTS = new Set([
   "ConversationCreate", "conversation_create", "ConversationCreated",
   "ConversationUpdate", "conversation_update", "ConversationUpdated",
-  ...MESSAGE_EVENTS,
+  ...Array.from(MESSAGE_EVENTS),
 ]);
 
 // ─── Credenciales específicas del módulo inbox ───────────────────────────────

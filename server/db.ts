@@ -215,7 +215,7 @@ export async function getSlideshowItems() {
 
 // --- LEADS --------------------------------------------------------------------
 
-export async function createLead(data: {
+type CreateLeadInput = {
   name: string;
   email: string;
   phone?: string;
@@ -241,7 +241,12 @@ export async function createLead(data: {
     participants: number;
     details: Record<string, string | number>;
   }[] | null;
-}) {
+};
+
+// Los orígenes que ya sincronizan con GHL por su cuenta devuelven solo el id; el resto, { id, success }.
+export async function createLead(data: CreateLeadInput & { source: "ghl_webhook" | "vapi_llamada" }): Promise<number>;
+export async function createLead(data: CreateLeadInput): Promise<{ id: number; success: boolean }>;
+export async function createLead(data: CreateLeadInput): Promise<number | { id: number; success: boolean }> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
