@@ -3605,3 +3605,44 @@ export const adminNotificationDismissals = mysqlTable("admin_notification_dismis
   dismissedAt:  bigint("dismissed_at", { mode: "number" }).notNull(),
 });
 export type AdminNotificationDismissal = typeof adminNotificationDismissals.$inferSelect;
+
+// ─── CRM: etiquetas y tareas internas (db/migrations/0008_crm_tags_tasks) ─────
+// Etiquetas por empresa (nombre único) asignables a clientes y oportunidades.
+export const crmTags = mysqlTable("crm_tags", {
+  id:        int("id").autoincrement().primaryKey(),
+  name:      varchar("name", { length: 60 }).notNull().unique(),
+  color:     varchar("color", { length: 20 }),
+  createdBy: int("created_by"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+});
+export type CrmTag = typeof crmTags.$inferSelect;
+
+export const crmTagLinks = mysqlTable("crm_tag_links", {
+  id:         int("id").autoincrement().primaryKey(),
+  tagId:      int("tag_id").notNull(),
+  entityType: varchar("entity_type", { length: 16 }).notNull(), // client | lead
+  entityId:   int("entity_id").notNull(),
+  createdBy:  int("created_by"),
+  createdAt:  timestamp("created_at").defaultNow().notNull(),
+});
+export type CrmTagLink = typeof crmTagLinks.$inferSelect;
+
+// Tareas y recordatorios internos del equipo (sin envíos automáticos).
+export const crmTasks = mysqlTable("crm_tasks", {
+  id:          int("id").autoincrement().primaryKey(),
+  title:       varchar("title", { length: 200 }).notNull(),
+  description: text("description"),
+  dueDate:     date("due_date", { mode: "string" }),
+  assignedTo:  int("assigned_to"),
+  status:      mysqlEnum("status", ["pendiente", "hecha"]).notNull().default("pendiente"),
+  priority:    mysqlEnum("priority", ["baja", "media", "alta"]).notNull().default("media"),
+  entityType:  varchar("entity_type", { length: 16 }), // client | lead | quote
+  entityId:    int("entity_id"),
+  createdBy:   int("created_by"),
+  completedAt: timestamp("completed_at"),
+  completedBy: int("completed_by"),
+  createdAt:   timestamp("created_at").defaultNow().notNull(),
+  updatedAt:   timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+});
+export type CrmTask = typeof crmTasks.$inferSelect;

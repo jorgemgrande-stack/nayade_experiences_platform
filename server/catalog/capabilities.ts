@@ -34,7 +34,7 @@ export const CAPABILITIES: readonly CapabilityDef[] = [
   c("crm-contacts", "Clientes y contactos", "essential", "crm", "partial"),
   c("crm-accounts", "Fichas de empresa y particulares", "essential", "crm", "partial"),
   c("crm-activity", "Historial de actividad", "essential", "crm", "partial"),
-  c("crm-tags", "Etiquetas y segmentación básica", "essential", "crm", "planned"),
+  c("crm-tags", "Etiquetas y segmentación básica", "essential", "crm", "partial"),
   c("crm-leads", "Leads y oportunidades", "essential", "crm", "partial"),
   c("crm-quotes", "Presupuestos y propuestas comerciales", "essential", "crm", "partial"),
   c("crm-tasks", "Recordatorios y tareas comerciales", "essential", "crm", "partial"),

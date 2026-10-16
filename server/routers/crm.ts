@@ -89,6 +89,7 @@ async function sendEmail({ to, subject, html }: { to: string; subject: string; h
 import { logActivity } from "../db";
 import { legacyDb, legacyPool } from "../_core/legacyDb";
 import { integrationEnv } from "../_core/tenantConfig";
+import { hasTagCondition } from "../crmTagsDb";
 
 // generateInvoiceNumber y generateQuoteNumber reemplazadas por el helper centralizado
 // Ver server/documentNumbers.ts
@@ -643,6 +644,7 @@ export const crmRouter = router({
           from: z.string().optional(),
           to: z.string().optional(),
           leadSourceId: z.number().optional(),
+          tagId: z.number().int().positive().optional(),
           limit: z.number().default(50),
           offset: z.number().default(0),
         })
@@ -653,6 +655,7 @@ export const crmRouter = router({
         if (input.assignedTo) conditions.push(eq(leads.assignedTo, input.assignedTo));
         if (input.priority) conditions.push(eq(leads.priority, input.priority));
         if (input.leadSourceId) conditions.push(eq(leads.leadSourceId, input.leadSourceId));
+        if (input.tagId) conditions.push(hasTagCondition(leads.id, "lead", input.tagId));
         if (input.search) {
           const s = `%${input.search}%`;
           conditions.push(
@@ -5957,6 +5960,7 @@ export const crmRouter = router({
   clients: router({
     list: staff.input(z.object({
       search: z.string().optional(),
+      tagId: z.number().int().positive().optional(),
       limit: z.number().default(50),
       offset: z.number().default(0),
     })).query(async ({ input }) => {
@@ -5968,6 +5972,7 @@ export const crmRouter = router({
           like(clients.company, `%${input.search}%`),
         ) as ReturnType<typeof like>);
       }
+      if (input.tagId) conditions.push(hasTagCondition(clients.id, "client", input.tagId));
       const rows = await db.select().from(clients)
         .where(conditions.length ? and(...conditions) : undefined)
         .orderBy(desc(clients.createdAt))

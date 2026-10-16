@@ -31,6 +31,8 @@ export const TRPC_ROUTER_CAPABILITIES: Record<string, string> = {
   "crm.pendingPayments": "bill-payments",
   proposals: "crm-quotes",
   commercialFollowup: "crm-tasks",
+  crmTags: "crm-tags",
+  crmTasks: "crm-tasks",
   products: "shop-catalog",
   packs: "shop-catalog",
   timeSlots: "shop-catalog",

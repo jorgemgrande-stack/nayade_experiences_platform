@@ -201,6 +201,8 @@ import { assertSeatAvailable } from "./setupWizardDb";
 import { dailyControlRouter } from "./routers/dailyControl";
 import { proposalsRouter } from "./routers/proposals";
 import { commercialFollowupRouter } from "./routers/commercialFollowup";
+import { crmTagsRouter } from "./routers/crmTags";
+import { crmTasksRouter } from "./routers/crmTasks";
 import { ghlInboxRouter } from "./routers/ghlInbox";
 import { vapiCallsRouter } from "./routers/vapiCalls";
 import { emailAccountsRouter } from "./routers/emailAccounts";
@@ -2264,6 +2266,8 @@ export const appRouter = router({
   skiRental: skiRentalRouter,
   crm: crmRouter,
   commercialFollowup: commercialFollowupRouter,
+  crmTags: crmTagsRouter,
+  crmTasks: crmTasksRouter,
   ghlInbox: ghlInboxRouter,
   vapiCalls: vapiCallsRouter,
   emailAccounts: emailAccountsRouter,
