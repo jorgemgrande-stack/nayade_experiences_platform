@@ -62,6 +62,7 @@ import {
   toggleUserActive,
   getUserByInviteToken,
   setUserPassword,
+  redeemInviteToken,
   resendUserInvite,
   deleteUser,
   getHomeModuleItems,
@@ -138,6 +139,7 @@ import {
   buildTransferConfirmationHtml,
 } from "./emailTemplates";
 import { getDb } from "./db";
+import { assertUserAdminAllowed, OWNER_SETTING_KEY } from "./_core/companyOwner";
 import { siteSettings, systemSettings, packs, legoPacks as legoPacksTable, legoPackSnapshots, reservations as reservationsSchema, reservationOperational as reservationOperationalSchema, discountCodes, users as usersTable } from "../drizzle/schema";
 
 // ─── Pricing helper (per_person | per_unit) ───────────────────────────────────
@@ -295,17 +297,21 @@ export const appRouter = router({
       }),
 
     setPassword: publicProcedure.input(z.object({
-      token: z.string(),
-      password: z.string().min(6),
+      token: z.string().min(16).max(256),
+      password: z.string().min(8, "La contraseña debe tener al menos 8 caracteres").max(256),
     })).mutation(async ({ input }) => {
       const bcrypt = await import("bcryptjs");
       const user = await getUserByInviteToken(input.token);
       if (!user) throw new TRPCError({ code: "NOT_FOUND", message: "Token inválido o expirado" });
-      if (user.inviteTokenExpiry && new Date() > user.inviteTokenExpiry) {
+      // Sin caducidad o caducada: no se acepta (el administrador puede reenviar la invitación)
+      if (!user.inviteTokenExpiry || new Date() > user.inviteTokenExpiry) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "El enlace ha expirado. Solicita un nuevo enlace al administrador." });
       }
       const passwordHash = await bcrypt.hash(input.password, 12);
-      await setUserPassword(user.id, passwordHash);
+      // Canje atómico: un solo uso aunque lleguen dos peticiones con el mismo enlace
+      if (!(await redeemInviteToken(user.id, input.token, passwordHash))) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Token inválido o expirado" });
+      }
       return { success: true, name: user.name };
     }),
 
@@ -842,6 +848,8 @@ export const appRouter = router({
         };
         for (const [camelKey, value] of Object.entries(input.settings)) {
           const sysKey = KEY_MAP[camelKey] ?? camelKey;
+          // El propietario de la empresa no se cambia desde el panel
+          if (sysKey === OWNER_SETTING_KEY) continue;
           const stored = sysKey === "site_ghl_api_key" ? protectLegacySecret("system_settings", sysKey, value ?? "") : (value ?? "");
           await db.update(systemSettings)
             .set({ value: stored })
@@ -1391,7 +1399,7 @@ export const appRouter = router({
     createUser: adminProcedure.input(z.object({
       name: z.string().min(2),
       email: z.string().email(),
-      role: z.enum(["user", "admin", "monitor", "agente", "adminrest", "controler"]),
+      role: z.enum(["user", "admin", "monitor", "agente", "adminrest", "controler", "readonly"]),
       origin: z.string().optional(), // ignorado: el enlace usa una URL de confianza
       rbacRoleKeys: z.array(z.string().min(1).max(64)).optional(),
     })).mutation(async ({ input }) => {
@@ -1436,13 +1444,15 @@ export const appRouter = router({
     }),
     changeUserRole: adminProcedure.input(z.object({
       userId: z.number(),
-      role: z.enum(["user", "admin", "monitor", "agente", "adminrest", "controler"]),
-    })).mutation(async ({ input }) => {
+      role: z.enum(["user", "admin", "monitor", "agente", "adminrest", "controler", "readonly"]),
+    })).mutation(async ({ input, ctx }) => {
+      await assertUserAdminAllowed(ctx.user, input.userId, "change_role", { newRole: input.role });
       return changeUserRole(input.userId, input.role);
     }),
     toggleUserActive: adminProcedure.input(z.object({
       userId: z.number(),
-    })).mutation(async ({ input }) => {
+    })).mutation(async ({ input, ctx }) => {
+      await assertUserAdminAllowed(ctx.user, input.userId, "toggle_active");
       return toggleUserActive(input.userId);
     }),
     resendInvite: adminProcedure.input(z.object({
@@ -1463,7 +1473,8 @@ export const appRouter = router({
     setUserPassword: adminProcedure.input(z.object({
       userId: z.number(),
       password: z.string().min(8, "La contraseña debe tener al menos 8 caracteres"),
-    })).mutation(async ({ input }) => {
+    })).mutation(async ({ input, ctx }) => {
+      await assertUserAdminAllowed(ctx.user, input.userId, "set_password");
       const bcrypt = await import("bcryptjs");
       const passwordHash = await bcrypt.hash(input.password, 12);
       await setUserPassword(input.userId, passwordHash);
@@ -1476,6 +1487,7 @@ export const appRouter = router({
       userId: z.number(),
     })).mutation(async ({ input, ctx }) => {
       if (input.userId === ctx.user.id) throw new TRPCError({ code: "BAD_REQUEST", message: "No puedes eliminarte a ti mismo" });
+      await assertUserAdminAllowed(ctx.user, input.userId, "delete");
       return deleteUser(input.userId);
     }),
     // ─── RBAC Phase 3: user role assignments ─────────────────────────────────

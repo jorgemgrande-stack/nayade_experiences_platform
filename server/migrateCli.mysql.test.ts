@@ -195,6 +195,8 @@ d("ejecutor de migraciones contra MySQL real", () => {
   it("el carril real db/migrations se aplica, se revierte y se vuelve a aplicar", async () => {
     // El carril se aplica sobre la baseline: 0004 amplía `reservations`, que aquí basta con que exista
     const t = await freshDb("app", ["users", "reservations"]);
+    // 0005 amplía el ENUM `users.role`: la columna debe existir (como en la baseline)
+    await t.pool.query("ALTER TABLE users ADD COLUMN `role` enum('user','admin') NOT NULL DEFAULT 'user'");
     const args = (cmd: string) => [cmd, "--dir", "db/migrations", "--apply", "--confirm-database", t.db];
     const up = await cli(t.url, args("up"));
     expect(up.status, up.stderr).toBe(0);

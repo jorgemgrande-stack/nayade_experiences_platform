@@ -1504,7 +1504,7 @@ export async function clonePack(id: number) {
 export async function createInvitedUser(data: {
   name: string;
   email: string;
-  role: "user" | "admin" | "monitor" | "agente" | "adminrest" | "controler";
+  role: "user" | "admin" | "monitor" | "agente" | "adminrest" | "controler" | "readonly";
   inviteToken: string;
   inviteTokenExpiry: Date;
 }) {
@@ -1527,7 +1527,7 @@ export async function createInvitedUser(data: {
   return { success: true, id: Number(result[0].insertId) };
 }
 
-export async function changeUserRole(userId: number, role: "user" | "admin" | "monitor" | "agente" | "adminrest" | "controler") {
+export async function changeUserRole(userId: number, role: "user" | "admin" | "monitor" | "agente" | "adminrest" | "controler" | "readonly") {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   await db.update(users).set({ role, updatedAt: new Date() }).where(eq(users.id, userId));
@@ -1561,6 +1561,26 @@ export async function setUserPassword(userId: number, passwordHash: string) {
     updatedAt: new Date(),
   }).where(eq(users.id, userId));
   return { success: true };
+}
+
+/**
+ * Canjea una invitación de forma atómica: solo si el token sigue siendo el vigente y no ha caducado.
+ * Devuelve false si otra petición lo canjeó antes, si caducó o si no tiene caducidad (invitaciones
+ * sin fecha: se exige reenviarlas). Un solo uso real aunque lleguen dos peticiones a la vez.
+ */
+export async function redeemInviteToken(userId: number, token: string, passwordHash: string): Promise<boolean> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const now = new Date();
+  const result = await db.update(users).set({
+    passwordHash,
+    inviteToken: null,
+    inviteTokenExpiry: null,
+    inviteAccepted: true,
+    updatedAt: now,
+  }).where(and(eq(users.id, userId), eq(users.inviteToken, token), sql`${users.inviteTokenExpiry} IS NOT NULL AND ${users.inviteTokenExpiry} > ${now}`));
+  const header = Array.isArray(result) ? result[0] : result;
+  return Number((header as { affectedRows?: number } | undefined)?.affectedRows ?? 0) === 1;
 }
 
 export async function resendUserInvite(userId: number, inviteToken: string, inviteTokenExpiry: Date) {

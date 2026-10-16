@@ -281,7 +281,7 @@ const calendarRouter = router({
 
 // --- DAILY ORDERS -------------------------------------------------------------
 const dailyOrdersRouter = router({
-  getForDate: protectedProcedure
+  getForDate: operationsViewProc
     .input(z.object({ date: z.string() }))
     .query(async ({ input }) => {
       // booking_date is a DATE column — use input string directly (no Date conversion)
@@ -452,7 +452,7 @@ const dailyOrdersRouter = router({
 
 // --- ACTIVITIES (Actividades del día) -----------------------------------------
 const activitiesRouter = router({
-  getForDate: protectedProcedure
+  getForDate: operationsViewProc
     .input(z.object({ date: z.string() }))
     .query(async ({ input }) => {
       // booking_date is a DATE column — use input string directly (no Date conversion)
