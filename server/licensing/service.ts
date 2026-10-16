@@ -60,10 +60,10 @@ export class LicensingService {
   async preview(subscriptionId: number, o: { activate: boolean }): Promise<LicencePlan> {
     const sub = await this.d.subscriptions.get(subscriptionId);
     if (!sub) throw new LicensingError("not_found", "Suscripción no encontrada");
-    if (!sub.contractId) throw new LicensingError("invalid_state", "La suscripción no está vinculada a un contrato: no se sabe a qué plataforma (tenant) aplicar las licencias");
-    const contract = await this.d.crm.contract(sub.contractId);
-    if (!contract?.tenantId) throw new LicensingError("invalid_state", "El contrato aún no tiene plataforma (tenant): actívalo o da de alta la plataforma antes");
-    const tenantId = contract.tenantId;
+    // La plataforma sale de la suscripción (p. ej. la de una prueba) o de su contrato
+    let tenantId = sub.tenantId ?? null;
+    if (!tenantId && sub.contractId) tenantId = (await this.d.crm.contract(sub.contractId))?.tenantId ?? null;
+    if (!tenantId) throw new LicensingError("invalid_state", "La suscripción no tiene plataforma (tenant): activa el contrato o da de alta la plataforma antes");
     const source = `subscription:${sub.id}`;
     const now = this.now();
     const items = (await this.d.subscriptions.items(sub.id)).filter((i) => i.effectiveFrom <= now && (i.effectiveTo === null || i.effectiveTo > now));

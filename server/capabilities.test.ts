@@ -187,9 +187,9 @@ describe("aplicación de licencias desde la suscripción", () => {
     expect((await new CapabilityAccess(caps, { enforce: true, now: () => clock }).check("crm-leads", { write: false, tenantId: "acme" })).allowed).toBe(false);
     expect((await caps.events("acme"))[0]).toMatchObject({ capabilityId: "crm-leads", toStatus: "suspended", reason: "Impago comprobado" });
   });
-  it("sin plataforma (tenant) en el contrato no se aplica nada", async () => {
-    const s = await create();
+  it("sin plataforma (tenant) ni en la suscripción ni en el contrato no se aplica nada", async () => {
     tenantOfContract = null;
+    const s = await create();
     await expect(licensing.preview(s.id, { activate: true })).rejects.toThrow(/plataforma/);
   });
 });
