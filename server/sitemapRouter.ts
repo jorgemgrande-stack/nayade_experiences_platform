@@ -22,6 +22,17 @@ import {
 import { legacyDb, legacyPool } from "./_core/legacyDb";
 import { isMultiTenant } from "./_core/tenant";
 import { publicBaseUrl } from "./_core/productIdentity";
+import { getCapabilityAccess } from "./_core/capabilities/access";
+import { listPublishedForSitemap } from "./blogDb";
+
+/** El blog figura en el sitemap si la empresa lo tiene contratado (activo o en solo lectura). */
+async function blogLicensed(): Promise<boolean> {
+  try {
+    return (await getCapabilityAccess().check("cms-blog", { write: false })).allowed;
+  } catch {
+    return false;
+  }
+}
 
 const _pool = legacyPool();
 const db = legacyDb();
@@ -96,6 +107,8 @@ sitemapRouter.get("/sitemap.xml", async (_req, res) => {
     const pageRows = multi
       ? await db.select({ slug: staticPages.slug, updatedAt: staticPages.updatedAt }).from(staticPages).where(eq(staticPages.isPublished, true))
       : [];
+    // Blog (solo multi y con la capacidad contratada): /blog y sus entradas publicadas, nunca borradores
+    const blogRows = multi && (await blogLicensed()) ? await listPublishedForSitemap(Date.now()) : null;
     const [
       expRows,
       legoRows,
@@ -155,7 +168,12 @@ sitemapRouter.get("/sitemap.xml", async (_req, res) => {
 
     // Páginas propias publicadas de la empresa (/:slug); «inicio» es la portada
     for (const r of pageRows) {
-      if (/^[a-z0-9-]{1,64}$/.test(r.slug) && r.slug !== "inicio") entries.push(url(`/${r.slug}`, formatDate(r.updatedAt)));
+      if (/^[a-z0-9-]{1,64}$/.test(r.slug) && r.slug !== "inicio" && !(blogRows && r.slug === "blog")) entries.push(url(`/${r.slug}`, formatDate(r.updatedAt)));
+    }
+
+    if (blogRows) {
+      entries.push(url("/blog", blogRows[0] ? formatDate(blogRows[0].updatedAt) : undefined, "weekly", "0.7"));
+      for (const r of blogRows) entries.push(url(`/blog/${r.slug}`, formatDate(r.updatedAt)));
     }
 
     // /experiencias/:slug (slugs malformados ya excluidos en la query)

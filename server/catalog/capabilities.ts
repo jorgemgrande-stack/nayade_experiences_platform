@@ -47,7 +47,7 @@ export const CAPABILITIES: readonly CapabilityDef[] = [
   c("cms-editor", "CMS y editor", "essential", "cms", "partial"),
   c("cms-domain", "Derecho a gestionar una web con dominio propio", "essential", "cms", "partial"),
   c("cms-pages-forms", "Páginas y formularios de contacto", "essential", "cms", "partial"),
-  c("cms-blog", "Blog", "essential", "cms", "planned"),
+  c("cms-blog", "Blog", "essential", "cms", "partial"),
   c("cms-seo", "SEO técnico básico", "essential", "cms", "partial"),
   c("bill-invoices", "Facturas y abonos", "essential", "billing", "partial"),
   c("bill-series", "Series fiscales y numeración", "essential", "billing", "partial"),
