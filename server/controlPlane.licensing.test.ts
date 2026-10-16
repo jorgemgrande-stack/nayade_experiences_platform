@@ -17,10 +17,11 @@ import { TenantRegistryService } from "./_core/tenantRegistry/service";
 import { keyringFromEnv } from "./_core/tenantRegistry/crypto";
 import { MemorySubscriptionStore } from "./subscriptions/store";
 import { MemoryCapabilityStore } from "./_core/capabilities/store";
+import { MemoryOrganizationStore } from "./organization/service";
 import { BUILTIN_MODULES } from "./_core/modules/builtin";
 import { seedElephantSource } from "./catalog/seed";
 
-const TOK = { read: "lic-read-token-aaaaaaaaaaaaaaaaaaaa", subs: "lic-subs-token-bbbbbbbbbbbbbbbbbbbb", admin: "lic-admin-token-cccccccccccccccccc" };
+const TOK = { org: "lic-org-token-dddddddddddddddddddddd", read: "lic-read-token-aaaaaaaaaaaaaaaaaaaa", subs: "lic-subs-token-bbbbbbbbbbbbbbbbbbbb", admin: "lic-admin-token-cccccccccccccccccc" };
 let server: http.Server;
 let port = 0;
 let subscriptionId = 0;
@@ -63,6 +64,7 @@ beforeAll(async () => {
     tokens: [
       { id: "lector", sha256: hashToken(TOK.read), scopes: ["subscriptions:read", "tenants:read"] },
       { id: "comercial", sha256: hashToken(TOK.subs), scopes: ["subscriptions:read", "subscriptions:write"] },
+      { id: "org", sha256: hashToken(TOK.org), scopes: ["tenants:read", "tenants:write"] },
       { id: "admin", sha256: hashToken(TOK.admin), scopes: ["subscriptions:read", "subscriptions:write", "entitlements:write", "tenants:read"] },
     ],
     registry,
@@ -74,6 +76,7 @@ beforeAll(async () => {
     web: { store: webStore },
     subscriptions: { store: subsStore, now: () => clock },
     capabilities: caps,
+    organization: new MemoryOrganizationStore(),
   });
   server = http.createServer(app);
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
@@ -115,5 +118,20 @@ describe("API de licencias por capacidad", () => {
     expect((await caps.list("acme")).find((g) => g.capabilityId === "voice-ai")!.status).toBe("suspended");
     expect((await call("GET", "/tenants/no-existe/capabilities", { token: TOK.read })).status).toBe(404);
     expect((await call("POST", "/subscriptions/9999/licences/preview", { token: TOK.read, body: {} })).status).toBe(404);
+  });
+});
+
+describe("API de sedes y entidades fiscales", () => {
+  it("límites del plan contratado (Essential: 1 y 1), alta con permiso, rechazo por límite con 422", async () => {
+    const o = await call("GET", "/tenants/acme/organization", { token: TOK.read });
+    expect(o.json.limits).toMatchObject({ sites: 1, fiscal_entities: 1 });
+    expect((await call("POST", "/tenants/acme/sites", { token: TOK.read, body: { siteId: "central", name: "Central" } })).status).toBe(403);
+    expect((await call("POST", "/tenants/acme/fiscal-entities", { token: TOK.org, body: { entityId: "acme-sl", legalName: "Acme SL", taxId: "B12345678" } })).status).toBe(200);
+    const site = await call("POST", "/tenants/acme/sites", { token: TOK.org, body: { siteId: "central", name: "Central" } });
+    expect(site.json.sites[0]).toMatchObject({ siteId: "central", fiscalEntityId: "acme-sl" });
+    const second = await call("POST", "/tenants/acme/sites", { token: TOK.org, body: { siteId: "norte", name: "Norte" } });
+    expect(second.status).toBe(422);
+    expect(second.json.message).toMatch(/1 sede/);
+    expect((await call("GET", "/tenants/no-existe/organization", { token: TOK.read })).status).toBe(404);
   });
 });

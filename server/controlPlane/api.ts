@@ -65,6 +65,7 @@ import { TrialService, type TrialLimits } from "../trials/service";
 import type { TrialStore } from "../trials/store";
 import { TrialOnboardingService, type TrialNotifier } from "../trials/onboarding";
 import { createPublicTrialRouter, createTrialAdminRouter } from "../trials/api";
+import { OrganizationError, OrganizationService, type OrganizationStore } from "../organization/service";
 
 /** Aviso por defecto: NO envía nada; solo deja constancia (sin correo ni token) de que hay un aviso pendiente. */
 const logOnlyTrialNotifier: TrialNotifier = {
@@ -135,6 +136,8 @@ export interface ControlPlaneDeps {
    * sin datos personales ni tokens: no se envía nada).
    */
   trials?: { store: TrialStore; publicEnabled?: boolean; autoProvision?: boolean; notify?: TrialNotifier; limits?: Partial<TrialLimits> };
+  /** Sedes y entidades fiscales (registro 0009), con los límites del plan contratado. */
+  organization?: OrganizationStore;
 }
 
 const idSchema = z.string().regex(/^[a-z0-9][a-z0-9_-]{0,62}$/);
@@ -711,6 +714,48 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
           }
         }),
       );
+    }
+    if (d.organization) {
+      const org = new OrganizationService({ store: d.organization, subscriptions: d.subscriptions.store, catalog: async () => quoteCatalogFromSite(await webAdmin!.site("published")), now: d.subscriptions.now });
+      const orgErr = (res: express.Response, e: unknown) => {
+        if (e instanceof OrganizationError) return void res.status(e.code === "not_found" ? 404 : e.code === "invalid_input" ? 400 : e.code === "limit" ? 422 : 409).json({ error: e.code, message: e.message });
+        throw e;
+      };
+      const tenantOf = async (req: express.Request) => {
+        const id = idSchema.parse(req.params.id);
+        if (!(await d.reader.getTenant(id))) throw new RegistryError("not_found", "Tenant no encontrado");
+        return id;
+      };
+      const orgRoute = (fn: (req: express.Request, tenantId: string, actor: string) => Promise<unknown>) =>
+        wrap(async (req, res) => {
+          const tenantId = await tenantOf(req);
+          const a = getAuth(req)!.actor;
+          try {
+            res.json(await fn(req, tenantId, `${a.type}:${a.id}`));
+          } catch (e) {
+            orgErr(res, e);
+          }
+        });
+      const slug = z.string().regex(/^[a-z0-9][a-z0-9-]{0,62}$/);
+      router.get("/tenants/:id/organization", requireScope("tenants:read"), orgRoute((_req, t) => org.overview(t)));
+      router.post(
+        "/tenants/:id/fiscal-entities",
+        requireScope("tenants:write"),
+        orgRoute((req, t, actor) => {
+          const b = z.object({ entityId: slug, legalName: z.string().max(200), taxId: z.string().max(32), country: z.string().length(2).optional(), address: z.string().max(300).nullable().optional() }).strict().parse(req.body);
+          return org.createFiscalEntity(t, b, actor);
+        }),
+      );
+      router.post("/tenants/:id/fiscal-entities/:entity/archive", requireScope("tenants:write"), orgRoute((req, t) => org.archiveFiscalEntity(t, slug.parse(req.params.entity))));
+      router.post(
+        "/tenants/:id/sites",
+        requireScope("tenants:write"),
+        orgRoute((req, t, actor) => {
+          const b = z.object({ siteId: slug, name: z.string().max(160), fiscalEntityId: slug.nullable().optional() }).strict().parse(req.body);
+          return org.createSite(t, b, actor);
+        }),
+      );
+      router.post("/tenants/:id/sites/:site/archive", requireScope("tenants:write"), orgRoute((req, t) => org.archiveSite(t, slug.parse(req.params.site))));
     }
     if (d.capabilities && d.trials && d.provisioning && d.platformDomain) {
       const crmD = d.crm;

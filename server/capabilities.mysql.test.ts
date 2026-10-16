@@ -12,6 +12,7 @@ import { TenantRegistryService } from "./_core/tenantRegistry/service";
 import { keyringFromEnv } from "./_core/tenantRegistry/crypto";
 import { MysqlCapabilityStore } from "./_core/capabilities/store";
 import { CapabilityAccess } from "./_core/capabilities/access";
+import { MysqlOrganizationStore } from "./organization/service";
 
 const URL_ = process.env.REGISTRY_TEST_DATABASE_URL;
 const DB = "cap_registry_test";
@@ -29,7 +30,7 @@ describe.skipIf(!URL_)("licencias por capacidad con MySQL real", () => {
     u.pathname = `/${DB}`;
     pool = mysql.createPool({ uri: u.toString(), connectionLimit: 8, multipleStatements: true });
     const r = await migrateRegistry(pool, path.resolve(__dirname, "../db/registry"), { dryRun: false });
-    expect(r.applied).toContain("0008");
+    expect(r.applied).toEqual(expect.arrayContaining(["0008", "0009"]));
     const ring = keyringFromEnv({ REGISTRY_KEYS: `k1:${crypto.randomBytes(32).toString("base64")}`, REGISTRY_ACTIVE_KEY_ID: "k1" } as NodeJS.ProcessEnv);
     const registry = new TenantRegistryService(new MysqlTenantRegistryStore(pool), () => ring);
     await registry.createTenant({ id: "acme", displayName: "Acme" }, { type: "operator", id: "test" });
@@ -73,5 +74,17 @@ describe.skipIf(!URL_)("licencias por capacidad con MySQL real", () => {
     const access = new CapabilityAccess(store, { enforce: true });
     expect((await access.check("crm-leads", { write: true, tenantId: "acme" })).allowed).toBe(true);
     expect((await access.check("people-hr", { write: false, tenantId: "acme" })).allowed).toBe(false);
+  });
+  it("sedes y entidades fiscales (0009): claves ajenas, NIF único por empresa e id de sede válido", async () => {
+    const org = new MysqlOrganizationStore(pool);
+    const base = { tenantId: "acme", country: "ES", address: null, isDefault: true, status: "active" as const, createdAt: 1, createdBy: "t", updatedAt: 1 };
+    await org.insertFiscalEntity({ ...base, entityId: "acme-sl", legalName: "Acme SL", taxId: "B12345678" });
+    await expect(org.insertFiscalEntity({ ...base, entityId: "otra", legalName: "Otra", taxId: "B12345678" })).rejects.toMatchObject({ code: "conflict" });
+    const site = { tenantId: "acme", name: "Central", status: "active" as const, createdAt: 1, createdBy: "t", updatedAt: 1 };
+    await org.insertSite({ ...site, siteId: "central", fiscalEntityId: "acme-sl" });
+    await expect(org.insertSite({ ...site, siteId: "norte", fiscalEntityId: "no-existe" })).rejects.toThrow();
+    await expect(org.insertSite({ ...site, siteId: "Mal Id", fiscalEntityId: null })).rejects.toThrow();
+    await org.updateSite("acme", "central", { status: "archived", updatedAt: 2 });
+    expect((await org.sites("acme")).map((x) => [x.siteId, x.status, x.fiscalEntityId])).toEqual([["central", "archived", "acme-sl"]]);
   });
 });
