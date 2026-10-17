@@ -30,6 +30,7 @@ import { ProvisioningService } from "../_core/provisioning/service";
 import { MysqlProvisioningStore, MysqlSchemaApplier, MysqlTenantSeeder } from "../_core/provisioning/mysqlAdapters";
 import { DatabaseServers, MultiServerDatabaseProvisioner, parseDatabaseServers, registryServerUsage } from "../_core/provisioning/servers";
 import { MysqlBackupInventory } from "../_core/ops/backupInventory";
+import { MysqlBackupCopyLedger } from "../_core/ops/backupCopies";
 import { SupportAdmin } from "../_core/support/grants";
 import { MysqlWebStore } from "../web/store";
 import { MysqlSubscriptionStore } from "../subscriptions/store";
@@ -135,7 +136,12 @@ async function main() {
   const backupInventory = backupsReady ? new MysqlBackupInventory(pool) : undefined;
   const maxAgeHours = Number(process.env.BACKUP_MAX_AGE_HOURS ?? 36);
   const backupMaxAgeMs = (Number.isFinite(maxAgeHours) && maxAgeHours >= 1 ? maxAgeHours : 36) * 3_600_000;
-  console.log(JSON.stringify({ ctx: "Backups", inventory: backupsReady, maxAgeHours: backupMaxAgeMs / 3_600_000, ...(backupsReady ? {} : { reason: "registry_migration_0010_missing" }) }));
+  // Estado por destino (registro 0011): alertas del destino secundario (solo si alguna vez se usó)
+  const copiesLedger = new MysqlBackupCopyLedger(pool);
+  const copiesReady = backupsReady && (await copiesLedger.ready());
+  const secHours = Number(process.env.BACKUP_SECONDARY_MAX_AGE_HOURS ?? backupMaxAgeMs / 3_600_000);
+  const secondaryMaxAgeMs = (Number.isFinite(secHours) && secHours >= 1 ? secHours : backupMaxAgeMs / 3_600_000) * 3_600_000;
+  console.log(JSON.stringify({ ctx: "Backups", inventory: backupsReady, copies: copiesReady, maxAgeHours: backupMaxAgeMs / 3_600_000, ...(backupsReady ? {} : { reason: "registry_migration_0010_missing" }) }));
   const evaluate = () =>
     runAlerts({
       reader: store,
@@ -145,6 +151,9 @@ async function main() {
       entitlements,
       lastBackupAt: backupInventory ? () => backupInventory.lastSuccess("tenant") : undefined,
       backupMaxAgeMs,
+      secondaryBackups: copiesReady
+        ? { lastSuccessAt: () => copiesLedger.lastSuccess("secondary", "tenant"), latestAttempts: () => copiesLedger.latestAttempts("secondary"), maxAgeMs: secondaryMaxAgeMs }
+        : undefined,
     });
   if (process.env.CP_ALERTS_EVERY_SECONDS) {
     const every = Math.max(30, Number(process.env.CP_ALERTS_EVERY_SECONDS)) * 1000;
@@ -248,7 +257,7 @@ async function main() {
     billing,
     billingStore,
     ops: { incidents, runAlerts: evaluate },
-    backups: backupInventory ? { inventory: backupInventory, maxAgeMs: backupMaxAgeMs } : undefined,
+    backups: backupInventory ? { inventory: backupInventory, maxAgeMs: backupMaxAgeMs, copies: copiesReady ? copiesLedger : undefined, secondaryMaxAgeMs } : undefined,
     health: { registryPing: async () => void (await pool.query("SELECT 1")) },
     sso,
     crm,

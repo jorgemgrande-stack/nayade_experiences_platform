@@ -84,6 +84,7 @@ import { rebindRequestContext, requestIdMiddleware, requestIdOf } from "../_core
 import { opsLog } from "../_core/ops/log";
 import { diagnoseTenant } from "../_core/ops/diagnostics";
 import type { BackupInventory, BackupRecord } from "../_core/ops/backupInventory";
+import type { BackupCopyLedger } from "../_core/ops/backupCopies";
 import { BACKUP_TENANT_STATUSES } from "../_core/ops/backupJob";
 
 export interface ControlPlaneDeps {
@@ -108,7 +109,13 @@ export interface ControlPlaneDeps {
   /** Acceso delegado de soporte (requiere SUPPORT_JWT_SECRET). */
   support?: Pick<SupportAdmin, "create" | "revoke">;
   /** Inventario de copias de seguridad (registro, migración 0010). Sin él no hay rutas `/backups`. */
-  backups?: { inventory: Pick<BackupInventory, "list" | "latestAttempts" | "lastSuccess">; maxAgeMs?: number };
+  backups?: {
+    inventory: Pick<BackupInventory, "list" | "latestAttempts" | "lastSuccess">;
+    maxAgeMs?: number;
+    /** Estado del destino secundario (registro 0011); sin él, la respuesta no cambia. */
+    copies?: Pick<BackupCopyLedger, "lastSuccess" | "latestAttempts">;
+    secondaryMaxAgeMs?: number;
+  };
   /** Incidencias operativas y evaluación de alertas. */
   ops?: { incidents: IncidentService; runAlerts?: () => Promise<AlertRunResult> };
   /** Comprobación de la BD del registro para `/readyz` (sin ella, `/readyz` solo indica que el proceso vive). */
@@ -682,9 +689,33 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
           .filter((t) => (BACKUP_TENANT_STATUSES as readonly string[]).includes(t.status))
           .map((t) => ({ tenantId: t.id, displayName: t.displayName, status: t.status, ...row("tenant", t.id, okTenant[t.id]) }))
           .sort((a, b) => Number(a.fresh) - Number(b.fresh) || (a.lastSuccessAt ?? 0) - (b.lastSuccessAt ?? 0) || a.tenantId.localeCompare(b.tenantId));
+        // Destino secundario: por empresa, última copia correcta y último intento (solo si hay datos)
+        let secondary: Record<string, unknown> | null = null;
+        if (bk.copies) {
+          const [okSec, lastSec] = await Promise.all([bk.copies.lastSuccess("secondary", "tenant"), bk.copies.latestAttempts("secondary")]);
+          if (lastSec.length) {
+            const secMax = bk.secondaryMaxAgeMs ?? maxAge;
+            const perTenant = rows.map((r) => {
+              const at = okSec[r.tenantId];
+              const last = lastSec.find((x) => x.targetKind === "tenant" && x.targetId === r.tenantId);
+              return { tenantId: r.tenantId, lastSuccessAt: at ?? null, fresh: !!at && now - at <= secMax, lastStatus: last?.status ?? null, lastError: last?.status === "failed" ? last.error : null };
+            });
+            secondary = {
+              maxAgeHours: secMax / 3_600_000,
+              summary: {
+                fresh: perTenant.filter((t) => t.fresh).length,
+                stale: perTenant.filter((t) => !t.fresh && t.lastSuccessAt).length,
+                never: perTenant.filter((t) => !t.lastSuccessAt).length,
+                lastAttemptFailed: lastSec.filter((x) => x.status === "failed").length,
+              },
+              tenants: perTenant,
+            };
+          }
+        }
         res.json({
           generatedAt: now,
           maxAgeHours: maxAge / 3_600_000,
+          secondary,
           summary: {
             tenants: rows.length,
             fresh: rows.filter((r) => r.fresh).length,

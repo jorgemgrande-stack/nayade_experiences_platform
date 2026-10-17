@@ -19,7 +19,9 @@ import path from "node:path";
 import mysql from "mysql2/promise";
 import { compareWithManifest, restoreBackup, type VerificationReport } from "./backup";
 import { decryptFile, verifyManifest, type Keyring } from "./backupCrypto";
-import type { BackupInventory, BackupRecord, BackupTargetKind } from "./backupInventory";
+import type { BackupInventory, BackupTargetKind } from "./backupInventory";
+import { safeError } from "./backupInventory";
+import type { BackupCopyLedger, RestoreLogStart, RestoreSource } from "./backupCopies";
 import type { BackupStorage } from "./backupStorage";
 import { backupAad, type SignedBackupManifest } from "./backupJob";
 import type { TenantRegistryService, Actor } from "../tenantRegistry/service";
@@ -72,6 +74,8 @@ function dsnWithDatabase(url: string, db: string): string {
 export interface RestoreReport {
   target: { kind: BackupTargetKind; id: string };
   backup: { manifestKey: string; createdAt: string; keyId: string; inventoryId: number | null };
+  /** Destino del que se leyó la copia. */
+  source?: RestoreSource;
   serverAlias: string | null;
   database: string;
   verification: VerificationReport;
@@ -125,18 +129,75 @@ export function restoredDatabaseName(tenantId: string, at: number): string {
 /** Usuario propio de una base restaurada (≤ 32 caracteres, determinista por base). */
 export const restoredUserFor = (database: string) => `esr_${crypto.createHash("sha256").update(database).digest("hex").slice(0, 16)}`;
 
-async function pickBackup(inventory: BackupInventory, kind: BackupTargetKind, id: string, backupId?: number): Promise<BackupRecord> {
-  const rec = backupId ? await inventory.get(backupId) : (await inventory.list({ targetKind: kind, targetId: id, status: "ok", limit: 1 }))[0];
+
+/** Copia elegida para restaurar: manifiesto y (si se conoce) la fila del inventario. */
+interface PickedBackup {
+  manifestKey: string;
+  inventoryId: number | null;
+  serverAlias: string | null;
+}
+
+/**
+ * Elige la copia a restaurar según el ORIGEN:
+ *  - `primary`: inventario (`backup_inventory`, estado `ok`), como siempre.
+ *  - `secondary`: registro por destino (`backup_copies`, destino `secondary`, estado `ok`). La retención
+ *    del primario no afecta: una copia ya podada en el primario puede seguir en el secundario.
+ * `backupId` es siempre el id del inventario (el mismo en todos los destinos).
+ */
+async function pickBackup(
+  d: { inventory?: BackupInventory | null; copies?: BackupCopyLedger | null },
+  source: RestoreSource,
+  kind: BackupTargetKind,
+  id: string,
+  backupId?: number,
+): Promise<PickedBackup> {
+  if (source === "secondary") {
+    if (!d.copies) throw new RestoreError("Sin registro de copias por destino (migración 0011): indica el manifiesto");
+    const rows = await d.copies.list({ destination: "secondary", targetKind: kind, targetId: id, status: "ok", limit: backupId ? 5000 : 1 });
+    const c = backupId ? rows.find((r) => r.backupId === backupId) : rows[0];
+    if (!c) throw new RestoreError(backupId ? `La copia ${backupId} no está (correcta) en el destino secundario` : "No hay copia correcta en el destino secundario");
+    if (!c.manifestKey) throw new RestoreError("La copia del secundario no tiene manifiesto");
+    const inv = c.backupId && d.inventory ? await d.inventory.get(c.backupId) : null;
+    return { manifestKey: c.manifestKey, inventoryId: c.backupId, serverAlias: inv?.serverAlias ?? null };
+  }
+  if (!d.inventory) throw new RestoreError("Sin inventario disponible: indica el manifiesto");
+  const rec = backupId ? await d.inventory.get(backupId) : (await d.inventory.list({ targetKind: kind, targetId: id, status: "ok", limit: 1 }))[0];
   if (!rec) throw new RestoreError("No hay copia correcta en el inventario");
   if (rec.targetKind !== kind || rec.targetId !== id) throw new RestoreError("Esa copia no pertenece a este destino");
   if (rec.status !== "ok" || !rec.manifestKey) throw new RestoreError(`La copia ${rec.id} no es válida (estado ${rec.status})`);
-  return rec;
+  return { manifestKey: rec.manifestKey, inventoryId: rec.id, serverAlias: rec.serverAlias };
+}
+
+/** Ejecuta una restauración dejando constancia en `backup_restores` (si existe); el registro nunca la hace fallar. */
+async function logged<T extends RestoreReport>(
+  copies: BackupCopyLedger | null | undefined,
+  start: RestoreLogStart,
+  now: () => number,
+  fn: (setDatabase: (db: string) => void) => Promise<T>,
+): Promise<T> {
+  let database: string | null = start.databaseName ?? null;
+  const id = copies ? await copies.restoreStarted(start).catch(() => null) : null;
+  try {
+    const r = await fn((db) => (database = db));
+    if (id) {
+      await copies!
+        .restoreFinished(id, { finishedAt: now(), status: r.verification.ok ? "ok" : "failed", verified: r.verification.ok, switched: r.switched, databaseName: r.database, error: r.verification.ok ? null : r.verification.problems.slice(0, 3).join("; ") })
+        .catch(() => undefined);
+    }
+    return r;
+  } catch (e) {
+    if (id) await copies!.restoreFinished(id, { finishedAt: now(), status: "failed", verified: false, databaseName: database, error: safeError(e) }).catch(() => undefined);
+    throw e;
+  }
 }
 
 export interface TenantRestoreDeps {
+  /** Almacenamiento del ORIGEN elegido (primario o secundario). */
   storage: BackupStorage;
   ring: Keyring;
-  inventory: BackupInventory;
+  inventory?: BackupInventory | null;
+  /** Registro por destino y de restauraciones (0011). */
+  copies?: BackupCopyLedger | null;
   servers: DatabaseServers;
   registry: Pick<TenantRegistryService, "registerDatabase" | "activateDatabase">;
   reader: Pick<TenantRegistryReader, "getTenant" | "getActiveDatabase">;
@@ -147,82 +208,111 @@ export interface TenantRestoreDeps {
 /**
  * Restaura una empresa en una base NUEVA (en su servidor actual o en `serverAlias`), con un usuario
  * propio, y la verifica. Con `switch: true` y verificación correcta, apunta el registro a ella.
+ * `source` (por defecto `primary`) indica de qué destino se lee; `manifestKey` fija la copia sin
+ * consultar inventario (recuperación ante desastre).
  */
 export async function restoreTenant(
   d: TenantRestoreDeps,
-  input: { tenantId: string; backupId?: number; serverAlias?: string; switch?: boolean; actor: Actor },
+  input: { tenantId: string; backupId?: number; manifestKey?: string; source?: RestoreSource; serverAlias?: string; switch?: boolean; actor: Actor },
 ): Promise<RestoreReport> {
   const now = d.now ?? Date.now;
+  const source = input.source ?? "primary";
   const tenant = await d.reader.getTenant(input.tenantId);
   if (!tenant) throw new RestoreError("Empresa no encontrada en el registro");
-  const rec = await pickBackup(d.inventory, "tenant", input.tenantId, input.backupId);
-  const alias = input.serverAlias ?? (await d.reader.getActiveDatabase(input.tenantId))?.serverAlias ?? rec.serverAlias;
+  const picked: PickedBackup = input.manifestKey
+    ? { manifestKey: input.manifestKey, inventoryId: input.backupId ?? null, serverAlias: null }
+    : await pickBackup(d, source, "tenant", input.tenantId, input.backupId);
+  const alias = input.serverAlias ?? (await d.reader.getActiveDatabase(input.tenantId))?.serverAlias ?? picked.serverAlias;
   if (!alias) throw new RestoreError("No se sabe en qué servidor restaurar: indica el servidor");
-  const server = d.servers.server(alias);
-  const adminUrl = d.servers.adminUrl(alias);
-
   const database = restoredDatabaseName(input.tenantId, now());
-  const user = restoredUserFor(database);
-  const host = "%";
-  const password = crypto.randomBytes(24).toString("base64url");
-  const admin = d.servers.admin(alias);
-  await admin.query("CREATE USER IF NOT EXISTS ?@? IDENTIFIED BY ?", [user, host, password]);
-  await admin.query("ALTER USER ?@? IDENTIFIED BY ?", [user, host, password]);
-  // Permiso solo sobre la base restaurada (MySQL admite conceder sobre una base aún inexistente)
-  await admin.query(`GRANT ALL PRIVILEGES ON \`${database}\`.* TO ?@?`, [user, host]);
-  const { manifest, verification } = await restoreIntoNewDatabase(
-    { storage: d.storage, ring: d.ring },
-    { manifestKey: rec.manifestKey!, adminUrl, database, definer: { user, host }, expectTarget: { kind: "tenant", id: input.tenantId }, tmpDir: d.tmpDir },
+
+  return logged(
+    d.copies,
+    { startedAt: now(), actor: `${input.actor.type}:${input.actor.id}`, source, targetKind: "tenant", targetId: input.tenantId, backupId: picked.inventoryId, manifestKey: picked.manifestKey, serverAlias: alias, databaseName: database },
+    now,
+    async () => {
+      const server = d.servers.server(alias);
+      const adminUrl = d.servers.adminUrl(alias);
+      const user = restoredUserFor(database);
+      const host = "%";
+      const password = crypto.randomBytes(24).toString("base64url");
+      const admin = d.servers.admin(alias);
+      await admin.query("CREATE USER IF NOT EXISTS ?@? IDENTIFIED BY ?", [user, host, password]);
+      await admin.query("ALTER USER ?@? IDENTIFIED BY ?", [user, host, password]);
+      // Permiso solo sobre la base restaurada (MySQL admite conceder sobre una base aún inexistente)
+      await admin.query(`GRANT ALL PRIVILEGES ON \`${database}\`.* TO ?@?`, [user, host]);
+      const { manifest, verification } = await restoreIntoNewDatabase(
+        { storage: d.storage, ring: d.ring },
+        { manifestKey: picked.manifestKey, adminUrl, database, definer: { user, host }, expectTarget: { kind: "tenant", id: input.tenantId }, tmpDir: d.tmpDir },
+      );
+
+      const report: RestoreReport = {
+        target: { kind: "tenant", id: input.tenantId },
+        backup: { manifestKey: picked.manifestKey, createdAt: manifest.createdAt, keyId: manifest.keyId, inventoryId: picked.inventoryId },
+        source,
+        serverAlias: alias,
+        database,
+        verification,
+        switched: false,
+      };
+      if (!input.switch) return report;
+      if (!verification.ok) throw new RestoreError(`Verificación fallida: no se conmuta (${verification.problems.slice(0, 3).join("; ")})`);
+
+      const dsn = `mysql://${encodeURIComponent(user)}:${encodeURIComponent(password)}@${server.host}:${server.port}/${database}`;
+      // El usuario propio debe poder conectar antes de apuntar el registro a la base
+      const probe = await mysql.createConnection({ uri: dsn });
+      try {
+        await probe.query("SELECT 1");
+      } finally {
+        await probe.end().catch(() => undefined);
+      }
+      const ref = await d.registry.registerDatabase(input.tenantId, dsn, input.actor, { serverAlias: alias });
+      const active = await d.registry.activateDatabase(input.tenantId, ref.id, input.actor);
+      const after = await d.reader.getTenant(input.tenantId);
+      return { ...report, switched: true, databaseRef: active.id, registryVersion: after?.registryVersion };
+    },
   );
-
-  const report: RestoreReport = {
-    target: { kind: "tenant", id: input.tenantId },
-    backup: { manifestKey: rec.manifestKey!, createdAt: manifest.createdAt, keyId: manifest.keyId, inventoryId: rec.id },
-    serverAlias: alias,
-    database,
-    verification,
-    switched: false,
-  };
-  if (!input.switch) return report;
-  if (!verification.ok) throw new RestoreError(`Verificación fallida: no se conmuta (${verification.problems.slice(0, 3).join("; ")})`);
-
-  const dsn = `mysql://${encodeURIComponent(user)}:${encodeURIComponent(password)}@${server.host}:${server.port}/${database}`;
-  // El usuario propio debe poder conectar antes de apuntar el registro a la base
-  const probe = await mysql.createConnection({ uri: dsn });
-  try {
-    await probe.query("SELECT 1");
-  } finally {
-    await probe.end().catch(() => undefined);
-  }
-  const ref = await d.registry.registerDatabase(input.tenantId, dsn, input.actor, { serverAlias: alias });
-  const active = await d.registry.activateDatabase(input.tenantId, ref.id, input.actor);
-  const after = await d.reader.getTenant(input.tenantId);
-  return { ...report, switched: true, databaseRef: active.id, registryVersion: after?.registryVersion };
 }
 
 /** Restaura el registro o el CRM en una base NUEVA del servidor indicado y la verifica (sin conmutar). */
 export async function restorePlatformDatabase(
-  d: { storage: BackupStorage; ring: Keyring; inventory?: BackupInventory },
-  input: { kind: "registry" | "crm"; manifestKey?: string; backupId?: number; adminUrl: string; database: string; tmpDir?: string },
+  d: { storage: BackupStorage; ring: Keyring; inventory?: BackupInventory | null; copies?: BackupCopyLedger | null; now?: () => number },
+  input: { kind: "registry" | "crm"; manifestKey?: string; backupId?: number; source?: RestoreSource; adminUrl: string; database: string; tmpDir?: string; actor?: string },
 ): Promise<RestoreReport> {
-  let manifestKey = input.manifestKey;
-  let inventoryId: number | null = null;
-  if (!manifestKey) {
-    if (!d.inventory) throw new RestoreError("Indica el manifiesto (sin inventario disponible)");
-    const rec = await pickBackup(d.inventory, input.kind, input.kind, input.backupId);
-    manifestKey = rec.manifestKey!;
-    inventoryId = rec.id;
-  }
-  const { manifest, verification } = await restoreIntoNewDatabase(
-    { storage: d.storage, ring: d.ring },
-    { manifestKey, adminUrl: input.adminUrl, database: input.database, expectTarget: { kind: input.kind, id: input.kind }, tmpDir: input.tmpDir },
+  const now = d.now ?? Date.now;
+  const source = input.source ?? "primary";
+  const picked: PickedBackup = input.manifestKey
+    ? { manifestKey: input.manifestKey, inventoryId: null, serverAlias: null }
+    : await pickBackup(d, source, input.kind, input.kind, input.backupId);
+  return logged(
+    d.copies,
+    { startedAt: now(), actor: input.actor ?? "operador", source, targetKind: input.kind, targetId: input.kind, backupId: picked.inventoryId, manifestKey: picked.manifestKey, databaseName: input.database },
+    now,
+    async () => {
+      const { manifest, verification } = await restoreIntoNewDatabase(
+        { storage: d.storage, ring: d.ring },
+        { manifestKey: picked.manifestKey, adminUrl: input.adminUrl, database: input.database, expectTarget: { kind: input.kind, id: input.kind }, tmpDir: input.tmpDir },
+      );
+      return {
+        target: { kind: input.kind, id: input.kind },
+        backup: { manifestKey: picked.manifestKey, createdAt: manifest.createdAt, keyId: manifest.keyId, inventoryId: picked.inventoryId },
+        source,
+        serverAlias: null,
+        database: input.database,
+        verification,
+        switched: false,
+      };
+    },
   );
-  return {
-    target: { kind: input.kind, id: input.kind },
-    backup: { manifestKey, createdAt: manifest.createdAt, keyId: manifest.keyId, inventoryId },
-    serverAlias: null,
-    database: input.database,
-    verification,
-    switched: false,
-  };
+}
+
+/**
+ * Manifiesto más reciente de un destino leyendo SOLO el almacenamiento (sin registro ni inventario):
+ * `tenants/<id>/…`, `registry/registry/…` o `crm/crm/…`. Las claves llevan la fecha, así que el orden
+ * lexicográfico es cronológico. Un objeto sin manifiesto (copia incompleta) nunca se elige.
+ */
+export async function latestManifestKey(storage: BackupStorage, kind: Exclude<BackupTargetKind, "files">, id: string): Promise<string | null> {
+  const dir = kind === "tenant" ? `tenants/${id}/` : `${kind}/${kind}/`;
+  const keys = (await storage.list(dir)).map((o) => o.key).filter((k) => k.endsWith(".manifest.json")).sort();
+  return keys.length ? keys[keys.length - 1] : null;
 }
