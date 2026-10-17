@@ -12,7 +12,7 @@
 |---|---|
 | Documentación oficial de Stripe verificada (§2) | Hecho |
 | Modelo de datos y migración `db/crm/migrations/0012_stripe_billing` (§4) | Hecho y probado contra MySQL 8.4 (ida, vuelta, rechazo de filas live, unicidad). **No aplicado en Railway** |
-| Configuración segura `server/stripe/config.ts` (solo test, rechaza live, separada del motor antiguo) | Hecho, 18 pruebas unitarias |
+| Configuración segura `server/stripe/config.ts` (solo test, rechaza live, separada del motor antiguo) | Hecho, 19 pruebas unitarias |
 | Claves restringidas y permisos exactos (§5) | Definidos. **Pendiente de que el propietario cree las claves** |
 | Seguridad del webhook, procesamiento duradero y conciliación (§6) | Diseñado; se implementa en la Fase C |
 | Correspondencia de estados Stripe ↔ pedido ↔ licencias (§7) | Diseñada |
@@ -84,7 +84,7 @@
 
 Todas las tablas con datos de Stripe llevan `CHECK (livemode = 0)`: **la base de datos rechaza cualquier fila live**. La reversión no toca pedidos, contratos, suscripciones contractuales ni licencias.
 
-**Probado contra MySQL 8.4 real:** `server/stripe/schema.mysql.test.ts`, 6/6. La prueba de reversión de `0010` (`orchestrator.mysql.test.ts`) se ha ajustado para revertir en orden inverso las migraciones posteriores, igual que hace `down --steps`, porque `0012` depende de `commercial_orders`.
+**Probado contra MySQL 8.4 real:** `server/stripe/schema.mysql.test.ts`, 7/7. La prueba de reversión de `0010` (`orchestrator.mysql.test.ts`) se ha ajustado para revertir en orden inverso las migraciones posteriores, igual que hace `down --steps`, porque `0012` depende de `commercial_orders`.
 
 ## 5. Claves de Stripe Test: qué crear, permisos mínimos y dónde
 
@@ -105,17 +105,11 @@ Todas las tablas con datos de Stripe llevan `CHECK (livemode = 0)`: **la base de
 
 Todo lo demás en **Ninguno**. En particular, sin `subscription_write` (los cambios y cancelaciones los hace el cliente en el Portal), sin `plan_write` ni `product_write`, y sin `webhook_*`.
 
-### Clave 2: `CP_STRIPE_ADMIN_KEY` (`rk_test_…`). Solo en el servicio **`restore-drill`**
+### ~~Clave 2: `CP_STRIPE_ADMIN_KEY`~~ (retirada en la revisión del §16)
 
-Es el servicio de un solo uso, sin dominio público, que ya se usa para tareas puntuales en la red privada.
+No se guardará ninguna credencial administrativa de Stripe en Railway. El catálogo y la configuración del Portal los crea una persona, bajo demanda (ver §16.3). La configuración del plano de control rechaza cualquier variable `CP_STRIPE_ADMIN*`.
 
-| Permiso | Nivel | Para qué |
-|---|---|---|
-| `product_write` | Escritura | Crear y archivar Products del catálogo (sincronización idempotente) |
-| `plan_write` | Escritura | Crear y archivar Prices y mover `lookup_key` |
-| `customer_portal_write` | Escritura | Crear y actualizar la configuración del Customer Portal |
-
-En la Fase F se pedirá **otra** clave solo para las pruebas automatizadas: Test Clocks (`billing_clock_write`), clientes y suscripciones de prueba. Se indicará entonces.
+En la Fase F se pedirá **otra** clave, solo para las pruebas automatizadas en el sandbox (§16.8).
 
 ### Secreto 3: `CP_STRIPE_WEBHOOK_SECRET` (`whsec_…`). Solo en **`controlplane`**
 
@@ -128,7 +122,7 @@ Se obtiene al crear el destino de webhooks en Workbench (sandbox), **en la Fase 
   - `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`, `customer.subscription.paused`, `customer.subscription.resumed`;
   - `invoice.paid`, `invoice.payment_failed`, `invoice.payment_action_required`.
 
-### Variable 4: `CP_STRIPE_MODE=test`. En `controlplane` (y en `restore-drill` para las tareas de catálogo)
+### Variable 4: `CP_STRIPE_MODE=test`. Solo en `controlplane`
 
 **Nada de esto se configura todavía.** Las claves se crean cuando empiece la Fase B (catálogo) y se pegan **directamente en Railway**. Nunca en el chat ni en Git.
 
@@ -236,8 +230,8 @@ Fuentes: https://docs.railway.com/networking/public-networking/specs-and-limits,
 | Prueba | Resultado |
 |---|---|
 | `scripts/db/migrate.ts verify --dir db/crm/migrations` | 12 migraciones válidas |
-| `server/stripe/config.test.ts` | 18/18 |
-| `server/stripe/schema.mysql.test.ts` (MySQL 8.4 local) | 6/6 |
+| `server/stripe/config.test.ts` | 19/19 |
+| `server/stripe/schema.mysql.test.ts` (MySQL 8.4 local) | 7/7 |
 | Baterías MySQL que aplican todo el carril del CRM (`orchestrator`, `subscriptions`, `webCatalog`, `trials`, `mail.outbox`) | Verde, con la prueba de reversión de `0010` ajustada |
 | Batería MySQL completa en local | 258 pasan. Fallan 9 de `fileStorage`, `essential.billing` y `clienteNuevo`, que **fallan igual en la rama base sin estos cambios** (entorno local de Windows). Se confirmará en CI |
 | `tsc` | Sin errores nuevos (los existentes los vigila `tscBaseline`) |
@@ -287,10 +281,170 @@ Fuentes: https://docs.railway.com/networking/public-networking/specs-and-limits,
 
 ## 15. Para empezar la Fase B necesito
 
-1. El visto bueno a este diseño, en especial al reparto de claves y permisos del §5.
-2. Que crees el **sandbox general** y las **claves 1 y 2** con los permisos exactos del §5, y las pongas directamente en Railway:
-   - `CP_STRIPE_API_KEY` en `controlplane`;
-   - `CP_STRIPE_ADMIN_KEY` en `restore-drill`.
+Sustituido por la revisión del §16: autenticación del MCP (§16.1), creación de **una sola** clave de ejecución (§16.9) y autorización expresa de la migración `0012` en Railway.
 
-   No hace falta todavía el secreto del webhook (Fase C) ni `CP_STRIPE_MODE`: lo pondré yo cuando despliegue, previa comprobación.
-3. Autorización para aplicar la migración `0012` al CRM de Railway en el momento del despliegue de la Fase B (aditiva y reversible).
+## 16. Revisión del 17/10/2026 (8 puntos del propietario)
+
+**Sigue sin autorizarse:** la Fase B, la migración `0012` en Railway y las claves en Railway. En esta revisión solo cambian código y documentación de la rama `feat/stripe-fase-a`. No se ha tocado infraestructura, DNS, bases de datos ni despliegues.
+
+### 16.1 Autenticación del MCP oficial de Stripe
+
+- **Estado:** `plugin:stripe:stripe` (`https://mcp.stripe.com`) sigue en «Needs authentication».
+- **Por qué no la hago yo:** es un inicio de sesión OAuth en el navegador con la cuenta de Stripe. Ni el agente ni una sesión no interactiva pueden completarlo.
+- **Pasos del propietario:**
+  1. En Claude Code, `/mcp` → `plugin:stripe:stripe` → «Authenticate».
+  2. En la ventana de Stripe, elegir la **cuenta de la entidad que facturará** y, dentro, el **sandbox general** creado para Elephant Source (§16.9). Nunca live.
+  3. Recargar la sesión, o abrir otra, para que aparezcan sus herramientas.
+- **Verificación posterior (solo lecturas):**
+  - identificador y nombre de la cuenta;
+  - que el entorno es el sandbox (`livemode: false`);
+  - que `stripe_implementation_planner` está disponible.
+
+  **Ninguna operación de escritura** sin autorización expresa.
+
+### 16.2 `stripe_implementation_planner`
+
+No está disponible hasta completar el 16.1. Cuando lo esté, se ejecutará y su plan se comparará con este documento, en particular con los §3, §5, §6 y §7.
+
+Mientras tanto se ha hecho el contraste con las guías oficiales que incluye el plugin (§14): coinciden con este diseño y sus recomendaciones ya están incorporadas.
+
+### 16.3 Credencial administrativa fuera de `restore-drill`: propuesta corregida
+
+**Decisión: ninguna clave administrativa de Stripe queda guardada en ningún servicio.**
+
+Las operaciones administrativas son pocas y esporádicas:
+- crear los Products y Prices del catálogo;
+- crear la configuración del Customer Portal.
+
+Las hace **una persona**, bajo demanda, en el sandbox:
+
+| Operación | Cómo | Quién | Credencial guardada |
+|---|---|---|---|
+| Crear Products y Prices (Essential y Business; mensual y anual) con su `lookup_key` | Dashboard del sandbox o MCP oficial de Stripe con la sesión OAuth del propietario, tras presentar la lista exacta de operaciones y confirmarla | Propietario (o el agente bajo su sesión y su confirmación) | **Ninguna** |
+| Configurar el Customer Portal (historial de facturas, método de pago, cancelación a final de periodo, cambio entre los precios permitidos) | Dashboard → Settings → Billing → Customer portal (la configuración predeterminada se gestiona desde ahí) | Propietario | **Ninguna** |
+| Enlazar el catálogo con nuestra BD (`stripe_prices`) | El plano de control **lee** los Prices por `lookup_key` con la clave de ejecución (`plan_read`, `product_read`) y guarda la correspondencia. Comprueba importe, moneda e intervalo contra el precio aprobado | Automático, solo lectura en Stripe | La de ejecución, que no puede escribir catálogo |
+
+- **Si algún día hiciera falta automatizarlo:**
+  - proceso aparte `stripe-admin`, que solo se lanza a mano;
+  - sin dominio ni red pública;
+  - con un usuario de MySQL limitado a `stripe_prices` (escritura) y `web_entries`/`web_prices` (lectura);
+  - con una clave `product_write` + `plan_write` **creada justo antes y revocada al terminar**.
+
+  No se propone ahora.
+- **Garantía en el código:** `stripeConfigFromEnv` rechaza cualquier variable `CP_STRIPE_ADMIN*` (prueba incluida).
+
+### 16.4 Webhooks: firma criptográfica y cuerpo original (la IP es solo un refuerzo)
+
+**Obligatorio en el código (Fase C):**
+
+1. **Cuerpo crudo propio.**
+   - Ruta montada **antes** del `express.json` global del plano de control, con `express.raw({ type: "application/json", limit: "1mb" })`.
+   - Así la firma se calcula sobre los **bytes exactos** recibidos, no sobre un JSON reinterpretado.
+   - El `express.json` global tiene un límite de 256 KB y no debe tocar esta ruta.
+2. **Verificación oficial** con `stripe.webhooks.constructEvent(cuerpo, Stripe-Signature, CP_STRIPE_WEBHOOK_SECRET)`:
+   - HMAC-SHA256 sobre `t.cuerpo`;
+   - admite varios `v1` durante la rotación del secreto;
+   - ignora `v0`;
+   - tolerancia de 300 s frente a repeticiones.
+
+   Sin firma válida: **400 y nada se guarda**.
+3. **Después de la firma:**
+   - `livemode === false` obligatorio;
+   - tipo de evento en la lista permitida;
+   - `event.id` registrado una sola vez (clave primaria).
+4. **Lo que nunca se hace:**
+   - El cuerpo del evento **nunca** decide nada: se relee el objeto en la API con la clave de ejecución.
+   - Un evento falsificado con firma válida es imposible sin el secreto. Uno real pero repetido o antiguo no cambia nada, porque se aplica siempre el estado actual de Stripe.
+5. **Refuerzo opcional:** la lista de IP de Stripe en la pasarela. **No sustituye a la firma.** Si la lista se queda desactualizada, la seguridad no depende de ella.
+6. **Pruebas obligatorias (Fase C):**
+   - sin cabecera;
+   - firma con otro secreto;
+   - cuerpo alterado en un byte;
+   - JSON reformateado (mismo contenido y otros bytes: debe fallar);
+   - marca de tiempo fuera de tolerancia;
+   - varios `v1` con uno válido;
+   - evento con `livemode: true`;
+   - tipo no permitido;
+   - duplicado;
+   - más de 1 MB.
+
+### 16.5 Prueba de 15 días sin tarjeta: aprovisionamiento sin pago y acceso al terminar
+
+**Confirmado en el código** (`server/trials/onboarding.ts:158-210`, probado en `trialJourney.mysql.test.ts` y en la aceptación A15 en Railway):
+
+- **Activar la prueba no pasa por ningún pago.** El circuito es: plataforma (base propia, migraciones, administrador e invitación) → empresa en el CRM → suscripción contractual Essential en prueba (`trialing`, modo sombra, sin cobro) → licencias Essential con `validUntil` = fin de la prueba.
+- **Al terminar la prueba:**
+  - **Lo que ocurre solo:** las licencias vencidas pasan a **solo lectura** en el Core (`server/_core/capabilities/model.ts:55`). Se puede leer y exportar, pero las escrituras se rechazan en el servidor (403, verificado en Railway).
+  - **Lo que nunca ocurre:** no se borra la base ni ningún documento.
+  - **Acceso:** el administrador sigue pudiendo entrar para ver sus datos y contratar.
+- **Lo que falta y se hará en la Fase D:**
+  - **Tarea programada** con bloqueo en BD que marque la prueba `expired` y prepare los avisos de 3, 1 y 0 días. Hoy lo hace un operador. Con `MAIL_MODE=off` los avisos no salen.
+  - **Contratar estando en solo lectura:** la acción del panel «Contratar» abre Checkout de un pedido `trial_conversion` sobre la empresa existente, sin volver a aprovisionar. Debe quedar **fuera** del guardián de licencias: una empresa en solo lectura tiene que poder pagar. Tendrá prueba específica.
+  - **Política tras la prueba:** cuántos días en solo lectura antes de suspender la empresa, y cuánto tiempo se conservan los datos. Configurable y **sin borrado automático** (decisión DC-4).
+  - **Registro público:** sigue cerrado. En la beta privada las pruebas se dan de alta por operador.
+
+### 16.6 Revisión de la migración `0012`
+
+| Aspecto | Revisión |
+|---|---|
+| **BD de destino** | Solo la BD del **CRM** (`es_crm`, carril `db/crm/migrations`). No toca el registro ni las bases de las empresas. La BD del CRM entra en las copias cifradas cada 15 min. |
+| **Tablas** | 6 nuevas con prefijo `stripe_`. No modifica ninguna tabla existente (ni `ALTER` ni datos). |
+| **Claves foráneas** | `stripe_prices → web_prices`; `stripe_customers → crm_companies`; `stripe_checkout_sessions → commercial_orders`; `stripe_subscriptions → stripe_customers, crm_companies, commercial_orders`. **Efectos:** (1) no se puede borrar un precio, empresa o pedido enlazado con Stripe. El único borrado existente en el código es el de precios **en borrador** (`server/web/store.ts:389`), y solo se enlazan precios aprobados, así que no hay conflicto. (2) La reversión de `0010` exige revertir antes `0012`, igual que hace `down --steps`; la prueba del orquestador ya lo hace así. |
+| **Índices y unicidad** | Un precio aprobado ↔ un Price; `stripe_price_id` y `lookup_key` únicos; un Customer por empresa, por id y por tenant; **como mucho una sesión de Checkout abierta por pedido** (columna generada única); clave de idempotencia de la sesión única; `event_id` como clave primaria. Índices de trabajo: `stripe_events (status, next_attempt_at)`, `stripe_subscriptions (company_id)`, `(order_id)` y `(status, synced_at)`. |
+| **Corrección aplicada** | Las columnas con identificadores de Stripe pasan a `utf8mb4_bin` (comparación exacta). Stripe distingue mayúsculas y la colación por defecto de MySQL no, lo que podía dar falsos duplicados. Hay prueba específica. |
+| **Idempotencia** | Evento: clave primaria más estado. Sesión: `Idempotency-Key` guardada y única. Customer: único por empresa. Catálogo: único por precio y por `lookup_key`. |
+| **Solo pruebas** | `CHECK (livemode = 0)` en las cinco tablas con datos de Stripe; MySQL 8.4 lo aplica (probado). |
+| **Datos personales** | No guarda correos, tarjetas, direcciones, cuerpos de eventos ni URL de sesión: solo identificadores y estados. |
+| **Efectos sobre lo existente** | Ninguno hasta que el código lo use. Ningún servicio lee estas tablas todavía. |
+| **Pruebas** | `schema.mysql.test.ts` 7/7; orquestador 5/5; `migrate verify` válido. |
+
+### 16.7 Permisos de la clave de ejecución: suficientes y sin excesos
+
+| Necesidad | Llamadas a Stripe | Permiso | ¿Incluido? |
+|---|---|---|---|
+| Checkout | `POST /v1/customers` (y sus `tax_ids`), `POST /v1/checkout/sessions`, `GET …/{id}`, `POST …/{id}/expire` | `customer_write`, `checkout_session_write` (la escritura incluye la lectura) | Sí |
+| Customer Portal | `POST /v1/billing_portal/sessions` (también con `flow_data` para ir directamente a cambiar de plan o de método de pago) | `customer_portal_write` | Sí |
+| Webhook y conciliación | `GET /v1/events`, `GET /v1/subscriptions/{id}`, `GET /v1/invoices/{id}`, `GET /v1/checkout/sessions/{id}`, `GET /v1/customers/{id}` | `event_read`, `subscription_read`, `invoice_read`, `checkout_session_write`, `customer_write` | Sí (*) |
+| Enlazar el catálogo | `GET /v1/prices?lookup_keys[]=…`, `GET /v1/products/{id}` | `plan_read`, `product_read` | Sí |
+| Vista previa del prorrateo | `POST /v1/invoices/create_preview` | `invoice_read` | Sí |
+| **Cambios de suscripción** (plan, periodicidad, cancelación, reactivación) | Los hace **el cliente en el Customer Portal**, con nuestra configuración de precios permitidos y prorrateo | No requiere `subscription_write` | **No se concede** |
+| Cambios hechos por un operador desde el servidor (Enterprise o cancelación administrativa) | `POST /v1/subscriptions/{id}` | `subscription_write` | **No se concede ahora.** Se pedirá en la Fase E solo si se aprueba ese caso |
+| Catálogo, Portal y webhooks | `POST /v1/products`, `/v1/prices`, `/v1/billing_portal/configurations`, `/v1/webhook_endpoints` | `product_write`, `plan_write`, `webhook_*` | **No** (lo hace una persona, §16.3) |
+
+(*) La documentación indica que leer un evento con clave restringida puede exigir lectura sobre el recurso de ese evento. La clave ya lee clientes, sesiones, suscripciones y facturas, que son los recursos de los eventos suscritos. **Se comprobará en el sandbox** y cualquier 403 se resolverá con el mínimo permiso adicional, documentándolo.
+
+`customer_portal_write` permite también modificar la configuración del Portal: Stripe no separa ambos permisos. Se acepta porque es una clave de solo prueba y la configuración se revisa en la conciliación.
+
+### 16.8 Cómo se evita usar Stripe real por accidente
+
+| Capa | Control |
+|---|---|
+| **Cuenta de Stripe** | Solo se crean claves dentro de un **sandbox general**, que está aislado de live: un objeto de un entorno no existe en el otro. **No se crea ninguna clave live.** |
+| **Configuración** (`server/stripe/config.ts`) | Solo `rk_test_`/`sk_test_`. Cualquier valor con `_live_`, cualquier variable `*LIVE*` o `CP_STRIPE_ADMIN*`, o `BILLING_PROVIDER=stripe`, **impiden arrancar**. No existe ninguna variable que autorice live. |
+| **Objetos y eventos** | `assertTestObject`: todo objeto o evento con `livemode` distinto de `false` se rechaza antes de aplicarse. |
+| **Base de datos** | `CHECK (livemode = 0)`: aunque fallara todo lo anterior, la BD rechaza la fila. |
+| **Pruebas unitarias y de integración (CI)** | Sin red ni claves. El cliente de Stripe se inyecta y se sustituye por un doble. CI no tiene ningún secreto de Stripe y gitleaks bloquea cualquier clave `sk_`/`rk_` en el código (las pruebas construyen valores ficticios en tiempo de ejecución). |
+| **Pruebas reales contra Stripe (Fase F)** | Un **segundo sandbox** «Elephant Source · pruebas automáticas» (Stripe recomienda separar desarrollo e integración continua). Una clave restringida propia, con Test Clocks y clientes y suscripciones de prueba. Se ejecutan bajo demanda en un proceso aparte, nunca en los servicios que atienden tráfico. Cada prueba comprueba `livemode: false` en la primera respuesta y se detiene si no. |
+| **Webhooks** | El secreto `whsec_` es del destino del sandbox. Un evento de otro entorno no verifica la firma. |
+| **Personas** | En el MCP solo se autoriza el sandbox. Toda escritura (catálogo, Portal) se presenta antes y se confirma de forma expresa. |
+
+### 16.9 Pasos concretos para crear las credenciales de Stripe Sandbox (cuando se autorice la Fase B)
+
+**No hay que hacerlo todavía.**
+
+1. Entrar en el Dashboard de Stripe con la **cuenta de la entidad que facturará** (DF-1).
+2. **Crear un sandbox general:** selector de cuenta → Sandboxes → «Create sandbox». Nombre: «Elephant Source · integración». No usar el «test mode» de la cuenta, que comparte ajustes con live.
+3. Dentro del sandbox, **Developers → API keys → Create restricted key**. Nombre: `elephant-source-controlplane`. Marcar **solo**:
+   - Escritura: `Customers`, `Checkout Sessions`, `Customer portal`.
+   - Lectura: `Subscriptions`, `Invoices`, `Prices` (en el panel puede aparecer como «Plans/Prices»), `Products`, `Events`.
+   - Todo lo demás: **None**.
+4. Si el Dashboard ofrece políticas de acceso por IP, dejarla sin política por ahora (Railway no tiene IP de salida fija) y anotarlo.
+5. Copiar la clave **una sola vez** y pegarla directamente en Railway → proyecto «Elephant Source» → `production` → servicio **`controlplane`** → Variables → `CP_STRIPE_API_KEY`. Desplegar **sin** redeploy automático, si se ofrece.
+
+   No pegarla en el chat, en ficheros ni en capturas. No guardar copia salvo en el gestor de secretos del propietario.
+6. **Dejar para la Fase C:**
+   - el destino de webhooks (Workbench → Webhooks → «Add destination»: URL `https://elephant-source-crm.up.railway.app/cp/v1/stripe/webhook`, carga snapshot, versión `2026-09-30.endive` y los eventos del §5);
+   - su secreto `CP_STRIPE_WEBHOOK_SECRET` en `controlplane`.
+7. **Dejar para la Fase F:** el segundo sandbox «pruebas automáticas» y su clave.
+8. **No crear:** claves live, `CP_STRIPE_ADMIN_KEY` ni la clave secreta estándar (`sk_test_`) para ningún servicio.
+9. **Avisar al agente.** Con la clave ya puesta, comprobaré solo con lecturas que es de prueba, que pertenece al sandbox correcto y que tiene exactamente los permisos indicados: una llamada permitida y otra que debe dar 403. Antes de nada más, presentaré las escrituras del catálogo para su confirmación.
