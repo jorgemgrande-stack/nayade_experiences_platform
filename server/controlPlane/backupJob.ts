@@ -10,6 +10,7 @@
  *   node dist-cp/backup-job.js restore-platform <registry|crm> --admin-url-env VAR --database <nueva>
  *        [--backup <id> | --manifest <clave>] [--apply]
  *   node dist-cp/backup-job.js restore-files <empresa> --out <directorio>
+ *   node dist-cp/backup-job.js migrate-tenants [--only a,b] [--apply]   carril de la app en cada empresa (red privada)
  *
  * (en desarrollo: `pnpm exec tsx server/controlPlane/backupJob.ts <orden>`)
  *
@@ -33,6 +34,8 @@ import { restoreTenantFiles, runBackupJob } from "../_core/ops/backupJob";
 import { applyBackupRetention, gfsPolicyFromEnv } from "../_core/ops/backupRetention";
 import { restorePlatformDatabase, restoreTenant, restoredDatabaseName } from "../_core/ops/backupRestore";
 import { DatabaseServers, parseDatabaseServers } from "../_core/provisioning/servers";
+import { MysqlSchemaApplier } from "../_core/provisioning/mysqlAdapters";
+import { migrateAllTenants } from "../_core/ops/tenantMigrations";
 
 const args = process.argv.slice(2);
 const cmd = args[0] && !args[0].startsWith("--") ? args[0] : "run";
@@ -142,6 +145,18 @@ async function main() {
           limit: Number(opt("--limit") ?? 50),
         });
         console.table(rows.map((r) => ({ id: r.id, destino: `${r.targetKind}:${r.targetId}`, estado: r.status, inicio: new Date(r.startedAt).toISOString(), ms: r.durationMs, bytes: r.bytes, clave: r.keyId, servidor: r.serverAlias ?? "", error: r.error ?? "" })));
+        break;
+      }
+      case "migrate-tenants": {
+        // Carril de la app (db/migrations) en la base ACTIVA de cada empresa, con el mismo aplicador que el
+        // aprovisionamiento (conoce la baseline). Se ejecuta dentro de la red privada; simulación salvo --apply.
+        const schema = new MysqlSchemaApplier({
+          baselinePath: path.resolve(process.cwd(), "db/baseline/0000_baseline.sql"),
+          migrationsDir: path.resolve(process.cwd(), "db/migrations"),
+        });
+        const res = await migrateAllTenants({ reader: store, registry, schema, actor }, { apply: flag("--apply"), only: opt("--only")?.split(",").filter(Boolean) });
+        print(res.map((r) => ({ tenant: r.tenantId, resultado: r.outcome, pendientes: r.pending ?? [], esquema: r.schemaVersion ?? null, error: r.error ?? null })));
+        if (res.some((r) => r.outcome === "failed")) process.exitCode = 1;
         break;
       }
       case "retention": {
