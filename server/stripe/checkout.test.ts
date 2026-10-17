@@ -124,10 +124,11 @@ describe("catálogo de Stripe", () => {
 // ── Checkout ─────────────────────────────────────────────────────────────────
 const URLS = { success: "https://web.example/contratacion/estado", cancel: "https://web.example/contratacion/cancelada", portalReturn: "https://t1.app.example/admin/suscripcion" };
 let clock = Date.UTC(2026, 9, 17, 12);
+const quoteOf = (net: number) => ({ catalogVersion: "v", currency: "EUR", contractAmountCents: net, firstPeriodCents: Math.round(net * 1.21), capabilities: [], blocking: [], onRequest: [], contractable: "request" });
 const order = (over: Partial<CommercialOrder> = {}): CommercialOrder =>
   ({
     id: 100, reference: "PED-2026-000100", idempotencyKey: "k".repeat(20), payloadHash: "h", kind: "new", state: "contracted", companyId: 7, leadRequestId: null, trialId: null, previousOrderId: null,
-    request: { plan: "essential", interval: "month", items: [] }, quote: null, contractId: 1, subscriptionId: null, tenantId: null, confirmation: null, graceEndsAt: null, attempts: 0, lastError: null, version: 3,
+    request: { plan: "essential", interval: "month", items: [] }, quote: quoteOf(2900), contractId: 1, subscriptionId: null, tenantId: null, confirmation: null, graceEndsAt: null, attempts: 0, lastError: null, version: 3,
     createdAt: clock, createdBy: "test", updatedAt: null, updatedBy: null, ...over,
   }) as CommercialOrder;
 
@@ -143,7 +144,7 @@ describe("Checkout de un pedido", () => {
     store = new MemoryStripeStore();
     await applyPlan(gw, catalogOf());
     await syncCatalog(await desiredCatalog(catalogOf()), gw, store, clock);
-    orders = new Map([[100, order()], [101, order({ id: 101, request: { plan: "business", interval: "year", items: [] } })]]);
+    orders = new Map([[100, order()], [101, order({ id: 101, request: { plan: "business", interval: "year", items: [] }, quote: quoteOf(75900) })]]);
     const crmStore = {
       get: async (_t: string, id: number) => (id === 7 ? { id: 7, name: "Empresa Demo Stripe", tenantId: "t9-demo" } : null),
       list: async () => [{ id: 1, companyId: 7, email: "contacto@demo.example", status: "active", isPrimary: true }],
@@ -166,7 +167,7 @@ describe("Checkout de un pedido", () => {
       integrationIdentifier: INTEGRATION_IDENTIFIER,
       expiresAt: Math.floor((clock + SESSION_TTL_MS) / 1000),
     });
-    expect(call.key).toBe("es-checkout-100-1");
+    expect(call.key).toBe("es-local-checkout-100-1");
     expect((await store.openSession(100))?.stripeSessionId).toBe(s.sessionId);
   });
 
@@ -187,7 +188,7 @@ describe("Checkout de un pedido", () => {
     const c = await svc.start(100, "a");
     expect(c.sessionId).not.toBe(a.sessionId);
     expect(gw.sessions.get(a.sessionId)!.status).toBe("expired");
-    expect(gw.calls.filter((x) => x.op === "checkout.sessions.create").map((x) => x.key)).toEqual(["es-checkout-100-1", "es-checkout-100-2"]);
+    expect(gw.calls.filter((x) => x.op === "checkout.sessions.create").map((x) => x.key)).toEqual(["es-local-checkout-100-1", "es-local-checkout-100-2"]);
     expect(await store.countSessions(100)).toBe(2);
   });
 
@@ -198,6 +199,69 @@ describe("Checkout de un pedido", () => {
     expect(r.some((x) => x.status === "fulfilled")).toBe(true);
     expect(await store.openSession(100)).not.toBeNull();
   });
+
+  // ── Regresiones B2 y B9 ──
+  const orphan = async () => {
+    // Sesión creada en Stripe con la clave del primer intento que nunca llegó a registrarse (caída)
+    const s = await gw.createCheckoutSession({ customerId: "cus_x", priceId: "price_x", clientReferenceId: "es-order-100", metadata: { es_order_id: "100" }, successUrl: URLS.success, cancelUrl: URLS.cancel, expiresAt: Math.floor((clock + SESSION_TTL_MS) / 1000), integrationIdentifier: INTEGRATION_IDENTIFIER }, "orphan");
+    gw.replay.set("es-local-checkout-100-1", s.id);
+    return s.id;
+  };
+
+  it("B2: Stripe repite una sesión huérfana ya caducada → se registra cerrada y se abre otra con la clave siguiente", async () => {
+    const lost = await orphan();
+    clock += SESSION_TTL_MS + 60_000; // la huérfana ya no sirve
+    const s = await svc.start(100, "a");
+    expect(s.sessionId).not.toBe(lost);
+    expect(gw.calls.filter((x) => x.op === "checkout.sessions.create").map((x) => x.key)).toEqual(["orphan", "es-local-checkout-100-1", "es-local-checkout-100-2"]);
+    expect(await store.session(lost)).toMatchObject({ status: "expired", idempotencyKey: "es-local-checkout-100-1" });
+    expect(gw.sessions.get(lost)!.status).toBe("expired");
+    expect((await store.openSession(100))?.stripeSessionId).toBe(s.sessionId);
+  });
+
+  it("B2: la huérfana repetida estaba PAGADA → queda registrada como completada y no se abre otra", async () => {
+    const lost = await orphan();
+    gw.completeSession(lost);
+    await expect(svc.start(100, "a")).rejects.toMatchObject({ code: "invalid_state" });
+    expect((await store.session(lost))?.status).toBe("complete");
+    expect(await store.hasCompletedSession(100)).toBe(true);
+    expect(gw.calls.filter((x) => x.op === "checkout.sessions.create")).toHaveLength(2);
+  });
+
+  it("B9: con el prefijo del entorno en claves y metadatos, dos entornos no comparten objetos", async () => {
+    const crmStore = { get: async () => ({ id: 7, name: "Empresa Demo Stripe", tenantId: "t9-demo" }), list: async () => [] };
+    const otherStore = new MemoryStripeStore();
+    await syncCatalog(await desiredCatalog(catalogOf()), gw, otherStore, clock);
+    const other = new StripeCheckoutService({ store: otherStore, gateway: gw, orders: { get: async (id: number) => orders.get(id) ?? null }, crmStore: crmStore as never, catalog: catalogOf(), urls: URLS, now: () => clock, namespace: "rabc1234" });
+    const a = await svc.start(100, "a");
+    const b = await other.start(100, "a");
+    expect(b.sessionId).not.toBe(a.sessionId);
+    const keys = gw.calls.filter((x) => x.op === "checkout.sessions.create" || x.op === "customers.create").map((x) => x.key);
+    expect(keys.filter((k) => k!.startsWith("es-rabc1234-"))).toHaveLength(2);
+    expect(keys.filter((k) => k!.startsWith("es-local-"))).toHaveLength(2);
+    expect(gw.sessions.get(b.sessionId)!.metadata.es_env).toBe("rabc1234");
+    expect(gw.customers.size).toBe(2);
+  });
+
+  it("importes: el neto del presupuesto debe ser el precio de Stripe; se informa del tratamiento fiscal de pruebas", async () => {
+    const s = await svc.start(100, "a");
+    expect(s).toMatchObject({ amountCents: 2900, currency: "EUR", taxTreatment: "test_net_no_tax" });
+    const input = gw.calls.find((c) => c.op === "checkout.sessions.create")!.input as { metadata: Record<string, string>; notice: string };
+    expect(input.metadata.es_tax_treatment).toBe("test_net_no_tax");
+    expect(input.notice).toMatch(/sin IVA/);
+    // Presupuesto con el IVA sumado al neto (35,09 €) frente a 29,00 € en Stripe: no se abre Checkout
+    orders.set(101, order({ id: 101, quote: quoteOf(3509) }));
+    await expect(svc.start(101, "a")).rejects.toMatchObject({ code: "conflict" });
+    orders.set(100, order({ id: 100, quote: null }));
+    await expect(svc.start(100, "a")).rejects.toMatchObject({ code: "invalid_state" });
+  });
+
+  it("conversión de una prueba: el pedido trial_conversion se paga por Checkout con el tenant de la prueba", async () => {
+    orders.set(100, order({ kind: "trial_conversion", trialId: 5, tenantId: "t9-demo" }));
+    const s = await svc.start(100, "a");
+    expect(gw.sessions.get(s.sessionId)!.metadata).toMatchObject({ es_order_id: "100", es_tenant_id: "t9-demo", es_env: "local" });
+  });
+
 
   it.each([
     ["pedido inexistente", 999, "not_found"],

@@ -10,6 +10,8 @@
  *   GET  /stripe/events                         ops:read      eventos por estado (pendientes, fallidos…)
  *   POST /stripe/events/:id/retry               orders:write  reprograma ya un evento fallido
  *   POST /stripe/reconcile                      orders:write  conciliación manual (la misma que la periódica)
+ *   GET  /stripe/adjustments                    ops:read      reembolsos y disputas registrados (retenciones)
+ *   POST /stripe/adjustments/:chargeId/resolve  orders:write  levanta una retención con motivo y reaplica el estado
  *
  * El webhook (`POST /cp/v1/stripe/webhook`) no usa token: se autentica por firma y se monta aparte, antes
  * del analizador JSON global (server/stripe/webhook.ts).
@@ -106,6 +108,18 @@ export function createStripeRouter(d: StripeRouterDeps): Router {
     await d.store.failEvent(eventId, ev.lastError ?? "Reintento manual", now());
     opsLog("info", "Stripe", "event_retry", { eventId, actor: who(req) });
     res.json({ scheduled: true, result: d.processor ? await d.processor.processDue(10) : null });
+  }));
+  r.get("/adjustments", requireScope("ops:read"), wrap(async (_req, res) => void res.json({ adjustments: await d.store.listAdjustments(200) })));
+  r.post("/adjustments/:chargeId/resolve", requireScope("orders:write"), wrap(async (req, res) => {
+    const chargeId = z.string().regex(/^(ch|py)_[A-Za-z0-9_]{8,240}$/).parse(req.params.chargeId);
+    const { reason } = z.object({ reason: z.string().trim().min(5).max(300) }).parse(req.body ?? {});
+    const a = await d.store.adjustment(chargeId);
+    if (!a) return void res.status(404).json({ error: "not_found", message: "Cargo sin reembolsos ni disputas registrados" });
+    if (!a.coverageLost || a.resolvedAt !== null) return void res.status(409).json({ error: "invalid_state", message: "Este cargo no tiene una retención vigente" });
+    await d.store.resolveHolds({ chargeId }, `${who(req)}: ${reason}`, now());
+    opsLog("warn", "Stripe", "hold_resolved", { chargeId, orderId: a.orderId, actor: who(req) });
+    const applied = d.processor && a.subscriptionId ? await d.processor.handleSubscription(a.subscriptionId) : null;
+    res.json({ resolved: true, applied });
   }));
   r.post("/reconcile", requireScope("orders:write"), wrap(async (req, res) => {
     if (!d.reconciler) return void res.status(409).json({ error: "unavailable", message: "Conciliación no disponible" });

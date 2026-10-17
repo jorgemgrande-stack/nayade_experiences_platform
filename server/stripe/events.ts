@@ -14,6 +14,11 @@
  *    por factura) y el circuito existente confirma → aprovisiona → suscribe → licencia → activa.
  *  - Impago, suspensión, recuperación, cancelación programada, reactivación y fin se aplican con
  *    `applyExternalBilling` del orquestador. Nunca se borran datos.
+ *  - Reembolsos y disputas: se relee el CARGO y se guarda su estado (`stripe_charge_adjustments`). Si la
+ *    cobertura se pierde del todo (reembolso total o disputa perdida), el pedido queda retenido: suspendido
+ *    aunque Stripe muestre la suscripción activa, hasta un pago nuevo, una disputa ganada o un operador.
+ *    Un reembolso parcial o una disputa abierta solo avisan.
+ *  - Cada entorno solo atiende sus objetos (`metadata.es_env`): dos entornos pueden compartir sandbox.
  */
 import { opsLog } from "../_core/ops/log";
 import { recordFailure } from "../_core/ops/failureAlerts";
@@ -37,6 +42,12 @@ export const HANDLED_EVENTS = [
   "invoice.paid",
   "invoice.payment_failed",
   "invoice.payment_action_required",
+  "charge.refunded",
+  "charge.refund.updated",
+  "charge.dispute.created",
+  "charge.dispute.updated",
+  "charge.dispute.closed",
+  "charge.dispute.funds_reinstated",
 ] as const;
 export const HANDLED = new Set<string>(HANDLED_EVENTS);
 
@@ -50,7 +61,7 @@ const LIVE_OR_SCHEDULED: CommercialOrder["state"][] = ["active", "past_due", "su
 export interface OrchestratorPort {
   advance(id: number, actor: string): Promise<{ order: CommercialOrder; error: string | null }>;
   renew(id: number, actor: string): Promise<unknown>;
-  applyExternalBilling(id: number, s: { status: "active" | "past_due" | "unpaid" | "canceled"; cancelAt: number | null }, actor: string): Promise<{ order: CommercialOrder; changed: string[] }>;
+  applyExternalBilling(id: number, s: { status: "active" | "past_due" | "unpaid" | "canceled"; cancelAt: number | null; coverageLost?: boolean }, actor: string): Promise<{ order: CommercialOrder; changed: string[] }>;
 }
 
 export interface ProcessorDeps {
@@ -60,7 +71,14 @@ export interface ProcessorDeps {
   orchestrator: OrchestratorPort;
   now?: () => number;
   maxAttempts?: number;
+  /** Prefijo de este entorno (`metadata.es_env`); los objetos de otro entorno se ignoran. */
+  namespace?: string;
 }
+
+/** Estado de un cargo que deja sin cobertura el periodo que pagó. */
+export const coverageLostOf = (c: { amount: number; amountRefunded: number; refunded: boolean; disputeStatus: string | null }) =>
+  c.refunded || (c.amount > 0 && c.amountRefunded >= c.amount) || c.disputeStatus === "lost";
+const OPEN_DISPUTE = new Set(["needs_response", "under_review", "warning_needs_response", "warning_under_review"]);
 
 export type Outcome = { outcome: "processed" | "ignored"; detail: string | null };
 
@@ -75,8 +93,10 @@ export class StripeMismatchError extends Error {
 export class StripeEventProcessor {
   private now: () => number;
   private actor = "system:stripe";
+  private namespace: string;
   constructor(private d: ProcessorDeps) {
     this.now = d.now ?? Date.now;
+    this.namespace = d.namespace ?? "local";
   }
 
   /** Procesa hasta `limit` eventos pendientes. Devuelve el recuento por resultado. */
@@ -120,7 +140,63 @@ export class StripeEventProcessor {
     if (!row.objectId) return { outcome: "ignored", detail: "Evento sin objeto" };
     if (row.type.startsWith("checkout.session.")) return this.handleSession(row.objectId);
     if (row.type.startsWith("invoice.")) return this.handleInvoice(row.objectId);
+    if (row.type.startsWith("charge.refund.")) return this.handleChargeOf("refund", row.objectId);
+    if (row.type.startsWith("charge.dispute.")) return this.handleChargeOf("dispute", row.objectId);
+    if (row.type.startsWith("charge.")) return this.handleCharge(row.objectId);
     return this.handleSubscription(row.objectId);
+  }
+
+  private async handleChargeOf(kind: "refund" | "dispute", id: string): Promise<Outcome> {
+    const chargeId = await this.d.gateway.chargeIdOf(kind, id);
+    if (!chargeId) return { outcome: "ignored", detail: kind === "refund" ? "El reembolso no existe en Stripe" : "La disputa no existe en Stripe" };
+    return this.handleCharge(chargeId);
+  }
+
+  /** Reembolso o disputa: relee el cargo, su factura y su suscripción; guarda el estado y lo aplica. */
+  async handleCharge(id: string): Promise<Outcome> {
+    const c = await this.d.gateway.charge(id);
+    if (!c) return { outcome: "ignored", detail: "El cargo no existe en Stripe" };
+    if (!c.invoiceId) return { outcome: "ignored", detail: "Cargo sin factura de suscripción" };
+    const inv = await this.d.gateway.invoice(c.invoiceId);
+    if (!inv?.subscriptionId) return { outcome: "ignored", detail: "Cargo sin suscripción" };
+    const sub = await this.d.gateway.subscription(inv.subscriptionId);
+    if (!sub) return { outcome: "ignored", detail: "La suscripción no existe en Stripe" };
+    const own = await this.ownership(sub);
+    if ("ignored" in own) return own.ignored;
+    if (c.customerId !== sub.customerId || inv.customerId !== sub.customerId) throw new StripeMismatchError("El cargo no es del cliente de la suscripción");
+    const lost = coverageLostOf(c);
+    const { previous, current } = await this.d.store.upsertAdjustment(
+      { chargeId: c.id, invoiceId: inv.id, subscriptionId: sub.id, orderId: own.order.id, companyId: own.order.companyId, amountCents: c.amount, amountRefundedCents: c.amountRefunded, currency: c.currency, disputeStatus: c.disputeStatus, coverageLost: lost },
+      this.now(),
+    );
+    const log = { orderId: own.order.id, chargeId: c.id, refunded: c.amountRefunded, amount: c.amount, dispute: c.disputeStatus };
+    if (lost && !previous?.coverageLost) {
+      opsLog("warn", "StripeEvents", "coverage_lost", log);
+      recordFailure("stripe.coverage_lost");
+    } else if (!lost && c.amountRefunded > 0 && c.amountRefunded !== previous?.amountRefundedCents) {
+      opsLog("warn", "StripeEvents", "partial_refund", log);
+      recordFailure("stripe.partial_refund");
+    }
+    if (c.disputeStatus && OPEN_DISPUTE.has(c.disputeStatus) && c.disputeStatus !== previous?.disputeStatus) {
+      opsLog("warn", "StripeEvents", "dispute_open", log);
+      recordFailure("stripe.dispute_open");
+    }
+    // Disputa ganada o reembolso anulado: la cobertura vuelve sola (la retención deja de existir)
+    if (!lost && previous?.coverageLost && previous.resolvedAt === null) await this.d.store.resolveHolds({ chargeId: c.id }, `Cobertura restablecida en Stripe (${c.disputeStatus ?? "reembolso anulado"})`, this.now());
+    const r = await this.handleSubscription(sub.id);
+    return { outcome: r.outcome, detail: `Cargo ${lost ? "sin cobertura" : current.amountRefundedCents ? "reembolsado en parte" : "al corriente"}; ${r.detail ?? ""}`.slice(0, 300) };
+  }
+
+  /** ¿La suscripción es de un pedido de ESTE entorno y del cliente de su empresa? */
+  private async ownership(sub: GwSubscription): Promise<{ order: CommercialOrder; link: { tenantId: string | null; stripeCustomerId: string } } | { ignored: Outcome }> {
+    const orderId = Number(sub.metadata.es_order_id);
+    if (!Number.isInteger(orderId) || orderId <= 0) return { ignored: { outcome: "ignored", detail: "Suscripción no creada por Elephant Source" } };
+    if (sub.metadata.es_env !== this.namespace) return { ignored: { outcome: "ignored", detail: "Suscripción de otro entorno" } };
+    const order = await this.d.orders.get(orderId);
+    if (!order) throw new StripeMismatchError("La suscripción apunta a un pedido inexistente");
+    const link = await this.d.store.customerByCompany(order.companyId);
+    if (!link || link.stripeCustomerId !== sub.customerId) throw new StripeMismatchError("El cliente de Stripe no es el de la empresa del pedido");
+    return { order, link };
   }
 
   private async handleSession(id: string): Promise<Outcome> {
@@ -146,12 +222,10 @@ export class StripeEventProcessor {
   async handleSubscription(id: string, hint?: GwInvoice): Promise<Outcome> {
     const sub = await this.d.gateway.subscription(id);
     if (!sub) return { outcome: "ignored", detail: "La suscripción no existe en Stripe" };
-    const orderId = Number(sub.metadata.es_order_id);
-    if (!Number.isInteger(orderId) || orderId <= 0) return { outcome: "ignored", detail: "Suscripción no creada por Elephant Source" };
-    const order = await this.d.orders.get(orderId);
-    if (!order) throw new StripeMismatchError("La suscripción apunta a un pedido inexistente");
-    const link = await this.d.store.customerByCompany(order.companyId);
-    if (!link || link.stripeCustomerId !== sub.customerId) throw new StripeMismatchError("El cliente de Stripe no es el de la empresa del pedido");
+    const own = await this.ownership(sub);
+    if ("ignored" in own) return own.ignored;
+    const { order, link } = own;
+    const orderId = order.id;
     const linked = new Set((await this.d.store.listPrices()).filter((p) => p.status === "active").map((p) => p.stripePriceId));
     if (!sub.priceIds.length || sub.priceIds.some((p) => !linked.has(p))) throw new StripeMismatchError("La suscripción incluye precios que no son del catálogo enlazado");
     // Exactamente lo que el servidor envió en un Checkout de ESTE pedido (un cambio de plan sin aplicar no da
@@ -180,8 +254,13 @@ export class StripeEventProcessor {
     await this.d.store.upsertSubscription({ ...mirror, companyId: order.companyId, orderId, tenantId, syncedAt: this.now() });
 
     const payment = await this.recordPaidInvoice(order, sub, hint);
+    // Un pago NUEVO (otra factura) devuelve la cobertura que se perdió por un reembolso o una disputa
+    if (payment?.created) await this.d.store.resolveHolds({ orderId, exceptInvoiceId: payment.invoiceId }, `Nuevo pago verificado (factura ${payment.invoiceId})`, this.now());
+    // Solo retiene el cobro revertido del periodo vigente (la última factura); uno anterior ya no cubría nada
+    const held = (await this.d.store.activeHolds(orderId)).some((h) => h.invoiceId === sub.latestInvoiceId);
 
     if (PIPELINE.includes(order.state)) {
+      if (held) return { outcome: "processed", detail: `Pedido en ${order.state}: el cobro se revirtió, no se activa` };
       if (sub.status !== "active" || !(await this.hasInitialPayment(order, payment))) return { outcome: "processed", detail: `Pedido en ${order.state}: suscripción ${sub.status}, sin pago inicial verificado` };
       const r = await this.d.orchestrator.advance(orderId, this.actor);
       // Un paso del alta falló (p. ej. aprovisionamiento): se reintenta el evento; nunca se da por hecho
@@ -193,7 +272,7 @@ export class StripeEventProcessor {
     const status = sub.status === "active" || sub.status === "trialing" ? "active" : sub.status === "past_due" ? "past_due" : sub.status === "unpaid" || sub.status === "paused" ? "unpaid" : sub.status === "canceled" || sub.status === "incomplete_expired" ? "canceled" : null;
     if (!status) return { outcome: "processed", detail: `Suscripción ${sub.status}: sin cambios` };
     const cancelAt = sub.cancelAt ?? (sub.cancelAtPeriodEnd ? sub.currentPeriodEnd : null);
-    const r = await this.d.orchestrator.applyExternalBilling(orderId, { status, cancelAt: cancelAt === null ? null : cancelAt * 1000 }, this.actor);
+    const r = await this.d.orchestrator.applyExternalBilling(orderId, { status, cancelAt: cancelAt === null ? null : cancelAt * 1000, coverageLost: held }, this.actor);
     return { outcome: "processed", detail: r.changed.length ? `Pedido: ${r.changed.join(" → ")}` : "Sin cambios" };
   }
 
@@ -204,6 +283,8 @@ export class StripeEventProcessor {
     if (!inv || inv.status !== "paid" || inv.subscriptionId !== sub.id || inv.customerId !== sub.customerId || inv.amountPaid <= 0) return null;
     if (order.quote && inv.currency !== order.quote.currency.toUpperCase()) throw new StripeMismatchError("La moneda de la factura no es la del pedido");
     const purpose = inv.billingReason === "subscription_cycle" ? ("renewal" as const) : inv.billingReason === "subscription_update" ? ("change" as const) : ("initial" as const);
+    // Tratamiento de pruebas (neto, sin IVA): el primer cobro es exactamente el neto del presupuesto
+    if (purpose === "initial" && order.quote && inv.amountPaid !== order.quote.contractAmountCents) throw new StripeMismatchError("El importe cobrado no es el del presupuesto (sin IVA)");
     const r = await this.d.orders.insertPayment({
       orderId: order.id,
       idempotencyKey: `stripe:inv:${inv.id}`,
@@ -220,7 +301,7 @@ export class StripeEventProcessor {
       settledAt: this.now(),
     });
     if (r.created) opsLog("info", "StripeEvents", "payment_verified", { orderId: order.id, invoiceId: inv.id, purpose });
-    return { created: r.created, purpose };
+    return { created: r.created, purpose, invoiceId: inv.id };
   }
 
   private async hasInitialPayment(order: CommercialOrder, just: { purpose: string } | null) {

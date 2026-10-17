@@ -92,4 +92,41 @@ describe.skipIf(!URL_)("almacén de Stripe con MySQL real", () => {
     const [rows] = (await pool.query(`SELECT version FROM stripe_subscriptions WHERE stripe_subscription_id = 'sub_test_S1'`)) as unknown as [{ version: number }[]];
     expect(Number(rows[0].version)).toBe(2);
   });
+
+  it("B4: retención por cobro revertido: se registra, se resuelve con motivo y una pérdida NUEVA la reabre", async () => {
+    const a = { chargeId: "ch_test_Cargo0001", invoiceId: "in_test_1", subscriptionId: "sub_test_S1", orderId, companyId, amountCents: 2900, amountRefundedCents: 0, currency: "EUR", disputeStatus: "needs_response", coverageLost: false };
+    expect((await store.upsertAdjustment(a, now)).previous).toBeNull();
+    expect(await store.activeHolds(orderId)).toEqual([]);
+    const lost = await store.upsertAdjustment({ ...a, disputeStatus: "lost", coverageLost: true }, now + 1);
+    expect(lost.previous?.coverageLost).toBe(false);
+    expect(await store.activeHolds(orderId)).toHaveLength(1);
+    // Un pago de la MISMA factura no levanta la retención; el de otra sí
+    expect(await store.resolveHolds({ orderId, exceptInvoiceId: "in_test_1" }, "pago", now + 2)).toBe(0);
+    expect(await store.resolveHolds({ chargeId: a.chargeId }, "operator:ana: revisado", now + 3)).toBe(1);
+    expect(await store.activeHolds(orderId)).toEqual([]);
+    // El mismo estado otra vez no reabre; volver a perder la cobertura sí
+    await store.upsertAdjustment({ ...a, disputeStatus: "lost", coverageLost: true }, now + 4);
+    expect(await store.activeHolds(orderId)).toEqual([]);
+    await store.upsertAdjustment({ ...a, disputeStatus: "won", coverageLost: false }, now + 5);
+    await store.upsertAdjustment({ ...a, amountRefundedCents: 2900, disputeStatus: "won", coverageLost: true }, now + 6);
+    expect(await store.activeHolds(orderId)).toHaveLength(1);
+    await expect(pool.query("UPDATE stripe_charge_adjustments SET livemode = 1")).rejects.toThrow();
+  });
+
+  it("purga: borra solo eventos terminados anteriores al corte, por lotes; fallidos y pendientes se quedan", async () => {
+    const ev = (id: string, at: number) => store.recordEvent({ eventId: id, type: "invoice.paid", apiVersion: null, objectType: "invoice", objectId: "in_x", stripeCreated: 1, source: "webhook", now: at });
+    for (let i = 0; i < 5; i++) {
+      await ev(`evt_test_purge_p${i}`, now - 1000);
+      await store.finishEvent(`evt_test_purge_p${i}`, i % 2 ? "ignored" : "processed", null, now);
+    }
+    await ev("evt_test_purge_failed", now - 1000);
+    await store.failEvent("evt_test_purge_failed", "x", null);
+    await ev("evt_test_purge_received", now - 1000);
+    await ev("evt_test_purge_recent", now + 1000);
+    await store.finishEvent("evt_test_purge_recent", "processed", null, now);
+    expect(await store.purgeEvents(now, 3)).toEqual({ processed: 3, ignored: 0 });
+    expect(await store.purgeEvents(now, 10)).toEqual({ processed: 0, ignored: 2 });
+    const [rows] = (await pool.query("SELECT event_id FROM stripe_events WHERE event_id LIKE 'evt_test_purge%' ORDER BY event_id")) as unknown as [{ event_id: string }[]];
+    expect(rows.map((r) => r.event_id)).toEqual(["evt_test_purge_failed", "evt_test_purge_received", "evt_test_purge_recent"]);
+  });
 });

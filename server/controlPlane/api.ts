@@ -173,7 +173,7 @@ export interface ControlPlaneDeps {
    * (por defecto NO); `notify` es el único canal de comunicaciones (por defecto, solo un registro
    * sin datos personales ni tokens: no se envía nada).
    */
-  trials?: { store: TrialStore; publicEnabled?: boolean; autoProvision?: boolean; notify?: TrialNotifier; limits?: Partial<TrialLimits> };
+  trials?: { store: TrialStore; publicEnabled?: boolean; autoProvision?: boolean; notify?: TrialNotifier; limits?: Partial<TrialLimits>; blockedDomains?: string[] };
   /** Sedes y entidades fiscales (registro 0009), con los límites del plan contratado. */
   organization?: OrganizationStore;
   /**
@@ -1010,7 +1010,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
     }
     if (d.capabilities && d.trials && d.provisioning && d.platformDomain) {
       const crmD = d.crm;
-      const trialService = new TrialService({ store: d.trials.store, subscriptions: d.subscriptions.store, now: d.subscriptions.now, limits: d.trials.limits });
+      const trialService = new TrialService({ store: d.trials.store, subscriptions: d.subscriptions.store, now: d.subscriptions.now, limits: d.trials.limits, blockedDomains: d.trials.blockedDomains });
       const catalogPort = catalogFromWebStore(d.web.store);
       const licensingForTrials = new LicensingService({ capabilities: d.capabilities, subscriptions: d.subscriptions.store, crm: crmPort, catalog: async () => quoteCatalogFromSite(await webAdmin!.site("published")), now: d.subscriptions.now });
       const provisioning = d.provisioning;
@@ -1059,7 +1059,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         capabilities: d.capabilities,
         platform: d.provisioning && d.platformDomain ? createContractActivation({ provisioning: d.provisioning, platformDomain: d.platformDomain, actor: { type: "crm", id: "orchestrator" }, notifyWelcome: d.mail?.platform?.assistedWelcome() }) : undefined,
         notify: d.mail?.platform ? d.mail.platform.orderNotifier({ crmStore: d.crm.store, orders: d.orders.store, reader: d.reader }) : undefined,
-        trials: d.trials ? new TrialService({ store: d.trials.store, subscriptions: d.subscriptions.store, now: d.subscriptions.now, limits: d.trials.limits }) : undefined,
+        trials: d.trials ? new TrialService({ store: d.trials.store, subscriptions: d.subscriptions.store, now: d.subscriptions.now, limits: d.trials.limits, blockedDomains: d.trials.blockedDomains }) : undefined,
         payments: d.orders.payments ?? null,
         graceDays: d.orders.graceDays,
         now: d.subscriptions.now,
@@ -1069,10 +1069,12 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         const st = d.stripe;
         const stripeCatalog = catalogFromWebStore(d.web.store);
         const checkout = st.checkoutEnabled && st.urls
-          ? new StripeCheckoutService({ store: st.store, gateway: st.gateway, orders: d.orders.store, crmStore: d.crm.store, catalog: stripeCatalog, urls: st.urls, now: d.subscriptions.now })
+          ? new StripeCheckoutService({ store: st.store, gateway: st.gateway, orders: d.orders.store, crmStore: d.crm.store, catalog: stripeCatalog, urls: st.urls, now: d.subscriptions.now, namespace: st.config.namespace })
           : null;
-        const processor = new StripeEventProcessor({ store: st.store, gateway: st.gateway, orders: d.orders.store, orchestrator, now: d.subscriptions.now });
-        const reconciler = new StripeReconciler({ store: st.store, gateway: st.gateway, processor, now: d.subscriptions.now });
+        const processor = new StripeEventProcessor({ store: st.store, gateway: st.gateway, orders: d.orders.store, orchestrator, now: d.subscriptions.now, namespace: st.config.namespace });
+        const reconciler = new StripeReconciler({ store: st.store, gateway: st.gateway, processor, now: d.subscriptions.now, retentionDays: st.config.eventsRetentionDays });
+        const rechecks = new Map<string, number>();
+        const stripeNow = d.subscriptions.now;
         // Tras guardar un evento del webhook se procesa enseguida (los fallos quedan para el reintento)
         stripeKick = () => void processor.processDue(10).catch(() => undefined);
         if (st.workerEnabled) startStripeWorker({ processor, reconciler });
@@ -1090,11 +1092,13 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
               const sessionId = String(req.query.session_id ?? "");
               res.setHeader("Cache-Control", "no-store");
               if (!SESSION_ID_RE.test(sessionId)) return void res.status(400).json({ error: "invalid_session_id" });
-              const view = await checkoutStatus({ store: st.store, orders: d.orders!.store, processor, platformDomain: d.platformDomain ?? null }, sessionId);
+              const view = await checkoutStatus({ store: st.store, orders: d.orders!.store, processor, platformDomain: d.platformDomain ?? null, rechecks, now: stripeNow }, sessionId);
               if (!view) return void res.status(404).json({ error: "not_found" });
               res.json(view);
             }),
           );
+          // Lo que no exista aquí termina aquí (no cae en la captación ni en la autenticación de operadores)
+          pc.use((_req, res) => void res.status(404).json({ error: "not_found" }));
           publicCheckout = pc;
         }
         router.use("/stripe", createStripeRouter({ config: st.config, store: st.store, gateway: st.gateway, catalog: stripeCatalog, checkout, processor, reconciler, now: d.subscriptions.now }));

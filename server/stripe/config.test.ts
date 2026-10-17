@@ -12,10 +12,22 @@ describe("configuración de Stripe Billing (solo pruebas)", () => {
     expect(describeStripeConfig(null)).toEqual({ enabled: false });
   });
 
+  it("B9: prefijo del entorno explícito, derivado de Railway o «local»; en producción sin él no arranca", () => {
+    expect(stripeConfigFromEnv({ ...base(), CP_STRIPE_NAMESPACE: "beta01" })!.namespace).toBe("beta01");
+    const r1 = stripeConfigFromEnv({ ...base(), RAILWAY_PROJECT_ID: "p1", RAILWAY_ENVIRONMENT_ID: "e1" })!.namespace;
+    const r2 = stripeConfigFromEnv({ ...base(), RAILWAY_PROJECT_ID: "p1", RAILWAY_ENVIRONMENT_ID: "e2" })!.namespace;
+    expect(r1).toMatch(/^r[0-9a-f]{10}$/);
+    expect(r1).not.toBe(r2);
+    expect(() => stripeConfigFromEnv({ ...base(), CP_STRIPE_NAMESPACE: "Con-Guion" })).toThrow(StripeConfigError);
+    expect(() => stripeConfigFromEnv({ ...base(), NODE_ENV: "production" })).toThrow(/CP_STRIPE_NAMESPACE/);
+    expect(() => stripeConfigFromEnv({ ...base(), CP_STRIPE_EVENTS_RETENTION_DAYS: "10" })).toThrow(/35/);
+    expect(stripeConfigFromEnv({ ...base(), CP_STRIPE_EVENTS_RETENTION_DAYS: "400" })!.eventsRetentionDays).toBe(400);
+  });
+
   it("clave restringida de pruebas con la versión fijada por defecto", () => {
     const c = stripeConfigFromEnv(base())!;
     expect(c).toMatchObject({ mode: "test", keyKind: "restricted", apiVersion: STRIPE_API_VERSION });
-    expect(describeStripeConfig(c)).toEqual({ enabled: true, mode: "test", keyKind: "restricted", apiVersion: STRIPE_API_VERSION });
+    expect(describeStripeConfig(c)).toEqual({ enabled: true, mode: "test", keyKind: "restricted", apiVersion: STRIPE_API_VERSION, namespace: "local", eventsRetentionDays: 180 });
     expect(JSON.stringify(describeStripeConfig(c))).not.toContain(c.apiKey);
   });
 

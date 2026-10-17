@@ -6,8 +6,9 @@
  *    (pedido `active`), la dirección de acceso de la empresa.
  *  - Nunca dice «listo» por haber vuelto de Checkout: lo decide el pedido, que solo avanza con el pago
  *    verificado en Stripe (webhook o conciliación).
- *  - Si la sesión consta pagada y el webhook aún no ha llegado, pide UNA relectura verificada a Stripe
- *    (como recomienda Stripe para la página de éxito); el efecto es el mismo que el del webhook.
+ *  - Mientras el pedido espera el pago, relee la sesión en Stripe como mucho una vez cada 30 s por sesión
+ *    (como recomienda Stripe para la página de éxito); el efecto es el mismo que el del webhook. Así un
+ *    visitante que consulta cada pocos segundos no multiplica las llamadas a la API de Stripe.
  *  - Contrato acordado con la web (bigelephant-web, docs de la página `/contratacion/estado`):
  *    pending_payment | payment_processing | provisioning | ready | failed | expired.
  *    Respuesta 200 { state, message, accessUrl?, retryAfterSeconds? }; 400 si el id está mal formado;
@@ -46,7 +47,13 @@ export interface StatusDeps {
   orders: Pick<OrderStore, "get">;
   processor?: Pick<StripeEventProcessor, "process">;
   platformDomain: string | null;
+  /** Última relectura por sesión (compartido entre peticiones del proceso). */
+  rechecks?: Map<string, number>;
+  now?: () => number;
 }
+
+export const RECHECK_EVERY_MS = 30_000;
+const MAX_TRACKED = 5000;
 
 export async function checkoutStatus(d: StatusDeps, sessionId: string): Promise<CheckoutStatusView | null> {
   if (!SESSION_ID_RE.test(sessionId)) return null;
@@ -55,7 +62,13 @@ export async function checkoutStatus(d: StatusDeps, sessionId: string): Promise<
   let o = await d.orders.get(row.orderId);
   if (!o) return null;
   // Pago hecho pero sin confirmar aún: una relectura verificada (idempotente, igual que el webhook)
-  if (o.state === "contracted" && d.processor && row.status !== "expired") {
+  const now = (d.now ?? Date.now)();
+  const last = d.rechecks?.get(sessionId);
+  if (o.state === "contracted" && d.processor && row.status !== "expired" && (last === undefined || now - last >= RECHECK_EVERY_MS)) {
+    if (d.rechecks) {
+      if (d.rechecks.size >= MAX_TRACKED) d.rechecks.clear();
+      d.rechecks.set(sessionId, now);
+    }
     await d.processor.process({ eventId: "status-page", type: "checkout.session.completed", objectId: sessionId }).catch(() => undefined);
     o = (await d.orders.get(row.orderId)) ?? o;
   }

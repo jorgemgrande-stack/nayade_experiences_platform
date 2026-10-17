@@ -81,6 +81,20 @@ export interface GwEvent {
   objectId: string | null;
 }
 
+/** Cargo releído con lo necesario para reembolsos y disputas (sin datos de la tarjeta). */
+export interface GwCharge {
+  id: string;
+  customerId: string | null;
+  amount: number;
+  amountRefunded: number;
+  refunded: boolean;
+  currency: string;
+  /** Factura que pagó este cargo (vía InvoicePayments en la API actual). */
+  invoiceId: string | null;
+  /** Estado de la disputa más reciente del cargo, si la hay. */
+  disputeStatus: string | null;
+}
+
 export interface CheckoutSessionInput {
   customerId: string;
   priceId: string;
@@ -91,6 +105,8 @@ export interface CheckoutSessionInput {
   /** Segundos desde epoch (entre 30 min y 24 h desde ahora, regla de Stripe). */
   expiresAt: number;
   integrationIdentifier: string;
+  /** Aviso visible junto al botón de pago (tratamiento fiscal de pruebas). */
+  notice?: string;
 }
 
 export interface StripeGateway {
@@ -104,6 +120,9 @@ export interface StripeGateway {
   subscription(id: string): Promise<GwSubscription | null>;
   createPortalSession(input: { customerId: string; returnUrl: string }): Promise<{ url: string }>;
   invoice(id: string): Promise<GwInvoice | null>;
+  charge(id: string): Promise<GwCharge | null>;
+  /** Cargo de un reembolso o de una disputa (para releerlo). */
+  chargeIdOf(objectType: "refund" | "dispute", id: string): Promise<string | null>;
   /** Conciliación: eventos desde un momento (segundos), filtrados por tipo, paginados. */
   listEvents(q: { createdGte?: number; types?: string[]; startingAfter?: string; limit?: number }): Promise<{ events: GwEvent[]; hasMore: boolean }>;
 }
@@ -286,6 +305,7 @@ export function stripeGateway(config: StripeConfig, o: { timeoutMs?: number; max
         tax_id_collection: { enabled: true },
         customer_update: { address: "auto", name: "auto" },
         locale: "es",
+        ...(i.notice ? { custom_text: { submit: { message: i.notice.slice(0, 1200) } } } : {}),
         integration_identifier: i.integrationIdentifier,
       };
       try {
@@ -320,6 +340,38 @@ export function stripeGateway(config: StripeConfig, o: { timeoutMs?: number; max
     async invoice(id) {
       try {
         return toInvoice(await client.invoices.retrieve(id));
+      } catch (e) {
+        if (notFound(e)) return null;
+        wrapError(e);
+      }
+    },
+    async charge(id) {
+      try {
+        const c = await client.charges.retrieve(id);
+        assertTestObject(c);
+        const pi = idOf(c.payment_intent);
+        let invoiceId = idOf((c as unknown as { invoice?: unknown }).invoice);
+        if (!invoiceId && pi) {
+          const ip = await client.invoicePayments.list({ payment: { type: "payment_intent", payment_intent: pi }, limit: 1 });
+          invoiceId = idOf(ip.data[0]?.invoice);
+        }
+        let disputeStatus: string | null = null;
+        if (c.disputed) {
+          const ds = await client.disputes.list({ charge: c.id, limit: 10 });
+          const last = ds.data.slice().sort((a, b) => b.created - a.created)[0];
+          disputeStatus = last ? String(last.status) : null;
+        }
+        return { id: c.id, customerId: idOf(c.customer), amount: c.amount, amountRefunded: c.amount_refunded ?? 0, refunded: !!c.refunded, currency: c.currency.toUpperCase(), invoiceId, disputeStatus };
+      } catch (e) {
+        if (notFound(e)) return null;
+        wrapError(e);
+      }
+    },
+    async chargeIdOf(objectType, id) {
+      try {
+        const o = objectType === "refund" ? await client.refunds.retrieve(id) : await client.disputes.retrieve(id);
+        assertTestObject(o as { livemode?: unknown });
+        return idOf((o as { charge?: unknown }).charge);
       } catch (e) {
         if (notFound(e)) return null;
         wrapError(e);
