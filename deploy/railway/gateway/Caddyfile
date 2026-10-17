@@ -16,7 +16,11 @@
 	admin off
 	auto_https off
 	servers {
-		trusted_proxies static private_ranges
+		# El borde de Railway llega desde 100.0.0.0/8 (rango de su guía de Caddy) y escribe X-Forwarded-For
+		# como «cliente, CDN». Caddy calcula {client_ip} a partir de ahí y es lo único que se reenvía a la
+		# aplicación (header_up X-Forwarded-For): con «trust proxy 1» el Core usa esa IP en sus límites de
+		# login, recuperación de contraseña y subidas, y una cabecera falsificada por el cliente no cuenta
+		trusted_proxies static private_ranges 100.0.0.0/8
 	}
 }
 
@@ -40,6 +44,7 @@
 		# Las credenciales de la pasarela no llegan a la aplicación (usa sus propias cookies y tokens)
 		reverse_proxy {$UPSTREAM} {
 			header_up -Authorization
+			header_up X-Forwarded-For {client_ip}
 		}
 	}
 }
