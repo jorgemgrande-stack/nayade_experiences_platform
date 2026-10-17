@@ -63,7 +63,8 @@ export class StripeReconciler {
       let maxCreated = cursor;
       let recovered = 0;
       let startingAfter: string | undefined;
-      for (let page = 0; page < (this.d.maxEventPages ?? 10); page++) {
+      let complete = false;
+      for (let page = 0; page < (this.d.maxEventPages ?? 50); page++) {
         const r = await this.d.gateway.listEvents({ createdGte: cursor - OVERLAP_S, types: [...HANDLED_EVENTS], startingAfter, limit: 100 });
         for (const ev of r.events) {
           if (ev.livemode !== false) {
@@ -74,7 +75,10 @@ export class StripeReconciler {
           if (rec.created) recovered++;
           if (ev.created > maxCreated) maxCreated = ev.created;
         }
-        if (!r.hasMore || !r.events.length) break;
+        if (!r.hasMore || !r.events.length) {
+          complete = true;
+          break;
+        }
         startingAfter = r.events[r.events.length - 1].id;
       }
       // 2. Pendientes y reintentos
@@ -101,7 +105,12 @@ export class StripeReconciler {
         await this.d.store.updateSession(id, { status, paymentStatus: s?.paymentStatus ?? null, completedAt: status === "complete" ? this.now() : null });
         sessionsClosed++;
       }
-      await this.d.store.setState(CURSOR, { cursor: maxCreated, lastRunAt: this.now(), recovered }, this.now());
+      // Stripe lista primero lo más reciente: si quedaron páginas, el cursor NO avanza (lo pendiente es más antiguo)
+      if (!complete) {
+        recordFailure("stripe.reconcile_backlog");
+        opsLog("warn", "StripeReconcile", "backlog", { pages: this.d.maxEventPages ?? 50 });
+      }
+      await this.d.store.setState(CURSOR, { cursor: complete ? maxCreated : cursor, lastRunAt: this.now(), recovered, complete }, this.now());
       if (recovered) opsLog("warn", "StripeReconcile", "missed_webhooks_recovered", { recovered });
       return { skipped: false, recovered, events, refreshed, refreshErrors, sessionsClosed };
     } finally {

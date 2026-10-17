@@ -35,6 +35,7 @@ describe("configuración de Stripe Billing (solo pruebas)", () => {
     ["motor antiguo con Stripe", { BILLING_PROVIDER: "stripe" }],
     ["variable de autorización live", { CP_STRIPE_LIVE_AUTHORIZED: "1" }],
     ["clave administrativa en un servicio", { CP_STRIPE_ADMIN_KEY: key("rk", "test") }],
+    ["clave secreta (no restringida) en producción", { CP_STRIPE_API_KEY: key("sk", "test"), NODE_ENV: "production" }],
   ])("no arranca con %s", (_, over) => {
     expect(() => stripeConfigFromEnv({ ...base(), ...over })).toThrow(StripeConfigError);
   });

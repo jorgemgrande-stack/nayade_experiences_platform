@@ -269,9 +269,11 @@ async function main() {
     const checkoutEnabled = process.env.CP_STRIPE_CHECKOUT_ENABLED === "1";
     const workerEnabled = process.env.CP_STRIPE_WORKER_ENABLED === "1";
     const publicStatus = process.env.CP_PUBLIC_CHECKOUT_ENABLED === "1";
-    const ready = !!orders && !!crmPool && (await crmPool.query("SELECT 1 FROM stripe_prices LIMIT 0").then(() => true, () => false));
+    // Sin proxy de confianza los límites por IP del webhook serían comunes a todo el tráfico
+    const trustProxyOk = process.env.NODE_ENV !== "production" || !!process.env.CP_TRUST_PROXY;
+    const ready = trustProxyOk && !!orders && !!crmPool && (await crmPool.query("SELECT 1 FROM stripe_prices LIMIT 0").then(() => true, () => false));
     if (ready) stripe = { config: stripeConfig, store: new MysqlStripeStore(crmPool!), gateway: stripeGateway(stripeConfig), urls, checkoutEnabled, verifyWebhook: stripeWebhookVerifier(stripeConfig), workerEnabled, publicStatus };
-    console.log(JSON.stringify({ ctx: "Stripe", ...describeStripeConfig(stripeConfig), mounted: ready, checkout: ready && checkoutEnabled && !!urls, worker: ready && workerEnabled, publicStatus: ready && publicStatus, ...(ready ? {} : { reason: !orders ? "orders_not_enabled" : "migration_0012_missing" }) }));
+    console.log(JSON.stringify({ ctx: "Stripe", ...describeStripeConfig(stripeConfig), mounted: ready, checkout: ready && checkoutEnabled && !!urls, worker: ready && workerEnabled, publicStatus: ready && publicStatus, ...(ready ? {} : { reason: !trustProxyOk ? "trust_proxy_missing" : !orders ? "orders_not_enabled" : "migration_0012_missing" }) }));
   }
 
   // API pública de captación de la web comercial: solo con CRM, orígenes explícitos y secreto propio

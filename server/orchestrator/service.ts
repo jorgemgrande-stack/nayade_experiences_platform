@@ -636,6 +636,7 @@ export class CommercialOrchestrator {
     if (reason.length < 3) throw new OrderError("invalid_input", "Indica el motivo de la cancelación");
     const o = await this.must(id);
     if (!LIVE.includes(o.state)) throw new OrderError("invalid_state", `Solo se cancela un pedido activo (está en «${o.state}»)`);
+    if (await this.stripeBilled(o)) throw new OrderError("invalid_state", "Este pedido se cobra en Stripe: cancélalo en Stripe (Customer Portal o Dashboard del sandbox) y el cambio se reflejará solo");
     await this.cascadeCancel(o, reason, actor);
     return this.detail(id);
   }
@@ -657,6 +658,7 @@ export class CommercialOrchestrator {
     const reason = (input.reason ?? "").trim();
     if (reason.length < 3) throw new OrderError("invalid_input", "Indica el motivo");
     const o = await this.must(id);
+    if (await this.stripeBilled(o)) throw new OrderError("invalid_state", "Este pedido se cobra en Stripe: cancélalo en Stripe (Customer Portal o Dashboard del sandbox) y el cambio se reflejará solo");
     const contract = o.contractId ? await this.d.crmStore.get("contracts", o.contractId) : null;
     if (nextOrderState(o.state, "reject") && contract && contract.status !== "cancelled" && contract.status !== "active") await this.d.crm.setContractStatus(contract.id, "cancelled", actor);
     return this.move(o, "reject", actor, {}, { reason });
@@ -714,9 +716,14 @@ export class CommercialOrchestrator {
     for (const o of await this.d.store.list({ states: ["active", "past_due", "suspended", "cancel_scheduled"], limit: 1000 })) {
       await run(o, async () => {
         let cur = o;
+        const stripe = await this.stripeBilled(cur);
         // Contrato cancelado fuera del orquestador: la suscripción se cancela a fin de periodo
         const contract = cur.contractId ? await this.d.crmStore.get("contracts", cur.contractId) : null;
-        if (LIVE.includes(cur.state) && contract?.status === "cancelled") {
+        if (stripe && LIVE.includes(cur.state) && contract?.status === "cancelled") {
+          // En Stripe sigue viva: no se cancela aquí (volvería a reactivarse); se avisa para cancelarla allí
+          opsLog("warn", "Orders", "stripe_contract_cancelled", { orderId: cur.id });
+          recordFailure("orders.stripe_contract_cancelled");
+        } else if (LIVE.includes(cur.state) && contract?.status === "cancelled") {
           cur = await this.cascadeCancel(cur, "Contrato cancelado en el CRM", actor);
           out.cascaded++;
         }
@@ -734,7 +741,7 @@ export class CommercialOrchestrator {
             out.pastDue++;
           }
         }
-        if (cur.state === "past_due" && cur.graceEndsAt !== null && cur.graceEndsAt <= now) {
+        if (!stripe && cur.state === "past_due" && cur.graceEndsAt !== null && cur.graceEndsAt <= now) {
           cur = await this.move(cur, "suspend", actor, {}, { reason: "Fin del periodo de gracia sin pago" });
           await this.syncLicences(cur, actor, `Suspensión por impago (pedido ${cur.reference}); los datos se conservan`);
           out.suspended++;
@@ -791,16 +798,32 @@ export class CommercialOrchestrator {
       await step("suspend", {}, { reason: "Stripe agotó los reintentos de cobro" });
       await this.syncLicences(o, actor, `Suspensión por impago (pedido ${o.reference}); los datos se conservan`);
     }
+    // La fecha de fin la decide Stripe (`cancel_at`): la suscripción interna NO se programa para cancelarse,
+    // así su fin de periodo nunca corta antes el acceso que el cliente ha pagado. El fin llega con «canceled».
     if (s.cancelAt !== null && LIVE.includes(o.state)) {
-      const sub = o.subscriptionId ? await this.d.subscriptions.must(o.subscriptionId) : null;
-      if (sub && sub.status !== "canceled" && sub.cancelAt === null) await this.d.subscriptions.scheduleCancel(sub.id, { reason: "Cancelación programada en Stripe" }, sub.version, actor);
       await step("cancel", {}, { cancelAt: s.cancelAt });
-    } else if (s.cancelAt === null && s.status === "active" && o.state === "cancel_scheduled") {
-      const sub = o.subscriptionId ? await this.d.subscriptions.must(o.subscriptionId) : null;
-      if (sub && sub.status !== "canceled" && sub.cancelAt !== null) await this.d.subscriptions.reactivate(sub.id, { reason: "Cancelación deshecha en Stripe" }, sub.version, actor);
+    } else if (s.cancelAt === null && s.status === "active" && o.state === "cancel_scheduled" && (await this.lastCancelFromStripe(o))) {
       await step("reactivate", {}, {});
+      await this.syncLicences(o, actor, `Cancelación deshecha en Stripe: pedido ${o.reference}`);
+    }
+    // Con la cancelación programada siguen valiendo el impago y la recuperación
+    if (o.state === "cancel_scheduled" && s.status === "unpaid") {
+      if (await this.markLicences(o, "suspended", actor, `Impago con cancelación programada (pedido ${o.reference}); los datos se conservan`)) changed.push("suspend");
+    } else if (o.state === "cancel_scheduled" && s.status === "active") {
+      await this.syncLicences(o, actor, `Pedido ${o.reference} al corriente en Stripe`);
     }
     return { order: o, changed };
+  }
+
+  /** ¿El pedido se cobra en Stripe Billing? (tiene pagos verificados de Stripe). */
+  private async stripeBilled(o: CommercialOrder) {
+    return (await this.d.store.payments(o.id)).some((p) => p.provider === STRIPE_PAYMENT_PROVIDER);
+  }
+
+  /** ¿La última cancelación del pedido vino de Stripe? Solo esa la puede deshacer Stripe. */
+  private async lastCancelFromStripe(o: CommercialOrder) {
+    const last = (await this.d.store.events(o.id)).filter((e) => e.kind === "cancel").pop();
+    return !!last && last.detail?.source === "stripe";
   }
 
   /** Lleva las licencias propias de la suscripción del pedido a un estado (suspendidas o solo lectura). */

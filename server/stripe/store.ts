@@ -75,6 +75,8 @@ export interface StripeStore {
   openSession(orderId: number): Promise<StripeSessionRow | null>;
   session(stripeSessionId: string): Promise<StripeSessionRow | null>;
   countSessions(orderId: number): Promise<number>;
+  /** Conjuntos de Prices que el servidor envió a Stripe en las sesiones de este pedido. */
+  sessionPriceSets(orderId: number): Promise<string[][]>;
   /** ¿Algún pago de este pedido ya se completó en Stripe? Entonces nunca se abre otra sesión. */
   hasCompletedSession(orderId: number): Promise<boolean>;
   /** Lanza `open_session_exists` si el pedido ya tiene una sesión abierta. */
@@ -221,6 +223,9 @@ export class MemoryStripeStore implements StripeStore {
   async countSessions(orderId: number) {
     return Array.from(this.sessions.values()).filter((s) => s.orderId === orderId).length;
   }
+  async sessionPriceSets(orderId: number) {
+    return Array.from(this.sessions.values()).filter((s) => s.orderId === orderId).map((s) => [...s.priceIds]);
+  }
   async hasCompletedSession(orderId: number) {
     return Array.from(this.sessions.values()).some((s) => s.orderId === orderId && s.status === "complete");
   }
@@ -326,6 +331,10 @@ export class MysqlStripeStore implements StripeStore {
   async countSessions(orderId: number) {
     const [rows] = await this.pool.query<Row[]>("SELECT COUNT(*) AS n FROM stripe_checkout_sessions WHERE order_id = ?", [orderId]);
     return Number(rows[0]?.n ?? 0);
+  }
+  async sessionPriceSets(orderId: number) {
+    const [rows] = await this.pool.query<Row[]>("SELECT price_ids_json FROM stripe_checkout_sessions WHERE order_id = ? ORDER BY id", [orderId]);
+    return rows.map((r) => json(r.price_ids_json));
   }
   async hasCompletedSession(orderId: number) {
     const [rows] = await this.pool.query<Row[]>("SELECT 1 FROM stripe_checkout_sessions WHERE order_id = ? AND status = 'complete' LIMIT 1", [orderId]);

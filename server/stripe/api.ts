@@ -6,7 +6,7 @@
  *   POST /stripe/catalog/sync                   orders:write  enlaza los Prices que ya existen (solo lectura en Stripe)
  *   POST /stripe/orders/:id/checkout            orders:write  abre o reutiliza la Checkout Session del pedido (*)
  *   POST /stripe/orders/:id/checkout/expire     orders:write  cierra la sesión abierta del pedido
- *   POST /stripe/checkout/:sessionId/sync       orders:read   relee sesión y suscripción (no confirma nada)
+ *   POST /stripe/checkout/:sessionId/sync       orders:write  relee sesión y suscripción (no confirma nada)
  *   GET  /stripe/events                         ops:read      eventos por estado (pendientes, fallidos…)
  *   POST /stripe/events/:id/retry               orders:write  reprograma ya un evento fallido
  *   POST /stripe/reconcile                      orders:write  conciliación manual (la misma que la periódica)
@@ -93,7 +93,7 @@ export function createStripeRouter(d: StripeRouterDeps): Router {
     if (!d.checkout) return void res.status(409).json({ error: "checkout_disabled", message: "Checkout desactivado" });
     res.json(await d.checkout.expire(id.parse(req.params.id), who(req)));
   }));
-  r.post("/checkout/:sessionId/sync", requireScope("orders:read"), wrap(async (req, res) => {
+  r.post("/checkout/:sessionId/sync", requireScope("orders:write"), wrap(async (req, res) => {
     if (!d.checkout) return void res.status(409).json({ error: "checkout_disabled", message: "Checkout desactivado" });
     res.json(await d.checkout.sync(sessionId.parse(req.params.sessionId)));
   }));

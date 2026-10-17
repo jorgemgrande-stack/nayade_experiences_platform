@@ -347,4 +347,60 @@ describe.skipIf(!URL_)("Stripe Billing de punta a punta con MySQL real", () => {
     expect(await checkoutStatus(deps, "cs_live_x")).toBeNull();
     expect(await checkoutStatus(deps, "../../etc")).toBeNull();
   });
+  // ── Regresiones de la revisión de seguridad (17/10/2026) ───────────────────
+  it("A1: un pedido cobrado por Stripe no se cancela ni se rechaza en local, y la revisión no entra en bucle", async () => {
+    const o = await contracted(await company("A1 Operador SL"));
+    const { subId } = await paid(o.id);
+    await expect(svc.cancel(o.id, { reason: "Baja pedida por teléfono" }, actor)).rejects.toMatchObject({ code: "invalid_state" });
+    // El contrato se cancela a mano en el CRM: la revisión avisa pero no cancela (Stripe sigue cobrando)
+    const done = await svc.must(o.id);
+    await pool.query("UPDATE crm_contracts SET status = 'cancelled' WHERE id = ?", [done.contractId]);
+    const r = await svc.review(actor);
+    expect(r.cascaded).toBe(0);
+    expect((await svc.must(o.id)).state).toBe("active");
+    // Y una relectura de Stripe (activa, sin cancelación) no cambia nada
+    await subChange(subId, {});
+    expect((await svc.must(o.id)).state).toBe("active");
+  });
+
+  it("M2: un cambio de plan en Stripe que el pedido no recoge se ignora y no cambia las licencias", async () => {
+    const o = await contracted(await company("M2 Cambio SL"));
+    const { subId } = await paid(o.id);
+    const tenant = (await svc.must(o.id)).tenantId!;
+    const before = JSON.stringify(await licences(tenant));
+    const business = (await stripeStore.listPrices()).find((p) => p.lookupKey.startsWith("es:business:monthly"))!.stripePriceId;
+    gw.updateSubscription(subId, { priceIds: [business] });
+    const r = await deliver(gw.emit("customer.subscription.updated", "subscription", subId));
+    expect(r.ignored).toBe(1);
+    expect((await svc.must(o.id)).state).toBe("active");
+    expect(JSON.stringify(await licences(tenant))).toBe(before);
+  });
+
+  it("M3: con la cancelación programada, el impago suspende y la recuperación vuelve a activar", async () => {
+    const o = await contracted(await company("M3 Programada SL"));
+    const { subId } = await paid(o.id);
+    const end = Math.floor((clock + 300 * DAY) / 1000);
+    await subChange(subId, { cancelAt: end });
+    expect((await svc.must(o.id)).state).toBe("cancel_scheduled");
+    await subChange(subId, { status: "unpaid" });
+    const t = (await svc.must(o.id)).tenantId!;
+    expect((await licences(t)).every((x) => x === "suspended")).toBe(true);
+    await subChange(subId, { status: "active" });
+    expect((await licences(t)).every((x) => x === "active")).toBe(true);
+    // Deshacer la cancelación restablece el pedido (y las licencias siguen activas)
+    await subChange(subId, { cancelAt: null });
+    expect((await svc.must(o.id)).state).toBe("active");
+    expect((await licences(t)).every((x) => x === "active")).toBe(true);
+  });
+
+  it("M4: el fin del periodo interno no corta el acceso pagado en Stripe (manda el cancel_at de Stripe)", async () => {
+    const o = await contracted(await company("M4 Fecha SL"));
+    const { subId } = await paid(o.id);
+    await subChange(subId, { cancelAt: Math.floor((clock + 120 * DAY) / 1000) });
+    clock += 40 * DAY; // pasa el fin del periodo interno (mensual)
+    await svc.review(actor);
+    const cur = await svc.must(o.id);
+    expect(cur.state).toBe("cancel_scheduled");
+    expect((await licences(cur.tenantId!)).every((x) => x === "active")).toBe(true);
+  });
 });

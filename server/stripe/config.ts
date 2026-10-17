@@ -66,6 +66,7 @@ export function stripeConfigFromEnv(env: NodeJS.ProcessEnv = process.env): Strip
   if (mode !== "test") throw new StripeConfigError(`CP_STRIPE_MODE=${mode} no está soportado: solo «test»`);
   if (!TEST_KEY.test(apiKey)) throw new StripeConfigError("CP_STRIPE_API_KEY ausente o no es una clave de pruebas (rk_test_… / sk_test_…)");
   if (!WEBHOOK_SECRET.test(webhookSecret)) throw new StripeConfigError("CP_STRIPE_WEBHOOK_SECRET ausente o mal formado (whsec_…)");
+  if (env.NODE_ENV === "production" && !apiKey.startsWith("rk_test_")) throw new StripeConfigError("En producción solo se admite una clave RESTRINGIDA de pruebas (rk_test_…)");
   const apiVersion = (env.CP_STRIPE_API_VERSION ?? "").trim() || STRIPE_API_VERSION;
   if (!API_VERSION.test(apiVersion)) throw new StripeConfigError("CP_STRIPE_API_VERSION mal formada (AAAA-MM-DD.nombre)");
   if ((env.BILLING_PROVIDER ?? "").toLowerCase() === "stripe") {

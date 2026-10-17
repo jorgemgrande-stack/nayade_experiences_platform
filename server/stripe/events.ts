@@ -154,8 +154,30 @@ export class StripeEventProcessor {
     if (!link || link.stripeCustomerId !== sub.customerId) throw new StripeMismatchError("El cliente de Stripe no es el de la empresa del pedido");
     const linked = new Set((await this.d.store.listPrices()).filter((p) => p.status === "active").map((p) => p.stripePriceId));
     if (!sub.priceIds.length || sub.priceIds.some((p) => !linked.has(p))) throw new StripeMismatchError("La suscripción incluye precios que no son del catálogo enlazado");
+    // Exactamente lo que el servidor envió en un Checkout de ESTE pedido (un cambio de plan sin aplicar no da
+    // otras licencias). Vale aunque el evento de Checkout aún no haya llegado (orden no garantizado)
+    const sets = await this.d.store.sessionPriceSets(orderId);
+    const same = (a: string[]) => a.length === sub.priceIds.length && a.every((p) => sub.priceIds.includes(p));
+    if (!sets.some(same)) {
+      throw new StripeMismatchError("Los precios de la suscripción no son los del pedido (¿cambio de plan sin aplicar?)");
+    }
+    // Un pedido a la vez: dos eventos de la misma suscripción no avanzan el pedido en paralelo
+    const lease = `order:${orderId}`;
+    const until = this.now() + 2 * 60_000;
+    if (!(await this.d.store.acquireLease(lease, until, this.now()))) throw new Error("El pedido se está procesando: se reintenta");
+    try {
+      return await this.applySubscription(order, sub, link.tenantId, hint);
+    } finally {
+      await this.d.store.releaseLease(lease, until);
+    }
+  }
+
+  private async applySubscription(stale: CommercialOrder, sub: GwSubscription, tenantId: string | null, hint?: GwInvoice): Promise<Outcome> {
+    const orderId = stale.id;
+    // Releído ya con el bloqueo del pedido: otra ejecución pudo avanzarlo mientras tanto
+    const order = (await this.d.orders.get(orderId)) ?? stale;
     const { metadata: _m, ...mirror } = sub;
-    await this.d.store.upsertSubscription({ ...mirror, companyId: order.companyId, orderId, tenantId: link.tenantId, syncedAt: this.now() });
+    await this.d.store.upsertSubscription({ ...mirror, companyId: order.companyId, orderId, tenantId, syncedAt: this.now() });
 
     const payment = await this.recordPaidInvoice(order, sub, hint);
 
@@ -180,6 +202,7 @@ export class StripeEventProcessor {
     if (!sub.latestInvoiceId) return null;
     const inv = hint && hint.id === sub.latestInvoiceId ? hint : await this.d.gateway.invoice(sub.latestInvoiceId);
     if (!inv || inv.status !== "paid" || inv.subscriptionId !== sub.id || inv.customerId !== sub.customerId || inv.amountPaid <= 0) return null;
+    if (order.quote && inv.currency !== order.quote.currency.toUpperCase()) throw new StripeMismatchError("La moneda de la factura no es la del pedido");
     const purpose = inv.billingReason === "subscription_cycle" ? ("renewal" as const) : inv.billingReason === "subscription_update" ? ("change" as const) : ("initial" as const);
     const r = await this.d.orders.insertPayment({
       orderId: order.id,

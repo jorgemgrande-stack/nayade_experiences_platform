@@ -122,6 +122,7 @@ CREATE TABLE stripe_events (
   received_at BIGINT NOT NULL,
   processed_at BIGINT NULL,
   KEY idx_stripe_event_due (status, next_attempt_at),
+  KEY idx_stripe_event_claim (status, received_at),
   KEY idx_stripe_event_object (object_id),
   CONSTRAINT chk_stripe_event_test CHECK (livemode = 0)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

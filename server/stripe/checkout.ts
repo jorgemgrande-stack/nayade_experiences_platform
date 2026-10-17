@@ -158,7 +158,10 @@ export class StripeCheckoutService {
       await this.d.store.insertSession({ orderId, stripeSessionId: session.id, idempotencyKey, priceIds: [link.stripePriceId], status: "open", paymentStatus: session.paymentStatus, expiresAt: session.expiresAt * 1000, createdAt: now, completedAt: null });
     } catch (e) {
       if (e instanceof StripeStoreError && e.code === "open_session_exists") {
-        // Otra petición simultánea abrió antes la suya: esta se cierra para no dejar dos vivas
+        // Otra petición simultánea abrió antes la suya. Si Stripe devolvió la MISMA (misma clave), es esa
+        const winner = await this.d.store.openSession(orderId);
+        if (winner && winner.stripeSessionId === session.id) return { orderId, sessionId: session.id, url: session.url, expiresAt: session.expiresAt * 1000, reused: true };
+        // Si es otra, esta se cierra para no dejar dos vivas
         await this.d.gateway.expireCheckoutSession(session.id).catch(() => undefined);
         throw new StripeCheckoutError("conflict", "Ya hay una sesión de pago abierta para este pedido");
       }
