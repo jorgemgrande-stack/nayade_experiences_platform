@@ -255,7 +255,37 @@ Fuentes: https://docs.railway.com/networking/public-networking/specs-and-limits,
 | Nuevas tablas sin aplicar | Hay que migrar el CRM antes de desplegar la Fase B | Migración explícita, nunca al arrancar |
 | SDK `stripe` | Cambio de `package.json` y lockfile | Commit aislado y verificado, Fase B |
 
-## 14. Para empezar la Fase B necesito
+## 14. Contraste con el plugin oficial de Stripe para Claude Code (17/10/2026)
+
+**Estado de la conexión:**
+- **Plugin:** `stripe` 0.7.5 del repositorio oficial `github.com/stripe/ai`, instalado desde el directorio de Anthropic (`stripe@anthropic-plugin-directory`, ámbito de usuario). El marketplace `claude-plugins-official` no existe en esta versión de Claude Code (2.1.301).
+- **Servidor MCP `https://mcp.stripe.com`:** configurado por el plugin, pero en estado **«Needs authentication»**. Necesita un inicio de sesión OAuth en el navegador con la cuenta de Stripe; lo tiene que hacer el propietario en una sesión interactiva (`/mcp`).
+- **`stripe_implementation_planner`:** no disponible hasta autenticar el MCP y recargar la sesión.
+- **Cuenta y entorno de Stripe:** sin verificar hasta entonces.
+- **Alternativa `npx skills add https://docs.stripe.com`:** no se ha ejecutado. Las instrucciones la reservan para cuando el planificador siga sin aparecer después de autenticar, y el plugin ya incluye las guías oficiales (`stripe-best-practices`, `stripe-docs`, `test-cards`…).
+
+**Guías oficiales del plugin (`stripe-best-practices`: billing y security) frente a este diseño:**
+
+| Recomendación de Stripe | Diseño de la Fase A | Ajuste |
+|---|---|---|
+| Suscripciones con Billing APIs + Checkout Sessions (`mode: subscription`); autogestión con Customer Portal | Igual | — |
+| No hacer renovaciones propias con PaymentIntents | Igual: no se reutiliza el motor antiguo | — |
+| El webhook de `customer.subscription.*`, `invoice.paid` e `invoice.payment_failed` es obligatorio | Igual (§5 y §6) | — |
+| Entregar en el handler de `checkout.session.completed` y `async_payment_succeeded`, condicionado a `payment_status` | Igual; la página de estado solo desencadena una relectura idempotente | — |
+| Nunca enviar `payment_method_types` | Igual (eliminado en endive) | — |
+| **Un Product por plan.** Mensual y anual como dos Prices del mismo Product; nunca planes distintos en un mismo Product | Implícito | **Se fija:** Products `Elephant Source Essential` y `Elephant Source Business`, cada uno con su Price mensual y anual |
+| Pasar `integration_identifier` en `checkout.sessions.create` (desde dahlia), con sufijo de 8 letras aleatorias | No estaba | **Se añade** en la Fase B (`elephant-source-checkout-<8 letras>`) |
+| Instanciar `StripeClient`; no usar la clave global | — | **Se fija** para el código de la Fase B |
+| Claves restringidas, una por servicio, con mínimo privilegio | Igual (§5: dos claves) | — |
+| Políticas de acceso por IP en las claves | No estaba | Railway no tiene IP de salida fija sin una opción de red específica: **se deja como pendiente** y se documenta |
+| Lista de IP de Stripe en el endpoint del webhook (defensa en profundidad) | Opcional | **Se adopta** en la excepción de la pasarela del CRM (Fase C) |
+| Incluir Stripe Tax en la UE y no activar `automatic_tax` sin registro activo | Stripe Tax **no se activa** (decisión del propietario) | Se mantiene. Si se activa, antes hay que dar de alta el registro fiscal y verificarlo con un cálculo de prueba |
+| Consumo por uso: Metronome en integraciones nuevas | Fuera de alcance (los consumos de `subscription_usage` no se cobran) | Se tendrá en cuenta si se venden consumos |
+| `stripe sandbox create` desde la CLI | No se usa: el sandbox debe pertenecer a la cuenta de la entidad que facturará | — |
+
+**Discrepancia de versiones:** la guía del plugin cita la API `2026-08-26.dahlia` y el SDK de Node 22.6.0. La documentación oficial vigente (`docs.stripe.com/api/versioning`) y el paquete publicado en npm (`stripe` 23.0.0, `ApiVersion = '2026-09-30.endive'`) indican `endive`. **Se mantiene `2026-09-30.endive`**, comprobado en la fuente.
+
+## 15. Para empezar la Fase B necesito
 
 1. El visto bueno a este diseño, en especial al reparto de claves y permisos del §5.
 2. Que crees el **sandbox general** y las **claves 1 y 2** con los permisos exactos del §5, y las pongas directamente en Railway:
