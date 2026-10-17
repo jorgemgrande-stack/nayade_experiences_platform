@@ -68,6 +68,11 @@ import { TrialOnboardingService, type TrialNotifier } from "../trials/onboarding
 import { createPublicTrialRouter, createTrialAdminRouter } from "../trials/api";
 import { OrganizationError, OrganizationService, type OrganizationStore } from "../organization/service";
 import { CommercialOrchestrator } from "../orchestrator/service";
+import { createStripeRouter } from "../stripe/api";
+import { StripeCheckoutService, type CheckoutUrls } from "../stripe/checkout";
+import type { StripeConfig } from "../stripe/config";
+import type { StripeGateway } from "../stripe/gateway";
+import type { StripeStore } from "../stripe/store";
 import type { OrderStore } from "../orchestrator/store";
 import type { TestPaymentPort } from "../orchestrator/payments";
 import { createOrdersRouter, paymentsWebhookHandler } from "../orchestrator/api";
@@ -170,6 +175,11 @@ export interface ControlPlaneDeps {
    * pagos son SOLO de prueba (`payments`); sin ellos, los pedidos se confirman por aprobación administrativa.
    */
   orders?: { store: OrderStore; payments?: TestPaymentPort | null; graceDays?: number };
+  /**
+   * Stripe Billing, SOLO MODO PRUEBAS (server/stripe, CRM 0012). Rutas de operador en /stripe; Checkout
+   * solo con `checkoutEnabled` y URL de vuelta. Requiere `orders`.
+   */
+  stripe?: { config: StripeConfig; store: StripeStore; gateway: StripeGateway; urls: CheckoutUrls | null; checkoutEnabled: boolean };
   /**
    * Correo transaccional centralizado (server/mail, CRM 0011). `platform`: avisos de Elephant Source
    * (pedidos, alta asistida); webhook de Brevo autenticado por cabecera propia (`webhookToken`);
@@ -1017,6 +1027,14 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         now: d.subscriptions.now,
       });
       router.use("/orders", createOrdersRouter(orchestrator));
+      if (d.stripe) {
+        const st = d.stripe;
+        const stripeCatalog = catalogFromWebStore(d.web.store);
+        const checkout = st.checkoutEnabled && st.urls
+          ? new StripeCheckoutService({ store: st.store, gateway: st.gateway, orders: d.orders.store, crmStore: d.crm.store, catalog: stripeCatalog, urls: st.urls, now: d.subscriptions.now })
+          : null;
+        router.use("/stripe", createStripeRouter({ config: st.config, store: st.store, gateway: st.gateway, catalog: stripeCatalog, checkout, now: d.subscriptions.now }));
+      }
       // Webhook del proveedor de PRUEBAS: autenticado por firma (antes del montaje del router con tokens)
       if (d.orders.payments) app.post("/cp/v1/payments/test/webhook", paymentsWebhookHandler(orchestrator));
     }

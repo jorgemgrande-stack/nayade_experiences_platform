@@ -43,6 +43,10 @@ import { brevoDiagnostics, mailProviderFromEnv } from "../mail/providers";
 import { MysqlOrganizationStore } from "../organization/service";
 import { MysqlOrderStore } from "../orchestrator/store";
 import { testPaymentsFromEnv, type TestPaymentPort } from "../orchestrator/payments";
+import { describeStripeConfig, stripeConfigFromEnv } from "../stripe/config";
+import { stripeGateway } from "../stripe/gateway";
+import { MysqlStripeStore } from "../stripe/store";
+import { checkoutUrlsFromEnv } from "../stripe/checkout";
 import { MysqlCrmStore } from "../crm/mysqlStore";
 import { CrmService } from "../crm/service";
 import { createContractActivation } from "../crm/activation";
@@ -256,6 +260,18 @@ async function main() {
     console.log(JSON.stringify({ ctx: "Orders", enabled: ready, payments: { provider: payments.provider?.kind ?? null, mode: "test", autoCharge: false, ...(payments.reason ? { reason: payments.reason } : {}) }, ...(ready ? {} : { reason: "migration_0010_missing" }) }));
   }
 
+  // Stripe Billing: SOLO MODO PRUEBAS. Apagado sin CP_STRIPE_MODE=test; cualquier credencial live o
+  // configuración insegura impide arrancar (server/stripe/config.ts). Requiere pedidos y la migración 0012.
+  const stripeConfig = stripeConfigFromEnv(process.env);
+  let stripe: { config: NonNullable<typeof stripeConfig>; store: MysqlStripeStore; gateway: ReturnType<typeof stripeGateway>; urls: ReturnType<typeof checkoutUrlsFromEnv>; checkoutEnabled: boolean } | undefined;
+  if (stripeConfig) {
+    const urls = checkoutUrlsFromEnv(process.env);
+    const checkoutEnabled = process.env.CP_STRIPE_CHECKOUT_ENABLED === "1";
+    const ready = !!orders && !!crmPool && (await crmPool.query("SELECT 1 FROM stripe_prices LIMIT 0").then(() => true, () => false));
+    if (ready) stripe = { config: stripeConfig, store: new MysqlStripeStore(crmPool!), gateway: stripeGateway(stripeConfig), urls, checkoutEnabled };
+    console.log(JSON.stringify({ ctx: "Stripe", ...describeStripeConfig(stripeConfig), mounted: ready, checkout: ready && checkoutEnabled && !!urls, ...(ready ? {} : { reason: !orders ? "orders_not_enabled" : "migration_0012_missing" }) }));
+  }
+
   // API pública de captación de la web comercial: solo con CRM, orígenes explícitos y secreto propio
   const publicOrigins = (process.env.CP_PUBLIC_ORIGINS ?? "").split(",").map((x) => x.trim()).filter(Boolean);
   const publicSecret = process.env.CP_PUBLIC_FORM_SECRET ?? "";
@@ -297,6 +313,7 @@ async function main() {
     trials,
     organization,
     orders,
+    stripe,
     mail: {
       platform: platformMail.mailer,
       webhookToken: process.env.BREVO_WEBHOOK_TOKEN ?? null,
