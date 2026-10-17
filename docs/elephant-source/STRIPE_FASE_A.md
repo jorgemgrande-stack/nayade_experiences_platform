@@ -448,3 +448,99 @@ Las hace **una persona**, bajo demanda, en el sandbox:
 7. **Dejar para la Fase F:** el segundo sandbox «pruebas automáticas» y su clave.
 8. **No crear:** claves live, `CP_STRIPE_ADMIN_KEY` ni la clave secreta estándar (`sk_test_`) para ningún servicio.
 9. **Avisar al agente.** Con la clave ya puesta, comprobaré solo con lecturas que es de prueba, que pertenece al sandbox correcto y que tiene exactamente los permisos indicados: una llamada permitida y otra que debe dar 403. Antes de nada más, presentaré las escrituras del catálogo para su confirmación.
+
+## 17. Conexión con el MCP oficial y plan de `stripe_implementation_planner` (17/10/2026)
+
+**Todo en solo lectura.** No se ha creado, modificado ni borrado nada en Stripe. Las herramientas se usaron desde sesiones de Claude Code sin interfaz, autorizando únicamente las de lectura y planificación y bloqueando expresamente `stripe_api_write`, `manage_stripe_accounts`, `atlas_company_formation` y `send_stripe_feedback`.
+
+### 17.1 Conexión
+
+| Punto | Resultado |
+|---|---|
+| Servidor `plugin:stripe:stripe` (`https://mcp.stripe.com`) | ✔ Conectado (OAuth del propietario) |
+| Herramientas | 11: `list_available_accounts_or_orgs`, `stripe_api_search`, `stripe_api_details`, `stripe_api_read`, `stripe_api_write`, `search_stripe_documentation`, `stripe_implementation_planner`, `stripe_analytics`, `manage_stripe_accounts`, `atlas_company_formation` y `send_stripe_feedback` |
+| Cuentas accesibles | **Una sola:** `acct_1URULO5wMYhQ9O0d`, «Entorno de prueba de Iron Elephant Consulting», **`livemode: false`**. La conexión no da acceso a la cuenta real |
+| Datos de la cuenta (`GET /v1/accounts/{id}`) | ES, EUR, web `https://www.bigelephant.es`, tipo `standard`, `charges_enabled: false`, `payouts_enabled: false`, `details_submitted: false` |
+| Contenido | Vacía: 0 Products, 0 Prices, 0 configuraciones del Customer Portal, 0 webhook endpoints |
+| `GET /v1/account` | La operación no está expuesta por el MCP («Operation 'GetAccount' is not available»). No es un error de permisos |
+
+**Pendiente de confirmar por el propietario:** si `acct_1URULO5wMYhQ9O0d` es un **sandbox general** o el «test mode» de la cuenta. El test mode comparte identificador y ajustes con la cuenta real; un sandbox general tiene identificador propio. Se comprueba en el Dashboard: el identificador de la cuenta real (Settings → Account details) debe ser **distinto**. El nombre propio de la cuenta («Entorno de prueba de…») apunta a un sandbox general.
+
+### 17.2 Permisos reales de la conexión MCP
+
+- El MCP **expone escritura** (`stripe_api_write`). Su catálogo incluye, entre otras operaciones:
+  - crear Products, Prices, Customers, Checkout Sessions y Subscriptions;
+  - actualizar y cancelar Subscriptions;
+  - configurar el Customer Portal y crear sus sesiones;
+  - webhooks y destinos de eventos, Test Clocks, Stripe Tax y registros fiscales.
+- **No expone** `POST /v1/checkout/sessions/{id}/expire` ni las Quotes (`/v1/quotes`).
+- **Ninguna herramienta informa del alcance real de la autorización OAuth** (lectura frente a escritura por recurso). Que una operación aparezca en el catálogo no demuestra que esta conexión pueda ejecutarla. Solo se sabría intentándolo, y **no se ha intentado**.
+- **Medidas mientras tanto:**
+  - toda escritura por MCP se presenta antes con la lista exacta de operaciones y se ejecuta solo con confirmación expresa;
+  - el propietario puede revisar o revocar la autorización en el Dashboard (aplicaciones autorizadas o instaladas);
+  - la conexión MCP es una credencial de persona, no de servicio: no se usa desde Railway.
+
+### 17.3 Plan devuelto por `stripe_implementation_planner`
+
+Guía `iguide_61Vb1QHpL5cuXKO9F415wMYhQ9O0d`, aceptada. Ramas elegidas según nuestro contexto:
+
+| Árbol | Opción | Encaje con este diseño |
+|---|---|---|
+| Integración | **Checkout alojado por Stripe** (predeterminado), con redirección | Igual |
+| Precios | **Tarifa plana** (Essential, Business) | Igual |
+| Modelo de cobro | **Freemium** (acceso gratuito sin tarjeta y contratación después) | Igual: confirma no usar `trial_period_days` de Stripe, que supone tarjeta guardada y conversión automática |
+| Ciclo de vida | **Customer Portal** (predeterminado). Cancelación a final de periodo recomendada | Igual |
+| Impagos | **Smart Retries + correos automáticos + actualización automática de tarjetas** | Amplía el diseño (ver diferencias) |
+| Ventas B2B | **Quotes** de Stripe para Enterprise, con factura enviada (`send_invoice`) | Nuevo (ver diferencias) |
+| Impuestos | **Stripe Tax con recaudación** (es la opción para quien ya repercute IVA) | **Contrario a la decisión actual** de no activarlo |
+
+**Blueprints:**
+- **A. «Create a subscription with Hosted Checkout»:**
+  - Product y Price recurrente;
+  - Checkout en `mode=subscription`;
+  - webhooks `checkout.session.completed`, `invoice.paid` e `invoice.payment_failed`, este último enviando al cliente al Portal.
+- **B. «Set up Customer Portal integration»:**
+  - configuración del Portal con `invoice_history`;
+  - sesión del Portal con **`customer_account` (Accounts v2)**;
+  - webhooks `customer.subscription.updated`, `customer.subscription.deleted`, `payment_method.attached`, `payment_method.detached` y `v2.core.account[configuration.customer].updated`.
+
+### 17.4 Diferencias con este diseño y propuesta
+
+| # | Recomendación de Stripe | Diseño actual | Propuesta |
+|---|---|---|---|
+| 1 | Stripe Tax con recaudación | No se activa (decisión del propietario) | **Decisión fiscal pendiente (DF-4), sin activarlo.** Opciones: (a) Stripe Tax con registro en España y `automatic_tax`; (b) tipo fijo del 21 % con Tax Rates manuales y facturación fiscal fuera de Stripe. Los Prices con `tax_behavior: exclusive` valen para las dos. **No bloquea la Fase B en sandbox** |
+| 2 | Quotes de Stripe para Enterprise, con factura enviada | Propuesta comercial propia (CRM y orquestador), sin Checkout | Se mantienen la propuesta, el contrato y la aprobación en nuestro sistema. Al aceptarse, la suscripción de Stripe se crea en el servidor con `collection_method: send_invoice` (requiere `subscription_write`, Fase E). Las Quotes no están en el catálogo del MCP; se revisarán en la Fase E |
+| 3 | Customer Portal con `customer_account` (**Accounts v2**) | Un Customer v1 por empresa | **Se propone mantener Customer v1** en la Fase B: Checkout en modo suscripción y el Portal lo aceptan, y es el modelo de toda la documentación de Billing. Accounts v2 añade eventos v2 en un destino aparte. Se revisa antes de producción |
+| 4 | Billing mode `flexible` | Implícito (predeterminado desde clover) | **Se fija explícitamente** `subscription_data.billing_mode.type = "flexible"` al crear la sesión |
+| 5 | Correos de impago automáticos de Stripe y actualización de tarjetas | Solo Smart Retries | En sandbox Stripe no envía correos. **Decisión pendiente:** que los envíe Stripe o nuestra bandeja (Brevo). Para la beta, desactivados |
+| 6 | Portal limitado a los productos y precios declarados | Previsto | **Se fija:** la configuración del Portal permite solo Essential y Business, mensual y anual. Enterprise nunca aparece |
+| 7 | Eventos concretos de los blueprints | Lista del §5 más relectura del objeto | Se añade la tabla de eventos ↔ acciones (§17.5). `payment_method.attached` y `.detached` **no se suscriben** porque no guardamos métodos de pago. El evento v2 solo si se adopta Accounts v2 |
+| 8 | Valores por defecto del blueprint (USD, «Pro Plan», solo mensual) | EUR, dos planes, mensual y anual | Se ignoran los valores por defecto |
+| 9 | Lo que el blueprint omite (Customer por empresa, `lookup_key`, idempotencia, conciliación, procesamiento asíncrono) | Incluido | Se mantiene: no contradice el plan |
+| 10 | Managed Payments | No se usa | De acuerdo: Stripe pasaría a actuar como vendedor ante el cliente final, lo que no encaja con la facturación B2B propia |
+
+### 17.5 Eventos ↔ acciones del orquestador (siempre releyendo el objeto en Stripe)
+
+| Evento | Acción |
+|---|---|
+| `checkout.session.completed` (con `payment_status != unpaid`) / `async_payment_succeeded` | Relee la sesión y su Subscription; si está `active`, el pedido pasa de `contracted` a `confirmed` y sigue el circuito existente hasta `active` |
+| `checkout.session.expired` / `async_payment_failed` | La sesión queda `expired` y el pedido sigue en `contracted`; se puede abrir otra sesión |
+| `invoice.paid` | Relee la Subscription; si está `active`, mantiene o recupera el acceso (`payment_recovered`) y amplía las licencias hasta el fin del periodo |
+| `invoice.payment_failed` / `invoice.payment_action_required` | Pedido en `past_due` (licencias activas durante la gracia); aviso con enlace al Customer Portal (con `MAIL_MODE=off` no sale) |
+| `customer.subscription.updated` | Relee y aplica: cambio de plan o periodicidad → pedido de cambio y licencias; `cancel_at` → `cancel_scheduled`; `unpaid` → `suspended` y solo lectura |
+| `customer.subscription.deleted` | `cancelled` y licencias en solo lectura. Nunca se borran datos |
+| `customer.subscription.created`, `.paused` y `.resumed` | Solo actualizan la copia local (no se usa la pausa) |
+
+### 17.6 Siguientes pasos para iniciar la Fase B (sin ejecutar nada todavía)
+
+1. **Propietario:**
+   - confirmar que `acct_1URULO5wMYhQ9O0d` es un sandbox general, distinto del identificador de la cuenta real (§17.1);
+   - revisar en el Dashboard el alcance de la autorización del MCP (§17.2).
+2. **Decisiones:** Customer v1 frente a Accounts v2 (recomendado v1); quién envía los correos de impago; Stripe Tax o tipo fijo (DF-4; no bloquea el sandbox).
+3. **Autorizar la Fase B,** que incluye:
+   - (a) crear en el sandbox, **por MCP y con confirmación previa de la lista exacta**, 2 Products («Elephant Source Essential» y «Elephant Source Business») y 4 Prices en EUR con `tax_behavior: exclusive` y `lookup_key` `es:essential:monthly:eur:v<id>` (y equivalentes), con los importes aprobados del catálogo;
+   - (b) crear la configuración del Customer Portal limitada a esos precios;
+   - (c) crear la clave restringida de ejecución (§16.9) y ponerla en `controlplane`;
+   - (d) aplicar `0012` en el CRM de Railway;
+   - (e) desplegar la sincronización de catálogo en solo lectura y la creación de Checkout.
+4. **Sin cambios:** sin Stripe Tax, sin cobros reales, sin registro público y con `MAIL_MODE=off`.
