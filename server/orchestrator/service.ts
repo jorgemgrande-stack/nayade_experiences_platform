@@ -64,6 +64,8 @@ export interface OrchestratorDeps {
   capabilities: CapabilityStore;
   platform?: PlatformPort;
   trials?: TrialService;
+  /** ¿El cobro del pedido está revertido en Stripe (reembolso total o disputa perdida)? Entonces no se activa. */
+  coverageHeld?: (orderId: number) => Promise<boolean>;
   payments?: TestPaymentPort | null;
   graceDays?: number;
   now?: () => number;
@@ -251,6 +253,10 @@ export class CommercialOrchestrator {
     for (let guard = 0; guard < 12; guard++) {
       const o = await this.must(id);
       try {
+        // Un pago revertido en Stripe no da de alta ni activa nada (tampoco desde /review o /advance)
+        if ((o.state === "confirmed" || o.state === "subscribed" || o.state === "licensed") && this.d.coverageHeld && (await this.d.coverageHeld(o.id))) {
+          throw new OrderError("invalid_state", "El cobro de este pedido se revirtió en Stripe (reembolso o disputa): no se activa");
+        }
         switch (o.state) {
           case "requested":
             await this.stepQuote(o, actor);

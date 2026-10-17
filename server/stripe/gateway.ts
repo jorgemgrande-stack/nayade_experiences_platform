@@ -68,6 +68,8 @@ export interface GwInvoice {
   /** subscription_create (primera), subscription_cycle (renovación), subscription_update (cambio)… */
   billingReason: string | null;
   periodStart: number | null;
+  /** Antes de impuestos, descuentos aplicados en factura y saldo a favor del cliente. */
+  subtotal: number | null;
 }
 
 /** Evento de Stripe reducido a lo que usamos: el efecto siempre se calcula releyendo el objeto. */
@@ -116,6 +118,8 @@ export interface StripeGateway {
   customer(id: string): Promise<{ id: string; deleted: boolean } | null>;
   createCheckoutSession(input: CheckoutSessionInput, idempotencyKey: string): Promise<GwCheckoutSession>;
   checkoutSession(id: string): Promise<GwCheckoutSession | null>;
+  /** Sesiones recientes de un cliente (para recuperar las que no llegaron a registrarse). */
+  sessionsOfCustomer(customerId: string): Promise<GwCheckoutSession[]>;
   expireCheckoutSession(id: string): Promise<GwCheckoutSession>;
   subscription(id: string): Promise<GwSubscription | null>;
   createPortalSession(input: { customerId: string; returnUrl: string }): Promise<{ url: string }>;
@@ -207,6 +211,7 @@ export function toInvoice(i: Stripe.Invoice): GwInvoice {
     currency: (i.currency ?? "").toUpperCase(),
     billingReason: (i.billing_reason as string | null) ?? null,
     periodStart: typeof i.period_start === "number" ? i.period_start : null,
+    subtotal: typeof i.subtotal === "number" ? i.subtotal : null,
   };
 }
 
@@ -319,6 +324,13 @@ export function stripeGateway(config: StripeConfig, o: { timeoutMs?: number; max
         return toSession(await client.checkout.sessions.retrieve(id));
       } catch (e) {
         if (notFound(e)) return null;
+        wrapError(e);
+      }
+    },
+    async sessionsOfCustomer(customerId) {
+      try {
+        return (await client.checkout.sessions.list({ customer: customerId, limit: 100 })).data.map(toSession);
+      } catch (e) {
         wrapError(e);
       }
     },

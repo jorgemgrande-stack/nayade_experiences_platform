@@ -282,9 +282,18 @@ async function main() {
     const termsVersion = (process.env.CP_TERMS_VERSION ?? "").trim() || null;
     // Sin proxy de confianza los límites por IP del webhook serían comunes a todo el tráfico
     const trustProxyOk = process.env.NODE_ENV !== "production" || !!process.env.CP_TRUST_PROXY;
-    const ready = trustProxyOk && !!orders && !!crmPool && (await crmPool.query("SELECT 1 FROM stripe_prices LIMIT 0").then(() => true, () => false));
+    const migrated = trustProxyOk && !!orders && !!crmPool && (await crmPool.query("SELECT 1 FROM stripe_prices LIMIT 0").then(() => true, () => false));
+    // El prefijo del entorno no puede cambiar: los objetos ya creados en Stripe dejarían de reconocerse
+    let namespaceOk = true;
+    if (migrated) {
+      const st = new MysqlStripeStore(crmPool!);
+      const saved = await st.getState("namespace");
+      if (!saved) await st.setState("namespace", { namespace: stripeConfig.namespace }, Date.now());
+      else namespaceOk = saved.namespace === stripeConfig.namespace;
+    }
+    const ready = migrated && namespaceOk;
     if (ready) stripe = { config: stripeConfig, store: new MysqlStripeStore(crmPool!), gateway: stripeGateway(stripeConfig), urls, checkoutEnabled, verifyWebhook: stripeWebhookVerifier(stripeConfig), workerEnabled, publicStatus, selfService, termsVersion };
-    console.log(JSON.stringify({ ctx: "Stripe", ...describeStripeConfig(stripeConfig), mounted: ready, checkout: ready && checkoutEnabled && !!urls, worker: ready && workerEnabled, publicStatus: ready && publicStatus, selfService: ready && selfService, termsPublished: !!termsVersion, ...(ready ? {} : { reason: !trustProxyOk ? "trust_proxy_missing" : !orders ? "orders_not_enabled" : "migration_0012_missing" }) }));
+    console.log(JSON.stringify({ ctx: "Stripe", ...describeStripeConfig(stripeConfig), mounted: ready, checkout: ready && checkoutEnabled && !!urls, worker: ready && workerEnabled, publicStatus: ready && publicStatus, selfService: ready && selfService, termsPublished: !!termsVersion, ...(ready ? {} : { reason: !trustProxyOk ? "trust_proxy_missing" : !orders ? "orders_not_enabled" : !migrated ? "migration_0012_missing" : "namespace_changed" }) }));
   }
 
   // API pública de captación de la web comercial: solo con CRM, orígenes explícitos y secreto propio

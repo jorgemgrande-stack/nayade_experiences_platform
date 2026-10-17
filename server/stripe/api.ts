@@ -112,14 +112,16 @@ export function createStripeRouter(d: StripeRouterDeps): Router {
   r.get("/adjustments", requireScope("ops:read"), wrap(async (_req, res) => void res.json({ adjustments: await d.store.listAdjustments(200) })));
   r.post("/adjustments/:chargeId/resolve", requireScope("orders:write"), wrap(async (req, res) => {
     const chargeId = z.string().regex(/^(ch|py)_[A-Za-z0-9_]{8,240}$/).parse(req.params.chargeId);
-    const { reason } = z.object({ reason: z.string().trim().min(5).max(300) }).parse(req.body ?? {});
+    const { reason } = z.object({ reason: z.string().trim().min(5).max(200) }).parse(req.body ?? {});
     const a = await d.store.adjustment(chargeId);
     if (!a) return void res.status(404).json({ error: "not_found", message: "Cargo sin reembolsos ni disputas registrados" });
     if (!a.coverageLost || a.resolvedAt !== null) return void res.status(409).json({ error: "invalid_state", message: "Este cargo no tiene una retención vigente" });
-    await d.store.resolveHolds({ chargeId }, `${who(req)}: ${reason}`, now());
+    // Quién y por qué quedan en la propia retención (`resolution`) y en el log
+    if (!(await d.store.resolveHolds({ chargeId }, `${who(req).slice(0, 90)}: ${reason}`, now()))) return void res.status(409).json({ error: "invalid_state", message: "La retención ya se resolvió" });
     opsLog("warn", "Stripe", "hold_resolved", { chargeId, orderId: a.orderId, actor: who(req) });
-    const applied = d.processor && a.subscriptionId ? await d.processor.handleSubscription(a.subscriptionId) : null;
-    res.json({ resolved: true, applied });
+    // Si el pedido se está procesando ahora mismo, el estado se aplica en el siguiente evento o en la conciliación
+    const applied = d.processor && a.subscriptionId ? await d.processor.handleSubscription(a.subscriptionId).catch(() => null) : null;
+    res.json({ resolved: true, applied, pending: !applied });
   }));
   r.post("/reconcile", requireScope("orders:write"), wrap(async (req, res) => {
     if (!d.reconciler) return void res.status(409).json({ error: "unavailable", message: "Conciliación no disponible" });

@@ -3,7 +3,7 @@
  * la misma Idempotency-Key devuelve el mismo objeto, los Prices se buscan por lookup_key y las
  * sesiones se pueden caducar. Registra cada llamada para poder comprobar qué se envió.
  */
-import type { CheckoutSessionInput, GwCharge, GwCheckoutSession, GwEvent, GwInvoice, GwPrice, GwProduct, GwSubscription, StripeGateway } from "./gateway";
+import { StripeGatewayError, type CheckoutSessionInput, type GwCharge, type GwCheckoutSession, type GwEvent, type GwInvoice, type GwPrice, type GwProduct, type GwSubscription, type StripeGateway } from "./gateway";
 
 export class FakeStripeGateway implements StripeGateway {
   prices: GwPrice[] = [];
@@ -15,8 +15,10 @@ export class FakeStripeGateway implements StripeGateway {
   charges = new Map<string, GwCharge>();
   /** Reembolsos y disputas → su cargo. */
   chargeRefs = new Map<string, string>();
-  /** Si es un objeto, la próxima creación de sesión con esa clave devuelve esta sesión (respuesta repetida de Stripe). */
-  replay = new Map<string, string>();
+  /** Simula que la lista de sesiones del cliente aún no incluye una recién creada. */
+  hideSessions = false;
+  /** Parámetros enviados con cada clave: como Stripe, otra petición con la misma clave y otros parámetros falla. */
+  private idemParams = new Map<string, string>();
   /** Eventos que «emite» Stripe (para la conciliación); el más reciente al principio, como la API. */
   events: GwEvent[] = [];
   /** Si es true, cada llamada falla como una caída de Stripe (error de red reintentable). */
@@ -57,8 +59,12 @@ export class FakeStripeGateway implements StripeGateway {
   }
   async createCheckoutSession(input: CheckoutSessionInput, key: string) {
     this.calls.push({ op: "checkout.sessions.create", key, input });
-    const prev = this.idem.get(`cs:${key}`) ?? this.replay.get(key);
-    if (prev) return this.view(prev);
+    const prev = this.idem.get(`cs:${key}`);
+    if (prev) {
+      if (this.idemParams.get(key) !== JSON.stringify(input)) throw new StripeGatewayError("idempotency_error", "Stripe respondió 400 (idempotency_error)", false);
+      return this.view(prev);
+    }
+    this.idemParams.set(key, JSON.stringify(input));
     const id = this.next("cs");
     this.sessions.set(id, { id, status: "open", paymentStatus: "unpaid", url: `https://checkout.stripe.test/c/pay/${id}`, customerId: input.customerId, subscriptionId: null, clientReferenceId: input.clientReferenceId, metadata: { ...input.metadata }, expiresAt: input.expiresAt, input });
     this.idem.set(`cs:${key}`, id);
@@ -66,6 +72,11 @@ export class FakeStripeGateway implements StripeGateway {
   }
   async checkoutSession(id: string) {
     return this.sessions.has(id) ? this.view(id) : null;
+  }
+  async sessionsOfCustomer(customerId: string) {
+    this.calls.push({ op: "checkout.sessions.list", input: customerId });
+    if (this.hideSessions) return [];
+    return Array.from(this.sessions.keys()).filter((id) => this.sessions.get(id)!.customerId === customerId).reverse().map((id) => this.view(id));
   }
   async expireCheckoutSession(id: string) {
     this.calls.push({ op: "checkout.sessions.expire", input: id });
@@ -143,7 +154,7 @@ export class FakeStripeGateway implements StripeGateway {
   /** Nueva factura de la suscripción (renovación, cambio…) y la deja como última. */
   addInvoice(subId: string, customerId: string, reason: string, status: GwInvoice["status"], amount: number) {
     const id = this.next("in");
-    this.invoices.set(id, { id, status, subscriptionId: subId, customerId, amountPaid: status === "paid" ? amount : 0, currency: "EUR", billingReason: reason, periodStart: 1_800_000_000 + this.seq });
+    this.invoices.set(id, { id, status, subscriptionId: subId, customerId, amountPaid: status === "paid" ? amount : 0, currency: "EUR", billingReason: reason, periodStart: 1_800_000_000 + this.seq, subtotal: amount });
     const sub = this.subscriptions.get(subId);
     if (sub) this.subscriptions.set(subId, { ...sub, latestInvoiceId: id });
     return id;

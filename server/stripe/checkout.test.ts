@@ -201,31 +201,47 @@ describe("Checkout de un pedido", () => {
   });
 
   // ── Regresiones B2 y B9 ──
+  /** Simula una caída entre crear la sesión en Stripe y registrarla: Stripe la tiene, la BD no. */
   const orphan = async () => {
-    // Sesión creada en Stripe con la clave del primer intento que nunca llegó a registrarse (caída)
-    const s = await gw.createCheckoutSession({ customerId: "cus_x", priceId: "price_x", clientReferenceId: "es-order-100", metadata: { es_order_id: "100" }, successUrl: URLS.success, cancelUrl: URLS.cancel, expiresAt: Math.floor((clock + SESSION_TTL_MS) / 1000), integrationIdentifier: INTEGRATION_IDENTIFIER }, "orphan");
-    gw.replay.set("es-local-checkout-100-1", s.id);
-    return s.id;
+    const first = await svc.start(100, "a");
+    store.sessions.delete(first.sessionId);
+    return first.sessionId;
   };
 
-  it("B2: Stripe repite una sesión huérfana ya caducada → se registra cerrada y se abre otra con la clave siguiente", async () => {
+  it("B2: una sesión huérfana caducada se adopta (cerrada) y se abre otra con una clave nueva", async () => {
     const lost = await orphan();
-    clock += SESSION_TTL_MS + 60_000; // la huérfana ya no sirve
+    clock += SESSION_TTL_MS + 60_000;
     const s = await svc.start(100, "a");
     expect(s.sessionId).not.toBe(lost);
-    expect(gw.calls.filter((x) => x.op === "checkout.sessions.create").map((x) => x.key)).toEqual(["orphan", "es-local-checkout-100-1", "es-local-checkout-100-2"]);
-    expect(await store.session(lost)).toMatchObject({ status: "expired", idempotencyKey: "es-local-checkout-100-1" });
+    expect(await store.session(lost)).toMatchObject({ status: "expired", idempotencyKey: `orphan:${lost}` });
     expect(gw.sessions.get(lost)!.status).toBe("expired");
+    expect(gw.calls.filter((x) => x.op === "checkout.sessions.create").map((x) => x.key)).toEqual(["es-local-checkout-100-1", "es-local-checkout-100-2"]);
     expect((await store.openSession(100))?.stripeSessionId).toBe(s.sessionId);
   });
 
-  it("B2: la huérfana repetida estaba PAGADA → queda registrada como completada y no se abre otra", async () => {
+  it("B2: la huérfana estaba PAGADA → queda registrada como completada y no se abre otra", async () => {
     const lost = await orphan();
     gw.completeSession(lost);
     await expect(svc.start(100, "a")).rejects.toMatchObject({ code: "invalid_state" });
     expect((await store.session(lost))?.status).toBe("complete");
     expect(await store.hasCompletedSession(100)).toBe(true);
-    expect(gw.calls.filter((x) => x.op === "checkout.sessions.create")).toHaveLength(2);
+    expect(gw.calls.filter((x) => x.op === "checkout.sessions.create")).toHaveLength(1);
+  });
+
+  it("B2: si Stripe aún no lista la huérfana, la clave usada da idempotency_error y se pasa a la siguiente", async () => {
+    await orphan();
+    gw.hideSessions = true;
+    clock += 60_000; // otros parámetros (caducidad) con la misma clave → Stripe la rechaza
+    const s = await svc.start(100, "a");
+    expect(gw.calls.filter((x) => x.op === "checkout.sessions.create").map((x) => x.key)).toEqual(["es-local-checkout-100-1", "es-local-checkout-100-1", "es-local-checkout-100-2"]);
+    expect((await store.openSession(100))?.stripeSessionId).toBe(s.sessionId);
+  });
+
+  it("importes: si el Price de Stripe no es el neto del presupuesto (catálogo sin sincronizar), no se abre Checkout", async () => {
+    const link = (await store.listPrices()).find((p) => p.webPriceId === P.essM)!;
+    gw.prices = gw.prices.map((p) => (p.id === link.stripePriceId ? { ...p, unitAmount: 2500 } : p));
+    await expect(svc.start(100, "a")).rejects.toMatchObject({ code: "conflict" });
+    expect(gw.calls.filter((x) => x.op === "checkout.sessions.create")).toHaveLength(0);
   });
 
   it("B9: con el prefijo del entorno en claves y metadatos, dos entornos no comparten objetos", async () => {

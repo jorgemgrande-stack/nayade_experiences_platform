@@ -1062,6 +1062,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         trials: d.trials ? new TrialService({ store: d.trials.store, subscriptions: d.subscriptions.store, now: d.subscriptions.now, limits: d.trials.limits, blockedDomains: d.trials.blockedDomains }) : undefined,
         payments: d.orders.payments ?? null,
         graceDays: d.orders.graceDays,
+        coverageHeld: d.stripe ? async (orderId: number) => (await d.stripe!.store.activeHolds(orderId)).length > 0 : undefined,
         now: d.subscriptions.now,
       });
       router.use("/orders", createOrdersRouter(orchestrator));

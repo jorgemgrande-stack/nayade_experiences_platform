@@ -22,7 +22,7 @@ import type { CrmStore } from "../crm/store";
 import type { OrderStore } from "../orchestrator/store";
 import type { CatalogPort } from "../subscriptions/ports";
 import { SELF_SERVICE_PLANS, desiredCatalog, type SelfServicePlan } from "./catalog";
-import type { StripeGateway } from "./gateway";
+import { StripeGatewayError, type StripeGateway } from "./gateway";
 import { StripeStoreError, type StripeStore } from "./store";
 
 /** Etiqueta de Stripe para seguir este flujo en el Dashboard (sufijo de 8 letras, recomendación de Stripe). */
@@ -138,10 +138,13 @@ export class StripeCheckoutService {
     if (!link) throw new StripeCheckoutError("unavailable", "El catálogo de Stripe no está sincronizado para este precio");
     // Presupuesto y Stripe nunca muestran importes distintos: el neto del presupuesto es el precio de Stripe
     if (!o.quote) throw new StripeCheckoutError("invalid_state", "El pedido no tiene presupuesto");
-    if (o.quote.currency.toUpperCase() !== desired.currency.toUpperCase() || o.quote.contractAmountCents !== desired.amountCents) {
-      throw new StripeCheckoutError("conflict", `El importe del presupuesto (${o.quote.contractAmountCents} ${o.quote.currency}, sin IVA) no coincide con el precio de Stripe (${desired.amountCents} ${desired.currency})`);
+    // Se compara con el Price REAL de Stripe (lo que se cobrará), no solo con el catálogo web
+    const live = (await this.d.gateway.pricesByLookupKeys([link.lookupKey])).find((p) => p.id === link.stripePriceId);
+    const quoteCur = o.quote.currency.toUpperCase();
+    if (!live || !live.active || live.unitAmount !== o.quote.contractAmountCents || live.currency.toUpperCase() !== quoteCur || desired.amountCents !== o.quote.contractAmountCents) {
+      throw new StripeCheckoutError("conflict", `El importe del presupuesto (${o.quote.contractAmountCents} ${quoteCur}, sin IVA) no coincide con el precio de Stripe (${live?.unitAmount ?? "?"} ${live?.currency ?? ""})`);
     }
-    const charge = { amountCents: desired.amountCents, currency: desired.currency.toUpperCase(), taxTreatment: TEST_TAX_TREATMENT } as const;
+    const charge = { amountCents: live.unitAmount, currency: quoteCur, taxTreatment: TEST_TAX_TREATMENT } as const;
 
     const company = await this.d.crmStore.get("companies", o.companyId);
     if (!company) throw new StripeCheckoutError("not_found", "Empresa no encontrada");
@@ -149,6 +152,7 @@ export class StripeCheckoutService {
     const customerId = await this.ensureCustomer(o.companyId, (company as { name: string }).name, tenantId);
 
     const now = this.now();
+    await this.adoptOrphans(orderId, customerId, link.stripePriceId, now);
     if (await this.d.store.hasCompletedSession(orderId)) throw new StripeCheckoutError("invalid_state", "El pago de este pedido ya se completó en Stripe; falta su confirmación (webhook)");
     const open = await this.d.store.openSession(orderId);
     if (open) {
@@ -171,26 +175,36 @@ export class StripeCheckoutService {
     let session: Awaited<ReturnType<StripeGateway["createCheckoutSession"]>> | null = null;
     for (let attempt = 0; attempt < MAX_KEY_ATTEMPTS; attempt++, n++) {
       idempotencyKey = `es-${this.ns}-checkout-${orderId}-${n}`;
-      const s = await this.d.gateway.createCheckoutSession(
-        {
-          customerId,
-          priceId: link.stripePriceId,
-          clientReferenceId: `es-order-${orderId}`,
-          metadata,
-          successUrl: `${this.d.urls.success}?session_id={CHECKOUT_SESSION_ID}`,
-          cancelUrl: this.d.urls.cancel,
-          expiresAt: Math.floor((now + SESSION_TTL_MS) / 1000),
-          integrationIdentifier: INTEGRATION_IDENTIFIER,
-          notice: TEST_TAX_NOTICE,
-        },
-        idempotencyKey,
-      );
+      let s: Awaited<ReturnType<StripeGateway["createCheckoutSession"]>>;
+      try {
+        s = await this.d.gateway.createCheckoutSession(
+          {
+            customerId,
+            priceId: link.stripePriceId,
+            clientReferenceId: `es-order-${orderId}`,
+            metadata,
+            successUrl: `${this.d.urls.success}?session_id={CHECKOUT_SESSION_ID}`,
+            cancelUrl: this.d.urls.cancel,
+            expiresAt: Math.floor((now + SESSION_TTL_MS) / 1000),
+            integrationIdentifier: INTEGRATION_IDENTIFIER,
+            notice: TEST_TAX_NOTICE,
+          },
+          idempotencyKey,
+        );
+      } catch (e) {
+        // Clave ya usada con otros parámetros (una sesión que no llegó a registrarse): se usa la siguiente
+        if (e instanceof StripeGatewayError && e.code === "idempotency_error") {
+          opsLog("warn", "StripeCheckout", "idempotency_key_skipped", { orderId, attempt: n });
+          continue;
+        }
+        throw e;
+      }
       if (s.status === "open" && s.expiresAt * 1000 > now + REUSE_MARGIN_MS) {
         session = s;
         break;
       }
-      // Respuesta repetida de una sesión huérfana (B2): se cierra si sigue abierta y queda registrada
-      const closed = s.status === "open" ? await this.d.gateway.expireCheckoutSession(s.id) : s;
+      // Respuesta repetida de una sesión huérfana (B2): Stripe repite la respuesta ORIGINAL, así que se relee
+      const closed = await this.closeOrphan(s.id);
       const status = closed.status === "complete" ? "complete" : "expired";
       await this.d.store
         .insertSession({ orderId, stripeSessionId: s.id, idempotencyKey, priceIds: [link.stripePriceId], status, paymentStatus: closed.paymentStatus, expiresAt: s.expiresAt * 1000, createdAt: now, completedAt: status === "complete" ? now : null })
@@ -216,6 +230,36 @@ export class StripeCheckoutService {
     }
     opsLog("info", "StripeCheckout", "session_created", { orderId, sessionId: session.id, actor });
     return { orderId, sessionId: session.id, url: session.url, expiresAt: session.expiresAt * 1000, reused: false, ...charge };
+  }
+
+  /**
+   * B2: sesiones de ESTE pedido y entorno que existen en Stripe pero no constan aquí (caída entre crearlas y
+   * guardarlas). Se cierran si siguen abiertas y se registran; una pagada queda completada.
+   */
+  private async adoptOrphans(orderId: number, customerId: string, priceId: string, now: number) {
+    for (const s of await this.d.gateway.sessionsOfCustomer(customerId)) {
+      if (s.metadata.es_order_id !== String(orderId) || s.metadata.es_env !== this.ns || (await this.d.store.session(s.id))) continue;
+      const closed = await this.closeOrphan(s.id);
+      const status = closed.status === "complete" ? "complete" : "expired";
+      await this.d.store
+        .insertSession({ orderId, stripeSessionId: s.id, idempotencyKey: `orphan:${s.id}`.slice(0, 80), priceIds: [priceId], status, paymentStatus: closed.paymentStatus, expiresAt: s.expiresAt * 1000, createdAt: now, completedAt: status === "complete" ? now : null })
+        .catch((e) => {
+          if (!(e instanceof StripeStoreError)) throw e;
+        });
+      opsLog("warn", "StripeCheckout", "orphan_session_recovered", { orderId, sessionId: s.id, status });
+    }
+  }
+
+  /** Relee la sesión y la cierra si sigue abierta (si se pagó justo ahora, la relectura lo dice). */
+  private async closeOrphan(id: string) {
+    const cur = await this.d.gateway.checkoutSession(id);
+    if (!cur) throw new StripeCheckoutError("not_found", "La sesión ya no existe en Stripe");
+    if (cur.status !== "open") return cur;
+    try {
+      return await this.d.gateway.expireCheckoutSession(id);
+    } catch {
+      return (await this.d.gateway.checkoutSession(id)) ?? cur;
+    }
   }
 
   /** Relee la sesión y su suscripción. Comprueba que son de este pedido y empresa. No confirma nada. */

@@ -102,6 +102,7 @@ describe.skipIf(!URL_)("Stripe Billing de punta a punta con MySQL real", () => {
       catalog, quote: async (r) => quote(await site(), r),
       licensing: new LicensingService({ capabilities: caps, subscriptions: subsStore, crm: crmPort, catalog: site, now: () => clock }),
       capabilities: caps, platform, payments: null, now: () => clock,
+      coverageHeld: async (id) => (await stripeStore.activeHolds(id)).length > 0,
     });
     // Catálogo de Stripe tal como lo crearía una persona (plan de escrituras) y enlazado (solo lectura)
     stripeStore = new MysqlStripeStore(pool);
@@ -507,6 +508,45 @@ describe.skipIf(!URL_)("Stripe Billing de punta a punta con MySQL real", () => {
     clock += RETRY_BACKOFF_MS[0] + 1000;
     await processor.processDue(50);
     expect((await svc.must(o.id)).state).not.toBe("active");
+    // Ni la revisión explícita ni un avance manual lo activan (revisión de seguridad, MEDIO-1)
+    await svc.review(actor);
+    expect((await svc.advance(o.id, actor)).error).toMatch(/revirtió/);
+    expect((await svc.must(o.id)).state).not.toBe("active");
+  });
+
+  it("revisión ALTO-1: tras un reembolso total, la factura SIGUIENTE aún sin pagar no levanta la retención", async () => {
+    const o = await contracted(await company("Factura Siguiente SL"));
+    const { subId } = await paid(o.id);
+    const ch = await chargeOf(subId);
+    gw.refund(ch);
+    await deliver(gw.emit("charge.refunded", "charge", ch));
+    expect((await svc.must(o.id)).state).toBe("suspended");
+    // Stripe crea la factura del periodo siguiente (abierta) y la suscripción sigue «active»
+    const next = gw.addInvoice(subId, (await gw.subscription(subId))!.customerId, "subscription_cycle", "open", 2900);
+    await subChange(subId, {});
+    expect((await svc.must(o.id)).state).toBe("suspended");
+    // Un cobro de prorrateo (cambio) tampoco es un periodo nuevo pagado
+    gw.addInvoice(subId, (await gw.subscription(subId))!.customerId, "subscription_update", "paid", 400);
+    await subChange(subId, {});
+    expect((await svc.must(o.id)).state).toBe("suspended");
+    // Pagada la del periodo siguiente, vuelve el acceso
+    gw.invoices.set(next, { ...gw.invoices.get(next)!, status: "paid", amountPaid: 2900 });
+    gw.updateSubscription(subId, { latestInvoiceId: next });
+    await deliver(gw.emit("invoice.paid", "invoice", next));
+    expect((await svc.must(o.id)).state).toBe("active");
+  });
+
+  it("revisión ALTO-2: una disputa perdida es definitiva; una lectura posterior distinta no levanta la retención", async () => {
+    const o = await contracted(await company("Disputa Definitiva SL"));
+    const { subId } = await paid(o.id);
+    const ch = await chargeOf(subId);
+    const dp = gw.dispute(ch, "lost");
+    await deliver(gw.emit("charge.dispute.closed", "dispute", dp));
+    expect((await svc.must(o.id)).state).toBe("suspended");
+    gw.dispute(ch, "needs_response", dp); // lectura antigua o incoherente
+    await deliver(gw.emit("charge.dispute.updated", "dispute", dp));
+    expect((await svc.must(o.id)).state).toBe("suspended");
+    expect(await stripeStore.adjustment(ch)).toMatchObject({ disputeStatus: "lost", coverageLost: true, resolvedAt: null });
   });
 
   it("importes: un primer cobro distinto del neto del presupuesto (p. ej. con IVA) no confirma el pedido y alerta", async () => {

@@ -17,7 +17,8 @@ export const STRIPE_FAILURE_RULES: Record<string, FailureRule> = {
   "stripe.event_failed": once("Stripe: un evento agotó sus reintentos sin aplicarse"),
   "stripe.catalog_conflict": once("Stripe: el catálogo enlazado no coincide con el de Stripe"),
   // Cobertura económica: reembolsos y disputas
-  "stripe.coverage_lost": once("Stripe: cobro revertido (reembolso total o disputa perdida); pedido suspendido"),
+  "stripe.coverage_lost": once("Stripe: cobro revertido (reembolso total o disputa perdida): revisar el pedido"),
+  "stripe.namespace_mismatch": once("Stripe: objetos de un pedido con otro prefijo de entorno (se ignoran): revisar CP_STRIPE_NAMESPACE"),
   "stripe.dispute_open": once("Stripe: disputa abierta en el cobro de una suscripción", "warning"),
   "stripe.partial_refund": once("Stripe: reembolso parcial en el cobro de una suscripción (revisar)", "warning"),
   "orders.stripe_contract_cancelled": once("Contrato cancelado en el CRM con la suscripción viva en Stripe", "warning"),
