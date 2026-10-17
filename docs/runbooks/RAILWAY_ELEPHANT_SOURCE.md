@@ -77,7 +77,7 @@ Cada servicio fija su `dockerfilePath` y su healthcheck en la configuración de 
 - **Servicio.** `backup-job`, un cron `*/15 * * * *` que ejecuta `node dist-cp/backup-job.js run`. Copia cada empresa, el registro y el CRM comercial, cifrados con AES-256-GCM (clave `bk1`), al bucket del proyecto `elephant-source-backups` (región `ams`), con retención 30/12/12.
 - **Inventario.** `GET /cp/v1/backups`. Alerta `backup.stale` si una copia tiene más de 2 h.
 - **La clave de cifrado también está en la carpeta privada.** Sin ella, las copias no se pueden descifrar.
-- **Pendiente.** El bucket está **dentro** de Railway: no protege ante la pérdida del proyecto o de la cuenta. Para tener una copia fuera hace falta un proveedor externo, lo que requiere autorización y tiene coste.
+- **Pendiente.** El bucket está **dentro** de Railway: no protege ante la pérdida del proyecto o de la cuenta. El código ya admite un destino externo independiente (`BACKUP_SECONDARY_*`, `BACKUPS_Y_RECUPERACION.md` sección 16) y la reconstrucción total (`RECUPERACION_TOTAL.md`), pero falta elegir y contratar el proveedor, lo que requiere autorización y tiene coste. Antes de configurarlo hay que aplicar la migración `0011` del registro.
 
 ## 6. Añadir una empresa de prueba (beta privada)
 
