@@ -3,7 +3,9 @@
  *
  *   pending_verification ─verify→ verified ─request_provisioning→ provisioning ─provisioned→ active
  *                                     ↑                  └─provisioning_failed─┘
- *   active ─mark_expired→ expired   (solo si ya venció; nada lo hace solo: lo decide una persona)
+ *   pending_verification ─resend_verification→ pending_verification (enlace nuevo; el anterior deja de valer)
+ *   pending_verification ─expire_verification→ cancelled (sin verificar y con el enlace caducado: libera el correo)
+ *   active ─mark_expired→ expired   (solo si ya venció: una persona o la tarea programada, apagada por defecto)
  *   active|expired ─approve_extension→ active
  *   active|expired ─suspend→ suspended ─reactivate→ active
  *   active|expired|suspended ─convert→ converted (suscripción)
@@ -18,6 +20,8 @@ export const TERMINAL: ReadonlySet<TrialState> = new Set<TrialState>(["converted
 
 export type TrialAction =
   | "verify"
+  | "resend_verification"
+  | "expire_verification"
   | "request_provisioning"
   | "provisioned"
   | "provisioning_failed"
@@ -34,6 +38,8 @@ const NON_TERMINAL = TRIAL_STATES.filter((s) => !TERMINAL.has(s));
 
 export const TRANSITIONS: Record<TrialAction, { from: readonly TrialState[]; to: TrialState | "same" }> = {
   verify: { from: ["pending_verification"], to: "verified" },
+  resend_verification: { from: ["pending_verification"], to: "same" },
+  expire_verification: { from: ["pending_verification"], to: "cancelled" },
   request_provisioning: { from: ["verified"], to: "provisioning" },
   provisioned: { from: ["provisioning"], to: "active" },
   provisioning_failed: { from: ["provisioning"], to: "verified" },

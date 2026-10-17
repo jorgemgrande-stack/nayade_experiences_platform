@@ -32,7 +32,8 @@ export interface TrialRequest {
 export interface TrialEvent {
   id: number;
   trialId: number;
-  action: TrialAction | "registered";
+  /** `notice_queued`: aviso encolado (anotación sin cambio de estado ni de versión). */
+  action: TrialAction | "registered" | "notice_queued";
   fromState: TrialState | null;
   toState: TrialState;
   version: number;
@@ -54,13 +55,34 @@ export interface TrialStore {
   insert(t: Omit<TrialRequest, "id" | "version" | "updatedAt">, actor: string): Promise<TrialRequest>;
   byIdempotencyKey(key: string): Promise<TrialRequest | null>;
   openByEmail(email: string): Promise<TrialRequest | null>;
+  /**
+   * Prueba abierta del mismo buzón con otro alias: `base@dominio` o `base+loquesea@dominio`
+   * (`base` ya sin la etiqueta +). Evita abrir varias pruebas a la vez con alias +etiqueta.
+   */
+  openByAlias(base: string, domain: string): Promise<TrialRequest | null>;
   get(id: number): Promise<TrialRequest | null>;
   /** Cambio de estado con versión esperada y evento, todo o nada. */
   transition(id: number, expectedVersion: number, patch: TrialPatch, event: { action: TrialAction; fromState: TrialState; detail: string | null; actor: string; at: number }): Promise<TrialRequest>;
   count(f: { state?: TrialState; emailDomain?: string; ipHash?: string; since?: number }): Promise<number>;
-  list(f: { states?: TrialState[]; endsBefore?: number; extensionRequested?: boolean; limit?: number }): Promise<TrialRequest[]>;
+  list(f: TrialListFilter): Promise<TrialRequest[]>;
   events(trialId: number): Promise<TrialEvent[]>;
+  /** Anotación de auditoría SIN cambio de estado ni de versión (p. ej. aviso encolado). */
+  note(trialId: number, e: { action: "notice_queued"; detail: string; actor: string; at: number }): Promise<void>;
 }
+
+export interface TrialListFilter {
+  states?: TrialState[];
+  endsBefore?: number;
+  extensionRequested?: boolean;
+  /** Enlace de verificación caducado antes de este instante. */
+  verificationExpiredBefore?: number;
+  /** Creadas antes de este instante. */
+  createdBefore?: number;
+  limit?: number;
+}
+
+/** Patrón LIKE literal (escapa %, _ y el carácter de escape `!`). */
+const likeLiteral = (s: string) => s.replace(/[!%_]/g, (c) => `!${c}`);
 
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v));
 
@@ -84,6 +106,17 @@ export class MemoryTrialStore implements TrialStore {
     const r = Array.from(this.rows.values()).find((x) => x.email === email && !["converted", "rejected", "cancelled"].includes(x.state));
     return r ? clone(r) : null;
   }
+  async openByAlias(base: string, domain: string) {
+    const r = Array.from(this.rows.values()).find(
+      (x) => !["converted", "rejected", "cancelled"].includes(x.state) && (x.email === `${base}@${domain}` || (x.email.startsWith(`${base}+`) && x.email.endsWith(`@${domain}`))),
+    );
+    return r ? clone(r) : null;
+  }
+  async note(trialId: number, e: { action: "notice_queued"; detail: string; actor: string; at: number }) {
+    const cur = this.rows.get(trialId);
+    if (!cur) return;
+    this.evs.push({ id: ++this.seq, trialId, action: e.action, fromState: cur.state, toState: cur.state, version: cur.version, detail: e.detail, actor: e.actor, createdAt: e.at });
+  }
   async get(id: number) {
     const r = this.rows.get(id);
     return r ? clone(r) : null;
@@ -102,13 +135,15 @@ export class MemoryTrialStore implements TrialStore {
       (r) => (!f.state || r.state === f.state) && (!f.emailDomain || r.emailDomain === f.emailDomain) && (!f.ipHash || r.ipHash === f.ipHash) && (f.since === undefined || r.createdAt >= f.since),
     ).length;
   }
-  async list(f: { states?: TrialState[]; endsBefore?: number; extensionRequested?: boolean; limit?: number }) {
+  async list(f: TrialListFilter) {
     return Array.from(this.rows.values())
       .filter(
         (r) =>
           (!f.states || f.states.includes(r.state)) &&
           (f.endsBefore === undefined || (r.endsAt !== null && r.endsAt <= f.endsBefore)) &&
-          (f.extensionRequested === undefined || (r.extensionRequestedAt !== null) === f.extensionRequested),
+          (f.extensionRequested === undefined || (r.extensionRequestedAt !== null) === f.extensionRequested) &&
+          (f.verificationExpiredBefore === undefined || (r.verificationExpiresAt !== null && r.verificationExpiresAt <= f.verificationExpiredBefore)) &&
+          (f.createdBefore === undefined || r.createdAt <= f.createdBefore),
       )
       .slice(0, f.limit ?? 200)
       .map(clone);
@@ -206,6 +241,20 @@ export class MysqlTrialStore implements TrialStore {
     const [r] = await this.pool.query<mysql.RowDataPacket[]>("SELECT * FROM trial_requests WHERE open_email = ?", [email]);
     return r[0] ? row(r[0]) : null;
   }
+  async openByAlias(base: string, domain: string) {
+    // Prefijo constante: usa el índice único de `open_email` (rango) y solo ve pruebas abiertas
+    const [r] = await this.pool.query<mysql.RowDataPacket[]>("SELECT * FROM trial_requests WHERE open_email = ? OR open_email LIKE ? ESCAPE '!' ORDER BY id LIMIT 1", [
+      `${base}@${domain}`,
+      `${likeLiteral(base)}+%@${likeLiteral(domain)}`,
+    ]);
+    return r[0] ? row(r[0]) : null;
+  }
+  async note(trialId: number, e: { action: "notice_queued"; detail: string; actor: string; at: number }) {
+    await this.pool.query(
+      "INSERT INTO trial_events (trial_id, action, from_state, to_state, version, detail, actor, created_at) SELECT id, ?, state, state, version, ?, ?, ? FROM trial_requests WHERE id = ?",
+      [e.action, e.detail.slice(0, 300), e.actor, e.at, trialId],
+    );
+  }
   async get(id: number) {
     const [r] = await this.pool.query<mysql.RowDataPacket[]>("SELECT * FROM trial_requests WHERE id = ?", [id]);
     return r[0] ? row(r[0]) : null;
@@ -245,12 +294,14 @@ export class MysqlTrialStore implements TrialStore {
     const [r] = await this.pool.query<mysql.RowDataPacket[]>(`SELECT COUNT(*) AS n FROM trial_requests${w.length ? ` WHERE ${w.join(" AND ")}` : ""}`, a);
     return Number(r[0].n);
   }
-  async list(f: { states?: TrialState[]; endsBefore?: number; extensionRequested?: boolean; limit?: number }) {
+  async list(f: TrialListFilter) {
     const w: string[] = [];
     const a: unknown[] = [];
     if (f.states?.length) (w.push(`state IN (${f.states.map(() => "?").join(",")})`), a.push(...f.states));
     if (f.endsBefore !== undefined) (w.push("ends_at IS NOT NULL AND ends_at <= ?"), a.push(f.endsBefore));
     if (f.extensionRequested !== undefined) w.push(f.extensionRequested ? "extension_requested_at IS NOT NULL" : "extension_requested_at IS NULL");
+    if (f.verificationExpiredBefore !== undefined) (w.push("verification_expires_at IS NOT NULL AND verification_expires_at <= ?"), a.push(f.verificationExpiredBefore));
+    if (f.createdBefore !== undefined) (w.push("created_at <= ?"), a.push(f.createdBefore));
     const [r] = await this.pool.query<mysql.RowDataPacket[]>(`SELECT * FROM trial_requests${w.length ? ` WHERE ${w.join(" AND ")}` : ""} ORDER BY id LIMIT ?`, [...a, Math.min(f.limit ?? 200, 1000)]);
     return r.map(row);
   }
