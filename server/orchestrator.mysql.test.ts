@@ -179,11 +179,16 @@ describe.skipIf(!URL_)("orquestador comercial con MySQL real", () => {
   });
 
   it("la migración 0010 se revierte y se vuelve a aplicar", async () => {
-    const m = loadMigrations(DIR).migrations.find((x) => x.id === "0010_commercial_orders")!;
+    const all = loadMigrations(DIR).migrations;
+    const m = all.find((x) => x.id === "0010_commercial_orders")!;
+    // Como el ejecutor (`down --steps`): las posteriores se revierten antes, en orden inverso
+    const later = all.filter((x) => x.number > m.number);
+    for (const l of [...later].reverse()) for (const s of splitStatements(l.down!)) await pool.query(s);
     for (const s of splitStatements(m.down!)) await pool.query(s);
     const [t] = await pool.query<mysql.RowDataPacket[]>("SHOW TABLES LIKE 'commercial%'");
     expect(t).toHaveLength(0);
     for (const s of splitStatements(m.up)) await pool.query(s);
+    for (const l of later) for (const s of splitStatements(l.up)) await pool.query(s);
     const [t2] = await pool.query<mysql.RowDataPacket[]>("SHOW TABLES LIKE 'commercial%'");
     expect(t2).toHaveLength(4);
   });
