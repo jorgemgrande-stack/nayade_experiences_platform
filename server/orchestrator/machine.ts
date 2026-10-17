@@ -13,6 +13,7 @@ export type OrderAction =
   | "suspend"
   | "cancel"
   | "cancelled"
+  | "reactivate"
   | "supersede"
   | "reject";
 
@@ -30,6 +31,8 @@ export const ORDER_TRANSITIONS: Record<OrderAction, { from: readonly OrderState[
   suspend: { from: ["past_due"], to: "suspended" },
   cancel: { from: LIVE, to: "cancel_scheduled" },
   cancelled: { from: ["cancel_scheduled"], to: "cancelled" },
+  // Deshacer una cancelación programada antes del fin del periodo (p. ej. desde el Customer Portal)
+  reactivate: { from: ["cancel_scheduled"], to: "active" },
   supersede: { from: [...LIVE, "cancel_scheduled"], to: "superseded" },
   reject: { from: ["requested", "quoted", "contracted"], to: "rejected" },
 };

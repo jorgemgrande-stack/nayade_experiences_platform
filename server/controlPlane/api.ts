@@ -68,6 +68,17 @@ import { TrialOnboardingService, type TrialNotifier } from "../trials/onboarding
 import { createPublicTrialRouter, createTrialAdminRouter } from "../trials/api";
 import { OrganizationError, OrganizationService, type OrganizationStore } from "../organization/service";
 import { CommercialOrchestrator } from "../orchestrator/service";
+import { createStripeRouter } from "../stripe/api";
+import { StripeEventProcessor } from "../stripe/events";
+import { StripeReconciler, startStripeWorker } from "../stripe/reconcile";
+import { stripeWebhookHandler } from "../stripe/webhook";
+import { SESSION_ID_RE, checkoutStatus } from "../stripe/status";
+import { SelfServiceCheckout, createSelfServiceRouter } from "../stripe/selfService";
+import type { GwEvent } from "../stripe/gateway";
+import { StripeCheckoutService, type CheckoutUrls } from "../stripe/checkout";
+import type { StripeConfig } from "../stripe/config";
+import type { StripeGateway } from "../stripe/gateway";
+import type { StripeStore } from "../stripe/store";
 import type { OrderStore } from "../orchestrator/store";
 import type { TestPaymentPort } from "../orchestrator/payments";
 import { createOrdersRouter, paymentsWebhookHandler } from "../orchestrator/api";
@@ -171,6 +182,27 @@ export interface ControlPlaneDeps {
    */
   orders?: { store: OrderStore; payments?: TestPaymentPort | null; graceDays?: number };
   /**
+   * Stripe Billing, SOLO MODO PRUEBAS (server/stripe, CRM 0012). Rutas de operador en /stripe; Checkout
+   * solo con `checkoutEnabled` y URL de vuelta. Requiere `orders`.
+   */
+  stripe?: {
+    config: StripeConfig;
+    store: StripeStore;
+    gateway: StripeGateway;
+    urls: CheckoutUrls | null;
+    checkoutEnabled: boolean;
+    /** Verificación oficial de la firma del webhook (cuerpo original). */
+    verifyWebhook: (rawBody: Buffer, signature: string) => GwEvent;
+    /** Tarea periódica (eventos pendientes y conciliación). Apagada salvo CP_STRIPE_WORKER_ENABLED=1. */
+    workerEnabled: boolean;
+    /** Estado público del alta tras Checkout (`/public/checkout/status`). Apagado salvo CP_PUBLIC_CHECKOUT_ENABLED=1. */
+    publicStatus: boolean;
+    /** Contratación por autoservicio (`/public/checkout/start`). Apagada salvo CP_PUBLIC_SELF_SERVICE_ENABLED=1. */
+    selfService: boolean;
+    /** Versión publicada de las condiciones de contratación (CP_TERMS_VERSION); sin ella el autoservicio no funciona. */
+    termsVersion: string | null;
+  };
+  /**
    * Correo transaccional centralizado (server/mail, CRM 0011). `platform`: avisos de Elephant Source
    * (pedidos, alta asistida); webhook de Brevo autenticado por cabecera propia (`webhookToken`);
    * `tenantLane`: bandejas de las empresas para aplicar sus eventos; `diagnostics`: consulta de la cuenta.
@@ -262,6 +294,18 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
     if (req.method === "OPTIONS") return void res.status(204).end();
     next();
   });
+  // Webhook de Stripe (modo pruebas): cuerpo ORIGINAL para la firma, por eso va ANTES de express.json.
+  // El procesador se conecta más abajo, junto al orquestador; hasta entonces los eventos solo se guardan.
+  let stripeKick: ((eventId: string) => void) | undefined;
+  if (d.stripe) {
+    const st = d.stripe;
+    app.post(
+      "/cp/v1/stripe/webhook",
+      rateLimit({ windowMs: 60_000, limit: 600, standardHeaders: true, legacyHeaders: false, keyGenerator: (req) => `ip:${ipKeyGenerator(req.ip ?? "")}` }),
+      express.raw({ type: "application/json", limit: "1mb" }),
+      wrap(stripeWebhookHandler({ verify: st.verifyWebhook, store: st.store, onRecorded: (id) => stripeKick?.(id) })),
+    );
+  }
   app.use(express.json({ limit: "256kb", verify: (req, _res, buf) => void ((req as any).rawBody = buf.toString("utf8")) }));
   app.use(rebindRequestContext);
 
@@ -361,6 +405,10 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
   // el router real se asigna más abajo, cuando existen suscripciones y licencias.
   let publicTrial: express.Router | null = null;
   router.use("/public/trial", (req, res, next) => (publicTrial ? publicTrial(req, res, next) : void res.status(404).json({ error: "not_found" })));
+  // Estado público del alta tras Stripe Checkout: reservado ANTES del router de captación; se asigna con
+  // el procesador de Stripe y solo con CP_PUBLIC_CHECKOUT_ENABLED=1
+  let publicCheckout: express.Router | null = null;
+  router.use("/public/checkout", (req, res, next) => (publicCheckout ? publicCheckout(req, res, next) : void res.status(404).json({ error: "not_found" })));
   if (webRequests && d.publicIntake) router.use("/public", createPublicIntakeRouter({ ...d.publicIntake, origins: publicOrigins, service: webRequests }));
   router.use(
     authenticate(
@@ -1017,6 +1065,40 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         now: d.subscriptions.now,
       });
       router.use("/orders", createOrdersRouter(orchestrator));
+      if (d.stripe) {
+        const st = d.stripe;
+        const stripeCatalog = catalogFromWebStore(d.web.store);
+        const checkout = st.checkoutEnabled && st.urls
+          ? new StripeCheckoutService({ store: st.store, gateway: st.gateway, orders: d.orders.store, crmStore: d.crm.store, catalog: stripeCatalog, urls: st.urls, now: d.subscriptions.now })
+          : null;
+        const processor = new StripeEventProcessor({ store: st.store, gateway: st.gateway, orders: d.orders.store, orchestrator, now: d.subscriptions.now });
+        const reconciler = new StripeReconciler({ store: st.store, gateway: st.gateway, processor, now: d.subscriptions.now });
+        // Tras guardar un evento del webhook se procesa enseguida (los fallos quedan para el reintento)
+        stripeKick = () => void processor.processDue(10).catch(() => undefined);
+        if (st.workerEnabled) startStripeWorker({ processor, reconciler });
+        const selfServiceOk = st.selfService && !!checkout && !!d.publicIntake && publicOrigins.size > 0;
+        if (st.publicStatus || selfServiceOk) {
+          const pc = express.Router();
+          if (selfServiceOk) {
+            const ss = new SelfServiceCheckout({ crm: d.crm.service, orders: d.orders.store, orchestrator, checkout: checkout!, catalog: stripeCatalog, ticketSecret: d.publicIntake!.secret, origins: publicOrigins, termsVersion: st.termsVersion, now: d.subscriptions.now });
+            pc.use(createSelfServiceRouter(ss, publicOrigins));
+          }
+          if (st.publicStatus) pc.get(
+            "/status",
+            rateLimit({ windowMs: 60_000, limit: 60, standardHeaders: true, legacyHeaders: false, keyGenerator: (req) => `ip:${ipKeyGenerator(req.ip ?? "")}` }),
+            wrap(async (req, res) => {
+              const sessionId = String(req.query.session_id ?? "");
+              res.setHeader("Cache-Control", "no-store");
+              if (!SESSION_ID_RE.test(sessionId)) return void res.status(400).json({ error: "invalid_session_id" });
+              const view = await checkoutStatus({ store: st.store, orders: d.orders!.store, processor, platformDomain: d.platformDomain ?? null }, sessionId);
+              if (!view) return void res.status(404).json({ error: "not_found" });
+              res.json(view);
+            }),
+          );
+          publicCheckout = pc;
+        }
+        router.use("/stripe", createStripeRouter({ config: st.config, store: st.store, gateway: st.gateway, catalog: stripeCatalog, checkout, processor, reconciler, now: d.subscriptions.now }));
+      }
       // Webhook del proveedor de PRUEBAS: autenticado por firma (antes del montaje del router con tokens)
       if (d.orders.payments) app.post("/cp/v1/payments/test/webhook", paymentsWebhookHandler(orchestrator));
     }

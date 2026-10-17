@@ -1,0 +1,276 @@
+import { describe, it, expect, beforeEach } from "vitest";
+import type { CatalogPort } from "../subscriptions/ports";
+import type { CommercialOrder } from "../orchestrator/types";
+import { StripeCatalogError, desiredCatalog, lookupKeyFor, planCatalogWrites, syncCatalog } from "./catalog";
+import { INTEGRATION_IDENTIFIER, SESSION_TTL_MS, StripeCheckoutError, StripeCheckoutService, checkoutUrlsFromEnv } from "./checkout";
+import { StripeConfigError } from "./config";
+import { toPrice, toSession, toSubscription } from "./gateway";
+import { MemoryStripeStore, StripeStoreError } from "./store";
+import { FakeStripeGateway } from "./testing";
+
+// ── Catálogo aprobado de prueba (ids de web_prices sintéticos) ─────────────────
+const P = { essM: 11, essY: 12, busM: 13, busY: 14, entM: 15, entY: 16 };
+const price = (id: number, key: string, kind: "monthly" | "yearly", amountCents: number, extra: Record<string, unknown> = {}) => ({
+  id, productKey: key, kind, amountCents, currency: "EUR", unit: null, taxRateBp: 2100, taxIncluded: false, status: "approved", ...extra,
+});
+const product = (key: string, prices: unknown[]) => ({ key, name: key, family: "core_plan", technicalStatus: "partial", commercialStatus: "on_request", activationKind: "none", activationRef: null, dependencies: [], compatibleWith: [], bundleOf: [], prices });
+const catalogOf = (over: { essM?: Record<string, unknown> } = {}): CatalogPort =>
+  ({
+    product: async () => null,
+    price: async () => null,
+    offer: async () => [
+      product("essential", [price(P.essM, "essential", "monthly", 2900, over.essM), price(P.essY, "essential", "yearly", 27900)]),
+      product("business", [price(P.busM, "business", "monthly", 7900), price(P.busY, "business", "yearly", 75900)]),
+      product("enterprise", [price(P.entM, "enterprise", "monthly", 19900), price(P.entY, "enterprise", "yearly", 189900)]),
+    ],
+  }) as unknown as CatalogPort;
+
+/** Crea en el doble el catálogo exactamente como lo pide el plan de escrituras (lo que haría una persona). */
+async function applyPlan(gw: FakeStripeGateway, catalog: CatalogPort) {
+  const plan = await planCatalogWrites(await desiredCatalog(catalog), gw);
+  const productIds = new Map<string, string>();
+  for (const op of plan.operations) {
+    if (op.op === "create_product") {
+      const id = `prod_test_${op.productKey}`;
+      gw.addProduct({ id, name: op.params.name, metadata: op.params.metadata });
+      productIds.set(op.productKey, id);
+    } else {
+      const productId = op.params.product.startsWith("PRODUCT:") ? productIds.get(op.productKey)! : op.params.product;
+      gw.addPrice({ id: `price_test_${op.lookupKey.replace(/[^a-z0-9]/g, "")}`, productId, lookupKey: op.params.lookup_key, currency: op.params.currency.toUpperCase(), unitAmount: op.params.unit_amount, interval: op.params.recurring.interval, intervalCount: 1, taxBehavior: "exclusive", metadata: op.params.metadata });
+    }
+  }
+  return plan;
+}
+
+describe("catálogo de Stripe", () => {
+  it("solo Essential y Business, mensual y anual, con los importes aprobados; Enterprise nunca", async () => {
+    const d = await desiredCatalog(catalogOf());
+    expect(d.map((x) => [x.productKey, x.kind, x.amountCents, x.interval])).toEqual([
+      ["essential", "monthly", 2900, "month"],
+      ["essential", "yearly", 27900, "year"],
+      ["business", "monthly", 7900, "month"],
+      ["business", "yearly", 75900, "year"],
+    ]);
+    expect(d.every((x) => x.currency === "EUR" && x.lookupKey === lookupKeyFor(x.productKey, x.kind, "EUR", x.webPriceId))).toBe(true);
+    expect(d.map((x) => x.productName)).toEqual(["Elephant Core Essential", "Elephant Core Essential", "Elephant Core Business", "Elephant Core Business"]);
+  });
+
+  it("rechaza precios con IVA incluido o sin precio aprobado", async () => {
+    await expect(desiredCatalog(catalogOf({ essM: { taxIncluded: true } }))).rejects.toThrow(StripeCatalogError);
+    await expect(desiredCatalog(catalogOf({ essM: { status: "draft" } }))).rejects.toThrow(/exactamente un precio monthly/);
+  });
+
+  it("plan de escrituras: 2 Products y 4 Prices exactos; después vacío (idempotente)", async () => {
+    const gw = new FakeStripeGateway();
+    const plan = await planCatalogWrites(await desiredCatalog(catalogOf()), gw);
+    expect(plan.operations.filter((o) => o.op === "create_product").map((o) => o.params)).toEqual([
+      { name: "Elephant Core Essential", metadata: { es_product_key: "essential", es_catalog: "elephant-source" } },
+      { name: "Elephant Core Business", metadata: { es_product_key: "business", es_catalog: "elephant-source" } },
+    ]);
+    const prices = plan.operations.filter((o) => o.op === "create_price");
+    expect(prices).toHaveLength(4);
+    for (const p of prices) {
+      if (p.op !== "create_price") continue;
+      expect(p.params).toMatchObject({ currency: "eur", tax_behavior: "exclusive", recurring: { interval_count: 1 }, lookup_key: p.lookupKey });
+      expect(p.params.metadata.es_web_price_id).toMatch(/^\d+$/);
+      expect(JSON.stringify(p.params)).not.toContain("payment_method_types");
+    }
+    await applyPlan(gw, catalogOf());
+    const again = await planCatalogWrites(await desiredCatalog(catalogOf()), gw);
+    expect(again.operations).toEqual([]);
+    expect(again.ready).toHaveLength(4);
+  });
+
+  it("sincronización solo de lectura: enlaza los 4 y repetirla no duplica", async () => {
+    const gw = new FakeStripeGateway();
+    await applyPlan(gw, catalogOf());
+    const store = new MemoryStripeStore();
+    const d = await desiredCatalog(catalogOf());
+    const r1 = await syncCatalog(d, gw, store, 1);
+    expect(r1.linked).toHaveLength(4);
+    expect(r1.missing).toEqual([]);
+    const r2 = await syncCatalog(d, gw, store, 2);
+    expect(r2.linked).toHaveLength(4);
+    expect(store.prices.size).toBe(4);
+    expect(gw.calls.some((c) => c.op.endsWith(".create"))).toBe(false);
+  });
+
+  it("un Price que no coincide (importe, periodicidad, IVA o producto) nunca se enlaza", async () => {
+    const d = await desiredCatalog(catalogOf());
+    const cases: Array<Record<string, unknown>> = [{ unitAmount: 2800 }, { interval: "year" }, { taxBehavior: "inclusive" }, { currency: "USD" }, { active: false }];
+    for (const over of cases) {
+      const gw = new FakeStripeGateway();
+      await applyPlan(gw, catalogOf());
+      Object.assign(gw.prices[0], over);
+      const store = new MemoryStripeStore();
+      const r = await syncCatalog(d, gw, store, 1);
+      expect(r.conflicts.length).toBe(1);
+      expect(r.linked.length).toBe(3);
+      expect(store.prices.has(d[0].webPriceId)).toBe(false);
+    }
+    const gw = new FakeStripeGateway();
+    await applyPlan(gw, catalogOf());
+    gw.products.get("prod_test_essential")!.metadata.es_product_key = "business";
+    expect((await syncCatalog(d, gw, new MemoryStripeStore(), 1)).conflicts.length).toBe(2);
+  });
+
+  it("un precio ya enlazado no se reasigna en silencio a otro Price", async () => {
+    const store = new MemoryStripeStore();
+    await store.upsertPrice({ webPriceId: 11, stripeProductId: "prod_a", stripePriceId: "price_a", lookupKey: "k1", now: 1 });
+    await expect(store.upsertPrice({ webPriceId: 11, stripeProductId: "prod_a", stripePriceId: "price_b", lookupKey: "k1", now: 2 })).rejects.toThrow(StripeStoreError);
+  });
+});
+
+// ── Checkout ─────────────────────────────────────────────────────────────────
+const URLS = { success: "https://web.example/contratacion/estado", cancel: "https://web.example/contratacion/cancelada", portalReturn: "https://t1.app.example/admin/suscripcion" };
+let clock = Date.UTC(2026, 9, 17, 12);
+const order = (over: Partial<CommercialOrder> = {}): CommercialOrder =>
+  ({
+    id: 100, reference: "PED-2026-000100", idempotencyKey: "k".repeat(20), payloadHash: "h", kind: "new", state: "contracted", companyId: 7, leadRequestId: null, trialId: null, previousOrderId: null,
+    request: { plan: "essential", interval: "month", items: [] }, quote: null, contractId: 1, subscriptionId: null, tenantId: null, confirmation: null, graceEndsAt: null, attempts: 0, lastError: null, version: 3,
+    createdAt: clock, createdBy: "test", updatedAt: null, updatedBy: null, ...over,
+  }) as CommercialOrder;
+
+describe("Checkout de un pedido", () => {
+  let gw: FakeStripeGateway;
+  let store: MemoryStripeStore;
+  let orders: Map<number, CommercialOrder>;
+  let svc: StripeCheckoutService;
+
+  beforeEach(async () => {
+    clock = Date.UTC(2026, 9, 17, 12);
+    gw = new FakeStripeGateway();
+    store = new MemoryStripeStore();
+    await applyPlan(gw, catalogOf());
+    await syncCatalog(await desiredCatalog(catalogOf()), gw, store, clock);
+    orders = new Map([[100, order()], [101, order({ id: 101, request: { plan: "business", interval: "year", items: [] } })]]);
+    const crmStore = {
+      get: async (_t: string, id: number) => (id === 7 ? { id: 7, name: "Empresa Demo Stripe", tenantId: "t9-demo" } : null),
+      list: async () => [{ id: 1, companyId: 7, email: "contacto@demo.example", status: "active", isPrimary: true }],
+    };
+    svc = new StripeCheckoutService({ store, gateway: gw, orders: { get: async (id: number) => orders.get(id) ?? null }, crmStore: crmStore as never, catalog: catalogOf(), urls: URLS, now: () => clock });
+  });
+
+  it("crea la sesión con el Price enlazado del servidor, metadatos del pedido, URL del entorno y caducidad de 2 h", async () => {
+    const s = await svc.start(100, "operator:test");
+    expect(s.reused).toBe(false);
+    const call = gw.calls.find((c) => c.op === "checkout.sessions.create")!;
+    const input = call.input as Record<string, unknown>;
+    const link = await store.priceForWebPrice(P.essM);
+    expect(input).toMatchObject({
+      priceId: link!.stripePriceId,
+      clientReferenceId: "es-order-100",
+      metadata: { es_order_id: "100", es_company_id: "7", es_tenant_id: "t9-demo" },
+      successUrl: `${URLS.success}?session_id={CHECKOUT_SESSION_ID}`,
+      cancelUrl: URLS.cancel,
+      integrationIdentifier: INTEGRATION_IDENTIFIER,
+      expiresAt: Math.floor((clock + SESSION_TTL_MS) / 1000),
+    });
+    expect(call.key).toBe("es-checkout-100-1");
+    expect((await store.openSession(100))?.stripeSessionId).toBe(s.sessionId);
+  });
+
+  it("un Customer por empresa: dos pedidos de la misma empresa comparten cliente", async () => {
+    await svc.start(100, "a");
+    orders.set(100, { ...orders.get(100)!, state: "cancelled" });
+    await svc.start(101, "a");
+    expect(gw.customers.size).toBe(1);
+    expect(gw.calls.filter((c) => c.op === "customers.create")).toHaveLength(1);
+    expect([...gw.customers.values()][0]).toMatchObject({ name: "Empresa Demo Stripe", email: "contacto@demo.example", metadata: { es_company_id: "7", es_tenant_id: "t9-demo" } });
+  });
+
+  it("reutiliza la sesión abierta; caducada o a punto de caducar, abre otra con clave nueva", async () => {
+    const a = await svc.start(100, "a");
+    const b = await svc.start(100, "a");
+    expect(b).toMatchObject({ sessionId: a.sessionId, reused: true });
+    clock += SESSION_TTL_MS - 5 * 60_000; // quedan 5 min: por debajo del margen
+    const c = await svc.start(100, "a");
+    expect(c.sessionId).not.toBe(a.sessionId);
+    expect(gw.sessions.get(a.sessionId)!.status).toBe("expired");
+    expect(gw.calls.filter((x) => x.op === "checkout.sessions.create").map((x) => x.key)).toEqual(["es-checkout-100-1", "es-checkout-100-2"]);
+    expect(await store.countSessions(100)).toBe(2);
+  });
+
+  it("dos peticiones simultáneas: una sola sesión abierta (la sobrante se caduca)", async () => {
+    const r = await Promise.allSettled([svc.start(100, "a"), svc.start(100, "b")]);
+    const open = [...gw.sessions.values()].filter((s) => s.status === "open");
+    expect(open).toHaveLength(1);
+    expect(r.some((x) => x.status === "fulfilled")).toBe(true);
+    expect(await store.openSession(100)).not.toBeNull();
+  });
+
+  it.each([
+    ["pedido inexistente", 999, "not_found"],
+    ["pedido no contratado", "quoted", "invalid_state"],
+    ["pedido ya confirmado", "confirmed", "invalid_state"],
+    ["cambio de plan (va al Portal)", "change", "unsupported"],
+    ["Enterprise (propuesta comercial)", "enterprise", "unsupported"],
+    ["con complementos", "items", "unsupported"],
+    ["con ampliación de usuarios", "users", "unsupported"],
+  ])("rechaza: %s", async (_n, variant, code) => {
+    if (variant === "quoted") orders.set(100, order({ state: "quoted" }));
+    if (variant === "confirmed") orders.set(100, order({ state: "contracted", confirmation: { kind: "payment", ref: "x", actor: "a", reason: null, at: 1 } }));
+    if (variant === "change") orders.set(100, order({ kind: "change" }));
+    if (variant === "enterprise") orders.set(100, order({ request: { plan: "enterprise", interval: "month", items: [] } }));
+    if (variant === "items") orders.set(100, order({ request: { plan: "essential", interval: "month", items: [{ key: "booking-net" }] } }));
+    if (variant === "users") orders.set(100, order({ request: { plan: "essential", interval: "month", items: [], users: 9 } as never }));
+    const id = typeof variant === "number" ? variant : 100;
+    await expect(svc.start(id, "a")).rejects.toMatchObject({ code });
+    expect(gw.calls.some((c) => c.op === "checkout.sessions.create")).toBe(false);
+  });
+
+  it("sin catálogo sincronizado no se abre Checkout", async () => {
+    store.prices.clear();
+    await expect(svc.start(100, "a")).rejects.toMatchObject({ code: "unavailable" });
+  });
+
+  it("pagada en Stripe: sync copia la suscripción pero NO confirma el pedido (llega con el webhook)", async () => {
+    const s = await svc.start(100, "a");
+    const subId = gw.completeSession(s.sessionId);
+    const r = await svc.sync(s.sessionId);
+    expect(r).toMatchObject({ sessionStatus: "complete", paymentStatus: "paid", subscriptionId: subId, subscriptionStatus: "active", orderConfirmed: false });
+    expect(orders.get(100)!.state).toBe("contracted");
+    expect(await store.subscription(subId)).toMatchObject({ companyId: 7, orderId: 100, status: "active" });
+    await expect(svc.start(100, "a")).rejects.toMatchObject({ code: "invalid_state" });
+    expect(gw.calls.filter((c) => c.op === "checkout.sessions.create")).toHaveLength(1);
+  });
+
+  it("una sesión cuyos metadatos no son de este pedido se rechaza y no se copia", async () => {
+    const s = await svc.start(100, "a");
+    gw.sessions.get(s.sessionId)!.metadata.es_order_id = "999";
+    await expect(svc.sync(s.sessionId)).rejects.toMatchObject({ code: "conflict" });
+  });
+
+  it("Customer Portal: solo con el cliente de la empresa resuelto en el servidor", async () => {
+    await expect(svc.portalUrl(7)).rejects.toThrow(StripeCheckoutError);
+    await svc.start(100, "a");
+    const url = await svc.portalUrl(7);
+    expect(url).toContain("cus_test_");
+    expect(gw.calls.find((c) => c.op === "billing_portal.sessions.create")!.input).toMatchObject({ returnUrl: URLS.portalReturn });
+  });
+});
+
+describe("URL de vuelta y objetos de Stripe", () => {
+  it("URL solo https sin parámetros; ninguna → Checkout apagado", () => {
+    expect(checkoutUrlsFromEnv({})).toBeNull();
+    expect(checkoutUrlsFromEnv({ CP_STRIPE_SUCCESS_URL: URLS.success, CP_STRIPE_CANCEL_URL: URLS.cancel, CP_STRIPE_PORTAL_RETURN_URL: URLS.portalReturn })).toEqual(URLS);
+    expect(() => checkoutUrlsFromEnv({ CP_STRIPE_SUCCESS_URL: "http://web.example/x", CP_STRIPE_CANCEL_URL: URLS.cancel, CP_STRIPE_PORTAL_RETURN_URL: URLS.portalReturn })).toThrow();
+    expect(() => checkoutUrlsFromEnv({ CP_STRIPE_SUCCESS_URL: `${URLS.success}?a=1`, CP_STRIPE_CANCEL_URL: URLS.cancel, CP_STRIPE_PORTAL_RETURN_URL: URLS.portalReturn })).toThrow();
+    expect(() => checkoutUrlsFromEnv({ CP_STRIPE_SUCCESS_URL: URLS.success })).toThrow();
+  });
+
+  it("cualquier objeto live de Stripe se rechaza al convertirlo", () => {
+    const live = { livemode: true } as never;
+    expect(() => toPrice(live)).toThrow(StripeConfigError);
+    expect(() => toSession(live)).toThrow(StripeConfigError);
+    expect(() => toSubscription(live)).toThrow(StripeConfigError);
+  });
+
+  it("la suscripción toma el fin de periodo de sus items (API ≥ 2025-03-31)", () => {
+    const s = toSubscription({
+      id: "sub_test_1", object: "subscription", livemode: false, customer: "cus_test_1", status: "active", cancel_at: null, cancel_at_period_end: false, latest_invoice: "in_test_1", metadata: { es_order_id: "1" },
+      items: { data: [{ current_period_end: 100, price: { id: "price_a" } }, { current_period_end: 200, price: { id: "price_b" } }] },
+    } as never);
+    expect(s).toMatchObject({ currentPeriodEnd: 200, priceIds: ["price_a", "price_b"], customerId: "cus_test_1" });
+  });
+});
