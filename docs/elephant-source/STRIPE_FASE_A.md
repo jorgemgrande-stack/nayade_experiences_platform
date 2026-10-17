@@ -156,7 +156,7 @@ Las licencias se aplican siempre con `LicensingService` (auditadas y atómicas).
 | `active` (primera vez) | `confirmed` → … → `active` (circuito existente) | `active` hasta el fin del periodo | aprovisionada (alta de pago) o la de la prueba |
 | `active` tras un impago | `payment_recovered` → `active` | `active` | `active` |
 | `past_due` | `past_due` | `active` durante la gracia (configurable, DC-4) | `active` |
-| `unpaid` (tras el último reintento) | `suspended` | `read_only` | `active` en solo lectura, nunca borrada |
+| `unpaid` (tras el último reintento) | `suspended` | `suspended` (como las suspensiones existentes; implementado así en la Fase C) | se conserva, nunca se borra |
 | `cancel_at` / `cancel_at_period_end` | `cancel_scheduled` | `active` hasta el fin | `active` |
 | `canceled` | `cancelled` | `read_only` (conservación configurable) | sin borrado automático |
 | `paused` (no se usa) | `suspended` | `read_only` | — |
