@@ -15,3 +15,5 @@ b0d886e9172925829b37c634f3c01e12e3a09746:server/legacyCredentials.test.ts:generi
 14646f61e846880c881ab8650c6ad2be05754456:server/essential.admin.mysql.test.ts:generic-api-key:106
 14646f61e846880c881ab8650c6ad2be05754456:server/essential.admin.mysql.test.ts:generic-api-key:109
 14646f61e846880c881ab8650c6ad2be05754456:server/essential.admin.mysql.test.ts:generic-api-key:116
+9b2b6d6059aabbeb1e79fa67d2db2fb730c51664:server/mail/service.test.ts:generic-api-key:32
+9b2b6d6059aabbeb1e79fa67d2db2fb730c51664:server/mail/service.test.ts:generic-api-key:33
