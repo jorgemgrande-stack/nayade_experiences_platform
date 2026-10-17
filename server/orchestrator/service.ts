@@ -40,6 +40,8 @@ import { recordFailure } from "../_core/ops/failureAlerts";
 import { OrderError, type CommercialOrder, type Confirmation, type OrderPatch, type OrderPayment, type OrderQuote, type OrderState, type PaymentPurpose } from "./types";
 
 export const GRACE_DAYS = 7;
+/** Proveedor de los pagos verificados en Stripe Billing (modo pruebas). Sus pedidos no reciben recibos simulados. */
+export const STRIPE_PAYMENT_PROVIDER = "stripe_test";
 const DAY = 86_400_000;
 const KEY_RE = /^[A-Za-z0-9_-]{16,80}$/;
 const LIVE: OrderState[] = ["active", "past_due", "suspended"];
@@ -540,12 +542,7 @@ export class CommercialOrchestrator {
   /** Reaplica las licencias según el estado: suspendido → suspendidas; si no, las de la suscripción. */
   private async syncLicences(o: CommercialOrder, actor: string, reason: string) {
     if (!o.subscriptionId || !o.tenantId) return 0;
-    if (o.state === "suspended") {
-      const source = `subscription:${o.subscriptionId}`;
-      const own = (await this.d.capabilities.list(o.tenantId)).filter((g) => g.source === source && g.status !== "cancelled" && g.status !== "suspended");
-      const ev = own.length ? await this.d.capabilities.apply(o.tenantId, own.map((g) => ({ capabilityId: g.capabilityId, siteId: g.siteId, status: "suspended" as const, validUntil: g.validUntil, source })), { actor, reason, now: this.now() }) : [];
-      return ev.length;
-    }
+    if (o.state === "suspended") return this.markLicences(o, "suspended", actor, reason);
     await this.paidBasis(o);
     return (await this.d.licensing.apply(o.subscriptionId, { activate: true, actor, reason })).applied.length;
   }
@@ -685,7 +682,9 @@ export class CommercialOrchestrator {
     const changed = await this.syncLicences(o, actor, `Renovación del pedido ${o.reference}`);
     if (o.contractId) await this.d.crm.log("contract", o.contractId, "note", `Periodo renovado (suscripción #${sub.id}) hasta ${new Date(sub.currentPeriodEnd).toISOString().slice(0, 10)}`, actor);
     let payment: OrderPayment | null = null;
-    const online = (await this.d.store.payments(o.id)).some((p) => p.status === "succeeded");
+    // Los pedidos cobrados por Stripe Billing renuevan en Stripe: aquí no se emite ningún recibo simulado
+    const own = await this.d.store.payments(o.id);
+    const online = own.some((p) => p.status === "succeeded") && !own.some((p) => p.provider === STRIPE_PAYMENT_PROVIDER);
     if (online && this.d.payments) {
       const amount = (await this.d.shadow.preview(sub.id)).drafts.filter((x) => x.kind === "renewal").reduce((a, x) => a + x.totalCents, 0);
       if (amount > 0) {
@@ -753,5 +752,63 @@ export class CommercialOrchestrator {
     }
     return out;
   }
-}
+  // ── Cobro externo verificado (Stripe Billing) ───────────────────────────────
 
+  /**
+   * Estado de cobro VERIFICADO en un proveedor externo (Stripe Billing: el objeto se relee en su API,
+   * nunca se toma del cuerpo de un evento). Refleja impago con gracia, suspensión, recuperación,
+   * cancelación programada, reactivación y fin de la suscripción. Idempotente: el mismo estado aplicado
+   * dos veces no cambia nada. Los pedidos aún en alta o ya terminados no se tocan. Nunca borra datos:
+   * lo peor es solo lectura.
+   */
+  async applyExternalBilling(id: number, s: { status: "active" | "past_due" | "unpaid" | "canceled"; cancelAt: number | null }, actor: string): Promise<{ order: CommercialOrder; changed: OrderAction[] }> {
+    let o = await this.must(id);
+    const changed: OrderAction[] = [];
+    if (!LIVE.includes(o.state) && o.state !== "cancel_scheduled") return { order: o, changed };
+    const step = async (action: OrderAction, patch: OrderPatch, detail: Record<string, unknown>) => {
+      o = await this.move(o, action, actor, patch, { source: "stripe", ...detail });
+      changed.push(action);
+    };
+    if (s.status === "canceled") {
+      if (LIVE.includes(o.state)) await step("cancel", {}, { reason: "Suscripción cancelada en Stripe" });
+      const contract = o.contractId ? await this.d.crmStore.get("contracts", o.contractId) : null;
+      if (contract && contract.status !== "cancelled") {
+        await this.d.crm.setContractStatus(contract.id, "cancelled", actor);
+        await this.d.crm.log("contract", contract.id, "note", `Fin de la suscripción en Stripe (pedido ${o.reference})`, actor);
+      }
+      const n = await this.markLicences(o, "read_only", actor, `Fin de la suscripción (pedido ${o.reference}): solo lectura, los datos se conservan`);
+      await step("cancelled", { graceEndsAt: null }, { licencesReadOnly: n });
+      return { order: o, changed };
+    }
+    if (s.status === "active" && (o.state === "past_due" || o.state === "suspended")) {
+      await step("payment_recovered", { graceEndsAt: null }, {});
+      await this.syncLicences(o, actor, `Pago recibido en Stripe: pedido ${o.reference} al corriente`);
+    }
+    if ((s.status === "past_due" || s.status === "unpaid") && o.state === "active") {
+      await step("payment_failed", { graceEndsAt: this.now() + this.grace }, { graceEndsAt: this.now() + this.grace });
+    }
+    if (s.status === "unpaid" && o.state === "past_due") {
+      await step("suspend", {}, { reason: "Stripe agotó los reintentos de cobro" });
+      await this.syncLicences(o, actor, `Suspensión por impago (pedido ${o.reference}); los datos se conservan`);
+    }
+    if (s.cancelAt !== null && LIVE.includes(o.state)) {
+      const sub = o.subscriptionId ? await this.d.subscriptions.must(o.subscriptionId) : null;
+      if (sub && sub.status !== "canceled" && sub.cancelAt === null) await this.d.subscriptions.scheduleCancel(sub.id, { reason: "Cancelación programada en Stripe" }, sub.version, actor);
+      await step("cancel", {}, { cancelAt: s.cancelAt });
+    } else if (s.cancelAt === null && s.status === "active" && o.state === "cancel_scheduled") {
+      const sub = o.subscriptionId ? await this.d.subscriptions.must(o.subscriptionId) : null;
+      if (sub && sub.status !== "canceled" && sub.cancelAt !== null) await this.d.subscriptions.reactivate(sub.id, { reason: "Cancelación deshecha en Stripe" }, sub.version, actor);
+      await step("reactivate", {}, {});
+    }
+    return { order: o, changed };
+  }
+
+  /** Lleva las licencias propias de la suscripción del pedido a un estado (suspendidas o solo lectura). */
+  private async markLicences(o: CommercialOrder, status: "suspended" | "read_only", actor: string, reason: string) {
+    if (!o.subscriptionId || !o.tenantId) return 0;
+    const source = `subscription:${o.subscriptionId}`;
+    const own = (await this.d.capabilities.list(o.tenantId)).filter((g) => g.source === source && g.status !== "cancelled" && g.status !== status);
+    if (!own.length) return 0;
+    return (await this.d.capabilities.apply(o.tenantId, own.map((g) => ({ capabilityId: g.capabilityId, siteId: g.siteId, status, validUntil: g.validUntil, source })), { actor, reason, now: this.now() })).length;
+  }
+}
