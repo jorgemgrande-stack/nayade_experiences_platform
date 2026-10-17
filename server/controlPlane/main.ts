@@ -263,17 +263,19 @@ async function main() {
   // Stripe Billing: SOLO MODO PRUEBAS. Apagado sin CP_STRIPE_MODE=test; cualquier credencial live o
   // configuración insegura impide arrancar (server/stripe/config.ts). Requiere pedidos y la migración 0012.
   const stripeConfig = stripeConfigFromEnv(process.env);
-  let stripe: { config: NonNullable<typeof stripeConfig>; store: MysqlStripeStore; gateway: ReturnType<typeof stripeGateway>; urls: ReturnType<typeof checkoutUrlsFromEnv>; checkoutEnabled: boolean; verifyWebhook: ReturnType<typeof stripeWebhookVerifier>; workerEnabled: boolean; publicStatus: boolean } | undefined;
+  let stripe: { config: NonNullable<typeof stripeConfig>; store: MysqlStripeStore; gateway: ReturnType<typeof stripeGateway>; urls: ReturnType<typeof checkoutUrlsFromEnv>; checkoutEnabled: boolean; verifyWebhook: ReturnType<typeof stripeWebhookVerifier>; workerEnabled: boolean; publicStatus: boolean; selfService: boolean; termsVersion: string | null } | undefined;
   if (stripeConfig) {
     const urls = checkoutUrlsFromEnv(process.env);
     const checkoutEnabled = process.env.CP_STRIPE_CHECKOUT_ENABLED === "1";
     const workerEnabled = process.env.CP_STRIPE_WORKER_ENABLED === "1";
     const publicStatus = process.env.CP_PUBLIC_CHECKOUT_ENABLED === "1";
+    const selfService = process.env.CP_PUBLIC_SELF_SERVICE_ENABLED === "1";
+    const termsVersion = (process.env.CP_TERMS_VERSION ?? "").trim() || null;
     // Sin proxy de confianza los límites por IP del webhook serían comunes a todo el tráfico
     const trustProxyOk = process.env.NODE_ENV !== "production" || !!process.env.CP_TRUST_PROXY;
     const ready = trustProxyOk && !!orders && !!crmPool && (await crmPool.query("SELECT 1 FROM stripe_prices LIMIT 0").then(() => true, () => false));
-    if (ready) stripe = { config: stripeConfig, store: new MysqlStripeStore(crmPool!), gateway: stripeGateway(stripeConfig), urls, checkoutEnabled, verifyWebhook: stripeWebhookVerifier(stripeConfig), workerEnabled, publicStatus };
-    console.log(JSON.stringify({ ctx: "Stripe", ...describeStripeConfig(stripeConfig), mounted: ready, checkout: ready && checkoutEnabled && !!urls, worker: ready && workerEnabled, publicStatus: ready && publicStatus, ...(ready ? {} : { reason: !trustProxyOk ? "trust_proxy_missing" : !orders ? "orders_not_enabled" : "migration_0012_missing" }) }));
+    if (ready) stripe = { config: stripeConfig, store: new MysqlStripeStore(crmPool!), gateway: stripeGateway(stripeConfig), urls, checkoutEnabled, verifyWebhook: stripeWebhookVerifier(stripeConfig), workerEnabled, publicStatus, selfService, termsVersion };
+    console.log(JSON.stringify({ ctx: "Stripe", ...describeStripeConfig(stripeConfig), mounted: ready, checkout: ready && checkoutEnabled && !!urls, worker: ready && workerEnabled, publicStatus: ready && publicStatus, selfService: ready && selfService, termsPublished: !!termsVersion, ...(ready ? {} : { reason: !trustProxyOk ? "trust_proxy_missing" : !orders ? "orders_not_enabled" : "migration_0012_missing" }) }));
   }
 
   // API pública de captación de la web comercial: solo con CRM, orígenes explícitos y secreto propio

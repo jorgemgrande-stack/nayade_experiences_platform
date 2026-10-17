@@ -73,6 +73,7 @@ import { StripeEventProcessor } from "../stripe/events";
 import { StripeReconciler, startStripeWorker } from "../stripe/reconcile";
 import { stripeWebhookHandler } from "../stripe/webhook";
 import { SESSION_ID_RE, checkoutStatus } from "../stripe/status";
+import { SelfServiceCheckout, createSelfServiceRouter } from "../stripe/selfService";
 import type { GwEvent } from "../stripe/gateway";
 import { StripeCheckoutService, type CheckoutUrls } from "../stripe/checkout";
 import type { StripeConfig } from "../stripe/config";
@@ -196,6 +197,10 @@ export interface ControlPlaneDeps {
     workerEnabled: boolean;
     /** Estado público del alta tras Checkout (`/public/checkout/status`). Apagado salvo CP_PUBLIC_CHECKOUT_ENABLED=1. */
     publicStatus: boolean;
+    /** Contratación por autoservicio (`/public/checkout/start`). Apagada salvo CP_PUBLIC_SELF_SERVICE_ENABLED=1. */
+    selfService: boolean;
+    /** Versión publicada de las condiciones de contratación (CP_TERMS_VERSION); sin ella el autoservicio no funciona. */
+    termsVersion: string | null;
   };
   /**
    * Correo transaccional centralizado (server/mail, CRM 0011). `platform`: avisos de Elephant Source
@@ -1071,9 +1076,14 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         // Tras guardar un evento del webhook se procesa enseguida (los fallos quedan para el reintento)
         stripeKick = () => void processor.processDue(10).catch(() => undefined);
         if (st.workerEnabled) startStripeWorker({ processor, reconciler });
-        if (st.publicStatus) {
+        const selfServiceOk = st.selfService && !!checkout && !!d.publicIntake && publicOrigins.size > 0;
+        if (st.publicStatus || selfServiceOk) {
           const pc = express.Router();
-          pc.get(
+          if (selfServiceOk) {
+            const ss = new SelfServiceCheckout({ crm: d.crm.service, orders: d.orders.store, orchestrator, checkout: checkout!, catalog: stripeCatalog, ticketSecret: d.publicIntake!.secret, origins: publicOrigins, termsVersion: st.termsVersion, now: d.subscriptions.now });
+            pc.use(createSelfServiceRouter(ss, publicOrigins));
+          }
+          if (st.publicStatus) pc.get(
             "/status",
             rateLimit({ windowMs: 60_000, limit: 60, standardHeaders: true, legacyHeaders: false, keyGenerator: (req) => `ip:${ipKeyGenerator(req.ip ?? "")}` }),
             wrap(async (req, res) => {
