@@ -86,7 +86,9 @@ export class FsBackupStorage implements BackupStorage {
     fs.renameSync(tmp, dst);
   }
   async getFile(key: string, dst: string) {
-    fs.copyFileSync(this.p(key), dst);
+    const src = this.p(key);
+    if (!fs.existsSync(src)) throw new Error("La copia no existe en el almacenamiento");
+    fs.copyFileSync(src, dst);
   }
   async getBuffer(key: string) {
     const f = this.p(key);
@@ -304,4 +306,102 @@ export function backupStorageFromEnv(env: NodeJS.ProcessEnv = process.env): { st
     return { storage: new FsBackupStorage(dir) };
   }
   return { storage: null, reason: "BACKUP_STORAGE no configurado (s3 o fs)" };
+}
+
+/**
+ * Destino SECUNDARIO (independiente del primario; p. ej. un proveedor externo a Railway), con sus
+ * propias credenciales. Opcional: sin ninguna variable `BACKUP_SECONDARY_*` → `configured: false` y
+ * todo funciona como sin él.
+ *   BACKUP_SECONDARY_STORAGE (s3 por defecto | fs), BACKUP_SECONDARY_S3_BUCKET, BACKUP_SECONDARY_S3_ACCESS_KEY,
+ *   BACKUP_SECONDARY_S3_SECRET_KEY, BACKUP_SECONDARY_S3_REGION, BACKUP_SECONDARY_S3_ENDPOINT,
+ *   BACKUP_SECONDARY_S3_PREFIX, BACKUP_SECONDARY_S3_FORCE_PATH_STYLE=1, BACKUP_SECONDARY_FS_DIR.
+ * Configuración incompleta → `configured: true`, `storage: null` y el motivo (el trabajo lo registra
+ * como fallo del secundario, sin afectar al primario).
+ */
+export function secondaryBackupStorageFromEnv(
+  env: NodeJS.ProcessEnv = process.env,
+): { configured: false; storage: null; reason: string } | { configured: true; storage: BackupStorage | null; reason?: string } {
+  const names = Object.keys(env).filter((k) => /^BACKUP_SECONDARY_(STORAGE|S3_|FS_DIR)/.test(k) && env[k]);
+  if (!names.length) return { configured: false, storage: null, reason: "Sin destino secundario (BACKUP_SECONDARY_*)" };
+  const mapped: NodeJS.ProcessEnv = { BACKUP_STORAGE: (env.BACKUP_SECONDARY_STORAGE || "s3").trim() };
+  for (const k of ["BUCKET", "ACCESS_KEY", "SECRET_KEY", "REGION", "ENDPOINT", "PREFIX", "FORCE_PATH_STYLE"]) mapped[`BACKUP_S3_${k}`] = env[`BACKUP_SECONDARY_S3_${k}`];
+  mapped.BACKUP_FS_DIR = env.BACKUP_SECONDARY_FS_DIR;
+  const r = backupStorageFromEnv(mapped);
+  if (!r.storage) {
+    const why = (r as { reason: string }).reason.replace(/BACKUP_(S3_|FS_DIR|STORAGE)/g, (m) => m.replace("BACKUP_", "BACKUP_SECONDARY_"));
+    return { configured: true, storage: null, reason: `Destino secundario mal configurado: ${why}` };
+  }
+  const primary = backupStorageFromEnv(env);
+  if (primary.storage && primary.storage.describe() === r.storage.describe()) {
+    return { configured: true, storage: null, reason: "El destino secundario es el mismo que el primario: no es una ubicación independiente" };
+  }
+  return { configured: true, storage: r.storage };
+}
+
+/** Rechaza si la operación no termina a tiempo (el secundario nunca debe colgar el trabajo). */
+export async function withTimeout<T>(p: Promise<T>, ms: number, what: string): Promise<T> {
+  let t: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      p,
+      new Promise<never>((_, reject) => {
+        t = setTimeout(() => reject(new Error(`${what}: sin respuesta en ${Math.round(ms / 1000)} s`)), ms);
+      }),
+    ]);
+  } finally {
+    if (t) clearTimeout(t);
+  }
+}
+
+// ── Destino de ficheros recuperados (bucket de medios NUEVO tras un desastre) ──
+
+export interface MediaTarget {
+  describe(): string;
+  put(key: string, data: Buffer): Promise<void>;
+}
+
+/** Bucket de medios de destino (mismas variables S3_* que el Core). Solo escribe. */
+export class S3MediaTarget implements MediaTarget {
+  private client: S3Client;
+  constructor(private cfg: { bucket: string; region: string; endpoint?: string; accessKeyId: string; secretAccessKey: string }, client?: S3Client) {
+    this.client =
+      client ??
+      new S3Client({
+        region: cfg.region,
+        ...(cfg.endpoint ? { endpoint: cfg.endpoint, forcePathStyle: true } : {}),
+        credentials: { accessKeyId: cfg.accessKeyId, secretAccessKey: cfg.secretAccessKey },
+      });
+  }
+  describe() {
+    return `s3://${this.cfg.bucket}`;
+  }
+  async put(key: string, data: Buffer) {
+    await this.client.send(new PutObjectCommand({ Bucket: this.cfg.bucket, Key: assertObjectKey(key), Body: data }));
+  }
+}
+
+/** Directorio de destino con la estructura de claves del bucket. */
+export class FsMediaTarget implements MediaTarget {
+  constructor(private root: string) {}
+  describe() {
+    return `fs:${this.root}`;
+  }
+  async put(key: string, data: Buffer) {
+    await new FsBackupStorage(this.root).putBuffer(key, data);
+  }
+}
+
+/** Bucket de medios de destino desde S3_* (para `restore-files --to-media`). */
+export function mediaTargetFromEnv(env: NodeJS.ProcessEnv = process.env): { target: S3MediaTarget } | { target: null; reason: string } {
+  const missing = ["S3_BUCKET", "S3_ACCESS_KEY", "S3_SECRET_KEY"].filter((k) => !env[k]);
+  if (missing.length) return { target: null, reason: `Bucket de medios de destino no configurado (faltan ${missing.join(", ")})` };
+  return {
+    target: new S3MediaTarget({
+      bucket: env.S3_BUCKET!,
+      region: env.S3_REGION || "us-east-1",
+      endpoint: env.S3_ENDPOINT || undefined,
+      accessKeyId: env.S3_ACCESS_KEY!,
+      secretAccessKey: env.S3_SECRET_KEY!,
+    }),
+  };
 }

@@ -13,6 +13,7 @@
  * Dry-run por defecto. Si borrar un objeto falla, su fila no se marca como `pruned`.
  */
 import type { BackupInventory, BackupRecord } from "./backupInventory";
+import type { BackupCopyLedger, BackupCopyRecord } from "./backupCopies";
 import type { BackupStorage } from "./backupStorage";
 import { safeError } from "./backupInventory";
 
@@ -24,14 +25,15 @@ export interface GfsPolicy {
 
 export const DEFAULT_GFS: GfsPolicy = { daily: 30, weekly: 12, monthly: 12 };
 
-export function gfsPolicyFromEnv(env: NodeJS.ProcessEnv = process.env): GfsPolicy {
+/** Política desde `<prefijo>DAILY/WEEKLY/MONTHLY` (primario `BACKUP_KEEP_`, secundario `BACKUP_SECONDARY_KEEP_`). */
+export function gfsPolicyFromEnv(env: NodeJS.ProcessEnv = process.env, prefix = "BACKUP_KEEP_"): GfsPolicy {
   const n = (v: string | undefined, d: number) => {
     if (v === undefined || v === "") return d;
     const x = Number(v);
     if (!Number.isInteger(x) || x < 0 || x > 3650) throw new Error("Retención de copias no válida (entero entre 0 y 3650)");
     return x;
   };
-  return { daily: n(env.BACKUP_KEEP_DAILY, DEFAULT_GFS.daily), weekly: n(env.BACKUP_KEEP_WEEKLY, DEFAULT_GFS.weekly), monthly: n(env.BACKUP_KEEP_MONTHLY, DEFAULT_GFS.monthly) };
+  return { daily: n(env[`${prefix}DAILY`], DEFAULT_GFS.daily), weekly: n(env[`${prefix}WEEKLY`], DEFAULT_GFS.weekly), monthly: n(env[`${prefix}MONTHLY`], DEFAULT_GFS.monthly) };
 }
 
 function isoWeek(ms: number): string {
@@ -113,6 +115,72 @@ export async function applyBackupRetention(
   }
   if (opts.apply && pruned.length) {
     await d.inventory.markPruned(pruned, opts.now ?? Date.now());
+    report.deleted = pruned.length;
+  }
+  return report;
+}
+
+export interface CopyRetentionReport extends BackupRetentionReport {
+  destination: string;
+  /** Destinos cuyo borrado se omitió porque su copia más reciente no se pudo comprobar en el almacenamiento. */
+  skipped: Array<{ target: string; reason: string }>;
+}
+
+/**
+ * Retención INDEPENDIENTE de un destino adicional (hoy el secundario), sobre `backup_copies` y SU
+ * almacenamiento: misma política abuelo-padre-hijo, pero con sus propias variables y sin tocar nunca
+ * el primario ni `backup_inventory`. Ficheros (réplica incremental) y paquetes de recuperación no
+ * entran.
+ *
+ * Salvaguarda antes de borrar nada de un destino: su copia correcta más reciente debe existir en el
+ * almacenamiento con el SHA-256 registrado; si no, ese destino se omite (no se deja sin copias
+ * verificables por un borrado). Dry-run por defecto.
+ */
+export async function applyCopyRetention(
+  d: { copies: BackupCopyLedger; storage: BackupStorage | null; destination: "secondary" },
+  opts: { apply?: boolean; policy?: GfsPolicy; now?: number } = {},
+): Promise<CopyRetentionReport> {
+  const policy = opts.policy ?? DEFAULT_GFS;
+  const all = (await d.copies.list({ destination: d.destination, status: "ok", limit: 5000 })).filter((r) => r.targetKind !== "files" && r.targetKind !== "config");
+  const groups = new Map<string, BackupCopyRecord[]>();
+  for (const r of all) {
+    const k = `${r.targetKind}:${r.targetId}`;
+    groups.set(k, [...(groups.get(k) ?? []), r]);
+  }
+  const report: CopyRetentionReport = { destination: d.destination, applied: !!opts.apply, policy, considered: all.length, toDelete: [], deleted: 0, errors: [], skipped: [] };
+  const pruned: number[] = [];
+  for (const [target, rows] of Array.from(groups.entries())) {
+    const victims = selectGfsToDelete(
+      rows.map((r) => ({ id: r.id, at: r.finishedAt, r })),
+      policy,
+    );
+    if (!victims.length) continue;
+    for (const v of victims) report.toDelete.push({ id: v.id, target, at: v.at, location: v.r.location });
+    if (!opts.apply) continue;
+    if (!d.storage) {
+      for (const v of victims) report.errors.push({ id: v.id, error: "Sin almacenamiento configurado" });
+      continue;
+    }
+    const newest = [...rows].sort((a, b) => b.finishedAt - a.finishedAt || b.id - a.id)[0];
+    try {
+      const h = newest.location ? await d.storage.hash(newest.location) : null;
+      if (!h || h.sha256 !== newest.sha256) throw new Error("la copia más reciente no coincide con su SHA-256");
+    } catch (e) {
+      report.skipped.push({ target, reason: `No se borra nada: ${safeError(e)}` });
+      continue;
+    }
+    for (const v of victims) {
+      try {
+        if (v.r.location) await d.storage.delete(v.r.location);
+        if (v.r.manifestKey) await d.storage.delete(v.r.manifestKey);
+        pruned.push(v.id);
+      } catch (e) {
+        report.errors.push({ id: v.id, error: safeError(e) });
+      }
+    }
+  }
+  if (opts.apply && pruned.length) {
+    await d.copies.markPruned(pruned, opts.now ?? Date.now());
     report.deleted = pruned.length;
   }
   return report;
