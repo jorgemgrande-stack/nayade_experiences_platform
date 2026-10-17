@@ -47,9 +47,26 @@
 | Estado público | Como mucho una relectura en Stripe cada 30 s por sesión; 404 propio bajo `/public/checkout` | `status.test.ts`, HTTP |
 | Punta a punta por HTTP | Con la aplicación real del plano de control y la firma real del webhook (ver §8) | `controlPlane.stripeBeta.test.ts` (5) |
 
-**Resultado en local** de la CI completa de la rama de #130:
-- Unitarias: 1303/1305. Fallan solo `tenantJobPolicy`, sensible a la carga (pasa aislada), y `tscBaseline`, que falla en Windows también en la rama base y pasa en la CI.
-- MySQL: **321/321**.
+### Segunda revisión de seguridad (18/10/2026, independiente, solo lectura) y correcciones
+
+Sin hallazgos críticos. Todo lo alto y medio está corregido con prueba de regresión, y las pruebas de ALTO-1 y ALTO-2 se han validado rompiendo el código a propósito.
+
+| Hallazgo | Corrección |
+|---|---|
+| **ALTO-1** La retención se perdía al crear Stripe la factura siguiente, sin cobrarla | La retención se compara con la **última factura de periodo pagada y registrada** (alta o renovación), no con `latest_invoice` |
+| **ALTO-2** Una lectura antigua del cargo, procesada a la vez que otra, podía levantar la retención de una disputa perdida | El cargo se relee y se guarda **dentro** del bloqueo del pedido. Una disputa `lost` no retrocede nunca |
+| **MEDIO-1** `/orders/review` o `/advance` podían activar un pedido retenido | El orquestador recibe `coverageHeld` y no da de alta ni activa nada con una retención vigente |
+| **MEDIO-2** B2 no funcionaba con la idempotencia real de Stripe (otros parámetros con la misma clave dan `idempotency_error`) | Antes de crear una sesión se adoptan las huérfanas del pedido (`checkout.sessions.list` del cliente): se cierran, se registran, y una pagada queda completada. Con `idempotency_error` se pasa a la clave siguiente. El doble de pruebas imita ahora la idempotencia estricta |
+| **MEDIO-3** El presupuesto se comparaba con el catálogo web, no con el Price real | Se relee el Price en Stripe antes de abrir Checkout. La factura se compara por **subtotal** (antes de impuestos y saldo a favor) |
+| **MEDIO-4** Un cambio del prefijo de entorno dejaba sin aviso los pedidos existentes | El prefijo se guarda en el primer arranque; si cambia, Stripe no se monta (`reason: namespace_changed`). Un objeto de otro entorno que apunte a un pedido nuestro abre la incidencia `stripe.namespace_mismatch` |
+| BAJO-1 Un prorrateo levantaba la retención | Solo la levanta una **renovación** pagada |
+| BAJO-3 Ruta de resolución | Motivo de 200 caracteres como máximo; 409 si ya se resolvió; si el pedido está ocupado, `pending: true` |
+| BAJO-4 Texto de la alerta | Neutro («revisar el pedido») |
+| BAJO-5 Prefijo `local` compartido entre dos desarrolladores con el mismo sandbox | Aceptado: solo afecta a desarrollo, y la comprobación del cliente lo detiene. Basta con usar `CP_STRIPE_NAMESPACE` |
+
+**Resultado en local** de la CI completa de la rama de #130, tras las correcciones de la revisión:
+- Unitarias: **1307/1307**. Solo falla el fichero `tscBaseline`, que falla en Windows también en la rama base y pasa en la CI.
+- MySQL: **323/323**.
 - Compilación del plano de control: correcta.
 - Errores de tipos: los mismos 10 de Náyade, ya contemplados en la línea base.
 
@@ -72,7 +89,7 @@
    - comprobación visual en el Dashboard de que es un sandbox;
    - la lista de Products y Prices está vacía.
 2. **Catálogo:** las 6 operaciones exactas de `STRIPE_FASE_B.md` §2 (2 Products y 4 Prices, EUR, `tax_behavior: exclusive`, `lookup_key` `es:…:v<id>`).
-3. **Clave restringida `rk_test_…`** para `controlplane`, con los permisos de `STRIPE_FASE_A.md` §5. **Novedad:** añadir `charge_read` (cargos y reembolsos) y `dispute_read` (disputas). Los pagos de factura ya los cubre `invoice_read`.
+3. **Clave restringida `rk_test_…`** para `controlplane`, con los permisos de `STRIPE_FASE_A.md` §5. **Novedad:** añadir `charge_read` (cargos y reembolsos) y `dispute_read` (disputas). Los pagos de factura ya los cubre `invoice_read`, La lista y la relectura de sesiones (`checkout_session_read`) quedan dentro del nivel «Escritura» de Checkout Sessions: hay que **comprobarlo al crear la clave** (en el paso 7, con un `GET /v1/checkout/sessions?customer=…` que debe responder 200).
 4. **Destino del webhook** (Workbench del sandbox):
    - URL `https://elephant-source-crm.up.railway.app/cp/v1/stripe/webhook`;
    - carga snapshot, API `2026-09-30.endive`;
