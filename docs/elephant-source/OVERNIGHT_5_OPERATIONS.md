@@ -145,6 +145,43 @@
 - Pedir a Dinahosting que acepte en `mail.bigelephant.es` las IP de Brevo, o que no aplique `bl.spamcop.net` a ese dominio.
 - O probar con un buzón de prueba en otro proveedor, añadido como dirección exacta a la lista.
 
+## Segundo envío real autorizado: Gmail (17/10/2026)
+
+**Preparación:** `MAIL_SANDBOX_ALLOWLIST=jorgemgrande@gmail.com` como única dirección; `soporte@bigelephant.es` retirada de la lista. `MAIL_MODE=sandbox` en `core` y `controlplane`, redesplegados con `fbae9f7`. Diagnóstico: modo `sandbox`, sin degradación ni errores.
+
+**Envío:** un único correo por el flujo real, desde la empresa demo 01 (`emailCommunications.sendTestEmail`, a través de la bandeja de salida del Core).
+
+| Evidencia | Resultado |
+|---|---|
+| Identificador en Brevo | `<202610170937.58126714356@smtp-relay.mailin.fr>` |
+| Aceptación | API de Brevo a las 11:37:05 (hora de España). |
+| Entrega | Evento `delivered` de Brevo a las 11:37:07. Brevo registra además una apertura a las 11:38:16. |
+| Webhook | Estado de la bandeja: `queued` → `accepted` → `delivered` (evento `provider_delivered`). |
+| Rebotes y errores SMTP | Ninguno. |
+| Direcciones fuera de la lista | `soporte@bigelephant.es` y `no-autorizado@example.invalid`: `skipped / sandbox_recipient_not_allowed`. No llegaron a Brevo. |
+| Otros envíos | Ninguno. Brevo, en todo el día: 2 peticiones (esta y la del primer envío), 1 entregada y 1 rebote temporal. El resto de bandejas, vacías. |
+| Recepción | El propietario confirma que el correo llegó a la bandeja de entrada de Gmail. |
+
+**SPF, DKIM y DMARC:** sin verificar, porque no se dispone de las cabeceras del mensaje recibido («Mostrar original» en Gmail). Lo esperado:
+- **DKIM:** `PASS` con `d=bigelephant.es`, mediante los CNAME `brevo1` y `brevo2`.
+- **DMARC:** `PASS`, alineado gracias al DKIM.
+- **SPF:** `PASS` para el dominio de retorno de Brevo.
+
+**Después de la prueba:** `MAIL_MODE=off` en `core` y `controlplane`, confirmado por el diagnóstico. `live`, el registro público y los cobros reales siguen desactivados.
+
+**Conclusión:** superada la prueba básica de envío y recepción en Gmail. **La entregabilidad general no está resuelta**: falta el incidente siguiente, revisar las cabeceras de autenticación y probar con otros proveedores de correo.
+
+## Incidente abierto: IP de Brevo en listas negras (pendiente de Brevo)
+
+- **Síntoma:** el primer envío, a `soporte@bigelephant.es`, fue rechazado por el servidor de correo del dominio (`mail.bigelephant.es`, Dinahosting): `554 5.7.1 … Client host [77.32.148.25] blocked using bl.spamcop.net`.
+- **Dinahosting (17/10/2026):** confirma que la IP `77.32.148.25` de Brevo figura en listas negras y que **corresponde al proveedor (Brevo) gestionar su retirada**. Dinahosting no hace ninguna excepción.
+- **Impacto:** cualquier buzón cuyo servidor consulte esas listas puede rechazar los correos que salgan por esa IP compartida de Brevo, entre ellos los buzones del propio dominio en Dinahosting. Gmail sí entregó, por una IP de Brevo que en ese momento no estaba bloqueada.
+- **Pendiente:**
+  1. Abrir un caso en el soporte de Brevo: IP `77.32.148.25`, rebote del 17/10/2026, `messageId` `<202610170848.80444852289@smtp-relay.mailin.fr>`. Pedir su retirada de las listas o que nuestros envíos no salgan por ella.
+  2. Si el problema se repite, valorar con el propietario una IP dedicada de Brevo (requiere un plan de pago y autorización) u otro proveedor transaccional.
+  3. Cuando Brevo confirme la retirada, un nuevo envío único a `soporte@bigelephant.es`, solo con autorización expresa.
+- **Mientras tanto:** no se declara la entregabilidad general como verificada.
+
 ## Mejora pendiente: límites de acceso distribuidos y por contexto
 
 **Estado actual (17/10/2026, verificado en Railway).** Las pasarelas reenvían solo la IP real del cliente: Core #124, CRM #19 y #20, web #8. Los límites por IP funcionan y una IP falsificada no los elude. Son límites de `express-rate-limit` en la **memoria de cada proceso**:
