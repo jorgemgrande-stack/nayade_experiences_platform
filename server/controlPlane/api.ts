@@ -69,6 +69,10 @@ import { createPublicTrialRouter, createTrialAdminRouter } from "../trials/api";
 import { OrganizationError, OrganizationService, type OrganizationStore } from "../organization/service";
 import { CommercialOrchestrator } from "../orchestrator/service";
 import { createStripeRouter } from "../stripe/api";
+import { StripeEventProcessor } from "../stripe/events";
+import { StripeReconciler, startStripeWorker } from "../stripe/reconcile";
+import { stripeWebhookHandler } from "../stripe/webhook";
+import type { GwEvent } from "../stripe/gateway";
 import { StripeCheckoutService, type CheckoutUrls } from "../stripe/checkout";
 import type { StripeConfig } from "../stripe/config";
 import type { StripeGateway } from "../stripe/gateway";
@@ -179,7 +183,17 @@ export interface ControlPlaneDeps {
    * Stripe Billing, SOLO MODO PRUEBAS (server/stripe, CRM 0012). Rutas de operador en /stripe; Checkout
    * solo con `checkoutEnabled` y URL de vuelta. Requiere `orders`.
    */
-  stripe?: { config: StripeConfig; store: StripeStore; gateway: StripeGateway; urls: CheckoutUrls | null; checkoutEnabled: boolean };
+  stripe?: {
+    config: StripeConfig;
+    store: StripeStore;
+    gateway: StripeGateway;
+    urls: CheckoutUrls | null;
+    checkoutEnabled: boolean;
+    /** Verificación oficial de la firma del webhook (cuerpo original). */
+    verifyWebhook: (rawBody: Buffer, signature: string) => GwEvent;
+    /** Tarea periódica (eventos pendientes y conciliación). Apagada salvo CP_STRIPE_WORKER_ENABLED=1. */
+    workerEnabled: boolean;
+  };
   /**
    * Correo transaccional centralizado (server/mail, CRM 0011). `platform`: avisos de Elephant Source
    * (pedidos, alta asistida); webhook de Brevo autenticado por cabecera propia (`webhookToken`);
@@ -272,6 +286,18 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
     if (req.method === "OPTIONS") return void res.status(204).end();
     next();
   });
+  // Webhook de Stripe (modo pruebas): cuerpo ORIGINAL para la firma, por eso va ANTES de express.json.
+  // El procesador se conecta más abajo, junto al orquestador; hasta entonces los eventos solo se guardan.
+  let stripeKick: ((eventId: string) => void) | undefined;
+  if (d.stripe) {
+    const st = d.stripe;
+    app.post(
+      "/cp/v1/stripe/webhook",
+      rateLimit({ windowMs: 60_000, limit: 600, standardHeaders: true, legacyHeaders: false, keyGenerator: (req) => `ip:${ipKeyGenerator(req.ip ?? "")}` }),
+      express.raw({ type: "application/json", limit: "1mb" }),
+      wrap(stripeWebhookHandler({ verify: st.verifyWebhook, store: st.store, onRecorded: (id) => stripeKick?.(id) })),
+    );
+  }
   app.use(express.json({ limit: "256kb", verify: (req, _res, buf) => void ((req as any).rawBody = buf.toString("utf8")) }));
   app.use(rebindRequestContext);
 
@@ -1033,7 +1059,12 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         const checkout = st.checkoutEnabled && st.urls
           ? new StripeCheckoutService({ store: st.store, gateway: st.gateway, orders: d.orders.store, crmStore: d.crm.store, catalog: stripeCatalog, urls: st.urls, now: d.subscriptions.now })
           : null;
-        router.use("/stripe", createStripeRouter({ config: st.config, store: st.store, gateway: st.gateway, catalog: stripeCatalog, checkout, now: d.subscriptions.now }));
+        const processor = new StripeEventProcessor({ store: st.store, gateway: st.gateway, orders: d.orders.store, orchestrator, now: d.subscriptions.now });
+        const reconciler = new StripeReconciler({ store: st.store, gateway: st.gateway, processor, now: d.subscriptions.now });
+        // Tras guardar un evento del webhook se procesa enseguida (los fallos quedan para el reintento)
+        stripeKick = () => void processor.processDue(10).catch(() => undefined);
+        if (st.workerEnabled) startStripeWorker({ processor, reconciler });
+        router.use("/stripe", createStripeRouter({ config: st.config, store: st.store, gateway: st.gateway, catalog: stripeCatalog, checkout, processor, reconciler, now: d.subscriptions.now }));
       }
       // Webhook del proveedor de PRUEBAS: autenticado por firma (antes del montaje del router con tokens)
       if (d.orders.payments) app.post("/cp/v1/payments/test/webhook", paymentsWebhookHandler(orchestrator));
