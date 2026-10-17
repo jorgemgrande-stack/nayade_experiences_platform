@@ -279,7 +279,7 @@ export async function runExpenseEmailIngestion(): Promise<{ processed: number; d
             try {
               const fileName = att.filename ?? `adjunto-${savedCount + 1}`;
               const storageKey = `expenses/${expenseId}/${fileName}-${randomSuffix()}`;
-              const { url } = await storagePut(storageKey, att.content, att.contentType ?? "application/octet-stream");
+              const { url } = await storagePut(storageKey, att.content, att.contentType ?? "application/octet-stream", { category: "expense", originalName: fileName, owner: { type: "expense", id: expenseId } });
 
               await db.insert(expenseFiles).values({
                 expenseId,

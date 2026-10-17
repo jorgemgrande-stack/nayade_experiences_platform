@@ -54,7 +54,8 @@ import { generateDocumentNumber } from "../documentNumbers";
 import { nextCreditNoteNumber, withCreditNoteNumberRetry } from "../creditNoteNumber";
 import { htmlToPdf } from "../pdfGenerator";
 import { buildRedsysForm, generateMerchantOrder } from "../redsys";
-import { storagePut, hasExternalStorage } from "../storage";
+import { storagePut, hasExternalStorage, externalFileUrl } from "../storage";
+import { isAcceptableFileUrl } from "../_core/files/service";
 import {
   buildQuoteHtml,
   buildConfirmationHtml,
@@ -131,8 +132,8 @@ async function generateInvoicePdf(invoice: {
   try {
     const pdfBuffer = await htmlToPdf(html);
     const key = `invoices/${invoice.invoiceNumber}-${Date.now()}.pdf`;
-    const { url } = await storagePut(key, pdfBuffer, "application/pdf");
-    return { url, key };
+    const stored = await storagePut(key, pdfBuffer, "application/pdf", { category: "invoice", originalName: `${invoice.invoiceNumber}.pdf`, owner: { type: "invoice", id: invoice.invoiceNumber } });
+    return { url: stored.url, key: stored.key };
   } catch (pdfErr) {
     console.error("[PDF] Error generando factura PDF, usando vista on-demand:", pdfErr);
     const url = invoicePreviewPath(invoice.invoiceNumber);
@@ -2364,13 +2365,13 @@ export const crmRouter = router({
         const buffer = Buffer.from(input.fileBase64, "base64");
         const ext = input.mimeType === "application/pdf" ? "pdf" : input.mimeType === "image/png" ? "png" : "jpg";
         const fileKey = `transfer-proofs/${input.quoteId}-${Date.now()}.${ext}`;
-        const { url } = await storagePut(fileKey, buffer, input.mimeType);
+        const { url, key: storedKey } = await storagePut(fileKey, buffer, input.mimeType, { category: "transfer-proof", originalName: input.fileName, owner: { type: "quote", id: input.quoteId } });
         await db.update(quotes).set({
           transferProofUrl: url,
-          transferProofKey: fileKey,
+          transferProofKey: storedKey,
           updatedAt: new Date(),
         } as Record<string, unknown>).where(eq(quotes.id, input.quoteId));
-        return { url, fileKey };
+        return { url, fileKey: storedKey };
       }),
 
     // Subir justificante de transferencia sin modificar el presupuesto (para el modal Confirmar Pago)
@@ -2387,8 +2388,8 @@ export const crmRouter = router({
         const buffer = Buffer.from(input.fileBase64, "base64");
         const ext = input.mimeType === "application/pdf" ? "pdf" : input.mimeType === "image/png" ? "png" : "jpg";
         const fileKey = `transfer-proofs/pay-${input.quoteId}-${Date.now()}.${ext}`;
-        const { url } = await storagePut(fileKey, buffer, input.mimeType);
-        return { url, fileKey };
+        const { url, key: storedKey } = await storagePut(fileKey, buffer, input.mimeType, { category: "transfer-proof", originalName: input.fileName, owner: { type: "quote", id: input.quoteId } });
+        return { url, fileKey: storedKey };
       }),
 
     // Paso 2: Confirmar el pago (exige justificante ya subido)
@@ -2851,7 +2852,7 @@ export const crmRouter = router({
         try {
           const pdfBuffer = await htmlToPdf(html);
           const key = `quotes/${quote.quoteNumber}-${ts}.pdf`;
-          const { url } = await storagePut(key, pdfBuffer, "application/pdf");
+          const { url } = await storagePut(key, pdfBuffer, "application/pdf", { category: "quote", originalName: `Presupuesto-${quote.quoteNumber}.pdf`, owner: { type: "quote", id: quote.id } });
           return {
             success: true,
             pdfUrl: url,
@@ -2861,7 +2862,7 @@ export const crmRouter = router({
           console.error("[PDF] Error generando presupuesto PDF, guardando HTML como fallback:", pdfErr);
           // Fallback: guardar HTML
           const key = `quotes/${quote.quoteNumber}-${ts}.html`;
-          const { url } = await storagePut(key, Buffer.from(html), "text/html");
+          const { url } = await storagePut(key, Buffer.from(html), "text/html", { category: "quote", originalName: `Presupuesto-${quote.quoteNumber}.html`, owner: { type: "quote", id: quote.id } });
           return {
             success: true,
             pdfUrl: url,
@@ -5375,7 +5376,7 @@ export const crmRouter = router({
         </body></html>`;
         const pdfBuffer = await htmlToPdf(html);
         const key = `reservations/pdf-${res.merchantOrder}-${Date.now()}.pdf`;
-        const { url } = await storagePut(key, pdfBuffer, "application/pdf");
+        const { url } = await storagePut(key, pdfBuffer, "application/pdf", { category: "reservation", originalName: `Reserva-${res.merchantOrder}.pdf`, owner: { type: "reservation", id: res.id } });
         return { url };
       }),
   }),
@@ -5553,7 +5554,7 @@ export const crmRouter = router({
       .input(z.object({
         invoiceId: z.number(),
         paymentMethod: z.enum(["transferencia", "efectivo", "otro"]),
-        transferProofUrl: z.string().url().optional(),
+        transferProofUrl: z.string().refine(isAcceptableFileUrl, "URL no válida").optional(),
         transferProofKey: z.string().optional(),
         notes: z.string().optional(),
       }))
@@ -5905,7 +5906,7 @@ export const crmRouter = router({
                 ${items.map(i => `<tr><td style="padding:8px;border-bottom:1px solid #e5e7eb;">${i.description}</td><td style="padding:8px;text-align:right;border-bottom:1px solid #e5e7eb;">${i.quantity}</td><td style="padding:8px;text-align:right;border-bottom:1px solid #e5e7eb;">${Number(i.unitPrice).toFixed(2)}€</td><td style="padding:8px;text-align:right;border-bottom:1px solid #e5e7eb;">${Number(i.total).toFixed(2)}€</td></tr>`).join("")}
               </table>
               <p><strong>Subtotal:</strong> ${Number(invoice.subtotal).toFixed(2)}€ | <strong>IVA (${invoice.taxRate}%):</strong> ${Number(invoice.taxAmount).toFixed(2)}€ | <strong>TOTAL: ${Number(invoice.total).toFixed(2)}€</strong></p>
-              ${invoice.pdfUrl ? `<p>Encontrarás tu factura <strong>adjunta a este correo</strong> en PDF.${invoice.pdfUrl ? ` También puedes <a href="${invoice.pdfUrl}" style="color:#f97316;">descargarla aquí</a>.` : ""}</p>` : ""}
+              ${invoice.pdfUrl ? `<p>Encontrarás tu factura <strong>adjunta a este correo</strong> en PDF.${invoice.pdfUrl ? ` También puedes <a href="${externalFileUrl(invoice.pdfUrl)}" style="color:#f97316;">descargarla aquí</a>.` : ""}</p>` : ""}
               <hr/><p style="color:#6b7280;font-size:12px;">${legacyBrandText("Náyade Experiences")} — ${COPY_EMAIL} — ${legacyBrandSetting("brand_support_phone", "+34 639 57 66 27")} (también WhatsApp)</p>
             </div>`;
 

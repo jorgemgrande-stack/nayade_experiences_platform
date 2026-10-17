@@ -187,7 +187,7 @@ export const publicExpensesRouter = router({
       if (input.file) {
         const fileBuffer = Buffer.from(input.file.base64, "base64");
         const key = `expenses/${expenseId}/${input.file.fileName}-${randomSuffix()}`;
-        const { url } = await storagePut(key, fileBuffer, input.file.mimeType);
+        const { url } = await storagePut(key, fileBuffer, input.file.mimeType, { category: "expense", originalName: input.file.fileName, owner: { type: "expense", id: expenseId } });
         await db.insert(expenseFiles).values({
           expenseId,
           filePath: url,

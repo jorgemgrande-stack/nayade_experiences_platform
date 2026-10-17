@@ -51,6 +51,21 @@ describe("Brevo: envío transaccional", () => {
     });
   });
 
+  it("adjuntos: por URL pública o con el contenido (fichero privado del almacenamiento), nunca la URL privada", async () => {
+    const f = fakeFetch({ "/v3/smtp/email": { status: 201, body: { messageId: "<a@x.example>" } } });
+    await brevoProvider({ apiKey: KEY, fetch: f.fetch }).send({
+      ...m,
+      attachments: [
+        { name: "factura.pdf", url: "https://cdn.example/f.pdf" },
+        { name: "presupuesto.pdf", url: "https://acme.example/api/files/obj_1", content: Buffer.from("%PDF").toString("base64") },
+      ],
+    });
+    expect(f.calls[0].body.attachment).toEqual([
+      { url: "https://cdn.example/f.pdf", name: "factura.pdf" },
+      { content: "JVBERg==", name: "presupuesto.pdf" },
+    ]);
+  });
+
   it("errores: 400 definitivo con el código documentado; 429/5xx/red reintentables; el mensaje del proveedor no se conserva", async () => {
     const cases: Array<[number, unknown, string, boolean]> = [
       [400, { code: "invalid_parameter", message: "email cliente@pruebas.example no válido" }, "invalid_parameter", false],

@@ -53,6 +53,13 @@ export function categoryForTemplate(templateKey: string | null | undefined): Mai
   return "operational";
 }
 
+/** Adjunto por URL pública o, si es un fichero privado del almacenamiento, con su contenido en base64. */
+export interface MailAttachment {
+  name: string;
+  url: string;
+  content?: string;
+}
+
 export interface MailAddress {
   email: string;
   name?: string;
@@ -72,7 +79,7 @@ export interface EnqueueInput extends MailContent {
   category: MailCategory;
   to: string;
   cc?: string[];
-  attachments?: { name: string; url: string }[];
+  attachments?: MailAttachment[];
 }
 
 export interface OutboxRow {
@@ -92,7 +99,7 @@ export interface OutboxRow {
   subject: string;
   html: string | null;
   text: string | null;
-  attachments: { name: string; url: string }[];
+  attachments: MailAttachment[];
   provider: string | null;
   providerMessageId: string | null;
   attempts: number;
@@ -112,7 +119,7 @@ export interface ProviderMessage {
   subject: string;
   html: string;
   text?: string;
-  attachments?: { name: string; url: string }[];
+  attachments?: MailAttachment[];
   tag: string;
   ref: string;
   idempotencyKey: string;

@@ -5,7 +5,7 @@
  *  - `MemoryMailStore` para pruebas unitarias (misma semántica: clave única, reserva, supresiones).
  */
 import type mysql from "mysql2/promise";
-import type { MailStatus, OutboxRow } from "./types";
+import type { MailAttachment, MailStatus, OutboxRow } from "./types";
 
 export type NewOutboxRow = Omit<OutboxRow, "id" | "attempts" | "lockedUntil" | "lastError" | "provider" | "providerMessageId" | "updatedAt"> & { provider?: string | null };
 
@@ -74,7 +74,7 @@ function fromDb(r: any): OutboxRow {
     subject: r.subject,
     html: r.html_body ?? null,
     text: r.text_body ?? null,
-    attachments: json<{ name: string; url: string }[]>(r.attachments_json, []),
+    attachments: json<MailAttachment[]>(r.attachments_json, []),
     provider: r.provider ?? null,
     providerMessageId: r.provider_message_id ?? null,
     attempts: Number(r.attempts),

@@ -27,7 +27,7 @@ export interface TenantMailParams {
   html: string;
   text?: string;
   cc?: string | string[];
-  attachments?: { name: string; url: string }[];
+  attachments?: { name: string; url: string; content?: Buffer }[];
   category?: MailCategory;
   idempotencyKey?: string;
 }
@@ -98,7 +98,8 @@ export async function sendTenantMail(p: TenantMailParams): Promise<boolean> {
       subject: p.subject,
       html: p.html,
       text: p.text,
-      attachments: p.attachments,
+      // Contenido de ficheros privados del almacenamiento (ya leído por el mailer) en base64 para la bandeja
+      attachments: p.attachments?.map((a) => (a.content ? { name: a.name, url: a.url, content: a.content.toString("base64") } : { name: a.name, url: a.url })),
       // La dirección propia de la empresa (si la configuró) recibe las respuestas; nunca es el From
       sender: { lane: "tenant", brandName: comms.fromName, replyTo: comms.replyTo ?? comms.fromEmail },
       guard,

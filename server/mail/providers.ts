@@ -32,7 +32,7 @@ export function brevoProvider(o: { apiKey: string; baseUrl?: string; fetch?: Fet
         subject: m.subject,
         htmlContent: m.html,
         ...(m.text ? { textContent: m.text } : {}),
-        ...(m.attachments?.length ? { attachment: m.attachments.map((a) => ({ url: a.url, name: a.name })) } : {}),
+        ...(m.attachments?.length ? { attachment: m.attachments.map((a) => (a.content ? { content: a.content, name: a.name } : { url: a.url, name: a.name })) } : {}),
         tags: [m.tag],
         // X-Mailin-custom vuelve en los webhooks (referencia opaca); sin seguimiento de clics para que
         // los enlaces lleguen directos. `IdempotencyKey` es una cabecera propia (Brevo no documenta
@@ -78,7 +78,7 @@ export function smtpProvider(c: { host: string; port: number; secure: boolean; u
           subject: m.subject,
           html: m.html,
           text: m.text,
-          attachments: m.attachments?.map((a) => ({ filename: a.name, path: a.url })),
+          attachments: m.attachments?.map((a) => (a.content ? { filename: a.name, content: Buffer.from(a.content, "base64") } : { filename: a.name, path: a.url })),
           headers: { "X-Mailin-custom": m.ref, "X-Elephant-Tag": m.tag },
         });
         return { messageId: typeof info.messageId === "string" ? info.messageId.slice(0, 200) : null };

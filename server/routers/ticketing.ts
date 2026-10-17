@@ -24,6 +24,7 @@ import { eq, desc, and, like, or, sql, count, inArray, sum } from "drizzle-orm";
 import { sendEmail as sharedSendEmail } from "../mailer";
 import { sendManagedEmail } from "../emailManager";
 import { storagePut } from "../storage";
+import { isAcceptableFileUrl } from "../_core/files/service";
 import { invokeLLM } from "../_core/llm";
 import { buildReservationConfirmHtml, buildCouponRedemptionReceivedHtml, buildCouponPostponedHtml, buildCouponInternalAlertHtml } from "../emailTemplates";
 import { postConfirmOperation, logActivity, generateReservationNumber, getGHLCredentials } from "../db";
@@ -362,7 +363,7 @@ export const ticketingRouter = router({
         const ts = Date.now();
         const random = Math.random().toString(36).substring(2, 10);
         const key = `nayade/coupons/${ts}-${random}.${ext}`;
-        const { url } = await storagePut(key, buffer, input.mimeType);
+        const { url } = await storagePut(key, buffer, input.mimeType, { category: "coupon", originalName: input.filename });
         // Si la URL es local (/local-storage/...) también aceptamos — son archivos en /tmp
         return { url };
       } catch {
@@ -1080,7 +1081,7 @@ export const ticketingRouter = router({
       id: z.number(),
       statusFinancial: z.enum(["pendiente_canjear", "canjeado", "incidencia"]).optional(),
       realAmount: z.string().optional().nullable(),
-      settlementJustificantUrl: z.string().url().optional().nullable(),
+      settlementJustificantUrl: z.string().refine(isAcceptableFileUrl, "URL no válida").optional().nullable(),
       settledAt: z.string().optional(),
       notes: z.string().optional(),
     }))
@@ -1103,7 +1104,7 @@ export const ticketingRouter = router({
     .mutation(async ({ input }) => {
       const buffer = Buffer.from(input.fileBase64, "base64");
       const key = `ticketing/attachments/${input.id}-${Date.now()}-${input.fileName}`;
-      const { url } = await storagePut(key, buffer, input.mimeType);
+      const { url } = await storagePut(key, buffer, input.mimeType, { category: "coupon", originalName: input.fileName, owner: { type: "coupon_redemption", id: input.id } });
       await db.update(couponRedemptions).set({ attachmentUrl: url }).where(eq(couponRedemptions.id, input.id));
       return { url };
     }),
@@ -1130,7 +1131,7 @@ export const ticketingRouter = router({
         const buffer = Buffer.from(input.justificantBase64, "base64");
         try {
           const key = `ticketing/justificantes/${input.id}-${Date.now()}-${input.justificantFileName}`;
-          const { url } = await storagePut(key, buffer, input.justificantMimeType);
+          const { url } = await storagePut(key, buffer, input.justificantMimeType, { category: "coupon", originalName: input.justificantFileName, owner: { type: "coupon_redemption", id: input.id }, uploadedBy: ctx.user.id });
           justificantUrl = url;
         } catch {
           justificantUrl = `data:${input.justificantMimeType};base64,${input.justificantBase64}`;
@@ -1885,7 +1886,7 @@ export const ticketingRouter = router({
       phone: z.string().optional(),
       couponCode: z.string().min(1),
       securityCode: z.string().optional(),
-      attachmentUrl: z.string().url().optional(),
+      attachmentUrl: z.string().refine(isAcceptableFileUrl, "URL no válida").optional(),
       requestedDate: z.string().optional(),
       station: z.string().optional(),
       participants: z.number().int().min(1).default(1),

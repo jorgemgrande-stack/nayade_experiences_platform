@@ -13,6 +13,7 @@ export function routeGroup(url: string): string {
   if (path.startsWith("/api/ghl")) return "ghl";
   if (path.startsWith("/api/redsys") || path.startsWith("/reserva")) return "redsys";
   if (path.startsWith("/api/upload")) return "upload";
+  if (path.startsWith("/api/files/") || path.startsWith("/files/")) return "files";
   if (path.startsWith("/api/")) return "api";
   if (path.startsWith("/local-storage")) return "files";
   return "web";

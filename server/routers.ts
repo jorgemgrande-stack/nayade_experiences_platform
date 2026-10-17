@@ -1,4 +1,5 @@
 import { COOKIE_NAME } from "@shared/const";
+import { readStoredFile } from "./storage";
 import { legacyBrandText } from "./tenantBrand";
 import { publicBaseUrl } from "./_core/productIdentity";
 
@@ -2462,9 +2463,15 @@ export const appRouter = router({
         for (const doc of (exp.documents ?? []) as any[]) {
           if (!doc.fileUrl) continue;
           try {
-            const res = await fetch(doc.fileUrl);
-            if (!res.ok) continue;
-            const buf = await res.arrayBuffer();
+            // Ficheros del almacenamiento propio: se leen del servicio (privados, sin URL pública)
+            const own = await readStoredFile(doc.fileUrl);
+            let buf: ArrayBuffer | Buffer;
+            if (own) buf = own.data;
+            else {
+              const res = await fetch(doc.fileUrl);
+              if (!res.ok) continue;
+              buf = await res.arrayBuffer();
+            }
             const ext = doc.mimeType === "application/pdf" ? ".pdf"
               : doc.mimeType?.startsWith("image/") ? "." + doc.mimeType.split("/")[1]
               : "";
