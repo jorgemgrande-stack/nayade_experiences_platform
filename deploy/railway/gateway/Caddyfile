@@ -1,0 +1,50 @@
+# Pasarela de acceso restringido de Elephant Source (Railway).
+#
+# Protege TODAS las rutas del servicio de detrás con autenticación básica antes de llegar a la aplicación
+# (la autenticación propia de la aplicación sigue activa). Solo `/__gateway/health` queda abierta para el
+# healthcheck de Railway y no revela nada.
+#
+# Variables:
+#   PORT                   puerto que asigna Railway
+#   GATEWAY_USER           usuario de acceso
+#   GATEWAY_PASSWORD_HASH  hash bcrypt de la contraseña (`caddy hash-password`); nunca la contraseña en claro
+#   UPSTREAM               destino privado, p. ej. core.railway.internal:3000
+#
+# El `Host` original se conserva hacia la aplicación (comportamiento por defecto de reverse_proxy): el Core
+# elige la empresa por el host.
+{
+	admin off
+	auto_https off
+	servers {
+		# El borde de Railway llega desde 100.0.0.0/8 (rango de su guía de Caddy) y escribe X-Forwarded-For
+		# como «cliente, CDN». Caddy calcula {client_ip} a partir de ahí y es lo único que se reenvía a la
+		# aplicación (header_up X-Forwarded-For): con «trust proxy 1» el Core usa esa IP en sus límites de
+		# login, recuperación de contraseña y subidas, y una cabecera falsificada por el cliente no cuenta
+		trusted_proxies static private_ranges 100.0.0.0/8
+	}
+}
+
+:{$PORT} {
+	@health path /__gateway/health
+	handle @health {
+		respond "ok" 200
+	}
+
+	@protected not path /__gateway/health
+	basic_auth @protected {
+		{$GATEWAY_USER} {$GATEWAY_PASSWORD_HASH}
+	}
+
+	header {
+		X-Robots-Tag "noindex, nofollow"
+		-Server
+	}
+
+	handle {
+		# Las credenciales de la pasarela no llegan a la aplicación (usa sus propias cookies y tokens)
+		reverse_proxy {$UPSTREAM} {
+			header_up -Authorization
+			header_up X-Forwarded-For {client_ip}
+		}
+	}
+}

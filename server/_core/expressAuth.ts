@@ -42,6 +42,8 @@ export async function resolveSessionUser(req: Request): Promise<SessionUser | nu
   }
 }
 
+const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+
 function deny(res: Response, status: 401 | 403, message: string) {
   res.setHeader("Cache-Control", "no-store");
   res.status(status).json({ ok: false, message });
@@ -65,6 +67,10 @@ export function requirePermission(permissionKey: string, fallbackRoles: string[]
       allowed = fallbackRoles.includes(String(user.role));
     }
     if (!allowed) return deny(res, 403, "Acceso restringido al equipo.");
+    // Solo lectura: nunca métodos que modifican (mismo criterio que readOnlyGuard en tRPC)
+    if (String(user.role) === "readonly" && !SAFE_METHODS.has(req.method)) {
+      return deny(res, 403, "Tu usuario es de solo lectura: no puede modificar datos.");
+    }
 
     (req as Request & { authUser?: SessionUser }).authUser = user;
     res.setHeader("Cache-Control", "no-store");
@@ -73,7 +79,7 @@ export function requirePermission(permissionKey: string, fallbackRoles: string[]
 }
 
 /** Acceso del equipo comercial: mismo criterio que `staffProcedure` (permiso crm.view). */
-export const requireStaff = requirePermission("crm.view", ["admin", "agente"]);
+export const requireStaff = requirePermission("crm.view", ["admin", "agente", "readonly"]);
 
 /**
  * Exige sesión activa con rol heredado `admin`.

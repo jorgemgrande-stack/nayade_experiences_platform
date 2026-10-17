@@ -3,11 +3,15 @@
  *
  * Sitemap dinámico generado desde la base de datos.
  * Cache de 1 hora (Cache-Control + ETag implícito de Express).
+ *
+ * En multiempresa: URL pública de la empresa (subdominio o dominio propio verificado), solo rutas del
+ * Core, sus páginas publicadas y su catálogo; y un robots.txt propio que apunta a su sitemap.
  */
 
 import { Router } from "express";
 import { and, eq, notLike } from "drizzle-orm";
 import {
+  staticPages,
   experiences,
   legoPacks,
   restaurants,
@@ -16,11 +20,32 @@ import {
   locations,
 } from "../drizzle/schema";
 import { legacyDb, legacyPool } from "./_core/legacyDb";
+import { isMultiTenant } from "./_core/tenant";
+import { publicBaseUrl } from "./_core/productIdentity";
+import { getCapabilityAccess } from "./_core/capabilities/access";
+import { listPublishedForSitemap } from "./blogDb";
+
+/** El blog figura en el sitemap si la empresa lo tiene contratado (activo o en solo lectura). */
+async function blogLicensed(): Promise<boolean> {
+  try {
+    return (await getCapabilityAccess().check("cms-blog", { write: false })).allowed;
+  } catch {
+    return false;
+  }
+}
 
 const _pool = legacyPool();
 const db = legacyDb();
 
-const BASE_URL = "https://skicenter.es";
+const LEGACY_BASE_URL = "https://skicenter.es";
+
+/** Rutas públicas del Core disponibles para cualquier empresa. */
+const TENANT_STATIC_URLS: Array<{ path: string; changefreq: string; priority: string }> = [
+  { path: "/",             changefreq: "weekly",  priority: "1.0" },
+  { path: "/experiencias", changefreq: "weekly",  priority: "0.8" },
+  { path: "/presupuesto",  changefreq: "weekly",  priority: "0.8" },
+  { path: "/contacto",     changefreq: "weekly",  priority: "0.8" },
+];
 
 const STATIC_URLS: Array<{ path: string; changefreq: string; priority: string }> = [
   { path: "/",               changefreq: "weekly",  priority: "1.0" },
@@ -54,10 +79,10 @@ function formatDate(d: Date | null | undefined): string {
   return d instanceof Date ? d.toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10);
 }
 
-function urlEntry(loc: string, lastmod?: string, changefreq = "monthly", priority = "0.6"): string {
+function urlEntry(base: string, loc: string, lastmod?: string, changefreq = "monthly", priority = "0.6"): string {
   const lastmodTag = lastmod ? `\n    <lastmod>${lastmod}</lastmod>` : "";
   return `  <url>
-    <loc>${escapeXml(BASE_URL + loc)}</loc>${lastmodTag}
+    <loc>${escapeXml(base + loc)}</loc>${lastmodTag}
     <changefreq>${changefreq}</changefreq>
     <priority>${priority}</priority>
   </url>`;
@@ -65,8 +90,25 @@ function urlEntry(loc: string, lastmod?: string, changefreq = "monthly", priorit
 
 export const sitemapRouter = Router();
 
+sitemapRouter.get("/robots.txt", (_req, res, next) => {
+  // En una sola empresa se sirve el fichero estático de siempre
+  if (!isMultiTenant()) return next();
+  const base = publicBaseUrl().replace(/\/+$/, "");
+  res.setHeader("Content-Type", "text/plain; charset=utf-8");
+  res.setHeader("Cache-Control", "public, max-age=3600, s-maxage=3600");
+  res.status(200).send(`User-agent: *\nAllow: /\nDisallow: /admin/\nDisallow: /api/\n\nSitemap: ${base}/sitemap.xml\n`);
+});
+
 sitemapRouter.get("/sitemap.xml", async (_req, res) => {
   try {
+    const multi = isMultiTenant();
+    const BASE_URL = multi ? publicBaseUrl().replace(/\/+$/, "") : LEGACY_BASE_URL;
+    const url = (loc: string, lastmod?: string, changefreq?: string, priority?: string) => urlEntry(BASE_URL, loc, lastmod, changefreq, priority);
+    const pageRows = multi
+      ? await db.select({ slug: staticPages.slug, updatedAt: staticPages.updatedAt }).from(staticPages).where(eq(staticPages.isPublished, true))
+      : [];
+    // Blog (solo multi y con la capacidad contratada): /blog y sus entradas publicadas, nunca borradores
+    const blogRows = multi && (await blogLicensed()) ? await listPublishedForSitemap(Date.now()) : null;
     const [
       expRows,
       legoRows,
@@ -120,43 +162,53 @@ sitemapRouter.get("/sitemap.xml", async (_req, res) => {
     const entries: string[] = [];
 
     // Rutas estáticas
-    for (const u of STATIC_URLS) {
-      entries.push(urlEntry(u.path, undefined, u.changefreq, u.priority));
+    for (const u of multi ? TENANT_STATIC_URLS : STATIC_URLS) {
+      entries.push(url(u.path, undefined, u.changefreq, u.priority));
+    }
+
+    // Páginas propias publicadas de la empresa (/:slug); «inicio» es la portada
+    for (const r of pageRows) {
+      if (/^[a-z0-9-]{1,64}$/.test(r.slug) && r.slug !== "inicio" && !(blogRows && r.slug === "blog")) entries.push(url(`/${r.slug}`, formatDate(r.updatedAt)));
+    }
+
+    if (blogRows) {
+      entries.push(url("/blog", blogRows[0] ? formatDate(blogRows[0].updatedAt) : undefined, "weekly", "0.7"));
+      for (const r of blogRows) entries.push(url(`/blog/${r.slug}`, formatDate(r.updatedAt)));
     }
 
     // /experiencias/:slug (slugs malformados ya excluidos en la query)
     for (const r of expRows) {
-      entries.push(urlEntry(`/experiencias/${r.slug}`, formatDate(r.updatedAt)));
+      entries.push(url(`/experiencias/${r.slug}`, formatDate(r.updatedAt)));
     }
 
     // /lego-packs/:category (DISTINCT)
     for (const r of legoCategories) {
-      entries.push(urlEntry(`/lego-packs/${r.category}`));
+      entries.push(url(`/lego-packs/${r.category}`));
     }
 
     // /lego-packs/detalle/:slug
     for (const r of legoRows) {
-      entries.push(urlEntry(`/lego-packs/detalle/${r.slug}`, formatDate(r.updatedAt)));
+      entries.push(url(`/lego-packs/detalle/${r.slug}`, formatDate(r.updatedAt)));
     }
 
     // /restaurantes/:slug  (omitimos /reservar — formulario de acción, no indexable)
     for (const r of restaurantRows) {
-      entries.push(urlEntry(`/restaurantes/${r.slug}`, formatDate(r.updatedAt)));
+      entries.push(url(`/restaurantes/${r.slug}`, formatDate(r.updatedAt)));
     }
 
     // /hotel/:slug
     for (const r of roomRows) {
-      entries.push(urlEntry(`/hotel/${r.slug}`, formatDate(r.updatedAt)));
+      entries.push(url(`/hotel/${r.slug}`, formatDate(r.updatedAt)));
     }
 
     // /spa/:slug
     for (const r of spaRows) {
-      entries.push(urlEntry(`/spa/${r.slug}`, formatDate(r.updatedAt)));
+      entries.push(url(`/spa/${r.slug}`, formatDate(r.updatedAt)));
     }
 
     // /ubicaciones/:slug
     for (const r of locationRows) {
-      entries.push(urlEntry(`/ubicaciones/${r.slug}`, formatDate(r.updatedAt)));
+      entries.push(url(`/ubicaciones/${r.slug}`, formatDate(r.updatedAt)));
     }
 
     // /pagina/* excluido — contenido duplicado de rutas canónicas

@@ -59,11 +59,11 @@ export function loadMigrations(dir: string): { migrations: Migration[]; errors: 
     else ups.set(id, { number: Number(m[1]), name: m[2], up: body });
   }
 
-  for (const id of downs.keys()) {
+  for (const id of Array.from(downs.keys())) {
     if (!ups.has(id)) errors.push(`${id}.down.sql: no existe la migración ${id}.sql`);
   }
 
-  const migrations: Migration[] = [...ups.entries()]
+  const migrations: Migration[] = Array.from(ups.entries())
     .map(([id, u]) => {
       const down = downs.get(id) ?? null;
       return {
@@ -114,4 +114,97 @@ export function validateMigrations(list: Migration[]): string[] {
     }
   });
   return errors;
+}
+
+// ── Carriles y comprobaciones de seguridad del ejecutor (sin base de datos) ─────────────────
+
+/**
+ * Un carril es un directorio de migraciones ligado a UN tipo de base de datos. `requires` son
+ * tablas base que deben existir en el destino: si faltan, la BD no es de ese carril (p. ej. aplicar
+ * las migraciones de la app sobre la BD del CRM) y no se toca.
+ */
+export type Lane = { name: string; dir: string; requires: string[] };
+
+export const KNOWN_LANES: Record<string, { name: string; requires: string[] }> = {
+  "db/migrations": { name: "app", requires: ["users"] },
+  "db/crm/migrations": { name: "crm", requires: ["crm_companies"] },
+};
+
+/** Carril de `dirArg` (relativo a `root`): conocido o declarado en `<dir>/lane.json`. */
+export function resolveLane(dirArg: string | undefined, root: string): { lane?: Lane; error?: string } {
+  if (!dirArg) {
+    return { error: `Indica el carril con --dir (${Object.keys(KNOWN_LANES).join(" o ")}): no hay carril por defecto.` };
+  }
+  const abs = path.resolve(root, dirArg);
+  const rel = path.relative(root, abs).split(path.sep).join("/");
+  const known = KNOWN_LANES[rel];
+  if (known) return { lane: { ...known, dir: abs } };
+  const manifest = path.join(abs, "lane.json");
+  if (fs.existsSync(manifest)) {
+    try {
+      const m = JSON.parse(fs.readFileSync(manifest, "utf8")) as { name?: unknown; requires?: unknown };
+      if (typeof m.name === "string" && /^[a-z0-9_-]{1,40}$/.test(m.name) && Array.isArray(m.requires) && m.requires.every((t) => typeof t === "string")) {
+        return { lane: { name: m.name, dir: abs, requires: m.requires as string[] } };
+      }
+    } catch {
+      // cae al error de abajo
+    }
+    return { error: `${rel}/lane.json no es válido: se espera {"name": "...", "requires": ["tabla", ...]}` };
+  }
+  return { error: `Carril desconocido: ${rel}. Usa uno conocido (${Object.keys(KNOWN_LANES).join(", ")}) o declara ${rel}/lane.json.` };
+}
+
+/** Estado leído de la BD de destino (solo lectura). */
+export type LedgerState = {
+  /** id → checksum de las migraciones registradas como aplicadas. */
+  applied: Map<string, string>;
+  /** Carril al que quedó ligada la BD (null en registros anteriores a esta versión del ejecutor). */
+  lane: string | null;
+  /** Migración que empezó y no terminó (`up:<id>` o `down:<id>`). */
+  inProgress: string | null;
+  /** Tablas existentes en la BD. */
+  tables: Set<string>;
+};
+
+/**
+ * Problemas que impiden continuar: carril equivocado, migración a medias, registros que no son de
+ * este directorio, contenidos cambiados o huecos. Vacío = se puede operar.
+ */
+export function ledgerProblems(migrations: Migration[], s: LedgerState, lane: Lane): string[] {
+  const out: string[] = [];
+  if (s.lane && s.lane !== lane.name) out.push(`La BD está ligada al carril «${s.lane}», no a «${lane.name}»: --dir equivocado.`);
+  const missing = lane.requires.filter((t) => !s.tables.has(t.toLowerCase()));
+  if (missing.length) out.push(`Faltan las tablas base del carril «${lane.name}» (${missing.join(", ")}): esta BD no es de este carril o no tiene su esquema base.`);
+  if (s.inProgress) {
+    out.push(
+      `La migración ${s.inProgress} empezó y no terminó: el esquema puede estar a medias. Revísalo a mano y ` +
+        `regístralo con «resolve --id <id> --as applied|not-applied» antes de continuar.`,
+    );
+  }
+  const byId = new Map(migrations.map((m) => [m.id, m]));
+  for (const [id, sum] of Array.from(s.applied.entries())) {
+    const m = byId.get(id);
+    if (!m) out.push(`${id} figura como aplicada pero no existe en este carril: --dir equivocado o fichero borrado.`);
+    else if (m.checksum !== sum) out.push(`${id} ya estaba aplicada y su contenido cambió (checksum distinto): crea una migración nueva.`);
+  }
+  const firstPending = migrations.findIndex((m) => !s.applied.has(m.id));
+  if (firstPending >= 0) {
+    const later = migrations.slice(firstPending + 1).filter((m) => s.applied.has(m.id));
+    if (later.length) out.push(`Hueco: ${migrations[firstPending].id} no está aplicada pero sí ${later.map((m) => m.id).join(", ")}.`);
+  }
+  return out;
+}
+
+/** Identificación explícita del destino antes de escribir. `null` = permitido. */
+export function targetProblem(o: { apply: boolean; confirm: string | undefined; actualDb: string | null; urlHost: string; allowRemote: boolean }): string | null {
+  if (!o.apply) return null;
+  if (!o.actualDb) return "La URL no selecciona ninguna base de datos.";
+  if (o.confirm !== o.actualDb) {
+    return `Para escribir hay que identificar el destino: añade --confirm-database ${o.actualDb} (nombre real devuelto por el servidor).`;
+  }
+  const loopback = ["127.0.0.1", "localhost", "::1", "[::1]"].includes(o.urlHost);
+  if (!loopback && !o.allowRemote) {
+    return `Destino remoto (${o.urlHost}): exige además --allow-remote, backup verificado y la autorización correspondiente.`;
+  }
+  return null;
 }

@@ -127,6 +127,8 @@ export async function warmConfigCache(): Promise<void> {
     // Integraciones por tenant (multiempresa): credenciales de cobro y correo
     "redsys_environment", "redsys_merchant_code", "redsys_merchant_key", "redsys_merchant_terminal",
     "seo_description", "email_cc_all",
+    // Comunicaciones por tenant (remitente, nombre y responder-a; ver tenantBrand.ts)
+    "email_from_address", "email_from_name", "email_reply_to",
   ];
   await Promise.all(keys.map(k => getSystemSetting(k, "").catch(() => {})));
 }

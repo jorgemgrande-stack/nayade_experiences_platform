@@ -4,7 +4,7 @@
  * El cliente solo puede activar/desactivar líneas opcionales.
  */
 import { z } from "zod";
-import { router, protectedProcedure, adminProcedure, publicProcedure } from "../_core/trpc";
+import { router, protectedProcedure, adminProcedure, publicProcedure, staffProcedure } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { eq, and, asc, inArray, sql } from "drizzle-orm";
 import {
@@ -477,7 +477,7 @@ export const legoPacksRouter = router({
 
   // -- Save snapshot ---------------------------------------------------------
   // Called when an operation (reservation, quote, tpv_sale, invoice) is created
-  saveSnapshot: protectedProcedure
+  saveSnapshot: staffProcedure
     .input(z.object({
       legoPackId: z.number(),
       operationType: z.enum(["reservation", "quote", "tpv_sale", "invoice"]),
@@ -502,7 +502,7 @@ export const legoPacksRouter = router({
     }),
 
   // -- Get snapshot for operation ---------------------------------------------
-  getSnapshot: protectedProcedure
+  getSnapshot: staffProcedure
     .input(z.object({
       operationType: z.enum(["reservation", "quote", "tpv_sale", "invoice"]),
       operationId: z.number(),
@@ -526,8 +526,8 @@ export const legoPacksRouter = router({
       const allLines = await db.select().from(legoPackLines);
 
       // Cargar todos los productos origen de una vez (evitar N+1)
-      const expIds = [...new Set(allLines.filter(l => l.sourceType === "experience").map(l => l.sourceId))];
-      const packIds = [...new Set(allLines.filter(l => l.sourceType === "pack").map(l => l.sourceId))];
+      const expIds = Array.from(new Set(allLines.filter(l => l.sourceType === "experience").map(l => l.sourceId)));
+      const packIds = Array.from(new Set(allLines.filter(l => l.sourceType === "pack").map(l => l.sourceId)));
 
       const expMap: Record<number, { title: string; basePrice: string; isActive: boolean; fiscalRegime: string }> = {};
       const packMap: Record<number, { title: string; basePrice: string; isActive: boolean; fiscalRegime: string }> = {};

@@ -39,13 +39,15 @@ PR pequeño → CI informativo → `gh pr merge --merge` → esperar despliegue 
 | SDK y cargador de módulos externos + plantilla | I·T·M·D | repo `elephant-module-template`; `ELEPHANT_MODULES` |
 | Incidencias, alertas y retención | I·T·M·D | registro 0005; `/cp/v1/incidents`, CLI |
 | Adaptador de pagos (Stripe) con cobros apagados | I·T (PR) | doble candado |
+| Tickets de soporte (`/cp/v1/tickets`, pestañas en el CRM) | I·T (PR #63) | registro 0006; ámbitos `tickets:read/write`; pruebas en MySQL real |
+| Catálogo de planes (`/cp/v1/billing/plans`) + selector en el CRM | I·T (PR #62) | |
 
 ## Cola (siguiente, en orden)
 1. Plugin de routers tRPC tipado para extraer hotel/spa/restaurants (B14).
 2. Despliegue del plano de control y del CRM (B12) y alta real de operadores SSO (B10).
 3. Elegir proveedor de pagos y tarifas (B11) → activar cobros con autorización.
 4. ~~Facturación SaaS en el CRM~~ — hecha (2026-10-14, repo CRM `75291e8`: pestaña Facturación con suscripción, facturas, prueba, cambio de plan y cancelación). Pendiente: tickets de soporte y endpoint de catálogo de planes en `/cp/v1` (hoy el plan se indica por id).
-5. Cifrado de campo de las credenciales heredadas en `system_settings` (GHL/VAPI de Náyade) con migración controlada.
+5. Cifrado de campo de las credenciales heredadas en `system_settings` (GHL/VAPI de Náyade): **implementado y probado, NO ejecutado** (lectores compatibles + CLI `scripts/legacy-credentials.ts`; procedimiento en `docs/operations/CIFRADO_CREDENCIALES_HEREDADAS.md`). Pendiente: claves de producción (B9), backup verificado (B7) y autorización para ejecutar.
 6. Fase 01B: pools/DDL de arranque de `_core/index.ts` en modo single, RBAC y pruebas Redsys ampliadas.
 
 ## Deuda conocida

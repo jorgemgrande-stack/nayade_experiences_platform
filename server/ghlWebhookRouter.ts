@@ -16,6 +16,8 @@ import { ghlWebhookLogs } from "../drizzle/schema";
 import { createLead } from "./db";
 import { legacyDb, legacyPool } from "./_core/legacyDb";
 import { integrationEnv } from "./_core/tenantConfig";
+import { isMultiTenant } from "./_core/tenant";
+import { checkWebhookSecret, webhookSecretMatches } from "./_core/webhookSecret";
 
 const _pool = legacyPool();
 const _db = legacyDb();
@@ -46,13 +48,14 @@ ghlWebhookRouter.post("/api/ghl/webhook", express.json({ limit: "1mb" }), async 
   // IMPORTANTE: usar GHL_LEAD_WEBHOOK_SECRET (NO GHL_WEBHOOK_SECRET) para no
   // colisionar con el secreto del inbox webhook. El workflow de GHL llama a este
   // endpoint sin secreto — el check solo se activa si se configura esta variable.
-  const secret = integrationEnv("GHL_LEAD_WEBHOOK_SECRET") || "";
-  if (secret) {
-    const provided =
-      (req.headers["x-ghl-secret"] as string | undefined) ??
-      (req.query.secret as string | undefined);
-    if (provided !== secret) {
-      console.warn("[GHL Webhook] Petición rechazada — secreto inválido");
+  // En multiempresa el secreto es obligatorio (sin él, el webhook está inactivo). En instalación
+  // única se mantiene opcional por compatibilidad; si se configura, se compara en tiempo constante.
+  const configured = integrationEnv("GHL_LEAD_WEBHOOK_SECRET") || "";
+  if (configured || isMultiTenant()) {
+    const provided = (req.headers["x-ghl-secret"] as string | undefined) ?? (req.query.secret as string | undefined);
+    const auth = isMultiTenant() ? checkWebhookSecret(provided, configured) : (webhookSecretMatches(provided, configured) ? "ok" : "invalid");
+    if (auth !== "ok") {
+      console.warn(`[GHL Webhook] Petición rechazada — ${auth === "inactive" ? "secreto no configurado (webhook inactivo)" : "secreto inválido"}`);
       return res.status(401).json({ ok: false });
     }
   }

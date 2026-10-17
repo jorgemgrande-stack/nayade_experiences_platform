@@ -1,0 +1,19 @@
+# Hallazgos de gitleaks REVISADOS (16/10/2026): contraseñas ficticias en ficheros de prueba ya fusionados
+# en ramas previas. No son secretos y la historia no se reescribe. Formato: commit:fichero:regla:línea.
+# Para valores ficticios nuevos, usa el comentario gitleaks:allow en la propia línea.
+a8fb6f68a00a1fa93ab4f99e1935eb055163a805:server/controlPlane.operatorAuth.test.ts:generic-api-key:248
+a8fb6f68a00a1fa93ab4f99e1935eb055163a805:server/controlPlane.operatorAuth.test.ts:generic-api-key:250
+a8fb6f68a00a1fa93ab4f99e1935eb055163a805:server/controlPlane.operatorAuth.test.ts:generic-api-key:308
+a8fb6f68a00a1fa93ab4f99e1935eb055163a805:server/controlPlane.operatorAuth.test.ts:generic-api-key:314
+a8fb6f68a00a1fa93ab4f99e1935eb055163a805:server/controlPlane.operatorAuth.test.ts:generic-api-key:342
+a8fb6f68a00a1fa93ab4f99e1935eb055163a805:server/controlPlane.operatorAuth.test.ts:generic-api-key:389
+a8fb6f68a00a1fa93ab4f99e1935eb055163a805:server/controlPlane.operatorAuth.test.ts:generic-api-key:390
+a8fb6f68a00a1fa93ab4f99e1935eb055163a805:server/controlPlane.operatorAuth.test.ts:generic-api-key:397
+b0d886e9172925829b37c634f3c01e12e3a09746:server/legacyCredentials.test.ts:generic-api-key:128
+0a263a2d68058e3c75d484397db671fef95c756a:server/trialJourney.mysql.test.ts:generic-api-key:360
+14646f61e846880c881ab8650c6ad2be05754456:server/essential.admin.mysql.test.ts:generic-api-key:105
+14646f61e846880c881ab8650c6ad2be05754456:server/essential.admin.mysql.test.ts:generic-api-key:106
+14646f61e846880c881ab8650c6ad2be05754456:server/essential.admin.mysql.test.ts:generic-api-key:109
+14646f61e846880c881ab8650c6ad2be05754456:server/essential.admin.mysql.test.ts:generic-api-key:116
+9b2b6d6059aabbeb1e79fa67d2db2fb730c51664:server/mail/service.test.ts:generic-api-key:32
+9b2b6d6059aabbeb1e79fa67d2db2fb730c51664:server/mail/service.test.ts:generic-api-key:33

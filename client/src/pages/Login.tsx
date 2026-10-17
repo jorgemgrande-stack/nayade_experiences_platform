@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Eye, EyeOff, Lock, Mail, AlertCircle, Loader2 } from "lucide-react";
 import { Link } from "wouter";
+import { AuthBrandMark, useAuthBrand } from "@/components/AuthBrandMark";
 
 /**
  * Página de inicio según el rol del usuario. Los partners van a su panel,
@@ -30,6 +31,8 @@ function homeForRole(role: string | undefined): string {
 }
 
 export default function Login() {
+  // Marca de la empresa que sirve el dominio (en instalación única, la de siempre)
+  const brand = useAuthBrand();
   const [, navigate] = useLocation();
   const utils = trpc.useUtils();
 
@@ -111,15 +114,7 @@ export default function Login() {
         />
 
         {/* Logo */}
-        <div className="relative z-10 flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-[#f5a623] flex items-center justify-center font-bold text-[#0d1b2a] text-lg">
-            N
-          </div>
-          <div>
-            <div className="text-white font-bold text-lg leading-tight">NÁYADE</div>
-            <div className="text-[#f5a623] text-xs tracking-widest uppercase">Experiences</div>
-          </div>
-        </div>
+        <AuthBrandMark brand={brand} className="relative z-10" />
 
         {/* Texto central */}
         <div className="relative z-10">
@@ -128,13 +123,13 @@ export default function Login() {
             <span className="text-[#f5a623]">Administración</span>
           </h1>
           <p className="text-slate-400 text-lg leading-relaxed">
-            Gestiona reservas, experiencias, el hotel y el SPA desde un único lugar.
+            {brand.description}
           </p>
         </div>
 
         {/* Footer */}
         <div className="relative z-10 text-slate-500 text-sm">
-          Los Ángeles de San Rafael, Segovia · A 45 min de Madrid
+          {brand.location}
         </div>
       </div>
 
@@ -142,15 +137,7 @@ export default function Login() {
       <div className="w-full lg:w-1/2 flex items-center justify-center p-6 lg:p-12">
         <div className="w-full max-w-md">
           {/* Logo móvil */}
-          <div className="flex items-center gap-3 mb-8 lg:hidden">
-            <div className="w-10 h-10 rounded-xl bg-[#f5a623] flex items-center justify-center font-bold text-[#0d1b2a] text-lg">
-              N
-            </div>
-            <div>
-              <div className="text-white font-bold text-lg leading-tight">NÁYADE</div>
-              <div className="text-[#f5a623] text-xs tracking-widest uppercase">Experiences</div>
-            </div>
-          </div>
+          <AuthBrandMark brand={brand} className="mb-8 lg:hidden" />
 
           <div className="mb-8">
             <h2 className="text-2xl font-bold text-white mb-2">Iniciar sesión</h2>

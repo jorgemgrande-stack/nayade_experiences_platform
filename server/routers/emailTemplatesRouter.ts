@@ -343,7 +343,7 @@ const SYSTEM_TEMPLATES: SeedTemplate[] = [
     subject: "?? Cierre de caja · Náyade Experiences",
     headerTitle: "Cierre de Caja", headerSubtitle: "Resumen de la sesión",
     variables: JSON.stringify(["sessionId","cashierName","totalCash","totalCard","countedCash","cashDifference"]),
-    buildHtml: () => buildCashCloseHtml({ sessionId:42, cashierName:"Ana Rodríguez", registerName:"TPV Principal", openedAt:new Date(Date.now()-6*3600000), closedAt:new Date(), totalCash:185, totalCard:340, totalBizum:50, totalMixed:0, countedCash:185, cashDifference:0, channels:[] }),
+    buildHtml: () => buildCashCloseHtml({ sessionId:42, cashierName:"Ana Rodríguez", registerName:"TPV Principal", openedAt:new Date(Date.now()-6*3600000), closedAt:new Date(), openingAmount:0, totalCash:185, totalCard:340, totalBizum:50, totalMixed:0, totalManualIn:0, totalManualOut:0, closingAmount:185, countedCash:185, cashDifference:0, channels:[] }),
   },
   {
     id: "invite",

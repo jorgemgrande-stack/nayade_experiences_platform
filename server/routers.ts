@@ -1,6 +1,8 @@
 import { COOKIE_NAME } from "@shared/const";
+import { readStoredFile } from "./storage";
+import { legacyBrandText } from "./tenantBrand";
+import { publicBaseUrl } from "./_core/productIdentity";
 
-const SITE_URL = (process.env.APP_URL ?? 'https://www.skicenter.es').trim();
 import JSZip from "jszip";
 import {
   getActiveGalleryItems,
@@ -61,6 +63,7 @@ import {
   toggleUserActive,
   getUserByInviteToken,
   setUserPassword,
+  redeemInviteToken,
   resendUserInvite,
   deleteUser,
   getHomeModuleItems,
@@ -119,6 +122,7 @@ import {
 } from "./db";
 import {
   buildRedsysForm,
+  isRedsysConfigured,
   validateRedsysNotification,
   generateMerchantOrder,
 } from "./redsys";
@@ -137,6 +141,7 @@ import {
   buildTransferConfirmationHtml,
 } from "./emailTemplates";
 import { getDb } from "./db";
+import { assertUserAdminAllowed, OWNER_SETTING_KEY } from "./_core/companyOwner";
 import { siteSettings, systemSettings, packs, legoPacks as legoPacksTable, legoPackSnapshots, reservations as reservationsSchema, reservationOperational as reservationOperationalSchema, discountCodes, users as usersTable } from "../drizzle/schema";
 
 // ─── Pricing helper (per_person | per_unit) ───────────────────────────────────
@@ -164,6 +169,7 @@ import { hotelRouter } from "./routers/hotel";
 import { spaRouter } from "./routers/spa";
 import { reviewsRouter } from "./routers/reviews";
 import { restaurantsRouter } from "./routers/restaurants";
+import { skiRentalRouter } from "./skiRental/router";
 import { crmRouter } from "./routers/crm";
 import { suppliersRouter, settlementsRouter } from "./routers/suppliers";
 import { supplierPortalRouter } from "./routers/supplierPortal";
@@ -179,6 +185,7 @@ import { emailTemplatesRouter } from "./routers/emailTemplatesRouter";
 import { pdfTemplatesRouter } from "./routers/pdfTemplatesRouter";
 import { integrationsRouter } from "./routers/integrations";
 import { modulesRouter } from "./routers/modulesRouter";
+import { subscriptionRouter } from "./routers/subscriptionRouter";
 import { operationsRouter } from "./routers/operations";
 import { hrRouter } from "./routers/hr";
 import { bankMovementsRouter } from "./routers/bankMovements";
@@ -190,9 +197,13 @@ import { notificationsRouter } from "./routers/notifications";
 import { emailIngestionRouter } from "./routers/emailIngestion";
 import { configRouter } from "./routers/configRouter";
 import { onboardingRouter } from "./routers/onboardingRouter";
+import { setupWizardRouter } from "./routers/setupWizard";
+import { assertSeatAvailable } from "./setupWizardDb";
 import { dailyControlRouter } from "./routers/dailyControl";
 import { proposalsRouter } from "./routers/proposals";
 import { commercialFollowupRouter } from "./routers/commercialFollowup";
+import { crmTagsRouter } from "./routers/crmTags";
+import { crmTasksRouter } from "./routers/crmTasks";
 import { ghlInboxRouter } from "./routers/ghlInbox";
 import { vapiCallsRouter } from "./routers/vapiCalls";
 import { emailAccountsRouter } from "./routers/emailAccounts";
@@ -201,9 +212,11 @@ import { emailCommunicationsRouter } from "./routers/emailCommunications";
 import { partnersRouter } from "./routers/partners";
 import { publicExpensesRouter } from "./routers/publicExpenses";
 import { fiscalAuditRouter } from "./routers/fiscalAuditRouter";
+import { blogRouter } from "./routers/blog";
 import { getAllCounters, updateCounterPrefix, resetCounter, getDocumentNumberLogs } from "./documentNumbers";
 import type { DocumentType } from "./documentNumbers";
 import { integrationEnv } from "./_core/tenantConfig";
+import { protectLegacySecret, revealLegacySecret } from "./_core/credentials/legacyFields";
 const adminProcedure = permissionProcedure("settings.manage", ["admin"]);
 
 
@@ -232,6 +245,7 @@ export const appRouter = router({
   emailIngestion: emailIngestionRouter,
   config: configRouter,
   onboarding: onboardingRouter,
+  setupWizard: setupWizardRouter,
   cancellations: cancellationsRouter,
   proposals: proposalsRouter,
   emailTemplates: emailTemplatesRouter,
@@ -243,6 +257,7 @@ export const appRouter = router({
   pdfTemplates: pdfTemplatesRouter,
   integrations: integrationsRouter,
   modules: modulesRouter,
+  subscription: subscriptionRouter,
   auth: router({
     me: publicProcedure.query((opts) => toPublicUser(opts.ctx.user)),
     logout: publicProcedure.mutation(({ ctx }) => {
@@ -292,17 +307,21 @@ export const appRouter = router({
       }),
 
     setPassword: publicProcedure.input(z.object({
-      token: z.string(),
-      password: z.string().min(6),
+      token: z.string().min(16).max(256),
+      password: z.string().min(8, "La contraseña debe tener al menos 8 caracteres").max(256),
     })).mutation(async ({ input }) => {
       const bcrypt = await import("bcryptjs");
       const user = await getUserByInviteToken(input.token);
       if (!user) throw new TRPCError({ code: "NOT_FOUND", message: "Token inválido o expirado" });
-      if (user.inviteTokenExpiry && new Date() > user.inviteTokenExpiry) {
+      // Sin caducidad o caducada: no se acepta (el administrador puede reenviar la invitación)
+      if (!user.inviteTokenExpiry || new Date() > user.inviteTokenExpiry) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "El enlace ha expirado. Solicita un nuevo enlace al administrador." });
       }
       const passwordHash = await bcrypt.hash(input.password, 12);
-      await setUserPassword(user.id, passwordHash);
+      // Canje atómico: un solo uso aunque lleguen dos peticiones con el mismo enlace
+      if (!(await redeemInviteToken(user.id, input.token, passwordHash))) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Token inválido o expirado" });
+      }
       return { success: true, name: user.name };
     }),
 
@@ -318,7 +337,7 @@ export const appRouter = router({
       const keys = [
         "brand_name", "brand_logo_url", "brand_favicon_url", "theme_primary_color", "theme_accent_color",
         "brand_primary_color", "brand_accent_color", "theme_font_family", "theme_radius", "brand_show_powered_by",
-        "brand_phone", "email_reservations", "site_business_email", "brand_location",
+        "brand_phone", "brand_whatsapp", "email_reservations", "site_business_email", "brand_location",
       ];
       const vals: Record<string, string> = {};
       await Promise.all(keys.map(async (k) => { vals[k] = await getSystemSetting(k, ""); }));
@@ -441,7 +460,7 @@ export const appRouter = router({
           templateKey: "budget_request_user",
           triggerEvent: "lead_submitted",
           recipientEmail: input.email,
-          subject: "Solicitud de presupuesto recibida — Náyade Experiences",
+          subject: `Solicitud de presupuesto recibida — ${legacyBrandText("Náyade Experiences")}`,
           html: buildBudgetRequestUserHtml(emailData),
           relatedEntityType: "lead",
           relatedEntityId: lead.id,
@@ -541,7 +560,7 @@ export const appRouter = router({
           templateKey: "budget_request_user",
           triggerEvent: "lead_submitted",
           recipientEmail: input.email,
-          subject: "Solicitud recibida — Náyade Experiences",
+          subject: `Solicitud recibida — ${legacyBrandText("Náyade Experiences")}`,
           html: buildBudgetRequestUserHtml({
             name: input.name,
             email: input.email,
@@ -596,12 +615,15 @@ export const appRouter = router({
       .input(z.object({ slug: z.string() }))
       .query(async ({ input }) => {
         const page = await getPageBySlug(input.slug);
-        return page || null;
+        // Un borrador no es público
+        return page && page.isPublished ? page : null;
       }),
 
     getPublicPageBlocks: publicProcedure
       .input(z.object({ slug: z.string() }))
       .query(async ({ input }) => {
+        const page = await getPageBySlug(input.slug);
+        if (page && !page.isPublished) return [];
         return getPageBlocks(input.slug);
       }),
   }),
@@ -839,8 +861,11 @@ export const appRouter = router({
         };
         for (const [camelKey, value] of Object.entries(input.settings)) {
           const sysKey = KEY_MAP[camelKey] ?? camelKey;
+          // El propietario de la empresa no se cambia desde el panel
+          if (sysKey === OWNER_SETTING_KEY) continue;
+          const stored = sysKey === "site_ghl_api_key" ? protectLegacySecret("system_settings", sysKey, value ?? "") : (value ?? "");
           await db.update(systemSettings)
-            .set({ value: value ?? "" })
+            .set({ value: stored })
             .where(eq(systemSettings.key, sysKey));
         }
         return { ok: true };
@@ -864,7 +889,7 @@ export const appRouter = router({
           .from(systemSettings)
           .where(sqlDrizzle`${systemSettings.key} IN ('site_ghl_api_key','site_ghl_location_id')`);
         const map = Object.fromEntries(rows.map((r: any) => [r.key, r.value]));
-        dbKey = map.site_ghl_api_key ?? "";
+        dbKey = revealLegacySecret("system_settings", "site_ghl_api_key", map.site_ghl_api_key);
         dbLoc = map.site_ghl_location_id ?? "";
       }
       return {
@@ -1387,10 +1412,12 @@ export const appRouter = router({
     createUser: adminProcedure.input(z.object({
       name: z.string().min(2),
       email: z.string().email(),
-      role: z.enum(["user", "admin", "monitor", "agente", "adminrest", "controler"]),
+      role: z.enum(["user", "admin", "monitor", "agente", "adminrest", "controler", "readonly"]),
       origin: z.string().optional(), // ignorado: el enlace usa una URL de confianza
       rbacRoleKeys: z.array(z.string().min(1).max(64)).optional(),
     })).mutation(async ({ input }) => {
+      // Límite de usuarios del plan contratado (multiempresa con licencias), comprobado aquí
+      await assertSeatAvailable();
       const { nanoid } = await import("nanoid");
       const token = nanoid(48);
       const expiry = new Date(Date.now() + 72 * 60 * 60 * 1000); // 72h
@@ -1411,7 +1438,9 @@ export const appRouter = router({
         : [input.role];
       if (result.id) {
         const db = await getDb();
-        if (db) {
+        // Sin tablas RBAC (empresas nuevas y producción): el acceso lo da el rol del usuario
+        const { rbacTablesAvailable } = await import("./rbacAvailability");
+        if (db && (await rbacTablesAvailable(db).catch(() => false))) {
           const { sql } = await import("drizzle-orm");
           for (const roleKey of rbacKeysToAssign) {
             try {
@@ -1432,13 +1461,18 @@ export const appRouter = router({
     }),
     changeUserRole: adminProcedure.input(z.object({
       userId: z.number(),
-      role: z.enum(["user", "admin", "monitor", "agente", "adminrest", "controler"]),
-    })).mutation(async ({ input }) => {
+      role: z.enum(["user", "admin", "monitor", "agente", "adminrest", "controler", "readonly"]),
+    })).mutation(async ({ input, ctx }) => {
+      await assertUserAdminAllowed(ctx.user, input.userId, "change_role", { newRole: input.role });
       return changeUserRole(input.userId, input.role);
     }),
     toggleUserActive: adminProcedure.input(z.object({
       userId: z.number(),
-    })).mutation(async ({ input }) => {
+    })).mutation(async ({ input, ctx }) => {
+      await assertUserAdminAllowed(ctx.user, input.userId, "toggle_active");
+      // Reactivar un usuario ocupa una plaza del plan
+      const target = (await getAllUsers()).find((u) => u.id === input.userId);
+      if (target && !target.isActive) await assertSeatAvailable();
       return toggleUserActive(input.userId);
     }),
     resendInvite: adminProcedure.input(z.object({
@@ -1459,7 +1493,8 @@ export const appRouter = router({
     setUserPassword: adminProcedure.input(z.object({
       userId: z.number(),
       password: z.string().min(8, "La contraseña debe tener al menos 8 caracteres"),
-    })).mutation(async ({ input }) => {
+    })).mutation(async ({ input, ctx }) => {
+      await assertUserAdminAllowed(ctx.user, input.userId, "set_password");
       const bcrypt = await import("bcryptjs");
       const passwordHash = await bcrypt.hash(input.password, 12);
       await setUserPassword(input.userId, passwordHash);
@@ -1472,9 +1507,17 @@ export const appRouter = router({
       userId: z.number(),
     })).mutation(async ({ input, ctx }) => {
       if (input.userId === ctx.user.id) throw new TRPCError({ code: "BAD_REQUEST", message: "No puedes eliminarte a ti mismo" });
+      await assertUserAdminAllowed(ctx.user, input.userId, "delete");
       return deleteUser(input.userId);
     }),
     // ─── RBAC Phase 3: user role assignments ─────────────────────────────────
+    /** ¿Ofrece el panel la gestión de roles RBAC? Solo si la empresa tiene sus tablas. */
+    getRbacStatus: adminProcedure.query(async () => {
+      const db = await getDb();
+      if (!db) return { available: false };
+      const { rbacTablesAvailable } = await import("./rbacAvailability");
+      return { available: await rbacTablesAvailable(db).catch(() => false) };
+    }),
     getRbacUsersData: adminProcedure.query(async () => {
       const db = await getDb();
       if (!db) return {} as Record<number, { roles: Array<{ key: string; name: string; isLegacy: boolean }>; permissions: string[] }>;
@@ -1524,6 +1567,8 @@ export const appRouter = router({
     })).mutation(async ({ input }) => {
       const db = await getDb();
       if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB no disponible" });
+      const { rbacTablesAvailable, RBAC_UNAVAILABLE_MESSAGE } = await import("./rbacAvailability");
+      if (!(await rbacTablesAvailable(db))) throw new TRPCError({ code: "PRECONDITION_FAILED", message: RBAC_UNAVAILABLE_MESSAGE });
       const { sql } = await import("drizzle-orm");
       const roleResult = await db.execute(sql`SELECT id FROM rbac_roles WHERE \`key\` = ${input.roleKey} AND is_active = 1`);
       const roleRow = (roleResult as any[][])[0]?.[0] as { id: number } | undefined;
@@ -1537,6 +1582,8 @@ export const appRouter = router({
     })).mutation(async ({ input, ctx }) => {
       const db = await getDb();
       if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB no disponible" });
+      const { rbacTablesAvailable, RBAC_UNAVAILABLE_MESSAGE } = await import("./rbacAvailability");
+      if (!(await rbacTablesAvailable(db))) throw new TRPCError({ code: "PRECONDITION_FAILED", message: RBAC_UNAVAILABLE_MESSAGE });
       const { sql } = await import("drizzle-orm");
       if (input.roleKey === 'admin') {
         // Guard 1: can't remove last RBAC admin globally
@@ -1606,15 +1653,15 @@ export const appRouter = router({
           html: buildBudgetRequestAdminHtml({ name: "Carlos Pedraza", email: input.to, phone: "+34 600 000 000", arrivalDate: "23 de marzo de 2026", adults: 5, children: 2, selectedCategory: "Packs de Experiencias", selectedProduct: "Pack Cable Ski Experience", comments: "Queremos hacer el pack completo para una despedida de soltero", submittedAt: new Date().toLocaleString("es-ES"), activitiesJson: [] }),
         },
         "reservation-confirm": {
-          subject: "[PREVIEW] Reserva Confirmada — Náyade Experiences",
+          subject: `[PREVIEW] Reserva Confirmada — ${legacyBrandText("Náyade Experiences")}`,
           html: buildReservationConfirmHtml({ merchantOrder: "NE20260323001", productName: "Pack Cable Ski Experience", customerName: "Carlos Pedraza", date: "23 de marzo de 2026", people: 5, amount: "175,00 €", extras: "Alquiler de neopreno x5" }),
         },
         "reservation-failed": {
-          subject: "[PREVIEW] Pago No Completado — Náyade Experiences",
+          subject: `[PREVIEW] Pago No Completado — ${legacyBrandText("Náyade Experiences")}`,
           html: buildReservationFailedHtml({ merchantOrder: "NE20260323001", productName: "Pack Cable Ski Experience", customerName: "Carlos Pedraza", responseCode: "0190" }),
         },
         "restaurant-confirm": {
-          subject: "[PREVIEW] Reserva en Restaurante — Náyade Experiences",
+          subject: `[PREVIEW] Reserva en Restaurante — ${legacyBrandText("Náyade Experiences")}`,
           html: buildRestaurantConfirmHtml({ guestName: "Carlos Pedraza", restaurantName: "Restaurante Náyade", date: "23 de marzo de 2026", time: "14:00", guests: 8, locator: "REST-2026-001", depositAmount: "80", requiresPayment: false }),
         },
         "restaurant-payment": {
@@ -1622,19 +1669,19 @@ export const appRouter = router({
           html: buildRestaurantPaymentLinkHtml({ guestName: "Carlos Pedraza", guestEmail: input.to, restaurantName: "Restaurante Náyade", date: "23 de marzo de 2026", time: "14:00", guests: 8, locator: "REST-2026-001", depositAmount: "80", redsysUrl: "https://sis.redsys.es/sis/realizarPago", merchantParams: "BASE64PARAMS", signatureVersion: "HMAC_SHA256_V1", signature: "SIGNATURE" }),
         },
         "password-reset": {
-          subject: "[PREVIEW] Recuperar contraseña — Náyade Experiences",
+          subject: `[PREVIEW] Recuperar contraseña — ${legacyBrandText("Náyade Experiences")}`,
           html: buildPasswordResetHtml({ name: "Carlos Pedraza", resetUrl: "https://skicenter.es/reset?token=abc123", expiryMinutes: 30 }),
         },
         "quote": {
-          subject: "[PREVIEW] Presupuesto PRE-2026-001 — Náyade Experiences",
+          subject: `[PREVIEW] Presupuesto PRE-2026-001 — ${legacyBrandText("Náyade Experiences")}`,
           html: buildQuoteHtml({ quoteNumber: "PRE-2026-001", title: "Pack Cable Ski Experience + Restaurante", clientName: "Carlos Pedraza", items: [{ description: "Pack Cable Ski Experience (5 pax)", quantity: 5, unitPrice: 35, total: 175 }, { description: "Menú Náyade (8 pax)", quantity: 8, unitPrice: 28, total: 224 }], subtotal: "399", discount: "0", tax: "83.79", total: "482.79", validUntil: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), notes: "Precio especial por grupo. Incluye alquiler de neopreno.", conditions: "Reserva sujeta a disponibilidad. Cancelación gratuita hasta 48h antes.", paymentLinkUrl: "https://skicenter.es/pago/PRE-2026-001" }),
         },
         "confirmation": {
-          subject: "[PREVIEW] Reserva Confirmada FAC-2026-001 — Náyade Experiences",
+          subject: `[PREVIEW] Reserva Confirmada FAC-2026-001 — ${legacyBrandText("Náyade Experiences")}`,
           html: buildConfirmationHtml({ clientName: "Carlos Pedraza", reservationRef: "FAC-2026-001", quoteNumber: "PRE-2026-001", quoteTitle: "Pack Cable Ski Experience + Restaurante", items: [{ description: "Pack Cable Ski Experience (5 pax)", quantity: 5, unitPrice: 35, total: 175 }, { description: "Menú Náyade (8 pax)", quantity: 8, unitPrice: 28, total: 224 }], subtotal: "399", taxAmount: "83.79", total: "482.79", invoiceUrl: "https://cdn.skicenter.es/facturas/FAC-2026-001.pdf", bookingDate: "23 de marzo de 2026" }),
         },
         "transfer-confirm": {
-          subject: "[PREVIEW] Pago por transferencia confirmado — Náyade Experiences",
+          subject: `[PREVIEW] Pago por transferencia confirmado — ${legacyBrandText("Náyade Experiences")}`,
           html: buildTransferConfirmationHtml({ clientName: "Carlos Pedraza", invoiceNumber: "FAC-2026-001", reservationRef: "RES-2026-001", quoteTitle: "Pack Cable Ski Experience + Restaurante", quoteNumber: "PRE-2026-001", items: [{ description: "Pack Cable Ski Experience (5 pax)", quantity: 5, unitPrice: 35, total: 175 }, { description: "Menú Náyade (8 pax)", quantity: 8, unitPrice: 28, total: 224 }], subtotal: "399", taxAmount: "83.79", total: "482.79", invoiceUrl: "https://cdn.skicenter.es/facturas/FAC-2026-001.pdf", confirmedBy: "Admin Náyade", confirmedAt: new Date() }),
         },
       };
@@ -1690,6 +1737,8 @@ export const appRouter = router({
         fbc: z.string().max(255).optional(),
       }))
       .mutation(async ({ input, ctx }) => {
+        // Sin pasarela configurada no se crea una pre-reserva que nunca podrá pagarse
+        if (!isRedsysConfigured()) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "El pago online no está configurado en esta empresa." });
         // 1. Obtener el producto y validar que existe y tiene precio
         const { getExperienceById, getVariantsByExperience } = await import("./db");
         const product = await getExperienceById(input.productId);
@@ -1774,9 +1823,9 @@ export const appRouter = router({
           amount: amountCents,
           merchantOrder,
           productDescription: pricingDesc,
-          notifyUrl: `${SITE_URL}/api/redsys/notification`,
-          okUrl: `${SITE_URL}/reserva/ok?order=${merchantOrder}`,
-          koUrl: `${SITE_URL}/reserva/error?order=${merchantOrder}`,
+          notifyUrl: `${publicBaseUrl()}/api/redsys/notification`,
+          okUrl: `${publicBaseUrl()}/reserva/ok?order=${merchantOrder}`,
+          koUrl: `${publicBaseUrl()}/reserva/error?order=${merchantOrder}`,
           holderName: input.customerName,
         });
 
@@ -1859,6 +1908,7 @@ export const appRouter = router({
         fbc: z.string().max(255).optional(),
       }))
       .mutation(async ({ input, ctx }) => {
+        if (!isRedsysConfigured()) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "El pago online no está configurado en esta empresa." });
         const { getExperienceById: getExpById, getVariantsByExperience: getVariants } = await import("./db");
         // 1. Calcular el importe total de todos los artículos en backend
         let totalAmountCents = 0;
@@ -2047,14 +2097,14 @@ export const appRouter = router({
         // 4. Construir el formulario Redsys con el importe total
         const description = productNames.length === 1
           ? productNames[0]
-          : `${productNames.length} experiencias — Náyade`;
+          : `${productNames.length} experiencias — ${legacyBrandText("Náyade")}`;
         const redsysForm = buildRedsysForm({
           amount: finalAmountCents,
           merchantOrder,
           productDescription: description.slice(0, 125),
-          notifyUrl: `${SITE_URL}/api/redsys/notification`,
-          okUrl: `${SITE_URL}/reserva/ok?order=${merchantOrder}`,
-          koUrl: `${SITE_URL}/reserva/error?order=${merchantOrder}`,
+          notifyUrl: `${publicBaseUrl()}/api/redsys/notification`,
+          okUrl: `${publicBaseUrl()}/reserva/ok?order=${merchantOrder}`,
+          koUrl: `${publicBaseUrl()}/reserva/error?order=${merchantOrder}`,
           holderName: input.customerName,
         });
         return {
@@ -2214,9 +2264,13 @@ export const appRouter = router({
   hotel: hotelRouter,
   spa: spaRouter,
   reviews: reviewsRouter,
+  blog: blogRouter,
   restaurants: restaurantsRouter,
+  skiRental: skiRentalRouter,
   crm: crmRouter,
   commercialFollowup: commercialFollowupRouter,
+  crmTags: crmTagsRouter,
+  crmTasks: crmTasksRouter,
   ghlInbox: ghlInboxRouter,
   vapiCalls: vapiCallsRouter,
   emailAccounts: emailAccountsRouter,
@@ -2409,9 +2463,15 @@ export const appRouter = router({
         for (const doc of (exp.documents ?? []) as any[]) {
           if (!doc.fileUrl) continue;
           try {
-            const res = await fetch(doc.fileUrl);
-            if (!res.ok) continue;
-            const buf = await res.arrayBuffer();
+            // Ficheros del almacenamiento propio: se leen del servicio (privados, sin URL pública)
+            const own = await readStoredFile(doc.fileUrl);
+            let buf: ArrayBuffer | Buffer;
+            if (own) buf = own.data;
+            else {
+              const res = await fetch(doc.fileUrl);
+              if (!res.ok) continue;
+              buf = await res.arrayBuffer();
+            }
             const ext = doc.mimeType === "application/pdf" ? ".pdf"
               : doc.mimeType?.startsWith("image/") ? "." + doc.mimeType.split("/")[1]
               : "";
@@ -2504,7 +2564,7 @@ export const appRouter = router({
     /** Actualizar el prefijo de una serie */
     updatePrefix: adminProcedure
       .input(z.object({
-        documentType: z.enum(["presupuesto", "factura", "reserva", "tpv", "cupon", "liquidacion", "anulacion"]),
+        documentType: z.enum(["presupuesto", "factura", "reserva", "tpv", "cupon", "liquidacion", "anulacion", "propuesta"]),
         year: z.number().int().min(2020).max(2099),
         newPrefix: z.string().min(1).max(16).regex(/^[A-Z0-9-]+$/, "Solo mayúsculas, números y guiones"),
       }))
@@ -2516,7 +2576,7 @@ export const appRouter = router({
     /** Resetear manualmente un contador (solo para correcciones de inicio de año) */
     resetCounter: adminProcedure
       .input(z.object({
-        documentType: z.enum(["presupuesto", "factura", "reserva", "tpv", "cupon", "liquidacion", "anulacion"]),
+        documentType: z.enum(["presupuesto", "factura", "reserva", "tpv", "cupon", "liquidacion", "anulacion", "propuesta"]),
         year: z.number().int().min(2020).max(2099),
         newValue: z.number().int().min(0),
       }))
@@ -2528,7 +2588,7 @@ export const appRouter = router({
     /** Historial de generación de números */
     getLogs: adminProcedure
       .input(z.object({
-        documentType: z.enum(["presupuesto", "factura", "reserva", "tpv", "cupon", "liquidacion", "anulacion"]).optional(),
+        documentType: z.enum(["presupuesto", "factura", "reserva", "tpv", "cupon", "liquidacion", "anulacion", "propuesta"]).optional(),
         limit: z.number().int().min(1).max(500).default(100),
       }))
       .query(async ({ input }) => {

@@ -4,6 +4,8 @@
  * Financiero: Pendiente canjear ? Canjeado | Incidencia
  */
 import { router, protectedProcedure, publicProcedure } from "../_core/trpc";
+import { brandSetting, legacyBrandText } from "../tenantBrand";
+import { publicBaseUrl } from "../_core/productIdentity";
 import { checkRbacOrLegacy } from "../_core/rbac";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
@@ -22,6 +24,7 @@ import { eq, desc, and, like, or, sql, count, inArray, sum } from "drizzle-orm";
 import { sendEmail as sharedSendEmail } from "../mailer";
 import { sendManagedEmail } from "../emailManager";
 import { storagePut } from "../storage";
+import { isAcceptableFileUrl } from "../_core/files/service";
 import { invokeLLM } from "../_core/llm";
 import { buildReservationConfirmHtml, buildCouponRedemptionReceivedHtml, buildCouponPostponedHtml, buildCouponInternalAlertHtml } from "../emailTemplates";
 import { postConfirmOperation, logActivity, generateReservationNumber, getGHLCredentials } from "../db";
@@ -34,7 +37,7 @@ import { integrationEnv } from "../_core/tenantConfig";
 const _pool = legacyPool();
 const db = legacyDb();
 
-const getCopyEmail = () => getSystemSettingSync("email_reservations", "reservas@nayadeexperiences.es");
+const getCopyEmail = () => brandSetting("email_reservations", "reservas@nayadeexperiences.es");
 
 // --- PROVEEDORES FIJOS --------------------------------------------------------
 export const FIXED_PROVIDERS = [
@@ -360,7 +363,7 @@ export const ticketingRouter = router({
         const ts = Date.now();
         const random = Math.random().toString(36).substring(2, 10);
         const key = `nayade/coupons/${ts}-${random}.${ext}`;
-        const { url } = await storagePut(key, buffer, input.mimeType);
+        const { url } = await storagePut(key, buffer, input.mimeType, { category: "coupon", originalName: input.filename });
         // Si la URL es local (/local-storage/...) también aceptamos — son archivos en /tmp
         return { url };
       } catch {
@@ -403,7 +406,7 @@ export const ticketingRouter = router({
           results.push({ couponCode: coupon.couponCode, accepted: false, reason: "Código duplicado" });
           continue;
         }
-        let productName = "Experiencia Náyade";
+        let productName = `Experiencia ${legacyBrandText("Náyade")}`;
         if (coupon.productTicketingId) {
           const [prod] = await db.select({ name: ticketingProducts.name }).from(ticketingProducts).where(eq(ticketingProducts.id, coupon.productTicketingId)).limit(1);
           if (prod) productName = prod.name;
@@ -551,7 +554,7 @@ export const ticketingRouter = router({
     .mutation(async ({ input, ctx }) => {
       const dupCheck = await checkDuplicates(input.couponCode, input.securityCode, input.email, input.phone, input.requestedDate, input.productTicketingId);
       if (dupCheck.hardDuplicate) throw new TRPCError({ code: "CONFLICT", message: "Código de cupón duplicado." });
-      let productName = "Experiencia Náyade";
+      let productName = `Experiencia ${legacyBrandText("Náyade")}`;
       if (input.productTicketingId) {
         const [prod] = await db.select({ name: ticketingProducts.name }).from(ticketingProducts).where(eq(ticketingProducts.id, input.productTicketingId)).limit(1);
         if (prod) productName = prod.name;
@@ -692,7 +695,7 @@ export const ticketingRouter = router({
       const [item] = await db.select().from(couponRedemptions).where(eq(couponRedemptions.id, input.id)).limit(1);
       if (!item) throw new TRPCError({ code: "NOT_FOUND" });
 
-      let productName = "Experiencia Náyade";
+      let productName = `Experiencia ${legacyBrandText("Náyade")}`;
       if (item.productTicketingId) {
         const [tp] = await db.select({ name: ticketingProducts.name }).from(ticketingProducts).where(eq(ticketingProducts.id, item.productTicketingId)).limit(1);
         if (tp) productName = tp.name;
@@ -789,7 +792,7 @@ export const ticketingRouter = router({
 
       // Resolver producto: primero por platformProductId, luego por productRealId
       let resolvedExperienceId: number | null = null;
-      let resolvedProductName = "Experiencia Náyade";
+      let resolvedProductName = `Experiencia ${legacyBrandText("Náyade")}`;
       let resolvedPvpPrice = "0";
       let resolvedNetPrice = "0";
 
@@ -802,14 +805,14 @@ export const ticketingRouter = router({
           .limit(1);
         if (pp) {
           resolvedExperienceId = pp.experienceId ?? null;
-          resolvedProductName = pp.externalProductName ?? pp.expTitle ?? "Experiencia Náyade";
+          resolvedProductName = pp.externalProductName ?? pp.expTitle ?? `Experiencia ${legacyBrandText("Náyade")}`;
           resolvedPvpPrice = pp.pvpPrice ?? "0";
           resolvedNetPrice = pp.netPrice ?? "0";
         }
       } else if (input.productRealId) {
         const [expRow] = await db.select({ title: experiences.title, basePrice: experiences.basePrice }).from(experiences).where(eq(experiences.id, input.productRealId)).limit(1);
         resolvedExperienceId = input.productRealId;
-        resolvedProductName = expRow?.title ?? "Experiencia Náyade";
+        resolvedProductName = expRow?.title ?? `Experiencia ${legacyBrandText("Náyade")}`;
         resolvedPvpPrice = expRow?.basePrice ?? "0";
       }
 
@@ -874,7 +877,7 @@ export const ticketingRouter = router({
       // Recuperar publicToken de la reserva recién creada para el botón "Ver tu reserva"
       const [resForUrl] = await db.select({ publicToken: reservations.publicToken })
         .from(reservations).where(eq(reservations.id, reservationId)).limit(1);
-      const baseUrl = process.env.APP_URL ?? "https://www.skicenter.es";
+      const baseUrl = publicBaseUrl();
       const reservationUrl = resForUrl?.publicToken ? `${baseUrl}/presupuesto/${resForUrl.publicToken}` : undefined;
       const confirmHtml = buildReservationConfirmHtml({
         merchantOrder,
@@ -888,7 +891,7 @@ export const ticketingRouter = router({
       });
       sendEmail({
         to: item.email,
-        subject: `? Reserva confirmada — ${resolvedProductName} | Náyade Experiences`,
+        subject: `? Reserva confirmada — ${resolvedProductName} | ${legacyBrandText("Náyade Experiences")}`,
         html: confirmHtml,
       })
         // Trazabilidad: evita un segundo envío si más tarde se toca esta
@@ -1003,7 +1006,7 @@ export const ticketingRouter = router({
       const [item] = await db.select().from(couponRedemptions).where(eq(couponRedemptions.id, input.id)).limit(1);
       if (!item) throw new TRPCError({ code: "NOT_FOUND" });
       if (!item.attachmentUrl) throw new TRPCError({ code: "BAD_REQUEST", message: "No hay adjunto para analizar" });
-      let productName = "Experiencia Náyade";
+      let productName = `Experiencia ${legacyBrandText("Náyade")}`;
       if (item.productTicketingId) {
         const [tp] = await db.select({ name: ticketingProducts.name }).from(ticketingProducts).where(eq(ticketingProducts.id, item.productTicketingId)).limit(1);
         if (tp) productName = tp.name;
@@ -1078,7 +1081,7 @@ export const ticketingRouter = router({
       id: z.number(),
       statusFinancial: z.enum(["pendiente_canjear", "canjeado", "incidencia"]).optional(),
       realAmount: z.string().optional().nullable(),
-      settlementJustificantUrl: z.string().url().optional().nullable(),
+      settlementJustificantUrl: z.string().refine(isAcceptableFileUrl, "URL no válida").optional().nullable(),
       settledAt: z.string().optional(),
       notes: z.string().optional(),
     }))
@@ -1101,7 +1104,7 @@ export const ticketingRouter = router({
     .mutation(async ({ input }) => {
       const buffer = Buffer.from(input.fileBase64, "base64");
       const key = `ticketing/attachments/${input.id}-${Date.now()}-${input.fileName}`;
-      const { url } = await storagePut(key, buffer, input.mimeType);
+      const { url } = await storagePut(key, buffer, input.mimeType, { category: "coupon", originalName: input.fileName, owner: { type: "coupon_redemption", id: input.id } });
       await db.update(couponRedemptions).set({ attachmentUrl: url }).where(eq(couponRedemptions.id, input.id));
       return { url };
     }),
@@ -1128,7 +1131,7 @@ export const ticketingRouter = router({
         const buffer = Buffer.from(input.justificantBase64, "base64");
         try {
           const key = `ticketing/justificantes/${input.id}-${Date.now()}-${input.justificantFileName}`;
-          const { url } = await storagePut(key, buffer, input.justificantMimeType);
+          const { url } = await storagePut(key, buffer, input.justificantMimeType, { category: "coupon", originalName: input.justificantFileName, owner: { type: "coupon_redemption", id: input.id }, uploadedBy: ctx.user.id });
           justificantUrl = url;
         } catch {
           justificantUrl = `data:${input.justificantMimeType};base64,${input.justificantBase64}`;
@@ -1139,7 +1142,7 @@ export const ticketingRouter = router({
       let reservationId = item.reservationId ?? null;
       if (!reservationId && input.reservationDate) {
         let resolvedExperienceId: number | null = null;
-        let resolvedProductName = "Experiencia Náyade";
+        let resolvedProductName = `Experiencia ${legacyBrandText("Náyade")}`;
         let resolvedPvpPrice = "0";
         let resolvedNetPrice = "0";
 
@@ -1152,7 +1155,7 @@ export const ticketingRouter = router({
             .limit(1);
           if (pp) {
             resolvedExperienceId = pp.experienceId ?? null;
-            resolvedProductName = pp.externalProductName ?? pp.expTitle ?? "Experiencia Náyade";
+            resolvedProductName = pp.externalProductName ?? pp.expTitle ?? `Experiencia ${legacyBrandText("Náyade")}`;
             resolvedPvpPrice = pp.pvpPrice ?? "0";
             resolvedNetPrice = pp.netPrice ?? "0";
           }
@@ -1231,7 +1234,7 @@ export const ticketingRouter = router({
         const totalAmount = (parseFloat(resolvedPvpPrice) * input.participants).toFixed(2).replace(".", ",");
         const [resForUrl] = await db.select({ publicToken: reservations.publicToken })
           .from(reservations).where(eq(reservations.id, reservationId)).limit(1);
-        const baseUrl = process.env.APP_URL ?? "https://www.skicenter.es";
+        const baseUrl = publicBaseUrl();
         const reservationUrl = resForUrl?.publicToken ? `${baseUrl}/presupuesto/${resForUrl.publicToken}` : undefined;
         const confirmHtml = buildReservationConfirmHtml({
           merchantOrder,
@@ -1246,7 +1249,7 @@ export const ticketingRouter = router({
         const newReservationId = reservationId;
         sendEmail({
           to: item.email,
-          subject: `? Reserva confirmada — ${resolvedProductName} | Náyade Experiences`,
+          subject: `? Reserva confirmada — ${resolvedProductName} | ${legacyBrandText("Náyade Experiences")}`,
           html: confirmHtml,
         })
           // Trazabilidad: evita un segundo envío si más tarde se toca esta
@@ -1335,7 +1338,7 @@ export const ticketingRouter = router({
           ? new Date(r.bookingDate).toLocaleDateString("es-ES", { weekday: "long", year: "numeric", month: "long", day: "numeric" })
           : "Por confirmar";
         const totalAmountStr = pvpTotal.toFixed(2).replace(".", ",");
-        const baseUrl = process.env.APP_URL ?? "https://www.skicenter.es";
+        const baseUrl = publicBaseUrl();
         const publicToken = (r as { publicToken?: string | null }).publicToken;
         const reservationUrl = publicToken ? `${baseUrl}/presupuesto/${publicToken}` : undefined;
         const confirmHtml = buildReservationConfirmHtml({
@@ -1351,7 +1354,7 @@ export const ticketingRouter = router({
         try {
           await sendEmail({
             to: r.customerEmail,
-            subject: `? Reserva confirmada — ${r.productName} | Náyade Experiences`,
+            subject: `? Reserva confirmada — ${r.productName} | ${legacyBrandText("Náyade Experiences")}`,
             html: confirmHtml,
           });
           emailSent = true;
@@ -1883,7 +1886,7 @@ export const ticketingRouter = router({
       phone: z.string().optional(),
       couponCode: z.string().min(1),
       securityCode: z.string().optional(),
-      attachmentUrl: z.string().url().optional(),
+      attachmentUrl: z.string().refine(isAcceptableFileUrl, "URL no válida").optional(),
       requestedDate: z.string().optional(),
       station: z.string().optional(),
       participants: z.number().int().min(1).default(1),
@@ -1895,7 +1898,7 @@ export const ticketingRouter = router({
       if (dupCheck.hardDuplicate) {
         throw new TRPCError({ code: "CONFLICT", message: "Este código de cupón ya ha sido registrado. Si crees que es un error, contacta con nosotros." });
       }
-      let productName = "Experiencia Náyade";
+      let productName = `Experiencia ${legacyBrandText("Náyade")}`;
       if (input.productTicketingId) {
         const [prod] = await db.select({ name: ticketingProducts.name }).from(ticketingProducts).where(eq(ticketingProducts.id, input.productTicketingId)).limit(1);
         if (prod) productName = prod.name;

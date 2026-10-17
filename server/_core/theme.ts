@@ -21,7 +21,7 @@ export interface PublicTheme {
   radius: string | null;
   neutralSite: boolean;
   poweredBy: { label: string; url: string } | null;
-  contact: { phone: string | null; email: string | null; address: string | null };
+  contact: { phone: string | null; email: string | null; address: string | null; whatsapp: string | null };
 }
 
 const HEX = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
@@ -44,6 +44,15 @@ export function safeHttpUrl(v: string | undefined | null): string | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * Número para el enlace de WhatsApp (wa.me): solo dígitos con prefijo internacional, sin «+» ni «00».
+ * Un teléfono que no da entre 8 y 15 dígitos no se usa (mejor sin botón que con un enlace roto).
+ */
+export function whatsappNumber(v: string | undefined | null): string | null {
+  const digits = (v ?? "").trim().replace(/^\+/, "").replace(/[\s().-]/g, "").replace(/^00/, "");
+  return /^\d{8,15}$/.test(digits) ? digits : null;
 }
 
 const text = (v: string | undefined, max: number): string | null => {
@@ -75,6 +84,8 @@ export function buildTheme(
       phone: text(get("brand_phone"), 40),
       email: text(get("email_reservations") ?? get("site_business_email"), 160),
       address: text(get("brand_location"), 200),
+      // WhatsApp de la empresa: su ajuste propio o, si no lo tiene, su teléfono de marca
+      whatsapp: whatsappNumber(get("brand_whatsapp") ?? get("brand_phone")),
     },
   };
 }

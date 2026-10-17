@@ -441,7 +441,7 @@ export async function runEmailAutomationJob(forceRun = false): Promise<Automatio
       // renderizamos con el builder usando datos reales del quote — el bodyHtml
       // seedeado en email_templates tiene datos de ejemplo hardcodeados.
       // Para el resto, prioridad: email_templates.bodyHtml > rule.emailBody.
-      const commercialBuilder = COMMERCIAL_TEMPLATE_BUILDERS[job.templateKey];
+      const commercialBuilder = COMMERCIAL_TEMPLATE_BUILDERS[job.templateKey] as ((d: CommercialReminderEmailData) => string) | undefined;
       const useCommercialBuilder = commercialBuilder && commercialEmailData;
 
       const resolvedSubject = rule.emailSubject ?? template?.subject ?? null;
@@ -581,6 +581,13 @@ export function startEmailAutomationJob(): void {
       await runEmailAutomationJob();
     } catch (err: any) {
       log("error", "Error inesperado en EmailAutomationJob", { stack: err?.stack });
+    }
+    // Reintentos vencidos de la bandeja de salida de la empresa (servicio de correo centralizado)
+    try {
+      const { drainTenantOutbox, usesMailService } = await import("./mail/tenantMail");
+      if (usesMailService()) await drainTenantOutbox();
+    } catch (err: any) {
+      log("error", "Error al reintentar la bandeja de salida", { error: err?.name ?? "error" });
     }
   });
 }

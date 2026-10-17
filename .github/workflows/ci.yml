@@ -52,6 +52,12 @@ jobs:
         continue-on-error: true
         run: pnpm check
 
+      # Informativo: falla solo si aparecen errores de tipos NUEVOS fuera de docs/ci/TSC_BASELINE.txt
+      - name: Línea base de tipos (sin errores nuevos)
+        id: tscbaseline
+        continue-on-error: true
+        run: node scripts/ci/tsc-baseline.mjs
+
       - name: Tests (vitest)
         id: tests
         continue-on-error: true
@@ -84,7 +90,7 @@ jobs:
       - name: Verificar migraciones nuevas (db/migrations)
         id: migrations
         continue-on-error: true
-        run: pnpm exec tsx scripts/db/migrate.ts verify
+        run: pnpm exec tsx scripts/db/migrate.ts verify --dir db/migrations
 
       - name: Ratchet de deuda técnica (la deuda no puede aumentar)
         id: ratchet
@@ -100,6 +106,7 @@ jobs:
             echo "| Paso | Resultado |"
             echo "|---|---|"
             echo "| Tipos (tsc) | ${{ steps.typecheck.outcome }} |"
+            echo "| Línea base de tipos (sin errores nuevos) | ${{ steps.tscbaseline.outcome }} |"
             echo "| Tests (vitest) | ${{ steps.tests.outcome }} |"
             echo "| Build | ${{ steps.build.outcome }} |"
             echo "| Higiene | ${{ steps.hygiene.outcome }} |"
@@ -210,6 +217,12 @@ jobs:
       - name: Instalar dependencias
         run: pnpm install --frozen-lockfile
 
+      # Todos los carriles de migraciones (app y, si existe, CRM): verify no usa base de datos.
+      - name: Verificar migraciones (todos los carriles)
+        run: |
+          pnpm exec tsx scripts/db/migrate.ts verify --dir db/migrations
+          if [ -d db/crm/migrations ]; then pnpm exec tsx scripts/db/migrate.ts verify --dir db/crm/migrations; fi
+
       - name: Suites propias unitarias (en paralelo)
         run: >-
           pnpm exec vitest run
@@ -221,7 +234,76 @@ jobs:
           server/kbRoute server/ghlInboxRouter server/documentAccess
           server/accountSecurity server/sessionAndUploads server/redsys.security
           server/rbac server/health
+          server/crm server/subscriptions server/trials server/nayadeBundle
+          server/legacyCredentials server/schemaCheck server/schemaPlanReadonly
+          server/startupConnections server/catalog server/capabilities server/organization
+          server/productIdentity server/creditNoteNumber server/sdk server/skiRental
+          server/tenantIdentity server/inventoryHolds server/orchestrator server/panelEssential
+          server/tscBaseline server/securityLaunch server/setupWizard server/pulidoEssential
+          server/blog server/fileStorage server/mail/ server/stripe/
 
       # Las pruebas con MySQL comparten una base de datos: se ejecutan una a una
       - name: Suites de integración con MySQL real (en serie)
         run: pnpm exec vitest run mysql --no-file-parallelism
+
+  # Secretos y ficheros sensibles: BLOQUEANTE. Solo mira lo nuevo de cada PR o push (el historial anterior
+  # se trata aparte); el árbol completo sí debe estar limpio.
+  secrets:
+    name: Secretos y ficheros sensibles (bloqueante)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout (historial completo para analizar el rango)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Rango a analizar
+        id: range
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+        run: |
+          if [ "$EVENT" = "pull_request" ]; then
+            BASE=$(git merge-base "$PR_BASE" "$PR_HEAD"); HEAD="$PR_HEAD"
+          elif [ -n "$BEFORE" ] && [ "$BEFORE" != "0000000000000000000000000000000000000000" ] && git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+            BASE="$BEFORE"; HEAD="$AFTER"
+          else
+            BASE="$AFTER~1"; HEAD="$AFTER"
+          fi
+          echo "range=$BASE..$HEAD" >> "$GITHUB_OUTPUT"
+          echo "Rango: $BASE..$HEAD ($(git rev-list --count "$BASE..$HEAD") commits)"
+
+      - name: Ficheros sensibles en el árbol
+        run: node scripts/ci/sensitive-files.mjs --tracked
+
+      - name: Ficheros sensibles en los commits nuevos (incluida historia que llegue por fusión)
+        run: node scripts/ci/sensitive-files.mjs --range "${{ steps.range.outputs.range }}"
+
+      - name: gitleaks (versión fijada y suma verificada)
+        env:
+          GITLEAKS_VERSION: 8.21.2
+          GITLEAKS_SHA256: 5bc41815076e6ed6ef8fbecc9d9b75bcae31f39029ceb55da08086315316e3ba
+        run: |
+          curl -sSfL -o /tmp/gitleaks.tgz "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  /tmp/gitleaks.tgz" | sha256sum -c -
+          tar -xzf /tmp/gitleaks.tgz -C /tmp gitleaks
+          /tmp/gitleaks git --log-opts="${{ steps.range.outputs.range }}" --config .gitleaks.toml --redact --no-banner --exit-code 1
+
+      - name: pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Instalar dependencias
+        run: pnpm install --frozen-lockfile
+
+      - name: Pruebas de los controles
+        run: pnpm exec vitest run server/sensitiveFiles

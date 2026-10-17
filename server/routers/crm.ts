@@ -3,9 +3,10 @@
  * Ciclo completo: Lead ? Presupuesto ? Pago Redsys ? Reserva ? Factura PDF
  */
 
-const SITE_URL = (process.env.APP_URL ?? 'https://www.skicenter.es').trim();
 
 import { router, protectedProcedure, publicProcedure, staffProcedure, adminProcedure } from "../_core/trpc";
+import { publicBaseUrl } from "../_core/productIdentity";
+import { legacyBrandSetting, legacyBrandText, legacyUrl } from "../tenantBrand";
 import { invoicePreviewPath } from "../_core/signedLinks";
 import { createLead, createBookingFromReservation, createReavExpedient, attachReavDocument, upsertClientFromReservation, postConfirmOperation, getGHLCredentials } from "../db";
 import { confirmReservationAndNotify } from "../reservationEmails";
@@ -50,9 +51,11 @@ import type { SQL } from "drizzle-orm";
 import { sendEmail as sharedSendEmail } from "../mailer";
 import { sendManagedEmail, logDirectEmail } from "../emailManager";
 import { generateDocumentNumber } from "../documentNumbers";
+import { nextCreditNoteNumber, withCreditNoteNumberRetry } from "../creditNoteNumber";
 import { htmlToPdf } from "../pdfGenerator";
 import { buildRedsysForm, generateMerchantOrder } from "../redsys";
-import { storagePut, hasExternalStorage } from "../storage";
+import { storagePut, hasExternalStorage, externalFileUrl } from "../storage";
+import { isAcceptableFileUrl } from "../_core/files/service";
 import {
   buildQuoteHtml,
   buildConfirmationHtml,
@@ -87,6 +90,7 @@ async function sendEmail({ to, subject, html }: { to: string; subject: string; h
 import { logActivity } from "../db";
 import { legacyDb, legacyPool } from "../_core/legacyDb";
 import { integrationEnv } from "../_core/tenantConfig";
+import { hasTagCondition } from "../crmTagsDb";
 
 // generateInvoiceNumber y generateQuoteNumber reemplazadas por el helper centralizado
 // Ver server/documentNumbers.ts
@@ -128,8 +132,8 @@ async function generateInvoicePdf(invoice: {
   try {
     const pdfBuffer = await htmlToPdf(html);
     const key = `invoices/${invoice.invoiceNumber}-${Date.now()}.pdf`;
-    const { url } = await storagePut(key, pdfBuffer, "application/pdf");
-    return { url, key };
+    const stored = await storagePut(key, pdfBuffer, "application/pdf", { category: "invoice", originalName: `${invoice.invoiceNumber}.pdf`, owner: { type: "invoice", id: invoice.invoiceNumber } });
+    return { url: stored.url, key: stored.key };
   } catch (pdfErr) {
     console.error("[PDF] Error generando factura PDF, usando vista on-demand:", pdfErr);
     const url = invoicePreviewPath(invoice.invoiceNumber);
@@ -174,7 +178,7 @@ async function sendQuoteEmail(quote: {
     installmentPlan: quote.installmentPlan ?? undefined,
   });
 
-  const quoteSubject = `Tu propuesta de Náyade Experiences — ${quote.quoteNumber}`;
+  const quoteSubject = `Tu propuesta de ${legacyBrandText("Náyade Experiences")} — ${quote.quoteNumber}`;
   await sendManagedEmail({
     templateKey: "quote",
     triggerEvent: "quote_sent",
@@ -223,7 +227,7 @@ async function sendConfirmationEmail(data: {
     installmentPlan: data.installmentPlan,
   });
 
-  const confSubject = `? Reserva confirmada — ${data.reservationRef} — Náyade Experiences`;
+  const confSubject = `? Reserva confirmada — ${data.reservationRef} — ${legacyBrandText("Náyade Experiences")}`;
   await sendManagedEmail({
     templateKey: "confirmation",
     triggerEvent: "reservation_confirmed",
@@ -313,7 +317,7 @@ async function sendTransferConfirmationEmail(data: {
 
   await sendEmail({
     to: data.clientEmail,
-    subject: `?? Pago por transferencia confirmado — ${data.invoiceNumber} — Náyade Experiences`,
+    subject: `?? Pago por transferencia confirmado — ${data.invoiceNumber} — ${legacyBrandText("Náyade Experiences")}`,
     html,
   });
 }
@@ -641,6 +645,7 @@ export const crmRouter = router({
           from: z.string().optional(),
           to: z.string().optional(),
           leadSourceId: z.number().optional(),
+          tagId: z.number().int().positive().optional(),
           limit: z.number().default(50),
           offset: z.number().default(0),
         })
@@ -651,6 +656,7 @@ export const crmRouter = router({
         if (input.assignedTo) conditions.push(eq(leads.assignedTo, input.assignedTo));
         if (input.priority) conditions.push(eq(leads.priority, input.priority));
         if (input.leadSourceId) conditions.push(eq(leads.leadSourceId, input.leadSourceId));
+        if (input.tagId) conditions.push(hasTagCondition(leads.id, "lead", input.tagId));
         if (input.search) {
           const s = `%${input.search}%`;
           conditions.push(
@@ -1272,7 +1278,7 @@ export const crmRouter = router({
           templateKey: "budget_request_user",
           triggerEvent: "lead_submitted",
           recipientEmail: input.email,
-          subject: "Solicitud de presupuesto recibida — Náyade Experiences",
+          subject: `Solicitud de presupuesto recibida — ${legacyBrandText("Náyade Experiences")}`,
           html: buildBudgetRequestUserHtml(emailData),
           relatedEntityType: "lead",
           relatedEntityId: result.id,
@@ -1611,7 +1617,7 @@ export const crmRouter = router({
         // Generar token único de aceptación si no existe ya
         const { randomBytes } = await import("crypto");
         const token = quote.paymentLinkToken ?? randomBytes(32).toString("hex");
-        const origin = input.origin ?? "https://www.skicenter.es";
+        const origin = input.origin ?? legacyUrl("https://www.skicenter.es");
         const acceptUrl = `${origin}/presupuesto/${token}`;
 
         // Update quote
@@ -1697,7 +1703,7 @@ export const crmRouter = router({
         let paymentLinkUrl = quote.paymentLinkUrl;
         if (!paymentLinkUrl || !quote.paymentLinkToken) {
           const token = randomBytes(32).toString("hex");
-          const origin = input.origin ?? "https://www.skicenter.es";
+          const origin = input.origin ?? legacyUrl("https://www.skicenter.es");
           paymentLinkUrl = `${origin}/presupuesto/${token}`;
           await db.update(quotes).set({
             paymentLinkToken: token,
@@ -2263,6 +2269,13 @@ export const crmRouter = router({
         if (!quote) throw new TRPCError({ code: "NOT_FOUND" });
         const [lead] = await db.select().from(leads).where(eq(leads.id, quote.leadId));
         if (!lead) throw new TRPCError({ code: "NOT_FOUND", message: "Lead asociado no encontrado" });
+        // Idempotente: un presupuesto ya convertido (doble clic, reintento) no genera otro pedido
+        const [existing] = await db
+          .select({ id: reservations.id, merchantOrder: reservations.merchantOrder, status: reservations.status })
+          .from(reservations)
+          .where(and(eq(reservations.quoteId, input.quoteId), ne(reservations.status, "cancelled")))
+          .limit(1);
+        if (existing) return { success: true, reservationId: existing.id, reservationRef: existing.merchantOrder, status: existing.status };
 
         const now = new Date();
         const reservationRef = `RES-${Date.now().toString(36).toUpperCase()}`;
@@ -2352,13 +2365,13 @@ export const crmRouter = router({
         const buffer = Buffer.from(input.fileBase64, "base64");
         const ext = input.mimeType === "application/pdf" ? "pdf" : input.mimeType === "image/png" ? "png" : "jpg";
         const fileKey = `transfer-proofs/${input.quoteId}-${Date.now()}.${ext}`;
-        const { url } = await storagePut(fileKey, buffer, input.mimeType);
+        const { url, key: storedKey } = await storagePut(fileKey, buffer, input.mimeType, { category: "transfer-proof", originalName: input.fileName, owner: { type: "quote", id: input.quoteId } });
         await db.update(quotes).set({
           transferProofUrl: url,
-          transferProofKey: fileKey,
+          transferProofKey: storedKey,
           updatedAt: new Date(),
         } as Record<string, unknown>).where(eq(quotes.id, input.quoteId));
-        return { url, fileKey };
+        return { url, fileKey: storedKey };
       }),
 
     // Subir justificante de transferencia sin modificar el presupuesto (para el modal Confirmar Pago)
@@ -2375,8 +2388,8 @@ export const crmRouter = router({
         const buffer = Buffer.from(input.fileBase64, "base64");
         const ext = input.mimeType === "application/pdf" ? "pdf" : input.mimeType === "image/png" ? "png" : "jpg";
         const fileKey = `transfer-proofs/pay-${input.quoteId}-${Date.now()}.${ext}`;
-        const { url } = await storagePut(fileKey, buffer, input.mimeType);
-        return { url, fileKey };
+        const { url, key: storedKey } = await storagePut(fileKey, buffer, input.mimeType, { category: "transfer-proof", originalName: input.fileName, owner: { type: "quote", id: input.quoteId } });
+        return { url, fileKey: storedKey };
       }),
 
     // Paso 2: Confirmar el pago (exige justificante ya subido)
@@ -2839,7 +2852,7 @@ export const crmRouter = router({
         try {
           const pdfBuffer = await htmlToPdf(html);
           const key = `quotes/${quote.quoteNumber}-${ts}.pdf`;
-          const { url } = await storagePut(key, pdfBuffer, "application/pdf");
+          const { url } = await storagePut(key, pdfBuffer, "application/pdf", { category: "quote", originalName: `Presupuesto-${quote.quoteNumber}.pdf`, owner: { type: "quote", id: quote.id } });
           return {
             success: true,
             pdfUrl: url,
@@ -2849,7 +2862,7 @@ export const crmRouter = router({
           console.error("[PDF] Error generando presupuesto PDF, guardando HTML como fallback:", pdfErr);
           // Fallback: guardar HTML
           const key = `quotes/${quote.quoteNumber}-${ts}.html`;
-          const { url } = await storagePut(key, Buffer.from(html), "text/html");
+          const { url } = await storagePut(key, Buffer.from(html), "text/html", { category: "quote", originalName: `Presupuesto-${quote.quoteNumber}.html`, owner: { type: "quote", id: quote.id } });
           return {
             success: true,
             pdfUrl: url,
@@ -2995,7 +3008,7 @@ export const crmRouter = router({
           // Generar token de aceptación SIEMPRE antes de enviar el email
           const { randomBytes } = await import("crypto");
           const token = randomBytes(32).toString("hex");
-          const origin = input.origin ?? "https://www.skicenter.es";
+          const origin = input.origin ?? legacyUrl("https://www.skicenter.es");
           const acceptUrl = `${origin}/presupuesto/${token}`;
 
           await db.update(quotes).set({
@@ -3380,9 +3393,9 @@ export const crmRouter = router({
               amount: amountCents,
               merchantOrder: existingReservation.merchantOrder,
               productDescription: `Presupuesto ${quote.quoteNumber} — ${quote.title}`,
-              notifyUrl: `${SITE_URL}/api/redsys/notification`,
-              okUrl: `${SITE_URL}/reserva/ok?order=${existingReservation.merchantOrder}`,
-              koUrl: `${SITE_URL}/reserva/error?order=${existingReservation.merchantOrder}`,
+              notifyUrl: `${publicBaseUrl()}/api/redsys/notification`,
+              okUrl: `${publicBaseUrl()}/reserva/ok?order=${existingReservation.merchantOrder}`,
+              koUrl: `${publicBaseUrl()}/reserva/error?order=${existingReservation.merchantOrder}`,
               holderName: customerName,
             });
             return {
@@ -3460,9 +3473,9 @@ export const crmRouter = router({
           amount: amountCents,
           merchantOrder,
           productDescription: `Presupuesto ${quote.quoteNumber} — ${quote.title}`,
-          notifyUrl: `${SITE_URL}/api/redsys/notification`,
-          okUrl: `${SITE_URL}/reserva/ok?order=${merchantOrder}`,
-          koUrl: `${SITE_URL}/reserva/error?order=${merchantOrder}`,
+          notifyUrl: `${publicBaseUrl()}/api/redsys/notification`,
+          okUrl: `${publicBaseUrl()}/reserva/ok?order=${merchantOrder}`,
+          koUrl: `${publicBaseUrl()}/reserva/error?order=${merchantOrder}`,
           holderName: customerName,
         });
 
@@ -4402,15 +4415,8 @@ export const crmRouter = router({
     setInvoiceExempt: staff
       .input(z.object({ reservationId: z.number(), exempt: z.boolean() }))
       .mutation(async ({ input }) => {
-        // Asegurar que la columna existe antes de actualizar.
-        // La migración 0091 puede no haber aplicado en algunos entornos.
-        try {
-          await db.execute(
-            sql`ALTER TABLE \`reservations\` ADD COLUMN \`invoice_exempt\` tinyint(1) NOT NULL DEFAULT 0`
-          );
-        } catch {
-          // Columna ya existe — ignorar
-        }
+        // Sin DDL en tiempo de ejecución: la columna la garantiza el mantenimiento explícito
+        // (ensureInvoiceExemptColumn en --schema-maintenance) y la vigila la comprobación del arranque.
         await db.execute(
           sql`UPDATE \`reservations\` SET \`invoice_exempt\` = ${input.exempt ? 1 : 0} WHERE \`id\` = ${input.reservationId}`
         );
@@ -4620,7 +4626,7 @@ export const crmRouter = router({
         const [res] = await db.select().from(reservations).where(eq(reservations.id, input.id));
         if (!res) throw new TRPCError({ code: "NOT_FOUND", message: "Reserva no encontrada" });
         const isTransfer = res.paymentMethod === "transferencia";
-        const base = process.env.APP_URL ?? "https://www.skicenter.es";
+        const base = publicBaseUrl();
         const reservationUrl = (res as any).publicToken ? `${base}/presupuesto/${(res as any).publicToken}` : undefined;
         let html: string;
         let subject: string;
@@ -4643,7 +4649,7 @@ export const crmRouter = router({
             invoiceUrl: null,
             reservationUrl,
           });
-          subject = `?? Confirmación de reserva — ${res.productName} — Náyade Experiences`;
+          subject = `?? Confirmación de reserva — ${res.productName} — ${legacyBrandText("Náyade Experiences")}`;
         } else {
           html = buildConfirmationHtml({
             clientName: res.customerName,
@@ -4658,10 +4664,10 @@ export const crmRouter = router({
             total: (res.amountTotal / 100).toFixed(2),
             bookingDate: res.bookingDate,
             contactEmail: await getBusinessEmail('reservations'),
-            contactPhone: "+34 639 57 66 27",
+            contactPhone: legacyBrandSetting("brand_support_phone", "+34 639 57 66 27"),
             reservationUrl,
           });
-          subject = `? Confirmación de reserva — ${res.productName} — Náyade Experiences`;
+          subject = `? Confirmación de reserva — ${res.productName} — ${legacyBrandText("Náyade Experiences")}`;
         }
         await sendEmail({ to: res.customerEmail ?? "", subject, html });
         await db.insert(crmActivityLog).values({
@@ -5056,12 +5062,16 @@ export const crmRouter = router({
 
         // 3. Construir líneas de factura
         const unitPrice = input.people > 0 ? input.amountTotal / input.people : input.amountTotal;
+        // Tipo de IVA del producto (régimen general); antes se aplicaba siempre el 21 %
+        const [manualProduct] = await db.select({ fiscalRegime: experiences.fiscalRegime, taxRate: experiences.taxRate }).from(experiences).where(eq(experiences.id, input.productId)).limit(1);
+        const manualRate = manualProduct?.fiscalRegime === "general" && manualProduct.taxRate != null ? parseFloat(String(manualProduct.taxRate)) : NaN;
         const items = [{
           description: input.productName,
           quantity: input.people,
           unitPrice,
           total: input.amountTotal,
           fiscalRegime: "general" as const,
+          ...(Number.isFinite(manualRate) ? { taxRate: manualRate } : {}),
         }];
         const bdManual = groupTaxBreakdown(items);
         const taxAmount = totalTaxAmount(bdManual);
@@ -5157,7 +5167,7 @@ export const crmRouter = router({
             customerEmail: input.customerEmail,
             customerPhone: input.customerPhone ?? null,
             totalAmount: input.amountPaid,
-            paymentMethod: input.paymentMethod === "tarjeta_fisica" ? "tarjeta_fisica" : input.paymentMethod === "tarjeta_redsys" ? "tarjeta_redsys" : input.paymentMethod === "redsys" ? "redsys" : input.paymentMethod === "transferencia" ? "transferencia" : input.paymentMethod === "efectivo" ? "efectivo" : "otro",
+            paymentMethod: (input.paymentMethod as string) === "tarjeta_fisica" ? "tarjeta_fisica" : (input.paymentMethod as string) === "tarjeta_redsys" ? "tarjeta_redsys" : input.paymentMethod === "redsys" ? "redsys" : input.paymentMethod === "transferencia" ? "transferencia" : input.paymentMethod === "efectivo" ? "efectivo" : "otro",
             saleChannel: "admin",
             invoiceNumber,
             reservationRef: merchantOrder,
@@ -5172,7 +5182,7 @@ export const crmRouter = router({
             // Recuperar publicToken de la reserva recién creada (lo genera MySQL por DEFAULT)
             const [resRow] = await db.select({ publicToken: reservations.publicToken })
               .from(reservations).where(eq(reservations.id, reservationId)).limit(1);
-            const base = process.env.APP_URL ?? "https://www.skicenter.es";
+            const base = publicBaseUrl();
             const reservationUrl = resRow?.publicToken ? `${base}/presupuesto/${resRow.publicToken}` : undefined;
             const html = buildConfirmationHtml({
               clientName: input.customerName,
@@ -5182,12 +5192,12 @@ export const crmRouter = router({
               total: input.amountTotal.toFixed(2),
               bookingDate: input.bookingDate,
               contactEmail: await getBusinessEmail('reservations'),
-              contactPhone: "+34 639 57 66 27",
+              contactPhone: legacyBrandSetting("brand_support_phone", "+34 639 57 66 27"),
               reservationUrl,
             });
             await sendEmail({
               to: input.customerEmail,
-              subject: `? Confirmación de reserva — ${input.productName} — Náyade Experiences`,
+              subject: `? Confirmación de reserva — ${input.productName} — ${legacyBrandText("Náyade Experiences")}`,
               html,
             });
           } catch (e) {
@@ -5221,7 +5231,7 @@ export const crmRouter = router({
               // El workflow WhatsApp lee {{contact.presupuesto_url}} para el botón.
               const [resForUrl] = await db.select({ publicToken: reservations.publicToken })
                 .from(reservations).where(eq(reservations.id, reservationId)).limit(1);
-              const baseUrl = process.env.APP_URL ?? "https://www.skicenter.es";
+              const baseUrl = publicBaseUrl();
               const publicReservationUrl = resForUrl?.publicToken
                 ? `${baseUrl}/presupuesto/${resForUrl.publicToken}`
                 : undefined;
@@ -5326,7 +5336,7 @@ export const crmRouter = router({
         </style></head><body>
           <div class="header">
             <h1>Reserva #${res.merchantOrder}${res.dateModified ? '<span class="tag">?? FECHA MODIFICADA</span>' : ""}</h1>
-            <p>Náyade Experiences — Los Ángeles de San Rafael, Segovia</p>
+            <p>${legacyBrandText("Náyade Experiences — Los Ángeles de San Rafael, Segovia")}</p>
           </div>
           <div style="padding:0 0 0 0;">
             <div class="section">
@@ -5362,11 +5372,11 @@ export const crmRouter = router({
               ${res.invoiceNumber ? `<div style="margin-top:8px;font-size:12px;color:#6b7280;">Factura: ${res.invoiceNumber}</div>` : ""}
             </div>
           </div>
-          <div class="footer">Generado por Náyade Experiences CRM — ${new Date().toLocaleDateString("es-ES")}</div>
+          <div class="footer">Generado por ${legacyBrandText("Náyade Experiences")} CRM — ${new Date().toLocaleDateString("es-ES")}</div>
         </body></html>`;
         const pdfBuffer = await htmlToPdf(html);
         const key = `reservations/pdf-${res.merchantOrder}-${Date.now()}.pdf`;
-        const { url } = await storagePut(key, pdfBuffer, "application/pdf");
+        const { url } = await storagePut(key, pdfBuffer, "application/pdf", { category: "reservation", originalName: `Reserva-${res.merchantOrder}.pdf`, owner: { type: "reservation", id: res.id } });
         return { url };
       }),
   }),
@@ -5544,7 +5554,7 @@ export const crmRouter = router({
       .input(z.object({
         invoiceId: z.number(),
         paymentMethod: z.enum(["transferencia", "efectivo", "otro"]),
-        transferProofUrl: z.string().url().optional(),
+        transferProofUrl: z.string().refine(isAcceptableFileUrl, "URL no válida").optional(),
         transferProofKey: z.string().optional(),
         notes: z.string().optional(),
       }))
@@ -5789,67 +5799,81 @@ export const crmRouter = router({
         partialAmount: z.number().optional(), // if undefined ? full credit note
       }))
       .mutation(async ({ input, ctx }) => {
-        const [original] = await db.select().from(invoices).where(eq(invoices.id, input.invoiceId));
-        if (!original) throw new TRPCError({ code: "NOT_FOUND" });
-        if (original.invoiceType === "abono") throw new TRPCError({ code: "BAD_REQUEST", message: "No se puede abonar una factura de abono" });
-        if (original.status === "anulada") throw new TRPCError({ code: "BAD_REQUEST", message: "La factura ya está anulada" });
+        // Una transacción que BLOQUEA la factura original: dos abonos simultáneos se serializan y nunca
+        // abonan entre los dos más de lo facturado. Si otro abono simultáneo (de otra factura) toma el mismo
+        // número, el índice único lo rechaza y la transacción completa se reintenta.
+        const done = await withCreditNoteNumberRetry(() => db.transaction(async (tx) => {
+          const [original] = await tx.select().from(invoices).where(eq(invoices.id, input.invoiceId)).for("update");
+          if (!original) throw new TRPCError({ code: "NOT_FOUND" });
+          if (original.invoiceType === "abono") throw new TRPCError({ code: "BAD_REQUEST", message: "No se puede abonar una factura de abono" });
+          if (original.status === "anulada") throw new TRPCError({ code: "BAD_REQUEST", message: "La factura ya está anulada" });
 
-        const now = new Date();
-        const year = now.getFullYear();
-        const month = String(now.getMonth() + 1).padStart(2, "0");
-        const seq = await db.select({ cnt: count() }).from(invoices)
-          .where(and(like(invoices.invoiceNumber, `ABO-${year}-${month}-%`), eq(invoices.invoiceType, "abono")));
-        const seqNum = String((seq[0]?.cnt ?? 0) + 1).padStart(4, "0");
-        const creditNoteNumber = `ABO-${year}-${month}-${seqNum}`;
+          const now = new Date();
+          // Lo ya abonado de esta factura: el total abonado nunca supera lo facturado
+          const previous = await tx.select({ total: invoices.total }).from(invoices)
+            .where(and(eq(invoices.creditNoteForId, original.id), eq(invoices.invoiceType, "abono")));
+          const alreadyCredited = previous.reduce((a, r) => a + Math.abs(Number(r.total)), 0);
+          const remaining = Math.round((Number(original.total) - alreadyCredited) * 100) / 100;
+          if (remaining <= 0) throw new TRPCError({ code: "BAD_REQUEST", message: "Esta factura ya está abonada por completo" });
+          const creditTotal = input.partialAmount ?? remaining;
+          if (!(creditTotal > 0)) throw new TRPCError({ code: "BAD_REQUEST", message: "El importe del abono debe ser mayor que cero" });
+          if (creditTotal - remaining > 0.005) throw new TRPCError({ code: "BAD_REQUEST", message: `El abono (${creditTotal.toFixed(2)}) supera lo pendiente de abonar (${remaining.toFixed(2)})` });
 
-        const creditTotal = input.partialAmount ?? Number(original.total);
-        const origTaxRate = parseFloat(String(original.taxRate ?? "21"));
-        const creditDivisor = 1 + origTaxRate / 100;
-        const creditSubtotal = creditTotal / creditDivisor;
-        const creditTax = creditTotal - creditSubtotal;
+          // Numeración en la serie vigente ABO-AAAA-MM-nnnn: máximo del mes + 1, único por índice (nunca un
+          // recuento de filas, que con dos abonos simultáneos daba el mismo número)
+          const creditNoteNumber = await nextCreditNoteNumber(tx, now);
 
-        // Negate items for credit note
-        const creditItems = (original.itemsJson as { description: string; quantity: number; unitPrice: number; total: number }[]).map(item => ({
-          ...item,
-          unitPrice: -Math.abs(item.unitPrice),
-          total: -Math.abs(item.total),
+          const origTaxRate = parseFloat(String(original.taxRate ?? "21"));
+          const creditDivisor = 1 + origTaxRate / 100;
+          const creditSubtotal = creditTotal / creditDivisor;
+          const creditTax = creditTotal - creditSubtotal;
+
+          // Negate items for credit note
+          const creditItems = (original.itemsJson as { description: string; quantity: number; unitPrice: number; total: number }[]).map(item => ({
+            ...item,
+            unitPrice: -Math.abs(item.unitPrice),
+            total: -Math.abs(item.total),
+          }));
+
+          const [result] = await tx.insert(invoices).values({
+            invoiceNumber: creditNoteNumber,
+            invoiceType: "abono",
+            quoteId: original.quoteId,
+            reservationId: original.reservationId,
+            clientName: original.clientName,
+            clientEmail: original.clientEmail,
+            clientPhone: original.clientPhone,
+            clientNif: original.clientNif,
+            clientAddress: original.clientAddress,
+            itemsJson: creditItems,
+            subtotal: String(-creditSubtotal),
+            taxRate: original.taxRate,
+            taxAmount: String(-creditTax),
+            total: String(-creditTotal),
+            currency: original.currency,
+            status: "generada",
+            creditNoteForId: original.id,
+            creditNoteReason: input.reason,
+            isAutomatic: false,
+            issuedAt: now,
+            createdAt: now,
+            updatedAt: now,
+          });
+          const creditNoteId = (result as any).insertId;
+
+          // Abonada solo cuando el total abonado cubre la factura (un abono parcial no la cierra)
+          if (creditTotal - remaining > -0.005) {
+            await tx.update(invoices).set({
+              status: "abonada",
+              updatedAt: now,
+            }).where(eq(invoices.id, input.invoiceId));
+          }
+
+          return { creditNoteId, creditNoteNumber };
         }));
 
-        const [result] = await db.insert(invoices).values({
-          invoiceNumber: creditNoteNumber,
-          invoiceType: "abono",
-          quoteId: original.quoteId,
-          reservationId: original.reservationId,
-          clientName: original.clientName,
-          clientEmail: original.clientEmail,
-          clientPhone: original.clientPhone,
-          clientNif: original.clientNif,
-          clientAddress: original.clientAddress,
-          itemsJson: creditItems,
-          subtotal: String(-creditSubtotal),
-          taxRate: original.taxRate,
-          taxAmount: String(-creditTax),
-          total: String(-creditTotal),
-          currency: original.currency,
-          status: "generada",
-          creditNoteForId: original.id,
-          creditNoteReason: input.reason,
-          isAutomatic: false,
-          issuedAt: now,
-          createdAt: now,
-          updatedAt: now,
-        });
-        const creditNoteId = (result as any).insertId;
-
-        // Mark original as abonada
-        await db.update(invoices).set({
-          status: "abonada",
-          updatedAt: now,
-        }).where(eq(invoices.id, input.invoiceId));
-
-        await logActivity("invoice", input.invoiceId, "credit_note_created", ctx.user.id, ctx.user.name, { creditNoteId, creditNoteNumber, reason: input.reason });
-
-        return { success: true, creditNoteId, creditNoteNumber };
+        await logActivity("invoice", input.invoiceId, "credit_note_created", ctx.user.id, ctx.user.name, { creditNoteId: done.creditNoteId, creditNoteNumber: done.creditNoteNumber, reason: input.reason });
+        return { success: true, creditNoteId: done.creditNoteId, creditNoteNumber: done.creditNoteNumber };
       }),
 
     // --- Reenviar factura por email --------------------------------------------
@@ -5868,13 +5892,13 @@ export const crmRouter = router({
 
         try {
           const subject = invoice.invoiceType === "abono"
-            ? `Factura de abono ${invoice.invoiceNumber} — Náyade Experiences`
-            : `Tu factura ${invoice.invoiceNumber} — Náyade Experiences`;
+            ? `Factura de abono ${invoice.invoiceNumber} — ${legacyBrandText("Náyade Experiences")}`
+            : `Tu factura ${invoice.invoiceNumber} — ${legacyBrandText("Náyade Experiences")}`;
 
           const items = (invoice.itemsJson as { description: string; quantity: number; unitPrice: number; total: number }[]) ?? [];
           const htmlBody = `
             <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
-              <h2 style="color:#f97316;">Náyade Experiences</h2>
+              <h2 style="color:#f97316;">${legacyBrandText("Náyade Experiences")}</h2>
               <p>Estimado/a <strong>${invoice.clientName}</strong>,</p>
               <p>Adjuntamos ${invoice.invoiceType === "abono" ? "la factura de abono" : "tu factura"} <strong>${invoice.invoiceNumber}</strong>.</p>
               <table style="width:100%;border-collapse:collapse;margin:16px 0;">
@@ -5882,8 +5906,8 @@ export const crmRouter = router({
                 ${items.map(i => `<tr><td style="padding:8px;border-bottom:1px solid #e5e7eb;">${i.description}</td><td style="padding:8px;text-align:right;border-bottom:1px solid #e5e7eb;">${i.quantity}</td><td style="padding:8px;text-align:right;border-bottom:1px solid #e5e7eb;">${Number(i.unitPrice).toFixed(2)}€</td><td style="padding:8px;text-align:right;border-bottom:1px solid #e5e7eb;">${Number(i.total).toFixed(2)}€</td></tr>`).join("")}
               </table>
               <p><strong>Subtotal:</strong> ${Number(invoice.subtotal).toFixed(2)}€ | <strong>IVA (${invoice.taxRate}%):</strong> ${Number(invoice.taxAmount).toFixed(2)}€ | <strong>TOTAL: ${Number(invoice.total).toFixed(2)}€</strong></p>
-              ${invoice.pdfUrl ? `<p>Encontrarás tu factura <strong>adjunta a este correo</strong> en PDF.${invoice.pdfUrl ? ` También puedes <a href="${invoice.pdfUrl}" style="color:#f97316;">descargarla aquí</a>.` : ""}</p>` : ""}
-              <hr/><p style="color:#6b7280;font-size:12px;">Náyade Experiences — ${COPY_EMAIL} — +34 639 57 66 27 (también WhatsApp)</p>
+              ${invoice.pdfUrl ? `<p>Encontrarás tu factura <strong>adjunta a este correo</strong> en PDF.${invoice.pdfUrl ? ` También puedes <a href="${externalFileUrl(invoice.pdfUrl)}" style="color:#f97316;">descargarla aquí</a>.` : ""}</p>` : ""}
+              <hr/><p style="color:#6b7280;font-size:12px;">${legacyBrandText("Náyade Experiences")} — ${COPY_EMAIL} — ${legacyBrandSetting("brand_support_phone", "+34 639 57 66 27")} (también WhatsApp)</p>
             </div>`;
 
           // El PDF se adjunta al correo (Brevo lo descarga del CDN), para que el
@@ -5933,27 +5957,10 @@ export const crmRouter = router({
       .mutation(async ({ input, ctx }) => {
         const [invoice] = await db.select().from(invoices).where(eq(invoices.id, input.invoiceId));
         if (!invoice) throw new TRPCError({ code: "NOT_FOUND" });
-
-        // Desvincular reservas asociadas (limpiar invoiceId e invoiceNumber)
-        await db.update(reservations)
-          .set({ invoiceId: null, invoiceNumber: null, updatedAt: Date.now() } as any)
-          .where(eq(reservations.invoiceId, input.invoiceId));
-
-        // Si hay presupuesto vinculado, revertir a estado anterior al pago
-        if (invoice.quoteId) {
-          await db.update(quotes)
-            .set({ status: "enviado", paidAt: null, invoiceNumber: null, updatedAt: new Date() } as any)
-            .where(eq(quotes.id, invoice.quoteId));
-        }
-
-        // Eliminar la factura
-        await db.delete(invoices).where(eq(invoices.id, input.invoiceId));
-
-        await logActivity("invoice", invoice.id, "invoice_deleted", ctx.user.id, ctx.user.name, {
-          invoiceNumber: invoice.invoiceNumber,
-          quoteId: invoice.quoteId ?? null,
-        });
-        return { success: true };
+        // Integridad fiscal: una factura emitida (todas lo están: no hay borradores) no se borra; se
+        // anula o se rectifica con un abono, y el número de la serie queda consumido.
+        await logActivity("invoice", invoice.id, "invoice_delete_refused", ctx.user.id, ctx.user.name, { invoiceNumber: invoice.invoiceNumber });
+        throw new TRPCError({ code: "FORBIDDEN", message: "Las facturas emitidas no se pueden borrar: anúlala o emite un abono (factura rectificativa)." });
       }),
   }),
 
@@ -5961,6 +5968,7 @@ export const crmRouter = router({
   clients: router({
     list: staff.input(z.object({
       search: z.string().optional(),
+      tagId: z.number().int().positive().optional(),
       limit: z.number().default(50),
       offset: z.number().default(0),
     })).query(async ({ input }) => {
@@ -5972,6 +5980,7 @@ export const crmRouter = router({
           like(clients.company, `%${input.search}%`),
         ) as ReturnType<typeof like>);
       }
+      if (input.tagId) conditions.push(hasTagCondition(clients.id, "client", input.tagId));
       const rows = await db.select().from(clients)
         .where(conditions.length ? and(...conditions) : undefined)
         .orderBy(desc(clients.createdAt))
@@ -6001,8 +6010,8 @@ export const crmRouter = router({
     })).mutation(async ({ input }) => {
       try {
         const [result] = await db.execute(sql`
-          INSERT INTO \`clients\` (\`name\`, \`email\`, \`phone\`, \`company\`, \`nif\`, \`source\`)
-          VALUES (${input.name}, ${input.email}, ${input.phone ?? ""}, ${input.company ?? ""}, ${input.nif ?? ""}, 'manual')
+          INSERT INTO \`clients\` (\`name\`, \`email\`, \`phone\`, \`company\`, \`nif\`, \`address\`, \`notes\`, \`source\`)
+          VALUES (${input.name}, ${input.email}, ${input.phone ?? ""}, ${input.company ?? ""}, ${input.nif ?? ""}, ${input.address ?? null}, ${input.notes ?? null}, 'manual')
         `);
         return { id: (result as any).insertId };
       } catch (e: any) {
@@ -6439,7 +6448,7 @@ export const crmRouter = router({
             productName: input.productName,
             amountFormatted: (input.amountCents / 100).toLocaleString("es-ES", { minimumFractionDigits: 2 }) + " €",
             dueDate: dueDateFormatted,
-            ibanInfo: legal.iban ? `Banco: Skicenter\nIBAN: ${legal.iban}\nConcepto: Reserva ${input.productName}` : undefined,
+            ibanInfo: legal.iban ? `Banco: ${legacyBrandText("Skicenter")}\nIBAN: ${legal.iban}\nConcepto: Reserva ${input.productName}` : undefined,
             origin: input.origin ?? "",
           });
           await sendManagedEmail({
@@ -6664,10 +6673,10 @@ export const crmRouter = router({
         const dueDateFormatted = new Date(pp.dueDate + "T12:00:00").toLocaleDateString("es-ES", { day: "numeric", month: "long", year: "numeric" });
         const html = buildPendingPaymentReminderHtml({
           clientName: pp.clientName,
-          productName: pp.productName ?? "Actividad Nayade",
+          productName: pp.productName ?? `Actividad ${legacyBrandText("Nayade")}`,
           amountFormatted: (pp.amountCents / 100).toLocaleString("es-ES", { minimumFractionDigits: 2 }) + " €",
           dueDate: dueDateFormatted,
-          ibanInfo: legal.iban ? `Banco: Skicenter\nIBAN: ${legal.iban}\nConcepto: Reserva ${pp.productName}` : undefined,
+          ibanInfo: legal.iban ? `Banco: ${legacyBrandText("Skicenter")}\nIBAN: ${legal.iban}\nConcepto: Reserva ${pp.productName}` : undefined,
           origin: "",
         });
         await sendManagedEmail({

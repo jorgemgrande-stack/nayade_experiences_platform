@@ -5,6 +5,7 @@
  * Solo se actualiza el estado tras validar la firma aquí.
  */
 import express from "express";
+import { publicBaseUrl } from "./_core/productIdentity";
 import { validateRedsysNotification } from "./redsys";
 import { sendCapiEvent } from "./metaCapiRoute";
 import { updateReservationPayment, getReservationByMerchantOrder, getAllReservationsByMerchantOrder, createReavExpedient, attachReavDocument, upsertClientFromReservation, postConfirmOperation, createVentaPerdidaLead, getGHLCredentials } from "./db";
@@ -20,7 +21,8 @@ import { sendEmail } from "./mailer";
 import { sendManagedEmail, logDirectEmail } from "./emailManager";
 import { groupTaxBreakdown, totalTaxAmount } from "./taxUtils";
 import { reservationProductFromQuoteItems } from "./reservationUtils";
-import { getBusinessEmail, getSystemSettingSync } from "./config";
+import { getBusinessEmail } from "./config";
+import { brandName, legacyBrandSetting, legacyUrl } from "./tenantBrand";
 import { generateDocumentNumber } from "./documentNumbers";
 import { resolveSessionUser } from "./_core/expressAuth";
 import { secureEqual } from "./_core/signedLinks";
@@ -28,6 +30,8 @@ import { checkAndConfirmInstallmentPlan } from "./routers/crm";
 import { syncLeadUrlsToGHL, createGHLContact, updateGHLContact, triggerGHLWorkflow } from "./ghl";
 import { legacyDb, legacyPool } from "./_core/legacyDb";
 import { integrationEnv } from "./_core/tenantConfig";
+import { applyPaymentToInventoryHolds } from "./inventoryHoldsDb";
+import { isMultiTenant } from "./_core/tenant";
 
 // Pool de BD compartido para todo el módulo — evita crear/destruir conexiones por cada IPN
 const _sharedPool = legacyPool();
@@ -174,6 +178,14 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
 
     console.log(`[Redsys IPN] Reserva ${result.merchantOrder} actualizada a: ${newStatus}`);
 
+    // Plazas de spa/hotel: el pago confirma la retención y el fallo la libera (idempotente; si esto
+    // fallara, la sincronización de la tarea de checkouts abandonados lo corrige)
+    try {
+      await applyPaymentToInventoryHolds(result.merchantOrder, result.isAuthorized);
+    } catch (invErr: any) {
+      console.error("[Redsys IPN] Error actualizando la retención de plazas:", invErr.message);
+    }
+
     // Para carritos multi-artículo: distribuir amountPaid proporcionalmente por reserva.
     // updateReservationPayment graba el importe total en todas las reservas ? incorrecto.
     if (result.isAuthorized && affectedRows > 0 && allCartReservations.length > 1) {
@@ -241,7 +253,7 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
         await sendCapiEvent({
           event_name: 'Purchase',
           event_id: `purchase_${result.merchantOrder}`,
-          event_source_url: process.env.PUBLIC_SITE_URL || 'https://skicenter.es',
+          event_source_url: legacyUrl(process.env.PUBLIC_SITE_URL || 'https://skicenter.es'),
           custom_data: {
             content_ids: [String(updatedReservation.productId ?? updatedReservation.id)],
             content_name: resv.productName ?? undefined,
@@ -408,7 +420,7 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
             const COPY_EMAIL  = await getBusinessEmail('reservations');
             if (clientEmail) {
               try {
-                const base = process.env.APP_URL ?? "https://www.skicenter.es";
+                const base = publicBaseUrl();
                 // Preferir el token de la reserva (todos los canales), fallback al token del presupuesto.
                 const tokenForUrl = (updatedReservation as any).publicToken ?? quote.paymentLinkToken;
                 const reservationUrl = tokenForUrl ? `${base}/presupuesto/${tokenForUrl}` : undefined;
@@ -424,14 +436,14 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
                   bookingDate: updatedReservation.bookingDate ?? undefined,
                   selectedTime: (updatedReservation as any).selectedTime ?? undefined,
                   contactEmail: COPY_EMAIL,
-                  contactPhone: "+34 639 57 66 27",
+                  contactPhone: legacyBrandSetting("brand_support_phone", "+34 639 57 66 27"),
                   reservationUrl,
                 });
                 await sendManagedEmail({
                   templateKey: "confirmation",
                   triggerEvent: "redsys_payment_confirmed",
                   recipientEmail: clientEmail,
-                  subject: `? Reserva confirmada — ${quote.quoteNumber} — ${getSystemSettingSync("brand_name", "Skicenter")}`,
+                  subject: `? Reserva confirmada — ${quote.quoteNumber} — ${brandName()}`,
                   html,
                   relatedEntityType: "quote",
                   relatedEntityId: quote.id,
@@ -452,7 +464,7 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
               syncLeadUrlsToGHL({
                 ghlContactId: (lead as any)?.ghlContactId,
                 quoteUrl: quote.paymentLinkToken
-                  ? `${process.env.APP_URL ?? "https://www.skicenter.es"}/presupuesto/${quote.paymentLinkToken}`
+                  ? `${publicBaseUrl()}/presupuesto/${quote.paymentLinkToken}`
                   : undefined,
                 invoiceNumber,
                 quoteNumber: quote.quoteNumber,
@@ -629,7 +641,7 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
               // workflow WhatsApp pueda usar {{contact.presupuesto_url}}.
               const publicToken = (resv as any).publicToken;
               if (publicToken) {
-                const base = process.env.APP_URL ?? "https://www.skicenter.es";
+                const base = publicBaseUrl();
                 syncLeadUrlsToGHL({
                   ghlContactId,
                   quoteUrl: `${base}/presupuesto/${publicToken}`,
@@ -883,7 +895,8 @@ redsysRouter.post("/api/redsys/restaurant-notification", express.urlencoded({ ex
  * enviado en la cabecera `x-recovery-token` (nunca en la URL: acaba en logs y en el historial).
  */
 async function requireRecoveryAccess(req: express.Request, res: express.Response): Promise<boolean> {
-  const expected = process.env.RECOVERY_TOKEN;
+  // Token global de entorno: en multiempresa daría acceso a todas las empresas. Solo en instalación única.
+  const expected = isMultiTenant() ? undefined : process.env.RECOVERY_TOKEN;
   if (expected && secureEqual(req.headers["x-recovery-token"], expected)) return true;
   const user = await resolveSessionUser(req);
   if (user && user.isActive !== false && String(user.role) === "admin") return true;
@@ -1195,7 +1208,7 @@ redsysRouter.post("/api/admin/recover-order/:merchantOrder", async (req, res) =>
           const clientEmail = lead?.email ?? primary.customerEmail;
           if (clientEmail) {
             const COPY_EMAIL = await getBusinessEmail("reservations");
-            const base = process.env.APP_URL ?? "https://www.skicenter.es";
+            const base = publicBaseUrl();
             const tokenForUrl = (primary as any).publicToken ?? quote.paymentLinkToken;
             const reservationUrl = tokenForUrl ? `${base}/presupuesto/${tokenForUrl}` : undefined;
             const html = buildConfirmationHtml({
@@ -1210,14 +1223,14 @@ redsysRouter.post("/api/admin/recover-order/:merchantOrder", async (req, res) =>
               bookingDate: primary.bookingDate ?? undefined,
               selectedTime: primary.selectedTime ?? undefined,
               contactEmail: COPY_EMAIL,
-              contactPhone: "+34 639 57 66 27",
+              contactPhone: legacyBrandSetting("brand_support_phone", "+34 639 57 66 27"),
               reservationUrl,
             });
             await sendManagedEmail({
               templateKey: "confirmation",
               triggerEvent: "redsys_payment_confirmed_recovery",
               recipientEmail: clientEmail,
-              subject: `? Reserva confirmada — ${quote.quoteNumber} — ${getSystemSettingSync("brand_name", "Skicenter")}`,
+              subject: `? Reserva confirmada — ${quote.quoteNumber} — ${brandName()}`,
               html,
               relatedEntityType: "quote",
               relatedEntityId: quote.id,

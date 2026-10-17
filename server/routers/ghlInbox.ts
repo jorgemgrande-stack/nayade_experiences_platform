@@ -4,12 +4,15 @@
  */
 
 import { z } from "zod";
+import { TRPCError } from "@trpc/server";
 import { staffProcedure, router } from "../_core/trpc";
 import { eq, desc, and, or, like, isNotNull, sql } from "drizzle-orm";
 import { ghlConversations, ghlMessages, ghlWebhookEvents, siteSettings } from "../../drizzle/schema";
 import { getGHLCredentials } from "../db";
 import { legacyDb, legacyPool } from "../_core/legacyDb";
 import { integrationEnv } from "../_core/tenantConfig";
+import { protectLegacySecret, revealLegacySecret } from "../_core/credentials/legacyFields";
+import { isPublishedDefaultSecret, MIN_WEBHOOK_SECRET_LENGTH, usableWebhookSecret } from "../_core/webhookSecret";
 
 const _pool = legacyPool();
 const db = legacyDb();
@@ -232,7 +235,7 @@ export const ghlInboxRouter = router({
         "SELECT `key`, `value` FROM site_settings WHERE `key` IN ('ghlInboxToken','ghlInboxLocationId','ghlInboxWebhookSecret')"
       );
       const map: Record<string, string> = {};
-      for (const r of (rawRows as any[])) map[r.key] = r.value ?? "";
+      for (const r of (rawRows as any[])) map[r.key] = revealLegacySecret("site_settings", r.key, r.value);
       const token = map.ghlInboxToken || "";
       const secret = integrationEnv("GHL_WEBHOOK_SECRET") || map.ghlInboxWebhookSecret || "";
       return {
@@ -247,21 +250,28 @@ export const ghlInboxRouter = router({
     .input(z.object({
       token: z.string().min(1),
       locationId: z.string().min(1),
-      webhookSecret: z.string().default("NAYADE2026_ULTRA"),
+      // Sin valor por defecto: vacío (o el antiguo valor publicado) = no se cambia el secreto guardado
+      webhookSecret: z.string().max(256).optional(),
     }))
     .mutation(async ({ input }) => {
+      const newSecret = isPublishedDefaultSecret(input.webhookSecret) ? null : input.webhookSecret!.trim();
+      if (newSecret !== null && !usableWebhookSecret(newSecret)) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: `El secreto del webhook debe tener al menos ${MIN_WEBHOOK_SECRET_LENGTH} caracteres.` });
+      }
       await _pool.execute(
         "INSERT INTO site_settings (`key`, `value`, `type`, updatedAt) VALUES (?, ?, 'text', NOW()) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`), updatedAt = NOW()",
-        ["ghlInboxToken", input.token]
+        ["ghlInboxToken", protectLegacySecret("site_settings", "ghlInboxToken", input.token)]
       );
       await _pool.execute(
         "INSERT INTO site_settings (`key`, `value`, `type`, updatedAt) VALUES (?, ?, 'text', NOW()) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`), updatedAt = NOW()",
         ["ghlInboxLocationId", input.locationId]
       );
-      await _pool.execute(
-        "INSERT INTO site_settings (`key`, `value`, `type`, updatedAt) VALUES (?, ?, 'text', NOW()) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`), updatedAt = NOW()",
-        ["ghlInboxWebhookSecret", input.webhookSecret]
-      );
+      if (newSecret !== null) {
+        await _pool.execute(
+          "INSERT INTO site_settings (`key`, `value`, `type`, updatedAt) VALUES (?, ?, 'text', NOW()) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`), updatedAt = NOW()",
+          ["ghlInboxWebhookSecret", protectLegacySecret("site_settings", "ghlInboxWebhookSecret", newSecret)]
+        );
+      }
       return { ok: true };
     }),
 
@@ -318,13 +328,13 @@ export const ghlInboxRouter = router({
             "SELECT `key`, `value` FROM site_settings WHERE `key` IN ('ghlInboxToken','ghlInboxLocationId','ghlApiKey','ghlLocationId')"
           );
           const map: Record<string, string> = {};
-          for (const r of (rawRows as any[])) map[r.key] = r.value ?? "";
+          for (const r of (rawRows as any[])) map[r.key] = revealLegacySecret("site_settings", r.key, r.value);
           // Fuente de verdad desde Fase 1: systemSettings
           const [sysRows]: any = await _pool.execute(
             "SELECT `key`, `value` FROM system_settings WHERE `key` IN ('site_ghl_api_key','site_ghl_location_id')"
           );
           const sysMap: Record<string, string> = {};
-          for (const r of (sysRows as any[])) sysMap[r.key] = r.value ?? "";
+          for (const r of (sysRows as any[])) sysMap[r.key] = revealLegacySecret("system_settings", r.key, r.value);
           const token = integrationEnv("GHL_PRIVATE_INTEGRATION_TOKEN")
             || map.ghlInboxToken
             || sysMap.site_ghl_api_key || map.ghlApiKey || "";

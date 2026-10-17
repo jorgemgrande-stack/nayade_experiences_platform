@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { legacyBrandText } from "../tenantBrand";
+import { publicBaseUrl } from "../_core/productIdentity";
 import { permissionProcedure, router } from "../_core/trpc";
 import { buildReservationConfirmHtml, buildTpvTicketHtml, buildCashOpenHtml, buildCashCloseHtml, type ChannelSummary } from "../emailTemplates";
 import { sendEmail } from "../mailer";
@@ -282,7 +284,7 @@ export async function sendCashCloseEmailForSession(
   });
 
   const to = opts.toOverride || (await getBusinessEmail("admin_alerts"));
-  const subject = `${opts.subjectPrefix ?? ""}?? Cierre de caja — ${register?.name ?? "Caja"} — ${sessionDate} — Náyade Experiences`;
+  const subject = `${opts.subjectPrefix ?? ""}?? Cierre de caja — ${register?.name ?? "Caja"} — ${sessionDate} — ${legacyBrandText("Náyade Experiences")}`;
   await sendEmail({ to, subject, html });
   return { to, subject };
 }
@@ -294,6 +296,16 @@ export const tpvRouter = router({
   getRegisters: tpvAccessProc.query(async () => {
     return await db.select().from(cashRegisters).where(eq(cashRegisters.isActive, true));
   }),
+
+  // Alta de caja: una empresa nueva no trae ninguna y sin caja no se puede abrir sesión
+  createRegister: tpvBackofficeProc
+    .input(z.object({ name: z.string().trim().min(1).max(100), location: z.string().trim().max(200).optional() }))
+    .mutation(async ({ input }) => {
+      const [result] = await db.insert(cashRegisters).values({ name: input.name, location: input.location || null, isActive: true, createdAt: Date.now() });
+      const id = (result as any).insertId as number;
+      const [register] = await db.select().from(cashRegisters).where(eq(cashRegisters.id, id));
+      return register;
+    }),
 
   // -- SESSIONS ---------------------------------------------------------------
   getActiveSession: tpvAccessProc
@@ -321,6 +333,8 @@ export const tpvRouter = router({
       })
     )
     .mutation(async ({ input, ctx }) => {
+      const [register] = await db.select({ id: cashRegisters.id }).from(cashRegisters).where(and(eq(cashRegisters.id, input.registerId), eq(cashRegisters.isActive, true)));
+      if (!register) throw new TRPCError({ code: "NOT_FOUND", message: "La caja no existe o está desactivada" });
       // Check no open session exists
       const existing = await db
         .select()
@@ -365,7 +379,7 @@ export const tpvRouter = router({
           const toEmail = await getBusinessEmail('admin_alerts');
           await sendEmail({
             to: toEmail,
-            subject: `?? Apertura de caja — ${register?.name ?? "Caja"} — Náyade Experiences`,
+            subject: `?? Apertura de caja — ${register?.name ?? "Caja"} — ${legacyBrandText("Náyade Experiences")}`,
             html,
           });
         }
@@ -1279,7 +1293,7 @@ export const tpvRouter = router({
           const [resForUrl] = await db.select({ publicToken: reservations.publicToken })
             .from(reservations).where(eq(reservations.id, reservationId)).limit(1);
           if (resForUrl?.publicToken) {
-            const baseUrl = process.env.APP_URL ?? "https://www.skicenter.es";
+            const baseUrl = publicBaseUrl();
             reservationUrl = `${baseUrl}/presupuesto/${resForUrl.publicToken}`;
           }
         }
@@ -1300,7 +1314,7 @@ export const tpvRouter = router({
           discount:       input.discountAmount > 0 ? input.discountAmount : undefined,
           discountReason: input.discountReason,
         });
-        const subject = `[TPV] Compra confirmada ${ticketNumber} — Náyade Experiences`;
+        const subject = `[TPV] Compra confirmada ${ticketNumber} — ${legacyBrandText("Náyade Experiences")}`;
         const saleNotifyEmail = await getBusinessEmail('reservations');
         await sendEmail({ to: saleNotifyEmail, subject, html: emailHtml });
         if (input.customerEmail) {
@@ -1361,7 +1375,7 @@ export const tpvRouter = router({
                 const [resForUrl] = await db.select({ publicToken: reservations.publicToken })
                   .from(reservations).where(eq(reservations.id, reservationId)).limit(1);
                 if (resForUrl?.publicToken) {
-                  const base = process.env.APP_URL ?? "https://www.skicenter.es";
+                  const base = publicBaseUrl();
                   syncLeadUrlsToGHL({
                     ghlContactId,
                     quoteUrl: `${base}/presupuesto/${resForUrl.publicToken}`,
@@ -1564,7 +1578,7 @@ export const tpvRouter = router({
         templateKey: "tpv_ticket",
         triggerEvent: "tpv_ticket",
         recipientEmail: input.email,
-        subject: `Tu ticket de compra ${sale.ticketNumber} — Náyade Experiences`,
+        subject: `Tu ticket de compra ${sale.ticketNumber} — ${legacyBrandText("Náyade Experiences")}`,
         html: emailHtml,
         relatedEntityType: "tpv_sale",
         relatedEntityId: sale.id,

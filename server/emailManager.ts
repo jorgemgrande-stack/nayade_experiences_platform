@@ -13,6 +13,7 @@
  */
 
 import { eq, and } from "drizzle-orm";
+import { isMultiTenant } from "./_core/tenant";
 import {
   emailTemplateConfigs,
   emailAutomationRules,
@@ -21,6 +22,7 @@ import {
   customerEmailPrefs,
 } from "../drizzle/schema";
 import { sendEmail } from "./mailer";
+import { categoryForTemplate } from "./mail/types";
 import { getSystemSettingSync } from "./config";
 import { legacyDb, legacyPool } from "./_core/legacyDb";
 
@@ -92,7 +94,9 @@ export async function sendManagedEmail(opts: ManagedEmailOptions): Promise<Manag
   const sendToAdmin = config?.sendToAdmin ?? false;
   const adminCopyEmail =
     config?.adminCopyEmail ??
-    getSystemSettingSync("email_reservations", process.env.GLOBAL_CC_EMAIL ?? "");
+    // En multiempresa nunca se cae en el buzón global: las copias con datos de clientes de una
+    // empresa no pueden acabar en la dirección de otra
+    getSystemSettingSync("email_reservations", isMultiTenant() ? "" : (process.env.GLOBAL_CC_EMAIL ?? ""));
 
   // 2. Verificar si está activa
   if (!isActive) {
@@ -141,6 +145,7 @@ export async function sendManagedEmail(opts: ManagedEmailOptions): Promise<Manag
         subject,
         html,
         cc: ccList.length > 0 ? ccList.join(",") : undefined,
+        category: categoryForTemplate(templateKey),
       });
       sent = ok;
       provider = process.env.BREVO_API_KEY ? "brevo" : "smtp";
@@ -150,7 +155,7 @@ export async function sendManagedEmail(opts: ManagedEmailOptions): Promise<Manag
   } else if (sendToAdmin && adminCopyEmail) {
     // Solo envío admin
     try {
-      const ok = await sendEmail({ to: adminCopyEmail, subject, html });
+      const ok = await sendEmail({ to: adminCopyEmail, subject, html, category: "operational" });
       sent = ok;
       provider = process.env.BREVO_API_KEY ? "brevo" : "smtp";
     } catch (err: any) {

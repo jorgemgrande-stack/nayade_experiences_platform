@@ -2,6 +2,8 @@ import { COOKIE_NAME, ONE_YEAR_MS } from "@shared/const";
 import type { Express, Request, Response } from "express";
 import * as db from "../db";
 import { getSessionCookieOptions } from "./cookies";
+import { safeReturnPath } from "./safeRedirect";
+import { isMultiTenant } from "./tenant";
 import { sdk } from "./sdk";
 
 function getQueryParam(req: Request, key: string): string | undefined {
@@ -11,6 +13,11 @@ function getQueryParam(req: Request, key: string): string | undefined {
 
 export function registerOAuthRoutes(app: Express) {
   app.get("/api/oauth/callback", async (req: Request, res: Response) => {
+    // Sesiones sin empresa: no se emiten en multiempresa (allí rige LOCAL_AUTH)
+    if (isMultiTenant()) {
+      res.status(404).end();
+      return;
+    }
     const code = getQueryParam(req, "code");
     const state = getQueryParam(req, "state");
 
@@ -49,7 +56,8 @@ export function registerOAuthRoutes(app: Express) {
       try {
         const decoded = JSON.parse(Buffer.from(state, "base64").toString("utf8"));
         if (decoded.returnPath && typeof decoded.returnPath === "string") {
-          returnPath = decoded.returnPath;
+          // Solo rutas del propio sitio: nunca una redirección abierta a otro dominio
+          returnPath = safeReturnPath(decoded.returnPath);
         }
       } catch {
         // Legacy state format — fall back to home

@@ -6,6 +6,8 @@
 // El motor de cálculo (303/390/111/190/200/202) llega en fases posteriores.
 
 import { z } from "zod";
+import { legacyBrandText } from "../tenantBrand";
+import { publicBaseUrl } from "../_core/productIdentity";
 import { router, permissionProcedure, publicProcedure, gestoriaProcedure } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { randomBytes } from "crypto";
@@ -580,7 +582,7 @@ export const gestoriaRouter = router({
       .mutation(async ({ input, ctx }) => {
         const { buffer, fileCount } = await buildDossierZip(input.year);
         const key = `gestoria/dossiers/Expediente_${input.year}_${Date.now()}.zip`;
-        const stored = await storagePut(key, buffer, "application/zip");
+        const stored = await storagePut(key, buffer, "application/zip", { category: "gestoria-export", originalName: `Expediente_${input.year}.zip`, owner: { type: "tax_dossier", id: input.year }, uploadedBy: ctx.user.id });
         const [res] = await db.insert(taxDossiers).values({
           year: input.year,
           scope: "global",
@@ -634,17 +636,17 @@ export const gestoriaRouter = router({
           } as any);
         }
 
-        const origin = process.env.APP_URL ?? "https://www.skicenter.es";
+        const origin = publicBaseUrl();
         const inviteUrl = `${origin}/gestoria/activar?token=${token}`;
         try {
           await sendEmail({
             to: input.email,
-            subject: "Acceso al Portal de Gestoría — Náyade Experiences",
+            subject: `Acceso al Portal de Gestoría — ${legacyBrandText("Náyade Experiences")}`,
             html: `
               <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px;">
                 <h2 style="color:#ea580c">Portal de Gestoría</h2>
                 <p>Hola <strong>${input.name}</strong>,</p>
-                <p>Náyade Experiences le da acceso a su Portal de Gestoría, donde podrá consultar
+                <p>${legacyBrandText("Náyade Experiences")} le da acceso a su Portal de Gestoría, donde podrá consultar
                 las obligaciones fiscales, descargar los expedientes del ejercicio y marcar los
                 modelos como presentados.</p>
                 <p style="margin:24px 0">

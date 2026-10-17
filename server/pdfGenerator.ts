@@ -134,7 +134,7 @@ export async function htmlToPdf(html: string, opts: PdfOptions = {}): Promise<Bu
   const page = await browser.newPage();
 
   try {
-    await page.setContent(html, { waitUntil: "networkidle0" });
+    await page.setContent(html, { waitUntil: "load" });
     const pdfUint8 = await page.pdf({
       format,
       printBackground,

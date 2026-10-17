@@ -1,0 +1,139 @@
+/**
+ * Correo de PLATAFORMA (Elephant Source) en el plano de control: bandeja de salida en la base del CRM
+ * comercial (db/crm/migrations/0011) y avisos conectados a los eventos que ya existen:
+ *  - prueba gratuita (`TrialNotifier`): verificación de correo, activación (bienvenida), aviso de vencimiento;
+ *  - alta asistida (contrato del CRM): bienvenida de la empresa con el enlace del administrador;
+ *  - orquestador comercial: contratación confirmada, pago de PRUEBA confirmado, impago, cancelación.
+ * Ningún evento cambia su lógica: el aviso se encola después y un fallo nunca rompe el flujo.
+ *
+ * El webhook de Brevo (un único URL por cuenta) llega aquí y actualiza también las bandejas de las
+ * empresas: `tenantLaneResolver` abre su base con la DSN del registro, solo para aplicar eventos.
+ */
+import crypto from "node:crypto";
+import mysql from "mysql2/promise";
+import type { TenantRegistryReader } from "../_core/tenantRegistry/store";
+import { choosePublicDomain } from "../_core/tenantIdentity";
+import { opsLog } from "../_core/ops/log";
+import type { CrmStore } from "../crm/store";
+import type { OrderNotifier } from "../orchestrator/service";
+import type { OrderStore } from "../orchestrator/store";
+import type { TrialNotifier } from "../trials/onboarding";
+import { mailPolicyFromEnv, type MailPolicy } from "./policy";
+import { mailProviderFromEnv } from "./providers";
+import { MailService, type SendResult } from "./service";
+import { MysqlMailStore } from "./store";
+import { platformTemplates } from "./templates";
+import type { MailCategory, MailContent, MailProviderPort } from "./types";
+
+export const PLATFORM_TENANT = "platform";
+const short = (s: string) => crypto.createHash("sha256").update(s).digest("hex").slice(0, 16);
+
+export class PlatformMailer {
+  readonly t: ReturnType<typeof platformTemplates>;
+  constructor(
+    readonly service: MailService,
+    readonly policy: MailPolicy,
+    private o: { verifyUrl?: string | null; pricingUrl?: string | null } = {},
+  ) {
+    this.t = platformTemplates({ supportEmail: policy.supportEmail });
+  }
+
+  send(tenantId: string | null, idempotencyKey: string, category: MailCategory, to: string, c: MailContent): Promise<SendResult> {
+    return this.service.send({ tenantId: tenantId || PLATFORM_TENANT, idempotencyKey, category, to, ...c, sender: { lane: "platform" } });
+  }
+
+  /** Avisos de la prueba gratuita por la bandeja de salida (sustituye al notificador SMTP propio). */
+  trialNotifier(): TrialNotifier {
+    const verifyBase = this.o.verifyUrl ?? null;
+    return {
+      verification: async (to, l) => {
+        if (!verifyBase) return void opsLog("warn", "Mail", "not_queued", { category: "email_verification", reason: "verify_url_missing", trialId: l.trialId });
+        const url = `${verifyBase}${verifyBase.includes("?") ? "&" : "?"}id=${l.trialId}&token=${encodeURIComponent(l.token)}`;
+        // Clave por token: cada enlace nuevo (alta o reenvío) es un mensaje distinto, y el mismo enlace, uno solo
+        const content = l.resend ? this.t.emailVerificationResent({ verifyUrl: url }) : this.t.emailVerification({ verifyUrl: url });
+        await this.send(PLATFORM_TENANT, `trial:${l.trialId}:verification:${short(l.token)}`, "email_verification", to, content);
+      },
+      welcome: async (to, i) => {
+        const url = i.domain ? `https://${i.domain}/establecer-contrasena?token=${encodeURIComponent(i.inviteToken)}` : null;
+        await this.send(i.tenantId, `trial-welcome:${i.tenantId}:${short(i.inviteToken)}`, "trial_activated", to, this.t.trialActivated({ host: i.domain, setPasswordUrl: url }));
+      },
+      expiryNotice: async (to, i) => {
+        // La fecha de fin forma parte de la clave: tras una ampliación se vuelve a avisar del nuevo fin
+        await this.send(PLATFORM_TENANT, `trial:${i.trialId}:expiry:${i.endsAt}:${i.daysLeft}`, "trial_expiry", to, this.t.trialExpiry({ endsAt: i.endsAt, daysLeft: i.daysLeft, pricingUrl: this.o.pricingUrl }));
+      },
+    };
+  }
+
+  /** Bienvenida del alta asistida (contrato del CRM → plataforma creada). */
+  assistedWelcome() {
+    return async (to: string, i: { tenantId: string; companyName: string; domain: string | null; inviteToken: string }) => {
+      const url = i.domain ? `https://${i.domain}/establecer-contrasena?token=${encodeURIComponent(i.inviteToken)}` : null;
+      await this.send(i.tenantId, `assisted-welcome:${i.tenantId}:${short(i.inviteToken)}`, "tenant_welcome", to, this.t.tenantWelcome({ companyName: i.companyName, host: i.domain, setPasswordUrl: url }));
+    };
+  }
+
+  /** Avisos del orquestador comercial. Destinatario: contacto principal activo de la empresa del pedido. */
+  orderNotifier(d: { crmStore: Pick<CrmStore, "list" | "get">; orders: Pick<OrderStore, "payments">; reader?: Pick<TenantRegistryReader, "listDomains"> | null }): OrderNotifier {
+    const hostOf = async (tenantId: string | null) => (tenantId && d.reader ? (choosePublicDomain(await d.reader.listDomains(tenantId))?.domain ?? null) : null);
+    return async ({ order, action, detail }) => {
+      const kind: MailCategory | null =
+        action === "activate" ? "contract_confirmed" : action === "confirm" && detail?.basis === "payment" ? "test_payment_confirmed" : action === "payment_failed" ? "payment_failed" : action === "cancel" ? "cancellation" : null;
+      if (!kind) return;
+      const contacts = (await d.crmStore.list("contacts", { companyId: order.companyId })).filter((c) => c.status !== "inactive" && c.email);
+      const to = (contacts.find((c) => c.isPrimary) ?? contacts[0])?.email ?? null;
+      if (!to) return void opsLog("warn", "Mail", "not_queued", { category: kind, reason: "no_contact", orderId: order.id });
+      const key = `order:${order.id}:${action}:${order.version}`;
+      let content: MailContent;
+      if (kind === "contract_confirmed") {
+        const company = await d.crmStore.get("companies", order.companyId);
+        content = this.t.contractConfirmed({ companyName: company?.name ?? "tu empresa", reference: order.reference, host: await hostOf(order.tenantId) });
+      } else if (kind === "test_payment_confirmed") {
+        const pay = (await d.orders.payments(order.id)).find((p) => p.id === Number(detail?.paymentId));
+        if (!pay) return;
+        content = this.t.testPaymentConfirmed({ reference: order.reference, amountCents: pay.amountCents, currency: pay.currency });
+      } else if (kind === "payment_failed") content = this.t.paymentFailed({ reference: order.reference, graceEndsAt: order.graceEndsAt, host: await hostOf(order.tenantId) });
+      else content = this.t.cancellation({ reference: order.reference, cancelAt: typeof detail?.cancelAt === "number" ? detail.cancelAt : null });
+      await this.send(order.tenantId, key, kind, to, content);
+    };
+  }
+}
+
+/** Correo de plataforma desde el entorno, o `null` con el motivo (sin migración, sin pool). */
+export async function platformMailFromEnv(
+  pool: Pick<mysql.Pool, "query"> | null,
+  env: NodeJS.ProcessEnv,
+  o: { provider?: MailProviderPort | null; now?: () => number } = {},
+): Promise<{ mailer: PlatformMailer | null; reason: string | null; policy: MailPolicy }> {
+  const policy = mailPolicyFromEnv(env);
+  if (!pool) return { mailer: null, reason: "crm_not_configured", policy };
+  const ready = await pool.query("SELECT 1 FROM mail_outbox LIMIT 0").then(() => true, () => false);
+  if (!ready) return { mailer: null, reason: "crm_migration_0011_missing", policy };
+  const provider = o.provider !== undefined ? o.provider : mailProviderFromEnv(env);
+  const service = new MailService({ lane: "platform", store: new MysqlMailStore(pool), provider, policy, now: o.now });
+  return { mailer: new PlatformMailer(service, policy, { verifyUrl: env.CP_TRIAL_VERIFY_URL?.trim() || null, pricingUrl: env.CP_TRIAL_PRICING_URL?.trim() || null }), reason: null, policy };
+}
+
+/**
+ * Servicios de las bandejas de las EMPRESAS para aplicar eventos del webhook (sin proveedor: no envían).
+ * Pools pequeños por empresa (1 conexión) con un máximo de 20 abiertos (se cierra el más antiguo).
+ */
+export function tenantLaneResolver(d: { dsnOf: (tenantId: string) => Promise<string | null>; policy: MailPolicy; max?: number }) {
+  const pools = new Map<string, mysql.Pool>();
+  const max = d.max ?? 20;
+  const resolve = async (tenantId: string): Promise<MailService | null> => {
+    let pool = pools.get(tenantId);
+    if (!pool) {
+      const dsn = await d.dsnOf(tenantId);
+      if (!dsn) return null;
+      pool = mysql.createPool({ uri: dsn, connectionLimit: 1, maxIdle: 0, idleTimeout: 30_000 });
+      pools.set(tenantId, pool);
+      if (pools.size > max) {
+        const [oldest, p] = pools.entries().next().value as [string, mysql.Pool];
+        pools.delete(oldest);
+        void p.end().catch(() => undefined);
+      }
+    }
+    return new MailService({ lane: "tenant", store: new MysqlMailStore(pool), provider: null, policy: d.policy, tenantId });
+  };
+  return Object.assign(resolve, { close: async () => void (await Promise.all(Array.from(pools.values()).map((p) => p.end().catch(() => undefined)))) });
+}

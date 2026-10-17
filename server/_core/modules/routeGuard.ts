@@ -7,6 +7,8 @@
  */
 import type { NextFunction, Request, RequestHandler, Response } from "express";
 import type { ModuleAccess } from "./entitlements";
+import { opsLog } from "../ops/log";
+import { recordFailure } from "../ops/failureAlerts";
 
 /** router tRPC → módulo que lo licencia. Lo no listado pertenece al Core. */
 export const TRPC_ROUTER_MODULES: Record<string, string> = {
@@ -35,6 +37,7 @@ export function moduleRouteGuard(
       const access = getAccess();
       for (const m of Array.from(needed)) {
         if (!(await access.isModuleAvailable(m))) {
+          opsLog("warn", "Licensing", "module_denied", { module: m });
           res.status(403).json({
             error: { json: { message: `Módulo no disponible: ${m}`, code: -32003, data: { code: "FORBIDDEN", httpStatus: 403 } } },
           });
@@ -44,6 +47,8 @@ export function moduleRouteGuard(
       next();
     } catch {
       // Sin tenant resuelto o licencia no verificable: se cierra
+      opsLog("error", "Licensing", "module_check_failed", {});
+      recordFailure("licensing.check_failed");
       res.status(503).json({ error: { json: { message: "No se pudo verificar la licencia", code: -32603, data: { code: "INTERNAL_SERVER_ERROR", httpStatus: 503 } } } });
     }
   };

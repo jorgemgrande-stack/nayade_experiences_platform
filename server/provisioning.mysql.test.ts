@@ -25,6 +25,7 @@ import {
 } from "./_core/provisioning/mysqlAdapters";
 import { EntitlementAdmin } from "./_core/modules/mysqlEntitlements";
 import { QuotaAdmin } from "./_core/erm/mysqlQuotas";
+import { loadMigrations } from "../scripts/db/migrationLib";
 
 const URL_ = process.env.REGISTRY_TEST_DATABASE_URL;
 const OP: Actor = { type: "operator", id: "test" };
@@ -110,7 +111,9 @@ describe.skipIf(!URL_)("aprovisionamiento con MySQL real", () => {
     expect(Number(tables[0].n)).toBeGreaterThanOrEqual(152);
 
     const t = await store.getTenant(ID);
-    expect(t).toMatchObject({ status: "trial", baselineVersion: null, schemaVersion: "0001_integration_credentials" });
+    // Última migración del carril de la app (no fija: el carril crece)
+    const appMigrations = loadMigrations(path.resolve(__dirname, "../db/migrations")).migrations;
+    expect(t).toMatchObject({ status: "trial", baselineVersion: null, schemaVersion: appMigrations[appMigrations.length - 1].id });
 
     // El DSN registrado conecta con el usuario propio y solo ve su BD
     const dsn = (await svc.getActiveDsn(ID))!;
@@ -148,6 +151,54 @@ describe.skipIf(!URL_)("aprovisionamiento con MySQL real", () => {
     );
     expect(r.status).toBe("completed");
     expect(await store.listDatabases(ID)).toHaveLength(1);
+  });
+
+  it("triggers: el tenant nuevo recibe reservations_set_public_token (con DEFINER propio) y genera el token", async () => {
+    const db = databaseNameFor(ID);
+    const [trg] = await admin.query<mysql.RowDataPacket[]>(
+      "SELECT TRIGGER_NAME AS name, ACTION_TIMING AS timing, EVENT_MANIPULATION AS ev, EVENT_OBJECT_TABLE AS t, DEFINER AS definer FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA = ?",
+      [db],
+    );
+    expect(trg).toHaveLength(1);
+    expect(trg[0]).toMatchObject({ name: "reservations_set_public_token", timing: "BEFORE", ev: "INSERT", t: "reservations" });
+    expect(String(trg[0].definer)).toMatch(/^esu_[0-9a-f]{16}@/);
+    // Con el usuario propio del tenant (el que usa la app), insertar una reserva genera el token
+    const conn = await mysql.createConnection({ uri: (await svc.getActiveDsn(ID))! });
+    try {
+      await conn.query(
+        "INSERT INTO reservations (product_id, product_name, booking_date, amount_total, customer_name, merchant_order, created_at, updated_at) VALUES (1, 'P', '2026-10-15', 100, 'C', 'M-1', 1, 1)",
+      );
+      await conn.query(
+        "INSERT INTO reservations (product_id, product_name, booking_date, amount_total, customer_name, merchant_order, created_at, updated_at, public_token) VALUES (1, 'P', '2026-10-15', 100, 'C', 'M-2', 1, 1, 'explicito')",
+      );
+      const [r] = await conn.query<mysql.RowDataPacket[]>("SELECT merchant_order AS m, public_token AS tk FROM reservations ORDER BY id");
+      expect(r[0].tk).toMatch(/^[0-9a-f]{64}$/);
+      expect(r[1].tk).toBe("explicito");
+    } finally {
+      await conn.end();
+    }
+  });
+
+  it("triggers: no se alteran tenants existentes (idempotente; un trigger existente distinto queda intacto)", async () => {
+    const databases = new MysqlDatabaseProvisioner(admin, { host, port, alias: "test-server", userHost: "%" });
+    // Repetir sobre el tenant recién creado: no crea nada
+    expect(await databases.ensureTriggers(ID)).toEqual([]);
+    // Tenant «existente» con su propio trigger previo (definición distinta): se respeta tal cual
+    const other = `prov-x${crypto.randomBytes(2).toString("hex")}`;
+    const db = databaseNameFor(other);
+    await admin.query(`DROP DATABASE IF EXISTS \`${db}\``);
+    await admin.query(`CREATE DATABASE \`${db}\``);
+    try {
+      await admin.query(`CREATE TABLE \`${db}\`.reservations (id INT AUTO_INCREMENT PRIMARY KEY, public_token VARCHAR(128) NULL)`);
+      await admin.query(`CREATE TRIGGER \`${db}\`.reservations_set_public_token BEFORE INSERT ON \`${db}\`.reservations FOR EACH ROW SET NEW.public_token = 'previo'`);
+      const read = async () =>
+        (await admin.query<mysql.RowDataPacket[]>("SELECT ACTION_STATEMENT AS s, DEFINER AS d, CREATED AS c FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA = ?", [db]))[0];
+      const before = await read();
+      expect(await databases.ensureTriggers(other)).toEqual([]);
+      expect(await read()).toEqual(before);
+    } finally {
+      await admin.query(`DROP DATABASE IF EXISTS \`${db}\``);
+    }
   });
 
   it("el estado del alta queda persistido y sin secretos", async () => {

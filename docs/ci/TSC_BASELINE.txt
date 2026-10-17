@@ -1,0 +1,11 @@
+# Línea base de errores de TypeScript (tsc --noEmit), por fichero:código.
+# Generada con `node scripts/ci/tsc-baseline.mjs --update`. No la edites a mano.
+# Un error nuevo (más errores de un código en un fichero que aquí) hace fallar la comprobación.
+# Total: 10
+1 client/src/components/LegoPackLineSelector.tsx:TS2352
+1 client/src/pages/LegoPackDetail.tsx:TS2322
+1 client/src/pages/admin/commercial/EmailAuditTab.tsx:TS2322
+1 client/src/pages/admin/commercial/VapiAgente.tsx:TS2322
+2 client/src/pages/admin/crm/ClientsManager.tsx:TS2339
+2 client/src/pages/admin/settings/ConfigPanel.tsx:TS2322
+2 server/_core/index.ts:TS2802

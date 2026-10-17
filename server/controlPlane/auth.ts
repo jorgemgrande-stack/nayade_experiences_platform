@@ -7,7 +7,12 @@
  */
 import crypto from "node:crypto";
 import type { NextFunction, Request, RequestHandler, Response } from "express";
+import { parse as parseCookie } from "cookie";
 import type { Actor } from "../_core/tenantRegistry/service";
+import type { OperatorAuthService, ValidSession } from "./operatorAuth";
+
+/** Cookie de sesión de operador (HttpOnly). En la BD solo está su SHA-256. */
+export const SESSION_COOKIE = "be_cp_session";
 
 export const SCOPES = [
   "tenants:read",
@@ -24,6 +29,22 @@ export const SCOPES = [
   "crm:write",
   "ops:read",
   "ops:write",
+  "tickets:read",
+  "tickets:write",
+  // Gestión de operadores humanos: solo con sesión de operador, nunca con token de servicio
+  "operators:read",
+  "operators:write",
+  // Web comercial: editar borradores y publicar son permisos distintos
+  "web:read",
+  "web:write",
+  "web:publish",
+  // Suscripciones (modo sombra): consultar y operar son permisos distintos
+  "subscriptions:read",
+  "subscriptions:write",
+  // Pedidos de contratación (orquestador): consultar, operar y aprobar sin pago son permisos distintos
+  "orders:read",
+  "orders:write",
+  "orders:approve",
 ] as const;
 export type Scope = (typeof SCOPES)[number];
 
@@ -60,6 +81,8 @@ export interface Authed {
   tokenId: string;
   actor: Actor;
   scopes: ReadonlySet<Scope>;
+  /** Solo con sesión de operador humano (cookie); nunca con token de servicio ni SSO. */
+  operator?: ValidSession;
 }
 
 const authed = new WeakMap<Request, Authed>();
@@ -79,10 +102,63 @@ function match(tokens: ServiceToken[], presented: string): ServiceToken | null {
 /** Verificador de sesiones SSO (JWT propio). */
 export type SessionVerifier = (token: string) => Promise<{ email: string; scopes: Scope[] } | null>;
 
-export function authenticate(tokens: ServiceToken[], sessions?: SessionVerifier): RequestHandler {
+/** Sesiones de operadores humanos (cookie HttpOnly + token CSRF). */
+export interface OperatorSessionOptions {
+  operators: Pick<OperatorAuthService, "validateSession">;
+  /** Orígenes del navegador autorizados: una escritura con otro `Origin` se rechaza. */
+  allowedOrigins: ReadonlySet<string>;
+}
+
+const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+
+export function readCookie(req: Request, name: string): string | null {
+  const raw = req.headers.cookie;
+  if (!raw || raw.length > 8192) return null;
+  return parseCookie(raw)[name] ?? null;
+}
+
+function safeEqual(a: string, b: string): boolean {
+  const x = Buffer.from(a);
+  const y = Buffer.from(b);
+  return x.length === y.length && crypto.timingSafeEqual(x, y);
+}
+
+export function authenticate(tokens: ServiceToken[], sessions?: SessionVerifier, opSessions?: OperatorSessionOptions): RequestHandler {
   return async (req: Request, res: Response, next: NextFunction) => {
     const header = req.headers.authorization ?? "";
     const m = /^Bearer\s+(\S{16,2048})$/.exec(header);
+    // Sin cabecera Authorization: sesión de operador por cookie (las integraciones siguen con Bearer)
+    if (!header && opSessions) {
+      const cookie = readCookie(req, SESSION_COOKIE);
+      if (cookie) {
+        let v: ValidSession | null;
+        try {
+          v = await opSessions.operators.validateSession(cookie);
+        } catch {
+          res.status(503).json({ error: "auth_unavailable", message: "No se pudo comprobar la sesión" });
+          return;
+        }
+        if (!v) {
+          res.status(401).json({ error: "session_expired", message: "La sesión ha caducado o se ha cerrado" });
+          return;
+        }
+        if (!SAFE_METHODS.has(req.method)) {
+          const origin = req.headers.origin;
+          const csrf = String(req.headers["x-csrf-token"] ?? "");
+          if ((typeof origin === "string" && !opSessions.allowedOrigins.has(origin)) || !safeEqual(csrf, v.session.csrfToken)) {
+            res.status(403).json({ error: "csrf_failed", message: "Petición rechazada por protección CSRF" });
+            return;
+          }
+        }
+        authed.set(req, {
+          tokenId: `session:${v.session.id.slice(0, 12)}`,
+          actor: { type: "operator", id: v.operator.username },
+          scopes: new Set(v.scopes),
+          operator: v,
+        });
+        return next();
+      }
+    }
     // Sesión SSO (JWT: tres segmentos) o token de servicio (hash)
     if (m && sessions && m[1].split(".").length === 3) {
       const s = await sessions(m[1]);
@@ -103,6 +179,17 @@ export function authenticate(tokens: ServiceToken[], sessions?: SessionVerifier)
       actor: { type: t.actorType ?? "crm", id: t.id },
       scopes: new Set(t.scopes),
     });
+    next();
+  };
+}
+
+/** Solo personas: la gestión de operadores nunca se hace con un token de servicio. */
+export function requireOperatorSession(): RequestHandler {
+  return (req, res, next) => {
+    if (!getAuth(req)?.operator) {
+      res.status(403).json({ error: "operator_session_required", message: "Esta operación requiere iniciar sesión como operador" });
+      return;
+    }
     next();
   };
 }

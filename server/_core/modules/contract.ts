@@ -5,7 +5,7 @@
  * corresponda) que se declara con un manifiesto. El Core no conoce módulos concretos: lee
  * manifiestos y aplica licencia, permisos, navegación y migraciones de forma uniforme.
  */
-export const MODULE_CONTRACT_VERSION = "1.0.0";
+export const MODULE_CONTRACT_VERSION = "1.1.0";
 
 export type ModuleKind = "core" | "sector" | "addon";
 
@@ -43,6 +43,12 @@ export interface ModuleManifest {
   migrationsDir?: string;
   /** Si es `true`, está disponible sin licencia explícita (p. ej. módulos del Core). */
   includedInBase?: boolean;
+  /** (1.1) Descripción comercial breve para el catálogo. */
+  description?: string;
+  /** (1.1) Métricas del Resource Manager que consume (`email.sent`, `storage.write.bytes`…). */
+  resources?: string[];
+  /** (1.1) Dónde vive el código: dentro del Core o en un repositorio propio. */
+  source?: { location: "core" | "external"; repository?: string };
 }
 
 export const MODULE_ID_RE = /^[a-z][a-z0-9_]{1,31}$/;

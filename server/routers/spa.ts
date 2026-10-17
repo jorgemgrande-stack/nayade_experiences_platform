@@ -1,6 +1,6 @@
 import { router, publicProcedure, protectedProcedure, permissionProcedure } from "../_core/trpc";
+import { publicBaseUrl } from "../_core/productIdentity";
 
-const SITE_URL = (process.env.APP_URL ?? 'https://www.skicenter.es').trim();
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import {
@@ -12,7 +12,7 @@ import {
   getSpaScheduleTemplates, createSpaScheduleTemplate, updateSpaScheduleTemplate, deleteSpaScheduleTemplate,
   generateSlotsFromTemplates,
 } from "../spaDb";
-import { createReservation } from "../db";
+import { holdSpaSlotAndCreateReservation, releaseInventoryHold, releasableSpaUnits, reconcileInventory } from "../inventoryHoldsDb";
 import { getRatingsByEntityType } from "../db/reviewsDb";
 import {
   buildRedsysForm,
@@ -62,9 +62,11 @@ export const spaRouter = router({
     }))
     .query(async ({ input }) => {
       const slots = await getSpaSlotsByDateRange(input.startDate, input.endDate, input.treatmentId);
+      // Las plazas de retenciones caducadas o de reservas anuladas no cuentan como ocupadas
+      const releasable = await releasableSpaUnits(slots.map(s => s.id));
       return slots
         .filter(s => s.status !== "bloqueado")
-        .map(s => ({ date: s.date, capacity: s.capacity, bookedCount: s.bookedCount }));
+        .map(s => ({ date: s.date, capacity: s.capacity, bookedCount: Math.max(0, s.bookedCount - (releasable.get(s.id) ?? 0)) }));
     }),
 
   /** Slots disponibles para un tratamiento en una fecha */
@@ -75,7 +77,10 @@ export const spaRouter = router({
     }))
     .query(async ({ input }) => {
       const slots = await getSpaSlotsByDate(input.treatmentId, input.date);
-      return slots.filter(s => s.status !== "bloqueado" && s.bookedCount < s.capacity);
+      const releasable = await releasableSpaUnits(slots.map(s => s.id));
+      return slots
+        .map(s => ({ ...s, bookedCount: Math.max(0, s.bookedCount - (releasable.get(s.id) ?? 0)) }))
+        .filter(s => s.status !== "bloqueado" && s.bookedCount < s.capacity);
     }),
 
   // ── ADMIN: CATEGORIES ─────────────────────────────────────────────────────
@@ -335,6 +340,14 @@ export const spaRouter = router({
     }))
     .mutation(({ input }) => generateSlotsFromTemplates(input.treatmentId, input.startDate, input.endDate)),
 
+  /**
+   * Reconciliación de la ocupación de las franjas: compara `bookedCount` con las plazas de las reservas
+   * vivas. Por defecto solo informa; `apply: true` corrige (sobrescribe ajustes manuales de bookedCount).
+   */
+  adminReconcileInventory: adminProcedure
+    .input(z.object({ apply: z.boolean().default(false) }))
+    .mutation(({ input }) => reconcileInventory({ apply: input.apply, kind: "spa_slot" })),
+
   // ── PUBLIC: BOOKING ───────────────────────────────────────────────────────
 
   /**
@@ -370,13 +383,7 @@ export const spaRouter = router({
       if (slot.status === "bloqueado") {
         throw new TRPCError({ code: "BAD_REQUEST", message: "Este horario no está disponible" });
       }
-      const available = slot.capacity - slot.bookedCount;
-      if (available < input.persons) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: `Solo quedan ${available} plaza${available !== 1 ? "s" : ""} disponibles en este horario`,
-        });
-      }
+      // Las plazas libres las decide la retención atómica del paso 5 (que antes libera las caducadas)
 
       // 3. Calcular precio en backend: precio_tratamiento × personas
       const pricePerPerson = parseFloat(String(treatment.price ?? 0));
@@ -389,30 +396,47 @@ export const spaRouter = router({
       // 4. Generar orden única de comercio
       const merchantOrder = generateMerchantOrder();
 
-      // 5. Crear reserva en BD con estado "pending"
-      const reservation = await createReservation({
-        productId: input.treatmentId,
-        productName: `SPA: ${treatment.name} · ${input.time}`,
-        bookingDate: input.date,
-        people: input.persons,
-        amountTotal: amountCents,
-        customerName: input.customerName,
-        customerEmail: input.customerEmail,
-        customerPhone: input.customerPhone,
-        notes: input.notes,
-        merchantOrder,
-      });
+      // 5. Retener las plazas de la franja y crear la reserva "pending" en la misma transacción
+      //    (antes se comprobaban y nunca se descontaban: dos clientes podían llevarse la misma plaza)
+      const held = await holdSpaSlotAndCreateReservation(
+        { slotId: slot.id, treatmentId: input.treatmentId, date: input.date, units: input.persons },
+        {
+          productId: input.treatmentId,
+          productName: `SPA: ${treatment.name} · ${input.time}`,
+          bookingDate: input.date,
+          people: input.persons,
+          amountTotal: amountCents,
+          customerName: input.customerName,
+          customerEmail: input.customerEmail,
+          customerPhone: input.customerPhone,
+          notes: input.notes,
+          merchantOrder,
+        },
+      );
+      if (!held.ok) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `Solo quedan ${held.available} plaza${held.available !== 1 ? "s" : ""} disponibles en este horario`,
+        });
+      }
+      const reservation = held.reservation;
 
-      // 6. Construir formulario Redsys
-      const redsysForm = buildRedsysForm({
-        amount: amountCents,
-        merchantOrder,
-        productDescription: `SPA ${treatment.name} · ${input.date} ${input.time} · ${input.persons}p`,
-        holderName: input.customerName,
-        notifyUrl: `${SITE_URL}/api/redsys/notification`,
-        okUrl: `${SITE_URL}/reserva/ok?order=${merchantOrder}`,
-        koUrl: `${SITE_URL}/reserva/error?order=${merchantOrder}`,
-      });
+      // 6. Construir formulario Redsys (si falla, la plaza no se queda retenida hasta que caduque)
+      let redsysForm;
+      try {
+        redsysForm = buildRedsysForm({
+          amount: amountCents,
+          merchantOrder,
+          productDescription: `SPA ${treatment.name} · ${input.date} ${input.time} · ${input.persons}p`,
+          holderName: input.customerName,
+          notifyUrl: `${publicBaseUrl()}/api/redsys/notification`,
+          okUrl: `${publicBaseUrl()}/reserva/ok?order=${merchantOrder}`,
+          koUrl: `${publicBaseUrl()}/reserva/error?order=${merchantOrder}`,
+        });
+      } catch (err) {
+        await releaseInventoryHold(reservation.id, "pago_fallido").catch(() => undefined);
+        throw err;
+      }
 
       return { reservationId: reservation.id, merchantOrder, redsysForm };
     }),

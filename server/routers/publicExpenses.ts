@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { isMultiTenant } from "../_core/tenant";
+import { secureEqual } from "../_core/signedLinks";
 import { router, publicProcedure } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
 import {
@@ -45,8 +47,10 @@ function checkRateLimit(ip: string): void {
 
 // ─── Token validation ──────────────────────────────────────────────────────────
 function validateToken(token: string | undefined): void {
-  const expected = process.env.PUBLIC_EXPENSE_FORM_TOKEN?.trim();
-  if (!expected || !token || token !== expected) {
+  // El token es global (variable de entorno): en multiempresa abriría el formulario de TODAS las
+  // empresas con el mismo valor. Desactivado en multi hasta que exista un token por empresa.
+  const expected = isMultiTenant() ? undefined : process.env.PUBLIC_EXPENSE_FORM_TOKEN?.trim();
+  if (!expected || !token || !secureEqual(token, expected)) {
     throw new TRPCError({ code: "NOT_FOUND", message: "Formulario no disponible." });
   }
 }
@@ -183,7 +187,7 @@ export const publicExpensesRouter = router({
       if (input.file) {
         const fileBuffer = Buffer.from(input.file.base64, "base64");
         const key = `expenses/${expenseId}/${input.file.fileName}-${randomSuffix()}`;
-        const { url } = await storagePut(key, fileBuffer, input.file.mimeType);
+        const { url } = await storagePut(key, fileBuffer, input.file.mimeType, { category: "expense", originalName: input.file.fileName, owner: { type: "expense", id: expenseId } });
         await db.insert(expenseFiles).values({
           expenseId,
           filePath: url,

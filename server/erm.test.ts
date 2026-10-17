@@ -277,6 +277,7 @@ describe("guarda HTTP: un tenant ruidoso no afecta a otro", () => {
 describe("enforcement en consumo real", () => {
   it("storagePut se rechaza al superar la cuota de escritura y no escribe el fichero", async () => {
     process.env.TENANT_MODE = "multi";
+    process.env.STORAGE_OBJECTS = "off"; // camino heredado (disco local); la cuota se aplica igual en ambos
     const store = new MemoryUsageStore();
     const policy = new Policy();
     policy.quotas = [

@@ -30,6 +30,7 @@ import { ENV } from "./_core/env";
 import { createGHLContact, getGHLTagsFromSource, updateGHLContact, triggerGHLWorkflow } from "./ghl";
 import { generateDocumentNumber } from "./documentNumbers";
 import { integrationEnv } from "./_core/tenantConfig";
+import { revealLegacySecret } from "./_core/credentials/legacyFields";
 
 export async function generateReservationNumber(): Promise<string> {
   return generateDocumentNumber("reserva", "db:createReservation", "system");
@@ -56,7 +57,7 @@ export async function getGHLCredentials(): Promise<{ apiKey: string; locationId:
         .from(systemSettings)
         .where(sql`${systemSettings.key} IN ('site_ghl_api_key','site_ghl_location_id')`);
       const sysMap = Object.fromEntries(sysRows.map(r => [r.key, r.value ?? ""]));
-      apiKey = apiKey || sysMap.site_ghl_api_key || undefined;
+      apiKey = apiKey || revealLegacySecret("system_settings", "site_ghl_api_key", sysMap.site_ghl_api_key) || undefined;
       locationId = locationId || sysMap.site_ghl_location_id || undefined;
 
       // Fallback legacy: siteSettings (datos pre-Fase 1)
@@ -64,7 +65,7 @@ export async function getGHLCredentials(): Promise<{ apiKey: string; locationId:
         const legacyRows = await db.select().from(siteSettings)
           .where(sql`${siteSettings.key} IN ('ghlApiKey','ghlLocationId')`);
         const legacyMap = Object.fromEntries(legacyRows.map(r => [r.key, r.value ?? ""]));
-        apiKey = apiKey || legacyMap.ghlApiKey || undefined;
+        apiKey = apiKey || revealLegacySecret("site_settings", "ghlApiKey", legacyMap.ghlApiKey) || undefined;
         locationId = locationId || legacyMap.ghlLocationId || undefined;
       }
     }
@@ -214,7 +215,7 @@ export async function getSlideshowItems() {
 
 // --- LEADS --------------------------------------------------------------------
 
-export async function createLead(data: {
+type CreateLeadInput = {
   name: string;
   email: string;
   phone?: string;
@@ -240,7 +241,12 @@ export async function createLead(data: {
     participants: number;
     details: Record<string, string | number>;
   }[] | null;
-}) {
+};
+
+// Los orígenes que ya sincronizan con GHL por su cuenta devuelven solo el id; el resto, { id, success }.
+export async function createLead(data: CreateLeadInput & { source: "ghl_webhook" | "vapi_llamada" }): Promise<number>;
+export async function createLead(data: CreateLeadInput): Promise<{ id: number; success: boolean }>;
+export async function createLead(data: CreateLeadInput): Promise<number | { id: number; success: boolean }> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
@@ -339,14 +345,14 @@ export async function createLead(data: {
         .from(systemSettings)
         .where(sql`${systemSettings.key} IN ('site_ghl_api_key','site_ghl_location_id')`);
       const sysMap = Object.fromEntries(sysRows.map(r => [r.key, r.value ?? ""]));
-      ghlApiKey = ghlApiKey || sysMap.site_ghl_api_key || undefined;
+      ghlApiKey = ghlApiKey || revealLegacySecret("system_settings", "site_ghl_api_key", sysMap.site_ghl_api_key) || undefined;
       ghlLocationId = ghlLocationId || sysMap.site_ghl_location_id || undefined;
       // Fallback legacy: siteSettings
       if (!ghlApiKey || !ghlLocationId) {
         const legacyRows = await db.select().from(siteSettings)
           .where(sql`${siteSettings.key} IN ('ghlApiKey','ghlLocationId')`);
         const legacyMap = Object.fromEntries(legacyRows.map(r => [r.key, r.value ?? ""]));
-        ghlApiKey = ghlApiKey || legacyMap.ghlApiKey || undefined;
+        ghlApiKey = ghlApiKey || revealLegacySecret("site_settings", "ghlApiKey", legacyMap.ghlApiKey) || undefined;
         ghlLocationId = ghlLocationId || legacyMap.ghlLocationId || undefined;
       }
     }
@@ -1036,11 +1042,14 @@ export async function createReservation(data: {
   fbc?: string;
   clientIpAddress?: string;
   clientUserAgent?: string;
-}) {
-  const db = await getDb();
+  // Número ya generado fuera de la transacción (no ocupar una segunda conexión del pool dentro de ella)
+  reservationNumber?: string;
+}, exec?: Pick<NonNullable<Awaited<ReturnType<typeof getDb>>>, "insert">) {
+  // `exec`: transacción en curso (retención de plazas de spa/hotel: la reserva nace dentro de ella)
+  const db = exec ?? await getDb();
   if (!db) throw new Error("Database not available");
   const now = Date.now();
-  const reservationNumber = await generateReservationNumber();
+  const reservationNumber = data.reservationNumber ?? await generateReservationNumber();
   const result = await db.insert(reservations).values({
     productId: data.productId,
     productName: data.productName,
@@ -1500,7 +1509,7 @@ export async function clonePack(id: number) {
 export async function createInvitedUser(data: {
   name: string;
   email: string;
-  role: "user" | "admin" | "monitor" | "agente" | "adminrest" | "controler";
+  role: "user" | "admin" | "monitor" | "agente" | "adminrest" | "controler" | "readonly";
   inviteToken: string;
   inviteTokenExpiry: Date;
 }) {
@@ -1523,7 +1532,7 @@ export async function createInvitedUser(data: {
   return { success: true, id: Number(result[0].insertId) };
 }
 
-export async function changeUserRole(userId: number, role: "user" | "admin" | "monitor" | "agente" | "adminrest" | "controler") {
+export async function changeUserRole(userId: number, role: "user" | "admin" | "monitor" | "agente" | "adminrest" | "controler" | "readonly") {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   await db.update(users).set({ role, updatedAt: new Date() }).where(eq(users.id, userId));
@@ -1557,6 +1566,26 @@ export async function setUserPassword(userId: number, passwordHash: string) {
     updatedAt: new Date(),
   }).where(eq(users.id, userId));
   return { success: true };
+}
+
+/**
+ * Canjea una invitación de forma atómica: solo si el token sigue siendo el vigente y no ha caducado.
+ * Devuelve false si otra petición lo canjeó antes, si caducó o si no tiene caducidad (invitaciones
+ * sin fecha: se exige reenviarlas). Un solo uso real aunque lleguen dos peticiones a la vez.
+ */
+export async function redeemInviteToken(userId: number, token: string, passwordHash: string): Promise<boolean> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const now = new Date();
+  const result = await db.update(users).set({
+    passwordHash,
+    inviteToken: null,
+    inviteTokenExpiry: null,
+    inviteAccepted: true,
+    updatedAt: now,
+  }).where(and(eq(users.id, userId), eq(users.inviteToken, token), sql`${users.inviteTokenExpiry} IS NOT NULL AND ${users.inviteTokenExpiry} > ${now}`));
+  const header = Array.isArray(result) ? result[0] : result;
+  return Number((header as { affectedRows?: number } | undefined)?.affectedRows ?? 0) === 1;
 }
 
 export async function resendUserInvite(userId: number, inviteToken: string, inviteTokenExpiry: Date) {

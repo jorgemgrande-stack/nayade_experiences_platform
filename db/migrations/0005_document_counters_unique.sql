@@ -1,0 +1,12 @@
+-- Numeración de documentos: una sola serie por tipo y año. Índice único en document_counters
+-- (document_type, year), que faltaba (la tabla solo tenía la clave primaria), para que dos altas
+-- simultáneas a principio de año no puedan crear dos series del mismo tipo y año.
+-- Aditiva: solo crea un índice; no modifica ni borra datos, no reinicia ni cambia ninguna serie.
+-- Solo se aplica si NO hay duplicados: si los hubiera, MySQL rechaza la creación del índice con
+-- ER_DUP_ENTRY, la sentencia (única) no deja nada a medias y la migración no se registra como aplicada.
+-- Comprobación previa recomendada (debe devolver 0 filas):
+--   SELECT document_type, `year`, COUNT(*) AS filas, MIN(id), MAX(current_number)
+--   FROM document_counters GROUP BY document_type, `year` HAVING COUNT(*) > 1
+-- Si devolviera filas, NO se corrige aquí: hay que revisar a mano qué números se emitieron con cada fila
+-- (document_number_logs) antes de fusionarlas, y después marcar con `resolve --as not-applied` y repetir.
+CREATE UNIQUE INDEX uq_document_counters_type_year ON document_counters (document_type, `year`);

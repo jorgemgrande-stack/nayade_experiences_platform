@@ -10,11 +10,13 @@
  * - Nunca modifica números ya emitidos
  * - Reinicio anual automático
  * - Registro de auditoría en document_number_logs
- * - Usa UPDATE atómico con SELECT para evitar race conditions
+ * - Incremento atómico: `UPDATE … SET current_number = LAST_INSERT_ID(current_number + 1)` y lectura
+ *   de `LAST_INSERT_ID()` en la misma conexión, de modo que dos altas simultáneas nunca leen el mismo
+ *   valor (antes se hacían UPDATE y SELECT por separado, en conexiones del pool que podían ser distintas).
  */
 
-import { drizzle } from "drizzle-orm/mysql2";
-import { legacyDb } from "./_core/legacyDb";
+import type mysql from "mysql2/promise";
+import { legacyDb, legacyPool } from "./_core/legacyDb";
 import { eq, and, sql } from "drizzle-orm";
 import { documentCounters, documentNumberLogs } from "../drizzle/schema";
 
@@ -25,10 +27,9 @@ function getDb() {
   return legacyDb();
 }
 
-// Crea las tablas si no existen — idempotente, corre una sola vez por proceso.
-// Protege contra entornos donde las migraciones no se han aplicado (ej: Railway
-// con schema parcial).
-async function ensureTables(db: ReturnType<typeof drizzle>): Promise<void> {
+// Crea las tablas si no existen — idempotente. Ya NO se ejecuta al generar números: solo desde el
+// mantenimiento explícito (ensureDocumentNumberTables en --schema-maintenance).
+async function ensureTables(db: ReturnType<typeof getDb>): Promise<void> {
   if (_tablesReady) return;
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS \`document_counters\` (
@@ -55,6 +56,11 @@ async function ensureTables(db: ReturnType<typeof drizzle>): Promise<void> {
     )
   `);
   _tablesReady = true;
+}
+
+/** Paso del mantenimiento explícito de esquema (no se llama en tiempo de ejecución). */
+export async function ensureDocumentNumberTables(): Promise<void> {
+  await ensureTables(getDb()!);
 }
 
 // --- Tipos --------------------------------------------------------------------
@@ -85,6 +91,91 @@ const DEFAULT_PREFIXES: Record<DocumentType, string> = {
 // Padding de 4 dígitos para mantener compatibilidad con el formato actual
 const SEQUENCE_PADDING = 4;
 
+// --- Secuencia atómica --------------------------------------------------------
+
+// Segundos de espera máxima del bloqueo que serializa la creación de la serie de un año.
+const CREATE_LOCK_TIMEOUT_S = 10;
+
+/**
+ * Siguiente valor de la serie `documentType`/`year`, atómico frente a altas simultáneas (también entre
+ * varias instancias del servidor): el incremento y la lectura ocurren en la misma conexión mediante
+ * `LAST_INSERT_ID(expr)`, que es local a cada conexión.
+ *
+ * Si la serie del año no existe se crea a 0 bajo un bloqueo con nombre (GET_LOCK) por base de datos, tipo
+ * y año, para que dos altas a la vez no creen dos filas; después se incrementa como cualquier otra, así que
+ * el primer número del año sigue siendo el 1. Si ya hubiera filas duplicadas (bases anteriores al índice
+ * único de la migración 0005) se usa siempre la de menor id, la misma que leía la versión anterior.
+ */
+async function nextSequence(
+  documentType: DocumentType,
+  year: number
+): Promise<{ sequence: number; prefix: string }> {
+  const conn = await legacyPool().getConnection();
+  try {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const [found] = await conn.query<mysql.RowDataPacket[]>(
+        "SELECT id FROM document_counters WHERE document_type = ? AND `year` = ? ORDER BY id LIMIT 1",
+        [documentType, year]
+      );
+      const counterId = found[0]?.id as number | undefined;
+      if (counterId === undefined) {
+        await createCounterIfMissing(conn, documentType, year);
+        continue;
+      }
+      const [upd] = await conn.query<mysql.ResultSetHeader>(
+        "UPDATE document_counters SET current_number = LAST_INSERT_ID(current_number + 1) WHERE id = ?",
+        [counterId]
+      );
+      if (upd.affectedRows !== 1) continue; // la fila desapareció entre lectura y escritura: reintentar
+      const [rows] = await conn.query<mysql.RowDataPacket[]>(
+        "SELECT LAST_INSERT_ID() AS seq, prefix FROM document_counters WHERE id = ?",
+        [counterId]
+      );
+      if (rows[0]) return { sequence: Number(rows[0].seq), prefix: String(rows[0].prefix) };
+    }
+    throw new Error(`[documentNumbers] No se pudo obtener el contador para ${documentType}/${year}`);
+  } finally {
+    conn.release();
+  }
+}
+
+/** Crea la serie del año (a 0) si no existe, serializando la creación con un bloqueo con nombre. */
+async function createCounterIfMissing(
+  conn: mysql.PoolConnection,
+  documentType: DocumentType,
+  year: number
+): Promise<void> {
+  // El nombre del bloqueo es global al servidor MySQL: incluye la base de datos (cada empresa tiene la
+  // suya) y se resume con MD5 para no superar los 64 caracteres permitidos.
+  const lockName = "MD5(CONCAT('es_docnum:', DATABASE(), ':', ?, ':', ?))";
+  const [lock] = await conn.query<mysql.RowDataPacket[]>(`SELECT GET_LOCK(${lockName}, ?) AS got`, [
+    documentType,
+    year,
+    CREATE_LOCK_TIMEOUT_S,
+  ]);
+  if (Number(lock[0]?.got) !== 1) {
+    throw new Error(`[documentNumbers] No se pudo bloquear la creación del contador ${documentType}/${year}`);
+  }
+  try {
+    const [exists] = await conn.query<mysql.RowDataPacket[]>(
+      "SELECT id FROM document_counters WHERE document_type = ? AND `year` = ? LIMIT 1",
+      [documentType, year]
+    );
+    if (exists.length) return;
+    try {
+      await conn.query(
+        "INSERT INTO document_counters (document_type, `year`, current_number, prefix) VALUES (?, ?, 0, ?)",
+        [documentType, year, DEFAULT_PREFIXES[documentType]]
+      );
+    } catch (insertErr: unknown) {
+      // Con el índice único (migración 0005) otra instancia pudo crearla antes: no es un error.
+      if ((insertErr as { code?: string })?.code !== "ER_DUP_ENTRY") throw insertErr;
+    }
+  } finally {
+    await conn.query(`SELECT RELEASE_LOCK(${lockName})`, [documentType, year]).catch(() => undefined);
+  }
+}
+
 // --- Función principal --------------------------------------------------------
 
 /**
@@ -103,71 +194,10 @@ export async function generateDocumentNumber(
   const db = getDb();
   const year = new Date().getFullYear();
 
-  await ensureTables(db!);
+  // Sin DDL aquí: las tablas las garantiza el mantenimiento explícito y las vigila el arranque.
 
-  // Paso 1: Incrementar el contador de forma atómica usando UPDATE + SELECT
-  // Primero intentamos incrementar el registro existente
-  const updateResult = await db
-    .update(documentCounters)
-    .set({ currentNumber: sql`current_number + 1` })
-    .where(
-      and(
-        eq(documentCounters.documentType, documentType),
-        eq(documentCounters.year, year)
-      )
-    );
-
-  const affected = (updateResult as unknown as { affectedRows: number }[])?.[0]?.affectedRows ?? 0;
-
-  if (affected === 0) {
-    // No existe el contador para este año ? crear con valor 1.
-    // En caso de inserción concurrente (dos peticiones simultáneas al inicio de año),
-    // el segundo INSERT fallará con ER_DUP_ENTRY — en ese caso reintentamos el UPDATE.
-    const prefix = DEFAULT_PREFIXES[documentType];
-    try {
-      await db.insert(documentCounters).values({
-        documentType,
-        year,
-        currentNumber: 1,
-        prefix,
-      });
-    } catch (insertErr: unknown) {
-      const mysqlErr = insertErr as { code?: string };
-      if (mysqlErr?.code === "ER_DUP_ENTRY") {
-        // Otra petición concurrente ya creó el contador — reintentar el incremento
-        await db
-          .update(documentCounters)
-          .set({ currentNumber: sql`current_number + 1` })
-          .where(
-            and(
-              eq(documentCounters.documentType, documentType),
-              eq(documentCounters.year, year)
-            )
-          );
-      } else {
-        throw insertErr;
-      }
-    }
-  }
-
-  // Paso 2: Leer el valor actual tras el incremento
-  const [counter] = await db
-    .select()
-    .from(documentCounters)
-    .where(
-      and(
-        eq(documentCounters.documentType, documentType),
-        eq(documentCounters.year, year)
-      )
-    )
-    .limit(1);
-
-  if (!counter) {
-    throw new Error(`[documentNumbers] No se pudo obtener el contador para ${documentType}/${year}`);
-  }
-
-  const sequence = counter.currentNumber;
-  const prefix = counter.prefix;
+  // Pasos 1 y 2: incremento atómico y lectura del valor en la MISMA conexión (ver nextSequence).
+  const { sequence, prefix } = await nextSequence(documentType, year);
   const documentNumber = `${prefix}-${year}-${String(sequence).padStart(SEQUENCE_PADDING, "0")}`;
 
   // Paso 3: Registrar en el log de auditoría (no bloquea si falla)
@@ -207,15 +237,16 @@ export async function updateCounterPrefix(
   year: number,
   newPrefix: string
 ): Promise<void> {
-  await getDb()
-    .update(documentCounters)
-    .set({ prefix: newPrefix })
-    .where(
-      and(
-        eq(documentCounters.documentType, documentType),
-        eq(documentCounters.year, year)
-      )
-    );
+  const db = getDb();
+  const where = and(eq(documentCounters.documentType, documentType), eq(documentCounters.year, year));
+  const [existing] = await db.select({ id: documentCounters.id }).from(documentCounters).where(where).limit(1);
+  // Serie aún sin usar (empresa nueva o año nuevo): se crea vacía con el prefijo elegido; antes el
+  // cambio se perdía y el primer documento salía con el prefijo por defecto.
+  if (!existing) {
+    await db.insert(documentCounters).values({ documentType, year, currentNumber: 0, prefix: newPrefix });
+    return;
+  }
+  await db.update(documentCounters).set({ prefix: newPrefix }).where(where);
 }
 
 /**

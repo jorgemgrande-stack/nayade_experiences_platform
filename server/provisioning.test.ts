@@ -232,3 +232,72 @@ describe("conflictos", () => {
     expect(r.failedStep).toBe("register");
   });
 });
+
+describe("acceso del administrador y altas simultáneas", () => {
+  function withReissue(o: { failBranding: number }) {
+    const accepted = new Set<string>();
+    const issued: string[] = [];
+    let failBranding = o.failBranding;
+    const seeder: TenantSeeder = {
+      ...fakes.seeder,
+      seedBranding: async (dsn, s) => {
+        if (failBranding-- > 0) throw new Error("fallo simulado en la marca");
+        return fakes.seeder.seedBranding(dsn, s);
+      },
+      reissueAdminInvite: async (_dsn, input) => {
+        if (accepted.has(input.email)) return null;
+        const t = crypto.randomBytes(8).toString("hex");
+        issued.push(t);
+        fakes.admins.set(input.email, t);
+        return { inviteToken: t };
+      },
+    };
+    const p = new ProvisioningService({
+      registry,
+      reader: store,
+      databases: fakes.databases,
+      schema: fakes.schema,
+      seeder,
+      entitlements: { grant: async () => undefined },
+      quotas: { set: async () => undefined },
+      store: pstore,
+      welcome: { notify: async (n) => void fakes.welcome.push(n) },
+      now: () => now,
+      sleep: async () => undefined,
+      maxAttemptsPerStep: 1,
+    });
+    return { p, accepted, issued };
+  }
+
+  it("alta reanudada tras crear al administrador: la invitación perdida se emite de nuevo", async () => {
+    const { p, issued } = withReissue({ failBranding: 1 });
+    const first = await p.run(REQ, OP);
+    expect(first).toMatchObject({ status: "failed", failedStep: "branding" });
+    expect(first.adminInviteToken).toBeUndefined();
+    const again = await p.run(REQ, OP);
+    expect(again.status).toBe("completed");
+    expect(issued).toHaveLength(1);
+    expect(again.adminInviteToken).toMatch(/^[0-9a-f]{16}$/);
+    expect(again.adminInviteToken).toBe(issued[0]);
+    expect(fakes.welcome.at(-1).inviteToken).toBe(issued[0]);
+  });
+
+  it("reenvío del acceso: solo mientras no haya aceptado la invitación", async () => {
+    const { p, accepted } = withReissue({ failBranding: 0 });
+    await expect(p.reissueAdminInvite("hotel-sol")).rejects.toMatchObject({ code: "not_found" });
+    await p.run(REQ, OP);
+    expect(await p.reissueAdminInvite("hotel-sol")).toMatch(/^[0-9a-f]{16}$/);
+    accepted.add("admin@hotelsol.example");
+    expect(await p.reissueAdminInvite("hotel-sol")).toBeNull();
+  });
+
+  it("dos altas simultáneas del mismo tenant se serializan: cada paso una vez, una sola invitación", async () => {
+    const { p } = withReissue({ failBranding: 0 });
+    const [a, b] = await Promise.all([p.run(REQ, OP), p.run(REQ, OP)]);
+    expect([a.status, b.status]).toEqual(["completed", "completed"]);
+    expect(fakes.calls.filter((c) => c === "ensureDatabase")).toHaveLength(1);
+    expect(fakes.calls.filter((c) => c === "admin")).toHaveLength(1);
+    expect([a.adminInviteToken, b.adminInviteToken].filter(Boolean)).toHaveLength(1);
+    expect(await store.listDatabases("hotel-sol")).toHaveLength(1);
+  });
+});

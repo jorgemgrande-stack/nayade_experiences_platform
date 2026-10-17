@@ -50,6 +50,8 @@ import PoliticaPrivacidad from "./pages/PoliticaPrivacidad";
 import TerminosCondiciones from "./pages/TerminosCondiciones";
 import PoliticaCookies from "./pages/PoliticaCookies";
 import CondicionesCancelacion from "./pages/CondicionesCancelacion";
+import Blog from "./pages/Blog";
+import BlogPost from "./pages/BlogPost";
 
 // ── ADMIN PAGES (lazy — solo se cargan cuando el usuario navega a /admin) ────
 const AdminDashboard = lazy(() => import("./pages/admin/AdminDashboard"));
@@ -61,6 +63,7 @@ const PagesManager = lazy(() => import("./pages/admin/cms/PagesManager"));
 const MultimediaManager = lazy(() => import("./pages/admin/cms/MultimediaManager"));
 const HomeModulesManager = lazy(() => import("./pages/admin/cms/HomeModulesManager"));
 const GalleryManager = lazy(() => import("./pages/admin/cms/GalleryManager"));
+const BlogManager = lazy(() => import("./pages/admin/cms/BlogManager"));
 
 // Products
 const ExperiencesManager = lazy(() => import("./pages/admin/products/ExperiencesManager"));
@@ -143,10 +146,15 @@ const AdvancedSettings = lazy(() => import("./pages/admin/settings/AdvancedSetti
 const ConfigPanel = lazy(() => import("./pages/admin/settings/ConfigPanel"));
 const ConfigStatus = lazy(() => import("./pages/admin/settings/ConfigStatus"));
 const OnboardingWizard = lazy(() => import("./pages/admin/onboarding/OnboardingWizard"));
+const SubscriptionPage = lazy(() => import("./pages/admin/subscription/SubscriptionPage"));
+const HelpCenter = lazy(() => import("./pages/admin/help/HelpCenter"));
+const PrimerosPasos = lazy(() => import("./pages/admin/setup/PrimerosPasos"));
 
 // CRM
 const CRMDashboard = lazy(() => import("./pages/admin/crm/CRMDashboard"));
 const ClientsManager = lazy(() => import("./pages/admin/crm/ClientsManager"));
+const CrmTags = lazy(() => import("./pages/admin/crm/CrmTags"));
+const CrmTasks = lazy(() => import("./pages/admin/crm/CrmTasks"));
 const ProposalsPage = lazy(() => import("./pages/admin/crm/ProposalsPage"));
 const CommercialFollowupDashboard = lazy(() => import("./pages/admin/commercial/CommercialFollowupDashboard"));
 const WhatsAppGHLInbox = lazy(() => import("./pages/admin/commercial/WhatsAppGHLInbox"));
@@ -261,6 +269,9 @@ function Router() {
       <Route path="/condiciones-cancelacion" component={CondicionesCancelacion} />
       {/* ── DYNAMIC PAGES (CMS) ── */}
       <Route path="/pagina/:slug" component={DynamicPage} />
+      {/* ── BLOG (entradas publicadas de la empresa) ── */}
+      <Route path="/blog" component={Blog} />
+      <Route path="/blog/:slug" component={BlogPost} />
 
       {/* ── ADMIN ROUTES (lazy loaded) ── */}
       <Route path="/admin">
@@ -279,6 +290,7 @@ function Router() {
       <Route path="/admin/cms/multimedia">{() => <Suspense fallback={<AdminLoadingFallback />}><MultimediaManager /></Suspense>}</Route>
       <Route path="/admin/cms/modulos-home">{() => <Suspense fallback={<AdminLoadingFallback />}><HomeModulesManager /></Suspense>}</Route>
       <Route path="/admin/cms/galeria">{() => <Suspense fallback={<AdminLoadingFallback />}><GalleryManager /></Suspense>}</Route>
+      <Route path="/admin/cms/blog">{() => <Suspense fallback={<AdminLoadingFallback />}><BlogManager /></Suspense>}</Route>
 
       {/* Products */}
       <Route path="/admin/productos">{() => <Suspense fallback={<AdminLoadingFallback />}><ExperiencesManager /></Suspense>}</Route>
@@ -407,6 +419,8 @@ function Router() {
       <Route path="/admin/crm/presupuestos">{() => <Suspense fallback={<AdminLoadingFallback />}><CRMDashboard /></Suspense>}</Route>
       <Route path="/admin/crm/reservas">{() => <Suspense fallback={<AdminLoadingFallback />}><CRMDashboard /></Suspense>}</Route>
       <Route path="/admin/crm/clientes">{() => <Suspense fallback={<AdminLoadingFallback />}><ClientsManager /></Suspense>}</Route>
+      <Route path="/admin/crm/etiquetas">{() => <Suspense fallback={<AdminLoadingFallback />}><CrmTags /></Suspense>}</Route>
+      <Route path="/admin/crm/tareas">{() => <Suspense fallback={<AdminLoadingFallback />}><CrmTasks /></Suspense>}</Route>
       <Route path="/admin/crm/propuestas">{() => <Suspense fallback={<AdminLoadingFallback />}><ProposalsPage /></Suspense>}</Route>
       <Route path="/admin/crm/anulaciones">{() => { window.location.replace("/admin/crm"); return null; }}</Route>
 
@@ -420,7 +434,11 @@ function Router() {
       <Route path="/admin/configuracion/avanzado">{() => <Suspense fallback={<AdminLoadingFallback />}><AdvancedSettings /></Suspense>}</Route>
       <Route path="/admin/configuracion/email">{() => <Suspense fallback={<AdminLoadingFallback />}><EmailAccountsSettings /></Suspense>}</Route>
       <Route path="/admin/onboarding">{() => <Suspense fallback={<AdminLoadingFallback />}><OnboardingWizard /></Suspense>}</Route>
+      <Route path="/admin/primeros-pasos">{() => <Suspense fallback={<AdminLoadingFallback />}><PrimerosPasos /></Suspense>}</Route>
       <Route path="/admin/numeracion">{() => <Suspense fallback={<AdminLoadingFallback />}><DocumentNumbersAdmin /></Suspense>}</Route>
+      <Route path="/admin/suscripcion">{() => <Suspense fallback={<AdminLoadingFallback />}><SubscriptionPage /></Suspense>}</Route>
+      <Route path="/admin/ayuda">{() => <Suspense fallback={<AdminLoadingFallback />}><HelpCenter /></Suspense>}</Route>
+      <Route path="/admin/ayuda/:id">{() => <Suspense fallback={<AdminLoadingFallback />}><HelpCenter /></Suspense>}</Route>
 
       {/* 404 */}
       <Route path="/404" component={NotFound} />

@@ -11,7 +11,8 @@ import {
   type CardTerminalBatch,
 } from "../../drizzle/schema";
 import { legacyDb, legacyPool } from "../_core/legacyDb";
-import { scheduleTenantCron } from "../_core/tenantRegistry/scheduler";
+import { runTenantJob, scheduleTenantCron } from "../_core/tenantRegistry/scheduler";
+import { isMultiTenant } from "../_core/tenant";
 
 // -- Config ------------------------------------------------------------------
 
@@ -365,6 +366,14 @@ export async function runMatchingJob(): Promise<{ processed: number; suggested: 
 
 export function startMatchingJob(): void {
   setImmediate(() => {
+    // Multiempresa: la pasada inicial también se hace por empresa, dentro de su contexto
+    if (isMultiTenant()) {
+      void runTenantJob("card-terminal-matching", async () => {
+        const r = await runMatchingJob();
+        console.log(`[BatchMatching] Boot run — processed: ${r.processed}, suggested: ${r.suggested}, auto_ready: ${r.autoReady}, auto_reconciled: ${r.autoReconciled}`);
+      });
+      return;
+    }
     runMatchingJob()
       .then(r => console.log(`[BatchMatching] Boot run — processed: ${r.processed}, suggested: ${r.suggested}, auto_ready: ${r.autoReady}, auto_reconciled: ${r.autoReconciled}`))
       .catch(e => console.error("[BatchMatching] Boot run error:", e));

@@ -1,5 +1,5 @@
 /** Puerto de persistencia del CRM + implementación en memoria (pruebas/desarrollo). */
-import type { Activity, Company, Contact, Contract, Lead, Opportunity } from "./types";
+import type { Activity, Company, Contact, Contract, ContractVersion, Lead, LeadRequest, Opportunity } from "./types";
 
 export interface CrmStore {
   insert<T extends keyof Tables>(table: T, row: Omit<Tables[T], "id">): Promise<Tables[T]>;
@@ -15,7 +15,16 @@ export interface Tables {
   leads: Lead;
   opportunities: Opportunity;
   contracts: Contract;
+  contractVersions: ContractVersion;
   activities: Activity;
+  leadRequests: LeadRequest;
+}
+
+/** Inserción que viola una clave única (equivale a ER_DUP_ENTRY en MySQL). */
+export class DuplicateKeyError extends Error {
+  constructor() {
+    super("duplicate key");
+  }
 }
 
 export class MemoryCrmStore implements CrmStore {
@@ -25,11 +34,19 @@ export class MemoryCrmStore implements CrmStore {
     leads: new Map(),
     opportunities: new Map(),
     contracts: new Map(),
+    contractVersions: new Map(),
     activities: new Map(),
+    leadRequests: new Map(),
   };
   private seq = 0;
 
   async insert<T extends keyof Tables>(table: T, row: Omit<Tables[T], "id">): Promise<Tables[T]> {
+    // Mismas claves únicas que la BD (idempotencia y referencia pública de las solicitudes web)
+    if (table === "leadRequests") {
+      const r = row as unknown as LeadRequest;
+      for (const x of Array.from(this.data.leadRequests.values()))
+        if (x.idempotencyKey === r.idempotencyKey || x.reference === r.reference) throw new DuplicateKeyError();
+    }
     const id = ++this.seq;
     const full = { ...row, id } as Tables[T];
     (this.data[table] as Map<number, Tables[T]>).set(id, full);

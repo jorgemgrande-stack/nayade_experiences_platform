@@ -10,6 +10,8 @@
  */
 
 import { z } from "zod";
+import { legacyBrandText } from "../tenantBrand";
+import { publicBaseUrl } from "../_core/productIdentity";
 import { router, permissionProcedure, publicProcedure, employeeProcedure } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { eq, desc, asc, and, gte, lte, isNull, ne, sql, inArray, like } from "drizzle-orm";
@@ -38,6 +40,7 @@ import { sendEmail } from "../mailer";
 import { getUserByInviteToken, setUserPassword } from "../db";
 import { getDefaultCashAccountId, createCashMovementIfNotExists } from "./cashRegisterHelper";
 import { legacyDb, legacyPool } from "../_core/legacyDb";
+import { isAcceptableFileUrl } from "../_core/files/service";
 
 // Permisos: lecturas RRHH accesibles para admin (con fallback a rol legacy).
 const hrViewProc = permissionProcedure("hr.view", ["admin"]);
@@ -385,7 +388,7 @@ const employeesRouter = router({
         .where(eq(employees.id, employee.id));
 
       // URL de activación
-      const origin = process.env.APP_URL ?? "https://www.skicenter.es";
+      const origin = publicBaseUrl();
       const inviteUrl = `${origin}/empleado/activar?token=${token}`;
 
       let emailSent = false;
@@ -393,12 +396,12 @@ const employeesRouter = router({
         try {
           await sendEmail({
             to: employee.email,
-            subject: "Acceso al Portal del Empleado — Náyade Experiences",
+            subject: `Acceso al Portal del Empleado — ${legacyBrandText("Náyade Experiences")}`,
             html: `
               <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px;">
                 <h2 style="color:#ea580c">Bienvenido al Portal del Empleado</h2>
                 <p>Hola <strong>${employee.fullName}</strong>,</p>
-                <p>Te damos acceso al portal interno de <strong>Náyade Experiences</strong> donde podrás consultar
+                <p>Te damos acceso al portal interno de <strong>${legacyBrandText("Náyade Experiences")}</strong> donde podrás consultar
                 tu información personal, documentos y futuras funcionalidades (fichaje, nóminas, vacaciones).</p>
                 <p style="margin:24px 0">
                   <a href="${inviteUrl}" style="background:#ea580c;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold">
@@ -1171,7 +1174,7 @@ const payslipsRouter = router({
   attachPdf: hrViewProc
     .input(z.object({
       id: z.number(),
-      pdfUrl: z.string().url(),
+      pdfUrl: z.string().refine(isAcceptableFileUrl, "URL no válida"),
       pdfKey: z.string(),
     }))
     .mutation(async ({ input }) => {

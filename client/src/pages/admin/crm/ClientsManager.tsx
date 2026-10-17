@@ -1,4 +1,6 @@
-import { useState, useMemo, useEffect, type ReactNode } from "react";
+import { useState, useMemo, useEffect, useId, type ReactNode } from "react";
+import { validateEmail, validatePhone, validatePostalCodeES, validateTaxId } from "@shared/formValidation";
+import { errorMessage } from "@/components/admin/PanelStates";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,6 +17,9 @@ import {
 } from "lucide-react";
 import AdminLayout from "@/components/AdminLayout";
 import { Link } from "wouter";
+import { ClipboardList } from "lucide-react";
+import { usePanelSubscription } from "@/hooks/usePanelSubscription";
+import { EntityTagsDialog, TagChip, useCrmCanWrite } from "@/components/admin/crm/CrmParts";
 
 // ─── TYPES ───────────────────────────────────────────────────────────────────
 
@@ -199,27 +204,80 @@ function ClientFormModal({
   });
 
   const set = (k: keyof typeof form, v: string) => setForm((p) => ({ ...p, [k]: v }));
+  // Errores por campo (se muestran tras el primer intento de guardar) y error del servidor.
+  // Ante un error el formulario NO se cierra ni se vacía: lo escrito se conserva.
+  const [submitted, setSubmitted] = useState(false);
+  const [serverError, setServerError] = useState<string | null>(null);
+  // Al editar, los datos ya guardados no se revalidan (fichas antiguas con formatos distintos):
+  // solo lo que se cambia.
+  const changed = (k: keyof typeof form) => !isEdit || form[k] !== ((client as Record<string, unknown> | null | undefined)?.[k] ?? "");
+  const isES = form.country === "ES" || !form.country;
+  const errors: Partial<Record<keyof typeof form, string | null>> = {
+    name: !form.name.trim() ? "Indica el nombre del cliente." : form.name.trim().length < 2 ? "El nombre es demasiado corto." : null,
+    email: changed("email") ? validateEmail(form.email, true) : null,
+    phone: changed("phone") ? validatePhone(form.phone) : null,
+    nif: isES && changed("nif") ? validateTaxId(form.nif) : null,
+    postalCode: isES && changed("postalCode") ? validatePostalCodeES(form.postalCode) : null,
+  };
+  const hasErrors = Object.values(errors).some(Boolean);
+  const shown = (k: keyof typeof form) => (submitted ? errors[k] ?? null : null);
+  const uid = useId();
 
   const create = trpc.crm.clients.create.useMutation({
     onSuccess: () => { toast.success("Cliente creado"); utils.crm.clients.list.invalidate(); onClose(); },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => { setServerError(errorMessage(e, e.message || "No se ha podido crear el cliente.")); toast.error("No se ha podido crear el cliente"); },
   });
 
   const update = trpc.crm.clients.update.useMutation({
     onSuccess: () => { toast.success("Cliente actualizado"); utils.crm.clients.list.invalidate(); onClose(); },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => { setServerError(errorMessage(e, e.message || "No se han podido guardar los cambios.")); toast.error("No se han podido guardar los cambios"); },
   });
 
   const handleSubmit = () => {
-    if (!form.name || !form.email) { toast.error("Nombre y email son obligatorios"); return; }
+    setSubmitted(true);
+    setServerError(null);
+    if (hasErrors) {
+      // Lleva el foco al primer campo con error
+      const first = (["name", "email", "phone", "nif", "postalCode"] as const).find((k) => errors[k]);
+      if (first) document.getElementById(`${uid}-${first}`)?.focus();
+      return;
+    }
+    const payload = { ...form, nif: changed("nif") ? form.nif.toUpperCase().replace(/[\s.-]/g, "") : form.nif, email: form.email.trim(), name: form.name.trim() };
     if (isEdit && client) {
-      update.mutate({ id: client.id, ...form });
+      update.mutate({ id: client.id, ...payload });
     } else {
-      create.mutate(form);
+      create.mutate(payload);
     }
   };
 
   const isPending = create.isPending || update.isPending;
+  const inputCls = "bg-white/5 border-white/10 text-white placeholder:text-white/40 mt-1 aria-[invalid=true]:border-red-400";
+  const field = (k: keyof typeof form, label: string, opts: { type?: string; required?: boolean; placeholder?: string; autoComplete?: string; col2?: boolean; inputMode?: "numeric" | "tel" | "email" } = {}) => {
+    const id = `${uid}-${k}`;
+    const err = shown(k);
+    return (
+      <div className={opts.col2 ? "sm:col-span-2" : ""}>
+        <Label htmlFor={id} className="text-white/70 text-xs">
+          {label}{opts.required && <span aria-hidden="true"> *</span>}
+        </Label>
+        <Input
+          id={id}
+          type={opts.type ?? "text"}
+          value={form[k]}
+          onChange={(e) => set(k, e.target.value)}
+          placeholder={opts.placeholder}
+          autoComplete={opts.autoComplete}
+          inputMode={opts.inputMode}
+          required={opts.required}
+          aria-required={opts.required || undefined}
+          aria-invalid={err ? true : undefined}
+          aria-describedby={err ? `${id}-error` : undefined}
+          className={inputCls}
+        />
+        {err && <p id={`${id}-error`} className="text-xs text-red-300 mt-1">{err}</p>}
+      </div>
+    );
+  };
 
   return (
     <DialogContent className="max-w-lg bg-[#0d1526] border-white/10 text-white">
@@ -230,65 +288,42 @@ function ClientFormModal({
         </DialogTitle>
       </DialogHeader>
 
-      <div className="space-y-3">
-        <div className="grid grid-cols-2 gap-3">
-          <div className="col-span-2">
-            <Label className="text-white/60 text-xs">Nombre completo *</Label>
-            <Input value={form.name} onChange={(e) => set("name", e.target.value)}
-              className="bg-white/5 border-white/10 text-white placeholder:text-white/30 mt-1" />
+      <form
+        id={`${uid}-form`}
+        noValidate
+        className="space-y-3"
+        onSubmit={(e) => { e.preventDefault(); handleSubmit(); }}
+      >
+        <p className="text-xs text-white/60">Los campos marcados con * son obligatorios.</p>
+        {serverError && (
+          <div role="alert" className="rounded-lg border border-red-400/40 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+            {serverError} Tus datos siguen en el formulario: corrígelos y vuelve a intentarlo.
           </div>
-          <div>
-            <Label className="text-white/60 text-xs">Email *</Label>
-            <Input type="email" value={form.email} onChange={(e) => set("email", e.target.value)}
-              className="bg-white/5 border-white/10 text-white placeholder:text-white/30 mt-1" />
-          </div>
-          <div>
-            <Label className="text-white/60 text-xs">Teléfono</Label>
-            <Input value={form.phone} onChange={(e) => set("phone", e.target.value)}
-              className="bg-white/5 border-white/10 text-white placeholder:text-white/30 mt-1" />
-          </div>
-          <div>
-            <Label className="text-white/60 text-xs">Empresa</Label>
-            <Input value={form.company} onChange={(e) => set("company", e.target.value)}
-              className="bg-white/5 border-white/10 text-white placeholder:text-white/30 mt-1" />
-          </div>
-          <div>
-            <Label className="text-white/60 text-xs">NIF / CIF</Label>
-            <Input value={form.nif} onChange={(e) => set("nif", e.target.value)}
-              className="bg-white/5 border-white/10 text-white placeholder:text-white/30 mt-1" />
-          </div>
-          <div className="col-span-2">
-            <Label className="text-white/60 text-xs">Dirección</Label>
-            <Input value={form.address} onChange={(e) => set("address", e.target.value)}
-              className="bg-white/5 border-white/10 text-white placeholder:text-white/30 mt-1" />
-          </div>
-          <div>
-            <Label className="text-white/60 text-xs">Ciudad</Label>
-            <Input value={form.city} onChange={(e) => set("city", e.target.value)}
-              className="bg-white/5 border-white/10 text-white placeholder:text-white/30 mt-1" />
-          </div>
-          <div>
-            <Label className="text-white/60 text-xs">Código postal</Label>
-            <Input value={form.postalCode} onChange={(e) => set("postalCode", e.target.value)}
-              className="bg-white/5 border-white/10 text-white placeholder:text-white/30 mt-1" />
-          </div>
-          <div className="col-span-2">
-            <Label className="text-white/60 text-xs">Notas internas</Label>
-            <Input value={form.notes} onChange={(e) => set("notes", e.target.value)}
-              placeholder="Observaciones sobre el cliente..."
-              className="bg-white/5 border-white/10 text-white placeholder:text-white/30 mt-1" />
-          </div>
+        )}
+        {submitted && hasErrors && (
+          <p role="alert" className="text-xs text-red-300">Revisa los campos marcados antes de guardar.</p>
+        )}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {field("name", "Nombre completo", { required: true, col2: true, autoComplete: "name" })}
+          {field("email", "Email", { type: "email", required: true, autoComplete: "email", inputMode: "email", placeholder: "nombre@empresa.com" })}
+          {field("phone", "Teléfono", { type: "tel", autoComplete: "tel", inputMode: "tel", placeholder: "+34 600 000 000" })}
+          {field("company", "Empresa", { autoComplete: "organization" })}
+          {field("nif", "NIF / CIF", { placeholder: "12345678Z o B12345674" })}
+          {field("address", "Dirección", { col2: true, autoComplete: "street-address" })}
+          {field("city", "Ciudad", { autoComplete: "address-level2" })}
+          {field("postalCode", "Código postal", { inputMode: "numeric", autoComplete: "postal-code", placeholder: "28001" })}
+          {field("notes", "Notas internas", { col2: true, placeholder: "Observaciones sobre el cliente..." })}
         </div>
-      </div>
+      </form>
 
       <DialogFooter>
         <Button variant="outline" size="sm" onClick={onClose} className="border-white/15 text-white/60">
           Cancelar
         </Button>
-        <Button size="sm" onClick={handleSubmit} disabled={isPending}
+        <Button size="sm" type="submit" form={`${uid}-form`} disabled={isPending}
           className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white">
-          {isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <Users className="w-4 h-4 mr-1" />}
-          {isEdit ? "Guardar cambios" : "Crear cliente"}
+          {isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" aria-hidden="true" /> : <Users className="w-4 h-4 mr-1" aria-hidden="true" />}
+          {isPending ? "Guardando…" : isEdit ? "Guardar cambios" : "Crear cliente"}
         </Button>
       </DialogFooter>
     </DialogContent>
@@ -853,11 +888,38 @@ export default function ClientsManager() {
   const [deleteClientId, setDeleteClientId] = useState<number | null>(null);
 
   const searchInput = useMemo(() => ({ q: search, limit: 50 }), [search]);
-  const { data: clientsData, isLoading } = trpc.crm.clients.list.useQuery(
-    { search, limit: 50 }
+  // Etiquetas (crm-tags) y tareas (crm-tasks): empresas con licencias por capacidad cuyo plan las
+  // incluye (la instalación de siempre no las muestra hasta tener aplicada la migración 0008)
+  const sub = usePanelSubscription();
+  const canTags = sub.isLicensed && sub.can("crm-tags");
+  const canTasks = sub.isLicensed && sub.can("crm-tasks");
+  const canWriteTags = useCrmCanWrite("crm-tags");
+  const [tagFilter, setTagFilter] = useState<number | null>(() => {
+    const n = Number(new URLSearchParams(window.location.search).get("etiqueta"));
+    return Number.isInteger(n) && n > 0 ? n : null;
+  });
+  const [tagsClient, setTagsClient] = useState<ClientRow | null>(null);
+  const tagCatalog = trpc.crmTags.list.useQuery(undefined, { enabled: canTags });
+  const { data: clientsData, isLoading, isError, error: listError, refetch } = trpc.crm.clients.list.useQuery(
+    { search, limit: 50, ...(canTags && tagFilter ? { tagId: tagFilter } : {}) }
   );
   const clientsList = clientsData?.items as ClientRow[] | undefined;
+  const visibleIds = useMemo(() => (clientsList ?? []).map((c) => c.id), [clientsList]);
+  const clientTags = trpc.crmTags.forEntities.useQuery(
+    { entityType: "client", ids: visibleIds },
+    { enabled: canTags && visibleIds.length > 0 },
+  );
+  const tagFilterName = tagCatalog.data?.find((t) => t.id === tagFilter)?.name;
   const utils = trpc.useUtils();
+
+  // Acceso directo «Nuevo cliente» (inicio del panel): /admin/crm/clientes?nuevo=1
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (url.searchParams.get("nuevo") !== "1") return;
+    setEditClient(null);
+    url.searchParams.delete("nuevo");
+    window.history.replaceState({}, "", url.toString());
+  }, []);
 
   // Auto-open client modal when URL has ?clientId=X
   useEffect(() => {
@@ -916,9 +978,9 @@ export default function ClientsManager() {
 
   return (
     <AdminLayout>
-      <div className="min-h-screen bg-[#080e1c] text-white px-6 py-6">
+      <div className="min-h-screen bg-[#080e1c] text-white px-4 sm:px-6 py-6">
         {/* Header */}
-        <div className="flex items-center justify-between mb-6 pb-5 border-b border-white/10">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-6 pb-5 border-b border-white/10">
           <div className="flex items-center gap-3">
             <div className="p-2.5 rounded-xl bg-blue-500/15 border border-blue-500/25">
               <Users className="w-5 h-5 text-blue-400" />
@@ -930,7 +992,7 @@ export default function ClientsManager() {
                 <span>Clientes</span>
               </div>
               <h1 className="text-xl font-bold text-white leading-none">Gestión de Clientes</h1>
-              <p className="text-xs text-white/40 mt-0.5">Los clientes se crean automáticamente al recibir un lead</p>
+              <p className="text-xs text-white/60 mt-0.5">Se crean automáticamente al recibir una solicitud, o puedes darlos de alta tú</p>
             </div>
           </div>
           <Button
@@ -942,7 +1004,7 @@ export default function ClientsManager() {
         </div>
 
         {/* Stats strip */}
-        <div className="grid grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           <div className="rounded-xl p-4 bg-blue-500/5 border border-blue-500/15">
             <div className="flex items-center gap-3">
               <div className="p-2 rounded-lg bg-blue-500/10 border border-blue-500/20">
@@ -992,40 +1054,94 @@ export default function ClientsManager() {
         </div>
 
         {/* Search */}
-        <div className="relative mb-4">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
-          <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Buscar por nombre, email o empresa..."
-            className="pl-9 bg-white/5 border-white/10 text-white placeholder:text-white/30"
-          />
+        <div className="flex flex-col sm:flex-row gap-3 mb-4">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Buscar por nombre, email o empresa..."
+              aria-label="Buscar clientes por nombre, email o empresa"
+              className="pl-9 bg-white/5 border-white/10 text-white placeholder:text-white/30"
+            />
+          </div>
+          {canTags && (
+            <div className="flex items-center gap-2 sm:w-64">
+              <label htmlFor="clients-tag-filter" className="sr-only">Filtrar por etiqueta</label>
+              <Tag className="w-4 h-4 text-white/40 shrink-0" aria-hidden="true" />
+              <select
+                id="clients-tag-filter"
+                value={tagFilter ?? ""}
+                onChange={(e) => setTagFilter(e.target.value ? Number(e.target.value) : null)}
+                className="h-9 w-full rounded-md border border-white/10 bg-[#0d1526] px-3 text-sm text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
+              >
+                <option value="">Todas las etiquetas</option>
+                {(tagCatalog.data ?? []).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </select>
+            </div>
+          )}
         </div>
 
         {/* Table */}
-        <div className="rounded-xl border border-white/10 overflow-hidden">
-          <table className="w-full text-sm">
+        <div className="rounded-xl border border-white/10 overflow-x-auto">
+          <table className="w-full text-sm min-w-[720px]">
+            <caption className="sr-only">Listado de clientes</caption>
             <thead>
               <tr className="border-b border-white/10 bg-white/[0.03]">
-                <th className="text-left px-4 py-3 text-white/40 font-medium">Cliente</th>
-                <th className="text-left px-4 py-3 text-white/40 font-medium">Contacto</th>
-                <th className="text-left px-4 py-3 text-white/40 font-medium">Empresa</th>
-                <th className="text-left px-4 py-3 text-white/40 font-medium">Estado</th>
-                <th className="text-right px-4 py-3 text-white/40 font-medium">Acciones</th>
+                <th scope="col" className="text-left px-4 py-3 text-white/60 font-medium">Cliente</th>
+                <th scope="col" className="text-left px-4 py-3 text-white/60 font-medium">Contacto</th>
+                <th scope="col" className="text-left px-4 py-3 text-white/60 font-medium">Empresa</th>
+                <th scope="col" className="text-left px-4 py-3 text-white/60 font-medium">Estado</th>
+                <th scope="col" className="text-right px-4 py-3 text-white/60 font-medium">Acciones</th>
               </tr>
             </thead>
             <tbody>
               {isLoading ? (
-                <tr><td colSpan={5} className="text-center py-12 text-white/30">Cargando...</td></tr>
+                <tr><td colSpan={5} className="text-center py-12 text-white/60" role="status">Cargando clientes…</td></tr>
+              ) : isError ? (
+                <tr>
+                  <td colSpan={5} className="text-center py-12">
+                    <div role="alert" className="flex flex-col items-center gap-3">
+                      <AlertCircle className="w-7 h-7 text-red-300" aria-hidden="true" />
+                      <p className="text-white/80 text-sm">{errorMessage(listError, "No se han podido cargar los clientes.")}</p>
+                      <Button size="sm" variant="outline" onClick={() => refetch()} className="border-white/20 text-white">
+                        <RefreshCw className="w-4 h-4 mr-1.5" aria-hidden="true" /> Reintentar
+                      </Button>
+                    </div>
+                  </td>
+                </tr>
               ) : !clientsList || clientsList.length === 0 ? (
                 <tr>
                   <td colSpan={5} className="text-center py-16">
-                    <div className="flex flex-col items-center gap-3">
-                      <div className="p-4 rounded-full bg-white/5">
-                        <Users className="w-8 h-8 text-white/20" />
+                    <div className="flex flex-col items-center gap-3 px-4">
+                      <div className="p-4 rounded-full bg-white/5" aria-hidden="true">
+                        <Users className="w-8 h-8 text-white/40" />
                       </div>
-                      <p className="text-white/30 text-sm">No hay clientes todavía</p>
-                      <p className="text-white/20 text-xs">Se crearán automáticamente al recibir leads</p>
+                      {search.trim() ? (
+                        <>
+                          <p className="text-white/80 text-sm">Ningún cliente coincide con «{search.trim()}»</p>
+                          <Button size="sm" variant="outline" onClick={() => setSearch("")} className="border-white/20 text-white">
+                            Borrar búsqueda
+                          </Button>
+                        </>
+                      ) : canTags && tagFilter ? (
+                        <>
+                          <p className="text-white/80 text-sm">Ningún cliente tiene la etiqueta {tagFilterName ? `«${tagFilterName}»` : "elegida"}</p>
+                          <Button size="sm" variant="outline" onClick={() => setTagFilter(null)} className="border-white/20 text-white">
+                            Quitar filtro de etiqueta
+                          </Button>
+                        </>
+                      ) : (
+                        <>
+                          <p className="text-white/80 text-sm font-medium">Todavía no tienes clientes</p>
+                          <p className="text-white/60 text-xs max-w-sm">
+                            Da de alta tu primer cliente para preparar presupuestos, registrar pedidos y emitir facturas. También se crean solos cuando alguien te escribe desde tu web.
+                          </p>
+                          <Button size="sm" onClick={() => setEditClient(null)} className="bg-blue-600 hover:bg-blue-700 text-white">
+                            <Plus className="w-4 h-4 mr-1.5" aria-hidden="true" /> Crear el primer cliente
+                          </Button>
+                        </>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -1044,6 +1160,11 @@ export default function ClientsManager() {
                             <span className="text-white/25 text-[10px]">NIF: {client.nif}</span>
                           )}
                         </div>
+                        {canTags && (clientTags.data?.[client.id]?.length ?? 0) > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {clientTags.data![client.id].map((t) => <TagChip key={t.id} name={t.name} color={t.color} />)}
+                          </div>
+                        )}
                       </div>
                     </div>
                   </td>
@@ -1110,6 +1231,24 @@ export default function ClientsManager() {
                         title="Ver historial completo">
                         <History className="w-3.5 h-3.5" />
                       </Button>
+                      {canTags && (
+                        <Button size="sm" variant="ghost"
+                          className="text-sky-300 hover:text-sky-200 h-7 px-2"
+                          onClick={() => setTagsClient(client)}
+                          title="Etiquetas"
+                          aria-label={`Etiquetas de ${client.name}`}>
+                          <Tag className="w-3.5 h-3.5" aria-hidden="true" />
+                        </Button>
+                      )}
+                      {canTasks && (
+                        <Link
+                          href={`/admin/crm/tareas?vinculo=client&id=${client.id}&nombre=${encodeURIComponent(client.name)}`}
+                          className="inline-flex items-center h-7 px-2 rounded-md text-amber-300 hover:text-amber-200 hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
+                          title="Tareas"
+                          aria-label={`Tareas de ${client.name}`}>
+                          <ClipboardList className="w-3.5 h-3.5" aria-hidden="true" />
+                        </Link>
+                      )}
                       {!client.isConverted && (
                         <Button size="sm" variant="ghost"
                           className="text-green-400 hover:text-green-300 h-7 px-2"
@@ -1138,6 +1277,18 @@ export default function ClientsManager() {
           </table>
         </div>
       </div>
+
+      {tagsClient && (
+        <EntityTagsDialog
+          open
+          onOpenChange={(o) => !o && setTagsClient(null)}
+          entityType="client"
+          entityId={tagsClient.id}
+          entityName={tagsClient.name}
+          current={(clientTags.data?.[tagsClient.id] ?? []).map((t) => t.id)}
+          readOnly={!canWriteTags}
+        />
+      )}
 
       {/* Client History Modal */}
       <Dialog open={historyClient !== null} onOpenChange={(o) => !o && setHistoryClient(null)}>

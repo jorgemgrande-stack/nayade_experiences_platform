@@ -16,6 +16,7 @@
  */
 import type { NextFunction, Request, RequestHandler, Response } from "express";
 import { Metrics, meter } from "../metering";
+import { DbCapacityError, leaseTenantDatabase } from "../dbRegistry";
 import { runWithTenant } from "../tenant";
 import type { ResolvedTenant, TenantResolver } from "./resolver";
 
@@ -94,7 +95,28 @@ export function bindTenantMiddleware(opts: Pick<TenantMiddlewareOptions, "exempt
     if (exempt(req.path)) return next();
     const t = resolved.get(req);
     if (!t) return send(res, 503, 5); // no se resolvió: jamás se sigue sin tenant
-    runWithTenant(t.tenantId, () => next());
+    runWithTenant(t.tenantId, () => {
+      // Precarga y arrienda el pool del tenant: el acceso heredado síncrono (legacyDb) lo
+      // encuentra en el contexto, y la expulsión LRU no lo cierra mientras la petición siga viva.
+      // Si no se puede precargar, la petición sigue SIN arriendo: cualquier acceso heredado
+      // lanzará (falla cerrado) y las rutas que no usan BD (estáticos, panel) no se rompen.
+      leaseTenantDatabase().then(
+        (lease) => {
+          res.once("finish", lease.release);
+          res.once("close", lease.release);
+          next();
+        },
+        (err) => {
+          // Presupuesto de conexiones agotado: 503 con Retry-After, nunca por encima del límite
+          if (err instanceof DbCapacityError) {
+            console.warn(JSON.stringify({ ctx: "TenantBinding", event: "db_capacity_exhausted" }));
+            return send(res, 503, err.retryAfterSeconds);
+          }
+          console.warn(JSON.stringify({ ctx: "TenantBinding", event: "db_lease_failed" }));
+          next();
+        },
+      );
+    });
   };
 }
 

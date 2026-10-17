@@ -21,12 +21,13 @@ import { eq, desc, and, sql } from "drizzle-orm";
 import { ghlConversations, ghlMessages, ghlWebhookEvents, siteSettings } from "../../drizzle/schema";
 import { ghlInboxEmitter } from "../ghlInboxEvents";
 import { getTenantIdOrDefault } from "../_core/tenant";
-import { createHash, timingSafeEqual } from "crypto";
 import rateLimit from "express-rate-limit";
 import { requireStaff, getAuthUser } from "../_core/expressAuth";
 import type { Response } from "express";
 import { legacyDb, legacyPool } from "../_core/legacyDb";
 import { integrationEnv } from "../_core/tenantConfig";
+import { revealLegacySecret } from "../_core/credentials/legacyFields";
+import { checkWebhookSecret } from "../_core/webhookSecret";
 
 const _pool = legacyPool();
 const db = legacyDb();
@@ -38,7 +39,7 @@ const GHL_API_VERSION = "2021-07-28";
 // Garantiza que las tablas existen aunque la migración de Drizzle no haya corrido.
 // CREATE TABLE IF NOT EXISTS es idempotente y seguro en producción.
 
-async function initGhlTables(): Promise<void> {
+export async function initGhlTables(): Promise<void> {
   try {
     await _pool.execute(`
       CREATE TABLE IF NOT EXISTS ghl_conversations (
@@ -111,8 +112,8 @@ async function initGhlTables(): Promise<void> {
   }
 }
 
-// Ejecutar al cargar el módulo (asíncrono, no bloquea arranque)
-initGhlTables();
+// Ya no se ejecuta al cargar el módulo: el arranque no modifica el esquema. Lo ejecuta el
+// mantenimiento explícito (`--schema-maintenance`, ver server/_core/schemaMaintenance.ts).
 
 function log(level: "info" | "warn" | "error", msg: string, ctx?: object) {
   const entry = { ts: new Date().toISOString(), context: "GHLInbox", msg, ...ctx };
@@ -210,7 +211,7 @@ const MESSAGE_EVENTS = new Set([
 const CONVERSATION_EVENTS = new Set([
   "ConversationCreate", "conversation_create", "ConversationCreated",
   "ConversationUpdate", "conversation_update", "ConversationUpdated",
-  ...MESSAGE_EVENTS,
+  ...Array.from(MESSAGE_EVENTS),
 ]);
 
 // ─── Credenciales específicas del módulo inbox ───────────────────────────────
@@ -222,14 +223,14 @@ async function getInboxCredentials(): Promise<{ token: string; locationId: strin
       "SELECT `key`, `value` FROM site_settings WHERE `key` IN ('ghlInboxToken','ghlInboxLocationId','ghlApiKey','ghlLocationId','ghlInboxWebhookSecret')"
     );
     const map: Record<string, string> = {};
-    for (const r of (rawRows as any[])) map[r.key] = r.value ?? "";
+    for (const r of (rawRows as any[])) map[r.key] = revealLegacySecret("site_settings", r.key, r.value);
 
     // Credenciales principales GHL: systemSettings es la fuente de verdad desde Fase 1
     const [sysRows]: any = await _pool.execute(
       "SELECT `key`, `value` FROM system_settings WHERE `key` IN ('site_ghl_api_key','site_ghl_location_id')"
     );
     const sysMap: Record<string, string> = {};
-    for (const r of (sysRows as any[])) sysMap[r.key] = r.value ?? "";
+    for (const r of (sysRows as any[])) sysMap[r.key] = revealLegacySecret("system_settings", r.key, r.value);
 
     const token = integrationEnv("GHL_PRIVATE_INTEGRATION_TOKEN")
       || map.ghlInboxToken
@@ -478,14 +479,6 @@ async function processWebhookEvent(eventRowId: number, payload: any, eventType: 
 
 // ─── Seguridad ────────────────────────────────────────────────────────────────
 
-/** Comparación de secretos en tiempo constante (compara hashes de igual longitud). */
-function secretsMatch(provided: unknown, expected: string): boolean {
-  if (typeof provided !== "string" || provided === "") return false;
-  const a = createHash("sha256").update(provided).digest();
-  const b = createHash("sha256").update(expected).digest();
-  return timingSafeEqual(a, b);
-}
-
 /** Límites de conexiones SSE abiertas (varias pestañas por usuario son legítimas). */
 const SSE_MAX_PER_USER = 10;
 const SSE_MAX_TOTAL = 100;
@@ -542,20 +535,19 @@ ghlInboxRouter.post(
     const [secretRows]: any = await _pool.execute(
       "SELECT `value` FROM site_settings WHERE `key` = 'ghlInboxWebhookSecret' LIMIT 1"
     ).catch(() => [[]]);
-    const dbSecret = (secretRows as any[])[0]?.value ?? "";
-    const secret = integrationEnv("GHL_WEBHOOK_SECRET") || dbSecret;
-    if (!secret && process.env.NODE_ENV === "production") {
-      log("warn", "Webhook ignorado — secreto no configurado (fail-closed en producción)");
-      return res.status(200).json({ ok: true });
+    const dbSecret = revealLegacySecret("site_settings", "ghlInboxWebhookSecret", (secretRows as any[])[0]?.value);
+    // Sin secreto configurado (y de longitud suficiente) el webhook está inactivo en cualquier entorno.
+    const auth = checkWebhookSecret(
+      (req.headers["x-ghl-secret"] as string | undefined) ?? (req.query.secret as string | undefined),
+      integrationEnv("GHL_WEBHOOK_SECRET") || dbSecret,
+    );
+    if (auth === "inactive") {
+      log("warn", "Webhook ignorado — secreto no configurado o demasiado corto (webhook inactivo)");
+      return res.status(200).json({ ok: true, ignored: true });
     }
-    if (secret) {
-      const provided =
-        (req.headers["x-ghl-secret"] as string | undefined) ??
-        (req.query.secret as string | undefined);
-      if (!secretsMatch(provided, secret)) {
-        log("warn", "Webhook con secreto inválido — ignorado silenciosamente");
-        return res.status(200).json({ ok: true }); // Siempre 200 para evitar reintentos de GHL
-      }
+    if (auth === "invalid") {
+      log("warn", "Webhook con secreto inválido — ignorado silenciosamente");
+      return res.status(200).json({ ok: true }); // Siempre 200 para evitar reintentos de GHL
     }
 
     const payload = req.body ?? {};

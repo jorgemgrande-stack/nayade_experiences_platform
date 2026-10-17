@@ -4,12 +4,14 @@
  */
 
 import { z } from "zod";
+import { TRPCError } from "@trpc/server";
 import { staffProcedure, router } from "../_core/trpc";
 import { eq, desc, and, sql, isNotNull } from "drizzle-orm";
 import { vapiCalls } from "../../drizzle/schema";
 import { createLead } from "../db";
 import { legacyDb, legacyPool } from "../_core/legacyDb";
 import { integrationEnv } from "../_core/tenantConfig";
+import { MIN_WEBHOOK_SECRET_LENGTH, usableWebhookSecret } from "../_core/webhookSecret";
 
 const _pool = legacyPool();
 const db = legacyDb();
@@ -241,6 +243,9 @@ export const vapiCallsRouter = router({
           "INSERT INTO site_settings (`key`, `value`, `type`, updatedAt) VALUES (?, ?, 'text', NOW()) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`), updatedAt = NOW()",
           ["vapiApiKey", input.apiKey]
         );
+      }
+      if (input.webhookSecret && !usableWebhookSecret(input.webhookSecret)) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: `El secreto del webhook debe tener al menos ${MIN_WEBHOOK_SECRET_LENGTH} caracteres.` });
       }
       if (input.webhookSecret) {
         await _pool.execute(

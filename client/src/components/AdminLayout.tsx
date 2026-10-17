@@ -6,7 +6,7 @@ import {
   Bell, Search, User, BedDouble, Sparkles, UtensilsCrossed, AlertCircle,
   UserPlus, FileCheck, ChevronRight, Receipt, Truck, Monitor, Tag, Ticket,
   Sun, Moon, ExternalLink, Target, MessageCircle, Bot, Mail, Building2,
-  Briefcase,
+  Briefcase, Globe, CreditCard, ShoppingCart, Rocket, ArrowUpRight, HelpCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -19,254 +19,21 @@ import { trpc } from "@/lib/trpc";
 import { useTheme } from "@/contexts/ThemeContext";
 import MaintenanceModeControl from "./admin/MaintenanceModeControl";
 
-// flagKey: if set, item is hidden when that feature_flag is disabled.
-// Missing flag or flags not yet loaded → item shown (safe default).
-const navItems = [
-  {
-    label: "Dashboard",
-    href: "/admin",
-    icon: LayoutDashboard,
-    roles: ["admin", "agente", "monitor"],
-  },
-  {
-    label: "CMS",
-    href: "/admin/cms",
-    icon: Image,
-    roles: ["admin"],
-    children: [
-      { label: "Slideshow", href: "/admin/cms/slideshow" },
-      { label: "Módulos Home", href: "/admin/cms/modulos-home" },
-      { label: "Menús", href: "/admin/cms/menus" },
-      { label: "Páginas", href: "/admin/cms/paginas" },
-      { label: "Multimedia", href: "/admin/cms/multimedia" },
-      { label: "Galería", href: "/admin/cms/galeria" },
-    ],
-  },
-  {
-    label: "Productos",
-    href: "/admin/productos",
-    icon: Package,
-    roles: ["admin"],
-    children: [
-      { label: "Experiencias", href: "/admin/productos/experiencias" },
-      { label: "Categorías", href: "/admin/productos/categorias" },
-      { label: "Ubicaciones", href: "/admin/productos/ubicaciones" },
-      { label: "Variantes", href: "/admin/productos/variantes" },
-      { label: "Lego Packs", href: "/admin/productos/lego-packs" },
-    ],
-  },
-  {
-    label: "CRM",
-    href: "/admin/crm",
-    icon: FileText,
-    roles: ["admin", "agente"],
-    children: [
-      { label: "Leads", href: "/admin/crm?tab=leads", key: "crm-leads" },
-      { label: "Propuestas", href: "/admin/crm/propuestas", key: "crm-propuestas" },
-      { label: "Presupuestos", href: "/admin/crm?tab=quotes", key: "crm-presupuestos" },
-      { label: "Reservas", href: "/admin/crm?tab=reservations", key: "crm-reservas" },
-      { label: "Facturas", href: "/admin/crm?tab=invoices", key: "crm-facturas" },
-      { label: "Clientes", href: "/admin/crm/clientes", key: "crm-clientes" },
-      { label: "Anulaciones", href: "/admin/crm?tab=anulaciones", key: "crm-anulaciones" },
-    ],
-  },
-  {
-    label: "Partners",
-    href: "/admin/partners",
-    icon: Building2,
-    roles: ["admin"],
-    flagKey: "partners_module_enabled",
-    children: [
-      { label: "Colaboradores", href: "/admin/partners", key: "partners-list" },
-      { label: "Facturación", href: "/admin/partners/facturacion", key: "partners-billing" },
-    ],
-  },
-  {
-    label: "Atención Comercial",
-    href: "/admin/atencion-comercial",
-    icon: Target,
-    roles: ["admin", "agente"],
-    children: [
-      { label: "Panel de seguimiento", href: "/admin/atencion-comercial?tab=dashboard", key: "ac-dashboard" },
-      { label: "Presupuestos abiertos", href: "/admin/atencion-comercial?tab=open", key: "ac-open" },
-      { label: "Reglas de recordatorio", href: "/admin/atencion-comercial?tab=rules", key: "ac-rules" },
-      { label: "Historial", href: "/admin/atencion-comercial?tab=history", key: "ac-history" },
-      { label: "Configuración", href: "/admin/atencion-comercial?tab=settings", key: "ac-settings" },
-      { label: "WhatsApp GHL", href: "/admin/atencion-comercial/whatsapp", key: "ac-whatsapp", icon: MessageCircle },
-      { label: "Agente IA Vapi", href: "/admin/atencion-comercial/agente-ia", key: "ac-vapi", icon: Bot },
-      { label: "Email Comercial", href: "/admin/atencion-comercial/email", key: "ac-email", icon: Mail, flagKey: "commercial_email_enabled" },
-    ],
-  },
-  {
-    label: "Operaciones",
-    href: "/admin/operaciones",
-    icon: Calendar,
-    roles: ["admin", "agente", "monitor"],
-    children: [
-      { label: "Calendario", href: "/admin/operaciones/calendario" },
-      { label: "Actividades del Día", href: "/admin/operaciones/actividades" },
-      // La gestión de personal se trasladó a la sección "Personal" (módulo RRHH).
-      // Reseñas se movió al módulo "Marketing".
-    ],
-  },
-  {
-    label: "Personal",
-    href: "/admin/personal",
-    icon: Briefcase,
-    roles: ["admin"],
-    children: [
-      { label: "Dashboard", href: "/admin/personal" },
-      { label: "Empleados", href: "/admin/personal/empleados" },
-      { label: "Fichajes", href: "/admin/personal/fichajes" },
-      { label: "Nóminas", href: "/admin/personal/nominas" },
-      { label: "Remesas", href: "/admin/personal/remesas" },
-      { label: "Bonus", href: "/admin/personal/bonus" },
-      { label: "Vacaciones", href: "/admin/personal/vacaciones" },
-      { label: "Fiscal", href: "/admin/personal/fiscal" },
-      { label: "Configuración", href: "/admin/personal/configuracion" },
-    ],
-  },
-  {
-    label: "Control Diario",
-    href: "/admin/contabilidad/control-diario",
-    icon: BarChart3,
-    roles: ["controler"],
-  },
-  {
-    label: "Contabilidad",
-    href: "/admin/contabilidad",
-    icon: BarChart3,
-    roles: ["admin"],
-    children: [
-      { label: "Control Diario", href: "/admin/contabilidad/control-diario" },
-      { label: "Dashboard", href: "/admin/contabilidad/dashboard" },
-      { label: "Transacciones", href: "/admin/contabilidad/transacciones" },
-      { label: "Informes", href: "/admin/contabilidad/informes" },
-      { label: "Gastos", href: "/admin/contabilidad/gastos" },
-      { label: "Recurrentes", href: "/admin/contabilidad/gastos/recurrentes" },
-      { label: "Categ. gastos", href: "/admin/contabilidad/gastos/categorias" },
-      { label: "Proveedores gastos", href: "/admin/contabilidad/gastos/proveedores" },
-      { label: "Centros de coste", href: "/admin/contabilidad/gastos/centros-coste" },
-      { label: "Cuenta Resultados", href: "/admin/contabilidad/cuenta-resultados" },
-      { label: "Caja", href: "/admin/contabilidad/caja" },
-      { label: "Movimientos bancarios", href: "/admin/contabilidad/movimientos-bancarios" },
-      { label: "Operaciones TPV", href: "/admin/contabilidad/operaciones-tpv" },
-      { label: "Remesas TPV", href: "/admin/contabilidad/remesas-tpv" },
-      { label: "Conciliación TPV", href: "/admin/contabilidad/conciliacion-tpv" },
-    ],
-  },
-  {
-    label: "Gestoría e Impuestos",
-    href: "/admin/gestoria",
-    icon: Receipt,
-    roles: ["admin"],
-    children: [
-      { label: "Dashboard Fiscal", href: "/admin/gestoria" },
-      { label: "Tributación IVA", href: "/admin/gestoria/iva" },
-      { label: "Obligaciones Laborales", href: "/admin/gestoria/laboral" },
-      { label: "Impuesto Sociedades", href: "/admin/gestoria/sociedades" },
-      { label: "Aplazamientos", href: "/admin/gestoria/aplazamientos" },
-      { label: "Expedientes", href: "/admin/gestoria/expedientes" },
-      { label: "Calendario Fiscal", href: "/admin/gestoria/calendario" },
-      { label: "Configuración", href: "/admin/gestoria/configuracion" },
-    ],
-  },
-  {
-    label: "TPV",
-    href: "/admin/tpv",
-    icon: Monitor,
-    roles: ["admin"],
-    flagKey: "tpv_enabled",
-    children: [
-      { label: "Terminal de venta", href: "/admin/tpv" },
-      { label: "Historial de cajas", href: "/admin/tpv/cajas" },
-    ],
-  },
-  {
-    label: "Proveedores",
-    href: "/admin/suppliers",
-    icon: Truck,
-    roles: ["admin"],
-    flagKey: "suppliers_module_enabled",
-    children: [
-      { label: "Gestión de proveedores", href: "/admin/suppliers" },
-      { label: "Liquidaciones", href: "/admin/settlements" },
-    ],
-  },
-  {
-    label: "Fiscal REAV",
-    href: "/admin/fiscal/reav",
-    icon: Receipt,
-    roles: ["admin"],
-    flagKey: "reav_module_enabled",
-    children: [
-      { label: "Expedientes", href: "/admin/fiscal/reav" },
-    ],
-  },
-  {
-    label: "Hotel",
-    href: "/admin/hotel",
-    icon: BedDouble,
-    roles: ["admin"],
-    flagKey: "hotel_module_enabled",
-    moduleKey: "hotel",
-  },
-  {
-    label: "SPA",
-    href: "/admin/spa",
-    icon: Sparkles,
-    roles: ["admin"],
-    flagKey: "spa_module_enabled",
-    moduleKey: "spa",
-  },
-  {
-    label: "Restaurantes",
-    href: "/admin/restaurantes",
-    icon: UtensilsCrossed,
-    roles: ["admin", "adminrest"],
-    flagKey: "restaurants_module_enabled",
-    moduleKey: "restaurants",
-    children: [
-      { label: "Reservas", href: "/admin/restaurantes/reservas" },
-      { label: "Calendario Global", href: "/admin/restaurantes/calendario" },
-      { label: "Configuración", href: "/admin/restaurantes/configuracion" },
-    ],
-  },
-  {
-    label: "Marketing",
-    href: "/admin/marketing",
-    icon: Tag,
-    roles: ["admin"],
-    children: [
-      { label: "Cupones & Ticketing", href: "/admin/marketing/cupones" },
-      { label: "Plataformas de cupones", href: "/admin/marketing/plataformas" },
-      { label: "Códigos de descuento", href: "/admin/marketing/descuentos" },
-      { label: "Reseñas", href: "/admin/operaciones/resenas" },
-    ],
-  },
-  {
-    label: "Usuarios",
-    href: "/admin/usuarios",
-    icon: Users,
-    roles: ["admin"],
-  },
-  {
-    label: "Configuración",
-    href: "/admin/configuracion",
-    icon: Settings,
-    roles: ["admin"],
-    children: [
-      { label: "Ajustes del sistema",  href: "/admin/configuracion" },
-      { label: "Datos del negocio",   href: "/admin/configuracion/sitio" },
-      { label: "Marca y tema",        href: "/admin/configuracion/marca" },
-      { label: "Integraciones",       href: "/admin/configuracion/integraciones" },
-      { label: "Estado del sistema",  href: "/admin/configuracion/estado" },
-      { label: "Onboarding",          href: "/admin/onboarding" },
-      { label: "Plantillas de Email", href: "/admin/plantillas-email" },
-      { label: "Cuentas de Email", href: "/admin/configuracion/email", flagKey: "commercial_email_enabled" },
-    ],
-  },
-];
+import { usePanelSubscription } from "@/hooks/usePanelSubscription";
+import {
+  LEGACY_SECTIONS, TASK_NAV, resolveNav,
+  type NavIcon, type ResolvedItem, type ResolvedSection,
+} from "@shared/adminNav";
+import { helpForLocation } from "@shared/helpCenter";
+
+/** Iconos del menú (el modelo de navegación vive en shared/adminNav.ts, sin React). */
+const NAV_ICONS: Record<NavIcon, React.ComponentType<{ className?: string }>> = {
+  dashboard: LayoutDashboard, image: Image, package: Package, file: FileText, building: Building2,
+  target: Target, calendar: Calendar, briefcase: Briefcase, chart: BarChart3, receipt: Receipt,
+  monitor: Monitor, truck: Truck, bed: BedDouble, sparkles: Sparkles, utensils: UtensilsCrossed,
+  tag: Tag, users: Users, settings: Settings, globe: Globe, creditCard: CreditCard,
+  shoppingCart: ShoppingCart, rocket: Rocket, message: MessageCircle, bot: Bot, mail: Mail, help: HelpCircle,
+};
 
 /** Etiqueta y color por rol */
 const ROLE_META: Record<string, { label: string; color: string }> = {
@@ -276,6 +43,7 @@ const ROLE_META: Record<string, { label: string; color: string }> = {
   adminrest: { label: "Gestor Restaurantes",   color: "text-orange-400" },
   controler: { label: "Controler",             color: "text-purple-400" },
   user:      { label: "Usuario",               color: "text-gray-400" },
+  readonly:  { label: "Solo lectura",          color: "text-gray-400" },
 };
 
 interface AdminLayoutProps {
@@ -325,6 +93,14 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
   // Cerrar menú móvil al cambiar de ruta
   useEffect(() => { setMobileMenuOpen(false); }, [location]);
 
+  // Escape cierra el menú móvil
+  useEffect(() => {
+    if (!mobileMenuOpen) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setMobileMenuOpen(false); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [mobileMenuOpen]);
+
   const toggleExpanded = (href: string) => {
     setExpandedItems((prev) =>
       prev.includes(href) ? prev.filter((h) => h !== href) : [...prev, href]
@@ -355,7 +131,6 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
     refetchOnWindowFocus: false,
   });
   const LOGO_FALLBACK = "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/nayade_blue_e9563f49.png";
-  const brandLogo = publicSettings?.brand_logo_url || LOGO_FALLBACK;
   const brandName = publicSettings?.brand_name || "Admin";
 
   // Feature flags — used to hide nav items for disabled modules.
@@ -383,10 +158,24 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
     return modulesData.modules.includes(moduleKey);
   };
 
-  const filteredNav = navItems
-    .filter((item) => item.roles.includes(userRole))
-    .filter((item) => isFlagVisible((item as { flagKey?: string }).flagKey))
-    .filter((item) => isModuleVisible((item as { moduleKey?: string }).moduleKey));
+  // Menú: el de siempre (single / sin licencias por capacidad) o por tareas filtrado por licencias.
+  const subscription = usePanelSubscription();
+  const navSections: ResolvedSection[] =
+    subscription.mode === "loading"
+      ? []
+      : resolveNav(subscription.mode === "tasks" ? TASK_NAV : LEGACY_SECTIONS, {
+          role: userRole,
+          isFlagVisible,
+          isModuleVisible,
+          capabilityState: subscription.mode === "tasks" ? subscription.capabilityState : () => "active",
+        });
+  const isTaskNav = subscription.mode === "tasks";
+  // Ayuda contextual de la pantalla actual (contenido en shared/helpCenter.ts)
+  const contextHelp = isTaskNav ? helpForLocation(location, currentSearch) : undefined;
+  const upgradeUrl = subscription.data?.upgradeUrl ?? null;
+  const trialInfo = subscription.data?.trial ?? null;
+  // Una empresa nueva sin logo propio no hereda el de la instalación original: se muestra su inicial.
+  const brandLogo = publicSettings?.brand_logo_url || (subscription.mode === "legacy" ? LOGO_FALLBACK : null);
 
   // ── Feed unificado de notificaciones (polling cada 60s) ─────────────────
   // El endpoint `notifications.feed` agrega 6 fuentes (leads, quotes,
@@ -412,7 +201,7 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
     onSuccess: () => utils.notifications.feed.invalidate(),
   });
 
-  type FeedKind = "lead" | "quote" | "cancellation" | "pending_payment" | "tpv_alert" | "upcoming_reservation";
+  type FeedKind = "lead" | "quote" | "cancellation" | "pending_payment" | "tpv_alert" | "upcoming_reservation" | "task";
   const severityColor: Record<string, string> = {
     info:     "text-sky-400",
     warning:  "text-amber-400",
@@ -463,7 +252,7 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
   }
 
   // ── Role not allowed for any admin section ──
-  if (!["admin", "agente", "monitor", "adminrest", "controler"].includes(userRole)) {
+  if (!["admin", "agente", "monitor", "adminrest", "controler", "readonly"].includes(userRole)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center max-w-sm px-4">
@@ -478,8 +267,136 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
     );
   }
 
+  // En móvil el panel siempre se muestra completo (con textos), aunque en escritorio esté plegado.
+  const showLabels = sidebarOpen || mobileMenuOpen;
+  const focusRing = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring";
+
+  // Avisos numéricos del menú por tareas (mismos datos que la campana).
+  const badgeFor = (item: ResolvedItem): { n: number; tone: "red" | "amber"; label: string } | null => {
+    if (!isTaskNav) return null;
+    if (item.key === "t-oportunidades" && newLeads > 0) return { n: newLeads, tone: "red", label: "oportunidades nuevas sin atender" };
+    if (item.key === "t-presupuestos" && pendingQuotes > 0) return { n: pendingQuotes, tone: "amber", label: "presupuestos enviados sin respuesta" };
+    return null;
+  };
+
+  const renderNavItem = (item: ResolvedItem) => {
+    const Icon = NAV_ICONS[item.icon] ?? LayoutDashboard;
+    const active = isActive(item.href);
+    const id = item.key ?? item.href;
+    const badge = badgeFor(item);
+    const badgeEl = badge && (
+      <span
+        className={cn(
+          "inline-flex items-center justify-center min-w-[18px] h-[18px] rounded-full text-white text-[10px] font-bold px-1",
+          badge.tone === "red" ? "bg-red-600" : "bg-amber-600",
+        )}
+      >
+        {badge.n > 99 ? "99+" : badge.n}
+        <span className="sr-only"> {badge.label}</span>
+      </span>
+    );
+    const readOnlyTag = item.readOnly && showLabels && (
+      <span className="text-[10px] font-medium rounded px-1.5 py-0.5 bg-sidebar-accent text-sidebar-foreground/80">Solo lectura</span>
+    );
+
+    if (item.children) {
+      const isExpanded = expandedItems.includes(id) || active || item.children.some((c) => isChildActive(c.href));
+      const panelId = `nav-${id.replace(/[^a-z0-9-]/gi, "-")}`;
+      return (
+        <li key={id}>
+          <button
+            type="button"
+            onClick={() => (showLabels ? toggleExpanded(id) : setSidebarOpen(true))}
+            aria-expanded={showLabels ? isExpanded : undefined}
+            aria-controls={showLabels ? panelId : undefined}
+            title={showLabels ? undefined : item.label}
+            className={cn(
+              "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all",
+              focusRing,
+              active
+                ? "bg-sidebar-primary text-sidebar-primary-foreground"
+                : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground",
+            )}
+          >
+            <Icon className="w-4 h-4 shrink-0" aria-hidden="true" />
+            {showLabels ? (
+              <>
+                <span className="flex-1 text-left">{item.label}</span>
+                {readOnlyTag}
+                {badgeEl}
+                <ChevronDown className={cn("w-3.5 h-3.5 transition-transform", isExpanded && "rotate-180")} aria-hidden="true" />
+              </>
+            ) : (
+              <span className="sr-only">{item.label}</span>
+            )}
+          </button>
+          {showLabels && isExpanded && (
+            <ul id={panelId} className="ml-4 mt-1 space-y-0.5">
+              {item.children.map((child) => {
+                const childActive = isChildActive(child.href);
+                return (
+                  <li key={child.key ?? child.href}>
+                    <Link
+                      href={child.href}
+                      aria-current={childActive ? "page" : undefined}
+                      className={cn(
+                        "flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-all",
+                        focusRing,
+                        childActive
+                          ? "bg-sidebar-accent text-amber-400"
+                          : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground",
+                      )}
+                    >
+                      <span className="flex-1">{child.label}</span>
+                      {child.readOnly && <span className="text-[10px] text-sidebar-foreground/70">Solo lectura</span>}
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </li>
+      );
+    }
+
+    const leafActive = item.href.includes("?") ? isChildActive(item.href) : active;
+    return (
+      <li key={id}>
+        <Link
+          href={item.href}
+          aria-current={leafActive ? "page" : undefined}
+          title={showLabels ? undefined : item.label}
+          className={cn(
+            "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all",
+            focusRing,
+            leafActive
+              ? "bg-sidebar-primary text-sidebar-primary-foreground"
+              : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground",
+          )}
+        >
+          <Icon className="w-4 h-4 shrink-0" aria-hidden="true" />
+          {showLabels ? (
+            <>
+              <span className="flex-1">{item.label}</span>
+              {readOnlyTag}
+              {badgeEl}
+            </>
+          ) : (
+            <span className="sr-only">{item.label}</span>
+          )}
+        </Link>
+      </li>
+    );
+  };
+
   return (
     <div className="min-h-screen bg-background flex">
+      <a
+        href="#contenido-principal"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[60] focus:rounded-md focus:bg-card focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-foreground focus:shadow-lg focus:ring-2 focus:ring-ring"
+      >
+        Saltar al contenido
+      </a>
       {/* Mobile backdrop */}
       {mobileMenuOpen && (
         <div
@@ -502,131 +419,125 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
       >
         {/* Logo */}
         <div className="h-16 flex items-center px-4 border-b border-sidebar-border shrink-0">
-          <Link href={userRole === "adminrest" ? "/admin/restaurantes" : "/admin"} className="flex items-center gap-2 min-w-0">
-            <img
-              src={brandLogo}
-              alt={`${brandName} Admin`}
-              className={cn("object-contain rounded-full shrink-0", sidebarOpen ? "h-10 w-10" : "h-8 w-8")}
-            />
-            {sidebarOpen && (
-              <span className="text-xs text-amber-400 tracking-widest uppercase font-display font-bold shrink-0">
-                {userRole === "adminrest" ? "Restaurantes" : userRole === "controler" ? "Control" : "Admin"}
+          <Link
+            href={userRole === "adminrest" ? "/admin/restaurantes" : "/admin"}
+            className="flex items-center gap-2 min-w-0 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+            aria-label={`${brandName}: ir al inicio del panel`}
+          >
+            {brandLogo ? (
+              <img
+                src={brandLogo}
+                alt=""
+                className={cn("object-contain rounded-full shrink-0", showLabels ? "h-10 w-10" : "h-8 w-8")}
+              />
+            ) : (
+              <span
+                aria-hidden="true"
+                className={cn(
+                  "rounded-full shrink-0 bg-sidebar-primary text-sidebar-primary-foreground font-display font-bold flex items-center justify-center",
+                  showLabels ? "h-10 w-10 text-base" : "h-8 w-8 text-sm",
+                )}
+              >
+                {brandName.trim().charAt(0).toUpperCase() || "A"}
               </span>
             )}
+            {showLabels && (
+              isTaskNav ? (
+                <span className="text-sm font-display font-semibold text-sidebar-foreground truncate">{brandName}</span>
+              ) : (
+                <span className="text-xs text-amber-400 tracking-widest uppercase font-display font-bold shrink-0">
+                  {userRole === "adminrest" ? "Restaurantes" : userRole === "controler" ? "Control" : "Admin"}
+                </span>
+              )
+            )}
           </Link>
+          {/* Escritorio: plegar/desplegar; móvil: cerrar el panel */}
           <button
-            onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="ml-auto w-8 h-8 rounded-lg hover:bg-sidebar-accent flex items-center justify-center text-sidebar-foreground/60 hover:text-sidebar-foreground transition-colors shrink-0"
+            type="button"
+            onClick={() => (mobileMenuOpen ? setMobileMenuOpen(false) : setSidebarOpen(!sidebarOpen))}
+            aria-label={mobileMenuOpen ? "Cerrar menú" : sidebarOpen ? "Plegar menú lateral" : "Desplegar menú lateral"}
+            aria-expanded={mobileMenuOpen || sidebarOpen}
+            className="ml-auto w-8 h-8 rounded-lg hover:bg-sidebar-accent flex items-center justify-center text-sidebar-foreground/70 hover:text-sidebar-foreground transition-colors shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
           >
-            {sidebarOpen ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
+            {showLabels ? <X className="w-4 h-4" aria-hidden="true" /> : <Menu className="w-4 h-4" aria-hidden="true" />}
           </button>
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 overflow-y-auto py-4 px-2">
-          {filteredNav.map((item) => {
-            const isExpanded = expandedItems.includes(item.href) || isActive(item.href);
-            const active = isActive(item.href);
-
-            return (
-              <div key={item.href} className="mb-1">
-                {item.children ? (
-                  <>
-                    <button
-                      onClick={() => toggleExpanded(item.href)}
-                      className={cn(
-                        "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all",
-                        active
-                          ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                          : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
-                      )}
-                    >
-                      <div className="relative shrink-0">
-                        <item.icon className="w-4 h-4" />
-                        {/* Badge leads nuevos en item Presupuestos */}
-                        {item.href === "/admin/presupuestos" && newLeads > 0 && (
-                          <span className="absolute -top-1.5 -right-1.5 min-w-[14px] h-[14px] rounded-full bg-red-500 text-white text-[9px] font-bold flex items-center justify-center px-0.5 leading-none">
-                            {newLeads > 99 ? "99+" : newLeads}
-                          </span>
-                        )}
-                        {/* Badge presupuestos enviados en item Presupuestos */}
-                        {item.href === "/admin/presupuestos" && pendingQuotes > 0 && newLeads === 0 && (
-                          <span className="absolute -top-1.5 -right-1.5 min-w-[14px] h-[14px] rounded-full bg-amber-500 text-white text-[9px] font-bold flex items-center justify-center px-0.5 leading-none">
-                            {pendingQuotes > 99 ? "99+" : pendingQuotes}
-                          </span>
-                        )}
-                      </div>
-                      {sidebarOpen && (
-                        <>
-                          <span className="flex-1 text-left">{item.label}</span>
-                          {/* Badges inline cuando sidebar está expandido */}
-                          {item.href === "/admin/presupuestos" && newLeads > 0 && (
-                            <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] rounded-full bg-red-500 text-white text-[10px] font-bold px-1 mr-1">
-                              {newLeads > 99 ? "99+" : newLeads}
-                            </span>
-                          )}
-                          {item.href === "/admin/presupuestos" && pendingQuotes > 0 && (
-                            <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] rounded-full bg-amber-500 text-white text-[10px] font-bold px-1 mr-1">
-                              {pendingQuotes > 99 ? "99+" : pendingQuotes}
-                            </span>
-                          )}
-                          <ChevronDown className={cn("w-3.5 h-3.5 transition-transform", isExpanded && "rotate-180")} />
-                        </>
-                      )}
-                    </button>
-                    {sidebarOpen && isExpanded && item.children && (
-                      <div className="ml-4 mt-1 space-y-0.5">
-                        {item.children.filter(child => isFlagVisible((child as any).flagKey)).map((child) => (
-                          <Link key={(child as any).key ?? child.href} href={child.href}>
-                            <div className={cn(
-                              "block px-3 py-2 rounded-lg text-xs font-medium transition-all",
-                              isChildActive(child.href)
-                                ? "bg-sidebar-accent text-amber-400"
-                                : "text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground"
-                            )}>
-                              {child.label}
-                            </div>
-                          </Link>
-                        ))}
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <Link href={item.href}>
-                    <div className={cn(
-                      "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all",
-                      active
-                        ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                        : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
-                    )}>
-                      <item.icon className="w-4 h-4 shrink-0" />
-                      {sidebarOpen && <span className="flex-1">{item.label}</span>}
-                    </div>
-                  </Link>
-                )}
-              </div>
-            );
-          })}
+        <nav className="flex-1 overflow-y-auto py-4 px-2" aria-label="Menú del panel">
+          {subscription.mode === "loading" && (
+            <div className="space-y-2 px-1" aria-busy="true" aria-live="polite">
+              <span className="sr-only">Cargando el menú…</span>
+              {[0, 1, 2, 3, 4, 5].map((i) => (
+                <div key={i} className="h-9 rounded-lg bg-sidebar-accent/60 animate-pulse" />
+              ))}
+            </div>
+          )}
+          {navSections.map((section) => (
+            <div key={section.id} className="mb-3">
+              {section.label && showLabels && (
+                <p className="px-3 pt-2 pb-1 text-[11px] font-semibold uppercase tracking-wider text-sidebar-foreground/60">
+                  {section.label}
+                </p>
+              )}
+              {section.label && !showLabels && <div className="mx-3 my-2 border-t border-sidebar-border" aria-hidden="true" />}
+              <ul className="space-y-1" aria-label={section.label ?? undefined}>
+                {section.items.map((item) => renderNavItem(item))}
+              </ul>
+            </div>
+          ))}
+          {/* Ampliar: lo no contratado no aparece como activo; solo un acceso separado para ampliar */}
+          {isTaskNav && userRole === "admin" && (
+            <div className="mt-2 pt-3 border-t border-sidebar-border">
+              {showLabels && (
+                <p className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-sidebar-foreground/60">Ampliar</p>
+              )}
+              {upgradeUrl ? (
+                <a
+                  href={upgradeUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+                  title={showLabels ? undefined : "Ver planes y módulos (se abre en otra pestaña)"}
+                >
+                  <ArrowUpRight className="w-4 h-4 shrink-0" aria-hidden="true" />
+                  {showLabels ? <span className="flex-1">Ver planes y módulos</span> : <span className="sr-only">Ver planes y módulos</span>}
+                  <span className="sr-only">(se abre en otra pestaña)</span>
+                </a>
+              ) : (
+                <Link
+                  href="/admin/suscripcion#ampliar"
+                  className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+                  title={showLabels ? undefined : "Ampliar mi plan"}
+                >
+                  <ArrowUpRight className="w-4 h-4 shrink-0" aria-hidden="true" />
+                  {showLabels ? <span className="flex-1">Ampliar mi plan</span> : <span className="sr-only">Ampliar mi plan</span>}
+                </Link>
+              )}
+            </div>
+          )}
         </nav>
 
         {/* User Profile */}
         <div className="border-t border-sidebar-border p-3 shrink-0">
-          <div className={cn("flex items-center gap-3", !sidebarOpen && "justify-center")}>
-            <div className="w-8 h-8 rounded-full bg-amber-500/20 flex items-center justify-center shrink-0">
+          <div className={cn("flex items-center gap-3", !showLabels && "justify-center")}>
+            <div className="w-8 h-8 rounded-full bg-amber-500/20 flex items-center justify-center shrink-0" aria-hidden="true">
               <User className="w-4 h-4 text-amber-400" />
             </div>
-            {sidebarOpen && (
+            {showLabels && (
               <div className="flex-1 min-w-0">
                 <p className="text-xs font-semibold text-sidebar-foreground truncate">{user?.name ?? "Usuario"}</p>
                 <p className={cn("text-xs font-medium capitalize", roleMeta.color)}>{roleMeta.label}</p>
               </div>
             )}
             <button
+              type="button"
               onClick={logout}
-              className="w-7 h-7 rounded-lg hover:bg-sidebar-accent flex items-center justify-center text-sidebar-foreground/50 hover:text-red-400 transition-colors shrink-0"
+              className="w-8 h-8 rounded-lg hover:bg-sidebar-accent flex items-center justify-center text-sidebar-foreground/70 hover:text-red-400 transition-colors shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
               title="Cerrar sesión"
+              aria-label="Cerrar sesión"
             >
-              <LogOut className="w-3.5 h-3.5" />
+              <LogOut className="w-3.5 h-3.5" aria-hidden="true" />
             </button>
           </div>
         </div>
@@ -641,17 +552,38 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
             className="lg:hidden w-9 h-9 rounded-lg hover:bg-accent flex items-center justify-center text-foreground/60 hover:text-foreground transition-colors shrink-0"
             onClick={() => setMobileMenuOpen(true)}
             aria-label="Abrir menú"
+            aria-expanded={mobileMenuOpen}
           >
-            <Menu className="w-5 h-5" />
+            <Menu className="w-5 h-5" aria-hidden="true" />
           </button>
           {title && (
             <h1 className="font-display font-semibold text-base sm:text-lg text-foreground truncate min-w-0">{title}</h1>
           )}
           <div className="ml-auto flex items-center gap-2 sm:gap-3 shrink-0">
+            {/* Prueba gratuita: días restantes (dato del servidor) */}
+            {isTaskNav && trialInfo && userRole === "admin" && (
+              <Link
+                href="/admin/suscripcion"
+                className={cn(
+                  "hidden sm:inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  trialInfo.daysLeft <= 3
+                    ? "border-amber-500/60 bg-amber-500/10 text-amber-800 dark:text-amber-300"
+                    : "border-border bg-muted text-foreground",
+                )}
+              >
+                <Rocket className="w-3.5 h-3.5" aria-hidden="true" />
+                {trialInfo.daysLeft > 0
+                  ? `Prueba: ${trialInfo.daysLeft} ${trialInfo.daysLeft === 1 ? "día" : "días"}`
+                  : "Prueba finalizada"}
+              </Link>
+            )}
             {userRole === "admin" && <MaintenanceModeControl />}
-            <Button variant="ghost" size="icon" className="w-9 h-9">
-              <Search className="w-4 h-4" />
-            </Button>
+            {!isTaskNav && (
+              <Button variant="ghost" size="icon" className="w-9 h-9" aria-label="Buscar">
+                <Search className="w-4 h-4" aria-hidden="true" />
+              </Button>
+            )}
             {/* Toggle Light / Dark */}
             <Button
               variant="ghost"
@@ -659,6 +591,7 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
               className="w-9 h-9"
               onClick={toggleTheme}
               title={theme === "dark" ? "Cambiar a modo claro" : "Cambiar a modo oscuro"}
+              aria-label={theme === "dark" ? "Cambiar a modo claro" : "Cambiar a modo oscuro"}
             >
               {theme === "dark"
                 ? <Sun className="w-4 h-4 text-amber-400" />
@@ -672,8 +605,9 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
                   size="icon"
                   className="w-9 h-9 relative"
                   title={totalAlerts > 0 ? `${newLeads} leads nuevos · ${pendingQuotes} presupuestos pendientes` : "Sin alertas"}
+                  aria-label={totalAlerts > 0 ? `Notificaciones: ${totalAlerts} pendientes` : "Notificaciones: ninguna pendiente"}
                 >
-                  <Bell className="w-4 h-4" />
+                  <Bell className="w-4 h-4" aria-hidden="true" />
                   {totalAlerts > 0 && (
                     <span className="absolute top-1 right-1 min-w-[16px] h-[16px] rounded-full bg-red-500 text-white text-[9px] font-bold flex items-center justify-center px-0.5 leading-none">
                       {totalAlerts > 99 ? "99+" : totalAlerts}
@@ -788,6 +722,32 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
                 </div>
               </PopoverContent>
             </Popover>
+            {isTaskNav && (
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="ghost" size="sm" className="h-9 px-2 sm:px-3 text-xs gap-1.5" aria-label={contextHelp ? `Ayuda sobre esta pantalla: ${contextHelp.title}` : "Ayuda"}>
+                    <HelpCircle className="w-4 h-4" aria-hidden="true" />
+                    <span className="hidden sm:inline">Ayuda</span>
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent align="end" className="w-[min(20rem,calc(100vw-2rem))] p-4">
+                  {contextHelp ? (
+                    <>
+                      <p className="text-sm font-semibold text-foreground">{contextHelp.title}</p>
+                      <p className="mt-1 text-sm text-muted-foreground">{contextHelp.summary}</p>
+                      <Link href={`/admin/ayuda/${contextHelp.id}`} className="mt-3 inline-flex text-sm font-medium text-primary underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded">
+                        Ver la guía paso a paso
+                      </Link>
+                    </>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">Guías breves para crear clientes, productos, presupuestos, pedidos y facturas, invitar a tu equipo y gestionar tu suscripción.</p>
+                  )}
+                  <Link href="/admin/ayuda" className="mt-2 block text-sm font-medium text-primary underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded">
+                    Centro de ayuda y contacto
+                  </Link>
+                </PopoverContent>
+              </Popover>
+            )}
             {userRole !== "adminrest" && (
               <Link href="/" target="_blank">
                 <Button variant="outline" size="sm" className="text-xs hidden sm:inline-flex">
@@ -802,7 +762,7 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
         </header>
 
         {/* Page Content */}
-        <main className="flex-1 p-4 sm:p-6 overflow-auto">
+        <main id="contenido-principal" tabIndex={-1} className="flex-1 p-4 sm:p-6 overflow-auto focus:outline-none">
           {children}
         </main>
       </div>

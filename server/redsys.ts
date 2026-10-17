@@ -38,6 +38,11 @@ export function getMerchantKey(): string {
   return process.env.REDSYS_MERCHANT_KEY ?? "";
 }
 
+/** Hay cuenta de cobro (código y clave de comercio) para la empresa en curso. */
+export function isRedsysConfigured(): boolean {
+  return !!getMerchantCode().trim() && !!getMerchantKey().trim();
+}
+
 export function getMerchantTerminal(): string {
   const t = isMultiTenant() ? (credentialFor("redsys", "merchantTerminal") ?? getSystemSettingSync("redsys_merchant_terminal", "001")) : (process.env.REDSYS_MERCHANT_TERMINAL ?? "001");
   // Redsys requires terminal as 3-digit zero-padded string (e.g. "001")

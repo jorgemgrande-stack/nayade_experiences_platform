@@ -18,6 +18,7 @@ import {
 import { madridStartOfDayUtc, madridEndOfDayUtc } from "../utils/timezone";
 import { legacyDb, legacyPool } from "../_core/legacyDb";
 import { scheduleTenantCron } from "../_core/tenantRegistry/scheduler";
+import { isMultiTenant } from "../_core/tenant";
 
 // CONFIG
 
@@ -347,7 +348,7 @@ async function createBatchFromEmail(
       gte(cardTerminalOperations.operationDatetime, madridStartOfDayUtc(batchDate)),
       lte(cardTerminalOperations.operationDatetime, madridEndOfDayUtc(batchDate)),
     ));
-  const mergedOpIds = [...new Set([...opIds, ...dayOps.map(o => o.id)])];
+  const mergedOpIds = Array.from(new Set([...opIds, ...dayOps.map(o => o.id)]));
 
   let batchId: number;
   if (existing.length > 0) {
@@ -659,6 +660,11 @@ function emptyResult(extra?: Partial<IngestionResult>): IngestionResult {
 // CORE INGESTION
 
 export async function runEmailIngestion(retryErrors = false): Promise<IngestionResult> {
+  // Multiempresa: el buzón IMAP sale del entorno (global); volcarlo en la BD de cualquier
+  // empresa sería una fuga entre empresas. Bloqueado hasta tener credenciales por tenant.
+  if (isMultiTenant()) {
+    return emptyResult({ errors: ["Ingesta IMAP no disponible en multiempresa (credenciales globales)"] });
+  }
   if (isRunning) {
     console.log("[EmailTPV] Already running — skipping");
     return emptyResult({ errors: ["Already running"] });

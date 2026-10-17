@@ -13,6 +13,7 @@ import { QuotaEngine, parseDefaultQuotas, type DefaultQuota } from "./quota";
 import type { AlertSink, QuotaPolicyReader, UsageStore } from "./types";
 import { QuotaExceededError } from "./types";
 import { MemoryUsageStore, MysqlUsageStore, UsageAggregator } from "./usage";
+import { fixedPoolOptions } from "../dbPoolConfig";
 
 export interface ErmInstance {
   aggregator: UsageAggregator;
@@ -67,7 +68,7 @@ export function installErmFromEnv(policy: QuotaPolicyReader, env: NodeJS.Process
   let store: UsageStore;
   let pool: mysql.Pool | null = null;
   if (env.ERM_DATABASE_URL) {
-    pool = mysql.createPool({ uri: env.ERM_DATABASE_URL, connectionLimit: 3 });
+    pool = mysql.createPool({ uri: env.ERM_DATABASE_URL, ...fixedPoolOptions("DB_ERM_POOL_CONNECTIONS", 3, env) });
     store = new MysqlUsageStore(pool);
   } else {
     console.warn(JSON.stringify({ ctx: "ERM", event: "usage_store_in_memory" }));
