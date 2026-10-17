@@ -9,6 +9,12 @@ const USE_LOCAL_AUTH = process.env.LOCAL_AUTH === "true";
 
 const router = Router();
 
+/** 400 si el contenido no es válido, 503 si el almacenamiento no está disponible; si no, 500. */
+function uploadErrorStatus(err: unknown): number {
+  const code = (err as { code?: unknown } | null)?.code;
+  return code === "BAD_REQUEST" ? 400 : code === "SERVICE_UNAVAILABLE" ? 503 : 500;
+}
+
 // Multer configurado para almacenar en memoria (buffer)
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -70,26 +76,26 @@ router.post(
       const random = Math.random().toString(36).substring(2, 8);
       const key = `nayade/uploads/${timestamp}-${random}.${ext}`;
 
-      const { url } = await storagePut(key, buffer, mimetype);
+      const adminUser = (req as Request & { adminUser?: { id: number } }).adminUser;
+      const { url, key: storedKey } = await storagePut(key, buffer, mimetype, { category: "media", originalName: originalname, uploadedBy: adminUser?.id ?? null });
 
       // Registrar en la base de datos de multimedia
-      const adminUser = (req as Request & { adminUser?: { id: number } }).adminUser;
       const mediaRecord = await createMediaFile({
         filename: `${timestamp}-${random}.${ext}`,
         originalName: originalname,
         url,
-        fileKey: key,
+        fileKey: storedKey,
         mimeType: mimetype,
         size: size,
         type: "image",
         uploadedBy: adminUser?.id,
       });
 
-      res.json({ url, key, filename: originalname, id: mediaRecord.id });
+      res.json({ url, key: storedKey, filename: originalname, id: mediaRecord.id });
     } catch (err: unknown) {
       console.error("[Upload] Error:", err);
       const message = err instanceof Error ? err.message : "Error al subir la imagen";
-      res.status(500).json({ error: message });
+      res.status(uploadErrorStatus(err)).json({ error: message });
     }
   }
 );
@@ -112,25 +118,25 @@ router.post(
       const random = Math.random().toString(36).substring(2, 8);
       const key = `nayade/uploads/${timestamp}-${random}.${ext}`;
 
-      const { url } = await storagePut(key, buffer, mimetype);
-
       const adminUser = (req as Request & { adminUser?: { id: number } }).adminUser;
+      const { url, key: storedKey } = await storagePut(key, buffer, mimetype, { category: "media", originalName: originalname, uploadedBy: adminUser?.id ?? null });
+
       const mediaRecord = await createMediaFile({
         filename: `${timestamp}-${random}.${ext}`,
         originalName: originalname,
         url,
-        fileKey: key,
+        fileKey: storedKey,
         mimeType: mimetype,
         size: size,
         type: "image",
         uploadedBy: adminUser?.id,
       });
 
-      res.json({ url, key, filename: originalname, id: mediaRecord.id });
+      res.json({ url, key: storedKey, filename: originalname, id: mediaRecord.id });
     } catch (err: unknown) {
       console.error("[Upload] Error:", err);
       const message = err instanceof Error ? err.message : "Error al subir la imagen";
-      res.status(500).json({ error: message });
+      res.status(uploadErrorStatus(err)).json({ error: message });
     }
   }
 );
@@ -173,13 +179,13 @@ router.post("/api/upload-coupon", (req: Request, res: Response) => {
       const random = Math.random().toString(36).substring(2, 10);
       const key = `nayade/coupons/${timestamp}-${random}.${ext}`;
       console.log(`[CouponUpload] Subiendo ${originalname} (${mimetype}, ${buffer.length} bytes) → ${key}`);
-      const { url } = await storagePut(key, buffer, mimetype);
-      console.log(`[CouponUpload] OK → ${url}`);
-      res.json({ url, key });
+      const stored = await storagePut(key, buffer, mimetype, { category: "coupon", originalName: originalname });
+      console.log(`[CouponUpload] OK → ${stored.url}`);
+      res.json({ url: stored.url, key: stored.key });
     } catch (err: unknown) {
       console.error("[CouponUpload] Storage error:", err);
       const message = err instanceof Error ? err.message : "Error al subir el archivo";
-      res.status(500).json({ error: message });
+      res.status(uploadErrorStatus(err)).json({ error: message });
     }
   });
 });
@@ -210,12 +216,13 @@ router.post(
       const timestamp = Date.now();
       const random = Math.random().toString(36).substring(2, 10);
       const key = `nayade/monitors/photos/${timestamp}-${random}.${ext}`;
-      const { url } = await storagePut(key, buffer, mimetype);
-      res.json({ url, key });
+      const adminUser = (req as Request & { adminUser?: { id: number } }).adminUser;
+      const stored = await storagePut(key, buffer, mimetype, { category: "hr-photo", originalName: originalname, uploadedBy: adminUser?.id ?? null });
+      res.json({ url: stored.url, key: stored.key });
     } catch (err: unknown) {
       console.error("[MonitorPhotoUpload] Error:", err);
       const message = err instanceof Error ? err.message : "Error al subir la foto";
-      res.status(500).json({ error: message });
+      res.status(uploadErrorStatus(err)).json({ error: message });
     }
   }
 );
@@ -253,12 +260,13 @@ router.post(
       const timestamp = Date.now();
       const random = Math.random().toString(36).substring(2, 10);
       const key = `nayade/monitors/docs/${timestamp}-${random}.${ext}`;
-      const { url } = await storagePut(key, buffer, mimetype);
-      res.json({ url, key, filename: originalname });
+      const adminUser = (req as Request & { adminUser?: { id: number } }).adminUser;
+      const stored = await storagePut(key, buffer, mimetype, { category: "hr-doc", originalName: originalname, uploadedBy: adminUser?.id ?? null });
+      res.json({ url: stored.url, key: stored.key, filename: originalname });
     } catch (err: unknown) {
       console.error("[MonitorDocUpload] Error:", err);
       const message = err instanceof Error ? err.message : "Error al subir el documento";
-      res.status(500).json({ error: message });
+      res.status(uploadErrorStatus(err)).json({ error: message });
     }
   }
 );
@@ -294,12 +302,13 @@ router.post(
         const timestamp = Date.now();
         const random = Math.random().toString(36).substring(2, 10);
         const key = `nayade/restaurants/menus/${timestamp}-${random}.${ext}`;
-        const { url } = await storagePut(key, buffer, mimetype);
-        res.json({ url, key, filename: originalname });
+        const adminUser = (req as Request & { adminUser?: { id: number } }).adminUser;
+        const stored = await storagePut(key, buffer, mimetype, { category: "restaurant-menu", originalName: originalname, uploadedBy: adminUser?.id ?? null });
+        res.json({ url: stored.url, key: stored.key, filename: originalname });
       } catch (e: unknown) {
         console.error("[RestaurantMenuUpload] Error:", e);
         const message = e instanceof Error ? e.message : "Error al subir el menú";
-        res.status(500).json({ error: message });
+        res.status(uploadErrorStatus(e)).json({ error: message });
       }
     });
   }

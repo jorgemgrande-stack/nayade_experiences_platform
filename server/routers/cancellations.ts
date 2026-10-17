@@ -1505,7 +1505,7 @@ export const cancellationsRouter = router({
     .mutation(async ({ input }) => {
       const buffer = Buffer.from(input.pdfBase64, "base64");
       const key = `vouchers/${input.voucherId}-${input.filename}`;
-      const { url } = await storagePut(key, buffer, "application/pdf");
+      const { url } = await storagePut(key, buffer, "application/pdf", { category: "voucher", originalName: input.filename, owner: { type: "voucher", id: input.voucherId } });
 
       await db.update(compensationVouchers).set({ pdfUrl: url }).where(eq(compensationVouchers.id, input.voucherId));
       return { url };

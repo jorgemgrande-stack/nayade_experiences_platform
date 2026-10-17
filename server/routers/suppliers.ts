@@ -32,7 +32,7 @@ import {
 } from "../../drizzle/schema";
 import { eq, and, gte, lte, desc, sql, inArray } from "drizzle-orm";
 import { sendEmail } from "../mailer";
-import { storagePut } from "../storage";
+import { storagePut, externalFileUrl } from "../storage";
 import { generateDocumentNumber } from "../documentNumbers";
 import { htmlToPdf } from "../pdfGenerator";
 import { assertModuleEnabled } from "../_core/flagGuard";
@@ -200,14 +200,14 @@ async function generateSettlementPdfAndUpload(data: {
   try {
     const pdfBuffer = await htmlToPdf(html);
     const key = `settlements/${data.settlementNumber}-${Date.now()}.pdf`;
-    const { url } = await storagePut(key, pdfBuffer, "application/pdf");
-    return { url, key };
+    const stored = await storagePut(key, pdfBuffer, "application/pdf", { category: "settlement", originalName: `${data.settlementNumber}.pdf`, owner: { type: "settlement", id: data.settlementNumber } });
+    return { url: stored.url, key: stored.key };
   } catch (pdfErr) {
     console.error("[PDF] Error generando liquidación PDF, guardando HTML como fallback:", pdfErr);
     // Fallback: guardar HTML
     const key = `settlements/${data.settlementNumber}-${Date.now()}.html`;
-    const { url } = await storagePut(key, Buffer.from(html), "text/html");
-    return { url, key };
+    const stored = await storagePut(key, Buffer.from(html), "text/html", { category: "settlement", originalName: `${data.settlementNumber}.html`, owner: { type: "settlement", id: data.settlementNumber } });
+    return { url: stored.url, key: stored.key };
   }
 }
 
@@ -1763,7 +1763,7 @@ export const settlementsRouter = router({
           <p>Estimado/a ${settlement.supplierName},</p>
           <p>Adjuntamos la liquidación <strong>${settlement.settlementNumber}</strong> correspondiente al periodo <strong>${settlement.periodFrom} — ${settlement.periodTo}</strong>.</p>
           <p>Importe neto a abonar: <strong>${parseFloat(settlement.netAmountProvider ?? "0").toFixed(2)} €</strong></p>
-          ${settlement.pdfUrl ? `<p><a href="${settlement.pdfUrl}">Descargar liquidación en PDF</a></p>` : ""}
+          ${settlement.pdfUrl ? `<p><a href="${externalFileUrl(settlement.pdfUrl)}">Descargar liquidación en PDF</a></p>` : ""}
           <p>Gracias por su colaboración.</p>
           <p>${legacyBrandText("Náyade Experiences")}</p>
         `,

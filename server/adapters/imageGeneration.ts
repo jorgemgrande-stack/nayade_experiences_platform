@@ -62,6 +62,6 @@ export async function generateImage(options: GenerateImageOptions): Promise<Gene
   if (!b64) throw new Error("[ImageGen] Respuesta vacía del servicio de imágenes.");
 
   const buffer = Buffer.from(b64, "base64");
-  const { url } = await storagePut(`generated/${Date.now()}.png`, buffer, "image/png");
+  const { url } = await storagePut(`generated/${Date.now()}.png`, buffer, "image/png", { category: "generated" });
   return { url };
 }

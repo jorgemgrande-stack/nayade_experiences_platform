@@ -40,6 +40,7 @@ import { sendEmail } from "../mailer";
 import { getUserByInviteToken, setUserPassword } from "../db";
 import { getDefaultCashAccountId, createCashMovementIfNotExists } from "./cashRegisterHelper";
 import { legacyDb, legacyPool } from "../_core/legacyDb";
+import { isAcceptableFileUrl } from "../_core/files/service";
 
 // Permisos: lecturas RRHH accesibles para admin (con fallback a rol legacy).
 const hrViewProc = permissionProcedure("hr.view", ["admin"]);
@@ -1173,7 +1174,7 @@ const payslipsRouter = router({
   attachPdf: hrViewProc
     .input(z.object({
       id: z.number(),
-      pdfUrl: z.string().url(),
+      pdfUrl: z.string().refine(isAcceptableFileUrl, "URL no válida"),
       pdfKey: z.string(),
     }))
     .mutation(async ({ input }) => {

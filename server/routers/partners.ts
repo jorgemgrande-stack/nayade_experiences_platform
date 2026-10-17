@@ -180,13 +180,13 @@ async function generatePartnerBillingPdfAndUpload(data: {
   try {
     const pdfBuffer = await htmlToPdf(html);
     const key = `partner-billing/${data.batchNumber}-${Date.now()}.pdf`;
-    const { url } = await storagePut(key, pdfBuffer, "application/pdf");
-    return { url, key };
+    const stored = await storagePut(key, pdfBuffer, "application/pdf", { category: "settlement", originalName: `${data.batchNumber}.pdf`, owner: { type: "partner_batch", id: data.batchNumber } });
+    return { url: stored.url, key: stored.key };
   } catch (pdfErr) {
     console.error("[PDF] Error generando liquidación de partner, guardando HTML como fallback:", pdfErr);
     const key = `partner-billing/${data.batchNumber}-${Date.now()}.html`;
-    const { url } = await storagePut(key, Buffer.from(html), "text/html");
-    return { url, key };
+    const stored = await storagePut(key, Buffer.from(html), "text/html", { category: "settlement", originalName: `${data.batchNumber}.html`, owner: { type: "partner_batch", id: data.batchNumber } });
+    return { url: stored.url, key: stored.key };
   }
 }
 
@@ -839,7 +839,7 @@ export const partnersRouter = router({
           throw new TRPCError({ code: "BAD_REQUEST", message: "El justificante no puede superar 8 MB" });
         }
         const key = `partners/delegacion/${merchantOrder}_${Date.now()}.${ext}`;
-        const stored = await storagePut(key, buffer, input.delegationProof.mimeType);
+        const stored = await storagePut(key, buffer, input.delegationProof.mimeType, { category: "partner-proof", owner: { type: "merchant_order", id: merchantOrder } });
         delegationProofUrl = stored.url;
         delegationProofKey = stored.key;
       }
