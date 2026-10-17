@@ -35,6 +35,11 @@ import { capabilitiesOfTier } from "./catalog/capabilities";
 import { MemoryOrderStore } from "./orchestrator/store";
 import { SignedTestProvider } from "./orchestrator/payments";
 import type { TrialNotifier } from "./trials/onboarding";
+import { MailService, mailRef } from "./mail/service";
+import { MemoryMailStore } from "./mail/store";
+import { memoryProvider } from "./mail/providers";
+import { mailPolicyFromEnv } from "./mail/policy";
+import { PlatformMailer } from "./mail/platform";
 
 const DAY = 86_400_000;
 const WEB = "https://web.example";
@@ -98,6 +103,12 @@ const providerEvent = (payment: { idempotencyKey: string; providerRef: string | 
   const body = JSON.stringify({ id: `evt_test_${++evSeq}`, type, paymentKey: payment.idempotencyKey, providerRef: payment.providerRef, amountCents: payment.amountCents, currency: payment.currency, livemode: false, ...over });
   return { body, sig: provider.sign(body, Math.floor(clock / 1000)) };
 };
+// Correo de plataforma en memoria (live autorizado: dominios .example sintéticos; nada sale a la red)
+const MAIL_TOKEN = "token-de-webhook-ficticio-orquestador-0000000"; // gitleaks:allow
+const mailStore = new MemoryMailStore();
+const mailProvider = memoryProvider();
+const mailPolicy = mailPolicyFromEnv({ MAIL_MODE: "live", MAIL_LIVE_AUTHORIZED: "1", MAIL_SENDING_DOMAIN: "envios.example" } as NodeJS.ProcessEnv);
+const platformMail = new PlatformMailer(new MailService({ lane: "platform", store: mailStore, provider: mailProvider, policy: mailPolicy, now: () => clock }), mailPolicy);
 const webhook = (e: { body: string; sig: string }) => call("POST", "/payments/test/webhook", { token: null, raw: e.body, headers: { "x-test-signature": e.sig } });
 
 beforeAll(async () => {
@@ -138,6 +149,7 @@ beforeAll(async () => {
     trials: { store: trialStore, publicEnabled: true, autoProvision: true, notify },
     orders: { store: orders, payments: provider },
     publicIntake: { origins: [WEB], secret: SECRET, now: () => clock, perIp: 100 },
+    mail: { platform: platformMail, webhookToken: MAIL_TOKEN },
   });
   server = http.createServer(app);
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
@@ -437,5 +449,27 @@ describe("B. cliente nuevo desde la web: aprobación administrativa, cambio de p
     expect(rev.cascaded).toBe(1);
     expect((await ok(call("GET", `/orders/${r.order.id}`))).order.state).toBe("cancel_scheduled");
     expect((await subsStore.get(a.order.subscriptionId))!.cancelAt).not.toBeNull();
+  });
+});
+
+describe("D. avisos por correo de los eventos del pedido (bandeja de plataforma)", () => {
+  it("pago de prueba, alta de la plataforma, contratación y cancelación generan su aviso, una vez y al contacto de la empresa", async () => {
+    await new Promise((r) => setTimeout(r, 20)); // los avisos se encolan sin esperar a la transición
+    const tags = mailProvider.sent.map((m) => m.tag);
+    for (const t of ["test_payment_confirmed", "contract_confirmed", "tenant_welcome", "cancellation"]) expect(tags).toContain(t);
+    expect(new Set(mailStore.rows.map((r) => `${r.tenantId}:${r.idempotencyKey}`)).size).toBe(mailStore.rows.length);
+    expect(mailProvider.sent.every((m) => m.from.email === "no-reply@envios.example" && m.from.name === "Elephant Source")).toBe(true);
+    expect(mailProvider.sent.find((m) => m.tag === "test_payment_confirmed")!.text).toMatch(/ningún cargo real/);
+    expect(JSON.stringify(mailProvider.sent)).not.toMatch(/n[aá]yade/i);
+  });
+
+  it("webhook de Brevo montado en el plano de control: sin la cabecera no cambia nada; con ella, aplica el evento", async () => {
+    const row = mailStore.rows.find((r) => r.status === "accepted")!;
+    const ev = { event: "delivered", "message-id": row.providerMessageId, ts_epoch: 1, "X-Mailin-custom": mailRef("platform", row.tenantId, row.id) };
+    expect((await call("POST", "/mail/brevo/webhook", { token: null, body: ev })).status).toBe(401);
+    expect(mailStore.rows.find((r) => r.id === row.id)!.status).toBe("accepted");
+    const r = await call("POST", "/mail/brevo/webhook", { token: null, body: ev, headers: { "x-elephant-webhook-token": MAIL_TOKEN } });
+    expect(r).toMatchObject({ status: 200, json: { applied: 1 } });
+    expect(mailStore.rows.find((x) => x.id === row.id)!.status).toBe("delivered");
   });
 });

@@ -240,7 +240,7 @@ jobs:
           server/productIdentity server/creditNoteNumber server/sdk server/skiRental
           server/tenantIdentity server/inventoryHolds server/orchestrator server/panelEssential
           server/tscBaseline server/securityLaunch server/setupWizard server/pulidoEssential
-          server/blog server/fileStorage
+          server/blog server/fileStorage server/mail/
 
       # Las pruebas con MySQL comparten una base de datos: se ejecutan una a una
       - name: Suites de integración con MySQL real (en serie)

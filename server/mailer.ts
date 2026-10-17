@@ -26,6 +26,7 @@ const maskTo = (to: string | string[]) => (Array.isArray(to) ? to : [to]).map(ma
 import { isMultiTenant } from "./_core/tenant";
 import { getSystemSettingSync } from "./config";
 import { brandName, tenantCommsConfig } from "./tenantBrand";
+import type { MailCategory } from "./mail/types";
 import { readStoredFile } from "./storage";
 import { objectIdFromUrl } from "./_core/files/service";
 
@@ -42,6 +43,10 @@ export interface MailParams {
    * CONTENIDO (el proveedor de correo no puede descargarlo); el resto se adjunta por URL.
    */
   attachments?: { name: string; url: string; content?: Buffer }[];
+  /** Tipo de aviso (servicio de correo centralizado: trazas y límites). */
+  category?: MailCategory;
+  /** Clave de idempotencia: el mismo aviso con la misma clave sale una sola vez. */
+  idempotencyKey?: string;
 }
 
 // ─── Helper: parsea el SMTP_FROM en nombre + email ───────────────────────────
@@ -246,6 +251,16 @@ export async function sendEmail(params: MailParams): Promise<boolean> {
     }
   }
   const enriched = mergeGlobalCc(await resolveOwnAttachments(params));
+
+  // Servicio centralizado (bandeja de salida, MAIL_MODE off|sandbox|live, idempotencia, límites y
+  // remitente de plataforma por empresa): siempre en multiempresa; en single solo si se define
+  // MAIL_MODE. Sin MAIL_MODE, la instalación única sigue exactamente como antes (docs/runbooks/CORREO_BREVO.md).
+  const { sendTenantMail, usesMailService } = await import("./mail/tenantMail");
+  if (usesMailService()) {
+    const ok = await sendTenantMail(enriched);
+    meter(Metrics.EMAIL_SENT, 1, "count", { channel: "outbox", ok });
+    return ok;
+  }
 
   // Intentar primero con Brevo API
   if (process.env.BREVO_API_KEY) {

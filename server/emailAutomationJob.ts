@@ -582,5 +582,12 @@ export function startEmailAutomationJob(): void {
     } catch (err: any) {
       log("error", "Error inesperado en EmailAutomationJob", { stack: err?.stack });
     }
+    // Reintentos vencidos de la bandeja de salida de la empresa (servicio de correo centralizado)
+    try {
+      const { drainTenantOutbox, usesMailService } = await import("./mail/tenantMail");
+      if (usesMailService()) await drainTenantOutbox();
+    } catch (err: any) {
+      log("error", "Error al reintentar la bandeja de salida", { error: err?.name ?? "error" });
+    }
   });
 }

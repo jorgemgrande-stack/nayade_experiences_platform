@@ -26,6 +26,11 @@ export function createContractActivation(deps: {
   actor: Actor;
   /** Plantilla de sitio por defecto. */
   templateId?: string;
+  /**
+   * Bienvenida de la empresa (alta asistida) con el enlace para definir la contraseña del administrador.
+   * Solo cuando el alta acaba de crear al administrador (hay token). Un fallo del aviso nunca rompe el alta.
+   */
+  notifyWelcome?: (to: string, info: { tenantId: string; companyName: string; domain: string | null; inviteToken: string }) => Promise<void>;
 }): ContractActivationPort {
   return {
     async activate({ contract, company, contact }) {
@@ -46,6 +51,8 @@ export function createContractActivation(deps: {
       if (r.status !== "completed") {
         throw new Error(`El alta no se completó (${r.failedStep ?? "pendiente"}): ${r.error ?? "reintentar"}`);
       }
+      if (deps.notifyWelcome && r.adminInviteToken)
+        await deps.notifyWelcome(contact.email, { tenantId, companyName: company.name, domain: r.domain ?? `${tenantId}.${deps.platformDomain}`, inviteToken: r.adminInviteToken }).catch(() => undefined);
       if (deps.billing && contract.planId) {
         try {
           await deps.billing.startTrial({ tenantId, planId: contract.planId, modules: contract.modules });

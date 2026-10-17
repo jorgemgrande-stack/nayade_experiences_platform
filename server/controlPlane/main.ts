@@ -38,6 +38,8 @@ import { MysqlCapabilityStore } from "../_core/capabilities/store";
 import { MysqlTrialStore } from "../trials/store";
 import { trialNotifierFromEnv } from "../trials/emailNotifier";
 import type { TrialNotifier } from "../trials/onboarding";
+import { platformMailFromEnv, tenantLaneResolver } from "../mail/platform";
+import { brevoDiagnostics, mailProviderFromEnv } from "../mail/providers";
 import { MysqlOrganizationStore } from "../organization/service";
 import { MysqlOrderStore } from "../orchestrator/store";
 import { testPaymentsFromEnv, type TestPaymentPort } from "../orchestrator/payments";
@@ -166,12 +168,22 @@ async function main() {
   const crmPool = process.env.CRM_DATABASE_URL
     ? mysql.createPool({ uri: process.env.CRM_DATABASE_URL, ...fixedPoolOptions("CP_CRM_POOL_CONNECTIONS", 8) })
     : null;
+  // Correo de plataforma (CRM 0011): MAIL_MODE off por defecto; sandbox solo a MAIL_SANDBOX_ALLOWLIST;
+  // live solo con MAIL_LIVE_AUTHORIZED=1. Ver docs/runbooks/CORREO_BREVO.md.
+  const platformMail = await platformMailFromEnv(crmPool, process.env);
+  const mailPolicy = platformMail.policy;
+  console.log(JSON.stringify({ ctx: "Mail", outbox: !!platformMail.mailer, mode: mailPolicy.mode, provider: mailProviderFromEnv(process.env)?.name ?? null, sendingDomain: mailPolicy.sendingDomain, webhook: (process.env.BREVO_WEBHOOK_TOKEN ?? "").length >= 32, ...(mailPolicy.degradedReason ? { degradedReason: mailPolicy.degradedReason } : {}), ...(platformMail.reason ? { reason: platformMail.reason } : {}) }));
+  if (platformMail.mailer) {
+    const every = Math.max(30, Number(process.env.CP_MAIL_DRAIN_EVERY_SECONDS ?? 60) || 60) * 1000;
+    const t = setInterval(() => void platformMail.mailer!.service.drain(50).catch(() => undefined), every);
+    t.unref?.();
+  }
   let crm: { service: CrmService; store: MysqlCrmStore } | undefined;
   if (crmPool) {
     const store = new MysqlCrmStore(crmPool);
     const activation =
       provisioning && process.env.CP_PLATFORM_DOMAIN
-        ? createContractActivation({ provisioning, platformDomain: process.env.CP_PLATFORM_DOMAIN, actor: { type: "crm", id: "crm-contracts" } })
+        ? createContractActivation({ provisioning, platformDomain: process.env.CP_PLATFORM_DOMAIN, actor: { type: "crm", id: "crm-contracts" }, notifyWelcome: platformMail.mailer?.assistedWelcome() })
         : undefined;
     crm = { service: new CrmService({ store, activation }), store };
   }
@@ -227,7 +239,8 @@ async function main() {
   if (crmPool && subscriptions) {
     const trialPool = crmPool;
     const ready = await trialPool.query("SELECT 1 FROM trial_requests LIMIT 0").then(() => true, () => false);
-    const email = ready ? trialNotifierFromEnv(process.env) : null;
+    // Con la bandeja de plataforma, los avisos de la prueba salen por ella; si no, el notificador SMTP propio
+    const email = !ready ? null : platformMail.mailer ? { notifier: platformMail.mailer.trialNotifier(), mode: mailPolicy.mode, provider: "outbox", reason: undefined as string | undefined } : trialNotifierFromEnv(process.env);
     if (ready) trials = { store: new MysqlTrialStore(trialPool), publicEnabled: process.env.CP_PUBLIC_TRIAL_ENABLED === "1", autoProvision: process.env.CP_TRIAL_AUTO_PROVISION === "1", notify: email?.notifier };
     console.log(JSON.stringify({ ctx: "Trials", enabled: ready, publicEnabled: trials?.publicEnabled ?? false, autoProvision: trials?.autoProvision ?? false, email: { mode: email?.mode ?? "off", provider: email?.provider ?? null, ...(email?.reason ? { reason: email.reason } : {}) }, ...(ready ? {} : { reason: "migration_0007_missing" }) }));
   }
@@ -284,6 +297,12 @@ async function main() {
     trials,
     organization,
     orders,
+    mail: {
+      platform: platformMail.mailer,
+      webhookToken: process.env.BREVO_WEBHOOK_TOKEN ?? null,
+      tenantLane: tenantLaneResolver({ dsnOf: (id) => registry.getActiveDsn(id), policy: mailPolicy }),
+      diagnostics: process.env.BREVO_API_KEY ? () => brevoDiagnostics({ apiKey: process.env.BREVO_API_KEY!, sendingDomain: mailPolicy.sendingDomain, baseUrl: process.env.BREVO_API_BASE_URL }) : undefined,
+    },
   });
 
   const port = Number(process.env.CP_PORT ?? 4100);

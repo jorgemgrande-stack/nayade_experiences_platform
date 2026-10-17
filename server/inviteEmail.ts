@@ -13,6 +13,7 @@ export async function sendInviteEmail(params: {
   const sent = await sendEmail({
     to: params.email,
     subject: inviteSubject,
+    category: "user_invite",
     html: buildInviteHtml({
       name: params.name,
       role: params.role,
