@@ -71,12 +71,14 @@
 - **B7:** ámbito de la relectura.
 - **B8:** clave restringida en producción.
 
-**Pendiente:**
-- **B2 (bajo):** una sesión huérfana bloquea su clave de idempotencia durante 24 h.
-- **B4 (bajo):** reembolsos y disputas, que no se procesan.
-- **B9 (bajo):** prefijo de entorno en las claves de idempotencia.
-- **Purga** de `stripe_events` antiguos.
-- **`unpaid`** suspende (no deja en solo lectura). Es coherente con las suspensiones existentes y no borra datos.
+**Resuelto el 18/10/2026** (detalle en `PREPARACION_DESPLIEGUE_STRIPE.md` §2):
+- **B2:** una sesión huérfana repetida por Stripe se registra cerrada y se usa la clave siguiente.
+- **B4:** reembolsos y disputas. Con la cobertura perdida, el pedido queda suspendido y retenido hasta un pago nuevo, una disputa ganada o un operador.
+- **B9:** prefijo del entorno en las claves y en `metadata.es_env`.
+- **Purga** diaria de los eventos terminados, con retención mínima de 35 días y constancia.
+- **Alertas:** las `stripe.*` ahora abren incidencia (antes se descartaban por no tener regla).
+
+**Se mantiene:** `unpaid` suspende (no deja en solo lectura). Es coherente con las suspensiones existentes y no borra datos.
 
 ## 5. Customer Portal: reglas provisionales y cómo las soporta Stripe
 

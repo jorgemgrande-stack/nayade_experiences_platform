@@ -102,6 +102,10 @@ Todas las tablas con datos de Stripe llevan `CHECK (livemode = 0)`: **la base de
 | `product_read` | Lectura | Leer Products |
 | `customer_portal_write` | Escritura | Crear sesiones del Customer Portal (Stripe no separa sesiones y configuraciones) |
 | `event_read` | Lectura | Conciliación: listar los eventos perdidos |
+| `charge_read` | Lectura | Reembolsos y disputas: releer el cargo y sus reembolsos (añadido el 18/10/2026) |
+| `dispute_read` | Lectura | Reembolsos y disputas: estado de la disputa (añadido el 18/10/2026) |
+
+`invoice_read` cubre también `GET /v1/invoice_payments` (factura de un cargo).
 
 Todo lo demás en **Ninguno**. En particular, sin `subscription_write` (los cambios y cancelaciones los hace el cliente en el Portal), sin `plan_write` ni `product_write`, y sin `webhook_*`.
 
@@ -120,7 +124,8 @@ Se obtiene al crear el destino de webhooks en Workbench (sandbox), **en la Fase 
 - **Eventos:**
   - `checkout.session.completed`, `checkout.session.expired`, `checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed`;
   - `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`, `customer.subscription.paused`, `customer.subscription.resumed`;
-  - `invoice.paid`, `invoice.payment_failed`, `invoice.payment_action_required`.
+  - `invoice.paid`, `invoice.payment_failed`, `invoice.payment_action_required`;
+  - `charge.refunded`, `charge.refund.updated`, `charge.dispute.created`, `charge.dispute.updated`, `charge.dispute.closed`, `charge.dispute.funds_reinstated` (añadidos el 18/10/2026).
 
 ### Variable 4: `CP_STRIPE_MODE=test`. Solo en `controlplane`
 

@@ -3,7 +3,8 @@
 Estado: **preparado y probado en local/CI; NO desplegado ni activado.** Nada de esto cambia el
 comportamiento de producción mientras no se den los pasos de la sección «Activación». El correo sigue
 apagado (`MAIL_MODE=off`), el registro público sigue apagado (`CP_PUBLIC_TRIAL_ENABLED` sin definir) y la
-tarea programada está apagada por defecto y **no está conectada** en `server/controlPlane/main.ts`.
+tarea programada está apagada por defecto. Desde el 18/10/2026 **está conectada** en `server/controlPlane/main.ts`
+(solo arranca con `CP_TRIALS_SCHEDULER_ENABLED=1`).
 
 Código: `server/trials/*` (servicio, máquina de estados, almacén, rutas, tarea programada),
 `server/mail/platform.ts` y `server/mail/templates.ts` (bandeja de salida de plataforma).
@@ -125,12 +126,12 @@ nada (probado).
 |---|---|---|
 | `CP_TRIALS_SCHEDULER_ENABLED` | sin definir (apagado) | `1` exacto activa la tarea programada (si está montada en `main.ts`) |
 | `CP_TRIALS_SCHEDULER_INTERVAL_MS` | `900000` (15 min) | Intervalo entre ticks; se acota a 1 min – 24 h |
-| `CP_TRIAL_BLOCKED_DOMAINS` | vacío | Dominios de correo adicionales rechazados en el alta (separados por comas). **Preparada, sin efecto todavía**: hay que pasar `blockedDomains: blockedDomainsFromEnv(process.env)` al crear `TrialService` (en `server/controlPlane/api.ts`, que no se ha tocado) |
+| `CP_TRIAL_BLOCKED_DOMAINS` | vacío | Dominios de correo adicionales rechazados en el alta (separados por comas). **Conectada** el 18/10/2026 (`main.ts` → `api.ts`) |
 
 Existentes que intervienen: `CP_PUBLIC_TRIAL_ENABLED` (monta también `/resend`), `CP_TRIAL_VERIFY_URL`,
 `CP_TRIAL_PRICING_URL`, `MAIL_MODE` y compañía.
 
-## Cómo montar la tarea programada (NO conectada todavía)
+## Cómo se monta la tarea programada (conectada el 18/10/2026)
 
 `server/controlPlane/main.ts` lo está editando otra persona; para no generar conflictos no se ha tocado.
 Montaje sugerido, justo después del bloque `// Prueba gratuita de Essential` (donde se crea `trials`):
@@ -201,10 +202,8 @@ Local: `REGISTRY_TEST_DATABASE_URL=mysql://root:<clave>@127.0.0.1:<puerto>/mysql
 
 ## Pendientes y riesgos conocidos
 
-- **Tarea no conectada** en `main.ts` (decisión para no chocar con la otra rama); hasta entonces el
-  vencimiento y los avisos siguen siendo manuales.
-- `CP_TRIAL_BLOCKED_DOMAINS` no está conectada: el servicio se construye en `server/controlPlane/api.ts`
-  (fuera del perímetro de esta rama). La lista corta de desechables sí aplica ya.
+- La tarea ya está conectada (18/10/2026), pero **apagada** hasta `CP_TRIALS_SCHEDULER_ENABLED=1`; mientras, el
+  vencimiento y los avisos siguen siendo manuales. Sin notificador, el aviso de vencimiento solo queda en el log.
 - **Puntos de Gmail** (`a.na@gmail.com` = `ana@gmail.com`) no se normalizan: requeriría una columna
   canónica (migración). Acotado por el límite por IP.
 - Dos altas **simultáneas** con alias distintos del mismo buzón (`ana+1@` y `ana+2@` en el mismo
