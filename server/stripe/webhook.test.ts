@@ -16,7 +16,7 @@ import type { StripeConfig } from "./config";
 // Valores ficticios construidos en tiempo de ejecución (no son credenciales)
 const SECRET = ["whsec", "z".repeat(32)].join("_");
 const OTHER = ["whsec", "q".repeat(32)].join("_");
-const config: StripeConfig = { mode: "test", apiKey: ["sk", "test", "x".repeat(24)].join("_"), webhookSecret: SECRET, apiVersion: "2026-09-30.endive", keyKind: "secret" };
+const config: StripeConfig = { mode: "test", apiKey: ["sk", "test", "x".repeat(24)].join("_"), webhookSecret: SECRET, apiVersion: "2026-09-30.endive", keyKind: "secret", namespace: "local", eventsRetentionDays: 180 };
 const sdk = new Stripe(config.apiKey, { apiVersion: "2026-09-30.endive" as Stripe.LatestApiVersion });
 
 const event = (over: Record<string, unknown> = {}) =>
@@ -99,7 +99,7 @@ describe("webhook de Stripe: firma y cuerpo original", () => {
   });
 
   it("8. tipo no gestionado: 200 sin guardar", async () => {
-    const body = event({ type: "charge.refunded", id: "evt_test_other000001" });
+    const body = event({ type: "customer.created", id: "evt_test_other000001" });
     expect((await post(body, { "stripe-signature": sign(body) })).json).toEqual({ received: true, ignored: true });
     expect(store.events.size).toBe(0);
   });

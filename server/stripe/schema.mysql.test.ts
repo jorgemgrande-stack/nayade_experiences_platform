@@ -70,8 +70,8 @@ describe.skipIf(!URL_)("migración 0012_stripe_billing con MySQL real", () => {
     await admin?.end();
   });
 
-  it("crea las seis tablas", async () => {
-    expect(await tables()).toEqual(["stripe_checkout_sessions", "stripe_customers", "stripe_events", "stripe_prices", "stripe_subscriptions", "stripe_sync_state"]);
+  it("crea las siete tablas", async () => {
+    expect(await tables()).toEqual(["stripe_charge_adjustments", "stripe_checkout_sessions", "stripe_customers", "stripe_events", "stripe_prices", "stripe_subscriptions", "stripe_sync_state"]);
   });
 
   it("la BD rechaza filas live en todas las tablas con datos de Stripe", async () => {
@@ -123,6 +123,6 @@ describe.skipIf(!URL_)("migración 0012_stripe_billing con MySQL real", () => {
     const [rows] = (await pool.query(`SELECT COUNT(*) n FROM commercial_orders`)) as unknown as [{ n: number }[]];
     expect(Number(rows[0].n)).toBe(1);
     await run(stripe.up);
-    expect((await tables()).length).toBe(6);
+    expect((await tables()).length).toBe(7);
   });
 });

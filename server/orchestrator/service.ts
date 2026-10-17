@@ -64,6 +64,8 @@ export interface OrchestratorDeps {
   capabilities: CapabilityStore;
   platform?: PlatformPort;
   trials?: TrialService;
+  /** ¿El cobro del pedido está revertido en Stripe (reembolso total o disputa perdida)? Entonces no se activa. */
+  coverageHeld?: (orderId: number) => Promise<boolean>;
   payments?: TestPaymentPort | null;
   graceDays?: number;
   now?: () => number;
@@ -251,6 +253,10 @@ export class CommercialOrchestrator {
     for (let guard = 0; guard < 12; guard++) {
       const o = await this.must(id);
       try {
+        // Un pago revertido en Stripe no da de alta ni activa nada (tampoco desde /review o /advance)
+        if ((o.state === "confirmed" || o.state === "subscribed" || o.state === "licensed") && this.d.coverageHeld && (await this.d.coverageHeld(o.id))) {
+          throw new OrderError("invalid_state", "El cobro de este pedido se revirtió en Stripe (reembolso o disputa): no se activa");
+        }
         switch (o.state) {
           case "requested":
             await this.stepQuote(o, actor);
@@ -767,8 +773,12 @@ export class CommercialOrchestrator {
    * cancelación programada, reactivación y fin de la suscripción. Idempotente: el mismo estado aplicado
    * dos veces no cambia nada. Los pedidos aún en alta o ya terminados no se tocan. Nunca borra datos:
    * lo peor es solo lectura.
+   *
+   * `coverageLost`: el cobro que cubría el periodo se ha revertido (reembolso total o disputa perdida). El
+   * pedido se suspende aunque Stripe siga mostrando la suscripción activa, y NO se reactiva solo mientras
+   * dure la retención (la levanta un pago nuevo, una disputa ganada o un operador).
    */
-  async applyExternalBilling(id: number, s: { status: "active" | "past_due" | "unpaid" | "canceled"; cancelAt: number | null }, actor: string): Promise<{ order: CommercialOrder; changed: OrderAction[] }> {
+  async applyExternalBilling(id: number, s: { status: "active" | "past_due" | "unpaid" | "canceled"; cancelAt: number | null; coverageLost?: boolean }, actor: string): Promise<{ order: CommercialOrder; changed: OrderAction[] }> {
     let o = await this.must(id);
     const changed: OrderAction[] = [];
     if (!LIVE.includes(o.state) && o.state !== "cancel_scheduled") return { order: o, changed };
@@ -785,6 +795,17 @@ export class CommercialOrchestrator {
       }
       const n = await this.markLicences(o, "read_only", actor, `Fin de la suscripción (pedido ${o.reference}): solo lectura, los datos se conservan`);
       await step("cancelled", { graceEndsAt: null }, { licencesReadOnly: n });
+      return { order: o, changed };
+    }
+    if (s.coverageLost) {
+      const reason = `Cobro revertido en Stripe (pedido ${o.reference}): acceso suspendido, los datos se conservan`;
+      if (o.state === "active") await step("payment_failed", { graceEndsAt: this.now() }, { reason: "coverage_lost", graceEndsAt: this.now() });
+      if (o.state === "past_due") {
+        await step("suspend", {}, { reason: "Cobro revertido (reembolso total o disputa perdida)" });
+        await this.syncLicences(o, actor, reason);
+      }
+      if (o.state === "cancel_scheduled" && (await this.markLicences(o, "suspended", actor, reason))) changed.push("suspend");
+      // Sin recuperación, reactivación ni cambios de fecha mientras dure la retención
       return { order: o, changed };
     }
     if (s.status === "active" && (o.state === "past_due" || o.state === "suspended")) {

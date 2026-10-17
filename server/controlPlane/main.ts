@@ -37,6 +37,8 @@ import { MysqlSubscriptionStore } from "../subscriptions/store";
 import { MysqlCapabilityStore } from "../_core/capabilities/store";
 import { MysqlTrialStore } from "../trials/store";
 import { trialNotifierFromEnv } from "../trials/emailNotifier";
+import { TrialScheduler, mysqlAdvisoryLock, startTrialScheduler } from "../trials/scheduler";
+import { blockedDomainsFromEnv } from "../trials/service";
 import type { TrialNotifier } from "../trials/onboarding";
 import { platformMailFromEnv, tenantLaneResolver } from "../mail/platform";
 import { brevoDiagnostics, mailProviderFromEnv } from "../mail/providers";
@@ -62,6 +64,7 @@ import { IncidentService, MysqlIncidentStore, webhookNotifier } from "../_core/o
 import { MysqlTicketStore, TicketService } from "../_core/support/tickets";
 import { runAlerts } from "../_core/ops/alerts";
 import { FailureAlerts, configureFailureAlerts } from "../_core/ops/failureAlerts";
+import { STRIPE_FAILURE_RULES } from "../stripe/alerts";
 import { SsoService, parseSsoUsers } from "./sso";
 import { createRemoteJWKSet } from "jose";
 import { operatorAuthFromEnv } from "./operatorSetup";
@@ -136,7 +139,7 @@ async function main() {
     process.env.CP_ALERT_WEBHOOK ? webhookNotifier(process.env.CP_ALERT_WEBHOOK) : undefined,
   );
   // Alertas por repetición de fallos (altas, correo, contratación): incidencias deduplicadas `rate:*`
-  configureFailureAlerts(new FailureAlerts({ incidents }));
+  configureFailureAlerts(new FailureAlerts({ incidents, rules: STRIPE_FAILURE_RULES }));
   // Inventario de copias (registro 0010): alimenta la alerta backup.stale y /cp/v1/backups
   const backupsReady = await pool.query("SELECT 1 FROM backup_inventory LIMIT 0").then(() => true, () => false);
   const backupInventory = backupsReady ? new MysqlBackupInventory(pool) : undefined;
@@ -239,14 +242,20 @@ async function main() {
   // públicas y la activación automática solo con CP_PUBLIC_TRIAL_ENABLED=1 / CP_TRIAL_AUTO_PROVISION=1.
   // No se envía ningún correo salvo con CP_TRIAL_EMAIL_MODE=sandbox|live y SMTP configurado; por defecto el
   // aviso solo deja constancia sin datos personales.
-  let trials: { store: MysqlTrialStore; publicEnabled: boolean; autoProvision: boolean; notify?: TrialNotifier } | undefined;
+  let trials: { store: MysqlTrialStore; publicEnabled: boolean; autoProvision: boolean; notify?: TrialNotifier; blockedDomains: string[] } | undefined;
   if (crmPool && subscriptions) {
     const trialPool = crmPool;
     const ready = await trialPool.query("SELECT 1 FROM trial_requests LIMIT 0").then(() => true, () => false);
     // Con la bandeja de plataforma, los avisos de la prueba salen por ella; si no, el notificador SMTP propio
     const email = !ready ? null : platformMail.mailer ? { notifier: platformMail.mailer.trialNotifier(), mode: mailPolicy.mode, provider: "outbox", reason: undefined as string | undefined } : trialNotifierFromEnv(process.env);
-    if (ready) trials = { store: new MysqlTrialStore(trialPool), publicEnabled: process.env.CP_PUBLIC_TRIAL_ENABLED === "1", autoProvision: process.env.CP_TRIAL_AUTO_PROVISION === "1", notify: email?.notifier };
+    if (ready) trials = { store: new MysqlTrialStore(trialPool), publicEnabled: process.env.CP_PUBLIC_TRIAL_ENABLED === "1", autoProvision: process.env.CP_TRIAL_AUTO_PROVISION === "1", notify: email?.notifier, blockedDomains: blockedDomainsFromEnv(process.env) };
     console.log(JSON.stringify({ ctx: "Trials", enabled: ready, publicEnabled: trials?.publicEnabled ?? false, autoProvision: trials?.autoProvision ?? false, email: { mode: email?.mode ?? "off", provider: email?.provider ?? null, ...(email?.reason ? { reason: email.reason } : {}) }, ...(ready ? {} : { reason: "migration_0007_missing" }) }));
+    // Tarea programada de vencimiento y avisos: APAGADA salvo CP_TRIALS_SCHEDULER_ENABLED=1. Una sola réplica
+    // trabaja en cada tick (GET_LOCK); nunca suspende, cancela ni borra. Sin notificador, los avisos solo se registran.
+    if (trials) {
+      const notify = trials.notify ?? { expiryNotice: async (_to: string, i: { trialId: number; daysLeft: number }) => void console.log(JSON.stringify({ ctx: "Trials", event: "expiry_notice_not_sent", trialId: i.trialId, daysLeft: i.daysLeft })) };
+      startTrialScheduler({ scheduler: new TrialScheduler({ store: trials.store, notify, lock: mysqlAdvisoryLock(trialPool) }), env: process.env });
+    }
   }
 
   // Orquestador comercial: APAGADO salvo CP_ORCHESTRATOR_ENABLED=1 y con la migración 0010 del CRM.
@@ -273,9 +282,18 @@ async function main() {
     const termsVersion = (process.env.CP_TERMS_VERSION ?? "").trim() || null;
     // Sin proxy de confianza los límites por IP del webhook serían comunes a todo el tráfico
     const trustProxyOk = process.env.NODE_ENV !== "production" || !!process.env.CP_TRUST_PROXY;
-    const ready = trustProxyOk && !!orders && !!crmPool && (await crmPool.query("SELECT 1 FROM stripe_prices LIMIT 0").then(() => true, () => false));
+    const migrated = trustProxyOk && !!orders && !!crmPool && (await crmPool.query("SELECT 1 FROM stripe_prices LIMIT 0").then(() => true, () => false));
+    // El prefijo del entorno no puede cambiar: los objetos ya creados en Stripe dejarían de reconocerse
+    let namespaceOk = true;
+    if (migrated) {
+      const st = new MysqlStripeStore(crmPool!);
+      const saved = await st.getState("namespace");
+      if (!saved) await st.setState("namespace", { namespace: stripeConfig.namespace }, Date.now());
+      else namespaceOk = saved.namespace === stripeConfig.namespace;
+    }
+    const ready = migrated && namespaceOk;
     if (ready) stripe = { config: stripeConfig, store: new MysqlStripeStore(crmPool!), gateway: stripeGateway(stripeConfig), urls, checkoutEnabled, verifyWebhook: stripeWebhookVerifier(stripeConfig), workerEnabled, publicStatus, selfService, termsVersion };
-    console.log(JSON.stringify({ ctx: "Stripe", ...describeStripeConfig(stripeConfig), mounted: ready, checkout: ready && checkoutEnabled && !!urls, worker: ready && workerEnabled, publicStatus: ready && publicStatus, selfService: ready && selfService, termsPublished: !!termsVersion, ...(ready ? {} : { reason: !trustProxyOk ? "trust_proxy_missing" : !orders ? "orders_not_enabled" : "migration_0012_missing" }) }));
+    console.log(JSON.stringify({ ctx: "Stripe", ...describeStripeConfig(stripeConfig), mounted: ready, checkout: ready && checkoutEnabled && !!urls, worker: ready && workerEnabled, publicStatus: ready && publicStatus, selfService: ready && selfService, termsPublished: !!termsVersion, ...(ready ? {} : { reason: !trustProxyOk ? "trust_proxy_missing" : !orders ? "orders_not_enabled" : !migrated ? "migration_0012_missing" : "namespace_changed" }) }));
   }
 
   // API pública de captación de la web comercial: solo con CRM, orígenes explícitos y secreto propio

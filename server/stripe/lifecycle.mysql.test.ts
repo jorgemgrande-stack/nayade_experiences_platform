@@ -102,6 +102,7 @@ describe.skipIf(!URL_)("Stripe Billing de punta a punta con MySQL real", () => {
       catalog, quote: async (r) => quote(await site(), r),
       licensing: new LicensingService({ capabilities: caps, subscriptions: subsStore, crm: crmPort, catalog: site, now: () => clock }),
       capabilities: caps, platform, payments: null, now: () => clock,
+      coverageHeld: async (id) => (await stripeStore.activeHolds(id)).length > 0,
     });
     // Catálogo de Stripe tal como lo crearía una persona (plan de escrituras) y enlazado (solo lectura)
     stripeStore = new MysqlStripeStore(pool);
@@ -402,5 +403,172 @@ describe.skipIf(!URL_)("Stripe Billing de punta a punta con MySQL real", () => {
     const cur = await svc.must(o.id);
     expect(cur.state).toBe("cancel_scheduled");
     expect((await licences(cur.tenantId!)).every((x) => x === "active")).toBe(true);
+  });
+
+  // ── Reembolsos y disputas (B4) ─────────────────────────────────────────────
+  const chargeOf = async (subId: string) => gw.chargeForInvoice((await gw.subscription(subId))!.latestInvoiceId!);
+  const adj = async (chargeId: string) => stripeStore.adjustment(chargeId);
+
+  it("B4: reembolso total del periodo vigente → suspendido aunque Stripe siga «active»; la relectura no lo reactiva; un pago nuevo sí", async () => {
+    const o = await contracted(await company("Reembolso Total SL"));
+    const { subId } = await paid(o.id);
+    const ch = await chargeOf(subId);
+    gw.refund(ch);
+    await deliver(gw.emit("charge.refunded", "charge", ch));
+    const sus = await svc.must(o.id);
+    expect(sus.state).toBe("suspended");
+    expect((await licences(sus.tenantId!)).every((x) => x === "suspended")).toBe(true);
+    expect(await adj(ch)).toMatchObject({ coverageLost: true, resolvedAt: null, orderId: o.id });
+    // Stripe sigue mostrando la suscripción activa: ni la relectura ni la conciliación la reactivan
+    await subChange(subId, {});
+    await processor.handleSubscription(subId);
+    expect((await svc.must(o.id)).state).toBe("suspended");
+    // Nada se borra: la empresa, el contrato y las licencias siguen ahí (suspendidas)
+    expect((await licences(sus.tenantId!)).length).toBeGreaterThan(0);
+    // Pago nuevo (siguiente factura): la retención se levanta y vuelve el acceso
+    const inv = gw.addInvoice(subId, (await gw.subscription(subId))!.customerId, "subscription_cycle", "paid", 2900);
+    await deliver(gw.emit("invoice.paid", "invoice", inv));
+    const back = await svc.must(o.id);
+    expect(back.state).toBe("active");
+    expect((await licences(back.tenantId!)).every((x) => x === "active")).toBe(true);
+    expect((await adj(ch))?.resolvedAt).not.toBeNull();
+  });
+
+  it("B4: reembolso parcial → sigue activo, queda registrado y avisa", async () => {
+    const o = await contracted(await company("Reembolso Parcial SL"));
+    const { subId } = await paid(o.id);
+    const ch = await chargeOf(subId);
+    const re = gw.refund(ch, 500);
+    await deliver(gw.emit("charge.refund.updated", "refund", re));
+    expect((await svc.must(o.id)).state).toBe("active");
+    expect(await adj(ch)).toMatchObject({ coverageLost: false, amountRefundedCents: 500, amountCents: 2900 });
+  });
+
+  it("B4: disputa abierta → activo (aviso); disputa ganada → activo; disputa perdida → suspendido", async () => {
+    const o = await contracted(await company("Disputa SL"));
+    const { subId } = await paid(o.id);
+    const ch = await chargeOf(subId);
+    const dp = gw.dispute(ch, "needs_response");
+    await deliver(gw.emit("charge.dispute.created", "dispute", dp));
+    expect((await svc.must(o.id)).state).toBe("active");
+    expect((await adj(ch))?.disputeStatus).toBe("needs_response");
+    gw.dispute(ch, "won", dp);
+    await deliver(gw.emit("charge.dispute.closed", "dispute", dp));
+    expect((await svc.must(o.id)).state).toBe("active");
+    // Otra empresa: disputa perdida
+    const o2 = await contracted(await company("Disputa Perdida SL"));
+    const p2 = await paid(o2.id);
+    const ch2 = await chargeOf(p2.subId);
+    const dp2 = gw.dispute(ch2, "under_review");
+    await deliver(gw.emit("charge.dispute.created", "dispute", dp2));
+    gw.dispute(ch2, "lost", dp2);
+    await deliver(gw.emit("charge.dispute.closed", "dispute", dp2));
+    expect((await svc.must(o2.id)).state).toBe("suspended");
+    // Evento repetido y desordenado: nada cambia
+    await deliver(gw.emit("charge.dispute.created", "dispute", dp2));
+    expect((await svc.must(o2.id)).state).toBe("suspended");
+  });
+
+  it("B4: un operador levanta la retención con motivo y el pedido vuelve a estar al corriente", async () => {
+    const o = await contracted(await company("Retención Operador SL"));
+    const { subId } = await paid(o.id);
+    const ch = await chargeOf(subId);
+    gw.refund(ch);
+    await deliver(gw.emit("charge.refunded", "charge", ch));
+    expect((await svc.must(o.id)).state).toBe("suspended");
+    expect(await stripeStore.resolveHolds({ chargeId: ch }, "operator:ana: reembolso por error, cobrado de nuevo por transferencia", clock)).toBe(1);
+    await processor.handleSubscription(subId);
+    expect((await svc.must(o.id)).state).toBe("active");
+    // Un evento posterior del mismo reembolso no vuelve a retener (la pérdida no es nueva)
+    await deliver(gw.emit("charge.refunded", "charge", ch));
+    expect((await svc.must(o.id)).state).toBe("active");
+  });
+
+  it("B4: reembolso de una factura ANTERIOR con el periodo vigente pagado → sigue activo", async () => {
+    const o = await contracted(await company("Reembolso Antiguo SL"));
+    const { subId } = await paid(o.id);
+    const first = await chargeOf(subId);
+    const inv = gw.addInvoice(subId, (await gw.subscription(subId))!.customerId, "subscription_cycle", "paid", 2900);
+    await deliver(gw.emit("invoice.paid", "invoice", inv));
+    gw.refund(first);
+    await deliver(gw.emit("charge.refunded", "charge", first));
+    expect((await svc.must(o.id)).state).toBe("active");
+    expect((await adj(first))?.coverageLost).toBe(true);
+  });
+
+  it("B4: reembolso total antes de terminar el alta → no se activa", async () => {
+    const o = await contracted(await company("Reembolso Alta SL"));
+    platform.failNext = 1;
+    const s = await checkout.start(o.id, actor);
+    const subId = gw.completeSession(s.sessionId);
+    expect((await deliver(gw.events[0])).retried).toBe(1);
+    const ch = await chargeOf(subId);
+    gw.refund(ch);
+    await deliver(gw.emit("charge.refunded", "charge", ch));
+    clock += RETRY_BACKOFF_MS[0] + 1000;
+    await processor.processDue(50);
+    expect((await svc.must(o.id)).state).not.toBe("active");
+    // Ni la revisión explícita ni un avance manual lo activan (revisión de seguridad, MEDIO-1)
+    await svc.review(actor);
+    expect((await svc.advance(o.id, actor)).error).toMatch(/revirtió/);
+    expect((await svc.must(o.id)).state).not.toBe("active");
+  });
+
+  it("revisión ALTO-1: tras un reembolso total, la factura SIGUIENTE aún sin pagar no levanta la retención", async () => {
+    const o = await contracted(await company("Factura Siguiente SL"));
+    const { subId } = await paid(o.id);
+    const ch = await chargeOf(subId);
+    gw.refund(ch);
+    await deliver(gw.emit("charge.refunded", "charge", ch));
+    expect((await svc.must(o.id)).state).toBe("suspended");
+    // Stripe crea la factura del periodo siguiente (abierta) y la suscripción sigue «active»
+    const next = gw.addInvoice(subId, (await gw.subscription(subId))!.customerId, "subscription_cycle", "open", 2900);
+    await subChange(subId, {});
+    expect((await svc.must(o.id)).state).toBe("suspended");
+    // Un cobro de prorrateo (cambio) tampoco es un periodo nuevo pagado
+    gw.addInvoice(subId, (await gw.subscription(subId))!.customerId, "subscription_update", "paid", 400);
+    await subChange(subId, {});
+    expect((await svc.must(o.id)).state).toBe("suspended");
+    // Pagada la del periodo siguiente, vuelve el acceso
+    gw.invoices.set(next, { ...gw.invoices.get(next)!, status: "paid", amountPaid: 2900 });
+    gw.updateSubscription(subId, { latestInvoiceId: next });
+    await deliver(gw.emit("invoice.paid", "invoice", next));
+    expect((await svc.must(o.id)).state).toBe("active");
+  });
+
+  it("revisión ALTO-2: una disputa perdida es definitiva; una lectura posterior distinta no levanta la retención", async () => {
+    const o = await contracted(await company("Disputa Definitiva SL"));
+    const { subId } = await paid(o.id);
+    const ch = await chargeOf(subId);
+    const dp = gw.dispute(ch, "lost");
+    await deliver(gw.emit("charge.dispute.closed", "dispute", dp));
+    expect((await svc.must(o.id)).state).toBe("suspended");
+    gw.dispute(ch, "needs_response", dp); // lectura antigua o incoherente
+    await deliver(gw.emit("charge.dispute.updated", "dispute", dp));
+    expect((await svc.must(o.id)).state).toBe("suspended");
+    expect(await stripeStore.adjustment(ch)).toMatchObject({ disputeStatus: "lost", coverageLost: true, resolvedAt: null });
+  });
+
+  it("importes: un primer cobro distinto del neto del presupuesto (p. ej. con IVA) no confirma el pedido y alerta", async () => {
+    const o = await contracted(await company("Importe Distinto SL"));
+    const s = await checkout.start(o.id, actor);
+    expect(s).toMatchObject({ amountCents: o.quote!.contractAmountCents, taxTreatment: "test_net_no_tax" });
+    gw.completeSession(s.sessionId, "active", Math.round(o.quote!.contractAmountCents * 1.21));
+    const r = await deliver(gw.events[0]);
+    expect(r.ignored).toBe(1);
+    expect((await svc.must(o.id)).state).toBe("contracted");
+    expect(await paymentsOf(o.id)).toEqual([]);
+  });
+
+  // ── Entornos que comparten sandbox (B9) ───────────────────────────────────
+  it("B9: una suscripción de OTRO entorno se ignora sin alerta y sin tocar nada", async () => {
+    const o = await contracted(await company("Otro Entorno SL"));
+    const { subId } = await paid(o.id);
+    const sub = (await gw.subscription(subId))!;
+    expect(sub.metadata.es_env).toBe("local");
+    gw.updateSubscription(subId, { status: "canceled", metadata: { ...sub.metadata, es_env: "rotroentorno" } });
+    const r = await deliver(gw.emit("customer.subscription.deleted", "subscription", subId));
+    expect(r.ignored).toBe(1);
+    expect((await svc.must(o.id)).state).toBe("active");
   });
 });

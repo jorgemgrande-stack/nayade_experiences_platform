@@ -12,7 +12,7 @@ describe("conciliación", () => {
     const store = new MemoryStripeStore();
     const now = 1_800_000_500_000;
     for (let i = 0; i < 5; i++) gw.emit("invoice.paid", "invoice", `in_test_${i}`, 1_800_000_000 + i);
-    gw.emit("charge.refunded", "charge", "ch_test_1", 1_800_000_100); // tipo no gestionado: no se pide
+    gw.emit("customer.created", "customer", "cus_test_1", 1_800_000_100); // tipo no gestionado: no se pide
     const rec = new StripeReconciler({ store, gateway: gw, processor: noProcessor, now: () => now });
     expect((await rec.tick()).recovered).toBe(5);
     expect((await rec.tick()).recovered).toBe(0);
@@ -32,6 +32,31 @@ describe("conciliación", () => {
     const all = new StripeReconciler({ store, gateway: gw, processor: noProcessor, now: () => now, maxEventPages: 5 });
     expect((await all.tick()).recovered).toBe(50);
     expect((await store.getState("events_cursor"))?.complete).toBe(true);
+  });
+
+  it("purga: solo eventos terminados más antiguos que la retención; los fallidos nunca; una vez al día y con constancia", async () => {
+    const store = new MemoryStripeStore();
+    const DAY = 86_400_000;
+    let now = 1_800_000_000_000;
+    const rec = new StripeReconciler({ store, gateway: new FakeStripeGateway(), processor: noProcessor, now: () => now, retentionDays: 10 });
+    const add = async (id: string, ageDays: number, status: "processed" | "ignored" | "failed" | "received") => {
+      await store.recordEvent({ eventId: id, type: "invoice.paid", apiVersion: null, objectType: "invoice", objectId: "in_x", stripeCreated: 1, source: "webhook", now: now - ageDays * DAY });
+      if (status === "processed" || status === "ignored") await store.finishEvent(id, status, null, now);
+      if (status === "failed") await store.failEvent(id, "x", null);
+    };
+    await add("evt_old_processed", 200, "processed");
+    await add("evt_old_ignored", 100, "ignored");
+    await add("evt_old_failed", 300, "failed");
+    await add("evt_new_processed", 5, "processed");
+    // La retención mínima es 35 días aunque se configure menos
+    expect(await rec.purge()).toBe(2);
+    expect(Array.from(store.events.keys()).sort()).toEqual(["evt_new_processed", "evt_old_failed"]);
+    expect(await store.getState("events_purge")).toMatchObject({ deleted: 2, byStatus: { processed: 1, ignored: 1 }, totalDeleted: 2, retentionDays: 35, complete: true });
+    await add("evt_old2", 90, "processed");
+    expect(await rec.purge()).toBe(0); // hoy ya se purgó
+    now += DAY + 1;
+    expect(await rec.purge()).toBe(1);
+    expect((await store.getState("events_purge"))?.totalDeleted).toBe(3);
   });
 
   it("dos ejecuciones a la vez: solo una trabaja", async () => {

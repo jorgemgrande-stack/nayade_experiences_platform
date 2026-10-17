@@ -54,6 +54,26 @@ export interface StripeEventRow {
   receivedAt: number;
 }
 
+/** Reembolso o disputa de un cargo de una suscripción de Elephant Source (estado releído en Stripe). */
+export interface StripeChargeAdjustment {
+  chargeId: string;
+  invoiceId: string | null;
+  subscriptionId: string | null;
+  orderId: number;
+  companyId: number;
+  amountCents: number;
+  amountRefundedCents: number;
+  currency: string;
+  disputeStatus: string | null;
+  /** Reembolso total o disputa perdida: el cobro ya no cubre el periodo. */
+  coverageLost: boolean;
+  resolvedAt: number | null;
+  resolution: string | null;
+  createdAt: number;
+  updatedAt: number;
+}
+export type AdjustmentInput = Omit<StripeChargeAdjustment, "resolvedAt" | "resolution" | "createdAt" | "updatedAt">;
+
 export class StripeStoreError extends Error {
   constructor(
     public readonly code: "price_conflict" | "open_session_exists",
@@ -108,6 +128,21 @@ export interface StripeStore {
   releaseLease(name: string, until: number): Promise<void>;
   getState(name: string): Promise<Record<string, unknown> | null>;
   setState(name: string, value: Record<string, unknown>, now: number): Promise<void>;
+  // ── Reembolsos y disputas (stripe_charge_adjustments) ──
+  /**
+   * Inserta o actualiza el estado releído del cargo. Devuelve el anterior (null si es nuevo). Una pérdida
+   * NUEVA de cobertura (0 → 1) reabre la retención aunque un operador la hubiera resuelto antes.
+   */
+  upsertAdjustment(a: AdjustmentInput, now: number): Promise<{ previous: StripeChargeAdjustment | null; current: StripeChargeAdjustment }>;
+  adjustment(chargeId: string): Promise<StripeChargeAdjustment | null>;
+  listAdjustments(limit: number): Promise<StripeChargeAdjustment[]>;
+  /** Retenciones vigentes del pedido (cobertura perdida y sin resolver). */
+  activeHolds(orderId: number): Promise<StripeChargeAdjustment[]>;
+  /** Resuelve retenciones vigentes: de un cargo, o de un pedido salvo las de una factura. Devuelve cuántas. */
+  resolveHolds(f: { chargeId: string } | { orderId: number; exceptInvoiceId: string | null }, resolution: string, now: number): Promise<number>;
+  // ── Retención de eventos ──
+  /** Borra hasta `limit` eventos TERMINADOS (procesados o ignorados) recibidos antes de `before`. Nunca fallidos ni pendientes. */
+  purgeEvents(before: number, limit: number): Promise<{ processed: number; ignored: number }>;
 }
 
 // ── Memoria (pruebas) ────────────────────────────────────────────────────────
@@ -177,6 +212,50 @@ export class MemoryStripeStore implements StripeStore {
   async setState(name: string, value: Record<string, unknown>) {
     const cur = this.state.get(name) ?? { value: {}, lockedUntil: null };
     this.state.set(name, { ...cur, value: { ...value } });
+  }
+  adjustments = new Map<string, StripeChargeAdjustment>();
+  async upsertAdjustment(a: AdjustmentInput, now: number) {
+    const prev = this.adjustments.get(a.chargeId) ?? null;
+    const reopen = !!prev && !prev.coverageLost && a.coverageLost;
+    const cur: StripeChargeAdjustment = {
+      ...a,
+      resolvedAt: prev && !reopen ? prev.resolvedAt : null,
+      resolution: prev && !reopen ? prev.resolution : null,
+      createdAt: prev?.createdAt ?? now,
+      updatedAt: now,
+    };
+    this.adjustments.set(a.chargeId, cur);
+    return { previous: prev ? { ...prev } : null, current: { ...cur } };
+  }
+  async adjustment(id: string) {
+    const x = this.adjustments.get(id);
+    return x ? { ...x } : null;
+  }
+  async listAdjustments(limit: number) {
+    return Array.from(this.adjustments.values()).sort((a, b) => b.updatedAt - a.updatedAt).slice(0, limit).map((x) => ({ ...x }));
+  }
+  async activeHolds(orderId: number) {
+    return Array.from(this.adjustments.values()).filter((x) => x.orderId === orderId && x.coverageLost && x.resolvedAt === null).map((x) => ({ ...x }));
+  }
+  async resolveHolds(f: { chargeId: string } | { orderId: number; exceptInvoiceId: string | null }, resolution: string, now: number) {
+    let n = 0;
+    for (const x of Array.from(this.adjustments.values())) {
+      if (!x.coverageLost || x.resolvedAt !== null) continue;
+      const hit = "chargeId" in f ? x.chargeId === f.chargeId : x.orderId === f.orderId && x.invoiceId !== f.exceptInvoiceId;
+      if (!hit) continue;
+      Object.assign(x, { resolvedAt: now, resolution: resolution.slice(0, 300), updatedAt: now });
+      n++;
+    }
+    return n;
+  }
+  async purgeEvents(before: number, limit: number) {
+    const out = { processed: 0, ignored: 0 };
+    const old = Array.from(this.events.values()).filter((e) => (e.status === "processed" || e.status === "ignored") && e.receivedAt < before).sort((a, b) => a.receivedAt - b.receivedAt).slice(0, limit);
+    for (const e of old) {
+      out[e.status as "processed" | "ignored"]++;
+      this.events.delete(e.eventId);
+    }
+    return out;
   }
   prices = new Map<number, StripePriceLink>();
   customers = new Map<number, StripeCustomerLink>();
@@ -470,5 +549,82 @@ export class MysqlStripeStore implements StripeStore {
   }
   async setState(name: string, value: Record<string, unknown>, now: number) {
     await this.pool.query("INSERT INTO stripe_sync_state (name, value_json, locked_until, updated_at) VALUES (?, ?, NULL, ?) ON DUPLICATE KEY UPDATE value_json = VALUES(value_json), updated_at = VALUES(updated_at)", [name, JSON.stringify(value), now]);
+  }
+  private adjustmentRow = (r: Row): StripeChargeAdjustment => ({
+    chargeId: String(r.stripe_charge_id),
+    invoiceId: (r.stripe_invoice_id as string | null) ?? null,
+    subscriptionId: (r.stripe_subscription_id as string | null) ?? null,
+    orderId: Number(r.order_id),
+    companyId: Number(r.company_id),
+    amountCents: Number(r.amount_cents),
+    amountRefundedCents: Number(r.amount_refunded_cents),
+    currency: String(r.currency),
+    disputeStatus: (r.dispute_status as string | null) ?? null,
+    coverageLost: Number(r.coverage_lost) === 1,
+    resolvedAt: r.resolved_at == null ? null : Number(r.resolved_at),
+    resolution: (r.resolution as string | null) ?? null,
+    createdAt: Number(r.created_at),
+    updatedAt: Number(r.updated_at),
+  });
+  async upsertAdjustment(a: AdjustmentInput, now: number) {
+    const conn = await this.pool.getConnection();
+    try {
+      await conn.beginTransaction();
+      const [rows] = await conn.query<Row[]>("SELECT * FROM stripe_charge_adjustments WHERE stripe_charge_id = ? FOR UPDATE", [a.chargeId]);
+      const prev = rows[0] ? this.adjustmentRow(rows[0]) : null;
+      const reopen = !!prev && !prev.coverageLost && a.coverageLost;
+      if (!prev) {
+        await conn.query(
+          "INSERT INTO stripe_charge_adjustments (stripe_charge_id, stripe_invoice_id, stripe_subscription_id, order_id, company_id, amount_cents, amount_refunded_cents, currency, dispute_status, coverage_lost, livemode, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)",
+          [a.chargeId, a.invoiceId, a.subscriptionId, a.orderId, a.companyId, a.amountCents, a.amountRefundedCents, a.currency, a.disputeStatus, a.coverageLost ? 1 : 0, now, now],
+        );
+      } else {
+        await conn.query(
+          `UPDATE stripe_charge_adjustments SET amount_cents = ?, amount_refunded_cents = ?, currency = ?, dispute_status = ?, coverage_lost = ?,
+             resolved_at = IF(?, NULL, resolved_at), resolution = IF(?, NULL, resolution), updated_at = ? WHERE stripe_charge_id = ?`,
+          [a.amountCents, a.amountRefundedCents, a.currency, a.disputeStatus, a.coverageLost ? 1 : 0, reopen ? 1 : 0, reopen ? 1 : 0, now, a.chargeId],
+        );
+      }
+      const [after] = await conn.query<Row[]>("SELECT * FROM stripe_charge_adjustments WHERE stripe_charge_id = ?", [a.chargeId]);
+      await conn.commit();
+      return { previous: prev, current: this.adjustmentRow(after[0]) };
+    } catch (e) {
+      await conn.rollback().catch(() => undefined);
+      throw e;
+    } finally {
+      conn.release();
+    }
+  }
+  async adjustment(id: string) {
+    const [rows] = await this.pool.query<Row[]>("SELECT * FROM stripe_charge_adjustments WHERE stripe_charge_id = ?", [id]);
+    return rows[0] ? this.adjustmentRow(rows[0]) : null;
+  }
+  async listAdjustments(limit: number) {
+    const [rows] = await this.pool.query<Row[]>("SELECT * FROM stripe_charge_adjustments ORDER BY updated_at DESC LIMIT ?", [limit]);
+    return rows.map(this.adjustmentRow);
+  }
+  async activeHolds(orderId: number) {
+    const [rows] = await this.pool.query<Row[]>("SELECT * FROM stripe_charge_adjustments WHERE order_id = ? AND coverage_lost = 1 AND resolved_at IS NULL", [orderId]);
+    return rows.map(this.adjustmentRow);
+  }
+  async resolveHolds(f: { chargeId: string } | { orderId: number; exceptInvoiceId: string | null }, resolution: string, now: number) {
+    const [res] =
+      "chargeId" in f
+        ? await this.pool.query<mysql.ResultSetHeader>("UPDATE stripe_charge_adjustments SET resolved_at = ?, resolution = ?, updated_at = ? WHERE stripe_charge_id = ? AND coverage_lost = 1 AND resolved_at IS NULL", [now, resolution.slice(0, 300), now, f.chargeId])
+        : await this.pool.query<mysql.ResultSetHeader>(
+            "UPDATE stripe_charge_adjustments SET resolved_at = ?, resolution = ?, updated_at = ? WHERE order_id = ? AND coverage_lost = 1 AND resolved_at IS NULL AND (stripe_invoice_id IS NULL OR stripe_invoice_id <> ?)",
+            [now, resolution.slice(0, 300), now, f.orderId, f.exceptInvoiceId ?? ""],
+          );
+    return res.affectedRows;
+  }
+  async purgeEvents(before: number, limit: number) {
+    const out = { processed: 0, ignored: 0 };
+    for (const status of ["processed", "ignored"] as const) {
+      const left = limit - out.processed - out.ignored;
+      if (left <= 0) break;
+      const [res] = await this.pool.query<mysql.ResultSetHeader>("DELETE FROM stripe_events WHERE status = ? AND received_at < ? ORDER BY received_at LIMIT ?", [status, before, left]);
+      out[status] = res.affectedRows;
+    }
+    return out;
   }
 }

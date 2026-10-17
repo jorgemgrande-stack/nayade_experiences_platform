@@ -9,11 +9,16 @@
  *  3. Relee las suscripciones no terminadas cuya copia es antigua. Así se recuperan pagos confirmados
  *     no aplicados, altas interrumpidas (el orquestador retoma el paso pendiente) y licencias desfasadas.
  *  4. Cierra en la BD las sesiones de Checkout que ya caducaron.
+ *  5. Una vez al día, purga los eventos TERMINADOS (procesados o ignorados) más antiguos que la retención
+ *     (180 días por defecto, nunca menos de 35: más que los 30 días que Stripe los conserva). Los fallidos
+ *     y los pendientes no se purgan nunca. Cada purga deja constancia (`stripe_sync_state.events_purge`:
+ *     fecha, corte, borrados por estado y total acumulado) y una línea de log.
  *
  * No se programa sola: `startStripeWorker` solo arranca con CP_STRIPE_WORKER_ENABLED=1.
  */
 import { opsLog } from "../_core/ops/log";
 import { recordFailure } from "../_core/ops/failureAlerts";
+import { DEFAULT_EVENTS_RETENTION_DAYS, MIN_EVENTS_RETENTION_DAYS } from "./config";
 import { HANDLED_EVENTS, type StripeEventProcessor } from "./events";
 import type { StripeGateway } from "./gateway";
 import type { StripeStore } from "./store";
@@ -24,6 +29,11 @@ const CURSOR = "events_cursor";
 const OVERLAP_S = 600;
 /** Primera pasada sin cursor: 3 días atrás (s). */
 const FIRST_LOOKBACK_S = 3 * 86_400;
+const PURGE = "events_purge";
+const DAY_MS = 86_400_000;
+/** Por pasada: lotes acotados para no bloquear la tabla (el resto, al día siguiente). */
+const PURGE_BATCH = 1000;
+const PURGE_MAX_BATCHES = 20;
 
 export interface ReconcileDeps {
   store: StripeStore;
@@ -34,6 +44,8 @@ export interface ReconcileDeps {
   /** Antigüedad a partir de la cual se relee una suscripción (ms). */
   refreshAfterMs?: number;
   maxEventPages?: number;
+  /** Días que se conservan los eventos terminados (mínimo 35). */
+  retentionDays?: number;
 }
 
 export interface ReconcileResult {
@@ -43,6 +55,7 @@ export interface ReconcileResult {
   refreshed: number;
   refreshErrors: number;
   sessionsClosed: number;
+  purged: number;
 }
 
 export class StripeReconciler {
@@ -55,7 +68,7 @@ export class StripeReconciler {
     const start = this.now();
     const until = start + (this.d.leaseMs ?? 10 * 60_000);
     const empty = { processed: 0, ignored: 0, failed: 0, retried: 0 };
-    if (!(await this.d.store.acquireLease(LEASE, until, start))) return { skipped: true, recovered: 0, events: empty, refreshed: 0, refreshErrors: 0, sessionsClosed: 0 };
+    if (!(await this.d.store.acquireLease(LEASE, until, start))) return { skipped: true, recovered: 0, events: empty, refreshed: 0, refreshErrors: 0, sessionsClosed: 0, purged: 0 };
     try {
       // 1. Eventos que no llegaron por webhook
       const state = (await this.d.store.getState(CURSOR)) ?? {};
@@ -112,10 +125,43 @@ export class StripeReconciler {
       }
       await this.d.store.setState(CURSOR, { cursor: complete ? maxCreated : cursor, lastRunAt: this.now(), recovered, complete }, this.now());
       if (recovered) opsLog("warn", "StripeReconcile", "missed_webhooks_recovered", { recovered });
-      return { skipped: false, recovered, events, refreshed, refreshErrors, sessionsClosed };
+      // 5. Retención de eventos (una vez al día; un fallo aquí no tumba la conciliación)
+      let purged = 0;
+      try {
+        purged = await this.purge();
+      } catch (e) {
+        recordFailure("stripe.events_purge_failed");
+        opsLog("error", "StripeReconcile", "events_purge_failed", { error: e instanceof Error ? e.name : "error" });
+      }
+      return { skipped: false, recovered, events, refreshed, refreshErrors, sessionsClosed, purged };
     } finally {
       await this.d.store.releaseLease(LEASE, until);
     }
+  }
+
+  /** Purga diaria y acotada de eventos terminados. Devuelve cuántos borró (0 si hoy ya se hizo). */
+  async purge(): Promise<number> {
+    const now = this.now();
+    const prev = (await this.d.store.getState(PURGE)) ?? {};
+    if (typeof prev.lastRunAt === "number" && now - prev.lastRunAt < DAY_MS && prev.complete !== false) return 0;
+    const days = Math.max(MIN_EVENTS_RETENTION_DAYS, this.d.retentionDays ?? DEFAULT_EVENTS_RETENTION_DAYS);
+    const cutoff = now - days * DAY_MS;
+    const byStatus = { processed: 0, ignored: 0 };
+    let complete = false;
+    for (let i = 0; i < PURGE_MAX_BATCHES; i++) {
+      const r = await this.d.store.purgeEvents(cutoff, PURGE_BATCH);
+      byStatus.processed += r.processed;
+      byStatus.ignored += r.ignored;
+      if (r.processed + r.ignored < PURGE_BATCH) {
+        complete = true;
+        break;
+      }
+    }
+    const deleted = byStatus.processed + byStatus.ignored;
+    const totalDeleted = (typeof prev.totalDeleted === "number" ? prev.totalDeleted : 0) + deleted;
+    await this.d.store.setState(PURGE, { lastRunAt: now, cutoff, retentionDays: days, deleted, byStatus, totalDeleted, complete }, now);
+    if (deleted) opsLog("info", "StripeReconcile", "events_purged", { deleted, ...byStatus, retentionDays: days, cutoff, complete });
+    return deleted;
   }
 }
 
