@@ -2,12 +2,14 @@
  * Rutas de la prueba gratuita de Essential.
  *
  * Públicas (`/cp/v1/public/trial`): SOLO si se habilitan expresamente (CP_PUBLIC_TRIAL_ENABLED). No
- * revelan si un correo ya tiene prueba (respuesta genérica), con campo trampa y límite por IP.
+ * revelan si un correo ya tiene prueba (respuesta genérica), con campo trampa y límite por IP. Alta,
+ * verificación y reenvío del enlace (`/resend`).
  *
  * De operador (`/cp/v1/trials`): listado, revisión (vencidas, ampliaciones y avisos debidos),
  * historial de eventos, activación (crea plataforma y licencias: exige provisioning:write,
- * subscriptions:write y entitlements:write), vencimiento, ampliación, suspensión y reactivación (con sus
- * licencias), conversión, rechazo, cancelación y envío explícito de avisos.
+ * subscriptions:write y entitlements:write), reenvío del enlace de verificación, vencimiento,
+ * ampliación, suspensión y reactivación (con sus licencias), conversión, rechazo, cancelación y envío
+ * explícito de avisos.
  */
 import express, { type NextFunction, type Request, type Response, type Router } from "express";
 import rateLimit, { ipKeyGenerator } from "express-rate-limit";
@@ -17,6 +19,7 @@ import type { TrialOnboardingService } from "./onboarding";
 import { TrialError, TrialService } from "./service";
 import type { TrialStore } from "./store";
 import { TRIAL_STATES } from "./machine";
+import { opsLog } from "../_core/ops/log";
 
 const ERR_STATUS: Record<string, number> = { invalid_input: 400, not_found: 404, conflict: 409, invalid_state: 409, limit: 429, forbidden: 403 };
 const wrap = (fn: (req: Request, res: Response) => Promise<void>) => (req: Request, res: Response, next: NextFunction) =>
@@ -27,7 +30,7 @@ const wrap = (fn: (req: Request, res: Response) => Promise<void>) => (req: Reque
   });
 const who = (req: Request) => `${getAuth(req)!.actor.type}:${getAuth(req)!.actor.id}`;
 
-export function createPublicTrialRouter(o: { onboarding: TrialOnboardingService; autoProvision: boolean; perIpHour?: number }): Router {
+export function createPublicTrialRouter(o: { onboarding: TrialOnboardingService; autoProvision: boolean; perIpHour?: number; resendPerIpHour?: number }): Router {
   const r = express.Router();
   r.use(
     rateLimit({
@@ -85,6 +88,29 @@ export function createPublicTrialRouter(o: { onboarding: TrialOnboardingService;
         if (e instanceof TrialError && (e.code === "not_found" || e.code === "forbidden" || e.code === "invalid_state")) return void res.status(403).json({ error: "invalid_link", message: "El enlace no es válido o ha caducado" });
         throw e;
       }
+    }),
+  );
+  // Reenvío del enlace de verificación: respuesta SIEMPRE igual (no revela si el correo existe, si ya
+  // está verificado ni si se ha alcanzado el límite), límite propio por IP además del general.
+  const RESEND_ACCEPTED = { status: "accepted", message: "Si hay una solicitud pendiente de verificar con esa dirección, recibirás un enlace nuevo. El anterior deja de funcionar." };
+  r.post(
+    "/resend",
+    rateLimit({
+      windowMs: 60 * 60_000,
+      limit: o.resendPerIpHour ?? 5,
+      standardHeaders: true,
+      legacyHeaders: false,
+      keyGenerator: (req) => `trial-resend:${ipKeyGenerator(req.ip ?? "")}`,
+      handler: (_req, res) => void res.status(429).json({ error: "rate_limited" }),
+    }),
+    wrap(async (req, res) => {
+      res.setHeader("Cache-Control", "no-store");
+      const b = z.object({ email: z.string().max(254), website: z.string().max(200).optional() }).strict().parse(req.body);
+      // Se responde sin esperar al trabajo: el tiempo de respuesta tampoco revela si el correo existe
+      if (!b.website) {
+        void o.onboarding.resendVerification({ email: b.email }, "web").catch((e) => opsLog("error", "Trials", "resend_failed", { error: e instanceof Error ? e.name : "error" }));
+      }
+      res.status(202).json(RESEND_ACCEPTED);
     }),
   );
   r.use((_req, res) => void res.status(404).json({ error: "not_found" }));
@@ -179,6 +205,16 @@ export function createTrialAdminRouter(o: { onboarding: TrialOnboardingService; 
     "/:id/resend-access",
     requireScope("provisioning:write"),
     wrap(async (req, res) => void res.json(await o.onboarding.resendAccess(id.parse(req.params.id)))),
+  );
+  // Reenvío del enlace de verificación por operador: mismo servicio y límites que la web; el enlace
+  // solo viaja por correo (nunca en la respuesta)
+  r.post(
+    "/:id/resend-verification",
+    requireScope("subscriptions:write"),
+    wrap(async (req, res) => {
+      res.setHeader("Cache-Control", "no-store");
+      res.json(await o.onboarding.resendVerification({ trialId: id.parse(req.params.id) }, who(req)));
+    }),
   );
   r.post(
     "/:id/expire",

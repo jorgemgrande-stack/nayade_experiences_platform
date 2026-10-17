@@ -1,12 +1,17 @@
 /**
- * Prueba autónoma de 15 días — servicio (PREPARACIÓN). No está conectado a ninguna ruta pública, no
- * envía correos, no aprovisiona por sí mismo y nunca suspende ni borra nada automáticamente:
- * `dueForReview` solo INFORMA de lo vencido para que una persona decida.
+ * Prueba autónoma de 15 días — servicio. No envía correos ni aprovisiona por sí mismo y nunca
+ * suspende ni borra nada: `dueForReview` INFORMA de lo vencido; marcar «vencida» lo hace una persona
+ * o la tarea programada (`scheduler.ts`, apagada por defecto), y vencer solo deja la cuenta en solo
+ * lectura (las licencias ya caducan solas al final de la prueba).
  *
  * Seguridad:
  *  - Verificación de correo con token aleatorio (256 bits) del que solo se guarda el hash; caduca.
- *  - Una prueba abierta por correo (también impuesto por la BD) y alta idempotente por clave.
- *  - Límites contra el abuso: por dominio de correo, por IP (hash) y de aprovisionamientos en curso.
+ *  - Reenvío del enlace: token nuevo (el anterior deja de valer), con espera mínima y máximo diario.
+ *  - Una prueba abierta por correo (también impuesto por la BD), también entre alias +etiqueta del
+ *    mismo buzón, y alta idempotente por clave. Una solicitud sin verificar con el enlace caducado no
+ *    bloquea el correo: se anula al volver a registrarse o la anula la tarea programada.
+ *  - Límites contra el abuso: por dominio de correo, por IP (hash), de aprovisionamientos en curso y
+ *    dominios de correo desechable conocidos (lista corta ampliable por configuración).
  *  - Cada cambio exige la versión leída y queda auditado.
  */
 import crypto from "node:crypto";
@@ -28,6 +33,15 @@ export interface TrialLimits {
   /** Ampliaciones aprobables y días máximos por ampliación. */
   maxExtensions: number;
   maxExtensionDays: number;
+  /** Espera mínima entre dos envíos del enlace de verificación (alta o reenvío). */
+  resendCooldownMs: number;
+  /** Reenvíos del enlace por solicitud en 24 h. */
+  resendPer24h: number;
+  /**
+   * Vida máxima de una solicitud sin verificar: pasado este plazo ya no se renueva el enlace y la
+   * solicitud se anula (libera el correo para registrarse de nuevo).
+   */
+  pendingMaxAgeMs: number;
 }
 export const DEFAULT_LIMITS: TrialLimits = {
   perDomain30d: 3,
@@ -36,9 +50,46 @@ export const DEFAULT_LIMITS: TrialLimits = {
   verificationTtlMs: 24 * 60 * 60 * 1000,
   maxExtensions: 1,
   maxExtensionDays: 15,
+  resendCooldownMs: 2 * 60_000,
+  resendPer24h: 3,
+  pendingMaxAgeMs: 7 * 24 * 60 * 60 * 1000,
 };
 /** Dominios de correo personal: el límite por dominio no se les aplica (sí el de IP y el de correo). */
 const PERSONAL_DOMAINS = new Set(["gmail.com", "hotmail.com", "outlook.com", "yahoo.com", "icloud.com", "live.com", "protonmail.com", "yahoo.es", "hotmail.es"]);
+/**
+ * Correo desechable muy conocido (lista corta a propósito; se amplía con `blockedDomains`, p. ej. desde
+ * `CP_TRIAL_BLOCKED_DOMAINS`). No pretende ser exhaustiva: los límites por IP y dominio siguen aplicando.
+ */
+export const DISPOSABLE_DOMAINS: ReadonlySet<string> = new Set([
+  "mailinator.com",
+  "guerrillamail.com",
+  "sharklasers.com",
+  "10minutemail.com",
+  "yopmail.com",
+  "temp-mail.org",
+  "tempmail.com",
+  "trashmail.com",
+  "getnada.com",
+  "dispostable.com",
+  "maildrop.cc",
+  "throwawaymail.com",
+]);
+
+/** Dominios adicionales a rechazar desde el entorno (`CP_TRIAL_BLOCKED_DOMAINS`, separados por comas). */
+export function blockedDomainsFromEnv(env: NodeJS.ProcessEnv): string[] {
+  return (env.CP_TRIAL_BLOCKED_DOMAINS ?? "").split(",").map((x) => x.trim().toLowerCase()).filter((x) => /^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(x));
+}
+
+/**
+ * Buzón de un correo (minúsculas): sin la etiqueta `+loquesea` del usuario. Sirve para impedir varias
+ * pruebas abiertas a la vez con alias del mismo buzón. Los puntos de Gmail no se normalizan (pendiente).
+ */
+export function mailboxOf(email: string): { base: string; domain: string } {
+  const at = email.lastIndexOf("@");
+  const local = email.slice(0, at);
+  const plus = local.indexOf("+");
+  return { base: plus > 0 ? local.slice(0, plus) : local, domain: email.slice(at + 1) };
+}
 
 export class TrialError extends Error {
   constructor(
@@ -61,9 +112,35 @@ export interface SubscriptionLookup {
 export class TrialService {
   private now: () => number;
   private limits: TrialLimits;
-  constructor(private d: { store: TrialStore; subscriptions?: SubscriptionLookup; now?: () => number; limits?: Partial<TrialLimits> }) {
+  private blocked: ReadonlySet<string>;
+  constructor(private d: { store: TrialStore; subscriptions?: SubscriptionLookup; now?: () => number; limits?: Partial<TrialLimits>; blockedDomains?: string[] }) {
     this.now = d.now ?? Date.now;
     this.limits = { ...DEFAULT_LIMITS, ...d.limits };
+    this.blocked = new Set(Array.from(DISPOSABLE_DOMAINS).concat((d.blockedDomains ?? []).map((x) => x.trim().toLowerCase()).filter(Boolean)));
+  }
+
+  /** Solicitud sin verificar cuyo enlace ya caducó (no bloquea el correo: se puede anular). */
+  isStalePending(t: TrialRequest, now = this.now()) {
+    return t.state === "pending_verification" && (t.verificationExpiresAt ?? 0) <= now;
+  }
+
+  /**
+   * Prueba abierta de ese buzón (mismo correo o alias +etiqueta). Las solicitudes sin verificar con el
+   * enlace caducado se anulan aquí mismo (`expire_verification`) y no cuentan.
+   */
+  private async openFor(email: string, actor: string) {
+    const { base, domain } = mailboxOf(email);
+    for (let i = 0; i < 5; i++) {
+      const open = (await this.d.store.openByEmail(email)) ?? (await this.d.store.openByAlias(base, domain));
+      if (!open || !this.isStalePending(open)) return open;
+      try {
+        await this.move(open.id, open.version, "expire_verification", actor, () => ({ verificationTokenHash: null, verificationExpiresAt: null }), "enlace caducado sin verificar");
+      } catch (e) {
+        // Otra petición la cambió a la vez: se vuelve a mirar
+        if (!(e instanceof TrialError && e.code === "conflict")) throw e;
+      }
+    }
+    throw new TrialError("conflict", "Ya hay una solicitud de prueba en curso para este correo");
   }
 
   /**
@@ -83,13 +160,15 @@ export class TrialService {
       throw new TrialError("invalid_input", "Configuración no válida");
     }
 
+    const domain = m[1];
+    if (this.blocked.has(domain)) throw new TrialError("invalid_input", "Usa una dirección de correo permanente (de tu empresa o personal)");
+
     const again = await this.d.store.byIdempotencyKey(input.idempotencyKey);
     if (again) return { trial: again, created: false as const, verificationToken: null };
-    // Un correo, una prueba abierta: no se revela el estado de la existente
-    if (await this.d.store.openByEmail(email)) throw new TrialError("conflict", "Ya hay una solicitud de prueba en curso para este correo");
+    // Un buzón, una prueba abierta: no se revela el estado de la existente
+    if (await this.openFor(email, "system:trial")) throw new TrialError("conflict", "Ya hay una solicitud de prueba en curso para este correo");
 
     const now = this.now();
-    const domain = m[1];
     const ipHash = input.ip ? sha256(`trial-ip:${input.ip}`) : null;
     if (!PERSONAL_DOMAINS.has(domain) && (await this.d.store.count({ emailDomain: domain, since: now - 30 * DAY })) >= this.limits.perDomain30d) {
       throw new TrialError("limit", "Se ha alcanzado el número de pruebas para este dominio; contacta con ventas");
@@ -157,6 +236,81 @@ export class TrialService {
     if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) throw new TrialError("forbidden", "Enlace de verificación no válido");
     if ((t.verificationExpiresAt ?? 0) < this.now()) throw new TrialError("forbidden", "El enlace de verificación ha caducado");
     return this.move(id, t.version, "verify", "web", () => ({ verifiedAt: this.now(), verificationTokenHash: null, verificationExpiresAt: null }));
+  }
+
+  /**
+   * Reenvío del enlace de verificación. Busca la solicitud por correo (web) o por id (operador) y, si
+   * está pendiente, emite un token NUEVO (el anterior deja de valer) con validez completa, también si el
+   * enlace ya había caducado, mientras la solicitud no supere `pendingMaxAgeMs` (si la supera, se anula
+   * y el correo queda libre para registrarse de nuevo).
+   *
+   * Idempotente por correo: dentro de la espera mínima (`resendCooldownMs`) desde el último envío no se
+   * genera nada (dos clics o dos peticiones simultáneas ⇒ un solo enlace nuevo). Máximo
+   * `resendPer24h` reenvíos por solicitud en 24 h. El resultado es para el llamante interno; la ruta
+   * pública responde siempre lo mismo y no revela si el correo existe.
+   */
+  async resendVerification(by: { email: string } | { trialId: number }, actor: string): Promise<{ trial: TrialRequest | null; verificationToken: string | null; outcome: "resent" | "not_found" | "not_pending" | "cooldown" | "limit" | "expired" }> {
+    let t: TrialRequest | null;
+    if ("trialId" in by) t = await this.d.store.get(by.trialId);
+    else {
+      const email = by.email.trim().toLowerCase();
+      if (!EMAIL_RE.test(email) || email.length > 254) return { trial: null, verificationToken: null, outcome: "not_found" };
+      t = await this.d.store.openByEmail(email);
+    }
+    if (!t) return { trial: null, verificationToken: null, outcome: "not_found" };
+    if (t.state !== "pending_verification") return { trial: t, verificationToken: null, outcome: "not_pending" };
+    const now = this.now();
+    if (t.createdAt + this.limits.pendingMaxAgeMs <= now) {
+      const out = await this.expireVerification(t.id, t.version, actor).catch((e) => {
+        if (e instanceof TrialError && (e.code === "conflict" || e.code === "invalid_state")) return null;
+        throw e;
+      });
+      return { trial: out, verificationToken: null, outcome: "expired" };
+    }
+    const resends = (await this.d.store.events(t.id)).filter((e) => e.action === "resend_verification");
+    const lastIssued = Math.max(t.createdAt, ...resends.map((e) => e.createdAt));
+    if (now - lastIssued < this.limits.resendCooldownMs) return { trial: t, verificationToken: null, outcome: "cooldown" };
+    if (resends.filter((e) => e.createdAt > now - DAY).length >= this.limits.resendPer24h) return { trial: t, verificationToken: null, outcome: "limit" };
+    const token = crypto.randomBytes(32).toString("base64url");
+    try {
+      const trial = await this.move(t.id, t.version, "resend_verification", actor, () => ({ verificationTokenHash: sha256(token), verificationExpiresAt: now + this.limits.verificationTtlMs }), "enlace nuevo");
+      return { trial, verificationToken: token, outcome: "resent" };
+    } catch (e) {
+      // Otra petición simultánea ya renovó el enlace: se trata como un clic repetido
+      if (e instanceof TrialError && e.code === "conflict") return { trial: t, verificationToken: null, outcome: "cooldown" };
+      throw e;
+    }
+  }
+
+  /**
+   * Anula una solicitud sin verificar cuyo enlace caducó (libera el correo). Solo si de verdad está
+   * pendiente y con el enlace caducado o la solicitud superó su vida máxima.
+   */
+  async expireVerification(id: number, expectedVersion: number, actor: string) {
+    const t = await this.must(id);
+    const now = this.now();
+    if (t.state !== "pending_verification" || (!this.isStalePending(t, now) && t.createdAt + this.limits.pendingMaxAgeMs > now)) {
+      throw new TrialError("invalid_state", "La solicitud no está pendiente con el enlace caducado");
+    }
+    return this.move(id, expectedVersion, "expire_verification", actor, () => ({ verificationTokenHash: null, verificationExpiresAt: null }), "enlace caducado sin verificar");
+  }
+
+  /** Clave del aviso de vencimiento: incluye la fecha de fin (una ampliación vuelve a avisar). */
+  static noticeKey(t: { endsAt: number }, daysLeft: number) {
+    return `expiry:${t.endsAt}:${daysLeft}`;
+  }
+  /** ¿Ya se encoló ese aviso para esta prueba? */
+  async noticeQueued(id: number, key: string) {
+    return (await this.d.store.events(id)).some((e) => e.action === "notice_queued" && e.detail === key);
+  }
+  /** Deja constancia de un aviso encolado (sin cambiar estado ni versión). */
+  async recordNotice(id: number, key: string, actor: string) {
+    await this.d.store.note(id, { action: "notice_queued", detail: key, actor, at: this.now() });
+  }
+
+  /** Límites efectivos (para la tarea programada). */
+  get effectiveLimits(): Readonly<TrialLimits> {
+    return this.limits;
   }
 
   /** Pide el aprovisionamiento (no lo ejecuta). Limita los aprovisionamientos simultáneos. */

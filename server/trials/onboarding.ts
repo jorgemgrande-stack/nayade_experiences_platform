@@ -17,7 +17,7 @@ import type { ProvisionRequest, ProvisionResult } from "../_core/provisioning/ty
 import type { LicensingService } from "../licensing/service";
 import type { SubscriptionService } from "../subscriptions/service";
 import { nextState } from "./machine";
-import { TrialError, type TrialService } from "./service";
+import { TrialError, TrialService } from "./service";
 
 const DAY = 86_400_000;
 export const ESSENTIAL_PLAN = "essential";
@@ -26,8 +26,10 @@ export const TRIAL_PLAN_DAYS = 15;
 export const NOTICE_DAYS = [3, 1, 0] as const;
 
 export interface TrialNotifier {
-  verification(to: string, link: { trialId: number; token: string }): Promise<void>;
+  /** Enlace de verificación; `resend`: es un reenvío (token nuevo, el anterior ya no vale). */
+  verification(to: string, link: { trialId: number; token: string; resend?: boolean }): Promise<void>;
   welcome(to: string, info: { tenantId: string; domain: string | null; inviteToken: string }): Promise<void>;
+  /** Aviso de vencimiento: `daysLeft` 3 y 1 antes; 0 cuando la prueba ya ha terminado (solo lectura). */
   expiryNotice(to: string, info: { trialId: number; endsAt: number; daysLeft: number }): Promise<void>;
 }
 
@@ -219,11 +221,25 @@ export class TrialOnboardingService {
 
   /** Envío EXPLÍCITO de avisos (lo lanza una persona o un proceso autorizado). */
   async sendNotices(due: Array<{ id: number; email: string; endsAt: number | null; daysLeft: number }>) {
-    for (const t of due) await this.d.notify.expiryNotice(t.email, { trialId: t.id, endsAt: t.endsAt!, daysLeft: t.daysLeft });
+    for (const t of due) {
+      await this.d.notify.expiryNotice(t.email, { trialId: t.id, endsAt: t.endsAt!, daysLeft: t.daysLeft });
+      // Constancia para que la tarea programada no repita el mismo aviso
+      await this.d.trials.recordNotice(t.id, TrialService.noticeKey({ endsAt: t.endsAt! }, t.daysLeft), "operator");
+    }
     return { sent: due.length };
   }
 
-  /** Vencimiento (decisión humana): las licencias ya caducaron (solo lectura). Nada se borra. */
+  /**
+   * Reenvío del enlace de verificación (web por correo, operador por id). Solo se envía si se emitió un
+   * token nuevo; el resultado detallado es para el operador: la ruta pública no lo muestra.
+   */
+  async resendVerification(by: { email: string } | { trialId: number }, actor: string) {
+    const r = await this.d.trials.resendVerification(by, actor);
+    if (r.verificationToken && r.trial) await this.d.notify.verification(r.trial.email, { trialId: r.trial.id, token: r.verificationToken, resend: true });
+    return { outcome: r.outcome, state: r.trial?.state ?? null, verificationExpiresAt: r.outcome === "resent" ? (r.trial?.verificationExpiresAt ?? null) : null };
+  }
+
+  /** Vencimiento (operador; también lo hace la tarea programada): las licencias ya caducaron (solo lectura). Nada se borra. */
   async expire(trialId: number, actor: string) {
     const t = await this.d.trials.must(trialId);
     return this.d.trials.markExpired(t.id, t.version, actor);
