@@ -49,14 +49,17 @@ export class PlatformMailer {
       verification: async (to, l) => {
         if (!verifyBase) return void opsLog("warn", "Mail", "not_queued", { category: "email_verification", reason: "verify_url_missing", trialId: l.trialId });
         const url = `${verifyBase}${verifyBase.includes("?") ? "&" : "?"}id=${l.trialId}&token=${encodeURIComponent(l.token)}`;
-        await this.send(PLATFORM_TENANT, `trial:${l.trialId}:verification:${short(l.token)}`, "email_verification", to, this.t.emailVerification({ verifyUrl: url }));
+        // Clave por token: cada enlace nuevo (alta o reenvío) es un mensaje distinto, y el mismo enlace, uno solo
+        const content = l.resend ? this.t.emailVerificationResent({ verifyUrl: url }) : this.t.emailVerification({ verifyUrl: url });
+        await this.send(PLATFORM_TENANT, `trial:${l.trialId}:verification:${short(l.token)}`, "email_verification", to, content);
       },
       welcome: async (to, i) => {
         const url = i.domain ? `https://${i.domain}/establecer-contrasena?token=${encodeURIComponent(i.inviteToken)}` : null;
         await this.send(i.tenantId, `trial-welcome:${i.tenantId}:${short(i.inviteToken)}`, "trial_activated", to, this.t.trialActivated({ host: i.domain, setPasswordUrl: url }));
       },
       expiryNotice: async (to, i) => {
-        await this.send(PLATFORM_TENANT, `trial:${i.trialId}:expiry:${i.daysLeft}`, "trial_expiry", to, this.t.trialExpiry({ endsAt: i.endsAt, daysLeft: i.daysLeft, pricingUrl: this.o.pricingUrl }));
+        // La fecha de fin forma parte de la clave: tras una ampliación se vuelve a avisar del nuevo fin
+        await this.send(PLATFORM_TENANT, `trial:${i.trialId}:expiry:${i.endsAt}:${i.daysLeft}`, "trial_expiry", to, this.t.trialExpiry({ endsAt: i.endsAt, daysLeft: i.daysLeft, pricingUrl: this.o.pricingUrl }));
       },
     };
   }

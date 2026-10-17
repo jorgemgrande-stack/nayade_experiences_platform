@@ -71,12 +71,27 @@ export interface PlatformTemplateOptions {
 /** Avisos de plataforma (Elephant Source). */
 export function platformTemplates(o: PlatformTemplateOptions = {}) {
   const b = platform(o.supportEmail);
+  /** La prueba ha terminado: solo lectura, sin borrar nada; puede contratar cuando quiera. */
+  const trialExpired = (i: { endsAt: number; pricingUrl?: string | null }) =>
+    layout(b, `Tu prueba de ${PLATFORM_BRAND} ha terminado`, [
+      `La prueba gratuita terminó el ${fmtDate(i.endsAt)}.`,
+      "Tu cuenta sigue disponible en solo lectura: puedes entrar y consultar todo, pero no crear ni modificar datos. No se ha borrado nada.",
+      "Cuando contrates un plan, todo vuelve a funcionar en la misma cuenta, con tus datos tal y como los dejaste.",
+    ], i.pricingUrl ? { label: "Ver planes", url: i.pricingUrl } : null);
   return {
     emailVerification(i: { verifyUrl: string }) {
       return layout(b, `Confirma tu correo para empezar tu prueba de ${PLATFORM_BRAND}`, [
         "Hemos recibido una solicitud de prueba gratuita con esta dirección.",
         "Para activarla, confirma que el correo es tuyo. El enlace caduca y solo sirve una vez.",
         "Si no la has solicitado tú, ignora este mensaje: no se creará nada.",
+      ], { label: "Confirmar correo", url: i.verifyUrl });
+    },
+    /** Reenvío del enlace de verificación: el anterior ya no sirve. */
+    emailVerificationResent(i: { verifyUrl: string }) {
+      return layout(b, `Tu nuevo enlace para empezar la prueba de ${PLATFORM_BRAND}`, [
+        "Nos has pedido un enlace nuevo para confirmar esta dirección y activar tu prueba gratuita.",
+        "Este enlace sustituye al anterior, que ya no funciona. Caduca y solo sirve una vez.",
+        "Si no lo has pedido tú, ignora este mensaje: no se creará nada.",
       ], { label: "Confirmar correo", url: i.verifyUrl });
     },
     /** Alta asistida (contrato del CRM): la plataforma de la empresa está creada. */
@@ -101,13 +116,16 @@ export function platformTemplates(o: PlatformTemplateOptions = {}) {
         "Define tu contraseña de administrador para entrar. El enlace es personal y caduca.",
       ], i.setPasswordUrl ? { label: "Definir contraseña", url: i.setPasswordUrl } : null);
     },
+    /** Aviso previo al vencimiento (3 y 1 días); con 0 días la prueba ya terminó: aviso de vencimiento. */
     trialExpiry(i: { endsAt: number; daysLeft: number; pricingUrl?: string | null }) {
-      const when = i.daysLeft <= 0 ? "termina hoy" : i.daysLeft === 1 ? "termina mañana" : `termina en ${i.daysLeft} días`;
+      if (i.daysLeft <= 0) return trialExpired(i);
+      const when = i.daysLeft === 1 ? "termina mañana" : `termina en ${i.daysLeft} días`;
       return layout(b, `Tu prueba de ${PLATFORM_BRAND} ${when}`, [
         `La prueba gratuita termina el ${fmtDate(i.endsAt)}.`,
         "Al terminar, tu cuenta pasa a solo lectura: no se borra nada y puedes contratar cuando quieras para seguir trabajando.",
       ], i.pricingUrl ? { label: "Ver planes", url: i.pricingUrl } : null);
     },
+    trialExpired,
     contractConfirmed(i: { companyName: string; reference: string | null; host: string | null }) {
       return layout(b, `Contratación confirmada${i.reference ? ` · ${i.reference}` : ""}`, [
         `La contratación de ${PLATFORM_BRAND} para ${i.companyName} está activa.`,

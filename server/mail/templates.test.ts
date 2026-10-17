@@ -89,8 +89,9 @@ describe("avisos de plataforma conectados a los eventos", () => {
     await n.verification("dueña@pruebas.example".replace("ñ", "n"), { trialId: 7, token: "tok-verif" });
     await n.verification("duena@pruebas.example", { trialId: 7, token: "tok-verif" });
     await n.welcome("duena@pruebas.example", { tenantId: "montana", domain: "montana.elephantsource.example", inviteToken: "inv-1" });
-    await n.expiryNotice("duena@pruebas.example", { trialId: 7, endsAt: Date.now() + 3 * DAY, daysLeft: 3 });
-    await n.expiryNotice("duena@pruebas.example", { trialId: 7, endsAt: Date.now() + 3 * DAY, daysLeft: 3 });
+    const endsAt = Date.now() + 3 * DAY;
+    await n.expiryNotice("duena@pruebas.example", { trialId: 7, endsAt, daysLeft: 3 });
+    await n.expiryNotice("duena@pruebas.example", { trialId: 7, endsAt, daysLeft: 3 });
     expect(provider.sent.map((x) => x.tag)).toEqual(["email_verification", "trial_activated", "trial_expiry"]);
     expect(provider.sent[0].from).toEqual({ name: "Elephant Source", email: "no-reply@bigelephant.example" });
     expect(provider.sent[0].replyTo).toBe("soporte@bigelephant.example");
