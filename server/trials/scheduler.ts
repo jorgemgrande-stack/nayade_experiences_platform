@@ -78,7 +78,8 @@ export interface TickResult {
 
 export interface TrialSchedulerDeps {
   store: TrialStore;
-  notify: TrialNotifier;
+  /** Solo hace falta el aviso de vencimiento. */
+  notify: Pick<TrialNotifier, "expiryNotice">;
   lock: SchedulerLock;
   now?: () => number;
   limits?: Partial<TrialLimits>;
