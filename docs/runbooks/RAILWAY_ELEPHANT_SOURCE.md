@@ -97,3 +97,14 @@ Se ejecuta con `ES_PRIVATE_DIR=<carpeta privada> MSYS_NO_PATHCONV=1 node scripts
 - **Necesita:** en la carpeta privada, `alta-A.json` y `alta-B.json` (respuestas del alta asistida) y el estado de la prueba.
 - **Recorre:** 33 pasos, incluidos aislamiento y concurrencia.
 - **Termina con código 1** si falla cualquier paso esencial.
+
+## 8. Correo, ficheros y operaciones en la red privada (Overnight 5)
+
+- **Correo (Brevo):** `MAIL_MODE=off` hasta tener clave, dominio autenticado y destinatarios autorizados (`docs/runbooks/CORREO_BREVO.md`). Webhook `/cp/v1/mail/brevo/webhook` con `BREVO_WEBHOOK_TOKEN`.
+- **Ficheros:** bucket privado `elephant-source-media` y entrega por el Core (`docs/runbooks/ALMACENAMIENTO.md`). `BACKUP_MEDIA=1` en `backup-job`.
+- **Migrar las bases de empresa:** se hace desde la red privada con el servicio `restore-drill`:
+  1. poner su arranque en `node dist-cp/backup-job.js migrate-tenants` (simulación) y desplegar con `railway up`;
+  2. revisar los logs;
+  3. repetir con `--apply`;
+  4. devolver el arranque a `node dist-cp/backup-job.js list` (orden inocua).
+- **`railway deployment redeploy` no reutiliza la imagen subida con `railway up`:** despliega siempre con `railway up` desde el export verificado.
