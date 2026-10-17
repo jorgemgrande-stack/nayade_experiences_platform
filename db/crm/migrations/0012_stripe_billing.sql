@@ -7,6 +7,8 @@
 --  - Estas tablas son la correspondencia y una copia local para auditar y conciliar. Se pueden
 --    reconstruir desde la API de Stripe.
 --
+-- Los identificadores de Stripe distinguen mayúsculas: sus columnas usan utf8mb4_bin (comparación exacta).
+--
 -- Nunca se ejecuta al arrancar. Diseño: docs/elephant-source/STRIPE_FASE_A.md.
 
 -- Correspondencia precio aprobado del catálogo ↔ Product/Price de Stripe. El importe vive en
@@ -14,10 +16,10 @@
 CREATE TABLE stripe_prices (
   id INT AUTO_INCREMENT PRIMARY KEY,
   web_price_id INT NOT NULL,
-  stripe_product_id VARCHAR(80) NOT NULL,
-  stripe_price_id VARCHAR(80) NOT NULL,
+  stripe_product_id VARCHAR(80) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+  stripe_price_id VARCHAR(80) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
   -- lookup_key de Stripe (exclusiva en la cuenta): es:<producto>:<kind>:<moneda>:v<web_price_id>
-  lookup_key VARCHAR(200) NOT NULL,
+  lookup_key VARCHAR(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
   livemode TINYINT(1) NOT NULL DEFAULT 0,
   status ENUM('active','archived') NOT NULL DEFAULT 'active',
   created_at BIGINT NOT NULL,
@@ -35,7 +37,7 @@ CREATE TABLE stripe_customers (
   id INT AUTO_INCREMENT PRIMARY KEY,
   company_id INT NOT NULL,
   tenant_id VARCHAR(63) NULL,
-  stripe_customer_id VARCHAR(80) NOT NULL,
+  stripe_customer_id VARCHAR(80) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
   livemode TINYINT(1) NOT NULL DEFAULT 0,
   created_at BIGINT NOT NULL,
   updated_at BIGINT NULL,
@@ -51,9 +53,9 @@ CREATE TABLE stripe_customers (
 CREATE TABLE stripe_checkout_sessions (
   id INT AUTO_INCREMENT PRIMARY KEY,
   order_id INT NOT NULL,
-  stripe_session_id VARCHAR(255) NOT NULL,
+  stripe_session_id VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
   -- Clave enviada a Stripe en Idempotency-Key (sin datos personales)
-  idempotency_key VARCHAR(80) NOT NULL,
+  idempotency_key VARCHAR(80) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
   -- Precios de Stripe enviados (calculados en el servidor a partir del pedido)
   price_ids_json JSON NOT NULL,
   status ENUM('open','complete','expired') NOT NULL,
@@ -74,8 +76,8 @@ CREATE TABLE stripe_checkout_sessions (
 -- Copia local de cada Subscription de Stripe, actualizada SOLO con el objeto releído desde la API
 -- (nunca con el cuerpo de un evento: los eventos llegan desordenados o repetidos).
 CREATE TABLE stripe_subscriptions (
-  stripe_subscription_id VARCHAR(80) NOT NULL PRIMARY KEY,
-  stripe_customer_id VARCHAR(80) NOT NULL,
+  stripe_subscription_id VARCHAR(80) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL PRIMARY KEY,
+  stripe_customer_id VARCHAR(80) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
   company_id INT NOT NULL,
   order_id INT NULL,
   tenant_id VARCHAR(63) NULL,
@@ -85,7 +87,7 @@ CREATE TABLE stripe_subscriptions (
   cancel_at_period_end TINYINT(1) NOT NULL DEFAULT 0,
   -- Desde la API 2025-03-31 el periodo está en los items: se guarda el máximo de items.data[].current_period_end
   current_period_end BIGINT NULL,
-  latest_invoice_id VARCHAR(80) NULL,
+  latest_invoice_id VARCHAR(80) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL,
   price_ids_json JSON NOT NULL,
   livemode TINYINT(1) NOT NULL DEFAULT 0,
   synced_at BIGINT NOT NULL,
@@ -103,11 +105,11 @@ CREATE TABLE stripe_subscriptions (
 -- vez y se procesa de forma duradera: received → processing → processed | ignored | failed (se
 -- reintenta con espera). El cuerpo NO se guarda: el efecto se calcula releyendo el objeto en Stripe.
 CREATE TABLE stripe_events (
-  event_id VARCHAR(80) NOT NULL PRIMARY KEY,
+  event_id VARCHAR(80) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL PRIMARY KEY,
   type VARCHAR(80) NOT NULL,
   api_version VARCHAR(40) NULL,
   object_type VARCHAR(40) NULL,
-  object_id VARCHAR(255) NULL,
+  object_id VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL,
   -- Momento de creación según Stripe (segundos): solo informativo, no se usa para ordenar
   stripe_created BIGINT NOT NULL,
   source ENUM('webhook','reconcile') NOT NULL,

@@ -92,6 +92,14 @@ describe.skipIf(!URL_)("migración 0012_stripe_billing con MySQL real", () => {
     await expect(pool.query(ev, [now])).rejects.toThrow(/Duplicate/);
   });
 
+  it("los identificadores de Stripe se comparan de forma exacta (distinguen mayúsculas)", async () => {
+    const ev = (id: string) => pool.query(`INSERT INTO stripe_events (event_id, type, stripe_created, source, status, received_at) VALUES (?, 'invoice.paid', 1, 'webhook', 'received', ?)`, [id, now]);
+    await ev("evt_CaseTest");
+    await ev("evt_casetest");
+    const [rows] = (await pool.query(`SELECT COUNT(*) n FROM stripe_events WHERE event_id = 'evt_CaseTest'`)) as unknown as [{ n: number }[]];
+    expect(Number(rows[0].n)).toBe(1);
+  });
+
   it("una sola sesión de Checkout abierta por pedido; las cerradas no cuentan", async () => {
     const ins = (sid: string, k: string, status: string) =>
       pool.query(`INSERT INTO stripe_checkout_sessions (order_id, stripe_session_id, idempotency_key, price_ids_json, status, expires_at, created_at) VALUES (?, ?, ?, '[]', ?, ?, ?)`, [orderId, sid, k, status, now + 86_400_000, now]);

@@ -51,6 +51,8 @@ export function looksLive(value: string): boolean {
 export function stripeConfigFromEnv(env: NodeJS.ProcessEnv = process.env): StripeConfig | null {
   for (const k of Object.keys(env)) {
     if (/^CP_STRIPE_.*LIVE/i.test(k) || /^STRIPE_LIVE/i.test(k)) throw new StripeConfigError(`${k} no está permitido: solo modo pruebas`);
+    // Ningún servicio guarda credenciales administrativas de Stripe (catálogo y Portal los gestiona una persona)
+    if (/^CP_STRIPE_ADMIN/i.test(k)) throw new StripeConfigError(`${k} no está permitido en un servicio: las operaciones administrativas no usan claves guardadas`);
   }
   const mode = (env.CP_STRIPE_MODE ?? "").trim().toLowerCase();
   const apiKey = (env.CP_STRIPE_API_KEY ?? "").trim();
