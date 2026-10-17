@@ -119,3 +119,59 @@
 2. **Copias externas:** elegir y contratar el proveedor y crear un bucket privado con credenciales propias. Después: variables `BACKUP_SECONDARY_*`, primera copia y simulacro de restauración desde el externo.
 3. **Dirección de soporte** (`ELEPHANT_SUPPORT_EMAIL`).
 4. **PITR:** decidir si se ensaya la imagen `mysql-ha` en una instancia temporal.
+
+## Primer envío real autorizado (17/10/2026)
+
+**Preparación:**
+- Dominio `bigelephant.es` autenticado en Brevo: `brevo-code`, DKIM `brevo1` y `brevo2`, y DMARC `p=none`. MX, `default._domainkey` y SPF sin tocar.
+- Remitente `no-reply@bigelephant.es` activo.
+- Webhook transaccional id 2620156 hacia `/cp/v1/mail/brevo/webhook`, a través de la pasarela del CRM.
+- `MAIL_SANDBOX_ALLOWLIST=soporte@bigelephant.es`, una dirección exacta y sin dominios.
+- Antes del envío, las bandejas de salida estaban vacías.
+
+**Envío:** un único correo, desde la empresa demo 01 (`emailCommunications.sendTestEmail`, plantilla `quote`) a `soporte@bigelephant.es`.
+
+| Evidencia | Resultado |
+|---|---|
+| Bandeja de la empresa | `accepted` por Brevo. `messageId` `<202610170848.80444852289@smtp-relay.mailin.fr>`, From `Empresa Demo Elephant A <no-reply@bigelephant.es>`. |
+| Brevo (eventos y resumen del día) | 1 petición y 1 `softBounce` a los 6 s. 0 entregados, 0 de otros mensajes. |
+| Motivo del rebote | El servidor de destino respondió `554 5.7.1 … Client host [77.32.148.25] blocked using bl.spamcop.net`. El correo del dominio (MX `mail.bigelephant.es`, Dinahosting) rechaza la IP de envío de Brevo porque la consulta en SpamCop. |
+| Webhook | El evento llegó y se aplicó: estado `soft_bounced`, evento `provider_soft_bounce`. |
+| Dirección no autorizada | `skipped / sandbox_recipient_not_allowed`. No llegó a Brevo. |
+
+**Resultado: no entregado (rebote temporal).** Unos minutos después, la IP 77.32.148.25 no aparecía en SpamCop, Spamhaus ni Barracuda (consulta DNS pública), así que el listado pudo ser momentáneo. Brevo no ha hecho reintentos. Después del envío, `MAIL_MODE` ha vuelto a `off`. La lista de destinatarios se queda configurada.
+
+**Antes del siguiente intento** (lo decide el propietario):
+- Pedir a Dinahosting que acepte en `mail.bigelephant.es` las IP de Brevo, o que no aplique `bl.spamcop.net` a ese dominio.
+- O probar con un buzón de prueba en otro proveedor, añadido como dirección exacta a la lista.
+
+## Mejora pendiente: límites de acceso distribuidos y por contexto
+
+**Estado actual (17/10/2026, verificado en Railway).** Las pasarelas reenvían solo la IP real del cliente: Core #124, CRM #19 y #20, web #8. Los límites por IP funcionan y una IP falsificada no los elude. Son límites de `express-rate-limit` en la **memoria de cada proceso**:
+
+| Servicio | Límite | Clave |
+|---|---|---|
+| Core | login y recuperación de contraseña: 5/min, **un único contador compartido** | IP |
+| Core | canje y validación de enlaces de restablecimiento: 10/min | IP |
+| Core | subidas: 20/min | IP |
+| Core | formularios de leads: 10/min | IP |
+| Plano de control | webhook de Brevo: 600/min | IP |
+| Plano de control | API: 600/min | IP |
+| Plano de control | API: 120/min | token, sesión o IP |
+| Plano de control | login de operador | propio |
+
+**Limitaciones:**
+
+- **Sin contexto de empresa.** El Core atiende a todas las empresas en un mismo proceso y el contador es solo por IP. Los intentos en la empresa A cuentan para la B. Una oficina con varias empresas detrás de la misma IP comparte 5 intentos por minuto.
+- **Login y recuperación comparten contador.** Pedir tres recuperaciones deja solo dos intentos de login en ese minuto.
+- **Sin límite por cuenta.** Un ataque distribuido desde muchas IP contra una misma cuenta no queda limitado. Solo lo frenaría el bloqueo de la cuenta, si existe.
+- **No distribuido.** Los contadores se pierden en cada redespliegue y no se compartirían entre varias réplicas. Hoy hay una réplica por servicio.
+- **Náyade.** El Core confía en un solo proxy (`trust proxy 1`, en `server/_core/index.ts`). Detrás del borde de Railway sin pasarela, que es el caso de Náyade, verá probablemente la IP de la CDN y no la del cliente. **No verificado ni modificado:** Náyade queda fuera del alcance de Elephant Source.
+
+**Propuesta.** Se hará más adelante, en su propio PR, sin refactorizar nada ahora:
+
+1. **Almacén compartido** para los contadores, con el mismo servicio en todas las réplicas. Por ejemplo, el adaptador de `express-rate-limit` para Redis, o una tabla MySQL con ventana fija si no se quiere añadir Redis.
+2. **Claves por contexto.** Para login y recuperación, `empresa + IP` y `empresa + huella del correo`, con límites separados para cada acción. Para enlaces de restablecimiento, `empresa + IP`. En el plano de control se mantiene operador o token.
+3. **Límite por cuenta**, con espera progresiva tras fallos repetidos y sin revelar si la cuenta existe.
+4. **Mantener** la IP solo a partir de la cadena de proxies de confianza (pasarela → `X-Forwarded-For` con un único valor).
+5. **Pruebas** con dos empresas desde la misma IP, IP falsificada, cuenta atacada desde varias IP, y continuidad de los contadores tras redesplegar.
