@@ -29,6 +29,7 @@ import { createLocalAuthRouter } from "../localAuth";
 import { createPasswordResetRouter } from "../passwordReset";
 import { createAuthGuardMiddleware } from "../authGuard";
 import uploadRouter from "../uploadRoutes";
+import fileRouter from "../fileRoutes";
 import redsysRouter from "../redsysRoutes";
 import { metaCapiRouter } from "../metaCapiRoute";
 import settlementExportRouter from "../settlementExportRoutes";
@@ -233,6 +234,8 @@ async function startServer() {
   app.use("/local-storage", express.static(localStorageDir));
   // File upload endpoint
   app.use(uploadRouter);
+  // Entrega de ficheros del almacenamiento persistente: públicos (/files) y privados (/api/files)
+  app.use(fileRouter);
 
   // Redsys IPN notification endpoint
   app.use(redsysRouter);

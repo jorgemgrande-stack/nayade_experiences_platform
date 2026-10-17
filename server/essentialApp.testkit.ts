@@ -41,6 +41,8 @@ export interface Mail {
 
 export interface EssentialApp {
   ids: Record<Co, string>;
+  /** Puerto local de la aplicación (peticiones con cuerpo binario). */
+  port: number;
   /** Correos que la aplicación intentó enviar (nunca salen). */
   mails: Mail[];
   /** Registro (plano de control) para operaciones de operador: dominios, etc. */
@@ -171,6 +173,8 @@ export async function startEssentialApp(url: string, label: string): Promise<Ess
   const { sitemapRouter } = await import("./sitemapRouter");
   const invoicePreviewRouter = (await import("./invoicePreviewRouter")).default;
   const redsysRouter = (await import("./redsysRoutes")).default;
+  const uploadRouter = (await import("./uploadRoutes")).default;
+  const fileRouter = (await import("./fileRoutes")).default;
 
   const app = express();
   const rt = installTenantResolution(app, process.env)!;
@@ -183,6 +187,8 @@ export async function startEssentialApp(url: string, label: string): Promise<Ess
   app.use("/api/trpc", capabilityRouteGuard(getCapabilityAccess));
   app.use("/api/trpc", createAuthGuardMiddleware(true));
   app.use(redsysRouter);
+  app.use(uploadRouter);
+  app.use(fileRouter);
   app.use(invoicePreviewRouter);
   app.use("/api/trpc", createExpressMiddleware({ router: appRouter, createContext: createLocalContext, onError: () => undefined }));
   app.use(sitemapRouter);
@@ -230,6 +236,7 @@ export async function startEssentialApp(url: string, label: string): Promise<Ess
   const { invalidateTenantIdentity } = await import("./_core/tenantIdentity");
   const ess: EssentialApp = {
     ids,
+    port,
     mails,
     registry: { service: svc, store },
     refreshTenant(co, domains = []) {

@@ -2,6 +2,10 @@
 //  1. Manus Forge proxy  (BUILT_IN_FORGE_API_URL + BUILT_IN_FORGE_API_KEY)
 //  2. S3 / MinIO local  (S3_ENDPOINT + S3_ACCESS_KEY + S3_SECRET_KEY + S3_BUCKET)
 //  3. Fallback local     (/tmp/local-storage — útil en Railway sin S3 configurado)
+//
+// Con el servicio de objetos activo (STORAGE_OBJECTS; por defecto en multiempresa) `storagePut`
+// delega en server/_core/files/service.ts: bucket privado, metadatos en `stored_objects` y entrega por
+// rutas del Core. Sin él (instalación única por defecto) el comportamiento es el heredado.
 
 import { ENV } from './_core/env';
 import { Metrics, meter } from "./_core/metering";
@@ -13,6 +17,17 @@ import {
 } from "@aws-sdk/client-s3";
 import { writeFile, mkdir } from "fs/promises";
 import path from "path";
+import { TRPCError } from "@trpc/server";
+import {
+  fileService,
+  objectStorageEnabled,
+  signedLink,
+  objectIdFromUrl,
+  FileValidationError,
+  StorageUnavailableError,
+  type PutInput,
+} from "./_core/files/service";
+import { categoryFromLegacyKey, type FileCategory } from "./_core/files/categories";
 
 const LOCAL_STORAGE_DIR = process.env.LOCAL_STORAGE_PATH ?? "/tmp/local-storage";
 
@@ -152,14 +167,47 @@ async function s3Get(relKey: string): Promise<{ key: string; url: string }> {
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
+export interface StoragePutOptions {
+  /** Clase y política del objeto; si falta, se deduce de la clave (lo desconocido es privado). */
+  category?: FileCategory;
+  originalName?: string | null;
+  owner?: PutInput["owner"];
+  uploadedBy?: number | null;
+  /** id del objeto que sustituye (el anterior se conserva hasta confirmar el nuevo). */
+  replaces?: string | null;
+}
+
 export async function storagePut(
   relKey: string,
   data: Buffer | Uint8Array | string,
-  contentType = "application/octet-stream"
-): Promise<{ key: string; url: string }> {
+  contentType = "application/octet-stream",
+  opts: StoragePutOptions = {}
+): Promise<{ key: string; url: string; objectId?: string }> {
   const bytes = typeof data === "string" ? Buffer.byteLength(data) : data.byteLength;
   // Cuota de escritura del tenant (lanza QuotaExceededError si un límite duro se superaría)
   await enforceQuota(Metrics.STORAGE_WRITE_BYTES, bytes);
+  if (objectStorageEnabled()) {
+    normalizeKey(relKey); // la clave heredada sigue validándose (sin `..`, ni de otra empresa)
+    let r: Awaited<ReturnType<ReturnType<typeof fileService>["put"]>>;
+    try {
+      r = await fileService().put({
+        category: opts.category ?? categoryFromLegacyKey(relKey),
+        data,
+        declaredType: contentType,
+        originalName: opts.originalName ?? null,
+        owner: opts.owner ?? null,
+        uploadedBy: opts.uploadedBy ?? null,
+        replaces: opts.replaces ?? null,
+      });
+    } catch (err) {
+      // Errores controlados: 400 (contenido no válido) o 503 (almacenamiento no disponible)
+      if (err instanceof FileValidationError) throw new TRPCError({ code: "BAD_REQUEST", message: err.message, cause: err });
+      if (err instanceof StorageUnavailableError) throw new TRPCError({ code: "SERVICE_UNAVAILABLE", message: err.message, cause: err });
+      throw err;
+    }
+    meter(Metrics.STORAGE_WRITE_BYTES, bytes, "byte", { backend: fileService().storage.kind });
+    return { key: r.key, url: r.url, objectId: r.objectId };
+  }
   let backend: "forge" | "s3" | "local";
   let result: { key: string; url: string };
   if (useForge()) {
@@ -181,7 +229,32 @@ export async function storageGet(relKey: string): Promise<{ key: string; url: st
   return useForge() ? forgeGet(relKey) : s3Get(relKey);
 }
 
+/**
+ * Contenido de un fichero propio a partir de su URL del Core (`/api/files/<id>`, `/files/<id>/…`).
+ * `null` si la URL no es del servicio o el objeto no existe en la empresa en curso.
+ */
+export async function readStoredFile(url: unknown): Promise<{ data: Buffer; contentType: string; name: string } | null> {
+  if (!objectIdFromUrl(url)) return null;
+  try {
+    const r = await fileService().readByUrl(url);
+    return r ? { data: r.data, contentType: r.row.contentType, name: r.row.originalName ?? r.row.objectId } : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * URL apta para enviar fuera (correo a un cliente o proveedor): un fichero PRIVADO del servicio se
+ * convierte en un enlace firmado del Core con caducidad (STORAGE_LINK_TTL_SECONDS); el resto no cambia.
+ */
+export function externalFileUrl(url: string): string {
+  const id = objectIdFromUrl(url);
+  if (!id || !url.includes("/api/files/")) return url;
+  return signedLink(id);
+}
+
 /** Retorna true si hay almacenamiento externo (Forge o S3) configurado. */
 export function hasExternalStorage(): boolean {
+  if (objectStorageEnabled()) return fileService().storage.kind !== "local";
   return useForge() || !!(ENV.s3AccessKey && ENV.s3SecretKey);
 }

@@ -21,6 +21,7 @@ import {
 } from "../../drizzle/schema";
 import { and, desc, eq, gte, lte, sql, inArray, isNull } from "drizzle-orm";
 import { storagePut } from "../storage";
+import { fileService, objectIdFromUrl, objectStorageEnabled } from "../_core/files/service";
 import { calcGeneralTax } from "../taxUtils";
 import { TRPCError } from "@trpc/server";
 import { getDefaultCashAccountId, createCashMovementIfNotExists } from "./cashRegisterHelper";
@@ -385,7 +386,7 @@ const expensesRouter = router({
     .mutation(async ({ input }) => {
       const buffer = Buffer.from(input.base64, "base64");
       const key = `expenses/${input.expenseId}/${input.fileName}-${randomSuffix()}`;
-      const { url } = await storagePut(key, buffer, input.mimeType);
+      const { url } = await storagePut(key, buffer, input.mimeType, { category: "expense", originalName: input.fileName, owner: { type: "expense", id: input.expenseId } });
       await db.insert(expenseFiles).values({
         expenseId: input.expenseId,
         filePath: url,
@@ -398,7 +399,11 @@ const expensesRouter = router({
   deleteFile: adminProcedure
     .input(z.object({ fileId: z.number() }))
     .mutation(async ({ input }) => {
+      const [file] = await db.select({ filePath: expenseFiles.filePath }).from(expenseFiles).where(eq(expenseFiles.id, input.fileId)).limit(1);
       await db.delete(expenseFiles).where(eq(expenseFiles.id, input.fileId));
+      // Borrado autorizado (adminProcedure) del objeto almacenado, si es del servicio de ficheros
+      const objectId = objectIdFromUrl(file?.filePath);
+      if (objectId && objectStorageEnabled()) await fileService().delete(objectId).catch(() => undefined);
       return { ok: true };
     }),
 

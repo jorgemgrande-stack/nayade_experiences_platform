@@ -582,7 +582,7 @@ export const gestoriaRouter = router({
       .mutation(async ({ input, ctx }) => {
         const { buffer, fileCount } = await buildDossierZip(input.year);
         const key = `gestoria/dossiers/Expediente_${input.year}_${Date.now()}.zip`;
-        const stored = await storagePut(key, buffer, "application/zip");
+        const stored = await storagePut(key, buffer, "application/zip", { category: "gestoria-export", originalName: `Expediente_${input.year}.zip`, owner: { type: "tax_dossier", id: input.year }, uploadedBy: ctx.user.id });
         const [res] = await db.insert(taxDossiers).values({
           year: input.year,
           scope: "global",

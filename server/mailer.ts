@@ -26,6 +26,8 @@ const maskTo = (to: string | string[]) => (Array.isArray(to) ? to : [to]).map(ma
 import { isMultiTenant } from "./_core/tenant";
 import { getSystemSettingSync } from "./config";
 import { brandName, tenantCommsConfig } from "./tenantBrand";
+import { readStoredFile } from "./storage";
+import { objectIdFromUrl } from "./_core/files/service";
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 export interface MailParams {
@@ -35,8 +37,11 @@ export interface MailParams {
   text?: string;
   from?: string;
   cc?: string | string[];
-  /** Adjuntos por URL pública (p.ej. el PDF de la factura en el CDN). */
-  attachments?: { name: string; url: string }[];
+  /**
+   * Adjuntos por URL. Si la URL es de un fichero del almacenamiento del Core (privado), se adjunta su
+   * CONTENIDO (el proveedor de correo no puede descargarlo); el resto se adjunta por URL.
+   */
+  attachments?: { name: string; url: string; content?: Buffer }[];
 }
 
 // ─── Helper: parsea el SMTP_FROM en nombre + email ───────────────────────────
@@ -101,9 +106,9 @@ async function sendViaBrevoApi(params: MailParams): Promise<boolean> {
     htmlContent: params.html,
     ...(params.text ? { textContent: params.text } : {}),
     ...(ccList ? { cc: ccList } : {}),
-    // Adjuntos por URL (Brevo descarga el fichero público y lo adjunta)
+    // Adjuntos: contenido en base64 (ficheros propios) o por URL (Brevo descarga el fichero público)
     ...(params.attachments?.length
-      ? { attachment: params.attachments.map(a => ({ url: a.url, name: a.name })) }
+      ? { attachment: params.attachments.map(a => (a.content ? { content: a.content.toString("base64"), name: a.name } : { url: a.url, name: a.name })) }
       : {}),
     // Desactivar click-tracking de Brevo para que los enlaces lleguen directos sin redirección
     headers: { "X-Mailin-no-track": "1" },
@@ -181,7 +186,7 @@ async function sendViaSMTP(params: MailParams): Promise<boolean> {
       ...(params.text ? { text: params.text } : {}),
       ...(params.cc ? { cc: Array.isArray(params.cc) ? params.cc.join(", ") : params.cc } : {}),
       ...(params.attachments?.length
-        ? { attachments: params.attachments.map(a => ({ filename: a.name, path: a.url })) }
+        ? { attachments: params.attachments.map(a => (a.content ? { filename: a.name, content: a.content } : { filename: a.name, path: a.url })) }
         : {}),
     });
     console.log(`[Mailer] ✓ SMTP → ${maskTo(params.to)}`);
@@ -207,6 +212,24 @@ function mergeGlobalCc(params: MailParams): MailParams {
   return { ...params, cc: merged.length ? merged : undefined };
 }
 
+// ─── Adjuntos del almacenamiento propio ───────────────────────────────────────
+
+/** Sustituye las URL de ficheros del Core por su contenido; uno que no se pueda leer no se adjunta. */
+async function resolveOwnAttachments(params: MailParams): Promise<MailParams> {
+  if (!params.attachments?.some((a) => !a.content && objectIdFromUrl(a.url))) return params;
+  const attachments: NonNullable<MailParams["attachments"]> = [];
+  for (const a of params.attachments) {
+    if (a.content || !objectIdFromUrl(a.url)) {
+      attachments.push(a);
+      continue;
+    }
+    const f = await readStoredFile(a.url);
+    if (f) attachments.push({ name: a.name, url: a.url, content: f.data });
+    else opsLog("warn", "Mailer", "attachment_unavailable", {});
+  }
+  return { ...params, attachments };
+}
+
 // ─── API pública ──────────────────────────────────────────────────────────────
 
 /**
@@ -222,7 +245,7 @@ export async function sendEmail(params: MailParams): Promise<boolean> {
       return false;
     }
   }
-  const enriched = mergeGlobalCc(params);
+  const enriched = mergeGlobalCc(await resolveOwnAttachments(params));
 
   // Intentar primero con Brevo API
   if (process.env.BREVO_API_KEY) {

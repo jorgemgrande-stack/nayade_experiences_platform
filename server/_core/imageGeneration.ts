@@ -84,7 +84,8 @@ export async function generateImage(
   const { url } = await storagePut(
     `generated/${Date.now()}.png`,
     buffer,
-    result.image.mimeType
+    result.image.mimeType,
+    { category: "generated" }
   );
   return {
     url,
