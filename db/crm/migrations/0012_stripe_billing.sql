@@ -134,3 +134,29 @@ CREATE TABLE stripe_sync_state (
   locked_until BIGINT NULL,
   updated_at BIGINT NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Reembolsos y disputas de los cargos de una suscripción de Elephant Source, releídos SIEMPRE en Stripe.
+-- `coverage_lost = 1` (reembolso total o disputa perdida) retiene el pedido: queda suspendido (nunca se
+-- borra nada) y no se reactiva solo hasta que haya un pago nuevo, se gane la disputa o un operador lo
+-- resuelva con motivo (`resolved_at`, `resolution`). Un reembolso parcial o una disputa abierta solo avisan.
+CREATE TABLE stripe_charge_adjustments (
+  stripe_charge_id VARCHAR(80) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL PRIMARY KEY,
+  stripe_invoice_id VARCHAR(80) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL,
+  stripe_subscription_id VARCHAR(80) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL,
+  order_id INT NOT NULL,
+  company_id INT NOT NULL,
+  amount_cents INT NOT NULL,
+  amount_refunded_cents INT NOT NULL DEFAULT 0,
+  currency CHAR(3) NOT NULL,
+  dispute_status VARCHAR(40) NULL,
+  coverage_lost TINYINT(1) NOT NULL DEFAULT 0,
+  resolved_at BIGINT NULL,
+  resolution VARCHAR(300) NULL,
+  livemode TINYINT(1) NOT NULL DEFAULT 0,
+  created_at BIGINT NOT NULL,
+  updated_at BIGINT NOT NULL,
+  KEY idx_stripe_adj_order (order_id, coverage_lost, resolved_at),
+  CONSTRAINT fk_stripe_adj_order FOREIGN KEY (order_id) REFERENCES commercial_orders (id),
+  CONSTRAINT fk_stripe_adj_company FOREIGN KEY (company_id) REFERENCES crm_companies (id),
+  CONSTRAINT chk_stripe_adj_test CHECK (livemode = 0)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
