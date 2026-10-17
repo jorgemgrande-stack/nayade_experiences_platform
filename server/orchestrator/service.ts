@@ -65,7 +65,14 @@ export interface OrchestratorDeps {
   payments?: TestPaymentPort | null;
   graceDays?: number;
   now?: () => number;
+  /**
+   * Aviso tras cada cambio de estado ya guardado (correo transaccional). No forma parte de la transición:
+   * se lanza sin esperar y un fallo solo se registra.
+   */
+  notify?: OrderNotifier;
 }
+
+export type OrderNotifier = (e: { order: CommercialOrder; action: OrderAction; detail: Record<string, unknown> | null }) => Promise<void>;
 
 export interface CreateOrderInput {
   idempotencyKey: string;
@@ -132,7 +139,10 @@ export class CommercialOrchestrator {
   private async move(o: CommercialOrder, action: OrderAction, actor: string, patch: OrderPatch = {}, detail: Record<string, unknown> | null = null) {
     const to = nextOrderState(o.state, action);
     if (!to) throw new OrderError("invalid_state", `No se puede «${action}» un pedido en estado «${o.state}»`);
-    return this.d.store.transition(o.id, o.version, { ...patch, state: to }, { kind: action, detail, actor, at: this.now() });
+    const moved = await this.d.store.transition(o.id, o.version, { ...patch, state: to }, { kind: action, detail, actor, at: this.now() });
+    if (this.d.notify)
+      void this.d.notify({ order: moved, action, detail }).catch((e) => opsLog("error", "Orders", "notify_failed", { orderId: o.id, action, error: e instanceof Error ? e.name : "error" }));
+    return moved;
   }
   /** Evento sin cambio de estado (pago solicitado, fallo de un paso, renovación…). */
   private note(o: CommercialOrder, kind: string, actor: string, detail: Record<string, unknown> | null, patch: OrderPatch = {}) {

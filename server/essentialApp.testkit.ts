@@ -92,6 +92,10 @@ export async function startEssentialApp(url: string, label: string): Promise<Ess
   for (const k of ["SMTP_HOST", "SMTP_USER", "SMTP_PASS", "REDSYS_MERCHANT_KEY", "REDSYS_MERCHANT_CODE", "ADMIN_EMAIL", "S3_ENDPOINT", "BUILT_IN_FORGE_API_URL"]) delete process.env[k];
   // Correo: proveedor FALSO que solo registra (ninguna salida de red real)
   process.env.BREVO_API_KEY = "ci-only-proveedor-falso";
+  // Servicio de correo centralizado: «live» autorizado SOLO porque el proveedor es falso (fetch interceptado)
+  process.env.MAIL_MODE = "live";
+  process.env.MAIL_LIVE_AUTHORIZED = "1";
+  process.env.MAIL_SENDING_DOMAIN = "envios.example";
   const mails: Mail[] = [];
   const realFetch = globalThis.fetch;
   globalThis.fetch = (async (input: unknown, init?: { body?: unknown }) => {

@@ -27,7 +27,7 @@ const BCRYPT_ROUNDS = 12;
 async function sendResetEmail(to: string, resetUrl: string, name: string) {
   const html = buildPasswordResetHtml({ name: name ?? "", resetUrl, expiryMinutes: TOKEN_EXPIRY_MINUTES });
   const resetSubject = `Recuperar contraseña — ${brandName()}`;
-  const sent = await sendEmail({ to, subject: resetSubject, html });
+  const sent = await sendEmail({ to, subject: resetSubject, html, category: "password_reset" });
   logDirectEmail({ templateKey: "password_reset", triggerEvent: "password_reset_requested", recipientEmail: to, subject: resetSubject, sent }).catch(() => {});
   if (!sent) {
     if (process.env.NODE_ENV !== "production") {

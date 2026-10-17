@@ -72,6 +72,9 @@ import type { OrderStore } from "../orchestrator/store";
 import type { TestPaymentPort } from "../orchestrator/payments";
 import { createOrdersRouter, paymentsWebhookHandler } from "../orchestrator/api";
 import { createContractActivation } from "../crm/activation";
+import type { PlatformMailer } from "../mail/platform";
+import type { MailService } from "../mail/service";
+import { brevoWebhookHandler } from "../mail/webhook";
 
 /** Aviso por defecto: NO envía nada; solo deja constancia (sin correo ni token) de que hay un aviso pendiente. */
 const logOnlyTrialNotifier: TrialNotifier = {
@@ -160,6 +163,17 @@ export interface ControlPlaneDeps {
    * pagos son SOLO de prueba (`payments`); sin ellos, los pedidos se confirman por aprobación administrativa.
    */
   orders?: { store: OrderStore; payments?: TestPaymentPort | null; graceDays?: number };
+  /**
+   * Correo transaccional centralizado (server/mail, CRM 0011). `platform`: avisos de Elephant Source
+   * (pedidos, alta asistida); webhook de Brevo autenticado por cabecera propia (`webhookToken`);
+   * `tenantLane`: bandejas de las empresas para aplicar sus eventos; `diagnostics`: consulta de la cuenta.
+   */
+  mail?: {
+    platform: PlatformMailer | null;
+    webhookToken?: string | null;
+    tenantLane?: (tenantId: string) => Promise<MailService | null>;
+    diagnostics?: () => Promise<unknown>;
+  };
 }
 
 const idSchema = z.string().regex(/^[a-z0-9][a-z0-9_-]{0,62}$/);
@@ -253,6 +267,22 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         const out = await d.billing!.handleWebhook((req as any).rawBody ?? "", sig);
         res.json(out);
       }),
+    );
+  }
+
+  // Webhook de eventos de Brevo: autenticado por la cabecera propia configurada al crearlo (no por token
+  // de servicio). Sin token configurado responde 503 y no cambia nada. Ver server/mail/webhook.ts.
+  if (d.mail) {
+    const mail = d.mail;
+    app.post(
+      "/cp/v1/mail/brevo/webhook",
+      rateLimit({ windowMs: 60_000, limit: 600, standardHeaders: true, legacyHeaders: false, keyGenerator: (req) => `ip:${ipKeyGenerator(req.ip ?? "")}` }),
+      wrap(
+        brevoWebhookHandler({
+          token: mail.webhookToken,
+          resolve: async (lane, tenantId) => (lane === "platform" ? (mail.platform?.service ?? null) : mail.tenantLane ? mail.tenantLane(tenantId) : null),
+        }),
+      ),
     );
   }
 
@@ -948,7 +978,8 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         quote: async (r) => quote(quoteCatalogFromSite(await webAdmin!.site("published")), r),
         licensing: new LicensingService({ capabilities: d.capabilities, subscriptions: d.subscriptions.store, crm: crmPort, catalog: async () => quoteCatalogFromSite(await webAdmin!.site("published")), now: d.subscriptions.now }),
         capabilities: d.capabilities,
-        platform: d.provisioning && d.platformDomain ? createContractActivation({ provisioning: d.provisioning, platformDomain: d.platformDomain, actor: { type: "crm", id: "orchestrator" } }) : undefined,
+        platform: d.provisioning && d.platformDomain ? createContractActivation({ provisioning: d.provisioning, platformDomain: d.platformDomain, actor: { type: "crm", id: "orchestrator" }, notifyWelcome: d.mail?.platform?.assistedWelcome() }) : undefined,
+        notify: d.mail?.platform ? d.mail.platform.orderNotifier({ crmStore: d.crm.store, orders: d.orders.store, reader: d.reader }) : undefined,
         trials: d.trials ? new TrialService({ store: d.trials.store, subscriptions: d.subscriptions.store, now: d.subscriptions.now, limits: d.trials.limits }) : undefined,
         payments: d.orders.payments ?? null,
         graceDays: d.orders.graceDays,
@@ -1209,6 +1240,26 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         const totals: Record<string, number> = {};
         for (const r of rows) totals[r.metric] = (totals[r.metric] ?? 0) + r.quantity;
         res.json({ tenantId: id, days, totals, hourly: rows });
+      }),
+    );
+  }
+
+  // Correo: modo efectivo y diagnóstico de la cuenta del proveedor (solo lecturas; nunca envía)
+  if (d.mail) {
+    const mail = d.mail;
+    router.get(
+      "/mail/diagnostics",
+      requireScope("ops:read"),
+      wrap(async (_req, res) => {
+        const p = mail.platform?.policy;
+        res.json({
+          platformOutbox: !!mail.platform,
+          mode: mail.platform?.service.mode ?? "off",
+          degradedReason: p?.degradedReason ?? null,
+          sendingDomain: p?.sendingDomain ?? null,
+          webhookConfigured: !!mail.webhookToken && mail.webhookToken.length >= 32,
+          provider: mail.diagnostics ? await mail.diagnostics() : null,
+        });
       }),
     );
   }

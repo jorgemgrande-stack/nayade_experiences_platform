@@ -60,7 +60,7 @@ describe.skipIf(!URL_)("Essential — Administración y comunicaciones (aplicaci
     expect(isLicenseDenied(lic.noneQuery, "admin-panel")).toBe(true);
   });
 
-  it("comms-email: sin remitente propio no se envía nada; con él, el correo sale con la marca de la empresa y sin restos de otra", async () => {
+  it("comms-email: el From es siempre el de plataforma con el nombre de la empresa; su dirección propia solo recibe las respuestas; sin restos de otra", async () => {
     ess.mails.length = 0;
     // Essential incluye 3 plazas y admin, agente y controler ya las ocupan: el alta se rechaza hasta liberar una
     const full = await ess.m("a", "admin.createUser", { name: "Nueva Persona", email: "nueva@empresa-a.example", role: "agente" }, admA);
@@ -68,7 +68,11 @@ describe.skipIf(!URL_)("Essential — Administración y comunicaciones (aplicaci
     expect((await ess.m("a", "admin.toggleUserActive", { userId: await ess.userId("a", "controler") }, admA)).status).toBe(200);
     const r = await ess.m("a", "admin.createUser", { name: "Nueva Persona", email: "nueva@empresa-a.example", role: "agente" }, admA);
     expect(r.status).toBe(200);
-    expect(ess.mails).toHaveLength(0);
+    // Sin remitente propio: sale igualmente con el remitente de plataforma y el nombre de la empresa del registro
+    expect(ess.mails).toHaveLength(1);
+    expect(ess.mails[0].sender.email).toBe("no-reply@envios.example");
+    expect(ess.mails[0].sender.name).toBeTruthy();
+    ess.mails.length = 0;
 
     expect((await ess.m("a", "config.updateSystemSetting", { key: "email_from_address", value: "hola@empresa-a.example" }, admA)).status).toBe(200);
     expect((await ess.m("a", "config.updateSystemSetting", { key: "email_from_name", value: "Empresa A" }, admA)).status).toBe(200);
@@ -76,7 +80,9 @@ describe.skipIf(!URL_)("Essential — Administración y comunicaciones (aplicaci
     expect((await ess.m("a", "admin.resendInvite", { userId: uid, email: "nueva@empresa-a.example", name: "Nueva Persona" }, admA)).status).toBe(200);
     expect(ess.mails).toHaveLength(1);
     const mail = ess.mails[0];
-    expect(mail.sender.email).toBe("hola@empresa-a.example");
+    // Una empresa no envía con una identidad que no es la suya: su dirección va en Reply-To
+    expect(mail.sender).toEqual({ name: "Empresa A", email: "no-reply@envios.example" });
+    expect(mail.replyTo).toEqual({ email: "hola@empresa-a.example" });
     expect(mail.to).toEqual([{ email: "nueva@empresa-a.example" }]);
     expect(mail.htmlContent).toContain(`https://${ess.host("a")}/establecer-contrasena`);
     expect(`${mail.subject} ${mail.htmlContent}`).not.toMatch(LEFTOVERS);
