@@ -7,6 +7,12 @@
  *   POST /stripe/orders/:id/checkout            orders:write  abre o reutiliza la Checkout Session del pedido (*)
  *   POST /stripe/orders/:id/checkout/expire     orders:write  cierra la sesión abierta del pedido
  *   POST /stripe/checkout/:sessionId/sync       orders:read   relee sesión y suscripción (no confirma nada)
+ *   GET  /stripe/events                         ops:read      eventos por estado (pendientes, fallidos…)
+ *   POST /stripe/events/:id/retry               orders:write  reprograma ya un evento fallido
+ *   POST /stripe/reconcile                      orders:write  conciliación manual (la misma que la periódica)
+ *
+ * El webhook (`POST /cp/v1/stripe/webhook`) no usa token: se autentica por firma y se monta aparte, antes
+ * del analizador JSON global (server/stripe/webhook.ts).
  *
  * (*) Además exige CP_STRIPE_CHECKOUT_ENABLED=1 y las URL de vuelta; si no, 409 `checkout_disabled`.
  * No hay ninguna ruta pública: el registro público sigue cerrado. El Customer Portal no se expone
@@ -23,6 +29,8 @@ import { StripeCheckoutError, type StripeCheckoutService } from "./checkout";
 import { describeStripeConfig, type StripeConfig } from "./config";
 import { StripeGatewayError, type StripeGateway } from "./gateway";
 import { StripeStoreError, type StripeStore } from "./store";
+import type { StripeEventProcessor } from "./events";
+import type { StripeReconciler } from "./reconcile";
 
 const STATUS: Record<string, number> = { not_found: 404, invalid_state: 409, unsupported: 422, unavailable: 409, conflict: 409, price_conflict: 409, open_session_exists: 409 };
 
@@ -55,6 +63,8 @@ export interface StripeRouterDeps {
   catalog: CatalogPort;
   /** null si faltan las URL de vuelta o no está CP_STRIPE_CHECKOUT_ENABLED=1. */
   checkout: StripeCheckoutService | null;
+  processor?: StripeEventProcessor;
+  reconciler?: StripeReconciler;
   now?: () => number;
 }
 
@@ -86,6 +96,22 @@ export function createStripeRouter(d: StripeRouterDeps): Router {
   r.post("/checkout/:sessionId/sync", requireScope("orders:read"), wrap(async (req, res) => {
     if (!d.checkout) return void res.status(409).json({ error: "checkout_disabled", message: "Checkout desactivado" });
     res.json(await d.checkout.sync(sessionId.parse(req.params.sessionId)));
+  }));
+  r.get("/events", requireScope("ops:read"), wrap(async (_req, res) => void res.json({ counts: await d.store.eventCounts() })));
+  r.post("/events/:id/retry", requireScope("orders:write"), wrap(async (req, res) => {
+    const eventId = z.string().regex(/^evt_[A-Za-z0-9]{8,240}$/).parse(req.params.id);
+    const ev = await d.store.event(eventId);
+    if (!ev) return void res.status(404).json({ error: "not_found", message: "Evento no registrado" });
+    if (ev.status !== "failed") return void res.status(409).json({ error: "invalid_state", message: `El evento está en «${ev.status}»: solo se reprograma uno fallido` });
+    await d.store.failEvent(eventId, ev.lastError ?? "Reintento manual", now());
+    opsLog("info", "Stripe", "event_retry", { eventId, actor: who(req) });
+    res.json({ scheduled: true, result: d.processor ? await d.processor.processDue(10) : null });
+  }));
+  r.post("/reconcile", requireScope("orders:write"), wrap(async (req, res) => {
+    if (!d.reconciler) return void res.status(409).json({ error: "unavailable", message: "Conciliación no disponible" });
+    const out = await d.reconciler.tick();
+    opsLog("info", "Stripe", "reconcile_manual", { actor: who(req), skipped: out.skipped, recovered: out.recovered });
+    res.status(out.skipped ? 409 : 200).json(out);
   }));
   return r;
 }

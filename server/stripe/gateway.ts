@@ -57,6 +57,30 @@ export interface GwSubscription {
   metadata: Record<string, string>;
 }
 
+export interface GwInvoice {
+  id: string;
+  status: "draft" | "open" | "paid" | "uncollectible" | "void" | null;
+  /** Desde la API 2025-03-31 la suscripción está en parent.subscription_details.subscription. */
+  subscriptionId: string | null;
+  customerId: string | null;
+  amountPaid: number;
+  currency: string;
+  /** subscription_create (primera), subscription_cycle (renovación), subscription_update (cambio)… */
+  billingReason: string | null;
+  periodStart: number | null;
+}
+
+/** Evento de Stripe reducido a lo que usamos: el efecto siempre se calcula releyendo el objeto. */
+export interface GwEvent {
+  id: string;
+  type: string;
+  created: number;
+  livemode: boolean;
+  apiVersion: string | null;
+  objectType: string | null;
+  objectId: string | null;
+}
+
 export interface CheckoutSessionInput {
   customerId: string;
   priceId: string;
@@ -79,6 +103,9 @@ export interface StripeGateway {
   expireCheckoutSession(id: string): Promise<GwCheckoutSession>;
   subscription(id: string): Promise<GwSubscription | null>;
   createPortalSession(input: { customerId: string; returnUrl: string }): Promise<{ url: string }>;
+  invoice(id: string): Promise<GwInvoice | null>;
+  /** Conciliación: eventos desde un momento (segundos), filtrados por tipo, paginados. */
+  listEvents(q: { createdGte?: number; types?: string[]; startingAfter?: string; limit?: number }): Promise<{ events: GwEvent[]; hasMore: boolean }>;
 }
 
 export class StripeGatewayError extends Error {
@@ -145,6 +172,35 @@ export function toSubscription(s: Stripe.Subscription): GwSubscription {
     latestInvoiceId: idOf(s.latest_invoice),
     priceIds: items.map((i) => i.price?.id).filter((x): x is string => !!x),
     metadata: meta(s.metadata),
+  };
+}
+
+export function toInvoice(i: Stripe.Invoice): GwInvoice {
+  assertTestObject(i);
+  const parent = (i as unknown as { parent?: { subscription_details?: { subscription?: unknown } | null } | null }).parent;
+  const legacy = (i as unknown as { subscription?: unknown }).subscription;
+  return {
+    id: i.id ?? "",
+    status: (i.status ?? null) as GwInvoice["status"],
+    subscriptionId: idOf(parent?.subscription_details?.subscription) ?? idOf(legacy),
+    customerId: idOf(i.customer),
+    amountPaid: i.amount_paid ?? 0,
+    currency: (i.currency ?? "").toUpperCase(),
+    billingReason: (i.billing_reason as string | null) ?? null,
+    periodStart: typeof i.period_start === "number" ? i.period_start : null,
+  };
+}
+
+export function toEvent(e: { id: string; type: string; created: number; livemode: boolean; api_version?: string | null; data?: { object?: unknown } }): GwEvent {
+  const obj = (e.data?.object ?? null) as { id?: unknown; object?: unknown } | null;
+  return {
+    id: e.id,
+    type: e.type,
+    created: e.created,
+    livemode: e.livemode,
+    apiVersion: e.api_version ?? null,
+    objectType: typeof obj?.object === "string" ? obj.object : null,
+    objectId: typeof obj?.id === "string" ? obj.id : null,
   };
 }
 
@@ -261,6 +317,22 @@ export function stripeGateway(config: StripeConfig, o: { timeoutMs?: number; max
         wrapError(e);
       }
     },
+    async invoice(id) {
+      try {
+        return toInvoice(await client.invoices.retrieve(id));
+      } catch (e) {
+        if (notFound(e)) return null;
+        wrapError(e);
+      }
+    },
+    async listEvents(q) {
+      try {
+        const page = await client.events.list({ limit: q.limit ?? 100, ...(q.createdGte ? { created: { gte: q.createdGte } } : {}), ...(q.types?.length ? { types: q.types } : {}), ...(q.startingAfter ? { starting_after: q.startingAfter } : {}) });
+        return { events: page.data.map(toEvent), hasMore: page.has_more };
+      } catch (e) {
+        wrapError(e);
+      }
+    },
     async createPortalSession(input) {
       try {
         const s = await client.billingPortal.sessions.create({ customer: input.customerId, return_url: input.returnUrl });
@@ -271,4 +343,15 @@ export function stripeGateway(config: StripeConfig, o: { timeoutMs?: number; max
       }
     },
   };
+}
+
+/**
+ * Verificación OFICIAL de la firma de un webhook (`stripe.webhooks.constructEvent`) sobre el cuerpo
+ * HTTP original, sin reinterpretarlo: admite varios `v1` (rotación del secreto), ignora `v0` y rechaza
+ * marcas de tiempo fuera de la tolerancia (300 s) frente a repeticiones. Lanza si la firma no vale.
+ * No hace ninguna llamada de red.
+ */
+export function stripeWebhookVerifier(config: StripeConfig, toleranceSeconds = 300): (rawBody: Buffer, signature: string) => GwEvent {
+  const client = new Stripe(config.apiKey, { apiVersion: config.apiVersion as Stripe.LatestApiVersion, telemetry: false });
+  return (rawBody, signature) => toEvent(client.webhooks.constructEvent(rawBody, signature, config.webhookSecret, toleranceSeconds) as never);
 }

@@ -40,6 +40,20 @@ export interface StripeSubscriptionRow extends Omit<GwSubscription, "metadata"> 
   syncedAt: number;
 }
 
+export interface StripeEventRow {
+  eventId: string;
+  type: string;
+  objectType: string | null;
+  objectId: string | null;
+  stripeCreated: number;
+  source: "webhook" | "reconcile";
+  status: "received" | "processing" | "processed" | "ignored" | "failed";
+  attempts: number;
+  nextAttemptAt: number | null;
+  lastError: string | null;
+  receivedAt: number;
+}
+
 export class StripeStoreError extends Error {
   constructor(
     public readonly code: "price_conflict" | "open_session_exists",
@@ -68,11 +82,100 @@ export interface StripeStore {
   updateSession(stripeSessionId: string, patch: { status: SessionStatus; paymentStatus: string | null; completedAt: number | null }): Promise<void>;
   upsertSubscription(s: StripeSubscriptionRow): Promise<void>;
   subscription(id: string): Promise<StripeSubscriptionRow | null>;
+  // ── Eventos (webhook y conciliación) ──
+  /** Registra un evento una sola vez (clave primaria = id de Stripe). `created: false` si ya existía. */
+  recordEvent(e: { eventId: string; type: string; apiVersion: string | null; objectType: string | null; objectId: string | null; stripeCreated: number; source: "webhook" | "reconcile"; now: number }): Promise<{ created: boolean }>;
+  /**
+   * Toma hasta `limit` eventos pendientes (nuevos, con reintento vencido o con arrendamiento caducado) y
+   * los marca `processing` con arrendamiento hasta `now + leaseMs`. Seguro con varias réplicas.
+   */
+  claimEvents(now: number, limit: number, leaseMs: number): Promise<StripeEventRow[]>;
+  finishEvent(eventId: string, outcome: "processed" | "ignored", detail: string | null, now: number): Promise<void>;
+  /** Fallo: con `nextAttemptAt` se reintenta; con null queda fallido definitivo (alerta). */
+  failEvent(eventId: string, error: string, nextAttemptAt: number | null): Promise<void>;
+  event(eventId: string): Promise<StripeEventRow | null>;
+  eventCounts(): Promise<Record<StripeEventRow["status"], number>>;
+  // ── Conciliación ──
+  /** Suscripciones no terminadas cuya copia es anterior a `syncedBefore` (las más antiguas primero). */
+  subscriptionsToRefresh(syncedBefore: number, limit: number): Promise<string[]>;
+  /** Sesiones que constan abiertas pero cuya caducidad ya pasó. */
+  openSessionsExpiredBefore(now: number, limit: number): Promise<string[]>;
+  // ── Bloqueos y cursores de las tareas (stripe_sync_state) ──
+  /** Arrendamiento exclusivo entre réplicas: true si se obtiene hasta `until`. */
+  acquireLease(name: string, until: number, now: number): Promise<boolean>;
+  releaseLease(name: string, until: number): Promise<void>;
+  getState(name: string): Promise<Record<string, unknown> | null>;
+  setState(name: string, value: Record<string, unknown>, now: number): Promise<void>;
 }
 
 // ── Memoria (pruebas) ────────────────────────────────────────────────────────
 
 export class MemoryStripeStore implements StripeStore {
+  events = new Map<string, StripeEventRow & { lockedUntil: number | null; processedAt: number | null }>();
+  state = new Map<string, { value: Record<string, unknown>; lockedUntil: number | null }>();
+  async recordEvent(e: { eventId: string; type: string; apiVersion: string | null; objectType: string | null; objectId: string | null; stripeCreated: number; source: "webhook" | "reconcile"; now: number }) {
+    if (this.events.has(e.eventId)) return { created: false };
+    this.events.set(e.eventId, { eventId: e.eventId, type: e.type, objectType: e.objectType, objectId: e.objectId, stripeCreated: e.stripeCreated, source: e.source, status: "received", attempts: 0, nextAttemptAt: null, lastError: null, receivedAt: e.now, lockedUntil: null, processedAt: null });
+    return { created: true };
+  }
+  async claimEvents(now: number, limit: number, leaseMs: number) {
+    const due = Array.from(this.events.values())
+      .filter((e) => e.status === "received" || (e.status === "failed" && e.nextAttemptAt !== null && e.nextAttemptAt <= now) || (e.status === "processing" && (e.lockedUntil ?? 0) < now))
+      .sort((a, b) => a.receivedAt - b.receivedAt)
+      .slice(0, limit);
+    for (const e of due) Object.assign(e, { status: "processing", lockedUntil: now + leaseMs, attempts: e.attempts + 1 });
+    return due.map(({ lockedUntil: _l, processedAt: _p, ...r }) => ({ ...r }));
+  }
+  async finishEvent(id: string, outcome: "processed" | "ignored", detail: string | null, now: number) {
+    const e = this.events.get(id);
+    if (e) Object.assign(e, { status: outcome, lastError: detail, lockedUntil: null, nextAttemptAt: null, processedAt: now });
+  }
+  async failEvent(id: string, error: string, nextAttemptAt: number | null) {
+    const e = this.events.get(id);
+    if (e) Object.assign(e, { status: "failed", lastError: error.slice(0, 300), lockedUntil: null, nextAttemptAt });
+  }
+  async event(id: string) {
+    const e = this.events.get(id);
+    if (!e) return null;
+    const { lockedUntil: _l, processedAt: _p, ...r } = e;
+    return { ...r };
+  }
+  async eventCounts() {
+    const out = { received: 0, processing: 0, processed: 0, ignored: 0, failed: 0 };
+    for (const e of Array.from(this.events.values())) out[e.status]++;
+    return out;
+  }
+  async subscriptionsToRefresh(syncedBefore: number, limit: number) {
+    return Array.from(this.subscriptions.values())
+      .filter((x) => x.status !== "canceled" && x.status !== "incomplete_expired" && x.syncedAt < syncedBefore)
+      .sort((a, b) => a.syncedAt - b.syncedAt)
+      .slice(0, limit)
+      .map((x) => x.id);
+  }
+  async openSessionsExpiredBefore(now: number, limit: number) {
+    return Array.from(this.sessions.values())
+      .filter((x) => x.status === "open" && x.expiresAt < now)
+      .slice(0, limit)
+      .map((x) => x.stripeSessionId);
+  }
+  async acquireLease(name: string, until: number, now: number) {
+    const cur = this.state.get(name) ?? { value: {}, lockedUntil: null };
+    if (cur.lockedUntil !== null && cur.lockedUntil >= now) return false;
+    this.state.set(name, { ...cur, lockedUntil: until });
+    return true;
+  }
+  async releaseLease(name: string, until: number) {
+    const cur = this.state.get(name);
+    if (cur && cur.lockedUntil === until) cur.lockedUntil = null;
+  }
+  async getState(name: string) {
+    const cur = this.state.get(name);
+    return cur ? { ...cur.value } : null;
+  }
+  async setState(name: string, value: Record<string, unknown>) {
+    const cur = this.state.get(name) ?? { value: {}, lockedUntil: null };
+    this.state.set(name, { ...cur, value: { ...value } });
+  }
   prices = new Map<number, StripePriceLink>();
   customers = new Map<number, StripeCustomerLink>();
   sessions = new Map<string, StripeSessionRow>();
@@ -270,5 +373,93 @@ export class MysqlStripeStore implements StripeStore {
       priceIds: json(r.price_ids_json),
       syncedAt: Number(r.synced_at),
     };
+  }
+  private eventRow = (r: Row): StripeEventRow => ({
+    eventId: String(r.event_id),
+    type: String(r.type),
+    objectType: (r.object_type as string | null) ?? null,
+    objectId: (r.object_id as string | null) ?? null,
+    stripeCreated: Number(r.stripe_created),
+    source: r.source as StripeEventRow["source"],
+    status: r.status as StripeEventRow["status"],
+    attempts: Number(r.attempts),
+    nextAttemptAt: r.next_attempt_at == null ? null : Number(r.next_attempt_at),
+    lastError: (r.last_error as string | null) ?? null,
+    receivedAt: Number(r.received_at),
+  });
+  async recordEvent(e: { eventId: string; type: string; apiVersion: string | null; objectType: string | null; objectId: string | null; stripeCreated: number; source: "webhook" | "reconcile"; now: number }) {
+    const [res] = await this.pool.query<mysql.ResultSetHeader>(
+      "INSERT IGNORE INTO stripe_events (event_id, type, api_version, object_type, object_id, stripe_created, source, status, attempts, livemode, received_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'received', 0, 0, ?)",
+      [e.eventId, e.type.slice(0, 80), e.apiVersion, e.objectType, e.objectId, e.stripeCreated, e.source, e.now],
+    );
+    return { created: res.affectedRows === 1 };
+  }
+  async claimEvents(now: number, limit: number, leaseMs: number) {
+    const conn = await this.pool.getConnection();
+    try {
+      await conn.beginTransaction();
+      const [rows] = await conn.query<Row[]>(
+        `SELECT * FROM stripe_events
+          WHERE status = 'received'
+             OR (status = 'failed' AND next_attempt_at IS NOT NULL AND next_attempt_at <= ?)
+             OR (status = 'processing' AND locked_until < ?)
+          ORDER BY received_at LIMIT ? FOR UPDATE SKIP LOCKED`,
+        [now, now, limit],
+      );
+      if (rows.length) {
+        await conn.query("UPDATE stripe_events SET status = 'processing', locked_until = ?, attempts = attempts + 1 WHERE event_id IN (?)", [now + leaseMs, rows.map((r) => r.event_id)]);
+      }
+      await conn.commit();
+      return rows.map((r) => ({ ...this.eventRow(r), status: "processing" as const, attempts: Number(r.attempts) + 1 }));
+    } catch (e) {
+      await conn.rollback().catch(() => undefined);
+      throw e;
+    } finally {
+      conn.release();
+    }
+  }
+  async finishEvent(id: string, outcome: "processed" | "ignored", detail: string | null, now: number) {
+    await this.pool.query("UPDATE stripe_events SET status = ?, last_error = ?, locked_until = NULL, next_attempt_at = NULL, processed_at = ? WHERE event_id = ?", [outcome, detail?.slice(0, 300) ?? null, now, id]);
+  }
+  async failEvent(id: string, error: string, nextAttemptAt: number | null) {
+    await this.pool.query("UPDATE stripe_events SET status = 'failed', last_error = ?, locked_until = NULL, next_attempt_at = ? WHERE event_id = ?", [error.slice(0, 300), nextAttemptAt, id]);
+  }
+  async event(id: string) {
+    const [rows] = await this.pool.query<Row[]>("SELECT * FROM stripe_events WHERE event_id = ?", [id]);
+    return rows[0] ? this.eventRow(rows[0]) : null;
+  }
+  async eventCounts() {
+    const out = { received: 0, processing: 0, processed: 0, ignored: 0, failed: 0 };
+    const [rows] = await this.pool.query<Row[]>("SELECT status, COUNT(*) AS n FROM stripe_events GROUP BY status");
+    for (const r of rows) out[r.status as keyof typeof out] = Number(r.n);
+    return out;
+  }
+  async subscriptionsToRefresh(syncedBefore: number, limit: number) {
+    const [rows] = await this.pool.query<Row[]>(
+      "SELECT stripe_subscription_id FROM stripe_subscriptions WHERE status NOT IN ('canceled','incomplete_expired') AND synced_at < ? ORDER BY synced_at LIMIT ?",
+      [syncedBefore, limit],
+    );
+    return rows.map((r) => String(r.stripe_subscription_id));
+  }
+  async openSessionsExpiredBefore(now: number, limit: number) {
+    const [rows] = await this.pool.query<Row[]>("SELECT stripe_session_id FROM stripe_checkout_sessions WHERE status = 'open' AND expires_at < ? LIMIT ?", [now, limit]);
+    return rows.map((r) => String(r.stripe_session_id));
+  }
+  async acquireLease(name: string, until: number, now: number) {
+    await this.pool.query("INSERT IGNORE INTO stripe_sync_state (name, value_json, locked_until, updated_at) VALUES (?, '{}', NULL, ?)", [name, now]);
+    const [res] = await this.pool.query<mysql.ResultSetHeader>("UPDATE stripe_sync_state SET locked_until = ? WHERE name = ? AND (locked_until IS NULL OR locked_until < ?)", [until, name, now]);
+    return res.affectedRows === 1;
+  }
+  async releaseLease(name: string, until: number) {
+    await this.pool.query("UPDATE stripe_sync_state SET locked_until = NULL WHERE name = ? AND locked_until = ?", [name, until]);
+  }
+  async getState(name: string) {
+    const [rows] = await this.pool.query<Row[]>("SELECT value_json FROM stripe_sync_state WHERE name = ?", [name]);
+    if (!rows[0]) return null;
+    const v = rows[0].value_json;
+    return (typeof v === "string" ? JSON.parse(v) : v) as Record<string, unknown>;
+  }
+  async setState(name: string, value: Record<string, unknown>, now: number) {
+    await this.pool.query("INSERT INTO stripe_sync_state (name, value_json, locked_until, updated_at) VALUES (?, ?, NULL, ?) ON DUPLICATE KEY UPDATE value_json = VALUES(value_json), updated_at = VALUES(updated_at)", [name, JSON.stringify(value), now]);
   }
 }
