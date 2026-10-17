@@ -36,6 +36,7 @@ import { StripeCheckoutService } from "./checkout";
 import { StripeEventProcessor, RETRY_BACKOFF_MS } from "./events";
 import type { GwEvent } from "./gateway";
 import { StripeReconciler } from "./reconcile";
+import { checkoutStatus } from "./status";
 import { MysqlStripeStore } from "./store";
 import { FakeStripeGateway } from "./testing";
 
@@ -327,5 +328,23 @@ describe.skipIf(!URL_)("Stripe Billing de punta a punta con MySQL real", () => {
     expect((await svc.must(o.id)).state).toBe("active");
     const again = await reconciler.tick();
     expect(again.recovered).toBe(0);
+  });
+  it("estado público del alta: pendiente → (pago sin webhook) relectura verificada → listo con acceso; caducada → expired", async () => {
+    const o = await contracted(await company("Estado Público SL"));
+    const deps = { store: stripeStore, orders, processor, platformDomain: "app.example" };
+    const s = await checkout.start(o.id, actor);
+    expect(await checkoutStatus(deps, s.sessionId)).toMatchObject({ state: "pending_payment", retryAfterSeconds: 5 });
+    gw.completeSession(s.sessionId); // pagado en Stripe, pero el webhook no ha llegado
+    const v = await checkoutStatus(deps, s.sessionId);
+    expect(v).toMatchObject({ state: "ready", accessUrl: `https://t-stripe-${(await svc.must(o.id)).companyId}.app.example` });
+    expect(JSON.stringify(v)).not.toMatch(/@|cus_|sub_|in_test/);
+    const o2 = await contracted(await company("Estado Caducado SL"));
+    const s2 = await checkout.start(o2.id, actor);
+    await gw.expireCheckoutSession(s2.sessionId);
+    await deliver(gw.emit("checkout.session.expired", "checkout.session", s2.sessionId));
+    expect(await checkoutStatus(deps, s2.sessionId)).toMatchObject({ state: "expired" });
+    expect(await checkoutStatus(deps, "cs_test_inexistente0001")).toBeNull();
+    expect(await checkoutStatus(deps, "cs_live_x")).toBeNull();
+    expect(await checkoutStatus(deps, "../../etc")).toBeNull();
   });
 });

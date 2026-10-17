@@ -72,6 +72,7 @@ import { createStripeRouter } from "../stripe/api";
 import { StripeEventProcessor } from "../stripe/events";
 import { StripeReconciler, startStripeWorker } from "../stripe/reconcile";
 import { stripeWebhookHandler } from "../stripe/webhook";
+import { SESSION_ID_RE, checkoutStatus } from "../stripe/status";
 import type { GwEvent } from "../stripe/gateway";
 import { StripeCheckoutService, type CheckoutUrls } from "../stripe/checkout";
 import type { StripeConfig } from "../stripe/config";
@@ -193,6 +194,8 @@ export interface ControlPlaneDeps {
     verifyWebhook: (rawBody: Buffer, signature: string) => GwEvent;
     /** Tarea periódica (eventos pendientes y conciliación). Apagada salvo CP_STRIPE_WORKER_ENABLED=1. */
     workerEnabled: boolean;
+    /** Estado público del alta tras Checkout (`/public/checkout/status`). Apagado salvo CP_PUBLIC_CHECKOUT_ENABLED=1. */
+    publicStatus: boolean;
   };
   /**
    * Correo transaccional centralizado (server/mail, CRM 0011). `platform`: avisos de Elephant Source
@@ -397,6 +400,10 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
   // el router real se asigna más abajo, cuando existen suscripciones y licencias.
   let publicTrial: express.Router | null = null;
   router.use("/public/trial", (req, res, next) => (publicTrial ? publicTrial(req, res, next) : void res.status(404).json({ error: "not_found" })));
+  // Estado público del alta tras Stripe Checkout: reservado ANTES del router de captación; se asigna con
+  // el procesador de Stripe y solo con CP_PUBLIC_CHECKOUT_ENABLED=1
+  let publicCheckout: express.Router | null = null;
+  router.use("/public/checkout", (req, res, next) => (publicCheckout ? publicCheckout(req, res, next) : void res.status(404).json({ error: "not_found" })));
   if (webRequests && d.publicIntake) router.use("/public", createPublicIntakeRouter({ ...d.publicIntake, origins: publicOrigins, service: webRequests }));
   router.use(
     authenticate(
@@ -1064,6 +1071,22 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         // Tras guardar un evento del webhook se procesa enseguida (los fallos quedan para el reintento)
         stripeKick = () => void processor.processDue(10).catch(() => undefined);
         if (st.workerEnabled) startStripeWorker({ processor, reconciler });
+        if (st.publicStatus) {
+          const pc = express.Router();
+          pc.get(
+            "/status",
+            rateLimit({ windowMs: 60_000, limit: 60, standardHeaders: true, legacyHeaders: false, keyGenerator: (req) => `ip:${ipKeyGenerator(req.ip ?? "")}` }),
+            wrap(async (req, res) => {
+              const sessionId = String(req.query.session_id ?? "");
+              res.setHeader("Cache-Control", "no-store");
+              if (!SESSION_ID_RE.test(sessionId)) return void res.status(400).json({ error: "invalid_session_id" });
+              const view = await checkoutStatus({ store: st.store, orders: d.orders!.store, processor, platformDomain: d.platformDomain ?? null }, sessionId);
+              if (!view) return void res.status(404).json({ error: "not_found" });
+              res.json(view);
+            }),
+          );
+          publicCheckout = pc;
+        }
         router.use("/stripe", createStripeRouter({ config: st.config, store: st.store, gateway: st.gateway, catalog: stripeCatalog, checkout, processor, reconciler, now: d.subscriptions.now }));
       }
       // Webhook del proveedor de PRUEBAS: autenticado por firma (antes del montaje del router con tokens)
