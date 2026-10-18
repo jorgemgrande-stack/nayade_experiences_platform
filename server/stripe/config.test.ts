@@ -70,6 +70,20 @@ describe("configuración de Stripe Billing (solo pruebas)", () => {
     }
   });
 
+  it("un CP_STRIPE_MODE no soportado no se repite en el mensaje (podría ser una credencial pegada por error)", () => {
+    const k = key("rk", "live");
+    for (const v of [k, "produccion", "LIVE-1"]) {
+      try {
+        stripeConfigFromEnv({ ...base(), CP_STRIPE_MODE: v });
+        throw new Error("debía fallar");
+      } catch (e) {
+        expect(e).toBeInstanceOf(StripeConfigError);
+        expect((e as Error).message).toBe("CP_STRIPE_MODE no está soportado: solo «test» o «live»");
+        expect((e as Error).message.toLowerCase()).not.toContain(v.toLowerCase().slice(0, 8));
+      }
+    }
+  });
+
   it("detecta credenciales live", () => {
     expect(looksLive(key("sk", "live"))).toBe(true);
     expect(looksLive(key("rk", "test"))).toBe(false);

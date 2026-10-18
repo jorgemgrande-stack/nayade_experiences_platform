@@ -144,7 +144,7 @@ export function stripeConfigFromEnv(env: NodeJS.ProcessEnv = process.env): Strip
     if (apiKey || webhookSecret) throw new StripeConfigError("Hay credenciales CP_STRIPE_* pero falta CP_STRIPE_MODE (test o live)");
     return null;
   }
-  if (mode !== "test" && mode !== "live") throw new StripeConfigError(`CP_STRIPE_MODE=${mode.slice(0, 20)} no está soportado: solo «test» o «live»`);
+  if (mode !== "test" && mode !== "live") throw new StripeConfigError("CP_STRIPE_MODE no está soportado: solo «test» o «live»");
   if (mode === "test") {
     if (apiKey && looksLive(apiKey)) throw new StripeConfigError("CP_STRIPE_API_KEY es una clave live: prohibida en modo pruebas");
     if (webhookSecret && /live/i.test(webhookSecret)) throw new StripeConfigError("CP_STRIPE_WEBHOOK_SECRET no parece de pruebas");
