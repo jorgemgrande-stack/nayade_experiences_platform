@@ -28,7 +28,7 @@ export class FakeStripeGateway implements StripeGateway {
   calls: Array<{ op: string; key?: string; input?: unknown }> = [];
   private idem = new Map<string, string>();
   private seq = 0;
-  private next = (p: string) => `${p}_test_${String(++this.seq).padStart(10, "0")}`;
+  private next = (p: string) => `${p}_${this.livemode ? "live" : "test"}_${String(++this.seq).padStart(10, "0")}`;
 
   addProduct(p: Partial<GwProduct> & { id: string }) {
     this.products.set(p.id, { name: "Producto", active: true, metadata: {}, ...p });
