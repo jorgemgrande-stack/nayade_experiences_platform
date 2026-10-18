@@ -53,6 +53,7 @@ d("segundo factor de los operadores (MySQL)", () => {
 
   it("con la 0012: alta cifrada, login en dos pasos persistente tras reiniciar y recuperación de un solo uso", async () => {
     await admin.query(fs.readFileSync(M0012, "utf8"));
+    await admin.query(fs.readFileSync(M0012, "utf8")); // repetible: el ejecutor puede volver a aplicarla al reparar
     const [[meta]] = await admin.query<any[]>("SELECT v FROM registry_meta WHERE k = 'schema_version'");
     expect(meta.v).toBe("0012");
 
