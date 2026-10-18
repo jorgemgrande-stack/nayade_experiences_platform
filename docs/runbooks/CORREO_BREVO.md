@@ -39,7 +39,7 @@ Brevo ──webhook──► POST /cp/v1/mail/brevo/webhook (plano de control)
 ```
 
 - **Un mensaje por destinatario principal**, con su `tenant_id`. Las copias autorizadas viajan con él.
-- **Idempotencia** por (empresa, clave). Claves de los avisos de plataforma: `trial:<id>:verification:<huella del token>`, `trial-welcome:<empresa>:<huella>`, `trial:<id>:expiry:<días>`, `assisted-welcome:<empresa>:<huella>`, `order:<id>:<acción>:<versión>`. En el Core, si el llamante no da clave, se deriva del contenido (categoría + destinatario + asunto + cuerpo) en ventanas de 10 minutos: un doble clic no duplica.
+- **Idempotencia** por (empresa, clave). Claves de los avisos de plataforma: `trial:<id>:verification:<huella del token>`, `trial-welcome:<empresa>:<huella>`, `trial:<id>:expiry:<días>`, `assisted-welcome:<empresa>:<huella>`, `order:<id>:<acción>:<versión>` y, para los avisos de un cobro, `order:<id>:<categoría>:p<pago>` (ver §4). En el Core, si el llamante no da clave, se deriva del contenido (categoría + destinatario + asunto + cuerpo) en ventanas de 10 minutos: un doble clic no duplica.
 - **Reintentos**: red, 429 y 5xx se reintentan con espera 1, 2, 4, 8… minutos (tope 1 h) hasta `MAIL_MAX_ATTEMPTS` (5); un 4xx es definitivo. Los dispara el envío siguiente de la empresa, la tarea `email-automation` (cada 10 min, por empresa) y, en el plano de control, un temporizador (`CP_MAIL_DRAIN_EVERY_SECONDS`, 60 s). Una reserva (`sending`) caducada se retoma.
 - **Límites**: por empresa (`MAIL_RATE_TENANT_PER_HOUR`, 300/h) y por destinatario (`MAIL_RATE_RECIPIENT_PER_HOUR`, 8/h), contados en la base. Lo que no se envía por política queda como `skipped` con su motivo.
 - **Supresiones por empresa**: rebote duro, dirección inválida, queja y baja suprimen la huella (SHA-256) del destinatario en la base de esa empresa (o en la del CRM, con su `tenant_id`). Otra empresa puede seguir escribiéndole.
@@ -92,16 +92,48 @@ Plantillas en español, transaccionales («No es publicidad»), con la marca de 
 | Aviso de vencimiento | `expiryNotice` | `trialExpiry` | plataforma |
 | Bienvenida a empresa invitada (alta asistida) | Contrato del CRM o pedido activado que crea la plataforma (`createContractActivation`) | `tenantWelcome` | plataforma |
 | Confirmación de contratación | Pedido `activate` | `contractConfirmed` | plataforma |
-| Confirmación de pago de prueba | Pedido `confirm` con base `payment` | `testPaymentConfirmed` («no se ha realizado ningún cargo real») | plataforma |
+| Confirmación de pago (live) | Pedido `confirm` con base `payment`, pago de Stripe live | `paymentConfirmed` | plataforma |
+| Confirmación de pago de prueba | Pedido `confirm` con base `payment`, cualquier otro pago | `testPaymentConfirmed` («no se ha realizado ningún cargo real») | plataforma |
+| Factura disponible | Cobro de Stripe verificado (alta, renovación o cambio) | `invoiceAvailable` | plataforma |
+| Renovación cobrada | Aviso `payment_recorded` del orquestador con un pago `renewal` | `renewalConfirmed` | plataforma |
+| Reactivación | Pedido `reactivate` (cancelación deshecha) o `payment_recovered` (impago regularizado) | `subscriptionReactivated` | plataforma |
+| Solicitud de alta recibida | Pedido `sign` con la aceptación de la web (`web-terms:…`, contratación en línea) | `signupReceived` | plataforma |
 | Impago | Pedido `payment_failed` | `paymentFailed` (fecha de fin de la gracia) | plataforma |
 | Cancelación | Pedido `cancel` | `cancellation` | plataforma |
 | Invitación a usuario | `sendInviteEmail` | `buildInviteHtml` (Core) | empresa |
 | Recuperación de contraseña | `/api/auth/forgot-password` | `buildPasswordResetHtml` (Core) | empresa |
 | Presupuesto enviado | `sendManagedEmail("quote")` | `buildQuoteHtml` (Core) | empresa |
 | Notificaciones operativas | Resto de `sendEmail`/`sendManagedEmail` del Core | Las del Core; `tenantNotice` para avisos nuevos | empresa |
-| Confirmación de alta | **No existe un evento propio todavía** | `signupConfirmation` (preparada, sin conectar) | plataforma |
+| Confirmación de alta (antigua) | Sustituida por «Solicitud de alta recibida» | `signupConfirmation` (preparada, sin conectar) | plataforma |
 
 El aviso se encola **después** del cambio de estado ya guardado y su fallo solo se registra: la lógica de negocio no cambia.
+
+### Categorías de la plataforma: cuándo y en qué modo
+
+«Modo» es el modo de cobro del entorno (`CP_STRIPE_MODE`, el del orquestador), no `MAIL_MODE`: con `MAIL_MODE=off` (por defecto) **no sale ninguno** y todos quedan `skipped / mode_off`. Un pago se anuncia como REAL solo si el entorno es live **y** el pago es de Stripe live (proveedor `stripe`, modo `live` en `commercial_payments`); en cualquier otro caso sale el texto de prueba. Nunca sale el texto de prueba en live ni el real en pruebas.
+
+| Categoría | Cuándo se envía | Live | Pruebas | Clave idempotente |
+|---|---|---|---|---|
+| `email_verification` | Solicitud (o reenvío) de prueba gratuita | sí | sí | `trial:<id>:verification:<huella>` |
+| `trial_activated` | Prueba gratuita aprovisionada (enlace para crear la contraseña) | sí | sí | `trial-welcome:<empresa>:<huella>` |
+| `trial_expiry` | 3 y 1 días antes del fin de la prueba, y al terminar | sí | sí | `trial:<id>:expiry:<fin>:<días>` |
+| `tenant_welcome` | Alta asistida: plataforma creada (enlace de un solo uso para crear la contraseña) | sí | sí | `assisted-welcome:<empresa>:<huella>` |
+| `signup_received` | Aceptación en la web de la contratación en línea, antes del pago (`sign` con `web-terms:`) | sí (sin mención a pruebas) | sí («entorno de pruebas») | `order:<id>:sign:<versión>` |
+| `payment_confirmed` | Pago del alta verificado en Stripe live (`confirm`, base `payment`) | sí | **nunca** | `order:<id>:confirm:<versión>` |
+| `test_payment_confirmed` | Pago del alta verificado de pruebas (simulado o `stripe_test`) | **nunca** | sí | `order:<id>:confirm:<versión>` |
+| `invoice_available` | Cobro de Stripe verificado: alta, renovación o cambio. Sin enlace (la URL alojada de la factura no se guarda): remite al Customer Portal o a soporte | sí | sí («factura de prueba») | `order:<id>:invoice_available:p<pago>` |
+| `renewal_confirmed` | Renovación cobrada (`payment_recorded`, pago `renewal`; Stripe o simulado) | sí | sí («cobro de PRUEBA») | `order:<id>:renewal_confirmed:p<pago>` |
+| `subscription_reactivated` | `reactivate` (cancelación deshecha en Stripe) o `payment_recovered` (pago pendiente regularizado) | sí | sí | `order:<id>:<acción>:<versión>` |
+| `contract_confirmed` | Pedido activado (`activate`) | sí | sí | `order:<id>:activate:<versión>` |
+| `payment_failed` | Impago (`payment_failed`) | sí | sí | `order:<id>:payment_failed:<versión>` |
+| `cancellation` | Cancelación programada (`cancel`) | sí | sí | `order:<id>:cancel:<versión>` |
+
+- Las claves de un cobro usan el id del pago (la versión del pedido no cambia al registrarlo): el mismo evento de Stripe repetido, la conciliación o un doble procesamiento no envían dos correos. El orquestador emite `payment_recorded` (aviso sin cambio de estado) solo para cobros verificados de renovación o cambio del modo del entorno; el procesador de Stripe lo llama solo cuando el pago se registra por primera vez.
+- Ningún correo lleva contraseñas: la bienvenida solo lleva el enlace personal de un solo uso para crearla.
+- Importes: el cobrado según Stripe, sin desglose de impuestos (los precios son sin IVA y la política fiscal está pendiente). Ningún texto afirma que la factura de Stripe sea una factura fiscal completa.
+- Remitente: `Elephant Source <no-reply@{MAIL_SENDING_DOMAIN}>`; Reply-To y línea de soporte: `ELEPHANT_SUPPORT_EMAIL` (previsto `soporte@bigelephant.es`).
+- «Prueba gratuita» en `email_verification`, `trial_*` es el nombre del producto (la prueba gratuita de la plataforma), no el modo pruebas: es correcto en live.
+- Un pedido con impago que paga la renovación recibe, por diseño, `renewal_confirmed`, `invoice_available` y `subscription_reactivated` (tres avisos de hechos distintos).
 
 ## 5. Webhook de Brevo
 
@@ -138,12 +170,38 @@ curl -X POST https://api.brevo.com/v3/webhooks \
 
 No tocar los registros **MX** ni el DKIM existente **`default._domainkey`**.
 
+**Estado actual (DNS público, leído el 18/10/2026; no se ha aplicado nada):**
+
+| Registro | Nombre | Valor publicado | Lo que exige Brevo | Estado |
+|---|---|---|---|---|
+| SPF (TXT) | `bigelephant.es` | `v=spf1 a mx ~all` | Que autorice a Brevo: `include:spf.brevo.com` | **No incluye Brevo** |
+| DKIM 1 (CNAME) | `brevo1._domainkey.bigelephant.es` | `b1.bigelephant-es.dkim.brevo.com` | Ese CNAME | Publicado |
+| DKIM 2 (CNAME) | `brevo2._domainkey.bigelephant.es` | `b2.bigelephant-es.dkim.brevo.com` | Ese CNAME | Publicado |
+| DMARC (TXT) | `_dmarc.bigelephant.es` | `v=DMARC1; p=none; rua=mailto:rua@dmarc.brevo.com` | Un DMARC (cualquier política) | Publicado, solo observación |
+| Código de Brevo (TXT) | `bigelephant.es` | — (comprobar en el panel) | `brevo-code:…` | Comprobar en el panel o con el diagnóstico |
+
+**Cambio recomendado de SPF (lo aplica el propietario):** sustituir el registro SPF por **uno solo** que añada Brevo sin quitar nada de lo existente:
+
+```
+bigelephant.es.  TXT  "v=spf1 a mx include:spf.brevo.com ~all"
+```
+
+Nunca publicar dos registros `v=spf1` (invalida el SPF). El `include` suma una consulta DNS (quedan muy por debajo del límite de 10). Con IP compartida, Brevo firma con DKIM y usa su propio Return-Path, así que el DKIM alineado es lo que hace pasar DMARC; el `include` deja además el SPF coherente si Brevo envía con el dominio propio (p. ej. IP dedicada o Return-Path personalizado).
+
+**Evolución recomendada de DMARC** (solo cuando los informes `rua` muestren que todo el correo legítimo pasa — Brevo, el buzón del dominio y cualquier otro remitente —, con al menos 2–4 semanas en cada paso):
+
+1. Ahora: `v=DMARC1; p=none; rua=mailto:rua@dmarc.brevo.com` (observación; se mantiene).
+2. `v=DMARC1; p=quarantine; pct=25; rua=mailto:rua@dmarc.brevo.com` → subir `pct` a 50 y 100.
+3. `v=DMARC1; p=reject; rua=mailto:rua@dmarc.brevo.com` (con `adkim=r; aspf=r`, los valores por defecto).
+
+Si el propietario quiere recibir también los informes, puede añadir su propia dirección a `rua` (separada por comas). Antes de endurecer la política, comprobar que el servidor de correo del dominio (registros `a`/`mx` del SPF y `default._domainkey`) firma y pasa DMARC.
+
 1. Panel de Brevo → **Remitentes, dominios e IP dedicadas → Dominios → Añadir un dominio** → `bigelephant.es` → elegir **autenticación manual** (si el asistente propone sustituir un DMARC existente, cancelar y seguir en manual). El panel muestra los valores exactos; también los devuelve `GET /v3/senders/domains/bigelephant.es` (`dns_records`).
 2. Registros que pide Brevo (según la API oficial, `dns_records` contiene exactamente estos tres):
    - **`brevo_code`**: TXT en la raíz con el valor `brevo-code:…` del panel.
    - **`dkim_record`**: el registro DKIM con el nombre de selector y el valor que muestre el panel (distinto de `default._domainkey`, que se conserva).
    - **`dmarc_record`**: TXT `_dmarc`. Valor inicial propuesto: `v=DMARC1; p=none; rua=mailto:<dirección de informes que decida el propietario>`. Sin dirección decidida, `v=DMARC1; p=none` sin `rua`. Si ya existe un `_dmarc`, se mantiene uno solo (no duplicar).
-3. **SPF**: la respuesta oficial de `get-domain-configuration` no incluye ningún registro SPF, y no se pudo leer el artículo de ayuda de Brevo desde aquí (403); fuentes de terceros coinciden en que, con IP compartida, Brevo usa su propio Return-Path y no necesita `include` en el SPF del dominio. Por tanto: **no cambiar el SPF actual** (`v=spf1 a mx ~all`) salvo que el panel de Brevo lo pida expresamente (p. ej. con IP dedicada). En ese caso, mantener **un único** registro SPF combinado: `v=spf1 a mx include:spf.brevo.com ~all` (nunca dos registros `v=spf1`). Confirmar en el panel antes de tocar.
+3. **SPF**: aplicar el cambio recomendado de arriba (`v=spf1 a mx include:spf.brevo.com ~all`, un único registro). La respuesta oficial de `get-domain-configuration` no incluye SPF, así que el diagnóstico no lo comprueba: verificarlo con una consulta DNS pública (`TXT bigelephant.es`).
 4. Pulsar **Autenticar este dominio** en el panel (o `PUT /v3/senders/domains/bigelephant.es/authenticate`, <https://developers.brevo.com/reference/authenticate-domain>). La propagación puede tardar.
 5. Comprobar con `scripts/mail/brevo-diagnose.ts`: `sendingDomain.authenticated = true` y `records.*.ok = true`.
 
