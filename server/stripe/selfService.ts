@@ -1,5 +1,6 @@
 /**
- * Contratación por AUTOSERVICIO (solicitud provisional → Checkout). SOLO MODO PRUEBAS y APAGADA salvo
+ * Contratación por AUTOSERVICIO (solicitud provisional → Checkout). En pruebas o live (en live, solo con
+ * política fiscal decidida: sin ella Checkout no se monta) y APAGADA salvo
  * CP_PUBLIC_SELF_SERVICE_ENABLED=1: el registro público sigue cerrado.
  *
  *   POST /cp/v1/public/checkout/start
