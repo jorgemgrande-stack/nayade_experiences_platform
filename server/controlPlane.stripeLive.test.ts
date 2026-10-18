@@ -52,7 +52,7 @@ type Res = { status: number; json: any; raw: string };
 const key = () => crypto.randomBytes(12).toString("hex");
 
 /** Una instancia completa del plano de control con Stripe en live (memoria). */
-async function liveControlPlane(o: { taxPolicy: StripeConfig["taxPolicy"]; store?: MemoryStripeStore; payments?: SignedTestProvider | null }) {
+async function liveControlPlane(o: { taxPolicy: StripeConfig["taxPolicy"]; store?: MemoryStripeStore; payments?: SignedTestProvider | null; noStripe?: boolean; ordersMode?: "test" | "live" }) {
   const config = liveConfig(o.taxPolicy);
   const registry = new MemoryTenantRegistryStore();
   const ring = keyringFromEnv({ REGISTRY_KEYS: `k1:${crypto.randomBytes(32).toString("base64")}`, REGISTRY_ACTIVE_KEY_ID: "k1" } as NodeJS.ProcessEnv);
@@ -97,8 +97,8 @@ async function liveControlPlane(o: { taxPolicy: StripeConfig["taxPolicy"]; store
     web: { store: webStore },
     subscriptions: { store: new MemorySubscriptionStore(), now: () => clock },
     capabilities: new MemoryCapabilityStore(),
-    orders: { store: orders, payments: o.payments ?? null },
-    stripe: {
+    orders: { store: orders, payments: o.payments ?? null, ...(o.ordersMode ? { mode: o.ordersMode } : {}) },
+    stripe: o.noStripe ? undefined : {
       config,
       store: stripeStore,
       gateway: gw,
@@ -237,5 +237,20 @@ describe("montaje del modo live", () => {
   it("un almacén sin modo declarado tampoco se monta (el modo es obligatorio)", async () => {
     const sinModo = Object.assign(new MemoryStripeStore("live"), { mode: undefined }) as unknown as MemoryStripeStore;
     await expect(liveControlPlane({ taxPolicy: "stripe_tax_exclusive", store: sinModo })).rejects.toThrow(/almacén de Stripe/);
+  });
+
+  it("sin Stripe montado (p. ej. live sin la 0013), el orquestador sigue en el modo de la configuración: live", async () => {
+    const cp = await liveControlPlane({ taxPolicy: null, noStripe: true, ordersMode: "live" });
+    try {
+      expect(await cp.ok(cp.call("GET", "/orders/payments/config"))).toMatchObject({ mode: "live", stripeProvider: "stripe", enabled: false });
+    } finally {
+      await cp.close();
+    }
+    // Y en live los pagos simulados tampoco se montan aunque Stripe no esté
+    await expect(liveControlPlane({ taxPolicy: null, noStripe: true, ordersMode: "live", payments: new SignedTestProvider({ webhookSecret: "secreto-del-proveedor-de-pruebas-0123456789abcdef" }) })).rejects.toThrow(/modo live/);
+  });
+
+  it("un modo de pedidos distinto del de Stripe no se monta", async () => {
+    await expect(liveControlPlane({ taxPolicy: "stripe_tax_exclusive", ordersMode: "test" })).rejects.toThrow(/modo de los pedidos/);
   });
 });

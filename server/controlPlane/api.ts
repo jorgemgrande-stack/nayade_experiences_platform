@@ -181,7 +181,8 @@ export interface ControlPlaneDeps {
    * pagos simulados son SOLO de prueba (`payments`; con Stripe en live no se admiten y la aplicación no se
    * crea); sin ellos, los pedidos se confirman por aprobación administrativa o por el pago en Stripe.
    */
-  orders?: { store: OrderStore; payments?: TestPaymentPort | null; graceDays?: number };
+  /** `mode`: modo de cobro del entorno (el de CP_STRIPE_MODE), también cuando Stripe no llega a montarse. */
+  orders?: { store: OrderStore; payments?: TestPaymentPort | null; graceDays?: number; mode?: StripeConfig["mode"] };
   /**
    * Stripe Billing en modo pruebas o live (`config.mode`; server/stripe, CRM 0012 y 0013). Rutas de operador
    * en /stripe; Checkout solo con `checkoutEnabled`, URL de vuelta y, en live, una política fiscal decidida.
@@ -1051,6 +1052,9 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
       if (d.trials.publicEnabled) publicTrial = createPublicTrialRouter({ onboarding, autoProvision: !!d.trials.autoProvision });
     }
     if (d.orders && d.capabilities) {
+      // El modo sale de la configuración de Stripe aunque Stripe no se monte (p. ej. live sin la 0013)
+      if (d.stripe && d.orders.mode && d.orders.mode !== d.stripe.config.mode) throw new Error("El modo de los pedidos no coincide con el de Stripe");
+      const ordersMode = d.stripe?.config.mode ?? d.orders.mode ?? "test";
       // Orquestador comercial: encadena contrato → confirmación → suscripción → licencias → activación
       const orchestrator = new CommercialOrchestrator({
         store: d.orders.store,
@@ -1067,7 +1071,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         notify: d.mail?.platform ? d.mail.platform.orderNotifier({ crmStore: d.crm.store, orders: d.orders.store, reader: d.reader }) : undefined,
         trials: d.trials ? new TrialService({ store: d.trials.store, subscriptions: d.subscriptions.store, now: d.subscriptions.now, limits: d.trials.limits, blockedDomains: d.trials.blockedDomains }) : undefined,
         payments: d.orders.payments ?? null,
-        mode: d.stripe?.config.mode ?? "test",
+        mode: ordersMode,
         graceDays: d.orders.graceDays,
         coverageHeld: d.stripe ? async (orderId: number) => (await d.stripe!.store.activeHolds(orderId)).length > 0 : undefined,
         now: d.subscriptions.now,
