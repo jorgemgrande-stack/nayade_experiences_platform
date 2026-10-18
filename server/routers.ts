@@ -1,4 +1,5 @@
 import { COOKIE_NAME } from "@shared/const";
+import { clearSessionCookies } from "./_core/sessionCookie";
 import { readStoredFile } from "./storage";
 import { legacyBrandText } from "./tenantBrand";
 import { publicBaseUrl } from "./_core/productIdentity";
@@ -263,6 +264,7 @@ export const appRouter = router({
     logout: publicProcedure.mutation(({ ctx }) => {
       const cookieOptions = getSessionCookieOptions(ctx.req);
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
+      clearSessionCookies(ctx.res);
       return { success: true } as const;
     }),
     myPermissions: protectedProcedure.query(async ({ ctx }) => {
