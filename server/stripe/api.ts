@@ -29,6 +29,7 @@ import type { CatalogPort } from "../subscriptions/ports";
 import { StripeCatalogError, desiredCatalog, planCatalogWrites, syncCatalog } from "./catalog";
 import { StripeCheckoutError, type StripeCheckoutService } from "./checkout";
 import { describeStripeConfig, type StripeConfig } from "./config";
+import { describeIssuer } from "./issuer";
 import { StripeGatewayError, type StripeGateway } from "./gateway";
 import { StripeStoreError, type StripeStore } from "./store";
 import type { StripeEventProcessor } from "./events";
@@ -75,7 +76,7 @@ export function createStripeRouter(d: StripeRouterDeps): Router {
   const now = d.now ?? Date.now;
 
   r.get("/status", requireScope("ops:read"), wrap(async (_req, res) => {
-    res.json({ ...describeStripeConfig(d.config), checkoutEnabled: !!d.checkout, prices: await d.store.listPrices() });
+    res.json({ ...describeStripeConfig(d.config), issuer: describeIssuer(), checkoutEnabled: !!d.checkout, prices: await d.store.listPrices() });
   }));
   r.get("/catalog/plan", requireScope("ops:read"), wrap(async (_req, res) => {
     const desired = await desiredCatalog(d.catalog);
