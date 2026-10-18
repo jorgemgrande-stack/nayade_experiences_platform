@@ -367,7 +367,7 @@ describe("permisos y escalada de privilegios", () => {
 describe("recuperación de contraseña", () => {
   it("sin proveedor de correo no se simula el envío", async () => {
     const ctx = await setup();
-    expect((await call(ctx, "GET", "/auth/options")).body).toEqual({ passwordLogin: true, passwordReset: false });
+    expect((await call(ctx, "GET", "/auth/options")).body).toEqual({ passwordLogin: true, passwordReset: false, mfa: false });
     const r = await call(ctx, "POST", "/auth/password-reset/request", { body: { username: "ana" } });
     expect(r.status).toBe(501);
     expect(r.body.error).toBe("reset_unavailable");

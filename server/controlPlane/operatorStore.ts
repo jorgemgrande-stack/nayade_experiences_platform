@@ -23,7 +23,17 @@ export interface OperatorRecord {
   createdAt: number;
   updatedAt: number;
   createdBy: string;
+  /** Segundo factor (TOTP): secreto cifrado con el llavero del registro y su clave; null sin alta. */
+  mfaSecretCipher?: string | null;
+  mfaKeyId?: string | null;
+  /** Cuándo se confirmó el alta; null = sin MFA (o alta sin confirmar). */
+  mfaEnabledAt?: number | null;
+  /** Último paso TOTP aceptado: un código no se puede reutilizar. */
+  mfaLastStep?: number | null;
 }
+
+/** `none`: sesión normal · `pending`: falta el código · `setup`: su rol exige MFA y aún no lo tiene. */
+export type SessionMfaState = "none" | "pending" | "setup";
 
 export interface SessionRecord {
   /** SHA-256 hex del token de sesión (el token solo lo conoce el navegador, en una cookie HttpOnly). */
@@ -37,6 +47,7 @@ export interface SessionRecord {
   revokedReason: string | null;
   ip: string | null;
   userAgent: string | null;
+  mfaState?: SessionMfaState;
 }
 
 export interface ResetRecord {
@@ -59,7 +70,25 @@ export interface OperatorEvent {
   details: Record<string, unknown> | null;
 }
 
-export type OperatorPatch = Partial<Pick<OperatorRecord, "email" | "displayName" | "role" | "status" | "passwordHash" | "failedAttempts" | "lockedUntil" | "passwordChangedAt" | "lastLoginAt" | "updatedAt">>;
+export type OperatorPatch = Partial<
+  Pick<
+    OperatorRecord,
+    | "email"
+    | "displayName"
+    | "role"
+    | "status"
+    | "passwordHash"
+    | "failedAttempts"
+    | "lockedUntil"
+    | "passwordChangedAt"
+    | "lastLoginAt"
+    | "updatedAt"
+    | "mfaSecretCipher"
+    | "mfaKeyId"
+    | "mfaEnabledAt"
+    | "mfaLastStep"
+  >
+>;
 
 /** Error del almacén cuando el cambio dejaría la instalación sin superadministradores activos. */
 export class LastSuperadminError extends Error {
@@ -101,6 +130,16 @@ export interface OperatorStore {
 
   addEvent(e: Omit<OperatorEvent, "id">): Promise<void>;
   listEvents(q: { operatorId?: number; limit: number }): Promise<OperatorEvent[]>;
+
+  /** El almacén guarda el segundo factor (en MySQL, con la migración 0012 aplicada). */
+  readonly mfaSupported: boolean;
+  /** Cambia el estado MFA y la caducidad de una sesión viva. */
+  updateSession(id: string, patch: { mfaState: SessionMfaState; expiresAt: number; lastSeenAt: number }): Promise<void>;
+  /** Sustituye los códigos de recuperación del operador (SHA-256); con `[]` los elimina. */
+  replaceRecoveryCodes(operatorId: number, hashes: string[], at: number): Promise<void>;
+  /** Consume un código; `false` si no existe, es de otro operador o ya se usó (también ante carreras). */
+  useRecoveryCode(operatorId: number, hash: string, at: number): Promise<boolean>;
+  countRecoveryCodes(operatorId: number): Promise<number>;
 }
 
 // ── Memoria (pruebas) ────────────────────────────────────────────────────────
@@ -194,6 +233,28 @@ export class MemoryOperatorStore implements OperatorStore {
       .reverse()
       .slice(0, q.limit);
   }
+
+  readonly mfaSupported: boolean;
+  recovery: Array<{ operatorId: number; hash: string; createdAt: number; usedAt: number | null }> = [];
+  constructor(opts: { mfa?: boolean } = {}) {
+    this.mfaSupported = opts.mfa ?? true;
+  }
+  async updateSession(id: string, patch: { mfaState: SessionMfaState; expiresAt: number; lastSeenAt: number }) {
+    const s = this.sessions.get(id);
+    if (s && s.revokedAt === null) Object.assign(s, patch);
+  }
+  async replaceRecoveryCodes(operatorId: number, hashes: string[], at: number) {
+    this.recovery = this.recovery.filter((r) => r.operatorId !== operatorId).concat(hashes.map((hash) => ({ operatorId, hash, createdAt: at, usedAt: null })));
+  }
+  async useRecoveryCode(operatorId: number, hash: string, at: number) {
+    const r = this.recovery.find((x) => x.operatorId === operatorId && x.hash === hash && x.usedAt === null);
+    if (!r) return false;
+    r.usedAt = at;
+    return true;
+  }
+  async countRecoveryCodes(operatorId: number) {
+    return this.recovery.filter((r) => r.operatorId === operatorId && r.usedAt === null).length;
+  }
 }
 
 const clone = <T>(v: T): T => (v === null ? v : { ...(v as object) }) as T;
@@ -219,6 +280,11 @@ function toOperator(r: Row): OperatorRecord {
     createdAt: Number(r.created_at),
     updatedAt: Number(r.updated_at),
     createdBy: r.created_by,
+    // Sin la migración 0012 las columnas no existen: sin MFA
+    mfaSecretCipher: r.mfa_secret_cipher ?? null,
+    mfaKeyId: r.mfa_key_id ?? null,
+    mfaEnabledAt: num(r.mfa_enabled_at),
+    mfaLastStep: num(r.mfa_last_step),
   };
 }
 function toSession(r: Row): SessionRecord {
@@ -233,6 +299,7 @@ function toSession(r: Row): SessionRecord {
     revokedReason: r.revoked_reason ?? null,
     ip: r.ip ?? null,
     userAgent: r.user_agent ?? null,
+    mfaState: (r.mfa_state as SessionMfaState | undefined) ?? "none",
   };
 }
 
@@ -247,13 +314,25 @@ const COLUMN: Record<keyof OperatorPatch, string> = {
   passwordChangedAt: "password_changed_at",
   lastLoginAt: "last_login_at",
   updatedAt: "updated_at",
+  mfaSecretCipher: "mfa_secret_cipher",
+  mfaKeyId: "mfa_key_id",
+  mfaEnabledAt: "mfa_enabled_at",
+  mfaLastStep: "mfa_last_step",
 };
+const MFA_PATCH_KEYS = new Set<keyof OperatorPatch>(["mfaSecretCipher", "mfaKeyId", "mfaEnabledAt", "mfaLastStep"]);
 
 const isDuplicate = (e: any) => e?.code === "ER_DUP_ENTRY";
 const dupField = (e: any): "username" | "email" => (String(e?.message ?? "").includes("uq_operator_email") ? "email" : "username");
 
 export class MysqlOperatorStore implements OperatorStore {
-  constructor(private pool: mysql.Pool) {}
+  readonly mfaSupported: boolean;
+  /** `mfa`: la migración 0012 está aplicada (lo comprueba operatorAuthFromEnv al arrancar). */
+  constructor(
+    private pool: mysql.Pool,
+    opts: { mfa?: boolean } = {},
+  ) {
+    this.mfaSupported = opts.mfa ?? false;
+  }
 
   async countOperators() {
     const [rows] = await this.pool.query<any[]>("SELECT COUNT(*) AS n FROM cp_operators");
@@ -286,7 +365,7 @@ export class MysqlOperatorStore implements OperatorStore {
     }
   }
   async update(id: number, patch: OperatorPatch, opts: { keepSuperadmin?: boolean } = {}) {
-    const keys = Object.keys(patch) as Array<keyof OperatorPatch>;
+    const keys = (Object.keys(patch) as Array<keyof OperatorPatch>).filter((k) => this.mfaSupported || !MFA_PATCH_KEYS.has(k));
     if (keys.length === 0) return;
     const conn = await this.pool.getConnection();
     try {
@@ -314,11 +393,46 @@ export class MysqlOperatorStore implements OperatorStore {
   }
 
   async insertSession(s: SessionRecord) {
+    const mfa = this.mfaSupported ? ", mfa_state" : "";
     await this.pool.query(
-      `INSERT INTO cp_operator_sessions (id, operator_id, csrf_token, created_at, last_seen_at, expires_at, revoked_at, revoked_reason, ip, user_agent)
-       VALUES (?,?,?,?,?,?,?,?,?,?)`,
-      [s.id, s.operatorId, s.csrfToken, s.createdAt, s.lastSeenAt, s.expiresAt, s.revokedAt, s.revokedReason, s.ip, s.userAgent],
+      `INSERT INTO cp_operator_sessions (id, operator_id, csrf_token, created_at, last_seen_at, expires_at, revoked_at, revoked_reason, ip, user_agent${mfa})
+       VALUES (?,?,?,?,?,?,?,?,?,?${this.mfaSupported ? ",?" : ""})`,
+      [s.id, s.operatorId, s.csrfToken, s.createdAt, s.lastSeenAt, s.expiresAt, s.revokedAt, s.revokedReason, s.ip, s.userAgent, ...(this.mfaSupported ? [s.mfaState ?? "none"] : [])],
     );
+  }
+  async updateSession(id: string, patch: { mfaState: SessionMfaState; expiresAt: number; lastSeenAt: number }) {
+    if (!this.mfaSupported) return;
+    await this.pool.query("UPDATE cp_operator_sessions SET mfa_state = ?, expires_at = ?, last_seen_at = ? WHERE id = ? AND revoked_at IS NULL", [
+      patch.mfaState,
+      patch.expiresAt,
+      patch.lastSeenAt,
+      id,
+    ]);
+  }
+  async replaceRecoveryCodes(operatorId: number, hashes: string[], at: number) {
+    if (!this.mfaSupported) return;
+    const conn = await this.pool.getConnection();
+    try {
+      await conn.beginTransaction();
+      await conn.query("DELETE FROM cp_operator_recovery_codes WHERE operator_id = ?", [operatorId]);
+      if (hashes.length) await conn.query("INSERT INTO cp_operator_recovery_codes (operator_id, code_hash, created_at) VALUES ?", [hashes.map((h) => [operatorId, h, at])]);
+      await conn.commit();
+    } catch (e) {
+      await conn.rollback().catch(() => undefined);
+      throw e;
+    } finally {
+      conn.release();
+    }
+  }
+  async useRecoveryCode(operatorId: number, hash: string, at: number) {
+    if (!this.mfaSupported) return false;
+    const [res] = await this.pool.query<any>("UPDATE cp_operator_recovery_codes SET used_at = ? WHERE operator_id = ? AND code_hash = ? AND used_at IS NULL", [at, operatorId, hash]);
+    return Number(res.affectedRows) === 1;
+  }
+  async countRecoveryCodes(operatorId: number) {
+    if (!this.mfaSupported) return 0;
+    const [rows] = await this.pool.query<any[]>("SELECT COUNT(*) AS n FROM cp_operator_recovery_codes WHERE operator_id = ? AND used_at IS NULL", [operatorId]);
+    return Number(rows[0].n);
   }
   async getSession(id: string) {
     const [rows] = await this.pool.query<any[]>("SELECT * FROM cp_operator_sessions WHERE id = ?", [id]);

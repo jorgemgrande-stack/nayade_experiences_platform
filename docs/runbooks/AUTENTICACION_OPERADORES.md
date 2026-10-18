@@ -73,9 +73,41 @@ El CRM y el plano de control deben estar en el **mismo sitio** (mismo dominio re
 
 No hay preguntas de seguridad ni forma de consultar una contraseña existente.
 
+## Verificación en dos pasos (MFA)
+
+TOTP estándar (RFC 6238: 6 cifras, 30 s), compatible con Google Authenticator, Microsoft Authenticator, 1Password y similares. Requiere la migración `db/registry/0012_operator_mfa.sql` y el llavero del registro (`REGISTRY_KEYS`). **Sin la 0012 el acceso funciona exactamente como antes** y el arranque lo indica: `{"ctx":"OperatorAuth",…,"mfa":{"available":false,"reason":…}}`.
+
+- **Secreto:** cifrado con AES-256-GCM con el llavero del registro y con el operador como dato autenticado. Nunca se guarda en claro.
+- **Códigos de recuperación:** 10 de un solo uso. Solo se guarda su SHA-256 y se muestran una sola vez.
+- **Login en dos pasos:** con MFA activo, la contraseña abre una sesión **pendiente**. No da acceso, ni token CSRF, ni datos del operador, y caduca a los 5 minutos. `POST /auth/mfa/verify {code}` la cambia por una sesión nueva: el token emitido tras la contraseña deja de valer.
+- **Códigos:** un código TOTP no se acepta dos veces (último paso aceptado). Se admite un desfase de ±30 s. Los códigos erróneos cuentan para el **bloqueo de la cuenta** igual que una contraseña errónea.
+- **Obligatorio por rol:** `CP_OPERATOR_MFA_ROLES=superadmin,admin`. Sin MFA activo, esos operadores reciben una sesión **sin permisos** que solo sirve para darlo de alta; el CRM muestra la pantalla de alta. Se evalúa en cada petición, también si se exige después de iniciar sesión.
+- **Apagado:** `CP_OPERATOR_MFA=off` desactiva el MFA (de vuelta al acceso con contraseña).
+- **API (sesión de operador):**
+  - `GET /auth/mfa`: estado;
+  - `POST /auth/mfa/setup`: clave y `otpauth://`, alta sin confirmar;
+  - `POST /auth/mfa/enable {code}`: activa, devuelve los códigos de recuperación y cierra el resto de sesiones;
+  - `POST /auth/mfa/disable {code}`: baja propia con un código.
+
+  Escrituras con CSRF.
+- **Pérdida del móvil:**
+  - un administrador lo restablece desde el CRM (`POST /operators/:id/mfa/reset`, `operators:write`, mismas reglas de rol que la gestión de operadores); se cierran las sesiones del operador;
+  - si es el único superadministrador, desde el servidor:
+    ```bash
+    REGISTRY_ADMIN_DATABASE_URL=mysql://… pnpm exec tsx scripts/cp-operators.ts reset-mfa --username administrador
+    ```
+- **Auditoría:** `login_mfa_required`, `login_success` (con `mfa: totp|recovery`), `login_failed`/`account_locked` (`reason: bad_mfa_code`), `mfa_setup_started`, `mfa_enabled`, `mfa_disabled`, `mfa_reset_by_admin`, `mfa_reset_by_server`.
+- **Puesta en marcha:**
+  1. Aplicar la 0012 con el ejecutor del registro (simulación primero).
+  2. Desplegar `controlplane` y el CRM.
+  3. Cada operador privilegiado da de alta su MFA.
+  4. Fijar `CP_OPERATOR_MFA_ROLES=superadmin,admin`.
+
+  Solo después se puede valorar retirar la autenticación básica de la pasarela en `admin.bigelephant.es`.
+
 ## Riesgos y pendientes
 
 - **Producción:** no está desplegado ni activado. Requiere revisión de seguridad, migración 0007 en el registro de producción, HTTPS con el CRM y el plano de control en el mismo sitio, `CP_TRUST_PROXY` correcto y alta del primer superadministrador.
 - **Límites en memoria:** el límite por IP y el bloqueo de usuarios inexistentes se guardan en memoria del proceso (se reinician al reiniciar; con varias réplicas, cada una lleva el suyo). El bloqueo de cuentas existentes sí es persistente.
-- **Sin segundo factor (MFA)** ni caducidad obligatoria de contraseñas: recomendable como siguiente paso para roles de administración.
+- **Segundo factor (MFA):** disponible con la migración 0012 (ver la sección anterior). Obligatorio solo para los roles de `CP_OPERATOR_MFA_ROLES`. Sigue sin haber caducidad obligatoria de contraseñas.
 - **Correo de recuperación:** no hay proveedor configurado; mientras tanto, la recuperación es por un administrador o por la herramienta del servidor.

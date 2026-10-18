@@ -15,8 +15,10 @@
 import crypto from "node:crypto";
 import { hash as argon2Hash, verify as argon2Verify } from "@node-rs/argon2";
 import { ROLE_LABEL, ROLE_SCOPES, canManageRole, isRole, type OperatorRole } from "./operatorRoles";
-import { DuplicateOperatorError, LastSuperadminError, type OperatorRecord, type OperatorStatus, type OperatorStore, type SessionRecord } from "./operatorStore";
+import { DuplicateOperatorError, LastSuperadminError, type OperatorRecord, type OperatorStatus, type OperatorStore, type SessionMfaState, type SessionRecord } from "./operatorStore";
 import type { Scope } from "./auth";
+import { decryptDsn, encryptDsn, type Keyring } from "../_core/tenantRegistry/crypto";
+import { newRecoveryCodes, newTotpSecret, normalizeRecoveryCode, otpauthUri, verifyTotp } from "./totp";
 
 export { SESSION_COOKIE } from "./auth";
 
@@ -32,7 +34,10 @@ export type OperatorErrorCode =
   | "last_superadmin"
   | "invalid_reset_token"
   | "reset_unavailable"
-  | "already_initialized";
+  | "already_initialized"
+  | "invalid_mfa_code"
+  | "mfa_unavailable"
+  | "mfa_session_expired";
 
 const STATUS: Record<OperatorErrorCode, number> = {
   invalid_credentials: 401,
@@ -47,6 +52,9 @@ const STATUS: Record<OperatorErrorCode, number> = {
   invalid_reset_token: 400,
   reset_unavailable: 501,
   already_initialized: 409,
+  invalid_mfa_code: 401,
+  mfa_unavailable: 501,
+  mfa_session_expired: 401,
 };
 
 export class OperatorAuthError extends Error {
@@ -80,6 +88,12 @@ export interface OperatorAuthOptions {
   mailer?: ResetMailer;
   /** URL del CRM a la que apunta el enlace de restablecimiento (se le añade el token). */
   resetUrl?: string;
+  /** Llavero del registro para cifrar el secreto TOTP. Sin él (o sin soporte en el almacén) no hay MFA. */
+  mfaKeyring?: Keyring;
+  /** Roles que DEBEN tener MFA: sin él, la sesión solo sirve para darlo de alta (CP_OPERATOR_MFA_ROLES). */
+  mfaRequiredRoles?: readonly OperatorRole[];
+  /** Plazo para introducir el código tras la contraseña (por defecto 5 min). */
+  mfaPendingMs?: number;
 }
 
 export interface RequestContext {
@@ -108,12 +122,23 @@ export interface PublicOperator {
   passwordChangedAt: number;
   createdAt: number;
   createdBy: string;
+  mfaEnabled: boolean;
 }
 
 export interface ValidSession {
   operator: OperatorRecord;
   session: SessionRecord;
   scopes: readonly Scope[];
+  /** Su rol exige MFA y aún no lo tiene: sin ámbitos hasta darlo de alta. */
+  mfaSetupRequired?: boolean;
+}
+
+export interface LoginResult {
+  token: string;
+  session: SessionRecord;
+  operator: OperatorRecord;
+  /** `pending`: falta el código del segundo factor · `setup`: debe darlo de alta · `none`: sesión completa. */
+  mfa: SessionMfaState;
 }
 
 const ARGON2 = { memoryCost: 19_456, timeCost: 2, parallelism: 1, algorithm: 2 /* Argon2id */ } as const;
@@ -157,6 +182,7 @@ export function publicOperator(o: OperatorRecord, now: number): PublicOperator {
     passwordChangedAt: o.passwordChangedAt,
     createdAt: o.createdAt,
     createdBy: o.createdBy,
+    mfaEnabled: !!o.mfaEnabledAt,
   };
 }
 
@@ -189,6 +215,16 @@ export class OperatorAuthService {
     return !!this.opts.mailer && !!this.opts.resetUrl;
   }
 
+  /** Segundo factor disponible: llavero configurado y almacén con la migración 0012. */
+  get mfaAvailable(): boolean {
+    return !!this.opts.mfaKeyring && this.store.mfaSupported;
+  }
+
+  /** El rol del operador exige MFA (solo si está disponible: nunca bloquea un entorno sin MFA). */
+  mfaRequiredFor(role: OperatorRole): boolean {
+    return this.mfaAvailable && (this.opts.mfaRequiredRoles ?? []).includes(role);
+  }
+
   hashPassword(password: string): Promise<string> {
     return argon2Hash(password, ARGON2);
   }
@@ -208,7 +244,7 @@ export class OperatorAuthService {
 
   // ── Inicio y cierre de sesión ──────────────────────────────────────────────
 
-  async login(login: string, password: string, ctx: RequestContext = {}): Promise<{ token: string; session: SessionRecord; operator: OperatorRecord }> {
+  async login(login: string, password: string, ctx: RequestContext = {}): Promise<LoginResult> {
     const now = this.now();
     const key = String(login ?? "").trim().toLowerCase().slice(0, 254);
     if (!key || typeof password !== "string" || password.length === 0 || password.length > 256) {
@@ -246,10 +282,72 @@ export class OperatorAuthService {
       await this.audit("login_failed", { id: op.id, username: op.username }, "anon", ctx, { reason: "disabled" });
       throw new OperatorAuthError("account_disabled", "La cuenta está desactivada. Contacta con un administrador.");
     }
+    // Segundo factor: con MFA activo, la contraseña solo abre una sesión «pendiente» (sin acceso) hasta el código
+    const mfa: SessionMfaState = this.mfaAvailable && op.mfaEnabledAt ? "pending" : this.mfaRequiredFor(op.role) ? "setup" : "none";
+    if (mfa === "pending") {
+      // El contador de fallos se reinicia al completar el segundo factor, no antes
+      const { token, session } = await this.createSession(op.id, ctx, "pending");
+      await this.audit("login_mfa_required", { id: op.id, username: op.username }, `operator:${op.username}`, ctx, { session: session.id.slice(0, 12) });
+      return { token, session, operator: op, mfa };
+    }
     await this.store.update(op.id, { failedAttempts: 0, lockedUntil: null, lastLoginAt: now });
-    const { token, session } = await this.createSession(op.id, ctx);
-    await this.audit("login_success", { id: op.id, username: op.username }, `operator:${op.username}`, ctx, { session: session.id.slice(0, 12) });
-    return { token, session, operator: { ...op, failedAttempts: 0, lockedUntil: null, lastLoginAt: now } };
+    const { token, session } = await this.createSession(op.id, ctx, mfa);
+    await this.audit("login_success", { id: op.id, username: op.username }, `operator:${op.username}`, ctx, { session: session.id.slice(0, 12), ...(mfa === "setup" ? { mfaSetupRequired: true } : {}) });
+    return { token, session, operator: { ...op, failedAttempts: 0, lockedUntil: null, lastLoginAt: now }, mfa };
+  }
+
+  /**
+   * Segundo paso del login: código TOTP (o de recuperación) sobre la sesión pendiente. Los fallos cuentan
+   * para el bloqueo de la cuenta igual que una contraseña errónea.
+   */
+  async verifyMfa(token: string, code: string, ctx: RequestContext = {}): Promise<{ token: string; session: SessionRecord; operator: OperatorRecord }> {
+    const expired = new OperatorAuthError("mfa_session_expired", "El acceso ha caducado. Vuelve a introducir tu usuario y contraseña.");
+    if (!this.mfaAvailable) throw new OperatorAuthError("mfa_unavailable", "El segundo factor no está disponible en este entorno.");
+    if (typeof token !== "string" || token.length < 20 || token.length > 128) throw expired;
+    const session = await this.store.getSession(sha256(token));
+    const now = this.now();
+    if (!session || session.revokedAt !== null || session.expiresAt <= now || session.mfaState !== "pending") throw expired;
+    const op = await this.store.get(session.operatorId);
+    if (!op || op.status !== "active" || !op.mfaEnabledAt) throw expired;
+    if (op.lockedUntil !== null && op.lockedUntil > now) {
+      await this.store.revokeSession(session.id, now, "locked");
+      await this.audit("login_locked", { id: op.id, username: op.username }, "anon", ctx, { step: "mfa" });
+      throw this.lockedError(op.lockedUntil - now);
+    }
+    const used = await this.checkSecondFactor(op, code, now);
+    if (!used) {
+      const failed = op.failedAttempts + 1;
+      const lock = failed >= this.lockThreshold;
+      await this.store.update(op.id, { failedAttempts: lock ? 0 : failed, lockedUntil: lock ? now + this.lockMs : op.lockedUntil });
+      if (lock) await this.store.revokeSession(session.id, now, "locked");
+      await this.audit(lock ? "account_locked" : "login_failed", { id: op.id, username: op.username }, "anon", ctx, { reason: "bad_mfa_code", attempts: failed });
+      throw new OperatorAuthError("invalid_mfa_code", "El código no es correcto o ya se ha usado.");
+    }
+    await this.store.update(op.id, { failedAttempts: 0, lockedUntil: null, lastLoginAt: now });
+    // Token nuevo al completar el segundo factor: el emitido tras la contraseña deja de valer
+    await this.store.revokeSession(session.id, now, "mfa_completed");
+    const next = await this.createSession(op.id, ctx, "none");
+    await this.audit("login_success", { id: op.id, username: op.username }, `operator:${op.username}`, ctx, { session: next.session.id.slice(0, 12), mfa: used });
+    return { token: next.token, session: next.session, operator: { ...op, failedAttempts: 0, lockedUntil: null, lastLoginAt: now } };
+  }
+
+  /** Comprueba un código TOTP (no reutilizado) o de recuperación (un solo uso). Devuelve cuál se usó. */
+  private async checkSecondFactor(op: OperatorRecord, code: string, now: number): Promise<"totp" | "recovery" | null> {
+    const raw = String(code ?? "").trim();
+    if (/^\d{6}$/.test(raw.replace(/\s/g, ""))) {
+      const step = verifyTotp(this.secretOf(op), raw, now);
+      if (step === null || (op.mfaLastStep !== null && op.mfaLastStep !== undefined && step <= op.mfaLastStep)) return null;
+      await this.store.update(op.id, { mfaLastStep: step });
+      return "totp";
+    }
+    const rc = normalizeRecoveryCode(raw);
+    if (/^[a-z0-9]{4}-[a-z0-9]{4}$/.test(rc) && (await this.store.useRecoveryCode(op.id, sha256(rc), now))) return "recovery";
+    return null;
+  }
+
+  private secretOf(op: OperatorRecord): string {
+    if (!op.mfaSecretCipher || !op.mfaKeyId || !this.opts.mfaKeyring) throw new OperatorAuthError("mfa_unavailable", "El segundo factor no está disponible.");
+    return decryptDsn(op.mfaSecretCipher, op.mfaKeyId, `operator-mfa:${op.id}`, this.opts.mfaKeyring);
   }
 
   private lockedError(remainingMs: number) {
@@ -257,7 +355,7 @@ export class OperatorAuthService {
     return new OperatorAuthError("account_locked", `Demasiados intentos fallidos. Vuelve a intentarlo dentro de ${minutes} min.`, Math.ceil(remainingMs / 1000));
   }
 
-  private async createSession(operatorId: number, ctx: RequestContext) {
+  private async createSession(operatorId: number, ctx: RequestContext, mfaState: SessionMfaState = "none") {
     const now = this.now();
     const token = randomToken();
     const session: SessionRecord = {
@@ -266,11 +364,13 @@ export class OperatorAuthService {
       csrfToken: randomToken(),
       createdAt: now,
       lastSeenAt: now,
-      expiresAt: now + this.maxMs,
+      // Una sesión pendiente del segundo factor dura solo unos minutos
+      expiresAt: now + (mfaState === "pending" ? (this.opts.mfaPendingMs ?? 5 * 60_000) : this.maxMs),
       revokedAt: null,
       revokedReason: null,
       ip: ctx.ip ? ctx.ip.slice(0, 45) : null,
       userAgent: ctx.userAgent ? ctx.userAgent.slice(0, 255) : null,
+      mfaState,
     };
     await this.store.insertSession(session);
     return { token, session };
@@ -282,6 +382,8 @@ export class OperatorAuthService {
     const session = await this.store.getSession(sha256(token));
     const now = this.now();
     if (!session || session.revokedAt !== null || session.expiresAt <= now) return null;
+    // Pendiente del segundo factor: no autentica nada (solo sirve para /auth/mfa/verify)
+    if (session.mfaState === "pending") return null;
     if (now - session.lastSeenAt > this.idleMs) {
       await this.store.revokeSession(session.id, now, "idle_timeout");
       return null;
@@ -290,7 +392,86 @@ export class OperatorAuthService {
     if (!operator || operator.status !== "active") return null;
     // Se actualiza como mucho una vez por minuto (no una escritura por petición)
     if (now - session.lastSeenAt > 60_000) await this.store.touchSession(session.id, now);
+    // Rol que exige MFA sin MFA activo (también si se le exige después de iniciar sesión): sin ámbitos
+    if (this.mfaRequiredFor(operator.role) && !operator.mfaEnabledAt) {
+      return { operator, session, scopes: [], mfaSetupRequired: true };
+    }
     return { operator, session, scopes: ROLE_SCOPES[operator.role] };
+  }
+
+  // ── Segundo factor: alta, baja y restablecimiento ─────────────────────────
+
+  async mfaStatus(id: number) {
+    const op = await this.get(id);
+    return {
+      available: this.mfaAvailable,
+      enabled: !!op.mfaEnabledAt,
+      enabledAt: op.mfaEnabledAt ?? null,
+      required: this.mfaRequiredFor(op.role),
+      recoveryCodesLeft: op.mfaEnabledAt ? await this.store.countRecoveryCodes(op.id) : 0,
+    };
+  }
+
+  /** Genera un secreto nuevo (alta sin confirmar). No cambia nada hasta confirmar con un código. */
+  async setupMfa(actor: ActingOperator, ctx: RequestContext = {}): Promise<{ secret: string; otpauthUri: string }> {
+    if (!this.mfaAvailable) throw new OperatorAuthError("mfa_unavailable", "El segundo factor no está disponible en este entorno.");
+    const op = await this.get(actor.id);
+    if (op.mfaEnabledAt) throw new OperatorAuthError("conflict", "El segundo factor ya está activo. Para cambiarlo, desactívalo antes con un código.");
+    const secret = newTotpSecret();
+    const { cipher, keyId } = encryptDsn(secret, `operator-mfa:${op.id}`, this.opts.mfaKeyring!);
+    await this.store.update(op.id, { mfaSecretCipher: cipher, mfaKeyId: keyId, mfaEnabledAt: null, mfaLastStep: null, updatedAt: this.now() });
+    await this.audit("mfa_setup_started", { id: op.id, username: op.username }, `operator:${op.username}`, ctx);
+    return { secret, otpauthUri: otpauthUri(secret, op.username) };
+  }
+
+  /** Confirma el alta con un código de la aplicación; devuelve los códigos de recuperación (solo esta vez). */
+  async enableMfa(actor: ActingOperator, code: string, ctx: RequestContext = {}): Promise<{ recoveryCodes: string[] }> {
+    if (!this.mfaAvailable) throw new OperatorAuthError("mfa_unavailable", "El segundo factor no está disponible en este entorno.");
+    const op = await this.get(actor.id);
+    if (op.mfaEnabledAt) throw new OperatorAuthError("conflict", "El segundo factor ya está activo.");
+    if (!op.mfaSecretCipher) throw new OperatorAuthError("invalid_input", "Primero genera el código para tu aplicación de autenticación.");
+    const now = this.now();
+    const step = verifyTotp(this.secretOf(op), code, now);
+    if (step === null) {
+      await this.audit("mfa_setup_failed", { id: op.id, username: op.username }, `operator:${op.username}`, ctx);
+      throw new OperatorAuthError("invalid_mfa_code", "El código no es correcto. Comprueba la hora del móvil y vuelve a intentarlo.");
+    }
+    const codes = newRecoveryCodes();
+    await this.store.replaceRecoveryCodes(op.id, codes.map((c) => sha256(c)), now);
+    await this.store.update(op.id, { mfaEnabledAt: now, mfaLastStep: step, updatedAt: now });
+    // La sesión actual pasa a completa; el resto de sesiones se cierran (se abrieron sin segundo factor)
+    if (actor.sessionId) await this.store.updateSession(actor.sessionId, { mfaState: "none", expiresAt: now + this.maxMs, lastSeenAt: now });
+    const revoked = await this.store.revokeOperatorSessions(op.id, now, "mfa_enabled", actor.sessionId);
+    await this.audit("mfa_enabled", { id: op.id, username: op.username }, `operator:${op.username}`, ctx, { revokedSessions: revoked });
+    return { recoveryCodes: codes };
+  }
+
+  /** Baja del propio segundo factor (con un código válido). Si su rol lo exige, deberá darlo de alta otra vez. */
+  async disableMfa(actor: ActingOperator, code: string, ctx: RequestContext = {}) {
+    const op = await this.get(actor.id);
+    if (!op.mfaEnabledAt) throw new OperatorAuthError("conflict", "El segundo factor no está activo.");
+    const now = this.now();
+    if (!(await this.checkSecondFactor(op, code, now))) {
+      await this.audit("mfa_disable_failed", { id: op.id, username: op.username }, `operator:${op.username}`, ctx);
+      throw new OperatorAuthError("invalid_mfa_code", "El código no es correcto o ya se ha usado.");
+    }
+    await this.clearMfa(op, `operator:${op.username}`, ctx, "mfa_disabled", actor.sessionId);
+  }
+
+  /** Un administrador retira el MFA de otro operador (móvil perdido): cierra todas sus sesiones. */
+  async resetMfa(actor: ActingOperator, id: number, ctx: RequestContext = {}) {
+    const target = await this.get(id);
+    if (target.id === actor.id) throw new OperatorAuthError("forbidden", "Para tu propio segundo factor usa «Desactivar» (pide un código).");
+    if (!canManageRole(actor.role, target.role)) throw new OperatorAuthError("forbidden", "No puedes gestionar a este operador.");
+    await this.clearMfa(target, `operator:${actor.username}`, ctx, "mfa_reset_by_admin");
+  }
+
+  private async clearMfa(op: OperatorRecord, actor: string, ctx: RequestContext, kind: string, keepSessionId?: string) {
+    const now = this.now();
+    await this.store.update(op.id, { mfaSecretCipher: null, mfaKeyId: null, mfaEnabledAt: null, mfaLastStep: null, updatedAt: now });
+    await this.store.replaceRecoveryCodes(op.id, [], now);
+    const revoked = await this.store.revokeOperatorSessions(op.id, now, kind, keepSessionId);
+    await this.audit(kind, { id: op.id, username: op.username }, actor, ctx, { revokedSessions: revoked });
   }
 
   async logout(session: SessionRecord, operator: OperatorRecord, ctx: RequestContext = {}) {
@@ -518,5 +699,13 @@ export class OperatorAuthService {
     const op = await this.store.findByLogin(username);
     if (!op) throw new OperatorAuthError("not_found", "Operador no encontrado.");
     await this.setPasswordInternal(op, password, "system:cli", {}, "password_reset_by_server");
+  }
+
+  /** Retira el segundo factor desde el servidor (p. ej. el único superadministrador perdió el móvil). */
+  async adminResetMfaFromServer(username: string) {
+    if (!this.store.mfaSupported) throw new OperatorAuthError("mfa_unavailable", "Falta la migración db/registry/0012_operator_mfa.sql.");
+    const op = await this.store.findByLogin(username);
+    if (!op) throw new OperatorAuthError("not_found", "Operador no encontrado.");
+    await this.clearMfa(op, "system:cli", {}, "mfa_reset_by_server");
   }
 }

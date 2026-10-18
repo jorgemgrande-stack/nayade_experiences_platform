@@ -8,13 +8,19 @@
  *   CP_RESET_SMTP_URL, CP_RESET_FROM, CP_RESET_URL
  *                                   recuperación de contraseña por correo; sin los tres no se
  *                                   ofrece (nunca se simula el envío)
+ *   CP_OPERATOR_MFA=off             desactiva el segundo factor (por defecto, activo si la migración
+ *                                   0012 está aplicada y hay llavero del registro)
+ *   CP_OPERATOR_MFA_ROLES           roles que DEBEN usar MFA, separados por comas (p. ej.
+ *                                   superadmin,admin). Por defecto ninguno: es opcional para todos
  *
- * Requiere la migración db/registry/0007_operators.sql aplicada. Al arrancar solo se COMPRUEBA
- * que existen las tablas (lectura); nunca se migra en el arranque.
+ * Requiere la migración db/registry/0007_operators.sql aplicada (y la 0012 para el segundo factor).
+ * Al arrancar solo se COMPRUEBA que existen las tablas (lectura); nunca se migra en el arranque.
  */
 import type mysql from "mysql2/promise";
 import nodemailer from "nodemailer";
+import type { Keyring } from "../_core/tenantRegistry/crypto";
 import { OperatorAuthService, type ResetMailer } from "./operatorAuth";
+import { isRole, type OperatorRole } from "./operatorRoles";
 import { MysqlOperatorStore } from "./operatorStore";
 
 function smtpMailer(url: string, from: string): ResetMailer {
@@ -31,7 +37,22 @@ function smtpMailer(url: string, from: string): ResetMailer {
   };
 }
 
-export async function operatorAuthFromEnv(pool: mysql.Pool, env: NodeJS.ProcessEnv): Promise<{ service?: OperatorAuthService; cookieSecure: "auto" | boolean; reason?: string }> {
+/** Roles con MFA obligatorio a partir de CP_OPERATOR_MFA_ROLES (se ignoran los desconocidos). */
+export function mfaRolesFromEnv(raw: string | undefined): OperatorRole[] {
+  return (raw ?? "")
+    .split(",")
+    .map((x) => x.trim().toLowerCase())
+    .filter((x): x is OperatorRole => isRole(x));
+}
+
+export interface OperatorAuthSetup {
+  service?: OperatorAuthService;
+  cookieSecure: "auto" | boolean;
+  reason?: string;
+  mfa?: { available: boolean; requiredRoles: OperatorRole[]; reason?: string };
+}
+
+export async function operatorAuthFromEnv(pool: mysql.Pool, env: NodeJS.ProcessEnv, opts: { keyring?: Keyring } = {}): Promise<OperatorAuthSetup> {
   const cookieSecure = env.CP_COOKIE_SECURE === "true" ? true : env.CP_COOKIE_SECURE === "false" ? false : "auto";
   if (env.CP_OPERATOR_AUTH === "off") return { cookieSecure, reason: "desactivado (CP_OPERATOR_AUTH=off)" };
   try {
@@ -41,14 +62,34 @@ export async function operatorAuthFromEnv(pool: mysql.Pool, env: NodeJS.ProcessE
     if (e?.code === "ER_NO_SUCH_TABLE") return { cookieSecure, reason: "falta la migración db/registry/0007_operators.sql" };
     throw e;
   }
+  // Segundo factor: solo con la migración 0012 (columnas y tabla) y con el llavero del registro. Sin ella,
+  // el acceso funciona exactamente como antes.
+  let mfaReason: string | undefined;
+  let mfaColumns = false;
+  if (env.CP_OPERATOR_MFA === "off") mfaReason = "desactivado (CP_OPERATOR_MFA=off)";
+  else if (!opts.keyring) mfaReason = "sin llavero del registro";
+  else {
+    try {
+      await pool.query("SELECT mfa_enabled_at FROM cp_operators LIMIT 0");
+      await pool.query("SELECT mfa_state FROM cp_operator_sessions LIMIT 0");
+      await pool.query("SELECT id FROM cp_operator_recovery_codes LIMIT 0");
+      mfaColumns = true;
+    } catch (e: any) {
+      if (e?.code !== "ER_BAD_FIELD_ERROR" && e?.code !== "ER_NO_SUCH_TABLE") throw e;
+      mfaReason = "falta la migración db/registry/0012_operator_mfa.sql";
+    }
+  }
+  const requiredRoles = mfaColumns ? mfaRolesFromEnv(env.CP_OPERATOR_MFA_ROLES) : [];
   const idle = Number(env.CP_SESSION_IDLE_MINUTES ?? 120);
   const max = Number(env.CP_SESSION_MAX_HOURS ?? 12);
   const mail = env.CP_RESET_SMTP_URL && env.CP_RESET_FROM && env.CP_RESET_URL ? smtpMailer(env.CP_RESET_SMTP_URL, env.CP_RESET_FROM) : undefined;
-  const service = new OperatorAuthService(new MysqlOperatorStore(pool), {
+  const service = new OperatorAuthService(new MysqlOperatorStore(pool, { mfa: mfaColumns }), {
     idleMs: Math.min(Math.max(Number.isFinite(idle) ? idle : 120, 5), 24 * 60) * 60_000,
     maxMs: Math.min(Math.max(Number.isFinite(max) ? max : 12, 1), 24) * 3600_000,
     mailer: mail,
     resetUrl: mail ? env.CP_RESET_URL : undefined,
+    mfaKeyring: mfaColumns ? opts.keyring : undefined,
+    mfaRequiredRoles: requiredRoles,
   });
-  return { service, cookieSecure };
+  return { service, cookieSecure, mfa: { available: service.mfaAvailable, requiredRoles, ...(mfaReason ? { reason: mfaReason } : {}) } };
 }
