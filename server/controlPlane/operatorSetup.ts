@@ -49,7 +49,7 @@ export interface OperatorAuthSetup {
   service?: OperatorAuthService;
   cookieSecure: "auto" | boolean;
   reason?: string;
-  mfa?: { available: boolean; requiredRoles: OperatorRole[]; reason?: string };
+  mfa?: { available: boolean; requiredRoles: OperatorRole[]; misconfigured: boolean; reason?: string };
 }
 
 export async function operatorAuthFromEnv(pool: mysql.Pool, env: NodeJS.ProcessEnv, opts: { keyring?: Keyring } = {}): Promise<OperatorAuthSetup> {
@@ -79,7 +79,9 @@ export async function operatorAuthFromEnv(pool: mysql.Pool, env: NodeJS.ProcessE
       mfaReason = "falta la migración db/registry/0012_operator_mfa.sql";
     }
   }
-  const requiredRoles = mfaColumns ? mfaRolesFromEnv(env.CP_OPERATOR_MFA_ROLES) : [];
+  // Los roles obligatorios se respetan SIEMPRE: si el MFA no está disponible, esos operadores no entran
+  // (falla cerrado) y el arranque lo registra como alerta, en lugar de ignorarlos en silencio.
+  const requiredRoles = mfaRolesFromEnv(env.CP_OPERATOR_MFA_ROLES);
   const idle = Number(env.CP_SESSION_IDLE_MINUTES ?? 120);
   const max = Number(env.CP_SESSION_MAX_HOURS ?? 12);
   const mail = env.CP_RESET_SMTP_URL && env.CP_RESET_FROM && env.CP_RESET_URL ? smtpMailer(env.CP_RESET_SMTP_URL, env.CP_RESET_FROM) : undefined;
@@ -91,5 +93,10 @@ export async function operatorAuthFromEnv(pool: mysql.Pool, env: NodeJS.ProcessE
     mfaKeyring: mfaColumns ? opts.keyring : undefined,
     mfaRequiredRoles: requiredRoles,
   });
-  return { service, cookieSecure, mfa: { available: service.mfaAvailable, requiredRoles, ...(mfaReason ? { reason: mfaReason } : {}) } };
+  if (service.mfaMisconfigured) {
+    console.error(
+      JSON.stringify({ ctx: "OperatorAuth", event: "mfa_required_but_unavailable", level: "error", requiredRoles, reason: mfaReason ?? "unknown", effect: "esos roles no pueden entrar hasta corregirlo" }),
+    );
+  }
+  return { service, cookieSecure, mfa: { available: service.mfaAvailable, requiredRoles, ...(mfaReason ? { reason: mfaReason } : {}), misconfigured: service.mfaMisconfigured } };
 }
