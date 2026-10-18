@@ -1,7 +1,7 @@
 /** Estado público del alta: la relectura en Stripe se limita por sesión (una cada 30 s). */
 import { describe, it, expect } from "vitest";
 import type { CommercialOrder } from "../orchestrator/types";
-import { RECHECK_EVERY_MS, checkoutStatus } from "./status";
+import { RECHECK_EVERY_MS, SESSION_ID_RE, checkoutStatus, sessionIdRe } from "./status";
 import type { StripeSessionRow } from "./store";
 
 const SID = "cs_test_abcdefgh12345678";
@@ -24,5 +24,22 @@ describe("estado público del alta", () => {
     now += RECHECK_EVERY_MS;
     await checkoutStatus(deps, SID);
     expect(calls).toBe(2);
+  });
+
+  it("ids de sesión según el modo: cs_test_ en pruebas y cs_live_ en live, nunca el del otro", async () => {
+    const LIVE = "cs_live_abcdefgh12345678";
+    expect(sessionIdRe()).toBe(SESSION_ID_RE);
+    expect([sessionIdRe("test").test(SID), sessionIdRe("test").test(LIVE), sessionIdRe("live").test(LIVE), sessionIdRe("live").test(SID)]).toEqual([true, false, true, false]);
+    let reads = 0;
+    const deps = (mode?: "test" | "live") => ({
+      store: { session: async (id: string) => (reads++, { ...row, stripeSessionId: id }) },
+      orders: { get: async () => ({ id: 9, state: "contracted" }) as unknown as CommercialOrder },
+      platformDomain: null,
+      mode,
+    });
+    expect(await checkoutStatus(deps("live"), SID)).toBeNull();
+    expect(await checkoutStatus(deps(), LIVE)).toBeNull();
+    expect(reads).toBe(0);
+    expect(await checkoutStatus(deps("live"), LIVE)).toMatchObject({ state: "pending_payment" });
   });
 });

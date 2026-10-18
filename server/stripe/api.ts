@@ -1,5 +1,5 @@
 /**
- * Stripe Billing en el plano de control (`/cp/v1/stripe/*`). SOLO MODO PRUEBAS y solo operadores.
+ * Stripe Billing en el plano de control (`/cp/v1/stripe/*`), en modo pruebas o live, y solo operadores.
  *
  *   GET  /stripe/status                         ops:read      configuración (sin secretos) y catálogo enlazado
  *   GET  /stripe/catalog/plan                   ops:read      escrituras que FALTAN en Stripe (las ejecuta una persona)
@@ -28,8 +28,9 @@ import { recordFailure } from "../_core/ops/failureAlerts";
 import type { CatalogPort } from "../subscriptions/ports";
 import { StripeCatalogError, desiredCatalog, planCatalogWrites, syncCatalog } from "./catalog";
 import { StripeCheckoutError, type StripeCheckoutService } from "./checkout";
-import { describeStripeConfig, type StripeConfig } from "./config";
+import { checkoutBlockedReason, describeStripeConfig, type StripeConfig } from "./config";
 import { describeIssuer } from "./issuer";
+import { sessionIdRe } from "./status";
 import { StripeGatewayError, type StripeGateway } from "./gateway";
 import { StripeStoreError, type StripeStore } from "./store";
 import type { StripeEventProcessor } from "./events";
@@ -56,7 +57,6 @@ const wrap =
   };
 
 const id = z.coerce.number().int().positive();
-const sessionId = z.string().regex(/^cs_test_[A-Za-z0-9]{8,240}$/);
 const who = (req: Request) => `${getAuth(req)!.actor.type}:${getAuth(req)!.actor.id}`;
 
 export interface StripeRouterDeps {
@@ -74,9 +74,11 @@ export interface StripeRouterDeps {
 export function createStripeRouter(d: StripeRouterDeps): Router {
   const r = express.Router();
   const now = d.now ?? Date.now;
+  // Solo ids de sesión del modo del entorno: cs_test_ en pruebas, cs_live_ en live (nunca el del otro)
+  const sessionId = z.string().regex(sessionIdRe(d.config.mode));
 
   r.get("/status", requireScope("ops:read"), wrap(async (_req, res) => {
-    res.json({ ...describeStripeConfig(d.config), issuer: describeIssuer(), checkoutEnabled: !!d.checkout, prices: await d.store.listPrices() });
+    res.json({ ...describeStripeConfig(d.config), issuer: describeIssuer(), checkoutEnabled: !!d.checkout, ...(checkoutBlockedReason(d.config) ? { checkoutBlocked: checkoutBlockedReason(d.config) } : {}), prices: await d.store.listPrices() });
   }));
   r.get("/catalog/plan", requireScope("ops:read"), wrap(async (_req, res) => {
     const desired = await desiredCatalog(d.catalog);

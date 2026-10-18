@@ -1,6 +1,7 @@
 /**
  * Estado PÚBLICO del alta tras volver de Stripe Checkout (`GET /cp/v1/public/checkout/status?session_id=`).
- * SOLO MODO PRUEBAS y apagado salvo CP_PUBLIC_CHECKOUT_ENABLED=1.
+ * En modo pruebas o live (solo sesiones de su modo: `cs_test_` o `cs_live_`) y apagado salvo
+ * CP_PUBLIC_CHECKOUT_ENABLED=1.
  *
  *  - Solo progreso, sin datos personales: estado, mensaje y, cuando el alta ha terminado de verdad
  *    (pedido `active`), la dirección de acceso de la empresa.
@@ -15,6 +16,7 @@
  *    404 si la sesión es desconocida (o el seguimiento está apagado).
  */
 import type { OrderStore } from "../orchestrator/store";
+import type { StripeMode } from "./config";
 import type { StripeEventProcessor } from "./events";
 import type { StripeStore } from "./store";
 
@@ -40,7 +42,11 @@ const MESSAGES: Record<CheckoutStatus, string> = {
   expired: "La sesión de pago caducó sin completarse. No se ha cobrado nada.",
 };
 
+/** Id de una Checkout Session de pruebas (compatibilidad: el modo por defecto). */
 export const SESSION_ID_RE = /^cs_test_[A-Za-z0-9]{8,240}$/;
+const LIVE_SESSION_ID_RE = /^cs_live_[A-Za-z0-9]{8,240}$/;
+/** Id de una Checkout Session admitido en un modo: `cs_test_` en pruebas, `cs_live_` en live; nunca el del otro. */
+export const sessionIdRe = (mode: StripeMode = "test") => (mode === "live" ? LIVE_SESSION_ID_RE : SESSION_ID_RE);
 
 export interface StatusDeps {
   store: Pick<StripeStore, "session">;
@@ -50,13 +56,15 @@ export interface StatusDeps {
   /** Última relectura por sesión (compartido entre peticiones del proceso). */
   rechecks?: Map<string, number>;
   now?: () => number;
+  /** Modo del entorno (por defecto «test»): solo se aceptan ids de sesión de ese modo. */
+  mode?: StripeMode;
 }
 
 export const RECHECK_EVERY_MS = 30_000;
 const MAX_TRACKED = 5000;
 
 export async function checkoutStatus(d: StatusDeps, sessionId: string): Promise<CheckoutStatusView | null> {
-  if (!SESSION_ID_RE.test(sessionId)) return null;
+  if (!sessionIdRe(d.mode).test(sessionId)) return null;
   const row = await d.store.session(sessionId);
   if (!row) return null;
   let o = await d.orders.get(row.orderId);
