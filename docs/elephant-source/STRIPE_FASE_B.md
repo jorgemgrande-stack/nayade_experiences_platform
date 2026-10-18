@@ -47,7 +47,16 @@ Origen de los importes: precios **aprobados** del catálogo de Railway (`GET /cp
 - **Identificadores estables:** la `lookup_key` incluye el id del precio aprobado. Un precio aprobado nuevo es otra clave y otro Price; un Price nunca cambia de importe.
 - **Enlace con nuestro catálogo:** después de crearlos, `POST /cp/v1/stripe/catalog/sync` (solo lectura en Stripe) los enlaza en `stripe_prices`. Solo enlaza si coinciden importe, moneda, periodicidad, `tax_behavior`, `es_web_price_id`, Product activo y su `es_product_key`.
 - **Sin IVA:** con `tax_behavior: exclusive` y sin Stripe Tax ni tipos fijos, Stripe cobrará el importe **sin IVA**. Es coherente con la decisión de no aplicar un 21 % fijo hasta decidir la política fiscal. **Aviso:** la cotización interna del pedido (`firstPeriodCents`) incluye IVA; el cobro de Stripe en el sandbox no. Hasta resolver la decisión fiscal, ese importe no debe presentarse como el total cobrado.
-- **Los identificadores reales** de Products y Prices se registrarán aquí cuando se creen.
+- **Ejecutado el 18/10/2026** por el MCP oficial, tras la comprobación visual del propietario (sandbox `acct_1URULO5wMYhQ9O0d`, distinto de la cuenta real) y con `livemode=false` verificado. Antes de crear: 0 Products, 0 Prices con esas `lookup_key` y 0 configuraciones del Portal. Después: exactamente estos 6 objetos, todos `livemode: false`.
+
+| Plan | Product | Periodicidad | Price | `lookup_key` | Importe |
+|---|---|---|---|---|---|
+| Essential | `prod_VSjvJJnk9dvSOT` | mensual | `price_1URoSC5wMYhQ9O0dtacPffCy` | `es:essential:monthly:eur:v1` | 29,00 € |
+| Essential | `prod_VSjvJJnk9dvSOT` | anual | `price_1URoSD5wMYhQ9O0dBmJowxvX` | `es:essential:yearly:eur:v2` | 279,00 € |
+| Business | `prod_VSjvvEI26Ra062` | mensual | `price_1URoSD5wMYhQ9O0dTZKfzsnV` | `es:business:monthly:eur:v3` | 79,00 € |
+| Business | `prod_VSjvvEI26Ra062` | anual | `price_1URoSE5wMYhQ9O0doq5eqhut` | `es:business:yearly:eur:v4` | 759,00 € |
+
+Todos con `tax_behavior: exclusive`, `nickname` y `metadata` (`es_product_key`, `es_web_price_id`, `es_kind`) exactamente como en la tabla anterior. El catálogo no lleva el prefijo de entorno (B9): las `lookup_key` son las mismas para todos los entornos del sandbox.
 
 ## 3. Customer Portal: análisis y configuración propuesta (no creada)
 
