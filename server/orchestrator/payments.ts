@@ -9,7 +9,8 @@
  *  - Nada cobra solo: no existe ningún cobro automático (`autoCharge` siempre false; pedirlo por
  *    configuración impide arrancar). Un pago se inicia con una acción explícita (checkout) y SOLO un
  *    evento firmado y verificado lo da por pagado.
- *  - Cualquier credencial «live» se rechaza.
+ *  - Cualquier credencial «live» se rechaza, y en un entorno con CP_STRIPE_MODE=live el proveedor simulado
+ *    no se monta (no arranca): allí solo cobra Stripe Billing.
  */
 import crypto from "node:crypto";
 import { SimulatedProvider } from "../subscriptions/shadowPayments";
@@ -110,7 +111,11 @@ export function testPaymentsFromEnv(env: NodeJS.ProcessEnv = process.env): { pro
     throw new Error("CP_PAYMENTS_AUTO_CHARGE no está autorizado: el cobro automático está desactivado en esta fase");
   }
   const which = (env.CP_PAYMENTS_PROVIDER ?? "").toLowerCase();
-  if (!which) return { provider: null, reason: "payments_not_configured" };
+  const stripeLive = (env.CP_STRIPE_MODE ?? "").trim().toLowerCase() === "live";
+  if (stripeLive && (which || env.CP_PAYMENTS_TEST_WEBHOOK_SECRET)) {
+    throw new Error("Con CP_STRIPE_MODE=live no se admiten pagos simulados: retira CP_PAYMENTS_PROVIDER y CP_PAYMENTS_TEST_WEBHOOK_SECRET");
+  }
+  if (!which) return { provider: null, reason: stripeLive ? "payments_live_stripe_only" : "payments_not_configured" };
   if (which !== "simulated") throw new Error(`CP_PAYMENTS_PROVIDER=${which} no está soportado: solo «simulated» (modo pruebas)`);
   const secret = env.CP_PAYMENTS_TEST_WEBHOOK_SECRET ?? "";
   if (!secret) return { provider: null, reason: "missing_test_webhook_secret" };

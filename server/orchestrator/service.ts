@@ -37,11 +37,17 @@ import type { TestPaymentPort } from "./payments";
 import type { OrderStore } from "./store";
 import { opsLog } from "../_core/ops/log";
 import { recordFailure } from "../_core/ops/failureAlerts";
-import { OrderError, type CommercialOrder, type Confirmation, type OrderPatch, type OrderPayment, type OrderQuote, type OrderState, type PaymentPurpose } from "./types";
+import { OrderError, type CommercialOrder, type Confirmation, type OrderPatch, type OrderPayment, type OrderQuote, type OrderState, type PaymentMode, type PaymentPurpose } from "./types";
 
 export const GRACE_DAYS = 7;
 /** Proveedor de los pagos verificados en Stripe Billing (modo pruebas). Sus pedidos no reciben recibos simulados. */
 export const STRIPE_PAYMENT_PROVIDER = "stripe_test";
+/** Proveedor de los pagos verificados en Stripe Billing en modo live (cuenta real). */
+export const STRIPE_LIVE_PAYMENT_PROVIDER = "stripe";
+/** Proveedor de los pagos de Stripe según el modo del entorno. */
+export const stripePaymentProvider = (mode: PaymentMode) => (mode === "live" ? STRIPE_LIVE_PAYMENT_PROVIDER : STRIPE_PAYMENT_PROVIDER);
+/** ¿Es un pago verificado en Stripe Billing (de cualquier modo)? */
+export const isStripeProvider = (provider: string) => provider === STRIPE_PAYMENT_PROVIDER || provider === STRIPE_LIVE_PAYMENT_PROVIDER;
 const DAY = 86_400_000;
 const KEY_RE = /^[A-Za-z0-9_-]{16,80}$/;
 const LIVE: OrderState[] = ["active", "past_due", "suspended"];
@@ -67,6 +73,11 @@ export interface OrchestratorDeps {
   /** ¿El cobro del pedido está revertido en Stripe (reembolso total o disputa perdida)? Entonces no se activa. */
   coverageHeld?: (orderId: number) => Promise<boolean>;
   payments?: TestPaymentPort | null;
+  /**
+   * Modo de cobro del entorno (el de Stripe Billing; por defecto «test»). En «live» NO se admite el
+   * proveedor de pagos simulados (`payments`): el orquestador no se crea.
+   */
+  mode?: PaymentMode;
   graceDays?: number;
   now?: () => number;
   /**
@@ -107,14 +118,20 @@ const message = (e: unknown) => (e instanceof Error ? e.message : "error").slice
 export class CommercialOrchestrator {
   private now: () => number;
   private grace: number;
+  private mode: PaymentMode;
   constructor(private d: OrchestratorDeps) {
     this.now = d.now ?? Date.now;
     this.grace = (d.graceDays ?? GRACE_DAYS) * DAY;
+    this.mode = d.mode ?? "test";
+    if (this.mode !== "test" && this.mode !== "live") throw new Error("Modo de cobro no admitido");
+    // Los pagos simulados son SOLO de pruebas: en live nunca se montan
+    if (this.mode === "live" && d.payments) throw new Error("El proveedor de pagos simulados no puede montarse en modo live");
+    if (d.payments && d.payments.mode !== "test") throw new Error("El proveedor de pagos simulados solo admite el modo pruebas");
   }
 
   get paymentsConfig() {
     const p = this.d.payments;
-    return { enabled: !!p, provider: p?.kind ?? null, mode: "test" as const, autoCharge: false as const, graceDays: this.grace / DAY };
+    return { enabled: !!p, provider: p?.kind ?? null, mode: this.mode, stripeProvider: stripePaymentProvider(this.mode), autoCharge: false as const, graceDays: this.grace / DAY };
   }
 
   // ── Lectura ────────────────────────────────────────────────────────────────
@@ -586,7 +603,7 @@ export class CommercialOrchestrator {
     if (last && last.status !== "failed") return { payment: last, created: false };
     const key = `ord:${o.id}:${purpose}:a${prior.length + 1}`;
     const { providerRef } = await provider.checkout({ key, amountCents: amount, currency: o.quote!.currency, description: `Pedido ${o.reference}` });
-    const r = await this.d.store.insertPayment({ orderId: o.id, idempotencyKey: key, purpose, periodStart: null, amountCents: amount, currency: o.quote!.currency, status: "pending", provider: provider.kind, mode: "test", providerRef, dueAt: this.now(), createdAt: this.now(), settledAt: null });
+    const r = await this.d.store.insertPayment({ orderId: o.id, idempotencyKey: key, purpose, periodStart: null, amountCents: amount, currency: o.quote!.currency, status: "pending", provider: provider.kind, mode: provider.mode, providerRef, dueAt: this.now(), createdAt: this.now(), settledAt: null });
     if (r.created) await this.note(o, "payment_requested", actor, { paymentId: r.payment.id, amountCents: amount, currency: r.payment.currency, attempt: prior.length + 1 });
     return r;
   }
@@ -692,13 +709,13 @@ export class CommercialOrchestrator {
     let payment: OrderPayment | null = null;
     // Los pedidos cobrados por Stripe Billing renuevan en Stripe: aquí no se emite ningún recibo simulado
     const own = await this.d.store.payments(o.id);
-    const online = own.some((p) => p.status === "succeeded") && !own.some((p) => p.provider === STRIPE_PAYMENT_PROVIDER);
+    const online = own.some((p) => p.status === "succeeded") && !own.some((p) => isStripeProvider(p.provider));
     if (online && this.d.payments) {
       const amount = (await this.d.shadow.preview(sub.id)).drafts.filter((x) => x.kind === "renewal").reduce((a, x) => a + x.totalCents, 0);
       if (amount > 0) {
         const key = `ord:${o.id}:renewal:${sub.currentPeriodStart}`;
         const { providerRef } = await this.d.payments.checkout({ key, amountCents: amount, currency: sub.currency, description: `Renovación ${o.reference}` });
-        payment = (await this.d.store.insertPayment({ orderId: o.id, idempotencyKey: key, purpose: "renewal", periodStart: sub.currentPeriodStart, amountCents: amount, currency: sub.currency, status: "pending", provider: this.d.payments.kind, mode: "test", providerRef, dueAt: sub.currentPeriodStart, createdAt: this.now(), settledAt: null })).payment;
+        payment = (await this.d.store.insertPayment({ orderId: o.id, idempotencyKey: key, purpose: "renewal", periodStart: sub.currentPeriodStart, amountCents: amount, currency: sub.currency, status: "pending", provider: this.d.payments.kind, mode: this.d.payments.mode, providerRef, dueAt: sub.currentPeriodStart, createdAt: this.now(), settledAt: null })).payment;
       }
     }
     o = await this.note(await this.must(id), "renewed", actor, { periodStart: sub.currentPeriodStart, periodEnd: sub.currentPeriodEnd, licencesChanged: changed, paymentId: payment?.id ?? null });
@@ -838,7 +855,7 @@ export class CommercialOrchestrator {
 
   /** ¿El pedido se cobra en Stripe Billing? (tiene pagos verificados de Stripe). */
   private async stripeBilled(o: CommercialOrder) {
-    return (await this.d.store.payments(o.id)).some((p) => p.provider === STRIPE_PAYMENT_PROVIDER);
+    return (await this.d.store.payments(o.id)).some((p) => isStripeProvider(p.provider));
   }
 
   /** ¿La última cancelación del pedido vino de Stripe? Solo esa la puede deshacer Stripe. */

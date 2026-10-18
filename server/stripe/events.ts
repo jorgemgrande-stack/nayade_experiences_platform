@@ -1,5 +1,5 @@
 /**
- * Procesamiento DURADERO de los eventos de Stripe (Fase C). SOLO MODO PRUEBAS.
+ * Procesamiento DURADERO de los eventos de Stripe (Fase C), en modo pruebas o live.
  *
  * Principios (docs/elephant-source/STRIPE_FASE_A.md §6, §16.4 y §17.5):
  *  - El evento solo dice «mira este objeto». El efecto se calcula SIEMPRE releyendo el objeto en la
@@ -10,8 +10,9 @@
  *    intentos queda `failed` con alerta y la conciliación lo puede retomar.
  *  - Un cobro solo cuenta si la FACTURA releída está `paid`, pertenece a esa suscripción y la
  *    suscripción es de un pedido de Elephant Source con el Customer de esa empresa. Entonces se registra
- *    como pago verificado del pedido (`commercial_payments`, proveedor `stripe_test`, clave idempotente
- *    por factura) y el circuito existente confirma → aprovisiona → suscribe → licencia → activa.
+ *    como pago verificado del pedido (`commercial_payments`, proveedor `stripe_test` y modo `test` en
+ *    pruebas, `stripe` y `live` en live; clave idempotente por factura) y el circuito existente
+ *    confirma → aprovisiona → suscribe → licencia → activa.
  *  - Impago, suspensión, recuperación, cancelación programada, reactivación y fin se aplican con
  *    `applyExternalBilling` del orquestador. Nunca se borran datos.
  *  - Reembolsos y disputas: se relee el CARGO y se guarda su estado (`stripe_charge_adjustments`). Si la
@@ -24,7 +25,8 @@ import { opsLog } from "../_core/ops/log";
 import { recordFailure } from "../_core/ops/failureAlerts";
 import type { OrderStore } from "../orchestrator/store";
 import type { CommercialOrder } from "../orchestrator/types";
-import { STRIPE_PAYMENT_PROVIDER } from "../orchestrator/service";
+import { stripePaymentProvider } from "../orchestrator/service";
+import type { StripeMode } from "./config";
 import type { GwCharge, GwInvoice, GwSubscription, StripeGateway } from "./gateway";
 import type { StripeEventRow, StripeStore } from "./store";
 
@@ -73,6 +75,8 @@ export interface ProcessorDeps {
   maxAttempts?: number;
   /** Prefijo de este entorno (`metadata.es_env`); los objetos de otro entorno se ignoran. */
   namespace?: string;
+  /** Modo del entorno (por defecto «test»): fija el proveedor y el modo de los pagos verificados. */
+  mode?: StripeMode;
 }
 
 /** Estado de un cargo que deja sin cobertura el periodo que pagó. */
@@ -94,9 +98,14 @@ export class StripeEventProcessor {
   private now: () => number;
   private actor = "system:stripe";
   private namespace: string;
+  private mode: StripeMode;
+  /** Proveedor de los pagos verificados de ESTE modo (`stripe_test` o `stripe`). */
+  private provider: string;
   constructor(private d: ProcessorDeps) {
     this.now = d.now ?? Date.now;
     this.namespace = d.namespace ?? "local";
+    this.mode = d.mode ?? "test";
+    this.provider = stripePaymentProvider(this.mode);
   }
 
   /** Procesa hasta `limit` eventos pendientes. Devuelve el recuento por resultado. */
@@ -288,7 +297,7 @@ export class StripeEventProcessor {
     const payment = await this.recordPaidInvoice(order, sub, hint);
     const lastPaid = (await this.d.orders.payments(orderId))
       // Solo los cobros de periodo (alta y renovaciones): un prorrateo no es un periodo nuevo
-      .filter((p) => p.provider === STRIPE_PAYMENT_PROVIDER && p.status === "succeeded" && p.purpose !== "change")
+      .filter((p) => p.provider === this.provider && p.status === "succeeded" && p.purpose !== "change")
       .sort((a, b) => (b.periodStart ?? 0) - (a.periodStart ?? 0) || b.createdAt - a.createdAt)[0]?.providerRef ?? null;
     // Solo el cobro de un periodo NUEVO devuelve la cobertura perdida por un reembolso o una disputa
     if (payment?.created && payment.purpose === "renewal") await this.d.store.resolveHolds({ orderId, exceptInvoiceId: payment.invoiceId }, `Nuevo periodo pagado (factura ${payment.invoiceId})`, this.now());
@@ -320,8 +329,9 @@ export class StripeEventProcessor {
     if (!inv || inv.status !== "paid" || inv.subscriptionId !== sub.id || inv.customerId !== sub.customerId || (inv.amountPaid <= 0 && (inv.subtotal ?? 0) <= 0)) return null;
     if (order.quote && inv.currency !== order.quote.currency.toUpperCase()) throw new StripeMismatchError("La moneda de la factura no es la del pedido");
     const purpose = inv.billingReason === "subscription_cycle" ? ("renewal" as const) : inv.billingReason === "subscription_update" ? ("change" as const) : ("initial" as const);
-    // Tratamiento de pruebas (neto, sin IVA): el primer periodo facturado es exactamente el neto del presupuesto
-    // (subtotal: antes de impuestos y del saldo a favor que el cliente pudiera tener en Stripe)
+    // El primer periodo facturado es exactamente el neto del presupuesto (subtotal: antes de impuestos y del
+    // saldo a favor que el cliente pudiera tener en Stripe). Vale para pruebas (sin IVA) y para live con
+    // Stripe Tax sobre precios sin IVA (el impuesto se suma después del subtotal)
     if (purpose === "initial" && order.quote && (inv.subtotal ?? inv.amountPaid) !== order.quote.contractAmountCents) throw new StripeMismatchError("El importe facturado no es el del presupuesto (sin IVA)");
     const r = await this.d.orders.insertPayment({
       orderId: order.id,
@@ -331,8 +341,8 @@ export class StripeEventProcessor {
       amountCents: inv.amountPaid,
       currency: inv.currency,
       status: "succeeded",
-      provider: STRIPE_PAYMENT_PROVIDER,
-      mode: "test",
+      provider: this.provider,
+      mode: this.mode,
       providerRef: inv.id,
       dueAt: null,
       createdAt: this.now(),
@@ -344,6 +354,6 @@ export class StripeEventProcessor {
 
   private async hasInitialPayment(order: CommercialOrder, just: { purpose: string } | null) {
     if (just && just.purpose !== "renewal") return true;
-    return (await this.d.orders.payments(order.id)).some((p) => p.provider === STRIPE_PAYMENT_PROVIDER && p.status === "succeeded" && p.purpose !== "renewal");
+    return (await this.d.orders.payments(order.id)).some((p) => p.provider === this.provider && p.status === "succeeded" && p.purpose !== "renewal");
   }
 }

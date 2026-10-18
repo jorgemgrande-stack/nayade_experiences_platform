@@ -151,6 +151,18 @@ describe.skipIf(!URL_)("orquestador comercial con MySQL real", () => {
     ).rejects.toThrow();
   });
 
+  it("el almacén guarda y lee el modo del pago (live con el proveedor stripe); un modo desconocido se rechaza", async () => {
+    const store = new MysqlOrderStore(pool);
+    const [r] = await pool.query<mysql.RowDataPacket[]>("SELECT id FROM commercial_orders LIMIT 1");
+    const p = { orderId: Number(r[0].id), idempotencyKey: "stripe:inv:in_live_mysql_1", purpose: "initial" as const, periodStart: null, amountCents: 2900, currency: "EUR", status: "succeeded" as const, provider: "stripe", mode: "live" as const, providerRef: "in_live_mysql_1", dueAt: null, createdAt: clock, settledAt: clock };
+    expect((await store.insertPayment(p)).payment).toMatchObject({ provider: "stripe", mode: "live" });
+    expect(await store.paymentByKey(p.idempotencyKey)).toMatchObject({ mode: "live" });
+    const [row] = await pool.query<mysql.RowDataPacket[]>("SELECT mode FROM commercial_payments WHERE idempotency_key = ?", [p.idempotencyKey]);
+    expect(row[0].mode).toBe("live");
+    await expect(store.insertPayment({ ...p, idempotencyKey: "stripe:inv:in_x_mysql_2", mode: "otro" as never })).rejects.toThrow(/Modo de pago/);
+    await pool.query("DELETE FROM commercial_payments WHERE idempotency_key = ?", [p.idempotencyKey]);
+  });
+
   it("prueba Essential → Business con pago de prueba: misma suscripción y plataforma, contrato enlazado en la BD", async () => {
     const reg = await trials.register({ email: "olga@abeto.example", companyName: "Abeto MySQL SL", configuration: { plan: "essential", addons: [] }, idempotencyKey: key() });
     const v = await trials.verify(reg.trial.id, reg.verificationToken!);
