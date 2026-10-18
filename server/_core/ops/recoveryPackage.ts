@@ -96,6 +96,17 @@ const PUBLIC_VALUE_VARS = [
 
 const SENSITIVE_NAME = /(KEY|KEYS|SECRET|PASS|PASSWORD|TOKEN|TOKENS|URL|DSN|HASH|WEBHOOK|CREDENTIAL)/i;
 
+/**
+ * Dominios que Railway inyecta en cada servicio (`RAILWAY_SERVICE_<SERVICIO>_URL`, `RAILWAY_PUBLIC_DOMAIN`…).
+ * Llevan «URL» en el nombre, pero su valor es un nombre de host público, el mismo que figura en los dominios
+ * de las empresas. Solo se excluyen si el valor es exactamente un dominio de Railway (`<nombre>.up.railway.app`
+ * o `<nombre>.railway.internal`): un token con puntos o un dominio propio bajo ese nombre se sigue tratando como
+ * secreto.
+ */
+const RAILWAY_DOMAIN_NAME = /^RAILWAY_(SERVICE_[A-Z0-9_]+_URL|PUBLIC_DOMAIN|PRIVATE_DOMAIN|STATIC_URL)$/;
+const RAILWAY_HOST = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.(?:up\.railway\.app|railway\.internal)$/;
+const isRailwayDomain = (name: string, value: string) => RAILWAY_DOMAIN_NAME.test(name) && RAILWAY_HOST.test(value);
+
 export interface RecoveryTenant {
   id: string;
   displayName: string;
@@ -143,7 +154,7 @@ export class RecoveryPackageError extends Error {
 export function assertNoSecrets(pkg: unknown, env: NodeJS.ProcessEnv = process.env): void {
   const text = JSON.stringify(pkg);
   for (const [name, value] of Object.entries(env)) {
-    if (!value || value.length < 8 || PUBLIC_VALUE_VARS.includes(name) || !SENSITIVE_NAME.test(name)) continue;
+    if (!value || value.length < 8 || PUBLIC_VALUE_VARS.includes(name) || !SENSITIVE_NAME.test(name) || isRailwayDomain(name, value)) continue;
     if (text.includes(value)) throw new RecoveryPackageError(`El paquete contiene el valor de ${name}: no se genera`);
     // Contraseña de una URL (DSN) o claves de un llavero (`id:clave,id2:clave2`)
     let parts: string[];

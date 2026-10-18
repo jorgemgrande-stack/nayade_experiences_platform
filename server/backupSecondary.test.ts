@@ -103,6 +103,31 @@ describe("paquete de configuración para recuperación", () => {
     expect(() => assertNoSecrets({ x: "-----BEGIN RSA PRIVATE KEY-----" }, {})).toThrow(/privada/);
     expect(() => assertNoSecrets({ host: "mysql.railway.internal", db: "es_registry" }, env)).not.toThrow();
   });
+
+  it("admite los dominios que inyecta Railway, pero no un valor con credenciales bajo ese nombre", () => {
+    const railway = { RAILWAY_SERVICE_GW_DEMO_A_URL: "t1-empresa-demo-elephant-a.up.railway.app", RAILWAY_PUBLIC_DOMAIN: "elephant-source-crm.up.railway.app", RAILWAY_PRIVATE_DOMAIN: "controlplane.railway.internal" };
+    const pkg = { tenants: [{ domains: [{ domain: "t1-empresa-demo-elephant-a.up.railway.app" }] }], crm: "elephant-source-crm.up.railway.app", cp: "controlplane.railway.internal" };
+    expect(() => assertNoSecrets(pkg, { ...env, ...railway })).not.toThrow();
+    // Bajo un nombre de dominio de Railway, todo lo que no sea exactamente un dominio de Railway sigue siendo secreto
+    const camouflaged = [
+      "https://u:secreto-123@h.example",
+      "token-largo-ficticio",
+      "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjMifQ.c2lnbmF0dXJhLWZpY3RpY2lh",
+      "abcd1234efgh.ijkl5678mnop",
+      "t-demo-a.up.railway.app.evil.example",
+      "x.t-demo-a.up.railway.app",
+      "t-demo-a.up.railway.app/ruta",
+      "T-DEMO-A.UP.RAILWAY.APP",
+      "dominio-propio.example.com",
+    ];
+    for (const value of camouflaged) {
+      expect(() => assertNoSecrets({ x: `antes ${value} después` }, { RAILWAY_SERVICE_X_URL: value })).toThrow(/RAILWAY_SERVICE_X_URL/);
+    }
+    // El nombre por sí solo no exime: un dominio de Railway bajo otra variable sensible sigue rechazándose
+    expect(() => assertNoSecrets({ x: "t-demo-a.up.railway.app" }, { CP_WEBHOOK_URL: "t-demo-a.up.railway.app" })).toThrow(/CP_WEBHOOK_URL/);
+    expect(() => assertNoSecrets({ x: "https://u:p@t-demo-a.up.railway.app" }, railway)).toThrow(/credenciales/);
+    expect(() => assertNoSecrets({ x: "contrasena-ficticia-123" }, { ...env, ...railway })).toThrow(/REGISTRY_ADMIN_DATABASE_URL/);
+  });
 });
 
 describe("retención independiente del secundario", () => {
