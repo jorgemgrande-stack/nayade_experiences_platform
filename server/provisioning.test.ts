@@ -115,6 +115,7 @@ describe("validación de la solicitud", () => {
   it("rechaza datos no válidos", () => {
     expect(() => validateRequest({ ...REQ, tenantId: "../x" })).toThrow(ProvisioningError);
     expect(() => validateRequest({ ...REQ, tenantId: "A" })).toThrow();
+    expect(() => validateRequest({ ...REQ, tenantId: "admin" })).toThrow(/reservado/);
     expect(() => validateRequest({ ...REQ, adminEmail: "no-es-correo" })).toThrow();
     expect(() => validateRequest({ ...REQ, platformDomain: "localhost" })).toThrow();
     expect(() => validateRequest({ ...REQ, trialDays: 0 })).toThrow();
