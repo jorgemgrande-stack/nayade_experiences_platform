@@ -116,6 +116,7 @@ describe("validación de la solicitud", () => {
     expect(() => validateRequest({ ...REQ, tenantId: "../x" })).toThrow(ProvisioningError);
     expect(() => validateRequest({ ...REQ, tenantId: "A" })).toThrow();
     expect(() => validateRequest({ ...REQ, tenantId: "admin" })).toThrow(/reservado/);
+    expect(() => validateRequest({ ...REQ, tenantId: "elephant-source-crm" })).toThrow(/reservado/);
     expect(() => validateRequest({ ...REQ, adminEmail: "no-es-correo" })).toThrow();
     expect(() => validateRequest({ ...REQ, platformDomain: "localhost" })).toThrow();
     expect(() => validateRequest({ ...REQ, trialDays: 0 })).toThrow();

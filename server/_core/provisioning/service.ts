@@ -4,7 +4,7 @@
  * del registro) y compensación explícita (`abort`).
  */
 import { RegistryError } from "../tenantRegistry/contract";
-import { RESERVED_PLATFORM_LABELS } from "../tenantRegistry/platformDomains";
+import { isReservedPlatformLabel } from "../tenantRegistry/platformDomains";
 import { opsLog } from "../ops/log";
 import { recordFailure } from "../ops/failureAlerts";
 import type { Actor, TenantRegistryService } from "../tenantRegistry/service";
@@ -55,7 +55,7 @@ export function validateRequest(r: ProvisionRequest): void {
   if (!TENANT_ID_RE.test(r.tenantId)) throw new ProvisioningError("invalid_request", "Identificador de tenant no válido");
   if (!r.displayName?.trim()) throw new ProvisioningError("invalid_request", "Falta el nombre");
   // <empresa>.<dominio> no puede usar una etiqueta de Big Elephant (admin, app, www…): se rechaza antes de crear nada
-  if (RESERVED_PLATFORM_LABELS.has(r.tenantId)) throw new ProvisioningError("invalid_request", "Identificador reservado para Big Elephant");
+  if (isReservedPlatformLabel(r.tenantId)) throw new ProvisioningError("invalid_request", "Identificador reservado para Big Elephant");
   if (!EMAIL_RE.test(r.adminEmail)) throw new ProvisioningError("invalid_request", "Correo del administrador no válido");
   if (!DOMAIN_RE.test(r.platformDomain)) throw new ProvisioningError("invalid_request", "Dominio de plataforma no válido");
   if (r.trialDays !== undefined && !(r.trialDays >= 1 && r.trialDays <= 90)) {

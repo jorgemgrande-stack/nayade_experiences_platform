@@ -5,7 +5,7 @@ import { createRequire } from "node:module";
 import { MemoryTenantRegistryStore } from "./_core/tenantRegistry/memoryStore";
 import { TenantRegistryService } from "./_core/tenantRegistry/service";
 import { keyringFromEnv } from "./_core/tenantRegistry/crypto";
-import { platformDomainsFromEnv, primaryPlatformDomain, RESERVED_PLATFORM_LABELS } from "./_core/tenantRegistry/platformDomains";
+import { platformDomainsFromEnv, primaryPlatformDomain, RESERVED_PLATFORM_LABELS, RESERVED_PLATFORM_PREFIXES } from "./_core/tenantRegistry/platformDomains";
 
 const ring = keyringFromEnv({ REGISTRY_KEYS: `k1:${crypto.randomBytes(32).toString("base64")}`, REGISTRY_ACTIVE_KEY_ID: "k1" } as NodeJS.ProcessEnv);
 const actor = { type: "operator" as const, id: "test" };
@@ -37,8 +37,9 @@ describe("dominios de plataforma (configuración)", () => {
   });
 
   it("las etiquetas reservadas son las mismas que en scripts/railway/dominios-app.cjs", () => {
-    const { RESERVED } = createRequire(import.meta.url)("../scripts/railway/dominios-app.cjs") as { RESERVED: Set<string> };
+    const { RESERVED, RESERVED_PREFIXES } = createRequire(import.meta.url)("../scripts/railway/dominios-app.cjs") as { RESERVED: Set<string>; RESERVED_PREFIXES: string[] };
     expect(new Set(RESERVED_PLATFORM_LABELS)).toEqual(RESERVED);
+    expect(RESERVED_PLATFORM_PREFIXES).toEqual(RESERVED_PREFIXES);
   });
 });
 
@@ -53,7 +54,7 @@ describe("registro: platform_subdomain solo bajo un dominio de plataforma", () =
 
   it("rechaza x.evil-app.bigelephant.es, a.b.app.bigelephant.es, el propio dominio, otros dominios y etiquetas reservadas", async () => {
     const svc = await registry(P);
-    for (const d of ["x.evil-app.bigelephant.es", "a.b.app.bigelephant.es", "app.bigelephant.es", "t1.bigelephant.es", "t1.example.com", "admin.app.bigelephant.es", "-x.app.bigelephant.es"]) {
+    for (const d of ["x.evil-app.bigelephant.es", "a.b.app.bigelephant.es", "app.bigelephant.es", "t1.bigelephant.es", "t1.example.com", "admin.app.bigelephant.es", "-x.app.bigelephant.es", "elephant-source-crm-live.up.railway.app", "elephant-source-x.app.bigelephant.es"]) {
       await expect(svc.addDomain("t1-demo", d, "platform_subdomain", actor), d).rejects.toMatchObject({ code: "invalid_domain" });
     }
     await expect(svc.addDomain("t1-demo", "*.app.bigelephant.es", "platform_subdomain", actor)).rejects.toMatchObject({ code: "invalid_domain" });

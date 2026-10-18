@@ -15,6 +15,10 @@ import { isPlatformSubdomain, normalizeHost } from "./host";
 export const RESERVED_PLATFORM_LABELS: ReadonlySet<string> = new Set([
   "www", "admin", "app", "api", "mail", "crm", "cp", "smtp", "imap", "pop", "ftp", "status", "help", "soporte", "static", "cdn",
 ]);
+/** Prefijos de los servicios propios en Railway (p. ej. elephant-source-crm-live.up.railway.app). Igual en dominios-app.cjs. */
+export const RESERVED_PLATFORM_PREFIXES: readonly string[] = ["elephant-source-"];
+/** ¿Etiqueta reservada para Big Elephant (exacta o por prefijo de servicio propio)? */
+export const isReservedPlatformLabel = (label: string) => RESERVED_PLATFORM_LABELS.has(label) || RESERVED_PLATFORM_PREFIXES.some((p) => label.startsWith(p));
 const LABEL = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 
 /** Lista ordenada (sin duplicados) de dominios de plataforma; el primero es el de las altas nuevas. */
@@ -43,5 +47,5 @@ export function assertPlatformSubdomain(domain: string, platformDomains: readonl
   if (!base) throw new RegistryError("invalid_domain", `Un subdominio de plataforma debe ser <empresa>.${platformDomains[0]}`);
   const label = domain.slice(0, -(base.length + 1));
   if (!LABEL.test(label)) throw new RegistryError("invalid_domain", "La etiqueta del subdominio no es válida (minúsculas, cifras y guiones; máx. 63)");
-  if (RESERVED_PLATFORM_LABELS.has(label)) throw new RegistryError("invalid_domain", "Etiqueta reservada para Big Elephant");
+  if (isReservedPlatformLabel(label)) throw new RegistryError("invalid_domain", "Etiqueta reservada para Big Elephant");
 }
