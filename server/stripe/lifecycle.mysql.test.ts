@@ -61,6 +61,8 @@ describe.skipIf(!URL_)("Stripe Billing de punta a punta con MySQL real", () => {
   let checkout: StripeCheckoutService;
   let processor: StripeEventProcessor;
   let reconciler: StripeReconciler;
+  /** Avisos del orquestador (lo que el correo transaccional recibiría). */
+  const notices: Array<{ orderId: number; action: string; detail: Record<string, unknown> | null }> = [];
   const platform = { failNext: 0, calls: 0, created: 0, activate: async (i: { company: { id: number; tenantId: string | null } }) => {
     platform.calls++;
     if (platform.failNext > 0) {
@@ -103,6 +105,7 @@ describe.skipIf(!URL_)("Stripe Billing de punta a punta con MySQL real", () => {
       licensing: new LicensingService({ capabilities: caps, subscriptions: subsStore, crm: crmPort, catalog: site, now: () => clock }),
       capabilities: caps, platform, payments: null, now: () => clock,
       coverageHeld: async (id) => (await stripeStore.activeHolds(id)).length > 0,
+      notify: async (e) => void notices.push({ orderId: e.order.id, action: e.action, detail: e.detail }),
     });
     // Catálogo de Stripe tal como lo crearía una persona (plan de escrituras) y enlazado (solo lectura)
     stripeStore = new MysqlStripeStore(pool);
@@ -286,8 +289,14 @@ describe.skipIf(!URL_)("Stripe Billing de punta a punta con MySQL real", () => {
     clock += 32 * DAY;
     const inv = gw.addInvoice(subId, (await gw.subscription(subId))!.customerId, "subscription_cycle", "paid", 2900);
     await deliver(gw.emit("invoice.paid", "invoice", inv));
+    // El evento repetido no vuelve a avisar
+    await deliver(gw.emit("invoice.paid", "invoice", inv));
     const ps = await paymentsOf(o.id);
     expect(ps.map((p) => `${p.purpose}/${p.provider}`)).toEqual(["initial/stripe_test", "renewal/stripe_test"]);
+    // Avisos: el alta con base en el pago y la renovación cobrada (una sola vez, con su pago)
+    const mine = notices.filter((n) => n.orderId === o.id);
+    expect(mine.filter((n) => n.action === "confirm").map((n) => n.detail?.basis)).toEqual(["payment"]);
+    expect(mine.filter((n) => n.action === "payment_recorded")).toEqual([{ orderId: o.id, action: "payment_recorded", detail: { paymentId: (await orders.paymentByKey(`stripe:inv:${inv}`))!.id, purpose: "renewal" } }]);
     const [after] = await pool.query<mysql.RowDataPacket[]>("SELECT current_period_end FROM subscriptions WHERE id = ?", [(await svc.must(o.id)).subscriptionId]);
     expect(Number(after[0].current_period_end)).toBeGreaterThan(Number(before[0].current_period_end));
     expect((await svc.must(o.id)).state).toBe("active");
