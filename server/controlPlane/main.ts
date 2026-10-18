@@ -197,8 +197,9 @@ async function main() {
   }
 
   // Operadores humanos (usuario y contraseña): solo si la migración 0007 está aplicada
-  const operators = await operatorAuthFromEnv(pool, process.env);
-  console.log(JSON.stringify({ ctx: "OperatorAuth", enabled: !!operators.service, ...(operators.reason ? { reason: operators.reason } : {}), passwordReset: !!operators.service?.resetAvailable }));
+  // (segundo factor TOTP con la migración 0012; el secreto se cifra con el llavero del registro)
+  const operators = await operatorAuthFromEnv(pool, process.env, { keyring: ring });
+  console.log(JSON.stringify({ ctx: "OperatorAuth", enabled: !!operators.service, ...(operators.reason ? { reason: operators.reason } : {}), passwordReset: !!operators.service?.resetAvailable, mfa: operators.mfa ?? null }));
 
   // Web comercial (catálogo y contenidos): misma BD del CRM; solo si la migración 0004 está aplicada
   let web: { store: MysqlWebStore; onPublish?: (version: string) => void } | undefined;

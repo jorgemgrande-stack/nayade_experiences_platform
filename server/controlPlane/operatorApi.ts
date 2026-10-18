@@ -6,7 +6,7 @@
 import express, { type NextFunction, type Request, type Response, type Router } from "express";
 import rateLimit from "express-rate-limit";
 import { z } from "zod";
-import { SESSION_COOKIE, getAuth, requireOperatorSession, requireScope } from "./auth";
+import { SESSION_COOKIE, getAuth, readCookie, requireOperatorSession, requireScope } from "./auth";
 import { OperatorAuthError, publicOperator, type ActingOperator, type OperatorAuthService, type RequestContext } from "./operatorAuth";
 import { ROLES, ROLE_LABEL, assignableRoles } from "./operatorRoles";
 
@@ -71,8 +71,18 @@ const sessionBody = (svc: OperatorAuthService, req: Request) => {
     expiresAt: v.session.expiresAt,
     idleTimeoutSeconds: Math.round(svc.idleMs / 1000),
     assignableRoles: assignableRoles(v.operator.role),
+    mfa: { available: svc.mfaAvailable, enabled: !!v.operator.mfaEnabledAt, required: svc.mfaRequiredFor(v.operator.role), setupRequired: !!v.mfaSetupRequired },
   };
 };
+
+/** Respuesta de un acceso completo (login sin segundo factor o tras verificarlo). */
+const loginBody = (svc: OperatorAuthService, r: { session: { csrfToken: string; expiresAt: number }; operator: Parameters<typeof publicOperator>[0] }, mfaSetupRequired = false) => ({
+  operator: publicOperator(r.operator, Date.now()),
+  csrfToken: r.session.csrfToken,
+  expiresAt: r.session.expiresAt,
+  idleTimeoutSeconds: Math.round(svc.idleMs / 1000),
+  mfaSetupRequired,
+});
 
 /** Rutas sin sesión previa: se montan ANTES de la autenticación. */
 export function createPublicAuthRouter(cfg: OperatorRoutesConfig): Router {
@@ -89,7 +99,7 @@ export function createPublicAuthRouter(cfg: OperatorRoutesConfig): Router {
   });
 
   r.get("/auth/options", (_req, res) => {
-    res.json({ passwordLogin: true, passwordReset: svc.resetAvailable });
+    res.json({ passwordLogin: true, passwordReset: svc.resetAvailable, mfa: svc.mfaAvailable });
   });
 
   r.post(
@@ -98,15 +108,26 @@ export function createPublicAuthRouter(cfg: OperatorRoutesConfig): Router {
     limiter,
     handle(async (req, res) => {
       const b = z.object({ username: z.string().max(254), password: z.string().max(256) }).parse(req.body);
-      const { token, session, operator } = await svc.login(b.username, b.password, ctxOf(req));
+      const result = await svc.login(b.username, b.password, ctxOf(req));
+      const { token, session } = result;
       res.setHeader("Set-Cookie", sessionCookie(req, cfg, token, Math.floor((session.expiresAt - session.createdAt) / 1000)));
       res.setHeader("Cache-Control", "no-store");
-      res.json({
-        operator: publicOperator(operator, Date.now()),
-        csrfToken: session.csrfToken,
-        expiresAt: session.expiresAt,
-        idleTimeoutSeconds: Math.round(svc.idleMs / 1000),
-      });
+      // Con segundo factor: la sesión pendiente no da acceso a nada (ni CSRF, ni datos del operador)
+      if (result.mfa === "pending") return void res.json({ mfaRequired: true, expiresAt: session.expiresAt });
+      res.json(loginBody(svc, result, result.mfa === "setup"));
+    }),
+  );
+
+  r.post(
+    "/auth/mfa/verify",
+    checkOrigin(cfg),
+    limiter,
+    handle(async (req, res) => {
+      const b = z.object({ code: z.string().max(32) }).parse(req.body);
+      const result = await svc.verifyMfa(readCookie(req, SESSION_COOKIE) ?? "", b.code, ctxOf(req));
+      res.setHeader("Set-Cookie", sessionCookie(req, cfg, result.token, Math.floor((result.session.expiresAt - result.session.createdAt) / 1000)));
+      res.setHeader("Cache-Control", "no-store");
+      res.json(loginBody(svc, result));
     }),
   );
 
@@ -166,8 +187,56 @@ export function createOperatorRouter(cfg: OperatorRoutesConfig): Router {
     }),
   );
 
+  // ── Segundo factor del propio operador (también con una sesión que solo puede darlo de alta) ──
+  r.get(
+    "/auth/mfa",
+    requireOperatorSession(),
+    handle(async (req, res) => {
+      res.setHeader("Cache-Control", "no-store");
+      res.json(await svc.mfaStatus(acting(req).id));
+    }),
+  );
+
+  r.post(
+    "/auth/mfa/setup",
+    requireOperatorSession(),
+    handle(async (req, res) => {
+      res.setHeader("Cache-Control", "no-store");
+      res.json(await svc.setupMfa(acting(req), ctxOf(req)));
+    }),
+  );
+
+  r.post(
+    "/auth/mfa/enable",
+    requireOperatorSession(),
+    handle(async (req, res) => {
+      const b = z.object({ code: z.string().max(32) }).parse(req.body);
+      res.setHeader("Cache-Control", "no-store");
+      res.json(await svc.enableMfa(acting(req), b.code, ctxOf(req)));
+    }),
+  );
+
+  r.post(
+    "/auth/mfa/disable",
+    requireOperatorSession(),
+    handle(async (req, res) => {
+      const b = z.object({ code: z.string().max(32) }).parse(req.body);
+      await svc.disableMfa(acting(req), b.code, ctxOf(req));
+      res.json({ ok: true });
+    }),
+  );
+
   // ── Gestión de operadores ──────────────────────────────────────────────────
   r.use("/operators", requireOperatorSession());
+
+  r.post(
+    "/operators/:id/mfa/reset",
+    requireScope("operators:write"),
+    handle(async (req, res) => {
+      await svc.resetMfa(acting(req), idParam(req), ctxOf(req));
+      res.json({ ok: true });
+    }),
+  );
 
   r.get(
     "/operators",

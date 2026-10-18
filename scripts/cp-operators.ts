@@ -5,6 +5,7 @@
  *   REGISTRY_ADMIN_DATABASE_URL=mysql://… tsx scripts/cp-operators.ts list
  *   … bootstrap      --username administrador --name "Administrador" [--email a@b.c] --password-file <ruta>
  *   … reset-password --username administrador --password-file <ruta>
+ *   … reset-mfa      --username administrador     (retira la verificación en dos pasos; requiere la 0012)
  *
  * Las contraseñas se GENERAN (aleatorias, ~128 bits) y se escriben solo en el archivo indicado,
  * que debe estar fuera del repositorio y no existir ya. Nunca se imprimen en pantalla ni en logs.
@@ -44,7 +45,7 @@ async function main() {
   if (!url) throw new Error("Falta REGISTRY_ADMIN_DATABASE_URL");
   const cmd = process.argv[2];
   const pool = mysql.createPool({ uri: url, connectionLimit: 2 });
-  const svc = new OperatorAuthService(new MysqlOperatorStore(pool));
+  const svc = new OperatorAuthService(new MysqlOperatorStore(pool, { mfa: cmd === "reset-mfa" }));
   try {
     if (cmd === "list") {
       for (const o of await svc.list()) console.log(`${o.username}\t${o.roleLabel}\t${o.status}${o.locked ? " (bloqueado)" : ""}\t${o.email ?? ""}`);
@@ -65,8 +66,13 @@ async function main() {
       await svc.adminResetFromServer(username, password);
       writeSecret(file, password);
       console.log(`Contraseña de «${username}» restablecida y sesiones cerradas. Nueva contraseña en ${file} (no se muestra).`);
+    } else if (cmd === "reset-mfa") {
+      const username = arg("username");
+      if (!username) throw new Error("Uso: reset-mfa --username <usuario>");
+      await svc.adminResetMfaFromServer(username);
+      console.log(`Verificación en dos pasos de «${username}» retirada y sesiones cerradas. Deberá activarla de nuevo al entrar.`);
     } else {
-      throw new Error("Comandos: list | bootstrap | reset-password");
+      throw new Error("Comandos: list | bootstrap | reset-password | reset-mfa");
     }
   } finally {
     await pool.end();
