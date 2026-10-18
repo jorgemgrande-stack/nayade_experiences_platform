@@ -48,6 +48,7 @@ import { testPaymentsFromEnv, type TestPaymentPort } from "../orchestrator/payme
 import { checkoutBlockedReason, describeStripeConfig, liveStartupProblem, stripeConfigFromEnv } from "../stripe/config";
 import { stripeGateway, stripeWebhookVerifier } from "../stripe/gateway";
 import { MysqlStripeStore } from "../stripe/store";
+import { liveOrdersProblem, liveSchemaProblem } from "../stripe/liveReadiness";
 import { checkoutUrlsFromEnv } from "../stripe/checkout";
 import { MysqlCrmStore } from "../crm/mysqlStore";
 import { CrmService } from "../crm/service";
@@ -258,24 +259,30 @@ async function main() {
     }
   }
 
+  // Stripe Billing: apagado sin CP_STRIPE_MODE (test o live); cualquier credencial del otro modo o
+  // configuración insegura impide arrancar (server/stripe/config.ts). Requiere pedidos y la migración 0012.
+  // En live, además: NODE_ENV=production (si no, no arranca), la migración 0013 completa (si no, no se
+  // monta) y Checkout apagado mientras la política fiscal esté pendiente (CP_STRIPE_TAX_POLICY). La
+  // configuración se lee ANTES de los pedidos: el modo del orquestador sale de ella.
+  const stripeConfig = stripeConfigFromEnv(process.env);
+  const liveProblem = liveStartupProblem(stripeConfig, process.env);
+  if (liveProblem) throw new Error(liveProblem);
+
   // Orquestador comercial: APAGADO salvo CP_ORCHESTRATOR_ENABLED=1 y con la migración 0010 del CRM.
-  // Pagos solo de prueba (CP_PAYMENTS_PROVIDER=simulated + secreto); el cobro automático no existe.
-  let orders: { store: MysqlOrderStore; payments: TestPaymentPort | null } | undefined;
+  // Pagos simulados solo de prueba (CP_PAYMENTS_PROVIDER=simulated + secreto); el cobro automático no existe.
+  // En live, ni pedidos ni pagos si la BD trae datos del entorno de pruebas (pagos de prueba cobrados en
+  // pedidos vivos o un prefijo de entorno guardado distinto), aunque Stripe no llegue a montarse.
+  const ordersMode = stripeConfig?.mode ?? "test";
+  let orders: { store: MysqlOrderStore; payments: TestPaymentPort | null; mode: typeof ordersMode } | undefined;
   if (process.env.CP_ORCHESTRATOR_ENABLED === "1" && crmPool && subscriptions && capabilities) {
     const payments = testPaymentsFromEnv(process.env);
     const ordersPool = crmPool;
     const ready = await ordersPool.query("SELECT 1 FROM commercial_orders LIMIT 0").then(() => true, () => false);
-    if (ready) orders = { store: new MysqlOrderStore(ordersPool), payments: payments.provider };
-    console.log(JSON.stringify({ ctx: "Orders", enabled: ready, payments: { provider: payments.provider?.kind ?? null, mode: "test", autoCharge: false, ...(payments.reason ? { reason: payments.reason } : {}) }, ...(ready ? {} : { reason: "migration_0010_missing" }) }));
+    const liveData = ready && stripeConfig?.mode === "live" ? await liveOrdersProblem(ordersPool, stripeConfig.namespace) : null;
+    if (ready && !liveData) orders = { store: new MysqlOrderStore(ordersPool), payments: payments.provider, mode: ordersMode };
+    console.log(JSON.stringify({ ctx: "Orders", enabled: !!orders, mode: ordersMode, payments: { provider: payments.provider?.kind ?? null, mode: "test", autoCharge: false, ...(payments.reason ? { reason: payments.reason } : {}) }, ...(!ready ? { reason: "migration_0010_missing" } : liveData ? { reason: liveData } : {}) }));
   }
 
-  // Stripe Billing: apagado sin CP_STRIPE_MODE (test o live); cualquier credencial del otro modo o
-  // configuración insegura impide arrancar (server/stripe/config.ts). Requiere pedidos y la migración 0012.
-  // En live, además: NODE_ENV=production (si no, no arranca), la migración 0013 (si no, no se monta) y
-  // Checkout apagado mientras la política fiscal esté pendiente (CP_STRIPE_TAX_POLICY).
-  const stripeConfig = stripeConfigFromEnv(process.env);
-  const liveProblem = liveStartupProblem(stripeConfig, process.env);
-  if (liveProblem) throw new Error(liveProblem);
   let stripe: { config: NonNullable<typeof stripeConfig>; store: MysqlStripeStore; gateway: ReturnType<typeof stripeGateway>; urls: ReturnType<typeof checkoutUrlsFromEnv>; checkoutEnabled: boolean; verifyWebhook: ReturnType<typeof stripeWebhookVerifier>; workerEnabled: boolean; publicStatus: boolean; selfService: boolean; termsVersion: string | null } | undefined;
   if (stripeConfig) {
     const urls = checkoutUrlsFromEnv(process.env);
@@ -289,13 +296,9 @@ async function main() {
     // Sin proxy de confianza los límites por IP del webhook serían comunes a todo el tráfico
     const trustProxyOk = process.env.NODE_ENV !== "production" || !!process.env.CP_TRUST_PROXY;
     const migrated = trustProxyOk && !!orders && !!crmPool && (await crmPool.query("SELECT 1 FROM stripe_prices LIMIT 0").then(() => true, () => false));
-    // En live, la BD debe admitir filas live (migración 0013); sin ella cada escritura fallaría en el CHECK
-    const liveMigrated =
-      stripeConfig.mode !== "live" ||
-      (migrated &&
-        (await crmPool!
-          .query("SELECT 1 FROM information_schema.check_constraints WHERE constraint_schema = DATABASE() AND constraint_name = 'chk_stripe_price_livemode'")
-          .then(([r]) => (r as unknown[]).length > 0, () => false)));
+    // En live, la BD debe admitir filas live (migración 0013 entera y registrada, sin migraciones a medias)
+    const liveSchema = stripeConfig.mode === "live" && migrated ? await liveSchemaProblem(crmPool!).catch(() => "migration_0013_missing") : null;
+    const liveMigrated = stripeConfig.mode !== "live" || (migrated && !liveSchema);
     // El prefijo del entorno no puede cambiar: los objetos ya creados en Stripe dejarían de reconocerse
     let namespaceOk = true;
     if (migrated && liveMigrated) {
@@ -317,7 +320,7 @@ async function main() {
         publicStatus: ready && publicStatus,
         selfService: ready && selfService,
         termsPublished: !!termsVersion,
-        ...(ready ? {} : { reason: !trustProxyOk ? "trust_proxy_missing" : !orders ? "orders_not_enabled" : !migrated ? "migration_0012_missing" : !liveMigrated ? "migration_0013_missing" : "namespace_changed" }),
+        ...(ready ? {} : { reason: !trustProxyOk ? "trust_proxy_missing" : !orders ? "orders_not_enabled" : !migrated ? "migration_0012_missing" : !liveMigrated ? (liveSchema ?? "migration_0013_missing") : "namespace_changed" }),
       }),
     );
   }
