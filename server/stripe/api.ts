@@ -35,7 +35,7 @@ import { StripeStoreError, type StripeStore } from "./store";
 import type { StripeEventProcessor } from "./events";
 import type { StripeReconciler } from "./reconcile";
 
-const STATUS: Record<string, number> = { not_found: 404, invalid_state: 409, unsupported: 422, unavailable: 409, conflict: 409, price_conflict: 409, open_session_exists: 409 };
+const STATUS: Record<string, number> = { not_found: 404, invalid_state: 409, unsupported: 422, unavailable: 409, conflict: 409, price_conflict: 409, open_session_exists: 409, mode_mismatch: 409 };
 
 const wrap =
   (fn: (req: Request, res: Response) => Promise<void>) =>
