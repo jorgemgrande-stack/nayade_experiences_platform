@@ -2,7 +2,7 @@
 
 **Objetivo inmediato:** una contratación de prueba completa en el **sandbox real** de Stripe: un pago en la web o desde el CRM termina en una empresa Elephant Core aprovisionada, con su suscripción y sus licencias correctas.
 
-**Estado:** el código está integrado en las ramas autorizadas. **Nada está desplegado ni migrado en Railway y no se ha escrito nada en Stripe.** Todo lo de este documento está **preparado, pendiente de autorización**.
+**Estado:** el código está integrado en las ramas autorizadas. **Nada está desplegado ni migrado en Railway.** En Stripe solo existen, en el sandbox, el catálogo y la configuración del Portal (§4, 18/10/2026). Todo lo de este documento está **preparado, pendiente de autorización**.
 
 ## 1. Integración realizada
 
@@ -74,7 +74,7 @@ Sin hallazgos críticos. Todo lo alto y medio está corregido con prueba de regr
 
 | # | Bloqueo | Quién lo desbloquea |
 |---|---|---|
-| 1 | **Independencia del sandbox.** La API no demuestra que `acct_1URULO5wMYhQ9O0d` sea independiente de la cuenta real. **El MCP de Stripe no está conectado en esta sesión** (no aparece ninguna herramienta de Stripe), así que hoy no he podido volver a comprobar la cuenta | Tú: reconectar el MCP con `/mcp` y comprobar en el Dashboard que es un sandbox |
+| 1 | ~~**Independencia del sandbox.**~~ **Resuelto el 18/10/2026:** comprobación visual del propietario (sandbox `acct_1URULO5wMYhQ9O0d`; cuenta real `acct_1URULE9RzfmCBuai`, sin ninguna escritura) y MCP reconectado, con una sola cuenta accesible y `livemode=false`. Catálogo y Portal creados (§4) | — |
 | 2 | Migración `0012`, claves, despliegues y destino del webhook | Tu autorización específica (§5) |
 | 3 | **Autoservicio:** la web exige que un producto «Disponible» sea técnicamente «available». Essential y Business están en «partial» y «bajo solicitud» | Tu decisión de producto: declararlos técnicamente disponibles |
 | 4 | Condiciones legales sin publicar (`CP_TERMS_VERSION`). Sin ellas, la contratación pública responde 503 `terms_unpublished` (probado) | Legal |
@@ -99,6 +99,30 @@ Sin hallazgos críticos. Todo lo alto y medio está corregido con prueba de regr
    - activar `invoice_history`, `payment_method_update` y `subscription_cancel` (`mode: at_period_end`, con `cancellation_reason`);
    - **sin** `subscription_update`;
    - `business_profile` con las URL de condiciones y privacidad.
+
+### Ejecutado en el sandbox (18/10/2026, MCP oficial)
+
+| Paso | Estado | Resultado |
+|---|---|---|
+| 1. Comprobación previa | Hecho | Una sola cuenta accesible: `acct_1URULO5wMYhQ9O0d`, `livemode=false`. Products, Prices y configuraciones del Portal: 0 |
+| 2. Catálogo | **Hecho** | 2 Products y 4 Prices; identificadores en `STRIPE_FASE_B.md` §2. Una segunda lectura confirma que no hay duplicados |
+| 3. Clave restringida | Pendiente | La crea el propietario |
+| 4. Destino del webhook | Pendiente | Tras desplegar la pasarela (§5, paso 4) |
+| 5. Revenue recovery | Pendiente | Ajuste del Dashboard |
+| 6. Customer Portal | **Hecho, parcial** | `bpc_1URoSX5wMYhQ9O0dlC4viuZQ`, «Elephant Source · beta (sandbox)», `is_default: true` |
+
+**Configuración del Portal creada:**
+- `invoice_history`: activado.
+- `payment_method_update`: activado.
+- `subscription_cancel`: activado, `mode: at_period_end`, `proration_behavior: none`, `cancellation_reason` con las 8 opciones de Stripe.
+- `subscription_update`: **desactivado** (bloqueo 6).
+- `customer_update`: **desactivado** (dirección, NIF, nombre y correo; bloqueo 5).
+- `subscription_pause`: desactivado.
+- `login_page`: desactivada. Las sesiones solo se crean en el servidor.
+- `default_return_url`: sin fijar. Cada sesión lleva `CP_STRIPE_PORTAL_RETURN_URL`.
+- `business_profile`: **sin URL**, pendiente de los textos legales (bloqueo 4).
+
+**No se ha hecho:** activar Stripe Tax (sigue `pending`, sin `head_office`), crear Customers, suscripciones o cobros, ni ninguna escritura en la cuenta real.
 
 ## 5. Secuencia de despliegue verificable (NO ejecutada)
 
