@@ -165,6 +165,29 @@ describe("orquestador en memoria", () => {
     expect(() => new CommercialOrchestrator({ ...deps, mode: "otro" as never })).toThrow();
   });
 
+  it("en live solo cuenta un pago cobrado de modo live y proveedor stripe: los de pruebas o de otro proveedor no confirman ni se recuperan", async () => {
+    const live = new CommercialOrchestrator({ ...deps, payments: null, mode: "live" });
+    const cid = await company("Live Modo SL");
+    const o = (await live.create({ idempotencyKey: key(), companyId: cid, request: { plan: "business", interval: "month", items: [] } }, actor)).order;
+    await live.accept(o.id, { signatureRef: "firma-live", approvalReason: "Aprobado por producto" }, actor);
+    const pay = (k: string, provider: string, mode: "test" | "live") =>
+      orders.insertPayment({ orderId: o.id, idempotencyKey: k, purpose: "initial", periodStart: null, amountCents: 100, currency: "EUR", status: "succeeded", provider, mode, providerRef: k, dueAt: null, createdAt: clock, settledAt: clock });
+    await pay("k-test-sim", "simulated", "test");
+    await pay("k-test-stripe", "stripe_test", "test");
+    await pay("k-live-otro", "stripe_test", "live");
+    expect((await live.detail(o.id)).waitingFor).toBe("confirmation");
+    expect((await live.advance(o.id, actor)).order.state).toBe("contracted");
+    expect((await live.review(actor)).resumed).toBe(0);
+    // Una confirmación que apunte a un pago de pruebas no da base para activar
+    const testPay = (await orders.paymentByKey("k-test-sim"))!;
+    await expect(live.paidBasis({ ...(await live.must(o.id)), confirmation: { kind: "payment", ref: String(testPay.id), actor, reason: null, at: clock } })).rejects.toThrow(/no está verificado/);
+    // El de pruebas en el orquestador de pruebas sí cuenta (sin regresión), y el live verificado en Stripe, en live
+    await expect(svc.paidBasis({ ...(await live.must(o.id)), confirmation: { kind: "payment", ref: String(testPay.id), actor, reason: null, at: clock } })).resolves.toBe("payment");
+    await pay("k-live-stripe", "stripe", "live");
+    expect((await live.detail(o.id)).waitingFor).toBeNull();
+    expect((await live.advance(o.id, actor)).order.state).not.toBe("contracted");
+  });
+
   const company = async (name: string) => {
     const c = await crm.createCompany({ name }, actor);
     await crm.createContact(c.id, { name: "Ana Ensayo", email: `ana@${c.id}.example` }, actor);

@@ -149,9 +149,16 @@ export class CommercialOrchestrator {
   list(f: Parameters<OrderStore["list"]>[0]) {
     return this.d.store.list(f);
   }
+  /**
+   * ¿Pago cobrado que cuenta como base en ESTE entorno? Solo los de su modo; en live, además, solo los
+   * verificados en Stripe (proveedor `stripe`). Un pago de otro modo nunca confirma ni activa nada.
+   */
+  private verifiedPayment(p: OrderPayment) {
+    return p.status === "succeeded" && p.mode === this.mode && (this.mode !== "live" || p.provider === STRIPE_LIVE_PAYMENT_PROVIDER);
+  }
   private waiting(o: CommercialOrder, payments: OrderPayment[]): Waiting {
     if (o.state === "quoted") return "acceptance";
-    if (o.state === "contracted") return payments.some((p) => p.status === "succeeded" && p.purpose !== "renewal") ? null : "confirmation";
+    if (o.state === "contracted") return payments.some((p) => this.verifiedPayment(p) && p.purpose !== "renewal") ? null : "confirmation";
     return null;
   }
 
@@ -392,7 +399,7 @@ export class CommercialOrchestrator {
 
   /** Confirmación por pago verificado o, en un cambio sin importe que no añade capacidades, heredada. */
   private async stepConfirm(o: CommercialOrder, actor: string): Promise<boolean> {
-    const paid = (await this.d.store.payments(o.id)).find((p) => p.status === "succeeded" && p.purpose !== "renewal");
+    const paid = (await this.d.store.payments(o.id)).find((p) => this.verifiedPayment(p) && p.purpose !== "renewal");
     if (paid) {
       await this.move(o, "confirm", actor, { confirmation: { kind: "payment", ref: String(paid.id), actor, reason: null, at: this.now() }, lastError: null }, { basis: "payment", paymentId: paid.id });
       return true;
@@ -428,7 +435,7 @@ export class CommercialOrchestrator {
     if (!c) throw new OrderError("forbidden", "Sin confirmación (pago verificado o aprobación administrativa) no se activan licencias de pago");
     if (c.kind === "payment") {
       const p = (await this.d.store.payments(o.id)).find((x) => String(x.id) === c.ref);
-      if (!p || p.status !== "succeeded") throw new OrderError("forbidden", "El pago de la confirmación no está verificado");
+      if (!p || !this.verifiedPayment(p)) throw new OrderError("forbidden", "El pago de la confirmación no está verificado (o no es de este modo)");
       return "payment";
     }
     if (c.kind === "admin_approval") {
@@ -773,7 +780,7 @@ export class CommercialOrchestrator {
     }
     // Recuperación: pedidos confirmados o con pago verificado que no llegaron al final
     for (const o of await this.d.store.list({ states: ["contracted", "confirmed", "subscribed", "licensed"], limit: 1000 })) {
-      if (o.state === "contracted" && !(await this.d.store.payments(o.id)).some((p) => p.status === "succeeded")) continue;
+      if (o.state === "contracted" && !(await this.d.store.payments(o.id)).some((p) => this.verifiedPayment(p))) continue;
       await run(o, async () => {
         const r = await this.advance(o.id, actor);
         if (r.error) throw new OrderError("invalid_state", r.error);
