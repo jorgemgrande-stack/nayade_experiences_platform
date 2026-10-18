@@ -89,6 +89,8 @@ export class StripeStoreError extends Error {
 }
 
 export interface StripeStore {
+  /** Modo de las filas que lee y escribe (por defecto «test» en las implementaciones). */
+  readonly mode?: StripeMode;
   /** Enlaza un precio aprobado con su Price. Nunca cambia en silencio a otro Price: conflicto. */
   upsertPrice(p: { webPriceId: number; stripeProductId: string; stripePriceId: string; lookupKey: string; now: number }): Promise<StripePriceLink>;
   priceForWebPrice(webPriceId: number): Promise<StripePriceLink | null>;
