@@ -12,7 +12,7 @@
  *   pnpm exec tsx scripts/tenants/cli.ts domain-disable <dominio> --reason "..."  [--apply]
  *   pnpm exec tsx scripts/tenants/cli.ts db-register <tenant> --dsn-env VAR       [--apply]
  *   pnpm exec tsx scripts/tenants/cli.ts db-activate <tenant> <idBD>              [--apply]
- *   pnpm exec tsx scripts/tenants/cli.ts rotate-keys                              [--apply]
+ *   pnpm exec tsx scripts/tenants/cli.ts rotate-keys                              [--apply]   (DSN y secretos TOTP de operadores)
  *   pnpm exec tsx scripts/tenants/cli.ts provision <tenant> --name "Nombre" --admin-email a@b.c --domain elephantsource.es
  *        [--modules hotel,spa] [--trial-days 15] [--server <alias>] [--apply]
  *        (PROVISIONING_DB_SERVERS, o PROVISIONING_DB_ADMIN_URL + PROVISIONING_DB_HOST[/PORT] para un único servidor)
@@ -43,6 +43,7 @@
  */
 import mysql from "mysql2/promise";
 import { keyringFromEnv } from "../../server/_core/tenantRegistry/crypto";
+import { rotateOperatorMfaKeys } from "../../server/controlPlane/operatorMfaKeys";
 import { MysqlTenantRegistryStore } from "../../server/_core/tenantRegistry/mysqlStore";
 import { TenantRegistryService, type Actor } from "../../server/_core/tenantRegistry/service";
 import { verifyDomainOwnership } from "../../server/_core/tenantRegistry/domainVerification";
@@ -187,7 +188,21 @@ async function main() {
         break;
       }
       case "rotate-keys": {
-        await write("re-cifrar credenciales con la clave activa", async () => ({ rotadas: await svc.rotateKeys(actor) }));
+        // Secretos TOTP de los operadores (0012): también con la clave activa. La simulación los descifra en
+        // memoria para detectar antes de escribir los que ya no se pueden recuperar (clave retirada).
+        const mfaPlan = await rotateOperatorMfaKeys(pool, ring, { apply: false, actor: `cli:${actor.id}` });
+        const fallidos = (r: typeof mfaPlan) => r.failed.map((f) => ({ operador: f.username, clave: f.keyId, motivo: f.reason }));
+        if (!APPLY) {
+          print({ claveActiva: ring.activeKeyId, mfaOperadores: mfaPlan.supported ? { pendientes: mfaPlan.pending, irrecuperables: fallidos(mfaPlan) } : "sin la migración 0012" });
+        }
+        await write("re-cifrar credenciales con la clave activa (DSN de empresas y secretos TOTP de operadores)", async () => {
+          const mfa = await rotateOperatorMfaKeys(pool, ring, { apply: true, actor: `cli:${actor.id}` });
+          return { rotadas: await svc.rotateKeys(actor), mfaOperadores: mfa.supported ? { rotados: mfa.rotated, irrecuperables: fallidos(mfa) } : "sin la migración 0012" };
+        });
+        if (mfaPlan.failed.length) {
+          console.error("Hay secretos TOTP que no se pueden descifrar con REGISTRY_KEYS: NO retires ninguna clave antigua hasta resolverlo.");
+          process.exitCode = 1;
+        }
         break;
       }
       case "provision":

@@ -82,7 +82,14 @@ TOTP estándar (RFC 6238: 6 cifras, 30 s), compatible con Google Authenticator, 
 - **Login en dos pasos:** con MFA activo, la contraseña abre una sesión **pendiente**. No da acceso, ni token CSRF, ni datos del operador, y caduca a los 5 minutos. `POST /auth/mfa/verify {code}` la cambia por una sesión nueva: el token emitido tras la contraseña deja de valer.
 - **Códigos:** un código TOTP no se acepta dos veces (último paso aceptado). Se admite un desfase de ±30 s. Los códigos erróneos cuentan para el **bloqueo de la cuenta** igual que una contraseña errónea.
 - **Obligatorio por rol:** `CP_OPERATOR_MFA_ROLES=superadmin,admin`. Sin MFA activo, esos operadores reciben una sesión **sin permisos** que solo sirve para darlo de alta; el CRM muestra la pantalla de alta. Se evalúa en cada petición, también si se exige después de iniciar sesión.
-- **Apagado:** `CP_OPERATOR_MFA=off` desactiva el MFA (de vuelta al acceso con contraseña).
+- **Apagado:** `CP_OPERATOR_MFA=off` desactiva el MFA, pero **falla cerrado**. Los operadores con MFA activo y los de un rol de `CP_OPERATOR_MFA_ROLES` no entran solo con la contraseña (`503 mfa_unavailable`) y el arranque registra `mfa_required_but_unavailable`. Los demás entran como siempre.
+- **Rotación del llavero (`REGISTRY_KEYS`):** el secreto TOTP usa la misma clave activa que las DSN de las empresas, y `rotate-keys` re-cifra ambos.
+  1. Añadir la clave nueva y hacerla activa (`REGISTRY_ACTIVE_KEY_ID`) **conservando la antigua** en `REGISTRY_KEYS`. Reiniciar `controlplane`.
+  2. `pnpm exec tsx scripts/tenants/cli.ts rotate-keys` (simulación): indica los secretos pendientes y los irrecuperables, y sale con código 1 si hay alguno irrecuperable.
+  3. Repetir con `--apply`. Cada secreto rotado queda auditado como `mfa_key_rotated`.
+  4. Repetir la simulación: solo con `pendientes: 0` y sin irrecuperables se puede retirar la clave antigua.
+
+  Si se retira antes, esos operadores no completan el segundo paso y el arranque registra `mfa_key_missing` con las claves que faltan. Para corregirlo, se vuelve a añadir la clave y se ejecuta `rotate-keys`.
 - **API (sesión de operador):**
   - `GET /auth/mfa`: estado;
   - `POST /auth/mfa/setup`: clave y `otpauth://`, alta sin confirmar;
@@ -96,7 +103,7 @@ TOTP estándar (RFC 6238: 6 cifras, 30 s), compatible con Google Authenticator, 
     ```bash
     REGISTRY_ADMIN_DATABASE_URL=mysql://… pnpm exec tsx scripts/cp-operators.ts reset-mfa --username administrador
     ```
-- **Auditoría:** `login_mfa_required`, `login_success` (con `mfa: totp|recovery`), `login_failed`/`account_locked` (`reason: bad_mfa_code`), `mfa_setup_started`, `mfa_enabled`, `mfa_disabled`, `mfa_reset_by_admin`, `mfa_reset_by_server`.
+- **Auditoría:** `login_mfa_required`, `login_success` (con `mfa: totp|recovery`), `login_failed`/`account_locked` (`reason: bad_mfa_code`), `mfa_setup_started`, `mfa_enabled`, `mfa_disabled`, `mfa_reset_by_admin`, `mfa_reset_by_server`, `mfa_key_rotated`.
 - **Puesta en marcha:**
   1. Aplicar la 0012 con el ejecutor del registro (simulación primero).
   2. Desplegar `controlplane` y el CRM.

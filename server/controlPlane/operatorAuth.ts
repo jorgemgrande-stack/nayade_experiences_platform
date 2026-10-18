@@ -18,6 +18,7 @@ import { ROLE_LABEL, ROLE_SCOPES, canManageRole, isRole, type OperatorRole } fro
 import { DuplicateOperatorError, LastSuperadminError, type OperatorRecord, type OperatorStatus, type OperatorStore, type SessionMfaState, type SessionRecord } from "./operatorStore";
 import type { Scope } from "./auth";
 import { decryptDsn, encryptDsn, type Keyring } from "../_core/tenantRegistry/crypto";
+import { mfaAad } from "./operatorMfaKeys";
 import { newRecoveryCodes, newTotpSecret, normalizeRecoveryCode, otpauthUri, verifyTotp } from "./totp";
 
 export { SESSION_COOKIE } from "./auth";
@@ -370,7 +371,7 @@ export class OperatorAuthService {
 
   private secretOf(op: OperatorRecord): string {
     if (!op.mfaSecretCipher || !op.mfaKeyId || !this.opts.mfaKeyring) throw new OperatorAuthError("mfa_unavailable", "El segundo factor no está disponible.");
-    return decryptDsn(op.mfaSecretCipher, op.mfaKeyId, `operator-mfa:${op.id}`, this.opts.mfaKeyring);
+    return decryptDsn(op.mfaSecretCipher, op.mfaKeyId, mfaAad(op.id), this.opts.mfaKeyring);
   }
 
   private lockedError(remainingMs: number) {
@@ -443,7 +444,7 @@ export class OperatorAuthService {
     const op = await this.get(actor.id);
     if (op.mfaEnabledAt) throw new OperatorAuthError("conflict", "El segundo factor ya está activo. Para cambiarlo, desactívalo antes con un código.");
     const secret = newTotpSecret();
-    const { cipher, keyId } = encryptDsn(secret, `operator-mfa:${op.id}`, this.opts.mfaKeyring!);
+    const { cipher, keyId } = encryptDsn(secret, mfaAad(op.id), this.opts.mfaKeyring!);
     await this.store.update(op.id, { mfaSecretCipher: cipher, mfaKeyId: keyId, mfaEnabledAt: null, mfaLastStep: null, updatedAt: this.now() });
     await this.audit("mfa_setup_started", { id: op.id, username: op.username }, `operator:${op.username}`, ctx);
     return { secret, otpauthUri: otpauthUri(secret, op.username) };
