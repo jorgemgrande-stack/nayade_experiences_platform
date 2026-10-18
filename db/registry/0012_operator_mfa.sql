@@ -7,19 +7,30 @@
 --     de alta).
 --   cp_operator_recovery_codes: códigos de recuperación de un solo uso (solo su SHA-256).
 --   Sin secretos en claro.
+-- REPETIBLE (como el resto del registro: el ejecutor puede volver a aplicarla al reparar): cada columna se
+-- añade solo si no existe (MySQL 8 no admite ADD COLUMN IF NOT EXISTS).
 -- El código funciona sin esta migración (sin MFA, como hasta ahora); al aplicarla se habilita.
 -- Reversión: DROP TABLE cp_operator_recovery_codes; ALTER TABLE cp_operator_sessions DROP COLUMN mfa_state;
 --   ALTER TABLE cp_operators DROP COLUMN mfa_last_step, DROP COLUMN mfa_enabled_at, DROP COLUMN mfa_key_id,
 --   DROP COLUMN mfa_secret_cipher; UPDATE registry_meta SET v = '0011' WHERE k = 'schema_version';
 
-ALTER TABLE cp_operators
-  ADD COLUMN mfa_secret_cipher VARCHAR(255) NULL,
-  ADD COLUMN mfa_key_id        VARCHAR(32)  NULL,
-  ADD COLUMN mfa_enabled_at    BIGINT       NULL,
-  ADD COLUMN mfa_last_step     BIGINT       NULL;
+SET @add_mfa_operators := IF(
+  (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'cp_operators' AND COLUMN_NAME = 'mfa_secret_cipher') = 0,
+  'ALTER TABLE cp_operators ADD COLUMN mfa_secret_cipher VARCHAR(255) NULL, ADD COLUMN mfa_key_id VARCHAR(32) NULL, ADD COLUMN mfa_enabled_at BIGINT NULL, ADD COLUMN mfa_last_step BIGINT NULL',
+  'DO 0'
+);
+PREPARE add_mfa_operators FROM @add_mfa_operators;
+EXECUTE add_mfa_operators;
+DEALLOCATE PREPARE add_mfa_operators;
 
-ALTER TABLE cp_operator_sessions
-  ADD COLUMN mfa_state ENUM('none','pending','setup') NOT NULL DEFAULT 'none';
+SET @add_mfa_sessions := IF(
+  (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'cp_operator_sessions' AND COLUMN_NAME = 'mfa_state') = 0,
+  'ALTER TABLE cp_operator_sessions ADD COLUMN mfa_state ENUM(''none'',''pending'',''setup'') NOT NULL DEFAULT ''none''',
+  'DO 0'
+);
+PREPARE add_mfa_sessions FROM @add_mfa_sessions;
+EXECUTE add_mfa_sessions;
+DEALLOCATE PREPARE add_mfa_sessions;
 
 CREATE TABLE IF NOT EXISTS cp_operator_recovery_codes (
   id          INT AUTO_INCREMENT PRIMARY KEY,
