@@ -16,7 +16,7 @@ import type { StripeConfig } from "./config";
 // Valores ficticios construidos en tiempo de ejecución (no son credenciales)
 const SECRET = ["whsec", "z".repeat(32)].join("_");
 const OTHER = ["whsec", "q".repeat(32)].join("_");
-const config: StripeConfig = { mode: "test", apiKey: ["sk", "test", "x".repeat(24)].join("_"), webhookSecret: SECRET, apiVersion: "2026-09-30.endive", keyKind: "secret", namespace: "local", eventsRetentionDays: 180 };
+const config: StripeConfig = { mode: "test", apiKey: ["sk", "test", "x".repeat(24)].join("_"), webhookSecret: SECRET, apiVersion: "2026-09-30.endive", keyKind: "secret", namespace: "local", eventsRetentionDays: 180, taxPolicy: "test_net_no_tax" };
 const sdk = new Stripe(config.apiKey, { apiVersion: "2026-09-30.endive" as Stripe.LatestApiVersion });
 
 const event = (over: Record<string, unknown> = {}) =>

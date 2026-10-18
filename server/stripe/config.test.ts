@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { STRIPE_API_VERSION, StripeConfigError, assertTestObject, describeStripeConfig, looksLive, stripeConfigFromEnv } from "./config";
+import { STRIPE_API_VERSION, StripeConfigError, assertModeObject, assertTestObject, checkoutBlockedReason, describeStripeConfig, liveStartupProblem, livemodeMatches, looksLive, stripeConfigFromEnv } from "./config";
 
 // Valores ficticios construidos en tiempo de ejecución (no son credenciales y no deben parecerlo en el código)
 const key = (kind: string, mode: string) => [kind, mode, "x".repeat(24)].join("_");
@@ -27,7 +27,7 @@ describe("configuración de Stripe Billing (solo pruebas)", () => {
   it("clave restringida de pruebas con la versión fijada por defecto", () => {
     const c = stripeConfigFromEnv(base())!;
     expect(c).toMatchObject({ mode: "test", keyKind: "restricted", apiVersion: STRIPE_API_VERSION });
-    expect(describeStripeConfig(c)).toEqual({ enabled: true, mode: "test", keyKind: "restricted", apiVersion: STRIPE_API_VERSION, namespace: "local", eventsRetentionDays: 180 });
+    expect(describeStripeConfig(c)).toEqual({ enabled: true, mode: "test", keyKind: "restricted", apiVersion: STRIPE_API_VERSION, namespace: "local", eventsRetentionDays: 180, taxPolicy: "test_net_no_tax" });
     expect(JSON.stringify(describeStripeConfig(c))).not.toContain(c.apiKey);
   });
 
@@ -78,5 +78,88 @@ describe("configuración de Stripe Billing (solo pruebas)", () => {
   it("solo acepta objetos y eventos de pruebas", () => {
     expect(() => assertTestObject({ livemode: false })).not.toThrow();
     for (const o of [{ livemode: true }, {}, null, { livemode: "false" }]) expect(() => assertTestObject(o as never)).toThrow(StripeConfigError);
+  });
+
+  it("comprobación según el modo: cada modo solo acepta sus objetos", () => {
+    expect(() => assertModeObject({ livemode: false }, "test")).not.toThrow();
+    expect(() => assertModeObject({ livemode: true }, "live")).not.toThrow();
+    for (const o of [{ livemode: false }, {}, null, { livemode: "true" }, { livemode: 1 }]) expect(() => assertModeObject(o as never, "live")).toThrow(StripeConfigError);
+    for (const o of [{ livemode: true }, {}, null, { livemode: 0 }]) expect(() => assertModeObject(o as never, "test")).toThrow(StripeConfigError);
+    expect([livemodeMatches(true, "live"), livemodeMatches(false, "live"), livemodeMatches(false, "test"), livemodeMatches(undefined, "test")]).toEqual([true, false, true, false]);
+  });
+
+  it("en pruebas CP_STRIPE_TAX_POLICY se ignora y Checkout nunca está bloqueado por ella", () => {
+    const c = stripeConfigFromEnv({ ...base(), CP_STRIPE_TAX_POLICY: "cualquier_cosa" })!;
+    expect(c.taxPolicy).toBe("test_net_no_tax");
+    expect(checkoutBlockedReason(c)).toBeNull();
+    expect(liveStartupProblem(c, {})).toBeNull();
+  });
+});
+
+describe("configuración de Stripe Billing en modo live", () => {
+  const live = () => ({ CP_STRIPE_MODE: "live", CP_STRIPE_API_KEY: key("rk", "live"), CP_STRIPE_WEBHOOK_SECRET: whsec(), CP_STRIPE_NAMESPACE: "live" });
+
+  it("clave restringida live, espacio de nombres «live» y política fiscal pendiente por defecto", () => {
+    const c = stripeConfigFromEnv(live())!;
+    expect(c).toMatchObject({ mode: "live", keyKind: "restricted", namespace: "live", taxPolicy: null, apiVersion: STRIPE_API_VERSION });
+    expect(checkoutBlockedReason(c)).toBe("tax_policy_pending");
+    expect(describeStripeConfig(c)).toEqual({ enabled: true, mode: "live", keyKind: "restricted", apiVersion: STRIPE_API_VERSION, namespace: "live", eventsRetentionDays: 180, taxPolicy: "pending" });
+    const text = JSON.stringify(describeStripeConfig(c));
+    expect(text).not.toContain(c.apiKey);
+    expect(text).not.toContain(c.webhookSecret);
+  });
+
+  it("con CP_STRIPE_TAX_POLICY=stripe_tax_exclusive Checkout deja de estar bloqueado", () => {
+    const c = stripeConfigFromEnv({ ...live(), CP_STRIPE_TAX_POLICY: "stripe_tax_exclusive" })!;
+    expect(c.taxPolicy).toBe("stripe_tax_exclusive");
+    expect(checkoutBlockedReason(c)).toBeNull();
+    expect(describeStripeConfig(c).taxPolicy).toBe("stripe_tax_exclusive");
+  });
+
+  it("el arranque live exige NODE_ENV=production", () => {
+    const c = stripeConfigFromEnv(live())!;
+    expect(liveStartupProblem(c, {})).toMatch(/NODE_ENV=production/);
+    expect(liveStartupProblem(c, { NODE_ENV: "development" })).toMatch(/NODE_ENV=production/);
+    expect(liveStartupProblem(c, { NODE_ENV: "production" })).toBeNull();
+    expect(liveStartupProblem(null, {})).toBeNull();
+  });
+
+  it.each([
+    ["clave secreta live (sk_live_)", { CP_STRIPE_API_KEY: key("sk", "live") }, /RESTRINGIDA/],
+    ["clave restringida de pruebas", { CP_STRIPE_API_KEY: key("rk", "test") }, /pruebas/],
+    ["clave secreta de pruebas", { CP_STRIPE_API_KEY: key("sk", "test") }, /pruebas/],
+    ["clave publicable live", { CP_STRIPE_API_KEY: key("pk", "live") }, /rk_live_/],
+    ["sin clave", { CP_STRIPE_API_KEY: "" }, /rk_live_/],
+    ["sin secreto de webhooks", { CP_STRIPE_WEBHOOK_SECRET: "" }, /whsec_/],
+    ["secreto mal formado", { CP_STRIPE_WEBHOOK_SECRET: "secreto_live" }, /whsec_/],
+    ["sin espacio de nombres", { CP_STRIPE_NAMESPACE: undefined }, /CP_STRIPE_NAMESPACE=live/],
+    ["espacio de nombres distinto de «live»", { CP_STRIPE_NAMESPACE: "prod01" }, /CP_STRIPE_NAMESPACE=live/],
+    ["espacio de nombres derivado de Railway", { CP_STRIPE_NAMESPACE: undefined, RAILWAY_PROJECT_ID: "p1", RAILWAY_ENVIRONMENT_ID: "e1" }, /CP_STRIPE_NAMESPACE=live/],
+    ["política fiscal desconocida", { CP_STRIPE_TAX_POLICY: "sin_iva" }, /CP_STRIPE_TAX_POLICY/],
+    ["política fiscal de pruebas", { CP_STRIPE_TAX_POLICY: "test_net_no_tax" }, /CP_STRIPE_TAX_POLICY/],
+    ["variable de autorización live", { CP_STRIPE_LIVE_KEY: key("rk", "live") }, /CP_STRIPE_LIVE_KEY/],
+    ["clave administrativa", { CP_STRIPE_ADMIN_KEY: key("rk", "live") }, /CP_STRIPE_ADMIN_KEY/],
+    ["motor antiguo con Stripe", { BILLING_PROVIDER: "stripe" }, /motor antiguo/],
+  ])("no arranca con %s", (_, over, msg) => {
+    const env: Record<string, string | undefined> = { ...live(), ...over };
+    for (const k of Object.keys(env)) if (env[k] === undefined) delete env[k];
+    expect(() => stripeConfigFromEnv(env as NodeJS.ProcessEnv)).toThrow(StripeConfigError);
+    expect(() => stripeConfigFromEnv(env as NodeJS.ProcessEnv)).toThrow(msg);
+  });
+
+  it("en pruebas, una clave live o el espacio de nombres «live» siguen prohibidos", () => {
+    expect(() => stripeConfigFromEnv({ ...base(), CP_STRIPE_API_KEY: key("rk", "live") })).toThrow(/prohibida en modo pruebas/);
+    expect(() => stripeConfigFromEnv({ ...base(), CP_STRIPE_NAMESPACE: "live" })).toThrow(/reservado al modo live/);
+  });
+
+  it("los mensajes de error de live no revelan la clave", () => {
+    for (const k of [key("sk", "live"), key("rk", "test")]) {
+      try {
+        stripeConfigFromEnv({ ...live(), CP_STRIPE_API_KEY: k });
+        throw new Error("debía fallar");
+      } catch (e) {
+        expect((e as Error).message).not.toContain(k);
+      }
+    }
   });
 });
