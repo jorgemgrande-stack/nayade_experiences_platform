@@ -45,7 +45,7 @@ import { brevoDiagnostics, mailProviderFromEnv } from "../mail/providers";
 import { MysqlOrganizationStore } from "../organization/service";
 import { MysqlOrderStore } from "../orchestrator/store";
 import { testPaymentsFromEnv, type TestPaymentPort } from "../orchestrator/payments";
-import { describeStripeConfig, stripeConfigFromEnv } from "../stripe/config";
+import { checkoutBlockedReason, describeStripeConfig, liveStartupProblem, stripeConfigFromEnv } from "../stripe/config";
 import { stripeGateway, stripeWebhookVerifier } from "../stripe/gateway";
 import { MysqlStripeStore } from "../stripe/store";
 import { checkoutUrlsFromEnv } from "../stripe/checkout";
@@ -269,13 +269,19 @@ async function main() {
     console.log(JSON.stringify({ ctx: "Orders", enabled: ready, payments: { provider: payments.provider?.kind ?? null, mode: "test", autoCharge: false, ...(payments.reason ? { reason: payments.reason } : {}) }, ...(ready ? {} : { reason: "migration_0010_missing" }) }));
   }
 
-  // Stripe Billing: SOLO MODO PRUEBAS. Apagado sin CP_STRIPE_MODE=test; cualquier credencial live o
+  // Stripe Billing: apagado sin CP_STRIPE_MODE (test o live); cualquier credencial del otro modo o
   // configuración insegura impide arrancar (server/stripe/config.ts). Requiere pedidos y la migración 0012.
+  // En live, además: NODE_ENV=production (si no, no arranca), la migración 0013 (si no, no se monta) y
+  // Checkout apagado mientras la política fiscal esté pendiente (CP_STRIPE_TAX_POLICY).
   const stripeConfig = stripeConfigFromEnv(process.env);
+  const liveProblem = liveStartupProblem(stripeConfig, process.env);
+  if (liveProblem) throw new Error(liveProblem);
   let stripe: { config: NonNullable<typeof stripeConfig>; store: MysqlStripeStore; gateway: ReturnType<typeof stripeGateway>; urls: ReturnType<typeof checkoutUrlsFromEnv>; checkoutEnabled: boolean; verifyWebhook: ReturnType<typeof stripeWebhookVerifier>; workerEnabled: boolean; publicStatus: boolean; selfService: boolean; termsVersion: string | null } | undefined;
   if (stripeConfig) {
     const urls = checkoutUrlsFromEnv(process.env);
-    const checkoutEnabled = process.env.CP_STRIPE_CHECKOUT_ENABLED === "1";
+    // La bandera sigue apagada por defecto; en live sin política fiscal, Checkout queda apagado aunque esté a 1
+    const checkoutBlocked = checkoutBlockedReason(stripeConfig);
+    const checkoutEnabled = process.env.CP_STRIPE_CHECKOUT_ENABLED === "1" && !checkoutBlocked;
     const workerEnabled = process.env.CP_STRIPE_WORKER_ENABLED === "1";
     const publicStatus = process.env.CP_PUBLIC_CHECKOUT_ENABLED === "1";
     const selfService = process.env.CP_PUBLIC_SELF_SERVICE_ENABLED === "1";
@@ -283,17 +289,37 @@ async function main() {
     // Sin proxy de confianza los límites por IP del webhook serían comunes a todo el tráfico
     const trustProxyOk = process.env.NODE_ENV !== "production" || !!process.env.CP_TRUST_PROXY;
     const migrated = trustProxyOk && !!orders && !!crmPool && (await crmPool.query("SELECT 1 FROM stripe_prices LIMIT 0").then(() => true, () => false));
+    // En live, la BD debe admitir filas live (migración 0013); sin ella cada escritura fallaría en el CHECK
+    const liveMigrated =
+      stripeConfig.mode !== "live" ||
+      (migrated &&
+        (await crmPool!
+          .query("SELECT 1 FROM information_schema.check_constraints WHERE constraint_schema = DATABASE() AND constraint_name = 'chk_stripe_price_livemode'")
+          .then(([r]) => (r as unknown[]).length > 0, () => false)));
     // El prefijo del entorno no puede cambiar: los objetos ya creados en Stripe dejarían de reconocerse
     let namespaceOk = true;
-    if (migrated) {
-      const st = new MysqlStripeStore(crmPool!);
+    if (migrated && liveMigrated) {
+      const st = new MysqlStripeStore(crmPool!, stripeConfig.mode);
       const saved = await st.getState("namespace");
       if (!saved) await st.setState("namespace", { namespace: stripeConfig.namespace }, Date.now());
       else namespaceOk = saved.namespace === stripeConfig.namespace;
     }
-    const ready = migrated && namespaceOk;
-    if (ready) stripe = { config: stripeConfig, store: new MysqlStripeStore(crmPool!), gateway: stripeGateway(stripeConfig), urls, checkoutEnabled, verifyWebhook: stripeWebhookVerifier(stripeConfig), workerEnabled, publicStatus, selfService, termsVersion };
-    console.log(JSON.stringify({ ctx: "Stripe", ...describeStripeConfig(stripeConfig), mounted: ready, checkout: ready && checkoutEnabled && !!urls, worker: ready && workerEnabled, publicStatus: ready && publicStatus, selfService: ready && selfService, termsPublished: !!termsVersion, ...(ready ? {} : { reason: !trustProxyOk ? "trust_proxy_missing" : !orders ? "orders_not_enabled" : !migrated ? "migration_0012_missing" : "namespace_changed" }) }));
+    const ready = migrated && liveMigrated && namespaceOk;
+    if (ready) stripe = { config: stripeConfig, store: new MysqlStripeStore(crmPool!, stripeConfig.mode), gateway: stripeGateway(stripeConfig), urls, checkoutEnabled, verifyWebhook: stripeWebhookVerifier(stripeConfig), workerEnabled, publicStatus, selfService, termsVersion };
+    console.log(
+      JSON.stringify({
+        ctx: "Stripe",
+        ...describeStripeConfig(stripeConfig),
+        mounted: ready,
+        checkout: ready && checkoutEnabled && !!urls,
+        ...(checkoutBlocked ? { checkoutReason: checkoutBlocked } : {}),
+        worker: ready && workerEnabled,
+        publicStatus: ready && publicStatus,
+        selfService: ready && selfService,
+        termsPublished: !!termsVersion,
+        ...(ready ? {} : { reason: !trustProxyOk ? "trust_proxy_missing" : !orders ? "orders_not_enabled" : !migrated ? "migration_0012_missing" : !liveMigrated ? "migration_0013_missing" : "namespace_changed" }),
+      }),
+    );
   }
 
   // API pública de captación de la web comercial: solo con CRM, orígenes explícitos y secreto propio
