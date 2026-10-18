@@ -22,6 +22,7 @@ import type { CrmStore } from "../crm/store";
 import type { OrderStore } from "../orchestrator/store";
 import type { CatalogPort } from "../subscriptions/ports";
 import { SELF_SERVICE_PLANS, desiredCatalog, type SelfServicePlan } from "./catalog";
+import { issuerLine } from "./issuer";
 import { StripeGatewayError, type StripeGateway } from "./gateway";
 import { StripeStoreError, type StripeStore } from "./store";
 
@@ -32,7 +33,7 @@ export const INTEGRATION_IDENTIFIER = "elephant-source-checkout-rqzmvtak";
  * y sin factura fiscal (modo pruebas). Viaja en los metadatos y se muestra en la página de Stripe.
  */
 export const TEST_TAX_TREATMENT = "test_net_no_tax";
-export const TEST_TAX_NOTICE = "Entorno de pruebas de Elephant Source: el importe se cobra sin IVA y no se emite factura fiscal.";
+export const TEST_TAX_NOTICE = `Entorno de pruebas de Elephant Source. Emisor: ${issuerLine()}. El importe se cobra sin IVA y no se emite factura fiscal.`;
 /** Vida de una sesión: 2 h (Stripe admite de 30 min a 24 h). */
 export const SESSION_TTL_MS = 2 * 3600_000;
 /** Por debajo de este margen, una sesión abierta se sustituye en lugar de reutilizarse. */
