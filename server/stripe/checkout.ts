@@ -57,6 +57,8 @@ export class StripeCheckoutError extends Error {
 }
 
 const HTTPS = /^https:\/\/[a-z0-9.-]+(:\d+)?(\/[^\s?#]*)?$/i;
+/** Correo del administrador que creará el alta: una dirección con dominio, sin espacios. */
+const ADMIN_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
 /**
  * URLs de vuelta, solo desde el entorno (nunca desde la petición). `null` si faltan: Checkout apagado.
@@ -150,6 +152,14 @@ export class StripeCheckoutService {
     const company = await this.d.crmStore.get("companies", o.companyId);
     if (!company) throw new StripeCheckoutError("not_found", "Empresa no encontrada");
     const tenantId = (company as { tenantId?: string | null }).tenantId ?? o.tenantId ?? null;
+    // Sin plataforma todavía, el alta crea su administrador a partir de un contacto activo con correo
+    // (orquestador). Sin él no se cobra: un pago aceptado no podría terminar en una empresa activa.
+    if (!tenantId) {
+      const contacts = (await this.d.crmStore.list("contacts", { companyId: o.companyId })) as Array<{ status?: string | null; email?: string | null }>;
+      if (!contacts.some((x) => x.status !== "inactive" && ADMIN_EMAIL.test(String(x.email ?? "").trim()))) {
+        throw new StripeCheckoutError("invalid_state", "La empresa necesita un contacto activo con correo válido (será el administrador de la plataforma) antes de abrir el pago");
+      }
+    }
     const customerId = await this.ensureCustomer(o.companyId, (company as { name: string }).name, tenantId);
 
     const now = this.now();

@@ -171,6 +171,34 @@ describe("Checkout de un pedido", () => {
     expect((await store.openSession(100))?.stripeSessionId).toBe(s.sessionId);
   });
 
+  it("empresa sin plataforma: sin un contacto administrador válido no se abre Checkout ni se crea nada en Stripe", async () => {
+    const make = (contacts: Array<Record<string, unknown>>) =>
+      new StripeCheckoutService({
+        store,
+        gateway: gw,
+        orders: { get: async (id: number) => orders.get(id) ?? null },
+        crmStore: { get: async () => ({ id: 7, name: "Empresa Nueva", tenantId: null }), list: async () => contacts } as never,
+        catalog: catalogOf(),
+        urls: URLS,
+        now: () => clock,
+      });
+    const before = gw.calls.length;
+    for (const contacts of [
+      [],
+      [{ id: 1, companyId: 7, email: "admin@nueva.example", status: "inactive" }],
+      [{ id: 2, companyId: 7, email: null, status: "active" }],
+      [{ id: 3, companyId: 7, email: "sin-dominio", status: "active" }],
+      [{ id: 4, companyId: 7, email: "con espacio@nueva.example", status: "active" }],
+    ]) {
+      await expect(make(contacts).start(100, "operator:test")).rejects.toMatchObject({ code: "invalid_state", message: expect.stringMatching(/contacto activo con correo válido/) });
+    }
+    expect(gw.calls.slice(before).filter((c) => c.op === "customers.create" || c.op === "checkout.sessions.create")).toEqual([]);
+    expect(await store.openSession(100)).toBeNull();
+    // Con un administrador válido, sí
+    const ok = await make([{ id: 5, companyId: 7, email: "admin@nueva.example", status: "active", isPrimary: true }]).start(100, "operator:test");
+    expect(ok.sessionId).toBeTruthy();
+  });
+
   it("un Customer por empresa: dos pedidos de la misma empresa comparten cliente", async () => {
     await svc.start(100, "a");
     orders.set(100, { ...orders.get(100)!, state: "cancelled" });
