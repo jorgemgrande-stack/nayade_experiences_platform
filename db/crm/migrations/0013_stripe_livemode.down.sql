@@ -8,6 +8,13 @@
 -- verdad hiciera falta, primero hay que exportar y retirar a mano las filas live con su propio
 -- procedimiento, nunca desde aquí. Antes, retirar CP_STRIPE_MODE=live del plano de control.
 -- La tabla auxiliar no guarda datos: si la comprobación falla queda vacía y el siguiente intento la recrea.
+--
+-- Defensa adicional: modo SQL estricto en la sesión (reducir el ENUM nunca convierte en silencio un 'live'
+-- en '') y el ENUM de commercial_payments se reduce el ÚLTIMO, después de los seis CHECK: si apareciera una
+-- fila live entre la comprobación y los cambios, el primer CHECK que la encuentre detiene la reversión
+-- antes de tocar los pagos.
+
+SET SESSION sql_mode = CONCAT_WS(',', NULLIF(@@SESSION.sql_mode, ''), 'STRICT_ALL_TABLES');
 
 DROP TABLE IF EXISTS tmp_0013_live_rows;
 
@@ -23,9 +30,6 @@ INSERT INTO tmp_0013_live_rows (live_rows)
        + (SELECT COUNT(*) FROM commercial_payments WHERE mode <> 'test');
 
 DROP TABLE tmp_0013_live_rows;
-
-ALTER TABLE commercial_payments
-  MODIFY COLUMN mode ENUM('test') NOT NULL DEFAULT 'test';
 
 ALTER TABLE stripe_charge_adjustments
   DROP CHECK chk_stripe_adj_livemode,
@@ -50,3 +54,6 @@ ALTER TABLE stripe_customers
 ALTER TABLE stripe_prices
   DROP CHECK chk_stripe_price_livemode,
   ADD CONSTRAINT chk_stripe_price_test CHECK (livemode = 0);
+
+ALTER TABLE commercial_payments
+  MODIFY COLUMN mode ENUM('test') NOT NULL DEFAULT 'test';

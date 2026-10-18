@@ -121,6 +121,24 @@ describe.skipIf(!URL_)("migraciones 0012_stripe_billing y 0013_stripe_livemode c
     await expect(insertPayment("pago-otro-1", "otro")).rejects.toThrow();
   });
 
+  it("vuelta de 0013 sin la comprobación previa y con la sesión NO estricta: aun así nunca altera un pago live", async () => {
+    // Imita una fila live que apareciera después de la comprobación: se ejecuta la reversión sin ella
+    const rest = splitStatements(livemode.down).filter((s) => !/tmp_0013_live_rows/.test(s));
+    const conn = await pool.getConnection();
+    try {
+      await conn.query("SET SESSION sql_mode = ''");
+      await expect((async () => {
+        for (const s of rest) await conn.query(s);
+      })()).rejects.toThrow(/check constraint/i);
+    } finally {
+      conn.release();
+    }
+    expect(await checks()).toEqual(LIVE_CHECKS);
+    expect(await paymentMode()).toBe("enum('test','live')");
+    const [p] = (await pool.query(`SELECT mode FROM commercial_payments WHERE idempotency_key = 'pago-live-1'`)) as unknown as [{ mode: string }[]];
+    expect(p[0].mode).toBe("live");
+  });
+
   it("vuelta de 0013: con filas live falla SIN cambiar nada; sin ellas vuelve a solo pruebas; y otra vez ida", async () => {
     await expect(run(livemode.down)).rejects.toThrow(/check constraint/i);
     expect(await checks()).toEqual(LIVE_CHECKS);
