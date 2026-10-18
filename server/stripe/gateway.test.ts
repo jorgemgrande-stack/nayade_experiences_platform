@@ -61,24 +61,16 @@ describe("acceso a Stripe según el modo", () => {
     await expect(gw("test").createCheckoutSession(session, "k3")).rejects.toThrow(StripeConfigError);
   });
 
-  it("modo live: acepta objetos live y rechaza los de pruebas", async () => {
-    livemode = true;
-    expect(await gw("live").product("prod_x1")).toMatchObject({ id: "prod_x1" });
-    expect(await gw("live").pricesByLookupKeys(["es:essential:monthly:eur:v1"])).toHaveLength(1);
-    expect((await gw("live").createCheckoutSession(session, "k4")).id).toBe("cs_x0000000001");
-    livemode = false;
-    await expect(gw("live").product("prod_x1")).rejects.toThrow(StripeConfigError);
-    await expect(gw("live").createCustomer({ name: "Empresa", email: null, metadata: {} }, "k5")).rejects.toThrow(StripeConfigError);
-    await expect(gw("live").pricesByLookupKeys(["es:essential:monthly:eur:v1"])).rejects.toThrow(StripeConfigError);
-    await expect(gw("live").createCheckoutSession(session, "k6")).rejects.toThrow(StripeConfigError);
+  it("en live, apiBase se rechaza: con la clave real nunca se habla con otro servidor (el modo live se prueba en gateway.live.test.ts)", () => {
+    expect(() => gw("live")).toThrow(/apiBase solo se admite en modo pruebas/);
+    expect(() => stripeGateway(cfg("live"))).not.toThrow();
   });
 
   it("automatic_tax solo se envía si se pide; sin él, la sesión es la de siempre", async () => {
     livemode = false;
     created.length = 0;
     await gw("test").createCheckoutSession(session, "k7");
-    livemode = true;
-    await gw("live").createCheckoutSession({ ...session, automaticTax: true, notice: "Aviso" }, "k8");
+    await gw("test").createCheckoutSession({ ...session, automaticTax: true, notice: "Aviso" }, "k8");
     expect(created[0].automatic_tax).toBeUndefined();
     expect(created[1].automatic_tax).toEqual({ enabled: "true" });
     // Recogida de NIF y dirección de facturación obligatoria en los dos casos

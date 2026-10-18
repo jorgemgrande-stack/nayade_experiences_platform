@@ -254,6 +254,8 @@ export function stripeGateway(
     apiBase?: { host: string; port: number; protocol: "http" | "https" };
   } = {},
 ): StripeGateway {
+  // Con la clave real nunca se habla con otro servidor que no sea Stripe
+  if (o.apiBase && config.mode === "live") throw new StripeConfigError("apiBase solo se admite en modo pruebas");
   const client = new Stripe(config.apiKey, {
     apiVersion: config.apiVersion as Stripe.LatestApiVersion,
     maxNetworkRetries: o.maxNetworkRetries ?? 2,
