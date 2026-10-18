@@ -2,9 +2,10 @@ import { describe, it, expect, beforeEach } from "vitest";
 import type { CatalogPort } from "../subscriptions/ports";
 import type { CommercialOrder } from "../orchestrator/types";
 import { StripeCatalogError, desiredCatalog, lookupKeyFor, planCatalogWrites, syncCatalog } from "./catalog";
-import { INTEGRATION_IDENTIFIER, SESSION_TTL_MS, StripeCheckoutError, StripeCheckoutService, checkoutUrlsFromEnv } from "./checkout";
+import { INTEGRATION_IDENTIFIER, LIVE_TAX_NOTICE, SESSION_TTL_MS, StripeCheckoutError, StripeCheckoutService, TEST_TAX_NOTICE, checkoutUrlsFromEnv } from "./checkout";
 import { StripeConfigError } from "./config";
-import { toPrice, toSession, toSubscription } from "./gateway";
+import { toPrice, toSession, toSubscription, type CheckoutSessionInput } from "./gateway";
+import { issuerLine } from "./issuer";
 import { MemoryStripeStore, StripeStoreError } from "./store";
 import { FakeStripeGateway } from "./testing";
 
@@ -355,6 +356,83 @@ describe("Checkout de un pedido", () => {
     const url = await svc.portalUrl(7);
     expect(url).toContain("cus_test_");
     expect(gw.calls.find((c) => c.op === "billing_portal.sessions.create")!.input).toMatchObject({ returnUrl: URLS.portalReturn });
+  });
+});
+
+describe("Checkout en modo live", () => {
+  let gw: FakeStripeGateway;
+  let store: MemoryStripeStore;
+  let orders: Map<number, CommercialOrder>;
+  const crmStore = {
+    get: async (_t: string, id: number) => (id === 7 ? { id: 7, name: "Empresa Live SL", tenantId: "t9-live" } : null),
+    list: async () => [{ id: 1, companyId: 7, email: "contacto@live.example", status: "active", isPrimary: true }],
+  };
+  const make = (over: { mode?: "test" | "live"; taxPolicy?: "test_net_no_tax" | "stripe_tax_exclusive" | null } = {}) =>
+    new StripeCheckoutService({ store, gateway: gw, orders: { get: async (id: number) => orders.get(id) ?? null }, crmStore: crmStore as never, catalog: catalogOf(), urls: URLS, now: () => clock, namespace: "live", mode: "live", ...over });
+  const created = () => gw.calls.filter((c) => c.op === "checkout.sessions.create").map((c) => c.input as CheckoutSessionInput);
+
+  beforeEach(async () => {
+    clock = Date.UTC(2026, 9, 17, 12);
+    gw = new FakeStripeGateway();
+    gw.livemode = true;
+    store = new MemoryStripeStore("live");
+    await applyPlan(gw, catalogOf());
+    await syncCatalog(await desiredCatalog(catalogOf()), gw, store, clock);
+    orders = new Map([[100, order()]]);
+    gw.calls = [];
+  });
+
+  it("sin política fiscal: se rechaza («Política fiscal pendiente») sin ninguna llamada a Stripe ni nada guardado", async () => {
+    for (const svc of [make(), make({ taxPolicy: null }), make({ taxPolicy: "test_net_no_tax" })]) {
+      expect(svc.taxPolicy).toBeNull();
+      await expect(svc.start(100, "operator:test")).rejects.toMatchObject({ code: "unavailable", message: expect.stringMatching(/^Política fiscal pendiente: /) });
+    }
+    expect(gw.calls).toEqual([]);
+    expect(gw.customers.size).toBe(0);
+    expect(store.sessions.size).toBe(0);
+    expect(store.customers.size).toBe(0);
+  });
+
+  it("con stripe_tax_exclusive: automatic_tax activado, NIF y dirección como siempre, metadatos con la política y aviso legal sin «pruebas»", async () => {
+    const svc = make({ taxPolicy: "stripe_tax_exclusive" });
+    const s = await svc.start(100, "operator:test");
+    expect(s).toMatchObject({ amountCents: 2900, currency: "EUR", taxTreatment: "stripe_tax_exclusive", reused: false });
+    expect(s.sessionId).toMatch(/^cs_live_/);
+    const [input] = created();
+    expect(input.automaticTax).toBe(true);
+    expect(input.metadata).toMatchObject({ es_order_id: "100", es_env: "live", es_tax_treatment: "stripe_tax_exclusive" });
+    expect(input.notice).toBe(LIVE_TAX_NOTICE);
+    expect(input.notice).toContain(issuerLine());
+    expect(input.notice).not.toMatch(/prueba/i);
+    expect(input.notice).toMatch(/no incluyen IVA/);
+    expect(input.notice!.length).toBeLessThanOrEqual(1200);
+    expect(gw.calls.find((c) => c.op === "checkout.sessions.create")!.key).toBe("es-live-checkout-100-1");
+  });
+
+  it("live: la comparación de importes se mantiene y el Price debe ser sin IVA (exclusive)", async () => {
+    const svc = make({ taxPolicy: "stripe_tax_exclusive" });
+    orders.set(100, order({ quote: quoteOf(3509) }));
+    await expect(svc.start(100, "a")).rejects.toMatchObject({ code: "conflict" });
+    orders.set(100, order());
+    for (const p of gw.prices) p.taxBehavior = "inclusive";
+    await expect(svc.start(100, "a")).rejects.toMatchObject({ code: "conflict", message: expect.stringMatching(/exclusive/) });
+    expect(created()).toEqual([]);
+  });
+
+  it("pruebas: nada cambia aunque se pase una política live (test_net_no_tax, su aviso y sin automatic_tax)", async () => {
+    gw = new FakeStripeGateway();
+    store = new MemoryStripeStore();
+    await applyPlan(gw, catalogOf());
+    await syncCatalog(await desiredCatalog(catalogOf()), gw, store, clock);
+    const svc = make({ mode: "test", taxPolicy: "stripe_tax_exclusive" });
+    expect(svc.taxPolicy).toBe("test_net_no_tax");
+    expect(await svc.start(100, "a")).toMatchObject({ taxTreatment: "test_net_no_tax" });
+    const [input] = created();
+    expect(input.automaticTax).toBeUndefined();
+    expect(input.notice).toBe(TEST_TAX_NOTICE);
+    expect(input.metadata.es_tax_treatment).toBe("test_net_no_tax");
+    // Y por defecto (sin modo) también es pruebas
+    expect(new StripeCheckoutService({ store, gateway: gw, orders: { get: async () => null }, crmStore: crmStore as never, catalog: catalogOf(), urls: URLS }).taxPolicy).toBe("test_net_no_tax");
   });
 });
 

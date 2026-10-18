@@ -144,11 +144,23 @@ describe.skipIf(!URL_)("orquestador comercial con MySQL real", () => {
     expect(ev.map((x) => Number(x.version))).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
   });
 
-  it("la BD solo admite pagos de prueba", async () => {
+  it("la BD solo admite pagos de prueba o live (0013): ningún otro modo", async () => {
     const [r] = await pool.query<mysql.RowDataPacket[]>("SELECT id FROM commercial_orders LIMIT 1");
     await expect(
-      pool.query("INSERT INTO commercial_payments (order_id, idempotency_key, purpose, amount_cents, currency, status, provider, mode, created_at) VALUES (?, 'real-1', 'initial', 1, 'EUR', 'pending', 'x', 'live', 1)", [r[0].id]),
+      pool.query("INSERT INTO commercial_payments (order_id, idempotency_key, purpose, amount_cents, currency, status, provider, mode, created_at) VALUES (?, 'real-1', 'initial', 1, 'EUR', 'pending', 'x', 'otro', 1)", [r[0].id]),
     ).rejects.toThrow();
+  });
+
+  it("el almacén guarda y lee el modo del pago (live con el proveedor stripe); un modo desconocido se rechaza", async () => {
+    const store = new MysqlOrderStore(pool);
+    const [r] = await pool.query<mysql.RowDataPacket[]>("SELECT id FROM commercial_orders LIMIT 1");
+    const p = { orderId: Number(r[0].id), idempotencyKey: "stripe:inv:in_live_mysql_1", purpose: "initial" as const, periodStart: null, amountCents: 2900, currency: "EUR", status: "succeeded" as const, provider: "stripe", mode: "live" as const, providerRef: "in_live_mysql_1", dueAt: null, createdAt: clock, settledAt: clock };
+    expect((await store.insertPayment(p)).payment).toMatchObject({ provider: "stripe", mode: "live" });
+    expect(await store.paymentByKey(p.idempotencyKey)).toMatchObject({ mode: "live" });
+    const [row] = await pool.query<mysql.RowDataPacket[]>("SELECT mode FROM commercial_payments WHERE idempotency_key = ?", [p.idempotencyKey]);
+    expect(row[0].mode).toBe("live");
+    await expect(store.insertPayment({ ...p, idempotencyKey: "stripe:inv:in_x_mysql_2", mode: "otro" as never })).rejects.toThrow(/Modo de pago/);
+    await pool.query("DELETE FROM commercial_payments WHERE idempotency_key = ?", [p.idempotencyKey]);
   });
 
   it("prueba Essential → Business con pago de prueba: misma suscripción y plataforma, contrato enlazado en la BD", async () => {

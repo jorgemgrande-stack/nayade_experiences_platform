@@ -153,7 +153,7 @@ Las mismas reglas que en el sandbox:
    - `commercial_payments.mode = 'live'`;
    - sustituir el tratamiento `test_net_no_tax` por el fiscal definitivo.
 
-   Todo con pruebas. Hoy **no existe**.
+   Todo con pruebas. **Hecho en código** (§8); el tratamiento fiscal definitivo sigue siendo una decisión pendiente (punto 2).
 2. **Fiscal:** política de IVA, Stripe Tax (sede, registros), emisor y numeración de facturas. Ver `FISCALIDAD_STRIPE.md`.
 3. **Legal:** condiciones y privacidad publicadas (`CP_TERMS_VERSION`), y las URL en el Portal y en Checkout.
 4. **Cuenta real:** activación completa en Stripe (datos de la empresa, cuenta bancaria, verificación).
@@ -165,3 +165,62 @@ Las mismas reglas que en el sandbox:
 - ~~Conectar la cuenta real al MCP de Stripe~~. **Hecho el 18/10/2026**: catálogo y Portal creados (§2 y §3).
 - **Crear el webhook real desactivado** (§4), sin guardar su secreto. Opcional: puede esperar a la activación.
 - **Decidir sobre el entorno `live`** de Railway (§5.2).
+
+## 8. Modo live (código preparado, sin activar)
+
+El mismo código se puede desplegar en el entorno `live` de Railway (§5), con su propia base de datos, contra la cuenta real. El modo pruebas no cambia. El modo live solo se activa de forma **explícita**, y **no cobra** mientras no haya una política fiscal decidida.
+
+**Qué hace.** Las tres capas del §1 dependen ahora del modo:
+
+- **Configuración:** `CP_STRIPE_MODE=live` exige estas tres cosas:
+  - una clave **restringida** `rk_live_…` (`sk_live_` y cualquier clave de pruebas impiden arrancar);
+  - un `whsec_…`;
+  - `CP_STRIPE_NAMESPACE=live`.
+
+  En pruebas, una clave live sigue prohibida y el prefijo `live` queda reservado. Siguen prohibidas las variables con `LIVE` o `ADMIN` en el nombre.
+- **Acceso a Stripe:** cada objeto se acepta solo si `livemode` coincide con el modo. El webhook y la conciliación rechazan los eventos del otro modo, con un 400 y la alerta `stripe.test_event_rejected` en live.
+- **Base de datos:** la migración `0013` admite `livemode` 0 o 1. El almacén escribe el `livemode` de su modo y nunca lee ni toca filas del otro.
+
+**Pagos y orquestador.** En live, un pago verificado queda con `provider = stripe` y `mode = live`. En pruebas, con `stripe_test` y `test`. Los pagos simulados (`CP_PAYMENTS_*`) no pueden montarse en live: el servicio no arranca.
+
+**Variables del entorno `live`:**
+
+| Variable | Valor |
+|---|---|
+| `CP_STRIPE_MODE` | `live` |
+| `CP_STRIPE_API_KEY` | `rk_live_…`, con los permisos mínimos de `STRIPE_FASE_A.md` §5 |
+| `CP_STRIPE_WEBHOOK_SECRET` | `whsec_…` del destino real, rotado al activarlo (§4) |
+| `CP_STRIPE_NAMESPACE` | `live` (obligatorio) |
+| `CP_STRIPE_TAX_POLICY` | ausente hasta decidir la fiscalidad. Después, `stripe_tax_exclusive` |
+| `NODE_ENV` | `production` (sin él, el modo live no arranca) |
+| `CP_STRIPE_CHECKOUT_ENABLED`, `CP_PUBLIC_*` | apagadas por defecto, como hoy |
+| `CP_PAYMENTS_PROVIDER`, `CP_PAYMENTS_TEST_WEBHOOK_SECRET` | **no** deben existir |
+
+**Bloqueo fiscal.** Sin `CP_STRIPE_TAX_POLICY`:
+
+- el arranque registra `taxPolicy: "pending"` y `checkoutReason: "tax_policy_pending"`;
+- Checkout queda apagado aunque `CP_STRIPE_CHECKOUT_ENABLED=1`;
+- `StripeCheckoutService.start` rechaza la petición («Política fiscal pendiente») antes de llamar a Stripe.
+
+Con `stripe_tax_exclusive`, la sesión de Checkout:
+
+- se crea con `automatic_tax` sobre precios sin IVA (`tax_behavior = exclusive`);
+- recoge el NIF;
+- exige la dirección de facturación;
+- guarda la política en `metadata.es_tax_treatment`;
+- muestra un aviso legal con el emisor.
+
+El neto del presupuesto se sigue comparando con el Price. Elegir esa política **no** sustituye las decisiones de `FISCALIDAD_STRIPE.md`: registros, sede de Stripe Tax y facturación.
+
+**Cómo aplicar la 0013.** Igual que el resto del carril CRM. Se aplica antes de desplegar el código que la necesita y nunca al arrancar:
+
+```bash
+pnpm exec tsx scripts/db/migrate.ts verify --dir db/crm/migrations
+MIGRATE_DATABASE_URL=mysql://…/es_crm pnpm exec tsx scripts/db/migrate.ts up --dir db/crm/migrations          # dry-run
+MIGRATE_DATABASE_URL=mysql://…/es_crm pnpm exec tsx scripts/db/migrate.ts up --dir db/crm/migrations --apply
+```
+
+- **Entorno `live`:** la migración es obligatoria y tiene que estar entera: las seis restricciones `chk_*_livemode`, `commercial_payments.mode` con `live` y la 0013 registrada por el ejecutor, sin ninguna migración a medias. Si no, la línea `ctx="Stripe"` da el motivo (`migration_0013_missing`, `migration_0013_not_recorded` o `migration_in_progress`) y Stripe no se monta.
+- **Datos de pruebas en una BD live:** si hay pagos de prueba cobrados en pedidos no terminados (`test_payments_in_live`) o el prefijo guardado no es `live` (`namespace_mismatch`), no se montan ni los pedidos ni los pagos. El motivo aparece en la línea `ctx="Orders"`.
+- **Entorno de pruebas:** como el carril es lineal, la 0013 también se aplica. Allí la BD admite 0 o 1, y la garantía de «solo pruebas» la mantienen la configuración, el acceso y el almacén, que solo escribe y lee filas con `livemode = 0`.
+- **Reversión:** la `.down.sql` vuelve a «solo pruebas». **Falla a propósito, sin cambiar nada, si ya hay filas live.**

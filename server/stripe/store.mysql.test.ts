@@ -110,7 +110,7 @@ describe.skipIf(!URL_)("almacén de Stripe con MySQL real", () => {
     await store.upsertAdjustment({ ...a, disputeStatus: "won", coverageLost: false }, now + 5);
     await store.upsertAdjustment({ ...a, amountRefundedCents: 2900, disputeStatus: "won", coverageLost: true }, now + 6);
     expect(await store.activeHolds(orderId)).toHaveLength(1);
-    await expect(pool.query("UPDATE stripe_charge_adjustments SET livemode = 1")).rejects.toThrow();
+    await expect(pool.query("UPDATE stripe_charge_adjustments SET livemode = 2")).rejects.toThrow();
   });
 
   it("purga: borra solo eventos terminados anteriores al corte, por lotes; fallidos y pendientes se quedan", async () => {
@@ -128,5 +128,70 @@ describe.skipIf(!URL_)("almacén de Stripe con MySQL real", () => {
     expect(await store.purgeEvents(now, 10)).toEqual({ processed: 0, ignored: 2 });
     const [rows] = (await pool.query("SELECT event_id FROM stripe_events WHERE event_id LIKE 'evt_test_purge%' ORDER BY event_id")) as unknown as [{ event_id: string }[]];
     expect(rows.map((r) => r.event_id)).toEqual(["evt_test_purge_failed", "evt_test_purge_received", "evt_test_purge_recent"]);
+  });
+  it("modo live: escribe livemode = 1 y solo ve sus filas; el almacén de pruebas no las ve ni las toca, y viceversa", async () => {
+    const live = new MysqlStripeStore(pool, "live");
+    const [c] = (await pool.query(`INSERT INTO crm_companies (name, created_at) VALUES ('Empresa Store Live', ?)`, [now])) as unknown as [{ insertId: number }];
+    const liveCompany = c.insertId;
+    const [o] = (await pool.query(`INSERT INTO commercial_orders (idempotency_key, payload_hash, kind, state, company_id, request_json, created_at, created_by) VALUES ('clave-store-stripe-live01', REPEAT('c', 64), 'new', 'contracted', ?, '{}', ?, 't')`, [liveCompany, now])) as unknown as [{ insertId: number }];
+    const liveOrder = o.insertId;
+    const lm = async (table: string, col: string, id: string | number) => Number(((await pool.query(`SELECT livemode FROM ${table} WHERE ${col} = ?`, [id]))[0] as { livemode: number }[])[0]?.livemode);
+
+    // Clientes
+    expect((await live.linkCustomer({ companyId: liveCompany, tenantId: null, stripeCustomerId: "cus_live_L1", now })).created).toBe(true);
+    expect(await lm("stripe_customers", "company_id", liveCompany)).toBe(1);
+    expect(await store.customerByCompany(liveCompany)).toBeNull();
+    await expect(store.linkCustomer({ companyId: liveCompany, tenantId: null, stripeCustomerId: "cus_test_L2", now })).rejects.toMatchObject({ name: "StripeStoreError", code: "mode_mismatch" });
+    expect(await live.customerByCompany(companyId)).toBeNull();
+
+    // Precios: el enlace de pruebas no existe para live y su clave única sigue ocupada
+    expect(await live.listPrices()).toEqual([]);
+    expect(await live.priceForWebPrice(webPriceId)).toBeNull();
+    await expect(live.upsertPrice({ webPriceId, stripeProductId: "prod_live_A", stripePriceId: "price_live_A", lookupKey: "es:live:a", now })).rejects.toThrow(StripeStoreError);
+
+    // Sesiones
+    await live.insertSession({ orderId: liveOrder, stripeSessionId: "cs_live_L1", idempotencyKey: "k-live-l1", priceIds: ["price_live_A"], status: "open", paymentStatus: "unpaid", expiresAt: now - 1, createdAt: now, completedAt: null });
+    expect(await lm("stripe_checkout_sessions", "stripe_session_id", "cs_live_L1")).toBe(1);
+    expect(await store.session("cs_live_L1")).toBeNull();
+    expect(await store.openSession(liveOrder)).toBeNull();
+    expect(await store.countSessions(liveOrder)).toBe(0);
+    expect(await store.openSessionsExpiredBefore(now, 100)).not.toContain("cs_live_L1");
+    await store.updateSession("cs_live_L1", { status: "complete", paymentStatus: "paid", completedAt: now });
+    expect(await live.session("cs_live_L1")).toMatchObject({ status: "open" });
+    expect(await live.countSessions(liveOrder)).toBe(1);
+    expect(await live.openSessionsExpiredBefore(now, 100)).toEqual(["cs_live_L1"]);
+    expect(await live.session("cs_test_X1").catch(() => null)).toBeNull();
+
+    // Suscripciones: la de otro modo nunca se actualiza
+    const sub = { id: "sub_live_L1", customerId: "cus_live_L1", companyId: liveCompany, orderId: liveOrder, tenantId: null, status: "active" as const, cancelAt: null, cancelAtPeriodEnd: false, currentPeriodEnd: 1_800_000_000, latestInvoiceId: "in_live_1", priceIds: ["price_live_A"], syncedAt: now - 1_000_000 };
+    await live.upsertSubscription(sub);
+    expect(await lm("stripe_subscriptions", "stripe_subscription_id", "sub_live_L1")).toBe(1);
+    expect(await store.subscription("sub_live_L1")).toBeNull();
+    await expect(store.upsertSubscription({ ...sub, status: "canceled" })).rejects.toMatchObject({ code: "mode_mismatch" });
+    expect(await live.subscription("sub_live_L1")).toMatchObject({ status: "active" });
+    expect(await store.subscriptionsToRefresh(now, 100)).not.toContain("sub_live_L1");
+    expect(await live.subscriptionsToRefresh(now, 100)).toEqual(["sub_live_L1"]);
+    expect(await live.subscription("sub_test_S1")).toBeNull();
+
+    // Eventos
+    expect((await live.recordEvent({ eventId: "evt_live_L1", type: "invoice.paid", apiVersion: null, objectType: "invoice", objectId: "in_live_1", stripeCreated: 1, source: "webhook", now })).created).toBe(true);
+    expect(await lm("stripe_events", "event_id", "evt_live_L1")).toBe(1);
+    expect(await store.event("evt_live_L1")).toBeNull();
+    expect((await store.recordEvent({ eventId: "evt_live_L1", type: "invoice.paid", apiVersion: null, objectType: "invoice", objectId: "in_live_1", stripeCreated: 1, source: "webhook", now })).created).toBe(false);
+    expect((await store.claimEvents(now, 100, 60_000)).map((e) => e.eventId)).not.toContain("evt_live_L1");
+    await store.finishEvent("evt_live_L1", "ignored", "no", now);
+    expect(await live.event("evt_live_L1")).toMatchObject({ status: "received" });
+    expect(await live.eventCounts()).toEqual({ received: 1, processing: 0, processed: 0, ignored: 0, failed: 0 });
+    expect((await live.claimEvents(now, 100, 60_000)).map((e) => e.eventId)).toEqual(["evt_live_L1"]);
+
+    // Reembolsos y disputas
+    const adj = { chargeId: "ch_live_L1", invoiceId: "in_live_1", subscriptionId: "sub_live_L1", orderId: liveOrder, companyId: liveCompany, amountCents: 2900, amountRefundedCents: 2900, currency: "EUR", disputeStatus: null, coverageLost: true };
+    await live.upsertAdjustment(adj, now);
+    expect(await lm("stripe_charge_adjustments", "stripe_charge_id", "ch_live_L1")).toBe(1);
+    await expect(store.upsertAdjustment(adj, now)).rejects.toMatchObject({ code: "mode_mismatch" });
+    expect(await store.activeHolds(liveOrder)).toEqual([]);
+    expect(await store.resolveHolds({ chargeId: "ch_live_L1" }, "x", now)).toBe(0);
+    expect(await live.activeHolds(liveOrder)).toHaveLength(1);
+    expect((await store.listAdjustments(100)).map((a) => a.chargeId)).not.toContain("ch_live_L1");
   });
 });

@@ -1,10 +1,11 @@
 /**
- * Receptor del webhook de Stripe (`POST /cp/v1/stripe/webhook`). SOLO MODO PRUEBAS.
+ * Receptor del webhook de Stripe (`POST /cp/v1/stripe/webhook`), en modo pruebas o live.
  *
  *  - Cuerpo HTTP ORIGINAL (`express.raw`, montado ANTES del `express.json` global): la firma se verifica
  *    sobre los bytes exactos recibidos con la función oficial del SDK (`constructEvent`): varios `v1`,
  *    `v0` ignorada y tolerancia de 300 s frente a repeticiones. Sin firma válida: 400 y no se guarda nada.
- *  - Evento live: 400 y alerta. Tipos no gestionados: 200 sin guardar.
+ *  - Evento de OTRO modo (live en pruebas, de pruebas en live): 400 y alerta. Tipos no gestionados: 200
+ *    sin guardar.
  *  - El evento se GUARDA una sola vez (`stripe_events`) y se responde 2xx al momento; el efecto lo
  *    calcula el procesador releyendo el objeto en Stripe (asíncrono y con reintentos).
  *  - Nunca se registra el cuerpo, la firma ni el secreto.
@@ -13,6 +14,7 @@ import type { Request, Response } from "express";
 import { opsLog } from "../_core/ops/log";
 import { recordFailure } from "../_core/ops/failureAlerts";
 import { HANDLED } from "./events";
+import { livemodeMatches, type StripeMode } from "./config";
 import type { GwEvent } from "./gateway";
 import type { StripeStore } from "./store";
 
@@ -22,10 +24,13 @@ export interface WebhookDeps {
   now?: () => number;
   /** Se llama tras guardar un evento nuevo (p. ej. para procesarlo enseguida). No bloquea la respuesta. */
   onRecorded?: (eventId: string) => void;
+  /** Modo del entorno (por defecto «test»): solo se aceptan eventos con su `livemode`. */
+  mode?: StripeMode;
 }
 
 export function stripeWebhookHandler(d: WebhookDeps) {
   const now = d.now ?? Date.now;
+  const mode = d.mode ?? "test";
   return async (req: Request, res: Response) => {
     const signature = req.headers["stripe-signature"];
     if (typeof signature !== "string" || !signature || !Buffer.isBuffer(req.body) || req.body.length === 0) {
@@ -39,10 +44,13 @@ export function stripeWebhookHandler(d: WebhookDeps) {
       recordFailure("stripe.webhook_invalid_signature");
       return void res.status(400).json({ error: "invalid_signature" });
     }
-    if (ev.livemode !== false) {
-      opsLog("error", "StripeWebhook", "live_event_rejected", { eventId: ev.id, type: ev.type });
-      recordFailure("stripe.live_event_rejected");
-      return void res.status(400).json({ error: "live_event_rejected" });
+    if (!livemodeMatches(ev.livemode, mode)) {
+      // Un entorno nunca atiende eventos del otro modo (mismo tratamiento en los dos sentidos)
+      const code = mode === "live" ? "test_event_rejected" : "live_event_rejected";
+      opsLog("error", "StripeWebhook", code, { eventId: ev.id, type: ev.type, mode });
+      if (mode === "live") recordFailure("stripe.test_event_rejected");
+      else recordFailure("stripe.live_event_rejected");
+      return void res.status(400).json({ error: code });
     }
     if (!HANDLED.has(ev.type)) return void res.json({ received: true, ignored: true });
     try {

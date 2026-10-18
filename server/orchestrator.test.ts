@@ -8,7 +8,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import crypto from "node:crypto";
 import { ORDER_TRANSITIONS, nextOrderState } from "./orchestrator/machine";
 import { SignedTestProvider, PaymentSignatureError, testPaymentsFromEnv } from "./orchestrator/payments";
-import { CommercialOrchestrator, requestFromWebConfiguration } from "./orchestrator/service";
+import { CommercialOrchestrator, requestFromWebConfiguration, type OrchestratorDeps } from "./orchestrator/service";
 import { MemoryOrderStore } from "./orchestrator/store";
 import { ORDER_STATES, TERMINAL_STATES } from "./orchestrator/types";
 import { WebAdminService } from "./web/service";
@@ -82,6 +82,12 @@ describe("proveedor de pagos de PRUEBAS", () => {
     expect(testPaymentsFromEnv({ CP_PAYMENTS_PROVIDER: "simulated" }).reason).toBe("missing_test_webhook_secret");
     expect(testPaymentsFromEnv({ CP_PAYMENTS_PROVIDER: "simulated", CP_PAYMENTS_TEST_WEBHOOK_SECRET: SECRET }).provider?.mode).toBe("test");
   });
+  it("con CP_STRIPE_MODE=live los pagos simulados no se montan (no arranca); sin configurarlos, no hay pagos simulados", () => {
+    expect(() => testPaymentsFromEnv({ CP_STRIPE_MODE: "live", CP_PAYMENTS_PROVIDER: "simulated", CP_PAYMENTS_TEST_WEBHOOK_SECRET: SECRET })).toThrow(/CP_STRIPE_MODE=live/);
+    expect(() => testPaymentsFromEnv({ CP_STRIPE_MODE: "live", CP_PAYMENTS_TEST_WEBHOOK_SECRET: SECRET })).toThrow(/CP_STRIPE_MODE=live/);
+    expect(testPaymentsFromEnv({ CP_STRIPE_MODE: "live" })).toEqual({ provider: null, reason: "payments_live_stripe_only" });
+    expect(testPaymentsFromEnv({ CP_STRIPE_MODE: "test", CP_PAYMENTS_PROVIDER: "simulated", CP_PAYMENTS_TEST_WEBHOOK_SECRET: SECRET }).provider?.mode).toBe("test");
+  });
 });
 
 describe("configuración del formulario web → petición del cotizador", () => {
@@ -105,6 +111,7 @@ describe("orquestador en memoria", () => {
   let caps: MemoryCapabilityStore;
   let orders: MemoryOrderStore;
   let provider: SignedTestProvider;
+  let deps: OrchestratorDeps;
   const actor = "operator:test";
 
   beforeEach(async () => {
@@ -132,7 +139,7 @@ describe("orquestador en memoria", () => {
     const crmPort = crmFromStore(crmStore);
     const subs = new SubscriptionService({ store: subsStore, catalog, crm: crmPort, now: () => clock });
     const site = async () => quoteCatalogFromSite(await web.site("published"));
-    svc = new CommercialOrchestrator({
+    deps = {
       store: orders,
       crm,
       crmStore,
@@ -146,7 +153,39 @@ describe("orquestador en memoria", () => {
       platform,
       payments: provider,
       now: () => clock,
-    });
+    };
+    svc = new CommercialOrchestrator(deps);
+  });
+
+  it("modo de cobro: pruebas por defecto; en live no se monta con pagos simulados y paymentsConfig informa del modo real", () => {
+    expect(svc.paymentsConfig).toMatchObject({ enabled: true, provider: "simulated", mode: "test", stripeProvider: "stripe_test", autoCharge: false });
+    expect(() => new CommercialOrchestrator({ ...deps, mode: "live" })).toThrow(/modo live/);
+    const live = new CommercialOrchestrator({ ...deps, payments: null, mode: "live" });
+    expect(live.paymentsConfig).toMatchObject({ enabled: false, provider: null, mode: "live", stripeProvider: "stripe", autoCharge: false });
+    expect(() => new CommercialOrchestrator({ ...deps, mode: "otro" as never })).toThrow();
+  });
+
+  it("en live solo cuenta un pago cobrado de modo live y proveedor stripe: los de pruebas o de otro proveedor no confirman ni se recuperan", async () => {
+    const live = new CommercialOrchestrator({ ...deps, payments: null, mode: "live" });
+    const cid = await company("Live Modo SL");
+    const o = (await live.create({ idempotencyKey: key(), companyId: cid, request: { plan: "business", interval: "month", items: [] } }, actor)).order;
+    await live.accept(o.id, { signatureRef: "firma-live", approvalReason: "Aprobado por producto" }, actor);
+    const pay = (k: string, provider: string, mode: "test" | "live") =>
+      orders.insertPayment({ orderId: o.id, idempotencyKey: k, purpose: "initial", periodStart: null, amountCents: 100, currency: "EUR", status: "succeeded", provider, mode, providerRef: k, dueAt: null, createdAt: clock, settledAt: clock });
+    await pay("k-test-sim", "simulated", "test");
+    await pay("k-test-stripe", "stripe_test", "test");
+    await pay("k-live-otro", "stripe_test", "live");
+    expect((await live.detail(o.id)).waitingFor).toBe("confirmation");
+    expect((await live.advance(o.id, actor)).order.state).toBe("contracted");
+    expect((await live.review(actor)).resumed).toBe(0);
+    // Una confirmación que apunte a un pago de pruebas no da base para activar
+    const testPay = (await orders.paymentByKey("k-test-sim"))!;
+    await expect(live.paidBasis({ ...(await live.must(o.id)), confirmation: { kind: "payment", ref: String(testPay.id), actor, reason: null, at: clock } })).rejects.toThrow(/no está verificado/);
+    // El de pruebas en el orquestador de pruebas sí cuenta (sin regresión), y el live verificado en Stripe, en live
+    await expect(svc.paidBasis({ ...(await live.must(o.id)), confirmation: { kind: "payment", ref: String(testPay.id), actor, reason: null, at: clock } })).resolves.toBe("payment");
+    await pay("k-live-stripe", "stripe", "live");
+    expect((await live.detail(o.id)).waitingFor).toBeNull();
+    expect((await live.advance(o.id, actor)).order.state).not.toBe("contracted");
   });
 
   const company = async (name: string) => {

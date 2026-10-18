@@ -1,5 +1,11 @@
 /**
- * Checkout de Stripe para pedidos del orquestador (SOLO MODO PRUEBAS).
+ * Checkout de Stripe para pedidos del orquestador, en modo pruebas o live.
+ *
+ *  - Modo pruebas: tratamiento `test_net_no_tax` (neto sin IVA, sin factura fiscal) y su aviso.
+ *  - Modo live: SOLO con una política fiscal decidida (CP_STRIPE_TAX_POLICY). Sin ella, `start` se niega
+ *    («Política fiscal pendiente») ANTES de llamar a Stripe: nunca se cobra de verdad sin política. Con
+ *    `stripe_tax_exclusive`, la sesión activa Stripe Tax (`automatic_tax`) sobre precios sin IVA, con
+ *    recogida de NIF y dirección de facturación obligatoria, y un aviso legal con el emisor.
  *
  *  - Un pedido en `contracted` (alta nueva o conversión de prueba) de Essential o Business, sin
  *    complementos, abre una Checkout Session en modo suscripción. El Price sale del catálogo aprobado
@@ -22,6 +28,7 @@ import type { CrmStore } from "../crm/store";
 import type { OrderStore } from "../orchestrator/store";
 import type { CatalogPort } from "../subscriptions/ports";
 import { SELF_SERVICE_PLANS, desiredCatalog, type SelfServicePlan } from "./catalog";
+import type { StripeMode, StripeTaxPolicy } from "./config";
 import { issuerLine } from "./issuer";
 import { StripeGatewayError, type StripeGateway } from "./gateway";
 import { StripeStoreError, type StripeStore } from "./store";
@@ -29,11 +36,14 @@ import { StripeStoreError, type StripeStore } from "./store";
 /** Etiqueta de Stripe para seguir este flujo en el Dashboard (sufijo de 8 letras, recomendación de Stripe). */
 export const INTEGRATION_IDENTIFIER = "elephant-source-checkout-rqzmvtak";
 /**
- * Tratamiento fiscal ÚNICO admitido mientras no haya política fiscal: importe NETO del catálogo, sin IVA
- * y sin factura fiscal (modo pruebas). Viaja en los metadatos y se muestra en la página de Stripe.
+ * Tratamiento fiscal del modo pruebas: importe NETO del catálogo, sin IVA y sin factura fiscal. Viaja en
+ * los metadatos y se muestra en la página de Stripe. En live, el tratamiento es la política decidida.
  */
 export const TEST_TAX_TREATMENT = "test_net_no_tax";
 export const TEST_TAX_NOTICE = `Entorno de pruebas de Elephant Source. Emisor: ${issuerLine()}. El importe se cobra sin IVA y no se emite factura fiscal.`;
+/** Política fiscal live con Stripe Tax: el Price es el neto sin IVA y Stripe calcula y añade el impuesto. */
+export const LIVE_TAX_TREATMENT = "stripe_tax_exclusive";
+export const LIVE_TAX_NOTICE = `Elephant Source. Emisor: ${issuerLine()}. Los precios no incluyen IVA: el impuesto aplicable se calcula y se añade en esta página según la dirección de facturación y el NIF indicados.`;
 /** Vida de una sesión: 2 h (Stripe admite de 30 min a 24 h). */
 export const SESSION_TTL_MS = 2 * 3600_000;
 /** Por debajo de este margen, una sesión abierta se sustituye en lugar de reutilizarse. */
@@ -85,6 +95,10 @@ export interface CheckoutDeps {
   now?: () => number;
   /** Prefijo del entorno (StripeConfig.namespace). */
   namespace?: string;
+  /** Modo del entorno (StripeConfig.mode); por defecto «test». */
+  mode?: StripeMode;
+  /** Política fiscal (StripeConfig.taxPolicy). En «test» se ignora; en «live», sin ella no se cobra. */
+  taxPolicy?: StripeTaxPolicy | null;
 }
 
 /** Intentos con claves sucesivas cuando Stripe repite una sesión huérfana ya inservible. */
@@ -99,7 +113,7 @@ export interface CheckoutStart {
   /** Lo que cobrará Stripe en el primer periodo (céntimos, neto) y con qué tratamiento fiscal. */
   amountCents?: number;
   currency?: string;
-  taxTreatment?: typeof TEST_TAX_TREATMENT;
+  taxTreatment?: StripeTaxPolicy;
 }
 
 export interface CheckoutSync {
@@ -116,13 +130,30 @@ export interface CheckoutSync {
 export class StripeCheckoutService {
   private now: () => number;
   private ns: string;
+  private mode: StripeMode;
+  /** Tratamiento fiscal efectivo; null en live sin política decidida (no se cobra). */
+  private policy: StripeTaxPolicy | null;
   constructor(private d: CheckoutDeps) {
     this.now = d.now ?? Date.now;
     this.ns = d.namespace ?? "local";
+    this.mode = d.mode ?? "test";
+    // En pruebas, siempre el neto sin IVA de pruebas. En live, solo una política live admitida
+    this.policy = this.mode === "test" ? TEST_TAX_TREATMENT : d.taxPolicy === LIVE_TAX_TREATMENT ? LIVE_TAX_TREATMENT : null;
+  }
+
+  /** Tratamiento fiscal con el que se cobraría ahora (null: política fiscal pendiente en live). */
+  get taxPolicy(): StripeTaxPolicy | null {
+    return this.policy;
   }
 
   /** Abre (o reutiliza) la Checkout Session del pedido. */
   async start(orderId: number, actor: string): Promise<CheckoutStart> {
+    // Sin política fiscal no se cobra de verdad: se rechaza antes de leer o crear nada en Stripe
+    if (!this.policy) {
+      opsLog("warn", "StripeCheckout", "tax_policy_pending", { orderId, actor });
+      throw new StripeCheckoutError("unavailable", "Política fiscal pendiente: en modo live no se abre ningún pago hasta decidir el tratamiento fiscal (CP_STRIPE_TAX_POLICY)");
+    }
+    const policy = this.policy;
     const o = await this.d.orders.get(orderId);
     if (!o) throw new StripeCheckoutError("not_found", "Pedido no encontrado");
     if (o.kind === "change") throw new StripeCheckoutError("unsupported", "Los cambios de plan o periodicidad se hacen en el Customer Portal");
@@ -147,7 +178,9 @@ export class StripeCheckoutService {
     if (!live || !live.active || live.unitAmount !== o.quote.contractAmountCents || live.currency.toUpperCase() !== quoteCur || desired.amountCents !== o.quote.contractAmountCents) {
       throw new StripeCheckoutError("conflict", `El importe del presupuesto (${o.quote.contractAmountCents} ${quoteCur}, sin IVA) no coincide con el precio de Stripe (${live?.unitAmount ?? "?"} ${live?.currency ?? ""})`);
     }
-    const charge = { amountCents: live.unitAmount, currency: quoteCur, taxTreatment: TEST_TAX_TREATMENT } as const;
+    // Con Stripe Tax el impuesto se añade al neto: el Price tiene que ser sin IVA (tax_behavior exclusive)
+    if (policy === LIVE_TAX_TREATMENT && live.taxBehavior !== "exclusive") throw new StripeCheckoutError("conflict", "El precio de Stripe no está marcado sin IVA (tax_behavior exclusive): no se cobra con Stripe Tax");
+    const charge = { amountCents: live.unitAmount, currency: quoteCur, taxTreatment: policy };
 
     const company = await this.d.crmStore.get("companies", o.companyId);
     if (!company) throw new StripeCheckoutError("not_found", "Empresa no encontrada");
@@ -180,7 +213,7 @@ export class StripeCheckoutService {
       if (closed?.status === "complete") throw new StripeCheckoutError("invalid_state", "El pago de este pedido ya se completó en Stripe; falta su confirmación (webhook)");
     }
 
-    const metadata: Record<string, string> = { es_order_id: String(orderId), es_company_id: String(o.companyId), es_env: this.ns, es_tax_treatment: TEST_TAX_TREATMENT, ...(tenantId ? { es_tenant_id: tenantId } : {}) };
+    const metadata: Record<string, string> = { es_order_id: String(orderId), es_company_id: String(o.companyId), es_env: this.ns, es_tax_treatment: policy, ...(tenantId ? { es_tenant_id: tenantId } : {}) };
     let n = (await this.d.store.countSessions(orderId)) + 1;
     let idempotencyKey = "";
     let session: Awaited<ReturnType<StripeGateway["createCheckoutSession"]>> | null = null;
@@ -198,7 +231,9 @@ export class StripeCheckoutService {
             cancelUrl: this.d.urls.cancel,
             expiresAt: Math.floor((now + SESSION_TTL_MS) / 1000),
             integrationIdentifier: INTEGRATION_IDENTIFIER,
-            notice: TEST_TAX_NOTICE,
+            notice: policy === LIVE_TAX_TREATMENT ? LIVE_TAX_NOTICE : TEST_TAX_NOTICE,
+            // Stripe Tax solo con la política live; en pruebas la sesión es la de siempre (sin automatic_tax)
+            ...(policy === LIVE_TAX_TREATMENT ? { automaticTax: true } : {}),
           },
           idempotencyKey,
         );
