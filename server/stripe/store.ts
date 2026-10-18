@@ -452,10 +452,15 @@ export class MysqlStripeStore implements StripeStore {
       return { link: { companyId: c.companyId, tenantId: c.tenantId, stripeCustomerId: c.stripeCustomerId }, created: true };
     } catch (e) {
       if (!isDup(e)) throw e;
-      // Sin fila de este modo, el duplicado es de OTRO modo: se rechaza, nunca se reutiliza
       const cur = await this.customerByCompany(c.companyId);
-      if (!cur) throw e;
-      return { link: cur, created: false };
+      if (cur) return { link: cur, created: false };
+      // Sin fila de este modo: si choca con una del OTRO modo se rechaza como en memoria, nunca se reutiliza
+      const [other] = await this.pool.query<Row[]>(
+        "SELECT 1 FROM stripe_customers WHERE livemode <> ? AND (company_id = ? OR stripe_customer_id = ? OR (tenant_id IS NOT NULL AND tenant_id = ?)) LIMIT 1",
+        [this.lm, c.companyId, c.stripeCustomerId, c.tenantId],
+      );
+      if (other.length) throw new StripeStoreError("mode_mismatch", "La empresa ya tiene cliente de Stripe con otro modo (pruebas/live): rechazado");
+      throw e;
     }
   }
   async openSession(orderId: number) {

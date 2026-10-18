@@ -141,7 +141,7 @@ describe.skipIf(!URL_)("almacén de Stripe con MySQL real", () => {
     expect((await live.linkCustomer({ companyId: liveCompany, tenantId: null, stripeCustomerId: "cus_live_L1", now })).created).toBe(true);
     expect(await lm("stripe_customers", "company_id", liveCompany)).toBe(1);
     expect(await store.customerByCompany(liveCompany)).toBeNull();
-    await expect(store.linkCustomer({ companyId: liveCompany, tenantId: null, stripeCustomerId: "cus_test_L2", now })).rejects.toThrow();
+    await expect(store.linkCustomer({ companyId: liveCompany, tenantId: null, stripeCustomerId: "cus_test_L2", now })).rejects.toMatchObject({ name: "StripeStoreError", code: "mode_mismatch" });
     expect(await live.customerByCompany(companyId)).toBeNull();
 
     // Precios: el enlace de pruebas no existe para live y su clave única sigue ocupada
