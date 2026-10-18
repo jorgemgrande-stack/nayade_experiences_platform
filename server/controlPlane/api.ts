@@ -303,7 +303,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
   if (d.stripe) {
     const st = d.stripe;
     // Un almacén de otro modo leería o escribiría filas del otro entorno: no se crea la aplicación
-    if (st.store.mode && st.store.mode !== st.config.mode) throw new Error(`El almacén de Stripe es de modo ${st.store.mode} y la configuración de modo ${st.config.mode}`);
+    if (st.store.mode !== st.config.mode) throw new Error(`El almacén de Stripe es de modo ${st.store.mode} y la configuración de modo ${st.config.mode}`);
     if (st.config.mode === "live" && d.orders?.payments) throw new Error("El proveedor de pagos simulados no puede montarse con Stripe en modo live");
     app.post(
       "/cp/v1/stripe/webhook",

@@ -233,4 +233,9 @@ describe("montaje del modo live", () => {
   it("un almacén de pruebas con la configuración live no se monta", async () => {
     await expect(liveControlPlane({ taxPolicy: "stripe_tax_exclusive", store: new MemoryStripeStore("test") })).rejects.toThrow(/modo test/);
   });
+
+  it("un almacén sin modo declarado tampoco se monta (el modo es obligatorio)", async () => {
+    const sinModo = Object.assign(new MemoryStripeStore("live"), { mode: undefined }) as unknown as MemoryStripeStore;
+    await expect(liveControlPlane({ taxPolicy: "stripe_tax_exclusive", store: sinModo })).rejects.toThrow(/almacén de Stripe/);
+  });
 });
