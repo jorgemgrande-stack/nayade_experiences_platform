@@ -241,7 +241,8 @@
         var SLUG = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
         var DOMAIN = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/;
         // Dominios corporativos de Big Elephant: no son empresas clientes
-        var RESERVED = ["www", "admin", "app", "api", "mail"];
+        // Misma lista que scripts/railway/dominios-app.cjs (RESERVED); la prueba server/dominiosApp.test.ts lo comprueba
+        var RESERVED = ["www", "admin", "app", "api", "mail", "crm", "cp", "smtp", "imap", "pop", "ftp", "status", "help", "soporte", "static", "cdn"];
         try {
           var last = localStorage.getItem("be-app-company");
           if (last) input.value = last;
