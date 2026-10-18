@@ -1068,7 +1068,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         licensing: new LicensingService({ capabilities: d.capabilities, subscriptions: d.subscriptions.store, crm: crmPort, catalog: async () => quoteCatalogFromSite(await webAdmin!.site("published")), now: d.subscriptions.now }),
         capabilities: d.capabilities,
         platform: d.provisioning && d.platformDomain ? createContractActivation({ provisioning: d.provisioning, platformDomain: d.platformDomain, actor: { type: "crm", id: "orchestrator" }, notifyWelcome: d.mail?.platform?.assistedWelcome() }) : undefined,
-        notify: d.mail?.platform ? d.mail.platform.orderNotifier({ crmStore: d.crm.store, orders: d.orders.store, reader: d.reader }) : undefined,
+        notify: d.mail?.platform ? d.mail.platform.orderNotifier({ crmStore: d.crm.store, orders: d.orders.store, reader: d.reader, mode: ordersMode }) : undefined,
         trials: d.trials ? new TrialService({ store: d.trials.store, subscriptions: d.subscriptions.store, now: d.subscriptions.now, limits: d.trials.limits, blockedDomains: d.trials.blockedDomains }) : undefined,
         payments: d.orders.payments ?? null,
         mode: ordersMode,
