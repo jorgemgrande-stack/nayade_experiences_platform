@@ -133,11 +133,61 @@ export function platformTemplates(o: PlatformTemplateOptions = {}) {
         "Las capacidades contratadas ya están disponibles en tu plataforma.",
       ], i.host ? { label: "Entrar en la plataforma", url: hostUrl(i.host)! } : null);
     },
-    /** Pago de PRUEBA del proveedor simulado: no se ha cobrado dinero real. */
+    /** Pago de PRUEBA (proveedor simulado o Stripe en modo pruebas): no se ha cobrado dinero real. */
     testPaymentConfirmed(i: { reference: string | null; amountCents: number; currency: string }) {
       return layout(b, `Pago de prueba confirmado${i.reference ? ` · ${i.reference}` : ""}`, [
         `Hemos registrado un pago de PRUEBA de ${fmtMoney(i.amountCents, i.currency)}${i.reference ? ` para el pedido ${i.reference}` : ""}.`,
         "Es un pago del entorno de pruebas: no se ha realizado ningún cargo real.",
+      ]);
+    },
+    /**
+     * Pago REAL confirmado (Stripe en modo live). El importe es el cobrado según Stripe: aquí no se
+     * calcula ni se desglosa ningún impuesto.
+     */
+    paymentConfirmed(i: { reference: string | null; amountCents: number; currency: string }) {
+      return layout(b, `Pago confirmado${i.reference ? ` · ${i.reference}` : ""}`, [
+        `Hemos recibido tu pago${i.reference ? ` del pedido ${i.reference}` : ""}. Importe cobrado: ${fmtMoney(i.amountCents, i.currency)}.`,
+        "El cobro se ha realizado a través de Stripe. Con el pago confirmado activamos tu contratación y te avisaremos en cuanto esté lista.",
+      ]);
+    },
+    /**
+     * Factura disponible tras un cobro verificado en Stripe. Sin enlace: la URL alojada de la factura no
+     * se guarda en el flujo de cobro, así que se remite al portal de cliente de Stripe o a soporte.
+     */
+    invoiceAvailable(i: { reference: string | null; invoiceRef: string | null; amountCents: number; currency: string; test: boolean }) {
+      return layout(b, `${i.test ? "Factura de prueba disponible" : "Factura disponible"}${i.reference ? ` · ${i.reference}` : ""}`, [
+        `La factura del cobro de ${fmtMoney(i.amountCents, i.currency)}${i.reference ? ` (pedido ${i.reference})` : ""} ya está emitida en Stripe.`,
+        ...(i.invoiceRef ? [`Referencia de la factura en Stripe: ${i.invoiceRef}.`] : []),
+        "Puedes consultarla y descargarla desde el portal de cliente de Stripe (Customer Portal) o pedirnos una copia respondiendo a este correo.",
+        ...(i.test ? ["Es una factura del entorno de pruebas de Stripe: no corresponde a ningún cargo real."] : []),
+      ]);
+    },
+    /** Renovación cobrada (pago verificado del periodo nuevo). */
+    renewalConfirmed(i: { reference: string | null; amountCents: number; currency: string; periodStart: number | null; host: string | null; test: boolean }) {
+      return layout(b, `${i.test ? "Renovación de prueba registrada" : "Renovación confirmada"}${i.reference ? ` · ${i.reference}` : ""}`, [
+        i.test
+          ? `Hemos registrado un cobro de PRUEBA de ${fmtMoney(i.amountCents, i.currency)} por la renovación de tu suscripción de ${PLATFORM_BRAND}${i.reference ? ` (pedido ${i.reference})` : ""}.`
+          : `Hemos cobrado la renovación de tu suscripción de ${PLATFORM_BRAND}${i.reference ? ` (pedido ${i.reference})` : ""}. Importe cobrado: ${fmtMoney(i.amountCents, i.currency)}.`,
+        ...(i.periodStart ? [`El nuevo periodo empieza el ${fmtDate(i.periodStart)}.`] : []),
+        "Tu plataforma sigue activa, sin ninguna interrupción.",
+        ...(i.test ? ["Es un cobro del entorno de pruebas: no se ha realizado ningún cargo real."] : []),
+      ], i.host ? { label: "Entrar en la plataforma", url: hostUrl(i.host)! } : null);
+    },
+    /** Reactivación: cancelación programada deshecha, o pago pendiente regularizado tras un impago. */
+    subscriptionReactivated(i: { reference: string | null; reason: "cancel_undone" | "payment_recovered"; host: string | null }) {
+      const recovered = i.reason === "payment_recovered";
+      return layout(b, `${recovered ? "Suscripción al corriente" : "Suscripción reactivada"}${i.reference ? ` · ${i.reference}` : ""}`, recovered
+        ? ["Hemos recibido el pago pendiente de tu suscripción.", "Tu plataforma vuelve a funcionar con normalidad. No se ha borrado ningún dato."]
+        : ["Has deshecho la cancelación programada de tu suscripción.", "Tu suscripción sigue activa y se renovará con normalidad al final del periodo en curso."],
+      i.host ? { label: "Entrar en la plataforma", url: hostUrl(i.host)! } : null);
+    },
+    /** Acuse de la solicitud de alta en línea (contratación aceptada en la web, pendiente del pago). */
+    signupReceived(i: { companyName: string; reference: string | null; test: boolean }) {
+      return layout(b, `Hemos recibido tu solicitud de alta${i.reference ? ` · ${i.reference}` : ""}`, [
+        `Hemos registrado la solicitud de contratación de ${PLATFORM_BRAND} para ${i.companyName}${i.reference ? ` (pedido ${i.reference})` : ""}.`,
+        "Para completarla, termina el pago en la página segura de Stripe. No se activa nada hasta que Stripe confirme el pago; entonces te enviaremos el acceso a tu plataforma.",
+        "Si no has hecho tú esta solicitud, responde a este correo y la anularemos.",
+        ...(i.test ? ["Es una solicitud del entorno de pruebas: no se realizará ningún cargo real."] : []),
       ]);
     },
     paymentFailed(i: { reference: string | null; graceEndsAt: number | null; host: string | null }) {
