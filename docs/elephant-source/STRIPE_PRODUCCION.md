@@ -220,6 +220,7 @@ MIGRATE_DATABASE_URL=mysql://…/es_crm pnpm exec tsx scripts/db/migrate.ts up -
 MIGRATE_DATABASE_URL=mysql://…/es_crm pnpm exec tsx scripts/db/migrate.ts up --dir db/crm/migrations --apply
 ```
 
-- **Entorno `live`:** la migración es obligatoria. Sin ella, la línea `ctx="Stripe"` dice `reason: "migration_0013_missing"` y Stripe no se monta.
+- **Entorno `live`:** la migración es obligatoria y tiene que estar entera: las seis restricciones `chk_*_livemode`, `commercial_payments.mode` con `live` y la 0013 registrada por el ejecutor, sin ninguna migración a medias. Si no, la línea `ctx="Stripe"` da el motivo (`migration_0013_missing`, `migration_0013_not_recorded` o `migration_in_progress`) y Stripe no se monta.
+- **Datos de pruebas en una BD live:** si hay pagos de prueba cobrados en pedidos no terminados (`test_payments_in_live`) o el prefijo guardado no es `live` (`namespace_mismatch`), no se montan ni los pedidos ni los pagos. El motivo aparece en la línea `ctx="Orders"`.
 - **Entorno de pruebas:** como el carril es lineal, la 0013 también se aplica. Allí la BD admite 0 o 1, y la garantía de «solo pruebas» la mantienen la configuración, el acceso y el almacén, que solo escribe y lee filas con `livemode = 0`.
 - **Reversión:** la `.down.sql` vuelve a «solo pruebas». **Falla a propósito, sin cambiar nada, si ya hay filas live.**
