@@ -99,11 +99,13 @@ const SENSITIVE_NAME = /(KEY|KEYS|SECRET|PASS|PASSWORD|TOKEN|TOKENS|URL|DSN|HASH
 /**
  * Dominios que Railway inyecta en cada servicio (`RAILWAY_SERVICE_<SERVICIO>_URL`, `RAILWAY_PUBLIC_DOMAIN`…).
  * Llevan «URL» en el nombre, pero su valor es un nombre de host público, el mismo que figura en los dominios
- * de las empresas. Solo se excluyen si el valor es un host sin esquema, credenciales ni ruta.
+ * de las empresas. Solo se excluyen si el valor es exactamente un dominio de Railway (`<nombre>.up.railway.app`
+ * o `<nombre>.railway.internal`): un token con puntos o un dominio propio bajo ese nombre se sigue tratando como
+ * secreto.
  */
 const RAILWAY_DOMAIN_NAME = /^RAILWAY_(SERVICE_[A-Z0-9_]+_URL|PUBLIC_DOMAIN|PRIVATE_DOMAIN|STATIC_URL)$/;
-const BARE_HOST = /^[a-z0-9-]+(\.[a-z0-9-]+)+$/i;
-const isRailwayDomain = (name: string, value: string) => RAILWAY_DOMAIN_NAME.test(name) && BARE_HOST.test(value);
+const RAILWAY_HOST = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.(?:up\.railway\.app|railway\.internal)$/;
+const isRailwayDomain = (name: string, value: string) => RAILWAY_DOMAIN_NAME.test(name) && RAILWAY_HOST.test(value);
 
 export interface RecoveryTenant {
   id: string;
