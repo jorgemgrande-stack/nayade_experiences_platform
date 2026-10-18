@@ -281,4 +281,24 @@ describe("orquestador en memoria", () => {
     await pay(second.payment);
     expect((await svc.must(o.id)).state).toBe("active");
   });
+
+  it("avisos: el pago del alta avisa con «confirm» y la renovación cobrada con «payment_recorded» (una vez, sin cambiar el estado)", async () => {
+    const notices: Array<{ action: string; detail: Record<string, unknown> | null }> = [];
+    const n = new CommercialOrchestrator({ ...deps, notify: async (e) => void notices.push({ action: e.action, detail: e.detail }) });
+    const cid = await company("Aviso Ensayo SL");
+    const o = (await n.create({ idempotencyKey: key(), companyId: cid, request: { plan: "essential", interval: "month", items: [] } }, actor)).order;
+    await n.accept(o.id, { signatureRef: "firma-1", approvalReason: "Aprobado por producto" }, actor);
+    const { payment } = await n.requestPayment(o.id, actor);
+    const body = (p: typeof payment, id: string) => JSON.stringify({ id, type: "payment.succeeded", paymentKey: p.idempotencyKey, providerRef: p.providerRef, amountCents: p.amountCents, currency: p.currency, livemode: false });
+    const send = (p: typeof payment, id: string) => n.handlePaymentEvent(body(p, id), provider.sign(body(p, id), Math.floor(clock / 1000)));
+    await send(payment, "evt_alta");
+    expect(notices.filter((x) => x.action === "confirm")).toEqual([{ action: "confirm", detail: { basis: "payment", paymentId: payment.id } }]);
+    clock += 32 * 86_400_000;
+    const renewal = (await n.renew(o.id, actor)).payment!;
+    const before = (await n.must(o.id)).version;
+    await send(renewal, "evt_renov");
+    await send(renewal, "evt_renov");
+    expect(notices.filter((x) => x.action === "payment_recorded")).toEqual([{ action: "payment_recorded", detail: { paymentId: renewal.id, purpose: "renewal" } }]);
+    expect((await n.must(o.id)).version).toBe(before);
+  });
 });

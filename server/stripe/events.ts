@@ -64,6 +64,8 @@ export interface OrchestratorPort {
   advance(id: number, actor: string): Promise<{ order: CommercialOrder; error: string | null }>;
   renew(id: number, actor: string): Promise<unknown>;
   applyExternalBilling(id: number, s: { status: "active" | "past_due" | "unpaid" | "canceled"; cancelAt: number | null; coverageLost?: boolean }, actor: string): Promise<{ order: CommercialOrder; changed: string[] }>;
+  /** Aviso (correo) de un cobro verificado de renovación o de cambio. Opcional: sin él no se avisa. */
+  paymentRecorded?(orderId: number, paymentId: number): Promise<void>;
 }
 
 export interface ProcessorDeps {
@@ -315,6 +317,9 @@ export class StripeEventProcessor {
     }
     if (!LIVE_OR_SCHEDULED.includes(order.state)) return { outcome: "processed", detail: `Pedido en ${order.state}: sin cambios` };
     if (payment?.created && payment.purpose === "renewal") await this.d.orchestrator.renew(orderId, this.actor).catch((e) => opsLog("warn", "StripeEvents", "renew_skipped", { orderId, error: e instanceof Error ? e.name : "error" }));
+    // Aviso de la renovación (o del cambio) cobrada y de su factura: solo la primera vez que se registra el pago
+    if (payment?.created && payment.purpose !== "initial" && this.d.orchestrator.paymentRecorded)
+      await this.d.orchestrator.paymentRecorded(orderId, payment.paymentId).catch((e) => opsLog("warn", "StripeEvents", "payment_notice_skipped", { orderId, error: e instanceof Error ? e.name : "error" }));
     const status = sub.status === "active" || sub.status === "trialing" ? "active" : sub.status === "past_due" ? "past_due" : sub.status === "unpaid" || sub.status === "paused" ? "unpaid" : sub.status === "canceled" || sub.status === "incomplete_expired" ? "canceled" : null;
     if (!status) return { outcome: "processed", detail: `Suscripción ${sub.status}: sin cambios` };
     const cancelAt = sub.cancelAt ?? (sub.cancelAtPeriodEnd ? sub.currentPeriodEnd : null);
@@ -349,7 +354,7 @@ export class StripeEventProcessor {
       settledAt: this.now(),
     });
     if (r.created) opsLog("info", "StripeEvents", "payment_verified", { orderId: order.id, invoiceId: inv.id, purpose });
-    return { created: r.created, purpose, invoiceId: inv.id };
+    return { created: r.created, purpose, invoiceId: inv.id, paymentId: r.payment.id };
   }
 
   private async hasInitialPayment(order: CommercialOrder, just: { purpose: string } | null) {

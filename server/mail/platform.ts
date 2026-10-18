@@ -3,8 +3,11 @@
  * comercial (db/crm/migrations/0011) y avisos conectados a los eventos que ya existen:
  *  - prueba gratuita (`TrialNotifier`): verificación de correo, activación (bienvenida), aviso de vencimiento;
  *  - alta asistida (contrato del CRM): bienvenida de la empresa con el enlace del administrador;
- *  - orquestador comercial: contratación confirmada, pago de PRUEBA confirmado, impago, cancelación.
+ *  - orquestador comercial: solicitud de alta recibida (web), pago confirmado (real en live, de PRUEBA en
+ *    pruebas), factura disponible, renovación cobrada, contratación confirmada, impago, reactivación y
+ *    cancelación.
  * Ningún evento cambia su lógica: el aviso se encola después y un fallo nunca rompe el flujo.
+ * Ningún aviso lleva contraseñas: la bienvenida solo lleva el enlace personal de un solo uso para crearla.
  *
  * El webhook de Brevo (un único URL por cuenta) llega aquí y actualiza también las bandejas de las
  * empresas: `tenantLaneResolver` abre su base con la DSN del registro, solo para aplicar eventos.
@@ -15,8 +18,9 @@ import type { TenantRegistryReader } from "../_core/tenantRegistry/store";
 import { choosePublicDomain } from "../_core/tenantIdentity";
 import { opsLog } from "../_core/ops/log";
 import type { CrmStore } from "../crm/store";
-import type { OrderNotifier } from "../orchestrator/service";
+import { isStripeProvider, STRIPE_LIVE_PAYMENT_PROVIDER, type OrderNotifier } from "../orchestrator/service";
 import type { OrderStore } from "../orchestrator/store";
+import type { OrderPayment, PaymentMode } from "../orchestrator/types";
 import type { TrialNotifier } from "../trials/onboarding";
 import { mailPolicyFromEnv, type MailPolicy } from "./policy";
 import { mailProviderFromEnv } from "./providers";
@@ -26,7 +30,10 @@ import { platformTemplates } from "./templates";
 import type { MailCategory, MailContent, MailProviderPort } from "./types";
 
 export const PLATFORM_TENANT = "platform";
+/** Prefijo de la aceptación registrada por la contratación en línea (`server/stripe/selfService.ts`). */
+export const SELF_SERVICE_SIGNATURE_PREFIX = "web-terms:";
 const short = (s: string) => crypto.createHash("sha256").update(s).digest("hex").slice(0, 16);
+type OrderMail = { kind: MailCategory; key: string; content: MailContent };
 
 export class PlatformMailer {
   readonly t: ReturnType<typeof platformTemplates>;
@@ -72,28 +79,72 @@ export class PlatformMailer {
     };
   }
 
-  /** Avisos del orquestador comercial. Destinatario: contacto principal activo de la empresa del pedido. */
-  orderNotifier(d: { crmStore: Pick<CrmStore, "list" | "get">; orders: Pick<OrderStore, "payments">; reader?: Pick<TenantRegistryReader, "listDomains"> | null }): OrderNotifier {
+  /**
+   * Avisos del orquestador comercial. Destinatario: contacto principal activo de la empresa del pedido.
+   *
+   * `mode` es el modo de cobro del entorno (el del orquestador; por defecto «test»). Un pago solo se
+   * anuncia como REAL si el entorno es live y el pago es de Stripe en modo live; en cualquier otro caso
+   * sale el texto de prueba. Así nunca sale el texto de prueba en live ni el real en pruebas.
+   *
+   * Claves idempotentes: `order:<id>:<acción>:<versión>` para los cambios de estado (como siempre) y
+   * `order:<id>:<categoría>:p<pago>` para los avisos de un cobro (la versión del pedido no cambia con él).
+   */
+  orderNotifier(d: { crmStore: Pick<CrmStore, "list" | "get">; orders: Pick<OrderStore, "payments">; reader?: Pick<TenantRegistryReader, "listDomains"> | null; mode?: PaymentMode }): OrderNotifier {
+    const mode: PaymentMode = d.mode ?? "test";
     const hostOf = async (tenantId: string | null) => (tenantId && d.reader ? (choosePublicDomain(await d.reader.listDomains(tenantId))?.domain ?? null) : null);
+    const livePayment = (p: OrderPayment) => mode === "live" && p.mode === "live" && p.provider === STRIPE_LIVE_PAYMENT_PROVIDER;
+    const invoiceOf = (orderId: number, reference: string | null, p: OrderPayment): OrderMail => ({
+      kind: "invoice_available",
+      key: `order:${orderId}:invoice_available:p${p.id}`,
+      content: this.t.invoiceAvailable({ reference, invoiceRef: p.providerRef, amountCents: p.amountCents, currency: p.currency, test: !livePayment(p) }),
+    });
     return async ({ order, action, detail }) => {
-      const kind: MailCategory | null =
-        action === "activate" ? "contract_confirmed" : action === "confirm" && detail?.basis === "payment" ? "test_payment_confirmed" : action === "payment_failed" ? "payment_failed" : action === "cancel" ? "cancellation" : null;
-      if (!kind) return;
+      const signup = action === "sign" && typeof detail?.signatureRef === "string" && detail.signatureRef.startsWith(SELF_SERVICE_SIGNATURE_PREFIX);
+      const wanted =
+        signup ||
+        (action === "confirm" && detail?.basis === "payment") ||
+        ["activate", "payment_failed", "payment_recovered", "reactivate", "cancel", "payment_recorded"].includes(action);
+      if (!wanted) return;
+      const paymentOf = async () => (await d.orders.payments(order.id)).find((p) => p.id === Number(detail?.paymentId)) ?? null;
+      const stateKey = (kind: MailCategory) => ({ kind, key: `order:${order.id}:${action}:${order.version}` });
+      const mails: OrderMail[] = [];
+      if (signup) {
+        const company = await d.crmStore.get("companies", order.companyId);
+        mails.push({ ...stateKey("signup_received"), content: this.t.signupReceived({ companyName: company?.name ?? "tu empresa", reference: order.reference, test: mode !== "live" }) });
+      } else if (action === "confirm") {
+        const pay = await paymentOf();
+        if (!pay) return;
+        mails.push(
+          livePayment(pay)
+            ? { ...stateKey("payment_confirmed"), content: this.t.paymentConfirmed({ reference: order.reference, amountCents: pay.amountCents, currency: pay.currency }) }
+            : { ...stateKey("test_payment_confirmed"), content: this.t.testPaymentConfirmed({ reference: order.reference, amountCents: pay.amountCents, currency: pay.currency }) },
+        );
+        if (isStripeProvider(pay.provider)) mails.push(invoiceOf(order.id, order.reference, pay));
+      } else if (action === "payment_recorded") {
+        const pay = await paymentOf();
+        if (!pay || pay.status !== "succeeded") return;
+        if (pay.purpose === "renewal")
+          mails.push({
+            kind: "renewal_confirmed",
+            key: `order:${order.id}:renewal_confirmed:p${pay.id}`,
+            content: this.t.renewalConfirmed({ reference: order.reference, amountCents: pay.amountCents, currency: pay.currency, periodStart: pay.periodStart, host: await hostOf(order.tenantId), test: !livePayment(pay) }),
+          });
+        if (isStripeProvider(pay.provider)) mails.push(invoiceOf(order.id, order.reference, pay));
+      } else if (action === "activate") {
+        const company = await d.crmStore.get("companies", order.companyId);
+        mails.push({ ...stateKey("contract_confirmed"), content: this.t.contractConfirmed({ companyName: company?.name ?? "tu empresa", reference: order.reference, host: await hostOf(order.tenantId) }) });
+      } else if (action === "payment_failed") {
+        mails.push({ ...stateKey("payment_failed"), content: this.t.paymentFailed({ reference: order.reference, graceEndsAt: order.graceEndsAt, host: await hostOf(order.tenantId) }) });
+      } else if (action === "payment_recovered" || action === "reactivate") {
+        mails.push({ ...stateKey("subscription_reactivated"), content: this.t.subscriptionReactivated({ reference: order.reference, reason: action === "reactivate" ? "cancel_undone" : "payment_recovered", host: await hostOf(order.tenantId) }) });
+      } else {
+        mails.push({ ...stateKey("cancellation"), content: this.t.cancellation({ reference: order.reference, cancelAt: typeof detail?.cancelAt === "number" ? detail.cancelAt : null }) });
+      }
+      if (!mails.length) return;
       const contacts = (await d.crmStore.list("contacts", { companyId: order.companyId })).filter((c) => c.status !== "inactive" && c.email);
       const to = (contacts.find((c) => c.isPrimary) ?? contacts[0])?.email ?? null;
-      if (!to) return void opsLog("warn", "Mail", "not_queued", { category: kind, reason: "no_contact", orderId: order.id });
-      const key = `order:${order.id}:${action}:${order.version}`;
-      let content: MailContent;
-      if (kind === "contract_confirmed") {
-        const company = await d.crmStore.get("companies", order.companyId);
-        content = this.t.contractConfirmed({ companyName: company?.name ?? "tu empresa", reference: order.reference, host: await hostOf(order.tenantId) });
-      } else if (kind === "test_payment_confirmed") {
-        const pay = (await d.orders.payments(order.id)).find((p) => p.id === Number(detail?.paymentId));
-        if (!pay) return;
-        content = this.t.testPaymentConfirmed({ reference: order.reference, amountCents: pay.amountCents, currency: pay.currency });
-      } else if (kind === "payment_failed") content = this.t.paymentFailed({ reference: order.reference, graceEndsAt: order.graceEndsAt, host: await hostOf(order.tenantId) });
-      else content = this.t.cancellation({ reference: order.reference, cancelAt: typeof detail?.cancelAt === "number" ? detail.cancelAt : null });
-      await this.send(order.tenantId, key, kind, to, content);
+      if (!to) return void opsLog("warn", "Mail", "not_queued", { category: mails[0].kind, reason: "no_contact", orderId: order.id });
+      for (const m of mails) await this.send(order.tenantId, m.key, m.kind, to, m.content);
     };
   }
 }
