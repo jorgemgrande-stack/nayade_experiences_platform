@@ -103,6 +103,15 @@ describe("paquete de configuración para recuperación", () => {
     expect(() => assertNoSecrets({ x: "-----BEGIN RSA PRIVATE KEY-----" }, {})).toThrow(/privada/);
     expect(() => assertNoSecrets({ host: "mysql.railway.internal", db: "es_registry" }, env)).not.toThrow();
   });
+
+  it("admite los dominios que inyecta Railway, pero no un valor con credenciales bajo ese nombre", () => {
+    const railway = { RAILWAY_SERVICE_GW_DEMO_A_URL: "t-demo-a.up.railway.app", RAILWAY_PUBLIC_DOMAIN: "elephant-source-crm.up.railway.app" };
+    const pkg = { tenants: [{ domains: [{ domain: "t-demo-a.up.railway.app" }] }], crm: "elephant-source-crm.up.railway.app" };
+    expect(() => assertNoSecrets(pkg, { ...env, ...railway })).not.toThrow();
+    expect(() => assertNoSecrets({ x: "https://u:secreto-123@h.example" }, { RAILWAY_SERVICE_X_URL: "https://u:secreto-123@h.example" })).toThrow(/RAILWAY_SERVICE_X_URL/);
+    expect(() => assertNoSecrets({ x: "token-largo-ficticio" }, { RAILWAY_SERVICE_X_URL: "token-largo-ficticio" })).toThrow(/RAILWAY_SERVICE_X_URL/);
+    expect(() => assertNoSecrets({ x: "contrasena-ficticia-123" }, { ...env, ...railway })).toThrow(/REGISTRY_ADMIN_DATABASE_URL/);
+  });
 });
 
 describe("retención independiente del secundario", () => {
