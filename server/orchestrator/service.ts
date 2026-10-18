@@ -87,7 +87,12 @@ export interface OrchestratorDeps {
   notify?: OrderNotifier;
 }
 
-export type OrderNotifier = (e: { order: CommercialOrder; action: OrderAction; detail: Record<string, unknown> | null }) => Promise<void>;
+/**
+ * Avisos sin cambio de estado: `payment_recorded` = cobro VERIFICADO de una renovación o de un cambio
+ * (detalle: `paymentId`, `purpose`). El cobro del alta se avisa con `confirm` (base `payment`).
+ */
+export type OrderNotice = "payment_recorded";
+export type OrderNotifier = (e: { order: CommercialOrder; action: OrderAction | OrderNotice; detail: Record<string, unknown> | null }) => Promise<void>;
 
 export interface CreateOrderInput {
   idempotencyKey: string;
@@ -168,9 +173,25 @@ export class CommercialOrchestrator {
     const to = nextOrderState(o.state, action);
     if (!to) throw new OrderError("invalid_state", `No se puede «${action}» un pedido en estado «${o.state}»`);
     const moved = await this.d.store.transition(o.id, o.version, { ...patch, state: to }, { kind: action, detail, actor, at: this.now() });
-    if (this.d.notify)
-      void this.d.notify({ order: moved, action, detail }).catch((e) => opsLog("error", "Orders", "notify_failed", { orderId: o.id, action, error: e instanceof Error ? e.name : "error" }));
+    this.emit(moved, action, detail);
     return moved;
+  }
+  /** Lanza el aviso sin esperar; un fallo solo se registra. */
+  private emit(order: CommercialOrder, action: OrderAction | OrderNotice, detail: Record<string, unknown> | null) {
+    if (this.d.notify)
+      void this.d.notify({ order, action, detail }).catch((e) => opsLog("error", "Orders", "notify_failed", { orderId: order.id, action, error: e instanceof Error ? e.name : "error" }));
+  }
+
+  /**
+   * Aviso de un cobro VERIFICADO que no cambia el estado del pedido (renovación o cambio cobrados). Lo
+   * llama quien registra el pago (eventos de pruebas o procesador de Stripe). No toca el pedido; el
+   * correo es idempotente por pago.
+   */
+  async paymentRecorded(orderId: number, paymentId: number): Promise<void> {
+    const o = await this.must(orderId);
+    const p = (await this.d.store.payments(o.id)).find((x) => x.id === paymentId);
+    if (!p || !this.verifiedPayment(p) || p.purpose === "initial") return;
+    this.emit(o, "payment_recorded", { paymentId: p.id, purpose: p.purpose });
   }
   /** Evento sin cambio de estado (pago solicitado, fallo de un paso, renovación…). */
   private note(o: CommercialOrder, kind: string, actor: string, detail: Record<string, unknown> | null, patch: OrderPatch = {}) {
@@ -649,6 +670,7 @@ export class CommercialOrchestrator {
       if (o.state === "contracted") await this.advance(o.id, actor);
       return;
     }
+    if (p.status === "succeeded") await this.paymentRecorded(o.id, p.id);
     if (p.status === "failed" && o.state === "active") {
       await this.move(o, "payment_failed", actor, { graceEndsAt: this.now() + this.grace }, { paymentId: p.id, graceEndsAt: this.now() + this.grace });
       return;
