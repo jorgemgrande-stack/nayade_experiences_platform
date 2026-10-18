@@ -101,7 +101,15 @@ export async function operatorAuthFromEnv(pool: mysql.Pool, env: NodeJS.ProcessE
   }
   // Secretos TOTP cifrados con una clave que ya no está en REGISTRY_KEYS: esos operadores no podrán completar
   // el segundo paso. Suele ser una rotación sin `rotate-keys` (ver operatorMfaKeys.ts). Se avisa al arrancar.
-  const missingKeys = mfaColumns && opts.keyring ? await missingMfaKeys(pool, opts.keyring) : [];
+  // Comprobación solo informativa: un fallo transitorio de MySQL no debe impedir el arranque.
+  let missingKeys: string[] = [];
+  if (mfaColumns && opts.keyring) {
+    try {
+      missingKeys = await missingMfaKeys(pool, opts.keyring);
+    } catch (e: any) {
+      console.error(JSON.stringify({ ctx: "OperatorAuth", event: "mfa_key_check_failed", level: "warn", error: e?.code ?? "error" }));
+    }
+  }
   if (missingKeys.length) {
     console.error(
       JSON.stringify({ ctx: "OperatorAuth", event: "mfa_key_missing", level: "error", missingKeys, effect: "los operadores con esos secretos no pueden completar el segundo paso; restaura la clave en REGISTRY_KEYS y ejecuta rotate-keys" }),
