@@ -16,7 +16,7 @@ import type { StripeConfig } from "./config";
 // Valores ficticios construidos en tiempo de ejecución (no son credenciales)
 const SECRET = ["whsec", "z".repeat(32)].join("_");
 const OTHER = ["whsec", "q".repeat(32)].join("_");
-const config: StripeConfig = { mode: "test", apiKey: ["sk", "test", "x".repeat(24)].join("_"), webhookSecret: SECRET, apiVersion: "2026-09-30.endive", keyKind: "secret", namespace: "local", eventsRetentionDays: 180 };
+const config: StripeConfig = { mode: "test", apiKey: ["sk", "test", "x".repeat(24)].join("_"), webhookSecret: SECRET, apiVersion: "2026-09-30.endive", keyKind: "secret", namespace: "local", eventsRetentionDays: 180, taxPolicy: "test_net_no_tax" };
 const sdk = new Stripe(config.apiKey, { apiVersion: "2026-09-30.endive" as Stripe.LatestApiVersion });
 
 const event = (over: Record<string, unknown> = {}) =>
@@ -126,5 +126,47 @@ describe("webhook de Stripe: firma y cuerpo original", () => {
     };
     const body = event();
     expect((await post(body, { "stripe-signature": sign(body) })).status).toBe(500);
+  });
+});
+
+describe("webhook de Stripe en modo live: firma real y livemode según el modo", () => {
+  const liveConfig: StripeConfig = { ...config, mode: "live", apiKey: ["rk", "live", "x".repeat(24)].join("_"), keyKind: "restricted", namespace: "live", taxPolicy: null };
+  let liveStore: MemoryStripeStore;
+  let liveBase: string;
+  let liveServer: http.Server;
+
+  beforeEach(async () => {
+    liveStore = new MemoryStripeStore("live");
+    const app = express();
+    app.post("/cp/v1/stripe/webhook", express.raw({ type: "application/json", limit: "1mb" }), (req, res) => void stripeWebhookHandler({ verify: stripeWebhookVerifier(liveConfig), store: liveStore, mode: "live" })(req, res));
+    await new Promise<void>((r) => (liveServer = app.listen(0, () => r())));
+    liveBase = `http://127.0.0.1:${(liveServer.address() as { port: number }).port}`;
+    return () => new Promise<void>((r) => liveServer.close(() => r()));
+  });
+
+  const livePost = async (body: string) => {
+    const r = await fetch(`${liveBase}/cp/v1/stripe/webhook`, { method: "POST", headers: { "content-type": "application/json", "stripe-signature": sign(body) }, body });
+    return { status: r.status, json: (await r.json().catch(() => null)) as Record<string, unknown> | null };
+  };
+
+  it("un evento live con firma válida se guarda", async () => {
+    const r = await livePost(event({ livemode: true, id: "evt_live_0000000001" }));
+    expect(r).toMatchObject({ status: 200, json: { received: true, duplicate: false } });
+    expect(await liveStore.event("evt_live_0000000001")).toMatchObject({ type: "invoice.paid", status: "received" });
+  });
+
+  it("un evento de PRUEBAS con firma válida: 400 y nada guardado (el mismo trato que un live en pruebas)", async () => {
+    expect(await livePost(event({ livemode: false }))).toEqual({ status: 400, json: { error: "test_event_rejected" } });
+    expect(liveStore.events.size).toBe(0);
+  });
+
+  it("livemode ausente o no booleano: 400 en los dos modos", async () => {
+    for (const lm of [undefined, "true", 1]) {
+      const body = event({ livemode: lm, id: `evt_raro_${String(lm)}0000` });
+      expect((await livePost(body)).status).toBe(400);
+      expect((await post(body, { "stripe-signature": sign(body) })).status).toBe(400);
+    }
+    expect(liveStore.events.size).toBe(0);
+    expect(store.events.size).toBe(0);
   });
 });

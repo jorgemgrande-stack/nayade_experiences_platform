@@ -109,6 +109,9 @@ export interface OrderEvent {
 }
 
 export type PaymentPurpose = "initial" | "change" | "renewal";
+/** Modo del pago: «test» (pruebas o simulado) o «live» (Stripe en la cuenta real; CRM 0013). */
+export type PaymentMode = "test" | "live";
+export const PAYMENT_MODES: readonly PaymentMode[] = ["test", "live"];
 export type PaymentStatus = "pending" | "succeeded" | "failed";
 export interface OrderPayment {
   id: number;
@@ -120,8 +123,8 @@ export interface OrderPayment {
   currency: string;
   status: PaymentStatus;
   provider: string;
-  /** Siempre «test» en esta fase (también impuesto por la BD). */
-  mode: "test";
+  /** «test» o «live» según el entorno (la BD solo admite esos dos). Los pagos simulados son siempre «test». */
+  mode: PaymentMode;
   providerRef: string | null;
   dueAt: number | null;
   createdAt: number;

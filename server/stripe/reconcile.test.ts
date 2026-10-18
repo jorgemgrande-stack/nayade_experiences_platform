@@ -66,3 +66,28 @@ describe("conciliación", () => {
     expect([a.skipped, b.skipped].sort()).toEqual([false, true]);
   });
 });
+
+describe("conciliación según el modo", () => {
+  it("modo live: registra solo los eventos live; los de pruebas se descartan", async () => {
+    const gw = new FakeStripeGateway();
+    const now = 1_800_000_500_000;
+    gw.livemode = true;
+    for (let i = 0; i < 3; i++) gw.emit("invoice.paid", "invoice", `in_live_${i}`, 1_800_000_000 + i);
+    gw.livemode = false;
+    for (let i = 0; i < 2; i++) gw.emit("invoice.paid", "invoice", `in_test_${i}`, 1_800_000_010 + i);
+    const store = new MemoryStripeStore("live");
+    expect((await new StripeReconciler({ store, gateway: gw, processor: noProcessor, now: () => now, mode: "live" }).tick()).recovered).toBe(3);
+    expect(Array.from(store.events.values()).map((e) => e.objectId).sort()).toEqual(["in_live_0", "in_live_1", "in_live_2"]);
+  });
+
+  it("modo pruebas (por defecto): los eventos live se descartan como siempre", async () => {
+    const gw = new FakeStripeGateway();
+    gw.livemode = true;
+    gw.emit("invoice.paid", "invoice", "in_live_x", 1_800_000_000);
+    gw.livemode = false;
+    gw.emit("invoice.paid", "invoice", "in_test_x", 1_800_000_001);
+    const store = new MemoryStripeStore();
+    expect((await new StripeReconciler({ store, gateway: gw, processor: noProcessor, now: () => 1_800_000_500_000 }).tick()).recovered).toBe(1);
+    expect(Array.from(store.events.values()).map((e) => e.objectId)).toEqual(["in_test_x"]);
+  });
+});

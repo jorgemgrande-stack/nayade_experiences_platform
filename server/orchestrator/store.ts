@@ -20,6 +20,7 @@ import {
   type PaymentEventOutcome,
   type PaymentEventRecord,
   type PaymentStatus,
+  PAYMENT_MODES,
 } from "./types";
 
 export type NewOrder = Omit<CommercialOrder, "id" | "reference" | "version" | "updatedAt" | "updatedBy">;
@@ -149,6 +150,7 @@ export class MemoryOrderStore implements OrderStore {
     return clone(this.evs.filter((e) => e.orderId === orderId));
   }
   insertPayment(p: Omit<OrderPayment, "id">) {
+    if (!PAYMENT_MODES.includes(p.mode)) return Promise.reject(new Error("Modo de pago desconocido"));
     return this.atomic(async () => {
       const ex = Array.from(this.pays.values()).find((x) => x.idempotencyKey === p.idempotencyKey);
       if (ex) return { payment: clone(ex), created: false };
@@ -215,6 +217,11 @@ function orderRow(r: Record<string, unknown>): CommercialOrder {
     updatedBy: (r.updated_by as string) ?? null,
   };
 }
+/** Modo de un pago leído de la BD: solo «test» o «live»; cualquier otro valor se rechaza. */
+function modeOf(v: unknown): OrderPayment["mode"] {
+  if (!PAYMENT_MODES.includes(v as OrderPayment["mode"])) throw new Error("Modo de pago desconocido en commercial_payments");
+  return v as OrderPayment["mode"];
+}
 function paymentRow(r: Record<string, unknown>): OrderPayment {
   return {
     id: Number(r.id),
@@ -226,7 +233,7 @@ function paymentRow(r: Record<string, unknown>): OrderPayment {
     currency: String(r.currency),
     status: r.status as PaymentStatus,
     provider: String(r.provider),
-    mode: "test",
+    mode: modeOf(r.mode),
     providerRef: (r.provider_ref as string) ?? null,
     dueAt: num(r.due_at),
     createdAt: Number(r.created_at),
@@ -365,8 +372,8 @@ export class MysqlOrderStore implements OrderStore {
     try {
       const [res] = await this.pool.query<mysql.ResultSetHeader>(
         `INSERT INTO commercial_payments (order_id, idempotency_key, purpose, period_start, amount_cents, currency, status, provider, mode, provider_ref, due_at, created_at, settled_at)
-         VALUES (?,?,?,?,?,?,?,?, 'test', ?,?,?,?)`,
-        [p.orderId, p.idempotencyKey, p.purpose, p.periodStart, p.amountCents, p.currency, p.status, p.provider, p.providerRef, p.dueAt, p.createdAt, p.settledAt],
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        [p.orderId, p.idempotencyKey, p.purpose, p.periodStart, p.amountCents, p.currency, p.status, p.provider, modeOf(p.mode), p.providerRef, p.dueAt, p.createdAt, p.settledAt],
       );
       const [r] = await this.pool.query<mysql.RowDataPacket[]>("SELECT * FROM commercial_payments WHERE id = ?", [res.insertId]);
       return { payment: paymentRow(r[0]), created: true };

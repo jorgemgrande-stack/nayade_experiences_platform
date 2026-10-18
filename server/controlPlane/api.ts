@@ -72,11 +72,11 @@ import { createStripeRouter } from "../stripe/api";
 import { StripeEventProcessor } from "../stripe/events";
 import { StripeReconciler, startStripeWorker } from "../stripe/reconcile";
 import { stripeWebhookHandler } from "../stripe/webhook";
-import { SESSION_ID_RE, checkoutStatus } from "../stripe/status";
+import { checkoutStatus, sessionIdRe } from "../stripe/status";
 import { SelfServiceCheckout, createSelfServiceRouter } from "../stripe/selfService";
 import type { GwEvent } from "../stripe/gateway";
 import { StripeCheckoutService, type CheckoutUrls } from "../stripe/checkout";
-import type { StripeConfig } from "../stripe/config";
+import { checkoutBlockedReason, type StripeConfig } from "../stripe/config";
 import type { StripeGateway } from "../stripe/gateway";
 import type { StripeStore } from "../stripe/store";
 import type { OrderStore } from "../orchestrator/store";
@@ -178,12 +178,15 @@ export interface ControlPlaneDeps {
   organization?: OrganizationStore;
   /**
    * Orquestador comercial (CRM 0010). Requiere suscripciones, CRM, web y licencias por capacidad. Los
-   * pagos son SOLO de prueba (`payments`); sin ellos, los pedidos se confirman por aprobación administrativa.
+   * pagos simulados son SOLO de prueba (`payments`; con Stripe en live no se admiten y la aplicación no se
+   * crea); sin ellos, los pedidos se confirman por aprobación administrativa o por el pago en Stripe.
    */
-  orders?: { store: OrderStore; payments?: TestPaymentPort | null; graceDays?: number };
+  /** `mode`: modo de cobro del entorno (el de CP_STRIPE_MODE), también cuando Stripe no llega a montarse. */
+  orders?: { store: OrderStore; payments?: TestPaymentPort | null; graceDays?: number; mode?: StripeConfig["mode"] };
   /**
-   * Stripe Billing, SOLO MODO PRUEBAS (server/stripe, CRM 0012). Rutas de operador en /stripe; Checkout
-   * solo con `checkoutEnabled` y URL de vuelta. Requiere `orders`.
+   * Stripe Billing en modo pruebas o live (`config.mode`; server/stripe, CRM 0012 y 0013). Rutas de operador
+   * en /stripe; Checkout solo con `checkoutEnabled`, URL de vuelta y, en live, una política fiscal decidida.
+   * El almacén debe ser del mismo modo que la configuración. Requiere `orders`.
    */
   stripe?: {
     config: StripeConfig;
@@ -294,16 +297,20 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
     if (req.method === "OPTIONS") return void res.status(204).end();
     next();
   });
-  // Webhook de Stripe (modo pruebas): cuerpo ORIGINAL para la firma, por eso va ANTES de express.json.
-  // El procesador se conecta más abajo, junto al orquestador; hasta entonces los eventos solo se guardan.
+  // Webhook de Stripe (modo de la configuración): cuerpo ORIGINAL para la firma, por eso va ANTES de
+  // express.json. El procesador se conecta más abajo, junto al orquestador; hasta entonces los eventos solo
+  // se guardan.
   let stripeKick: ((eventId: string) => void) | undefined;
   if (d.stripe) {
     const st = d.stripe;
+    // Un almacén de otro modo leería o escribiría filas del otro entorno: no se crea la aplicación
+    if (st.store.mode !== st.config.mode) throw new Error(`El almacén de Stripe es de modo ${st.store.mode} y la configuración de modo ${st.config.mode}`);
+    if (st.config.mode === "live" && d.orders?.payments) throw new Error("El proveedor de pagos simulados no puede montarse con Stripe en modo live");
     app.post(
       "/cp/v1/stripe/webhook",
       rateLimit({ windowMs: 60_000, limit: 600, standardHeaders: true, legacyHeaders: false, keyGenerator: (req) => `ip:${ipKeyGenerator(req.ip ?? "")}` }),
       express.raw({ type: "application/json", limit: "1mb" }),
-      wrap(stripeWebhookHandler({ verify: st.verifyWebhook, store: st.store, onRecorded: (id) => stripeKick?.(id) })),
+      wrap(stripeWebhookHandler({ verify: st.verifyWebhook, store: st.store, mode: st.config.mode, onRecorded: (id) => stripeKick?.(id) })),
     );
   }
   app.use(express.json({ limit: "256kb", verify: (req, _res, buf) => void ((req as any).rawBody = buf.toString("utf8")) }));
@@ -1045,6 +1052,9 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
       if (d.trials.publicEnabled) publicTrial = createPublicTrialRouter({ onboarding, autoProvision: !!d.trials.autoProvision });
     }
     if (d.orders && d.capabilities) {
+      // El modo sale de la configuración de Stripe aunque Stripe no se monte (p. ej. live sin la 0013)
+      if (d.stripe && d.orders.mode && d.orders.mode !== d.stripe.config.mode) throw new Error("El modo de los pedidos no coincide con el de Stripe");
+      const ordersMode = d.stripe?.config.mode ?? d.orders.mode ?? "test";
       // Orquestador comercial: encadena contrato → confirmación → suscripción → licencias → activación
       const orchestrator = new CommercialOrchestrator({
         store: d.orders.store,
@@ -1061,6 +1071,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         notify: d.mail?.platform ? d.mail.platform.orderNotifier({ crmStore: d.crm.store, orders: d.orders.store, reader: d.reader }) : undefined,
         trials: d.trials ? new TrialService({ store: d.trials.store, subscriptions: d.subscriptions.store, now: d.subscriptions.now, limits: d.trials.limits, blockedDomains: d.trials.blockedDomains }) : undefined,
         payments: d.orders.payments ?? null,
+        mode: ordersMode,
         graceDays: d.orders.graceDays,
         coverageHeld: d.stripe ? async (orderId: number) => (await d.stripe!.store.activeHolds(orderId)).length > 0 : undefined,
         now: d.subscriptions.now,
@@ -1069,11 +1080,12 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
       if (d.stripe) {
         const st = d.stripe;
         const stripeCatalog = catalogFromWebStore(d.web.store);
-        const checkout = st.checkoutEnabled && st.urls
-          ? new StripeCheckoutService({ store: st.store, gateway: st.gateway, orders: d.orders.store, crmStore: d.crm.store, catalog: stripeCatalog, urls: st.urls, now: d.subscriptions.now, namespace: st.config.namespace })
+        // En live sin política fiscal, Checkout no se monta aunque se pida (y el servicio también lo rechazaría)
+        const checkout = st.checkoutEnabled && st.urls && !checkoutBlockedReason(st.config)
+          ? new StripeCheckoutService({ store: st.store, gateway: st.gateway, orders: d.orders.store, crmStore: d.crm.store, catalog: stripeCatalog, urls: st.urls, now: d.subscriptions.now, namespace: st.config.namespace, mode: st.config.mode, taxPolicy: st.config.taxPolicy })
           : null;
-        const processor = new StripeEventProcessor({ store: st.store, gateway: st.gateway, orders: d.orders.store, orchestrator, now: d.subscriptions.now, namespace: st.config.namespace });
-        const reconciler = new StripeReconciler({ store: st.store, gateway: st.gateway, processor, now: d.subscriptions.now, retentionDays: st.config.eventsRetentionDays });
+        const processor = new StripeEventProcessor({ store: st.store, gateway: st.gateway, orders: d.orders.store, orchestrator, now: d.subscriptions.now, namespace: st.config.namespace, mode: st.config.mode });
+        const reconciler = new StripeReconciler({ store: st.store, gateway: st.gateway, processor, now: d.subscriptions.now, retentionDays: st.config.eventsRetentionDays, mode: st.config.mode });
         const rechecks = new Map<string, number>();
         const stripeNow = d.subscriptions.now;
         // Tras guardar un evento del webhook se procesa enseguida (los fallos quedan para el reintento)
@@ -1092,8 +1104,8 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
             wrap(async (req, res) => {
               const sessionId = String(req.query.session_id ?? "");
               res.setHeader("Cache-Control", "no-store");
-              if (!SESSION_ID_RE.test(sessionId)) return void res.status(400).json({ error: "invalid_session_id" });
-              const view = await checkoutStatus({ store: st.store, orders: d.orders!.store, processor, platformDomain: d.platformDomain ?? null, rechecks, now: stripeNow }, sessionId);
+              if (!sessionIdRe(st.config.mode).test(sessionId)) return void res.status(400).json({ error: "invalid_session_id" });
+              const view = await checkoutStatus({ store: st.store, orders: d.orders!.store, processor, platformDomain: d.platformDomain ?? null, rechecks, now: stripeNow, mode: st.config.mode }, sessionId);
               if (!view) return void res.status(404).json({ error: "not_found" });
               res.json(view);
             }),

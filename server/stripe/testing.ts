@@ -21,12 +21,14 @@ export class FakeStripeGateway implements StripeGateway {
   private idemParams = new Map<string, string>();
   /** Eventos que «emite» Stripe (para la conciliación); el más reciente al principio, como la API. */
   events: GwEvent[] = [];
+  /** `livemode` de los eventos que «emite» (false: sandbox; true: imita una cuenta live). */
+  livemode = false;
   /** Si es true, cada llamada falla como una caída de Stripe (error de red reintentable). */
   down = false;
   calls: Array<{ op: string; key?: string; input?: unknown }> = [];
   private idem = new Map<string, string>();
   private seq = 0;
-  private next = (p: string) => `${p}_test_${String(++this.seq).padStart(10, "0")}`;
+  private next = (p: string) => `${p}_${this.livemode ? "live" : "test"}_${String(++this.seq).padStart(10, "0")}`;
 
   addProduct(p: Partial<GwProduct> & { id: string }) {
     this.products.set(p.id, { name: "Producto", active: true, metadata: {}, ...p });
@@ -164,7 +166,7 @@ export class FakeStripeGateway implements StripeGateway {
     this.subscriptions.set(subId, { ...this.subscriptions.get(subId)!, ...patch });
   }
   emit(type: string, objectType: string, objectId: string, created = 1_800_000_000 + ++this.seq) {
-    const ev: GwEvent = { id: this.next("evt"), type, created, livemode: false, apiVersion: "2026-09-30.endive", objectType, objectId };
+    const ev: GwEvent = { id: this.next("evt"), type, created, livemode: this.livemode, apiVersion: "2026-09-30.endive", objectType, objectId };
     this.events.unshift(ev);
     return ev;
   }

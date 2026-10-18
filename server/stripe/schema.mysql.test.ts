@@ -1,8 +1,9 @@
 /**
- * Migración 0012_stripe_billing contra MySQL real (opt-in, REGISTRY_TEST_DATABASE_URL; BD aislada creada y
- * borrada aquí): ida, vuelta y otra vez ida; la BD rechaza cualquier fila «live»; unicidad de la
- * correspondencia (precio, cliente por empresa, una sesión de Checkout abierta por pedido, un evento
- * por id).
+ * Migraciones 0012_stripe_billing y 0013_stripe_livemode contra MySQL real (opt-in,
+ * REGISTRY_TEST_DATABASE_URL; BD aislada creada y borrada aquí): ida, vuelta y otra vez ida; con la 0013 la
+ * BD admite filas de pruebas y live (y nada más); su reversión falla sin cambiar nada si hay filas live y,
+ * sin ellas, vuelve a rechazar cualquier fila «live»; unicidad de la correspondencia (precio, cliente por
+ * empresa, una sesión de Checkout abierta por pedido, un evento por id).
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import fs from "node:fs";
@@ -15,19 +16,32 @@ const DB = "stripe_schema_test";
 const DIR = path.resolve(__dirname, "../../db/crm/migrations");
 const now = Date.UTC(2026, 9, 17, 12);
 
-describe.skipIf(!URL_)("migración 0012_stripe_billing con MySQL real", () => {
+describe.skipIf(!URL_)("migraciones 0012_stripe_billing y 0013_stripe_livemode con MySQL real", () => {
   let admin: mysql.Pool;
   let pool: mysql.Pool;
   let stripe: { up: string; down: string };
+  let livemode: { up: string; down: string };
   let orderId = 0;
   let companyId = 0;
   let webPriceId = 0;
 
   const tables = async () =>
     ((await pool.query(`SELECT table_name AS t FROM information_schema.tables WHERE table_schema = ? AND table_name LIKE 'stripe\\_%' ORDER BY 1`, [DB]))[0] as { t: string }[]).map((r) => r.t);
+  // Una sola conexión, como el ejecutor de migraciones (la reversión de 0013 usa una tabla temporal)
   const run = async (sql: string) => {
-    for (const s of splitStatements(sql)) await pool.query(s);
+    const conn = await pool.getConnection();
+    try {
+      for (const s of splitStatements(sql)) await conn.query(s);
+    } finally {
+      conn.release();
+    }
   };
+  const checks = async () =>
+    ((await pool.query(`SELECT constraint_name AS c FROM information_schema.check_constraints WHERE constraint_schema = ? AND constraint_name LIKE 'chk\\_stripe\\_%' ORDER BY 1`, [DB]))[0] as { c: string }[]).map((r) => r.c);
+  const paymentMode = async () =>
+    ((await pool.query(`SELECT column_type AS t FROM information_schema.columns WHERE table_schema = ? AND table_name = 'commercial_payments' AND column_name = 'mode'`, [DB]))[0] as { t: string }[])[0]?.t;
+  const insertPayment = (key: string, mode: string) =>
+    pool.query(`INSERT INTO commercial_payments (order_id, idempotency_key, purpose, amount_cents, currency, status, provider, mode, created_at) VALUES (?, ?, 'initial', 2900, 'EUR', 'pending', 'stripe', ?, ?)`, [orderId, key, mode, now]);
 
   beforeAll(async () => {
     admin = mysql.createPool({ uri: URL_!, connectionLimit: 2 });
@@ -43,6 +57,9 @@ describe.skipIf(!URL_)("migración 0012_stripe_billing con MySQL real", () => {
     const found = migrations.find((m) => m.id === "0012_stripe_billing");
     if (!found?.down) throw new Error("No se encuentra 0012_stripe_billing con su reversión");
     stripe = { up: found.up, down: found.down };
+    const live = migrations.find((m) => m.id === "0013_stripe_livemode");
+    if (!live?.down) throw new Error("No se encuentra 0013_stripe_livemode con su reversión");
+    livemode = { up: live.up, down: live.down };
     for (const m of migrations) await run(m.up);
 
     // Datos mínimos sintéticos: empresa, entrada y precio del catálogo, pedido
@@ -74,14 +91,68 @@ describe.skipIf(!URL_)("migración 0012_stripe_billing con MySQL real", () => {
     expect(await tables()).toEqual(["stripe_charge_adjustments", "stripe_checkout_sessions", "stripe_customers", "stripe_events", "stripe_prices", "stripe_subscriptions", "stripe_sync_state"]);
   });
 
-  it("la BD rechaza filas live en todas las tablas con datos de Stripe", async () => {
-    await expect(pool.query(`INSERT INTO stripe_customers (company_id, stripe_customer_id, livemode, created_at) VALUES (?, 'cus_live_x', 1, ?)`, [companyId, now])).rejects.toThrow();
-    await expect(
-      pool.query(`INSERT INTO stripe_prices (web_price_id, stripe_product_id, stripe_price_id, lookup_key, livemode, created_at, synced_at) VALUES (?, 'prod_x', 'price_x', 'es:x', 1, ?, ?)`, [webPriceId, now, now]),
-    ).rejects.toThrow();
-    await expect(
-      pool.query(`INSERT INTO stripe_events (event_id, type, stripe_created, source, status, livemode, received_at) VALUES ('evt_live', 'invoice.paid', 1, 'webhook', 'received', 1, ?)`, [now]),
-    ).rejects.toThrow();
+  // Filas live (livemode = lm) en las seis tablas con datos de Stripe, para una empresa aparte
+  let liveCompanyId = 0;
+  const liveRows = {
+    customer: (lm: number) => pool.query(`INSERT INTO stripe_customers (company_id, stripe_customer_id, livemode, created_at) VALUES (?, 'cus_live_x', ?, ?)`, [liveCompanyId, lm, now]),
+    price: (lm: number) => pool.query(`INSERT INTO stripe_prices (web_price_id, stripe_product_id, stripe_price_id, lookup_key, livemode, created_at, synced_at) VALUES (?, 'prod_live_x', 'price_live_x', 'es:live:x', ?, ?, ?)`, [webPriceId, lm, now, now]),
+    session: (lm: number) => pool.query(`INSERT INTO stripe_checkout_sessions (order_id, stripe_session_id, idempotency_key, price_ids_json, status, expires_at, livemode, created_at) VALUES (?, 'cs_live_x', 'k-live-x', '[]', 'expired', ?, ?, ?)`, [orderId, now, lm, now]),
+    subscription: (lm: number) => pool.query(`INSERT INTO stripe_subscriptions (stripe_subscription_id, stripe_customer_id, company_id, status, price_ids_json, livemode, synced_at) VALUES ('sub_live_x', 'cus_live_x', ?, 'active', '[]', ?, ?)`, [liveCompanyId, lm, now]),
+    event: (lm: number) => pool.query(`INSERT INTO stripe_events (event_id, type, stripe_created, source, status, livemode, received_at) VALUES ('evt_live_x', 'invoice.paid', 1, 'webhook', 'received', ?, ?)`, [lm, now]),
+    adjustment: (lm: number) => pool.query(`INSERT INTO stripe_charge_adjustments (stripe_charge_id, order_id, company_id, amount_cents, currency, livemode, created_at, updated_at) VALUES ('ch_live_x', ?, ?, 2900, 'EUR', ?, ?, ?)`, [orderId, liveCompanyId, lm, now, now]),
+  };
+  const deleteLiveRows = async () => {
+    for (const t of ["stripe_charge_adjustments", "stripe_subscriptions", "stripe_checkout_sessions", "stripe_events", "stripe_prices", "stripe_customers"]) await pool.query(`DELETE FROM ${t} WHERE livemode = 1`);
+    await pool.query(`DELETE FROM commercial_payments WHERE mode = 'live'`);
+  };
+  const LIVE_CHECKS = ["chk_stripe_adj_livemode", "chk_stripe_checkout_livemode", "chk_stripe_customer_livemode", "chk_stripe_event_livemode", "chk_stripe_price_livemode", "chk_stripe_sub_livemode"];
+  const TEST_CHECKS = ["chk_stripe_adj_test", "chk_stripe_checkout_test", "chk_stripe_customer_test", "chk_stripe_event_test", "chk_stripe_price_test", "chk_stripe_sub_test"];
+
+  it("con 0013 la BD admite filas de pruebas y live en las seis tablas, y ningún otro valor", async () => {
+    const [c] = (await pool.query(`INSERT INTO crm_companies (name, created_at) VALUES ('Empresa Stripe Live', ?)`, [now])) as unknown as [{ insertId: number }];
+    liveCompanyId = c.insertId;
+    expect(await checks()).toEqual(LIVE_CHECKS);
+    for (const ins of Object.values(liveRows)) {
+      await expect(ins(2)).rejects.toThrow(/check constraint/i);
+      await ins(1);
+    }
+    expect(await paymentMode()).toBe("enum('test','live')");
+    await insertPayment("pago-live-1", "live");
+    await expect(insertPayment("pago-otro-1", "otro")).rejects.toThrow();
+  });
+
+  it("vuelta de 0013 sin la comprobación previa y con la sesión NO estricta: aun así nunca altera un pago live", async () => {
+    // Imita una fila live que apareciera después de la comprobación: se ejecuta la reversión sin ella
+    const rest = splitStatements(livemode.down).filter((s) => !/tmp_0013_live_rows/.test(s));
+    const conn = await pool.getConnection();
+    try {
+      await conn.query("SET SESSION sql_mode = ''");
+      await expect((async () => {
+        for (const s of rest) await conn.query(s);
+      })()).rejects.toThrow(/check constraint/i);
+    } finally {
+      conn.release();
+    }
+    expect(await checks()).toEqual(LIVE_CHECKS);
+    expect(await paymentMode()).toBe("enum('test','live')");
+    const [p] = (await pool.query(`SELECT mode FROM commercial_payments WHERE idempotency_key = 'pago-live-1'`)) as unknown as [{ mode: string }[]];
+    expect(p[0].mode).toBe("live");
+  });
+
+  it("vuelta de 0013: con filas live falla SIN cambiar nada; sin ellas vuelve a solo pruebas; y otra vez ida", async () => {
+    await expect(run(livemode.down)).rejects.toThrow(/check constraint/i);
+    expect(await checks()).toEqual(LIVE_CHECKS);
+    expect(await paymentMode()).toBe("enum('test','live')");
+    await deleteLiveRows();
+    await run(livemode.down);
+    expect(await checks()).toEqual(TEST_CHECKS);
+    expect(await paymentMode()).toBe("enum('test')");
+    // Vuelve a rechazar cualquier fila live, como con la 0012 sola
+    for (const ins of Object.values(liveRows)) await expect(ins(1)).rejects.toThrow();
+    await expect(insertPayment("pago-live-2", "live")).rejects.toThrow();
+    await run(livemode.up);
+    expect(await checks()).toEqual(LIVE_CHECKS);
+    expect(await paymentMode()).toBe("enum('test','live')");
   });
 
   it("un cliente por empresa y un evento por id", async () => {
@@ -116,7 +187,8 @@ describe.skipIf(!URL_)("migración 0012_stripe_billing con MySQL real", () => {
     await expect(ins("price_test_2", "es:essential:monthly:eur:v2")).rejects.toThrow(/Duplicate/);
   });
 
-  it("vuelta y otra vez ida", async () => {
+  it("vuelta y otra vez ida (0013 y 0012, en orden inverso)", async () => {
+    await run(livemode.down);
     await run(stripe.down);
     expect(await tables()).toEqual([]);
     // Lo anterior a 0012 sigue intacto
@@ -124,5 +196,8 @@ describe.skipIf(!URL_)("migración 0012_stripe_billing con MySQL real", () => {
     expect(Number(rows[0].n)).toBe(1);
     await run(stripe.up);
     expect((await tables()).length).toBe(7);
+    expect(await checks()).toEqual(TEST_CHECKS);
+    await run(livemode.up);
+    expect(await checks()).toEqual(LIVE_CHECKS);
   });
 });

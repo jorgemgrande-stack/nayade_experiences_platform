@@ -47,7 +47,7 @@ const ADMIN = "stripe-beta-admin-token-aaaaaaaaaaaaaaaa";
 const WEB = "https://web.example";
 const INTAKE_SECRET = "s".repeat(48);
 // Valores ficticios construidos en tiempo de ejecución (no son credenciales)
-const config: StripeConfig = { mode: "test", apiKey: ["sk", "test", "x".repeat(24)].join("_"), webhookSecret: ["whsec", "b".repeat(32)].join("_"), apiVersion: "2026-09-30.endive", keyKind: "secret", namespace: "local", eventsRetentionDays: 180 };
+const config: StripeConfig = { mode: "test", apiKey: ["sk", "test", "x".repeat(24)].join("_"), webhookSecret: ["whsec", "b".repeat(32)].join("_"), apiVersion: "2026-09-30.endive", keyKind: "secret", namespace: "local", eventsRetentionDays: 180, taxPolicy: "test_net_no_tax" };
 const sdk = new Stripe(config.apiKey, { apiVersion: "2026-09-30.endive" as Stripe.LatestApiVersion });
 
 let clock = Date.UTC(2026, 9, 18, 9);

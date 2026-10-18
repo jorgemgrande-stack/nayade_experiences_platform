@@ -11,7 +11,8 @@ const repeated = (threshold: number, minutes: number, title: string, severity: F
 
 export const STRIPE_FAILURE_RULES: Record<string, FailureRule> = {
   // Datos que no corresponden o posibles intentos de engaño: basta una vez
-  "stripe.live_event_rejected": once("Stripe: se ha recibido un evento o un objeto live (rechazado)"),
+  "stripe.live_event_rejected": once("Stripe: se ha recibido un evento o un objeto live en modo pruebas (rechazado)"),
+  "stripe.test_event_rejected": once("Stripe: se ha recibido un evento o un objeto de pruebas en modo live (rechazado)"),
   "stripe.event_mismatch": once("Stripe: un evento apunta a datos que no corresponden (ignorado)"),
   "stripe.session_mismatch": once("Stripe: una sesión de Checkout no corresponde a su pedido o empresa"),
   "stripe.event_failed": once("Stripe: un evento agotó sus reintentos sin aplicarse"),
