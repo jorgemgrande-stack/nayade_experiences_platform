@@ -144,10 +144,10 @@ describe.skipIf(!URL_)("orquestador comercial con MySQL real", () => {
     expect(ev.map((x) => Number(x.version))).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
   });
 
-  it("la BD solo admite pagos de prueba", async () => {
+  it("la BD solo admite pagos de prueba o live (0013): ningún otro modo", async () => {
     const [r] = await pool.query<mysql.RowDataPacket[]>("SELECT id FROM commercial_orders LIMIT 1");
     await expect(
-      pool.query("INSERT INTO commercial_payments (order_id, idempotency_key, purpose, amount_cents, currency, status, provider, mode, created_at) VALUES (?, 'real-1', 'initial', 1, 'EUR', 'pending', 'x', 'live', 1)", [r[0].id]),
+      pool.query("INSERT INTO commercial_payments (order_id, idempotency_key, purpose, amount_cents, currency, status, provider, mode, created_at) VALUES (?, 'real-1', 'initial', 1, 'EUR', 'pending', 'x', 'otro', 1)", [r[0].id]),
     ).rejects.toThrow();
   });
 
