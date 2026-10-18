@@ -1,5 +1,6 @@
 /**
- * Conciliación periódica con Stripe (Fase C). SOLO MODO PRUEBAS. Recuperable y segura con varias réplicas:
+ * Conciliación periódica con Stripe (Fase C), en modo pruebas o live (solo eventos de su modo). Recuperable
+ * y segura con varias réplicas:
  * un arrendamiento en `stripe_sync_state` impide que dos ejecuciones se solapen.
  *
  * En cada pasada:
@@ -18,7 +19,7 @@
  */
 import { opsLog } from "../_core/ops/log";
 import { recordFailure } from "../_core/ops/failureAlerts";
-import { DEFAULT_EVENTS_RETENTION_DAYS, MIN_EVENTS_RETENTION_DAYS } from "./config";
+import { DEFAULT_EVENTS_RETENTION_DAYS, MIN_EVENTS_RETENTION_DAYS, livemodeMatches, type StripeMode } from "./config";
 import { HANDLED_EVENTS, type StripeEventProcessor } from "./events";
 import type { StripeGateway } from "./gateway";
 import type { StripeStore } from "./store";
@@ -46,6 +47,8 @@ export interface ReconcileDeps {
   maxEventPages?: number;
   /** Días que se conservan los eventos terminados (mínimo 35). */
   retentionDays?: number;
+  /** Modo del entorno (por defecto «test»): solo se registran eventos con su `livemode`. */
+  mode?: StripeMode;
 }
 
 export interface ReconcileResult {
@@ -60,8 +63,10 @@ export interface ReconcileResult {
 
 export class StripeReconciler {
   private now: () => number;
+  private mode: StripeMode;
   constructor(private d: ReconcileDeps) {
     this.now = d.now ?? Date.now;
+    this.mode = d.mode ?? "test";
   }
 
   async tick(): Promise<ReconcileResult> {
@@ -80,8 +85,10 @@ export class StripeReconciler {
       for (let page = 0; page < (this.d.maxEventPages ?? 50); page++) {
         const r = await this.d.gateway.listEvents({ createdGte: cursor - OVERLAP_S, types: [...HANDLED_EVENTS], startingAfter, limit: 100 });
         for (const ev of r.events) {
-          if (ev.livemode !== false) {
-            recordFailure("stripe.live_event_rejected");
+          // Un evento de OTRO modo nunca se registra (mismo tratamiento que en el webhook)
+          if (!livemodeMatches(ev.livemode, this.mode)) {
+            if (this.mode === "live") recordFailure("stripe.test_event_rejected");
+            else recordFailure("stripe.live_event_rejected");
             continue;
           }
           const rec = await this.d.store.recordEvent({ eventId: ev.id, type: ev.type, apiVersion: ev.apiVersion, objectType: ev.objectType, objectId: ev.objectId, stripeCreated: ev.created, source: "reconcile", now: this.now() });
