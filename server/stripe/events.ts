@@ -21,6 +21,10 @@
  *    Un reembolso parcial o una disputa abierta solo avisan.
  *  - Cada entorno solo atiende sus objetos (`metadata.es_env`): dos entornos pueden compartir sandbox.
  *  - Los eventos comerciales que se registren al procesar un evento llevan su id como causa.
+ *  - Compras desde la plataforma (./purchases.ts): una suscripción con EXACTAMENTE las partidas que pidió un
+ *    cambio registrado (CRM 0018) es de ese pedido de cambio; su factura pagada lo confirma por el circuito de
+ *    siempre. Un cambio que Stripe descartó sin cobro (sin cambio pendiente, factura anulada) caduca y su pedido
+ *    se rechaza: nunca se concede nada sin cobro.
  */
 import { opsLog } from "../_core/ops/log";
 import { withCommercialCause } from "../commercialEvents/context";
@@ -35,6 +39,7 @@ import { checkInvoiceTax, classifyTerritory, territoryGroup, type FiscalScenario
 import { invoiceDocumentOf, invoiceRecordOf, invoiceSourceKey, pendingSink, rectificationOf, type FiscalDocument, type FiscalDocumentSink, type InvoicePurpose } from "./fiscalDocuments";
 import type { CatalogPort } from "../subscriptions/ports";
 import { SELF_SERVICE_PLANS, desiredCatalog } from "./catalog";
+import { sameItems, type SubscriptionChangeStore } from "./changes";
 
 /** Eventos que se aceptan y procesan (nombres de la API 2026-09-30.endive). */
 export const HANDLED_EVENTS = [
@@ -47,7 +52,10 @@ export const HANDLED_EVENTS = [
   "customer.subscription.deleted",
   "customer.subscription.paused",
   "customer.subscription.resumed",
+  "customer.subscription.pending_update_applied",
+  "customer.subscription.pending_update_expired",
   "invoice.paid",
+  "invoice.voided",
   "invoice.payment_failed",
   "invoice.payment_action_required",
   "charge.refunded",
@@ -74,6 +82,8 @@ export interface OrchestratorPort {
   paymentRecorded?(orderId: number, paymentId: number): Promise<void>;
   /** Cambio de plan o periodicidad hecho en el Customer Portal (orchestrator.applyExternalPlanChange). Opcional. */
   applyExternalPlanChange?(id: number, target: { plan: string; interval: "month" | "year" }, signatureRef: string, actor: string): Promise<{ order: CommercialOrder; created: boolean; noop: boolean; error: string | null }>;
+  /** Rechazo de un pedido de compra cuyo cambio caducó sin cobro. Opcional: sin él solo se marca el cambio. */
+  reject?(id: number, input: { reason: string }, actor: string): Promise<unknown>;
 }
 
 export interface ProcessorDeps {
@@ -96,6 +106,8 @@ export interface ProcessorDeps {
   taxExpectations?: Map<FiscalScenario, TaxTreatment>;
   /** Sistema de facturación legal (cuando se apruebe). Por defecto ninguno: los documentos quedan pendientes. */
   fiscalSink?: FiscalDocumentSink;
+  /** Cambios de partidas pedidos por las compras (CRM 0018). Sin él, una suscripción multipartida es una discordancia. */
+  changes?: SubscriptionChangeStore;
 }
 
 /** Estado de un cargo que deja sin cobertura el periodo que pagó. */
@@ -269,6 +281,9 @@ export class StripeEventProcessor {
     const linked = new Set((await this.d.store.listPrices()).filter((p) => p.status === "active").map((p) => p.stripePriceId));
     if (!sub.priceIds.length || sub.priceIds.some((p) => !linked.has(p))) throw new StripeMismatchError("La suscripción incluye precios que no son del catálogo enlazado");
     const current = await this.currentOrder(own.order);
+    // Compra desde la plataforma: exactamente las partidas (precio y cantidad) que pidió un cambio registrado
+    const purchase = await this.purchaseOf(sub, own.order.companyId, current);
+    if (purchase) return { order: purchase, link: own.link };
     // Alta: exactamente los precios del Checkout del pedido. Vale aunque el evento de Checkout aún no haya llegado
     const sets = await this.d.store.sessionPriceSets(own.order.id);
     const same = (a: string[]) => a.length === sub.priceIds.length && a.every((p) => sub.priceIds.includes(p));
@@ -278,6 +293,47 @@ export class StripeEventProcessor {
     // Cambio hecho en el Customer Portal: solo sobre un pedido vigente y con el orquestador preparado para ello
     if (target && this.d.orchestrator.applyExternalPlanChange && ["active", "past_due", "suspended"].includes(current.state)) return { order: current, link: own.link, change: target };
     throw new StripeMismatchError("Los precios de la suscripción no son los del pedido (¿cambio de plan sin aplicar?)");
+  }
+
+  /**
+   * Pedido de una compra cuyas partidas esperadas tiene ahora la suscripción: el de cambio si aún está en el
+   * circuito (pendiente de confirmar), o el vigente si es ese mismo cambio ya aplicado.
+   */
+  private async purchaseOf(sub: GwSubscription, companyId: number, current: CommercialOrder): Promise<CommercialOrder | null> {
+    if (!this.d.changes || !sub.items?.length) return null;
+    for (const c of await this.d.changes.ofSubscription(sub.id)) {
+      if ((c.status !== "pending" && c.status !== "applied") || c.companyId !== companyId || !sameItems(sub.items, c.expectedItems)) continue;
+      const o = await this.d.orders.get(c.orderId);
+      if (!o || o.companyId !== companyId) continue;
+      if (c.status === "pending" && PIPELINE.includes(o.state)) return o;
+      // Ya vigente (compra aplicada o reducción, que se activa sin cobro antes de llegar a Stripe)
+      if (o.id === current.id && LIVE_OR_SCHEDULED.includes(o.state)) return o;
+    }
+    return null;
+  }
+
+  /**
+   * Cambios de compra resueltos con la suscripción releída: aplicado si ya tiene sus partidas y el pedido está
+   * vivo; caducado si Stripe no tiene cambio pendiente, no tiene las partidas y la factura del prorrateo está
+   * anulada (Stripe la anula al caducar el cambio). Un caducado rechaza su pedido: no se concede nada.
+   */
+  private async settleChanges(sub: GwSubscription) {
+    if (!this.d.changes || !sub.items) return;
+    for (const c of (await this.d.changes.ofSubscription(sub.id)).filter((x) => x.status === "pending")) {
+      const o = await this.d.orders.get(c.orderId);
+      if (!o) continue;
+      if (sameItems(sub.items, c.expectedItems)) {
+        if (LIVE_OR_SCHEDULED.includes(o.state) || o.state === "superseded") await this.d.changes.resolve(c.id, "applied", null, this.now());
+        continue;
+      }
+      if (sub.pendingUpdate || !c.stripeInvoiceId) continue;
+      const inv = await this.d.gateway.invoice(c.stripeInvoiceId);
+      if (!inv || (inv.status !== "void" && inv.status !== "uncollectible")) continue;
+      if (!(await this.d.changes.resolve(c.id, "expired", "El cambio caducó en Stripe sin cobrarse", this.now()))) continue;
+      opsLog("info", "StripeEvents", "purchase_expired", { orderId: o.id, changeId: c.id });
+      if (["requested", "quoted", "contracted"].includes(o.state) && this.d.orchestrator.reject)
+        await this.d.orchestrator.reject(o.id, { reason: "Pago de la compra no completado: el cambio caducó en Stripe" }, this.actor);
+    }
   }
 
   /**
@@ -339,7 +395,9 @@ export class StripeEventProcessor {
     const v = await this.verified(sub);
     if ("ignored" in v) return v.ignored;
     if (v.change) return this.withOrder(v.order.id, () => this.applyPlanChange(v.order, sub, v.change!, v.link.tenantId, hint));
-    return this.withOrder(v.order.id, () => this.applySubscription(v.order, sub, v.link.tenantId, hint));
+    const r = await this.withOrder(v.order.id, () => this.applySubscription(v.order, sub, v.link.tenantId, hint));
+    await this.settleChanges(sub);
+    return r;
   }
 
   /**
