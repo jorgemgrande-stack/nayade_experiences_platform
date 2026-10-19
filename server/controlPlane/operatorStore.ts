@@ -131,6 +131,18 @@ export interface OperatorStore {
   addEvent(e: Omit<OperatorEvent, "id">): Promise<void>;
   listEvents(q: { operatorId?: number; limit: number }): Promise<OperatorEvent[]>;
 
+  /**
+   * Registra un intento fallido de forma ATÓMICA (una sola sentencia condicional, sin leer-modificar-
+   * escribir): suma 1 y, al llegar a `threshold`, bloquea hasta `lockUntil` y reinicia el contador. Si la
+   * cuenta ya está bloqueada (`locked_until > now`) no cuenta nada y devuelve `alreadyLocked`.
+   */
+  registerFailure(id: number, now: number, threshold: number, lockUntil: number): Promise<{ alreadyLocked: boolean; locked: boolean }>;
+  /**
+   * Consume un paso TOTP de forma ATÓMICA: solo si es posterior al último aceptado. `false` si ya se usó
+   * (también ante dos verificaciones simultáneas con el mismo código).
+   */
+  consumeTotpStep(id: number, step: number): Promise<boolean>;
+
   /** El almacén guarda el segundo factor (en MySQL, con la migración 0012 aplicada). */
   readonly mfaSupported: boolean;
   /** Cambia el estado MFA y la caducidad de una sesión viva. */
@@ -238,6 +250,22 @@ export class MemoryOperatorStore implements OperatorStore {
   recovery: Array<{ operatorId: number; hash: string; createdAt: number; usedAt: number | null }> = [];
   constructor(opts: { mfa?: boolean } = {}) {
     this.mfaSupported = opts.mfa ?? true;
+  }
+  // Sin `await` entre la lectura y la escritura: en un solo proceso de JS equivale a la sentencia atómica
+  async registerFailure(id: number, now: number, threshold: number, lockUntil: number) {
+    const o = this.operators.find((x) => x.id === id);
+    if (!o) return { alreadyLocked: false, locked: false };
+    if (o.lockedUntil !== null && o.lockedUntil > now) return { alreadyLocked: true, locked: true };
+    const n = o.failedAttempts + 1;
+    if (n >= threshold) Object.assign(o, { failedAttempts: 0, lockedUntil: lockUntil });
+    else o.failedAttempts = n;
+    return { alreadyLocked: false, locked: n >= threshold };
+  }
+  async consumeTotpStep(id: number, step: number) {
+    const o = this.operators.find((x) => x.id === id);
+    if (!o || (o.mfaLastStep !== null && o.mfaLastStep !== undefined && o.mfaLastStep >= step)) return false;
+    o.mfaLastStep = step;
+    return true;
   }
   async updateSession(id: string, patch: { mfaState: SessionMfaState; expiresAt: number; lastSeenAt: number }) {
     const s = this.sessions.get(id);
@@ -399,6 +427,35 @@ export class MysqlOperatorStore implements OperatorStore {
        VALUES (?,?,?,?,?,?,?,?,?,?${this.mfaSupported ? ",?" : ""})`,
       [s.id, s.operatorId, s.csrfToken, s.createdAt, s.lastSeenAt, s.expiresAt, s.revokedAt, s.revokedReason, s.ip, s.userAgent, ...(this.mfaSupported ? [s.mfaState ?? "none"] : [])],
     );
+  }
+  async registerFailure(id: number, now: number, threshold: number, lockUntil: number) {
+    // Fila bloqueada (FOR UPDATE) durante la lectura y la escritura: entre peticiones o réplicas simultáneas
+    // el contador no se pierde y solo la petición que alcanza el umbral ve `locked` (una auditoría, un cierre).
+    const conn = await this.pool.getConnection();
+    try {
+      await conn.beginTransaction();
+      const [rows] = await conn.query<any[]>("SELECT failed_attempts, locked_until FROM cp_operators WHERE id = ? FOR UPDATE", [id]);
+      const until = num(rows[0]?.locked_until);
+      if (!rows[0] || (until !== null && until > now)) {
+        await conn.commit();
+        return { alreadyLocked: !!rows[0], locked: !!rows[0] };
+      }
+      const n = Number(rows[0].failed_attempts) + 1;
+      const locked = n >= threshold;
+      await conn.query("UPDATE cp_operators SET failed_attempts = ?, locked_until = ? WHERE id = ?", [locked ? 0 : n, locked ? lockUntil : until, id]);
+      await conn.commit();
+      return { alreadyLocked: false, locked };
+    } catch (e) {
+      await conn.rollback().catch(() => {});
+      throw e;
+    } finally {
+      conn.release();
+    }
+  }
+  async consumeTotpStep(id: number, step: number) {
+    if (!this.mfaSupported) return false;
+    const [res] = await this.pool.query<any>("UPDATE cp_operators SET mfa_last_step = ? WHERE id = ? AND (mfa_last_step IS NULL OR mfa_last_step < ?)", [step, id, step]);
+    return Number(res.affectedRows) === 1;
   }
   async updateSession(id: string, patch: { mfaState: SessionMfaState; expiresAt: number; lastSeenAt: number }) {
     if (!this.mfaSupported) return;

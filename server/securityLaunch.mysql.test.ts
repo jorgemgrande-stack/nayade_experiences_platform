@@ -215,6 +215,7 @@ describe.skipIf(!URL_)("seguridad de lanzamiento en multiempresa (aplicación re
     registerBuiltinModules();
     configureModuleAccess(rt.entitlements);
     const app = express();
+    app.set("trust proxy", 1); // como en producción (server/_core/index.ts): HTTPS por X-Forwarded-Proto
     app.use(resolveTenantMiddleware(rt.resolver, { log: () => undefined }));
     app.use(express.json());
     app.use(bindTenantMiddleware());
@@ -394,6 +395,34 @@ describe.skipIf(!URL_)("seguridad de lanzamiento en multiempresa (aplicación re
       const r = await call(host(A), "POST", "/api/auth/logout", { cookie: cookies[A] });
       expect(r.status).toBe(200);
       expect(r.cookies.join(";")).toMatch(/nayade_session=;/);
+    });
+
+    it("MEDIO-8: por HTTPS la sesión va en __Host-nayade_session y en multiempresa la cookie sin prefijo no vale", async () => {
+      const https = { "x-forwarded-proto": "https" };
+      const l = await login(A, `admin@${A}.example`, PASS[A], https);
+      expect(l.status).toBe(200);
+      const c = l.cookies.find((x) => x.startsWith("__Host-nayade_session="))!;
+      expect(c).toMatch(/;\s*Secure/i);
+      expect(c).toMatch(/;\s*Path=\/(;|$)/);
+      expect(c).toMatch(/HttpOnly/i);
+      expect(c).toMatch(/SameSite=Lax/i);
+      expect(c).not.toMatch(/Domain=/i);
+      expect(l.cookies.some((x) => /^nayade_session=;/.test(x))).toBe(true); // se borra la antigua
+      const token = c.split(";")[0].slice("__Host-nayade_session=".length);
+
+      // Con __Host-: autenticado (contexto tRPC y authGuard)
+      expect((await call(host(A), "GET", "/api/auth/me", { cookie: `__Host-nayade_session=${token}`, headers: https })).status).toBe(200);
+      expect((await call(host(A), "GET", `/api/trpc/admin.getUsers${qs(undefined)}`, { cookie: `__Host-nayade_session=${token}`, headers: https })).status).toBe(200);
+      // El mismo token con el nombre sin prefijo (el que otra empresa podría fijar con Domain=<dominio padre>): no vale
+      expect((await call(host(A), "GET", "/api/auth/me", { cookie: `nayade_session=${token}`, headers: https })).status).toBe(401);
+      expect((await call(host(A), "GET", `/api/trpc/admin.getUsers${qs(undefined)}`, { cookie: `nayade_session=${token}`, headers: https })).status).toBe(401);
+      // Y sigue sin autenticar en otra empresa
+      expect((await call(host(B), "GET", "/api/auth/me", { cookie: `__Host-nayade_session=${token}`, headers: https })).status).toBe(401);
+
+      // Logout: borra las dos
+      const out = await call(host(A), "POST", "/api/auth/logout", { cookie: `__Host-nayade_session=${token}`, headers: https });
+      expect(out.cookies.join("\n")).toMatch(/^__Host-nayade_session=;.*Secure/im);
+      expect(out.cookies.join("\n")).toMatch(/^nayade_session=;/m);
     });
 
     it("CSRF: una mutación con cookie válida enviada desde otro origen (otra empresa) no se ejecuta", async () => {

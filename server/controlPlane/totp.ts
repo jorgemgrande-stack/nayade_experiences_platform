@@ -84,14 +84,25 @@ export function otpauthUri(secretB32: string, account: string, issuer = "Big Ele
   return `otpauth://totp/${label}?secret=${secretB32}&issuer=${encodeURIComponent(issuer)}&algorithm=SHA1&digits=${TOTP_DIGITS}&period=${TOTP_PERIOD_S}`;
 }
 
-/** Códigos de recuperación de un solo uso (10 × «xxxx-xxxx», ≈ 40 bits cada uno). */
+const RECOVERY_ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789"; // 31 símbolos, sin 0/o, 1/l/i
+
+/**
+ * Códigos de recuperación de un solo uso: 10 × «xxxx-xxxx-xxxx-xxxx» (16 símbolos ≈ 79 bits cada uno, sin sesgo:
+ * crypto.randomInt). Con ≥ 64 bits, el SHA-256 sin sal que se guarda no se puede invertir por fuerza bruta aunque
+ * se filtre la tabla. Los antiguos «xxxx-xxxx» que ya existan siguen valiendo hasta que se regeneren.
+ */
 export function newRecoveryCodes(n = 10): string[] {
-  const alphabet = "abcdefghjkmnpqrstuvwxyz23456789";
   return Array.from({ length: n }, () => {
-    const b = crypto.randomBytes(8);
-    const s = Array.from(b, (x) => alphabet[x % alphabet.length]).join("");
-    return `${s.slice(0, 4)}-${s.slice(4, 8)}`;
+    const s = Array.from({ length: 16 }, () => RECOVERY_ALPHABET[crypto.randomInt(RECOVERY_ALPHABET.length)]).join("");
+    return s.match(/.{4}/g)!.join("-");
   });
 }
 
-export const normalizeRecoveryCode = (code: string) => String(code ?? "").trim().toLowerCase().replace(/\s/g, "");
+/** Formato de un código de recuperación ya normalizado: el actual (4 grupos) o el antiguo (2 grupos). */
+export const RECOVERY_CODE_RE = /^[a-z0-9]{4}(?:-[a-z0-9]{4}){1}$|^[a-z0-9]{4}(?:-[a-z0-9]{4}){3}$/;
+
+/** Código normalizado a grupos de 4 con guion (admite mayúsculas, espacios y escribirlo sin guiones). */
+export const normalizeRecoveryCode = (code: string) => {
+  const c = String(code ?? "").trim().toLowerCase().replace(/[\s-]/g, "");
+  return c.length === 8 || c.length === 16 ? c.match(/.{4}/g)!.join("-") : c;
+};

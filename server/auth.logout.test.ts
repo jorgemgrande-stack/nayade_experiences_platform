@@ -49,8 +49,9 @@ describe("auth.logout", () => {
     const result = await caller.auth.logout();
 
     expect(result).toEqual({ success: true });
-    expect(clearedCookies).toHaveLength(1);
-    expect(clearedCookies[0]?.name).toBe(COOKIE_NAME);
+    // La del OAuth y las dos variantes de la sesión local (__Host-nayade_session y nayade_session)
+    expect(clearedCookies.map((c) => c.name)).toEqual([COOKIE_NAME, "__Host-nayade_session", "nayade_session"]);
+    expect(clearedCookies[1]?.options).toMatchObject({ secure: true, path: "/" });
     expect(clearedCookies[0]?.options).toMatchObject({
       maxAge: -1,
       secure: true,

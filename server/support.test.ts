@@ -23,7 +23,7 @@ let server: http.Server;
 let port: number;
 const logs: string[] = [];
 
-function call(method: string, path: string, opts: { tenant?: string; cookie?: string } = {}) {
+function call(method: string, path: string, opts: { tenant?: string; cookie?: string; https?: boolean } = {}) {
   return new Promise<{ status: number; body: string; setCookie?: string }>((resolve, reject) => {
     const req = http.request(
       {
@@ -34,6 +34,7 @@ function call(method: string, path: string, opts: { tenant?: string; cookie?: st
         headers: {
           ...(opts.tenant ? { "x-test-tenant": opts.tenant } : {}),
           ...(opts.cookie ? { cookie: opts.cookie } : {}),
+          ...(opts.https ? { "x-forwarded-proto": "https" } : {}),
         },
       },
       (res) => {
@@ -49,6 +50,7 @@ function call(method: string, path: string, opts: { tenant?: string; cookie?: st
 
 beforeAll(async () => {
   const app = express();
+  app.set("trust proxy", 1); // como en producción: HTTPS por X-Forwarded-Proto
   app.use((req, _res, next) => {
     const t = req.headers["x-test-tenant"];
     if (typeof t === "string") runWithTenant(t, () => next());
@@ -95,6 +97,22 @@ describe("concesiones", () => {
 });
 
 describe("sesión de soporte", () => {
+  it("por HTTPS la cookie es __Host-es_support (Secure, Path=/, sin Domain) y la de sin prefijo no vale", async () => {
+    const g = store.create({ tenantId: "acme", operator: "jorge", reason: "Incidencia #124", minutes: 30, readOnly: true });
+    const token = await signSupportToken(g, SECRET);
+    const r = await call("GET", `/_support/enter?t=${token}`, { tenant: "acme", https: true });
+    expect(r.status).toBe(302);
+    expect(r.setCookie).toMatch(/^__Host-es_support=/);
+    expect(r.setCookie).toMatch(/;\s*Secure/i);
+    expect(r.setCookie).toMatch(/;\s*Path=\/(;|$)/);
+    expect(r.setCookie).not.toMatch(/Domain=/i);
+    const ok = await call("GET", "/data", { tenant: "acme", https: true, cookie: cookieFrom(r.setCookie) });
+    expect(JSON.parse(ok.body)).toEqual({ support: true });
+    // El mismo token con el nombre sin prefijo (fijable desde otra empresa con Domain=<dominio padre>): no vale
+    const legacy = await call("GET", "/data", { tenant: "acme", https: true, cookie: `${SUPPORT_COOKIE}=${token}` });
+    expect(JSON.parse(legacy.body)).toEqual({ support: false });
+  });
+
   it("canjea el token en el tenant concedido y establece cookie HttpOnly/Strict", async () => {
     const { r } = await enter("acme");
     expect(r.status).toBe(302);

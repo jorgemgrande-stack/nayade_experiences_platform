@@ -12,7 +12,7 @@ import { createControlPlaneApp } from "./controlPlane/api";
 import { OperatorAuthService } from "./controlPlane/operatorAuth";
 import { MemoryOperatorStore } from "./controlPlane/operatorStore";
 import { mfaRolesFromEnv } from "./controlPlane/operatorSetup";
-import { base32Decode, base32Encode, hotp, otpauthUri, totpStep, verifyTotp } from "./controlPlane/totp";
+import { base32Decode, base32Encode, hotp, newRecoveryCodes, normalizeRecoveryCode, otpauthUri, totpStep, verifyTotp } from "./controlPlane/totp";
 import { MemoryTenantRegistryStore } from "./_core/tenantRegistry/memoryStore";
 import { TenantRegistryService } from "./_core/tenantRegistry/service";
 import { keyringFromEnv } from "./_core/tenantRegistry/crypto";
@@ -36,14 +36,19 @@ afterEach(async () => {
   }
 });
 
-async function setup(o: { mfa?: boolean; required?: OperatorRole[] } = {}): Promise<Ctx> {
-  const clock = { t: Date.UTC(2026, 9, 18, 9) };
-  const store = new MemoryOperatorStore({ mfa: o.mfa ?? true });
-  const svc = new OperatorAuthService(store, { now: () => clock.t, idleMs: 30 * 60_000, maxMs: 8 * 3600_000, mfaKeyring: ring, mfaRequiredRoles: o.required ?? [] });
-  await svc.bootstrap({ username: "root", displayName: "Raíz", password: PW.root });
-  const root = { id: 1, username: "root", role: "superadmin" as const };
-  await svc.create(root, { username: "sara", displayName: "Sara Admin", role: "admin", password: PW.sara });
-  await svc.create(root, { username: "ana", displayName: "Ana Ventas", role: "sales", password: PW.ana });
+async function setup(
+  o: { mfa?: boolean; required?: OperatorRole[]; store?: MemoryOperatorStore; clock?: { t: number }; noKeyring?: boolean; cookieSecure?: boolean } = {},
+): Promise<Ctx> {
+  const clock = o.clock ?? { t: Date.UTC(2026, 9, 18, 9) };
+  const store = o.store ?? new MemoryOperatorStore({ mfa: o.mfa ?? true });
+  // Sin llavero = MFA no disponible (equivale a CP_OPERATOR_MFA=off sobre una BD con la 0012)
+  const svc = new OperatorAuthService(store, { now: () => clock.t, idleMs: 30 * 60_000, maxMs: 8 * 3600_000, mfaKeyring: o.noKeyring ? undefined : ring, mfaRequiredRoles: o.required ?? [] });
+  if ((await store.countOperators()) === 0) {
+    await svc.bootstrap({ username: "root", displayName: "Raíz", password: PW.root });
+    const root = { id: 1, username: "root", role: "superadmin" as const };
+    await svc.create(root, { username: "sara", displayName: "Sara Admin", role: "admin", password: PW.sara });
+    await svc.create(root, { username: "ana", displayName: "Ana Ventas", role: "sales", password: PW.ana });
+  }
   const reg = new MemoryTenantRegistryStore();
   const app = createControlPlaneApp({
     tokens: [],
@@ -55,6 +60,7 @@ async function setup(o: { mfa?: boolean; required?: OperatorRole[] } = {}): Prom
     perMinute: 10_000,
     allowedOrigins: [ORIGIN],
     operators: svc,
+    ...(o.cookieSecure !== undefined ? { cookieSecure: o.cookieSecure } : {}),
   });
   const server = http.createServer(app);
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
@@ -69,7 +75,10 @@ async function call(ctx: Ctx, method: string, path: string, o: { cookie?: string
   if (o.csrf) headers["x-csrf-token"] = o.csrf;
   const r = await fetch(ctx.base + path, { method, headers, body: o.body === undefined ? undefined : JSON.stringify(o.body) });
   const text = await r.text();
-  return { status: r.status, cookie: (r.headers.get("set-cookie") ?? "").split(";")[0], body: text ? JSON.parse(text) : null };
+  const setCookies = r.headers.getSetCookie();
+  // La cookie de sesión vigente (no las que se borran con Max-Age=0)
+  const live = setCookies.find((c) => !/Max-Age=0/.test(c)) ?? setCookies[0] ?? "";
+  return { status: r.status, cookie: live.split(";")[0], setCookies, body: text ? JSON.parse(text) : null };
 }
 
 const totpAt = (secret: string, t: number) => hotp(base32Decode(secret), totpStep(t));
@@ -245,12 +254,139 @@ describe("segundo factor de los operadores", () => {
     expect(ctx.store.operators.find((o) => o.username === "sara")!.mfaEnabledAt).toBeNull();
   });
 
-  it("sin la migración 0012 (almacén sin MFA): el acceso es el de siempre y el alta no está disponible", async () => {
-    const ctx = await setup({ mfa: false, required: ["admin"] });
+  it("sin la migración 0012 y sin roles obligatorios: el acceso es el de siempre y el alta no está disponible", async () => {
+    const ctx = await setup({ mfa: false });
     expect((await call(ctx, "GET", "/auth/options")).body).toMatchObject({ mfa: false });
     const s = await login(ctx, "sara", PW.sara);
     expect(s.body.mfaSetupRequired).toBe(false);
     expect((await call(ctx, "GET", "/operators", { cookie: s.cookie })).status).toBe(200);
-    expect((await call(ctx, "POST", "/auth/mfa/setup", { cookie: s.cookie, csrf: s.csrf })).status).toBe(501);
+    expect((await call(ctx, "POST", "/auth/mfa/setup", { cookie: s.cookie, csrf: s.csrf })).status).toBe(503);
+  });
+});
+
+describe("endurecimiento del MFA (revisión de la ventana de live)", () => {
+  it("MEDIO-3: con roles obligatorios y el MFA no disponible, esos roles NO entran (falla cerrado) y se señala", async () => {
+    const ctx = await setup({ mfa: false, required: ["admin"] });
+    expect(ctx.svc.mfaMisconfigured).toBe(true);
+    const r = await call(ctx, "POST", "/auth/login", { body: { username: "sara", password: PW.sara } });
+    expect(r.status).toBe(503);
+    expect(r.body.error).toBe("mfa_unavailable");
+    // Un rol sin obligación entra como siempre
+    expect((await login(ctx, "ana", PW.ana)).body.mfaSetupRequired).toBe(false);
+  });
+
+  it("MEDIO-3: un operador con MFA activo no entra solo con contraseña si el MFA se apaga, y su sesión deja de valer", async () => {
+    const on = await setup();
+    const { session } = await enroll(on, "sara", PW.sara);
+    // Mismo almacén, servicio sin llavero (= CP_OPERATOR_MFA=off o llavero ausente)
+    const off = await setup({ store: on.store, clock: on.clock, noKeyring: true });
+    expect((await call(off, "POST", "/auth/login", { body: { username: "sara", password: PW.sara } })).status).toBe(503);
+    expect((await call(off, "GET", "/auth/session", { cookie: session.cookie })).status).toBe(401);
+    // Los demás siguen igual
+    expect((await call(off, "POST", "/auth/login", { body: { username: "ana", password: PW.ana } })).status).toBe(200);
+  });
+
+  it("ALTO-1: verificaciones simultáneas con código erróneo no superan el máximo y bloquean una sola vez", async () => {
+    const ctx = await setup();
+    await enroll(ctx, "sara", PW.sara);
+    ctx.clock.t += 60_000;
+    const pend = await Promise.all(Array.from({ length: 4 }, () => call(ctx, "POST", "/auth/login", { body: { username: "sara", password: PW.sara } })));
+    const res = await Promise.all(
+      Array.from({ length: 12 }, (_, i) => call(ctx, "POST", "/auth/mfa/verify", { cookie: pend[i % 4].cookie, body: { code: "000000" } })),
+    );
+    expect(res.every((r) => r.status === 401 || r.status === 429)).toBe(true);
+    const sara = ctx.store.operators.find((o) => o.username === "sara")!;
+    expect(sara.lockedUntil).toBeGreaterThan(ctx.clock.t);
+    expect(sara.failedAttempts).toBeLessThan(5);
+    expect(ctx.store.events.filter((e) => e.kind === "account_locked" && !(e.details as any)?.alreadyLocked)).toHaveLength(1);
+    // Bloqueada: todas sus sesiones (también las pendientes) quedan cerradas
+    expect(Array.from(ctx.store.sessions.values()).filter((s) => s.operatorId === sara.id && s.revokedAt === null)).toHaveLength(0);
+  });
+
+  it("MEDIO-2: el mismo código TOTP enviado dos veces en paralelo abre UNA sola sesión", async () => {
+    const ctx = await setup();
+    const { secret } = await enroll(ctx, "sara", PW.sara);
+    ctx.clock.t += 60_000;
+    const a = await call(ctx, "POST", "/auth/login", { body: { username: "sara", password: PW.sara } });
+    const b = await call(ctx, "POST", "/auth/login", { body: { username: "sara", password: PW.sara } });
+    const code = totpAt(secret, ctx.clock.t);
+    const [ra, rb] = await Promise.all([
+      call(ctx, "POST", "/auth/mfa/verify", { cookie: a.cookie, body: { code } }),
+      call(ctx, "POST", "/auth/mfa/verify", { cookie: b.cookie, body: { code } }),
+    ]);
+    expect([ra.status, rb.status].sort()).toEqual([200, 401]);
+  });
+
+  it("MEDIO-6: con una sesión robada no se puede quitar el MFA por fuerza bruta (bloqueo y sesiones cerradas)", async () => {
+    const ctx = await setup();
+    const { session } = await enroll(ctx, "sara", PW.sara);
+    const statuses: number[] = [];
+    for (let i = 0; i < 6; i++) statuses.push((await call(ctx, "POST", "/auth/mfa/disable", { cookie: session.cookie, csrf: session.csrf, body: { code: "000000" } })).status);
+    expect(statuses.slice(0, 4)).toEqual([401, 401, 401, 401]);
+    expect(statuses[4]).toBe(429);
+    // La sesión (robada) ya no vale y el MFA sigue activo
+    expect(statuses[5]).toBe(401);
+    expect(ctx.store.operators.find((o) => o.username === "sara")!.mfaEnabledAt).toBeTruthy();
+  });
+
+  it("MEDIO-6: los códigos erróneos al dar de alta el MFA también cuentan para el bloqueo", async () => {
+    const ctx = await setup();
+    const s = await login(ctx, "ana", PW.ana);
+    await call(ctx, "POST", "/auth/mfa/setup", { cookie: s.cookie, csrf: s.csrf });
+    const st: number[] = [];
+    for (let i = 0; i < 5; i++) st.push((await call(ctx, "POST", "/auth/mfa/enable", { cookie: s.cookie, csrf: s.csrf, body: { code: "000000" } })).status);
+    expect(st).toEqual([401, 401, 401, 401, 429]);
+    expect((await call(ctx, "POST", "/auth/login", { body: { username: "ana", password: PW.ana } })).status).toBe(429);
+  });
+
+  it("cookie __Host- en HTTPS (Secure, Path=/, sin Domain) y se borra la antigua", async () => {
+    const ctx = await setup({ cookieSecure: true });
+    const r = await call(ctx, "POST", "/auth/login", { body: { username: "ana", password: PW.ana } });
+    const host = r.setCookies.find((c) => c.startsWith("__Host-be_cp_session="))!;
+    expect(host).toMatch(/Path=\//);
+    expect(host).toMatch(/Secure/);
+    expect(host).toMatch(/HttpOnly/);
+    expect(host).toMatch(/SameSite=Strict/);
+    expect(host).not.toMatch(/Domain=/i);
+    expect(r.setCookies.some((c) => /^be_cp_session=;.*Max-Age=0/.test(c))).toBe(true);
+    expect((await call(ctx, "GET", "/auth/session", { cookie: r.cookie })).status).toBe(200);
+  });
+
+  it("los códigos de recuperación se aceptan también sin guion y en mayúsculas", async () => {
+    const ctx = await setup();
+    const { recovery } = await enroll(ctx, "sara", PW.sara);
+    ctx.clock.t += 60_000;
+    const p = await call(ctx, "POST", "/auth/login", { body: { username: "sara", password: PW.sara } });
+    expect((await call(ctx, "POST", "/auth/mfa/verify", { cookie: p.cookie, body: { code: recovery[2].replace(/-/g, "").toUpperCase() } })).status).toBe(200);
+  });
+});
+
+describe("códigos de recuperación (≥ 64 bits)", () => {
+  it("10 códigos de 16 símbolos en 4 grupos (≈ 79 bits), sin caracteres ambiguos y distintos", () => {
+    const codes = newRecoveryCodes();
+    expect(codes).toHaveLength(10);
+    for (const c of codes) expect(c).toMatch(/^[a-hj-km-np-z2-9]{4}(-[a-hj-km-np-z2-9]{4}){3}$/);
+    expect(new Set(codes).size).toBe(10);
+    expect(16 * Math.log2(31)).toBeGreaterThan(64);
+  });
+
+  it("normaliza el formato nuevo y el antiguo (mayúsculas, espacios, sin guiones)", () => {
+    expect(normalizeRecoveryCode(" ABCD EFGH JKMN PQRS ")).toBe("abcd-efgh-jkmn-pqrs");
+    expect(normalizeRecoveryCode("abcdefghjkmnpqrs")).toBe("abcd-efgh-jkmn-pqrs");
+    expect(normalizeRecoveryCode("ABCD-EFGH")).toBe("abcd-efgh");
+  });
+
+  it("un código antiguo de 8 símbolos que ya existía sigue valiendo una vez", async () => {
+    const ctx = await setup();
+    const { session } = await enroll(ctx, "sara", PW.sara);
+    expect(session.cookie).toBeTruthy();
+    const sara = ctx.store.operators.find((o) => o.username === "sara")!;
+    // Código emitido con el formato anterior (antes de este cambio)
+    ctx.store.recovery.push({ operatorId: sara.id, hash: crypto.createHash("sha256").update("abcd-efgh").digest("hex"), createdAt: ctx.clock.t, usedAt: null });
+    ctx.clock.t += 60_000;
+    const p1 = await call(ctx, "POST", "/auth/login", { body: { username: "sara", password: PW.sara } });
+    expect((await call(ctx, "POST", "/auth/mfa/verify", { cookie: p1.cookie, body: { code: "ABCDEFGH" } })).status).toBe(200);
+    const p2 = await call(ctx, "POST", "/auth/login", { body: { username: "sara", password: PW.sara } });
+    expect((await call(ctx, "POST", "/auth/mfa/verify", { cookie: p2.cookie, body: { code: "abcd-efgh" } })).status).toBe(401);
   });
 });

@@ -13,7 +13,8 @@ import { OperatorAuthService } from "./controlPlane/operatorAuth";
 import { MysqlOperatorStore } from "./controlPlane/operatorStore";
 import { operatorAuthFromEnv } from "./controlPlane/operatorSetup";
 import { base32Decode, hotp, totpStep } from "./controlPlane/totp";
-import { keyringFromEnv } from "./_core/tenantRegistry/crypto";
+import { decryptDsn, keyringFromEnv } from "./_core/tenantRegistry/crypto";
+import { missingMfaKeys, rotateOperatorMfaKeys, mfaAad } from "./controlPlane/operatorMfaKeys";
 
 const url = process.env.REGISTRY_TEST_DATABASE_URL;
 const d = url ? describe : describe.skip;
@@ -42,12 +43,20 @@ d("segundo factor de los operadores (MySQL)", () => {
 
   it("sin la 0012 el acceso sigue igual y el MFA queda desactivado (con el motivo)", async () => {
     const p = pool();
-    const setup = await operatorAuthFromEnv(p, { CP_OPERATOR_MFA_ROLES: "superadmin" } as NodeJS.ProcessEnv, { keyring: ring });
-    expect(setup.mfa).toMatchObject({ available: false, requiredRoles: [], reason: expect.stringContaining("0012") });
+    const setup = await operatorAuthFromEnv(p, {} as NodeJS.ProcessEnv, { keyring: ring });
+    expect(setup.mfa).toMatchObject({ available: false, requiredRoles: [], misconfigured: false, reason: expect.stringContaining("0012") });
     await setup.service!.bootstrap({ username: "root", displayName: "Raíz", password: PW.root });
     const r = await setup.service!.login("root", PW.root);
     expect(r.mfa).toBe("none");
     expect((await setup.service!.validateSession(r.token))?.scopes.length).toBeGreaterThan(0);
+    await p.end();
+  });
+
+  it("sin la 0012 pero con roles obligatorios: esos roles no entran (falla cerrado) y se señala", async () => {
+    const p = pool();
+    const setup = await operatorAuthFromEnv(p, { CP_OPERATOR_MFA_ROLES: "superadmin" } as NodeJS.ProcessEnv, { keyring: ring });
+    expect(setup.mfa).toMatchObject({ available: false, requiredRoles: ["superadmin"], misconfigured: true });
+    await expect(setup.service!.login("root", PW.root)).rejects.toMatchObject({ code: "mfa_unavailable" });
     await p.end();
   });
 
@@ -92,5 +101,76 @@ d("segundo factor de los operadores (MySQL)", () => {
     const results = await Promise.allSettled([s2.verifyMfa(a.token, recoveryCodes[1]), s2.verifyMfa(b.token, recoveryCodes[1])]);
     expect(results.filter((x) => x.status === "fulfilled")).toHaveLength(1);
     await p2.end();
+  });
+
+  it("operaciones atómicas en MySQL: un paso TOTP se consume una vez y los fallos simultáneos bloquean una sola vez", async () => {
+    const p = pool();
+    const store = new MysqlOperatorStore(p, { mfa: true });
+    const [[op]] = await admin.query<any[]>("SELECT id FROM cp_operators WHERE username = 'root'");
+    const step = totpStep(Date.now()) + 1000;
+    const used = await Promise.all(Array.from({ length: 6 }, () => store.consumeTotpStep(op.id, step)));
+    expect(used.filter(Boolean)).toHaveLength(1);
+    expect(await store.consumeTotpStep(op.id, step - 1)).toBe(false);
+
+    await admin.query("UPDATE cp_operators SET failed_attempts = 0, locked_until = NULL WHERE id = ?", [op.id]);
+    const now = Date.now();
+    const res = await Promise.all(Array.from({ length: 12 }, () => store.registerFailure(op.id, now, 5, now + 15 * 60_000)));
+    expect(res.filter((r) => r.locked && !r.alreadyLocked)).toHaveLength(1);
+    const [[after]] = await admin.query<any[]>("SELECT failed_attempts, locked_until FROM cp_operators WHERE id = ?", [op.id]);
+    expect(after.failed_attempts).toBe(0);
+    expect(new Date(after.locked_until).getTime()).toBeGreaterThan(now);
+    await admin.query("UPDATE cp_operators SET failed_attempts = 0, locked_until = NULL WHERE id = ?", [op.id]);
+    await p.end();
+  });
+
+  it("MEDIO-4: rotar REGISTRY_KEYS re-cifra los secretos TOTP; con la clave antigua retirada el segundo paso sigue funcionando", async () => {
+    const k1 = ring.keys.get("k1")!.toString("base64");
+    const k2 = crypto.randomBytes(32).toString("base64");
+    const both = keyringFromEnv({ REGISTRY_KEYS: `k1:${k1},k2:${k2}`, REGISTRY_ACTIVE_KEY_ID: "k2" } as NodeJS.ProcessEnv);
+    const onlyK2 = keyringFromEnv({ REGISTRY_KEYS: `k2:${k2}`, REGISTRY_ACTIVE_KEY_ID: "k2" } as NodeJS.ProcessEnv);
+    const [[before]] = await admin.query<any[]>("SELECT id, mfa_secret_cipher, mfa_key_id FROM cp_operators WHERE username = 'root'");
+    expect(before.mfa_key_id).toBe("k1");
+    const secret = decryptDsn(before.mfa_secret_cipher, "k1", mfaAad(before.id), ring);
+    await admin.query("UPDATE cp_operators SET mfa_last_step = NULL WHERE id = ?", [before.id]);
+
+    const p = pool();
+    // Arranque con la clave antigua ya retirada: se detecta
+    expect(await missingMfaKeys(p, onlyK2)).toEqual(["k1"]);
+    // Simulación: detecta lo pendiente y no escribe
+    const plan = await rotateOperatorMfaKeys(p, both, { apply: false, actor: "test" });
+    expect(plan).toMatchObject({ supported: true, pending: 1, rotated: 0, failed: [] });
+    expect((await admin.query<any[]>("SELECT mfa_key_id FROM cp_operators WHERE id = ?", [before.id]))[0][0].mfa_key_id).toBe("k1");
+    // Aplicación: re-cifrado y auditado; repetir no hace nada
+    expect(await rotateOperatorMfaKeys(p, both, { apply: true, actor: "test" })).toMatchObject({ pending: 1, rotated: 1, failed: [] });
+    expect(await rotateOperatorMfaKeys(p, both, { apply: true, actor: "test" })).toMatchObject({ pending: 0, rotated: 0 });
+    const [[after]] = await admin.query<any[]>("SELECT mfa_secret_cipher, mfa_key_id FROM cp_operators WHERE id = ?", [before.id]);
+    expect(after.mfa_key_id).toBe("k2");
+    expect(after.mfa_secret_cipher).not.toBe(before.mfa_secret_cipher);
+    const [ev] = await admin.query<any[]>("SELECT details FROM cp_operator_events WHERE kind = 'mfa_key_rotated' AND operator_id = ?", [before.id]);
+    expect(ev).toHaveLength(1);
+    expect(JSON.stringify(ev)).not.toContain(secret);
+    expect(await missingMfaKeys(p, onlyK2)).toEqual([]);
+
+    // Sin k1: login en dos pasos con un código TOTP real
+    const svc = new OperatorAuthService(new MysqlOperatorStore(p, { mfa: true }), { mfaKeyring: onlyK2 });
+    const pending = await svc.login("root", PW.root);
+    expect(pending.mfa).toBe("pending");
+    const done = await svc.verifyMfa(pending.token, hotp(base32Decode(secret), totpStep(Date.now())));
+    expect((await svc.validateSession(done.token))?.operator.username).toBe("root");
+
+    // Un secreto con una clave desconocida se informa como irrecuperable y no se toca
+    await admin.query("UPDATE cp_operators SET mfa_key_id = 'kX' WHERE id = ?", [before.id]);
+    const bad = await rotateOperatorMfaKeys(p, both, { apply: true, actor: "test" });
+    expect(bad).toMatchObject({ pending: 1, rotated: 0, failed: [{ username: "root", keyId: "kX", reason: "key_missing" }] });
+    expect((await admin.query<any[]>("SELECT mfa_secret_cipher FROM cp_operators WHERE id = ?", [before.id]))[0][0].mfa_secret_cipher).toBe(after.mfa_secret_cipher);
+    await admin.query("UPDATE cp_operators SET mfa_key_id = 'k2' WHERE id = ?", [before.id]);
+    await p.end();
+  });
+
+  it("MEDIO-4: el arranque avisa (mfa_key_missing) si falta la clave de algún secreto", async () => {
+    const p = pool();
+    const setup = await operatorAuthFromEnv(p, {} as NodeJS.ProcessEnv, { keyring: ring }); // solo k1; el secreto está con k2
+    expect(setup.mfa).toMatchObject({ available: true, missingKeys: ["k2"] });
+    await p.end();
   });
 });

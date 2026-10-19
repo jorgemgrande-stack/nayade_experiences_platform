@@ -48,6 +48,8 @@
 	@app_entry host {$APP_ENTRY_HOST:app-entry.invalid}
 	handle @app_entry {
 		header {
+			Strict-Transport-Security "max-age=31536000"
+			X-Content-Type-Options "nosniff"
 			X-Frame-Options "DENY"
 			Content-Security-Policy "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; form-action 'none'; frame-ancestors 'none'; base-uri 'none'"
 			Referrer-Policy "no-referrer"

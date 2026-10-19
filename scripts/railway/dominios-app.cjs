@@ -9,6 +9,8 @@
 //   ES_PRIVATE_DIR=<carpeta> node scripts/railway/dominios-app.cjs                 # inventario y plan
 //   ES_PRIVATE_DIR=<carpeta> node scripts/railway/dominios-app.cjs --apply         # registra el plan
 //   ... --platform app.bigelephant.es --only t3-empresa-demo-elephant-01           # opciones
+//   ES_ENV=live ES_CP_BASE=<origen del CRM de live> …    # otro entorno (por defecto production; ver cp.cjs)
+// Con verificación en dos pasos, cp.cjs pide el código (o lo toma de ES_TOTP).
 //
 // Requisitos antes de --apply: el comodín *.app.bigelephant.es apuntando a core-gateway (Railway + DNS), para
 // que los dominios nuevos respondan. Registrarlos antes no rompe nada: solo no serían accesibles todavía.
@@ -22,7 +24,7 @@ const LABEL = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 const LIVE = new Set(["provisioning", "trial", "active", "grace", "suspended"]);
 
 /**
- * Plan de dominios a partir del inventario (lógica pura, probada sin red).
+ * Plan de dominios a partir del inventario (lógica pura; pruebas en server/dominiosApp.test.ts).
  * @param {{ id: string, status?: string, domains: { domain: string, kind?: string, status?: string }[] }[]} tenants
  * @param {string} platform p. ej. "app.bigelephant.es"
  */
