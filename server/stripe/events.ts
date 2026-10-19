@@ -306,6 +306,7 @@ export class StripeEventProcessor {
       const o = await this.d.orders.get(c.orderId);
       if (!o || o.companyId !== companyId) continue;
       if (c.status === "pending" && PIPELINE.includes(o.state)) return o;
+      // Ya vigente (compra aplicada o reducción, que se activa sin cobro antes de llegar a Stripe)
       if (o.id === current.id && LIVE_OR_SCHEDULED.includes(o.state)) return o;
     }
     return null;

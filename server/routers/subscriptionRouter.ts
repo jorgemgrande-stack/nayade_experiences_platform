@@ -25,6 +25,14 @@ const purchaseInput = z
     storageGb: z.number().int().min(0).max(1_000_000).optional(),
   })
   .strict();
+const reductionInput = z
+  .object({
+    remove: z.array(z.string().regex(/^[a-z0-9][a-z0-9-]{1,63}$/)).max(20).optional(),
+    users: z.number().int().min(0).max(100_000).optional(),
+    sites: z.number().int().min(0).max(10_000).optional(),
+    storageGb: z.number().int().min(0).max(1_000_000).optional(),
+  })
+  .strict();
 const TRPC_CODE: Record<number, TRPCError["code"]> = { 400: "BAD_REQUEST", 403: "FORBIDDEN", 404: "NOT_FOUND", 409: "CONFLICT", 503: "PRECONDITION_FAILED" };
 
 /**
@@ -70,6 +78,14 @@ export const subscriptionRouter = router({
       return commerce(String(ctx.user.role), (c, t) => c.purchase(t, what, { idempotencyKey, buyer: `user:${ctx.user.id}` }));
     }),
   purchaseStatus: protectedProcedure.input(z.object({ orderId: z.number().int().positive() })).query(({ ctx, input }) => commerce(String(ctx.user.role), (c, t) => c.status(t, input.orderId))),
+  /** Bajas y reducciones a fin de periodo: qué cambiaría (sin abonos; nunca por debajo del uso real). */
+  reductionPreview: protectedProcedure.input(reductionInput).mutation(({ ctx, input }) => commerce(String(ctx.user.role), (c, t) => c.previewReduction(t, input))),
+  reduce: protectedProcedure
+    .input(reductionInput.extend({ idempotencyKey: z.string().regex(/^[A-Za-z0-9_-]{16,64}$/) }))
+    .mutation(({ ctx, input }) => {
+      const { idempotencyKey, ...what } = input;
+      return commerce(String(ctx.user.role), (c, t) => c.reduce(t, what, { idempotencyKey, buyer: `user:${ctx.user.id}` }));
+    }),
   /** Canal de ayuda (correo configurable): disponible también en solo lectura o con la prueba vencida. */
   supportContact: protectedProcedure.query(async ({ ctx }) => {
     if (!(PANEL_ROLES as readonly string[]).includes(String(ctx.user.role))) throw new TRPCError({ code: "FORBIDDEN" });

@@ -1234,6 +1234,8 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
             gateway: st.gateway,
             stripeStore: st.store,
             changes: st.purchases.changes,
+            subscriptions: svc,
+            subscriptionItems: d.subscriptions.store,
             settle: (subId, inv) => processor.handleSubscription(subId, inv),
             now: d.subscriptions.now,
           });

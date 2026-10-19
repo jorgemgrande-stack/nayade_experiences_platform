@@ -612,6 +612,17 @@ export class SubscriptionService {
 
   // ── Lectura ────────────────────────────────────────────────────────────────
 
+  /**
+   * Comprobación previa, sin cambiar nada: ¿se puede dejar la ampliación en `quantity` unidades sin quedar por
+   * debajo del uso real? Lanza el mismo error que `changeQuantity`/`removeItem`.
+   */
+  async checkReduction(id: number, input: { productKey: string; quantity: number }) {
+    const sub = await this.must(id);
+    const product = await this.d.catalog.product(input.productKey);
+    if (!product?.addonFor) return;
+    await this.assertAboveUsage(sub, await this.d.store.items(id), product.key, product.addonFor, input.quantity);
+  }
+
   async must(id: number) {
     const s = await this.d.store.get(id);
     if (!s) throw new SubscriptionError("not_found", "Suscripción no encontrada");
