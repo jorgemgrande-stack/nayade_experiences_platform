@@ -83,6 +83,10 @@ export function checkLiveVariables(vars: Record<string, string | undefined>): Ch
   for (const k of FORBIDDEN_IN_LIVE) add(`sin_${k}`, !vars[k], true, vars[k] ? `${k} existe: los pagos simulados no pueden montarse en live` : `${k} ausente`);
   for (const k of OPENING_FLAGS) add(`cerrado_${k}`, !on(vars[k]), true, on(vars[k]) ? `${k} está encendida: activar Stripe no abre la venta (requiere autorización aparte)` : `${k} apagada`);
 
+  // Sin el worker no hay reintentos ni recuperación de webhooks perdidos (conciliación)
+  const worker = (vars.CP_STRIPE_WORKER_ENABLED ?? "").trim() === "1";
+  add("conciliacion", worker, false, worker ? "CP_STRIPE_WORKER_ENABLED=1 (reintentos y conciliación)" : "CP_STRIPE_WORKER_ENABLED no es 1: sin reintentos ni recuperación de webhooks perdidos");
+
   const tax = (vars.CP_STRIPE_TAX_POLICY ?? "").trim();
   add("politica_fiscal", !!tax, false, tax ? `CP_STRIPE_TAX_POLICY=${tax}` : "CP_STRIPE_TAX_POLICY ausente: Checkout bloqueado (tax_policy_pending) hasta aprobar la política fiscal");
   return out;

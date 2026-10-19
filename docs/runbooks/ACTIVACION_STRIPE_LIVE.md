@@ -95,7 +95,7 @@ Alternativa: Dashboard de Railway → entorno `live` → `controlplane` → Vari
 
 | # | Paso | Aceptación |
 |---|---|---|
-| 1 | `stripe-live.ts comprobar` | Solo queda `politica_fiscal` en AVISO; `webhook` en AVISO si la clave no lee webhooks. Los 4 precios en OK |
+| 1 | `stripe-live.ts comprobar` (y `CP_STRIPE_WORKER_ENABLED=1` para la conciliación) | Solo queda `politica_fiscal` en AVISO; `webhook` en AVISO si la clave no lee webhooks. Los 4 precios en OK |
 | 2 | Comprobar en el Dashboard la URL, el estado activo y los 18 eventos | Lo confirma el propietario o el MCP de Stripe (solo lectura) |
 | 3 | `stripe-live.ts activar` (simulación) y después `activar --apply` | `CP_STRIPE_MODE=live` escrito sin desplegar |
 | 4 | `railway up` del export verificado del controlplane de `live` (hoy `release/live-correo`, `b1e3786`) | Arranque limpio: `Stripe enabled=true mode="live" keyKind="restricted" namespace="live" taxPolicy="pending"`, `checkoutBlocked="tax_policy_pending"` |

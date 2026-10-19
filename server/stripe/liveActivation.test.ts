@@ -31,6 +31,9 @@ describe("activación de Stripe live: variables", () => {
     expect(c.configuracion.detail).toContain('"mode":"live"');
     expect(c.politica_fiscal).toMatchObject({ ok: false, blocking: false });
     expect(c.politica_fiscal.detail).toContain("tax_policy_pending");
+    // La conciliación apagada solo avisa; encendida, OK
+    expect(c.conciliacion).toMatchObject({ ok: false, blocking: false });
+    expect(byId(checkLiveVariables(base({ CP_STRIPE_WORKER_ENABLED: "1" }))).conciliacion.ok).toBe(true);
     noSecrets(JSON.stringify(checks));
   });
 
