@@ -1,5 +1,5 @@
 /**
- * Registro de facturas de Stripe y cola de documentos fiscales (migración CRM 0015).
+ * Registro de facturas de Stripe y cola de documentos fiscales (migración CRM 0016).
  *
  * Quién emite la factura LEGAL no está decidido (DF-2) y Elephant Source no implementa VeriFactu. Por eso:
  *  - cada factura COBRADA en Stripe se copia en `stripe_invoices` (trazabilidad: base, impuesto, total,

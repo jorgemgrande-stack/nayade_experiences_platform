@@ -20,8 +20,10 @@
  *    aunque Stripe muestre la suscripción activa, hasta un pago nuevo, una disputa ganada o un operador.
  *    Un reembolso parcial o una disputa abierta solo avisan.
  *  - Cada entorno solo atiende sus objetos (`metadata.es_env`): dos entornos pueden compartir sandbox.
+ *  - Los eventos comerciales que se registren al procesar un evento llevan su id como causa.
  */
 import { opsLog } from "../_core/ops/log";
+import { withCommercialCause } from "../commercialEvents/context";
 import { recordFailure } from "../_core/ops/failureAlerts";
 import type { OrderStore } from "../orchestrator/store";
 import type { CommercialOrder } from "../orchestrator/types";
@@ -122,7 +124,7 @@ export class StripeEventProcessor {
     const rows = await this.d.store.claimEvents(this.now(), limit, LEASE_MS);
     for (const row of rows) {
       try {
-        const r = await this.process(row);
+        const r = await withCommercialCause({ source: "stripe", causationId: `stripe:${row.eventId}` }, () => this.process(row));
         await this.d.store.finishEvent(row.eventId, r.outcome, r.detail, this.now());
         out[r.outcome]++;
       } catch (e) {
@@ -371,7 +373,7 @@ export class StripeEventProcessor {
   }
 
   /**
-   * Registro de la factura cobrada y su documento fiscal pendiente (0015). Sin la migración se avisa y se
+   * Registro de la factura cobrada y su documento fiscal pendiente (0016). Sin la migración se avisa y se
    * sigue: el cobro y la activación nunca dependen del registro documental.
    */
   private async recordInvoice(orderId: number, inv: GwInvoice, purpose: InvoicePurpose, refundedCents = 0): Promise<FiscalDocument | null> {

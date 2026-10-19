@@ -36,6 +36,20 @@ describe("dominios-app.cjs: plan de dominios de las empresas", () => {
     expect(rows.d.action).toBe("add");
   });
 
+  it("un dominio registrado pero sin activar se activa (el resolvedor solo sirve los «active»)", () => {
+    const rows = byTenant(
+      plan(
+        [
+          { id: "e", status: "active", domains: [{ domain: "e.app.bigelephant.es", status: "verified" }] },
+          { id: "f", status: "active", domains: [{ domain: "f.app.bigelephant.es", status: "active" }] },
+        ],
+        P,
+      ),
+    );
+    expect(rows.e).toMatchObject({ action: "activate", reason: expect.stringContaining("verified") });
+    expect(rows.f).toMatchObject({ action: "skip", reason: "ya registrado" });
+  });
+
   it("colisiones: etiqueta reservada, no válida, o dominio de otra empresa", () => {
     const rows = byTenant(
       plan(
