@@ -283,14 +283,13 @@ describe("Operación SaaS: endpoints del plano de control", () => {
 });
 
 describe("correos de la prueba y del orquestador: solo por el puerto de avisos, nada real", () => {
-  it("la conversión de prueba a pago no envía nada; los avisos van por el puerto (aquí, un buzón en memoria)", async () => {
+  it("la conversión de prueba a pago sin pedido no se hace ni envía nada; los avisos van por el puerto (aquí, un buzón en memoria)", async () => {
     await call("POST", "/public/trial", { body: { email: "eva@casa.example", companyName: "Casa Eva", idempotencyKey: key() } });
     const v = outbox.filter((m) => m.kind === "verification").at(-1)!;
     await call("POST", "/public/trial/verify", { body: { id: v.data.trialId, token: v.data.token } });
     const sent = outbox.length;
-    const r = await call("POST", `/trials/${v.data.trialId}/convert`, { token: OPS, body: {} });
-    expect(r.status).toBe(200);
-    expect(r.json.trial.state).toBe("converted");
+    const r = await call("POST", `/trials/${v.data.trialId}/convert`, { token: OPS, body: { category: "exception", reason: "Conversión excepcional de prueba sin pedido" } });
+    expect(r.status).toBe(409);
     expect(outbox.length).toBe(sent);
     expect(smtp.createTransport + smtp.sendMail).toBe(0);
   });

@@ -20,11 +20,19 @@ import { TrialError, TrialService } from "./service";
 import type { TrialStore } from "./store";
 import { TRIAL_STATES } from "./machine";
 import { opsLog } from "../_core/ops/log";
+import { APPROVAL_CATEGORIES, OrderError, type ApprovalCategory } from "../orchestrator/types";
 
-const ERR_STATUS: Record<string, number> = { invalid_input: 400, not_found: 404, conflict: 409, invalid_state: 409, limit: 429, forbidden: 403 };
+/**
+ * Conversión de una prueba a pago por EXCEPCIÓN administrativa: la hace el orquestador con un pedido de
+ * conversión confirmado por aprobación tipificada (categoría, motivo y, si es un cobro fuera de Stripe, su
+ * referencia). Sin orquestador no hay conversión por esta vía: se usa POST /orders con el cobro.
+ */
+export type TrialExceptionConversion = (trialId: number, input: { category: ApprovalCategory; reason: string; reference?: string; plan?: string; interval?: "month" | "year" }, actor: string) => Promise<{ order: unknown; trial: unknown }>;
+
+const ERR_STATUS: Record<string, number> = { invalid_input: 400, not_found: 404, conflict: 409, invalid_state: 409, limit: 429, forbidden: 403, unavailable: 503 };
 const wrap = (fn: (req: Request, res: Response) => Promise<void>) => (req: Request, res: Response, next: NextFunction) =>
   fn(req, res).catch((e) => {
-    if (e instanceof TrialError) return void res.status(ERR_STATUS[e.code] ?? 400).json({ error: e.code, message: e.message });
+    if (e instanceof TrialError || e instanceof OrderError) return void res.status(ERR_STATUS[e.code] ?? 400).json({ error: e.code, message: e.message });
     if (e instanceof z.ZodError) return void res.status(400).json({ error: "invalid_input", message: e.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ") });
     next(e);
   });
@@ -117,7 +125,7 @@ export function createPublicTrialRouter(o: { onboarding: TrialOnboardingService;
   return r;
 }
 
-export function createTrialAdminRouter(o: { onboarding: TrialOnboardingService; trials: TrialService; store: TrialStore }): Router {
+export function createTrialAdminRouter(o: { onboarding: TrialOnboardingService; trials: TrialService; store: TrialStore; convert?: { run?: TrialExceptionConversion } }): Router {
   const r = express.Router();
   const id = z.coerce.number().int().positive();
   const listActive = async () => (await o.store.list({ states: ["active"] })).map((t) => ({ id: t.id, email: t.email, endsAt: t.endsAt }));
@@ -234,9 +242,24 @@ export function createTrialAdminRouter(o: { onboarding: TrialOnboardingService; 
     requireScope("subscriptions:write"),
     requireScope("entitlements:write"),
     wrap(async (req, res) => {
-      const b = z.object({ plan: z.string().regex(/^[a-z0-9][a-z0-9-]{0,62}$/).optional() }).strict().parse(req.body ?? {});
-      const out = await o.onboarding.convert(id.parse(req.params.id), { plan: b.plan, actor: who(req) });
-      res.json({ ...out, trial: TrialService.view(out.trial) });
+      // Nunca sin pedido: la conversión normal es POST /orders con trialId y su cobro verificado. Esta ruta es la
+      // EXCEPCIÓN administrativa auditada (misma aprobación tipificada que /orders/:id/approve).
+      const b = z
+        .object({
+          category: z.enum(APPROVAL_CATEGORIES),
+          reason: z.string().trim().min(20).max(300),
+          reference: z.string().trim().min(3).max(80).optional(),
+          plan: z.string().regex(/^[a-z0-9][a-z0-9-]{0,62}$/).optional(),
+          interval: z.enum(["month", "year"]).optional(),
+        })
+        .strict()
+        .parse(req.body ?? {});
+      if (!o.convert?.run) {
+        res.status(409).json({ error: "orders_required", message: "La conversión se hace con un pedido (POST /orders con trialId) y su cobro; los pedidos no están activos aquí" });
+        return;
+      }
+      const out = await o.convert.run(id.parse(req.params.id), b, who(req));
+      res.json(out);
     }),
   );
   for (const action of ["reject", "cancel"] as const) {

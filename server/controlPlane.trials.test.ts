@@ -193,17 +193,18 @@ describe("prueba gratuita de Essential de punta a punta", () => {
     expect(await registryReader.getTenant(tenantId)).toBeTruthy();
   });
 
-  it("conversión a Business: suscripción activa, 44 capacidades sin caducidad y prueba cerrada", async () => {
-    const r = await call("POST", `/trials/${trialId}/convert`, { token: ADMIN, body: { plan: "business" } });
-    expect(r.status).toBe(200);
-    expect(r.json.trial.state).toBe("converted");
-    const sub = (await subsStore.list({}))[0];
-    expect(sub.status).toBe("active");
-    const granted = (await caps.list(tenantId)).filter((g) => g.status === "active");
-    expect(granted).toHaveLength(44);
-    expect(granted.every((g) => g.validUntil === null)).toBe(true);
-    expect((await access().check("roles-custom", { write: true, tenantId })).allowed).toBe(true);
-    expect((await call("POST", `/trials/${trialId}/activate`, { token: ADMIN })).status).toBe(409);
+  it("sin pedido no hay conversión a pago: el atajo exige la excepción tipificada y, sin orquestador, se rechaza", async () => {
+    // Sin categoría ni motivo: rechazada antes de tocar nada
+    expect((await call("POST", `/trials/${trialId}/convert`, { token: ADMIN, body: { plan: "business" } })).status).toBe(400);
+    // Con la excepción completa, pero sin pedidos activos en este plano de control: 409 (se usa POST /orders y su cobro)
+    const r = await call("POST", `/trials/${trialId}/convert`, { token: ADMIN, body: { plan: "business", category: "exception", reason: "Cliente piloto autorizado por dirección comercial" } });
+    expect(r.status).toBe(409);
+    expect(r.json.error).toBe("orders_required");
+    // Nada cambió: la prueba sigue vencida, la suscripción en prueba y ninguna licencia de pago
+    expect((await call("GET", `/trials/${trialId}`, { token: ADMIN })).json.trial.state).toBe("expired");
+    expect((await subsStore.list({}))[0].status).toBe("trialing");
+    expect((await caps.list(tenantId)).filter((g) => g.validUntil === null)).toHaveLength(0);
+    expect((await access().check("roles-custom", { write: true, tenantId })).allowed).toBe(false);
   });
 
   it("fallo del aprovisionamiento: el correo queda verificado, la activación pendiente y se reintenta", async () => {
