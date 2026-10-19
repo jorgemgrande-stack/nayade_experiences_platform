@@ -57,6 +57,8 @@ export const SCOPES = [
   "orders:read",
   "orders:write",
   "orders:approve",
+  // Compra de módulos desde la plataforma: SOLO el token de servicio del Core (tenant de la sesión del Core)
+  "commerce:purchase",
 ] as const;
 export type Scope = (typeof SCOPES)[number];
 

@@ -117,6 +117,8 @@ export interface StripeStore {
   updateSession(stripeSessionId: string, patch: { status: SessionStatus; paymentStatus: string | null; completedAt: number | null }): Promise<void>;
   upsertSubscription(s: StripeSubscriptionRow): Promise<void>;
   subscription(id: string): Promise<StripeSubscriptionRow | null>;
+  /** Suscripciones de Stripe no terminadas de la empresa (copias releídas), la más reciente primero. */
+  subscriptionsOfCompany(companyId: number): Promise<string[]>;
   // ── Eventos (webhook y conciliación) ──
   /** Registra un evento una sola vez (clave primaria = id de Stripe). `created: false` si ya existía. */
   recordEvent(e: { eventId: string; type: string; apiVersion: string | null; objectType: string | null; objectId: string | null; stripeCreated: number; source: "webhook" | "reconcile"; now: number }): Promise<{ created: boolean }>;
@@ -415,6 +417,12 @@ export class MemoryStripeStore implements StripeStore {
     const x = this.subscriptions.get(id);
     return x && this.mine("subscriptions", id) ? { ...x, priceIds: [...x.priceIds] } : null;
   }
+  async subscriptionsOfCompany(companyId: number) {
+    return Array.from(this.subscriptions.values())
+      .filter((x) => x.companyId === companyId && this.mine("subscriptions", x.id) && x.status !== "canceled" && x.status !== "incomplete_expired")
+      .sort((a, b) => b.syncedAt - a.syncedAt)
+      .map((x) => x.id);
+  }
 
   invoiceRecords = new Map<string, StripeInvoiceRecord>();
   fiscalDocs: FiscalDocument[] = [];
@@ -621,6 +629,13 @@ export class MysqlStripeStore implements StripeStore {
          ${["status", "cancel_at", "cancel_at_period_end", "current_period_end", "latest_invoice_id", "price_ids_json", "synced_at"].map(own).join(", ")}`,
       [s.id, s.customerId, s.companyId, s.orderId, s.tenantId, s.status, s.cancelAt, s.cancelAtPeriodEnd ? 1 : 0, s.currentPeriodEnd, s.latestInvoiceId, JSON.stringify(s.priceIds), this.lm, s.syncedAt],
     );
+  }
+  async subscriptionsOfCompany(companyId: number) {
+    const [rows] = await this.pool.query<Row[]>(
+      "SELECT stripe_subscription_id FROM stripe_subscriptions WHERE company_id = ? AND livemode = ? AND status NOT IN ('canceled','incomplete_expired') ORDER BY synced_at DESC",
+      [companyId, this.lm],
+    );
+    return rows.map((r) => String(r.stripe_subscription_id));
   }
   async subscription(id: string) {
     const [rows] = await this.pool.query<Row[]>("SELECT * FROM stripe_subscriptions WHERE stripe_subscription_id = ? AND livemode = ?", [id, this.lm]);
