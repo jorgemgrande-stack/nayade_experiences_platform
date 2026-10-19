@@ -22,7 +22,7 @@ const LABEL = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 const LIVE = new Set(["provisioning", "trial", "active", "grace", "suspended"]);
 
 /**
- * Plan de dominios a partir del inventario (lógica pura, probada sin red).
+ * Plan de dominios a partir del inventario (lógica pura; pruebas en server/dominiosApp.test.ts).
  * @param {{ id: string, status?: string, domains: { domain: string, kind?: string, status?: string }[] }[]} tenants
  * @param {string} platform p. ej. "app.bigelephant.es"
  */
