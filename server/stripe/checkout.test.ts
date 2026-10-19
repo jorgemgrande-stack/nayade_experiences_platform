@@ -8,7 +8,7 @@ import { toPrice, toSession, toSubscription, type CheckoutSessionInput } from ".
 import { issuerLine } from "./issuer";
 import { MemoryStripeStore, StripeStoreError } from "./store";
 import { FakeStripeGateway } from "./testing";
-import { toBuyerProfile, type BuyerProfileInput, type FiscalScenario } from "./buyerProfile";
+import { toBuyerProfile, type BuyerProfileInput, type FiscalScenario, type TaxTreatment } from "./buyerProfile";
 
 // ── Catálogo aprobado de prueba (ids de web_prices sintéticos) ─────────────────
 const P = { essM: 11, essY: 12, busM: 13, busY: 14, entM: 15, entY: 16 };
@@ -368,7 +368,7 @@ describe("Checkout en modo live", () => {
     get: async (_t: string, id: number) => (id === 7 ? { id: 7, name: "Empresa Live SL", tenantId: "t9-live" } : null),
     list: async () => [{ id: 1, companyId: 7, email: "contacto@live.example", status: "active", isPrimary: true }],
   };
-  const make = (over: { mode?: "test" | "live"; taxPolicy?: "test_net_no_tax" | "stripe_tax_exclusive" | null; fiscalScenarios?: Set<FiscalScenario> } = {}) =>
+  const make = (over: { mode?: "test" | "live"; taxPolicy?: "test_net_no_tax" | "stripe_tax_exclusive" | null; fiscalScenarios?: Set<FiscalScenario>; taxExpectations?: Map<FiscalScenario, TaxTreatment> } = {}) =>
     new StripeCheckoutService({
       store,
       gateway: gw,
@@ -380,6 +380,10 @@ describe("Checkout en modo live", () => {
       namespace: "live",
       mode: "live",
       fiscalScenarios: new Set<FiscalScenario>(["business:es_mainland"]),
+      taxExpectations: new Map<FiscalScenario, TaxTreatment>([
+        ["business:es_mainland", "taxed"],
+        ["consumer:es_mainland", "taxed"],
+      ]),
       ...over,
     });
   const created = () => gw.calls.filter((c) => c.op === "checkout.sessions.create").map((c) => c.input as CheckoutSessionInput);
@@ -409,10 +413,18 @@ describe("Checkout en modo live", () => {
     expect(gw.customers.size).toBe(0);
   });
 
+  it("impuesto desconocido: un escenario aprobado sin tratamiento del impuesto declarado no se cobra", async () => {
+    await expect(make({ taxPolicy: "stripe_tax_exclusive", taxExpectations: new Map() }).start(100, "a")).rejects.toMatchObject({ code: "unavailable", message: expect.stringMatching(/tratamiento del impuesto/) });
+    await expect(make({ taxPolicy: "stripe_tax_exclusive", taxExpectations: new Map<FiscalScenario, TaxTreatment>([["business:eu", "reverse_charge"]]) }).start(100, "a")).rejects.toMatchObject({ code: "unavailable" });
+    expect(created()).toEqual([]);
+    expect(gw.customers.size).toBe(0);
+  });
+
   it("empresa: NIF obligatorio en la página de pago, Customer con razón social, correo de facturación y país/CP; metadatos del escenario", async () => {
     await make({ taxPolicy: "stripe_tax_exclusive" }).start(100, "a");
     const [input] = created();
     expect(input.taxIdRequired).toBe(true);
+    expect(input.metadata).toMatchObject({ es_tax_expectation: "taxed" });
     expect(input.metadata).toMatchObject({ es_buyer_type: "business", es_fiscal_scenario: "business:es_mainland" });
     const [c] = [...gw.customers.values()];
     expect(c).toMatchObject({ name: "Empresa Live SL", email: "facturas@live.example", address: { country: "ES", postalCode: "28002" }, metadata: { es_buyer_type: "business" } });

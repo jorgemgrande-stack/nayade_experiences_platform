@@ -258,3 +258,64 @@ export function fiscalGate(profile: Pick<BuyerProfile, "scenario" | "type">, app
   if (!approved.has(profile.scenario)) return `fiscal_scenario_pending:${profile.scenario}`;
   return null;
 }
+
+// ── Impuesto esperado por escenario (para no cobrar con un impuesto desconocido o incorrecto) ─────────
+
+/**
+ * Tratamiento del impuesto que el propietario y su asesor han decidido para un escenario aprobado:
+ *  - `taxed`: la factura debe llevar impuesto (> 0);
+ *  - `reverse_charge`: inversión del sujeto pasivo (la factura no lleva impuesto);
+ *  - `not_subject`: no sujeto o fuera del ámbito del impuesto (la factura no lleva impuesto).
+ * No es una regla fiscal de este sistema: es la expectativa declarada, contra la que se contrasta Stripe Tax.
+ */
+export const TAX_TREATMENTS = ["taxed", "reverse_charge", "not_subject"] as const;
+export type TaxTreatment = (typeof TAX_TREATMENTS)[number];
+
+/**
+ * CP_STRIPE_TAX_EXPECTATIONS: `escenario=tratamiento` separados por comas (p. ej.
+ * `business:es_mainland=taxed,business:eu=reverse_charge`). Sin la variable, ninguna expectativa: un escenario
+ * aprobado sin expectativa NO se cobra (impuesto desconocido). Un valor no admitido impide arrancar.
+ */
+export function taxExpectationsFromEnv(env: NodeJS.ProcessEnv = process.env): Map<FiscalScenario, TaxTreatment> {
+  const out = new Map<FiscalScenario, TaxTreatment>();
+  for (const raw of (env.CP_STRIPE_TAX_EXPECTATIONS ?? "").split(",")) {
+    const part = raw.trim().toLowerCase();
+    if (!part) continue;
+    const [s, t, extra] = part.split("=").map((x) => x.trim());
+    if (extra !== undefined || !(FISCAL_SCENARIOS as readonly string[]).includes(s) || !(TAX_TREATMENTS as readonly string[]).includes(t ?? "")) {
+      throw new FiscalConfigError(`CP_STRIPE_TAX_EXPECTATIONS: «${raw.trim()}» no es «escenario=${TAX_TREATMENTS.join("|")}»`);
+    }
+    if (out.has(s as FiscalScenario)) throw new FiscalConfigError(`CP_STRIPE_TAX_EXPECTATIONS: el escenario «${s}» está repetido`);
+    out.set(s as FiscalScenario, t as TaxTreatment);
+  }
+  return out;
+}
+
+/** Motivo por el que no se cobra un escenario aprobado sin tratamiento del impuesto declarado, o null. */
+export function taxExpectationGate(scenario: FiscalScenario, expectations: Map<FiscalScenario, TaxTreatment>): string | null {
+  return expectations.has(scenario) ? null : `tax_expectation_missing:${scenario}`;
+}
+
+/**
+ * Contraste del impuesto FACTURADO por Stripe con el esperado. `null` si casa; si no, el motivo:
+ * `tax_unknown` (Stripe no informó el impuesto), `tax_missing` (se esperaba impuesto y es 0) o
+ * `tax_unexpected` (no se esperaba impuesto y lo hay).
+ */
+export function checkInvoiceTax(expected: TaxTreatment, taxCents: number | null | undefined): "tax_unknown" | "tax_missing" | "tax_unexpected" | null {
+  if (taxCents === null || taxCents === undefined) return "tax_unknown";
+  if (expected === "taxed") return taxCents > 0 ? null : "tax_missing";
+  return taxCents === 0 ? null : "tax_unexpected";
+}
+
+/**
+ * Precio para mostrar con impuestos incluidos a partir del neto (base comercial) y de un tipo DECIDIDO en
+ * puntos básicos (2100 = 21 %). Sin tipo (decisión pendiente) no se inventa: `gross` y `tax` son null y la
+ * web debe mostrar el precio sin impuestos y la indicación correspondiente. Redondeo al céntimo más próximo.
+ */
+export function displayPrice(netCents: number, rateBp: number | null): { netCents: number; taxCents: number | null; grossCents: number | null; rateBp: number | null } {
+  if (!Number.isInteger(netCents) || netCents < 0) throw new RangeError("Importe neto no válido");
+  if (rateBp === null) return { netCents, taxCents: null, grossCents: null, rateBp: null };
+  if (!Number.isInteger(rateBp) || rateBp < 0 || rateBp > 10_000) throw new RangeError("Tipo impositivo no válido");
+  const taxCents = Math.round((netCents * rateBp) / 10_000);
+  return { netCents, taxCents, grossCents: netCents + taxCents, rateBp };
+}

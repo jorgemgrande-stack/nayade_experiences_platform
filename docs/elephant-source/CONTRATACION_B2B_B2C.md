@@ -101,11 +101,21 @@ Todo se valida **antes** de crear nada.
 - enlaces a las versiones vigentes;
 - para particulares, la casilla propia del desistimiento cuando exista la decisión legal.
 
-## 5. Configuración (nada activado hoy)
+## 5. Impuesto esperado y precio con impuestos
+
+- **Impuesto desconocido = no se cobra.** Cada escenario aprobado necesita su tratamiento declarado en `CP_STRIPE_TAX_EXPECTATIONS`:
+  - `taxed`: la factura debe llevar impuesto;
+  - `reverse_charge` y `not_subject`: la factura no debe llevarlo.
+- **Contraste después de cada cobro** (alta, renovación y cambio). Si el impuesto de la factura de Stripe no corresponde al tratamiento, o Stripe no lo informa, salta la alerta `stripe.invoice_tax_mismatch` para revisión fiscal.
+- **Precio para mostrar:** `displayPrice(netCents, rateBp)` calcula el precio final con un tipo **decidido**, en puntos básicos. Sin tipo, no inventa nada: devuelve solo el neto. Ejemplo de cálculo al 21 %, no una decisión: 29 € → 35,09 €; 79 € → 95,59 €; 279 € → 337,59 €; 759 € → 918,39 €. Las bases comerciales (29, 79, 279 y 759 € sin impuestos) no cambian.
+- **Productos de Stripe:** `tax_code` vacío, así que heredan el de la cuenta, `txcd_10103001` (SaaS para empresas). Para particulares puede corresponder otro código (SaaS de uso personal): lo decide el asesor.
+
+## 6. Configuración (nada activado hoy)
 
 | Variable | Hoy | Para activar |
 |---|---|---|
 | `CP_STRIPE_FISCAL_SCENARIOS` | ausente: ningún escenario aprobado | Lista aprobada por el propietario y el asesor (p. ej. `business:es_mainland`) |
+| `CP_STRIPE_TAX_EXPECTATIONS` | ausente: ningún tratamiento declarado | `escenario=taxed|reverse_charge|not_subject` por cada escenario aprobado (p. ej. `business:es_mainland=taxed`). Un escenario aprobado sin tratamiento **no se cobra** |
 | `CP_CONSUMER_WITHDRAWAL` | ausente (`pending`): particulares bloqueados | `immediate_execution_ack`, tras la decisión legal |
 | `CP_PRECONTRACT_VERSION` | ausente | Versión publicada de la información precontractual |
 | `CP_PRIVACY_VERSION` | ausente | Versión publicada de la política de privacidad |

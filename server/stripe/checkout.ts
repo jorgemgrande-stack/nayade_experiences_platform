@@ -32,7 +32,7 @@ import type { StripeMode, StripeTaxPolicy } from "./config";
 import { issuerLine } from "./issuer";
 import { StripeGatewayError, type StripeGateway } from "./gateway";
 import { StripeStoreError, type StripeStore } from "./store";
-import { fiscalGate, type BuyerProfile, type FiscalScenario } from "./buyerProfile";
+import { fiscalGate, taxExpectationGate, type BuyerProfile, type FiscalScenario, type TaxTreatment } from "./buyerProfile";
 
 /** Etiqueta de Stripe para seguir este flujo en el Dashboard (sufijo de 8 letras, recomendación de Stripe). */
 export const INTEGRATION_IDENTIFIER = "elephant-source-checkout-rqzmvtak";
@@ -105,6 +105,8 @@ export interface CheckoutDeps {
    * comprador cuyo escenario esté aprobado; sin la lista, ninguno lo está. En «test» no se exige.
    */
   fiscalScenarios?: Set<FiscalScenario>;
+  /** Tratamiento del impuesto declarado por escenario (CP_STRIPE_TAX_EXPECTATIONS). En live, sin él no se cobra. */
+  taxExpectations?: Map<FiscalScenario, TaxTreatment>;
 }
 
 /** Intentos con claves sucesivas cuando Stripe repite una sesión huérfana ya inservible. */
@@ -208,6 +210,11 @@ export class StripeCheckoutService {
         opsLog("warn", "StripeCheckout", "fiscal_scenario_pending", { orderId, scenario: buyer.scenario, actor });
         throw new StripeCheckoutError("unavailable", `El escenario fiscal «${buyer.scenario}» está pendiente de aprobación: no se abre el pago`);
       }
+      // Impuesto desconocido: sin el tratamiento declarado para el escenario no se cobra (no se podría contrastar)
+      if (taxExpectationGate(buyer.scenario, this.d.taxExpectations ?? new Map())) {
+        opsLog("warn", "StripeCheckout", "tax_expectation_missing", { orderId, scenario: buyer.scenario, actor });
+        throw new StripeCheckoutError("unavailable", `Falta el tratamiento del impuesto aprobado para «${buyer.scenario}»: no se abre el pago`);
+      }
     }
     const customerId = await this.ensureCustomer(o.companyId, buyer?.displayName ?? (company as { name: string }).name, tenantId, buyer);
 
@@ -236,6 +243,7 @@ export class StripeCheckoutService {
       es_tax_treatment: policy,
       ...(tenantId ? { es_tenant_id: tenantId } : {}),
       ...(buyer ? { es_buyer_type: buyer.type, es_fiscal_scenario: buyer.scenario } : {}),
+      ...(buyer && this.d.taxExpectations?.has(buyer.scenario) ? { es_tax_expectation: this.d.taxExpectations.get(buyer.scenario)! } : {}),
     };
     let n = (await this.d.store.countSessions(orderId)) + 1;
     let idempotencyKey = "";

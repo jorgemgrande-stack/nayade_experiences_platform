@@ -19,6 +19,8 @@ export class FakeStripeGateway implements StripeGateway {
   hideSessions = false;
   /** Identificadores fiscales que el cliente dio en Checkout (por Customer); sin entrada, ninguno. */
   taxIdsOf = new Map<string, number>();
+  /** Tipo de Stripe Tax de las facturas que «emite» (puntos básicos); null: impuesto no informado. */
+  invoiceTaxBp: number | null = null;
   /** Parámetros enviados con cada clave: como Stripe, otra petición con la misma clave y otros parámetros falla. */
   private idemParams = new Map<string, string>();
   /** Eventos que «emite» Stripe (para la conciliación); el más reciente al principio, como la API. */
@@ -159,7 +161,7 @@ export class FakeStripeGateway implements StripeGateway {
   addInvoice(subId: string, customerId: string, reason: string, status: GwInvoice["status"], amount: number) {
     const id = this.next("in");
     const addr = this.customers.get(customerId)?.address;
-    this.invoices.set(id, { id, status, subscriptionId: subId, customerId, amountPaid: status === "paid" ? amount : 0, currency: "EUR", billingReason: reason, periodStart: 1_800_000_000 + this.seq, subtotal: amount, customerCountry: addr?.country ?? null, customerPostalCode: addr?.postalCode ?? null, customerTaxIds: this.taxIdsOf.get(customerId) ?? 0 });
+    this.invoices.set(id, { id, status, subscriptionId: subId, customerId, amountPaid: status === "paid" ? amount : 0, currency: "EUR", billingReason: reason, periodStart: 1_800_000_000 + this.seq, subtotal: amount, customerCountry: addr?.country ?? null, customerPostalCode: addr?.postalCode ?? null, customerTaxIds: this.taxIdsOf.get(customerId) ?? 0, taxCents: this.invoiceTaxBp === null ? null : Math.round((amount * this.invoiceTaxBp) / 10_000) });
     const sub = this.subscriptions.get(subId);
     if (sub) this.subscriptions.set(subId, { ...sub, latestInvoiceId: id });
     return id;

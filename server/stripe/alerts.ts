@@ -26,6 +26,7 @@ export const STRIPE_FAILURE_RULES: Record<string, FailureRule> = {
   // Perfil fiscal del comprador frente a la factura (el pago ya está cobrado: revisar el tratamiento fiscal)
   "stripe.buyer_territory_mismatch": once("Stripe: la dirección de la factura no corresponde al territorio fiscal declarado por el comprador"),
   "stripe.buyer_tax_id_missing": once("Stripe: empresa facturada sin identificador fiscal en la factura", "warning"),
+  "stripe.invoice_tax_mismatch": once("Stripe: el impuesto de una factura cobrada no corresponde al tratamiento fiscal aprobado para su escenario"),
   // Fallos técnicos repetidos
   "stripe.webhook_store_failed": repeated(3, 15, "Stripe: no se pueden guardar los webhooks recibidos", "critical"),
   "stripe.webhook_invalid_signature": repeated(10, 15, "Stripe: webhooks con firma no válida repetidos"),
