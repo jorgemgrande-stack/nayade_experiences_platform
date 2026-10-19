@@ -10,7 +10,10 @@
  */
 import express, { type Express, type NextFunction, type Request, type Response } from "express";
 import { BUILTIN_MODULES } from "../_core/modules/builtin";
-import type { CommercialEventReader } from "../commercialEvents/log";
+import type { CommercialEventDispatchQueue, CommercialEventReader } from "../commercialEvents/log";
+import { catalogView } from "../notifications/catalog";
+import { choosePublicDomain } from "../_core/tenantIdentity";
+import { NotificationDispatcher } from "../notifications/dispatcher";
 import type { CommercialEventSink } from "../commercialEvents/types";
 import { TenantStatusSync } from "../orchestrator/tenantStatus";
 import { COMMERCIAL_EVENT_TYPES, type CommercialEventFilter, type CommercialEventType } from "../commercialEvents/types";
@@ -248,6 +251,11 @@ export interface ControlPlaneDeps {
     tenantLane?: (tenantId: string) => Promise<MailService | null>;
     diagnostics?: () => Promise<unknown>;
   };
+  /**
+   * Comunicaciones transaccionales (server/notifications): despachador de eventos comerciales. `since` es el
+   * corte (ms): nada anterior se notifica. Sin él, solo se publica el catálogo (no se despacha nada).
+   */
+  notifications?: { since: number };
 }
 
 const idSchema = z.string().regex(/^[a-z0-9][a-z0-9_-]{0,62}$/);
@@ -1247,6 +1255,25 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
       if (d.orders.payments) app.post("/cp/v1/payments/test/webhook", paymentsWebhookHandler(orchestrator));
     }
     router.use("/subscriptions", createSubscriptionsRouter(svc, shadowBilling));
+    // Catálogo de comunicaciones (solo lectura) y despacho manual de las pendientes
+    router.get("/notifications/catalog", requireScope("ops:read"), wrap(async (_req, res) => void res.json({ templates: catalogView() })));
+    const queue = d.commercialEvents as (typeof d.commercialEvents & Partial<CommercialEventDispatchQueue>) | undefined;
+    if (d.notifications && d.mail?.platform && queue?.claimDispatch && queue.finishDispatch) {
+      const mailer = d.mail.platform;
+      const products = catalogFromWebStore(d.web.store);
+      const dispatcher = new NotificationDispatcher({
+        queue: queue as CommercialEventDispatchQueue,
+        send: (t, k, c, to, content) => mailer.send(t, k, c, to, content),
+        crmStore: d.crm.store,
+        orders: d.orders?.store,
+        hostOf: async (tenantId) => choosePublicDomain(await d.reader.listDomains(tenantId))?.domain ?? null,
+        productName: async (key) => (await products.product(key))?.name ?? null,
+        supportEmail: mailer.policy.supportEmail ?? null,
+        since: d.notifications.since,
+        now: d.subscriptions.now,
+      });
+      router.post("/notifications/dispatch", requireScope("ops:write"), wrap(async (_req, res) => void res.json(await dispatcher.run(100))));
+    }
   }
 
   if (d.tickets) {

@@ -27,6 +27,7 @@ export const DEFAULT_FAILURE_RULES: Record<string, FailureRule> = {
   "mail.send_failed": { threshold: 5, windowMs: 15 * MIN, severity: "critical", title: "Fallos de envío de correo repetidos" },
   "orders.failed": { threshold: 3, windowMs: 30 * MIN, severity: "critical", title: "Errores repetidos en la contratación (pedidos/pagos)" },
   "licensing.check_failed": { threshold: 10, windowMs: 5 * MIN, severity: "warning", title: "No se pueden verificar licencias" },
+  "notifications.dead": { threshold: 1, windowMs: 60 * MIN, severity: "warning", title: "Comunicaciones: un aviso transaccional se abandonó tras agotar los reintentos" },
 };
 
 export class FailureAlerts {
