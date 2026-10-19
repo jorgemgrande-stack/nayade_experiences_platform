@@ -70,6 +70,7 @@ import { STRIPE_FAILURE_RULES } from "../stripe/alerts";
 import { SsoService, parseSsoUsers } from "./sso";
 import { createRemoteJWKSet } from "jose";
 import { operatorAuthFromEnv } from "./operatorSetup";
+import { outboxResetMailer } from "./operatorResetMail";
 
 async function main() {
   const tokens = parseTokens(process.env.CP_TOKENS);
@@ -203,8 +204,11 @@ async function main() {
 
   // Operadores humanos (usuario y contraseña): solo si la migración 0007 está aplicada
   // (segundo factor TOTP con la migración 0012; el secreto se cifra con el llavero del registro)
-  const operators = await operatorAuthFromEnv(pool, process.env, { keyring: ring });
-  console.log(JSON.stringify({ ctx: "OperatorAuth", enabled: !!operators.service, ...(operators.reason ? { reason: operators.reason } : {}), passwordReset: !!operators.service?.resetAvailable, mfa: operators.mfa ?? null }));
+  // Restablecimiento de operadores: sin SMTP propio, por la bandeja de la plataforma (Brevo, dominio corporativo),
+  // solo si el correo no está apagado (con MAIL_MODE=off no se ofrece en vez de fingir un envío)
+  const operatorResetMailer = platformMail.mailer && mailPolicy.mode !== "off" ? outboxResetMailer(platformMail.mailer) : undefined;
+  const operators = await operatorAuthFromEnv(pool, process.env, { keyring: ring, resetMailer: operatorResetMailer });
+  console.log(JSON.stringify({ ctx: "OperatorAuth", enabled: !!operators.service, ...(operators.reason ? { reason: operators.reason } : {}), passwordReset: !!operators.service?.resetAvailable, resetTransport: operators.resetTransport ?? null, mfa: operators.mfa ?? null }));
 
   // Web comercial (catálogo y contenidos): misma BD del CRM; solo si la migración 0004 está aplicada
   let web: { store: MysqlWebStore; onPublish?: (version: string) => void } | undefined;
