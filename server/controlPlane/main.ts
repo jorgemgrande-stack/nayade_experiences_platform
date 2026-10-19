@@ -39,6 +39,7 @@ import { MysqlCapabilityStore } from "../_core/capabilities/store";
 import { MysqlTrialStore } from "../trials/store";
 import { trialNotifierFromEnv } from "../trials/emailNotifier";
 import { TrialScheduler, mysqlAdvisoryLock, startTrialScheduler } from "../trials/scheduler";
+import { lifecyclePolicyFromEnv } from "../lifecycle/policy";
 import { blockedDomainsFromEnv } from "../trials/service";
 import type { TrialNotifier } from "../trials/onboarding";
 import { platformMailFromEnv, tenantLaneResolver } from "../mail/platform";
@@ -292,6 +293,12 @@ async function main() {
     if (ready && !liveData) orders = { store: new MysqlOrderStore(ordersPool), payments: payments.provider, mode: ordersMode };
     console.log(JSON.stringify({ ctx: "Orders", enabled: !!orders, mode: ordersMode, payments: { provider: payments.provider?.kind ?? null, mode: "test", autoCharge: false, ...(payments.reason ? { reason: payments.reason } : {}) }, ...(!ready ? { reason: "migration_0010_missing" } : liveData ? { reason: liveData } : {}) }));
   }
+  // Motor de transiciones temporales: tarea APAGADA por defecto (CP_LIFECYCLE_SCHEDULER_ENABLED=1) y en modo
+  // «plan» (solo calcula) salvo CP_LIFECYCLE_MODE=apply; en live, además CP_LIFECYCLE_LIVE_APPLY=1. Una sola
+  // réplica trabaja en cada tick (GET_LOCK). Nunca borra datos ni convierte pruebas a pago.
+  const lifecyclePolicy = lifecyclePolicyFromEnv(process.env);
+  const lifecycle = orders && crmPool ? { policy: lifecyclePolicy, lock: mysqlAdvisoryLock(crmPool) } : undefined;
+  console.log(JSON.stringify({ ctx: "Lifecycle", mounted: !!lifecycle, enabled: lifecyclePolicy.enabled, mode: lifecyclePolicy.mode, ...(lifecyclePolicy.modeReason ? { reason: lifecyclePolicy.modeReason } : {}), intervalMs: lifecyclePolicy.intervalMs }));
 
   let stripe: { config: NonNullable<typeof stripeConfig>; store: MysqlStripeStore; gateway: ReturnType<typeof stripeGateway>; urls: ReturnType<typeof checkoutUrlsFromEnv>; checkoutEnabled: boolean; verifyWebhook: ReturnType<typeof stripeWebhookVerifier>; workerEnabled: boolean; publicStatus: boolean; selfService: boolean; termsVersion: string | null } | undefined;
   if (stripeConfig) {
@@ -376,6 +383,7 @@ async function main() {
     trials,
     organization,
     orders,
+    lifecycle,
     stripe,
     mail: {
       platform: platformMail.mailer,
