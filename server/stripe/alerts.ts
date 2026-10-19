@@ -23,6 +23,7 @@ export const STRIPE_FAILURE_RULES: Record<string, FailureRule> = {
   "stripe.dispute_open": once("Stripe: disputa abierta en el cobro de una suscripción", "warning"),
   "stripe.partial_refund": once("Stripe: reembolso parcial en el cobro de una suscripción (revisar)", "warning"),
   "orders.stripe_contract_cancelled": once("Contrato cancelado en el CRM con la suscripción viva en Stripe", "warning"),
+  "orders.tenant_sync_failed": once("No se pudo llevar el estado de la empresa en el registro a su situación comercial (lo reintenta la revisión)", "warning"),
   // Perfil fiscal del comprador frente a la factura (el pago ya está cobrado: revisar el tratamiento fiscal)
   "stripe.buyer_territory_mismatch": once("Stripe: la dirección de la factura no corresponde al territorio fiscal declarado por el comprador"),
   "stripe.buyer_tax_id_missing": once("Stripe: empresa facturada sin identificador fiscal en la factura", "warning"),

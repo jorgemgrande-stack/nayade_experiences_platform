@@ -32,6 +32,7 @@ import type { ShadowBillingService } from "../subscriptions/shadow";
 import type { SubscriptionStore } from "../subscriptions/store";
 import type { Interval, Subscription } from "../subscriptions/types";
 import type { TrialService } from "../trials/service";
+import type { TenantStatusSync } from "./tenantStatus";
 import { nextOrderState, type OrderAction } from "./machine";
 import type { TestPaymentPort } from "./payments";
 import type { OrderStore } from "./store";
@@ -87,6 +88,11 @@ export interface OrchestratorDeps {
    * se lanza sin esperar y un fallo solo se registra.
    */
   notify?: OrderNotifier;
+  /**
+   * Estado de la empresa en el registro según su situación comercial (./tenantStatus.ts). Se aplica tras
+   * cada cambio de estado ya guardado; un fallo nunca deshace el cambio y lo repara `review`.
+   */
+  tenantStatus?: Pick<TenantStatusSync, "syncSafely">;
 }
 
 /**
@@ -181,6 +187,7 @@ export class CommercialOrchestrator {
     if (!to) throw new OrderError("invalid_state", `No se puede «${action}» un pedido en estado «${o.state}»`);
     const moved = await this.d.store.transition(o.id, o.version, { ...patch, state: to }, { kind: action, detail, actor, at: this.now() });
     this.emit(moved, action, detail);
+    if (this.d.tenantStatus && moved.tenantId) await this.d.tenantStatus.syncSafely(moved, actor);
     return moved;
   }
   /** Lanza el aviso sin esperar; un fallo solo se registra. */
@@ -843,7 +850,7 @@ export class CommercialOrchestrator {
    */
   async review(actor: string) {
     const now = this.now();
-    const out = { suspended: 0, pastDue: 0, renewed: 0, cancelled: 0, cascaded: 0, resumed: 0, errors: [] as Array<{ orderId: number; error: string }> };
+    const out = { suspended: 0, pastDue: 0, renewed: 0, cancelled: 0, cascaded: 0, resumed: 0, tenantSynced: 0, errors: [] as Array<{ orderId: number; error: string }> };
     const run = async (o: CommercialOrder, fn: () => Promise<unknown>) => {
       try {
         await fn();
@@ -894,6 +901,15 @@ export class CommercialOrchestrator {
         if (r.error) throw new OrderError("invalid_state", r.error);
         out.resumed++;
       });
+    }
+    // Reparación: cada empresa con pedidos vivos o terminados, en el estado que le corresponde (una vez por empresa)
+    if (this.d.tenantStatus) {
+      const seen = new Set<string>();
+      for (const o of await this.d.store.list({ states: ["active", "past_due", "suspended", "cancel_scheduled", "cancelled"], limit: 1000 })) {
+        if (!o.tenantId || seen.has(o.tenantId)) continue;
+        seen.add(o.tenantId);
+        if ((await this.d.tenantStatus.syncSafely(o, actor))?.changed) out.tenantSynced++;
+      }
     }
     return out;
   }

@@ -70,6 +70,8 @@ export const COMMERCIAL_EVENT_TYPES = [
   "coverage.lost",
   "coverage.restored",
   "dispute.status_changed",
+  // Estado de la empresa en el registro (consecuencia de su situación comercial)
+  "tenant.status_changed",
 ] as const;
 export type CommercialEventType = (typeof COMMERCIAL_EVENT_TYPES)[number];
 

@@ -24,6 +24,7 @@ El registro **no envía nada ni decide nada**. Deja constancia, una sola vez, de
 | Renovación | `renewal.requested`, `renewal.paid`, `renewal.failed` | ídem, con pagos de `purpose = renewal` |
 | Suscripción | `subscription.created`, `subscription.plan_changed`, `subscription.module_added`, `subscription.module_removed`, `subscription.interval_change_scheduled`, `subscription.cancel_scheduled`, `subscription.cancel_undone`, `subscription.reactivated`, `subscription.trial_ended`, `subscription.trial_converted`, `subscription.renewed`, `subscription.canceled` | `MysqlSubscriptionStore` (create, mutate) |
 | Reembolso y disputa | `refund.recorded`, `coverage.lost`, `coverage.restored`, `dispute.status_changed` | `MysqlStripeStore.upsertAdjustment` |
+| Estado de la empresa | `tenant.status_changed` (de `trial`/`active`/`grace`/`suspended` al que corresponde según los pedidos; agregado: el pedido que lo causa) | `TenantStatusSync` (server/orchestrator/tenantStatus.ts), tras cada transición del pedido y en la revisión |
 
 **Cambio de plan y compra de módulos.**
 - La compra o el cambio quedan en `order.activated` de un pedido `kind = change`. Su `data` lleva el plan, la periodicidad y las claves de los módulos (`items`, con `x<cantidad>` si la cantidad no es 1).
