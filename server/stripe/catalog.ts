@@ -3,6 +3,9 @@
  *
  *  - Solo se contratan por autoservicio Essential y Business, mensual y anual. Enterprise nunca
  *    tiene Price de autoservicio.
+ *  - Comprables desde la plataforma (módulos y ampliaciones por cantidad): SOLO los productos en estado
+ *    comercial «available» (terminados, probados y aprobados para venta libre) con precio mensual aprobado;
+ *    el anual solo si está aprobado (nunca se inventa). Lo «bajo solicitud» o «próximamente» no tiene Price.
  *  - La fuente del importe es el precio APROBADO (`web_prices`). En Stripe, el Price se identifica por
  *    una `lookup_key` estable derivada de ese precio: es:<producto>:<kind>:<moneda>:v<web_price_id>.
  *    Un precio aprobado nuevo es otra clave y otro Price; nunca se reutiliza un Price con otro importe.
@@ -26,7 +29,8 @@ export const STRIPE_PRODUCT_NAME: Record<SelfServicePlan, string> = {
 const KIND_INTERVAL = { monthly: "month", yearly: "year" } as const;
 
 export interface DesiredPrice {
-  productKey: SelfServicePlan;
+  /** Plan de autoservicio o producto comprable («available»). */
+  productKey: string;
   productName: string;
   webPriceId: number;
   kind: "monthly" | "yearly";
@@ -45,7 +49,13 @@ export class StripeCatalogError extends Error {
 
 export const lookupKeyFor = (productKey: string, kind: string, currency: string, webPriceId: number) => `es:${productKey}:${kind}:${currency.toLowerCase()}:v${webPriceId}`;
 
-/** Precios que deben existir en Stripe, sacados del catálogo publicado y aprobado. Exige los cuatro. */
+/** Familias que se compran como partida de la suscripción desde la plataforma. */
+export const PURCHASABLE_FAMILIES: ReadonlySet<string> = new Set(["extension", "industry_module"]);
+
+/**
+ * Precios que deben existir en Stripe, sacados del catálogo publicado y aprobado. Exige los cuatro de los
+ * planes; añade los de los productos comprables («available»).
+ */
 export async function desiredCatalog(catalog: CatalogPort): Promise<DesiredPrice[]> {
   const offer = await catalog.offer();
   const out: DesiredPrice[] = [];
@@ -59,6 +69,21 @@ export async function desiredCatalog(catalog: CatalogPort): Promise<DesiredPrice
       if (p.taxIncluded) throw new StripeCatalogError(`El precio ${p.id} incluye IVA: los Prices de Stripe se crean sin IVA (tax_behavior exclusive)`);
       if (!Number.isInteger(p.amountCents) || p.amountCents <= 0) throw new StripeCatalogError(`Importe no válido en el precio ${p.id}`);
       out.push({ productKey: plan, productName: STRIPE_PRODUCT_NAME[plan], webPriceId: p.id, kind, interval: KIND_INTERVAL[kind], amountCents: p.amountCents, currency: "EUR", lookupKey: lookupKeyFor(plan, kind, "EUR", p.id) });
+    }
+  }
+  for (const product of offer.filter((p) => p.commercialStatus === "available" && PURCHASABLE_FAMILIES.has(p.family))) {
+    for (const kind of ["monthly", "yearly"] as const) {
+      const approved = product.prices.filter((p) => p.kind === kind && p.status === "approved" && p.currency.toUpperCase() === "EUR");
+      // Sin mensual aprobado no se vende; el anual es opcional (decisión A: nunca se inventa un importe)
+      if (!approved.length) {
+        if (kind === "monthly") throw new StripeCatalogError(`«${product.key}» está disponible pero no tiene precio mensual aprobado en EUR`);
+        continue;
+      }
+      if (approved.length > 1) throw new StripeCatalogError(`«${product.key}» tiene ${approved.length} precios ${kind} aprobados en EUR`);
+      const p = approved[0];
+      if (p.taxIncluded) throw new StripeCatalogError(`El precio ${p.id} incluye IVA: los Prices de Stripe se crean sin IVA (tax_behavior exclusive)`);
+      if (!Number.isInteger(p.amountCents) || p.amountCents <= 0) throw new StripeCatalogError(`Importe no válido en el precio ${p.id}`);
+      out.push({ productKey: product.key, productName: product.name, webPriceId: p.id, kind, interval: KIND_INTERVAL[kind], amountCents: p.amountCents, currency: "EUR", lookupKey: lookupKeyFor(product.key, kind, "EUR", p.id) });
     }
   }
   return out;
@@ -83,8 +108,8 @@ export function checkPrice(d: DesiredPrice, p: GwPrice): PriceCheck {
 export interface CatalogWritePlan {
   /** Operaciones exactas que debe ejecutar una persona (en el sandbox). Vacío si no falta nada. */
   operations: Array<
-    | { op: "create_product"; productKey: SelfServicePlan; params: { name: string; metadata: Record<string, string> } }
-    | { op: "create_price"; lookupKey: string; productKey: SelfServicePlan; params: { product: string; currency: string; unit_amount: number; recurring: { interval: "month" | "year"; interval_count: 1 }; tax_behavior: "exclusive"; lookup_key: string; nickname: string; metadata: Record<string, string> } }
+    | { op: "create_product"; productKey: string; params: { name: string; metadata: Record<string, string> } }
+    | { op: "create_price"; lookupKey: string; productKey: string; params: { product: string; currency: string; unit_amount: number; recurring: { interval: "month" | "year"; interval_count: 1 }; tax_behavior: "exclusive"; lookup_key: string; nickname: string; metadata: Record<string, string> } }
   >;
   /** Prices que ya existen y coinciden. */
   ready: string[];
@@ -102,15 +127,15 @@ export async function planCatalogWrites(desired: DesiredPrice[], gw: StripeGatew
   const found = await gw.pricesByLookupKeys(desired.map((d) => d.lookupKey));
   const byKey = new Map(found.filter((p) => p.lookupKey).map((p) => [p.lookupKey!, p]));
   const plan: CatalogWritePlan = { operations: [], ready: [], conflicts: [] };
-  const productIdOf = new Map<SelfServicePlan, string>();
+  const productIdOf = new Map<string, string>();
   for (const d of desired) {
     const p = byKey.get(d.lookupKey);
     if (p && p.metadata.es_product_key === d.productKey) productIdOf.set(d.productKey, p.productId);
   }
-  for (const key of SELF_SERVICE_PLANS) {
-    const needed = desired.filter((d) => d.productKey === key);
-    if (!needed.length || productIdOf.has(key)) continue;
-    plan.operations.push({ op: "create_product", productKey: key, params: { name: STRIPE_PRODUCT_NAME[key], metadata: { es_product_key: key, es_catalog: "elephant-source" } } });
+  for (const key of Array.from(new Set(desired.map((d) => d.productKey)))) {
+    if (productIdOf.has(key)) continue;
+    const name = desired.find((d) => d.productKey === key)!.productName;
+    plan.operations.push({ op: "create_product", productKey: key, params: { name, metadata: { es_product_key: key, es_catalog: "elephant-source" } } });
   }
   for (const d of desired) {
     const p = byKey.get(d.lookupKey);

@@ -57,6 +57,22 @@ export interface StripeConfig {
   eventsRetentionDays: number;
   /** En «test», siempre `test_net_no_tax`. En «live», null = política fiscal pendiente: no se cobra. */
   taxPolicy: StripeTaxPolicy | null;
+  /**
+   * Modo de facturación de las suscripciones multipartida (`CP_STRIPE_BILLING_MODE`; por defecto classic: una sola
+   * periodicidad). flexible solo por decisión expresa: convertir una suscripción existente es irreversible y aquí
+   * nunca se hace.
+   */
+  billingMode?: StripeBillingMode;
+}
+
+export type StripeBillingMode = "classic" | "flexible";
+
+/** `CP_STRIPE_BILLING_MODE`: classic (por defecto) o flexible. Otro valor impide arrancar. */
+export function stripeBillingModeFromEnv(env: NodeJS.ProcessEnv): StripeBillingMode {
+  const v = (env.CP_STRIPE_BILLING_MODE ?? "").trim().toLowerCase();
+  if (!v || v === "classic") return "classic";
+  if (v === "flexible") return "flexible";
+  throw new StripeConfigError("CP_STRIPE_BILLING_MODE solo admite «classic» o «flexible»");
 }
 
 const NAMESPACE = /^[a-z0-9]{2,16}$/;
@@ -171,6 +187,7 @@ export function stripeConfigFromEnv(env: NodeJS.ProcessEnv = process.env): Strip
     eventsRetentionDays: retentionDaysFromEnv(env),
     // En pruebas la variable se ignora: el tratamiento es siempre el neto sin IVA de pruebas
     taxPolicy: mode === "test" ? "test_net_no_tax" : taxPolicyFromEnv(env),
+    billingMode: stripeBillingModeFromEnv(env),
   };
 }
 
@@ -192,7 +209,7 @@ export function checkoutBlockedReason(c: Pick<StripeConfig, "mode" | "taxPolicy"
 /** Descripción segura para logs y diagnóstico: nunca la clave ni el secreto. */
 export function describeStripeConfig(c: StripeConfig | null): Record<string, unknown> {
   return c
-    ? { enabled: true, mode: c.mode, keyKind: c.keyKind, apiVersion: c.apiVersion, namespace: c.namespace, eventsRetentionDays: c.eventsRetentionDays, taxPolicy: c.taxPolicy ?? "pending" }
+    ? { enabled: true, mode: c.mode, keyKind: c.keyKind, apiVersion: c.apiVersion, namespace: c.namespace, eventsRetentionDays: c.eventsRetentionDays, taxPolicy: c.taxPolicy ?? "pending", billingMode: c.billingMode ?? "classic" }
     : { enabled: false };
 }
 

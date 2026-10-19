@@ -57,6 +57,56 @@ export interface GwSubscription {
   latestInvoiceId: string | null;
   priceIds: string[];
   metadata: Record<string, string>;
+  /** Partidas (precio y cantidad de cada una). Un precio aparece como mucho una vez por suscripción. */
+  items?: GwSubscriptionItem[];
+  /** Cambio pendiente de cobro (`pending_update`): aún NO está aplicado; caduca en `expiresAt` (segundos). */
+  pendingUpdate?: { expiresAt: number } | null;
+  /** Modo de facturación en Stripe: `classic` (una periodicidad) o `flexible` (mixtas). */
+  billingMode?: "classic" | "flexible" | null;
+  /** Mínimo de items.data[].current_period_start. */
+  currentPeriodStart?: number | null;
+}
+
+export interface GwSubscriptionItem {
+  id: string;
+  priceId: string;
+  quantity: number;
+}
+
+/** Línea de una factura: partida, precio, cantidad, importe sin impuestos, impuesto, periodo y si es prorrateo. */
+export interface GwInvoiceLine {
+  id: string;
+  subscriptionItemId: string | null;
+  priceId: string | null;
+  quantity: number | null;
+  /** Céntimos sin impuestos (negativo en un abono por prorrateo). */
+  amount: number;
+  taxCents: number | null;
+  proration: boolean;
+  periodStart: number | null;
+  periodEnd: number | null;
+}
+
+/**
+ * Cambio de partidas de una suscripción. Con `paymentBehavior=pending_if_incomplete` y
+ * `prorationBehavior=always_invoice`, Stripe factura el prorrateo y SOLO aplica el cambio si se cobra; si no,
+ * queda un `pending_update` que caduca (23 h) y no cambia nada.
+ */
+export interface SubscriptionItemsChange {
+  subscriptionId: string;
+  items: Array<{ id?: string; priceId?: string; quantity?: number; deleted?: true }>;
+  prorationBehavior: "always_invoice" | "none";
+  paymentBehavior: "pending_if_incomplete" | "error_if_incomplete";
+  metadata?: Record<string, string>;
+}
+
+export interface GwInvoicePreview {
+  currency: string;
+  /** Total a pagar ahora (con impuestos si Stripe los calcula). */
+  amountDue: number;
+  subtotal: number;
+  taxCents: number | null;
+  lines: GwInvoiceLine[];
 }
 
 export interface GwInvoice {
@@ -82,6 +132,10 @@ export interface GwInvoice {
   /** Número de la factura en Stripe (al finalizarla) y total con impuestos. */
   number?: string | null;
   total?: number | null;
+  /** Página de la factura alojada por Stripe (pagar o autenticar el cobro). */
+  hostedInvoiceUrl?: string | null;
+  /** Líneas de la factura (las primeras que devuelve Stripe con la factura). */
+  lines?: GwInvoiceLine[];
 }
 
 /** Evento de Stripe reducido a lo que usamos: el efecto siempre se calcula releyendo el objeto. */
@@ -155,6 +209,14 @@ export interface StripeGateway {
   chargeIdOf(objectType: "refund" | "dispute", id: string): Promise<string | null>;
   /** Conciliación: eventos desde un momento (segundos), filtrados por tipo, paginados. */
   listEvents(q: { createdGte?: number; types?: string[]; startingAfter?: string; limit?: number }): Promise<{ events: GwEvent[]; hasMore: boolean }>;
+  /** Cambia las partidas de una suscripción (con Idempotency-Key). Devuelve la suscripción y su última factura. */
+  updateSubscriptionItems(change: SubscriptionItemsChange, idempotencyKey: string): Promise<{ subscription: GwSubscription; invoice: GwInvoice | null }>;
+  /** Vista previa de la factura que generaría un cambio de partidas (no cambia nada). */
+  previewSubscriptionChange(change: Omit<SubscriptionItemsChange, "paymentBehavior" | "metadata">): Promise<GwInvoicePreview>;
+  /** Anula una factura abierta (y con ella el cambio pendiente que la generó). */
+  voidInvoice(id: string): Promise<GwInvoice>;
+  /** Tipo del método de pago con el que se cobra la suscripción (card, sepa_debit…); null si no hay. */
+  paymentMethodTypeOf(subscriptionId: string): Promise<string | null>;
 }
 
 export class StripeGatewayError extends Error {
@@ -211,6 +273,9 @@ export function toSubscription(s: Stripe.Subscription, mode: StripeMode = "test"
   assertModeObject(s, mode);
   const items = s.items?.data ?? [];
   const ends = items.map((i) => (i as unknown as { current_period_end?: number }).current_period_end).filter((x): x is number => typeof x === "number");
+  const starts = items.map((i) => (i as unknown as { current_period_start?: number }).current_period_start).filter((x): x is number => typeof x === "number");
+  const pending = (s as unknown as { pending_update?: { expires_at?: number } | null }).pending_update;
+  const billingMode = (s as unknown as { billing_mode?: { type?: string } | null }).billing_mode?.type;
   return {
     id: s.id,
     customerId: idOf(s.customer) ?? "",
@@ -221,6 +286,10 @@ export function toSubscription(s: Stripe.Subscription, mode: StripeMode = "test"
     latestInvoiceId: idOf(s.latest_invoice),
     priceIds: items.map((i) => i.price?.id).filter((x): x is string => !!x),
     metadata: meta(s.metadata),
+    items: items.filter((i) => i.price?.id).map((i) => ({ id: i.id, priceId: i.price.id, quantity: i.quantity ?? 1 })),
+    pendingUpdate: pending ? { expiresAt: pending.expires_at ?? 0 } : null,
+    billingMode: billingMode === "flexible" ? "flexible" : billingMode === "classic" ? "classic" : null,
+    currentPeriodStart: starts.length ? Math.min(...starts) : null,
   };
 }
 
@@ -244,6 +313,36 @@ export function toInvoice(i: Stripe.Invoice, mode: StripeMode = "test"): GwInvoi
     taxCents: taxOf(i),
     number: i.number ?? null,
     total: typeof i.total === "number" ? i.total : null,
+    hostedInvoiceUrl: i.hosted_invoice_url ?? null,
+    lines: (i.lines?.data ?? []).map(toInvoiceLine),
+  };
+}
+
+/** Línea de factura (API 2025-03-31+: partida y prorrateo en `parent`, precio en `pricing`). */
+export function toInvoiceLine(l: Stripe.InvoiceLineItem): GwInvoiceLine {
+  const x = l as unknown as {
+    id: string;
+    amount?: number;
+    quantity?: number | null;
+    period?: { start?: number; end?: number } | null;
+    taxes?: Array<{ amount?: number }> | null;
+    parent?: { subscription_item_details?: { subscription_item?: string | null; proration?: boolean } | null } | null;
+    pricing?: { price_details?: { price?: unknown } | null } | null;
+    price?: unknown;
+    proration?: boolean;
+    subscription_item?: unknown;
+  };
+  const details = x.parent?.subscription_item_details;
+  return {
+    id: x.id,
+    subscriptionItemId: (details?.subscription_item as string | null | undefined) ?? idOf(x.subscription_item),
+    priceId: idOf(x.pricing?.price_details?.price) ?? idOf(x.price),
+    quantity: typeof x.quantity === "number" ? x.quantity : null,
+    amount: x.amount ?? 0,
+    taxCents: Array.isArray(x.taxes) ? x.taxes.reduce((a, t) => a + (t.amount ?? 0), 0) : null,
+    proration: !!(details?.proration ?? x.proration),
+    periodStart: x.period?.start ?? null,
+    periodEnd: x.period?.end ?? null,
   };
 }
 
@@ -414,6 +513,51 @@ export function stripeGateway(
     async invoice(id) {
       try {
         return toInvoice(await client.invoices.retrieve(id), mode);
+      } catch (e) {
+        if (notFound(e)) return null;
+        wrapError(e);
+      }
+    },
+    async updateSubscriptionItems(c, idempotencyKey) {
+      try {
+        const params = {
+          items: c.items.map((i) => (i.deleted ? { id: i.id, deleted: true } : { ...(i.id ? { id: i.id } : {}), ...(i.priceId ? { price: i.priceId } : {}), ...(i.quantity !== undefined ? { quantity: i.quantity } : {}) })),
+          proration_behavior: c.prorationBehavior,
+          payment_behavior: c.paymentBehavior,
+          ...(c.metadata ? { metadata: c.metadata } : {}),
+        };
+        const sub = toSubscription(await client.subscriptions.update(c.subscriptionId, params as Stripe.SubscriptionUpdateParams, { idempotencyKey }), mode);
+        const invoice = sub.latestInvoiceId ? toInvoice(await client.invoices.retrieve(sub.latestInvoiceId), mode) : null;
+        return { subscription: sub, invoice };
+      } catch (e) {
+        wrapError(e);
+      }
+    },
+    async previewSubscriptionChange(c) {
+      try {
+        const items = c.items.map((i) => (i.deleted ? { id: i.id, deleted: true } : { ...(i.id ? { id: i.id } : {}), ...(i.priceId ? { price: i.priceId } : {}), ...(i.quantity !== undefined ? { quantity: i.quantity } : {}) }));
+        const inv = await client.invoices.createPreview({ subscription: c.subscriptionId, subscription_details: { items, proration_behavior: c.prorationBehavior } } as Stripe.InvoiceCreatePreviewParams);
+        const g = toInvoice(inv as Stripe.Invoice, mode);
+        return { currency: g.currency, amountDue: (inv as { amount_due?: number }).amount_due ?? 0, subtotal: g.subtotal ?? 0, taxCents: g.taxCents ?? null, lines: g.lines ?? [] };
+      } catch (e) {
+        wrapError(e);
+      }
+    },
+    async voidInvoice(id) {
+      try {
+        return toInvoice(await client.invoices.voidInvoice(id), mode);
+      } catch (e) {
+        wrapError(e);
+      }
+    },
+    async paymentMethodTypeOf(subscriptionId) {
+      try {
+        const s = await client.subscriptions.retrieve(subscriptionId, { expand: ["default_payment_method", "customer.invoice_settings.default_payment_method"] });
+        assertModeObject(s, mode);
+        const own = s.default_payment_method as { type?: string } | string | null;
+        const cust = (s.customer as unknown as { invoice_settings?: { default_payment_method?: { type?: string } | string | null } } | null)?.invoice_settings?.default_payment_method;
+        const pm = (own && typeof own === "object" ? own : null) ?? (cust && typeof cust === "object" ? cust : null);
+        return pm?.type ?? null;
       } catch (e) {
         if (notFound(e)) return null;
         wrapError(e);

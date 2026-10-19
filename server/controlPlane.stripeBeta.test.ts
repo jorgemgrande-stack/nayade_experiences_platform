@@ -277,4 +277,14 @@ describe("contratación con Stripe por HTTP (doble de Stripe, firma real)", () =
     // Una ruta inexistente bajo /public/checkout responde 404, nunca cae en la autenticación de operadores
     expect((await call("GET", "/public/checkout/otra", { token: null })).status).toBe(404);
   });
+
+  it("propuestas de precio anual: 10 × mensual aprobado, solo lectura y sin tocar Stripe", async () => {
+    const before = gw.calls.length;
+    const r = await ok(call("GET", "/stripe/catalog/yearly-proposals"));
+    expect(r.rule).toBe("yearly = 10 × monthly");
+    for (const p of r.proposals) expect(p.proposedYearlyCents).toBe(p.monthlyCents * 10);
+    expect(r.proposals.map((p: { productKey: string }) => p.productKey)).not.toContain("essential");
+    expect(gw.calls.length).toBe(before);
+    expect((await call("GET", "/stripe/catalog/yearly-proposals", { token: null })).status).toBe(401);
+  });
 });
