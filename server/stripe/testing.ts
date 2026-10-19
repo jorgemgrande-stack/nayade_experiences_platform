@@ -3,6 +3,7 @@
  * la misma Idempotency-Key devuelve el mismo objeto, los Prices se buscan por lookup_key y las
  * sesiones se pueden caducar. Registra cada llamada para poder comprobar qué se envió.
  */
+import type { GwPortalConfig } from "./portal";
 import { StripeGatewayError, type CheckoutSessionInput, type CustomerInput, type GwCharge, type GwCheckoutSession, type GwEvent, type GwInvoice, type GwPrice, type GwProduct, type GwSubscription, type StripeGateway } from "./gateway";
 
 export class FakeStripeGateway implements StripeGateway {
@@ -17,6 +18,8 @@ export class FakeStripeGateway implements StripeGateway {
   chargeRefs = new Map<string, string>();
   /** Simula que la lista de sesiones del cliente aún no incluye una recién creada. */
   hideSessions = false;
+  /** Configuraciones del Customer Portal que «tiene» la cuenta. */
+  portalConfigs: GwPortalConfig[] = [];
   /** Identificadores fiscales que el cliente dio en Checkout (por Customer); sin entrada, ninguno. */
   taxIdsOf = new Map<string, number>();
   /** Tipo de Stripe Tax de las facturas que «emite» (puntos básicos); null: impuesto no informado. */
@@ -140,6 +143,10 @@ export class FakeStripeGateway implements StripeGateway {
     if (q.startingAfter) list = list.slice(list.findIndex((e) => e.id === q.startingAfter) + 1);
     const limit = q.limit ?? 100;
     return { events: list.slice(0, limit).map((e) => ({ ...e })), hasMore: list.length > limit };
+  }
+  async portalConfigurations() {
+    this.calls.push({ op: "billing_portal.configurations.list" });
+    return this.portalConfigs.map((c) => structuredClone(c));
   }
   async createPortalSession(input: { customerId: string; returnUrl: string }) {
     this.calls.push({ op: "billing_portal.sessions.create", input });

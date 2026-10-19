@@ -14,6 +14,7 @@
  *   POST /stripe/adjustments/:chargeId/resolve  orders:write  levanta una retención con motivo y reaplica el estado
  *   GET  /stripe/orders/:id/buyer               orders:read   perfil fiscal del comprador (tipo, territorio, escenario)
  *   PUT  /stripe/orders/:id/buyer               orders:write  registra el perfil y el consentimiento (venta asistida)
+ *   GET  /stripe/portal/plan                    ops:read      Customer Portal: configuración deseada frente a la actual (solo lectura)
  *   GET  /stripe/invoices?orderId=              ops:read      facturas cobradas registradas (base, impuesto, total, reembolsado)
  *   GET  /stripe/fiscal-documents?status=       ops:read      cola de documentos fiscales (facturas y rectificativas)
  *   POST /stripe/fiscal-documents/:id/issued    orders:write  registra el número del documento emitido en el sistema legal
@@ -41,6 +42,7 @@ import { sessionIdRe } from "./status";
 import { StripeGatewayError, type StripeGateway } from "./gateway";
 import { FiscalDocumentConflictError, StripeStoreError, type StripeStore } from "./store";
 import { EXTERNAL_REF } from "./fiscalDocuments";
+import { planPortal, portalWriteParams } from "./portal";
 import type { StripeEventProcessor } from "./events";
 import type { StripeReconciler } from "./reconcile";
 
@@ -79,6 +81,8 @@ export interface StripeRouterDeps {
   processor?: StripeEventProcessor;
   reconciler?: StripeReconciler;
   now?: () => number;
+  /** URL publicadas de los textos legales (CP_TERMS_URL, CP_PRIVACY_URL) para el Customer Portal. */
+  legalUrls?: { terms: string | null; privacy: string | null };
   /** Nombre del adaptador del sistema de facturación legal (por defecto «pending»: nada se emite). */
   fiscalSinkName?: string;
   /** Pedidos (perfil fiscal del comprador). Sin ellos, las rutas del perfil no se montan. */
@@ -157,6 +161,14 @@ export function createStripeRouter(d: StripeRouterDeps): Router {
     if (!doc) return void res.status(404).json({ error: "not_found", message: "Documento fiscal no encontrado" });
     opsLog("info", "Stripe", "fiscal_document_issued", { documentId: doc.id, kind: doc.kind, actor: who(req) });
     res.json({ document: doc });
+  }));
+  // Customer Portal: solo lectura. Aplicarlo en Stripe lo autoriza el propietario (como el catálogo)
+  r.get("/portal/plan", requireScope("ops:read"), wrap(async (_req, res) => {
+    const configs = await d.gateway.portalConfigurations();
+    const current = configs.find((c) => c.isDefault) ?? null;
+    const input = { prices: await d.store.listPrices(), termsUrl: d.legalUrls?.terms ?? null, privacyUrl: d.legalUrls?.privacy ?? null };
+    const differences = planPortal(current, input);
+    res.json({ configurationId: current?.id ?? null, differences, applicable: differences.filter((x) => !x.pending).length, writeParams: portalWriteParams(differences, input) });
   }));
   r.get("/catalog/plan", requireScope("ops:read"), wrap(async (_req, res) => {
     const desired = await desiredCatalog(d.catalog);
