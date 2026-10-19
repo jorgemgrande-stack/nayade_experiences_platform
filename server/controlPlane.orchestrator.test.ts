@@ -417,7 +417,7 @@ describe("B. cliente nuevo desde la web: aprobación administrativa, cambio de p
     expect((await caps.list(s.tenantId!)).every((g) => g.status === "active" || g.status === "cancelled")).toBe(true);
   });
 
-  it("cancelación en cascada: contrato cancelado → suscripción a fin de periodo → licencias canceladas; nada se borra", async () => {
+  it("cancelación en cascada: contrato cancelado → suscripción a fin de periodo → 30 días en solo lectura; nada se borra", async () => {
     expect((await call("POST", `/orders/${s.changeId}/cancel`, { token: SALES, body: { reason: "Cierre" } })).status).toBe(403);
     const r = await ok(call("POST", `/orders/${s.changeId}/cancel`, { body: { reason: "Cierre de temporada" } }));
     expect(r.order.state).toBe("cancel_scheduled");
@@ -429,10 +429,12 @@ describe("B. cliente nuevo desde la web: aprobación administrativa, cambio de p
     const rev = await ok(call("POST", "/orders/review"));
     expect(rev.cancelled).toBe(1);
     expect((await ok(call("GET", `/orders/${s.changeId}`))).order.state).toBe("cancelled");
-    expect((await subsStore.get(s.subId!))!.status).toBe("canceled");
+    const ended = (await subsStore.get(s.subId!))!;
+    expect(ended.status).toBe("canceled");
+    // Regla de la fase 2: 30 días en solo lectura (consulta y exportación) tras el fin del periodo pagado
     const g = await caps.list(s.tenantId!);
     expect(g.length).toBeGreaterThan(0);
-    expect(g.every((x) => x.status === "cancelled")).toBe(true);
+    expect(g.every((x) => x.status === "read_only" && x.validUntil === ended.canceledAt! + 30 * DAY)).toBe(true);
     expect(await registry.getTenant(s.tenantId!)).toBeTruthy();
     expect(await crmStore.get("companies", s.companyId!)).toBeTruthy();
   });

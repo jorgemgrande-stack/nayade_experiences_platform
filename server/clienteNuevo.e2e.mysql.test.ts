@@ -526,22 +526,30 @@ describe.skipIf(!URL_)("cliente nuevo de punta a punta: Empresa Demo Elephant 01
     note("27 cancelación", `cancelación programada al fin de periodo; revisión tras el periodo → ${rev.json.cancelled} cancelada`);
   }, 60_000);
 
-  it("paso 28: estado final — licencias canceladas, datos intactos y acceso según la regla", async () => {
+  it("paso 28: estado final — 30 días en solo lectura (consulta sí, escritura no), después caducado; datos intactos", async () => {
     expect((await s.cp("GET", `/orders/${one.orderId}`, { token: s.adminToken })).json.order.state).toBe("cancelled");
-    const [sub] = await s.crmPool.query<mysql.RowDataPacket[]>("SELECT status FROM subscriptions WHERE id = ?", [one.subId]);
+    const [sub] = await s.crmPool.query<mysql.RowDataPacket[]>("SELECT status, canceled_at FROM subscriptions WHERE id = ?", [one.subId]);
     expect(sub[0].status).toBe("canceled");
-    const [g] = await s.regPool.query<mysql.RowDataPacket[]>("SELECT status FROM tenant_capabilities WHERE tenant_id = ?", [one.tenantId]);
+    const readOnlyUntil = Number(sub[0].canceled_at) + 30 * DAY;
+    const [g] = await s.regPool.query<mysql.RowDataPacket[]>("SELECT status, valid_until FROM tenant_capabilities WHERE tenant_id = ?", [one.tenantId]);
     expect(g.length).toBeGreaterThan(0);
-    expect(g.every((x) => x.status === "cancelled")).toBe(true);
-    // Regla: con las licencias canceladas no se consulta ni se opera lo licenciado; la sesión y el estado
-    // de la suscripción siguen disponibles para recontratar; nada se borra.
+    // Regla (decisión del propietario, fase 2): 30 días en solo lectura tras el fin del periodo pagado, con
+    // la sesión y el estado de la suscripción disponibles para recontratar o exportar; nada se borra.
+    expect(g.every((x) => x.status === "read_only" && Number(x.valid_until) === readOnlyUntil)).toBe(true);
     expect(data(await s.q(one.tenantId, "auth.me", undefined, one.cookie))).toMatchObject({ email: one.owner });
     const ov = ok200(await s.q(one.tenantId, "subscription.overview", undefined, one.cookie), "overview");
-    expect(ov.state).toBe("cancelled");
-    const read = await s.q(one.tenantId, "crm.clients.list", { limit: 10, offset: 0 }, one.cookie);
-    expect([read.status, read.json?.error?.json?.data?.status]).toEqual([403, "cancelled"]);
+    expect(ov.state).toBe("read_only");
+    expect(ov.trial).toBeNull();
+    expect(ok200(await s.q(one.tenantId, "crm.clients.list", { limit: 10, offset: 0 }, one.cookie), "lectura en solo lectura").total).toBeGreaterThan(0);
     const write = await s.m(one.tenantId, "crm.clients.create", { name: "No", email: "no2@demo-01.example" }, one.cookie);
-    expect([write.status, write.json?.error?.json?.data?.status]).toEqual([403, "cancelled"]);
+    expect([write.status, write.json?.error?.json?.data?.status]).toEqual([403, "read_only"]);
+    // Pasados los 30 días: tampoco se consulta lo licenciado (caducado); la sesión sigue y nada se borra
+    const back = s.clock.now;
+    s.clock.now = readOnlyUntil + 1;
+    const late = await s.q(one.tenantId, "crm.clients.list", { limit: 10, offset: 0 }, one.cookie);
+    expect([late.status, late.json?.error?.json?.data?.status]).toEqual([403, "expired"]);
+    expect(data(await s.q(one.tenantId, "auth.me", undefined, one.cookie))).toMatchObject({ email: one.owner });
+    s.clock.now = back;
     expect(await counts(one.tenantId)).toEqual({ ...before, clients: before.clients + 2 });
     const [t] = await s.regPool.query<mysql.RowDataPacket[]>("SELECT id FROM tenants WHERE id = ?", [one.tenantId]);
     expect(t).toHaveLength(1);
