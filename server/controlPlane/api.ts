@@ -11,6 +11,8 @@
 import express, { type Express, type NextFunction, type Request, type Response } from "express";
 import { BUILTIN_MODULES } from "../_core/modules/builtin";
 import type { CommercialEventReader } from "../commercialEvents/log";
+import type { CommercialEventSink } from "../commercialEvents/types";
+import { TenantStatusSync } from "../orchestrator/tenantStatus";
 import { COMMERCIAL_EVENT_TYPES, type CommercialEventFilter, type CommercialEventType } from "../commercialEvents/types";
 import { CORE_VERSION } from "../_core/modules/runtime";
 import { assertCanActivate, assertCanDeactivate, buildCatalog, tenantModules, type ModulePriceRef, type PlanRef } from "../_core/modules/catalog";
@@ -183,7 +185,7 @@ export interface ControlPlaneDeps {
   /** Sedes y entidades fiscales (registro 0009), con los límites del plan contratado. */
   organization?: OrganizationStore;
   /** Registro de eventos comerciales (CRM 0015), solo lectura. */
-  commercialEvents?: CommercialEventReader;
+  commercialEvents?: CommercialEventReader & Partial<CommercialEventSink>;
   /**
    * Orquestador comercial (CRM 0010). Requiere suscripciones, CRM, web y licencias por capacidad. Los
    * pagos simulados son SOLO de prueba (`payments`; con Stripe en live no se admiten y la aplicación no se
@@ -1076,6 +1078,14 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
       // Orquestador comercial: encadena contrato → confirmación → suscripción → licencias → activación
       const licensing = new LicensingService({ capabilities: d.capabilities, subscriptions: d.subscriptions.store, crm: crmPort, catalog: async () => quoteCatalogFromSite(await webAdmin!.site("published")), now: d.subscriptions.now });
       const coverageHeld = d.stripe ? async (orderId: number) => (await d.stripe!.store.activeHolds(orderId)).length > 0 : undefined;
+      const ordersStore = d.orders.store;
+      const tenantStatusSync = new TenantStatusSync({
+        getTenant: (id) => d.reader.getTenant(id),
+        setStatus: (id, to, a, o) => d.registry.setStatus(id, to, a, o),
+        orders: (companyId) => ordersStore.list({ companyId, limit: 1000 }),
+        events: d.commercialEvents?.append ? (d.commercialEvents as CommercialEventSink) : undefined,
+        now: d.subscriptions.now,
+      });
       const orchestrator = new CommercialOrchestrator({
         store: d.orders.store,
         crm: d.crm.service,
@@ -1094,6 +1104,8 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         mode: ordersMode,
         graceDays: d.orders.graceDays,
         coverageHeld,
+        // Estado de la empresa en el registro según su situación comercial (nunca la deja en «trial» si ya paga)
+        tenantStatus: tenantStatusSync,
         now: d.subscriptions.now,
       });
       router.use("/orders", createOrdersRouter(orchestrator));
