@@ -10,16 +10,21 @@ import { memoryProvider } from "./mail/providers";
 import { MailService } from "./mail/service";
 import { MemoryMailStore } from "./mail/store";
 import { PlatformMailer } from "./mail/platform";
+import crypto from "node:crypto";
+import { keyringFromEnv } from "./_core/tenantRegistry/crypto";
+import { base32Decode, hotp, totpStep } from "./controlPlane/totp";
 
 const PW = "Raiz-Segura-Prado-2026!";
 const RESET_URL = "https://admin.bigelephant.es/#/restablecer";
+
+const ring = keyringFromEnv({ REGISTRY_KEYS: `k1:${crypto.randomBytes(32).toString("base64")}`, REGISTRY_ACTIVE_KEY_ID: "k1" } as NodeJS.ProcessEnv);
 
 async function setup(email: string, mode = "sandbox") {
   const store = new MemoryMailStore();
   const provider = memoryProvider();
   const policy = mailPolicyFromEnv({ MAIL_MODE: mode, MAIL_SENDING_DOMAIN: "bigelephant.es", MAIL_SANDBOX_ALLOWLIST: "bigelephant.es" } as NodeJS.ProcessEnv);
   const mailer = new PlatformMailer(new MailService({ lane: "platform", store, provider, policy }), policy);
-  const svc = new OperatorAuthService(new MemoryOperatorStore(), { mailer: outboxResetMailer(mailer), resetUrl: RESET_URL });
+  const svc = new OperatorAuthService(new MemoryOperatorStore(), { mailer: outboxResetMailer(mailer), resetUrl: RESET_URL, mfaKeyring: ring });
   await svc.bootstrap({ username: "jorge", displayName: "Jorge", email, password: PW });
   return { svc, store, provider };
 }
@@ -40,6 +45,32 @@ describe("restablecimiento de operadores por la bandeja de la plataforma", () =>
     const token = decodeURIComponent(link.split("token=")[1]);
     await svc.confirmReset(token, "Otra-Clave-Segura-Prado-2026!");
     await expect(svc.login("jorge", "Otra-Clave-Segura-Prado-2026!")).resolves.toBeTruthy();
+  });
+
+  it("con MFA activo: el enlace no abre sesión, cierra las abiertas y el login sigue exigiendo el segundo factor", async () => {
+    const { svc, provider } = await setup("ops@bigelephant.es");
+    // Alta del MFA del operador
+    const first = await svc.login("jorge", PW);
+    const actor = { id: first.operator.id, username: "jorge", role: first.operator.role, sessionId: first.session.id } as any;
+    const { secret } = await svc.setupMfa(actor);
+    await svc.enableMfa(actor, hotp(base32Decode(secret), totpStep(Date.now())));
+    const full = await svc.verifyMfa((await svc.login("jorge", PW)).token, hotp(base32Decode(secret), totpStep(Date.now()) + 1));
+    expect(await svc.validateSession(full.token)).not.toBeNull();
+
+    // Restablecimiento por la bandeja
+    await svc.requestReset("jorge");
+    const text = (provider.sent.at(-1) as any).text as string;
+    const token = decodeURIComponent(/token=(\S+)/.exec(text)![1]);
+    const NEW = "Otra-Clave-Segura-Prado-2026!";
+    expect(await svc.confirmReset(token, NEW)).toBeUndefined(); // no devuelve sesión ni token
+    // Las sesiones abiertas quedan cerradas
+    expect(await svc.validateSession(full.token)).toBeNull();
+    // Con la contraseña nueva, el login sigue en dos pasos: la sesión pendiente no da acceso
+    const pending = await svc.login("jorge", NEW);
+    expect(pending.mfa).toBe("pending");
+    expect(await svc.validateSession(pending.token)).toBeNull();
+    // Y el enlace es de un solo uso
+    await expect(svc.confirmReset(token, "Tercera-Clave-Segura-Prado-2026!")).rejects.toMatchObject({ code: "invalid_reset_token" });
   });
 
   it("en sandbox, un destinatario fuera de la lista no recibe nada y tampoco queda el enlace", async () => {
