@@ -13,10 +13,10 @@ const sources = (dir: string): string[] =>
   });
 
 describe("alertas de Stripe", () => {
-  it("todos los tipos anotados en server/stripe y en el orquestador tienen regla", () => {
+  it("todos los tipos anotados en server/stripe (compras incluidas) y en el orquestador tienen regla", () => {
     const files = [...sources(path.resolve(__dirname)), path.resolve(__dirname, "../orchestrator/service.ts"), path.resolve(__dirname, "../controlPlane/api.ts")];
     const kinds = new Set<string>();
-    for (const f of files) for (const m of Array.from(fs.readFileSync(f, "utf8").matchAll(/recordFailure\("((?:stripe|orders\.stripe)[a-z_.]*)"/g))) kinds.add(m[1]);
+    for (const f of files) for (const m of Array.from(fs.readFileSync(f, "utf8").matchAll(/recordFailure\("((?:stripe|orders\.stripe|purchases)[a-z_.]*)"/g))) kinds.add(m[1]);
     expect(kinds.size).toBeGreaterThan(10);
     const missing = Array.from(kinds).filter((k) => !STRIPE_FAILURE_RULES[k]);
     expect(missing).toEqual([]);

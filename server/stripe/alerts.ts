@@ -28,6 +28,13 @@ export const STRIPE_FAILURE_RULES: Record<string, FailureRule> = {
   "stripe.buyer_territory_mismatch": once("Stripe: la dirección de la factura no corresponde al territorio fiscal declarado por el comprador"),
   "stripe.buyer_tax_id_missing": once("Stripe: empresa facturada sin identificador fiscal en la factura", "warning"),
   "stripe.invoice_tax_mismatch": once("Stripe: el impuesto de una factura cobrada no corresponde al tratamiento fiscal aprobado para su escenario"),
+  // Facturación por líneas y conciliación de partidas (nunca se corrige solo: lo revisa el equipo)
+  "stripe.items_drift": once("Stripe: las partidas de una suscripción no coinciden con lo contratado para el próximo periodo"),
+  "stripe.refund_unallocated": once("Stripe: un reembolso supera lo cobrado en las líneas de su factura (revisar)", "warning"),
+  // Compras y reducciones desde la plataforma
+  "purchases.reduction_stuck": once("Compra de módulos: una reducción no quedó activa (revisar el pedido)"),
+  "purchases.reduction_stripe_pending": once("Compra de módulos: Stripe no aplicó una reducción ya programada (la conciliación la reenvía; revisar)"),
+  "purchases.failed": repeated(3, 30, "Compra de módulos: errores repetidos", "critical"),
   "stripe.fiscal_document_failed": once("Facturación: el sistema de facturación legal rechazó un documento (queda en la cola para revisión)"),
   // Activación sin pago de Stripe en el entorno real: cada una queda a la vista del equipo (auditoría)
   "orders.admin_approval_live": once("Pedido activado por aprobación administrativa (sin pago de Stripe) en el entorno real: revisar la justificación", "warning"),
