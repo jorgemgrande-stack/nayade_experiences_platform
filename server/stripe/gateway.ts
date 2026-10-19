@@ -71,6 +71,13 @@ export interface GwInvoice {
   periodStart: number | null;
   /** Antes de impuestos, descuentos aplicados en factura y saldo a favor del cliente. */
   subtotal: number | null;
+  /** Dirección del cliente fijada en la factura al finalizarla (la que usó Stripe Tax). */
+  customerCountry?: string | null;
+  customerPostalCode?: string | null;
+  /** Identificadores fiscales del cliente que constan en la factura. */
+  customerTaxIds?: number;
+  /** Impuestos de la factura (céntimos), para la trazabilidad; null si Stripe no los informa. */
+  taxCents?: number | null;
 }
 
 /** Evento de Stripe reducido a lo que usamos: el efecto siempre se calcula releyendo el objeto. */
@@ -112,12 +119,22 @@ export interface CheckoutSessionInput {
   notice?: string;
   /** Stripe Tax calcula el impuesto sobre el precio sin IVA (`automatic_tax`). Solo con política fiscal live. */
   automaticTax?: boolean;
+  /** Identificador fiscal obligatorio en la página de pago (empresas y profesionales). Sin él, es opcional. */
+  taxIdRequired?: boolean;
+}
+
+/** Datos del Customer al crearlo. La dirección completa la pide y confirma Checkout. */
+export interface CustomerInput {
+  name: string;
+  email: string | null;
+  metadata: Record<string, string>;
+  address?: { country: string; postalCode: string | null };
 }
 
 export interface StripeGateway {
   pricesByLookupKeys(keys: string[]): Promise<GwPrice[]>;
   product(id: string): Promise<GwProduct | null>;
-  createCustomer(input: { name: string; email: string | null; metadata: Record<string, string> }, idempotencyKey: string): Promise<{ id: string }>;
+  createCustomer(input: CustomerInput, idempotencyKey: string): Promise<{ id: string }>;
   customer(id: string): Promise<{ id: string; deleted: boolean } | null>;
   createCheckoutSession(input: CheckoutSessionInput, idempotencyKey: string): Promise<GwCheckoutSession>;
   checkoutSession(id: string): Promise<GwCheckoutSession | null>;
@@ -215,7 +232,18 @@ export function toInvoice(i: Stripe.Invoice, mode: StripeMode = "test"): GwInvoi
     billingReason: (i.billing_reason as string | null) ?? null,
     periodStart: typeof i.period_start === "number" ? i.period_start : null,
     subtotal: typeof i.subtotal === "number" ? i.subtotal : null,
+    customerCountry: i.customer_address?.country ?? null,
+    customerPostalCode: i.customer_address?.postal_code ?? null,
+    customerTaxIds: Array.isArray(i.customer_tax_ids) ? i.customer_tax_ids.length : 0,
+    taxCents: taxOf(i),
   };
+}
+
+/** Impuestos de la factura: desde la API 2025-03-31 en `total_taxes` (lista); antes, en `tax`. */
+function taxOf(i: Stripe.Invoice): number | null {
+  const x = i as unknown as { total_taxes?: Array<{ amount?: number }> | null; tax?: number | null };
+  if (Array.isArray(x.total_taxes)) return x.total_taxes.reduce((s, t) => s + (t.amount ?? 0), 0);
+  return typeof x.tax === "number" ? x.tax : null;
 }
 
 export function toEvent(e: { id: string; type: string; created: number; livemode: boolean; api_version?: string | null; data?: { object?: unknown } }): GwEvent {
@@ -292,7 +320,15 @@ export function stripeGateway(
     },
     async createCustomer(input, idempotencyKey) {
       try {
-        const c = await client.customers.create({ name: input.name, ...(input.email ? { email: input.email } : {}), metadata: input.metadata }, { idempotencyKey });
+        const c = await client.customers.create(
+          {
+            name: input.name,
+            ...(input.email ? { email: input.email } : {}),
+            metadata: input.metadata,
+            ...(input.address ? { address: { country: input.address.country, ...(input.address.postalCode ? { postal_code: input.address.postalCode } : {}) } } : {}),
+          },
+          { idempotencyKey },
+        );
         assertModeObject(c, mode);
         return { id: c.id };
       } catch (e) {
@@ -324,7 +360,7 @@ export function stripeGateway(
         cancel_url: i.cancelUrl,
         expires_at: i.expiresAt,
         billing_address_collection: "required",
-        tax_id_collection: { enabled: true },
+        tax_id_collection: i.taxIdRequired ? { enabled: true, required: "if_supported" } : { enabled: true },
         customer_update: { address: "auto", name: "auto" },
         locale: "es",
         ...(i.notice ? { custom_text: { submit: { message: i.notice.slice(0, 1200) } } } : {}),

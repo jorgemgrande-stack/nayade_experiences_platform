@@ -10,6 +10,8 @@
  */
 import express, { type Express, type NextFunction, type Request, type Response } from "express";
 import { BUILTIN_MODULES } from "../_core/modules/builtin";
+import type { CommercialEventReader } from "../commercialEvents/log";
+import { COMMERCIAL_EVENT_TYPES, type CommercialEventFilter, type CommercialEventType } from "../commercialEvents/types";
 import { CORE_VERSION } from "../_core/modules/runtime";
 import { assertCanActivate, assertCanDeactivate, buildCatalog, tenantModules, type ModulePriceRef, type PlanRef } from "../_core/modules/catalog";
 import rateLimit, { ipKeyGenerator } from "express-rate-limit";
@@ -81,6 +83,7 @@ import type { GwEvent } from "../stripe/gateway";
 import { StripeCheckoutService, type CheckoutUrls } from "../stripe/checkout";
 import { checkoutBlockedReason, type StripeConfig } from "../stripe/config";
 import type { StripeGateway } from "../stripe/gateway";
+import type { ConsentVersions, FiscalScenario } from "../stripe/buyerProfile";
 import type { StripeStore } from "../stripe/store";
 import type { OrderStore } from "../orchestrator/store";
 import type { TestPaymentPort } from "../orchestrator/payments";
@@ -179,6 +182,8 @@ export interface ControlPlaneDeps {
   trials?: { store: TrialStore; publicEnabled?: boolean; autoProvision?: boolean; notify?: TrialNotifier; limits?: Partial<TrialLimits>; blockedDomains?: string[] };
   /** Sedes y entidades fiscales (registro 0009), con los límites del plan contratado. */
   organization?: OrganizationStore;
+  /** Registro de eventos comerciales (CRM 0015), solo lectura. */
+  commercialEvents?: CommercialEventReader;
   /**
    * Orquestador comercial (CRM 0010). Requiere suscripciones, CRM, web y licencias por capacidad. Los
    * pagos simulados son SOLO de prueba (`payments`; con Stripe en live no se admiten y la aplicación no se
@@ -212,6 +217,11 @@ export interface ControlPlaneDeps {
     selfService: boolean;
     /** Versión publicada de las condiciones de contratación (CP_TERMS_VERSION); sin ella el autoservicio no funciona. */
     termsVersion: string | null;
+    /**
+     * Perfil fiscal del comprador (B2B/B2C): escenarios aprobados (CP_STRIPE_FISCAL_SCENARIOS) y versiones de
+     * consentimiento vigentes. Sin ello, ningún escenario está aprobado (en live no se abre Checkout).
+     */
+    fiscal?: { scenarios: Set<FiscalScenario>; consent: ConsentVersions };
   };
   /**
    * Correo transaccional centralizado (server/mail, CRM 0011). `platform`: avisos de Elephant Source
@@ -1117,7 +1127,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         const stripeCatalog = catalogFromWebStore(d.web.store);
         // En live sin política fiscal, Checkout no se monta aunque se pida (y el servicio también lo rechazaría)
         const checkout = st.checkoutEnabled && st.urls && !checkoutBlockedReason(st.config)
-          ? new StripeCheckoutService({ store: st.store, gateway: st.gateway, orders: d.orders.store, crmStore: d.crm.store, catalog: stripeCatalog, urls: st.urls, now: d.subscriptions.now, namespace: st.config.namespace, mode: st.config.mode, taxPolicy: st.config.taxPolicy })
+          ? new StripeCheckoutService({ store: st.store, gateway: st.gateway, orders: d.orders.store, crmStore: d.crm.store, catalog: stripeCatalog, urls: st.urls, now: d.subscriptions.now, namespace: st.config.namespace, mode: st.config.mode, taxPolicy: st.config.taxPolicy, fiscalScenarios: st.fiscal?.scenarios })
           : null;
         const processor = new StripeEventProcessor({ store: st.store, gateway: st.gateway, orders: d.orders.store, orchestrator, now: d.subscriptions.now, namespace: st.config.namespace, mode: st.config.mode });
         const reconciler = new StripeReconciler({ store: st.store, gateway: st.gateway, processor, now: d.subscriptions.now, retentionDays: st.config.eventsRetentionDays, mode: st.config.mode });
@@ -1130,7 +1140,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         if (st.publicStatus || selfServiceOk) {
           const pc = express.Router();
           if (selfServiceOk) {
-            const ss = new SelfServiceCheckout({ crm: d.crm.service, orders: d.orders.store, orchestrator, checkout: checkout!, catalog: stripeCatalog, ticketSecret: d.publicIntake!.secret, origins: publicOrigins, termsVersion: st.termsVersion, now: d.subscriptions.now });
+            const ss = new SelfServiceCheckout({ crm: d.crm.service, orders: d.orders.store, orchestrator, checkout: checkout!, catalog: stripeCatalog, ticketSecret: d.publicIntake!.secret, origins: publicOrigins, termsVersion: st.termsVersion, now: d.subscriptions.now, buyers: st.store, mode: st.config.mode, consent: st.fiscal?.consent });
             pc.use(createSelfServiceRouter(ss, publicOrigins));
           }
           if (st.publicStatus) pc.get(
@@ -1149,7 +1159,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
           pc.use((_req, res) => void res.status(404).json({ error: "not_found" }));
           publicCheckout = pc;
         }
-        router.use("/stripe", createStripeRouter({ config: st.config, store: st.store, gateway: st.gateway, catalog: stripeCatalog, checkout, processor, reconciler, now: d.subscriptions.now }));
+        router.use("/stripe", createStripeRouter({ config: st.config, store: st.store, gateway: st.gateway, catalog: stripeCatalog, checkout, processor, reconciler, now: d.subscriptions.now, orders: d.orders.store, fiscal: st.fiscal }));
       }
       // Webhook del proveedor de PRUEBAS: autenticado por firma (antes del montaje del router con tokens)
       if (d.orders.payments) app.post("/cp/v1/payments/test/webhook", paymentsWebhookHandler(orchestrator));
@@ -1405,6 +1415,40 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         const totals: Record<string, number> = {};
         for (const r of rows) totals[r.metric] = (totals[r.metric] ?? 0) + r.quantity;
         res.json({ tenantId: id, days, totals, hourly: rows });
+      }),
+    );
+  }
+
+  // Registro de eventos comerciales: solo lectura y siempre acotado a una operación, empresa o tenant
+  if (d.commercialEvents) {
+    const log = d.commercialEvents;
+    router.get(
+      "/commercial-events",
+      requireScope("ops:read"),
+      wrap(async (req, res) => {
+        const q = req.query as Record<string, string | undefined>;
+        const bad = (message: string) => void res.status(400).json({ error: "invalid_input", message });
+        const badInt = ["companyId", "orderId", "subscriptionId", "trialId", "afterId", "limit"].find((k) => q[k] !== undefined && !(Number.isInteger(Number(q[k])) && Number(q[k]) > 0));
+        if (badInt) return bad(`${badInt} no es válido`);
+        const int = (k: string) => (q[k] === undefined ? undefined : Number(q[k]));
+        const f: CommercialEventFilter = {
+          correlationId: q.correlationId?.slice(0, 40),
+          tenantId: q.tenantId?.slice(0, 63),
+          companyId: int("companyId"),
+          orderId: int("orderId"),
+          subscriptionId: int("subscriptionId"),
+          trialId: int("trialId"),
+          afterId: int("afterId"),
+          limit: Math.min(int("limit") ?? 200, 1000),
+        };
+        if ([f.correlationId, f.tenantId, f.companyId, f.orderId, f.subscriptionId, f.trialId].every((x) => x === undefined))
+          return bad("Indica correlationId, tenantId, companyId, orderId, subscriptionId o trialId");
+        if (q.types) {
+          const types = q.types.split(",").map((t) => t.trim());
+          if (types.some((t) => !(COMMERCIAL_EVENT_TYPES as readonly string[]).includes(t))) return bad("Tipo de evento desconocido");
+          f.types = types as CommercialEventType[];
+        }
+        res.json({ events: await log.list(f) });
       }),
     );
   }

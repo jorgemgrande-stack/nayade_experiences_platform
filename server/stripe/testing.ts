@@ -3,12 +3,12 @@
  * la misma Idempotency-Key devuelve el mismo objeto, los Prices se buscan por lookup_key y las
  * sesiones se pueden caducar. Registra cada llamada para poder comprobar qué se envió.
  */
-import { StripeGatewayError, type CheckoutSessionInput, type GwCharge, type GwCheckoutSession, type GwEvent, type GwInvoice, type GwPrice, type GwProduct, type GwSubscription, type StripeGateway } from "./gateway";
+import { StripeGatewayError, type CheckoutSessionInput, type CustomerInput, type GwCharge, type GwCheckoutSession, type GwEvent, type GwInvoice, type GwPrice, type GwProduct, type GwSubscription, type StripeGateway } from "./gateway";
 
 export class FakeStripeGateway implements StripeGateway {
   prices: GwPrice[] = [];
   products = new Map<string, GwProduct>();
-  customers = new Map<string, { id: string; deleted: boolean; name: string; email: string | null; metadata: Record<string, string> }>();
+  customers = new Map<string, { id: string; deleted: boolean } & CustomerInput>();
   sessions = new Map<string, GwCheckoutSession & { input: CheckoutSessionInput }>();
   subscriptions = new Map<string, GwSubscription>();
   invoices = new Map<string, GwInvoice>();
@@ -17,6 +17,8 @@ export class FakeStripeGateway implements StripeGateway {
   chargeRefs = new Map<string, string>();
   /** Simula que la lista de sesiones del cliente aún no incluye una recién creada. */
   hideSessions = false;
+  /** Identificadores fiscales que el cliente dio en Checkout (por Customer); sin entrada, ninguno. */
+  taxIdsOf = new Map<string, number>();
   /** Parámetros enviados con cada clave: como Stripe, otra petición con la misma clave y otros parámetros falla. */
   private idemParams = new Map<string, string>();
   /** Eventos que «emite» Stripe (para la conciliación); el más reciente al principio, como la API. */
@@ -46,7 +48,7 @@ export class FakeStripeGateway implements StripeGateway {
     const p = this.products.get(id);
     return p ? { ...p, metadata: { ...p.metadata } } : null;
   }
-  async createCustomer(input: { name: string; email: string | null; metadata: Record<string, string> }, key: string) {
+  async createCustomer(input: CustomerInput, key: string) {
     this.calls.push({ op: "customers.create", key, input });
     const prev = this.idem.get(`cus:${key}`);
     if (prev) return { id: prev };
@@ -156,7 +158,8 @@ export class FakeStripeGateway implements StripeGateway {
   /** Nueva factura de la suscripción (renovación, cambio…) y la deja como última. */
   addInvoice(subId: string, customerId: string, reason: string, status: GwInvoice["status"], amount: number) {
     const id = this.next("in");
-    this.invoices.set(id, { id, status, subscriptionId: subId, customerId, amountPaid: status === "paid" ? amount : 0, currency: "EUR", billingReason: reason, periodStart: 1_800_000_000 + this.seq, subtotal: amount });
+    const addr = this.customers.get(customerId)?.address;
+    this.invoices.set(id, { id, status, subscriptionId: subId, customerId, amountPaid: status === "paid" ? amount : 0, currency: "EUR", billingReason: reason, periodStart: 1_800_000_000 + this.seq, subtotal: amount, customerCountry: addr?.country ?? null, customerPostalCode: addr?.postalCode ?? null, customerTaxIds: this.taxIdsOf.get(customerId) ?? 0 });
     const sub = this.subscriptions.get(subId);
     if (sub) this.subscriptions.set(subId, { ...sub, latestInvoiceId: id });
     return id;

@@ -6,8 +6,12 @@
  *  - Cada cambio exige la versión leída y escribe su evento en la MISMA transacción.
  *  - Pagos idempotentes por clave; cada evento del proveedor se registra una sola vez (clave
  *    primaria) junto con su efecto sobre el pago, todo o nada.
+ *  - Con registro de eventos comerciales (migración 0015), cada alta, transición y cambio de pago
+ *    escribe además su evento comercial en esa misma transacción.
  */
 import type mysql from "mysql2/promise";
+import { orderCreated, orderTransition, paymentChanged } from "../commercialEvents/derive";
+import type { CommercialEventSink } from "../commercialEvents/types";
 import {
   OrderError,
   TERMINAL_STATES,
@@ -66,6 +70,8 @@ const clone = <T>(v: T): T => (v === undefined ? v : JSON.parse(JSON.stringify(v
 /** Claves de unicidad «abierta» (mismas reglas que las columnas generadas de la migración 0010). */
 const openCompany = (o: Pick<CommercialOrder, "kind" | "state" | "companyId">) => (o.kind !== "change" && !TERMINAL_STATES.has(o.state) ? o.companyId : null);
 const pendingChange = (o: Pick<CommercialOrder, "kind" | "state" | "subscriptionId">) => (o.kind === "change" && PIPELINE.includes(o.state) ? o.subscriptionId : null);
+/** Actor de los cambios de pago (el origen real, p. ej. Stripe, lo aporta el contexto de la operación). */
+const PAYMENT_ACTOR = "system:payments";
 const DUP_COMPANY = "La empresa ya tiene un pedido de contratación abierto";
 const DUP_CHANGE = "La suscripción ya tiene un cambio en curso";
 
@@ -78,6 +84,8 @@ export class MemoryOrderStore implements OrderStore {
   private payEvents = new Map<string, PaymentEventRecord>();
   private seq = 0;
   private lock: Promise<unknown> = Promise.resolve();
+  /** El registro de eventos se escribe al FINAL de cada operación: si algo antes falla, no se escribe. */
+  constructor(private commercialEvents?: CommercialEventSink) {}
 
   private atomic<T>(fn: () => Promise<T>): Promise<T> {
     const run = this.lock.then(async () => {
@@ -116,6 +124,7 @@ export class MemoryOrderStore implements OrderStore {
       this.assertUnique(full);
       this.orders.set(id, full);
       this.evs.push({ id: ++this.seq, orderId: id, kind: "created", fromState: null, toState: full.state, version: 1, detail: { kind: full.kind }, actor: o.createdBy, createdAt: o.createdAt });
+      await this.commercialEvents?.append(null, orderCreated(full, o.createdBy, o.createdAt));
       return { order: clone(full), created: true };
     });
   }
@@ -143,6 +152,7 @@ export class MemoryOrderStore implements OrderStore {
       this.assertUnique(next);
       this.orders.set(id, next);
       this.evs.push({ id: ++this.seq, orderId: id, kind: e.kind, fromState: cur.state, toState: next.state, version: next.version, detail: clone(e.detail), actor: e.actor, createdAt: e.at });
+      await this.commercialEvents?.append(null, orderTransition(cur, next, e));
       return clone(next);
     });
   }
@@ -156,6 +166,7 @@ export class MemoryOrderStore implements OrderStore {
       if (ex) return { payment: clone(ex), created: false };
       const full = { ...clone(p), id: ++this.seq };
       this.pays.set(full.id, full);
+      await this.commercialEvents?.append(null, paymentChanged(full, null, this.orders.get(p.orderId) ?? null, PAYMENT_ACTOR, p.createdAt));
       return { payment: clone(full), created: true };
     });
   }
@@ -177,6 +188,7 @@ export class MemoryOrderStore implements OrderStore {
         this.pays.set(cur.id, payment);
       }
       this.payEvents.set(e.providerEventId, { providerEventId: e.providerEventId, paymentId: cur?.id ?? null, type: e.type, outcome: d.outcome, detail: d.detail ?? null, receivedAt: e.receivedAt });
+      if (cur && payment) await this.commercialEvents?.append(null, paymentChanged(payment, cur.status, this.orders.get(cur.orderId) ?? null, PAYMENT_ACTOR, e.receivedAt));
       return { duplicate: false, payment: payment ? clone(payment) : null, outcome: d.outcome, result: d.result };
     });
   }
@@ -261,7 +273,17 @@ function uniqueError(e: unknown): never {
 }
 
 export class MysqlOrderStore implements OrderStore {
-  constructor(private pool: mysql.Pool) {}
+  constructor(
+    private pool: mysql.Pool,
+    /** Registro de eventos comerciales (0015); sin él, todo funciona igual y no se registra nada. */
+    private commercialEvents?: CommercialEventSink,
+  ) {}
+
+  /** Datos del pedido que acompañan a un evento de pago (leídos en la misma transacción). */
+  private async orderOf(c: mysql.PoolConnection, orderId: number) {
+    const [r] = await c.query<mysql.RowDataPacket[]>("SELECT * FROM commercial_orders WHERE id = ?", [orderId]);
+    return r[0] ? orderRow(r[0]) : null;
+  }
 
   private async inTx<T>(fn: (c: mysql.PoolConnection) => Promise<T>): Promise<T> {
     const c = await this.pool.getConnection();
@@ -301,7 +323,9 @@ export class MysqlOrderStore implements OrderStore {
         await c.query("UPDATE commercial_orders SET reference = ? WHERE id = ?", [orderReference(res.insertId, o.createdAt), res.insertId]);
         await this.event(c, res.insertId, "created", null, o.state, 1, { kind: o.kind }, o.createdBy, o.createdAt);
         const [r] = await c.query<mysql.RowDataPacket[]>("SELECT * FROM commercial_orders WHERE id = ?", [res.insertId]);
-        return orderRow(r[0]);
+        const created = orderRow(r[0]);
+        if (this.commercialEvents) await this.commercialEvents.append(c, orderCreated(created, o.createdBy, o.createdAt));
+        return created;
       });
       return { order, created: true };
     } catch (e) {
@@ -346,6 +370,7 @@ export class MysqlOrderStore implements OrderStore {
         const [after] = await c.query<mysql.RowDataPacket[]>("SELECT * FROM commercial_orders WHERE id = ?", [id]);
         const next = orderRow(after[0]);
         await this.event(c, id, e.kind, before.state, next.state, next.version, e.detail, e.actor, e.at);
+        if (this.commercialEvents) await this.commercialEvents.append(c, orderTransition(before, next, e));
         return next;
       });
     } catch (err) {
@@ -370,13 +395,18 @@ export class MysqlOrderStore implements OrderStore {
     const again = await this.paymentByKey(p.idempotencyKey);
     if (again) return { payment: again, created: false };
     try {
-      const [res] = await this.pool.query<mysql.ResultSetHeader>(
-        `INSERT INTO commercial_payments (order_id, idempotency_key, purpose, period_start, amount_cents, currency, status, provider, mode, provider_ref, due_at, created_at, settled_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-        [p.orderId, p.idempotencyKey, p.purpose, p.periodStart, p.amountCents, p.currency, p.status, p.provider, modeOf(p.mode), p.providerRef, p.dueAt, p.createdAt, p.settledAt],
-      );
-      const [r] = await this.pool.query<mysql.RowDataPacket[]>("SELECT * FROM commercial_payments WHERE id = ?", [res.insertId]);
-      return { payment: paymentRow(r[0]), created: true };
+      const payment = await this.inTx(async (c) => {
+        const [res] = await c.query<mysql.ResultSetHeader>(
+          `INSERT INTO commercial_payments (order_id, idempotency_key, purpose, period_start, amount_cents, currency, status, provider, mode, provider_ref, due_at, created_at, settled_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+          [p.orderId, p.idempotencyKey, p.purpose, p.periodStart, p.amountCents, p.currency, p.status, p.provider, modeOf(p.mode), p.providerRef, p.dueAt, p.createdAt, p.settledAt],
+        );
+        const [r] = await c.query<mysql.RowDataPacket[]>("SELECT * FROM commercial_payments WHERE id = ?", [res.insertId]);
+        const created = paymentRow(r[0]);
+        if (this.commercialEvents) await this.commercialEvents.append(c, paymentChanged(created, null, await this.orderOf(c, created.orderId), PAYMENT_ACTOR, created.createdAt));
+        return created;
+      });
+      return { payment, created: true };
     } catch (e) {
       if (dupOf(e) && /uq_payment_key/.test(dupOf(e)!)) {
         const ex = await this.paymentByKey(p.idempotencyKey);
@@ -407,6 +437,7 @@ export class MysqlOrderStore implements OrderStore {
           payment = { ...cur, status: d.status, providerRef: d.providerRef ?? cur.providerRef, settledAt: d.status === "pending" ? null : e.receivedAt };
         }
         await c.query("UPDATE commercial_payment_events SET payment_id = ?, outcome = ?, detail = ? WHERE provider_event_id = ?", [cur?.id ?? null, d.outcome, d.detail?.slice(0, 200) ?? null, e.providerEventId]);
+        if (cur && payment && payment.status !== cur.status && this.commercialEvents) await this.commercialEvents.append(c, paymentChanged(payment, cur.status, await this.orderOf(c, cur.orderId), PAYMENT_ACTOR, e.receivedAt));
         return { duplicate: false as const, payment, outcome: d.outcome, result: d.result };
       });
     } catch (err) {
