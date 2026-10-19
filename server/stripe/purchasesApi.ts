@@ -7,6 +7,8 @@
  *   POST /commerce/tenants/:tenantId/purchases/preview           commerce:purchase   prorrateo y partidas (no cambia nada)
  *   POST /commerce/tenants/:tenantId/purchases                   commerce:purchase   compra (idempotente por clave)
  *   GET  /commerce/tenants/:tenantId/purchases/:orderId          commerce:purchase   estado releído en Stripe
+ *   POST /commerce/tenants/:tenantId/reductions/preview          commerce:purchase   bajas y reducciones a fin de periodo (no cambia nada)
+ *   POST /commerce/tenants/:tenantId/reductions                  commerce:purchase   baja o reducción (idempotente; nunca bajo el uso real)
  *   POST /commerce/purchases/sync                                orders:write        conciliación de compras pendientes
  */
 import express, { type NextFunction, type Request, type Response, type Router } from "express";
@@ -22,6 +24,14 @@ const tenant = z.string().regex(/^[a-z0-9][a-z0-9-]{1,62}$/);
 const body = z
   .object({
     add: z.array(z.string().regex(/^[a-z0-9][a-z0-9-]{1,63}$/)).max(20).optional(),
+    users: z.number().int().min(0).max(100_000).optional(),
+    sites: z.number().int().min(0).max(10_000).optional(),
+    storageGb: z.number().int().min(0).max(1_000_000).optional(),
+  })
+  .strict();
+const reductionBody = z
+  .object({
+    remove: z.array(z.string().regex(/^[a-z0-9][a-z0-9-]{1,63}$/)).max(20).optional(),
     users: z.number().int().min(0).max(100_000).optional(),
     sites: z.number().int().min(0).max(10_000).optional(),
     storageGb: z.number().int().min(0).max(1_000_000).optional(),
@@ -61,6 +71,16 @@ export function createPurchasesRouter(svc: ModulePurchaseService): Router {
     const result = await svc.purchase(t, body.parse(input), { idempotencyKey, actor: actor(req, who) });
     opsLog("info", "Purchases", "purchase", { tenantId: t, orderId: result.orderId, status: result.status, created: result.created });
     res.status(result.created ? 201 : 200).json({ purchase: result });
+  }));
+  r.post("/tenants/:tenantId/reductions/preview", requireScope("commerce:purchase"), wrap(async (req, res) => {
+    res.json({ preview: await svc.previewReduction(tenant.parse(req.params.tenantId), reductionBody.parse(req.body ?? {})) });
+  }));
+  r.post("/tenants/:tenantId/reductions", requireScope("commerce:purchase"), wrap(async (req, res) => {
+    const t = tenant.parse(req.params.tenantId);
+    const { idempotencyKey, buyer: who, ...input } = z.object({ idempotencyKey: z.string(), buyer }).passthrough().parse(req.body ?? {});
+    const result = await svc.reduce(t, reductionBody.parse(input), { idempotencyKey, actor: actor(req, who) });
+    opsLog("info", "Purchases", "reduction", { tenantId: t, orderId: result.orderId, status: result.status, created: result.created });
+    res.status(result.created ? 201 : 200).json({ reduction: result });
   }));
   r.get("/tenants/:tenantId/purchases/:orderId", requireScope("commerce:purchase"), wrap(async (req, res) => {
     const t = tenant.parse(req.params.tenantId);

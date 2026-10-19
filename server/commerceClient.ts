@@ -14,6 +14,13 @@ export interface CommerceInput {
   storageGb?: number;
 }
 
+export interface ReductionInput {
+  remove?: string[];
+  users?: number;
+  sites?: number;
+  storageGb?: number;
+}
+
 export class CommerceError extends Error {
   constructor(
     public readonly status: number,
@@ -29,6 +36,8 @@ export interface CommerceClient {
   preview(tenantId: string, input: CommerceInput): Promise<unknown>;
   purchase(tenantId: string, input: CommerceInput, o: { idempotencyKey: string; buyer: string }): Promise<unknown>;
   status(tenantId: string, orderId: number): Promise<unknown>;
+  previewReduction(tenantId: string, input: ReductionInput): Promise<unknown>;
+  reduce(tenantId: string, input: ReductionInput, o: { idempotencyKey: string; buyer: string }): Promise<unknown>;
 }
 
 type Fetch = (url: string, init: { method: string; headers: Record<string, string>; body?: string; signal?: AbortSignal }) => Promise<{ status: number; json(): Promise<unknown> }>;
@@ -65,5 +74,7 @@ export function commerceClientFromEnv(env: NodeJS.ProcessEnv = process.env, fetc
     preview: async (tenantId, input) => ((await call("POST", `${seg(tenantId)}/purchases/preview`, input)) as { preview: unknown }).preview,
     purchase: async (tenantId, input, o) => ((await call("POST", `${seg(tenantId)}/purchases`, { ...input, idempotencyKey: o.idempotencyKey, buyer: o.buyer })) as { purchase: unknown }).purchase,
     status: async (tenantId, orderId) => ((await call("GET", `${seg(tenantId)}/purchases/${orderId}`)) as { purchase: unknown }).purchase,
+    previewReduction: async (tenantId, input) => ((await call("POST", `${seg(tenantId)}/reductions/preview`, input)) as { preview: unknown }).preview,
+    reduce: async (tenantId, input, o) => ((await call("POST", `${seg(tenantId)}/reductions`, { ...input, idempotencyKey: o.idempotencyKey, buyer: o.buyer })) as { reduction: unknown }).reduction,
   };
 }

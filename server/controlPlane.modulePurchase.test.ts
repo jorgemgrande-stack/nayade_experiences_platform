@@ -7,7 +7,8 @@
  *  - ampliación de usuarios con prorrateo;
  *  - cobro fallido o con autenticación: nada concedido; caducidad → pedido rechazado; pago tardío → aplicado;
  *  - compras simultáneas, método asíncrono (SEPA), producto no aprobado, reducción y aislamiento entre empresas;
- *  - interruptor apagado: 503 sin tocar nada.
+ *  - interruptor apagado: 503 sin tocar nada;
+ *  - bajas y reducciones a fin de periodo (PR 6): sin abonos, derechos hasta la renovación, nunca bajo el uso real.
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import crypto from "node:crypto";
@@ -43,6 +44,7 @@ import { MemoryStripeStore } from "./stripe/store";
 import { FakeStripeGateway } from "./stripe/testing";
 import { MemorySubscriptionChangeStore } from "./stripe/changes";
 import { ModulePurchaseService } from "./stripe/purchases";
+import { MemoryTenantLimitStore } from "./_core/limits/store";
 
 const ADMIN = "purchase-admin-token-aaaaaaaaaaaaaaaaaaa";
 /** Token de servicio del Core: SOLO compra (el tenant lo pone el Core desde su sesión). */
@@ -66,6 +68,7 @@ const trialStore = new MemoryTrialStore();
 const orders = new MemoryOrderStore();
 const gw = new FakeStripeGateway();
 const changes = new MemorySubscriptionChangeStore();
+const limits = new MemoryTenantLimitStore();
 const FOR_SALE = ["connect-people", "addon-user-essential"];
 const stripeStore = new MemoryStripeStore();
 const outbox: Array<{ kind: string; to: string; data: Record<string, unknown> }> = [];
@@ -166,6 +169,7 @@ beforeAll(async () => {
     web: { store: webStore },
     subscriptions: { store: subsStore, now: () => clock },
     capabilities: caps,
+    limits,
     trials: { store: trialStore, publicEnabled: true, autoProvision: true, notify },
     orders: { store: orders, payments: null },
     publicIntake: { secret: INTAKE_SECRET, origins: [WEB] },
@@ -367,5 +371,75 @@ describe("compra de módulos y ampliaciones desde la plataforma", () => {
     await expect(off.preview("cualquiera", { add: ["connect-people"] })).rejects.toMatchObject({ code: "disabled" });
     await expect(off.purchase("cualquiera", { add: ["connect-people"] }, { idempotencyKey: key(), actor: "x" })).rejects.toMatchObject({ code: "disabled" });
     expect(gw.calls.length).toBe(calls);
+  });
+});
+
+const reduce = (tenantId: string, body: Record<string, unknown>, token: string | null = CORE) => call("POST", `/commerce/tenants/${tenantId}/reductions`, { token, body: { idempotencyKey: key(), buyer: "user:7", ...body } });
+/** Stripe renueva la suscripción (nuevo periodo cobrado) y avisa por webhook; el reloj pasa el fin de periodo. */
+async function renew(a: { subId: string; customerId: string }) {
+  const s = gw.subscriptions.get(a.subId)!;
+  const end = s.currentPeriodEnd!;
+  clock = Math.max(clock, end * 1000) + 5 * 86_400_000;
+  gw.updateSubscription(a.subId, { currentPeriodStart: end, currentPeriodEnd: end + 30 * 86_400 });
+  const mark = gw.events.length;
+  const inv = gw.addInvoice(a.subId, a.customerId, "subscription_cycle", "paid", 2900);
+  gw.emit("invoice.paid", "invoice", inv);
+  await deliverSince(mark);
+  await settled();
+}
+
+describe("bajas y reducciones a fin de periodo (PR 6)", () => {
+  it("baja de un módulo: sin abono, sigue activo hasta la renovación y Stripe deja de cobrarlo; no se recompra antes", async () => {
+    const a = await activeCompany("Baja Módulo SL");
+    await ok(buy(a.tenantId, { add: ["connect-people"] }), 201);
+    expect(gw.subscriptions.get(a.subId)!.priceIds).toHaveLength(2);
+    const invoices = gw.invoices.size;
+    const p = (await ok(call("POST", `/commerce/tenants/${a.tenantId}/reductions/preview`, { token: CORE, body: { remove: ["connect-people"] } }))).preview;
+    expect(p.lines).toEqual([expect.objectContaining({ productKey: "connect-people", kind: "module", fromQuantity: 1, toQuantity: 0 })]);
+    expect(p.recurringDeltaCents).toBe(-1900);
+    const r = await ok(reduce(a.tenantId, { remove: ["connect-people"] }), 201);
+    expect(r.reduction).toMatchObject({ status: "applied", created: true });
+    expect(await orderState(r.reduction.orderId)).toBe("active");
+    // Stripe: partida fuera YA, sin prorrateo (ni factura ni abono)
+    expect(gw.subscriptions.get(a.subId)!.priceIds).toHaveLength(1);
+    expect(gw.invoices.size).toBe(invoices);
+    // Derechos hasta el fin del periodo pagado; volver a comprarlo antes no se admite (se pagaría dos veces)
+    expect(await capsOf(a.tenantId)).toContain("people-hr");
+    const again = await buy(a.tenantId, { add: ["connect-people"] });
+    expect(again.status).toBe(409);
+    expect(again.json.message).toMatch(/baja programada/);
+    // Los webhooks del cambio no alteran nada
+    await deliverSince(0);
+    await settled();
+    expect(await orderState(r.reduction.orderId)).toBe("active");
+    // Renovación: el módulo deja de estar contratado; nada se borra
+    await renew(a);
+    expect(await capsOf(a.tenantId)).not.toContain("people-hr");
+    expect(await orderState(r.reduction.orderId)).toBe("active");
+  });
+
+  it("reducción de usuarios: nunca por debajo del uso real; aumentos, el plan o lo no contratado no van por aquí", async () => {
+    const a = await activeCompany("Reducción Usuarios SL");
+    await ok(buy(a.tenantId, { users: 6 }), 201);
+    expect(gw.subscriptions.get(a.subId)!.items!.map((i) => i.quantity).sort()).toEqual([1, 3]);
+    await limits.reportUsage(a.tenantId, "users", 5, clock);
+    const ordersBefore = (await orders.list({ companyId: a.companyId })).length;
+    const below = await reduce(a.tenantId, { users: 4 });
+    expect(below.status).toBe(409);
+    expect(below.json.message).toMatch(/uso real/);
+    expect((await orders.list({ companyId: a.companyId })).length).toBe(ordersBefore);
+    expect(gw.subscriptions.get(a.subId)!.items!.map((i) => i.quantity).sort()).toEqual([1, 3]);
+    // Hasta el uso real sí: Stripe cobra menos desde la renovación; el límite actual se mantiene hasta entonces
+    const r = await ok(reduce(a.tenantId, { users: 5 }), 201);
+    expect(r.reduction.status).toBe("applied");
+    expect(gw.subscriptions.get(a.subId)!.items!.map((i) => i.quantity).sort()).toEqual([1, 2]);
+    expect((await limits.limits(a.tenantId)).find((l) => l.metric === "users")?.limit).toBe(6);
+    expect((await reduce(a.tenantId, { users: 9 })).status).toBe(400);
+    expect((await reduce(a.tenantId, { remove: ["essential"] })).status).toBe(400);
+    expect((await reduce(a.tenantId, { remove: ["connect-people"] })).status).toBe(400);
+    expect((await reduce(a.tenantId, {})).status).toBe(400);
+    // En la renovación el límite baja a lo contratado (3 incluidos + 2); ningún usuario se desactiva
+    await renew(a);
+    expect((await limits.limits(a.tenantId)).find((l) => l.metric === "users")?.limit).toBe(5);
   });
 });
