@@ -11,6 +11,7 @@ import { systemSettings, users } from "../drizzle/schema";
 import { getDb } from "./db";
 import { invalidateConfigCache } from "./config";
 import { getCapabilityAccess } from "./_core/capabilities/access";
+import { getLimitAccess } from "./_core/limits/access";
 import { SEAT_ROLES, licenceSummary, seatDecision, type LicenceSummary } from "./planSeats";
 import { PROGRESS_SETTING_KEY, parseProgress, type SetupProgress } from "../shared/setupWizard";
 
@@ -75,10 +76,16 @@ export async function countSeatUsers(): Promise<number> {
   return Number(r?.n ?? 0);
 }
 
-/** Plan, prueba y límite de usuarios de la empresa en curso según sus licencias. */
+/**
+ * Plan, prueba y límite de usuarios de la empresa en curso según sus licencias. Si el plano de control ha
+ * fijado un límite contratado (plan + usuarios adicionales, registro 0013), manda ese; si no, lo del plan.
+ */
 export async function currentLicence(): Promise<LicenceSummary> {
   const access = getCapabilityAccess();
-  return licenceSummary(await access.grants(), access.currentTime());
+  const summary = licenceSummary(await access.grants(), access.currentTime());
+  if (!summary.plan) return summary;
+  const contracted = await getLimitAccess()?.limit("users");
+  return contracted === undefined ? summary : { ...summary, userLimit: contracted };
 }
 
 /**
@@ -92,7 +99,10 @@ export async function assertSeatAvailable(adding = 1): Promise<void> {
   } catch {
     throw new TRPCError({ code: "SERVICE_UNAVAILABLE", message: "No se pudo comprobar el límite de usuarios de tu plan; inténtalo en unos minutos" });
   }
+  const used = await countSeatUsers();
+  // Uso real para el plano de control (no deja bajar los usuarios contratados por debajo de lo usado)
+  getLimitAccess()?.report("users", used);
   if (!summary.plan || summary.userLimit === null) return;
-  const d = seatDecision(summary, await countSeatUsers(), adding);
+  const d = seatDecision(summary, used, adding);
   if (!d.allowed) throw new TRPCError({ code: "FORBIDDEN", message: d.reason });
 }

@@ -13,6 +13,7 @@ import { getTenantMode, isMultiTenant } from "../tenant";
 import { getErm, installErmFromEnv } from "../erm/runtime";
 import { configureModuleAccess } from "../modules/runtime";
 import { configureCapabilityAccess } from "../capabilities/access";
+import { configureLimitAccess } from "../limits/access";
 import { warmConfigCache } from "../../config";
 import { warmIntegrationCreds } from "../credentials/runtime";
 import { configureTenantIdentity, warmTenantIdentity } from "../tenantIdentity";
@@ -94,6 +95,8 @@ export function installTenantResolution(app: Express, env: NodeJS.ProcessEnv = p
     configureModuleAccess(rt.entitlements);
     // Licencias por capacidad (catálogo de Elephant Source); se aplican con CAPABILITY_ENFORCEMENT=on
     configureCapabilityAccess(rt.capabilities);
+    // Límites contratados (usuarios, almacenamiento) y uso declarado (registro 0013)
+    configureLimitAccess(rt.limits);
     // Medición + cuotas por tenant (límites del registro; consumo en ERM_DATABASE_URL)
     installErmFromEnv(rt.quotas, env);
     // Acceso delegado de soporte (inactivo sin SUPPORT_JWT_SECRET)

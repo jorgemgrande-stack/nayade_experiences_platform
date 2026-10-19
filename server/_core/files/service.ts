@@ -17,6 +17,7 @@
  * un enlace firmado del Core con caducidad (`signedLink`). Ver server/fileRoutes.ts.
  */
 import crypto from "node:crypto";
+import { getLimitAccess } from "../limits/access";
 import { backendFromEnv, StorageUnavailableError, type ObjectBackend } from "./backend";
 import { detectContentType, extensionFor, isSafeSvg, safeDisplayName } from "./contentType";
 import { policyOf, type FileCategory, type Visibility } from "./categories";
@@ -28,6 +29,8 @@ import { getTrustedBaseUrl } from "../publicUrl";
 import { secureEqual } from "../signedLinks";
 
 export { StorageUnavailableError };
+
+const GB = 1024 ** 3;
 
 export class FileValidationError extends Error {
   constructor(message: string) {
@@ -224,6 +227,16 @@ export class FileService {
   async put(input: PutInput): Promise<PutResult> {
     const data = typeof input.data === "string" ? Buffer.from(input.data) : Buffer.from(input.data);
     const contentType = this.validate(input.category, data, input.declaredType);
+    // Almacenamiento contratado (plan + ampliaciones, registro 0013): nunca por encima. Sin dato, como hasta ahora
+    const limits = getLimitAccess();
+    const limitGb = limits ? await limits.limit("storage_gb") : undefined;
+    if (typeof limitGb === "number" && this.meta.usedBytes) {
+      const usedBefore = await this.meta.usedBytes();
+      limits!.report("storage_bytes", usedBefore);
+      if (usedBefore + data.length > limitGb * GB) {
+        throw new FileValidationError(`Has alcanzado el almacenamiento contratado (${limitGb} GB). Amplía el almacenamiento o libera espacio para subir más ficheros.`);
+      }
+    }
     const policy = policyOf(input.category);
     const backend = this.backend();
     const at = this.now();

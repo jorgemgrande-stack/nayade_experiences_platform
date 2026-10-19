@@ -15,6 +15,7 @@ import { keyringFromEnv } from "./crypto";
 import { accessPolicy } from "./lifecycle";
 import { MysqlEntitlementReader } from "../modules/mysqlEntitlements";
 import { MysqlCapabilityStore } from "../capabilities/store";
+import { MysqlTenantLimitStore } from "../limits/store";
 import { MysqlQuotaReader } from "../erm/mysqlQuotas";
 import { MysqlSupportReader } from "../support/grants";
 import { MysqlOrganizationStore } from "../../organization/service";
@@ -33,6 +34,8 @@ export interface TenantRuntime {
   entitlements: MysqlEntitlementReader;
   /** Licencias por capacidad (registro 0008); solo lectura desde el Core. */
   capabilities: MysqlCapabilityStore;
+  /** Límites contratados (lectura) y uso declarado por la empresa (registro 0013). */
+  limits: MysqlTenantLimitStore;
   /** Cuotas de recursos (solo lectura). */
   quotas: MysqlQuotaReader;
   /** Identidad de cada empresa: dominio público y entidad fiscal (solo lectura). */
@@ -103,6 +106,7 @@ export function createTenantRuntime(
     service,
     entitlements: new MysqlEntitlementReader(pool),
     capabilities: new MysqlCapabilityStore(pool),
+    limits: new MysqlTenantLimitStore(pool),
     quotas: new MysqlQuotaReader(pool),
     support: new MysqlSupportReader(pool),
     identity: registryIdentitySource(store, new MysqlOrganizationStore(pool)),

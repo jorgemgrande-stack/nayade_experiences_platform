@@ -24,6 +24,8 @@ import type { QuoteCatalog, QuoteCatalogProduct } from "../catalog/quote";
 import type { CrmPort } from "../subscriptions/ports";
 import type { SubscriptionStore } from "../subscriptions/store";
 import type { Subscription } from "../subscriptions/types";
+import { LIMIT_METRICS, type LimitChange, type LimitMetric, type TenantLimitStore } from "../_core/limits/store";
+import type { CommercialEventSink } from "../commercialEvents/types";
 
 export class LicensingError extends Error {
   constructor(
@@ -56,6 +58,10 @@ export class LicensingService {
       /** Catálogo PUBLICADO en formato del cotizador. */
       catalog: () => Promise<QuoteCatalog>;
       now?: () => number;
+      /** Límites contratados (registro 0013); sin ellos, solo se aplican las capacidades. */
+      limits?: Pick<TenantLimitStore, "setLimits">;
+      /** Registro de eventos comerciales (entitlement.limit_changed). */
+      events?: CommercialEventSink;
     },
   ) {
     this.now = d.now ?? Date.now;
@@ -138,7 +144,79 @@ export class LicensingService {
   async apply(subscriptionId: number, o: { activate: boolean; actor: string; reason?: string | null }) {
     const plan = await this.preview(subscriptionId, { activate: o.activate });
     const events = plan.changes.length ? await this.d.capabilities.apply(plan.tenantId, plan.changes, { actor: o.actor, reason: o.reason ?? `Licencias de la suscripción #${subscriptionId}`, now: this.now() }) : [];
-    return { ...plan, applied: events };
+    const limits = await this.applyLimits(subscriptionId, plan.tenantId, o.actor);
+    return { ...plan, applied: events, limits };
+  }
+
+  /**
+   * Límites contratados de la suscripción (registro 0013): lo incluido en el plan, con su herencia, más las
+   * ampliaciones vigentes (unidades × paso). null = por contrato (sin tope técnico). Una suscripción terminada no
+   * los cambia (la empresa queda en solo lectura con los que tenía).
+   */
+  async limitsFor(subscriptionId: number): Promise<Array<{ metric: LimitMetric; limit: number | null }>> {
+    const sub = await this.d.subscriptions.get(subscriptionId);
+    if (!sub) throw new LicensingError("not_found", "Suscripción no encontrada");
+    const now = this.now();
+    const items = (await this.d.subscriptions.items(sub.id)).filter((i) => i.effectiveFrom <= now && (i.effectiveTo === null || i.effectiveTo > now));
+    const catalog = await this.d.catalog();
+    const byKey = new Map(catalog.products.map((p) => [p.key, p]));
+    const planItem = items.find((i) => i.family === "core_plan");
+    const included = (metric: string): number | null | undefined => {
+      for (let p = planItem ? byKey.get(planItem.productKey) : undefined, g = 0; p && g < 10; p = p.inherits ? byKey.get(p.inherits) : undefined, g++) {
+        const q = p.quotas.find((x) => x.metric === metric);
+        if (q) return q.included;
+      }
+      return undefined;
+    };
+    const out: Array<{ metric: LimitMetric; limit: number | null }> = [];
+    for (const metric of LIMIT_METRICS) {
+      const base = included(metric);
+      if (base === undefined) continue; // el plan no define esa métrica: no se fija límite
+      if (base === null) {
+        out.push({ metric, limit: null });
+        continue;
+      }
+      const extra = items.reduce((a, i) => {
+        const p = byKey.get(i.productKey);
+        return p?.addonFor?.metric === metric ? a + i.quantity * p.addonFor.step : a;
+      }, 0);
+      out.push({ metric, limit: base + extra });
+    }
+    return out;
+  }
+
+  private async applyLimits(subscriptionId: number, tenantId: string, actor: string): Promise<LimitChange[]> {
+    if (!this.d.limits) return [];
+    const sub = await this.d.subscriptions.get(subscriptionId);
+    if (!sub || sub.status === "canceled") return [];
+    const now = this.now();
+    const changes = await this.d.limits.setLimits(tenantId, await this.limitsFor(subscriptionId), { source: `subscription:${subscriptionId}`, actor, now });
+    if (changes.length && this.d.events) {
+      await this.d.events
+        .append(
+          null,
+          changes.map((c) => ({
+            key: `subscription:${sub.id}:v${sub.version}:limit:${c.metric}:${c.to ?? "contract"}`,
+            type: "entitlement.limit_changed" as const,
+            aggregate: { type: "subscription" as const, id: String(sub.id), version: sub.version },
+            correlationId: `subscription:${sub.id}`,
+            tenantId,
+            companyId: sub.companyId,
+            orderId: null,
+            subscriptionId: sub.id,
+            trialId: null,
+            paymentId: null,
+            stripeRef: null,
+            fromState: c.from === undefined ? null : String(c.from ?? "contract"),
+            toState: String(c.to ?? "contract"),
+            actor,
+            occurredAt: now,
+            data: { metric: c.metric, from: c.from ?? null, to: c.to },
+          })),
+        )
+        .catch(() => undefined);
+    }
+    return changes;
   }
 
   /** Cambio manual de estado de una capacidad (operador): activar, suspender, solo lectura… */
