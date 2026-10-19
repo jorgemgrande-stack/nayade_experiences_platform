@@ -186,3 +186,35 @@ Ninguno aplica migraciones en production ni en live, ni escribe en Stripe live.
 | D | **Formato y alcance de la exportación** | Qué datos y en qué formato | ZIP con CSV y JSON de clientes, reservas, facturas, productos y ficheros. Enlace firmado de 24 h. Solo el propietario |
 
 Mientras se deciden A y B, los PR 1 a 3 se pueden hacer sin depender de ellas.
+
+---
+
+## 13. Decisiones del propietario (validación del 20/10/2026)
+
+| # | Decisión |
+|---|---|
+| A | Precios anuales = 10 mensualidades. Se preparan **sin publicarlos** ni crearlos en Stripe hasta revisar el catálogo |
+| B | Solo se vende un producto terminado, probado y aprobado para venta libre. Los módulos Connect **no** se publican automáticamente |
+| C | Se rechazan las reducciones por debajo del consumo real. Nunca se borran datos ni se desactivan usuarios automáticamente |
+| D | ZIP con CSV, JSON y archivos asociados, enlace firmado de 24 h y acceso exclusivo del propietario autorizado |
+
+Hechos: PR 1 (#172, solo lectura 30 días), PR 2 (#173, partidas, CRM 0017) y PR 3 (límites en el Core, registro 0013).
+
+## 14. Garantías reales de Stripe verificadas (documentación oficial, antes de los PR 4–5)
+
+| Tema | Lo que garantiza Stripe | Consecuencia para el diseño |
+|---|---|---|
+| **Cambio solo si se cobra** (`payment_behavior=pending_if_incomplete`) | Con `proration_behavior=always_invoice`, Stripe crea la factura de prorrateo e intenta cobrarla. Si no se cobra, la suscripción **no cambia** y queda un `pending_update`. Si se cobra, se aplica y la factura queda `paid`. Vale en `subscriptions.update`, `subscription_items.create` y `subscription_items.update` | Es el mecanismo de compra: ninguna activación sin cobro. El procesador comprueba `pending_update` (vacío = aplicado) además de `invoice.paid` |
+| **Métodos de pago admitidos** | Solo con `collection_method=charge_automatically` y métodos como tarjeta, Link, Apple Pay, Google Pay, PayPal, Klarna… **No incluye adeudo SEPA** | Con SEPA no hay cambio condicionado al cobro: la compra de módulos en Stripe se limita a esos métodos, y con otro método se rechaza o la tramita el operador como excepción. **Decisión pendiente** si se quiere SEPA |
+| **Autenticación bancaria (SCA / 3DS)** | Si el cobro exige autenticación, la factura queda `open` con PaymentIntent `requires_action` y el cambio sigue pendiente. El cliente autentica en la página de la factura (`hosted_invoice_url`); al pagarse, se aplica el cambio | La compra devuelve el estado «pendiente de autenticación» con el enlace de la factura. El evento `invoice.payment_action_required` ya se procesa (relee la factura) |
+| **Caducidad y reversión** | Un `pending_update` caduca a las 23 h, o antes si termina el periodo o la prueba. Stripe **anula la factura y descarta el cambio**. Se puede cancelar antes anulando la factura (`invoices.void`) | Pedido de compra con plazo: caducado sin cobro → pedido rechazado, nada activado. Nunca queda medio aplicado |
+| **Otro cambio encima** | Una actualización posterior con `items` no vacío, `billing_cycle_anchor` o `trial_end` **elimina** el cambio pendiente | Un solo cambio en curso por suscripción (ya garantizado en la BD con `uq_order_pending_change`); el Portal no debe permitir cambios mientras hay uno pendiente |
+| **Prorrateo** | Por segundos y sobre el precio con descuento. Lo generan cambiar precio o cantidad y añadir o quitar partidas. Con `always_invoice` se factura en el momento. La vista previa se obtiene con `invoices.createPreview` | Presupuesto de compra con la vista previa de Stripe; cálculo interno idéntico solo en el modo simulado |
+| **Periodicidad mixta** | En modo de facturación **clásico**, todas las partidas deben tener la misma periodicidad. En modo **flexible** se permiten mezcladas (mensual y anual en la misma suscripción). Pasar de clásico a flexible **no tiene vuelta atrás** | Afecta a la decisión A: con modo flexible, un plan anual podría llevar módulos mensuales sin precio anual. Hay que comprobar en sandbox el modo de las suscripciones actuales antes del PR 4 y decidir. Mientras, se asume una periodicidad única |
+| **Reintentos** | Smart Retries (recomendado: 8 intentos en 2 semanas). Los rechazos definitivos (tarjeta perdida o robada, `authentication_required`…) no se reintentan sin un método nuevo. `invoice.payment_failed` lleva `attempt_count` | Gracia de 7 días (D-15) dentro de esa ventana. Los rechazos definitivos se tratan como un aviso de cambio de método de pago (comunicaciones, más adelante) |
+| **Facturas finalizadas** | No se modifican; las correcciones se hacen con **notas de crédito** (credit notes) | Reembolsos y rectificativas por línea con notas de crédito (PR 7) |
+| **Pruebas** | Tarjetas de prueba para rechazo (`4000 0000 0000 0341`) y 3DS (`4000 0027 6000 3184`) y relojes de prueba (test clocks) | E2E del PR 9 en el sandbox, cuando haya credenciales, y con la pasarela simulada mientras tanto |
+
+**Conclusión:** el circuito del §4 es viable con garantías nativas de Stripe (sin activación sin cobro, sin cambios a medias, reversión automática), con dos condiciones abiertas:
+1. Método de pago: el cambio condicionado al cobro no admite SEPA.
+2. Modo de facturación: comprobar si es clásico o flexible antes de decidir la periodicidad de módulos y ampliaciones.
