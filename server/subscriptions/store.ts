@@ -317,6 +317,8 @@ function itemRow(r: Record<string, unknown>): SubscriptionItem {
     id: Number(r.id),
     subscriptionId: Number(r.subscription_id),
     family: r.family as SubscriptionItem["family"],
+    lineKind: (r.line_kind as SubscriptionItem["lineKind"]) ?? null,
+    metric: (r.metric as string) ?? null,
     productKey: String(r.product_key),
     productName: String(r.product_name),
     activationKind: String(r.activation_kind),
@@ -374,15 +376,18 @@ function chargeRow(r: Record<string, unknown>): ShadowCharge {
   };
 }
 
-async function insertItemSql(c: Q, subscriptionId: number, i: NewItem): Promise<SubscriptionItem> {
+/** `lines`: la BD tiene las columnas de partida comercial (CRM 0017); sin ellas se inserta como antes. */
+async function insertItemSql(c: Q, subscriptionId: number, i: NewItem, lines = false): Promise<SubscriptionItem> {
+  const extraCols = lines ? ", line_kind, metric" : "";
+  const extraVals = lines ? [i.lineKind ?? null, i.metric ?? null] : [];
   const [res] = await c.query<mysql.ResultSetHeader>(
     `INSERT INTO subscription_items (subscription_id, family, product_key, product_name, activation_kind, activation_ref, price_id, price_source,
        price_kind, unit_amount_cents, unit, quantity, tax_rate_bp, tax_included, discount_kind, discount_value, discount_ends_at, discount_note,
-       effective_from, effective_to, created_at, created_by) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+       effective_from, effective_to, created_at, created_by${extraCols}) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?${lines ? ",?,?" : ""})`,
     [
       subscriptionId, i.family, i.productKey, i.productName, i.activationKind, i.activationRef, i.priceId, i.priceSource,
       i.priceKind, i.unitAmountCents, i.unit, i.quantity, i.taxRateBp, i.taxIncluded ? 1 : 0, i.discount?.kind ?? null, i.discount?.value ?? null,
-      i.discount?.endsAt ?? null, i.discount?.note ?? null, i.effectiveFrom, i.effectiveTo, i.createdAt, i.createdBy,
+      i.discount?.endsAt ?? null, i.discount?.note ?? null, i.effectiveFrom, i.effectiveTo, i.createdAt, i.createdBy, ...extraVals,
     ],
   );
   const [rows] = await c.query<mysql.RowDataPacket[]>("SELECT * FROM subscription_items WHERE id = ?", [res.insertId]);
@@ -416,6 +421,16 @@ export class MysqlSubscriptionStore implements SubscriptionStore {
     private commercialEvents?: CommercialEventSink,
   ) {}
 
+  /**
+   * ¿Tiene la BD las columnas de partida comercial (CRM 0017)? Solo se recuerda el «sí»: si se migra con el
+   * servicio en marcha, la siguiente escritura ya las usa sin reiniciar.
+   */
+  private lines = false;
+  private async hasLines(): Promise<boolean> {
+    if (!this.lines) this.lines = await this.pool.query("SELECT line_kind, metric FROM subscription_items LIMIT 0").then(() => true, () => false);
+    return this.lines;
+  }
+
   private async inTx<T>(fn: (c: mysql.PoolConnection) => Promise<T>): Promise<T> {
     const c = await this.pool.getConnection();
     try {
@@ -446,7 +461,8 @@ export class MysqlSubscriptionStore implements SubscriptionStore {
         const id = res.insertId;
         // Referencia en la MISMA transacción: nunca queda una suscripción sin referencia
         await c.query("UPDATE subscriptions SET reference = ? WHERE id = ?", [refFor(id, sub.createdAt), id]);
-        for (const i of items) await insertItemSql(c, id, i);
+        const lines = await this.hasLines();
+        for (const i of items) await insertItemSql(c, id, i, lines);
         await insertEventSql(c, id, 1, event, sub.createdBy, sub.createdAt);
         const [rows] = await c.query<mysql.RowDataPacket[]>("SELECT * FROM subscriptions WHERE id = ?", [id]);
         const created = subRow(rows[0]);
@@ -483,7 +499,7 @@ export class MysqlSubscriptionStore implements SubscriptionStore {
           const [r] = await c.query<mysql.RowDataPacket[]>("SELECT * FROM subscription_items WHERE subscription_id = ? ORDER BY id FOR UPDATE", [id]);
           return r.map(itemRow);
         },
-        insertItem: (i) => insertItemSql(c, id, i),
+        insertItem: async (i) => insertItemSql(c, id, i, await this.hasLines()),
         endItem: async (itemId, to) => {
           const [r] = await c.query<mysql.ResultSetHeader>("UPDATE subscription_items SET effective_to = ? WHERE id = ? AND subscription_id = ?", [to, itemId, id]);
           if (r.affectedRows !== 1) throw new SubscriptionError("not_found", "Partida no encontrada");

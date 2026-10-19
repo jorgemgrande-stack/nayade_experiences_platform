@@ -924,7 +924,15 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
 
   if (d.subscriptions && d.crm && d.web) {
     const crmPort = crmFromStore(d.crm.store);
-    const svc = new ContractSubscriptionService({ store: d.subscriptions.store, catalog: catalogFromWebStore(d.web.store), crm: crmPort, now: d.subscriptions.now });
+    // Uso real para no bajar ampliaciones por debajo de lo usado: sedes, aquí; usuarios y almacenamiento los aporta la empresa (PR 3)
+    const orgStore = d.organization;
+    const svc = new ContractSubscriptionService({
+      store: d.subscriptions.store,
+      catalog: catalogFromWebStore(d.web.store),
+      crm: crmPort,
+      now: d.subscriptions.now,
+      usage: { of: async (tenantId, metric) => (metric === "sites" && orgStore ? (await orgStore.sites(tenantId)).filter((x) => x.status === "active").length : null) },
+    });
     const shadowBilling = new ShadowBillingService({ store: d.subscriptions.store, crm: crmPort, now: d.subscriptions.now });
     if (d.capabilities) {
       // Licencias por capacidad: Elephant Control es la autoridad técnica. Antes del router de

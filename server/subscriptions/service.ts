@@ -22,7 +22,7 @@ import { bundleReplaces } from "../catalog/quote";
 import type { CatalogPort, CatalogProduct, CrmPort } from "./ports";
 import { intervalMonths, isRecurring, itemInterval, itemPeriodAt, monthlyEquivalent, periodEnd, recurringKind } from "./pricing";
 import type { NewItem, SubscriptionStore, SubscriptionTx } from "./store";
-import { SubscriptionError, type Discount, type Family, type Interval, type Subscription, type SubscriptionItem } from "./types";
+import { SubscriptionError, type Discount, type Family, type Interval, type LineKind, type Subscription, type SubscriptionItem } from "./types";
 
 export interface ItemSpec {
   productKey: string;
@@ -35,6 +35,19 @@ export type When = "now" | "period_end";
 const ADDON_FAMILIES: Family[] = ["extension", "industry_module", "service", "usage"];
 const MAX_TRIAL_DAYS = 60;
 const DAY = 86_400_000;
+
+/** Tipo de partida según el catálogo: plan, ampliación por cantidad (con su métrica), servicio o módulo. */
+export function lineKindOf(p: Pick<CatalogProduct, "family" | "addonFor">): { lineKind: LineKind; metric: string | null } {
+  if (p.family === "core_plan") return { lineKind: "plan", metric: null };
+  if (p.addonFor) return { lineKind: "quantity", metric: p.addonFor.metric };
+  if (p.family === "service") return { lineKind: "service", metric: null };
+  return { lineKind: "module", metric: null };
+}
+
+/** Uso real de una métrica en la empresa (usuarios, sedes, almacenamiento); null = desconocido. */
+export interface UsagePort {
+  of(tenantId: string, metric: string): Promise<number | null>;
+}
 
 export const activeAt = (items: SubscriptionItem[], at: number) =>
   items.filter((i) => i.effectiveFrom <= at && (i.effectiveTo === null || i.effectiveTo > at));
@@ -55,7 +68,7 @@ function checkDiscount(d: Discount | null | undefined): Discount | null {
 
 export class SubscriptionService {
   private now: () => number;
-  constructor(private d: { store: SubscriptionStore; catalog: CatalogPort; crm: CrmPort; now?: () => number }) {
+  constructor(private d: { store: SubscriptionStore; catalog: CatalogPort; crm: CrmPort; now?: () => number; usage?: UsagePort }) {
     this.now = d.now ?? Date.now;
   }
 
@@ -87,6 +100,7 @@ export class SubscriptionService {
       product,
       item: {
         family: product.family,
+        ...lineKindOf(product),
         productKey: product.key,
         productName: product.name,
         activationKind: product.activationKind,
@@ -140,8 +154,12 @@ export class SubscriptionService {
       if (cfg.plan !== input.plan.productKey) bad(`El contrato acordó el plan «${cfg.plan}», no «${input.plan.productKey}»`);
       if (cfg.interval !== input.interval) bad(`El contrato acordó periodicidad ${cfg.interval === "year" ? "anual" : "mensual"}`);
       const agreed = new Set(cfg.items.map((i) => i.key));
-      const extra = (input.addons ?? []).map((a) => a.productKey).filter((k) => !agreed.has(k));
+      // Ampliaciones por cantidad: acordadas si están en las líneas cotizadas del contrato, con esas unidades
+      const agreedUnits = new Map((contract.configuration?.quote?.lines ?? []).filter((l) => l.family === "addon").map((l) => [l.key, l.quantity] as const));
+      const extra = (input.addons ?? []).map((a) => a.productKey).filter((k) => !agreed.has(k) && !agreedUnits.has(k));
       if (extra.length) bad(`Complementos fuera de lo contratado: ${extra.join(", ")}`);
+      const wrong = (input.addons ?? []).filter((a) => agreedUnits.has(a.productKey) && (a.quantity ?? 1) !== agreedUnits.get(a.productKey)).map((a) => a.productKey);
+      if (wrong.length) bad(`Cantidades distintas de las contratadas: ${wrong.join(", ")}`);
     }
     return contract;
   }
@@ -223,6 +241,70 @@ export class SubscriptionService {
     const own = itemInterval(item.priceKind);
     return when === "now" || !own ? this.effectAt(sub, when) : itemPeriodAt(sub, own, this.now()).end;
   }
+  /**
+   * Bajar una ampliación: el límite resultante (incluido en el plan + el resto de ampliaciones de la misma
+   * métrica + las unidades nuevas) no puede quedar por debajo del uso real. Sin dato de uso, se permite (el
+   * Core también lo aplica al usar). Nunca se desactivan usuarios ni se borran datos.
+   */
+  private async assertAboveUsage(sub: Subscription, items: SubscriptionItem[], productKey: string, addon: { metric: string; step: number }, units: number) {
+    if (!this.d.usage || !sub.tenantId) return;
+    const now = this.now();
+    const live = activeAt(items, now);
+    const plan = live.find((i) => i.family === "core_plan");
+    const included = plan ? (await this.d.catalog.product(plan.productKey))?.quotas?.find((q) => q.metric === addon.metric)?.included : undefined;
+    if (included === null) return; // por contrato: sin tope técnico
+    let others = 0;
+    for (const i of live.filter((x) => x.productKey !== productKey)) {
+      const a = (await this.d.catalog.product(i.productKey))?.addonFor;
+      if (a?.metric === addon.metric) others += i.quantity * a.step;
+    }
+    const limit = (included ?? 0) + others + units * addon.step;
+    const used = await this.d.usage.of(sub.tenantId, addon.metric);
+    if (used !== null && limit < used) state(`No se puede bajar por debajo del uso real: ${used} en uso y el límite quedaría en ${limit}`, { metric: addon.metric, used, limit });
+  }
+
+  /**
+   * Cambio de cantidad de una ampliación (usuarios, sedes, almacenamiento) ya contratada. Subida: desde ahora
+   * (la partida vigente se cierra y se abre otra con la cantidad nueva, al mismo precio contratado; el
+   * prorrateo lo cobra el pedido). Bajada: desde el fin del periodo de la partida (nunca se acorta lo pagado) y
+   * nunca por debajo del uso real. 0 = baja a fin de periodo. La primera compra es `addItem`.
+   */
+  async changeQuantity(id: number, input: { productKey: string; quantity: number; reason?: string | null }, expectedVersion: number, actor: string) {
+    if (!Number.isInteger(input.quantity) || input.quantity < 0 || input.quantity > 10_000) bad("Cantidad entre 0 y 10.000");
+    const product = await this.d.catalog.product(input.productKey);
+    if (!product?.addonFor) bad(`«${input.productKey}» no es una ampliación por cantidad`);
+    const addon = product.addonFor;
+    return this.d.store.mutate(id, expectedVersion, actor, this.now(), async (tx, sub) => {
+      this.assertOpen(sub);
+      const now = this.now();
+      const items = await tx.items();
+      const current = activeAt(items, now).find((i) => i.productKey === product.key);
+      if (!current) state(`«${product.name}» no está contratada: la primera compra se añade como partida nueva`);
+      if (current.effectiveTo !== null) state(`«${product.name}» ya tiene una baja programada`);
+      if (items.some((i) => i.productKey === product.key && i.effectiveFrom > now)) state(`«${product.name}» ya tiene un cambio programado`);
+      if (input.quantity === current.quantity) state("La cantidad no cambia");
+      const up = input.quantity > current.quantity;
+      if (!up) await this.assertAboveUsage(sub, items, product.key, addon, input.quantity);
+      const at = up ? Math.max(now, sub.currentPeriodStart) : this.itemEffectAt(sub, current, "period_end");
+      await tx.endItem(current.id, at);
+      let created: SubscriptionItem | null = null;
+      if (input.quantity > 0) {
+        const { id: _id, subscriptionId: _sid, ...snap } = current;
+        created = await tx.insertItem({ ...snap, lineKind: "quantity", metric: addon.metric, quantity: input.quantity, effectiveFrom: at, effectiveTo: null, createdAt: this.now(), createdBy: actor });
+      }
+      return {
+        patch: {},
+        event: {
+          kind: "quantity_changed",
+          before: { item: product.key, metric: addon.metric, quantity: current.quantity },
+          after: { item: product.key, metric: addon.metric, quantity: input.quantity, effectiveFrom: at, direction: up ? "up" : "down" },
+          reason: input.reason ?? null,
+        },
+        result: { item: created, effectiveFrom: at, direction: up ? ("up" as const) : ("down" as const) },
+      };
+    });
+  }
+
   private assertNoScheduled(items: SubscriptionItem[], sub: Subscription, family?: Family) {
     const future = items.filter((i) => i.effectiveFrom > this.now() && (!family || i.family === family));
     if (future.length) state("Ya hay un cambio programado para la próxima renovación; espera a que se aplique", { scheduled: future.map((i) => i.productKey) });
@@ -289,7 +371,7 @@ export class SubscriptionService {
         event: {
           kind: "item_added",
           before: replaced.length ? { replaced: replaced.map((r) => ({ item: r.productKey, priceId: r.priceId, effectiveTo: at })) } : null,
-          after: { item: created.productKey, family: created.family, priceId: created.priceId, unitAmountCents: created.unitAmountCents, effectiveFrom: at },
+          after: { item: created.productKey, family: created.family, lineKind: created.lineKind ?? null, metric: created.metric ?? null, quantity: created.quantity, priceId: created.priceId, unitAmountCents: created.unitAmountCents, effectiveFrom: at },
           reason: input.reason ?? null,
         },
         result: created,
@@ -312,10 +394,13 @@ export class SubscriptionService {
       const at = this.itemEffectAt(sub, it, input.when ?? "period_end");
       const remaining = activeAt(items, at).filter((i) => i.id !== it.id);
       await this.checkComposition(remaining);
+      // Quitar una ampliación por cantidad es bajar a 0: nunca por debajo del uso real
+      const addon = (await this.d.catalog.product(it.productKey))?.addonFor;
+      if (addon) await this.assertAboveUsage(sub, items, it.productKey, addon, 0);
       await tx.endItem(it.id, at);
       return {
         patch: {},
-        event: { kind: "item_removed", before: { item: it.productKey, priceId: it.priceId }, after: { effectiveTo: at }, reason: input.reason ?? null },
+        event: { kind: "item_removed", before: { item: it.productKey, priceId: it.priceId, lineKind: it.lineKind ?? (addon ? "quantity" : null), metric: addon?.metric ?? null, quantity: it.quantity }, after: { effectiveTo: at, quantity: addon ? 0 : null }, reason: input.reason ?? null },
         result: { itemId: it.id, effectiveTo: at },
       };
     });

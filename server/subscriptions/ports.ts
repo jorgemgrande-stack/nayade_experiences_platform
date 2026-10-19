@@ -19,6 +19,10 @@ export interface CatalogProduct {
   compatibleWith: string[];
   /** Paquetes: componentes que sustituye (catálogo `bundleOf`). */
   bundleOf: string[];
+  /** Ampliación por cantidad: métrica que amplía y unidades por cada partida (p. ej. 10 GB). */
+  addonFor?: { metric: string; step: number } | null;
+  /** Cupos incluidos (planes): usuarios, sedes, almacenamiento… null = por contrato. */
+  quotas?: Array<{ metric: string; included: number | null }>;
 }
 export interface CatalogPrice {
   id: number;
@@ -41,7 +45,8 @@ export interface CatalogPort {
 
 export interface ContractInfo {
   /** Configuración cotizada (si el contrato la tiene): plan y periodicidad acordados. */
-  configuration?: { request: { plan: string; interval: Interval; items: Array<{ key: string }> } } | null;
+  /** Configuración cotizada: petición y, si la hay, las líneas calculadas por el servidor (ampliaciones incluidas). */
+  configuration?: { request: { plan: string; interval: Interval; items: Array<{ key: string }> }; quote?: { lines?: Array<{ key: string; family: string; quantity: number }> } } | null;
   id: number;
   reference: string | null;
   companyId: number;
@@ -83,7 +88,7 @@ export function catalogFromWebStore(store: WebStore): CatalogPort {
       activation: { kind: string; ref: string | null };
       dependencies?: string[];
       compatibleWith?: string[];
-      catalog?: { commercialStatus?: CatalogProduct["commercialStatus"]; bundleOf?: string[] };
+      catalog?: { commercialStatus?: CatalogProduct["commercialStatus"]; bundleOf?: string[]; addonFor?: { metric: string; step: number } | null; quotas?: Array<{ metric: string; included: number | null }> };
       billingModel?: string;
     };
     // Un «servicio» con cuota recurrente (alojamiento web) se contrata como complemento recurrente;
@@ -101,6 +106,8 @@ export function catalogFromWebStore(store: WebStore): CatalogPort {
       dependencies: p.dependencies ?? [],
       compatibleWith: p.compatibleWith ?? [],
       bundleOf: p.catalog?.bundleOf ?? [],
+      addonFor: p.catalog?.addonFor ? { metric: p.catalog.addonFor.metric, step: p.catalog.addonFor.step } : null,
+      quotas: (p.catalog?.quotas ?? []).map((q) => ({ metric: q.metric, included: q.included })),
     };
   };
   const priceOf = (x: Awaited<ReturnType<WebStore["getPrice"]>>, key: string): CatalogPrice | null =>
