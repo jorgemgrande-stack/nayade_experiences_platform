@@ -28,6 +28,7 @@ import { quoteCatalogFromSite } from "./catalog/snapshot";
 import { capabilitiesOfTier } from "./catalog/capabilities";
 import { MemoryTrialStore } from "./trials/store";
 import { memoryLock } from "./trials/scheduler";
+import { MemoryCommercialEventLog } from "./commercialEvents/log";
 
 const SECRET = "secreto-del-proveedor-de-pruebas-0123456789abcdef";
 const DAY = 86_400_000;
@@ -75,13 +76,15 @@ describe("motor con el orquestador en memoria", () => {
   let provider: SignedTestProvider;
   let licensing: LicensingService;
   let base: LifecycleDeps;
+  let ledger: MemoryCommercialEventLog;
 
   beforeEach(async () => {
     clock = Date.UTC(2026, 9, 19, 9);
     const crmStore = new MemoryCrmStore();
     subsStore = new MemorySubscriptionStore();
     caps = new MemoryCapabilityStore();
-    orders = new MemoryOrderStore();
+    ledger = new MemoryCommercialEventLog();
+    orders = new MemoryOrderStore(ledger);
     trials = new MemoryTrialStore();
     provider = new SignedTestProvider({ webhookSecret: SECRET });
     const webStore = new MemoryWebStore();
@@ -184,6 +187,13 @@ describe("motor con el orquestador en memoria", () => {
     await e.run();
     expect((await orders.events(o.id)).length).toBe(events);
     expect(await kinds(e, o.id)).toEqual([]);
+    // Con el registro de eventos (#163): cada transición aplicada por el motor queda registrada una vez, con su origen
+    const logged = (await ledger.list({ orderId: o.id, types: ["order.past_due", "order.suspended", "renewal.requested"] })).map((x) => [x.type, x.actor, x.source]);
+    expect(logged).toEqual([
+      ["renewal.requested", "system:payments", "system"],
+      ["order.past_due", "system:lifecycle", "system"],
+      ["order.suspended", "system:lifecycle", "system"],
+    ]);
   });
 
   it("pedido cobrado en Stripe: la gracia agotada no lo suspende el motor (lo decide Stripe)", async () => {
