@@ -43,6 +43,7 @@
  */
 import mysql from "mysql2/promise";
 import { keyringFromEnv } from "../../server/_core/tenantRegistry/crypto";
+import { platformDomainsFromEnv } from "../../server/_core/tenantRegistry/platformDomains";
 import { rotateOperatorMfaKeys } from "../../server/controlPlane/operatorMfaKeys";
 import { MysqlTenantRegistryStore } from "../../server/_core/tenantRegistry/mysqlStore";
 import { TenantRegistryService, type Actor } from "../../server/_core/tenantRegistry/service";
@@ -104,7 +105,7 @@ async function main() {
   try {
     const store = new MysqlTenantRegistryStore(pool);
     const ring = keyringFromEnv(process.env);
-    const svc = new TenantRegistryService(store, () => ring);
+    const svc = new TenantRegistryService(store, () => ring, { platformDomains: platformDomainsFromEnv(process.env) });
 
     const write = async (what: string, fn: () => Promise<unknown>) => {
       if (!APPLY) {

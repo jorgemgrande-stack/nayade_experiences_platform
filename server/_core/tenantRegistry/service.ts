@@ -18,6 +18,7 @@ import {
 } from "./contract";
 import { decryptDsn, encryptDsn, reencryptDsn, type Keyring } from "./crypto";
 import { normalizeHost } from "./host";
+import { assertPlatformSubdomain } from "./platformDomains";
 import { assertTransition, requiresOperator } from "./lifecycle";
 import type { RegistryTx, TenantRegistryStore } from "./store";
 
@@ -43,6 +44,8 @@ export class TenantRegistryService {
   constructor(
     private store: TenantRegistryStore,
     private ring: () => Keyring,
+    /** Dominios de plataforma (platformDomains.ts): un `platform_subdomain` debe colgar exactamente de uno. */
+    private opts: { platformDomains?: readonly string[] } = {},
   ) {}
 
   // ── Tenants ────────────────────────────────────────────────────────────────
@@ -113,6 +116,8 @@ export class TenantRegistryService {
   ): Promise<TenantDomain> {
     const domain = normalizeHost(rawDomain);
     if (!domain) throw new RegistryError("invalid_domain", "Dominio no válido");
+    // Se da por verificado sin DNS: solo bajo un dominio de plataforma nuestro (nunca uno arbitrario)
+    if (kind === "platform_subdomain") assertPlatformSubdomain(domain, this.opts.platformDomains ?? []);
     return this.store.transaction(async (tx) => {
       const t = await this.mustTenant(tx, tenantId);
       if (t.status === "deleted") throw new RegistryError("conflict", "El tenant está eliminado");
