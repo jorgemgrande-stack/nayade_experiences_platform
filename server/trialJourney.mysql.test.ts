@@ -16,6 +16,7 @@ import path from "node:path";
 import type { AddressInfo } from "node:net";
 import express from "express";
 import mysql from "mysql2/promise";
+import { MysqlOrderStore } from "./orchestrator/store";
 
 // Correos de la aplicación (invitaciones y recuperación de contraseña): a un buzón en memoria
 const appMail = vi.hoisted(() => [] as Array<{ to: string | string[]; subject: string; html: string; text?: string }>);
@@ -214,7 +215,7 @@ describe.skipIf(!URL_)("prueba gratuita de Essential de punta a punta (MySQL rea
     const port = memoryEmailPort();
     trialOutbox = port.sent as typeof trialOutbox;
     const cpApp = createControlPlaneApp({
-      tokens: [{ id: "admin", sha256: hashToken(ADMIN), scopes: ["tenants:read", "provisioning:write", "subscriptions:read", "subscriptions:write", "entitlements:write"] }],
+      tokens: [{ id: "admin", sha256: hashToken(ADMIN), scopes: ["tenants:read", "provisioning:write", "subscriptions:read", "subscriptions:write", "entitlements:write", "orders:read", "orders:approve"] }],
       registry,
       reader: store,
       entitlements: new EntitlementAdmin(regPool),
@@ -222,10 +223,13 @@ describe.skipIf(!URL_)("prueba gratuita de Essential de punta a punta (MySQL rea
       platformTarget: "edge.example.com",
       provisioning,
       platformDomain: PLATFORM,
-      crm: { service: new CrmService({ store: crmStore }), store: crmStore },
+      // La plataforma ya existe (la prueba): activar el contrato solo devuelve su tenant
+      crm: { service: new CrmService({ store: crmStore, activation: { activate: async (i: { company: { tenantId: string | null } }) => ({ tenantId: i.company.tenantId! }) } }), store: crmStore },
       web: { store: webStore },
       subscriptions: { store: new MysqlSubscriptionStore(crmPool), now: () => clock },
       capabilities: new MysqlCapabilityStore(regPool),
+      // Pedidos (CRM 0010): la conversión de la prueba siempre es un pedido (aquí, por excepción tipificada)
+      orders: { store: new MysqlOrderStore(crmPool) },
       trials: {
         store: new MysqlTrialStore(crmPool),
         publicEnabled: true,
@@ -529,9 +533,15 @@ describe.skipIf(!URL_)("prueba gratuita de Essential de punta a punta (MySQL rea
   });
 
   it("conversión: suscripción activa y escritura recuperada", async () => {
-    const r = await cpCall("POST", `/trials/${trialId}/convert`, { token: ADMIN, body: {} });
+    // Sin pedido no hay conversión: la excepción administrativa crea y aprueba el pedido de conversión
+    expect((await cpCall("POST", `/trials/${trialId}/convert`, { token: ADMIN, body: {} })).status).toBe(400);
+    const r = await cpCall("POST", `/trials/${trialId}/convert`, { token: ADMIN, body: { category: "internal", reason: "Empresa interna de pruebas de punta a punta" } });
     expect(r.status).toBe(200);
     expect(r.json.trial.state).toBe("converted");
+    expect(r.json.order).toMatchObject({ kind: "trial_conversion", state: "active", tenantId, confirmation: { kind: "admin_approval", category: "internal" } });
+    // La empresa deja de estar en «trial» en el registro
+    const [reg] = await regPool.query<mysql.RowDataPacket[]>("SELECT status FROM tenants WHERE id = ?", [tenantId]);
+    expect(reg[0].status).toBe("active");
     expect((await m(tenantId, "crm.clients.create", { name: "Cliente Dos", email: "cliente@dos.example" }, cookie)).status).toBe(200);
     const st = data(await q(tenantId, "setupWizard.status", undefined, cookie));
     expect(st.licence).toMatchObject({ plan: "essential", readOnly: false, endsAt: null });

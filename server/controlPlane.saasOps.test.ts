@@ -288,8 +288,9 @@ describe("correos de la prueba y del orquestador: solo por el puerto de avisos, 
     const v = outbox.filter((m) => m.kind === "verification").at(-1)!;
     await call("POST", "/public/trial/verify", { body: { id: v.data.trialId, token: v.data.token } });
     const sent = outbox.length;
+    // Sin permiso para aprobar pedidos no hay excepción posible
     const r = await call("POST", `/trials/${v.data.trialId}/convert`, { token: OPS, body: { category: "exception", reason: "Conversión excepcional de prueba sin pedido" } });
-    expect(r.status).toBe(409);
+    expect(r.status).toBe(403);
     expect(outbox.length).toBe(sent);
     expect(smtp.createTransport + smtp.sendMail).toBe(0);
   });

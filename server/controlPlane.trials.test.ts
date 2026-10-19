@@ -90,7 +90,7 @@ beforeAll(async () => {
   const webStore = new MemoryWebStore();
   await seedElephantSource(new WebAdminService({ store: webStore, refs: { moduleIds: BUILTIN_MODULES.map((m) => m.id), planIds: () => null }, now: () => clock }), webStore);
   const app = createControlPlaneApp({
-    tokens: [{ id: "admin", sha256: hashToken(ADMIN), scopes: ["tenants:read", "provisioning:write", "subscriptions:read", "subscriptions:write", "entitlements:write"] }],
+    tokens: [{ id: "admin", sha256: hashToken(ADMIN), scopes: ["tenants:read", "provisioning:write", "subscriptions:read", "subscriptions:write", "entitlements:write", "orders:approve"] }],
     registry,
     reader: registryReader,
     entitlements: { listEntitlements: async () => [], grant: async () => undefined, setStatus: async () => undefined, revoke: async () => undefined },

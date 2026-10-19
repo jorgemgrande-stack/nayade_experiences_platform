@@ -1120,9 +1120,10 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
           const plan = input.plan ?? t.configuration?.plan ?? "essential";
           let { order } = await orchestrator.create({ idempotencyKey: `trial-exception-${String(trialId).padStart(8, "0")}`, trialId, request: { plan, interval: input.interval ?? "month", items: [] } }, who);
           if (order.state === "requested" || order.state === "quoted") order = (await orchestrator.accept(order.id, { signatureRef: `admin-exception:${input.category}`, approvalReason: input.reason }, who)).order;
-          if (order.state === "contracted") order = (await orchestrator.approve(order.id, { reason: input.reason, category: input.category, reference: input.reference }, who)).order;
+          let error: string | null = order.lastError;
+          if (order.state === "contracted") ({ order, error } = await orchestrator.approve(order.id, { reason: input.reason, category: input.category, reference: input.reference }, who));
           const after = await trialStore.get(trialId);
-          return { order, trial: after ? TrialService.view(after) : null };
+          return { order, trial: after ? TrialService.view(after) : null, error: order.state === "active" ? null : error };
         };
       }
       router.use("/orders", createOrdersRouter(orchestrator));

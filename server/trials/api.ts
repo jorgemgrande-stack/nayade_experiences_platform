@@ -27,7 +27,7 @@ import { APPROVAL_CATEGORIES, OrderError, type ApprovalCategory } from "../orche
  * conversión confirmado por aprobación tipificada (categoría, motivo y, si es un cobro fuera de Stripe, su
  * referencia). Sin orquestador no hay conversión por esta vía: se usa POST /orders con el cobro.
  */
-export type TrialExceptionConversion = (trialId: number, input: { category: ApprovalCategory; reason: string; reference?: string; plan?: string; interval?: "month" | "year" }, actor: string) => Promise<{ order: unknown; trial: unknown }>;
+export type TrialExceptionConversion = (trialId: number, input: { category: ApprovalCategory; reason: string; reference?: string; plan?: string; interval?: "month" | "year" }, actor: string) => Promise<{ order: unknown; trial: unknown; error: string | null }>;
 
 const ERR_STATUS: Record<string, number> = { invalid_input: 400, not_found: 404, conflict: 409, invalid_state: 409, limit: 429, forbidden: 403, unavailable: 503 };
 const wrap = (fn: (req: Request, res: Response) => Promise<void>) => (req: Request, res: Response, next: NextFunction) =>
@@ -239,8 +239,11 @@ export function createTrialAdminRouter(o: { onboarding: TrialOnboardingService; 
   );
   r.post(
     "/:id/convert",
+    requireScope("provisioning:write"),
     requireScope("subscriptions:write"),
     requireScope("entitlements:write"),
+    // Es una aprobación administrativa de un pedido: el mismo permiso que POST /orders/:id/approve
+    requireScope("orders:approve"),
     wrap(async (req, res) => {
       // Nunca sin pedido: la conversión normal es POST /orders con trialId y su cobro verificado. Esta ruta es la
       // EXCEPCIÓN administrativa auditada (misma aprobación tipificada que /orders/:id/approve).
@@ -259,7 +262,8 @@ export function createTrialAdminRouter(o: { onboarding: TrialOnboardingService; 
         return;
       }
       const out = await o.convert.run(id.parse(req.params.id), b, who(req));
-      res.json(out);
+      // Como POST /orders/:id/approve: si el pedido no llega a activarse, 409 con el motivo (lo retoma la revisión)
+      res.status(out.error ? 409 : 200).json(out);
     }),
   );
   for (const action of ["reject", "cancel"] as const) {
