@@ -29,7 +29,7 @@ import type { UsageStore } from "../_core/erm/types";
 import type { EntitlementAdmin } from "../_core/modules/mysqlEntitlements";
 import type { QuotaAdmin } from "../_core/erm/mysqlQuotas";
 import { ModuleError } from "../_core/modules/contract";
-import { SESSION_COOKIE, authenticate, getAuth, hashToken, readCookie, requireScope, type ServiceToken } from "./auth";
+import { authenticate, getAuth, hashToken, readSessionCookie, requireScope, type ServiceToken } from "./auth";
 import type { OperatorAuthService } from "./operatorAuth";
 import { createOperatorRouter, createPublicAuthRouter } from "./operatorApi";
 import { SsoError, type SsoService } from "./sso";
@@ -366,7 +366,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
       keyGenerator: (req) => {
         // Nunca el token en claro como clave del limitador
         if (req.headers.authorization) return `tok:${hashToken(req.headers.authorization).slice(0, 24)}`;
-        const c = readCookie(req, SESSION_COOKIE);
+        const c = readSessionCookie(req);
         return c ? `session:${hashToken(c).slice(0, 24)}` : `ip:${ipKeyGenerator(req.ip ?? "")}`;
       },
     }),

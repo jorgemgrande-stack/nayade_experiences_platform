@@ -94,4 +94,8 @@ export function newRecoveryCodes(n = 10): string[] {
   });
 }
 
-export const normalizeRecoveryCode = (code: string) => String(code ?? "").trim().toLowerCase().replace(/\s/g, "");
+/** Código de recuperación normalizado a «xxxx-xxxx» (admite mayúsculas, espacios y escribirlo sin guion). */
+export const normalizeRecoveryCode = (code: string) => {
+  const c = String(code ?? "").trim().toLowerCase().replace(/[\s-]/g, "");
+  return c.length === 8 ? `${c.slice(0, 4)}-${c.slice(4)}` : c;
+};
