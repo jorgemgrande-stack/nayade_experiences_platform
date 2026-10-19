@@ -40,7 +40,7 @@ Con sesión de operador: `GET /auth/session` (devuelve el token CSRF), `POST /au
 | `CP_SESSION_IDLE_MINUTES` / `CP_SESSION_MAX_HOURS` | Caducidad (por defecto 120 min / 12 h) |
 | `CP_COOKIE_SECURE` | `auto` (por defecto: `Secure` si la petición llega por HTTPS), `true` o `false` |
 | `CP_TRUST_PROXY` | Proxies de confianza delante del servicio (IP real y HTTPS detrás de Railway u otro proxy) |
-| `CP_RESET_SMTP_URL`, `CP_RESET_FROM`, `CP_RESET_URL` | Recuperación por correo. Sin las tres, no se ofrece y **no se simula** ningún envío |
+| `CP_RESET_URL` (+ `CP_RESET_SMTP_URL`, `CP_RESET_FROM` opcionales) | Recuperación por correo. Con SMTP propio (las tres), por SMTP. Sin SMTP, por la **bandeja de la plataforma** (Brevo, `MAIL_SENDING_DOMAIN`), solo si `MAIL_MODE` no es `off` y respetando `MAIL_SANDBOX_ALLOWLIST` en `sandbox`. Sin transporte, no se ofrece y **no se simula** ningún envío. El arranque indica `resetTransport: smtp|outbox|null` |
 | `CP_OPERATOR_AUTH=off` | Desactiva el acceso con contraseña |
 
 El CRM y el plano de control deben estar en el **mismo sitio** (mismo dominio registrable, p. ej. `crm.ejemplo.es` y `control.ejemplo.es`) para que la cookie `SameSite=Strict` viaje, y en producción siempre con HTTPS. En el CRM, la dirección del servidor se fija con `VITE_CP_URL`.
@@ -117,4 +117,4 @@ TOTP estándar (RFC 6238: 6 cifras, 30 s), compatible con Google Authenticator, 
 - **Producción:** no está desplegado ni activado. Requiere revisión de seguridad, migración 0007 en el registro de producción, HTTPS con el CRM y el plano de control en el mismo sitio, `CP_TRUST_PROXY` correcto y alta del primer superadministrador.
 - **Límites en memoria:** el límite por IP y el bloqueo de usuarios inexistentes se guardan en memoria del proceso (se reinician al reiniciar; con varias réplicas, cada una lleva el suyo). El bloqueo de cuentas existentes sí es persistente.
 - **Segundo factor (MFA):** disponible con la migración 0012 (ver la sección anterior). Obligatorio solo para los roles de `CP_OPERATOR_MFA_ROLES`. Sigue sin haber caducidad obligatoria de contraseñas.
-- **Correo de recuperación:** no hay proveedor configurado; mientras tanto, la recuperación es por un administrador o por la herramienta del servidor.
+- **Correo de recuperación:** por la bandeja de la plataforma, sin SMTP aparte, en cuanto `MAIL_MODE` esté en `sandbox` (con las direcciones de los operadores en `MAIL_SANDBOX_ALLOWLIST`) o en `live`. El enlace se envía en el momento, y la bandeja borra cuerpo y destinatario al enviarlo. Mientras el correo esté en `off`, la recuperación es por un administrador o por la herramienta del servidor.
