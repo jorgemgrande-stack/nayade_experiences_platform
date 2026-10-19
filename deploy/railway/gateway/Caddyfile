@@ -51,19 +51,31 @@
 		-Server
 	}
 
-	# Entrada de las empresas clientes (APP_ENTRY_HOST): página estática, nunca llega al Core
+	# Entrada de las empresas clientes (APP_ENTRY_HOST): página estática; solo /api/central/* llega al Core
 	@app_entry host {$APP_ENTRY_HOST:app-entry.invalid}
 	handle @app_entry {
 		header {
 			Strict-Transport-Security "max-age=31536000"
 			X-Content-Type-Options "nosniff"
 			X-Frame-Options "DENY"
-			Content-Security-Policy "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; form-action 'none'; frame-ancestors 'none'; base-uri 'none'"
-			Referrer-Policy "no-referrer"
+			# connect-src: login central (mismo origen); form-action: pase por POST al host de la empresa (subdominio o
+			# dominio propio). Con «no-referrer» el navegador enviaría Origin: null y el pase se rechazaría.
+			Content-Security-Policy "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; form-action https:; frame-ancestors 'none'; base-uri 'none'"
+			Referrer-Policy "strict-origin-when-cross-origin"
 		}
-		root * /srv/app-entry
-		try_files {path} /index.html
-		file_server
+		# Acceso centralizado: solo /api/central/* llega al Core (que lo atiende antes de resolver ninguna empresa)
+		handle /api/central/* {
+			header Cache-Control "no-store"
+			reverse_proxy {$UPSTREAM} {
+				header_up -Authorization
+				header_up X-Forwarded-For {client_ip}
+			}
+		}
+		handle {
+			root * /srv/app-entry
+			try_files {path} /index.html
+			file_server
+		}
 	}
 
 	handle {
