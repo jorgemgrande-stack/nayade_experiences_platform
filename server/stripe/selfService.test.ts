@@ -4,17 +4,24 @@ import { issueTicket } from "../crm/publicApi";
 import type { CatalogPort } from "../subscriptions/ports";
 import type { CommercialOrder } from "../orchestrator/types";
 import { SelfServiceCheckout, SelfServiceError, orderKeyOf, selfServiceBody, type SelfServiceBody } from "./selfService";
+import { MemoryStripeStore } from "./store";
+import type { ConsentVersions } from "./buyerProfile";
 
 const SECRET = "s".repeat(40);
 let clock = Date.UTC(2026, 9, 18, 10);
 const catalogWith = (status: string): CatalogPort => ({ product: async (k: string) => (k === "essential" || k === "business" ? ({ key: k, commercialStatus: status } as never) : null), price: async () => null, offer: async () => [] }) as unknown as CatalogPort;
 
-function setup(o: { status?: string; terms?: string | null } = {}) {
+function setup(o: { status?: string; terms?: string | null; mode?: "test" | "live"; consent?: ConsentVersions } = {}) {
   const calls = { companies: 0, contacts: 0, orders: 0, accepts: 0, checkouts: 0 };
   const orders = new Map<string, CommercialOrder>();
+  const companies: Array<{ name: string; taxId?: string }> = [];
+  const buyers = new MemoryStripeStore(o.mode ?? "test");
   const svc = new SelfServiceCheckout({
+    buyers,
+    mode: o.mode,
+    consent: o.consent,
     crm: {
-      createCompany: async () => ({ id: 100 + ++calls.companies }),
+      createCompany: async (input) => (companies.push(input), { id: 100 + ++calls.companies }),
       createContact: async () => void calls.contacts++,
     },
     orders: { byKey: async (k) => orders.get(k) ?? null },
@@ -38,7 +45,7 @@ function setup(o: { status?: string; terms?: string | null } = {}) {
     termsVersion: o.terms === undefined ? "v1" : o.terms,
     now: () => clock,
   });
-  return { svc, calls };
+  return { svc, calls, companies, buyers };
 }
 const body = (over: Partial<SelfServiceBody> = {}): SelfServiceBody => ({
   idempotencyKey: crypto.randomUUID(),
@@ -96,5 +103,58 @@ describe("contratación por autoservicio (apagada por defecto)", () => {
     await expect(svc.start(body())).rejects.toBeInstanceOf(SelfServiceError);
     clock += 3_700_000;
     await expect(svc.start(body({ ticket: issueTicket(SECRET, clock - 10_000) }))).resolves.toBeTruthy();
+  });
+});
+
+describe("autoservicio con perfil fiscal del comprador (B2B y B2C)", () => {
+  beforeEach(() => void (clock = Date.UTC(2026, 9, 19, 10)));
+  const DECIDED: ConsentVersions = { terms: "v1", privacy: "p1", precontract: "pre1", withdrawal: "immediate_execution_ack" };
+  const without = (b: SelfServiceBody) => {
+    const { company: _c, ...rest } = b;
+    return rest as SelfServiceBody;
+  };
+  const expectCode = async (p: Promise<unknown>, code: string) => {
+    const e = await p.catch((x) => x);
+    expect(e).toBeInstanceOf(SelfServiceError);
+    expect((e as SelfServiceError).code).toBe(code);
+  };
+
+  it("live: sin perfil del comprador se rechaza antes de crear nada", async () => {
+    const { svc, calls } = setup({ mode: "live", consent: DECIDED });
+    await expectCode(svc.start(body()), "buyer_required");
+    expect(calls).toEqual({ companies: 0, contacts: 0, orders: 0, accepts: 0, checkouts: 0 });
+  });
+
+  it("empresa: la ficha sale del perfil (razón social y NIF) y se guarda el perfil con su consentimiento", async () => {
+    const { svc, companies, buyers } = setup({ mode: "live", consent: DECIDED });
+    await svc.start(without(body({ buyer: { type: "business", legalName: "Taller Norte SL", taxId: "B11111111", country: "ES", postalCode: "48001" }, consents: { terms: true, privacy: true, termsVersion: "v1", privacyVersion: "p1" } })));
+    expect(companies).toEqual([{ name: "Taller Norte SL", taxId: "B11111111", email: "ana@autoservicio.example" }]);
+    expect(await buyers.buyerProfile(501)).toMatchObject({ type: "business", scenario: "business:es_mainland", consent: { source: "web", terms: { version: "v1" }, privacy: { version: "p1" }, precontract: null } });
+  });
+
+  it("particular: sin decisión legal sobre el desistimiento no se contrata (503) y no se crea nada", async () => {
+    const { svc, calls } = setup({ mode: "live", consent: { ...DECIDED, withdrawal: "pending" } });
+    await expectCode(svc.start(without(body({ buyer: { type: "consumer", firstName: "Lucía", lastName: "Pérez", country: "ES", postalCode: "38001" } }))), "consumer_unavailable");
+    expect(calls.companies).toBe(0);
+  });
+
+  it("particular: exige precontractual y la casilla propia del desistimiento; con todo, sin razón social ni NIF", async () => {
+    const { svc, calls, companies, buyers } = setup({ mode: "live", consent: DECIDED });
+    const consumer = { type: "consumer" as const, firstName: "Lucía", lastName: "Pérez", country: "ES", postalCode: "38001" };
+    await expectCode(svc.start(without(body({ buyer: consumer, consents: { terms: true, privacy: true, termsVersion: "v1", privacyVersion: "p1", precontractVersion: "pre1" } }))), "consent_outdated");
+    expect(calls.companies).toBe(0);
+    await svc.start(without(body({ buyer: consumer, consents: { terms: true, privacy: true, termsVersion: "v1", privacyVersion: "p1", precontractVersion: "pre1", immediateExecution: true } })));
+    expect(companies).toEqual([{ name: "Lucía Pérez", email: "ana@autoservicio.example" }]);
+    expect(await buyers.buyerProfile(501)).toMatchObject({ type: "consumer", territory: "es_canarias", scenario: "consumer:es_special", taxId: null, consent: { precontract: { version: "pre1" }, immediateExecution: { at: clock } } });
+  });
+
+  it("sin código postal válido no se adivina el territorio (400) y no se crea nada", async () => {
+    const { svc, calls } = setup({ mode: "live", consent: DECIDED });
+    await expectCode(svc.start(without(body({ buyer: { type: "business", legalName: "Sin CP SL", taxId: "B22222222", country: "ES" }, consents: { terms: true, privacy: true, termsVersion: "v1", privacyVersion: "p1" } }))), "territory_unknown");
+    expect(calls.companies).toBe(0);
+  });
+
+  it("el cuerpo exige comprador: ni empresa ni perfil → no válido", () => {
+    expect(selfServiceBody.safeParse(without(body())).success).toBe(false);
   });
 });

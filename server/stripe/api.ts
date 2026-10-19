@@ -12,6 +12,8 @@
  *   POST /stripe/reconcile                      orders:write  conciliación manual (la misma que la periódica)
  *   GET  /stripe/adjustments                    ops:read      reembolsos y disputas registrados (retenciones)
  *   POST /stripe/adjustments/:chargeId/resolve  orders:write  levanta una retención con motivo y reaplica el estado
+ *   GET  /stripe/orders/:id/buyer               orders:read   perfil fiscal del comprador (tipo, territorio, escenario)
+ *   PUT  /stripe/orders/:id/buyer               orders:write  registra el perfil y el consentimiento (venta asistida)
  *
  * El webhook (`POST /cp/v1/stripe/webhook`) no usa token: se autentica por firma y se monta aparte, antes
  * del analizador JSON global (server/stripe/webhook.ts).
@@ -28,6 +30,8 @@ import { recordFailure } from "../_core/ops/failureAlerts";
 import type { CatalogPort } from "../subscriptions/ports";
 import { StripeCatalogError, desiredCatalog, planCatalogWrites, syncCatalog } from "./catalog";
 import { StripeCheckoutError, type StripeCheckoutService } from "./checkout";
+import type { OrderStore } from "../orchestrator/store";
+import { BuyerProfileError, FISCAL_SCENARIOS, buildConsent, buyerProfileInput, consentInput, toBuyerProfile, type ConsentVersions, type FiscalScenario } from "./buyerProfile";
 import { checkoutBlockedReason, describeStripeConfig, type StripeConfig } from "./config";
 import { describeIssuer } from "./issuer";
 import { sessionIdRe } from "./status";
@@ -44,6 +48,7 @@ const wrap =
     fn(req, res).catch((e) => {
       if (e instanceof StripeCheckoutError || e instanceof StripeStoreError) return void res.status(STATUS[e.code] ?? 400).json({ error: e.code, message: e.message });
       if (e instanceof StripeCatalogError) return void res.status(409).json({ error: "catalog_invalid", message: e.message });
+      if (e instanceof BuyerProfileError) return void res.status(e.code === "consumer_pending" ? 409 : 422).json({ error: e.code, message: e.message });
       if (e instanceof z.ZodError) return void res.status(400).json({ error: "invalid_request", message: "Parámetros no válidos" });
       if (e instanceof StripeGatewayError) {
         opsLog("warn", "Stripe", "gateway_error", { code: e.code, retryable: e.retryable });
@@ -69,7 +74,14 @@ export interface StripeRouterDeps {
   processor?: StripeEventProcessor;
   reconciler?: StripeReconciler;
   now?: () => number;
+  /** Pedidos (perfil fiscal del comprador). Sin ellos, las rutas del perfil no se montan. */
+  orders?: Pick<OrderStore, "get">;
+  /** Escenarios fiscales aprobados y versiones de consentimiento vigentes. */
+  fiscal?: { scenarios: Set<FiscalScenario>; consent: ConsentVersions };
 }
+
+/** Estados en los que aún se puede registrar o corregir el perfil fiscal (antes de confirmar el pago). */
+const BUYER_EDITABLE = new Set(["requested", "quoted", "contracted"]);
 
 export function createStripeRouter(d: StripeRouterDeps): Router {
   const r = express.Router();
@@ -78,8 +90,39 @@ export function createStripeRouter(d: StripeRouterDeps): Router {
   const sessionId = z.string().regex(sessionIdRe(d.config.mode));
 
   r.get("/status", requireScope("ops:read"), wrap(async (_req, res) => {
-    res.json({ ...describeStripeConfig(d.config), issuer: describeIssuer(), checkoutEnabled: !!d.checkout, ...(checkoutBlockedReason(d.config) ? { checkoutBlocked: checkoutBlockedReason(d.config) } : {}), prices: await d.store.listPrices() });
+    const approved = Array.from(d.fiscal?.scenarios ?? new Set<FiscalScenario>());
+    res.json({
+      ...describeStripeConfig(d.config),
+      issuer: describeIssuer(),
+      checkoutEnabled: !!d.checkout,
+      ...(checkoutBlockedReason(d.config) ? { checkoutBlocked: checkoutBlockedReason(d.config) } : {}),
+      fiscal: { approved, pending: FISCAL_SCENARIOS.filter((s) => !approved.includes(s)), consumerWithdrawal: d.fiscal?.consent.withdrawal ?? "pending" },
+      prices: await d.store.listPrices(),
+    });
   }));
+  if (d.orders) {
+    const orders = d.orders;
+    r.get("/orders/:id/buyer", requireScope("orders:read"), wrap(async (req, res) => {
+      const p = await d.store.buyerProfile(id.parse(req.params.id));
+      if (!p) return void res.status(404).json({ error: "not_found", message: "El pedido no tiene perfil fiscal" });
+      res.json({ buyer: p, approved: !!d.fiscal?.scenarios.has(p.scenario) });
+    }));
+    // Venta asistida: el operador registra el perfil y el consentimiento recogidos con el cliente
+    r.put("/orders/:id/buyer", requireScope("orders:write"), wrap(async (req, res) => {
+      const orderId = id.parse(req.params.id);
+      const b = z.object({ buyer: buyerProfileInput, consent: consentInput }).strict().parse(req.body);
+      const o = await orders.get(orderId);
+      if (!o) return void res.status(404).json({ error: "not_found", message: "Pedido no encontrado" });
+      if (o.kind === "change" || !BUYER_EDITABLE.has(o.state) || o.confirmation) {
+        return void res.status(409).json({ error: "invalid_state", message: `El perfil fiscal se registra antes de confirmar el pago (el pedido está en «${o.state}»)` });
+      }
+      const t = now();
+      const consent = buildConsent(orderId, b.buyer.type, b.consent, d.fiscal?.consent ?? { terms: null, privacy: null, precontract: null, withdrawal: "pending" }, "operator", t);
+      const saved = await d.store.saveBuyerProfile(toBuyerProfile(orderId, b.buyer, consent, t), who(req));
+      opsLog("info", "Stripe", "buyer_profile_saved", { orderId, type: saved.type, scenario: saved.scenario, version: saved.version, actor: who(req) });
+      res.json({ buyer: saved, approved: !!d.fiscal?.scenarios.has(saved.scenario) });
+    }));
+  }
   r.get("/catalog/plan", requireScope("ops:read"), wrap(async (_req, res) => {
     const desired = await desiredCatalog(d.catalog);
     res.json({ desired, ...(await planCatalogWrites(desired, d.gateway)) });
