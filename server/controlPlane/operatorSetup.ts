@@ -22,6 +22,7 @@ import type { Keyring } from "../_core/tenantRegistry/crypto";
 import { OperatorAuthService, type ResetMailer } from "./operatorAuth";
 import { isRole, type OperatorRole } from "./operatorRoles";
 import { MysqlOperatorStore } from "./operatorStore";
+import { missingMfaKeys } from "./operatorMfaKeys";
 
 function smtpMailer(url: string, from: string): ResetMailer {
   const transport = nodemailer.createTransport(url);
@@ -49,7 +50,7 @@ export interface OperatorAuthSetup {
   service?: OperatorAuthService;
   cookieSecure: "auto" | boolean;
   reason?: string;
-  mfa?: { available: boolean; requiredRoles: OperatorRole[]; misconfigured: boolean; reason?: string };
+  mfa?: { available: boolean; requiredRoles: OperatorRole[]; misconfigured: boolean; reason?: string; missingKeys?: string[] };
 }
 
 export async function operatorAuthFromEnv(pool: mysql.Pool, env: NodeJS.ProcessEnv, opts: { keyring?: Keyring } = {}): Promise<OperatorAuthSetup> {
@@ -98,5 +99,25 @@ export async function operatorAuthFromEnv(pool: mysql.Pool, env: NodeJS.ProcessE
       JSON.stringify({ ctx: "OperatorAuth", event: "mfa_required_but_unavailable", level: "error", requiredRoles, reason: mfaReason ?? "unknown", effect: "esos roles no pueden entrar hasta corregirlo" }),
     );
   }
-  return { service, cookieSecure, mfa: { available: service.mfaAvailable, requiredRoles, ...(mfaReason ? { reason: mfaReason } : {}), misconfigured: service.mfaMisconfigured } };
+  // Secretos TOTP cifrados con una clave que ya no está en REGISTRY_KEYS: esos operadores no podrán completar
+  // el segundo paso. Suele ser una rotación sin `rotate-keys` (ver operatorMfaKeys.ts). Se avisa al arrancar.
+  // Comprobación solo informativa: un fallo transitorio de MySQL no debe impedir el arranque.
+  let missingKeys: string[] = [];
+  if (mfaColumns && opts.keyring) {
+    try {
+      missingKeys = await missingMfaKeys(pool, opts.keyring);
+    } catch (e: any) {
+      console.error(JSON.stringify({ ctx: "OperatorAuth", event: "mfa_key_check_failed", level: "warn", error: e?.code ?? "error" }));
+    }
+  }
+  if (missingKeys.length) {
+    console.error(
+      JSON.stringify({ ctx: "OperatorAuth", event: "mfa_key_missing", level: "error", missingKeys, effect: "los operadores con esos secretos no pueden completar el segundo paso; restaura la clave en REGISTRY_KEYS y ejecuta rotate-keys" }),
+    );
+  }
+  return {
+    service,
+    cookieSecure,
+    mfa: { available: service.mfaAvailable, requiredRoles, ...(mfaReason ? { reason: mfaReason } : {}), misconfigured: service.mfaMisconfigured, ...(missingKeys.length ? { missingKeys } : {}) },
+  };
 }
