@@ -2,7 +2,7 @@
  * Registro de eventos comerciales contra MySQL real (opt-in, REGISTRY_TEST_DATABASE_URL; BD aislada
  * creada y borrada aquí): circuito completo de contratación y de conversión de una prueba con el registro
  * conectado a los almacenes reales, entregas simultáneas del mismo pago, atomicidad (si el registro falla,
- * el cambio de estado no se guarda), duplicados, separación de entornos y migración 0014 de ida y vuelta.
+ * el cambio de estado no se guarda), duplicados, separación de entornos y migración 0015 de ida y vuelta.
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import crypto from "node:crypto";
@@ -227,8 +227,8 @@ describe.skipIf(!URL_)("registro de eventos comerciales con MySQL real", () => {
     await expect(pool.query("INSERT INTO commercial_events (event_key, type, schema_version, environment, source, actor, correlation_id, aggregate_type, aggregate_id, occurred_at) VALUES ('x', 't', 1, 'otro', 'system', 'x', 'c', 'order', '1', 1)")).rejects.toThrow();
   });
 
-  it("la migración 0014 se revierte y se vuelve a aplicar; sin la tabla el registro no se monta", async () => {
-    const m = loadMigrations(DIR).migrations.find((x) => x.id === "0014_commercial_events")!;
+  it("la migración 0015 se revierte y se vuelve a aplicar; sin la tabla el registro no se monta", async () => {
+    const m = loadMigrations(DIR).migrations.find((x) => x.id === "0015_commercial_events")!;
     for (const s of splitStatements(m.down!)) await pool.query(s);
     expect(await rows("SHOW TABLES LIKE 'commercial_events'")).toHaveLength(0);
     expect(await commercialEventsProblem(pool, "test")).toBe("missing_table");

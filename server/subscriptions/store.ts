@@ -4,7 +4,7 @@
  * Toda mutación pasa por `mutate()`: una transacción que bloquea la suscripción (FOR UPDATE),
  * comprueba la versión esperada (dos operadores no se pisan), aplica los cambios de partidas,
  * actualiza la suscripción, sube la versión y escribe el evento del historial. Si algo falla, no
- * queda nada a medias. Con registro de eventos comerciales (migración 0014), el evento comercial va
+ * queda nada a medias. Con registro de eventos comerciales (migración 0015), el evento comercial va
  * en esa misma transacción.
  */
 import type mysql from "mysql2/promise";
@@ -412,7 +412,7 @@ const PATCH_COLS: Record<keyof SubscriptionPatch, string> = {
 export class MysqlSubscriptionStore implements SubscriptionStore {
   constructor(
     private pool: mysql.Pool,
-    /** Registro de eventos comerciales (0014); sin él, todo funciona igual y no se registra nada. */
+    /** Registro de eventos comerciales (0015); sin él, todo funciona igual y no se registra nada. */
     private commercialEvents?: CommercialEventSink,
   ) {}
 

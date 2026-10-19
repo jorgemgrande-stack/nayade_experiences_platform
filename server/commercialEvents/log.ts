@@ -5,7 +5,7 @@
  *    dos réplicas) no añade fila ni deshace la transacción: `ON DUPLICATE KEY UPDATE id = id`.
  *  - Entorno: cada fila lleva el entorno de este registro; las lecturas solo ven el suyo. Al montarlo,
  *    `checkEnvironment` impide usarlo sobre una BD con filas del otro entorno.
- *  - Sin la tabla (migración 0014 sin aplicar) el registro no se monta y los almacenes funcionan igual.
+ *  - Sin la tabla (migración 0015 sin aplicar) el registro no se monta y los almacenes funcionan igual.
  */
 import type mysql from "mysql2/promise";
 import { currentCause, sourceOfActor } from "./context";
@@ -165,7 +165,7 @@ export class MysqlCommercialEventLog implements CommercialEventSink, CommercialE
 }
 
 /**
- * ¿Se puede montar el registro en esta BD? `missing_table` si falta la migración 0014;
+ * ¿Se puede montar el registro en esta BD? `missing_table` si falta la migración 0015;
  * `environment_mismatch` si ya hay filas de otro entorno (p. ej. una BD de pruebas apuntada desde live).
  */
 export async function commercialEventsProblem(pool: mysql.Pool, environment: CommercialEnvironment): Promise<null | "missing_table" | "environment_mismatch"> {

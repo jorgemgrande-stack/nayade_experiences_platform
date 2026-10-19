@@ -6,7 +6,7 @@
  *  - Cada cambio exige la versión leída y escribe su evento en la MISMA transacción.
  *  - Pagos idempotentes por clave; cada evento del proveedor se registra una sola vez (clave
  *    primaria) junto con su efecto sobre el pago, todo o nada.
- *  - Con registro de eventos comerciales (migración 0014), cada alta, transición y cambio de pago
+ *  - Con registro de eventos comerciales (migración 0015), cada alta, transición y cambio de pago
  *    escribe además su evento comercial en esa misma transacción.
  */
 import type mysql from "mysql2/promise";
@@ -275,7 +275,7 @@ function uniqueError(e: unknown): never {
 export class MysqlOrderStore implements OrderStore {
   constructor(
     private pool: mysql.Pool,
-    /** Registro de eventos comerciales (0014); sin él, todo funciona igual y no se registra nada. */
+    /** Registro de eventos comerciales (0015); sin él, todo funciona igual y no se registra nada. */
     private commercialEvents?: CommercialEventSink,
   ) {}
 

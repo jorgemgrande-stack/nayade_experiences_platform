@@ -3,8 +3,8 @@
 -- cancelación y reembolso. La escribe cada almacén en la MISMA transacción que su cambio de estado
 -- (patrón transactional outbox); `dispatch_status` queda para el futuro despachador de notificaciones.
 -- Sin datos personales: solo identificadores, importes, claves de catálogo y estados.
--- Nunca se ejecuta al arrancar. Comparte número con 0014 del PR #153 (abierto): el que se fusione
--- después se renumera (0015/0016) antes de aplicarse en ninguna BD.
+-- Nunca se ejecuta al arrancar. Va tras 0014_stripe_buyer_profiles (PR #153); el registro de facturas
+-- de Stripe (PR #157) pasa a 0016.
 -- Diseño: docs/elephant-source/EVENTOS_COMERCIALES.md.
 
 CREATE TABLE commercial_events (

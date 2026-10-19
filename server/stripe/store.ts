@@ -6,7 +6,7 @@
  * y solo lee, cuenta, actualiza o purga filas de su modo. Una fila del otro modo se ignora en las
  * lecturas y se rechaza al escribir (duplicado o `mode_mismatch`): un entorno nunca usa filas del otro.
  *
- * Con registro de eventos comerciales (CRM 0014), un reembolso nuevo, la pérdida o recuperación de la
+ * Con registro de eventos comerciales (CRM 0015), un reembolso nuevo, la pérdida o recuperación de la
  * cobertura y cada cambio de disputa se registran en la misma transacción que el ajuste del cargo.
  */
 import type mysql from "mysql2/promise";
@@ -14,6 +14,7 @@ import { chargeAdjusted } from "../commercialEvents/derive";
 import type { CommercialEventSink } from "../commercialEvents/types";
 import type { StripeMode } from "./config";
 import type { GwSubscription } from "./gateway";
+import type { BuyerProfile, ConsentRecord } from "./buyerProfile";
 
 export interface StripePriceLink {
   webPriceId: number;
@@ -154,11 +155,18 @@ export interface StripeStore {
   // ── Retención de eventos ──
   /** Borra hasta `limit` eventos TERMINADOS (procesados o ignorados) recibidos antes de `before`. Nunca fallidos ni pendientes. */
   purgeEvents(before: number, limit: number): Promise<{ processed: number; ignored: number }>;
+
+  /** Perfil fiscal del comprador de un pedido (0014). `null` si no hay o si la tabla no existe. */
+  buyerProfile(orderId: number): Promise<BuyerProfile | null>;
+  /** Crea o sustituye el perfil (versión + 1) y deja la instantánea en el historial, en una transacción. */
+  saveBuyerProfile(p: BuyerProfileDraft, actor: string): Promise<BuyerProfile>;
 }
+
+export type BuyerProfileDraft = Omit<BuyerProfile, "version" | "createdAt" | "updatedAt"> & { now: number };
 
 // ── Memoria (pruebas) ────────────────────────────────────────────────────────
 
-type Table = "prices" | "customers" | "sessions" | "subscriptions" | "events" | "adjustments";
+type Table = "prices" | "customers" | "sessions" | "subscriptions" | "events" | "adjustments" | "buyers";
 /** Los ajustes los escribe siempre el procesador de eventos de Stripe. */
 const ADJUSTMENT_ACTOR = "system:stripe";
 
@@ -182,7 +190,7 @@ export class MemoryStripeStore implements StripeStore {
   /** Otra vista de los MISMOS datos en otro modo (imita dos entornos que apuntaran a la misma BD). */
   withMode(mode: StripeMode): MemoryStripeStore {
     const o = new MemoryStripeStore(mode);
-    Object.assign(o, { livemodes: this.livemodes, events: this.events, state: this.state, adjustments: this.adjustments, prices: this.prices, customers: this.customers, sessions: this.sessions, subscriptions: this.subscriptions });
+    Object.assign(o, { livemodes: this.livemodes, events: this.events, state: this.state, adjustments: this.adjustments, prices: this.prices, customers: this.customers, sessions: this.sessions, subscriptions: this.subscriptions, buyers: this.buyers, buyerHistory: this.buyerHistory });
     return o;
   }
 
@@ -385,6 +393,23 @@ export class MemoryStripeStore implements StripeStore {
     const x = this.subscriptions.get(id);
     return x && this.mine("subscriptions", id) ? { ...x, priceIds: [...x.priceIds] } : null;
   }
+
+  buyers = new Map<number, BuyerProfile>();
+  buyerHistory: Array<{ orderId: number; version: number; actor: string; snapshot: BuyerProfile }> = [];
+  async buyerProfile(orderId: number) {
+    const p = this.buyers.get(orderId);
+    return p && this.mine("buyers", orderId) ? structuredClone(p) : null;
+  }
+  async saveBuyerProfile(d: BuyerProfileDraft, actor: string) {
+    const prev = this.buyers.get(d.orderId);
+    if (prev && this.foreign("buyers", d.orderId)) throw new StripeStoreError("mode_mismatch", "El perfil del comprador pertenece a otro modo");
+    const { now, ...rest } = d;
+    const p: BuyerProfile = { ...structuredClone(rest), version: (prev?.version ?? 0) + 1, createdAt: prev?.createdAt ?? now, updatedAt: now };
+    this.buyers.set(d.orderId, p);
+    this.stamp("buyers", d.orderId);
+    this.buyerHistory.push({ orderId: d.orderId, version: p.version, actor, snapshot: structuredClone(p) });
+    return structuredClone(p);
+  }
 }
 
 // ── MySQL (BD del CRM) ───────────────────────────────────────────────────────
@@ -399,7 +424,7 @@ export class MysqlStripeStore implements StripeStore {
   constructor(
     private pool: mysql.Pool,
     readonly mode: StripeMode = "test",
-    /** Registro de eventos comerciales (0014); sin él, todo funciona igual y no se registra nada. */
+    /** Registro de eventos comerciales (0015); sin él, todo funciona igual y no se registra nada. */
     private commercialEvents?: CommercialEventSink,
   ) {
     this.lm = mode === "live" ? 1 : 0;
@@ -715,5 +740,65 @@ export class MysqlStripeStore implements StripeStore {
       out[status] = res.affectedRows;
     }
     return out;
+  }
+
+  private buyerRow = (r: Row): BuyerProfile => ({
+    orderId: Number(r.order_id),
+    type: r.buyer_type as BuyerProfile["type"],
+    territory: r.territory as BuyerProfile["territory"],
+    scenario: String(r.scenario) as BuyerProfile["scenario"],
+    country: String(r.country),
+    postalCode: (r.postal_code as string | null) ?? null,
+    displayName: String(r.display_name),
+    taxId: (r.tax_id as string | null) ?? null,
+    taxIdStatus: r.tax_id_status as BuyerProfile["taxIdStatus"],
+    billingEmail: (r.billing_email as string | null) ?? null,
+    contactName: (r.contact_name as string | null) ?? null,
+    consent: (typeof r.consent_json === "string" ? JSON.parse(r.consent_json) : r.consent_json) as ConsentRecord,
+    version: Number(r.version),
+    createdAt: Number(r.created_at),
+    updatedAt: Number(r.updated_at),
+  });
+  async buyerProfile(orderId: number) {
+    try {
+      const [rows] = await this.pool.query<Row[]>("SELECT * FROM stripe_buyer_profiles WHERE order_id = ? AND livemode = ?", [orderId, this.lm]);
+      return rows[0] ? this.buyerRow(rows[0]) : null;
+    } catch (e) {
+      // Sin la migración 0014 no hay perfiles: el llamador decide (en live, Checkout no se abre)
+      if ((e as { code?: string })?.code === "ER_NO_SUCH_TABLE") return null;
+      throw e;
+    }
+  }
+  async saveBuyerProfile(d: BuyerProfileDraft, actor: string) {
+    const conn = await this.pool.getConnection();
+    try {
+      await conn.beginTransaction();
+      const [cur] = await conn.query<Row[]>("SELECT version, livemode, created_at FROM stripe_buyer_profiles WHERE order_id = ? FOR UPDATE", [d.orderId]);
+      if (cur[0] && Number(cur[0].livemode) !== this.lm) throw new StripeStoreError("mode_mismatch", "El perfil del comprador pertenece a otro modo");
+      const version = (cur[0] ? Number(cur[0].version) : 0) + 1;
+      const createdAt = cur[0] ? Number(cur[0].created_at) : d.now;
+      const cols = [d.type, d.territory, d.scenario, d.country, d.postalCode, d.displayName, d.taxId, d.taxIdStatus, d.billingEmail, d.contactName, JSON.stringify(d.consent), version, d.now];
+      if (cur[0]) {
+        await conn.query(
+          "UPDATE stripe_buyer_profiles SET buyer_type = ?, territory = ?, scenario = ?, country = ?, postal_code = ?, display_name = ?, tax_id = ?, tax_id_status = ?, billing_email = ?, contact_name = ?, consent_json = ?, version = ?, updated_at = ? WHERE order_id = ? AND livemode = ?",
+          [...cols, d.orderId, this.lm],
+        );
+      } else {
+        await conn.query(
+          "INSERT INTO stripe_buyer_profiles (buyer_type, territory, scenario, country, postal_code, display_name, tax_id, tax_id_status, billing_email, contact_name, consent_json, version, updated_at, order_id, livemode, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          [...cols, d.orderId, this.lm, createdAt],
+        );
+      }
+      const { now, ...rest } = d;
+      const saved: BuyerProfile = { ...rest, version, createdAt, updatedAt: now };
+      await conn.query("INSERT INTO stripe_buyer_profile_events (order_id, livemode, version, actor, snapshot_json, at) VALUES (?, ?, ?, ?, ?, ?)", [d.orderId, this.lm, version, actor.slice(0, 120), JSON.stringify(saved), now]);
+      await conn.commit();
+      return saved;
+    } catch (e) {
+      await conn.rollback().catch(() => {});
+      throw e;
+    } finally {
+      conn.release();
+    }
   }
 }

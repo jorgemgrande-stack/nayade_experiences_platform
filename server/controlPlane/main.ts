@@ -51,6 +51,7 @@ import { checkoutBlockedReason, describeStripeConfig, liveStartupProblem, stripe
 import { stripeGateway, stripeWebhookVerifier } from "../stripe/gateway";
 import { MysqlStripeStore } from "../stripe/store";
 import { liveOrdersProblem, liveSchemaProblem } from "../stripe/liveReadiness";
+import { consumerWithdrawalFromEnv, fiscalScenariosFromEnv } from "../stripe/buyerProfile";
 import { checkoutUrlsFromEnv } from "../stripe/checkout";
 import { MysqlCrmStore } from "../crm/mysqlStore";
 import { CrmService } from "../crm/service";
@@ -187,7 +188,7 @@ async function main() {
   // live solo con MAIL_LIVE_AUTHORIZED=1. Ver docs/runbooks/CORREO_BREVO.md.
   const platformMail = await platformMailFromEnv(crmPool, process.env);
   const mailPolicy = platformMail.policy;
-  // Registro de eventos comerciales (CRM 0014): pedidos y pagos, pruebas, suscripciones y cargos de Stripe
+  // Registro de eventos comerciales (CRM 0015): pedidos y pagos, pruebas, suscripciones y cargos de Stripe
   // escriben sus hechos en la misma transacción que su cambio de estado. Entorno = modo comercial
   // (CP_STRIPE_MODE=live → live; si no, test). Sin la migración, o con filas del otro entorno, no se monta y
   // todo funciona igual, sin registro.
@@ -196,7 +197,7 @@ async function main() {
   if (crmPool) {
     const problem = await commercialEventsProblem(crmPool, commercialEnvironment);
     if (!problem) commercialEvents = new MysqlCommercialEventLog(crmPool, commercialEnvironment);
-    console.log(JSON.stringify({ ctx: "CommercialEvents", enabled: !!commercialEvents, environment: commercialEnvironment, ...(problem ? { reason: problem === "missing_table" ? "migration_0014_missing" : problem } : {}) }));
+    console.log(JSON.stringify({ ctx: "CommercialEvents", enabled: !!commercialEvents, environment: commercialEnvironment, ...(problem ? { reason: problem === "missing_table" ? "migration_0015_missing" : problem } : {}) }));
   }
   console.log(JSON.stringify({ ctx: "Mail", outbox: !!platformMail.mailer, mode: mailPolicy.mode, provider: mailProviderFromEnv(process.env)?.name ?? null, sendingDomain: mailPolicy.sendingDomain, webhook: (process.env.BREVO_WEBHOOK_TOKEN ?? "").length >= 32, ...(mailPolicy.degradedReason ? { degradedReason: mailPolicy.degradedReason } : {}), ...(platformMail.reason ? { reason: platformMail.reason } : {}) }));
   if (platformMail.mailer) {
@@ -305,7 +306,17 @@ async function main() {
     console.log(JSON.stringify({ ctx: "Orders", enabled: !!orders, mode: ordersMode, payments: { provider: payments.provider?.kind ?? null, mode: "test", autoCharge: false, ...(payments.reason ? { reason: payments.reason } : {}) }, ...(!ready ? { reason: "migration_0010_missing" } : liveData ? { reason: liveData } : {}) }));
   }
 
-  let stripe: { config: NonNullable<typeof stripeConfig>; store: MysqlStripeStore; gateway: ReturnType<typeof stripeGateway>; urls: ReturnType<typeof checkoutUrlsFromEnv>; checkoutEnabled: boolean; verifyWebhook: ReturnType<typeof stripeWebhookVerifier>; workerEnabled: boolean; publicStatus: boolean; selfService: boolean; termsVersion: string | null } | undefined;
+  // Escenarios fiscales aprobados y versiones de consentimiento. Un valor no admitido impide arrancar (nunca a medias)
+  const fiscal = {
+    scenarios: fiscalScenariosFromEnv(process.env),
+    consent: {
+      terms: (process.env.CP_TERMS_VERSION ?? "").trim() || null,
+      privacy: (process.env.CP_PRIVACY_VERSION ?? "").trim() || null,
+      precontract: (process.env.CP_PRECONTRACT_VERSION ?? "").trim() || null,
+      withdrawal: consumerWithdrawalFromEnv(process.env),
+    },
+  };
+  let stripe: { config: NonNullable<typeof stripeConfig>; store: MysqlStripeStore; gateway: ReturnType<typeof stripeGateway>; urls: ReturnType<typeof checkoutUrlsFromEnv>; checkoutEnabled: boolean; verifyWebhook: ReturnType<typeof stripeWebhookVerifier>; workerEnabled: boolean; publicStatus: boolean; selfService: boolean; termsVersion: string | null; fiscal: typeof fiscal } | undefined;
   if (stripeConfig) {
     const urls = checkoutUrlsFromEnv(process.env);
     // La bandera sigue apagada por defecto; en live sin política fiscal, Checkout queda apagado aunque esté a 1
@@ -330,7 +341,7 @@ async function main() {
       else namespaceOk = saved.namespace === stripeConfig.namespace;
     }
     const ready = migrated && liveMigrated && namespaceOk;
-    if (ready) stripe = { config: stripeConfig, store: new MysqlStripeStore(crmPool!, stripeConfig.mode, commercialEvents), gateway: stripeGateway(stripeConfig), urls, checkoutEnabled, verifyWebhook: stripeWebhookVerifier(stripeConfig), workerEnabled, publicStatus, selfService, termsVersion };
+    if (ready) stripe = { config: stripeConfig, store: new MysqlStripeStore(crmPool!, stripeConfig.mode, commercialEvents), gateway: stripeGateway(stripeConfig), urls, checkoutEnabled, verifyWebhook: stripeWebhookVerifier(stripeConfig), workerEnabled, publicStatus, selfService, termsVersion, fiscal };
     console.log(
       JSON.stringify({
         ctx: "Stripe",
@@ -342,6 +353,8 @@ async function main() {
         publicStatus: ready && publicStatus,
         selfService: ready && selfService,
         termsPublished: !!termsVersion,
+        fiscalScenarios: Array.from(fiscal.scenarios),
+        consumerWithdrawal: fiscal.consent.withdrawal,
         ...(ready ? {} : { reason: !trustProxyOk ? "trust_proxy_missing" : !orders ? "orders_not_enabled" : !migrated ? "migration_0012_missing" : !liveMigrated ? (liveSchema ?? "migration_0013_missing") : "namespace_changed" }),
       }),
     );

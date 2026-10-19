@@ -5,7 +5,7 @@ Primer PR del roadmap de trazabilidad (`ROADMAP_TRAZABILIDAD_COMERCIAL.md`, secc
 | Pieza | Dónde está |
 |---|---|
 | Código | `server/commercialEvents/` |
-| Migración | `db/crm/migrations/0014_commercial_events.sql` |
+| Migración | `db/crm/migrations/0015_commercial_events.sql` |
 | Lectura | `GET /cp/v1/commercial-events` |
 
 El registro **no envía nada ni decide nada**. Deja constancia, una sola vez, de cada hecho del circuito comercial, en la misma transacción que el cambio de estado que lo produce. Sobre él se construirán:
@@ -96,23 +96,23 @@ Probado con cinco entregas simultáneas del mismo pago: un solo `payment.succeed
 
 **Compatibilidad.**
 - El registro es un parámetro opcional de los cuatro almacenes MySQL y de sus versiones en memoria.
-- Sin la migración 0014 no se monta (`migration_0014_missing`) y todo funciona exactamente igual que antes.
+- Sin la migración 0015 no se monta (`migration_0015_missing`) y todo funciona exactamente igual que antes.
 - No cambia ninguna ruta existente, ninguna respuesta ni ningún correo. `orderNotifier` sigue igual.
 
 ## 4. Migración y plan de recuperación
 
-`0014_commercial_events` es aditiva: una tabla nueva, sin tocar ninguna existente. El verificador de migraciones no admite huecos, así que comparte número con `0014_stripe_buyer_profiles` (PR #153) y precede a `0015` (PR #157), ambos abiertos: el que se fusione después se renumera antes de aplicarse en ninguna BD (ninguna de las tres está aplicada todavía).
+`0015_commercial_events` es aditiva: una tabla nueva, sin tocar ninguna existente. Va tras `0014_stripe_buyer_profiles` (PR #153); el registro de facturas de Stripe (PR #157) pasa a `0016`. El verificador de migraciones no admite huecos ni números repetidos.
 
 **Simulación** (dry-run por defecto, no escribe):
 
 ```bash
 pnpm exec tsx scripts/db/migrate.ts verify --dir db/crm/migrations
 MIGRATE_DATABASE_URL=mysql://…/crm pnpm exec tsx scripts/db/migrate.ts status --dir db/crm/migrations
-MIGRATE_DATABASE_URL=mysql://…/crm pnpm exec tsx scripts/db/migrate.ts up --dir db/crm/migrations --to 0014
+MIGRATE_DATABASE_URL=mysql://…/crm pnpm exec tsx scripts/db/migrate.ts up --dir db/crm/migrations --to 0015
 ```
 
 **Orden de despliegue:**
-1. Aplicar la migración (`up … --to 0014 --apply --confirm-database <bd>`), como paso explícito y nunca al arrancar.
+1. Aplicar la migración (`up … --to 0015 --apply --confirm-database <bd>`), como paso explícito y nunca al arrancar.
 2. Desplegar el código.
 
 Al revés también es seguro: el código sin la tabla no registra nada y lo indica en el log.
@@ -122,7 +122,7 @@ Al revés también es seguro: el código sin la tabla no registra nada y lo indi
 | Caso | Qué hacer |
 |---|---|
 | Fallo del registro en producción | Revertir el despliegue del código; la tabla puede quedarse |
-| Quitar la tabla | `down --steps 1` (`0014_commercial_events.down.sql`). Solo se pierde el registro de eventos; pedidos, pagos, pruebas, suscripciones, ajustes y sus historiales propios siguen siendo la fuente de verdad |
+| Quitar la tabla | `down --steps 1` (`0015_commercial_events.down.sql`). Solo se pierde el registro de eventos; pedidos, pagos, pruebas, suscripciones, ajustes y sus historiales propios siguen siendo la fuente de verdad |
 | Volver a crearla | `up`. El registro empieza vacío desde ese momento. No hay relleno retroactivo: los historiales propios conservan el pasado |
 
 Probado contra MySQL: ida, vuelta (los datos de negocio siguen), sin tabla el registro no se monta, otra vez ida.

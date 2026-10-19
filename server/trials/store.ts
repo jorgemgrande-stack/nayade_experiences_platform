@@ -1,7 +1,7 @@
 /**
  * Persistencia de las solicitudes de prueba (BD del CRM, migración 0007) + memoria. Cada cambio de
  * estado es una transacción con versión optimista y su evento de auditoría. Con registro de eventos
- * comerciales (migración 0014 del CRM), el evento comercial va en esa misma transacción.
+ * comerciales (migración 0015 del CRM), el evento comercial va en esa misma transacción.
  */
 import type mysql from "mysql2/promise";
 import { trialChanged } from "../commercialEvents/derive";
@@ -211,7 +211,7 @@ const dup = (e: unknown, key: string) => (e as { code?: string }).code === "ER_D
 export class MysqlTrialStore implements TrialStore {
   constructor(
     private pool: mysql.Pool,
-    /** Registro de eventos comerciales (0014); sin él, todo funciona igual y no se registra nada. */
+    /** Registro de eventos comerciales (0015); sin él, todo funciona igual y no se registra nada. */
     private commercialEvents?: CommercialEventSink,
   ) {}
   async insert(t: Omit<TrialRequest, "id" | "version" | "updatedAt">, actor: string) {

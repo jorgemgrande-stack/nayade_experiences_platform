@@ -1,5 +1,5 @@
 /**
- * Registro central de eventos comerciales (BD del CRM, migración 0014).
+ * Registro central de eventos comerciales (BD del CRM, migración 0015).
  *
  * Cada almacén del circuito comercial (pedidos y pagos, pruebas, suscripciones, ajustes de cargos de
  * Stripe) escribe aquí sus hechos en la MISMA transacción que su cambio de estado. El registro no decide

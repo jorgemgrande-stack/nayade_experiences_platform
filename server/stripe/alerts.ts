@@ -23,6 +23,9 @@ export const STRIPE_FAILURE_RULES: Record<string, FailureRule> = {
   "stripe.dispute_open": once("Stripe: disputa abierta en el cobro de una suscripción", "warning"),
   "stripe.partial_refund": once("Stripe: reembolso parcial en el cobro de una suscripción (revisar)", "warning"),
   "orders.stripe_contract_cancelled": once("Contrato cancelado en el CRM con la suscripción viva en Stripe", "warning"),
+  // Perfil fiscal del comprador frente a la factura (el pago ya está cobrado: revisar el tratamiento fiscal)
+  "stripe.buyer_territory_mismatch": once("Stripe: la dirección de la factura no corresponde al territorio fiscal declarado por el comprador"),
+  "stripe.buyer_tax_id_missing": once("Stripe: empresa facturada sin identificador fiscal en la factura", "warning"),
   // Fallos técnicos repetidos
   "stripe.webhook_store_failed": repeated(3, 15, "Stripe: no se pueden guardar los webhooks recibidos", "critical"),
   "stripe.webhook_invalid_signature": repeated(10, 15, "Stripe: webhooks con firma no válida repetidos"),

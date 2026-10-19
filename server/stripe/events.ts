@@ -31,6 +31,7 @@ import { stripePaymentProvider } from "../orchestrator/service";
 import type { StripeMode } from "./config";
 import type { GwCharge, GwInvoice, GwSubscription, StripeGateway } from "./gateway";
 import type { StripeEventRow, StripeStore } from "./store";
+import { classifyTerritory, territoryGroup } from "./buyerProfile";
 
 /** Eventos que se aceptan y procesan (nombres de la API 2026-09-30.endive). */
 export const HANDLED_EVENTS = [
@@ -355,8 +356,30 @@ export class StripeEventProcessor {
       createdAt: this.now(),
       settledAt: this.now(),
     });
-    if (r.created) opsLog("info", "StripeEvents", "payment_verified", { orderId: order.id, invoiceId: inv.id, purpose });
+    if (r.created) {
+      opsLog("info", "StripeEvents", "payment_verified", { orderId: order.id, invoiceId: inv.id, purpose, ...(inv.taxCents != null ? { taxCents: inv.taxCents } : {}) });
+      if (purpose === "initial") await this.checkBuyer(order.id, inv);
+    }
     return { created: r.created, purpose, invoiceId: inv.id, paymentId: r.payment.id };
+  }
+
+  /**
+   * Primer cobro: la dirección y los identificadores fiscales de la factura (los que usó Stripe Tax) deben
+   * casar con el perfil fiscal declarado. Checkout permite cambiar la dirección, así que una discrepancia es
+   * posible: se AVISA (el pago ya está cobrado; qué hacer es una decisión del equipo, no de este proceso).
+   */
+  private async checkBuyer(orderId: number, inv: GwInvoice) {
+    const profile = await this.d.store.buyerProfile(orderId).catch(() => null);
+    if (!profile) return;
+    const t = inv.customerCountry ? classifyTerritory(inv.customerCountry, inv.customerPostalCode) : null;
+    if (!t || territoryGroup(t) !== territoryGroup(profile.territory)) {
+      opsLog("warn", "StripeEvents", "buyer_territory_mismatch", { orderId, invoiceId: inv.id, declared: profile.scenario, invoiced: t ?? "unknown" });
+      recordFailure("stripe.buyer_territory_mismatch");
+    }
+    if (profile.type === "business" && !inv.customerTaxIds) {
+      opsLog("warn", "StripeEvents", "buyer_tax_id_missing", { orderId, invoiceId: inv.id });
+      recordFailure("stripe.buyer_tax_id_missing");
+    }
   }
 
   private async hasInitialPayment(order: CommercialOrder, just: { purpose: string } | null) {
