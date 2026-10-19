@@ -78,6 +78,9 @@ export interface GwInvoice {
   customerTaxIds?: number;
   /** Impuestos de la factura (céntimos), para la trazabilidad; null si Stripe no los informa. */
   taxCents?: number | null;
+  /** Número de la factura en Stripe (al finalizarla) y total con impuestos. */
+  number?: string | null;
+  total?: number | null;
 }
 
 /** Evento de Stripe reducido a lo que usamos: el efecto siempre se calcula releyendo el objeto. */
@@ -236,6 +239,8 @@ export function toInvoice(i: Stripe.Invoice, mode: StripeMode = "test"): GwInvoi
     customerPostalCode: i.customer_address?.postal_code ?? null,
     customerTaxIds: Array.isArray(i.customer_tax_ids) ? i.customer_tax_ids.length : 0,
     taxCents: taxOf(i),
+    number: i.number ?? null,
+    total: typeof i.total === "number" ? i.total : null,
   };
 }
 

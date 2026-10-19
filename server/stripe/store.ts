@@ -10,6 +10,7 @@ import type mysql from "mysql2/promise";
 import type { StripeMode } from "./config";
 import type { GwSubscription } from "./gateway";
 import type { BuyerProfile, ConsentRecord } from "./buyerProfile";
+import type { FiscalDocument, FiscalDocumentDraft, FiscalDocumentStatus, StripeInvoiceRecord } from "./fiscalDocuments";
 
 export interface StripePriceLink {
   webPriceId: number;
@@ -155,13 +156,34 @@ export interface StripeStore {
   buyerProfile(orderId: number): Promise<BuyerProfile | null>;
   /** Crea o sustituye el perfil (versión + 1) y deja la instantánea en el historial, en una transacción. */
   saveBuyerProfile(p: BuyerProfileDraft, actor: string): Promise<BuyerProfile>;
+
+  /** Registro de facturas cobradas (0015). Crea o actualiza el estado y los importes; nunca cambia el pedido. */
+  upsertInvoiceRecord(r: StripeInvoiceRecord): Promise<void>;
+  invoiceRecord(stripeInvoiceId: string): Promise<StripeInvoiceRecord | null>;
+  listInvoiceRecords(q: { orderId?: number; limit: number }): Promise<StripeInvoiceRecord[]>;
+  /** Total reembolsado de una factura: solo sube (una lectura antigua no lo rebaja). */
+  setInvoiceRefunded(stripeInvoiceId: string, refundedCents: number, now: number): Promise<void>;
+  /** Documento fiscal idempotente por clave de origen: el mismo hecho devuelve el documento existente. */
+  enqueueFiscalDocument(d: FiscalDocumentDraft): Promise<{ created: boolean; document: FiscalDocument }>;
+  fiscalDocumentBySource(sourceKey: string): Promise<FiscalDocument | null>;
+  listFiscalDocuments(q: { status?: FiscalDocumentStatus; orderId?: number; limit: number }): Promise<FiscalDocument[]>;
+  /** Registra la emisión en el sistema legal (pendiente o fallido → emitido). Repetirla con la misma referencia no cambia nada. */
+  markFiscalDocumentIssued(id: number, externalRef: string, by: string, at: number): Promise<FiscalDocument | null>;
+}
+
+/** El documento ya está emitido con OTRA referencia: no se sobrescribe un número legal. */
+export class FiscalDocumentConflictError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "FiscalDocumentConflictError";
+  }
 }
 
 export type BuyerProfileDraft = Omit<BuyerProfile, "version" | "createdAt" | "updatedAt"> & { now: number };
 
 // ── Memoria (pruebas) ────────────────────────────────────────────────────────
 
-type Table = "prices" | "customers" | "sessions" | "subscriptions" | "events" | "adjustments" | "buyers";
+type Table = "prices" | "customers" | "sessions" | "subscriptions" | "events" | "adjustments" | "buyers" | "invoices" | "documents";
 
 export class MemoryStripeStore implements StripeStore {
   /** `livemode` de cada fila (`tabla:clave`), como la columna de la BD. Sin marca, la fila es de este modo. */
@@ -180,7 +202,7 @@ export class MemoryStripeStore implements StripeStore {
   /** Otra vista de los MISMOS datos en otro modo (imita dos entornos que apuntaran a la misma BD). */
   withMode(mode: StripeMode): MemoryStripeStore {
     const o = new MemoryStripeStore(mode);
-    Object.assign(o, { livemodes: this.livemodes, events: this.events, state: this.state, adjustments: this.adjustments, prices: this.prices, customers: this.customers, sessions: this.sessions, subscriptions: this.subscriptions, buyers: this.buyers, buyerHistory: this.buyerHistory });
+    Object.assign(o, { livemodes: this.livemodes, events: this.events, state: this.state, adjustments: this.adjustments, prices: this.prices, customers: this.customers, sessions: this.sessions, subscriptions: this.subscriptions, buyers: this.buyers, buyerHistory: this.buyerHistory, invoiceRecords: this.invoiceRecords, fiscalDocs: this.fiscalDocs });
     return o;
   }
 
@@ -381,6 +403,57 @@ export class MemoryStripeStore implements StripeStore {
   async subscription(id: string) {
     const x = this.subscriptions.get(id);
     return x && this.mine("subscriptions", id) ? { ...x, priceIds: [...x.priceIds] } : null;
+  }
+
+  invoiceRecords = new Map<string, StripeInvoiceRecord>();
+  fiscalDocs: FiscalDocument[] = [];
+  async upsertInvoiceRecord(r: StripeInvoiceRecord) {
+    const prev = this.invoiceRecords.get(r.stripeInvoiceId);
+    if (prev && this.foreign("invoices", r.stripeInvoiceId)) throw new StripeStoreError("mode_mismatch", "La factura pertenece a otro modo");
+    this.invoiceRecords.set(r.stripeInvoiceId, prev ? { ...r, createdAt: prev.createdAt, amountRefundedCents: Math.max(prev.amountRefundedCents, r.amountRefundedCents) } : { ...r });
+    this.stamp("invoices", r.stripeInvoiceId);
+  }
+  async invoiceRecord(id: string) {
+    const r = this.invoiceRecords.get(id);
+    return r && this.mine("invoices", id) ? { ...r } : null;
+  }
+  async listInvoiceRecords(q: { orderId?: number; limit: number }) {
+    return Array.from(this.invoiceRecords.values())
+      .filter((r) => this.mine("invoices", r.stripeInvoiceId) && (q.orderId === undefined || r.orderId === q.orderId))
+      .slice(0, q.limit)
+      .map((r) => ({ ...r }));
+  }
+  async setInvoiceRefunded(id: string, refunded: number, now: number) {
+    const r = this.invoiceRecords.get(id);
+    if (r && this.mine("invoices", id) && refunded > r.amountRefundedCents) this.invoiceRecords.set(id, { ...r, amountRefundedCents: refunded, updatedAt: now });
+  }
+  async enqueueFiscalDocument(d: FiscalDocumentDraft) {
+    const prev = this.fiscalDocs.find((x) => x.sourceKey === d.sourceKey && this.mine("documents", x.id));
+    if (prev) return { created: false, document: { ...prev } };
+    const doc: FiscalDocument = { ...d, id: this.fiscalDocs.length + 1, status: "pending", externalRef: null, issuedAt: null, issuedBy: null, lastError: null };
+    this.fiscalDocs.push(doc);
+    this.stamp("documents", doc.id);
+    return { created: true, document: { ...doc } };
+  }
+  async fiscalDocumentBySource(key: string) {
+    const d = this.fiscalDocs.find((x) => x.sourceKey === key && this.mine("documents", x.id));
+    return d ? { ...d } : null;
+  }
+  async listFiscalDocuments(q: { status?: FiscalDocumentStatus; orderId?: number; limit: number }) {
+    return this.fiscalDocs
+      .filter((x) => this.mine("documents", x.id) && (!q.status || x.status === q.status) && (q.orderId === undefined || x.orderId === q.orderId))
+      .slice(0, q.limit)
+      .map((x) => ({ ...x }));
+  }
+  async markFiscalDocumentIssued(id: number, externalRef: string, by: string, at: number) {
+    const d = this.fiscalDocs.find((x) => x.id === id && this.mine("documents", x.id));
+    if (!d) return null;
+    if (d.status === "issued") {
+      if (d.externalRef !== externalRef) throw new FiscalDocumentConflictError("El documento ya está emitido con otra referencia");
+      return { ...d };
+    }
+    Object.assign(d, { status: "issued", externalRef, issuedAt: at, issuedBy: by, lastError: null });
+    return { ...d };
   }
 
   buyers = new Map<number, BuyerProfile>();
@@ -721,6 +794,117 @@ export class MysqlStripeStore implements StripeStore {
       out[status] = res.affectedRows;
     }
     return out;
+  }
+
+  private invoiceRow = (r: Row): StripeInvoiceRecord => ({
+    stripeInvoiceId: String(r.stripe_invoice_id),
+    orderId: Number(r.order_id),
+    stripeCustomerId: (r.stripe_customer_id as string | null) ?? null,
+    stripeSubscriptionId: (r.stripe_subscription_id as string | null) ?? null,
+    number: (r.number as string | null) ?? null,
+    status: r.status as StripeInvoiceRecord["status"],
+    billingReason: (r.billing_reason as string | null) ?? null,
+    purpose: r.purpose as StripeInvoiceRecord["purpose"],
+    currency: String(r.currency),
+    subtotalCents: Number(r.subtotal_cents),
+    taxCents: r.tax_cents === null || r.tax_cents === undefined ? null : Number(r.tax_cents),
+    totalCents: Number(r.total_cents),
+    amountPaidCents: Number(r.amount_paid_cents),
+    amountRefundedCents: Number(r.amount_refunded_cents),
+    periodStart: r.period_start === null || r.period_start === undefined ? null : Number(r.period_start),
+    customerCountry: (r.customer_country as string | null) ?? null,
+    customerPostalCode: (r.customer_postal_code as string | null) ?? null,
+    buyerScenario: (r.buyer_scenario as string | null) ?? null,
+    createdAt: Number(r.created_at),
+    updatedAt: Number(r.updated_at),
+  });
+  private docRow = (r: Row): FiscalDocument => ({
+    id: Number(r.id),
+    kind: r.kind as FiscalDocument["kind"],
+    sourceKey: String(r.source_key),
+    orderId: Number(r.order_id),
+    stripeInvoiceId: String(r.stripe_invoice_id),
+    stripeChargeId: (r.stripe_charge_id as string | null) ?? null,
+    originalDocumentId: r.original_document_id === null || r.original_document_id === undefined ? null : Number(r.original_document_id),
+    currency: String(r.currency),
+    baseCents: Number(r.base_cents),
+    taxCents: r.tax_cents === null || r.tax_cents === undefined ? null : Number(r.tax_cents),
+    totalCents: Number(r.total_cents),
+    status: r.status as FiscalDocumentStatus,
+    externalRef: (r.external_ref as string | null) ?? null,
+    issuedAt: r.issued_at === null || r.issued_at === undefined ? null : Number(r.issued_at),
+    issuedBy: (r.issued_by as string | null) ?? null,
+    lastError: (r.last_error as string | null) ?? null,
+    createdAt: Number(r.created_at),
+  });
+  async upsertInvoiceRecord(r: StripeInvoiceRecord) {
+    const [cur] = await this.pool.query<Row[]>("SELECT livemode FROM stripe_invoices WHERE stripe_invoice_id = ?", [r.stripeInvoiceId]);
+    if (cur[0] && Number(cur[0].livemode) !== this.lm) throw new StripeStoreError("mode_mismatch", "La factura pertenece a otro modo");
+    await this.pool.query(
+      `INSERT INTO stripe_invoices (stripe_invoice_id, livemode, order_id, stripe_customer_id, stripe_subscription_id, number, status, billing_reason, purpose, currency, subtotal_cents, tax_cents, total_cents, amount_paid_cents, amount_refunded_cents, period_start, customer_country, customer_postal_code, buyer_scenario, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE number = VALUES(number), status = VALUES(status), subtotal_cents = VALUES(subtotal_cents), tax_cents = VALUES(tax_cents), total_cents = VALUES(total_cents),
+         amount_paid_cents = VALUES(amount_paid_cents), amount_refunded_cents = GREATEST(amount_refunded_cents, VALUES(amount_refunded_cents)), updated_at = VALUES(updated_at)`,
+      [r.stripeInvoiceId, this.lm, r.orderId, r.stripeCustomerId, r.stripeSubscriptionId, r.number, r.status, r.billingReason, r.purpose, r.currency, r.subtotalCents, r.taxCents, r.totalCents, r.amountPaidCents, r.amountRefundedCents, r.periodStart, r.customerCountry, r.customerPostalCode, r.buyerScenario, r.createdAt, r.updatedAt],
+    );
+  }
+  async invoiceRecord(id: string) {
+    const [rows] = await this.pool.query<Row[]>("SELECT * FROM stripe_invoices WHERE stripe_invoice_id = ? AND livemode = ?", [id, this.lm]);
+    return rows[0] ? this.invoiceRow(rows[0]) : null;
+  }
+  async listInvoiceRecords(q: { orderId?: number; limit: number }) {
+    const [rows] = await this.pool.query<Row[]>(
+      `SELECT * FROM stripe_invoices WHERE livemode = ?${q.orderId === undefined ? "" : " AND order_id = ?"} ORDER BY created_at DESC LIMIT ?`,
+      q.orderId === undefined ? [this.lm, q.limit] : [this.lm, q.orderId, q.limit],
+    );
+    return rows.map(this.invoiceRow);
+  }
+  async setInvoiceRefunded(id: string, refunded: number, now: number) {
+    await this.pool.query("UPDATE stripe_invoices SET amount_refunded_cents = ?, updated_at = ? WHERE stripe_invoice_id = ? AND livemode = ? AND amount_refunded_cents < ?", [refunded, now, id, this.lm, refunded]);
+  }
+  async enqueueFiscalDocument(d: FiscalDocumentDraft) {
+    try {
+      const [res] = await this.pool.query<mysql.ResultSetHeader>(
+        "INSERT INTO fiscal_documents (livemode, kind, source_key, order_id, stripe_invoice_id, stripe_charge_id, original_document_id, currency, base_cents, tax_cents, total_cents, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [this.lm, d.kind, d.sourceKey, d.orderId, d.stripeInvoiceId, d.stripeChargeId, d.originalDocumentId, d.currency, d.baseCents, d.taxCents, d.totalCents, d.createdAt],
+      );
+      const [rows] = await this.pool.query<Row[]>("SELECT * FROM fiscal_documents WHERE id = ?", [res.insertId]);
+      return { created: true, document: this.docRow(rows[0]) };
+    } catch (e) {
+      if (!isDup(e)) throw e;
+      const existing = await this.fiscalDocumentBySource(d.sourceKey);
+      if (!existing) throw new StripeStoreError("mode_mismatch", "El documento fiscal pertenece a otro modo");
+      return { created: false, document: existing };
+    }
+  }
+  async fiscalDocumentBySource(key: string) {
+    const [rows] = await this.pool.query<Row[]>("SELECT * FROM fiscal_documents WHERE source_key = ? AND livemode = ?", [key, this.lm]);
+    return rows[0] ? this.docRow(rows[0]) : null;
+  }
+  async listFiscalDocuments(q: { status?: FiscalDocumentStatus; orderId?: number; limit: number }) {
+    const where = ["livemode = ?"];
+    const args: unknown[] = [this.lm];
+    if (q.status) {
+      where.push("status = ?");
+      args.push(q.status);
+    }
+    if (q.orderId !== undefined) {
+      where.push("order_id = ?");
+      args.push(q.orderId);
+    }
+    const [rows] = await this.pool.query<Row[]>(`SELECT * FROM fiscal_documents WHERE ${where.join(" AND ")} ORDER BY id LIMIT ?`, [...args, q.limit]);
+    return rows.map(this.docRow);
+  }
+  async markFiscalDocumentIssued(id: number, externalRef: string, by: string, at: number) {
+    const [res] = await this.pool.query<mysql.ResultSetHeader>(
+      "UPDATE fiscal_documents SET status = 'issued', external_ref = ?, issued_at = ?, issued_by = ?, last_error = NULL WHERE id = ? AND livemode = ? AND status IN ('pending','failed')",
+      [externalRef, at, by.slice(0, 120), id, this.lm],
+    );
+    const [rows] = await this.pool.query<Row[]>("SELECT * FROM fiscal_documents WHERE id = ? AND livemode = ?", [id, this.lm]);
+    if (!rows[0]) return null;
+    const d = this.docRow(rows[0]);
+    if (res.affectedRows === 0 && d.externalRef !== externalRef) throw new FiscalDocumentConflictError("El documento ya está emitido con otra referencia");
+    return d;
   }
 
   private buyerRow = (r: Row): BuyerProfile => ({

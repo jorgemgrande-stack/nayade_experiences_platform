@@ -161,7 +161,10 @@ export class FakeStripeGateway implements StripeGateway {
   addInvoice(subId: string, customerId: string, reason: string, status: GwInvoice["status"], amount: number) {
     const id = this.next("in");
     const addr = this.customers.get(customerId)?.address;
-    this.invoices.set(id, { id, status, subscriptionId: subId, customerId, amountPaid: status === "paid" ? amount : 0, currency: "EUR", billingReason: reason, periodStart: 1_800_000_000 + this.seq, subtotal: amount, customerCountry: addr?.country ?? null, customerPostalCode: addr?.postalCode ?? null, customerTaxIds: this.taxIdsOf.get(customerId) ?? 0, taxCents: this.invoiceTaxBp === null ? null : Math.round((amount * this.invoiceTaxBp) / 10_000) });
+    // Como en Stripe: el subtotal es el neto y lo pagado es el total (neto + impuesto de Stripe Tax)
+    const tax = this.invoiceTaxBp === null ? null : Math.round((amount * this.invoiceTaxBp) / 10_000);
+    const total = amount + (tax ?? 0);
+    this.invoices.set(id, { id, status, subscriptionId: subId, customerId, amountPaid: status === "paid" ? total : 0, currency: "EUR", billingReason: reason, periodStart: 1_800_000_000 + this.seq, subtotal: amount, customerCountry: addr?.country ?? null, customerPostalCode: addr?.postalCode ?? null, customerTaxIds: this.taxIdsOf.get(customerId) ?? 0, taxCents: tax, number: `ES-${String(this.seq).padStart(4, "0")}`, total });
     const sub = this.subscriptions.get(subId);
     if (sub) this.subscriptions.set(subId, { ...sub, latestInvoiceId: id });
     return id;

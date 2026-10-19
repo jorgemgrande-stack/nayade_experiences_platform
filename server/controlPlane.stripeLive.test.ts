@@ -210,9 +210,19 @@ describe("Stripe en modo live por HTTP, con política fiscal stripe_tax_exclusiv
     expect(await cp.ok(cp.webhook(cp.gw.events[0]))).toMatchObject({ received: true, duplicate: false });
     await until(async () => (await cp.ok(cp.call("GET", `/orders/${orderId}`))).order.state === "active");
     const detail = await cp.ok(cp.call("GET", `/orders/${orderId}`));
-    expect(detail.payments).toEqual([expect.objectContaining({ purpose: "initial", status: "succeeded", provider: "stripe", mode: "live", amountCents: 2900 })]);
+    expect(detail.payments).toEqual([expect.objectContaining({ purpose: "initial", status: "succeeded", provider: "stripe", mode: "live", amountCents: 3509 })]); // lo cobrado: 29 € + 21 % de Stripe Tax
     expect((await cp.orders.payments(orderId)).every((p) => p.mode === "live" && p.provider === "stripe")).toBe(true);
     expect(raised.filter((k) => k.includes("buyer") || k.includes("tax"))).toEqual([]);
+    // Registro de la factura cobrada y su documento fiscal pendiente (nada se emite sin sistema legal aprobado)
+    const invs = await cp.ok(cp.call("GET", `/stripe/invoices?orderId=${orderId}`));
+    expect(invs.invoices).toEqual([expect.objectContaining({ subtotalCents: 2900, taxCents: 609, totalCents: 3509, buyerScenario: "business:es_mainland" })]);
+    const fd = await cp.ok(cp.call("GET", `/stripe/fiscal-documents?orderId=${orderId}`));
+    expect(fd).toMatchObject({ sink: "pending", documents: [expect.objectContaining({ kind: "invoice", status: "pending", totalCents: 3509 })] });
+    const docId = fd.documents[0].id;
+    expect((await cp.call("POST", `/stripe/fiscal-documents/${docId}/issued`, { body: { externalRef: "<x>" } })).status).toBe(400);
+    expect(await cp.ok(cp.call("POST", `/stripe/fiscal-documents/${docId}/issued`, { body: { externalRef: "F-2026-000001" } }))).toMatchObject({ document: { status: "issued", externalRef: "F-2026-000001" } });
+    expect((await cp.call("POST", `/stripe/fiscal-documents/${docId}/issued`, { body: { externalRef: "F-2026-000002" } })).status).toBe(409);
+    expect((await cp.call("POST", `/stripe/fiscal-documents/999999/issued`, { body: { externalRef: "F-1" } })).status).toBe(404);
   });
 
   it("factura con otra dirección y sin NIF: el pago se registra igual pero se avisa (revisión fiscal)", async () => {
