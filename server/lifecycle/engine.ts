@@ -29,6 +29,8 @@ import type { CommercialOrder, OrderState } from "../orchestrator/types";
 import type { SubscriptionStore } from "../subscriptions/store";
 import type { TrialStore } from "../trials/store";
 import type { LifecyclePolicy } from "./policy";
+import type { CapabilityStore } from "../_core/capabilities/store";
+import type { CommercialEventSink } from "../commercialEvents/types";
 
 const DAY = 86_400_000;
 export const LIFECYCLE_ACTOR = "system:lifecycle";
@@ -44,7 +46,8 @@ export type LifecycleActionKind =
   | "stripe_dunning"
   | "trial_notice"
   | "trial_expire"
-  | "retention_review";
+  | "retention_review"
+  | "read_only_end";
 
 /** Quién ejecuta la acción: este motor, otro proceso existente, el despachador futuro o una persona. */
 export type LifecycleExecutor = "engine" | "trial_scheduler" | "stripe" | "notifications" | "operator";
@@ -74,7 +77,7 @@ export interface LifecycleRun {
   mode: LifecyclePolicy["mode"];
   skipped: "locked" | null;
   planned: LifecyclePlan["counts"];
-  applied: { review: Record<string, number> | null; licenceSynced: number };
+  applied: { review: Record<string, number> | null; licenceSynced: number; readOnlyEnded: number };
   errors: number;
 }
 
@@ -86,6 +89,10 @@ export interface LifecycleDeps {
   trials?: Pick<TrialStore, "list">;
   /** Retención vigente por reembolso o disputa (Stripe): sus licencias no se tocan. */
   coverageHeld?: (orderId: number) => Promise<boolean>;
+  /** Licencias del registro: fin de la solo lectura tras terminar (sin ellas, solo lo decide el acceso). */
+  capabilities?: Pick<CapabilityStore, "list" | "apply">;
+  /** Registro de eventos comerciales (fin de la solo lectura). */
+  events?: CommercialEventSink;
   /** Gracia del orquestador (ms). */
   graceMs: number;
   policy: Pick<LifecyclePolicy, "mode" | "dunningDays" | "trialNoticeDays" | "retentionDays">;
@@ -125,6 +132,13 @@ export class LifecycleEngine {
     const reached = list.filter((d) => (sign === 1 ? from + d * DAY <= now : from - d * DAY <= now));
     if (!reached.length) return null;
     return sign === 1 ? Math.max(...reached) : Math.min(...reached);
+  }
+
+  /** Licencias propias de un pedido terminado en solo lectura cuyo plazo ya venció. */
+  private async readOnlyExpired(o: CommercialOrder, now: number) {
+    if (!this.d.capabilities || !o.tenantId || !o.subscriptionId) return [];
+    const source = `subscription:${o.subscriptionId}`;
+    return (await this.d.capabilities.list(o.tenantId)).filter((g) => g.source === source && g.status === "read_only" && g.validUntil !== null && g.validUntil <= now);
   }
 
   private async licencePlan(o: CommercialOrder): Promise<LicencePlan | null> {
@@ -177,6 +191,9 @@ export class LifecycleEngine {
     for (const o of await this.d.orders.list({ states: ["cancelled"], limit: BATCH })) {
       const endedAt = o.updatedAt ?? o.createdAt;
       if (endedAt + retention <= now) actions.push(this.action("retention_review", "operator", endedAt + retention, { orderId: o.id, subscriptionId: o.subscriptionId, tenantId: o.tenantId }, { endedAt }));
+      // Plazo de solo lectura vencido: el acceso ya lo deniega; aquí se cancelan las licencias (registro limpio)
+      const expired = await this.readOnlyExpired(o, now);
+      if (expired.length) actions.push(this.action("read_only_end", "engine", Math.max(...expired.map((g) => g.validUntil!)), { orderId: o.id, subscriptionId: o.subscriptionId, tenantId: o.tenantId }, { licences: expired.length }));
     }
     if (this.d.trials) {
       for (const t of await this.d.trials.list({ states: ["active", "expired"], limit: BATCH })) {
@@ -197,7 +214,7 @@ export class LifecycleEngine {
 
   /** Un tick: planifica y, en modo «apply», ejecuta lo que corresponde al motor. */
   async run(now = this.now()): Promise<LifecycleRun> {
-    const out: LifecycleRun = { at: now, mode: this.d.policy.mode, skipped: null, planned: {}, applied: { review: null, licenceSynced: 0 }, errors: 0 };
+    const out: LifecycleRun = { at: now, mode: this.d.policy.mode, skipped: null, planned: {}, applied: { review: null, licenceSynced: 0, readOnlyEnded: 0 }, errors: 0 };
     const release = this.d.lock ? await this.d.lock.acquire(LIFECYCLE_LOCK) : async () => undefined;
     if (!release) {
       out.skipped = "locked";
@@ -208,7 +225,7 @@ export class LifecycleEngine {
       out.planned = plan.counts;
       out.errors = plan.errors.length;
       if (this.d.policy.mode === "apply") {
-        const orderWork = plan.actions.some((a) => a.executor === "engine" && a.kind !== "licence_sync");
+        const orderWork = plan.actions.some((a) => a.executor === "engine" && a.kind !== "licence_sync" && a.kind !== "read_only_end");
         if (orderWork) {
           const r = await this.d.orchestrator.review(LIFECYCLE_ACTOR);
           const { errors, ...counts } = r;
@@ -228,11 +245,44 @@ export class LifecycleEngine {
             out.errors++;
           }
         }
+        for (const a of plan.actions.filter((x) => x.kind === "read_only_end")) {
+          try {
+            const o = (await this.d.orders.list({ states: ["cancelled"], limit: BATCH })).find((x) => x.id === a.orderId);
+            if (!o || !this.d.capabilities) continue;
+            const expired = await this.readOnlyExpired(o, now);
+            if (!expired.length) continue;
+            const source = `subscription:${o.subscriptionId}`;
+            await this.d.capabilities.apply(o.tenantId!, expired.map((g) => ({ capabilityId: g.capabilityId, siteId: g.siteId, status: "cancelled" as const, validUntil: g.validUntil, source })), { actor: LIFECYCLE_ACTOR, reason: "Fin del periodo de solo lectura tras terminar la suscripción", now });
+            await this.d.events?.append(null, [
+              {
+                key: `order:${o.id}:read_only_ended`,
+                type: "access.read_only_ended",
+                aggregate: { type: "order", id: String(o.id), version: o.version },
+                correlationId: `order:${o.id}`,
+                tenantId: o.tenantId,
+                companyId: o.companyId,
+                orderId: o.id,
+                subscriptionId: o.subscriptionId,
+                trialId: o.trialId,
+                paymentId: null,
+                stripeRef: null,
+                fromState: "read_only",
+                toState: "cancelled",
+                actor: LIFECYCLE_ACTOR,
+                occurredAt: now,
+                data: { licences: expired.length },
+              },
+            ]);
+            out.applied.readOnlyEnded++;
+          } catch {
+            out.errors++;
+          }
+        }
       }
     } finally {
       await release().catch(() => undefined);
     }
-    if (Object.keys(out.planned).length || out.errors) opsLog(out.errors ? "warn" : "info", "Lifecycle", "tick", { mode: out.mode, planned: out.planned, review: out.applied.review, licenceSynced: out.applied.licenceSynced, errors: out.errors });
+    if (Object.keys(out.planned).length || out.errors) opsLog(out.errors ? "warn" : "info", "Lifecycle", "tick", { mode: out.mode, planned: out.planned, review: out.applied.review, licenceSynced: out.applied.licenceSynced, readOnlyEnded: out.applied.readOnlyEnded, errors: out.errors });
     return out;
   }
 }

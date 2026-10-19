@@ -1136,6 +1136,8 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
           orchestrator,
           trials: d.trials?.store,
           coverageHeld,
+          capabilities: d.capabilities,
+          events: d.commercialEvents?.append ? (d.commercialEvents as CommercialEventSink) : undefined,
           graceMs: orchestrator.paymentsConfig.graceDays * 86_400_000,
           policy,
           lock: d.lifecycle.lock,

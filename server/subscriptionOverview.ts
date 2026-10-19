@@ -116,8 +116,9 @@ export function buildSubscriptionOverview(o: {
 
   // Prueba: licencias con caducidad, de origen `trial:` o de una suscripción en prueba (la prueba
   // pública aplica `subscription:<id>` hasta el fin de la prueba); manda la primera que vence. Una
-  // suscripción de pago aplica sus licencias sin caducidad.
-  const trialGrants = o.grants.filter((g) => (g.source.startsWith("trial:") || g.source.startsWith("subscription:")) && g.validUntil !== null && g.status !== "cancelled");
+  // suscripción de pago aplica sus licencias sin caducidad. Solo cuentan las ACTIVAS: la solo lectura con plazo
+  // tras terminar una suscripción también caduca, pero no es una prueba.
+  const trialGrants = o.grants.filter((g) => (g.source.startsWith("trial:") || g.source.startsWith("subscription:")) && g.validUntil !== null && g.status === "active");
   const trialEnd = trialGrants.length ? Math.min(...trialGrants.map((g) => g.validUntil as number)) : null;
   const hasSubscription = o.grants.some((g) => g.source.startsWith("subscription:") && g.validUntil === null && g.status !== "cancelled");
   const trial = trialEnd !== null && !hasSubscription ? { endsAt: trialEnd, daysLeft: Math.max(0, Math.ceil((trialEnd - o.now) / DAY)) } : null;

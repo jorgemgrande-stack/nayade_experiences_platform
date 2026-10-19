@@ -21,6 +21,7 @@ import { ShadowBillingService } from "./subscriptions/shadow";
 import { catalogFromWebStore, crmFromStore } from "./subscriptions/ports";
 import { LicensingService } from "./licensing/service";
 import { MemoryCapabilityStore } from "./_core/capabilities/store";
+import { decide } from "./_core/capabilities/model";
 import { BUILTIN_MODULES } from "./_core/modules/builtin";
 import { seedElephantSource } from "./catalog/seed";
 import { quote } from "./catalog/quote";
@@ -251,6 +252,39 @@ describe("motor con el orquestador en memoria", () => {
     clock += 30 * DAY;
     expect(await of()).toEqual(["retention_review:"]);
     expect((await e.plan()).actions.find((a) => a.trialId === t.id)?.executor).toBe("operator");
+  });
+
+  it("tras terminar: 30 días en solo lectura (consulta sí, escritura no); después, caducado y el motor cancela las licencias una vez", async () => {
+    const o = await paidOrder("Solo Lectura SL");
+    const source = `subscription:${o.subscriptionId}`;
+    const one = capabilitiesOfTier("essential")[0];
+    await svc.cancel(o.id, { reason: "El cliente cierra la actividad" }, actor);
+    const end = (await subsStore.get(o.subscriptionId!))!.currentPeriodEnd;
+    clock = end + 1;
+    const e = new LifecycleEngine({ ...base, capabilities: caps, events: ledger });
+    await e.run();
+    const done = await svc.must(o.id);
+    expect(done.state).toBe("cancelled");
+    const own = (await caps.list(o.tenantId!)).filter((g) => g.source === source);
+    expect(own.length).toBeGreaterThan(0);
+    expect(own.every((g) => g.status === "read_only" && g.validUntil === end + 30 * DAY)).toBe(true);
+    // Durante el plazo: se consulta, no se opera
+    expect(decide(own, one, { write: false, now: clock })).toMatchObject({ allowed: true, status: "read_only" });
+    expect(decide(own, one, { write: true, now: clock })).toMatchObject({ allowed: false, status: "read_only" });
+    expect((await ledger.list({ orderId: o.id, types: ["access.read_only_started"] }))[0]?.data).toMatchObject({ readOnlyUntil: end + 30 * DAY });
+    // Aún dentro del plazo el motor no hace nada con ellas
+    clock = end + 29 * DAY;
+    expect((await e.plan()).actions.filter((a) => a.kind === "read_only_end")).toHaveLength(0);
+    // Vencido el plazo: el acceso ya lo deniega (aunque el motor estuviera apagado)…
+    clock = end + 30 * DAY + 1;
+    expect(decide(own, one, { write: false, now: clock })).toMatchObject({ allowed: false, status: "expired" });
+    // …y el motor cancela las licencias una sola vez, sin borrar nada
+    expect((await e.run()).applied.readOnlyEnded).toBe(1);
+    expect((await caps.list(o.tenantId!)).filter((g) => g.source === source).every((g) => g.status === "cancelled")).toBe(true);
+    expect((await e.run()).applied.readOnlyEnded).toBe(0);
+    expect((await ledger.list({ orderId: o.id, types: ["access.read_only_ended"] }))).toHaveLength(1);
+    // La revisión de conservación sigue siendo de un operador
+    expect((await e.plan()).actions.find((a) => a.kind === "retention_review" && a.orderId === o.id)?.executor).toBe("operator");
   });
 
   it("otra réplica con el bloqueo: el tick no hace nada", async () => {

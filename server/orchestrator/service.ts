@@ -41,6 +41,8 @@ import { recordFailure } from "../_core/ops/failureAlerts";
 import { APPROVAL_CATEGORIES, OrderError, type ApprovalCategory, type CommercialOrder, type Confirmation, type OrderPatch, type OrderPayment, type OrderQuote, type OrderState, type PaymentMode, type PaymentPurpose } from "./types";
 
 export const GRACE_DAYS = 7;
+/** Días de solo lectura (consulta y exportación) tras el fin del periodo pagado, por los dos caminos. */
+export const READ_ONLY_DAYS = 30;
 /** Proveedor de los pagos verificados en Stripe Billing (modo pruebas). Sus pedidos no reciben recibos simulados. */
 export const STRIPE_PAYMENT_PROVIDER = "stripe_test";
 /** Proveedor de los pagos verificados en Stripe Billing en modo live (cuenta real). */
@@ -82,6 +84,8 @@ export interface OrchestratorDeps {
    */
   mode?: PaymentMode;
   graceDays?: number;
+  /** Días de solo lectura tras el fin (por defecto READ_ONLY_DAYS). */
+  readOnlyDays?: number;
   now?: () => number;
   /**
    * Aviso tras cada cambio de estado ya guardado (correo transaccional). No forma parte de la transición:
@@ -136,10 +140,12 @@ const message = (e: unknown) => (e instanceof Error ? e.message : "error").slice
 export class CommercialOrchestrator {
   private now: () => number;
   private grace: number;
+  private readOnly: number;
   private mode: PaymentMode;
   constructor(private d: OrchestratorDeps) {
     this.now = d.now ?? Date.now;
     this.grace = (d.graceDays ?? GRACE_DAYS) * DAY;
+    this.readOnly = (d.readOnlyDays ?? READ_ONLY_DAYS) * DAY;
     this.mode = d.mode ?? "test";
     if (this.mode !== "test" && this.mode !== "live") throw new Error("Modo de cobro no admitido");
     // Los pagos simulados son SOLO de pruebas: en live nunca se montan
@@ -812,7 +818,8 @@ export class CommercialOrchestrator {
   /**
    * Renovación sincronizada: aplica los periodos vencidos de la suscripción, reaplica licencias, deja
    * constancia en el contrato y, si el pedido se paga en línea, emite el recibo de PRUEBA del periodo
-   * nuevo (nunca se cobra solo). Una cancelación programada termina aquí: licencias canceladas.
+   * nuevo (nunca se cobra solo). Una cancelación programada termina aquí: licencias en solo lectura durante
+   * READ_ONLY_DAYS (consulta y exportación); después, el acceso decide «caducado» y el motor las cancela.
    */
   async renew(id: number, actor: string) {
     let o = await this.must(id);
@@ -821,8 +828,9 @@ export class CommercialOrchestrator {
     const sub = await this.d.subscriptions.applyRenewals(before.id, actor);
     if (sub.status === "canceled") {
       if (LIVE.includes(o.state)) o = await this.move(o, "cancel", actor, {}, { reason: "Suscripción cancelada", cancelAt: sub.canceledAt });
-      const changed = (await this.d.licensing.apply(sub.id, { activate: true, actor, reason: `Fin del pedido ${o.reference}` })).applied.length;
-      o = await this.move(o, "cancelled", actor, { graceEndsAt: null }, { canceledAt: sub.canceledAt, licencesCancelled: changed });
+      const readOnlyUntil = (sub.canceledAt ?? this.now()) + this.readOnly;
+      const n = await this.markLicences(o, "read_only", actor, `Fin del pedido ${o.reference}: solo lectura hasta ${new Date(readOnlyUntil).toISOString().slice(0, 10)}, los datos se conservan`, readOnlyUntil);
+      o = await this.move(o, "cancelled", actor, { graceEndsAt: null }, { canceledAt: sub.canceledAt, licencesReadOnly: n, readOnlyUntil });
       return { order: o, subscription: sub, payment: null };
     }
     if (sub.currentPeriodStart === before.currentPeriodStart) return { order: o, subscription: sub, payment: null };
@@ -941,8 +949,9 @@ export class CommercialOrchestrator {
         await this.d.crm.setContractStatus(contract.id, "cancelled", actor);
         await this.d.crm.log("contract", contract.id, "note", `Fin de la suscripción en Stripe (pedido ${o.reference})`, actor);
       }
-      const n = await this.markLicences(o, "read_only", actor, `Fin de la suscripción (pedido ${o.reference}): solo lectura, los datos se conservan`);
-      await step("cancelled", { graceEndsAt: null }, { licencesReadOnly: n });
+      const readOnlyUntil = this.now() + this.readOnly;
+      const n = await this.markLicences(o, "read_only", actor, `Fin de la suscripción (pedido ${o.reference}): solo lectura hasta ${new Date(readOnlyUntil).toISOString().slice(0, 10)}, los datos se conservan`, readOnlyUntil);
+      await step("cancelled", { graceEndsAt: null }, { licencesReadOnly: n, readOnlyUntil });
       return { order: o, changed };
     }
     if (s.coverageLost) {
@@ -996,11 +1005,12 @@ export class CommercialOrchestrator {
   }
 
   /** Lleva las licencias propias de la suscripción del pedido a un estado (suspendidas o solo lectura). */
-  private async markLicences(o: CommercialOrder, status: "suspended" | "read_only", actor: string, reason: string) {
+  /** `validUntil`: nueva caducidad (p. ej. fin de la solo lectura); sin él, se conserva la de cada licencia. */
+  private async markLicences(o: CommercialOrder, status: "suspended" | "read_only", actor: string, reason: string, validUntil?: number) {
     if (!o.subscriptionId || !o.tenantId) return 0;
     const source = `subscription:${o.subscriptionId}`;
     const own = (await this.d.capabilities.list(o.tenantId)).filter((g) => g.source === source && g.status !== "cancelled" && g.status !== status);
     if (!own.length) return 0;
-    return (await this.d.capabilities.apply(o.tenantId, own.map((g) => ({ capabilityId: g.capabilityId, siteId: g.siteId, status, validUntil: g.validUntil, source })), { actor, reason, now: this.now() })).length;
+    return (await this.d.capabilities.apply(o.tenantId, own.map((g) => ({ capabilityId: g.capabilityId, siteId: g.siteId, status, validUntil: validUntil ?? g.validUntil, source })), { actor, reason, now: this.now() })).length;
   }
 }

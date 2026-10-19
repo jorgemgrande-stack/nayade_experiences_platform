@@ -57,7 +57,11 @@ export function decide(grants: CapabilityGrant[], capabilityId: string, o: { wri
     return o.write ? { allowed: false, status: "expired", reason: `La licencia de ${capabilityId} ha caducado: solo lectura` } : { allowed: true, status: "read_only" };
   }
   if (best.status === "active") return { allowed: true, status: "active" };
-  if (best.status === "read_only") return o.write ? { allowed: false, status: "read_only", reason: `${capabilityId} está en solo lectura` } : { allowed: true, status: "read_only" };
+  if (best.status === "read_only") {
+    // Solo lectura con plazo (p. ej. los 30 días tras terminar la suscripción): vencido, ni se consulta
+    if (best.validUntil !== null && best.validUntil <= o.now) return { allowed: false, status: "expired", reason: `El periodo de solo lectura de ${capabilityId} ha terminado` };
+    return o.write ? { allowed: false, status: "read_only", reason: `${capabilityId} está en solo lectura` } : { allowed: true, status: "read_only" };
+  }
   const label: Record<string, string> = { contracted: "contratada, pendiente de activar", pending_setup: "pendiente de configuración", suspended: "suspendida", cancelled: "cancelada" };
   return { allowed: false, status: best.status, reason: `Capacidad ${capabilityId} ${label[best.status] ?? best.status}` };
 }

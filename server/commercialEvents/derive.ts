@@ -75,7 +75,7 @@ const ORDER_EVENT: Record<string, CommercialEventType> = {
 };
 
 /** Claves del detalle de una transición de pedido que se conservan. */
-const ORDER_DETAIL_KEYS = ["basis", "graceEndsAt", "cancelAt", "canceledAt", "reason", "source", "paymentId", "subscriptionId", "contractId", "by", "from", "changes", "capabilities", "licencesReadOnly", "licencesCancelled", "firstPeriodCents", "currency", "catalogVersion"];
+const ORDER_DETAIL_KEYS = ["basis", "graceEndsAt", "cancelAt", "canceledAt", "reason", "source", "paymentId", "subscriptionId", "contractId", "by", "from", "changes", "capabilities", "licencesReadOnly", "licencesCancelled", "readOnlyUntil", "firstPeriodCents", "currency", "catalogVersion"];
 
 function orderBase(o: CommercialOrder) {
   return { ...blank(), tenantId: o.tenantId, companyId: o.companyId, orderId: o.id, subscriptionId: o.subscriptionId, trialId: o.trialId, correlationId: `order:${o.id}` };
@@ -118,7 +118,7 @@ export function orderTransition(before: CommercialOrder, after: CommercialOrder,
   for (const k of ORDER_DETAIL_KEYS) if (k in d) kept[k] = d[k];
   // En la activación queda constancia de lo contratado (alta, conversión o cambio de plan/módulos)
   const data = type === "order.activated" ? { ...orderShape(after), ...kept } : { kind: after.kind, ...kept };
-  return [
+  const out: CommercialEventDraft[] = [
     {
       ...orderBase(after),
       key: `order:${after.id}:v${after.version}:${e.kind}`,
@@ -131,6 +131,21 @@ export function orderTransition(before: CommercialOrder, after: CommercialOrder,
       data: cleanData(data),
     },
   ];
+  // Fin de la suscripción con plazo de solo lectura: el inicio de ese acceso queda como hecho propio
+  if (type === "order.cancelled" && typeof d.readOnlyUntil === "number") {
+    out.push({
+      ...orderBase(after),
+      key: `order:${after.id}:v${after.version}:read_only_started`,
+      type: "access.read_only_started",
+      aggregate: { type: "order", id: String(after.id), version: after.version },
+      fromState: null,
+      toState: "read_only",
+      actor: e.actor,
+      occurredAt: e.at,
+      data: cleanData({ readOnlyUntil: d.readOnlyUntil, licences: d.licencesReadOnly ?? null }),
+    });
+  }
+  return out;
 }
 
 // ── Pagos ────────────────────────────────────────────────────────────────────
