@@ -17,6 +17,8 @@
 
 /** Etiquetas que nunca pueden ser de una empresa (dominios corporativos de Big Elephant). */
 const RESERVED = new Set(["www", "admin", "app", "api", "mail", "crm", "cp", "smtp", "imap", "pop", "ftp", "status", "help", "soporte", "static", "cdn"]);
+/** Prefijos de los servicios propios en Railway (p. ej. elephant-source-crm-live). Igual en platformDomains.ts. */
+const RESERVED_PREFIXES = ["elephant-source-"];
 const LABEL = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 /** Estados con acceso o que pueden recuperarlo (TENANT_STATUSES): archivadas y en borrado se omiten. */
 const LIVE = new Set(["provisioning", "trial", "active", "grace", "suspended"]);
@@ -37,7 +39,7 @@ function plan(tenants, platform) {
     if (t.status === "deleted") return { ...base, action: "skip", reason: "empresa eliminada" };
     if (t.status && !LIVE.has(t.status)) return { ...base, action: "skip", reason: `estado «${t.status}»` };
     if (!LABEL.test(label)) return { ...base, action: "conflict", reason: "el identificador no es una etiqueta DNS válida (minúsculas, cifras y guiones; máx. 63)" };
-    if (RESERVED.has(label)) return { ...base, action: "conflict", reason: "etiqueta reservada para Big Elephant" };
+    if (RESERVED.has(label) || RESERVED_PREFIXES.some((p) => label.startsWith(p))) return { ...base, action: "conflict", reason: "etiqueta reservada para Big Elephant" };
     if (seen.has(domain)) return { ...base, action: "conflict", reason: "dominio repetido en el plan" };
     seen.add(domain);
     const owner = taken.get(domain);
@@ -86,4 +88,4 @@ if (require.main === module) {
     process.exit(1);
   });
 }
-module.exports = { plan, RESERVED };
+module.exports = { plan, RESERVED, RESERVED_PREFIXES };

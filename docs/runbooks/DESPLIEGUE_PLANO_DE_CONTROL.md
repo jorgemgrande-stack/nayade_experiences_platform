@@ -49,6 +49,7 @@ El plano de control es un proceso aparte del Core de Náyade, con sus propias ba
 | `REGISTRY_KEYS`, `REGISTRY_ACTIVE_KEY_ID` | sí | cifrado de DSN de tenants |
 | `CP_ALLOWED_ORIGINS` | CRM web | orígenes CORS exactos |
 | `CP_PLATFORM_TARGET`, `CP_PLATFORM_DOMAIN` | dominios/alta | CNAME de plataforma y dominio de subdominios |
+| `CP_PLATFORM_DOMAINS` | dominios/alta | Opcional. Lista de dominios de plataforma: el **primero** se usa para las altas nuevas y el resto se acepta durante la transición (p. ej. `app.bigelephant.es,up.railway.app`). Si se define, sustituye a `CP_PLATFORM_DOMAIN`. Un `platform_subdomain` solo se registra (como verificado, sin DNS) si es exactamente `<etiqueta>.<uno de ellos>`, con una etiqueta válida y no reservada. El arranque registra la lista (`platform_domains`). |
 | `ERM_DATABASE_URL` | cuotas/uso | medición |
 | `BILLING_DATABASE_URL`, `BILLING_CATALOG_FILE` | facturación | catálogo parametrizable (sin precios inventados) |
 | `BILLING_CHARGES_ENABLED` + proveedor | **no activar** | cobros reales requieren autorización (B11) |

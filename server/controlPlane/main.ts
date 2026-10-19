@@ -26,6 +26,7 @@ import { MysqlUsageStore } from "../_core/erm/usage";
 import { keyringFromEnv } from "../_core/tenantRegistry/crypto";
 import { MysqlTenantRegistryStore } from "../_core/tenantRegistry/mysqlStore";
 import { TenantRegistryService } from "../_core/tenantRegistry/service";
+import { platformDomainsFromEnv } from "../_core/tenantRegistry/platformDomains";
 import { ProvisioningService } from "../_core/provisioning/service";
 import { MysqlProvisioningStore, MysqlSchemaApplier, MysqlTenantSeeder } from "../_core/provisioning/mysqlAdapters";
 import { DatabaseServers, MultiServerDatabaseProvisioner, parseDatabaseServers, registryServerUsage } from "../_core/provisioning/servers";
@@ -79,7 +80,11 @@ async function main() {
   const pool = mysql.createPool({ uri: regUrl, ...fixedPoolOptions("CP_REGISTRY_POOL_CONNECTIONS", 5) });
   const store = new MysqlTenantRegistryStore(pool);
   const ring = keyringFromEnv(process.env);
-  const registry = new TenantRegistryService(store, () => ring);
+  // Dominios de plataforma: CP_PLATFORM_DOMAINS (lista; el primero para las altas) o CP_PLATFORM_DOMAIN
+  const platformDomains = platformDomainsFromEnv(process.env);
+  const platformDomain = platformDomains[0];
+  console.log(JSON.stringify({ ctx: "ControlPlane", event: "platform_domains", platformDomains, ...(platformDomains.length ? {} : { warning: "sin dominios de plataforma: platform_subdomain sin comprobar" }) }));
+  const registry = new TenantRegistryService(store, () => ring, { platformDomains });
   const entitlements = new EntitlementAdmin(pool);
   const quotas = new QuotaAdmin(pool);
 
@@ -189,8 +194,8 @@ async function main() {
   if (crmPool) {
     const store = new MysqlCrmStore(crmPool);
     const activation =
-      provisioning && process.env.CP_PLATFORM_DOMAIN
-        ? createContractActivation({ provisioning, platformDomain: process.env.CP_PLATFORM_DOMAIN, actor: { type: "crm", id: "crm-contracts" }, notifyWelcome: platformMail.mailer?.assistedWelcome() })
+      provisioning && platformDomain
+        ? createContractActivation({ provisioning, platformDomain, actor: { type: "crm", id: "crm-contracts" }, notifyWelcome: platformMail.mailer?.assistedWelcome() })
         : undefined;
     crm = { service: new CrmService({ store, activation }), store };
   }
@@ -324,7 +329,7 @@ async function main() {
     usage,
     quotaDefaults: parseDefaultQuotas(process.env.ERM_DEFAULT_QUOTAS) ?? undefined,
     platformTarget: process.env.CP_PLATFORM_TARGET ?? "",
-    platformDomain: process.env.CP_PLATFORM_DOMAIN || undefined,
+    platformDomain,
     support: new SupportAdmin(pool),
     allowedOrigins: (process.env.CP_ALLOWED_ORIGINS ?? "").split(",").map((x) => x.trim()).filter(Boolean),
     supportSecret: process.env.SUPPORT_JWT_SECRET && process.env.SUPPORT_JWT_SECRET.length >= 32 ? process.env.SUPPORT_JWT_SECRET : undefined,
