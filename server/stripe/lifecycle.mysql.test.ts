@@ -722,8 +722,11 @@ describe.skipIf(!URL_)("Stripe Billing de punta a punta con MySQL real", () => {
 
   // Última: revierte 0016 (no debe ir antes que las que usan el registro de facturas)
   it("reversión de 0016: solo desaparece el registro documental; un alta nueva se cobra y se activa igual", async () => {
-    const down = fs.readFileSync(path.resolve(__dirname, "../../db/crm/migrations/0016_stripe_invoices_fiscal_documents.down.sql"), "utf8");
-    for (const st of splitStatements(down)) await pool.query(st);
+    // Orden inverso: primero 0019 (sus líneas apuntan a stripe_invoices), después 0016
+    for (const f of ["0019_stripe_invoice_lines.down.sql", "0016_stripe_invoices_fiscal_documents.down.sql"]) {
+      const down = fs.readFileSync(path.resolve(__dirname, "../../db/crm/migrations", f), "utf8");
+      for (const st of splitStatements(down)) await pool.query(st);
+    }
     const [t] = await pool.query<mysql.RowDataPacket[]>("SELECT COUNT(*) AS n FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name IN ('stripe_invoices', 'fiscal_documents')");
     expect(Number(t[0].n)).toBe(0);
     const o = await contracted(await company("Sin Registro SL"));
