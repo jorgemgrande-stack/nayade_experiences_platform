@@ -52,6 +52,9 @@ import { testPaymentsFromEnv, type TestPaymentPort } from "../orchestrator/payme
 import { checkoutBlockedReason, describeStripeConfig, liveStartupProblem, stripeConfigFromEnv } from "../stripe/config";
 import { stripeGateway, stripeWebhookVerifier } from "../stripe/gateway";
 import { MysqlStripeStore } from "../stripe/store";
+import { MysqlSubscriptionChangeStore } from "../stripe/changes";
+import { MysqlInvoiceLineStore } from "../stripe/invoiceLines";
+import { notificationsFromEnv } from "../notifications/config";
 import { liveOrdersProblem, liveSchemaProblem } from "../stripe/liveReadiness";
 import { consumerWithdrawalFromEnv, fiscalScenariosFromEnv, taxExpectationsFromEnv } from "../stripe/buyerProfile";
 import { checkoutUrlsFromEnv } from "../stripe/checkout";
@@ -331,7 +334,7 @@ async function main() {
       withdrawal: consumerWithdrawalFromEnv(process.env),
     },
   };
-  let stripe: { config: NonNullable<typeof stripeConfig>; store: MysqlStripeStore; gateway: ReturnType<typeof stripeGateway>; urls: ReturnType<typeof checkoutUrlsFromEnv>; checkoutEnabled: boolean; verifyWebhook: ReturnType<typeof stripeWebhookVerifier>; workerEnabled: boolean; publicStatus: boolean; selfService: boolean; termsVersion: string | null; fiscal: typeof fiscal } | undefined;
+  let stripe: { config: NonNullable<typeof stripeConfig>; store: MysqlStripeStore; gateway: ReturnType<typeof stripeGateway>; urls: ReturnType<typeof checkoutUrlsFromEnv>; checkoutEnabled: boolean; verifyWebhook: ReturnType<typeof stripeWebhookVerifier>; workerEnabled: boolean; publicStatus: boolean; selfService: boolean; termsVersion: string | null; fiscal: typeof fiscal; purchases?: { enabled: boolean; changes: MysqlSubscriptionChangeStore }; invoiceLines?: MysqlInvoiceLineStore } | undefined;
   if (stripeConfig) {
     const urls = checkoutUrlsFromEnv(process.env);
     // La bandera sigue apagada por defecto; en live sin política fiscal, Checkout queda apagado aunque esté a 1
@@ -356,7 +359,29 @@ async function main() {
       else namespaceOk = saved.namespace === stripeConfig.namespace;
     }
     const ready = migrated && liveMigrated && namespaceOk;
-    if (ready) stripe = { config: stripeConfig, store: new MysqlStripeStore(crmPool!, stripeConfig.mode, commercialEvents), gateway: stripeGateway(stripeConfig), urls, checkoutEnabled, verifyWebhook: stripeWebhookVerifier(stripeConfig), workerEnabled, publicStatus, selfService, termsVersion, fiscal };
+    // Compra de módulos (CRM 0018) y líneas de factura (CRM 0019): solo si la tabla existe; la compra, además,
+    // con CP_COMMERCE_PURCHASES_ENABLED=1 (apagada por defecto). Sin las tablas, todo funciona como antes
+    const hasTable = async (t: string) => (ready ? await crmPool!.query(`SELECT 1 FROM ${t} LIMIT 0`).then(() => true, () => false) : false);
+    const changesReady = await hasTable("stripe_subscription_changes");
+    const linesReady = await hasTable("stripe_invoice_lines");
+    const purchasesEnabled = process.env.CP_COMMERCE_PURCHASES_ENABLED === "1";
+    if (ready)
+      stripe = {
+        config: stripeConfig,
+        store: new MysqlStripeStore(crmPool!, stripeConfig.mode, commercialEvents),
+        gateway: stripeGateway(stripeConfig),
+        urls,
+        checkoutEnabled,
+        verifyWebhook: stripeWebhookVerifier(stripeConfig),
+        workerEnabled,
+        publicStatus,
+        selfService,
+        termsVersion,
+        fiscal,
+        ...(changesReady ? { purchases: { enabled: purchasesEnabled, changes: new MysqlSubscriptionChangeStore(crmPool!, stripeConfig.mode) } } : {}),
+        ...(linesReady ? { invoiceLines: new MysqlInvoiceLineStore(crmPool!, stripeConfig.mode) } : {}),
+      };
+    console.log(JSON.stringify({ ctx: "Commerce", purchases: { mounted: changesReady, enabled: changesReady && purchasesEnabled, ...(ready && !changesReady ? { reason: "migration_0018_missing" } : {}) }, invoiceLines: { mounted: linesReady, ...(ready && !linesReady ? { reason: "migration_0019_missing" } : {}) } }));
     console.log(
       JSON.stringify({
         ctx: "Stripe",
@@ -421,6 +446,7 @@ async function main() {
     lifecycle,
     stripe,
     commercialEvents,
+    notifications: notificationsFromEnv(process.env),
     mail: {
       platform: platformMail.mailer,
       webhookToken: process.env.BREVO_WEBHOOK_TOKEN ?? null,
@@ -430,6 +456,7 @@ async function main() {
   });
 
   const port = Number(process.env.CP_PORT ?? 4100);
+  console.log(JSON.stringify({ ctx: "Notifications", dispatch: !!notificationsFromEnv(process.env), mail: !!platformMail.mailer, events: !!commercialEvents }));
   app.listen(port, () => console.log(JSON.stringify({ ctx: "ControlPlane", event: "listening", port })));
 }
 
