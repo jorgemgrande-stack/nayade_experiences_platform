@@ -112,7 +112,7 @@ async function liveControlPlane(o: { taxPolicy: StripeConfig["taxPolicy"]; store
       publicStatus: true,
       selfService: false,
       termsVersion: null,
-      fiscal: { scenarios: new Set(["business:es_mainland"]), consent: { terms: "v1-prueba", privacy: null, precontract: null, withdrawal: "pending" } },
+      fiscal: { scenarios: new Set(["business:es_mainland"]), consent: { terms: "v1-prueba", privacy: null, precontract: null, withdrawal: "pending" }, taxExpectations: new Map([["business:es_mainland", "taxed"]]) },
     },
   });
   const server = http.createServer(app);
@@ -204,6 +204,7 @@ describe("Stripe en modo live por HTTP, con política fiscal stripe_tax_exclusiv
     // La empresa dio su NIF en Checkout y la dirección coincide con la declarada: ningún aviso
     const raised: string[] = [];
     configureFailureAlerts(new FailureAlerts({ incidents: { raise: async (i: { dedupeKey: string }) => void raised.push(i.dedupeKey) } as never, rules: STRIPE_FAILURE_RULES }));
+    cp.gw.invoiceTaxBp = 2100;
     cp.gw.taxIdsOf.set(cp.gw.sessions.get(s.sessionId)!.customerId!, 1);
     cp.gw.completeSession(s.sessionId);
     expect(await cp.ok(cp.webhook(cp.gw.events[0]))).toMatchObject({ received: true, duplicate: false });
@@ -211,7 +212,7 @@ describe("Stripe en modo live por HTTP, con política fiscal stripe_tax_exclusiv
     const detail = await cp.ok(cp.call("GET", `/orders/${orderId}`));
     expect(detail.payments).toEqual([expect.objectContaining({ purpose: "initial", status: "succeeded", provider: "stripe", mode: "live", amountCents: 2900 })]);
     expect((await cp.orders.payments(orderId)).every((p) => p.mode === "live" && p.provider === "stripe")).toBe(true);
-    expect(raised.filter((k) => k.includes("buyer"))).toEqual([]);
+    expect(raised.filter((k) => k.includes("buyer") || k.includes("tax"))).toEqual([]);
   });
 
   it("factura con otra dirección y sin NIF: el pago se registra igual pero se avisa (revisión fiscal)", async () => {
@@ -224,11 +225,12 @@ describe("Stripe en modo live por HTTP, con política fiscal stripe_tax_exclusiv
     // En Checkout el cliente cambió la dirección a Canarias y no dio NIF
     const customerId = cp.gw.sessions.get(s.sessionId)!.customerId!;
     cp.gw.customers.set(customerId, { ...cp.gw.customers.get(customerId)!, address: { country: "ES", postalCode: "35001" } });
+    cp.gw.invoiceTaxBp = 0;
     cp.gw.completeSession(s.sessionId);
     await cp.ok(cp.webhook(cp.gw.events[0]));
     await until(async () => (await cp.ok(cp.call("GET", `/orders/${orderId}`))).order.state === "active");
     expect((await cp.ok(cp.call("GET", `/orders/${orderId}`))).payments).toEqual([expect.objectContaining({ purpose: "initial", status: "succeeded" })]);
-    expect(raised).toEqual(expect.arrayContaining(["rate:stripe.buyer_territory_mismatch", "rate:stripe.buyer_tax_id_missing"]));
+    expect(raised).toEqual(expect.arrayContaining(["rate:stripe.buyer_territory_mismatch", "rate:stripe.buyer_tax_id_missing", "rate:stripe.invoice_tax_mismatch"]));
     configureFailureAlerts(new FailureAlerts());
   });
 

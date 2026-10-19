@@ -31,7 +31,7 @@ import { stripePaymentProvider } from "../orchestrator/service";
 import type { StripeMode } from "./config";
 import type { GwCharge, GwInvoice, GwSubscription, StripeGateway } from "./gateway";
 import type { StripeEventRow, StripeStore } from "./store";
-import { classifyTerritory, territoryGroup } from "./buyerProfile";
+import { checkInvoiceTax, classifyTerritory, territoryGroup, type FiscalScenario, type TaxTreatment } from "./buyerProfile";
 
 /** Eventos que se aceptan y procesan (nombres de la API 2026-09-30.endive). */
 export const HANDLED_EVENTS = [
@@ -82,6 +82,8 @@ export interface ProcessorDeps {
   namespace?: string;
   /** Modo del entorno (por defecto «test»): fija el proveedor y el modo de los pagos verificados. */
   mode?: StripeMode;
+  /** Tratamiento del impuesto declarado por escenario: el impuesto de cada factura cobrada se contrasta con él. */
+  taxExpectations?: Map<FiscalScenario, TaxTreatment>;
 }
 
 /** Estado de un cargo que deja sin cobertura el periodo que pagó. */
@@ -358,7 +360,7 @@ export class StripeEventProcessor {
     });
     if (r.created) {
       opsLog("info", "StripeEvents", "payment_verified", { orderId: order.id, invoiceId: inv.id, purpose, ...(inv.taxCents != null ? { taxCents: inv.taxCents } : {}) });
-      if (purpose === "initial") await this.checkBuyer(order.id, inv);
+      await this.checkBuyer(order.id, inv, purpose);
     }
     return { created: r.created, purpose, invoiceId: inv.id, paymentId: r.payment.id };
   }
@@ -368,9 +370,18 @@ export class StripeEventProcessor {
    * casar con el perfil fiscal declarado. Checkout permite cambiar la dirección, así que una discrepancia es
    * posible: se AVISA (el pago ya está cobrado; qué hacer es una decisión del equipo, no de este proceso).
    */
-  private async checkBuyer(orderId: number, inv: GwInvoice) {
+  private async checkBuyer(orderId: number, inv: GwInvoice, purpose: "initial" | "renewal" | "change") {
     const profile = await this.d.store.buyerProfile(orderId).catch(() => null);
     if (!profile) return;
+    // Cada factura cobrada: el impuesto de Stripe frente al tratamiento declarado para el escenario
+    const expected = this.d.taxExpectations?.get(profile.scenario);
+    const taxProblem = expected ? checkInvoiceTax(expected, inv.taxCents) : null;
+    if (taxProblem) {
+      opsLog("warn", "StripeEvents", "invoice_tax_mismatch", { orderId, invoiceId: inv.id, scenario: profile.scenario, expected, problem: taxProblem, purpose });
+      recordFailure("stripe.invoice_tax_mismatch");
+    }
+    // Dirección e identificador fiscal: solo en el alta (después pueden cambiar por el Portal y se revisan aparte)
+    if (purpose !== "initial") return;
     const t = inv.customerCountry ? classifyTerritory(inv.customerCountry, inv.customerPostalCode) : null;
     if (!t || territoryGroup(t) !== territoryGroup(profile.territory)) {
       opsLog("warn", "StripeEvents", "buyer_territory_mismatch", { orderId, invoiceId: inv.id, declared: profile.scenario, invoiced: t ?? "unknown" });

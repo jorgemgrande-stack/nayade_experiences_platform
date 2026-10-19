@@ -52,7 +52,7 @@ import { checkoutBlockedReason, describeStripeConfig, liveStartupProblem, stripe
 import { stripeGateway, stripeWebhookVerifier } from "../stripe/gateway";
 import { MysqlStripeStore } from "../stripe/store";
 import { liveOrdersProblem, liveSchemaProblem } from "../stripe/liveReadiness";
-import { consumerWithdrawalFromEnv, fiscalScenariosFromEnv } from "../stripe/buyerProfile";
+import { consumerWithdrawalFromEnv, fiscalScenariosFromEnv, taxExpectationsFromEnv } from "../stripe/buyerProfile";
 import { checkoutUrlsFromEnv } from "../stripe/checkout";
 import { MysqlCrmStore } from "../crm/mysqlStore";
 import { CrmService } from "../crm/service";
@@ -316,6 +316,7 @@ async function main() {
   // Escenarios fiscales aprobados y versiones de consentimiento. Un valor no admitido impide arrancar (nunca a medias)
   const fiscal = {
     scenarios: fiscalScenariosFromEnv(process.env),
+    taxExpectations: taxExpectationsFromEnv(process.env),
     consent: {
       terms: (process.env.CP_TERMS_VERSION ?? "").trim() || null,
       privacy: (process.env.CP_PRIVACY_VERSION ?? "").trim() || null,
@@ -361,6 +362,7 @@ async function main() {
         selfService: ready && selfService,
         termsPublished: !!termsVersion,
         fiscalScenarios: Array.from(fiscal.scenarios),
+        taxExpectations: Object.fromEntries(fiscal.taxExpectations),
         consumerWithdrawal: fiscal.consent.withdrawal,
         ...(ready ? {} : { reason: !trustProxyOk ? "trust_proxy_missing" : !orders ? "orders_not_enabled" : !migrated ? "migration_0012_missing" : !liveMigrated ? (liveSchema ?? "migration_0013_missing") : "namespace_changed" }),
       }),

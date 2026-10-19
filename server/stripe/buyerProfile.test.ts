@@ -8,6 +8,10 @@ import {
   classifyTerritory,
   consentRequirements,
   consumerWithdrawalFromEnv,
+  checkInvoiceTax,
+  displayPrice,
+  taxExpectationGate,
+  taxExpectationsFromEnv,
   fiscalGate,
   fiscalScenariosFromEnv,
   scenarioOf,
@@ -108,5 +112,39 @@ describe("consentimiento (no basta una casilla genérica)", () => {
     expect(ok.evidence).toMatch(/^[0-9a-f]{16}$/);
     // Misma aceptación en otro momento → otra huella
     expect(buildConsent(4, "consumer", { ...base, immediateExecution: true }, V, "web", 1001).evidence).not.toBe(ok.evidence);
+  });
+});
+
+describe("impuesto esperado por escenario y precio con impuestos", () => {
+  it("CP_STRIPE_TAX_EXPECTATIONS: sin variable ninguna; valores válidos; un valor no admitido o repetido impide arrancar", () => {
+    expect(taxExpectationsFromEnv({}).size).toBe(0);
+    const m = taxExpectationsFromEnv({ CP_STRIPE_TAX_EXPECTATIONS: "business:es_mainland=taxed, business:eu=reverse_charge ,consumer:non_eu=not_subject" });
+    expect(Object.fromEntries(m)).toEqual({ "business:es_mainland": "taxed", "business:eu": "reverse_charge", "consumer:non_eu": "not_subject" });
+    for (const bad of ["business:es_mainland=exento", "business:es=taxed", "business:es_mainland", "business:es_mainland=taxed=x", "business:eu=taxed,business:eu=reverse_charge"]) {
+      expect(() => taxExpectationsFromEnv({ CP_STRIPE_TAX_EXPECTATIONS: bad }), bad).toThrow(FiscalConfigError);
+    }
+  });
+  it("sin tratamiento declarado el escenario no se cobra (impuesto desconocido)", () => {
+    expect(taxExpectationGate("business:es_mainland", new Map())).toBe("tax_expectation_missing:business:es_mainland");
+    expect(taxExpectationGate("business:es_mainland", new Map([["business:es_mainland", "taxed"]]))).toBeNull();
+  });
+  it("contraste del impuesto facturado: desconocido, falta, inesperado o correcto", () => {
+    expect(checkInvoiceTax("taxed", null)).toBe("tax_unknown");
+    expect(checkInvoiceTax("taxed", undefined)).toBe("tax_unknown");
+    expect(checkInvoiceTax("taxed", 0)).toBe("tax_missing");
+    expect(checkInvoiceTax("taxed", 609)).toBeNull();
+    expect(checkInvoiceTax("reverse_charge", 0)).toBeNull();
+    expect(checkInvoiceTax("reverse_charge", 609)).toBe("tax_unexpected");
+    expect(checkInvoiceTax("not_subject", 0)).toBeNull();
+  });
+  it("precio con impuestos: solo con un tipo decidido; las cuatro bases comerciales al 21 % (ejemplo de cálculo, no una decisión)", () => {
+    expect(displayPrice(2900, null)).toEqual({ netCents: 2900, taxCents: null, grossCents: null, rateBp: null });
+    expect([2900, 7900, 27900, 75900].map((n) => displayPrice(n, 2100).grossCents)).toEqual([3509, 9559, 33759, 91839]);
+    expect(displayPrice(2900, 700)).toEqual({ netCents: 2900, taxCents: 203, grossCents: 3103, rateBp: 700 });
+    expect(displayPrice(2900, 0).grossCents).toBe(2900);
+    expect(() => displayPrice(-1, 2100)).toThrow(RangeError);
+    expect(() => displayPrice(2900, 21)).not.toThrow();
+    expect(() => displayPrice(2900, 10_001)).toThrow(RangeError);
+    expect(() => displayPrice(29.5, 2100)).toThrow(RangeError);
   });
 });

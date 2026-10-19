@@ -31,7 +31,7 @@ import type { CatalogPort } from "../subscriptions/ports";
 import { StripeCatalogError, desiredCatalog, planCatalogWrites, syncCatalog } from "./catalog";
 import { StripeCheckoutError, type StripeCheckoutService } from "./checkout";
 import type { OrderStore } from "../orchestrator/store";
-import { BuyerProfileError, FISCAL_SCENARIOS, buildConsent, buyerProfileInput, consentInput, toBuyerProfile, type ConsentVersions, type FiscalScenario } from "./buyerProfile";
+import { BuyerProfileError, FISCAL_SCENARIOS, buildConsent, buyerProfileInput, consentInput, toBuyerProfile, type ConsentVersions, type FiscalScenario, type TaxTreatment } from "./buyerProfile";
 import { checkoutBlockedReason, describeStripeConfig, type StripeConfig } from "./config";
 import { describeIssuer } from "./issuer";
 import { sessionIdRe } from "./status";
@@ -77,7 +77,7 @@ export interface StripeRouterDeps {
   /** Pedidos (perfil fiscal del comprador). Sin ellos, las rutas del perfil no se montan. */
   orders?: Pick<OrderStore, "get">;
   /** Escenarios fiscales aprobados y versiones de consentimiento vigentes. */
-  fiscal?: { scenarios: Set<FiscalScenario>; consent: ConsentVersions };
+  fiscal?: { scenarios: Set<FiscalScenario>; consent: ConsentVersions; taxExpectations?: Map<FiscalScenario, TaxTreatment> };
 }
 
 /** Estados en los que aún se puede registrar o corregir el perfil fiscal (antes de confirmar el pago). */
@@ -96,7 +96,7 @@ export function createStripeRouter(d: StripeRouterDeps): Router {
       issuer: describeIssuer(),
       checkoutEnabled: !!d.checkout,
       ...(checkoutBlockedReason(d.config) ? { checkoutBlocked: checkoutBlockedReason(d.config) } : {}),
-      fiscal: { approved, pending: FISCAL_SCENARIOS.filter((s) => !approved.includes(s)), consumerWithdrawal: d.fiscal?.consent.withdrawal ?? "pending" },
+      fiscal: { approved, pending: FISCAL_SCENARIOS.filter((s) => !approved.includes(s)), consumerWithdrawal: d.fiscal?.consent.withdrawal ?? "pending", taxExpectations: Object.fromEntries(d.fiscal?.taxExpectations ?? new Map()) },
       prices: await d.store.listPrices(),
     });
   }));
