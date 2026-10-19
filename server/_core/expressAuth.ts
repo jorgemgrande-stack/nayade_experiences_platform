@@ -14,6 +14,7 @@ import type { NextFunction, Request, Response } from "express";
 import { checkRbacOrLegacy } from "./rbac";
 import { getUserFromRequest } from "../localAuth";
 import { sdk } from "./sdk";
+import { isMultiTenant } from "./tenant";
 
 export type SessionUser = {
   id: number;
@@ -31,7 +32,9 @@ export function getAuthUser(req: Request): SessionUser | undefined {
 export async function resolveSessionUser(req: Request): Promise<SessionUser | null> {
   try {
     const user =
-      process.env.LOCAL_AUTH === "true"
+      // En multiempresa solo existe la sesión local, ligada a su empresa (el SDK de Manus la rechaza siempre):
+      // igual que el contexto de tRPC, sin depender de que además se haya fijado LOCAL_AUTH
+      process.env.LOCAL_AUTH === "true" || isMultiTenant()
         ? await getUserFromRequest(req)
         : await sdk.authenticateRequest(req as never);
     if (!user || typeof (user as SessionUser).id !== "number") return null;

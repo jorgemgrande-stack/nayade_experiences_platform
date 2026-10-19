@@ -82,8 +82,13 @@ describe.skipIf(!URL_)("Essential — Facturación (aplicación real, dos empres
     expect(prev.status).toBe(200);
     expect(prev.text).toContain("B00000011");
     expect(prev.text).not.toMatch(/n[aá]yade|skicenter|B26987875/i);
-    // Desde la empresa B el mismo número no existe
-    expect((await ess.call("b", "GET", `/api/invoices/preview?n=${encodeURIComponent(inv.invoiceNumber)}`, { cookie: agB })).status).not.toBe(200);
+    // Desde la empresa B el mismo número no existe (su agente está autenticado en B: la factura no está en su BD)
+    expect((await ess.call("b", "GET", `/api/invoices/preview?n=${encodeURIComponent(inv.invoiceNumber)}`, { cookie: agB })).status).toBe(404);
+    // La sesión de A no vale en el host de B, ni la de un usuario de A sin permiso de CRM
+    expect((await ess.call("b", "GET", `/api/invoices/preview?n=${encodeURIComponent(inv.invoiceNumber)}`, { cookie: agA })).status).toBe(401);
+    expect((await ess.call("a", "GET", `/api/invoices/preview?n=${encodeURIComponent(inv.invoiceNumber)}`, { cookie: userA })).status).toBe(401);
+    // Sin sesión, solo con el número (enumerable): denegado
+    expect((await ess.call("a", "GET", `/api/invoices/preview?n=${encodeURIComponent(inv.invoiceNumber)}`, {})).status).toBe(401);
 
     const cn = await ess.m("a", "crm.invoices.createCreditNote", { invoiceId, reason: "Devolución parcial", partialAmount: 22 }, agA);
     expect(cn.status).toBe(200);
