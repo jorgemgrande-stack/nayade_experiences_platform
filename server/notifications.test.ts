@@ -16,6 +16,7 @@ import { MemoryMailStore } from "./mail/store";
 import { PlatformMailer } from "./mail/platform";
 import { TEMPLATE_CATALOG, catalogView, type Vars } from "./notifications/catalog";
 import { NotificationDispatcher } from "./notifications/dispatcher";
+import { DEFAULT_FAILURE_RULES } from "./_core/ops/failureAlerts";
 
 const NOW = Date.UTC(2026, 9, 20, 9);
 const REQUIRED = [
@@ -167,6 +168,8 @@ describe("despachador de eventos comerciales", () => {
     const later = new NotificationDispatcher({ ...(s.dispatcher as unknown as { d: ConstructorParameters<typeof NotificationDispatcher>[0] }).d, now: () => NOW + 3_600_000 });
     expect(await later.run()).toEqual({ done: 0, skipped: 0, retried: 0, dead: 1 });
     expect(calls).toBe(2);
+    // La alerta del abandono tiene regla (sin ella recordFailure la descartaría en silencio)
+    expect(DEFAULT_FAILURE_RULES["notifications.dead"]).toBeTruthy();
   });
 
   it("MAIL_MODE=off: el aviso queda registrado como omitido y no sale nada", async () => {
