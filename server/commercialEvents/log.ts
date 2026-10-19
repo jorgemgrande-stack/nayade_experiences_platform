@@ -23,6 +23,15 @@ export interface CommercialEventReader {
   list(f: CommercialEventFilter): Promise<CommercialEvent[]>;
 }
 
+/**
+ * Cola del despachador de notificaciones sobre `dispatch_status` (0015). `claim` toma eventos pendientes cuyo
+ * reintento ya venció y los reserva hasta `now + leaseMs` (con varias réplicas, cada uno lo toma una sola).
+ */
+export interface CommercialEventDispatchQueue {
+  claimDispatch(now: number, limit: number, leaseMs: number): Promise<Array<CommercialEvent & { dispatchAttempts: number }>>;
+  finishDispatch(id: number, r: { status: "pending" | "done" | "skipped" | "dead"; attempts: number; nextAttemptAt: number | null }): Promise<void>;
+}
+
 const MAX_LIMIT = 1000;
 const cut = (s: string | null, n: number) => (s === null ? null : s.slice(0, n));
 
@@ -56,8 +65,26 @@ function matches(e: CommercialEvent, f: CommercialEventFilter) {
 
 // ── Memoria (pruebas) ────────────────────────────────────────────────────────
 
-export class MemoryCommercialEventLog implements CommercialEventSink, CommercialEventReader {
+export class MemoryCommercialEventLog implements CommercialEventSink, CommercialEventReader, CommercialEventDispatchQueue {
   private rows: CommercialEvent[] = [];
+  private dispatch = new Map<number, { attempts: number; nextAttemptAt: number | null }>();
+  async claimDispatch(now: number, limit: number, leaseMs: number) {
+    const out: Array<CommercialEvent & { dispatchAttempts: number }> = [];
+    for (const e of this.rows) {
+      if (out.length >= limit) break;
+      const d = this.dispatch.get(e.id) ?? { attempts: 0, nextAttemptAt: null };
+      if (e.environment !== this.environment || e.dispatchStatus !== "pending" || (d.nextAttemptAt !== null && d.nextAttemptAt > now)) continue;
+      this.dispatch.set(e.id, { ...d, nextAttemptAt: now + leaseMs });
+      out.push({ ...(JSON.parse(JSON.stringify(e)) as CommercialEvent), dispatchAttempts: d.attempts });
+    }
+    return out;
+  }
+  async finishDispatch(id: number, r: { status: "pending" | "done" | "skipped" | "dead"; attempts: number; nextAttemptAt: number | null }) {
+    const e = this.rows.find((x) => x.id === id);
+    if (!e) return;
+    e.dispatchStatus = r.status;
+    this.dispatch.set(id, { attempts: r.attempts, nextAttemptAt: r.nextAttemptAt });
+  }
   private seq = 0;
   constructor(readonly environment: CommercialEnvironment = "test") {}
 
@@ -123,7 +150,7 @@ function eventRow(r: Record<string, unknown>): CommercialEvent {
   };
 }
 
-export class MysqlCommercialEventLog implements CommercialEventSink, CommercialEventReader {
+export class MysqlCommercialEventLog implements CommercialEventSink, CommercialEventReader, CommercialEventDispatchQueue {
   constructor(
     private pool: mysql.Pool,
     readonly environment: CommercialEnvironment,
@@ -146,6 +173,26 @@ export class MysqlCommercialEventLog implements CommercialEventSink, CommercialE
       else duplicates++;
     }
     return { written, duplicates };
+  }
+
+  async claimDispatch(now: number, limit: number, leaseMs: number) {
+    const [rows] = await this.pool.query<mysql.RowDataPacket[]>(
+      "SELECT * FROM commercial_events WHERE environment = ? AND dispatch_status = 'pending' AND (next_attempt_at IS NULL OR next_attempt_at <= ?) ORDER BY id LIMIT ?",
+      [this.environment, now, limit],
+    );
+    const out: Array<CommercialEvent & { dispatchAttempts: number }> = [];
+    for (const r of rows) {
+      // Reserva atómica: si otra réplica lo tomó entre medias, no se toca
+      const [u] = await this.pool.query<mysql.ResultSetHeader>(
+        "UPDATE commercial_events SET next_attempt_at = ? WHERE id = ? AND dispatch_status = 'pending' AND (next_attempt_at IS NULL OR next_attempt_at <= ?)",
+        [now + leaseMs, r.id, now],
+      );
+      if (u.affectedRows === 1) out.push({ ...eventRow(r), dispatchAttempts: Number(r.dispatch_attempts ?? 0) });
+    }
+    return out;
+  }
+  async finishDispatch(id: number, r: { status: "pending" | "done" | "skipped" | "dead"; attempts: number; nextAttemptAt: number | null }) {
+    await this.pool.query("UPDATE commercial_events SET dispatch_status = ?, dispatch_attempts = ?, next_attempt_at = ? WHERE id = ? AND environment = ?", [r.status, r.attempts, r.nextAttemptAt, id, this.environment]);
   }
 
   async list(f: CommercialEventFilter = {}) {

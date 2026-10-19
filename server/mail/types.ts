@@ -45,6 +45,15 @@ export type MailCategory =
   | "subscription_reactivated"
   | "payment_failed"
   | "cancellation"
+  // Catálogo de comunicaciones transaccionales (server/notifications/catalog.ts)
+  | "subscription_suspended"
+  | "subscription_ended"
+  | "plan_changed"
+  | "access_read_only"
+  | "module_activated"
+  | "module_change"
+  | "refund_recorded"
+  | "billing_incident"
   | "quote_sent"
   | "operational"
   | "legacy";
