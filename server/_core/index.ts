@@ -25,7 +25,7 @@ import { registerOAuthRoutes } from "./oauth";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { createLocalContext } from "./context.local";
-import { createLocalAuthRouter } from "../localAuth";
+import { createCentralHandoffRouter, createLocalAuthRouter } from "../localAuth";
 import { createPasswordResetRouter } from "../passwordReset";
 import { createAuthGuardMiddleware } from "../authGuard";
 import uploadRouter from "../uploadRoutes";
@@ -166,6 +166,9 @@ async function startServer() {
     app.use("/api/auth/forgot-password", authRateLimit);
     // Modo local: rutas de auth propias (login/logout/me) en lugar de Manus OAuth
     app.use(createLocalAuthRouter());
+    // Acceso centralizado (CENTRAL_LOGIN_HOST): canje del pase en el host de la empresa
+    const handoff = createCentralHandoffRouter();
+    if (handoff) app.use(handoff);
     app.use(createPasswordResetRouter());
     console.log("[Auth] Modo LOCAL_AUTH activado — usando email+password local");
   } else {

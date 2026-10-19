@@ -185,6 +185,66 @@
       a {
         color: var(--red-ink);
       }
+      .plain {
+        display: flex;
+        border: 1.5px solid var(--line);
+        border-radius: 12px;
+        background: var(--paper);
+      }
+      .plain:focus-within {
+        border-color: var(--red);
+        box-shadow: 0 0 0 3px rgba(255, 48, 53, 0.22);
+      }
+      .link {
+        min-height: 0;
+        padding: 0;
+        background: none;
+        color: var(--red-ink);
+        font-weight: 600;
+        text-decoration: underline;
+        justify-self: start;
+      }
+      .link:hover {
+        background: none;
+        color: var(--red-deep);
+      }
+      .ok {
+        color: var(--ink);
+        font-size: 0.92rem;
+      }
+      .companies {
+        display: grid;
+        gap: 0.6rem;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+      .companies button {
+        width: 100%;
+        min-height: 56px;
+        padding: 0.6rem 1rem;
+        border: 1.5px solid var(--line);
+        border-radius: 12px;
+        background: var(--paper);
+        color: var(--ink);
+        text-align: left;
+        display: grid;
+      }
+      .companies button:hover {
+        border-color: var(--red);
+        background: var(--paper);
+      }
+      .companies small {
+        color: var(--ink-3);
+        font-weight: 500;
+      }
+      .views {
+        display: grid;
+        gap: 1rem;
+      }
+      [hidden] {
+        display: none !important;
+      }
       @media (max-width: 900px) {
         body {
           grid-template-columns: minmax(0, 1fr);
@@ -209,35 +269,208 @@
       </div>
     </aside>
     <main>
-      <form id="entry" novalidate>
+      <div class="views">
         <picture>
           <source srcset="/big-elephant-logo.webp" type="image/webp" />
           <img class="logo" src="/big-elephant-logo.png" alt="Big Elephant" width="982" height="120" />
         </picture>
-        <div>
-          <h2>Accede a tu empresa</h2>
-          <p class="muted">Escribe la dirección de tu empresa. Te llevaremos a su inicio de sesión.</p>
-        </div>
-        <label for="company">
-          Dirección de tu empresa
-          <span class="field">
-            <input id="company" name="company" autocomplete="off" autocapitalize="none" spellcheck="false" inputmode="url" required aria-describedby="company-hint company-err" />
-            <span class="suffix" id="suffix" aria-hidden="true"></span>
-          </span>
-        </label>
-        <p class="muted" id="company-hint">Por ejemplo, <strong>miempresa</strong>, o el dominio propio de tu empresa si lo tiene.</p>
-        <p class="err" id="company-err" role="alert"></p>
-        <button type="submit">Continuar</button>
-        <p class="muted">¿No sabes la dirección? Pídesela a la persona que administra tu cuenta o escribe a <a href="mailto:administracion@bigelephant.es">administracion@bigelephant.es</a>.</p>
-      </form>
+
+        <!-- 1. Inicio de sesión centralizado -->
+        <form id="login" novalidate>
+          <div>
+            <h2>Accede a tu empresa</h2>
+            <p class="muted">Entra con tu correo y tu contraseña. Te llevaremos a tu empresa.</p>
+          </div>
+          <label for="email">
+            Correo electrónico
+            <span class="plain"><input id="email" name="email" type="email" autocomplete="username" autocapitalize="none" spellcheck="false" required /></span>
+          </label>
+          <label for="password">
+            Contraseña
+            <span class="plain"><input id="password" name="password" type="password" autocomplete="current-password" required /></span>
+          </label>
+          <p class="err" id="login-err" role="alert"></p>
+          <button type="submit" id="login-btn">Entrar</button>
+          <button type="button" class="link" data-view="forgot">¿Has olvidado tu contraseña?</button>
+          <button type="button" class="link" data-view="entry">Entrar con la dirección de mi empresa</button>
+        </form>
+
+        <!-- 2. Varias empresas: selector -->
+        <form id="choose" hidden>
+          <div>
+            <h2>Elige la empresa</h2>
+            <p class="muted">Tu cuenta tiene acceso a varias empresas.</p>
+          </div>
+          <ul class="companies" id="companies"></ul>
+          <button type="button" class="link" data-view="login">Volver</button>
+        </form>
+
+        <!-- 3. Recuperación de contraseña -->
+        <form id="forgot" novalidate hidden>
+          <div>
+            <h2>Recupera tu contraseña</h2>
+            <p class="muted">Escribe tu correo. Si pertenece a alguna empresa, te enviaremos un enlace para cada una.</p>
+          </div>
+          <label for="forgot-email">
+            Correo electrónico
+            <span class="plain"><input id="forgot-email" name="email" type="email" autocomplete="username" autocapitalize="none" spellcheck="false" required /></span>
+          </label>
+          <p class="err" id="forgot-err" role="alert"></p>
+          <p class="ok" id="forgot-ok" role="status"></p>
+          <button type="submit">Enviar enlace</button>
+          <button type="button" class="link" data-view="login">Volver</button>
+        </form>
+
+        <!-- 4. Entrada por la dirección de la empresa -->
+        <form id="entry" novalidate hidden>
+          <div>
+            <h2>Entrar con la dirección</h2>
+            <p class="muted">Escribe la dirección de tu empresa. Te llevaremos a su inicio de sesión.</p>
+          </div>
+          <label for="company">
+            Dirección de tu empresa
+            <span class="field">
+              <input id="company" name="company" autocomplete="off" autocapitalize="none" spellcheck="false" inputmode="url" required aria-describedby="company-hint company-err" />
+              <span class="suffix" id="suffix" aria-hidden="true"></span>
+            </span>
+          </label>
+          <p class="muted" id="company-hint">Por ejemplo, <strong>miempresa</strong>, o el dominio propio de tu empresa si lo tiene.</p>
+          <p class="err" id="company-err" role="alert"></p>
+          <button type="submit">Continuar</button>
+          <button type="button" class="link" data-view="login">Entrar con correo y contraseña</button>
+        </form>
+
+        <p class="muted">¿Necesitas ayuda? Pídesela a la persona que administra tu cuenta o escribe a <a href="mailto:administracion@bigelephant.es">administracion@bigelephant.es</a>.</p>
+      </div>
+      <!-- Pase de un solo uso hacia la empresa: por POST, nunca en la URL -->
+      <form id="handoff" method="post" hidden><input type="hidden" name="token" id="handoff-token" /></form>
     </main>
     <script>
       (function () {
         var host = location.hostname;
-        var form = document.getElementById("entry");
-        var input = document.getElementById("company");
-        var err = document.getElementById("company-err");
-        document.getElementById("suffix").textContent = "." + host;
+        var $ = function (id) {
+          return document.getElementById(id);
+        };
+        var views = ["login", "choose", "forgot", "entry"];
+        function show(name) {
+          views.forEach(function (v) {
+            $(v).hidden = v !== name;
+          });
+          var first = $(name).querySelector("input, .companies button");
+          if (first) first.focus();
+        }
+        Array.prototype.forEach.call(document.querySelectorAll("[data-view]"), function (b) {
+          b.addEventListener("click", function () {
+            show(b.getAttribute("data-view"));
+          });
+        });
+        function post(path, body) {
+          return fetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), credentials: "omit", cache: "no-store" }).then(function (r) {
+            return r
+              .json()
+              .catch(function () {
+                return {};
+              })
+              .then(function (j) {
+                return { status: r.status, json: j };
+              });
+          });
+        }
+        function go(company) {
+          var f = $("handoff");
+          f.action = company.handoffUrl;
+          $("handoff-token").value = company.token;
+          f.submit();
+        }
+
+        // 1. Login
+        $("login").addEventListener("submit", function (e) {
+          e.preventDefault();
+          var email = $("email").value.trim();
+          var password = $("password").value;
+          var err = $("login-err");
+          var btn = $("login-btn");
+          if (!email || !password) {
+            err.textContent = "Escribe tu correo y tu contraseña.";
+            return;
+          }
+          err.textContent = "";
+          btn.disabled = true;
+          btn.textContent = "Entrando…";
+          post("/api/central/login", { email: email, password: password }).then(
+            function (r) {
+              btn.disabled = false;
+              btn.textContent = "Entrar";
+              if (r.status !== 200) {
+                err.textContent = (r.json && r.json.error) || "No se ha podido iniciar sesión. Inténtalo de nuevo.";
+                return;
+              }
+              var list = (r.json && r.json.companies) || [];
+              if (!list.length) {
+                err.textContent = "Tu cuenta no tiene acceso a ninguna empresa activa.";
+                return;
+              }
+              $("password").value = "";
+              if (list.length === 1) return go(list[0]);
+              var ul = $("companies");
+              ul.textContent = "";
+              list.forEach(function (c) {
+                var li = document.createElement("li");
+                var b = document.createElement("button");
+                var name = document.createElement("span");
+                var small = document.createElement("small");
+                b.type = "button";
+                name.textContent = c.name;
+                small.textContent = c.host;
+                b.appendChild(name);
+                b.appendChild(small);
+                b.addEventListener("click", function () {
+                  go(c);
+                });
+                li.appendChild(b);
+                ul.appendChild(li);
+              });
+              show("choose");
+            },
+            function () {
+              btn.disabled = false;
+              btn.textContent = "Entrar";
+              err.textContent = "No se ha podido conectar. Inténtalo de nuevo.";
+            },
+          );
+        });
+
+        // 3. Recuperación
+        $("forgot").addEventListener("submit", function (e) {
+          e.preventDefault();
+          var email = $("forgot-email").value.trim();
+          var err = $("forgot-err");
+          var ok = $("forgot-ok");
+          err.textContent = "";
+          ok.textContent = "";
+          if (!email) {
+            err.textContent = "Escribe tu correo.";
+            return;
+          }
+          post("/api/central/forgot", { email: email }).then(
+            function (r) {
+              if (r.status !== 200) {
+                err.textContent = (r.json && r.json.error) || "Inténtalo de nuevo en unos minutos.";
+                return;
+              }
+              ok.textContent = (r.json && r.json.message) || "Si el correo pertenece a alguna empresa, recibirás un enlace.";
+            },
+            function () {
+              err.textContent = "No se ha podido conectar. Inténtalo de nuevo.";
+            },
+          );
+        });
+
+        // 4. Entrada por la dirección de la empresa
+        var form = $("entry");
+        var input = $("company");
+        var err = $("company-err");
+        $("suffix").textContent = "." + host;
         var SLUG = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
         var DOMAIN = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/;
         // Dominios corporativos de Big Elephant: no son empresas clientes
@@ -254,7 +487,7 @@
             if (!SLUG.test(v) || RESERVED.indexOf(v) !== -1) return { error: "Revisa la dirección: solo letras minúsculas, números y guiones." };
             return { url: "https://" + v + "." + host + "/", value: v };
           }
-          if (!DOMAIN.test(v) || v === host || /(^|\.)bigelephant\.es$/.test(v) && v.slice(-host.length - 1) !== "." + host) {
+          if (!DOMAIN.test(v) || v === host || (/(^|\.)bigelephant\.es$/.test(v) && v.slice(-host.length - 1) !== "." + host)) {
             return { error: "Revisa el dominio de tu empresa." };
           }
           return { url: "https://" + v + "/", value: v };
