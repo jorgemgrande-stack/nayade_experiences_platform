@@ -134,7 +134,7 @@ export function createStripeRouter(d: StripeRouterDeps): Router {
       res.json({ buyer: saved, approved: !!d.fiscal?.scenarios.has(saved.scenario) });
     }));
   }
-  // Registro de facturas cobradas y cola de documentos fiscales (0015). Sin la migración, 404 explícito
+  // Registro de facturas cobradas y cola de documentos fiscales (0016). Sin la migración, 404 explícito
   const fiscalMissing = (e: unknown) => (e as { code?: string })?.code === "ER_NO_SUCH_TABLE";
   r.get("/invoices", requireScope("ops:read"), wrap(async (req, res) => {
     const q = z.object({ orderId: z.coerce.number().int().positive().optional(), limit: z.coerce.number().int().min(1).max(200).default(50) }).parse(req.query);
@@ -142,7 +142,7 @@ export function createStripeRouter(d: StripeRouterDeps): Router {
       res.json({ invoices: await d.store.listInvoiceRecords(q) });
     } catch (e) {
       if (!fiscalMissing(e)) throw e;
-      res.status(404).json({ error: "not_migrated", message: "Falta la migración 0015 (registro de facturas)" });
+      res.status(404).json({ error: "not_migrated", message: "Falta la migración 0016 (registro de facturas)" });
     }
   }));
   r.get("/fiscal-documents", requireScope("ops:read"), wrap(async (req, res) => {
@@ -151,7 +151,7 @@ export function createStripeRouter(d: StripeRouterDeps): Router {
       res.json({ documents: await d.store.listFiscalDocuments(q), sink: d.fiscalSinkName ?? "pending" });
     } catch (e) {
       if (!fiscalMissing(e)) throw e;
-      res.status(404).json({ error: "not_migrated", message: "Falta la migración 0015 (documentos fiscales)" });
+      res.status(404).json({ error: "not_migrated", message: "Falta la migración 0016 (documentos fiscales)" });
     }
   }));
   // Emisión registrada a mano (o por el adaptador): el número lo da el sistema de facturación legal, no este

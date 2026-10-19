@@ -18,6 +18,7 @@ import { getSupportUser } from "./_core/support/session";
 import { requireSessionSecret, sessionSecret, SessionSecretMissingError } from "./_core/sessionSecret";
 import { isCrossOriginUnsafe } from "./_core/requestOrigin";
 import { clearSessionCookies, readSessionToken, setSessionCookie, SESSION_COOKIE_LEGACY } from "./_core/sessionCookie";
+import { centralLoginHost, createHandoffRouter } from "./_core/centralAuth";
 import { loginLockRemaining, recordLoginFailure, recordLoginSuccess } from "./_core/loginThrottle";
 import { createHash } from "crypto";
 import { opsLog } from "./_core/ops/log";
@@ -241,3 +242,30 @@ export function createLocalAuthRouter(): Router {
 }
 
 export { COOKIE_NAME };
+
+/**
+ * Canje del pase del acceso centralizado (_core/centralAuth.ts) en el host de la empresa: valida el pase con el
+ * contexto de ESTA empresa y emite su sesión habitual. Inactivo sin CENTRAL_LOGIN_HOST.
+ */
+export function createCentralHandoffRouter(): Router | null {
+  const centralHost = centralLoginHost();
+  if (!centralHost) return null;
+  return createHandoffRouter({
+    centralHost,
+    passwordFingerprint,
+    async getUser(id) {
+      const db = await getDb();
+      if (!db || !Number.isInteger(id) || id <= 0) return null;
+      const rows = await db.select().from(users).where(eq(users.id, id)).limit(1);
+      const u = rows[0];
+      return u ? { id: u.id, passwordHash: u.passwordHash ?? null, isActive: !!u.isActive, role: u.role ?? null } : null;
+    },
+    async touchUser(id) {
+      const db = await getDb();
+      if (db) await db.update(users).set({ lastSignedIn: new Date() }).where(eq(users.id, id));
+    },
+    async issueSession(req, res, user) {
+      setSessionCookie(req, res, await signSessionToken(user.id, user.passwordHash), COOKIE_MAX_AGE * 1000);
+    },
+  });
+}

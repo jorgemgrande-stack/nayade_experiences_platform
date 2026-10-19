@@ -202,6 +202,7 @@ describe.skipIf(!URL_)("orquestador comercial con MySQL real", () => {
     for (const s of splitStatements(m.up)) await pool.query(s);
     for (const l of later) for (const s of splitStatements(l.up)) await pool.query(s);
     const [t2] = await pool.query<mysql.RowDataPacket[]>("SHOW TABLES LIKE 'commercial%'");
-    expect(t2).toHaveLength(4);
+    // Las 4 de 0010 y `commercial_events` (0015)
+    expect(t2).toHaveLength(5);
   });
 });

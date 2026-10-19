@@ -37,8 +37,10 @@ import { MysqlWebStore } from "../web/store";
 import { MysqlSubscriptionStore } from "../subscriptions/store";
 import { MysqlCapabilityStore } from "../_core/capabilities/store";
 import { MysqlTrialStore } from "../trials/store";
+import { MysqlCommercialEventLog, commercialEventsProblem } from "../commercialEvents/log";
 import { trialNotifierFromEnv } from "../trials/emailNotifier";
 import { TrialScheduler, mysqlAdvisoryLock, startTrialScheduler } from "../trials/scheduler";
+import { lifecyclePolicyFromEnv } from "../lifecycle/policy";
 import { blockedDomainsFromEnv } from "../trials/service";
 import type { TrialNotifier } from "../trials/onboarding";
 import { platformMailFromEnv, tenantLaneResolver } from "../mail/platform";
@@ -71,6 +73,7 @@ import { STRIPE_FAILURE_RULES } from "../stripe/alerts";
 import { SsoService, parseSsoUsers } from "./sso";
 import { createRemoteJWKSet } from "jose";
 import { operatorAuthFromEnv } from "./operatorSetup";
+import { outboxResetMailer } from "./operatorResetMail";
 
 async function main() {
   const tokens = parseTokens(process.env.CP_TOKENS);
@@ -186,6 +189,17 @@ async function main() {
   // live solo con MAIL_LIVE_AUTHORIZED=1. Ver docs/runbooks/CORREO_BREVO.md.
   const platformMail = await platformMailFromEnv(crmPool, process.env);
   const mailPolicy = platformMail.policy;
+  // Registro de eventos comerciales (CRM 0015): pedidos y pagos, pruebas, suscripciones y cargos de Stripe
+  // escriben sus hechos en la misma transacción que su cambio de estado. Entorno = modo comercial
+  // (CP_STRIPE_MODE=live → live; si no, test). Sin la migración, o con filas del otro entorno, no se monta y
+  // todo funciona igual, sin registro.
+  const commercialEnvironment = (process.env.CP_STRIPE_MODE ?? "").trim().toLowerCase() === "live" ? "live" : "test";
+  let commercialEvents: MysqlCommercialEventLog | undefined;
+  if (crmPool) {
+    const problem = await commercialEventsProblem(crmPool, commercialEnvironment);
+    if (!problem) commercialEvents = new MysqlCommercialEventLog(crmPool, commercialEnvironment);
+    console.log(JSON.stringify({ ctx: "CommercialEvents", enabled: !!commercialEvents, environment: commercialEnvironment, ...(problem ? { reason: problem === "missing_table" ? "migration_0015_missing" : problem } : {}) }));
+  }
   console.log(JSON.stringify({ ctx: "Mail", outbox: !!platformMail.mailer, mode: mailPolicy.mode, provider: mailProviderFromEnv(process.env)?.name ?? null, sendingDomain: mailPolicy.sendingDomain, webhook: (process.env.BREVO_WEBHOOK_TOKEN ?? "").length >= 32, ...(mailPolicy.degradedReason ? { degradedReason: mailPolicy.degradedReason } : {}), ...(platformMail.reason ? { reason: platformMail.reason } : {}) }));
   if (platformMail.mailer) {
     const every = Math.max(30, Number(process.env.CP_MAIL_DRAIN_EVERY_SECONDS ?? 60) || 60) * 1000;
@@ -204,8 +218,11 @@ async function main() {
 
   // Operadores humanos (usuario y contraseña): solo si la migración 0007 está aplicada
   // (segundo factor TOTP con la migración 0012; el secreto se cifra con el llavero del registro)
-  const operators = await operatorAuthFromEnv(pool, process.env, { keyring: ring });
-  console.log(JSON.stringify({ ctx: "OperatorAuth", enabled: !!operators.service, ...(operators.reason ? { reason: operators.reason } : {}), passwordReset: !!operators.service?.resetAvailable, mfa: operators.mfa ?? null }));
+  // Restablecimiento de operadores: sin SMTP propio, por la bandeja de la plataforma (Brevo, dominio corporativo),
+  // solo si el correo no está apagado (con MAIL_MODE=off no se ofrece en vez de fingir un envío)
+  const operatorResetMailer = platformMail.mailer && mailPolicy.mode !== "off" ? outboxResetMailer(platformMail.mailer) : undefined;
+  const operators = await operatorAuthFromEnv(pool, process.env, { keyring: ring, resetMailer: operatorResetMailer });
+  console.log(JSON.stringify({ ctx: "OperatorAuth", enabled: !!operators.service, ...(operators.reason ? { reason: operators.reason } : {}), passwordReset: !!operators.service?.resetAvailable, resetTransport: operators.resetTransport ?? null, mfa: operators.mfa ?? null }));
 
   // Web comercial (catálogo y contenidos): misma BD del CRM; solo si la migración 0004 está aplicada
   let web: { store: MysqlWebStore; onPublish?: (version: string) => void } | undefined;
@@ -242,7 +259,7 @@ async function main() {
   if (crmPool && web) {
     const subsPool = crmPool;
     const ready = await subsPool.query("SELECT 1 FROM subscriptions LIMIT 0").then(() => true, () => false);
-    if (ready) subscriptions = { store: new MysqlSubscriptionStore(subsPool) };
+    if (ready) subscriptions = { store: new MysqlSubscriptionStore(subsPool, commercialEvents) };
     console.log(JSON.stringify({ ctx: "Subscriptions", enabled: ready, mode: "shadow", ...(ready ? {} : { reason: "migration_0006_missing" }) }));
   }
 
@@ -256,7 +273,7 @@ async function main() {
     const ready = await trialPool.query("SELECT 1 FROM trial_requests LIMIT 0").then(() => true, () => false);
     // Con la bandeja de plataforma, los avisos de la prueba salen por ella; si no, el notificador SMTP propio
     const email = !ready ? null : platformMail.mailer ? { notifier: platformMail.mailer.trialNotifier(), mode: mailPolicy.mode, provider: "outbox", reason: undefined as string | undefined } : trialNotifierFromEnv(process.env);
-    if (ready) trials = { store: new MysqlTrialStore(trialPool), publicEnabled: process.env.CP_PUBLIC_TRIAL_ENABLED === "1", autoProvision: process.env.CP_TRIAL_AUTO_PROVISION === "1", notify: email?.notifier, blockedDomains: blockedDomainsFromEnv(process.env) };
+    if (ready) trials = { store: new MysqlTrialStore(trialPool, commercialEvents), publicEnabled: process.env.CP_PUBLIC_TRIAL_ENABLED === "1", autoProvision: process.env.CP_TRIAL_AUTO_PROVISION === "1", notify: email?.notifier, blockedDomains: blockedDomainsFromEnv(process.env) };
     console.log(JSON.stringify({ ctx: "Trials", enabled: ready, publicEnabled: trials?.publicEnabled ?? false, autoProvision: trials?.autoProvision ?? false, email: { mode: email?.mode ?? "off", provider: email?.provider ?? null, ...(email?.reason ? { reason: email.reason } : {}) }, ...(ready ? {} : { reason: "migration_0007_missing" }) }));
     // Tarea programada de vencimiento y avisos: APAGADA salvo CP_TRIALS_SCHEDULER_ENABLED=1. Una sola réplica
     // trabaja en cada tick (GET_LOCK); nunca suspende, cancela ni borra. Sin notificador, los avisos solo se registran.
@@ -286,9 +303,15 @@ async function main() {
     const ordersPool = crmPool;
     const ready = await ordersPool.query("SELECT 1 FROM commercial_orders LIMIT 0").then(() => true, () => false);
     const liveData = ready && stripeConfig?.mode === "live" ? await liveOrdersProblem(ordersPool, stripeConfig.namespace) : null;
-    if (ready && !liveData) orders = { store: new MysqlOrderStore(ordersPool), payments: payments.provider, mode: ordersMode };
+    if (ready && !liveData) orders = { store: new MysqlOrderStore(ordersPool, commercialEvents), payments: payments.provider, mode: ordersMode };
     console.log(JSON.stringify({ ctx: "Orders", enabled: !!orders, mode: ordersMode, payments: { provider: payments.provider?.kind ?? null, mode: "test", autoCharge: false, ...(payments.reason ? { reason: payments.reason } : {}) }, ...(!ready ? { reason: "migration_0010_missing" } : liveData ? { reason: liveData } : {}) }));
   }
+  // Motor de transiciones temporales: tarea APAGADA por defecto (CP_LIFECYCLE_SCHEDULER_ENABLED=1) y en modo
+  // «plan» (solo calcula) salvo CP_LIFECYCLE_MODE=apply; en live, además CP_LIFECYCLE_LIVE_APPLY=1. Una sola
+  // réplica trabaja en cada tick (GET_LOCK). Nunca borra datos ni convierte pruebas a pago.
+  const lifecyclePolicy = lifecyclePolicyFromEnv(process.env);
+  const lifecycle = orders && crmPool ? { policy: lifecyclePolicy, lock: mysqlAdvisoryLock(crmPool) } : undefined;
+  console.log(JSON.stringify({ ctx: "Lifecycle", mounted: !!lifecycle, enabled: lifecyclePolicy.enabled, mode: lifecyclePolicy.mode, ...(lifecyclePolicy.modeReason ? { reason: lifecyclePolicy.modeReason } : {}), intervalMs: lifecyclePolicy.intervalMs }));
 
   // Escenarios fiscales aprobados y versiones de consentimiento. Un valor no admitido impide arrancar (nunca a medias)
   const fiscal = {
@@ -328,7 +351,7 @@ async function main() {
       else namespaceOk = saved.namespace === stripeConfig.namespace;
     }
     const ready = migrated && liveMigrated && namespaceOk;
-    if (ready) stripe = { config: stripeConfig, store: new MysqlStripeStore(crmPool!, stripeConfig.mode), gateway: stripeGateway(stripeConfig), urls, checkoutEnabled, verifyWebhook: stripeWebhookVerifier(stripeConfig), workerEnabled, publicStatus, selfService, termsVersion, fiscal };
+    if (ready) stripe = { config: stripeConfig, store: new MysqlStripeStore(crmPool!, stripeConfig.mode, commercialEvents), gateway: stripeGateway(stripeConfig), urls, checkoutEnabled, verifyWebhook: stripeWebhookVerifier(stripeConfig), workerEnabled, publicStatus, selfService, termsVersion, fiscal };
     console.log(
       JSON.stringify({
         ctx: "Stripe",
@@ -389,7 +412,9 @@ async function main() {
     trials,
     organization,
     orders,
+    lifecycle,
     stripe,
+    commercialEvents,
     mail: {
       platform: platformMail.mailer,
       webhookToken: process.env.BREVO_WEBHOOK_TOKEN ?? null,

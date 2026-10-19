@@ -50,10 +50,17 @@ export interface OperatorAuthSetup {
   service?: OperatorAuthService;
   cookieSecure: "auto" | boolean;
   reason?: string;
+  /** Cómo se envían los enlaces de restablecimiento (`null`: no disponible). */
+  resetTransport?: "smtp" | "outbox" | null;
   mfa?: { available: boolean; requiredRoles: OperatorRole[]; misconfigured: boolean; reason?: string; missingKeys?: string[] };
 }
 
-export async function operatorAuthFromEnv(pool: mysql.Pool, env: NodeJS.ProcessEnv, opts: { keyring?: Keyring } = {}): Promise<OperatorAuthSetup> {
+export async function operatorAuthFromEnv(
+  pool: mysql.Pool,
+  env: NodeJS.ProcessEnv,
+  /** `resetMailer`: alternativa al SMTP propio (p. ej. la bandeja de salida de la plataforma, operatorResetMail.ts). */
+  opts: { keyring?: Keyring; resetMailer?: ResetMailer } = {},
+): Promise<OperatorAuthSetup> {
   const cookieSecure = env.CP_COOKIE_SECURE === "true" ? true : env.CP_COOKIE_SECURE === "false" ? false : "auto";
   if (env.CP_OPERATOR_AUTH === "off") return { cookieSecure, reason: "desactivado (CP_OPERATOR_AUTH=off)" };
   try {
@@ -85,7 +92,11 @@ export async function operatorAuthFromEnv(pool: mysql.Pool, env: NodeJS.ProcessE
   const requiredRoles = mfaRolesFromEnv(env.CP_OPERATOR_MFA_ROLES);
   const idle = Number(env.CP_SESSION_IDLE_MINUTES ?? 120);
   const max = Number(env.CP_SESSION_MAX_HOURS ?? 12);
-  const mail = env.CP_RESET_SMTP_URL && env.CP_RESET_FROM && env.CP_RESET_URL ? smtpMailer(env.CP_RESET_SMTP_URL, env.CP_RESET_FROM) : undefined;
+  // Restablecimiento por correo: SMTP propio (CP_RESET_SMTP_URL + CP_RESET_FROM) o, si no hay, el que se pase
+  // (bandeja de la plataforma). Siempre con CP_RESET_URL; sin ninguno, el restablecimiento no está disponible.
+  const smtp = env.CP_RESET_SMTP_URL && env.CP_RESET_FROM ? smtpMailer(env.CP_RESET_SMTP_URL, env.CP_RESET_FROM) : undefined;
+  const mail = env.CP_RESET_URL ? (smtp ?? opts.resetMailer) : undefined;
+  const resetTransport = !mail ? null : smtp ? "smtp" : "outbox";
   const service = new OperatorAuthService(new MysqlOperatorStore(pool, { mfa: mfaColumns }), {
     idleMs: Math.min(Math.max(Number.isFinite(idle) ? idle : 120, 5), 24 * 60) * 60_000,
     maxMs: Math.min(Math.max(Number.isFinite(max) ? max : 12, 1), 24) * 3600_000,
@@ -118,6 +129,7 @@ export async function operatorAuthFromEnv(pool: mysql.Pool, env: NodeJS.ProcessE
   return {
     service,
     cookieSecure,
+    resetTransport,
     mfa: { available: service.mfaAvailable, requiredRoles, ...(mfaReason ? { reason: mfaReason } : {}), misconfigured: service.mfaMisconfigured, ...(missingKeys.length ? { missingKeys } : {}) },
   };
 }
