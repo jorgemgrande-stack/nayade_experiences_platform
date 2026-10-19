@@ -36,6 +36,7 @@ import { SupportAdmin } from "../_core/support/grants";
 import { MysqlWebStore } from "../web/store";
 import { MysqlSubscriptionStore } from "../subscriptions/store";
 import { MysqlCapabilityStore } from "../_core/capabilities/store";
+import { MysqlTenantLimitStore } from "../_core/limits/store";
 import { MysqlTrialStore } from "../trials/store";
 import { MysqlCommercialEventLog, commercialEventsProblem } from "../commercialEvents/log";
 import { trialNotifierFromEnv } from "../trials/emailNotifier";
@@ -249,6 +250,10 @@ async function main() {
   const capabilitiesReady = await pool.query("SELECT 1 FROM tenant_capabilities LIMIT 0").then(() => true, () => false);
   const capabilities = capabilitiesReady ? new MysqlCapabilityStore(pool) : undefined;
   console.log(JSON.stringify({ ctx: "Capabilities", enabled: capabilitiesReady, ...(capabilitiesReady ? {} : { reason: "registry_migration_0008_missing" }) }));
+  // Límites contratados y uso declarado (registro 0013): sin la migración, las licencias solo aplican capacidades
+  const limitsReady = await pool.query("SELECT 1 FROM tenant_entitlement_limits LIMIT 0").then(() => true, () => false);
+  const limits = limitsReady ? new MysqlTenantLimitStore(pool) : undefined;
+  console.log(JSON.stringify({ ctx: "Limits", enabled: limitsReady, ...(limitsReady ? {} : { reason: "registry_migration_0013_missing" }) }));
   // Sedes y entidades fiscales: solo si la migración 0009 del registro está aplicada
   const organizationReady = await pool.query("SELECT 1 FROM tenant_sites LIMIT 0").then(() => true, () => false);
   const organization = organizationReady ? new MysqlOrganizationStore(pool) : undefined;
@@ -409,6 +414,7 @@ async function main() {
     web,
     subscriptions,
     capabilities,
+    limits,
     trials,
     organization,
     orders,

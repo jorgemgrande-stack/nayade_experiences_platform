@@ -41,6 +41,8 @@ export interface ObjectMetaStore {
   knownKeys(keys: string[]): Promise<Set<string>>;
   /** Restauración: inserta o sustituye la fila de un objeto. */
   upsert(row: StoredObjectRow): Promise<void>;
+  /** Bytes que ocupan los ficheros de la empresa (pendientes y activos): lo que cuenta para su almacenamiento contratado. */
+  usedBytes?(): Promise<number>;
 }
 
 const COLS: Array<[keyof StoredObjectRow, string]> = [
@@ -79,6 +81,11 @@ function fromDb(r: Record<string, unknown>): StoredObjectRow {
 export class MysqlObjectMetaStore implements ObjectMetaStore {
   /** Por defecto, el pool de la empresa en curso (resuelto en cada acceso). */
   constructor(private pool: () => mysql.Pool = () => legacyPool()) {}
+
+  async usedBytes() {
+    const [rows] = await this.pool().query("SELECT COALESCE(SUM(size_bytes), 0) AS n FROM stored_objects WHERE status IN ('pending', 'active')");
+    return Number((rows as Array<{ n: unknown }>)[0]?.n ?? 0);
+  }
 
   async insert(row: StoredObjectRow) {
     const cols = COLS.map(([, c]) => `\`${c}\``).join(", ");
@@ -157,5 +164,10 @@ export class MemoryObjectMetaStore implements ObjectMetaStore {
   }
   async upsert(row: StoredObjectRow) {
     this.rows.set(row.objectId, { ...row });
+  }
+  async usedBytes() {
+    return Array.from(this.rows.values())
+      .filter((r) => r.status === "pending" || r.status === "active")
+      .reduce((a, r) => a + r.sizeBytes, 0);
   }
 }

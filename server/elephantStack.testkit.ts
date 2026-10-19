@@ -132,6 +132,8 @@ export async function startElephantStack(url: string, o: { label: string; perMin
   const { EntitlementAdmin } = await import("./_core/modules/mysqlEntitlements");
   const { QuotaAdmin } = await import("./_core/erm/mysqlQuotas");
   const { MysqlCapabilityStore } = await import("./_core/capabilities/store");
+  const { MysqlTenantLimitStore } = await import("./_core/limits/store");
+  const { configureLimitAccess } = await import("./_core/limits/access");
   const { createControlPlaneApp } = await import("./controlPlane/api");
   const { hashToken } = await import("./controlPlane/auth");
   const { CrmService } = await import("./crm/service");
@@ -186,6 +188,7 @@ export async function startElephantStack(url: string, o: { label: string; perMin
     web: { store: webStore },
     subscriptions: { store: new MysqlSubscriptionStore(crmPool), now: () => clock.now },
     capabilities: new MysqlCapabilityStore(regPool),
+    limits: new MysqlTenantLimitStore(regPool),
     trials: {
       store: new MysqlTrialStore(crmPool),
       publicEnabled: true,
@@ -220,6 +223,7 @@ export async function startElephantStack(url: string, o: { label: string; perMin
   const rt = installTenantResolution(a, process.env)!;
   // Mismo lector del registro, sin caché y con el reloj de la prueba (vencimientos sin esperar)
   configureCapabilityAccess(rt.capabilities, { now: () => clock.now, ttlMs: 0 });
+  configureLimitAccess(rt.limits, { now: () => clock.now, ttlMs: 0 });
   a.use(express.json({ limit: "5mb" }));
   installTenantBinding(a);
   a.use(createLocalAuthRouter());

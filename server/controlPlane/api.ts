@@ -66,6 +66,7 @@ import { quote, type QuoteRequest } from "../catalog/quote";
 import { CAPABILITY_STATUSES } from "../_core/capabilities/model";
 import type { CapabilityStore } from "../_core/capabilities/store";
 import { LicensingError, LicensingService } from "../licensing/service";
+import type { TenantLimitStore } from "../_core/limits/store";
 import { TrialService, type TrialLimits } from "../trials/service";
 import type { TrialStore } from "../trials/store";
 import { TrialOnboardingService, type TrialNotifier } from "../trials/onboarding";
@@ -177,6 +178,8 @@ export interface ControlPlaneDeps {
   subscriptions?: { store: SubscriptionStore; now?: () => number };
   /** Licencias por capacidad (registro, migración 0008). Sin ellas no se aplican licencias desde suscripciones. */
   capabilities?: CapabilityStore;
+  /** Límites contratados y uso declarado por cada empresa (registro 0013). */
+  limits?: TenantLimitStore;
   /**
    * Prueba gratuita de Essential (CRM 0007). Las rutas públicas solo existen con `publicEnabled`
    * (por defecto NO); `notify` es el único canal de comunicaciones (por defecto, solo un registro
@@ -931,7 +934,15 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
       catalog: catalogFromWebStore(d.web.store),
       crm: crmPort,
       now: d.subscriptions.now,
-      usage: { of: async (tenantId, metric) => (metric === "sites" && orgStore ? (await orgStore.sites(tenantId)).filter((x) => x.status === "active").length : null) },
+      usage: {
+        of: async (tenantId, metric) => {
+          if (metric === "sites" && orgStore) return (await orgStore.sites(tenantId)).filter((x) => x.status === "active").length;
+          // Usuarios y almacenamiento: lo que declara la propia empresa (registro 0013); sin dato, null
+          const used = d.limits ? (await d.limits.usage(tenantId)).find((u) => u.metric === (metric === "storage_gb" ? "storage_bytes" : metric)) : undefined;
+          if (!used) return null;
+          return metric === "storage_gb" ? Math.ceil(used.used / 1024 ** 3) : used.used;
+        },
+      },
     });
     const shadowBilling = new ShadowBillingService({ store: d.subscriptions.store, crm: crmPort, now: d.subscriptions.now });
     if (d.capabilities) {
@@ -943,6 +954,8 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         crm: crmPort,
         catalog: async () => quoteCatalogFromSite(await webAdmin!.site("published")),
         now: d.subscriptions.now,
+        limits: d.limits,
+        events: d.commercialEvents?.append ? (d.commercialEvents as CommercialEventSink) : undefined,
       });
       const licErr = (res: express.Response, e: unknown) => {
         if (e instanceof LicensingError) return void res.status(e.code === "not_found" ? 404 : e.code === "invalid_state" ? 409 : 400).json({ error: e.code, message: e.message });
@@ -1050,7 +1063,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
       const crmD = d.crm;
       const trialService = new TrialService({ store: d.trials.store, subscriptions: d.subscriptions.store, now: d.subscriptions.now, limits: d.trials.limits, blockedDomains: d.trials.blockedDomains });
       const catalogPort = catalogFromWebStore(d.web.store);
-      const licensingForTrials = new LicensingService({ capabilities: d.capabilities, subscriptions: d.subscriptions.store, crm: crmPort, catalog: async () => quoteCatalogFromSite(await webAdmin!.site("published")), now: d.subscriptions.now });
+      const licensingForTrials = new LicensingService({ capabilities: d.capabilities, subscriptions: d.subscriptions.store, crm: crmPort, catalog: async () => quoteCatalogFromSite(await webAdmin!.site("published")), now: d.subscriptions.now, limits: d.limits, events: d.commercialEvents?.append ? (d.commercialEvents as CommercialEventSink) : undefined });
       const provisioning = d.provisioning;
       const platformDomain = d.platformDomain;
       const onboarding = new TrialOnboardingService({
@@ -1087,7 +1100,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
       if (d.stripe && d.orders.mode && d.orders.mode !== d.stripe.config.mode) throw new Error("El modo de los pedidos no coincide con el de Stripe");
       const ordersMode = d.stripe?.config.mode ?? d.orders.mode ?? "test";
       // Orquestador comercial: encadena contrato → confirmación → suscripción → licencias → activación
-      const licensing = new LicensingService({ capabilities: d.capabilities, subscriptions: d.subscriptions.store, crm: crmPort, catalog: async () => quoteCatalogFromSite(await webAdmin!.site("published")), now: d.subscriptions.now });
+      const licensing = new LicensingService({ capabilities: d.capabilities, subscriptions: d.subscriptions.store, crm: crmPort, catalog: async () => quoteCatalogFromSite(await webAdmin!.site("published")), now: d.subscriptions.now, limits: d.limits, events: d.commercialEvents?.append ? (d.commercialEvents as CommercialEventSink) : undefined });
       const coverageHeld = d.stripe ? async (orderId: number) => (await d.stripe!.store.activeHolds(orderId)).length > 0 : undefined;
       const ordersStore = d.orders.store;
       const tenantStatusSync = new TenantStatusSync({

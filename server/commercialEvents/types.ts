@@ -73,6 +73,8 @@ export const COMMERCIAL_EVENT_TYPES = [
   "dispute.status_changed",
   // Estado de la empresa en el registro (consecuencia de su situación comercial)
   "tenant.status_changed",
+  // Límites contratados de la empresa (usuarios, sedes, almacenamiento)
+  "entitlement.limit_changed",
   // Acceso tras terminar: solo lectura (consulta y exportación) durante un plazo y fin de ese plazo
   "access.read_only_started",
   "access.read_only_ended",
