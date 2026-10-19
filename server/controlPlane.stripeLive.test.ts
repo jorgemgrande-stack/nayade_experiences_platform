@@ -39,6 +39,8 @@ import type { StripeConfig } from "./stripe/config";
 import { stripeWebhookVerifier, type CheckoutSessionInput, type GwEvent } from "./stripe/gateway";
 import { MemoryStripeStore } from "./stripe/store";
 import { FakeStripeGateway } from "./stripe/testing";
+import { FailureAlerts, configureFailureAlerts } from "./_core/ops/failureAlerts";
+import { STRIPE_FAILURE_RULES } from "./stripe/alerts";
 
 const ADMIN = "stripe-live-admin-token-aaaaaaaaaaaaaaaaa";
 const WEB = "https://web.example";
@@ -110,6 +112,7 @@ async function liveControlPlane(o: { taxPolicy: StripeConfig["taxPolicy"]; store
       publicStatus: true,
       selfService: false,
       termsVersion: null,
+      fiscal: { scenarios: new Set(["business:es_mainland"]), consent: { terms: "v1-prueba", privacy: null, precontract: null, withdrawal: "pending" } },
     },
   });
   const server = http.createServer(app);
@@ -174,22 +177,59 @@ describe("Stripe en modo live por HTTP, con política fiscal stripe_tax_exclusiv
     expect(await cp.ok(cp.call("GET", "/stripe/status"))).toMatchObject({ enabled: true, mode: "live", namespace: "live", taxPolicy: "stripe_tax_exclusive", checkoutEnabled: true });
     expect(await cp.ok(cp.call("GET", "/orders/payments/config"))).toMatchObject({ enabled: false, mode: "live", stripeProvider: "stripe", autoCharge: false });
     const orderId = await cp.contractedOrder("Live Essential SL");
+    // Sin perfil fiscal del comprador, en live no se abre el pago
+    expect((await cp.call("POST", `/stripe/orders/${orderId}/checkout`)).status).toBe(409);
+    // Particular sin decisión legal sobre el desistimiento: se rechaza el perfil (409) y no se guarda nada
+    const consumer = await cp.call("PUT", `/stripe/orders/${orderId}/buyer`, { body: { buyer: { type: "consumer", firstName: "Ana", lastName: "Live", country: "ES", postalCode: "28002" }, consent: { terms: true, termsVersion: "v1-prueba" } } });
+    expect(consumer.status).toBe(409);
+    expect(consumer.json.error).toBe("consumer_pending");
+    // Empresa: versión de condiciones distinta de la vigente → 422; la vigente → perfil guardado (escenario aprobado)
+    const business = { type: "business", legalName: "Live Essential SL", taxId: "B12345678", country: "ES", postalCode: "28002" };
+    expect((await cp.call("PUT", `/stripe/orders/${orderId}/buyer`, { body: { buyer: business, consent: { terms: true, termsVersion: "v0" } } })).status).toBe(422);
+    const saved = await cp.ok(cp.call("PUT", `/stripe/orders/${orderId}/buyer`, { body: { buyer: business, consent: { terms: true, termsVersion: "v1-prueba" } } }));
+    expect(saved).toMatchObject({ approved: true, buyer: { type: "business", territory: "es_mainland", scenario: "business:es_mainland", taxIdStatus: "unverified", version: 1, consent: { source: "operator", terms: { version: "v1-prueba" } } } });
+    expect(await cp.ok(cp.call("GET", "/stripe/status"))).toMatchObject({ fiscal: { approved: ["business:es_mainland"], consumerWithdrawal: "pending" } });
     const s = await cp.ok(cp.call("POST", `/stripe/orders/${orderId}/checkout`));
     expect(s).toMatchObject({ amountCents: 2900, currency: "EUR", taxTreatment: "stripe_tax_exclusive", reused: false });
     expect(s.sessionId).toMatch(/^cs_live_/);
     const input = cp.gw.calls.find((c) => c.op === "checkout.sessions.create")!.input as CheckoutSessionInput;
-    expect(input).toMatchObject({ automaticTax: true, notice: LIVE_TAX_NOTICE, metadata: { es_env: "live", es_tax_treatment: "stripe_tax_exclusive" } });
+    expect(input).toMatchObject({ automaticTax: true, taxIdRequired: true, notice: LIVE_TAX_NOTICE, metadata: { es_env: "live", es_tax_treatment: "stripe_tax_exclusive", es_buyer_type: "business", es_fiscal_scenario: "business:es_mainland" } });
+    // Pedido ya con sesión: el perfil se puede corregir mientras no se confirme el pago (nueva versión)
+    expect((await cp.ok(cp.call("GET", `/stripe/orders/${orderId}/buyer`))).buyer.version).toBe(1);
     expect(input.notice).not.toMatch(/prueba/i);
     // Estado público: solo ids de sesión live
     expect(await cp.ok(cp.call("GET", `/public/checkout/status?session_id=${s.sessionId}`, { token: null }))).toMatchObject({ state: "pending_payment" });
     expect((await cp.call("GET", `/public/checkout/status?session_id=${s.sessionId.replace("cs_live_", "cs_test_")}`, { token: null })).status).toBe(400);
     expect((await cp.call("POST", `/stripe/checkout/${s.sessionId.replace("cs_live_", "cs_test_")}/sync`)).status).toBe(400);
+    // La empresa dio su NIF en Checkout y la dirección coincide con la declarada: ningún aviso
+    const raised: string[] = [];
+    configureFailureAlerts(new FailureAlerts({ incidents: { raise: async (i: { dedupeKey: string }) => void raised.push(i.dedupeKey) } as never, rules: STRIPE_FAILURE_RULES }));
+    cp.gw.taxIdsOf.set(cp.gw.sessions.get(s.sessionId)!.customerId!, 1);
     cp.gw.completeSession(s.sessionId);
     expect(await cp.ok(cp.webhook(cp.gw.events[0]))).toMatchObject({ received: true, duplicate: false });
     await until(async () => (await cp.ok(cp.call("GET", `/orders/${orderId}`))).order.state === "active");
     const detail = await cp.ok(cp.call("GET", `/orders/${orderId}`));
     expect(detail.payments).toEqual([expect.objectContaining({ purpose: "initial", status: "succeeded", provider: "stripe", mode: "live", amountCents: 2900 })]);
     expect((await cp.orders.payments(orderId)).every((p) => p.mode === "live" && p.provider === "stripe")).toBe(true);
+    expect(raised.filter((k) => k.includes("buyer"))).toEqual([]);
+  });
+
+  it("factura con otra dirección y sin NIF: el pago se registra igual pero se avisa (revisión fiscal)", async () => {
+    const raised: string[] = [];
+    configureFailureAlerts(new FailureAlerts({ incidents: { raise: async (i: { dedupeKey: string }) => void raised.push(i.dedupeKey) } as never, rules: STRIPE_FAILURE_RULES }));
+    const orderId = await cp.contractedOrder("Live Discrepancia SL");
+    const business = { type: "business", legalName: "Live Discrepancia SL", taxId: "B99999999", country: "ES", postalCode: "28002" };
+    await cp.ok(cp.call("PUT", `/stripe/orders/${orderId}/buyer`, { body: { buyer: business, consent: { terms: true, termsVersion: "v1-prueba" } } }));
+    const s = await cp.ok(cp.call("POST", `/stripe/orders/${orderId}/checkout`));
+    // En Checkout el cliente cambió la dirección a Canarias y no dio NIF
+    const customerId = cp.gw.sessions.get(s.sessionId)!.customerId!;
+    cp.gw.customers.set(customerId, { ...cp.gw.customers.get(customerId)!, address: { country: "ES", postalCode: "35001" } });
+    cp.gw.completeSession(s.sessionId);
+    await cp.ok(cp.webhook(cp.gw.events[0]));
+    await until(async () => (await cp.ok(cp.call("GET", `/orders/${orderId}`))).order.state === "active");
+    expect((await cp.ok(cp.call("GET", `/orders/${orderId}`))).payments).toEqual([expect.objectContaining({ purpose: "initial", status: "succeeded" })]);
+    expect(raised).toEqual(expect.arrayContaining(["rate:stripe.buyer_territory_mismatch", "rate:stripe.buyer_tax_id_missing"]));
+    configureFailureAlerts(new FailureAlerts());
   });
 
   it("un evento de PRUEBAS con firma válida se rechaza en live (400) y no se guarda nada", async () => {

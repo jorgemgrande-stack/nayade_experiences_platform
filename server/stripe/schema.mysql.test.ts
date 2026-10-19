@@ -60,7 +60,8 @@ describe.skipIf(!URL_)("migraciones 0012_stripe_billing y 0013_stripe_livemode c
     const live = migrations.find((m) => m.id === "0013_stripe_livemode");
     if (!live?.down) throw new Error("No se encuentra 0013_stripe_livemode con su reversión");
     livemode = { up: live.up, down: live.down };
-    for (const m of migrations) await run(m.up);
+    // Hasta 0013: las migraciones posteriores (p. ej. 0014, perfiles de comprador) tienen su propia prueba
+    for (const m of migrations.filter((x) => x.id <= "0013_stripe_livemode")) await run(m.up);
 
     // Datos mínimos sintéticos: empresa, entrada y precio del catálogo, pedido
     const [c] = (await pool.query(`INSERT INTO crm_companies (name, created_at) VALUES ('Empresa Stripe Test', ?)`, [now])) as unknown as [{ insertId: number }];

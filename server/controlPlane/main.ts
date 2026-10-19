@@ -50,6 +50,7 @@ import { checkoutBlockedReason, describeStripeConfig, liveStartupProblem, stripe
 import { stripeGateway, stripeWebhookVerifier } from "../stripe/gateway";
 import { MysqlStripeStore } from "../stripe/store";
 import { liveOrdersProblem, liveSchemaProblem } from "../stripe/liveReadiness";
+import { consumerWithdrawalFromEnv, fiscalScenariosFromEnv } from "../stripe/buyerProfile";
 import { checkoutUrlsFromEnv } from "../stripe/checkout";
 import { MysqlCrmStore } from "../crm/mysqlStore";
 import { CrmService } from "../crm/service";
@@ -293,7 +294,17 @@ async function main() {
     console.log(JSON.stringify({ ctx: "Orders", enabled: !!orders, mode: ordersMode, payments: { provider: payments.provider?.kind ?? null, mode: "test", autoCharge: false, ...(payments.reason ? { reason: payments.reason } : {}) }, ...(!ready ? { reason: "migration_0010_missing" } : liveData ? { reason: liveData } : {}) }));
   }
 
-  let stripe: { config: NonNullable<typeof stripeConfig>; store: MysqlStripeStore; gateway: ReturnType<typeof stripeGateway>; urls: ReturnType<typeof checkoutUrlsFromEnv>; checkoutEnabled: boolean; verifyWebhook: ReturnType<typeof stripeWebhookVerifier>; workerEnabled: boolean; publicStatus: boolean; selfService: boolean; termsVersion: string | null } | undefined;
+  // Escenarios fiscales aprobados y versiones de consentimiento. Un valor no admitido impide arrancar (nunca a medias)
+  const fiscal = {
+    scenarios: fiscalScenariosFromEnv(process.env),
+    consent: {
+      terms: (process.env.CP_TERMS_VERSION ?? "").trim() || null,
+      privacy: (process.env.CP_PRIVACY_VERSION ?? "").trim() || null,
+      precontract: (process.env.CP_PRECONTRACT_VERSION ?? "").trim() || null,
+      withdrawal: consumerWithdrawalFromEnv(process.env),
+    },
+  };
+  let stripe: { config: NonNullable<typeof stripeConfig>; store: MysqlStripeStore; gateway: ReturnType<typeof stripeGateway>; urls: ReturnType<typeof checkoutUrlsFromEnv>; checkoutEnabled: boolean; verifyWebhook: ReturnType<typeof stripeWebhookVerifier>; workerEnabled: boolean; publicStatus: boolean; selfService: boolean; termsVersion: string | null; fiscal: typeof fiscal } | undefined;
   if (stripeConfig) {
     const urls = checkoutUrlsFromEnv(process.env);
     // La bandera sigue apagada por defecto; en live sin política fiscal, Checkout queda apagado aunque esté a 1
@@ -318,7 +329,7 @@ async function main() {
       else namespaceOk = saved.namespace === stripeConfig.namespace;
     }
     const ready = migrated && liveMigrated && namespaceOk;
-    if (ready) stripe = { config: stripeConfig, store: new MysqlStripeStore(crmPool!, stripeConfig.mode), gateway: stripeGateway(stripeConfig), urls, checkoutEnabled, verifyWebhook: stripeWebhookVerifier(stripeConfig), workerEnabled, publicStatus, selfService, termsVersion };
+    if (ready) stripe = { config: stripeConfig, store: new MysqlStripeStore(crmPool!, stripeConfig.mode), gateway: stripeGateway(stripeConfig), urls, checkoutEnabled, verifyWebhook: stripeWebhookVerifier(stripeConfig), workerEnabled, publicStatus, selfService, termsVersion, fiscal };
     console.log(
       JSON.stringify({
         ctx: "Stripe",
@@ -330,6 +341,8 @@ async function main() {
         publicStatus: ready && publicStatus,
         selfService: ready && selfService,
         termsPublished: !!termsVersion,
+        fiscalScenarios: Array.from(fiscal.scenarios),
+        consumerWithdrawal: fiscal.consent.withdrawal,
         ...(ready ? {} : { reason: !trustProxyOk ? "trust_proxy_missing" : !orders ? "orders_not_enabled" : !migrated ? "migration_0012_missing" : !liveMigrated ? (liveSchema ?? "migration_0013_missing") : "namespace_changed" }),
       }),
     );
