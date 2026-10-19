@@ -40,6 +40,7 @@ import { invoiceDocumentOf, invoiceRecordOf, invoiceSourceKey, pendingSink, rect
 import type { CatalogPort } from "../subscriptions/ports";
 import { SELF_SERVICE_PLANS, desiredCatalog } from "./catalog";
 import { sameItems, type SubscriptionChangeStore } from "./changes";
+import { allocateRefund, itemsDrift, linesOf, type InvoiceLineStore, type PriceResolver } from "./invoiceLines";
 
 /** Eventos que se aceptan y procesan (nombres de la API 2026-09-30.endive). */
 export const HANDLED_EVENTS = [
@@ -108,6 +109,13 @@ export interface ProcessorDeps {
   fiscalSink?: FiscalDocumentSink;
   /** Cambios de partidas pedidos por las compras (CRM 0018). Sin él, una suscripción multipartida es una discordancia. */
   changes?: SubscriptionChangeStore;
+  /** Detalle por línea de las facturas cobradas y reparto de reembolsos (CRM 0019). Opcional. */
+  invoiceLines?: InvoiceLineStore;
+  /**
+   * Partidas contratadas para el PRÓXIMO periodo (producto → cantidad) de la suscripción interna del pedido. Con
+   * ella se avisa de descuadres entre Stripe y lo contratado (nunca se corrigen solos).
+   */
+  contractedItems?: (order: CommercialOrder) => Promise<Map<string, number> | null>;
 }
 
 /** Estado de un cargo que deja sin cobertura el periodo que pagó. */
@@ -450,6 +458,7 @@ export class StripeEventProcessor {
       return { outcome: "processed", detail: `Pedido ${r.order.state}` };
     }
     if (!LIVE_OR_SCHEDULED.includes(order.state)) return { outcome: "processed", detail: `Pedido en ${order.state}: sin cambios` };
+    await this.checkItems(order, sub);
     if (payment?.created && payment.purpose === "renewal") await this.d.orchestrator.renew(orderId, this.actor).catch((e) => opsLog("warn", "StripeEvents", "renew_skipped", { orderId, error: e instanceof Error ? e.name : "error" }));
     // Aviso de la renovación (o del cambio) cobrada y de su factura: solo la primera vez que se registra el pago
     if (payment?.created && payment.purpose !== "initial" && this.d.orchestrator.paymentRecorded)
@@ -505,6 +514,7 @@ export class StripeEventProcessor {
       const profile = await this.d.store.buyerProfile(orderId).catch(() => null);
       const rec = invoiceRecordOf(inv, { orderId, purpose, buyerScenario: profile?.scenario ?? null, now: this.now(), refundedCents });
       await this.d.store.upsertInvoiceRecord(rec);
+      if (this.d.invoiceLines && inv.lines?.length) await this.d.invoiceLines.upsertLines(await linesOf(inv.id, orderId, inv.lines, this.priceResolver()), this.now());
       const { created, document } = await this.d.store.enqueueFiscalDocument(invoiceDocumentOf(rec, this.now()));
       if (created) {
         opsLog("info", "StripeEvents", "fiscal_document_queued", { orderId, kind: "invoice", documentId: document.id, invoiceId: inv.id });
@@ -529,6 +539,7 @@ export class StripeEventProcessor {
       if (!original) return;
       const draft = rectificationOf(original, { chargeId: c.id, refundedTotalCents: c.amountRefunded, previousRefundedCents: previousRefunded, now: this.now() });
       await this.d.store.setInvoiceRefunded(inv.id, c.amountRefunded, this.now());
+      await this.allocateLines(orderId, inv.id, c.amountRefunded);
       if (!draft) return;
       const { created, document } = await this.d.store.enqueueFiscalDocument(draft);
       if (created) {
@@ -539,6 +550,47 @@ export class StripeEventProcessor {
       if ((e as { code?: string })?.code === "ER_NO_SUCH_TABLE") return void opsLog("warn", "StripeEvents", "fiscal_registry_missing", { orderId, chargeId: c.id });
       throw e;
     }
+  }
+
+  /** Price de Stripe → precio aprobado y producto (catálogo enlazado). */
+  private priceResolver(): PriceResolver {
+    let links: Promise<Array<{ stripePriceId: string; webPriceId: number }>> | null = null;
+    return async (stripePriceId) => {
+      links ??= this.d.store.listPrices();
+      const l = (await links).find((x) => x.stripePriceId === stripePriceId);
+      if (!l) return null;
+      const p = this.d.catalog ? await this.d.catalog.price(l.webPriceId).catch(() => null) : null;
+      return { webPriceId: l.webPriceId, productKey: p?.productKey ?? null };
+    };
+  }
+
+  /**
+   * Reparte entre las líneas lo reembolsado que aún no está asignado (total del cargo − ya asignado): repetirlo no
+   * asigna dos veces y un intento cortado se completa en el siguiente.
+   */
+  private async allocateLines(orderId: number, invoiceId: string, refundedTotal: number) {
+    if (!this.d.invoiceLines) return;
+    const lines = await this.d.invoiceLines.linesOf(invoiceId);
+    if (!lines.length) return;
+    const pending = refundedTotal - lines.reduce((a, l) => a + l.refundedCents, 0);
+    if (pending <= 0) return;
+    const { allocation, unallocated } = allocateRefund(lines, pending);
+    await this.d.invoiceLines.addRefunded(allocation, this.now());
+    if (unallocated > 0) {
+      opsLog("warn", "StripeEvents", "refund_unallocated", { orderId, invoiceId, unallocated });
+      recordFailure("stripe.refund_unallocated");
+    }
+  }
+
+  /** Avisa si las partidas de Stripe no son las contratadas para el próximo periodo (no corrige nada). */
+  private async checkItems(order: CommercialOrder, sub: GwSubscription) {
+    if (!this.d.contractedItems || !sub.items?.length || sub.pendingUpdate || !LIVE_OR_SCHEDULED.includes(order.state)) return;
+    const contracted = await this.d.contractedItems(order).catch(() => null);
+    if (!contracted) return;
+    const drift = await itemsDrift(sub.items, contracted, this.priceResolver());
+    if (!drift.differences.length && !drift.unknownPrices.length) return;
+    opsLog("warn", "StripeEvents", "items_drift", { orderId: order.id, subscriptionId: sub.id, differences: drift.differences, unknownPrices: drift.unknownPrices.length });
+    recordFailure("stripe.items_drift");
   }
 
   /** Entrega al sistema de facturación legal aprobado (por defecto ninguno: queda pendiente). */

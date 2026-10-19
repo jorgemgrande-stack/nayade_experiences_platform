@@ -8,7 +8,8 @@
  *  - cobro fallido o con autenticación: nada concedido; caducidad → pedido rechazado; pago tardío → aplicado;
  *  - compras simultáneas, método asíncrono (SEPA), producto no aprobado, reducción y aislamiento entre empresas;
  *  - interruptor apagado: 503 sin tocar nada;
- *  - bajas y reducciones a fin de periodo (PR 6): sin abonos, derechos hasta la renovación, nunca bajo el uso real.
+ *  - bajas y reducciones a fin de periodo (PR 6): sin abonos, derechos hasta la renovación, nunca bajo el uso real;
+ *  - facturación por líneas (fase E): líneas de cada factura cobrada, reembolso parcial repartido y descuadres avisados.
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import crypto from "node:crypto";
@@ -45,6 +46,8 @@ import { FakeStripeGateway } from "./stripe/testing";
 import { MemorySubscriptionChangeStore } from "./stripe/changes";
 import { ModulePurchaseService } from "./stripe/purchases";
 import { MemoryTenantLimitStore } from "./_core/limits/store";
+import { MemoryInvoiceLineStore } from "./stripe/invoiceLines";
+import { setLogSink } from "./_core/ops/log";
 
 const ADMIN = "purchase-admin-token-aaaaaaaaaaaaaaaaaaa";
 /** Token de servicio del Core: SOLO compra (el tenant lo pone el Core desde su sesión). */
@@ -69,6 +72,7 @@ const orders = new MemoryOrderStore();
 const gw = new FakeStripeGateway();
 const changes = new MemorySubscriptionChangeStore();
 const limits = new MemoryTenantLimitStore();
+const invoiceLines = new MemoryInvoiceLineStore();
 const FOR_SALE = ["connect-people", "addon-user-essential"];
 const stripeStore = new MemoryStripeStore();
 const outbox: Array<{ kind: string; to: string; data: Record<string, unknown> }> = [];
@@ -186,6 +190,7 @@ beforeAll(async () => {
       // Condiciones legales SIN publicar (situación real hoy)
       termsVersion: null,
       purchases: { enabled: true, changes },
+      invoiceLines,
     },
   });
   server = http.createServer(app);
@@ -441,5 +446,45 @@ describe("bajas y reducciones a fin de periodo (PR 6)", () => {
     // En la renovación el límite baja a lo contratado (3 incluidos + 2); ningún usuario se desactiva
     await renew(a);
     expect((await limits.limits(a.tenantId)).find((l) => l.metric === "users")?.limit).toBe(5);
+  });
+});
+
+describe("facturación por líneas, reembolsos y conciliación (fase E)", () => {
+  it("la factura de una compra queda con sus líneas; un reembolso parcial se reparte; repetido no se duplica", async () => {
+    const a = await activeCompany("Líneas Factura SL");
+    const r = await ok(buy(a.tenantId, { add: ["connect-people"] }), 201);
+    const invId = (await ok(call("GET", `/orders/${r.purchase.orderId}`))).payments[0].providerRef as string;
+    const lines = await invoiceLines.linesOf(invId);
+    expect(lines).toEqual([expect.objectContaining({ orderId: r.purchase.orderId, productKey: "connect-people", quantity: 1, proration: true, refundedCents: 0 })]);
+    expect(lines[0].amountCents).toBeGreaterThan(0);
+    const ch = gw.chargeForInvoice(invId);
+    gw.refund(ch, 300);
+    const ev = gw.emit("charge.refunded", "charge", ch);
+    await ok(stripeWebhook(ev));
+    await settled();
+    expect((await invoiceLines.linesOf(invId))[0].refundedCents).toBe(300);
+    // El mismo evento otra vez: nada cambia
+    await ok(stripeWebhook(ev));
+    await settled();
+    expect((await invoiceLines.linesOf(invId))[0].refundedCents).toBe(300);
+    const docs = (await stripeStore.listFiscalDocuments({ orderId: r.purchase.orderId, limit: 10 })).map((d) => [d.kind, d.totalCents]);
+    expect(docs).toEqual(expect.arrayContaining([["rectification", -300]]));
+  });
+
+  it("partidas de Stripe distintas de lo contratado: se avisa y no se corrige nada", async () => {
+    const a = await activeCompany("Descuadre SL");
+    const logged: string[] = [];
+    setLogSink((_level, line) => void logged.push(line));
+    try {
+      const sub = gw.subscriptions.get(a.subId)!;
+      gw.updateSubscription(a.subId, { items: sub.items!.map((i) => ({ ...i, quantity: 2 })) });
+      await ok(stripeWebhook(gw.emit("customer.subscription.updated", "subscription", a.subId)));
+      await settled();
+    } finally {
+      setLogSink(null);
+    }
+    expect(logged.some((l) => l.includes("items_drift"))).toBe(true);
+    expect(gw.subscriptions.get(a.subId)!.items![0].quantity).toBe(2);
+    expect(await orderState(a.orderId)).toBe("active");
   });
 });
