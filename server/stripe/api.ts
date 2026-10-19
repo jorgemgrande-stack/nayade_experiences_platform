@@ -4,6 +4,7 @@
  *   GET  /stripe/status                         ops:read      configuración (sin secretos) y catálogo enlazado
  *   GET  /stripe/catalog/plan                   ops:read      escrituras que FALTAN en Stripe (las ejecuta una persona)
  *   POST /stripe/catalog/sync                   orders:write  enlaza los Prices que ya existen (solo lectura en Stripe)
+ *   GET  /stripe/catalog/yearly-proposals       ops:read      propuesta anual = 10 × mensual aprobado (no crea nada)
  *   POST /stripe/orders/:id/checkout            orders:write  abre o reutiliza la Checkout Session del pedido (*)
  *   POST /stripe/orders/:id/checkout/expire     orders:write  cierra la sesión abierta del pedido
  *   POST /stripe/checkout/:sessionId/sync       orders:write  relee sesión y suscripción (no confirma nada)
@@ -38,6 +39,7 @@ import type { OrderStore } from "../orchestrator/store";
 import { BuyerProfileError, FISCAL_SCENARIOS, buildConsent, buyerProfileInput, consentInput, toBuyerProfile, type ConsentVersions, type FiscalScenario, type TaxTreatment } from "./buyerProfile";
 import { checkoutBlockedReason, describeStripeConfig, type StripeConfig } from "./config";
 import { describeIssuer } from "./issuer";
+import { proposeYearlyPrices } from "./multipart";
 import { sessionIdRe } from "./status";
 import { StripeGatewayError, type StripeGateway } from "./gateway";
 import { FiscalDocumentConflictError, StripeStoreError, type StripeStore } from "./store";
@@ -173,6 +175,10 @@ export function createStripeRouter(d: StripeRouterDeps): Router {
   r.get("/catalog/plan", requireScope("ops:read"), wrap(async (_req, res) => {
     const desired = await desiredCatalog(d.catalog);
     res.json({ desired, ...(await planCatalogWrites(desired, d.gateway)) });
+  }));
+  // Propuestas de precio anual (decisión A): solo lectura; crearlas pasa por aprobar el catálogo y por una persona en Stripe
+  r.get("/catalog/yearly-proposals", requireScope("ops:read"), wrap(async (_req, res) => {
+    res.json({ rule: "yearly = 10 × monthly", proposals: proposeYearlyPrices(await d.catalog.offer()) });
   }));
   r.post("/catalog/sync", requireScope("orders:write"), wrap(async (req, res) => {
     const report = await syncCatalog(await desiredCatalog(d.catalog), d.gateway, d.store, now());

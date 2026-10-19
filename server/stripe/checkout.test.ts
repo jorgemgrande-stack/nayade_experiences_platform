@@ -57,6 +57,30 @@ describe("catálogo de Stripe", () => {
     expect(d.map((x) => x.productName)).toEqual(["Elephant Core Essential", "Elephant Core Essential", "Elephant Core Business", "Elephant Core Business"]);
   });
 
+  it("productos comprables: solo módulos y ampliaciones «available» con mensual aprobado; el anual solo si existe", async () => {
+    const base = await catalogOf().offer();
+    const extra = (offer: unknown[]) => ({ product: async () => null, price: async () => null, offer: async () => [...base, ...offer] }) as unknown as CatalogPort;
+    const mod = (key: string, family: string, commercialStatus: string, prices: unknown[]) => ({ ...product(key, prices), family, commercialStatus });
+    const d = await desiredCatalog(
+      extra([
+        mod("mod-ok", "extension", "available", [price(21, "mod-ok", "monthly", 1900)]),
+        mod("users", "extension", "available", [price(22, "users", "monthly", 500), price(23, "users", "yearly", 5000)]),
+        mod("mod-on-request", "extension", "on_request", [price(24, "mod-on-request", "monthly", 900)]),
+        mod("mod-soon", "industry_module", "coming_soon", [price(25, "mod-soon", "monthly", 900)]),
+        mod("svc", "service", "available", [price(26, "svc", "monthly", 900)]),
+      ]),
+    );
+    expect(d.slice(4).map((x) => [x.productKey, x.kind, x.amountCents, x.productName])).toEqual([
+      ["mod-ok", "monthly", 1900, "mod-ok"],
+      ["users", "monthly", 500, "users"],
+      ["users", "yearly", 5000, "users"],
+    ]);
+    await expect(desiredCatalog(extra([mod("sin-mensual", "extension", "available", [price(27, "sin-mensual", "yearly", 9000)])]))).rejects.toThrow(/mensual aprobado/);
+    const gw = new FakeStripeGateway();
+    const plan = await planCatalogWrites(d, gw);
+    expect(plan.operations.filter((o) => o.op === "create_product").map((o) => o.productKey)).toEqual(["essential", "business", "mod-ok", "users"]);
+  });
+
   it("rechaza precios con IVA incluido o sin precio aprobado", async () => {
     await expect(desiredCatalog(catalogOf({ essM: { taxIncluded: true } }))).rejects.toThrow(StripeCatalogError);
     await expect(desiredCatalog(catalogOf({ essM: { status: "draft" } }))).rejects.toThrow(/exactamente un precio monthly/);

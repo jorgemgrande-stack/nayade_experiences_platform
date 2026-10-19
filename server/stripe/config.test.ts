@@ -27,8 +27,14 @@ describe("configuración de Stripe Billing (solo pruebas)", () => {
   it("clave restringida de pruebas con la versión fijada por defecto", () => {
     const c = stripeConfigFromEnv(base())!;
     expect(c).toMatchObject({ mode: "test", keyKind: "restricted", apiVersion: STRIPE_API_VERSION });
-    expect(describeStripeConfig(c)).toEqual({ enabled: true, mode: "test", keyKind: "restricted", apiVersion: STRIPE_API_VERSION, namespace: "local", eventsRetentionDays: 180, taxPolicy: "test_net_no_tax" });
+    expect(describeStripeConfig(c)).toEqual({ enabled: true, mode: "test", keyKind: "restricted", apiVersion: STRIPE_API_VERSION, namespace: "local", eventsRetentionDays: 180, taxPolicy: "test_net_no_tax", billingMode: "classic" });
     expect(JSON.stringify(describeStripeConfig(c))).not.toContain(c.apiKey);
+  });
+
+  it("modo de facturación multipartida: classic por defecto, flexible solo explícito, otro valor no arranca", () => {
+    expect(stripeConfigFromEnv(base())!.billingMode).toBe("classic");
+    expect(stripeConfigFromEnv({ ...base(), CP_STRIPE_BILLING_MODE: "flexible" })!.billingMode).toBe("flexible");
+    expect(() => stripeConfigFromEnv({ ...base(), CP_STRIPE_BILLING_MODE: "auto" })).toThrow(StripeConfigError);
   });
 
   it("acepta una clave secreta de pruebas (desarrollo local) y la identifica como tal", () => {
@@ -117,7 +123,7 @@ describe("configuración de Stripe Billing en modo live", () => {
     const c = stripeConfigFromEnv(live())!;
     expect(c).toMatchObject({ mode: "live", keyKind: "restricted", namespace: "live", taxPolicy: null, apiVersion: STRIPE_API_VERSION });
     expect(checkoutBlockedReason(c)).toBe("tax_policy_pending");
-    expect(describeStripeConfig(c)).toEqual({ enabled: true, mode: "live", keyKind: "restricted", apiVersion: STRIPE_API_VERSION, namespace: "live", eventsRetentionDays: 180, taxPolicy: "pending" });
+    expect(describeStripeConfig(c)).toEqual({ enabled: true, mode: "live", keyKind: "restricted", apiVersion: STRIPE_API_VERSION, namespace: "live", eventsRetentionDays: 180, taxPolicy: "pending", billingMode: "classic" });
     const text = JSON.stringify(describeStripeConfig(c));
     expect(text).not.toContain(c.apiKey);
     expect(text).not.toContain(c.webhookSecret);
