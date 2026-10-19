@@ -70,6 +70,9 @@ import { TrialOnboardingService, type TrialNotifier } from "../trials/onboarding
 import { createPublicTrialRouter, createTrialAdminRouter } from "../trials/api";
 import { OrganizationError, OrganizationService, type OrganizationStore } from "../organization/service";
 import { CommercialOrchestrator } from "../orchestrator/service";
+import { LifecycleEngine, startLifecycleScheduler } from "../lifecycle/engine";
+import type { LifecyclePolicy } from "../lifecycle/policy";
+import type { SchedulerLock } from "../trials/scheduler";
 import { createStripeRouter } from "../stripe/api";
 import { StripeEventProcessor } from "../stripe/events";
 import { StripeReconciler, startStripeWorker } from "../stripe/reconcile";
@@ -188,6 +191,11 @@ export interface ControlPlaneDeps {
    */
   /** `mode`: modo de cobro del entorno (el de CP_STRIPE_MODE), también cuando Stripe no llega a montarse. */
   orders?: { store: OrderStore; payments?: TestPaymentPort | null; graceDays?: number; mode?: StripeConfig["mode"] };
+  /**
+   * Motor de transiciones temporales (server/lifecycle). Requiere `orders`. El plan (solo lectura) siempre
+   * se puede consultar; la tarea periódica solo con `policy.enabled` y aplica solo en modo «apply».
+   */
+  lifecycle?: { policy: LifecyclePolicy; lock?: SchedulerLock };
   /**
    * Stripe Billing en modo pruebas o live (`config.mode`; server/stripe, CRM 0012 y 0013). Rutas de operador
    * en /stripe; Checkout solo con `checkoutEnabled`, URL de vuelta y, en live, una política fiscal decidida.
@@ -1066,6 +1074,8 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
       if (d.stripe && d.orders.mode && d.orders.mode !== d.stripe.config.mode) throw new Error("El modo de los pedidos no coincide con el de Stripe");
       const ordersMode = d.stripe?.config.mode ?? d.orders.mode ?? "test";
       // Orquestador comercial: encadena contrato → confirmación → suscripción → licencias → activación
+      const licensing = new LicensingService({ capabilities: d.capabilities, subscriptions: d.subscriptions.store, crm: crmPort, catalog: async () => quoteCatalogFromSite(await webAdmin!.site("published")), now: d.subscriptions.now });
+      const coverageHeld = d.stripe ? async (orderId: number) => (await d.stripe!.store.activeHolds(orderId)).length > 0 : undefined;
       const orchestrator = new CommercialOrchestrator({
         store: d.orders.store,
         crm: d.crm.service,
@@ -1075,7 +1085,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         shadow: shadowBilling,
         catalog: catalogFromWebStore(d.web.store),
         quote: async (r) => quote(quoteCatalogFromSite(await webAdmin!.site("published")), r),
-        licensing: new LicensingService({ capabilities: d.capabilities, subscriptions: d.subscriptions.store, crm: crmPort, catalog: async () => quoteCatalogFromSite(await webAdmin!.site("published")), now: d.subscriptions.now }),
+        licensing,
         capabilities: d.capabilities,
         platform: d.provisioning && d.platformDomain ? createContractActivation({ provisioning: d.provisioning, platformDomain: d.platformDomain, actor: { type: "crm", id: "orchestrator" }, notifyWelcome: d.mail?.platform?.assistedWelcome() }) : undefined,
         notify: d.mail?.platform ? d.mail.platform.orderNotifier({ crmStore: d.crm.store, orders: d.orders.store, reader: d.reader, mode: ordersMode }) : undefined,
@@ -1083,10 +1093,35 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         payments: d.orders.payments ?? null,
         mode: ordersMode,
         graceDays: d.orders.graceDays,
-        coverageHeld: d.stripe ? async (orderId: number) => (await d.stripe!.store.activeHolds(orderId)).length > 0 : undefined,
+        coverageHeld,
         now: d.subscriptions.now,
       });
       router.use("/orders", createOrdersRouter(orchestrator));
+      if (d.lifecycle) {
+        const policy = d.lifecycle.policy;
+        const lifecycle = new LifecycleEngine({
+          orders: d.orders.store,
+          subscriptions: d.subscriptions.store,
+          licensing,
+          orchestrator,
+          trials: d.trials?.store,
+          coverageHeld,
+          graceMs: orchestrator.paymentsConfig.graceDays * 86_400_000,
+          policy,
+          lock: d.lifecycle.lock,
+          now: d.subscriptions.now,
+        });
+        startLifecycleScheduler({ engine: lifecycle, policy });
+        // Plan de solo lectura: qué haría el motor ahora (nada se aplica desde aquí)
+        router.get(
+          "/lifecycle/plan",
+          requireScope("ops:read"),
+          wrap(async (_req, res) => {
+            const { enabled, mode, modeReason, intervalMs, dunningDays, trialNoticeDays, retentionDays } = policy;
+            res.json({ policy: { enabled, mode, modeReason, intervalMs, dunningDays, trialNoticeDays, retentionDays, graceDays: orchestrator.paymentsConfig.graceDays }, plan: await lifecycle.plan() });
+          }),
+        );
+      }
       if (d.stripe) {
         const st = d.stripe;
         const stripeCatalog = catalogFromWebStore(d.web.store);

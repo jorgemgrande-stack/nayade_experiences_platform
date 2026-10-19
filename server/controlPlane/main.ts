@@ -40,6 +40,7 @@ import { MysqlTrialStore } from "../trials/store";
 import { MysqlCommercialEventLog, commercialEventsProblem } from "../commercialEvents/log";
 import { trialNotifierFromEnv } from "../trials/emailNotifier";
 import { TrialScheduler, mysqlAdvisoryLock, startTrialScheduler } from "../trials/scheduler";
+import { lifecyclePolicyFromEnv } from "../lifecycle/policy";
 import { blockedDomainsFromEnv } from "../trials/service";
 import type { TrialNotifier } from "../trials/onboarding";
 import { platformMailFromEnv, tenantLaneResolver } from "../mail/platform";
@@ -305,6 +306,12 @@ async function main() {
     if (ready && !liveData) orders = { store: new MysqlOrderStore(ordersPool, commercialEvents), payments: payments.provider, mode: ordersMode };
     console.log(JSON.stringify({ ctx: "Orders", enabled: !!orders, mode: ordersMode, payments: { provider: payments.provider?.kind ?? null, mode: "test", autoCharge: false, ...(payments.reason ? { reason: payments.reason } : {}) }, ...(!ready ? { reason: "migration_0010_missing" } : liveData ? { reason: liveData } : {}) }));
   }
+  // Motor de transiciones temporales: tarea APAGADA por defecto (CP_LIFECYCLE_SCHEDULER_ENABLED=1) y en modo
+  // «plan» (solo calcula) salvo CP_LIFECYCLE_MODE=apply; en live, además CP_LIFECYCLE_LIVE_APPLY=1. Una sola
+  // réplica trabaja en cada tick (GET_LOCK). Nunca borra datos ni convierte pruebas a pago.
+  const lifecyclePolicy = lifecyclePolicyFromEnv(process.env);
+  const lifecycle = orders && crmPool ? { policy: lifecyclePolicy, lock: mysqlAdvisoryLock(crmPool) } : undefined;
+  console.log(JSON.stringify({ ctx: "Lifecycle", mounted: !!lifecycle, enabled: lifecyclePolicy.enabled, mode: lifecyclePolicy.mode, ...(lifecyclePolicy.modeReason ? { reason: lifecyclePolicy.modeReason } : {}), intervalMs: lifecyclePolicy.intervalMs }));
 
   // Escenarios fiscales aprobados y versiones de consentimiento. Un valor no admitido impide arrancar (nunca a medias)
   const fiscal = {
@@ -401,6 +408,7 @@ async function main() {
     trials,
     organization,
     orders,
+    lifecycle,
     stripe,
     commercialEvents,
     mail: {
