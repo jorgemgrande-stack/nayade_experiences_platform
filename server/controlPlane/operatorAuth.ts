@@ -19,7 +19,7 @@ import { DuplicateOperatorError, LastSuperadminError, type OperatorRecord, type 
 import type { Scope } from "./auth";
 import { decryptDsn, encryptDsn, type Keyring } from "../_core/tenantRegistry/crypto";
 import { mfaAad } from "./operatorMfaKeys";
-import { newRecoveryCodes, newTotpSecret, normalizeRecoveryCode, otpauthUri, verifyTotp } from "./totp";
+import { newRecoveryCodes, newTotpSecret, normalizeRecoveryCode, otpauthUri, RECOVERY_CODE_RE, verifyTotp } from "./totp";
 
 export { SESSION_COOKIE } from "./auth";
 
@@ -360,7 +360,7 @@ export class OperatorAuthService {
       return step !== null && (await this.store.consumeTotpStep(op.id, step)) ? "totp" : null;
     }
     const rc = normalizeRecoveryCode(raw);
-    if (/^[a-z0-9]{4}-[a-z0-9]{4}$/.test(rc) && (await this.store.useRecoveryCode(op.id, sha256(rc), now))) return "recovery";
+    if (RECOVERY_CODE_RE.test(rc) && (await this.store.useRecoveryCode(op.id, sha256(rc), now))) return "recovery";
     return null;
   }
 

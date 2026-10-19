@@ -12,7 +12,7 @@ import { createControlPlaneApp } from "./controlPlane/api";
 import { OperatorAuthService } from "./controlPlane/operatorAuth";
 import { MemoryOperatorStore } from "./controlPlane/operatorStore";
 import { mfaRolesFromEnv } from "./controlPlane/operatorSetup";
-import { base32Decode, base32Encode, hotp, otpauthUri, totpStep, verifyTotp } from "./controlPlane/totp";
+import { base32Decode, base32Encode, hotp, newRecoveryCodes, normalizeRecoveryCode, otpauthUri, totpStep, verifyTotp } from "./controlPlane/totp";
 import { MemoryTenantRegistryStore } from "./_core/tenantRegistry/memoryStore";
 import { TenantRegistryService } from "./_core/tenantRegistry/service";
 import { keyringFromEnv } from "./_core/tenantRegistry/crypto";
@@ -357,6 +357,36 @@ describe("endurecimiento del MFA (revisión de la ventana de live)", () => {
     const { recovery } = await enroll(ctx, "sara", PW.sara);
     ctx.clock.t += 60_000;
     const p = await call(ctx, "POST", "/auth/login", { body: { username: "sara", password: PW.sara } });
-    expect((await call(ctx, "POST", "/auth/mfa/verify", { cookie: p.cookie, body: { code: recovery[2].replace("-", "").toUpperCase() } })).status).toBe(200);
+    expect((await call(ctx, "POST", "/auth/mfa/verify", { cookie: p.cookie, body: { code: recovery[2].replace(/-/g, "").toUpperCase() } })).status).toBe(200);
+  });
+});
+
+describe("códigos de recuperación (≥ 64 bits)", () => {
+  it("10 códigos de 16 símbolos en 4 grupos (≈ 79 bits), sin caracteres ambiguos y distintos", () => {
+    const codes = newRecoveryCodes();
+    expect(codes).toHaveLength(10);
+    for (const c of codes) expect(c).toMatch(/^[a-hj-km-np-z2-9]{4}(-[a-hj-km-np-z2-9]{4}){3}$/);
+    expect(new Set(codes).size).toBe(10);
+    expect(16 * Math.log2(31)).toBeGreaterThan(64);
+  });
+
+  it("normaliza el formato nuevo y el antiguo (mayúsculas, espacios, sin guiones)", () => {
+    expect(normalizeRecoveryCode(" ABCD EFGH JKMN PQRS ")).toBe("abcd-efgh-jkmn-pqrs");
+    expect(normalizeRecoveryCode("abcdefghjkmnpqrs")).toBe("abcd-efgh-jkmn-pqrs");
+    expect(normalizeRecoveryCode("ABCD-EFGH")).toBe("abcd-efgh");
+  });
+
+  it("un código antiguo de 8 símbolos que ya existía sigue valiendo una vez", async () => {
+    const ctx = await setup();
+    const { session } = await enroll(ctx, "sara", PW.sara);
+    expect(session.cookie).toBeTruthy();
+    const sara = ctx.store.operators.find((o) => o.username === "sara")!;
+    // Código emitido con el formato anterior (antes de este cambio)
+    ctx.store.recovery.push({ operatorId: sara.id, hash: crypto.createHash("sha256").update("abcd-efgh").digest("hex"), createdAt: ctx.clock.t, usedAt: null });
+    ctx.clock.t += 60_000;
+    const p1 = await call(ctx, "POST", "/auth/login", { body: { username: "sara", password: PW.sara } });
+    expect((await call(ctx, "POST", "/auth/mfa/verify", { cookie: p1.cookie, body: { code: "ABCDEFGH" } })).status).toBe(200);
+    const p2 = await call(ctx, "POST", "/auth/login", { body: { username: "sara", password: PW.sara } });
+    expect((await call(ctx, "POST", "/auth/mfa/verify", { cookie: p2.cookie, body: { code: "abcd-efgh" } })).status).toBe(401);
   });
 });
