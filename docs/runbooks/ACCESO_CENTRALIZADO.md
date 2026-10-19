@@ -62,3 +62,15 @@ La alternativa «Entrar con la dirección de mi empresa» sigue disponible.
 - pase rechazado en otra empresa, desde otro origen o tras cambiar la contraseña;
 - selector con dos empresas y cuenta desactivada;
 - recuperación con respuesta genérica.
+
+## Portada de una empresa y comprobación tras cada alta
+
+Si la empresa no ha publicado su página «inicio», `https://<empresa>.app.bigelephant.es/` lleva a su **inicio de sesión** (`/login`). Antes mostraba un 404 en toda empresa recién dada de alta (incidencia del 19/10/2026 con Skibox). La lógica está en `client/src/lib/homeRoute.ts` y la prueba en `server/homeRoute.test.ts`.
+
+Después de cada alta, comprobarlo con navegador real, sin sesión y sin consumir la invitación:
+
+```bash
+node scripts/railway/smoke-empresas.cjs <id-o-subdominio>
+```
+
+Requiere Playwright con Chromium.
