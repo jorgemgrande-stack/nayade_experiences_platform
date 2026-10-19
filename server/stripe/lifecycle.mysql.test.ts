@@ -453,6 +453,47 @@ describe.skipIf(!URL_)("Stripe Billing de punta a punta con MySQL real", () => {
     expect(await adj(ch)).toMatchObject({ coverageLost: false, amountRefundedCents: 500, amountCents: 2900 });
   });
 
+  it("facturación: cobro → factura registrada y documento pendiente; repeticiones sin duplicar; reembolsos → rectificativas proporcionales; emisión registrada", async () => {
+    gw.invoiceTaxBp = 2100;
+    try {
+      const o = await contracted(await company("Facturación SL"));
+      const { subId, sessionId } = await paid(o.id);
+      const invId = (await gw.subscription(subId))!.latestInvoiceId!;
+      // Factura registrada con base, impuesto, total y número de Stripe
+      expect(await stripeStore.invoiceRecord(invId)).toMatchObject({ orderId: o.id, purpose: "initial", subtotalCents: 2900, taxCents: 609, totalCents: 3509, amountPaidCents: 3509, amountRefundedCents: 0, number: expect.stringMatching(/^ES-/) });
+      const docs = () => stripeStore.listFiscalDocuments({ orderId: o.id, limit: 20 });
+      expect(await docs()).toEqual([expect.objectContaining({ kind: "invoice", status: "pending", baseCents: 2900, taxCents: 609, totalCents: 3509, sourceKey: `invoice:${invId}`, externalRef: null })]);
+      // El mismo evento repetido y la conciliación de la suscripción no generan otro documento
+      await deliver(gw.emit("checkout.session.completed", "checkout.session", sessionId));
+      await processor.handleSubscription(subId);
+      expect(await docs()).toHaveLength(1);
+      // Reembolso parcial de 10 €: rectificativa negativa con el impuesto proporcional (provisional)
+      const ch = await chargeOf(subId);
+      const re = gw.refund(ch, 1000);
+      await deliver(gw.emit("charge.refund.updated", "refund", re));
+      await deliver(gw.emit("charge.refunded", "charge", ch)); // el mismo reembolso por otro evento
+      const original = (await docs())[0];
+      expect((await docs()).slice(1)).toEqual([expect.objectContaining({ kind: "rectification", originalDocumentId: original.id, stripeChargeId: ch, totalCents: -1000, taxCents: -174, baseCents: -826, sourceKey: `refund:${ch}:1000` })]);
+      expect((await stripeStore.invoiceRecord(invId))!.amountRefundedCents).toBe(1000);
+      // Reembolso del resto: otra rectificativa por la diferencia; los impuestos rectificados suman el original
+      gw.refund(ch);
+      await deliver(gw.emit("charge.refunded", "charge", ch));
+      const rect = (await docs()).filter((d) => d.kind === "rectification");
+      expect(rect.map((d) => d.totalCents)).toEqual([-1000, -2509]);
+      expect(rect.reduce((s, d) => s + (d.taxCents ?? 0), 0)).toBe(-609);
+      // Emisión registrada por el sistema legal: idempotente con la misma referencia; otra referencia, conflicto
+      const issued = await stripeStore.markFiscalDocumentIssued(original.id, "F-2026-000001", "operator:ana", clock);
+      expect(issued).toMatchObject({ status: "issued", externalRef: "F-2026-000001", issuedBy: "operator:ana" });
+      expect(await stripeStore.markFiscalDocumentIssued(original.id, "F-2026-000001", "operator:ana", clock + 1)).toMatchObject({ issuedAt: clock });
+      await expect(stripeStore.markFiscalDocumentIssued(original.id, "F-2026-999999", "operator:luis", clock)).rejects.toThrow(/otra referencia/);
+      // La BD no admite un documento emitido sin referencia ni una rectificativa positiva
+      await expect(pool.query("UPDATE fiscal_documents SET external_ref = NULL WHERE id = ?", [original.id])).rejects.toThrow();
+      await expect(pool.query("UPDATE fiscal_documents SET total_cents = 5 WHERE id = ?", [rect[0].id])).rejects.toThrow();
+    } finally {
+      gw.invoiceTaxBp = null;
+    }
+  });
+
   it("B4: disputa abierta → activo (aviso); disputa ganada → activo; disputa perdida → suspendido", async () => {
     const o = await contracted(await company("Disputa SL"));
     const { subId } = await paid(o.id);
@@ -579,5 +620,18 @@ describe.skipIf(!URL_)("Stripe Billing de punta a punta con MySQL real", () => {
     const r = await deliver(gw.emit("customer.subscription.deleted", "subscription", subId));
     expect(r.ignored).toBe(1);
     expect((await svc.must(o.id)).state).toBe("active");
+  });
+
+  // Última: revierte 0016 (no debe ir antes que las que usan el registro de facturas)
+  it("reversión de 0016: solo desaparece el registro documental; un alta nueva se cobra y se activa igual", async () => {
+    const down = fs.readFileSync(path.resolve(__dirname, "../../db/crm/migrations/0016_stripe_invoices_fiscal_documents.down.sql"), "utf8");
+    for (const st of splitStatements(down)) await pool.query(st);
+    const [t] = await pool.query<mysql.RowDataPacket[]>("SELECT COUNT(*) AS n FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name IN ('stripe_invoices', 'fiscal_documents')");
+    expect(Number(t[0].n)).toBe(0);
+    const o = await contracted(await company("Sin Registro SL"));
+    await paid(o.id);
+    const cur = await svc.must(o.id);
+    expect(cur.state).toBe("active");
+    expect((await paymentsOf(o.id)).map((p) => p.status)).toEqual(["succeeded"]);
   });
 });

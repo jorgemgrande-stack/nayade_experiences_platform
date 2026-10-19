@@ -32,6 +32,7 @@ import type { StripeMode } from "./config";
 import type { GwCharge, GwInvoice, GwSubscription, StripeGateway } from "./gateway";
 import type { StripeEventRow, StripeStore } from "./store";
 import { checkInvoiceTax, classifyTerritory, territoryGroup, type FiscalScenario, type TaxTreatment } from "./buyerProfile";
+import { invoiceDocumentOf, invoiceRecordOf, invoiceSourceKey, pendingSink, rectificationOf, type FiscalDocument, type FiscalDocumentSink, type InvoicePurpose } from "./fiscalDocuments";
 
 /** Eventos que se aceptan y procesan (nombres de la API 2026-09-30.endive). */
 export const HANDLED_EVENTS = [
@@ -84,6 +85,8 @@ export interface ProcessorDeps {
   mode?: StripeMode;
   /** Tratamiento del impuesto declarado por escenario: el impuesto de cada factura cobrada se contrasta con él. */
   taxExpectations?: Map<FiscalScenario, TaxTreatment>;
+  /** Sistema de facturación legal (cuando se apruebe). Por defecto ninguno: los documentos quedan pendientes. */
+  fiscalSink?: FiscalDocumentSink;
 }
 
 /** Estado de un cargo que deja sin cobertura el periodo que pagó. */
@@ -191,6 +194,8 @@ export class StripeEventProcessor {
         { chargeId: c.id, invoiceId: inv.id, subscriptionId: sub.id, orderId: v.order.id, companyId: v.order.companyId, amountCents: c.amount, amountRefundedCents: c.amountRefunded, currency: c.currency, disputeStatus, coverageLost: lost },
         this.now(),
       );
+      // Reembolso nuevo: rectificativa por el importe añadido, ligada al documento de la factura original
+      if (c.amountRefunded > (previous?.amountRefundedCents ?? 0)) await this.recordRefund(v.order.id, inv, c, previous?.amountRefundedCents ?? 0);
       const log = { orderId: v.order.id, chargeId: c.id, refunded: c.amountRefunded, amount: c.amount, dispute: disputeStatus };
       if (lost && !previous?.coverageLost) {
         opsLog("warn", "StripeEvents", "coverage_lost", log);
@@ -362,7 +367,66 @@ export class StripeEventProcessor {
       opsLog("info", "StripeEvents", "payment_verified", { orderId: order.id, invoiceId: inv.id, purpose, ...(inv.taxCents != null ? { taxCents: inv.taxCents } : {}) });
       await this.checkBuyer(order.id, inv, purpose);
     }
+    // Siempre (idempotente): si un intento anterior se cortó tras guardar el pago, el reintento lo completa
+    await this.recordInvoice(order.id, inv, purpose);
     return { created: r.created, purpose, invoiceId: inv.id, paymentId: r.payment.id };
+  }
+
+  /**
+   * Registro de la factura cobrada y su documento fiscal pendiente (0016). Sin la migración se avisa y se
+   * sigue: el cobro y la activación nunca dependen del registro documental.
+   */
+  private async recordInvoice(orderId: number, inv: GwInvoice, purpose: InvoicePurpose, refundedCents = 0): Promise<FiscalDocument | null> {
+    try {
+      const profile = await this.d.store.buyerProfile(orderId).catch(() => null);
+      const rec = invoiceRecordOf(inv, { orderId, purpose, buyerScenario: profile?.scenario ?? null, now: this.now(), refundedCents });
+      await this.d.store.upsertInvoiceRecord(rec);
+      const { created, document } = await this.d.store.enqueueFiscalDocument(invoiceDocumentOf(rec, this.now()));
+      if (created) {
+        opsLog("info", "StripeEvents", "fiscal_document_queued", { orderId, kind: "invoice", documentId: document.id, invoiceId: inv.id });
+        await this.submitFiscal(document);
+      }
+      return document;
+    } catch (e) {
+      if ((e as { code?: string })?.code === "ER_NO_SUCH_TABLE") {
+        opsLog("warn", "StripeEvents", "fiscal_registry_missing", { orderId, invoiceId: inv.id });
+        return null;
+      }
+      throw e;
+    }
+  }
+
+  /** Reembolso: rectificativa por lo reembolsado desde la última lectura (idempotente por cargo y total). */
+  private async recordRefund(orderId: number, inv: GwInvoice, c: GwCharge, previousRefunded: number) {
+    try {
+      // La factura original debe tener su documento (también si es anterior a este registro)
+      const purpose: InvoicePurpose = inv.billingReason === "subscription_cycle" ? "renewal" : inv.billingReason === "subscription_update" ? "change" : "initial";
+      const original = (await this.d.store.fiscalDocumentBySource(invoiceSourceKey(inv.id))) ?? (await this.recordInvoice(orderId, inv, purpose));
+      if (!original) return;
+      const draft = rectificationOf(original, { chargeId: c.id, refundedTotalCents: c.amountRefunded, previousRefundedCents: previousRefunded, now: this.now() });
+      await this.d.store.setInvoiceRefunded(inv.id, c.amountRefunded, this.now());
+      if (!draft) return;
+      const { created, document } = await this.d.store.enqueueFiscalDocument(draft);
+      if (created) {
+        opsLog("info", "StripeEvents", "fiscal_document_queued", { orderId, kind: "rectification", documentId: document.id, originalDocumentId: original.id, totalCents: document.totalCents });
+        await this.submitFiscal(document);
+      }
+    } catch (e) {
+      if ((e as { code?: string })?.code === "ER_NO_SUCH_TABLE") return void opsLog("warn", "StripeEvents", "fiscal_registry_missing", { orderId, chargeId: c.id });
+      throw e;
+    }
+  }
+
+  /** Entrega al sistema de facturación legal aprobado (por defecto ninguno: queda pendiente). */
+  private async submitFiscal(doc: FiscalDocument) {
+    const sink = this.d.fiscalSink ?? pendingSink;
+    if (sink === pendingSink) return;
+    const r = await sink.submit(doc).catch((e: unknown) => ({ status: "failed" as const, error: e instanceof Error ? e.name : "error" }));
+    if (r.status === "issued") await this.d.store.markFiscalDocumentIssued(doc.id, r.externalRef, `sink:${sink.name}`, this.now());
+    else if (r.status === "failed") {
+      opsLog("warn", "StripeEvents", "fiscal_document_failed", { documentId: doc.id, sink: sink.name, error: r.error.slice(0, 120) });
+      recordFailure("stripe.fiscal_document_failed");
+    }
   }
 
   /**
