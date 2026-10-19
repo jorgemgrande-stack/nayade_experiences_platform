@@ -99,10 +99,10 @@ export async function assertSeatAvailable(adding = 1): Promise<void> {
   } catch {
     throw new TRPCError({ code: "SERVICE_UNAVAILABLE", message: "No se pudo comprobar el límite de usuarios de tu plan; inténtalo en unos minutos" });
   }
+  if (!summary.plan || summary.userLimit === null) return;
   const used = await countSeatUsers();
   // Uso real para el plano de control (no deja bajar los usuarios contratados por debajo de lo usado)
   getLimitAccess()?.report("users", used);
-  if (!summary.plan || summary.userLimit === null) return;
   const d = seatDecision(summary, used, adding);
   if (!d.allowed) throw new TRPCError({ code: "FORBIDDEN", message: d.reason });
 }
