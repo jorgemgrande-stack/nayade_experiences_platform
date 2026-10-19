@@ -28,6 +28,9 @@ import type { OrderStore } from "../orchestrator/store";
 import { OrderError, type CommercialOrder } from "../orchestrator/types";
 import type { CatalogPort } from "../subscriptions/ports";
 import { opsLog } from "../_core/ops/log";
+import { recordFailure } from "../_core/ops/failureAlerts";
+import type { SubscriptionService } from "../subscriptions/service";
+import type { SubscriptionStore } from "../subscriptions/store";
 import { PURCHASABLE_FAMILIES } from "./catalog";
 import type { StripeBillingMode, StripeMode } from "./config";
 import type { GwInvoice, GwSubscription, StripeGateway } from "./gateway";
@@ -49,6 +52,14 @@ export class PurchaseError extends Error {
 /** Lo que pide el cliente: módulos a añadir y totales deseados de usuarios, sedes y almacenamiento. */
 export interface PurchaseInput {
   add?: string[];
+  users?: number;
+  sites?: number;
+  storageGb?: number;
+}
+
+/** Lo que se quita a fin de periodo: módulos y totales deseados (menores) de usuarios, sedes y almacenamiento. */
+export interface ReductionInput {
+  remove?: string[];
   users?: number;
   sites?: number;
   storageGb?: number;
@@ -105,6 +116,9 @@ export interface PurchaseDeps {
   gateway: StripeGateway;
   stripeStore: Pick<StripeStore, "priceForWebPrice" | "customerByCompany" | "subscriptionsOfCompany">;
   changes: SubscriptionChangeStore;
+  /** Comprobación previa de uso real (reducciones) y partidas internas (bajas programadas). */
+  subscriptions?: Pick<SubscriptionService, "checkReduction">;
+  subscriptionItems?: Pick<SubscriptionStore, "items">;
   /** Procesa ya la suscripción releída (el procesador de eventos): el webhook lo repetiría igual. */
   settle?: (subscriptionId: string, invoice?: GwInvoice) => Promise<unknown>;
   now?: () => number;
@@ -158,6 +172,11 @@ export class ModulePurchaseService {
     const have = new Set(current.request.items.map((i) => i.key));
     for (const key of add) {
       if (have.has(key)) throw new PurchaseError("invalid_input", `«${key}» ya está contratado`);
+      if (current.subscriptionId && this.d.subscriptionItems) {
+        const at = this.now();
+        const live = (await this.d.subscriptionItems.items(current.subscriptionId)).find((i) => i.productKey === key && i.effectiveFrom <= at && (i.effectiveTo === null || i.effectiveTo > at));
+        if (live) throw new PurchaseError("invalid_state", `«${key}» tiene la baja programada y sigue activo hasta el fin del periodo: se podrá volver a contratar después`);
+      }
       const p = await this.d.catalog.product(key);
       if (!p || p.commercialStatus !== "available" || !PURCHASABLE_FAMILIES.has(p.family) || p.addonFor) throw new PurchaseError("unavailable", `«${key}» no está disponible para compra en línea`);
     }
@@ -334,6 +353,9 @@ export class ModulePurchaseService {
       }
       return this.result(change, orderId, "processing", false);
     }
+    // Pedido ya vigente y Stripe sin las partidas: solo puede ser una reducción (una compra no se activa sin
+    // cobro). Se reenvía con la misma clave; nunca caduca
+    if (["active", "past_due", "suspended", "cancel_scheduled"].includes(order.state)) return this.sendReduction(change, orderId);
     if (sub.pendingUpdate) {
       const inv = change.stripeInvoiceId ? await this.d.gateway.invoice(change.stripeInvoiceId) : null;
       return { ...this.result(change, orderId, "payment_pending", false), paymentUrl: inv?.hostedInvoiceUrl ?? null };
@@ -347,6 +369,150 @@ export class ModulePurchaseService {
       opsLog("info", "Purchases", "change_expired", { orderId, changeId: change.id });
     }
     return this.result({ ...change, status: "expired" }, orderId, "expired", false);
+  }
+
+  // ── Bajas y reducciones (PR 6) ─────────────────────────────────────────────
+
+  /**
+   * Petición reducida (la vigente − módulos quitados − unidades de menos). Nunca por debajo del uso real (se
+   * comprueba ANTES de crear nada), nunca el plan y nunca un aumento en la misma operación.
+   */
+  private async planReduction(current: CommercialOrder, sub: GwSubscription, input: ReductionInput) {
+    const remove = Array.from(new Set((input.remove ?? []).map((k) => String(k).trim()).filter(Boolean)));
+    const have = new Set(current.request.items.map((i) => i.key));
+    for (const key of remove) {
+      if (key === current.request.plan) throw new PurchaseError("invalid_input", "El plan no se quita: cambia de plan o cancela la suscripción");
+      if (!have.has(key)) throw new PurchaseError("invalid_input", `«${key}» no está contratado`);
+    }
+    const r = current.request as CommercialOrder["request"] & { users?: number; sites?: number; storageGb?: number };
+    const request: typeof r = { ...structuredClone(r), items: r.items.filter((i) => !remove.includes(i.key)) };
+    for (const f of Object.keys(METRICS) as Array<keyof typeof METRICS>) {
+      const v = input[f];
+      if (v === undefined) continue;
+      if (!Number.isInteger(v) || v < 0 || v > 100_000) throw new PurchaseError("invalid_input", `Cantidad no válida (${METRICS[f]})`);
+      request[f] = v;
+    }
+    const q = await this.d.quote(request);
+    if (!q.ok) throw new PurchaseError("invalid_input", `Configuración no válida: ${q.errors.join("; ")}`);
+    const before = await this.d.quote(r);
+    const qtyBefore = new Map(before.ok ? before.lines.filter((l) => l.family === "addon").map((l) => [l.key, l.quantity]) : []);
+    const qtyAfter = new Map(q.lines.filter((l) => l.family === "addon").map((l) => [l.key, l.quantity]));
+    for (const [key, n] of Array.from(qtyAfter.entries())) if (n > (qtyBefore.get(key) ?? 0)) throw new PurchaseError("invalid_input", "Para ampliar usa la compra (se cobra el prorrateo)");
+    const kind = request.interval === "year" ? "yearly" : "monthly";
+    const offer = await this.d.catalog.offer();
+    const linkOf = async (key: string) => {
+      const price = offer.find((p) => p.key === key)?.prices.find((p) => p.kind === kind && p.status === "approved" && p.currency.toUpperCase() === "EUR");
+      const link = price ? await this.d.stripeStore.priceForWebPrice(price.id) : null;
+      return link ? { link, price: price! } : null;
+    };
+    const curItems = new Map((sub.items ?? []).map((i) => [i.priceId, i.quantity]));
+    const desired = new Map(curItems);
+    const lines: PurchaseLine[] = [];
+    let recurringDeltaCents = 0;
+    const reduce = async (key: string, name: string, kindOf: PurchaseLine["kind"], from: number, to: number) => {
+      const l = await linkOf(key);
+      if (!l || (curItems.get(l.link.stripePriceId) ?? 0) !== from) throw new PurchaseError("conflict", `«${name}» en Stripe no coincide con lo contratado: lo revisa el equipo`);
+      // Nunca por debajo del uso real: se comprueba antes de crear el pedido
+      if (kindOf === "quantity" && current.subscriptionId && this.d.subscriptions) {
+        try {
+          await this.d.subscriptions.checkReduction(current.subscriptionId, { productKey: key, quantity: to });
+        } catch (e) {
+          throw new PurchaseError("invalid_state", e instanceof Error ? e.message : "No se puede reducir por debajo del uso real");
+        }
+      }
+      if (to === 0) desired.delete(l.link.stripePriceId);
+      else desired.set(l.link.stripePriceId, to);
+      lines.push({ productKey: key, name, kind: kindOf, stripePriceId: l.link.stripePriceId, fromQuantity: from, toQuantity: to });
+      recurringDeltaCents -= l.price.amountCents * (from - to);
+    };
+    for (const key of remove) await reduce(key, offer.find((p) => p.key === key)?.name ?? key, "module", 1, 0);
+    for (const [key, from] of Array.from(qtyBefore.entries())) {
+      const to = qtyAfter.get(key) ?? 0;
+      if (to < from) await reduce(key, offer.find((p) => p.key === key)?.name ?? key, "quantity", from, to);
+    }
+    if (!lines.length) throw new PurchaseError("invalid_input", "No hay nada que reducir");
+    const expected: ExpectedItem[] = Array.from(desired.entries()).map(([priceId, quantity]) => ({ priceId, quantity }));
+    const items = itemChanges(sub.items ?? [], expected);
+    const owned = new Set([current.request.plan, ...current.request.items.map((i) => i.key)]);
+    const onRequest = q.lines.filter((l) => l.commercialStatus === "on_request");
+    if (onRequest.some((l) => !owned.has(l.key))) throw new PurchaseError("invalid_state", "La reducción dejaría productos sin aprobar: lo revisa el equipo");
+    const approvalReason = onRequest.length ? `Ya aprobado en el pedido vigente ${current.reference ?? current.id}; la reducción solo quita partidas` : undefined;
+    return { request, lines, expected, items, recurringDeltaCents, approvalReason };
+  }
+
+  /** Qué cambiaría una reducción (sin cambiar nada). Sin abonos: lo pagado se disfruta hasta el fin del periodo. */
+  async previewReduction(tenantId: string, input: ReductionInput) {
+    this.assertEnabled();
+    const { current, sub } = await this.context(tenantId);
+    const p = await this.planReduction(current, sub, input);
+    return { orderId: current.id, subscriptionId: sub.id, lines: p.lines, recurringDeltaCents: p.recurringDeltaCents, effectiveAt: sub.currentPeriodEnd === null || sub.currentPeriodEnd === undefined ? null : sub.currentPeriodEnd * 1000, interval: current.request.interval };
+  }
+
+  /**
+   * Baja de módulos o reducción de ampliaciones a FIN DE PERIODO, sin abonos (lo pagado se disfruta hasta el
+   * final). Internamente: pedido de cambio sin importe (confirmación heredada) que programa las bajas al fin de
+   * periodo (derechos y límites siguen hasta entonces). En Stripe: las partidas se ajustan YA sin prorrateo, de
+   * modo que la próxima renovación ya no las cobra. Nunca por debajo del uso real; nunca borra datos ni
+   * desactiva usuarios. Idempotente por clave.
+   */
+  async reduce(tenantId: string, input: ReductionInput, opts: { idempotencyKey: string; actor: string }): Promise<PurchaseResult> {
+    this.assertEnabled();
+    if (!KEY_RE.test(opts.idempotencyKey ?? "")) throw new PurchaseError("invalid_input", "Clave de idempotencia no válida");
+    const orderKey = `reduce-${tenantId}-${opts.idempotencyKey}`.slice(0, 80);
+    const replay = await this.replay(tenantId, orderKey);
+    if (replay) return replay;
+    const { company, current, sub } = await this.context(tenantId);
+    const p = await this.planReduction(current, sub, input);
+    let order: CommercialOrder;
+    try {
+      const created = await this.d.orchestrator.create({ idempotencyKey: orderKey, changeOf: current.id, request: p.request }, opts.actor);
+      order = created.order;
+      if (order.state === "requested" || order.state === "quoted") order = (await this.d.orchestrator.accept(order.id, { signatureRef: `platform-reduction:${opts.actor}`.slice(0, 120), ...(p.approvalReason ? { approvalReason: p.approvalReason } : {}) }, opts.actor)).order;
+    } catch (e) {
+      if (e instanceof OrderError) throw new PurchaseError(e.code === "conflict" ? "conflict" : e.code === "invalid_input" ? "invalid_input" : "invalid_state", e.message);
+      throw e;
+    }
+    // Sin importe y sin capacidades nuevas: la confirmación es la heredada y el pedido queda activo ya
+    if (order.state !== "active") {
+      opsLog("error", "Purchases", "reduction_not_applied", { orderId: order.id, state: order.state });
+      recordFailure("purchases.reduction_stuck");
+      throw new PurchaseError("invalid_state", `La reducción quedó en «${order.state}»${order.lastError ? `: ${order.lastError}` : ""}`);
+    }
+    const change = (
+      await this.d.changes.insert({
+        orderId: order.id,
+        companyId: company.id,
+        stripeSubscriptionId: sub.id,
+        idempotencyKey: `es-${this.d.namespace}-order-${order.id}-items-v1`,
+        items: p.items,
+        expectedItems: p.expected,
+        createdBy: opts.actor,
+        createdAt: this.now(),
+      })
+    ).change;
+    return { ...(await this.sendReduction(change, order.id)), created: true };
+  }
+
+  /** Ajusta las partidas en Stripe sin prorrateo (ni cobro ni abono). Reenviable: misma clave, mismo resultado. */
+  private async sendReduction(change: SubscriptionChange, orderId: number): Promise<PurchaseResult> {
+    try {
+      const r = await this.d.gateway.updateSubscriptionItems(
+        { subscriptionId: change.stripeSubscriptionId, items: change.items, prorationBehavior: "none", paymentBehavior: "error_if_incomplete", metadata: { es_change_order_id: String(orderId) } },
+        change.idempotencyKey,
+      );
+      await this.d.changes.setInvoice(change.id, { stripeInvoiceId: r.invoice?.id ?? null, amountDueCents: 0, expiresAt: null }, this.now());
+      if (sameItems(r.subscription.items ?? [], change.expectedItems)) {
+        await this.d.changes.resolve(change.id, "applied", null, this.now());
+        return this.result({ ...change, status: "applied" }, orderId, "applied", false);
+      }
+      return this.result(change, orderId, "processing", false);
+    } catch (e) {
+      // La reducción interna YA está programada: Stripe debe seguirla. Queda pendiente (la conciliación reenvía)
+      // y con alerta; nunca se deshace lo interno en silencio
+      opsLog("error", "Purchases", "reduction_stripe_pending", { orderId, changeId: change.id, retryable: (e as { retryable?: boolean }).retryable === true });
+      recordFailure("purchases.reduction_stripe_pending");
+      return this.result(change, orderId, "processing", false);
+    }
   }
 
   /** Estado de una compra de ESA empresa (un pedido de otra empresa no existe para ella). */
