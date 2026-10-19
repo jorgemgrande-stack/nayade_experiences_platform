@@ -44,11 +44,18 @@ export function isOperatorPath(p: string): boolean {
 }
 
 /** Inicio/cierre de sesión: única escritura permitida a un tenant sin escrituras de negocio. */
+/**
+ * Procedimientos permitidos aunque la empresa no admita escrituras (suspendida o en solo lectura tras la baja):
+ * exportar sus datos es lo que se garantiza durante ese periodo (solo la persona propietaria; lo comprueba el
+ * propio procedimiento).
+ */
+const READ_ONLY_ALLOWED = new Set(["dataExport.request", "dataExport.link"]);
+
 export function isSessionPath(p: string): boolean {
   if (p.startsWith("/api/auth")) return true;
   if (!p.startsWith("/api/trpc/")) return false;
   const procs = decodeURIComponent(p.slice("/api/trpc/".length)).split(",");
-  return procs.length > 0 && procs.every((x) => x.startsWith("auth."));
+  return procs.length > 0 && procs.every((x) => x.startsWith("auth.") || READ_ONLY_ALLOWED.has(x));
 }
 
 function send(res: Response, status: number, retryAfter?: number): void {
