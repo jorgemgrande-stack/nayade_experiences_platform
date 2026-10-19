@@ -4,9 +4,12 @@
  * Toda mutación pasa por `mutate()`: una transacción que bloquea la suscripción (FOR UPDATE),
  * comprueba la versión esperada (dos operadores no se pisan), aplica los cambios de partidas,
  * actualiza la suscripción, sube la versión y escribe el evento del historial. Si algo falla, no
- * queda nada a medias.
+ * queda nada a medias. Con registro de eventos comerciales (migración 0014), el evento comercial va
+ * en esa misma transacción.
  */
 import type mysql from "mysql2/promise";
+import { subscriptionChanged } from "../commercialEvents/derive";
+import type { CommercialEventSink } from "../commercialEvents/types";
 import {
   SubscriptionError,
   type ChargeStatus,
@@ -88,6 +91,7 @@ const refFor = (id: number, createdAt: number) => `SUB-${new Date(createdAt).get
 // ── Memoria (pruebas y desarrollo) ──────────────────────────────────────────────
 
 export class MemorySubscriptionStore implements SubscriptionStore {
+  constructor(private commercialEvents?: CommercialEventSink) {}
   private subs = new Map<number, Subscription>();
   private itemsById = new Map<number, SubscriptionItem>();
   private evs: SubscriptionEvent[] = [];
@@ -156,6 +160,7 @@ export class MemorySubscriptionStore implements SubscriptionStore {
       const t = this.tx(id);
       for (const i of items) await t.insertItem(i);
       this.evs.push({ id: ++this.seq, subscriptionId: id, version: 1, actor: sub.createdBy, createdAt: sub.createdAt, ...clone(event) });
+      await this.commercialEvents?.append(null, subscriptionChanged(null, full, event, sub.createdBy, sub.createdAt));
       return clone(full);
     });
   }
@@ -172,6 +177,7 @@ export class MemorySubscriptionStore implements SubscriptionStore {
       }
       this.subs.set(id, next);
       this.evs.push({ id: ++this.seq, subscriptionId: id, version: next.version, actor, createdAt: now, ...clone(out.event) });
+      await this.commercialEvents?.append(null, subscriptionChanged(cur, next, out.event, actor, now));
       return { subscription: clone(next), result: out.result };
     });
   }
@@ -404,7 +410,11 @@ const PATCH_COLS: Record<keyof SubscriptionPatch, string> = {
 };
 
 export class MysqlSubscriptionStore implements SubscriptionStore {
-  constructor(private pool: mysql.Pool) {}
+  constructor(
+    private pool: mysql.Pool,
+    /** Registro de eventos comerciales (0014); sin él, todo funciona igual y no se registra nada. */
+    private commercialEvents?: CommercialEventSink,
+  ) {}
 
   private async inTx<T>(fn: (c: mysql.PoolConnection) => Promise<T>): Promise<T> {
     const c = await this.pool.getConnection();
@@ -439,7 +449,9 @@ export class MysqlSubscriptionStore implements SubscriptionStore {
         for (const i of items) await insertItemSql(c, id, i);
         await insertEventSql(c, id, 1, event, sub.createdBy, sub.createdAt);
         const [rows] = await c.query<mysql.RowDataPacket[]>("SELECT * FROM subscriptions WHERE id = ?", [id]);
-        return subRow(rows[0]);
+        const created = subRow(rows[0]);
+        if (this.commercialEvents) await this.commercialEvents.append(c, subscriptionChanged(null, created, event, sub.createdBy, sub.createdAt));
+        return created;
       });
     } catch (e) {
       if ((e as { code?: string }).code === "ER_DUP_ENTRY" && /live_contract/.test((e as Error).message)) {
@@ -488,7 +500,9 @@ export class MysqlSubscriptionStore implements SubscriptionStore {
       if (upd.affectedRows !== 1) throw new VersionConflict(cur.version);
       await insertEventSql(c, id, cur.version + 1, out.event, actor, now);
       const [after] = await c.query<mysql.RowDataPacket[]>("SELECT * FROM subscriptions WHERE id = ?", [id]);
-      return { subscription: subRow(after[0]), result: out.result };
+      const next = subRow(after[0]);
+      if (this.commercialEvents) await this.commercialEvents.append(c, subscriptionChanged(cur, next, out.event, actor, now));
+      return { subscription: next, result: out.result };
     });
   }
 

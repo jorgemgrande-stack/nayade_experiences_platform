@@ -1,8 +1,11 @@
 /**
  * Persistencia de las solicitudes de prueba (BD del CRM, migración 0007) + memoria. Cada cambio de
- * estado es una transacción con versión optimista y su evento de auditoría.
+ * estado es una transacción con versión optimista y su evento de auditoría. Con registro de eventos
+ * comerciales (migración 0014 del CRM), el evento comercial va en esa misma transacción.
  */
 import type mysql from "mysql2/promise";
+import { trialChanged } from "../commercialEvents/derive";
+import type { CommercialEventSink } from "../commercialEvents/types";
 import type { TrialAction, TrialState } from "./machine";
 
 export interface TrialRequest {
@@ -90,12 +93,14 @@ export class MemoryTrialStore implements TrialStore {
   private rows = new Map<number, TrialRequest>();
   private evs: TrialEvent[] = [];
   private seq = 0;
+  constructor(private commercialEvents?: CommercialEventSink) {}
   async insert(t: Omit<TrialRequest, "id" | "version" | "updatedAt">, actor: string) {
     if (Array.from(this.rows.values()).some((r) => r.idempotencyKey === t.idempotencyKey)) throw new TrialConflict("duplicate_key", "Solicitud repetida");
     if (await this.openByEmail(t.email)) throw new TrialConflict("duplicate_email", "Ya hay una prueba abierta con ese correo");
     const full: TrialRequest = { ...clone(t), id: ++this.seq, version: 1, updatedAt: null };
     this.rows.set(full.id, full);
     this.evs.push({ id: ++this.seq, trialId: full.id, action: "registered", fromState: null, toState: full.state, version: 1, detail: null, actor, createdAt: t.createdAt });
+    await this.commercialEvents?.append(null, trialChanged(full, "registered", null, actor, t.createdAt));
     return clone(full);
   }
   async byIdempotencyKey(key: string) {
@@ -128,6 +133,7 @@ export class MemoryTrialStore implements TrialStore {
     const next = { ...cur, ...clone(patch), version: cur.version + 1, updatedAt: e.at };
     this.rows.set(id, next);
     this.evs.push({ id: ++this.seq, trialId: id, action: e.action, fromState: e.fromState, toState: next.state, version: next.version, detail: e.detail, actor: e.actor, createdAt: e.at });
+    await this.commercialEvents?.append(null, trialChanged(next, e.action, e.fromState, e.actor, e.at));
     return clone(next);
   }
   async count(f: { state?: TrialState; emailDomain?: string; ipHash?: string; since?: number }) {
@@ -203,7 +209,11 @@ const COLS: Record<keyof TrialPatch, string> = {
 const dup = (e: unknown, key: string) => (e as { code?: string }).code === "ER_DUP_ENTRY" && new RegExp(key).test((e as Error).message);
 
 export class MysqlTrialStore implements TrialStore {
-  constructor(private pool: mysql.Pool) {}
+  constructor(
+    private pool: mysql.Pool,
+    /** Registro de eventos comerciales (0014); sin él, todo funciona igual y no se registra nada. */
+    private commercialEvents?: CommercialEventSink,
+  ) {}
   async insert(t: Omit<TrialRequest, "id" | "version" | "updatedAt">, actor: string) {
     const c = await this.pool.getConnection();
     try {
@@ -219,6 +229,7 @@ export class MysqlTrialStore implements TrialStore {
         ],
       );
       await c.query("INSERT INTO trial_events (trial_id, action, from_state, to_state, version, actor, created_at) VALUES (?, 'registered', NULL, ?, 1, ?, ?)", [res.insertId, t.state, actor, t.createdAt]);
+      if (this.commercialEvents) await this.commercialEvents.append(c, trialChanged({ ...t, id: res.insertId, version: 1, updatedAt: null }, "registered", null, actor, t.createdAt));
       await c.commit();
       // Con la MISMA conexión: pedir otra al pool mientras se retiene esta bloquea para siempre cuando
       // hay tantas altas simultáneas como conexiones (cada una espera una conexión que nadie suelta)
@@ -274,6 +285,7 @@ export class MysqlTrialStore implements TrialStore {
       await c.query("INSERT INTO trial_events (trial_id, action, from_state, to_state, version, detail, actor, created_at) VALUES (?,?,?,?,?,?,?,?)", [
         id, e.action, e.fromState, t.state, t.version, e.detail, e.actor, e.at,
       ]);
+      if (this.commercialEvents) await this.commercialEvents.append(c, trialChanged(t, e.action, e.fromState, e.actor, e.at));
       await c.commit();
       return t;
     } catch (err) {

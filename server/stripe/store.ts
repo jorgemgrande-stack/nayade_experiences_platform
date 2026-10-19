@@ -5,8 +5,13 @@
  * Cada almacén trabaja en UN modo (por defecto pruebas): escribe `livemode` según él (0 pruebas, 1 live)
  * y solo lee, cuenta, actualiza o purga filas de su modo. Una fila del otro modo se ignora en las
  * lecturas y se rechaza al escribir (duplicado o `mode_mismatch`): un entorno nunca usa filas del otro.
+ *
+ * Con registro de eventos comerciales (CRM 0014), un reembolso nuevo, la pérdida o recuperación de la
+ * cobertura y cada cambio de disputa se registran en la misma transacción que el ajuste del cargo.
  */
 import type mysql from "mysql2/promise";
+import { chargeAdjusted } from "../commercialEvents/derive";
+import type { CommercialEventSink } from "../commercialEvents/types";
 import type { StripeMode } from "./config";
 import type { GwSubscription } from "./gateway";
 
@@ -154,11 +159,16 @@ export interface StripeStore {
 // ── Memoria (pruebas) ────────────────────────────────────────────────────────
 
 type Table = "prices" | "customers" | "sessions" | "subscriptions" | "events" | "adjustments";
+/** Los ajustes los escribe siempre el procesador de eventos de Stripe. */
+const ADJUSTMENT_ACTOR = "system:stripe";
 
 export class MemoryStripeStore implements StripeStore {
   /** `livemode` de cada fila (`tabla:clave`), como la columna de la BD. Sin marca, la fila es de este modo. */
   livemodes = new Map<string, boolean>();
-  constructor(readonly mode: StripeMode = "test") {}
+  constructor(
+    readonly mode: StripeMode = "test",
+    private commercialEvents?: CommercialEventSink,
+  ) {}
   private mine(t: Table, k: string | number) {
     const v = this.livemodes.get(`${t}:${k}`);
     return v === undefined || v === (this.mode === "live");
@@ -263,6 +273,7 @@ export class MemoryStripeStore implements StripeStore {
     };
     this.adjustments.set(a.chargeId, cur);
     this.stamp("adjustments", a.chargeId);
+    await this.commercialEvents?.append(null, chargeAdjusted(prev, cur, null, ADJUSTMENT_ACTOR, now));
     return { previous: prev ? { ...prev } : null, current: { ...cur } };
   }
   async adjustment(id: string) {
@@ -388,6 +399,8 @@ export class MysqlStripeStore implements StripeStore {
   constructor(
     private pool: mysql.Pool,
     readonly mode: StripeMode = "test",
+    /** Registro de eventos comerciales (0014); sin él, todo funciona igual y no se registra nada. */
+    private commercialEvents?: CommercialEventSink,
   ) {
     this.lm = mode === "live" ? 1 : 0;
   }
@@ -656,8 +669,14 @@ export class MysqlStripeStore implements StripeStore {
         );
       }
       const [after] = await conn.query<Row[]>("SELECT * FROM stripe_charge_adjustments WHERE stripe_charge_id = ?", [a.chargeId]);
+      const current = this.adjustmentRow(after[0]);
+      if (this.commercialEvents) {
+        const [o] = await conn.query<Row[]>("SELECT tenant_id, subscription_id FROM commercial_orders WHERE id = ?", [a.orderId]);
+        const order = o[0] ? { tenantId: (o[0].tenant_id as string | null) ?? null, subscriptionId: o[0].subscription_id == null ? null : Number(o[0].subscription_id) } : null;
+        await this.commercialEvents.append(conn, chargeAdjusted(prev, current, order, ADJUSTMENT_ACTOR, now));
+      }
       await conn.commit();
-      return { previous: prev, current: this.adjustmentRow(after[0]) };
+      return { previous: prev, current };
     } catch (e) {
       await conn.rollback().catch(() => undefined);
       throw e;

@@ -10,6 +10,8 @@
  */
 import express, { type Express, type NextFunction, type Request, type Response } from "express";
 import { BUILTIN_MODULES } from "../_core/modules/builtin";
+import type { CommercialEventReader } from "../commercialEvents/log";
+import { COMMERCIAL_EVENT_TYPES, type CommercialEventFilter, type CommercialEventType } from "../commercialEvents/types";
 import { CORE_VERSION } from "../_core/modules/runtime";
 import { assertCanActivate, assertCanDeactivate, buildCatalog, tenantModules, type ModulePriceRef, type PlanRef } from "../_core/modules/catalog";
 import rateLimit, { ipKeyGenerator } from "express-rate-limit";
@@ -176,6 +178,8 @@ export interface ControlPlaneDeps {
   trials?: { store: TrialStore; publicEnabled?: boolean; autoProvision?: boolean; notify?: TrialNotifier; limits?: Partial<TrialLimits>; blockedDomains?: string[] };
   /** Sedes y entidades fiscales (registro 0009), con los límites del plan contratado. */
   organization?: OrganizationStore;
+  /** Registro de eventos comerciales (CRM 0014), solo lectura. */
+  commercialEvents?: CommercialEventReader;
   /**
    * Orquestador comercial (CRM 0010). Requiere suscripciones, CRM, web y licencias por capacidad. Los
    * pagos simulados son SOLO de prueba (`payments`; con Stripe en live no se admiten y la aplicación no se
@@ -1370,6 +1374,40 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         const totals: Record<string, number> = {};
         for (const r of rows) totals[r.metric] = (totals[r.metric] ?? 0) + r.quantity;
         res.json({ tenantId: id, days, totals, hourly: rows });
+      }),
+    );
+  }
+
+  // Registro de eventos comerciales: solo lectura y siempre acotado a una operación, empresa o tenant
+  if (d.commercialEvents) {
+    const log = d.commercialEvents;
+    router.get(
+      "/commercial-events",
+      requireScope("ops:read"),
+      wrap(async (req, res) => {
+        const q = req.query as Record<string, string | undefined>;
+        const bad = (message: string) => void res.status(400).json({ error: "invalid_input", message });
+        const badInt = ["companyId", "orderId", "subscriptionId", "trialId", "afterId", "limit"].find((k) => q[k] !== undefined && !(Number.isInteger(Number(q[k])) && Number(q[k]) > 0));
+        if (badInt) return bad(`${badInt} no es válido`);
+        const int = (k: string) => (q[k] === undefined ? undefined : Number(q[k]));
+        const f: CommercialEventFilter = {
+          correlationId: q.correlationId?.slice(0, 40),
+          tenantId: q.tenantId?.slice(0, 63),
+          companyId: int("companyId"),
+          orderId: int("orderId"),
+          subscriptionId: int("subscriptionId"),
+          trialId: int("trialId"),
+          afterId: int("afterId"),
+          limit: Math.min(int("limit") ?? 200, 1000),
+        };
+        if ([f.correlationId, f.tenantId, f.companyId, f.orderId, f.subscriptionId, f.trialId].every((x) => x === undefined))
+          return bad("Indica correlationId, tenantId, companyId, orderId, subscriptionId o trialId");
+        if (q.types) {
+          const types = q.types.split(",").map((t) => t.trim());
+          if (types.some((t) => !(COMMERCIAL_EVENT_TYPES as readonly string[]).includes(t))) return bad("Tipo de evento desconocido");
+          f.types = types as CommercialEventType[];
+        }
+        res.json({ events: await log.list(f) });
       }),
     );
   }
