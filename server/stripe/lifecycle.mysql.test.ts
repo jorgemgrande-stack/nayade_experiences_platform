@@ -117,7 +117,7 @@ describe.skipIf(!URL_)("Stripe Billing de punta a punta con MySQL real", () => {
     }
     expect((await syncCatalog(desired, gw, stripeStore, clock)).linked).toHaveLength(4);
     checkout = new StripeCheckoutService({ store: stripeStore, gateway: gw, orders, crmStore, catalog, urls: URLS, now: () => clock });
-    processor = new StripeEventProcessor({ store: stripeStore, gateway: gw, orders, orchestrator: svc, now: () => clock });
+    processor = new StripeEventProcessor({ store: stripeStore, gateway: gw, orders, orchestrator: svc, now: () => clock, catalog });
     reconciler = new StripeReconciler({ store: stripeStore, gateway: gw, processor, now: () => clock, refreshAfterMs: 60 * 60_000 });
   }, 180_000);
 
@@ -417,6 +417,104 @@ describe.skipIf(!URL_)("Stripe Billing de punta a punta con MySQL real", () => {
   // ── Reembolsos y disputas (B4) ─────────────────────────────────────────────
   const chargeOf = async (subId: string) => gw.chargeForInvoice((await gw.subscription(subId))!.latestInvoiceId!);
   const adj = async (chargeId: string) => stripeStore.adjustment(chargeId);
+
+  // ── Cambios de plan hechos en el Customer Portal ──────────────────────────
+  const priceOf = (plan: string, kind: "monthly" | "yearly") => gw.prices.find((p) => p.metadata.es_product_key === plan && p.metadata.es_kind === kind)!.id;
+  const chainOf = async (orderId: number) => {
+    const o = await svc.must(orderId);
+    return (await orders.list({ subscriptionId: o.subscriptionId! })).sort((a, b) => a.id - b.id);
+  };
+  const portalChange = async (subId: string, price: string, invoice: { reason: string; status: "paid" | "open"; amount: number } | null) => {
+    gw.updateSubscription(subId, { priceIds: [price] });
+    return invoice ? gw.addInvoice(subId, (await gw.subscription(subId))!.customerId, invoice.reason, invoice.status, invoice.amount) : null;
+  };
+
+  it("Portal: subida Essential → Business con prorrateo cobrado → pedido de cambio confirmado por ESE pago, relicencia y sustituye; la renovación va al vigente", async () => {
+    const o = await contracted(await company("Sube Plan SL"));
+    const { subId } = await paid(o.id);
+    const caps0 = (await licences((await svc.must(o.id)).tenantId!)).length;
+    const inv = await portalChange(subId, priceOf("business", "monthly"), { reason: "subscription_update", status: "paid", amount: 5000 });
+    await deliver(gw.emit("customer.subscription.updated", "subscription", subId));
+    const [orig, change] = await chainOf(o.id);
+    expect(orig).toMatchObject({ id: o.id, state: "superseded" });
+    expect(change).toMatchObject({ kind: "change", previousOrderId: o.id, state: "active", request: { plan: "business", interval: "month" } });
+    expect(change.confirmation).toMatchObject({ kind: "payment" });
+    expect((await paymentsOf(change.id)).map((p) => [p.purpose, p.status, p.idempotency_key])).toEqual([["change", "succeeded", `stripe:inv:${inv}`]]);
+    expect((await licences(change.tenantId!)).length).toBeGreaterThan(caps0);
+    // El mismo evento otra vez no crea otro pedido
+    await deliver(gw.emit("customer.subscription.updated", "subscription", subId));
+    expect(await chainOf(o.id)).toHaveLength(2);
+    // Renovación posterior: se anota en el pedido vigente (el de cambio), no en el sustituido
+    const ren = gw.addInvoice(subId, (await gw.subscription(subId))!.customerId, "subscription_cycle", "paid", 7900);
+    await deliver(gw.emit("invoice.paid", "invoice", ren));
+    expect((await paymentsOf(change.id)).map((p) => p.purpose)).toEqual(["change", "renewal"]);
+    expect((await paymentsOf(o.id)).map((p) => p.purpose)).toEqual(["initial"]);
+    expect((await svc.must(change.id)).state).toBe("active");
+  });
+
+  it("Portal: la factura del prorrateo llega ANTES que la actualización de la suscripción → el mismo resultado, sin duplicar", async () => {
+    const o = await contracted(await company("Orden Inverso SL"));
+    const { subId } = await paid(o.id);
+    const inv = await portalChange(subId, priceOf("business", "monthly"), { reason: "subscription_update", status: "paid", amount: 5000 });
+    await deliver(gw.emit("invoice.paid", "invoice", inv!));
+    await deliver(gw.emit("customer.subscription.updated", "subscription", subId));
+    const chain = await chainOf(o.id);
+    expect(chain.map((x) => x.state)).toEqual(["superseded", "active"]);
+    expect((await paymentsOf(chain[1].id)).map((p) => p.purpose)).toEqual(["change"]);
+  });
+
+  it("Portal: bajada Business → Essential al renovar (programada a fin de periodo) → confirmación heredada, sin pago de cambio", async () => {
+    const o = await contracted(await company("Baja Plan SL"), "business");
+    const { subId } = await paid(o.id);
+    const ren = await portalChange(subId, priceOf("essential", "monthly"), { reason: "subscription_cycle", status: "paid", amount: 2900 });
+    await deliver(gw.emit("invoice.paid", "invoice", ren!));
+    const [orig, change] = await chainOf(o.id);
+    expect(orig.state).toBe("superseded");
+    expect(change).toMatchObject({ state: "active", request: { plan: "essential" }, confirmation: { kind: "inherited", ref: String(o.id) } });
+    expect((await paymentsOf(change.id)).map((p) => p.purpose)).toEqual(["renewal"]);
+  });
+
+  it("Portal: subida con el prorrateo SIN pagar → el cambio espera y no da más licencias; al pagarse se completa", async () => {
+    const o = await contracted(await company("Espera Pago SL"));
+    const { subId } = await paid(o.id);
+    const caps0 = (await licences((await svc.must(o.id)).tenantId!)).length;
+    const inv = await portalChange(subId, priceOf("business", "monthly"), { reason: "subscription_update", status: "open", amount: 5000 });
+    await deliver(gw.emit("customer.subscription.updated", "subscription", subId));
+    let [orig, change] = await chainOf(o.id);
+    expect(orig.state).toBe("active");
+    expect(change).toMatchObject({ state: "contracted", confirmation: null });
+    expect((await licences(orig.tenantId!)).length).toBe(caps0);
+    gw.invoices.set(inv!, { ...gw.invoices.get(inv!)!, status: "paid", amountPaid: 5000 });
+    await deliver(gw.emit("invoice.paid", "invoice", inv!));
+    [orig, change] = await chainOf(o.id);
+    expect([orig.state, change.state]).toEqual(["superseded", "active"]);
+  });
+
+  it("Portal: dos cambios seguidos antes de pagar → manda el último (el primero se rechaza); plan y periodicidad a la vez", async () => {
+    const o = await contracted(await company("Dos Cambios SL"));
+    const { subId } = await paid(o.id);
+    await portalChange(subId, priceOf("business", "monthly"), { reason: "subscription_update", status: "open", amount: 5000 });
+    await deliver(gw.emit("customer.subscription.updated", "subscription", subId));
+    const inv = await portalChange(subId, priceOf("business", "yearly"), { reason: "subscription_update", status: "paid", amount: 70000 });
+    await deliver(gw.emit("invoice.paid", "invoice", inv!));
+    const changes = (await orders.list({})).filter((x) => x.previousOrderId === o.id).sort((a, b) => a.id - b.id);
+    expect(changes.map((x) => [x.request.plan, x.request.interval, x.state])).toEqual([
+      ["business", "month", "rejected"],
+      ["business", "year", "active"],
+    ]);
+    expect((await svc.must(o.id)).state).toBe("superseded");
+    // Límite del modelo interno: con la periodicidad anual programada para la renovación, otro cambio en el mismo
+    // periodo (bajada a Essential mensual) no se puede reflejar. NO se inventa: el pedido de cambio se queda con
+    // el motivo, el evento se reintenta (y al agotarse alerta) y las licencias siguen las del pedido vigente.
+    const back = await portalChange(subId, priceOf("essential", "monthly"), { reason: "subscription_cycle", status: "paid", amount: 2900 });
+    const r = await deliver(gw.emit("invoice.paid", "invoice", back!));
+    expect(r.failed + r.retried).toBeGreaterThan(0);
+    const active = (await chainOf(o.id)).filter((x) => x.state === "active");
+    expect(active.map((x) => x.request)).toEqual([expect.objectContaining({ plan: "business", interval: "year" })]);
+    const pending = (await orders.list({})).filter((x) => x.previousOrderId === changes[1].id);
+    expect(pending.map((x) => [x.request.plan, x.state])).toEqual([["essential", "confirmed"]]);
+    expect(pending[0].lastError).toMatch(/cambio programado/);
+  });
 
   it("B4: reembolso total del periodo vigente → suspendido aunque Stripe siga «active»; la relectura no lo reactiva; un pago nuevo sí", async () => {
     const o = await contracted(await company("Reembolso Total SL"));

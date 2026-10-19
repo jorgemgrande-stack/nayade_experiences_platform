@@ -10,6 +10,7 @@
  * reintentos de red del SDK e `Idempotency-Key` en cada creación.
  */
 import Stripe from "stripe";
+import type { GwPortalConfig } from "./portal";
 import { StripeConfigError, assertModeObject, type StripeConfig, type StripeMode } from "./config";
 
 export interface GwPrice {
@@ -146,6 +147,8 @@ export interface StripeGateway {
   expireCheckoutSession(id: string): Promise<GwCheckoutSession>;
   subscription(id: string): Promise<GwSubscription | null>;
   createPortalSession(input: { customerId: string; returnUrl: string }): Promise<{ url: string }>;
+  /** Configuraciones del Customer Portal (solo lectura). */
+  portalConfigurations(): Promise<GwPortalConfig[]>;
   invoice(id: string): Promise<GwInvoice | null>;
   charge(id: string): Promise<GwCharge | null>;
   /** Cargo de un reembolso o de una disputa (para releerlo). */
@@ -452,6 +455,36 @@ export function stripeGateway(
       try {
         const page = await client.events.list({ limit: q.limit ?? 100, ...(q.createdGte ? { created: { gte: q.createdGte } } : {}), ...(q.types?.length ? { types: q.types } : {}), ...(q.startingAfter ? { starting_after: q.startingAfter } : {}) });
         return { events: page.data.map(toEvent), hasMore: page.has_more };
+      } catch (e) {
+        wrapError(e);
+      }
+    },
+    async portalConfigurations() {
+      try {
+        const list = await client.billingPortal.configurations.list({ limit: 20 });
+        return list.data.map((c) => {
+          assertModeObject(c as { livemode?: unknown }, mode);
+          const f = c.features;
+          const su = f.subscription_update as unknown as { enabled: boolean; default_allowed_updates?: string[]; products?: Array<{ product: string; prices: string[] }> | null; proration_behavior?: string | null; schedule_at_period_end?: { conditions?: Array<{ type: string }> } | null };
+          return {
+            id: c.id,
+            isDefault: c.is_default,
+            active: c.active,
+            invoiceHistory: f.invoice_history.enabled,
+            paymentMethodUpdate: f.payment_method_update.enabled,
+            customerUpdate: { enabled: f.customer_update.enabled, allowedUpdates: [...(f.customer_update.allowed_updates ?? [])] },
+            cancel: { enabled: f.subscription_cancel.enabled, mode: f.subscription_cancel.mode ?? null, prorationBehavior: f.subscription_cancel.proration_behavior ?? null },
+            update: {
+              enabled: su.enabled,
+              defaultAllowedUpdates: [...(su.default_allowed_updates ?? [])],
+              products: (su.products ?? []).map((p) => ({ product: p.product, prices: [...p.prices] })),
+              prorationBehavior: su.proration_behavior ?? null,
+              scheduleAtPeriodEnd: (su.schedule_at_period_end?.conditions ?? []).map((x) => x.type),
+            },
+            termsUrl: c.business_profile?.terms_of_service_url ?? null,
+            privacyUrl: c.business_profile?.privacy_policy_url ?? null,
+          } satisfies GwPortalConfig;
+        });
       } catch (e) {
         wrapError(e);
       }

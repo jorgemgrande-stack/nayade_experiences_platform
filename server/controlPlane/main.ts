@@ -317,6 +317,8 @@ async function main() {
   const fiscal = {
     scenarios: fiscalScenariosFromEnv(process.env),
     taxExpectations: taxExpectationsFromEnv(process.env),
+    // URL de los textos legales publicados (para el Customer Portal); sin ellas, el plan del Portal las marca pendientes
+    legalUrls: { terms: (process.env.CP_TERMS_URL ?? "").trim() || null, privacy: (process.env.CP_PRIVACY_URL ?? "").trim() || null },
     consent: {
       terms: (process.env.CP_TERMS_VERSION ?? "").trim() || null,
       privacy: (process.env.CP_PRIVACY_VERSION ?? "").trim() || null,

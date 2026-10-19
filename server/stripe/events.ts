@@ -33,6 +33,8 @@ import type { GwCharge, GwInvoice, GwSubscription, StripeGateway } from "./gatew
 import type { StripeEventRow, StripeStore } from "./store";
 import { checkInvoiceTax, classifyTerritory, territoryGroup, type FiscalScenario, type TaxTreatment } from "./buyerProfile";
 import { invoiceDocumentOf, invoiceRecordOf, invoiceSourceKey, pendingSink, rectificationOf, type FiscalDocument, type FiscalDocumentSink, type InvoicePurpose } from "./fiscalDocuments";
+import type { CatalogPort } from "../subscriptions/ports";
+import { SELF_SERVICE_PLANS, desiredCatalog } from "./catalog";
 
 /** Eventos que se aceptan y procesan (nombres de la API 2026-09-30.endive). */
 export const HANDLED_EVENTS = [
@@ -70,12 +72,19 @@ export interface OrchestratorPort {
   applyExternalBilling(id: number, s: { status: "active" | "past_due" | "unpaid" | "canceled"; cancelAt: number | null; coverageLost?: boolean }, actor: string): Promise<{ order: CommercialOrder; changed: string[] }>;
   /** Aviso (correo) de un cobro verificado de renovación o de cambio. Opcional: sin él no se avisa. */
   paymentRecorded?(orderId: number, paymentId: number): Promise<void>;
+  /** Cambio de plan o periodicidad hecho en el Customer Portal (orchestrator.applyExternalPlanChange). Opcional. */
+  applyExternalPlanChange?(id: number, target: { plan: string; interval: "month" | "year" }, signatureRef: string, actor: string): Promise<{ order: CommercialOrder; created: boolean; noop: boolean; error: string | null }>;
 }
 
 export interface ProcessorDeps {
   store: StripeStore;
   gateway: StripeGateway;
-  orders: Pick<OrderStore, "get" | "insertPayment" | "payments">;
+  orders: Pick<OrderStore, "get" | "insertPayment" | "payments"> & Partial<Pick<OrderStore, "list">>;
+  /**
+   * Catálogo (para traducir un precio de Stripe a plan y periodicidad). Con él y `orders.list`, un cambio de
+   * precio hecho en el Customer Portal se refleja como pedido de cambio; sin ellos, se rechaza como discordancia.
+   */
+  catalog?: CatalogPort;
   orchestrator: OrchestratorPort;
   now?: () => number;
   maxAttempts?: number;
@@ -246,17 +255,50 @@ export class StripeEventProcessor {
     return { order, link };
   }
 
-  /** Pertenencia y precios: exactamente los que el servidor envió en un Checkout de ESTE pedido. */
-  private async verified(sub: GwSubscription): Promise<{ order: CommercialOrder; link: { tenantId: string | null; stripeCustomerId: string } } | { ignored: Outcome }> {
+  /**
+   * Pertenencia y precios. Se aplica sobre el pedido VIGENTE de la suscripción (el original o el último cambio).
+   * Los precios deben ser los del Checkout de su alta o los del plan vigente. Un único precio distinto del
+   * catálogo enlazado (Essential o Business) es un cambio hecho en el Customer Portal: se devuelve como `change`
+   * para reflejarlo con un pedido de cambio. Cualquier otra cosa es una discordancia.
+   */
+  private async verified(sub: GwSubscription): Promise<
+    { order: CommercialOrder; link: { tenantId: string | null; stripeCustomerId: string }; change?: { plan: string; interval: "month" | "year" } } | { ignored: Outcome }
+  > {
     const own = await this.ownership(sub);
     if ("ignored" in own) return own;
     const linked = new Set((await this.d.store.listPrices()).filter((p) => p.status === "active").map((p) => p.stripePriceId));
     if (!sub.priceIds.length || sub.priceIds.some((p) => !linked.has(p))) throw new StripeMismatchError("La suscripción incluye precios que no son del catálogo enlazado");
-    // Un cambio de plan sin aplicar no da otras licencias. Vale aunque el evento de Checkout aún no haya llegado
+    const current = await this.currentOrder(own.order);
+    // Alta: exactamente los precios del Checkout del pedido. Vale aunque el evento de Checkout aún no haya llegado
     const sets = await this.d.store.sessionPriceSets(own.order.id);
     const same = (a: string[]) => a.length === sub.priceIds.length && a.every((p) => sub.priceIds.includes(p));
-    if (!sets.some(same)) throw new StripeMismatchError("Los precios de la suscripción no son los del pedido (¿cambio de plan sin aplicar?)");
-    return own;
+    if (current.id === own.order.id && sets.some(same)) return { order: current, link: own.link };
+    const target = await this.planOfPrices(sub.priceIds);
+    if (target && current.request.plan === target.plan && current.request.interval === target.interval) return { order: current, link: own.link };
+    // Cambio hecho en el Customer Portal: solo sobre un pedido vigente y con el orquestador preparado para ello
+    if (target && this.d.orchestrator.applyExternalPlanChange && ["active", "past_due", "suspended"].includes(current.state)) return { order: current, link: own.link, change: target };
+    throw new StripeMismatchError("Los precios de la suscripción no son los del pedido (¿cambio de plan sin aplicar?)");
+  }
+
+  /**
+   * Pedido vigente de una suscripción: el último pedido vivo de la MISMA empresa que comparte la suscripción
+   * interna (un cambio sustituye al anterior). Sin cambios, el propio pedido.
+   */
+  private async currentOrder(order: CommercialOrder): Promise<CommercialOrder> {
+    if (!order.subscriptionId || !this.d.orders.list) return order;
+    const chain = (await this.d.orders.list({ subscriptionId: order.subscriptionId })).filter((o) => o.companyId === order.companyId);
+    const byId = (a: CommercialOrder, b: CommercialOrder) => b.id - a.id;
+    return chain.filter((o) => LIVE_OR_SCHEDULED.includes(o.state)).sort(byId)[0] ?? chain.filter((o) => o.state !== "superseded" && o.state !== "rejected").sort(byId)[0] ?? order;
+  }
+
+  /** Plan y periodicidad de un precio enlazado de autoservicio (un solo precio), o null. */
+  private async planOfPrices(priceIds: string[]): Promise<{ plan: string; interval: "month" | "year" } | null> {
+    if (!this.d.catalog || priceIds.length !== 1) return null;
+    const link = (await this.d.store.listPrices()).find((p) => p.stripePriceId === priceIds[0] && p.status === "active");
+    if (!link) return null;
+    const d = (await desiredCatalog(this.d.catalog)).find((x) => x.webPriceId === link.webPriceId);
+    if (!d || !(SELF_SERVICE_PLANS as readonly string[]).includes(d.productKey)) return null;
+    return { plan: d.productKey, interval: d.interval === "year" ? "year" : "month" };
   }
 
   /** Un pedido a la vez: dos eventos del mismo pedido no lo avanzan en paralelo. */
@@ -296,7 +338,31 @@ export class StripeEventProcessor {
     if (!sub) return { outcome: "ignored", detail: "La suscripción no existe en Stripe" };
     const v = await this.verified(sub);
     if ("ignored" in v) return v.ignored;
+    if (v.change) return this.withOrder(v.order.id, () => this.applyPlanChange(v.order, sub, v.change!, v.link.tenantId, hint));
     return this.withOrder(v.order.id, () => this.applySubscription(v.order, sub, v.link.tenantId, hint));
+  }
+
+  /**
+   * Cambio de plan hecho en el Customer Portal → pedido de cambio con los contratos existentes. Una subida
+   * espera el cobro del prorrateo: si la última factura ya está pagada se anota en el pedido de cambio (no en
+   * el anterior) y lo confirma. Después, el estado de cobro se aplica al pedido que quede vigente.
+   */
+  private async applyPlanChange(cur: CommercialOrder, sub: GwSubscription, change: { plan: string; interval: "month" | "year" }, tenantId: string | null, hint?: GwInvoice): Promise<Outcome> {
+    const r = await this.d.orchestrator.applyExternalPlanChange!(cur.id, change, `stripe-portal:${sub.id}`, this.actor);
+    if (r.error) throw new Error(`Cambio de plan pendiente: ${r.error}`);
+    let target = r.order;
+    if (PIPELINE.includes(target.state)) {
+      const pay = await this.recordPaidInvoice(target, sub, hint);
+      if (pay) {
+        const a = await this.d.orchestrator.advance(target.id, this.actor);
+        if (a.error) throw new Error(`Cambio de plan pendiente: ${a.error}`);
+        target = a.order;
+      }
+    }
+    if (r.created) opsLog("info", "StripeEvents", "plan_change", { from: cur.id, to: target.id, plan: change.plan, interval: change.interval, state: target.state });
+    const vigente = LIVE_OR_SCHEDULED.includes(target.state) ? target : cur;
+    const applied = await this.applySubscription(vigente, sub, tenantId, hint);
+    return { outcome: applied.outcome, detail: `Cambio a ${change.plan}/${change.interval}: pedido ${target.id} en ${target.state}; ${applied.detail ?? ""}`.slice(0, 300) };
   }
 
   private async applySubscription(stale: CommercialOrder, sub: GwSubscription, tenantId: string | null, hint?: GwInvoice): Promise<Outcome> {

@@ -221,7 +221,7 @@ export interface ControlPlaneDeps {
      * Perfil fiscal del comprador (B2B/B2C): escenarios aprobados (CP_STRIPE_FISCAL_SCENARIOS) y versiones de
      * consentimiento vigentes. Sin ello, ningún escenario está aprobado (en live no se abre Checkout).
      */
-    fiscal?: { scenarios: Set<FiscalScenario>; consent: ConsentVersions; taxExpectations?: Map<FiscalScenario, TaxTreatment> };
+    fiscal?: { scenarios: Set<FiscalScenario>; consent: ConsentVersions; taxExpectations?: Map<FiscalScenario, TaxTreatment>; legalUrls?: { terms: string | null; privacy: string | null } };
   };
   /**
    * Correo transaccional centralizado (server/mail, CRM 0011). `platform`: avisos de Elephant Source
@@ -1129,7 +1129,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         const checkout = st.checkoutEnabled && st.urls && !checkoutBlockedReason(st.config)
           ? new StripeCheckoutService({ store: st.store, gateway: st.gateway, orders: d.orders.store, crmStore: d.crm.store, catalog: stripeCatalog, urls: st.urls, now: d.subscriptions.now, namespace: st.config.namespace, mode: st.config.mode, taxPolicy: st.config.taxPolicy, fiscalScenarios: st.fiscal?.scenarios, taxExpectations: st.fiscal?.taxExpectations })
           : null;
-        const processor = new StripeEventProcessor({ store: st.store, gateway: st.gateway, orders: d.orders.store, orchestrator, now: d.subscriptions.now, namespace: st.config.namespace, mode: st.config.mode, taxExpectations: st.fiscal?.taxExpectations });
+        const processor = new StripeEventProcessor({ store: st.store, gateway: st.gateway, orders: d.orders.store, orchestrator, now: d.subscriptions.now, namespace: st.config.namespace, mode: st.config.mode, taxExpectations: st.fiscal?.taxExpectations, catalog: stripeCatalog });
         const reconciler = new StripeReconciler({ store: st.store, gateway: st.gateway, processor, now: d.subscriptions.now, retentionDays: st.config.eventsRetentionDays, mode: st.config.mode });
         const rechecks = new Map<string, number>();
         const stripeNow = d.subscriptions.now;
@@ -1159,7 +1159,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
           pc.use((_req, res) => void res.status(404).json({ error: "not_found" }));
           publicCheckout = pc;
         }
-        router.use("/stripe", createStripeRouter({ config: st.config, store: st.store, gateway: st.gateway, catalog: stripeCatalog, checkout, processor, reconciler, now: d.subscriptions.now, orders: d.orders.store, fiscal: st.fiscal }));
+        router.use("/stripe", createStripeRouter({ config: st.config, store: st.store, gateway: st.gateway, catalog: stripeCatalog, checkout, processor, reconciler, now: d.subscriptions.now, orders: d.orders.store, fiscal: st.fiscal, legalUrls: st.fiscal?.legalUrls }));
       }
       // Webhook del proveedor de PRUEBAS: autenticado por firma (antes del montaje del router con tokens)
       if (d.orders.payments) app.post("/cp/v1/payments/test/webhook", paymentsWebhookHandler(orchestrator));

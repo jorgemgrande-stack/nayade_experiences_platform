@@ -244,6 +244,30 @@ describe("Stripe en modo live por HTTP, con política fiscal stripe_tax_exclusiv
     configureFailureAlerts(new FailureAlerts());
   });
 
+  it("Customer Portal: el plan compara la configuración actual con la deseada sin escribir nada en Stripe", async () => {
+    cp.gw.portalConfigs = [
+      {
+        id: "bpc_live_prueba",
+        isDefault: true,
+        active: true,
+        invoiceHistory: true,
+        paymentMethodUpdate: true,
+        customerUpdate: { enabled: false, allowedUpdates: [] },
+        cancel: { enabled: true, mode: "at_period_end", prorationBehavior: "none" },
+        update: { enabled: false, defaultAllowedUpdates: [], products: [], prorationBehavior: "none", scheduleAtPeriodEnd: [] },
+        termsUrl: null,
+        privacyUrl: null,
+      },
+    ];
+    const before = cp.gw.calls.length;
+    const plan = await cp.ok(cp.call("GET", "/stripe/portal/plan"));
+    expect(plan).toMatchObject({ configurationId: "bpc_live_prueba", applicable: 5 });
+    expect(plan.writeParams.features.subscription_update.products).toHaveLength(2);
+    // Solo una lectura en Stripe
+    expect(cp.gw.calls.slice(before).map((c) => c.op)).toEqual(["billing_portal.configurations.list"]);
+    expect((await cp.call("GET", "/stripe/portal/plan", { token: null })).status).toBe(401);
+  });
+
   it("un evento de PRUEBAS con firma válida se rechaza en live (400) y no se guarda nada", async () => {
     const ev = cp.gw.emit("invoice.paid", "invoice", "in_x_0000000001");
     const before = await cp.stripeStore.eventCounts();
