@@ -43,7 +43,12 @@ function plan(tenants, platform) {
     if (seen.has(domain)) return { ...base, action: "conflict", reason: "dominio repetido en el plan" };
     seen.add(domain);
     const owner = taken.get(domain);
-    if (owner === t.id) return { ...base, action: "skip", reason: "ya registrado" };
+    if (owner === t.id) {
+      // El resolvedor solo atiende dominios «active»: uno registrado sin activar se activa
+      const own = t.domains.find((d) => d.domain.toLowerCase() === domain && d.status !== "removed");
+      if (own && own.status && own.status !== "active") return { ...base, action: "activate", reason: `registrado en estado «${own.status}»` };
+      return { ...base, action: "skip", reason: "ya registrado" };
+    }
     if (owner) return { ...base, action: "conflict", reason: `ya lo tiene la empresa ${owner}` };
     return { ...base, action: "add" };
   });
@@ -74,12 +79,20 @@ async function main() {
   for (const r of rows) console.log(`${r.action.padEnd(8)} ${r.tenant.padEnd(34)} ${r.domain}${r.reason ? `  (${r.reason})` : ""}\n         actuales: ${r.current.join(", ") || "—"}`);
   const conflicts = rows.filter((r) => r.action === "conflict");
   if (conflicts.length) console.log(`\n${conflicts.length} colisiones: se omiten; resuélvelas antes de registrarlas.`);
-  if (!apply) return console.log("\nSolo lectura. Para registrar los marcados «add»: --apply");
+  if (!apply) return console.log("\nSolo lectura. Para registrar y activar los marcados «add» y «activate»: --apply");
 
+  // Registrar no basta: el resolvedor solo sirve dominios «active», así que después se activa
+  const activate = async (domain) => {
+    const res = await call("POST", `/cp/v1/domains/${encodeURIComponent(domain)}/activate`);
+    console.log(`${res.status === 200 ? "activo    " : `ERROR ${res.status}`}  ${domain}`);
+  };
   for (const r of rows.filter((x) => x.action === "add")) {
     const res = await call("POST", `/cp/v1/tenants/${encodeURIComponent(r.tenant)}/domains`, { domain: r.domain, kind: "platform_subdomain", primary: false });
-    console.log(`${res.status === 200 || res.status === 201 ? "registrado" : `ERROR ${res.status}`}  ${r.domain}`);
+    const ok = res.status === 200 || res.status === 201;
+    console.log(`${ok ? "registrado" : `ERROR ${res.status}`}  ${r.domain}`);
+    if (ok) await activate(r.domain);
   }
+  for (const r of rows.filter((x) => x.action === "activate")) await activate(r.domain);
 }
 
 if (require.main === module) {
