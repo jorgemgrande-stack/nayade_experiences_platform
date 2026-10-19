@@ -17,6 +17,7 @@ import { sessionTenantAllowed, sessionTenantClaim } from "./_core/tenantRegistry
 import { getSupportUser } from "./_core/support/session";
 import { requireSessionSecret, sessionSecret, SessionSecretMissingError } from "./_core/sessionSecret";
 import { isCrossOriginUnsafe } from "./_core/requestOrigin";
+import { clearSessionCookies, readSessionToken, setSessionCookie, SESSION_COOKIE_LEGACY } from "./_core/sessionCookie";
 import { loginLockRemaining, recordLoginFailure, recordLoginSuccess } from "./_core/loginThrottle";
 import { createHash } from "crypto";
 import { opsLog } from "./_core/ops/log";
@@ -25,7 +26,8 @@ import { users } from "../drizzle/schema";
 import { eq } from "drizzle-orm";
 
 // ─── Configuración ────────────────────────────────────────────────────────────
-const COOKIE_NAME = "nayade_session";
+/** Nombre histórico; por HTTPS se usa `__Host-nayade_session` (ver _core/sessionCookie.ts). */
+const COOKIE_NAME = SESSION_COOKIE_LEGACY;
 const JWT_ALGO = "HS256" as const;
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 30; // 30 días en segundos
 
@@ -81,24 +83,11 @@ export async function getUserFromRequest(req: Request) {
   // CSRF: una petición que modifica, declarada desde otro origen (incluida otra empresa de la
   // plataforma, que es el mismo «sitio» para el navegador), no se ejecuta con la sesión.
   if (isCrossOriginUnsafe(req)) return null;
-  const raw = req.headers.cookie ?? "";
-  const cookies: Record<string, string> = {};
-  for (const part of raw.split(";")) {
-    const idx = part.indexOf("=");
-    if (idx === -1) continue;
-    const name = part.slice(0, idx).trim();
-    const value = part.slice(idx + 1).trim();
-    try {
-      cookies[name] = decodeURIComponent(value);
-    } catch {
-      cookies[name] = value; // cookie mal codificada: no debe tumbar la petición
-    }
-  }
   // Soporte delegado (solo si está configurado y hay una concesión vigente para este tenant)
   const support = await getSupportUser(req);
   if (support) return support as unknown as typeof users.$inferSelect;
 
-  const token = cookies[COOKIE_NAME];
+  const token = readSessionToken(req);
   if (!token) return null;
 
   const claims = await verifySessionClaims(token);
@@ -215,13 +204,7 @@ export function createLocalAuthRouter(): Router {
       return;
     }
 
-    res.cookie(COOKIE_NAME, token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      maxAge: COOKIE_MAX_AGE * 1000,
-      path: "/",
-    });
+    setSessionCookie(req, res, token, COOKIE_MAX_AGE * 1000);
 
     res.json({
       id: user.id,
@@ -234,7 +217,7 @@ export function createLocalAuthRouter(): Router {
 
   /** POST /api/auth/logout */
   router.post("/api/auth/logout", (_req: Request, res: Response) => {
-    res.clearCookie(COOKIE_NAME, { path: "/" });
+    clearSessionCookies(res);
     res.json({ ok: true });
   });
 

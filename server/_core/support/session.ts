@@ -16,6 +16,13 @@ import { peekTenantContext } from "../tenant";
 import { MAX_SUPPORT_MINUTES, grantActive, type SupportGrant, type SupportGrantReader } from "./grants";
 
 export const SUPPORT_COOKIE = "es_support";
+/**
+ * Por HTTPS la sesión de soporte va en `__Host-es_support` (Secure, Path=/, sin Domain): ninguna otra empresa del
+ * mismo dominio padre (`*.app.bigelephant.es`) puede fijarla. Las sesiones de soporte duran minutos, así que no
+ * hace falta transición: por HTTPS solo vale la nueva; la de sin prefijo queda para desarrollo sin HTTPS.
+ */
+export const SUPPORT_COOKIE_HOST = "__Host-es_support";
+const supportToken = (req: Request) => cookieOf(req, SUPPORT_COOKIE_HOST) ?? (req.secure ? undefined : cookieOf(req, SUPPORT_COOKIE));
 
 let reader: SupportGrantReader | null = null;
 let secretRaw: string | undefined;
@@ -71,7 +78,7 @@ export interface SupportIdentity {
 /** Valida la sesión de soporte de la petición contra el tenant resuelto. */
 export async function getSupportIdentity(req: Request): Promise<SupportIdentity | null> {
   if (!supportEnabled()) return null;
-  const token = cookieOf(req, SUPPORT_COOKIE);
+  const token = supportToken(req);
   if (!token) return null;
   const claims = await verify(token);
   if (!claims) return null;
@@ -113,7 +120,7 @@ export async function getSupportUser(req: Request) {
 /** Rechaza escrituras de una sesión de soporte de solo lectura y deja traza de cada intento. */
 export function supportReadOnlyGuard(log: (l: string) => void = (l) => console.warn(l)): RequestHandler {
   return async (req: Request, res: Response, next: NextFunction) => {
-    if (!supportEnabled() || !cookieOf(req, SUPPORT_COOKIE)) return next();
+    if (!supportEnabled() || !supportToken(req)) return next();
     const id = await getSupportIdentity(req);
     if (!id) return next(); // cookie no válida: la sesión de soporte simplemente no existe
     if (id.readOnly && !SAFE.has(req.method) && !req.path.startsWith("/_support/")) {
@@ -138,17 +145,14 @@ export function createSupportRouter(): Router {
       return void res.status(403).type("text/plain").send("Acceso no válido o caducado");
     }
     console.warn(JSON.stringify({ ctx: "Support", event: "enter", grant: grant.id, op: grant.operator, tenant }));
-    res.cookie(SUPPORT_COOKIE, token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "strict",
-      path: "/",
-      maxAge: Math.max(1000, grant.expiresAt - Date.now()),
-    });
+    const opts = { httpOnly: true, sameSite: "strict" as const, path: "/", maxAge: Math.max(1000, grant.expiresAt - Date.now()) };
+    if (req.secure) res.cookie(SUPPORT_COOKIE_HOST, token, { ...opts, secure: true });
+    else res.cookie(SUPPORT_COOKIE, token, { ...opts, secure: process.env.NODE_ENV === "production" });
     res.redirect(302, "/admin");
   });
 
   r.post("/_support/exit", (req, res) => {
+    res.clearCookie(SUPPORT_COOKIE_HOST, { path: "/", secure: true, httpOnly: true, sameSite: "strict" });
     res.clearCookie(SUPPORT_COOKIE, { path: "/" });
     res.status(204).end();
   });
