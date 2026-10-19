@@ -37,7 +37,7 @@ import type { TestPaymentPort } from "./payments";
 import type { OrderStore } from "./store";
 import { opsLog } from "../_core/ops/log";
 import { recordFailure } from "../_core/ops/failureAlerts";
-import { OrderError, type CommercialOrder, type Confirmation, type OrderPatch, type OrderPayment, type OrderQuote, type OrderState, type PaymentMode, type PaymentPurpose } from "./types";
+import { APPROVAL_CATEGORIES, OrderError, type ApprovalCategory, type CommercialOrder, type Confirmation, type OrderPatch, type OrderPayment, type OrderQuote, type OrderState, type PaymentMode, type PaymentPurpose } from "./types";
 
 export const GRACE_DAYS = 7;
 /** Proveedor de los pagos verificados en Stripe Billing (modo pruebas). Sus pedidos no reciben recibos simulados. */
@@ -607,13 +607,37 @@ export class CommercialOrchestrator {
     return this.advance(id, actor, input);
   }
 
-  /** Aprobación administrativa registrada (sin pago): confirma y avanza. */
-  async approve(id: number, input: { reason: string }, actor: string) {
+  /**
+   * Aprobación administrativa registrada (sin pago de Stripe): confirma y avanza. Es la vía EXCEPCIONAL; la
+   * ordinaria es el pago verificado. Nunca crea un pago ni un documento fiscal.
+   * En live: categoría obligatoria, motivo de al menos 20 caracteres, referencia del cobro externo si es
+   * `offline_payment`, y nunca con un cobro ya en curso. Cada aprobación en live abre una incidencia.
+   */
+  async approve(id: number, input: { reason: string; category?: ApprovalCategory; reference?: string | null }, actor: string) {
     const reason = (input.reason ?? "").trim();
-    if (reason.length < 5) throw new OrderError("invalid_input", "Indica el motivo de la aprobación (mínimo 5 caracteres)");
+    const live = this.mode === "live";
+    if (reason.length < (live ? 20 : 5)) throw new OrderError("invalid_input", `Indica el motivo de la aprobación (mínimo ${live ? 20 : 5} caracteres)`);
+    if (input.category !== undefined && !APPROVAL_CATEGORIES.includes(input.category)) throw new OrderError("invalid_input", "Tipo de aprobación no admitido");
+    if (live && !input.category) throw new OrderError("invalid_input", "En el entorno real indica el tipo de aprobación (interna, promocional, partner, excepción o cobro fuera de Stripe)");
+    const category: ApprovalCategory = input.category ?? "exception";
+    const reference = (input.reference ?? "").trim() || null;
+    if (category === "offline_payment" && (!reference || reference.length < 3)) throw new OrderError("invalid_input", "Un cobro fuera de Stripe necesita la referencia del cobro (p. ej. de la transferencia)");
     const o = await this.must(id);
     if (o.state !== "contracted") throw new OrderError("invalid_state", `Solo se aprueba un pedido con el contrato firmado (está en «${o.state}»)`);
-    await this.move(o, "confirm", actor, { confirmation: { kind: "admin_approval", ref: null, actor, reason: reason.slice(0, 300), at: this.now() }, lastError: null }, { basis: "admin_approval", reason: reason.slice(0, 300) });
+    // Con un cobro en curso o ya hecho, aprobar sin pago podría duplicar la activación o el cobro
+    if (live && (await this.d.store.payments(o.id)).some((p) => p.status === "pending" || p.status === "succeeded")) {
+      throw new OrderError("invalid_state", "El pedido tiene un cobro en curso o ya cobrado: no se aprueba sin pago");
+    }
+    const r300 = reason.slice(0, 300);
+    await this.move(
+      o,
+      "confirm",
+      actor,
+      { confirmation: { kind: "admin_approval", ref: null, actor, reason: r300, at: this.now(), category, ...(reference ? { reference: reference.slice(0, 80) } : {}) }, lastError: null },
+      { basis: "admin_approval", reason: r300, category, ...(reference ? { reference: reference.slice(0, 80) } : {}) },
+    );
+    opsLog(live ? "warn" : "info", "Orders", "admin_approval", { orderId: o.id, category, actor, mode: this.mode });
+    if (live) recordFailure("orders.admin_approval_live");
     return this.advance(id, actor);
   }
 

@@ -23,6 +23,8 @@ export const STRIPE_FAILURE_RULES: Record<string, FailureRule> = {
   "stripe.dispute_open": once("Stripe: disputa abierta en el cobro de una suscripción", "warning"),
   "stripe.partial_refund": once("Stripe: reembolso parcial en el cobro de una suscripción (revisar)", "warning"),
   "orders.stripe_contract_cancelled": once("Contrato cancelado en el CRM con la suscripción viva en Stripe", "warning"),
+  // Activación sin pago de Stripe en el entorno real: cada una queda a la vista del equipo (auditoría)
+  "orders.admin_approval_live": once("Pedido activado por aprobación administrativa (sin pago de Stripe) en el entorno real: revisar la justificación", "warning"),
   // Fallos técnicos repetidos
   "stripe.webhook_store_failed": repeated(3, 15, "Stripe: no se pueden guardar los webhooks recibidos", "critical"),
   "stripe.webhook_invalid_signature": repeated(10, 15, "Stripe: webhooks con firma no válida repetidos"),

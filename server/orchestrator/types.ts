@@ -42,6 +42,15 @@ export type OrderKind = "new" | "trial_conversion" | "change";
  * ninguna capacidad nueva, la base del pedido al que sustituye («inherited»).
  */
 export type ConfirmationKind = "payment" | "admin_approval" | "inherited";
+
+/**
+ * Motivo tipificado de una aprobación administrativa (activación SIN pago de Stripe). Nunca simula un pago
+ * ni genera documentos fiscales: `offline_payment` es un cobro hecho fuera de Stripe (p. ej. transferencia),
+ * cuya factura se emite en el sistema de facturación, y exige la referencia de ese cobro.
+ */
+export const APPROVAL_CATEGORIES = ["internal", "promotional", "partner", "exception", "offline_payment"] as const;
+export type ApprovalCategory = (typeof APPROVAL_CATEGORIES)[number];
+
 export interface Confirmation {
   kind: ConfirmationKind;
   /** Pago (id) o pedido del que se hereda. */
@@ -49,6 +58,10 @@ export interface Confirmation {
   actor: string;
   reason: string | null;
   at: number;
+  /** Solo en `admin_approval`: tipo de excepción (en live, obligatorio). */
+  category?: ApprovalCategory;
+  /** Solo en `admin_approval` con `offline_payment`: referencia del cobro externo. */
+  reference?: string | null;
 }
 
 export interface OrderQuote {

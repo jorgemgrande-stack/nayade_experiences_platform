@@ -19,7 +19,7 @@ import { PaymentSignatureError } from "./payments";
 import type { CommercialOrchestrator } from "./service";
 import { opsLog } from "../_core/ops/log";
 import { recordFailure } from "../_core/ops/failureAlerts";
-import { ORDER_STATES, OrderError } from "./types";
+import { APPROVAL_CATEGORIES, ORDER_STATES, OrderError } from "./types";
 
 const STATUS: Record<string, number> = { not_found: 404, invalid_input: 400, invalid_state: 409, conflict: 409, forbidden: 403, unavailable: 409, version_conflict: 409, limit: 429 };
 const wrap =
@@ -80,7 +80,8 @@ export function createOrdersRouter(svc: CommercialOrchestrator): Router {
     res.status(out.created ? 201 : 200).json(out);
   }));
   r.post("/:id/approve", requireScope("orders:approve"), ...ACTIVATION, wrap(async (req, res) => {
-    const b = z.object({ reason: z.string().trim().min(5).max(300) }).strict().parse(req.body);
+    // En live el servicio exige además la categoría (y la referencia si es un cobro fuera de Stripe)
+    const b = z.object({ reason: z.string().trim().min(5).max(300), category: z.enum(APPROVAL_CATEGORIES).optional(), reference: z.string().trim().min(3).max(80).optional() }).strict().parse(req.body);
     send(res, await svc.approve(id.parse(req.params.id), b, who(req)));
   }));
   r.post("/:id/cancel", requireScope("orders:write"), requireScope("subscriptions:write"), wrap(async (req, res) => {
