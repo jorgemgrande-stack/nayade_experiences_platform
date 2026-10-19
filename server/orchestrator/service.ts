@@ -505,7 +505,27 @@ export class CommercialOrchestrator {
     const plan = { productKey: o.request.plan, priceId: await this.priceFor(o.request.plan, o.request.interval, true) };
     const addons: ItemSpec[] = [];
     for (const i of o.request.items) addons.push({ productKey: i.key, priceId: await this.priceFor(i.key, o.request.interval, false), ...(i.quantity ? { quantity: i.quantity } : {}) });
+    // Ampliaciones por cantidad (usuarios, sedes, almacenamiento por encima de lo incluido): partidas propias
+    for (const [productKey, quantity] of Array.from((await this.quantityUnits(o.request)).entries())) addons.push({ productKey, priceId: await this.priceFor(productKey, o.request.interval, false), quantity });
     return { plan, addons };
+  }
+
+  /** Métricas de ampliación que el pedido declara (solo esas se ajustan; las no declaradas no se tocan). */
+  private declaredMetrics(r: CommercialOrder["request"]): Set<string> {
+    const m = new Set<string>();
+    if (r.users !== undefined) m.add("users");
+    if (r.sites !== undefined) m.add("sites");
+    if (r.storageGb !== undefined) m.add("storage_gb");
+    return m;
+  }
+
+  /** Unidades de cada ampliación que resultan del presupuesto (lo que excede lo incluido en el plan). */
+  private async quantityUnits(r: CommercialOrder["request"]): Promise<Map<string, number>> {
+    const out = new Map<string, number>();
+    if (!this.declaredMetrics(r).size) return out;
+    const q = await this.d.quote(r);
+    for (const l of q.lines) if (l.family === "addon" && l.quantity > 0) out.set(l.key, l.quantity);
+    return out;
   }
 
   private async stepSubscribe(o: CommercialOrder, actor: string) {
@@ -584,7 +604,12 @@ export class CommercialOrchestrator {
       await changePlan();
     }
     const wanted = new Set(o.request.items.map((i) => i.key));
-    const addons = live.filter((i) => i.family !== "core_plan" && (i.effectiveTo === null || i.effectiveTo > now));
+    // Ampliación por cantidad: partida marcada o, si es anterior a 0017, producto con `addonFor` en el catálogo
+    const addonOf = async (i: { productKey: string; lineKind?: string | null; metric?: string | null }) =>
+      i.lineKind === "quantity" && i.metric ? { metric: i.metric } : ((await this.d.catalog.product(i.productKey))?.addonFor ?? null);
+    const isQuantity = new Set<number>();
+    for (const i of live) if (await addonOf(i)) isQuantity.add(i.id);
+    const addons = live.filter((i) => i.family !== "core_plan" && !isQuantity.has(i.id) && (i.effectiveTo === null || i.effectiveTo > now));
     for (const i of o.request.items.filter((x) => !addons.some((a) => a.productKey === x.key))) {
       sub = await reread();
       sub = (await this.d.subscriptions.addItem(sub.id, { item: { productKey: i.key, priceId: await this.priceFor(i.key, sub.interval, false), ...(i.quantity ? { quantity: i.quantity } : {}) }, reason }, sub.version, actor)).subscription;
@@ -592,6 +617,25 @@ export class CommercialOrchestrator {
     for (const a of addons.filter((x) => !wanted.has(x.productKey) && x.effectiveTo === null)) {
       sub = await reread();
       sub = (await this.d.subscriptions.removeItem(sub.id, a.id, { when: "period_end", reason }, sub.version, actor)).subscription;
+    }
+    // Ampliaciones por cantidad: solo las métricas declaradas. Subida desde ahora; bajada o baja a fin de periodo
+    const declared = this.declaredMetrics(o.request);
+    if (declared.size) {
+      const desired = await this.quantityUnits(o.request);
+      const at = this.now();
+      const liveQ = (await this.d.subscriptionStore.items(sub.id)).filter((i) => i.effectiveFrom <= at && (i.effectiveTo === null || i.effectiveTo > at));
+      for (const [key, units] of Array.from(desired.entries())) {
+        const cur = liveQ.find((i) => i.productKey === key);
+        sub = await reread();
+        if (!cur) sub = (await this.d.subscriptions.addItem(sub.id, { item: { productKey: key, priceId: await this.priceFor(key, sub.interval, false), quantity: units }, reason }, sub.version, actor)).subscription;
+        else if (cur.quantity !== units && cur.effectiveTo === null) sub = (await this.d.subscriptions.changeQuantity(sub.id, { productKey: key, quantity: units, reason }, sub.version, actor)).subscription;
+      }
+      for (const cur of liveQ) {
+        const a = await addonOf(cur);
+        if (!a || !declared.has(a.metric) || desired.has(cur.productKey) || cur.effectiveTo !== null) continue;
+        sub = await reread();
+        sub = (await this.d.subscriptions.removeItem(sub.id, cur.id, { when: "period_end", reason }, sub.version, actor)).subscription;
+      }
     }
     return reread();
   }

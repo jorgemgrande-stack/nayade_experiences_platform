@@ -242,6 +242,7 @@ const SUBSCRIPTION_EVENT: Partial<Record<SubscriptionEventKind, CommercialEventT
   plan_changed: "subscription.plan_changed",
   item_added: "subscription.module_added",
   item_removed: "subscription.module_removed",
+  quantity_changed: "subscription.quantity_changed",
   interval_change_scheduled: "subscription.interval_change_scheduled",
   cancel_scheduled: "subscription.cancel_scheduled",
   cancel_undone: "subscription.cancel_undone",
@@ -254,7 +255,10 @@ const SUBSCRIPTION_EVENT: Partial<Record<SubscriptionEventKind, CommercialEventT
 
 /** Evento de la suscripción interna (antes/después del propio historial, sin el motivo escrito). */
 export function subscriptionChanged(before: Pick<Subscription, "status"> | null, after: Subscription, e: { kind: SubscriptionEventKind; before: unknown; after: unknown }, actor: string, at: number): CommercialEventDraft[] {
-  const type = SUBSCRIPTION_EVENT[e.kind];
+  // Alta o baja de una ampliación por cantidad: es un cambio de cantidad (de 0 o a 0), no un módulo
+  const lineKindIn = (x: unknown) => (x && typeof x === "object" ? (x as { lineKind?: unknown }).lineKind : undefined);
+  const isQuantity = (e.kind === "item_added" && lineKindIn(e.after) === "quantity") || (e.kind === "item_removed" && lineKindIn(e.before) === "quantity");
+  const type = isQuantity ? "subscription.quantity_changed" : SUBSCRIPTION_EVENT[e.kind];
   if (!type) return [];
   return [
     {

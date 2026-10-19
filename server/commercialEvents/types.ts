@@ -57,6 +57,7 @@ export const COMMERCIAL_EVENT_TYPES = [
   "subscription.plan_changed",
   "subscription.module_added",
   "subscription.module_removed",
+  "subscription.quantity_changed",
   "subscription.interval_change_scheduled",
   "subscription.cancel_scheduled",
   "subscription.cancel_undone",

@@ -10,6 +10,8 @@ export type SubscriptionStatus = "trialing" | "active" | "canceled";
 export type Interval = "month" | "year";
 export type Family = "core_plan" | "extension" | "industry_module" | "usage" | "service";
 export type PriceKind = "monthly" | "yearly" | "one_time" | "usage";
+/** Qué es una partida para la venta y la factura: el plan, un módulo, una ampliación por cantidad o un servicio. */
+export type LineKind = "plan" | "module" | "quantity" | "service";
 export type PriceSource = "catalog" | "contract" | "manual_review";
 
 export interface Discount {
@@ -52,6 +54,10 @@ export interface SubscriptionItem {
   id: number;
   subscriptionId: number;
   family: Family;
+  /** Tipo de partida (CRM 0017). Ausente en partidas anteriores: se deduce del catálogo. */
+  lineKind?: LineKind | null;
+  /** Métrica de una ampliación por cantidad (`users`, `sites`, `storage_gb`). */
+  metric?: string | null;
   productKey: string;
   productName: string;
   activationKind: string;
@@ -77,6 +83,7 @@ export type EventKind =
   | "plan_changed"
   | "item_added"
   | "item_removed"
+  | "quantity_changed"
   | "cancel_scheduled"
   | "cancel_undone"
   | "reactivated"
