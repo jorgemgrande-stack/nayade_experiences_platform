@@ -11,8 +11,20 @@ import { parse as parseCookie } from "cookie";
 import type { Actor } from "../_core/tenantRegistry/service";
 import type { OperatorAuthService, ValidSession } from "./operatorAuth";
 
-/** Cookie de sesión de operador (HttpOnly). En la BD solo está su SHA-256. */
+/**
+ * Cookie de sesión de operador (HttpOnly). En la BD solo está su SHA-256.
+ *  - HTTPS: `__Host-be_cp_session` (Secure, Path=/, sin Domain). El navegador garantiza que solo la puede fijar
+ *    este mismo host: una página de otro subdominio (p. ej. una empresa bajo *.app.bigelephant.es) no puede
+ *    inyectar ni sustituir la sesión de la administración.
+ *  - HTTP (solo desarrollo local): `be_cp_session` con Path=/cp/v1.
+ */
 export const SESSION_COOKIE = "be_cp_session";
+export const SESSION_COOKIE_HOST = "__Host-be_cp_session";
+
+/** Token de la sesión de operador. El nombre sin `__Host-` solo se acepta en peticiones sin HTTPS (desarrollo). */
+export function readSessionCookie(req: Request): string | null {
+  return readCookie(req, SESSION_COOKIE_HOST) ?? (req.secure ? null : readCookie(req, SESSION_COOKIE));
+}
 
 export const SCOPES = [
   "tenants:read",
@@ -129,7 +141,7 @@ export function authenticate(tokens: ServiceToken[], sessions?: SessionVerifier,
     const m = /^Bearer\s+(\S{16,2048})$/.exec(header);
     // Sin cabecera Authorization: sesión de operador por cookie (las integraciones siguen con Bearer)
     if (!header && opSessions) {
-      const cookie = readCookie(req, SESSION_COOKIE);
+      const cookie = readSessionCookie(req);
       if (cookie) {
         let v: ValidSession | null;
         try {

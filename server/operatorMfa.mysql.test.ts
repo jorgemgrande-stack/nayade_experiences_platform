@@ -42,12 +42,20 @@ d("segundo factor de los operadores (MySQL)", () => {
 
   it("sin la 0012 el acceso sigue igual y el MFA queda desactivado (con el motivo)", async () => {
     const p = pool();
-    const setup = await operatorAuthFromEnv(p, { CP_OPERATOR_MFA_ROLES: "superadmin" } as NodeJS.ProcessEnv, { keyring: ring });
-    expect(setup.mfa).toMatchObject({ available: false, requiredRoles: [], reason: expect.stringContaining("0012") });
+    const setup = await operatorAuthFromEnv(p, {} as NodeJS.ProcessEnv, { keyring: ring });
+    expect(setup.mfa).toMatchObject({ available: false, requiredRoles: [], misconfigured: false, reason: expect.stringContaining("0012") });
     await setup.service!.bootstrap({ username: "root", displayName: "Raíz", password: PW.root });
     const r = await setup.service!.login("root", PW.root);
     expect(r.mfa).toBe("none");
     expect((await setup.service!.validateSession(r.token))?.scopes.length).toBeGreaterThan(0);
+    await p.end();
+  });
+
+  it("sin la 0012 pero con roles obligatorios: esos roles no entran (falla cerrado) y se señala", async () => {
+    const p = pool();
+    const setup = await operatorAuthFromEnv(p, { CP_OPERATOR_MFA_ROLES: "superadmin" } as NodeJS.ProcessEnv, { keyring: ring });
+    expect(setup.mfa).toMatchObject({ available: false, requiredRoles: ["superadmin"], misconfigured: true });
+    await expect(setup.service!.login("root", PW.root)).rejects.toMatchObject({ code: "mfa_unavailable" });
     await p.end();
   });
 
@@ -92,5 +100,25 @@ d("segundo factor de los operadores (MySQL)", () => {
     const results = await Promise.allSettled([s2.verifyMfa(a.token, recoveryCodes[1]), s2.verifyMfa(b.token, recoveryCodes[1])]);
     expect(results.filter((x) => x.status === "fulfilled")).toHaveLength(1);
     await p2.end();
+  });
+
+  it("operaciones atómicas en MySQL: un paso TOTP se consume una vez y los fallos simultáneos bloquean una sola vez", async () => {
+    const p = pool();
+    const store = new MysqlOperatorStore(p, { mfa: true });
+    const [[op]] = await admin.query<any[]>("SELECT id FROM cp_operators WHERE username = 'root'");
+    const step = totpStep(Date.now()) + 1000;
+    const used = await Promise.all(Array.from({ length: 6 }, () => store.consumeTotpStep(op.id, step)));
+    expect(used.filter(Boolean)).toHaveLength(1);
+    expect(await store.consumeTotpStep(op.id, step - 1)).toBe(false);
+
+    await admin.query("UPDATE cp_operators SET failed_attempts = 0, locked_until = NULL WHERE id = ?", [op.id]);
+    const now = Date.now();
+    const res = await Promise.all(Array.from({ length: 12 }, () => store.registerFailure(op.id, now, 5, now + 15 * 60_000)));
+    expect(res.filter((r) => r.locked && !r.alreadyLocked)).toHaveLength(1);
+    const [[after]] = await admin.query<any[]>("SELECT failed_attempts, locked_until FROM cp_operators WHERE id = ?", [op.id]);
+    expect(after.failed_attempts).toBe(0);
+    expect(new Date(after.locked_until).getTime()).toBeGreaterThan(now);
+    await admin.query("UPDATE cp_operators SET failed_attempts = 0, locked_until = NULL WHERE id = ?", [op.id]);
+    await p.end();
   });
 });

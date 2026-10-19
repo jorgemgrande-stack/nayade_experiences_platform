@@ -6,7 +6,7 @@
 import express, { type NextFunction, type Request, type Response, type Router } from "express";
 import rateLimit from "express-rate-limit";
 import { z } from "zod";
-import { SESSION_COOKIE, getAuth, readCookie, requireOperatorSession, requireScope } from "./auth";
+import { SESSION_COOKIE, SESSION_COOKIE_HOST, getAuth, readSessionCookie, requireOperatorSession, requireScope } from "./auth";
 import { OperatorAuthError, publicOperator, type ActingOperator, type OperatorAuthService, type RequestContext } from "./operatorAuth";
 import { ROLES, ROLE_LABEL, assignableRoles } from "./operatorRoles";
 
@@ -37,10 +37,19 @@ const handle =
     });
   };
 
-function sessionCookie(req: Request, cfg: OperatorRoutesConfig, token: string, maxAgeSeconds: number) {
+/**
+ * Cabeceras Set-Cookie de la sesión. En HTTPS, `__Host-` (Secure, Path=/, sin Domain) y se borra la cookie
+ * antigua `be_cp_session` (Path=/cp/v1) si quedara; en HTTP (solo desarrollo), la antigua.
+ */
+function sessionCookie(req: Request, cfg: OperatorRoutesConfig, token: string, maxAgeSeconds: number): string[] {
   const secure = cfg.cookieSecure === undefined || cfg.cookieSecure === "auto" ? req.secure : cfg.cookieSecure;
+  const age = `Max-Age=${Math.max(0, maxAgeSeconds)}`;
   // El token es base64url (sin caracteres que requieran codificación)
-  return [`${SESSION_COOKIE}=${token}`, "Path=/cp/v1", `Max-Age=${Math.max(0, maxAgeSeconds)}`, "HttpOnly", "SameSite=Strict", ...(secure ? ["Secure"] : [])].join("; ");
+  if (!secure) return [[`${SESSION_COOKIE}=${token}`, "Path=/cp/v1", age, "HttpOnly", "SameSite=Strict"].join("; ")];
+  return [
+    [`${SESSION_COOKIE_HOST}=${token}`, "Path=/", age, "HttpOnly", "SameSite=Strict", "Secure"].join("; "),
+    [`${SESSION_COOKIE}=`, "Path=/cp/v1", "Max-Age=0", "HttpOnly", "SameSite=Strict", "Secure"].join("; "),
+  ];
 }
 
 /** Rechaza peticiones de navegador desde orígenes no autorizados (login CSRF). */
@@ -124,7 +133,7 @@ export function createPublicAuthRouter(cfg: OperatorRoutesConfig): Router {
     limiter,
     handle(async (req, res) => {
       const b = z.object({ code: z.string().max(32) }).parse(req.body);
-      const result = await svc.verifyMfa(readCookie(req, SESSION_COOKIE) ?? "", b.code, ctxOf(req));
+      const result = await svc.verifyMfa(readSessionCookie(req) ?? "", b.code, ctxOf(req));
       res.setHeader("Set-Cookie", sessionCookie(req, cfg, result.token, Math.floor((result.session.expiresAt - result.session.createdAt) / 1000)));
       res.setHeader("Cache-Control", "no-store");
       res.json(loginBody(svc, result));
@@ -160,6 +169,15 @@ export function createOperatorRouter(cfg: OperatorRoutesConfig): Router {
   const r = express.Router();
   const svc = cfg.service;
   const idParam = (req: Request) => z.coerce.number().int().positive().parse(req.params.id);
+  // Alta y baja del MFA: pocos intentos por operador (además del bloqueo de la cuenta por códigos erróneos)
+  const mfaLimiter = rateLimit({
+    windowMs: cfg.loginWindowMs ?? 15 * 60_000,
+    limit: 10,
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: (req) => `op:${getAuth(req)?.operator?.operator.id ?? "?"}`,
+    handler: (_req, res) => void res.status(429).json({ error: "too_many_attempts", message: "Demasiados intentos. Espera unos minutos." }),
+  });
 
   r.get("/auth/session", requireOperatorSession(), (req, res) => {
     res.setHeader("Cache-Control", "no-store");
@@ -209,6 +227,7 @@ export function createOperatorRouter(cfg: OperatorRoutesConfig): Router {
   r.post(
     "/auth/mfa/enable",
     requireOperatorSession(),
+    mfaLimiter,
     handle(async (req, res) => {
       const b = z.object({ code: z.string().max(32) }).parse(req.body);
       res.setHeader("Cache-Control", "no-store");
@@ -219,6 +238,7 @@ export function createOperatorRouter(cfg: OperatorRoutesConfig): Router {
   r.post(
     "/auth/mfa/disable",
     requireOperatorSession(),
+    mfaLimiter,
     handle(async (req, res) => {
       const b = z.object({ code: z.string().max(32) }).parse(req.body);
       await svc.disableMfa(acting(req), b.code, ctxOf(req));
