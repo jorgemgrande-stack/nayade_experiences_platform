@@ -5,8 +5,12 @@
  *
  *   POST /cp/v1/public/checkout/start
  *     { idempotencyKey (uuid), plan: essential|business, interval: month|year,
- *       company: { name, taxId? }, admin: { name, email },
- *       consents: { terms: true, privacy: true, termsVersion }, ticket, website (campo trampa) }
+ *       company?: { name, taxId? },  buyer?: perfil fiscal (empresa o particular; server/stripe/buyerProfile.ts),
+ *       admin: { name, email },
+ *       consents: { terms: true, privacy: true, termsVersion, privacyVersion?, precontractVersion?, immediateExecution? },
+ *       ticket, website (campo trampa) }
+ *   Con `buyer`, el nombre y el identificador fiscal salen del perfil: un particular no da razón social. En live
+ *   `buyer` es obligatorio (sin perfil fiscal no se abre el pago); en pruebas, `company` sigue valiendo.
  *   → 200 { sessionId, url, expiresAt }   (la URL de Stripe Checkout)
  *
  * Reutiliza el circuito existente sin atajos:
@@ -37,19 +41,33 @@ import type { CatalogPort } from "../subscriptions/ports";
 import type { CommercialOrder } from "../orchestrator/types";
 import { SELF_SERVICE_PLANS } from "./catalog";
 import { StripeCheckoutError, type CheckoutStart } from "./checkout";
+import type { StripeMode } from "./config";
+import type { StripeStore } from "./store";
+import { BuyerProfileError, buildConsent, buyerProfileInput, toBuyerProfile, type ConsentVersions } from "./buyerProfile";
 
 export const selfServiceBody = z
   .object({
     idempotencyKey: z.string().uuid(),
     plan: z.enum(SELF_SERVICE_PLANS),
     interval: z.enum(["month", "year"]),
-    company: z.object({ name: z.string().trim().min(2).max(160), taxId: z.string().trim().max(40).optional() }).strict(),
+    company: z.object({ name: z.string().trim().min(2).max(160), taxId: z.string().trim().max(40).optional() }).strict().optional(),
+    buyer: buyerProfileInput.optional(),
     admin: z.object({ name: z.string().trim().min(2).max(120), email: z.string().trim().toLowerCase().email().max(200) }).strict(),
-    consents: z.object({ terms: z.literal(true), privacy: z.literal(true), termsVersion: z.string().trim().min(1).max(40) }).strict(),
+    consents: z
+      .object({
+        terms: z.literal(true),
+        privacy: z.literal(true),
+        termsVersion: z.string().trim().min(1).max(40),
+        privacyVersion: z.string().trim().min(1).max(40).optional(),
+        precontractVersion: z.string().trim().min(1).max(40).optional(),
+        immediateExecution: z.literal(true).optional(),
+      })
+      .strict(),
     ticket: z.string().min(10).max(200),
     website: z.string().max(500).optional(),
   })
-  .strict();
+  .strict()
+  .refine((b) => !!b.company || !!b.buyer, { message: "Indica los datos del comprador", path: ["buyer"] });
 export type SelfServiceBody = z.infer<typeof selfServiceBody>;
 
 export interface SelfServiceDeps {
@@ -69,6 +87,12 @@ export interface SelfServiceDeps {
   origins: Set<string>;
   /** Versión publicada de las condiciones de contratación; sin ella, la ruta responde 503. */
   termsVersion: string | null;
+  /** Perfiles fiscales del comprador (0014). */
+  buyers?: Pick<StripeStore, "saveBuyerProfile">;
+  /** Modo del entorno: en live el perfil fiscal es obligatorio. */
+  mode?: StripeMode;
+  /** Versiones de consentimiento vigentes (condiciones, privacidad, precontractual) y decisión sobre el desistimiento. */
+  consent?: ConsentVersions;
   now?: () => number;
   minFillMs?: number;
   maxAgeMs?: number;
@@ -117,15 +141,44 @@ export class SelfServiceCheckout {
     if (recent.length >= (this.d.perEmailPerHour ?? 3)) throw new SelfServiceError(429, "rate_email", "Demasiados intentos con este correo: inténtalo más tarde");
     this.perEmail.set(b.admin.email, [...recent, now]);
 
-    const company = await this.d.crm.createCompany({ name: b.company.name, ...(b.company.taxId ? { taxId: b.company.taxId } : {}), email: b.admin.email }, ACTOR);
+    // Perfil fiscal: obligatorio en live; se valida ANTES de crear nada (consentimientos exigidos y territorio)
+    const versions: ConsentVersions = this.d.consent ?? { terms: this.d.termsVersion, privacy: null, precontract: null, withdrawal: "pending" };
+    if (this.d.mode === "live" && !b.buyer) throw new SelfServiceError(400, "buyer_required", "Indica si contratas como empresa o como particular, con tu país y código postal");
+    if (b.buyer) {
+      if (!this.d.buyers) throw new SelfServiceError(503, "buyer_unavailable", "La contratación en línea no está disponible");
+      try {
+        // Consentimiento COMPLETO (versiones vigentes y casillas propias) y territorio, sin persistir nada
+        toBuyerProfile(0, b.buyer, buildConsent(0, b.buyer.type, b.consents, versions, "web", now), now);
+      } catch (e) {
+        throw this.buyerError(e);
+      }
+    }
+    const name = b.buyer ? (b.buyer.type === "business" ? b.buyer.legalName : `${b.buyer.firstName} ${b.buyer.lastName}`) : b.company!.name;
+    const taxId = b.buyer ? b.buyer.taxId : b.company!.taxId;
+    const company = await this.d.crm.createCompany({ name, ...(taxId ? { taxId } : {}), email: b.admin.email }, ACTOR);
     await this.d.crm.createContact(company.id, { name: b.admin.name, email: b.admin.email, role: "Administración", isPrimary: true }, ACTOR);
     const { order } = await this.d.orchestrator.create({ idempotencyKey: key, companyId: company.id, request: { plan: b.plan, interval: b.interval, items: [] } }, ACTOR);
+    if (b.buyer) {
+      try {
+        const consent = buildConsent(order.id, b.buyer.type, b.consents, versions, "web", now);
+        await this.d.buyers!.saveBuyerProfile(toBuyerProfile(order.id, b.buyer, consent, now), ACTOR);
+      } catch (e) {
+        throw this.buyerError(e);
+      }
+    }
     // Aceptación registrada: versión de las condiciones y huella de la petición (sin datos personales)
     const evidence = crypto.createHash("sha256").update(`${key}|${b.consents.termsVersion}|${now}`).digest("hex").slice(0, 16);
     const accepted = (await this.d.orchestrator.accept(order.id, { signatureRef: `web-terms:${b.consents.termsVersion}:${evidence}` }, ACTOR)).order;
     if (accepted.state !== "contracted") throw new SelfServiceError(409, "not_contracted", "No se ha podido preparar la contratación");
-    opsLog("info", "SelfService", "order_ready", { orderId: order.id, plan: b.plan, interval: b.interval });
+    opsLog("info", "SelfService", "order_ready", { orderId: order.id, plan: b.plan, interval: b.interval, ...(b.buyer ? { buyerType: b.buyer.type } : {}) });
     return this.d.checkout.start(order.id, ACTOR);
+  }
+
+  private buyerError(e: unknown): Error {
+    if (!(e instanceof BuyerProfileError)) return e as Error;
+    if (e.code === "consumer_pending") return new SelfServiceError(503, "consumer_unavailable", "La contratación como particular todavía no está disponible");
+    if (e.code === "consent_missing") return new SelfServiceError(409, "consent_outdated", "Revisa y acepta los textos vigentes antes de continuar");
+    return new SelfServiceError(400, e.code, e.message);
   }
 }
 

@@ -32,6 +32,7 @@ import type { StripeMode, StripeTaxPolicy } from "./config";
 import { issuerLine } from "./issuer";
 import { StripeGatewayError, type StripeGateway } from "./gateway";
 import { StripeStoreError, type StripeStore } from "./store";
+import { fiscalGate, taxExpectationGate, type BuyerProfile, type FiscalScenario, type TaxTreatment } from "./buyerProfile";
 
 /** Etiqueta de Stripe para seguir este flujo en el Dashboard (sufijo de 8 letras, recomendación de Stripe). */
 export const INTEGRATION_IDENTIFIER = "elephant-source-checkout-rqzmvtak";
@@ -99,6 +100,13 @@ export interface CheckoutDeps {
   mode?: StripeMode;
   /** Política fiscal (StripeConfig.taxPolicy). En «test» se ignora; en «live», sin ella no se cobra. */
   taxPolicy?: StripeTaxPolicy | null;
+  /**
+   * Escenarios fiscales aprobados (CP_STRIPE_FISCAL_SCENARIOS). En «live» el pedido necesita un perfil de
+   * comprador cuyo escenario esté aprobado; sin la lista, ninguno lo está. En «test» no se exige.
+   */
+  fiscalScenarios?: Set<FiscalScenario>;
+  /** Tratamiento del impuesto declarado por escenario (CP_STRIPE_TAX_EXPECTATIONS). En live, sin él no se cobra. */
+  taxExpectations?: Map<FiscalScenario, TaxTreatment>;
 }
 
 /** Intentos con claves sucesivas cuando Stripe repite una sesión huérfana ya inservible. */
@@ -193,7 +201,22 @@ export class StripeCheckoutService {
         throw new StripeCheckoutError("invalid_state", "La empresa necesita un contacto activo con correo válido (será el administrador de la plataforma) antes de abrir el pago");
       }
     }
-    const customerId = await this.ensureCustomer(o.companyId, (company as { name: string }).name, tenantId);
+    // Perfil fiscal del comprador (empresa o particular, territorio y escenario). En live es obligatorio y su
+    // escenario debe estar aprobado: el tratamiento fiscal de cada caso lo decide el propietario con su asesor.
+    const buyer = await this.d.store.buyerProfile(orderId);
+    if (this.mode === "live") {
+      if (!buyer) throw new StripeCheckoutError("invalid_state", "Falta el perfil fiscal del comprador (empresa o particular, país y código postal) antes de abrir el pago");
+      if (fiscalGate(buyer, this.d.fiscalScenarios ?? new Set())) {
+        opsLog("warn", "StripeCheckout", "fiscal_scenario_pending", { orderId, scenario: buyer.scenario, actor });
+        throw new StripeCheckoutError("unavailable", `El escenario fiscal «${buyer.scenario}» está pendiente de aprobación: no se abre el pago`);
+      }
+      // Impuesto desconocido: sin el tratamiento declarado para el escenario no se cobra (no se podría contrastar)
+      if (taxExpectationGate(buyer.scenario, this.d.taxExpectations ?? new Map())) {
+        opsLog("warn", "StripeCheckout", "tax_expectation_missing", { orderId, scenario: buyer.scenario, actor });
+        throw new StripeCheckoutError("unavailable", `Falta el tratamiento del impuesto aprobado para «${buyer.scenario}»: no se abre el pago`);
+      }
+    }
+    const customerId = await this.ensureCustomer(o.companyId, buyer?.displayName ?? (company as { name: string }).name, tenantId, buyer);
 
     const now = this.now();
     await this.adoptOrphans(orderId, customerId, link.stripePriceId, now);
@@ -213,7 +236,15 @@ export class StripeCheckoutService {
       if (closed?.status === "complete") throw new StripeCheckoutError("invalid_state", "El pago de este pedido ya se completó en Stripe; falta su confirmación (webhook)");
     }
 
-    const metadata: Record<string, string> = { es_order_id: String(orderId), es_company_id: String(o.companyId), es_env: this.ns, es_tax_treatment: policy, ...(tenantId ? { es_tenant_id: tenantId } : {}) };
+    const metadata: Record<string, string> = {
+      es_order_id: String(orderId),
+      es_company_id: String(o.companyId),
+      es_env: this.ns,
+      es_tax_treatment: policy,
+      ...(tenantId ? { es_tenant_id: tenantId } : {}),
+      ...(buyer ? { es_buyer_type: buyer.type, es_fiscal_scenario: buyer.scenario } : {}),
+      ...(buyer && this.d.taxExpectations?.has(buyer.scenario) ? { es_tax_expectation: this.d.taxExpectations.get(buyer.scenario)! } : {}),
+    };
     let n = (await this.d.store.countSessions(orderId)) + 1;
     let idempotencyKey = "";
     let session: Awaited<ReturnType<StripeGateway["createCheckoutSession"]>> | null = null;
@@ -234,6 +265,8 @@ export class StripeCheckoutService {
             notice: policy === LIVE_TAX_TREATMENT ? LIVE_TAX_NOTICE : TEST_TAX_NOTICE,
             // Stripe Tax solo con la política live; en pruebas la sesión es la de siempre (sin automatic_tax)
             ...(policy === LIVE_TAX_TREATMENT ? { automaticTax: true } : {}),
+            // Empresas y profesionales: identificador fiscal obligatorio. Particulares: opcional (nunca razón social)
+            ...(buyer?.type === "business" ? { taxIdRequired: true } : {}),
           },
           idempotencyKey,
         );
@@ -360,7 +393,7 @@ export class StripeCheckoutService {
     return (await this.d.gateway.createPortalSession({ customerId: link.stripeCustomerId, returnUrl: this.d.urls.portalReturn })).url;
   }
 
-  private async ensureCustomer(companyId: number, name: string, tenantId: string | null): Promise<string> {
+  private async ensureCustomer(companyId: number, name: string, tenantId: string | null, buyer?: BuyerProfile | null): Promise<string> {
     const cur = await this.d.store.customerByCompany(companyId);
     if (cur) {
       const c = await this.d.gateway.customer(cur.stripeCustomerId);
@@ -369,10 +402,20 @@ export class StripeCheckoutService {
     }
     const contacts = (await this.d.crmStore.list("contacts", { companyId })) as Array<{ email?: string | null; status?: string; isPrimary?: boolean }>;
     const active = contacts.filter((c) => c.status !== "inactive" && c.email);
-    const email = (active.find((c) => c.isPrimary) ?? active[0])?.email ?? null;
+    // Correo de facturación de la empresa si lo indicó; si no, el del contacto principal
+    const email = buyer?.billingEmail ?? (active.find((c) => c.isPrimary) ?? active[0])?.email ?? null;
     // Clave estable por empresa: dos peticiones simultáneas reciben el mismo Customer de Stripe
     const idem = `es-${this.ns}-customer-${companyId}-${crypto.createHash("sha256").update(`${this.ns}:${companyId}`).digest("hex").slice(0, 8)}`;
-    const created = await this.d.gateway.createCustomer({ name, email, metadata: { es_company_id: String(companyId), es_env: this.ns, ...(tenantId ? { es_tenant_id: tenantId } : {}) } }, idem);
+    const created = await this.d.gateway.createCustomer(
+      {
+        name,
+        email,
+        metadata: { es_company_id: String(companyId), es_env: this.ns, ...(tenantId ? { es_tenant_id: tenantId } : {}), ...(buyer ? { es_buyer_type: buyer.type } : {}) },
+        // País y código postal declarados: Stripe Tax parte de ellos; Checkout pide y confirma la dirección completa
+        ...(buyer ? { address: { country: buyer.country, postalCode: buyer.postalCode } } : {}),
+      },
+      idem,
+    );
     const { link } = await this.d.store.linkCustomer({ companyId, tenantId, stripeCustomerId: created.id, now: this.now() });
     return link.stripeCustomerId;
   }

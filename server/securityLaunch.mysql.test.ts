@@ -31,7 +31,8 @@ const B = `sec-b-${run}`;
 const PASS: Record<string, string> = { [A]: "clave-de-A-" + run, [B]: "clave-de-B-" + run };
 const STAFF_PASS = "clave-equipo-" + run;
 
-type Res = { status: number; json: any; text: string; cookies: string[] };
+type Res = { status: number; json: any; text: string; cookies: string[]; location?: string };
+const CENTRAL = "app.elephantsource.es";
 
 describe.skipIf(!URL_)("seguridad de lanzamiento en multiempresa (aplicación real)", () => {
   let admin: mysql.Pool;
@@ -69,7 +70,7 @@ describe.skipIf(!URL_)("seguridad de lanzamiento en multiempresa (aplicación re
             } catch {
               /* texto */
             }
-            resolve({ status: res.statusCode ?? 0, json, text: b, cookies: (res.headers["set-cookie"] as string[] | undefined) ?? [] });
+            resolve({ status: res.statusCode ?? 0, json, text: b, cookies: (res.headers["set-cookie"] as string[] | undefined) ?? [], location: res.headers.location });
           });
         },
       );
@@ -216,10 +217,29 @@ describe.skipIf(!URL_)("seguridad de lanzamiento en multiempresa (aplicación re
     configureModuleAccess(rt.entitlements);
     const app = express();
     app.set("trust proxy", 1); // como en producción (server/_core/index.ts): HTTPS por X-Forwarded-Proto
+    // Acceso centralizado, montado como en tenantRegistry/install.ts (antes de resolver la empresa)
+    process.env.CENTRAL_LOGIN_HOST = CENTRAL;
+    const { createCentralAuthRouter, tenantUserFinder } = await import("./_core/centralAuth");
+    const { getTenantDatabase } = await import("./_core/dbRegistry");
+    const { runWithTenant } = await import("./_core/tenant");
+    const { passwordFingerprint, createCentralHandoffRouter } = await import("./localAuth");
+    const { requestPasswordReset } = await import("./passwordReset");
+    app.use(
+      createCentralAuthRouter({
+        host: CENTRAL,
+        listTenants: () => rt.reader.listTenants(),
+        listDomains: (id) => rt.reader.listDomains(id),
+        findUser: tenantUserFinder(getTenantDatabase),
+        passwordFingerprint,
+        requestReset: (id, email) => runWithTenant(id, async () => void (await requestPasswordReset(email))),
+        log: () => undefined,
+      }),
+    );
     app.use(resolveTenantMiddleware(rt.resolver, { log: () => undefined }));
     app.use(express.json());
     app.use(bindTenantMiddleware());
     app.use(createLocalAuthRouter());
+    app.use(createCentralHandoffRouter()!);
     app.use(createPasswordResetRouter());
     app.use("/api/trpc", moduleRouteGuard(getModuleAccess));
     app.use("/api/trpc", createAuthGuardMiddleware(true));
@@ -603,6 +623,94 @@ describe.skipIf(!URL_)("seguridad de lanzamiento en multiempresa (aplicación re
       const r = await m(B, "admin.changeUserRole", { userId: lone, role: "agente" }, s);
       expect(r.status).toBe(400);
       expect((await m(B, "admin.toggleUserActive", { userId: lone }, s)).status).toBe(400);
+    });
+  });
+
+  // ─── Acceso centralizado (app.<dominio>) ────────────────────────────────────
+
+  describe("acceso centralizado", () => {
+    const origin = { origin: `https://${CENTRAL}` };
+    const https = { "x-forwarded-proto": "https" };
+    const central = (email: string, password: string, headers: Record<string, string> = origin) =>
+      call(CENTRAL, "POST", "/api/central/login", { body: { email, password }, headers });
+    const handoff = (h: string, token: string, headers: Record<string, string> = { ...origin, ...https }) =>
+      call(h, "POST", "/api/auth/handoff", { body: { token }, headers });
+    const sessionCookie = (r: Res) => r.cookies.find((c) => c.startsWith("__Host-nayade_session="))?.split(";")[0];
+    const SHARED = `compartida-${run}@ambas.example`;
+    const SHARED_PASS = "clave-compartida-" + run;
+
+    it("solo desde la página central y con respuesta genérica: no revela qué correos existen", async () => {
+      expect((await central(`admin@${A}.example`, PASS[A], { origin: "https://evil.example" })).status).toBe(403);
+      const wrong = await central(`admin@${A}.example`, "incorrecta-" + run);
+      const unknown = await central(`nadie-${run}@ningun.example`, "incorrecta-" + run);
+      expect(wrong.status).toBe(401);
+      expect(unknown.status).toBe(401);
+      expect(wrong.json).toEqual(unknown.json);
+      // Las rutas centrales no existen en el host de una empresa
+      expect((await call(host(A), "POST", "/api/central/login", { body: { email: `admin@${A}.example`, password: PASS[A] }, headers: { origin: `https://${host(A)}` } })).status).not.toBe(200);
+    });
+
+    it("una empresa: devuelve solo esa, con su host; el pase abre la sesión __Host- de esa empresa", async () => {
+      const r = await central(`admin@${A}.example`, PASS[A]);
+      expect(r.status).toBe(200);
+      expect(r.json.companies.map((c: any) => c.id)).toEqual([A]);
+      const c = r.json.companies[0];
+      expect(c).toMatchObject({ host: host(A), handoffUrl: `https://${host(A)}/api/auth/handoff` });
+      const h = await handoff(host(A), c.token);
+      expect(h.status).toBe(303);
+      expect(h.location).toBe("/admin");
+      const cookie = sessionCookie(h)!;
+      expect(cookie).toBeTruthy();
+      const me = await call(host(A), "GET", "/api/auth/me", { cookie, headers: https });
+      expect(me.status).toBe(200);
+      expect(me.json.email).toBe(`admin@${A}.example`);
+      // Un solo uso
+      const again = await handoff(host(A), c.token);
+      expect(again.location).toContain("acceso=caducado");
+      expect(sessionCookie(again)).toBeUndefined();
+    });
+
+    it("el pase no sirve en otra empresa, ni desde otro origen, ni tras cambiar la contraseña", async () => {
+      const t1 = (await central(`admin@${A}.example`, PASS[A])).json.companies[0].token;
+      const other = await handoff(host(B), t1);
+      expect(other.location).toContain("acceso=caducado");
+      expect(sessionCookie(other)).toBeUndefined();
+      const t2 = (await central(`admin@${A}.example`, PASS[A])).json.companies[0].token;
+      const foreign = await handoff(host(A), t2, { origin: "https://evil.example", ...https });
+      expect(foreign.location).toContain("acceso=caducado");
+      // Cambio de contraseña después de emitir el pase: el pase deja de valer
+      const t3 = (await central(`admin@${A}.example`, PASS[A])).json.companies[0].token;
+      const [[row]] = await Promise.all([sql<any[]>(A, "SELECT passwordHash FROM users WHERE email = ?", [`admin@${A}.example`])]);
+      await sql(A, "UPDATE users SET passwordHash = ? WHERE email = ?", [await bcrypt.hash("otra-clave-" + run, 4), `admin@${A}.example`]);
+      const stale = await handoff(host(A), t3);
+      await sql(A, "UPDATE users SET passwordHash = ? WHERE email = ?", [row.passwordHash, `admin@${A}.example`]);
+      expect(stale.location).toContain("acceso=caducado");
+    });
+
+    it("varias empresas: selector con ambas; una cuenta desactivada en una de ellas no aparece", async () => {
+      const hash = await bcrypt.hash(SHARED_PASS, 4);
+      for (const id of [A, B]) {
+        await sql(id, "INSERT INTO users (openId, name, email, loginMethod, role, isActive, passwordHash, inviteAccepted) VALUES (?, 'Compartida', ?, 'local', 'admin', 1, ?, 1)", [`central-${id}-${run}`, SHARED, hash]);
+      }
+      const both = await central(SHARED, SHARED_PASS);
+      expect(both.status).toBe(200);
+      expect(both.json.companies.map((c: any) => c.id).sort()).toEqual([A, B].sort());
+      for (const c of both.json.companies) {
+        const h = await handoff(c.host, c.token);
+        expect(h.status).toBe(303);
+        const me = await call(c.host, "GET", "/api/auth/me", { cookie: sessionCookie(h)!, headers: https });
+        expect(me.json.email).toBe(SHARED);
+      }
+      await sql(B, "UPDATE users SET isActive = 0 WHERE email = ?", [SHARED]);
+      expect((await central(SHARED, SHARED_PASS)).json.companies.map((c: any) => c.id)).toEqual([A]);
+    });
+
+    it("recuperación central: misma respuesta exista o no el correo", async () => {
+      const a = await call(CENTRAL, "POST", "/api/central/forgot", { body: { email: SHARED }, headers: origin });
+      const b = await call(CENTRAL, "POST", "/api/central/forgot", { body: { email: `nadie-${run}@ningun.example` }, headers: origin });
+      expect(a.status).toBe(200);
+      expect(a.json).toEqual(b.json);
+      expect((await call(CENTRAL, "POST", "/api/central/forgot", { body: { email: SHARED }, headers: { origin: "https://evil.example" } })).status).toBe(403);
     });
   });
 });

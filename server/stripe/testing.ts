@@ -3,12 +3,13 @@
  * la misma Idempotency-Key devuelve el mismo objeto, los Prices se buscan por lookup_key y las
  * sesiones se pueden caducar. Registra cada llamada para poder comprobar qué se envió.
  */
-import { StripeGatewayError, type CheckoutSessionInput, type GwCharge, type GwCheckoutSession, type GwEvent, type GwInvoice, type GwPrice, type GwProduct, type GwSubscription, type StripeGateway } from "./gateway";
+import type { GwPortalConfig } from "./portal";
+import { StripeGatewayError, type CheckoutSessionInput, type CustomerInput, type GwCharge, type GwCheckoutSession, type GwEvent, type GwInvoice, type GwPrice, type GwProduct, type GwSubscription, type StripeGateway } from "./gateway";
 
 export class FakeStripeGateway implements StripeGateway {
   prices: GwPrice[] = [];
   products = new Map<string, GwProduct>();
-  customers = new Map<string, { id: string; deleted: boolean; name: string; email: string | null; metadata: Record<string, string> }>();
+  customers = new Map<string, { id: string; deleted: boolean } & CustomerInput>();
   sessions = new Map<string, GwCheckoutSession & { input: CheckoutSessionInput }>();
   subscriptions = new Map<string, GwSubscription>();
   invoices = new Map<string, GwInvoice>();
@@ -17,6 +18,12 @@ export class FakeStripeGateway implements StripeGateway {
   chargeRefs = new Map<string, string>();
   /** Simula que la lista de sesiones del cliente aún no incluye una recién creada. */
   hideSessions = false;
+  /** Configuraciones del Customer Portal que «tiene» la cuenta. */
+  portalConfigs: GwPortalConfig[] = [];
+  /** Identificadores fiscales que el cliente dio en Checkout (por Customer); sin entrada, ninguno. */
+  taxIdsOf = new Map<string, number>();
+  /** Tipo de Stripe Tax de las facturas que «emite» (puntos básicos); null: impuesto no informado. */
+  invoiceTaxBp: number | null = null;
   /** Parámetros enviados con cada clave: como Stripe, otra petición con la misma clave y otros parámetros falla. */
   private idemParams = new Map<string, string>();
   /** Eventos que «emite» Stripe (para la conciliación); el más reciente al principio, como la API. */
@@ -46,7 +53,7 @@ export class FakeStripeGateway implements StripeGateway {
     const p = this.products.get(id);
     return p ? { ...p, metadata: { ...p.metadata } } : null;
   }
-  async createCustomer(input: { name: string; email: string | null; metadata: Record<string, string> }, key: string) {
+  async createCustomer(input: CustomerInput, key: string) {
     this.calls.push({ op: "customers.create", key, input });
     const prev = this.idem.get(`cus:${key}`);
     if (prev) return { id: prev };
@@ -137,6 +144,10 @@ export class FakeStripeGateway implements StripeGateway {
     const limit = q.limit ?? 100;
     return { events: list.slice(0, limit).map((e) => ({ ...e })), hasMore: list.length > limit };
   }
+  async portalConfigurations() {
+    this.calls.push({ op: "billing_portal.configurations.list" });
+    return this.portalConfigs.map((c) => structuredClone(c));
+  }
   async createPortalSession(input: { customerId: string; returnUrl: string }) {
     this.calls.push({ op: "billing_portal.sessions.create", input });
     return { url: `https://billing.stripe.test/p/session/${input.customerId}` };
@@ -156,7 +167,11 @@ export class FakeStripeGateway implements StripeGateway {
   /** Nueva factura de la suscripción (renovación, cambio…) y la deja como última. */
   addInvoice(subId: string, customerId: string, reason: string, status: GwInvoice["status"], amount: number) {
     const id = this.next("in");
-    this.invoices.set(id, { id, status, subscriptionId: subId, customerId, amountPaid: status === "paid" ? amount : 0, currency: "EUR", billingReason: reason, periodStart: 1_800_000_000 + this.seq, subtotal: amount });
+    const addr = this.customers.get(customerId)?.address;
+    // Como en Stripe: el subtotal es el neto y lo pagado es el total (neto + impuesto de Stripe Tax)
+    const tax = this.invoiceTaxBp === null ? null : Math.round((amount * this.invoiceTaxBp) / 10_000);
+    const total = amount + (tax ?? 0);
+    this.invoices.set(id, { id, status, subscriptionId: subId, customerId, amountPaid: status === "paid" ? total : 0, currency: "EUR", billingReason: reason, periodStart: 1_800_000_000 + this.seq, subtotal: amount, customerCountry: addr?.country ?? null, customerPostalCode: addr?.postalCode ?? null, customerTaxIds: this.taxIdsOf.get(customerId) ?? 0, taxCents: tax, number: `ES-${String(this.seq).padStart(4, "0")}`, total });
     const sub = this.subscriptions.get(subId);
     if (sub) this.subscriptions.set(subId, { ...sub, latestInvoiceId: id });
     return id;

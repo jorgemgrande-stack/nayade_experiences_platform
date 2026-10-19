@@ -5,10 +5,17 @@
  * Cada almacén trabaja en UN modo (por defecto pruebas): escribe `livemode` según él (0 pruebas, 1 live)
  * y solo lee, cuenta, actualiza o purga filas de su modo. Una fila del otro modo se ignora en las
  * lecturas y se rechaza al escribir (duplicado o `mode_mismatch`): un entorno nunca usa filas del otro.
+ *
+ * Con registro de eventos comerciales (CRM 0015), un reembolso nuevo, la pérdida o recuperación de la
+ * cobertura y cada cambio de disputa se registran en la misma transacción que el ajuste del cargo.
  */
 import type mysql from "mysql2/promise";
+import { chargeAdjusted } from "../commercialEvents/derive";
+import type { CommercialEventSink } from "../commercialEvents/types";
 import type { StripeMode } from "./config";
 import type { GwSubscription } from "./gateway";
+import type { BuyerProfile, ConsentRecord } from "./buyerProfile";
+import type { FiscalDocument, FiscalDocumentDraft, FiscalDocumentStatus, StripeInvoiceRecord } from "./fiscalDocuments";
 
 export interface StripePriceLink {
   webPriceId: number;
@@ -149,16 +156,49 @@ export interface StripeStore {
   // ── Retención de eventos ──
   /** Borra hasta `limit` eventos TERMINADOS (procesados o ignorados) recibidos antes de `before`. Nunca fallidos ni pendientes. */
   purgeEvents(before: number, limit: number): Promise<{ processed: number; ignored: number }>;
+
+  /** Perfil fiscal del comprador de un pedido (0014). `null` si no hay o si la tabla no existe. */
+  buyerProfile(orderId: number): Promise<BuyerProfile | null>;
+  /** Crea o sustituye el perfil (versión + 1) y deja la instantánea en el historial, en una transacción. */
+  saveBuyerProfile(p: BuyerProfileDraft, actor: string): Promise<BuyerProfile>;
+
+  /** Registro de facturas cobradas (0016). Crea o actualiza el estado y los importes; nunca cambia el pedido. */
+  upsertInvoiceRecord(r: StripeInvoiceRecord): Promise<void>;
+  invoiceRecord(stripeInvoiceId: string): Promise<StripeInvoiceRecord | null>;
+  listInvoiceRecords(q: { orderId?: number; limit: number }): Promise<StripeInvoiceRecord[]>;
+  /** Total reembolsado de una factura: solo sube (una lectura antigua no lo rebaja). */
+  setInvoiceRefunded(stripeInvoiceId: string, refundedCents: number, now: number): Promise<void>;
+  /** Documento fiscal idempotente por clave de origen: el mismo hecho devuelve el documento existente. */
+  enqueueFiscalDocument(d: FiscalDocumentDraft): Promise<{ created: boolean; document: FiscalDocument }>;
+  fiscalDocumentBySource(sourceKey: string): Promise<FiscalDocument | null>;
+  listFiscalDocuments(q: { status?: FiscalDocumentStatus; orderId?: number; limit: number }): Promise<FiscalDocument[]>;
+  /** Registra la emisión en el sistema legal (pendiente o fallido → emitido). Repetirla con la misma referencia no cambia nada. */
+  markFiscalDocumentIssued(id: number, externalRef: string, by: string, at: number): Promise<FiscalDocument | null>;
 }
+
+/** El documento ya está emitido con OTRA referencia: no se sobrescribe un número legal. */
+export class FiscalDocumentConflictError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "FiscalDocumentConflictError";
+  }
+}
+
+export type BuyerProfileDraft = Omit<BuyerProfile, "version" | "createdAt" | "updatedAt"> & { now: number };
 
 // ── Memoria (pruebas) ────────────────────────────────────────────────────────
 
-type Table = "prices" | "customers" | "sessions" | "subscriptions" | "events" | "adjustments";
+type Table = "prices" | "customers" | "sessions" | "subscriptions" | "events" | "adjustments" | "buyers" | "invoices" | "documents";
+/** Los ajustes los escribe siempre el procesador de eventos de Stripe. */
+const ADJUSTMENT_ACTOR = "system:stripe";
 
 export class MemoryStripeStore implements StripeStore {
   /** `livemode` de cada fila (`tabla:clave`), como la columna de la BD. Sin marca, la fila es de este modo. */
   livemodes = new Map<string, boolean>();
-  constructor(readonly mode: StripeMode = "test") {}
+  constructor(
+    readonly mode: StripeMode = "test",
+    private commercialEvents?: CommercialEventSink,
+  ) {}
   private mine(t: Table, k: string | number) {
     const v = this.livemodes.get(`${t}:${k}`);
     return v === undefined || v === (this.mode === "live");
@@ -172,7 +212,7 @@ export class MemoryStripeStore implements StripeStore {
   /** Otra vista de los MISMOS datos en otro modo (imita dos entornos que apuntaran a la misma BD). */
   withMode(mode: StripeMode): MemoryStripeStore {
     const o = new MemoryStripeStore(mode);
-    Object.assign(o, { livemodes: this.livemodes, events: this.events, state: this.state, adjustments: this.adjustments, prices: this.prices, customers: this.customers, sessions: this.sessions, subscriptions: this.subscriptions });
+    Object.assign(o, { livemodes: this.livemodes, events: this.events, state: this.state, adjustments: this.adjustments, prices: this.prices, customers: this.customers, sessions: this.sessions, subscriptions: this.subscriptions, buyers: this.buyers, buyerHistory: this.buyerHistory, invoiceRecords: this.invoiceRecords, fiscalDocs: this.fiscalDocs });
     return o;
   }
 
@@ -263,6 +303,7 @@ export class MemoryStripeStore implements StripeStore {
     };
     this.adjustments.set(a.chargeId, cur);
     this.stamp("adjustments", a.chargeId);
+    await this.commercialEvents?.append(null, chargeAdjusted(prev, cur, null, ADJUSTMENT_ACTOR, now));
     return { previous: prev ? { ...prev } : null, current: { ...cur } };
   }
   async adjustment(id: string) {
@@ -374,6 +415,74 @@ export class MemoryStripeStore implements StripeStore {
     const x = this.subscriptions.get(id);
     return x && this.mine("subscriptions", id) ? { ...x, priceIds: [...x.priceIds] } : null;
   }
+
+  invoiceRecords = new Map<string, StripeInvoiceRecord>();
+  fiscalDocs: FiscalDocument[] = [];
+  async upsertInvoiceRecord(r: StripeInvoiceRecord) {
+    const prev = this.invoiceRecords.get(r.stripeInvoiceId);
+    if (prev && this.foreign("invoices", r.stripeInvoiceId)) throw new StripeStoreError("mode_mismatch", "La factura pertenece a otro modo");
+    this.invoiceRecords.set(r.stripeInvoiceId, prev ? { ...r, createdAt: prev.createdAt, amountRefundedCents: Math.max(prev.amountRefundedCents, r.amountRefundedCents) } : { ...r });
+    this.stamp("invoices", r.stripeInvoiceId);
+  }
+  async invoiceRecord(id: string) {
+    const r = this.invoiceRecords.get(id);
+    return r && this.mine("invoices", id) ? { ...r } : null;
+  }
+  async listInvoiceRecords(q: { orderId?: number; limit: number }) {
+    return Array.from(this.invoiceRecords.values())
+      .filter((r) => this.mine("invoices", r.stripeInvoiceId) && (q.orderId === undefined || r.orderId === q.orderId))
+      .slice(0, q.limit)
+      .map((r) => ({ ...r }));
+  }
+  async setInvoiceRefunded(id: string, refunded: number, now: number) {
+    const r = this.invoiceRecords.get(id);
+    if (r && this.mine("invoices", id) && refunded > r.amountRefundedCents) this.invoiceRecords.set(id, { ...r, amountRefundedCents: refunded, updatedAt: now });
+  }
+  async enqueueFiscalDocument(d: FiscalDocumentDraft) {
+    const prev = this.fiscalDocs.find((x) => x.sourceKey === d.sourceKey && this.mine("documents", x.id));
+    if (prev) return { created: false, document: { ...prev } };
+    const doc: FiscalDocument = { ...d, id: this.fiscalDocs.length + 1, status: "pending", externalRef: null, issuedAt: null, issuedBy: null, lastError: null };
+    this.fiscalDocs.push(doc);
+    this.stamp("documents", doc.id);
+    return { created: true, document: { ...doc } };
+  }
+  async fiscalDocumentBySource(key: string) {
+    const d = this.fiscalDocs.find((x) => x.sourceKey === key && this.mine("documents", x.id));
+    return d ? { ...d } : null;
+  }
+  async listFiscalDocuments(q: { status?: FiscalDocumentStatus; orderId?: number; limit: number }) {
+    return this.fiscalDocs
+      .filter((x) => this.mine("documents", x.id) && (!q.status || x.status === q.status) && (q.orderId === undefined || x.orderId === q.orderId))
+      .slice(0, q.limit)
+      .map((x) => ({ ...x }));
+  }
+  async markFiscalDocumentIssued(id: number, externalRef: string, by: string, at: number) {
+    const d = this.fiscalDocs.find((x) => x.id === id && this.mine("documents", x.id));
+    if (!d) return null;
+    if (d.status === "issued") {
+      if (d.externalRef !== externalRef) throw new FiscalDocumentConflictError("El documento ya está emitido con otra referencia");
+      return { ...d };
+    }
+    Object.assign(d, { status: "issued", externalRef, issuedAt: at, issuedBy: by, lastError: null });
+    return { ...d };
+  }
+
+  buyers = new Map<number, BuyerProfile>();
+  buyerHistory: Array<{ orderId: number; version: number; actor: string; snapshot: BuyerProfile }> = [];
+  async buyerProfile(orderId: number) {
+    const p = this.buyers.get(orderId);
+    return p && this.mine("buyers", orderId) ? structuredClone(p) : null;
+  }
+  async saveBuyerProfile(d: BuyerProfileDraft, actor: string) {
+    const prev = this.buyers.get(d.orderId);
+    if (prev && this.foreign("buyers", d.orderId)) throw new StripeStoreError("mode_mismatch", "El perfil del comprador pertenece a otro modo");
+    const { now, ...rest } = d;
+    const p: BuyerProfile = { ...structuredClone(rest), version: (prev?.version ?? 0) + 1, createdAt: prev?.createdAt ?? now, updatedAt: now };
+    this.buyers.set(d.orderId, p);
+    this.stamp("buyers", d.orderId);
+    this.buyerHistory.push({ orderId: d.orderId, version: p.version, actor, snapshot: structuredClone(p) });
+    return structuredClone(p);
+  }
 }
 
 // ── MySQL (BD del CRM) ───────────────────────────────────────────────────────
@@ -388,6 +497,8 @@ export class MysqlStripeStore implements StripeStore {
   constructor(
     private pool: mysql.Pool,
     readonly mode: StripeMode = "test",
+    /** Registro de eventos comerciales (0015); sin él, todo funciona igual y no se registra nada. */
+    private commercialEvents?: CommercialEventSink,
   ) {
     this.lm = mode === "live" ? 1 : 0;
   }
@@ -656,8 +767,14 @@ export class MysqlStripeStore implements StripeStore {
         );
       }
       const [after] = await conn.query<Row[]>("SELECT * FROM stripe_charge_adjustments WHERE stripe_charge_id = ?", [a.chargeId]);
+      const current = this.adjustmentRow(after[0]);
+      if (this.commercialEvents) {
+        const [o] = await conn.query<Row[]>("SELECT tenant_id, subscription_id FROM commercial_orders WHERE id = ?", [a.orderId]);
+        const order = o[0] ? { tenantId: (o[0].tenant_id as string | null) ?? null, subscriptionId: o[0].subscription_id == null ? null : Number(o[0].subscription_id) } : null;
+        await this.commercialEvents.append(conn, chargeAdjusted(prev, current, order, ADJUSTMENT_ACTOR, now));
+      }
       await conn.commit();
-      return { previous: prev, current: this.adjustmentRow(after[0]) };
+      return { previous: prev, current };
     } catch (e) {
       await conn.rollback().catch(() => undefined);
       throw e;
@@ -696,5 +813,176 @@ export class MysqlStripeStore implements StripeStore {
       out[status] = res.affectedRows;
     }
     return out;
+  }
+
+  private invoiceRow = (r: Row): StripeInvoiceRecord => ({
+    stripeInvoiceId: String(r.stripe_invoice_id),
+    orderId: Number(r.order_id),
+    stripeCustomerId: (r.stripe_customer_id as string | null) ?? null,
+    stripeSubscriptionId: (r.stripe_subscription_id as string | null) ?? null,
+    number: (r.number as string | null) ?? null,
+    status: r.status as StripeInvoiceRecord["status"],
+    billingReason: (r.billing_reason as string | null) ?? null,
+    purpose: r.purpose as StripeInvoiceRecord["purpose"],
+    currency: String(r.currency),
+    subtotalCents: Number(r.subtotal_cents),
+    taxCents: r.tax_cents === null || r.tax_cents === undefined ? null : Number(r.tax_cents),
+    totalCents: Number(r.total_cents),
+    amountPaidCents: Number(r.amount_paid_cents),
+    amountRefundedCents: Number(r.amount_refunded_cents),
+    periodStart: r.period_start === null || r.period_start === undefined ? null : Number(r.period_start),
+    customerCountry: (r.customer_country as string | null) ?? null,
+    customerPostalCode: (r.customer_postal_code as string | null) ?? null,
+    buyerScenario: (r.buyer_scenario as string | null) ?? null,
+    createdAt: Number(r.created_at),
+    updatedAt: Number(r.updated_at),
+  });
+  private docRow = (r: Row): FiscalDocument => ({
+    id: Number(r.id),
+    kind: r.kind as FiscalDocument["kind"],
+    sourceKey: String(r.source_key),
+    orderId: Number(r.order_id),
+    stripeInvoiceId: String(r.stripe_invoice_id),
+    stripeChargeId: (r.stripe_charge_id as string | null) ?? null,
+    originalDocumentId: r.original_document_id === null || r.original_document_id === undefined ? null : Number(r.original_document_id),
+    currency: String(r.currency),
+    baseCents: Number(r.base_cents),
+    taxCents: r.tax_cents === null || r.tax_cents === undefined ? null : Number(r.tax_cents),
+    totalCents: Number(r.total_cents),
+    status: r.status as FiscalDocumentStatus,
+    externalRef: (r.external_ref as string | null) ?? null,
+    issuedAt: r.issued_at === null || r.issued_at === undefined ? null : Number(r.issued_at),
+    issuedBy: (r.issued_by as string | null) ?? null,
+    lastError: (r.last_error as string | null) ?? null,
+    createdAt: Number(r.created_at),
+  });
+  async upsertInvoiceRecord(r: StripeInvoiceRecord) {
+    const [cur] = await this.pool.query<Row[]>("SELECT livemode FROM stripe_invoices WHERE stripe_invoice_id = ?", [r.stripeInvoiceId]);
+    if (cur[0] && Number(cur[0].livemode) !== this.lm) throw new StripeStoreError("mode_mismatch", "La factura pertenece a otro modo");
+    await this.pool.query(
+      `INSERT INTO stripe_invoices (stripe_invoice_id, livemode, order_id, stripe_customer_id, stripe_subscription_id, number, status, billing_reason, purpose, currency, subtotal_cents, tax_cents, total_cents, amount_paid_cents, amount_refunded_cents, period_start, customer_country, customer_postal_code, buyer_scenario, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE number = VALUES(number), status = VALUES(status), subtotal_cents = VALUES(subtotal_cents), tax_cents = VALUES(tax_cents), total_cents = VALUES(total_cents),
+         amount_paid_cents = VALUES(amount_paid_cents), amount_refunded_cents = GREATEST(amount_refunded_cents, VALUES(amount_refunded_cents)), updated_at = VALUES(updated_at)`,
+      [r.stripeInvoiceId, this.lm, r.orderId, r.stripeCustomerId, r.stripeSubscriptionId, r.number, r.status, r.billingReason, r.purpose, r.currency, r.subtotalCents, r.taxCents, r.totalCents, r.amountPaidCents, r.amountRefundedCents, r.periodStart, r.customerCountry, r.customerPostalCode, r.buyerScenario, r.createdAt, r.updatedAt],
+    );
+  }
+  async invoiceRecord(id: string) {
+    const [rows] = await this.pool.query<Row[]>("SELECT * FROM stripe_invoices WHERE stripe_invoice_id = ? AND livemode = ?", [id, this.lm]);
+    return rows[0] ? this.invoiceRow(rows[0]) : null;
+  }
+  async listInvoiceRecords(q: { orderId?: number; limit: number }) {
+    const [rows] = await this.pool.query<Row[]>(
+      `SELECT * FROM stripe_invoices WHERE livemode = ?${q.orderId === undefined ? "" : " AND order_id = ?"} ORDER BY created_at DESC LIMIT ?`,
+      q.orderId === undefined ? [this.lm, q.limit] : [this.lm, q.orderId, q.limit],
+    );
+    return rows.map(this.invoiceRow);
+  }
+  async setInvoiceRefunded(id: string, refunded: number, now: number) {
+    await this.pool.query("UPDATE stripe_invoices SET amount_refunded_cents = ?, updated_at = ? WHERE stripe_invoice_id = ? AND livemode = ? AND amount_refunded_cents < ?", [refunded, now, id, this.lm, refunded]);
+  }
+  async enqueueFiscalDocument(d: FiscalDocumentDraft) {
+    try {
+      const [res] = await this.pool.query<mysql.ResultSetHeader>(
+        "INSERT INTO fiscal_documents (livemode, kind, source_key, order_id, stripe_invoice_id, stripe_charge_id, original_document_id, currency, base_cents, tax_cents, total_cents, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [this.lm, d.kind, d.sourceKey, d.orderId, d.stripeInvoiceId, d.stripeChargeId, d.originalDocumentId, d.currency, d.baseCents, d.taxCents, d.totalCents, d.createdAt],
+      );
+      const [rows] = await this.pool.query<Row[]>("SELECT * FROM fiscal_documents WHERE id = ?", [res.insertId]);
+      return { created: true, document: this.docRow(rows[0]) };
+    } catch (e) {
+      if (!isDup(e)) throw e;
+      const existing = await this.fiscalDocumentBySource(d.sourceKey);
+      if (!existing) throw new StripeStoreError("mode_mismatch", "El documento fiscal pertenece a otro modo");
+      return { created: false, document: existing };
+    }
+  }
+  async fiscalDocumentBySource(key: string) {
+    const [rows] = await this.pool.query<Row[]>("SELECT * FROM fiscal_documents WHERE source_key = ? AND livemode = ?", [key, this.lm]);
+    return rows[0] ? this.docRow(rows[0]) : null;
+  }
+  async listFiscalDocuments(q: { status?: FiscalDocumentStatus; orderId?: number; limit: number }) {
+    const where = ["livemode = ?"];
+    const args: unknown[] = [this.lm];
+    if (q.status) {
+      where.push("status = ?");
+      args.push(q.status);
+    }
+    if (q.orderId !== undefined) {
+      where.push("order_id = ?");
+      args.push(q.orderId);
+    }
+    const [rows] = await this.pool.query<Row[]>(`SELECT * FROM fiscal_documents WHERE ${where.join(" AND ")} ORDER BY id LIMIT ?`, [...args, q.limit]);
+    return rows.map(this.docRow);
+  }
+  async markFiscalDocumentIssued(id: number, externalRef: string, by: string, at: number) {
+    const [res] = await this.pool.query<mysql.ResultSetHeader>(
+      "UPDATE fiscal_documents SET status = 'issued', external_ref = ?, issued_at = ?, issued_by = ?, last_error = NULL WHERE id = ? AND livemode = ? AND status IN ('pending','failed')",
+      [externalRef, at, by.slice(0, 120), id, this.lm],
+    );
+    const [rows] = await this.pool.query<Row[]>("SELECT * FROM fiscal_documents WHERE id = ? AND livemode = ?", [id, this.lm]);
+    if (!rows[0]) return null;
+    const d = this.docRow(rows[0]);
+    if (res.affectedRows === 0 && d.externalRef !== externalRef) throw new FiscalDocumentConflictError("El documento ya está emitido con otra referencia");
+    return d;
+  }
+
+  private buyerRow = (r: Row): BuyerProfile => ({
+    orderId: Number(r.order_id),
+    type: r.buyer_type as BuyerProfile["type"],
+    territory: r.territory as BuyerProfile["territory"],
+    scenario: String(r.scenario) as BuyerProfile["scenario"],
+    country: String(r.country),
+    postalCode: (r.postal_code as string | null) ?? null,
+    displayName: String(r.display_name),
+    taxId: (r.tax_id as string | null) ?? null,
+    taxIdStatus: r.tax_id_status as BuyerProfile["taxIdStatus"],
+    billingEmail: (r.billing_email as string | null) ?? null,
+    contactName: (r.contact_name as string | null) ?? null,
+    consent: (typeof r.consent_json === "string" ? JSON.parse(r.consent_json) : r.consent_json) as ConsentRecord,
+    version: Number(r.version),
+    createdAt: Number(r.created_at),
+    updatedAt: Number(r.updated_at),
+  });
+  async buyerProfile(orderId: number) {
+    try {
+      const [rows] = await this.pool.query<Row[]>("SELECT * FROM stripe_buyer_profiles WHERE order_id = ? AND livemode = ?", [orderId, this.lm]);
+      return rows[0] ? this.buyerRow(rows[0]) : null;
+    } catch (e) {
+      // Sin la migración 0014 no hay perfiles: el llamador decide (en live, Checkout no se abre)
+      if ((e as { code?: string })?.code === "ER_NO_SUCH_TABLE") return null;
+      throw e;
+    }
+  }
+  async saveBuyerProfile(d: BuyerProfileDraft, actor: string) {
+    const conn = await this.pool.getConnection();
+    try {
+      await conn.beginTransaction();
+      const [cur] = await conn.query<Row[]>("SELECT version, livemode, created_at FROM stripe_buyer_profiles WHERE order_id = ? FOR UPDATE", [d.orderId]);
+      if (cur[0] && Number(cur[0].livemode) !== this.lm) throw new StripeStoreError("mode_mismatch", "El perfil del comprador pertenece a otro modo");
+      const version = (cur[0] ? Number(cur[0].version) : 0) + 1;
+      const createdAt = cur[0] ? Number(cur[0].created_at) : d.now;
+      const cols = [d.type, d.territory, d.scenario, d.country, d.postalCode, d.displayName, d.taxId, d.taxIdStatus, d.billingEmail, d.contactName, JSON.stringify(d.consent), version, d.now];
+      if (cur[0]) {
+        await conn.query(
+          "UPDATE stripe_buyer_profiles SET buyer_type = ?, territory = ?, scenario = ?, country = ?, postal_code = ?, display_name = ?, tax_id = ?, tax_id_status = ?, billing_email = ?, contact_name = ?, consent_json = ?, version = ?, updated_at = ? WHERE order_id = ? AND livemode = ?",
+          [...cols, d.orderId, this.lm],
+        );
+      } else {
+        await conn.query(
+          "INSERT INTO stripe_buyer_profiles (buyer_type, territory, scenario, country, postal_code, display_name, tax_id, tax_id_status, billing_email, contact_name, consent_json, version, updated_at, order_id, livemode, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          [...cols, d.orderId, this.lm, createdAt],
+        );
+      }
+      const { now, ...rest } = d;
+      const saved: BuyerProfile = { ...rest, version, createdAt, updatedAt: now };
+      await conn.query("INSERT INTO stripe_buyer_profile_events (order_id, livemode, version, actor, snapshot_json, at) VALUES (?, ?, ?, ?, ?, ?)", [d.orderId, this.lm, version, actor.slice(0, 120), JSON.stringify(saved), now]);
+      await conn.commit();
+      return saved;
+    } catch (e) {
+      await conn.rollback().catch(() => {});
+      throw e;
+    } finally {
+      conn.release();
+    }
   }
 }

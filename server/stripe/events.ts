@@ -20,8 +20,10 @@
  *    aunque Stripe muestre la suscripción activa, hasta un pago nuevo, una disputa ganada o un operador.
  *    Un reembolso parcial o una disputa abierta solo avisan.
  *  - Cada entorno solo atiende sus objetos (`metadata.es_env`): dos entornos pueden compartir sandbox.
+ *  - Los eventos comerciales que se registren al procesar un evento llevan su id como causa.
  */
 import { opsLog } from "../_core/ops/log";
+import { withCommercialCause } from "../commercialEvents/context";
 import { recordFailure } from "../_core/ops/failureAlerts";
 import type { OrderStore } from "../orchestrator/store";
 import type { CommercialOrder } from "../orchestrator/types";
@@ -29,6 +31,10 @@ import { stripePaymentProvider } from "../orchestrator/service";
 import type { StripeMode } from "./config";
 import type { GwCharge, GwInvoice, GwSubscription, StripeGateway } from "./gateway";
 import type { StripeEventRow, StripeStore } from "./store";
+import { checkInvoiceTax, classifyTerritory, territoryGroup, type FiscalScenario, type TaxTreatment } from "./buyerProfile";
+import { invoiceDocumentOf, invoiceRecordOf, invoiceSourceKey, pendingSink, rectificationOf, type FiscalDocument, type FiscalDocumentSink, type InvoicePurpose } from "./fiscalDocuments";
+import type { CatalogPort } from "../subscriptions/ports";
+import { SELF_SERVICE_PLANS, desiredCatalog } from "./catalog";
 
 /** Eventos que se aceptan y procesan (nombres de la API 2026-09-30.endive). */
 export const HANDLED_EVENTS = [
@@ -66,12 +72,19 @@ export interface OrchestratorPort {
   applyExternalBilling(id: number, s: { status: "active" | "past_due" | "unpaid" | "canceled"; cancelAt: number | null; coverageLost?: boolean }, actor: string): Promise<{ order: CommercialOrder; changed: string[] }>;
   /** Aviso (correo) de un cobro verificado de renovación o de cambio. Opcional: sin él no se avisa. */
   paymentRecorded?(orderId: number, paymentId: number): Promise<void>;
+  /** Cambio de plan o periodicidad hecho en el Customer Portal (orchestrator.applyExternalPlanChange). Opcional. */
+  applyExternalPlanChange?(id: number, target: { plan: string; interval: "month" | "year" }, signatureRef: string, actor: string): Promise<{ order: CommercialOrder; created: boolean; noop: boolean; error: string | null }>;
 }
 
 export interface ProcessorDeps {
   store: StripeStore;
   gateway: StripeGateway;
-  orders: Pick<OrderStore, "get" | "insertPayment" | "payments">;
+  orders: Pick<OrderStore, "get" | "insertPayment" | "payments"> & Partial<Pick<OrderStore, "list">>;
+  /**
+   * Catálogo (para traducir un precio de Stripe a plan y periodicidad). Con él y `orders.list`, un cambio de
+   * precio hecho en el Customer Portal se refleja como pedido de cambio; sin ellos, se rechaza como discordancia.
+   */
+  catalog?: CatalogPort;
   orchestrator: OrchestratorPort;
   now?: () => number;
   maxAttempts?: number;
@@ -79,6 +92,10 @@ export interface ProcessorDeps {
   namespace?: string;
   /** Modo del entorno (por defecto «test»): fija el proveedor y el modo de los pagos verificados. */
   mode?: StripeMode;
+  /** Tratamiento del impuesto declarado por escenario: el impuesto de cada factura cobrada se contrasta con él. */
+  taxExpectations?: Map<FiscalScenario, TaxTreatment>;
+  /** Sistema de facturación legal (cuando se apruebe). Por defecto ninguno: los documentos quedan pendientes. */
+  fiscalSink?: FiscalDocumentSink;
 }
 
 /** Estado de un cargo que deja sin cobertura el periodo que pagó. */
@@ -116,7 +133,7 @@ export class StripeEventProcessor {
     const rows = await this.d.store.claimEvents(this.now(), limit, LEASE_MS);
     for (const row of rows) {
       try {
-        const r = await this.process(row);
+        const r = await withCommercialCause({ source: "stripe", causationId: `stripe:${row.eventId}` }, () => this.process(row));
         await this.d.store.finishEvent(row.eventId, r.outcome, r.detail, this.now());
         out[r.outcome]++;
       } catch (e) {
@@ -186,6 +203,8 @@ export class StripeEventProcessor {
         { chargeId: c.id, invoiceId: inv.id, subscriptionId: sub.id, orderId: v.order.id, companyId: v.order.companyId, amountCents: c.amount, amountRefundedCents: c.amountRefunded, currency: c.currency, disputeStatus, coverageLost: lost },
         this.now(),
       );
+      // Reembolso nuevo: rectificativa por el importe añadido, ligada al documento de la factura original
+      if (c.amountRefunded > (previous?.amountRefundedCents ?? 0)) await this.recordRefund(v.order.id, inv, c, previous?.amountRefundedCents ?? 0);
       const log = { orderId: v.order.id, chargeId: c.id, refunded: c.amountRefunded, amount: c.amount, dispute: disputeStatus };
       if (lost && !previous?.coverageLost) {
         opsLog("warn", "StripeEvents", "coverage_lost", log);
@@ -236,17 +255,50 @@ export class StripeEventProcessor {
     return { order, link };
   }
 
-  /** Pertenencia y precios: exactamente los que el servidor envió en un Checkout de ESTE pedido. */
-  private async verified(sub: GwSubscription): Promise<{ order: CommercialOrder; link: { tenantId: string | null; stripeCustomerId: string } } | { ignored: Outcome }> {
+  /**
+   * Pertenencia y precios. Se aplica sobre el pedido VIGENTE de la suscripción (el original o el último cambio).
+   * Los precios deben ser los del Checkout de su alta o los del plan vigente. Un único precio distinto del
+   * catálogo enlazado (Essential o Business) es un cambio hecho en el Customer Portal: se devuelve como `change`
+   * para reflejarlo con un pedido de cambio. Cualquier otra cosa es una discordancia.
+   */
+  private async verified(sub: GwSubscription): Promise<
+    { order: CommercialOrder; link: { tenantId: string | null; stripeCustomerId: string }; change?: { plan: string; interval: "month" | "year" } } | { ignored: Outcome }
+  > {
     const own = await this.ownership(sub);
     if ("ignored" in own) return own;
     const linked = new Set((await this.d.store.listPrices()).filter((p) => p.status === "active").map((p) => p.stripePriceId));
     if (!sub.priceIds.length || sub.priceIds.some((p) => !linked.has(p))) throw new StripeMismatchError("La suscripción incluye precios que no son del catálogo enlazado");
-    // Un cambio de plan sin aplicar no da otras licencias. Vale aunque el evento de Checkout aún no haya llegado
+    const current = await this.currentOrder(own.order);
+    // Alta: exactamente los precios del Checkout del pedido. Vale aunque el evento de Checkout aún no haya llegado
     const sets = await this.d.store.sessionPriceSets(own.order.id);
     const same = (a: string[]) => a.length === sub.priceIds.length && a.every((p) => sub.priceIds.includes(p));
-    if (!sets.some(same)) throw new StripeMismatchError("Los precios de la suscripción no son los del pedido (¿cambio de plan sin aplicar?)");
-    return own;
+    if (current.id === own.order.id && sets.some(same)) return { order: current, link: own.link };
+    const target = await this.planOfPrices(sub.priceIds);
+    if (target && current.request.plan === target.plan && current.request.interval === target.interval) return { order: current, link: own.link };
+    // Cambio hecho en el Customer Portal: solo sobre un pedido vigente y con el orquestador preparado para ello
+    if (target && this.d.orchestrator.applyExternalPlanChange && ["active", "past_due", "suspended"].includes(current.state)) return { order: current, link: own.link, change: target };
+    throw new StripeMismatchError("Los precios de la suscripción no son los del pedido (¿cambio de plan sin aplicar?)");
+  }
+
+  /**
+   * Pedido vigente de una suscripción: el último pedido vivo de la MISMA empresa que comparte la suscripción
+   * interna (un cambio sustituye al anterior). Sin cambios, el propio pedido.
+   */
+  private async currentOrder(order: CommercialOrder): Promise<CommercialOrder> {
+    if (!order.subscriptionId || !this.d.orders.list) return order;
+    const chain = (await this.d.orders.list({ subscriptionId: order.subscriptionId })).filter((o) => o.companyId === order.companyId);
+    const byId = (a: CommercialOrder, b: CommercialOrder) => b.id - a.id;
+    return chain.filter((o) => LIVE_OR_SCHEDULED.includes(o.state)).sort(byId)[0] ?? chain.filter((o) => o.state !== "superseded" && o.state !== "rejected").sort(byId)[0] ?? order;
+  }
+
+  /** Plan y periodicidad de un precio enlazado de autoservicio (un solo precio), o null. */
+  private async planOfPrices(priceIds: string[]): Promise<{ plan: string; interval: "month" | "year" } | null> {
+    if (!this.d.catalog || priceIds.length !== 1) return null;
+    const link = (await this.d.store.listPrices()).find((p) => p.stripePriceId === priceIds[0] && p.status === "active");
+    if (!link) return null;
+    const d = (await desiredCatalog(this.d.catalog)).find((x) => x.webPriceId === link.webPriceId);
+    if (!d || !(SELF_SERVICE_PLANS as readonly string[]).includes(d.productKey)) return null;
+    return { plan: d.productKey, interval: d.interval === "year" ? "year" : "month" };
   }
 
   /** Un pedido a la vez: dos eventos del mismo pedido no lo avanzan en paralelo. */
@@ -286,7 +338,31 @@ export class StripeEventProcessor {
     if (!sub) return { outcome: "ignored", detail: "La suscripción no existe en Stripe" };
     const v = await this.verified(sub);
     if ("ignored" in v) return v.ignored;
+    if (v.change) return this.withOrder(v.order.id, () => this.applyPlanChange(v.order, sub, v.change!, v.link.tenantId, hint));
     return this.withOrder(v.order.id, () => this.applySubscription(v.order, sub, v.link.tenantId, hint));
+  }
+
+  /**
+   * Cambio de plan hecho en el Customer Portal → pedido de cambio con los contratos existentes. Una subida
+   * espera el cobro del prorrateo: si la última factura ya está pagada se anota en el pedido de cambio (no en
+   * el anterior) y lo confirma. Después, el estado de cobro se aplica al pedido que quede vigente.
+   */
+  private async applyPlanChange(cur: CommercialOrder, sub: GwSubscription, change: { plan: string; interval: "month" | "year" }, tenantId: string | null, hint?: GwInvoice): Promise<Outcome> {
+    const r = await this.d.orchestrator.applyExternalPlanChange!(cur.id, change, `stripe-portal:${sub.id}`, this.actor);
+    if (r.error) throw new Error(`Cambio de plan pendiente: ${r.error}`);
+    let target = r.order;
+    if (PIPELINE.includes(target.state)) {
+      const pay = await this.recordPaidInvoice(target, sub, hint);
+      if (pay) {
+        const a = await this.d.orchestrator.advance(target.id, this.actor);
+        if (a.error) throw new Error(`Cambio de plan pendiente: ${a.error}`);
+        target = a.order;
+      }
+    }
+    if (r.created) opsLog("info", "StripeEvents", "plan_change", { from: cur.id, to: target.id, plan: change.plan, interval: change.interval, state: target.state });
+    const vigente = LIVE_OR_SCHEDULED.includes(target.state) ? target : cur;
+    const applied = await this.applySubscription(vigente, sub, tenantId, hint);
+    return { outcome: applied.outcome, detail: `Cambio a ${change.plan}/${change.interval}: pedido ${target.id} en ${target.state}; ${applied.detail ?? ""}`.slice(0, 300) };
   }
 
   private async applySubscription(stale: CommercialOrder, sub: GwSubscription, tenantId: string | null, hint?: GwInvoice): Promise<Outcome> {
@@ -353,8 +429,98 @@ export class StripeEventProcessor {
       createdAt: this.now(),
       settledAt: this.now(),
     });
-    if (r.created) opsLog("info", "StripeEvents", "payment_verified", { orderId: order.id, invoiceId: inv.id, purpose });
+    if (r.created) {
+      opsLog("info", "StripeEvents", "payment_verified", { orderId: order.id, invoiceId: inv.id, purpose, ...(inv.taxCents != null ? { taxCents: inv.taxCents } : {}) });
+      await this.checkBuyer(order.id, inv, purpose);
+    }
+    // Siempre (idempotente): si un intento anterior se cortó tras guardar el pago, el reintento lo completa
+    await this.recordInvoice(order.id, inv, purpose);
     return { created: r.created, purpose, invoiceId: inv.id, paymentId: r.payment.id };
+  }
+
+  /**
+   * Registro de la factura cobrada y su documento fiscal pendiente (0016). Sin la migración se avisa y se
+   * sigue: el cobro y la activación nunca dependen del registro documental.
+   */
+  private async recordInvoice(orderId: number, inv: GwInvoice, purpose: InvoicePurpose, refundedCents = 0): Promise<FiscalDocument | null> {
+    try {
+      const profile = await this.d.store.buyerProfile(orderId).catch(() => null);
+      const rec = invoiceRecordOf(inv, { orderId, purpose, buyerScenario: profile?.scenario ?? null, now: this.now(), refundedCents });
+      await this.d.store.upsertInvoiceRecord(rec);
+      const { created, document } = await this.d.store.enqueueFiscalDocument(invoiceDocumentOf(rec, this.now()));
+      if (created) {
+        opsLog("info", "StripeEvents", "fiscal_document_queued", { orderId, kind: "invoice", documentId: document.id, invoiceId: inv.id });
+        await this.submitFiscal(document);
+      }
+      return document;
+    } catch (e) {
+      if ((e as { code?: string })?.code === "ER_NO_SUCH_TABLE") {
+        opsLog("warn", "StripeEvents", "fiscal_registry_missing", { orderId, invoiceId: inv.id });
+        return null;
+      }
+      throw e;
+    }
+  }
+
+  /** Reembolso: rectificativa por lo reembolsado desde la última lectura (idempotente por cargo y total). */
+  private async recordRefund(orderId: number, inv: GwInvoice, c: GwCharge, previousRefunded: number) {
+    try {
+      // La factura original debe tener su documento (también si es anterior a este registro)
+      const purpose: InvoicePurpose = inv.billingReason === "subscription_cycle" ? "renewal" : inv.billingReason === "subscription_update" ? "change" : "initial";
+      const original = (await this.d.store.fiscalDocumentBySource(invoiceSourceKey(inv.id))) ?? (await this.recordInvoice(orderId, inv, purpose));
+      if (!original) return;
+      const draft = rectificationOf(original, { chargeId: c.id, refundedTotalCents: c.amountRefunded, previousRefundedCents: previousRefunded, now: this.now() });
+      await this.d.store.setInvoiceRefunded(inv.id, c.amountRefunded, this.now());
+      if (!draft) return;
+      const { created, document } = await this.d.store.enqueueFiscalDocument(draft);
+      if (created) {
+        opsLog("info", "StripeEvents", "fiscal_document_queued", { orderId, kind: "rectification", documentId: document.id, originalDocumentId: original.id, totalCents: document.totalCents });
+        await this.submitFiscal(document);
+      }
+    } catch (e) {
+      if ((e as { code?: string })?.code === "ER_NO_SUCH_TABLE") return void opsLog("warn", "StripeEvents", "fiscal_registry_missing", { orderId, chargeId: c.id });
+      throw e;
+    }
+  }
+
+  /** Entrega al sistema de facturación legal aprobado (por defecto ninguno: queda pendiente). */
+  private async submitFiscal(doc: FiscalDocument) {
+    const sink = this.d.fiscalSink ?? pendingSink;
+    if (sink === pendingSink) return;
+    const r = await sink.submit(doc).catch((e: unknown) => ({ status: "failed" as const, error: e instanceof Error ? e.name : "error" }));
+    if (r.status === "issued") await this.d.store.markFiscalDocumentIssued(doc.id, r.externalRef, `sink:${sink.name}`, this.now());
+    else if (r.status === "failed") {
+      opsLog("warn", "StripeEvents", "fiscal_document_failed", { documentId: doc.id, sink: sink.name, error: r.error.slice(0, 120) });
+      recordFailure("stripe.fiscal_document_failed");
+    }
+  }
+
+  /**
+   * Primer cobro: la dirección y los identificadores fiscales de la factura (los que usó Stripe Tax) deben
+   * casar con el perfil fiscal declarado. Checkout permite cambiar la dirección, así que una discrepancia es
+   * posible: se AVISA (el pago ya está cobrado; qué hacer es una decisión del equipo, no de este proceso).
+   */
+  private async checkBuyer(orderId: number, inv: GwInvoice, purpose: "initial" | "renewal" | "change") {
+    const profile = await this.d.store.buyerProfile(orderId).catch(() => null);
+    if (!profile) return;
+    // Cada factura cobrada: el impuesto de Stripe frente al tratamiento declarado para el escenario
+    const expected = this.d.taxExpectations?.get(profile.scenario);
+    const taxProblem = expected ? checkInvoiceTax(expected, inv.taxCents) : null;
+    if (taxProblem) {
+      opsLog("warn", "StripeEvents", "invoice_tax_mismatch", { orderId, invoiceId: inv.id, scenario: profile.scenario, expected, problem: taxProblem, purpose });
+      recordFailure("stripe.invoice_tax_mismatch");
+    }
+    // Dirección e identificador fiscal: solo en el alta (después pueden cambiar por el Portal y se revisan aparte)
+    if (purpose !== "initial") return;
+    const t = inv.customerCountry ? classifyTerritory(inv.customerCountry, inv.customerPostalCode) : null;
+    if (!t || territoryGroup(t) !== territoryGroup(profile.territory)) {
+      opsLog("warn", "StripeEvents", "buyer_territory_mismatch", { orderId, invoiceId: inv.id, declared: profile.scenario, invoiced: t ?? "unknown" });
+      recordFailure("stripe.buyer_territory_mismatch");
+    }
+    if (profile.type === "business" && !inv.customerTaxIds) {
+      opsLog("warn", "StripeEvents", "buyer_tax_id_missing", { orderId, invoiceId: inv.id });
+      recordFailure("stripe.buyer_tax_id_missing");
+    }
   }
 
   private async hasInitialPayment(order: CommercialOrder, just: { purpose: string } | null) {

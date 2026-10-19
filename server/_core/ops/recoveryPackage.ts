@@ -100,12 +100,21 @@ const SENSITIVE_NAME = /(KEY|KEYS|SECRET|PASS|PASSWORD|TOKEN|TOKENS|URL|DSN|HASH
  * Dominios que Railway inyecta en cada servicio (`RAILWAY_SERVICE_<SERVICIO>_URL`, `RAILWAY_PUBLIC_DOMAIN`…).
  * Llevan «URL» en el nombre, pero su valor es un nombre de host público, el mismo que figura en los dominios
  * de las empresas. Solo se excluyen si el valor es exactamente un dominio de Railway (`<nombre>.up.railway.app`
- * o `<nombre>.railway.internal`): un token con puntos o un dominio propio bajo ese nombre se sigue tratando como
- * secreto.
+ * o `<nombre>.railway.internal`) o un dominio PROPIO de la lista `RECOVERY_PUBLIC_DOMAINS` (por defecto
+ * `bigelephant.es`): el mismo dominio o un subdominio suyo, como nombre de host DNS válido en minúsculas. Un token
+ * con puntos o cualquier otro dominio bajo ese nombre se sigue tratando como secreto.
  */
 const RAILWAY_DOMAIN_NAME = /^RAILWAY_(SERVICE_[A-Z0-9_]+_URL|PUBLIC_DOMAIN|PRIVATE_DOMAIN|STATIC_URL)$/;
 const RAILWAY_HOST = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.(?:up\.railway\.app|railway\.internal)$/;
-const isRailwayDomain = (name: string, value: string) => RAILWAY_DOMAIN_NAME.test(name) && RAILWAY_HOST.test(value);
+const DNS_HOST = /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
+const publicDomains = (env: NodeJS.ProcessEnv) =>
+  (env.RECOVERY_PUBLIC_DOMAINS ?? "bigelephant.es")
+    .split(",")
+    .map((d) => d.trim())
+    .filter((d) => DNS_HOST.test(d));
+const isOwnPublicDomain = (value: string, env: NodeJS.ProcessEnv) => DNS_HOST.test(value) && publicDomains(env).some((d) => value === d || value.endsWith(`.${d}`));
+const isRailwayDomain = (name: string, value: string, env: NodeJS.ProcessEnv) =>
+  RAILWAY_DOMAIN_NAME.test(name) && (RAILWAY_HOST.test(value) || isOwnPublicDomain(value, env));
 
 export interface RecoveryTenant {
   id: string;
@@ -154,15 +163,19 @@ export class RecoveryPackageError extends Error {
 export function assertNoSecrets(pkg: unknown, env: NodeJS.ProcessEnv = process.env): void {
   const text = JSON.stringify(pkg);
   for (const [name, value] of Object.entries(env)) {
-    if (!value || value.length < 8 || PUBLIC_VALUE_VARS.includes(name) || !SENSITIVE_NAME.test(name) || isRailwayDomain(name, value)) continue;
+    if (!value || value.length < 8 || PUBLIC_VALUE_VARS.includes(name) || !SENSITIVE_NAME.test(name) || isRailwayDomain(name, value, env)) continue;
     if (text.includes(value)) throw new RecoveryPackageError(`El paquete contiene el valor de ${name}: no se genera`);
     // Contraseña de una URL (DSN) o claves de un llavero (`id:clave,id2:clave2`)
-    let parts: string[];
-    try {
-      const u = new URL(value);
-      parts = u.password ? [decodeURIComponent(u.password)] : [];
-    } catch {
-      parts = value.split(",").map((p) => p.slice(p.indexOf(":") + 1));
+    // Solo es URL si lleva «esquema://»: un llavero «bk1:<clave>» también lo acepta `new URL` (esquema «bk1:», sin
+    // contraseña) y sus claves quedarían sin comprobar
+    let parts: string[] = value.split(",").map((p) => p.slice(p.indexOf(":") + 1));
+    if (/^[a-z][a-z0-9+.-]*:\/\//i.test(value)) {
+      try {
+        const u = new URL(value);
+        parts = u.password ? [decodeURIComponent(u.password)] : [];
+      } catch {
+        /* no es una URL válida: se comprueba como llavero */
+      }
     }
     for (const part of parts) {
       if (part.length >= 6 && text.includes(part)) throw new RecoveryPackageError(`El paquete contiene parte del valor de ${name}: no se genera`);

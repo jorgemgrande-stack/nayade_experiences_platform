@@ -51,6 +51,8 @@ export const isStripeProvider = (provider: string) => provider === STRIPE_PAYMEN
 const DAY = 86_400_000;
 const KEY_RE = /^[A-Za-z0-9_-]{16,80}$/;
 const LIVE: OrderState[] = ["active", "past_due", "suspended"];
+/** Un plan que el Customer Portal ofrece está aprobado al configurarlo allí (lo hace una persona). */
+const PORTAL_APPROVAL = "Plan ofrecido en el Customer Portal de Stripe (configuración aprobada)";
 
 export interface PlatformPort {
   /** Alta (idempotente) de la plataforma de la empresa con su administrador. */
@@ -102,6 +104,11 @@ export interface CreateOrderInput {
   changeOf?: number;
   request?: unknown;
   interval?: Interval;
+  /**
+   * Cambio que YA ocurrió en el proveedor de cobro (el cliente lo hizo en el Customer Portal de Stripe): se
+   * admite cambiar plan y periodicidad a la vez, porque no es una propuesta sino el reflejo de un hecho.
+   */
+  external?: "stripe";
 }
 
 export type Waiting = "acceptance" | "confirmation" | null;
@@ -247,7 +254,7 @@ export class CommercialOrchestrator {
       if (!LIVE.includes(prev.state)) throw new OrderError("invalid_state", "Solo se cambia un pedido activo (también en gracia o suspendido)");
       if (!input.request) throw new OrderError("invalid_input", "Indica la nueva configuración");
       const r = parseQuoteRequest(input.request, { allowOwned: false });
-      if (r.ok && r.value.interval !== prev.request.interval && r.value.plan !== prev.request.plan) {
+      if (r.ok && !input.external && r.value.interval !== prev.request.interval && r.value.plan !== prev.request.plan) {
         throw new OrderError("invalid_input", "Cambia el plan y la periodicidad en dos pedidos distintos (primero el plan)");
       }
       if (r.ok && stableHash({ ...r.value, items: r.value.items ?? [] }) === stableHash(prev.request)) throw new OrderError("invalid_input", "Es la misma configuración que la vigente");
@@ -537,17 +544,31 @@ export class CommercialOrchestrator {
     const core = live.find((i) => i.family === "core_plan");
     if (!core) throw new OrderError("invalid_state", "La suscripción no tiene plan Core vigente");
     const reread = () => this.d.subscriptions.must(sub.id);
-    if (o.request.interval !== sub.interval && o.request.interval !== sub.pendingInterval) {
+    const changeInterval = async () => {
+      if (o.request.interval === sub.interval || o.request.interval === sub.pendingInterval) return;
+      // Partidas vigentes releídas: tras un cambio de plan en esta misma llamada, el plan Core ya es el nuevo
+      const at = this.now();
+      const current = (await this.d.subscriptionStore.items(sub.id)).filter((i) => i.effectiveFrom <= at && (i.effectiveTo === null || i.effectiveTo > at));
       const prices = [];
-      for (const i of live.filter((x) => x.priceKind === "monthly" || x.priceKind === "yearly")) {
+      for (const i of current.filter((x) => x.priceKind === "monthly" || x.priceKind === "yearly")) {
         const mustChange = i.family === "core_plan" || (i.priceKind === "yearly" && o.request.interval === "month");
         if (mustChange) prices.push({ itemId: i.id, priceId: await this.priceFor(i.productKey, o.request.interval, i.family === "core_plan") });
       }
       sub = (await this.d.subscriptions.changeInterval(sub.id, { interval: o.request.interval, prices, reason }, sub.version, actor)).subscription;
-    }
-    if (core.productKey !== o.request.plan) {
+    };
+    const changePlan = async () => {
+      if (core.productKey === o.request.plan) return;
       const plan = { productKey: o.request.plan, priceId: await this.priceFor(o.request.plan, sub.interval, true) };
       sub = (await this.d.subscriptions.changePlan(sub.id, { plan, reason }, sub.version, actor)).subscription;
+    };
+    // Plan y periodicidad a la vez solo llega de Stripe (Customer Portal): primero el plan (la periodicidad
+    // queda programada a la renovación y después no admitiría otro cambio). En el resto, el orden de siempre.
+    if (core.productKey !== o.request.plan && o.request.interval !== sub.interval) {
+      await changePlan();
+      await changeInterval();
+    } else {
+      await changeInterval();
+      await changePlan();
     }
     const wanted = new Set(o.request.items.map((i) => i.key));
     const addons = live.filter((i) => i.family !== "core_plan" && (i.effectiveTo === null || i.effectiveTo > now));
@@ -639,6 +660,47 @@ export class CommercialOrchestrator {
     opsLog(live ? "warn" : "info", "Orders", "admin_approval", { orderId: o.id, category, actor, mode: this.mode });
     if (live) recordFailure("orders.admin_approval_live");
     return this.advance(id, actor);
+  }
+
+  /**
+   * Cambio de plan o de periodicidad que el cliente YA hizo en Stripe (Customer Portal), reflejado con los
+   * contratos existentes: pedido `change` sobre el vigente, aceptación registrada como hecha en Stripe
+   * (`signatureRef`), contrato renovado y firmado y confirmación por la regla de siempre:
+   *  - subida (hay importe): espera el cobro VERIFICADO del prorrateo (lo anota el procesador de Stripe en el
+   *    pedido de cambio) y entonces relicencia y sustituye al anterior;
+   *  - bajada o periodicidad más corta sin capacidades nuevas: confirmación heredada, sin pago.
+   * Idempotente: el mismo destino reutiliza el cambio abierto; un destino distinto rechaza el abierto (manda el
+   * último que hizo el cliente). Nunca toca datos de la empresa: solo contrato, suscripción y licencias.
+   */
+  async applyExternalPlanChange(
+    id: number,
+    target: { plan: string; interval: Interval },
+    signatureRef: string,
+    actor: string,
+  ): Promise<{ order: CommercialOrder; created: boolean; noop: boolean; error: string | null }> {
+    const cur = await this.must(id);
+    if (!LIVE.includes(cur.state)) throw new OrderError("invalid_state", `Solo se refleja un cambio sobre un pedido vigente (está en «${cur.state}»)`);
+    if (cur.request.plan === target.plan && cur.request.interval === target.interval) return { order: cur, created: false, noop: true, error: null };
+    const changes = cur.subscriptionId ? (await this.d.store.list({ subscriptionId: cur.subscriptionId })).filter((o) => o.kind === "change" && o.previousOrderId === cur.id) : [];
+    const OPEN: OrderState[] = ["requested", "quoted", "contracted", "confirmed", "subscribed", "licensed"];
+    for (const o of changes.filter((x) => OPEN.includes(x.state))) {
+      if (o.request.plan === target.plan && o.request.interval === target.interval) {
+        if (o.state === "requested" || o.state === "quoted") await this.accept(o.id, { signatureRef, approvalReason: PORTAL_APPROVAL }, actor);
+        const r = await this.advance(o.id, actor);
+        return { order: r.order, created: false, noop: false, error: r.error };
+      }
+      // Otro destino posterior en Stripe: el cambio abierto ya no es lo que tiene el cliente
+      if (o.state === "requested" || o.state === "quoted" || o.state === "contracted") await this.reject(o.id, { reason: `Sustituido por otro cambio hecho en Stripe (${target.plan}/${target.interval})` }, actor);
+    }
+    // Una clave por pedido de origen, destino y número de cambio: un destino al que se vuelve crea otro pedido
+    const created = await this.create(
+      { idempotencyKey: `stripe-plan-${cur.id}-${target.plan}-${target.interval}-${changes.length + 1}`, changeOf: cur.id, request: { plan: target.plan, interval: target.interval, items: [] }, external: "stripe" },
+      actor,
+    );
+    let order = created.order;
+    if (order.state === "requested" || order.state === "quoted") order = (await this.accept(order.id, { signatureRef, approvalReason: PORTAL_APPROVAL }, actor)).order;
+    const r = await this.advance(order.id, actor);
+    return { order: r.order, created: created.created, noop: false, error: r.error };
   }
 
   /** Solicita el pago de PRUEBA que confirma el pedido (checkout). Idempotente: devuelve el pendiente. */

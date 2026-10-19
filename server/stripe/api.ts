@@ -12,6 +12,12 @@
  *   POST /stripe/reconcile                      orders:write  conciliación manual (la misma que la periódica)
  *   GET  /stripe/adjustments                    ops:read      reembolsos y disputas registrados (retenciones)
  *   POST /stripe/adjustments/:chargeId/resolve  orders:write  levanta una retención con motivo y reaplica el estado
+ *   GET  /stripe/orders/:id/buyer               orders:read   perfil fiscal del comprador (tipo, territorio, escenario)
+ *   PUT  /stripe/orders/:id/buyer               orders:write  registra el perfil y el consentimiento (venta asistida)
+ *   GET  /stripe/portal/plan                    ops:read      Customer Portal: configuración deseada frente a la actual (solo lectura)
+ *   GET  /stripe/invoices?orderId=              ops:read      facturas cobradas registradas (base, impuesto, total, reembolsado)
+ *   GET  /stripe/fiscal-documents?status=       ops:read      cola de documentos fiscales (facturas y rectificativas)
+ *   POST /stripe/fiscal-documents/:id/issued    orders:write  registra el número del documento emitido en el sistema legal
  *
  * El webhook (`POST /cp/v1/stripe/webhook`) no usa token: se autentica por firma y se monta aparte, antes
  * del analizador JSON global (server/stripe/webhook.ts).
@@ -28,11 +34,15 @@ import { recordFailure } from "../_core/ops/failureAlerts";
 import type { CatalogPort } from "../subscriptions/ports";
 import { StripeCatalogError, desiredCatalog, planCatalogWrites, syncCatalog } from "./catalog";
 import { StripeCheckoutError, type StripeCheckoutService } from "./checkout";
+import type { OrderStore } from "../orchestrator/store";
+import { BuyerProfileError, FISCAL_SCENARIOS, buildConsent, buyerProfileInput, consentInput, toBuyerProfile, type ConsentVersions, type FiscalScenario, type TaxTreatment } from "./buyerProfile";
 import { checkoutBlockedReason, describeStripeConfig, type StripeConfig } from "./config";
 import { describeIssuer } from "./issuer";
 import { sessionIdRe } from "./status";
 import { StripeGatewayError, type StripeGateway } from "./gateway";
-import { StripeStoreError, type StripeStore } from "./store";
+import { FiscalDocumentConflictError, StripeStoreError, type StripeStore } from "./store";
+import { EXTERNAL_REF } from "./fiscalDocuments";
+import { planPortal, portalWriteParams } from "./portal";
 import type { StripeEventProcessor } from "./events";
 import type { StripeReconciler } from "./reconcile";
 
@@ -44,6 +54,8 @@ const wrap =
     fn(req, res).catch((e) => {
       if (e instanceof StripeCheckoutError || e instanceof StripeStoreError) return void res.status(STATUS[e.code] ?? 400).json({ error: e.code, message: e.message });
       if (e instanceof StripeCatalogError) return void res.status(409).json({ error: "catalog_invalid", message: e.message });
+      if (e instanceof FiscalDocumentConflictError) return void res.status(409).json({ error: "conflict", message: e.message });
+      if (e instanceof BuyerProfileError) return void res.status(e.code === "consumer_pending" ? 409 : 422).json({ error: e.code, message: e.message });
       if (e instanceof z.ZodError) return void res.status(400).json({ error: "invalid_request", message: "Parámetros no válidos" });
       if (e instanceof StripeGatewayError) {
         opsLog("warn", "Stripe", "gateway_error", { code: e.code, retryable: e.retryable });
@@ -69,7 +81,18 @@ export interface StripeRouterDeps {
   processor?: StripeEventProcessor;
   reconciler?: StripeReconciler;
   now?: () => number;
+  /** URL publicadas de los textos legales (CP_TERMS_URL, CP_PRIVACY_URL) para el Customer Portal. */
+  legalUrls?: { terms: string | null; privacy: string | null };
+  /** Nombre del adaptador del sistema de facturación legal (por defecto «pending»: nada se emite). */
+  fiscalSinkName?: string;
+  /** Pedidos (perfil fiscal del comprador). Sin ellos, las rutas del perfil no se montan. */
+  orders?: Pick<OrderStore, "get">;
+  /** Escenarios fiscales aprobados y versiones de consentimiento vigentes. */
+  fiscal?: { scenarios: Set<FiscalScenario>; consent: ConsentVersions; taxExpectations?: Map<FiscalScenario, TaxTreatment> };
 }
+
+/** Estados en los que aún se puede registrar o corregir el perfil fiscal (antes de confirmar el pago). */
+const BUYER_EDITABLE = new Set(["requested", "quoted", "contracted"]);
 
 export function createStripeRouter(d: StripeRouterDeps): Router {
   const r = express.Router();
@@ -78,7 +101,74 @@ export function createStripeRouter(d: StripeRouterDeps): Router {
   const sessionId = z.string().regex(sessionIdRe(d.config.mode));
 
   r.get("/status", requireScope("ops:read"), wrap(async (_req, res) => {
-    res.json({ ...describeStripeConfig(d.config), issuer: describeIssuer(), checkoutEnabled: !!d.checkout, ...(checkoutBlockedReason(d.config) ? { checkoutBlocked: checkoutBlockedReason(d.config) } : {}), prices: await d.store.listPrices() });
+    const approved = Array.from(d.fiscal?.scenarios ?? new Set<FiscalScenario>());
+    res.json({
+      ...describeStripeConfig(d.config),
+      issuer: describeIssuer(),
+      checkoutEnabled: !!d.checkout,
+      ...(checkoutBlockedReason(d.config) ? { checkoutBlocked: checkoutBlockedReason(d.config) } : {}),
+      fiscal: { approved, pending: FISCAL_SCENARIOS.filter((s) => !approved.includes(s)), consumerWithdrawal: d.fiscal?.consent.withdrawal ?? "pending", taxExpectations: Object.fromEntries(d.fiscal?.taxExpectations ?? new Map()) },
+      prices: await d.store.listPrices(),
+    });
+  }));
+  if (d.orders) {
+    const orders = d.orders;
+    r.get("/orders/:id/buyer", requireScope("orders:read"), wrap(async (req, res) => {
+      const p = await d.store.buyerProfile(id.parse(req.params.id));
+      if (!p) return void res.status(404).json({ error: "not_found", message: "El pedido no tiene perfil fiscal" });
+      res.json({ buyer: p, approved: !!d.fiscal?.scenarios.has(p.scenario) });
+    }));
+    // Venta asistida: el operador registra el perfil y el consentimiento recogidos con el cliente
+    r.put("/orders/:id/buyer", requireScope("orders:write"), wrap(async (req, res) => {
+      const orderId = id.parse(req.params.id);
+      const b = z.object({ buyer: buyerProfileInput, consent: consentInput }).strict().parse(req.body);
+      const o = await orders.get(orderId);
+      if (!o) return void res.status(404).json({ error: "not_found", message: "Pedido no encontrado" });
+      if (o.kind === "change" || !BUYER_EDITABLE.has(o.state) || o.confirmation) {
+        return void res.status(409).json({ error: "invalid_state", message: `El perfil fiscal se registra antes de confirmar el pago (el pedido está en «${o.state}»)` });
+      }
+      const t = now();
+      const consent = buildConsent(orderId, b.buyer.type, b.consent, d.fiscal?.consent ?? { terms: null, privacy: null, precontract: null, withdrawal: "pending" }, "operator", t);
+      const saved = await d.store.saveBuyerProfile(toBuyerProfile(orderId, b.buyer, consent, t), who(req));
+      opsLog("info", "Stripe", "buyer_profile_saved", { orderId, type: saved.type, scenario: saved.scenario, version: saved.version, actor: who(req) });
+      res.json({ buyer: saved, approved: !!d.fiscal?.scenarios.has(saved.scenario) });
+    }));
+  }
+  // Registro de facturas cobradas y cola de documentos fiscales (0016). Sin la migración, 404 explícito
+  const fiscalMissing = (e: unknown) => (e as { code?: string })?.code === "ER_NO_SUCH_TABLE";
+  r.get("/invoices", requireScope("ops:read"), wrap(async (req, res) => {
+    const q = z.object({ orderId: z.coerce.number().int().positive().optional(), limit: z.coerce.number().int().min(1).max(200).default(50) }).parse(req.query);
+    try {
+      res.json({ invoices: await d.store.listInvoiceRecords(q) });
+    } catch (e) {
+      if (!fiscalMissing(e)) throw e;
+      res.status(404).json({ error: "not_migrated", message: "Falta la migración 0016 (registro de facturas)" });
+    }
+  }));
+  r.get("/fiscal-documents", requireScope("ops:read"), wrap(async (req, res) => {
+    const q = z.object({ status: z.enum(["pending", "issued", "failed"]).optional(), orderId: z.coerce.number().int().positive().optional(), limit: z.coerce.number().int().min(1).max(200).default(50) }).parse(req.query);
+    try {
+      res.json({ documents: await d.store.listFiscalDocuments(q), sink: d.fiscalSinkName ?? "pending" });
+    } catch (e) {
+      if (!fiscalMissing(e)) throw e;
+      res.status(404).json({ error: "not_migrated", message: "Falta la migración 0016 (documentos fiscales)" });
+    }
+  }));
+  // Emisión registrada a mano (o por el adaptador): el número lo da el sistema de facturación legal, no este
+  r.post("/fiscal-documents/:id/issued", requireScope("orders:write"), wrap(async (req, res) => {
+    const b = z.object({ externalRef: z.string().trim().regex(EXTERNAL_REF) }).strict().parse(req.body);
+    const doc = await d.store.markFiscalDocumentIssued(id.parse(req.params.id), b.externalRef, who(req), now());
+    if (!doc) return void res.status(404).json({ error: "not_found", message: "Documento fiscal no encontrado" });
+    opsLog("info", "Stripe", "fiscal_document_issued", { documentId: doc.id, kind: doc.kind, actor: who(req) });
+    res.json({ document: doc });
+  }));
+  // Customer Portal: solo lectura. Aplicarlo en Stripe lo autoriza el propietario (como el catálogo)
+  r.get("/portal/plan", requireScope("ops:read"), wrap(async (_req, res) => {
+    const configs = await d.gateway.portalConfigurations();
+    const current = configs.find((c) => c.isDefault) ?? null;
+    const input = { prices: await d.store.listPrices(), termsUrl: d.legalUrls?.terms ?? null, privacyUrl: d.legalUrls?.privacy ?? null };
+    const differences = planPortal(current, input);
+    res.json({ configurationId: current?.id ?? null, differences, applicable: differences.filter((x) => !x.pending).length, writeParams: portalWriteParams(differences, input) });
   }));
   r.get("/catalog/plan", requireScope("ops:read"), wrap(async (_req, res) => {
     const desired = await desiredCatalog(d.catalog);

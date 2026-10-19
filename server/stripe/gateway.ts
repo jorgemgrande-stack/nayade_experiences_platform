@@ -10,6 +10,7 @@
  * reintentos de red del SDK e `Idempotency-Key` en cada creación.
  */
 import Stripe from "stripe";
+import type { GwPortalConfig } from "./portal";
 import { StripeConfigError, assertModeObject, type StripeConfig, type StripeMode } from "./config";
 
 export interface GwPrice {
@@ -71,6 +72,16 @@ export interface GwInvoice {
   periodStart: number | null;
   /** Antes de impuestos, descuentos aplicados en factura y saldo a favor del cliente. */
   subtotal: number | null;
+  /** Dirección del cliente fijada en la factura al finalizarla (la que usó Stripe Tax). */
+  customerCountry?: string | null;
+  customerPostalCode?: string | null;
+  /** Identificadores fiscales del cliente que constan en la factura. */
+  customerTaxIds?: number;
+  /** Impuestos de la factura (céntimos), para la trazabilidad; null si Stripe no los informa. */
+  taxCents?: number | null;
+  /** Número de la factura en Stripe (al finalizarla) y total con impuestos. */
+  number?: string | null;
+  total?: number | null;
 }
 
 /** Evento de Stripe reducido a lo que usamos: el efecto siempre se calcula releyendo el objeto. */
@@ -112,12 +123,22 @@ export interface CheckoutSessionInput {
   notice?: string;
   /** Stripe Tax calcula el impuesto sobre el precio sin IVA (`automatic_tax`). Solo con política fiscal live. */
   automaticTax?: boolean;
+  /** Identificador fiscal obligatorio en la página de pago (empresas y profesionales). Sin él, es opcional. */
+  taxIdRequired?: boolean;
+}
+
+/** Datos del Customer al crearlo. La dirección completa la pide y confirma Checkout. */
+export interface CustomerInput {
+  name: string;
+  email: string | null;
+  metadata: Record<string, string>;
+  address?: { country: string; postalCode: string | null };
 }
 
 export interface StripeGateway {
   pricesByLookupKeys(keys: string[]): Promise<GwPrice[]>;
   product(id: string): Promise<GwProduct | null>;
-  createCustomer(input: { name: string; email: string | null; metadata: Record<string, string> }, idempotencyKey: string): Promise<{ id: string }>;
+  createCustomer(input: CustomerInput, idempotencyKey: string): Promise<{ id: string }>;
   customer(id: string): Promise<{ id: string; deleted: boolean } | null>;
   createCheckoutSession(input: CheckoutSessionInput, idempotencyKey: string): Promise<GwCheckoutSession>;
   checkoutSession(id: string): Promise<GwCheckoutSession | null>;
@@ -126,6 +147,8 @@ export interface StripeGateway {
   expireCheckoutSession(id: string): Promise<GwCheckoutSession>;
   subscription(id: string): Promise<GwSubscription | null>;
   createPortalSession(input: { customerId: string; returnUrl: string }): Promise<{ url: string }>;
+  /** Configuraciones del Customer Portal (solo lectura). */
+  portalConfigurations(): Promise<GwPortalConfig[]>;
   invoice(id: string): Promise<GwInvoice | null>;
   charge(id: string): Promise<GwCharge | null>;
   /** Cargo de un reembolso o de una disputa (para releerlo). */
@@ -215,7 +238,20 @@ export function toInvoice(i: Stripe.Invoice, mode: StripeMode = "test"): GwInvoi
     billingReason: (i.billing_reason as string | null) ?? null,
     periodStart: typeof i.period_start === "number" ? i.period_start : null,
     subtotal: typeof i.subtotal === "number" ? i.subtotal : null,
+    customerCountry: i.customer_address?.country ?? null,
+    customerPostalCode: i.customer_address?.postal_code ?? null,
+    customerTaxIds: Array.isArray(i.customer_tax_ids) ? i.customer_tax_ids.length : 0,
+    taxCents: taxOf(i),
+    number: i.number ?? null,
+    total: typeof i.total === "number" ? i.total : null,
   };
+}
+
+/** Impuestos de la factura: desde la API 2025-03-31 en `total_taxes` (lista); antes, en `tax`. */
+function taxOf(i: Stripe.Invoice): number | null {
+  const x = i as unknown as { total_taxes?: Array<{ amount?: number }> | null; tax?: number | null };
+  if (Array.isArray(x.total_taxes)) return x.total_taxes.reduce((s, t) => s + (t.amount ?? 0), 0);
+  return typeof x.tax === "number" ? x.tax : null;
 }
 
 export function toEvent(e: { id: string; type: string; created: number; livemode: boolean; api_version?: string | null; data?: { object?: unknown } }): GwEvent {
@@ -292,7 +328,15 @@ export function stripeGateway(
     },
     async createCustomer(input, idempotencyKey) {
       try {
-        const c = await client.customers.create({ name: input.name, ...(input.email ? { email: input.email } : {}), metadata: input.metadata }, { idempotencyKey });
+        const c = await client.customers.create(
+          {
+            name: input.name,
+            ...(input.email ? { email: input.email } : {}),
+            metadata: input.metadata,
+            ...(input.address ? { address: { country: input.address.country, ...(input.address.postalCode ? { postal_code: input.address.postalCode } : {}) } } : {}),
+          },
+          { idempotencyKey },
+        );
         assertModeObject(c, mode);
         return { id: c.id };
       } catch (e) {
@@ -324,7 +368,7 @@ export function stripeGateway(
         cancel_url: i.cancelUrl,
         expires_at: i.expiresAt,
         billing_address_collection: "required",
-        tax_id_collection: { enabled: true },
+        tax_id_collection: i.taxIdRequired ? { enabled: true, required: "if_supported" } : { enabled: true },
         customer_update: { address: "auto", name: "auto" },
         locale: "es",
         ...(i.notice ? { custom_text: { submit: { message: i.notice.slice(0, 1200) } } } : {}),
@@ -411,6 +455,36 @@ export function stripeGateway(
       try {
         const page = await client.events.list({ limit: q.limit ?? 100, ...(q.createdGte ? { created: { gte: q.createdGte } } : {}), ...(q.types?.length ? { types: q.types } : {}), ...(q.startingAfter ? { starting_after: q.startingAfter } : {}) });
         return { events: page.data.map(toEvent), hasMore: page.has_more };
+      } catch (e) {
+        wrapError(e);
+      }
+    },
+    async portalConfigurations() {
+      try {
+        const list = await client.billingPortal.configurations.list({ limit: 20 });
+        return list.data.map((c) => {
+          assertModeObject(c as { livemode?: unknown }, mode);
+          const f = c.features;
+          const su = f.subscription_update as unknown as { enabled: boolean; default_allowed_updates?: string[]; products?: Array<{ product: string; prices: string[] }> | null; proration_behavior?: string | null; schedule_at_period_end?: { conditions?: Array<{ type: string }> } | null };
+          return {
+            id: c.id,
+            isDefault: c.is_default,
+            active: c.active,
+            invoiceHistory: f.invoice_history.enabled,
+            paymentMethodUpdate: f.payment_method_update.enabled,
+            customerUpdate: { enabled: f.customer_update.enabled, allowedUpdates: [...(f.customer_update.allowed_updates ?? [])] },
+            cancel: { enabled: f.subscription_cancel.enabled, mode: f.subscription_cancel.mode ?? null, prorationBehavior: f.subscription_cancel.proration_behavior ?? null },
+            update: {
+              enabled: su.enabled,
+              defaultAllowedUpdates: [...(su.default_allowed_updates ?? [])],
+              products: (su.products ?? []).map((p) => ({ product: p.product, prices: [...p.prices] })),
+              prorationBehavior: su.proration_behavior ?? null,
+              scheduleAtPeriodEnd: (su.schedule_at_period_end?.conditions ?? []).map((x) => x.type),
+            },
+            termsUrl: c.business_profile?.terms_of_service_url ?? null,
+            privacyUrl: c.business_profile?.privacy_policy_url ?? null,
+          } satisfies GwPortalConfig;
+        });
       } catch (e) {
         wrapError(e);
       }
