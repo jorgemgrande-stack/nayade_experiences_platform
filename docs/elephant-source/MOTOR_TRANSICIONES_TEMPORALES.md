@@ -75,4 +75,56 @@ Al arrancar, el log `ctx="Lifecycle"` indica `mounted`, `enabled`, `mode`, `reas
 
 - **Registro de eventos comerciales** (PR #163, `feat/registro-eventos-comerciales`): las transiciones que aplica el motor pasan por los almacenes, así que, con los dos fusionados, quedan registradas sin código adicional. Los dos PR son independientes entre sí.
 - **Despachador de notificaciones:** consumirá `dunning_notice` y `trial_notice` (o los eventos equivalentes) para encolar en la cola de correo existente con `MAIL_MODE` controlado.
-- **Prueba en production:** la empresa piloto t5-skibox está en prueba hasta el 03/11. Sin `CP_TRIALS_SCHEDULER_ENABLED=1` no pasará a `expired` ni recibirá los avisos de 3 y 1 días, aunque sus capacidades caducan solas. Activar esa variable es decisión del propietario.
+- **Planificador de pruebas:** este motor no lo sustituye. Para las pruebas solo planifica: el vencimiento lo hace la tarea de pruebas existente. Encender los dos no duplica nada.
+
+## 6. Planificador de pruebas en production: cuándo y cómo activarlo con seguridad
+
+`CP_TRIALS_SCHEDULER_ENABLED` está apagado en production y **sigue apagado** hasta que el propietario lo autorice.
+
+### Datos reales (lectura del 19/10/2026, solo `SELECT`)
+
+| Prueba | Tenant | Estado | Fin (UTC) |
+|---|---|---|---|
+| #5 | t5-skibox (piloto) | `active` | **03/11/2026 13:50:33** (inicio 19/10 13:50:33; 15 días; sin ampliaciones) |
+| #2 | t2-empresa-demo-elephant-b (demo) | `active` | 31/10/2026 21:51:57 |
+| #4 | t4-empresa-demo-elephant-02 (demo) | `active` | 31/10/2026 22:02:42 |
+| #1, #3 | demo | `converted` | — |
+
+Ninguna prueba tiene todavía avisos registrados (`notice_queued`).
+
+### Qué haría el planificador existente con t5-skibox
+
+Simulado en memoria con sus fechas reales y pasos de 15 minutos, sin tocar production:
+
+| Momento (UTC, primer tick tras el umbral) | Efecto |
+|---|---|
+| 31/10 ~14:00 | Aviso «termina en 3 días» |
+| 02/11 ~14:00 | Aviso «termina mañana» |
+| 03/11 ~14:00 | Estado `expired` y aviso «tu prueba ha terminado (solo lectura)» |
+
+- Las capacidades caducan solas el 03/11 13:50:33 (`valid_until`), con o sin planificador.
+- **Activación tardía:** si se enciende con un umbral ya pasado, solo sale el aviso más cercano, nunca los atrasados en bloque. Simulado activándolo el 02/11 a las 20:00: solo sale el de 1 día y después el de fin.
+- El plan de este motor (D-16 propuesto: 7, 3, 1) añadiría un aviso de 7 días el 27/10 ~14:00. Hoy solo se planifica: el planificador existente envía los de 3, 1 y 0 días.
+
+### Con el planificador encendido antes del 31/10
+
+- t2 y t4 (demos) pasarían a `expired` el 31/10, con sus avisos.
+- Con `MAIL_MODE=sandbox`, los avisos solo llegan a direcciones de la lista de permitidos. Con `off`, solo quedan registrados.
+
+### Configuración segura
+
+1. `CP_TRIALS_SCHEDULER_ENABLED=1` en el plano de control de production, con `--skip-deploys`.
+2. Despliegue de la **misma** versión que corre. El planificador no requiere código nuevo.
+3. Sin cambiar `MAIL_MODE`:
+   - En `sandbox`, los avisos a clientes reales (t5-skibox) se descartan como `sandbox_recipient_not_allowed`, salvo que su dirección esté en la lista de permitidos.
+   - Para que el cliente reciba el aviso hace falta decidir aparte el correo real (modo live del correo y `MAIL_LIVE_AUTHORIZED`). Este documento no lo propone.
+4. Intervalo por defecto: 15 minutos (`CP_TRIALS_SCHEDULER_INTERVAL_MS`).
+
+### Verificaciones
+
+- **Antes:** listar `trial_requests` activas (estado, `ends_at`) y comprobar que ninguna demo debe quedar fuera. El planificador vence todas las activas cuyo plazo pase.
+- **Al arrancar:** log `ctx="Trials" event="scheduler" enabled=true intervalMs=900000`.
+- **Primer tick** (al cabo de 1 minuto): `scheduler_tick` solo si hubo trabajo. Sin pruebas en umbral, no se registra nada.
+- **Tras cada umbral:** `trial_events` con `notice_queued` (uno por prueba y umbral) y `mail_outbox` de plataforma con la clave `trial:{id}:expiry:{endsAt}:{días}` y el estado que corresponda al modo de correo.
+- **El 03/11:** `trial_requests.state = expired` para t5-skibox. Licencias en solo lectura, datos intactos, sin cobros.
+- **Reversión:** quitar la variable (`CP_TRIALS_SCHEDULER_ENABLED` ausente) y volver a desplegar la misma versión. Lo ya hecho (avisos, `expired`) no se deshace ni hace falta deshacerlo.
