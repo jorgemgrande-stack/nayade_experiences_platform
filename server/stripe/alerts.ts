@@ -28,6 +28,8 @@ export const STRIPE_FAILURE_RULES: Record<string, FailureRule> = {
   "stripe.buyer_tax_id_missing": once("Stripe: empresa facturada sin identificador fiscal en la factura", "warning"),
   "stripe.invoice_tax_mismatch": once("Stripe: el impuesto de una factura cobrada no corresponde al tratamiento fiscal aprobado para su escenario"),
   "stripe.fiscal_document_failed": once("Facturación: el sistema de facturación legal rechazó un documento (queda en la cola para revisión)"),
+  // Activación sin pago de Stripe en el entorno real: cada una queda a la vista del equipo (auditoría)
+  "orders.admin_approval_live": once("Pedido activado por aprobación administrativa (sin pago de Stripe) en el entorno real: revisar la justificación", "warning"),
   // Fallos técnicos repetidos
   "stripe.webhook_store_failed": repeated(3, 15, "Stripe: no se pueden guardar los webhooks recibidos", "critical"),
   "stripe.webhook_invalid_signature": repeated(10, 15, "Stripe: webhooks con firma no válida repetidos"),

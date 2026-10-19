@@ -188,6 +188,38 @@ describe("orquestador en memoria", () => {
     expect((await live.advance(o.id, actor)).order.state).not.toBe("contracted");
   });
 
+  it("aprobación administrativa en live: tipo obligatorio, motivo largo, referencia si es cobro externo, nunca con un cobro en curso; sin pago ni documento fiscal", async () => {
+    const live = new CommercialOrchestrator({ ...deps, payments: null, mode: "live" });
+    const contracted = async (name: string) => {
+      const o = (await live.create({ idempotencyKey: key(), companyId: await company(name), request: { plan: "business", interval: "month", items: [] } }, actor)).order;
+      await live.accept(o.id, { signatureRef: `firma-${name}`, approvalReason: "Aprobado por producto" }, actor);
+      return o.id;
+    };
+    const id = await contracted("Excepción Live SL");
+    const motivo = "Cliente piloto con acuerdo firmado por dirección";
+    await expect(live.approve(id, { reason: motivo }, actor)).rejects.toMatchObject({ code: "invalid_input", message: expect.stringMatching(/tipo de aprobación/) });
+    await expect(live.approve(id, { reason: "Cliente piloto", category: "partner" }, actor)).rejects.toMatchObject({ code: "invalid_input", message: expect.stringMatching(/20 caracteres/) });
+    await expect(live.approve(id, { reason: motivo, category: "offline_payment" }, actor)).rejects.toMatchObject({ code: "invalid_input", message: expect.stringMatching(/referencia/) });
+    await expect(live.approve(id, { reason: motivo, category: "regalo" as never }, actor)).rejects.toMatchObject({ code: "invalid_input" });
+    expect((await live.must(id)).state).toBe("contracted");
+    // Con la referencia del cobro externo: confirmada por aprobación tipificada, auditada, sin ningún pago
+    await live.approve(id, { reason: motivo, category: "offline_payment", reference: "TRF-2026-0042" }, actor);
+    const o = await live.must(id);
+    expect(o.confirmation).toMatchObject({ kind: "admin_approval", category: "offline_payment", reference: "TRF-2026-0042", reason: motivo, ref: null });
+    expect(await orders.payments(id)).toEqual([]);
+    const ev = (await orders.events(id)).find((e) => e.kind === "confirm");
+    expect(ev?.detail).toMatchObject({ basis: "admin_approval", category: "offline_payment", reference: "TRF-2026-0042" });
+    // Un pedido con un cobro en curso no se aprueba sin pago (evita duplicar activación o cobro)
+    const id2 = await contracted("Cobro En Curso SL");
+    await orders.insertPayment({ orderId: id2, idempotencyKey: `k-${id2}`, purpose: "initial", periodStart: null, amountCents: 7900, currency: "EUR", status: "pending", provider: "stripe", mode: "live", providerRef: null, dueAt: null, createdAt: clock, settledAt: null });
+    await expect(live.approve(id2, { reason: motivo, category: "exception" }, actor)).rejects.toMatchObject({ code: "invalid_state" });
+    // En pruebas sigue siendo compatible (sin tipo: «exception»)
+    const t = (await svc.create({ idempotencyKey: key(), companyId: await company("Pruebas Compat SL"), request: { plan: "essential", interval: "month", items: [] } }, actor)).order;
+    await svc.accept(t.id, { signatureRef: "firma-compat", approvalReason: "Aprobado por producto" }, actor);
+    await svc.approve(t.id, { reason: "Cliente piloto" }, actor);
+    expect((await svc.must(t.id)).confirmation).toMatchObject({ kind: "admin_approval", category: "exception" });
+  });
+
   const company = async (name: string) => {
     const c = await crm.createCompany({ name }, actor);
     await crm.createContact(c.id, { name: "Ana Ensayo", email: `ana@${c.id}.example` }, actor);
