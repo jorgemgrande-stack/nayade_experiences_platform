@@ -250,16 +250,18 @@ describe("vencimiento por la tarea programada y conversión a pago sin duplicar 
     expect(granted.every((g) => g.status === "active" && g.validUntil === null)).toBe(true);
     expect((await access().check("crm-leads", { write: true, tenantId: s.tenantId })).allowed).toBe(true);
     expect((await trialStore.get(s.trialId))!).toMatchObject({ state: "converted", convertedSubscriptionId: s.subId });
+    // La empresa deja de estar en «trial» en el registro: ya paga
+    expect((await registry.getTenant(s.tenantId))!.status).toBe("active");
   });
 
   it("no se convierte dos veces: ni por operador ni con otro pedido", async () => {
-    expect((await call("POST", `/trials/${s.trialId}/convert`, { body: {} })).status).toBe(409);
+    expect((await call("POST", `/trials/${s.trialId}/convert`, { body: { category: "exception", reason: "Conversión excepcional autorizada por dirección comercial" } })).status).toBe(409);
     expect((await call("POST", "/orders", { body: { idempotencyKey: key(), trialId: s.trialId, request: { plan: "essential", interval: "month", items: [] } } })).status).toBe(409);
     expect((await subsStore.list({ companyId: s.companyId })).length).toBe(1);
     expect((await registry.listTenants()).length).toBe(tenantsBefore);
   });
 
-  it("conversión por operador de una prueba vencida: mismos tenant, empresa y suscripción; escritura recuperada", async () => {
+  it("conversión por excepción administrativa de una prueba vencida: con pedido y aprobación tipificada; mismos tenant, empresa y suscripción", async () => {
     const o = await startTrial("luis@casaluna.example", "Casa Luna Autonomía");
     const tenants = (await registry.listTenants()).length;
     const companies = (await crmStore.list("companies", {})).length;
@@ -267,16 +269,24 @@ describe("vencimiento por la tarea programada y conversión a pago sin duplicar 
     await scheduler.tick();
     expect((await trialStore.get(o.trialId))!.state).toBe("expired");
     expect((await access().check("crm-leads", { write: true, tenantId: o.tenantId })).allowed).toBe(false);
-    const r = await ok(call("POST", `/trials/${o.trialId}/convert`, { body: {} }));
-    expect(r).toMatchObject({ subscriptionId: o.subId, trial: { state: "converted", tenantId: o.tenantId } });
+    // Sin categoría ni motivo no hay excepción
+    expect((await call("POST", `/trials/${o.trialId}/convert`, { body: {} })).status).toBe(400);
+    const r = await ok(call("POST", `/trials/${o.trialId}/convert`, { body: { category: "exception", reason: "Conversión excepcional autorizada por dirección comercial" } }));
+    expect(r).toMatchObject({
+      order: { kind: "trial_conversion", state: "active", subscriptionId: o.subId, tenantId: o.tenantId, confirmation: { kind: "admin_approval", category: "exception" } },
+      trial: { state: "converted", tenantId: o.tenantId },
+    });
+    expect((await registry.getTenant(o.tenantId))!.status).toBe("active");
     expect((await subsStore.get(o.subId))!.status).toBe("active");
     expect((await subsStore.list({ companyId: o.companyId })).length).toBe(1);
     expect((await crmStore.list("companies", {})).length).toBe(companies);
     expect((await registry.listTenants()).length).toBe(tenants);
     expect((await caps.list(o.tenantId)).every((g) => g.status === "active" && g.validUntil === null)).toBe(true);
     expect((await access().check("crm-leads", { write: true, tenantId: o.tenantId })).allowed).toBe(true);
-    // Ni repetir la conversión ni abrir un pedido sobre la prueba ya convertida
-    expect((await call("POST", `/trials/${o.trialId}/convert`, { body: {} })).status).toBe(409);
+    // Repetir la excepción es idempotente (el mismo pedido, nada nuevo) y no se abre otro pedido sobre la prueba convertida
+    const again = await ok(call("POST", `/trials/${o.trialId}/convert`, { body: { category: "exception", reason: "Conversión excepcional autorizada por dirección comercial" } }));
+    expect(again.order.id).toBe(r.order.id);
+    expect((await subsStore.list({ companyId: o.companyId })).length).toBe(1);
     expect((await call("POST", "/orders", { body: { idempotencyKey: key(), trialId: o.trialId, request: { plan: "essential", interval: "month", items: [] } } })).status).toBe(409);
   });
 });

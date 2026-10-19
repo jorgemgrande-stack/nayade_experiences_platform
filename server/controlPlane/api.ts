@@ -69,7 +69,8 @@ import { LicensingError, LicensingService } from "../licensing/service";
 import { TrialService, type TrialLimits } from "../trials/service";
 import type { TrialStore } from "../trials/store";
 import { TrialOnboardingService, type TrialNotifier } from "../trials/onboarding";
-import { createPublicTrialRouter, createTrialAdminRouter } from "../trials/api";
+import { createPublicTrialRouter, createTrialAdminRouter, type TrialExceptionConversion } from "../trials/api";
+import { OrderError } from "../orchestrator/types";
 import { OrganizationError, OrganizationService, type OrganizationStore } from "../organization/service";
 import { CommercialOrchestrator } from "../orchestrator/service";
 import { LifecycleEngine, startLifecycleScheduler } from "../lifecycle/engine";
@@ -1035,6 +1036,8 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
       );
       router.post("/tenants/:id/sites/:site/archive", requireScope("tenants:write"), orgRoute((req, t) => org.archiveSite(t, slug.parse(req.params.site))));
     }
+    // La conversión excepcional de una prueba la monta el orquestador (más abajo); sin él, la ruta responde 409
+    const trialConversion: { run?: TrialExceptionConversion } = {};
     if (d.capabilities && d.trials && d.provisioning && d.platformDomain) {
       const crmD = d.crm;
       const trialService = new TrialService({ store: d.trials.store, subscriptions: d.subscriptions.store, now: d.subscriptions.now, limits: d.trials.limits, blockedDomains: d.trials.blockedDomains });
@@ -1068,7 +1071,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         reissueInvite: (tenantId) => provisioning.reissueAdminInvite(tenantId),
         now: d.subscriptions.now,
       });
-      router.use("/trials", createTrialAdminRouter({ onboarding, trials: trialService, store: d.trials.store }));
+      router.use("/trials", createTrialAdminRouter({ onboarding, trials: trialService, store: d.trials.store, convert: trialConversion }));
       if (d.trials.publicEnabled) publicTrial = createPublicTrialRouter({ onboarding, autoProvision: !!d.trials.autoProvision });
     }
     if (d.orders && d.capabilities) {
@@ -1108,6 +1111,21 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         tenantStatus: tenantStatusSync,
         now: d.subscriptions.now,
       });
+      // Conversión de una prueba por excepción administrativa: SIEMPRE con pedido y aprobación tipificada
+      if (d.trials) {
+        const trialStore = d.trials.store;
+        trialConversion.run = async (trialId, input, who) => {
+          const t = await trialStore.get(trialId);
+          if (!t) throw new OrderError("not_found", "Prueba no encontrada");
+          const plan = input.plan ?? t.configuration?.plan ?? "essential";
+          let { order } = await orchestrator.create({ idempotencyKey: `trial-exception-${String(trialId).padStart(8, "0")}`, trialId, request: { plan, interval: input.interval ?? "month", items: [] } }, who);
+          if (order.state === "requested" || order.state === "quoted") order = (await orchestrator.accept(order.id, { signatureRef: `admin-exception:${input.category}`, approvalReason: input.reason }, who)).order;
+          let error: string | null = order.lastError;
+          if (order.state === "contracted") ({ order, error } = await orchestrator.approve(order.id, { reason: input.reason, category: input.category, reference: input.reference }, who));
+          const after = await trialStore.get(trialId);
+          return { order, trial: after ? TrialService.view(after) : null, error: order.state === "active" ? null : error };
+        };
+      }
       router.use("/orders", createOrdersRouter(orchestrator));
       if (d.lifecycle) {
         const policy = d.lifecycle.policy;

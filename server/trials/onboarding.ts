@@ -285,26 +285,6 @@ export class TrialOnboardingService {
     return { trial: await this.d.trials.reactivate(t.id, t.version, o.actor), licencesChanged };
   }
 
-  /**
-   * Conversión: termina la prueba de la suscripción (pasa a activa), opcionalmente cambia de plan con
-   * su tarifa aprobada, reaplica licencias (sin caducidad) y cierra la prueba como convertida.
-   */
-  async convert(trialId: number, o: { plan?: string; actor: string }) {
-    const t = await this.d.trials.must(trialId);
-    if (!t.tenantId) throw new TrialError("invalid_state", "La prueba no tiene plataforma");
-    const company = await this.d.companies.byTenant(t.tenantId);
-    if (!company) throw new TrialError("invalid_state", "No se encuentra la empresa de la prueba");
-    let sub = (await this.d.subscriptions.list({ companyId: company.id })).find((s) => s.status !== "canceled");
-    if (!sub) throw new TrialError("invalid_state", "La prueba no tiene suscripción");
-    if (sub.status === "trialing") sub = (await this.d.subscriptions.endTrial(sub.id, { reason: `Conversión de la prueba #${t.id}` }, sub.version, o.actor)).subscription;
-    if (o.plan && o.plan !== ESSENTIAL_PLAN) {
-      const priceId = await this.d.priceOf(o.plan, sub.interval === "year" ? "yearly" : "monthly");
-      if (!priceId) throw new TrialError("invalid_input", `El plan «${o.plan}» no tiene tarifa aprobada`);
-      sub = (await this.d.subscriptions.changePlan(sub.id, { plan: { productKey: o.plan, priceId }, reason: `Conversión de la prueba #${t.id}` }, sub.version, o.actor)).subscription;
-    }
-    const licences = await this.d.licensing.apply(sub.id, { activate: true, actor: o.actor, reason: `Conversión de la prueba #${t.id}` });
-    const fresh = await this.d.trials.must(trialId);
-    const converted = await this.d.trials.convert(fresh.id, fresh.version, sub.id, o.actor);
-    return { trial: converted, subscriptionId: sub.id, licencesChanged: licences.applied.length };
-  }
+  // La conversión a pago no se hace aquí: es un pedido del orquestador (POST /orders con el cobro, o la
+  // excepción administrativa tipificada de POST /trials/:id/convert, que también crea y aprueba un pedido).
 }
