@@ -28,6 +28,9 @@ import {
   verifySignedLink,
 } from "./_core/files/service";
 import type { StoredObjectRow } from "./storedObjectsDb";
+import { legacyPool } from "./_core/legacyDb";
+import { getCompanyOwnerEmail } from "./_core/companyOwner";
+import { MysqlDataExportStore } from "./dataExport/service";
 
 const router = Router();
 
@@ -109,6 +112,11 @@ async function authorize(user: SessionUser | null, row: StoredObjectRow, write: 
   const policy = policyOf(row.category);
   // Los públicos solo los modifica quien gestiona la web; leerlos con sesión no requiere más
   if (row.visibility === "public" && !write) return 200;
+  // Exportación de datos: solo la persona propietaria (con sesión); con enlace firmado, el enlace es la autorización
+  if (row.category === "data-export") {
+    const owner = await getCompanyOwnerEmail().catch(() => null);
+    return !write && String(user.role) === "admin" && !!owner && String(user.email ?? "").trim().toLowerCase() === owner ? 200 : 403;
+  }
   let ok = false;
   try {
     ok = await checkRbacOrLegacy(user.id, String(user.role), policy.permission, policy.fallbackRoles);
@@ -139,6 +147,11 @@ router.get("/api/files/:id", async (req: Request, res: Response, next) => {
     if (!signed) {
       const auth = await authorize(user, row, false);
       if (auth !== 200) return deny(res, auth, auth === 401 ? "No autenticado." : "No tienes permiso para ver este fichero.");
+    }
+    // Cada descarga de una exportación queda registrada (auditoría); un fallo del registro no impide descargar
+    if (row.category === "data-export") {
+      await new MysqlDataExportStore(() => legacyPool()).downloaded(row.objectId, Date.now()).catch(() => undefined);
+      console.info(JSON.stringify({ ctx: "DataExport", event: "downloaded", objectId: row.objectId, via: signed ? "link" : "session" }));
     }
     const inline = INLINE_SAFE.has(row.contentType) || row.contentType === "text/html";
     const backend = fileService().storage;
