@@ -55,6 +55,38 @@ const tokenRateLimit = rateLimit({
   message: { error: "Demasiados intentos. Espera 1 minuto antes de volver a intentarlo.", code: "RATE_LIMIT_EXCEEDED" },
 });
 
+/**
+ * Solicitud de restablecimiento en la empresa en curso (contexto de tenant): invalida los enlaces anteriores,
+ * crea uno nuevo y lo envía con el remitente y la URL pública de la empresa. No revela si el correo existe.
+ * La usan /api/auth/forgot-password y el acceso centralizado (_core/centralAuth.ts).
+ */
+export async function requestPasswordReset(rawEmail: string): Promise<"sent" | "no_user" | "db_unavailable"> {
+  const email = rawEmail.toLowerCase().trim();
+  const db = await getDb();
+  if (!db) return "db_unavailable";
+
+  const rows = await db.select().from(users).where(eq(users.email, email)).limit(1);
+  const user = rows[0];
+  if (!user || !user.isActive) return "no_user";
+
+  // Invalidar tokens anteriores del mismo usuario (marcarlos como usados)
+  await db
+    .update(passwordResetTokens)
+    .set({ usedAt: new Date() })
+    .where(and(eq(passwordResetTokens.userId, user.id), isNull(passwordResetTokens.usedAt)));
+
+  // Generar token seguro
+  const rawToken = crypto.randomBytes(48).toString("hex");
+  const expiresAt = new Date(Date.now() + TOKEN_EXPIRY_MINUTES * 60 * 1000);
+  await db.insert(passwordResetTokens).values({ userId: user.id, token: rawToken, expiresAt });
+
+  // Construir URL de reset
+  const baseUrl = getTrustedBaseUrl();
+  const resetUrl = `${baseUrl}/nueva-contrasena?token=${rawToken}`;
+  await sendResetEmail(user.email ?? email, resetUrl, user.name ?? "");
+  return "sent";
+}
+
 // ─── Router Express ───────────────────────────────────────────────────────────
 export function createPasswordResetRouter(): Router {
   const router = express.Router();
@@ -75,48 +107,11 @@ export function createPasswordResetRouter(): Router {
     }
 
     try {
-      const db = await getDb();
-      if (!db) {
+      if ((await requestPasswordReset(email)) === "db_unavailable") {
         res.status(503).json({ error: "Base de datos no disponible." });
         return;
       }
-
-      const rows = await db
-        .select()
-        .from(users)
-        .where(eq(users.email, email.toLowerCase().trim()))
-        .limit(1);
-
-      const user = rows[0];
-
       // Responder siempre 200 para no revelar si el email existe
-      if (!user || !user.isActive) {
-        res.json({ ok: true, message: "Si el email existe, recibirás un enlace en breve." });
-        return;
-      }
-
-      // Invalidar tokens anteriores del mismo usuario (marcarlos como usados)
-      await db
-        .update(passwordResetTokens)
-        .set({ usedAt: new Date() })
-        .where(and(eq(passwordResetTokens.userId, user.id), isNull(passwordResetTokens.usedAt)));
-
-      // Generar token seguro
-      const rawToken = crypto.randomBytes(48).toString("hex");
-      const expiresAt = new Date(Date.now() + TOKEN_EXPIRY_MINUTES * 60 * 1000);
-
-      await db.insert(passwordResetTokens).values({
-        userId: user.id,
-        token: rawToken,
-        expiresAt,
-      });
-
-      // Construir URL de reset
-      const baseUrl = getTrustedBaseUrl();
-      const resetUrl = `${baseUrl}/nueva-contrasena?token=${rawToken}`;
-
-      await sendResetEmail(user.email ?? email, resetUrl, user.name ?? "");
-
       res.json({ ok: true, message: "Si el email existe, recibirás un enlace en breve." });
     } catch (err) {
       console.error("[PasswordReset] Error en forgot-password:", err);

@@ -25,6 +25,10 @@ import { configureHealthChecks } from "../health";
 import { getTenantDatabase } from "../dbRegistry";
 import { sql } from "drizzle-orm";
 import { bindTenantMiddleware, resolveTenantMiddleware } from "./tenantMiddleware";
+import { centralLoginHost, createCentralAuthRouter, tenantUserFinder } from "../centralAuth";
+import { runWithTenant } from "../tenant";
+import { passwordFingerprint } from "../../localAuth";
+import { requestPasswordReset } from "../../passwordReset";
 
 export function installTenantResolution(app: Express, env: NodeJS.ProcessEnv = process.env): TenantRuntime | null {
   const mode = getTenantMode();
@@ -43,6 +47,27 @@ export function installTenantResolution(app: Express, env: NodeJS.ProcessEnv = p
   if (mode === "shadow") {
     app.use(shadowMiddleware(rt.resolver, { currentTenantId: env.TENANT_SHADOW_CURRENT_ID || "nayade" }));
   } else {
+    // Acceso centralizado (p. ej. app.bigelephant.es): su host no es de ninguna empresa, se atiende antes de resolverla
+    const central = centralLoginHost(env);
+    if (central) {
+      const reader = rt.reader;
+      app.use(
+        createCentralAuthRouter({
+          host: central,
+          listTenants: () => reader.listTenants(),
+          listDomains: (id) => reader.listDomains(id),
+          findUser: tenantUserFinder(getTenantDatabase),
+          passwordFingerprint,
+          // Recuperación con el flujo, la URL y el remitente de cada empresa (en su contexto)
+          requestReset: (id, email) =>
+            runWithTenant(id, async () => {
+              await Promise.all([warmConfigCache(), warmIntegrationCreds(), warmTenantIdentity()]);
+              await requestPasswordReset(email);
+            }),
+        }),
+      );
+      console.log(JSON.stringify({ ctx: "CentralAuth", event: "enabled", host: central }));
+    }
     app.use(resolveTenantMiddleware(rt.resolver));
     // Salud (/readyz): BD del registro y, si el host es de una empresa servible, la BD de esa empresa
     const runtime = rt;
