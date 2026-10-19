@@ -174,6 +174,11 @@ Cada paso tiene un criterio de aceptación. **Si un paso no lo cumple, se detien
 | `controlplane` | `CP_STRIPE_EVENTS_RETENTION_DAYS` | sin definir (180) | — |
 | `controlplane` | `CP_TRIALS_SCHEDULER_ENABLED` | sin definir; `1` en un paso aparte | Tú |
 | `controlplane` | `CP_PUBLIC_SELF_SERVICE_ENABLED`, `CP_TERMS_VERSION` | sin definir | — |
+| `controlplane` | `CP_STRIPE_BILLING_MODE` | sin definir (`classic`); `flexible` solo por decisión expresa (irreversible por suscripción) | Tú |
+| `controlplane` | `CP_COMMERCE_PURCHASES_ENABLED` | sin definir (compra de módulos apagada); requiere CRM 0018 y productos `available` | Tú |
+| `controlplane` | `CP_NOTIFICATIONS_SINCE` | sin definir (no se despacha nada); fecha ISO desde la que avisar, nunca anterior a la activación | Tú |
+| `app` (Core) | `CP_COMMERCE_URL`, `CP_COMMERCE_TOKEN` | sin definir (compra no disponible); token de servicio con solo `commerce:purchase` | Tú |
+| `app` (Core) | `DATA_EXPORT_MAX_MB` | sin definir (1024) | — |
 | `crm` (pasarela) | `STRIPE_WEBHOOK_PUBLIC` | `1` en el paso 4 | Tú |
 | `crm` (pasarela) | `STRIPE_WEBHOOK_IPS` | opcional (la seguridad la da la firma) | — |
 | `web` | `PUBLIC_CHECKOUT_ENABLED` | sin definir (apagada) | — |
