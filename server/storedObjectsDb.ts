@@ -83,7 +83,7 @@ export class MysqlObjectMetaStore implements ObjectMetaStore {
   constructor(private pool: () => mysql.Pool = () => legacyPool()) {}
 
   async usedBytes() {
-    const [rows] = await this.pool().query("SELECT COALESCE(SUM(size_bytes), 0) AS n FROM stored_objects WHERE status IN ('pending', 'active')");
+    const [rows] = await this.pool().query("SELECT COALESCE(SUM(size_bytes), 0) AS n FROM stored_objects WHERE status IN ('pending', 'active') AND category <> 'data-export'");
     return Number((rows as Array<{ n: unknown }>)[0]?.n ?? 0);
   }
 

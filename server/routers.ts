@@ -187,6 +187,7 @@ import { pdfTemplatesRouter } from "./routers/pdfTemplatesRouter";
 import { integrationsRouter } from "./routers/integrations";
 import { modulesRouter } from "./routers/modulesRouter";
 import { subscriptionRouter } from "./routers/subscriptionRouter";
+import { dataExportRouter } from "./routers/dataExportRouter";
 import { operationsRouter } from "./routers/operations";
 import { hrRouter } from "./routers/hr";
 import { bankMovementsRouter } from "./routers/bankMovements";
@@ -259,6 +260,7 @@ export const appRouter = router({
   integrations: integrationsRouter,
   modules: modulesRouter,
   subscription: subscriptionRouter,
+  dataExport: dataExportRouter,
   auth: router({
     me: publicProcedure.query((opts) => toPublicUser(opts.ctx.user)),
     logout: publicProcedure.mutation(({ ctx }) => {

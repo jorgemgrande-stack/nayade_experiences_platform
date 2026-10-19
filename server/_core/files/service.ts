@@ -230,7 +230,8 @@ export class FileService {
     // Almacenamiento contratado (plan + ampliaciones, registro 0013): nunca por encima. Sin dato, como hasta ahora
     const limits = getLimitAccess();
     const limitGb = limits ? await limits.limit("storage_gb") : undefined;
-    if (typeof limitGb === "number" && this.meta.usedBytes) {
+    // La exportación de datos no ocupa el almacenamiento contratado (es una copia de lo que ya hay)
+    if (typeof limitGb === "number" && this.meta.usedBytes && input.category !== "data-export") {
       const usedBefore = await this.meta.usedBytes();
       limits!.report("storage_bytes", usedBefore);
       if (usedBefore + data.length > limitGb * GB) {

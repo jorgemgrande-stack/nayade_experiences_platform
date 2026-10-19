@@ -64,6 +64,8 @@ export const CATEGORIES = {
   expense: { visibility: "private", ...ACCOUNTING, maxBytes: 20 * MB, types: ATTACHMENTS },
   settlement: { visibility: "private", ...ACCOUNTING, maxBytes: 20 * MB, types: GENERATED_DOCS },
   "gestoria-export": { visibility: "private", ...ACCOUNTING, maxBytes: 200 * MB, types: ["application/zip"] },
+  // Exportación de datos de la empresa: solo la persona propietaria (se comprueba además al servirla)
+  "data-export": { visibility: "private", ...ADMIN, maxBytes: 4096 * MB, types: ["application/zip"] },
   // Privados: personas
   "hr-doc": { visibility: "private", ...HR, maxBytes: 20 * MB, types: DOCS },
   "hr-photo": { visibility: "private", ...HR, maxBytes: 5 * MB, types: IMAGES },
