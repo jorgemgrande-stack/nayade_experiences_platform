@@ -41,8 +41,13 @@ import { MemoryStripeStore } from "./stripe/store";
 import { FakeStripeGateway } from "./stripe/testing";
 import { FailureAlerts, configureFailureAlerts } from "./_core/ops/failureAlerts";
 import { STRIPE_FAILURE_RULES } from "./stripe/alerts";
+import type { ViesPort } from "./stripe/vies";
+import { MemoryWithdrawalStore } from "./withdrawals/store";
 
 const ADMIN = "stripe-live-admin-token-aaaaaaaaaaaaaaaaa";
+const CORE = "c".repeat(40);
+// Clave de idempotencia de una petición de prueba (no es una credencial)
+const PETICION_LUCIA = ["desistimiento", "lucia", "0001"].join("-");
 const WEB = "https://web.example";
 // Valores ficticios construidos en tiempo de ejecución (no son credenciales)
 const liveConfig = (taxPolicy: StripeConfig["taxPolicy"]): StripeConfig => ({ mode: "live", apiKey: ["rk", "live", "x".repeat(24)].join("_"), webhookSecret: ["whsec", "l".repeat(32)].join("_"), apiVersion: "2026-09-30.endive", keyKind: "restricted", namespace: "live", eventsRetentionDays: 180, taxPolicy });
@@ -54,7 +59,7 @@ type Res = { status: number; json: any; raw: string };
 const key = () => crypto.randomBytes(12).toString("hex");
 
 /** Una instancia completa del plano de control con Stripe en live (memoria). */
-async function liveControlPlane(o: { taxPolicy: StripeConfig["taxPolicy"]; store?: MemoryStripeStore; payments?: SignedTestProvider | null; noStripe?: boolean; ordersMode?: "test" | "live" }) {
+async function liveControlPlane(o: { taxPolicy: StripeConfig["taxPolicy"]; store?: MemoryStripeStore; payments?: SignedTestProvider | null; noStripe?: boolean; ordersMode?: "test" | "live"; fiscal?: NonNullable<Parameters<typeof createControlPlaneApp>[0]["stripe"]>["fiscal"]; vies?: ViesPort; withdrawals?: boolean }) {
   const config = liveConfig(o.taxPolicy);
   const registry = new MemoryTenantRegistryStore();
   const ring = keyringFromEnv({ REGISTRY_KEYS: `k1:${crypto.randomBytes(32).toString("base64")}`, REGISTRY_ACTIVE_KEY_ID: "k1" } as NodeJS.ProcessEnv);
@@ -87,7 +92,8 @@ async function liveControlPlane(o: { taxPolicy: StripeConfig["taxPolicy"]; store
   const crm = new CrmService({ store: crmStore, activation: createContractActivation({ provisioning, platformDomain: "elephant.test", actor: { type: "operator", id: "test" } }), now: () => clock });
   const orders = new MemoryOrderStore();
   const app = createControlPlaneApp({
-    tokens: [{ id: "admin", sha256: hashToken(ADMIN), scopes: [...all] }],
+    tokens: [{ id: "admin", sha256: hashToken(ADMIN), scopes: [...all] }, { id: "core", sha256: hashToken(CORE), scopes: ["commerce:withdrawal"], actorType: "crm" }],
+    ...(o.withdrawals ? { withdrawals: { store: new MemoryWithdrawalStore() } } : {}),
     registry: reg,
     reader: registry,
     entitlements: { listEntitlements: async () => [], grant: async () => undefined, setStatus: async () => undefined, revoke: async () => undefined },
@@ -112,7 +118,8 @@ async function liveControlPlane(o: { taxPolicy: StripeConfig["taxPolicy"]; store
       publicStatus: true,
       selfService: false,
       termsVersion: null,
-      fiscal: { scenarios: new Set(["business:es_mainland"]), consent: { terms: "v1-prueba", privacy: null, precontract: null, withdrawal: "pending" }, taxExpectations: new Map([["business:es_mainland", "taxed"]]) },
+      fiscal: o.fiscal ?? { scenarios: new Set(["business:es_mainland"]), consent: { terms: "v1-prueba", privacy: null, precontract: null, withdrawal: "pending" }, taxExpectations: new Map([["business:es_mainland", "taxed"]]) },
+      ...(o.vies ? { vies: { client: o.vies, maxAgeDays: 30 } } : {}),
     },
   });
   const server = http.createServer(app);
@@ -328,5 +335,113 @@ describe("montaje del modo live", () => {
 
   it("un modo de pedidos distinto del de Stripe no se monta", async () => {
     await expect(liveControlPlane({ taxPolicy: "stripe_tax_exclusive", ordersMode: "test" })).rejects.toThrow(/modo de los pedidos/);
+  });
+});
+
+/**
+ * Cierre del Checkout del lanzamiento (live, Stripe simulado): autónomo con NIF de persona física, empresa de la UE
+ * con NIF-IVA verificado en VIES (y VIES caído), particular con desistimiento y territorios no aprobados. Lo que
+ * NO se puede comprobar aquí (página real de Stripe, Stripe Tax real, VIES real) queda en COMPROBACIONES_APERTURA.md.
+ */
+describe("cierre del Checkout del lanzamiento (live)", () => {
+  let cp: Awaited<ReturnType<typeof liveControlPlane>>;
+  let viesStatus: "valid" | "invalid" | "unavailable" = "valid";
+  const vies: ViesPort = { check: async (country, vatNumber) => ({ status: viesStatus, country, vatNumber, consultationNumber: viesStatus === "valid" ? "WAPIAAAAZ1" : null, traderName: null, traderAddress: null, detail: viesStatus === "valid" ? null : "MS_UNAVAILABLE" }) };
+  beforeAll(async () => {
+    cp = await liveControlPlane({
+      taxPolicy: "stripe_tax_exclusive",
+      vies,
+      withdrawals: true,
+      fiscal: {
+        scenarios: new Set(["business:es_mainland", "business:eu", "consumer:es_mainland"]),
+        consent: { terms: "v1-prueba", privacy: null, precontract: "pre1", withdrawal: "immediate_execution_ack" },
+        taxExpectations: new Map([
+          ["business:es_mainland", "taxed"],
+          ["business:eu", "reverse_charge"],
+          ["consumer:es_mainland", "taxed"],
+        ]),
+        countries: new Map(),
+        consumerRates: new Map([["ES", 2100]]),
+      },
+    });
+  });
+  afterAll(() => cp.close());
+  const pay = async (orderId: number, taxBp: number) => {
+    const s = await cp.ok(cp.call("POST", `/stripe/orders/${orderId}/checkout`));
+    const input = cp.gw.calls.filter((c) => c.op === "checkout.sessions.create").at(-1)!.input as CheckoutSessionInput;
+    const customerId = cp.gw.sessions.get(s.sessionId)!.customerId!;
+    cp.gw.invoiceTaxBp = taxBp;
+    cp.gw.taxIdsOf.set(customerId, 1);
+    const seen = cp.gw.events.length;
+    cp.gw.completeSession(s.sessionId);
+    // El doble añade los eventos nuevos al principio (los más recientes primero)
+    for (const ev of cp.gw.events.slice(0, cp.gw.events.length - seen).reverse()) await cp.ok(cp.webhook(ev));
+    await until(async () => (await cp.ok(cp.call("GET", `/orders/${orderId}`))).order.state === "active");
+    return { input, customer: cp.gw.customers.get(customerId) as unknown as Record<string, unknown>, detail: await cp.ok(cp.call("GET", `/orders/${orderId}`)) };
+  };
+
+  it("autónomo con NIF de persona física: el Customer lleva su NIF-IVA (ES + DNI) y Checkout no lo vuelve a pedir; alta activa con IVA", async () => {
+    const orderId = await cp.contractedOrder("Ana Autonoma");
+    await cp.ok(cp.call("PUT", `/stripe/orders/${orderId}/buyer`, { body: { buyer: { type: "business", legalName: "Ana Perez Gomez", taxId: "12345678Z", country: "ES", postalCode: "28002", line1: "Calle Mayor, 3", city: "Madrid" }, consent: { terms: true, termsVersion: "v1-prueba" } } }));
+    const { input, customer, detail } = await pay(orderId, 2100);
+    expect(input).toMatchObject({ lockTaxId: true, lockAddress: true, automaticTax: true });
+    expect(customer).toMatchObject({ taxIds: [{ type: "eu_vat", value: "ES12345678Z" }], address: { country: "ES", postalCode: "28002", city: "Madrid" } });
+    expect(detail.payments).toEqual([expect.objectContaining({ status: "succeeded", mode: "live", amountCents: 3509 })]);
+    expect(detail.order.tenantId).toBeTruthy();
+  });
+
+  it("empresa con CIF: Customer con es_cif", async () => {
+    const orderId = await cp.contractedOrder("Taller Norte SL");
+    await cp.ok(cp.call("PUT", `/stripe/orders/${orderId}/buyer`, { body: { buyer: { type: "business", legalName: "Taller Norte SL", taxId: "B11111119", country: "ES", postalCode: "48001", line1: "Gran Via, 10", city: "Bilbao" }, consent: { terms: true, termsVersion: "v1-prueba" } } }));
+    const { customer } = await pay(orderId, 2100);
+    expect(customer).toMatchObject({ taxIds: [{ type: "es_cif", value: "B11111119" }] });
+  });
+
+  it("empresa de Francia: con VIES caído no se abre el pago; verificado, Customer con su NIF-IVA y factura sin IVA (inversión)", async () => {
+    const orderId = await cp.contractedOrder("Societe Test SAS");
+    await cp.ok(cp.call("PUT", `/stripe/orders/${orderId}/buyer`, { body: { buyer: { type: "business", legalName: "Societe Test SAS", taxId: "FR12345678901", country: "FR", postalCode: "75001", line1: "1 rue de Rivoli", city: "Paris" }, consent: { terms: true, termsVersion: "v1-prueba" } } }));
+    viesStatus = "unavailable";
+    const blocked = await cp.call("POST", `/stripe/orders/${orderId}/checkout`);
+    expect(blocked.status).toBe(409);
+    expect(blocked.raw).toContain("vat_check_unavailable");
+    viesStatus = "valid";
+    const { input, customer, detail } = await pay(orderId, 0);
+    expect(input.metadata).toMatchObject({ es_fiscal_scenario: "business:eu", es_tax_expectation: "reverse_charge", es_vies_consultation: "WAPIAAAAZ1" });
+    expect(customer).toMatchObject({ taxIds: [{ type: "eu_vat", value: "FR12345678901" }] });
+    expect(detail.payments[0]).toMatchObject({ amountCents: 2900 });
+    expect((await cp.ok(cp.call("GET", `/stripe/orders/${orderId}/vat-checks`))).checks.map((c: { status: string }) => c.status)).toEqual(["valid", "unavailable"]);
+  });
+
+  it("territorios y tipos no aprobados: rechazo seguro antes de crear nada en Stripe", async () => {
+    const before = cp.gw.customers.size;
+    for (const buyer of [
+      { type: "business", legalName: "Canarias SL", taxId: "B87654323", country: "ES", postalCode: "35001", line1: "Calle Triana, 2", city: "Las Palmas" },
+      { type: "business", legalName: "Tokyo KK", taxId: "1234567890123", country: "JP", line1: "1-1 Chiyoda", city: "Tokio" },
+      { type: "consumer", firstName: "Marie", lastName: "Dupont", country: "FR", postalCode: "75001", line1: "2 rue X", city: "Paris" },
+    ]) {
+      const orderId = await cp.contractedOrder(`Fuera de alcance ${buyer.country}`);
+      const consent = buyer.type === "consumer" ? { terms: true, termsVersion: "v1-prueba", precontractVersion: "pre1", immediateExecution: true } : { terms: true, termsVersion: "v1-prueba" };
+      await cp.ok(cp.call("PUT", `/stripe/orders/${orderId}/buyer`, { body: { buyer, consent } }));
+      const r = await cp.call("POST", `/stripe/orders/${orderId}/checkout`);
+      expect(r.status).toBe(409);
+      expect(r.raw).toMatch(/no se abre el pago/);
+    }
+    expect(cp.gw.customers.size).toBe(before);
+  });
+
+  it("particular de la Península: alta con IVA y, desde su cuenta, desistimiento con justificante (sin reembolso automático)", async () => {
+    const orderId = await cp.contractedOrder("Lucia Particular");
+    await cp.ok(cp.call("PUT", `/stripe/orders/${orderId}/buyer`, { body: { buyer: { type: "consumer", firstName: "Lucia", lastName: "Particular", country: "ES", postalCode: "07001", line1: "Carrer de Sant Miquel, 3", city: "Palma" }, consent: { terms: true, termsVersion: "v1-prueba", precontractVersion: "pre1", immediateExecution: true } } }));
+    const { input, detail } = await pay(orderId, 2100);
+    expect(input.taxIdRequired).toBeUndefined();
+    expect(input.lockTaxId).toBeUndefined();
+    const tenant = detail.order.tenantId as string;
+    const status = await cp.ok(cp.call("GET", `/commerce/tenants/${tenant}/withdrawal`, { token: CORE }));
+    expect(status.withdrawal).toMatchObject({ available: true, assessment: { applicability: "applicable", withinTerm: true, immediateExecution: true } });
+    const refunds = cp.gw.calls.filter((c) => /refund|cancel/i.test(c.op)).length;
+    const r = await cp.ok(cp.call("POST", `/commerce/tenants/${tenant}/withdrawal`, { token: CORE, body: { idempotencyKey: PETICION_LUCIA, requestedBy: "user:1", contactEmail: "lucia@example.com" } }), 201);
+    expect(r.receipt).toMatchObject({ reference: expect.stringMatching(/^DS-/), withinTerm: true, status: "received" });
+    expect(cp.gw.calls.filter((c) => /refund|cancel/i.test(c.op)).length).toBe(refunds);
+    expect((await cp.ok(cp.call("GET", "/withdrawals"))).withdrawals[0]).toMatchObject({ contractOrderId: orderId, status: "received" });
   });
 });

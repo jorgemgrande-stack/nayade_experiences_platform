@@ -35,6 +35,7 @@ import { StripeStoreError, type StripeStore } from "./store";
 import type { BuyerProfile, FiscalScenario, TaxTreatment } from "./buyerProfile";
 import { checkEligibility, type EligibilityConfig } from "./eligibility";
 import { needsVies, type VatCheck, type VatVerifier } from "./vies";
+import { checkTaxId } from "./taxIds";
 
 /** Etiqueta de Stripe para seguir este flujo en el Dashboard (sufijo de 8 letras, recomendación de Stripe). */
 export const INTEGRATION_IDENTIFIER = "elephant-source-checkout-rqzmvtak";
@@ -136,6 +137,18 @@ export function eligibilityMessage(scenario: string, reasons: string[]): string 
               ? "Falta el domicilio de facturación completo del comprador"
               : "El comprador no es elegible para el cobro";
   return `${text}: no se abre el pago (${reasons.join(", ")})`;
+}
+
+/**
+ * NIF de una empresa o autónomo de España (Península, Baleares, Canarias, Ceuta o Melilla) como identificador de
+ * Stripe: CIF → `es_cif`; DNI o NIE (autónomos) → NIF-IVA `ES<NIF>` (`eu_vat`), que no depende de que la página de pago
+ * acepte el formato de persona física. null si no es una empresa española o el NIF no es válido (ya lo bloquea la elegibilidad).
+ */
+export function spanishTaxIdOf(buyer: Pick<BuyerProfile, "type" | "country" | "taxId">): { type: "eu_vat" | "es_cif"; value: string } | null {
+  if (buyer.type !== "business" || buyer.country !== "ES" || !buyer.taxId) return null;
+  const t = checkTaxId("ES", buyer.taxId);
+  if (!t.ok) return null;
+  return t.scheme === "es_cif" ? { type: "es_cif", value: t.normalized } : { type: "eu_vat", value: `ES${t.normalized}` };
 }
 
 /** Intentos con claves sucesivas cuando Stripe repite una sesión huérfana ya inservible. */
@@ -248,11 +261,14 @@ export class StripeCheckoutService {
       }
     }
     const verifiedVat = vat?.status === "valid" ? `${vat.country === "GR" ? "EL" : vat.country}${vat.vatNumber}` : null;
-    const { id: customerId, created: customerCreated } = await this.ensureCustomer(o.companyId, buyer?.displayName ?? (company as { name: string }).name, tenantId, buyer, verifiedVat);
+    // Identificador fiscal FIJADO en el Customer (Checkout no lo vuelve a pedir): el NIF-IVA verificado en VIES o,
+    // para empresas y autónomos españoles, su NIF ya comprobado (CIF → es_cif; DNI o NIE → NIF-IVA «ES…»)
+    const fixedTaxId = verifiedVat ? { type: "eu_vat" as const, value: verifiedVat } : this.mode === "live" && buyer ? spanishTaxIdOf(buyer) : null;
+    const { id: customerId, created: customerCreated } = await this.ensureCustomer(o.companyId, buyer?.displayName ?? (company as { name: string }).name, tenantId, buyer, fixedTaxId);
     // Dirección fijada: solo con el domicilio declarado y un Customer creado ahora con él (uno anterior puede tener otra)
     const lockAddress = !!buyer?.billingAddress && customerCreated;
     // NIF-IVA verificado en el Customer recién creado: Checkout no deja poner otro
-    const lockTaxId = !!verifiedVat && customerCreated;
+    const lockTaxId = !!fixedTaxId && customerCreated;
 
     const now = this.now();
     await this.adoptOrphans(orderId, customerId, link.stripePriceId, now);
@@ -437,7 +453,7 @@ export class StripeCheckoutService {
     return { scenarios: this.d.fiscalScenarios ?? new Set(), taxExpectations: this.d.taxExpectations ?? new Map(), countries: e.countries ?? new Map(), consumerRates: e.consumerRates ?? new Map(), consent: e.consent };
   }
 
-  private async ensureCustomer(companyId: number, name: string, tenantId: string | null, buyer?: BuyerProfile | null, verifiedVat?: string | null): Promise<{ id: string; created: boolean }> {
+  private async ensureCustomer(companyId: number, name: string, tenantId: string | null, buyer?: BuyerProfile | null, taxId?: { type: "eu_vat" | "es_cif"; value: string } | null): Promise<{ id: string; created: boolean }> {
     const cur = await this.d.store.customerByCompany(companyId);
     if (cur) {
       const c = await this.d.gateway.customer(cur.stripeCustomerId);
@@ -457,7 +473,7 @@ export class StripeCheckoutService {
         metadata: { es_company_id: String(companyId), es_env: this.ns, ...(tenantId ? { es_tenant_id: tenantId } : {}), ...(buyer ? { es_buyer_type: buyer.type } : {}) },
         // Domicilio declarado (completo si lo hay): Stripe Tax parte de él. Sin calle y ciudad, Checkout la pide
         ...(buyer ? { address: { country: buyer.country, postalCode: buyer.postalCode, ...(buyer.billingAddress ?? {}) } } : {}),
-        ...(verifiedVat ? { taxIds: [{ type: "eu_vat" as const, value: verifiedVat }] } : {}),
+        ...(taxId ? { taxIds: [taxId] } : {}),
       },
       idem,
     );
