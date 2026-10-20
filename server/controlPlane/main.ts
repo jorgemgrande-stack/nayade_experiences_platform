@@ -53,6 +53,7 @@ import { checkoutBlockedReason, describeStripeConfig, liveStartupProblem, stripe
 import { stripeGateway, stripeWebhookVerifier } from "../stripe/gateway";
 import { MysqlStripeStore } from "../stripe/store";
 import { MysqlSubscriptionChangeStore } from "../stripe/changes";
+import { internalTenantsFromEnv } from "../stripe/purchases";
 import { MysqlInvoiceLineStore } from "../stripe/invoiceLines";
 import { notificationsFromEnv } from "../notifications/config";
 import { liveOrdersProblem, liveSchemaProblem } from "../stripe/liveReadiness";
@@ -334,7 +335,7 @@ async function main() {
       withdrawal: consumerWithdrawalFromEnv(process.env),
     },
   };
-  let stripe: { config: NonNullable<typeof stripeConfig>; store: MysqlStripeStore; gateway: ReturnType<typeof stripeGateway>; urls: ReturnType<typeof checkoutUrlsFromEnv>; checkoutEnabled: boolean; verifyWebhook: ReturnType<typeof stripeWebhookVerifier>; workerEnabled: boolean; publicStatus: boolean; selfService: boolean; termsVersion: string | null; fiscal: typeof fiscal; purchases?: { enabled: boolean; changes: MysqlSubscriptionChangeStore }; invoiceLines?: MysqlInvoiceLineStore } | undefined;
+  let stripe: { config: NonNullable<typeof stripeConfig>; store: MysqlStripeStore; gateway: ReturnType<typeof stripeGateway>; urls: ReturnType<typeof checkoutUrlsFromEnv>; checkoutEnabled: boolean; verifyWebhook: ReturnType<typeof stripeWebhookVerifier>; workerEnabled: boolean; publicStatus: boolean; selfService: boolean; termsVersion: string | null; fiscal: typeof fiscal; purchases?: { enabled: boolean; changes: MysqlSubscriptionChangeStore; internalTenants: ReadonlySet<string> }; invoiceLines?: MysqlInvoiceLineStore } | undefined;
   if (stripeConfig) {
     const urls = checkoutUrlsFromEnv(process.env);
     // La bandera sigue apagada por defecto; en live sin política fiscal, Checkout queda apagado aunque esté a 1
@@ -365,6 +366,8 @@ async function main() {
     const changesReady = await hasTable("stripe_subscription_changes");
     const linesReady = await hasTable("stripe_invoice_lines");
     const purchasesEnabled = process.env.CP_COMMERCE_PURCHASES_ENABLED === "1";
+    // Empresas de prueba que pueden comprar productos internos (vacío: ninguna). Un id no válido impide arrancar
+    const internalTenants = internalTenantsFromEnv(process.env);
     if (ready)
       stripe = {
         config: stripeConfig,
@@ -378,10 +381,10 @@ async function main() {
         selfService,
         termsVersion,
         fiscal,
-        ...(changesReady ? { purchases: { enabled: purchasesEnabled, changes: new MysqlSubscriptionChangeStore(crmPool!, stripeConfig.mode) } } : {}),
+        ...(changesReady ? { purchases: { enabled: purchasesEnabled, changes: new MysqlSubscriptionChangeStore(crmPool!, stripeConfig.mode), internalTenants } } : {}),
         ...(linesReady ? { invoiceLines: new MysqlInvoiceLineStore(crmPool!, stripeConfig.mode) } : {}),
       };
-    console.log(JSON.stringify({ ctx: "Commerce", purchases: { mounted: changesReady, enabled: changesReady && purchasesEnabled, ...(ready && !changesReady ? { reason: "migration_0018_missing" } : {}) }, invoiceLines: { mounted: linesReady, ...(ready && !linesReady ? { reason: "migration_0019_missing" } : {}) } }));
+    console.log(JSON.stringify({ ctx: "Commerce", purchases: { mounted: changesReady, enabled: changesReady && purchasesEnabled, internalTenants: internalTenants.size, ...(ready && !changesReady ? { reason: "migration_0018_missing" } : {}) }, invoiceLines: { mounted: linesReady, ...(ready && !linesReady ? { reason: "migration_0019_missing" } : {}) } }));
     console.log(
       JSON.stringify({
         ctx: "Stripe",
