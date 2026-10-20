@@ -45,6 +45,9 @@ export const COMMERCIAL_EVENT_TYPES = [
   "order.cancelled",
   "order.superseded",
   "order.rejected",
+  // Desistimiento de consumidores (server/withdrawals): solicitud recibida y cada resolución
+  "order.withdrawal_requested",
+  "order.withdrawal_resolved",
   // Cobros (alta o cambio) y renovaciones
   "payment.requested",
   "payment.succeeded",

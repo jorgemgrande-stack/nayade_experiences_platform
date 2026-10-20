@@ -198,6 +198,22 @@ export function platformTemplates(o: PlatformTemplateOptions = {}) {
           : "Tu plataforma sigue funcionando de momento. Si no consta el pago, quedará en suspenso (sin borrar ningún dato) hasta regularizarlo.",
       ], i.host ? { label: "Revisar la suscripción", url: hostUrl(i.host)! } : null);
     },
+    /** Acuse de recibo del desistimiento (soporte duradero): referencia, fecha y hora, y qué pasa ahora. */
+    withdrawalReceipt(i: { reference: string; requestedAt: number; withinTerm: boolean; deadlineAt: number | null }) {
+      const at = new Date(i.requestedAt).toLocaleString("es-ES", { timeZone: "Europe/Madrid" });
+      return layout(b, `Hemos recibido tu desistimiento · ${i.reference}`, [
+        `Hemos recibido tu solicitud de desistimiento del contrato el ${at} (hora de Madrid), con la referencia ${i.reference}. Guarda este correo como justificante.`,
+        i.withinTerm
+          ? `Consta presentada dentro del plazo de desistimiento${i.deadlineAt ? ` (que terminaba el ${fmtDate(i.deadlineAt)})` : ""}.`
+          : "Consta presentada fuera del plazo de desistimiento. La revisaremos igualmente y te responderemos.",
+        "Revisaremos la solicitud y te comunicaremos la resolución y, si procede, el reembolso por el mismo medio de pago. Este acuse no supone ningún cobro ni devolución.",
+      ]);
+    },
+    /** Resolución del desistimiento (aceptado, rechazado con motivo o completado con el reembolso). */
+    withdrawalResolution(i: { reference: string; status: string; note: string | null }) {
+      const head = i.status === "accepted" ? "Hemos aceptado tu desistimiento." : i.status === "completed" ? "Hemos completado tu desistimiento." : "Hemos revisado tu solicitud de desistimiento y no podemos aceptarla.";
+      return layout(b, `Tu desistimiento · ${i.reference}`, [head, ...(i.note ? [i.note] : []), "Si tienes cualquier duda, responde a este correo indicando la referencia."]);
+    },
     cancellation(i: { reference: string | null; cancelAt: number | null }) {
       return layout(b, `Cancelación registrada${i.reference ? ` · ${i.reference}` : ""}`, [
         "Hemos registrado la cancelación de tu suscripción.",

@@ -91,6 +91,9 @@ import { stripeWebhookHandler } from "../stripe/webhook";
 import { checkoutStatus, sessionIdRe } from "../stripe/status";
 import { SelfServiceCheckout, createSelfServiceRouter } from "../stripe/selfService";
 import { VatVerifier, type ViesPort } from "../stripe/vies";
+import { WithdrawalService } from "../withdrawals/service";
+import { createWithdrawalAdminRouter, createWithdrawalCommerceRouter } from "../withdrawals/api";
+import type { WithdrawalStore } from "../withdrawals/store";
 import type { GwEvent } from "../stripe/gateway";
 import { StripeCheckoutService, type CheckoutUrls } from "../stripe/checkout";
 import { checkoutBlockedReason, type StripeConfig } from "../stripe/config";
@@ -205,6 +208,8 @@ export interface ControlPlaneDeps {
    */
   /** `mode`: modo de cobro del entorno (el de CP_STRIPE_MODE), también cuando Stripe no llega a montarse. */
   orders?: { store: OrderStore; payments?: TestPaymentPort | null; graceDays?: number; mode?: StripeConfig["mode"] };
+  /** Desistimiento de consumidores (CRM 0022). Sin él, la función de desistimiento no se monta. */
+  withdrawals?: { store: WithdrawalStore };
   /**
    * Motor de transiciones temporales (server/lifecycle). Requiere `orders`. El plan (solo lectura) siempre
    * se puede consultar; la tarea periódica solo con `policy.enabled` y aplica solo en modo «apply».
@@ -1178,6 +1183,22 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         };
       }
       router.use("/orders", createOrdersRouter(orchestrator));
+      // Desistimiento de consumidores (CRM 0022): solicitud desde la cuenta (Core) y gestión de operadores. Sin
+      // política jurídica aprobada no ejecuta reembolsos ni bajas: registra, evalúa, avisa y guarda la resolución
+      if (d.withdrawals) {
+        const withdrawals = new WithdrawalService({
+          store: d.withdrawals.store,
+          crmStore: d.crm.store,
+          orders: d.orders.store,
+          buyers: d.stripe?.store ?? { buyerProfile: async () => null },
+          subscriptions: d.subscriptions.store,
+          notify: d.mail?.platform?.withdrawalNotifier(),
+          events: d.commercialEvents?.append ? (d.commercialEvents as CommercialEventSink) : undefined,
+          now: d.subscriptions.now,
+        });
+        router.use("/commerce", createWithdrawalCommerceRouter(withdrawals));
+        router.use("/withdrawals", createWithdrawalAdminRouter(withdrawals));
+      }
       if (d.lifecycle) {
         const policy = d.lifecycle.policy;
         const lifecycle = new LifecycleEngine({

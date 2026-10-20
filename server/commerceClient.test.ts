@@ -32,6 +32,18 @@ describe("cliente de compras del Core", () => {
     expect(seen[1].body).toBeUndefined();
   });
 
+  it("desistimiento: consulta y solicitud con el tenant de la sesión; devuelve el justificante", async () => {
+    const seen: Array<{ url: string; method: string; body?: string }> = [];
+    const c = commerceClientFromEnv(env(), async (url, init) => {
+      seen.push({ url, ...init });
+      return init.method === "GET" ? { status: 200, json: async () => ({ withdrawal: { available: true } }) } : { status: 201, json: async () => ({ created: true, receipt: { reference: "DS-20261022-ABCDEF" } }) };
+    })!;
+    expect(await c.withdrawalStatus("particular-ana")).toEqual({ available: true });
+    expect(await c.withdraw("particular-ana", { idempotencyKey: "k".repeat(20), requestedBy: "user:5", contactEmail: "ana@example.com" })).toEqual({ created: true, receipt: { reference: "DS-20261022-ABCDEF" } });
+    expect(seen.map((s) => `${s.method} ${s.url}`)).toEqual(["GET https://cp.example/cp/v1/commerce/tenants/particular-ana/withdrawal", "POST https://cp.example/cp/v1/commerce/tenants/particular-ana/withdrawal"]);
+    expect(JSON.parse(seen[1].body!)).toEqual({ idempotencyKey: "k".repeat(20), requestedBy: "user:5", contactEmail: "ana@example.com" });
+  });
+
   it("errores del plano de control con su código; una caída es 503 sin detalles", async () => {
     const c = commerceClientFromEnv(env(), async () => ({ status: 409, json: async () => ({ error: "async_payment_method", message: "Tu método de pago no permite comprar en línea" }) }))!;
     await expect(c.preview("acme-01", { users: 5 })).rejects.toMatchObject({ status: 409, code: "async_payment_method" });

@@ -59,6 +59,8 @@ export const SCOPES = [
   "orders:approve",
   // Compra de módulos desde la plataforma: SOLO el token de servicio del Core (tenant de la sesión del Core)
   "commerce:purchase",
+  // Desistimiento de consumidores desde la cuenta: SOLO el token de servicio del Core (tenant de la sesión del Core)
+  "commerce:withdrawal",
 ] as const;
 export type Scope = (typeof SCOPES)[number];
 
