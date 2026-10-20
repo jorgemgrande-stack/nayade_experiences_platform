@@ -22,6 +22,7 @@ import { isStripeProvider, STRIPE_LIVE_PAYMENT_PROVIDER, type OrderNotifier } fr
 import type { OrderStore } from "../orchestrator/store";
 import type { OrderPayment, PaymentMode } from "../orchestrator/types";
 import type { TrialNotifier } from "../trials/onboarding";
+import type { WithdrawalNotifier } from "../withdrawals/service";
 import { mailPolicyFromEnv, type MailPolicy } from "./policy";
 import { mailProviderFromEnv } from "./providers";
 import { MailService, type SendResult } from "./service";
@@ -47,6 +48,15 @@ export class PlatformMailer {
 
   send(tenantId: string | null, idempotencyKey: string, category: MailCategory, to: string, c: MailContent): Promise<SendResult> {
     return this.service.send({ tenantId: tenantId || PLATFORM_TENANT, idempotencyKey, category, to, ...c, sender: { lane: "platform" } });
+  }
+
+  /** Avisos del desistimiento de consumidores (acuse y resolución), idempotentes por referencia y estado. */
+  withdrawalNotifier(): WithdrawalNotifier {
+    const queued = (r: SendResult) => ({ queued: r.status !== "skipped" && r.status !== "failed" });
+    return {
+      receipt: async (to, r) => queued(await this.send(r.tenantId, `withdrawal:${r.reference}:receipt`, "withdrawal_receipt", to, this.t.withdrawalReceipt({ reference: r.reference, requestedAt: r.requestedAt, withinTerm: r.assessment.withinTerm, deadlineAt: r.assessment.deadlineAt }))),
+      resolution: async (to, r) => queued(await this.send(r.tenantId, `withdrawal:${r.reference}:${r.status}`, "withdrawal_resolution", to, this.t.withdrawalResolution({ reference: r.reference, status: r.status, note: r.resolution?.note ?? null }))),
+    };
   }
 
   /** Avisos de la prueba gratuita por la bandeja de salida (sustituye al notificador SMTP propio). */

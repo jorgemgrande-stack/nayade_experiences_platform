@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { PanelError, PanelLoading } from "@/components/admin/PanelStates";
 import { usePanelSubscription } from "@/hooks/usePanelSubscription";
 import { cn } from "@/lib/utils";
+import { WithdrawalSection } from "./WithdrawalSection";
 
 const GROUP_LABELS: Record<string, string> = {
   crm: "Clientes y ventas",
@@ -236,6 +237,9 @@ export default function SubscriptionPage() {
                 Los usuarios de tu equipo se gestionan en <Link href="/admin/usuarios" className="underline underline-offset-4 hover:text-foreground">Usuarios y permisos</Link>.
               </p>
             </section>
+
+            {/* Desistimiento (particulares, dentro del plazo): distinto de cancelar la suscripción */}
+            <WithdrawalSection />
           </>
         )}
       </div>

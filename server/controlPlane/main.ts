@@ -60,6 +60,7 @@ import { liveOrdersProblem, liveSchemaProblem } from "../stripe/liveReadiness";
 import { consumerWithdrawalFromEnv, fiscalScenariosFromEnv, taxExpectationsFromEnv } from "../stripe/buyerProfile";
 import { consumerRatesFromEnv, eligibilitySummary, scenarioCountriesFromEnv } from "../stripe/eligibility";
 import { viesClient, viesMaxAgeDaysFromEnv } from "../stripe/vies";
+import { MysqlWithdrawalStore } from "../withdrawals/store";
 import { checkoutUrlsFromEnv } from "../stripe/checkout";
 import { MysqlCrmStore } from "../crm/mysqlStore";
 import { CrmService } from "../crm/service";
@@ -424,6 +425,13 @@ async function main() {
 
   const tickets = new TicketService(new MysqlTicketStore(pool), async (id) => (await store.getTenant(id)) !== null);
 
+  // Desistimiento de consumidores (CRM 0022): solo con pedidos y la tabla; si no, la función no se monta
+  let withdrawals: { store: MysqlWithdrawalStore } | undefined;
+  if (orders && crmPool) {
+    const ready = await crmPool.query("SELECT 1 FROM consumer_withdrawals LIMIT 0").then(() => true, () => false);
+    if (ready) withdrawals = { store: new MysqlWithdrawalStore(crmPool, orders.mode) };
+    console.log(JSON.stringify({ ctx: "Withdrawals", mounted: ready, receipts: !!platformMail.mailer && mailPolicy.mode !== "off", ...(ready ? {} : { reason: "migration_0022_missing" }) }));
+  }
   const app = createControlPlaneApp({
     tickets,
     billing,
@@ -457,6 +465,7 @@ async function main() {
     trials,
     organization,
     orders,
+    withdrawals,
     lifecycle,
     stripe,
     commercialEvents,

@@ -39,8 +39,8 @@ const TRPC_CODE: Record<number, TRPCError["code"]> = { 400: "BAD_REQUEST", 403: 
  * Compra de módulos: solo el administrador de la empresa en curso, con el tenant de la SESIÓN (nunca del
  * navegador) y en modo multiempresa. Sin CP_COMMERCE_URL/TOKEN no está disponible.
  */
-async function commerce<T>(role: string, fn: (c: CommerceClient, tenantId: string) => Promise<T>): Promise<T> {
-  if (role !== "admin") throw new TRPCError({ code: "FORBIDDEN", message: "Solo la administración de la empresa puede comprar" });
+async function commerce<T>(role: string, fn: (c: CommerceClient, tenantId: string) => Promise<T>, denied = "Solo la administración de la empresa puede comprar"): Promise<T> {
+  if (role !== "admin") throw new TRPCError({ code: "FORBIDDEN", message: denied });
   if (getTenantMode() !== "multi") throw new TRPCError({ code: "PRECONDITION_FAILED", message: "La compra en línea no está disponible" });
   const client = commerceClientFromEnv();
   if (!client) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "La compra en línea no está disponible" });
@@ -86,6 +86,24 @@ export const subscriptionRouter = router({
       const { idempotencyKey, ...what } = input;
       return commerce(String(ctx.user.role), (c, t) => c.reduce(t, what, { idempotencyKey, buyer: `user:${ctx.user.id}` }));
     }),
+  /**
+   * Desistimiento del contrato (particulares, 14 días): estado para la cuenta. Sin canal con el plano de control,
+   * fuera de multiempresa o sin permiso, null (la sección no se muestra). La cancelación ordinaria es otra cosa.
+   */
+  withdrawalStatus: protectedProcedure.query(async ({ ctx }) => {
+    if (String(ctx.user.role) !== "admin" || getTenantMode() !== "multi" || !commerceClientFromEnv()) return null;
+    return commerce(String(ctx.user.role), (c, t) => c.withdrawalStatus(t)).catch(() => null);
+  }),
+  /** Solicitud de desistimiento (idempotente por la clave del navegador): devuelve el justificante. */
+  withdraw: protectedProcedure
+    .input(z.object({ idempotencyKey: z.string().regex(/^[A-Za-z0-9_-]{16,64}$/), contactEmail: z.string().trim().email().max(200).optional(), statement: z.string().trim().max(1000).optional() }).strict())
+    .mutation(({ ctx, input }) =>
+      commerce(
+        String(ctx.user.role),
+        (c, t) => c.withdraw(t, { idempotencyKey: input.idempotencyKey, requestedBy: `user:${ctx.user.id}`, contactEmail: input.contactEmail ?? String(ctx.user.email ?? ""), ...(input.statement ? { statement: input.statement } : {}) }),
+        "Solo la administración de la cuenta puede desistir del contrato",
+      ),
+    ),
   /** Canal de ayuda (correo configurable): disponible también en solo lectura o con la prueba vencida. */
   supportContact: protectedProcedure.query(async ({ ctx }) => {
     if (!(PANEL_ROLES as readonly string[]).includes(String(ctx.user.role))) throw new TRPCError({ code: "FORBIDDEN" });
