@@ -150,7 +150,7 @@ CP_PRIVACY_VERSION=<versión publicada> CP_PRIVACY_URL=https://www.bigelephant.e
 2. **Con autorización:**
    - migraciones del registro, 0012 y 0013;
    - `GRANT INSERT, UPDATE ON es_registry.tenant_usage TO 'es_core'@'%'`;
-   - migraciones del CRM, de la 0014 a la 0019.
+   - migraciones del CRM, de la 0014 a la 0020 (la 0020 llega con el PR #187: domicilio de facturación).
 3. Despliegue de `8239625` (o posterior con #185) en `backup-job`, `restore-drill`, `controlplane`, `core`, `crm`, `web` y `core-gateway`, comprobando cada arranque.
 4. Traslado de dominios (§5) y variables.
 5. Publicar los textos legales aprobados y fijar `CP_TERMS_*` y `CP_PRIVACY_*`.
