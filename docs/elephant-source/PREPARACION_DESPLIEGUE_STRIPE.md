@@ -176,6 +176,7 @@ Cada paso tiene un criterio de aceptación. **Si un paso no lo cumple, se detien
 | `controlplane` | `CP_PUBLIC_SELF_SERVICE_ENABLED`, `CP_TERMS_VERSION` | sin definir | — |
 | `controlplane` | `CP_STRIPE_BILLING_MODE` | sin definir (`classic`); `flexible` solo por decisión expresa (irreversible por suscripción) | Tú |
 | `controlplane` | `CP_COMMERCE_PURCHASES_ENABLED` | sin definir (compra de módulos apagada); requiere CRM 0018 y productos `available` | Tú |
+| `controlplane` | `CP_COMMERCE_INTERNAL_TENANTS` | sin definir (ninguna); ids de las empresas FICTICIAS de prueba que pueden comprar productos internos (`catalog.internalOnly`). Nunca una empresa real | Tú |
 | `controlplane` | `CP_NOTIFICATIONS_SINCE` | sin definir (no se despacha nada); fecha ISO desde la que avisar, nunca anterior a la activación | Tú |
 | `app` (Core) | `CP_COMMERCE_URL`, `CP_COMMERCE_TOKEN` | sin definir (compra no disponible); token de servicio con solo `commerce:purchase` | Tú |
 | `app` (Core) | `DATA_EXPORT_MAX_MB` | sin definir (1024) | — |
