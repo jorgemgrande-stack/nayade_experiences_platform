@@ -163,6 +163,8 @@ export interface StripeStore {
   buyerProfile(orderId: number): Promise<BuyerProfile | null>;
   /** Crea o sustituye el perfil (versión + 1) y deja la instantánea en el historial, en una transacción. */
   saveBuyerProfile(p: BuyerProfileDraft, actor: string): Promise<BuyerProfile>;
+  /** ¿Se guarda el domicilio de facturación (CRM 0020)? Sin él, la dirección la pide Checkout como antes. */
+  hasBuyerAddressColumn(): Promise<boolean>;
 
   /** Registro de facturas cobradas (0016). Crea o actualiza el estado y los importes; nunca cambia el pedido. */
   upsertInvoiceRecord(r: StripeInvoiceRecord): Promise<void>;
@@ -480,6 +482,9 @@ export class MemoryStripeStore implements StripeStore {
   async buyerProfile(orderId: number) {
     const p = this.buyers.get(orderId);
     return p && this.mine("buyers", orderId) ? structuredClone(p) : null;
+  }
+  async hasBuyerAddressColumn() {
+    return true;
   }
   async saveBuyerProfile(d: BuyerProfileDraft, actor: string) {
     const prev = this.buyers.get(d.orderId);
@@ -953,6 +958,7 @@ export class MysqlStripeStore implements StripeStore {
     taxIdStatus: r.tax_id_status as BuyerProfile["taxIdStatus"],
     billingEmail: (r.billing_email as string | null) ?? null,
     contactName: (r.contact_name as string | null) ?? null,
+    billingAddress: (typeof r.billing_address_json === "string" ? JSON.parse(r.billing_address_json) : (r.billing_address_json ?? null)) as BuyerProfile["billingAddress"],
     consent: (typeof r.consent_json === "string" ? JSON.parse(r.consent_json) : r.consent_json) as ConsentRecord,
     version: Number(r.version),
     createdAt: Number(r.created_at),
@@ -968,7 +974,17 @@ export class MysqlStripeStore implements StripeStore {
       throw e;
     }
   }
+  /** ¿Existe el domicilio de facturación del perfil (CRM 0020)? Se comprueba una vez; sin él no se guarda. */
+  private addressColumn?: Promise<boolean>;
+  hasBuyerAddressColumn(): Promise<boolean> {
+    this.addressColumn ??= this.pool.query("SELECT billing_address_json FROM stripe_buyer_profiles LIMIT 0").then(
+      () => true,
+      () => false,
+    );
+    return this.addressColumn;
+  }
   async saveBuyerProfile(d: BuyerProfileDraft, actor: string) {
+    const withAddress = await this.hasBuyerAddressColumn();
     const conn = await this.pool.getConnection();
     try {
       await conn.beginTransaction();
@@ -977,19 +993,22 @@ export class MysqlStripeStore implements StripeStore {
       const version = (cur[0] ? Number(cur[0].version) : 0) + 1;
       const createdAt = cur[0] ? Number(cur[0].created_at) : d.now;
       const cols = [d.type, d.territory, d.scenario, d.country, d.postalCode, d.displayName, d.taxId, d.taxIdStatus, d.billingEmail, d.contactName, JSON.stringify(d.consent), version, d.now];
+      // Domicilio (0020): solo si la columna existe; si no, el perfil se guarda como antes y sin dirección
+      const addrCol = withAddress ? ", billing_address_json = ?" : "";
+      const addrVal = withAddress ? [d.billingAddress ? JSON.stringify(d.billingAddress) : null] : [];
       if (cur[0]) {
         await conn.query(
-          "UPDATE stripe_buyer_profiles SET buyer_type = ?, territory = ?, scenario = ?, country = ?, postal_code = ?, display_name = ?, tax_id = ?, tax_id_status = ?, billing_email = ?, contact_name = ?, consent_json = ?, version = ?, updated_at = ? WHERE order_id = ? AND livemode = ?",
-          [...cols, d.orderId, this.lm],
+          `UPDATE stripe_buyer_profiles SET buyer_type = ?, territory = ?, scenario = ?, country = ?, postal_code = ?, display_name = ?, tax_id = ?, tax_id_status = ?, billing_email = ?, contact_name = ?, consent_json = ?, version = ?, updated_at = ?${addrCol} WHERE order_id = ? AND livemode = ?`,
+          [...cols, ...addrVal, d.orderId, this.lm],
         );
       } else {
         await conn.query(
-          "INSERT INTO stripe_buyer_profiles (buyer_type, territory, scenario, country, postal_code, display_name, tax_id, tax_id_status, billing_email, contact_name, consent_json, version, updated_at, order_id, livemode, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-          [...cols, d.orderId, this.lm, createdAt],
+          `INSERT INTO stripe_buyer_profiles (buyer_type, territory, scenario, country, postal_code, display_name, tax_id, tax_id_status, billing_email, contact_name, consent_json, version, updated_at, order_id, livemode, created_at${withAddress ? ", billing_address_json" : ""}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?${withAddress ? ", ?" : ""})`,
+          [...cols, d.orderId, this.lm, createdAt, ...addrVal],
         );
       }
       const { now, ...rest } = d;
-      const saved: BuyerProfile = { ...rest, version, createdAt, updatedAt: now };
+      const saved: BuyerProfile = { ...rest, billingAddress: withAddress ? (d.billingAddress ?? null) : null, version, createdAt, updatedAt: now };
       await conn.query("INSERT INTO stripe_buyer_profile_events (order_id, livemode, version, actor, snapshot_json, at) VALUES (?, ?, ?, ?, ?, ?)", [d.orderId, this.lm, version, actor.slice(0, 120), JSON.stringify(saved), now]);
       await conn.commit();
       return saved;

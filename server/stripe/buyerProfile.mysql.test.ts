@@ -91,6 +91,32 @@ describe.skipIf(!URL_)("perfil fiscal del comprador con MySQL real", () => {
     ).rejects.toThrow();
   });
 
+  it("domicilio de facturación (0020): se guarda y se relee; sin la columna, el perfil se guarda igual y sin dirección", async () => {
+    const [c] = (await pool.query(`INSERT INTO crm_companies (name, created_at) VALUES ('Comprador domicilio', ?)`, [now])) as unknown as [{ insertId: number }];
+    const [o] = (await pool.query(`INSERT INTO commercial_orders (idempotency_key, payload_hash, kind, state, company_id, request_json, created_at, created_by) VALUES ('clave-comprador-0000003', REPEAT('c', 64), 'new', 'contracted', ?, '{}', ?, 't')`, [c.insertId, now])) as unknown as [{ insertId: number }];
+    const order3 = o.insertId;
+    const withAddress = toBuyerProfile(order3, { type: "consumer", firstName: "Ana", lastName: "Domicilio", country: "ES", postalCode: "07001", line1: "Carrer de Sant Miquel, 3", city: "Palma", state: "Illes Balears" }, buildConsent(order3, "business", { terms: true, termsVersion: "c1" }, V, "operator", now), now);
+    const store = new MysqlStripeStore(pool, "test");
+    const saved = await store.saveBuyerProfile(withAddress, "operator:ana");
+    expect(saved.billingAddress).toEqual({ line1: "Carrer de Sant Miquel, 3", line2: null, city: "Palma", state: "Illes Balears" });
+    expect((await store.buyerProfile(order3))?.billingAddress).toEqual(saved.billingAddress);
+    // Reversión de la 0020: el código sigue funcionando (sin dirección) y el historial conserva la que hubo
+    for (const s of splitStatements(fs.readFileSync(path.join(migrationsDir, "0020_buyer_billing_address.down.sql"), "utf8"))) await pool.query(s);
+    const legacy = new MysqlStripeStore(pool, "test");
+    expect(await legacy.hasBuyerAddressColumn()).toBe(false);
+    const v = await legacy.saveBuyerProfile({ ...withAddress, now: now + 1 }, "operator:ana");
+    expect(v.billingAddress).toBeNull();
+    expect((await legacy.buyerProfile(order3))?.billingAddress).toBeNull();
+    const [h] = await pool.query<mysql.RowDataPacket[]>("SELECT JSON_UNQUOTE(JSON_EXTRACT(snapshot_json, '$.billingAddress.city')) AS c FROM stripe_buyer_profile_events WHERE order_id = ? ORDER BY version LIMIT 1", [order3]);
+    expect(h[0].c).toBe("Palma");
+    for (const s of splitStatements(fs.readFileSync(path.join(migrationsDir, "0020_buyer_billing_address.sql"), "utf8"))) await pool.query(s);
+    // Limpieza: el pedido de esta prueba no cuenta en las siguientes
+    await pool.query("DELETE FROM stripe_buyer_profile_events WHERE order_id = ?", [order3]);
+    await pool.query("DELETE FROM stripe_buyer_profiles WHERE order_id = ?", [order3]);
+    await pool.query("DELETE FROM commercial_orders WHERE id = ?", [order3]);
+    await pool.query("DELETE FROM crm_companies WHERE id = ?", [c.insertId]);
+  });
+
   it("reversión: borra solo las tablas del perfil; sin la tabla, la lectura devuelve null (no rompe)", async () => {
     const down = fs.readFileSync(path.join(migrationsDir, "0014_stripe_buyer_profiles.down.sql"), "utf8");
     for (const s of splitStatements(down)) await pool.query(s);

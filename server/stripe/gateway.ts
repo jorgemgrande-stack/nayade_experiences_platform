@@ -179,14 +179,19 @@ export interface CheckoutSessionInput {
   automaticTax?: boolean;
   /** Identificador fiscal obligatorio en la página de pago (empresas y profesionales). Sin él, es opcional. */
   taxIdRequired?: boolean;
+  /**
+   * Dirección FIJADA: el Customer ya tiene el domicilio comprobado por el control de elegibilidad y Checkout no lo
+   * deja cambiar (`customer_update.address: never`). El impuesto se calcula sobre esa dirección.
+   */
+  lockAddress?: boolean;
 }
 
-/** Datos del Customer al crearlo. La dirección completa la pide y confirma Checkout. */
+/** Datos del Customer al crearlo. Sin domicilio completo, la dirección la pide y confirma Checkout. */
 export interface CustomerInput {
   name: string;
   email: string | null;
   metadata: Record<string, string>;
-  address?: { country: string; postalCode: string | null };
+  address?: { country: string; postalCode: string | null; line1?: string | null; line2?: string | null; city?: string | null; state?: string | null };
 }
 
 export interface StripeGateway {
@@ -432,7 +437,18 @@ export function stripeGateway(
             name: input.name,
             ...(input.email ? { email: input.email } : {}),
             metadata: input.metadata,
-            ...(input.address ? { address: { country: input.address.country, ...(input.address.postalCode ? { postal_code: input.address.postalCode } : {}) } } : {}),
+            ...(input.address
+              ? {
+                  address: {
+                    country: input.address.country,
+                    ...(input.address.postalCode ? { postal_code: input.address.postalCode } : {}),
+                    ...(input.address.line1 ? { line1: input.address.line1 } : {}),
+                    ...(input.address.line2 ? { line2: input.address.line2 } : {}),
+                    ...(input.address.city ? { city: input.address.city } : {}),
+                    ...(input.address.state ? { state: input.address.state } : {}),
+                  },
+                }
+              : {}),
           },
           { idempotencyKey },
         );
@@ -466,9 +482,10 @@ export function stripeGateway(
         success_url: i.successUrl,
         cancel_url: i.cancelUrl,
         expires_at: i.expiresAt,
-        billing_address_collection: "required",
+        // Con la dirección fijada, Checkout no la pide ni la cambia: el impuesto sale de la comprobada
+        billing_address_collection: i.lockAddress ? "auto" : "required",
         tax_id_collection: i.taxIdRequired ? { enabled: true, required: "if_supported" } : { enabled: true },
-        customer_update: { address: "auto", name: "auto" },
+        customer_update: { address: i.lockAddress ? "never" : "auto", name: "auto" },
         locale: "es",
         ...(i.notice ? { custom_text: { submit: { message: i.notice.slice(0, 1200) } } } : {}),
         ...(i.automaticTax ? { automatic_tax: { enabled: true } } : {}),
