@@ -207,7 +207,14 @@ async function sendViaSMTP(params: MailParams): Promise<boolean> {
 // Se puede sobreescribir con la variable de entorno GLOBAL_CC_EMAIL.
 const GLOBAL_CC_EMAIL = process.env.GLOBAL_CC_EMAIL ?? "reservas@nayadeexperiences.es";
 
+/**
+ * Correos con enlaces de acceso de un solo uso (crear o restablecer contraseña, verificar el correo): nunca
+ * llevan la copia global. Quien la reciba podría entrar en la cuenta de otra persona.
+ */
+const NO_GLOBAL_CC: ReadonlySet<string> = new Set(["password_reset", "user_invite", "email_verification", "tenant_welcome"]);
+
 function mergeGlobalCc(params: MailParams): MailParams {
+  if (params.category && NO_GLOBAL_CC.has(params.category)) return params;
   const existing = params.cc
     ? (Array.isArray(params.cc) ? params.cc : [params.cc])
     : [];

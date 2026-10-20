@@ -60,6 +60,17 @@ describe("correo en multi", () => {
     expect(JSON.stringify(outbox.calls[0])).not.toMatch(/nayade/i);
   });
 
+  it("la copia de la empresa (email_cc_all) nunca va en los correos con enlaces de acceso; en el resto, sí", async () => {
+    settings.values = { brand_name: "Hotel Sol", email_cc_all: "copia@hotelsol.example" };
+    const { runWithTenant } = await import("./_core/tenant");
+    for (const category of ["password_reset", "user_invite", "email_verification", "tenant_welcome"] as const)
+      await runWithTenant("hotel-sol", () => sendEmail({ to: "u@x.example", subject: "Acceso", html: "<p>enlace</p>", category }));
+    await runWithTenant("hotel-sol", () => sendEmail({ to: "c@x.example", subject: "Reserva", html: "<p>r</p>" }));
+    expect(outbox.calls).toHaveLength(5);
+    for (const c of outbox.calls.slice(0, 4)) expect(JSON.stringify(c)).not.toContain("copia@hotelsol.example");
+    expect(JSON.stringify(outbox.calls[4])).toContain("copia@hotelsol.example");
+  });
+
   it("si la bandeja no lo acepta, devuelve false y no cae a Brevo directo ni al SMTP global", async () => {
     outbox.result = false;
     const { runWithTenant } = await import("./_core/tenant");
@@ -83,6 +94,12 @@ describe("correo en single", () => {
     expect(outbox.calls).toHaveLength(0);
     expect(calls[0].body.sender.email).toBe("reservas@nayadeexperiences.es");
     expect(calls[0].body.cc).toEqual([{ email: "reservas@nayadeexperiences.es" }]);
+  });
+
+  it("sin MAIL_MODE: la recuperación de contraseña no lleva la copia global", async () => {
+    settings.values = { brand_name: "Náyade" };
+    await sendEmail({ to: "c@x.example", subject: "s", html: "h", category: "password_reset" });
+    expect(calls[0].body.cc).toBeUndefined();
   });
 
   it("con MAIL_MODE definido: pasa por el servicio centralizado", async () => {
