@@ -117,7 +117,7 @@ export interface PurchaseDeps {
   stripeStore: Pick<StripeStore, "priceForWebPrice" | "customerByCompany" | "subscriptionsOfCompany">;
   changes: SubscriptionChangeStore;
   /** Comprobación previa de uso real (reducciones) y partidas internas (bajas programadas). */
-  subscriptions?: Pick<SubscriptionService, "checkReduction">;
+  subscriptions?: Pick<SubscriptionService, "checkReduction" | "must">;
   subscriptionItems?: Pick<SubscriptionStore, "items">;
   /** Procesa ya la suscripción releída (el procesador de eventos): el webhook lo repetiría igual. */
   settle?: (subscriptionId: string, invoice?: GwInvoice) => Promise<unknown>;
@@ -162,6 +162,11 @@ export class ModulePurchaseService {
     if (sub.status !== "active") throw new PurchaseError("invalid_state", `La suscripción de Stripe está en «${sub.status}»`);
     if (sub.pendingUpdate) throw new PurchaseError("conflict", "Hay un cambio pendiente de pago: complétalo o espera a que caduque");
     if (sub.cancelAtPeriodEnd || sub.cancelAt) throw new PurchaseError("invalid_state", "La suscripción tiene la baja programada: reactívala antes de comprar");
+    // Con una renovación vencida sin aplicar, el cambio interno no se podría hacer: se cobraría sin conceder nada
+    if (current.subscriptionId && this.d.subscriptions) {
+      const internal = await this.d.subscriptions.must(current.subscriptionId);
+      if (internal.currentPeriodEnd <= this.now()) throw new PurchaseError("conflict", "Estamos aplicando la renovación de tu suscripción: inténtalo de nuevo en unos minutos");
+    }
     return { company, current, sub };
   }
 
