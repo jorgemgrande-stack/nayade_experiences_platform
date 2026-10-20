@@ -81,6 +81,11 @@ export const productDraft = z
     catalog: z
       .object({
         commercialStatus: z.enum(COMMERCIAL_STATUS).default("on_request"),
+        /**
+         * Producto INTERNO de pruebas: nunca aparece en ninguna salida pública (web, vista previa, cotizador público,
+         * instantánea) ni se contrata por autoservicio; solo lo compran las empresas de prueba autorizadas.
+         */
+        internalOnly: z.boolean().optional(),
         /** Capacidades (ids estables de server/catalog/capabilities.ts) que concede el producto. */
         capabilities: z.array(entryKey).max(80).default([]),
         /** Planes acumulativos: Business hereda de Essential y Enterprise de Business. */

@@ -103,6 +103,8 @@ export interface PurchaseResult {
 export interface PurchaseDeps {
   /** Interruptor de la compra en línea (CP_COMMERCE_PURCHASES_ENABLED). Apagado: 503 sin tocar nada. */
   enabled: boolean;
+  /** Empresas de prueba que pueden comprar productos internos (`catalog.internalOnly`). Vacío: ninguna. */
+  internalTenants?: ReadonlySet<string>;
   /** Vía asíncrona (SEPA). Desactivada: con un método asíncrono no se compra en línea. */
   asyncPayments?: boolean;
   mode: StripeMode;
@@ -124,6 +126,17 @@ export interface PurchaseDeps {
   now?: () => number;
 }
 
+/**
+ * Empresas de prueba que pueden comprar productos internos (`CP_COMMERCE_INTERNAL_TENANTS`, ids separados por comas).
+ * Vacío o sin definir: ninguna. Un id con forma no válida impide arrancar (mejor que abrir la compra a quien no es).
+ */
+export function internalTenantsFromEnv(env: NodeJS.ProcessEnv): ReadonlySet<string> {
+  const ids = (env.CP_COMMERCE_INTERNAL_TENANTS ?? "").split(",").map((x) => x.trim()).filter(Boolean);
+  const bad = ids.filter((x) => !/^[a-z0-9][a-z0-9-]{1,62}$/.test(x));
+  if (bad.length) throw new Error("CP_COMMERCE_INTERNAL_TENANTS contiene ids de empresa no válidos");
+  return new Set(ids);
+}
+
 const KEY_RE = /^[A-Za-z0-9_-]{16,64}$/;
 const METRICS = { users: "users", sites: "sites", storageGb: "storage_gb" } as const;
 const HOUR = 3600_000;
@@ -136,6 +149,11 @@ export class ModulePurchaseService {
 
   get status() {
     return { enabled: this.d.enabled, asyncPayments: !!this.d.asyncPayments, billingMode: this.d.billingMode, mode: this.d.mode };
+  }
+
+  /** ¿Puede esta empresa comprar productos internos de pruebas? Solo las de la lista explícita. */
+  private internalAllowed(tenantId: string | null) {
+    return !!tenantId && !!this.d.internalTenants?.has(tenantId);
   }
 
   private assertEnabled() {
@@ -183,7 +201,7 @@ export class ModulePurchaseService {
         if (live) throw new PurchaseError("invalid_state", `«${key}» tiene la baja programada y sigue activo hasta el fin del periodo: se podrá volver a contratar después`);
       }
       const p = await this.d.catalog.product(key);
-      if (!p || p.commercialStatus !== "available" || !PURCHASABLE_FAMILIES.has(p.family) || p.addonFor) throw new PurchaseError("unavailable", `«${key}» no está disponible para compra en línea`);
+      if (!p || p.commercialStatus !== "available" || !PURCHASABLE_FAMILIES.has(p.family) || p.addonFor || (p.internalOnly && !this.internalAllowed(current.tenantId))) throw new PurchaseError("unavailable", `«${key}» no está disponible para compra en línea`);
     }
     const r = current.request as CommercialOrder["request"] & { users?: number; sites?: number; storageGb?: number };
     const request: CommercialOrder["request"] & { users?: number; sites?: number; storageGb?: number } = { ...structuredClone(r), items: [...r.items, ...add.map((key) => ({ key }))] };
@@ -208,7 +226,7 @@ export class ModulePurchaseService {
       const isAddon = l.family === "addon";
       if (!isAddon && !add.includes(l.key)) continue;
       const product = offer.find((p) => p.key === l.key);
-      if (!product || product.commercialStatus !== "available") throw new PurchaseError("unavailable", `«${l.name}» no está disponible para compra en línea`);
+      if (!product || product.commercialStatus !== "available" || (product.internalOnly && !this.internalAllowed(current.tenantId))) throw new PurchaseError("unavailable", `«${l.name}» no está disponible para compra en línea`);
       const price = product.prices.find((p) => p.kind === kind && p.status === "approved" && p.currency.toUpperCase() === "EUR");
       if (!price) throw new PurchaseError("unavailable", `«${l.name}» no tiene precio ${request.interval === "year" ? "anual" : "mensual"} aprobado`);
       const link = await this.d.stripeStore.priceForWebPrice(price.id);

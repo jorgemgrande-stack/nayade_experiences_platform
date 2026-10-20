@@ -7,6 +7,8 @@
  *  - `GET /preview?token=` → borradores, con un enlace temporal firmado que emite el CRM.
  *    `no-store` y `noindex`.
  *
+ * Nunca incluye productos internos de pruebas (`publicSite`, filtrado en el servidor).
+ *
  * Es de solo lectura y no exige cabecera Origin (la web lo lee también al compilar, desde el
  * servidor). Tiene su propio límite por IP.
  */
@@ -58,7 +60,7 @@ export function createPublicSiteRouter(cfg: { service: WebAdminService; secret: 
 
   r.get("/", async (req, res) => {
     try {
-      const site = await cfg.service.site("published");
+      const site = await cfg.service.publicSite("published");
       const etag = `"${site.version}"`;
       res.setHeader("ETag", etag);
       res.setHeader("Cache-Control", `public, max-age=${cfg.maxAgeSeconds ?? 30}, must-revalidate`);
@@ -76,7 +78,7 @@ export function createPublicSiteRouter(cfg: { service: WebAdminService; secret: 
     const token = typeof req.query.token === "string" ? req.query.token : "";
     if (!checkPreviewToken(cfg.secret, token, now())) return void res.status(401).json({ error: "invalid_token" });
     try {
-      res.json(await cfg.service.site("preview"));
+      res.json(await cfg.service.publicSite("preview"));
     } catch {
       unavailable(res);
     }
@@ -89,7 +91,7 @@ export function createPublicSiteRouter(cfg: { service: WebAdminService; secret: 
     const parsed = parseQuoteRequest(req.body, { allowOwned: false });
     if (!parsed.ok) return void res.status(400).json({ error: "invalid_input", message: parsed.message });
     try {
-      res.json(quote(quoteCatalogFromSite(await cfg.service.site("published")), parsed.value));
+      res.json(quote(quoteCatalogFromSite(await cfg.service.publicSite("published")), parsed.value));
     } catch {
       unavailable(res);
     }

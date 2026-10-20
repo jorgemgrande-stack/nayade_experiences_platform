@@ -13,6 +13,8 @@ export interface CatalogProduct {
   technicalStatus: "available" | "partial" | "planned";
   /** Estado comercial del catálogo de Elephant Source (las entradas anteriores: «on_request»). */
   commercialStatus: "unpublished" | "coming_soon" | "on_request" | "available";
+  /** Producto interno de pruebas: nunca público; solo lo compran las empresas de prueba autorizadas. */
+  internalOnly?: boolean;
   activationKind: string;
   activationRef: string | null;
   dependencies: string[];
@@ -88,7 +90,7 @@ export function catalogFromWebStore(store: WebStore): CatalogPort {
       activation: { kind: string; ref: string | null };
       dependencies?: string[];
       compatibleWith?: string[];
-      catalog?: { commercialStatus?: CatalogProduct["commercialStatus"]; bundleOf?: string[]; addonFor?: { metric: string; step: number } | null; quotas?: Array<{ metric: string; included: number | null }> };
+      catalog?: { commercialStatus?: CatalogProduct["commercialStatus"]; internalOnly?: boolean; bundleOf?: string[]; addonFor?: { metric: string; step: number } | null; quotas?: Array<{ metric: string; included: number | null }> };
       billingModel?: string;
     };
     // Un «servicio» con cuota recurrente (alojamiento web) se contrata como complemento recurrente;
@@ -101,6 +103,7 @@ export function catalogFromWebStore(store: WebStore): CatalogPort {
       family,
       technicalStatus: p.technicalStatus,
       commercialStatus: p.catalog?.commercialStatus ?? "on_request",
+      internalOnly: p.catalog?.internalOnly === true,
       activationKind: p.activation?.kind ?? "none",
       activationRef: p.activation?.ref ?? null,
       dependencies: p.dependencies ?? [],

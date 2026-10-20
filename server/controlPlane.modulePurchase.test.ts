@@ -22,6 +22,7 @@ import { CrmService } from "./crm/service";
 import { MemoryCrmStore } from "./crm/store";
 import { createContractActivation } from "./crm/activation";
 import { issueTicket } from "./crm/publicApi";
+import { issuePreviewToken } from "./web/publicSite";
 import { createControlPlaneApp } from "./controlPlane/api";
 import { hashToken } from "./controlPlane/auth";
 import { MemoryTenantRegistryStore } from "./_core/tenantRegistry/memoryStore";
@@ -74,6 +75,9 @@ const changes = new MemorySubscriptionChangeStore();
 const limits = new MemoryTenantLimitStore();
 const invoiceLines = new MemoryInvoiceLineStore();
 const FOR_SALE = ["connect-people", "addon-user-essential"];
+/** Producto interno de pruebas (solo en esta prueba): `connect-tax`, que además forma parte del paquete `connect-pack-finance`. */
+const INTERNAL = "connect-tax";
+const internalTenants = new Set<string>();
 const stripeStore = new MemoryStripeStore();
 const outbox: Array<{ kind: string; to: string; data: Record<string, unknown> }> = [];
 const notify: TrialNotifier = {
@@ -140,21 +144,24 @@ beforeAll(async () => {
   const web = new WebAdminService({ store: webStore, refs: { moduleIds: BUILTIN_MODULES.map((m) => m.id), planIds: () => null }, now: () => clock });
   await seedElephantSource(web, webStore);
   // Aprobados para venta libre SOLO en esta prueba (en el catálogo real nada está «available»)
-  for (const key of FOR_SALE) {
+  for (const key of [...FOR_SALE, INTERNAL]) {
     const { entry: e } = await web.get("product", key);
     const draft = structuredClone(e.draft) as { technicalStatus?: string; catalog?: Record<string, unknown> };
     draft.technicalStatus = "available";
-    draft.catalog = { ...(draft.catalog ?? {}), commercialStatus: "available" };
+    // El producto interno de pruebas: disponible para comprar, pero nunca público
+    draft.catalog = { ...(draft.catalog ?? {}), commercialStatus: "available", ...(key === INTERNAL ? { internalOnly: true } : {}) };
     const saved = await web.save("product", key, { draft, expectedVersion: e.draftVersion }, "operator:test");
     await web.publish("product", key, saved.draftVersion, "operator:test");
   }
+  // Sin productos internos, el catálogo de Stripe deseado no los incluye (lo que se pediría en live)
+  expect((await desiredCatalog(catalogFromWebStore(webStore))).some((d) => d.productKey === INTERNAL)).toBe(false);
   // Catálogo de Stripe creado según el plan de escrituras (lo que hará una persona en el sandbox) y enlazado
-  const desired = await desiredCatalog(catalogFromWebStore(webStore));
+  const desired = await desiredCatalog(catalogFromWebStore(webStore), { includeInternal: true });
   for (const op of (await planCatalogWrites(desired, gw)).operations) {
     if (op.op === "create_product") gw.addProduct({ id: `prod_test_${op.productKey}`, name: op.params.name, metadata: op.params.metadata });
     else gw.addPrice({ id: `price_test_${op.params.metadata.es_web_price_id}`, productId: `prod_test_${op.productKey}`, lookupKey: op.params.lookup_key, unitAmount: op.params.unit_amount, interval: op.params.recurring.interval, metadata: op.params.metadata });
   }
-  expect((await syncCatalog(desired, gw, stripeStore, clock)).linked).toHaveLength(4 + FOR_SALE.length);
+  expect((await syncCatalog(desired, gw, stripeStore, clock)).linked).toHaveLength(4 + FOR_SALE.length + 1);
   crm = new CrmService({ store: crmStore, activation: createContractActivation({ provisioning, platformDomain: "elephant.test", actor: { type: "operator", id: "test" } }), now: () => clock });
   const all = ["crm:read", "crm:write", "web:read", "provisioning:write", "subscriptions:read", "subscriptions:write", "entitlements:write", "tenants:read", "orders:read", "orders:write", "orders:approve", "billing:write", "ops:read"] as const;
   const app = createControlPlaneApp({
@@ -189,7 +196,7 @@ beforeAll(async () => {
       selfService: true,
       // Condiciones legales SIN publicar (situación real hoy)
       termsVersion: null,
-      purchases: { enabled: true, changes },
+      purchases: { enabled: true, changes, internalTenants },
       invoiceLines,
     },
   });
@@ -486,5 +493,46 @@ describe("facturación por líneas, reembolsos y conciliación (fase E)", () => 
     expect(logged.some((l) => l.includes("items_drift"))).toBe(true);
     expect(gw.subscriptions.get(a.subId)!.items![0].quantity).toBe(2);
     expect(await orderState(a.orderId)).toBe("active");
+  });
+});
+
+describe("productos internos de pruebas: nunca públicos, solo para empresas de prueba autorizadas", () => {
+  const keysOf = (site: { catalog: { products: Array<{ key: string }> } }) => site.catalog.products.map((p) => p.key);
+
+  it("la web pública, la vista previa y el cotizador público no los ven (ni el paquete que los incluye); el equipo sí", async () => {
+    const pub = await ok(call("GET", "/public/site", { token: null }));
+    expect(keysOf(pub)).not.toContain(INTERNAL);
+    expect(keysOf(pub)).not.toContain("connect-pack-finance");
+    expect(keysOf(pub)).toEqual(expect.arrayContaining(["essential", "connect-people"]));
+    expect(JSON.stringify(pub)).not.toContain(INTERNAL);
+    const { token } = issuePreviewToken(INTAKE_SECRET, Date.now());
+    const prev = await ok(call("GET", `/public/site/preview?token=${token}`, { token: null }));
+    expect(JSON.stringify(prev)).not.toContain(INTERNAL);
+    const q = await ok(call("POST", "/public/site/quote", { token: null, body: { plan: "essential", interval: "month", items: [{ key: INTERNAL }] } }));
+    expect(q.ok).toBe(false);
+    expect(JSON.stringify(q.lines ?? [])).not.toContain(INTERNAL);
+    // El equipo (con token) ve el catálogo completo, marcado como interno
+    const team = await ok(call("GET", "/web/site"));
+    const p = team.catalog.products.find((x: { key: string }) => x.key === INTERNAL);
+    expect(p?.catalog?.internalOnly).toBe(true);
+    // El ETag público no cambia por publicar productos internos: es el de la vista sin ellos
+    expect(pub.version).not.toBe(team.version);
+  });
+
+  it("solo una empresa de prueba autorizada compra un producto interno; las demás no", async () => {
+    const a = await activeCompany("Interno No Autorizado SL");
+    const denied = await buy(a.tenantId, { add: [INTERNAL] });
+    expect(denied.status).toBe(409);
+    expect(denied.json.error).toBe("unavailable");
+    expect((await call("POST", `/commerce/tenants/${a.tenantId}/purchases/preview`, { token: CORE, body: { add: [INTERNAL] } })).status).toBe(409);
+    const b = await activeCompany("Empresa Ficticia QA SL");
+    internalTenants.add(b.tenantId);
+    try {
+      const r = await ok(buy(b.tenantId, { add: [INTERNAL] }), 201);
+      expect(r.purchase.status).toBe("applied");
+      expect(await orderState(r.purchase.orderId)).toBe("active");
+    } finally {
+      internalTenants.delete(b.tenantId);
+    }
   });
 });

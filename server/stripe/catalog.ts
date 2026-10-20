@@ -56,7 +56,7 @@ export const PURCHASABLE_FAMILIES: ReadonlySet<string> = new Set(["extension", "
  * Precios que deben existir en Stripe, sacados del catálogo publicado y aprobado. Exige los cuatro de los
  * planes; añade los de los productos comprables («available»).
  */
-export async function desiredCatalog(catalog: CatalogPort): Promise<DesiredPrice[]> {
+export async function desiredCatalog(catalog: CatalogPort, opts: { includeInternal?: boolean } = {}): Promise<DesiredPrice[]> {
   const offer = await catalog.offer();
   const out: DesiredPrice[] = [];
   for (const plan of SELF_SERVICE_PLANS) {
@@ -71,7 +71,8 @@ export async function desiredCatalog(catalog: CatalogPort): Promise<DesiredPrice
       out.push({ productKey: plan, productName: STRIPE_PRODUCT_NAME[plan], webPriceId: p.id, kind, interval: KIND_INTERVAL[kind], amountCents: p.amountCents, currency: "EUR", lookupKey: lookupKeyFor(plan, kind, "EUR", p.id) });
     }
   }
-  for (const product of offer.filter((p) => p.commercialStatus === "available" && PURCHASABLE_FAMILIES.has(p.family))) {
+  // Productos internos de pruebas: solo si se piden expresamente (catálogo del sandbox), nunca en live
+  for (const product of offer.filter((p) => p.commercialStatus === "available" && PURCHASABLE_FAMILIES.has(p.family) && (!p.internalOnly || opts.includeInternal))) {
     for (const kind of ["monthly", "yearly"] as const) {
       const approved = product.prices.filter((p) => p.kind === kind && p.status === "approved" && p.currency.toUpperCase() === "EUR");
       // Sin mensual aprobado no se vende; el anual es opcional (decisión A: nunca se inventa un importe)

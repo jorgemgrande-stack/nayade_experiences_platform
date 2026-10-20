@@ -239,7 +239,7 @@ export interface ControlPlaneDeps {
      * Compra de módulos y ampliaciones desde la plataforma (CRM 0018). `enabled` (CP_COMMERCE_PURCHASES_ENABLED)
      * apagado por defecto; sin `changes`, ni se monta ni se reconocen suscripciones multipartida.
      */
-    purchases?: { enabled: boolean; changes: SubscriptionChangeStore };
+    purchases?: { enabled: boolean; changes: SubscriptionChangeStore; internalTenants?: ReadonlySet<string> };
     /** Detalle por línea de las facturas cobradas y reparto de reembolsos (CRM 0019). Sin él, como hasta ahora. */
     invoiceLines?: InvoiceLineStore;
   };
@@ -1246,6 +1246,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         if (st.purchases) {
           const purchases = new ModulePurchaseService({
             enabled: st.purchases.enabled,
+            internalTenants: st.purchases.internalTenants,
             mode: st.config.mode,
             namespace: st.config.namespace,
             billingMode: st.config.billingMode ?? "classic",
