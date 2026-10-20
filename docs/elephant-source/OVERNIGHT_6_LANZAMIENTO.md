@@ -10,7 +10,7 @@ Rama de trabajo: `ops/overnight-6-lanzamiento` (desde `integration/elephant-sour
 | 1b. #186 (documentación legal) | ⏸️ Abierto a propósito: textos marcados **[REVISIÓN JURÍDICA]** y **[DECISIÓN]**, pendientes de tu aprobación | — |
 | 2. Comunicaciones | ✅ Canal interno (`CP_ALERT_EMAIL`): incidencias, nuevos clientes, desistimientos y tickets. Tickets al solicitante. Contraseña cambiada (Core). Catálogo completo con el reparto Elephant/Stripe. Matriz generada del código | este PR |
 | 3. Proveedor de correo | ✅ Postmark implementado tras el mismo puerto (`MAIL_PROVIDER`), con webhook propio (entregas, rebotes con supresión, quejas y bajas). Sin credenciales: no se envía nada. Ver `CORREO_PROVEEDOR.md` | PR del bloque 3 |
-| 4. Checkout | pendiente | |
+| 4. Checkout | ✅ Autónomos con DNI y empresas con CIF: identificador fiscal fijado en el Customer (Checkout no lo pide). 5 escenarios de punta a punta en `stripeLive` (autónomo, CIF, UE con VIES caído y verificado, territorios no aprobados, particular con desistimiento). Renovación, impago y cancelación: `lifecycle.mysql` (45/45). Pendientes reales en `COMPROBACIONES_APERTURA.md` | PR del bloque 4 |
 | 5. Paquete de despliegue | pendiente | |
 | 6. Estabilidad | pendiente | |
 

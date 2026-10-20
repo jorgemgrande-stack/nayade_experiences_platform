@@ -198,7 +198,7 @@ export interface CustomerInput {
   metadata: Record<string, string>;
   address?: { country: string; postalCode: string | null; line1?: string | null; line2?: string | null; city?: string | null; state?: string | null };
   /** Identificadores fiscales verificados (p. ej. NIF-IVA comprobado en VIES). */
-  taxIds?: Array<{ type: "eu_vat"; value: string }>;
+  taxIds?: Array<{ type: "eu_vat" | "es_cif"; value: string }>;
 }
 
 export interface StripeGateway {
