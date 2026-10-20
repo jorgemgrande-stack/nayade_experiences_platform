@@ -1,6 +1,6 @@
 # Proveedor de correo transaccional: Brevo o Postmark
 
-**Estado (22/10/2026):** Postmark está implementado como alternativa (`server/mail/providers.ts` y `server/mail/webhook.ts`) detrás del mismo puerto que Brevo. La lógica de negocio (bandeja de salida, plantillas, idempotencia, reintentos y supresión) no cambia con el proveedor. **No hay credenciales de Postmark y no se envía nada real** (`MAIL_MODE` sigue en `off`).
+**Estado (20/10/2026):** Postmark está implementado como alternativa (`server/mail/providers.ts` y `server/mail/webhook.ts`) detrás del mismo puerto que Brevo. La lógica de negocio (bandeja de salida, plantillas, idempotencia, reintentos y supresión) no cambia con el proveedor. **No hay credenciales de Postmark y no se envía nada real** (`MAIL_MODE` sigue en `off`).
 
 ## Por qué
 

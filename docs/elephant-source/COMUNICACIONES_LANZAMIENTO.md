@@ -1,6 +1,6 @@
 # Comunicaciones del lanzamiento de Elephant Source
 
-**Estado (22/10/2026).** La matriz de §2 se genera desde el catálogo del código (`server/notifications/catalog.ts`), así que documentación y realidad no se separan.
+**Estado (20/10/2026).** La matriz de §2 se genera desde el catálogo del código (`server/notifications/catalog.ts`), así que documentación y realidad no se separan.
 
 **Reglas comunes:**
 - Todo sale por la **bandeja de salida**: idempotencia por clave, reintentos con espera, supresión de rebotes y límites, y trazabilidad (`mail_outbox` y `mail_events`).

@@ -1,6 +1,6 @@
 # Comprobaciones del Checkout: simuladas y pendientes con servicios reales
 
-**Estado (22/10/2026).** Todo lo de la columna «Simulado» pasa en las pruebas automáticas. En ellas Stripe y VIES son dobles, la firma de los webhooks usa la criptografía real del SDK de Stripe, y las suites `*.mysql` usan una base MySQL real. La columna «Pendiente real» es lo que **solo** se puede comprobar contra los servicios reales, en el sandbox de Stripe o en la apertura controlada.
+**Estado (20/10/2026).** Todo lo de la columna «Simulado» pasa en las pruebas automáticas. En ellas Stripe y VIES son dobles, la firma de los webhooks usa la criptografía real del SDK de Stripe, y las suites `*.mysql` usan una base MySQL real. La columna «Pendiente real» es lo que **solo** se puede comprobar contra los servicios reales, en el sandbox de Stripe o en la apertura controlada.
 
 | Escenario | Simulado (prueba) | Pendiente real |
 |---|---|---|
