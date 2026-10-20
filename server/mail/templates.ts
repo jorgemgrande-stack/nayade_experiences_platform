@@ -214,6 +214,22 @@ export function platformTemplates(o: PlatformTemplateOptions = {}) {
       const head = i.status === "accepted" ? "Hemos aceptado tu desistimiento." : i.status === "completed" ? "Hemos completado tu desistimiento." : "Hemos revisado tu solicitud de desistimiento y no podemos aceptarla.";
       return layout(b, `Tu desistimiento · ${i.reference}`, [head, ...(i.note ? [i.note] : []), "Si tienes cualquier duda, responde a este correo indicando la referencia."]);
     },
+    /** Aviso INTERNO al equipo (incidencias, nuevos clientes, desistimientos, tickets). Sin datos sensibles ni enlaces con token. */
+    opsNotice(i: { title: string; lines: string[] }) {
+      return layout(b, `[Elephant Source] ${i.title}`, [...i.lines, "Aviso interno del equipo de Elephant Source. Revisa el detalle en el panel de operaciones."]);
+    },
+    /** Ticket de soporte: recibido, respondido, resuelto o reabierto (para quien lo abrió). */
+    supportTicket(i: { kind: "received" | "replied" | "resolved" | "reopened"; ticketRef: string; subject: string }) {
+      const head =
+        i.kind === "received"
+          ? "Hemos recibido tu solicitud de soporte. Te responderemos lo antes posible."
+          : i.kind === "replied"
+            ? "El equipo de soporte ha respondido a tu solicitud. Puedes ver la respuesta en tu cuenta."
+            : i.kind === "resolved"
+              ? "Hemos dado por resuelta tu solicitud. Si el problema continúa, responde a este correo y la reabriremos."
+              : "Hemos reabierto tu solicitud y seguimos con ella.";
+      return layout(b, `Soporte · ${i.ticketRef} · ${i.subject.slice(0, 80)}`, [head, `Referencia: ${i.ticketRef}.`]);
+    },
     cancellation(i: { reference: string | null; cancelAt: number | null }) {
       return layout(b, `Cancelación registrada${i.reference ? ` · ${i.reference}` : ""}`, [
         "Hemos registrado la cancelación de tu suscripción.",

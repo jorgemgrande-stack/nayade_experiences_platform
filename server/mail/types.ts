@@ -47,6 +47,8 @@ export type MailCategory =
   | "cancellation"
   // Desistimiento de consumidores: acuse de recibo y resolución (server/withdrawals)
   | "withdrawal_receipt"
+  // Aviso de seguridad a la propia persona (contraseña cambiada): nunca con enlaces ni copia global
+  | "security_notice"
   | "withdrawal_resolution"
   // Catálogo de comunicaciones transaccionales (server/notifications/catalog.ts)
   | "subscription_suspended"
