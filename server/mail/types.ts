@@ -45,6 +45,9 @@ export type MailCategory =
   | "subscription_reactivated"
   | "payment_failed"
   | "cancellation"
+  // Desistimiento de consumidores: acuse de recibo y resolución (server/withdrawals)
+  | "withdrawal_receipt"
+  | "withdrawal_resolution"
   // Catálogo de comunicaciones transaccionales (server/notifications/catalog.ts)
   | "subscription_suspended"
   | "subscription_ended"

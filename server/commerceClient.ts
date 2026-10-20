@@ -38,6 +38,10 @@ export interface CommerceClient {
   status(tenantId: string, orderId: number): Promise<unknown>;
   previewReduction(tenantId: string, input: ReductionInput): Promise<unknown>;
   reduce(tenantId: string, input: ReductionInput, o: { idempotencyKey: string; buyer: string }): Promise<unknown>;
+  /** Desistimiento de consumidores: ¿se puede desistir ahora? y última solicitud (ámbito commerce:withdrawal). */
+  withdrawalStatus(tenantId: string): Promise<unknown>;
+  /** Solicitud de desistimiento (idempotente por clave) → justificante. */
+  withdraw(tenantId: string, input: { idempotencyKey: string; requestedBy: string; contactEmail: string; statement?: string }): Promise<unknown>;
 }
 
 type Fetch = (url: string, init: { method: string; headers: Record<string, string>; body?: string; signal?: AbortSignal }) => Promise<{ status: number; json(): Promise<unknown> }>;
@@ -76,5 +80,7 @@ export function commerceClientFromEnv(env: NodeJS.ProcessEnv = process.env, fetc
     status: async (tenantId, orderId) => ((await call("GET", `${seg(tenantId)}/purchases/${orderId}`)) as { purchase: unknown }).purchase,
     previewReduction: async (tenantId, input) => ((await call("POST", `${seg(tenantId)}/reductions/preview`, input)) as { preview: unknown }).preview,
     reduce: async (tenantId, input, o) => ((await call("POST", `${seg(tenantId)}/reductions`, { ...input, idempotencyKey: o.idempotencyKey, buyer: o.buyer })) as { reduction: unknown }).reduction,
+    withdrawalStatus: async (tenantId) => ((await call("GET", `${seg(tenantId)}/withdrawal`)) as { withdrawal: unknown }).withdrawal,
+    withdraw: async (tenantId, input) => await call("POST", `${seg(tenantId)}/withdrawal`, input),
   };
 }
