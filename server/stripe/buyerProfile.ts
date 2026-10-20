@@ -105,6 +105,18 @@ const postal = z.string().trim().max(12).optional();
 /** Identificador fiscal: solo una comprobación de forma mínima; NUNCA implica que sea válido. */
 const taxId = z.string().trim().min(4).max(40).regex(/^[A-Za-z0-9][A-Za-z0-9 .\-/]*$/, "Identificador fiscal con caracteres no admitidos");
 
+/**
+ * Dirección de facturación completa (opcional en el esquema; la exige la elegibilidad en live). Con ella, el
+ * Customer de Stripe se crea con esta dirección y Checkout NO la deja cambiar: el impuesto se calcula sobre la
+ * dirección que se comprobó antes de abrir el pago, y la factura lleva el domicilio completo.
+ */
+const addressFields = {
+  line1: z.string().trim().min(3).max(200).optional(),
+  line2: z.string().trim().max(200).optional(),
+  city: z.string().trim().min(1).max(120).optional(),
+  state: z.string().trim().max(120).optional(),
+};
+
 export const buyerProfileInput = z.discriminatedUnion("type", [
   z
     .object({
@@ -115,6 +127,7 @@ export const buyerProfileInput = z.discriminatedUnion("type", [
       taxId,
       country: iso2,
       postalCode: postal,
+      ...addressFields,
       billingEmail: z.string().trim().toLowerCase().email().max(200).optional(),
       contactName: z.string().trim().min(2).max(120).optional(),
     })
@@ -126,6 +139,7 @@ export const buyerProfileInput = z.discriminatedUnion("type", [
       lastName: z.string().trim().min(1).max(120),
       country: iso2,
       postalCode: postal,
+      ...addressFields,
       /** Opcional: un particular puede pedir factura con su NIF. Nunca se exige razón social. */
       taxId: taxId.optional(),
     })
@@ -146,6 +160,14 @@ export interface ConsentRecord {
   evidence: string;
 }
 
+/** Domicilio de facturación declarado (país y código postal están en el perfil). */
+export interface BillingAddress {
+  line1: string;
+  line2: string | null;
+  city: string;
+  state: string | null;
+}
+
 export interface BuyerProfile {
   orderId: number;
   type: BuyerType;
@@ -160,6 +182,8 @@ export interface BuyerProfile {
   taxIdStatus: "none" | "unverified";
   billingEmail: string | null;
   contactName: string | null;
+  /** Domicilio completo si se declaró (CRM 0020); null si no o si la columna aún no existe. */
+  billingAddress: BillingAddress | null;
   consent: ConsentRecord;
   version: number;
   createdAt: number;
@@ -248,6 +272,7 @@ export function toBuyerProfile(orderId: number, input: BuyerProfileInput, consen
     taxIdStatus: tax ? "unverified" : "none",
     billingEmail: input.type === "business" ? (input.billingEmail ?? null) : null,
     contactName: input.type === "business" ? (input.contactName ?? null) : null,
+    billingAddress: input.line1 && input.city ? { line1: input.line1, line2: input.line2 || null, city: input.city, state: input.state || null } : null,
     consent,
     now,
   };

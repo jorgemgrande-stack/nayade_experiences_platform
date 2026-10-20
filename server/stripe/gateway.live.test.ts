@@ -82,4 +82,11 @@ describe("acceso a Stripe en modo live (SDK sustituido, sin red)", () => {
     await stripeGateway(config).createCheckoutSession({ ...input, automaticTax: true, notice: "Aviso" }, "k3");
     expect(sdk.created[0]).toMatchObject({ automatic_tax: { enabled: true }, tax_id_collection: { enabled: true }, billing_address_collection: "required", custom_text: { submit: { message: "Aviso" } } });
   });
+
+  it("con la dirección fijada, Checkout no la pide ni la cambia: el impuesto sale de la dirección comprobada", async () => {
+    await stripeGateway(config).createCheckoutSession({ ...input, automaticTax: true, lockAddress: true }, "k4");
+    expect(sdk.created.at(-1)).toMatchObject({ automatic_tax: { enabled: true }, billing_address_collection: "auto", customer_update: { address: "never", name: "auto" } });
+    await stripeGateway(config).createCheckoutSession({ ...input, automaticTax: true }, "k5");
+    expect(sdk.created.at(-1)).toMatchObject({ billing_address_collection: "required", customer_update: { address: "auto", name: "auto" } });
+  });
 });

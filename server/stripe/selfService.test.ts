@@ -5,13 +5,14 @@ import type { CatalogPort } from "../subscriptions/ports";
 import type { CommercialOrder } from "../orchestrator/types";
 import { SelfServiceCheckout, SelfServiceError, orderKeyOf, selfServiceBody, type SelfServiceBody } from "./selfService";
 import { MemoryStripeStore } from "./store";
-import type { ConsentVersions } from "./buyerProfile";
+import type { ConsentVersions, FiscalScenario, TaxTreatment } from "./buyerProfile";
+import type { EligibilityConfig } from "./eligibility";
 
 const SECRET = "s".repeat(40);
 let clock = Date.UTC(2026, 9, 18, 10);
-const catalogWith = (status: string): CatalogPort => ({ product: async (k: string) => (k === "essential" || k === "business" ? ({ key: k, commercialStatus: status } as never) : null), price: async () => null, offer: async () => [] }) as unknown as CatalogPort;
+const catalogWith = (status: string): CatalogPort => ({ product: async (k: string) => (k === "essential" || k === "business" ? ({ key: k, commercialStatus: status } as never) : null), price: async () => null, offer: async () => [{ key: "essential", name: "Essential", family: "core_plan", commercialStatus: status, prices: [{ id: 1, productKey: "essential", kind: "monthly", amountCents: 2900, currency: "EUR", unit: null, taxRateBp: 2100, taxIncluded: false, status: "approved" }, { id: 2, productKey: "essential", kind: "yearly", amountCents: 27900, currency: "EUR", unit: null, taxRateBp: 2100, taxIncluded: false, status: "approved" }] }, { key: "business", name: "Business", family: "core_plan", commercialStatus: status, prices: [{ id: 3, productKey: "business", kind: "monthly", amountCents: 7900, currency: "EUR", unit: null, taxRateBp: 2100, taxIncluded: false, status: "approved" }, { id: 4, productKey: "business", kind: "yearly", amountCents: 75900, currency: "EUR", unit: null, taxRateBp: 2100, taxIncluded: false, status: "approved" }] }] }) as unknown as CatalogPort;
 
-function setup(o: { status?: string; terms?: string | null; mode?: "test" | "live"; consent?: ConsentVersions } = {}) {
+function setup(o: { status?: string; terms?: string | null; mode?: "test" | "live"; consent?: ConsentVersions; eligibility?: EligibilityConfig } = {}) {
   const calls = { companies: 0, contacts: 0, orders: 0, accepts: 0, checkouts: 0 };
   const orders = new Map<string, CommercialOrder>();
   const companies: Array<{ name: string; taxId?: string }> = [];
@@ -20,6 +21,7 @@ function setup(o: { status?: string; terms?: string | null; mode?: "test" | "liv
     buyers,
     mode: o.mode,
     consent: o.consent,
+    eligibility: o.eligibility,
     crm: {
       createCompany: async (input) => (companies.push(input), { id: 100 + ++calls.companies }),
       createContact: async () => void calls.contacts++,
@@ -109,6 +111,16 @@ describe("contratación por autoservicio (apagada por defecto)", () => {
 describe("autoservicio con perfil fiscal del comprador (B2B y B2C)", () => {
   beforeEach(() => void (clock = Date.UTC(2026, 9, 19, 10)));
   const DECIDED: ConsentVersions = { terms: "v1", privacy: "p1", precontract: "pre1", withdrawal: "immediate_execution_ack" };
+  // Empresas de la Península y Baleares; particulares de Canarias (sin IVA español: precio final = neto)
+  const OPEN: EligibilityConfig = {
+    scenarios: new Set<FiscalScenario>(["business:es_mainland", "consumer:es_special"]),
+    taxExpectations: new Map<FiscalScenario, TaxTreatment>([
+      ["business:es_mainland", "taxed"],
+      ["consumer:es_special", "not_subject"],
+    ]),
+    countries: new Map(),
+    consumerRates: new Map([["ES-CN", 0]]),
+  };
   const without = (b: SelfServiceBody) => {
     const { company: _c, ...rest } = b;
     return rest as SelfServiceBody;
@@ -126,9 +138,9 @@ describe("autoservicio con perfil fiscal del comprador (B2B y B2C)", () => {
   });
 
   it("empresa: la ficha sale del perfil (razón social y NIF) y se guarda el perfil con su consentimiento", async () => {
-    const { svc, companies, buyers } = setup({ mode: "live", consent: DECIDED });
-    await svc.start(without(body({ buyer: { type: "business", legalName: "Taller Norte SL", taxId: "B11111111", country: "ES", postalCode: "48001" }, consents: { terms: true, privacy: true, termsVersion: "v1", privacyVersion: "p1" } })));
-    expect(companies).toEqual([{ name: "Taller Norte SL", taxId: "B11111111", email: "ana@autoservicio.example" }]);
+    const { svc, companies, buyers } = setup({ mode: "live", consent: DECIDED, eligibility: OPEN });
+    await svc.start(without(body({ buyer: { type: "business", legalName: "Taller Norte SL", taxId: "B11111119", country: "ES", postalCode: "48001", line1: "Gran Vía, 10", city: "Bilbao" }, consents: { terms: true, privacy: true, termsVersion: "v1", privacyVersion: "p1" } })));
+    expect(companies).toEqual([{ name: "Taller Norte SL", taxId: "B11111119", email: "ana@autoservicio.example" }]);
     expect(await buyers.buyerProfile(501)).toMatchObject({ type: "business", scenario: "business:es_mainland", consent: { source: "web", terms: { version: "v1" }, privacy: { version: "p1" }, precontract: null } });
   });
 
@@ -139,8 +151,8 @@ describe("autoservicio con perfil fiscal del comprador (B2B y B2C)", () => {
   });
 
   it("particular: exige precontractual y la casilla propia del desistimiento; con todo, sin razón social ni NIF", async () => {
-    const { svc, calls, companies, buyers } = setup({ mode: "live", consent: DECIDED });
-    const consumer = { type: "consumer" as const, firstName: "Lucía", lastName: "Pérez", country: "ES", postalCode: "38001" };
+    const { svc, calls, companies, buyers } = setup({ mode: "live", consent: DECIDED, eligibility: OPEN });
+    const consumer = { type: "consumer" as const, firstName: "Lucía", lastName: "Pérez", country: "ES", postalCode: "38001", line1: "Calle del Castillo, 5", city: "Santa Cruz de Tenerife" };
     await expectCode(svc.start(without(body({ buyer: consumer, consents: { terms: true, privacy: true, termsVersion: "v1", privacyVersion: "p1", precontractVersion: "pre1" } }))), "consent_outdated");
     expect(calls.companies).toBe(0);
     await svc.start(without(body({ buyer: consumer, consents: { terms: true, privacy: true, termsVersion: "v1", privacyVersion: "p1", precontractVersion: "pre1", immediateExecution: true } })));
@@ -150,8 +162,45 @@ describe("autoservicio con perfil fiscal del comprador (B2B y B2C)", () => {
 
   it("sin código postal válido no se adivina el territorio (400) y no se crea nada", async () => {
     const { svc, calls } = setup({ mode: "live", consent: DECIDED });
-    await expectCode(svc.start(without(body({ buyer: { type: "business", legalName: "Sin CP SL", taxId: "B22222222", country: "ES" }, consents: { terms: true, privacy: true, termsVersion: "v1", privacyVersion: "p1" } }))), "territory_unknown");
+    await expectCode(svc.start(without(body({ buyer: { type: "business", legalName: "Sin CP SL", taxId: "B22222228", country: "ES" }, consents: { terms: true, privacy: true, termsVersion: "v1", privacyVersion: "p1" } }))), "territory_unknown");
     expect(calls.companies).toBe(0);
+  });
+
+  it("live: un comprador no habilitado (país, NIF o domicilio) se rechaza ANTES de crear empresa, contacto o pedido", async () => {
+    const consents = { terms: true as const, privacy: true as const, termsVersion: "v1", privacyVersion: "p1" };
+    const cases: Array<[SelfServiceBody["buyer"], string]> = [
+      [{ type: "business", legalName: "Tokyo KK", taxId: "1234567890123", country: "JP", line1: "1-1 Chiyoda", city: "Tokio" }, "country_not_enabled:JP"],
+      [{ type: "business", legalName: "Taller Norte SL", taxId: "B12345678", country: "ES", postalCode: "48001", line1: "Gran Vía, 10", city: "Bilbao" }, "tax_id_invalid"],
+      [{ type: "business", legalName: "Taller Norte SL", taxId: "B11111119", country: "ES", postalCode: "48001" }, "address_incomplete"],
+      [{ type: "business", legalName: "Ceuta SL", taxId: "B11111119", country: "ES", postalCode: "51001", line1: "Paseo del Revellín, 1", city: "Ceuta" }, "scenario_pending:business:es_special"],
+    ];
+    for (const [buyer] of cases) {
+      const { svc, calls } = setup({ mode: "live", consent: DECIDED, eligibility: OPEN });
+      await expectCode(svc.start(without(body({ buyer, consents }))), "not_eligible");
+      expect(calls).toEqual({ companies: 0, contacts: 0, orders: 0, accepts: 0, checkouts: 0 });
+    }
+    // Y la consulta pública da el motivo exacto de cada uno (el domicilio no cuenta: lo pide el formulario)
+    const { svc } = setup({ mode: "live", consent: DECIDED, eligibility: OPEN });
+    for (const [buyer, reason] of cases.filter(([, r]) => r !== "address_incomplete")) {
+      const b = buyer as { type: "business"; country: string; postalCode?: string; taxId?: string };
+      const r = await svc.eligibility({ type: b.type, country: b.country, postalCode: b.postalCode, taxId: b.taxId });
+      expect(r.eligible).toBe(false);
+      expect(r.reasons).toContain(reason);
+    }
+  });
+
+  it("consulta pública: precio final con impuestos para particulares con tipo decidido; neto para empresas; nada se crea", async () => {
+    const withMainland: EligibilityConfig = { ...OPEN, scenarios: new Set([...OPEN.scenarios, "consumer:es_mainland"]), taxExpectations: new Map([...OPEN.taxExpectations, ["consumer:es_mainland", "taxed"]]), consumerRates: new Map([...OPEN.consumerRates, ["ES", 2100]]) };
+    const { svc, calls } = setup({ mode: "live", consent: DECIDED, eligibility: withMainland });
+    expect(await svc.eligibility({ type: "consumer", country: "ES", postalCode: "28002", plan: "essential", interval: "month" })).toEqual({
+      eligible: true,
+      reasons: [],
+      territory: "es_mainland",
+      scenario: "consumer:es_mainland",
+      price: { netCents: 2900, taxCents: 609, grossCents: 3509, rateBp: 2100 },
+    });
+    expect((await svc.eligibility({ type: "business", country: "ES", postalCode: "28002", taxId: "B11111119", plan: "essential", interval: "month" })).price).toEqual({ netCents: 2900, taxCents: null, grossCents: null, rateBp: null });
+    expect(calls).toEqual({ companies: 0, contacts: 0, orders: 0, accepts: 0, checkouts: 0 });
   });
 
   it("el cuerpo exige comprador: ni empresa ni perfil → no válido", () => {

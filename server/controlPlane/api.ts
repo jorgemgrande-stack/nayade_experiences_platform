@@ -234,7 +234,15 @@ export interface ControlPlaneDeps {
      * Perfil fiscal del comprador (B2B/B2C): escenarios aprobados (CP_STRIPE_FISCAL_SCENARIOS) y versiones de
      * consentimiento vigentes. Sin ello, ningún escenario está aprobado (en live no se abre Checkout).
      */
-    fiscal?: { scenarios: Set<FiscalScenario>; consent: ConsentVersions; taxExpectations?: Map<FiscalScenario, TaxTreatment>; legalUrls?: { terms: string | null; privacy: string | null } };
+    fiscal?: {
+      scenarios: Set<FiscalScenario>;
+      consent: ConsentVersions;
+      taxExpectations?: Map<FiscalScenario, TaxTreatment>;
+      legalUrls?: { terms: string | null; privacy: string | null };
+      /** Países por escenario (CP_STRIPE_SCENARIO_COUNTRIES) y tipos para particulares (CP_STRIPE_CONSUMER_RATES). */
+      countries?: Map<FiscalScenario, Set<string> | "*">;
+      consumerRates?: Map<string, number>;
+    };
     /**
      * Compra de módulos y ampliaciones desde la plataforma (CRM 0018). `enabled` (CP_COMMERCE_PURCHASES_ENABLED)
      * apagado por defecto; sin `changes`, ni se monta ni se reconocen suscripciones multipartida.
@@ -1199,7 +1207,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         const stripeCatalog = catalogFromWebStore(d.web.store);
         // En live sin política fiscal, Checkout no se monta aunque se pida (y el servicio también lo rechazaría)
         const checkout = st.checkoutEnabled && st.urls && !checkoutBlockedReason(st.config)
-          ? new StripeCheckoutService({ store: st.store, gateway: st.gateway, orders: d.orders.store, crmStore: d.crm.store, catalog: stripeCatalog, urls: st.urls, now: d.subscriptions.now, namespace: st.config.namespace, mode: st.config.mode, taxPolicy: st.config.taxPolicy, fiscalScenarios: st.fiscal?.scenarios, taxExpectations: st.fiscal?.taxExpectations })
+          ? new StripeCheckoutService({ store: st.store, gateway: st.gateway, orders: d.orders.store, crmStore: d.crm.store, catalog: stripeCatalog, urls: st.urls, now: d.subscriptions.now, namespace: st.config.namespace, mode: st.config.mode, taxPolicy: st.config.taxPolicy, fiscalScenarios: st.fiscal?.scenarios, taxExpectations: st.fiscal?.taxExpectations, eligibility: { countries: st.fiscal?.countries, consumerRates: st.fiscal?.consumerRates, consent: st.fiscal?.consent } })
           : null;
         // Partidas contratadas para el PRÓXIMO periodo (las que Stripe debe cobrar en la renovación): conciliación
         const subItems = d.subscriptions.store;
@@ -1224,7 +1232,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         if (st.publicStatus || selfServiceOk) {
           const pc = express.Router();
           if (selfServiceOk) {
-            const ss = new SelfServiceCheckout({ crm: d.crm.service, orders: d.orders.store, orchestrator, checkout: checkout!, catalog: stripeCatalog, ticketSecret: d.publicIntake!.secret, origins: publicOrigins, termsVersion: st.termsVersion, now: d.subscriptions.now, buyers: st.store, mode: st.config.mode, consent: st.fiscal?.consent });
+            const ss = new SelfServiceCheckout({ crm: d.crm.service, orders: d.orders.store, orchestrator, checkout: checkout!, catalog: stripeCatalog, ticketSecret: d.publicIntake!.secret, origins: publicOrigins, termsVersion: st.termsVersion, now: d.subscriptions.now, buyers: st.store, mode: st.config.mode, consent: st.fiscal?.consent, eligibility: st.fiscal ? { scenarios: st.fiscal.scenarios, taxExpectations: st.fiscal.taxExpectations ?? new Map(), countries: st.fiscal.countries ?? new Map(), consumerRates: st.fiscal.consumerRates ?? new Map(), consent: st.fiscal.consent } : undefined });
             pc.use(createSelfServiceRouter(ss, publicOrigins));
           }
           if (st.publicStatus) pc.get(

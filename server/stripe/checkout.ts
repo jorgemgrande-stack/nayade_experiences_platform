@@ -32,7 +32,8 @@ import type { StripeMode, StripeTaxPolicy } from "./config";
 import { issuerLine } from "./issuer";
 import { StripeGatewayError, type StripeGateway } from "./gateway";
 import { StripeStoreError, type StripeStore } from "./store";
-import { fiscalGate, taxExpectationGate, type BuyerProfile, type FiscalScenario, type TaxTreatment } from "./buyerProfile";
+import type { BuyerProfile, FiscalScenario, TaxTreatment } from "./buyerProfile";
+import { checkEligibility, type EligibilityConfig } from "./eligibility";
 
 /** Etiqueta de Stripe para seguir este flujo en el Dashboard (sufijo de 8 letras, recomendación de Stripe). */
 export const INTEGRATION_IDENTIFIER = "elephant-source-checkout-rqzmvtak";
@@ -107,6 +108,31 @@ export interface CheckoutDeps {
   fiscalScenarios?: Set<FiscalScenario>;
   /** Tratamiento del impuesto declarado por escenario (CP_STRIPE_TAX_EXPECTATIONS). En live, sin él no se cobra. */
   taxExpectations?: Map<FiscalScenario, TaxTreatment>;
+  /**
+   * Resto del control de elegibilidad (server/stripe/eligibility.ts): países por escenario, tipo decidido para
+   * particulares y decisión sobre el desistimiento. Sin ellos, los valores por defecto (fuera de la UE, ningún
+   * país; particulares sin tipo decidido: no se cobran).
+   */
+  eligibility?: Partial<Pick<EligibilityConfig, "countries" | "consumerRates" | "consent">>;
+}
+
+/** Mensaje del bloqueo por elegibilidad: el primer motivo en claro y la lista completa de códigos. */
+export function eligibilityMessage(scenario: string, reasons: string[]): string {
+  const first = reasons[0] ?? "";
+  const text = first.startsWith("scenario_pending")
+    ? `El escenario fiscal «${scenario}» está pendiente de aprobación`
+    : first.startsWith("tax_expectation_missing")
+      ? `Falta el tratamiento del impuesto aprobado para «${scenario}»`
+      : first.startsWith("country_not_enabled")
+        ? `El país ${first.split(":")[1]} no está habilitado para «${scenario}»`
+        : first === "tax_id_invalid" || first === "tax_id_required"
+          ? "El identificador fiscal del comprador falta o no es válido"
+          : first.startsWith("consumer_")
+            ? "La contratación de particulares en este territorio no está habilitada"
+            : first === "address_incomplete"
+              ? "Falta el domicilio de facturación completo del comprador"
+              : "El comprador no es elegible para el cobro";
+  return `${text}: no se abre el pago (${reasons.join(", ")})`;
 }
 
 /** Intentos con claves sucesivas cuando Stripe repite una sesión huérfana ya inservible. */
@@ -206,17 +232,18 @@ export class StripeCheckoutService {
     const buyer = await this.d.store.buyerProfile(orderId);
     if (this.mode === "live") {
       if (!buyer) throw new StripeCheckoutError("invalid_state", "Falta el perfil fiscal del comprador (empresa o particular, país y código postal) antes de abrir el pago");
-      if (fiscalGate(buyer, this.d.fiscalScenarios ?? new Set())) {
-        opsLog("warn", "StripeCheckout", "fiscal_scenario_pending", { orderId, scenario: buyer.scenario, actor });
-        throw new StripeCheckoutError("unavailable", `El escenario fiscal «${buyer.scenario}» está pendiente de aprobación: no se abre el pago`);
-      }
-      // Impuesto desconocido: sin el tratamiento declarado para el escenario no se cobra (no se podría contrastar)
-      if (taxExpectationGate(buyer.scenario, this.d.taxExpectations ?? new Map())) {
-        opsLog("warn", "StripeCheckout", "tax_expectation_missing", { orderId, scenario: buyer.scenario, actor });
-        throw new StripeCheckoutError("unavailable", `Falta el tratamiento del impuesto aprobado para «${buyer.scenario}»: no se abre el pago`);
+      // Control ÚNICO de elegibilidad (escenario aprobado, impuesto declarado, país habilitado, identificador fiscal,
+      // particulares y domicilio): el mismo que ven la web y el autoservicio antes de crear nada
+      const requireAddress = await this.d.store.hasBuyerAddressColumn();
+      const r = checkEligibility({ type: buyer.type, country: buyer.country, postalCode: buyer.postalCode, taxId: buyer.taxId, hasAddress: !!buyer.billingAddress }, this.eligibilityConfig(), { requireAddress });
+      if (!r.eligible) {
+        opsLog("warn", "StripeCheckout", "not_eligible", { orderId, scenario: buyer.scenario, reasons: r.reasons, actor });
+        throw new StripeCheckoutError("unavailable", eligibilityMessage(buyer.scenario, r.reasons));
       }
     }
-    const customerId = await this.ensureCustomer(o.companyId, buyer?.displayName ?? (company as { name: string }).name, tenantId, buyer);
+    const { id: customerId, created: customerCreated } = await this.ensureCustomer(o.companyId, buyer?.displayName ?? (company as { name: string }).name, tenantId, buyer);
+    // Dirección fijada: solo con el domicilio declarado y un Customer creado ahora con él (uno anterior puede tener otra)
+    const lockAddress = !!buyer?.billingAddress && customerCreated;
 
     const now = this.now();
     await this.adoptOrphans(orderId, customerId, link.stripePriceId, now);
@@ -267,6 +294,7 @@ export class StripeCheckoutService {
             ...(policy === LIVE_TAX_TREATMENT ? { automaticTax: true } : {}),
             // Empresas y profesionales: identificador fiscal obligatorio. Particulares: opcional (nunca razón social)
             ...(buyer?.type === "business" ? { taxIdRequired: true } : {}),
+            ...(lockAddress ? { lockAddress: true } : {}),
           },
           idempotencyKey,
         );
@@ -393,12 +421,17 @@ export class StripeCheckoutService {
     return (await this.d.gateway.createPortalSession({ customerId: link.stripeCustomerId, returnUrl: this.d.urls.portalReturn })).url;
   }
 
-  private async ensureCustomer(companyId: number, name: string, tenantId: string | null, buyer?: BuyerProfile | null): Promise<string> {
+  private eligibilityConfig(): EligibilityConfig {
+    const e = this.d.eligibility ?? {};
+    return { scenarios: this.d.fiscalScenarios ?? new Set(), taxExpectations: this.d.taxExpectations ?? new Map(), countries: e.countries ?? new Map(), consumerRates: e.consumerRates ?? new Map(), consent: e.consent };
+  }
+
+  private async ensureCustomer(companyId: number, name: string, tenantId: string | null, buyer?: BuyerProfile | null): Promise<{ id: string; created: boolean }> {
     const cur = await this.d.store.customerByCompany(companyId);
     if (cur) {
       const c = await this.d.gateway.customer(cur.stripeCustomerId);
       if (!c || c.deleted) throw new StripeCheckoutError("conflict", "El cliente de Stripe de esta empresa ya no existe: requiere revisión");
-      return cur.stripeCustomerId;
+      return { id: cur.stripeCustomerId, created: false };
     }
     const contacts = (await this.d.crmStore.list("contacts", { companyId })) as Array<{ email?: string | null; status?: string; isPrimary?: boolean }>;
     const active = contacts.filter((c) => c.status !== "inactive" && c.email);
@@ -411,12 +444,13 @@ export class StripeCheckoutService {
         name,
         email,
         metadata: { es_company_id: String(companyId), es_env: this.ns, ...(tenantId ? { es_tenant_id: tenantId } : {}), ...(buyer ? { es_buyer_type: buyer.type } : {}) },
-        // País y código postal declarados: Stripe Tax parte de ellos; Checkout pide y confirma la dirección completa
-        ...(buyer ? { address: { country: buyer.country, postalCode: buyer.postalCode } } : {}),
+        // Domicilio declarado (completo si lo hay): Stripe Tax parte de él. Sin calle y ciudad, Checkout la pide
+        ...(buyer ? { address: { country: buyer.country, postalCode: buyer.postalCode, ...(buyer.billingAddress ?? {}) } } : {}),
       },
       idem,
     );
     const { link } = await this.d.store.linkCustomer({ companyId, tenantId, stripeCustomerId: created.id, now: this.now() });
-    return link.stripeCustomerId;
+    // Otro proceso pudo enlazar antes otro Customer: solo es «creado ahora» si el enlazado es el nuestro
+    return { id: link.stripeCustomerId, created: link.stripeCustomerId === created.id };
   }
 }

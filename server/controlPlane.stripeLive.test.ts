@@ -184,7 +184,7 @@ describe("Stripe en modo live por HTTP, con política fiscal stripe_tax_exclusiv
     expect(consumer.status).toBe(409);
     expect(consumer.json.error).toBe("consumer_pending");
     // Empresa: versión de condiciones distinta de la vigente → 422; la vigente → perfil guardado (escenario aprobado)
-    const business = { type: "business", legalName: "Live Essential SL", taxId: "B12345678", country: "ES", postalCode: "28002" };
+    const business = { type: "business", legalName: "Live Essential SL", taxId: "B12345674", country: "ES", postalCode: "28002", line1: "Calle Mayor, 1", city: "Madrid" };
     expect((await cp.call("PUT", `/stripe/orders/${orderId}/buyer`, { body: { buyer: business, consent: { terms: true, termsVersion: "v0" } } })).status).toBe(422);
     const saved = await cp.ok(cp.call("PUT", `/stripe/orders/${orderId}/buyer`, { body: { buyer: business, consent: { terms: true, termsVersion: "v1-prueba" } } }));
     expect(saved).toMatchObject({ approved: true, buyer: { type: "business", territory: "es_mainland", scenario: "business:es_mainland", taxIdStatus: "unverified", version: 1, consent: { source: "operator", terms: { version: "v1-prueba" } } } });
@@ -229,7 +229,7 @@ describe("Stripe en modo live por HTTP, con política fiscal stripe_tax_exclusiv
     const raised: string[] = [];
     configureFailureAlerts(new FailureAlerts({ incidents: { raise: async (i: { dedupeKey: string }) => void raised.push(i.dedupeKey) } as never, rules: STRIPE_FAILURE_RULES }));
     const orderId = await cp.contractedOrder("Live Discrepancia SL");
-    const business = { type: "business", legalName: "Live Discrepancia SL", taxId: "B99999999", country: "ES", postalCode: "28002" };
+    const business = { type: "business", legalName: "Live Discrepancia SL", taxId: "B99999997", country: "ES", postalCode: "28002", line1: "Calle Mayor, 2", city: "Madrid" };
     await cp.ok(cp.call("PUT", `/stripe/orders/${orderId}/buyer`, { body: { buyer: business, consent: { terms: true, termsVersion: "v1-prueba" } } }));
     const s = await cp.ok(cp.call("POST", `/stripe/orders/${orderId}/checkout`));
     // En Checkout el cliente cambió la dirección a Canarias y no dio NIF

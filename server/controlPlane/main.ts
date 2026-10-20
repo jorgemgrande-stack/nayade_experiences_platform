@@ -58,6 +58,7 @@ import { MysqlInvoiceLineStore } from "../stripe/invoiceLines";
 import { notificationsFromEnv } from "../notifications/config";
 import { liveOrdersProblem, liveSchemaProblem } from "../stripe/liveReadiness";
 import { consumerWithdrawalFromEnv, fiscalScenariosFromEnv, taxExpectationsFromEnv } from "../stripe/buyerProfile";
+import { consumerRatesFromEnv, eligibilitySummary, scenarioCountriesFromEnv } from "../stripe/eligibility";
 import { checkoutUrlsFromEnv } from "../stripe/checkout";
 import { MysqlCrmStore } from "../crm/mysqlStore";
 import { CrmService } from "../crm/service";
@@ -326,6 +327,10 @@ async function main() {
   const fiscal = {
     scenarios: fiscalScenariosFromEnv(process.env),
     taxExpectations: taxExpectationsFromEnv(process.env),
+    // Elegibilidad por país (CP_STRIPE_SCENARIO_COUNTRIES) y tipo decidido para mostrar el precio final a particulares
+    // (CP_STRIPE_CONSUMER_RATES). Un valor no admitido impide arrancar
+    countries: scenarioCountriesFromEnv(process.env),
+    consumerRates: consumerRatesFromEnv(process.env),
     // URL de los textos legales publicados (para el Customer Portal); sin ellas, el plan del Portal las marca pendientes
     legalUrls: { terms: (process.env.CP_TERMS_URL ?? "").trim() || null, privacy: (process.env.CP_PRIVACY_URL ?? "").trim() || null },
     consent: {
@@ -399,6 +404,9 @@ async function main() {
         fiscalScenarios: Array.from(fiscal.scenarios),
         taxExpectations: Object.fromEntries(fiscal.taxExpectations),
         consumerWithdrawal: fiscal.consent.withdrawal,
+        // Qué escenarios se pueden cobrar de verdad y en qué países (sin datos personales)
+        eligibility: Object.fromEntries(Object.entries(eligibilitySummary({ ...fiscal, consent: fiscal.consent })).filter(([, v]) => v.approved)),
+        consumerRates: Object.fromEntries(fiscal.consumerRates),
         ...(ready ? {} : { reason: !trustProxyOk ? "trust_proxy_missing" : !orders ? "orders_not_enabled" : !migrated ? "migration_0012_missing" : !liveMigrated ? (liveSchema ?? "migration_0013_missing") : "namespace_changed" }),
       }),
     );

@@ -392,7 +392,7 @@ describe("Checkout en modo live", () => {
     get: async (_t: string, id: number) => (id === 7 ? { id: 7, name: "Empresa Live SL", tenantId: "t9-live" } : null),
     list: async () => [{ id: 1, companyId: 7, email: "contacto@live.example", status: "active", isPrimary: true }],
   };
-  const make = (over: { mode?: "test" | "live"; taxPolicy?: "test_net_no_tax" | "stripe_tax_exclusive" | null; fiscalScenarios?: Set<FiscalScenario>; taxExpectations?: Map<FiscalScenario, TaxTreatment> } = {}) =>
+  const make = (over: { mode?: "test" | "live"; taxPolicy?: "test_net_no_tax" | "stripe_tax_exclusive" | null; fiscalScenarios?: Set<FiscalScenario>; taxExpectations?: Map<FiscalScenario, TaxTreatment>; eligibility?: ConstructorParameters<typeof StripeCheckoutService>[0]["eligibility"] } = {}) =>
     new StripeCheckoutService({
       store,
       gateway: gw,
@@ -408,12 +408,14 @@ describe("Checkout en modo live", () => {
         ["business:es_mainland", "taxed"],
         ["consumer:es_mainland", "taxed"],
       ]),
+      // Particulares de la Península y Baleares: tipo decidido para mostrar el precio final
+      eligibility: { consumerRates: new Map([["ES", 2100]]) },
       ...over,
     });
   const created = () => gw.calls.filter((c) => c.op === "checkout.sessions.create").map((c) => c.input as CheckoutSessionInput);
   const consentStub = { source: "operator" as const, terms: { version: "v1", at: 1 }, privacy: null, precontract: null, immediateExecution: null, evidence: "0".repeat(16) };
   const saveBuyer = (input: BuyerProfileInput, orderId = 100) => store.saveBuyerProfile(toBuyerProfile(orderId, input, consentStub, clock), "operator:test");
-  const BUSINESS_ES: BuyerProfileInput = { type: "business", legalName: "Empresa Live SL", taxId: "B12345678", country: "ES", postalCode: "28002", billingEmail: "facturas@live.example" };
+  const BUSINESS_ES: BuyerProfileInput = { type: "business", legalName: "Empresa Live SL", taxId: "B12345674", country: "ES", postalCode: "28002", line1: "Calle Mayor, 1", city: "Madrid", billingEmail: "facturas@live.example" };
 
   beforeEach(async () => {
     clock = Date.UTC(2026, 9, 17, 12);
@@ -430,7 +432,7 @@ describe("Checkout en modo live", () => {
   it("perfil fiscal: sin perfil no se abre el pago; con el escenario pendiente tampoco; nada se crea en Stripe", async () => {
     store.buyers.clear();
     await expect(make({ taxPolicy: "stripe_tax_exclusive" }).start(100, "a")).rejects.toMatchObject({ code: "invalid_state", message: expect.stringMatching(/perfil fiscal/) });
-    await saveBuyer({ type: "business", legalName: "Canarias SL", taxId: "B87654321", country: "ES", postalCode: "35001" });
+    await saveBuyer({ type: "business", legalName: "Canarias SL", taxId: "B87654323", country: "ES", postalCode: "35001", line1: "Calle Triana, 2", city: "Las Palmas de Gran Canaria" });
     await expect(make({ taxPolicy: "stripe_tax_exclusive" }).start(100, "a")).rejects.toMatchObject({ code: "unavailable", message: expect.stringMatching(/business:es_special/) });
     await expect(make({ taxPolicy: "stripe_tax_exclusive", fiscalScenarios: new Set() }).start(100, "a")).rejects.toMatchObject({ code: "unavailable" });
     expect(created()).toEqual([]);
@@ -451,18 +453,21 @@ describe("Checkout en modo live", () => {
     expect(input.metadata).toMatchObject({ es_tax_expectation: "taxed" });
     expect(input.metadata).toMatchObject({ es_buyer_type: "business", es_fiscal_scenario: "business:es_mainland" });
     const [c] = [...gw.customers.values()];
-    expect(c).toMatchObject({ name: "Empresa Live SL", email: "facturas@live.example", address: { country: "ES", postalCode: "28002" }, metadata: { es_buyer_type: "business" } });
+    expect(c).toMatchObject({ name: "Empresa Live SL", email: "facturas@live.example", address: { country: "ES", postalCode: "28002", line1: "Calle Mayor, 1", city: "Madrid" }, metadata: { es_buyer_type: "business" } });
+    // Domicilio comprobado y fijado: Checkout no lo deja cambiar (el impuesto sale de él)
+    expect(input.lockAddress).toBe(true);
   });
 
   it("particular: sin razón social ni NIF obligatorio; Customer con nombre y apellidos; solo si su escenario está aprobado", async () => {
-    await saveBuyer({ type: "consumer", firstName: "Lucía", lastName: "Pérez Gómez", country: "ES", postalCode: "07001" });
+    await saveBuyer({ type: "consumer", firstName: "Lucía", lastName: "Pérez Gómez", country: "ES", postalCode: "07001", line1: "Carrer de Sant Miquel, 3", city: "Palma" });
     await expect(make({ taxPolicy: "stripe_tax_exclusive" }).start(100, "a")).rejects.toMatchObject({ code: "unavailable", message: expect.stringMatching(/consumer:es_mainland/) });
     await make({ taxPolicy: "stripe_tax_exclusive", fiscalScenarios: new Set<FiscalScenario>(["consumer:es_mainland"]) }).start(100, "a");
     const [input] = created();
     expect(input.taxIdRequired).toBeUndefined();
     expect(input.metadata).toMatchObject({ es_buyer_type: "consumer", es_fiscal_scenario: "consumer:es_mainland" });
     const [c] = [...gw.customers.values()];
-    expect(c).toMatchObject({ name: "Lucía Pérez Gómez", email: "contacto@live.example", address: { country: "ES", postalCode: "07001" } });
+    expect(c).toMatchObject({ name: "Lucía Pérez Gómez", email: "contacto@live.example", address: { country: "ES", postalCode: "07001", city: "Palma" } });
+    expect(input.lockAddress).toBe(true);
   });
 
   it("sin política fiscal: se rechaza («Política fiscal pendiente») sin ninguna llamada a Stripe ni nada guardado", async () => {

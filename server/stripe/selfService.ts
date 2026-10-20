@@ -13,6 +13,14 @@
  *   `buyer` es obligatorio (sin perfil fiscal no se abre el pago); en pruebas, `company` sigue valiendo.
  *   → 200 { sessionId, url, expiresAt }   (la URL de Stripe Checkout)
  *
+ *   POST /cp/v1/public/checkout/eligibility
+ *     { type: business|consumer, country, postalCode?, taxId?, plan?, interval? }
+ *   → 200 { eligible, reasons[], territory, scenario, price? }   (consulta: no crea ni guarda nada)
+ *   Con plan y periodicidad, el precio que verá ese comprador: con impuestos si es particular y hay tipo decidido.
+ *
+ * En live, el control de elegibilidad (server/stripe/eligibility.ts) se aplica ANTES de crear la empresa, el
+ * contacto o el pedido: un comprador no habilitado no deja registros a medias.
+ *
  * Reutiliza el circuito existente sin atajos:
  *  - Empresa y contacto administrador en el CRM; pedido del orquestador (`new`) con la petición del plan;
  *    aceptación registrada (versión de las condiciones aceptadas en la web) → `contracted`; Checkout.
@@ -43,7 +51,21 @@ import { SELF_SERVICE_PLANS } from "./catalog";
 import { StripeCheckoutError, type CheckoutStart } from "./checkout";
 import type { StripeMode } from "./config";
 import type { StripeStore } from "./store";
-import { BuyerProfileError, buildConsent, buyerProfileInput, toBuyerProfile, type ConsentVersions } from "./buyerProfile";
+import { BUYER_TYPES, BuyerProfileError, buildConsent, buyerProfileInput, toBuyerProfile, type ConsentVersions } from "./buyerProfile";
+import { desiredCatalog } from "./catalog";
+import { checkEligibility, priceFor, type EligibilityConfig, type EligibilityResult } from "./eligibility";
+
+export const eligibilityQuery = z
+  .object({
+    type: z.enum(BUYER_TYPES),
+    country: z.string().trim().toUpperCase().regex(/^[A-Z]{2}$/),
+    postalCode: z.string().trim().max(12).optional(),
+    taxId: z.string().trim().max(40).optional(),
+    plan: z.enum(SELF_SERVICE_PLANS).optional(),
+    interval: z.enum(["month", "year"]).optional(),
+  })
+  .strict();
+export type EligibilityQuery = z.infer<typeof eligibilityQuery>;
 
 export const selfServiceBody = z
   .object({
@@ -88,7 +110,9 @@ export interface SelfServiceDeps {
   /** Versión publicada de las condiciones de contratación; sin ella, la ruta responde 503. */
   termsVersion: string | null;
   /** Perfiles fiscales del comprador (0014). */
-  buyers?: Pick<StripeStore, "saveBuyerProfile">;
+  buyers?: Pick<StripeStore, "saveBuyerProfile" | "hasBuyerAddressColumn">;
+  /** Control de elegibilidad por tipo de cliente, país y territorio (server/stripe/eligibility.ts). */
+  eligibility?: EligibilityConfig;
   /** Modo del entorno: en live el perfil fiscal es obligatorio. */
   mode?: StripeMode;
   /** Versiones de consentimiento vigentes (condiciones, privacidad, precontractual) y decisión sobre el desistimiento. */
@@ -152,6 +176,14 @@ export class SelfServiceCheckout {
       } catch (e) {
         throw this.buyerError(e);
       }
+      // En live, el comprador debe poder cobrarse ANTES de crear nada (empresa, contacto, pedido)
+      if (this.d.mode === "live") {
+        const r = await this.eligibilityOf(b.buyer);
+        if (!r.eligible) {
+          opsLog("warn", "SelfService", "not_eligible", { scenario: r.scenario, reasons: r.reasons });
+          throw new SelfServiceError(403, "not_eligible", "Todavía no podemos cobrar en línea a este tipo de cliente o país. Escríbenos y te ayudamos con la contratación");
+        }
+      }
     }
     const name = b.buyer ? (b.buyer.type === "business" ? b.buyer.legalName : `${b.buyer.firstName} ${b.buyer.lastName}`) : b.company!.name;
     const taxId = b.buyer ? b.buyer.taxId : b.company!.taxId;
@@ -174,6 +206,30 @@ export class SelfServiceCheckout {
     return this.d.checkout.start(order.id, ACTOR);
   }
 
+  /** Elegibilidad de un comprador con la configuración aprobada (en live, con domicilio si se puede guardar). */
+  private async eligibilityOf(b: { type: "business" | "consumer"; country: string; postalCode?: string; taxId?: string; line1?: string; city?: string }): Promise<EligibilityResult> {
+    const cfg: EligibilityConfig = this.d.eligibility ?? { scenarios: new Set(), taxExpectations: new Map(), countries: new Map(), consumerRates: new Map() };
+    const requireAddress = this.d.mode === "live" && !!(await this.d.buyers?.hasBuyerAddressColumn());
+    return checkEligibility({ type: b.type, country: b.country, postalCode: b.postalCode, taxId: b.taxId, hasAddress: !!(b.line1 && b.city) }, { ...cfg, consent: cfg.consent ?? this.d.consent }, { requireAddress });
+  }
+
+  /**
+   * Consulta pública de elegibilidad: no crea ni guarda nada. El domicilio no se pide aquí (lo pide el formulario),
+   * así que no cuenta como motivo. Con plan y periodicidad, devuelve el precio que verá este comprador.
+   */
+  async eligibility(q: EligibilityQuery) {
+    const r = await this.eligibilityOf(q);
+    const reasons = r.reasons.filter((x) => x !== "address_incomplete");
+    let price: ReturnType<typeof priceFor> | null = null;
+    if (q.plan && q.interval) {
+      const kind = q.interval === "year" ? "yearly" : "monthly";
+      // Un catálogo incompleto no rompe la consulta: se responde sin precio
+      const d = (await desiredCatalog(this.d.catalog).catch(() => [])).find((x) => x.productKey === q.plan && x.kind === kind);
+      if (d) price = priceFor(d.amountCents, r);
+    }
+    return { eligible: reasons.length === 0, reasons, territory: r.territory, scenario: r.scenario, price };
+  }
+
   private buyerError(e: unknown): Error {
     if (!(e instanceof BuyerProfileError)) return e as Error;
     if (e.code === "consumer_pending") return new SelfServiceError(503, "consumer_unavailable", "La contratación como particular todavía no está disponible");
@@ -184,6 +240,24 @@ export class SelfServiceCheckout {
 
 export function createSelfServiceRouter(svc: SelfServiceCheckout, origins: Set<string>): Router {
   const r = express.Router();
+  r.post(
+    "/eligibility",
+    rateLimit({ windowMs: 60_000, limit: 30, standardHeaders: true, legacyHeaders: false, keyGenerator: (req) => `ip:${ipKeyGenerator(req.ip ?? "")}` }),
+    (req: Request, res: Response) => {
+      res.setHeader("Cache-Control", "no-store");
+      const o = req.headers.origin;
+      if (typeof o !== "string" || !origins.has(o)) return void res.status(403).json({ error: "origin_not_allowed" });
+      const parsed = eligibilityQuery.safeParse(req.body);
+      if (!parsed.success) return void res.status(400).json({ error: "invalid_request", message: "Revisa el tipo de cliente y el país" });
+      svc
+        .eligibility(parsed.data)
+        .then((x) => res.json(x))
+        .catch((e) => {
+          opsLog("error", "SelfService", "eligibility_error", { error: e instanceof Error ? e.name : "error" });
+          res.status(500).json({ error: "internal_error", message: "Error interno" });
+        });
+    },
+  );
   r.post(
     "/start",
     rateLimit({ windowMs: 3600_000, limit: 10, standardHeaders: true, legacyHeaders: false, keyGenerator: (req) => `ip:${ipKeyGenerator(req.ip ?? "")}` }),
