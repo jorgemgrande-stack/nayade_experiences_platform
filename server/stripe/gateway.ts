@@ -184,6 +184,11 @@ export interface CheckoutSessionInput {
    * deja cambiar (`customer_update.address: never`). El impuesto se calcula sobre esa dirección.
    */
   lockAddress?: boolean;
+  /**
+   * NIF-IVA FIJADO: el Customer ya tiene el NIF-IVA verificado en VIES y Checkout no deja añadir otro (la inversión
+   * del sujeto pasivo se aplica sobre el verificado).
+   */
+  lockTaxId?: boolean;
 }
 
 /** Datos del Customer al crearlo. Sin domicilio completo, la dirección la pide y confirma Checkout. */
@@ -192,6 +197,8 @@ export interface CustomerInput {
   email: string | null;
   metadata: Record<string, string>;
   address?: { country: string; postalCode: string | null; line1?: string | null; line2?: string | null; city?: string | null; state?: string | null };
+  /** Identificadores fiscales verificados (p. ej. NIF-IVA comprobado en VIES). */
+  taxIds?: Array<{ type: "eu_vat"; value: string }>;
 }
 
 export interface StripeGateway {
@@ -449,6 +456,7 @@ export function stripeGateway(
                   },
                 }
               : {}),
+            ...(input.taxIds?.length ? { tax_id_data: input.taxIds.map((t) => ({ type: t.type, value: t.value })) } : {}),
           },
           { idempotencyKey },
         );
@@ -484,7 +492,7 @@ export function stripeGateway(
         expires_at: i.expiresAt,
         // Con la dirección fijada, Checkout no la pide ni la cambia: el impuesto sale de la comprobada
         billing_address_collection: i.lockAddress ? "auto" : "required",
-        tax_id_collection: i.taxIdRequired ? { enabled: true, required: "if_supported" } : { enabled: true },
+        tax_id_collection: i.lockTaxId ? { enabled: false } : i.taxIdRequired ? { enabled: true, required: "if_supported" } : { enabled: true },
         customer_update: { address: i.lockAddress ? "never" : "auto", name: "auto" },
         locale: "es",
         ...(i.notice ? { custom_text: { submit: { message: i.notice.slice(0, 1200) } } } : {}),

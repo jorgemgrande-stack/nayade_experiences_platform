@@ -392,7 +392,7 @@ describe("Checkout en modo live", () => {
     get: async (_t: string, id: number) => (id === 7 ? { id: 7, name: "Empresa Live SL", tenantId: "t9-live" } : null),
     list: async () => [{ id: 1, companyId: 7, email: "contacto@live.example", status: "active", isPrimary: true }],
   };
-  const make = (over: { mode?: "test" | "live"; taxPolicy?: "test_net_no_tax" | "stripe_tax_exclusive" | null; fiscalScenarios?: Set<FiscalScenario>; taxExpectations?: Map<FiscalScenario, TaxTreatment>; eligibility?: ConstructorParameters<typeof StripeCheckoutService>[0]["eligibility"] } = {}) =>
+  const make = (over: { mode?: "test" | "live"; taxPolicy?: "test_net_no_tax" | "stripe_tax_exclusive" | null; fiscalScenarios?: Set<FiscalScenario>; taxExpectations?: Map<FiscalScenario, TaxTreatment>; eligibility?: ConstructorParameters<typeof StripeCheckoutService>[0]["eligibility"]; vat?: ConstructorParameters<typeof StripeCheckoutService>[0]["vat"] } = {}) =>
     new StripeCheckoutService({
       store,
       gateway: gw,
@@ -468,6 +468,39 @@ describe("Checkout en modo live", () => {
     const [c] = [...gw.customers.values()];
     expect(c).toMatchObject({ name: "Lucía Pérez Gómez", email: "contacto@live.example", address: { country: "ES", postalCode: "07001", city: "Palma" } });
     expect(input.lockAddress).toBe(true);
+  });
+
+  describe("empresa de la UE con inversión del sujeto pasivo (VIES)", () => {
+    const EU = { fiscalScenarios: new Set<FiscalScenario>(["business:eu"]), taxExpectations: new Map<FiscalScenario, TaxTreatment>([["business:eu", "reverse_charge"]]) };
+    const vatOf = (status: "valid" | "invalid" | "unavailable") => ({
+      verify: async (country: string, _raw: string, ctx: { orderId?: number | null } = {}) => ({ status, country, vatNumber: "12345678901", checkedAt: clock, consultationNumber: status === "valid" ? "WAPIAAAA1" : null, traderName: null, traderAddress: null, detail: null, orderId: ctx.orderId ?? null, reused: false }),
+    });
+    beforeEach(async () => {
+      store.buyers.clear();
+      await saveBuyer({ type: "business", legalName: "Société Test SAS", taxId: "FR12345678901", country: "FR", postalCode: "75001", line1: "1 rue de Rivoli", city: "Paris" });
+    });
+
+    it("verificado en VIES: el Customer lleva el NIF-IVA (eu_vat), Checkout no deja poner otro y la sesión guarda el número de consulta", async () => {
+      await make({ taxPolicy: "stripe_tax_exclusive", ...EU, vat: vatOf("valid") }).start(100, "a");
+      const [input] = created();
+      expect(input).toMatchObject({ lockTaxId: true, lockAddress: true, metadata: { es_fiscal_scenario: "business:eu", es_tax_expectation: "reverse_charge", es_vies_consultation: "WAPIAAAA1" } });
+      const [c] = [...gw.customers.values()];
+      expect(c).toMatchObject({ taxIds: [{ type: "eu_vat", value: "FR12345678901" }], address: { country: "FR", city: "Paris" } });
+    });
+
+    it.each([
+      ["no válido en VIES", "invalid", "vat_invalid"],
+      ["VIES no disponible", "unavailable", "vat_check_unavailable"],
+    ] as const)("%s: no se abre el pago ni se crea nada en Stripe", async (_n, status, reason) => {
+      await expect(make({ taxPolicy: "stripe_tax_exclusive", ...EU, vat: vatOf(status) }).start(100, "a")).rejects.toMatchObject({ code: "unavailable", message: expect.stringContaining(reason) });
+      expect(created()).toEqual([]);
+      expect(gw.customers.size).toBe(0);
+    });
+
+    it("sin verificador de VIES configurado: inversión del sujeto pasivo bloqueada (vat_unverified)", async () => {
+      await expect(make({ taxPolicy: "stripe_tax_exclusive", ...EU }).start(100, "a")).rejects.toMatchObject({ message: expect.stringContaining("vat_unverified") });
+      expect(gw.customers.size).toBe(0);
+    });
   });
 
   it("sin política fiscal: se rechaza («Política fiscal pendiente») sin ninguna llamada a Stripe ni nada guardado", async () => {

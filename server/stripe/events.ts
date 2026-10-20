@@ -26,6 +26,7 @@
  *    siempre. Un cambio que Stripe descartó sin cobro (sin cambio pendiente, factura anulada) caduca y su pedido
  *    se rechaza: nunca se concede nada sin cobro.
  */
+import type { VatVerifier } from "./vies";
 import { opsLog } from "../_core/ops/log";
 import { withCommercialCause } from "../commercialEvents/context";
 import { recordFailure } from "../_core/ops/failureAlerts";
@@ -105,6 +106,8 @@ export interface ProcessorDeps {
   mode?: StripeMode;
   /** Tratamiento del impuesto declarado por escenario: el impuesto de cada factura cobrada se contrasta con él. */
   taxExpectations?: Map<FiscalScenario, TaxTreatment>;
+  /** VIES: en cada renovación con inversión del sujeto pasivo, revalida el NIF-IVA si su comprobación caducó. */
+  vat?: Pick<VatVerifier, "verify">;
   /** Sistema de facturación legal (cuando se apruebe). Por defecto ninguno: los documentos quedan pendientes. */
   fiscalSink?: FiscalDocumentSink;
   /** Cambios de partidas pedidos por las compras (CRM 0018). Sin él, una suscripción multipartida es una discordancia. */
@@ -619,6 +622,15 @@ export class StripeEventProcessor {
     if (taxProblem) {
       opsLog("warn", "StripeEvents", "invoice_tax_mismatch", { orderId, invoiceId: inv.id, scenario: profile.scenario, expected, problem: taxProblem, purpose });
       recordFailure("stripe.invoice_tax_mismatch");
+    }
+    // Inversión del sujeto pasivo: en cada renovación, el NIF-IVA debe seguir siendo válido en VIES. Se reutiliza una
+    // comprobación reciente; si caducó, se repite. Un NIF-IVA que deja de ser válido se AVISA (no se cambia nada solo)
+    if (purpose !== "initial" && expected === "reverse_charge" && profile.taxId && this.d.vat) {
+      const v = await this.d.vat.verify(profile.country, profile.taxId, { orderId }).catch(() => null);
+      if (v?.status === "invalid") {
+        opsLog("warn", "StripeEvents", "vat_no_longer_valid", { orderId, invoiceId: inv.id, country: profile.country });
+        recordFailure("stripe.vat_no_longer_valid");
+      } else if (!v || v.status === "unavailable") opsLog("warn", "StripeEvents", "vat_revalidation_unavailable", { orderId, invoiceId: inv.id });
     }
     // Dirección e identificador fiscal: solo en el alta (después pueden cambiar por el Portal y se revisan aparte)
     if (purpose !== "initial") return;

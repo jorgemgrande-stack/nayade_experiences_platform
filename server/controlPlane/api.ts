@@ -90,6 +90,7 @@ import { StripeReconciler, startStripeWorker } from "../stripe/reconcile";
 import { stripeWebhookHandler } from "../stripe/webhook";
 import { checkoutStatus, sessionIdRe } from "../stripe/status";
 import { SelfServiceCheckout, createSelfServiceRouter } from "../stripe/selfService";
+import { VatVerifier, type ViesPort } from "../stripe/vies";
 import type { GwEvent } from "../stripe/gateway";
 import { StripeCheckoutService, type CheckoutUrls } from "../stripe/checkout";
 import { checkoutBlockedReason, type StripeConfig } from "../stripe/config";
@@ -215,6 +216,8 @@ export interface ControlPlaneDeps {
    * El almacén debe ser del mismo modo que la configuración. Requiere `orders`.
    */
   stripe?: {
+    /** VIES (cliente y días de validez de una comprobación). Sin él, la inversión del sujeto pasivo no se cobra en live. */
+    vies?: { client: ViesPort; maxAgeDays: number };
     config: StripeConfig;
     store: StripeStore;
     gateway: StripeGateway;
@@ -1205,9 +1208,11 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
       if (d.stripe) {
         const st = d.stripe;
         const stripeCatalog = catalogFromWebStore(d.web.store);
+        // VIES con registro (CRM 0021) y reutilización de comprobaciones recientes
+        const vat = st.vies ? new VatVerifier({ vies: st.vies.client, store: st.store, now: d.subscriptions.now, maxAgeDays: st.vies.maxAgeDays }) : undefined;
         // En live sin política fiscal, Checkout no se monta aunque se pida (y el servicio también lo rechazaría)
         const checkout = st.checkoutEnabled && st.urls && !checkoutBlockedReason(st.config)
-          ? new StripeCheckoutService({ store: st.store, gateway: st.gateway, orders: d.orders.store, crmStore: d.crm.store, catalog: stripeCatalog, urls: st.urls, now: d.subscriptions.now, namespace: st.config.namespace, mode: st.config.mode, taxPolicy: st.config.taxPolicy, fiscalScenarios: st.fiscal?.scenarios, taxExpectations: st.fiscal?.taxExpectations, eligibility: { countries: st.fiscal?.countries, consumerRates: st.fiscal?.consumerRates, consent: st.fiscal?.consent } })
+          ? new StripeCheckoutService({ store: st.store, gateway: st.gateway, orders: d.orders.store, crmStore: d.crm.store, catalog: stripeCatalog, urls: st.urls, now: d.subscriptions.now, namespace: st.config.namespace, mode: st.config.mode, taxPolicy: st.config.taxPolicy, fiscalScenarios: st.fiscal?.scenarios, taxExpectations: st.fiscal?.taxExpectations, vat, eligibility: { countries: st.fiscal?.countries, consumerRates: st.fiscal?.consumerRates, consent: st.fiscal?.consent } })
           : null;
         // Partidas contratadas para el PRÓXIMO periodo (las que Stripe debe cobrar en la renovación): conciliación
         const subItems = d.subscriptions.store;
@@ -1221,7 +1226,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
               out.set(i.productKey, (out.get(i.productKey) ?? 0) + i.quantity);
           return out;
         };
-        const processor = new StripeEventProcessor({ store: st.store, gateway: st.gateway, orders: d.orders.store, orchestrator, now: d.subscriptions.now, namespace: st.config.namespace, mode: st.config.mode, taxExpectations: st.fiscal?.taxExpectations, catalog: stripeCatalog, changes: st.purchases?.changes, invoiceLines: st.invoiceLines, contractedItems });
+        const processor = new StripeEventProcessor({ store: st.store, gateway: st.gateway, orders: d.orders.store, orchestrator, now: d.subscriptions.now, namespace: st.config.namespace, mode: st.config.mode, taxExpectations: st.fiscal?.taxExpectations, vat, catalog: stripeCatalog, changes: st.purchases?.changes, invoiceLines: st.invoiceLines, contractedItems });
         const reconciler = new StripeReconciler({ store: st.store, gateway: st.gateway, processor, now: d.subscriptions.now, retentionDays: st.config.eventsRetentionDays, mode: st.config.mode });
         const rechecks = new Map<string, number>();
         const stripeNow = d.subscriptions.now;
@@ -1232,7 +1237,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         if (st.publicStatus || selfServiceOk) {
           const pc = express.Router();
           if (selfServiceOk) {
-            const ss = new SelfServiceCheckout({ crm: d.crm.service, orders: d.orders.store, orchestrator, checkout: checkout!, catalog: stripeCatalog, ticketSecret: d.publicIntake!.secret, origins: publicOrigins, termsVersion: st.termsVersion, now: d.subscriptions.now, buyers: st.store, mode: st.config.mode, consent: st.fiscal?.consent, eligibility: st.fiscal ? { scenarios: st.fiscal.scenarios, taxExpectations: st.fiscal.taxExpectations ?? new Map(), countries: st.fiscal.countries ?? new Map(), consumerRates: st.fiscal.consumerRates ?? new Map(), consent: st.fiscal.consent } : undefined });
+            const ss = new SelfServiceCheckout({ crm: d.crm.service, orders: d.orders.store, orchestrator, checkout: checkout!, catalog: stripeCatalog, ticketSecret: d.publicIntake!.secret, origins: publicOrigins, termsVersion: st.termsVersion, now: d.subscriptions.now, buyers: st.store, mode: st.config.mode, consent: st.fiscal?.consent, vat, eligibility: st.fiscal ? { scenarios: st.fiscal.scenarios, taxExpectations: st.fiscal.taxExpectations ?? new Map(), countries: st.fiscal.countries ?? new Map(), consumerRates: st.fiscal.consumerRates ?? new Map(), consent: st.fiscal.consent } : undefined });
             pc.use(createSelfServiceRouter(ss, publicOrigins));
           }
           if (st.publicStatus) pc.get(

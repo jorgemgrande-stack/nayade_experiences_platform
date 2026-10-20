@@ -120,6 +120,11 @@ export function createStripeRouter(d: StripeRouterDeps): Router {
       if (!p) return void res.status(404).json({ error: "not_found", message: "El pedido no tiene perfil fiscal" });
       res.json({ buyer: p, approved: !!d.fiscal?.scenarios.has(p.scenario) });
     }));
+    // Comprobaciones del NIF-IVA en VIES de un pedido (resultado, número de consulta y fecha), más recientes primero
+    r.get("/orders/:id/vat-checks", requireScope("orders:read"), wrap(async (req, res) => {
+      if (!(await d.store.hasVatCheckTable())) return void res.status(503).json({ error: "unavailable", message: "Falta la migración 0021 (comprobaciones VIES)" });
+      res.json({ checks: await d.store.vatChecksOfOrder(id.parse(req.params.id)) });
+    }));
     // Venta asistida: el operador registra el perfil y el consentimiento recogidos con el cliente
     r.put("/orders/:id/buyer", requireScope("orders:write"), wrap(async (req, res) => {
       const orderId = id.parse(req.params.id);
