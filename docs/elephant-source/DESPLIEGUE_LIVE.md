@@ -1,13 +1,13 @@
 # Paquete de despliegue de Railway `live`
 
-**Estado (20/10/2026, 22:00 UTC).** Preparado y validado en simulación contra `live`. **No se ha desplegado ni migrado nada.** Railway mantiene los despliegues pausados. La ejecución necesita tu **autorización expresa** en dos momentos: las migraciones (§4) y el despliegue (§5). Cuando Railway vuelva, nada se ejecuta solo.
+**Estado (20/10/2026, 23:10 UTC).** Railway vuelve a aceptar despliegues (comprobado). **Copia, restauración y ensayo de migraciones hechos sobre copias de `live` (§3).** No se ha migrado ni desplegado nada en las bases ni en los servicios reales. La ejecución necesita tu **autorización expresa** en dos momentos: las migraciones (§4) y el despliegue (§5). Cuando Railway vuelva, nada se ejecuta solo.
 
 ## 1. Versiones exactas
 
 | Repositorio | Commit | Rama | Servicios |
 |---|---|---|---|
-| Core (`nayade_experiences_platform`) | **`57bc654`** | `integration/elephant-source` | `controlplane`, `backup-job`, `restore-drill` (`Dockerfile.controlplane`); `core` (`deploy/railway/core.Dockerfile`); `core-gateway` (`deploy/railway/gateway/Dockerfile`) |
-| CRM (`big-elephant-crm`) | **`24bb93e`** (incluye el #26: Stripe live y sincronización del catálogo) | `integration/elephant-source` | `crm` (`deploy/railway/Dockerfile`) |
+| Core (`nayade_experiences_platform`) | **Cabeza de `integration/elephant-source` tras el PR de la noche 7**: el código de `57bc654` más el lanzador con ensayo. Se fija en `OVERNIGHT_LANZAMIENTO.md` al integrarlo | `integration/elephant-source` | `controlplane`, `backup-job`, `restore-drill` (`Dockerfile.controlplane`); `core` (`deploy/railway/core.Dockerfile`); `core-gateway` (`deploy/railway/gateway/Dockerfile`) |
+| CRM (`big-elephant-crm`) | **Cabeza de `integration/elephant-source`**: `24bb93e` (#26, Stripe live y sincronización del catálogo) más el #28 (vista de desistimientos) cuando se integre | `integration/elephant-source` | `crm` (`deploy/railway/Dockerfile`) |
 | Web (`bigelephant-web`) | **`42741e2`**, la de `production` | `feat/elephant-web-portfolio` | `web` (`deploy/railway/Dockerfile`) |
 
 **Decisión pendiente sobre la web:** `feat/web-marketing-design` (`5ea5be6`) tiene el diseño comercial y las páginas legales **en borrador** (`noindex`, «Pendiente de revisión legal»). Se despliega cuando apruebes los textos. Hasta entonces, `42741e2`.
@@ -50,7 +50,7 @@ Validado esta noche en simulación contra `live` con `57bc654` (el commit a desp
 ## 3. Requisitos previos
 
 1. Railway sin la pausa de despliegues.
-2. **Copia nueva y ensayo de restauración** del registro y del CRM en bases **nuevas** (`es_registry_drill_live_AAAAMMDD` y `es_crm_drill_live_AAAAMMDD`), con `restore-drill`:
+2. ✅ **Hecho el 20/10 a las 22:57 UTC** (ver «Ensayo real» más abajo). Repetir justo antes de migrar: **copia nueva y ensayo de restauración** del registro y del CRM en bases **nuevas** (`es_registry_drill_live_AAAAMMDD` y `es_crm_drill_live_AAAAMMDD`), con `restore-drill`:
    ```
    node dist-cp/backup-job.js run
    node dist-cp/backup-job.js restore-platform registry --admin-url-env PROVISIONING_DB_ADMIN_URL --database es_registry_drill_live_AAAAMMDD --apply
@@ -58,6 +58,19 @@ Validado esta noche en simulación contra `live` con `57bc654` (el commit a desp
    ```
    Comprobar `verification.ok: true` y el número de tablas y filas de cada base. Al terminar, devolver `restore-drill` a `list`.
 3. Tu autorización: «autorizo migraciones live».
+
+**Ensayo real (20/10/2026, sobre copias de `live`; las bases reales no se tocaron):**
+
+| Paso | Resultado |
+|---|---|
+| Copia nueva | Registro (51 KB), CRM (35 KB) y paquete de recuperación: `ok`, 0 fallos |
+| Restauración del registro | `es_registry_drill_live_20261020`: `verification.ok`, 23 tablas, 641 filas |
+| Restauración del CRM | `es_crm_drill_live_20261020`: `verification.ok`, 37 tablas, 730 filas |
+| Migraciones del registro sobre la copia | 0011 → **0013** (0012 y 0013 aplicadas, sin incompletas) |
+| Migraciones del CRM sobre la copia | **9 aplicadas** (de la 0014 a la 0022); `status`: 22 aplicadas y 0 pendientes |
+| Bases reales después | `es_crm` en la 0013, `es_registry` en la 0011, 0 empresas, sin permisos nuevos |
+
+Orden de ensayo: `node run.cjs registry apply --database es_registry_drill_live_AAAAMMDD` y `node run.cjs crm apply --database es_crm_drill_live_AAAAMMDD`. El lanzador solo admite bases `*_drill_*` con `--database`.
 
 ## 4. Migraciones (con autorización)
 
