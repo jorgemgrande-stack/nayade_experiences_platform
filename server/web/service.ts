@@ -383,6 +383,15 @@ export class WebAdminService {
     return { version, generatedAt: now, preview, catalog, content };
   }
 
+  /**
+   * Sitio PÚBLICO: el documento de `site()` sin los productos internos de pruebas (`catalog.internalOnly`) ni
+   * nada que los nombre (paquetes, dependencias o promociones). Toda salida pública usa esta vista; `site()` sigue
+   * completo para los usos internos (cotización del equipo, licencias, compra de las empresas de prueba).
+   */
+  async publicSite(mode: "published" | "preview" = "published"): Promise<SiteDocument> {
+    return withoutInternal(await this.site(mode));
+  }
+
   // ── Interno ────────────────────────────────────────────────────────────────
 
   private parse(kind: EntryKind, draft: unknown): Record<string, unknown> {
@@ -409,6 +418,7 @@ export class WebAdminService {
     if (cat.commercialStatus === "available" && d.technicalStatus !== "available") throw new WebError("invalid_input", "«Disponible» exige que el producto esté técnicamente disponible: usa «Solicitar activación» o «Próximamente»");
     if (BUNDLE_FAMILIES.includes(family) && cat.bundleOf.length < 2) throw new WebError("invalid_input", "Un paquete incluye al menos dos productos");
     if (!BUNDLE_FAMILIES.includes(family) && cat.bundleOf.length) throw new WebError("invalid_input", "Solo los paquetes tienen componentes");
+    if (cat.internalOnly && family === "core_plan") throw new WebError("invalid_input", "Un plan de Elephant Core no puede ser interno: los planes son públicos");
     if (cat.inherits && family !== "core_plan") throw new WebError("invalid_input", "Solo un plan de Elephant Core hereda de otro plan");
     if (family === "addon" && !cat.addonFor) throw new WebError("invalid_input", "Un complemento de cantidad indica la métrica que amplía");
     if (family !== "addon" && cat.addonFor) throw new WebError("invalid_input", "Solo los complementos de cantidad amplían una métrica");
@@ -471,7 +481,7 @@ export class WebAdminService {
   private async notify() {
     if (!this.d.onPublish) return;
     try {
-      this.d.onPublish((await this.site("published")).version);
+      this.d.onPublish((await this.publicSite("published")).version);
     } catch {
       /* un aviso fallido nunca deshace una publicación */
     }
@@ -497,4 +507,34 @@ function hasCycle(start: string, deps: string[], products: WebEntry[]): boolean 
     stack.push(...(graph.get(k) ?? []));
   }
   return false;
+}
+
+/** Claves de los productos internos de un documento del sitio. */
+export function internalKeys(site: SiteDocument): Set<string> {
+  return new Set(site.catalog.products.filter((p) => (p as { catalog?: { internalOnly?: boolean } }).catalog?.internalOnly === true).map((p) => p.key));
+}
+
+/**
+ * Quita del documento los productos internos y todo lo que los nombre: paquetes que los incluyen, productos que
+ * dependen de ellos y promociones que los aplican, y retira la propia marca. Recalcula la versión (ETag de la web)
+ * sobre lo que queda.
+ */
+export function withoutInternal(site: SiteDocument): SiteDocument {
+  const internal = internalKeys(site);
+  const names = (p: Record<string, unknown>) => {
+    const cat = (p.catalog ?? {}) as { bundleOf?: string[] };
+    return [...(cat.bundleOf ?? []), ...((p.dependencies as string[] | undefined) ?? [])].some((k) => internal.has(k));
+  };
+  // La marca tampoco se publica: lo público no revela que exista un catálogo interno
+  const strip = <T extends Record<string, unknown>>(p: T): T => {
+    const cat = p.catalog as Record<string, unknown> | undefined;
+    if (!cat || !("internalOnly" in cat)) return p;
+    const { internalOnly: _x, ...rest } = cat;
+    return { ...p, catalog: rest };
+  };
+  const products = site.catalog.products.filter((p) => !internal.has(p.key) && !names(p as Record<string, unknown>)).map((p) => strip(p as Record<string, unknown>) as typeof p);
+  const promotions = site.catalog.promotions.filter((p) => !((p as { products?: string[] }).products ?? []).some((k) => internal.has(k)));
+  const catalog = { ...site.catalog, products, promotions };
+  const version = crypto.createHash("sha256").update(JSON.stringify({ catalog, content: site.content, preview: site.preview })).digest("hex").slice(0, 16);
+  return { ...site, catalog, version };
 }

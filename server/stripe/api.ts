@@ -173,7 +173,7 @@ export function createStripeRouter(d: StripeRouterDeps): Router {
     res.json({ configurationId: current?.id ?? null, differences, applicable: differences.filter((x) => !x.pending).length, writeParams: portalWriteParams(differences, input) });
   }));
   r.get("/catalog/plan", requireScope("ops:read"), wrap(async (_req, res) => {
-    const desired = await desiredCatalog(d.catalog);
+    const desired = await desiredCatalog(d.catalog, { includeInternal: d.config.mode === "test" });
     res.json({ desired, ...(await planCatalogWrites(desired, d.gateway)) });
   }));
   // Propuestas de precio anual (decisión A): solo lectura; crearlas pasa por aprobar el catálogo y por una persona en Stripe
@@ -181,7 +181,7 @@ export function createStripeRouter(d: StripeRouterDeps): Router {
     res.json({ rule: "yearly = 10 × monthly", proposals: proposeYearlyPrices(await d.catalog.offer()) });
   }));
   r.post("/catalog/sync", requireScope("orders:write"), wrap(async (req, res) => {
-    const report = await syncCatalog(await desiredCatalog(d.catalog), d.gateway, d.store, now());
+    const report = await syncCatalog(await desiredCatalog(d.catalog, { includeInternal: d.config.mode === "test" }), d.gateway, d.store, now());
     opsLog("info", "Stripe", "catalog_sync", { linked: report.linked.length, missing: report.missing.length, conflicts: report.conflicts.length, actor: who(req) });
     if (report.conflicts.length) recordFailure("stripe.catalog_conflict");
     res.status(report.conflicts.length ? 409 : 200).json(report);

@@ -34,7 +34,7 @@ async function main() {
   const store = new MemoryWebStore();
   const svc = new WebAdminService({ store, refs: { moduleIds: BUILTIN_MODULES.map((m) => m.id), planIds: () => null }, now: () => FIXED_NOW });
   await seedElephantSource(svc, store);
-  const site = await svc.site("published");
+  const site = await svc.publicSite("published");
   const doc = {
     _generated: `GENERADO desde nayade_experiences_platform (server/catalog/elephantSourceV1.ts, ${CATALOG_VERSION}). No editar a mano: regenerar con scripts/catalog/export-snapshot.ts.`,
     catalogVersion: CATALOG_VERSION,

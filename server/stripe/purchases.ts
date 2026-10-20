@@ -103,6 +103,8 @@ export interface PurchaseResult {
 export interface PurchaseDeps {
   /** Interruptor de la compra en línea (CP_COMMERCE_PURCHASES_ENABLED). Apagado: 503 sin tocar nada. */
   enabled: boolean;
+  /** Empresas de prueba que pueden comprar productos internos (`catalog.internalOnly`). Vacío: ninguna. */
+  internalTenants?: ReadonlySet<string>;
   /** Vía asíncrona (SEPA). Desactivada: con un método asíncrono no se compra en línea. */
   asyncPayments?: boolean;
   mode: StripeMode;
@@ -136,6 +138,11 @@ export class ModulePurchaseService {
 
   get status() {
     return { enabled: this.d.enabled, asyncPayments: !!this.d.asyncPayments, billingMode: this.d.billingMode, mode: this.d.mode };
+  }
+
+  /** ¿Puede esta empresa comprar productos internos de pruebas? Solo las de la lista explícita. */
+  private internalAllowed(tenantId: string | null) {
+    return !!tenantId && !!this.d.internalTenants?.has(tenantId);
   }
 
   private assertEnabled() {
@@ -183,7 +190,7 @@ export class ModulePurchaseService {
         if (live) throw new PurchaseError("invalid_state", `«${key}» tiene la baja programada y sigue activo hasta el fin del periodo: se podrá volver a contratar después`);
       }
       const p = await this.d.catalog.product(key);
-      if (!p || p.commercialStatus !== "available" || !PURCHASABLE_FAMILIES.has(p.family) || p.addonFor) throw new PurchaseError("unavailable", `«${key}» no está disponible para compra en línea`);
+      if (!p || p.commercialStatus !== "available" || !PURCHASABLE_FAMILIES.has(p.family) || p.addonFor || (p.internalOnly && !this.internalAllowed(current.tenantId))) throw new PurchaseError("unavailable", `«${key}» no está disponible para compra en línea`);
     }
     const r = current.request as CommercialOrder["request"] & { users?: number; sites?: number; storageGb?: number };
     const request: CommercialOrder["request"] & { users?: number; sites?: number; storageGb?: number } = { ...structuredClone(r), items: [...r.items, ...add.map((key) => ({ key }))] };
@@ -208,7 +215,7 @@ export class ModulePurchaseService {
       const isAddon = l.family === "addon";
       if (!isAddon && !add.includes(l.key)) continue;
       const product = offer.find((p) => p.key === l.key);
-      if (!product || product.commercialStatus !== "available") throw new PurchaseError("unavailable", `«${l.name}» no está disponible para compra en línea`);
+      if (!product || product.commercialStatus !== "available" || (product.internalOnly && !this.internalAllowed(current.tenantId))) throw new PurchaseError("unavailable", `«${l.name}» no está disponible para compra en línea`);
       const price = product.prices.find((p) => p.kind === kind && p.status === "approved" && p.currency.toUpperCase() === "EUR");
       if (!price) throw new PurchaseError("unavailable", `«${l.name}» no tiene precio ${request.interval === "year" ? "anual" : "mensual"} aprobado`);
       const link = await this.d.stripeStore.priceForWebPrice(price.id);

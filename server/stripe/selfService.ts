@@ -129,7 +129,7 @@ export class SelfServiceCheckout {
     if (!t.ok) throw new SelfServiceError(400, t.reason === "too_fast" ? "too_fast" : "invalid_ticket", "Vuelve a cargar el formulario e inténtalo de nuevo");
     if (b.consents.termsVersion !== this.d.termsVersion) throw new SelfServiceError(409, "terms_outdated", "Las condiciones han cambiado: revísalas y acéptalas de nuevo");
     const product = await this.d.catalog.product(b.plan);
-    if (!product || product.commercialStatus !== "available") throw new SelfServiceError(409, "plan_not_self_service", "Este plan todavía no se contrata en línea: solicita la contratación y te contactaremos");
+    if (!product || product.commercialStatus !== "available" || product.internalOnly) throw new SelfServiceError(409, "plan_not_self_service", "Este plan todavía no se contrata en línea: solicita la contratación y te contactaremos");
 
     const key = orderKeyOf(b.idempotencyKey);
     // Repetición de la MISMA petición: el mismo pedido y la misma sesión de pago (sin otra empresa)
