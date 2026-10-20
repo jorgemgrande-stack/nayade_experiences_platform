@@ -71,3 +71,12 @@ describe("productos internos en el catálogo web", () => {
     expect(JSON.stringify(await clean.publicSite("published"))).not.toContain("internalOnly");
   });
 });
+
+describe("empresas de prueba autorizadas a comprar productos internos", () => {
+  it("lista vacía por defecto; ids válidos; un id mal formado no arranca", async () => {
+    const { internalTenantsFromEnv } = await import("./stripe/purchases");
+    expect(internalTenantsFromEnv({}).size).toBe(0);
+    expect(Array.from(internalTenantsFromEnv({ CP_COMMERCE_INTERNAL_TENANTS: " t1-empresa-demo-elephant-a , qa-fase3 " }))).toEqual(["t1-empresa-demo-elephant-a", "qa-fase3"]);
+    expect(() => internalTenantsFromEnv({ CP_COMMERCE_INTERNAL_TENANTS: "t1,*" })).toThrow(/no válidos/);
+  });
+});

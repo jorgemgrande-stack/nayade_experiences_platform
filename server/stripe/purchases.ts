@@ -126,6 +126,17 @@ export interface PurchaseDeps {
   now?: () => number;
 }
 
+/**
+ * Empresas de prueba que pueden comprar productos internos (`CP_COMMERCE_INTERNAL_TENANTS`, ids separados por comas).
+ * Vacío o sin definir: ninguna. Un id con forma no válida impide arrancar (mejor que abrir la compra a quien no es).
+ */
+export function internalTenantsFromEnv(env: NodeJS.ProcessEnv): ReadonlySet<string> {
+  const ids = (env.CP_COMMERCE_INTERNAL_TENANTS ?? "").split(",").map((x) => x.trim()).filter(Boolean);
+  const bad = ids.filter((x) => !/^[a-z0-9][a-z0-9-]{1,62}$/.test(x));
+  if (bad.length) throw new Error("CP_COMMERCE_INTERNAL_TENANTS contiene ids de empresa no válidos");
+  return new Set(ids);
+}
+
 const KEY_RE = /^[A-Za-z0-9_-]{16,64}$/;
 const METRICS = { users: "users", sites: "sites", storageGb: "storage_gb" } as const;
 const HOUR = 3600_000;
