@@ -44,12 +44,12 @@ CP_CONSUMER_WITHDRAWAL=pending          (B2C cerrado hasta resolver la matriz, �
 CP_TERMS_VERSION=<versión publicada>   CP_TERMS_URL=https://www.bigelephant.es/legal/condiciones
 CP_PRIVACY_VERSION=<versión publicada> CP_PRIVACY_URL=https://www.bigelephant.es/legal/privacidad
 ```
-**B2C:** se abre añadiendo `consumer:es_mainland` y `consumer:eu` con sus países y tipos (`CP_STRIPE_CONSUMER_RATES`), `CP_CONSUMER_WITHDRAWAL=immediate_execution_ack` y `CP_PRECONTRACT_VERSION`. Requiere **antes** la función de desistimiento (Directiva 2023/2673), que no existe todavía.
+**B2C:** se abre añadiendo `consumer:es_mainland` y `consumer:eu` con sus países y tipos (`CP_STRIPE_CONSUMER_RATES`), `CP_CONSUMER_WITHDRAWAL=immediate_execution_ack` y `CP_PRECONTRACT_VERSION`. La **función de desistimiento** (Directiva 2023/2673) llega con el PR #189: botón en la cuenta, justificante, registro y gestión, sin reembolsos automáticos (ver `DESISTIMIENTO.md`). Para activarla hace falta la CRM 0022 y el ámbito `commerce:withdrawal` en el token del Core.
 
 **Garantías del control de elegibilidad (PR #187):**
 - un comprador no habilitado se rechaza **antes de crear** empresa, pedido o Customer;
 - en live, el domicilio comprobado se fija en Stripe y Checkout no deja cambiarlo, así que el impuesto se calcula sobre él;
-- NIF, NIE, CIF y NIF-IVA se comprueban por su forma, pero **no en VIES** (mejora propuesta para la inversión del sujeto pasivo);
+- NIF, NIE, CIF y NIF-IVA se comprueban por su forma. La inversión del sujeto pasivo exige además el NIF-IVA **verificado en VIES** (PR #188): con número de consulta, registro (CRM 0021) y revalidación en cada renovación. VIES no disponible bloquea el cobro;
 - la alerta `invoice_tax_mismatch` sigue contrastando cada factura con el impuesto esperado.
 
 ## 3. Stripe Live: lo que se puede hacer hoy en el Dashboard (sin Railway)
@@ -150,7 +150,7 @@ CP_PRIVACY_VERSION=<versión publicada> CP_PRIVACY_URL=https://www.bigelephant.e
 2. **Con autorización:**
    - migraciones del registro, 0012 y 0013;
    - `GRANT INSERT, UPDATE ON es_registry.tenant_usage TO 'es_core'@'%'`;
-   - migraciones del CRM, de la 0014 a la 0020 (la 0020 llega con el PR #187: domicilio de facturación).
+   - migraciones del CRM, de la 0014 a la 0022: la 0020 (domicilio de facturación, PR #187), la 0021 (comprobaciones VIES, PR #188) y la 0022 (desistimientos, PR #189).
 3. Despliegue de `8239625` (o posterior con #185) en `backup-job`, `restore-drill`, `controlplane`, `core`, `crm`, `web` y `core-gateway`, comprobando cada arranque.
 4. Traslado de dominios (§5) y variables.
 5. Publicar los textos legales aprobados y fijar `CP_TERMS_*` y `CP_PRIVACY_*`.
