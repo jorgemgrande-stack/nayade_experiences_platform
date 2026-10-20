@@ -1,4 +1,4 @@
-# Borradores legales para el lanzamiento B2B de Elephant Source
+# Borradores legales para el lanzamiento B2B y B2C internacional de Elephant Source
 
 > **BORRADOR. NO PUBLICAR.** Textos preparados el 20/10/2026 para revisión jurídica. Describen lo que hace hoy la plataforma (commit `8239625`). Las marcas **[REVISIÓN JURÍDICA]** y **[DECISIÓN]** señalan lo que requiere validación de un abogado o del propietario.
 >
@@ -9,11 +9,13 @@
 
 ---
 
+> **Actualización del 20/10/2026 (alcance B2B y B2C internacional).** Las condiciones de la parte A valen para empresas y profesionales de cualquier país habilitado. Los particulares tendrán **condiciones propias** (parte D), porque la normativa de consumo no admite varias cláusulas de la A (limitación de responsabilidad, fuero, modificación unilateral). La matriz fiscal está en `MATRIZ_FISCAL_INTERNACIONAL.md`.
+
 ## A. Condiciones generales de contratación de Elephant Source (empresas y profesionales)
 
 ### 1. Objeto y partes
 1.1. Estas condiciones regulan el acceso y el uso de **Elephant Source** («el Servicio»), un software de gestión en la nube que presta IRON ELEPHANT CONSULTING, S.L. («Big Elephant») bajo la marca Big Elephant / Elephant Source.
-1.2. El Servicio se contrata **exclusivamente por empresas y profesionales** («el Cliente») que actúan en el ámbito de su actividad empresarial o profesional y tienen domicilio fiscal en la **Península o las Islas Baleares**. No se contrata con consumidores. Al contratar, el Cliente declara que cumple estas condiciones y facilita un NIF válido. **[REVISIÓN JURÍDICA: exclusión de consumidores y efectos de una declaración falsa]**
+1.2. Estas condiciones se aplican a quien contrata como **empresa o profesional** («el Cliente»), en el ámbito de su actividad, con domicilio fiscal en un país donde Big Elephant tenga habilitada la contratación. Al contratar, el Cliente declara que actúa como empresa o profesional y facilita un identificador fiscal válido de su país (NIF o NIF-IVA). Los particulares contratan con las condiciones de la parte D. **[REVISIÓN JURÍDICA: efectos de una declaración falsa de condición de empresa]**
 1.3. Contratar requiere aceptar expresamente estas condiciones, la Política de privacidad y el Contrato de encargo del tratamiento (Anexo B). La versión aceptada y su fecha quedan registradas.
 
 ### 2. Planes y precios
@@ -24,7 +26,7 @@
 | Essential | 29 € | 279 € |
 | Business | 79 € | 759 € |
 
-Los precios son por empresa y **no incluyen el IVA** (21 %), que se añade en la factura. Los límites de cada plan (usuarios, sedes, almacenamiento y funciones) figuran en la web en el momento de contratar y forman parte del contrato.
+Los precios son por empresa y **no incluyen impuestos**. El impuesto aplicable depende del país y del régimen del Cliente: IVA español en España peninsular y Baleares; inversión del sujeto pasivo para empresas de otros Estados de la UE con NIF-IVA válido; y no sujeción para empresas de Canarias, Ceuta, Melilla y países fuera de la UE, sin perjuicio de los impuestos que el Cliente deba autoliquidar en su país. **[REVISIÓN DEL ASESOR FISCAL]** Los límites de cada plan (usuarios, sedes, almacenamiento y funciones) figuran en la web en el momento de contratar y forman parte del contrato.
 2.2. Los módulos adicionales no se comercializan en este momento. Su contratación futura se regirá por sus propias condiciones particulares.
 2.3. Big Elephant puede cambiar los precios avisando por escrito con **30 días** de antelación. El cambio se aplica desde la siguiente renovación, y el Cliente puede cancelar antes de que entre en vigor. **[REVISIÓN JURÍDICA]**
 
@@ -88,7 +90,10 @@ Cada parte guarda reserva de la información confidencial de la otra durante el 
 Big Elephant puede modificar estas condiciones avisando con 30 días de antelación. Si el Cliente no está de acuerdo, puede cancelar antes de que entren en vigor. Los cambios rigen desde la siguiente renovación.
 
 ### 13. Ley aplicable y jurisdicción
-Ley española. Para cualquier controversia, las partes se someten a los Juzgados y Tribunales de **Madrid capital**. **[REVISIÓN JURÍDICA]**
+Ley española. Para cualquier controversia, las partes se someten a los Juzgados y Tribunales de **Madrid capital**. **[REVISIÓN JURÍDICA: validez del fuero y de la ley elegida frente a empresas de otros países; posible arbitraje internacional]**
+
+### 14. Idioma
+El contrato se celebra en español. Una traducción, si se ofrece, es informativa. **[DECISIÓN: versión en inglés para clientes internacionales]**
 
 ---
 
@@ -140,3 +145,50 @@ Ley española. Para cualquier controversia, las partes se someten a los Juzgados
 - El CRM solo admite 4 claves legales (`server/web/service.ts`). La web lee además `legal-aviso-legal`, `legal-contratacion` y `legal-cancelacion`, y el pie del catálogo sembrado no las enlaza.
 - Para la apertura basta con publicarlas desde el repositorio de la web.
 - Después, fijar `CP_TERMS_VERSION`, `CP_PRIVACY_VERSION`, `CP_TERMS_URL` y `CP_PRIVACY_URL` (ver `LANZAMIENTO_COMERCIAL.md`).
+
+---
+
+## D. Condiciones para particulares (consumidores): borrador de los puntos que cambian
+
+> **Requiere aprobación jurídica completa antes de abrir B2C.** Se aplican además las normas imperativas de consumo del país de residencia del consumidor (Reglamento Roma I, art. 6), que prevalecen sobre estas condiciones.
+
+**D.1. Información precontractual** (TRLGDCU art. 97; se publica como documento propio con su versión, `CP_PRECONTRACT_VERSION`). Antes de pagar, el particular ve:
+- identidad y datos de contacto de Big Elephant;
+- características esenciales del plan;
+- **precio final con impuestos** del país del particular;
+- periodicidad y **renovación automática**;
+- duración y forma de cancelar;
+- **derecho de desistimiento** y su formulario;
+- las garantías, el idioma y las vías de reclamación.
+
+**D.2. Precio.** Los precios mostrados a particulares **incluyen los impuestos** aplicables en su país. El cálculo usa el tipo decidido para cada país (`CP_STRIPE_CONSUMER_RATES`). En la página de pago, Stripe muestra el total exacto antes de confirmar.
+
+**D.3. Desistimiento** (art. 102-108):
+- El particular puede desistir **en 14 días naturales** desde la contratación, sin justificarlo.
+- Si pide expresamente que el servicio empiece de inmediato (casilla propia), y desiste después, **pagará la parte proporcional del servicio prestado** hasta que comunique el desistimiento.
+- Se reembolsa el resto en 14 días, por el mismo medio de pago.
+- **Función de desistimiento:** el particular podrá desistir desde su cuenta con un botón claramente identificado (Directiva (UE) 2023/2673, aplicable desde el 19/06/2026). **[PENDIENTE DE DESARROLLO: no existe todavía]**
+
+**D.4. Renovación y cancelación.** La suscripción se renueva automáticamente. Antes de cada renovación anual se avisará con antelación **[DECISIÓN: plazo; aviso que no existe todavía]**. El particular cancela en cualquier momento desde el portal de cliente, con efecto al final del periodo pagado y sin penalización.
+
+**D.5. Lo que NO se aplica a particulares** de la parte A:
+- la limitación de responsabilidad de A.10, en lo que contradiga la normativa de consumo;
+- el fuero de Madrid de A.13: el consumidor puede demandar en su domicilio;
+- la modificación unilateral de A.12, salvo con causa válida, preaviso y derecho a resolver sin coste.
+
+**D.6. Reclamaciones.** Hojas de reclamaciones, servicio de atención al cliente (soporte@bigelephant.es) **[REVISIÓN JURÍDICA: adhesión a un sistema de resolución alternativa de litigios]**.
+
+**D.7. Facturación.** Factura (o factura simplificada, según el asesor) disponible en el portal de cliente. **[REVISIÓN DEL ASESOR FISCAL: DF-2 y OSS]**
+
+**D.8. Datos.** Big Elephant es **responsable** del tratamiento de los datos del particular como cliente: facturación, cuenta y soporte. Para los datos que el particular introduzca en la aplicación, la relación se define según su uso **[REVISIÓN JURÍDICA: uso doméstico frente a profesional]**.
+
+## E. Puntos que requieren aprobación (resumen)
+
+| Punto | Quién |
+|---|---|
+| Matriz fiscal por jurisdicción, menciones en factura por régimen, OSS y registros fuera de la UE | Asesor fiscal |
+| Condiciones B2C (parte D), información precontractual, desistimiento con ejecución inmediata y función de desistimiento | Jurídico |
+| Ley aplicable, fuero e idioma frente a clientes internacionales (A.13 y A.14) | Jurídico |
+| Contrato de encargo (B) con clientes de fuera de la UE (transferencias) | Jurídico |
+| Datos del Registro Mercantil | Propietario |
+

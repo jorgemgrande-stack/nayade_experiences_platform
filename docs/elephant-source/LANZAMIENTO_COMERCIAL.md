@@ -1,7 +1,8 @@
 # Lanzamiento comercial de Elephant Source: guía de apertura
 
 **Estado (20/10/2026):** preparado sin desplegar, porque Railway tiene pausados los despliegues. Ningún cambio de este documento está aplicado salvo que se indique.
-**Alcance inicial:** venta **B2B** (empresas y autónomos) con domicilio fiscal en la **Península o Baleares**. Solo Essential y Business; los módulos siguen fuera de la venta.
+**Alcance objetivo (decisión del propietario, 20/10/2026):** **B2B y B2C** en la Península y Baleares, en Canarias, Ceuta y Melilla, en la UE, en el Reino Unido y en otros países. Solo Essential y Business; los módulos siguen fuera de la venta.
+**Cómo se abre:** por escenario (tipo de cliente × territorio) y por país, con el control de elegibilidad del PR #187. Lo que no esté validado por el asesor fiscal y, en B2C, por el jurídico, sigue **bloqueado para el cobro**. Ver `MATRIZ_FISCAL_INTERNACIONAL.md`.
 
 ## 1. Estado verificado (lectura)
 
@@ -17,34 +18,39 @@
 | Railway `live` | Código anterior al 19/10. CRM en la 0013, registro en la 0011, 0 empresas. Dominios reales en `production` | Inventario de `rw-live` |
 | Correo | Dominio autenticado en Brevo (DKIM `brevo1` y `brevo2`, `brevo-code`), DMARC `p=none`, SPF `v=spf1 a mx ~all`. En `live`: `MAIL_MODE=off` y sin proveedor | DNS público y variables |
 
-## 2. Fiscalidad: configuración propuesta para B2B en la Península y Baleares
+## 2. Fiscalidad: apertura por escenarios (B2B y B2C internacional)
+
+La matriz completa por jurisdicción está en **`MATRIZ_FISCAL_INTERNACIONAL.md`**: impuesto, inversión del sujeto pasivo, OSS, no sujeción, registros, umbrales y estado propuesto de cada fila.
 
 | Decisión | Propuesta | Quién |
 |---|---|---|
 | DF-1 Emisor | IRON ELEPHANT CONSULTING, S.L., B26987875 (resuelta) | — |
-| DF-3 Cálculo del IVA | Stripe Tax con **registro de España** (IVA general del 21 %) | Propietario, en Stripe |
-| DF-5 ¿Particulares? | **No.** Se mantiene `CP_CONSUMER_WITHDRAWAL=pending`, así que no se contrata con particulares | Propietario |
-| DF-6 Mercados | Solo España, en el escenario `business:es_mainland` | Propietario |
-| DF-7 Canarias, Ceuta y Melilla | Excluidas (fuera de los escenarios aprobados) | Propietario |
-| DF-8 Precio publicado | Sin IVA («IVA no incluido» visible en la web) | Propietario |
-| **DF-2 Emisor de la factura legal** | Stripe Invoicing, **si el asesor confirma** su encaje con el reglamento de facturación y VERI\*FACTU. Si no, un programa certificado que reciba los cobros | **Asesor fiscal** |
-| DF-4 Series | Una serie para las suscripciones, `ES-AAAA-`, y rectificativas de Stripe (notas de crédito) en su propia serie | **Asesor fiscal** |
-| Rectificativas | Hoy un reembolso deja una rectificativa `pending` en `fiscal_documents` y **no** crea nota de crédito en Stripe. Con Stripe Invoicing, hay que emitir la nota de crédito desde el Dashboard al reembolsar | Asesor y operación |
+| DF-3 Cálculo del impuesto | Stripe Tax con **registro de España**, más **OSS** si se escoge para B2C de la UE. Stripe no da de alta registros ni presenta declaraciones | Asesor y propietario |
+| DF-5 ¿Particulares? | **Sí** (decisión del propietario), con desistimiento, precontractual, precio final y función de desistimiento resueltos (matriz, §3) | Jurídico |
+| DF-6 Mercados | España, UE y fuera de la UE **por lista de países** validados | Asesor |
+| DF-7 Canarias, Ceuta y Melilla | B2B: no sujeto a IVA (con menciones). B2C: bloqueado hasta analizar el IGIC y el IPSI | Asesor |
+| DF-8 Precio publicado | Empresas: sin IVA. Particulares: **precio final** con el tipo del país (la consulta de elegibilidad lo calcula) | Propietario |
+| **DF-2 Emisor de la factura legal** | Stripe Invoicing, **si el asesor confirma** su encaje con el reglamento de facturación, VERI\*FACTU, OSS y las menciones por escenario. Si no, un programa certificado | **Asesor fiscal** |
+| DF-4 Series | Por decidir: una serie, o series por régimen (interior, intracomunitaria, OSS, exportación) más rectificativas | **Asesor fiscal** |
+| Rectificativas | Hoy un reembolso deja una rectificativa `pending` en `fiscal_documents` y **no** crea nota de crédito en Stripe | Asesor y operación |
 
-**Variables de `controlplane` en `live`** (no aplicadas; se fijan el día de apertura):
+**Primera apertura propuesta** (lo que es claro, después del visto bueno del asesor; variables de `controlplane` en `live`, no aplicadas):
 ```
 CP_STRIPE_TAX_POLICY=stripe_tax_exclusive
-CP_STRIPE_FISCAL_SCENARIOS=business:es_mainland
-CP_STRIPE_TAX_EXPECTATIONS=business:es_mainland=taxed
-CP_CONSUMER_WITHDRAWAL=pending
+CP_STRIPE_FISCAL_SCENARIOS=business:es_mainland,business:es_special,business:eu,business:non_eu
+CP_STRIPE_TAX_EXPECTATIONS=business:es_mainland=taxed,business:es_special=not_subject,business:eu=reverse_charge,business:non_eu=not_subject
+CP_STRIPE_SCENARIO_COUNTRIES=business:non_eu=GB|CH|US|CA|AU|NO|AD
+CP_CONSUMER_WITHDRAWAL=pending          (B2C cerrado hasta resolver la matriz, §3)
 CP_TERMS_VERSION=<versión publicada>   CP_TERMS_URL=https://www.bigelephant.es/legal/condiciones
 CP_PRIVACY_VERSION=<versión publicada> CP_PRIVACY_URL=https://www.bigelephant.es/legal/privacidad
 ```
+**B2C:** se abre añadiendo `consumer:es_mainland` y `consumer:eu` con sus países y tipos (`CP_STRIPE_CONSUMER_RATES`), `CP_CONSUMER_WITHDRAWAL=immediate_execution_ack` y `CP_PRECONTRACT_VERSION`. Requiere **antes** la función de desistimiento (Directiva 2023/2673), que no existe todavía.
 
-**Riesgos conocidos del código para este alcance (aceptables en la beta, con vigilancia):**
-- **País en Checkout.** Stripe no deja restringir el país de facturación. El perfil fiscal previo exige un código postal de la Península o Baleares, pero en la página de Stripe el cliente puede poner otra dirección. Si cobra a otro territorio, el sistema genera la alerta `invoice_tax_mismatch` después del cobro, no lo bloquea, y el operador decide el reembolso.
-- **NIF.** Checkout lo pide con `required: if_supported` y el NIF del perfil no se copia al Customer. No hay comprobación en VIES (tampoco hace falta para España).
-- **Autoservicio.** El filtro de escenario se aplica después de crear la empresa y el pedido, así que un comprador fuera de alcance deja un pedido sin cobrar, que hay que revisar.
+**Garantías del control de elegibilidad (PR #187):**
+- un comprador no habilitado se rechaza **antes de crear** empresa, pedido o Customer;
+- en live, el domicilio comprobado se fija en Stripe y Checkout no deja cambiarlo, así que el impuesto se calcula sobre él;
+- NIF, NIE, CIF y NIF-IVA se comprueban por su forma, pero **no en VIES** (mejora propuesta para la inversión del sujeto pasivo);
+- la alerta `invoice_tax_mismatch` sigue contrastando cada factura con el impuesto esperado.
 
 ## 3. Stripe Live: lo que se puede hacer hoy en el Dashboard (sin Railway)
 
