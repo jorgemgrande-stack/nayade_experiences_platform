@@ -19,7 +19,7 @@ import type { MailCategory, MailContent } from "../mail/types";
 import type { CommercialEventType } from "../commercialEvents/types";
 
 export type TemplateStatus = "active" | "legacy" | "contract";
-export type Recipient = "billing_contact" | "trial_requester" | "ticket_requester" | "account_user";
+export type Recipient = "billing_contact" | "trial_requester" | "ticket_requester" | "account_user" | "consumer" | "ops_team";
 export type Vars = Record<string, string | number | boolean | null>;
 
 export interface TemplateSpec {
@@ -39,6 +39,11 @@ export interface TemplateSpec {
   suppressWhen: string;
   /** Patrón de la clave de idempotencia (una por plantilla, versión y evento). */
   idempotency: string;
+  /**
+   * Quién envía el aviso. `stripe`: lo envía Stripe con su configuración de correos al cliente y Elephant NO lo
+   * duplica (se documenta aquí para que el catálogo sea completo). Por defecto, Elephant.
+   */
+  sentBy?: "elephant" | "stripe";
   render?: (v: Vars, o: { supportEmail: string | null }) => MailContent;
 }
 
@@ -61,12 +66,19 @@ const contract = (id: string, group: TemplateSpec["group"], category: MailCatego
   id, version: 1, group, status: "contract", audience: "transactional", trigger, recipient, category, variables, sendWhen, suppressWhen: "Aún sin disparador: no se envía", idempotency: EVENT_KEY,
 });
 
+/** Aviso que envía Stripe (configuración de correos al cliente en el Dashboard): Elephant no lo duplica. */
+const stripe = (id: string, group: TemplateSpec["group"], category: MailCategory, trigger: string, sendWhen: string): TemplateSpec => ({
+  ...legacy(id, group, category, trigger, "billing_contact", sendWhen, "Stripe (sin bandeja de Elephant)"),
+  sentBy: "stripe",
+});
+
 export const TEMPLATE_CATALOG: readonly TemplateSpec[] = [
   // ── Pruebas gratuitas ──
   legacy("trial.verification", "trial", "email_verification", "Alta de la prueba (TrialNotifier.verification)", "trial_requester", "Al solicitar la prueba o reenviar la verificación", "trial:<id>:verification:<hash del token>"),
   legacy("trial.started", "trial", "trial_activated", "Prueba activada (TrialNotifier.welcome): bienvenida con fecha de fin", "trial_requester", "Al aprovisionar la plataforma de la prueba", "trial-welcome:<tenant>:<hash>"),
   legacy("trial.reminder", "trial", "trial_expiry", "Motor temporal (D-16): 7, 3 y 1 días antes del fin", "trial_requester", "En cada umbral; con activación tardía solo el más cercano", "trial:<id>:expiry:<fin>:<días>"),
-  contract("trial.ended", "trial", "trial_expiry", "trial.expired", "trial_requester", ["endsAt", "pricingUrl"], "Al vencer la prueba sin convertir (sin conversión automática)"),
+  // El fin de la prueba lo cubre el aviso de vencimiento con 0 días (TrialNotifier.expiryNotice): un único correo
+  legacy("trial.ended", "trial", "trial_expiry", "Motor temporal: aviso de vencimiento con 0 días (TrialNotifier.expiryNotice, plantilla trialExpiry)", "trial_requester", "Al vencer la prueba sin convertir (solo lectura; sin conversión automática)", "trial:<id>:expiry:<fin>:0"),
   // ── Suscripción ──
   legacy("subscription.signup_received", "subscription", "signup_received", "Pedido firmado en la web (orderNotifier: sign web-terms)", "billing_contact", "Al aceptar las condiciones en la contratación en línea", "order:<id>:sign:<versión>"),
   legacy("subscription.contract_confirmed", "subscription", "contract_confirmed", "Pedido activado (orderNotifier: activate)", "billing_contact", "Al activar el pedido", "order:<id>:activate:<versión>"),
@@ -75,8 +87,9 @@ export const TEMPLATE_CATALOG: readonly TemplateSpec[] = [
   legacy("subscription.payment_failed", "subscription", "payment_failed", "Impago (orderNotifier: payment_failed); día 0 de la gracia (D-15)", "billing_contact", "Al entrar en gracia", "order:<id>:payment_failed:<versión>"),
   legacy("subscription.recovered", "subscription", "subscription_reactivated", "Cobro recuperado o baja deshecha (orderNotifier)", "billing_contact", "Al recuperar el cobro o deshacer la baja", "order:<id>:<acción>:<versión>"),
   legacy("subscription.cancellation", "subscription", "cancellation", "Baja programada (orderNotifier: cancel)", "billing_contact", "Al programar la baja", "order:<id>:cancel:<versión>"),
-  contract("subscription.payment_action_required", "subscription", "payment_failed", "invoice.payment_action_required (Stripe): falta autenticar el cobro (3DS)", "billing_contact", ["reference", "paymentUrl"], "Al quedar una factura pendiente de autenticación"),
-  contract("subscription.dunning_reminder", "subscription", "payment_failed", "Motor temporal: avisos de impago días 3 y 6 de la gracia (D-15)", "billing_contact", ["reference", "graceEndsAt", "host"], "En cada umbral mientras siga el impago"),
+  stripe("subscription.payment_action_required", "subscription", "payment_failed", "invoice.payment_action_required: Stripe envía el enlace para autenticar el pago (3DS)", "Settings → Customer emails → «Send a reminder email when a payment requires 3D Secure»"),
+  stripe("subscription.dunning_reminder", "subscription", "payment_failed", "Reintentos de Stripe (Smart Retries): Stripe avisa de cada intento fallido; Elephant solo avisa el día 0", "Settings → Customer emails → «Send emails when card payments fail» y reintentos de Billing"),
+  stripe("billing.invoice_document", "billing", "invoice_available", "Factura y recibo de Stripe (PDF): los envía Stripe; Elephant solo avisa de que está disponible", "Settings → Customer emails → «Successful payments» y «Finalized invoices»"),
   {
     id: "subscription.suspended",
     version: 1,
@@ -267,12 +280,20 @@ export const TEMPLATE_CATALOG: readonly TemplateSpec[] = [
     render: (v, o) => layout(brand(o.supportEmail), "Incidencia en el cobro de tu suscripción", ["El cobro de tu suscripción se ha revertido y el acceso queda en pausa hasta regularizarlo. Tus datos se conservan."], panel(v.host)),
   },
   // ── Soporte (contratos; el CRM de soporte no se reestructura) ──
-  contract("support.ticket_received", "support", "operational", "Ticket creado (support_ticket_events: created)", "ticket_requester", ["ticketRef", "subject"], "Al crear el ticket"),
-  contract("support.ticket_replied", "support", "operational", "Respuesta del equipo (support_ticket_events: comment público)", "ticket_requester", ["ticketRef"], "Por cada respuesta visible para el cliente"),
-  contract("support.ticket_resolved", "support", "operational", "Ticket resuelto (status → resolved)", "ticket_requester", ["ticketRef"], "Al resolver"),
-  contract("support.ticket_reopened", "support", "operational", "Ticket reabierto (status → open desde resolved)", "ticket_requester", ["ticketRef"], "Al reabrir"),
+  legacy("support.ticket_received", "support", "operational", "Ticket creado (TicketService → PlatformMailer.ticketNotifier)", "ticket_requester", "Al crear el ticket, si quien lo abre es un correo", "ticket:<id>:received:<n>"),
+  legacy("support.ticket_replied", "support", "operational", "Respuesta pública del equipo (TicketService.comment, nunca las notas internas)", "ticket_requester", "Por cada respuesta visible de alguien distinto del solicitante", "ticket:<id>:replied:<n>"),
+  legacy("support.ticket_resolved", "support", "operational", "Ticket resuelto (TicketService.setStatus → resolved)", "ticket_requester", "Al resolver", "ticket:<id>:resolved:<n>"),
+  legacy("support.ticket_reopened", "support", "operational", "Ticket reabierto (TicketService.setStatus → open desde resolved)", "ticket_requester", "Al reabrir", "ticket:<id>:reopened:<n>"),
+  // ── Consumidores: desistimiento (server/withdrawals) ──
+  legacy("consumer.withdrawal_receipt", "support", "withdrawal_receipt", "Solicitud de desistimiento (WithdrawalService.request → withdrawalNotifier.receipt)", "consumer", "Al registrar la solicitud: acuse con referencia, fecha y hora (soporte duradero)", "withdrawal:<referencia>:receipt"),
+  legacy("consumer.withdrawal_resolution", "support", "withdrawal_resolution", "Resolución del desistimiento (WithdrawalService.decide: accept, reject o complete)", "consumer", "Al aceptar, rechazar (con motivo) o completar", "withdrawal:<referencia>:<estado>"),
+  // ── Equipo (avisos INTERNOS a CP_ALERT_EMAIL; sin datos sensibles ni enlaces con token) ──
+  legacy("ops.incident", "support", "operational", "Incidencia operativa abierta, reabierta o escalada (IncidentService → incidentNotifier; incluye fallos de cobro rate:stripe.*)", "ops_team", "Al abrir, reabrir o escalar (no en cada repetición); también por webhook", "ops:incident:<id>:<evento>:<n>:<destinatario>"),
+  legacy("ops.new_customer", "support", "operational", "Pedido activado de alta o conversión (orderNotifier: activate)", "ops_team", "Al activar un cliente nuevo (un cambio de plan no)", "ops:customer:<pedido>:<destinatario>"),
+  legacy("ops.withdrawal_requested", "support", "operational", "Solicitud de desistimiento registrada (withdrawalNotifier.receipt)", "ops_team", "Al registrar cada solicitud", "ops:withdrawal:<referencia>:<destinatario>"),
+  legacy("ops.ticket_created", "support", "operational", "Ticket creado (ticketNotifier: received)", "ops_team", "Al crear cada ticket", "ops:ticket:<id>:created:<destinatario>"),
   // ── Seguridad (contratos; la autenticación no se modifica) ──
-  contract("security.password_changed", "security", "operational", "Contraseña cambiada", "account_user", ["at"], "Tras cada cambio (sin enlaces de recuperación en el aviso)"),
+  legacy("security.password_changed", "security", "security_notice", "Contraseña restablecida en el Core (POST /api/auth/reset-password → passwordChangedEmail)", "account_user", "Tras cada cambio (sin enlaces; sin copia global)", "bandeja de la empresa (una por cambio)"),
   contract("security.new_login", "security", "operational", "Inicio de sesión desde un dispositivo nuevo", "account_user", ["at", "approximateLocation"], "Al detectar un dispositivo nuevo"),
   contract("security.mfa_changed", "security", "operational", "Segundo factor activado o desactivado", "account_user", ["at", "enabled"], "Tras cada cambio"),
 ];

@@ -221,13 +221,26 @@ export class MysqlTicketStore implements TicketStore {
 
 // ── Servicio ──────────────────────────────────────────────────────────────────
 
+/**
+ * Avisos de un ticket (opcional): recibido, respuesta pública del equipo, resuelto o reabierto. `n` distingue
+ * avisos del mismo tipo (número de eventos del ticket) para la idempotencia. Un fallo del aviso nunca rompe la operación.
+ */
+export type TicketNotifier = (t: Ticket, kind: "received" | "replied" | "resolved" | "reopened", n: number) => Promise<void>;
+
 export class TicketService {
   constructor(
     private store: TicketStore,
     /** Comprueba que el tenant existe; un ticket nunca se crea para una empresa inexistente. */
     private tenantExists: (tenantId: string) => Promise<boolean>,
     private now: () => number = Date.now,
+    private notify?: TicketNotifier,
   ) {}
+
+  private async tell(t: Ticket, kind: Parameters<TicketNotifier>[1]) {
+    if (!this.notify) return;
+    const n = (await this.store.events(t.id).catch(() => [])).length;
+    await this.notify(t, kind, n).catch(() => undefined);
+  }
 
   async create(
     input: { tenantId: string; title: string; description: string; category?: string; priority?: TicketPriority; requester?: string | null },
@@ -253,6 +266,7 @@ export class TicketService {
       resolvedAt: null,
     });
     await this.event(ticket.id, actor, "created", null, ticket.priority, null, false);
+    await this.tell(ticket, "received");
     return ticket;
   }
 
@@ -297,6 +311,8 @@ export class TicketService {
       resolvedAt: status === "resolved" || status === "closed" ? (tk.resolvedAt ?? t) : null,
     });
     await this.event(id, actor, "status", tk.status, status, comment?.trim().slice(0, 5000) || null, false);
+    if (status === "resolved") await this.tell(upd, "resolved");
+    else if (status === "open" && (tk.status === "resolved" || tk.status === "closed")) await this.tell(upd, "reopened");
     return upd;
   }
 
@@ -307,6 +323,8 @@ export class TicketService {
     if (tk.status === "closed") throw new TicketError("invalid_transition", "El ticket está cerrado");
     await this.store.update(id, { updatedAt: this.now() });
     await this.event(id, actor, "comment", null, null, c.slice(0, 5000), opts.internal ?? false);
+    // Respuesta PÚBLICA de alguien distinto de quien lo abrió: aviso al solicitante (las notas internas, nunca)
+    if (!opts.internal && tk.requester && !actor.toLowerCase().includes(tk.requester.toLowerCase())) await this.tell(tk, "replied");
     return this.store.events(id);
   }
 

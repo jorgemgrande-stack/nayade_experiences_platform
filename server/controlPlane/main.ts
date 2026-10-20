@@ -73,7 +73,7 @@ import { MysqlBillingStore } from "../_core/billing/mysqlStore";
 import { SubscriptionService } from "../_core/billing/service";
 import { createPaymentProvider } from "../_core/billing/providers";
 import { RegistryTenantEffects } from "../_core/billing/effects";
-import { IncidentService, MysqlIncidentStore, webhookNotifier } from "../_core/ops/incidents";
+import { IncidentService, MysqlIncidentStore, webhookNotifier, type IncidentNotifier } from "../_core/ops/incidents";
 import { MysqlTicketStore, TicketService } from "../_core/support/tickets";
 import { runAlerts } from "../_core/ops/alerts";
 import { FailureAlerts, configureFailureAlerts } from "../_core/ops/failureAlerts";
@@ -152,10 +152,14 @@ async function main() {
       getKey: createRemoteJWKSet(new URL(process.env.CP_OIDC_JWKS_URL)),
     });
   }
-  const incidents = new IncidentService(
-    new MysqlIncidentStore(pool),
-    process.env.CP_ALERT_WEBHOOK ? webhookNotifier(process.env.CP_ALERT_WEBHOOK) : undefined,
-  );
+  // Avisos de incidencias: webhook (CP_ALERT_WEBHOOK) y, cuando el correo de plataforma está listo, correo al equipo
+  // (CP_ALERT_EMAIL). Uno que falle no impide los demás
+  const alertNotifiers: IncidentNotifier[] = process.env.CP_ALERT_WEBHOOK ? [webhookNotifier(process.env.CP_ALERT_WEBHOOK)] : [];
+  const incidents = new IncidentService(new MysqlIncidentStore(pool), {
+    notify: async (i, event) => {
+      for (const n of alertNotifiers) await n.notify(i, event).catch(() => undefined);
+    },
+  });
   // Alertas por repetición de fallos (altas, correo, contratación): incidencias deduplicadas `rate:*`
   configureFailureAlerts(new FailureAlerts({ incidents, rules: STRIPE_FAILURE_RULES }));
   // Inventario de copias (registro 0010): alimenta la alerta backup.stale y /cp/v1/backups
@@ -197,6 +201,7 @@ async function main() {
   // live solo con MAIL_LIVE_AUTHORIZED=1. Ver docs/runbooks/CORREO_BREVO.md.
   const platformMail = await platformMailFromEnv(crmPool, process.env);
   const mailPolicy = platformMail.policy;
+  if (platformMail.mailer?.opsRecipients.length) alertNotifiers.push(platformMail.mailer.incidentNotifier());
   // Registro de eventos comerciales (CRM 0015): pedidos y pagos, pruebas, suscripciones y cargos de Stripe
   // escriben sus hechos en la misma transacción que su cambio de estado. Entorno = modo comercial
   // (CP_STRIPE_MODE=live → live; si no, test). Sin la migración, o con filas del otro entorno, no se monta y
@@ -208,7 +213,7 @@ async function main() {
     if (!problem) commercialEvents = new MysqlCommercialEventLog(crmPool, commercialEnvironment);
     console.log(JSON.stringify({ ctx: "CommercialEvents", enabled: !!commercialEvents, environment: commercialEnvironment, ...(problem ? { reason: problem === "missing_table" ? "migration_0015_missing" : problem } : {}) }));
   }
-  console.log(JSON.stringify({ ctx: "Mail", outbox: !!platformMail.mailer, mode: mailPolicy.mode, provider: mailProviderFromEnv(process.env)?.name ?? null, sendingDomain: mailPolicy.sendingDomain, webhook: (process.env.BREVO_WEBHOOK_TOKEN ?? "").length >= 32, ...(mailPolicy.degradedReason ? { degradedReason: mailPolicy.degradedReason } : {}), ...(platformMail.reason ? { reason: platformMail.reason } : {}) }));
+  console.log(JSON.stringify({ ctx: "Mail", outbox: !!platformMail.mailer, mode: mailPolicy.mode, provider: mailProviderFromEnv(process.env)?.name ?? null, sendingDomain: mailPolicy.sendingDomain, opsRecipients: platformMail.mailer?.opsRecipients.length ?? 0, webhook: (process.env.BREVO_WEBHOOK_TOKEN ?? "").length >= 32, ...(mailPolicy.degradedReason ? { degradedReason: mailPolicy.degradedReason } : {}), ...(platformMail.reason ? { reason: platformMail.reason } : {}) }));
   if (platformMail.mailer) {
     const every = Math.max(30, Number(process.env.CP_MAIL_DRAIN_EVERY_SECONDS ?? 60) || 60) * 1000;
     const t = setInterval(() => void platformMail.mailer!.service.drain(50).catch(() => undefined), every);
@@ -423,7 +428,7 @@ async function main() {
   const publicIntake = publicReason ? undefined : { origins: publicOrigins, secret: publicSecret };
   console.log(JSON.stringify({ ctx: "PublicIntake", enabled: !!publicIntake, ...(publicReason ? { reason: publicReason } : { origins: publicOrigins }) }));
 
-  const tickets = new TicketService(new MysqlTicketStore(pool), async (id) => (await store.getTenant(id)) !== null);
+  const tickets = new TicketService(new MysqlTicketStore(pool), async (id) => (await store.getTenant(id)) !== null, Date.now, platformMail.mailer?.ticketNotifier());
 
   // Desistimiento de consumidores (CRM 0022): solo con pedidos y la tabla; si no, la función no se monta
   let withdrawals: { store: MysqlWithdrawalStore } | undefined;

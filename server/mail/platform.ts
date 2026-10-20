@@ -23,6 +23,8 @@ import type { OrderStore } from "../orchestrator/store";
 import type { OrderPayment, PaymentMode } from "../orchestrator/types";
 import type { TrialNotifier } from "../trials/onboarding";
 import type { WithdrawalNotifier } from "../withdrawals/service";
+import type { IncidentNotifier } from "../_core/ops/incidents";
+import type { TicketNotifier } from "../_core/support/tickets";
 import { mailPolicyFromEnv, type MailPolicy } from "./policy";
 import { mailProviderFromEnv } from "./providers";
 import { MailService, type SendResult } from "./service";
@@ -41,7 +43,7 @@ export class PlatformMailer {
   constructor(
     readonly service: MailService,
     readonly policy: MailPolicy,
-    private o: { verifyUrl?: string | null; pricingUrl?: string | null } = {},
+    private o: { verifyUrl?: string | null; pricingUrl?: string | null; opsRecipients?: string[] } = {},
   ) {
     this.t = platformTemplates({ supportEmail: policy.supportEmail });
   }
@@ -50,11 +52,47 @@ export class PlatformMailer {
     return this.service.send({ tenantId: tenantId || PLATFORM_TENANT, idempotencyKey, category, to, ...c, sender: { lane: "platform" } });
   }
 
+  /** Destinatarios internos del equipo (CP_ALERT_EMAIL). Vacío: no hay avisos internos por correo. */
+  get opsRecipients(): readonly string[] {
+    return this.o.opsRecipients ?? [];
+  }
+
+  /** Aviso interno a cada destinatario del equipo (una clave por hecho y destinatario: repetir no duplica). */
+  async opsNotice(key: string, title: string, lines: string[]): Promise<void> {
+    for (const to of this.opsRecipients) await this.send(PLATFORM_TENANT, `ops:${key}:${short(to)}`, "operational", to, this.t.opsNotice({ title, lines }));
+  }
+
+  /** Incidencias operativas por correo al equipo (se suma al webhook): al abrir, reabrir y escalar. */
+  incidentNotifier(): IncidentNotifier {
+    return {
+      notify: async (i, event) => {
+        if (event === "resolved") return;
+        const sev = i.severity === "critical" ? "CRÍTICA" : i.severity === "warning" ? "Aviso" : "Info";
+        await this.opsNotice(`incident:${i.id}:${event}:${i.occurrences ?? 0}`, `Incidencia ${sev}: ${i.title}`, [`Estado: ${event === "opened" ? "abierta" : event === "reopened" ? "reabierta" : "escalada"}.`, `Incidencia #${i.id}${i.tenantId ? ` · empresa ${i.tenantId}` : ""}.`]);
+      },
+    };
+  }
+
+  /** Tickets de soporte: aviso a quien lo abrió (si es un correo) y aviso interno de ticket nuevo. */
+  ticketNotifier(): TicketNotifier {
+    const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+    return async (t, kind, n) => {
+      const ticketRef = `T-${t.id}`;
+      if (kind === "received") await this.opsNotice(`ticket:${t.id}:created`, `Nuevo ticket ${ticketRef} (${t.priority})`, [`Empresa: ${t.tenantId}.`, `Asunto: ${t.title.slice(0, 120)}.`]);
+      if (!t.requester || !EMAIL.test(t.requester)) return;
+      await this.send(t.tenantId, `ticket:${t.id}:${kind}:${n}`, "operational", t.requester, this.t.supportTicket({ kind, ticketRef, subject: t.title }));
+    };
+  }
+
   /** Avisos del desistimiento de consumidores (acuse y resolución), idempotentes por referencia y estado. */
   withdrawalNotifier(): WithdrawalNotifier {
     const queued = (r: SendResult) => ({ queued: r.status !== "skipped" && r.status !== "failed" });
     return {
-      receipt: async (to, r) => queued(await this.send(r.tenantId, `withdrawal:${r.reference}:receipt`, "withdrawal_receipt", to, this.t.withdrawalReceipt({ reference: r.reference, requestedAt: r.requestedAt, withinTerm: r.assessment.withinTerm, deadlineAt: r.assessment.deadlineAt }))),
+      receipt: async (to, r) => {
+        // Aviso interno: hay una solicitud que resolver (sin datos del consumidor más allá de la referencia)
+        await this.opsNotice(`withdrawal:${r.reference}`, `Desistimiento recibido ${r.reference}`, [`Empresa: ${r.tenantId ?? "—"}. ${r.assessment.withinTerm ? "Dentro de plazo." : "Fuera de plazo."}`, "Pendiente de resolución en Operaciones → Desistimientos."]);
+        return queued(await this.send(r.tenantId, `withdrawal:${r.reference}:receipt`, "withdrawal_receipt", to, this.t.withdrawalReceipt({ reference: r.reference, requestedAt: r.requestedAt, withinTerm: r.assessment.withinTerm, deadlineAt: r.assessment.deadlineAt })));
+      },
       resolution: async (to, r) => queued(await this.send(r.tenantId, `withdrawal:${r.reference}:${r.status}`, "withdrawal_resolution", to, this.t.withdrawalResolution({ reference: r.reference, status: r.status, note: r.resolution?.note ?? null }))),
     };
   }
@@ -143,6 +181,9 @@ export class PlatformMailer {
       } else if (action === "activate") {
         const company = await d.crmStore.get("companies", order.companyId);
         mails.push({ ...stateKey("contract_confirmed"), content: this.t.contractConfirmed({ companyName: company?.name ?? "tu empresa", reference: order.reference, host: await hostOf(order.tenantId) }) });
+        // Aviso interno de nuevo cliente (alta o conversión de prueba; un cambio de plan no es un cliente nuevo)
+        if (order.kind !== "change")
+          await this.opsNotice(`customer:${order.id}`, `Nuevo cliente activo${order.reference ? ` · ${order.reference}` : ""}`, [`Empresa: ${company?.name ?? `#${order.companyId}`}${order.tenantId ? ` (${order.tenantId})` : ""}.`, `Plan: ${order.request?.plan ?? "—"} · ${order.request?.interval === "year" ? "anual" : "mensual"} · ${mode === "live" ? "LIVE" : "pruebas"}.`]);
       } else if (action === "payment_failed") {
         mails.push({ ...stateKey("payment_failed"), content: this.t.paymentFailed({ reference: order.reference, graceEndsAt: order.graceEndsAt, host: await hostOf(order.tenantId) }) });
       } else if (action === "payment_recovered" || action === "reactivate") {
@@ -159,6 +200,17 @@ export class PlatformMailer {
   }
 }
 
+/**
+ * Destinatarios internos del equipo (CP_ALERT_EMAIL, separados por comas; máximo 5). Un valor que no es un correo
+ * impide arrancar (nunca se envía a medias a una dirección mal escrita).
+ */
+export function opsRecipientsFromEnv(env: NodeJS.ProcessEnv): string[] {
+  const list = (env.CP_ALERT_EMAIL ?? "").split(",").map((x) => x.trim().toLowerCase()).filter(Boolean);
+  if (list.length > 5) throw new Error("CP_ALERT_EMAIL admite como mucho 5 direcciones");
+  for (const e of list) if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(e)) throw new Error("CP_ALERT_EMAIL contiene una dirección no válida");
+  return Array.from(new Set(list));
+}
+
 /** Correo de plataforma desde el entorno, o `null` con el motivo (sin migración, sin pool). */
 export async function platformMailFromEnv(
   pool: Pick<mysql.Pool, "query"> | null,
@@ -171,7 +223,7 @@ export async function platformMailFromEnv(
   if (!ready) return { mailer: null, reason: "crm_migration_0011_missing", policy };
   const provider = o.provider !== undefined ? o.provider : mailProviderFromEnv(env);
   const service = new MailService({ lane: "platform", store: new MysqlMailStore(pool), provider, policy, now: o.now });
-  return { mailer: new PlatformMailer(service, policy, { verifyUrl: env.CP_TRIAL_VERIFY_URL?.trim() || null, pricingUrl: env.CP_TRIAL_PRICING_URL?.trim() || null }), reason: null, policy };
+  return { mailer: new PlatformMailer(service, policy, { verifyUrl: env.CP_TRIAL_VERIFY_URL?.trim() || null, pricingUrl: env.CP_TRIAL_PRICING_URL?.trim() || null, opsRecipients: opsRecipientsFromEnv(env) }), reason: null, policy };
 }
 
 /**

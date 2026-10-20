@@ -24,6 +24,26 @@ import { getTrustedBaseUrl } from "./_core/publicUrl";
 const TOKEN_EXPIRY_MINUTES = 60; // El enlace caduca en 1 hora
 const BCRYPT_ROUNDS = 12;
 
+/**
+ * Aviso de seguridad tras cambiar la contraseña: a la propia persona, sin enlaces (si no fue ella, que avise a su
+ * administración o a soporte). Nunca lleva copia global (categoría security_notice).
+ */
+export function passwordChangedEmail(name: string | null, at: Date) {
+  const brand = brandName();
+  const when = at.toLocaleString("es-ES", { timeZone: "Europe/Madrid", dateStyle: "long", timeStyle: "short" });
+  const hello = name ? `Hola ${escapeHtml(name)},` : "Hola,";
+  const text = `${name ? `Hola ${name},` : "Hola,"}
+
+La contraseña de tu cuenta de ${brand} se ha cambiado el ${when} (hora de Madrid).
+
+Si has sido tú, no tienes que hacer nada. Si no has sido tú, avisa cuanto antes a la administración de tu empresa o a soporte: las sesiones abiertas con la contraseña anterior ya se han cerrado.
+
+${brand}`;
+  const html = `<p>${hello}</p><p>La contraseña de tu cuenta de <strong>${escapeHtml(brand)}</strong> se ha cambiado el ${escapeHtml(when)} (hora de Madrid).</p><p>Si has sido tú, no tienes que hacer nada. Si no has sido tú, avisa cuanto antes a la administración de tu empresa o a soporte: las sesiones abiertas con la contraseña anterior ya se han cerrado.</p><p>${escapeHtml(brand)}</p>`;
+  return { subject: `Tu contraseña se ha cambiado — ${brand}`, html, text };
+}
+const escapeHtml = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" })[c]!);
+
 async function sendResetEmail(to: string, resetUrl: string, name: string) {
   const html = buildPasswordResetHtml({ name: name ?? "", resetUrl, expiryMinutes: TOKEN_EXPIRY_MINUTES });
   const resetSubject = `Recuperar contraseña — ${brandName()}`;
@@ -183,6 +203,12 @@ export function createPasswordResetRouter(): Router {
         .set({ passwordHash, updatedAt: now })
         .where(eq(users.id, resetToken.userId));
 
+      // Aviso de seguridad a la propia persona (sin enlaces); un fallo del aviso no cambia la respuesta
+      const [u] = await db.select({ email: users.email, name: users.name }).from(users).where(eq(users.id, resetToken.userId)).limit(1);
+      if (u?.email) {
+        const m = passwordChangedEmail(u.name ?? null, now);
+        void sendEmail({ to: u.email, subject: m.subject, html: m.html, text: m.text, category: "security_notice" }).catch(() => undefined);
+      }
       res.json({ ok: true, message: "Contraseña actualizada correctamente." });
     } catch (err) {
       console.error("[PasswordReset] Error en reset-password:", err);
