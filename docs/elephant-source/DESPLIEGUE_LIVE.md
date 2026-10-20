@@ -6,7 +6,7 @@
 
 | Repositorio | Commit | Rama | Servicios |
 |---|---|---|---|
-| Core (`nayade_experiences_platform`) | **`COMMIT_CORE`** | `integration/elephant-source` | `controlplane`, `backup-job`, `restore-drill` (`Dockerfile.controlplane`); `core` (`deploy/railway/core.Dockerfile`); `core-gateway` (`deploy/railway/gateway/Dockerfile`) |
+| Core (`nayade_experiences_platform`) | **`57bc654`** | `integration/elephant-source` | `controlplane`, `backup-job`, `restore-drill` (`Dockerfile.controlplane`); `core` (`deploy/railway/core.Dockerfile`); `core-gateway` (`deploy/railway/gateway/Dockerfile`) |
 | CRM (`big-elephant-crm`) | **`24bb93e`** (incluye el #26: Stripe live y sincronización del catálogo) | `integration/elephant-source` | `crm` (`deploy/railway/Dockerfile`) |
 | Web (`bigelephant-web`) | **`42741e2`**, la de `production` | `feat/elephant-web-portfolio` | `web` (`deploy/railway/Dockerfile`) |
 
@@ -42,10 +42,10 @@
 
 **Paquete:**
 ```
-scripts/railway/build-migration-bundle.sh COMMIT_CORE <salida>
-# → migrations-COMMIT_CORE.tgz y su SHA-256 (comprobar el mismo SHA dentro del contenedor)
+scripts/railway/build-migration-bundle.sh 57bc654 <salida>
+# → migrations-57bc654.tgz  SHA-256 7aef3cf4c0d2ad6125da6ee3ff0f472b58551032f45058e0bb95ac1d655cd80c
 ```
-Validado esta noche con `0f6a99d`: registro con 0012 y 0013 pendientes, CRM con 9 pendientes, sin incompletas ni conflictos.
+Validado esta noche en simulación contra `live` con `57bc654` (el commit a desplegar): registro con 0012 y 0013 pendientes, CRM con 9 pendientes (de la 0014 a la 0022), sin incompletas ni conflictos. Dentro del contenedor, comprobar el mismo SHA-256 antes de ejecutar.
 
 ## 3. Requisitos previos
 
