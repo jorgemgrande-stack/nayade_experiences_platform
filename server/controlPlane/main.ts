@@ -59,6 +59,7 @@ import { notificationsFromEnv } from "../notifications/config";
 import { liveOrdersProblem, liveSchemaProblem } from "../stripe/liveReadiness";
 import { consumerWithdrawalFromEnv, fiscalScenariosFromEnv, taxExpectationsFromEnv } from "../stripe/buyerProfile";
 import { consumerRatesFromEnv, eligibilitySummary, scenarioCountriesFromEnv } from "../stripe/eligibility";
+import { viesClient, viesMaxAgeDaysFromEnv } from "../stripe/vies";
 import { checkoutUrlsFromEnv } from "../stripe/checkout";
 import { MysqlCrmStore } from "../crm/mysqlStore";
 import { CrmService } from "../crm/service";
@@ -340,7 +341,7 @@ async function main() {
       withdrawal: consumerWithdrawalFromEnv(process.env),
     },
   };
-  let stripe: { config: NonNullable<typeof stripeConfig>; store: MysqlStripeStore; gateway: ReturnType<typeof stripeGateway>; urls: ReturnType<typeof checkoutUrlsFromEnv>; checkoutEnabled: boolean; verifyWebhook: ReturnType<typeof stripeWebhookVerifier>; workerEnabled: boolean; publicStatus: boolean; selfService: boolean; termsVersion: string | null; fiscal: typeof fiscal; purchases?: { enabled: boolean; changes: MysqlSubscriptionChangeStore; internalTenants: ReadonlySet<string> }; invoiceLines?: MysqlInvoiceLineStore } | undefined;
+  let stripe: { config: NonNullable<typeof stripeConfig>; store: MysqlStripeStore; gateway: ReturnType<typeof stripeGateway>; urls: ReturnType<typeof checkoutUrlsFromEnv>; checkoutEnabled: boolean; verifyWebhook: ReturnType<typeof stripeWebhookVerifier>; workerEnabled: boolean; publicStatus: boolean; selfService: boolean; termsVersion: string | null; fiscal: typeof fiscal; purchases?: { enabled: boolean; changes: MysqlSubscriptionChangeStore; internalTenants: ReadonlySet<string> }; invoiceLines?: MysqlInvoiceLineStore; vies?: { client: ReturnType<typeof viesClient>; maxAgeDays: number } } | undefined;
   if (stripeConfig) {
     const urls = checkoutUrlsFromEnv(process.env);
     // La bandera sigue apagada por defecto; en live sin política fiscal, Checkout queda apagado aunque esté a 1
@@ -386,6 +387,8 @@ async function main() {
         selfService,
         termsVersion,
         fiscal,
+        // VIES (API REST de la Comisión Europea): verificación del NIF-IVA antes de la inversión del sujeto pasivo
+        vies: { client: viesClient(), maxAgeDays: viesMaxAgeDaysFromEnv(process.env) },
         ...(changesReady ? { purchases: { enabled: purchasesEnabled, changes: new MysqlSubscriptionChangeStore(crmPool!, stripeConfig.mode), internalTenants } } : {}),
         ...(linesReady ? { invoiceLines: new MysqlInvoiceLineStore(crmPool!, stripeConfig.mode) } : {}),
       };

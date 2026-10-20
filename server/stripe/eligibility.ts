@@ -14,6 +14,8 @@
  *  5. Particulares: decisión sobre el desistimiento e información precontractual publicadas, y un tipo de
  *     impuesto DECIDIDO para mostrar el precio final (CP_STRIPE_CONSUMER_RATES).
  *  6. En live, domicilio de facturación completo (se fija en Stripe y no se puede cambiar en Checkout).
+ *  7. Inversión del sujeto pasivo (`reverse_charge`): el NIF-IVA VERIFICADO como válido en VIES (server/stripe/vies.ts).
+ *     No válido, no comprobado o VIES no disponible: no se cobra (un NIF-IVA sin verificar nunca da inversión).
  *
  * Nada de esto decide reglas fiscales: es la configuración aprobada por el propietario con su asesor. Un valor de
  * configuración no admitido impide arrancar (nunca se interpreta a medias).
@@ -55,6 +57,8 @@ export interface EligibilityInput {
   taxId?: string | null;
   /** ¿Declaró el domicilio completo (calle y ciudad)? */
   hasAddress?: boolean;
+  /** Resultado de VIES para el NIF-IVA (solo cuenta en los escenarios con inversión del sujeto pasivo). */
+  vat?: "valid" | "invalid" | "unavailable" | "unchecked";
 }
 
 export interface EligibilityResult {
@@ -128,6 +132,12 @@ export function checkEligibility(i: EligibilityInput, cfg: EligibilityConfig, op
     const key = consumerRateKey(country, territory);
     displayRateBp = cfg.consumerRates.get(key) ?? null;
     if (displayRateBp === null) reasons.push(`consumer_price_pending:${key}`);
+  }
+  // Inversión del sujeto pasivo: solo con el NIF-IVA verificado en VIES (con forma válida; si no, ya consta tax_id_*)
+  if (cfg.taxExpectations.get(scenario) === "reverse_charge" && taxId) {
+    if (i.vat === "invalid") reasons.push("vat_invalid");
+    else if (i.vat === "unavailable") reasons.push("vat_check_unavailable");
+    else if (i.vat !== "valid") reasons.push("vat_unverified");
   }
   if (opts.requireAddress && !i.hasAddress) reasons.push("address_incomplete");
   return out({ displayRateBp, taxId });

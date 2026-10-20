@@ -54,6 +54,7 @@ import type { StripeStore } from "./store";
 import { BUYER_TYPES, BuyerProfileError, buildConsent, buyerProfileInput, toBuyerProfile, type ConsentVersions } from "./buyerProfile";
 import { desiredCatalog } from "./catalog";
 import { checkEligibility, priceFor, type EligibilityConfig, type EligibilityResult } from "./eligibility";
+import { needsVies, type VatVerifier } from "./vies";
 
 export const eligibilityQuery = z
   .object({
@@ -113,6 +114,8 @@ export interface SelfServiceDeps {
   buyers?: Pick<StripeStore, "saveBuyerProfile" | "hasBuyerAddressColumn">;
   /** Control de elegibilidad por tipo de cliente, país y territorio (server/stripe/eligibility.ts). */
   eligibility?: EligibilityConfig;
+  /** Verificación de NIF-IVA en VIES (inversión del sujeto pasivo); sin ella, ese escenario no se cobra. */
+  vat?: Pick<VatVerifier, "verify">;
   /** Modo del entorno: en live el perfil fiscal es obligatorio. */
   mode?: StripeMode;
   /** Versiones de consentimiento vigentes (condiciones, privacidad, precontractual) y decisión sobre el desistimiento. */
@@ -210,7 +213,10 @@ export class SelfServiceCheckout {
   private async eligibilityOf(b: { type: "business" | "consumer"; country: string; postalCode?: string; taxId?: string; line1?: string; city?: string }): Promise<EligibilityResult> {
     const cfg: EligibilityConfig = this.d.eligibility ?? { scenarios: new Set(), taxExpectations: new Map(), countries: new Map(), consumerRates: new Map() };
     const requireAddress = this.d.mode === "live" && !!(await this.d.buyers?.hasBuyerAddressColumn());
-    return checkEligibility({ type: b.type, country: b.country, postalCode: b.postalCode, taxId: b.taxId, hasAddress: !!(b.line1 && b.city) }, { ...cfg, consent: cfg.consent ?? this.d.consent }, { requireAddress });
+    // Inversión del sujeto pasivo: consulta (o reutiliza) la verificación en VIES ANTES de crear nada
+    const pre = checkEligibility({ type: b.type, country: b.country, postalCode: b.postalCode, taxId: b.taxId }, cfg);
+    const vat = needsVies(pre.taxExpectation) && pre.taxId && this.d.vat ? (await this.d.vat.verify(b.country, b.taxId!)).status : undefined;
+    return checkEligibility({ type: b.type, country: b.country, postalCode: b.postalCode, taxId: b.taxId, hasAddress: !!(b.line1 && b.city), vat }, { ...cfg, consent: cfg.consent ?? this.d.consent }, { requireAddress });
   }
 
   /**

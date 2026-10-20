@@ -68,7 +68,7 @@ describe("elegibilidad: matriz del lanzamiento objetivo", () => {
     ["autónomo de Baleares (NIF de persona física)", { type: "business", country: "ES", postalCode: "07001", taxId: "12345678Z", ...ok }, "business:es_mainland", "taxed"],
     ["empresa de Canarias", { type: "business", country: "ES", postalCode: "35001", taxId: "B26987875", ...ok }, "business:es_special", "not_subject"],
     ["empresa de Ceuta", { type: "business", country: "ES", postalCode: "51001", taxId: "B26987875", ...ok }, "business:es_special", "not_subject"],
-    ["empresa de Francia con NIF-IVA", { type: "business", country: "FR", postalCode: "75001", taxId: "FR12345678901", ...ok }, "business:eu", "reverse_charge"],
+    ["empresa de Francia con NIF-IVA verificado en VIES", { type: "business", country: "FR", postalCode: "75001", taxId: "FR12345678901", vat: "valid", ...ok }, "business:eu", "reverse_charge"],
     ["empresa del Reino Unido", { type: "business", country: "GB", taxId: "GB123456789", ...ok }, "business:non_eu", "not_subject"],
     ["empresa de EE. UU.", { type: "business", country: "US", taxId: "12-3456789", ...ok }, "business:non_eu", "not_subject"],
     ["particular de la Península", { type: "consumer", country: "ES", postalCode: "28002", ...ok }, "consumer:es_mainland", "taxed"],
@@ -90,6 +90,9 @@ describe("elegibilidad: matriz del lanzamiento objetivo", () => {
     ["empresa de Guadalupe (territorio especial de la UE)", { type: "business", country: "FR", postalCode: "97110", taxId: "FR12345678901", ...ok }, ["scenario_pending:business:eu_special", "tax_expectation_missing:business:eu_special", "country_not_enabled:FR"]],
     ["España sin código postal", { type: "business", country: "ES", taxId: "B26987875", ...ok }, ["territory_unknown"]],
     ["país inexistente", { type: "consumer", country: "E1", ...ok }, ["territory_unknown"]],
+    ["empresa de Francia: VIES dice que no es válido", { type: "business", country: "FR", postalCode: "75001", taxId: "FR12345678901", vat: "invalid", ...ok }, ["vat_invalid"]],
+    ["empresa de Francia: VIES no disponible (nunca equivale a válido)", { type: "business", country: "FR", postalCode: "75001", taxId: "FR12345678901", vat: "unavailable", ...ok }, ["vat_check_unavailable"]],
+    ["empresa de Francia: NIF-IVA sin comprobar en VIES", { type: "business", country: "FR", postalCode: "75001", taxId: "FR12345678901", ...ok }, ["vat_unverified"]],
     ["sin domicilio completo", { type: "business", country: "ES", postalCode: "28002", taxId: "B26987875" }, ["address_incomplete"]],
   ])("%s: bloqueado (%j)", (_n, input, reasons) => {
     const r = checkEligibility(input, TARGET, { requireAddress: true });

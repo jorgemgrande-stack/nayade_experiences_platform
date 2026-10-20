@@ -27,6 +27,7 @@ export const STRIPE_FAILURE_RULES: Record<string, FailureRule> = {
   // Perfil fiscal del comprador frente a la factura (el pago ya está cobrado: revisar el tratamiento fiscal)
   "stripe.buyer_territory_mismatch": once("Stripe: la dirección de la factura no corresponde al territorio fiscal declarado por el comprador"),
   "stripe.buyer_tax_id_missing": once("Stripe: empresa facturada sin identificador fiscal en la factura", "warning"),
+  "stripe.vat_no_longer_valid": once("Stripe: el NIF-IVA de un cliente con inversión del sujeto pasivo ya no es válido en VIES (revisar antes de la próxima factura)"),
   "stripe.invoice_tax_mismatch": once("Stripe: el impuesto de una factura cobrada no corresponde al tratamiento fiscal aprobado para su escenario"),
   // Facturación por líneas y conciliación de partidas (nunca se corrige solo: lo revisa el equipo)
   "stripe.items_drift": once("Stripe: las partidas de una suscripción no coinciden con lo contratado para el próximo periodo"),

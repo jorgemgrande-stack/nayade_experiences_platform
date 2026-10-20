@@ -15,6 +15,7 @@ import type { CommercialEventSink } from "../commercialEvents/types";
 import type { StripeMode } from "./config";
 import type { GwSubscription } from "./gateway";
 import type { BuyerProfile, ConsentRecord } from "./buyerProfile";
+import type { VatCheck } from "./vies";
 import type { FiscalDocument, FiscalDocumentDraft, FiscalDocumentStatus, StripeInvoiceRecord } from "./fiscalDocuments";
 
 export interface StripePriceLink {
@@ -165,6 +166,15 @@ export interface StripeStore {
   saveBuyerProfile(p: BuyerProfileDraft, actor: string): Promise<BuyerProfile>;
   /** ¿Se guarda el domicilio de facturación (CRM 0020)? Sin él, la dirección la pide Checkout como antes. */
   hasBuyerAddressColumn(): Promise<boolean>;
+
+  /** Comprobaciones de NIF-IVA en VIES (0021): cada consulta, con su resultado y su número de consulta. */
+  recordVatCheck(c: VatCheck): Promise<void>;
+  /** Última comprobación VÁLIDA de un NIF-IVA en este modo, o null. */
+  lastValidVatCheck(country: string, vatNumber: string): Promise<VatCheck | null>;
+  /** Comprobaciones de un pedido (más recientes primero). */
+  vatChecksOfOrder(orderId: number): Promise<VatCheck[]>;
+  /** ¿Existe la tabla (0021)? Sin ella no hay evidencia y no se aplica la inversión del sujeto pasivo. */
+  hasVatCheckTable(): Promise<boolean>;
 
   /** Registro de facturas cobradas (0016). Crea o actualiza el estado y los importes; nunca cambia el pedido. */
   upsertInvoiceRecord(r: StripeInvoiceRecord): Promise<void>;
@@ -484,6 +494,20 @@ export class MemoryStripeStore implements StripeStore {
     return p && this.mine("buyers", orderId) ? structuredClone(p) : null;
   }
   async hasBuyerAddressColumn() {
+    return true;
+  }
+  vatChecks: VatCheck[] = [];
+  async recordVatCheck(c: VatCheck) {
+    this.vatChecks.push(structuredClone(c));
+  }
+  async lastValidVatCheck(country: string, vatNumber: string) {
+    const hit = this.vatChecks.filter((x) => x.country === country && x.vatNumber === vatNumber && x.status === "valid").sort((a, b) => b.checkedAt - a.checkedAt)[0];
+    return hit ? structuredClone(hit) : null;
+  }
+  async vatChecksOfOrder(orderId: number) {
+    return this.vatChecks.filter((x) => x.orderId === orderId).sort((a, b) => b.checkedAt - a.checkedAt).map((x) => structuredClone(x));
+  }
+  async hasVatCheckTable() {
     return true;
   }
   async saveBuyerProfile(d: BuyerProfileDraft, actor: string) {
@@ -944,6 +968,40 @@ export class MysqlStripeStore implements StripeStore {
     const d = this.docRow(rows[0]);
     if (res.affectedRows === 0 && d.externalRef !== externalRef) throw new FiscalDocumentConflictError("El documento ya está emitido con otra referencia");
     return d;
+  }
+
+  private vatTable?: Promise<boolean>;
+  hasVatCheckTable(): Promise<boolean> {
+    this.vatTable ??= this.pool.query("SELECT 1 FROM stripe_vat_checks LIMIT 0").then(
+      () => true,
+      () => false,
+    );
+    return this.vatTable;
+  }
+  private vatRow = (r: Row): VatCheck => ({
+    status: r.status as VatCheck["status"],
+    country: String(r.country),
+    vatNumber: String(r.vat_number),
+    checkedAt: Number(r.checked_at),
+    consultationNumber: (r.consultation_number as string | null) ?? null,
+    traderName: (r.trader_name as string | null) ?? null,
+    traderAddress: (r.trader_address as string | null) ?? null,
+    detail: (r.detail as string | null) ?? null,
+    orderId: r.order_id === null || r.order_id === undefined ? null : Number(r.order_id),
+  });
+  async recordVatCheck(c: VatCheck) {
+    await this.pool.query(
+      "INSERT INTO stripe_vat_checks (livemode, country, vat_number, status, consultation_number, trader_name, trader_address, detail, order_id, checked_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      [this.lm, c.country, c.vatNumber.slice(0, 20), c.status, c.consultationNumber?.slice(0, 64) ?? null, c.traderName?.slice(0, 400) ?? null, c.traderAddress?.slice(0, 400) ?? null, c.detail?.slice(0, 64) ?? null, c.orderId, c.checkedAt],
+    );
+  }
+  async lastValidVatCheck(country: string, vatNumber: string) {
+    const [rows] = await this.pool.query<Row[]>("SELECT * FROM stripe_vat_checks WHERE livemode = ? AND country = ? AND vat_number = ? AND status = 'valid' ORDER BY checked_at DESC LIMIT 1", [this.lm, country, vatNumber]);
+    return rows[0] ? this.vatRow(rows[0]) : null;
+  }
+  async vatChecksOfOrder(orderId: number) {
+    const [rows] = await this.pool.query<Row[]>("SELECT * FROM stripe_vat_checks WHERE livemode = ? AND order_id = ? ORDER BY checked_at DESC, id DESC LIMIT 50", [this.lm, orderId]);
+    return rows.map(this.vatRow);
   }
 
   private buyerRow = (r: Row): BuyerProfile => ({

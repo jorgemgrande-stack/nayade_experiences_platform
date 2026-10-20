@@ -87,11 +87,14 @@ CP_PRECONTRACT_VERSION=<versión publicada>
   - UE: NIF-IVA con el prefijo de su Estado (Grecia, EL). El de otro Estado se rechaza;
   - Reino Unido: GB y 9 o 12 cifras;
   - resto: formato básico.
-- **Validez real (no implementada, requiere decisión):**
-  - **VIES** para la inversión del sujeto pasivo en la UE;
-  - HMRC para el Reino Unido.
-
-  Checkout recoge el NIF-IVA y Stripe Tax aplica la inversión con un NIF-IVA de la UE. El sistema contrasta después el impuesto facturado con el esperado y avisa (`invoice_tax_mismatch`), pero **no consulta VIES**. **Propuesta:** comprobar VIES antes del cobro en `business:eu`, como mejora siguiente.
+- **Validez en VIES (implementada, `server/stripe/vies.ts`):** la inversión del sujeto pasivo (`business:eu`) solo se cobra con el NIF-IVA **verificado como válido en VIES**.
+  - Cada consulta lleva como solicitante el NIF-IVA del emisor, y VIES devuelve un **número de consulta** que sirve de prueba.
+  - Cada comprobación se **registra** (CRM 0021) con su resultado, número de consulta, nombre y dirección, y fecha.
+  - Una comprobación válida se reutiliza durante `CP_VIES_MAX_AGE_DAYS` (30 días). Al caducar, se repite en el siguiente Checkout y en **cada renovación cobrada**; si el NIF-IVA deja de ser válido, salta la alerta `stripe.vat_no_longer_valid`, sin cambios automáticos.
+  - **VIES no disponible nunca equivale a válido:** el cobro se bloquea (`vat_check_unavailable`) y el comprador puede reintentar.
+  - Con el NIF-IVA verificado, el Customer de Stripe se crea con él (`eu_vat`) y Checkout no deja introducir otro. El número de consulta viaja en los metadatos de la sesión.
+  - Los operadores lo consultan en `GET /cp/v1/stripe/orders/:id/vat-checks`.
+- **Reino Unido (HMRC):** sin comprobación en línea. Hoy no hace falta, porque B2B fuera de la UE es «no sujeto» y no aplica la inversión del sujeto pasivo española.
 
 ## 5. Facturas y rectificativas: documentos de Stripe frente a facturas fiscales
 

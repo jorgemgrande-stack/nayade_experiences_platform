@@ -12,7 +12,7 @@ const SECRET = "s".repeat(40);
 let clock = Date.UTC(2026, 9, 18, 10);
 const catalogWith = (status: string): CatalogPort => ({ product: async (k: string) => (k === "essential" || k === "business" ? ({ key: k, commercialStatus: status } as never) : null), price: async () => null, offer: async () => [{ key: "essential", name: "Essential", family: "core_plan", commercialStatus: status, prices: [{ id: 1, productKey: "essential", kind: "monthly", amountCents: 2900, currency: "EUR", unit: null, taxRateBp: 2100, taxIncluded: false, status: "approved" }, { id: 2, productKey: "essential", kind: "yearly", amountCents: 27900, currency: "EUR", unit: null, taxRateBp: 2100, taxIncluded: false, status: "approved" }] }, { key: "business", name: "Business", family: "core_plan", commercialStatus: status, prices: [{ id: 3, productKey: "business", kind: "monthly", amountCents: 7900, currency: "EUR", unit: null, taxRateBp: 2100, taxIncluded: false, status: "approved" }, { id: 4, productKey: "business", kind: "yearly", amountCents: 75900, currency: "EUR", unit: null, taxRateBp: 2100, taxIncluded: false, status: "approved" }] }] }) as unknown as CatalogPort;
 
-function setup(o: { status?: string; terms?: string | null; mode?: "test" | "live"; consent?: ConsentVersions; eligibility?: EligibilityConfig } = {}) {
+function setup(o: { status?: string; terms?: string | null; mode?: "test" | "live"; consent?: ConsentVersions; eligibility?: EligibilityConfig; vat?: "valid" | "invalid" | "unavailable" } = {}) {
   const calls = { companies: 0, contacts: 0, orders: 0, accepts: 0, checkouts: 0 };
   const orders = new Map<string, CommercialOrder>();
   const companies: Array<{ name: string; taxId?: string }> = [];
@@ -22,6 +22,7 @@ function setup(o: { status?: string; terms?: string | null; mode?: "test" | "liv
     mode: o.mode,
     consent: o.consent,
     eligibility: o.eligibility,
+    ...(o.vat ? { vat: { verify: async (country: string) => ({ status: o.vat!, country, vatNumber: "123456789", checkedAt: clock, consultationNumber: null, traderName: null, traderAddress: null, detail: null, orderId: null, reused: false }) } } : {}),
     crm: {
       createCompany: async (input) => (companies.push(input), { id: 100 + ++calls.companies }),
       createContact: async () => void calls.contacts++,
@@ -201,6 +202,21 @@ describe("autoservicio con perfil fiscal del comprador (B2B y B2C)", () => {
     });
     expect((await svc.eligibility({ type: "business", country: "ES", postalCode: "28002", taxId: "B11111119", plan: "essential", interval: "month" })).price).toEqual({ netCents: 2900, taxCents: null, grossCents: null, rateBp: null });
     expect(calls).toEqual({ companies: 0, contacts: 0, orders: 0, accepts: 0, checkouts: 0 });
+  });
+
+  it("empresa de la UE con inversión del sujeto pasivo: con VIES caído o NIF-IVA no válido no se crea nada; verificado, sí", async () => {
+    const EU: EligibilityConfig = { ...OPEN, scenarios: new Set([...OPEN.scenarios, "business:eu"]), taxExpectations: new Map([...OPEN.taxExpectations, ["business:eu", "reverse_charge"]]) };
+    const buyer = { type: "business" as const, legalName: "Firma GmbH", taxId: "DE123456789", country: "DE", postalCode: "10115", line1: "Unter den Linden 1", city: "Berlin" };
+    const consents = { terms: true as const, privacy: true as const, termsVersion: "v1", privacyVersion: "p1" };
+    for (const [vat, reason] of [["unavailable", "vat_check_unavailable"], ["invalid", "vat_invalid"]] as const) {
+      const { svc, calls } = setup({ mode: "live", consent: DECIDED, eligibility: EU, vat });
+      await expectCode(svc.start(without(body({ buyer, consents }))), "not_eligible");
+      expect(calls).toEqual({ companies: 0, contacts: 0, orders: 0, accepts: 0, checkouts: 0 });
+      expect((await svc.eligibility({ type: "business", country: "DE", postalCode: "10115", taxId: "DE123456789" })).reasons).toEqual([reason]);
+    }
+    const { svc, calls } = setup({ mode: "live", consent: DECIDED, eligibility: EU, vat: "valid" });
+    await svc.start(without(body({ buyer, consents })));
+    expect(calls.checkouts).toBe(1);
   });
 
   it("el cuerpo exige comprador: ni empresa ni perfil → no válido", () => {
