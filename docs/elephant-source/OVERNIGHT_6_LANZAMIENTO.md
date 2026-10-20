@@ -1,20 +1,49 @@
-# Overnight 6: lanzamiento comercial
+# Overnight 6: lanzamiento comercial (20 y 21/10/2026)
 
-Rama de trabajo: `ops/overnight-6-lanzamiento` (desde `integration/elephant-source`). **Sin tocar** Railway `live`, Stripe Live, dominios ni bases persistentes, y sin envíos reales.
+**Resultado:** la **fase 2** del roadmap (cierre comercial, legal, fiscal y comunicaciones) está terminada en todo lo que no depende de decisiones tuyas. La **fase 3** (Railway `live`) está preparada y validada en simulación: queda a la espera de que Railway reanude los despliegues y de tu autorización.
 
-## Estado
+**Sin tocar:** Railway `live` (solo lecturas y simulaciones), Stripe Live, dominios, bases persistentes, envíos reales y `main`.
 
-| Bloque | Estado | Commits / PR |
+## Integrado en `integration/elephant-source`
+
+| PR | Contenido | Commit |
 |---|---|---|
-| 1. Integrar #187, #188 y #190 | ✅ Integrados en orden. CI 4/4 verde en cada uno. Local: tipos sin errores, 22 migraciones válidas, 321 pruebas de Stripe/desistimiento/compras y 77 de MySQL en verde | `ce0af62` (#187), `519f703` (#188), `de1564d` (#190) |
-| 1b. #186 (documentación legal) | ⏸️ Abierto a propósito: textos marcados **[REVISIÓN JURÍDICA]** y **[DECISIÓN]**, pendientes de tu aprobación | — |
-| 2. Comunicaciones | ✅ Canal interno (`CP_ALERT_EMAIL`): incidencias, nuevos clientes, desistimientos y tickets. Tickets al solicitante. Contraseña cambiada (Core). Catálogo completo con el reparto Elephant/Stripe. Matriz generada del código | este PR |
-| 3. Proveedor de correo | ✅ Postmark implementado tras el mismo puerto (`MAIL_PROVIDER`), con webhook propio (entregas, rebotes con supresión, quejas y bajas). Sin credenciales: no se envía nada. Ver `CORREO_PROVEEDOR.md` | PR del bloque 3 |
-| 4. Checkout | ✅ Autónomos con DNI y empresas con CIF: identificador fiscal fijado en el Customer (Checkout no lo pide). 5 escenarios de punta a punta en `stripeLive` (autónomo, CIF, UE con VIES caído y verificado, territorios no aprobados, particular con desistimiento). Renovación, impago y cancelación: `lifecycle.mysql` (45/45). Pendientes reales en `COMPROBACIONES_APERTURA.md` | PR del bloque 4 |
-| 5. Paquete de despliegue | ✅ `DESPLIEGUE_LIVE.md`: commits exactos (Core, CRM `24bb93e` con el #26 integrado y web `42741e2`), puntos de vuelta atrás, orden, variables y reversión. Paquete de migraciones reproducible (`scripts/railway/build-migration-bundle.sh`) **validado en simulación contra `live`**: registro con 0012 y 0013, y CRM de la 0014 a la 0022 | PR del bloque 5; CRM #26 integrado |
-| 6. Estabilidad | pendiente | |
+| #187 | Elegibilidad por tipo de cliente, país y territorio (CRM 0020) | `ce0af62` |
+| #188 | VIES (CRM 0021) | `519f703` |
+| #190 | Desistimiento de consumidores (CRM 0022) | `de1564d` |
+| #191 | Comunicaciones: avisos al equipo, tickets, contraseña cambiada y catálogo completo | `9b88053` |
+| #192 | Postmark como proveedor alternativo | `5c224cf` |
+| #194 | NIF fijado en Stripe, cierre del Checkout y paquete de despliegue | **`57bc654`** (commit a desplegar) |
+| CRM #26 | Stripe live en el CRM y sincronización del catálogo | CRM `24bb93e` |
 
-## Bloqueos que requieren intervención
-- Railway: despliegues pausados (incidencia del proveedor).
-- Migraciones `live` (registro 0012 y 0013; CRM de la 0014 a la 0022): requieren tu autorización.
-- Fiscal y legal: matriz por país, OSS, emisor de la factura legal (DF-2) y política de reembolso del desistimiento.
+**Cerrados sin fusionar:** #189 y #193, sustituidos por #190 y #194. Una clave de prueba disparaba gitleaks en el historial y se rehízo la rama sin reescribir la historia publicada.
+
+**Abierto a propósito:** #186 (documentación y borradores legales), pendiente de aprobación jurídica y tuya.
+
+## Pruebas
+
+| Ámbito | Resultado |
+|---|---|
+| CI de Linux (4 comprobaciones) | En verde en todos los PR integrados |
+| Batería del servidor (local) | **2.375 en verde**. 3 archivos fallan solo en Windows al importar scripts `.mjs`; la CI de Linux los pasa |
+| Suites MySQL (local) | **374 en verde**. 5 fallan solo en local: la URL de pruebas apunta a la base del sistema, donde MySQL no permite triggers, y `fileStorage` falla igual en el commit anterior a la noche. En la CI están en verde |
+| Escenarios del lanzamiento | Autónomo, CIF, UE con VIES caído y verificado, territorios no aprobados, particular con desistimiento, renovación, impago, cancelación, webhooks y aislamiento (ver `COMPROBACIONES_APERTURA.md`) |
+| Migraciones | Simulación contra `live` con `57bc654`: registro 0012 y 0013; CRM de la 0014 a la 0022 |
+
+## Entregables
+
+- `COMUNICACIONES_LANZAMIENTO.md`: matriz generada del catálogo (Elephant o Stripe, disparador, destinatario, estado).
+- `CORREO_PROVEEDOR.md`: Postmark (variables, DNS y webhook).
+- `COMPROBACIONES_APERTURA.md`: simulado frente a pendiente con servicios reales.
+- `DESPLIEGUE_LIVE.md`: paquete de despliegue (commits, orden, variables, reversión).
+- `DESISTIMIENTO.md` y `MATRIZ_FISCAL_INTERNACIONAL.md`.
+
+## Bloqueos que requieren tu intervención
+
+1. **Railway:** despliegues pausados (incidencia del proveedor).
+2. **Autorizaciones:** migraciones de `live` y despliegue (`DESPLIEGUE_LIVE.md`, §3 a §5).
+3. **Fiscal:** filas de la matriz por país, OSS, emisor de la factura legal (DF-2), registro de España en Stripe Tax.
+4. **Legal:** PR #186, textos B2C, política de reembolso del desistimiento y web con páginas legales (`5ea5be6`).
+5. **Correo:** cuenta de Postmark (o incidencia de Brevo), DNS y autorización de envíos.
+6. **Stripe:** clave `rk_test_` del sandbox para las comprobaciones reales; eventos del webhook de Live; métodos de pago.
+7. **Dominios:** traslado de `production` a `live`.
