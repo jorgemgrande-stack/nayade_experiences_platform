@@ -9,7 +9,7 @@ Rama de trabajo: `ops/overnight-6-lanzamiento` (desde `integration/elephant-sour
 | 1. Integrar #187, #188 y #190 | ✅ Integrados en orden. CI 4/4 verde en cada uno. Local: tipos sin errores, 22 migraciones válidas, 321 pruebas de Stripe/desistimiento/compras y 77 de MySQL en verde | `ce0af62` (#187), `519f703` (#188), `de1564d` (#190) |
 | 1b. #186 (documentación legal) | ⏸️ Abierto a propósito: textos marcados **[REVISIÓN JURÍDICA]** y **[DECISIÓN]**, pendientes de tu aprobación | — |
 | 2. Comunicaciones | ✅ Canal interno (`CP_ALERT_EMAIL`): incidencias, nuevos clientes, desistimientos y tickets. Tickets al solicitante. Contraseña cambiada (Core). Catálogo completo con el reparto Elephant/Stripe. Matriz generada del código | este PR |
-| 3. Proveedor de correo | en curso | |
+| 3. Proveedor de correo | ✅ Postmark implementado tras el mismo puerto (`MAIL_PROVIDER`), con webhook propio (entregas, rebotes con supresión, quejas y bajas). Sin credenciales: no se envía nada. Ver `CORREO_PROVEEDOR.md` | PR del bloque 3 |
 | 4. Checkout | pendiente | |
 | 5. Paquete de despliegue | pendiente | |
 | 6. Estabilidad | pendiente | |

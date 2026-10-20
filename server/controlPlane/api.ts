@@ -106,7 +106,7 @@ import { createOrdersRouter, paymentsWebhookHandler } from "../orchestrator/api"
 import { createContractActivation } from "../crm/activation";
 import type { PlatformMailer } from "../mail/platform";
 import type { MailService } from "../mail/service";
-import { brevoWebhookHandler } from "../mail/webhook";
+import { brevoWebhookHandler, postmarkWebhookHandler } from "../mail/webhook";
 
 /** Aviso por defecto: NO envía nada; solo deja constancia (sin correo ni token) de que hay un aviso pendiente. */
 const logOnlyTrialNotifier: TrialNotifier = {
@@ -267,6 +267,8 @@ export interface ControlPlaneDeps {
   mail?: {
     platform: PlatformMailer | null;
     webhookToken?: string | null;
+    /** Token de la cabecera propia del webhook de Postmark (≥ 32 caracteres); sin él, 503. */
+    postmarkWebhookToken?: string | null;
     tenantLane?: (tenantId: string) => Promise<MailService | null>;
     diagnostics?: () => Promise<unknown>;
   };
@@ -397,6 +399,17 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
       wrap(
         brevoWebhookHandler({
           token: mail.webhookToken,
+          resolve: async (lane, tenantId) => (lane === "platform" ? (mail.platform?.service ?? null) : mail.tenantLane ? mail.tenantLane(tenantId) : null),
+        }),
+      ),
+    );
+    // Webhook de Postmark (proveedor alternativo): mismo mecanismo con su propio token (POSTMARK_WEBHOOK_TOKEN)
+    app.post(
+      "/cp/v1/mail/postmark/webhook",
+      rateLimit({ windowMs: 60_000, limit: 600, standardHeaders: true, legacyHeaders: false, keyGenerator: (req) => `ip:${ipKeyGenerator(req.ip ?? "")}` }),
+      wrap(
+        postmarkWebhookHandler({
+          token: mail.postmarkWebhookToken,
           resolve: async (lane, tenantId) => (lane === "platform" ? (mail.platform?.service ?? null) : mail.tenantLane ? mail.tenantLane(tenantId) : null),
         }),
       ),

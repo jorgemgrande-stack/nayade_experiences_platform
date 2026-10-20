@@ -2,6 +2,8 @@
  * Proveedores de correo detrás de un puerto (`MailProviderPort`):
  *  - Brevo, API HTTP v3 (POST /v3/smtp/email). Documentación oficial:
  *    https://developers.brevo.com/reference/send-transac-email
+ *  - Postmark, API HTTP (POST /email, flujo transaccional «outbound»). Documentación oficial:
+ *    https://postmarkapp.com/developer/api/email-api
  *  - SMTP genérico (nodemailer): alternativa para cualquier relé SMTP (también el de Brevo).
  *  - Memoria: pruebas (no sale nada).
  *
@@ -63,6 +65,70 @@ export function brevoProvider(o: { apiKey: string; baseUrl?: string; fetch?: Fet
   };
 }
 
+export const POSTMARK_API_BASE = "https://api.postmarkapp.com";
+/** Postmark limita cada valor de `Metadata` a 80 caracteres: la referencia va en trozos (`es_ref_0`, `es_ref_1`…). */
+const META_CHUNK = 80;
+export const postmarkRefMetadata = (ref: string): Record<string, string> =>
+  Object.fromEntries(Array.from({ length: Math.ceil(ref.length / META_CHUNK) || 1 }, (_, i) => [`es_ref_${i}`, ref.slice(i * META_CHUNK, (i + 1) * META_CHUNK)]));
+/** Recompone la referencia desde `Metadata` (null si no está). */
+export function postmarkRefFromMetadata(meta: unknown): string | null {
+  if (!meta || typeof meta !== "object") return null;
+  const m = meta as Record<string, unknown>;
+  let out = "";
+  for (let i = 0; i < 4 && typeof m[`es_ref_${i}`] === "string"; i++) out += m[`es_ref_${i}`] as string;
+  return out || null;
+}
+const MIME: Record<string, string> = { pdf: "application/pdf", png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", csv: "text/csv", txt: "text/plain", zip: "application/zip", ics: "text/calendar" };
+
+/**
+ * Postmark (transaccional). Sin seguimiento de aperturas ni clics. La referencia opaca viaja en `Metadata` y vuelve
+ * en los webhooks. Postmark no admite adjuntos por URL: un adjunto sin contenido es un error definitivo (el
+ * correo de la plataforma no los usa; el Core resuelve los suyos a contenido antes de enviar).
+ */
+export function postmarkProvider(o: { serverToken: string; baseUrl?: string; messageStream?: string; fetch?: FetchLike; timeoutMs?: number }): MailProviderPort {
+  const base = (o.baseUrl ?? POSTMARK_API_BASE).replace(/\/+$/, "");
+  const doFetch: FetchLike = o.fetch ?? ((url, init) => fetch(url, init) as never);
+  const addr = (name: string, email: string) => `"${name.replace(/["\\\r\n]/g, "").slice(0, 100)}" <${email}>`;
+  return {
+    name: "postmark",
+    async send(m: ProviderMessage) {
+      if (m.attachments?.some((a) => !a.content)) throw new MailProviderError("attachment_url_unsupported", false);
+      const body = {
+        From: addr(m.from.name ?? "", m.from.email),
+        To: m.to,
+        ...(m.cc?.length ? { Cc: m.cc.join(",") } : {}),
+        ...(m.replyTo ? { ReplyTo: m.replyTo } : {}),
+        Subject: m.subject,
+        HtmlBody: m.html,
+        ...(m.text ? { TextBody: m.text } : {}),
+        Tag: m.tag.slice(0, 1000),
+        Metadata: postmarkRefMetadata(m.ref),
+        MessageStream: o.messageStream ?? "outbound",
+        TrackOpens: false,
+        TrackLinks: "None",
+        ...(m.attachments?.length ? { Attachments: m.attachments.map((a) => ({ Name: a.name, Content: a.content, ContentType: MIME[a.name.split(".").pop()?.toLowerCase() ?? ""] ?? "application/octet-stream" })) } : {}),
+      };
+      let res: Awaited<ReturnType<FetchLike>>;
+      try {
+        res = await doFetch(`${base}/email`, {
+          method: "POST",
+          headers: { accept: "application/json", "content-type": "application/json", "X-Postmark-Server-Token": o.serverToken },
+          body: JSON.stringify(body),
+          signal: AbortSignal.timeout(o.timeoutMs ?? 15_000),
+        });
+      } catch (e) {
+        throw new MailProviderError(e instanceof Error && e.name === "TimeoutError" ? "timeout" : "network_error", true);
+      }
+      // Solo el código numérico de Postmark (su mensaje puede repetir direcciones)
+      const json = (await res.json().catch(() => null)) as { ErrorCode?: unknown; MessageID?: unknown } | null;
+      const errorCode = typeof json?.ErrorCode === "number" ? json.ErrorCode : null;
+      if (res.status === 200 && (errorCode === 0 || errorCode === null)) return { messageId: typeof json?.MessageID === "string" ? json.MessageID.slice(0, 200) : null };
+      const retryable = res.status === 429 || res.status >= 500;
+      throw new MailProviderError(errorCode !== null ? `postmark_${errorCode}` : `http_${res.status}`, retryable, res.status);
+    },
+  };
+}
+
 /** SMTP genérico. La conexión se abre al enviar. */
 export function smtpProvider(c: { host: string; port: number; secure: boolean; user: string; pass: string }): MailProviderPort {
   const transport = nodemailer.createTransport({ host: c.host, port: c.port, secure: c.secure, auth: { user: c.user, pass: c.pass }, connectionTimeout: 10_000, greetingTimeout: 10_000, socketTimeout: 30_000 });
@@ -106,15 +172,32 @@ export function memoryProvider(o: { failWith?: MailProviderError | null } = {}):
   return p;
 }
 
+export const MAIL_PROVIDERS = ["brevo", "postmark", "smtp"] as const;
+export type MailProviderName = (typeof MAIL_PROVIDERS)[number];
+
 /**
- * Proveedor según el entorno: Brevo si hay `BREVO_API_KEY`; si no, SMTP si están `SMTP_HOST`,
- * `SMTP_USER` y `SMTP_PASS`; si no, ninguno (los mensajes quedan pendientes y acaban en «failed»).
+ * Proveedor elegido y motivo si no hay ninguno. Con `MAIL_PROVIDER` (brevo | postmark | smtp) se usa EXACTAMENTE
+ * ese, y sin sus credenciales no hay proveedor (nunca se cae a otro en silencio). Sin `MAIL_PROVIDER`, el orden de
+ * siempre: Brevo si hay `BREVO_API_KEY`; si no, Postmark si hay `POSTMARK_SERVER_TOKEN`; si no, SMTP.
  */
+export function mailProviderConfig(env: NodeJS.ProcessEnv): { provider: MailProviderPort | null; problem: string | null } {
+  const want = (env.MAIL_PROVIDER ?? "").trim().toLowerCase();
+  if (want && !(MAIL_PROVIDERS as readonly string[]).includes(want)) return { provider: null, problem: `mail_provider_unknown:${want.slice(0, 20)}` };
+  const brevo = () => (env.BREVO_API_KEY ? brevoProvider({ apiKey: env.BREVO_API_KEY, baseUrl: env.BREVO_API_BASE_URL }) : null);
+  const postmark = () => (env.POSTMARK_SERVER_TOKEN ? postmarkProvider({ serverToken: env.POSTMARK_SERVER_TOKEN, baseUrl: env.POSTMARK_API_BASE_URL, messageStream: env.POSTMARK_MESSAGE_STREAM?.trim() || undefined }) : null);
+  const smtp = () =>
+    env.SMTP_HOST && env.SMTP_USER && env.SMTP_PASS ? smtpProvider({ host: env.SMTP_HOST, port: Number(env.SMTP_PORT ?? 587), secure: env.SMTP_SECURE === "true", user: env.SMTP_USER, pass: env.SMTP_PASS }) : null;
+  if (want) {
+    const p = want === "brevo" ? brevo() : want === "postmark" ? postmark() : smtp();
+    return { provider: p, problem: p ? null : `credentials_missing:${want}` };
+  }
+  const p = brevo() ?? postmark() ?? smtp();
+  return { provider: p, problem: p ? null : "no_provider" };
+}
+
+/** Proveedor según el entorno (ver `mailProviderConfig`), o null: los mensajes quedan «failed/no_provider». */
 export function mailProviderFromEnv(env: NodeJS.ProcessEnv): MailProviderPort | null {
-  if (env.BREVO_API_KEY) return brevoProvider({ apiKey: env.BREVO_API_KEY, baseUrl: env.BREVO_API_BASE_URL });
-  if (env.SMTP_HOST && env.SMTP_USER && env.SMTP_PASS)
-    return smtpProvider({ host: env.SMTP_HOST, port: Number(env.SMTP_PORT ?? 587), secure: env.SMTP_SECURE === "true", user: env.SMTP_USER, pass: env.SMTP_PASS });
-  return null;
+  return mailProviderConfig(env).provider;
 }
 
 // ── Diagnóstico de cuenta (solo lecturas; nunca envía) ───────────────────────

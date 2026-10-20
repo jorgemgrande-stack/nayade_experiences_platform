@@ -45,7 +45,7 @@ import { lifecyclePolicyFromEnv } from "../lifecycle/policy";
 import { blockedDomainsFromEnv } from "../trials/service";
 import type { TrialNotifier } from "../trials/onboarding";
 import { platformMailFromEnv, tenantLaneResolver } from "../mail/platform";
-import { brevoDiagnostics, mailProviderFromEnv } from "../mail/providers";
+import { brevoDiagnostics, mailProviderConfig } from "../mail/providers";
 import { MysqlOrganizationStore } from "../organization/service";
 import { MysqlOrderStore } from "../orchestrator/store";
 import { testPaymentsFromEnv, type TestPaymentPort } from "../orchestrator/payments";
@@ -213,7 +213,7 @@ async function main() {
     if (!problem) commercialEvents = new MysqlCommercialEventLog(crmPool, commercialEnvironment);
     console.log(JSON.stringify({ ctx: "CommercialEvents", enabled: !!commercialEvents, environment: commercialEnvironment, ...(problem ? { reason: problem === "missing_table" ? "migration_0015_missing" : problem } : {}) }));
   }
-  console.log(JSON.stringify({ ctx: "Mail", outbox: !!platformMail.mailer, mode: mailPolicy.mode, provider: mailProviderFromEnv(process.env)?.name ?? null, sendingDomain: mailPolicy.sendingDomain, opsRecipients: platformMail.mailer?.opsRecipients.length ?? 0, webhook: (process.env.BREVO_WEBHOOK_TOKEN ?? "").length >= 32, ...(mailPolicy.degradedReason ? { degradedReason: mailPolicy.degradedReason } : {}), ...(platformMail.reason ? { reason: platformMail.reason } : {}) }));
+  console.log(JSON.stringify({ ctx: "Mail", outbox: !!platformMail.mailer, mode: mailPolicy.mode, provider: mailProviderConfig(process.env).provider?.name ?? null, ...(mailProviderConfig(process.env).problem ? { providerProblem: mailProviderConfig(process.env).problem } : {}), sendingDomain: mailPolicy.sendingDomain, opsRecipients: platformMail.mailer?.opsRecipients.length ?? 0, webhook: (process.env.BREVO_WEBHOOK_TOKEN ?? "").length >= 32, postmarkWebhook: (process.env.POSTMARK_WEBHOOK_TOKEN ?? "").length >= 32, ...(mailPolicy.degradedReason ? { degradedReason: mailPolicy.degradedReason } : {}), ...(platformMail.reason ? { reason: platformMail.reason } : {}) }));
   if (platformMail.mailer) {
     const every = Math.max(30, Number(process.env.CP_MAIL_DRAIN_EVERY_SECONDS ?? 60) || 60) * 1000;
     const t = setInterval(() => void platformMail.mailer!.service.drain(50).catch(() => undefined), every);
@@ -478,6 +478,7 @@ async function main() {
     mail: {
       platform: platformMail.mailer,
       webhookToken: process.env.BREVO_WEBHOOK_TOKEN ?? null,
+      postmarkWebhookToken: process.env.POSTMARK_WEBHOOK_TOKEN ?? null,
       tenantLane: tenantLaneResolver({ dsnOf: (id) => registry.getActiveDsn(id), policy: mailPolicy }),
       diagnostics: process.env.BREVO_API_KEY ? () => brevoDiagnostics({ apiKey: process.env.BREVO_API_KEY!, sendingDomain: mailPolicy.sendingDomain, baseUrl: process.env.BREVO_API_BASE_URL }) : undefined,
     },

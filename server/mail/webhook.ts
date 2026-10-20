@@ -24,6 +24,7 @@ import express, { type Request, type Response, type Router } from "express";
 import { opsLog, scrubText } from "../_core/ops/log";
 import { parseMailRef, type MailService } from "./service";
 import type { MailLane, ProviderEvent, ProviderEventKind } from "./types";
+import { postmarkRefFromMetadata } from "./providers";
 
 export const WEBHOOK_TOKEN_HEADER = "x-elephant-webhook-token";
 
@@ -59,6 +60,44 @@ export function parseBrevoEvent(raw: unknown): ProviderEvent | null {
   return { kind, ref, messageId, email, eventId, reason: reason ? scrubText(reason).slice(0, 200) : null };
 }
 
+/**
+ * Evento de Postmark → evento interno (webhooks de Delivery, Bounce, SpamComplaint y SubscriptionChange;
+ * https://postmarkapp.com/developer/webhooks/webhooks-overview). La referencia vuelve en `Metadata`.
+ * Aperturas y clics no interesan (y están desactivados al enviar).
+ */
+const POSTMARK_BOUNCE: Record<string, ProviderEventKind> = {
+  HardBounce: "hard_bounce",
+  BadEmailAddress: "invalid",
+  AddressChange: "hard_bounce",
+  ManuallyDeactivated: "blocked",
+  Blocked: "blocked",
+  SpamNotification: "spam",
+  SoftBounce: "soft_bounce",
+  Transient: "soft_bounce",
+  DnsError: "soft_bounce",
+  AutoResponder: "deferred",
+  Unsubscribe: "unsubscribed",
+};
+export function parsePostmarkEvent(raw: unknown): ProviderEvent | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  const type = String(r.RecordType ?? "");
+  let kind: ProviderEventKind | null = null;
+  if (type === "Delivery") kind = "delivered";
+  else if (type === "Bounce") kind = POSTMARK_BOUNCE[String(r.Type ?? "")] ?? "soft_bounce";
+  else if (type === "SpamComplaint") kind = "spam";
+  else if (type === "SubscriptionChange" && r.SuppressSending === true) kind = "unsubscribed";
+  if (!kind) return null;
+  const str = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim().slice(0, 300) : null);
+  const messageId = str(r.MessageID);
+  const ref = postmarkRefFromMetadata(r.Metadata);
+  const email = str(r.Recipient) ?? str(r.Email);
+  const when = String(r.DeliveredAt ?? r.BouncedAt ?? r.ChangedAt ?? r.ID ?? "");
+  const eventId = crypto.createHash("sha256").update(`postmark\n${kind}\n${messageId ?? ""}\n${ref ?? ""}\n${when}\n${(email ?? "").toLowerCase()}`).digest("hex");
+  const reason = str(r.Description) ?? str(r.Details);
+  return { kind, ref, messageId, email, eventId, reason: reason ? scrubText(reason).slice(0, 200) : null };
+}
+
 /** Comparación en tiempo constante del token del webhook. */
 export function webhookTokenValid(expected: string | null | undefined, received: unknown): boolean {
   if (!expected || expected.length < 32 || typeof received !== "string") return false;
@@ -74,7 +113,16 @@ export interface BrevoWebhookDeps {
   log?: (event: string, data: Record<string, unknown>) => void;
 }
 
+/** Webhook de Postmark: mismo mecanismo (cabecera propia con el token, configurada en el webhook de Postmark). */
+export function postmarkWebhookHandler(d: BrevoWebhookDeps) {
+  return providerWebhookHandler(d, parsePostmarkEvent);
+}
+
 export function brevoWebhookHandler(d: BrevoWebhookDeps) {
+  return providerWebhookHandler(d, parseBrevoEvent);
+}
+
+function providerWebhookHandler(d: BrevoWebhookDeps, parse: (raw: unknown) => ProviderEvent | null) {
   const log = d.log ?? ((event, data) => opsLog(event === "rejected" ? "warn" : "info", "MailWebhook", event, data));
   return async (req: Request, res: Response) => {
     if (!d.token || d.token.length < 32) return void res.status(503).json({ error: "webhook_not_configured" });
@@ -85,7 +133,7 @@ export function brevoWebhookHandler(d: BrevoWebhookDeps) {
     const items = Array.isArray(req.body) ? req.body : [req.body];
     const out = { received: items.length, applied: 0, duplicate: 0, ignored: 0 };
     for (const raw of items.slice(0, 500)) {
-      const ev = parseBrevoEvent(raw);
+      const ev = parse(raw);
       const ref = parseMailRef(ev?.ref);
       if (!ev || !ref) {
         out.ignored++;
