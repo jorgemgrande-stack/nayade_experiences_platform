@@ -1,6 +1,6 @@
 # Desistimiento de consumidores (función de desistimiento)
 
-**Estado (22/10/2026):** implementado en `server/withdrawals/`, con la página **Suscripción** del Core y la migración CRM 0022. **No ejecuta reembolsos ni bajas automáticas:** a falta de una política jurídica aprobada, registra, evalúa, avisa y guarda la resolución, y la ejecución la hace el equipo a mano.
+**Estado (20/10/2026):** implementado en `server/withdrawals/`, con la página **Suscripción** del Core y la migración CRM 0022. **No ejecuta reembolsos ni bajas automáticas:** a falta de una política jurídica aprobada, registra, evalúa, avisa y guarda la resolución, y la ejecución la hace el equipo a mano.
 
 ## 1. Desistimiento frente a cancelación
 

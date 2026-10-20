@@ -505,7 +505,8 @@ export class MemoryStripeStore implements StripeStore {
     return hit ? structuredClone(hit) : null;
   }
   async vatChecksOfOrder(orderId: number) {
-    return this.vatChecks.filter((x) => x.orderId === orderId).sort((a, b) => b.checkedAt - a.checkedAt).map((x) => structuredClone(x));
+    // Más recientes primero; a igual hora, la última registrada (como MySQL: checked_at DESC, id DESC)
+    return this.vatChecks.map((x, i) => ({ x, i })).filter(({ x }) => x.orderId === orderId).sort((a, b) => b.x.checkedAt - a.x.checkedAt || b.i - a.i).map(({ x }) => structuredClone(x));
   }
   async hasVatCheckTable() {
     return true;
