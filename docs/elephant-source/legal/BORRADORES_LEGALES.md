@@ -167,7 +167,7 @@ El contrato se celebra en español. Una traducción, si se ofrece, es informativ
 - El particular puede desistir **en 14 días naturales** desde la contratación, sin justificarlo.
 - Si pide expresamente que el servicio empiece de inmediato (casilla propia), y desiste después, **pagará la parte proporcional del servicio prestado** hasta que comunique el desistimiento.
 - Se reembolsa el resto en 14 días, por el mismo medio de pago.
-- **Función de desistimiento:** el particular podrá desistir desde su cuenta con un botón claramente identificado (Directiva (UE) 2023/2673, aplicable desde el 19/06/2026): «Desistir del contrato aquí», confirmación «Confirmar desistimiento» y justificante con fecha y hora. **[Desarrollada en el PR #189; REVISIÓN JURÍDICA de textos, ubicación y política de reembolso]**
+- **Función de desistimiento:** el particular podrá desistir desde su cuenta con un botón claramente identificado (Directiva (UE) 2023/2673, aplicable desde el 19/06/2026): «Desistir del contrato aquí», confirmación «Confirmar desistimiento» y justificante con fecha y hora. **[Desarrollada en el PR #190; REVISIÓN JURÍDICA de textos, ubicación y política de reembolso]**
 
 **D.4. Renovación y cancelación.** La suscripción se renueva automáticamente. Antes de cada renovación anual se avisará con antelación **[DECISIÓN: plazo; aviso que no existe todavía]**. El particular cancela en cualquier momento desde el portal de cliente, con efecto al final del periodo pagado y sin penalización.
 
