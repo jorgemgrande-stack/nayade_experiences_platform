@@ -9,6 +9,8 @@
  *  - Solo fechas OFICIALES. Una fiesta aún no publicada oficialmente (provisional) se trata como día HÁBIL: el plazo
  *    sale igual o más corto, nunca más largo, y se avisa de que hay que revisarlo.
  *  - Un año sin calendario cargado no se calcula (error): hay que añadirlo antes con su fuente.
+ *  - Con alguna fiesta provisional en el tramo, el plazo NO se da por confirmado (`status: "requires_review"`): una
+ *    persona lo revisa con la fuente oficial y lo anota en el ticket antes de comunicarlo.
  */
 export type HolidayScope = "nacional-autonómico" | "local";
 
@@ -103,6 +105,8 @@ export interface BusinessDeadline {
   /** Festivos descontados y fiestas provisionales que NO se han descontado (revisar). */
   skippedHolidays: string[];
   provisionalIgnored: string[];
+  /** `confirmed`: solo fechas oficiales. `requires_review`: calendario incompleto en el tramo; no comunicar sin revisar. */
+  status: "confirmed" | "requires_review";
 }
 
 export function businessDeadline(receivedAt: Date, days = 5, calendar: Record<number, CalendarYear> = MADRID_CALENDAR): BusinessDeadline {
@@ -126,5 +130,5 @@ export function businessDeadline(receivedAt: Date, days = 5, calendar: Record<nu
     if (h && !h.official) provisionalIgnored.push(`${d} ${h.name}`);
     left--;
   }
-  return { receivedOn, deadline: d, skippedHolidays, provisionalIgnored };
+  return { receivedOn, deadline: d, skippedHolidays, provisionalIgnored, status: provisionalIgnored.length ? "requires_review" : "confirmed" };
 }

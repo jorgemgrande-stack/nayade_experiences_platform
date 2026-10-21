@@ -57,12 +57,12 @@ Estado al 21/10/2026, con las decisiones de producto del propietario incorporada
 1. La persona propietaria escribe al contacto de soporte con el asunto «Documentación contractual». La pantalla lo indica, con el plazo.
 2. Soporte abre un ticket el mismo día y comprueba que el remitente es el `company_owner_email` de la empresa. Si no lo es, pide que escriba la persona propietaria; el plazo empieza cuando llega la petición válida.
 3. Operaciones genera el paquete: `GET /cp/v1/tenants/<empresa>/relationship-export?requestedAt=<fecha de la petición válida>`, con un token que tenga `billing:read` y `tickets:read`.
-   - `request.deadline` da la fecha límite: **5 días hábiles con el calendario laboral de Madrid** (`server/controlPlane/madridCalendar.ts`): de lunes a viernes, sin festivos nacionales, autonómicos ni locales (Madrid capital). El día de recepción no cuenta; las fechas se toman en hora de Madrid; vence al final del quinto día. Fuentes: Decreto 75/2025 (2026) y Decreto 82/2026 (2027) de la Comunidad de Madrid y fiestas locales del Ayuntamiento. Las fiestas aún no publicadas oficialmente (las locales de 2027) cuentan como hábiles (plazo igual o más corto) y el paquete las lista en `provisionalIgnored`. Sin calendario cargado para un año, el cálculo se niega (error 409): hay que añadir ese año con su fuente.
+   - `request.deadline` da la fecha límite: **5 días hábiles con el calendario laboral de Madrid** (`server/controlPlane/madridCalendar.ts`): de lunes a viernes, sin festivos nacionales, autonómicos ni locales (Madrid capital). El día de recepción no cuenta; las fechas se toman en hora de Madrid; vence al final del quinto día. Fuentes: Decreto 75/2025 (2026) y Decreto 82/2026 (2027) de la Comunidad de Madrid y fiestas locales del Ayuntamiento. Las fiestas aún no publicadas oficialmente (las locales de 2027) cuentan como hábiles (plazo igual o más corto) y el paquete las lista en `provisionalIgnored`; en ese caso `request.status` es `requires_review`: el plazo **no se da por confirmado** hasta que una persona lo compruebe con la fuente oficial y lo anote en el ticket. Con `confirmed`, solo se han usado fechas oficiales. Sin calendario cargado para un año, el cálculo se niega (error 409): hay que añadir ese año con su fuente.
    - `complete`/`sources` indican si falta alguna fuente; un paquete incompleto nunca se entrega como completo.
 4. Entrega antes de `deadline` por un canal acordado; nunca como adjunto de un correo sin cifrar si contiene datos personales.
 5. En el ticket queda constancia de:
    - la fecha de la petición y la verificación del remitente;
-   - la fecha límite;
+   - la fecha límite y, si era `requires_review`, quién la revisó y con qué fuente;
    - la fecha y el canal de entrega;
    - las fuentes incluidas.
 
@@ -75,7 +75,7 @@ Estado al 21/10/2026, con las decisiones de producto del propietario incorporada
 | Fin de los 30 días de solo lectura | suspended; el motor cancela las licencias (`read_only_end`) | **Sí, hasta el archivado**, con aviso en el panel y en el correo «Ha terminado el periodo de solo lectura» |
 | Archivada por un operador | archived / deleting / deleted | No (410) |
 
-No hay corte automático ni borrado automático de datos. Solo se retiran los ZIP generados, que son copias, a los 7 días. La propuesta de plazos de archivado y supresión está en `CICLO_VIDA_TENANT.md` (pendiente de aprobación).
+No hay corte automático ni borrado automático de datos. Solo se retiran los ZIP generados, que son copias, a los 7 días. Los plazos de archivado (90 días) y supresión (180 días), adoptados provisionalmente y pendientes de validación jurídica, están en `CICLO_VIDA_TENANT.md`.
 
 ## 7. Portal de facturación de Stripe (solo la persona propietaria)
 
