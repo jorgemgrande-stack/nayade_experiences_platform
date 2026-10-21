@@ -33,3 +33,17 @@ describe("página de entrada: el pase llega con el origen de la página central"
     expect(caddy).toMatch(/connect-src 'self'/);
   });
 });
+
+describe("página de entrada: acceso con la identidad oficial de Big Elephant", () => {
+  it("logotipo oficial y rojo corporativo; mostrar/ocultar contraseña accesible; validación por campo; sin credenciales de ejemplo", () => {
+    expect(html).toContain('src="/big-elephant-logo.png"');
+    expect(html).toMatch(/--red: #ff3035/);
+    expect(html).toMatch(/id="password-toggle"/);
+    expect(html).toMatch(/aria-controls="password"/);
+    expect(html).toMatch(/aria-pressed="false"/);
+    expect(html).toMatch(/setAttribute\("aria-invalid", "true"\)/);
+    expect(html).toMatch(/Revisa el correo: debe tener el formato/);
+    expect(html).not.toMatch(/placeholder="[^"]*@[^"]*"/);
+    expect(html).not.toMatch(/type="password"[^>]*value="[^"]+"/);
+  });
+});

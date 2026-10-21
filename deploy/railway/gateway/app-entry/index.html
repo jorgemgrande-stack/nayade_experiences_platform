@@ -245,6 +245,24 @@
       [hidden] {
         display: none !important;
       }
+      .plain .toggle {
+        min-height: 0;
+        margin: 0.35rem;
+        padding: 0 0.75rem;
+        border-radius: 8px;
+        background: none;
+        color: var(--ink-3);
+        font-size: 0.85rem;
+        font-weight: 600;
+      }
+      .plain .toggle:hover {
+        background: var(--line);
+        color: var(--ink);
+      }
+      input[aria-invalid="true"] {
+        box-shadow: inset 0 0 0 1.5px var(--red-ink);
+        border-radius: 12px;
+      }
       @media (max-width: 900px) {
         body {
           grid-template-columns: minmax(0, 1fr);
@@ -283,11 +301,22 @@
           </div>
           <label for="email">
             Correo electrónico
-            <span class="plain"><input id="email" name="email" type="email" autocomplete="username" autocapitalize="none" spellcheck="false" required /></span>
+            <span class="plain"><input id="email" name="email" type="email" autocomplete="username" autocapitalize="none" spellcheck="false" required aria-describedby="login-err" /></span>
           </label>
           <label for="password">
             Contraseña
-            <span class="plain"><input id="password" name="password" type="password" autocomplete="current-password" required /></span>
+            <span class="plain"
+              ><input id="password" name="password" type="password" autocomplete="current-password" required aria-describedby="login-err" /><button
+                type="button"
+                class="toggle"
+                id="password-toggle"
+                aria-controls="password"
+                aria-pressed="false"
+                aria-label="Mostrar contraseña"
+              >
+                Mostrar
+              </button></span
+            >
           </label>
           <p class="err" id="login-err" role="alert"></p>
           <button type="submit" id="login-btn">Entrar</button>
@@ -383,6 +412,27 @@
           f.submit();
         }
 
+        // Mostrar u ocultar la contraseña
+        $("password-toggle").addEventListener("click", function () {
+          var input = $("password");
+          var visible = input.type === "password";
+          input.type = visible ? "text" : "password";
+          this.setAttribute("aria-pressed", visible ? "true" : "false");
+          this.setAttribute("aria-label", visible ? "Ocultar contraseña" : "Mostrar contraseña");
+          this.textContent = visible ? "Ocultar" : "Mostrar";
+          input.focus();
+        });
+        function invalid(id, on) {
+          if (on) $(id).setAttribute("aria-invalid", "true");
+          else $(id).removeAttribute("aria-invalid");
+        }
+        ["email", "password"].forEach(function (id) {
+          $(id).addEventListener("input", function () {
+            invalid(id, false);
+          });
+        });
+        var EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
         // 1. Login
         $("login").addEventListener("submit", function (e) {
           e.preventDefault();
@@ -390,8 +440,12 @@
           var password = $("password").value;
           var err = $("login-err");
           var btn = $("login-btn");
-          if (!email || !password) {
-            err.textContent = "Escribe tu correo y tu contraseña.";
+          var badEmail = !email ? "Escribe tu correo electrónico." : !EMAIL_RE.test(email) ? "Revisa el correo: debe tener el formato nombre@dominio.es." : "";
+          invalid("email", !!badEmail);
+          invalid("password", !password);
+          if (badEmail || !password) {
+            err.textContent = badEmail || "Escribe tu contraseña.";
+            $(badEmail ? "email" : "password").focus();
             return;
           }
           err.textContent = "";
