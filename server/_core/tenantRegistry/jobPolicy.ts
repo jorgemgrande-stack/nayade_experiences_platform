@@ -29,6 +29,7 @@ export const JOB_MULTI_POLICIES: Readonly<Record<string, JobMultiPolicy>> = {
   "card-terminal-relink": { mode: "per-tenant", reason: "Revinculación con datos de la propia empresa" },
   "email-automation": { mode: "per-tenant", reason: "Cola de correos programados de la propia empresa" },
   "tax-reminder": { mode: "per-tenant", reason: "Obligaciones fiscales de la propia empresa" },
+  "data-export": { mode: "per-tenant", reason: "Exportación de los datos de la propia empresa (también suspendida o en solo lectura)" },
 };
 
 export function jobMultiPolicy(name: string): JobMultiPolicy {
