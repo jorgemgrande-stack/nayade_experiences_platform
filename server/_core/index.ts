@@ -42,6 +42,7 @@ import { sitemapRouter } from "../sitemapRouter";
 import { startCancellationStaleJob } from "../cancellationStaleJob";
 import { startEmailAutomationJob } from "../emailAutomationJob";
 import { startTaxReminderJob } from "../taxReminderJob";
+import { startDataExportJob } from "../dataExport/job";
 import { startEmailIngestionJob } from "../services/emailTpvIngestionService";
 import { startExpenseEmailIngestionJob } from "../services/expenseEmailIngestionService";
 import { initCommercialEmailTables, startCommercialEmailSyncJob } from "../services/commercialEmailService";
@@ -1960,6 +1961,7 @@ const SCHEDULED_JOBS: Array<{ name: string; flag: string; start: () => void; lab
   { name: "card-terminal-relink", flag: "card_terminal_relink_enabled", start: startRelinkJob, label: "Card Terminal Relink", def: true },
   { name: "email-automation", flag: "email_automation_job_enabled", start: startEmailAutomationJob, label: "Email Automation", def: false },
   { name: "tax-reminder", flag: "tax_reminder_job_enabled", start: startTaxReminderJob, label: "Tax Reminder", def: true },
+  { name: "data-export", flag: "data_export_job_enabled", start: startDataExportJob, label: "Data Export", def: true },
 ];
 
 /**
