@@ -14,19 +14,20 @@ import { testProvider } from "../_core/credentials/testers";
 import { getDb } from "../db";
 import { sql } from "drizzle-orm";
 import { getSystemSetting, invalidateConfigCache } from "../config";
-import { safeColor, safeHttpUrl } from "../_core/theme";
+import { cleanThemeValues, THEME_EDITABLE_KEYS, ThemeValueError } from "../_core/theme";
 
-/** Ajustes de identidad editables por el administrador del tenant. */
-const THEME_KEYS = [
-  "brand_name", "brand_logo_url", "brand_favicon_url", "theme_primary_color", "theme_accent_color",
-  "theme_font_family", "theme_radius", "seo_description", "brand_phone", "brand_location", "email_reservations",
-] as const;
+/** Ajustes de identidad editables por el administrador del tenant (web y pantalla de acceso). */
+const THEME_KEYS = THEME_EDITABLE_KEYS;
 const THEME_LABEL: Record<string, string> = {
   brand_name: "Nombre comercial", brand_logo_url: "Logotipo", brand_favicon_url: "Favicon",
   theme_primary_color: "Color principal", theme_accent_color: "Color de acento", theme_font_family: "Tipografía",
   theme_radius: "Radio de bordes", seo_description: "Descripción (SEO)", brand_phone: "Teléfono",
-  brand_location: "Dirección", email_reservations: "Correo de contacto",
+  brand_location: "Dirección", email_reservations: "Correo de contacto", brand_hero_image_url: "Imagen principal de la web",
+  login_background_url: "Fondo de la pantalla de acceso", login_welcome_title: "Titular de la pantalla de acceso",
+  login_welcome_message: "Mensaje de bienvenida de la pantalla de acceso",
 };
+/** Colores que el asistente antiguo y Configuración guardan como `brand_*`: se muestran si no hay `theme_*`. */
+const COLOR_FALLBACK: Record<string, string> = { theme_primary_color: "brand_primary_color", theme_accent_color: "brand_accent_color" };
 
 function requireMulti() {
   if (!isMultiTenant()) {
@@ -41,22 +42,20 @@ export const integrationsRouter = router({
   themeGet: adminProcedure.query(async () => {
     const out: Record<string, string> = {};
     for (const k of THEME_KEYS) out[k] = await getSystemSetting(k, "");
+    // En multiempresa el tema público usa `brand_*_color` cuando falta `theme_*`: se muestra lo que se ve
+    if (isMultiTenant()) for (const [k, alt] of Object.entries(COLOR_FALLBACK)) if (!out[k]) out[k] = await getSystemSetting(alt, "");
     return out;
   }),
 
   themeSave: adminProcedure
     .input(z.object({ values: z.record(z.string().max(64), z.string().max(600)) }))
     .mutation(async ({ ctx, input }) => {
-      const clean: Record<string, string> = {};
-      for (const [k, v] of Object.entries(input.values)) {
-        if (!(THEME_KEYS as readonly string[]).includes(k)) continue;
-        const val = v.trim();
-        if (val === "") { clean[k] = ""; continue; }
-        if (k.endsWith("_color") && !safeColor(val)) throw new TRPCError({ code: "BAD_REQUEST", message: `Color no válido: ${k}` });
-        if ((k === "brand_logo_url" || k === "brand_favicon_url") && !safeHttpUrl(val)) throw new TRPCError({ code: "BAD_REQUEST", message: `URL no válida: ${k}` });
-        if (k === "theme_radius" && !/^\d{1,2}(\.\d{1,2})?(px|rem)$/.test(val)) throw new TRPCError({ code: "BAD_REQUEST", message: "Radio no válido" });
-        if (k === "theme_font_family" && !/^[A-Za-z0-9 ,'"._-]{1,120}$/.test(val)) throw new TRPCError({ code: "BAD_REQUEST", message: "Tipografía no válida" });
-        clean[k] = val;
+      let clean: Record<string, string>;
+      try {
+        clean = cleanThemeValues(input.values);
+      } catch (e) {
+        if (e instanceof ThemeValueError) throw new TRPCError({ code: "BAD_REQUEST", message: `${THEME_LABEL[e.key] ?? e.key}: ${e.message}` });
+        throw e;
       }
       const db = await getDb();
       if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Base de datos no disponible" });

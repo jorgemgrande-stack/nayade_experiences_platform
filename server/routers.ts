@@ -336,15 +336,10 @@ export const appRouter = router({
     // Identidad corporativa pública del tenant (marca, logotipo, colores, contacto)
     getTheme: publicProcedure.query(async () => {
       const { getSystemSetting } = await import("./config");
-      const { buildTheme } = await import("./_core/theme");
+      const { buildTheme, PUBLIC_THEME_KEYS } = await import("./_core/theme");
       const { isMultiTenant } = await import("./_core/tenant");
-      const keys = [
-        "brand_name", "brand_logo_url", "brand_favicon_url", "theme_primary_color", "theme_accent_color",
-        "brand_primary_color", "brand_accent_color", "theme_font_family", "theme_radius", "brand_show_powered_by",
-        "brand_phone", "brand_whatsapp", "email_reservations", "site_business_email", "brand_location",
-      ];
       const vals: Record<string, string> = {};
-      await Promise.all(keys.map(async (k) => { vals[k] = await getSystemSetting(k, ""); }));
+      await Promise.all(PUBLIC_THEME_KEYS.map(async (k) => { vals[k] = await getSystemSetting(k, ""); }));
       return buildTheme((k) => vals[k] || undefined, { multi: isMultiTenant() });
     }),
 

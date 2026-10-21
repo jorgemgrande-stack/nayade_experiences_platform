@@ -9,7 +9,32 @@
  *   menús), no las páginas específicas de otra empresa.
  * - `poweredBy`: identificación discreta de Big Elephant como proveedor (activa por defecto
  *   en multi; el tenant no la oculta salvo plan que lo permita: `brand_show_powered_by`).
+ * - `login`: pantalla de acceso de la empresa (fondo, titular y mensaje). Los mismos ajustes de marca alimentan
+ *   la web y el acceso: el fondo, por defecto, es la imagen principal de la web (`brand_hero_image_url`);
+ *   `login_background_url` lo sustituye por otra imagen o, con «none», lo retira.
  */
+
+/** Ajustes que forman el tema público (lectura de `public.getTheme`). */
+export const PUBLIC_THEME_KEYS = [
+  "brand_name", "brand_logo_url", "brand_favicon_url", "theme_primary_color", "theme_accent_color",
+  "brand_primary_color", "brand_accent_color", "theme_font_family", "theme_radius", "brand_show_powered_by",
+  "brand_phone", "brand_whatsapp", "email_reservations", "site_business_email", "brand_location",
+  "brand_hero_image_url", "login_background_url", "login_welcome_title", "login_welcome_message",
+] as const;
+
+/** Valor de `login_background_url` que retira el fondo (sin imagen, ni siquiera la de la web). */
+export const LOGIN_BACKGROUND_NONE = "none";
+export const LOGIN_TITLE_MAX = 80;
+export const LOGIN_MESSAGE_MAX = 240;
+
+export interface PublicLoginTheme {
+  /** Imagen de fondo del panel de marca, o null. */
+  backgroundUrl: string | null;
+  /** De dónde sale: la imagen principal de la web, una propia del acceso o ninguna. */
+  backgroundSource: "web" | "custom" | "none";
+  title: string | null;
+  message: string | null;
+}
 
 export interface PublicTheme {
   brandName: string | null;
@@ -22,6 +47,7 @@ export interface PublicTheme {
   neutralSite: boolean;
   poweredBy: { label: string; url: string } | null;
   contact: { phone: string | null; email: string | null; address: string | null; whatsapp: string | null };
+  login: PublicLoginTheme;
 }
 
 const HEX = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
@@ -55,10 +81,89 @@ export function whatsappNumber(v: string | undefined | null): string | null {
   return /^\d{8,15}$/.test(digits) ? digits : null;
 }
 
+/**
+ * Imagen para la pantalla de acceso: solo https o una ruta propia («/files/…»). Nada de http, `data:`,
+ * `javascript:` ni comillas o paréntesis (se usa en atributos; nunca en CSS).
+ */
+export function safeImageUrl(v: string | undefined | null): string | null {
+  const s = (v ?? "").trim();
+  if (!s || s.length > 600 || /["'()<>\\\s]/.test(s)) return null;
+  if (s.startsWith("/") && !s.startsWith("//")) return s;
+  try {
+    return new URL(s).protocol === "https:" ? s : null;
+  } catch {
+    return null;
+  }
+}
+
 const text = (v: string | undefined, max: number): string | null => {
   const s = (v ?? "").replace(/[\u0000-\u001f<>]/g, "").trim();
   return s ? s.slice(0, max) : null;
 };
+
+/** Pantalla de acceso. En single solo con ajustes `login_*` explícitos (Náyade no cambia de fondo). */
+function buildLogin(get: (key: string) => string | undefined, multi: boolean): PublicLoginTheme {
+  const own = (get("login_background_url") ?? "").trim();
+  let backgroundUrl: string | null = null;
+  let backgroundSource: PublicLoginTheme["backgroundSource"] = "none";
+  if (own === LOGIN_BACKGROUND_NONE) backgroundSource = "none";
+  else if (own) {
+    backgroundUrl = safeImageUrl(own);
+    backgroundSource = backgroundUrl ? "custom" : "none";
+  } else if (multi) {
+    backgroundUrl = safeImageUrl(get("brand_hero_image_url"));
+    backgroundSource = backgroundUrl ? "web" : "none";
+  }
+  return { backgroundUrl, backgroundSource, title: text(get("login_welcome_title"), LOGIN_TITLE_MAX), message: text(get("login_welcome_message"), LOGIN_MESSAGE_MAX) };
+}
+
+/** Ajustes de identidad que el administrador de la empresa edita (Marca y tema, y Primeros pasos › Marca). */
+export const THEME_EDITABLE_KEYS = [
+  "brand_name", "brand_logo_url", "brand_favicon_url", "theme_primary_color", "theme_accent_color",
+  "theme_font_family", "theme_radius", "seo_description", "brand_phone", "brand_location", "email_reservations",
+  "brand_hero_image_url", "login_background_url", "login_welcome_title", "login_welcome_message",
+] as const;
+
+/** Ajustes de la pantalla de acceso que «Restaurar valores predeterminados» deja vacíos. */
+export const LOGIN_DEFAULT_KEYS = ["login_background_url", "login_welcome_title", "login_welcome_message"] as const;
+
+export class ThemeValueError extends Error {
+  constructor(readonly key: string, message: string) {
+    super(message);
+    this.name = "ThemeValueError";
+  }
+}
+
+const IMAGE_KEYS = new Set(["brand_logo_url", "brand_favicon_url", "brand_hero_image_url"]);
+
+/**
+ * Valida y limpia lo que envía el administrador: claves fuera de la lista se ignoran; un valor no válido
+ * lanza ThemeValueError (no se guarda nada a medias); vacío = volver al valor predeterminado.
+ */
+export function cleanThemeValues(values: Record<string, string>): Record<string, string> {
+  const clean: Record<string, string> = {};
+  for (const [k, raw] of Object.entries(values)) {
+    if (!(THEME_EDITABLE_KEYS as readonly string[]).includes(k)) continue;
+    const val = String(raw ?? "").trim();
+    if (val === "") {
+      clean[k] = "";
+      continue;
+    }
+    if (k.endsWith("_color") && !safeColor(val)) throw new ThemeValueError(k, "Color no válido: usa un código como #1f3a5f");
+    if (IMAGE_KEYS.has(k) && !safeImageUrl(val)) throw new ThemeValueError(k, "Imagen no válida: sube el fichero o usa una dirección https");
+    if (k === "login_background_url" && val !== LOGIN_BACKGROUND_NONE && !safeImageUrl(val)) throw new ThemeValueError(k, "Imagen de fondo no válida: sube el fichero o usa una dirección https");
+    if (k === "theme_radius" && !RADIUS.test(val)) throw new ThemeValueError(k, "Radio no válido");
+    if (k === "theme_font_family" && !FONT.test(val)) throw new ThemeValueError(k, "Tipografía no válida");
+    if (k === "login_welcome_title" || k === "login_welcome_message") {
+      const t = text(val, k === "login_welcome_title" ? LOGIN_TITLE_MAX : LOGIN_MESSAGE_MAX);
+      if (!t || val.length > (k === "login_welcome_title" ? LOGIN_TITLE_MAX : LOGIN_MESSAGE_MAX) || /[<>]/.test(val)) throw new ThemeValueError(k, k === "login_welcome_title" ? `Titular no válido (máximo ${LOGIN_TITLE_MAX} caracteres, sin < ni >)` : `Mensaje no válido (máximo ${LOGIN_MESSAGE_MAX} caracteres, sin < ni >)`);
+      clean[k] = t;
+      continue;
+    }
+    clean[k] = val;
+  }
+  return clean;
+}
 
 export function buildTheme(
   get: (key: string) => string | undefined,
@@ -87,6 +192,7 @@ export function buildTheme(
       // WhatsApp de la empresa: su ajuste propio o, si no lo tiene, su teléfono de marca
       whatsapp: whatsappNumber(get("brand_whatsapp") ?? get("brand_phone")),
     },
+    login: buildLogin(get, opts.multi),
   };
 }
 
