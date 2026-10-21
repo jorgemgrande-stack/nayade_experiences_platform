@@ -158,6 +158,11 @@ describe("integridad del registro", () => {
     expect(ledgerProblems(list, state({ tables: new Set(["crm_companies"]) }), lane).join()).toMatch(/Faltan las tablas base/);
     expect(ledgerProblems(list, state({ applied: new Map([["0001_crm_commercial_v2", "x"]]) }), lane).join()).toMatch(/no existe en este carril/);
   });
+  it("base de una empresa aprovisionada (registro 0000_baseline del aprovisionamiento) → sin problemas en el carril app; en otro carril, sí", () => {
+    const applied = new Map([["0000_baseline", "x"], [list[0].id, list[0].checksum]]);
+    expect(ledgerProblems(list, state({ applied }), lane)).toEqual([]);
+    expect(ledgerProblems(list, state({ applied, tables: new Set(["crm_companies"]) }), { name: "crm", dir: "x", requires: ["crm_companies"] }).join()).toMatch(/0000_baseline figura como aplicada/);
+  });
   it("migración a medias, contenido cambiado o hueco → se detiene", () => {
     expect(ledgerProblems(list, state({ inProgress: "up:0002_m2" }), lane).join()).toMatch(/empezó y no terminó/);
     expect(ledgerProblems(list, state({ applied: new Map([[list[0].id, "otro"]]) }), lane).join()).toMatch(/checksum distinto/);
