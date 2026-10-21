@@ -17,6 +17,8 @@ Para reanudar: la última fila terminada y la «Próxima acción». Sin secretos
 | 21/10 01:15 | 3 | Copia, restauración y huellas antes de migrar | ✅ Copia `ok`. Restauraciones verificadas. Paquete idéntico al ensayado | — | Ensayo final sobre las copias | — | — |
 | 21/10 01:20 | 3 | **Migraciones en `live`** (autorizadas) | ✅ Registro 0013. Permiso `tenant_usage` del Core. CRM 22/22 | — | Inventario antes y después | — | — |
 | 21/10 01:46 | 3 | **Despliegue en `live`** (autorizado): `c6182d4`, `7351b3c` y `42741e2` | ✅ 7 servicios en verde, en el orden validado | — | Salud, 401 sin credencial, firma del webhook, sitio público, catálogo y copia posterior | Conciliación de Stripe (más de 20 tipos) | Integrar #197 y desplegarlo con tu autorización |
+| 21/10 07:06 | 3 | **Cierre de incidencias** (`aa79d4b`: #197 y #199) | ✅ Conciliación sin fallos, ERM persistente (`es_erm`), desistimiento Core → plano de control por red privada | #197, #198, #199 fusionados | Copia previa, sonda en `core`, logs | — | — |
+| 21/10 07:10 | 4 | Customer Portal de Stripe Live | ✅ Cambio de plan entre los 4 precios (subidas inmediatas con prorrateo facturado; bajadas a fin de periodo). Datos de facturación siguen bloqueados | — | Lectura posterior | URL legales | Textos legales |
 
 ## Estado de las fases
 
@@ -24,6 +26,6 @@ Para reanudar: la última fila terminada y la «Próxima acción». Sin secretos
 |---|---|
 | 1. Plataforma | ✅ Consolidada: plataforma, CRM y web identificados; sin cambios locales sin guardar; PR antiguos resueltos |
 | 2. Cierre comercial, fiscal, legal y comunicaciones | ✅ Implementada y probada con simuladores. ⏸️ Decisiones fiscales y legales (`DECISIONES_PROPIETARIO.md`) |
-| 3. Railway `live` | ✅ **Migrado y desplegado** (`DESPLIEGUE_LIVE.md` §8). ⏸️ PR #197 y variables del Core y de los desistimientos |
+| 3. Railway `live` | ✅ **Migrado, desplegado e incidencias cerradas** (`DESPLIEGUE_LIVE.md` §8 y §9) |
 | 4. Apertura controlada | ✅ Preparada (`APERTURA_COMERCIAL.md`). ⏸️ Stripe Tax, textos, correo y dominios |
 | 5. Lanzamiento público | ✅ Checklist y supervisión preparados. ⏸️ Depende de la 4 |
