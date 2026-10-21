@@ -120,11 +120,13 @@ describe("plazo de entrega: 5 días hábiles con el calendario laboral de Madrid
     const r = businessDeadline(new Date("2027-11-05T10:00:00Z"));
     expect(r.deadline).toBe("2027-11-12");
     expect(r.provisionalIgnored).toEqual([expect.stringMatching(/^2027-11-09 /)]);
+    expect(r.status).toBe("requires_review");
+    expect(businessDeadline(new Date("2027-03-24T10:00:00Z")).status).toBe("confirmed");
     expect(() => businessDeadline(new Date("2027-12-29T10:00:00Z"))).toThrow(CalendarUnavailableError);
   });
 
   it("el paquete incluye el plazo calculado", async () => {
     const b = await buildRelationshipExport("acme", sources, { now: NOW, by: "op", requestedAt: Date.parse("2026-10-30T10:00:00Z") });
-    expect(b.request).toMatchObject({ receivedOn: "2026-10-30", deadline: "2026-11-10", skippedHolidays: ["2026-11-02 Traslado de Todos los Santos", "2026-11-09 Nuestra Señora de la Almudena"], provisionalIgnored: [] });
+    expect(b.request).toMatchObject({ receivedOn: "2026-10-30", deadline: "2026-11-10", skippedHolidays: ["2026-11-02 Traslado de Todos los Santos", "2026-11-09 Nuestra Señora de la Almudena"], provisionalIgnored: [], status: "confirmed" });
   });
 });

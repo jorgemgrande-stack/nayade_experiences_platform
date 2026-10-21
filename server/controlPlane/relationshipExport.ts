@@ -30,9 +30,10 @@ export interface RelationshipExport {
   generatedBy: string;
   /**
    * Solicitud de la persona propietaria y plazo (5 días hábiles en Madrid): el día de recepción no cuenta; vence al
-   * final de `deadline` (hora de Madrid). `provisionalIgnored`: fiestas aún no oficiales, contadas como hábiles.
+   * final de `deadline` (hora de Madrid). `provisionalIgnored`: fiestas aún no oficiales, contadas como hábiles; si
+   * hay alguna, `status` es `requires_review` y el plazo no se comunica sin revisarlo con la fuente oficial.
    */
-  request: { requestedAt: string; receivedOn: string; deadline: string; skippedHolidays: string[]; provisionalIgnored: string[] } | null;
+  request: { requestedAt: string; receivedOn: string; deadline: string; skippedHolidays: string[]; provisionalIgnored: string[]; status: "confirmed" | "requires_review" } | null;
   complete: boolean;
   sources: Record<"registro" | "pedidos" | "facturacion" | "stripe" | "documentosFiscales" | "soporte", SourceState>;
   tenant: Record<string, unknown>;
