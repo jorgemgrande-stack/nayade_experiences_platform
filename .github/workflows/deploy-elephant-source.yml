@@ -26,6 +26,8 @@ on:
           - desplegar-restore-drill
           - desplegar-backup-job
           - copia-de-seguridad
+          - migraciones-plataforma-simulacion
+          - migraciones-plataforma-aplicar
           - migraciones-simulacion
           - migraciones-aplicar
           - verificar-migraciones
@@ -110,6 +112,20 @@ jobs:
       - name: Copia de seguridad (todas o las indicadas)
         if: inputs.action == 'copia-de-seguridad'
         run: pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --command "node dist-cp/backup-job.js run${ES_ONLY:+ --only ${ES_ONLY}}"
+
+      - name: Migraciones de plataforma, registro y CRM (simulación)
+        if: inputs.action == 'migraciones-plataforma-simulacion'
+        run: |
+          pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --command "node .mig/run.cjs registry plan"
+          pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --command "node .mig/run.cjs crm status"
+          pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --command "node .mig/run.cjs crm plan"
+
+      - name: Migraciones de plataforma, registro y CRM (aplicar; tras la copia de seguridad)
+        if: inputs.action == 'migraciones-plataforma-aplicar'
+        run: |
+          pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --command "node .mig/run.cjs registry apply"
+          pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --command "node .mig/run.cjs crm apply"
+          pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --command "node .mig/run.cjs crm status"
 
       - name: Migraciones de las empresas (simulación)
         if: inputs.action == 'migraciones-simulacion'
