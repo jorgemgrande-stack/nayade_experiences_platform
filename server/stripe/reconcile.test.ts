@@ -19,6 +19,20 @@ describe("conciliación", () => {
     expect(store.events.size).toBe(5);
   });
 
+  it("con todos los tipos gestionados (más de 20) no pide filtro a Stripe y atraviesa páginas de eventos ajenos", async () => {
+    const gw = new FakeStripeGateway();
+    const store = new MemoryStripeStore();
+    const now = 1_800_000_500_000;
+    gw.emit("invoice.voided", "invoice", "in_test_v", 1_800_000_000);
+    for (let i = 0; i < 120; i++) gw.emit("customer.created", "customer", `cus_test_${i}`, 1_800_000_001 + i);
+    gw.emit("customer.subscription.pending_update_expired", "subscription", "sub_test_p", 1_800_000_200);
+    const rec = new StripeReconciler({ store, gateway: gw, processor: noProcessor, now: () => now });
+    const r = await rec.tick();
+    expect(r.recovered).toBe(2);
+    expect([...store.events.values()].map((e) => e.type).sort()).toEqual(["customer.subscription.pending_update_expired", "invoice.voided"]);
+    expect((await store.getState("events_cursor"))?.complete).toBe(true);
+  });
+
   it("M1: si quedan páginas por leer, el cursor NO avanza (lo pendiente es lo más antiguo)", async () => {
     const gw = new FakeStripeGateway();
     const store = new MemoryStripeStore();

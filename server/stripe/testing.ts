@@ -301,6 +301,8 @@ export class FakeStripeGateway implements StripeGateway {
   }
   async listEvents(q: { createdGte?: number; types?: string[]; startingAfter?: string; limit?: number }) {
     this.guard();
+    // Igual que Stripe: como máximo 20 valores en `types`
+    if (q.types && q.types.length > 20) throw new StripeGatewayError("invalid_request_error", "Stripe respondió 400 (más de 20 valores en types)", false);
     let list = this.events.filter((e) => (q.createdGte === undefined || e.created >= q.createdGte) && (!q.types || q.types.includes(e.type)));
     if (q.startingAfter) list = list.slice(list.findIndex((e) => e.id === q.startingAfter) + 1);
     const limit = q.limit ?? 100;

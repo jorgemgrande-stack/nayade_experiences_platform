@@ -6,6 +6,8 @@
  *    derechos los calcula el plano de control.
  *  - Sin `CP_COMMERCE_URL` y `CP_COMMERCE_TOKEN` la compra no está disponible (nada se llama).
  *  - El token de servicio es solo de servidor: nunca llega al navegador.
+ *  - URL: https, o la red privada de Railway (`http://<servicio>.railway.internal:<puerto>`, cifrada por la
+ *    plataforma y sin salida a Internet), o localhost fuera de producción.
  */
 export interface CommerceInput {
   add?: string[];
@@ -50,8 +52,9 @@ export function commerceClientFromEnv(env: NodeJS.ProcessEnv = process.env, fetc
   const base = (env.CP_COMMERCE_URL ?? "").trim().replace(/\/+$/, "");
   const token = (env.CP_COMMERCE_TOKEN ?? "").trim();
   if (!base || !token) return null;
-  if (!/^https:\/\//.test(base) && !(env.NODE_ENV !== "production" && /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?(\/|$)/.test(base))) {
-    throw new Error("CP_COMMERCE_URL debe ser https (o localhost fuera de producción)");
+  const privateNet = /^http:\/\/[a-z0-9-]+\.railway\.internal:\d+$/.test(base);
+  if (!/^https:\/\//.test(base) && !privateNet && !(env.NODE_ENV !== "production" && /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?(\/|$)/.test(base))) {
+    throw new Error("CP_COMMERCE_URL debe ser https, la red privada de Railway (http://<servicio>.railway.internal:<puerto>) o localhost fuera de producción");
   }
   const call = async (method: string, path: string, body?: unknown) => {
     const ctrl = new AbortController();
