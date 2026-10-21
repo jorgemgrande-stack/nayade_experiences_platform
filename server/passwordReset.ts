@@ -18,6 +18,7 @@ import { buildPasswordResetHtml } from "./emailTemplates";
 import { sendEmail } from "./mailer";
 import { logDirectEmail } from "./emailManager";
 import { brandName } from "./tenantBrand";
+import { passwordChangedContent } from "./mail/securityTemplates";
 import { getTrustedBaseUrl } from "./_core/publicUrl";
 
 // ─── Configuración ────────────────────────────────────────────────────────────
@@ -29,20 +30,8 @@ const BCRYPT_ROUNDS = 12;
  * administración o a soporte). Nunca lleva copia global (categoría security_notice).
  */
 export function passwordChangedEmail(name: string | null, at: Date) {
-  const brand = brandName();
-  const when = at.toLocaleString("es-ES", { timeZone: "Europe/Madrid", dateStyle: "long", timeStyle: "short" });
-  const hello = name ? `Hola ${escapeHtml(name)},` : "Hola,";
-  const text = `${name ? `Hola ${name},` : "Hola,"}
-
-La contraseña de tu cuenta de ${brand} se ha cambiado el ${when} (hora de Madrid).
-
-Si has sido tú, no tienes que hacer nada. Si no has sido tú, avisa cuanto antes a la administración de tu empresa o a soporte: las sesiones abiertas con la contraseña anterior ya se han cerrado.
-
-${brand}`;
-  const html = `<p>${hello}</p><p>La contraseña de tu cuenta de <strong>${escapeHtml(brand)}</strong> se ha cambiado el ${escapeHtml(when)} (hora de Madrid).</p><p>Si has sido tú, no tienes que hacer nada. Si no has sido tú, avisa cuanto antes a la administración de tu empresa o a soporte: las sesiones abiertas con la contraseña anterior ya se han cerrado.</p><p>${escapeHtml(brand)}</p>`;
-  return { subject: `Tu contraseña se ha cambiado — ${brand}`, html, text };
+  return passwordChangedContent(brandName(), name, at);
 }
-const escapeHtml = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" })[c]!);
 
 async function sendResetEmail(to: string, resetUrl: string, name: string) {
   const html = buildPasswordResetHtml({ name: name ?? "", resetUrl, expiryMinutes: TOKEN_EXPIRY_MINUTES });

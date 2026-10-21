@@ -45,6 +45,7 @@ import { lifecyclePolicyFromEnv } from "../lifecycle/policy";
 import { blockedDomainsFromEnv } from "../trials/service";
 import type { TrialNotifier } from "../trials/onboarding";
 import { platformMailFromEnv, tenantLaneResolver } from "../mail/platform";
+import { MysqlMailStore } from "../mail/store";
 import { brevoDiagnostics, mailProviderConfig } from "../mail/providers";
 import { MysqlOrganizationStore } from "../organization/service";
 import { MysqlOrderStore } from "../orchestrator/store";
@@ -480,6 +481,8 @@ async function main() {
       webhookToken: process.env.BREVO_WEBHOOK_TOKEN ?? null,
       postmarkWebhookToken: process.env.POSTMARK_WEBHOOK_TOKEN ?? null,
       tenantLane: tenantLaneResolver({ dsnOf: (id) => registry.getActiveDsn(id), policy: mailPolicy }),
+      // Trazabilidad de la bandeja de plataforma (la misma tabla del CRM; solo lectura)
+      ledger: platformMail.mailer && crmPool ? new MysqlMailStore(crmPool) : null,
       diagnostics: process.env.BREVO_API_KEY ? () => brevoDiagnostics({ apiKey: process.env.BREVO_API_KEY!, sendingDomain: mailPolicy.sendingDomain, baseUrl: process.env.BREVO_API_BASE_URL }) : undefined,
     },
   });

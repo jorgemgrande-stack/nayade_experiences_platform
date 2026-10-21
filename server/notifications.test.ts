@@ -9,7 +9,7 @@ import type { CommercialEventDraft } from "./commercialEvents/types";
 import { MemoryCrmStore } from "./crm/store";
 import { CrmService } from "./crm/service";
 import { MemoryOrderStore } from "./orchestrator/store";
-import { mailPolicyFromEnv } from "./mail/policy";
+import { DEFAULT_MAIL_LOGO_URL, mailPolicyFromEnv } from "./mail/policy";
 import { memoryProvider } from "./mail/providers";
 import { MailService } from "./mail/service";
 import { MemoryMailStore } from "./mail/store";
@@ -56,7 +56,10 @@ describe("catálogo de comunicaciones", () => {
       expect(c.subject.length).toBeGreaterThan(5);
       const body = `${c.html}\n${c.text}`;
       expect(body).not.toMatch(/establecer-contrasena|recuperar-contrasena|nueva-contrasena|token=|http:\/\//);
-      for (const url of body.match(/https:\/\/[^\s"<]+/g) ?? []) expect(url.startsWith("https://acme.elephant.test/")).toBe(true);
+      // Enlaces solo a la plataforma; la única imagen es el logotipo oficial (no es un enlace)
+      const images = Array.from(c.html.matchAll(/<img src="([^"]+)"/g), (m) => m[1]);
+      expect(images).toEqual([DEFAULT_MAIL_LOGO_URL]);
+      for (const url of body.split(DEFAULT_MAIL_LOGO_URL).join("").match(/https:\/\/[^\s"<]+/g) ?? []) expect(url.startsWith("https://acme.elephant.test/")).toBe(true);
       expect(body).toContain("No es publicidad");
       // Sin las variables, la plantilla no falla ni muestra «undefined»
       expect(JSON.stringify(t.render({}, { supportEmail: null }))).not.toContain("undefined");

@@ -11,7 +11,10 @@
 import express, { type Express, type NextFunction, type Request, type Response } from "express";
 import { BUILTIN_MODULES } from "../_core/modules/builtin";
 import type { CommercialEventDispatchQueue, CommercialEventReader } from "../commercialEvents/log";
-import { catalogView } from "../notifications/catalog";
+import { TEMPLATE_CATALOG, catalogView } from "../notifications/catalog";
+import { hasPreview, previewTemplate } from "../notifications/preview";
+import { MAIL_STATUSES } from "../mail/types";
+import type { MailLedgerReader } from "../mail/store";
 import { choosePublicDomain } from "../_core/tenantIdentity";
 import { NotificationDispatcher } from "../notifications/dispatcher";
 import type { CommercialEventSink } from "../commercialEvents/types";
@@ -271,6 +274,8 @@ export interface ControlPlaneDeps {
     postmarkWebhookToken?: string | null;
     tenantLane?: (tenantId: string) => Promise<MailService | null>;
     diagnostics?: () => Promise<unknown>;
+    /** Trazabilidad de la bandeja de PLATAFORMA (solo lectura; sin direcciones completas ni cuerpos). */
+    ledger?: MailLedgerReader | null;
   };
   /**
    * Comunicaciones transaccionales (server/notifications): despachador de eventos comerciales. `since` es el
@@ -1337,6 +1342,45 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
       });
       router.post("/notifications/dispatch", requireScope("ops:write"), wrap(async (_req, res) => void res.json(await dispatcher.run(100))));
     }
+  }
+
+  // Vista previa de las comunicaciones con DATOS FICTICIOS (no envía nada ni lee datos de clientes)
+  router.get("/notifications/preview", requireScope("ops:read"), wrap(async (_req, res) => void res.json({ ids: TEMPLATE_CATALOG.filter(hasPreview).map((t) => t.id) })));
+  router.get(
+    "/notifications/preview/:id",
+    requireScope("ops:read"),
+    wrap(async (req, res) => {
+      const p = previewTemplate(String(req.params.id));
+      if (!p) return void res.status(404).json({ error: "not_found", message: "Esa comunicación no tiene vista previa (la envía Stripe o aún no tiene disparador)" });
+      res.json({ preview: p });
+    }),
+  );
+
+  // Trazabilidad de los avisos de plataforma: qué se envió, a quién (enmascarado), por qué evento, cuándo, estado,
+  // error e historial (incluidos los eventos del proveedor). Solo lectura; sin direcciones completas ni cuerpos.
+  if (d.mail?.ledger) {
+    const ledger = d.mail.ledger;
+    const listQuery = z
+      .object({
+        status: z.enum(MAIL_STATUSES).optional(),
+        category: z.string().trim().regex(/^[a-z_]{1,40}$/).optional(),
+        tenantId: z.string().trim().regex(/^[a-z0-9][a-z0-9_-]{0,62}$/).optional(),
+        template: z.string().trim().regex(/^[a-z][a-z0-9_.-]{0,80}$/).optional(),
+        beforeId: z.coerce.number().int().positive().optional(),
+        limit: z.coerce.number().int().min(1).max(200).optional(),
+      })
+      .strict();
+    router.get("/mail/outbox", requireScope("ops:read"), wrap(async (req, res) => void res.json({ messages: await ledger.list(listQuery.parse(req.query)) })));
+    router.get(
+      "/mail/outbox/:id",
+      requireScope("ops:read"),
+      wrap(async (req, res) => {
+        const id = z.coerce.number().int().positive().parse(req.params.id);
+        const h = await ledger.history(id);
+        if (!h) return void res.status(404).json({ error: "not_found", message: "Mensaje no encontrado" });
+        res.json(h);
+      }),
+    );
   }
 
   if (d.tickets) {

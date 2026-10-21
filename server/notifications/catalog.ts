@@ -13,7 +13,7 @@
  * cualquier otra audiencia); sin secretos, enlaces de recuperación ni invitaciones en ninguna plantilla de este
  * catálogo; enlaces solo a la propia plataforma (https); `MAIL_MODE` decide si sale algo (off: nada).
  */
-import { PLATFORM_BRAND } from "../mail/policy";
+import { PLATFORM_BRAND, platformIdentity } from "../mail/policy";
 import { layout } from "../mail/templates";
 import type { MailCategory, MailContent } from "../mail/types";
 import type { CommercialEventType } from "../commercialEvents/types";
@@ -47,7 +47,7 @@ export interface TemplateSpec {
   render?: (v: Vars, o: { supportEmail: string | null }) => MailContent;
 }
 
-const brand = (supportEmail: string | null) => ({ name: PLATFORM_BRAND, supportEmail });
+const brand = (supportEmail: string | null) => ({ name: PLATFORM_BRAND, supportEmail, ...platformIdentity() });
 const panel = (host: unknown, path = "/admin/suscripcion") => (typeof host === "string" && host ? { label: "Ver mi suscripción", url: `https://${host}${path}` } : null);
 const date = (ms: unknown) => (typeof ms === "number" && ms > 0 ? new Date(ms).toLocaleDateString("es-ES", { day: "numeric", month: "long", year: "numeric", timeZone: "Europe/Madrid" }) : "el fin del periodo en curso");
 const money = (cents: unknown, currency: unknown) =>

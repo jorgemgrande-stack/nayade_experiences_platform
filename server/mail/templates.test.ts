@@ -3,7 +3,7 @@
  * eventos existentes (prueba, alta asistida, pedidos) con una bandeja en memoria.
  */
 import { describe, it, expect } from "vitest";
-import { forbiddenLinkHosts, linkHosts, mailPolicyFromEnv } from "./policy";
+import { DEFAULT_MAIL_LOGO_URL, PLATFORM_LEGAL_LINE, forbiddenLinkHosts, linkHosts, mailPolicyFromEnv } from "./policy";
 import { memoryProvider } from "./providers";
 import { MailService } from "./service";
 import { MemoryMailStore } from "./store";
@@ -32,8 +32,30 @@ describe("plantillas de plataforma", () => {
       expect(c.html).toMatch(/<html lang="es">/);
       expect(c.html).toMatch(/Elephant Source/);
       expect(c.text).toMatch(/No es publicidad/);
-      expect(`${c.subject} ${c.html} ${c.text}`).not.toMatch(LEFTOVERS);
+      // El titular solo aparece en su línea oficial del pie; cualquier otra mención sería un resto
+      expect(`${c.subject} ${c.html} ${c.text}`.split(PLATFORM_LEGAL_LINE).join("")).not.toMatch(LEFTOVERS);
       expect(c.subject).not.toMatch(/[\r\n]/);
+    }
+  });
+
+  it("diseño común: logotipo oficial, texto previo, botón con enlace https, emisor en el pie y versión de texto", () => {
+    const c = all[4];
+    expect(c.html).toContain(`<img src="${DEFAULT_MAIL_LOGO_URL}"`);
+    expect(c.html).toMatch(/<table role="presentation"/);
+    expect(c.html).toMatch(/display:none;max-height:0[^>]*>La prueba gratuita termina el/);
+    expect(c.html).toMatch(/<a href="https:\/\/web\.example\/precios" target="_blank"/);
+    for (const x of [c.html, c.text]) expect(x).toContain(PLATFORM_LEGAL_LINE);
+    expect(c.text).toMatch(/^Tu prueba de Elephant Source termina en 3 días\n\nLa prueba gratuita termina el/);
+    // Sin logotipo configurado (MAIL_LOGO_URL vacío o no https), cabecera con el nombre
+    const prev = process.env.MAIL_LOGO_URL;
+    process.env.MAIL_LOGO_URL = "http://inseguro.example/logo.png";
+    try {
+      const sin = platformTemplates({ supportEmail: null }).trialExpired({ endsAt: Date.UTC(2026, 10, 1) });
+      expect(sin.html).not.toContain("<img");
+      expect(sin.html).toMatch(/font-weight:700[^>]*>Elephant Source<\/span>/);
+    } finally {
+      if (prev === undefined) delete process.env.MAIL_LOGO_URL;
+      else process.env.MAIL_LOGO_URL = prev;
     }
   });
 

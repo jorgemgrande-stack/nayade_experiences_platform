@@ -253,6 +253,9 @@ export class MailService {
       const email = normalizeEmail(ev.email ?? "");
       await this.d.store.suppress(row.tenantId, email ? recipientHash(email) : row.recipientHash, rule.suppress, now);
     }
+    // Avisos al equipo (incidencia deduplicada): una queja siempre; los rebotes permanentes si se repiten
+    if (ev.kind === "spam") recordFailure("mail.complaint", row.tenantId);
+    else if (ev.kind === "hard_bounce" || ev.kind === "invalid") recordFailure("mail.hard_bounce", row.tenantId);
     this.log("info", "provider_event", { lane: this.d.lane, tenantId: row.tenantId, id: row.id, kind: ev.kind, suppressed: !!rule.suppress });
     return "applied";
   }
