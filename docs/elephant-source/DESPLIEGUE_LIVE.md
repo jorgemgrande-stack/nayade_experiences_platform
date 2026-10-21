@@ -1,6 +1,6 @@
 # Paquete de despliegue de Railway `live`
 
-**Estado (20/10/2026, 23:10 UTC).** Railway vuelve a aceptar despliegues (comprobado). **Copia, restauración y ensayo de migraciones hechos sobre copias de `live` (§3).** No se ha migrado ni desplegado nada en las bases ni en los servicios reales. La ejecución necesita tu **autorización expresa** en dos momentos: las migraciones (§4) y el despliegue (§5). Cuando Railway vuelva, nada se ejecuta solo.
+**Estado (21/10/2026, 01:50 UTC). Migrado y desplegado en `live` con tu autorización expresa. Resultado en §8.** Las ventas siguen cerradas. Lo que sigue sirve como registro de lo hecho y como guía de reversión.
 
 ## 1. Versiones exactas
 
@@ -109,6 +109,7 @@ Después, en el CRM: **«Sincronizar catálogo de Stripe»**, que enlaza los 4 p
 | controlplane | `CP_ALERT_EMAIL` (avisos al equipo) | Con el despliegue |
 | controlplane | `CP_TOKENS`: token del Core con `commerce:withdrawal` (y `commerce:purchase` si se activan las compras) | Con el despliegue |
 | core | `CP_COMMERCE_URL` y `CP_COMMERCE_TOKEN` | Con el despliegue |
+| core | `ERM_DATABASE_URL`: el usuario `es_core` sobre `es_registry` (ya tiene `SELECT` e `INSERT, UPDATE` en `tenant_usage`). Sin ella, el uso contratado se cuenta en memoria (`usage_store_in_memory`) | Antes de la primera empresa |
 | core | `CENTRAL_LOGIN_HOST=app.bigelephant.es` | Con el traslado de dominios |
 | gateways y controlplane | Variables de dominios (ver `LANZAMIENTO_COMERCIAL.md` §5) | Con el traslado de dominios |
 | controlplane y core | Proveedor de correo (ver `CORREO_PROVEEDOR.md`), `MAIL_MODE` | Con tu autorización de envíos |
@@ -124,3 +125,51 @@ Después, en el CRM: **«Sincronizar catálogo de Stripe»**, que enlaza los 4 p
 | Falla una migración del registro | Son repetibles: corregir y repetir `registry apply`. Si no se puede: la reversión SQL de su cabecera |
 | El código nuevo funciona mal con datos reales | Vuelta atrás del código (§1). La base nueva es compatible con el código anterior |
 | Pérdida de datos | Restaurar la copia verificada en §3 en una base nueva y conmutar el servicio |
+
+## 8. Resultado del despliegue (21/10/2026, autorizado por el propietario)
+
+### Seguridad previa
+
+| Paso | Resultado |
+|---|---|
+| Copia nueva | Registro 53.647 bytes, CRM 35.217 bytes y configuración: `ok`, 0 fallos |
+| Restauración en bases desechables | `es_registry_drill_live_20261021` (23 tablas, 676 filas) y `es_crm_drill_live_20261021` (37 tablas, 730 filas): verificación correcta |
+| Paquete de migraciones | SHA-256 `0bc1e72a…8c6d`, idéntico al ensayado (58 ficheros SQL); comprobado también dentro del contenedor |
+| Ensayo final sobre las copias nuevas | Correcto |
+
+### Migraciones y permiso
+
+| Base | Resultado |
+|---|---|
+| Registro | 0011 → **0013** (0012 y 0013), sin migraciones incompletas |
+| Permiso del Core | `GRANT INSERT, UPDATE ON es_registry.tenant_usage TO 'es_core'@'%'`. `es_core` queda con `SELECT` en `es_registry.*` más ese permiso |
+| CRM | 0014 a 0022, aplicadas una a una: **22/22**, ninguna pendiente |
+
+### Servicios
+
+| Orden | Servicio | Commit | Despliegue nuevo | Comprobación |
+|---|---|---|---|---|
+| 1 | backup-job | `c6182d4` | `d02abf97-ef4b-4cf0-9162-4cc9c2eab55c` | Cron `*/15` intacto. Primera copia con el esquema nuevo: registro, CRM y configuración `ok`. El primer intento (`c984b61d…`) falló en el constructor de Railway antes de ejecutar ningún paso; se repitió el mismo export sin cambios |
+| 2 | restore-drill | `c6182d4` | `aa2b4e56-8506-41f0-9d67-d47d0970715d` | Arranque `list`: lee el catálogo de copias |
+| 3 | controlplane | `c6182d4` | `9b187002-5fcd-489d-b278-16cc5fcd0240` | Stripe montado en modo live con clave restringida, `checkout=false` (`tax_policy_pending`), autoservicio apagado, compras apagadas, correo `off`, desistimientos y límites montados |
+| 4 | core | `c6182d4` | `2f28fff3-0297-445e-ac41-f368613f5a89` | `Server running` y trabajos programados en marcha |
+| 5 | core-gateway | `c6182d4` | `9478f3bf-bc10-4f1f-94c4-327a5f6c9d97` | `/__gateway/health` 200; sin sesión, 401 |
+| 6 | crm | `7351b3c` | `826d28f3-d77f-4be7-b1f2-caddbbabe0cd` | Sin credencial, 401 |
+| 7 | web | `42741e2` | `32d26c06-94da-4131-be65-d34ce4764eac` | `/` 200. `/cp/v1/public/site` 200, sin `internalOnly` |
+
+Los puntos de vuelta atrás son los despliegues de §1.
+
+### Pruebas tras el despliegue
+
+- Webhook de Stripe (`crm-live/cp/v1/stripe/webhook`): una firma falsa llega al plano de control y se rechaza (400, `invalid_signature`). Sin cabecera de firma, la puerta del CRM exige credencial.
+- Webhook de Postmark: 401 sin token.
+- `/cp/v1/tenants` y `/cp/v1/withdrawals` sin credencial: 401.
+- Catálogo de Stripe (solo lectura): 4 precios live activos, sin duplicados. Esencial 2.900 y 27.900, Business 7.900 y 75.900 céntimos, impuesto exclusivo. El CRM tiene los 4 enlazados con `livemode=1`. No hacía falta sincronizar y no se escribió nada en Stripe.
+- Inventario: 0 empresas, 0 pedidos y 0 suscripciones. Operador `jorge` activo.
+
+### Incidencias
+
+1. **Conciliación de Stripe (ya existía antes del despliegue).** Stripe admite como máximo 20 tipos en `GET /v1/events` y se gestionan 21. Cada pasada falla y salta la alerta `stripe.worker_failed`. Los webhooks no se ven afectados. Arreglo en el PR #197, **sin desplegar**. Necesario antes de abrir ventas.
+2. **`ERM_DATABASE_URL` sin definir en `core`.** El uso se cuenta en memoria. No tiene efecto con 0 empresas; se define antes de la primera (§6).
+3. **Variables de §6 marcadas «con el despliegue» (`CP_TOKENS`, `CP_COMMERCE_URL` y `CP_COMMERCE_TOKEN`):** sin aplicar, porque son credenciales y permisos fuera de esta autorización. Sin ellas, el botón de desistimiento del Core no llega al plano de control.
+4. **Verificación en dos pasos (0012):** puede pedirte dar de alta la app de autenticación en el próximo inicio de sesión.
