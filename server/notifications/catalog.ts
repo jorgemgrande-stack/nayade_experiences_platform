@@ -25,7 +25,7 @@ export type Vars = Record<string, string | number | boolean | null>;
 export interface TemplateSpec {
   id: string;
   version: number;
-  group: "trial" | "subscription" | "module" | "billing" | "support" | "security";
+  group: "trial" | "subscription" | "module" | "billing" | "support" | "security" | "data";
   status: TemplateStatus;
   /** Solo transaccional: el despachador rechaza cualquier otra cosa. */
   audience: "transactional";
@@ -296,6 +296,9 @@ export const TEMPLATE_CATALOG: readonly TemplateSpec[] = [
   legacy("security.password_changed", "security", "security_notice", "Contraseña restablecida en el Core (POST /api/auth/reset-password → passwordChangedEmail)", "account_user", "Tras cada cambio (sin enlaces; sin copia global)", "bandeja de la empresa (una por cambio)"),
   contract("security.new_login", "security", "operational", "Inicio de sesión desde un dispositivo nuevo", "account_user", ["at", "approximateLocation"], "Al detectar un dispositivo nuevo"),
   contract("security.mfa_changed", "security", "operational", "Segundo factor activado o desactivado", "account_user", ["at", "enabled"], "Tras cada cambio"),
+  // ── Datos de la empresa: exportación (server/dataExport; marca de la empresa, sin el enlace de descarga) ──
+  legacy("data.export_ready", "data", "data_export", "Exportación generada (DataExportService → dataExport.notify); con avisos si está incompleta", "account_user", "Al terminar la generación, a la persona propietaria que la pidió (sin copia global)", "data-export:<id>:ready (bandeja de la empresa)"),
+  legacy("data.export_failed", "data", "data_export", "Exportación fallida o demasiado grande (DataExportService → dataExport.notify)", "account_user", "Al fallar la generación, a la persona propietaria que la pidió (sin copia global)", "data-export:<id>:failed (bandeja de la empresa)"),
 ];
 
 export const activeTemplates = (type: CommercialEventType) => TEMPLATE_CATALOG.filter((t) => t.status === "active" && t.events?.includes(type));

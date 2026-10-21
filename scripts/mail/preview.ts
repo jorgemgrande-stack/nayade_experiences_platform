@@ -14,7 +14,7 @@ import { allPreviews } from "../../server/notifications/preview";
 const out = path.resolve(process.argv[2] ?? "mail-preview");
 fs.mkdirSync(out, { recursive: true });
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
-const GROUP: Record<string, string> = { trial: "Prueba gratuita", subscription: "Suscripción y pagos", module: "Módulos", billing: "Facturación", support: "Soporte, desistimiento y avisos internos", security: "Seguridad" };
+const GROUP: Record<string, string> = { trial: "Prueba gratuita", subscription: "Suscripción y pagos", module: "Módulos", billing: "Facturación", support: "Soporte, desistimiento y avisos internos", security: "Seguridad", data: "Datos de la empresa" };
 
 const previews = allPreviews();
 for (const p of previews) {

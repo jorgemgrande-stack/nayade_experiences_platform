@@ -49,6 +49,8 @@ export type MailCategory =
   | "withdrawal_receipt"
   // Aviso de seguridad a la propia persona (contraseña cambiada): nunca con enlaces ni copia global
   | "security_notice"
+  // Exportación de datos de la empresa (disponible o fallida): solo a quien la pidió, sin copia global
+  | "data_export"
   | "withdrawal_resolution"
   // Catálogo de comunicaciones transaccionales (server/notifications/catalog.ts)
   | "subscription_suspended"

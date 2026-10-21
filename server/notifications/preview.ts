@@ -6,6 +6,7 @@
  * Sin vista previa: los avisos que envía Stripe (`sentBy: stripe`) y los contratos sin disparador (`contract`).
  */
 import { passwordChangedContent } from "../mail/securityTemplates";
+import { EXPORT_PANEL_PATH, exportFailedContent, exportReadyContent } from "../mail/exportTemplates";
 import { platformTemplates } from "../mail/templates";
 import type { MailContent } from "../mail/types";
 import { TEMPLATE_CATALOG, type TemplateSpec, type Vars } from "./catalog";
@@ -65,6 +66,8 @@ const LEGACY: Record<string, () => MailContent> = (() => {
     "ops.withdrawal_requested": () => t.opsNotice({ title: "Solicitud de desistimiento", lines: ["Referencia DS-20261021-AB12CD · dentro de plazo. Revísala en Atención al cliente → Desistimientos."] }),
     "ops.ticket_created": () => t.opsNotice({ title: "Nuevo ticket de soporte", lines: ["SOP-0137 · «No veo las reservas de ayer»."] }),
     "security.password_changed": () => passwordChangedContent("Hotel Ejemplo", "Ana", new Date(PREVIEW_NOW)),
+    "data.export_ready": () => exportReadyContent("Hotel Ejemplo", { name: "Ana", tables: 84, rows: 15230, files: 312, warning: null, expiresAt: PREVIEW_NOW + DAY, panelUrl: `https://${HOST}${EXPORT_PANEL_PATH}` }),
+    "data.export_failed": () => exportFailedContent("Hotel Ejemplo", { name: "Ana", reason: "No se pudo generar la exportación. Inténtalo de nuevo o contacta con soporte.", panelUrl: `https://${HOST}${EXPORT_PANEL_PATH}` }),
   };
 })();
 

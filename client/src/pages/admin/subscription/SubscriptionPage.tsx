@@ -238,6 +238,17 @@ export default function SubscriptionPage() {
               </p>
             </section>
 
+            {/* Tus datos: exportación (también en solo lectura y suspendida) */}
+            <section className="rounded-2xl border border-border bg-card p-6 space-y-3" aria-labelledby="sub-data">
+              <h2 id="sub-data" className="font-semibold text-foreground">Tus datos</h2>
+              <p className="text-sm text-muted-foreground">
+                Descarga una copia de los datos y ficheros de tu empresa (ZIP con CSV y JSON). Disponible durante la prueba, con la suscripción activa y también en solo lectura.
+              </p>
+              <Button asChild variant="outline">
+                <Link href="/admin/suscripcion/exportar">Exportar mis datos</Link>
+              </Button>
+            </section>
+
             {/* Desistimiento (particulares, dentro del plazo): distinto de cancelar la suscripción */}
             <WithdrawalSection />
           </>

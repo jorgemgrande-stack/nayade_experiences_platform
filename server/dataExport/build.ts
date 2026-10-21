@@ -101,6 +101,8 @@ export interface BuildResult {
   tableCount: number;
   rowCount: number;
   fileCount: number;
+  /** Ficheros registrados que no estaban en el almacenamiento: la exportación NO está completa si es > 0. */
+  missingFileCount: number;
 }
 
 /** Construye el ZIP. Supera `maxBytes` (datos + ficheros, sin comprimir) → ExportTooLargeError, sin generar nada. */
@@ -140,12 +142,15 @@ export async function buildExport(src: ExportSource, o: { tenantId: string; requ
     add(path, data);
     fileEntries.push({ path, objectId: f.objectId, category: f.category, contentType: f.contentType, sizeBytes: f.sizeBytes, originalName: f.originalName });
   }
+  const missing = fileEntries.filter((f) => f.missing).length;
   const manifest = {
     format: "elephant-source-export",
     formatVersion: 1,
     tenantId: o.tenantId,
     generatedAt: new Date(o.now).toISOString(),
     requestedBy: o.requestedBy,
+    complete: missing === 0,
+    missingFiles: missing,
     tables,
     skippedTables,
     files: fileEntries,
@@ -164,6 +169,7 @@ export async function buildExport(src: ExportSource, o: { tenantId: string; requ
       "",
       `Generada: ${manifest.generatedAt}`,
       `Tablas: ${tables.length} (${rowCount} filas). Ficheros: ${fileEntries.filter((f) => !f.missing).length}.`,
+      ...(missing ? ["", `ATENCIÓN: exportación INCOMPLETA. ${missing} fichero(s) registrados no estaban en el almacenamiento y no se han incluido (ver «missing» en manifest.json).`] : []),
       "",
       "data/   cada tabla en CSV (abre con una hoja de cálculo) y en JSON (para importar en otro sistema).",
       "files/  tus ficheros (facturas, documentos, imágenes...).",
@@ -174,5 +180,5 @@ export async function buildExport(src: ExportSource, o: { tenantId: string; requ
     ].join("\r\n"),
   );
   const out = await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE", compressionOptions: { level: 6 } });
-  return { zip: out, manifest, tableCount: tables.length, rowCount, fileCount: fileEntries.filter((f) => !f.missing).length };
+  return { zip: out, manifest, tableCount: tables.length, rowCount, fileCount: fileEntries.filter((f) => !f.missing).length, missingFileCount: missing };
 }
