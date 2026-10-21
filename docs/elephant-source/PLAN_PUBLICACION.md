@@ -12,7 +12,13 @@ Un único plan, en orden. Cada paso es **una ejecución** del flujo «Despliegue
    - revisores obligatorios: el propietario;
    - rama permitida: solo `integration/elephant-source`;
    - secreto `RAILWAY_TOKEN` con el token del paso 1 de ese entorno.
-3. **Comprobar en qué entorno está cada dominio.** `www`, `app` y `admin.bigelephant.es` apuntan al entorno **production**. Este plan se ejecuta **primero en `live`** (validación completa) y, si todo es correcto, **se repite en `production`**.
+3. **Registrar el flujo en GitHub (decisión del propietario).** GitHub solo permite lanzar a mano (`workflow_dispatch`) un flujo que exista en la rama por defecto, `main`, y un push a `main` despliega **Náyade** (integración GitHub-Railway de su proyecto). Opciones:
+   - a) copiar **solo** `.github/workflows/deploy-elephant-source.yml` a `main` en un momento controlado. Náyade se reconstruiría con el mismo código: aceptable solo si se verifica su despliegue, según CLAUDE.md.
+   - b) configurar en el servicio de Náyade en Railway las *watch paths* para que los cambios en `.github/**` no desplieguen, y después hacer a);
+   - c) cambiar el disparador a un push de etiqueta (`es-deploy/…`), que no necesita `main`.
+
+   Hasta decidirlo, el flujo está integrado pero no se puede lanzar.
+4. **Comprobar en qué entorno está cada dominio.** `www`, `app` y `admin.bigelephant.es` apuntan al entorno **production**. Este plan se ejecuta **primero en `live`** (validación completa) y, si todo es correcto, **se repite en `production`**.
 
 ## Fase 1 — Estado y puntos de vuelta atrás
 
