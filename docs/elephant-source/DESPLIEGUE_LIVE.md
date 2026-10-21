@@ -109,7 +109,7 @@ Después, en el CRM: **«Sincronizar catálogo de Stripe»**, que enlaza los 4 p
 | controlplane | `CP_ALERT_EMAIL` (avisos al equipo) | Con el despliegue |
 | controlplane | `CP_TOKENS`: token del Core con `commerce:withdrawal` (y `commerce:purchase` si se activan las compras) | Con el despliegue |
 | core | `CP_COMMERCE_URL` y `CP_COMMERCE_TOKEN` | Con el despliegue |
-| core | `ERM_DATABASE_URL`: el usuario `es_core` sobre `es_registry` (ya tiene `SELECT` e `INSERT, UPDATE` en `tenant_usage`). Sin ella, el uso contratado se cuenta en memoria (`usage_store_in_memory`) | Antes de la primera empresa |
+| core | `ERM_DATABASE_URL`: base propia `es_erm` (`db/erm/0000_usage.sql`) y usuario propio `es_erm` con `SELECT, INSERT, UPDATE` solo sobre `es_erm.usage_hourly`; contraseña en `MySQL.ES_ERM_PASSWORD` y URL por referencia. Sin ella, la medición se cuenta en memoria (`usage_store_in_memory`) | Antes de la primera empresa |
 | core | `CENTRAL_LOGIN_HOST=app.bigelephant.es` | Con el traslado de dominios |
 | gateways y controlplane | Variables de dominios (ver `LANZAMIENTO_COMERCIAL.md` §5) | Con el traslado de dominios |
 | controlplane y core | Proveedor de correo (ver `CORREO_PROVEEDOR.md`), `MAIL_MODE` | Con tu autorización de envíos |
@@ -170,6 +170,6 @@ Los puntos de vuelta atrás son los despliegues de §1.
 ### Incidencias
 
 1. **Conciliación de Stripe (ya existía antes del despliegue).** Stripe admite como máximo 20 tipos en `GET /v1/events` y se gestionan 21. Cada pasada falla y salta la alerta `stripe.worker_failed`. Los webhooks no se ven afectados. Arreglo en el PR #197, **sin desplegar**. Necesario antes de abrir ventas.
-2. **`ERM_DATABASE_URL` sin definir en `core`.** El uso se cuenta en memoria. No tiene efecto con 0 empresas; se define antes de la primera (§6).
+2. **`ERM_DATABASE_URL` sin definir en `core`.** La medición horaria (ERM, tabla `usage_hourly`) se cuenta en memoria. No existe todavía la base del ERM en `live`. No tiene efecto con 0 empresas; se prepara antes de la primera (§6). El consumo frente a los límites contratados (`tenant_usage`) sí se guarda en el registro.
 3. **Variables de §6 marcadas «con el despliegue» (`CP_TOKENS`, `CP_COMMERCE_URL` y `CP_COMMERCE_TOKEN`):** sin aplicar, porque son credenciales y permisos fuera de esta autorización. Sin ellas, el botón de desistimiento del Core no llega al plano de control.
 4. **Verificación en dos pasos (0012):** puede pedirte dar de alta la app de autenticación en el próximo inicio de sesión.
