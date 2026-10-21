@@ -9,6 +9,8 @@
  * Stripe se describen con su número, importes y estado; los PDF oficiales se obtienen de Stripe (no se inventan).
  * Todo opcional: si una fuente no está configurada se indica en `sources` como «no disponible», nunca como vacía.
  */
+import { businessDeadline } from "./madridCalendar";
+
 export interface RelationshipSources {
   tenant: (id: string) => Promise<Record<string, unknown> | null>;
   orders?: () => Promise<Array<Record<string, unknown> & { id: number; tenantId: string | null }>>;
@@ -26,8 +28,11 @@ export interface RelationshipExport {
   tenantId: string;
   generatedAt: string;
   generatedBy: string;
-  /** Solicitud de la persona propietaria y fecha límite de entrega (5 días hábiles), si se indicó la solicitud. */
-  request: { requestedAt: string; deadline: string } | null;
+  /**
+   * Solicitud de la persona propietaria y plazo (5 días hábiles en Madrid): el día de recepción no cuenta; vence al
+   * final de `deadline` (hora de Madrid). `provisionalIgnored`: fiestas aún no oficiales, contadas como hábiles.
+   */
+  request: { requestedAt: string; receivedOn: string; deadline: string; skippedHolidays: string[]; provisionalIgnored: string[] } | null;
   complete: boolean;
   sources: Record<"registro" | "pedidos" | "facturacion" | "stripe" | "documentosFiscales" | "soporte", SourceState>;
   tenant: Record<string, unknown>;
@@ -39,23 +44,8 @@ export interface RelationshipExport {
   notes: string[];
 }
 
-/** Plazo de entrega de la documentación contractual: 5 días hábiles desde la solicitud. */
+/** Plazo de entrega de la documentación contractual: 5 días hábiles (calendario laboral de Madrid). */
 export const DELIVERY_BUSINESS_DAYS = 5;
-
-/**
- * Fecha límite (fin del día, hora de Madrid aproximada por UTC) sumando días hábiles: lunes a viernes. Los festivos
- * no se descuentan (el plazo es así igual o más estricto); `holidays` (AAAA-MM-DD) permite excluirlos.
- */
-export function businessDeadline(from: Date, days = DELIVERY_BUSINESS_DAYS, holidays: ReadonlySet<string> = new Set()): Date {
-  const d = new Date(Date.UTC(from.getUTCFullYear(), from.getUTCMonth(), from.getUTCDate(), 23, 59, 59));
-  let left = days;
-  while (left > 0) {
-    d.setUTCDate(d.getUTCDate() + 1);
-    const wd = d.getUTCDay();
-    if (wd !== 0 && wd !== 6 && !holidays.has(d.toISOString().slice(0, 10))) left--;
-  }
-  return d;
-}
 
 export class RelationshipNotFoundError extends Error {
   constructor() {
@@ -95,7 +85,7 @@ export async function buildRelationshipExport(tenantId: string, s: RelationshipS
     tenantId,
     generatedAt: new Date(o.now).toISOString(),
     generatedBy: o.by,
-    request: o.requestedAt ? { requestedAt: new Date(o.requestedAt).toISOString(), deadline: businessDeadline(new Date(o.requestedAt)).toISOString() } : null,
+    request: o.requestedAt ? { requestedAt: new Date(o.requestedAt).toISOString(), ...businessDeadline(new Date(o.requestedAt), DELIVERY_BUSINESS_DAYS) } : null,
     complete: Object.values(sources).every((v) => v === "incluido"),
     sources,
     tenant,

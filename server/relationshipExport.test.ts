@@ -88,15 +88,43 @@ describe("ruta /cp/v1/tenants/:id/relationship-export", () => {
   });
 });
 
-describe("plazo de entrega (5 días hábiles)", () => {
-  it("salta fines de semana y festivos indicados", async () => {
-    const { businessDeadline } = await import("./controlPlane/relationshipExport");
-    // Miércoles 21/10/2026 → miércoles 28/10/2026
-    expect(businessDeadline(new Date("2026-10-21T10:00:00Z")).toISOString().slice(0, 10)).toBe("2026-10-28");
-    // Viernes 23/10 → viernes 30/10; con el 26/10 festivo → lunes 02/11
-    expect(businessDeadline(new Date("2026-10-23T10:00:00Z")).toISOString().slice(0, 10)).toBe("2026-10-30");
-    expect(businessDeadline(new Date("2026-10-23T10:00:00Z"), 5, new Set(["2026-10-26"])).toISOString().slice(0, 10)).toBe("2026-11-02");
-    const b = await buildRelationshipExport("acme", sources, { now: NOW, by: "op", requestedAt: Date.parse("2026-10-21T10:00:00Z") });
-    expect(b.request).toEqual({ requestedAt: "2026-10-21T10:00:00.000Z", deadline: "2026-10-28T23:59:59.000Z" });
+describe("plazo de entrega: 5 días hábiles con el calendario laboral de Madrid", () => {
+  it("cada caso, calculado a mano con los festivos oficiales", async () => {
+    const { businessDeadline } = await import("./controlPlane/madridCalendar");
+    const at = (iso: string) => businessDeadline(new Date(iso)).deadline;
+    // Sin festivos: miércoles 21/10/2026 → miércoles 28/10
+    expect(at("2026-10-21T10:00:00Z")).toBe("2026-10-28");
+    // Viernes 30/10/2026: lunes 2/11 (traslado Todos los Santos) y lunes 9/11 (Almudena, local) → martes 10/11
+    expect(at("2026-10-30T10:00:00Z")).toBe("2026-11-10");
+    // Miércoles 2/12/2026: 7/12 (traslado Constitución) y 8/12 → viernes 11/12
+    expect(at("2026-12-02T10:00:00Z")).toBe("2026-12-11");
+    // Martes 22/12/2026: 25/12 → miércoles 30/12
+    expect(at("2026-12-22T10:00:00Z")).toBe("2026-12-30");
+    // Jueves 31/12/2026 cruza a 2027: 1/1 y 6/1 → lunes 11/01/2027
+    expect(at("2026-12-31T10:00:00Z")).toBe("2027-01-11");
+    // Miércoles 24/3/2027: Jueves y Viernes Santo → viernes 2/4
+    expect(at("2027-03-24T10:00:00Z")).toBe("2027-04-02");
+    // Lunes 11/5/2026: viernes 15/5 (San Isidro, local) → martes 19/5
+    expect(at("2026-05-11T10:00:00Z")).toBe("2026-05-19");
+    // Recibida en sábado festivo (2/5/2026): cuenta desde el lunes → viernes 8/5
+    expect(at("2026-05-02T10:00:00Z")).toBe("2026-05-08");
+  });
+
+  it("zona horaria de Madrid: a las 23:30 UTC del 21/10 ya es día 22 en Madrid", async () => {
+    const { businessDeadline } = await import("./controlPlane/madridCalendar");
+    expect(businessDeadline(new Date("2026-10-21T23:30:00Z"))).toMatchObject({ receivedOn: "2026-10-22", deadline: "2026-10-29" });
+  });
+
+  it("festivo local provisional (2027) se cuenta como hábil (plazo más corto) y se avisa; año sin calendario → error", async () => {
+    const { businessDeadline, CalendarUnavailableError } = await import("./controlPlane/madridCalendar");
+    const r = businessDeadline(new Date("2027-11-05T10:00:00Z"));
+    expect(r.deadline).toBe("2027-11-12");
+    expect(r.provisionalIgnored).toEqual([expect.stringMatching(/^2027-11-09 /)]);
+    expect(() => businessDeadline(new Date("2027-12-29T10:00:00Z"))).toThrow(CalendarUnavailableError);
+  });
+
+  it("el paquete incluye el plazo calculado", async () => {
+    const b = await buildRelationshipExport("acme", sources, { now: NOW, by: "op", requestedAt: Date.parse("2026-10-30T10:00:00Z") });
+    expect(b.request).toMatchObject({ receivedOn: "2026-10-30", deadline: "2026-11-10", skippedHolidays: ["2026-11-02 Traslado de Todos los Santos", "2026-11-09 Nuestra Señora de la Almudena"], provisionalIgnored: [] });
   });
 });

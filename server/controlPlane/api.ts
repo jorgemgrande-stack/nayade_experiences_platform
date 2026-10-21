@@ -108,6 +108,7 @@ import type { OrderStore } from "../orchestrator/store";
 import type { TestPaymentPort } from "../orchestrator/payments";
 import { createOrdersRouter, paymentsWebhookHandler } from "../orchestrator/api";
 import { buildRelationshipExport, RelationshipNotFoundError } from "./relationshipExport";
+import { CalendarUnavailableError } from "./madridCalendar";
 import { createContractActivation } from "../crm/activation";
 import type { PlatformMailer } from "../mail/platform";
 import type { MailService } from "../mail/service";
@@ -1462,6 +1463,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         res.json(bundle);
       } catch (e) {
         if (e instanceof RelationshipNotFoundError) return void res.status(404).json({ error: "not_found", message: "Tenant no encontrado" });
+        if (e instanceof CalendarUnavailableError) return void res.status(409).json({ error: "calendar_unavailable", message: e.message });
         throw e;
       }
     }),
