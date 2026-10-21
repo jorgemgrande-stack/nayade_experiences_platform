@@ -113,7 +113,7 @@ Las URL antiguas de Railway se mantienen en las listas de orígenes durante la t
 - El código de #139 (`APP_ENTRY_HOST`, entrada «Accede a tu empresa») desplegado en `live`.
 - La 0012 del registro aplicada en `live`.
 
-El código de `live` de hoy (`07670ba` + #143) **no** tiene `APP_ENTRY_HOST`.
+**Actualización del 21/10/2026:** `live` corre `aa79d4b`, que ya incluye `APP_ENTRY_HOST` en `core-gateway`, la cookie de empresa `__Host-nayade_session` y la 0012 del registro (MFA de operadores). Los tres requisitos técnicos de la fase B están cumplidos.
 
 1. Quitar `app.bigelephant.es` y `*.app.bigelephant.es` de `core-gateway` en `production`.
 2. Añadirlos a `core-gateway` en `live`, puerto 8080. Anotar los destinos de los dos dominios y del reto ACME.
@@ -129,9 +129,13 @@ El código de `live` de hoy (`07670ba` + #143) **no** tiene `APP_ENTRY_HOST`.
    - `core-gateway`: `APP_ENTRY_HOST=app.bigelephant.es`.
    - `controlplane`: `CP_PLATFORM_DOMAIN=app.bigelephant.es` (hoy `up.railway.app`) y `CP_PLATFORM_TARGET=<nuevo-comodín>.up.railway.app`.
    - `core`: `APP_URL` según el diseño de #139.
-5. **Antes de dar de alta empresas reales**, aplicar la cookie del Core con prefijo `__Host-` (MEDIO-8): `app.bigelephant.es` no está en la Public Suffix List.
+5. La cookie del Core con prefijo `__Host-` (MEDIO-8) ya está en el código de `live`: por HTTPS se escribe `__Host-nayade_session` (sin `Domain`, `Path=/`, `Secure`). Así, cada `<empresa>.app.bigelephant.es` tiene su propia sesión, aunque `app.bigelephant.es` no esté en la Public Suffix List. Se comprueba en §6.
 
 ## 4. Correo (independiente de las fases A y B)
+
+**Actualización del 21/10/2026:** el proveedor recomendado es Postmark. Su procedimiento (`docs/elephant-source/PROCEDIMIENTO_POSTMARK.md`) **no cambia el SPF**: solo añade su DKIM y el CNAME `pm-bounces`. La tabla siguiente se aplica solo si finalmente se usa Brevo.
+
+Tras la fase A, la URL del webhook de Postmark pasa a `https://admin.bigelephant.es/cp/v1/mail/postmark/webhook`.
 
 El DKIM de Brevo (`brevo1`, `brevo2`) y el código de verificación ya están publicados.
 
@@ -154,3 +158,41 @@ Resolve-DnsName bigelephant.es -Type TXT -Server 1.1.1.1 -DnsOnly
 ```
 
 En Railway, la consulta de solo lectura `project → services → serviceInstances → domains.customDomains` muestra el dominio, el certificado y el estado DNS de cada entorno.
+
+## 6. Comprobaciones de certificados, sesiones, cookies y recuperación (añadido el 21/10/2026)
+
+**Cuándo se ejecuta el traslado** (además de los requisitos de cada fase):
+1. Textos legales aprobados y publicados en la web de `live`. La web actual (`42741e2`) no los tiene: hay que desplegar una versión que los incluya.
+2. Checkout y autoservicio armados (`APERTURA_COMERCIAL.md` §2), aunque los escenarios sigan cerrados.
+3. Correo al menos en `sandbox` con Postmark (`PROCEDIMIENTO_POSTMARK.md`).
+4. Ventana sin uso y la aprobación del propietario, con fecha y hora.
+
+**Antes de cada cambio (solo lectura):** los comandos de §5. Anotar los valores actuales: son la marcha atrás.
+
+**Después de cada dominio:**
+
+| Comprobación | Cómo | Esperado |
+|---|---|---|
+| Certificado | `curl -svI https://<dominio>/ 2>&1 \| Select-String "subject:\|expire date\|issuer"` | Emitido para el dominio (o `*.app.bigelephant.es`) y en vigor |
+| HTTP → HTTPS | `curl -sI http://<dominio>/` | 301 o 308 a `https://` |
+| Apex → `www` | `curl -sI https://bigelephant.es/` | 308 a `https://www.bigelephant.es/` |
+| Web y contratación | `GET https://www.bigelephant.es/` y `/contratacion/estado` | 200 |
+| API pública | `GET https://www.bigelephant.es/cp/v1/public/site` | 200, sin productos internos |
+| Puerta del CRM | `GET https://admin.bigelephant.es/` | 401 (autenticación básica) y, tras ella, el login del CRM |
+| Cookie del operador | Iniciar sesión en el CRM y revisar `Set-Cookie` en las herramientas del navegador | `Path=/cp/v1`, `HttpOnly`, `Secure`, `SameSite=Strict`, **sin `Domain`** |
+| Origen permitido | Login del CRM desde `admin.bigelephant.es` | Funciona. Un origen fuera de `CP_ALLOWED_ORIGINS` recibe 403 |
+| Entrada de empresas | `GET https://app.bigelephant.es/` | Página «Accede a tu empresa» (fase B) |
+| Cookie de empresa | Iniciar sesión en `<empresa>.app.bigelephant.es` | `__Host-nayade_session`: `Secure`, `Path=/`, **sin `Domain`**. En otra `<empresa2>.app…` no se envía |
+| Webhook de Stripe | `POST https://admin.bigelephant.es/cp/v1/stripe/webhook` con firma falsa y JSON | 400 `invalid_signature` |
+| Webhook de Postmark | **Send test** desde Postmark | 200 |
+| Vuelta de Stripe | `CP_STRIPE_SUCCESS_URL`, `CP_STRIPE_CANCEL_URL` y `CP_STRIPE_PORTAL_RETURN_URL` | Apuntan a `www` y responden 200 |
+| Integración | Dominios de Railway de `production` | Siguen respondiendo |
+
+**Recuperación (probada en el procedimiento, por dominio, unos 10 minutos):**
+1. Quitar el dominio del servicio de `live`.
+2. Volver a añadirlo en el mismo servicio de `production`.
+3. Restaurar el CNAME anotado antes del cambio, o el nuevo que muestre Railway.
+4. Restaurar las variables de §A.3 desde los valores anotados y redesplegar.
+5. Si se cambió la URL del webhook de Stripe o de Postmark, devolverla a la anterior. El secreto no cambia.
+
+Durante el traslado, las direcciones de Railway (`elephant-source-*-live.up.railway.app`) siguen activas como acceso de respaldo.

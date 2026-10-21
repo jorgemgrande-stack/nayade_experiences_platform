@@ -76,3 +76,34 @@ Todas las alertas abren una incidencia deduplicada y avisan por `CP_ALERT_WEBHOO
 | Incidencias | Clientes SaaS → Operación SaaS → Errores y Alertas |
 | Solicitudes | Comercial → Leads (solicitudes de la web); Atención al cliente → Tickets |
 | Desistimientos | Atención al cliente → **Desistimientos** (CRM PR #28) |
+
+## 6. Armado técnico de Checkout y autoservicio (paso humano; preparado el 21/10/2026)
+
+El clasificador de seguridad del entorno de Claude Code bloquea este cambio, así que lo ejecuta el propietario. **No abre cobros:** con estas tres variables, Checkout y autoservicio siguen inactivos mientras falten `CP_STRIPE_TAX_POLICY`, `CP_STRIPE_FISCAL_SCENARIOS` y `CP_TERMS_VERSION`.
+
+**Antes (comprobado el 21/10/2026 en `live`):**
+- política fiscal, escenarios, condiciones, privacidad, precontractual y desistimiento, sin definir;
+- prueba gratuita pública y alta automática, sin definir.
+
+Ningún escenario es elegible y ninguna empresa comercial se puede crear.
+
+**Paso 1, [TÚ]: variables sin desplegar**, en una de estas dos formas:
+- **Panel:** Railway → `live` → `controlplane` → Variables.
+- **CLI:**
+  ```
+  railway variables -s controlplane -e live --skip-deploys --set "CP_STRIPE_CHECKOUT_ENABLED=1" --set "CP_PUBLIC_CHECKOUT_ENABLED=1" --set "CP_PUBLIC_SELF_SERVICE_ENABLED=1"
+  ```
+  O bien `node rw-live.cjs armar`, la orden limitada a esas tres variables.
+
+**Paso 2 (equipo técnico): despliegue** de `controlplane` con el commit vigente (`node rw-live.cjs up controlplane live-export-core-aa79d4b`).
+
+**Después (equipo técnico):**
+
+| Comprobación | Esperado |
+|---|---|
+| Arranque del `controlplane` | `ctx="Stripe"` con `checkout=false`, `checkoutReason="tax_policy_pending"`, `selfService=false`, `termsPublished=false` |
+| `POST https://elephant-source-web-live.up.railway.app/cp/v1/public/checkout/start` | 404 (el autoservicio no se monta sin Checkout) |
+| `GET …/cp/v1/public/checkout/status?session_id=cs_live_x` | 400 o 404: no expone nada |
+| Registros | Ningún Customer ni Checkout Session nuevo en Stripe; 0 empresas y 0 pedidos nuevos en el CRM |
+
+**Cuándo empiezan a cobrar:** solo cuando, además, se aprueben y fijen las decisiones fiscales (`PROPUESTA_DECISIONES_FISCALES.md`) y las condiciones (`CP_TERMS_VERSION`). Y solo en los escenarios aprobados.
