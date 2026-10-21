@@ -57,7 +57,7 @@ Estado al 21/10/2026, con las decisiones de producto del propietario incorporada
 1. La persona propietaria escribe al contacto de soporte con el asunto «Documentación contractual». La pantalla lo indica, con el plazo.
 2. Soporte abre un ticket el mismo día y comprueba que el remitente es el `company_owner_email` de la empresa. Si no lo es, pide que escriba la persona propietaria; el plazo empieza cuando llega la petición válida.
 3. Operaciones genera el paquete: `GET /cp/v1/tenants/<empresa>/relationship-export?requestedAt=<fecha de la petición válida>`, con un token que tenga `billing:read` y `tickets:read`.
-   - `request.deadline` da la fecha límite (5 días hábiles, de lunes a viernes; los festivos pueden excluirse).
+   - `request.deadline` da la fecha límite: **5 días hábiles con el calendario laboral de Madrid** (`server/controlPlane/madridCalendar.ts`): de lunes a viernes, sin festivos nacionales, autonómicos ni locales (Madrid capital). El día de recepción no cuenta; las fechas se toman en hora de Madrid; vence al final del quinto día. Fuentes: Decreto 75/2025 (2026) y Decreto 82/2026 (2027) de la Comunidad de Madrid y fiestas locales del Ayuntamiento. Las fiestas aún no publicadas oficialmente (las locales de 2027) cuentan como hábiles (plazo igual o más corto) y el paquete las lista en `provisionalIgnored`. Sin calendario cargado para un año, el cálculo se niega (error 409): hay que añadir ese año con su fuente.
    - `complete`/`sources` indican si falta alguna fuente; un paquete incompleto nunca se entrega como completo.
 4. Entrega antes de `deadline` por un canal acordado; nunca como adjunto de un correo sin cifrar si contiene datos personales.
 5. En el ticket queda constancia de:
@@ -75,7 +75,7 @@ Estado al 21/10/2026, con las decisiones de producto del propietario incorporada
 | Fin de los 30 días de solo lectura | suspended; el motor cancela las licencias (`read_only_end`) | **Sí, hasta el archivado**, con aviso en el panel y en el correo «Ha terminado el periodo de solo lectura» |
 | Archivada por un operador | archived / deleting / deleted | No (410) |
 
-No hay corte automático ni borrado automático de datos. Solo se retiran los ZIP generados, que son copias, a los 7 días.
+No hay corte automático ni borrado automático de datos. Solo se retiran los ZIP generados, que son copias, a los 7 días. La propuesta de plazos de archivado y supresión está en `CICLO_VIDA_TENANT.md` (pendiente de aprobación).
 
 ## 7. Portal de facturación de Stripe (solo la persona propietaria)
 
@@ -85,6 +85,7 @@ No hay corte automático ni borrado automático de datos. Solo se retiran los ZI
   - Se rechaza (alerta `stripe.portal_unsafe`) si permite cambiar o cancelar el plan o editar datos de facturación.
   - Solo permite el historial de facturas y el método de pago: sin cobros ni cambios desde el portal.
   - Checkout sigue apagado.
+  - El planificador de configuración (`server/stripe/portal.ts`) propone exactamente esa configuración restringida: nunca cambios de plan ni cancelaciones. La configuración por defecto que hoy existe en Stripe permite cancelar, así que hay que crear una configuración nueva restringida y usar su identificador.
 - **Cliente de Stripe:** el enlazado a la empresa en el CRM. La vuelta solo se admite a un dominio activo de esa empresa.
 - Hasta que haya cobros con Stripe, ninguna empresa tiene cliente en Stripe y el portal responde «aún no tiene facturas».
 
@@ -113,5 +114,6 @@ Hay una propuesta de redacción en un borrador del repositorio web, sin fusionar
 **Pendientes:**
 1. **Despliegue:** token de proyecto de Railway y entornos protegidos de GitHub (`PLAN_PUBLICACION.md`, fase 0).
 2. **Textos legales:** validar la nueva redacción (sección 8) antes de publicar.
-3. **Portal:** crear en Stripe la configuración restringida y decidir si se permite cancelar desde el portal.
-4. **Festivos** que se excluyen del plazo de 5 días hábiles (hoy solo se excluyen los fines de semana).
+3. **Portal:** crear en Stripe la configuración restringida (solo facturas y método de pago) y anotar su identificador.
+4. **Calendario laboral:** añadir cada año (y confirmar las fiestas locales de 2027 cuando se publiquen) antes de que haga falta.
+5. **Ciclo de vida:** plazos de archivado y supresión (`CICLO_VIDA_TENANT.md`).
