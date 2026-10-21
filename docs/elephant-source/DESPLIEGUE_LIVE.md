@@ -173,3 +173,20 @@ Los puntos de vuelta atrás son los despliegues de §1.
 2. **`ERM_DATABASE_URL` sin definir en `core`.** La medición horaria (ERM, tabla `usage_hourly`) se cuenta en memoria. No existe todavía la base del ERM en `live`. No tiene efecto con 0 empresas; se prepara antes de la primera (§6). El consumo frente a los límites contratados (`tenant_usage`) sí se guarda en el registro.
 3. **Variables de §6 marcadas «con el despliegue» (`CP_TOKENS`, `CP_COMMERCE_URL` y `CP_COMMERCE_TOKEN`):** sin aplicar, porque son credenciales y permisos fuera de esta autorización. Sin ellas, el botón de desistimiento del Core no llega al plano de control.
 4. **Verificación en dos pasos (0012):** puede pedirte dar de alta la app de autenticación en el próximo inicio de sesión.
+
+## 9. Cierre de incidencias (21/10/2026, 07:00 UTC, mandato del propietario)
+
+Commit `aa79d4b` (PR #199, que incluye el #197), desplegado solo en `controlplane` (`cb1c21b4-9d1c-4e35-b071-f7cda7ed3a57`) y `core` (`bd329cf3-139d-4381-ae0f-851127d689b0`). Puntos de vuelta atrás: `9b187002…` y `2f28fff3…`, desde el export de `c6182d4`.
+
+| Paso | Resultado |
+|---|---|
+| Copia previa | Registro y CRM `ok`, posteriores al inicio del paso (inventario del registro) |
+| ERM | Base `es_erm` con `usage_hourly`; usuario `es_erm` con **solo** `SELECT, INSERT, UPDATE` en `es_erm.usage_hourly`. Contraseña en `MySQL.ES_ERM_PASSWORD`; `core.ERM_DATABASE_URL` por referencia |
+| Desistimiento | `CP_TOKENS` += `core-desistimiento` (solo `commerce:withdrawal`; el token `arranque-live` se conserva). `core.CP_COMMERCE_TOKEN` propio y `core.CP_COMMERCE_URL = http://${{controlplane.RAILWAY_PRIVATE_DOMAIN}}:4100` |
+| controlplane | Stripe live montado, Checkout cerrado, **0 `tick_failed`** en 7 minutos (antes: uno por minuto) y sin alertas |
+| core | `Server running`; ya no aparece `usage_store_in_memory` |
+| Webhook | Firma falsa: 400 `invalid_signature` |
+| Sonda desde `core` (empresa inexistente, sin escribir) | Sin token 401; consulta y solicitud de desistimiento 404 (llega con el ámbito correcto); compras, gestión de desistimientos y empresas 403 |
+| Sonda ERM | Escribe y lee dentro de una transacción que se deshace (sin restos); `DELETE`, DDL y `es_registry` denegados |
+
+Reversión si hiciera falta: volver a los despliegues anteriores; restaurar `CP_TOKENS` sin `core-desistimiento`; borrar las tres variables del `core`; `DROP USER 'es_erm'@'%'`, `DROP DATABASE es_erm` y la variable `ES_ERM_PASSWORD`.
