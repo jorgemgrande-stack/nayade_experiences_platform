@@ -268,8 +268,9 @@ describe("Stripe en modo live por HTTP, con política fiscal stripe_tax_exclusiv
     ];
     const before = cp.gw.calls.length;
     const plan = await cp.ok(cp.call("GET", "/stripe/portal/plan"));
-    expect(plan).toMatchObject({ configurationId: "bpc_live_prueba", applicable: 5 });
-    expect(plan.writeParams.features.subscription_update.products).toHaveLength(2);
+    // Configuración restringida: solo facturas y método de pago; lo único que difiere es la cancelación
+    expect(plan).toMatchObject({ configurationId: "bpc_live_prueba", applicable: 1 });
+    expect(plan.writeParams.features).toMatchObject({ subscription_cancel: { enabled: false }, subscription_update: { enabled: false }, customer_update: { enabled: false } });
     // Solo una lectura en Stripe
     expect(cp.gw.calls.slice(before).map((c) => c.op)).toEqual(["billing_portal.configurations.list"]);
     expect((await cp.call("GET", "/stripe/portal/plan", { token: null })).status).toBe(401);

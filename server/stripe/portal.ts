@@ -3,12 +3,11 @@
  * diferencia con la actual. Solo lectura: aplicar la configuración en Stripe live es una operación que
  * autoriza el propietario (la hace una persona o, con su aprobación, el MCP), como el catálogo.
  *
- * Deseado (coherente con el procesador de eventos y con el modelo interno de suscripciones):
- *  - facturas y método de pago: sí;
- *  - cancelación a final de periodo, sin prorrateo y con motivo;
- *  - cambio de plan o periodicidad ENTRE los 4 precios enlazados (Essential y Business, mensual y anual):
- *    subidas y paso a anual inmediatos con el prorrateo facturado al momento (`always_invoice`, que confirma
- *    el pedido de cambio con un cobro verificado); bajadas y paso a mensual programados a fin de periodo;
+ * Deseado (decisión del propietario, 21/10/2026: portal SOLO de consulta para la persona propietaria; ver
+ * ./billingPortal.ts, que además rechaza en cada apertura una configuración que no lo cumpla):
+ *  - historial de facturas y actualización del método de pago: sí;
+ *  - cancelación: NO (se cancela por soporte);
+ *  - cambio de plan o periodicidad: NO (sin cobros ni prorrateos desde el portal);
  *  - edición de datos de facturación: NO hasta decidir cómo se rectifican (D-10);
  *  - URL de condiciones y privacidad: las publicadas (CP_TERMS_URL, CP_PRIVACY_URL); sin ellas, pendientes.
  */
@@ -57,19 +56,8 @@ export function planPortal(current: GwPortalConfig | null, d: { prices: StripePr
   want("active", current.active, true, current.active);
   want("features.invoice_history.enabled", current.invoiceHistory, true, current.invoiceHistory);
   want("features.payment_method_update.enabled", current.paymentMethodUpdate, true, current.paymentMethodUpdate);
-  want("features.subscription_cancel", current.cancel, { enabled: true, mode: "at_period_end", proration_behavior: "none" }, current.cancel.enabled && current.cancel.mode === "at_period_end" && current.cancel.prorationBehavior === "none");
-  const products = portalProducts(d.prices);
-  const curProducts = current.update.products.map((p) => ({ product: p.product, prices: sorted(p.prices) })).sort((a, b) => (a.product < b.product ? -1 : a.product > b.product ? 1 : 0));
-  want("features.subscription_update.enabled", current.update.enabled, true, current.update.enabled);
-  want("features.subscription_update.default_allowed_updates", current.update.defaultAllowedUpdates, ["price"], sameSet(current.update.defaultAllowedUpdates, ["price"]));
-  want("features.subscription_update.products", curProducts, products, JSON.stringify(curProducts) === JSON.stringify(products));
-  want("features.subscription_update.proration_behavior", current.update.prorationBehavior, "always_invoice", current.update.prorationBehavior === "always_invoice");
-  want(
-    "features.subscription_update.schedule_at_period_end.conditions",
-    current.update.scheduleAtPeriodEnd,
-    ["decreasing_item_amount", "shortening_interval"],
-    sameSet(current.update.scheduleAtPeriodEnd, ["decreasing_item_amount", "shortening_interval"]),
-  );
+  want("features.subscription_cancel.enabled", current.cancel.enabled, false, !current.cancel.enabled);
+  want("features.subscription_update.enabled", current.update.enabled, false, !current.update.enabled);
   // Datos de facturación: se mantiene desactivado hasta decidir las rectificativas (D-10)
   want("features.customer_update.enabled", current.customerUpdate.enabled, false, !current.customerUpdate.enabled);
   want("business_profile.terms_of_service_url", current.termsUrl, d.termsUrl ?? "(pendiente: textos legales)", current.termsUrl === d.termsUrl && !!d.termsUrl, d.termsUrl ? undefined : "textos legales sin publicar");
@@ -78,20 +66,14 @@ export function planPortal(current: GwPortalConfig | null, d: { prices: StripePr
 }
 
 /** Parámetros para `POST /v1/billing_portal/configurations/{id}` con lo que NO está pendiente (para la persona que lo aplique). */
-export function portalWriteParams(diff: PortalDifference[], d: { prices: StripePriceLink[]; termsUrl: string | null; privacyUrl: string | null }): Record<string, unknown> | null {
+export function portalWriteParams(diff: PortalDifference[], d: { prices?: StripePriceLink[]; termsUrl: string | null; privacyUrl: string | null }): Record<string, unknown> | null {
   if (!diff.some((x) => !x.pending)) return null;
   return {
     features: {
       invoice_history: { enabled: true },
       payment_method_update: { enabled: true },
-      subscription_cancel: { enabled: true, mode: "at_period_end", proration_behavior: "none" },
-      subscription_update: {
-        enabled: true,
-        default_allowed_updates: ["price"],
-        products: portalProducts(d.prices),
-        proration_behavior: "always_invoice",
-        schedule_at_period_end: { conditions: [{ type: "decreasing_item_amount" }, { type: "shortening_interval" }] },
-      },
+      subscription_cancel: { enabled: false },
+      subscription_update: { enabled: false },
       customer_update: { enabled: false },
     },
     ...(d.termsUrl || d.privacyUrl ? { business_profile: { ...(d.termsUrl ? { terms_of_service_url: d.termsUrl } : {}), ...(d.privacyUrl ? { privacy_policy_url: d.privacyUrl } : {}) } } : {}),
