@@ -1,13 +1,14 @@
 /**
- * Exportación desde el portal de la empresa: una exportación incompleta nunca se presenta como completa; una
- * generación interrumpida no bloquea para siempre; avisos «disponible» y «fallida» (solo a quien la pidió, sin el
- * enlace de descarga, con el diseño común y en el catálogo); aislamiento entre empresas del enlace y de los datos;
- * permisos (solo la persona propietaria) y disponibilidad en solo lectura.
+ * Exportación desde el portal de la empresa: una exportación incompleta nunca se presenta como completa; avisos
+ * «disponible» y «fallida» (solo a quien la pidió, sin el enlace de descarga, con el diseño común y en el
+ * catálogo); aislamiento entre empresas del enlace y de los datos; permisos (solo la persona propietaria) y
+ * disponibilidad en solo lectura. Reinicios y reintentos: dataExport.job.test.ts.
  */
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, beforeEach } from "vitest";
+import fs from "node:fs/promises";
 import JSZip from "jszip";
 import { buildExport, type ExportSource } from "./dataExport/build";
-import { DataExportService, INTERRUPTED_MESSAGE, MemoryDataExportStore, STALE_PENDING_MS, type ExportNotice } from "./dataExport/service";
+import { DataExportService, LEASE_MS, MAX_ATTEMPTS, MemoryDataExportStore, _resetExportProcessForTests, type ExportNotice } from "./dataExport/service";
 import { EXPORT_PANEL_PATH, exportFailedContent, exportReadyContent } from "./mail/exportTemplates";
 import { TEMPLATE_CATALOG } from "./notifications/catalog";
 import { previewTemplate } from "./notifications/preview";
@@ -17,6 +18,7 @@ import { newObjectId, signedLink, verifySignedLink } from "./_core/files/service
 
 const NOW = Date.UTC(2026, 9, 21, 9);
 const PANEL = `https://acme.example${EXPORT_PANEL_PATH}`;
+beforeEach(() => _resetExportProcessForTests());
 
 const file = (id: string, ok = true) => ({
   objectId: id.repeat(26),
@@ -35,14 +37,15 @@ const source = (files = [file("a")], tenantRows = [{ id: 1, name: "Cliente de Ac
   files: async () => files,
 });
 
-function make(o: { src?: ExportSource; now?: () => number; notify?: (n: ExportNotice) => Promise<void> } = {}) {
+function make(o: { src?: ExportSource; now?: () => number; notify?: (n: ExportNotice) => Promise<void>; email?: string } = {}) {
   const store = new MemoryDataExportStore();
   const sent: ExportNotice[] = [];
   const svc = new DataExportService({
     store,
-    source: o.src ?? source(),
+    openSource: async () => o.src ?? source(),
     saveZip: async () => "f".repeat(26),
     signedLink: (id, ttl) => `https://acme.example/api/files/${id}?exp=${ttl}&sig=firma`,
+    requester: async () => ({ email: o.email ?? "ana@acme.example", name: "Ana" }),
     tenantId: "acme",
     maxBytes: 10 * 1048576,
     now: o.now ?? (() => NOW),
@@ -50,7 +53,7 @@ function make(o: { src?: ExportSource; now?: () => number; notify?: (n: ExportNo
   });
   return { store, svc, sent };
 }
-const owner = { id: 7, isOwner: true, email: "ana@acme.example", name: "Ana" };
+const owner = { id: 7, isOwner: true };
 
 describe("exportación incompleta: nunca como completa", () => {
   it("manifiesto y LÉEME la marcan incompleta si falta un fichero; completa si no falta nada", async () => {
@@ -69,7 +72,8 @@ describe("exportación incompleta: nunca como completa", () => {
 
   it("la fila queda lista con aviso (no con error) y el correo lo dice", async () => {
     const { svc, store, sent } = make({ src: source([file("a"), file("b", false), file("c", false)]) });
-    await (await svc.request(owner)).done;
+    await svc.request(owner);
+    await svc.processNext();
     expect(store.rows[0]).toMatchObject({ status: "ready", error: null, fileCount: 1 });
     expect(store.rows[0].warning).toMatch(/2 ficheros .*incompleta/);
     expect(sent.map((n) => n.kind)).toEqual(["ready"]);
@@ -79,53 +83,33 @@ describe("exportación incompleta: nunca como completa", () => {
   });
 });
 
-describe("generación interrumpida (reinicio del contenedor)", () => {
-  it("una «en curso» antigua se da por fallida al volver a pedir o listar; una reciente sigue bloqueando", async () => {
-    let now = NOW;
-    const { svc, store } = make({ now: () => now });
-    await store.insertPending(7, NOW); // la de antes del reinicio: nunca terminará
-    await expect(svc.request(owner)).rejects.toMatchObject({ code: "conflict" });
-    now = NOW + STALE_PENDING_MS + 1;
-    expect((await svc.list({ isOwner: true }))[0]).toMatchObject({ status: "failed", error: INTERRUPTED_MESSAGE });
-    await (await svc.request(owner)).done;
-    expect(store.rows.map((r) => r.status)).toEqual(["failed", "ready"]);
-  });
-
-  it("si otra solicitud la dio por interrumpida, al terminar no se marca lista ni se avisa", async () => {
-    let release!: () => void;
-    const gate = new Promise<void>((r) => (release = r));
-    let now = NOW;
-    const slow: ExportSource = { ...source(), tables: async () => (await gate, ["clients"]) };
-    const { svc, store, sent } = make({ src: slow, now: () => now });
-    const { done } = await svc.request(owner);
-    now = NOW + STALE_PENDING_MS + 1;
-    await svc.list({ isOwner: true });
-    release();
-    await done;
-    expect(store.rows[0].status).toBe("failed");
-    expect(sent).toEqual([]);
-  });
-});
-
 describe("avisos «Exportación disponible» y «Exportación fallida»", () => {
-  it("disponible: a quien la pidió, con sus recuentos; fallida: con el motivo limpio", async () => {
+  it("disponible: a quien la pidió, con sus recuentos; fallida (agotados los intentos): con el motivo limpio", async () => {
     const ok = make();
-    await (await ok.svc.request(owner)).done;
+    await ok.svc.request(owner);
+    await ok.svc.processNext();
     expect(ok.sent).toEqual([expect.objectContaining({ kind: "ready", to: { email: "ana@acme.example", name: "Ana" } })]);
     expect(ok.sent[0].export).toMatchObject({ status: "ready", tableCount: 1, rowCount: 1, fileCount: 1, warning: null });
 
-    const ko = make({ src: { ...source(), tables: async () => { throw new Error("ECONNRESET 10.0.0.9"); } } });
-    await (await ko.svc.request(owner)).done;
+    let now = NOW;
+    const ko = make({ now: () => now, src: { ...source(), tables: async () => { throw new Error("ECONNRESET 10.0.0.9"); } } });
+    await ko.svc.request(owner);
+    for (let i = 0; i < MAX_ATTEMPTS; i++) {
+      await ko.svc.processNext();
+      now += LEASE_MS + 1;
+    }
     expect(ko.sent.map((n) => n.kind)).toEqual(["failed"]);
-    expect(ko.sent[0].export.error).not.toMatch(/10\.0\.0\.9|ECONNRESET/);
+    expect(ko.sent[0].export.error).not.toMatch(/10.0.0.9|ECONNRESET/);
   });
 
   it("sin correo de quien la pidió no se avisa; un fallo del aviso no cambia el resultado", async () => {
-    const silent = make();
-    await (await silent.svc.request({ ...owner, email: " " })).done;
+    const silent = make({ email: "" });
+    await silent.svc.request(owner);
+    await silent.svc.processNext();
     expect(silent.sent).toEqual([]);
     const broken = make({ notify: async () => { throw new Error("SMTP caído"); } });
-    await (await broken.svc.request(owner)).done;
+    await broken.svc.request(owner);
+    await broken.svc.processNext();
     expect(broken.store.rows[0].status).toBe("ready");
   });
 
@@ -180,11 +164,13 @@ describe("aislamiento entre empresas y permisos", () => {
   it("cada servicio exporta solo los datos de su empresa y guarda su propio registro", async () => {
     const zips: Buffer[] = [];
     const mk = (tenantId: string, rows: Array<Record<string, unknown>>) =>
-      new DataExportService({ store: new MemoryDataExportStore(), source: source([], rows), saveZip: async (z) => (zips.push(z), "f".repeat(26)), signedLink: () => "", tenantId, maxBytes: 1048576, now: () => NOW });
+      new DataExportService({ store: new MemoryDataExportStore(), openSource: async () => source([], rows), saveZip: async (z) => (zips.push(await fs.readFile(z.filePath)), "f".repeat(26)), signedLink: () => "", tenantId, maxBytes: 1048576, now: () => NOW });
     const a = mk("acme", [{ id: 1, name: "Cliente de Acme" }]);
     const b = mk("costa", [{ id: 1, name: "Cliente de Costa" }]);
-    await (await a.request(owner)).done;
-    await (await b.request(owner)).done;
+    await a.request(owner);
+    await a.processNext();
+    await b.request(owner);
+    await b.processNext();
     const csvA = await (await JSZip.loadAsync(zips[0])).file("data/clients.csv")!.async("string");
     expect(csvA).toContain("Cliente de Acme");
     expect(csvA).not.toContain("Costa");
@@ -193,7 +179,7 @@ describe("aislamiento entre empresas y permisos", () => {
 
   it("solo la persona propietaria pide, lista y descarga; en solo lectura pedir y descargar siguen permitidos", async () => {
     const { svc } = make();
-    const admin = { id: 8, isOwner: false, email: "otro@acme.example", name: null };
+    const admin = { id: 8, isOwner: false };
     await expect(svc.request(admin)).rejects.toMatchObject({ code: "forbidden" });
     await expect(svc.list(admin)).rejects.toMatchObject({ code: "forbidden" });
     await expect(svc.link(admin, 1)).rejects.toMatchObject({ code: "forbidden" });

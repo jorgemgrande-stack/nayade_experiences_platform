@@ -332,6 +332,106 @@ export class FileService {
     return { row, data };
   }
 
+  /**
+   * Sube un fichero GRANDE del disco en streaming (exportaciones de datos): sin cargarlo en memoria. El llamador
+   * calcula el SHA-256 al escribirlo; aquí se comprueban el tipo (cabecera ZIP), el tamaño frente a la categoría
+   * (no el límite general de subidas, pensado para ficheros de usuario) y, tras subirlo, el tamaño almacenado.
+   * Solo categorías privadas de tipo ZIP.
+   */
+  async putFile(input: Omit<PutInput, "data" | "replaces"> & { filePath: string; sizeBytes: number; sha256: string }): Promise<PutResult> {
+    const policy = policyOf(input.category);
+    if (policy.visibility !== "private" || !(policy.types as readonly string[]).includes("application/zip")) throw new FileValidationError("Categoría no admitida para ficheros grandes.");
+    if (input.sizeBytes <= 0) throw new FileValidationError("El fichero está vacío.");
+    if (input.sizeBytes > policy.maxBytes) throw new FileValidationError(`El fichero supera el tamaño máximo permitido (${Math.floor(policy.maxBytes / (1024 * 1024))} MB).`);
+    const { open } = await import("node:fs/promises");
+    const fh = await open(input.filePath, "r");
+    try {
+      const head = Buffer.alloc(4);
+      await fh.read(head, 0, 4, 0);
+      const st = await fh.stat();
+      if (head.readUInt32LE(0) !== 0x04034b50) throw new FileValidationError("El contenido del fichero no corresponde a un tipo permitido.");
+      if (st.size !== input.sizeBytes) throw new FileValidationError("El tamaño del fichero no coincide.");
+    } finally {
+      await fh.close();
+    }
+    const backend = this.backend();
+    const at = this.now();
+    const d = new Date(at);
+    const objectId = newObjectId();
+    const contentType = "application/zip";
+    const key = `${objectRoot()}${input.category}/${d.getUTCFullYear()}/${String(d.getUTCMonth() + 1).padStart(2, "0")}/${objectId}.zip`;
+    const row: StoredObjectRow = {
+      objectId,
+      storageKey: key,
+      visibility: policy.visibility,
+      category: input.category,
+      contentType,
+      sizeBytes: input.sizeBytes,
+      sha256: input.sha256,
+      originalName: input.originalName ? safeDisplayName(input.originalName) : null,
+      ownerType: input.owner?.type ?? null,
+      ownerId: input.owner ? String(input.owner.id).slice(0, 64) : null,
+      uploadedBy: input.uploadedBy ?? null,
+      status: "pending",
+      replacesObjectId: null,
+      replacedBy: null,
+      error: null,
+      createdAt: at,
+      updatedAt: at,
+      confirmedAt: null,
+      deletedAt: null,
+      bytesRemovedAt: null,
+    };
+    await this.meta.insert(row);
+    const fail = async (reason: string, err: unknown): Promise<never> => {
+      await backend.delete(key).catch(() => undefined);
+      await this.meta.update(objectId, { status: "failed", error: reason, updatedAt: this.now() }).catch(() => undefined);
+      console.error(JSON.stringify({ ctx: "Storage", event: "put_file_failed", category: input.category, reason }));
+      throw err instanceof StorageUnavailableError ? err : new StorageUnavailableError();
+    };
+    const meta = { sha256: input.sha256, "object-id": objectId };
+    try {
+      if (backend.putFile) await this.withRetry(() => backend.putFile!(key, input.filePath, input.sizeBytes, contentType, meta));
+      // Proveedor sin subida en streaming (Forge, heredado): solo ficheros que caben holgadamente en memoria
+      else if (input.sizeBytes <= 64 * 1024 * 1024) {
+        const { readFile } = await import("node:fs/promises");
+        const data = await readFile(input.filePath);
+        await this.withRetry(() => backend.put(key, data, contentType, meta));
+      } else throw new StorageUnavailableError("El almacenamiento no admite ficheros tan grandes.");
+    } catch (err) {
+      return fail("upload", err);
+    }
+    let stat: { bytes: number } | null;
+    try {
+      stat = await this.withRetry(() => backend.stat(key));
+    } catch (err) {
+      return fail("verify_stat", err);
+    }
+    if (!stat || stat.bytes !== input.sizeBytes) return fail("verify_mismatch", null);
+    const confirmed = this.now();
+    await this.meta.update(objectId, { status: "active", confirmedAt: confirmed, updatedAt: confirmed });
+    const active = { ...row, status: "active" as const, confirmedAt: confirmed, updatedAt: confirmed };
+    await backend.put(this.sidecarKey(key, objectId), Buffer.from(JSON.stringify(active)), "application/json").catch(() => {
+      console.warn(JSON.stringify({ ctx: "Storage", event: "sidecar_failed" }));
+    });
+    return { objectId, key, url: urlForRow(row), visibility: row.visibility, contentType, sizeBytes: input.sizeBytes, sha256: input.sha256 };
+  }
+
+  /** Objetos de un propietario (activos o pendientes) de la empresa en curso. */
+  async listByOwner(ownerType: string, ownerId: string): Promise<StoredObjectRow[]> {
+    if (!this.meta.listByOwner) return [];
+    return (await this.meta.listByOwner(ownerType, ownerId)).filter((r) => r.storageKey.startsWith(objectRoot()));
+  }
+
+  /** Lectura en streaming de un objeto servible (ficheros grandes); null si el proveedor no la admite o no existe. */
+  async openStream(objectId: string) {
+    const row = await this.find(objectId);
+    const backend = this.backend();
+    if (!row || !backend.getStream) return null;
+    const stream = await this.withRetry(() => backend.getStream!(row.storageKey));
+    return stream ? { row, stream } : null;
+  }
+
   /** Lee un fichero propio a partir de su URL del Core (correo, ZIP…). `null` si no es nuestro o no existe. */
   async readByUrl(url: unknown): Promise<{ row: StoredObjectRow; data: Buffer } | null> {
     const id = objectIdFromUrl(url);

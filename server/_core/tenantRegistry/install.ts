@@ -18,9 +18,9 @@ import { warmConfigCache } from "../../config";
 import { warmIntegrationCreds } from "../credentials/runtime";
 import { configureTenantIdentity, warmTenantIdentity } from "../tenantIdentity";
 import { configureSupport, createSupportRouter, supportReadOnlyGuard } from "../support/session";
-import { writableTenantLister } from "./jobs";
+import { adminTenantLister, writableTenantLister } from "./jobs";
 import { createTenantRuntime, type TenantRuntime } from "./runtime";
-import { setJobPrelude, setJobTenantLister } from "./scheduler";
+import { setJobAdminTenantLister, setJobPrelude, setJobTenantLister } from "./scheduler";
 import { shadowMiddleware } from "./shadow";
 import { configureHealthChecks } from "../health";
 import { getTenantDatabase } from "../dbRegistry";
@@ -87,6 +87,8 @@ export function installTenantResolution(app: Express, env: NodeJS.ProcessEnv = p
     });
     // Las tareas programadas recorren los tenants con escrituras del registro
     setJobTenantLister(writableTenantLister(rt.reader));
+    // …y las que lo piden expresamente (exportación de datos), también las suspendidas o en solo lectura
+    setJobAdminTenantLister(adminTenantLister(rt.reader));
     // Las tareas también necesitan las credenciales del tenant en curso
     setJobPrelude(() => Promise.all([warmConfigCache(), warmIntegrationCreds(), warmTenantIdentity()]).then(() => undefined));
     // Marca, URL pública y entidad fiscal de cada empresa (registro, solo lectura)

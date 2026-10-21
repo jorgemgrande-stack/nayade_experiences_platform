@@ -24,6 +24,9 @@ export const DEFAULT_QUOTAS: DefaultQuota[] = [
   { metric: Metrics.EMAIL_SENT, period: "day", limit: 1000, enforcement: "hard" },
   { metric: Metrics.LLM_TOKENS_INPUT, period: "month", limit: 2_000_000, enforcement: "soft" },
   { metric: Metrics.LLM_TOKENS_OUTPUT, period: "month", limit: 1_000_000, enforcement: "soft" },
+  // Exportación de datos: solicitudes al día y volumen generado al mes (sin comprimir) por empresa
+  { metric: Metrics.DATA_EXPORT_RUNS, period: "day", limit: 5, enforcement: "hard" },
+  { metric: Metrics.DATA_EXPORT_BYTES, period: "month", limit: 20 * 1024 ** 3, enforcement: "hard" },
 ];
 
 export const DEFAULT_MAX_CONCURRENT = 60;

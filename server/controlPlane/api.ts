@@ -106,6 +106,7 @@ import type { StripeStore } from "../stripe/store";
 import type { OrderStore } from "../orchestrator/store";
 import type { TestPaymentPort } from "../orchestrator/payments";
 import { createOrdersRouter, paymentsWebhookHandler } from "../orchestrator/api";
+import { buildRelationshipExport, RelationshipNotFoundError } from "./relationshipExport";
 import { createContractActivation } from "../crm/activation";
 import type { PlatformMailer } from "../mail/platform";
 import type { MailService } from "../mail/service";
@@ -1401,6 +1402,44 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
       }),
     );
   }
+
+  // ── Documentación de la relación contractual (operadores; entrega por procedimiento verificable) ──
+  router.get(
+    "/tenants/:id/relationship-export",
+    requireScope("billing:read"),
+    requireScope("tickets:read"),
+    wrap(async (req, res) => {
+      const id = idSchema.parse(req.params.id);
+      try {
+        const bundle = await buildRelationshipExport(
+          id,
+          {
+            tenant: async (t) => {
+              const x = await d.reader.getTenant(t);
+              return x ? { id: x.id, displayName: x.displayName, status: x.status, statusReason: x.statusReason, createdAt: x.createdAt, updatedAt: x.updatedAt } : null;
+            },
+            orders: d.orders ? async () => (await d.orders!.store.list({ limit: 500 })) as unknown as Array<Record<string, unknown> & { id: number; tenantId: string | null }> : undefined,
+            billing: d.billingStore ? async (t) => ({ subscription: await d.billingStore!.getSubscriptionByTenant(t), invoices: await d.billingStore!.listInvoices(t) }) : undefined,
+            stripeInvoices: d.stripe ? (orderId) => d.stripe!.store.listInvoiceRecords({ orderId, limit: 200 }) : undefined,
+            fiscalDocuments: d.stripe ? (orderId) => d.stripe!.store.listFiscalDocuments({ orderId, limit: 200 }) : undefined,
+            tickets: d.tickets
+              ? async (t) => {
+                  const { items } = await d.tickets!.list({ tenantId: t, limit: 200, offset: 0 });
+                  return Promise.all(items.map((x) => d.tickets!.get(x.id, { tenantId: t }))) as unknown as Array<{ ticket: Record<string, unknown>; events: Array<Record<string, unknown> & { internal: boolean }> }>;
+                }
+              : undefined,
+          },
+          { now: Date.now(), by: getAuth(req)?.tokenId ?? "operador" },
+        );
+        res.setHeader("Cache-Control", "no-store");
+        res.setHeader("Content-Disposition", `attachment; filename="relacion-${id}.json"`);
+        res.json(bundle);
+      } catch (e) {
+        if (e instanceof RelationshipNotFoundError) return void res.status(404).json({ error: "not_found", message: "Tenant no encontrado" });
+        throw e;
+      }
+    }),
+  );
 
   // ── Métricas (Prometheus) ──────────────────────────────────────────────────
   router.get(

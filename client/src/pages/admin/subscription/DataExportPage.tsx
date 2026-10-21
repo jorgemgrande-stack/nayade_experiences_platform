@@ -39,7 +39,7 @@ function AccountNotice() {
   );
 }
 
-function Contents({ maxMb, linkHours }: { maxMb: number; linkHours: number }) {
+function Contents({ maxMb, linkHours, dailyLimit }: { maxMb: number; linkHours: number; dailyLimit: number }) {
   return (
     <section className="rounded-2xl border border-border bg-card p-6 space-y-4" aria-labelledby="exp-contents">
       <h2 id="exp-contents" className="font-semibold text-foreground">Qué incluye y qué no</h2>
@@ -58,15 +58,39 @@ function Contents({ maxMb, linkHours }: { maxMb: number; linkHours: number }) {
             <li>Contraseñas, tokens, claves y credenciales de integraciones, ni las sesiones (por seguridad). En los ajustes, los valores sensibles aparecen como omitidos.</li>
             <li>La cola técnica de envío de correos y los registros técnicos de webhooks.</li>
             <li>Ficheros alojados fuera de la plataforma: solo su dirección, tal como está en tus datos.</li>
-            <li>Los datos de tu relación con Elephant Source (contrato, facturas de la suscripción, tickets de soporte): pídelos a soporte.</li>
+            <li>La documentación de tu relación con Elephant Source (ver abajo): se entrega aparte, a petición.</li>
           </ul>
         </div>
       </div>
       <ul className="text-xs text-muted-foreground space-y-1">
-        <li>Tamaño máximo: {maxMb.toLocaleString("es-ES")} MB sin comprimir. Si tus datos lo superan, la exportación no se genera y te lo indicamos: pídela a soporte.</li>
+        <li>Se genera en segundo plano con una copia coherente de tus datos en ese momento. Puedes solicitar hasta {dailyLimit} al día.</li>
+        <li>Tamaño máximo: {maxMb.toLocaleString("es-ES")} MB sin comprimir. Si tus datos lo superan, la exportación no se genera y te lo indicamos: pídela a soporte y la prepararemos por el procedimiento de exportaciones grandes.</li>
         <li>El enlace de descarga caduca {linkHours} horas después de generarse; después, solicita una nueva. Cada descarga queda registrada.</li>
         <li>Los documentos fiscales se exportan como copia: el original legal es el emitido por el sistema de facturación.</li>
       </ul>
+    </section>
+  );
+}
+
+/** Documentación de la relación con Elephant Source: fuera del ZIP, a petición y con procedimiento verificable. */
+function Relationship() {
+  const contact = trpc.subscription.supportContact.useQuery(undefined, { retry: false, staleTime: 300_000 });
+  const email = contact.data?.email ?? null;
+  return (
+    <section className="rounded-2xl border border-border bg-card p-6 space-y-3" aria-labelledby="exp-rel">
+      <h2 id="exp-rel" className="font-semibold text-foreground">Documentación de tu relación con Elephant Source</h2>
+      <p className="text-sm text-muted-foreground">
+        No forma parte de la exportación anterior porque no está en los datos de tu empresa, sino en nuestros sistemas. La entregamos a petición de la persona propietaria:
+      </p>
+      <ul className="list-disc pl-5 space-y-1 text-sm text-muted-foreground">
+        <li>Contrato, pedidos y plan contratado.</li>
+        <li>Facturas de la suscripción (las emitidas a través de Stripe; también te llegan por correo al cobrarse).</li>
+        <li>Tickets de soporte con los mensajes que intercambiamos contigo.</li>
+      </ul>
+      <p className="text-sm text-muted-foreground">
+        Escribe desde el correo de la persona propietaria a{" "}
+        {email ? <strong className="text-foreground select-all">{email}</strong> : "tu contacto de soporte"} con el asunto «Documentación contractual». Comprobaremos que la petición viene de la persona propietaria y te la enviaremos lo antes posible, dejando constancia de la entrega.
+      </p>
     </section>
   );
 }
@@ -84,10 +108,12 @@ type ExportRow = {
   completedAt: number | null;
   expiresAt: number | null;
   downloadCount: number;
+  startedAt?: number | null;
+  attempts?: number;
 };
 
 function StatusBadge({ row, now }: { row: ExportRow; now: number }) {
-  if (row.status === "pending") return <Badge variant="outline" className="gap-1"><Clock className="w-3.5 h-3.5" aria-hidden="true" />Generando…</Badge>;
+  if (row.status === "pending") return <Badge variant="outline" className="gap-1"><Clock className="w-3.5 h-3.5" aria-hidden="true" />{row.startedAt ? (row.attempts && row.attempts > 1 ? "Generando (reintento)…" : "Generando…") : "En cola"}</Badge>;
   if (row.status === "failed") return <Badge variant="outline" className="gap-1 text-red-800 dark:text-red-300"><XCircle className="w-3.5 h-3.5" aria-hidden="true" />Fallida</Badge>;
   if (row.expiresAt && row.expiresAt <= now) return <Badge variant="outline">Enlace caducado</Badge>;
   if (row.warning) return <Badge variant="outline" className="gap-1 text-amber-800 dark:text-amber-300"><AlertTriangle className="w-3.5 h-3.5" aria-hidden="true" />Lista, incompleta</Badge>;
@@ -139,7 +165,7 @@ function History({ rows }: { rows: ExportRow[] }) {
   );
 }
 
-function OwnerArea({ maxMb, linkHours }: { maxMb: number; linkHours: number }) {
+function OwnerArea({ maxMb, linkHours, dailyLimit }: { maxMb: number; linkHours: number; dailyLimit: number }) {
   const utils = trpc.useUtils();
   const list = trpc.dataExport.list.useQuery(undefined, {
     // Mientras se genera, se consulta cada pocos segundos
@@ -167,7 +193,7 @@ function OwnerArea({ maxMb, linkHours }: { maxMb: number; linkHours: number }) {
           </div>
           <Button type="button" disabled={pending || request.isPending || list.isLoading} onClick={() => request.mutate()} className="shrink-0">
             <FileArchive className="w-4 h-4 mr-1.5" aria-hidden="true" />
-            {pending ? "Generando…" : "Solicitar exportación"}
+            {pending ? "En curso…" : "Solicitar exportación"}
           </Button>
         </div>
       </section>
@@ -177,7 +203,8 @@ function OwnerArea({ maxMb, linkHours }: { maxMb: number; linkHours: number }) {
         {list.isError && <PanelError error={list.error} onRetry={() => list.refetch()} title={list.error.message || "No se han podido cargar tus exportaciones"} />}
         {list.data && <History rows={rows} />}
       </section>
-      <Contents maxMb={maxMb} linkHours={linkHours} />
+      <Contents maxMb={maxMb} linkHours={linkHours} dailyLimit={dailyLimit} />
+      <Relationship />
     </>
   );
 }
@@ -216,8 +243,8 @@ export default function DataExportPage() {
           </section>
         )}
 
-        {s && s.canExport && <OwnerArea maxMb={s.maxMb} linkHours={s.linkHours} />}
-        {s && !s.canExport && <Contents maxMb={s.maxMb} linkHours={s.linkHours} />}
+        {s && s.canExport && <OwnerArea maxMb={s.maxMb} linkHours={s.linkHours} dailyLimit={s.dailyLimit} />}
+        {s && !s.canExport && <Contents maxMb={s.maxMb} linkHours={s.linkHours} dailyLimit={s.dailyLimit} />}
       </div>
     </AdminLayout>
   );

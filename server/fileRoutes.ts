@@ -60,7 +60,23 @@ function unavailable(res: Response) {
   res.status(503).json({ error: "El almacenamiento de ficheros no está disponible. Inténtalo más tarde." });
 }
 
+/** Por encima de este tamaño (o siempre en una exportación de datos) el fichero se sirve en streaming. */
+const STREAM_FROM_BYTES = 16 * 1024 * 1024;
+
 async function send(res: Response, row: StoredObjectRow, cacheControl: string, inline: boolean) {
+  if (row.category === "data-export" || row.sizeBytes > STREAM_FROM_BYTES) {
+    const s = await fileService().openStream(row.objectId);
+    if (s) {
+      commonHeaders(res, row);
+      res.setHeader("Cache-Control", cacheControl);
+      res.setHeader("Content-Disposition", disposition(row, inline));
+      res.setHeader("Content-Length", String(row.sizeBytes));
+      res.status(200);
+      s.stream.on("error", () => res.destroy());
+      s.stream.pipe(res);
+      return;
+    }
+  }
   const r = await fileService().read(row.objectId);
   if (!r) {
     res.status(404).end();

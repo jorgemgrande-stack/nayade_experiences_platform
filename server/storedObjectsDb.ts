@@ -43,6 +43,8 @@ export interface ObjectMetaStore {
   upsert(row: StoredObjectRow): Promise<void>;
   /** Bytes que ocupan los ficheros de la empresa (pendientes y activos): lo que cuenta para su almacenamiento contratado. */
   usedBytes?(): Promise<number>;
+  /** Objetos de un propietario (p. ej. los ZIP de una exportación: reintentos sin duplicados). */
+  listByOwner?(ownerType: string, ownerId: string): Promise<StoredObjectRow[]>;
 }
 
 const COLS: Array<[keyof StoredObjectRow, string]> = [
@@ -134,6 +136,10 @@ export class MysqlObjectMetaStore implements ObjectMetaStore {
       COLS.map(([k]) => row[k] ?? null),
     );
   }
+  async listByOwner(ownerType: string, ownerId: string) {
+    const [rows] = await this.pool().query("SELECT * FROM stored_objects WHERE owner_type = ? AND owner_id = ? ORDER BY created_at", [ownerType, ownerId]);
+    return (rows as Record<string, unknown>[]).map(fromDb);
+  }
 }
 
 /** Almacén en memoria (pruebas unitarias). */
@@ -164,6 +170,9 @@ export class MemoryObjectMetaStore implements ObjectMetaStore {
   }
   async upsert(row: StoredObjectRow) {
     this.rows.set(row.objectId, { ...row });
+  }
+  async listByOwner(ownerType: string, ownerId: string) {
+    return Array.from(this.rows.values()).filter((r) => r.ownerType === ownerType && r.ownerId === ownerId).map((r) => ({ ...r }));
   }
   async usedBytes() {
     return Array.from(this.rows.values())
