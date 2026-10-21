@@ -36,6 +36,13 @@ export async function getCompanyOwnerEmail(): Promise<string | null> {
   return v ? v : null;
 }
 
+/** ¿Es la persona propietaria? (administradora cuyo correo es el `company_owner_email` de la empresa). */
+export async function isCompanyOwnerUser(user: { role: unknown; email?: string | null }): Promise<boolean> {
+  if (String(user.role) !== "admin") return false;
+  const owner = await getCompanyOwnerEmail();
+  return !!owner && (user.email ?? "").trim().toLowerCase() === owner;
+}
+
 const norm = (e: string | null | undefined) => (e ?? "").trim().toLowerCase();
 
 /**

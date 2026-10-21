@@ -15,6 +15,8 @@ import { countPanelUsers, PANEL_ROLES } from "../subscriptionDb";
 import { resolveSupportContact } from "../supportContact";
 import { getTenantId } from "../_core/tenant";
 import { CommerceError, commerceClientFromEnv, type CommerceClient } from "../commerceClient";
+import { isCompanyOwnerUser } from "../_core/companyOwner";
+import { getTrustedBaseUrl } from "../_core/publicUrl";
 
 /** Qué se quiere comprar: solo claves y totales. Importes y derechos los calcula el plano de control. */
 const purchaseInput = z
@@ -105,6 +107,18 @@ export const subscriptionRouter = router({
       ),
     ),
   /** Canal de ayuda (correo configurable): disponible también en solo lectura o con la prueba vencida. */
+  /**
+   * Portal de facturación de Stripe (facturas y método de pago), solo para la persona propietaria. `null` si no está
+   * disponible (apagado en el plano de control, sin canal o fuera de multiempresa): el botón no se muestra.
+   */
+  billingPortalStatus: protectedProcedure.query(async ({ ctx }) => {
+    if (getTenantMode() !== "multi" || !commerceClientFromEnv() || !(await isCompanyOwnerUser(ctx.user).catch(() => false))) return null;
+    return commerce(String(ctx.user.role), (c) => c.billingPortalStatus()).catch(() => null);
+  }),
+  billingPortal: protectedProcedure.mutation(async ({ ctx }) => {
+    if (!(await isCompanyOwnerUser(ctx.user))) throw new TRPCError({ code: "FORBIDDEN", message: "Solo la persona propietaria de la empresa puede ver las facturas de la suscripción" });
+    return commerce(String(ctx.user.role), (c, t) => c.billingPortal(t, `${getTrustedBaseUrl()}/admin/suscripcion`));
+  }),
   supportContact: protectedProcedure.query(async ({ ctx }) => {
     if (!(PANEL_ROLES as readonly string[]).includes(String(ctx.user.role))) throw new TRPCError({ code: "FORBIDDEN" });
     return resolveSupportContact();

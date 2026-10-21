@@ -57,6 +57,8 @@ export interface DataExport {
   durationMs: number | null;
   uncompressedBytes: number | null;
   missingFiles: number | null;
+  /** Cuándo se retiró el ZIP del almacenamiento (0013): la fila se conserva como registro. */
+  purgedAt: number | null;
 }
 
 export class DataExportError extends Error {
@@ -102,6 +104,12 @@ export interface DataExportStore {
   markFailed(id: number, error: string, now: number): Promise<boolean>;
   /** Marca como fallidas las que agotaron sus intentos y llevan sin latido desde `staleBefore`. Devuelve sus ids. */
   failExhausted(staleBefore: number, maxAttempts: number, error: string, now: number): Promise<number[]>;
+  /**
+   * Exportaciones cuyo ZIP (o restos de intentos) ya puede retirarse: terminadas antes de `before`, sin retirar y,
+   * si están listas, con el enlace caducado antes de `now` (nunca una con descarga válida).
+   */
+  listPurgeable(before: number, now: number, limit: number): Promise<DataExport[]>;
+  markPurged(id: number, now: number): Promise<void>;
   linkIssued(id: number, now: number): Promise<void>;
   /** Descarga de un ZIP de exportación (por id del fichero). false si el fichero no es de una exportación. */
   downloaded(objectId: string, now: number): Promise<boolean>;
@@ -113,6 +121,8 @@ export const LEASE_MS = 5 * 60_000;
 export const HEARTBEAT_MS = 60_000;
 export const MAX_ATTEMPTS = 3;
 export const TEMP_MAX_AGE_MS = 6 * 3600_000;
+/** Los ZIP generados (copias) se retiran a los 7 días; su enlace caduca a las 24 h, así que ya no hay descarga válida. */
+export const EXPORT_RETENTION_MS = 7 * 24 * 3600_000;
 export const INTERRUPTED_MESSAGE = "La generación se interrumpió varias veces antes de terminar. Solicita una nueva exportación o contacta con soporte.";
 const MB = 1048576;
 
@@ -238,6 +248,7 @@ export class DataExportService {
     if (!user.isOwner) throw new DataExportError("forbidden", "Solo la persona propietaria de la empresa puede descargar sus datos");
     const row = await this.d.store.get(id);
     if (!row) throw new DataExportError("not_found", "Exportación no encontrada");
+    if (row.purgedAt) throw new DataExportError("invalid_state", "El archivo de esta exportación se retiró a los 7 días: solicita una nueva");
     if (row.status !== "ready" || !row.objectId || !row.expiresAt) throw new DataExportError("invalid_state", row.status === "pending" ? "La exportación aún se está generando" : "La exportación no se pudo generar");
     const left = Math.floor((row.expiresAt - this.now()) / 1000);
     if (left <= 0) throw new DataExportError("invalid_state", "El enlace de esta exportación caducó (24 h): solicita una nueva");
@@ -258,6 +269,7 @@ export class DataExportService {
         opsLog("warn", "DataExport", "interrupted", { tenantId: this.d.tenantId, exportId: id });
         await this.tellById("failed", id);
       }
+      await this.purgeExpired();
     } catch (e) {
       if (e instanceof DataExportError && e.code === "unavailable") return "idle";
       opsLog("error", "DataExport", "housekeeping_failed", { tenantId: this.d.tenantId, error: e instanceof Error ? e.name : "error" });
@@ -347,6 +359,26 @@ export class DataExportService {
     }
   }
 
+  /**
+   * Retira los ZIP de más de 7 días (y los restos de intentos de exportaciones fallidas): solo copias, nunca los
+   * datos originales; la fila queda con `purgedAt`. Un fallo al retirar no marca nada (se reintenta después).
+   */
+  private async purgeExpired() {
+    const rows = await this.d.store.listPurgeable(this.now() - EXPORT_RETENTION_MS, this.now(), 20);
+    for (const r of rows) {
+      if (r.status === "ready" && r.expiresAt !== null && r.expiresAt > this.now()) continue; // defensa: enlace aún válido
+      try {
+        const ids = new Set<string>(this.d.listOwned ? await this.d.listOwned(`export:${r.id}`) : []);
+        if (r.objectId) ids.add(r.objectId);
+        for (const id of Array.from(ids)) await this.d.removeObject?.(id);
+        await this.d.store.markPurged(r.id, this.now());
+        opsLog("info", "DataExport", "purged", { tenantId: this.d.tenantId, exportId: r.id, objects: ids.size });
+      } catch (e) {
+        opsLog("warn", "DataExport", "purge_failed", { tenantId: this.d.tenantId, exportId: r.id, error: e instanceof Error ? e.name : "error" });
+      }
+    }
+  }
+
   /** Temporales de generaciones que ya no siguen (proceso caído): fuera pasadas TEMP_MAX_AGE_MS. */
   private async sweepTemp() {
     if (this.now() - lastSweep < 10 * 60_000) return;
@@ -412,6 +444,7 @@ const toExport = (r: Row): DataExport => ({
   durationMs: num(r.duration_ms),
   uncompressedBytes: num(r.uncompressed_bytes),
   missingFiles: num(r.missing_files),
+  purgedAt: num(r.purged_at),
 });
 const code = (e: unknown) => (e as { code?: string }).code;
 
@@ -491,6 +524,18 @@ export class MysqlDataExportStore implements DataExportStore {
       return ids;
     });
   }
+  async listPurgeable(before: number, now: number, limit: number) {
+    return this.q(async () => {
+      const [rows] = await this.pool().query<Row[]>(
+        "SELECT * FROM data_exports WHERE purged_at IS NULL AND status IN ('ready', 'failed') AND completed_at < ? AND (status = 'failed' OR expires_at < ?) ORDER BY completed_at LIMIT ?",
+        [before, now, limit],
+      );
+      return rows.map(toExport);
+    });
+  }
+  async markPurged(id: number, now: number) {
+    await this.pool().query("UPDATE data_exports SET purged_at = ? WHERE id = ? AND purged_at IS NULL", [now, id]);
+  }
   async linkIssued(id: number, now: number) {
     await this.pool().query("UPDATE data_exports SET link_count = link_count + 1, last_link_at = ? WHERE id = ?", [now, id]);
   }
@@ -511,7 +556,7 @@ export class MemoryDataExportStore implements DataExportStore {
     if (this.rows.some((r) => r.status === "pending")) throw new DataExportError("conflict", "Ya hay una exportación en curso: espera a que termine");
     const row: DataExport = {
       id: this.rows.length + 1, requestedBy, status: "pending", objectId: null, sizeBytes: null, tableCount: null, rowCount: null, fileCount: null, error: null, warning: null, requestedAt: now,
-      completedAt: null, expiresAt: null, linkCount: 0, downloadCount: 0, lastDownloadAt: null, attempts: 0, startedAt: null, heartbeatAt: null, durationMs: null, uncompressedBytes: null, missingFiles: null,
+      completedAt: null, expiresAt: null, linkCount: 0, downloadCount: 0, lastDownloadAt: null, attempts: 0, startedAt: null, heartbeatAt: null, durationMs: null, uncompressedBytes: null, missingFiles: null, purgedAt: null,
     };
     this.rows.push(row);
     return { ...row };
@@ -558,6 +603,16 @@ export class MemoryDataExportStore implements DataExportStore {
       ids.push(x.id);
     }
     return ids;
+  }
+  async listPurgeable(before: number, now: number, limit: number) {
+    return this.rows
+      .filter((r) => r.purgedAt === null && (r.status === "ready" || r.status === "failed") && r.completedAt !== null && r.completedAt < before && (r.status === "failed" || (r.expiresAt ?? Infinity) < now))
+      .slice(0, limit)
+      .map((r) => ({ ...r }));
+  }
+  async markPurged(id: number, now: number) {
+    const x = this.rows.find((y) => y.id === id && y.purgedAt === null);
+    if (x) x.purgedAt = now;
   }
   async linkIssued(id: number) {
     const x = this.rows.find((y) => y.id === id);

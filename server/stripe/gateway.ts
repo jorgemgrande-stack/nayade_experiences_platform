@@ -212,7 +212,7 @@ export interface StripeGateway {
   sessionsOfCustomer(customerId: string): Promise<GwCheckoutSession[]>;
   expireCheckoutSession(id: string): Promise<GwCheckoutSession>;
   subscription(id: string): Promise<GwSubscription | null>;
-  createPortalSession(input: { customerId: string; returnUrl: string }): Promise<{ url: string }>;
+  createPortalSession(input: { customerId: string; returnUrl: string; configuration?: string }): Promise<{ url: string }>;
   /** Configuraciones del Customer Portal (solo lectura). */
   portalConfigurations(): Promise<GwPortalConfig[]>;
   invoice(id: string): Promise<GwInvoice | null>;
@@ -660,7 +660,7 @@ export function stripeGateway(
     },
     async createPortalSession(input) {
       try {
-        const s = await client.billingPortal.sessions.create({ customer: input.customerId, return_url: input.returnUrl });
+        const s = await client.billingPortal.sessions.create({ customer: input.customerId, return_url: input.returnUrl, ...(input.configuration ? { configuration: input.configuration } : {}) });
         assertModeObject(s, mode);
         return { url: s.url };
       } catch (e) {

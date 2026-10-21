@@ -26,6 +26,8 @@ export interface RelationshipExport {
   tenantId: string;
   generatedAt: string;
   generatedBy: string;
+  /** Solicitud de la persona propietaria y fecha límite de entrega (5 días hábiles), si se indicó la solicitud. */
+  request: { requestedAt: string; deadline: string } | null;
   complete: boolean;
   sources: Record<"registro" | "pedidos" | "facturacion" | "stripe" | "documentosFiscales" | "soporte", SourceState>;
   tenant: Record<string, unknown>;
@@ -37,6 +39,24 @@ export interface RelationshipExport {
   notes: string[];
 }
 
+/** Plazo de entrega de la documentación contractual: 5 días hábiles desde la solicitud. */
+export const DELIVERY_BUSINESS_DAYS = 5;
+
+/**
+ * Fecha límite (fin del día, hora de Madrid aproximada por UTC) sumando días hábiles: lunes a viernes. Los festivos
+ * no se descuentan (el plazo es así igual o más estricto); `holidays` (AAAA-MM-DD) permite excluirlos.
+ */
+export function businessDeadline(from: Date, days = DELIVERY_BUSINESS_DAYS, holidays: ReadonlySet<string> = new Set()): Date {
+  const d = new Date(Date.UTC(from.getUTCFullYear(), from.getUTCMonth(), from.getUTCDate(), 23, 59, 59));
+  let left = days;
+  while (left > 0) {
+    d.setUTCDate(d.getUTCDate() + 1);
+    const wd = d.getUTCDay();
+    if (wd !== 0 && wd !== 6 && !holidays.has(d.toISOString().slice(0, 10))) left--;
+  }
+  return d;
+}
+
 export class RelationshipNotFoundError extends Error {
   constructor() {
     super("Empresa no encontrada");
@@ -44,7 +64,7 @@ export class RelationshipNotFoundError extends Error {
   }
 }
 
-export async function buildRelationshipExport(tenantId: string, s: RelationshipSources, o: { now: number; by: string }): Promise<RelationshipExport> {
+export async function buildRelationshipExport(tenantId: string, s: RelationshipSources, o: { now: number; by: string; requestedAt?: number }): Promise<RelationshipExport> {
   const tenant = await s.tenant(tenantId);
   if (!tenant) throw new RelationshipNotFoundError();
   const orders = s.orders ? (await s.orders()).filter((x) => x.tenantId === tenantId) : [];
@@ -75,6 +95,7 @@ export async function buildRelationshipExport(tenantId: string, s: RelationshipS
     tenantId,
     generatedAt: new Date(o.now).toISOString(),
     generatedBy: o.by,
+    request: o.requestedAt ? { requestedAt: new Date(o.requestedAt).toISOString(), deadline: businessDeadline(new Date(o.requestedAt)).toISOString() } : null,
     complete: Object.values(sources).every((v) => v === "incluido"),
     sources,
     tenant,

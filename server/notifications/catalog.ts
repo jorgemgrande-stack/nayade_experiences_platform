@@ -168,10 +168,20 @@ export const TEMPLATE_CATALOG: readonly TemplateSpec[] = [
     recipient: "billing_contact",
     category: "access_read_only",
     variables: ["host"],
-    sendWhen: "Al cerrarse el acceso tras los 30 días de solo lectura",
+    sendWhen: "Al terminar los 30 días de solo lectura (la exportación sigue disponible hasta el archivado)",
     suppressWhen: "MAIL_MODE=off; sin contacto de facturación",
     idempotency: EVENT_KEY,
-    render: (_v, o) => layout(brand(o.supportEmail), "Ha terminado el acceso a tu cuenta", ["El periodo de solo lectura ha terminado. Tus datos no se han borrado: si necesitas recuperarlos o reactivar la cuenta, escríbenos."]),
+    render: (v, o) =>
+      layout(
+        brand(o.supportEmail),
+        "Ha terminado el periodo de solo lectura",
+        [
+          "Han pasado los 30 días de solo lectura: tu cuenta ya no se puede usar con normalidad. Tus datos no se han borrado.",
+          "Mientras la cuenta no se archive, la persona propietaria puede seguir descargando una exportación completa de sus datos desde el panel (Suscripción › Exportar mis datos). Te recomendamos hacerlo cuanto antes.",
+          "Si quieres reactivar la cuenta, escríbenos.",
+        ],
+        panel(v.host, "/admin/suscripcion/exportar"),
+      ),
   },
   // ── Módulos y ampliaciones ──
   contract("module.purchase_requested", "module", "module_change", "Compra enviada a Stripe con cobro pendiente (purchases.ts: payment_pending)", "billing_contact", ["productName", "paymentUrl"], "Si el cobro necesita autenticación o falló"),

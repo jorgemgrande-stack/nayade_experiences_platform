@@ -30,6 +30,8 @@ function AccountNotice() {
   else if (d.state === "trial_expired") text = "Tu prueba ha terminado y la cuenta está en solo lectura: puedes seguir exportando tus datos.";
   else if (d.state === "read_only") text = until ? `Tu cuenta está en solo lectura hasta el ${fmtDate(until)}: hasta entonces puedes consultar y exportar tus datos.` : "Tu cuenta está en solo lectura: puedes consultar y exportar tus datos.";
   else if (d.state === "suspended") text = "Tu suscripción está suspendida: el panel sigue disponible para consultar y exportar tus datos.";
+  else if (d.state === "cancelled" || d.state === "none")
+    text = "El periodo de solo lectura ha terminado. Puedes seguir exportando tus datos mientras la cuenta no se archive: te recomendamos descargarlos cuanto antes.";
   if (!text) return null;
   return (
     <div className="rounded-xl border border-amber-300/60 bg-amber-50 dark:bg-amber-500/10 p-4 flex gap-3" role="status">
@@ -65,7 +67,7 @@ function Contents({ maxMb, linkHours, dailyLimit }: { maxMb: number; linkHours: 
       <ul className="text-xs text-muted-foreground space-y-1">
         <li>Se genera en segundo plano con una copia coherente de tus datos en ese momento. Puedes solicitar hasta {dailyLimit} al día.</li>
         <li>Tamaño máximo: {maxMb.toLocaleString("es-ES")} MB sin comprimir. Si tus datos lo superan, la exportación no se genera y te lo indicamos: pídela a soporte y la prepararemos por el procedimiento de exportaciones grandes.</li>
-        <li>El enlace de descarga caduca {linkHours} horas después de generarse; después, solicita una nueva. Cada descarga queda registrada.</li>
+        <li>El enlace de descarga caduca {linkHours} horas después de generarse; el archivo se retira a los 7 días (tus datos no se tocan). Después, solicita una nueva. Cada descarga queda registrada.</li>
         <li>Los documentos fiscales se exportan como copia: el original legal es el emitido por el sistema de facturación.</li>
       </ul>
     </section>
@@ -89,7 +91,7 @@ function Relationship() {
       </ul>
       <p className="text-sm text-muted-foreground">
         Escribe desde el correo de la persona propietaria a{" "}
-        {email ? <strong className="text-foreground select-all">{email}</strong> : "tu contacto de soporte"} con el asunto «Documentación contractual». Comprobaremos que la petición viene de la persona propietaria y te la enviaremos lo antes posible, dejando constancia de la entrega.
+        {email ? <strong className="text-foreground select-all">{email}</strong> : "tu contacto de soporte"} con el asunto «Documentación contractual». Comprobaremos que la petición viene de la persona propietaria y te la enviaremos en un plazo máximo de 5 días hábiles, dejando constancia de la entrega.
       </p>
     </section>
   );
@@ -110,11 +112,13 @@ type ExportRow = {
   downloadCount: number;
   startedAt?: number | null;
   attempts?: number;
+  purgedAt?: number | null;
 };
 
 function StatusBadge({ row, now }: { row: ExportRow; now: number }) {
   if (row.status === "pending") return <Badge variant="outline" className="gap-1"><Clock className="w-3.5 h-3.5" aria-hidden="true" />{row.startedAt ? (row.attempts && row.attempts > 1 ? "Generando (reintento)…" : "Generando…") : "En cola"}</Badge>;
   if (row.status === "failed") return <Badge variant="outline" className="gap-1 text-red-800 dark:text-red-300"><XCircle className="w-3.5 h-3.5" aria-hidden="true" />Fallida</Badge>;
+  if (row.purgedAt) return <Badge variant="outline">Archivo retirado</Badge>;
   if (row.expiresAt && row.expiresAt <= now) return <Badge variant="outline">Enlace caducado</Badge>;
   if (row.warning) return <Badge variant="outline" className="gap-1 text-amber-800 dark:text-amber-300"><AlertTriangle className="w-3.5 h-3.5" aria-hidden="true" />Lista, incompleta</Badge>;
   return <Badge variant="outline" className="gap-1 text-emerald-800 dark:text-emerald-300"><CheckCircle2 className="w-3.5 h-3.5" aria-hidden="true" />Lista</Badge>;

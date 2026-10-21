@@ -88,7 +88,8 @@ import { StripeEventProcessor } from "../stripe/events";
 import type { SubscriptionChangeStore } from "../stripe/changes";
 import type { InvoiceLineStore } from "../stripe/invoiceLines";
 import { ModulePurchaseService } from "../stripe/purchases";
-import { createPurchasesRouter } from "../stripe/purchasesApi";
+import { createBillingPortalRouter, createPurchasesRouter } from "../stripe/purchasesApi";
+import { BillingPortalService } from "../stripe/billingPortal";
 import { StripeReconciler, startStripeWorker } from "../stripe/reconcile";
 import { stripeWebhookHandler } from "../stripe/webhook";
 import { checkoutStatus, sessionIdRe } from "../stripe/status";
@@ -260,6 +261,8 @@ export interface ControlPlaneDeps {
      * apagado por defecto; sin `changes`, ni se monta ni se reconocen suscripciones multipartida.
      */
     purchases?: { enabled: boolean; changes: SubscriptionChangeStore; internalTenants?: ReadonlySet<string> };
+    /** Portal de facturación (CP_BILLING_PORTAL_ENABLED y CP_BILLING_PORTAL_CONFIGURATION): apagado por defecto. */
+    billingPortal?: { enabled: boolean; configurationId: string | null };
     /** Detalle por línea de las facturas cobradas y reparto de reembolsos (CRM 0019). Sin él, como hasta ahora. */
     invoiceLines?: InvoiceLineStore;
   };
@@ -1318,6 +1321,24 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
           });
           router.use("/commerce", createPurchasesRouter(purchases));
         }
+        // Portal de facturación de Stripe (solo consulta de facturas y método de pago; apagado por defecto)
+        router.use(
+          "/commerce",
+          createBillingPortalRouter(
+            new BillingPortalService({
+              enabled: st.billingPortal?.enabled ?? false,
+              configurationId: st.billingPortal?.configurationId ?? null,
+              companyOfTenant: async (t) => {
+                const c = (await d.crm!.store.list("companies", { tenantId: t }, { limit: 2 })) as Array<{ id: number }>;
+                return c.length === 1 ? c[0].id : null;
+              },
+              customerOfCompany: async (companyId) => (await st.store.customerByCompany(companyId))?.stripeCustomerId ?? null,
+              portalConfigurations: () => st.gateway.portalConfigurations(),
+              createSession: (i) => st.gateway.createPortalSession(i),
+              tenantDomains: async (t) => (await d.reader.listDomains(t)).filter((x) => x.status === "active").map((x) => x.domain),
+            }),
+          ),
+        );
         router.use("/stripe", createStripeRouter({ config: st.config, store: st.store, gateway: st.gateway, catalog: stripeCatalog, checkout, processor, reconciler, now: d.subscriptions.now, orders: d.orders.store, fiscal: st.fiscal, legalUrls: st.fiscal?.legalUrls }));
       }
       // Webhook del proveedor de PRUEBAS: autenticado por firma (antes del montaje del router con tokens)
@@ -1429,7 +1450,12 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
                 }
               : undefined,
           },
-          { now: Date.now(), by: getAuth(req)?.tokenId ?? "operador" },
+          {
+            now: Date.now(),
+            by: getAuth(req)?.tokenId ?? "operador",
+            // Fecha de la solicitud de la persona propietaria (para el plazo de 5 días hábiles)
+            requestedAt: req.query.requestedAt ? z.coerce.date().parse(req.query.requestedAt).getTime() : undefined,
+          },
         );
         res.setHeader("Cache-Control", "no-store");
         res.setHeader("Content-Disposition", `attachment; filename="relacion-${id}.json"`);
