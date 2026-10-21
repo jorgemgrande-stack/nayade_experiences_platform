@@ -20,7 +20,7 @@
 import { opsLog } from "../_core/ops/log";
 import { recordFailure } from "../_core/ops/failureAlerts";
 import { DEFAULT_EVENTS_RETENTION_DAYS, MIN_EVENTS_RETENTION_DAYS, livemodeMatches, type StripeMode } from "./config";
-import { HANDLED_EVENTS, type StripeEventProcessor } from "./events";
+import { HANDLED, type StripeEventProcessor } from "./events";
 import type { StripeGateway } from "./gateway";
 import type { StripeStore } from "./store";
 
@@ -83,8 +83,10 @@ export class StripeReconciler {
       let startingAfter: string | undefined;
       let complete = false;
       for (let page = 0; page < (this.d.maxEventPages ?? 50); page++) {
-        const r = await this.d.gateway.listEvents({ createdGte: cursor - OVERLAP_S, types: [...HANDLED_EVENTS], startingAfter, limit: 100 });
+        // Sin filtro `types`: Stripe admite como máximo 20 tipos y se gestionan más. Se filtra aquí.
+        const r = await this.d.gateway.listEvents({ createdGte: cursor - OVERLAP_S, startingAfter, limit: 100 });
         for (const ev of r.events) {
+          if (!HANDLED.has(ev.type)) continue;
           // Un evento de OTRO modo nunca se registra (mismo tratamiento que en el webhook)
           if (!livemodeMatches(ev.livemode, this.mode)) {
             if (this.mode === "live") recordFailure("stripe.test_event_rejected");
