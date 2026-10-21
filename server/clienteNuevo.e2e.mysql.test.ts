@@ -199,8 +199,16 @@ describe.skipIf(!URL_)("cliente nuevo de punta a punta: Empresa Demo Elephant 01
     const st = data(await s.q(one.tenantId, "setupWizard.status", undefined, one.cookie));
     expect(st.company).toMatchObject({ tradeName: COMPANY_01, taxId: TAX_ID, currency: "EUR" });
     expect(st.activity).toBe("servicios");
-    expect(st.nextStep).toBe("client");
-    note("10 asistente", `empresa y actividad guardadas; siguiente paso «${st.nextStep}» (los pasos 11–17 completan el resto)`);
+    expect(st.nextStep).toBe("brand");
+    // Paso «Marca»: la misma marca alimenta su web y su pantalla de acceso
+    ok200(await s.m(one.tenantId, "integrations.themeSave", { values: { theme_primary_color: "#0b3d91", login_welcome_title: `Hola, equipo de ${COMPANY_01}` } }, one.cookie), "themeSave");
+    ok200(await s.m(one.tenantId, "setupWizard.setStep", { step: "brand", status: "done" }, one.cookie), "setStep brand");
+    const theme = data(await s.q(one.tenantId, "public.getTheme"));
+    expect(theme.primaryColor).toBe("#0b3d91");
+    expect(theme.login.title).toBe(`Hola, equipo de ${COMPANY_01}`);
+    const after = data(await s.q(one.tenantId, "setupWizard.status", undefined, one.cookie));
+    expect(after.nextStep).toBe("client");
+    note("10 asistente", `empresa, actividad y marca guardadas (acceso con su color y titular); siguiente paso «${after.nextStep}» (los pasos 11–17 completan el resto)`);
   });
 
   it("paso 11: crear cliente", async () => {

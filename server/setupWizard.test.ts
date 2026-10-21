@@ -41,7 +41,7 @@ describe("progreso del asistente", () => {
     expect(progressPercent(p)).toBe(0);
     p = markStep(p, "company", "done", NOW);
     p = markStep(p, "activity", "skipped", NOW + 1);
-    expect(nextPendingStep(p)).toBe("client");
+    expect(nextPendingStep(p)).toBe("brand");
     expect(p.steps.activity).toEqual({ status: "skipped", at: NOW + 1 });
     for (const s of SETUP_STEPS) if (p.steps[s].status === "pending" && s !== "finish") p = markStep(p, s, "skipped", NOW + 2);
     expect(nextPendingStep(p)).toBe("finish");
