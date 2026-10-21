@@ -33,29 +33,37 @@ describe("Customer Portal: configuración deseada frente a la real", () => {
     expect(portalProducts([{ ...PRICES[0], status: "retired" } as StripePriceLink, PRICES[1]])).toEqual([{ product: "prod_VSqwbFbHJBJT4a", prices: ["price_1URvF69RzfmCBuaiO4hmktlD"] }]);
   });
 
-  it("hoy en live: faltan los cambios de plan (5 campos) y las URL legales (pendientes); cancelación, facturas y pago ya están", () => {
+  it("hoy en live: la configuración por defecto permite CANCELAR; la deseada (solo consulta) lo desactiva; URL legales pendientes", () => {
     const diff = planPortal(LIVE_TODAY, { prices: PRICES, termsUrl: null, privacyUrl: null });
-    expect(diff.filter((d) => !d.pending).map((d) => d.field)).toEqual([
-      "features.subscription_update.enabled",
-      "features.subscription_update.default_allowed_updates",
-      "features.subscription_update.products",
-      "features.subscription_update.proration_behavior",
-      "features.subscription_update.schedule_at_period_end.conditions",
-    ]);
+    expect(diff.filter((d) => !d.pending).map((d) => d.field)).toEqual(["features.subscription_cancel.enabled"]);
     expect(diff.filter((d) => d.pending).map((d) => [d.field, d.pending])).toEqual([
       ["business_profile.terms_of_service_url", "textos legales sin publicar"],
       ["business_profile.privacy_policy_url", "textos legales sin publicar"],
     ]);
-    const params = portalWriteParams(diff, { prices: PRICES, termsUrl: null, privacyUrl: null }) as { features: { subscription_update: Record<string, unknown>; customer_update: unknown }; business_profile?: unknown };
-    expect(params.features.subscription_update).toMatchObject({ enabled: true, default_allowed_updates: ["price"], proration_behavior: "always_invoice", schedule_at_period_end: { conditions: [{ type: "decreasing_item_amount" }, { type: "shortening_interval" }] } });
-    expect(params.features.customer_update).toEqual({ enabled: false });
+    const params = portalWriteParams(diff, { prices: PRICES, termsUrl: null, privacyUrl: null }) as { features: Record<string, unknown>; business_profile?: unknown };
+    expect(params.features).toEqual({
+      invoice_history: { enabled: true },
+      payment_method_update: { enabled: true },
+      subscription_cancel: { enabled: false },
+      subscription_update: { enabled: false },
+      customer_update: { enabled: false },
+    });
     expect(params.business_profile).toBeUndefined();
   });
 
-  it("aplicada la configuración y publicadas las URL: sin diferencias ni parámetros", () => {
+  it("decisión del propietario: nunca se propone permitir cambios de plan ni cancelaciones", () => {
+    const permissive: GwPortalConfig = { ...LIVE_TODAY, update: { enabled: true, defaultAllowedUpdates: ["price"], products: portalProducts(PRICES), prorationBehavior: "always_invoice", scheduleAtPeriodEnd: [] } };
+    const diff = planPortal(permissive, { prices: PRICES, termsUrl: null, privacyUrl: null });
+    expect(diff.filter((d) => !d.pending).map((d) => [d.field, d.desired])).toEqual([
+      ["features.subscription_cancel.enabled", false],
+      ["features.subscription_update.enabled", false],
+    ]);
+  });
+
+  it("solo consulta aplicada y URL publicadas: sin diferencias ni parámetros", () => {
     const done: GwPortalConfig = {
       ...LIVE_TODAY,
-      update: { enabled: true, defaultAllowedUpdates: ["price"], products: portalProducts(PRICES).map((p) => ({ ...p, prices: [...p.prices].reverse() })), prorationBehavior: "always_invoice", scheduleAtPeriodEnd: ["shortening_interval", "decreasing_item_amount"] },
+      cancel: { enabled: false, mode: null, prorationBehavior: null },
       termsUrl: "https://www.bigelephant.es/legal/condiciones",
       privacyUrl: "https://www.bigelephant.es/legal/privacidad",
     };
