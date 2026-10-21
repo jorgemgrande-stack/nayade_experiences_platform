@@ -18,6 +18,7 @@ import { opsLog } from "../_core/ops/log";
 import { recordFailure } from "../_core/ops/failureAlerts";
 import { StripeGatewayError } from "./gateway";
 import { PurchaseError, type ModulePurchaseService } from "./purchases";
+import { BillingPortalError, type BillingPortalService } from "./billingPortal";
 
 const STATUS: Record<string, number> = { disabled: 503, not_found: 404, invalid_input: 400, invalid_state: 409, unavailable: 409, conflict: 409, async_payment_method: 409 };
 const tenant = z.string().regex(/^[a-z0-9][a-z0-9-]{1,62}$/);
@@ -87,5 +88,36 @@ export function createPurchasesRouter(svc: ModulePurchaseService): Router {
     const orderId = z.coerce.number().int().positive().parse(req.params.orderId);
     res.json({ purchase: await svc.statusOf(t, orderId) });
   }));
+  return r;
+}
+
+const PORTAL_STATUS: Record<BillingPortalError["code"], number> = { disabled: 503, not_found: 404, unsafe: 409, invalid: 400 };
+
+/**
+ * Portal de facturación de Stripe para la empresa (solo consulta de facturas y método de pago; ver
+ * ./billingPortal.ts). Lo pide el Core en nombre de la persona propietaria con el token de comercio.
+ */
+export function createBillingPortalRouter(svc: BillingPortalService): Router {
+  const r = express.Router();
+  r.get("/billing-portal/status", requireScope("commerce:purchase"), (_req, res) => void res.json(svc.status));
+  r.post("/tenants/:tenantId/billing-portal", requireScope("commerce:purchase"), (req, res) => {
+    const run = async () => {
+      const t = tenant.parse(req.params.tenantId);
+      const { returnUrl } = z.object({ returnUrl: z.string().url().max(300) }).strict().parse(req.body ?? {});
+      const session = await svc.open(t, returnUrl);
+      opsLog("info", "BillingPortal", "opened", { tenantId: t });
+      res.json({ url: session.url });
+    };
+    run().catch((e) => {
+      if (e instanceof BillingPortalError) {
+        if (e.code === "unsafe") recordFailure("stripe.portal_unsafe");
+        return void res.status(PORTAL_STATUS[e.code]).json({ error: e.code, message: e.message });
+      }
+      if (e instanceof z.ZodError) return void res.status(400).json({ error: "invalid_request", message: "Parámetros no válidos" });
+      if (e instanceof StripeGatewayError) return void res.status(e.retryable ? 503 : 502).json({ error: "stripe_error", code: e.code, retryable: e.retryable });
+      opsLog("error", "BillingPortal", "internal_error", { error: e instanceof Error ? e.name : "error" });
+      res.status(500).json({ error: "internal_error", message: "Error interno" });
+    });
+  });
   return r;
 }

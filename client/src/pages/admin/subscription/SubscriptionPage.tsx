@@ -11,6 +11,28 @@ import { PanelError, PanelLoading } from "@/components/admin/PanelStates";
 import { usePanelSubscription } from "@/hooks/usePanelSubscription";
 import { cn } from "@/lib/utils";
 import { WithdrawalSection } from "./WithdrawalSection";
+import { trpc } from "@/lib/trpc";
+import { toast } from "sonner";
+
+/** Facturas de la suscripción en el portal de Stripe: solo la persona propietaria y si está activado. */
+function BillingPortalSection() {
+  const status = trpc.subscription.billingPortalStatus.useQuery(undefined, { retry: false, staleTime: 300_000 });
+  const open = trpc.subscription.billingPortal.useMutation({
+    onSuccess: (r) => window.location.assign((r as { url: string }).url),
+    onError: (e) => toast.error(e.message),
+  });
+  if (!status.data?.enabled) return null;
+  return (
+    <section className="rounded-2xl border border-border bg-card p-6 space-y-3" aria-labelledby="sub-invoices">
+      <h2 id="sub-invoices" className="font-semibold text-foreground">Facturas de la suscripción</h2>
+      <p className="text-sm text-muted-foreground">Consulta y descarga tus facturas y actualiza el método de pago en el portal seguro de nuestro proveedor de cobros. Desde allí no se cambia ni se cancela el plan.</p>
+      <Button type="button" variant="outline" disabled={open.isPending} onClick={() => open.mutate()}>
+        {open.isPending ? "Abriendo…" : "Ver facturas y método de pago"}
+        <ArrowUpRight className="w-4 h-4 ml-1.5" aria-hidden="true" />
+      </Button>
+    </section>
+  );
+}
 
 const GROUP_LABELS: Record<string, string> = {
   crm: "Clientes y ventas",
@@ -237,6 +259,8 @@ export default function SubscriptionPage() {
                 Los usuarios de tu equipo se gestionan en <Link href="/admin/usuarios" className="underline underline-offset-4 hover:text-foreground">Usuarios y permisos</Link>.
               </p>
             </section>
+
+            <BillingPortalSection />
 
             {/* Tus datos: exportación (también en solo lectura y suspendida) */}
             <section className="rounded-2xl border border-border bg-card p-6 space-y-3" aria-labelledby="sub-data">

@@ -312,7 +312,7 @@ export class FakeStripeGateway implements StripeGateway {
     this.calls.push({ op: "billing_portal.configurations.list" });
     return this.portalConfigs.map((c) => structuredClone(c));
   }
-  async createPortalSession(input: { customerId: string; returnUrl: string }) {
+  async createPortalSession(input: { customerId: string; returnUrl: string; configuration?: string }) {
     this.calls.push({ op: "billing_portal.sessions.create", input });
     return { url: `https://billing.stripe.test/p/session/${input.customerId}` };
   }

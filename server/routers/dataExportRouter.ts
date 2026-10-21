@@ -11,7 +11,7 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { protectedProcedure, router } from "../_core/trpc";
-import { getCompanyOwnerEmail } from "../_core/companyOwner";
+import { getCompanyOwnerEmail, isCompanyOwnerUser as isOwner } from "../_core/companyOwner";
 import { getTenantIdOrDefault } from "../_core/tenant";
 import { DataExportError, EXPORT_LINK_TTL_MS, exportDailyLimit, exportMaxBytes } from "../dataExport/service";
 import { exportService, kickExport } from "../dataExport/runtime";
@@ -29,12 +29,6 @@ const CODE: Record<DataExportError["code"], TRPCError["code"]> = {
 export function maskEmail(email: string): string {
   const [user, domain] = email.split("@");
   return domain ? `${user.slice(0, 1)}•••@${domain}` : "•••";
-}
-
-async function isOwner(user: { role: unknown; email?: string | null }) {
-  if (String(user.role) !== "admin") return false;
-  const owner = await getCompanyOwnerEmail();
-  return !!owner && (user.email ?? "").trim().toLowerCase() === owner;
 }
 
 async function run<T>(fn: () => Promise<T>): Promise<T> {

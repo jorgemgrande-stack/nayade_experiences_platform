@@ -17,6 +17,7 @@ export const STRIPE_FAILURE_RULES: Record<string, FailureRule> = {
   "stripe.session_mismatch": once("Stripe: una sesión de Checkout no corresponde a su pedido o empresa"),
   "stripe.event_failed": once("Stripe: un evento agotó sus reintentos sin aplicarse"),
   "stripe.catalog_conflict": once("Stripe: el catálogo enlazado no coincide con el de Stripe"),
+  "stripe.portal_unsafe": once("Stripe: el portal de facturación se ha bloqueado porque su configuración permite cambios o cancelaciones"),
   // Cobertura económica: reembolsos y disputas
   "stripe.coverage_lost": once("Stripe: cobro revertido (reembolso total o disputa perdida): revisar el pedido"),
   "stripe.namespace_mismatch": once("Stripe: objetos de un pedido con otro prefijo de entorno (se ignoran): revisar CP_STRIPE_NAMESPACE"),

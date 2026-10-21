@@ -38,7 +38,7 @@ describe.skipIf(!URL_)("exportación de datos con MySQL real (0011 + 0012)", () 
       u.pathname = `/${db}`;
       const pool = mysql.createPool({ uri: u.toString(), connectionLimit: 6 });
       pools.push(pool);
-      for (const f of ["0009_stored_objects.sql", "0011_data_exports.sql", "0012_data_export_jobs.sql"]) await run(pool, f);
+      for (const f of ["0009_stored_objects.sql", "0011_data_exports.sql", "0012_data_export_jobs.sql", "0013_data_export_purge.sql"]) await run(pool, f);
       await pool.query("CREATE TABLE clients (id INT PRIMARY KEY, name VARCHAR(80), passwordHash VARCHAR(80))");
       await pool.query("CREATE TABLE line_items (order_id INT, line INT, qty INT, PRIMARY KEY (order_id, line))");
       await pool.query("CREATE TABLE password_reset_tokens (id INT PRIMARY KEY, token VARCHAR(80))");
@@ -138,8 +138,22 @@ describe.skipIf(!URL_)("exportación de datos con MySQL real (0011 + 0012)", () 
     }
   });
 
+  it("retirada: solo terminadas hace más de 7 días y con el enlace caducado; una vez retirada no vuelve a salir", async () => {
+    const a = new MysqlDataExportStore(() => pools[0]);
+    const e = await a.insertPending(7, NOW + 50_000);
+    await a.claim(NOW + 50_000, NOW, MAX_ATTEMPTS);
+    await a.markReady(e.id, { objectId: "7".repeat(26), sizeBytes: 1, tableCount: 0, rowCount: 0, fileCount: 0, expiresAt: NOW + 60_000 }, NOW + 50_000);
+    expect((await a.listPurgeable(NOW + 40_000, NOW + 70_000, 50)).map((x) => x.id)).not.toContain(e.id); // terminada después del corte
+    expect((await a.listPurgeable(NOW + 60_000, NOW + 55_000, 50)).map((x) => x.id)).not.toContain(e.id); // enlace aún vigente
+    expect((await a.listPurgeable(NOW + 60_000, NOW + 70_000, 50)).map((x) => x.id)).toContain(e.id);
+    await a.markPurged(e.id, NOW + 70_000);
+    expect(await a.get(e.id)).toMatchObject({ status: "ready", purgedAt: NOW + 70_000 });
+    expect((await a.listPurgeable(NOW + 60_000, NOW + 70_000, 50)).map((x) => x.id)).not.toContain(e.id);
+  });
+
   it("migraciones: sin 0012 la exportación avisa de la actualización pendiente; 0012 y 0011 se revierten y se vuelven a aplicar", async () => {
     const b = () => new MysqlDataExportStore(() => pools[1]);
+    await run(pools[1], "0013_data_export_purge.down.sql");
     await run(pools[1], "0012_data_export_jobs.down.sql");
     await expect(b().claim(NOW, NOW, MAX_ATTEMPTS)).rejects.toMatchObject({ code: "unavailable", message: expect.stringMatching(/actualización/) });
     await run(pools[1], "0011_data_exports.down.sql");

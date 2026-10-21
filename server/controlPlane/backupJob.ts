@@ -16,6 +16,7 @@
  *   node dist-cp/backup-job.js rebuild --admin-url-env VAR --server <alias> [--source secondary] [--registry-db es_registry]
  *        [--crm-db es_crm] [--to-media] [--only a,b] [--apply]                     reconstrucción total (RECUPERACION_TOTAL.md)
  *   node dist-cp/backup-job.js migrate-tenants [--only a,b] [--apply]   carril de la app en cada empresa (red privada)
+ *   node dist-cp/backup-job.js check-data-exports [--only a,b]          verificación (solo lectura) de 0011/0012/0013
  *
  * (en desarrollo: `pnpm exec tsx server/controlPlane/backupJob.ts <orden>`)
  *
@@ -55,6 +56,7 @@ import { rebuildPlatform } from "../_core/ops/disasterRecovery";
 import { DatabaseServers, parseDatabaseServers } from "../_core/provisioning/servers";
 import { MysqlSchemaApplier } from "../_core/provisioning/mysqlAdapters";
 import { migrateAllTenants } from "../_core/ops/tenantMigrations";
+import { dataExportSchemaStatus } from "../_core/ops/dataExportCheck";
 
 const args = process.argv.slice(2);
 const cmd = args[0] && !args[0].startsWith("--") ? args[0] : "run";
@@ -280,6 +282,32 @@ async function main() {
         const res = await migrateAllTenants({ reader: store, registry, schema, actor }, { apply: flag("--apply"), only: opt("--only")?.split(",").filter(Boolean) });
         print(res.map((r) => ({ tenant: r.tenantId, resultado: r.outcome, pendientes: r.pending ?? [], esquema: r.schemaVersion ?? null, error: r.error ?? null })));
         if (res.some((r) => r.outcome === "failed")) process.exitCode = 1;
+        break;
+      }
+      case "check-data-exports": {
+        // Solo lectura: ¿tiene cada empresa la tabla y las columnas de la exportación? (tras migrate-tenants --apply)
+        const only = opt("--only")?.split(",").filter(Boolean);
+        const out: Array<Record<string, unknown>> = [];
+        for (const t of await store.listTenants()) {
+          if (only && !only.includes(t.id)) continue;
+          if (["provisioning", "archived", "deleting", "deleted"].includes(t.status)) continue;
+          const dsn = await registry.getActiveDsn(t.id).catch(() => null);
+          if (!dsn) {
+            out.push({ tenant: t.id, ok: false, error: "sin base de datos activa" });
+            continue;
+          }
+          const conn = await mysql.createConnection({ uri: dsn });
+          try {
+            const s = await dataExportSchemaStatus(async (q, p) => (await conn.query(q, p))[0] as Array<Record<string, unknown>>);
+            out.push({ tenant: t.id, estado: t.status, ok: s.ok, faltan: s.missing, enCurso: s.pending });
+          } catch (e) {
+            out.push({ tenant: t.id, ok: false, error: e instanceof Error ? e.name : "error" });
+          } finally {
+            await conn.end().catch(() => undefined);
+          }
+        }
+        print(out);
+        if (out.some((r) => !r.ok)) process.exitCode = 1;
         break;
       }
       case "restores": {

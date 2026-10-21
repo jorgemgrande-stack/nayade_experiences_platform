@@ -106,4 +106,33 @@ describe.skipIf(!URL_)("exportación de datos de punta a punta (aplicación real
     }
     expect(errCode(await ess.m("a", "dataExport.request", undefined, admA))).toBe("TOO_MANY_REQUESTS");
   });
+
+  it("recuperación tras un reinicio: una generación cortada (arriendo caducado) se retoma y termina", async () => {
+    const old = Date.now() - 3600_000;
+    await ess.sql("a", "INSERT INTO data_exports (requested_by, status, requested_at, attempts, started_at, heartbeat_at) VALUES (1, 'pending', ?, 1, ?, ?)", [old, old, old]);
+    const [row] = await ess.sql("a", "SELECT id FROM data_exports WHERE status = 'pending'");
+    await tick();
+    const [after] = await ess.sql("a", "SELECT status, attempts FROM data_exports WHERE id = ?", [row.id]);
+    expect(after).toMatchObject({ status: "ready", attempts: 2 });
+  });
+
+  it("retirada a los 7 días: el ZIP (copia) se borra del almacenamiento; la fila y los ficheros originales se conservan", async () => {
+    const [before] = await ess.sql("a", "SELECT COUNT(*) AS n FROM stored_objects WHERE category <> 'data-export' AND status = 'active'");
+    const [r] = await ess.sql("a", "SELECT id, object_id FROM data_exports WHERE status = 'ready' ORDER BY id LIMIT 1");
+    const eightDaysAgo = Date.now() - 8 * 24 * 3600_000;
+    await ess.sql("a", "UPDATE data_exports SET completed_at = ?, expires_at = ? WHERE id = ?", [eightDaysAgo, eightDaysAgo + 24 * 3600_000, r.id]);
+    const { _resetExportProcessForTests } = await import("./dataExport/service");
+    _resetExportProcessForTests();
+    await tick();
+    const [row] = await ess.sql("a", "SELECT status, purged_at FROM data_exports WHERE id = ?", [r.id]);
+    expect(row.status).toBe("ready");
+    expect(Number(row.purged_at)).toBeGreaterThan(0);
+    const [obj] = await ess.sql("a", "SELECT status FROM stored_objects WHERE object_id = ?", [r.object_id]);
+    expect(obj.status).toBe("deleted");
+    const [after] = await ess.sql("a", "SELECT COUNT(*) AS n FROM stored_objects WHERE category <> 'data-export' AND status = 'active'");
+    expect(Number(after.n)).toBe(Number(before.n));
+    expect(errCode(await ess.m("a", "dataExport.link", { id: Number(r.id) }, admA))).toBe("PRECONDITION_FAILED");
+    // La otra empresa no se ve afectada
+    expect((data(await ess.q("b", "dataExport.list", undefined, admB)) as unknown[]).every((x: any) => x.purgedAt === null)).toBe(true);
+  });
 });

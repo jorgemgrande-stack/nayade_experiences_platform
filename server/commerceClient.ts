@@ -44,6 +44,9 @@ export interface CommerceClient {
   withdrawalStatus(tenantId: string): Promise<unknown>;
   /** Solicitud de desistimiento (idempotente por clave) → justificante. */
   withdraw(tenantId: string, input: { idempotencyKey: string; requestedBy: string; contactEmail: string; statement?: string }): Promise<unknown>;
+  /** Portal de facturación de Stripe: ¿disponible? y sesión para la empresa (solo facturas y método de pago). */
+  billingPortalStatus(): Promise<{ enabled: boolean }>;
+  billingPortal(tenantId: string, returnUrl: string): Promise<{ url: string }>;
 }
 
 type Fetch = (url: string, init: { method: string; headers: Record<string, string>; body?: string; signal?: AbortSignal }) => Promise<{ status: number; json(): Promise<unknown> }>;
@@ -85,5 +88,7 @@ export function commerceClientFromEnv(env: NodeJS.ProcessEnv = process.env, fetc
     reduce: async (tenantId, input, o) => ((await call("POST", `${seg(tenantId)}/reductions`, { ...input, idempotencyKey: o.idempotencyKey, buyer: o.buyer })) as { reduction: unknown }).reduction,
     withdrawalStatus: async (tenantId) => ((await call("GET", `${seg(tenantId)}/withdrawal`)) as { withdrawal: unknown }).withdrawal,
     withdraw: async (tenantId, input) => await call("POST", `${seg(tenantId)}/withdrawal`, input),
+    billingPortalStatus: async () => (await call("GET", "/billing-portal/status")) as { enabled: boolean },
+    billingPortal: async (tenantId, returnUrl) => (await call("POST", `${seg(tenantId)}/billing-portal`, { returnUrl })) as { url: string },
   };
 }

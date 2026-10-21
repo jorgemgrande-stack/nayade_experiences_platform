@@ -87,3 +87,16 @@ describe("ruta /cp/v1/tenants/:id/relationship-export", () => {
     expect(await get("/tenants/acme-01/relationship-export", BOTH)).toBe(404);
   });
 });
+
+describe("plazo de entrega (5 días hábiles)", () => {
+  it("salta fines de semana y festivos indicados", async () => {
+    const { businessDeadline } = await import("./controlPlane/relationshipExport");
+    // Miércoles 21/10/2026 → miércoles 28/10/2026
+    expect(businessDeadline(new Date("2026-10-21T10:00:00Z")).toISOString().slice(0, 10)).toBe("2026-10-28");
+    // Viernes 23/10 → viernes 30/10; con el 26/10 festivo → lunes 02/11
+    expect(businessDeadline(new Date("2026-10-23T10:00:00Z")).toISOString().slice(0, 10)).toBe("2026-10-30");
+    expect(businessDeadline(new Date("2026-10-23T10:00:00Z"), 5, new Set(["2026-10-26"])).toISOString().slice(0, 10)).toBe("2026-11-02");
+    const b = await buildRelationshipExport("acme", sources, { now: NOW, by: "op", requestedAt: Date.parse("2026-10-21T10:00:00Z") });
+    expect(b.request).toEqual({ requestedAt: "2026-10-21T10:00:00.000Z", deadline: "2026-10-28T23:59:59.000Z" });
+  });
+});

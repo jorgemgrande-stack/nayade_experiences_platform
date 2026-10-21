@@ -18,6 +18,7 @@ import {
   MAX_ATTEMPTS,
   MemoryDataExportStore,
   TEMP_MAX_AGE_MS,
+  EXPORT_RETENTION_MS,
   _resetExportProcessForTests,
   exportMaxBytes,
   type ExportNotice,
@@ -302,4 +303,60 @@ describe("memoria acotada con datos grandes (streaming)", () => {
     expect(peak - before).toBeLessThan(48 * MB);
     expect(objects.size).toBe(1);
   }, 60_000);
+});
+
+describe("retirada de los ZIP a los 7 días (solo copias; nunca con una descarga válida)", () => {
+  it("retira los de más de 7 días con el enlace caducado; conserva los recientes y la fila; el enlace dice «retirado»", async () => {
+    let now = NOW;
+    const { svc, store, objects } = make({ now: () => now });
+    await svc.request(owner);
+    await svc.processNext();
+    const first = store.rows[0];
+    now += 3 * 24 * 3600_000;
+    await svc.request(owner);
+    await svc.processNext();
+    expect(objects.size).toBe(2);
+    // A los 3 días: el enlace ya caducó (24 h) pero no se retira nada
+    await svc.processNext();
+    expect(objects.size).toBe(2);
+    // A los 7 días y 1 minuto de la primera
+    now = first.completedAt! + EXPORT_RETENTION_MS + 60_000;
+    _resetExportProcessForTests();
+    await svc.processNext();
+    expect(objects.has(first.objectId!)).toBe(false);
+    expect(objects.size).toBe(1);
+    expect(store.rows[0]).toMatchObject({ status: "ready", purgedAt: now });
+    expect(store.rows[1].purgedAt).toBeNull();
+    await expect(svc.link({ isOwner: true }, first.id)).rejects.toThrow(/retiró a los 7 días/);
+  });
+
+  it("nunca retira un ZIP cuyo enlace siga vigente, aunque sea antiguo (defensa en profundidad)", async () => {
+    let now = NOW;
+    const { svc, store, objects } = make({ now: () => now });
+    await svc.request(owner);
+    await svc.processNext();
+    store.rows[0].expiresAt = NOW + 30 * 24 * 3600_000; // enlace anómalo aún vigente
+    now = NOW + EXPORT_RETENTION_MS + 60_000;
+    _resetExportProcessForTests();
+    await svc.processNext();
+    expect(objects.size).toBe(1);
+    expect(store.rows[0].purgedAt).toBeNull();
+  });
+
+  it("restos de una exportación fallida (subida hecha antes del corte) también se retiran a los 7 días", async () => {
+    let now = NOW;
+    const { svc, store, objects } = make({ now: () => now, uploadThenFail: MAX_ATTEMPTS });
+    await svc.request(owner);
+    for (let i = 0; i < MAX_ATTEMPTS + 1; i++) {
+      await svc.processNext();
+      now += LEASE_MS + 1;
+    }
+    expect(store.rows[0].status).toBe("failed");
+    expect(objects.size).toBe(1); // el último intento subió y se cortó
+    now = store.rows[0].completedAt! + EXPORT_RETENTION_MS + 60_000;
+    _resetExportProcessForTests();
+    await svc.processNext();
+    expect(objects.size).toBe(0);
+    expect(store.rows[0].purgedAt).toBe(now);
+  });
 });
