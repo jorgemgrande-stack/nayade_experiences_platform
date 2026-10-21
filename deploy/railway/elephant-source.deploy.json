@@ -1,0 +1,24 @@
+{
+  "projectId": "5f32ccca-3f72-4c48-bc63-57881cb9e166",
+  "environments": [
+    "live",
+    "production"
+  ],
+  "services": {
+    "controlplane": {
+      "kind": "core"
+    },
+    "core": {
+      "kind": "core"
+    },
+    "core-gateway": {
+      "kind": "gateway"
+    },
+    "backup-job": {
+      "kind": "ops"
+    },
+    "restore-drill": {
+      "kind": "ops"
+    }
+  }
+}
