@@ -348,7 +348,7 @@ async function main() {
       withdrawal: consumerWithdrawalFromEnv(process.env),
     },
   };
-  let stripe: { config: NonNullable<typeof stripeConfig>; store: MysqlStripeStore; gateway: ReturnType<typeof stripeGateway>; urls: ReturnType<typeof checkoutUrlsFromEnv>; checkoutEnabled: boolean; verifyWebhook: ReturnType<typeof stripeWebhookVerifier>; workerEnabled: boolean; publicStatus: boolean; selfService: boolean; termsVersion: string | null; fiscal: typeof fiscal; purchases?: { enabled: boolean; changes: MysqlSubscriptionChangeStore; internalTenants: ReadonlySet<string> }; invoiceLines?: MysqlInvoiceLineStore; vies?: { client: ReturnType<typeof viesClient>; maxAgeDays: number } } | undefined;
+  let stripe: { config: NonNullable<typeof stripeConfig>; store: MysqlStripeStore; gateway: ReturnType<typeof stripeGateway>; urls: ReturnType<typeof checkoutUrlsFromEnv>; checkoutEnabled: boolean; verifyWebhook: ReturnType<typeof stripeWebhookVerifier>; workerEnabled: boolean; publicStatus: boolean; selfService: boolean; termsVersion: string | null; fiscal: typeof fiscal; purchases?: { enabled: boolean; changes: MysqlSubscriptionChangeStore; internalTenants: ReadonlySet<string> }; invoiceLines?: MysqlInvoiceLineStore; vies?: { client: ReturnType<typeof viesClient>; maxAgeDays: number }; billingPortal?: { enabled: boolean; configurationId: string | null } } | undefined;
   if (stripeConfig) {
     const urls = checkoutUrlsFromEnv(process.env);
     // La bandera sigue apagada por defecto; en live sin política fiscal, Checkout queda apagado aunque esté a 1
@@ -397,6 +397,11 @@ async function main() {
         // VIES (API REST de la Comisión Europea): verificación del NIF-IVA antes de la inversión del sujeto pasivo
         vies: { client: viesClient(), maxAgeDays: viesMaxAgeDaysFromEnv(process.env) },
         ...(changesReady ? { purchases: { enabled: purchasesEnabled, changes: new MysqlSubscriptionChangeStore(crmPool!, stripeConfig.mode), internalTenants } } : {}),
+        // Portal de facturación (solo facturas y método de pago; apagado salvo CP_BILLING_PORTAL_ENABLED=1)
+        billingPortal: {
+          enabled: process.env.CP_BILLING_PORTAL_ENABLED === "1",
+          configurationId: /^bpc_[A-Za-z0-9]{8,64}$/.test((process.env.CP_BILLING_PORTAL_CONFIGURATION ?? "").trim()) ? process.env.CP_BILLING_PORTAL_CONFIGURATION!.trim() : null,
+        },
         ...(linesReady ? { invoiceLines: new MysqlInvoiceLineStore(crmPool!, stripeConfig.mode) } : {}),
       };
     console.log(JSON.stringify({ ctx: "Commerce", purchases: { mounted: changesReady, enabled: changesReady && purchasesEnabled, internalTenants: internalTenants.size, ...(ready && !changesReady ? { reason: "migration_0018_missing" } : {}) }, invoiceLines: { mounted: linesReady, ...(ready && !linesReady ? { reason: "migration_0019_missing" } : {}) } }));
