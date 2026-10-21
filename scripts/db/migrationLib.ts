@@ -170,6 +170,12 @@ export type LedgerState = {
  * Problemas que impiden continuar: carril equivocado, migración a medias, registros que no son de
  * este directorio, contenidos cambiados o huecos. Vacío = se puede operar.
  */
+/**
+ * Registro de la baseline que escribe el aprovisionamiento de empresas (MysqlSchemaApplier) en el carril `app`: no es
+ * una migración de `db/migrations`, pero es legítimo en la base de cualquier empresa (no es un fichero ajeno).
+ */
+export const APP_BASELINE_ID = "0000_baseline";
+
 export function ledgerProblems(migrations: Migration[], s: LedgerState, lane: Lane): string[] {
   const out: string[] = [];
   if (s.lane && s.lane !== lane.name) out.push(`La BD está ligada al carril «${s.lane}», no a «${lane.name}»: --dir equivocado.`);
@@ -183,6 +189,7 @@ export function ledgerProblems(migrations: Migration[], s: LedgerState, lane: La
   }
   const byId = new Map(migrations.map((m) => [m.id, m]));
   for (const [id, sum] of Array.from(s.applied.entries())) {
+    if (lane.name === "app" && id === APP_BASELINE_ID) continue;
     const m = byId.get(id);
     if (!m) out.push(`${id} figura como aplicada pero no existe en este carril: --dir equivocado o fichero borrado.`);
     else if (m.checksum !== sum) out.push(`${id} ya estaba aplicada y su contenido cambió (checksum distinto): crea una migración nueva.`);
