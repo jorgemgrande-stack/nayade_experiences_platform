@@ -23,6 +23,9 @@ export interface JobRunRecord {
 }
 
 let lister: TenantLister | undefined;
+/** Empresas con acceso al panel aunque no admitan escrituras (suspendidas o en solo lectura): tareas que deben
+ * seguir sirviendo a la empresa en ese periodo (p. ej. su exportación de datos). */
+let adminLister: TenantLister | undefined;
 let prelude: (() => Promise<void>) | undefined;
 const running = new Set<string>();
 const last = new Map<string, JobRunRecord>();
@@ -35,6 +38,16 @@ export function setJobPrelude(p: (() => Promise<void>) | null): void {
 /** Origen del listado de tenants para el modo multi (lo fija `installTenantResolution`). */
 export function setJobTenantLister(l: TenantLister | null): void {
   lister = l ?? undefined;
+}
+
+/** Origen del listado de empresas con panel (incluye suspendidas) para las tareas que lo piden expresamente. */
+export function setJobAdminTenantLister(l: TenantLister | null): void {
+  adminLister = l ?? undefined;
+}
+
+export interface TenantJobOptions {
+  /** También las empresas suspendidas o en solo lectura (con panel). Por defecto, solo las que admiten escrituras. */
+  includeReadOnly?: boolean;
 }
 
 const keyOf = (job: string, tenantId: string) => `${job}\u0000${tenantId}`;
@@ -54,7 +67,7 @@ export function jobStatus(): JobRunRecord[] {
 }
 
 /** Ejecuta `handler` ahora para todos los tenants aplicables. No lanza: devuelve resultados. */
-export async function runTenantJob(name: string, handler: () => Promise<unknown> | unknown): Promise<TenantJobResult[]> {
+export async function runTenantJob(name: string, handler: () => Promise<unknown> | unknown, opts: TenantJobOptions = {}): Promise<TenantJobResult[]> {
   try {
     return await runForEachTenant(
       name,
@@ -87,7 +100,7 @@ export async function runTenantJob(name: string, handler: () => Promise<unknown>
           running.delete(key);
         }
       },
-      lister,
+      opts.includeReadOnly ? (adminLister ?? lister) : lister,
     );
   } catch (e) {
     console.error(`[Jobs] ${name}:`, e instanceof Error ? e.message : "error");
@@ -112,11 +125,12 @@ export function scheduleTenantInterval(
   intervalMs: number,
   firstDelayMs: number,
   handler: () => Promise<unknown> | unknown,
+  opts: TenantJobOptions = {},
 ): { stop(): void } {
   let timer: NodeJS.Timeout | null = null;
   let stopped = false;
   const tick = async () => {
-    await runTenantJob(name, handler);
+    await runTenantJob(name, handler, opts);
     if (!stopped) timer = setTimeout(tick, intervalMs);
   };
   timer = setTimeout(tick, firstDelayMs);

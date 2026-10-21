@@ -27,6 +27,11 @@ export function writableTenantLister(reader: Pick<TenantRegistryReader, "listTen
   return async () => (await reader.listTenants()).filter((t) => accessPolicy(t.status).writes).map((t) => t.id);
 }
 
+/** Empresas con panel (activas, en prueba, en gracia o suspendidas): tareas que deben seguir en solo lectura. */
+export function adminTenantLister(reader: Pick<TenantRegistryReader, "listTenants">): TenantLister {
+  return async () => (await reader.listTenants()).filter((t) => accessPolicy(t.status).admin).map((t) => t.id);
+}
+
 export async function runForEachTenant(
   jobName: string,
   job: (tenantId: string) => Promise<void>,

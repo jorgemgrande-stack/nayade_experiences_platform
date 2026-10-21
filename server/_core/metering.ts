@@ -48,6 +48,10 @@ export const Metrics = {
   DB_POOL_REJECTED: "db.pool.rejected",
   /** Pools de empresa cerrados por presión (lru) o inactividad (idle). */
   DB_POOL_EVICTED: "db.pool.evicted",
+  /** Exportaciones de datos solicitadas, bytes generados (sin comprimir) y duración de cada generación. */
+  DATA_EXPORT_RUNS: "data_export.runs",
+  DATA_EXPORT_BYTES: "data_export.bytes",
+  DATA_EXPORT_MS: "data_export.ms",
 } as const;
 
 const noopSink: MeterSink = { record() {} };

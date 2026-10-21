@@ -3,10 +3,10 @@
  * prueba de fórmulas, control de tamaño, fichero ausente, solo la persona propietaria, una en curso, enlace de
  * como mucho 24 h, registro de enlaces y descargas, y permitida en solo lectura.
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import JSZip from "jszip";
 import { buildExport, ExportTooLargeError, isExcludedTable, redact, toCsv, type ExportSource } from "./dataExport/build";
-import { DataExportService, EXPORT_LINK_TTL_MS, MemoryDataExportStore } from "./dataExport/service";
+import { DataExportService, EXPORT_LINK_TTL_MS, LEASE_MS, MAX_ATTEMPTS, MemoryDataExportStore, _resetExportProcessForTests } from "./dataExport/service";
 import { isSessionPath } from "./_core/tenantRegistry/tenantMiddleware";
 
 const NOW = Date.UTC(2026, 9, 20, 9);
@@ -69,14 +69,15 @@ describe("contenido de la exportación", () => {
 });
 
 describe("servicio de exportación", () => {
+  beforeEach(() => _resetExportProcessForTests());
   const make = (over: { now?: () => number; src?: ExportSource } = {}) => {
     const store = new MemoryDataExportStore();
     const saved: string[] = [];
     const svc = new DataExportService({
       store,
-      source: over.src ?? source(),
-      saveZip: async (_zip, name) => {
-        saved.push(name);
+      openSource: async () => over.src ?? source(),
+      saveZip: async (z) => {
+        saved.push(z.name);
         return "f".repeat(26);
       },
       signedLink: (id, ttl) => `https://acme.example/api/files/${id}?ttl=${ttl}`,
@@ -91,23 +92,24 @@ describe("servicio de exportación", () => {
     const { svc, store, saved } = make();
     await expect(svc.request({ id: 8, isOwner: false })).rejects.toMatchObject({ code: "forbidden" });
     await expect(svc.list({ isOwner: false })).rejects.toMatchObject({ code: "forbidden" });
-    const { export: e, done } = await svc.request({ id: 7, isOwner: true });
+    const e = await svc.request({ id: 7, isOwner: true });
     expect(e.status).toBe("pending");
     await expect(svc.request({ id: 7, isOwner: true })).rejects.toMatchObject({ code: "conflict" });
-    await done;
+    await svc.processNext();
     expect(store.rows[0]).toMatchObject({ status: "ready", objectId: "f".repeat(26), tableCount: 4, fileCount: 1, expiresAt: NOW + EXPORT_LINK_TTL_MS });
     expect(saved).toEqual(["exportacion-acme-2026-10-20.zip"]);
     // Terminada, se puede pedir otra (ninguna se borra)
-    await (await svc.request({ id: 7, isOwner: true })).done;
+    await svc.request({ id: 7, isOwner: true });
+    await svc.processNext();
     expect((await svc.list({ isOwner: true })).map((x) => x.status)).toEqual(["ready", "ready"]);
   });
 
   it("enlace solo de una lista y nunca más allá de 24 h; cada enlace y descarga queda registrado", async () => {
     let now = NOW;
     const { svc, store } = make({ now: () => now });
-    const { export: e, done } = await svc.request({ id: 7, isOwner: true });
+    const e = await svc.request({ id: 7, isOwner: true });
     await expect(svc.link({ isOwner: true }, e.id)).rejects.toMatchObject({ code: "invalid_state" });
-    await done;
+    await svc.processNext();
     await expect(svc.link({ isOwner: false }, e.id)).rejects.toMatchObject({ code: "forbidden" });
     now = NOW + 20 * 3600_000;
     const l = await svc.link({ isOwner: true }, e.id);
@@ -121,11 +123,16 @@ describe("servicio de exportación", () => {
     await expect(svc.link({ isOwner: true }, 99)).rejects.toMatchObject({ code: "not_found" });
   });
 
-  it("un fallo queda registrado con un mensaje claro (sin detalles internos)", async () => {
-    const { svc, store } = make({ src: source({ tables: async () => { throw new Error("ECONNRESET 10.0.0.9"); } }) });
-    await (await svc.request({ id: 7, isOwner: true })).done;
-    expect(store.rows[0].status).toBe("failed");
-    expect(store.rows[0].error).not.toMatch(/10\.0\.0\.9/);
+  it("un fallo persistente se reintenta y, agotados los intentos, queda registrado con un mensaje claro (sin detalles internos)", async () => {
+    let now = NOW;
+    const { svc, store } = make({ now: () => now, src: source({ tables: async () => { throw new Error("ECONNRESET 10.0.0.9"); } }) });
+    await svc.request({ id: 7, isOwner: true });
+    for (let i = 0; i < MAX_ATTEMPTS; i++) {
+      await svc.processNext();
+      now += LEASE_MS + 1;
+    }
+    expect(store.rows[0]).toMatchObject({ status: "failed", attempts: MAX_ATTEMPTS });
+    expect(store.rows[0].error).not.toMatch(/10.0.0.9|ECONNRESET/);
   });
 
   it("solo lectura: pedir la exportación y su enlace no se bloquean; el resto de escrituras sí", () => {

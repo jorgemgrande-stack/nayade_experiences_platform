@@ -10,7 +10,10 @@
  * un objeto inexistente es `null`, no un error.
  */
 import fs from "node:fs/promises";
+import { createReadStream, createWriteStream } from "node:fs";
 import path from "node:path";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import {
   DeleteObjectCommand,
   GetObjectCommand,
@@ -44,6 +47,10 @@ export interface ObjectBackend {
   list(prefix: string): Promise<ListedObject[]>;
   /** URL de descarga temporal firmada por el proveedor (solo si la admite). */
   presign?(key: string, ttlSeconds: number, o: { contentType: string; disposition: string }): Promise<string>;
+  /** Sube un fichero del disco en streaming, sin cargarlo en memoria (ficheros grandes: exportaciones). */
+  putFile?(key: string, filePath: string, sizeBytes: number, contentType: string, meta?: Record<string, string>): Promise<void>;
+  /** Lee el objeto en streaming (entrega de ficheros grandes sin cargarlos en memoria); null si no existe. */
+  getStream?(key: string): Promise<Readable | null>;
 }
 
 const isNotFound = (err: unknown) => {
@@ -93,6 +100,23 @@ export class S3ObjectBackend implements ObjectBackend {
       await this.client.send(new PutObjectCommand({ Bucket: this.cfg.bucket, Key: key, Body: data, ContentType: contentType, Metadata: meta }));
     } catch (err) {
       throw unavailable("put", err);
+    }
+  }
+  async putFile(key: string, filePath: string, sizeBytes: number, contentType: string, meta?: Record<string, string>) {
+    // Una sola petición PUT en streaming (hasta 5 GB): sin multipart ni dependencias nuevas
+    try {
+      await this.client.send(new PutObjectCommand({ Bucket: this.cfg.bucket, Key: key, Body: createReadStream(filePath), ContentLength: sizeBytes, ContentType: contentType, Metadata: meta }));
+    } catch (err) {
+      throw unavailable("put_file", err);
+    }
+  }
+  async getStream(key: string) {
+    try {
+      const r = await this.client.send(new GetObjectCommand({ Bucket: this.cfg.bucket, Key: key }));
+      return r.Body as Readable;
+    } catch (err) {
+      if (isNotFound(err)) return null;
+      throw unavailable("get_stream", err);
     }
   }
   async get(key: string) {
@@ -175,6 +199,26 @@ export class LocalObjectBackend implements ObjectBackend {
     } catch (err) {
       throw unavailable("put", err);
     }
+  }
+  async putFile(key: string, filePath: string) {
+    const p = this.file(key);
+    try {
+      await fs.mkdir(path.dirname(p), { recursive: true });
+      const tmp = `${p}.${process.pid}.${Date.now()}.tmp`;
+      await pipeline(createReadStream(filePath), createWriteStream(tmp));
+      await fs.rename(tmp, p);
+    } catch (err) {
+      throw unavailable("put_file", err);
+    }
+  }
+  async getStream(key: string) {
+    const p = this.file(key);
+    try {
+      await fs.access(p);
+    } catch {
+      return null;
+    }
+    return createReadStream(p);
   }
   async get(key: string) {
     try {
