@@ -17,6 +17,19 @@ describe("cliente de compras del Core", () => {
     expect(commerceClientFromEnv(env({ CP_COMMERCE_URL: "http://127.0.0.1:4000", NODE_ENV: "development" }))).not.toBeNull();
   });
 
+  it("red privada de Railway: solo http://<servicio>.railway.internal:<puerto>, sin ruta ni otros dominios", async () => {
+    const seen: string[] = [];
+    const c = commerceClientFromEnv(env({ CP_COMMERCE_URL: "http://controlplane.railway.internal:4100/" }), async (url) => {
+      seen.push(url);
+      return { status: 200, json: async () => ({ withdrawal: { available: false } }) };
+    })!;
+    await c.withdrawalStatus("acme-01");
+    expect(seen).toEqual(["http://controlplane.railway.internal:4100/cp/v1/commerce/tenants/acme-01/withdrawal"]);
+    for (const bad of ["http://controlplane.railway.internal", "http://controlplane.railway.internal.evil.com:4100", "http://evil.com/x.railway.internal:4100", "http://user@controlplane.railway.internal:4100", "http://controlplane.railway.internal:4100/otra"]) {
+      expect(() => commerceClientFromEnv(env({ CP_COMMERCE_URL: bad })), bad).toThrow(/https/);
+    }
+  });
+
   it("ruta con el tenant de la sesión, token de servicio y solo lo que se compra", async () => {
     const seen: Array<{ url: string; method: string; headers: Record<string, string>; body?: string }> = [];
     const c = commerceClientFromEnv(env(), async (url, init) => {
