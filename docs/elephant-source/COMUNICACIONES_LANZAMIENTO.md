@@ -94,3 +94,94 @@
 | `CP_ALERT_WEBHOOK` | controlplane | Mismo aviso por webhook (opcional) |
 | `CP_NOTIFICATIONS_SINCE` | controlplane | Corte del despachador de eventos |
 | Proveedor | controlplane y core | Ver `CORREO_PROVEEDOR.md` |
+
+## 5. Sistema transaccional completo (21/10/2026)
+
+**Matriz detallada**, con asunto, momento, condiciones, prioridad, variables, CTA, reintentos, idempotencia y estado de cada aviso: `MATRIZ_COMUNICACIONES.md`. Se genera desde el código con `scripts/mail/matrix.ts`.
+
+### Diseño común (todas las plantillas)
+
+- **Maquetación** con tablas, compatible con Outlook, Gmail, Apple Mail y móviles. Ancho de 600 px y estilos en línea.
+- **Texto previo de la bandeja de entrada:** el primer párrafo de cada aviso.
+- **Cabecera:**
+  - avisos de plataforma: logotipo oficial (`MAIL_LOGO_URL`; por defecto `https://www.bigelephant.es/brand/big-elephant-logo.png`, solo https);
+  - avisos de una empresa: su nombre, sin logotipo ni datos de la plataforma.
+- **Tarjeta** con acento rojo de la marca, título y botón grafito con buen contraste. La dirección del botón se repite como texto, para cuando el botón no funciona.
+- **Pie** con el aviso transaccional («No es publicidad»), el soporte si está configurado y, en plataforma, el emisor: IRON ELEPHANT CONSULTING, S.L., con su NIF y su domicilio.
+- **Versión de texto** equivalente. Cada valor dinámico se escapa y los enlaces solo pueden ser https.
+- **Aviso de seguridad del Core** (contraseña cambiada): migrado al diseño común, con la marca de la empresa (`server/mail/securityTemplates.ts`).
+
+### Calendario de la prueba gratuita (15 días)
+
+| Día | Aviso |
+|---|---|
+| 0 | Verificación del correo y, al verificar, bienvenida con la fecha de fin |
+| 8 (quedan 7) | **Nuevo:** recordatorio de 7 días |
+| 12 (quedan 3) | Recordatorio de 3 días |
+| 14 (queda 1) | Recordatorio de «termina mañana» |
+| 15 | Fin de la prueba: solo lectura, sin borrar nada, con «Ver planes» |
+
+**Reglas:**
+- un aviso por umbral y fecha de fin;
+- si la tarea estuvo parada, solo se envía el aviso más cercano;
+- una ampliación de la prueba vuelve a avisar del nuevo fin;
+- una prueba convertida o suspendida no recibe avisos;
+- una sola réplica envía, gracias al bloqueo con nombre en la base de datos.
+
+La tarea está apagada salvo `CP_TRIALS_SCHEDULER_ENABLED=1`.
+
+### Lo pedido frente a lo que hay
+
+| Proceso | Comunicación | Estado |
+|---|---|---|
+| Registro | Bienvenida (prueba, alta asistida, contratación confirmada) | ✅ Existente |
+| Registro | Verificación de dirección | ✅ Existente |
+| Registro | Recuperación de contraseña (Core y operadores) | ✅ Existente |
+| Registro | Contraseña modificada | ✅ **Corregida:** diseño común |
+| Registro | Invitación a la empresa | ✅ Existente (Core) |
+| Registro | Cambio de email | ⏸️ **Pendiente:** el producto no permite cambiar el correo de acceso |
+| Prueba gratuita | Inicio, 3 días, 24 horas y fin, con instrucciones para contratar | ✅ Existente |
+| Prueba gratuita | 7 días | ✅ **Nuevo** |
+| Suscripción | Activada, renovada, cambio de plan, cancelación solicitada, cancelación efectiva, reactivación | ✅ Existentes |
+| Pagos | Confirmación, factura disponible, pago rechazado (día 0) y recuperación | ✅ Existentes |
+| Pagos | Actualizar el método de pago: reintentos y tarjetas a punto de caducar | ✅ Delegado en Stripe (sin duplicar) |
+| Ciclo de vida | Inicio y fin de la solo lectura | ✅ Existentes |
+| Ciclo de vida | Exportación lista o fallida | ⏸️ **Pendiente:** la exportación tiene backend (`dataExport.*`), pero **no tiene pantalla** en la aplicación. Un correo invitaría a una acción que la interfaz no ofrece |
+| Ciclo de vida | Solicitud y confirmación de eliminación | ⏸️ **Pendiente:** no existe la función. La supresión se hace hoy a mano |
+| Seguridad | Contraseña cambiada | ✅ Existente |
+| Seguridad | Inicio de sesión nuevo y segundo factor | ⏸️ **Pendiente:** el Core no detecta dispositivos ni tiene segundo factor para los clientes |
+| Interno | Incidencias críticas de envío, fallos de procesos esenciales y avisos de facturación para revisión | ✅ Existentes (`ops.incident`) |
+| Interno | Quejas de spam y rebotes permanentes repetidos | ✅ **Nuevo:** `mail.complaint` (una queja basta) y `mail.hard_bounce` (5 en una hora) abren una incidencia deduplicada |
+
+### Trazabilidad y vista previa
+
+**Plano de control** (requieren `ops:read`):
+
+| Ruta | Qué devuelve |
+|---|---|
+| `GET /cp/v1/mail/outbox` | Avisos de plataforma con filtros (estado, plantilla, empresa) y paginación |
+| `GET /cp/v1/mail/outbox/:id` | Detalle e historial, incluidos los eventos del proveedor: entrega, rebote, queja y baja |
+| `GET /cp/v1/notifications/preview` y `/:id` | Vista previa con datos ficticios |
+
+Nunca devuelven la dirección completa ni el cuerpo del mensaje: solo la dirección enmascarada.
+
+**CRM:** Atención al cliente → **Comunicaciones**.
+- Pestaña **Catálogo:** cada aviso, con su vista previa en un marco aislado y su versión de texto.
+- Pestaña **Envíos:** la bandeja de plataforma, con filtros, paginación y el historial de cada envío.
+
+**Galería estática:** `pnpm exec tsx scripts/mail/preview.ts <carpeta>`.
+
+**Correos de las empresas:** sus envíos quedan en la bandeja de cada empresa (su propia base de datos) y no se muestran en el CRM. Así se mantiene la separación entre empresas.
+
+### Postmark
+
+**Ya configurado:**
+- webhook 26051423, con la cabecera `x-elephant-webhook-token` y los eventos Delivery, Bounce, Spam Complaint y Subscription Change;
+- dominio con DKIM y Return-Path verificados;
+- los avisos de plataforma llevan la referencia opaca en `Metadata`, que vuelve en cada evento.
+
+**Para activar** (en este orden):
+1. Desplegar `crm` y `controlplane`. Pendiente por la incidencia de Railway.
+2. Que Postmark apruebe la cuenta: hoy sigue en Test mode.
+3. `MAIL_MODE=sandbox` con buzones propios para probar.
+4. `MAIL_MODE=live` y `MAIL_LIVE_AUTHORIZED=1`, con tu autorización.

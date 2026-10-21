@@ -11,7 +11,7 @@
  * o a la URL que pase el llamante. Nunca se inventa una dirección: la de soporte solo aparece si se
  * configura (`ELEPHANT_SUPPORT_EMAIL`).
  */
-import { PLATFORM_BRAND } from "./policy";
+import { PLATFORM_BRAND, platformIdentity } from "./policy";
 import type { MailContent } from "./types";
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
@@ -23,7 +23,15 @@ export interface LayoutBrand {
   name: string;
   /** Dirección de soporte visible, o null (no se muestra). */
   supportEmail?: string | null;
+  /** Logotipo (https absoluta). Solo los avisos de plataforma; sin él, el nombre como cabecera. */
+  logoUrl?: string | null;
+  /** Línea del emisor en el pie (solo plataforma). */
+  legal?: string | null;
 }
+
+/** Paleta y tipografía de la marca (mismos valores que la web): grafito, rojo de acento y fondo cálido. */
+const C = { ink: "#171d28", text: "#374151", muted: "#6b7280", accent: "#ff3035", paper: "#f7f5f1", card: "#ffffff", line: "#e3ddd3" };
+const FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
 
 /** Solo https (o http a la propia máquina en desarrollo): un enlace raro no entra en un correo. */
 function safeUrl(url: string): string | null {
@@ -36,32 +44,54 @@ function safeUrl(url: string): string | null {
   return null;
 }
 
+/**
+ * Diseño común de todos los correos: maquetación con tablas (Outlook, Gmail, Apple Mail y móviles), ancho máximo
+ * de 600 px, texto previo de la bandeja (el primer párrafo), cabecera con logotipo o nombre, tarjeta con acento,
+ * botón «a prueba de clientes» y pie con el aviso transaccional y, en plataforma, el emisor. Todo valor variable
+ * se escapa; los enlaces solo son https (`safeUrl`). Versión de texto equivalente.
+ */
 export function layout(brand: LayoutBrand, title: string, paragraphs: string[], cta?: { label: string; url: string } | null): MailContent & { text: string } {
   const link = cta ? safeUrl(cta.url) : null;
   const footer = [
     `Mensaje automático de ${brand.name} relacionado con tu cuenta. No es publicidad.`,
     ...(brand.supportEmail ? [`¿Dudas? Escríbenos a ${brand.supportEmail}.`] : []),
+    ...(brand.legal ? [brand.legal] : []),
   ];
   const text = [title, "", ...paragraphs, ...(link ? ["", `${cta!.label}: ${link}`] : []), "", "—", ...footer].join("\n");
+  const logo = brand.logoUrl ? safeUrl(brand.logoUrl) : null;
+  const preheader = (paragraphs[0] ?? title).slice(0, 140);
+  const font = `font-family:${FONT}`;
+  const head = logo
+    ? `<img src="${esc(logo)}" width="196" height="24" alt="${esc(brand.name)} · Big Elephant" style="display:block;border:0;outline:none;width:196px;height:auto;max-width:100%">`
+    : `<span style="${font};font-size:15px;font-weight:700;letter-spacing:.01em;color:${C.ink}">${esc(brand.name)}</span>`;
+  const button = link
+    ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0 8px"><tr>` +
+      `<td style="border-radius:8px;background:${C.ink}"><a href="${esc(link)}" target="_blank" style="display:inline-block;padding:13px 24px;${font};font-size:15px;font-weight:600;line-height:1.2;color:#ffffff;text-decoration:none;border-radius:8px">${esc(cta!.label)}</a></td>` +
+      `</tr></table>` +
+      `<p style="margin:12px 0 0;${font};font-size:13px;line-height:1.5;color:${C.muted}">Si el botón no funciona, copia esta dirección en el navegador:<br><span style="word-break:break-all">${esc(link)}</span></p>`
+    : "";
   const html =
-    `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title></head>` +
-    `<body style="margin:0;background:#f5f5f4;font-family:system-ui,-apple-system,'Segoe UI',sans-serif;color:#1c1917">` +
-    `<div style="max-width:560px;margin:0 auto;padding:24px">` +
-    `<p style="font-size:14px;font-weight:600;letter-spacing:.02em;color:#44403c;margin:0 0 16px">${esc(brand.name)}</p>` +
-    `<div style="background:#ffffff;border-radius:8px;padding:24px">` +
-    `<h1 style="font-size:20px;line-height:1.3;margin:0 0 16px">${esc(title)}</h1>` +
-    paragraphs.map((p) => `<p style="font-size:15px;line-height:1.55;margin:0 0 12px">${esc(p)}</p>`).join("") +
-    (link
-      ? `<p style="margin:20px 0 8px"><a href="${esc(link)}" style="display:inline-block;background:#1c1917;color:#ffffff;padding:12px 20px;border-radius:6px;text-decoration:none;font-weight:600">${esc(cta!.label)}</a></p>` +
-        `<p style="font-size:13px;line-height:1.5;color:#57534e;margin:8px 0 0">Si el botón no funciona, copia esta dirección en el navegador: ${esc(link)}</p>`
-      : "") +
-    `</div>` +
-    footer.map((f) => `<p style="font-size:12px;line-height:1.5;color:#57534e;margin:12px 0 0">${esc(f)}</p>`).join("") +
-    `</div></body></html>`;
+    `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">` +
+    `<meta name="color-scheme" content="light"><meta name="supported-color-schemes" content="light"><title>${esc(title)}</title>` +
+    `<style>@media (max-width:620px){.es-outer{padding:16px 10px!important}.es-card{padding:26px 22px!important}.es-h1{font-size:20px!important}}</style></head>` +
+    `<body style="margin:0;padding:0;background:${C.paper};-webkit-text-size-adjust:100%">` +
+    `<div style="display:none;max-height:0;overflow:hidden;opacity:0;mso-hide:all">${esc(preheader)}</div>` +
+    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:${C.paper}"><tr><td align="center" class="es-outer" style="padding:32px 16px">` +
+    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:600px">` +
+    `<tr><td style="padding:0 4px 18px">${head}</td></tr>` +
+    `<tr><td class="es-card" style="background:${C.card};border:1px solid ${C.line};border-top:4px solid ${C.accent};border-radius:12px;padding:32px 36px">` +
+    `<h1 class="es-h1" style="margin:0 0 16px;${font};font-size:22px;font-weight:700;line-height:1.3;color:${C.ink}">${esc(title)}</h1>` +
+    paragraphs.map((p) => `<p style="margin:0 0 14px;${font};font-size:15px;line-height:1.6;color:${C.text}">${esc(p)}</p>`).join("") +
+    button +
+    `</td></tr>` +
+    `<tr><td style="padding:20px 8px 0">` +
+    footer.map((f) => `<p style="margin:0 0 6px;${font};font-size:12px;line-height:1.55;color:${C.muted}">${esc(f)}</p>`).join("") +
+    `</td></tr></table></td></tr></table></body></html>`;
   return { subject: title, html, text };
 }
 
-const platform = (supportEmail: string | null | undefined): LayoutBrand => ({ name: PLATFORM_BRAND, supportEmail: supportEmail ?? null });
+/** Marca de plataforma: nombre, soporte, logotipo oficial y emisor (nunca en los avisos de una empresa). */
+const platform = (supportEmail: string | null | undefined): LayoutBrand => ({ name: PLATFORM_BRAND, supportEmail: supportEmail ?? null, ...platformIdentity() });
 const hostUrl = (host: string | null | undefined, path = "/") => (host ? `https://${host}${path}` : null);
 
 export interface PlatformTemplateOptions {
@@ -116,7 +146,7 @@ export function platformTemplates(o: PlatformTemplateOptions = {}) {
         "Define tu contraseña de administrador para entrar. El enlace es personal y caduca.",
       ], i.setPasswordUrl ? { label: "Definir contraseña", url: i.setPasswordUrl } : null);
     },
-    /** Aviso previo al vencimiento (3 y 1 días); con 0 días la prueba ya terminó: aviso de vencimiento. */
+    /** Aviso previo al vencimiento (7, 3 y 1 días); con 0 días la prueba ya terminó: aviso de vencimiento. */
     trialExpiry(i: { endsAt: number; daysLeft: number; pricingUrl?: string | null }) {
       if (i.daysLeft <= 0) return trialExpired(i);
       const when = i.daysLeft === 1 ? "termina mañana" : `termina en ${i.daysLeft} días`;

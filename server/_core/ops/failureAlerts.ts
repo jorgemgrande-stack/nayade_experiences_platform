@@ -28,6 +28,9 @@ export const DEFAULT_FAILURE_RULES: Record<string, FailureRule> = {
   "orders.failed": { threshold: 3, windowMs: 30 * MIN, severity: "critical", title: "Errores repetidos en la contratación (pedidos/pagos)" },
   "licensing.check_failed": { threshold: 10, windowMs: 5 * MIN, severity: "warning", title: "No se pueden verificar licencias" },
   "notifications.dead": { threshold: 1, windowMs: 60 * MIN, severity: "warning", title: "Comunicaciones: un aviso transaccional se abandonó tras agotar los reintentos" },
+  // Seguimiento del proveedor (webhooks): una queja basta para revisar; los rebotes, solo si se repiten
+  "mail.complaint": { threshold: 1, windowMs: 24 * 60 * MIN, severity: "warning", title: "Correo: un destinatario ha marcado un aviso como spam (dirección suprimida)" },
+  "mail.hard_bounce": { threshold: 5, windowMs: 60 * MIN, severity: "warning", title: "Correo: rebotes permanentes repetidos (revisar direcciones y reputación del dominio)" },
 };
 
 export class FailureAlerts {

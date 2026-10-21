@@ -13,6 +13,7 @@ import { MailService, mailRef } from "./service";
 import { MemoryMailStore } from "./store";
 import { MailProviderError, type ProviderMessage } from "./types";
 import { WEBHOOK_TOKEN_HEADER, parsePostmarkEvent, postmarkWebhookHandler } from "./webhook";
+import { FailureAlerts, configureFailureAlerts } from "../_core/ops/failureAlerts";
 
 const SERVER_TOKEN = "postmark-servidor-ficticio-solo-pruebas"; // gitleaks:allow
 const HOOK_TOKEN = "token-webhook-postmark-ficticio-solo-pruebas-0000"; // gitleaks:allow
@@ -96,7 +97,7 @@ describe("webhook de Postmark", () => {
       const res = await fetch(`http://127.0.0.1:${(server.address() as AddressInfo).port}/hook`, { method: "POST", headers: { "content-type": "application/json", ...headers }, body: JSON.stringify(body) });
       return { status: res.status, json: (await res.json()) as Record<string, number> };
     };
-    return { store, id: r.id!, post };
+    return { store, svc, id: r.id!, post };
   }
   const bounce = (id: number, over: Record<string, unknown> = {}) => ({ RecordType: "Bounce", Type: "HardBounce", ID: 42, Email: "cliente@pruebas.example", MessageID: "<mem-1@memory.example>", BouncedAt: "2026-10-22T10:00:00Z", Description: "The server was unable to deliver your message", Metadata: postmarkRefMetadata(mailRef("tenant", "acme", id)), ...over });
 
@@ -117,6 +118,34 @@ describe("webhook de Postmark", () => {
     expect(s.store.suppressions.size).toBe(1);
     expect((await s.post(bounce(s.id))).json).toMatchObject({ duplicate: 1 });
     expect((await s.post([{ RecordType: "Open", Metadata: postmarkRefMetadata(mailRef("tenant", "acme", s.id)) }])).json).toMatchObject({ ignored: 1 });
+  });
+
+  it("queja → «complained» y dirección suprimida; aviso al equipo una sola vez aunque se repita; el siguiente envío no sale", async () => {
+    const raised: string[] = [];
+    configureFailureAlerts(new FailureAlerts({ incidents: { raise: async (i: { kind: string }) => void raised.push(i.kind) } as never }));
+    try {
+      const s = await setup();
+      const spam = { RecordType: "SpamComplaint", ID: 43, Email: "cliente@pruebas.example", MessageID: "<mem-1@memory.example>", BouncedAt: "2026-10-22T11:00:00Z", Metadata: postmarkRefMetadata(mailRef("tenant", "acme", s.id)) };
+      expect((await s.post(spam)).json).toMatchObject({ applied: 1 });
+      expect((await s.post(spam)).json).toMatchObject({ duplicate: 1 });
+      await new Promise((ok) => setTimeout(ok, 0));
+      expect(raised).toEqual(["rate.mail.complaint"]);
+      expect(s.store.rows[0].status).toBe("complained");
+      const again = await s.svc.send({ tenantId: "acme", idempotencyKey: "k2", category: "operational", to: "cliente@pruebas.example", subject: "s", html: "<p>h</p>", sender: { lane: "tenant", brandName: "Acme", replyTo: null } });
+      expect(again).toMatchObject({ status: "skipped", reason: "suppressed" });
+    } finally {
+      configureFailureAlerts(new FailureAlerts());
+    }
+  });
+
+  it("baja (Subscription Change con SuppressSending) → dirección suprimida sin cambiar el estado del mensaje", async () => {
+    const s = await setup();
+    const change = { RecordType: "SubscriptionChange", SuppressSending: true, Recipient: "cliente@pruebas.example", MessageID: "<mem-1@memory.example>", ChangedAt: "2026-10-22T12:00:00Z", Metadata: postmarkRefMetadata(mailRef("tenant", "acme", s.id)) };
+    expect((await s.post(change)).json).toMatchObject({ applied: 1 });
+    expect(s.store.rows[0].status).toBe("accepted");
+    expect(s.store.suppressions.size).toBe(1);
+    // Reactivación en Postmark (SuppressSending=false): no es una baja, se ignora
+    expect((await s.post({ ...change, SuppressSending: false, ChangedAt: "2026-10-22T13:00:00Z" })).json).toMatchObject({ ignored: 1 });
   });
 
   it("traducción de tipos: entrega, rebote temporal, dirección no válida, bloqueo, queja y baja", () => {

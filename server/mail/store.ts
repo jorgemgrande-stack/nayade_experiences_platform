@@ -40,6 +40,72 @@ export interface MailStore {
   setStatusIf(id: number, from: MailStatus[], to: MailStatus, reason: string | null, now: number): Promise<boolean>;
 }
 
+/**
+ * Consulta de la bandeja para la TRAZABILIDAD (solo lectura): qué aviso, a quién (enmascarado), por qué clave de
+ * evento, cuándo, en qué estado, con qué error y su historial. Nunca devuelve la dirección completa ni el cuerpo.
+ */
+export interface LedgerRow {
+  id: number;
+  tenantId: string;
+  /** Plantilla o notificador de origen, deducido de la clave de idempotencia. */
+  template: string;
+  idempotencyKey: string;
+  category: string;
+  status: MailStatus;
+  reason: string | null;
+  recipient: string;
+  subject: string;
+  provider: string | null;
+  attempts: number;
+  lastError: string | null;
+  nextAttemptAt: number | null;
+  createdAt: number;
+  updatedAt: number;
+}
+export interface LedgerEvent {
+  kind: string;
+  detail: string | null;
+  /** Llegó del proveedor (webhook), no de la propia bandeja. */
+  fromProvider: boolean;
+  at: number;
+}
+export interface LedgerQuery {
+  status?: MailStatus;
+  category?: string;
+  tenantId?: string;
+  template?: string;
+  /** Paginación hacia atrás: solo ids menores. */
+  beforeId?: number;
+  limit?: number;
+}
+export interface MailLedgerReader {
+  list(q: LedgerQuery): Promise<LedgerRow[]>;
+  history(id: number): Promise<{ row: LedgerRow; events: LedgerEvent[] } | null>;
+}
+
+/** `notif:<plantilla>:v<n>:…` (catálogo) → la plantilla; el resto (`trial:…`, `order:…`) → su notificador. */
+export const templateOfKey = (key: string) => (key.startsWith("notif:") ? (key.split(":")[1] ?? "notif") : (key.split(":")[0] ?? key));
+const ledgerRow = (r: OutboxRow): LedgerRow => ({
+  id: r.id,
+  tenantId: r.tenantId,
+  template: templateOfKey(r.idempotencyKey),
+  idempotencyKey: r.idempotencyKey,
+  category: r.category,
+  status: r.status,
+  reason: r.reason,
+  recipient: r.recipientMasked,
+  subject: r.subject,
+  provider: r.provider,
+  attempts: r.attempts,
+  lastError: r.lastError,
+  nextAttemptAt: r.nextAttemptAt,
+  createdAt: r.createdAt,
+  updatedAt: r.updatedAt,
+});
+const ledgerLimit = (n: number | undefined) => Math.min(200, Math.max(1, Math.floor(n ?? 50)));
+/** Patrón LIKE de la clave para filtrar por plantilla (con los comodines escapados). */
+const templateLike = (t: string) => `${t.includes(".") ? `notif:${t}` : t}:`.replace(/[\\%_]/g, (c) => `\\${c}`) + "%";
+
 const COLS =
   "id, tenant_id, idempotency_key, category, status, reason, recipient_hash, recipient_masked, to_email, cc_json, sender_name, sender_email, reply_to, subject, html_body, text_body, attachments_json, provider, provider_message_id, attempts, next_attempt_at, locked_until, last_error, created_at, updated_at";
 
@@ -88,7 +154,7 @@ function fromDb(r: any): OutboxRow {
 
 type Q = Pick<mysql.Pool, "query">;
 
-export class MysqlMailStore implements MailStore {
+export class MysqlMailStore implements MailStore, MailLedgerReader {
   constructor(private db: Q) {}
 
   private async one(where: string, params: unknown[]): Promise<OutboxRow | null> {
@@ -185,10 +251,36 @@ export class MysqlMailStore implements MailStore {
     ])) as unknown as [{ affectedRows: number }];
     return res.affectedRows === 1;
   }
+
+  // ── Trazabilidad (solo lectura) ──
+  async list(q: LedgerQuery): Promise<LedgerRow[]> {
+    const where: string[] = [];
+    const params: unknown[] = [];
+    if (q.status) (where.push("status = ?"), params.push(q.status));
+    if (q.category) (where.push("category = ?"), params.push(q.category));
+    if (q.tenantId) (where.push("tenant_id = ?"), params.push(q.tenantId));
+    if (q.template) (where.push("idempotency_key LIKE ?"), params.push(templateLike(q.template)));
+    if (q.beforeId) (where.push("id < ?"), params.push(q.beforeId));
+    const [rows] = (await this.db.query(`SELECT ${COLS} FROM mail_outbox${where.length ? ` WHERE ${where.join(" AND ")}` : ""} ORDER BY id DESC LIMIT ?`, [
+      ...params,
+      ledgerLimit(q.limit),
+    ])) as unknown as [any[]];
+    return rows.map((r) => ledgerRow(fromDb(r)));
+  }
+
+  async history(id: number) {
+    const row = await this.get(id);
+    if (!row) return null;
+    const [ev] = (await this.db.query("SELECT kind, detail, provider_event_id, created_at FROM mail_events WHERE outbox_id = ? AND tenant_id = ? ORDER BY created_at, kind", [
+      id,
+      row.tenantId,
+    ])) as unknown as [any[]];
+    return { row: ledgerRow(row), events: ev.map((e) => ({ kind: String(e.kind), detail: e.detail ?? null, fromProvider: e.provider_event_id !== null && e.provider_event_id !== undefined, at: Number(e.created_at) })) };
+  }
 }
 
 /** Misma semántica en memoria (pruebas unitarias). */
-export class MemoryMailStore implements MailStore {
+export class MemoryMailStore implements MailStore, MailLedgerReader {
   rows: OutboxRow[] = [];
   events: { outboxId: number; tenantId: string; kind: string; providerEventId: string | null; detail: string | null; at: number }[] = [];
   suppressions = new Map<string, string>();
@@ -255,5 +347,22 @@ export class MemoryMailStore implements MailStore {
     if (!r || !from.includes(r.status)) return false;
     Object.assign(r, { status: to, reason: reason ?? r.reason, updatedAt: now });
     return true;
+  }
+  async list(q: LedgerQuery) {
+    const prefix = q.template ? `${q.template.includes(".") ? `notif:${q.template}` : q.template}:` : null;
+    return this.rows
+      .filter((r) => (!q.status || r.status === q.status) && (!q.category || r.category === q.category) && (!q.tenantId || r.tenantId === q.tenantId))
+      .filter((r) => (!prefix || r.idempotencyKey.startsWith(prefix)) && (!q.beforeId || r.id < q.beforeId))
+      .sort((a, b) => b.id - a.id)
+      .slice(0, ledgerLimit(q.limit))
+      .map(ledgerRow);
+  }
+  async history(id: number) {
+    const r = this.rows.find((x) => x.id === id);
+    if (!r) return null;
+    const events = this.events
+      .filter((e) => e.outboxId === id && e.tenantId === r.tenantId)
+      .map((e) => ({ kind: e.kind, detail: e.detail, fromProvider: e.providerEventId !== null, at: e.at }));
+    return { row: ledgerRow(r), events };
   }
 }

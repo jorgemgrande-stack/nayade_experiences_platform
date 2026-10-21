@@ -103,6 +103,26 @@ export function sanitizeDisplayName(raw: string): string {
 
 export const PLATFORM_BRAND = "Elephant Source";
 
+/** Logotipo oficial (imagen pública de la web; los correos cargan imágenes por URL absoluta). */
+export const DEFAULT_MAIL_LOGO_URL = "https://www.bigelephant.es/brand/big-elephant-logo.png";
+/** Emisor que firma los avisos de plataforma (titular confirmado del servicio). */
+export const PLATFORM_LEGAL_LINE = "Elephant Source es un servicio de IRON ELEPHANT CONSULTING, S.L. · NIF B26987875 · Calle Corazón de María, 57, 1.º D, 28002 Madrid";
+
+/**
+ * Identidad visual de los avisos de PLATAFORMA: logotipo (`MAIL_LOGO_URL`, https; vacío = sin imagen) y línea del
+ * emisor. Los avisos de una EMPRESA no la usan: llevan su propia marca y nunca la de la plataforma.
+ */
+export function platformIdentity(env: Record<string, string | undefined> = process.env): { logoUrl: string | null; legal: string } {
+  const raw = env.MAIL_LOGO_URL === undefined ? DEFAULT_MAIL_LOGO_URL : env.MAIL_LOGO_URL.trim();
+  let logoUrl: string | null = null;
+  try {
+    logoUrl = raw && new URL(raw).protocol === "https:" ? raw : null;
+  } catch {
+    logoUrl = null;
+  }
+  return { logoUrl, legal: PLATFORM_LEGAL_LINE };
+}
+
 /**
  * Remitente. Nunca se usa una dirección elegida por la empresa como From: siempre
  * `<nombre comercial> <no-reply@{MAIL_SENDING_DOMAIN}>`, con `Reply-To` hacia la empresa (tenant) o el

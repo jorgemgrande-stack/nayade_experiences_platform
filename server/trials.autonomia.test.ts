@@ -169,6 +169,21 @@ describe("tarea programada", () => {
     expect((await store.events(t.id)).filter((e) => e.action === "mark_expired")).toEqual([expect.objectContaining({ actor: "system:trial-scheduler" })]);
   });
 
+  it("prueba de 15 días completa: avisos a 7, 3 y 1 días y el de vencimiento, uno de cada; nada antes de los 7 días", async () => {
+    const t = await activeTrial("completa@hotel.es", "hotel-completa");
+    const s = scheduler();
+    clock = t.endsAt! - 8 * DAY + 1000; // quedan más de 7 días: nada todavía
+    expect(await s.tick()).toMatchObject({ noticesQueued: 0 });
+    for (const days of [7, 3, 1]) {
+      clock = t.endsAt! - days * DAY + 1000;
+      expect(await s.tick()).toMatchObject({ noticesQueued: 1, expired: 0 });
+      expect(await s.tick()).toMatchObject({ noticesQueued: 0 });
+    }
+    clock = t.endsAt! + 1000;
+    expect(await s.tick()).toMatchObject({ expired: 1, noticesQueued: 1 });
+    expect(sent.filter((m) => m.kind === "expiry" && m.to === "completa@hotel.es").map((m) => m.data.daysLeft)).toEqual([7, 3, 1, 0]);
+  });
+
   it("si estuvo parada, manda solo el aviso más cercano (no el de 3 días el último día)", async () => {
     const t = await activeTrial("tarde@hotel.es", "hotel-tarde");
     clock = t.endsAt! - 12 * 3_600_000;

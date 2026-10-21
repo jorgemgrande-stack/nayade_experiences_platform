@@ -22,8 +22,8 @@ import { TrialError, TrialService } from "./service";
 const DAY = 86_400_000;
 export const ESSENTIAL_PLAN = "essential";
 export const TRIAL_PLAN_DAYS = 15;
-/** Avisos antes del vencimiento (días). */
-export const NOTICE_DAYS = [3, 1, 0] as const;
+/** Avisos antes del vencimiento (días): 7, 3 y 1 días antes y el día del fin (D-16; prueba de 15 días). */
+export const NOTICE_DAYS = [7, 3, 1, 0] as const;
 
 export interface TrialNotifier {
   /** Enlace de verificación; `resend`: es un reenvío (token nuevo, el anterior ya no vale). */
@@ -210,7 +210,7 @@ export class TrialOnboardingService {
     return { trial: t, tenantId, domain, companyId: company.id, subscriptionId: subscription.id, licencesChanged: licences.applied.length, capabilities: licences.desired.length };
   }
 
-  /** Pruebas activas que necesitan aviso hoy (3, 1 y 0 días antes del vencimiento). No envía nada. */
+  /** Pruebas activas que necesitan aviso hoy (7, 3, 1 y 0 días antes del vencimiento). No envía nada. */
   async noticesDue(listActive: () => Promise<Array<{ id: number; email: string; endsAt: number | null }>>) {
     const now = this.now();
     return (await listActive())

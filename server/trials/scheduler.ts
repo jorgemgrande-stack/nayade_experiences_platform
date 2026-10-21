@@ -4,7 +4,7 @@
  * Cada `tick(now)` es idempotente y hace, en este orden:
  *  1. Marca «vencidas» las pruebas activas cuyo plazo ya pasó y encola el aviso de vencimiento (0 días).
  *     Vencer NO toca las licencias ni borra nada: ya caducaron solas al final de la prueba (solo lectura).
- *  2. Encola los avisos de 3 y 1 días antes del fin, UNA vez por prueba y fecha de fin (constancia en el
+ *  2. Encola los avisos de 7, 3 y 1 días antes del fin, UNA vez por prueba y fecha de fin (constancia en el
  *     historial de la prueba, `notice_queued`; además la bandeja de salida es idempotente por clave).
  *  3. Anula las solicitudes sin verificar con el enlace caducado y más antiguas que su vida máxima
  *     (libera el correo para que la persona pueda registrarse de nuevo).
