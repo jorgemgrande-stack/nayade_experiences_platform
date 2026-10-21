@@ -151,7 +151,8 @@ describe("páginas de acceso con la marca de la empresa", () => {
   it("login, recuperar, restablecer y establecer contraseña usan la marca del tema (sin textos fijos de Náyade)", () => {
     for (const page of ["Login", "ForgotPassword", "ResetPassword", "SetPassword"]) {
       const src = fs.readFileSync(path.join(__dirname, `../client/src/pages/${page}.tsx`), "utf8");
-      expect(src, page).toContain("useAuthBrand()");
+      // useLoginLook() = authBrand() + colores, fondo y textos del acceso (components/auth/AuthShell)
+      expect(src, page).toMatch(/useAuthBrand\(\)|useLoginLook\(\)/);
       expect(src, page).not.toMatch(/NÁYADE|Náyade|San Rafael|nayade_logo/);
     }
   });

@@ -383,6 +383,9 @@ describe.skipIf(!URL_)("prueba gratuita de Essential de punta a punta (MySQL rea
     const company = { tradeName: "Ferretería Sol", legalName: "Ferretería Sol, S.L.", taxId: "B12345678", address: "Calle Mayor 1", postalCode: "28001", city: "Madrid", province: "Madrid", country: "ES", currency: "EUR", timezone: "Europe/Madrid" };
     expect((await m(tenantId, "setupWizard.saveCompany", company, cookie)).status).toBe(200);
     expect((await m(tenantId, "setupWizard.saveActivity", { activity: "comercio" }, cookie)).status).toBe(200);
+    // Marca (web y pantalla de acceso)
+    expect((await m(tenantId, "integrations.themeSave", { values: { theme_primary_color: "#c2410c" } }, cookie)).status).toBe(200);
+    expect((await m(tenantId, "setupWizard.setStep", { step: "brand", status: "done" }, cookie)).status).toBe(200);
 
     // Primer cliente y primer producto con los procedimientos existentes
     expect((await m(tenantId, "crm.clients.create", { name: "Cliente Uno", email: "cliente@uno.example" }, cookie)).status).toBe(200);

@@ -15,8 +15,9 @@ import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import {
   AlertTriangle, Building2, Briefcase, Check, CheckCircle2, ChevronLeft, ChevronRight, CircleDashed,
-  FileText, HelpCircle, Loader2, Package, PartyPopper, SkipForward, UserPlus, Users,
+  FileText, HelpCircle, Loader2, Package, Palette, PartyPopper, SkipForward, UserPlus, Users,
 } from "lucide-react";
+import { BrandIdentityEditor } from "@/components/brand/BrandIdentityEditor";
 import {
   BUSINESS_ACTIVITIES, COUNTRIES, CURRENCIES, SETUP_STEPS, STEP_LABELS, TIMEZONES, activityInfo, companySchema,
   type CompanyData, type SetupStep, type StepStatus,
@@ -25,6 +26,7 @@ import {
 const ICONS: Record<SetupStep, React.ComponentType<{ className?: string; "aria-hidden"?: boolean }>> = {
   company: Building2,
   activity: Briefcase,
+  brand: Palette,
   client: Users,
   product: Package,
   operation: FileText,
@@ -35,6 +37,7 @@ const ICONS: Record<SetupStep, React.ComponentType<{ className?: string; "aria-h
 const HELP: Record<SetupStep, string> = {
   company: "Estos datos aparecen en tus presupuestos y facturas. Los puedes cambiar más tarde en Configuración.",
   activity: "Solo adapta los textos y ejemplos del panel. No activa módulos ni contrata nada.",
+  brand: "Tu logotipo y tus colores se aplican a la vez en tu web y en la pantalla de acceso de tu equipo. Los puedes cambiar cuando quieras en Web › Marca y tema.",
   client: "Tus clientes quedan en el CRM con su historial. Puedes importar o añadir más después.",
   // Misma convención que el gestor de productos: el precio guardado es el precio final, con el impuesto incluido
   product: "El precio se indica con impuestos incluidos (precio final); el impuesto se desglosa en presupuestos y facturas.",
@@ -139,7 +142,7 @@ export default function PrimerosPasos() {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h1 className="text-xl font-semibold text-foreground sm:text-2xl">Configura tu empresa</h1>
-              <p className="text-sm text-muted-foreground">Siete pasos cortos. Puedes omitir cualquiera y continuar más tarde: el progreso se guarda.</p>
+              <p className="text-sm text-muted-foreground">Ocho pasos cortos. Puedes omitir cualquiera y continuar más tarde: el progreso se guarda.</p>
             </div>
             {d.licence.plan && (
               <p className="rounded-full border border-border bg-card px-3 py-1 text-xs text-muted-foreground">
@@ -220,6 +223,12 @@ export default function PrimerosPasos() {
 
             {current === "company" && <CompanyStep initial={d.company} fiscalFromRegistry={d.fiscalFromRegistry} disabled={readOnly} onSaved={goNext} />}
             {current === "activity" && <ActivityStep initial={d.activity} disabled={readOnly} onSaved={goNext} />}
+            {current === "brand" &&
+              (readOnly ? (
+                <p className="text-sm text-muted-foreground">La cuenta está en solo lectura: la marca no se puede cambiar.</p>
+              ) : (
+                <BrandIdentityEditor variant="onboarding" onSaved={() => void complete("brand", "done")} />
+              ))}
             {current === "client" && <ClientStep noun={activity.clientNoun} disabled={readOnly} onCreated={() => complete("client", "done")} />}
             {current === "product" && <ProductStep noun={activity.productNoun} example={activity.productExample} disabled={readOnly} onCreated={() => complete("product", "done")} />}
             {current === "operation" && <OperationStep disabled={readOnly} onCreated={() => complete("operation", "done")} />}

@@ -4,13 +4,15 @@
  */
 import { z } from "zod";
 
-export const SETUP_STEPS = ["company", "activity", "client", "product", "operation", "users", "finish"] as const;
+// «brand» se añadió después: un progreso guardado sin él lo lee como pendiente (parseProgress)
+export const SETUP_STEPS = ["company", "activity", "brand", "client", "product", "operation", "users", "finish"] as const;
 export type SetupStep = (typeof SETUP_STEPS)[number];
 export type StepStatus = "pending" | "done" | "skipped";
 
 export const STEP_LABELS: Record<SetupStep, { title: string; summary: string }> = {
   company: { title: "Empresa", summary: "Nombre comercial, datos fiscales, moneda y zona horaria." },
   activity: { title: "Actividad", summary: "A qué se dedica tu negocio, para adaptar los textos y accesos." },
+  brand: { title: "Marca", summary: "Logotipo, colores e imagen: para tu web y tu pantalla de acceso." },
   client: { title: "Primer cliente", summary: "Da de alta a tu primer cliente." },
   product: { title: "Primer producto o servicio", summary: "Lo que vendes, con su precio e impuesto." },
   operation: { title: "Primera operación", summary: "Prepara tu primer presupuesto o pedido." },
