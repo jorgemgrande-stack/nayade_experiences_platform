@@ -17,7 +17,7 @@ const RECIPIENT: Record<string, string> = {
 };
 const STATE: Record<TemplateSpec["status"], string> = { active: "✅ Activa (despachador de eventos)", legacy: "✅ Activa (notificador)", contract: "⏸️ Pendiente: sin disparador" };
 const priority = (t: TemplateSpec) =>
-  t.group === "security" || t.id.startsWith("ops.") || /payment|suspended|incident|withdrawal/.test(t.id) ? "Alta" : t.group === "trial" || t.group === "subscription" || t.group === "billing" ? "Media" : "Normal";
+  t.group === "security" || t.group === "data" || t.id.startsWith("ops.") || /payment|suspended|incident|withdrawal/.test(t.id) ? "Alta" : t.group === "trial" || t.group === "subscription" || t.group === "billing" ? "Media" : "Normal";
 const cell = (s: string) => s.replace(/\|/g, "\\|").replace(/\s+/g, " ").trim();
 const cta = (html: string) => {
   const m = /<a href="([^"]+)"[^>]*>([^<]+)<\/a>/.exec(html);

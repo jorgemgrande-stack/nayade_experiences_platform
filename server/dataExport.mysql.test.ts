@@ -92,6 +92,16 @@ describe.skipIf(!URL_)("exportación de datos con MySQL real (0011)", () => {
     expect(r.fileCount).toBe(1);
   });
 
+  it("interrumpida: se da por fallida solo en su empresa; una incompleta guarda su aviso y no un error", async () => {
+    const [a, b] = pools.map((p) => new MysqlDataExportStore(() => p));
+    expect(await a.failStale(NOW + 2, "Interrumpida", NOW + 3)).toBe(1);
+    expect((await b.list(10))[0].status).toBe("pending");
+    expect((await a.list(10))[0]).toMatchObject({ status: "failed", error: "Interrumpida", warning: null });
+    const e = await a.insertPending(7, NOW + 4);
+    await a.markReady(e.id, { objectId: "9".repeat(26), sizeBytes: 10, tableCount: 1, rowCount: 1, fileCount: 0, expiresAt: NOW + 5, warning: "1 fichero no estaba" }, NOW + 4);
+    expect(await a.get(e.id)).toMatchObject({ status: "ready", warning: "1 fichero no estaba", error: null });
+  });
+
   it("la migración 0011 se revierte y se vuelve a aplicar", async () => {
     for (const s of splitStatements(MIG("0011_data_exports.down.sql"))) await pools[1].query(s);
     await expect(new MysqlDataExportStore(() => pools[1]).list(1)).rejects.toMatchObject({ code: "unavailable" });

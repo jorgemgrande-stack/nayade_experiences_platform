@@ -209,9 +209,10 @@ const GLOBAL_CC_EMAIL = process.env.GLOBAL_CC_EMAIL ?? "reservas@nayadeexperienc
 
 /**
  * Correos con enlaces de acceso de un solo uso (crear o restablecer contraseña, verificar el correo): nunca
- * llevan la copia global. Quien la reciba podría entrar en la cuenta de otra persona.
+ * llevan la copia global. Quien la reciba podría entrar en la cuenta de otra persona. Tampoco los avisos de
+ * seguridad ni los de la exportación de datos (solo para quien la pidió).
  */
-const NO_GLOBAL_CC: ReadonlySet<string> = new Set(["password_reset", "user_invite", "email_verification", "tenant_welcome", "security_notice"]);
+const NO_GLOBAL_CC: ReadonlySet<string> = new Set(["password_reset", "user_invite", "email_verification", "tenant_welcome", "security_notice", "data_export"]);
 
 function mergeGlobalCc(params: MailParams): MailParams {
   if (params.category && NO_GLOBAL_CC.has(params.category)) return params;
