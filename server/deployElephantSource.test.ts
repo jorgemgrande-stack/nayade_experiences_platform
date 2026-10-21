@@ -38,6 +38,10 @@ describe("órdenes de operación permitidas", () => {
       "node dist-cp/backup-job.js migrate-tenants --only acme --apply",
       "node dist-cp/backup-job.js check-data-exports",
       "node dist-cp/backup-job.js list",
+      "node .mig/run.cjs registry plan",
+      "node .mig/run.cjs registry apply",
+      "node .mig/run.cjs crm status",
+      "node .mig/run.cjs crm apply",
     ])
       expect(isAllowedDrill(ok), ok).toBe(true);
     for (const bad of [
@@ -47,9 +51,12 @@ describe("órdenes de operación permitidas", () => {
       "node dist-cp/backup-job.js run; rm -rf /",
       "node dist-cp/backup-job.js migrate-tenants --only ACME",
       "sh -c 'curl evil'",
+      "node .mig/run.cjs crm apply --database es_crm_drill_x",
+      "node .mig/run.cjs crm down",
+      "node .mig/run.cjs registry status; rm -rf /",
     ])
       expect(isAllowedDrill(bad), bad).toBe(false);
-    expect(DRILL_ALLOWED.length).toBe(5);
+    expect(DRILL_ALLOWED.length).toBe(7);
   });
 
   it("el registro mostrado no lleva DSN, claves ni tokens", () => {
@@ -80,7 +87,7 @@ describe("export y flujo", () => {
   });
 
   it("orden del plan: drill y backup-job se despliegan antes de migrar; las migraciones simulan antes de aplicar", () => {
-    const order = ["desplegar-restore-drill", "desplegar-backup-job", "copia-de-seguridad", "migraciones-simulacion", "migraciones-aplicar", "verificar-migraciones", "desplegar-controlplane", "desplegar-core"].map((a) => wf.indexOf(`- ${a}`));
+    const order = ["desplegar-restore-drill", "desplegar-backup-job", "copia-de-seguridad", "migraciones-plataforma-simulacion", "migraciones-plataforma-aplicar", "migraciones-simulacion", "migraciones-aplicar", "verificar-migraciones", "desplegar-controlplane", "desplegar-core"].map((a) => wf.indexOf(`- ${a}`));
     expect(order.every((x) => x > 0)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
   });

@@ -18,6 +18,9 @@ export const DRILL_ALLOWED: RegExp[] = [
   new RegExp(`^${BJ} migrate-tenants${ONLY}$`),
   new RegExp(`^${BJ} migrate-tenants${ONLY} --apply$`),
   new RegExp(`^${BJ} check-data-exports${ONLY}$`),
+  // Migraciones de plataforma con el paquete auditado de la imagen (sin --database: nunca otra base)
+  /^node \.mig\/run\.cjs registry (plan|apply)$/,
+  /^node \.mig\/run\.cjs crm (status|plan|apply)$/,
 ];
 export const isAllowedDrill = (cmd: string) => DRILL_ALLOWED.some((r) => r.test(cmd.trim()));
 export const DRILL_IDLE = `${BJ} list`;
