@@ -18,6 +18,8 @@ import { CommerceError, commerceClientFromEnv, type CommerceClient } from "../co
 import { isCompanyOwnerUser } from "../_core/companyOwner";
 import { getTrustedBaseUrl } from "../_core/publicUrl";
 import { panelModules, type PanelCatalogItemView } from "../panelModules";
+import { getLimitAccess } from "../_core/limits/access";
+import { LIMIT_METRICS } from "../_core/limits/store";
 
 /** Qué se quiere comprar: solo claves y totales. Importes y derechos los calcula el plano de control. */
 const purchaseInput = z
@@ -85,7 +87,14 @@ export const subscriptionRouter = router({
       const [catalog, grants] = await Promise.all([client.catalog(getTenantId()) as Promise<{ purchasesEnabled: boolean; items: PanelCatalogItemView[] }>, access.list()]);
       // Solo la administración compra: al resto se le muestra el catálogo sin el botón
       const out = panelModules(catalog, grants, access.currentTime());
-      return { ...out, canPurchase: String(ctx.user.role) === "admin" && out.purchasesEnabled };
+      // Totales contratados hoy (plan + ampliaciones): la compra de unidades pide el NUEVO total. null = sin tope.
+      const limitAccess = getLimitAccess();
+      const totals: Record<string, number | null> = {};
+      for (const m of LIMIT_METRICS) {
+        const v = limitAccess ? await limitAccess.limit(m).catch(() => undefined) : undefined;
+        if (v !== undefined) totals[m] = v;
+      }
+      return { ...out, totals, usedUsers: await countPanelUsers().catch(() => null), canPurchase: String(ctx.user.role) === "admin" && out.purchasesEnabled };
     } catch {
       throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "No se pudo consultar el catálogo de módulos. Inténtalo de nuevo en unos minutos." });
     }

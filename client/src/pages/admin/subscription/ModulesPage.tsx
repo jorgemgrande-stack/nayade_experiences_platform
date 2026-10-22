@@ -24,6 +24,7 @@ interface PanelModule {
   family: string;
   kind: "module" | "quantity";
   metric: string | null;
+  step: number | null;
   state: ModuleState;
   purchasable: boolean;
   monthly: { amountCents: number; currency: string; taxIncluded: boolean; unit: string | null } | null;
@@ -83,36 +84,82 @@ function Price({ m }: { m: PanelModule }) {
   );
 }
 
-/** Vista previa y confirmación de la compra de UN módulo. */
-function PurchaseDialog({ module, onClose }: { module: PanelModule; onClose: () => void }) {
+const METRIC_LABEL: Record<string, string> = { users: "usuarios", sites: "sedes", storage_gb: "GB de almacenamiento" };
+const METRIC_FIELD: Record<string, "users" | "sites" | "storageGb"> = { users: "users", sites: "sites", storage_gb: "storageGb" };
+
+/**
+ * Vista previa y confirmación de una compra: un módulo entero, o el NUEVO total de una ampliación por unidades
+ * (usuarios, sedes, almacenamiento) a partir del total contratado hoy.
+ */
+function PurchaseDialog({ module, current, onClose }: { module: PanelModule; current: number | null; onClose: () => void }) {
   const utils = trpc.useUtils();
   const [key] = useState(newKey);
+  const quantity = module.kind === "quantity" && module.metric !== null && current !== null;
+  const step = module.step ?? 1;
+  const [total, setTotal] = useState(quantity ? current! + step : 0);
   const [result, setResult] = useState<PurchaseResult | null>(null);
+  const what = quantity ? { [METRIC_FIELD[module.metric!]]: total } : { add: [module.key] };
   const preview = trpc.subscription.purchasePreview.useMutation();
   const buy = trpc.subscription.purchase.useMutation({
     onSuccess: (r) => {
       const res = r as PurchaseResult;
       setResult(res);
       if (res.status === "applied") {
-        toast.success(`${module.name} ya está activo`);
+        toast.success(quantity ? "Ampliación aplicada" : `${module.name} ya está activo`);
         void utils.subscription.catalog.invalidate();
         void utils.subscription.overview.invalidate();
       }
     },
     onError: (e) => toast.error(e.message),
   });
-  // La vista previa se pide una sola vez al abrir
-  const { mutate: requestPreview } = preview;
-  useEffect(() => requestPreview({ add: [module.key] }), [requestPreview, module.key]);
+  // Módulo: la vista previa se pide al abrir. Ampliación: al pulsar «Calcular importe» con el total elegido
+  const { mutate: requestPreview, reset: resetPreview } = preview;
+  useEffect(() => {
+    if (!quantity) requestPreview({ add: [module.key] });
+  }, [requestPreview, module.key, quantity]);
   const p = preview.data as Preview | undefined;
+  const valid = !quantity || (Number.isInteger(total) && total >= current! + step && (total - current!) % step === 0);
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Añadir {module.name}</DialogTitle>
+          <DialogTitle>{quantity ? `Ampliar ${METRIC_LABEL[module.metric!] ?? module.name}` : `Añadir ${module.name}`}</DialogTitle>
           <DialogDescription>El importe lo calcula nuestro sistema de cobros según los días que quedan de tu periodo actual.</DialogDescription>
         </DialogHeader>
+
+        {quantity && !result && (
+          <div className="space-y-2 text-sm">
+            <p className="text-muted-foreground">
+              Ahora tienes {current} {METRIC_LABEL[module.metric!]} contratados. Indica el nuevo total.
+            </p>
+            <div className="flex items-end gap-2">
+              <label className="flex-1 space-y-1">
+                <span className="text-foreground">Nuevo total</span>
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  min={current! + step}
+                  step={step}
+                  value={Number.isFinite(total) ? total : ""}
+                  onChange={(e) => {
+                    setTotal(Number(e.target.value));
+                    resetPreview();
+                  }}
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-foreground"
+                />
+              </label>
+              <Button type="button" variant="outline" disabled={!valid || preview.isPending} onClick={() => requestPreview(what)}>
+                Calcular importe
+              </Button>
+            </div>
+            {!valid && (
+              <p className="text-xs text-red-700 dark:text-red-400">
+                El total debe ser mayor que el actual{step > 1 ? ` y en múltiplos de ${step}` : ""}. Para reducir, escríbenos.
+              </p>
+            )}
+          </div>
+        )}
 
         {preview.isPending && <PanelLoading label="Calculando el importe…" />}
         {preview.isError && <p className="text-sm text-red-700 dark:text-red-400">{preview.error.message}</p>}
@@ -123,7 +170,11 @@ function PurchaseDialog({ module, onClose }: { module: PanelModule; onClose: () 
               {p.lines.map((l) => (
                 <li key={l.productKey} className="flex justify-between gap-3">
                   <span className="text-foreground">{l.name}</span>
-                  {l.kind === "quantity" && <span className="text-muted-foreground">{l.fromQuantity} → {l.toQuantity}</span>}
+                  {l.kind === "quantity" && (
+                    <span className="text-muted-foreground">
+                      {l.fromQuantity} → {l.toQuantity}
+                    </span>
+                  )}
                 </li>
               ))}
             </ul>
@@ -134,24 +185,33 @@ function PurchaseDialog({ module, onClose }: { module: PanelModule; onClose: () 
               </p>
               {p.taxCents !== null && <p className="text-xs text-muted-foreground">Incluye {money(p.taxCents, p.currency)} de impuestos.</p>}
               <p className="text-xs text-muted-foreground">
-                Después, {money(p.recurringDeltaCents, p.currency)} más por {p.interval === "year" ? "año" : "mes"} en cada renovación{p.taxCents === null ? " (impuestos aparte)" : ""}.
+                Después, {money(p.recurringDeltaCents, p.currency)} más por {p.interval === "year" ? "año" : "mes"} en cada renovación
+                {p.taxCents === null ? " (impuestos aparte)" : ""}.
               </p>
             </div>
           </div>
         )}
 
-        {result?.status === "applied" && <p className="text-sm text-emerald-800 dark:text-emerald-300">Listo: {module.name} ya está activo en tu plataforma.</p>}
-        {result?.status === "processing" && <p className="text-sm text-foreground">Estamos confirmando el pago. El módulo se activará en cuanto se complete; te avisaremos.</p>}
+        {result?.status === "applied" && (
+          <p className="text-sm text-emerald-800 dark:text-emerald-300">
+            {quantity ? "Listo: la ampliación ya está aplicada." : `Listo: ${module.name} ya está activo en tu plataforma.`}
+          </p>
+        )}
+        {result?.status === "processing" && <p className="text-sm text-foreground">Estamos confirmando el pago. El cambio se aplicará en cuanto se complete; te avisaremos.</p>}
         {result?.status === "payment_pending" && (
           <p className="text-sm text-foreground">Falta completar el pago con tu banco. Hasta entonces no se activa nada ni se hace ningún cargo.</p>
         )}
-        {(result?.status === "failed" || result?.status === "expired") && <p className="text-sm text-red-700 dark:text-red-400">No se ha podido completar la compra. No se ha hecho ningún cargo.</p>}
+        {(result?.status === "failed" || result?.status === "expired") && (
+          <p className="text-sm text-red-700 dark:text-red-400">No se ha podido completar la compra. No se ha hecho ningún cargo.</p>
+        )}
 
         <DialogFooter>
           {!result && (
             <>
-              <Button type="button" variant="outline" onClick={onClose}>Cancelar</Button>
-              <Button type="button" disabled={!p || buy.isPending} onClick={() => buy.mutate({ add: [module.key], idempotencyKey: key })}>
+              <Button type="button" variant="outline" onClick={onClose}>
+                Cancelar
+              </Button>
+              <Button type="button" disabled={!p || !valid || buy.isPending} onClick={() => buy.mutate({ ...what, idempotencyKey: key })}>
                 {buy.isPending ? "Procesando…" : "Confirmar y pagar"}
               </Button>
             </>
@@ -162,7 +222,11 @@ function PurchaseDialog({ module, onClose }: { module: PanelModule; onClose: () 
               <ArrowUpRight className="w-4 h-4 ml-1.5" aria-hidden="true" />
             </Button>
           )}
-          {result && <Button type="button" variant="outline" onClick={onClose}>Cerrar</Button>}
+          {result && (
+            <Button type="button" variant="outline" onClick={onClose}>
+              Cerrar
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -173,9 +237,13 @@ export default function ModulesPage() {
   const catalog = trpc.subscription.catalog.useQuery(undefined, { retry: false, staleTime: 60_000 });
   const overview = trpc.subscription.overview.useQuery(undefined, { retry: false, staleTime: 120_000 });
   const [buying, setBuying] = useState<PanelModule | null>(null);
-  const data = catalog.data as { canPurchase: boolean; modules: PanelModule[] } | null | undefined;
+  const data = catalog.data as { canPurchase: boolean; modules: PanelModule[]; totals?: Record<string, number | null> } | null | undefined;
   const upgradeUrl = overview.data?.upgradeUrl ?? null;
   const canPurchase = data?.canPurchase ?? false;
+  /** Total contratado hoy de una métrica (número), o null si no se conoce o no tiene tope. */
+  const currentOf = (m: PanelModule) => (m.metric && typeof data?.totals?.[m.metric] === "number" ? (data.totals[m.metric] as number) : null);
+  /** ¿Se puede comprar desde aquí? Un módulo entero, o una ampliación con su total actual conocido. */
+  const buyable = (m: PanelModule) => m.state === "available" && m.purchasable && canPurchase && (m.kind === "module" || currentOf(m) !== null);
 
   const groups = useMemo(() => {
     const out = new Map<string, PanelModule[]>();
@@ -244,12 +312,13 @@ export default function ModulesPage() {
                       {m.state === "active" && <span className="text-xs text-muted-foreground">Ya forma parte de tu plataforma.</span>}
                       {m.state === "read_only" && <span className="text-xs text-muted-foreground">Puedes consultarlo; para seguir usándolo, reactiva tu suscripción.</span>}
                       {m.state === "coming_soon" && <span className="text-xs text-muted-foreground">Te avisaremos cuando esté disponible.</span>}
-                      {m.state === "available" && m.kind === "module" && m.purchasable && canPurchase && (
+                      {buyable(m) && (
                         <Button type="button" size="sm" onClick={() => setBuying(m)}>
-                          <PackagePlus className="w-4 h-4 mr-1.5" aria-hidden="true" /> Añadir
+                          <PackagePlus className="w-4 h-4 mr-1.5" aria-hidden="true" /> {m.kind === "quantity" ? "Ampliar" : "Añadir"}
                         </Button>
                       )}
-                      {((m.state === "available" && !(m.kind === "module" && m.purchasable && canPurchase)) || m.state === "on_request") && ask(m)}
+                      {m.kind === "quantity" && currentOf(m) !== null && <span className="text-xs text-muted-foreground">Tienes {currentOf(m)} contratados.</span>}
+                      {((m.state === "available" && !buyable(m)) || m.state === "on_request") && ask(m)}
                     </div>
                   </li>
                 );
@@ -262,7 +331,7 @@ export default function ModulesPage() {
           <p className="text-xs text-muted-foreground">Solo la administración de la empresa puede añadir módulos.</p>
         )}
       </div>
-      {buying && <PurchaseDialog module={buying} onClose={() => setBuying(null)} />}
+      {buying && <PurchaseDialog module={buying} current={currentOf(buying)} onClose={() => setBuying(null)} />}
     </AdminLayout>
   );
 }
