@@ -3,7 +3,14 @@
  * Verifica que buildTransferConfirmationHtml genera el HTML correcto con todos los campos
  * específicos de una confirmación de transferencia (número de factura, agente validador, etc.).
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+
+// Ajustes de la empresa: nombre y contacto salen de ellos (sin respaldos fijos de otra instalación)
+const settings = vi.hoisted(() => ({ values: { brand_name: "Empresa Ejemplo", email_reservations: "reservas@empresa.example", brand_support_phone: "+34 900 000 000" } as Record<string, string> }));
+vi.mock("./config", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./config")>()),
+  getSystemSettingSync: (k: string, fb = "") => settings.values[k] ?? fb,
+}));
 import { buildTransferConfirmationHtml } from "./emailTemplates";
 
 const mockData = {
@@ -94,13 +101,14 @@ describe("buildTransferConfirmationHtml", () => {
     const html = buildTransferConfirmationHtml(mockData);
     expect(html).toContain("<!DOCTYPE html");
     expect(html).toContain("</html>");
-    expect(html).toContain("N&Aacute;YADE");
+    expect(html).toContain("Empresa Ejemplo");
   });
 
-  it("incluye los datos de contacto de Náyade Experiences", () => {
+  it("incluye los datos de contacto de la empresa (nunca los de otra instalación)", () => {
     const html = buildTransferConfirmationHtml(mockData);
-    expect(html).toContain("reservas@nayadeexperiences.es");
-    expect(html).toContain("+34 639 57 66 27");
+    expect(html).toContain("reservas@empresa.example");
+    expect(html).toContain("+34 900 000 000");
+    expect(html).not.toMatch(/nayadeexperiences|639 57 66 27/);
   });
 
   it("funciona sin campos opcionales (invoiceUrl, confirmedBy, confirmedAt, quoteNumber)", () => {

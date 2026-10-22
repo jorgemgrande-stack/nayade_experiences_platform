@@ -77,17 +77,16 @@ describe("multi: correos con la identidad de la empresa", () => {
   });
 });
 
-describe("single (Náyade): sin cambios", () => {
+describe("instalación de una sola empresa: la misma identidad que cualquier empresa (sus ajustes)", () => {
   beforeEach(() => void delete process.env.TENANT_MODE);
 
-  it("cabecera «NÁYADE EXPERIENCES», lema y pie de siempre", () => {
+  it("cabecera, pie e invitación con su nombre; nunca la marca de Náyade", () => {
+    settings.byTenant = { default: { brand_name: "Empresa Única" } };
     const html = buildPasswordResetHtml({ name: "Ana", resetUrl: "https://example.com/x", expiryMinutes: 60 });
-    expect(html).toContain(">N&Aacute;YADE</td>");
-    expect(html).toContain(">EXPERIENCES</td>");
-    expect(html).toContain("N&aacute;yade Experiences &mdash; Vive el verano todo el a&ntilde;o");
-    expect(html).toContain(`&copy; ${new Date().getFullYear()} N&Aacute;YADE EXPERIENCES`);
+    expect(html).toContain("Empresa Única");
     const invite = buildInviteHtml({ name: "Eva", role: "agente", setPasswordUrl: "https://example.com/x" });
-    expect(invite).toContain("Plataforma de Gesti&oacute;n N&aacute;yade");
-    expect(invite).toContain("<strong>N&aacute;yade Experiences</strong>");
+    expect(invite).toContain("Plataforma de Gesti&oacute;n de Empresa Única");
+    expect(invite).toContain("<strong>Empresa Única</strong>");
+    for (const h of [html, invite]) expect(h).not.toMatch(/N&Aacute;YADE|N&aacute;yade|EXPERIENCES<\/td>|Vive el verano/);
   });
 });
