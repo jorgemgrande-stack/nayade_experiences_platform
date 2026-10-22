@@ -161,7 +161,7 @@ describe("páginas de acceso con la marca de la empresa", () => {
 describe("Inicio de Essential: acceso al asistente de primeros pasos", () => {
   it("el Inicio enlaza /admin/primeros-pasos con SetupWizardLink y la ruta existe", () => {
     const home = fs.readFileSync(path.join(__dirname, "../client/src/pages/admin/home/EssentialHome.tsx"), "utf8");
-    expect(home).toMatch(/import \{ SetupWizardLink \} from "@\/components\/SetupWizardLink"/);
+    expect(home).toMatch(/import \{[^}]*\bSetupWizardLink\b[^}]*\} from "@\/components\/SetupWizardLink"/);
     expect(home).toContain("<SetupWizardLink");
     const link = fs.readFileSync(path.join(__dirname, "../client/src/components/SetupWizardLink.tsx"), "utf8");
     expect(link).toContain(`SETUP_WIZARD_PATH = "/admin/primeros-pasos"`);
