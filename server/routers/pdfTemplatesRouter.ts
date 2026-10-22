@@ -124,13 +124,13 @@ export const SYSTEM_PDF_TEMPLATES = [
     get bodyHtml() {
       return buildQuotePdfHtml({
       quoteNumber: "PRE-2026-001",
-      title: "Pack Cable Ski Experience + Restaurante",
+      title: "Pack Experiencia + Restaurante",
       clientName: "Carlos Pedraza",
       clientEmail: "carlos@ejemplo.es",
       clientPhone: "+34 600 000 000",
       items: [
-        { description: "Pack Cable Ski Experience (5 pax)", quantity: 5, unitPrice: 35, total: 175 },
-        { description: "Menú Náyade (8 pax)", quantity: 8, unitPrice: 28, total: 224 },
+        { description: "Pack Experiencia (5 pax)", quantity: 5, unitPrice: 35, total: 175 },
+        { description: "Menú del día (8 pax)", quantity: 8, unitPrice: 28, total: 224 },
       ],
       subtotal: "399",
       discount: "0",
@@ -139,7 +139,7 @@ export const SYSTEM_PDF_TEMPLATES = [
       validUntil: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
       notes: "Precio especial por grupo. Incluye alquiler de neopreno.",
       conditions: "Reserva sujeta a disponibilidad. Cancelación gratuita hasta 48h antes.",
-      paymentLinkUrl: "https://skicenter.es/pago/PRE-2026-001",
+      paymentLinkUrl: "https://tuempresa.es/pago/PRE-2026-001",
       createdAt: new Date(),
       issuerName: "Náyade Experiences S.L.",
       issuerCif: "B-XXXXXXXX",
