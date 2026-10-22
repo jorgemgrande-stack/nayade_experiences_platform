@@ -77,7 +77,7 @@ import { TrialService, type TrialLimits } from "../trials/service";
 import type { TrialStore } from "../trials/store";
 import { TrialOnboardingService, type TrialNotifier } from "../trials/onboarding";
 import { createPublicTrialRouter, createTrialAdminRouter, type TrialExceptionConversion } from "../trials/api";
-import { OrderError } from "../orchestrator/types";
+import { OrderError, TERMINAL_STATES } from "../orchestrator/types";
 import { OrganizationError, OrganizationService, type OrganizationStore } from "../organization/service";
 import { CommercialOrchestrator } from "../orchestrator/service";
 import { LifecycleEngine, startLifecycleScheduler } from "../lifecycle/engine";
@@ -1199,7 +1199,12 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
           const t = await trialStore.get(trialId);
           if (!t) throw new OrderError("not_found", "Prueba no encontrada");
           const plan = input.plan ?? t.configuration?.plan ?? "essential";
-          let { order } = await orchestrator.create({ idempotencyKey: `trial-exception-${String(trialId).padStart(8, "0")}`, trialId, request: { plan, interval: input.interval ?? "month", items: [] } }, who);
+          const exceptionKey = `trial-exception-${String(trialId).padStart(8, "0")}`;
+          // Con un pedido de conversión ya abierto (p. ej. el cliente está pagando), la excepción no se superpone: se
+          // aprueba o se cancela ese pedido primero. Así nunca queda un pedido parado sin prueba que convertir
+          const open = (await ordersStore.list({ trialId, limit: 50 })).find((o) => o.idempotencyKey !== exceptionKey && o.state !== "active" && !TERMINAL_STATES.has(o.state));
+          if (open) throw new OrderError("conflict", `La prueba ya tiene un pedido de conversión abierto (#${open.id}, ${open.state}): apruébalo o cancélalo antes de convertirla por excepción`);
+          let { order } = await orchestrator.create({ idempotencyKey: exceptionKey, trialId, request: { plan, interval: input.interval ?? "month", items: [] } }, who);
           if (order.state === "requested" || order.state === "quoted") order = (await orchestrator.accept(order.id, { signatureRef: `admin-exception:${input.category}`, approvalReason: input.reason }, who)).order;
           let error: string | null = order.lastError;
           if (order.state === "contracted") ({ order, error } = await orchestrator.approve(order.id, { reason: input.reason, category: input.category, reference: input.reference }, who));
