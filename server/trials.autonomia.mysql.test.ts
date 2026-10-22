@@ -10,7 +10,7 @@ import path from "node:path";
 import mysql from "mysql2/promise";
 import { loadMigrations, splitStatements } from "../scripts/db/migrationLib";
 import { MysqlTrialStore } from "./trials/store";
-import { TrialService } from "./trials/service";
+import { TrialService, canonicalMailbox, mailboxOf } from "./trials/service";
 import { TrialScheduler, mysqlAdvisoryLock, SCHEDULER_LOCK } from "./trials/scheduler";
 import type { TrialNotifier } from "./trials/onboarding";
 
@@ -71,6 +71,38 @@ describe.skipIf(!URL_)("prueba autónoma (reenvío y tarea programada) con MySQL
     expect((await reg("a%@acme.example")).created).toBe(true);
     expect(await store.openByAlias("a%", "acme.example")).toMatchObject({ email: "a%@acme.example" });
     expect(await store.openByAlias("zz", "acme.example")).toBeNull();
+  });
+
+  it("buzón canónico (0023): la columna de la BD coincide con canonicalMailbox y solo existe en pruebas abiertas", async () => {
+    const emails = ["mi.guel+x@gmail.com", "MiGuel@GoogleMail.com", "pe.dro+a+b@acme.example", "+raro@acme.example", "ana.b@sub.acme.example"];
+    for (const e of emails) {
+      const { trial } = await reg(e.toLowerCase().replace("miguel@", "miguel2@"));
+      const [r] = await pool.query<mysql.RowDataPacket[]>("SELECT open_mailbox FROM trial_requests WHERE id = ?", [trial.id]);
+      expect(r[0].open_mailbox, e).toBe(canonicalMailbox(trial.email));
+    }
+    const { trial } = await reg("cerrada@acme.example");
+    await pool.query("UPDATE trial_requests SET state = 'cancelled' WHERE id = ?", [trial.id]);
+    const [r] = await pool.query<mysql.RowDataPacket[]>("SELECT open_mailbox FROM trial_requests WHERE id = ?", [trial.id]);
+    expect(r[0].open_mailbox).toBeNull();
+  });
+
+  it("dos altas simultáneas con variantes del mismo buzón: la BD solo deja pasar una", async () => {
+    const variants = ["sim.ul+1@gmail.com", "simul+2@gmail.com", "s.i.m.u.l@googlemail.com", "simul@gmail.com"];
+    const outs = await Promise.allSettled(variants.map((e) => reg(e)));
+    expect(outs.filter((o) => o.status === "fulfilled")).toHaveLength(1);
+    for (const o of outs.filter((x) => x.status === "rejected")) expect((o as PromiseRejectedResult).reason).toMatchObject({ code: "conflict" });
+    expect(await store.openByMailbox("simul@gmail.com", { base: "simul", domain: "gmail.com" })).not.toBeNull();
+  });
+
+  it("la migración 0023 se revierte y se vuelve a aplicar", async () => {
+    const m = loadMigrations(DIR).migrations.find((x) => x.id === "0023_trial_open_mailbox")!;
+    const winner = (await store.openByMailbox("simul@gmail.com", { base: "simul", domain: "gmail.com" }))!;
+    for (const s of splitStatements(m.down!)) await pool.query(s);
+    // Sin la columna, la búsqueda cae en la de alias +etiqueta de siempre (sin la regla de Gmail)
+    expect(await store.openByMailbox("simul@gmail.com", mailboxOf(winner.email))).toMatchObject({ id: winner.id });
+    for (const s of splitStatements(m.up)) await pool.query(s);
+    const [r] = await pool.query<mysql.RowDataPacket[]>("SELECT COUNT(*) AS n FROM trial_requests WHERE open_mailbox = 'simul@gmail.com'");
+    expect(Number(r[0].n)).toBe(1);
   });
 
   it("solicitud caducada sin verificar: al registrarse otra vez se anula y se crea otra (índice de correo abierto liberado)", async () => {
