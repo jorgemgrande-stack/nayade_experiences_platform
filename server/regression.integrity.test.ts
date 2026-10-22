@@ -20,7 +20,14 @@
  *   - server/documentNumbers.ts
  *   - drizzle/schema.ts (tablas reservations, invoices)
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+
+// Ajustes de la empresa: nombre y contacto salen de ellos (sin respaldos fijos de otra instalación)
+const settings = vi.hoisted(() => ({ values: { brand_name: "Empresa Ejemplo", email_reservations: "reservas@empresa.example", brand_support_phone: "+34 900 000 000" } as Record<string, string> }));
+vi.mock("./config", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./config")>()),
+  getSystemSettingSync: (k: string, fb = "") => settings.values[k] ?? fb,
+}));
 import {
   buildReservationConfirmHtml,
   buildConfirmationHtml,
@@ -307,7 +314,8 @@ describe("Regresión emailTemplates — Consistencia visual", () => {
       }),
     ];
     templates.forEach((html) => {
-      expect(html.toLowerCase()).toMatch(/náyade|nayade/i);
+      expect(html).toContain("Empresa Ejemplo");
+      expect(html).not.toMatch(/N&Aacute;YADE|N&aacute;yade|nayadeexperiences/);
     });
   });
 

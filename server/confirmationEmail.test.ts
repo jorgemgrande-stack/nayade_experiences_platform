@@ -2,7 +2,14 @@
  * Tests para la plantilla de email de confirmación de pago de presupuesto.
  * Verifica que buildConfirmationHtml genera el HTML correcto con todos los campos.
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+
+// Ajustes de la empresa: nombre y contacto salen de ellos (sin respaldos fijos de otra instalación)
+const settings = vi.hoisted(() => ({ values: { brand_name: "Empresa Ejemplo", email_reservations: "reservas@empresa.example", brand_support_phone: "+34 900 000 000" } as Record<string, string> }));
+vi.mock("./config", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./config")>()),
+  getSystemSettingSync: (k: string, fb = "") => settings.values[k] ?? fb,
+}));
 import { buildConfirmationHtml } from "./emailTemplates";
 
 const mockData = {
@@ -73,11 +80,12 @@ describe("buildConfirmationHtml", () => {
     expect(html).toContain("+34 639 57 66 27");
   });
 
-  it("usa los valores por defecto de contacto cuando no se proporcionan", () => {
+  it("sin contacto explícito usa el de la empresa (sus ajustes), nunca el de otra instalación", () => {
     const { contactEmail: _e, contactPhone: _p, ...dataWithoutContact } = mockData;
     const html = buildConfirmationHtml(dataWithoutContact);
-    expect(html).toContain("reservas@nayadeexperiences.es");
-    expect(html).toContain("+34 639 57 66 27");
+    expect(html).toContain("reservas@empresa.example");
+    expect(html).toContain("+34 900 000 000");
+    expect(html).not.toMatch(/nayadeexperiences|639 57 66 27/);
   });
 
   it("genera HTML válido con estructura de email", () => {

@@ -10,7 +10,14 @@
  * el bloque de contacto en su lugar.
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+
+// Ajustes de la empresa: nombre y contacto salen de ellos (sin respaldos fijos de otra instalación)
+const settings = vi.hoisted(() => ({ values: { brand_name: "Empresa Ejemplo", email_reservations: "reservas@empresa.example", brand_support_phone: "+34 900 000 000" } as Record<string, string> }));
+vi.mock("./config", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./config")>()),
+  getSystemSettingSync: (k: string, fb = "") => settings.values[k] ?? fb,
+}));
 import { buildQuoteHtml } from "./emailTemplates";
 
 const BASE_ITEMS = [
@@ -52,13 +59,13 @@ describe("buildQuoteHtml — botón CTA de aceptación", () => {
   it("muestra el bloque de contacto cuando NO se pasa paymentLinkUrl (sin botón CTA)", () => {
     const html = buildQuoteHtml({ ...BASE_DATA });
     expect(html).not.toContain("Confirmar y Pagar Ahora");
-    expect(html).toContain("reservas@nayadeexperiences.es");
+    expect(html).toContain("reservas@empresa.example");
   });
 
   it("muestra el bloque de contacto cuando paymentLinkUrl es undefined", () => {
     const html = buildQuoteHtml({ ...BASE_DATA, paymentLinkUrl: undefined });
     expect(html).not.toContain("Confirmar y Pagar Ahora");
-    expect(html).toContain("reservas@nayadeexperiences.es");
+    expect(html).toContain("reservas@empresa.example");
   });
 
   it("incluye los conceptos del presupuesto en el email", () => {

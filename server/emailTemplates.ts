@@ -17,45 +17,46 @@
  * Ancho máximo: 600px · Layout: tablas HTML · CSS inline
  */
 
-import { brandSetting, legacyBrandSetting, legacyBrandText } from "./tenantBrand";
+import { brandSetting } from "./tenantBrand";
 import { isMultiTenant } from "./_core/tenant";
 import { publicBaseUrl } from "./_core/productIdentity";
 
 // ─── Dynamic brand helpers (read from config cache at call time) ──────────────
-const getContactEmail = () => brandSetting("email_reservations", "reservas@nayadeexperiences.es");
+const getContactEmail = () => brandSetting("email_reservations", "");
+/** Teléfono de atención de la empresa (o su teléfono general); sin ninguno, vacío. */
+const getSupportPhone = () => brandSetting("brand_support_phone", "") || brandSetting("brand_phone", "");
+/** Enlace para llamar a la empresa con su texto alrededor; sin teléfono, nada. */
+function callUs(lead: string, color: string, weight: number, suffix = ""): string {
+  const phone = getSupportPhone();
+  if (!phone) return "";
+  return `${lead}<a href="tel:${escAttr(phone.replace(/\s/g, ""))}" style="color:${color};text-decoration:none;font-weight:${weight};">${escAttr(phone)}</a>${suffix}`;
+}
 
-// ─── Constantes de marca ──────────────────────────────────────────────────────
-// URLs kept as fallback literals; actual values read from system_settings cache
-// (populated by warmConfigCache() at startup). getSystemSettingSync() returns
-// the fallback on first call and the DB value on all subsequent calls.
-const LOGO_URL_FALLBACK = "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/nayade_blue_e9563f49.png";
-const HERO_IMG_FALLBACK = "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/nayade_lago_aereo_178815fc.jpg";
-const getBrandLogo  = () => brandSetting("brand_logo_url",     LOGO_URL_FALLBACK);
-const getBrandHero  = () => brandSetting("brand_hero_image_url", HERO_IMG_FALLBACK);
-const getBrandName  = () => brandSetting("brand_name",         "Skicenter");
-const getBrandShort = () => brandSetting("brand_short_name",   "Náyade");
-// En multiempresa la cabecera y el pie llevan la identidad de la empresa en curso, nunca la de Náyade.
-// En instalación única (Náyade) todo queda exactamente como antes.
+// ─── Marca de la empresa ──────────────────────────────────────────────────────
+// Siempre la de la empresa en curso (sus ajustes); sin un dato, vacío: nunca la marca de otra instalación.
+const getBrandLogo  = () => brandSetting("brand_logo_url", "");
+const getBrandHero  = () => brandSetting("brand_hero_image_url", "");
+const getBrandName  = () => brandSetting("brand_name", "");
+const getBrandShort = () => brandSetting("brand_short_name", "") || getBrandName();
 const escAttr = (v: string) => v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 /** Logotipo de la cabecera: en multi, sin logotipo propio no se pinta (nunca el de otra empresa). */
 function headerLogo(mso: boolean): string {
-  if (isMultiTenant() && !getBrandLogo()) return "";
+  if (!getBrandLogo()) return "";
   return mso
     ? `<table cellpadding="0" cellspacing="0" border="0"><tr>
                 <td align="center" style="border:3px solid #ffffff;padding:4px;background-color:#1e3a6e;">
-                  <img src="${getBrandLogo()}" alt="${isMultiTenant() ? escAttr(getBrandName()) : legacyBrandText("Nayade")}" width="72" height="72" style="display:block;border:0;" />
+                  <img src="${getBrandLogo()}" alt="${escAttr(getBrandName())}" width="72" height="72" style="display:block;border:0;" />
                 </td>
               </tr></table>`
     : `<table cellpadding="0" cellspacing="0" border="0"><tr>
               <td align="center" style="display:inline-block;border-radius:50%;border:3px solid rgba(255,255,255,0.85);padding:4px;background:rgba(255,255,255,0.12);">
-                <img src="${getBrandLogo()}" alt="${isMultiTenant() ? escAttr(getBrandName()) : legacyBrandText("Náyade")}" width="72" height="72"
+                <img src="${getBrandLogo()}" alt="${escAttr(getBrandName())}" width="72" height="72"
                      style="display:block;border-radius:50%;border:0;" />
               </td>
             </tr></table>`;
 }
-/** Nombre grande de la cabecera y su línea secundaria («NÁYADE» / «EXPERIENCES» en single). */
+/** Nombre grande de la cabecera: el de la empresa. */
 function headerBrand(): { title: string; subtitle: string } {
-  if (!isMultiTenant()) return { title: "N&Aacute;YADE", subtitle: "EXPERIENCES" };
   return { title: escAttr(getBrandName()), subtitle: "" };
 }
 const BRAND_BLUE     = "#0a1628";
@@ -158,50 +159,9 @@ function emailHeader(subtitle?: string, tagline?: string): string {
   </tr>`;
 }
 
-// ─── COMPONENTE 7: Footer beige arena con claim de marca ──────────────────────
+// ─── COMPONENTE 7: pie con los datos de la empresa ────────────────────────────
 function emailFooter(): string {
-  if (isMultiTenant()) return tenantEmailFooter();
-  return `
-  <tr>
-    <td style="padding:0;">
-      <!-- Ola decorativa superior (beige) -->
-      <table width="600" cellpadding="0" cellspacing="0" border="0" style="background:#ffffff;"><tr>
-        <td style="line-height:0;padding:0;font-size:0;">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 24" preserveAspectRatio="none" width="600" height="24" style="display:block;">
-            <path d="M0,12 C100,24 200,0 300,12 C400,24 500,0 600,12 L600,24 L0,24 Z" fill="${BRAND_SAND}"/>
-          </svg>
-        </td>
-      </tr></table>
-      <!-- Bloque footer beige arena -->
-      <table width="600" cellpadding="0" cellspacing="0" border="0" style="background:${BRAND_SAND};"><tr>
-        <td style="padding:24px 40px 20px;text-align:center;">
-          <!-- Línea divisoria decorativa -->
-          <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:16px;"><tr>
-            <td style="border-top:1px solid ${BRAND_SAND_MID};font-size:0;line-height:0;">&nbsp;</td>
-          </tr></table>
-          <!-- Datos de contacto -->
-          <p style="color:#6b5c3e;font-size:13px;margin:0 0 6px;font-family:Arial,sans-serif;line-height:1.8;">
-            ${SVG.phone}&nbsp;<a href="tel:${brandSetting('brand_support_phone', '+34 639 57 66 27').replace(/\s/g,'')}" style="color:#8b6914;text-decoration:none;font-weight:600;">${brandSetting('brand_support_phone', '+34 639 57 66 27')}</a>
-            &nbsp;&nbsp;&nbsp;${SVG.mail}&nbsp;<a href="mailto:${brandSetting('email_reservations', 'reservas@nayadeexperiences.es')}" style="color:#8b6914;text-decoration:none;font-weight:600;">${brandSetting('email_reservations', 'reservas@nayadeexperiences.es')}</a>
-          </p>
-          <p style="color:#8b7355;font-size:12px;margin:0 0 12px;font-family:Arial,sans-serif;">
-            ${SVG.map}&nbsp;${brandSetting('brand_location', '')}
-          </p>
-          <!-- Línea divisoria -->
-          <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:12px;"><tr>
-            <td style="border-top:1px solid ${BRAND_SAND_MID};font-size:0;line-height:0;">&nbsp;</td>
-          </tr></table>
-          <!-- Claim de marca -->
-          <p style="color:#a08060;font-size:12px;margin:0 0 4px;font-family:Georgia,'Times New Roman',serif;font-style:italic;letter-spacing:0.5px;">
-            N&aacute;yade Experiences &mdash; Vive el verano todo el a&ntilde;o
-          </p>
-          <p style="color:#c4a882;font-size:10px;margin:0;font-family:Arial,sans-serif;letter-spacing:1px;">
-            &copy; ${new Date().getFullYear()} N&Aacute;YADE EXPERIENCES &middot; TODOS LOS DERECHOS RESERVADOS
-          </p>
-        </td>
-      </tr></table>
-    </td>
-  </tr>`;
+  return tenantEmailFooter();
 }
 
 /**
@@ -384,7 +344,7 @@ export function buildReservationConfirmHtml(d: ReservationConfirmData): string {
       <p style="color:#1e293b;font-size:17px;margin:0 0 8px;font-family:Arial,sans-serif;">Hola <strong>${d.customerName}</strong>,</p>
       <p style="color:#6b7280;font-size:15px;margin:0 0 16px;line-height:1.7;font-family:Arial,sans-serif;">
         Tu reserva ha sido <strong style="color:#166534;">confirmada</strong>${d.paymentPending ? "" : " y el pago procesado correctamente"}.
-        &#161;Te esperamos para vivir una experiencia &uacute;nica en el embalse de Los &Aacute;ngeles de San Rafael!
+        &#161;Te esperamos!
       </p>
       ${d.paymentPending
         ? statusBlock("success", "Reserva confirmada", "Tu plaza est&aacute; reservada. El pago queda pendiente de gesti&oacute;n con nuestro equipo.")
@@ -451,7 +411,7 @@ export function buildReservationConfirmHtml(d: ReservationConfirmData): string {
       <p style="color:#9ca3af;font-size:13px;margin:0;line-height:1.6;font-family:Arial,sans-serif;">
         &iquest;Necesitas modificar tu reserva? Escrb&iacute;benos a
         <a href="mailto:${getContactEmail()}" style="color:${BRAND_ORANGE};text-decoration:none;font-weight:600;">${getContactEmail()}</a>
-        o ll&aacute;manos al <a href="tel:${legacyBrandSetting("brand_support_phone", "+34639576627").replace(/\s/g, "")}" style="color:${BRAND_ORANGE};text-decoration:none;font-weight:600;">${legacyBrandSetting("brand_support_phone", "+34 639 57 66 27")}</a>&nbsp;(tambi&eacute;n WhatsApp).
+        ${callUs("o ll&aacute;manos al ", BRAND_ORANGE, 600, "&nbsp;(tambi&eacute;n WhatsApp).")}
       </p>
     </td></tr>
     ${emailFooter()}`;
@@ -483,7 +443,7 @@ export function buildPartnerReservationConfirmHtml(d: PartnerReservationConfirmD
       <p style="color:#1e293b;font-size:17px;margin:0 0 8px;font-family:Arial,sans-serif;">Hola <strong>${d.customerName}</strong>,</p>
       <p style="color:#6b7280;font-size:15px;margin:0 0 16px;line-height:1.7;font-family:Arial,sans-serif;">
         Tu reserva ha sido <strong style="color:#166534;">confirmada</strong>.
-        &#161;Te esperamos para vivir una experiencia &uacute;nica en el embalse de Los &Aacute;ngeles de San Rafael!
+        &#161;Te esperamos!
       </p>
       ${statusBlock("success", "Reserva confirmada", `Tu reserva ha sido gestionada a trav&eacute;s de <strong>${d.partnerName}</strong>. El pago se tramita directamente con ellos; para cualquier cuesti&oacute;n sobre el cobro, contacta con <strong>${d.partnerName}</strong>. Recibir&aacute;s toda la informaci&oacute;n necesaria para el d&iacute;a de tu visita.`)}
     </td></tr>
@@ -521,7 +481,7 @@ export function buildPartnerReservationConfirmHtml(d: PartnerReservationConfirmD
       <p style="color:#9ca3af;font-size:13px;margin:0;line-height:1.6;font-family:Arial,sans-serif;">
         &iquest;Necesitas modificar tu reserva? Escr&iacute;benos a
         <a href="mailto:${getContactEmail()}" style="color:${BRAND_ORANGE};text-decoration:none;font-weight:600;">${getContactEmail()}</a>
-        o ll&aacute;manos al <a href="tel:${legacyBrandSetting("brand_support_phone", "+34639576627").replace(/\s/g, "")}" style="color:${BRAND_ORANGE};text-decoration:none;font-weight:600;">${legacyBrandSetting("brand_support_phone", "+34 639 57 66 27")}</a>&nbsp;(tambi&eacute;n WhatsApp).
+        ${callUs("o ll&aacute;manos al ", BRAND_ORANGE, 600, "&nbsp;(tambi&eacute;n WhatsApp).")}
       </p>
     </td></tr>
     ${emailFooter()}`;
@@ -599,7 +559,7 @@ export function buildRestaurantConfirmHtml(d: RestaurantBookingData): string {
       <p style="color:#9ca3af;font-size:13px;margin:0;line-height:1.6;font-family:Arial,sans-serif;">
         &iquest;Necesitas modificar tu reserva? Escrb&iacute;benos a
         <a href="mailto:${getContactEmail()}" style="color:${BRAND_ORANGE};text-decoration:none;font-weight:600;">${getContactEmail()}</a>
-        o ll&aacute;manos al <a href="tel:${legacyBrandSetting("brand_support_phone", "+34639576627").replace(/\s/g, "")}" style="color:${BRAND_ORANGE};text-decoration:none;font-weight:600;">${legacyBrandSetting("brand_support_phone", "+34 639 57 66 27")}</a>&nbsp;(tambi&eacute;n WhatsApp).
+        ${callUs("o ll&aacute;manos al ", BRAND_ORANGE, 600, "&nbsp;(tambi&eacute;n WhatsApp).")}
       </p>
     </td></tr>
     ${emailFooter()}`;
@@ -681,11 +641,11 @@ const ROLE_LABELS: Record<string, string> = {
 export function buildInviteHtml(d: InviteEmailData): string {
   const roleLabel = ROLE_LABELS[d.role] ?? d.role;
   const body = `
-    ${emailHeader("Bienvenido al Equipo", isMultiTenant() ? `Plataforma de Gesti&oacute;n de ${escAttr(getBrandName())}` : "Plataforma de Gesti&oacute;n N&aacute;yade")}
+    ${emailHeader("Bienvenido al Equipo", `Plataforma de Gesti&oacute;n de ${escAttr(getBrandName())}`)}
     <tr><td style="padding:28px 32px 0;">
       <h2 style="color:${BRAND_BLUE};font-size:22px;margin:0 0 12px;font-weight:700;font-family:Georgia,serif;">&#161;Hola ${d.name}!</h2>
       <p style="color:#6b7280;font-size:15px;line-height:1.7;margin:0 0 16px;font-family:Arial,sans-serif;">
-        Se ha creado una cuenta para ti en la plataforma de gesti&oacute;n de <strong>${isMultiTenant() ? escAttr(getBrandName()) : "N&aacute;yade Experiences"}</strong>
+        Se ha creado una cuenta para ti en la plataforma de gesti&oacute;n de <strong>${escAttr(getBrandName())}</strong>
         con el rol de:
       </p>
       <table cellpadding="0" cellspacing="0" style="margin-bottom:20px;"><tr>
@@ -814,7 +774,7 @@ export function buildBudgetRequestUserHtml(d: BudgetRequestEmailData): string {
       <h2 style="color:${BRAND_BLUE};font-size:22px;margin:0 0 12px;font-weight:700;font-family:Georgia,serif;">&#161;Hola ${d.name}!</h2>
       <p style="color:#6b7280;font-size:15px;line-height:1.7;margin:0 0 16px;font-family:Arial,sans-serif;">
         Hemos recibido tu solicitud de presupuesto y ya estamos preparando una propuesta personalizada
-        para que vivas una jornada inolvidable en N&aacute;yade Experiences.
+        para que vivas una jornada inolvidable${getBrandName() ? ` con ${escAttr(getBrandName())}` : ""}.
       </p>
       ${statusBlock("success", "Solicitud recibida correctamente",
         "Te contactaremos en menos de 24 horas.")}
@@ -834,7 +794,7 @@ export function buildBudgetRequestUserHtml(d: BudgetRequestEmailData): string {
       <p style="color:#9ca3af;font-size:13px;margin:0;line-height:1.6;font-family:Arial,sans-serif;">
         &iquest;Necesitas modificar alg&uacute;n dato? Escrb&iacute;benos a
         <a href="mailto:${getContactEmail()}" style="color:${BRAND_ORANGE};text-decoration:none;font-weight:600;">${getContactEmail()}</a>
-        o ll&aacute;manos al <a href="tel:${legacyBrandSetting("brand_support_phone", "+34639576627").replace(/\s/g, "")}" style="color:${BRAND_ORANGE};text-decoration:none;font-weight:600;">${legacyBrandSetting("brand_support_phone", "+34 639 57 66 27")}</a>&nbsp;(tambi&eacute;n WhatsApp).
+        ${callUs("o ll&aacute;manos al ", BRAND_ORANGE, 600, "&nbsp;(tambi&eacute;n WhatsApp).")}
       </p>
     </td></tr>
     ${emailFooter()}`;
@@ -1015,8 +975,7 @@ export function buildQuoteHtml(d: QuoteEmailData): string {
             <p style="color:#374151;font-size:14px;margin:0;font-family:Arial,sans-serif;">
               Para confirmar tu reserva, contacta con nosotros:<br/>
               <a href="mailto:${getContactEmail()}" style="color:${BRAND_ORANGE};font-weight:700;text-decoration:none;">${getContactEmail()}</a>
-              &nbsp;&middot;&nbsp;
-              <a href="tel:${legacyBrandSetting("brand_support_phone", "+34639576627").replace(/\s/g, "")}" style="color:${BRAND_ORANGE};font-weight:700;text-decoration:none;">${legacyBrandSetting("brand_support_phone", "+34 639 57 66 27")}</a>&nbsp;(WhatsApp)
+              ${callUs("&nbsp;&middot;&nbsp;", BRAND_ORANGE, 700, "&nbsp;(WhatsApp)")}
             </p>
           </td></tr>
         </table>
@@ -1053,7 +1012,7 @@ export function buildQuoteHtml(d: QuoteEmailData): string {
       <p style="color:#9ca3af;font-size:13px;margin:0;line-height:1.6;font-family:Arial,sans-serif;">
         &iquest;Necesitas modificar algo? Escrb&iacute;benos a
         <a href="mailto:${getContactEmail()}" style="color:${BRAND_ORANGE};text-decoration:none;font-weight:600;">${getContactEmail()}</a>
-        o ll&aacute;manos al <a href="tel:${legacyBrandSetting("brand_support_phone", "+34639576627").replace(/\s/g, "")}" style="color:${BRAND_ORANGE};text-decoration:none;font-weight:600;">${legacyBrandSetting("brand_support_phone", "+34 639 57 66 27")}</a>&nbsp;(tambi&eacute;n WhatsApp).
+        ${callUs("o ll&aacute;manos al ", BRAND_ORANGE, 600, "&nbsp;(tambi&eacute;n WhatsApp).")}
       </p>
     </td></tr>
     ${emailFooter()}`;
@@ -1136,8 +1095,8 @@ export function buildConfirmationHtml(d: ConfirmationEmailData): string {
   const quoteRefRow = d.quoteNumber
     ? `<br/><span style="color:#9ca3af;font-size:12px;">Presupuesto original: <strong>${d.quoteNumber}</strong></span>`
     : "";
-  const contactPhone = d.contactPhone ?? brandSetting('brand_support_phone', '+34 639 57 66 27');
-  const contactEmail = d.contactEmail ?? brandSetting('email_reservations', 'reservas@nayadeexperiences.es');
+  const contactPhone = d.contactPhone ?? getSupportPhone();
+  const contactEmail = d.contactEmail ?? getContactEmail();
 
   const installmentBlock = d.installmentPlan?.installments?.length
     ? (() => {
@@ -1193,7 +1152,7 @@ export function buildConfirmationHtml(d: ConfirmationEmailData): string {
       <p style="color:#1e293b;font-size:17px;margin:0 0 8px;font-family:Arial,sans-serif;">Hola <strong>${d.clientName}</strong>,</p>
       <p style="color:#6b7280;font-size:15px;margin:0 0 16px;line-height:1.7;font-family:Arial,sans-serif;">
         Tu reserva ha sido <strong style="color:#166534;">confirmada</strong> y el pago procesado correctamente.
-        &#161;Te esperamos para vivir una experiencia &uacute;nica en el embalse de Los &Aacute;ngeles de San Rafael!
+        &#161;Te esperamos!
       </p>
       ${statusBlock("success", "Pago procesado correctamente", "Tu plaza est&aacute; reservada. Recibir&aacute;s toda la informaci&oacute;n necesaria para el d&iacute;a de tu visita.")}
     </td></tr>
@@ -1294,7 +1253,7 @@ export function buildQuotePdfHtml(d: QuotePdfData): string {
     <!-- Encabezado azul oscuro -->
     <div style="background:#1a3a6b;padding:20px 40px;display:flex;align-items:center;justify-content:space-between;gap:20px;">
       <div style="display:flex;align-items:center;gap:16px;flex-shrink:0;">
-        <img src="${getBrandLogo()}" alt="${getBrandShort()}" width="90" height="90" style="display:block;border-radius:50%;border:3px solid rgba(255,255,255,0.85);object-fit:cover;" />
+        ${getBrandLogo() ? `<img src="${escAttr(getBrandLogo())}" alt="${escAttr(getBrandShort())}" width="90" height="90" style="display:block;border-radius:50%;border:3px solid rgba(255,255,255,0.85);object-fit:cover;" />` : ""}
         <div>
           <div style="color:#fff;font-size:20px;font-weight:900;letter-spacing:2px;text-transform:uppercase;line-height:1.1;">${getBrandShort()}</div>
           <div style="color:rgba(255,255,255,0.65);font-size:10px;letter-spacing:3px;text-transform:uppercase;margin-top:3px;">${getBrandName().replace(getBrandShort(), "").trim() || "Experiences"}</div>
@@ -1351,7 +1310,7 @@ export function buildQuotePdfHtml(d: QuotePdfData): string {
     <!-- Footer -->
     <div style="padding:16px 40px;border-top:2px solid #1a3a6b;text-align:center;color:#9ca3af;font-size:11px;line-height:1.8;">
       <p style="margin:0;">Gracias por confiar en ${brandSetting('brand_name', '')}${brandSetting('brand_domain', '') ? ` &middot; www.${brandSetting('brand_domain', '')}` : ''}</p>
-      <p style="margin:0;">${brandSetting('brand_support_phone', '+34 639 57 66 27') ? `${brandSetting('brand_support_phone', '+34 639 57 66 27')} &nbsp;&middot;&nbsp; ` : ''}${getContactEmail()}${brandSetting('brand_location', '') ? ` &nbsp;&middot;&nbsp; ${brandSetting('brand_location', '')}` : ''}</p>
+      <p style="margin:0;">${getSupportPhone() ? `${escAttr(getSupportPhone())} &nbsp;&middot;&nbsp; ` : ''}${escAttr(getContactEmail())}${brandSetting('brand_location', '') ? ` &nbsp;&middot;&nbsp; ${brandSetting('brand_location', '')}` : ''}</p>
     </div>
   </div>
 </body>
@@ -1419,7 +1378,7 @@ export function buildTransferConfirmationHtml(d: TransferConfirmationEmailData):
       <p style="color:#1e293b;font-size:17px;margin:0 0 8px;font-family:Arial,sans-serif;">Hola <strong>${d.clientName}</strong>,</p>
       <p style="color:#6b7280;font-size:15px;margin:0 0 16px;line-height:1.7;font-family:Arial,sans-serif;">
         Hemos recibido y <strong style="color:#166534;">validado correctamente</strong> tu pago por transferencia bancaria.
-        Tu reserva queda confirmada y ya puedes disfrutar de tu experiencia en N&aacute;yade.
+        Tu reserva queda confirmada y ya puedes disfrutar de tu experiencia${getBrandName() ? ` con ${escAttr(getBrandName())}` : ""}.
       </p>
       ${statusBlock("success", "Transferencia bancaria validada",
         `Pago confirmado el <strong>${confirmedDate}</strong>. Tu factura est&aacute; disponible para descargar.`)}
@@ -1467,7 +1426,7 @@ export function buildTransferConfirmationHtml(d: TransferConfirmationEmailData):
       <p style="color:#9ca3af;font-size:13px;margin:0;line-height:1.6;font-family:Arial,sans-serif;">
         &iquest;Tienes alguna pregunta sobre tu reserva? Escrb&iacute;benos a
         <a href="mailto:${getContactEmail()}" style="color:${BRAND_ORANGE};text-decoration:none;font-weight:600;">${getContactEmail()}</a>
-        o ll&aacute;manos al <a href="tel:${legacyBrandSetting("brand_support_phone", "+34639576627").replace(/\s/g, "")}" style="color:${BRAND_ORANGE};text-decoration:none;font-weight:600;">${legacyBrandSetting("brand_support_phone", "+34 639 57 66 27")}</a>&nbsp;(tambi&eacute;n WhatsApp).
+        ${callUs("o ll&aacute;manos al ", BRAND_ORANGE, 600, "&nbsp;(tambi&eacute;n WhatsApp).")}
       </p>
     </td></tr>
     ${emailFooter()}`;
@@ -2679,7 +2638,7 @@ export function buildProposalHtml(d: ProposalEmailData): string {
       <p style="color:#9ca3af;font-size:13px;margin:0;line-height:1.6;font-family:Arial,sans-serif;">
         &iquest;Necesitas modificar algo? Escrb&iacute;benos a
         <a href="mailto:${getContactEmail()}" style="color:${BRAND_ORANGE};text-decoration:none;font-weight:600;">${getContactEmail()}</a>
-        o ll&aacute;manos al <a href="tel:${legacyBrandSetting("brand_support_phone", "+34639576627").replace(/\s/g, "")}" style="color:${BRAND_ORANGE};text-decoration:none;font-weight:600;">${legacyBrandSetting("brand_support_phone", "+34 639 57 66 27")}</a>&nbsp;(tambi&eacute;n WhatsApp).
+        ${callUs("o ll&aacute;manos al ", BRAND_ORANGE, 600, "&nbsp;(tambi&eacute;n WhatsApp).")}
       </p>
     </td></tr>
     ${emailFooter()}`;
@@ -2728,7 +2687,7 @@ function buildCommercialReminderHtml(
           <p style="color:#374151;font-size:13px;margin:0;line-height:1.6;font-family:Arial,sans-serif;">
             ¿Tienes alguna duda o quieres ajustar algo? Escríbenos a
             <a href="mailto:${getContactEmail()}" style="color:${BRAND_ORANGE};text-decoration:none;font-weight:600;">${getContactEmail()}</a>
-            o llámanos al <a href="tel:${legacyBrandSetting("brand_support_phone", "+34639576627").replace(/\s/g, "")}" style="color:${BRAND_ORANGE};text-decoration:none;font-weight:600;">${legacyBrandSetting("brand_support_phone", "+34 639 57 66 27")}</a> — también por WhatsApp.
+            ${callUs("o llámanos al ", BRAND_ORANGE, 600, " — también por WhatsApp.")}
           </p>
         </td></tr>
       </table>

@@ -12,12 +12,11 @@ import fs from "node:fs";
 import path from "node:path";
 
 const ROOT = __dirname;
-const ORIGINAL = /N[aá]yade|nayadeexperiences|skicenter\.es|639 ?57 ?66 ?27|34639576627|San Rafael/;
+const ORIGINAL = /N[aá]yade|N&[aA]acute;[yY][aA][dD][eE]|nayadeexperiences|skicenter\.es|639 ?57 ?66 ?27|34639576627|San Rafael/;
 
 const BASELINE: Record<string, number> = {
   "adapters/notification.ts": 1,
   "config/index.ts": 2,
-  "emailTemplates.ts": 21,
   "gestoriaDossier.ts": 1,
   "ghl.ts": 1,
   "invoiceHtml.ts": 2,
