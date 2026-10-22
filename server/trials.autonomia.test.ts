@@ -347,3 +347,76 @@ describe("plantillas de correo de la prueba (español, sin Náyade, sin envío r
     expect(mailStore.rows).toHaveLength(0);
   });
 });
+
+describe("avisos de los cambios decididos por el equipo", () => {
+  /** Onboarding con lo justo para suspender y reactivar (licencias y suscripción de la prueba). */
+  const withTeam = (notifier: TrialNotifier = notify) =>
+    new TrialOnboardingService({
+      trials: svc,
+      notify: notifier,
+      now: () => clock,
+      platformDomain: "app.bigelephant.example",
+      companies: { byTenant: async () => ({ id: 1 }), create: async () => ({ id: 1 }) },
+      subscriptions: { list: async () => [{ id: 9, status: "trialing" }] },
+      licensing: { list: async () => [], setStatus: async () => undefined, apply: async () => ({ applied: [], desired: [] }) },
+    } as unknown as ConstructorParameters<typeof TrialOnboardingService>[0]);
+  const status = () => sent.filter((m) => m.kind === "status").map((m) => [m.data.kind, m.data.endsAt, m.data.domain]);
+  beforeEach(() => {
+    notify.statusNotice = async (to, i) => void sent.push({ kind: "status", to, data: i as unknown as Record<string, unknown> });
+  });
+
+  it("ampliación, pausa y reactivación: un aviso cada una, con la fecha de fin (nunca en la pausa) y el acceso", async () => {
+    const t = await activeTrial("equipo@hotel.es", "hotel-equipo");
+    const ob = withTeam();
+    const ext = await ob.approveExtension(t.id, { expectedVersion: t.version, days: 5, actor: "op" });
+    const sus = await ob.suspend(t.id, { reason: "Uso indebido detectado", expectedVersion: ext.version, actor: "op" });
+    const re = await ob.reactivate(t.id, { expectedVersion: sus.version, actor: "op" });
+    expect(re.trial.state).toBe("active");
+    expect(status()).toEqual([
+      ["extended", ext.endsAt, "hotel-equipo.app.bigelephant.example"],
+      ["suspended", null, "hotel-equipo.app.bigelephant.example"],
+      ["reactivated", ext.endsAt, "hotel-equipo.app.bigelephant.example"],
+    ]);
+    expect(sent.filter((m) => m.kind === "status").every((m) => m.to === "equipo@hotel.es")).toBe(true);
+    // El motivo interno de la pausa nunca viaja en el aviso
+    expect(JSON.stringify(sent)).not.toMatch(/Uso indebido/);
+  });
+
+  it("si el aviso falla, el cambio queda hecho igualmente", async () => {
+    const t = await activeTrial("fallo@hotel.es", "hotel-fallo");
+    const ob = withTeam({ ...notify, statusNotice: async () => Promise.reject(new Error("bandeja caída")) });
+    const ext = await ob.approveExtension(t.id, { expectedVersion: t.version, days: 3, actor: "op" });
+    expect(ext.endsAt).toBe(t.endsAt! + 3 * DAY);
+  });
+
+  it("vencimiento manual: aviso de 0 días una sola vez, y la tarea programada no lo repite", async () => {
+    const t = await activeTrial("manual@hotel.es", "hotel-manual");
+    clock = t.endsAt! + 1000;
+    const ob = withTeam();
+    const e = await ob.expire(t.id, "op");
+    expect(e.state).toBe("expired");
+    await new TrialScheduler({ store, notify, lock: memoryLock(), now: () => clock, log: () => undefined }).tick();
+    expect(sent.filter((m) => m.kind === "expiry").map((m) => [m.to, m.data.daysLeft])).toEqual([["manual@hotel.es", 0]]);
+  });
+
+  it("la bienvenida lleva la fecha de fin de la prueba", () => {
+    const m = platformTemplates({ supportEmail: null }).trialActivated({ host: "t1-x.app.bigelephant.example", setPasswordUrl: "https://t1-x.app.bigelephant.example/establecer-contrasena?token=a", endsAt: T0 + 15 * DAY });
+    expect(m.text).toMatch(/La prueba gratuita dura hasta el 31 de octubre de 2026/);
+  });
+
+  it("por la bandeja de plataforma: categoría propia, idempotente por transición y, con MAIL_MODE=off, nada sale", async () => {
+    const mailStore = new MemoryMailStore();
+    const provider = memoryProvider();
+    const policy = mailPolicyFromEnv({ MAIL_MODE: "off" } as NodeJS.ProcessEnv);
+    const nt = new PlatformMailer(new MailService({ lane: "platform", store: mailStore, provider, policy, now: () => clock }), policy, {}).trialNotifier();
+    const info = { trialId: 4, version: 7, kind: "extended" as const, endsAt: T0 + 20 * DAY, domain: "t4-x.app.bigelephant.example" };
+    await nt.statusNotice!("a@pruebas.example", info);
+    await nt.statusNotice!("a@pruebas.example", info);
+    await nt.statusNotice!("a@pruebas.example", { ...info, version: 8, kind: "suspended", endsAt: null });
+    expect(provider.sent).toHaveLength(0);
+    expect(mailStore.rows.map((r) => [r.category, r.status, r.subject])).toEqual([
+      ["trial_status", "skipped", "Hemos ampliado tu prueba de Elephant Source"],
+      ["trial_status", "skipped", "Tu prueba de Elephant Source está en pausa"],
+    ]);
+  });
+});

@@ -156,6 +156,23 @@ export function platformTemplates(o: PlatformTemplateOptions = {}) {
       ], i.pricingUrl ? { label: "Ver planes", url: i.pricingUrl } : null);
     },
     trialExpired,
+    /**
+     * Cambios de la prueba que decide el equipo: ampliación, pausa y reactivación. Nunca incluye el motivo interno
+     * de una pausa (puede ser sensible): solo que los datos se conservan y cómo retomarla.
+     */
+    trialStatus(i: { kind: "extended" | "suspended" | "reactivated"; endsAt: number | null; host: string | null }) {
+      const enter = i.host ? { label: "Entrar en la plataforma", url: hostUrl(i.host)! } : null;
+      const until = i.endsAt ? `La prueba gratuita dura ahora hasta el ${fmtDate(i.endsAt)}.` : null;
+      if (i.kind === "extended")
+        return layout(b, `Hemos ampliado tu prueba de ${PLATFORM_BRAND}`, [until ?? "Hemos ampliado el plazo de tu prueba gratuita.", "Sigues teniendo todo disponible, con tus datos tal y como los dejaste."], enter);
+      if (i.kind === "suspended")
+        return layout(b, `Tu prueba de ${PLATFORM_BRAND} está en pausa`, [
+          "Hemos pausado temporalmente el acceso a tu prueba gratuita.",
+          "Tus datos se conservan: no se ha borrado nada.",
+          "Si crees que es un error o quieres retomarla, responde a este correo o escribe a soporte.",
+        ]);
+      return layout(b, `Tu prueba de ${PLATFORM_BRAND} vuelve a estar activa`, ["Ya puedes volver a usar tu plataforma con normalidad.", ...(until ? [until] : [])], enter);
+    },
     contractConfirmed(i: { companyName: string; reference: string | null; host: string | null }) {
       return layout(b, `Contratación confirmada${i.reference ? ` · ${i.reference}` : ""}`, [
         `La contratación de ${PLATFORM_BRAND} para ${i.companyName} está activa.`,

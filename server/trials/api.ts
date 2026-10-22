@@ -234,7 +234,7 @@ export function createTrialAdminRouter(o: { onboarding: TrialOnboardingService; 
     requireScope("subscriptions:write"),
     wrap(async (req, res) => {
       const b = z.object({ days: z.number().int().min(1).max(30), expectedVersion: z.number().int().min(1) }).strict().parse(req.body);
-      res.json({ trial: TrialService.view(await o.trials.approveExtension(id.parse(req.params.id), b.expectedVersion, b.days, who(req))) });
+      res.json({ trial: TrialService.view(await o.onboarding.approveExtension(id.parse(req.params.id), { expectedVersion: b.expectedVersion, days: b.days, actor: who(req) })) });
     }),
   );
   r.post(

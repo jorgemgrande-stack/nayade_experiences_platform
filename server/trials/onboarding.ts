@@ -16,8 +16,10 @@
 import type { ProvisionRequest, ProvisionResult } from "../_core/provisioning/types";
 import type { LicensingService } from "../licensing/service";
 import type { SubscriptionService } from "../subscriptions/service";
+import { opsLog } from "../_core/ops/log";
 import { nextState } from "./machine";
 import { TrialError, TrialService } from "./service";
+import type { TrialRequest } from "./store";
 
 const DAY = 86_400_000;
 export const ESSENTIAL_PLAN = "essential";
@@ -28,9 +30,23 @@ export const NOTICE_DAYS = [7, 3, 1, 0] as const;
 export interface TrialNotifier {
   /** Enlace de verificación; `resend`: es un reenvío (token nuevo, el anterior ya no vale). */
   verification(to: string, link: { trialId: number; token: string; resend?: boolean }): Promise<void>;
-  welcome(to: string, info: { tenantId: string; domain: string | null; inviteToken: string }): Promise<void>;
+  /** Bienvenida con el acceso; `endsAt`: fin de la prueba si sigue activa (se muestra en el correo). */
+  welcome(to: string, info: { tenantId: string; domain: string | null; inviteToken: string; endsAt?: number | null }): Promise<void>;
   /** Aviso de vencimiento: `daysLeft` 3 y 1 antes; 0 cuando la prueba ya ha terminado (solo lectura). */
   expiryNotice(to: string, info: { trialId: number; endsAt: number; daysLeft: number }): Promise<void>;
+  /**
+   * Cambio decidido por el equipo (ampliación, pausa o reactivación). `version`: la de la prueba tras el cambio
+   * (clave de idempotencia: una transición, un aviso). Opcional: un notificador sin él no avisa.
+   */
+  statusNotice?(to: string, info: TrialStatusNotice): Promise<void>;
+}
+
+export interface TrialStatusNotice {
+  trialId: number;
+  version: number;
+  kind: "extended" | "suspended" | "reactivated";
+  endsAt: number | null;
+  domain: string | null;
 }
 
 export interface CompanyPort {
@@ -146,7 +162,7 @@ export class TrialOnboardingService {
     if (!this.d.reissueInvite) throw new TrialError("invalid_state", "El reenvío de acceso no está disponible");
     const token = await this.d.reissueInvite(t.tenantId);
     if (!token) return { sent: false as const, reason: "already_accepted" as const };
-    await this.d.notify.welcome(t.email, { tenantId: t.tenantId, domain: `${t.tenantId}.${this.d.platformDomain}`, inviteToken: token });
+    await this.d.notify.welcome(t.email, { tenantId: t.tenantId, domain: `${t.tenantId}.${this.d.platformDomain}`, inviteToken: token, endsAt: t.state === "active" ? t.endsAt : null });
     return { sent: true as const };
   }
 
@@ -186,7 +202,7 @@ export class TrialOnboardingService {
       const inviteToken = result.adminInviteToken ?? (this.d.reissueInvite ? await this.d.reissueInvite(tenantId).catch(() => null) : null);
       if (inviteToken) {
         onInvite?.(inviteToken);
-        await this.d.notify.welcome(t.email, { tenantId, domain, inviteToken });
+        await this.d.notify.welcome(t.email, { tenantId, domain, inviteToken, endsAt: t.endsAt });
       }
     }
 
@@ -239,10 +255,43 @@ export class TrialOnboardingService {
     return { outcome: r.outcome, state: r.trial?.state ?? null, verificationExpiresAt: r.outcome === "resent" ? (r.trial?.verificationExpiresAt ?? null) : null };
   }
 
-  /** Vencimiento (operador; también lo hace la tarea programada): las licencias ya caducaron (solo lectura). Nada se borra. */
+  /**
+   * Vencimiento (operador; también lo hace la tarea programada): las licencias ya caducaron (solo lectura). Nada se
+   * borra. Envía el aviso de vencimiento (0 días) con la misma constancia que la tarea programada, así que nunca se
+   * repite; si el aviso falla, el vencimiento queda hecho igualmente.
+   */
   async expire(trialId: number, actor: string) {
     const t = await this.d.trials.must(trialId);
-    return this.d.trials.markExpired(t.id, t.version, actor);
+    const expired = await this.d.trials.markExpired(t.id, t.version, actor);
+    if (expired.endsAt !== null) {
+      const key = TrialService.noticeKey({ endsAt: expired.endsAt }, 0);
+      try {
+        if (!(await this.d.trials.noticeQueued(expired.id, key))) {
+          await this.d.notify.expiryNotice(expired.email, { trialId: expired.id, endsAt: expired.endsAt, daysLeft: 0 });
+          await this.d.trials.recordNotice(expired.id, key, actor);
+        }
+      } catch (e) {
+        opsLog("warn", "Trials", "expiry_notice_failed", { trialId: expired.id, error: e instanceof Error ? e.name : "error" });
+      }
+    }
+    return expired;
+  }
+
+  /** Ampliación aprobada por el equipo: nuevo fin y aviso a la persona solicitante. */
+  async approveExtension(trialId: number, o: { expectedVersion: number; days: number; actor: string }) {
+    const t = await this.d.trials.approveExtension(trialId, o.expectedVersion, o.days, o.actor);
+    await this.tellStatus(t, "extended");
+    return t;
+  }
+
+  /** Aviso de un cambio decidido por el equipo. Un fallo del aviso nunca deshace el cambio. */
+  private async tellStatus(t: TrialRequest, kind: TrialStatusNotice["kind"]) {
+    if (!this.d.notify.statusNotice) return;
+    try {
+      await this.d.notify.statusNotice(t.email, { trialId: t.id, version: t.version, kind, endsAt: kind === "suspended" ? null : t.endsAt, domain: t.tenantId ? `${t.tenantId}.${this.d.platformDomain}` : null });
+    } catch (e) {
+      opsLog("warn", "Trials", "status_notice_failed", { trialId: t.id, kind, error: e instanceof Error ? e.name : "error" });
+    }
   }
 
   /**
@@ -263,7 +312,9 @@ export class TrialOnboardingService {
         if (g.status === "active" || g.status === "read_only") await this.d.licensing.setStatus(t.tenantId, g.capabilityId, "suspended", { actor: o.actor, reason, siteId: g.siteId });
       }
     }
-    return this.d.trials.suspend(t.id, t.version, o.reason, o.actor);
+    const suspended = await this.d.trials.suspend(t.id, t.version, o.reason, o.actor);
+    await this.tellStatus(suspended, "suspended");
+    return suspended;
   }
 
   /**
@@ -282,7 +333,9 @@ export class TrialOnboardingService {
       if (!sub) throw new TrialError("invalid_state", "La prueba no tiene suscripción: no se pueden reactivar sus licencias");
       licencesChanged = (await this.d.licensing.apply(sub.id, { activate: true, actor: o.actor, reason: `Reactivación de la prueba #${t.id}` })).applied.length;
     }
-    return { trial: await this.d.trials.reactivate(t.id, t.version, o.actor), licencesChanged };
+    const trial = await this.d.trials.reactivate(t.id, t.version, o.actor);
+    await this.tellStatus(trial, "reactivated");
+    return { trial, licencesChanged };
   }
 
   // La conversión a pago no se hace aquí: es un pedido del orquestador (POST /orders con el cobro, o la

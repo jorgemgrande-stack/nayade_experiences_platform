@@ -37,6 +37,8 @@ export type MailCategory =
   | "signup_received"
   | "trial_activated"
   | "trial_expiry"
+  // Ampliación, pausa o reactivación de la prueba decidida por el equipo
+  | "trial_status"
   | "contract_confirmed"
   | "test_payment_confirmed"
   | "payment_confirmed"

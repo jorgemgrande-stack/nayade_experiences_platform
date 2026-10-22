@@ -119,6 +119,7 @@ const logOnlyTrialNotifier: TrialNotifier = {
   verification: async (_to, l) => void console.log(JSON.stringify({ ctx: "Trials", event: "verification_not_sent", trialId: l.trialId })),
   welcome: async (_to, i) => void console.log(JSON.stringify({ ctx: "Trials", event: "welcome_not_sent", tenantId: i.tenantId })),
   expiryNotice: async (_to, i) => void console.log(JSON.stringify({ ctx: "Trials", event: "expiry_notice_not_sent", trialId: i.trialId, daysLeft: i.daysLeft })),
+  statusNotice: async (_to, i) => void console.log(JSON.stringify({ ctx: "Trials", event: "status_notice_not_sent", trialId: i.trialId, kind: i.kind })),
 };
 import { quoteCatalogFromSite } from "../catalog/snapshot";
 import { rebindRequestContext, requestIdMiddleware, requestIdOf } from "../_core/ops/requestContext";
