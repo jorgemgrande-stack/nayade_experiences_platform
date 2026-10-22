@@ -10,7 +10,7 @@ import MaintenanceGate from "./components/MaintenanceGate";
 import { MetaPixelLoader } from "./components/MetaPixelLoader";
 import { GA4Loader } from "./components/GA4Loader";
 import { ThemeProvider } from "./contexts/ThemeContext";
-import { HomeGate, SlugGate, TenantThemeLoader } from "./components/TenantTheme";
+import { HomeGate, SingleOnlyPage, SlugGate, TenantThemeLoader } from "./components/TenantTheme";
 
 // ── PUBLIC PAGES (carga inmediata — visibles sin autenticación) ──────────────
 import Home from "./pages/Home";
@@ -221,7 +221,7 @@ function Router() {
       <Route path="/experiencias/:slug" component={ExperienceDetail} />
       <Route path="/galeria" component={Gallery} />
       <Route path="/presupuesto" component={BudgetRequest} />
-      <Route path="/colegios" component={Colegios} />
+      <Route path="/colegios">{() => <SingleOnlyPage Single={Colegios} slug="colegios" />}</Route>
       <Route path="/canjear-cupon" component={CanjearCupon} />
       <Route path="/verificar-bono" component={VerificarBono} />
       <Route path="/registrar-gasto" component={RegistrarGasto} />
@@ -266,10 +266,10 @@ function Router() {
       <Route path="/supplier/dashboard">{() => <Suspense fallback={<AdminLoadingFallback />}><SupplierDashboard /></Suspense>}</Route>
       <Route path="/supplier">{() => { window.location.replace("/supplier/dashboard"); return null; }}</Route>
       {/* ── LEGAL PAGES ── */}
-      <Route path="/privacidad" component={PoliticaPrivacidad} />
-      <Route path="/terminos" component={TerminosCondiciones} />
-      <Route path="/cookies" component={PoliticaCookies} />
-      <Route path="/condiciones-cancelacion" component={CondicionesCancelacion} />
+      <Route path="/privacidad">{() => <SingleOnlyPage Single={PoliticaPrivacidad} slug="politica-de-privacidad" />}</Route>
+      <Route path="/terminos">{() => <SingleOnlyPage Single={TerminosCondiciones} slug="terminos" />}</Route>
+      <Route path="/cookies">{() => <SingleOnlyPage Single={PoliticaCookies} slug="politica-de-cookies" />}</Route>
+      <Route path="/condiciones-cancelacion">{() => <SingleOnlyPage Single={CondicionesCancelacion} slug="condiciones-cancelacion" />}</Route>
       {/* ── DYNAMIC PAGES (CMS) ── */}
       <Route path="/pagina/:slug" component={DynamicPage} />
       {/* ── BLOG (entradas publicadas de la empresa) ── */}

@@ -162,6 +162,18 @@ export function HomeGate({ Fallback }: { Fallback: ComponentType }) {
   return <Fallback />;
 }
 
+/**
+ * Páginas propias de la instalación original (textos legales y de marketing escritos a mano). En la web neutra de cada
+ * empresa NUNCA se sirven: se muestra la página equivalente de la propia empresa (su CMS, `slug`) o «no encontrada».
+ * Así ninguna empresa publica el aviso legal, la privacidad o las condiciones de otra.
+ */
+export function SingleOnlyPage({ Single, slug }: { Single: ComponentType; slug: string }) {
+  const { theme, isLoading } = useTenantTheme();
+  if (isLoading) return <Spinner />;
+  if (theme?.neutralSite) return <TenantPage slug={slug} />;
+  return <Single />;
+}
+
 /** "/:slug" tras todas las rutas conocidas: páginas del tenant; en single, 404 como siempre. */
 export function SlugGate({ slug }: { slug: string }) {
   const { theme, isLoading } = useTenantTheme();
