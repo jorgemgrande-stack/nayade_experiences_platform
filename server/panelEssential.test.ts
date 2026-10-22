@@ -243,9 +243,9 @@ describe("menú del panel", () => {
     expect(items.find((i) => i.label === "Plan y uso")?.readOnly).toBe(false);
   });
 
-  it("sin licencias: solo Inicio y Suscripción (nada no contratado aparece como activo)", () => {
+  it("sin licencias: solo Inicio, Suscripción, Ayuda y Soporte (nada no contratado aparece como activo)", () => {
     const resolved = resolveNav(TASK_NAV, { ...allVisible, capabilityState: () => null });
-    expect(labels(resolved)).toEqual(["Inicio", "Plan y uso", "Ayuda"]);
+    expect(labels(resolved)).toEqual(["Inicio", "Plan y uso", "Ayuda", "Soporte"]);
   });
 
   it("agente comercial: solo ventas y facturación de cara al cliente", () => {

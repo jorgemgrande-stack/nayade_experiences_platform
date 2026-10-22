@@ -47,9 +47,9 @@ export function isOperatorPath(p: string): boolean {
 /**
  * Procedimientos permitidos aunque la empresa no admita escrituras (suspendida o en solo lectura tras la baja):
  * exportar sus datos es lo que se garantiza durante ese periodo (solo la persona propietaria; lo comprueba el
- * propio procedimiento).
+ * propio procedimiento) y pedir ayuda a soporte (las incidencias viven en el plano de control, no en su base).
  */
-const READ_ONLY_ALLOWED = new Set(["dataExport.request", "dataExport.link"]);
+const READ_ONLY_ALLOWED = new Set(["dataExport.request", "dataExport.link", "support.open", "support.reply", "support.reopen"]);
 
 export function isSessionPath(p: string): boolean {
   if (p.startsWith("/api/auth")) return true;
