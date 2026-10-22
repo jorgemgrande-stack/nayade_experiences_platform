@@ -15,6 +15,7 @@ import mysql from "mysql2/promise";
 import { loadMigrations, splitStatements, validateMigrations } from "../../../scripts/db/migrationLib";
 import type { DatabaseProvisioner, ProvisioningStore, SchemaApplier, TenantSeeder } from "./ports";
 import type { ProvisioningRecord } from "./types";
+import { TENANT_TRIGGERS, createTriggerSql } from "./tenantTriggers";
 import { getTemplate, renderTemplateText } from "../templates/catalog";
 
 const TABLE = "__elephant_migrations";
@@ -47,6 +48,21 @@ export class MysqlDatabaseProvisioner implements DatabaseProvisioner {
     await this.admin.query(`GRANT ALL PRIVILEGES ON \`${db}\`.* TO ?@?`, [user, host]);
     const dsn = `mysql://${encodeURIComponent(user)}:${encodeURIComponent(password)}@${this.opts.host}:${this.opts.port ?? 3306}/${db}`;
     return { dsn, serverAlias: this.opts.alias ?? this.opts.host };
+  }
+
+  async ensureTriggers(tenantId: string): Promise<string[]> {
+    const db = databaseNameFor(tenantId, this.opts.dbPrefix);
+    const created: string[] = [];
+    for (const t of TENANT_TRIGGERS) {
+      const [exists] = await this.admin.query<mysql.RowDataPacket[]>(
+        "SELECT 1 FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA = ? AND TRIGGER_NAME = ?",
+        [db, t.name],
+      );
+      if (exists.length) continue;
+      await this.admin.query(createTriggerSql(db, t), [userNameFor(tenantId), this.opts.userHost ?? "%"]);
+      created.push(t.name);
+    }
+    return created;
   }
 
   async dropDatabase(tenantId: string): Promise<void> {
