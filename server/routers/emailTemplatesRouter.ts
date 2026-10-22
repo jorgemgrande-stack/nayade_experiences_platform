@@ -46,6 +46,10 @@ import {
   buildCashCloseHtml,
 } from "../emailTemplates";
 import { legacyDb, legacyPool } from "../_core/legacyDb";
+import { getTenantMode } from "../_core/tenant";
+import { getCapabilityAccess } from "../_core/capabilities/access";
+import { buildSubscriptionOverview } from "../subscriptionOverview";
+import { templatesForCapabilities } from "../../shared/emailTemplateCapabilities";
 
 // --- Admin guard --------------------------------------------------------------
 const adminProcedure = permissionProcedure("settings.manage", ["admin"]);
@@ -393,12 +397,31 @@ async function ensureTemplatesSeeded() {
   }
 }
 
+/**
+ * Capacidades visibles de la empresa, igual que el menú del panel. Sin licencias por capacidad (instalación
+ * propia o empresa anterior al motor) o si no se pueden leer, todas: solo decide qué plantillas se listan y se
+ * envían como prueba, no autoriza nada.
+ */
+async function visibleCapability(): Promise<(capabilityId: string) => boolean> {
+  const mode = getTenantMode();
+  if (mode !== "multi") return () => true;
+  try {
+    const access = getCapabilityAccess();
+    const o = buildSubscriptionOverview({ mode, enforcing: access.enforcing(), grants: await access.list(), now: access.currentTime() });
+    if (o.licensing !== "capabilities") return () => true;
+    const visible = new Set(o.visible);
+    return (id) => visible.has(id);
+  } catch {
+    return () => true;
+  }
+}
+
 // --- Router -------------------------------------------------------------------
 export const emailTemplatesRouter = router({
   // -- Listar todas las plantillas -------------------------------------------
   list: adminProcedure.query(async () => {
     await ensureTemplatesSeeded();
-    return db.select({
+    const rows = await db.select({
       id: emailTemplates.id,
       name: emailTemplates.name,
       description: emailTemplates.description,
@@ -409,6 +432,8 @@ export const emailTemplatesRouter = router({
       isActive: emailTemplates.isActive,
       updatedAt: emailTemplates.updatedAt,
     }).from(emailTemplates).orderBy(emailTemplates.category, emailTemplates.name);
+    // Solo las de las funciones que tiene la empresa
+    return templatesForCapabilities(rows, await visibleCapability());
   }),
 
   // -- Obtener una plantilla completa (para editar) --------------------------
@@ -560,7 +585,10 @@ export const emailTemplatesRouter = router({
     .input(z.object({ toEmail: z.string().email() }))
     .mutation(async ({ input }) => {
       await ensureTemplatesSeeded();
-      const rows = await db.select().from(emailTemplates).where(eq(emailTemplates.isActive, true));
+      const rows = templatesForCapabilities(
+        await db.select().from(emailTemplates).where(eq(emailTemplates.isActive, true)),
+        await visibleCapability(),
+      );
       const results: { id: string; name: string; ok: boolean; error?: string }[] = [];
 
       for (const row of rows) {
