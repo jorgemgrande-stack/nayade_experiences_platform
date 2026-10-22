@@ -11,7 +11,7 @@
 import { useState, useEffect } from "react";
 import { useParams, useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
-import { usePublicPhone } from "@/hooks/usePublicPhone";
+import { usePublicContact } from "@/hooks/usePublicPhone";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -82,7 +82,7 @@ export default function QuoteAcceptance() {
   const { token } = useParams<{ token: string }>();
   const [, navigate] = useLocation();
 
-  const { phone, phoneTel } = usePublicPhone();
+  const { phone, phoneTel, email, brandName } = usePublicContact();
   const [showRejectForm, setShowRejectForm] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
   const [rejected, setRejected] = useState(false);
@@ -161,11 +161,13 @@ export default function QuoteAcceptance() {
           </p>
           <div className="mt-6 flex flex-col gap-2 text-sm text-gray-500">
             <a href="tel:+34639576627" className="flex items-center justify-center gap-2 hover:text-orange-500">
-              <Phone className="w-4 h-4" /> Llamar a Náyade Experiences
+              <Phone className="w-4 h-4" /> {brandName ? `Llamar a ${brandName}` : "Llamar"}
             </a>
-            <a href="mailto:reservas@nayadeexperiences.es" className="flex items-center justify-center gap-2 hover:text-orange-500">
-              <Mail className="w-4 h-4" /> reservas@nayadeexperiences.es
-            </a>
+            {email && (
+              <a href={`mailto:${email}`} className="flex items-center justify-center gap-2 hover:text-orange-500">
+                <Mail className="w-4 h-4" /> {email}
+              </a>
+            )}
           </div>
         </div>
       </div>
@@ -197,8 +199,8 @@ export default function QuoteAcceptance() {
                 <span className="text-orange-400 font-bold text-sm">N</span>
               </div>
               <div>
-                <p className="text-white font-semibold text-sm">Náyade Experiences</p>
-                <p className="text-white/50 text-xs">Nayade Experiences — Reserva confirmada</p>
+                <p className="text-white font-semibold text-sm">{brandName}</p>
+                <p className="text-white/50 text-xs">{brandName}{brandName && " — "}Reserva confirmada</p>
               </div>
             </div>
             <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 border text-xs font-medium">
@@ -365,9 +367,11 @@ export default function QuoteAcceptance() {
               <a href={phoneTel} className="hover:text-orange-400 flex items-center gap-1">
                 <Phone className="w-3 h-3" /> {phone}
               </a>
-              <a href="mailto:reservas@nayadeexperiences.es" className="hover:text-orange-400 flex items-center gap-1">
-                <Mail className="w-3 h-3" /> reservas@nayadeexperiences.es
-              </a>
+              {email && (
+                <a href={`mailto:${email}`} className="hover:text-orange-400 flex items-center gap-1">
+                  <Mail className="w-3 h-3" /> {email}
+                </a>
+              )}
             </div>
           </div>
         </main>
@@ -388,7 +392,7 @@ export default function QuoteAcceptance() {
           </p>
           <div className="mt-6 flex flex-col gap-2 text-sm text-gray-500">
             <a href="tel:+34639576627" className="flex items-center justify-center gap-2 hover:text-orange-500">
-              <Phone className="w-4 h-4" /> Llamar a Náyade Experiences
+              <Phone className="w-4 h-4" /> {brandName ? `Llamar a ${brandName}` : "Llamar"}
             </a>
           </div>
         </div>
@@ -409,7 +413,7 @@ export default function QuoteAcceptance() {
           </p>
           <div className="mt-6 flex flex-col gap-2 text-sm text-gray-500">
             <a href="tel:+34639576627" className="flex items-center justify-center gap-2 hover:text-orange-500">
-              <Phone className="w-4 h-4" /> Llamar a Náyade Experiences
+              <Phone className="w-4 h-4" /> {brandName ? `Llamar a ${brandName}` : "Llamar"}
             </a>
           </div>
         </div>
@@ -430,8 +434,8 @@ export default function QuoteAcceptance() {
               <span className="text-orange-400 font-bold text-sm">N</span>
             </div>
             <div>
-              <p className="text-white font-semibold text-sm">Náyade Experiences</p>
-              <p className="text-white/50 text-xs">Nayade Experiences — Presupuesto personalizado</p>
+              <p className="text-white font-semibold text-sm">{brandName}</p>
+              <p className="text-white/50 text-xs">{brandName}{brandName && " — "}Presupuesto personalizado</p>
             </div>
           </div>
           <StatusBadge status={quote.status} isExpired={quote.isExpired} />
@@ -685,9 +689,11 @@ export default function QuoteAcceptance() {
             <a href="tel:+34639576627" className="hover:text-orange-400 flex items-center gap-1">
               <Phone className="w-3 h-3" /> Teléfono
             </a>
-            <a href="mailto:reservas@nayadeexperiences.es" className="hover:text-orange-400 flex items-center gap-1">
-              <Mail className="w-3 h-3" /> Email
-            </a>
+            {email && (
+              <a href={`mailto:${email}`} className="hover:text-orange-400 flex items-center gap-1">
+                <Mail className="w-3 h-3" /> Email
+              </a>
+            )}
           </div>
         </div>
       </main>

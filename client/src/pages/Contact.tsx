@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import PublicLayout from "@/components/PublicLayout";
 import { trpc } from "@/lib/trpc";
-import { usePublicPhone } from "@/hooks/usePublicPhone";
+import { usePublicContact } from "@/hooks/usePublicPhone";
 import { toast } from "sonner";
 import { useMarketingConsent } from "@/hooks/useMarketingConsent";
 import { trackEvent } from "@/lib/meta-pixel/client";
@@ -30,7 +30,7 @@ export default function Contact() {
     onError: () => toast.error("Error al enviar el mensaje. Inténtalo de nuevo."),
   });
 
-  const { phone, phoneTel } = usePublicPhone();
+  const { neutral, phone, phoneTel, email, address } = usePublicContact();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -49,11 +49,11 @@ export default function Contact() {
     }
   };
 
-  const contactItems = [
+  const allContactItems = [
     {
       icon: Phone,
       title: "Teléfono",
-      lines: [phone, "Lun-Vie: 9:00 - 19:00"],
+      lines: [phone, neutral ? "" : "Lun-Vie: 9:00 - 19:00"],
       href: phoneTel,
       color: "from-orange-500/20 to-orange-600/10",
       iconColor: "text-orange-400",
@@ -61,28 +61,32 @@ export default function Contact() {
     {
       icon: Mail,
       title: "Email",
-      lines: ["reservas@nayadeexperiences.es", "Respuesta en menos de 24h"],
-      href: "mailto:reservas@nayadeexperiences.es",
+      lines: [email, email ? "Respuesta en menos de 24h" : ""],
+      href: email ? `mailto:${email}` : null,
       color: "from-blue-500/20 to-blue-600/10",
       iconColor: "text-blue-400",
     },
     {
       icon: MapPin,
       title: "Ubicación",
-      lines: ["Los Ángeles de San Rafael, Segovia", "A 45 min de Madrid"],
-      href: "https://maps.google.com/?q=Los+Angeles+de+San+Rafael+Segovia",
+      lines: [address, neutral ? "" : "A 45 min de Madrid"],
+      href: neutral ? (address ? `https://maps.google.com/?q=${encodeURIComponent(address)}` : null) : "https://maps.google.com/?q=Los+Angeles+de+San+Rafael+Segovia",
       color: "from-emerald-500/20 to-emerald-600/10",
       iconColor: "text-emerald-400",
     },
     {
       icon: Clock,
       title: "Horario",
-      lines: ["Lunes a Viernes: 9:00 - 19:00", "Sábados: 10:00 - 14:00"],
+      lines: neutral ? [] : ["Lunes a Viernes: 9:00 - 19:00", "Sábados: 10:00 - 14:00"],
       href: null,
       color: "from-purple-500/20 to-purple-600/10",
       iconColor: "text-purple-400",
     },
   ];
+  // Sin el dato, la tarjeta no se muestra (web de una empresa que aún no lo ha configurado)
+  const contactItems = allContactItems
+    .map((item) => ({ ...item, lines: item.lines.filter(Boolean) }))
+    .filter((item) => item.lines.length > 0);
 
   return (
     <PublicLayout>
@@ -124,7 +128,7 @@ export default function Contact() {
                 Contáctanos
               </h1>
               <p className="text-white/60 text-lg max-w-xl">
-                ¿Tienes alguna pregunta? Nuestro equipo está aquí para ayudarte a planificar tu próxima aventura acuática.
+                ¿Tienes alguna pregunta? Nuestro equipo está aquí para ayudarte{neutral ? "." : " a planificar tu próxima aventura acuática."}
               </p>
             </div>
           </div>
