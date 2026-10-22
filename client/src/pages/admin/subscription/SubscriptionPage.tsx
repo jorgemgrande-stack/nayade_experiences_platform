@@ -254,7 +254,12 @@ export default function SubscriptionPage() {
                 ¿Necesitas más usuarios, más sedes o un módulo que no tienes? Consulta los planes y módulos disponibles.
                 Lo que no está contratado no aparece en tu menú.
               </p>
-              <UpgradeAction url={data.upgradeUrl} label="Ver planes y módulos" />
+              <div className="flex flex-wrap gap-2">
+                <Button asChild>
+                  <Link href="/admin/suscripcion/modulos">Ver módulos y ampliaciones</Link>
+                </Button>
+                <UpgradeAction url={data.upgradeUrl} label="Ver planes" />
+              </div>
               <p className="text-xs text-muted-foreground">
                 Los usuarios de tu equipo se gestionan en <Link href="/admin/usuarios" className="underline underline-offset-4 hover:text-foreground">Usuarios y permisos</Link>.
               </p>
