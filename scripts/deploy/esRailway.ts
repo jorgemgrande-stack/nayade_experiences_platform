@@ -22,6 +22,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { DRILL_IDLE, EXCLUDED_FROM_EXPORT, STORAGE_VARS, describeStorageVar, guard, isAllowedDrill, scrub, type DeployConfig, type TokenScope } from "./esRailwayLib";
+import { REPOSITORIES } from "../../shared/repositories";
 
 const CONFIG_PATH = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../deploy/railway/elephant-source.deploy.json");
 const loadConfig = (): DeployConfig => JSON.parse(fs.readFileSync(CONFIG_PATH, "utf8"));
@@ -182,7 +183,7 @@ async function main() {
     for (const f of EXCLUDED_FROM_EXPORT) if (fs.existsSync(path.join(dir, f))) throw new Error(`el export contiene ${f}: no se despliega`);
     const sid = await serviceId(service!);
     const before = (await latest(sid, sc.environmentId))?.id ?? null;
-    const r = spawnSync("railway", ["up", dir, "--path-as-root", "-s", service!, "-e", env, "--detach", "-m", `nayade_experiences_platform ${sha}`], { encoding: "utf8", env: process.env });
+    const r = spawnSync("railway", ["up", dir, "--path-as-root", "-s", service!, "-e", env, "--detach", "-m", `${REPOSITORIES.core} ${sha}`], { encoding: "utf8", env: process.env });
     if (r.status !== 0) throw new Error(`railway up falló: ${scrub(r.stderr || r.stdout || "").slice(0, 400)}`);
     const d = await waitFor(sid, sc.environmentId, before);
     console.log(`${service}: despliegue ${d.id} → ${d.status}`);
