@@ -34,7 +34,7 @@ describe("ingesta IMAP con credenciales globales en multiempresa", () => {
     process.env.TENANT_MODE = "multi";
     setConnectionResolver((id) => `mysql://u:p@127.0.0.1:1/db_${id}`);
     const r = await withTenantDb("empresa-b", () => runEmailIngestion(false));
-    expect(r.errors.join(" ")).toMatch(/no configurado para esta empresa/);
+    expect(r.errors).toEqual([]);
     expect(r.operationsInserted).toBe(0);
     expect(imap.created).toBe(0);
   });

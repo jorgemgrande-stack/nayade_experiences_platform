@@ -335,7 +335,8 @@ export async function runExpenseEmailIngestion(): Promise<{ processed: number; d
 // ─── CRON + BOOT ─────────────────────────────────────────────────────────────
 
 export function startExpenseEmailIngestionJob(): void {
-  setImmediate(() => {
+  // Pasada inicial solo en la instalación de una sola empresa; en multiempresa, el programador por empresa
+  if (!isMultiTenant()) setImmediate(() => {
     runExpenseEmailIngestion()
       .then(r => {
         if (r.processed > 0 || r.errors > 0) {

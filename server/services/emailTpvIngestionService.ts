@@ -665,7 +665,8 @@ export async function runEmailIngestion(retryErrors = false): Promise<IngestionR
   const cfg: ImapConfig | null = isMultiTenant()
     ? tenantImapConfig("IMAP_TPV")
     : { host: IMAP_HOST, port: IMAP_PORT, secure: IMAP_SECURE, user: IMAP_USER, pass: IMAP_PASS, mailbox: IMAP_MAILBOX, allowedSender: IMAP_ALLOWED_SENDER };
-  if (!cfg) return emptyResult({ errors: ["Buzón de tickets del datáfono no configurado para esta empresa"] });
+  // Empresa sin buzón propio: nada que leer (sin aviso: la tarea corre cada 5 minutos por empresa)
+  if (!cfg) return emptyResult();
   const allowedSender = cfg.allowedSender ?? IMAP_ALLOWED_SENDER;
   if (isRunning) {
     console.log("[EmailTPV] Already running — skipping");
@@ -902,7 +903,8 @@ export async function runEmailIngestion(retryErrors = false): Promise<IngestionR
 // CRON + BOOT
 
 export function startEmailIngestionJob(): void {
-  setImmediate(() => {
+  // Pasada inicial solo en la instalación de una sola empresa; en multiempresa, el programador por empresa
+  if (!isMultiTenant()) setImmediate(() => {
     runEmailIngestion(false)
       .then((r) =>
         console.log(
