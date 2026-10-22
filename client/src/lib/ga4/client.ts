@@ -1,3 +1,5 @@
+import { isTenantSite } from '@/lib/tenantSite';
+
 declare global {
   interface Window {
     gtag?: (...args: unknown[]) => void;
@@ -12,6 +14,8 @@ let ga4Configured = false;
 
 export function initGA4(): void {
   if (typeof window === 'undefined') return;
+  // Web de una empresa: nunca la analítica de la instalación original
+  if (isTenantSite()) return;
   if (ga4Configured) return;
   ga4Configured = true;
 
