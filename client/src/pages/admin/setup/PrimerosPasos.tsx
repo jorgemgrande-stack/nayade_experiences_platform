@@ -355,6 +355,13 @@ function CompanyStep({ initial, fiscalFromRegistry, disabled, onSaved }: { initi
           </select>
         </Field>
       </div>
+      <h3 className="pt-2 text-sm font-semibold">Contacto público</h3>
+      <p className="text-xs text-muted-foreground">Aparece en tu web y en los correos a tus clientes. Si lo dejas vacío, no se muestra.</p>
+      <div className="grid gap-4 sm:grid-cols-2">
+        {input("publicPhone", "Teléfono", { autoComplete: "tel" })}
+        {input("publicEmail", "Email de contacto", { autoComplete: "email" })}
+        {input("publicLocation", "Ubicación", { hint: "Por ejemplo, la ciudad o la dirección donde atiendes a tus clientes." })}
+      </div>
       <Button type="submit" disabled={save.isPending || disabled}>
         {save.isPending && <Loader2 className="mr-1 h-4 w-4 animate-spin" aria-hidden="true" />} Guardar y continuar
       </Button>
