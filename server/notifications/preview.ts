@@ -23,6 +23,7 @@ const SAMPLE: Vars = {
   effectiveFrom: PREVIEW_NOW + 2 * DAY,
   effectiveTo: PREVIEW_NOW + 30 * DAY,
   readOnlyUntil: PREVIEW_NOW + 30 * DAY,
+  archiveAt: PREVIEW_NOW + 7 * DAY,
   productName: "Hotel Net · PMS",
   metric: "users",
   quantity: 8,

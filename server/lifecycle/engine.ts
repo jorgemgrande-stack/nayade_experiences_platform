@@ -15,6 +15,7 @@
  *   vencimiento de la prueba             → la tarea de pruebas existente (`CP_TRIALS_SCHEDULER_ENABLED`);
  *   impago de un pedido cobrado en Stripe → Stripe (sus reintentos deciden la suspensión);
  *   revisión de conservación (D-17)      → un operador. Nada se archiva ni se borra.
+ *   aviso previo al archivado            → evento `access.archive_notice` (lo envía el despachador). No archiva.
  *
  * Idempotente: cada transición la protege su almacén (versión esperada); repetir un tick no repite nada.
  * Sin conversión automática de la prueba a pago (D-16).
@@ -47,7 +48,8 @@ export type LifecycleActionKind =
   | "trial_notice"
   | "trial_expire"
   | "retention_review"
-  | "read_only_end";
+  | "read_only_end"
+  | "archive_notice";
 
 /** Quién ejecuta la acción: este motor, otro proceso existente, el despachador futuro o una persona. */
 export type LifecycleExecutor = "engine" | "trial_scheduler" | "stripe" | "notifications" | "operator";
@@ -77,7 +79,7 @@ export interface LifecycleRun {
   mode: LifecyclePolicy["mode"];
   skipped: "locked" | null;
   planned: LifecyclePlan["counts"];
-  applied: { review: Record<string, number> | null; licenceSynced: number; readOnlyEnded: number };
+  applied: { review: Record<string, number> | null; licenceSynced: number; readOnlyEnded: number; archiveNotices: number };
   errors: number;
 }
 
@@ -95,7 +97,7 @@ export interface LifecycleDeps {
   events?: CommercialEventSink;
   /** Gracia del orquestador (ms). */
   graceMs: number;
-  policy: Pick<LifecyclePolicy, "mode" | "dunningDays" | "trialNoticeDays" | "retentionDays">;
+  policy: Pick<LifecyclePolicy, "mode" | "dunningDays" | "trialNoticeDays" | "retentionDays"> & Partial<Pick<LifecyclePolicy, "archiveNoticeDays">>;
   lock?: { acquire(name: string): Promise<(() => Promise<void>) | null> };
   now?: () => number;
 }
@@ -132,6 +134,13 @@ export class LifecycleEngine {
     const reached = list.filter((d) => (sign === 1 ? from + d * DAY <= now : from - d * DAY <= now));
     if (!reached.length) return null;
     return sign === 1 ? Math.max(...reached) : Math.min(...reached);
+  }
+
+  /** Aviso de archivado que toca ahora (el último umbral alcanzado antes del archivado), o null. */
+  private archiveNotice(endedAt: number, now: number, retention: number): number | null {
+    const list = (this.d.policy.archiveNoticeDays ?? []).filter((d) => d * DAY < retention);
+    if (!list.length || now >= endedAt + retention) return null;
+    return this.lastReached(endedAt, list, now, 1);
   }
 
   /** Licencias propias de un pedido terminado en solo lectura cuyo plazo ya venció. */
@@ -191,6 +200,8 @@ export class LifecycleEngine {
     for (const o of await this.d.orders.list({ states: ["cancelled"], limit: BATCH })) {
       const endedAt = o.updatedAt ?? o.createdAt;
       if (endedAt + retention <= now) actions.push(this.action("retention_review", "operator", endedAt + retention, { orderId: o.id, subscriptionId: o.subscriptionId, tenantId: o.tenantId }, { endedAt }));
+      const notice = this.archiveNotice(endedAt, now, retention);
+      if (notice !== null) actions.push(this.action("archive_notice", "notifications", endedAt + notice * DAY, { orderId: o.id, subscriptionId: o.subscriptionId, tenantId: o.tenantId }, { day: notice, archiveAt: endedAt + retention, companyId: o.companyId ?? null }));
       // Plazo de solo lectura vencido: el acceso ya lo deniega; aquí se cancelan las licencias (registro limpio)
       const expired = await this.readOnlyExpired(o, now);
       if (expired.length) actions.push(this.action("read_only_end", "engine", Math.max(...expired.map((g) => g.validUntil!)), { orderId: o.id, subscriptionId: o.subscriptionId, tenantId: o.tenantId }, { licences: expired.length }));
@@ -205,6 +216,8 @@ export class LifecycleEngine {
           if (d !== null) actions.push(this.action("trial_notice", "notifications", t.endsAt - d * DAY, ids, { daysLeft: d, endsAt: t.endsAt }));
         }
         if (t.state === "expired" && t.endsAt + retention <= now) actions.push(this.action("retention_review", "operator", t.endsAt + retention, ids, { endedAt: t.endsAt }));
+        const notice = t.state === "expired" ? this.archiveNotice(t.endsAt, now, retention) : null;
+        if (notice !== null) actions.push(this.action("archive_notice", "notifications", t.endsAt + notice * DAY, ids, { day: notice, archiveAt: t.endsAt + retention, companyId: null }));
       }
     }
     const counts: LifecyclePlan["counts"] = {};
@@ -214,7 +227,7 @@ export class LifecycleEngine {
 
   /** Un tick: planifica y, en modo «apply», ejecuta lo que corresponde al motor. */
   async run(now = this.now()): Promise<LifecycleRun> {
-    const out: LifecycleRun = { at: now, mode: this.d.policy.mode, skipped: null, planned: {}, applied: { review: null, licenceSynced: 0, readOnlyEnded: 0 }, errors: 0 };
+    const out: LifecycleRun = { at: now, mode: this.d.policy.mode, skipped: null, planned: {}, applied: { review: null, licenceSynced: 0, readOnlyEnded: 0, archiveNotices: 0 }, errors: 0 };
     const release = this.d.lock ? await this.d.lock.acquire(LIFECYCLE_LOCK) : async () => undefined;
     if (!release) {
       out.skipped = "locked";
@@ -278,11 +291,41 @@ export class LifecycleEngine {
             out.errors++;
           }
         }
+        // Avisos previos al archivado: un evento por umbral (la clave lo hace idempotente); lo envía el despachador
+        for (const a of plan.actions.filter((x) => x.kind === "archive_notice")) {
+          if (!this.d.events) break;
+          try {
+            const agg = a.orderId !== null ? { type: "order" as const, id: String(a.orderId) } : { type: "trial" as const, id: String(a.trialId) };
+            const r = await this.d.events.append(null, [
+              {
+                key: `${agg.type}:${agg.id}:archive_notice:${a.detail.day}`,
+                type: "access.archive_notice",
+                aggregate: { ...agg, version: null },
+                correlationId: `${agg.type}:${agg.id}`,
+                tenantId: a.tenantId,
+                companyId: typeof a.detail.companyId === "number" ? a.detail.companyId : null,
+                orderId: a.orderId,
+                subscriptionId: a.subscriptionId,
+                trialId: a.trialId,
+                paymentId: null,
+                stripeRef: null,
+                fromState: null,
+                toState: null,
+                actor: LIFECYCLE_ACTOR,
+                occurredAt: now,
+                data: { day: a.detail.day, archiveAt: a.detail.archiveAt },
+              },
+            ]);
+            out.applied.archiveNotices += r.written;
+          } catch {
+            out.errors++;
+          }
+        }
       }
     } finally {
       await release().catch(() => undefined);
     }
-    if (Object.keys(out.planned).length || out.errors) opsLog(out.errors ? "warn" : "info", "Lifecycle", "tick", { mode: out.mode, planned: out.planned, review: out.applied.review, licenceSynced: out.applied.licenceSynced, readOnlyEnded: out.applied.readOnlyEnded, errors: out.errors });
+    if (Object.keys(out.planned).length || out.errors) opsLog(out.errors ? "warn" : "info", "Lifecycle", "tick", { mode: out.mode, planned: out.planned, review: out.applied.review, licenceSynced: out.applied.licenceSynced, readOnlyEnded: out.applied.readOnlyEnded, archiveNotices: out.applied.archiveNotices, errors: out.errors });
     return out;
   }
 }

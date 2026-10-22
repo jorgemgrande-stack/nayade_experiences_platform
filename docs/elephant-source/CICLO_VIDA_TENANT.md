@@ -18,7 +18,7 @@ Los días se cuentan desde el fin de la prueba sin contratar o desde el fin del 
 | Impago: gracia de 7 días (avisos a 0, 3 y 6) | `grace` | Completo | Sí | Sí | ✅ |
 | Día 0 → 30: solo lectura | `suspended` | Consulta | No | Sí | ✅ |
 | Día 30: fin de solo lectura (licencias canceladas; correo «Ha terminado el periodo de solo lectura») | `suspended` | Solo Suscripción y exportación | No | Sí, hasta el archivado | ✅ |
-| Avisos de archivado: días 60, 83 y 89 («tu entorno se archivará el día X; exporta tus datos») | `suspended` | Igual | No | Sí | 🟡 correos nuevos (hoy no existen) |
+| Avisos de archivado: días 60, 83 y 89 («tu entorno se archivará el día X; exporta tus datos») | `suspended` | Igual | No | Sí | ✅ implementados, apagados: `CP_LIFECYCLE_ARCHIVE_NOTICE_DAYS=60,83,89` con `CP_LIFECYCLE_RETENTION_DAYS=90` |
 | **Día 90: archivado** (operador, tras la revisión que señala el motor) | `archived` | No (410) | No | No | 🟡 `CP_LIFECYCLE_RETENTION_DAYS=90`; el archivado manual ✅ |
 | Archivado → reactivación (contratación nueva o error) | `archived` → `active`/`suspended` | Se recupera todo | — | — | ✅ (transición permitida) |
 | **Día 180: supresión de los datos operativos** (90 días después del archivado) | `deleting` → `deleted` | — | — | — | 🟡 manual, con doble aprobación; nunca automatizada |
@@ -61,7 +61,7 @@ La documentación de la relación contractual se entrega a la empresa a petició
 
 **Implementación, después del lanzamiento, sin borrados automáticos:**
 - `CP_LIFECYCLE_RETENTION_DAYS=90` (configuración, sin código);
-- los tres correos de aviso;
+- ~~los tres correos de aviso~~: hechos (evento `access.archive_notice` y plantilla del catálogo); se encienden con las dos variables de arriba;
 - la orden de supresión manual con simulación, doble aprobación y registro.
 
 Nada de esto bloquea el lanzamiento: sin la configuración de 90 días ni la orden de supresión, ninguna empresa se archiva ni se suprime sola. En la fase 5 de `PLAN_PUBLICACION.md` se anotan las empresas que ya estén en `suspended`, para que ningún archivado se haga antes de tener los avisos.

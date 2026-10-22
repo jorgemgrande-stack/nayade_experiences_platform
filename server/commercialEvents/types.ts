@@ -81,6 +81,7 @@ export const COMMERCIAL_EVENT_TYPES = [
   // Acceso tras terminar: solo lectura (consulta y exportación) durante un plazo y fin de ese plazo
   "access.read_only_started",
   "access.read_only_ended",
+  "access.archive_notice",
 ] as const;
 export type CommercialEventType = (typeof COMMERCIAL_EVENT_TYPES)[number];
 

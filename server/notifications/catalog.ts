@@ -186,6 +186,32 @@ export const TEMPLATE_CATALOG: readonly TemplateSpec[] = [
         panel(v.host, "/admin/suscripcion/exportar"),
       ),
   },
+  {
+    id: "access.archive_notice",
+    version: 1,
+    group: "subscription",
+    status: "active",
+    audience: "transactional",
+    trigger: "Aviso previo al archivado de una cuenta sin uso (contrato terminado o prueba vencida)",
+    events: ["access.archive_notice"],
+    recipient: "billing_contact",
+    category: "access_read_only",
+    variables: ["archiveAt", "host"],
+    sendWhen: "En cada umbral configurado (CP_LIFECYCLE_ARCHIVE_NOTICE_DAYS; propuesta 60, 83 y 89 días tras el fin)",
+    suppressWhen: "Sin umbrales configurados; MAIL_MODE=off; sin contacto de la empresa",
+    idempotency: EVENT_KEY,
+    render: (v, o) =>
+      layout(
+        brand(o.supportEmail),
+        `Tu cuenta se archivará el ${date(v.archiveAt)}`,
+        [
+          `Tu suscripción o tu prueba terminó y la cuenta no está en uso. El ${date(v.archiveAt)} se archivará y dejará de estar accesible.`,
+          "Hasta entonces, la persona propietaria puede descargar una exportación completa de sus datos desde el panel (Suscripción › Exportar mis datos). Te recomendamos hacerlo cuanto antes.",
+          "Si quieres seguir usándola, contrata un plan o escríbenos antes de esa fecha.",
+        ],
+        panel(v.host, "/admin/suscripcion/exportar"),
+      ),
+  },
   // ── Módulos y ampliaciones ──
   contract("module.purchase_requested", "module", "module_change", "Compra enviada a Stripe con cobro pendiente (purchases.ts: payment_pending)", "billing_contact", ["productName", "paymentUrl"], "Si el cobro necesita autenticación o falló"),
   {
