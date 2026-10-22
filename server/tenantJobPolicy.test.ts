@@ -71,9 +71,11 @@ describe("política multiempresa de las tareas programadas", () => {
     expect(Object.keys(JOB_MULTI_POLICIES).sort()).toEqual([...names].sort());
   });
 
-  it("las de buzón IMAP global se desactivan; las demás, por empresa", () => {
+  it("todas por empresa: las de buzón IMAP leen solo el buzón propio de cada empresa (bóveda)", () => {
     const disabled = Object.entries(JOB_MULTI_POLICIES).filter(([, p]) => p.mode === "disabled-in-multi").map(([n]) => n).sort();
-    expect(disabled).toEqual(["email-tpv-ingestion", "expense-email-ingestion"]);
+    expect(disabled).toEqual([]);
+    expect(JOB_MULTI_POLICIES["email-tpv-ingestion"].reason).toMatch(/imap_tpv/);
+    expect(JOB_MULTI_POLICIES["expense-email-ingestion"].reason).toMatch(/imap_expenses/);
   });
 
   it("una tarea sin política no se arranca en multiempresa (falla cerrado)", () => {
@@ -89,11 +91,12 @@ describe("política multiempresa de las tareas programadas", () => {
       [mk("abandoned-checkout"), mk("email-tpv-ingestion"), mk("expense-email-ingestion"), mk("tax-reminder"), mk("tarea-nueva")],
       (l) => lines.push(l),
     );
-    expect(r).toEqual(["abandoned-checkout", "tax-reminder"]);
-    expect(started).toEqual(["abandoned-checkout", "tax-reminder"]);
-    expect(sched.flags).toEqual(["abandoned-checkout", "tax-reminder"]);
-    expect(lines).toHaveLength(3);
-    expect(lines[0]).toMatch(/email-tpv-ingestion' no se arranca en multiempresa: .*IMAP/);
+    const perTenant = ["abandoned-checkout", "email-tpv-ingestion", "expense-email-ingestion", "tax-reminder"];
+    expect(r).toEqual(perTenant);
+    expect(started).toEqual(perTenant);
+    expect(sched.flags).toEqual(perTenant);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toMatch(/tarea-nueva' no se arranca en multiempresa: Sin política/);
     expect(err).not.toHaveBeenCalled();
   });
 });
