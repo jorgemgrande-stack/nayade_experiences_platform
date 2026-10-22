@@ -14,7 +14,7 @@ const FALLBACK_IMAGES: Record<string, string> = {
 };
 
 export default function RestauranteDetail() {
-  const { neutral, email, address } = usePublicContact();
+  const { neutral, email, address, phone } = usePublicContact();
   const { slug } = useParams<{ slug: string }>();
 
   const { data: restaurant, isLoading, error } = trpc.restaurants.getBySlug.useQuery(
@@ -200,11 +200,13 @@ export default function RestauranteDetail() {
                 )}
 
                 {/* Teléfono */}
-                <a href={`tel:${restaurant.phone || "+34639576627"}`}>
-                  <Button variant="outline" className="w-full font-display font-semibold rounded-full py-3 text-base border-primary/30 text-primary hover:bg-primary/5">
-                    <Phone className="w-4 h-4 mr-2" /> {restaurant.phone || "+34 639 57 66 27"}
-                  </Button>
-                </a>
+                {(restaurant.phone || phone) && (
+                  <a href={`tel:${restaurant.phone || phone}`}>
+                    <Button variant="outline" className="w-full font-display font-semibold rounded-full py-3 text-base border-primary/30 text-primary hover:bg-primary/5">
+                      <Phone className="w-4 h-4 mr-2" /> {restaurant.phone || phone}
+                    </Button>
+                  </a>
+                )}
 
                 {/* Email */}
                 {(restaurant.email || email) && (

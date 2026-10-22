@@ -11,6 +11,7 @@ import { useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
+import { usePublicContact } from "@/hooks/usePublicPhone";
 import {
   LayoutDashboard, User, FileText, LogOut, Loader2, Phone, Clock, Banknote, CalendarOff,
 } from "lucide-react";
@@ -46,6 +47,9 @@ export default function EmployeeLayout({ children }: { children: React.ReactNode
 function EmployeeLayoutInner({ user, location, navigate, logout, children }: {
   user: any; location: string; navigate: any; logout: any; children: React.ReactNode;
 }) {
+  // Web neutra de cada empresa: su teléfono, nunca el de la instalación original
+  const { neutral, phone } = usePublicContact();
+  const contactPhone = neutral ? phone : NAYADE_PHONE;
   const { data: publicSettings } = trpc.config.getPublicSettings.useQuery(undefined, { staleTime: 5 * 60 * 1000 });
   const { data: me } = trpc.hr.portal.me.useQuery();
 
@@ -69,14 +73,15 @@ function EmployeeLayoutInner({ user, location, navigate, logout, children }: {
             </div>
 
             <div className="flex items-center gap-2">
-              <a
-                href={`tel:${NAYADE_PHONE}`}
-                className="hidden sm:flex items-center gap-1.5 text-xs text-white/50 hover:text-orange-400 transition-colors border border-white/10 hover:border-orange-500/30 rounded-lg px-2.5 py-1.5"
-                title="Llamar a Náyade"
-              >
-                <Phone className="w-3.5 h-3.5" />
-                {NAYADE_PHONE}
-              </a>
+              {contactPhone && (
+                <a href={`tel:${contactPhone}`}
+                  className="hidden sm:flex items-center gap-1.5 text-xs text-white/50 hover:text-orange-400 transition-colors border border-white/10 hover:border-orange-500/30 rounded-lg px-2.5 py-1.5"
+                  title="Llamar a Náyade"
+                >
+                  <Phone className="w-3.5 h-3.5" />
+                  {contactPhone}
+                </a>
+              )}
               <button
                 onClick={() => logout().then(() => navigate("/login"))}
                 className="text-white/30 hover:text-white/70 transition-colors p-1.5"
@@ -116,9 +121,11 @@ function EmployeeLayoutInner({ user, location, navigate, logout, children }: {
       <footer className="border-t border-white/[0.06] py-4 mt-8">
         <div className="max-w-5xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2 text-[11px] text-white/25">
           <span>Portal del Empleado · Náyade Experiences</span>
-          <a href={`tel:${NAYADE_PHONE}`} className="hover:text-white/50 transition-colors flex items-center gap-1">
-            <Phone className="w-3 h-3" /> {NAYADE_PHONE}
-          </a>
+          {contactPhone && (
+            <a href={`tel:${contactPhone}`} className="hover:text-white/50 transition-colors flex items-center gap-1">
+              <Phone className="w-3 h-3" /> {contactPhone}
+            </a>
+          )}
         </div>
       </footer>
     </div>
