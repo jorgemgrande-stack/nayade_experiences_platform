@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
+import { usePublicContact } from "@/hooks/usePublicPhone";
 import { LogOut, Loader2, Package, Euro, TrendingUp, Receipt } from "lucide-react";
 
 const LOGO = "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/nayade_blue_e9563f49.png";
@@ -36,6 +37,8 @@ const SETTLEMENT_STATUS: Record<string, string> = {
 const eur = (n: number) => `${n.toFixed(2).replace(".", ",")} €`;
 
 export default function SupplierDashboard() {
+  const { neutral, brandName, logoUrl } = usePublicContact();
+  const logo = neutral ? logoUrl : LOGO;
   const { user, loading, logout } = useAuth();
   const [location, navigate] = useLocation();
 
@@ -70,7 +73,7 @@ export default function SupplierDashboard() {
       {/* Header */}
       <header className="sticky top-0 z-40 bg-[#0a1628]/95 border-b border-white/[0.07] backdrop-blur-md">
         <div className="max-w-5xl mx-auto px-4 flex items-center justify-between h-14">
-          <img src={LOGO} alt="Nayade Experiences" className="h-7 w-auto object-contain" />
+          {logo ? <img src={logo} alt={brandName} className="h-7 w-auto object-contain" /> : <span className="font-semibold text-white text-sm">{brandName}</span>}
           <div className="hidden sm:flex flex-col items-center">
             <span className="text-xs font-bold text-orange-400 uppercase tracking-wider">{supplierName}</span>
             <span className="text-[11px] text-white/40">{(user as any).name ?? (user as any).email}</span>
@@ -205,7 +208,7 @@ export default function SupplierDashboard() {
 
       <footer className="border-t border-white/[0.06] py-4 mt-8">
         <div className="max-w-5xl mx-auto px-4 text-[11px] text-white/25">
-          Portal de Proveedores · Nayade Experiences
+          Portal de Proveedores{brandName && ` · ${brandName}`}
         </div>
       </footer>
     </div>

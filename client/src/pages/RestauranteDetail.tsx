@@ -3,6 +3,7 @@ import PublicLayout from "@/components/PublicLayout";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, ArrowRight, Clock, Phone, Mail, MapPin, Loader2, Users, BookOpen } from "lucide-react";
 import { trpc } from "@/lib/trpc";
+import { usePublicContact } from "@/hooks/usePublicPhone";
 import { ReviewSection } from "@/components/ReviewSection";
 
 const FALLBACK_IMAGES: Record<string, string> = {
@@ -13,6 +14,7 @@ const FALLBACK_IMAGES: Record<string, string> = {
 };
 
 export default function RestauranteDetail() {
+  const { neutral, email, address } = usePublicContact();
   const { slug } = useParams<{ slug: string }>();
 
   const { data: restaurant, isLoading, error } = trpc.restaurants.getBySlug.useQuery(
@@ -175,7 +177,7 @@ export default function RestauranteDetail() {
                 <div className="border-t border-border/40 pt-5">
                   <div className="flex items-start gap-2 text-sm text-muted-foreground font-display mb-3">
                     <MapPin className="w-4 h-4 text-accent mt-0.5 shrink-0" />
-                    <span>{restaurant.location || "Los Ángeles de San Rafael, Segovia"}</span>
+                    <span>{restaurant.location || (neutral ? address : "Los Ángeles de San Rafael, Segovia")}</span>
                   </div>
                 </div>
 
@@ -205,12 +207,14 @@ export default function RestauranteDetail() {
                 </a>
 
                 {/* Email */}
-                <a
-                  href={`mailto:${restaurant.email || "reservas@nayadeexperiences.es"}`}
-                  className="flex items-center justify-center gap-2 text-sm text-muted-foreground hover:text-accent font-display transition-colors pt-2"
-                >
-                  <Mail className="w-4 h-4" /> {restaurant.email || "reservas@nayadeexperiences.es"}
-                </a>
+                {(restaurant.email || email) && (
+                  <a
+                    href={`mailto:${restaurant.email || email}`}
+                    className="flex items-center justify-center gap-2 text-sm text-muted-foreground hover:text-accent font-display transition-colors pt-2"
+                  >
+                    <Mail className="w-4 h-4" /> {restaurant.email || email}
+                  </a>
+                )}
 
                 {/* Grupo máximo */}
                 {restaurant.maxGroupSize && (

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
+import { usePublicContact } from "@/hooks/usePublicPhone";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -24,6 +25,7 @@ const REASONS = [
 ];
 
 export default function SolicitarAnulacion() {
+  const { email, brandName } = usePublicContact();
   const [form, setForm] = useState({
     fullName: "",
     email: "",
@@ -124,7 +126,7 @@ export default function SolicitarAnulacion() {
         <div className="bg-amber-500/5 border border-amber-500/20 rounded-xl p-4 mb-8 flex gap-3">
           <AlertTriangle className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
           <p className="text-amber-200/80 text-sm leading-relaxed">
-            Las anulaciones están sujetas a los términos y condiciones de Náyade Experiences. La aceptación
+            Las anulaciones están sujetas a los términos y condiciones de {brandName || "la empresa"}. La aceptación
             de la solicitud dependerá del motivo y la documentación aportada.
           </p>
         </div>
@@ -279,10 +281,10 @@ export default function SolicitarAnulacion() {
             />
             <label htmlFor="terms" className="text-gray-400 text-sm leading-relaxed cursor-pointer">
               He leído y acepto los{" "}
-              <a href="/terminos-y-condiciones" target="_blank" className="text-orange-400 hover:underline">
+              <a href="/terminos" target="_blank" className="text-orange-400 hover:underline">
                 términos y condiciones
               </a>{" "}
-              de Náyade Experiences, incluyendo la política de anulaciones y devoluciones.
+              de {brandName || "la empresa"}, incluyendo la política de anulaciones y devoluciones.
               <span className="text-red-400 ml-1">*</span>
             </label>
           </div>
@@ -306,12 +308,14 @@ export default function SolicitarAnulacion() {
         </form>
 
         {/* Footer */}
-        <p className="text-center text-gray-600 text-sm mt-6">
-          ¿Tienes dudas? Contacta con nosotros en{" "}
-          <a href="mailto:reservas@nayadeexperiences.es" className="text-orange-400 hover:underline">
-            reservas@nayadeexperiences.es
-          </a>
-        </p>
+        {email && (
+          <p className="text-center text-gray-600 text-sm mt-6">
+            ¿Tienes dudas? Contacta con nosotros en{" "}
+            <a href={`mailto:${email}`} className="text-orange-400 hover:underline">
+              {email}
+            </a>
+          </p>
+        )}
       </div>
     </div>
   );

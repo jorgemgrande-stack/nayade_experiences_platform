@@ -30,6 +30,8 @@ export function usePublicContact() {
     phoneTel,
     email: neutral ? (t?.contact.email ?? "") : SINGLE_CONTACT.email,
     address: neutral ? (t?.contact.address ?? "") : SINGLE_CONTACT.address,
+    /** Logo de la empresa en la web neutra (en la instalación original, cada página usa el suyo). */
+    logoUrl: neutral ? (t?.logoUrl ?? null) : null,
     /** Imagen principal de la web de la empresa (en la instalación original, cada página usa la suya). */
     heroImage: neutral ? (t?.login.backgroundSource === "web" ? t.login.backgroundUrl : null) : null,
   };
