@@ -175,7 +175,8 @@ describe("productos: textos y convención de precio unificados (Essential)", () 
     const wizard = fs.readFileSync(path.join(__dirname, "../client/src/pages/admin/setup/PrimerosPasos.tsx"), "utf8");
     expect(manager).toContain(`isNewCompany ? "Crear producto" : "Crear Experiencia"`);
     expect(manager).toContain(`"Precio (€, impuestos incluidos)"`);
-    expect(wizard).toContain(`label="Precio (€, impuestos incluidos)"`);
+    // En el asistente, con la moneda elegida en «Empresa» (€ para el euro)
+    expect(wizard).toContain('label={`Precio (${currency === "EUR" ? "€" : currency}, impuestos incluidos)`}');
     expect(wizard).not.toContain("sin impuestos");
     // Lo que se guarda no cambia: el asistente envía el precio tal cual como basePrice
     expect(wizard).toContain("basePrice: price.toFixed(2)");

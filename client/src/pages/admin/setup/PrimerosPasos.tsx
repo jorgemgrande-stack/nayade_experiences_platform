@@ -230,7 +230,7 @@ export default function PrimerosPasos() {
                 <BrandIdentityEditor variant="onboarding" onSaved={() => void complete("brand", "done")} />
               ))}
             {current === "client" && <ClientStep noun={activity.clientNoun} disabled={readOnly} onCreated={() => complete("client", "done")} />}
-            {current === "product" && <ProductStep noun={activity.productNoun} example={activity.productExample} disabled={readOnly} onCreated={() => complete("product", "done")} />}
+            {current === "product" && <ProductStep noun={activity.productNoun} example={activity.productExample} currency={d.company.currency || "EUR"} disabled={readOnly} onCreated={() => complete("product", "done")} />}
             {current === "operation" && <OperationStep disabled={readOnly} onCreated={() => complete("operation", "done")} />}
             {current === "users" && <UsersStep disabled={readOnly} onInvited={() => utils.setupWizard.status.invalidate()} />}
             {current === "finish" && <FinishStep steps={d.progress.steps} completedAt={d.progress.completedAt} onGo={go} />}
@@ -471,7 +471,7 @@ function ClientStep({ noun, disabled, onCreated }: { noun: string; disabled: boo
 
 // ─── Paso 4: primer producto o servicio ───────────────────────────────────────
 
-function ProductStep({ noun, example, disabled, onCreated }: { noun: string; example: string; disabled: boolean; onCreated: () => Promise<void> }) {
+function ProductStep({ noun, example, currency, disabled, onCreated }: { noun: string; example: string; currency: string; disabled: boolean; onCreated: () => Promise<void> }) {
   const utils = trpc.useUtils();
   const categories = trpc.products.getCategories.useQuery();
   const locations = trpc.products.getLocations.useQuery();
@@ -522,7 +522,7 @@ function ProductStep({ noun, example, disabled, onCreated }: { noun: string; exa
         <Field id="pr-title" label="Nombre" error={errors.title} hint={`Por ejemplo: ${example}`} required>
           <Input id="pr-title" value={v.title} onChange={(e) => setV((x) => ({ ...x, title: e.target.value }))} aria-invalid={!!errors.title} aria-required aria-describedby={describedBy("pr-title", errors.title, `Por ejemplo: ${example}`)} disabled={disabled} />
         </Field>
-        <Field id="pr-price" label="Precio (€, impuestos incluidos)" error={errors.price} required>
+        <Field id="pr-price" label={`Precio (${currency === "EUR" ? "€" : currency}, impuestos incluidos)`} error={errors.price} required>
           <Input id="pr-price" inputMode="decimal" value={v.price} onChange={(e) => setV((x) => ({ ...x, price: e.target.value }))} aria-invalid={!!errors.price} aria-required aria-describedby={describedBy("pr-price", errors.price)} disabled={disabled} />
         </Field>
         <Field id="pr-tax" label="Impuesto (IVA)" error={errors.tax} required>
