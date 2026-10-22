@@ -1,6 +1,6 @@
-import { ENV } from "./env";
 import { Metrics, meter } from "./metering";
 import { enforceQuota } from "./erm/runtime";
+import { AiUnavailableError, resolveAiProvider } from "../ai/provider";
 
 export type Role = "system" | "user" | "assistant" | "tool" | "function";
 
@@ -211,17 +211,6 @@ const normalizeToolChoice = (
   return toolChoice;
 };
 
-const resolveApiUrl = () =>
-  ENV.forgeApiUrl && ENV.forgeApiUrl.trim().length > 0
-    ? `${ENV.forgeApiUrl.replace(/\/$/, "")}/v1/chat/completions`
-    : "https://forge.manus.im/v1/chat/completions";
-
-const assertApiKey = () => {
-  if (!ENV.forgeApiKey) {
-    throw new Error("OPENAI_API_KEY is not configured");
-  }
-};
-
 const normalizeResponseFormat = ({
   responseFormat,
   response_format,
@@ -268,7 +257,9 @@ const normalizeResponseFormat = ({
 };
 
 export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
-  assertApiKey();
+  // Proveedor de la empresa en curso (propio, central de Big Elephant o ninguno); nunca la cuenta de otra instalación
+  const provider = resolveAiProvider();
+  if (!provider) throw new AiUnavailableError();
   // Cuota mensual de tokens del tenant (cantidad 0: solo comprueba que no esté ya excedida)
   await enforceQuota(Metrics.LLM_TOKENS_INPUT, 0);
 
@@ -284,7 +275,7 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
   } = params;
 
   const payload: Record<string, unknown> = {
-    model: "gemini-2.5-flash",
+    model: provider.model,
     messages: messages.map(normalizeMessage),
   };
 
@@ -301,7 +292,7 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
   }
 
   payload.max_tokens = 32768
-  payload.thinking = {
+  if (provider.source === "installation") payload.thinking = {
     "budget_tokens": 128
   }
 
@@ -316,11 +307,11 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
     payload.response_format = normalizedResponseFormat;
   }
 
-  const response = await fetch(resolveApiUrl(), {
+  const response = await fetch(provider.chatUrl, {
     method: "POST",
     headers: {
       "content-type": "application/json",
-      authorization: `Bearer ${ENV.forgeApiKey}`,
+      authorization: `Bearer ${provider.apiKey}`,
     },
     body: JSON.stringify(payload),
   });
