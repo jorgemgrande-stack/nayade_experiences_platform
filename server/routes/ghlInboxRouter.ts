@@ -28,6 +28,7 @@ import { legacyDb, legacyPool } from "../_core/legacyDb";
 import { integrationEnv } from "../_core/tenantConfig";
 import { revealLegacySecret } from "../_core/credentials/legacyFields";
 import { checkWebhookSecret } from "../_core/webhookSecret";
+import { legacyBrandText } from "../tenantBrand";
 
 const _pool = legacyPool();
 const db = legacyDb();
@@ -312,7 +313,7 @@ async function fetchAndSyncMessages(convId: string, limit = 25): Promise<void> {
           messageType: m.messageType ?? m.type?.toString() ?? "text",
           body: body || undefined,
           attachmentsJson: m.attachments?.length ? m.attachments : undefined,
-          senderName: dir === "inbound" ? (m.contactName ?? undefined) : (m.userId ? "Nayade" : "Nayade"),
+          senderName: dir === "inbound" ? (m.contactName ?? undefined) : legacyBrandText("Nayade"),
           sentAt,
           deliveryStatus: m.status ?? undefined,
           rawPayloadJson: m,
@@ -441,7 +442,7 @@ async function processWebhookEvent(eventRowId: number, payload: any, eventType: 
           attachmentsJson: payload.attachments ?? message.attachments ?? undefined,
           senderName: isInbound
             ? (contact.name ?? payload.contactName ?? undefined)
-            : (payload.senderName ?? "Nayade"),
+            : (payload.senderName ?? legacyBrandText("Nayade")),
           sentAt,
           deliveryStatus: payload.status ?? message.status ?? undefined,
           rawPayloadJson: payload,
@@ -713,7 +714,7 @@ ghlInboxRouter.post(
         log("warn", "Error al enviar mensaje via GHL API", { status: ghlRes.status, body: errText.slice(0, 200) });
         return res.status(200).json({
           ok: false,
-          message: `El envío de WhatsApp desde Nayade todavía no está habilitado para esta cuenta GHL. (${ghlRes.status})`,
+          message: `El envío de WhatsApp desde el panel todavía no está habilitado para esta cuenta GHL. (${ghlRes.status})`,
         });
       }
 
@@ -739,7 +740,7 @@ ghlInboxRouter.post(
         direction: "outbound",
         messageType: "text",
         body: message,
-        senderName: "Nayade",
+        senderName: legacyBrandText("Nayade"),
         sentAt: new Date(),
         deliveryStatus: "sent",
         rawPayloadJson: data,
@@ -762,7 +763,7 @@ ghlInboxRouter.post(
       log("error", "Excepción enviando mensaje GHL", { error: err.message });
       return res.status(200).json({
         ok: false,
-        message: `El envío de WhatsApp desde Nayade todavía no está habilitado para esta cuenta GHL.`,
+        message: `El envío de WhatsApp desde el panel todavía no está habilitado para esta cuenta GHL.`,
       });
     }
   }
@@ -909,7 +910,7 @@ ghlInboxRouter.post("/api/ghl/conversations/new", newConversationLimiter, expres
         direction: "outbound",
         messageType: "text",
         body: preview,
-        senderName: "Nayade",
+        senderName: legacyBrandText("Nayade"),
         sentAt: new Date(),
         deliveryStatus: "sent",
         rawPayloadJson: msgData,

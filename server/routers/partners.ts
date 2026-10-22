@@ -121,8 +121,8 @@ async function generatePartnerBillingPdfAndUpload(data: {
     </div>
     <div class="company-info">
       <strong>${data.companyData?.name ?? legacyBrandText("Náyade Experiences S.L.")}</strong>
-      ${data.companyData?.address ?? "Los Ángeles de San Rafael, Segovia"}<br/>
-      ${data.companyData?.email ?? "reservas@nayadeexperiences.es"} &middot; ${data.companyData?.phone ?? "+34 639 57 66 27"}
+      ${data.companyData?.address ?? legacyBrandSetting("brand_address", "Los Ángeles de San Rafael, Segovia")}<br/>
+      ${data.companyData?.email ?? legacyBrandSetting("site_business_email", "reservas@nayadeexperiences.es")} &middot; ${data.companyData?.phone ?? legacyBrandSetting("brand_phone", "+34 639 57 66 27")}
     </div>
   </div>
   <div class="doc-type-band">
@@ -135,7 +135,7 @@ async function generatePartnerBillingPdfAndUpload(data: {
     <div class="party">
       <h3>Emisor</h3>
       <p><strong>${data.companyData?.name ?? legacyBrandText("Náyade Experiences S.L.")}</strong><br/>
-      ${data.companyData?.address ?? "Los Ángeles de San Rafael, Segovia"}<br/>
+      ${data.companyData?.address ?? legacyBrandSetting("brand_address", "Los Ángeles de San Rafael, Segovia")}<br/>
       CIF: ${data.companyData?.cif ?? ""}</p>
     </div>
     <div class="party">
