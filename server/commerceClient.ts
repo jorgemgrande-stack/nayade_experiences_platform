@@ -47,6 +47,8 @@ export interface CommerceClient {
   /** Portal de facturación de Stripe: ¿disponible? y sesión para la empresa (solo facturas y método de pago). */
   billingPortalStatus(): Promise<{ enabled: boolean }>;
   billingPortal(tenantId: string, returnUrl: string): Promise<{ url: string }>;
+  /** Catálogo de módulos y ampliaciones para el panel de la empresa (solo lectura). */
+  catalog(tenantId: string): Promise<unknown>;
 }
 
 type Fetch = (url: string, init: { method: string; headers: Record<string, string>; body?: string; signal?: AbortSignal }) => Promise<{ status: number; json(): Promise<unknown> }>;
@@ -89,6 +91,7 @@ export function commerceClientFromEnv(env: NodeJS.ProcessEnv = process.env, fetc
     withdrawalStatus: async (tenantId) => ((await call("GET", `${seg(tenantId)}/withdrawal`)) as { withdrawal: unknown }).withdrawal,
     withdraw: async (tenantId, input) => await call("POST", `${seg(tenantId)}/withdrawal`, input),
     billingPortalStatus: async () => (await call("GET", "/billing-portal/status")) as { enabled: boolean },
+    catalog: async (tenantId) => ((await call("GET", `${seg(tenantId)}/catalog`)) as { catalog: unknown }).catalog,
     billingPortal: async (tenantId, returnUrl) => (await call("POST", `${seg(tenantId)}/billing-portal`, { returnUrl })) as { url: string },
   };
 }

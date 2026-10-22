@@ -17,6 +17,7 @@ import { getTenantId } from "../_core/tenant";
 import { CommerceError, commerceClientFromEnv, type CommerceClient } from "../commerceClient";
 import { isCompanyOwnerUser } from "../_core/companyOwner";
 import { getTrustedBaseUrl } from "../_core/publicUrl";
+import { panelModules, type PanelCatalogItemView } from "../panelModules";
 
 /** Qué se quiere comprar: solo claves y totales. Importes y derechos los calcula el plano de control. */
 const purchaseInput = z
@@ -69,6 +70,25 @@ export const subscriptionRouter = router({
     }
     const usedUsers = await countPanelUsers();
     return buildSubscriptionOverview({ mode, enforcing: access.enforcing(), grants, now: access.currentTime(), usedUsers, upgradeUrl });
+  }),
+  /**
+   * Módulos y ampliaciones de la plataforma con su estado para ESTA empresa (incluido, solo lectura, a la venta, bajo
+   * petición, próximamente). Solo lectura. `null` si no hay canal con el plano de control o fuera de multiempresa:
+   * la pantalla muestra entonces solo el enlace de contratación.
+   */
+  catalog: protectedProcedure.query(async ({ ctx }) => {
+    if (!(PANEL_ROLES as readonly string[]).includes(String(ctx.user.role))) throw new TRPCError({ code: "FORBIDDEN" });
+    const client = commerceClientFromEnv();
+    if (getTenantMode() !== "multi" || !client) return null;
+    const access = getCapabilityAccess();
+    try {
+      const [catalog, grants] = await Promise.all([client.catalog(getTenantId()) as Promise<{ purchasesEnabled: boolean; items: PanelCatalogItemView[] }>, access.list()]);
+      // Solo la administración compra: al resto se le muestra el catálogo sin el botón
+      const out = panelModules(catalog, grants, access.currentTime());
+      return { ...out, canPurchase: String(ctx.user.role) === "admin" && out.purchasesEnabled };
+    } catch {
+      throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "No se pudo consultar el catálogo de módulos. Inténtalo de nuevo en unos minutos." });
+    }
   }),
   /** Vista previa de una compra: partidas y prorrateo calculados por el plano de control (no cambia nada). */
   purchasePreview: protectedProcedure.input(purchaseInput).mutation(({ ctx, input }) => commerce(String(ctx.user.role), (c, t) => c.preview(t, input))),
