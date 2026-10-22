@@ -120,7 +120,7 @@ async function generatePartnerBillingPdfAndUpload(data: {
       </div>
     </div>
     <div class="company-info">
-      <strong>${data.companyData?.name ?? "Náyade Experiences S.L."}</strong>
+      <strong>${data.companyData?.name ?? legacyBrandText("Náyade Experiences S.L.")}</strong>
       ${data.companyData?.address ?? "Los Ángeles de San Rafael, Segovia"}<br/>
       ${data.companyData?.email ?? "reservas@nayadeexperiences.es"} &middot; ${data.companyData?.phone ?? "+34 639 57 66 27"}
     </div>
@@ -134,7 +134,7 @@ async function generatePartnerBillingPdfAndUpload(data: {
   <div class="parties">
     <div class="party">
       <h3>Emisor</h3>
-      <p><strong>${data.companyData?.name ?? "Náyade Experiences S.L."}</strong><br/>
+      <p><strong>${data.companyData?.name ?? legacyBrandText("Náyade Experiences S.L.")}</strong><br/>
       ${data.companyData?.address ?? "Los Ángeles de San Rafael, Segovia"}<br/>
       CIF: ${data.companyData?.cif ?? ""}</p>
     </div>
@@ -171,7 +171,7 @@ async function generatePartnerBillingPdfAndUpload(data: {
 
   </div>
   <div class="footer">
-    <p>${data.companyData?.name ?? "Náyade Experiences S.L."} &middot; ${legacySiteHost("www.skicenter.es")}</p>
+    <p>${data.companyData?.name ?? legacyBrandText("Náyade Experiences S.L.")} &middot; ${legacySiteHost("www.skicenter.es")}</p>
     <p>Documento de liquidación de las reservas intermediadas por el partner durante el período indicado.</p>
   </div>
 </body>
