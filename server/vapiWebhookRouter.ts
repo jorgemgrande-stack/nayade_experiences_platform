@@ -23,6 +23,7 @@ import { legacyDb, legacyPool } from "./_core/legacyDb";
 import { integrationEnv } from "./_core/tenantConfig";
 import { isMultiTenant } from "./_core/tenant";
 import { checkWebhookSecret, webhookSecretMatches } from "./_core/webhookSecret";
+import { placeholderEmail } from "../shared/placeholderEmail";
 
 const _pool = legacyPool();
 const _db = legacyDb();
@@ -233,7 +234,7 @@ vapiWebhookRouter.post("/api/vapi/webhook", express.json({ limit: "1mb" }), asyn
     // 4. Crear lead (source=vapi_llamada → no se reenvía a GHL)
     const leadId = await createLead({
       name,
-      email: email || `vapi-${Date.now()}@noreply.nayade`,
+      email: email || placeholderEmail("vapi", Date.now()),
       phone,
       company,
       message,
@@ -243,7 +244,7 @@ vapiWebhookRouter.post("/api/vapi/webhook", express.json({ limit: "1mb" }), asyn
 
     // 4b. Auto-crear cliente si no existe (para que aparezca en /admin/crm/clientes)
     try {
-      const effectiveEmail = email || `vapi-${leadId}@noreply.nayade`;
+      const effectiveEmail = email || placeholderEmail("vapi", leadId);
       await _pool.execute(
         `INSERT IGNORE INTO clients (leadId, source, name, email, phone, isConverted, totalBookings, totalSpent, createdAt, updatedAt)
          VALUES (?, 'lead', ?, ?, ?, 0, 0, '0', NOW(), NOW())`,

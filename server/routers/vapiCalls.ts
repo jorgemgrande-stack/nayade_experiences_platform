@@ -12,6 +12,7 @@ import { createLead } from "../db";
 import { legacyDb, legacyPool } from "../_core/legacyDb";
 import { integrationEnv } from "../_core/tenantConfig";
 import { MIN_WEBHOOK_SECRET_LENGTH, usableWebhookSecret } from "../_core/webhookSecret";
+import { placeholderEmail } from "../../shared/placeholderEmail";
 
 const _pool = legacyPool();
 const db = legacyDb();
@@ -201,7 +202,7 @@ export const vapiCallsRouter = router({
 
       const { id: leadId } = await createLead({
         name: call.customerName || "Llamada Vapi",
-        email: call.customerEmail || `vapi-${call.vapiCallId}@noreply.nayade`,
+        email: call.customerEmail || placeholderEmail("vapi", call.vapiCallId),
         phone: call.phoneNumber ?? undefined,
         message: notes || "Lead creado desde llamada del Agente IA Vapi",
         source: "Agente IA Vapi",
