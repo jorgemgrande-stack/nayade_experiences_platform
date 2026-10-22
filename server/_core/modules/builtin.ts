@@ -9,9 +9,39 @@ import type { ModuleManifest } from "./contract";
 import { getModuleRegistry } from "./runtime";
 
 export const BUILTIN_MODULES: ModuleManifest[] = [
-  { id: "cms", name: "CMS y sitio web", version: "1.0.0", kind: "core", coreRange: "^1.0.0", includedInBase: true },
-  { id: "commerce", name: "Comercio y reservas", version: "1.0.0", kind: "core", coreRange: "^1.0.0", includedInBase: true },
-  { id: "tpv", name: "TPV", version: "1.0.0", kind: "core", coreRange: "^1.0.0", includedInBase: true },
+  {
+    id: "cms",
+    name: "CMS y sitio web",
+    version: "1.0.0",
+    kind: "core",
+    coreRange: "^1.0.0",
+    includedInBase: true,
+    description: "Web pública, páginas, menús y multimedia",
+    resources: ["http.request", "storage.write.bytes"],
+    source: { location: "core" },
+  },
+  {
+    id: "commerce",
+    name: "Comercio y reservas",
+    version: "1.0.0",
+    kind: "core",
+    coreRange: "^1.0.0",
+    includedInBase: true,
+    description: "Catálogo, reservas y pagos online",
+    resources: ["http.request", "email.sent"],
+    source: { location: "core" },
+  },
+  {
+    id: "tpv",
+    name: "TPV",
+    version: "1.0.0",
+    kind: "core",
+    coreRange: "^1.0.0",
+    includedInBase: true,
+    description: "Punto de venta presencial",
+    resources: ["http.request"],
+    source: { location: "core" },
+  },
   {
     id: "hotel",
     name: "Hotel",
@@ -20,6 +50,9 @@ export const BUILTIN_MODULES: ModuleManifest[] = [
     coreRange: "^1.0.0",
     dependsOn: [{ id: "commerce", range: "^1.0.0" }],
     permissions: [{ key: "hotel.manage", description: "Gestionar habitaciones, tarifas y reservas de hotel" }],
+    description: "Habitaciones, tarifas, temporadas y reservas de alojamiento",
+    resources: ["http.request", "email.sent", "storage.write.bytes"],
+    source: { location: "core" },
   },
   {
     id: "spa",
@@ -29,6 +62,9 @@ export const BUILTIN_MODULES: ModuleManifest[] = [
     coreRange: "^1.0.0",
     dependsOn: [{ id: "commerce", range: "^1.0.0" }],
     permissions: [{ key: "spa.manage", description: "Gestionar tratamientos y reservas de spa" }],
+    description: "Tratamientos, recursos, agenda y reservas de spa",
+    resources: ["http.request", "email.sent"],
+    source: { location: "core" },
   },
   {
     id: "restaurants",
@@ -38,6 +74,9 @@ export const BUILTIN_MODULES: ModuleManifest[] = [
     coreRange: "^1.0.0",
     dependsOn: [{ id: "commerce", range: "^1.0.0" }],
     permissions: [{ key: "restaurants.manage", description: "Gestionar turnos, mesas y reservas de restaurante" }],
+    description: "Turnos, mesas y reservas de restaurante",
+    resources: ["http.request", "email.sent"],
+    source: { location: "core" },
   },
 ];
 
