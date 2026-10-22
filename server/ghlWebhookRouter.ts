@@ -18,6 +18,7 @@ import { legacyDb, legacyPool } from "./_core/legacyDb";
 import { integrationEnv } from "./_core/tenantConfig";
 import { isMultiTenant } from "./_core/tenant";
 import { checkWebhookSecret, webhookSecretMatches } from "./_core/webhookSecret";
+import { placeholderEmail } from "../shared/placeholderEmail";
 
 const _pool = legacyPool();
 const _db = legacyDb();
@@ -176,7 +177,7 @@ ghlWebhookRouter.post("/api/ghl/webhook", express.json({ limit: "1mb" }), async 
 
     await createLead({
       name,
-      email: email || `ghl-${contactId}@noreply.nayade`,
+      email: email || placeholderEmail("ghl", contactId),
       phone,
       company,
       message,
