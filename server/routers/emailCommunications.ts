@@ -4,7 +4,7 @@
  * log global de emails, cola de jobs y preferencias por cliente.
  */
 import { router, staffProcedure, adminProcedure } from "../_core/trpc";
-import { legacyBrandText } from "../tenantBrand";
+import { companyName } from "../tenantBrand";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import {
@@ -383,7 +383,7 @@ export const emailCommunicationsRouter = router({
         <h2 style="color:#0a1628;">Email de prueba — ${def.friendlyName}</h2>
         <p>Plantilla: <code>${input.templateKey}</code></p>
         <p>Categoría: ${def.category}</p>
-        <p>Este es un email de prueba enviado desde el Centro de Comunicaciones de ${legacyBrandText("Skicenter")}.</p>
+        <p>Este es un email de prueba enviado desde el Centro de Comunicaciones de ${companyName()}.</p>
       </div>`;
       const ok = await sendEmail({ to: input.to, subject, html });
       return { ok, to: input.to };

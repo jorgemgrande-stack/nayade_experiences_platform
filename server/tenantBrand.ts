@@ -1,8 +1,8 @@
 /**
  * Marca, comunicaciones e identidad fiscal de la empresa en curso para correos, PDFs y plantillas.
  *
- *  - single/shadow: EXACTAMENTE lo de antes: el ajuste de la instalación o, si falta, el respaldo
- *    heredado que cada sitio tenía escrito (Skicenter, Náyade, Iron Elephant…).
+ *  - single/shadow: los ajustes de la propia instalación. Sin un dato, vacío: los respaldos escritos a mano de
+ *    la instalación original (decisión del 23/10/2026) ya no se usan.
  *  - multi: los ajustes de la propia empresa (`system_settings`/`site_settings` de SU base) y su
  *    identidad del registro (nombre, URL pública, entidad fiscal por defecto). NUNCA los respaldos
  *    heredados: son de otra empresa y acabarían en documentos de un tercero. Sin dato, vacío.
@@ -30,12 +30,17 @@ export function brandSetting(key: string, legacyFallback: string): string {
 }
 
 export function brandName(): string {
-  return brandSetting("brand_name", "Skicenter");
+  return brandSetting("brand_name", "");
 }
 
-/** Texto de marca escrito a mano en el código: en single el de siempre; en multi el nombre de la empresa. */
-export function legacyBrandText(literal: string): string {
-  return isMultiTenant() ? brandName() : literal;
+/** Nombre de la empresa en curso (sus ajustes o, en multi, su nombre en el registro). */
+export function companyName(): string {
+  return brandName();
+}
+
+/** Obsoleto (usar `companyName()`): el nombre de la empresa en curso; el literal ya no se usa en ningún modo. */
+export function legacyBrandText(_literal: string): string {
+  return brandName();
 }
 
 /** URL escrita a mano en el código: en single la de siempre; en multi la URL pública de la empresa. */
@@ -48,9 +53,9 @@ export function legacySiteHost(literal: string): string {
   return isMultiTenant() ? (peekTenantIdentity()?.publicHost ?? "") : literal;
 }
 
-/** Valor fijo (p. ej. un logotipo) que en single no lee ajustes: en multi, el ajuste de la empresa. */
-export function legacyBrandSetting(key: string, literal: string): string {
-  return isMultiTenant() ? brandSetting(key, "") : literal;
+/** Obsoleto (usar `brandSetting(key, "")`): el ajuste de la empresa en curso; el literal ya no se usa en ningún modo. */
+export function legacyBrandSetting(key: string, _literal: string): string {
+  return brandSetting(key, "");
 }
 
 // ── Comunicaciones ─────────────────────────────────────────────────────────
@@ -150,9 +155,14 @@ export async function tenantIssuerData(s: Record<string, string>): Promise<{ nam
   return { name: l.name, cif: l.cif, address: formatLegalAddress(l), email: l.email, phone: l.phone };
 }
 
-/** Razón social del emisor escrita a mano: en single la de siempre; en multi la de su entidad fiscal. */
-export function legacyIssuerName(literal: string): string {
-  return isMultiTenant() ? tenantFiscalIdentity()?.legalName || brandName() : literal;
+/** Razón social del emisor: la entidad fiscal del registro (multi), su razón social configurada o su nombre. */
+export function issuerName(): string {
+  return (isMultiTenant() ? tenantFiscalIdentity()?.legalName : "") || getSystemSettingSync("site_legal_name", "") || brandName();
+}
+
+/** Obsoleto (usar `issuerName()`). */
+export function legacyIssuerName(_literal: string): string {
+  return issuerName();
 }
 
 /** Entidad fiscal de la empresa en curso según el registro (multi), o `null`. */

@@ -12,7 +12,7 @@
  * Secreto opcional: variable VAPI_WEBHOOK_SECRET (header x-vapi-secret o ?secret=).
  */
 import express from "express";
-import { legacyBrandText, legacyUrl } from "./tenantBrand";
+import { companyName, legacyUrl } from "./tenantBrand";
 import { eq } from "drizzle-orm";
 import { randomBytes } from "crypto";
 import { quotes, ghlWebhookLogs, vapiCalls } from "../drizzle/schema";
@@ -268,7 +268,7 @@ vapiWebhookRouter.post("/api/vapi/webhook", express.json({ limit: "1mb" }), asyn
       quoteNumber,
       leadId,
       agentId: 0, // sistema — sin usuario autenticado
-      title: `Presupuesto ${legacyBrandText("Skicenter")} — ${name}`,
+      title: `Presupuesto ${companyName()} — ${name}`,
       status: "borrador",
       items: [],
       subtotal: "0",

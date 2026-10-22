@@ -10,7 +10,7 @@
  */
 
 import { z } from "zod";
-import { legacyBrandText } from "../tenantBrand";
+import { companyName } from "../tenantBrand";
 import { publicBaseUrl } from "../_core/productIdentity";
 import { router, permissionProcedure, publicProcedure, employeeProcedure } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
@@ -396,12 +396,12 @@ const employeesRouter = router({
         try {
           await sendEmail({
             to: employee.email,
-            subject: `Acceso al Portal del Empleado — ${legacyBrandText("Náyade Experiences")}`,
+            subject: `Acceso al Portal del Empleado — ${companyName()}`,
             html: `
               <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px;">
                 <h2 style="color:#ea580c">Bienvenido al Portal del Empleado</h2>
                 <p>Hola <strong>${employee.fullName}</strong>,</p>
-                <p>Te damos acceso al portal interno de <strong>${legacyBrandText("Náyade Experiences")}</strong> donde podrás consultar
+                <p>Te damos acceso al portal interno de <strong>${companyName()}</strong> donde podrás consultar
                 tu información personal, documentos y futuras funcionalidades (fichaje, nóminas, vacaciones).</p>
                 <p style="margin:24px 0">
                   <a href="${inviteUrl}" style="background:#ea580c;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold">

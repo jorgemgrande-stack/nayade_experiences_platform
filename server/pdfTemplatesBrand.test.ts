@@ -1,16 +1,15 @@
 /**
- * Plantillas PDF del sistema: en multiempresa, nombre, web y contacto de la empresa (nunca los de la instalación
- * original); en la instalación original, tal cual.
+ * Plantillas PDF del sistema: en cualquier modo, nombre, web y contacto de la empresa (nunca los de la instalación
+ * original, que solo quedan como texto de ejemplo dentro del código).
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const brand = vi.hoisted(() => ({ multi: false }));
 const SETTINGS: Record<string, string> = { brand_nif: "B99999999", brand_address: "Calle Sol 3, Granada", brand_phone: "+34 958 000 000", site_business_email: "hola@aventurassierra.es" };
 vi.mock("./tenantBrand", () => ({
-  legacyBrandText: (literal: string) => (brand.multi ? "Aventuras Sierra" : literal),
-  legacySiteHost: (literal: string) => (brand.multi ? "www.aventurassierra.es" : literal),
-  brandSetting: (key: string, fallback: string) => (brand.multi ? (SETTINGS[key] ?? "") : fallback),
-  legacyBrandSetting: (key: string, literal: string) => (brand.multi ? (SETTINGS[key] ?? "") : literal),
+  companyName: () => "Aventuras Sierra",
+  legacySiteHost: () => (brand.multi ? "www.aventurassierra.es" : ""),
+  brandSetting: (key: string) => SETTINGS[key] ?? "",
 }));
 vi.mock("./_core/legacyDb", () => ({ legacyDb: () => ({}), legacyPool: () => ({}) }));
 
@@ -23,13 +22,8 @@ describe("marca de las plantillas PDF del sistema", () => {
     brand.multi = false;
   });
 
-  it("instalación original: sin cambios", () => {
-    for (const tpl of SYSTEM_PDF_TEMPLATES) expect(brandedPdfTemplate(tpl)).toBe(tpl);
-    expect(SYSTEM_PDF_TEMPLATES.find((t) => t.id === "quote_pdf")!.bodyHtml).toMatch(/Náyade/);
-  });
-
-  it("multiempresa: ningún dato de la instalación original y los de la empresa en su lugar", () => {
-    brand.multi = true;
+  it.each([false, true])("multiempresa=%s: ningún dato de la instalación original y los de la empresa en su lugar", (multi) => {
+    brand.multi = multi;
     for (const tpl of SYSTEM_PDF_TEMPLATES) {
       const out = brandedPdfTemplate(tpl);
       for (const field of ["companyName", "companyAddress", "companyPhone", "companyEmail", "footerText", "bodyHtml"] as const) {
@@ -39,6 +33,6 @@ describe("marca de las plantillas PDF del sistema", () => {
       expect(out.companyNif).toBe("B99999999");
       expect(out.companyEmail).toBe("hola@aventurassierra.es");
     }
-    expect(brandedPdfTemplate(SYSTEM_PDF_TEMPLATES[0]).footerText).toBe("Gracias por confiar en Aventuras Sierra · www.aventurassierra.es");
+    expect(brandedPdfTemplate(SYSTEM_PDF_TEMPLATES[0]).footerText).toBe(multi ? "Gracias por confiar en Aventuras Sierra · www.aventurassierra.es" : "Gracias por confiar en Aventuras Sierra");
   });
 });

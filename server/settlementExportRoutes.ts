@@ -11,7 +11,7 @@
  */
 
 import { Router, Request, Response, NextFunction } from "express";
-import { legacyBrandText, legacyIssuerName } from "./tenantBrand";
+import { companyName, issuerName } from "./tenantBrand";
 import * as XLSX from "xlsx";
 import { eq } from "drizzle-orm";
 import {
@@ -134,7 +134,7 @@ settlementExportRouter.get(
 
     // -- Sheet 1: Cabecera ----------------------------------------------------
     const headerRows: XLSX.CellObject[][] = [
-      [mkCell(`LIQUIDACIÓN DE PROVEEDOR — ${legacyBrandText("Náyade Experiences").toUpperCase()}`, S_TITLE), mkCell(""), mkCell(""), mkCell("")],
+      [mkCell(`LIQUIDACIÓN DE PROVEEDOR — ${companyName().toUpperCase()}`, S_TITLE), mkCell(""), mkCell(""), mkCell("")],
       [mkCell(""), mkCell(""), mkCell(""), mkCell("")],
       [mkCell("Número de liquidación", S_LABEL), mkCell(settlement.settlementNumber), mkCell(""), mkCell("")],
       [mkCell("Estado", S_LABEL), mkCell(settlement.status ?? "—"), mkCell(""), mkCell("")],
@@ -158,7 +158,7 @@ settlementExportRouter.get(
       [mkCell(""), mkCell(""), mkCell(""), mkCell("")],
       [mkCell("Notas internas", S_LABEL), mkCell(settlement.internalNotes ?? "—"), mkCell(""), mkCell("")],
       [mkCell(""), mkCell(""), mkCell(""), mkCell("")],
-      [mkCell("Emisor", S_LABEL), mkCell(legacyIssuerName("Náyade Experiences S.L.")), mkCell(""), mkCell("")],
+      [mkCell("Emisor", S_LABEL), mkCell(issuerName()), mkCell(""), mkCell("")],
       [mkCell("Generado el", S_LABEL), mkCell(fmtDate(new Date())), mkCell(""), mkCell("")],
     ];
 

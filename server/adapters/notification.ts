@@ -7,7 +7,7 @@
  */
 
 import { sendEmail } from "../mailer";
-import { legacyBrandText } from "../tenantBrand";
+import { companyName } from "../tenantBrand";
 
 export type NotificationPayload = {
   title: string;
@@ -32,7 +32,7 @@ export async function notifyOwner(payload: NotificationPayload): Promise<boolean
   try {
     await sendEmail({
       to: notifyEmail,
-      subject: `[${legacyBrandText("Nayade")}] ${title}`,
+      subject: `[${companyName()}] ${title}`,
       html: `<h2>${title}</h2><pre style="font-family:sans-serif;white-space:pre-wrap">${content}</pre>`,
       text: content,
     });

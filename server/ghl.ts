@@ -1,5 +1,5 @@
 import { integrationEnv } from "./_core/tenantConfig";
-import { legacyBrandText } from "./tenantBrand";
+import { companyName } from "./tenantBrand";
 /**
  * GoHighLevel CRM Integration Helper
  * Crea/actualiza contactos en GHL cuando se genera un lead en la plataforma.
@@ -113,7 +113,7 @@ export async function createGHLContact(
     const body: Record<string, unknown> = {
       locationId,
       name: payload.name,
-      source: `${legacyBrandText("Nayade")} Web`,
+      source: `${companyName()} Web`,
     };
 
     if (payload.email) body.email = payload.email;

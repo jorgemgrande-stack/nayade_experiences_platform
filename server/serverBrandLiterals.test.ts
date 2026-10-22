@@ -22,6 +22,7 @@ describe("marca en los textos del servidor", () => {
     expect(src).not.toContain('companyData?.email ?? "reservas@nayadeexperiences.es"');
     expect(src).not.toContain('companyData?.phone ?? "+34 639 57 66 27"');
     expect(src).not.toContain('companyData?.address ?? "Los Ángeles de San Rafael, Segovia"');
-    expect(src).toContain('legacyBrandSetting("site_business_email", "reservas@nayadeexperiences.es")');
+    expect(src).toContain('brandSetting("site_business_email", "")');
+    expect(src).not.toMatch(/nayadeexperiences|639 57 66 27|San Rafael|N[aá]yade Experiences/);
   });
 });

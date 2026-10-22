@@ -4,7 +4,7 @@ import { pdfTemplates } from "../../drizzle/schema";
 import { eq } from "drizzle-orm";
 import { buildQuotePdfHtml } from "../emailTemplates";
 import { legacyDb, legacyPool } from "../_core/legacyDb";
-import { brandSetting, legacyBrandText, legacySiteHost } from "../tenantBrand";
+import { brandSetting, companyName, legacySiteHost } from "../tenantBrand";
 
 const _pool = legacyPool();
 const db = legacyDb();
@@ -315,13 +315,12 @@ export const SYSTEM_PDF_TEMPLATES = [
 // --- Helper: seed PDF templates to DB if empty -------------------------------
 type SystemPdfTemplate = (typeof SYSTEM_PDF_TEMPLATES)[number];
 /**
- * Plantilla PDF del sistema con los datos de la empresa: en la instalación original, tal cual; en multiempresa,
- * su nombre, su web y sus datos de contacto en lugar de los de la instalación original.
+ * Plantilla PDF del sistema con los datos de la empresa en cualquier modo: su nombre, su web y su contacto en lugar
+ * de los textos de ejemplo heredados de la instalación original.
  */
 export function brandedPdfTemplate<T extends Pick<SystemPdfTemplate, "companyName" | "companyNif" | "companyAddress" | "companyPhone" | "companyEmail" | "footerText" | "bodyHtml">>(tpl: T): T {
-  const name = legacyBrandText("Náyade Experiences");
-  if (name === "Náyade Experiences") return tpl;
-  const host = legacySiteHost("www.skicenter.es");
+  const name = companyName();
+  const host = legacySiteHost("");
   const company = {
     companyNif: brandSetting("brand_nif", ""),
     companyAddress: brandSetting("brand_address", ""),

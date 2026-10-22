@@ -1,7 +1,7 @@
 import { COOKIE_NAME } from "@shared/const";
 import { clearSessionCookies } from "./_core/sessionCookie";
 import { readStoredFile } from "./storage";
-import { legacyBrandText } from "./tenantBrand";
+import { companyName } from "./tenantBrand";
 import { publicBaseUrl } from "./_core/productIdentity";
 
 import JSZip from "jszip";
@@ -461,7 +461,7 @@ export const appRouter = router({
           templateKey: "budget_request_user",
           triggerEvent: "lead_submitted",
           recipientEmail: input.email,
-          subject: `Solicitud de presupuesto recibida — ${legacyBrandText("Náyade Experiences")}`,
+          subject: `Solicitud de presupuesto recibida — ${companyName()}`,
           html: buildBudgetRequestUserHtml(emailData),
           relatedEntityType: "lead",
           relatedEntityId: lead.id,
@@ -561,7 +561,7 @@ export const appRouter = router({
           templateKey: "budget_request_user",
           triggerEvent: "lead_submitted",
           recipientEmail: input.email,
-          subject: `Solicitud recibida — ${legacyBrandText("Náyade Experiences")}`,
+          subject: `Solicitud recibida — ${companyName()}`,
           html: buildBudgetRequestUserHtml({
             name: input.name,
             email: input.email,
@@ -1654,15 +1654,15 @@ export const appRouter = router({
           html: buildBudgetRequestAdminHtml({ name: "Carlos Pedraza", email: input.to, phone: "+34 600 000 000", arrivalDate: "23 de marzo de 2026", adults: 5, children: 2, selectedCategory: "Packs de Experiencias", selectedProduct: "Pack Experiencia", comments: "Queremos hacer el pack completo para una despedida de soltero", submittedAt: new Date().toLocaleString("es-ES"), activitiesJson: [] }),
         },
         "reservation-confirm": {
-          subject: `[PREVIEW] Reserva Confirmada — ${legacyBrandText("Náyade Experiences")}`,
+          subject: `[PREVIEW] Reserva Confirmada — ${companyName()}`,
           html: buildReservationConfirmHtml({ merchantOrder: "NE20260323001", productName: "Pack Experiencia", customerName: "Carlos Pedraza", date: "23 de marzo de 2026", people: 5, amount: "175,00 €", extras: "Alquiler de neopreno x5" }),
         },
         "reservation-failed": {
-          subject: `[PREVIEW] Pago No Completado — ${legacyBrandText("Náyade Experiences")}`,
+          subject: `[PREVIEW] Pago No Completado — ${companyName()}`,
           html: buildReservationFailedHtml({ merchantOrder: "NE20260323001", productName: "Pack Experiencia", customerName: "Carlos Pedraza", responseCode: "0190" }),
         },
         "restaurant-confirm": {
-          subject: `[PREVIEW] Reserva en Restaurante — ${legacyBrandText("Náyade Experiences")}`,
+          subject: `[PREVIEW] Reserva en Restaurante — ${companyName()}`,
           html: buildRestaurantConfirmHtml({ guestName: "Carlos Pedraza", restaurantName: "Restaurante Ejemplo", date: "23 de marzo de 2026", time: "14:00", guests: 8, locator: "REST-2026-001", depositAmount: "80", requiresPayment: false }),
         },
         "restaurant-payment": {
@@ -1670,19 +1670,19 @@ export const appRouter = router({
           html: buildRestaurantPaymentLinkHtml({ guestName: "Carlos Pedraza", guestEmail: input.to, restaurantName: "Restaurante Ejemplo", date: "23 de marzo de 2026", time: "14:00", guests: 8, locator: "REST-2026-001", depositAmount: "80", redsysUrl: "https://sis.redsys.es/sis/realizarPago", merchantParams: "BASE64PARAMS", signatureVersion: "HMAC_SHA256_V1", signature: "SIGNATURE" }),
         },
         "password-reset": {
-          subject: `[PREVIEW] Recuperar contraseña — ${legacyBrandText("Náyade Experiences")}`,
+          subject: `[PREVIEW] Recuperar contraseña — ${companyName()}`,
           html: buildPasswordResetHtml({ name: "Carlos Pedraza", resetUrl: "https://tuempresa.es/reset?token=abc123", expiryMinutes: 30 }),
         },
         "quote": {
-          subject: `[PREVIEW] Presupuesto PRE-2026-001 — ${legacyBrandText("Náyade Experiences")}`,
+          subject: `[PREVIEW] Presupuesto PRE-2026-001 — ${companyName()}`,
           html: buildQuoteHtml({ quoteNumber: "PRE-2026-001", title: "Pack Experiencia + Restaurante", clientName: "Carlos Pedraza", items: [{ description: "Pack Experiencia (5 pax)", quantity: 5, unitPrice: 35, total: 175 }, { description: "Menú del día (8 pax)", quantity: 8, unitPrice: 28, total: 224 }], subtotal: "399", discount: "0", tax: "83.79", total: "482.79", validUntil: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), notes: "Precio especial por grupo. Incluye alquiler de neopreno.", conditions: "Reserva sujeta a disponibilidad. Cancelación gratuita hasta 48h antes.", paymentLinkUrl: "https://tuempresa.es/pago/PRE-2026-001" }),
         },
         "confirmation": {
-          subject: `[PREVIEW] Reserva Confirmada FAC-2026-001 — ${legacyBrandText("Náyade Experiences")}`,
+          subject: `[PREVIEW] Reserva Confirmada FAC-2026-001 — ${companyName()}`,
           html: buildConfirmationHtml({ clientName: "Carlos Pedraza", reservationRef: "FAC-2026-001", quoteNumber: "PRE-2026-001", quoteTitle: "Pack Experiencia + Restaurante", items: [{ description: "Pack Experiencia (5 pax)", quantity: 5, unitPrice: 35, total: 175 }, { description: "Menú del día (8 pax)", quantity: 8, unitPrice: 28, total: 224 }], subtotal: "399", taxAmount: "83.79", total: "482.79", invoiceUrl: "https://tuempresa.es/facturas/FAC-2026-001.pdf", bookingDate: "23 de marzo de 2026" }),
         },
         "transfer-confirm": {
-          subject: `[PREVIEW] Pago por transferencia confirmado — ${legacyBrandText("Náyade Experiences")}`,
+          subject: `[PREVIEW] Pago por transferencia confirmado — ${companyName()}`,
           html: buildTransferConfirmationHtml({ clientName: "Carlos Pedraza", invoiceNumber: "FAC-2026-001", reservationRef: "RES-2026-001", quoteTitle: "Pack Experiencia + Restaurante", quoteNumber: "PRE-2026-001", items: [{ description: "Pack Experiencia (5 pax)", quantity: 5, unitPrice: 35, total: 175 }, { description: "Menú del día (8 pax)", quantity: 8, unitPrice: 28, total: 224 }], subtotal: "399", taxAmount: "83.79", total: "482.79", invoiceUrl: "https://tuempresa.es/facturas/FAC-2026-001.pdf", confirmedBy: "Administración", confirmedAt: new Date() }),
         },
       };
@@ -2098,7 +2098,7 @@ export const appRouter = router({
         // 4. Construir el formulario Redsys con el importe total
         const description = productNames.length === 1
           ? productNames[0]
-          : `${productNames.length} experiencias — ${legacyBrandText("Náyade")}`;
+          : `${productNames.length} experiencias — ${companyName()}`;
         const redsysForm = buildRedsysForm({
           amount: finalAmountCents,
           merchantOrder,

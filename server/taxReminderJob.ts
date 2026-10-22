@@ -13,7 +13,7 @@
  */
 
 import cron from "node-cron";
-import { legacyBrandText } from "./tenantBrand";
+import { companyName } from "./tenantBrand";
 import { eq, and, gte, notInArray } from "drizzle-orm";
 import { taxObligations, taxSettings } from "../drizzle/schema";
 import { sendEmail } from "./mailer";
@@ -59,7 +59,7 @@ function reminderHtml(o: { model: string; periodLabel: string; dueDate: string; 
         <tr><td style="padding:6px 0;color:#666">Vencimiento</td><td style="padding:6px 0;font-weight:bold;color:#dc2626">${o.dueDate} (${days === 0 ? "hoy" : `en ${days} día(s)`})</td></tr>
         <tr><td style="padding:6px 0;color:#666">Importe estimado</td><td style="padding:6px 0">${amount} €</td></tr>
       </table>
-      <p style="color:#666;font-size:13px">Aviso automático del módulo Gestoría e Impuestos · ${legacyBrandText("Náyade Experiences")}.
+      <p style="color:#666;font-size:13px">Aviso automático del módulo Gestoría e Impuestos · ${companyName()}.
       El importe es una estimación; la presentación oficial corresponde a la gestoría.</p>
     </div>`;
 }
