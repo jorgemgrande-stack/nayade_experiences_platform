@@ -12,7 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import PublicLayout from "@/components/PublicLayout";
 import { trpc } from "@/lib/trpc";
-import { usePublicPhone } from "@/hooks/usePublicPhone";
+import { usePublicContact } from "@/hooks/usePublicPhone";
 import { toast } from "sonner";
 import { useMarketingConsent } from "@/hooks/useMarketingConsent";
 import { trackEvent } from "@/lib/meta-pixel/client";
@@ -53,7 +53,8 @@ const EXP_CHIPS = [
 
 // --- Componente principal -----------------------------------------------------
 export default function BudgetRequest() {
-  const { phone, phoneTel } = usePublicPhone();
+  const { neutral, brandName, phone, phoneTel, email, heroImage } = usePublicContact();
+  const heroBg = neutral ? heroImage : HERO_BG;
   const [submitted, setSubmitted] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState("");
   const [selectedProduct, setSelectedProduct] = useState("");
@@ -183,7 +184,7 @@ export default function BudgetRequest() {
     return (
       <PublicLayout>
         <div className="min-h-screen flex items-center justify-center relative overflow-hidden">
-          <img src={HERO_BG} alt="" className="absolute inset-0 w-full h-full object-cover" />
+          {heroBg && <img src={heroBg} alt="" className="absolute inset-0 w-full h-full object-cover" />}
           <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
           <div className="relative z-10 text-center max-w-xl mx-auto px-6 py-20">
             <div className="w-24 h-24 rounded-full bg-white/10 border border-white/20 flex items-center justify-center mx-auto mb-8">
@@ -242,12 +243,14 @@ export default function BudgetRequest() {
       <section className="relative min-h-screen flex items-stretch overflow-hidden">
 
         {/* Fondo aspiracional */}
-        <img
-          src={HERO_BG}
-          alt="Náyade Experiences"
-          className="absolute inset-0 w-full h-full object-cover object-center"
-          style={{ animation: "slowZoom 25s ease-in-out infinite alternate" }}
-        />
+        {heroBg && (
+          <img
+            src={heroBg}
+            alt={brandName}
+            className="absolute inset-0 w-full h-full object-cover object-center"
+            style={{ animation: "slowZoom 25s ease-in-out infinite alternate" }}
+          />
+        )}
         {/* Overlay */}
         <div className="absolute inset-0 bg-gradient-to-r from-black/80 via-black/55 to-black/30" />
         <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent" />
@@ -259,7 +262,7 @@ export default function BudgetRequest() {
           <div className="flex-1 text-white lg:py-24">
             <span className="inline-flex items-center gap-2 bg-amber-500/90 text-white text-xs font-display font-bold uppercase tracking-widest px-5 py-2 rounded-full mb-6 shadow-lg">
               <Sparkles className="w-3.5 h-3.5" />
-              A 40 min de Madrid · Temporada 2026
+              {neutral ? "Presupuesto sin compromiso" : "A 40 min de Madrid · Temporada 2026"}
             </span>
 
             <h1 className="text-4xl md:text-5xl xl:text-6xl font-heading font-black leading-[1.05] mb-5">
@@ -269,7 +272,9 @@ export default function BudgetRequest() {
             </h1>
 
             <p className="text-lg md:text-xl text-white/70 font-display font-light mb-8 leading-relaxed max-w-md">
-              Actividades acuáticas, relax, escapadas y aventura en el embalse de Los Ángeles de San Rafael.
+              {neutral
+                ? "Cuéntanos qué buscas y te preparamos una propuesta a tu medida."
+                : "Actividades acuáticas, relax, escapadas y aventura en el embalse de Los Ángeles de San Rafael."}
             </p>
 
             {/* Chips de tipos */}
@@ -556,9 +561,11 @@ export default function BudgetRequest() {
                   <Phone className="w-3.5 h-3.5" /> {phone}
                 </a>
                 <span className="hidden sm:block text-white/15">·</span>
-                <a href="mailto:reservas@nayadeexperiences.es" className="flex items-center gap-1.5 hover:text-amber-400 transition-colors">
-                  <Mail className="w-3.5 h-3.5" /> reservas@nayadeexperiences.es
-                </a>
+                {email && (
+                  <a href={`mailto:${email}`} className="flex items-center gap-1.5 hover:text-amber-400 transition-colors">
+                    <Mail className="w-3.5 h-3.5" /> {email}
+                  </a>
+                )}
               </div>
             </div>
           </div>

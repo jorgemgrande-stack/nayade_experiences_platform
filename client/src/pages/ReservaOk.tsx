@@ -9,13 +9,13 @@ import { Link } from "wouter";
 import { CheckCircle, Clock, XCircle, ArrowRight, Phone, Mail, RefreshCw } from "lucide-react";
 import PublicLayout from "@/components/PublicLayout";
 import { trpc } from "@/lib/trpc";
-import { usePublicPhone } from "@/hooks/usePublicPhone";
+import { usePublicContact } from "@/hooks/usePublicPhone";
 import { useMarketingConsent } from "@/hooks/useMarketingConsent";
 import { trackEvent } from "@/lib/meta-pixel/client";
 
 export default function ReservaOk() {
   const [merchantOrder, setMerchantOrder] = useState<string | null>(null);
-  const { phone, phoneTel } = usePublicPhone();
+  const { phone, phoneTel, email } = usePublicContact();
   const [pollCount, setPollCount] = useState(0);
   const hasConsent = useMarketingConsent();
   const purchaseFired = useRef(false);
@@ -148,9 +148,11 @@ export default function ReservaOk() {
               <a href={phoneTel} className="flex items-center gap-2 hover:text-accent transition-colors">
                 <Phone className="w-4 h-4" /> {phone}
               </a>
-              <a href="mailto:reservas@nayadeexperiences.es" className="flex items-center gap-2 hover:text-accent transition-colors">
-                <Mail className="w-4 h-4" /> reservas@nayadeexperiences.es
-              </a>
+              {email && (
+                <a href={`mailto:${email}`} className="flex items-center gap-2 hover:text-accent transition-colors">
+                  <Mail className="w-4 h-4" /> {email}
+                </a>
+              )}
             </div>
           </div>
         </div>
@@ -301,9 +303,11 @@ export default function ReservaOk() {
               <a href={phoneTel} className="flex items-center gap-2 hover:text-accent transition-colors">
                 <Phone className="w-4 h-4" /> {phone}
               </a>
-              <a href="mailto:reservas@nayadeexperiences.es" className="flex items-center gap-2 hover:text-accent transition-colors">
-                <Mail className="w-4 h-4" /> reservas@nayadeexperiences.es
-              </a>
+              {email && (
+                <a href={`mailto:${email}`} className="flex items-center gap-2 hover:text-accent transition-colors">
+                  <Mail className="w-4 h-4" /> {email}
+                </a>
+              )}
             </div>
           </div>
 
@@ -352,9 +356,11 @@ export default function ReservaOk() {
             <a href={phoneTel} className="flex items-center gap-2 hover:text-accent transition-colors">
               <Phone className="w-4 h-4" /> {phone}
             </a>
-            <a href="mailto:reservas@nayadeexperiences.es" className="flex items-center gap-2 hover:text-accent transition-colors">
-              <Mail className="w-4 h-4" /> reservas@nayadeexperiences.es
-            </a>
+            {email && (
+              <a href={`mailto:${email}`} className="flex items-center gap-2 hover:text-accent transition-colors">
+                <Mail className="w-4 h-4" /> {email}
+              </a>
+            )}
           </div>
         </div>
       </div>

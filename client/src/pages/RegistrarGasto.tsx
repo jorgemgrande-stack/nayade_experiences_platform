@@ -3,6 +3,7 @@ import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { CheckCircle2, Upload, AlertCircle, Loader2, X, Camera, ChevronDown, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { usePublicContact } from "@/hooks/usePublicPhone";
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 const token = new URLSearchParams(window.location.search).get("t") ?? "";
@@ -62,6 +63,7 @@ export default function RegistrarGasto() {
 
 // ─── Formulario ───────────────────────────────────────────────────────────────
 function GastoForm({ token }: { token: string }) {
+  const { brandName } = usePublicContact();
   const [amount, setAmount] = useState("");
   const [categoryId, setCategoryId] = useState<string>("");
   const [notes, setNotes] = useState("");
@@ -186,7 +188,7 @@ function GastoForm({ token }: { token: string }) {
         {/* Header */}
         <div className="text-center space-y-1">
           <p className="text-[#e8b86d] text-xs font-medium tracking-widest uppercase">
-            Nayade Experiences
+            {brandName}
           </p>
           <h1 className="text-white text-2xl font-bold">Registrar gasto</h1>
           <p className="text-slate-400 text-sm">

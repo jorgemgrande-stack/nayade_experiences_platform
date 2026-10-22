@@ -8,7 +8,7 @@ import { Link } from "wouter";
 import { XCircle, ArrowRight, Phone, Mail, RefreshCw, AlertTriangle } from "lucide-react";
 import PublicLayout from "@/components/PublicLayout";
 import { trpc } from "@/lib/trpc";
-import { usePublicPhone } from "@/hooks/usePublicPhone";
+import { usePublicContact } from "@/hooks/usePublicPhone";
 
 const REDSYS_ERROR_MESSAGES: Record<string, string> = {
   "0180": "Tarjeta ajena al servicio.",
@@ -33,7 +33,7 @@ const REDSYS_ERROR_MESSAGES: Record<string, string> = {
 };
 
 export default function ReservaError() {
-  const { phone, phoneTel } = usePublicPhone();
+  const { phone, phoneTel, email } = usePublicContact();
   const [merchantOrder, setMerchantOrder] = useState<string | null>(null);
   const [errorCode, setErrorCode] = useState<string | null>(null);
 
@@ -159,9 +159,11 @@ export default function ReservaError() {
             <a href={phoneTel} className="flex items-center gap-2 hover:text-accent transition-colors">
               <Phone className="w-4 h-4" /> {phone}
             </a>
-            <a href="mailto:reservas@nayadeexperiences.es" className="flex items-center gap-2 hover:text-accent transition-colors">
-              <Mail className="w-4 h-4" /> reservas@nayadeexperiences.es
-            </a>
+            {email && (
+              <a href={`mailto:${email}`} className="flex items-center gap-2 hover:text-accent transition-colors">
+                <Mail className="w-4 h-4" /> {email}
+              </a>
+            )}
           </div>
         </div>
       </div>

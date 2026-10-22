@@ -14,6 +14,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import PublicLayout from "@/components/PublicLayout";
 import { trpc } from "@/lib/trpc";
+import { usePublicContact } from "@/hooks/usePublicPhone";
 import { toast } from "sonner";
 import { trackEvent } from "@/lib/ga4";
 
@@ -265,6 +266,8 @@ function CouponBlock({
 
 // ─── Componente principal ─────────────────────────────────────────────────────
 export default function CanjearCupon() {
+  const { neutral, brandName, email, heroImage } = usePublicContact();
+  const heroBg = neutral ? heroImage : HERO_BG;
   const [form, setForm] = useState<CommonForm>({
     customerName: "",
     email: "",
@@ -381,7 +384,7 @@ export default function CanjearCupon() {
     return (
       <PublicLayout>
         <div className="min-h-screen flex items-center justify-center relative overflow-hidden">
-          <img src={HERO_BG} alt="" className="absolute inset-0 w-full h-full object-cover" />
+          {heroBg && <img src={heroBg} alt="" className="absolute inset-0 w-full h-full object-cover" />}
           <div className="absolute inset-0 bg-black/75 backdrop-blur-sm" />
           <div className="relative z-10 text-center max-w-xl mx-auto px-6 py-20">
             <div className="w-24 h-24 rounded-full bg-emerald-500/15 border border-emerald-400/30 flex items-center justify-center mx-auto mb-8">
@@ -449,12 +452,14 @@ export default function CanjearCupon() {
       <section className="relative min-h-screen flex items-stretch overflow-hidden">
 
         {/* Fondo */}
-        <img
-          src={HERO_BG}
-          alt="Náyade Experiences"
-          className="absolute inset-0 w-full h-full object-cover object-center"
-          style={{ animation: "slowZoom 25s ease-in-out infinite alternate" }}
-        />
+        {heroBg && (
+          <img
+            src={heroBg}
+            alt={brandName}
+            className="absolute inset-0 w-full h-full object-cover object-center"
+            style={{ animation: "slowZoom 25s ease-in-out infinite alternate" }}
+          />
+        )}
         <div className="absolute inset-0 bg-gradient-to-r from-black/85 via-black/60 to-black/35" />
         <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent" />
 
@@ -474,7 +479,7 @@ export default function CanjearCupon() {
             </h1>
 
             <p className="text-lg md:text-xl text-white/70 font-display font-light mb-8 leading-relaxed max-w-md">
-              Tienes un cupón de Groupon, Wonderbox u otro proveedor para una experiencia en Náyade. Rellena el formulario y nosotros nos encargamos de todo.
+              Tienes un cupón de Groupon, Wonderbox u otro proveedor para una experiencia{neutral ? (brandName ? ` en ${brandName}` : "") : " en Náyade"}. Rellena el formulario y nosotros nos encargamos de todo.
             </p>
 
             {/* Chips de proveedores */}
@@ -727,7 +732,7 @@ export default function CanjearCupon() {
                 { q: "¿Qué proveedores son válidos?", a: "Aceptamos cupones de Groupon, Wonderbox, SmartBox y otros proveedores de experiencias. Si tienes dudas, contáctanos." },
                 { q: "¿Puedo enviar varios cupones a la vez?", a: "Sí, puedes añadir hasta 5 cupones en un mismo formulario. Ideal si tienes cupones para toda la familia." },
                 { q: "¿Cuánto tiempo tengo para canjear?", a: "Depende de la fecha de caducidad de tu cupón. Revisa las condiciones del proveedor. Recomendamos canjear con al menos 7 días de antelación." },
-                { q: "¿Puedo cambiar la fecha una vez confirmada?", a: "Sí, con 48h de antelación y sujeto a disponibilidad. Contacta con nosotros en reservas@nayadeexperiences.es." },
+                { q: "¿Puedo cambiar la fecha una vez confirmada?", a: `Sí, con 48h de antelación y sujeto a disponibilidad. Contacta con nosotros${email ? ` en ${email}` : ""}.` },
               ].map(({ q, a }) => (
                 <div key={q} className="border-b border-white/[0.06] pb-4 last:border-0 last:pb-0">
                   <p className="text-white/70 font-medium mb-1">{q}</p>
