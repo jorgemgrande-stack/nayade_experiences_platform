@@ -109,6 +109,11 @@ Fase 0 (personas) ──► Fase 1 (estado) ──► Fase 2 (copia) ──► F
 - El código nuevo (fase 4) necesita las migraciones verificadas (3.2 y 3.7). Son aditivas: el código anterior funciona con ellas, así que **primero se migra y después se despliega**, y volver atrás el código no exige revertir migraciones.
 - `production` (clientes comerciales) solo después de terminar `live` y con aprobación humana en GitHub.
 
+**Qué entorno es cuál (no se deduce del nombre).** «Ensayo» es el entorno que **no** sirve los dominios comerciales; «comercial», el que los sirve. Lo fija el paso 0.6 con el panel de Railway: los dominios personalizados de `controlplane`, `core`, `core-gateway`, CRM y web. Las fases 1 a 5 van primero en el de ensayo y la fase 6, en el comercial.
+- Último dato conocido: `www`, `app` y `admin.bigelephant.es` → `production`. Si 0.6 lo confirma, el orden es el de este documento (`live` primero).
+- Si los dominios comerciales apuntan a `live`, se intercambian: ensayo = `production` y comercial = `live`. La aprobación comercial (H5) pasa al entorno de GitHub de `live`.
+- Si un entorno sirve parte de los dominios y el otro el resto: **parada**. Lo decide el propietario; no se mueven dominios automáticamente.
+
 ## Fase 0 — Preparación (manual, una sola vez)
 
 | # | Acción (persona) | Criterio de aceptación |
@@ -118,7 +123,7 @@ Fase 0 (personas) ──► Fase 1 (estado) ──► Fase 2 (copia) ──► F
 | 0.3 | **Watch paths de Náyade** (su servicio en Railway → Settings → Watch Paths, configuración oficial; sin tocar su `railway.toml`). Los patrones de `docs/elephant-source/railway/watch-paths-nayade.txt`, uno por línea: `**`, `!/.github`, `!/.github/**` | Ver 0.4 |
 | 0.4 | **Verificar la exclusión antes de confiar en ella**, sin tocar Náyade: un servicio de PRUEBA conectado al mismo repositorio, a una rama de pruebas y con esas mismas watch paths:<br>a) commit que solo cambia `.github/**` → **no** crea despliegue (aparece como omitido);<br>b) commit que cambia `server/` → **sí** despliega;<br>c) commit mixto (`.github` + `server`) → **sí** despliega.<br>Después, borrar el servicio de prueba y la rama | Los tres resultados como se indican. **Parada** si a) despliega o si b)/c) no: Railway no aplica la semántica documentada; no seguir con 0.5 |
 | 0.5 | Con 0.3 y 0.4 correctos: llevar **únicamente** `.github/workflows/deploy-elephant-source.yml` a `main` (GitHub solo permite lanzar a mano flujos que estén en la rama por defecto). Claude prepara el PR; lo fusiona el propietario | En Railway, Náyade **no** crea despliegue por ese commit. Si lo crea: verificar que arranca limpio (mismo código) y quitar las watch paths hasta revisarlo |
-| 0.6 | Confirmar a qué entorno apunta cada dominio (`www`, `app` y `admin.bigelephant.es` → `production`) | Anotado |
+| 0.6 | Confirmar en Railway a qué entorno apunta cada dominio personalizado (`www`, `app`, `admin.bigelephant.es` y los de las empresas). Último dato conocido: `production` | Anotado; fija cuál es ensayo y cuál comercial (ver «Qué entorno es cuál») |
 
 Hasta 0.5 el flujo está integrado en `integration/elephant-source` pero no se puede lanzar. No se crean etiquetas de despliegue.
 
