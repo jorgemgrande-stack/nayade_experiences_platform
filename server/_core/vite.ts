@@ -50,16 +50,9 @@ export async function setupVite(app: Express, server: Server) {
   });
 }
 
-// ─── SEO meta injection for key public routes ────────────────────────────────
-// For each known route we replace the placeholders in the built index.html so
-// that crawlers (including Meta/WhatsApp) see route-specific title, description,
-// canonical and Open Graph tags without executing JavaScript.
-// Unknown routes fall back to the home-page meta defined in index.html itself.
-
-const BASE_URL = "https://skicenter.es";
-const CDN = "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/nayade/uploads";
-// Default OG image (Blob Jump – visually striking, brand-defining activity)
-const DEFAULT_OG_IMAGE = `${CDN}/1773762402377-dymd02.png`;
+// ─── Metadatos SEO del HTML público ──────────────────────────────────────────
+// Título, descripción, canonical y Open Graph de la empresa (sus ajustes, `buildTenantMeta`) en cualquier modo, para
+// que los rastreadores (también Meta/WhatsApp) los vean sin ejecutar JavaScript. Nunca los de otra instalación.
 
 interface RouteMeta {
   title: string;
@@ -67,63 +60,6 @@ interface RouteMeta {
   h1: string;
   body: string;
   image?: string;
-}
-
-const SEO_ROUTES: Record<string, RouteMeta> = {
-  "/": {
-    title: "Náyade Experiences | Actividades, Spa, Hotel y Restaurantes en Segovia",
-    description: "Náyade Experiences ofrece actividades, experiencias acuáticas, spa, hotel y restauración en Los Ángeles de San Rafael, Segovia.",
-    h1: "Náyade Experiences",
-    body: "Actividades, experiencias, restauración y ocio en Los Ángeles de San Rafael, Segovia.",
-    image: `${CDN}/1773702396972-kd9hrk.png`,
-  },
-  "/experiencias": {
-    title: "Experiencias y Actividades | Náyade Experiences",
-    description: "Descubre todas las experiencias y actividades: deportes, aventura, bienestar y más en Los Ángeles de San Rafael, Segovia.",
-    h1: "Experiencias y Actividades",
-    body: "Explora nuestra selección de experiencias y actividades en Los Ángeles de San Rafael.",
-    image: `${CDN}/1773766863713-7gry6r.jpg`,
-  },
-  "/restaurantes": {
-    title: "Restaurantes | Náyade Experiences",
-    description: "Restaurantes de Náyade Experiences en Los Ángeles de San Rafael. Cocina con productos locales y menús de temporada.",
-    h1: "Restaurantes",
-    body: "Gastronomía y restauración en Los Ángeles de San Rafael, Segovia.",
-  },
-  "/hotel": {
-    title: "Hotel | Náyade Experiences",
-    description: "Alójate en el hotel de Náyade Experiences en Los Ángeles de San Rafael, Segovia. Habitaciones con encanto en plena naturaleza.",
-    h1: "Hotel",
-    body: "Alojamiento con encanto en Los Ángeles de San Rafael, Segovia.",
-  },
-  "/spa": {
-    title: "Spa y Bienestar | Náyade Experiences",
-    description: "Spa y tratamientos de bienestar en Los Ángeles de San Rafael, Segovia. Relax en plena naturaleza.",
-    h1: "Spa y Bienestar",
-    body: "Tratamientos, masajes y bienestar en Los Ángeles de San Rafael, Segovia.",
-    image: `${CDN}/1773867774581-gde9k3.png`,
-  },
-  "/contacto": {
-    title: "Contacto | Náyade Experiences",
-    description: "Contacta con Náyade Experiences en Los Ángeles de San Rafael, Segovia. Reservas, información y atención al cliente.",
-    h1: "Contacto",
-    body: "Ponte en contacto con nosotros para reservas e información.",
-  },
-};
-
-function resolveRouteMeta(pathname: string): { meta: RouteMeta; canonical: string } {
-  // Exact match
-  if (SEO_ROUTES[pathname]) {
-    const canonical = pathname === "/" ? BASE_URL : `${BASE_URL}${pathname}`;
-    return { meta: SEO_ROUTES[pathname], canonical };
-  }
-  // Parent-path match — e.g. /experiencias/slug → /experiencias
-  const parent = "/" + (pathname.split("/")[1] ?? "");
-  if (SEO_ROUTES[parent]) {
-    return { meta: SEO_ROUTES[parent], canonical: `${BASE_URL}${parent}` };
-  }
-  // Default: home meta, canonical = requested URL
-  return { meta: SEO_ROUTES["/"], canonical: `${BASE_URL}${pathname}` };
 }
 
 /**
@@ -142,12 +78,11 @@ let _htmlCache: string | null = null;
 
 function injectSeoMeta(
   html: string,
-  pathname: string,
-  override?: { meta: RouteMeta; canonical: string },
+  seo: { meta: RouteMeta; canonical: string },
 ): string {
-  // `override` (multi): metadatos del tenant, ya escapados; sin él, las rutas de Náyade (single)
-  const { meta, canonical } = override ?? resolveRouteMeta(pathname);
-  const imageUrl = meta.image ?? (override ? "" : DEFAULT_OG_IMAGE);
+  // Metadatos de la empresa, ya escapados
+  const { meta, canonical } = seo;
+  const imageUrl = meta.image ?? "";
 
   return html
     .replace(/<title>[^<]*<\/title>/, `<title>${meta.title}</title>`)
@@ -219,9 +154,8 @@ export function serveStatic(app: Express) {
     }
     // req.path is "/" for all routes under app.use("*") — use originalUrl instead
     const pathname = req.originalUrl.split("?")[0] || "/";
-    let override: { meta: RouteMeta; canonical: string } | undefined;
-    if (isMultiTenant()) {
-      // Multiempresa: nunca el SEO fijo de otra empresa; salen de los ajustes del tenant
+    // Metadatos de la empresa (sus ajustes) en cualquier modo
+    {
       const [brandName, description, logoUrl, ogImageUrl] = await Promise.all([
         getSystemSetting("brand_name", ""),
         getSystemSetting("seo_description", ""),
@@ -233,7 +167,7 @@ export function serveStatic(app: Express) {
         host: req.headers.host,
         pathname,
       });
-      override = {
+      const seo: { meta: RouteMeta; canonical: string } = {
         meta: { title: m.title, description: m.description, h1: m.h1, body: m.body, image: m.image },
         canonical: m.canonical,
       };
@@ -242,14 +176,14 @@ export function serveStatic(app: Express) {
         try {
           const { blogMetaForRequest } = await import("../blogSeo");
           const b = await blogMetaForRequest(pathname, brandName);
-          if (b) override.meta = { ...b, image: b.image ?? m.image };
+          if (b) seo.meta = { ...b, image: b.image ?? m.image };
         } catch {
           /* SEO genérico de la empresa */
         }
       }
+      let html = injectSeoMeta(_htmlCache, seo);
+      if (isMultiTenant()) html = tenantSiteHtml(html, escapeHtml(brandName));
+      res.set("Content-Type", "text/html").send(html);
     }
-    let html = injectSeoMeta(_htmlCache, pathname, override);
-    if (override) html = tenantSiteHtml(html, escapeHtml(await getSystemSetting("brand_name", "")));
-    res.set("Content-Type", "text/html").send(html);
   });
 }

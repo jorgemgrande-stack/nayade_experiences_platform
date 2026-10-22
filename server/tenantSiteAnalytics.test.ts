@@ -24,7 +24,7 @@ describe("analítica en la web de cada empresa", () => {
 
   it("solo se aplica en multiempresa (con metadatos de la empresa)", () => {
     const vite = read("server/_core/vite.ts");
-    expect(vite).toContain('if (override) html = tenantSiteHtml(html, escapeHtml(await getSystemSetting("brand_name", "")));');
+    expect(vite).toContain("if (isMultiTenant()) html = tenantSiteHtml(html, escapeHtml(brandName));");
   });
 
   it("GA4 y Meta Pixel no se inician en la web de una empresa sin su propio identificador", () => {

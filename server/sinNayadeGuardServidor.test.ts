@@ -16,7 +16,6 @@ const ORIGINAL = /N[aá]yade|N&[aA]acute;[yY][aA][dD][eE]|nayadeexperiences|skic
 
 const BASELINE: Record<string, number> = {
   "_core/index.ts": 24,
-  "_core/vite.ts": 19,
   "config/index.ts": 2,
   "mail/policy.ts": 1,
   "mailer.ts": 1,
