@@ -10,6 +10,7 @@
 import { useState } from "react";
 import { useParams } from "wouter";
 import { trpc } from "@/lib/trpc";
+import { usePublicContact } from "@/hooks/usePublicPhone";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -136,6 +137,7 @@ function OptionCard({
 // ─── Main Component ────────────────────────────────────────────────────────────
 
 export default function ProposalView() {
+  const { phone, phoneTel, email, brandName } = usePublicContact();
   const { token } = useParams<{ token: string }>();
   const [selectedOptionId, setSelectedOptionId] = useState<number | null>(null);
   const [message, setMessage] = useState("");
@@ -204,7 +206,7 @@ export default function ProposalView() {
           <p className="text-white/60 text-base leading-relaxed">
             Hemos recibido tu respuesta. Nuestro equipo se pondrá en contacto contigo en breve para dar los próximos pasos.
           </p>
-          <p className="text-white/30 text-sm mt-6">Náyade Experiences · contacto@skicenter.es</p>
+          <p className="text-white/30 text-sm mt-6">{[brandName, email].filter(Boolean).join(" · ")}</p>
         </div>
       </div>
     );
@@ -327,17 +329,21 @@ export default function ProposalView() {
         <div className="rounded-xl bg-white/[0.03] border border-white/10 px-5 py-4">
           <p className="text-xs font-bold uppercase tracking-widest text-white/30 mb-3">¿Tienes alguna pregunta?</p>
           <div className="flex flex-wrap gap-4 text-sm">
-            <a href="tel:+34639576627" className="flex items-center gap-2 text-amber-400 hover:text-amber-300 transition-colors">
-              <Phone className="w-4 h-4" /> +34 639 57 66 27
-            </a>
-            <a href="mailto:contacto@skicenter.es" className="flex items-center gap-2 text-amber-400 hover:text-amber-300 transition-colors">
-              <Mail className="w-4 h-4" /> contacto@skicenter.es
-            </a>
+            {phoneTel && (
+              <a href={phoneTel} className="flex items-center gap-2 text-amber-400 hover:text-amber-300 transition-colors">
+                <Phone className="w-4 h-4" /> {phone}
+              </a>
+            )}
+            {email && (
+              <a href={`mailto:${email}`} className="flex items-center gap-2 text-amber-400 hover:text-amber-300 transition-colors">
+                <Mail className="w-4 h-4" /> {email}
+              </a>
+            )}
           </div>
         </div>
 
         <p className="text-center text-white/20 text-xs pb-4">
-          Náyade Experiences · {proposal.proposalNumber}
+          {brandName && `${brandName} · `}{proposal.proposalNumber}
         </p>
       </div>
     </div>
