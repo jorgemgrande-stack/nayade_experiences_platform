@@ -4,6 +4,7 @@ import PublicFooter from "./PublicFooter";
 import WhatsAppFloatingButton from "./WhatsAppFloatingButton";
 import { useTheme } from "@/contexts/ThemeContext";
 import { cn } from "@/lib/utils";
+import { useTenantTheme } from "./TenantTheme";
 
 interface PublicLayoutProps {
   children: React.ReactNode;
@@ -20,6 +21,8 @@ export default function PublicLayout({
   forcePublicLight = false,
 }: PublicLayoutProps) {
   const { adminTheme, publicTheme } = useTheme();
+  // Web neutra de una empresa: sin la barra superior de la instalación propia (32 px menos de cabecera)
+  const neutral = !!useTenantTheme().theme?.neutralSite;
 
   // Cuando forcePublicLight=true: retirar dark de <html> mientras la página esté montada.
   // Al desmontar, restablecer si el admin estaba en oscuro.
@@ -48,7 +51,7 @@ export default function PublicLayout({
         )}
       >
         <PublicNav />
-        <main className={cn("flex-1", !fullWidthHero && "pt-20 lg:pt-[112px]")}>
+        <main className={cn("flex-1", !fullWidthHero && (neutral ? "pt-20" : "pt-20 lg:pt-[112px]"))}>
           {children}
         </main>
         <PublicFooter />
