@@ -212,8 +212,8 @@ Local: `REGISTRY_TEST_DATABASE_URL=mysql://root:<clave>@127.0.0.1:<puerto>/mysql
 - La constancia de aviso se registra aunque la bandeja lo deje `skipped` (`MAIL_MODE=off`): al encender el
   correo no se reenvían los avisos ya «encolados».
 - La web comercial necesita la página de verificación y el formulario de reenvío (fuera de este repo).
-- Conversión por operador mientras hay un pedido `trial_conversion` abierto: el operador gana y el pedido
-  queda parado con error («ya no está en prueba»); no duplica nada, pero hay que cancelarlo a mano.
+- Conversión por operador mientras hay un pedido `trial_conversion` abierto: resuelto. La excepción responde 409 con el
+  pedido abierto; se aprueba o se cancela ese pedido primero y nunca queda uno parado.
 - `POST /subscriptions/:id/renewals` (operador) sobre una suscripción en prueba con el plazo pasado la pasa
   a `active` sin pago; después el pedido `trial_conversion` no podría convertirla. Es una acción manual de
   operador fuera de este módulo; no se ha cambiado.

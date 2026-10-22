@@ -215,7 +215,7 @@ describe.skipIf(!URL_)("prueba gratuita de Essential de punta a punta (MySQL rea
     const port = memoryEmailPort();
     trialOutbox = port.sent as typeof trialOutbox;
     const cpApp = createControlPlaneApp({
-      tokens: [{ id: "admin", sha256: hashToken(ADMIN), scopes: ["tenants:read", "provisioning:write", "subscriptions:read", "subscriptions:write", "entitlements:write", "orders:read", "orders:approve"] }],
+      tokens: [{ id: "admin", sha256: hashToken(ADMIN), scopes: ["tenants:read", "provisioning:write", "subscriptions:read", "subscriptions:write", "entitlements:write", "orders:read", "orders:write", "orders:approve"] }],
       registry,
       reader: store,
       entitlements: new EntitlementAdmin(regPool),
@@ -538,6 +538,14 @@ describe.skipIf(!URL_)("prueba gratuita de Essential de punta a punta (MySQL rea
   it("conversión: suscripción activa y escritura recuperada", async () => {
     // Sin pedido no hay conversión: la excepción administrativa crea y aprueba el pedido de conversión
     expect((await cpCall("POST", `/trials/${trialId}/convert`, { token: ADMIN, body: {} })).status).toBe(400);
+    // Con un pedido de conversión abierto (el cliente está contratando), la excepción no se superpone: 409 sin tocar nada
+    const pending = await cpCall("POST", "/orders", { token: ADMIN, body: { idempotencyKey: `journey-open-conv-${run}`, trialId, request: { plan: "essential", interval: "month", items: [] } } });
+    expect(pending.status).toBe(201);
+    const blocked = await cpCall("POST", `/trials/${trialId}/convert`, { token: ADMIN, body: { category: "internal", reason: "Empresa interna de pruebas de punta a punta" } });
+    expect(blocked.status).toBe(409);
+    expect(blocked.json.message).toContain(`#${pending.json.order.id}`);
+    // Rechazado ese pedido, la excepción sigue su curso
+    expect((await cpCall("POST", `/orders/${pending.json.order.id}/reject`, { token: ADMIN, body: { reason: "Se convierte por excepción interna" } })).status).toBe(200);
     const r = await cpCall("POST", `/trials/${trialId}/convert`, { token: ADMIN, body: { category: "internal", reason: "Empresa interna de pruebas de punta a punta" } });
     expect(r.status).toBe(200);
     expect(r.json.trial.state).toBe("converted");
