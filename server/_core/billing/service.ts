@@ -58,6 +58,11 @@ export class SubscriptionService {
     return p;
   }
 
+  /** Catálogo público de planes y módulos (solo datos; sin estado de ningún tenant). */
+  getCatalog(): Catalog {
+    return this.d.catalog;
+  }
+
   async maxCustomDomains(tenantId: string): Promise<number> {
     const s = await this.d.store.getSubscriptionByTenant(tenantId);
     if (!s) return 0;

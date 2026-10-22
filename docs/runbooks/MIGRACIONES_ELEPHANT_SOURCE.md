@@ -1,0 +1,119 @@
+# Migraciones de Elephant Source: procedimiento, copia y recuperación
+
+**Alcance:** CRM `0008_catalog_capabilities` y `0009_contract_configuration`, registro `0008_tenant_capabilities` y `0009_sites_fiscal_entities`, y la semilla del catálogo v1.
+
+**Naturaleza de los cambios:** todas son aditivas (tablas o columnas nuevas, sin tocar datos existentes).
+
+**Estado:** ensayadas el 16/10/2026 en una base MySQL 8.4 desechable. **No ejecutadas en ninguna base real.**
+
+**Bloqueo:** no hay acceso a las bases de producción desde este entorno. La ejecución real la hace una persona con acceso, siguiendo este documento.
+
+## Reglas
+- Nunca al arrancar: cada paso es un comando explícito, con `--apply`/`--execute` y la confirmación del nombre de la base.
+- Antes de escribir: **copia verificada** (ver «Copia» abajo). Sin copia restaurable no se migra.
+- Orden: CRM → semilla → registro → despliegue del código que las usa. El código nuevo funciona sin ellas (las funciones nuevas quedan inactivas hasta que existan las tablas), así que el orden inverso no rompe el servicio, pero tampoco activa nada.
+
+## Copia
+```bash
+mysqldump --single-transaction --routines --triggers <bd> > copia_<bd>_$(date +%Y%m%d_%H%M).sql
+```
+**Verificar la copia** antes de seguir: restaurarla en una base temporal y comparar el número de tablas y los recuentos de las tablas principales.
+```bash
+mysql -e "CREATE DATABASE <bd>_verif"
+mysql <bd>_verif < copia_….sql
+```
+La copia no sale del entorno controlado: contiene datos personales.
+
+## CRM (carril `db/crm/migrations`, ejecutor común)
+```bash
+MIGRATE_DATABASE_URL=mysql://…/<crm> pnpm exec tsx scripts/db/migrate.ts status --dir db/crm/migrations
+MIGRATE_DATABASE_URL=mysql://…/<crm> pnpm exec tsx scripts/db/migrate.ts up --dir db/crm/migrations            # plan
+MIGRATE_DATABASE_URL=mysql://…/<crm> pnpm exec tsx scripts/db/migrate.ts up --dir db/crm/migrations --apply --confirm-database <crm> [--allow-remote]
+```
+**Reversión** (tiene ficheros `.down.sql`):
+```bash
+MIGRATE_DATABASE_URL=… pnpm exec tsx scripts/db/migrate.ts down --dir db/crm/migrations --steps 2 --apply --confirm-database <crm>
+```
+- `0009.down` quita `crm_contracts.configuration`; las versiones del contrato conservan su copia.
+- `0008.down` borra solo las entradas de tipo capacidad; los productos de la semilla permanecen (su configuración nueva va en el JSON del borrador).
+
+## Semilla del catálogo (base del CRM, tras `0008`)
+```bash
+CATALOG_DATABASE_URL=mysql://…/<crm> pnpm exec tsx scripts/catalog/seed-elephant-source.ts                               # simulación
+CATALOG_DATABASE_URL=mysql://…/<crm> pnpm exec tsx scripts/catalog/seed-elephant-source.ts --apply --confirm-database <crm>
+```
+- Idempotente: la segunda ejecución informa `unchanged`.
+- Nunca despublica ni borra.
+- Si una clave existe con otra familia, la informa en `conflicts` y no la toca. **Si `conflicts` no está vacío, para y revisa.**
+
+## Registro (ejecutor propio)
+```bash
+REGISTRY_MIGRATE_URL=mysql://…/<registro> pnpm exec tsx scripts/registry-migrate.ts                                        # plan
+REGISTRY_MIGRATE_URL=mysql://…/<registro> pnpm exec tsx scripts/registry-migrate.ts --execute --confirm-database <registro> [--allow-remote]
+```
+**Reversión** (sin `.down`; las cuatro tablas son nuevas y no las referencia nada anterior). Solo si están vacías o se acepta perder su contenido:
+```sql
+DROP TABLE tenant_sites; DROP TABLE tenant_fiscal_entities;              -- 0009 (en este orden, por la FK)
+DROP TABLE tenant_capability_events; DROP TABLE tenant_capabilities;     -- 0008
+UPDATE registry_meta SET v = '0007' WHERE k = 'schema_version';
+```
+Si ya contienen licencias, sedes o entidades fiscales reales, **no** revertir así: restaurar desde la copia.
+
+## Recuperación completa
+Restaurar la copia sobre una base nueva y apuntar el servicio a ella, o restaurarla sobre la original con el servicio detenido. Después, `status` (CRM) o el plan (registro) deben mostrar la versión anterior.
+
+## Resultado del ensayo (16/10/2026, base desechable)
+
+**CRM**
+| Paso | Resultado |
+|---|---|
+| Base en `0007` con 2 empresas sintéticas | ✓ |
+| Copia `mysqldump` | ✓ (34 KB) |
+| Plan | 2 pendientes (`0008`, `0009`) |
+| Aplicación | ✓ (`crm_contracts.configuration` JSON) |
+| Semilla: simulación | sin escritura |
+| Semilla: aplicación | 132 entradas, 60 precios, `conflicts: []` |
+| Semilla: repetición | `unchanged: 132` |
+| Reversión de `0009` y `0008` | ✓ (aplicadas 7, pendientes 2); empresas intactas (2) |
+| Restauración de la copia en otra base | ✓ (23 tablas, 2 empresas, versión `0007`) |
+
+**Registro**
+| Paso | Resultado |
+|---|---|
+| Base en `0007` | ✓ |
+| Copia | ✓ (22 KB) |
+| Plan | `0007` → `0009` |
+| Ejecución | ✓ (`tenant_capabilities`, `tenant_capability_events`, `tenant_sites`, `tenant_fiscal_entities`) |
+| Reversión manual | ✓ (el plan vuelve a mostrar `0008` y `0009` pendientes) |
+
+## Carril de la app (`db/migrations`): BLOQUEA EL DESPLIEGUE
+Estas migraciones se aplican en **cada** base de empresa: la de Náyade en producción y las aprovisionadas.
+
+| Migración | Contenido | Qué pasa si no se aplica antes de desplegar |
+|---|---|---|
+| `0003_ski_rental` | Tablas del módulo Ski Rental. Aditiva y reversible. | El módulo falla (no está instalado ni licenciado en ninguna empresa); el resto no se ve afectado. |
+| `0004_inventory_holds` | 8 columnas NULL y un índice en `reservations` (retención de plazas de spa y hotel). Aditiva y reversible. | **Fallan la reserva y la disponibilidad de spa y hotel.** Hay que aplicarla antes de desplegar. |
+| `0005_document_counters_unique` | Índice único `document_counters (document_type, year)`. Si ya hay series duplicadas, MySQL lo rechaza sin cambiar nada: **ejecutar antes la consulta de duplicados de la cabecera**. | Dos altas simultáneas a principio de año podrían crear dos series. La numeración ya es atómica igualmente. |
+| `0006_readonly_role` | Amplía el ENUM `users.role` con `readonly`. | No se puede asignar «Solo lectura». |
+| `0007_blog_posts` | Tabla `blog_posts` (capacidad `cms-blog`). | El blog aparece vacío y el panel indica «El blog no está instalado». |
+| `0008_crm_tags_tasks` | Tablas de etiquetas y tareas del CRM. | Etiquetas y tareas no disponibles; la campana de avisos sale vacía. |
+
+**Carril CRM del plano de control:** `0010_commercial_orders` (orquestador de contratación). Hay que aplicarla antes de activar `CP_ORCHESTRATOR_ENABLED=1`. Va en el mismo procedimiento que la 0008 y la 0009 de ese carril.
+
+**Empresas aprovisionadas antes de esta versión:** además de las migraciones, necesitan la siembra de ajustes y flags que ahora hace el aprovisionamiento (`INSERT IGNORE`, ver `docs/elephant-source/ESSENTIAL_CAPACIDADES.md`).
+
+```bash
+MIGRATE_DATABASE_URL=mysql://…/<bd_empresa> pnpm exec tsx scripts/db/migrate.ts status --dir db/migrations
+MIGRATE_DATABASE_URL=mysql://…/<bd_empresa> pnpm exec tsx scripts/db/migrate.ts up --dir db/migrations --apply --confirm-database <bd_empresa> [--allow-remote]
+```
+
+**Comprobación previa obligatoria:**
+- Ejecutar `status` sobre una copia de la base de Náyade antes que nada.
+- En las bases aprovisionadas desde la baseline, el ejecutor rechaza operar porque ve `0000_baseline` registrada fuera del carril (limitación detectada por el PR de Ski Rental). Debe resolverse antes de migrar empresas aprovisionadas.
+
+**Reservas anteriores a `0004`:** quedan sin recurso (NULL) y no cuentan en la ocupación calculada.
+- **Spa:** su aforo tampoco las contaba antes, así que no se pierde nada.
+- **Hotel:** las reservas futuras ya existentes no restarán disponibilidad hasta que se asocien a su tipo de habitación. **Antes de abrir ventas**, hay que revisar la reconciliación (`hotel.adminReconcileInventory`, en modo informe) y asociar las reservas vivas.
+
+## Pendiente
+- **Ejecución real:** requiere acceso a las bases y una persona responsable de la copia. Además, **la copia de producción debe ensayarse primero en una base aislada** con este mismo procedimiento.

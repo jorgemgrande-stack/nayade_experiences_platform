@@ -13,6 +13,7 @@
  *   - pending_payment       → pendingPayments status='pending' con dueDate vencida
  *   - tpv_alert             → 4 sub-tipos críticos de cardTerminalBatches/operations
  *   - upcoming_reservation  → reservas confirmadas (paid) con bookingDate=mañana
+ *   - task                  → tareas del CRM del usuario que vencen hoy o vencidas (crm-tasks)
  *
  * Dismiss es por-usuario: silenciar un item afecta solo a quien lo silencia.
  */
@@ -33,6 +34,9 @@ import {
   adminNotificationDismissals,
 } from "../../drizzle/schema";
 import { legacyDb, legacyPool } from "../_core/legacyDb";
+import { getCapabilityAccess } from "../_core/capabilities/access";
+import { dueTasksFor } from "../crmTasksDb";
+import { localYmd } from "../../shared/crmTagsTasks";
 
 const _pool = legacyPool();
 const db = legacyDb();
@@ -47,7 +51,8 @@ type FeedKind =
   | "cancellation"
   | "pending_payment"
   | "tpv_alert"
-  | "upcoming_reservation";
+  | "upcoming_reservation"
+  | "task";
 
 interface FeedItem {
   kind: FeedKind;
@@ -393,6 +398,36 @@ async function sourceUpcomingReservations(userId: number): Promise<FeedSection> 
   };
 }
 
+/**
+ * Tareas del CRM asignadas a este usuario que vencen hoy o están vencidas (crm-tasks). Solo si la
+ * empresa tiene la capacidad; si la BD aún no tiene la tabla (migración 0008 sin aplicar), la sección
+ * queda vacía y no rompe el resto del feed. No envía correos.
+ */
+async function sourceTasks(userId: number): Promise<FeedSection> {
+  const empty: FeedSection = { kind: "task", label: "Tareas para hoy o vencidas", icon: "✅", severity: "info", total: 0, items: [], ctaAllPath: "/admin/crm/tareas" };
+  try {
+    const decision = await getCapabilityAccess().check("crm-tasks", { write: false });
+    if (!decision.allowed) return empty;
+    const dismissed = await getDismissedIds(userId, "task");
+    const today = localYmd();
+    const filtered = (await dueTasksFor(userId, today)).filter((t) => !dismissed.has(t.id));
+    const overdue = filtered.some((t) => t.dueDate < today);
+    const items: FeedItem[] = filtered.slice(0, 5).map((t) => ({
+      kind: "task" as const,
+      entityId: t.id,
+      title: t.title,
+      subtitle: t.dueDate < today ? `Vencida · ${t.dueDate}` : "Vence hoy",
+      amount: null,
+      severity: t.dueDate < today ? ("warning" as const) : ("info" as const),
+      ctaPath: "/admin/crm/tareas",
+      createdAtMs: 0,
+    }));
+    return { ...empty, severity: overdue ? "warning" : "info", total: filtered.length, items };
+  } catch {
+    return empty;
+  }
+}
+
 // ─── Router ─────────────────────────────────────────────────────────────────
 
 export const notificationsRouter = router({
@@ -403,7 +438,7 @@ export const notificationsRouter = router({
   feed: staffProcedure.query(async ({ ctx }) => {
     const userId = ctx.user.id;
     const [
-      sLeads, sQuotes, sCancellations, sPending, sTpv, sUpcoming,
+      sLeads, sQuotes, sCancellations, sPending, sTpv, sUpcoming, sTasks,
     ] = await Promise.all([
       sourceLeads(userId),
       sourceQuotes(userId),
@@ -411,12 +446,14 @@ export const notificationsRouter = router({
       sourcePendingPayments(userId),
       sourceTpvAlerts(userId),
       sourceUpcomingReservations(userId),
+      sourceTasks(userId),
     ]);
 
     const sections: FeedSection[] = [
       sCancellations,  // critical primero
       sPending,
       sTpv,
+      sTasks,
       sLeads,
       sQuotes,
       sUpcoming,       // info al final (no es alerta)
@@ -435,7 +472,7 @@ export const notificationsRouter = router({
   dismiss: staffProcedure
     .input(z.object({
       kind: z.enum([
-        "lead", "quote", "cancellation", "pending_payment", "tpv_alert", "upcoming_reservation",
+        "lead", "quote", "cancellation", "pending_payment", "tpv_alert", "upcoming_reservation", "task",
       ]),
       entityId: z.number().int(),
     }))
@@ -453,7 +490,7 @@ export const notificationsRouter = router({
   dismissAll: staffProcedure
     .input(z.object({
       kind: z.enum([
-        "lead", "quote", "cancellation", "pending_payment", "tpv_alert", "upcoming_reservation",
+        "lead", "quote", "cancellation", "pending_payment", "tpv_alert", "upcoming_reservation", "task",
       ]),
     }))
     .mutation(async ({ input, ctx }) => {
@@ -489,6 +526,8 @@ export const notificationsRouter = router({
         const rows = await db.select({ id: reservations.id }).from(reservations)
           .where(eq(reservations.bookingDate, tomorrowYmd()));
         entityIds = rows.map(r => r.id);
+      } else if (input.kind === "task") {
+        entityIds = (await dueTasksFor(userId).catch(() => [])).map(t => t.id);
       }
 
       if (entityIds.length === 0) return { ok: true, dismissed: 0 };

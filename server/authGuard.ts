@@ -19,6 +19,7 @@
 
 import type { Request, Response, NextFunction } from "express";
 import { verifySessionToken } from "./localAuth";
+import { readSessionToken } from "./_core/sessionCookie";
 import { getSupportIdentity } from "./_core/support/session";
 import { sdk } from "./_core/sdk";
 
@@ -46,6 +47,10 @@ const PUBLIC_TRPC_ROUTES = new Set([
   "public.getPublicPageBlocks",
   "public.getTheme",
   "public.getTenantPage",
+
+  // ── Blog público (solo entradas publicadas) ───────────────────────────────
+  "blog.publicList",
+  "blog.publicGet",
 
   // ── CMS público ───────────────────────────────────────────────────────────
   "cms.getSiteSettings",
@@ -171,26 +176,6 @@ function isPublicRoute(procedures: string[]): boolean {
   return procedures.every(p => PUBLIC_TRPC_ROUTES.has(p));
 }
 
-// ─── Extractor de cookie ──────────────────────────────────────────────────────
-function getCookie(req: Request, name: string): string | undefined {
-  const raw = req.headers.cookie ?? "";
-  const cookies = Object.fromEntries(
-    raw.split(";").map(c => {
-      const idx = c.indexOf("=");
-      if (idx === -1) return [c.trim(), ""];
-      const rawValue = c.slice(idx + 1).trim();
-      let value = rawValue;
-      try {
-        value = decodeURIComponent(rawValue);
-      } catch {
-        // Cookie mal codificada (p. ej. "%"): se conserva sin decodificar en vez de lanzar
-      }
-      return [c.slice(0, idx).trim(), value];
-    })
-  );
-  return cookies[name];
-}
-
 // ─── Middleware factory ───────────────────────────────────────────────────────
 export function createAuthGuardMiddleware(useLocalAuth: boolean) {
   return async function authGuard(req: Request, res: Response, next: NextFunction) {
@@ -205,8 +190,8 @@ export function createAuthGuardMiddleware(useLocalAuth: boolean) {
     let authenticated = false;
 
     if (useLocalAuth) {
-      // Modo local: verificar JWT en cookie nayade_session
-      const token = getCookie(req, "nayade_session");
+      // Modo local: verificar JWT en la cookie de sesión (__Host-nayade_session por HTTPS)
+      const token = readSessionToken(req);
       if (token) {
         const userId = await verifySessionToken(token);
         authenticated = userId !== null;

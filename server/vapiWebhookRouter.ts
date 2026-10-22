@@ -12,6 +12,7 @@
  * Secreto opcional: variable VAPI_WEBHOOK_SECRET (header x-vapi-secret o ?secret=).
  */
 import express from "express";
+import { legacyBrandText, legacyUrl } from "./tenantBrand";
 import { eq } from "drizzle-orm";
 import { randomBytes } from "crypto";
 import { quotes, ghlWebhookLogs, vapiCalls } from "../drizzle/schema";
@@ -20,6 +21,8 @@ import { generateDocumentNumber } from "./documentNumbers";
 import { extractFromTranscript } from "./routers/vapiCalls";
 import { legacyDb, legacyPool } from "./_core/legacyDb";
 import { integrationEnv } from "./_core/tenantConfig";
+import { isMultiTenant } from "./_core/tenant";
+import { checkWebhookSecret, webhookSecretMatches } from "./_core/webhookSecret";
 
 const _pool = legacyPool();
 const _db = legacyDb();
@@ -87,7 +90,7 @@ function extractCallData(payload: any): {
 }
 
 // Crea las tablas si no existen (auto-heal para Railway)
-async function initVapiTables(): Promise<void> {
+export async function initVapiTables(): Promise<void> {
   try {
     await _pool.execute(`
       CREATE TABLE IF NOT EXISTS vapi_calls (
@@ -126,7 +129,8 @@ async function initVapiTables(): Promise<void> {
   }
 }
 
-initVapiTables();
+// Ya no se ejecuta al cargar el módulo: el arranque no modifica el esquema. Lo ejecuta el
+// mantenimiento explícito (`--schema-maintenance`, ver server/_core/schemaMaintenance.ts).
 
 const vapiWebhookRouter = express.Router();
 
@@ -136,13 +140,13 @@ vapiWebhookRouter.post("/api/vapi/webhook", express.json({ limit: "1mb" }), asyn
     "SELECT `value` FROM site_settings WHERE `key` = 'vapiWebhookSecret' LIMIT 1"
   ).catch(() => [[]]);
   const dbSecret = (secretRows as any[])[0]?.value ?? "";
-  const secret = integrationEnv("VAPI_WEBHOOK_SECRET") || dbSecret || integrationEnv("GHL_WEBHOOK_SECRET") || "";
-  if (secret) {
-    const provided =
-      (req.headers["x-vapi-secret"] as string | undefined) ??
-      (req.query.secret as string | undefined);
-    if (provided !== secret) {
-      console.warn("[VAPI Webhook] Petición rechazada — secreto inválido");
+  const configured = integrationEnv("VAPI_WEBHOOK_SECRET") || dbSecret || integrationEnv("GHL_WEBHOOK_SECRET") || "";
+  // En multiempresa el secreto es obligatorio (sin él, el webhook está inactivo); en instalación única, opcional.
+  if (configured || isMultiTenant()) {
+    const provided = (req.headers["x-vapi-secret"] as string | undefined) ?? (req.query.secret as string | undefined);
+    const auth = isMultiTenant() ? checkWebhookSecret(provided, configured) : (webhookSecretMatches(provided, configured) ? "ok" : "invalid");
+    if (auth !== "ok") {
+      console.warn(`[VAPI Webhook] Petición rechazada — ${auth === "inactive" ? "secreto no configurado (webhook inactivo)" : "secreto inválido"}`);
       return res.status(401).json({ ok: false, error: "Unauthorized" });
     }
   }
@@ -250,7 +254,7 @@ vapiWebhookRouter.post("/api/vapi/webhook", express.json({ limit: "1mb" }), asyn
     // 5. Generar presupuesto borrador con URL pública
     const quoteNumber = await generateDocumentNumber("presupuesto", "vapi:quote", "system");
     const token = randomBytes(32).toString("hex");
-    const origin = (
+    const origin = legacyUrl(
       process.env.APP_URL ??
       (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : "https://www.skicenter.es")
     ).replace(/\/+$/, "");
@@ -263,7 +267,7 @@ vapiWebhookRouter.post("/api/vapi/webhook", express.json({ limit: "1mb" }), asyn
       quoteNumber,
       leadId,
       agentId: 0, // sistema — sin usuario autenticado
-      title: `Presupuesto Skicenter — ${name}`,
+      title: `Presupuesto ${legacyBrandText("Skicenter")} — ${name}`,
       status: "borrador",
       items: [],
       subtotal: "0",

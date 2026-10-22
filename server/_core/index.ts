@@ -6,42 +6,53 @@ import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import rateLimit from "express-rate-limit";
 import { isLeadProcedurePath, localStorageSecurityHeaders } from "./publicEndpointGuards";
 import { createHealthRouter } from "./health";
+import { securityHeaders } from "./securityHeaders";
 import { requestMeter } from "./requestMeter";
+import { rebindRequestContext, requestIdMiddleware } from "./ops/requestContext";
 import { installTenantBinding, installTenantResolution } from "./tenantRegistry/install";
-import { scheduleTenantInterval, setJobFlag } from "./tenantRegistry/scheduler";
+import { scheduleTenantInterval } from "./tenantRegistry/scheduler";
+import { startScheduledJobsMulti } from "./tenantRegistry/jobPolicy";
 import { isMultiTenant } from "./tenant";
+import { closeStartupConnections, openStartupConnection } from "./startupConnections";
 import { localStorageTenantGuard } from "./tenantStorage";
 import { registerBuiltinModules } from "./modules/builtin";
 import { getModuleAccess, getModuleRegistry } from "./modules/runtime";
 import { moduleRouteGuard } from "./modules/routeGuard";
+import { capabilityRouteGuard } from "./capabilities/routeGuard";
+import { getCapabilityAccess } from "./capabilities/access";
 import { loadModules, modulesFromEnv } from "./modules/loader";
 import { registerOAuthRoutes } from "./oauth";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { createLocalContext } from "./context.local";
-import { createLocalAuthRouter } from "../localAuth";
+import { createCentralHandoffRouter, createLocalAuthRouter } from "../localAuth";
 import { createPasswordResetRouter } from "../passwordReset";
 import { createAuthGuardMiddleware } from "../authGuard";
 import uploadRouter from "../uploadRoutes";
+import fileRouter from "../fileRoutes";
 import redsysRouter from "../redsysRoutes";
 import { metaCapiRouter } from "../metaCapiRoute";
 import settlementExportRouter from "../settlementExportRoutes";
 import invoicePreviewRouter from "../invoicePreviewRouter";
 import { kbRouter } from "../kbRoute";
 import ghlWebhookRouter from "../ghlWebhookRouter";
-import ghlInboxRouter from "../routes/ghlInboxRouter";
-import vapiWebhookRouter from "../vapiWebhookRouter";
+import ghlInboxRouter, { initGhlTables } from "../routes/ghlInboxRouter";
+import vapiWebhookRouter, { initVapiTables } from "../vapiWebhookRouter";
 import { sitemapRouter } from "../sitemapRouter";
 import { startCancellationStaleJob } from "../cancellationStaleJob";
 import { startEmailAutomationJob } from "../emailAutomationJob";
 import { startTaxReminderJob } from "../taxReminderJob";
+import { startDataExportJob } from "../dataExport/job";
 import { startEmailIngestionJob } from "../services/emailTpvIngestionService";
 import { startExpenseEmailIngestionJob } from "../services/expenseEmailIngestionService";
-import { startCommercialEmailSyncJob } from "../services/commercialEmailService";
+import { initCommercialEmailTables, startCommercialEmailSyncJob } from "../services/commercialEmailService";
+import { ensureDocumentNumberTables } from "../documentNumbers";
 import { startMatchingJob } from "../services/cardTerminalMatchingService";
 import { startRelinkJob } from "../services/cardTerminalRelinkService";
 import { serveStatic, setupVite } from "./vite";
 import { getFeatureFlag } from "../config";
+import { checkAppSchemaAt, describeSchemaReport } from "./schemaCheck";
+import { isSchemaMaintenanceCommand, runSchemaMaintenance, schemaCheckMode, type MaintenanceStep } from "./schemaMaintenance";
 
 // --- RATE LIMITERS ------------------------------------------------------------
 
@@ -133,6 +144,11 @@ async function startServer() {
   const server = createServer(app);
   // Confiar en el proxy de Railway (necesario para que express-rate-limit identifique IPs correctamente)
   app.set("trust proxy", 1);
+  // Cabeceras de seguridad comunes (sin CSP completa: ver securityHeaders.ts)
+  app.disable("x-powered-by");
+  // Identificador de correlación (X-Request-Id): seguro o generado, devuelto y añadido a los logs
+  app.use(requestIdMiddleware);
+  app.use(securityHeaders);
   // Salud (liveness/readiness): antes de cualquier middleware pesado, sin autenticación.
   app.use(createHealthRouter());
   // Medición de peticiones (destino nulo por defecto: sin efecto hasta que exista un Resource Manager).
@@ -143,6 +159,7 @@ async function startServer() {
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
   installTenantBinding(app);
+  app.use(rebindRequestContext);
 
   if (USE_LOCAL_AUTH) {
     // Rate limiting en endpoints de autenticación (5 req/min por IP)
@@ -150,6 +167,9 @@ async function startServer() {
     app.use("/api/auth/forgot-password", authRateLimit);
     // Modo local: rutas de auth propias (login/logout/me) en lugar de Manus OAuth
     app.use(createLocalAuthRouter());
+    // Acceso centralizado (CENTRAL_LOGIN_HOST): canje del pase en el host de la empresa
+    const handoff = createCentralHandoffRouter();
+    if (handoff) app.use(handoff);
     app.use(createPasswordResetRouter());
     console.log("[Auth] Modo LOCAL_AUTH activado — usando email+password local");
   } else {
@@ -207,6 +227,8 @@ async function startServer() {
   const moduleReport = await loadModules(modulesFromEnv(), { app, registry: getModuleRegistry(), access: getModuleAccess() });
   for (const f of moduleReport.failed) console.error(JSON.stringify({ ctx: "Modules", event: "load_failed", spec: f.spec, error: f.error }));
   app.use("/api/trpc", moduleRouteGuard(getModuleAccess));
+  // Licencias por capacidad (catálogo de Elephant Source): solo en multi y con CAPABILITY_ENFORCEMENT=on
+  app.use("/api/trpc", capabilityRouteGuard(getCapabilityAccess));
   app.use("/api/trpc", createAuthGuardMiddleware(USE_LOCAL_AUTH));
   // Servir archivos del storage local (fallback cuando S3/Forge no está configurado)
   const localStorageDir = process.env.LOCAL_STORAGE_PATH ?? "/tmp/local-storage";
@@ -216,6 +238,8 @@ async function startServer() {
   app.use("/local-storage", express.static(localStorageDir));
   // File upload endpoint
   app.use(uploadRouter);
+  // Entrega de ficheros del almacenamiento persistente: públicos (/files) y privados (/api/files)
+  app.use(fileRouter);
 
   // Redsys IPN notification endpoint
   app.use(redsysRouter);
@@ -268,11 +292,14 @@ async function runMigrations() {
     const { migrate } = await import("drizzle-orm/mysql2/migrator");
     const { resolve } = await import("path");
     const pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
-    const db = drizzle(pool);
-    // En producción el binario está en dist/, las migraciones en drizzle/ (mismo nivel que package.json)
-    const migrationsFolder = resolve(process.cwd(), "drizzle");
-    await migrate(db, { migrationsFolder });
-    await pool.end();
+    try {
+      const db = drizzle(pool);
+      // En producción el binario está en dist/, las migraciones en drizzle/ (mismo nivel que package.json)
+      const migrationsFolder = resolve(process.cwd(), "drizzle");
+      await migrate(db, { migrationsFolder });
+    } finally {
+      await pool.end().catch(() => undefined);
+    }
     console.log("[DB] Migraciones aplicadas correctamente");
   } catch (err: any) {
     console.error("[DB] Error al aplicar migraciones (código:", err?.code, "):", err?.message ?? err);
@@ -285,7 +312,7 @@ async function runMigrations() {
 async function ensureCriticalSeeds() {
   try {
     const mysql = await import("mysql2/promise");
-    const conn = await mysql.default.createConnection(process.env.DATABASE_URL!);
+    const conn = await openStartupConnection();
 
     // Feature flag omitido por migración ya marcada como aplicada en __drizzle_migrations
     await conn.execute(
@@ -518,7 +545,7 @@ async function ensureCriticalSeeds() {
 async function migrateSiteSettingsToSystemSettings() {
   try {
     const mysql = await import("mysql2/promise");
-    const conn = await mysql.default.createConnection(process.env.DATABASE_URL!);
+    const conn = await openStartupConnection();
 
     // 1. Seed nuevas claves en system_settings (INSERT IGNORE preserva valores existentes)
     const seeds: [string, string, string, string, string, number, number][] = [
@@ -610,7 +637,7 @@ async function migrateSiteSettingsToSystemSettings() {
 async function seedExperiencesIfEmpty() {
   try {
     const mysql = await import("mysql2/promise");
-    const conn = await mysql.default.createConnection(process.env.DATABASE_URL!);
+    const conn = await openStartupConnection();
 
     // Comprobar si ya hay experiencias
     const [rows] = await conn.execute("SELECT COUNT(*) as cnt FROM experiences") as any[];
@@ -677,7 +704,7 @@ async function seedExperiencesIfEmpty() {
 async function ensurePricingColumns() {
   try {
     const mysql = await import("mysql2/promise");
-    const conn = await mysql.default.createConnection(process.env.DATABASE_URL!);
+    const conn = await openStartupConnection();
 
     const [cols] = await conn.execute(
       `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
@@ -856,7 +883,7 @@ async function ensurePricingColumns() {
 async function ensureLeadSourceColumn() {
   try {
     const mysql = await import("mysql2/promise");
-    const conn = await mysql.default.createConnection(process.env.DATABASE_URL!);
+    const conn = await openStartupConnection();
 
     // 1. Crear tabla crm_lead_sources si no existe
     await conn.execute(`
@@ -941,7 +968,7 @@ async function ensureLeadSourceColumn() {
 async function ensureTicketingChannel() {
   try {
     const mysql = await import("mysql2/promise");
-    const conn = await mysql.default.createConnection(process.env.DATABASE_URL!);
+    const conn = await openStartupConnection();
     // Verificar si 'TICKETING' ya está en el ENUM de reservations.channel
     const [rows] = await conn.execute(
       `SELECT COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS
@@ -967,7 +994,7 @@ async function ensureTicketingChannel() {
 async function ensureExpenseEmailIngestionSchema() {
   try {
     const mysql = await import("mysql2/promise");
-    const conn = await mysql.default.createConnection(process.env.DATABASE_URL!);
+    const conn = await openStartupConnection();
 
     // Columnas nuevas en expenses (ingesta email)
     const [expCols] = await conn.execute(
@@ -1472,7 +1499,7 @@ async function ensureExpenseEmailIngestionSchema() {
 async function ensureReservationPublicToken() {
   try {
     const mysql = await import("mysql2/promise");
-    const conn = await mysql.default.createConnection(process.env.DATABASE_URL!);
+    const conn = await openStartupConnection();
 
     // 1. Columna
     const [cols] = await conn.execute(
@@ -1539,7 +1566,7 @@ async function ensureReservationPublicToken() {
 async function ensureRefundColumns() {
   try {
     const mysql = await import("mysql2/promise");
-    const conn = await mysql.default.createConnection(process.env.DATABASE_URL!);
+    const conn = await openStartupConnection();
 
     const colsToEnsure: Array<{ name: string; ddl: string }> = [
       { name: "refund_executed_at",   ddl: "TIMESTAMP NULL" },
@@ -1574,7 +1601,7 @@ async function ensureRefundColumns() {
 async function ensureDiscountColumns() {
   try {
     const mysql = await import("mysql2/promise");
-    const conn = await mysql.default.createConnection(process.env.DATABASE_URL!);
+    const conn = await openStartupConnection();
 
     const [cols] = await conn.execute(
       `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
@@ -1629,7 +1656,7 @@ async function wipeTestDataIfRequested() {
 
   console.log("[Wipe] ??  WIPE_TEST_DATA=true detectado — limpiando datos de prueba...");
   const mysql = await import("mysql2/promise");
-  const conn = await mysql.default.createConnection(process.env.DATABASE_URL!);
+  const conn = await openStartupConnection();
 
   // Helper: count + truncate with log
   async function wipe(table: string) {
@@ -1766,6 +1793,18 @@ function startAbandonedCheckoutCleanup() {
         }
       }
 
+      // -- Caso C: plazas de spa/hotel — liberar retenciones caducadas o de reservas anuladas y
+      //    confirmar las de reservas pagadas por otra vía (idempotente) --
+      try {
+        const { syncInventoryHolds } = await import("../inventoryHoldsDb");
+        const s = await syncInventoryHolds();
+        if (s.released || s.confirmed || s.conflicts) {
+          console.log(`[AbandonedCheckout] Retenciones de plazas: ${s.released} liberadas (${s.expired} caducadas), ${s.confirmed} confirmadas, ${s.conflicts} en conflicto`);
+        }
+      } catch (invErr: any) {
+        console.error("[AbandonedCheckout] Error sincronizando retenciones de plazas:", invErr.message);
+      }
+
     } catch (err: any) {
       console.error("[AbandonedCheckout] Error en limpieza:", err.message, err.cause ?? "");
     }
@@ -1880,7 +1919,7 @@ async function fixBrokenInvoicePdfUrls() {
     const mysql = await import("mysql2/promise");
     const { drizzle } = await import("drizzle-orm/mysql2");
     const { sql } = await import("drizzle-orm");
-    const conn = await mysql.default.createConnection(process.env.DATABASE_URL!);
+    const conn = await openStartupConnection();
     const db = drizzle(conn);
     const result = await db.execute(sql`
       UPDATE invoices
@@ -1922,26 +1961,93 @@ const SCHEDULED_JOBS: Array<{ name: string; flag: string; start: () => void; lab
   { name: "card-terminal-relink", flag: "card_terminal_relink_enabled", start: startRelinkJob, label: "Card Terminal Relink", def: true },
   { name: "email-automation", flag: "email_automation_job_enabled", start: startEmailAutomationJob, label: "Email Automation", def: false },
   { name: "tax-reminder", flag: "tax_reminder_job_enabled", start: startTaxReminderJob, label: "Tax Reminder", def: true },
+  { name: "data-export", flag: "data_export_job_enabled", start: startDataExportJob, label: "Data Export", def: true },
 ];
 
 /**
- * Modo single/shadow: comportamiento de siempre (migraciones y DDL de arranque contra la BD
- * única, flags evaluados una vez al arrancar).
+ * Pasos de esquema que antes corrían en CADA arranque (migraciones de drizzle, DDL `ensure*` y
+ * semillas críticas). Ya no se ejecutan al arrancar: solo con el mantenimiento explícito
+ * (`--schema-maintenance --apply`, ver schemaMaintenance.ts), en el mismo orden.
+ */
+const SCHEMA_MAINTENANCE_STEPS: MaintenanceStep[] = [
+  { name: "drizzle", run: runMigrations },
+  { name: "ensureCriticalSeeds", run: ensureCriticalSeeds },
+  { name: "migrateSiteSettingsToSystemSettings", run: migrateSiteSettingsToSystemSettings },
+  { name: "ensurePricingColumns", run: ensurePricingColumns },
+  { name: "ensureRefundColumns", run: ensureRefundColumns },
+  { name: "ensureReservationPublicToken", run: ensureReservationPublicToken },
+  { name: "ensureDiscountColumns", run: ensureDiscountColumns },
+  { name: "ensureLeadSourceColumn", run: ensureLeadSourceColumn },
+  { name: "ensureTicketingChannel", run: ensureTicketingChannel },
+  { name: "ensureExpenseEmailIngestionSchema", run: ensureExpenseEmailIngestionSchema },
+  // Antes se ejecutaban al importar sus módulos (también en cada arranque)
+  { name: "initGhlTables", run: initGhlTables },
+  { name: "initVapiTables", run: initVapiTables },
+  // Antes se ejecutaban bajo demanda durante operaciones normales (numeración, job de email, CRM)
+  { name: "ensureDocumentNumberTables", run: ensureDocumentNumberTables },
+  { name: "initCommercialEmailTables", run: initCommercialEmailTables },
+  { name: "ensureInvoiceExemptColumn", run: ensureInvoiceExemptColumn },
+];
+
+/** reservations.invoice_exempt (migración 0091; antes se intentaba crear en cada setInvoiceExempt). */
+async function ensureInvoiceExemptColumn(): Promise<void> {
+  try {
+    const mysql = await import("mysql2/promise");
+    const url = process.env.DATABASE_URL!;
+    const conn = await mysql.default.createConnection(url);
+    try {
+      const [cols] = (await conn.query(
+        "SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'reservations' AND COLUMN_NAME = 'invoice_exempt'",
+      )) as any[];
+      if ((cols as any[]).length === 0) {
+        await conn.query("ALTER TABLE `reservations` ADD COLUMN `invoice_exempt` tinyint(1) NOT NULL DEFAULT 0");
+        console.log("[DB] reservations.invoice_exempt añadida");
+      }
+    } finally {
+      await conn.end().catch(() => undefined);
+    }
+  } catch (err: any) {
+    console.error("[DB] Error en ensureInvoiceExemptColumn:", err.message);
+  }
+}
+
+/**
+ * Comprobación de esquema al arrancar, SOLO LECTURA: el arranque ya no modifica el esquema.
+ * SCHEMA_CHECK = warn (por defecto: avisa y arranca, como antes ante una migración fallida),
+ * strict (no arranca si el esquema no está al día) u off.
+ */
+async function verifySchemaOnStartup(): Promise<void> {
+  const mode = schemaCheckMode(process.env.SCHEMA_CHECK);
+  if (mode === "off") {
+    console.warn("[Schema] Comprobación de esquema desactivada (SCHEMA_CHECK=off)");
+    return;
+  }
+  let report: Awaited<ReturnType<typeof checkAppSchemaAt>>;
+  try {
+    report = await checkAppSchemaAt(process.env.DATABASE_URL!);
+  } catch (err: any) {
+    console.error("[Schema] No se pudo comprobar el esquema (código:", err?.code, "):", err?.message ?? err);
+    if (mode === "strict") process.exit(1);
+    return;
+  }
+  for (const line of describeSchemaReport(report)) (report.ok ? console.log : console.error)(line);
+  if (!report.ok && mode === "strict") {
+    console.error("[Schema] SCHEMA_CHECK=strict: no se arranca con el esquema desactualizado.");
+    process.exit(1);
+  }
+}
+
+/**
+ * Modo single/shadow: comprueba el esquema (sin modificarlo) contra la BD única y arranca; flags
+ * evaluados una vez al arrancar.
  */
 function bootSingleTenant(): void {
-  runMigrations()
-    .then(() => ensureCriticalSeeds())
-    .then(() => migrateSiteSettingsToSystemSettings())
-    .then(() => ensurePricingColumns())
-    .then(() => ensureRefundColumns())
-    .then(() => ensureReservationPublicToken())
-    .then(() => ensureDiscountColumns())
-    .then(() => ensureLeadSourceColumn())
-    .then(() => ensureTicketingChannel())
-    .then(() => ensureExpenseEmailIngestionSchema())
+  verifySchemaOnStartup()
     .then(() => fixBrokenInvoicePdfUrls())
     .then(() => wipeTestDataIfRequested())
     .then(() => seedExperiencesIfEmpty())
+    // Cierra las conexiones de DDL/semillas que hayan quedado abiertas por una excepción.
+    .finally(() => closeStartupConnections().catch(() => undefined))
     .then(() => startServer())
 
     // quoteReminderJob y commercialFollowupJob borrados en Fase 5.
@@ -1960,15 +2066,28 @@ function bootSingleTenant(): void {
  */
 function bootMultiTenant(): void {
   startServer()
-    .then(() => {
-      for (const j of SCHEDULED_JOBS) {
-        setJobFlag(j.name, j.flag, j.def);
-        j.start();
-      }
-    })
+    // Por empresa o desactivadas en multiempresa según su política (ver jobPolicy.ts)
+    .then(() => startScheduledJobsMulti(SCHEDULED_JOBS))
     .catch(console.error);
 }
 
-if (isMultiTenant()) bootMultiTenant();
+if (isSchemaMaintenanceCommand(process.argv)) {
+  if (isMultiTenant()) {
+    console.error("[Mantenimiento] En modo multi el esquema de cada tenant lo gestiona el aprovisionamiento: no hay BD de arranque.");
+    process.exit(2);
+  }
+  runSchemaMaintenance({
+    argv: process.argv,
+    databaseUrl: process.env.DATABASE_URL,
+    connect: async (url) => (await import("mysql2/promise")).default.createConnection(url),
+    steps: SCHEMA_MAINTENANCE_STEPS,
+  }).then(
+    (code) => process.exit(code),
+    (err) => {
+      console.error("[Mantenimiento] Error:", err?.message ?? err);
+      process.exit(1);
+    },
+  );
+} else if (isMultiTenant()) bootMultiTenant();
 else bootSingleTenant();
 

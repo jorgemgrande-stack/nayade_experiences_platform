@@ -2,7 +2,8 @@
  * commercialFollowup.ts — Router tRPC para el módulo Atención Comercial.
  * Gestión de seguimiento de presupuestos no convertidos.
  */
-import { router, protectedProcedure } from "../_core/trpc";
+import { router, staffProcedure } from "../_core/trpc";
+import { legacyBrandText } from "../tenantBrand";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import {
@@ -29,11 +30,15 @@ import { legacyDb, legacyPool } from "../_core/legacyDb";
 const _pool = legacyPool();
 const db = legacyDb();
 
-const staff = protectedProcedure;
+// Equipo comercial (crm.view; legado: admin | agente). Antes bastaba cualquier sesión.
+const staff = staffProcedure;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 async function ensureTracking(quoteId: number): Promise<void> {
+  // Sin presupuesto no hay seguimiento (evita filas huérfanas con ids inventados o de otra empresa)
+  const [quote] = await db.select({ id: quotes.id }).from(quotes).where(eq(quotes.id, quoteId)).limit(1);
+  if (!quote) throw new TRPCError({ code: "NOT_FOUND", message: "Presupuesto no encontrado" });
   await db
     .insert(quoteCommercialTracking)
     .values({ quoteId })
@@ -477,7 +482,7 @@ export const commercialFollowupRouter = router({
         customBody: input.customBody,
       };
 
-      const subject = input.customSubject ?? `Recordatorio — tu propuesta ${quote.quoteNumber} · ${process.env.BRAND_NAME ?? "Náyade Experiences"}`;
+      const subject = input.customSubject ?? `Recordatorio — tu propuesta ${quote.quoteNumber} · ${legacyBrandText(process.env.BRAND_NAME ?? "Náyade Experiences")}`;
       const html = pickReminderTemplate(newCount, emailData);
 
       const templateKey = `commercial_reminder_${Math.min(newCount, 3)}` as "commercial_reminder_1" | "commercial_reminder_2" | "commercial_reminder_3";

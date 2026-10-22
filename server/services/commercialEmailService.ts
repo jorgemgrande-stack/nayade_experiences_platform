@@ -8,13 +8,14 @@
  * - Feature flag: commercial_email_enabled
  */
 import { ImapFlow } from "imapflow";
-import { simpleParser } from "mailparser";
+import { simpleParser, type AddressObject } from "mailparser";
 import cron from "node-cron";
 import type mysql from "mysql2/promise";
 import { legacyPool } from "../_core/legacyDb";
 import nodemailer from "nodemailer";
 import { decryptPassword } from "../utils/emailCrypto";
-import { scheduleTenantCron } from "../_core/tenantRegistry/scheduler";
+import { runTenantJob, scheduleTenantCron } from "../_core/tenantRegistry/scheduler";
+import { isMultiTenant } from "../_core/tenant";
 
 function getPool(): mysql.Pool {
   return legacyPool();
@@ -214,13 +215,13 @@ async function syncFolder(
         const fromEmail = (fromAddr?.address ?? "").toLowerCase().slice(0, 319);
         const fromName = (fromAddr?.name ?? "").slice(0, 254) || null;
 
+        // mailparser devuelve un AddressObject o, con varias cabeceras, una lista de ellos
+        const addrValues = (x: AddressObject | AddressObject[]) => (Array.isArray(x) ? x : [x]).flatMap((o) => o.value);
         const toArr = parsed.to
-          ? (Array.isArray(parsed.to.value) ? parsed.to.value : [parsed.to.value])
-              .map((a: any) => a?.address ?? "").filter(Boolean)
+          ? addrValues(parsed.to).map((a: any) => a?.address ?? "").filter(Boolean)
           : [];
         const ccArr = parsed.cc
-          ? (Array.isArray(parsed.cc.value) ? parsed.cc.value : [parsed.cc.value])
-              .map((a: any) => a?.address ?? "").filter(Boolean)
+          ? addrValues(parsed.cc).map((a: any) => a?.address ?? "").filter(Boolean)
           : [];
 
         const bodyHtml = parsed.html || null;
@@ -505,19 +506,22 @@ export async function sendViaAccountSmtp(
 // ─── Cron job ─────────────────────────────────────────────────────────────────
 
 export async function startCommercialEmailSyncJob(): Promise<void> {
-  await initCommercialEmailTables();
+  // Sin DDL al arrancar el job: initCommercialEmailTables es un paso del mantenimiento explícito.
 
-  // Boot run
-  runCommercialEmailSync().catch(err =>
+  // Boot run (multiempresa: por empresa, dentro de su contexto)
+  if (isMultiTenant()) void runTenantJob("commercial-email-sync", () => runCommercialEmailSync());
+  else runCommercialEmailSync().catch(err =>
     console.error("[CommercialEmail] Error en sync inicial:", err.message),
   );
 
   // Every 5 minutes — individual accounts control their own interval but we
   // check every 5 min and skip accounts whose last_sync_at is recent enough.
   scheduleTenantCron("*/5 * * * *", "commercial-email-sync", () => {
-    runCommercialEmailSync().catch(err =>
+    const sync = runCommercialEmailSync().catch(err =>
       console.error("[CommercialEmail] Error en sync cron:", err.message),
     );
+    // Multiempresa: se espera a que termine dentro del contexto y el arriendo de su empresa
+    if (isMultiTenant()) return sync;
   });
 
   console.log("[CommercialEmail] Servicio de sync de email comercial iniciado");

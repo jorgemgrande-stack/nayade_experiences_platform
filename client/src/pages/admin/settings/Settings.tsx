@@ -1,5 +1,8 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useId, cloneElement, isValidElement } from "react";
 import AdminLayout from "@/components/AdminLayout";
+import { usePanelSubscription } from "@/hooks/usePanelSubscription";
+import { PanelError } from "@/components/admin/PanelStates";
+import { validateEmail, validateFiscalData, validatePhone, validateUrl, type FiscalData } from "@shared/formValidation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -236,14 +239,27 @@ function EmailPreviewSection({ plain = false }: { plain?: boolean }) {
 }
 
 // ─── Field helper ─────────────────────────────────────────────────────────────
-function Field({ label, hint, children, col2 = false }: {
-  label: string; hint?: string; children: React.ReactNode; col2?: boolean;
+// Asocia la etiqueta, la ayuda y el error al control (accesibilidad: label + aria-describedby).
+function Field({ label, hint, error, children, col2 = false }: {
+  label: string; hint?: string; error?: string | null; children: React.ReactNode; col2?: boolean;
 }) {
+  const id = useId();
+  const hintId = hint ? `${id}-hint` : undefined;
+  const errorId = error ? `${id}-error` : undefined;
+  const describedBy = [hintId, errorId].filter(Boolean).join(" ") || undefined;
+  const control = isValidElement(children)
+    ? cloneElement(children as React.ReactElement<Record<string, unknown>>, {
+        id,
+        "aria-describedby": describedBy,
+        "aria-invalid": error ? true : undefined,
+      })
+    : children;
   return (
-    <div className={col2 ? "col-span-2" : ""}>
-      <Label className="text-sm font-display font-medium text-foreground/80">{label}</Label>
-      <div className="mt-1.5">{children}</div>
-      {hint && <p className="text-xs text-muted-foreground mt-1">{hint}</p>}
+    <div className={col2 ? "sm:col-span-2" : ""}>
+      <Label htmlFor={id} className="text-sm font-display font-medium text-foreground/80">{label}</Label>
+      <div className="mt-1.5">{control}</div>
+      {hint && <p id={hintId} className="text-xs text-muted-foreground mt-1">{hint}</p>}
+      {error && <p id={errorId} className="text-xs text-destructive mt-1">{error}</p>}
     </div>
   );
 }
@@ -262,7 +278,15 @@ function AutoSaveStatus({ saving }: { saving: boolean }) {
 
 // ─── Página principal ─────────────────────────────────────────────────────────
 export default function Settings() {
-  const { data: rawSettings, isLoading } = trpc.cms.getSiteSettings.useQuery();
+  const { data: rawSettings, isLoading, isError, error: loadError, refetch } = trpc.cms.getSiteSettings.useQuery();
+  // Empresas con licencias por capacidad: sin valores por defecto heredados de la instalación
+  // original y sin los campos que no aplican a su plan.
+  const sub = usePanelSubscription();
+  const isNewCompany = sub.isLicensed;
+  const hasRestaurants = sub.can("restaurant-net");
+  // Valores por defecto de la instalación original solo en modo single (Náyade); en cualquier otro
+  // caso (multiempresa o estado desconocido) lo no guardado empieza vacío.
+  const blankDefaults = sub.data?.mode !== "single";
   const updateMutation = trpc.cms.updateSiteSettings.useMutation({
     onSuccess: () => toast.success("Configuración guardada correctamente"),
     onError: (e) => toast.error("Error al guardar: " + e.message),
@@ -324,9 +348,13 @@ export default function Settings() {
   }, [updateMutation]);
 
   useEffect(() => {
-    if (!rawSettings) return;
+    if (!rawSettings || sub.mode === "loading") return;
     initialized.current = false;
-    const s = rawSettings as Record<string, string | null>;
+    const raw = rawSettings as Record<string, string | null>;
+    // Empresa nueva: lo que no tenga guardado empieza vacío (nunca con datos de otra empresa)
+    const s: Record<string, string | null> = blankDefaults
+      ? new Proxy(raw, { get: (t, k: string) => (t[k] ?? "") })
+      : raw;
     setBusiness(prev => ({
       businessName:        s.businessName        ?? prev.businessName,
       businessPhone:       s.businessPhone       ?? prev.businessPhone,
@@ -366,16 +394,49 @@ export default function Settings() {
     }));
     // Activar auto-save después de que React aplique todos los setState anteriores
     requestAnimationFrame(() => { initialized.current = true; });
-  }, [rawSettings]);
+  }, [rawSettings, sub.mode, blankDefaults]);
+
+  // Validación: lo escrito tiene que ser válido para guardarse (los campos vacíos se permiten)
+  const legalErrors = validateFiscalData(legalCompany as FiscalData);
+  const legalValid = Object.keys(legalErrors).length === 0;
+  const businessErrors = {
+    businessEmail: validateEmail(business.businessEmail),
+    businessPhone: validatePhone(business.businessPhone),
+    businessWebsite: validateUrl(business.businessWebsite),
+  };
+  const businessValid = !businessErrors.businessEmail && !businessErrors.businessPhone && !businessErrors.businessWebsite;
+  const notifErrors = {
+    notifEmailBooking: validateEmail(notifications.notifEmailBooking),
+    notifEmailRestaurant: validateEmail(notifications.notifEmailRestaurant),
+  };
+  const notifValid = !notifErrors.notifEmailBooking && !notifErrors.notifEmailRestaurant;
 
   // Auto-save: un efecto por sección, se dispara 1.4s después del último cambio
-  useEffect(() => { scheduleAutoSave("business", business); }, [business]);
+  // (no se guarda una sección mientras tenga errores; lo escrito se conserva en pantalla)
+  useEffect(() => { if (businessValid) scheduleAutoSave("business", business); }, [business]);
   useEffect(() => { scheduleAutoSave("schedule", schedule); }, [schedule]);
   useEffect(() => { scheduleAutoSave("payments", { paymentCurrency: payments.paymentCurrency, paymentDepositRestaurant: payments.paymentDepositRestaurant }); }, [payments]);
-  useEffect(() => { scheduleAutoSave("legalCompany", legalCompany); }, [legalCompany]);
-  useEffect(() => { scheduleAutoSave("notifications", { notifEmailBooking: notifications.notifEmailBooking, notifEmailRestaurant: notifications.notifEmailRestaurant }); }, [notifications]);
+  useEffect(() => {
+    if (legalValid) scheduleAutoSave("legalCompany", { ...legalCompany, legalCompanyCif: legalCompany.legalCompanyCif.toUpperCase().replace(/[\s.-]/g, "") });
+  }, [legalCompany]);
+  useEffect(() => { if (notifValid) scheduleAutoSave("notifications", { notifEmailBooking: notifications.notifEmailBooking, notifEmailRestaurant: notifications.notifEmailRestaurant }); }, [notifications]);
 
-  if (isLoading) {
+  // Pestañas visibles: a una empresa nueva no se le muestran horarios de temporada ni el depósito de restaurante
+  const visibleTabs = TABS.filter((t) => !(isNewCompany && t.id === "schedule"));
+  const blockedNotice = (valid: boolean) =>
+    !valid && <p role="status" className="text-xs text-destructive pt-2">Corrige los campos marcados para que se guarden los cambios.</p>;
+
+  if (isError) {
+    return (
+      <AdminLayout title="Datos del negocio">
+        <div className="max-w-5xl mx-auto px-4 py-8">
+          <PanelError error={loadError} onRetry={() => refetch()} title="No se han podido cargar los datos del negocio" />
+        </div>
+      </AdminLayout>
+    );
+  }
+
+  if (isLoading || sub.mode === "loading") {
     return (
       <AdminLayout title="Datos del negocio">
         <div className="flex items-center justify-center h-64">
@@ -406,53 +467,56 @@ export default function Settings() {
         </div>
 
         {/* Card: sidebar + content */}
-        <div className="flex gap-0 bg-card border border-border/50 rounded-2xl overflow-hidden">
+        <div className="flex flex-col md:flex-row gap-0 bg-card border border-border/50 rounded-2xl overflow-hidden">
 
           {/* Sidebar */}
-          <aside className="w-52 shrink-0 border-r border-border/50 py-3">
-            {TABS.map(({ id, label, icon: Icon }) => (
+          <nav aria-label="Secciones de datos del negocio" className="md:w-52 shrink-0 border-b md:border-b-0 md:border-r border-border/50 py-2 md:py-3 flex md:block overflow-x-auto">
+            {visibleTabs.map(({ id, label, icon: Icon }) => (
               <button
                 key={id}
+                type="button"
                 onClick={() => setActiveTab(id)}
-                className={`w-full flex items-center gap-2.5 px-3 py-2.5 text-left transition-colors ${
+                aria-current={activeTab === id ? "true" : undefined}
+                className={`shrink-0 md:w-full flex items-center gap-2.5 px-3 py-2.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
                   activeTab === id
                     ? "bg-primary/8 text-primary font-medium"
                     : "text-muted-foreground hover:text-foreground hover:bg-muted/40"
                 }`}
               >
-                <Icon className="w-4 h-4 shrink-0" />
+                <Icon className="w-4 h-4 shrink-0" aria-hidden="true" />
                 <span className="text-sm flex-1 truncate font-display">{label}</span>
               </button>
             ))}
-          </aside>
+          </nav>
 
           {/* Content */}
-          <div className="flex-1 min-w-0 p-6">
+          <div className="flex-1 min-w-0 p-4 sm:p-6">
 
             {/* ── Negocio ── */}
             {activeTab === "business" && (
               <div className="space-y-5">
                 <p className="text-sm text-muted-foreground font-display">Datos de contacto y descripción que aparecen en el sitio web y en los emails automáticos.</p>
-                <div className="grid grid-cols-2 gap-4">
-                  <Field label="Nombre del establecimiento" col2>
-                    <Input value={business.businessName} onChange={e => setBusiness(p => ({ ...p, businessName: e.target.value }))} />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <Field label={isNewCompany ? "Nombre comercial" : "Nombre del establecimiento"} col2>
+                    <Input value={business.businessName} onChange={e => setBusiness(p => ({ ...p, businessName: e.target.value }))} autoComplete="organization" />
                   </Field>
-                  <Field label="Teléfono">
-                    <Input value={business.businessPhone} onChange={e => setBusiness(p => ({ ...p, businessPhone: e.target.value }))} placeholder="+34 639 57 66 27" />
+                  <Field label="Teléfono" error={businessErrors.businessPhone}>
+                    <Input type="tel" value={business.businessPhone} onChange={e => setBusiness(p => ({ ...p, businessPhone: e.target.value }))} placeholder="+34 600 000 000" autoComplete="tel" />
                   </Field>
-                  <Field label="Email de contacto">
-                    <Input type="email" value={business.businessEmail} onChange={e => setBusiness(p => ({ ...p, businessEmail: e.target.value }))} />
+                  <Field label="Email de contacto" error={businessErrors.businessEmail}>
+                    <Input type="email" value={business.businessEmail} onChange={e => setBusiness(p => ({ ...p, businessEmail: e.target.value }))} placeholder="hola@tuempresa.com" autoComplete="email" />
                   </Field>
                   <Field label="Dirección" col2>
-                    <Input value={business.businessAddress} onChange={e => setBusiness(p => ({ ...p, businessAddress: e.target.value }))} />
+                    <Input value={business.businessAddress} onChange={e => setBusiness(p => ({ ...p, businessAddress: e.target.value }))} autoComplete="street-address" />
                   </Field>
-                  <Field label="Web corporativa" col2>
-                    <Input value={business.businessWebsite} onChange={e => setBusiness(p => ({ ...p, businessWebsite: e.target.value }))} placeholder="https://skicenter.es" />
+                  <Field label="Web corporativa" col2 error={businessErrors.businessWebsite}>
+                    <Input type="url" value={business.businessWebsite} onChange={e => setBusiness(p => ({ ...p, businessWebsite: e.target.value }))} placeholder="https://www.tuempresa.com" />
                   </Field>
                   <Field label="Descripción breve (SEO / emails)" col2>
                     <Textarea value={business.businessDescription} onChange={e => setBusiness(p => ({ ...p, businessDescription: e.target.value }))} rows={3} className="resize-none" />
                   </Field>
                 </div>
+                {blockedNotice(businessValid)}
                 <AutoSaveStatus saving={updateMutation.isPending} />
               </div>
             )}
@@ -461,7 +525,7 @@ export default function Settings() {
             {activeTab === "schedule" && (
               <div className="space-y-5">
                 <p className="text-sm text-muted-foreground font-display">Horarios que se muestran en la web y se usan en los emails de confirmación.</p>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <Field label="Temporada alta — apertura">
                     <Input type="time" value={schedule.scheduleHighOpen} onChange={e => setSchedule(p => ({ ...p, scheduleHighOpen: e.target.value }))} />
                   </Field>
@@ -474,7 +538,7 @@ export default function Settings() {
                   <Field label="Temporada baja — cierre">
                     <Input type="time" value={schedule.scheduleLowClose} onChange={e => setSchedule(p => ({ ...p, scheduleLowClose: e.target.value }))} />
                   </Field>
-                  <div className="col-span-2">
+                  <div className="sm:col-span-2">
                     <Field label="Días de apertura">
                       <Input value={schedule.scheduleDays} onChange={e => setSchedule(p => ({ ...p, scheduleDays: e.target.value }))} placeholder="Lunes a Domingo (Abril - Octubre)" />
                     </Field>
@@ -488,13 +552,15 @@ export default function Settings() {
             {activeTab === "payments" && (
               <div className="space-y-5">
                 <p className="text-sm text-muted-foreground font-display">Parámetros financieros usados en reservas y cálculos de depósito. El IVA y la validez de presupuestos se configuran en <strong>Configuración → Ajustes del sistema</strong>.</p>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <Field label="Moneda">
                     <Input value={payments.paymentCurrency} onChange={e => setPayments(p => ({ ...p, paymentCurrency: e.target.value }))} placeholder="EUR" />
                   </Field>
-                  <Field label="Depósito por comensal en restaurante (€)" hint="Importe del depósito en reservas de restaurante">
-                    <Input type="number" min="0" step="0.5" value={payments.paymentDepositRestaurant} onChange={e => setPayments(p => ({ ...p, paymentDepositRestaurant: e.target.value }))} />
-                  </Field>
+                  {hasRestaurants && (
+                    <Field label="Depósito por comensal en restaurante (€)" hint="Importe del depósito en reservas de restaurante">
+                      <Input type="number" min="0" step="0.5" value={payments.paymentDepositRestaurant} onChange={e => setPayments(p => ({ ...p, paymentDepositRestaurant: e.target.value }))} />
+                    </Field>
+                  )}
                 </div>
                 <AutoSaveStatus saving={updateMutation.isPending} />
               </div>
@@ -509,35 +575,36 @@ export default function Settings() {
                     Estos datos aparecen como <strong>emisor</strong> en todas las facturas y presupuestos generados por la plataforma, y en la cabecera de los tickets del TPV. Asegúrate de que coinciden exactamente con los datos registrados en la Agencia Tributaria.
                   </p>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <Field label="Razón Social" col2>
-                    <Input value={legalCompany.legalCompanyName} onChange={e => setLegalCompany(p => ({ ...p, legalCompanyName: e.target.value }))} placeholder="NEXTAIR, S.L." />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <Field label="Razón social" col2 error={legalErrors.legalCompanyName}>
+                    <Input value={legalCompany.legalCompanyName} onChange={e => setLegalCompany(p => ({ ...p, legalCompanyName: e.target.value }))} placeholder="Tu Empresa, S.L." autoComplete="organization" />
                   </Field>
-                  <Field label="CIF / NIF">
-                    <Input value={legalCompany.legalCompanyCif} onChange={e => setLegalCompany(p => ({ ...p, legalCompanyCif: e.target.value }))} placeholder="B16408031" />
+                  <Field label="CIF / NIF" error={legalErrors.legalCompanyCif}>
+                    <Input value={legalCompany.legalCompanyCif} onChange={e => setLegalCompany(p => ({ ...p, legalCompanyCif: e.target.value }))} placeholder="B12345674" autoCapitalize="characters" spellCheck={false} />
                   </Field>
-                  <Field label="Teléfono fiscal">
-                    <Input value={legalCompany.legalCompanyPhone} onChange={e => setLegalCompany(p => ({ ...p, legalCompanyPhone: e.target.value }))} placeholder="+34 958 000 000" />
+                  <Field label="Teléfono fiscal" error={legalErrors.legalCompanyPhone}>
+                    <Input type="tel" value={legalCompany.legalCompanyPhone} onChange={e => setLegalCompany(p => ({ ...p, legalCompanyPhone: e.target.value }))} placeholder="+34 900 000 000" autoComplete="tel" />
                   </Field>
                   <Field label="Domicilio fiscal" col2>
-                    <Input value={legalCompany.legalCompanyAddress} onChange={e => setLegalCompany(p => ({ ...p, legalCompanyAddress: e.target.value }))} />
+                    <Input value={legalCompany.legalCompanyAddress} onChange={e => setLegalCompany(p => ({ ...p, legalCompanyAddress: e.target.value }))} placeholder="Calle, número, piso" autoComplete="street-address" />
                   </Field>
-                  <Field label="Código Postal">
-                    <Input value={legalCompany.legalCompanyZip} onChange={e => setLegalCompany(p => ({ ...p, legalCompanyZip: e.target.value }))} placeholder="18006" />
+                  <Field label="Código postal" error={legalErrors.legalCompanyZip}>
+                    <Input inputMode="numeric" value={legalCompany.legalCompanyZip} onChange={e => setLegalCompany(p => ({ ...p, legalCompanyZip: e.target.value }))} placeholder="28001" autoComplete="postal-code" />
                   </Field>
                   <Field label="Municipio">
-                    <Input value={legalCompany.legalCompanyCity} onChange={e => setLegalCompany(p => ({ ...p, legalCompanyCity: e.target.value }))} placeholder="GRANADA" />
+                    <Input value={legalCompany.legalCompanyCity} onChange={e => setLegalCompany(p => ({ ...p, legalCompanyCity: e.target.value }))} placeholder="Madrid" autoComplete="address-level2" />
                   </Field>
                   <Field label="Provincia" col2>
-                    <Input value={legalCompany.legalCompanyProvince} onChange={e => setLegalCompany(p => ({ ...p, legalCompanyProvince: e.target.value }))} placeholder="Granada" />
+                    <Input value={legalCompany.legalCompanyProvince} onChange={e => setLegalCompany(p => ({ ...p, legalCompanyProvince: e.target.value }))} placeholder="Madrid" autoComplete="address-level1" />
                   </Field>
-                  <Field label="Email fiscal" col2>
-                    <Input type="email" value={legalCompany.legalCompanyEmail} onChange={e => setLegalCompany(p => ({ ...p, legalCompanyEmail: e.target.value }))} placeholder="administracion@nextair.es" />
+                  <Field label="Email fiscal" col2 error={legalErrors.legalCompanyEmail}>
+                    <Input type="email" value={legalCompany.legalCompanyEmail} onChange={e => setLegalCompany(p => ({ ...p, legalCompanyEmail: e.target.value }))} placeholder="administracion@tuempresa.com" autoComplete="email" />
                   </Field>
-                  <Field label="IBAN (para liquidaciones)" col2 hint="Número de cuenta bancaria que aparece en los documentos de liquidación a proveedores">
-                    <Input value={legalCompany.legalCompanyIban} onChange={e => setLegalCompany(p => ({ ...p, legalCompanyIban: e.target.value }))} placeholder="ES00 0000 0000 0000 0000 0000" />
+                  <Field label="IBAN (para liquidaciones)" col2 error={legalErrors.legalCompanyIban} hint="Número de cuenta bancaria que aparece en los documentos de liquidación a proveedores">
+                    <Input value={legalCompany.legalCompanyIban} onChange={e => setLegalCompany(p => ({ ...p, legalCompanyIban: e.target.value }))} placeholder="ES00 0000 0000 0000 0000 0000" spellCheck={false} />
                   </Field>
                 </div>
+                {blockedNotice(legalValid)}
                 <AutoSaveStatus saving={updateMutation.isPending} />
               </div>
             )}
@@ -546,14 +613,17 @@ export default function Settings() {
             {activeTab === "notifications" && (
               <div className="space-y-5">
                 <p className="text-sm text-muted-foreground font-display">Emails que reciben las alertas operativas del sistema (nuevas reservas, pagos, etc.).</p>
-                <div className="grid grid-cols-2 gap-4">
-                  <Field label="Email de alertas de reservas de experiencias" col2>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <Field label={isNewCompany ? "Email de alertas de pedidos" : "Email de alertas de reservas de experiencias"} col2 error={notifErrors.notifEmailBooking}>
                     <Input type="email" value={notifications.notifEmailBooking} onChange={e => setNotifications(p => ({ ...p, notifEmailBooking: e.target.value }))} />
                   </Field>
-                  <Field label="Email de alertas de reservas de restaurante" col2>
-                    <Input type="email" value={notifications.notifEmailRestaurant} onChange={e => setNotifications(p => ({ ...p, notifEmailRestaurant: e.target.value }))} />
-                  </Field>
+                  {hasRestaurants && (
+                    <Field label="Email de alertas de reservas de restaurante" col2 error={notifErrors.notifEmailRestaurant}>
+                      <Input type="email" value={notifications.notifEmailRestaurant} onChange={e => setNotifications(p => ({ ...p, notifEmailRestaurant: e.target.value }))} />
+                    </Field>
+                  )}
                 </div>
+                {blockedNotice(notifValid)}
                 <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-xl">
                   <Phone className="w-4 h-4 text-muted-foreground shrink-0" />
                   <p className="text-xs text-muted-foreground font-display">

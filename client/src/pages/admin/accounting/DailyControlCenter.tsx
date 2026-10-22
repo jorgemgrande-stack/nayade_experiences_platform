@@ -18,7 +18,7 @@ import {
 import AdminLayout from "@/components/AdminLayout";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
-import type { DailyControlData } from "../../../../server/routers/dailyControl";
+import type { DailyControlData } from "../../../../../server/routers/dailyControl";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 

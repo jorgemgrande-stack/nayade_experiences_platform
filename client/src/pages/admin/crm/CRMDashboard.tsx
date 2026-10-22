@@ -2,6 +2,8 @@ import React, { useState, useMemo, useEffect, useRef } from "react";
 import { useSearch } from "wouter";
 import { trpc } from "@/lib/trpc";
 import AdminLayout from "@/components/AdminLayout";
+import { usePanelSubscription } from "@/hooks/usePanelSubscription";
+import { errorMessage } from "@/components/admin/PanelStates";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -2807,7 +2809,7 @@ function QuoteEditModal({
     { enabled: !!bonoQueryCode }
   );
 
-  const applyDiscountCodeMut = trpc.crm.quotes.applyDiscountCode.useMutation({
+  const applyDiscountCodeMut = trpc.crm.timeline.applyDiscountCode.useMutation({
     onSuccess: (result) => {
       toast.success(`Bono ${result.code} aplicado — ${result.discountEur.toFixed(2)} € descontados`);
       setDiscount(result.discountEur);
@@ -5242,9 +5244,65 @@ function ReservationDetailModal({
   );
 }
 
+// ─── Estado de tabla: carga, error recuperable o vacío con acción ─────────────
+function CrmTableState({
+  colSpan, loading, error, onRetry, filtered, emptyTitle, emptyHint, actionLabel, onAction, onClearFilters,
+}: {
+  colSpan: number;
+  loading: boolean;
+  error: unknown;
+  onRetry: () => void;
+  filtered: boolean;
+  emptyTitle: string;
+  emptyHint?: string;
+  actionLabel?: string;
+  onAction?: () => void;
+  onClearFilters?: () => void;
+}) {
+  if (loading) {
+    return (
+      <tr><td colSpan={colSpan} className="text-center py-12 text-foreground/60" role="status">
+        <RefreshCw className="w-5 h-5 animate-spin mx-auto" aria-hidden="true" />
+        <span className="sr-only">Cargando…</span>
+      </td></tr>
+    );
+  }
+  if (error) {
+    return (
+      <tr><td colSpan={colSpan} className="text-center py-12 px-4">
+        <div role="alert" className="flex flex-col items-center gap-3">
+          <AlertCircle className="w-6 h-6 text-red-400" aria-hidden="true" />
+          <p className="text-sm text-foreground/80">{errorMessage(error)}</p>
+          <Button size="sm" variant="outline" onClick={onRetry}>
+            <RefreshCw className="w-4 h-4 mr-1.5" aria-hidden="true" /> Reintentar
+          </Button>
+        </div>
+      </td></tr>
+    );
+  }
+  return (
+    <tr><td colSpan={colSpan} className="text-center py-12 px-4">
+      <div className="flex flex-col items-center gap-2">
+        <p className="text-sm font-medium text-foreground/80">{filtered ? "Ningún resultado con estos filtros" : emptyTitle}</p>
+        {!filtered && emptyHint && <p className="text-xs text-foreground/60 max-w-md">{emptyHint}</p>}
+        {filtered && onClearFilters ? (
+          <Button size="sm" variant="outline" className="mt-2" onClick={onClearFilters}>Quitar filtros</Button>
+        ) : !filtered && actionLabel && onAction ? (
+          <Button size="sm" className="mt-2" onClick={onAction}>
+            <Plus className="w-4 h-4 mr-1.5" aria-hidden="true" /> {actionLabel}
+          </Button>
+        ) : null}
+      </div>
+    </td></tr>
+  );
+}
+
 // ─── MAIN CRM DASHBOARD ───────────────────────────────────────────────────────
 
 export default function CRMDashboard() {
+  // Empresas con licencias por capacidad: vocabulario genérico (pedidos en lugar de reservas)
+  const panelSub = usePanelSubscription();
+  const ordersWord = panelSub.isLicensed ? "pedidos" : "reservas";
   // Sincronizar tab con ?tab= de la URL (reactivo al navegar desde el sidebar)
   const searchStr = useSearch();
   const tabFromSearch = (s: string): Tab => {
@@ -5380,9 +5438,21 @@ export default function CRMDashboard() {
   }), [filterStatus, resChannelFilter, search, tab, resPage]);
 
   const { data: leadSourcesData } = trpc.crm.leadSources.list.useQuery();
-  const { data: leadsData, isLoading: leadsLoading } = trpc.crm.leads.list.useQuery(leadsFilter, { enabled: tab === "leads" });
-  const { data: quotesData, isLoading: quotesLoading } = trpc.crm.quotes.list.useQuery(quotesFilter, { enabled: tab === "quotes" });
-  const { data: resData, isLoading: resLoading } = trpc.crm.reservations.list.useQuery(resFilter, { enabled: tab === "reservations" });
+  const { data: leadsData, isLoading: leadsLoading, error: leadsError, refetch: refetchLeadsList } = trpc.crm.leads.list.useQuery(leadsFilter, { enabled: tab === "leads" });
+  const { data: quotesData, isLoading: quotesLoading, error: quotesError, refetch: refetchQuotesList } = trpc.crm.quotes.list.useQuery(quotesFilter, { enabled: tab === "quotes" });
+  const { data: resData, isLoading: resLoading, error: resError, refetch: refetchResList } = trpc.crm.reservations.list.useQuery(resFilter, { enabled: tab === "reservations" });
+
+  // Accesos directos desde el inicio del panel: ?tab=quotes&nuevo=1, ?tab=reservations&nuevo=1, ?tab=leads&nuevo=1
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (url.searchParams.get("nuevo") !== "1") return;
+    const t = url.searchParams.get("tab");
+    if (t === "quotes") setShowDirectQuoteModal(true);
+    else if (t === "reservations") setShowNewReservationModal(true);
+    else if (t === "leads" || !t) setShowNewLeadModal(true);
+    url.searchParams.delete("nuevo");
+    window.history.replaceState({}, "", url.toString());
+  }, [searchStr]);
 
   // ─── FACTURAS ────────────────────────────────────────────────────────────────────────────────
   const [invoiceStatusFilter, setInvoiceStatusFilter] = useState<"all" | "generada" | "enviada" | "cobrada" | "anulada" | "abonada">("all");
@@ -5411,7 +5481,7 @@ export default function CRMDashboard() {
     offset: invoicesPage * PAGE_SIZE,
   }), [invoiceStatusFilter, invoiceTypeFilter, invoiceSearch, invoiceDateFrom, invoiceDateTo, invoicesPage]);
 
-  const { data: invoicesData, isLoading: invoicesLoading, refetch: refetchInvoices } = trpc.crm.invoices.listAll.useQuery(
+  const { data: invoicesData, isLoading: invoicesLoading, error: invoicesError, refetch: refetchInvoices } = trpc.crm.invoices.listAll.useQuery(
     invoiceFilter,
     { enabled: tab === "invoices" }
   );
@@ -6719,10 +6789,19 @@ export default function CRMDashboard() {
                   </tr>
                 </thead>
                 <tbody>
-                  {leadsLoading ? (
-                    <tr><td colSpan={8} className="text-center py-12 text-foreground/40"><RefreshCw className="w-5 h-5 animate-spin mx-auto" /></td></tr>
-                  ) : !leadsData?.rows?.length ? (
-                    <tr><td colSpan={8} className="text-center py-12 text-foreground/40 text-sm">No hay leads {filterStatus !== "all" ? `con estado "${filterStatus}"` : ""}</td></tr>
+                  {leadsLoading || leadsError || !leadsData?.rows?.length ? (
+                    <CrmTableState
+                      colSpan={8}
+                      loading={leadsLoading}
+                      error={leadsError}
+                      onRetry={() => refetchLeadsList()}
+                      filtered={filterStatus !== "all" || !!search.trim()}
+                      onClearFilters={() => { setFilterStatus("all"); setSearch(""); }}
+                      emptyTitle={panelSub.isLicensed ? "Todavía no tienes oportunidades" : "No hay leads"}
+                      emptyHint="Las solicitudes de tu web llegan aquí solas. También puedes registrar una a mano."
+                      actionLabel={panelSub.isLicensed ? "Nueva oportunidad" : "Nuevo lead"}
+                      onAction={() => setShowNewLeadModal(true)}
+                    />
                   ) : leadsData.rows.map((lead: any) => (
                     <tr key={lead.id} className={`border-t border-foreground/[0.08] hover:bg-foreground/[0.03] transition-colors ${selectedLeads.has(lead.id) ? "bg-blue-500/5" : !lead.seenAt ? "bg-blue-950/20" : ""}`}>
                       <td className="w-10 px-3 py-3">
@@ -6921,10 +7000,19 @@ export default function CRMDashboard() {
                   </tr>
                 </thead>
                 <tbody>
-                  {quotesLoading ? (
-                    <tr><td colSpan={8} className="text-center py-12 text-foreground/40"><RefreshCw className="w-5 h-5 animate-spin mx-auto" /></td></tr>
-                  ) : !quotesData?.rows?.length ? (
-                    <tr><td colSpan={8} className="text-center py-12 text-foreground/40 text-sm">No hay presupuestos {filterStatus !== "all" ? `con estado "${filterStatus}"` : ""}</td></tr>
+                  {quotesLoading || quotesError || !quotesData?.rows?.length ? (
+                    <CrmTableState
+                      colSpan={8}
+                      loading={quotesLoading}
+                      error={quotesError}
+                      onRetry={() => refetchQuotesList()}
+                      filtered={filterStatus !== "all" || !!search.trim()}
+                      onClearFilters={() => { setFilterStatus("all"); setSearch(""); }}
+                      emptyTitle="Todavía no tienes presupuestos"
+                      emptyHint="Prepara un presupuesto con tus productos, envíalo por email y cobra online cuando el cliente lo acepte."
+                      actionLabel="Nuevo presupuesto"
+                      onAction={() => setShowDirectQuoteModal(true)}
+                    />
                   ) : quotesData.rows.map((quote: any) => (
                     <tr key={quote.id} className={`border-t border-foreground/[0.08] hover:bg-foreground/[0.03] transition-colors group ${selectedQuotes.has(quote.id) ? "bg-blue-500/5" : ""}`}>
                       <td className="w-10 px-3 py-3">
@@ -7161,10 +7249,21 @@ export default function CRMDashboard() {
                   </tr>
                 </thead>
                 <tbody>
-                  {resLoading ? (
-                    <tr><td colSpan={11} className="text-center py-12 text-foreground/40"><RefreshCw className="w-5 h-5 animate-spin mx-auto" /></td></tr>
-                  ) : !resData?.rows?.length ? (
-                    <tr><td colSpan={11} className="text-center py-12 text-foreground/40 text-sm">No hay reservas</td></tr>
+                  {resLoading || resError || !resData?.rows?.length ? (
+                    <CrmTableState
+                      colSpan={11}
+                      loading={resLoading}
+                      error={resError}
+                      onRetry={() => refetchResList()}
+                      filtered={filterStatus !== "all" || resChannelFilter !== "all" || !!search.trim()}
+                      onClearFilters={() => { setFilterStatus("all"); setResChannelFilter("all"); setSearch(""); }}
+                      emptyTitle={`Todavía no tienes ${ordersWord}`}
+                      emptyHint={panelSub.isLicensed
+                        ? "Los pedidos de tu tienda online y los presupuestos aceptados aparecerán aquí. También puedes registrar uno a mano."
+                        : undefined}
+                      actionLabel={panelSub.isLicensed ? "Nuevo pedido" : "Nueva reserva"}
+                      onAction={() => setShowNewReservationModal(true)}
+                    />
                   ) : resData.rows.map((res: any) => (
                     <tr key={res.id} className={`border-t border-foreground/[0.08] hover:bg-foreground/[0.03] transition-colors ${selectedRes.has(res.id) ? "bg-blue-500/5" : ""}`}>
                       {/* Checkbox */}
@@ -7569,13 +7668,17 @@ export default function CRMDashboard() {
                     </tr>
                   </thead>
                   <tbody>
-                    {invoicesLoading ? (
-                      <tr><td colSpan={7} className="text-center py-12 text-foreground/40"><RefreshCw className="w-5 h-5 animate-spin mx-auto" /></td></tr>
-                    ) : !invoicesData?.items?.length ? (
-                      <tr><td colSpan={7} className="text-center py-12 text-foreground/40 text-sm">
-                        <Receipt className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                        No hay facturas
-                      </td></tr>
+                    {invoicesLoading || invoicesError || !invoicesData?.items?.length ? (
+                      <CrmTableState
+                        colSpan={7}
+                        loading={invoicesLoading}
+                        error={invoicesError}
+                        onRetry={() => refetchInvoices()}
+                        filtered={invoiceStatusFilter !== "all" || invoiceTypeFilter !== "all" || !!invoiceSearch || !!invoiceDateFrom || !!invoiceDateTo}
+                        onClearFilters={() => { setInvoiceStatusFilter("all"); setInvoiceTypeFilter("all"); setInvoiceSearch(""); setInvoiceDateFrom(""); setInvoiceDateTo(""); }}
+                        emptyTitle="Todavía no has emitido facturas"
+                        emptyHint={`Las facturas se generan desde un presupuesto aceptado o un pedido cobrado. Revisa antes los datos fiscales de tu empresa en Organización → Datos de la empresa.`}
+                      />
                     ) : invoicesData.items.map((inv: any) => (
                       <tr key={inv.id} className={`border-t border-foreground/[0.08] hover:bg-foreground/[0.03] transition-colors ${inv.invoiceType === "abono" ? "bg-violet-500/3" : ""}`}>
                         <td className="px-4 py-3">

@@ -217,7 +217,7 @@ function ModulesStep({ flags, onToggle, isPending }: {
 function IntegrationsStep({ envStatus }: {
   envStatus: Array<{ key: string; label: string; group: string; isSet: boolean }>;
 }) {
-  const groups = [...new Set(envStatus.map(e => e.group))];
+  const groups = Array.from(new Set(envStatus.map(e => e.group)));
 
   return (
     <div className="space-y-5">

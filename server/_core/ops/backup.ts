@@ -7,6 +7,10 @@
  *
  * Una copia solo se considera válida tras `verifyBackup()`: restaura en una BD de pruebas y
  * comprueba filas y checksum de cada tabla contra el origen.
+ *
+ * Columnas generadas: no se vuelcan (MySQL las recalcula al insertar). Triggers: se vuelcan al final
+ * (tras los datos), sin DEFINER y sin calificar con el nombre de la BD de origen, para que se creen
+ * en la BD donde se restaura; quien restaura puede fijar el DEFINER (`restoreBackup(..., { definer })`).
  */
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -28,6 +32,8 @@ export interface BackupManifest {
   bytes: number;
   sha256: string;
   tables: Record<string, { rows: number; checksum: string }>;
+  /** Triggers incluidos en el volcado (ausente en copias anteriores a esta versión). */
+  triggers?: string[];
 }
 
 function sqlValue(v: unknown): string {
@@ -52,11 +58,28 @@ async function tableChecksum(conn: mysql.Connection, db: string, table: string):
   return String(r[0]?.Checksum ?? "");
 }
 
+/** Columnas que se vuelcan: todas salvo las generadas (MySQL rechaza valores explícitos en ellas). */
+async function dumpColumns(conn: mysql.Connection, db: string, table: string): Promise<string[]> {
+  const [rows] = await conn.query<mysql.RowDataPacket[]>(
+    "SELECT COLUMN_NAME AS c FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND (GENERATION_EXPRESSION IS NULL OR GENERATION_EXPRESSION = '') ORDER BY ORDINAL_POSITION",
+    [db, table],
+  );
+  return rows.map((r) => String(r.c));
+}
+
+/** Sentencia de creación de un trigger, sin DEFINER y sin el nombre de la BD de origen. */
+export function portableTriggerSql(original: string, db: string): string {
+  const unqualified = original.split("`" + db.replace(/`/g, "``") + "`.").join("");
+  return unqualified.replace(/^\s*CREATE\s+DEFINER\s*=\s*(`[^`]*`|'[^']*'|[^\s@]+)\s*@\s*(`[^`]*`|'[^']*'|\S+)\s+/i, () => "CREATE ");
+}
+
 async function* dumpStatements(
   conn: mysql.Connection,
   raw: mysqlCore.Connection,
+  db: string,
   names: string[],
   tables: BackupManifest["tables"],
+  triggers: string[],
   batchRows: number,
 ): AsyncGenerator<string> {
   yield "SET FOREIGN_KEY_CHECKS=0";
@@ -66,12 +89,11 @@ async function* dumpStatements(
     const [cr] = await conn.query<mysql.RowDataPacket[]>(`SHOW CREATE TABLE ${q(t)}`);
     yield `DROP TABLE IF EXISTS ${q(t)}`;
     yield String(cr[0]["Create Table"]);
+    const cols = await dumpColumns(conn, db, t);
     let rows = 0;
     let batch: string[] = [];
-    let cols: string[] | null = null;
-    const stream = raw.query(`SELECT * FROM ${q(t)}`).stream({ highWaterMark: 200 });
+    const stream = raw.query(`SELECT ${cols.map(q).join(",")} FROM ${q(t)}`).stream({ highWaterMark: 200 });
     for await (const row of stream as AsyncIterable<Record<string, unknown>>) {
-      cols ??= Object.keys(row);
       batch.push("(" + cols.map((c) => sqlValue(row[c])).join(",") + ")");
       rows++;
       if (batch.length >= batchRows) {
@@ -79,8 +101,20 @@ async function* dumpStatements(
         batch = [];
       }
     }
-    if (batch.length && cols) yield `INSERT INTO ${q(t)} (${cols.map(q).join(",")}) VALUES ${batch.join(",")}`;
+    if (batch.length) yield `INSERT INTO ${q(t)} (${cols.map(q).join(",")}) VALUES ${batch.join(",")}`;
     tables[t] = { rows, checksum: "" };
+  }
+  // Triggers al final: no se disparan durante la carga de datos
+  const [trg] = await conn.query<mysql.RowDataPacket[]>(
+    "SELECT TRIGGER_NAME AS n FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA = ? ORDER BY EVENT_OBJECT_TABLE, ACTION_TIMING, EVENT_MANIPULATION, ACTION_ORDER",
+    [db],
+  );
+  for (const r of trg) {
+    const name = String(r.n);
+    const [ct] = await conn.query<mysql.RowDataPacket[]>(`SHOW CREATE TRIGGER ${q(name)}`);
+    yield `DROP TRIGGER IF EXISTS ${q(name)}`;
+    yield portableTriggerSql(String(ct[0]["SQL Original Statement"]), db);
+    triggers.push(name);
   }
   yield "SET FOREIGN_KEY_CHECKS=1";
 }
@@ -88,15 +122,16 @@ async function* dumpStatements(
 /** Crea la copia en `outDir`; devuelve el manifiesto (también se escribe junto al volcado). */
 export async function backupDatabase(
   dsn: string,
-  opts: { tenantId: string; outDir: string; batchRows?: number },
+  opts: { tenantId: string; outDir: string; batchRows?: number; /** Nombre base del fichero (por defecto `<tenant>-<fecha>`). */ fileBase?: string },
 ): Promise<BackupManifest> {
   const conn = await mysql.createConnection({ uri: dsn, dateStrings: true, supportBigNumbers: true, bigNumberStrings: true });
   const raw = (conn as unknown as { connection: mysqlCore.Connection }).connection;
   const dbName = new URL(dsn).pathname.slice(1);
   fs.mkdirSync(opts.outDir, { recursive: true });
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const file = path.join(opts.outDir, `${opts.tenantId}-${stamp}.sql.gz`);
+  const file = path.join(opts.outDir, `${opts.fileBase ?? `${opts.tenantId}-${stamp}`}.sql.gz`);
   const tables: BackupManifest["tables"] = {};
+  const triggers: string[] = [];
 
   try {
     // Lectura consistente entre tablas
@@ -104,7 +139,7 @@ export async function backupDatabase(
     await conn.query("START TRANSACTION WITH CONSISTENT SNAPSHOT");
     const names = await listTables(conn, dbName);
 
-    const statements = () => dumpStatements(conn, raw, names, tables, opts.batchRows ?? 500);
+    const statements = () => dumpStatements(conn, raw, dbName, names, tables, triggers, opts.batchRows ?? 500);
 
     const hash = crypto.createHash("sha256");
     let bytes = 0;
@@ -133,6 +168,7 @@ export async function backupDatabase(
       bytes,
       sha256: hash.digest("hex"),
       tables,
+      triggers,
     };
     fs.writeFileSync(file.replace(/\.sql\.gz$/, ".manifest.json"), JSON.stringify(manifest, null, 2));
     return manifest;
@@ -141,8 +177,15 @@ export async function backupDatabase(
   }
 }
 
-/** Restaura un volcado en la BD indicada (que debe existir y estar vacía o ser prescindible). */
-export async function restoreBackup(dsn: string, backupFile: string): Promise<{ statements: number; sha256: string }> {
+/**
+ * Restaura un volcado en la BD indicada (que debe existir y estar vacía o ser prescindible).
+ * `definer`: usuario con el que se crean los triggers (por defecto, el de la conexión).
+ */
+export async function restoreBackup(
+  dsn: string,
+  backupFile: string,
+  opts: { definer?: { user: string; host: string } } = {},
+): Promise<{ statements: number; sha256: string }> {
   const conn = await mysql.createConnection({ uri: dsn, multipleStatements: false });
   const hash = crypto.createHash("sha256");
   let buf = "";
@@ -156,7 +199,9 @@ export async function restoreBackup(dsn: string, backupFile: string): Promise<{ 
         const stmt = buf.slice(0, idx).replace(/;$/, "");
         buf = buf.slice(idx + SEP.length);
         if (stmt.trim()) {
-          await conn.query(stmt);
+          if (opts.definer && /^CREATE\s+TRIGGER\s/i.test(stmt)) {
+            await conn.query(stmt.replace(/^CREATE\s+TRIGGER\s/i, () => "CREATE DEFINER = ?@? TRIGGER "), [opts.definer.user, opts.definer.host]);
+          } else await conn.query(stmt);
           n++;
         }
       }
@@ -188,12 +233,21 @@ export interface VerificationReport {
 export async function verifyBackup(scratchDsn: string, manifestPath: string): Promise<VerificationReport> {
   const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8")) as BackupManifest;
   const file = path.join(path.dirname(manifestPath), manifest.file);
-  const problems: string[] = [];
   const r = await restoreBackup(scratchDsn, file);
+  const problems: string[] = [];
   if (r.sha256 !== manifest.sha256) problems.push("El SHA-256 del volcado no coincide con el manifiesto");
+  const cmp = await compareWithManifest(scratchDsn, manifest);
+  return { ...cmp, ok: problems.length === 0 && cmp.ok, problems: [...problems, ...cmp.problems] };
+}
 
-  const conn = await mysql.createConnection({ uri: scratchDsn });
-  const db = new URL(scratchDsn).pathname.slice(1);
+/** Compara una BD (restaurada) con las tablas, filas, checksums y triggers del manifiesto. */
+export async function compareWithManifest(
+  dsn: string,
+  manifest: Pick<BackupManifest, "tables" | "triggers">,
+): Promise<VerificationReport> {
+  const problems: string[] = [];
+  const conn = await mysql.createConnection({ uri: dsn });
+  const db = new URL(dsn).pathname.slice(1);
   try {
     const present = new Set(await listTables(conn, db));
     let rows = 0;
@@ -208,6 +262,11 @@ export async function verifyBackup(scratchDsn: string, manifestPath: string): Pr
       if (n !== info.rows) problems.push(`${t}: ${n} filas (esperadas ${info.rows})`);
       const sum = await tableChecksum(conn, db, t);
       if (sum !== info.checksum) problems.push(`${t}: checksum distinto`);
+    }
+    if (manifest.triggers?.length) {
+      const [g] = await conn.query<mysql.RowDataPacket[]>("SELECT TRIGGER_NAME AS n FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA = ?", [db]);
+      const got = new Set(g.map((r) => String(r.n)));
+      for (const t of manifest.triggers) if (!got.has(t)) problems.push(`Falta el trigger ${t}`);
     }
     return { ok: problems.length === 0, problems, tables: Object.keys(manifest.tables).length, rows };
   } finally {

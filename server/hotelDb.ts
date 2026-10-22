@@ -4,6 +4,8 @@ import {
   InsertRoomType, RoomType,
 } from "../drizzle/schema";
 import { legacyDb, legacyPool } from "./_core/legacyDb";
+import { hotelOccupancy } from "./inventoryHoldsDb";
+import { nightCapacity } from "./inventoryHolds";
 
 // Pool persistente reutilizable. Ver nota en server/db/reviewsDb.ts:
 // el patrón anterior `createConnection()` per-request acumulaba
@@ -244,6 +246,7 @@ export async function searchAvailability(params: {
   const seasons = await getAllRateSeasons();
   const allBlocks = await db.select().from(roomBlocks)
     .where(and(gte(roomBlocks.date, params.checkIn), lte(roomBlocks.date, params.checkOut)));
+  const occupancy = await hotelOccupancy(db, rooms.map(r => r.id), params.checkIn, params.checkOut);
 
   const checkInDate = new Date(params.checkIn);
   const checkOutDate = new Date(params.checkOut);
@@ -264,16 +267,17 @@ export async function searchAvailability(params: {
     pricePerNight = nights > 0 ? totalPrice / nights : parseFloat(room.basePrice);
 
     // Compute availability: minimum available units across all nights
+    // (capacidad de la noche — bloqueo incluido — menos las habitaciones ya retenidas o confirmadas)
     let minAvailable = room.totalUnits;
     for (let i = 0; i < nights; i++) {
       const d = new Date(checkInDate);
       d.setDate(d.getDate() + i);
       const dateStr = d.toISOString().split("T")[0];
       const block = allBlocks.find(b => b.roomTypeId === room.id && b.date === dateStr);
-      if (block !== undefined) {
-        minAvailable = Math.min(minAvailable, block.availableUnits);
-      }
+      const occupied = occupancy.get(room.id)?.get(dateStr) ?? 0;
+      minAvailable = Math.min(minAvailable, nightCapacity(room.totalUnits, block?.availableUnits) - occupied);
     }
+    minAvailable = Math.max(0, minAvailable);
 
     const isAvailable = minAvailable > 0 &&
       room.maxAdults >= params.adults &&
@@ -306,6 +310,8 @@ export async function getRoomCalendar(roomTypeId: number, year: number, month: n
     .where(and(eq(roomRates.roomTypeId, roomTypeId), eq(roomRates.isActive, true)));
   const seasons = await getAllRateSeasons();
   const blocks = await getRoomBlocksForRange(roomTypeId, startDate, endDate);
+  const nextMonth = new Date(Date.UTC(year, month, 1)).toISOString().slice(0, 10);
+  const occupancy = (await hotelOccupancy(db, [roomTypeId], startDate, nextMonth)).get(roomTypeId);
 
   const days = [];
   for (let day = 1; day <= lastDay; day++) {
@@ -313,7 +319,8 @@ export async function getRoomCalendar(roomTypeId: number, year: number, month: n
     const price = resolveNightlyPrice(rates, seasons, room.basePrice, dateStr);
 
     const block = blocks.find(b => b.date === dateStr);
-    const available = block !== undefined ? block.availableUnits : room.totalUnits;
+    // Capacidad de la noche (bloqueo incluido) menos las habitaciones ya retenidas o confirmadas
+    const available = Math.max(0, nightCapacity(room.totalUnits, block?.availableUnits) - (occupancy?.get(dateStr) ?? 0));
 
     let status: "disponible" | "pocas_unidades" | "completo" = "disponible";
     if (available === 0) status = "completo";

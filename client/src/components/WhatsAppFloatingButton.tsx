@@ -1,14 +1,17 @@
 import { trackWhatsAppClick } from '@/lib/ga4';
-
-const WA_URL =
-  "https://wa.me/34639576627?text=Hola%20Nayade%20Experiences%2C%20me%20gustar%C3%ADa%20recibir%20informaci%C3%B3n";
-const WA_PHONE = "34639576627";
+import { trpc } from "@/lib/trpc";
+import { whatsappTarget } from "@shared/whatsappButton";
 
 export default function WhatsAppFloatingButton() {
+  // Número de la empresa que sirve la web (en single, el de siempre); sin número, sin botón
+  // (misma consulta y caché que useTenantTheme; sin importarlo para no crear un ciclo con PublicLayout)
+  const { data: theme } = trpc.public.getTheme.useQuery(undefined, { staleTime: 5 * 60_000, retry: false, refetchOnWindowFocus: false });
+  const target = whatsappTarget(theme);
+  if (!target) return null;
   return (
     <a
-      href={WA_URL}
-      onClick={() => trackWhatsAppClick(WA_PHONE)}
+      href={target.url}
+      onClick={() => trackWhatsAppClick(target.phone)}
       target="_blank"
       rel="noopener noreferrer"
       aria-label="Contactar por WhatsApp"

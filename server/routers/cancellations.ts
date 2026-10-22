@@ -3,6 +3,7 @@
  * Módulo CRM para gestión completa del pipeline de anulaciones.
  */
 import { z } from "zod";
+import { legacyBrandText } from "../tenantBrand";
 import { router, publicProcedure, protectedProcedure, permissionProcedure } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { assertModuleEnabled } from "../_core/flagGuard";
@@ -38,6 +39,7 @@ import { logActivity, getGHLCredentials } from "../db";
 import { createGHLContact, updateGHLContact } from "../ghl";
 import { getBusinessEmail } from "../config";
 import { legacyDb, legacyPool } from "../_core/legacyDb";
+import { releaseInventoryHold } from "../inventoryHoldsDb";
 const _pool = legacyPool();
 const db = legacyDb();
 
@@ -265,6 +267,13 @@ async function propagateCancellation(params: {
       } as any);
     }
   });
+
+  // -- Liberar la plaza de spa/hotel retenida por la reserva (idempotente; un fallo aquí lo corrige
+  //    la sincronización de retenciones, así que no se revierte la anulación por ello) -------------
+  if (reservationId) {
+    await releaseInventoryHold(reservationId, "cancelada").catch((err) =>
+      console.error(`[Cancellations] Error liberando la plaza de la reserva ${reservationId}:`, err?.message));
+  }
 
   // -- 3. Log de propagación (fuera de tx — no crítico) ----------------------
   await addLog(
@@ -963,7 +972,7 @@ export const cancellationsRouter = router({
           requestId: input.id,
           code,
           type: "actividad",
-          activityName: input.activityName ?? "Actividad Náyade Experiences",
+          activityName: input.activityName ?? `Actividad ${legacyBrandText("Náyade Experiences")}`,
           value: String(input.voucherValue),
           expiresAt: input.voucherExpiresAt ? new Date(input.voucherExpiresAt) : undefined,
           conditions: input.voucherConditions,
@@ -977,7 +986,7 @@ export const cancellationsRouter = router({
         // El bono compensatorio se convierte en un código de descuento de importe
         // fijo (tipo 'fixed') con uso único, vinculado al cliente y al voucher.
         try {
-          const discountName = `Bono compensatorio #${input.id} — ${input.activityName ?? "Náyade Experiences"}`;
+          const discountName = `Bono compensatorio #${input.id} — ${input.activityName ?? legacyBrandText("Náyade Experiences")}`;
           const discountDescription = [
             `Bono emitido como compensación por anulación de reserva.`,
             input.activityName ? `Actividad: ${input.activityName}.` : null,
@@ -1035,7 +1044,7 @@ export const cancellationsRouter = router({
             subject: `Bono de compensación — Solicitud #${input.id}`,
             html: emailAceptacionBono(
               req.fullName, input.id, code,
-              input.activityName ?? "Actividad Náyade Experiences",
+              input.activityName ?? `Actividad ${legacyBrandText("Náyade Experiences")}`,
               String(input.voucherValue), expiresStr, input.isPartial
             ),
             relatedEntityType: "cancellation_request",
@@ -1496,7 +1505,7 @@ export const cancellationsRouter = router({
     .mutation(async ({ input }) => {
       const buffer = Buffer.from(input.pdfBase64, "base64");
       const key = `vouchers/${input.voucherId}-${input.filename}`;
-      const { url } = await storagePut(key, buffer, "application/pdf");
+      const { url } = await storagePut(key, buffer, "application/pdf", { category: "voucher", originalName: input.filename, owner: { type: "voucher", id: input.voucherId } });
 
       await db.update(compensationVouchers).set({ pdfUrl: url }).where(eq(compensationVouchers.id, input.voucherId));
       return { url };
@@ -2031,7 +2040,7 @@ export const cancellationsRouter = router({
                 req.fullName,
                 req.id,
                 voucher.code,
-                voucher.activityName ?? "Actividad Náyade Experiences",
+                voucher.activityName ?? `Actividad ${legacyBrandText("Náyade Experiences")}`,
                 Number(voucher.value).toFixed(2),
                 expiresStr,
                 isPartial
@@ -2087,7 +2096,7 @@ export const cancellationsRouter = router({
           fullName: req.fullName,
           requestId: req.id,
           voucherCode: voucher.code,
-          activityName: voucher.activityName ?? "Actividad Náyade Experiences",
+          activityName: voucher.activityName ?? `Actividad ${legacyBrandText("Náyade Experiences")}`,
           value: Number(voucher.value).toFixed(2),
           expiresAt: expiresStr,
           isPartial: false,

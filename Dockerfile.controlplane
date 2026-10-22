@@ -1,0 +1,41 @@
+# ============================================================
+# Dockerfile — Plano de control de Elephant Source (/cp/v1)
+# Imagen mínima: sin cliente, sin Chromium, sin la web de Náyade.
+# Construcción:  docker build -f Dockerfile.controlplane -t elephant-controlplane .
+# ============================================================
+
+FROM node:22-alpine AS builder
+WORKDIR /app
+RUN npm install -g pnpm@10.32.1
+COPY package.json pnpm-lock.yaml* ./
+COPY patches ./patches
+RUN pnpm install --frozen-lockfile
+COPY . .
+RUN pnpm build:cp
+# Paquete auditado de migraciones del registro y del CRM (mismo contenido que scripts/railway/build-migration-bundle.sh).
+# Se lanza a mano desde restore-drill (node .mig/run.cjs <registry|crm> <plan|apply>), nunca al arrancar.
+RUN mkdir -p .mig/scripts .mig/db/crm \
+ && pnpm exec esbuild scripts/db/migrate.ts --bundle --platform=node --packages=external --format=esm --outfile=.mig/scripts/migrate.mjs --log-level=error \
+ && pnpm exec esbuild scripts/registry-migrate.ts --bundle --platform=node --packages=external --format=esm --outfile=.mig/scripts/registry-migrate.mjs --log-level=error \
+ && cp -r db/crm/migrations .mig/db/crm/ \
+ && cp -r db/registry .mig/db/ \
+ && cp scripts/railway/migration-runner.cjs .mig/run.cjs
+
+FROM node:22-alpine AS runner
+WORKDIR /app
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/dist-cp ./dist-cp
+COPY --from=builder /app/.mig ./.mig
+COPY package.json ./
+# Migraciones del registro y utilidades operativas (aplicación explícita, nunca al arrancar)
+COPY db/registry ./db/registry
+# El aprovisionamiento lee en tiempo de ejecución la baseline y las migraciones de los tenants
+COPY db/baseline ./db/baseline
+COPY db/migrations ./db/migrations
+
+ENV NODE_ENV=production
+ENV CP_PORT=4100
+EXPOSE 4100
+
+USER node
+CMD ["node", "dist-cp/main.js"]

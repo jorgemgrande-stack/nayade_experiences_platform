@@ -5,6 +5,9 @@
  * Fase 2: Portal del partner — activación de cuenta, creación de leads, listado.
  */
 import { z } from "zod";
+import { publicBaseUrl } from "../_core/productIdentity";
+import { isMultiTenant } from "../_core/tenant";
+import { legacyBrandSetting, legacyBrandText, legacySiteHost, tenantIssuerData } from "../tenantBrand";
 import { adminProcedure, partnerProcedure, publicProcedure, router } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { partners, users, leads, partnerBillingBatches, partnerBillingBatchItems, experiences, transactions, siteSettings } from "../../drizzle/schema";
@@ -110,9 +113,9 @@ async function generatePartnerBillingPdfAndUpload(data: {
 <body>
   <div class="doc-header">
     <div class="logo-block">
-      <img src="https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/logo-nayade_20a42bc4.jpg" alt="Náyade" />
+      <img src="${legacyBrandSetting("brand_logo_url", "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/logo-nayade_20a42bc4.jpg")}" alt="${legacyBrandText("Náyade")}" />
       <div class="brand-text">
-        <div class="brand-name">Náyade</div>
+        <div class="brand-name">${legacyBrandText("Náyade")}</div>
         <div class="brand-sub">Experiences</div>
       </div>
     </div>
@@ -168,7 +171,7 @@ async function generatePartnerBillingPdfAndUpload(data: {
 
   </div>
   <div class="footer">
-    <p>${data.companyData?.name ?? "Náyade Experiences S.L."} &middot; www.skicenter.es</p>
+    <p>${data.companyData?.name ?? "Náyade Experiences S.L."} &middot; ${legacySiteHost("www.skicenter.es")}</p>
     <p>Documento de liquidación de las reservas intermediadas por el partner durante el período indicado.</p>
   </div>
 </body>
@@ -177,13 +180,13 @@ async function generatePartnerBillingPdfAndUpload(data: {
   try {
     const pdfBuffer = await htmlToPdf(html);
     const key = `partner-billing/${data.batchNumber}-${Date.now()}.pdf`;
-    const { url } = await storagePut(key, pdfBuffer, "application/pdf");
-    return { url, key };
+    const stored = await storagePut(key, pdfBuffer, "application/pdf", { category: "settlement", originalName: `${data.batchNumber}.pdf`, owner: { type: "partner_batch", id: data.batchNumber } });
+    return { url: stored.url, key: stored.key };
   } catch (pdfErr) {
     console.error("[PDF] Error generando liquidación de partner, guardando HTML como fallback:", pdfErr);
     const key = `partner-billing/${data.batchNumber}-${Date.now()}.html`;
-    const { url } = await storagePut(key, Buffer.from(html), "text/html");
-    return { url, key };
+    const stored = await storagePut(key, Buffer.from(html), "text/html", { category: "settlement", originalName: `${data.batchNumber}.html`, owner: { type: "partner_batch", id: data.batchNumber } });
+    return { url: stored.url, key: stored.key };
   }
 }
 
@@ -435,7 +438,7 @@ export const partnersRouter = router({
       }
 
       // Enviar email de invitación
-      const origin = process.env.APP_URL ?? "https://www.skicenter.es";
+      const origin = publicBaseUrl();
       const inviteUrl = `${origin}/partner/activar?token=${token}`;
       await sendEmail({
         to: input.email,
@@ -444,7 +447,7 @@ export const partnersRouter = router({
           <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px;">
             <h2 style="color:#ea580c">Bienvenido al portal de colaboradores</h2>
             <p>Hola <strong>${input.name}</strong>,</p>
-            <p>Has sido invitado a acceder al portal de colaboradores de <strong>Skicenter</strong> como miembro de <strong>${partner.name}</strong>.</p>
+            <p>Has sido invitado a acceder al portal de colaboradores de <strong>${legacyBrandText("Skicenter")}</strong> como miembro de <strong>${partner.name}</strong>.</p>
             <p style="margin:24px 0">
               <a href="${inviteUrl}" style="background:#ea580c;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold">
                 Activar mi cuenta
@@ -658,7 +661,7 @@ export const partnersRouter = router({
         try {
           const [resForUrl] = await db.select({ publicToken: reservations.publicToken })
             .from(reservations).where(eq(reservations.id, reservationId)).limit(1);
-          const baseUrl = process.env.APP_URL ?? "https://www.skicenter.es";
+          const baseUrl = publicBaseUrl();
           const reservationUrl = resForUrl?.publicToken ? `${baseUrl}/presupuesto/${resForUrl.publicToken}` : undefined;
           const bookingDateFormatted = (() => {
             try {
@@ -676,7 +679,7 @@ export const partnersRouter = router({
           });
           sendEmail({
             to: input.customerEmail,
-            subject: `✅ Reserva confirmada — ${input.productName} · Náyade Experiences`,
+            subject: `✅ Reserva confirmada — ${input.productName} · ${legacyBrandText("Náyade Experiences")}`,
             html,
           })
             // Trazabilidad: evita un segundo envío si más tarde se toca esta
@@ -713,7 +716,7 @@ export const partnersRouter = router({
             const [resForUrl] = await db.select({ publicToken: reservations.publicToken })
               .from(reservations).where(eq(reservations.id, reservationId)).limit(1);
             if (resForUrl?.publicToken) {
-              const base = process.env.APP_URL ?? "https://www.skicenter.es";
+              const base = publicBaseUrl();
               syncLeadUrlsToGHL({
                 ghlContactId,
                 quoteUrl: `${base}/presupuesto/${resForUrl.publicToken}`,
@@ -836,7 +839,7 @@ export const partnersRouter = router({
           throw new TRPCError({ code: "BAD_REQUEST", message: "El justificante no puede superar 8 MB" });
         }
         const key = `partners/delegacion/${merchantOrder}_${Date.now()}.${ext}`;
-        const stored = await storagePut(key, buffer, input.delegationProof.mimeType);
+        const stored = await storagePut(key, buffer, input.delegationProof.mimeType, { category: "partner-proof", owner: { type: "merchant_order", id: merchantOrder } });
         delegationProofUrl = stored.url;
         delegationProofKey = stored.key;
       }
@@ -916,7 +919,7 @@ export const partnersRouter = router({
           const first = created[0];
           const [resForUrl] = await db.select({ publicToken: reservations.publicToken })
             .from(reservations).where(eq(reservations.id, first.reservationId)).limit(1);
-          const baseUrl = process.env.APP_URL ?? "https://www.skicenter.es";
+          const baseUrl = publicBaseUrl();
           const reservationUrl = resForUrl?.publicToken ? `${baseUrl}/presupuesto/${resForUrl.publicToken}` : undefined;
           const fmtDate = (s: string) => {
             try {
@@ -952,8 +955,8 @@ export const partnersRouter = router({
             reservationUrl,
           });
           const subject = isMulti
-            ? `✅ Reserva confirmada — ${created.length} actividades · Náyade Experiences`
-            : `✅ Reserva confirmada — ${created[0].line.productName} · Náyade Experiences`;
+            ? `✅ Reserva confirmada — ${created.length} actividades · ${legacyBrandText("Náyade Experiences")}`
+            : `✅ Reserva confirmada — ${created[0].line.productName} · ${legacyBrandText("Náyade Experiences")}`;
           sendEmail({ to: input.customerEmail, subject, html })
             // Trazabilidad: evita un segundo envío si más tarde se toca alguna
             // de estas reservas desde el editor genérico de CRM.
@@ -1124,7 +1127,7 @@ export const partnersRouter = router({
       const settingsRows = await db.select().from(siteSettings)
         .where(sql`\`key\` IN ('legalCompanyName','legalCompanyCif','legalCompanyAddress','legalCompanyEmail','legalCompanyPhone')`);
       const s: Record<string, string> = Object.fromEntries(settingsRows.map(r => [r.key, r.value ?? ""]));
-      const companyData = {
+      const companyData = isMultiTenant() ? await tenantIssuerData(s) : {
         name: s.legalCompanyName || "Náyade Experiences S.L.",
         cif: s.legalCompanyCif || "",
         address: s.legalCompanyAddress || "Los Ángeles de San Rafael, Segovia",

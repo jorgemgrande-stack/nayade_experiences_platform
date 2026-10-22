@@ -36,6 +36,8 @@ export interface ProvisionRequest {
   brand?: Partial<Record<"name" | "phone" | "email" | "logoUrl" | "primaryColor" | "accentColor", string>>;
   quotas?: Array<{ metric: string; period: "minute" | "hour" | "day" | "month"; limit: number; enforcement: "hard" | "soft" }>;
   templateId?: string;
+  /** Servidor MySQL pedido de forma explícita (alias de PROVISIONING_DB_SERVERS); por defecto, la política de colocación. */
+  serverAlias?: string;
 }
 
 export type StepState = { state: "done"; at: number; info?: Record<string, string | number | boolean | null> } | { state: "failed"; at: number; error: string };

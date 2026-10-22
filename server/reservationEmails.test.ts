@@ -20,6 +20,13 @@ vi.mock("./_core/notification", () => ({
   notifyOwner: vi.fn().mockResolvedValue(true),
 }));
 
+// El correo al cliente sale por el gestor central (sendManagedEmail: plantilla configurable, registro y
+// envío por el mailer del tenant), no por nodemailer directamente: se simula ese gestor.
+vi.mock("./emailManager", () => ({
+  sendManagedEmail: vi.fn().mockResolvedValue(true),
+  logDirectEmail: vi.fn().mockResolvedValue(undefined),
+}));
+
 // Mock de getDb para confirmReservationAndNotify
 vi.mock("./db", () => ({
   getDb: vi.fn(),
@@ -28,7 +35,7 @@ vi.mock("./db", () => ({
 import { sendReservationPaidNotifications, sendReservationFailedNotifications, confirmReservationAndNotify } from "./reservationEmails";
 import { notifyOwner } from "./_core/notification";
 import { getDb } from "./db";
-import nodemailer from "nodemailer";
+import { sendManagedEmail } from "./emailManager";
 
 const mockReservation = {
   id: 1,
@@ -75,11 +82,11 @@ describe("sendReservationPaidNotifications", () => {
 
     await sendReservationPaidNotifications(mockReservation);
 
-    const mockTransport = (nodemailer.createTransport as any).mock.results[0]?.value;
-    expect(mockTransport?.sendMail).toHaveBeenCalledOnce();
-    expect(mockTransport?.sendMail).toHaveBeenCalledWith(
+    expect(sendManagedEmail).toHaveBeenCalledOnce();
+    expect(sendManagedEmail).toHaveBeenCalledWith(
       expect.objectContaining({
-        to: mockReservation.customerEmail,
+        templateKey: "reservation_confirm",
+        recipientEmail: mockReservation.customerEmail,
         subject: expect.stringContaining(mockReservation.productName),
         html: expect.stringContaining(mockReservation.merchantOrder),
       })
@@ -125,11 +132,11 @@ describe("sendReservationFailedNotifications", () => {
 
     await sendReservationFailedNotifications(mockReservation, "0190");
 
-    const mockTransport = (nodemailer.createTransport as any).mock.results[0]?.value;
-    expect(mockTransport?.sendMail).toHaveBeenCalledOnce();
-    expect(mockTransport?.sendMail).toHaveBeenCalledWith(
+    expect(sendManagedEmail).toHaveBeenCalledOnce();
+    expect(sendManagedEmail).toHaveBeenCalledWith(
       expect.objectContaining({
-        to: mockReservation.customerEmail,
+        templateKey: "reservation_failed",
+        recipientEmail: mockReservation.customerEmail,
         subject: expect.stringContaining("no completado"),
       })
     );

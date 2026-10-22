@@ -4,9 +4,12 @@
  * del registro) y compensación explícita (`abort`).
  */
 import { RegistryError } from "../tenantRegistry/contract";
+import { isReservedPlatformLabel } from "../tenantRegistry/platformDomains";
+import { opsLog } from "../ops/log";
+import { recordFailure } from "../ops/failureAlerts";
 import type { Actor, TenantRegistryService } from "../tenantRegistry/service";
 import type { TenantRegistryReader } from "../tenantRegistry/store";
-import type { DatabaseProvisioner, ModuleInstaller, ProvisioningStore, SchemaApplier, TenantSeeder, WelcomeNotifier } from "./ports";
+import type { DatabaseProvisioner, ModuleInstaller, ProvisioningListFilter, ProvisioningStore, SchemaApplier, TenantSeeder, WelcomeNotifier } from "./ports";
 import {
   PROVISION_STEPS,
   ProvisioningError,
@@ -51,10 +54,15 @@ const DOMAIN_RE = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/;
 export function validateRequest(r: ProvisionRequest): void {
   if (!TENANT_ID_RE.test(r.tenantId)) throw new ProvisioningError("invalid_request", "Identificador de tenant no válido");
   if (!r.displayName?.trim()) throw new ProvisioningError("invalid_request", "Falta el nombre");
+  // <empresa>.<dominio> no puede usar una etiqueta de Big Elephant (admin, app, www…): se rechaza antes de crear nada
+  if (isReservedPlatformLabel(r.tenantId)) throw new ProvisioningError("invalid_request", "Identificador reservado para Big Elephant");
   if (!EMAIL_RE.test(r.adminEmail)) throw new ProvisioningError("invalid_request", "Correo del administrador no válido");
   if (!DOMAIN_RE.test(r.platformDomain)) throw new ProvisioningError("invalid_request", "Dominio de plataforma no válido");
   if (r.trialDays !== undefined && !(r.trialDays >= 1 && r.trialDays <= 90)) {
     throw new ProvisioningError("invalid_request", "Días de prueba fuera de rango");
+  }
+  if (r.serverAlias !== undefined && !/^[a-z0-9][a-z0-9_.-]{0,63}$/.test(r.serverAlias)) {
+    throw new ProvisioningError("invalid_request", "Servidor de base de datos no válido");
   }
 }
 
@@ -62,6 +70,8 @@ export class ProvisioningService {
   private readonly now: () => number;
   private readonly maxAttempts: number;
   private readonly sleep: (ms: number) => Promise<void>;
+
+  private readonly inflight = new Map<string, Promise<unknown>>();
 
   constructor(private d: ProvisioningDeps) {
     this.now = d.now ?? Date.now;
@@ -73,12 +83,56 @@ export class ProvisioningService {
     return this.d.store.get(tenantId);
   }
 
+  /** Listado global de altas (los más recientes primero), filtrable por estado. */
+  async list(f: ProvisioningListFilter): Promise<{ items: ProvisioningRecord[]; total: number }> {
+    if (!this.d.store.list) throw new ProvisioningError("conflict", "El listado de altas no está disponible");
+    return this.d.store.list(f);
+  }
+
+  /**
+   * Reintento de un alta con la petición GUARDADA (quien reintenta no puede cambiarla). Idempotente:
+   * reanuda en el primer paso no completado; un alta ya completada se devuelve tal cual sin repetir
+   * nada; una abortada no se reanuda.
+   */
+  async retry(tenantId: string, actor: Actor): Promise<ProvisionResult> {
+    const rec = await this.d.store.get(tenantId);
+    if (!rec) throw new ProvisioningError("not_found", "Sin alta para ese tenant");
+    if (rec.status === "aborted") throw new ProvisioningError("aborted", "El alta fue abortada: no se puede reintentar");
+    return this.run(rec.request, actor);
+  }
+
   /**
    * Ejecuta (o reanuda) el alta. Idempotente: con el mismo `tenantId` y la misma solicitud
    * continúa en el primer paso no completado.
    */
   async run(request: ProvisionRequest, actor: Actor): Promise<ProvisionResult> {
     validateRequest(request);
+    // Dos altas simultáneas del mismo tenant (p. ej. doble verificación) se serializan en este
+    // proceso: la segunda espera y reanuda sobre el estado ya persistido, sin pasos en paralelo.
+    const prev = this.inflight.get(request.tenantId) ?? Promise.resolve();
+    const mine = prev.then(() => this.runSerialized(request, actor));
+    const tail = mine.catch(() => undefined);
+    this.inflight.set(request.tenantId, tail);
+    try {
+      return await mine;
+    } finally {
+      if (this.inflight.get(request.tenantId) === tail) this.inflight.delete(request.tenantId);
+    }
+  }
+
+  /**
+   * Invitación nueva para el administrador inicial de un alta completada, solo si aún no la aceptó.
+   * Devuelve `null` si ya definió su contraseña (que use la recuperación de contraseña).
+   */
+  async reissueAdminInvite(tenantId: string): Promise<string | null> {
+    const rec = await this.d.store.get(tenantId);
+    if (!rec || rec.status !== "completed") throw new ProvisioningError("not_found", "No hay un alta completada para ese tenant");
+    if (!this.d.seeder.reissueAdminInvite) return null;
+    const out = await this.d.seeder.reissueAdminInvite(await this.dsn(tenantId), { email: rec.request.adminEmail.toLowerCase() });
+    return out?.inviteToken ?? null;
+  }
+
+  private async runSerialized(request: ProvisionRequest, actor: Actor): Promise<ProvisionResult> {
     let rec = await this.d.store.get(request.tenantId);
     if (rec?.status === "aborted") throw new ProvisioningError("aborted", "El alta fue abortada");
     if (rec && rec.request.displayName !== request.displayName.trim() && rec.status !== "failed") {
@@ -127,6 +181,14 @@ export class ProvisioningService {
         rec.status = "failed";
         rec.lastError = `${step}: ${msg}`;
         await this.save(rec);
+        // Sin datos de la solicitud (correo, nombre): solo empresa, paso, intento y tipo de error
+        opsLog("error", "Provisioning", "step_failed", {
+          tenantId: rec.tenantId,
+          step,
+          attempts: rec.attempts,
+          error: lastErr instanceof RegistryError ? `RegistryError:${lastErr.code}` : lastErr instanceof Error ? lastErr.name : "error",
+        });
+        recordFailure("provisioning.failed", rec.tenantId);
         return { ...this.result(rec), failedStep: step, error: msg };
       }
       await this.save(rec); // checkpoint tras cada paso
@@ -186,7 +248,7 @@ export class ProvisioningService {
       }
       case "database": {
         // Idempotente: reutiliza la BD y rota su credencial; re-registra el DSN cifrado
-        const { dsn, serverAlias } = await this.d.databases.ensureDatabase(id);
+        const { dsn, serverAlias } = await this.d.databases.ensureDatabase(id, r.serverAlias ? { serverAlias: r.serverAlias } : undefined);
         const pending = (await this.d.reader.listDatabases(id)).filter((x) => x.state === "pending");
         if (!pending.length && !(await this.d.reader.getActiveDatabase(id))) {
           await this.d.registry.registerDatabase(id, dsn, actor, { serverAlias });
@@ -199,8 +261,10 @@ export class ProvisioningService {
       case "schema": {
         const dsn = await this.dsn(id);
         const v = await this.d.schema.apply(dsn);
+        // Triggers que la baseline no puede llevar: los crea la conexión de administración
+        const triggers = this.d.databases.ensureTriggers ? await this.d.databases.ensureTriggers(id) : [];
         await this.d.registry.setSchemaVersion(id, v.schemaVersion, actor);
-        return { info: { baseline: v.baselineVersion, schema: v.schemaVersion } };
+        return { info: { baseline: v.baselineVersion, schema: v.schemaVersion, triggersCreated: triggers.length } };
       }
       case "activate_database": {
         if (await this.d.reader.getActiveDatabase(id)) return;
@@ -256,6 +320,12 @@ export class ProvisioningService {
       case "activate": {
         const t = await this.d.reader.getTenant(id);
         if (t?.status === "provisioning") await this.d.registry.setStatus(id, "trial", actor, {});
+        // Alta reanudada: la invitación se creó en una ejecución anterior y se perdió con ella. Se
+        // emite una nueva (solo si el administrador no la aceptó) para que pueda entrar.
+        if (!runCtx.inviteToken && this.d.seeder.reissueAdminInvite) {
+          const again = await this.d.seeder.reissueAdminInvite(await this.dsn(id), { email: r.adminEmail.toLowerCase() });
+          if (again) runCtx.inviteToken = again.inviteToken;
+        }
         if (this.d.welcome) {
           try {
             await this.d.welcome.notify({ tenantId: id, adminEmail: r.adminEmail, domain, inviteToken: runCtx.inviteToken });

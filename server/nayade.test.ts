@@ -1,4 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import crypto from "node:crypto";
+import path from "node:path";
+import mysql from "mysql2/promise";
 import { appRouter } from "./routers";
 import type { TrpcContext } from "./_core/context";
 
@@ -98,115 +101,157 @@ describe("auth", () => {
   });
 });
 
-// ─── Public API Tests ─────────────────────────────────────────────────────────
+// ─── Control de acceso sin base de datos ──────────────────────────────────────
 
-describe("public API", () => {
-  it("getCategories returns an array", async () => {
-    const caller = appRouter.createCaller(createPublicContext());
-    const categories = await caller.public.getCategories();
-    expect(Array.isArray(categories)).toBe(true);
-  });
-
-  it("getLocations returns an array", async () => {
-    const caller = appRouter.createCaller(createPublicContext());
-    const locations = await caller.public.getLocations();
-    expect(Array.isArray(locations)).toBe(true);
-  });
-
-  it("getFeaturedExperiences returns an array", async () => {
-    const caller = appRouter.createCaller(createPublicContext());
-    const experiences = await caller.public.getFeaturedExperiences();
-    expect(Array.isArray(experiences)).toBe(true);
-  });
-
-  it("getExperiences accepts filter params", async () => {
-    const caller = appRouter.createCaller(createPublicContext());
-    const result = await caller.public.getExperiences({ limit: 5, offset: 0 });
-    expect(Array.isArray(result)).toBe(true);
-  });
-
-  it("getSlideshowItems returns an array", async () => {
-    const caller = appRouter.createCaller(createPublicContext());
-    const items = await caller.public.getSlideshowItems();
-    expect(Array.isArray(items)).toBe(true);
-  });
-});
-
-// ─── Lead Creation Tests ──────────────────────────────────────────────────────
-
-describe("leads", () => {
-  it("submitLead requires name and email", async () => {
-    const caller = appRouter.createCaller(createPublicContext());
-    await expect(
-      caller.public.submitLead({
-        name: "Test User",
-        email: "test@example.com",
-        message: "Quiero información sobre esquí",
-      })
-    ).resolves.toBeDefined();
-  });
-});
-
-// ─── Admin Access Control Tests ───────────────────────────────────────────────
-
-describe("admin access control", () => {
-  it("admin can access admin.getUsers", async () => {
-    const caller = appRouter.createCaller(createAdminContext());
-    const users = await caller.admin.getUsers();
-    expect(Array.isArray(users)).toBe(true);
-  });
-
+describe("admin access control (sin BD)", () => {
   it("regular user cannot access admin procedures", async () => {
     const caller = appRouter.createCaller(createUserContext("user"));
     await expect(caller.admin.getUsers()).rejects.toThrow();
   });
-
-  it("admin can access CMS slideshow", async () => {
-    const caller = appRouter.createCaller(createAdminContext());
-    const items = await caller.cms.getSlideshowItems();
-    expect(Array.isArray(items)).toBe(true);
-  });
 });
 
-// ─── CRM Leads & Quotes Module Tests ───────────────────────────────────────
-describe("crm leads & quotes module", () => {
-  it("staff can list leads via crm router", async () => {
-    const caller = appRouter.createCaller(createAdminContext());
-    const result = await caller.crm.leads.list({ limit: 10, offset: 0 });
-    expect(Array.isArray(result)).toBe(true);
+// Las pruebas siguientes consultan la base de datos de verdad. Antes apuntaban a la DATABASE_URL de relleno
+// de testSetup.ts (que nunca debe usarse para conectar) y fallaban siempre por conexión. Ahora son opt-in
+// como el resto de pruebas con MySQL (REGISTRY_TEST_DATABASE_URL): crean una base de datos desechable con
+// la baseline + db/migrations, vacía, y la borran al terminar.
+const DB_URL = process.env.REGISTRY_TEST_DATABASE_URL;
+
+describe.skipIf(!DB_URL)("routers con MySQL real (baseline vacía)", () => {
+  const dbName = `nayade_${crypto.randomBytes(3).toString("hex")}`;
+  let admin: mysql.Pool;
+  const prevUrl = process.env.DATABASE_URL;
+
+  beforeAll(async () => {
+    admin = mysql.createPool({ uri: DB_URL!, connectionLimit: 2 });
+    await admin.query(`CREATE DATABASE \`${dbName}\``);
+    const u = new URL(DB_URL!);
+    u.pathname = `/${dbName}`;
+    const { MysqlSchemaApplier } = await import("./_core/provisioning/mysqlAdapters");
+    await new MysqlSchemaApplier({
+      baselinePath: path.resolve(__dirname, "../db/baseline/0000_baseline.sql"),
+      migrationsDir: path.resolve(__dirname, "../db/migrations"),
+    }).apply(u.toString());
+    const { closeAllDatabases } = await import("./_core/dbRegistry");
+    await closeAllDatabases();
+    process.env.DATABASE_URL = u.toString();
+  }, 120_000);
+
+  afterAll(async () => {
+    const { closeAllDatabases } = await import("./_core/dbRegistry");
+    await closeAllDatabases().catch(() => undefined);
+    process.env.DATABASE_URL = prevUrl;
+    await admin?.query(`DROP DATABASE IF EXISTS \`${dbName}\``).catch(() => undefined);
+    await admin?.end().catch(() => undefined);
   });
-  it("staff can list quotes via crm router", async () => {
-    const caller = appRouter.createCaller(createAdminContext());
-    const result = await caller.crm.quotes.list({ limit: 10, offset: 0 });
-    expect(Array.isArray(result)).toBe(true);
+  // ─── Public API Tests ─────────────────────────────────────────────────────────
+
+  describe("public API", () => {
+    it("getCategories returns an array", async () => {
+      const caller = appRouter.createCaller(createPublicContext());
+      const categories = await caller.public.getCategories();
+      expect(Array.isArray(categories)).toBe(true);
+    });
+
+    it("getLocations returns an array", async () => {
+      const caller = appRouter.createCaller(createPublicContext());
+      const locations = await caller.public.getLocations();
+      expect(Array.isArray(locations)).toBe(true);
+    });
+
+    it("getFeaturedExperiences returns an array", async () => {
+      const caller = appRouter.createCaller(createPublicContext());
+      const experiences = await caller.public.getFeaturedExperiences();
+      expect(Array.isArray(experiences)).toBe(true);
+    });
+
+    it("getExperiences accepts filter params", async () => {
+      const caller = appRouter.createCaller(createPublicContext());
+      const result = await caller.public.getExperiences({ limit: 5, offset: 0 });
+      expect(Array.isArray(result)).toBe(true);
+    });
+
+    it("getSlideshowItems returns an array", async () => {
+      const caller = appRouter.createCaller(createPublicContext());
+      const items = await caller.public.getSlideshowItems();
+      expect(Array.isArray(items)).toBe(true);
+    });
   });
-});
 
-// ─── Bookings Module Tests ────────────────────────────────────────────────────
+  // ─── Lead Creation Tests ──────────────────────────────────────────────────────
 
-describe("bookings module", () => {
-  it("authenticated user can get bookings", async () => {
-    const caller = appRouter.createCaller(createAdminContext());
-    const bookings = await caller.bookings.getAll({ limit: 10, offset: 0 });
-    expect(Array.isArray(bookings)).toBe(true);
-  });
-});
-
-// ─── Accounting Module Tests ──────────────────────────────────────────────────
-
-describe("accounting module", () => {
-  it("admin can get dashboard metrics", async () => {
-    const caller = appRouter.createCaller(createAdminContext());
-    const metrics = await caller.accounting.getDashboardMetrics();
-    expect(metrics).toBeDefined();
-    expect(typeof metrics.totalRevenue).toBe("number");
-    expect(typeof metrics.totalBookings).toBe("number");
-    expect(typeof metrics.totalLeads).toBe("number");
+  describe("leads", () => {
+    it("submitLead requires name and email", async () => {
+      const caller = appRouter.createCaller(createPublicContext());
+      await expect(
+        caller.public.submitLead({
+          name: "Test User",
+          email: "test@example.com",
+          message: "Quiero información sobre esquí",
+        })
+      ).resolves.toBeDefined();
+    });
   });
 
-  it("admin can get transactions", async () => {
-    const caller = appRouter.createCaller(createAdminContext());
-    const transactions = await caller.accounting.getTransactions({ limit: 10, offset: 0 });
-    expect(Array.isArray(transactions)).toBe(true);
+  // ─── Admin Access Control Tests ───────────────────────────────────────────────
+
+  describe("admin access control", () => {
+    it("admin can access admin.getUsers", async () => {
+      const caller = appRouter.createCaller(createAdminContext());
+      const users = await caller.admin.getUsers();
+      expect(Array.isArray(users)).toBe(true);
+    });
+
+
+    it("admin can access CMS slideshow", async () => {
+      const caller = appRouter.createCaller(createAdminContext());
+      const items = await caller.cms.getSlideshowItems();
+      expect(Array.isArray(items)).toBe(true);
+    });
+  });
+
+  // ─── CRM Leads & Quotes Module Tests ───────────────────────────────────────
+  describe("crm leads & quotes module", () => {
+    it("staff can list leads via crm router", async () => {
+      const caller = appRouter.createCaller(createAdminContext());
+      const result = await caller.crm.leads.list({ limit: 10, offset: 0 });
+      // El listado está paginado: { rows, total } (antes devolvía el array directamente)
+      expect(Array.isArray(result.rows)).toBe(true);
+      expect(typeof result.total).toBe("number");
+    });
+    it("staff can list quotes via crm router", async () => {
+      const caller = appRouter.createCaller(createAdminContext());
+      const result = await caller.crm.quotes.list({ limit: 10, offset: 0 });
+      expect(Array.isArray(result.rows)).toBe(true);
+      expect(typeof result.total).toBe("number");
+    });
+  });
+
+  // ─── Bookings Module Tests ────────────────────────────────────────────────────
+
+  describe("bookings module", () => {
+    it("authenticated user can get bookings", async () => {
+      const caller = appRouter.createCaller(createAdminContext());
+      const bookings = await caller.bookings.getAll({ limit: 10, offset: 0 });
+      expect(Array.isArray(bookings)).toBe(true);
+    });
+  });
+
+  // ─── Accounting Module Tests ──────────────────────────────────────────────────
+
+  describe("accounting module", () => {
+    it("admin can get dashboard metrics", async () => {
+      const caller = appRouter.createCaller(createAdminContext());
+      const metrics = await caller.accounting.getDashboardMetrics();
+      expect(metrics).toBeDefined();
+      expect(typeof metrics.totalRevenue).toBe("number");
+      expect(typeof metrics.totalBookings).toBe("number");
+      expect(typeof metrics.totalLeads).toBe("number");
+    });
+
+    it("admin can get transactions", async () => {
+      const caller = appRouter.createCaller(createAdminContext());
+      const transactions = await caller.accounting.getTransactions({ limit: 10, offset: 0 });
+      expect(Array.isArray(transactions)).toBe(true);
+    });
   });
 });

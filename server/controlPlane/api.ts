@@ -9,7 +9,22 @@
  *    persistentes): solo hechos operativos del registro.
  */
 import express, { type Express, type NextFunction, type Request, type Response } from "express";
-import rateLimit from "express-rate-limit";
+import { BUILTIN_MODULES } from "../_core/modules/builtin";
+import type { CommercialEventDispatchQueue, CommercialEventReader } from "../commercialEvents/log";
+import { TEMPLATE_CATALOG, catalogView } from "../notifications/catalog";
+import { hasPreview, previewTemplate } from "../notifications/preview";
+import { MAIL_STATUSES } from "../mail/types";
+import type { MailLedgerReader } from "../mail/store";
+import { choosePublicDomain } from "../_core/tenantIdentity";
+import { NotificationDispatcher } from "../notifications/dispatcher";
+import type { CommercialEventSink } from "../commercialEvents/types";
+import { TenantStatusSync } from "../orchestrator/tenantStatus";
+import { COMMERCIAL_EVENT_TYPES, type CommercialEventFilter, type CommercialEventType } from "../commercialEvents/types";
+import { CORE_VERSION } from "../_core/modules/runtime";
+import { assertCanActivate, assertCanDeactivate, buildCatalog, tenantModules, type ModulePriceRef, type PlanRef } from "../_core/modules/catalog";
+import rateLimit, { ipKeyGenerator } from "express-rate-limit";
+import { DEFAULT_QUOTAS, type DefaultQuota } from "../_core/erm/quota";
+import { UNMEASURED, WARNING_RATIO, tenantResources, type ResourceState } from "../_core/erm/overview";
 import { z } from "zod";
 import { RegistryError } from "../_core/tenantRegistry/contract";
 import type { TenantRegistryService } from "../_core/tenantRegistry/service";
@@ -24,7 +39,9 @@ import type { UsageStore } from "../_core/erm/types";
 import type { EntitlementAdmin } from "../_core/modules/mysqlEntitlements";
 import type { QuotaAdmin } from "../_core/erm/mysqlQuotas";
 import { ModuleError } from "../_core/modules/contract";
-import { authenticate, getAuth, requireScope, type ServiceToken } from "./auth";
+import { authenticate, getAuth, hashToken, readSessionCookie, requireScope, type ServiceToken } from "./auth";
+import type { OperatorAuthService } from "./operatorAuth";
+import { createOperatorRouter, createPublicAuthRouter } from "./operatorApi";
 import { SsoError, type SsoService } from "./sso";
 import { signSupportToken } from "../_core/support/session";
 import { TEMPLATES } from "../_core/templates/catalog";
@@ -32,9 +49,84 @@ import { renderMetrics } from "./metrics";
 import type { IncidentService } from "../_core/ops/incidents";
 import type { AlertRunResult } from "../_core/ops/alerts";
 import { createCrmRouter } from "../crm/api";
+import { CrmOnboarding } from "../crm/onboarding";
 import type { CrmService } from "../crm/service";
+import { CrmError } from "../crm/types";
 import type { CrmStore } from "../crm/store";
+import type { TicketService } from "../_core/support/tickets";
+import { createTicketsRouter } from "./tickets";
 import type { SupportAdmin } from "../_core/support/grants";
+import { createPublicIntakeRouter, type PublicIntakeConfig } from "../crm/publicApi";
+import { WebRequestService } from "../crm/webRequests";
+import { WebAdminService } from "../web/service";
+import type { WebStore } from "../web/store";
+import { createWebAdminRouter } from "../web/api";
+import { createPublicSiteRouter } from "../web/publicSite";
+import { createSubscriptionsRouter } from "../subscriptions/api";
+import { catalogFromWebStore, crmFromStore } from "../subscriptions/ports";
+import { SubscriptionService as ContractSubscriptionService } from "../subscriptions/service";
+import { ShadowBillingService } from "../subscriptions/shadow";
+import type { SubscriptionStore } from "../subscriptions/store";
+import { Metrics } from "../_core/metering";
+import { quote, type QuoteRequest } from "../catalog/quote";
+import { CAPABILITY_STATUSES } from "../_core/capabilities/model";
+import type { CapabilityStore } from "../_core/capabilities/store";
+import { LicensingError, LicensingService } from "../licensing/service";
+import type { TenantLimitStore } from "../_core/limits/store";
+import { TrialService, type TrialLimits } from "../trials/service";
+import type { TrialStore } from "../trials/store";
+import { TrialOnboardingService, type TrialNotifier } from "../trials/onboarding";
+import { createPublicTrialRouter, createTrialAdminRouter, type TrialExceptionConversion } from "../trials/api";
+import { OrderError } from "../orchestrator/types";
+import { OrganizationError, OrganizationService, type OrganizationStore } from "../organization/service";
+import { CommercialOrchestrator } from "../orchestrator/service";
+import { LifecycleEngine, startLifecycleScheduler } from "../lifecycle/engine";
+import type { LifecyclePolicy } from "../lifecycle/policy";
+import type { SchedulerLock } from "../trials/scheduler";
+import { createStripeRouter } from "../stripe/api";
+import { StripeEventProcessor } from "../stripe/events";
+import type { SubscriptionChangeStore } from "../stripe/changes";
+import type { InvoiceLineStore } from "../stripe/invoiceLines";
+import { ModulePurchaseService } from "../stripe/purchases";
+import { createBillingPortalRouter, createPurchasesRouter } from "../stripe/purchasesApi";
+import { BillingPortalService } from "../stripe/billingPortal";
+import { StripeReconciler, startStripeWorker } from "../stripe/reconcile";
+import { stripeWebhookHandler } from "../stripe/webhook";
+import { checkoutStatus, sessionIdRe } from "../stripe/status";
+import { SelfServiceCheckout, createSelfServiceRouter } from "../stripe/selfService";
+import { VatVerifier, type ViesPort } from "../stripe/vies";
+import { WithdrawalService } from "../withdrawals/service";
+import { createWithdrawalAdminRouter, createWithdrawalCommerceRouter } from "../withdrawals/api";
+import type { WithdrawalStore } from "../withdrawals/store";
+import type { GwEvent } from "../stripe/gateway";
+import { StripeCheckoutService, type CheckoutUrls } from "../stripe/checkout";
+import { checkoutBlockedReason, type StripeConfig } from "../stripe/config";
+import type { StripeGateway } from "../stripe/gateway";
+import type { ConsentVersions, FiscalScenario, TaxTreatment } from "../stripe/buyerProfile";
+import type { StripeStore } from "../stripe/store";
+import type { OrderStore } from "../orchestrator/store";
+import type { TestPaymentPort } from "../orchestrator/payments";
+import { createOrdersRouter, paymentsWebhookHandler } from "../orchestrator/api";
+import { buildRelationshipExport, RelationshipNotFoundError } from "./relationshipExport";
+import { CalendarUnavailableError } from "./madridCalendar";
+import { createContractActivation } from "../crm/activation";
+import type { PlatformMailer } from "../mail/platform";
+import type { MailService } from "../mail/service";
+import { brevoWebhookHandler, postmarkWebhookHandler } from "../mail/webhook";
+
+/** Aviso por defecto: NO envía nada; solo deja constancia (sin correo ni token) de que hay un aviso pendiente. */
+const logOnlyTrialNotifier: TrialNotifier = {
+  verification: async (_to, l) => void console.log(JSON.stringify({ ctx: "Trials", event: "verification_not_sent", trialId: l.trialId })),
+  welcome: async (_to, i) => void console.log(JSON.stringify({ ctx: "Trials", event: "welcome_not_sent", tenantId: i.tenantId })),
+  expiryNotice: async (_to, i) => void console.log(JSON.stringify({ ctx: "Trials", event: "expiry_notice_not_sent", trialId: i.trialId, daysLeft: i.daysLeft })),
+};
+import { quoteCatalogFromSite } from "../catalog/snapshot";
+import { rebindRequestContext, requestIdMiddleware, requestIdOf } from "../_core/ops/requestContext";
+import { opsLog } from "../_core/ops/log";
+import { diagnoseTenant } from "../_core/ops/diagnostics";
+import type { BackupInventory, BackupRecord } from "../_core/ops/backupInventory";
+import type { BackupCopyLedger } from "../_core/ops/backupCopies";
+import { BACKUP_TENANT_STATUSES } from "../_core/ops/backupJob";
 
 export interface ControlPlaneDeps {
   tokens: ServiceToken[];
@@ -46,22 +138,155 @@ export interface ControlPlaneDeps {
   billing?: SubscriptionService;
   billingStore?: BillingStore;
   usage?: UsageStore;
+  /** Cuotas por defecto de plataforma (ERM_DEFAULT_QUOTAS); por defecto, las del ERM. */
+  quotaDefaults?: DefaultQuota[];
   /** Destino CNAME de la plataforma para verificar dominios propios. */
   platformTarget: string;
   verifyDomain?: typeof verifyDomainOwnership;
   /** Límite de peticiones por minuto y token (por defecto 120). */
   perMinute?: number;
+  /** Tope de peticiones por minuto y IP para todo el plano de control (por defecto 600). */
+  perIpMinute?: number;
   /** Acceso delegado de soporte (requiere SUPPORT_JWT_SECRET). */
   support?: Pick<SupportAdmin, "create" | "revoke">;
+  /** Inventario de copias de seguridad (registro, migración 0010). Sin él no hay rutas `/backups`. */
+  backups?: {
+    inventory: Pick<BackupInventory, "list" | "latestAttempts" | "lastSuccess">;
+    maxAgeMs?: number;
+    /** Estado del destino secundario (registro 0011); sin él, la respuesta no cambia. */
+    copies?: Pick<BackupCopyLedger, "lastSuccess" | "latestAttempts">;
+    secondaryMaxAgeMs?: number;
+  };
   /** Incidencias operativas y evaluación de alertas. */
   ops?: { incidents: IncidentService; runAlerts?: () => Promise<AlertRunResult> };
+  /** Comprobación de la BD del registro para `/readyz` (sin ella, `/readyz` solo indica que el proceso vive). */
+  health?: { registryPing: () => Promise<void>; timeoutMs?: number };
+  /** Tickets de soporte de clientes. */
+  tickets?: TicketService;
   /** SSO corporativo (OIDC → sesión corta). */
   sso?: SsoService;
+  /** Dominio base de los subdominios de plataforma (onboarding desde el CRM). */
+  platformDomain?: string;
   /** CRM comercial (leads, oportunidades, contratos…). */
   crm?: { service: CrmService; store: CrmStore };
   /** Orígenes del navegador autorizados (CORS). Vacío = ninguno. Nunca comodín. */
   allowedOrigins?: string[];
   supportSecret?: string;
+  /** Operadores humanos con usuario y contraseña (sesión por cookie HttpOnly + CSRF). */
+  operators?: OperatorAuthService;
+  /** Atributo Secure de la cookie de sesión: `auto` (HTTPS) por defecto. */
+  cookieSecure?: "auto" | boolean;
+  /** Proxies de confianza delante del servicio (`trust proxy` de Express): IP real y HTTPS. */
+  trustProxy?: number | string;
+  /**
+   * API pública de captación de la web comercial (/cp/v1/public/*). Requiere `crm`. Sin esta
+   * configuración no se monta: ninguna ruta pública existe por defecto.
+   */
+  publicIntake?: Omit<PublicIntakeConfig, "service" | "origins"> & { origins: string[] };
+  /**
+   * Web comercial: catálogo y contenidos administrados desde el CRM (BD del CRM, migración 0004).
+   * La lectura pública (/cp/v1/public/site) además requiere `publicIntake` (orígenes y secreto).
+   */
+  web?: { store: WebStore; onPublish?: (version: string) => void };
+  /**
+   * Suscripciones v1 en MODO SOMBRA (BD del CRM, migración 0006). Requiere `crm` y `web` (precios
+   * aprobados del catálogo). Nunca cobra, emite facturas fiscales ni toca licencias.
+   */
+  subscriptions?: { store: SubscriptionStore; now?: () => number };
+  /** Licencias por capacidad (registro, migración 0008). Sin ellas no se aplican licencias desde suscripciones. */
+  capabilities?: CapabilityStore;
+  /** Límites contratados y uso declarado por cada empresa (registro 0013). */
+  limits?: TenantLimitStore;
+  /**
+   * Prueba gratuita de Essential (CRM 0007). Las rutas públicas solo existen con `publicEnabled`
+   * (por defecto NO); `notify` es el único canal de comunicaciones (por defecto, solo un registro
+   * sin datos personales ni tokens: no se envía nada).
+   */
+  trials?: { store: TrialStore; publicEnabled?: boolean; autoProvision?: boolean; notify?: TrialNotifier; limits?: Partial<TrialLimits>; blockedDomains?: string[] };
+  /** Sedes y entidades fiscales (registro 0009), con los límites del plan contratado. */
+  organization?: OrganizationStore;
+  /** Registro de eventos comerciales (CRM 0015), solo lectura. */
+  commercialEvents?: CommercialEventReader & Partial<CommercialEventSink>;
+  /**
+   * Orquestador comercial (CRM 0010). Requiere suscripciones, CRM, web y licencias por capacidad. Los
+   * pagos simulados son SOLO de prueba (`payments`; con Stripe en live no se admiten y la aplicación no se
+   * crea); sin ellos, los pedidos se confirman por aprobación administrativa o por el pago en Stripe.
+   */
+  /** `mode`: modo de cobro del entorno (el de CP_STRIPE_MODE), también cuando Stripe no llega a montarse. */
+  orders?: { store: OrderStore; payments?: TestPaymentPort | null; graceDays?: number; mode?: StripeConfig["mode"] };
+  /** Desistimiento de consumidores (CRM 0022). Sin él, la función de desistimiento no se monta. */
+  withdrawals?: { store: WithdrawalStore };
+  /**
+   * Motor de transiciones temporales (server/lifecycle). Requiere `orders`. El plan (solo lectura) siempre
+   * se puede consultar; la tarea periódica solo con `policy.enabled` y aplica solo en modo «apply».
+   */
+  lifecycle?: { policy: LifecyclePolicy; lock?: SchedulerLock };
+  /**
+   * Stripe Billing en modo pruebas o live (`config.mode`; server/stripe, CRM 0012 y 0013). Rutas de operador
+   * en /stripe; Checkout solo con `checkoutEnabled`, URL de vuelta y, en live, una política fiscal decidida.
+   * El almacén debe ser del mismo modo que la configuración. Requiere `orders`.
+   */
+  stripe?: {
+    /** VIES (cliente y días de validez de una comprobación). Sin él, la inversión del sujeto pasivo no se cobra en live. */
+    vies?: { client: ViesPort; maxAgeDays: number };
+    config: StripeConfig;
+    store: StripeStore;
+    gateway: StripeGateway;
+    urls: CheckoutUrls | null;
+    checkoutEnabled: boolean;
+    /** Verificación oficial de la firma del webhook (cuerpo original). */
+    verifyWebhook: (rawBody: Buffer, signature: string) => GwEvent;
+    /** Tarea periódica (eventos pendientes y conciliación). Apagada salvo CP_STRIPE_WORKER_ENABLED=1. */
+    workerEnabled: boolean;
+    /** Estado público del alta tras Checkout (`/public/checkout/status`). Apagado salvo CP_PUBLIC_CHECKOUT_ENABLED=1. */
+    publicStatus: boolean;
+    /** Contratación por autoservicio (`/public/checkout/start`). Apagada salvo CP_PUBLIC_SELF_SERVICE_ENABLED=1. */
+    selfService: boolean;
+    /** Versión publicada de las condiciones de contratación (CP_TERMS_VERSION); sin ella el autoservicio no funciona. */
+    termsVersion: string | null;
+    /**
+     * Perfil fiscal del comprador (B2B/B2C): escenarios aprobados (CP_STRIPE_FISCAL_SCENARIOS) y versiones de
+     * consentimiento vigentes. Sin ello, ningún escenario está aprobado (en live no se abre Checkout).
+     */
+    fiscal?: {
+      scenarios: Set<FiscalScenario>;
+      consent: ConsentVersions;
+      taxExpectations?: Map<FiscalScenario, TaxTreatment>;
+      legalUrls?: { terms: string | null; privacy: string | null };
+      /** Países por escenario (CP_STRIPE_SCENARIO_COUNTRIES) y tipos para particulares (CP_STRIPE_CONSUMER_RATES). */
+      countries?: Map<FiscalScenario, Set<string> | "*">;
+      consumerRates?: Map<string, number>;
+    };
+    /**
+     * Compra de módulos y ampliaciones desde la plataforma (CRM 0018). `enabled` (CP_COMMERCE_PURCHASES_ENABLED)
+     * apagado por defecto; sin `changes`, ni se monta ni se reconocen suscripciones multipartida.
+     */
+    purchases?: { enabled: boolean; changes: SubscriptionChangeStore; internalTenants?: ReadonlySet<string> };
+    /** Portal de facturación (CP_BILLING_PORTAL_ENABLED y CP_BILLING_PORTAL_CONFIGURATION): apagado por defecto. */
+    billingPortal?: { enabled: boolean; configurationId: string | null };
+    /** Detalle por línea de las facturas cobradas y reparto de reembolsos (CRM 0019). Sin él, como hasta ahora. */
+    invoiceLines?: InvoiceLineStore;
+  };
+  /**
+   * Correo transaccional centralizado (server/mail, CRM 0011). `platform`: avisos de Elephant Source
+   * (pedidos, alta asistida); webhook de Brevo autenticado por cabecera propia (`webhookToken`);
+   * `tenantLane`: bandejas de las empresas para aplicar sus eventos; `diagnostics`: consulta de la cuenta.
+   */
+  mail?: {
+    platform: PlatformMailer | null;
+    webhookToken?: string | null;
+    /** Token de la cabecera propia del webhook de Postmark (≥ 32 caracteres); sin él, 503. */
+    postmarkWebhookToken?: string | null;
+    tenantLane?: (tenantId: string) => Promise<MailService | null>;
+    diagnostics?: () => Promise<unknown>;
+    /** Trazabilidad de la bandeja de PLATAFORMA (solo lectura; sin direcciones completas ni cuerpos). */
+    ledger?: MailLedgerReader | null;
+  };
+  /**
+   * Comunicaciones transaccionales (server/notifications): despachador de eventos comerciales. `since` es el
+   * corte (ms): nada anterior se notifica. Sin él, solo se publica el catálogo (no se despacha nada).
+   */
+  notifications?: { since: number };
 }
 
 const idSchema = z.string().regex(/^[a-z0-9][a-z0-9_-]{0,62}$/);
@@ -85,7 +310,10 @@ function httpStatus(e: unknown): { status: number; code: string } {
   if (e instanceof BillingError) {
     return { status: e.code === "not_found" ? 404 : e.code === "invalid_signature" ? 400 : 409, code: e.code };
   }
-  if (e instanceof ModuleError) return { status: e.code === "not_found" ? 404 : 400, code: e.code };
+  if (e instanceof ModuleError) {
+    const conflict = e.code === "missing_dependency" || e.code === "dependency_active" || e.code === "dependency_inactive";
+    return { status: e.code === "not_found" ? 404 : conflict ? 409 : 400, code: e.code };
+  }
   if (e instanceof z.ZodError) return { status: 400, code: "invalid_request" };
   return { status: 500, code: "internal_error" };
 }
@@ -95,7 +323,7 @@ const wrap =
   (req: Request, res: Response, next: NextFunction) => {
     fn(req, res).catch((e) => {
       const { status, code } = httpStatus(e);
-      if (status === 500) console.error("[ControlPlane] error interno:", e instanceof Error ? e.name : "error");
+      if (status === 500) opsLog("error", "ControlPlane", "internal_error", { method: req.method, error: e instanceof Error ? e.name : "error" });
       // Mensaje genérico en errores internos; los de dominio son seguros y útiles
       const message = status === 500 ? "Error interno" : e instanceof z.ZodError ? e.issues.map((i) => i.path.join(".")).join(", ") : (e as Error).message;
       res.status(status).json({ error: code, message });
@@ -106,21 +334,58 @@ const wrap =
 export function createControlPlaneApp(d: ControlPlaneDeps): Express {
   const app = express();
   app.disable("x-powered-by");
-  // CORS: solo orígenes explícitos; sin comodines y sin credenciales (el token va en cabecera)
+  if (d.trustProxy !== undefined) app.set("trust proxy", d.trustProxy);
+  // Identificador de correlación: aceptado solo si es seguro (si no, se genera) y devuelto siempre
+  app.use(requestIdMiddleware);
+  // CORS: solo orígenes explícitos, nunca comodín. Con operadores, credenciales (cookie de sesión)
+  // únicamente para esos orígenes; los tokens de servicio siguen en la cabecera Authorization.
   const origins = new Set((d.allowedOrigins ?? []).filter((o) => /^https?:\/\/[^*]+$/.test(o)));
+  // La API pública tiene su propia lista de orígenes (la web), sin credenciales ni cabeceras de sesión
+  const publicOrigins = new Set((d.publicIntake?.origins ?? []).filter((o) => /^https?:\/\/[^*]+$/.test(o)));
   app.use((req, res, next) => {
     const o = req.headers.origin;
+    if (req.path.startsWith("/cp/v1/public/")) {
+      if (typeof o === "string" && publicOrigins.has(o)) {
+        res.setHeader("Access-Control-Allow-Origin", o);
+        res.setHeader("Vary", "Origin");
+        res.setHeader("Access-Control-Allow-Headers", "content-type, idempotency-key, x-request-id");
+        res.setHeader("Access-Control-Expose-Headers", "X-Request-Id");
+        res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+        res.setHeader("Access-Control-Max-Age", "600");
+      }
+      if (req.method === "OPTIONS") return void res.status(204).end();
+      return next();
+    }
     if (typeof o === "string" && origins.has(o)) {
       res.setHeader("Access-Control-Allow-Origin", o);
       res.setHeader("Vary", "Origin");
-      res.setHeader("Access-Control-Allow-Headers", "authorization, content-type");
-      res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+      res.setHeader("Access-Control-Allow-Headers", d.operators ? "authorization, content-type, x-csrf-token, x-request-id" : "authorization, content-type, x-request-id");
+      res.setHeader("Access-Control-Expose-Headers", "X-Request-Id");
+      if (d.operators) res.setHeader("Access-Control-Allow-Credentials", "true");
+      res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
       res.setHeader("Access-Control-Max-Age", "600");
     }
     if (req.method === "OPTIONS") return void res.status(204).end();
     next();
   });
+  // Webhook de Stripe (modo de la configuración): cuerpo ORIGINAL para la firma, por eso va ANTES de
+  // express.json. El procesador se conecta más abajo, junto al orquestador; hasta entonces los eventos solo
+  // se guardan.
+  let stripeKick: ((eventId: string) => void) | undefined;
+  if (d.stripe) {
+    const st = d.stripe;
+    // Un almacén de otro modo leería o escribiría filas del otro entorno: no se crea la aplicación
+    if (st.store.mode !== st.config.mode) throw new Error(`El almacén de Stripe es de modo ${st.store.mode} y la configuración de modo ${st.config.mode}`);
+    if (st.config.mode === "live" && d.orders?.payments) throw new Error("El proveedor de pagos simulados no puede montarse con Stripe en modo live");
+    app.post(
+      "/cp/v1/stripe/webhook",
+      rateLimit({ windowMs: 60_000, limit: 600, standardHeaders: true, legacyHeaders: false, keyGenerator: (req) => `ip:${ipKeyGenerator(req.ip ?? "")}` }),
+      express.raw({ type: "application/json", limit: "1mb" }),
+      wrap(stripeWebhookHandler({ verify: st.verifyWebhook, store: st.store, mode: st.config.mode, onRecorded: (id) => stripeKick?.(id) })),
+    );
+  }
   app.use(express.json({ limit: "256kb", verify: (req, _res, buf) => void ((req as any).rawBody = buf.toString("utf8")) }));
+  app.use(rebindRequestContext);
 
   // Webhook del proveedor de pagos: autenticado por firma, no por token
   if (d.billing) {
@@ -134,15 +399,58 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
     );
   }
 
+  // Webhook de eventos de Brevo: autenticado por la cabecera propia configurada al crearlo (no por token
+  // de servicio). Sin token configurado responde 503 y no cambia nada. Ver server/mail/webhook.ts.
+  if (d.mail) {
+    const mail = d.mail;
+    app.post(
+      "/cp/v1/mail/brevo/webhook",
+      rateLimit({ windowMs: 60_000, limit: 600, standardHeaders: true, legacyHeaders: false, keyGenerator: (req) => `ip:${ipKeyGenerator(req.ip ?? "")}` }),
+      wrap(
+        brevoWebhookHandler({
+          token: mail.webhookToken,
+          resolve: async (lane, tenantId) => (lane === "platform" ? (mail.platform?.service ?? null) : mail.tenantLane ? mail.tenantLane(tenantId) : null),
+        }),
+      ),
+    );
+    // Webhook de Postmark (proveedor alternativo): mismo mecanismo con su propio token (POSTMARK_WEBHOOK_TOKEN)
+    app.post(
+      "/cp/v1/mail/postmark/webhook",
+      rateLimit({ windowMs: 60_000, limit: 600, standardHeaders: true, legacyHeaders: false, keyGenerator: (req) => `ip:${ipKeyGenerator(req.ip ?? "")}` }),
+      wrap(
+        postmarkWebhookHandler({
+          token: mail.postmarkWebhookToken,
+          resolve: async (lane, tenantId) => (lane === "platform" ? (mail.platform?.service ?? null) : mail.tenantLane ? mail.tenantLane(tenantId) : null),
+        }),
+      ),
+    );
+  }
+
   const router = express.Router();
+  // Tope por IP antes que nada: sin él, cada cabecera Authorization inventada estrenaría un cubo nuevo
+  // (probar tokens o /auth/oidc sin límite).
+  router.use(
+    rateLimit({
+      windowMs: 60_000,
+      limit: d.perIpMinute ?? 600,
+      standardHeaders: true,
+      legacyHeaders: false,
+      keyGenerator: (req) => `ip:${ipKeyGenerator(req.ip ?? "")}`,
+    }),
+  );
   router.use(
     rateLimit({
       windowMs: 60_000,
       limit: d.perMinute ?? 120,
       standardHeaders: true,
       legacyHeaders: false,
-      // Por token (no por IP): el plano de control se llama desde pocos orígenes de confianza
-      keyGenerator: (req) => (req.headers.authorization ?? "anon").slice(0, 80),
+      // Por token o por sesión de operador (no un cubo común); sin credenciales, por IP
+      keyGenerator: (req) => {
+        // Nunca el token en claro como clave del limitador
+        if (req.headers.authorization) return `tok:${hashToken(req.headers.authorization).slice(0, 24)}`;
+        const c = readSessionCookie(req);
+        return c ? `session:${hashToken(c).slice(0, 24)}` : `ip:${ipKeyGenerator(req.ip ?? "")}`;
+      },
     }),
   );
   // Intercambio de id_token OIDC por sesión (sin autenticación previa; con límite de tasa)
@@ -160,12 +468,52 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
       }),
     );
   }
-  router.use(authenticate(d.tokens, d.sso ? (t) => d.sso!.verifySession(t) : undefined));
+  const operatorRoutes = d.operators ? { service: d.operators, allowedOrigins: origins, cookieSecure: d.cookieSecure } : null;
+  // Login y restablecimiento de contraseña de operadores: sin sesión previa
+  if (operatorRoutes) router.use(createPublicAuthRouter(operatorRoutes));
+  // Solicitudes comerciales de la web: cuelgan de los leads del CRM
+  const webRequests = d.crm ? new WebRequestService({ store: d.crm.store, crm: d.crm.service }) : undefined;
+  // Catálogo y contenidos de la web comercial (las referencias técnicas se leen del Core, no se copian)
+  const webAdmin = d.web
+    ? new WebAdminService({
+        store: d.web.store,
+        onPublish: d.web.onPublish,
+        refs: {
+          moduleIds: BUILTIN_MODULES.map((m) => m.id),
+          planIds: () => {
+            const b = d.billing as unknown as { getCatalog?: () => { plans: Array<{ id: string }> } } | undefined;
+            return typeof b?.getCatalog === "function" ? b.getCatalog().plans.map((p) => p.id) : null;
+          },
+        },
+      })
+    : undefined;
+  // Lectura pública del sitio (solo lo publicado): antes del router de captación, que exige Origin
+  if (webAdmin && d.publicIntake) router.use("/public/site", createPublicSiteRouter({ service: webAdmin, secret: d.publicIntake.secret }));
+  // Captación pública desde la web: única ruta sin autenticación que escribe (solo solicitudes)
+  // Prueba gratuita pública: reservada ANTES del router de captación (que responde 404 a lo demás);
+  // el router real se asigna más abajo, cuando existen suscripciones y licencias.
+  let publicTrial: express.Router | null = null;
+  router.use("/public/trial", (req, res, next) => (publicTrial ? publicTrial(req, res, next) : void res.status(404).json({ error: "not_found" })));
+  // Estado público del alta tras Stripe Checkout: reservado ANTES del router de captación; se asigna con
+  // el procesador de Stripe y solo con CP_PUBLIC_CHECKOUT_ENABLED=1
+  let publicCheckout: express.Router | null = null;
+  router.use("/public/checkout", (req, res, next) => (publicCheckout ? publicCheckout(req, res, next) : void res.status(404).json({ error: "not_found" })));
+  if (webRequests && d.publicIntake) router.use("/public", createPublicIntakeRouter({ ...d.publicIntake, origins: publicOrigins, service: webRequests }));
+  router.use(
+    authenticate(
+      d.tokens,
+      d.sso ? (t) => d.sso!.verifySession(t) : undefined,
+      d.operators ? { operators: d.operators, allowedOrigins: origins } : undefined,
+    ),
+  );
   router.get("/auth/me", (req, res) => {
     const a = getAuth(req)!;
     res.json({ actor: a.actor, scopes: Array.from(a.scopes) });
   });
-  const actor = (req: Request) => getAuth(req)!.actor;
+  // Sesión, cierre de sesión, contraseña propia y gestión de operadores
+  if (operatorRoutes) router.use(createOperatorRouter(operatorRoutes));
+  // La auditoría del registro (tenant_events.request_id) guarda el identificador de correlación
+  const actor = (req: Request) => ({ ...getAuth(req)!.actor, requestId: requestIdOf(req) });
 
   // ── Tenants ────────────────────────────────────────────────────────────────
   router.get(
@@ -193,7 +541,8 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
     requireScope("tenants:read"),
     wrap(async (req, res) => {
       const id = idSchema.parse(req.params.id);
-      res.json({ events: await d.reader.listEvents(id, Math.min(500, Number(req.query.limit ?? 100))) });
+      const limit = z.coerce.number().int().min(1).max(500).default(100).parse(req.query.limit ?? undefined);
+      res.json({ events: await d.reader.listEvents(id, limit) });
     }),
   );
 
@@ -249,7 +598,8 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         token: r.domain.verificationToken,
         platformTarget: d.platformTarget,
       });
-      if (v.ok && r.domain.status === "pending_verification") await d.registry.markDomainVerified(r.domain.domain, actor(req));
+      // Verificado o fallido: queda registrado (estado visible para la empresa)
+      if (r.domain.status === "pending_verification") await d.registry.recordDomainVerification(r.domain.domain, v, actor(req));
       res.json({ verified: v.ok, cname: v.cname, txt: v.txt, pending: v.pending });
     }),
   );
@@ -289,6 +639,11 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         .object({ status: z.enum(["active", "suspended", "expired"]).optional(), validUntil: z.string().datetime().nullable().optional() })
         .parse(req.body ?? {});
       const mod = req.params.module;
+      if (!BUILTIN_MODULES.some((m) => m.id === mod)) return void res.status(404).json({ error: "not_found", message: "Módulo desconocido" });
+      const current = await d.entitlements.listEntitlements(id);
+      // Activar comprueba dependencias; suspender o caducar, que nada activo dependa de él (igual que DELETE)
+      if (!body.status || body.status === "active") assertCanActivate(BUILTIN_MODULES, current, mod, Date.now());
+      else assertCanDeactivate(BUILTIN_MODULES, current, mod, Date.now());
       await d.entitlements.grant(id, mod, actor(req), { validUntil: body.validUntil ? new Date(body.validUntil) : null });
       if (body.status && body.status !== "active") await d.entitlements.setStatus(id, mod, body.status, actor(req));
       res.json({ entitlements: await d.entitlements.listEntitlements(id) });
@@ -300,8 +655,47 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
     requireScope("entitlements:write"),
     wrap(async (req, res) => {
       const id = idSchema.parse(req.params.id);
+      assertCanDeactivate(BUILTIN_MODULES, await d.entitlements.listEntitlements(id), req.params.module, Date.now());
       await d.entitlements.revoke(id, req.params.module, actor(req));
       res.status(204).end();
+    }),
+  );
+
+  // ── Catálogo de módulos (marketplace) ──────────────────────────────────────
+  /** Catálogo comercial si el motor de facturación lo expone (PR #62: getCatalog). */
+  const billingCatalog = () => {
+    const b = d.billing as unknown as { getCatalog?: () => { plans: PlanRef[]; modules: ModulePriceRef[] } } | undefined;
+    return typeof b?.getCatalog === "function" ? b.getCatalog() : null;
+  };
+  router.get(
+    "/modules",
+    requireScope("tenants:read"),
+    wrap(async (_req, res) => {
+      const tenants = (await d.reader.listTenants()).filter((t) => t.status !== "deleted" && t.status !== "archived");
+      const now = Date.now();
+      const counts = new Map<string, number>();
+      for (const t of tenants) {
+        for (const e of await d.entitlements.listEntitlements(t.id)) {
+          if (e.status === "active" && (!e.validUntil || e.validUntil.getTime() > now)) counts.set(e.moduleId, (counts.get(e.moduleId) ?? 0) + 1);
+        }
+      }
+      const cat = billingCatalog();
+      res.json({
+        ...buildCatalog({ manifests: BUILTIN_MODULES, coreVersion: CORE_VERSION, plans: cat?.plans, modulePrices: cat?.modules, activeCounts: counts, tenantCount: tenants.length }),
+        commercialCatalog: cat !== null,
+      });
+    }),
+  );
+  router.get(
+    "/tenants/:id/modules",
+    requireScope("tenants:read"),
+    wrap(async (req, res) => {
+      const id = idSchema.parse(req.params.id);
+      if (!(await d.reader.getTenant(id))) throw new RegistryError("not_found", "Tenant no encontrado");
+      const cat = billingCatalog();
+      const sub = d.billingStore ? await d.billingStore.getSubscriptionByTenant(id) : null;
+      const planModules = [...(cat?.plans.find((p) => p.id === sub?.planId)?.includedModules ?? []), ...(sub?.modules ?? [])];
+      res.json({ modules: tenantModules(BUILTIN_MODULES, await d.entitlements.listEntitlements(id), Date.now(), planModules) });
     }),
   );
 
@@ -331,6 +725,199 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
     }),
   );
 
+  router.delete(
+    "/tenants/:id/quotas/:metric/:period",
+    requireScope("quotas:write"),
+    wrap(async (req, res) => {
+      // Retira el override del tenant: vuelve a aplicar el valor por defecto (cambio auditado)
+      const id = idSchema.parse(req.params.id);
+      const metric = z.string().regex(/^[a-z][a-z0-9_.]{1,63}$/).parse(req.params.metric);
+      const period = periodSchema.parse(req.params.period);
+      if (!(await d.quotas.listQuotas(id)).some((q) => q.metric === metric && q.period === period)) {
+        throw new RegistryError("not_found", "El tenant no tiene esa cuota propia");
+      }
+      await d.quotas.remove(id, metric, period, actor(req));
+      res.json({ quotas: await d.quotas.listQuotas(id) });
+    }),
+  );
+
+  router.get(
+    "/tenants/:id/quotas/history",
+    requireScope("tenants:read"),
+    wrap(async (req, res) => {
+      const id = idSchema.parse(req.params.id);
+      if (!(await d.reader.getTenant(id))) throw new RegistryError("not_found", "Tenant no encontrado");
+      const events = (await d.reader.listEvents(id, 500)).filter((e) => e.action.startsWith("quota."));
+      res.json({
+        history: events.map((e) => ({ at: e.at, action: e.action, actor: `${e.actorType}:${e.actorId}`, details: e.details })),
+      });
+    }),
+  );
+
+  // ── Resource Manager: consumo frente a límites ─────────────────────────────
+  const quotaDefaults = d.quotaDefaults ?? DEFAULT_QUOTAS;
+  const rankState: Record<ResourceState, number> = { not_applicable: 0, ok: 1, warning: 2, exceeded: 3 };
+  const notConfigured = { available: false, reason: "Medición no configurada (ERM_DATABASE_URL)", unmeasured: UNMEASURED };
+  router.get(
+    "/tenants/:id/resources",
+    requireScope("usage:read"),
+    wrap(async (req, res) => {
+      const id = idSchema.parse(req.params.id);
+      if (!(await d.reader.getTenant(id))) throw new RegistryError("not_found", "Tenant no encontrado");
+      if (!d.usage) return void res.json(notConfigured);
+      const r = await tenantResources({ quotas: d.quotas, usage: d.usage, defaults: quotaDefaults }, id, Date.now());
+      res.json({ available: true, ...r, thresholds: { warning: WARNING_RATIO, exceeded: 1 }, unmeasured: UNMEASURED });
+    }),
+  );
+  router.get(
+    "/resources/overview",
+    requireScope("usage:read"),
+    requireScope("tenants:read"),
+    wrap(async (req, res) => {
+      if (!d.usage) return void res.json(notConfigured);
+      const onlyAlerts = req.query.alerts === "1";
+      const now = Date.now();
+      const tenants = (await d.reader.listTenants()).filter((t) => t.status !== "deleted");
+      const rows = [];
+      for (const t of tenants) {
+        const r = await tenantResources({ quotas: d.quotas, usage: d.usage, defaults: quotaDefaults }, t.id, now);
+        if (onlyAlerts && r.worst !== "warning" && r.worst !== "exceeded") continue;
+        rows.push({ ...r, displayName: t.displayName, status: t.status });
+      }
+      rows.sort((a, b) => rankState[b.worst] - rankState[a.worst] || (b.maxRatio ?? -1) - (a.maxRatio ?? -1));
+      res.json({
+        available: true,
+        generatedAt: now,
+        thresholds: { warning: WARNING_RATIO, exceeded: 1 },
+        measurementLagSeconds: 15,
+        tenants: rows,
+        unmeasured: UNMEASURED,
+      });
+    }),
+  );
+
+  // Diagnóstico de una empresa (registro, dominios, BD de la empresa, esquema, licencias): solo operadores
+  router.get(
+    "/tenants/:id/diagnostics",
+    requireScope("ops:read"),
+    wrap(async (req, res) => {
+      const id = idSchema.parse(req.params.id);
+      const out = await diagnoseTenant({ reader: d.reader, registry: d.registry, entitlements: d.entitlements, quotas: d.quotas }, id);
+      if (!out.ok) opsLog("warn", "Diagnostics", "tenant_not_healthy", { tenantId: id, failed: out.checks.filter((c) => !c.ok).map((c) => c.name) });
+      res.json(out);
+    }),
+  );
+
+  // Copias de seguridad (inventario del registro, migración 0010): solo lectura para operadores
+  if (d.backups) {
+    const bk = d.backups;
+    const maxAge = bk.maxAgeMs ?? 36 * 3_600_000;
+    const view = (r: BackupRecord) => ({
+      id: r.id,
+      status: r.status,
+      startedAt: r.startedAt,
+      finishedAt: r.finishedAt,
+      durationMs: r.durationMs,
+      serverAlias: r.serverAlias,
+      schemaVersion: r.schemaVersion,
+      bytes: r.bytes,
+      sha256: r.sha256,
+      keyId: r.keyId,
+      storage: r.storageKind,
+      location: r.location,
+      tables: r.tablesCount,
+      rows: r.rowsCount,
+      error: r.error,
+    });
+    router.get(
+      "/backups",
+      requireScope("ops:read"),
+      wrap(async (_req, res) => {
+        const now = Date.now();
+        const [tenants, latest, okTenant, okRegistry, okCrm] = await Promise.all([
+          d.reader.listTenants(),
+          bk.inventory.latestAttempts(),
+          bk.inventory.lastSuccess("tenant"),
+          bk.inventory.lastSuccess("registry"),
+          bk.inventory.lastSuccess("crm"),
+        ]);
+        const lastOf = (kind: string, id: string) => latest.find((r) => r.targetKind === kind && r.targetId === id) ?? null;
+        const row = (kind: string, id: string, lastOk: number | undefined) => {
+          const last = lastOf(kind, id);
+          return {
+            lastSuccessAt: lastOk ?? null,
+            ageHours: lastOk ? Math.round(((now - lastOk) / 3_600_000) * 10) / 10 : null,
+            fresh: !!lastOk && now - lastOk <= maxAge,
+            lastAttempt: last ? view(last) : null,
+            lastError: last?.status === "failed" ? last.error : null,
+          };
+        };
+        const rows = tenants
+          .filter((t) => (BACKUP_TENANT_STATUSES as readonly string[]).includes(t.status))
+          .map((t) => ({ tenantId: t.id, displayName: t.displayName, status: t.status, ...row("tenant", t.id, okTenant[t.id]) }))
+          .sort((a, b) => Number(a.fresh) - Number(b.fresh) || (a.lastSuccessAt ?? 0) - (b.lastSuccessAt ?? 0) || a.tenantId.localeCompare(b.tenantId));
+        // Destino secundario: por empresa, última copia correcta y último intento (solo si hay datos)
+        let secondary: Record<string, unknown> | null = null;
+        if (bk.copies) {
+          const [okSec, lastSec] = await Promise.all([bk.copies.lastSuccess("secondary", "tenant"), bk.copies.latestAttempts("secondary")]);
+          if (lastSec.length) {
+            const secMax = bk.secondaryMaxAgeMs ?? maxAge;
+            const perTenant = rows.map((r) => {
+              const at = okSec[r.tenantId];
+              const last = lastSec.find((x) => x.targetKind === "tenant" && x.targetId === r.tenantId);
+              return { tenantId: r.tenantId, lastSuccessAt: at ?? null, fresh: !!at && now - at <= secMax, lastStatus: last?.status ?? null, lastError: last?.status === "failed" ? last.error : null };
+            });
+            secondary = {
+              maxAgeHours: secMax / 3_600_000,
+              summary: {
+                fresh: perTenant.filter((t) => t.fresh).length,
+                stale: perTenant.filter((t) => !t.fresh && t.lastSuccessAt).length,
+                never: perTenant.filter((t) => !t.lastSuccessAt).length,
+                lastAttemptFailed: lastSec.filter((x) => x.status === "failed").length,
+              },
+              tenants: perTenant,
+            };
+          }
+        }
+        res.json({
+          generatedAt: now,
+          maxAgeHours: maxAge / 3_600_000,
+          secondary,
+          summary: {
+            tenants: rows.length,
+            fresh: rows.filter((r) => r.fresh).length,
+            stale: rows.filter((r) => !r.fresh && r.lastSuccessAt).length,
+            never: rows.filter((r) => !r.lastSuccessAt).length,
+            lastAttemptFailed: rows.filter((r) => r.lastAttempt?.status === "failed").length,
+          },
+          platform: { registry: row("registry", "registry", okRegistry.registry), crm: row("crm", "crm", okCrm.crm) },
+          tenants: rows,
+        });
+      }),
+    );
+    router.get(
+      "/tenants/:id/backups",
+      requireScope("ops:read"),
+      wrap(async (req, res) => {
+        const id = idSchema.parse(req.params.id);
+        const limit = z.coerce.number().int().min(1).max(500).default(50).parse(req.query.limit ?? undefined);
+        const [copies, files, okList] = await Promise.all([
+          bk.inventory.list({ targetKind: "tenant", targetId: id, limit }),
+          bk.inventory.list({ targetKind: "files", targetId: id, limit: 10 }),
+          bk.inventory.list({ targetKind: "tenant", targetId: id, status: "ok", limit: 1 }),
+        ]);
+        const lastOk = okList[0] ?? null;
+        res.json({
+          tenantId: id,
+          lastSuccessAt: lastOk?.finishedAt ?? null,
+          fresh: !!lastOk?.finishedAt && Date.now() - lastOk.finishedAt <= maxAge,
+          backups: copies.map(view),
+          files: files.map(view),
+        });
+      }),
+    );
+  }
+
   if (d.ops) {
     const ops = d.ops;
     router.get(
@@ -338,7 +925,8 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
       requireScope("ops:read"),
       wrap(async (req, res) => {
         const status = z.enum(["open", "acknowledged", "resolved"]).optional().parse(req.query.status);
-        res.json({ incidents: await ops.incidents.list({ status, limit: 200 }) });
+        const tenantId = idSchema.optional().parse(req.query.tenantId);
+        res.json({ incidents: await ops.incidents.list({ status, tenantId, limit: 200 }) });
       }),
     );
     router.post(
@@ -364,7 +952,522 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
     }
   }
 
-  if (d.crm) router.use("/crm", createCrmRouter(d.crm.service, d.crm.store));
+  if (d.crm) {
+    const onboarding =
+      d.provisioning && d.platformDomain
+        ? new CrmOnboarding({ store: d.crm.store, crm: d.crm.service, provisioning: d.provisioning, registry: d.reader, billing: d.billing, platformDomain: d.platformDomain })
+        : undefined;
+    // Responsables posibles: operadores activos con permisos de escritura en el CRM
+    const ops = d.operators;
+    const assignees = ops
+      ? async () =>
+          (await ops.list())
+            .filter((o) => o.status === "active" && ["superadmin", "admin", "sales"].includes(o.role))
+            .map((o) => ({ value: o.displayName, label: o.displayName }))
+      : undefined;
+    const crmQuote = webAdmin ? async (r: QuoteRequest) => quote(quoteCatalogFromSite(await webAdmin!.site("published")), r) : undefined;
+    router.use("/crm", createCrmRouter(d.crm.service, d.crm.store, { billing: d.billingStore, onboarding, requests: webRequests, assignees, quote: crmQuote }));
+  }
+
+  if (webAdmin) {
+    router.use(
+      "/web",
+      createWebAdminRouter(webAdmin, {
+        previewSecret: d.publicIntake?.secret,
+        refs: async () => ({
+          modules: BUILTIN_MODULES.map((m) => ({ id: m.id, name: m.name, kind: m.kind, includedInBase: !!m.includedInBase })),
+          plans: billingCatalog()?.plans.map((p) => ({ id: p.id, name: p.name })) ?? null,
+          metrics: Object.values(Metrics),
+        }),
+      }),
+    );
+  }
+
+  if (d.subscriptions && d.crm && d.web) {
+    const crmPort = crmFromStore(d.crm.store);
+    // Uso real para no bajar ampliaciones por debajo de lo usado: sedes, aquí; usuarios y almacenamiento los aporta la empresa (PR 3)
+    const orgStore = d.organization;
+    const svc = new ContractSubscriptionService({
+      store: d.subscriptions.store,
+      catalog: catalogFromWebStore(d.web.store),
+      crm: crmPort,
+      now: d.subscriptions.now,
+      usage: {
+        of: async (tenantId, metric) => {
+          if (metric === "sites" && orgStore) return (await orgStore.sites(tenantId)).filter((x) => x.status === "active").length;
+          // Usuarios y almacenamiento: lo que declara la propia empresa (registro 0013); sin dato, null
+          const used = d.limits ? (await d.limits.usage(tenantId)).find((u) => u.metric === (metric === "storage_gb" ? "storage_bytes" : metric)) : undefined;
+          if (!used) return null;
+          return metric === "storage_gb" ? Math.ceil(used.used / 1024 ** 3) : used.used;
+        },
+      },
+    });
+    const shadowBilling = new ShadowBillingService({ store: d.subscriptions.store, crm: crmPort, now: d.subscriptions.now });
+    if (d.capabilities) {
+      // Licencias por capacidad: Elephant Control es la autoridad técnica. Antes del router de
+      // suscripciones (que responde 404 a lo que no conoce).
+      const licensing = new LicensingService({
+        capabilities: d.capabilities,
+        subscriptions: d.subscriptions.store,
+        crm: crmPort,
+        catalog: async () => quoteCatalogFromSite(await webAdmin!.site("published")),
+        now: d.subscriptions.now,
+        limits: d.limits,
+        events: d.commercialEvents?.append ? (d.commercialEvents as CommercialEventSink) : undefined,
+      });
+      const licErr = (res: express.Response, e: unknown) => {
+        if (e instanceof LicensingError) return void res.status(e.code === "not_found" ? 404 : e.code === "invalid_state" ? 409 : 400).json({ error: e.code, message: e.message });
+        throw e;
+      };
+      const subId = z.coerce.number().int().positive();
+      const licBody = z.object({ activate: z.boolean().default(true), reason: z.string().trim().max(300).optional() }).strict();
+      router.post(
+        "/subscriptions/:id/licences/preview",
+        requireScope("subscriptions:read"),
+        wrap(async (req, res) => {
+          const b = licBody.parse(req.body ?? {});
+          try {
+            res.json(await licensing.preview(subId.parse(req.params.id), { activate: b.activate }));
+          } catch (e) {
+            licErr(res, e);
+          }
+        }),
+      );
+      router.post(
+        "/subscriptions/:id/licences/apply",
+        requireScope("subscriptions:write"),
+        requireScope("entitlements:write"),
+        wrap(async (req, res) => {
+          const b = licBody.parse(req.body ?? {});
+          const a = getAuth(req)!.actor;
+          try {
+            res.json(await licensing.apply(subId.parse(req.params.id), { activate: b.activate, actor: `${a.type}:${a.id}`, reason: b.reason ?? null }));
+          } catch (e) {
+            licErr(res, e);
+          }
+        }),
+      );
+      router.get(
+        "/tenants/:id/capabilities",
+        requireScope("tenants:read"),
+        wrap(async (req, res) => {
+          const id = idSchema.parse(req.params.id);
+          if (!(await d.reader.getTenant(id))) throw new RegistryError("not_found", "Tenant no encontrado");
+          const [capabilities, events] = await Promise.all([licensing.list(id), licensing.events(id)]);
+          res.json({ capabilities, events });
+        }),
+      );
+      router.put(
+        "/tenants/:id/capabilities/:capability",
+        requireScope("entitlements:write"),
+        wrap(async (req, res) => {
+          const id = idSchema.parse(req.params.id);
+          if (!(await d.reader.getTenant(id))) throw new RegistryError("not_found", "Tenant no encontrado");
+          const b = z.object({ status: z.enum(CAPABILITY_STATUSES), reason: z.string().trim().min(5).max(300), siteId: z.string().regex(/^[a-z0-9][a-z0-9-]{0,62}$/).optional() }).strict().parse(req.body);
+          const a = getAuth(req)!.actor;
+          try {
+            res.json({ events: await licensing.setStatus(id, req.params.capability, b.status, { actor: `${a.type}:${a.id}`, reason: b.reason, siteId: b.siteId }) });
+          } catch (e) {
+            licErr(res, e);
+          }
+        }),
+      );
+    }
+    if (d.organization) {
+      const org = new OrganizationService({ store: d.organization, subscriptions: d.subscriptions.store, catalog: async () => quoteCatalogFromSite(await webAdmin!.site("published")), now: d.subscriptions.now });
+      const orgErr = (res: express.Response, e: unknown) => {
+        if (e instanceof OrganizationError) return void res.status(e.code === "not_found" ? 404 : e.code === "invalid_input" ? 400 : e.code === "limit" ? 422 : 409).json({ error: e.code, message: e.message });
+        throw e;
+      };
+      const tenantOf = async (req: express.Request) => {
+        const id = idSchema.parse(req.params.id);
+        if (!(await d.reader.getTenant(id))) throw new RegistryError("not_found", "Tenant no encontrado");
+        return id;
+      };
+      const orgRoute = (fn: (req: express.Request, tenantId: string, actor: string) => Promise<unknown>) =>
+        wrap(async (req, res) => {
+          const tenantId = await tenantOf(req);
+          const a = getAuth(req)!.actor;
+          try {
+            res.json(await fn(req, tenantId, `${a.type}:${a.id}`));
+          } catch (e) {
+            orgErr(res, e);
+          }
+        });
+      const slug = z.string().regex(/^[a-z0-9][a-z0-9-]{0,62}$/);
+      router.get("/tenants/:id/organization", requireScope("tenants:read"), orgRoute((_req, t) => org.overview(t)));
+      router.post(
+        "/tenants/:id/fiscal-entities",
+        requireScope("tenants:write"),
+        orgRoute((req, t, actor) => {
+          const b = z.object({ entityId: slug, legalName: z.string().max(200), taxId: z.string().max(32), country: z.string().length(2).optional(), address: z.string().max(300).nullable().optional() }).strict().parse(req.body);
+          return org.createFiscalEntity(t, b, actor);
+        }),
+      );
+      router.post("/tenants/:id/fiscal-entities/:entity/archive", requireScope("tenants:write"), orgRoute((req, t) => org.archiveFiscalEntity(t, slug.parse(req.params.entity))));
+      router.post(
+        "/tenants/:id/sites",
+        requireScope("tenants:write"),
+        orgRoute((req, t, actor) => {
+          const b = z.object({ siteId: slug, name: z.string().max(160), fiscalEntityId: slug.nullable().optional() }).strict().parse(req.body);
+          return org.createSite(t, b, actor);
+        }),
+      );
+      router.post("/tenants/:id/sites/:site/archive", requireScope("tenants:write"), orgRoute((req, t) => org.archiveSite(t, slug.parse(req.params.site))));
+    }
+    // La conversión excepcional de una prueba la monta el orquestador (más abajo); sin él, la ruta responde 409
+    const trialConversion: { run?: TrialExceptionConversion } = {};
+    if (d.capabilities && d.trials && d.provisioning && d.platformDomain) {
+      const crmD = d.crm;
+      const trialService = new TrialService({ store: d.trials.store, subscriptions: d.subscriptions.store, now: d.subscriptions.now, limits: d.trials.limits, blockedDomains: d.trials.blockedDomains });
+      const catalogPort = catalogFromWebStore(d.web.store);
+      const licensingForTrials = new LicensingService({ capabilities: d.capabilities, subscriptions: d.subscriptions.store, crm: crmPort, catalog: async () => quoteCatalogFromSite(await webAdmin!.site("published")), now: d.subscriptions.now, limits: d.limits, events: d.commercialEvents?.append ? (d.commercialEvents as CommercialEventSink) : undefined });
+      const provisioning = d.provisioning;
+      const platformDomain = d.platformDomain;
+      const onboarding = new TrialOnboardingService({
+        trials: trialService,
+        provision: (req) => provisioning.run(req, { type: "crm", id: "trial-onboarding" }),
+        platformDomain,
+        companies: {
+          byTenant: async (tenantId) => (await crmD.store.list("companies", { tenantId }, { limit: 1 }))[0] ?? null,
+          create: async (input, actor) => {
+            let c: { id: number };
+            try {
+              c = await crmD.service.createCompany({ name: input.name, email: input.email }, actor);
+            } catch (e) {
+              // Otra empresa (otra prueba o un cliente) ya se llama así: se distingue por su plataforma
+              // en lugar de dejar la prueba sin activar para siempre
+              if (!(e instanceof CrmError && e.code === "conflict")) throw e;
+              c = await crmD.service.createCompany({ name: `${input.name} (${input.tenantId})`, email: input.email }, actor);
+            }
+            return crmD.store.update("companies", c.id, { tenantId: input.tenantId });
+          },
+        },
+        subscriptions: svc,
+        licensing: licensingForTrials,
+        priceOf: async (key, kind) => (await catalogPort.offer()).find((p) => p.key === key)?.prices.find((x) => x.kind === kind && x.status === "approved")?.id ?? null,
+        notify: d.trials.notify ?? logOnlyTrialNotifier,
+        reissueInvite: (tenantId) => provisioning.reissueAdminInvite(tenantId),
+        now: d.subscriptions.now,
+      });
+      router.use("/trials", createTrialAdminRouter({ onboarding, trials: trialService, store: d.trials.store, convert: trialConversion }));
+      if (d.trials.publicEnabled) publicTrial = createPublicTrialRouter({ onboarding, autoProvision: !!d.trials.autoProvision });
+    }
+    if (d.orders && d.capabilities) {
+      // El modo sale de la configuración de Stripe aunque Stripe no se monte (p. ej. live sin la 0013)
+      if (d.stripe && d.orders.mode && d.orders.mode !== d.stripe.config.mode) throw new Error("El modo de los pedidos no coincide con el de Stripe");
+      const ordersMode = d.stripe?.config.mode ?? d.orders.mode ?? "test";
+      // Orquestador comercial: encadena contrato → confirmación → suscripción → licencias → activación
+      const licensing = new LicensingService({ capabilities: d.capabilities, subscriptions: d.subscriptions.store, crm: crmPort, catalog: async () => quoteCatalogFromSite(await webAdmin!.site("published")), now: d.subscriptions.now, limits: d.limits, events: d.commercialEvents?.append ? (d.commercialEvents as CommercialEventSink) : undefined });
+      const coverageHeld = d.stripe ? async (orderId: number) => (await d.stripe!.store.activeHolds(orderId)).length > 0 : undefined;
+      const ordersStore = d.orders.store;
+      const tenantStatusSync = new TenantStatusSync({
+        getTenant: (id) => d.reader.getTenant(id),
+        setStatus: (id, to, a, o) => d.registry.setStatus(id, to, a, o),
+        orders: (companyId) => ordersStore.list({ companyId, limit: 1000 }),
+        events: d.commercialEvents?.append ? (d.commercialEvents as CommercialEventSink) : undefined,
+        now: d.subscriptions.now,
+      });
+      const orchestrator = new CommercialOrchestrator({
+        store: d.orders.store,
+        crm: d.crm.service,
+        crmStore: d.crm.store,
+        subscriptions: svc,
+        subscriptionStore: d.subscriptions.store,
+        shadow: shadowBilling,
+        catalog: catalogFromWebStore(d.web.store),
+        quote: async (r) => quote(quoteCatalogFromSite(await webAdmin!.site("published")), r),
+        licensing,
+        capabilities: d.capabilities,
+        platform: d.provisioning && d.platformDomain ? createContractActivation({ provisioning: d.provisioning, platformDomain: d.platformDomain, actor: { type: "crm", id: "orchestrator" }, notifyWelcome: d.mail?.platform?.assistedWelcome() }) : undefined,
+        notify: d.mail?.platform ? d.mail.platform.orderNotifier({ crmStore: d.crm.store, orders: d.orders.store, reader: d.reader, mode: ordersMode }) : undefined,
+        trials: d.trials ? new TrialService({ store: d.trials.store, subscriptions: d.subscriptions.store, now: d.subscriptions.now, limits: d.trials.limits, blockedDomains: d.trials.blockedDomains }) : undefined,
+        payments: d.orders.payments ?? null,
+        mode: ordersMode,
+        graceDays: d.orders.graceDays,
+        coverageHeld,
+        // Estado de la empresa en el registro según su situación comercial (nunca la deja en «trial» si ya paga)
+        tenantStatus: tenantStatusSync,
+        now: d.subscriptions.now,
+      });
+      // Conversión de una prueba por excepción administrativa: SIEMPRE con pedido y aprobación tipificada
+      if (d.trials) {
+        const trialStore = d.trials.store;
+        trialConversion.run = async (trialId, input, who) => {
+          const t = await trialStore.get(trialId);
+          if (!t) throw new OrderError("not_found", "Prueba no encontrada");
+          const plan = input.plan ?? t.configuration?.plan ?? "essential";
+          let { order } = await orchestrator.create({ idempotencyKey: `trial-exception-${String(trialId).padStart(8, "0")}`, trialId, request: { plan, interval: input.interval ?? "month", items: [] } }, who);
+          if (order.state === "requested" || order.state === "quoted") order = (await orchestrator.accept(order.id, { signatureRef: `admin-exception:${input.category}`, approvalReason: input.reason }, who)).order;
+          let error: string | null = order.lastError;
+          if (order.state === "contracted") ({ order, error } = await orchestrator.approve(order.id, { reason: input.reason, category: input.category, reference: input.reference }, who));
+          const after = await trialStore.get(trialId);
+          return { order, trial: after ? TrialService.view(after) : null, error: order.state === "active" ? null : error };
+        };
+      }
+      router.use("/orders", createOrdersRouter(orchestrator));
+      // Desistimiento de consumidores (CRM 0022): solicitud desde la cuenta (Core) y gestión de operadores. Sin
+      // política jurídica aprobada no ejecuta reembolsos ni bajas: registra, evalúa, avisa y guarda la resolución
+      if (d.withdrawals) {
+        const withdrawals = new WithdrawalService({
+          store: d.withdrawals.store,
+          crmStore: d.crm.store,
+          orders: d.orders.store,
+          buyers: d.stripe?.store ?? { buyerProfile: async () => null },
+          subscriptions: d.subscriptions.store,
+          notify: d.mail?.platform?.withdrawalNotifier(),
+          events: d.commercialEvents?.append ? (d.commercialEvents as CommercialEventSink) : undefined,
+          now: d.subscriptions.now,
+        });
+        router.use("/commerce", createWithdrawalCommerceRouter(withdrawals));
+        router.use("/withdrawals", createWithdrawalAdminRouter(withdrawals));
+      }
+      if (d.lifecycle) {
+        const policy = d.lifecycle.policy;
+        const lifecycle = new LifecycleEngine({
+          orders: d.orders.store,
+          subscriptions: d.subscriptions.store,
+          licensing,
+          orchestrator,
+          trials: d.trials?.store,
+          coverageHeld,
+          capabilities: d.capabilities,
+          events: d.commercialEvents?.append ? (d.commercialEvents as CommercialEventSink) : undefined,
+          graceMs: orchestrator.paymentsConfig.graceDays * 86_400_000,
+          policy,
+          lock: d.lifecycle.lock,
+          now: d.subscriptions.now,
+        });
+        startLifecycleScheduler({ engine: lifecycle, policy });
+        // Plan de solo lectura: qué haría el motor ahora (nada se aplica desde aquí)
+        router.get(
+          "/lifecycle/plan",
+          requireScope("ops:read"),
+          wrap(async (_req, res) => {
+            const { enabled, mode, modeReason, intervalMs, dunningDays, trialNoticeDays, retentionDays } = policy;
+            res.json({ policy: { enabled, mode, modeReason, intervalMs, dunningDays, trialNoticeDays, retentionDays, graceDays: orchestrator.paymentsConfig.graceDays }, plan: await lifecycle.plan() });
+          }),
+        );
+      }
+      if (d.stripe) {
+        const st = d.stripe;
+        const stripeCatalog = catalogFromWebStore(d.web.store);
+        // VIES con registro (CRM 0021) y reutilización de comprobaciones recientes
+        const vat = st.vies ? new VatVerifier({ vies: st.vies.client, store: st.store, now: d.subscriptions.now, maxAgeDays: st.vies.maxAgeDays }) : undefined;
+        // En live sin política fiscal, Checkout no se monta aunque se pida (y el servicio también lo rechazaría)
+        const checkout = st.checkoutEnabled && st.urls && !checkoutBlockedReason(st.config)
+          ? new StripeCheckoutService({ store: st.store, gateway: st.gateway, orders: d.orders.store, crmStore: d.crm.store, catalog: stripeCatalog, urls: st.urls, now: d.subscriptions.now, namespace: st.config.namespace, mode: st.config.mode, taxPolicy: st.config.taxPolicy, fiscalScenarios: st.fiscal?.scenarios, taxExpectations: st.fiscal?.taxExpectations, vat, eligibility: { countries: st.fiscal?.countries, consumerRates: st.fiscal?.consumerRates, consent: st.fiscal?.consent } })
+          : null;
+        // Partidas contratadas para el PRÓXIMO periodo (las que Stripe debe cobrar en la renovación): conciliación
+        const subItems = d.subscriptions.store;
+        const contractedItems = async (o: { subscriptionId: number | null }) => {
+          if (!o.subscriptionId) return null;
+          const sub = await svc.must(o.subscriptionId).catch(() => null);
+          if (!sub || sub.status === "canceled") return null;
+          const out = new Map<string, number>();
+          for (const i of await subItems.items(sub.id))
+            if ((i.family === "core_plan" || i.family === "extension" || i.family === "industry_module") && i.effectiveFrom <= sub.currentPeriodEnd && (i.effectiveTo === null || i.effectiveTo > sub.currentPeriodEnd))
+              out.set(i.productKey, (out.get(i.productKey) ?? 0) + i.quantity);
+          return out;
+        };
+        const processor = new StripeEventProcessor({ store: st.store, gateway: st.gateway, orders: d.orders.store, orchestrator, now: d.subscriptions.now, namespace: st.config.namespace, mode: st.config.mode, taxExpectations: st.fiscal?.taxExpectations, vat, catalog: stripeCatalog, changes: st.purchases?.changes, invoiceLines: st.invoiceLines, contractedItems });
+        const reconciler = new StripeReconciler({ store: st.store, gateway: st.gateway, processor, now: d.subscriptions.now, retentionDays: st.config.eventsRetentionDays, mode: st.config.mode });
+        const rechecks = new Map<string, number>();
+        const stripeNow = d.subscriptions.now;
+        // Tras guardar un evento del webhook se procesa enseguida (los fallos quedan para el reintento)
+        stripeKick = () => void processor.processDue(10).catch(() => undefined);
+        if (st.workerEnabled) startStripeWorker({ processor, reconciler });
+        const selfServiceOk = st.selfService && !!checkout && !!d.publicIntake && publicOrigins.size > 0;
+        if (st.publicStatus || selfServiceOk) {
+          const pc = express.Router();
+          if (selfServiceOk) {
+            const ss = new SelfServiceCheckout({ crm: d.crm.service, orders: d.orders.store, orchestrator, checkout: checkout!, catalog: stripeCatalog, ticketSecret: d.publicIntake!.secret, origins: publicOrigins, termsVersion: st.termsVersion, now: d.subscriptions.now, buyers: st.store, mode: st.config.mode, consent: st.fiscal?.consent, vat, eligibility: st.fiscal ? { scenarios: st.fiscal.scenarios, taxExpectations: st.fiscal.taxExpectations ?? new Map(), countries: st.fiscal.countries ?? new Map(), consumerRates: st.fiscal.consumerRates ?? new Map(), consent: st.fiscal.consent } : undefined });
+            pc.use(createSelfServiceRouter(ss, publicOrigins));
+          }
+          if (st.publicStatus) pc.get(
+            "/status",
+            rateLimit({ windowMs: 60_000, limit: 60, standardHeaders: true, legacyHeaders: false, keyGenerator: (req) => `ip:${ipKeyGenerator(req.ip ?? "")}` }),
+            wrap(async (req, res) => {
+              const sessionId = String(req.query.session_id ?? "");
+              res.setHeader("Cache-Control", "no-store");
+              if (!sessionIdRe(st.config.mode).test(sessionId)) return void res.status(400).json({ error: "invalid_session_id" });
+              const view = await checkoutStatus({ store: st.store, orders: d.orders!.store, processor, platformDomain: d.platformDomain ?? null, rechecks, now: stripeNow, mode: st.config.mode }, sessionId);
+              if (!view) return void res.status(404).json({ error: "not_found" });
+              res.json(view);
+            }),
+          );
+          // Lo que no exista aquí termina aquí (no cae en la captación ni en la autenticación de operadores)
+          pc.use((_req, res) => void res.status(404).json({ error: "not_found" }));
+          publicCheckout = pc;
+        }
+        if (st.purchases) {
+          const purchases = new ModulePurchaseService({
+            enabled: st.purchases.enabled,
+            internalTenants: st.purchases.internalTenants,
+            mode: st.config.mode,
+            namespace: st.config.namespace,
+            billingMode: st.config.billingMode ?? "classic",
+            orchestrator,
+            orders: d.orders.store,
+            crmStore: d.crm.store,
+            catalog: stripeCatalog,
+            quote: async (r) => quote(quoteCatalogFromSite(await webAdmin!.site("published")), r),
+            gateway: st.gateway,
+            stripeStore: st.store,
+            changes: st.purchases.changes,
+            subscriptions: svc,
+            subscriptionItems: d.subscriptions.store,
+            settle: (subId, inv) => processor.handleSubscription(subId, inv),
+            now: d.subscriptions.now,
+          });
+          router.use("/commerce", createPurchasesRouter(purchases));
+        }
+        // Portal de facturación de Stripe (solo consulta de facturas y método de pago; apagado por defecto)
+        router.use(
+          "/commerce",
+          createBillingPortalRouter(
+            new BillingPortalService({
+              enabled: st.billingPortal?.enabled ?? false,
+              configurationId: st.billingPortal?.configurationId ?? null,
+              companyOfTenant: async (t) => {
+                const c = (await d.crm!.store.list("companies", { tenantId: t }, { limit: 2 })) as Array<{ id: number }>;
+                return c.length === 1 ? c[0].id : null;
+              },
+              customerOfCompany: async (companyId) => (await st.store.customerByCompany(companyId))?.stripeCustomerId ?? null,
+              portalConfigurations: () => st.gateway.portalConfigurations(),
+              createSession: (i) => st.gateway.createPortalSession(i),
+              tenantDomains: async (t) => (await d.reader.listDomains(t)).filter((x) => x.status === "active").map((x) => x.domain),
+            }),
+          ),
+        );
+        router.use("/stripe", createStripeRouter({ config: st.config, store: st.store, gateway: st.gateway, catalog: stripeCatalog, checkout, processor, reconciler, now: d.subscriptions.now, orders: d.orders.store, fiscal: st.fiscal, legalUrls: st.fiscal?.legalUrls }));
+      }
+      // Webhook del proveedor de PRUEBAS: autenticado por firma (antes del montaje del router con tokens)
+      if (d.orders.payments) app.post("/cp/v1/payments/test/webhook", paymentsWebhookHandler(orchestrator));
+    }
+    router.use("/subscriptions", createSubscriptionsRouter(svc, shadowBilling));
+    // Catálogo de comunicaciones (solo lectura) y despacho manual de las pendientes
+    router.get("/notifications/catalog", requireScope("ops:read"), wrap(async (_req, res) => void res.json({ templates: catalogView() })));
+    const queue = d.commercialEvents as (typeof d.commercialEvents & Partial<CommercialEventDispatchQueue>) | undefined;
+    if (d.notifications && d.mail?.platform && queue?.claimDispatch && queue.finishDispatch) {
+      const mailer = d.mail.platform;
+      const products = catalogFromWebStore(d.web.store);
+      const dispatcher = new NotificationDispatcher({
+        queue: queue as CommercialEventDispatchQueue,
+        send: (t, k, c, to, content) => mailer.send(t, k, c, to, content),
+        crmStore: d.crm.store,
+        orders: d.orders?.store,
+        hostOf: async (tenantId) => choosePublicDomain(await d.reader.listDomains(tenantId))?.domain ?? null,
+        productName: async (key) => (await products.product(key))?.name ?? null,
+        supportEmail: mailer.policy.supportEmail ?? null,
+        since: d.notifications.since,
+        now: d.subscriptions.now,
+      });
+      router.post("/notifications/dispatch", requireScope("ops:write"), wrap(async (_req, res) => void res.json(await dispatcher.run(100))));
+    }
+  }
+
+  // Vista previa de las comunicaciones con DATOS FICTICIOS (no envía nada ni lee datos de clientes)
+  router.get("/notifications/preview", requireScope("ops:read"), wrap(async (_req, res) => void res.json({ ids: TEMPLATE_CATALOG.filter(hasPreview).map((t) => t.id) })));
+  router.get(
+    "/notifications/preview/:id",
+    requireScope("ops:read"),
+    wrap(async (req, res) => {
+      const p = previewTemplate(String(req.params.id));
+      if (!p) return void res.status(404).json({ error: "not_found", message: "Esa comunicación no tiene vista previa (la envía Stripe o aún no tiene disparador)" });
+      res.json({ preview: p });
+    }),
+  );
+
+  // Trazabilidad de los avisos de plataforma: qué se envió, a quién (enmascarado), por qué evento, cuándo, estado,
+  // error e historial (incluidos los eventos del proveedor). Solo lectura; sin direcciones completas ni cuerpos.
+  if (d.mail?.ledger) {
+    const ledger = d.mail.ledger;
+    const listQuery = z
+      .object({
+        status: z.enum(MAIL_STATUSES).optional(),
+        category: z.string().trim().regex(/^[a-z_]{1,40}$/).optional(),
+        tenantId: z.string().trim().regex(/^[a-z0-9][a-z0-9_-]{0,62}$/).optional(),
+        template: z.string().trim().regex(/^[a-z][a-z0-9_.-]{0,80}$/).optional(),
+        beforeId: z.coerce.number().int().positive().optional(),
+        limit: z.coerce.number().int().min(1).max(200).optional(),
+      })
+      .strict();
+    router.get("/mail/outbox", requireScope("ops:read"), wrap(async (req, res) => void res.json({ messages: await ledger.list(listQuery.parse(req.query)) })));
+    router.get(
+      "/mail/outbox/:id",
+      requireScope("ops:read"),
+      wrap(async (req, res) => {
+        const id = z.coerce.number().int().positive().parse(req.params.id);
+        const h = await ledger.history(id);
+        if (!h) return void res.status(404).json({ error: "not_found", message: "Mensaje no encontrado" });
+        res.json(h);
+      }),
+    );
+  }
+
+  if (d.tickets) {
+    const tickets = d.tickets;
+    router.use("/tickets", createTicketsRouter(tickets));
+    // Vista por empresa: el tenant de la ruta fuerza el filtro y valida su existencia.
+    router.get(
+      "/tenants/:id/tickets",
+      requireScope("tickets:read"),
+      wrap(async (req, res) => {
+        const id = idSchema.parse(req.params.id);
+        if (!(await d.reader.getTenant(id))) throw new RegistryError("not_found", "Tenant no encontrado");
+        const status = z.enum(["open", "in_progress", "waiting_customer", "resolved", "closed"]).optional().parse(req.query.status);
+        const limit = z.coerce.number().int().min(1).max(200).default(50).parse(req.query.limit);
+        const offset = z.coerce.number().int().min(0).max(100_000).default(0).parse(req.query.offset);
+        const { items, total } = await tickets.list({ tenantId: id, status, limit, offset });
+        res.json({ tickets: items, total, limit, offset });
+      }),
+    );
+  }
+
+  // ── Documentación de la relación contractual (operadores; entrega por procedimiento verificable) ──
+  router.get(
+    "/tenants/:id/relationship-export",
+    requireScope("billing:read"),
+    requireScope("tickets:read"),
+    wrap(async (req, res) => {
+      const id = idSchema.parse(req.params.id);
+      try {
+        const bundle = await buildRelationshipExport(
+          id,
+          {
+            tenant: async (t) => {
+              const x = await d.reader.getTenant(t);
+              return x ? { id: x.id, displayName: x.displayName, status: x.status, statusReason: x.statusReason, createdAt: x.createdAt, updatedAt: x.updatedAt } : null;
+            },
+            orders: d.orders ? async () => (await d.orders!.store.list({ limit: 500 })) as unknown as Array<Record<string, unknown> & { id: number; tenantId: string | null }> : undefined,
+            billing: d.billingStore ? async (t) => ({ subscription: await d.billingStore!.getSubscriptionByTenant(t), invoices: await d.billingStore!.listInvoices(t) }) : undefined,
+            stripeInvoices: d.stripe ? (orderId) => d.stripe!.store.listInvoiceRecords({ orderId, limit: 200 }) : undefined,
+            fiscalDocuments: d.stripe ? (orderId) => d.stripe!.store.listFiscalDocuments({ orderId, limit: 200 }) : undefined,
+            tickets: d.tickets
+              ? async (t) => {
+                  const { items } = await d.tickets!.list({ tenantId: t, limit: 200, offset: 0 });
+                  return Promise.all(items.map((x) => d.tickets!.get(x.id, { tenantId: t }))) as unknown as Array<{ ticket: Record<string, unknown>; events: Array<Record<string, unknown> & { internal: boolean }> }>;
+                }
+              : undefined,
+          },
+          {
+            now: Date.now(),
+            by: getAuth(req)?.tokenId ?? "operador",
+            // Fecha de la solicitud de la persona propietaria (para el plazo de 5 días hábiles)
+            requestedAt: req.query.requestedAt ? z.coerce.date().parse(req.query.requestedAt).getTime() : undefined,
+          },
+        );
+        res.setHeader("Cache-Control", "no-store");
+        res.setHeader("Content-Disposition", `attachment; filename="relacion-${id}.json"`);
+        res.json(bundle);
+      } catch (e) {
+        if (e instanceof RelationshipNotFoundError) return void res.status(404).json({ error: "not_found", message: "Tenant no encontrado" });
+        if (e instanceof CalendarUnavailableError) return void res.status(409).json({ error: "calendar_unavailable", message: e.message });
+        throw e;
+      }
+    }),
+  );
 
   // ── Métricas (Prometheus) ──────────────────────────────────────────────────
   router.get(
@@ -409,6 +1512,46 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         res.status(r.status === "completed" ? 201 : 202).json(r);
       }),
     );
+    // Listado global de altas para Operación SaaS (sin datos personales: ni el correo del administrador)
+    const provisioningStatus = z.enum(["pending", "running", "failed", "completed", "aborted"]);
+    router.get(
+      "/provisioning",
+      requireScope("tenants:read"),
+      wrap(async (req, res) => {
+        const status = provisioningStatus.optional().parse(req.query.status);
+        const limit = z.coerce.number().int().min(1).max(200).default(50).parse(req.query.limit);
+        const offset = z.coerce.number().int().min(0).max(100_000).default(0).parse(req.query.offset);
+        const { items, total } = await d.provisioning!.list({ status, limit, offset });
+        res.json({
+          provisioning: items.map((r) => {
+            const failed = Object.entries(r.steps).find(([, s]) => s?.state === "failed")?.[0] ?? null;
+            return {
+              tenantId: r.tenantId,
+              displayName: r.request.displayName,
+              status: r.status,
+              attempts: r.attempts,
+              completedSteps: Object.values(r.steps).filter((s) => s?.state === "done").length,
+              failedStep: r.status === "failed" ? failed : null,
+              lastError: r.lastError,
+              updatedAt: r.updatedAt,
+            };
+          }),
+          total,
+          limit,
+          offset,
+        });
+      }),
+    );
+    // Reintento idempotente con la petición GUARDADA (el cuerpo no se admite: no se puede cambiar el alta)
+    router.post(
+      "/provisioning/:id/retry",
+      requireScope("provisioning:write"),
+      wrap(async (req, res) => {
+        if (req.body && Object.keys(req.body).length) throw new ProvisioningError("invalid_request", "El reintento usa la petición guardada: no admite cuerpo");
+        const r = await d.provisioning!.retry(idSchema.parse(req.params.id), actor(req));
+        res.status(r.status === "completed" ? 200 : 202).json(r);
+      }),
+    );
     router.get(
       "/provisioning/:id",
       requireScope("tenants:read"),
@@ -431,6 +1574,31 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
 
   // ── Facturación ────────────────────────────────────────────────────────────
   if (d.billing && d.billingStore) {
+    // Debe registrarse antes de `/billing/:id` para que "plans" no se interprete como id de empresa.
+    router.get(
+      "/billing/plans",
+      requireScope("billing:read"),
+      wrap(async (_req, res) => {
+        const c = d.billing!.getCatalog();
+        res.json({
+          plans: c.plans.map((p) => ({
+            id: p.id,
+            name: p.name,
+            kind: p.kind,
+            interval: p.interval,
+            priceCents: p.priceCents,
+            currency: p.currency,
+            includedModules: p.includedModules,
+            maxCustomDomains: p.maxCustomDomains,
+            quotas: p.quotas,
+            billable: p.priceCents !== null,
+          })),
+          modules: c.modules,
+          trialDays: c.trialDays,
+          graceDays: c.graceDays,
+        });
+      }),
+    );
     router.post(
       "/billing/:id/trial",
       requireScope("billing:write"),
@@ -482,7 +1650,8 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         const id = idSchema.parse(req.params.id);
         const b = z
           .object({
-            operator: z.string().min(2).max(100),
+            // Se ignora: el acceso queda a nombre de la identidad AUTENTICADA (auditoría no falsificable)
+            operator: z.string().min(2).max(100).optional(),
             reason: z.string().min(5).max(300),
             minutes: z.number().int().min(1).max(240),
             readOnly: z.boolean().default(true),
@@ -491,7 +1660,8 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         const t = await d.reader.getTenant(id);
         if (!t) throw new RegistryError("not_found", "Tenant no encontrado");
         if (t.status === "deleted" || t.status === "deleting") throw new RegistryError("conflict", "El tenant no admite acceso");
-        const g = await d.support!.create({ tenantId: id, ...b });
+        const a = getAuth(req)!.actor;
+        const g = await d.support!.create({ tenantId: id, ...b, operator: `${a.type}:${a.id}` });
         const token = await signSupportToken(g, d.supportSecret!);
         const primary = (await d.reader.listDomains(id)).find((x) => x.isPrimary && x.status === "active");
         res.status(201).json({
@@ -507,7 +1677,8 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
       "/support-access/:grantId",
       requireScope("support:write"),
       wrap(async (req, res) => {
-        const operator = z.string().min(2).max(100).parse(req.query.operator ?? getAuth(req)!.tokenId);
+        const a = getAuth(req)!.actor;
+        const operator = `${a.type}:${a.id}`; // nunca el nombre que envíe quien llama
         await d.support!.revoke(z.string().regex(/^[a-f0-9]{32}$/).parse(req.params.grantId), operator);
         res.status(204).end();
       }),
@@ -521,7 +1692,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
       requireScope("usage:read"),
       wrap(async (req, res) => {
         const id = idSchema.parse(req.params.id);
-        const days = Math.min(90, Math.max(1, Number(req.query.days ?? 30)));
+        const days = z.coerce.number().int().min(1).max(90).default(30).parse(req.query.days ?? undefined);
         const to = Date.now() + 3_600_000;
         const rows = await d.usage!.list(id, to - days * 86_400_000, to);
         const totals: Record<string, number> = {};
@@ -531,8 +1702,83 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
     );
   }
 
+  // Registro de eventos comerciales: solo lectura y siempre acotado a una operación, empresa o tenant
+  if (d.commercialEvents) {
+    const log = d.commercialEvents;
+    router.get(
+      "/commercial-events",
+      requireScope("ops:read"),
+      wrap(async (req, res) => {
+        const q = req.query as Record<string, string | undefined>;
+        const bad = (message: string) => void res.status(400).json({ error: "invalid_input", message });
+        const badInt = ["companyId", "orderId", "subscriptionId", "trialId", "afterId", "limit"].find((k) => q[k] !== undefined && !(Number.isInteger(Number(q[k])) && Number(q[k]) > 0));
+        if (badInt) return bad(`${badInt} no es válido`);
+        const int = (k: string) => (q[k] === undefined ? undefined : Number(q[k]));
+        const f: CommercialEventFilter = {
+          correlationId: q.correlationId?.slice(0, 40),
+          tenantId: q.tenantId?.slice(0, 63),
+          companyId: int("companyId"),
+          orderId: int("orderId"),
+          subscriptionId: int("subscriptionId"),
+          trialId: int("trialId"),
+          afterId: int("afterId"),
+          limit: Math.min(int("limit") ?? 200, 1000),
+        };
+        if ([f.correlationId, f.tenantId, f.companyId, f.orderId, f.subscriptionId, f.trialId].every((x) => x === undefined))
+          return bad("Indica correlationId, tenantId, companyId, orderId, subscriptionId o trialId");
+        if (q.types) {
+          const types = q.types.split(",").map((t) => t.trim());
+          if (types.some((t) => !(COMMERCIAL_EVENT_TYPES as readonly string[]).includes(t))) return bad("Tipo de evento desconocido");
+          f.types = types as CommercialEventType[];
+        }
+        res.json({ events: await log.list(f) });
+      }),
+    );
+  }
+
+  // Correo: modo efectivo y diagnóstico de la cuenta del proveedor (solo lecturas; nunca envía)
+  if (d.mail) {
+    const mail = d.mail;
+    router.get(
+      "/mail/diagnostics",
+      requireScope("ops:read"),
+      wrap(async (_req, res) => {
+        const p = mail.platform?.policy;
+        res.json({
+          platformOutbox: !!mail.platform,
+          mode: mail.platform?.service.mode ?? "off",
+          degradedReason: p?.degradedReason ?? null,
+          sendingDomain: p?.sendingDomain ?? null,
+          webhookConfigured: !!mail.webhookToken && mail.webhookToken.length >= 32,
+          provider: mail.diagnostics ? await mail.diagnostics() : null,
+        });
+      }),
+    );
+  }
+
   app.use("/cp/v1", router);
   app.get("/healthz", (_req, res) => void res.json({ ok: true }));
+  // Readiness: BD del registro. Sin detalles internos (solo un estado por comprobación).
+  app.get("/readyz", (_req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    if (!d.health) return void res.json({ status: "ready", checks: {} });
+    const ms = d.health.timeoutMs ?? 3000;
+    Promise.race([d.health.registryPing(), new Promise((_r, rej) => setTimeout(() => rej(new Error("timeout")), ms).unref?.())]).then(
+      () => void res.json({ status: "ready", checks: { registry: "ok" } }),
+      () => {
+        opsLog("error", "Health", "registry_unavailable", {});
+        res.status(503).json({ status: "degraded", checks: { registry: "error" } });
+      },
+    );
+  });
   app.use((_req, res) => void res.status(404).json({ error: "not_found" }));
+  // Errores no capturados por las rutas (p. ej. los que delegan con `next(e)`): JSON genérico y log estructurado
+  app.use((e: unknown, req: Request, res: Response, _next: NextFunction) => {
+    const status = (e as { status?: number; statusCode?: number })?.status ?? (e as { statusCode?: number })?.statusCode;
+    if (typeof status === "number" && status >= 400 && status < 500) return void res.status(status).json({ error: "invalid_request" });
+    opsLog("error", "ControlPlane", "unhandled_error", { method: req.method, error: e instanceof Error ? e.name : "error" });
+    if (res.headersSent) return;
+    res.status(500).json({ error: "internal_error", message: "Error interno" });
+  });
   return app;
 }

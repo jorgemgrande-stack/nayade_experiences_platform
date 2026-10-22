@@ -12,14 +12,15 @@
  *   pnpm exec tsx scripts/tenants/cli.ts domain-disable <dominio> --reason "..."  [--apply]
  *   pnpm exec tsx scripts/tenants/cli.ts db-register <tenant> --dsn-env VAR       [--apply]
  *   pnpm exec tsx scripts/tenants/cli.ts db-activate <tenant> <idBD>              [--apply]
- *   pnpm exec tsx scripts/tenants/cli.ts rotate-keys                              [--apply]
+ *   pnpm exec tsx scripts/tenants/cli.ts rotate-keys                              [--apply]   (DSN y secretos TOTP de operadores)
  *   pnpm exec tsx scripts/tenants/cli.ts provision <tenant> --name "Nombre" --admin-email a@b.c --domain elephantsource.es
- *        [--modules hotel,spa] [--trial-days 15] [--apply]      (PROVISIONING_DB_ADMIN_URL, PROVISIONING_DB_HOST[/PORT])
+ *        [--modules hotel,spa] [--trial-days 15] [--server <alias>] [--apply]
+ *        (PROVISIONING_DB_SERVERS, o PROVISIONING_DB_ADMIN_URL + PROVISIONING_DB_HOST[/PORT] para un único servidor)
  *   pnpm exec tsx scripts/tenants/cli.ts provision-status <tenant>
  *   pnpm exec tsx scripts/tenants/cli.ts provision-abort <tenant> --reason "..." [--apply]
  *   pnpm exec tsx scripts/tenants/cli.ts migrate-all [--only a,b] [--apply]     (dry-run por defecto; canario primero)
  *   pnpm exec tsx scripts/tenants/cli.ts diagnose <tenant>
- *   pnpm exec tsx scripts/tenants/cli.ts backup <tenant> --out <dir>
+ *   pnpm exec tsx scripts/tenants/cli.ts backup <tenant> --out <dir>          (copia manual sin cifrar; la programada: server/controlPlane/backupJob.ts)
  *   pnpm exec tsx scripts/tenants/cli.ts backup-verify <manifest.json> --scratch-dsn-env VAR   (BD de pruebas prescindible)
  *   pnpm exec tsx scripts/tenants/cli.ts incidents [--status open|acknowledged|resolved]
  *   pnpm exec tsx scripts/tenants/cli.ts alerts-run                       (evalúa reglas y abre/cierra incidencias)
@@ -42,6 +43,8 @@
  */
 import mysql from "mysql2/promise";
 import { keyringFromEnv } from "../../server/_core/tenantRegistry/crypto";
+import { platformDomainsFromEnv } from "../../server/_core/tenantRegistry/platformDomains";
+import { rotateOperatorMfaKeys } from "../../server/controlPlane/operatorMfaKeys";
 import { MysqlTenantRegistryStore } from "../../server/_core/tenantRegistry/mysqlStore";
 import { TenantRegistryService, type Actor } from "../../server/_core/tenantRegistry/service";
 import { verifyDomainOwnership } from "../../server/_core/tenantRegistry/domainVerification";
@@ -57,11 +60,12 @@ import { diagnoseTenant } from "../../server/_core/ops/diagnostics";
 import { backupDatabase, verifyBackup } from "../../server/_core/ops/backup";
 import { ProvisioningService } from "../../server/_core/provisioning/service";
 import {
-  MysqlDatabaseProvisioner,
   MysqlProvisioningStore,
   MysqlSchemaApplier,
   MysqlTenantSeeder,
 } from "../../server/_core/provisioning/mysqlAdapters";
+import { DatabaseServers, MultiServerDatabaseProvisioner, parseDatabaseServers, registryServerUsage } from "../../server/_core/provisioning/servers";
+import { MysqlBackupInventory } from "../../server/_core/ops/backupInventory";
 import { MysqlUsageStore } from "../../server/_core/erm/usage";
 import type { QuotaPeriod } from "../../server/_core/erm/types";
 import type { EntitlementStatus } from "../../server/_core/modules/entitlements";
@@ -101,7 +105,7 @@ async function main() {
   try {
     const store = new MysqlTenantRegistryStore(pool);
     const ring = keyringFromEnv(process.env);
-    const svc = new TenantRegistryService(store, () => ring);
+    const svc = new TenantRegistryService(store, () => ring, { platformDomains: platformDomainsFromEnv(process.env) });
 
     const write = async (what: string, fn: () => Promise<unknown>) => {
       if (!APPLY) {
@@ -185,22 +189,34 @@ async function main() {
         break;
       }
       case "rotate-keys": {
-        await write("re-cifrar credenciales con la clave activa", async () => ({ rotadas: await svc.rotateKeys(actor) }));
+        // Secretos TOTP de los operadores (0012): también con la clave activa. La simulación los descifra en
+        // memoria para detectar antes de escribir los que ya no se pueden recuperar (clave retirada).
+        const mfaPlan = await rotateOperatorMfaKeys(pool, ring, { apply: false, actor: `cli:${actor.id}` });
+        const fallidos = (r: typeof mfaPlan) => r.failed.map((f) => ({ operador: f.username, clave: f.keyId, motivo: f.reason }));
+        if (!APPLY) {
+          print({ claveActiva: ring.activeKeyId, mfaOperadores: mfaPlan.supported ? { pendientes: mfaPlan.pending, irrecuperables: fallidos(mfaPlan) } : "sin la migración 0012" });
+        }
+        await write("re-cifrar credenciales con la clave activa (DSN de empresas y secretos TOTP de operadores)", async () => {
+          const mfa = await rotateOperatorMfaKeys(pool, ring, { apply: true, actor: `cli:${actor.id}` });
+          return { rotadas: await svc.rotateKeys(actor), mfaOperadores: mfa.supported ? { rotados: mfa.rotated, irrecuperables: fallidos(mfa) } : "sin la migración 0012" };
+        });
+        if (mfaPlan.failed.length) {
+          console.error("Hay secretos TOTP que no se pueden descifrar con REGISTRY_KEYS: NO retires ninguna clave antigua hasta resolverlo.");
+          process.exitCode = 1;
+        }
         break;
       }
       case "provision":
       case "provision-status":
       case "provision-abort": {
         const id = pos[0] ?? die("Falta <tenant>");
-        const adminUrl = process.env.PROVISIONING_DB_ADMIN_URL ?? die("Falta PROVISIONING_DB_ADMIN_URL");
-        const dbHost = process.env.PROVISIONING_DB_HOST ?? new URL(adminUrl).hostname;
-        const dbPort = Number(process.env.PROVISIONING_DB_PORT ?? (new URL(adminUrl).port || 3306));
-        const adminPool = mysql.createPool({ uri: adminUrl, connectionLimit: 2 });
+        const serversCfg = parseDatabaseServers(process.env) ?? die("Falta PROVISIONING_DB_SERVERS o PROVISIONING_DB_ADMIN_URL");
+        const servers = new DatabaseServers(serversCfg);
         try {
           const prov = new ProvisioningService({
             registry: svc,
             reader: store,
-            databases: new MysqlDatabaseProvisioner(adminPool, { host: dbHost, port: dbPort, alias: process.env.PROVISIONING_DB_ALIAS ?? dbHost }),
+            databases: new MultiServerDatabaseProvisioner(servers, { usage: () => registryServerUsage(pool) }),
             schema: new MysqlSchemaApplier({
               baselinePath: path.resolve(process.cwd(), "db/baseline/0000_baseline.sql"),
               migrationsDir: path.resolve(process.cwd(), "db/migrations"),
@@ -226,6 +242,7 @@ async function main() {
               platformDomain: opt("--domain") ?? die("Falta --domain"),
               modules: (opt("--modules") ?? "").split(",").filter(Boolean),
               trialDays: opt("--trial-days") ? Number(opt("--trial-days")) : undefined,
+              serverAlias: opt("--server"),
             };
             await write(`alta de ${id} (BD, esquema, administrador, dominio, licencias)`, async () => {
               // La invitación del administrador se muestra una sola vez en esta salida (no se persiste)
@@ -233,7 +250,7 @@ async function main() {
             });
           }
         } finally {
-          await adminPool.end();
+          await servers.end();
         }
         break;
       }
@@ -292,6 +309,10 @@ async function main() {
           incidents: inc,
           quotas: new QuotaAdmin(pool),
           entitlements: new EntitlementAdmin(pool),
+          // Última copia correcta por empresa (inventario, registro 0010); sin la tabla, la regla no se evalúa
+          lastBackupAt: (await pool.query("SELECT 1 FROM backup_inventory LIMIT 0").then(() => true, () => false))
+            ? () => new MysqlBackupInventory(pool).lastSuccess("tenant")
+            : undefined,
         });
         print({ abiertas: r.raised, resueltas: r.resolved, activas: r.active });
         break;

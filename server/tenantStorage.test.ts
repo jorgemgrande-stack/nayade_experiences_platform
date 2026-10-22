@@ -15,6 +15,9 @@ const dir = vi.hoisted(() => {
   const pathx = require("node:path") as typeof import("node:path");
   const d = fsx.mkdtempSync(pathx.join(osx.tmpdir(), "es-storage-"));
   process.env.LOCAL_STORAGE_PATH = d;
+  // Estas pruebas cubren el camino HEREDADO (disco local y /local-storage); el servicio de objetos
+  // tiene las suyas en fileStorage.test.ts / fileStorage.mysql.test.ts
+  process.env.STORAGE_OBJECTS = "off";
   return d;
 });
 

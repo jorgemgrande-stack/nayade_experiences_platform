@@ -41,6 +41,8 @@ vi.mock("./redsys", async (importOriginal) => {
   return {
     ...actual,
     generateMerchantOrder: () => "TEST000001",
+    // La pasarela se da por configurada: aquí se prueba el cálculo del precio
+    isRedsysConfigured: () => true,
     buildRedsysForm: (p: { amount: number }) => ({ url: "https://sandbox.invalid", fields: { amount: p.amount } }),
   };
 });

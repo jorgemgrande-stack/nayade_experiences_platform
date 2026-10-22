@@ -3,7 +3,8 @@
  * Gestión de configuraciones de plantillas, reglas de automatización,
  * log global de emails, cola de jobs y preferencias por cliente.
  */
-import { router, protectedProcedure } from "../_core/trpc";
+import { router, staffProcedure, adminProcedure } from "../_core/trpc";
+import { legacyBrandText } from "../tenantBrand";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import {
@@ -21,7 +22,9 @@ import { legacyDb, legacyPool } from "../_core/legacyDb";
 const _pool = legacyPool();
 const db = legacyDb();
 
-const staff = protectedProcedure;
+// Equipo comercial (crm.view); la configuración y los envíos manuales, solo administración.
+const staff = staffProcedure;
+const admin = adminProcedure;
 
 // ─── Catálogo estático (source of truth para keys + metadatos) ───────────────
 // Lista de todas las plantillas conocidas. La DB solo guarda overrides.
@@ -90,7 +93,7 @@ export const emailCommunicationsRouter = router({
     return Object.keys(CATALOG_DEFAULTS).map((key) => mergeWithDefaults(dbMap.get(key) ?? null, key));
   }),
 
-  upsertTemplateConfig: staff
+  upsertTemplateConfig: admin
     .input(z.object({
       key: z.string(),
       isActive: z.boolean().optional(),
@@ -139,7 +142,7 @@ export const emailCommunicationsRouter = router({
         .orderBy(asc(emailAutomationRules.templateKey), asc(emailAutomationRules.sortOrder));
     }),
 
-  createRule: staff
+  createRule: admin
     .input(z.object({
       templateKey: z.string(),
       name: z.string().min(1).max(256),
@@ -169,7 +172,7 @@ export const emailCommunicationsRouter = router({
       return { ok: true };
     }),
 
-  updateRule: staff
+  updateRule: admin
     .input(z.object({
       id: z.number().int(),
       name: z.string().min(1).max(256).optional(),
@@ -199,7 +202,7 @@ export const emailCommunicationsRouter = router({
       return { ok: true };
     }),
 
-  deleteRule: staff
+  deleteRule: admin
     .input(z.object({ id: z.number().int() }))
     .mutation(async ({ input }) => {
       await db.delete(emailAutomationRules).where(eq(emailAutomationRules.id, input.id));
@@ -356,7 +359,7 @@ export const emailCommunicationsRouter = router({
 
   // ── Manual trigger del automation job ────────────────────────────────────
 
-  runAutomationJobNow: staff.mutation(async () => {
+  runAutomationJobNow: admin.mutation(async () => {
     try {
       const result = await runEmailAutomationJob(true); // forceRun=true omite el feature flag
       return { ok: true, ...result };
@@ -367,7 +370,7 @@ export const emailCommunicationsRouter = router({
 
   // ── Test email ─────────────────────────────────────────────────────────────
 
-  sendTestEmail: staff
+  sendTestEmail: admin
     .input(z.object({
       to: z.string().email(),
       templateKey: z.string(),
@@ -380,7 +383,7 @@ export const emailCommunicationsRouter = router({
         <h2 style="color:#0a1628;">Email de prueba — ${def.friendlyName}</h2>
         <p>Plantilla: <code>${input.templateKey}</code></p>
         <p>Categoría: ${def.category}</p>
-        <p>Este es un email de prueba enviado desde el Centro de Comunicaciones de Skicenter.</p>
+        <p>Este es un email de prueba enviado desde el Centro de Comunicaciones de ${legacyBrandText("Skicenter")}.</p>
       </div>`;
       const ok = await sendEmail({ to: input.to, subject, html });
       return { ok, to: input.to };

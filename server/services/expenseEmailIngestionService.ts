@@ -23,6 +23,7 @@ import { expenses, expenseFiles, expenseEmailIngestionLogs } from "../../drizzle
 import { storagePut } from "../storage";
 import { legacyDb, legacyPool } from "../_core/legacyDb";
 import { scheduleTenantCron } from "../_core/tenantRegistry/scheduler";
+import { isMultiTenant } from "../_core/tenant";
 
 // ─── CONFIG ──────────────────────────────────────────────────────────────────
 
@@ -129,6 +130,13 @@ async function getDefaultCostCenterId(): Promise<number> {
 export async function runExpenseEmailIngestion(): Promise<{ processed: number; duplicated: number; errors: number }> {
   const result = { processed: 0, duplicated: 0, errors: 0 };
 
+  // Multiempresa: el buzón IMAP sale del entorno (global); volcarlo en la BD de cualquier
+  // empresa sería una fuga entre empresas. Bloqueado hasta tener credenciales por tenant.
+  if (isMultiTenant()) {
+    console.warn("[ExpenseMailIngestion] No disponible en multiempresa (credenciales IMAP globales)");
+    return result;
+  }
+
   if (!IMAP_PASS) {
     console.warn("[ExpenseMailIngestion] IMAP_EXPENSE_PASS no configurada — job desactivado");
     return result;
@@ -160,12 +168,12 @@ export async function runExpenseEmailIngestion(): Promise<{ processed: number; d
       const since = new Date();
       since.setDate(since.getDate() - 30);
       const uids = await client.search({ since });
-      if (!uids.length) return result;
+      if (!uids || !uids.length) return result;
 
       for (const uid of uids) {
         try {
           const msg = await client.fetchOne(String(uid), { source: true }, { uid: true });
-          if (!msg?.source) continue;
+          if (!msg || !msg.source) continue;
 
           const parsed = await simpleParser(msg.source);
           const subject    = parsed.subject ?? "";
@@ -271,7 +279,7 @@ export async function runExpenseEmailIngestion(): Promise<{ processed: number; d
             try {
               const fileName = att.filename ?? `adjunto-${savedCount + 1}`;
               const storageKey = `expenses/${expenseId}/${fileName}-${randomSuffix()}`;
-              const { url } = await storagePut(storageKey, att.content, att.contentType ?? "application/octet-stream");
+              const { url } = await storagePut(storageKey, att.content, att.contentType ?? "application/octet-stream", { category: "expense", originalName: fileName, owner: { type: "expense", id: expenseId } });
 
               await db.insert(expenseFiles).values({
                 expenseId,

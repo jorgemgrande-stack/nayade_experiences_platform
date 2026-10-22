@@ -1,3 +1,27 @@
+# Exportaciones de la plataforma anterior (Manus): nunca se versionan.
+.manus/
+.manus-logs/
+db-query-*.json
+
+# Credenciales, claves y volcados: nunca se versionan (ver scripts/ci/sensitive-files.mjs)
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.kdbx
+id_rsa*
+id_dsa*
+id_ecdsa*
+id_ed25519*
+.netrc
+.pgpass
+credentials.json
+service-account*.json
+*.dump
+*.sql.gz
+
 # Dependencies
 **/node_modules
 .pnpm-store/
@@ -115,3 +139,5 @@ temp/
 
 # Webdev artifacts (checkpoint zips, migrations, etc.)
 .webdev/
+
+dist-cp/

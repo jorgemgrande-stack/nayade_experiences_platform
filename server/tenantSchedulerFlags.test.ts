@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach, vi } from "vitest";
+import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
 
 const flags = vi.hoisted(() => ({ byTenant: {} as Record<string, boolean> }));
 vi.mock("./config", async () => {
@@ -8,10 +8,16 @@ vi.mock("./config", async () => {
 
 import { runTenantJob, setJobFlag, setJobTenantLister, jobStatus } from "./_core/tenantRegistry/scheduler";
 import { getTenantId } from "./_core/tenant";
+import { closeAllDatabases, setConnectionResolver } from "./_core/dbRegistry";
 
-afterEach(() => {
+// Cada ejecución precarga el pool de su tenant (mysql2 no conecta hasta la primera consulta)
+beforeEach(() => setConnectionResolver((id) => `mysql://u:p@127.0.0.1:1/db_${id}`));
+
+afterEach(async () => {
   delete process.env.TENANT_MODE;
   setJobTenantLister(null);
+  setConnectionResolver(null);
+  await closeAllDatabases();
 });
 
 describe("flag de tarea por tenant", () => {

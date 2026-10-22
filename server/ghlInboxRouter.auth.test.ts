@@ -267,6 +267,32 @@ describe("webhook entrante del inbox", () => {
     }
   });
 
+  it("sin secreto configurado → inactivo también fuera de producción", async () => {
+    const prev = process.env.GHL_WEBHOOK_SECRET;
+    delete process.env.GHL_WEBHOOK_SECRET;
+    try {
+      const r = await request("POST", "/api/ghl/inbox/webhook", { body: payload });
+      expect(r.status).toBe(200);
+      expect(state.inserts.length).toBe(0);
+    } finally {
+      process.env.GHL_WEBHOOK_SECRET = prev;
+    }
+  });
+
+  for (const [label, weak] of [["demasiado corto", "corto-12345"], ["antiguo valor por defecto publicado", "NAYADE2026_ULTRA"]]) {
+    it(`secreto ${label} → inactivo aunque la petición lo envíe`, async () => {
+      const prev = process.env.GHL_WEBHOOK_SECRET;
+      process.env.GHL_WEBHOOK_SECRET = weak;
+      try {
+        const r = await request("POST", "/api/ghl/inbox/webhook", { headers: { "x-ghl-secret": weak }, body: payload });
+        expect(r.status).toBe(200);
+        expect(state.inserts.length).toBe(0);
+      } finally {
+        process.env.GHL_WEBHOOK_SECRET = prev;
+      }
+    });
+  }
+
   it("el webhook de leads (/api/ghl/webhook) no queda interceptado por el guard", async () => {
     const r = await request("POST", "/api/ghl/webhook", { body: {} });
     // Este router no define esa ruta (la sirve ghlWebhookRouter): 404, nunca 401/403.

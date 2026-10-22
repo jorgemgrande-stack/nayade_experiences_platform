@@ -15,6 +15,7 @@ import { getGHLCredentials } from "../db";
 import { syncLeadUrlsToGHL, createGHLContact } from "../ghl";
 import { buildProposalHtml } from "../emailTemplates";
 import { getSystemSettingSync, getBusinessEmail } from "../config";
+import { legacyBrandText, legacyUrl } from "../tenantBrand";
 import { logActivity } from "../db";
 import { groupTaxBreakdown, totalTaxAmount } from "../taxUtils";
 import { legacyDb, legacyPool } from "../_core/legacyDb";
@@ -276,7 +277,7 @@ export const proposalsRouter = router({
       // Generate token if not yet set
       const { randomBytes } = await import("crypto");
       const token = proposal.token ?? randomBytes(32).toString("hex");
-      const origin = process.env.VITE_OAUTH_PORTAL_URL ?? "https://www.skicenter.es";
+      const origin = legacyUrl(process.env.VITE_OAUTH_PORTAL_URL ?? "https://www.skicenter.es");
       const publicUrl = `${origin}/propuesta/${token}`;
 
       // Fetch options for multi_option
@@ -314,7 +315,7 @@ export const proposalsRouter = router({
             templateKey: "proposal",
             triggerEvent: "proposal_sent",
             recipientEmail: lead.email,
-            subject: `Tu Propuesta Comercial — ${proposal.proposalNumber} · Náyade Experiences`,
+            subject: `Tu Propuesta Comercial — ${proposal.proposalNumber} · ${legacyBrandText("Náyade Experiences")}`,
             html,
             relatedEntityType: "proposal",
             relatedEntityId: input.id,
@@ -379,7 +380,7 @@ export const proposalsRouter = router({
       if (proposal.publicUrl) return { publicUrl: proposal.publicUrl, token: proposal.token! };
       const { randomBytes } = await import("crypto");
       const token = randomBytes(32).toString("hex");
-      const origin = process.env.VITE_OAUTH_PORTAL_URL ?? "https://www.skicenter.es";
+      const origin = legacyUrl(process.env.VITE_OAUTH_PORTAL_URL ?? "https://www.skicenter.es");
       const publicUrl = `${origin}/propuesta/${token}`;
       await db.update(proposals).set({ token, publicUrl }).where(eq(proposals.id, input.id));
       return { publicUrl, token };

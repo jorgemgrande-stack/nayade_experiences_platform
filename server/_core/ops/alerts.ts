@@ -21,6 +21,15 @@ export interface AlertDeps {
   now?: () => number;
   /** Antigüedad máxima de un respaldo (por defecto 36 h; crítico al doble). */
   backupMaxAgeMs?: number;
+  /**
+   * Destino secundario de copias (registro 0011). Solo se evalúa si alguna vez hubo un intento en el
+   * secundario: sin secundario configurado no hay alertas nuevas.
+   */
+  secondaryBackups?: {
+    lastSuccessAt: () => Promise<Record<string, number>>;
+    latestAttempts: () => Promise<Array<{ targetKind: string; targetId: string; status: string; error: string | null }>>;
+    maxAgeMs?: number;
+  };
 }
 
 export interface AlertRunResult {
@@ -98,6 +107,31 @@ export async function runAlerts(d: AlertDeps): Promise<AlertRunResult> {
             await raise(`entitlement.expiring:${t.id}:${e.moduleId}`, "entitlement.expiring", "info", `Licencia a punto de caducar: ${e.moduleId}`, t.id, { hoursLeft: Math.round(left / 3_600_000) });
           }
         }
+      }
+    }
+  }
+
+  // Destino secundario: retraso por empresa y fallo del último intento de cualquier destino
+  if (d.secondaryBackups) {
+    const attempts = await d.secondaryBackups.latestAttempts();
+    if (attempts.length) {
+      const last = await d.secondaryBackups.lastSuccessAt();
+      const secMax = d.secondaryBackups.maxAgeMs ?? maxAge;
+      for (const t of tenants) {
+        if (t.status !== "active" && t.status !== "trial" && t.status !== "grace") continue;
+        const at = last[t.id];
+        const age = at ? now - at : Infinity;
+        if (age > secMax) {
+          await raise(`backup.secondary_stale:${t.id}`, "backup.secondary_stale", age > 2 * secMax ? "critical" : "warning", `Sin copia reciente en el destino secundario: ${t.displayName}`, t.id, {
+            ageHours: at ? Math.round(age / 3_600_000) : null,
+          });
+        }
+      }
+      for (const a of attempts) {
+        if (a.status !== "failed") continue;
+        await raise(`backup.secondary_failed:${a.targetKind}:${a.targetId}`, "backup.secondary_failed", "warning", `Fallo de la copia en el destino secundario: ${a.targetKind} ${a.targetId}`, a.targetKind === "tenant" || a.targetKind === "files" ? a.targetId : null, {
+          error: a.error ? a.error.slice(0, 200) : null,
+        });
       }
     }
   }

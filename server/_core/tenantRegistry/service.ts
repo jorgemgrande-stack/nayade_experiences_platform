@@ -18,6 +18,7 @@ import {
 } from "./contract";
 import { decryptDsn, encryptDsn, reencryptDsn, type Keyring } from "./crypto";
 import { normalizeHost } from "./host";
+import { assertPlatformSubdomain } from "./platformDomains";
 import { assertTransition, requiresOperator } from "./lifecycle";
 import type { RegistryTx, TenantRegistryStore } from "./store";
 
@@ -43,6 +44,8 @@ export class TenantRegistryService {
   constructor(
     private store: TenantRegistryStore,
     private ring: () => Keyring,
+    /** Dominios de plataforma (platformDomains.ts): un `platform_subdomain` debe colgar exactamente de uno. */
+    private opts: { platformDomains?: readonly string[] } = {},
   ) {}
 
   // ── Tenants ────────────────────────────────────────────────────────────────
@@ -113,6 +116,8 @@ export class TenantRegistryService {
   ): Promise<TenantDomain> {
     const domain = normalizeHost(rawDomain);
     if (!domain) throw new RegistryError("invalid_domain", "Dominio no válido");
+    // Se da por verificado sin DNS: solo bajo un dominio de plataforma nuestro (nunca uno arbitrario)
+    if (kind === "platform_subdomain") assertPlatformSubdomain(domain, this.opts.platformDomains ?? []);
     return this.store.transaction(async (tx) => {
       const t = await this.mustTenant(tx, tenantId);
       if (t.status === "deleted") throw new RegistryError("conflict", "El tenant está eliminado");
@@ -147,6 +152,24 @@ export class TenantRegistryService {
       await this.bump(tx, r.tenant);
       await this.audit(tx, actor, r.tenant.id, "domain.verified", "pending_verification", "verified", { domain });
       return d;
+    });
+  }
+
+  /**
+   * Resultado de una comprobación DNS (`verifyDomainOwnership`): si es correcta, verifica; si no,
+   * deja constancia del fallo (estado «fallido» mientras siga pendiente). Las instrucciones
+   * pendientes contienen el token: solo se audita cuántas faltan.
+   */
+  async recordDomainVerification(domain: string, result: { ok: boolean; pending: string[] }, actor: Actor): Promise<TenantDomain> {
+    if (result.ok) return this.markDomainVerified(domain, actor);
+    return this.store.transaction(async (tx) => {
+      const r = await this.mustDomain(tx, domain);
+      if (r.domain.status !== "pending_verification") return r.domain;
+      await this.audit(tx, actor, r.tenant.id, "domain.verification_failed", "pending_verification", "pending_verification", {
+        domain: r.domain.domain,
+        missing: result.pending.length,
+      });
+      return r.domain;
     });
   }
 

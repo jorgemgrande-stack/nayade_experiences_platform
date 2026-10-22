@@ -14,6 +14,7 @@ import type { NextFunction, Request, Response } from "express";
 import { checkRbacOrLegacy } from "./rbac";
 import { getUserFromRequest } from "../localAuth";
 import { sdk } from "./sdk";
+import { isMultiTenant } from "./tenant";
 
 export type SessionUser = {
   id: number;
@@ -31,7 +32,9 @@ export function getAuthUser(req: Request): SessionUser | undefined {
 export async function resolveSessionUser(req: Request): Promise<SessionUser | null> {
   try {
     const user =
-      process.env.LOCAL_AUTH === "true"
+      // En multiempresa solo existe la sesión local, ligada a su empresa (el SDK de Manus la rechaza siempre):
+      // igual que el contexto de tRPC, sin depender de que además se haya fijado LOCAL_AUTH
+      process.env.LOCAL_AUTH === "true" || isMultiTenant()
         ? await getUserFromRequest(req)
         : await sdk.authenticateRequest(req as never);
     if (!user || typeof (user as SessionUser).id !== "number") return null;
@@ -41,6 +44,8 @@ export async function resolveSessionUser(req: Request): Promise<SessionUser | nu
     return null;
   }
 }
+
+const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
 function deny(res: Response, status: 401 | 403, message: string) {
   res.setHeader("Cache-Control", "no-store");
@@ -65,6 +70,10 @@ export function requirePermission(permissionKey: string, fallbackRoles: string[]
       allowed = fallbackRoles.includes(String(user.role));
     }
     if (!allowed) return deny(res, 403, "Acceso restringido al equipo.");
+    // Solo lectura: nunca métodos que modifican (mismo criterio que readOnlyGuard en tRPC)
+    if (String(user.role) === "readonly" && !SAFE_METHODS.has(req.method)) {
+      return deny(res, 403, "Tu usuario es de solo lectura: no puede modificar datos.");
+    }
 
     (req as Request & { authUser?: SessionUser }).authUser = user;
     res.setHeader("Cache-Control", "no-store");
@@ -73,7 +82,7 @@ export function requirePermission(permissionKey: string, fallbackRoles: string[]
 }
 
 /** Acceso del equipo comercial: mismo criterio que `staffProcedure` (permiso crm.view). */
-export const requireStaff = requirePermission("crm.view", ["admin", "agente"]);
+export const requireStaff = requirePermission("crm.view", ["admin", "agente", "readonly"]);
 
 /**
  * Exige sesión activa con rol heredado `admin`.

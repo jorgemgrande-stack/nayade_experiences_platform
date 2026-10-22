@@ -18,8 +18,17 @@ import nodemailer from "nodemailer";
 import { Metrics, meter } from "./_core/metering";
 import { enforceQuota } from "./_core/erm/runtime";
 import { QuotaExceededError } from "./_core/erm/types";
+import { maskEmail, opsLog } from "./_core/ops/log";
+import { recordFailure } from "./_core/ops/failureAlerts";
+
+/** Destinatarios para los logs: nunca la dirección completa. */
+const maskTo = (to: string | string[]) => (Array.isArray(to) ? to : [to]).map(maskEmail).join(", ");
 import { isMultiTenant } from "./_core/tenant";
 import { getSystemSettingSync } from "./config";
+import { brandName, tenantCommsConfig } from "./tenantBrand";
+import type { MailCategory } from "./mail/types";
+import { readStoredFile } from "./storage";
+import { objectIdFromUrl } from "./_core/files/service";
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 export interface MailParams {
@@ -29,8 +38,15 @@ export interface MailParams {
   text?: string;
   from?: string;
   cc?: string | string[];
-  /** Adjuntos por URL pública (p.ej. el PDF de la factura en el CDN). */
-  attachments?: { name: string; url: string }[];
+  /**
+   * Adjuntos por URL. Si la URL es de un fichero del almacenamiento del Core (privado), se adjunta su
+   * CONTENIDO (el proveedor de correo no puede descargarlo); el resto se adjunta por URL.
+   */
+  attachments?: { name: string; url: string; content?: Buffer }[];
+  /** Tipo de aviso (servicio de correo centralizado: trazas y límites). */
+  category?: MailCategory;
+  /** Clave de idempotencia: el mismo aviso con la misma clave sale una sola vez. */
+  idempotencyKey?: string;
 }
 
 // ─── Helper: parsea el SMTP_FROM en nombre + email ───────────────────────────
@@ -38,23 +54,21 @@ function parseSender(raw: string): { name: string; email: string } {
   // Formatos: "Nombre <email>" o solo "email"
   const match = raw.match(/^(.+?)\s*<(.+?)>$/);
   if (match) return { name: match[1].trim(), email: match[2].trim() };
-  return { name: getSystemSettingSync("brand_name", "Skicenter"), email: raw.trim() };
+  return { name: brandName(), email: raw.trim() };
 }
 
 /**
  * Remitente en multiempresa: NUNCA el de Náyade ni el buzón global de la plataforma como
- * propio. Se usa el remitente verificado del tenant (`email_noreply_sender`) o, si no lo
- * tiene, el remitente de plataforma (`PLATFORM_MAIL_FROM`) con el nombre del tenant y
- * `Reply-To` hacia el correo del propio tenant. Sin ninguno, no se envía (falla cerrado).
+ * propio. Se usa la configuración de comunicaciones del tenant (`tenantCommsConfig`: remitente
+ * verificado, nombre y responder-a) o, sin remitente propio, el de plataforma
+ * (`PLATFORM_MAIL_FROM`) con el nombre del tenant y `Reply-To` hacia el correo del propio
+ * tenant. Sin remitente o sin nombre, no se envía (falla cerrado).
  */
 export function resolveTenantSender(): { from: string; replyTo?: string } | null {
-  const brand = getSystemSettingSync("brand_name", "");
-  const own = getSystemSettingSync("email_noreply_sender", "");
-  const platform = process.env.PLATFORM_MAIL_FROM ?? "";
-  const address = own || platform;
-  if (!address || !brand) return null;
-  const replyTo = getSystemSettingSync("email_reservations", "") || undefined;
-  return { from: `${brand.replace(/[<>"]/g, "")} <${address}>`, replyTo };
+  const c = tenantCommsConfig();
+  const address = c.fromEmail || (process.env.PLATFORM_MAIL_FROM ?? "");
+  if (!address || !c.fromName) return null;
+  return { from: `${c.fromName} <${address}>`, replyTo: c.replyTo ?? undefined };
 }
 
 // ─── Modo 1: Brevo HTTP API ───────────────────────────────────────────────────
@@ -97,9 +111,9 @@ async function sendViaBrevoApi(params: MailParams): Promise<boolean> {
     htmlContent: params.html,
     ...(params.text ? { textContent: params.text } : {}),
     ...(ccList ? { cc: ccList } : {}),
-    // Adjuntos por URL (Brevo descarga el fichero público y lo adjunta)
+    // Adjuntos: contenido en base64 (ficheros propios) o por URL (Brevo descarga el fichero público)
     ...(params.attachments?.length
-      ? { attachment: params.attachments.map(a => ({ url: a.url, name: a.name })) }
+      ? { attachment: params.attachments.map(a => (a.content ? { content: a.content.toString("base64"), name: a.name } : { url: a.url, name: a.name })) }
       : {}),
     // Desactivar click-tracking de Brevo para que los enlaces lleguen directos sin redirección
     headers: { "X-Mailin-no-track": "1" },
@@ -118,15 +132,16 @@ async function sendViaBrevoApi(params: MailParams): Promise<boolean> {
 
     if (res.ok) {
       const json = await res.json() as { messageId?: string };
-      console.log(`[Mailer] ✓ Brevo API → ${Array.isArray(params.to) ? params.to.join(", ") : params.to} | messageId: ${json.messageId ?? "—"}`);
+      console.log(`[Mailer] ✓ Brevo API → ${maskTo(params.to)} | messageId: ${json.messageId ?? "—"}`);
       return true;
     }
 
-    const errText = await res.text();
-    console.error(`[Mailer] ✗ Brevo API error ${res.status}: ${errText}`);
+    // El cuerpo del error del proveedor puede repetir destinatarios: solo el código de estado
+    await res.text().catch(() => "");
+    opsLog("error", "Mailer", "provider_error", { channel: "brevo", httpStatus: res.status });
     return false;
   } catch (err) {
-    console.error("[Mailer] ✗ Brevo API fetch error:", err);
+    opsLog("error", "Mailer", "provider_error", { channel: "brevo", error: err instanceof Error ? err.name : "error" });
     return false;
   }
 }
@@ -176,13 +191,13 @@ async function sendViaSMTP(params: MailParams): Promise<boolean> {
       ...(params.text ? { text: params.text } : {}),
       ...(params.cc ? { cc: Array.isArray(params.cc) ? params.cc.join(", ") : params.cc } : {}),
       ...(params.attachments?.length
-        ? { attachments: params.attachments.map(a => ({ filename: a.name, path: a.url })) }
+        ? { attachments: params.attachments.map(a => (a.content ? { filename: a.name, content: a.content } : { filename: a.name, path: a.url })) }
         : {}),
     });
-    console.log(`[Mailer] ✓ SMTP → ${Array.isArray(params.to) ? params.to.join(", ") : params.to}`);
+    console.log(`[Mailer] ✓ SMTP → ${maskTo(params.to)}`);
     return true;
   } catch (err) {
-    console.error("[Mailer] ✗ SMTP error:", err);
+    opsLog("error", "Mailer", "provider_error", { channel: "smtp", error: err instanceof Error ? err.name : "error", code: (err as { code?: unknown })?.code ?? null });
     return false;
   }
 }
@@ -192,14 +207,40 @@ async function sendViaSMTP(params: MailParams): Promise<boolean> {
 // Se puede sobreescribir con la variable de entorno GLOBAL_CC_EMAIL.
 const GLOBAL_CC_EMAIL = process.env.GLOBAL_CC_EMAIL ?? "reservas@nayadeexperiences.es";
 
+/**
+ * Correos con enlaces de acceso de un solo uso (crear o restablecer contraseña, verificar el correo): nunca
+ * llevan la copia global. Quien la reciba podría entrar en la cuenta de otra persona. Tampoco los avisos de
+ * seguridad ni los de la exportación de datos (solo para quien la pidió).
+ */
+const NO_GLOBAL_CC: ReadonlySet<string> = new Set(["password_reset", "user_invite", "email_verification", "tenant_welcome", "security_notice", "data_export"]);
+
 function mergeGlobalCc(params: MailParams): MailParams {
+  if (params.category && NO_GLOBAL_CC.has(params.category)) return params;
   const existing = params.cc
     ? (Array.isArray(params.cc) ? params.cc : [params.cc])
     : [];
   // En multiempresa la copia global es un ajuste del propio tenant: nunca la dirección de Náyade
   const cc = isMultiTenant() ? getSystemSettingSync("email_cc_all", "") : GLOBAL_CC_EMAIL;
-  const merged = [...new Set([...existing, ...(cc ? [cc] : [])])];
+  const merged = Array.from(new Set([...existing, ...(cc ? [cc] : [])]));
   return { ...params, cc: merged.length ? merged : undefined };
+}
+
+// ─── Adjuntos del almacenamiento propio ───────────────────────────────────────
+
+/** Sustituye las URL de ficheros del Core por su contenido; uno que no se pueda leer no se adjunta. */
+async function resolveOwnAttachments(params: MailParams): Promise<MailParams> {
+  if (!params.attachments?.some((a) => !a.content && objectIdFromUrl(a.url))) return params;
+  const attachments: NonNullable<MailParams["attachments"]> = [];
+  for (const a of params.attachments) {
+    if (a.content || !objectIdFromUrl(a.url)) {
+      attachments.push(a);
+      continue;
+    }
+    const f = await readStoredFile(a.url);
+    if (f) attachments.push({ name: a.name, url: a.url, content: f.data });
+    else opsLog("warn", "Mailer", "attachment_unavailable", {});
+  }
+  return { ...params, attachments };
 }
 
 // ─── API pública ──────────────────────────────────────────────────────────────
@@ -217,7 +258,17 @@ export async function sendEmail(params: MailParams): Promise<boolean> {
       return false;
     }
   }
-  const enriched = mergeGlobalCc(params);
+  const enriched = mergeGlobalCc(await resolveOwnAttachments(params));
+
+  // Servicio centralizado (bandeja de salida, MAIL_MODE off|sandbox|live, idempotencia, límites y
+  // remitente de plataforma por empresa): siempre en multiempresa; en single solo si se define
+  // MAIL_MODE. Sin MAIL_MODE, la instalación única sigue exactamente como antes (docs/runbooks/CORREO_BREVO.md).
+  const { sendTenantMail, usesMailService } = await import("./mail/tenantMail");
+  if (usesMailService()) {
+    const ok = await sendTenantMail(enriched);
+    meter(Metrics.EMAIL_SENT, 1, "count", { channel: "outbox", ok });
+    return ok;
+  }
 
   // Intentar primero con Brevo API
   if (process.env.BREVO_API_KEY) {
@@ -230,8 +281,15 @@ export async function sendEmail(params: MailParams): Promise<boolean> {
   }
 
   // Fallback SMTP: el buzón SMTP del entorno es de la plataforma/Náyade; en multiempresa no se usa
-  if (isMultiTenant()) return false;
+  if (isMultiTenant()) return mailFailed("no_channel_left");
   const sent = await sendViaSMTP(enriched);
   meter(Metrics.EMAIL_SENT, 1, "count", { channel: "smtp", ok: sent });
-  return sent;
+  return sent || mailFailed("smtp_failed");
+}
+
+/** Envío definitivamente fallido: evento estructurado (sin destinatarios ni asunto) y alerta por repetición. */
+function mailFailed(reason: string): false {
+  opsLog("error", "Mailer", "send_failed", { reason });
+  recordFailure("mail.send_failed");
+  return false;
 }

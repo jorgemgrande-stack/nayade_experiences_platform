@@ -27,15 +27,18 @@ Numeración duplicada o con huecos, nombres no válidos, falta de reversión sin
 
 ## Uso
 ```bash
-pnpm exec tsx scripts/db/migrate.ts verify                       # sin base de datos
-MIGRATE_DATABASE_URL=mysql://... pnpm exec tsx scripts/db/migrate.ts status
-MIGRATE_DATABASE_URL=mysql://... pnpm exec tsx scripts/db/migrate.ts up                 # dry-run
-MIGRATE_DATABASE_URL=mysql://... pnpm exec tsx scripts/db/migrate.ts up --apply
-MIGRATE_DATABASE_URL=mysql://... pnpm exec tsx scripts/db/migrate.ts down --steps 1 --apply
+pnpm exec tsx scripts/db/migrate.ts verify --dir db/migrations                       # sin base de datos
+MIGRATE_DATABASE_URL=mysql://... pnpm exec tsx scripts/db/migrate.ts status --dir db/migrations
+MIGRATE_DATABASE_URL=mysql://... pnpm exec tsx scripts/db/migrate.ts up --dir db/migrations      # dry-run
+MIGRATE_DATABASE_URL=mysql://... pnpm exec tsx scripts/db/migrate.ts up --dir db/migrations --apply --confirm-database <bd>
+MIGRATE_DATABASE_URL=mysql://... pnpm exec tsx scripts/db/migrate.ts down --dir db/migrations --steps 1 --apply --confirm-database <bd>
 ```
-- Sin `--apply` solo informa (dry-run).
-- Contra una base de datos **no local** exige además `--confirm-database <nombre>`.
-- Bloqueo de sesión: no corren dos ejecutores a la vez.
+- `--dir` es **obligatorio** (no hay carril por defecto). Carriles: `db/migrations` (app, exige la tabla `users`) y `db/crm/migrations` (CRM, exige `crm_companies`), o un directorio con `lane.json` (`{"name": "...", "requires": ["tabla"]}`). La BD queda ligada a su carril (`__elephant_migrations_meta`): otro carril sobre ella se rechaza.
+- `verify`, `status` y el dry-run **no escriben nada**.
+- Escribir exige `--apply` y `--confirm-database <nombre>` igual al que devuelve el servidor, **también en local**. Un destino remoto exige además `--allow-remote`.
+- Bloqueo de sesión y relectura del registro tras obtenerlo: dos ejecutores a la vez nunca aplican dos veces la misma migración.
+- Si una migración falla a medias, la BD queda marcada y el ejecutor se niega a continuar. Tras revisar el esquema a mano: `resolve --dir <carril> --id <NNNN_nombre> --as applied|not-applied --apply --confirm-database <bd>`.
+- Huecos (una migración sin aplicar con posteriores aplicadas) y registros de otro carril también detienen la ejecución.
 - Si una migración ya aplicada cambió de contenido, aborta.
 - Un fallo detiene la ejecución con código 1 y la migración **no** se registra como aplicada.
 
@@ -46,4 +49,4 @@ MIGRATE_DATABASE_URL=mysql://... pnpm exec tsx scripts/db/migrate.ts down --step
 4. `up` en dry-run; revisar; `up --apply --confirm-database <nombre>`.
 5. Verificar la aplicación (`/readyz`, flujos críticos). Si falla: `down`.
 
-> El arranque de la aplicación **no** ejecuta este carril. Retirar `runMigrations()` del arranque se hará en un cambio aparte, una vez verificado este flujo en producción.
+> El arranque de la aplicación **no** ejecuta este carril ni, desde `fix/startup-sin-migraciones`, las migraciones de drizzle ni el DDL `ensure*`: solo comprueba el esquema. Ver `docs/runbooks/MANTENIMIENTO_ESQUEMA.md`.

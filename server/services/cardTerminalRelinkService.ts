@@ -21,7 +21,8 @@ import {
   quotes,
 } from "../../drizzle/schema";
 import { legacyDb, legacyPool } from "../_core/legacyDb";
-import { scheduleTenantCron } from "../_core/tenantRegistry/scheduler";
+import { runTenantJob, scheduleTenantCron } from "../_core/tenantRegistry/scheduler";
+import { isMultiTenant } from "../_core/tenant";
 
 const _pool = legacyPool();
 const db = legacyDb();
@@ -144,6 +145,14 @@ export async function runRelinkJob(): Promise<{ checked: number; linked: number;
 
 export function startRelinkJob(): void {
   setImmediate(() => {
+    // Multiempresa: la pasada inicial también se hace por empresa, dentro de su contexto
+    if (isMultiTenant()) {
+      void runTenantJob("card-terminal-relink", async () => {
+        const r = await runRelinkJob();
+        console.log(`[CardRelink] Boot — checked: ${r.checked}, linked: ${r.linked}`);
+      });
+      return;
+    }
     runRelinkJob()
       .then(r => console.log(`[CardRelink] Boot — checked: ${r.checked}, linked: ${r.linked}`))
       .catch(e => console.error("[CardRelink] Boot error:", e));

@@ -154,6 +154,8 @@ describe("CORS", () => {
       r.end();
     });
     expect(raw["access-control-allow-origin"]).toBe("https://crm.elephantsource.es");
+    // Las ediciones del CRM usan PATCH: el navegador debe poder enviarlas
+    expect(String(raw["access-control-allow-methods"])).toMatch(/\bPATCH\b/);
     const bad = await new Promise<http.IncomingHttpHeaders>((resolve) => {
       const r = http.request({ host: "127.0.0.1", port, path: "/cp/v1/tenants", method: "OPTIONS", headers: { origin: "https://evil.example" } }, (res) => {
         res.resume();
@@ -195,6 +197,16 @@ describe("operaciones", () => {
     expect((await call("POST", "/cp/v1/tenants/acme/status", { token: FULL, body: { status: "deleted" } })).status).toBe(409);
     expect((await call("GET", "/cp/v1/tenants/..%2Fetc", { token: FULL })).status).toBe(400);
     expect((await call("GET", "/cp/v1/tenants/no-existe", { token: FULL })).status).toBe(404);
+  });
+
+  it("catálogo de planes: requiere billing:read y no se confunde con un id de empresa", async () => {
+    expect((await call("GET", "/cp/v1/billing/plans", { token: READ })).status).toBe(403);
+    expect((await call("GET", "/cp/v1/billing/plans")).status).toBe(401);
+    const r = await call("GET", "/cp/v1/billing/plans", { token: FULL });
+    expect(r.status).toBe(200);
+    expect(Array.isArray(r.json.plans)).toBe(true);
+    expect(r.json.plans.find((p: any) => p.id === "base")).toMatchObject({ id: "base", billable: expect.any(Boolean) });
+    expect(typeof r.json.trialDays).toBe("number");
   });
 
   it("dominios: el límite por plan se aplica antes de crear el dominio", async () => {

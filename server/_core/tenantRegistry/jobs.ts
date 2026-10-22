@@ -8,6 +8,7 @@
  * Un job que se ejecute en `multi` sin pasar por aquí no tiene contexto y `getTenantId()`
  * lanza: fallo seguro, nunca «alguna» base de datos.
  */
+import { withTenantDb } from "../dbRegistry";
 import { Metrics, meter } from "../metering";
 import { DEFAULT_TENANT_ID, isMultiTenant, runWithTenant } from "../tenant";
 import { accessPolicy } from "./lifecycle";
@@ -26,6 +27,11 @@ export function writableTenantLister(reader: Pick<TenantRegistryReader, "listTen
   return async () => (await reader.listTenants()).filter((t) => accessPolicy(t.status).writes).map((t) => t.id);
 }
 
+/** Empresas con panel (activas, en prueba, en gracia o suspendidas): tareas que deben seguir en solo lectura. */
+export function adminTenantLister(reader: Pick<TenantRegistryReader, "listTenants">): TenantLister {
+  return async () => (await reader.listTenants()).filter((t) => accessPolicy(t.status).admin).map((t) => t.id);
+}
+
 export async function runForEachTenant(
   jobName: string,
   job: (tenantId: string) => Promise<void>,
@@ -41,7 +47,8 @@ export async function runForEachTenant(
   const results: TenantJobResult[] = [];
   for (const tenantId of await listTenants()) {
     try {
-      await runWithTenant(tenantId, () => job(tenantId));
+      // Con el pool del tenant precargado y arrendado: el código heredado (legacyDb) funciona
+      await withTenantDb(tenantId, () => job(tenantId));
       results.push({ tenantId, ok: true });
     } catch (e) {
       // Sin datos del tenant ni del error más allá del mensaje
