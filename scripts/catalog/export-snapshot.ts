@@ -16,6 +16,7 @@ import { CATALOG_VERSION, NET_FAMILIES } from "../../server/catalog/elephantSour
 import { seedElephantSource } from "../../server/catalog/seed";
 import { WebAdminService } from "../../server/web/service";
 import { MemoryWebStore } from "../../server/web/store";
+import { REPOSITORIES } from "../../shared/repositories";
 
 const FIXED_NOW = Date.UTC(2026, 9, 16);
 
@@ -36,7 +37,7 @@ async function main() {
   await seedElephantSource(svc, store);
   const site = await svc.publicSite("published");
   const doc = {
-    _generated: `GENERADO desde nayade_experiences_platform (server/catalog/elephantSourceV1.ts, ${CATALOG_VERSION}). No editar a mano: regenerar con scripts/catalog/export-snapshot.ts.`,
+    _generated: `GENERADO desde ${REPOSITORIES.core} (server/catalog/elephantSourceV1.ts, ${CATALOG_VERSION}). No editar a mano: regenerar con scripts/catalog/export-snapshot.ts.`,
     catalogVersion: CATALOG_VERSION,
     // Huella del cotizador (server/catalog/quote.ts, finales de línea LF): la web guarda una copia
     // generada y su CI comprueba que coincide; así nunca calcula con una versión distinta.

@@ -21,6 +21,7 @@ import type { Keyring } from "./backupCrypto";
 import { decryptBuffer, encryptBuffer } from "./backupCrypto";
 import type { BackupStorage } from "./backupStorage";
 import { parseDatabaseServers } from "../provisioning/servers";
+import { REPOSITORIES } from "../../../shared/repositories";
 
 export const RECOVERY_AAD = "recovery:platform";
 export const RECOVERY_LATEST_KEY = "recovery/latest.json.enc";
@@ -42,7 +43,7 @@ export const SERVICE_CATALOG: ReadonlyArray<{
 }> = [
   {
     service: "core",
-    repo: "nayade_experiences_platform",
+    repo: REPOSITORIES.core,
     dockerfilePath: "deploy/railway/core.Dockerfile",
     healthcheck: "/healthz",
     required: ["NODE_ENV", "TENANT_MODE", "REGISTRY_DATABASE_URL", "REGISTRY_KEYS", "REGISTRY_ACTIVE_KEY_ID", "INTEGRATION_KEYS", "INTEGRATION_ACTIVE_KEY_ID", "JWT_SECRET", "EMAIL_ENCRYPTION_KEY", "LOCAL_AUTH"],
@@ -50,7 +51,7 @@ export const SERVICE_CATALOG: ReadonlyArray<{
   },
   {
     service: "controlplane",
-    repo: "nayade_experiences_platform",
+    repo: REPOSITORIES.core,
     dockerfilePath: "Dockerfile.controlplane",
     start: "node dist-cp/main.js",
     healthcheck: "/healthz",
@@ -63,7 +64,7 @@ export const SERVICE_CATALOG: ReadonlyArray<{
   },
   {
     service: "backup-job",
-    repo: "nayade_experiences_platform",
+    repo: REPOSITORIES.core,
     dockerfilePath: "Dockerfile.controlplane",
     start: "node dist-cp/backup-job.js run",
     cron: "*/15 * * * *",
@@ -76,11 +77,11 @@ export const SERVICE_CATALOG: ReadonlyArray<{
       "BACKUP_SECONDARY_KEEP_DAILY", "BACKUP_SECONDARY_KEEP_WEEKLY", "BACKUP_SECONDARY_KEEP_MONTHLY", "PROVISIONING_DB_SERVERS", "PROVISIONING_DB_ADMIN_URL", "ES_DEPLOY_COMMIT",
     ],
   },
-  { service: "crm", repo: "big-elephant-crm", dockerfilePath: "deploy/railway/Dockerfile", required: [], optional: [] },
-  { service: "web", repo: "bigelephant-web", dockerfilePath: "deploy/railway/Dockerfile", required: [], optional: [] },
+  { service: "crm", repo: REPOSITORIES.crm, dockerfilePath: "deploy/railway/Dockerfile", required: [], optional: [] },
+  { service: "web", repo: REPOSITORIES.web, dockerfilePath: "deploy/railway/Dockerfile", required: [], optional: [] },
   {
     service: "pasarelas (web, crm, core-gateway, gw-<empresa>)",
-    repo: "nayade_experiences_platform",
+    repo: REPOSITORIES.core,
     dockerfilePath: "deploy/railway/gateway/Dockerfile",
     healthcheck: "/__gateway/health",
     required: ["UPSTREAM", "GATEWAY_USER", "GATEWAY_PASSWORD_HASH"],
