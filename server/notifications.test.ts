@@ -117,7 +117,7 @@ describe("despachador de eventos comerciales", () => {
       now: () => NOW,
       maxAttempts: 2,
     });
-    return { log, dispatcher, sent, store, provider, orders, companyId: c.id };
+    return { log, dispatcher, sent, store, provider, orders, companyId: c.id, crmStore };
   }
 
   it("cada evento con plantilla sale una vez a su contacto de facturación; sin plantilla queda omitido; repetir no duplica", async () => {
@@ -159,6 +159,19 @@ describe("despachador de eventos comerciales", () => {
     ]);
     expect(await s.dispatcher.run()).toEqual({ done: 1, skipped: 3, retried: 0, dead: 0 });
     expect(s.sent.map((x) => x.key)).toEqual([`notif:module.purchase_failed:v1:r1`]);
+  });
+
+  it("aviso previo al archivado: con la fecha y la exportación; sin empresa en el evento, la enlazada a su plataforma", async () => {
+    const s = await setup();
+    await s.crmStore.update("companies", s.companyId, { tenantId: "t9-acme" });
+    const archiveAt = NOW + 7 * 86_400_000;
+    await s.log.append(null, [
+      ev("a1", "access.archive_notice", { companyId: null, tenantId: "t9-acme", subscriptionId: null, trialId: 9, data: { day: 83, archiveAt } }),
+      ev("a2", "access.archive_notice", { companyId: null, tenantId: "sin-empresa", subscriptionId: null, trialId: 10, data: { day: 83, archiveAt } }),
+    ]);
+    expect(await s.dispatcher.run()).toEqual({ done: 1, skipped: 1, retried: 0, dead: 0 });
+    expect(s.sent.map((x) => [x.key.split(":")[1], x.to])).toEqual([["access.archive_notice", "ana@acme.example"]]);
+    expect(s.sent[0].subject).toBe("Tu cuenta se archivará el 27 de octubre de 2026");
   });
 
   it("un fallo se reintenta y al agotar los intentos queda abandonado con alerta", async () => {

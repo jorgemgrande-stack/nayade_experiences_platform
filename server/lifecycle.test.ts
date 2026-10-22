@@ -53,6 +53,16 @@ describe("política provisional", () => {
   });
 });
 
+describe("avisos previos al archivado (política)", () => {
+  it("apagados por defecto; solo los anteriores al plazo de conservación; mal formados, ninguno", () => {
+    expect(lifecyclePolicyFromEnv({}).archiveNoticeDays).toEqual([]);
+    expect(lifecyclePolicyFromEnv({ CP_LIFECYCLE_RETENTION_DAYS: "90", CP_LIFECYCLE_ARCHIVE_NOTICE_DAYS: "89,60,83,60" }).archiveNoticeDays).toEqual([60, 83, 89]);
+    // Con la conservación por defecto (30 días) los avisos de 60, 83 y 89 no tienen sentido: ninguno
+    expect(lifecyclePolicyFromEnv({ CP_LIFECYCLE_ARCHIVE_NOTICE_DAYS: "60,83,89" }).archiveNoticeDays).toEqual([]);
+    expect(lifecyclePolicyFromEnv({ CP_LIFECYCLE_RETENTION_DAYS: "90", CP_LIFECYCLE_ARCHIVE_NOTICE_DAYS: "60,x" }).archiveNoticeDays).toEqual([]);
+  });
+});
+
 describe("cambios de licencia aplicables por fecha", () => {
   const g = (status: "active" | "suspended" | "read_only" | "cancelled") => [{ tenantId: "t", capabilityId: "crm", siteId: "", status, validUntil: null, source: "subscription:1", updatedAt: 0, updatedBy: "x" }];
   const c = (status: "active" | "cancelled", validUntil: number | null = null) => ({ capabilityId: "crm", siteId: "", status, validUntil, source: "subscription:1" });
@@ -285,6 +295,39 @@ describe("motor con el orquestador en memoria", () => {
     expect((await ledger.list({ orderId: o.id, types: ["access.read_only_ended"] }))).toHaveLength(1);
     // La revisión de conservación sigue siendo de un operador
     expect((await e.plan()).actions.find((a) => a.kind === "retention_review" && a.orderId === o.id)?.executor).toBe("operator");
+  });
+
+  it("avisos previos al archivado: uno por umbral (60, 83, 89 días), idempotentes; nunca archiva ni borra; sin umbrales, ninguno", async () => {
+    const o = await paidOrder("Archivo Futuro SL");
+    await svc.cancel(o.id, { reason: "El cliente cierra la actividad" }, actor);
+    clock = (await subsStore.get(o.subscriptionId!))!.currentPeriodEnd + 1;
+    const policy = { ...base.policy, retentionDays: 90, archiveNoticeDays: [60, 83, 89] };
+    const e = new LifecycleEngine({ ...base, capabilities: caps, events: ledger, policy });
+    await e.run();
+    const ended = (await svc.must(o.id)).updatedAt!;
+    const notices = async () => (await e.plan()).actions.filter((a) => a.kind === "archive_notice" && a.orderId === o.id).map((a) => a.detail.day);
+    clock = ended + 59 * DAY;
+    expect(await notices()).toEqual([]);
+    clock = ended + 60 * DAY + 1;
+    expect(await notices()).toEqual([60]);
+    expect((await e.run()).applied.archiveNotices).toBe(1);
+    expect((await e.run()).applied.archiveNotices).toBe(0);
+    clock = ended + 89 * DAY + 1;
+    expect(await notices()).toEqual([89]);
+    expect((await e.run()).applied.archiveNotices).toBe(1);
+    const sent = await ledger.list({ orderId: o.id, types: ["access.archive_notice"] });
+    expect(sent.map((x) => x.data)).toEqual([
+      { day: 60, archiveAt: ended + 90 * DAY },
+      { day: 89, archiveAt: ended + 90 * DAY },
+    ]);
+    // Llegado el plazo: ningún aviso más, solo la revisión de una persona (nada se archiva solo)
+    clock = ended + 90 * DAY + 1;
+    expect(await notices()).toEqual([]);
+    expect((await e.plan()).actions.find((a) => a.kind === "retention_review" && a.orderId === o.id)?.executor).toBe("operator");
+    expect((await svc.must(o.id)).state).toBe("cancelled");
+    // Sin umbrales configurados: ningún aviso
+    clock = ended + 60 * DAY + 1;
+    expect((await new LifecycleEngine({ ...base, events: ledger, policy: { ...base.policy, retentionDays: 90 } }).plan()).actions.filter((a) => a.kind === "archive_notice")).toEqual([]);
   });
 
   it("otra réplica con el bloqueo: el tick no hace nada", async () => {

@@ -74,6 +74,7 @@ export class NotificationDispatcher {
       currency: scalar(data.currency),
       full: scalar(data.full),
       readOnlyUntil: scalar(data.validUntil) ?? scalar(data.readOnlyUntil),
+      archiveAt: scalar(data.archiveAt),
     };
     // La dirección de un cambio de cantidad se deduce si el evento no la trae (alta = sube, baja a 0 = baja)
     if (e.type === "subscription.quantity_changed" && v.direction === null) v.direction = typeof after.quantity === "number" && after.quantity > 0 ? "up" : "down";
@@ -93,8 +94,14 @@ export class NotificationDispatcher {
   }
 
   private async recipient(e: CommercialEvent): Promise<string | null> {
-    if (!e.companyId) return null;
-    const contacts = (await this.d.crmStore.list("contacts", { companyId: e.companyId })).filter((c) => c.status !== "inactive" && c.email);
+    // Sin empresa en el evento (p. ej. una prueba): la empresa del CRM enlazada a su plataforma, si es única
+    let companyId = e.companyId;
+    if (!companyId && e.tenantId) {
+      const linked = (await this.d.crmStore.list("companies", { tenantId: e.tenantId })) as Array<{ id: number }>;
+      companyId = linked.length === 1 ? linked[0].id : null;
+    }
+    if (!companyId) return null;
+    const contacts = (await this.d.crmStore.list("contacts", { companyId })).filter((c) => c.status !== "inactive" && c.email);
     return (contacts.find((c) => c.isPrimary) ?? contacts[0])?.email ?? null;
   }
 
