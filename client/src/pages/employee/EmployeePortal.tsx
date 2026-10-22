@@ -9,6 +9,7 @@ import { Link } from "wouter";
 import { User, FileText, CalendarOff, Banknote, ArrowRight, Play, CheckCircle2 } from "lucide-react";
 import EmployeeLayout from "./EmployeeLayout";
 import { trpc } from "@/lib/trpc";
+import { usePublicContact } from "@/hooks/usePublicPhone";
 
 function fmtTime(d: Date | string | null | undefined) {
   if (!d) return "—";
@@ -16,6 +17,7 @@ function fmtTime(d: Date | string | null | undefined) {
 }
 
 export default function EmployeePortal() {
+  const { brandName } = usePublicContact();
   const { data: me, isLoading } = trpc.hr.portal.me.useQuery();
   const { data: docs } = trpc.hr.portal.myDocuments.useQuery();
   const { data: current } = trpc.hr.timeClock.myCurrent.useQuery();
@@ -32,7 +34,7 @@ export default function EmployeePortal() {
             Hola, <span className="text-orange-400">{firstName}</span>
           </h1>
           <p className="text-sm text-white/50 mt-1">
-            Bienvenido a tu Portal del Empleado de Náyade Experiences.
+            Bienvenido a tu Portal del Empleado{brandName && ` de ${brandName}`}.
           </p>
         </div>
 
@@ -149,7 +151,7 @@ export default function EmployeePortal() {
         {/* Estado */}
         {!isLoading && me && (
           <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/[0.05] p-3 text-xs text-white/70">
-            ✓ Tu cuenta está activa. Empleado de <strong>{me.department ?? "Náyade Experiences"}</strong>
+            ✓ Tu cuenta está activa. Empleado de <strong>{me.department ?? brandName}</strong>
             {me.position ? <> · {me.position}</> : null}.
           </div>
         )}

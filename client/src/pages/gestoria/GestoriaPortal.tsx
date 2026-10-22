@@ -14,8 +14,10 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { Landmark, Download, LogOut, Loader2, CheckCircle2 } from "lucide-react";
 import { MODEL_NAME, STATUS_LABEL, STATUS_COLOR, eur, daysUntil } from "../admin/gestoria/taxLabels";
+import { usePublicContact } from "@/hooks/usePublicPhone";
 
 export default function GestoriaPortal() {
+  const { brandName } = usePublicContact();
   const { user, loading, logout } = useAuth();
   const [location, navigate] = useLocation();
   const currentYear = new Date().getFullYear();
@@ -62,7 +64,7 @@ export default function GestoriaPortal() {
         <div className="max-w-4xl mx-auto px-4 h-14 flex items-center justify-between">
           <div className="flex items-center gap-2 text-orange-400 font-bold">
             <Landmark className="w-5 h-5" />
-            <span className="text-sm uppercase tracking-wider">Portal de Gestoría · Náyade</span>
+            <span className="text-sm uppercase tracking-wider">Portal de Gestoría{brandName && ` · ${brandName}`}</span>
           </div>
           <button
             onClick={() => logout().then(() => navigate("/login"))}

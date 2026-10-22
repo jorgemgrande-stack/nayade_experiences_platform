@@ -4,8 +4,11 @@ import { Badge } from "@/components/ui/badge";
 import PublicLayout from "@/components/PublicLayout";
 import { cn } from "@/lib/utils";
 import { trpc } from "@/lib/trpc";
+import { usePublicContact } from "@/hooks/usePublicPhone";
 
 export default function Gallery() {
+  // Web de una empresa: su imagen principal (o ninguna), nunca la de la instalación original
+  const { neutral, brandName, heroImage } = usePublicContact();
   const [selectedCategory, setSelectedCategory] = useState("Todas");
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
 
@@ -23,7 +26,11 @@ export default function Gallery() {
     <PublicLayout>
       {/* Hero */}
       <section className="relative h-[50vh] min-h-[380px] overflow-hidden">
-        <img src="https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/5f23cf10-be16-424a-a48f-031f5b74e35f_843d3fb3.png" alt="Galería Náyade" className="w-full h-full object-cover" />
+        {neutral ? (
+          heroImage && <img src={heroImage} alt={brandName} className="w-full h-full object-cover" />
+        ) : (
+          <img src="https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/5f23cf10-be16-424a-a48f-031f5b74e35f_843d3fb3.png" alt="Galería Náyade" className="w-full h-full object-cover" />
+        )}
         <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/40 to-black/70" />
         <div className="absolute inset-0 flex items-center">
           <div className="container">
@@ -98,7 +105,7 @@ export default function Gallery() {
                 >
                   <img
                     src={img.imageUrl}
-                    alt={img.title || "Foto Náyade"}
+                    alt={img.title || "Foto"}
                     className="w-full object-cover group-hover:scale-105 transition-transform duration-500"
                     loading="lazy"
                   />
@@ -151,7 +158,7 @@ export default function Gallery() {
           >
             <img
               src={items[lightboxIndex].imageUrl}
-              alt={items[lightboxIndex].title || "Foto Náyade"}
+              alt={items[lightboxIndex].title || "Foto"}
               className="max-w-full max-h-[80vh] object-contain rounded-xl"
             />
             <div className="text-center mt-3">

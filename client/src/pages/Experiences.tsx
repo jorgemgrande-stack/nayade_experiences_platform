@@ -9,6 +9,7 @@ import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import AddToCartModal from "@/components/AddToCartModal";
 import { DiscountRibbon, getDiscountedPrice } from "@/components/DiscountRibbon";
+import { usePublicContact } from "@/hooks/usePublicPhone";
 
 const difficultyColors: Record<string, string> = {
   facil: "bg-emerald-100 text-emerald-700",
@@ -27,6 +28,8 @@ const difficultyLabels: Record<string, string> = {
 
 
 export default function Experiences() {
+  // Web de una empresa: su imagen principal (o ninguna), nunca la de la instalación original
+  const { neutral, brandName, heroImage } = usePublicContact();
   const params = useParams<{ category?: string }>();
   const [search, setSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<number | null>(null);
@@ -50,7 +53,11 @@ export default function Experiences() {
     <PublicLayout>
       {/* Hero */}
       <section className="relative h-[50vh] min-h-[380px] overflow-hidden">
-        <img src="https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/wakeboard_b574701d.jpg" alt="Experiencias Náyade" className="w-full h-full object-cover" />
+        {neutral ? (
+          heroImage && <img src={heroImage} alt={brandName} className="w-full h-full object-cover" />
+        ) : (
+          <img src="https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/wakeboard_b574701d.jpg" alt="Experiencias Náyade" className="w-full h-full object-cover" />
+        )}
         <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/40 to-black/70" />
         <div className="absolute inset-0 flex items-center">
           <div className="container">
