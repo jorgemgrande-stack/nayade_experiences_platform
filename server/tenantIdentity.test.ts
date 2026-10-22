@@ -35,6 +35,7 @@ import {
   brandSetting,
   formatLegalAddress,
   LEGACY_LEGAL_FALLBACK,
+  legacyBrandSetting,
   legacyBrandText,
   legacyUrl,
   resolveLegalCompany,
@@ -249,11 +250,12 @@ describe("single: sin cambios", () => {
     expect(publicBaseUrl()).toBe(LEGACY_PUBLIC_URL_FALLBACK);
     expect(legacyUrl("https://www.skicenter.es")).toBe("https://www.skicenter.es");
   });
-  it("marca: el ajuste o el respaldo heredado de siempre", () => {
+  it("marca: el ajuste de la propia instalación; sin él, vacío (nunca el texto heredado escrito en el código)", () => {
     settings.byTenant.default = {};
-    expect(brandName()).toBe("Skicenter");
-    expect(brandSetting("brand_short_name", "Náyade")).toBe("Náyade");
-    expect(legacyBrandText("Nayade")).toBe("Nayade");
+    expect(brandName()).toBe("");
+    expect(brandSetting("brand_short_name", "")).toBe("");
+    expect(legacyBrandText("Nayade")).toBe("");
+    expect(legacyBrandSetting("brand_support_phone", "+34 000")).toBe("");
     settings.byTenant.default = { brand_name: "Mi Marca" };
     expect(brandName()).toBe("Mi Marca");
   });

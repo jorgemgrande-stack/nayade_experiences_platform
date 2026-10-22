@@ -5,7 +5,7 @@
 import { z } from "zod";
 import { publicBaseUrl } from "../_core/productIdentity";
 import { isMultiTenant } from "../_core/tenant";
-import { legacyBrandSetting, legacyBrandText, legacySiteHost, tenantIssuerData } from "../tenantBrand";
+import { brandSetting, companyName, legacySiteHost, tenantIssuerData } from "../tenantBrand";
 import { TRPCError } from "@trpc/server";
 import { protectedProcedure, publicProcedure, router } from "../_core/trpc";
 import { randomBytes } from "crypto";
@@ -127,16 +127,16 @@ async function generateSettlementPdfAndUpload(data: {
 <body>
   <div class="doc-header">
     <div class="logo-block">
-      <img src="${legacyBrandSetting("brand_logo_url", "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/logo-nayade_20a42bc4.jpg")}" alt="${legacyBrandText("Náyade")}" />
+      <img src="${brandSetting("brand_logo_url", "")}" alt="${companyName()}" />
       <div class="brand-text">
-        <div class="brand-name">${legacyBrandText("Náyade")}</div>
+        <div class="brand-name">${companyName()}</div>
         <div class="brand-sub">Experiences</div>
       </div>
     </div>
     <div class="company-info">
-      <strong>${data.companyData?.name ?? "Náyade Experiences S.L."}</strong>
-      ${data.companyData?.address ?? legacyBrandSetting("brand_address", "Los Ángeles de San Rafael, Segovia")}<br/>
-      ${data.companyData?.email ?? legacyBrandSetting("site_business_email", "reservas@nayadeexperiences.es")} &middot; ${data.companyData?.phone ?? legacyBrandSetting("brand_phone", "+34 639 57 66 27")}
+      <strong>${data.companyData?.name ?? brandSetting("brand_name", "")}</strong>
+      ${data.companyData?.address ?? brandSetting("brand_address", "")}<br/>
+      ${data.companyData?.email ?? brandSetting("site_business_email", "")} &middot; ${data.companyData?.phone ?? brandSetting("brand_phone", "")}
     </div>
   </div>
   <div class="doc-type-band">
@@ -148,8 +148,8 @@ async function generateSettlementPdfAndUpload(data: {
   <div class="parties">
     <div class="party">
       <h3>Emisor</h3>
-      <p><strong>${data.companyData?.name ?? "Náyade Experiences S.L."}</strong><br/>
-      ${data.companyData?.address ?? legacyBrandSetting("brand_address", "Los Ángeles de San Rafael, Segovia")}<br/>
+      <p><strong>${data.companyData?.name ?? brandSetting("brand_name", "")}</strong><br/>
+      ${data.companyData?.address ?? brandSetting("brand_address", "")}<br/>
       CIF: ${data.companyData?.cif ?? ""}</p>
     </div>
     <div class="party">
@@ -190,7 +190,7 @@ async function generateSettlementPdfAndUpload(data: {
 
   </div>
   <div class="footer">
-    <p>${data.companyData?.name ?? "Náyade Experiences S.L."} &middot; ${legacySiteHost("www.skicenter.es")}</p>
+    <p>${data.companyData?.name ?? brandSetting("brand_name", "")} &middot; ${legacySiteHost("")}</p>
     <p>Documento de liquidación de servicios prestados por el proveedor durante el período indicado.</p>
   </div>
 </body>
@@ -613,12 +613,12 @@ export const suppliersRouter = router({
       const inviteUrl = `${origin}/supplier/activar?token=${token}`;
       await sendEmail({
         to: email,
-        subject: `Invitación al portal de proveedores — ${legacyBrandText("Skicenter")}`,
+        subject: `Invitación al portal de proveedores — ${companyName()}`,
         html: `
           <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px;">
             <h2 style="color:#ea580c">Portal de Proveedores</h2>
             <p>Hola <strong>${name}</strong>,</p>
-            <p>Has sido invitado al portal de proveedores de <strong>${legacyBrandText("Skicenter")}</strong>, donde podrás ver las ventas de tus productos por todos los canales y tus liquidaciones.</p>
+            <p>Has sido invitado al portal de proveedores de <strong>${companyName()}</strong>, donde podrás ver las ventas de tus productos por todos los canales y tus liquidaciones.</p>
             <p style="margin:24px 0">
               <a href="${inviteUrl}" style="background:#ea580c;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold">Activar mi cuenta</a>
             </p>
@@ -1687,11 +1687,11 @@ export const settlementsRouter = router({
         .where(sql`\`key\` IN ('legalCompanyName','legalCompanyCif','legalCompanyAddress','legalCompanyEmail','legalCompanyPhone')`);
       const s: Record<string, string> = Object.fromEntries(settingsRows.map(r => [r.key, r.value ?? ""]));
       const companyData = isMultiTenant() ? await tenantIssuerData(s) : {
-        name: s.legalCompanyName || "Náyade Experiences S.L.",
+        name: s.legalCompanyName || brandSetting("brand_name", ""),
         cif: s.legalCompanyCif || "",
-        address: s.legalCompanyAddress || "Los Ángeles de San Rafael, Segovia",
-        email: s.legalCompanyEmail || "reservas@nayadeexperiences.es",
-        phone: s.legalCompanyPhone || "+34 639 57 66 27",
+        address: s.legalCompanyAddress || brandSetting("brand_address", ""),
+        email: s.legalCompanyEmail || brandSetting("site_business_email", ""),
+        phone: s.legalCompanyPhone || brandSetting("brand_phone", ""),
       };
 
       const { url, key } = await generateSettlementPdfAndUpload({
@@ -1757,7 +1757,7 @@ export const settlementsRouter = router({
 
       await sendEmail({
         to: toEmail,
-        subject: `Liquidación ${settlement.settlementNumber} — ${legacyBrandText("Náyade Experiences")}`,
+        subject: `Liquidación ${settlement.settlementNumber} — ${companyName()}`,
         html: `
           <h2>Liquidación de servicios</h2>
           <p>Estimado/a ${settlement.supplierName},</p>
@@ -1765,7 +1765,7 @@ export const settlementsRouter = router({
           <p>Importe neto a abonar: <strong>${parseFloat(settlement.netAmountProvider ?? "0").toFixed(2)} €</strong></p>
           ${settlement.pdfUrl ? `<p><a href="${externalFileUrl(settlement.pdfUrl)}">Descargar liquidación en PDF</a></p>` : ""}
           <p>Gracias por su colaboración.</p>
-          <p>${legacyBrandText("Náyade Experiences")}</p>
+          <p>${companyName()}</p>
         `,
       });
 

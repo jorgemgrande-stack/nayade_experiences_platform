@@ -12,7 +12,7 @@ import { buildReservationConfirmHtml, buildReservationFailedHtml } from "./email
 import { sendEmail } from "./mailer";
 import { sendManagedEmail, logDirectEmail } from "./emailManager";
 import { getBusinessEmail } from "./config";
-import { brandName, legacyBrandText } from "./tenantBrand";
+import { brandName, companyName } from "./tenantBrand";
 import { getDb } from "./db";
 import { reservations } from "../drizzle/schema";
 
@@ -222,7 +222,7 @@ export async function sendReservationFailedNotifications(
       templateKey: "reservation_failed",
       triggerEvent: "reservation_payment_failed",
       recipientEmail: reservation.customerEmail,
-      subject: `❌ Pago no completado — ${reservation.productName} — ${legacyBrandText("Náyade Experiences")}`,
+      subject: `❌ Pago no completado — ${reservation.productName} — ${companyName()}`,
       html: buildReservationFailedHtml({
         merchantOrder: reservation.merchantOrder,
         productName: reservation.productName,

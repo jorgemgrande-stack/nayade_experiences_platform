@@ -6,7 +6,7 @@
 
 import { router, protectedProcedure, publicProcedure, staffProcedure, adminProcedure } from "../_core/trpc";
 import { publicBaseUrl } from "../_core/productIdentity";
-import { legacyBrandSetting, legacyBrandText, legacyUrl } from "../tenantBrand";
+import { brandSetting, companyName, legacyUrl } from "../tenantBrand";
 import { invoicePreviewPath } from "../_core/signedLinks";
 import { createLead, createBookingFromReservation, createReavExpedient, attachReavDocument, upsertClientFromReservation, postConfirmOperation, getGHLCredentials } from "../db";
 import { confirmReservationAndNotify } from "../reservationEmails";
@@ -178,7 +178,7 @@ async function sendQuoteEmail(quote: {
     installmentPlan: quote.installmentPlan ?? undefined,
   });
 
-  const quoteSubject = `Tu propuesta de ${legacyBrandText("Náyade Experiences")} — ${quote.quoteNumber}`;
+  const quoteSubject = `Tu propuesta de ${companyName()} — ${quote.quoteNumber}`;
   await sendManagedEmail({
     templateKey: "quote",
     triggerEvent: "quote_sent",
@@ -227,7 +227,7 @@ async function sendConfirmationEmail(data: {
     installmentPlan: data.installmentPlan,
   });
 
-  const confSubject = `? Reserva confirmada — ${data.reservationRef} — ${legacyBrandText("Náyade Experiences")}`;
+  const confSubject = `? Reserva confirmada — ${data.reservationRef} — ${companyName()}`;
   await sendManagedEmail({
     templateKey: "confirmation",
     triggerEvent: "reservation_confirmed",
@@ -317,7 +317,7 @@ async function sendTransferConfirmationEmail(data: {
 
   await sendEmail({
     to: data.clientEmail,
-    subject: `?? Pago por transferencia confirmado — ${data.invoiceNumber} — ${legacyBrandText("Náyade Experiences")}`,
+    subject: `?? Pago por transferencia confirmado — ${data.invoiceNumber} — ${companyName()}`,
     html,
   });
 }
@@ -1278,7 +1278,7 @@ export const crmRouter = router({
           templateKey: "budget_request_user",
           triggerEvent: "lead_submitted",
           recipientEmail: input.email,
-          subject: `Solicitud de presupuesto recibida — ${legacyBrandText("Náyade Experiences")}`,
+          subject: `Solicitud de presupuesto recibida — ${companyName()}`,
           html: buildBudgetRequestUserHtml(emailData),
           relatedEntityType: "lead",
           relatedEntityId: result.id,
@@ -4649,7 +4649,7 @@ export const crmRouter = router({
             invoiceUrl: null,
             reservationUrl,
           });
-          subject = `?? Confirmación de reserva — ${res.productName} — ${legacyBrandText("Náyade Experiences")}`;
+          subject = `?? Confirmación de reserva — ${res.productName} — ${companyName()}`;
         } else {
           html = buildConfirmationHtml({
             clientName: res.customerName,
@@ -4664,10 +4664,10 @@ export const crmRouter = router({
             total: (res.amountTotal / 100).toFixed(2),
             bookingDate: res.bookingDate,
             contactEmail: await getBusinessEmail('reservations'),
-            contactPhone: legacyBrandSetting("brand_support_phone", "+34 639 57 66 27"),
+            contactPhone: brandSetting("brand_support_phone", ""),
             reservationUrl,
           });
-          subject = `? Confirmación de reserva — ${res.productName} — ${legacyBrandText("Náyade Experiences")}`;
+          subject = `? Confirmación de reserva — ${res.productName} — ${companyName()}`;
         }
         await sendEmail({ to: res.customerEmail ?? "", subject, html });
         await db.insert(crmActivityLog).values({
@@ -5192,12 +5192,12 @@ export const crmRouter = router({
               total: input.amountTotal.toFixed(2),
               bookingDate: input.bookingDate,
               contactEmail: await getBusinessEmail('reservations'),
-              contactPhone: legacyBrandSetting("brand_support_phone", "+34 639 57 66 27"),
+              contactPhone: brandSetting("brand_support_phone", ""),
               reservationUrl,
             });
             await sendEmail({
               to: input.customerEmail,
-              subject: `? Confirmación de reserva — ${input.productName} — ${legacyBrandText("Náyade Experiences")}`,
+              subject: `? Confirmación de reserva — ${input.productName} — ${companyName()}`,
               html,
             });
           } catch (e) {
@@ -5336,7 +5336,7 @@ export const crmRouter = router({
         </style></head><body>
           <div class="header">
             <h1>Reserva #${res.merchantOrder}${res.dateModified ? '<span class="tag">?? FECHA MODIFICADA</span>' : ""}</h1>
-            <p>${legacyBrandText("Náyade Experiences — Los Ángeles de San Rafael, Segovia")}</p>
+            <p>${companyName()}</p>
           </div>
           <div style="padding:0 0 0 0;">
             <div class="section">
@@ -5372,7 +5372,7 @@ export const crmRouter = router({
               ${res.invoiceNumber ? `<div style="margin-top:8px;font-size:12px;color:#6b7280;">Factura: ${res.invoiceNumber}</div>` : ""}
             </div>
           </div>
-          <div class="footer">Generado por ${legacyBrandText("Náyade Experiences")} CRM — ${new Date().toLocaleDateString("es-ES")}</div>
+          <div class="footer">Generado por ${companyName()} CRM — ${new Date().toLocaleDateString("es-ES")}</div>
         </body></html>`;
         const pdfBuffer = await htmlToPdf(html);
         const key = `reservations/pdf-${res.merchantOrder}-${Date.now()}.pdf`;
@@ -5892,13 +5892,13 @@ export const crmRouter = router({
 
         try {
           const subject = invoice.invoiceType === "abono"
-            ? `Factura de abono ${invoice.invoiceNumber} — ${legacyBrandText("Náyade Experiences")}`
-            : `Tu factura ${invoice.invoiceNumber} — ${legacyBrandText("Náyade Experiences")}`;
+            ? `Factura de abono ${invoice.invoiceNumber} — ${companyName()}`
+            : `Tu factura ${invoice.invoiceNumber} — ${companyName()}`;
 
           const items = (invoice.itemsJson as { description: string; quantity: number; unitPrice: number; total: number }[]) ?? [];
           const htmlBody = `
             <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
-              <h2 style="color:#f97316;">${legacyBrandText("Náyade Experiences")}</h2>
+              <h2 style="color:#f97316;">${companyName()}</h2>
               <p>Estimado/a <strong>${invoice.clientName}</strong>,</p>
               <p>Adjuntamos ${invoice.invoiceType === "abono" ? "la factura de abono" : "tu factura"} <strong>${invoice.invoiceNumber}</strong>.</p>
               <table style="width:100%;border-collapse:collapse;margin:16px 0;">
@@ -5907,7 +5907,7 @@ export const crmRouter = router({
               </table>
               <p><strong>Subtotal:</strong> ${Number(invoice.subtotal).toFixed(2)}€ | <strong>IVA (${invoice.taxRate}%):</strong> ${Number(invoice.taxAmount).toFixed(2)}€ | <strong>TOTAL: ${Number(invoice.total).toFixed(2)}€</strong></p>
               ${invoice.pdfUrl ? `<p>Encontrarás tu factura <strong>adjunta a este correo</strong> en PDF.${invoice.pdfUrl ? ` También puedes <a href="${externalFileUrl(invoice.pdfUrl)}" style="color:#f97316;">descargarla aquí</a>.` : ""}</p>` : ""}
-              <hr/><p style="color:#6b7280;font-size:12px;">${legacyBrandText("Náyade Experiences")} — ${COPY_EMAIL} — ${legacyBrandSetting("brand_support_phone", "+34 639 57 66 27")} (también WhatsApp)</p>
+              <hr/><p style="color:#6b7280;font-size:12px;">${companyName()} — ${COPY_EMAIL} — ${brandSetting("brand_support_phone", "")} (también WhatsApp)</p>
             </div>`;
 
           // El PDF se adjunta al correo (Brevo lo descarga del CDN), para que el
@@ -6448,7 +6448,7 @@ export const crmRouter = router({
             productName: input.productName,
             amountFormatted: (input.amountCents / 100).toLocaleString("es-ES", { minimumFractionDigits: 2 }) + " €",
             dueDate: dueDateFormatted,
-            ibanInfo: legal.iban ? `Banco: ${legacyBrandText("Skicenter")}\nIBAN: ${legal.iban}\nConcepto: Reserva ${input.productName}` : undefined,
+            ibanInfo: legal.iban ? `Banco: ${companyName()}\nIBAN: ${legal.iban}\nConcepto: Reserva ${input.productName}` : undefined,
             origin: input.origin ?? "",
           });
           await sendManagedEmail({
@@ -6673,10 +6673,10 @@ export const crmRouter = router({
         const dueDateFormatted = new Date(pp.dueDate + "T12:00:00").toLocaleDateString("es-ES", { day: "numeric", month: "long", year: "numeric" });
         const html = buildPendingPaymentReminderHtml({
           clientName: pp.clientName,
-          productName: pp.productName ?? `Actividad ${legacyBrandText("Nayade")}`,
+          productName: pp.productName ?? `Actividad ${companyName()}`,
           amountFormatted: (pp.amountCents / 100).toLocaleString("es-ES", { minimumFractionDigits: 2 }) + " €",
           dueDate: dueDateFormatted,
-          ibanInfo: legal.iban ? `Banco: ${legacyBrandText("Skicenter")}\nIBAN: ${legal.iban}\nConcepto: Reserva ${pp.productName}` : undefined,
+          ibanInfo: legal.iban ? `Banco: ${companyName()}\nIBAN: ${legal.iban}\nConcepto: Reserva ${pp.productName}` : undefined,
           origin: "",
         });
         await sendManagedEmail({

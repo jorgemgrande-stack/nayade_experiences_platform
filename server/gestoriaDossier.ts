@@ -5,7 +5,7 @@
 // listos para enviar a la gestoría externa.
 
 import JSZip from "jszip";
-import { legacyBrandText } from "./tenantBrand";
+import { companyName } from "./tenantBrand";
 import { eq, asc } from "drizzle-orm";
 import { taxObligations, taxSettings } from "../drizzle/schema";
 import { compute303, compute111, computeCorporate } from "./gestoriaTax";
@@ -34,7 +34,7 @@ export async function buildDossierZip(year: number): Promise<{ buffer: Buffer; f
 
   const [settings] = await db.select().from(taxSettings).where(eq(taxSettings.id, 1));
   const rate = Number(settings?.corporateTaxRate ?? 25);
-  const company = settings?.companyName ?? legacyBrandText("Náyade Experiences");
+  const company = settings?.companyName ?? companyName();
 
   // ── IVA (303) ──────────────────────────────────────────────────────────────
   const q303 = await Promise.all([1, 2, 3, 4].map((q) => compute303(`${year}-T${q}`)));

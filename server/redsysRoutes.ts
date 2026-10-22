@@ -22,7 +22,7 @@ import { sendManagedEmail, logDirectEmail } from "./emailManager";
 import { groupTaxBreakdown, totalTaxAmount } from "./taxUtils";
 import { reservationProductFromQuoteItems } from "./reservationUtils";
 import { getBusinessEmail } from "./config";
-import { brandName, legacyBrandSetting, legacyUrl } from "./tenantBrand";
+import { brandName, brandSetting, legacyUrl } from "./tenantBrand";
 import { generateDocumentNumber } from "./documentNumbers";
 import { resolveSessionUser } from "./_core/expressAuth";
 import { secureEqual } from "./_core/signedLinks";
@@ -436,7 +436,7 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
                   bookingDate: updatedReservation.bookingDate ?? undefined,
                   selectedTime: (updatedReservation as any).selectedTime ?? undefined,
                   contactEmail: COPY_EMAIL,
-                  contactPhone: legacyBrandSetting("brand_support_phone", "+34 639 57 66 27"),
+                  contactPhone: brandSetting("brand_support_phone", ""),
                   reservationUrl,
                 });
                 await sendManagedEmail({
@@ -1223,7 +1223,7 @@ redsysRouter.post("/api/admin/recover-order/:merchantOrder", async (req, res) =>
               bookingDate: primary.bookingDate ?? undefined,
               selectedTime: primary.selectedTime ?? undefined,
               contactEmail: COPY_EMAIL,
-              contactPhone: legacyBrandSetting("brand_support_phone", "+34 639 57 66 27"),
+              contactPhone: brandSetting("brand_support_phone", ""),
               reservationUrl,
             });
             await sendManagedEmail({

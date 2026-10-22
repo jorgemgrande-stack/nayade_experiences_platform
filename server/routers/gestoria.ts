@@ -6,7 +6,7 @@
 // El motor de cálculo (303/390/111/190/200/202) llega en fases posteriores.
 
 import { z } from "zod";
-import { legacyBrandText } from "../tenantBrand";
+import { companyName } from "../tenantBrand";
 import { publicBaseUrl } from "../_core/productIdentity";
 import { router, permissionProcedure, publicProcedure, gestoriaProcedure } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
@@ -641,12 +641,12 @@ export const gestoriaRouter = router({
         try {
           await sendEmail({
             to: input.email,
-            subject: `Acceso al Portal de Gestoría — ${legacyBrandText("Náyade Experiences")}`,
+            subject: `Acceso al Portal de Gestoría — ${companyName()}`,
             html: `
               <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px;">
                 <h2 style="color:#ea580c">Portal de Gestoría</h2>
                 <p>Hola <strong>${input.name}</strong>,</p>
-                <p>${legacyBrandText("Náyade Experiences")} le da acceso a su Portal de Gestoría, donde podrá consultar
+                <p>${companyName()} le da acceso a su Portal de Gestoría, donde podrá consultar
                 las obligaciones fiscales, descargar los expedientes del ejercicio y marcar los
                 modelos como presentados.</p>
                 <p style="margin:24px 0">

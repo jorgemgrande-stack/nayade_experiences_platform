@@ -1,5 +1,5 @@
 import { router, publicProcedure, protectedProcedure, permissionProcedure } from "../_core/trpc";
-import { legacyBrandText } from "../tenantBrand";
+import { companyName } from "../tenantBrand";
 import { publicBaseUrl } from "../_core/productIdentity";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
@@ -393,7 +393,7 @@ export const hotelRouter = router({
         redsysForm = buildRedsysForm({
           amount: amountCents,
           merchantOrder,
-          productDescription: `Hotel ${legacyBrandText("Náyade")}: ${room.name} · ${nights} noche${nights > 1 ? 's' : ''} · ${input.adults} adulto${input.adults > 1 ? 's' : ''}`,
+          productDescription: `Hotel ${companyName()}: ${room.name} · ${nights} noche${nights > 1 ? 's' : ''} · ${input.adults} adulto${input.adults > 1 ? 's' : ''}`,
           notifyUrl: `${publicBaseUrl()}/api/redsys/notification`,
           okUrl: `${publicBaseUrl()}/reserva/ok?order=${merchantOrder}`,
           koUrl: `${publicBaseUrl()}/reserva/error?order=${merchantOrder}`,

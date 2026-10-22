@@ -28,7 +28,7 @@ import { legacyDb, legacyPool } from "../_core/legacyDb";
 import { integrationEnv } from "../_core/tenantConfig";
 import { revealLegacySecret } from "../_core/credentials/legacyFields";
 import { checkWebhookSecret } from "../_core/webhookSecret";
-import { legacyBrandText } from "../tenantBrand";
+import { companyName } from "../tenantBrand";
 
 const _pool = legacyPool();
 const db = legacyDb();
@@ -313,7 +313,7 @@ async function fetchAndSyncMessages(convId: string, limit = 25): Promise<void> {
           messageType: m.messageType ?? m.type?.toString() ?? "text",
           body: body || undefined,
           attachmentsJson: m.attachments?.length ? m.attachments : undefined,
-          senderName: dir === "inbound" ? (m.contactName ?? undefined) : legacyBrandText("Nayade"),
+          senderName: dir === "inbound" ? (m.contactName ?? undefined) : companyName(),
           sentAt,
           deliveryStatus: m.status ?? undefined,
           rawPayloadJson: m,
@@ -442,7 +442,7 @@ async function processWebhookEvent(eventRowId: number, payload: any, eventType: 
           attachmentsJson: payload.attachments ?? message.attachments ?? undefined,
           senderName: isInbound
             ? (contact.name ?? payload.contactName ?? undefined)
-            : (payload.senderName ?? legacyBrandText("Nayade")),
+            : (payload.senderName ?? companyName()),
           sentAt,
           deliveryStatus: payload.status ?? message.status ?? undefined,
           rawPayloadJson: payload,
@@ -740,7 +740,7 @@ ghlInboxRouter.post(
         direction: "outbound",
         messageType: "text",
         body: message,
-        senderName: legacyBrandText("Nayade"),
+        senderName: companyName(),
         sentAt: new Date(),
         deliveryStatus: "sent",
         rawPayloadJson: data,
@@ -910,7 +910,7 @@ ghlInboxRouter.post("/api/ghl/conversations/new", newConversationLimiter, expres
         direction: "outbound",
         messageType: "text",
         body: preview,
-        senderName: legacyBrandText("Nayade"),
+        senderName: companyName(),
         sentAt: new Date(),
         deliveryStatus: "sent",
         rawPayloadJson: msgData,

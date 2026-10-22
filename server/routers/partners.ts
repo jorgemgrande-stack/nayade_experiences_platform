@@ -7,7 +7,7 @@
 import { z } from "zod";
 import { publicBaseUrl } from "../_core/productIdentity";
 import { isMultiTenant } from "../_core/tenant";
-import { legacyBrandSetting, legacyBrandText, legacySiteHost, tenantIssuerData } from "../tenantBrand";
+import { brandSetting, companyName, legacySiteHost, tenantIssuerData } from "../tenantBrand";
 import { adminProcedure, partnerProcedure, publicProcedure, router } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { partners, users, leads, partnerBillingBatches, partnerBillingBatchItems, experiences, transactions, siteSettings } from "../../drizzle/schema";
@@ -113,16 +113,16 @@ async function generatePartnerBillingPdfAndUpload(data: {
 <body>
   <div class="doc-header">
     <div class="logo-block">
-      <img src="${legacyBrandSetting("brand_logo_url", "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/logo-nayade_20a42bc4.jpg")}" alt="${legacyBrandText("Náyade")}" />
+      <img src="${brandSetting("brand_logo_url", "")}" alt="${companyName()}" />
       <div class="brand-text">
-        <div class="brand-name">${legacyBrandText("Náyade")}</div>
+        <div class="brand-name">${companyName()}</div>
         <div class="brand-sub">Experiences</div>
       </div>
     </div>
     <div class="company-info">
-      <strong>${data.companyData?.name ?? legacyBrandText("Náyade Experiences S.L.")}</strong>
-      ${data.companyData?.address ?? legacyBrandSetting("brand_address", "Los Ángeles de San Rafael, Segovia")}<br/>
-      ${data.companyData?.email ?? legacyBrandSetting("site_business_email", "reservas@nayadeexperiences.es")} &middot; ${data.companyData?.phone ?? legacyBrandSetting("brand_phone", "+34 639 57 66 27")}
+      <strong>${data.companyData?.name ?? brandSetting("brand_name", "")}</strong>
+      ${data.companyData?.address ?? brandSetting("brand_address", "")}<br/>
+      ${data.companyData?.email ?? brandSetting("site_business_email", "")} &middot; ${data.companyData?.phone ?? brandSetting("brand_phone", "")}
     </div>
   </div>
   <div class="doc-type-band">
@@ -134,8 +134,8 @@ async function generatePartnerBillingPdfAndUpload(data: {
   <div class="parties">
     <div class="party">
       <h3>Emisor</h3>
-      <p><strong>${data.companyData?.name ?? legacyBrandText("Náyade Experiences S.L.")}</strong><br/>
-      ${data.companyData?.address ?? legacyBrandSetting("brand_address", "Los Ángeles de San Rafael, Segovia")}<br/>
+      <p><strong>${data.companyData?.name ?? brandSetting("brand_name", "")}</strong><br/>
+      ${data.companyData?.address ?? brandSetting("brand_address", "")}<br/>
       CIF: ${data.companyData?.cif ?? ""}</p>
     </div>
     <div class="party">
@@ -171,7 +171,7 @@ async function generatePartnerBillingPdfAndUpload(data: {
 
   </div>
   <div class="footer">
-    <p>${data.companyData?.name ?? legacyBrandText("Náyade Experiences S.L.")} &middot; ${legacySiteHost("www.skicenter.es")}</p>
+    <p>${data.companyData?.name ?? brandSetting("brand_name", "")} &middot; ${legacySiteHost("")}</p>
     <p>Documento de liquidación de las reservas intermediadas por el partner durante el período indicado.</p>
   </div>
 </body>
@@ -447,7 +447,7 @@ export const partnersRouter = router({
           <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px;">
             <h2 style="color:#ea580c">Bienvenido al portal de colaboradores</h2>
             <p>Hola <strong>${input.name}</strong>,</p>
-            <p>Has sido invitado a acceder al portal de colaboradores de <strong>${legacyBrandText("Skicenter")}</strong> como miembro de <strong>${partner.name}</strong>.</p>
+            <p>Has sido invitado a acceder al portal de colaboradores de <strong>${companyName()}</strong> como miembro de <strong>${partner.name}</strong>.</p>
             <p style="margin:24px 0">
               <a href="${inviteUrl}" style="background:#ea580c;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold">
                 Activar mi cuenta
@@ -679,7 +679,7 @@ export const partnersRouter = router({
           });
           sendEmail({
             to: input.customerEmail,
-            subject: `✅ Reserva confirmada — ${input.productName} · ${legacyBrandText("Náyade Experiences")}`,
+            subject: `✅ Reserva confirmada — ${input.productName} · ${companyName()}`,
             html,
           })
             // Trazabilidad: evita un segundo envío si más tarde se toca esta
@@ -955,8 +955,8 @@ export const partnersRouter = router({
             reservationUrl,
           });
           const subject = isMulti
-            ? `✅ Reserva confirmada — ${created.length} actividades · ${legacyBrandText("Náyade Experiences")}`
-            : `✅ Reserva confirmada — ${created[0].line.productName} · ${legacyBrandText("Náyade Experiences")}`;
+            ? `✅ Reserva confirmada — ${created.length} actividades · ${companyName()}`
+            : `✅ Reserva confirmada — ${created[0].line.productName} · ${companyName()}`;
           sendEmail({ to: input.customerEmail, subject, html })
             // Trazabilidad: evita un segundo envío si más tarde se toca alguna
             // de estas reservas desde el editor genérico de CRM.
@@ -1128,11 +1128,11 @@ export const partnersRouter = router({
         .where(sql`\`key\` IN ('legalCompanyName','legalCompanyCif','legalCompanyAddress','legalCompanyEmail','legalCompanyPhone')`);
       const s: Record<string, string> = Object.fromEntries(settingsRows.map(r => [r.key, r.value ?? ""]));
       const companyData = isMultiTenant() ? await tenantIssuerData(s) : {
-        name: s.legalCompanyName || "Náyade Experiences S.L.",
+        name: s.legalCompanyName || brandSetting("brand_name", ""),
         cif: s.legalCompanyCif || "",
-        address: s.legalCompanyAddress || "Los Ángeles de San Rafael, Segovia",
-        email: s.legalCompanyEmail || "reservas@nayadeexperiences.es",
-        phone: s.legalCompanyPhone || "+34 639 57 66 27",
+        address: s.legalCompanyAddress || brandSetting("brand_address", ""),
+        email: s.legalCompanyEmail || brandSetting("site_business_email", ""),
+        phone: s.legalCompanyPhone || brandSetting("brand_phone", ""),
       };
 
       const { url, key } = await generatePartnerBillingPdfAndUpload({

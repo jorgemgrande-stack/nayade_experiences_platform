@@ -15,7 +15,7 @@ import { getGHLCredentials } from "../db";
 import { syncLeadUrlsToGHL, createGHLContact } from "../ghl";
 import { buildProposalHtml } from "../emailTemplates";
 import { getSystemSettingSync, getBusinessEmail } from "../config";
-import { legacyBrandText, legacyUrl } from "../tenantBrand";
+import { companyName, legacyUrl } from "../tenantBrand";
 import { logActivity } from "../db";
 import { groupTaxBreakdown, totalTaxAmount } from "../taxUtils";
 import { legacyDb, legacyPool } from "../_core/legacyDb";
@@ -315,7 +315,7 @@ export const proposalsRouter = router({
             templateKey: "proposal",
             triggerEvent: "proposal_sent",
             recipientEmail: lead.email,
-            subject: `Tu Propuesta Comercial — ${proposal.proposalNumber} · ${legacyBrandText("Náyade Experiences")}`,
+            subject: `Tu Propuesta Comercial — ${proposal.proposalNumber} · ${companyName()}`,
             html,
             relatedEntityType: "proposal",
             relatedEntityId: input.id,
