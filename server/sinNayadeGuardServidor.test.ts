@@ -19,7 +19,6 @@ const BASELINE: Record<string, number> = {
   "_core/productIdentity.ts": 1,
   "_core/vite.ts": 19,
   "config/index.ts": 2,
-  "invoiceHtml.ts": 2,
   "mail/policy.ts": 1,
   "mailer.ts": 1,
   "redsysRoutes.ts": 1,

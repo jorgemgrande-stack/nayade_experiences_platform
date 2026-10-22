@@ -99,40 +99,18 @@ export interface LegalCompany {
   iban: string;
 }
 
-/** Respaldos heredados de la instalación histórica (solo single). */
-export const LEGACY_LEGAL_FALLBACK = {
-  name: "Iron Elephant Consulting S.L.",
-  cif: "B26987875",
-  address: "C/ Corazón de María 57, 1º D",
-  city: "Madrid",
-  zip: "28002",
-  province: "Madrid",
-} as const;
-
 /**
  * Datos del emisor de documentos fiscales.
- *  - single: ajustes `legalCompany*` con los respaldos heredados (idéntico a antes).
- *  - multi: la entidad fiscal por defecto de la empresa en el registro (razón social, NIF,
- *    domicilio); contacto e IBAN de sus ajustes. Sin entidad, sus ajustes; nunca constantes.
+ *  - multi: la entidad fiscal por defecto de la empresa en el registro (razón social, NIF, domicilio).
+ *  - Sin entidad (o en la instalación de una sola empresa): sus ajustes `legalCompany*`.
+ *  Contacto e IBAN, siempre de sus ajustes. Nunca datos fiscales fijos de otra sociedad (decisión del 23/10/2026).
  */
 export function resolveLegalCompany(
   s: Record<string, string>,
   opts: { multi: boolean; fiscal: TenantFiscalIdentity | null },
 ): LegalCompany {
   const contact = { email: s.legalCompanyEmail || "", phone: s.legalCompanyPhone || "", iban: s.legalCompanyIban || "" };
-  if (!opts.multi) {
-    const L = LEGACY_LEGAL_FALLBACK;
-    return {
-      name: s.legalCompanyName || L.name,
-      cif: s.legalCompanyCif || L.cif,
-      address: s.legalCompanyAddress || L.address,
-      city: s.legalCompanyCity || L.city,
-      zip: s.legalCompanyZip || L.zip,
-      province: s.legalCompanyProvince || L.province,
-      ...contact,
-    };
-  }
-  const f = opts.fiscal;
+  const f = opts.multi ? opts.fiscal : null;
   if (f) return { name: f.legalName, cif: f.taxId, address: f.address ?? "", city: "", zip: "", province: "", ...contact };
   return {
     name: s.legalCompanyName || "",
