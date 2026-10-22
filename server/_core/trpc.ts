@@ -5,13 +5,31 @@ import type { TrpcContext } from "./context";
 import { checkRbacOrLegacy, getUserPermissions } from "./rbac";
 import { ModuleError } from "./modules/contract";
 import type { ModuleAccess } from "./modules/entitlements";
+import { QuotaExceededError } from "./erm/types";
 
 const t = initTRPC.context<TrpcContext>().create({
   transformer: superjson,
 });
 
 export const router = t.router;
-export const publicProcedure = t.procedure;
+
+/**
+ * Una cuota dura superada (Resource Manager) se devuelve como 429 TOO_MANY_REQUESTS con un mensaje
+ * claro, en lugar de un error interno. El resto de errores no cambia.
+ */
+export const quotaErrors = t.middleware(async ({ next }) => {
+  const r = await next();
+  if (!r.ok) {
+    const cause = r.error.cause;
+    if (cause instanceof QuotaExceededError) {
+      throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: `Límite de uso alcanzado (${cause.metric}). Inténtalo más tarde o amplía el plan.`, cause });
+    }
+  }
+  return r;
+});
+
+const baseProcedure = t.procedure.use(quotaErrors);
+export const publicProcedure = baseProcedure;
 
 const requireUser = t.middleware(async opts => {
   const { ctx, next } = opts;
@@ -28,9 +46,9 @@ const requireUser = t.middleware(async opts => {
   });
 });
 
-export const protectedProcedure = t.procedure.use(requireUser);
+export const protectedProcedure = baseProcedure.use(requireUser);
 
-export const adminProcedure = t.procedure.use(
+export const adminProcedure = baseProcedure.use(
   t.middleware(async opts => {
     const { ctx, next } = opts;
 
@@ -60,7 +78,7 @@ export const adminProcedure = t.procedure.use(
  * staffProcedure: acceso equipo comercial.
  * RBAC: permiso crm.view. Legacy fallback: admin | agente.
  */
-export const staffProcedure = t.procedure.use(
+export const staffProcedure = baseProcedure.use(
   t.middleware(async opts => {
     const { ctx, next } = opts;
     if (!ctx.user) {
@@ -92,7 +110,7 @@ export const staffProcedure = t.procedure.use(
  * @param fallbackRoles  Roles legacy que tienen acceso si RBAC falla
  */
 export function permissionProcedure(permissionKey: string, fallbackRoles: string[]) {
-  return t.procedure.use(async ({ ctx, next }) => {
+  return baseProcedure.use(async ({ ctx, next }) => {
     if (!ctx.user) {
       throw new TRPCError({ code: "UNAUTHORIZED", message: UNAUTHED_ERR_MSG });
     }
@@ -116,7 +134,7 @@ export function permissionProcedure(permissionKey: string, fallbackRoles: string
  * de los permisos indicados. Útil para endpoints mixtos (view O manage).
  */
 export function anyPermissionProcedure(permissionKeys: string[], fallbackRoles: string[]) {
-  return t.procedure.use(async ({ ctx, next }) => {
+  return baseProcedure.use(async ({ ctx, next }) => {
     if (!ctx.user) {
       throw new TRPCError({ code: "UNAUTHORIZED", message: UNAUTHED_ERR_MSG });
     }
@@ -139,7 +157,7 @@ export function anyPermissionProcedure(permissionKeys: string[], fallbackRoles: 
  * Solo permite roles partner_admin y partner_user.
  * Garantiza que user.partnerId está presente para evitar acceso cruzado.
  */
-export const partnerProcedure = t.procedure.use(
+export const partnerProcedure = baseProcedure.use(
   t.middleware(async opts => {
     const { ctx, next } = opts;
     if (!ctx.user) {
@@ -162,7 +180,7 @@ export const partnerProcedure = t.procedure.use(
  * Solo permite el rol "supplier". Garantiza que user.supplierId está presente
  * para evitar acceso cruzado entre proveedores.
  */
-export const supplierProcedure = t.procedure.use(
+export const supplierProcedure = baseProcedure.use(
   t.middleware(async opts => {
     const { ctx, next } = opts;
     if (!ctx.user) {
@@ -184,7 +202,7 @@ export const supplierProcedure = t.procedure.use(
  * adminrestProcedure: acceso módulo restaurantes.
  * RBAC: permiso restaurants.view. Legacy fallback: admin | adminrest.
  */
-export const adminrestProcedure = t.procedure.use(
+export const adminrestProcedure = baseProcedure.use(
   t.middleware(async opts => {
     const { ctx, next } = opts;
 
@@ -220,7 +238,7 @@ export const adminrestProcedure = t.procedure.use(
  * cada endpoint que necesite resolver el employeeId del usuario actual,
  * usando `monitors.user_id = ctx.user.id`.
  */
-export const employeeProcedure = t.procedure.use(
+export const employeeProcedure = baseProcedure.use(
   t.middleware(async opts => {
     const { ctx, next } = opts;
     if (!ctx.user) {
@@ -239,7 +257,7 @@ export const employeeProcedure = t.procedure.use(
  * Solo permite el rol 'gestoria'. Acceso de la gestoría externa, separado
  * por completo del panel de administración.
  */
-export const gestoriaProcedure = t.procedure.use(
+export const gestoriaProcedure = baseProcedure.use(
   t.middleware(async opts => {
     const { ctx, next } = opts;
     if (!ctx.user) {
