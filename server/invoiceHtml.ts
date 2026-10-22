@@ -164,10 +164,10 @@ export async function buildInvoiceHtml(rawInvoice: InvoiceHtmlParams): Promise<s
 <body>
   <div class="doc-header">
     <div class="logo-block">
-      <img src="${brandSetting("brand_logo_url", "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/logo-nayade_20a42bc4.jpg")}" alt="${brandSetting("brand_short_name", "Náyade")}" />
+      ${brandSetting("brand_logo_url", "") ? `<img src="${brandSetting("brand_logo_url", "")}" alt="${brandSetting("brand_short_name", "")}" />` : ""}
       <div class="brand-text">
-        <div class="brand-name">${brandSetting("brand_short_name", "Náyade")}</div>
-        <div class="brand-sub">${brandName().replace(brandSetting("brand_short_name", ""), "").trim() || (isMultiTenant() ? "" : "Experiences")}</div>
+        <div class="brand-name">${brandSetting("brand_short_name", "")}</div>
+        <div class="brand-sub">${brandName().replace(brandSetting("brand_short_name", ""), "").trim()}</div>
       </div>
     </div>
     <div class="company-info">

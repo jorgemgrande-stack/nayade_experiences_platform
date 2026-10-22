@@ -34,7 +34,6 @@ import {
   brandName,
   brandSetting,
   formatLegalAddress,
-  LEGACY_LEGAL_FALLBACK,
   legacyBrandSetting,
   legacyBrandText,
   legacyUrl,
@@ -202,7 +201,7 @@ describe("multi: URL, marca, fiscal y comunicaciones por empresa", () => {
     expect(formatLegalAddress(m)).toBe("Calle Cumbre 1, 00001 Pico");
     // Sin entidad fiscal ni ajustes: vacío, nunca la sociedad de la instalación histórica
     const none = resolveLegalCompany({}, { multi: true, fiscal: null });
-    expect(JSON.stringify(none)).not.toContain(LEGACY_LEGAL_FALLBACK.name);
+    expect(JSON.stringify(none)).not.toMatch(/Iron Elephant|B26987875/);
     expect(none.name).toBe("");
   });
 
@@ -259,10 +258,12 @@ describe("single: sin cambios", () => {
     settings.byTenant.default = { brand_name: "Mi Marca" };
     expect(brandName()).toBe("Mi Marca");
   });
-  it("fiscal: los respaldos heredados exactamente como antes", () => {
+  it("fiscal: los datos de la propia instalación; sin ellos, vacío (nunca una sociedad fija ni la entidad del registro)", () => {
     const l = resolveLegalCompany({}, { multi: false, fiscal: { entityId: "x", legalName: "Otra", taxId: "B1", country: "ES", address: null } });
-    expect(l).toEqual({ ...LEGACY_LEGAL_FALLBACK, email: "", phone: "", iban: "" });
-    expect(formatLegalAddress(l)).toBe(`${l.address}, ${l.zip} ${l.city} (${l.province})`);
-    expect(resolveLegalCompany({ legalCompanyName: "Propia SL", legalCompanyCif: "B2" }, { multi: false, fiscal: null })).toMatchObject({ name: "Propia SL", cif: "B2" });
+    expect(l).toEqual({ name: "", cif: "", address: "", city: "", zip: "", province: "", email: "", phone: "", iban: "" });
+    expect(JSON.stringify(l)).not.toMatch(/Iron Elephant|B26987875/);
+    const own = resolveLegalCompany({ legalCompanyName: "Propia SL", legalCompanyCif: "B2", legalCompanyAddress: "Calle 1", legalCompanyZip: "28001", legalCompanyCity: "Madrid", legalCompanyProvince: "Madrid" }, { multi: false, fiscal: null });
+    expect(own).toMatchObject({ name: "Propia SL", cif: "B2" });
+    expect(formatLegalAddress(own)).toBe("Calle 1, 28001 Madrid (Madrid)");
   });
 });
