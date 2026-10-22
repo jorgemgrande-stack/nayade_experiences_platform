@@ -238,6 +238,26 @@ export function BrandIdentityEditor({ variant = "full", onSaved }: { variant?: "
           </section>
         )}
 
+        {variant === "full" && pub.data?.neutralSite && (
+          <section className="rounded-2xl border border-border bg-card p-5 space-y-4" aria-labelledby="brand-analytics">
+            <h3 id="brand-analytics" className="font-semibold">Analítica de tu web</h3>
+            <p className="text-xs text-muted-foreground">
+              Opcional. Con tus propios identificadores, tu web envía las visitas a tus cuentas de Google Analytics y Meta, solo si el visitante acepta las cookies de marketing. Sin ellos, no se carga ninguna analítica.
+            </p>
+            {(
+              [
+                ["analytics_ga4_id", "Google Analytics 4 (ID de medición)", "G-XXXXXXXXXX"],
+                ["analytics_meta_pixel_id", "Pixel de Meta (ID)", "123456789012345"],
+              ] as const
+            ).map(([k, label, ph]) => (
+              <div key={k} className="space-y-1.5">
+                <Label htmlFor={k}>{label}</Label>
+                <Input id={k} value={v[k] ?? ""} placeholder={ph} autoComplete="off" onChange={(e) => set(k, e.target.value)} />
+              </div>
+            ))}
+          </section>
+        )}
+
         <div className="flex flex-wrap items-center gap-3">
           <Button
             type="button"

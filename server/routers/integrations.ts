@@ -25,6 +25,7 @@ const THEME_LABEL: Record<string, string> = {
   brand_location: "Dirección", email_reservations: "Correo de contacto", brand_hero_image_url: "Imagen principal de la web",
   login_background_url: "Fondo de la pantalla de acceso", login_welcome_title: "Titular de la pantalla de acceso",
   login_welcome_message: "Mensaje de bienvenida de la pantalla de acceso",
+  analytics_ga4_id: "Google Analytics 4", analytics_meta_pixel_id: "Pixel de Meta",
 };
 /** Colores que el asistente antiguo y Configuración guardan como `brand_*`: se muestran si no hay `theme_*`. */
 const COLOR_FALLBACK: Record<string, string> = { theme_primary_color: "brand_primary_color", theme_accent_color: "brand_accent_color" };

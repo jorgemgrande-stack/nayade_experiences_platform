@@ -2,15 +2,18 @@ import { useEffect, useRef } from 'react';
 import { useLocation } from 'wouter';
 import { useMarketingConsent } from '@/hooks/useMarketingConsent';
 import { isTenantSite } from '@/lib/tenantSite';
+import { useTenantTheme } from '@/components/TenantTheme';
 
 function writeFbcCookie(fbclid: string): void {
   if (document.cookie.includes('_fbc=')) return; // preservar primer toque
   const value = `fb.1.${Date.now()}.${fbclid}`;
   const expires = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toUTCString();
-  document.cookie = `_fbc=${value}; path=/; expires=${expires}; domain=.skicenter.es; SameSite=Lax`;
+  // En la web de una empresa, su propio dominio (sin fijar uno ajeno)
+  const domain = isTenantSite() ? "" : "; domain=.skicenter.es";
+  document.cookie = `_fbc=${value}; path=/; expires=${expires}${domain}; SameSite=Lax`;
 }
 
-const PIXEL_ID = (import.meta.env.VITE_META_PIXEL_ID as string | undefined) || '1542400900841433';
+const INSTALLATION_PIXEL_ID = (import.meta.env.VITE_META_PIXEL_ID as string | undefined) || '1542400900841433';
 
 /**
  * Carga fbevents.js y gestiona el tracking de Meta Pixel.
@@ -27,6 +30,9 @@ export function MetaPixelLoader() {
   const [location] = useLocation();
   const lastTrackedUrl = useRef<string | null>(null);
   const fbclidRef = useRef<string | null>(null);
+  // Web de una empresa: solo su propio pixel (si no lo tiene, no se carga ninguno)
+  const { theme } = useTenantTheme();
+  const PIXEL_ID = isTenantSite() ? (theme?.analytics?.metaPixelId ?? null) : INSTALLATION_PIXEL_ID;
 
   // ── Efecto 0: capturar fbclid de la URL al montar (antes del consent) ────
   // Almacena el valor en memoria para escribir la cookie cuando llegue el consent.
@@ -47,8 +53,7 @@ export function MetaPixelLoader() {
   useEffect(() => {
     if (!hasConsent) return;
     if (typeof window === 'undefined') return;
-    // Web de una empresa: nunca el pixel de la instalación original
-    if (isTenantSite()) return;
+    if (!PIXEL_ID) return;
     if (window.fbq) return; // ya inicializado
 
     const n: ((...args: unknown[]) => void) & {
@@ -76,7 +81,7 @@ export function MetaPixelLoader() {
 
     window.fbq('init', PIXEL_ID);
     // PageView lo dispara el Efecto 2 para evitar doble-fire
-  }, [hasConsent]);
+  }, [hasConsent, PIXEL_ID]);
 
   // ── Efecto 2: PageView en cada navegación (incluye carga inicial) ─────────
   useEffect(() => {
