@@ -116,6 +116,8 @@ function PartnerLayoutInner({ user, location, navigate, logout, children, bgImag
   // Web neutra de cada empresa: su logo y su teléfono, nunca los de la instalación original
   const brandLogo = (publicSettings as any)?.brand_logo_url || (neutral ? null : LOGO_FALLBACK);
   const contactPhone = neutral ? phone : NAYADE_PHONE;
+  // Catálogo: la web de la propia empresa, nunca la de la instalación original
+  const catalogUrl = neutral ? "/experiencias" : CATALOG_URL;
   const userName = (user as any).name ?? (user as any).email ?? "Colaborador";
   const partnerName = partner?.name ?? "";
 
@@ -179,7 +181,7 @@ function PartnerLayoutInner({ user, location, navigate, logout, children, bgImag
                 </a>
               )}
               <a
-                href={CATALOG_URL}
+                href={catalogUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="hidden sm:flex items-center gap-1.5 text-xs text-white/50 hover:text-orange-400 transition-colors border border-white/10 hover:border-orange-500/30 rounded-lg px-2.5 py-1.5"
@@ -211,7 +213,7 @@ function PartnerLayoutInner({ user, location, navigate, logout, children, bgImag
               </NavTab>
             )}
             {/* Móvil: catálogo y teléfono */}
-            <a href={CATALOG_URL} target="_blank" rel="noopener noreferrer"
+            <a href={catalogUrl} target="_blank" rel="noopener noreferrer"
               className="sm:hidden flex items-center gap-1.5 px-3 py-2.5 text-xs text-white/40 hover:text-orange-400 transition-colors">
               <ExternalLink className="w-3.5 h-3.5" /> Catálogo
             </a>
@@ -248,7 +250,7 @@ function PartnerLayoutInner({ user, location, navigate, logout, children, bgImag
                 <Phone className="w-3 h-3" /> {contactPhone}
               </a>
             )}
-            <a href={CATALOG_URL} target="_blank" rel="noopener noreferrer" className="hover:text-white/50 transition-colors flex items-center gap-1">
+            <a href={catalogUrl} target="_blank" rel="noopener noreferrer" className="hover:text-white/50 transition-colors flex items-center gap-1">
               <ExternalLink className="w-3 h-3" /> Ver catálogo
             </a>
           </div>
