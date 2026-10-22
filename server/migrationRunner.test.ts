@@ -6,7 +6,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { checksum, loadMigrations, splitStatements, validateMigrations } from "../scripts/db/migrationLib";
+import { checksum, ledgerProblems, loadMigrations, resolveLane, splitStatements, targetProblem, validateMigrations, type LedgerState } from "../scripts/db/migrationLib";
 
 let dir: string;
 beforeEach(() => {
@@ -122,5 +122,64 @@ describe("loadMigrations + validateMigrations", () => {
 
   it("directorio inexistente → error, sin lanzar", () => {
     expect(loadMigrations(path.join(dir, "no-existe")).errors).toHaveLength(1);
+  });
+});
+
+describe("carriles (--dir obligatorio y explícito)", () => {
+  it("sin --dir no hay carril por defecto", () => {
+    expect(resolveLane(undefined, process.cwd()).error).toMatch(/no hay carril por defecto/);
+  });
+  it("carriles conocidos con sus tablas base", () => {
+    expect(resolveLane("db/migrations", process.cwd()).lane).toMatchObject({ name: "app", requires: ["users"] });
+    expect(resolveLane("db/crm/migrations", process.cwd()).lane).toMatchObject({ name: "crm", requires: ["crm_companies"] });
+  });
+  it("un directorio desconocido sin lane.json se rechaza; con lane.json válido se acepta", () => {
+    expect(resolveLane(dir, process.cwd()).error).toMatch(/Carril desconocido/);
+    write("lane.json", JSON.stringify({ name: "prueba", requires: ["t_base"] }));
+    expect(resolveLane(dir, process.cwd()).lane).toMatchObject({ name: "prueba", requires: ["t_base"] });
+    write("lane.json", "{ roto");
+    expect(resolveLane(dir, process.cwd()).error).toMatch(/no es válido/);
+  });
+});
+
+describe("integridad del registro", () => {
+  const lane = { name: "app", dir: "x", requires: ["users"] };
+  const mig = (n: number, body = `CREATE TABLE t${n} (id INT)`) => ({
+    id: `000${n}_m${n}`, number: n, name: `m${n}`, up: body, down: "DROP TABLE x", irreversible: false, allowDestructive: false, checksum: checksum(body),
+  });
+  const list = [mig(1), mig(2), mig(3)];
+  const state = (p: Partial<LedgerState> = {}): LedgerState => ({ applied: new Map(), lane: null, inProgress: null, tables: new Set(["users"]), ...p });
+
+  it("registro sano (incluido el anterior a esta versión, sin carril) → sin problemas", () => {
+    expect(ledgerProblems(list, state({ applied: new Map([[list[0].id, list[0].checksum]]) }), lane)).toEqual([]);
+  });
+  it("BD de otro carril, sin tablas base o con registros ajenos → se detiene", () => {
+    expect(ledgerProblems(list, state({ lane: "crm" }), lane).join()).toMatch(/ligada al carril «crm»/);
+    expect(ledgerProblems(list, state({ tables: new Set(["crm_companies"]) }), lane).join()).toMatch(/Faltan las tablas base/);
+    expect(ledgerProblems(list, state({ applied: new Map([["0001_crm_commercial_v2", "x"]]) }), lane).join()).toMatch(/no existe en este carril/);
+  });
+  it("migración a medias, contenido cambiado o hueco → se detiene", () => {
+    expect(ledgerProblems(list, state({ inProgress: "up:0002_m2" }), lane).join()).toMatch(/empezó y no terminó/);
+    expect(ledgerProblems(list, state({ applied: new Map([[list[0].id, "otro"]]) }), lane).join()).toMatch(/checksum distinto/);
+    expect(ledgerProblems(list, state({ applied: new Map([[list[0].id, list[0].checksum], [list[2].id, list[2].checksum]]) }), lane).join()).toMatch(/Hueco/);
+  });
+});
+
+describe("identificación del destino antes de escribir", () => {
+  const base = { apply: true, confirm: "crm", actualDb: "crm", urlHost: "127.0.0.1", allowRemote: false };
+  it("lectura no exige nada", () => {
+    expect(targetProblem({ ...base, apply: false, confirm: undefined })).toBeNull();
+  });
+  it("escribir exige --confirm-database con el nombre real, también en local", () => {
+    expect(targetProblem({ ...base, confirm: undefined })).toMatch(/--confirm-database crm/);
+    expect(targetProblem({ ...base, confirm: "otra" })).toMatch(/--confirm-database crm/);
+    expect(targetProblem(base)).toBeNull();
+  });
+  it("destino remoto exige además --allow-remote", () => {
+    expect(targetProblem({ ...base, urlHost: "db.railway.internal" })).toMatch(/--allow-remote/);
+    expect(targetProblem({ ...base, urlHost: "db.railway.internal", allowRemote: true })).toBeNull();
+  });
+  it("sin base de datos seleccionada no se escribe", () => {
+    expect(targetProblem({ ...base, actualDb: null })).toMatch(/ninguna base de datos/);
   });
 });
