@@ -197,6 +197,16 @@ describe("operaciones", () => {
     expect((await call("GET", "/cp/v1/tenants/no-existe", { token: FULL })).status).toBe(404);
   });
 
+  it("catálogo de planes: requiere billing:read y no se confunde con un id de empresa", async () => {
+    expect((await call("GET", "/cp/v1/billing/plans", { token: READ })).status).toBe(403);
+    expect((await call("GET", "/cp/v1/billing/plans")).status).toBe(401);
+    const r = await call("GET", "/cp/v1/billing/plans", { token: FULL });
+    expect(r.status).toBe(200);
+    expect(Array.isArray(r.json.plans)).toBe(true);
+    expect(r.json.plans.find((p: any) => p.id === "base")).toMatchObject({ id: "base", billable: expect.any(Boolean) });
+    expect(typeof r.json.trialDays).toBe("number");
+  });
+
   it("dominios: el límite por plan se aplica antes de crear el dominio", async () => {
     await call("POST", "/cp/v1/billing/acme/trial", { token: FULL, body: { planId: "base" } });
     // en prueba: 0 dominios propios permitidos
