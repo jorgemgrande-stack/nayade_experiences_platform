@@ -46,6 +46,7 @@ import {
   buildCashCloseHtml,
 } from "../emailTemplates";
 import { legacyDb, legacyPool } from "../_core/legacyDb";
+import { legacyBrandText } from "../tenantBrand";
 
 // --- Admin guard --------------------------------------------------------------
 const adminProcedure = permissionProcedure("settings.manage", ["admin"]);
@@ -367,6 +368,23 @@ const SYSTEM_TEMPLATES: SeedTemplate[] = [
   },
 ];
 
+// --- Marca de los textos de las plantillas del sistema ----------------------
+const ORIGINAL_BRAND = "Náyade Experiences";
+/**
+ * Asunto y cabecera de una plantilla del sistema con la marca de la empresa: en la instalación original, tal cual;
+ * en multiempresa, su nombre en lugar del de la instalación original (y sin la mención al lago).
+ */
+export function brandedTemplateTexts(tpl: Pick<SeedTemplate, "subject" | "headerTitle" | "headerSubtitle">) {
+  const name = legacyBrandText(ORIGINAL_BRAND);
+  if (name === ORIGINAL_BRAND) return { subject: tpl.subject, headerTitle: tpl.headerTitle, headerSubtitle: tpl.headerSubtitle };
+  const brand = (t: string) =>
+    t.split(` · ${ORIGINAL_BRAND}`).join(name ? ` · ${name}` : "")
+      .split(` en ${ORIGINAL_BRAND}`).join(name ? ` en ${name}` : "")
+      .split(ORIGINAL_BRAND).join(name)
+      .split("Tu aventura en el lago está asegurada").join("Tu reserva está asegurada");
+  return { subject: brand(tpl.subject), headerTitle: brand(tpl.headerTitle), headerSubtitle: brand(tpl.headerSubtitle) };
+}
+
 // --- Helper: seed templates — inserta las que faltan, no sobrescribe edits ---
 async function ensureTemplatesSeeded() {
   const existingRows = await db.select({ id: emailTemplates.id }).from(emailTemplates);
@@ -381,9 +399,7 @@ async function ensureTemplatesSeeded() {
         description: tpl.description,
         category: tpl.category,
         recipient: tpl.recipient,
-        subject: tpl.subject,
-        headerTitle: tpl.headerTitle,
-        headerSubtitle: tpl.headerSubtitle,
+        ...brandedTemplateTexts(tpl),
         bodyHtml: tpl.buildHtml(),
         variables: tpl.variables,
         isCustom: false,
@@ -527,9 +543,7 @@ export const emailTemplatesRouter = router({
       await db.update(emailTemplates).set({
         name: systemTpl.name,
         description: systemTpl.description,
-        subject: systemTpl.subject,
-        headerTitle: systemTpl.headerTitle,
-        headerSubtitle: systemTpl.headerSubtitle,
+        ...brandedTemplateTexts(systemTpl),
         bodyHtml: systemTpl.buildHtml(),
         isActive: true,
       }).where(eq(emailTemplates.id, input.id));
