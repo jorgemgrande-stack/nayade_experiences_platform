@@ -8,12 +8,12 @@ function writeFbcCookie(fbclid: string): void {
   if (document.cookie.includes('_fbc=')) return; // preservar primer toque
   const value = `fb.1.${Date.now()}.${fbclid}`;
   const expires = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toUTCString();
-  // En la web de una empresa, su propio dominio (sin fijar uno ajeno)
-  const domain = isTenantSite() ? "" : "; domain=.skicenter.es";
-  document.cookie = `_fbc=${value}; path=/; expires=${expires}${domain}; SameSite=Lax`;
+  // Cookie de la propia web (sin fijar el dominio de otra)
+  document.cookie = `_fbc=${value}; path=/; expires=${expires}; SameSite=Lax`;
 }
 
-const INSTALLATION_PIXEL_ID = (import.meta.env.VITE_META_PIXEL_ID as string | undefined) || '1542400900841433';
+// Pixel de la instalación de una sola empresa: solo el que se configure (VITE_META_PIXEL_ID); sin él, ninguno
+const INSTALLATION_PIXEL_ID = ((import.meta.env.VITE_META_PIXEL_ID as string | undefined) ?? '').trim() || null;
 
 /**
  * Carga fbevents.js y gestiona el tracking de Meta Pixel.

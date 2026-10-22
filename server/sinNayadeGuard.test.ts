@@ -16,7 +16,6 @@ const ORIGINAL = /N[aá]yade|N&[aA]acute;[yY][aA][dD][eE]|nayadeexperiences|skic
 
 const BASELINE: Record<string, number> = {
   // Solo en la instalación original o detrás de la condición de web propia
-  "components/MetaPixelLoader.tsx": 1,
   "components/PublicFooter.tsx": 12,
   "components/PublicNav.tsx": 3,
   "lib/restaurantLinks.ts": 4,
