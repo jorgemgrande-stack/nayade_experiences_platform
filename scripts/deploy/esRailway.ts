@@ -11,6 +11,7 @@
  *   tsx scripts/deploy/esRailway.ts deploy  --env live --service core --dir <dir> --sha <commit>
  *   tsx scripts/deploy/esRailway.ts drill   --env live --command "node dist-cp/backup-job.js migrate-tenants"
  *   tsx scripts/deploy/esRailway.ts health  --url https://... [--expect 200]
+ *   tsx scripts/deploy/esRailway.ts storage --env live            (almacenamiento de cada servicio, sin secretos)
  *
  * `drill` ejecuta una orden de operación PERMITIDA (copias, simulación y aplicación de migraciones, verificación)
  * en el servicio restore-drill de la red privada, espera a que termine, muestra su registro (sin DSN ni claves) y
@@ -20,7 +21,7 @@ import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { DRILL_IDLE, EXCLUDED_FROM_EXPORT, guard, isAllowedDrill, scrub, type DeployConfig, type TokenScope } from "./esRailwayLib";
+import { DRILL_IDLE, EXCLUDED_FROM_EXPORT, STORAGE_VARS, describeStorageVar, guard, isAllowedDrill, scrub, type DeployConfig, type TokenScope } from "./esRailwayLib";
 
 const CONFIG_PATH = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../deploy/railway/elephant-source.deploy.json");
 const loadConfig = (): DeployConfig => JSON.parse(fs.readFileSync(CONFIG_PATH, "utf8"));
@@ -125,13 +126,30 @@ async function main() {
   const env = arg("env");
   const sc = await scope();
   const service = cmd === "deploy" ? arg("service") : cmd === "drill" ? "restore-drill" : undefined;
-  if (!["verify", "status", "deploy", "drill"].includes(cmd)) throw new Error(`orden desconocida: ${cmd}`);
+  if (!["verify", "status", "deploy", "drill", "storage"].includes(cmd)) throw new Error(`orden desconocida: ${cmd}`);
   const problems = guard(cfg, sc, { env, service });
   if (problems.length) {
     console.error(`Detenido antes de tocar nada:\n - ${problems.join("\n - ")}`);
     process.exit(2);
   }
   if (cmd === "verify") return void console.log(`Token del proyecto de Elephant Source, entorno «${env}»; servicios: ${sc.services.join(", ")}`);
+  if (cmd === "storage") {
+    // Solo lectura: qué almacenamiento usa cada servicio, sin imprimir nunca el valor de una clave
+    const t = await api<{ projectToken: { projectId: string } }>("query { projectToken { projectId } }");
+    const q = "query($p:String!,$e:String!,$s:String!,$u:Boolean){ variables(projectId:$p, environmentId:$e, serviceId:$s, unrendered:$u) }";
+    for (const name of sc.services) {
+      const vars = { p: t.projectToken.projectId, e: sc.environmentId, s: await serviceId(name) };
+      const raw = await api<{ variables: Record<string, string> }>(q, { ...vars, u: true }).catch(() => null);
+      const eff = await api<{ variables: Record<string, string> }>(q, { ...vars, u: false }).catch(() => null);
+      if (!raw) {
+        console.log(`${name}: variables no disponibles`);
+        continue;
+      }
+      const lines = STORAGE_VARS.filter((k) => raw.variables[k] !== undefined).map((k) => `  ${k.padEnd(34)} ${describeStorageVar(k, raw.variables[k], eff?.variables[k])}`);
+      console.log(`${name}:${lines.length ? "\n" + lines.join("\n") : " sin variables de almacenamiento"}`);
+    }
+    return;
+  }
   if (cmd === "status") {
     // Punto de vuelta atrás: despliegue activo y mensaje (repo y commit) de cada servicio, antes de tocar nada
     for (const name of Object.keys(cfg.services).filter((n) => sc.services.includes(n))) {
