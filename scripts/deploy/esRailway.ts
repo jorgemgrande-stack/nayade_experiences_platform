@@ -141,7 +141,20 @@ async function main() {
         { s: sid, e: sc.environmentId },
       );
       const active = d.deployments.edges.map((x) => x.node).find((x) => x.status === "SUCCESS");
-      console.log(`${name.padEnd(14)} ${active ? `${active.id} ${active.createdAt} «${String(active.meta?.commitMessage ?? active.meta?.reason ?? "").slice(0, 80)}»` : "sin despliegue activo"}`);
+      console.log(`${name.padEnd(14)} ${active ? `${active.id} ${active.createdAt} «${String(active.meta?.commitMessage ?? active.meta?.reason ?? "").slice(0, 80)}»${active.meta?.commitHash ? ` commit ${String(active.meta.commitHash).slice(0, 12)}` : ""}` : "sin despliegue activo"}`);
+    }
+    // Qué dominios sirve ESTE entorno (todos los servicios del proyecto): fija cuál es el de ensayo y cuál el comercial
+    const t = await api<{ projectToken: { projectId: string } }>("query { projectToken { projectId } }");
+    console.log(`\nDominios del entorno «${env}»:`);
+    for (const name of sc.services) {
+      const dm = await api<{ domains: { customDomains: Array<{ domain: string }>; serviceDomains: Array<{ domain: string }> } }>(
+        "query($p:String!,$e:String!,$s:String!){ domains(projectId:$p, environmentId:$e, serviceId:$s){ customDomains { domain } serviceDomains { domain } } }",
+        { p: t.projectToken.projectId, e: sc.environmentId, s: await serviceId(name) },
+      ).catch((e: Error) => (console.log(`${name.padEnd(14)} dominios no disponibles: ${scrub(e.message).slice(0, 120)}`), null));
+      if (!dm) continue;
+      const custom = dm.domains.customDomains.map((x) => x.domain);
+      const generated = dm.domains.serviceDomains.map((x) => x.domain);
+      if (custom.length || generated.length) console.log(`${name.padEnd(14)} propios: ${custom.join(", ") || "—"} · generados: ${generated.join(", ") || "—"}`);
     }
     return;
   }
