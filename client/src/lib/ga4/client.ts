@@ -7,15 +7,19 @@ declare global {
   }
 }
 
-const MEASUREMENT_ID =
+const INSTALLATION_MEASUREMENT_ID =
   (import.meta.env.VITE_GA4_MEASUREMENT_ID as string | undefined) || 'G-8E7HXCGN3P';
 
 let ga4Configured = false;
 
-export function initGA4(): void {
+/**
+ * Inicia GA4. En la web de una empresa solo con SU identificador (`tenantMeasurementId`, de su configuración):
+ * sin él, nada. Nunca la propiedad de la instalación original ni la de otra empresa.
+ */
+export function initGA4(tenantMeasurementId?: string | null): void {
   if (typeof window === 'undefined') return;
-  // Web de una empresa: nunca la analítica de la instalación original
-  if (isTenantSite()) return;
+  if (isTenantSite() && !tenantMeasurementId) return;
+  const MEASUREMENT_ID = isTenantSite() ? tenantMeasurementId! : INSTALLATION_MEASUREMENT_ID;
   if (ga4Configured) return;
   ga4Configured = true;
 

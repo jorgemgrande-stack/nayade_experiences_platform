@@ -20,6 +20,7 @@ export const PUBLIC_THEME_KEYS = [
   "brand_primary_color", "brand_accent_color", "theme_font_family", "theme_radius", "brand_show_powered_by",
   "brand_phone", "brand_whatsapp", "email_reservations", "site_business_email", "brand_location",
   "brand_hero_image_url", "login_background_url", "login_welcome_title", "login_welcome_message",
+  "analytics_ga4_id", "analytics_meta_pixel_id",
 ] as const;
 
 /** Valor de `login_background_url` que retira el fondo (sin imagen, ni siquiera la de la web). */
@@ -48,6 +49,8 @@ export interface PublicTheme {
   poweredBy: { label: string; url: string } | null;
   contact: { phone: string | null; email: string | null; address: string | null; whatsapp: string | null };
   login: PublicLoginTheme;
+  /** Analítica propia de la empresa (multiempresa). Sin identificador, desactivada: nunca la de otra cuenta. */
+  analytics: { ga4Id: string | null; metaPixelId: string | null };
 }
 
 const HEX = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
@@ -122,10 +125,23 @@ export const THEME_EDITABLE_KEYS = [
   "brand_name", "brand_logo_url", "brand_favicon_url", "theme_primary_color", "theme_accent_color",
   "theme_font_family", "theme_radius", "seo_description", "brand_phone", "brand_location", "email_reservations",
   "brand_hero_image_url", "login_background_url", "login_welcome_title", "login_welcome_message",
+  "analytics_ga4_id", "analytics_meta_pixel_id",
 ] as const;
 
 /** Ajustes de la pantalla de acceso que «Restaurar valores predeterminados» deja vacíos. */
 export const LOGIN_DEFAULT_KEYS = ["login_background_url", "login_welcome_title", "login_welcome_message"] as const;
+
+/** Identificadores públicos de analítica de la empresa (no son secretos: van en el HTML de su web). */
+export const GA4_ID = /^G-[A-Z0-9]{4,20}$/;
+export const META_PIXEL_ID = /^\d{8,20}$/;
+export const ga4Id = (v: string | undefined | null): string | null => {
+  const s = (v ?? "").trim().toUpperCase();
+  return GA4_ID.test(s) ? s : null;
+};
+export const metaPixelId = (v: string | undefined | null): string | null => {
+  const s = (v ?? "").trim();
+  return META_PIXEL_ID.test(s) ? s : null;
+};
 
 export class ThemeValueError extends Error {
   constructor(readonly key: string, message: string) {
@@ -154,6 +170,13 @@ export function cleanThemeValues(values: Record<string, string>): Record<string,
     if (k === "login_background_url" && val !== LOGIN_BACKGROUND_NONE && !safeImageUrl(val)) throw new ThemeValueError(k, "Imagen de fondo no válida: sube el fichero o usa una dirección https");
     if (k === "theme_radius" && !RADIUS.test(val)) throw new ThemeValueError(k, "Radio no válido");
     if (k === "theme_font_family" && !FONT.test(val)) throw new ThemeValueError(k, "Tipografía no válida");
+    if (k === "analytics_ga4_id") {
+      const id = val.toUpperCase();
+      if (!GA4_ID.test(id)) throw new ThemeValueError(k, "Identificador no válido: usa el de tu propiedad de Google Analytics 4 (G-XXXXXXXXXX)");
+      clean[k] = id;
+      continue;
+    }
+    if (k === "analytics_meta_pixel_id" && !META_PIXEL_ID.test(val)) throw new ThemeValueError(k, "Identificador no válido: usa el número de tu pixel de Meta");
     if (k === "login_welcome_title" || k === "login_welcome_message") {
       const t = text(val, k === "login_welcome_title" ? LOGIN_TITLE_MAX : LOGIN_MESSAGE_MAX);
       if (!t || val.length > (k === "login_welcome_title" ? LOGIN_TITLE_MAX : LOGIN_MESSAGE_MAX) || /[<>]/.test(val)) throw new ThemeValueError(k, k === "login_welcome_title" ? `Titular no válido (máximo ${LOGIN_TITLE_MAX} caracteres, sin < ni >)` : `Mensaje no válido (máximo ${LOGIN_MESSAGE_MAX} caracteres, sin < ni >)`);
@@ -193,6 +216,11 @@ export function buildTheme(
       whatsapp: whatsappNumber(get("brand_whatsapp") ?? get("brand_phone")),
     },
     login: buildLogin(get, opts.multi),
+    // Solo en multiempresa y solo con el identificador de la propia empresa
+    analytics: {
+      ga4Id: opts.multi ? ga4Id(get("analytics_ga4_id")) : null,
+      metaPixelId: opts.multi ? metaPixelId(get("analytics_meta_pixel_id")) : null,
+    },
   };
 }
 

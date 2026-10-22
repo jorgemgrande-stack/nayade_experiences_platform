@@ -27,13 +27,13 @@ describe("analítica en la web de cada empresa", () => {
     expect(vite).toContain('if (override) html = tenantSiteHtml(html, escapeHtml(await getSystemSetting("brand_name", "")));');
   });
 
-  it("GA4 y Meta Pixel no se inician en la web de una empresa", () => {
+  it("GA4 y Meta Pixel no se inician en la web de una empresa sin su propio identificador", () => {
     const ga4 = read("client/src/lib/ga4/client.ts");
     const init = ga4.slice(ga4.indexOf("export function initGA4"));
-    expect(init.indexOf("if (isTenantSite()) return;")).toBeGreaterThan(-1);
-    expect(init.indexOf("if (isTenantSite()) return;")).toBeLessThan(init.indexOf("window.gtag('config'"));
+    expect(init.indexOf("if (isTenantSite() && !tenantMeasurementId) return;")).toBeGreaterThan(-1);
+    expect(init.indexOf("if (isTenantSite() && !tenantMeasurementId) return;")).toBeLessThan(init.indexOf("window.gtag('config'"));
     const pixel = read("client/src/components/MetaPixelLoader.tsx");
-    expect(pixel.indexOf("if (isTenantSite()) return;")).toBeGreaterThan(-1);
-    expect(pixel.indexOf("if (isTenantSite()) return;")).toBeLessThan(pixel.indexOf("window.fbq('init', PIXEL_ID)"));
+    expect(pixel.indexOf("if (!PIXEL_ID) return;")).toBeGreaterThan(-1);
+    expect(pixel.indexOf("if (!PIXEL_ID) return;")).toBeLessThan(pixel.indexOf("window.fbq('init', PIXEL_ID)"));
   });
 });

@@ -2,6 +2,8 @@ import { useEffect, useRef } from 'react';
 import { useLocation } from 'wouter';
 import { useMarketingConsent } from '@/hooks/useMarketingConsent';
 import { initGA4, updateGA4Consent, trackPageView } from '@/lib/ga4/client';
+import { useTenantTheme } from '@/components/TenantTheme';
+import { isTenantSite } from '@/lib/tenantSite';
 
 /**
  * Gestiona el ciclo de vida de GA4 con Consent Mode v2 (EEA/RGPD).
@@ -25,9 +27,16 @@ export function GA4Loader() {
   // ── Efecto 1: cargar gtag.js siempre al montar ────────────────────────────
   // NO detrás de consent: Consent Mode v2 necesita el stub cargado para
   // poder procesar consent('update') cuando el usuario acepte.
+  // Web de una empresa: solo con su propio identificador (si no lo tiene, GA4 no se carga)
+  const { theme } = useTenantTheme();
+  const tenantGa4 = theme?.analytics?.ga4Id ?? null;
   useEffect(() => {
+    if (isTenantSite()) {
+      if (tenantGa4) initGA4(tenantGa4);
+      return;
+    }
     initGA4();
-  }, []);
+  }, [tenantGa4]);
 
   // ── Efecto 2: actualizar consent cuando el usuario acepta ─────────────────
   // consent('default', denied) en initGA4() ya cubre el estado inicial,
