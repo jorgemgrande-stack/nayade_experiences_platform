@@ -24,6 +24,7 @@ import { storagePut } from "../storage";
 import { legacyDb, legacyPool } from "../_core/legacyDb";
 import { scheduleTenantCron } from "../_core/tenantRegistry/scheduler";
 import { isMultiTenant } from "../_core/tenant";
+import { tenantImapConfig, type ImapConfig } from "./imapConfig";
 
 // ─── CONFIG ──────────────────────────────────────────────────────────────────
 
@@ -130,14 +131,13 @@ async function getDefaultCostCenterId(): Promise<number> {
 export async function runExpenseEmailIngestion(): Promise<{ processed: number; duplicated: number; errors: number }> {
   const result = { processed: 0, duplicated: 0, errors: 0 };
 
-  // Multiempresa: el buzón IMAP sale del entorno (global); volcarlo en la BD de cualquier
-  // empresa sería una fuga entre empresas. Bloqueado hasta tener credenciales por tenant.
-  if (isMultiTenant()) {
-    console.warn("[ExpenseMailIngestion] No disponible en multiempresa (credenciales IMAP globales)");
-    return result;
-  }
+  // Multiempresa: solo el buzón de la propia empresa (bóveda); sin él, no se lee nada
+  const cfg: ImapConfig | null = isMultiTenant()
+    ? tenantImapConfig("IMAP_EXPENSE")
+    : { host: IMAP_HOST, port: IMAP_PORT, secure: IMAP_SECURE, user: IMAP_USER, pass: IMAP_PASS, mailbox: IMAP_MAILBOX, allowedSender: null };
+  if (!cfg) return result;
 
-  if (!IMAP_PASS) {
+  if (!cfg.pass) {
     console.warn("[ExpenseMailIngestion] IMAP_EXPENSE_PASS no configurada — job desactivado");
     return result;
   }
@@ -150,17 +150,17 @@ export async function runExpenseEmailIngestion(): Promise<{ processed: number; d
   isRunning = true;
 
   const client = new ImapFlow({
-    host: IMAP_HOST,
-    port: IMAP_PORT,
-    secure: IMAP_SECURE,
-    auth: { user: IMAP_USER, pass: IMAP_PASS },
+    host: cfg.host,
+    port: cfg.port,
+    secure: cfg.secure,
+    auth: { user: cfg.user, pass: cfg.pass },
     logger: false,
     tls: { rejectUnauthorized: false },
   });
 
   try {
     await client.connect();
-    const lock = await client.getMailboxLock(IMAP_MAILBOX);
+    const lock = await client.getMailboxLock(cfg.mailbox);
 
     try {
       // Buscar correos de los últimos 30 días sin filtrar por leído/no leído.
@@ -335,7 +335,8 @@ export async function runExpenseEmailIngestion(): Promise<{ processed: number; d
 // ─── CRON + BOOT ─────────────────────────────────────────────────────────────
 
 export function startExpenseEmailIngestionJob(): void {
-  setImmediate(() => {
+  // Pasada inicial solo en la instalación de una sola empresa; en multiempresa, el programador por empresa
+  if (!isMultiTenant()) setImmediate(() => {
     runExpenseEmailIngestion()
       .then(r => {
         if (r.processed > 0 || r.errors > 0) {

@@ -3,7 +3,7 @@
  * dos empresas ficticias aprovisionadas desde la baseline, montaje real del registro
  * (`installTenantResolution`) y arranque de las tareas con `startScheduledJobsMulti`, como en
  * `bootMultiTenant`.
- *  - Las de buzón IMAP global no se arrancan: una sola línea informativa cada una.
+ *  - Todas corren por empresa; las de buzón IMAP solo con el buzón propio de cada empresa (nunca el del entorno).
  *  - Pasada inicial y dos ciclos de cron por empresa: sin errores de contexto ni errores en el log.
  *  - Cada tarea toca solo la base de su empresa (datos marcados por empresa) y avisa al correo de
  *    esa empresa, en su contexto.
@@ -200,12 +200,10 @@ describe.skipIf(!URL_)("tareas programadas en multiempresa (dos empresas, MySQL 
     await admin?.end();
   });
 
-  it("las de buzón IMAP global no se arrancan: una sola línea informativa cada una, sin error", () => {
-    expect(started).toEqual(["cancellation-stale", "commercial-email-sync", "card-terminal-matching", "card-terminal-relink", "email-automation", "tax-reminder"]);
-    expect(infoLines).toHaveLength(2);
-    expect(infoLines[0]).toMatch(/Email Ingestion' no se arranca en multiempresa/);
-    expect(infoLines[1]).toMatch(/Expense Email Ingestion' no se arranca en multiempresa/);
-    expect(cronTicks).toHaveLength(6); // solo las tareas por empresa programan su cron
+  it("todas por empresa: las de buzón IMAP solo leen el buzón propio de cada empresa (aquí ninguna lo tiene)", () => {
+    expect(started).toEqual(["cancellation-stale", "email-tpv-ingestion", "expense-email-ingestion", "commercial-email-sync", "card-terminal-matching", "card-terminal-relink", "email-automation", "tax-reminder"]);
+    expect(infoLines).toEqual([]);
+    expect(cronTicks).toHaveLength(8);
   });
 
   it("pasada inicial por empresa (datáfono y correo comercial), dentro de su contexto y sin errores", async () => {

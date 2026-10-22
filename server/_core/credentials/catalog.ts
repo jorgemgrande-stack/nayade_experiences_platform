@@ -28,6 +28,25 @@ export interface ProviderDef {
 const URL_RE = /^https:\/\/[^\s]{4,500}$/;
 const TOKEN_RE = /^[\x21-\x7e]{8,512}$/; // imprimibles ASCII sin espacios
 
+const HOST_RE = /^[A-Za-z0-9.-]{3,253}$/;
+const PORT_RE = /^\d{2,5}$/;
+const MAILBOX_USER_RE = /^[^\s]{3,254}$/;
+const PASSWORD_RE = /^[^\r\n]{1,512}$/;
+const EMAIL_RE = /^[^\s@]{1,64}@[^\s@]{1,190}$/;
+
+/** Buzón IMAP de una ingesta de correo. */
+function imapFields(prefix: string, extra: CredentialField[] = []): CredentialField[] {
+  return [
+    { key: "host", label: "Servidor IMAP", secret: false, required: true, env: `${prefix}_HOST`, pattern: HOST_RE, hint: "imap.tuproveedor.com" },
+    { key: "port", label: "Puerto", secret: false, env: `${prefix}_PORT`, pattern: PORT_RE, hint: "993" },
+    { key: "secure", label: "Conexión segura (TLS)", secret: false, env: `${prefix}_SECURE`, options: ["true", "false"] },
+    { key: "user", label: "Usuario", secret: false, required: true, env: `${prefix}_USER`, pattern: MAILBOX_USER_RE },
+    { key: "pass", label: "Contraseña", secret: true, required: true, env: `${prefix}_PASS`, pattern: PASSWORD_RE },
+    { key: "mailbox", label: "Carpeta", secret: false, env: `${prefix}_MAILBOX`, pattern: /^[^\r\n]{1,120}$/, hint: "INBOX" },
+    ...extra,
+  ];
+}
+
 export const PROVIDERS: ProviderDef[] = [
   {
     id: "ghl",
@@ -71,6 +90,20 @@ export const PROVIDERS: ProviderDef[] = [
       { key: "capiAccessToken", label: "Token de acceso", secret: true, env: "META_CAPI_ACCESS_TOKEN", pattern: TOKEN_RE },
       { key: "capiTestEventCode", label: "Código de evento de prueba", secret: false, env: "META_CAPI_TEST_EVENT_CODE", pattern: /^[A-Za-z0-9_-]{3,40}$/ },
     ],
+  },
+  {
+    id: "imap_tpv",
+    name: "Buzón de tickets del datáfono",
+    description: "Lee los tickets que el banco envía por correo y los concilia con las ventas del TPV.",
+    fields: imapFields("IMAP_TPV", [
+      { key: "allowedSender", label: "Remitente de los tickets", secret: false, env: "IMAP_TPV_ALLOWED_SENDER", pattern: EMAIL_RE, hint: "copia@ticket.tubanco.com" },
+    ]),
+  },
+  {
+    id: "imap_expenses",
+    name: "Buzón de gastos",
+    description: "Lee los justificantes de gasto (PDF o foto) que se reenvían a este buzón.",
+    fields: imapFields("IMAP_EXPENSE"),
   },
 ];
 

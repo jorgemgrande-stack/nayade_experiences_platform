@@ -19,6 +19,7 @@ import { madridStartOfDayUtc, madridEndOfDayUtc } from "../utils/timezone";
 import { legacyDb, legacyPool } from "../_core/legacyDb";
 import { scheduleTenantCron } from "../_core/tenantRegistry/scheduler";
 import { isMultiTenant } from "../_core/tenant";
+import { tenantImapConfig, type ImapConfig } from "./imapConfig";
 
 // CONFIG
 
@@ -660,17 +661,19 @@ function emptyResult(extra?: Partial<IngestionResult>): IngestionResult {
 // CORE INGESTION
 
 export async function runEmailIngestion(retryErrors = false): Promise<IngestionResult> {
-  // Multiempresa: el buzón IMAP sale del entorno (global); volcarlo en la BD de cualquier
-  // empresa sería una fuga entre empresas. Bloqueado hasta tener credenciales por tenant.
-  if (isMultiTenant()) {
-    return emptyResult({ errors: ["Ingesta IMAP no disponible en multiempresa (credenciales globales)"] });
-  }
+  // Multiempresa: solo el buzón de la propia empresa (bóveda); sin él, no se lee nada
+  const cfg: ImapConfig | null = isMultiTenant()
+    ? tenantImapConfig("IMAP_TPV")
+    : { host: IMAP_HOST, port: IMAP_PORT, secure: IMAP_SECURE, user: IMAP_USER, pass: IMAP_PASS, mailbox: IMAP_MAILBOX, allowedSender: IMAP_ALLOWED_SENDER };
+  // Empresa sin buzón propio: nada que leer (sin aviso: la tarea corre cada 5 minutos por empresa)
+  if (!cfg) return emptyResult();
+  const allowedSender = cfg.allowedSender ?? IMAP_ALLOWED_SENDER;
   if (isRunning) {
     console.log("[EmailTPV] Already running — skipping");
     return emptyResult({ errors: ["Already running"] });
   }
 
-  if (!IMAP_PASS) {
+  if (!cfg.pass) {
     console.warn("[EmailTPV] IMAP_TPV_PASS not set — skipping");
     return emptyResult({ errors: ["IMAP_TPV_PASS not configured"] });
   }
@@ -680,16 +683,16 @@ export async function runEmailIngestion(retryErrors = false): Promise<IngestionR
   const db = makeDb();
 
   const client = new ImapFlow({
-    host: IMAP_HOST,
-    port: IMAP_PORT,
-    secure: IMAP_SECURE,
-    auth: { user: IMAP_USER, pass: IMAP_PASS },
+    host: cfg.host,
+    port: cfg.port,
+    secure: cfg.secure,
+    auth: { user: cfg.user, pass: cfg.pass },
     logger: false,
   });
 
   try {
     await client.connect();
-    const lock = await client.getMailboxLock(IMAP_MAILBOX);
+    const lock = await client.getMailboxLock(cfg.mailbox);
 
     try {
       // Search by date window instead of seen flag — DB messageId handles dedup.
@@ -698,7 +701,7 @@ export async function runEmailIngestion(retryErrors = false): Promise<IngestionR
       const uids: number[] = [];
       for await (const msg of client.fetch({ since }, { uid: true, envelope: true })) {
         const from = msg.envelope?.from?.[0]?.address ?? "";
-        if (from.toLowerCase() !== IMAP_ALLOWED_SENDER.toLowerCase()) continue;
+        if (from.toLowerCase() !== allowedSender.toLowerCase()) continue;
         uids.push(msg.uid);
       }
 
@@ -865,7 +868,7 @@ export async function runEmailIngestion(retryErrors = false): Promise<IngestionR
             await db.insert(emailIngestionLogs).values({
               messageId,
               subject,
-              sender: IMAP_ALLOWED_SENDER,
+              sender: allowedSender,
               receivedAt,
               retryCount: 0,
               ...logValues,
@@ -900,7 +903,8 @@ export async function runEmailIngestion(retryErrors = false): Promise<IngestionR
 // CRON + BOOT
 
 export function startEmailIngestionJob(): void {
-  setImmediate(() => {
+  // Pasada inicial solo en la instalación de una sola empresa; en multiempresa, el programador por empresa
+  if (!isMultiTenant()) setImmediate(() => {
     runEmailIngestion(false)
       .then((r) =>
         console.log(
