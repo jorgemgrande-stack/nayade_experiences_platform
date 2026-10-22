@@ -7,6 +7,7 @@ import type mysql from "mysql2/promise";
 import { trialChanged } from "../commercialEvents/derive";
 import type { CommercialEventSink } from "../commercialEvents/types";
 import type { TrialAction, TrialState } from "./machine";
+import { canonicalMailbox } from "./mailbox";
 
 export interface TrialRequest {
   id: number;
@@ -63,6 +64,11 @@ export interface TrialStore {
    * (`base` ya sin la etiqueta +). Evita abrir varias pruebas a la vez con alias +etiqueta.
    */
   openByAlias(base: string, domain: string): Promise<TrialRequest | null>;
+  /**
+   * Prueba abierta del mismo buzón canónico (alias +etiqueta y variantes de Gmail; ver ./mailbox). En MySQL usa la
+   * columna `open_mailbox` (CRM 0023); sin ella, cae en `openByAlias(alias)` (sin la regla de Gmail).
+   */
+  openByMailbox(mailbox: string, alias: { base: string; domain: string }): Promise<TrialRequest | null>;
   get(id: number): Promise<TrialRequest | null>;
   /** Cambio de estado con versión esperada y evento, todo o nada. */
   transition(id: number, expectedVersion: number, patch: TrialPatch, event: { action: TrialAction; fromState: TrialState; detail: string | null; actor: string; at: number }): Promise<TrialRequest>;
@@ -96,7 +102,9 @@ export class MemoryTrialStore implements TrialStore {
   constructor(private commercialEvents?: CommercialEventSink) {}
   async insert(t: Omit<TrialRequest, "id" | "version" | "updatedAt">, actor: string) {
     if (Array.from(this.rows.values()).some((r) => r.idempotencyKey === t.idempotencyKey)) throw new TrialConflict("duplicate_key", "Solicitud repetida");
-    if (await this.openByEmail(t.email)) throw new TrialConflict("duplicate_email", "Ya hay una prueba abierta con ese correo");
+    // Como los índices únicos de la BD: correo exacto (0007) y buzón canónico (0023)
+    if ((await this.openByEmail(t.email)) || (await this.openByMailbox(canonicalMailbox(t.email))))
+      throw new TrialConflict("duplicate_email", "Ya hay una prueba abierta con ese correo");
     const full: TrialRequest = { ...clone(t), id: ++this.seq, version: 1, updatedAt: null };
     this.rows.set(full.id, full);
     this.evs.push({ id: ++this.seq, trialId: full.id, action: "registered", fromState: null, toState: full.state, version: 1, detail: null, actor, createdAt: t.createdAt });
@@ -115,6 +123,10 @@ export class MemoryTrialStore implements TrialStore {
     const r = Array.from(this.rows.values()).find(
       (x) => !["converted", "rejected", "cancelled"].includes(x.state) && (x.email === `${base}@${domain}` || (x.email.startsWith(`${base}+`) && x.email.endsWith(`@${domain}`))),
     );
+    return r ? clone(r) : null;
+  }
+  async openByMailbox(mailbox: string) {
+    const r = Array.from(this.rows.values()).find((x) => !["converted", "rejected", "cancelled"].includes(x.state) && canonicalMailbox(x.email) === mailbox);
     return r ? clone(r) : null;
   }
   async note(trialId: number, e: { action: "notice_queued"; detail: string; actor: string; at: number }) {
@@ -238,7 +250,7 @@ export class MysqlTrialStore implements TrialStore {
     } catch (e) {
       await c.rollback().catch(() => undefined);
       if (dup(e, "uq_trial_idempotency")) throw new TrialConflict("duplicate_key", "Solicitud repetida");
-      if (dup(e, "uq_trial_open_email")) throw new TrialConflict("duplicate_email", "Ya hay una prueba abierta con ese correo");
+      if (dup(e, "uq_trial_open_email") || dup(e, "uq_trial_open_mailbox")) throw new TrialConflict("duplicate_email", "Ya hay una prueba abierta con ese correo");
       throw e;
     } finally {
       c.release();
@@ -259,6 +271,16 @@ export class MysqlTrialStore implements TrialStore {
       `${likeLiteral(base)}+%@${likeLiteral(domain)}`,
     ]);
     return r[0] ? row(r[0]) : null;
+  }
+  async openByMailbox(mailbox: string, alias: { base: string; domain: string }) {
+    try {
+      const [r] = await this.pool.query<mysql.RowDataPacket[]>("SELECT * FROM trial_requests WHERE open_mailbox = ?", [mailbox]);
+      return r[0] ? row(r[0]) : null;
+    } catch (e) {
+      // Sin la migración 0023 todavía: la búsqueda por alias +etiqueta de siempre
+      if ((e as { code?: string }).code === "ER_BAD_FIELD_ERROR") return this.openByAlias(alias.base, alias.domain);
+      throw e;
+    }
   }
   async note(trialId: number, e: { action: "notice_queued"; detail: string; actor: string; at: number }) {
     await this.pool.query(

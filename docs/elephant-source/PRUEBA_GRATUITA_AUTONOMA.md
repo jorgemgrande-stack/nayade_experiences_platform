@@ -204,10 +204,9 @@ Local: `REGISTRY_TEST_DATABASE_URL=mysql://root:<clave>@127.0.0.1:<puerto>/mysql
 
 - La tarea ya está conectada (18/10/2026), pero **apagada** hasta `CP_TRIALS_SCHEDULER_ENABLED=1`; mientras, el
   vencimiento y los avisos siguen siendo manuales. Sin notificador, el aviso de vencimiento solo queda en el log.
-- **Puntos de Gmail** (`a.na@gmail.com` = `ana@gmail.com`) no se normalizan: requeriría una columna
-  canónica (migración). Acotado por el límite por IP.
-- Dos altas **simultáneas** con alias distintos del mismo buzón (`ana+1@` y `ana+2@` en el mismo
-  milisegundo) pueden pasar las dos: la BD solo impone unicidad del correo exacto.
+- Resuelto con la migración 0023 del CRM: los **puntos de Gmail** (`a.na@gmail.com` = `ana@gmail.com`, también
+  `googlemail.com`) y las altas **simultáneas** con alias del mismo buzón. La BD impone una sola prueba abierta por
+  buzón canónico (`open_mailbox`). Hasta aplicar la migración, la búsqueda cae en la de alias +etiqueta de siempre.
 - El aviso de 0 días solo lo manda la tarea al vencer ella la prueba; si un operador la vence a mano
   (`/trials/:id/expire`) no se envía ese aviso.
 - La constancia de aviso se registra aunque la bandeja lo deje `skipped` (`MAIL_MODE=off`): al encender el

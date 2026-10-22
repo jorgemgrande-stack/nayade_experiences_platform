@@ -17,6 +17,9 @@
 import crypto from "node:crypto";
 import { TERMINAL, nextState, type TrialAction, type TrialState } from "./machine";
 import { TrialConflict, type TrialPatch, type TrialRequest, type TrialStore } from "./store";
+import { canonicalMailbox, mailboxOf } from "./mailbox";
+
+export { canonicalMailbox, mailboxOf };
 
 export const TRIAL_DAYS = 15;
 const DAY = 86_400_000;
@@ -80,17 +83,6 @@ export function blockedDomainsFromEnv(env: NodeJS.ProcessEnv): string[] {
   return (env.CP_TRIAL_BLOCKED_DOMAINS ?? "").split(",").map((x) => x.trim().toLowerCase()).filter((x) => /^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(x));
 }
 
-/**
- * Buzón de un correo (minúsculas): sin la etiqueta `+loquesea` del usuario. Sirve para impedir varias
- * pruebas abiertas a la vez con alias del mismo buzón. Los puntos de Gmail no se normalizan (pendiente).
- */
-export function mailboxOf(email: string): { base: string; domain: string } {
-  const at = email.lastIndexOf("@");
-  const local = email.slice(0, at);
-  const plus = local.indexOf("+");
-  return { base: plus > 0 ? local.slice(0, plus) : local, domain: email.slice(at + 1) };
-}
-
 export class TrialError extends Error {
   constructor(
     public readonly code: "invalid_input" | "invalid_state" | "not_found" | "limit" | "conflict" | "forbidden",
@@ -125,13 +117,13 @@ export class TrialService {
   }
 
   /**
-   * Prueba abierta de ese buzón (mismo correo o alias +etiqueta). Las solicitudes sin verificar con el
-   * enlace caducado se anulan aquí mismo (`expire_verification`) y no cuentan.
+   * Prueba abierta de ese buzón (mismo correo, alias +etiqueta o variante de Gmail con puntos). Las solicitudes
+   * sin verificar con el enlace caducado se anulan aquí mismo (`expire_verification`) y no cuentan.
    */
   private async openFor(email: string, actor: string) {
     const { base, domain } = mailboxOf(email);
     for (let i = 0; i < 5; i++) {
-      const open = (await this.d.store.openByEmail(email)) ?? (await this.d.store.openByAlias(base, domain));
+      const open = (await this.d.store.openByEmail(email)) ?? (await this.d.store.openByMailbox(canonicalMailbox(email), { base, domain }));
       if (!open || !this.isStalePending(open)) return open;
       try {
         await this.move(open.id, open.version, "expire_verification", actor, () => ({ verificationTokenHash: null, verificationExpiresAt: null }), "enlace caducado sin verificar");

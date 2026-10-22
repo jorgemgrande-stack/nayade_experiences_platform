@@ -6,7 +6,7 @@
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { MemoryTrialStore } from "./trials/store";
-import { TrialService, blockedDomainsFromEnv, mailboxOf } from "./trials/service";
+import { TrialService, blockedDomainsFromEnv, canonicalMailbox, mailboxOf } from "./trials/service";
 import { TrialOnboardingService, type TrialNotifier } from "./trials/onboarding";
 import { TrialScheduler, memoryLock, schedulerConfigFromEnv, startTrialScheduler, SCHEDULER_LOCK, DEFAULT_INTERVAL } from "./trials/scheduler";
 import { platformTemplates } from "./mail/templates";
@@ -136,6 +136,17 @@ describe("el correo no queda bloqueado y protección contra abusos", () => {
     // Otro buzón que solo comparte el prefijo no se ve afectado
     expect((await reg("bea2@gmail.com")).created).toBe(true);
     expect((await reg("an_a@acme.es")).created).toBe(true);
+  });
+
+  it("Gmail: los puntos y googlemail.com son el mismo buzón; en otros dominios los puntos sí cuentan", async () => {
+    expect(canonicalMailbox("A.Na+promo@GoogleMail.com")).toBe("ana@gmail.com");
+    expect(canonicalMailbox("a.na@acme.es")).toBe("a.na@acme.es");
+    expect(canonicalMailbox("+x@acme.es")).toBe("+x@acme.es");
+    await reg("lu.cia@gmail.com");
+    await expect(reg("lucia@gmail.com")).rejects.toMatchObject({ code: "conflict" });
+    await expect(reg("l.u.c.i.a+2@googlemail.com")).rejects.toMatchObject({ code: "conflict" });
+    await reg("lu.cia@acme.es");
+    expect((await reg("lucia@acme.es")).created).toBe(true);
   });
 
   it("correo desechable conocido o dominio bloqueado por configuración: rechazado", async () => {
