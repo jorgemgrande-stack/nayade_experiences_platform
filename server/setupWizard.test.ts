@@ -12,6 +12,7 @@ import {
   parseProgress,
   progressPercent,
   SetupWizardError,
+  shouldOpenSetupWizard,
 } from "../shared/setupWizard";
 import { includedUsers, licenceSummary, seatDecision } from "./planSeats";
 import type { CapabilityGrant } from "./_core/capabilities/model";
@@ -33,6 +34,16 @@ const grant = (capabilityId: string, o: Partial<CapabilityGrant> = {}): Capabili
   ...o,
 });
 const tier = (t: "essential" | "business" | "enterprise", o: Partial<CapabilityGrant> = {}) => capabilitiesOfTier(t).map((c) => grant(c, o));
+
+describe("primera entrada: llevar a Primeros pasos", () => {
+  it("solo si nadie ha tocado el asistente y no está terminado", () => {
+    expect(shouldOpenSetupWizard(emptyProgress())).toBe(true);
+    expect(shouldOpenSetupWizard({ completedAt: null, updatedAt: 1 })).toBe(false);
+    expect(shouldOpenSetupWizard({ completedAt: 2, updatedAt: 2 })).toBe(false);
+    expect(shouldOpenSetupWizard(null)).toBe(false);
+    expect(shouldOpenSetupWizard(undefined)).toBe(false);
+  });
+});
 
 describe("progreso del asistente", () => {
   it("empieza vacío, avanza por pasos, se pueden omitir y finalizar deja fecha", () => {
