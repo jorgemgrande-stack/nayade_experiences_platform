@@ -179,7 +179,7 @@ En Railway, la consulta de solo lectura `project → services → serviceInstanc
 | Web y contratación | `GET https://www.bigelephant.es/` y `/contratacion/estado` | 200 |
 | API pública | `GET https://www.bigelephant.es/cp/v1/public/site` | 200, sin productos internos |
 | Puerta del CRM | `GET https://admin.bigelephant.es/` | 401 (autenticación básica) y, tras ella, el login del CRM |
-| Cookie del operador | Iniciar sesión en el CRM y revisar `Set-Cookie` en las herramientas del navegador | `Path=/cp/v1`, `HttpOnly`, `Secure`, `SameSite=Strict`, **sin `Domain`** |
+| Cookie del operador | Iniciar sesión en el CRM y revisar `Set-Cookie` en las herramientas del navegador | `__Host-be_cp_session`: `Path=/`, `HttpOnly`, `Secure`, `SameSite=Strict`, **sin `Domain`**, como máximo 12 horas. Se borra la antigua `be_cp_session` (`Path=/cp/v1`) |
 | Origen permitido | Login del CRM desde `admin.bigelephant.es` | Funciona. Un origen fuera de `CP_ALLOWED_ORIGINS` recibe 403 |
 | Entrada de empresas | `GET https://app.bigelephant.es/` | Página «Accede a tu empresa» (fase B) |
 | Cookie de empresa | Iniciar sesión en `<empresa>.app.bigelephant.es` | `__Host-nayade_session`: `Secure`, `Path=/`, **sin `Domain`**. En otra `<empresa2>.app…` no se envía |
