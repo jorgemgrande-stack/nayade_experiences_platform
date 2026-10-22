@@ -1181,7 +1181,7 @@ function CreateExpedientModal({
               onChange={(e) => setForm(f => ({ ...f, serviceDescription: e.target.value }))}
               rows={2}
               className="text-sm"
-              placeholder="Ej: Viaje de empresa a Los Ángeles de San Rafael..."
+              placeholder="Ej: Viaje de empresa a Lisboa..."
             />
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -1191,7 +1191,7 @@ function CreateExpedientModal({
                 value={form.destination}
                 onChange={(e) => setForm(f => ({ ...f, destination: e.target.value }))}
                 className="text-sm"
-                placeholder="Ej: Los Ángeles de San Rafael"
+                placeholder="Ej: Lisboa"
               />
             </div>
             <div>

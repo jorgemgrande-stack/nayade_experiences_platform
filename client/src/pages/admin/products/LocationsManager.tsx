@@ -182,7 +182,7 @@ export default function LocationsManager() {
             </div>
             <div>
               <Label>Dirección</Label>
-              <Input value={form.address} onChange={(e) => setForm(f => ({ ...f, address: e.target.value }))} placeholder="Los Ángeles de San Rafael, Segovia" />
+              <Input value={form.address} onChange={(e) => setForm(f => ({ ...f, address: e.target.value }))} placeholder="Calle Mayor 1, Ciudad" />
             </div>
             <div>
               <Label>Descripción</Label>
