@@ -5,13 +5,15 @@
  * Qué cambia respecto a crear un pool por fichero:
  *  - Un único pool compartido (10 conexiones) en lugar de decenas de pools de 1 conexión.
  *  - Resolución perezosa: no se abre ninguna conexión al importar el módulo.
- *  - En modo `multi-tenant` falla de forma explícita (TenantResolutionError): estos accesos
- *    son síncronos y no conocen el tenant, así que nunca deben servir datos de «alguna» BD.
+ *  - En modo `multi-tenant` resuelve, en CADA acceso, el pool arrendado por el contexto del
+ *    tenant en curso (lo precargan el middleware de petición y los jobs: ver dbRegistry
+ *    `leaseTenantDatabase`/`withTenantDb`). Sin tenant en contexto o sin pool precargado falla
+ *    de forma explícita (TenantResolutionError): nunca sirve datos de «alguna» BD.
  *
  * Es un puente de migración: el código nuevo debe usar `getDb()` (asíncrono y con tenant).
  */
 import type mysql from "mysql2/promise";
-import { getSingleTenantDatabaseSync, getSingleTenantPoolSync, type Database } from "./dbRegistry";
+import { getCurrentDatabaseSync, getCurrentPoolSync, type Database } from "./dbRegistry";
 
 function lazy<T extends object>(resolve: () => T | null, what: string): T {
   return new Proxy({} as T, {
@@ -30,10 +32,10 @@ function lazy<T extends object>(resolve: () => T | null, what: string): T {
 
 /** Equivale a `mysql.createPool(...)` del código heredado. */
 export function legacyPool(): mysql.Pool {
-  return lazy<mysql.Pool>(getSingleTenantPoolSync, "legacyPool");
+  return lazy<mysql.Pool>(getCurrentPoolSync, "legacyPool");
 }
 
 /** Equivale a `drizzle(pool)` del código heredado. */
 export function legacyDb(): Database {
-  return lazy<Database>(getSingleTenantDatabaseSync, "legacyDb");
+  return lazy<Database>(getCurrentDatabaseSync, "legacyDb");
 }
