@@ -17,6 +17,9 @@ import {
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
+
+/** Secreto propio de esta empresa (40 caracteres hexadecimales): nunca uno común a todas. */
+const randomWebhookSecret = () => Array.from(crypto.getRandomValues(new Uint8Array(20)), (b) => b.toString(16).padStart(2, "0")).join("");
 import { Label } from "@/components/ui/label";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -488,7 +491,7 @@ export default function WhatsAppGHLInbox() {
                   <Input
                     value={credSecret}
                     onChange={e => setCredSecret(e.target.value)}
-                    placeholder={inboxCreds?.webhookSecret || "NAYADE2026_ULTRA"}
+                    placeholder={inboxCreds?.webhookSecret ? "Se mantiene el actual" : "Vacío: se genera uno aleatorio"}
                     className="h-8 text-xs font-mono mt-1"
                   />
                 </div>
@@ -498,7 +501,7 @@ export default function WhatsAppGHLInbox() {
                   onClick={() => saveCredsMut.mutate({
                     token: credToken.trim(),
                     locationId: credLocation.trim(),
-                    webhookSecret: credSecret.trim() || inboxCreds?.webhookSecret || "NAYADE2026_ULTRA",
+                    webhookSecret: credSecret.trim() || inboxCreds?.webhookSecret || randomWebhookSecret(),
                   })}
                   className="bg-green-600 hover:bg-green-700 text-white"
                 >

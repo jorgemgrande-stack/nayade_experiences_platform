@@ -176,7 +176,7 @@ function GHLSection({ plain = false }: { plain?: boolean }) {
 // ─── Email Preview Section ─────────────────────────────────────────────────────
 function EmailPreviewSection({ plain = false }: { plain?: boolean }) {
   const [templateId, setTemplateId] = useState("budget-user");
-  const [toEmail, setToEmail] = useState("reservas@nayadeexperiences.es");
+  const [toEmail, setToEmail] = useState("");
   const sendPreview = trpc.admin.sendEmailPreview.useMutation({
     onSuccess: (data) => toast.success(`Email enviado a ${data.to}`),
     onError: (err) => toast.error(`Error: ${err.message}`),
@@ -204,7 +204,7 @@ function EmailPreviewSection({ plain = false }: { plain?: boolean }) {
             type="email"
             value={toEmail}
             onChange={e => setToEmail(e.target.value)}
-            placeholder="reservas@nayadeexperiences.es"
+            placeholder="tu-correo@empresa.com"
             className="font-display"
           />
         </div>
@@ -295,12 +295,12 @@ export default function Settings() {
   const [activeTab, setActiveTab] = useState<Tab>("business");
 
   const [business, setBusiness] = useState({
-    businessName: "Náyade Experiences",
-    businessPhone: "+34 639 57 66 27",
-    businessEmail: "reservas@nayadeexperiences.es",
-    businessAddress: "Los Ángeles de San Rafael, Segovia",
-    businessDescription: "El destino de aventuras del lago. Actividades náuticas, hotel y spa en el embalse de Los Ángeles de San Rafael, a 45 min de Madrid.",
-    businessWebsite: "https://skicenter.es",
+    businessName: "",
+    businessPhone: "",
+    businessEmail: "",
+    businessAddress: "",
+    businessDescription: "",
+    businessWebsite: "",
   });
 
   const [schedule, setSchedule] = useState({
@@ -308,7 +308,7 @@ export default function Settings() {
     scheduleHighClose: "20:00",
     scheduleLowOpen: "10:00",
     scheduleLowClose: "18:00",
-    scheduleDays: "Lunes a Domingo (Abril - Octubre)",
+    scheduleDays: "",
   });
 
   const [payments, setPayments] = useState({
@@ -319,8 +319,8 @@ export default function Settings() {
   });
 
   const [notifications, setNotifications] = useState({
-    notifEmailBooking: "reservas@nayadeexperiences.es",
-    notifEmailRestaurant: "restaurantes@skicenter.es",
+    notifEmailBooking: "",
+    notifEmailRestaurant: "",
     notifSmsEnabled: "false",
   });
 

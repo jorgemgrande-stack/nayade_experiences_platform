@@ -485,12 +485,12 @@ export default function LegoPacksManager() {
                         .replace(/[^a-z0-9\s-]/g, "").trim().replace(/\s+/g, "-");
                       setForm({ ...form, title, slug: editId ? form.slug : autoSlug });
                     }}
-                    placeholder="Day Pass Náyade"
+                    placeholder="Day Pass"
                   />
                 </div>
                 <div>
                   <Label>Slug *</Label>
-                  <Input value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value })} placeholder="day-pass-nayade" />
+                  <Input value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value })} placeholder="day-pass" />
                   <p className="text-xs text-muted-foreground mt-1">Auto-generado desde el título</p>
                 </div>
               </div>

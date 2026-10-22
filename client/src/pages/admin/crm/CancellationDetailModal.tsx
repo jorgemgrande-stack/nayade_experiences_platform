@@ -593,7 +593,7 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
                   <StatusBadge label={voucher.status} className="bg-purple-500/10 text-purple-400 border-purple-500/20" />
                 </div>
                 <p className="text-gray-400 text-xs">
-                  {voucher.activityName ?? "Actividad Náyade"} · {parseFloat(voucher.value).toFixed(2)} {voucher.currency}
+                  {voucher.activityName ?? "Actividad"} · {parseFloat(voucher.value).toFixed(2)} {voucher.currency}
                 </p>
                 {voucher.expiresAt && (
                   <p className="text-gray-500 text-xs">
@@ -870,7 +870,7 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
                         {isPartial && <p className="text-amber-400 text-xs mt-1">Bono parcial del importe afectado</p>}
                         <div className="mt-2">
                           <Label className="text-gray-400 text-xs">Actividad del bono</Label>
-                          <Input value={voucherActivity} onChange={(e) => setVoucherActivity(e.target.value)} placeholder="Ej: Nayade Day Pass" className="bg-[#111] border-white/10 text-white mt-1" />
+                          <Input value={voucherActivity} onChange={(e) => setVoucherActivity(e.target.value)} placeholder="Ej: Day Pass" className="bg-[#111] border-white/10 text-white mt-1" />
                         </div>
                         <div className="mt-2">
                           <Label className="text-gray-400 text-xs">Caducidad (opcional)</Label>

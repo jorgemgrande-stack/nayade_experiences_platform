@@ -12,8 +12,8 @@ import {
 const DEFAULT_MESSAGE =
   "Aviso importante\n\n" +
   "Reservas online temporalmente no disponibles\n\n" +
-  "En estos momentos, el servicio de reservas a través de Náyade Experiences se encuentra temporalmente desactivado.\n\n" +
-  "Para información sobre actividades, servicios o nuevas reservas en Hotel Náyade, rogamos contactar directamente con el establecimiento.\n\n" +
+  "En estos momentos, el servicio de reservas en línea se encuentra temporalmente desactivado.\n\n" +
+  "Para información sobre actividades, servicios o nuevas reservas, rogamos contactar directamente con nosotros.\n\n" +
   "Gracias por vuestra comprensión";
 
 export default function MaintenanceModeControl() {

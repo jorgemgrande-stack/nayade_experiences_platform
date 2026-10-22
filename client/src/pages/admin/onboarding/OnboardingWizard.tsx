@@ -1,4 +1,6 @@
 import { useState, useEffect } from "react";
+import { Redirect } from "wouter";
+import { usePanelSubscription } from "@/hooks/usePanelSubscription";
 import AdminLayout from "@/components/AdminLayout";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
@@ -265,7 +267,18 @@ function IntegrationsStep({ envStatus }: {
 
 // ─── Main Wizard ──────────────────────────────────────────────────────────────
 
+/**
+ * En una empresa con licencias (multiempresa) el alta se hace en «Primeros pasos»: este asistente antiguo de la
+ * instalación única muestra variables del entorno y activa módulos sin licencia, así que no se ofrece.
+ */
 export default function OnboardingWizard() {
+  const sub = usePanelSubscription();
+  if (sub.mode === "loading") return null;
+  if (sub.mode === "tasks") return <Redirect to="/admin/primeros-pasos" />;
+  return <OnboardingWizardLegacy />;
+}
+
+function OnboardingWizardLegacy() {
   const [currentStep, setCurrentStep] = useState(0);
   const [values, setValues] = useState<Record<string, string>>({});
   const [initialized, setInitialized] = useState(false);

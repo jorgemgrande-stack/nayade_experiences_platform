@@ -1,11 +1,14 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { eq, desc, and, like, gte, lte } from "drizzle-orm";
-import { router, permissionProcedure, publicProcedure } from "../_core/trpc";
+import { eq, desc, and, like, gte, lte, inArray } from "drizzle-orm";
+import { router, permissionProcedure, protectedProcedure, publicProcedure } from "../_core/trpc";
 import { getDb } from "../db";
 import { featureFlags, systemSettings, configChangeLogs } from "../../drizzle/schema";
 import { invalidateConfigCache } from "../config";
 import type { User } from "../../drizzle/schema";
+import { brandName, tenantFiscalIdentity } from "../tenantBrand";
+import { isMultiTenant } from "../_core/tenant";
+import { warmTenantIdentity } from "../_core/tenantIdentity";
 
 async function requireDb() {
   const db = await getDb();
@@ -85,6 +88,30 @@ export const configRouter = router({
     } catch {
       return {};
     }
+  }),
+
+  /**
+   * Datos de la empresa en curso para tickets y documentos impresos (nombre, razón social, NIF, dirección, web y
+   * logotipo): lo que ya figura en cualquier ticket. Para cualquier usuario del panel. Vacío si no está configurado:
+   * nunca los de otra empresa.
+   */
+  ticketHeader: protectedProcedure.query(async () => {
+    const keys = ["brand_name", "site_legal_name", "brand_nif", "brand_address", "site_legal_city", "brand_website_url", "brand_logo_url"];
+    const db = await getDb();
+    const rows = db ? await db.select({ key: systemSettings.key, value: systemSettings.value }).from(systemSettings).where(inArray(systemSettings.key, keys)) : [];
+    const v = (k: string) => (rows.find((r) => r.key === k)?.value ?? "").trim() || null;
+    // Multiempresa: lo que falte, de la identidad de la empresa en el registro (nunca respaldos de otra)
+    if (isMultiTenant()) await warmTenantIdentity().catch(() => undefined);
+    const fiscal = isMultiTenant() ? tenantFiscalIdentity() : null;
+    return {
+      name: v("brand_name") ?? (isMultiTenant() ? brandName() || null : null),
+      legalName: v("site_legal_name") ?? fiscal?.legalName ?? null,
+      taxId: v("brand_nif") ?? fiscal?.taxId ?? null,
+      address: v("brand_address") ?? fiscal?.address ?? null,
+      city: v("site_legal_city"),
+      website: v("brand_website_url"),
+      logoUrl: v("brand_logo_url"),
+    };
   }),
 
   listFeatureFlags: settingsAdvancedProc.query(async () => {

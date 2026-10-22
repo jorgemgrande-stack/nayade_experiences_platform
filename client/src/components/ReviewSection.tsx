@@ -250,7 +250,7 @@ function ReviewCard({
       {review.adminReply && (
         <div className={`mt-3 rounded-lg border p-3 ${s.replyBg}`}>
           <p className="text-xs font-semibold text-teal-500 dark:text-teal-400 mb-1">
-            Respuesta del equipo Náyade
+            Respuesta del equipo
           </p>
           <p className={`text-xs leading-relaxed ${s.textSecondary}`}>
             {review.adminReply}

@@ -90,7 +90,7 @@ export default function EmployeesList() {
                 Empleados
               </h1>
               <p className="text-xs sm:text-sm text-foreground/50 mt-0.5 hidden sm:block">
-                Plantilla de Náyade Experiences — datos personales, contrato y documentos
+                Plantilla de la empresa — datos personales, contrato y documentos
               </p>
             </div>
             <Button onClick={() => setCreateOpen(true)} className="bg-orange-600 hover:bg-orange-700 text-white">

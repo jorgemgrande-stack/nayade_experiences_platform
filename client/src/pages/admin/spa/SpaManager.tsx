@@ -669,11 +669,11 @@ export default function SpaManager() {
   });
 
   return (
-    <AdminLayout title="SPA Náyade">
+    <AdminLayout title="SPA">
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">SPA Náyade</h1>
+          <h1 className="text-2xl font-bold">SPA</h1>
           <p className="text-muted-foreground text-sm">Gestiona tratamientos, horarios y disponibilidad</p>
         </div>
         <Button onClick={() => { setEditTreatment(null); setShowForm(true); }}>
