@@ -53,7 +53,8 @@ export default function RestauranteDetail() {
     );
   }
 
-  const heroImg = restaurant.heroImage || FALLBACK_IMAGES[restaurant.slug] || "";
+  // Imágenes de la instalación original: solo en su web
+  const heroImg = restaurant.heroImage || (neutral ? "" : FALLBACK_IMAGES[restaurant.slug]) || "";
   const galleryImages = (restaurant.galleryImages as string[]) ?? [];
 
   // Formatear horarios desde los turnos

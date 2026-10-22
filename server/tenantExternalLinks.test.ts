@@ -19,3 +19,13 @@ describe("enlaces a la web de la instalación original", () => {
     expect(read("pages/Restaurantes.tsx")).toContain("const ext = neutral ? null : restaurantExternalUrl(r.slug);");
   });
 });
+
+describe("páginas comunes sin datos de la instalación original", () => {
+  it.each(["pages/MaintenanceNotice.tsx", "pages/LegoPacksList.tsx"])("%s", (file) => {
+    expect(read(file)).not.toMatch(/N[aá]yade|nayade_|\blago\b/);
+  });
+
+  it("detalle de restaurante: imágenes de la instalación original solo fuera de la web neutra", () => {
+    expect(read("pages/RestauranteDetail.tsx")).toContain('restaurant.heroImage || (neutral ? "" : FALLBACK_IMAGES[restaurant.slug]) || ""');
+  });
+});
