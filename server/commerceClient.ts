@@ -53,6 +53,8 @@ export interface CommerceClient {
   openTicket(tenantId: string, input: { title: string; description: string; category?: string; requestedBy: string }): Promise<unknown>;
   replyTicket(tenantId: string, id: number, input: { text: string; requestedBy: string }): Promise<unknown>;
   reopenTicket(tenantId: string, id: number, input: { reason: string; requestedBy: string }): Promise<unknown>;
+  /** Catálogo de módulos y ampliaciones para el panel de la empresa (solo lectura). */
+  catalog(tenantId: string): Promise<unknown>;
 }
 
 type Fetch = (url: string, init: { method: string; headers: Record<string, string>; body?: string; signal?: AbortSignal }) => Promise<{ status: number; json(): Promise<unknown> }>;
@@ -100,6 +102,7 @@ export function commerceClientFromEnv(env: NodeJS.ProcessEnv = process.env, fetc
     openTicket: async (tenantId, input) => await call("POST", `${seg(tenantId)}/tickets`, input),
     replyTicket: async (tenantId, id, input) => await call("POST", `${seg(tenantId)}/tickets/${id}/comments`, input),
     reopenTicket: async (tenantId, id, input) => await call("POST", `${seg(tenantId)}/tickets/${id}/reopen`, input),
+    catalog: async (tenantId) => ((await call("GET", `${seg(tenantId)}/catalog`)) as { catalog: unknown }).catalog,
     billingPortal: async (tenantId, returnUrl) => (await call("POST", `${seg(tenantId)}/billing-portal`, { returnUrl })) as { url: string },
   };
 }

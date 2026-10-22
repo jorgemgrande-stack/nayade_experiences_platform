@@ -148,6 +148,7 @@ const ConfigStatus = lazy(() => import("./pages/admin/settings/ConfigStatus"));
 const OnboardingWizard = lazy(() => import("./pages/admin/onboarding/OnboardingWizard"));
 const SubscriptionPage = lazy(() => import("./pages/admin/subscription/SubscriptionPage"));
 const DataExportPage = lazy(() => import("./pages/admin/subscription/DataExportPage"));
+const ModulesPage = lazy(() => import("./pages/admin/subscription/ModulesPage"));
 const HelpCenter = lazy(() => import("./pages/admin/help/HelpCenter"));
 const SupportTicketsPage = lazy(() => import("./pages/admin/help/SupportTicketsPage"));
 const PrimerosPasos = lazy(() => import("./pages/admin/setup/PrimerosPasos"));
@@ -439,6 +440,7 @@ function Router() {
       <Route path="/admin/primeros-pasos">{() => <Suspense fallback={<AdminLoadingFallback />}><PrimerosPasos /></Suspense>}</Route>
       <Route path="/admin/numeracion">{() => <Suspense fallback={<AdminLoadingFallback />}><DocumentNumbersAdmin /></Suspense>}</Route>
       <Route path="/admin/suscripcion/exportar">{() => <Suspense fallback={<AdminLoadingFallback />}><DataExportPage /></Suspense>}</Route>
+      <Route path="/admin/suscripcion/modulos">{() => <Suspense fallback={<AdminLoadingFallback />}><ModulesPage /></Suspense>}</Route>
       <Route path="/admin/suscripcion">{() => <Suspense fallback={<AdminLoadingFallback />}><SubscriptionPage /></Suspense>}</Route>
       <Route path="/admin/soporte">{() => <Suspense fallback={<AdminLoadingFallback />}><SupportTicketsPage /></Suspense>}</Route>
       <Route path="/admin/soporte/:id">{() => <Suspense fallback={<AdminLoadingFallback />}><SupportTicketsPage /></Suspense>}</Route>

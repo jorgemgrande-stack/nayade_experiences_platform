@@ -90,6 +90,7 @@ import type { SubscriptionChangeStore } from "../stripe/changes";
 import type { InvoiceLineStore } from "../stripe/invoiceLines";
 import { ModulePurchaseService } from "../stripe/purchases";
 import { createBillingPortalRouter, createPurchasesRouter } from "../stripe/purchasesApi";
+import { createPanelCatalogRouter } from "../commerce/panelCatalog";
 import { BillingPortalService } from "../stripe/billingPortal";
 import { StripeReconciler, startStripeWorker } from "../stripe/reconcile";
 import { stripeWebhookHandler } from "../stripe/webhook";
@@ -1250,6 +1251,11 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
             res.json({ policy: { enabled, mode, modeReason, intervalMs, dunningDays, trialNoticeDays, retentionDays, graceDays: orchestrator.paymentsConfig.graceDays }, plan: await lifecycle.plan() });
           }),
         );
+      }
+      // Catálogo de módulos y ampliaciones para el panel de cada empresa (solo lectura, mismo token que la compra)
+      if (webAdmin) {
+        const wa = webAdmin;
+        router.use("/commerce", createPanelCatalogRouter({ site: () => wa.site("published"), purchasesEnabled: !!d.stripe?.purchases?.enabled, internalTenants: d.stripe?.purchases?.internalTenants }));
       }
       if (d.stripe) {
         const st = d.stripe;

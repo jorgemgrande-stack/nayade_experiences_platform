@@ -535,4 +535,28 @@ describe("productos internos de pruebas: nunca públicos, solo para empresas de 
       internalTenants.delete(b.tenantId);
     }
   });
+
+  it("catálogo del panel: solo con el token del Core; módulos y ampliaciones a la venta, sin planes; lo interno solo para empresas autorizadas", async () => {
+    const t = "empresa-catalogo-panel";
+    expect((await call("GET", `/commerce/tenants/${t}/catalog`)).status).toBe(403);
+    expect((await call("GET", `/commerce/tenants/${t}/catalog`, { token: null })).status).toBe(401);
+    expect((await call("GET", "/commerce/tenants/NO_VALIDO/catalog", { token: CORE })).status).toBe(400);
+    const c = (await ok(call("GET", `/commerce/tenants/${t}/catalog`, { token: CORE }))).catalog;
+    const byKey = new Map(c.items.map((i: { key: string }) => [i.key, i]));
+    expect(c.purchasesEnabled).toBe(true);
+    expect(byKey.has("essential")).toBe(false);
+    expect(byKey.has(INTERNAL)).toBe(false);
+    expect(byKey.get("connect-people")).toMatchObject({ kind: "module", commercialStatus: "available", purchasable: true, capabilities: ["people-hr"] });
+    expect(byKey.get("addon-user-essential")).toMatchObject({ kind: "quantity", metric: "users", step: 1, purchasable: true });
+    expect((byKey.get("connect-people") as { monthly: { amountCents: number } }).monthly.amountCents).toBeGreaterThan(0);
+    // Bajo petición o próximamente: se ven, pero no se compran desde el panel
+    expect(c.items.filter((i: { commercialStatus: string; purchasable: boolean }) => i.commercialStatus !== "available" && i.purchasable)).toEqual([]);
+    internalTenants.add(t);
+    try {
+      const mine = (await ok(call("GET", `/commerce/tenants/${t}/catalog`, { token: CORE }))).catalog;
+      expect(mine.items.map((i: { key: string }) => i.key)).toContain(INTERNAL);
+    } finally {
+      internalTenants.delete(t);
+    }
+  });
 });
