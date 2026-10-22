@@ -6,7 +6,7 @@
 
 import { router, protectedProcedure, publicProcedure, staffProcedure, adminProcedure } from "../_core/trpc";
 import { publicBaseUrl } from "../_core/productIdentity";
-import { brandSetting, companyName, legacyUrl } from "../tenantBrand";
+import { brandSetting, companyName } from "../tenantBrand";
 import { invoicePreviewPath } from "../_core/signedLinks";
 import { createLead, createBookingFromReservation, createReavExpedient, attachReavDocument, upsertClientFromReservation, postConfirmOperation, getGHLCredentials } from "../db";
 import { confirmReservationAndNotify } from "../reservationEmails";
@@ -1617,7 +1617,7 @@ export const crmRouter = router({
         // Generar token único de aceptación si no existe ya
         const { randomBytes } = await import("crypto");
         const token = quote.paymentLinkToken ?? randomBytes(32).toString("hex");
-        const origin = input.origin ?? legacyUrl("https://www.skicenter.es");
+        const origin = input.origin ?? publicBaseUrl();
         const acceptUrl = `${origin}/presupuesto/${token}`;
 
         // Update quote
@@ -1703,7 +1703,7 @@ export const crmRouter = router({
         let paymentLinkUrl = quote.paymentLinkUrl;
         if (!paymentLinkUrl || !quote.paymentLinkToken) {
           const token = randomBytes(32).toString("hex");
-          const origin = input.origin ?? legacyUrl("https://www.skicenter.es");
+          const origin = input.origin ?? publicBaseUrl();
           paymentLinkUrl = `${origin}/presupuesto/${token}`;
           await db.update(quotes).set({
             paymentLinkToken: token,
@@ -3008,7 +3008,7 @@ export const crmRouter = router({
           // Generar token de aceptación SIEMPRE antes de enviar el email
           const { randomBytes } = await import("crypto");
           const token = randomBytes(32).toString("hex");
-          const origin = input.origin ?? legacyUrl("https://www.skicenter.es");
+          const origin = input.origin ?? publicBaseUrl();
           const acceptUrl = `${origin}/presupuesto/${token}`;
 
           await db.update(quotes).set({

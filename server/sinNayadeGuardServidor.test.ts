@@ -16,22 +16,16 @@ const ORIGINAL = /N[aá]yade|N&[aA]acute;[yY][aA][dD][eE]|nayadeexperiences|skic
 
 const BASELINE: Record<string, number> = {
   "_core/index.ts": 24,
-  "_core/productIdentity.ts": 1,
   "_core/vite.ts": 19,
   "config/index.ts": 2,
   "mail/policy.ts": 1,
   "mailer.ts": 1,
-  "redsysRoutes.ts": 1,
   "routers/cancellations.ts": 2,
   "routers/commercialFollowup.ts": 1,
-  "routers/crm.ts": 3,
   "routers/emailTemplatesRouter.ts": 30,
   "routers/pdfTemplatesRouter.ts": 29,
-  "routers/proposals.ts": 2,
   "services/emailTpvIngestionService.ts": 2,
   "services/expenseEmailIngestionService.ts": 2,
-  "sitemapRouter.ts": 1,
-  "vapiWebhookRouter.ts": 1,
 };
 
 function walk(dir: string): string[] {

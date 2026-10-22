@@ -15,10 +15,11 @@ import { getGHLCredentials } from "../db";
 import { syncLeadUrlsToGHL, createGHLContact } from "../ghl";
 import { buildProposalHtml } from "../emailTemplates";
 import { getSystemSettingSync, getBusinessEmail } from "../config";
-import { companyName, legacyUrl } from "../tenantBrand";
+import { companyName } from "../tenantBrand";
 import { logActivity } from "../db";
 import { groupTaxBreakdown, totalTaxAmount } from "../taxUtils";
 import { legacyDb, legacyPool } from "../_core/legacyDb";
+import { publicBaseUrl } from "../_core/productIdentity";
 
 const _pool = legacyPool();
 const db = legacyDb();
@@ -277,7 +278,7 @@ export const proposalsRouter = router({
       // Generate token if not yet set
       const { randomBytes } = await import("crypto");
       const token = proposal.token ?? randomBytes(32).toString("hex");
-      const origin = legacyUrl(process.env.VITE_OAUTH_PORTAL_URL ?? "https://www.skicenter.es");
+      const origin = publicBaseUrl();
       const publicUrl = `${origin}/propuesta/${token}`;
 
       // Fetch options for multi_option
@@ -380,7 +381,7 @@ export const proposalsRouter = router({
       if (proposal.publicUrl) return { publicUrl: proposal.publicUrl, token: proposal.token! };
       const { randomBytes } = await import("crypto");
       const token = randomBytes(32).toString("hex");
-      const origin = legacyUrl(process.env.VITE_OAUTH_PORTAL_URL ?? "https://www.skicenter.es");
+      const origin = publicBaseUrl();
       const publicUrl = `${origin}/propuesta/${token}`;
       await db.update(proposals).set({ token, publicUrl }).where(eq(proposals.id, input.id));
       return { publicUrl, token };

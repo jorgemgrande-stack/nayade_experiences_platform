@@ -29,7 +29,7 @@ import {
   registryIdentitySource,
   warmTenantIdentity,
 } from "./_core/tenantIdentity";
-import { LEGACY_PUBLIC_URL_FALLBACK, publicBaseUrl } from "./_core/productIdentity";
+import { publicBaseUrl } from "./_core/productIdentity";
 import {
   brandName,
   brandSetting,
@@ -241,13 +241,13 @@ describe("single: sin cambios", () => {
   beforeEach(() => {
     delete process.env.TENANT_MODE;
   });
-  it("URL pública: APP_URL o el respaldo heredado, aunque haya registro configurado", async () => {
+  it("URL pública: APP_URL o vacío (nunca otro dominio), aunque haya registro configurado", async () => {
     process.env.APP_URL = "https://www.instalacion.example";
     expect(await warmTenantIdentity()).toBeNull();
     expect(publicBaseUrl()).toBe("https://www.instalacion.example");
     delete process.env.APP_URL;
-    expect(publicBaseUrl()).toBe(LEGACY_PUBLIC_URL_FALLBACK);
-    expect(legacyUrl("https://www.skicenter.es")).toBe("https://www.skicenter.es");
+    expect(publicBaseUrl()).toBe("");
+    expect(legacyUrl("https://www.skicenter.es")).toBe("");
   });
   it("marca: el ajuste de la propia instalación; sin él, vacío (nunca el texto heredado escrito en el código)", () => {
     settings.byTenant.default = {};

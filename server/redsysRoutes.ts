@@ -22,7 +22,7 @@ import { sendManagedEmail, logDirectEmail } from "./emailManager";
 import { groupTaxBreakdown, totalTaxAmount } from "./taxUtils";
 import { reservationProductFromQuoteItems } from "./reservationUtils";
 import { getBusinessEmail } from "./config";
-import { brandName, brandSetting, legacyUrl } from "./tenantBrand";
+import { brandName, brandSetting } from "./tenantBrand";
 import { generateDocumentNumber } from "./documentNumbers";
 import { resolveSessionUser } from "./_core/expressAuth";
 import { secureEqual } from "./_core/signedLinks";
@@ -253,7 +253,7 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
         await sendCapiEvent({
           event_name: 'Purchase',
           event_id: `purchase_${result.merchantOrder}`,
-          event_source_url: legacyUrl(process.env.PUBLIC_SITE_URL || 'https://skicenter.es'),
+          event_source_url: publicBaseUrl(),
           custom_data: {
             content_ids: [String(updatedReservation.productId ?? updatedReservation.id)],
             content_name: resv.productName ?? undefined,

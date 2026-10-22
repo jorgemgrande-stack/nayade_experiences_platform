@@ -5,9 +5,8 @@
  * sale de su configuración (`site_settings`). Aquí solo está la identidad del producto y la URL
  * pública de la instalación.
  *
- * Compatibilidad: la instalación histórica (una sola empresa) construía sus enlaces con
- * `process.env.APP_URL ?? "https://www.skicenter.es"` en ~25 sitios. `publicBaseUrl()` centraliza ese
- * comportamiento SIN cambiarlo (mismo respaldo heredado) para poder retirarlo en un único punto.
+ * `publicBaseUrl()` es el único punto de la URL pública de la instalación (antes, ~25 respaldos fijos al dominio de la
+ * instalación original, retirados el 23/10/2026).
  * Multiempresa: la URL de la empresa en curso sale del registro (ver `tenantIdentity.ts`).
  */
 import { isMultiTenant } from "./tenant";
@@ -19,17 +18,13 @@ export const PRODUCT = {
   vendor: "Big Elephant",
 } as const;
 
-/** Respaldo heredado de la instalación histórica. Se retira cuando todas tengan APP_URL. */
-export const LEGACY_PUBLIC_URL_FALLBACK = "https://www.skicenter.es";
-
 /**
  * URL pública de la instalación para enlaces (pagos, presupuestos, correos).
  *  - Con APP_URL: esa URL (sin espacios).
- *  - Sin APP_URL: el respaldo heredado, exactamente como antes. No puede lanzar: un error aquí
- *    rompería el envío de enlaces.
+ *  - Sin APP_URL: cadena vacía (enlaces relativos) y un aviso en el registro. Nunca el dominio de otra instalación:
+ *    llevaría a sus clientes (o los avisos de pago) a otra web. No puede lanzar.
  *  - Multi: la URL de la empresa en curso (su dominio propio verificado y activo, o su subdominio de
- *    plataforma), resuelta por petición desde la instantánea precargada del registro. Sin
- *    instantánea, el comportamiento anterior (y se avisa una vez si falta APP_URL).
+ *    plataforma), resuelta por petición desde la instantánea precargada del registro. Sin instantánea, APP_URL.
  */
 export function publicBaseUrl(): string {
   if (isMultiTenant()) {
@@ -38,10 +33,10 @@ export function publicBaseUrl(): string {
   }
   const configured = (process.env.APP_URL ?? "").trim();
   if (configured) return configured;
-  if (isMultiTenant() && !warned) {
+  if (!warned) {
     warned = true;
-    console.warn(JSON.stringify({ ctx: "ProductIdentity", event: "app_url_missing_in_multi", fallback: "legacy" }));
+    console.warn(JSON.stringify({ ctx: "ProductIdentity", event: "app_url_missing", fallback: "relative" }));
   }
-  return LEGACY_PUBLIC_URL_FALLBACK;
+  return "";
 }
 let warned = false;
