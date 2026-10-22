@@ -24,7 +24,7 @@ export interface OutgoingEmail {
   text: string;
   html: string;
   /** Tipo de aviso, para trazas y para etiquetar en el proveedor. */
-  tag: "trial_verification" | "trial_welcome" | "trial_expiry";
+  tag: "trial_verification" | "trial_welcome" | "trial_expiry" | "trial_status";
 }
 
 export interface TransactionalEmailPort {
@@ -74,11 +74,12 @@ export function trialEmails(o: { verifyUrl: string; pricingUrl?: string | null; 
       ], { label: "Confirmar correo", url });
       return { to, subject: `Confirma tu correo · prueba de ${product}`, tag: "trial_verification", ...body };
     },
-    welcome(to: string, i: { tenantId: string; domain: string | null; inviteToken: string }): OutgoingEmail {
+    welcome(to: string, i: { tenantId: string; domain: string | null; inviteToken: string; endsAt?: number | null }): OutgoingEmail {
       const base = i.domain ? `https://${i.domain}` : null;
       const paragraphs = [
         `Tu espacio de ${product} está listo.`,
         base ? `Tu dirección: ${base}` : "Tu dirección se te comunicará en cuanto esté publicada.",
+        ...(i.endsAt ? [`La prueba gratuita dura hasta el ${fmtDate(i.endsAt)}.`] : []),
         "Define tu contraseña de administrador para entrar. El enlace es personal y caduca.",
       ];
       const body = render(`Bienvenido a ${product}`, paragraphs, base ? { label: "Definir contraseña", url: `${base}/establecer-contrasena?token=${encodeURIComponent(i.inviteToken)}` } : undefined);
@@ -91,6 +92,18 @@ export function trialEmails(o: { verifyUrl: string; pricingUrl?: string | null; 
         "Al terminar, tu cuenta pasa a solo lectura: no se borra nada y puedes contratar cuando quieras para seguir trabajando.",
       ], o.pricingUrl ? { label: "Ver planes", url: o.pricingUrl } : undefined);
       return { to, subject: `Tu prueba de ${product} ${when}`, tag: "trial_expiry", ...body };
+    },
+    /** Ampliación, pausa o reactivación (sin el motivo interno de una pausa). */
+    status(to: string, i: { kind: "extended" | "suspended" | "reactivated"; endsAt: number | null; domain: string | null }): OutgoingEmail {
+      const enter = i.domain ? { label: "Entrar en la plataforma", url: `https://${i.domain}` } : undefined;
+      const until = i.endsAt ? `La prueba gratuita dura ahora hasta el ${fmtDate(i.endsAt)}.` : null;
+      const [title, paragraphs, cta] =
+        i.kind === "extended"
+          ? [`Hemos ampliado tu prueba de ${product}`, [until ?? "Hemos ampliado el plazo de tu prueba gratuita.", "Sigues teniendo todo disponible, con tus datos tal y como los dejaste."], enter]
+          : i.kind === "suspended"
+            ? [`Tu prueba de ${product} está en pausa`, ["Hemos pausado temporalmente el acceso a tu prueba gratuita.", "Tus datos se conservan: no se ha borrado nada.", "Si crees que es un error o quieres retomarla, responde a este correo."], undefined]
+            : [`Tu prueba de ${product} vuelve a estar activa`, ["Ya puedes volver a usar tu plataforma con normalidad.", ...(until ? [until] : [])], enter];
+      return { to, subject: title, tag: "trial_status", ...render(title, paragraphs, cta) };
     },
   };
 }
@@ -121,6 +134,7 @@ export function createEmailTrialNotifier(o: EmailTrialNotifierOptions): TrialNot
     verification: (to, l) => deliver(t.verification(to, l), { trialId: l.trialId }),
     welcome: (to, i) => deliver(t.welcome(to, i), { tenantId: i.tenantId }),
     expiryNotice: (to, i) => deliver(t.expiryNotice(to, i), { trialId: i.trialId, daysLeft: i.daysLeft }),
+    statusNotice: (to, i) => deliver(t.status(to, i), { trialId: i.trialId, kind: i.kind }),
   };
 }
 

@@ -110,11 +110,15 @@ export class PlatformMailer {
       },
       welcome: async (to, i) => {
         const url = i.domain ? `https://${i.domain}/establecer-contrasena?token=${encodeURIComponent(i.inviteToken)}` : null;
-        await this.send(i.tenantId, `trial-welcome:${i.tenantId}:${short(i.inviteToken)}`, "trial_activated", to, this.t.trialActivated({ host: i.domain, setPasswordUrl: url }));
+        await this.send(i.tenantId, `trial-welcome:${i.tenantId}:${short(i.inviteToken)}`, "trial_activated", to, this.t.trialActivated({ host: i.domain, setPasswordUrl: url, endsAt: i.endsAt ?? null }));
       },
       expiryNotice: async (to, i) => {
         // La fecha de fin forma parte de la clave: tras una ampliación se vuelve a avisar del nuevo fin
         await this.send(PLATFORM_TENANT, `trial:${i.trialId}:expiry:${i.endsAt}:${i.daysLeft}`, "trial_expiry", to, this.t.trialExpiry({ endsAt: i.endsAt, daysLeft: i.daysLeft, pricingUrl: this.o.pricingUrl }));
+      },
+      // Una transición, un aviso: la versión de la prueba tras el cambio forma parte de la clave
+      statusNotice: async (to, i) => {
+        await this.send(PLATFORM_TENANT, `trial:${i.trialId}:status:${i.kind}:v${i.version}`, "trial_status", to, this.t.trialStatus({ kind: i.kind, endsAt: i.endsAt, host: i.domain }));
       },
     };
   }
