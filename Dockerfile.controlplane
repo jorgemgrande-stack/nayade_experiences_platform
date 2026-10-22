@@ -1,0 +1,29 @@
+# ============================================================
+# Dockerfile — Plano de control de Elephant Source (/cp/v1)
+# Imagen mínima: sin cliente, sin Chromium, sin la web de Náyade.
+# Construcción:  docker build -f Dockerfile.controlplane -t elephant-controlplane .
+# ============================================================
+
+FROM node:22-alpine AS builder
+WORKDIR /app
+RUN npm install -g pnpm@10.32.1
+COPY package.json pnpm-lock.yaml* ./
+COPY patches ./patches
+RUN pnpm install --frozen-lockfile
+COPY . .
+RUN pnpm build:cp
+
+FROM node:22-alpine AS runner
+WORKDIR /app
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/dist-cp ./dist-cp
+COPY package.json ./
+# Migraciones del registro y utilidades operativas (aplicación explícita, nunca al arrancar)
+COPY db/registry ./db/registry
+
+ENV NODE_ENV=production
+ENV CP_PORT=4100
+EXPOSE 4100
+
+USER node
+CMD ["node", "dist-cp/main.js"]
