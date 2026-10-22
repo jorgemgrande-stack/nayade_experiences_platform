@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useLocation } from 'wouter';
 import { useMarketingConsent } from '@/hooks/useMarketingConsent';
+import { isTenantSite } from '@/lib/tenantSite';
 
 function writeFbcCookie(fbclid: string): void {
   if (document.cookie.includes('_fbc=')) return; // preservar primer toque
@@ -46,6 +47,8 @@ export function MetaPixelLoader() {
   useEffect(() => {
     if (!hasConsent) return;
     if (typeof window === 'undefined') return;
+    // Web de una empresa: nunca el pixel de la instalación original
+    if (isTenantSite()) return;
     if (window.fbq) return; // ya inicializado
 
     const n: ((...args: unknown[]) => void) & {

@@ -6,7 +6,7 @@ import path from "path";
 import { createServer as createViteServer } from "vite";
 import viteConfig from "../../vite.config";
 import { isMultiTenant } from "./tenant";
-import { buildTenantMeta } from "./tenantSeo";
+import { buildTenantMeta, escapeHtml } from "./tenantSeo";
 import { getSystemSetting } from "../config";
 
 export async function setupVite(app: Express, server: Server) {
@@ -126,6 +126,17 @@ function resolveRouteMeta(pathname: string): { meta: RouteMeta; canonical: strin
   return { meta: SEO_ROUTES["/"], canonical: `${BASE_URL}${pathname}` };
 }
 
+/**
+ * HTML de la web de una empresa (multiempresa): sin la etiqueta de Google Analytics de la instalación original,
+ * con su nombre como `og:site_name` y marcada para que el cliente no cargue analítica ni pixel ajenos.
+ */
+export function tenantSiteHtml(html: string, siteName: string): string {
+  return html
+    .replace(/[ \t]*<script async src="https:\/\/www\.googletagmanager\.com\/gtag\/js\?id=[^"]*"><\/script>\r?\n?/, "")
+    .replace(/<meta property="og:site_name" content="[^"]*"/, `<meta property="og:site_name" content="${siteName}"`)
+    .replace(/<meta charset="UTF-8" \/>/, '<meta charset="UTF-8" />\n    <meta name="elephant-tenant-site" content="multi" />');
+}
+
 // Cache the built index.html so we only read it from disk once per process.
 let _htmlCache: string | null = null;
 
@@ -237,7 +248,8 @@ export function serveStatic(app: Express) {
         }
       }
     }
-    const html = injectSeoMeta(_htmlCache, pathname, override);
+    let html = injectSeoMeta(_htmlCache, pathname, override);
+    if (override) html = tenantSiteHtml(html, escapeHtml(await getSystemSetting("brand_name", "")));
     res.set("Content-Type", "text/html").send(html);
   });
 }
