@@ -15,8 +15,10 @@ const read = (rel: string) => fs.readFileSync(path.join(__dirname, "..", rel), "
 
 describe("analítica en la web de cada empresa", () => {
   it("el HTML de la empresa no carga la etiqueta de Google Analytics y lleva su nombre y la marca de web de empresa", () => {
-    expect(indexHtml).toMatch(/googletagmanager\.com\/gtag\/js\?id=/);
-    const out = tenantSiteHtml(indexHtml, "Aventuras Sierra");
+    // El HTML base ya no la lleva (GA4 la añade solo con un identificador configurado); si la llevara, se quita
+    expect(indexHtml).not.toMatch(/googletagmanager\.com\/gtag\/js/);
+    const withTag = indexHtml.replace("</head>", '    <script async src="https://www.googletagmanager.com/gtag/js?id=G-OTRA0000"></script>\n</head>');
+    const out = tenantSiteHtml(withTag, "Aventuras Sierra");
     expect(out).not.toMatch(/googletagmanager\.com\/gtag\/js/);
     expect(out).toContain('<meta property="og:site_name" content="Aventuras Sierra"');
     expect(out).toContain('<meta name="elephant-tenant-site" content="multi" />');
@@ -35,5 +37,14 @@ describe("analítica en la web de cada empresa", () => {
     const pixel = read("client/src/components/MetaPixelLoader.tsx");
     expect(pixel.indexOf("if (!PIXEL_ID) return;")).toBeGreaterThan(-1);
     expect(pixel.indexOf("if (!PIXEL_ID) return;")).toBeLessThan(pixel.indexOf("window.fbq('init', PIXEL_ID)"));
+  });
+});
+
+describe("analítica de la instalación de una sola empresa", () => {
+  it("sin identificadores configurados, ninguna: ni GA4 ni pixel ni cookie con el dominio de otra web", () => {
+    const ga4 = read("client/src/lib/ga4/client.ts");
+    const pixel = read("client/src/components/MetaPixelLoader.tsx");
+    for (const src of [ga4, pixel, read("client/index.html")]) expect(src).not.toMatch(/G-8E7HXCGN3P|1542400900841433|skicenter/);
+    expect(ga4).toContain("if (!MEASUREMENT_ID) return;");
   });
 });

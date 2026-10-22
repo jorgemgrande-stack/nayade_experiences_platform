@@ -7,8 +7,8 @@ declare global {
   }
 }
 
-const INSTALLATION_MEASUREMENT_ID =
-  (import.meta.env.VITE_GA4_MEASUREMENT_ID as string | undefined) || 'G-8E7HXCGN3P';
+// Analítica de la instalación de una sola empresa: solo la que se configure (VITE_GA4_MEASUREMENT_ID); sin ella, ninguna
+const INSTALLATION_MEASUREMENT_ID = ((import.meta.env.VITE_GA4_MEASUREMENT_ID as string | undefined) ?? '').trim();
 
 let ga4Configured = false;
 
@@ -20,6 +20,7 @@ export function initGA4(tenantMeasurementId?: string | null): void {
   if (typeof window === 'undefined') return;
   if (isTenantSite() && !tenantMeasurementId) return;
   const MEASUREMENT_ID = isTenantSite() ? tenantMeasurementId! : INSTALLATION_MEASUREMENT_ID;
+  if (!MEASUREMENT_ID) return;
   if (ga4Configured) return;
   ga4Configured = true;
 
