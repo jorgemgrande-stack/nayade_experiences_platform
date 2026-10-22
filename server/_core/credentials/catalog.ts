@@ -72,6 +72,19 @@ export const PROVIDERS: ProviderDef[] = [
       { key: "capiTestEventCode", label: "Código de evento de prueba", secret: false, env: "META_CAPI_TEST_EVENT_CODE", pattern: /^[A-Za-z0-9_-]{3,40}$/ },
     ],
   },
+  {
+    id: "mail_smtp",
+    name: "Correo saliente propio (SMTP)",
+    description: "Opcional. Tus correos salen por tu servidor SMTP con tu dirección, que debe ser de un dominio propio verificado. Sin él, se usa el servicio de correo de Elephant Source.",
+    fields: [
+      { key: "host", label: "Servidor SMTP", secret: false, required: true, pattern: /^[A-Za-z0-9.-]{3,253}$/, hint: "smtp.tuproveedor.com" },
+      { key: "port", label: "Puerto", secret: false, pattern: /^\d{2,5}$/, hint: "587" },
+      { key: "secure", label: "TLS directo (puerto 465)", secret: false, options: ["true", "false"] },
+      { key: "user", label: "Usuario", secret: false, required: true, pattern: /^[^\s]{3,254}$/ },
+      { key: "pass", label: "Contraseña", secret: true, required: true, pattern: /^[^\r\n]{1,512}$/ },
+      { key: "fromEmail", label: "Dirección del remitente", secret: false, required: true, pattern: /^[^\s@]{1,64}@[^\s@]{1,190}$/, hint: "reservas@tuempresa.es" },
+    ],
+  },
 ];
 
 export function getProvider(id: string): ProviderDef | undefined {
