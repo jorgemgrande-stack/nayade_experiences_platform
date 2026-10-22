@@ -33,8 +33,8 @@ const CATEGORY_META: Record<string, {
 }> = {
   dia: {
     title: "Lego Packs de Día",
-    subtitle: "Experiencias completas personalizadas en el lago",
-    description: "Combina actividades acuáticas, almuerzo y acceso al club en un Lego Pack a tu medida. Reserva online al instante.",
+    subtitle: "Experiencias completas personalizadas",
+    description: "Combina actividades, comida y servicios en un Lego Pack a tu medida. Reserva online al instante.",
     icon: Sun,
     gradient: "from-sky-600 to-blue-800",
     text: "text-sky-700",
@@ -56,7 +56,7 @@ const CATEGORY_META: Record<string, {
   empresa: {
     title: "Lego Packs Empresas",
     subtitle: "Team building y eventos corporativos personalizados",
-    description: "Gymkhanas acuáticas personalizadas, catering premium y espacio para reuniones. Hasta 200 personas.",
+    description: "Gymkhanas personalizadas, catering premium y espacio para reuniones. Hasta 200 personas.",
     icon: Building2,
     gradient: "from-violet-600 to-purple-800",
     text: "text-violet-700",
@@ -66,8 +66,8 @@ const CATEGORY_META: Record<string, {
   },
   estancia: {
     title: "Hotel + Actividades",
-    subtitle: "Packs con alojamiento y actividades acuáticas incluidas",
-    description: "Combina tu estancia en el Hotel Náyade con las mejores actividades del lago. Pack completo para 2 personas con 10% de descuento.",
+    subtitle: "Packs con alojamiento y actividades incluidas",
+    description: "Combina tu estancia con las mejores actividades. Pack completo para 2 personas con 10% de descuento.",
     icon: Layers,
     gradient: "from-amber-600 to-orange-800",
     text: "text-amber-700",

@@ -1,13 +1,11 @@
 import { Wrench } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 
-const LOGO_FALLBACK = "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/nayade_blue_e9563f49.png";
-
 const DEFAULT_MESSAGE =
   "Aviso importante\n\n" +
   "Reservas online temporalmente no disponibles\n\n" +
-  "En estos momentos, el servicio de reservas a través de Náyade Experiences se encuentra temporalmente desactivado.\n\n" +
-  "Para información sobre actividades, servicios o nuevas reservas en Hotel Náyade, rogamos contactar directamente con el establecimiento.\n\n" +
+  "En estos momentos, el servicio de reservas online se encuentra temporalmente desactivado.\n\n" +
+  "Para información o nuevas reservas, contacta directamente con nosotros.\n\n" +
   "Gracias por vuestra comprensión";
 
 function splitMessage(message: string) {
@@ -25,14 +23,15 @@ function splitMessage(message: string) {
 
 export default function MaintenanceNotice({ message }: { message?: string | null }) {
   const { data: publicSettings } = trpc.config.getPublicSettings.useQuery();
-  const brandLogo = publicSettings?.brand_logo_url || LOGO_FALLBACK;
-  const brandName = publicSettings?.brand_name || "Náyade Experiences";
+  // Logo y nombre de la empresa; sin ellos, nada (nunca los de otra instalación)
+  const brandLogo = publicSettings?.brand_logo_url || "";
+  const brandName = publicSettings?.brand_name || "";
   const { eyebrow, headline, body } = splitMessage(message?.trim() || DEFAULT_MESSAGE);
 
   return (
     <div className="min-h-screen w-full flex items-center justify-center bg-background px-4 py-16">
       <div className="max-w-lg w-full text-center">
-        <img src={brandLogo} alt={brandName} className="h-16 w-16 object-contain rounded-full mx-auto mb-6" />
+        {brandLogo && <img src={brandLogo} alt={brandName} className="h-16 w-16 object-contain rounded-full mx-auto mb-6" />}
 
         <div className="flex justify-center mb-4">
           <div className="p-3 rounded-full bg-amber-500/10">
