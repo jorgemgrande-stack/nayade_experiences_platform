@@ -105,6 +105,19 @@ export const PROVIDERS: ProviderDef[] = [
     description: "Lee los justificantes de gasto (PDF o foto) que se reenvían a este buzón.",
     fields: imapFields("IMAP_EXPENSE"),
   },
+  {
+    id: "mail_smtp",
+    name: "Correo saliente propio (SMTP)",
+    description: "Opcional. Tus correos salen por tu servidor SMTP con tu dirección, que debe ser de un dominio propio verificado. Sin él, se usa el servicio de correo de Elephant Source.",
+    fields: [
+      { key: "host", label: "Servidor SMTP", secret: false, required: true, pattern: HOST_RE, hint: "smtp.tuproveedor.com" },
+      { key: "port", label: "Puerto", secret: false, pattern: PORT_RE, hint: "587" },
+      { key: "secure", label: "TLS directo (puerto 465)", secret: false, options: ["true", "false"] },
+      { key: "user", label: "Usuario", secret: false, required: true, pattern: MAILBOX_USER_RE },
+      { key: "pass", label: "Contraseña", secret: true, required: true, pattern: PASSWORD_RE },
+      { key: "fromEmail", label: "Dirección del remitente", secret: false, required: true, pattern: EMAIL_RE, hint: "reservas@tuempresa.es" },
+    ],
+  },
 ];
 
 export function getProvider(id: string): ProviderDef | undefined {

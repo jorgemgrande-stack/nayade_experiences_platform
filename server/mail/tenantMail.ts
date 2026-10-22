@@ -16,7 +16,8 @@ import { peekTenantIdentity } from "../_core/tenantIdentity";
 import { opsLog } from "../_core/ops/log";
 import { tenantCommsConfig } from "../tenantBrand";
 import { forbiddenLinkHosts, mailPolicyFromEnv } from "./policy";
-import { mailProviderFromEnv } from "./providers";
+import { mailProviderFromEnv, smtpProvider } from "./providers";
+import { tenantOwnSmtp } from "./ownSmtp";
 import { MailService } from "./service";
 import { MysqlMailStore } from "./store";
 import type { MailCategory, MailProviderPort } from "./types";
@@ -62,11 +63,13 @@ export async function tenantMailService(): Promise<MailService | null> {
   if (!db) return null;
   const pool = (db as unknown as { $client: mysql.Pool }).$client;
   if (!(await outboxReady(tenantId, pool))) return null;
+  // SMTP propio de la empresa (dominio verificado) o, si no lo tiene, el servicio central; misma política de envío
+  const own = tenantOwnSmtp();
   return new MailService({
     lane: "tenant",
     store: new MysqlMailStore(pool),
-    provider: providerOverride !== undefined ? providerOverride : mailProviderFromEnv(process.env),
-    policy: mailPolicyFromEnv(process.env),
+    provider: providerOverride !== undefined ? providerOverride : own ? smtpProvider(own.config) : mailProviderFromEnv(process.env),
+    policy: mailPolicyFromEnv(own ? { ...process.env, MAIL_SENDING_DOMAIN: own.domain } : process.env),
     tenantId,
   });
 }
@@ -81,6 +84,7 @@ export async function sendTenantMail(p: TenantMailParams): Promise<boolean> {
     return false;
   }
   const comms = tenantCommsConfig();
+  const ownFrom = tenantOwnSmtp()?.fromEmail ?? null;
   const identity = isMultiTenant() ? peekTenantIdentity() : null;
   const hosts = identity ? [identity.publicHost, ...identity.customDomains.filter((d) => d.state === "verified").map((d) => d.domain)].filter((h): h is string => !!h) : [];
   const guard = isMultiTenant() ? (html: string) => (forbiddenLinkHosts(html, { tenantHosts: hosts, appUrl: process.env.APP_URL }).length ? "forbidden_link_host" : null) : undefined;
@@ -101,7 +105,7 @@ export async function sendTenantMail(p: TenantMailParams): Promise<boolean> {
       // Contenido de ficheros privados del almacenamiento (ya leído por el mailer) en base64 para la bandeja
       attachments: p.attachments?.map((a) => (a.content ? { name: a.name, url: a.url, content: a.content.toString("base64") } : { name: a.name, url: a.url })),
       // La dirección propia de la empresa (si la configuró) recibe las respuestas; nunca es el From
-      sender: { lane: "tenant", brandName: comms.fromName, replyTo: comms.replyTo ?? comms.fromEmail },
+      sender: { lane: "tenant", brandName: comms.fromName, replyTo: comms.replyTo ?? comms.fromEmail, fromEmail: ownFrom },
       guard,
     });
     if (!(r.status === "accepted" || r.status === "delivered")) allOk = false;

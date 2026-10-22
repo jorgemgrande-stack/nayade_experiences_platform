@@ -128,13 +128,16 @@ export function platformIdentity(env: Record<string, string | undefined> = proce
  * `<nombre comercial> <no-reply@{MAIL_SENDING_DOMAIN}>`, con `Reply-To` hacia la empresa (tenant) o el
  * soporte de plataforma (si está configurado). Sin dominio o sin nombre, `null`: no se envía.
  */
-export function senderFor(p: Pick<MailPolicy, "sendingDomain" | "supportEmail">, who: { lane: "tenant"; brandName: string; replyTo: string | null } | { lane: "platform" }): { from: MailAddress; replyTo: string | null } | null {
+export function senderFor(p: Pick<MailPolicy, "sendingDomain" | "supportEmail">, who: { lane: "tenant"; brandName: string; replyTo: string | null; fromEmail?: string | null } | { lane: "platform" }): { from: MailAddress; replyTo: string | null } | null {
   if (!p.sendingDomain) return null;
   const email = `no-reply@${p.sendingDomain}`;
   if (who.lane === "platform") return { from: { name: PLATFORM_BRAND, email }, replyTo: p.supportEmail };
   const name = sanitizeDisplayName(who.brandName);
   if (!name) return null;
-  return { from: { name, email }, replyTo: normalizeEmail(who.replyTo ?? "") };
+  // SMTP propio de la empresa: su dirección, solo si es del dominio de envío de su política (verificado)
+  const own = who.fromEmail ? normalizeEmail(who.fromEmail) : null;
+  if (who.fromEmail && (!own || domainOf(own) !== p.sendingDomain)) return null;
+  return { from: { name, email: own ?? email }, replyTo: normalizeEmail(who.replyTo ?? "") };
 }
 
 /** Hosts de los enlaces (href) http(s) de un HTML. */

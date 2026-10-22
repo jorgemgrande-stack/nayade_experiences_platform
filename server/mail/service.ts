@@ -20,7 +20,8 @@ import { backoffMs, maskRecipient, normalizeEmail, recipientAllowed, recipientHa
 import type { MailStore } from "./store";
 import { MailProviderError, type EnqueueInput, type MailLane, type MailProviderPort, type MailStatus, type OutboxRow, type ProviderEvent } from "./types";
 
-export type SenderIdentity = { lane: "tenant"; brandName: string; replyTo: string | null } | { lane: "platform" };
+/** `fromEmail`: dirección propia de la empresa cuando envía por su SMTP (ver mail/ownSmtp.ts). */
+export type SenderIdentity = { lane: "tenant"; brandName: string; replyTo: string | null; fromEmail?: string | null } | { lane: "platform" };
 
 export interface SendInput extends EnqueueInput {
   sender: SenderIdentity;
