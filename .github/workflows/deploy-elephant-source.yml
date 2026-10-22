@@ -1,0 +1,155 @@
+# Despliegue de Elephant Source en Railway (proyecto propio, aislado de Náyade y Skicenter).
+#
+# - SOLO manual (workflow_dispatch) y SOLO desde integration/elephant-source: ningún push despliega.
+# - Entorno de GitHub protegido «elephant-source-<entorno>» (revisores obligatorios) con el secreto
+#   RAILWAY_TOKEN = token de PROYECTO de Railway para ese entorno. Sin él, el flujo se detiene sin hacer nada.
+# - Antes de tocar nada, scripts/deploy/esRailway.ts comprueba que el token es del proyecto de Elephant Source y
+#   del entorno elegido (deploy/railway/elephant-source.deploy.json); si no, se detiene.
+# - Una acción por ejecución, en el orden del plan (docs/elephant-source/PLAN_PUBLICACION.md).
+name: Despliegue Elephant Source
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Entorno de Railway"
+        required: true
+        type: choice
+        options: [live, production]
+      action:
+        description: "Acción (una por ejecución, en el orden del plan)"
+        required: true
+        type: choice
+        options:
+          - verificar-token
+          - estado
+          - desplegar-restore-drill
+          - desplegar-backup-job
+          - copia-de-seguridad
+          - migraciones-plataforma-simulacion
+          - migraciones-plataforma-aplicar
+          - migraciones-simulacion
+          - migraciones-aplicar
+          - verificar-migraciones
+          - desplegar-controlplane
+          - desplegar-core
+          - desplegar-core-gateway
+          - comprobar-salud
+      commit:
+        description: "Commit a desplegar (opcional; por defecto, el último de la rama). Para volver atrás: uno anterior de la misma rama"
+        required: false
+        type: string
+      only:
+        description: "Empresas (opcional, separadas por comas) para copias y migraciones"
+        required: false
+        type: string
+      confirm:
+        description: "Escribe el nombre del entorno para confirmar"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-elephant-source-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  run:
+    name: ${{ inputs.action }} (${{ inputs.environment }})
+    runs-on: ubuntu-24.04
+    environment: elephant-source-${{ inputs.environment }}
+    timeout-minutes: 60
+    env:
+      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+      ES_ENV: ${{ inputs.environment }}
+      ES_ONLY: ${{ inputs.only }}
+      ES_ACTION: ${{ inputs.action }}
+      ES_CONFIRM: ${{ inputs.confirm }}
+      ES_COMMIT: ${{ inputs.commit }}
+    steps:
+      - name: Comprobaciones previas (rama, confirmación y credencial)
+        run: |
+          if [ "${GITHUB_REF}" != "refs/heads/integration/elephant-source" ]; then echo "Solo desde integration/elephant-source (es ${GITHUB_REF})"; exit 1; fi
+          if [ "${ES_CONFIRM}" != "${ES_ENV}" ]; then echo "Confirmación incorrecta"; exit 1; fi
+          if [ -z "${RAILWAY_TOKEN}" ]; then echo "Sin RAILWAY_TOKEN en el entorno elephant-source-${ES_ENV}: no se hace nada."; exit 1; fi
+          if [ -n "${ES_COMMIT}" ] && ! printf '%s' "${ES_COMMIT}" | grep -Eq '^[0-9a-f]{7,40}$'; then echo "Commit no válido"; exit 1; fi
+          if [ -n "${ES_ONLY}" ] && ! printf '%s' "${ES_ONLY}" | grep -Eq '^[a-z0-9][a-z0-9-]{1,62}(,[a-z0-9][a-z0-9-]{1,62})*$'; then echo "Lista de empresas no válida"; exit 1; fi
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Dependencias
+        run: pnpm install --frozen-lockfile
+
+      - name: CLI de Railway (versión fijada)
+        if: startsWith(inputs.action, 'desplegar-')
+        run: npm install -g @railway/cli@5.68.0
+
+      - name: Verificar que el token es de Elephant Source y del entorno elegido
+        run: pnpm exec tsx scripts/deploy/esRailway.ts verify --env "${ES_ENV}"
+
+      - name: Estado (despliegue activo de cada servicio; anotarlo como punto de vuelta atrás)
+        if: inputs.action == 'estado'
+        run: pnpm exec tsx scripts/deploy/esRailway.ts status --env "${ES_ENV}"
+
+      - name: Commit a desplegar (debe pertenecer a integration/elephant-source)
+        if: startsWith(inputs.action, 'desplegar-')
+        run: |
+          SHA="${ES_COMMIT:-${GITHUB_SHA}}"
+          git merge-base --is-ancestor "${SHA}" "${GITHUB_SHA}" || { echo "El commit ${SHA} no es de integration/elephant-source"; exit 1; }
+          echo "ES_DEPLOY_SHA=$(git rev-parse "${SHA}")" >> "${GITHUB_ENV}"
+
+      - name: Copia de seguridad (todas o las indicadas)
+        if: inputs.action == 'copia-de-seguridad'
+        run: pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --command "node dist-cp/backup-job.js run${ES_ONLY:+ --only ${ES_ONLY}}"
+
+      - name: Migraciones de plataforma, registro y CRM (simulación)
+        if: inputs.action == 'migraciones-plataforma-simulacion'
+        run: |
+          pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --command "node .mig/run.cjs registry plan"
+          pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --command "node .mig/run.cjs crm status"
+          pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --command "node .mig/run.cjs crm plan"
+
+      - name: Migraciones de plataforma, registro y CRM (aplicar; tras la copia de seguridad)
+        if: inputs.action == 'migraciones-plataforma-aplicar'
+        run: |
+          pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --command "node .mig/run.cjs registry apply"
+          pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --command "node .mig/run.cjs crm apply"
+          pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --command "node .mig/run.cjs crm status"
+
+      - name: Migraciones de las empresas (simulación)
+        if: inputs.action == 'migraciones-simulacion'
+        run: pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --command "node dist-cp/backup-job.js migrate-tenants${ES_ONLY:+ --only ${ES_ONLY}}"
+
+      - name: Migraciones de las empresas (aplicar; canario primero)
+        if: inputs.action == 'migraciones-aplicar'
+        run: pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --command "node dist-cp/backup-job.js migrate-tenants${ES_ONLY:+ --only ${ES_ONLY}} --apply"
+
+      - name: Verificar el esquema de la exportación (0011, 0012, 0013)
+        if: inputs.action == 'verificar-migraciones'
+        run: pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --command "node dist-cp/backup-job.js check-data-exports${ES_ONLY:+ --only ${ES_ONLY}}"
+
+      - name: Export del commit (sin railway.toml ni datos de semilla)
+        if: startsWith(inputs.action, 'desplegar-')
+        run: pnpm exec tsx scripts/deploy/esRailway.ts export --sha "${ES_DEPLOY_SHA}" --out "${RUNNER_TEMP}/export"
+
+      - name: Desplegar el servicio
+        if: startsWith(inputs.action, 'desplegar-')
+        run: |
+          SERVICE="${ES_ACTION#desplegar-}"
+          pnpm exec tsx scripts/deploy/esRailway.ts deploy --env "${ES_ENV}" --service "${SERVICE}" --dir "${RUNNER_TEMP}/export" --sha "${ES_DEPLOY_SHA}"
+
+      - name: Salud pública
+        if: inputs.action == 'comprobar-salud'
+        run: |
+          pnpm exec tsx scripts/deploy/esRailway.ts health --url "https://app.bigelephant.es/" --expect 200
