@@ -149,7 +149,7 @@ function AccountModal({
               <Input value={form.fromName} onChange={e => f("fromName")(e.target.value)} className="h-8 text-xs" placeholder="Nombre de tu empresiences" />
             </Field>
             <Field label="Email remitente *">
-              <Input value={form.fromEmail} onChange={e => f("fromEmail")(e.target.value)} className="h-8 text-xs" placeholder="info@skicenter.es" />
+              <Input value={form.fromEmail} onChange={e => f("fromEmail")(e.target.value)} className="h-8 text-xs" placeholder="info@tuempresa.es" />
             </Field>
           </div>
 

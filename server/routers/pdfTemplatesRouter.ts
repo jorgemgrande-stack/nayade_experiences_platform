@@ -4,12 +4,13 @@ import { pdfTemplates } from "../../drizzle/schema";
 import { eq } from "drizzle-orm";
 import { buildQuotePdfHtml } from "../emailTemplates";
 import { legacyDb, legacyPool } from "../_core/legacyDb";
+import { brandSetting, legacyBrandText, legacySiteHost } from "../tenantBrand";
 
 const _pool = legacyPool();
 const db = legacyDb();
 
 // --- System PDF Templates (seed data) ----------------------------------------
-const SYSTEM_PDF_TEMPLATES = [
+export const SYSTEM_PDF_TEMPLATES = [
   {
     id: "invoice",
     name: "Factura",
@@ -119,7 +120,9 @@ const SYSTEM_PDF_TEMPLATES = [
     showLogo: true,
     showWatermark: false,
     variables: JSON.stringify(["quoteNumber","title","clientName","clientEmail","items","subtotal","discount","tax","total","validUntil","notes","conditions","paymentLinkUrl","issuerName","issuerCif","issuerAddress"]),
-    bodyHtml: buildQuotePdfHtml({
+    // Al crear la plantilla (no al cargar el módulo): con la marca de la empresa en curso
+    get bodyHtml() {
+      return buildQuotePdfHtml({
       quoteNumber: "PRE-2026-001",
       title: "Pack Cable Ski Experience + Restaurante",
       clientName: "Carlos Pedraza",
@@ -141,7 +144,8 @@ const SYSTEM_PDF_TEMPLATES = [
       issuerName: "Náyade Experiences S.L.",
       issuerCif: "B-XXXXXXXX",
       issuerAddress: "Embalse de Los Ángeles, Ávila",
-    }),
+    });
+    },
   },
   {
     id: "tpv_ticket",
@@ -309,10 +313,45 @@ const SYSTEM_PDF_TEMPLATES = [
 ];
 
 // --- Helper: seed PDF templates to DB if empty -------------------------------
+type SystemPdfTemplate = (typeof SYSTEM_PDF_TEMPLATES)[number];
+/**
+ * Plantilla PDF del sistema con los datos de la empresa: en la instalación original, tal cual; en multiempresa,
+ * su nombre, su web y sus datos de contacto en lugar de los de la instalación original.
+ */
+export function brandedPdfTemplate<T extends Pick<SystemPdfTemplate, "companyName" | "companyNif" | "companyAddress" | "companyPhone" | "companyEmail" | "footerText" | "bodyHtml">>(tpl: T): T {
+  const name = legacyBrandText("Náyade Experiences");
+  if (name === "Náyade Experiences") return tpl;
+  const host = legacySiteHost("www.skicenter.es");
+  const company = {
+    companyNif: brandSetting("brand_nif", ""),
+    companyAddress: brandSetting("brand_address", ""),
+    companyPhone: brandSetting("brand_phone", ""),
+    companyEmail: brandSetting("site_business_email", ""),
+  };
+  const brand = (t: string) =>
+    t.split("Náyade Experiences S.L.").join(name)
+      .split(" · www.skicenter.es").join(host ? ` · ${host}` : "")
+      .split("https://skicenter.es").join(host ? `https://${host}` : "")
+      .split("Comisión Náyade").join("Comisión")
+      .split("Menú Náyade").join("Menú")
+      .split("Náyade Experiences").join(name)
+      .split("Embalse de Los Ángeles, Ávila").join(company.companyAddress)
+      .split("+34 639 57 66 27").join(company.companyPhone)
+      .split("reservas@nayadeexperiences.es").join(company.companyEmail);
+  return {
+    ...tpl,
+    companyName: name,
+    ...company,
+    footerText: brand(tpl.footerText),
+    bodyHtml: brand(tpl.bodyHtml),
+  };
+}
+
 async function ensurePdfTemplatesSeeded() {
   const existing = await db.select({ id: pdfTemplates.id }).from(pdfTemplates).limit(1);
   if (existing.length > 0) return;
-  for (const tpl of SYSTEM_PDF_TEMPLATES) {
+  for (const system of SYSTEM_PDF_TEMPLATES) {
+    const tpl = brandedPdfTemplate(system);
     await db.insert(pdfTemplates).values({
       id: tpl.id,
       name: tpl.name,
@@ -438,8 +477,9 @@ export const pdfTemplatesRouter = router({
   restore: adminProcedure
     .input(z.object({ id: z.string() }))
     .mutation(async ({ input }) => {
-      const original = SYSTEM_PDF_TEMPLATES.find(t => t.id === input.id);
-      if (!original) throw new Error("No hay datos originales para esta plantilla");
+      const system = SYSTEM_PDF_TEMPLATES.find(t => t.id === input.id);
+      if (!system) throw new Error("No hay datos originales para esta plantilla");
+      const original = brandedPdfTemplate(system);
       await db.update(pdfTemplates)
         .set({
           name: original.name,
