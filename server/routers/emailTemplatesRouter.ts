@@ -76,9 +76,9 @@ const SYSTEM_TEMPLATES: SeedTemplate[] = [
     description: "Email enviado al cliente cuando su reserva es confirmada con pago.",
     category: "reservas", recipient: "cliente",
     subject: "? Reserva confirmada · Náyade Experiences",
-    headerTitle: "¡Reserva Confirmada!", headerSubtitle: "Tu aventura en el lago está asegurada",
+    headerTitle: "¡Reserva Confirmada!", headerSubtitle: "Tu reserva está asegurada",
     variables: JSON.stringify(["merchantOrder","productName","customerName","date","people","amount"]),
-    buildHtml: () => buildReservationConfirmHtml({ merchantOrder:"NAY-2026-0042", productName:"Wakeboard para principiantes", customerName:"María García López", date:"15 de agosto de 2026", people:2, amount:"89.00" }),
+    buildHtml: () => buildReservationConfirmHtml({ merchantOrder:"RES-2026-0042", productName:"Visita guiada", customerName:"María García López", date:"15 de agosto de 2026", people:2, amount:"89.00" }),
   },
   {
     id: "reservation_failed",
@@ -88,7 +88,7 @@ const SYSTEM_TEMPLATES: SeedTemplate[] = [
     subject: "?? Pago no completado · Náyade Experiences",
     headerTitle: "Pago No Completado", headerSubtitle: "No hemos podido procesar tu pago",
     variables: JSON.stringify(["merchantOrder","productName","customerName","responseCode"]),
-    buildHtml: () => buildReservationFailedHtml({ merchantOrder:"NAY-2026-0043", productName:"Kayak en el lago", customerName:"Carlos Martínez", responseCode:"0190" }),
+    buildHtml: () => buildReservationFailedHtml({ merchantOrder:"RES-2026-0043", productName:"Ruta guiada", customerName:"Carlos Martínez", responseCode:"0190" }),
   },
   {
     id: "confirmation",
@@ -98,7 +98,7 @@ const SYSTEM_TEMPLATES: SeedTemplate[] = [
     subject: "?? ¡Todo listo para tu experiencia! · Náyade Experiences",
     headerTitle: "¡Todo Listo!", headerSubtitle: "Aquí tienes todos los detalles de tu reserva",
     variables: JSON.stringify(["clientName","reservationRef","quoteTitle","items","total","bookingDate"]),
-    buildHtml: () => buildConfirmationHtml({ clientName:"Ana Rodríguez", reservationRef:"FAC-2026-0044", quoteTitle:"SUP Yoga al amanecer", items:[{description:"SUP Yoga al amanecer (1 persona)",quantity:1,unitPrice:45,total:45}], total:"45.00", bookingDate:"10 de septiembre de 2026", contactEmail:"reservas@nayadeexperiences.es", contactPhone:"+34 639 57 66 27" }),
+    buildHtml: () => buildConfirmationHtml({ clientName:"Ana Rodríguez", reservationRef:"FAC-2026-0044", quoteTitle:"Clase de yoga", items:[{description:"Clase de yoga (1 persona)",quantity:1,unitPrice:45,total:45}], total:"45.00", bookingDate:"10 de septiembre de 2026" }),
   },
   {
     id: "transfer_confirmation",
@@ -108,7 +108,7 @@ const SYSTEM_TEMPLATES: SeedTemplate[] = [
     subject: "?? Transferencia recibida · Náyade Experiences",
     headerTitle: "Transferencia Recibida", headerSubtitle: "Estamos verificando tu pago",
     variables: JSON.stringify(["clientName","invoiceNumber","reservationRef","quoteTitle","total"]),
-    buildHtml: () => buildTransferConfirmationHtml({ clientName:"Pedro Sánchez", invoiceNumber:"FAC-2026-0045", reservationRef:"NAY-2026-0045", quoteTitle:"Curso de vela ligera", items:[{description:"Curso de vela ligera (3 personas)",quantity:3,unitPrice:70,total:210}], subtotal:"210.00", taxAmount:"0.00", total:"210.00" }),
+    buildHtml: () => buildTransferConfirmationHtml({ clientName:"Pedro Sánchez", invoiceNumber:"FAC-2026-0045", reservationRef:"RES-2026-0045", quoteTitle:"Curso de vela ligera", items:[{description:"Curso de vela ligera (3 personas)",quantity:3,unitPrice:70,total:210}], subtotal:"210.00", taxAmount:"0.00", total:"210.00" }),
   },
   {
     id: "restaurant_confirm",
@@ -118,7 +118,7 @@ const SYSTEM_TEMPLATES: SeedTemplate[] = [
     subject: "??? Reserva de restaurante confirmada · Náyade Experiences",
     headerTitle: "Mesa Reservada", headerSubtitle: "¡Te esperamos!",
     variables: JSON.stringify(["guestName","restaurantName","date","time","guests","locator"]),
-    buildHtml: () => buildRestaurantConfirmHtml({ guestName:"Elena Martínez", restaurantName:"Restaurante El Lago", date:"25 de agosto de 2026", time:"14:00", guests:4, locator:"REST-2026-0012", depositAmount:"30", requiresPayment:false }),
+    buildHtml: () => buildRestaurantConfirmHtml({ guestName:"Elena Martínez", restaurantName:"Restaurante Ejemplo", date:"25 de agosto de 2026", time:"14:00", guests:4, locator:"REST-2026-0012", depositAmount:"30", requiresPayment:false }),
   },
   {
     id: "restaurant_payment_link",
@@ -128,7 +128,7 @@ const SYSTEM_TEMPLATES: SeedTemplate[] = [
     subject: "?? Confirma tu reserva con señal · Náyade Experiences",
     headerTitle: "Confirma tu Mesa", headerSubtitle: "Paga la señal para asegurar tu reserva",
     variables: JSON.stringify(["guestName","restaurantName","date","time","guests","depositAmount"]),
-    buildHtml: () => buildRestaurantPaymentLinkHtml({ guestName:"Elena Martínez", guestEmail:"elena@ejemplo.com", restaurantName:"Restaurante El Lago", date:"25 de agosto de 2026", time:"14:00", guests:4, locator:"REST-2026-0012", depositAmount:"30", redsysUrl:"https://sis-t.redsys.es:25443/sis/realizarPago", merchantParams:"eyJEU19NRVJDSEFOVF9BTU9VTlQiOiIzMDAwIn0=", signatureVersion:"HMAC_SHA256_V1", signature:"PREVIEW_SIGNATURE" }),
+    buildHtml: () => buildRestaurantPaymentLinkHtml({ guestName:"Elena Martínez", guestEmail:"elena@ejemplo.com", restaurantName:"Restaurante Ejemplo", date:"25 de agosto de 2026", time:"14:00", guests:4, locator:"REST-2026-0012", depositAmount:"30", redsysUrl:"https://sis-t.redsys.es:25443/sis/realizarPago", merchantParams:"eyJEU19NRVJDSEFOVF9BTU9VTlQiOiIzMDAwIn0=", signatureVersion:"HMAC_SHA256_V1", signature:"PREVIEW_SIGNATURE" }),
   },
   {
     id: "budget_request_user",
@@ -138,7 +138,7 @@ const SYSTEM_TEMPLATES: SeedTemplate[] = [
     subject: "?? Solicitud recibida · Náyade Experiences",
     headerTitle: "Solicitud Recibida", headerSubtitle: "Tu experiencia perfecta empieza aquí",
     variables: JSON.stringify(["name","email","phone","arrivalDate","adults","children","selectedCategory"]),
-    buildHtml: () => buildBudgetRequestUserHtml({ name:"Laura Fernández", email:"laura@empresa.com", phone:"612 345 678", arrivalDate:"15 de noviembre de 2026", adults:25, children:0, selectedCategory:"Team Building", selectedProduct:"Actividad de team building acuático", comments:"Somos un grupo de empresa.", submittedAt:new Date().toLocaleDateString("es-ES") }),
+    buildHtml: () => buildBudgetRequestUserHtml({ name:"Laura Fernández", email:"laura@empresa.com", phone:"612 345 678", arrivalDate:"15 de noviembre de 2026", adults:25, children:0, selectedCategory:"Team Building", selectedProduct:"Actividad de team building", comments:"Somos un grupo de empresa.", submittedAt:new Date().toLocaleDateString("es-ES") }),
   },
   {
     id: "budget_request_admin",
@@ -148,7 +148,7 @@ const SYSTEM_TEMPLATES: SeedTemplate[] = [
     subject: "?? Nueva solicitud de presupuesto",
     headerTitle: "Nueva Solicitud", headerSubtitle: "Nuevo lead en el sistema",
     variables: JSON.stringify(["name","email","phone","arrivalDate","adults","children","selectedCategory"]),
-    buildHtml: () => buildBudgetRequestAdminHtml({ name:"Laura Fernández", email:"laura@empresa.com", phone:"612 345 678", arrivalDate:"15 de noviembre de 2026", adults:25, children:0, selectedCategory:"Team Building", selectedProduct:"Actividad de team building acuático", comments:"Somos un grupo de empresa.", submittedAt:new Date().toLocaleDateString("es-ES") }),
+    buildHtml: () => buildBudgetRequestAdminHtml({ name:"Laura Fernández", email:"laura@empresa.com", phone:"612 345 678", arrivalDate:"15 de noviembre de 2026", adults:25, children:0, selectedCategory:"Team Building", selectedProduct:"Actividad de team building", comments:"Somos un grupo de empresa.", submittedAt:new Date().toLocaleDateString("es-ES") }),
   },
   {
     id: "quote",
@@ -158,7 +158,7 @@ const SYSTEM_TEMPLATES: SeedTemplate[] = [
     subject: "?? Tu presupuesto personalizado · Náyade Experiences",
     headerTitle: "Tu Presupuesto", headerSubtitle: "Hemos preparado una propuesta a tu medida",
     variables: JSON.stringify(["quoteNumber","title","clientName","items","total","validUntil","paymentLinkUrl"]),
-    buildHtml: () => buildQuoteHtml({ quoteNumber:"PRE-2026-0015", title:"Team Building Acuático", clientName:"Laura Fernández", items:[{description:"Kayak doble (12 uds)",quantity:12,unitPrice:35,total:420},{description:"SUP (8 uds)",quantity:8,unitPrice:30,total:240}], subtotal:"660.00", discount:"0", tax:"138.60", total:"798.60", validUntil:new Date("2026-10-30"), paymentLinkUrl:"https://skicenter.es/pago/PRE-2026-0015" }),
+    buildHtml: () => buildQuoteHtml({ quoteNumber:"PRE-2026-0015", title:"Jornada de team building", clientName:"Laura Fernández", items:[{description:"Alquiler de material (12 uds)",quantity:12,unitPrice:35,total:420},{description:"SUP (8 uds)",quantity:8,unitPrice:30,total:240}], subtotal:"660.00", discount:"0", tax:"138.60", total:"798.60", validUntil:new Date("2026-10-30"), paymentLinkUrl:"https://tuempresa.es/pago/PRE-2026-0015" }),
   },
   {
     id: "cancellation_received",
@@ -168,7 +168,7 @@ const SYSTEM_TEMPLATES: SeedTemplate[] = [
     subject: "?? Solicitud de anulación recibida · Náyade Experiences",
     headerTitle: "Solicitud Recibida", headerSubtitle: "Hemos recibido tu solicitud de anulación",
     variables: JSON.stringify(["fullName","requestId","locator","reason"]),
-    buildHtml: () => buildCancellationReceivedHtml({ fullName:"Roberto Jiménez", requestId:23, locator:"NAY-2026-0038", reason:"Enfermedad acreditada con parte médico" }),
+    buildHtml: () => buildCancellationReceivedHtml({ fullName:"Roberto Jiménez", requestId:23, locator:"RES-2026-0038", reason:"Enfermedad acreditada con parte médico" }),
   },
   {
     id: "cancellation_rejected",
@@ -198,7 +198,7 @@ const SYSTEM_TEMPLATES: SeedTemplate[] = [
     subject: "?? Bono compensatorio generado · Náyade Experiences",
     headerTitle: "Bono Generado", headerSubtitle: "Úsalo en tu próxima visita",
     variables: JSON.stringify(["fullName","requestId","voucherCode","activityName","value","expiresAt"]),
-    buildHtml: () => buildCancellationAcceptedVoucherHtml({ fullName:"Roberto Jiménez", requestId:23, voucherCode:"BON-2026-XK7F2A", activityName:"Wakeboard para principiantes", value:"89.00", expiresAt:"31 de diciembre de 2026", isPartial:false }),
+    buildHtml: () => buildCancellationAcceptedVoucherHtml({ fullName:"Roberto Jiménez", requestId:23, voucherCode:"BON-2026-XK7F2A", activityName:"Visita guiada", value:"89.00", expiresAt:"31 de diciembre de 2026", isPartial:false }),
   },
   {
     id: "cancellation_documentation",
@@ -218,7 +218,7 @@ const SYSTEM_TEMPLATES: SeedTemplate[] = [
     subject: "?? Tu ticket de compra · Náyade Experiences",
     headerTitle: "Ticket de Compra", headerSubtitle: "Gracias por tu compra en Náyade Experiences",
     variables: JSON.stringify(["ticketNumber","customerName","items","total","paymentMethod"]),
-    buildHtml: () => buildTpvTicketHtml({ ticketNumber:"T-2026-0847", customerName:"Isabel Torres", createdAt:Date.now(), items:[{name:"Wakeboard 1h",quantity:2,unitPrice:35,total:70},{name:"Alquiler de neopreno",quantity:2,unitPrice:8,total:16}], payments:[{method:"card",amount:86}], total:86, subtotal:71.07, taxAmount:14.93 }),
+    buildHtml: () => buildTpvTicketHtml({ ticketNumber:"T-2026-0847", customerName:"Isabel Torres", createdAt:Date.now(), items:[{name:"Visita guiada (1 h)",quantity:2,unitPrice:35,total:70},{name:"Alquiler de neopreno",quantity:2,unitPrice:8,total:16}], payments:[{method:"card",amount:86}], total:86, subtotal:71.07, taxAmount:14.93 }),
   },
   {
     id: "coupon_received",
@@ -238,7 +238,7 @@ const SYSTEM_TEMPLATES: SeedTemplate[] = [
     subject: "?? Sin disponibilidad para tu fecha · Náyade Experiences",
     headerTitle: "Sin Disponibilidad", headerSubtitle: "Propón otra fecha",
     variables: JSON.stringify(["customerName","couponCode","provider","productName","requestedDate"]),
-    buildHtml: () => buildCouponPostponedHtml({ customerName:"Miguel Ángel Ruiz", couponCode:"GV-2026-ABC123", provider:"Groupon", productName:"Wakeboard 1 hora", requestedDate:"22 de agosto de 2026" }),
+    buildHtml: () => buildCouponPostponedHtml({ customerName:"Miguel Ángel Ruiz", couponCode:"GV-2026-ABC123", provider:"Groupon", productName:"Visita guiada (1 hora)", requestedDate:"22 de agosto de 2026" }),
   },
   {
     id: "coupon_internal_alert",
@@ -268,7 +268,7 @@ const SYSTEM_TEMPLATES: SeedTemplate[] = [
     subject: "? Tu propuesta te está esperando · Náyade Experiences",
     headerTitle: "Tu Propuesta Te Espera", headerSubtitle: "Queremos que disfrutes de una experiencia única",
     variables: JSON.stringify(["clientName","quoteNumber","quoteTitle","total","paymentLinkUrl"]),
-    buildHtml: () => buildCommercialReminder1Html({ clientName:"Laura Fernández", quoteNumber:"PRE-2026-0015", quoteTitle:"Team Building Acuático", total:"798.60", paymentLinkUrl:"https://skicenter.es/pago/PRE-2026-0015" }),
+    buildHtml: () => buildCommercialReminder1Html({ clientName:"Laura Fernández", quoteNumber:"PRE-2026-0015", quoteTitle:"Jornada de team building", total:"798.60", paymentLinkUrl:"https://tuempresa.es/pago/PRE-2026-0015" }),
   },
   {
     id: "commercial_reminder_2",
@@ -278,7 +278,7 @@ const SYSTEM_TEMPLATES: SeedTemplate[] = [
     subject: "?? Tu propuesta sigue disponible · Náyade Experiences",
     headerTitle: "Plazas Limitadas", headerSubtitle: "Confirma antes de que se agoten",
     variables: JSON.stringify(["clientName","quoteNumber","quoteTitle","total","paymentLinkUrl"]),
-    buildHtml: () => buildCommercialReminder2Html({ clientName:"Laura Fernández", quoteNumber:"PRE-2026-0015", quoteTitle:"Team Building Acuático", total:"798.60", paymentLinkUrl:"https://skicenter.es/pago/PRE-2026-0015" }),
+    buildHtml: () => buildCommercialReminder2Html({ clientName:"Laura Fernández", quoteNumber:"PRE-2026-0015", quoteTitle:"Jornada de team building", total:"798.60", paymentLinkUrl:"https://tuempresa.es/pago/PRE-2026-0015" }),
   },
   {
     id: "commercial_reminder_3",
@@ -288,7 +288,7 @@ const SYSTEM_TEMPLATES: SeedTemplate[] = [
     subject: "?? Última llamada para tu experiencia · Náyade Experiences",
     headerTitle: "Última Oportunidad", headerSubtitle: "No queremos que te la pierdas",
     variables: JSON.stringify(["clientName","quoteNumber","quoteTitle","total","paymentLinkUrl"]),
-    buildHtml: () => buildCommercialReminder3Html({ clientName:"Laura Fernández", quoteNumber:"PRE-2026-0015", quoteTitle:"Team Building Acuático", total:"798.60", paymentLinkUrl:"https://skicenter.es/pago/PRE-2026-0015" }),
+    buildHtml: () => buildCommercialReminder3Html({ clientName:"Laura Fernández", quoteNumber:"PRE-2026-0015", quoteTitle:"Jornada de team building", total:"798.60", paymentLinkUrl:"https://tuempresa.es/pago/PRE-2026-0015" }),
   },
   {
     id: "proposal",
@@ -298,7 +298,7 @@ const SYSTEM_TEMPLATES: SeedTemplate[] = [
     subject: "?? Tu propuesta personalizada · Náyade Experiences",
     headerTitle: "Tu Propuesta", headerSubtitle: "Hemos preparado varias opciones para ti",
     variables: JSON.stringify(["proposalNumber","title","clientName","total","publicUrl"]),
-    buildHtml: () => buildProposalHtml({ proposalNumber:"PROP-2026-0003", title:"Experiencia Team Building Acuático", clientName:"Laura Fernández", mode:"configurable", items:[{description:"Kayak doble (12 uds)",quantity:12,unitPrice:35,total:420},{description:"SUP (8 uds)",quantity:8,unitPrice:30,total:240}], subtotal:"660.00", discount:"0", tax:"138.60", total:"798.60", publicUrl:"https://skicenter.es/propuesta/PROP-2026-0003" }),
+    buildHtml: () => buildProposalHtml({ proposalNumber:"PROP-2026-0003", title:"Jornada de team building", clientName:"Laura Fernández", mode:"configurable", items:[{description:"Alquiler de material (12 uds)",quantity:12,unitPrice:35,total:420},{description:"SUP (8 uds)",quantity:8,unitPrice:30,total:240}], subtotal:"660.00", discount:"0", tax:"138.60", total:"798.60", publicUrl:"https://tuempresa.es/propuesta/PROP-2026-0003" }),
   },
   {
     id: "pending_payment",
@@ -308,7 +308,7 @@ const SYSTEM_TEMPLATES: SeedTemplate[] = [
     subject: "?? Reserva confirmada — Pago pendiente · Náyade Experiences",
     headerTitle: "Pago Pendiente", headerSubtitle: "Tu reserva está confirmada",
     variables: JSON.stringify(["clientName","productName","amountFormatted","dueDate","ibanInfo"]),
-    buildHtml: () => buildPendingPaymentHtml({ clientName:"María García", productName:"Wakeboard para principiantes", amountFormatted:"89,00 €", dueDate:"30 de mayo de 2026", origin:"crm", ibanInfo:"ES12 3456 7890 1234 5678 9012\nConcepto: NAY-2026-0042" }),
+    buildHtml: () => buildPendingPaymentHtml({ clientName:"María García", productName:"Visita guiada", amountFormatted:"89,00 €", dueDate:"30 de mayo de 2026", origin:"crm", ibanInfo:"ES12 3456 7890 1234 5678 9012\nConcepto: RES-2026-0042" }),
   },
   {
     id: "pending_payment_reminder",
@@ -318,7 +318,7 @@ const SYSTEM_TEMPLATES: SeedTemplate[] = [
     subject: "?? Pago pendiente — Fecha límite próxima · Náyade Experiences",
     headerTitle: "Recordatorio de Pago", headerSubtitle: "Fecha límite próxima",
     variables: JSON.stringify(["clientName","productName","amountFormatted","dueDate"]),
-    buildHtml: () => buildPendingPaymentReminderHtml({ clientName:"María García", productName:"Wakeboard para principiantes", amountFormatted:"89,00 €", dueDate:"30 de mayo de 2026", origin:"crm" }),
+    buildHtml: () => buildPendingPaymentReminderHtml({ clientName:"María García", productName:"Visita guiada", amountFormatted:"89,00 €", dueDate:"30 de mayo de 2026", origin:"crm" }),
   },
   {
     id: "installment_reminder",
@@ -358,7 +358,7 @@ const SYSTEM_TEMPLATES: SeedTemplate[] = [
     subject: "?? Invitación al panel de gestión · Náyade Experiences",
     headerTitle: "Bienvenido al Equipo", headerSubtitle: "Has sido invitado al panel de gestión",
     variables: JSON.stringify(["name","role","setPasswordUrl"]),
-    buildHtml: () => buildInviteHtml({ name:"Nuevo Usuario", role:"agente", setPasswordUrl:"https://skicenter.es/set-password?token=abc123xyz" }),
+    buildHtml: () => buildInviteHtml({ name:"Nuevo Usuario", role:"agente", setPasswordUrl:"https://tuempresa.es/set-password?token=abc123xyz" }),
   },
   {
     id: "password_reset",
@@ -368,7 +368,7 @@ const SYSTEM_TEMPLATES: SeedTemplate[] = [
     subject: "?? Restablece tu contraseña · Náyade Experiences",
     headerTitle: "Restablecer Contraseña", headerSubtitle: "Solicitud de cambio de contraseña",
     variables: JSON.stringify(["name","resetUrl","expiryMinutes"]),
-    buildHtml: () => buildPasswordResetHtml({ name:"María García", resetUrl:"https://skicenter.es/reset-password?token=xyz789abc", expiryMinutes:60 }),
+    buildHtml: () => buildPasswordResetHtml({ name:"María García", resetUrl:"https://tuempresa.es/reset-password?token=xyz789abc", expiryMinutes:60 }),
   },
 ];
 
