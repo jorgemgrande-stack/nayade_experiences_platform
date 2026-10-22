@@ -2,6 +2,8 @@
  * Lógica pura del despliegue de Elephant Source (scripts/deploy/esRailway.ts): qué órdenes de operación se
  * permiten, qué se excluye del export y cuándo un token NO es del proyecto o entorno pedido. Sin red ni secretos.
  */
+import { createHash } from "node:crypto";
+
 export interface DeployConfig {
   projectId: string;
   environments: string[];
@@ -46,6 +48,28 @@ export function guard(cfg: DeployConfig, scope: TokenScope, want: { env: string;
     else if (!scope.services.includes(want.service)) out.push(`el servicio ${want.service} no existe en el entorno`);
   }
   return out;
+}
+
+/** Variables de almacenamiento que el diagnóstico describe (copias, destino secundario y ficheros). */
+export const STORAGE_VARS = [
+  "BACKUP_STORAGE",
+  ...["", "SECONDARY_"].flatMap((p) => ["ENDPOINT", "BUCKET", "REGION", "PREFIX", "FORCE_PATH_STYLE", "ACCESS_KEY", "SECRET_KEY"].map((k) => `BACKUP_${p}S3_${k}`)),
+  ...["ENDPOINT", "BUCKET", "REGION", "FORCE_PATH_STYLE", "ACCESS_KEY", "SECRET_KEY"].map((k) => `S3_${k}`),
+];
+
+/**
+ * Describe una variable de almacenamiento SIN revelar secretos. Las claves (ACCESS_KEY, SECRET_KEY) solo dicen si
+ * son una referencia de Railway (`${{Servicio.VAR}}`, se renueva sola) o un valor fijo, más una huella de 8
+ * caracteres del valor efectivo para comparar servicios. El resto (endpoint, bucket, región…) se muestra tal cual.
+ */
+export function describeStorageVar(name: string, unrendered: string | undefined, rendered: string | undefined): string {
+  if (!unrendered) return "—";
+  const isRef = /^\s*(\$\{\{[^}]+\}\}\s*)+$/.test(unrendered);
+  if (/(ACCESS|SECRET)_KEY$/.test(name)) {
+    const print = rendered ? ` · huella ${createHash("sha256").update(rendered).digest("hex").slice(0, 8)}` : "";
+    return isRef ? `referencia ${unrendered.trim()}${print}` : `valor fijo${print}`;
+  }
+  return isRef ? `referencia ${unrendered.trim()} → ${rendered ?? "?"}` : unrendered;
 }
 
 /** Quita del registro cualquier cosa con forma de DSN, clave o token antes de mostrarlo. */

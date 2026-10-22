@@ -9,7 +9,7 @@
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
-import { DRILL_ALLOWED, EXCLUDED_FROM_EXPORT, guard, isAllowedDrill, scrub, type DeployConfig } from "../scripts/deploy/esRailwayLib";
+import { DRILL_ALLOWED, EXCLUDED_FROM_EXPORT, describeStorageVar, guard, isAllowedDrill, scrub, type DeployConfig } from "../scripts/deploy/esRailwayLib";
 
 const cfg = JSON.parse(fs.readFileSync(path.resolve(__dirname, "../deploy/railway/elephant-source.deploy.json"), "utf8")) as DeployConfig;
 const wf = fs.readFileSync(path.resolve(__dirname, "../.github/workflows/deploy-elephant-source.yml"), "utf8");
@@ -61,6 +61,25 @@ describe("órdenes de operación permitidas", () => {
 
   it("el registro mostrado no lleva DSN, claves ni tokens", () => {
     expect(scrub("conecta a mysql://u:p@host:3306/db con sk_live_abc123 y token=xyz")).toBe("conecta a mysql://*** con *** y token=***");
+  });
+});
+
+describe("diagnóstico de almacenamiento", () => {
+  it("nunca muestra el valor de una clave: referencia o valor fijo, con huella corta", () => {
+    const secret = "AKIA-SUPER-SECRETO-123";
+    const fixed = describeStorageVar("BACKUP_S3_SECRET_KEY", secret, secret);
+    expect(fixed).toMatch(/^valor fijo · huella [0-9a-f]{8}$/);
+    expect(fixed).not.toContain(secret);
+    const ref = describeStorageVar("BACKUP_S3_ACCESS_KEY", "${{backups.ACCESS_KEY_ID}}", secret);
+    expect(ref.startsWith("referencia ${{backups.ACCESS_KEY_ID}} · huella ")).toBe(true);
+    expect(ref).toMatch(/ · huella [0-9a-f]{8}$/);
+    expect(ref).not.toContain(secret);
+    expect(describeStorageVar("S3_SECRET_KEY", undefined, undefined)).toBe("—");
+  });
+
+  it("endpoint y bucket se muestran tal cual (o su referencia y valor efectivo)", () => {
+    expect(describeStorageVar("BACKUP_S3_BUCKET", "elephant-source-backups", "elephant-source-backups")).toBe("elephant-source-backups");
+    expect(describeStorageVar("BACKUP_S3_ENDPOINT", "${{backups.ENDPOINT}}", "https://t3.example")).toBe("referencia ${{backups.ENDPOINT}} → https://t3.example");
   });
 });
 

@@ -23,6 +23,7 @@ on:
         options:
           - verificar-token
           - estado
+          - diagnostico-almacenamiento
           - desplegar-restore-drill
           - desplegar-backup-job
           - copia-de-seguridad
@@ -101,6 +102,10 @@ jobs:
       - name: Estado (despliegue activo de cada servicio; anotarlo como punto de vuelta atrás)
         if: inputs.action == 'estado'
         run: pnpm exec tsx scripts/deploy/esRailway.ts status --env "${ES_ENV}"
+
+      - name: Diagnóstico del almacenamiento (solo lectura; sin valores de claves)
+        if: inputs.action == 'diagnostico-almacenamiento'
+        run: pnpm exec tsx scripts/deploy/esRailway.ts storage --env "${ES_ENV}"
 
       - name: Commit a desplegar (debe pertenecer a integration/elephant-source)
         if: startsWith(inputs.action, 'desplegar-')
