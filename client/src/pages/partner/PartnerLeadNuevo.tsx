@@ -1,6 +1,7 @@
 import { useState, useCallback } from "react";
 import { useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
+import { usePublicContact } from "@/hooks/usePublicPhone";
 import PartnerLayout from "./PartnerLayout";
 import ActivityModal, { ActivityEntry, ModalState, getFamilyForSlug } from "@/components/ActivityModal";
 import { Button } from "@/components/ui/button";
@@ -11,6 +12,7 @@ import { toast } from "sonner";
 import { Plus, X, CheckCircle, Users, Loader2 } from "lucide-react";
 
 export default function PartnerLeadNuevo() {
+  const { brandName } = usePublicContact();
   const [, navigate] = useLocation();
   const [submitted, setSubmitted] = useState(false);
 
@@ -85,7 +87,7 @@ export default function PartnerLeadNuevo() {
         <div className="flex flex-col items-center justify-center min-h-[60vh] text-center">
           <CheckCircle className="w-14 h-14 text-green-500 mb-5" />
           <h2 className="text-2xl font-semibold text-gray-800 mb-2">¡Lead enviado!</h2>
-          <p className="text-gray-500 mb-6">El equipo de Nayade Experiences se pondrá en contacto con el cliente.</p>
+          <p className="text-gray-500 mb-6">{brandName ? `El equipo de ${brandName}` : "Nuestro equipo"} se pondrá en contacto con el cliente.</p>
           <div className="flex gap-3">
             <Button variant="outline" onClick={() => { setSubmitted(false); setForm({ name:"",email:"",phone:"",preferredDate:"",preferredTime:"",adults:"1",children:"0",comments:"" }); setSelectedActivities([]); }}>
               Enviar otro

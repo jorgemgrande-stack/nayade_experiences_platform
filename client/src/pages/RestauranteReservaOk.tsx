@@ -12,11 +12,11 @@ import {
 } from "lucide-react";
 import PublicLayout from "@/components/PublicLayout";
 import { trpc } from "@/lib/trpc";
-import { usePublicPhone } from "@/hooks/usePublicPhone";
+import { usePublicContact } from "@/hooks/usePublicPhone";
 
 export default function RestauranteReservaOk() {
   const [locator, setLocator] = useState<string | null>(null);
-  const { phone, phoneTel } = usePublicPhone();
+  const { phone, phoneTel, email } = usePublicContact();
   const [pollCount, setPollCount] = useState(0);
 
   useEffect(() => {
@@ -130,9 +130,11 @@ export default function RestauranteReservaOk() {
               <a href={phoneTel} className="flex items-center gap-2 hover:text-accent transition-colors">
                 <Phone className="w-4 h-4" /> {phone}
               </a>
-              <a href="mailto:reservas@nayadeexperiences.es" className="flex items-center gap-2 hover:text-accent transition-colors">
-                <Mail className="w-4 h-4" /> reservas@nayadeexperiences.es
-              </a>
+              {email && (
+                <a href={`mailto:${email}`} className="flex items-center gap-2 hover:text-accent transition-colors">
+                  <Mail className="w-4 h-4" /> {email}
+                </a>
+              )}
             </div>
           </div>
         </div>
@@ -279,9 +281,11 @@ export default function RestauranteReservaOk() {
             <a href={phoneTel} className="flex items-center gap-2 hover:text-accent transition-colors">
               <Phone className="w-4 h-4" /> {phone}
             </a>
-            <a href="mailto:reservas@nayadeexperiences.es" className="flex items-center gap-2 hover:text-accent transition-colors">
-              <Mail className="w-4 h-4" /> reservas@nayadeexperiences.es
-            </a>
+            {email && (
+              <a href={`mailto:${email}`} className="flex items-center gap-2 hover:text-accent transition-colors">
+                <Mail className="w-4 h-4" /> {email}
+              </a>
+            )}
           </div>
         </div>
 

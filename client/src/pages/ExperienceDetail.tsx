@@ -19,7 +19,7 @@ import PublicLayout from "@/components/PublicLayout";
 import { ReviewSection } from "@/components/ReviewSection";
 
 import { trpc } from "@/lib/trpc";
-import { usePublicPhone } from "@/hooks/usePublicPhone";
+import { usePublicContact } from "@/hooks/usePublicPhone";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -39,7 +39,7 @@ const difficultyLabels: Record<string, string> = {
 
 export default function ExperienceDetail() {
   const { slug } = useParams<{ slug: string }>();
-  const { phone, phoneTel } = usePublicPhone();
+  const { phone, phoneTel, email } = usePublicContact();
   const [galleryIndex, setGalleryIndex] = useState(0);
   const [showBookingModal, setShowBookingModal] = useState(false); // lead modal
   const [persons, setPersons] = useState(2);
@@ -615,10 +615,12 @@ export default function ExperienceDetail() {
                     <Phone className="w-4 h-4 text-accent shrink-0" />
                     <a href={phoneTel} className="hover:text-accent transition-colors">{phone}</a>
                   </div>
-                  <div className="flex items-center gap-3 text-sm text-muted-foreground">
-                    <Mail className="w-4 h-4 text-accent shrink-0" />
-                    <a href="mailto:reservas@nayadeexperiences.es" className="hover:text-accent transition-colors">reservas@nayadeexperiences.es</a>
-                  </div>
+                  {email && (
+                    <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                      <Mail className="w-4 h-4 text-accent shrink-0" />
+                      <a href={`mailto:${email}`} className="hover:text-accent transition-colors">{email}</a>
+                    </div>
+                  )}
                   <div className="flex items-center gap-3 text-sm text-muted-foreground">
                     <Shield className="w-4 h-4 text-accent shrink-0" />
                     <span>Cancelación gratuita hasta 48h antes</span>
