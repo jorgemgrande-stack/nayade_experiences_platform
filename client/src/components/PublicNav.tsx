@@ -209,7 +209,8 @@ export default function PublicNav() {
   return (
     <>
     <header className="fixed top-0 left-0 right-0 z-50 bg-white shadow-md border-b border-border/50">
-      {/* ── Barra superior de información ─────────────────────────── */}
+      {/* ── Barra superior de información (solo la instalación propia: en la web neutra de cada empresa, nada ajeno) ── */}
+      {!tenantTheme?.neutralSite && (
       <div className="hidden lg:block border-b border-border/40 bg-primary/5">
         <div className="container flex items-center justify-between py-1.5">
           <div className="flex items-center gap-6 text-xs font-display text-muted-foreground">
@@ -225,6 +226,7 @@ export default function PublicNav() {
           </div>
         </div>
       </div>
+      )}
 
       {/* ── Barra de navegación principal ─────────────────────────── */}
       <div className="container">
