@@ -229,8 +229,8 @@ function Router() {
       <Route path="/presupuesto/:token" component={QuoteAcceptance} />
       <Route path="/propuesta/:token" component={ProposalView} />
       <Route path="/contacto" component={Contact} />
-      <Route path="/ubicaciones" component={Locations} />
-      <Route path="/ubicaciones/:slug" component={Locations} />
+      <Route path="/ubicaciones">{() => <SingleOnlyPage Single={Locations} slug="ubicaciones" />}</Route>
+      <Route path="/ubicaciones/:slug">{() => <SingleOnlyPage Single={Locations} slug="ubicaciones" />}</Route>
       <Route path="/lego-packs" component={LegoPacksHome} />
       <Route path="/lego-packs/detalle/:slug" component={LegoPackDetail} />
       <Route path="/lego-packs/:category" component={LegoPacksList} />

@@ -3,6 +3,7 @@ import PublicLayout from "@/components/PublicLayout";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, Clock, MapPin, Phone, Utensils, Loader2 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
+import { useTenantTheme } from "@/components/TenantTheme";
 import { usePublicPhone } from "@/hooks/usePublicPhone";
 import { restaurantExternalUrl } from "@/lib/restaurantLinks";
 
@@ -17,6 +18,11 @@ const FALLBACK_IMAGES: Record<string, string> = {
 };
 
 export default function Restaurantes() {
+  // Web neutra de cada empresa: sin los textos de la instalación original
+  const { theme } = useTenantTheme();
+  const neutral = theme?.neutralSite ?? true;
+  const brandName = theme?.brandName ?? "";
+  const address = theme?.contact.address ?? "";
   const { phone, phoneTel } = usePublicPhone();
   const { data: restaurantes, isLoading } = trpc.restaurants.getAll.useQuery();
 
@@ -24,7 +30,7 @@ export default function Restaurantes() {
     <PublicLayout>
       {/* Hero */}
       <section className="relative h-[50vh] min-h-[380px] overflow-hidden">
-        <img src={CDN_HERO} alt="Restaurantes Náyade" className="w-full h-full object-cover" />
+        {!neutral && <img src={CDN_HERO} alt="Restaurantes Náyade" className="w-full h-full object-cover" />}
         <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/35 to-black/70" />
         <div className="absolute inset-0 flex items-center">
           <div className="container">
@@ -33,24 +39,28 @@ export default function Restaurantes() {
                 Gastronomía & Ocio
               </span>
               <h1 className="text-5xl md:text-6xl font-heading font-bold leading-tight mb-4">
-                Restaurantes Náyade
+                {neutral ? (brandName ? `Restaurantes ${brandName}` : "Restaurantes") : "Restaurantes Náyade"}
               </h1>
               <p className="text-xl text-white/85 font-display leading-relaxed">
-                Cuatro espacios únicos para cada momento del día. Gastronomía de calidad con las mejores vistas al embalse.
+                {neutral
+                  ? "Espacios para cada momento del día. Consulta la carta y reserva tu mesa."
+                  : "Cuatro espacios únicos para cada momento del día. Gastronomía de calidad con las mejores vistas al embalse."}
               </p>
             </div>
           </div>
         </div>
       </section>
 
-      {/* Intro */}
+      {/* Intro (de la instalación original: no en la web neutra) */}
+      {!neutral && (
       <section className="py-14 bg-white border-b border-border/30">
         <div className="container text-center max-w-3xl mx-auto">
           <p className="text-lg text-muted-foreground font-display leading-relaxed">
-            Desde el restaurante principal con vistas panorámicas hasta el bar de cócteles junto al lago, cada espacio de Náyade tiene su propio carácter. Elige el que mejor encaje con tu momento.
+            {!neutral && "Desde el restaurante principal con vistas panorámicas hasta el bar de cócteles junto al lago, cada espacio de Náyade tiene su propio carácter. Elige el que mejor encaje con tu momento."}
           </p>
         </div>
       </section>
+      )}
 
       {/* Restaurantes */}
       <section className="py-20 bg-white">
@@ -66,17 +76,19 @@ export default function Restaurantes() {
           ) : (
             <div className="space-y-20">
               {restaurantes.map((r, i) => {
-                const heroImg = r.heroImage || FALLBACK_IMAGES[r.slug] || CDN_HERO;
+                const heroImg = r.heroImage || (neutral ? null : FALLBACK_IMAGES[r.slug] || CDN_HERO);
                 const ext = restaurantExternalUrl(r.slug);
                 return (
                   <div key={r.slug} className={`grid lg:grid-cols-2 gap-14 items-center ${i % 2 === 1 ? "lg:grid-flow-dense" : ""}`}>
                     {/* Imagen */}
                     <div className={`rounded-2xl overflow-hidden shadow-2xl ${i % 2 === 1 ? "lg:col-start-2" : ""}`}>
-                      <img
-                        src={heroImg}
-                        alt={r.name}
-                        className="w-full h-[400px] object-cover hover:scale-105 transition-transform duration-700"
-                      />
+                      {heroImg && (
+                        <img
+                          src={heroImg}
+                          alt={r.name}
+                          className="w-full h-[400px] object-cover hover:scale-105 transition-transform duration-700"
+                        />
+                      )}
                     </div>
 
                     {/* Contenido */}
@@ -131,13 +143,15 @@ export default function Restaurantes() {
       <section className="py-14 bg-white border-t border-border/40">
         <div className="container">
           <div className="grid md:grid-cols-3 gap-8 text-center">
-            <div className="flex flex-col items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-accent/10 flex items-center justify-center">
-                <MapPin className="w-5 h-5 text-accent" />
+            {(!neutral || address) && (
+              <div className="flex flex-col items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-accent/10 flex items-center justify-center">
+                  <MapPin className="w-5 h-5 text-accent" />
+                </div>
+                <h3 className="font-heading font-bold text-foreground">Ubicación</h3>
+                <p className="text-muted-foreground font-display text-sm">{neutral ? address : "Los Ángeles de San Rafael, Segovia · A 45 min de Madrid"}</p>
               </div>
-              <h3 className="font-heading font-bold text-foreground">Ubicación</h3>
-              <p className="text-muted-foreground font-display text-sm">Los Ángeles de San Rafael, Segovia · A 45 min de Madrid</p>
-            </div>
+            )}
             <div className="flex flex-col items-center gap-3">
               <div className="w-10 h-10 rounded-full bg-accent/10 flex items-center justify-center">
                 <Phone className="w-5 h-5 text-accent" />

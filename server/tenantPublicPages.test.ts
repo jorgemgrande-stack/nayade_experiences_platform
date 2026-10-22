@@ -16,6 +16,8 @@ describe("páginas propias de la instalación original en la web de cada empresa
     ["/cookies", "PoliticaCookies", "politica-de-cookies"],
     ["/condiciones-cancelacion", "CondicionesCancelacion", "condiciones-cancelacion"],
     ["/colegios", "Colegios", "colegios"],
+    ["/ubicaciones", "Locations", "ubicaciones"],
+    ["/ubicaciones/:slug", "Locations", "ubicaciones"],
   ])("%s pasa por SingleOnlyPage (en la web neutra, la página propia «%s» no se sirve)", (route, component, slug) => {
     const line = app.split(/\r?\n/).find((l) => l.includes(`<Route path="${route}"`));
     expect(line, route).toBeDefined();
@@ -26,5 +28,20 @@ describe("páginas propias de la instalación original en la web de cada empresa
     const body = theme.slice(theme.indexOf("export function SingleOnlyPage"), theme.indexOf("export function SlugGate"));
     expect(body).toMatch(/if \(theme\?\.neutralSite\) return <TenantPage slug=\{slug\} \/>;/);
     expect(body.indexOf("neutralSite")).toBeLessThan(body.indexOf("return <Single />"));
+  });
+
+  it.each(["Hotel.tsx", "Restaurantes.tsx", "LegoPacksHome.tsx"])("%s: los textos de la instalación original solo fuera de la web neutra", (file) => {
+    const src = fs.readFileSync(path.join(__dirname, "../client/src/pages", file), "utf8");
+    expect(src).toContain("const neutral = theme?.neutralSite ?? true;");
+    for (const line of src.split(/\r?\n/).filter((l) => /N[aá]yade|San Rafael/.test(l) && !/^\s*\/\//.test(l))) {
+      // Texto alternativo según la web, imagen solo fuera de la web neutra, o dato de packs destacados (bloque oculto)
+      expect(line, line.trim()).toMatch(/neutral \?|: "|\{!neutral && [<"]|^\s*featured: \[/);
+    }
+  });
+
+  it("LegoPacksHome: los packs destacados de la instalación original no se muestran en la web neutra", () => {
+    const src = fs.readFileSync(path.join(__dirname, "../client/src/pages/LegoPacksHome.tsx"), "utf8");
+    const i = src.indexOf("cat.featured.map");
+    expect(src.lastIndexOf("{!neutral && (", i)).toBeGreaterThan(src.lastIndexOf("</ul>", i));
   });
 });
