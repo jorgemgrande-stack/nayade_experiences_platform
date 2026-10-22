@@ -77,7 +77,8 @@ export default function Restaurantes() {
             <div className="space-y-20">
               {restaurantes.map((r, i) => {
                 const heroImg = r.heroImage || (neutral ? null : FALLBACK_IMAGES[r.slug] || CDN_HERO);
-                const ext = restaurantExternalUrl(r.slug);
+                // Enlaces a la web de la instalación original: solo en ella
+                const ext = neutral ? null : restaurantExternalUrl(r.slug);
                 return (
                   <div key={r.slug} className={`grid lg:grid-cols-2 gap-14 items-center ${i % 2 === 1 ? "lg:grid-flow-dense" : ""}`}>
                     {/* Imagen */}
