@@ -1,5 +1,6 @@
 import { Link } from "wouter";
 import PublicLayout from "@/components/PublicLayout";
+import { useTenantTheme } from "@/components/TenantTheme";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ArrowRight, Sun, GraduationCap, Building2, Check, Star, Layers } from "lucide-react";
@@ -84,6 +85,9 @@ const CATEGORIES = [
 ];
 
 export default function LegoPacksHome() {
+  // Web neutra de cada empresa: sin los textos de la instalación original
+  const { theme } = useTenantTheme();
+  const neutral = theme?.neutralSite ?? true;
   return (
     <PublicLayout>
       {/* Hero */}
@@ -108,7 +112,7 @@ export default function LegoPacksHome() {
           </div>
           <p className="text-xl text-slate-300 max-w-2xl mx-auto mb-6">
             Experiencias compuestas y personalizables. Combina actividades, servicios y extras
-            para crear la experiencia perfecta en el embalse de Los Ángeles de San Rafael.
+            para crear la experiencia perfecta{neutral ? "." : " en el embalse de Los Ángeles de San Rafael."}
           </p>
           <div className="flex flex-wrap justify-center gap-6 text-sm text-slate-400">
             <span className="flex items-center gap-2">
@@ -177,7 +181,8 @@ export default function LegoPacksHome() {
                       ))}
                     </ul>
 
-                    {/* Packs destacados */}
+                    {/* Packs destacados (de la instalación original: no en la web neutra) */}
+                    {!neutral && (
                     <div className={`${cat.bgAccent} rounded-lg p-3 mb-5`}>
                       <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">
                         Incluye
@@ -193,6 +198,7 @@ export default function LegoPacksHome() {
                         ))}
                       </div>
                     </div>
+                    )}
 
                     <div className="mt-auto">
                       <Link href={cat.href} onClick={() => trackCTAClick(`lego_categoria_${cat.key}`, 'lego_home')}>

@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { Link } from "wouter";
 import { trpc } from "@/lib/trpc";
+import { useTenantTheme } from "@/components/TenantTheme";
 import PublicLayout from "@/components/PublicLayout";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -134,6 +135,10 @@ const SERVICIOS = [
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function Hotel() {
+  // Web neutra de cada empresa: sin los textos de la instalación original
+  const { theme } = useTenantTheme();
+  const neutral = theme?.neutralSite ?? true;
+  const brandName = theme?.brandName ?? "";
   function todayStr() { return new Date().toISOString().split("T")[0]; }
 
   const [searchParams, setSearchParams] = useState<HotelSearchParams>({
@@ -187,9 +192,9 @@ export default function Hotel() {
             {[1,2,3,4,5].map(i => <Star key={i} className="w-5 h-5 fill-amber-400 text-amber-400" />)}
             <span className="ml-2 text-sm text-white/70">Hotel Boutique</span>
           </div>
-          <h1 className="text-4xl md:text-6xl font-bold text-white mb-4">Hotel Náyade</h1>
+          <h1 className="text-4xl md:text-6xl font-bold text-white mb-4">{neutral ? (brandName ? `Hotel ${brandName}` : "Hotel") : "Hotel Náyade"}</h1>
           <p className="text-xl text-white/70 mb-10 max-w-2xl mx-auto">
-            Alójate frente al embalse de Los Ángeles de San Rafael. Elige tu tipología y comprueba disponibilidad en tiempo real.
+            {neutral ? "" : "Alójate frente al embalse de Los Ángeles de San Rafael. "}Elige tu tipología y comprueba disponibilidad en tiempo real.
           </p>
           <HotelSearchBar params={searchParams} onChange={setSearchParams} onSearch={handleSearch} />
         </div>
