@@ -371,7 +371,10 @@ export const TASK_NAV: NavSection[] = [
   {
     id: "ayuda",
     label: null,
-    items: [{ label: "Ayuda", href: "/admin/ayuda", key: "t-ayuda", icon: "help", roles: ["admin", "agente", "monitor", "adminrest", "controler"] }],
+    items: [
+      { label: "Ayuda", href: "/admin/ayuda", key: "t-ayuda", icon: "help", roles: ["admin", "agente", "monitor", "adminrest", "controler"] },
+      { label: "Soporte", href: "/admin/soporte", key: "t-soporte", icon: "message", roles: ["admin", "agente", "monitor", "adminrest", "controler"] },
+    ],
   },
 ];
 

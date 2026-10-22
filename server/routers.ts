@@ -187,6 +187,7 @@ import { pdfTemplatesRouter } from "./routers/pdfTemplatesRouter";
 import { integrationsRouter } from "./routers/integrations";
 import { modulesRouter } from "./routers/modulesRouter";
 import { subscriptionRouter } from "./routers/subscriptionRouter";
+import { supportRouter } from "./routers/supportRouter";
 import { dataExportRouter } from "./routers/dataExportRouter";
 import { operationsRouter } from "./routers/operations";
 import { hrRouter } from "./routers/hr";
@@ -260,6 +261,7 @@ export const appRouter = router({
   integrations: integrationsRouter,
   modules: modulesRouter,
   subscription: subscriptionRouter,
+  support: supportRouter,
   dataExport: dataExportRouter,
   auth: router({
     me: publicProcedure.query((opts) => toPublicUser(opts.ctx.user)),

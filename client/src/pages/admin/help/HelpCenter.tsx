@@ -19,6 +19,7 @@ const reviewed = new Date(`${HELP_REVIEWED_AT}T12:00:00`).toLocaleDateString("es
 
 function ContactCard({ topic }: { topic?: string }) {
   const contact = trpc.subscription.supportContact.useQuery(undefined, { staleTime: 10 * 60_000, retry: false });
+  const tickets = trpc.support.available.useQuery(undefined, { staleTime: 10 * 60_000, retry: false });
   const mailto = supportMailto(contact.data?.email, topic);
   return (
     <section aria-labelledby="ayuda-contacto" className="rounded-xl border border-border bg-card p-5">
@@ -26,6 +27,14 @@ function ContactCard({ topic }: { topic?: string }) {
         <LifeBuoy className="w-5 h-5 text-primary" aria-hidden="true" />
         ¿No encuentras lo que buscas?
       </h2>
+      {tickets.data && (
+        <div className="mt-2 space-y-2">
+          <p className="text-sm text-muted-foreground">Abre una incidencia y sigue las respuestas del equipo desde el panel; también te avisamos por correo.</p>
+          <Button asChild>
+            <Link href="/admin/soporte">Abrir o ver mis incidencias</Link>
+          </Button>
+        </div>
+      )}
       {mailto ? (
         <>
           <p className="mt-2 text-sm text-muted-foreground">

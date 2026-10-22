@@ -55,6 +55,7 @@ import { CrmError } from "../crm/types";
 import type { CrmStore } from "../crm/store";
 import type { TicketService } from "../_core/support/tickets";
 import { createTicketsRouter } from "./tickets";
+import { createCustomerTicketsRouter } from "../support/customerTickets";
 import type { SupportAdmin } from "../_core/support/grants";
 import { createPublicIntakeRouter, type PublicIntakeConfig } from "../crm/publicApi";
 import { WebRequestService } from "../crm/webRequests";
@@ -1416,6 +1417,8 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
   if (d.tickets) {
     const tickets = d.tickets;
     router.use("/tickets", createTicketsRouter(tickets));
+    // Soporte desde el panel de cada empresa (token del Core; nunca notas internas ni datos del equipo)
+    router.use("/commerce", createCustomerTicketsRouter(tickets));
     // Vista por empresa: el tenant de la ruta fuerza el filtro y valida su existencia.
     router.get(
       "/tenants/:id/tickets",

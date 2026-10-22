@@ -47,6 +47,12 @@ export interface CommerceClient {
   /** Portal de facturación de Stripe: ¿disponible? y sesión para la empresa (solo facturas y método de pago). */
   billingPortalStatus(): Promise<{ enabled: boolean }>;
   billingPortal(tenantId: string, returnUrl: string): Promise<{ url: string }>;
+  /** Soporte desde el panel: incidencias de la empresa (sin notas internas ni datos del equipo). */
+  tickets(tenantId: string): Promise<unknown>;
+  ticket(tenantId: string, id: number): Promise<unknown>;
+  openTicket(tenantId: string, input: { title: string; description: string; category?: string; requestedBy: string }): Promise<unknown>;
+  replyTicket(tenantId: string, id: number, input: { text: string; requestedBy: string }): Promise<unknown>;
+  reopenTicket(tenantId: string, id: number, input: { reason: string; requestedBy: string }): Promise<unknown>;
   /** Catálogo de módulos y ampliaciones para el panel de la empresa (solo lectura). */
   catalog(tenantId: string): Promise<unknown>;
 }
@@ -91,6 +97,11 @@ export function commerceClientFromEnv(env: NodeJS.ProcessEnv = process.env, fetc
     withdrawalStatus: async (tenantId) => ((await call("GET", `${seg(tenantId)}/withdrawal`)) as { withdrawal: unknown }).withdrawal,
     withdraw: async (tenantId, input) => await call("POST", `${seg(tenantId)}/withdrawal`, input),
     billingPortalStatus: async () => (await call("GET", "/billing-portal/status")) as { enabled: boolean },
+    tickets: async (tenantId) => await call("GET", `${seg(tenantId)}/tickets`),
+    ticket: async (tenantId, id) => await call("GET", `${seg(tenantId)}/tickets/${id}`),
+    openTicket: async (tenantId, input) => await call("POST", `${seg(tenantId)}/tickets`, input),
+    replyTicket: async (tenantId, id, input) => await call("POST", `${seg(tenantId)}/tickets/${id}/comments`, input),
+    reopenTicket: async (tenantId, id, input) => await call("POST", `${seg(tenantId)}/tickets/${id}/reopen`, input),
     catalog: async (tenantId) => ((await call("GET", `${seg(tenantId)}/catalog`)) as { catalog: unknown }).catalog,
     billingPortal: async (tenantId, returnUrl) => (await call("POST", `${seg(tenantId)}/billing-portal`, { returnUrl })) as { url: string },
   };
