@@ -113,6 +113,14 @@ export interface SetupProgress {
   updatedAt: number | null;
 }
 
+/**
+ * ¿Llevar a «Primeros pasos» al entrar? Solo una empresa que aún no ha tocado el asistente (ningún paso guardado ni
+ * omitido) y no lo ha terminado. Quien ya empezó o lo omitió llega al Inicio, con su tarjeta de avance.
+ */
+export function shouldOpenSetupWizard(p: Pick<SetupProgress, "completedAt" | "updatedAt"> | null | undefined): boolean {
+  return !!p && p.completedAt === null && p.updatedAt === null;
+}
+
 export function emptyProgress(): SetupProgress {
   const steps = {} as SetupProgress["steps"];
   for (const s of SETUP_STEPS) steps[s] = { status: "pending", at: null };

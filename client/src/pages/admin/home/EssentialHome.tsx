@@ -4,7 +4,7 @@
  * no hay métricas inventadas; si una cifra no se puede leer se dice y se ofrece reintentar.
  * Cada consulta se hace solo si el plan incluye la capacidad y el rol tiene acceso.
  */
-import { Link } from "wouter";
+import { Link, Redirect } from "wouter";
 import {
   ArrowRight, Building2, CheckCircle2, Circle, FilePlus2, Inbox, PackagePlus, Rocket, UserPlus, Users,
 } from "lucide-react";
@@ -13,7 +13,8 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 import { usePanelSubscription } from "@/hooks/usePanelSubscription";
 import { PanelError } from "@/components/admin/PanelStates";
-import { SetupWizardLink } from "@/components/SetupWizardLink";
+import { SETUP_WIZARD_PATH, SetupWizardLink } from "@/components/SetupWizardLink";
+import { shouldOpenSetupWizard } from "@shared/setupWizard";
 import { missingFiscalFields } from "@shared/formValidation";
 import { cn } from "@/lib/utils";
 
@@ -55,6 +56,20 @@ function Stat({ label, value, href, loading }: { label: string; value: number | 
   );
 }
 
+/** Marca la primera visita al Inicio en esta sesión del navegador (sin almacenamiento disponible: solo la primera vez que se pide). */
+let askedOnce = false;
+function firstVisitThisSession(): boolean {
+  try {
+    if (sessionStorage.getItem("es_setup_wizard_opened")) return false;
+    sessionStorage.setItem("es_setup_wizard_opened", "1");
+    return true;
+  } catch {
+    if (askedOnce) return false;
+    askedOnce = true;
+    return true;
+  }
+}
+
 export default function EssentialHome() {
   const { user } = useAuth();
   const role = (user as { role?: string } | null)?.role ?? "user";
@@ -62,6 +77,9 @@ export default function EssentialHome() {
   const isSales = role === "admin" || role === "agente";
   const sub = usePanelSubscription();
   const data = sub.data;
+  // Primera entrada de una empresa nueva: a «Primeros pasos» una vez por sesión (después, la tarjeta del Inicio)
+  const wizard = trpc.setupWizard.status.useQuery(undefined, { enabled: isAdmin, retry: false, staleTime: 60_000 });
+  const openWizard = isAdmin && shouldOpenSetupWizard(wizard.data?.progress) && firstVisitThisSession();
 
   const canCrm = isSales && sub.can("crm-leads");
   const canCatalog = isAdmin && sub.can("shop-catalog");
@@ -143,6 +161,7 @@ export default function EssentialHome() {
   ];
   const noActivity = !activityLoading && !activityError && activityValues.every((v) => !v);
 
+  if (openWizard) return <Redirect to={SETUP_WIZARD_PATH} />;
   return (
     <AdminLayout>
       <div className="max-w-6xl space-y-6">
