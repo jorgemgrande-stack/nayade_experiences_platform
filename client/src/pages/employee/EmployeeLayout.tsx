@@ -48,12 +48,12 @@ function EmployeeLayoutInner({ user, location, navigate, logout, children }: {
   user: any; location: string; navigate: any; logout: any; children: React.ReactNode;
 }) {
   // Web neutra de cada empresa: su teléfono, nunca el de la instalación original
-  const { neutral, phone } = usePublicContact();
+  const { neutral, phone, brandName } = usePublicContact();
   const contactPhone = neutral ? phone : NAYADE_PHONE;
   const { data: publicSettings } = trpc.config.getPublicSettings.useQuery(undefined, { staleTime: 5 * 60 * 1000 });
   const { data: me } = trpc.hr.portal.me.useQuery();
 
-  const brandLogo = (publicSettings as any)?.brand_logo_url || LOGO_FALLBACK;
+  const brandLogo = (publicSettings as any)?.brand_logo_url || (neutral ? "" : LOGO_FALLBACK);
   const employeeName = me?.fullName ?? (user as any).name ?? (user as any).email ?? "Empleado";
 
   return (
@@ -64,7 +64,7 @@ function EmployeeLayoutInner({ user, location, navigate, logout, children }: {
           {/* Fila superior: logo + empleado + acciones */}
           <div className="flex items-center justify-between h-14">
             <Link href="/empleado" className="flex items-center gap-2.5">
-              <img src={brandLogo} alt="Náyade Experiences" className="h-7 w-auto object-contain" />
+              {brandLogo ? <img src={brandLogo} alt={brandName} className="h-7 w-auto object-contain" /> : <span className="font-semibold text-white text-sm">{brandName}</span>}
             </Link>
 
             <div className="hidden sm:flex flex-col items-center">
@@ -76,7 +76,7 @@ function EmployeeLayoutInner({ user, location, navigate, logout, children }: {
               {contactPhone && (
                 <a href={`tel:${contactPhone}`}
                   className="hidden sm:flex items-center gap-1.5 text-xs text-white/50 hover:text-orange-400 transition-colors border border-white/10 hover:border-orange-500/30 rounded-lg px-2.5 py-1.5"
-                  title="Llamar a Náyade"
+                  title={brandName ? `Llamar a ${brandName}` : "Llamar"}
                 >
                   <Phone className="w-3.5 h-3.5" />
                   {contactPhone}
@@ -120,7 +120,7 @@ function EmployeeLayoutInner({ user, location, navigate, logout, children }: {
 
       <footer className="border-t border-white/[0.06] py-4 mt-8">
         <div className="max-w-5xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2 text-[11px] text-white/25">
-          <span>Portal del Empleado · Náyade Experiences</span>
+          <span>Portal del Empleado{brandName && ` · ${brandName}`}</span>
           {contactPhone && (
             <a href={`tel:${contactPhone}`} className="hover:text-white/50 transition-colors flex items-center gap-1">
               <Phone className="w-3 h-3" /> {contactPhone}
