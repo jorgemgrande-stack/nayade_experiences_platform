@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { eq, desc, and, like, gte, lte } from "drizzle-orm";
-import { router, permissionProcedure, publicProcedure } from "../_core/trpc";
+import { eq, desc, and, like, gte, lte, inArray } from "drizzle-orm";
+import { router, permissionProcedure, protectedProcedure, publicProcedure } from "../_core/trpc";
 import { getDb } from "../db";
 import { featureFlags, systemSettings, configChangeLogs } from "../../drizzle/schema";
 import { invalidateConfigCache } from "../config";
@@ -85,6 +85,19 @@ export const configRouter = router({
     } catch {
       return {};
     }
+  }),
+
+  /**
+   * Datos de la empresa en curso para tickets y documentos impresos (nombre, razón social, NIF, dirección, web y
+   * logotipo): lo que ya figura en cualquier ticket. Para cualquier usuario del panel. Vacío si no está configurado:
+   * nunca los de otra empresa.
+   */
+  ticketHeader: protectedProcedure.query(async () => {
+    const keys = ["brand_name", "site_legal_name", "brand_nif", "brand_address", "site_legal_city", "brand_website_url", "brand_logo_url"];
+    const db = await getDb();
+    const rows = db ? await db.select({ key: systemSettings.key, value: systemSettings.value }).from(systemSettings).where(inArray(systemSettings.key, keys)) : [];
+    const v = (k: string) => (rows.find((r) => r.key === k)?.value ?? "").trim() || null;
+    return { name: v("brand_name"), legalName: v("site_legal_name"), taxId: v("brand_nif"), address: v("brand_address"), city: v("site_legal_city"), website: v("brand_website_url"), logoUrl: v("brand_logo_url") };
   }),
 
   listFeatureFlags: settingsAdvancedProc.query(async () => {

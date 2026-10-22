@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils";
 import { usePanelSubscription } from "@/hooks/usePanelSubscription";
 import { PanelLoading } from "@/components/admin/PanelStates";
 import EssentialHome from "./home/EssentialHome";
+import { usePanelBrand } from "@/hooks/usePanelBrand";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function fmt(n: number) {
@@ -275,6 +276,7 @@ export default function AdminDashboard() {
 }
 
 function LegacyDashboard() {
+  const brand = usePanelBrand();
   const { user, isAuthenticated, loading } = useAuth();
 
   const todayStr = useMemo(() => {
@@ -432,7 +434,7 @@ function LegacyDashboard() {
               </div>
               <h1 className="text-xl font-black text-foreground">{greeting}, {firstName} 👋</h1>
               <p className="text-muted-foreground text-xs mt-0.5">
-                Náyade Experiences · {new Date().toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long" })}
+                {brand.name ? `${brand.name} · ` : ""}{new Date().toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long" })}
               </p>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
@@ -721,7 +723,7 @@ function LegacyDashboard() {
                 label="Liquid. pend."
                 value={liquidacionesPendientes}
                 subLabel={`${fmtDec(suppliersKpis?.pendingAmount ?? 0)} a pagar`}
-                icon={Building2} color="orange" href="/admin/proveedores"
+                icon={Building2} color="orange" href="/admin/suppliers"
               />
             </div>
           </div>
@@ -1033,7 +1035,7 @@ function LegacyDashboard() {
                 iconColor="text-rose-400"
                 badge={cancellacionesPendientes}
                 action={
-                  <Link href="/admin/operaciones/anulaciones">
+                  <Link href="/admin/crm?tab=anulaciones">
                     <button className="text-[10px] text-foreground/40 hover:text-foreground/65 flex items-center gap-1 transition-colors">Gestionar <ExternalLink className="w-3 h-3" /></button>
                   </Link>
                 }
@@ -1047,7 +1049,7 @@ function LegacyDashboard() {
                   <>
                     <div className="space-y-2 mb-3">
                       {cancellationsData?.rows?.slice(0, 3).map((req: { id: number; fullName: string; reason: string; operationalStatus: string; createdAt: Date }) => (
-                        <Link key={req.id} href="/admin/operaciones/anulaciones">
+                        <Link key={req.id} href="/admin/crm?tab=anulaciones">
                           <div className="flex items-center gap-3 p-2.5 rounded-lg bg-muted/40 hover:bg-muted/60 transition-colors cursor-pointer">
                             <div className="w-7 h-7 rounded-full bg-rose-500/15 flex items-center justify-center shrink-0">
                               <XCircle className="w-3.5 h-3.5 text-rose-400" />
@@ -1196,7 +1198,7 @@ function LegacyDashboard() {
                 iconColor="text-orange-400"
                 badge={liquidacionesPendientes}
                 action={
-                  <Link href="/admin/proveedores">
+                  <Link href="/admin/suppliers">
                     <button className="text-[10px] text-muted-foreground/50 hover:text-muted-foreground flex items-center gap-1 transition-colors">Ver todas <ExternalLink className="w-3 h-3" /></button>
                   </Link>
                 }
@@ -1224,7 +1226,7 @@ function LegacyDashboard() {
                   </div>
                 )}
                 {liquidacionesPendientes > 0 && (
-                  <Link href="/admin/proveedores">
+                  <Link href="/admin/suppliers">
                     <div className="mt-2 flex items-center gap-1.5 text-[10px] text-amber-400 bg-amber-500/8 rounded-lg px-2.5 py-1.5 hover:bg-amber-500/12 transition-colors cursor-pointer">
                       <AlertTriangle className="w-3 h-3 shrink-0" />
                       {liquidacionesPendientes} liquidación{liquidacionesPendientes > 1 ? "es" : ""} pendiente{liquidacionesPendientes > 1 ? "s" : ""} de abono

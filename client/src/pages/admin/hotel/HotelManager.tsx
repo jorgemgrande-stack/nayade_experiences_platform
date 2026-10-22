@@ -555,11 +555,11 @@ export default function HotelManager() {
   });
 
   return (
-    <AdminLayout title="Hotel Náyade">
+    <AdminLayout title="Hotel">
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Hotel Náyade</h1>
+          <h1 className="text-2xl font-bold">Hotel</h1>
           <p className="text-muted-foreground text-sm">Gestiona tipologías, tarifas e inventario</p>
         </div>
         <Button onClick={() => { setEditRoom(null); setShowForm(true); }}>

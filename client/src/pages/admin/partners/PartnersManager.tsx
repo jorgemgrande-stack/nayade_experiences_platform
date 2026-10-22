@@ -146,12 +146,12 @@ function PartnerForm({
           <div>
             <label className="text-xs text-foreground/50 mb-1 block">Nombre del partner *</label>
             <Input value={form.name} onChange={e => set("name", e.target.value)}
-              placeholder="Hotel Nayade" className="bg-foreground/[0.05] border-foreground/[0.12] text-white" />
+              placeholder="Hotel Ejemplo" className="bg-foreground/[0.05] border-foreground/[0.12] text-white" />
           </div>
           <div>
             <label className="text-xs text-foreground/50 mb-1 block">Razón social fiscal</label>
             <Input value={form.fiscalName} onChange={e => set("fiscalName", e.target.value)}
-              placeholder="Hotel Nayade S.L." className="bg-foreground/[0.05] border-foreground/[0.12] text-white" />
+              placeholder="Hotel Ejemplo S.L." className="bg-foreground/[0.05] border-foreground/[0.12] text-white" />
           </div>
           <div>
             <label className="text-xs text-foreground/50 mb-1 block">NIF / CIF</label>
