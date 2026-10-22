@@ -43,14 +43,19 @@ export function legacyBrandText(_literal: string): string {
   return brandName();
 }
 
-/** URL escrita a mano en el código: en single la de siempre; en multi la URL pública de la empresa. */
-export function legacyUrl(literal: string): string {
-  return isMultiTenant() ? publicBaseUrl() : literal;
+/** Obsoleto (usar `publicBaseUrl()`): la URL pública de la instalación o de la empresa; el literal ya no se usa. */
+export function legacyUrl(_literal: string): string {
+  return publicBaseUrl();
 }
 
-/** Host escrito a mano («www.ejemplo.es»): en single el de siempre; en multi el host público de la empresa. */
-export function legacySiteHost(literal: string): string {
-  return isMultiTenant() ? (peekTenantIdentity()?.publicHost ?? "") : literal;
+/** Host público («www.ejemplo.es») de la empresa (multi) o de la instalación (APP_URL); el literal ya no se usa. */
+export function legacySiteHost(_literal: string): string {
+  if (isMultiTenant()) return peekTenantIdentity()?.publicHost ?? "";
+  try {
+    return publicBaseUrl() ? new URL(publicBaseUrl()).host : "";
+  } catch {
+    return "";
+  }
 }
 
 /** Obsoleto (usar `brandSetting(key, "")`): el ajuste de la empresa en curso; el literal ya no se usa en ningún modo. */

@@ -5,7 +5,7 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
-import { LEGACY_PUBLIC_URL_FALLBACK, PRODUCT, publicBaseUrl } from "./_core/productIdentity";
+import { PRODUCT, publicBaseUrl } from "./_core/productIdentity";
 
 const saved = { APP_URL: process.env.APP_URL, TENANT_MODE: process.env.TENANT_MODE };
 afterEach(() => {
@@ -21,10 +21,9 @@ describe("URL pública de la instalación", () => {
     process.env.APP_URL = "  https://www.nayadeexperiences.es ";
     expect(publicBaseUrl()).toBe("https://www.nayadeexperiences.es");
   });
-  it("sin APP_URL: el respaldo heredado, exactamente como antes", () => {
+  it("sin APP_URL: vacío (enlaces relativos), nunca el dominio de otra instalación", () => {
     delete process.env.APP_URL;
-    expect(publicBaseUrl()).toBe(LEGACY_PUBLIC_URL_FALLBACK);
-    expect(LEGACY_PUBLIC_URL_FALLBACK).toBe("https://www.skicenter.es");
+    expect(publicBaseUrl()).toBe("");
   });
   it("en multiempresa sin APP_URL no lanza (se lee al importar) y avisa", () => {
     delete process.env.APP_URL;

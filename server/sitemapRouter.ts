@@ -37,8 +37,6 @@ async function blogLicensed(): Promise<boolean> {
 const _pool = legacyPool();
 const db = legacyDb();
 
-const LEGACY_BASE_URL = "https://skicenter.es";
-
 /** Rutas públicas del Core disponibles para cualquier empresa. */
 const TENANT_STATIC_URLS: Array<{ path: string; changefreq: string; priority: string }> = [
   { path: "/",             changefreq: "weekly",  priority: "1.0" },
@@ -102,7 +100,7 @@ sitemapRouter.get("/robots.txt", (_req, res, next) => {
 sitemapRouter.get("/sitemap.xml", async (_req, res) => {
   try {
     const multi = isMultiTenant();
-    const BASE_URL = multi ? publicBaseUrl().replace(/\/+$/, "") : LEGACY_BASE_URL;
+    const BASE_URL = publicBaseUrl().replace(/\/+$/, "");
     const url = (loc: string, lastmod?: string, changefreq?: string, priority?: string) => urlEntry(BASE_URL, loc, lastmod, changefreq, priority);
     const pageRows = multi
       ? await db.select({ slug: staticPages.slug, updatedAt: staticPages.updatedAt }).from(staticPages).where(eq(staticPages.isPublished, true))
