@@ -19,7 +19,6 @@ const BASELINE: Record<string, number> = {
   "components/MetaPixelLoader.tsx": 1,
   "components/PublicFooter.tsx": 12,
   "components/PublicNav.tsx": 3,
-  "hooks/usePublicPhone.ts": 4,
   "lib/restaurantLinks.ts": 4,
   "pages/BudgetRequest.tsx": 1,
   "pages/CanjearCupon.tsx": 1,
