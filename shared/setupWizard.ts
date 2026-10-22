@@ -87,6 +87,10 @@ export const companySchema = z.object({
   country: z.string().refine((c) => COUNTRIES.some((x) => x.code === c), "Elige un país de la lista"),
   currency: z.enum(CURRENCIES, { message: "Elige una moneda de la lista" }),
   timezone: z.enum(TIMEZONES, { message: "Elige una zona horaria de la lista" }),
+  // Contacto público (web y comunicaciones): opcional; sin él, la web de la empresa no muestra ese dato
+  publicPhone: z.string().trim().max(40, "Máximo 40 caracteres").optional().default(""),
+  publicEmail: z.union([z.literal(""), z.string().trim().max(160, "Máximo 160 caracteres").email("Indica un email válido")]).optional().default(""),
+  publicLocation: z.string().trim().max(200, "Máximo 200 caracteres").optional().default(""),
 });
 export type CompanyData = z.infer<typeof companySchema>;
 
@@ -102,6 +106,9 @@ export const COMPANY_SETTING_KEYS: Record<keyof CompanyData, string> = {
   country: "site_legal_country",
   currency: "site_payment_currency",
   timezone: "site_timezone",
+  publicPhone: "brand_phone",
+  publicEmail: "site_business_email",
+  publicLocation: "brand_location",
 };
 export const ACTIVITY_SETTING_KEY = "business_activity";
 export const PROGRESS_SETTING_KEY = "setup_wizard_progress";

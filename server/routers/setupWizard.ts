@@ -38,6 +38,9 @@ const LABELS: Record<keyof CompanyData, string> = {
   country: "País",
   currency: "Moneda",
   timezone: "Zona horaria",
+  publicPhone: "Teléfono",
+  publicEmail: "Email de contacto",
+  publicLocation: "Ubicación",
 };
 
 const guard = <T>(fn: () => T): T => {
@@ -88,7 +91,7 @@ export const setupWizardRouter = router({
         key: COMPANY_SETTING_KEYS[field],
         value: String(input[field] ?? ""),
         label: LABELS[field],
-        category: field === "tradeName" ? "branding" : field === "currency" || field === "timezone" ? "general" : "fiscal",
+        category: field === "tradeName" ? "branding" : field === "currency" || field === "timezone" ? "general" : field.startsWith("public") ? "negocio" : "fiscal",
       })),
     );
     const progress = await updateProgress((p) => markStep(p, "company", "done", Date.now()));

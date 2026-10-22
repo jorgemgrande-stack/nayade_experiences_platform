@@ -5,6 +5,7 @@
 import { describe, it, expect } from "vitest";
 import {
   SETUP_STEPS,
+  COMPANY_SETTING_KEYS,
   companySchema,
   emptyProgress,
   markStep,
@@ -91,6 +92,15 @@ describe("datos de la empresa", () => {
     expect(r.success).toBe(false);
     const msgs = r.error!.issues.map((i) => i.message);
     expect(msgs).toEqual(expect.arrayContaining(["Indica el nombre comercial (mínimo 2 caracteres)", "El NIF debe tener entre 5 y 20 letras o números", "Elige un país de la lista", "Elige una moneda de la lista", "Elige una zona horaria de la lista"]));
+  });
+  it("contacto público opcional: vacío por defecto, email validado, guardado en los ajustes que lee la web", () => {
+    const r = companySchema.parse(ok);
+    expect([r.publicPhone, r.publicEmail, r.publicLocation]).toEqual(["", "", ""]);
+    expect(companySchema.parse({ ...ok, publicEmail: " hola@hotelsol.es ", publicPhone: "+34 600 000 000" }).publicEmail).toBe("hola@hotelsol.es");
+    const bad = companySchema.safeParse({ ...ok, publicEmail: "no-es-un-email" });
+    expect(bad.success).toBe(false);
+    expect(bad.error!.issues.map((i) => i.message)).toContain("Indica un email válido");
+    expect([COMPANY_SETTING_KEYS.publicPhone, COMPANY_SETTING_KEYS.publicEmail, COMPANY_SETTING_KEYS.publicLocation]).toEqual(["brand_phone", "site_business_email", "brand_location"]);
   });
 });
 
