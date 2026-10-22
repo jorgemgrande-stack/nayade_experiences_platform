@@ -35,13 +35,14 @@ describe("contacto de la web pública de cada empresa", () => {
     expect(src).not.toMatch(/N[aá]yade Experiences/);
   });
 
-  it("usePublicContact: en la web neutra (o mientras no se sabe), nunca los datos de la instalación original", () => {
+  it("usePublicContact: en cualquier modo, solo los datos de la propia empresa (sin valores fijos)", () => {
     const body = hook.slice(hook.indexOf("export function usePublicContact"), hook.indexOf("export function usePublicPhone"));
     expect(body).toMatch(/const neutral = t \? t\.neutralSite : true;/);
-    for (const field of ["brandName", "email", "address"]) {
-      expect(body).toMatch(new RegExp(`${field}: neutral \\? \\(t\\?\\.[\\w.]+ \\?\\? ""\\) : SINGLE_CONTACT\\.${field}`));
-    }
-    expect(body).toMatch(/const phone = neutral \? \(t\?\.contact\.phone \?\? ""\) :/);
+    expect(body).toContain('brandName: t?.brandName ?? "",');
+    expect(body).toContain('email: t?.contact.email ?? "",');
+    expect(body).toContain('address: t?.contact.address ?? "",');
+    expect(body).toContain('const phone = t?.contact.phone ?? "";');
+    expect(hook).not.toMatch(/N[aá]yade|nayadeexperiences|639 ?57|San Rafael|SINGLE_CONTACT|CORRECT_PHONE/);
   });
 
   it("usePublicPhone reutiliza usePublicContact (el teléfono de la instalación original no llega a la web neutra)", () => {
