@@ -1,7 +1,7 @@
 /**
- * Las ingestas IMAP (TPV y gastos) usan un buzón GLOBAL del entorno. En multiempresa, ahora que
- * el acceso heredado a la BD funciona por tenant, ejecutarlas volcaría ese buzón en la BD de la
- * empresa en curso: deben quedar bloqueadas sin abrir ninguna conexión IMAP.
+ * Las ingestas IMAP (TPV y gastos) tienen un buzón GLOBAL en el entorno (instalación de una sola empresa). En
+ * multiempresa nunca se usa: cada empresa configura el suyo en su bóveda (ver tenantImapConfig.test.ts). Sin él, la
+ * ingesta no abre ninguna conexión IMAP aunque el entorno tenga credenciales.
  */
 import { describe, it, expect, afterEach, vi } from "vitest";
 
@@ -30,16 +30,16 @@ afterEach(async () => {
 });
 
 describe("ingesta IMAP con credenciales globales en multiempresa", () => {
-  it("TPV: no se ejecuta en multi (ni con el pool del tenant precargado)", async () => {
+  it("TPV: en multi sin buzón propio no se ejecuta (ni con el buzón del entorno ni con el pool precargado)", async () => {
     process.env.TENANT_MODE = "multi";
     setConnectionResolver((id) => `mysql://u:p@127.0.0.1:1/db_${id}`);
     const r = await withTenantDb("empresa-b", () => runEmailIngestion(false));
-    expect(r.errors.join(" ")).toMatch(/multiempresa/);
+    expect(r.errors.join(" ")).toMatch(/no configurado para esta empresa/);
     expect(r.operationsInserted).toBe(0);
     expect(imap.created).toBe(0);
   });
 
-  it("gastos: no se ejecuta en multi", async () => {
+  it("gastos: en multi sin buzón propio no se ejecuta", async () => {
     process.env.TENANT_MODE = "multi";
     setConnectionResolver((id) => `mysql://u:p@127.0.0.1:1/db_${id}`);
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
