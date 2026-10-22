@@ -7,6 +7,16 @@ import path from "node:path";
 import mysql from "mysql2/promise";
 import { MysqlCrmStore } from "./crm/mysqlStore";
 import { CrmService } from "./crm/service";
+import { loadMigrations, splitStatements } from "../scripts/db/migrationLib";
+
+const CRM_MIGRATIONS = path.resolve(__dirname, "../db/crm/migrations");
+/** Aplica (o revierte) las migraciones del CRM como lo haría scripts/db/migrate.ts. */
+async function runCrmMigrations(pool: mysql.Pool, direction: "up" | "down") {
+  const { migrations, errors } = loadMigrations(CRM_MIGRATIONS);
+  if (errors.length) throw new Error(errors.join("; "));
+  const list = direction === "up" ? migrations : [...migrations].reverse();
+  for (const m of list) for (const s of splitStatements(direction === "up" ? m.up : m.down!)) await pool.query(s);
+}
 
 const URL_ = process.env.REGISTRY_TEST_DATABASE_URL;
 
@@ -24,6 +34,7 @@ describe.skipIf(!URL_)("CRM con MySQL real", () => {
     pool = mysql.createPool({ uri: u.toString(), connectionLimit: 4 });
     const ddl = fs.readFileSync(path.resolve(__dirname, "../db/crm/0000_crm.sql"), "utf8").replace(/^--.*$/gm, "");
     for (const s of ddl.split(/;\s*(?:\r?\n|$)/).map((x) => x.trim()).filter(Boolean)) await pool.query(s);
+    await runCrmMigrations(pool, "up");
     crm = new CrmService({
       store: new MysqlCrmStore(pool),
       activation: { activate: async ({ company }) => ({ tenantId: "t-" + company.id }) },
@@ -57,5 +68,39 @@ describe.skipIf(!URL_)("CRM con MySQL real", () => {
     await expect(
       pool.query("INSERT INTO crm_companies (name, tenant_id, created_at) VALUES ('Duplicada', ?, 1)", [rows[0].tenant_id]),
     ).rejects.toMatchObject({ code: "ER_DUP_ENTRY" });
+  });
+
+  it("v2: ficha, contacto principal (único también en BD), lead con prioridad y oportunidad ampliada", async () => {
+    const co = await crm.createCompany({ name: "Ñandú Kayak S.L.", taxId: "B777", email: "info@nandu.example", country: "ES", city: "Málaga" }, "t");
+    const got = await crm.getCompany(co.id);
+    expect(got).toMatchObject({ taxId: "B777", country: "ES", city: "Málaga", status: "active", lifecycle: "prospect", updatedAt: null });
+    const a = await crm.createContact(co.id, { firstName: "Ana", lastName: "Ñ", email: "ana@nandu.example" }, "t");
+    const b = await crm.createContact(co.id, { firstName: "Bea", phone: "600" }, "t");
+    expect(a.isPrimary).toBe(true);
+    expect(b.isPrimary).toBe(false);
+    await crm.updateContact(b.id, { isPrimary: true }, "t");
+    expect((await crm.listContacts({ companyId: co.id })).items.filter((c) => c.isPrimary).map((c) => c.id)).toEqual([b.id]);
+    // La restricción de BD impide dos principales aunque se salte el servicio
+    await expect(pool.query("UPDATE crm_contacts SET is_primary = 1 WHERE id = ?", [a.id])).rejects.toMatchObject({ code: "ER_DUP_ENTRY" });
+
+    const l = await crm.createLead({ name: "Leo", email: "leo@nandu.example", priority: "urgent", companyId: co.id }, "t");
+    expect((await crm.listLeads({ priority: "urgent" })).items.map((x) => x.id)).toContain(l.id);
+    const r = await crm.convertLead(l.id, { opportunity: { title: "Pro", planId: "pro", modules: ["hotel"] } }, "t");
+    expect(r.company.id).toBe(co.id);
+    await crm.moveStage(r.opportunity!.id, "qualification", "t");
+    const o = await crm.updateOpportunity(r.opportunity!.id, { nextAction: "Demo", nextActionAt: 1_800_000_000_000, modules: ["hotel", "spa"] }, "t");
+    expect(o).toMatchObject({ stage: "qualification", modules: ["hotel", "spa"], nextActionAt: 1_800_000_000_000, contactId: r.contact.id });
+  });
+
+  it("la migración 0001 se revierte y se vuelve a aplicar conservando los datos base", async () => {
+    const [[before]] = (await pool.query<mysql.RowDataPacket[]>("SELECT COUNT(*) AS n FROM crm_companies")) as any;
+    await runCrmMigrations(pool, "down");
+    const [cols] = await pool.query<mysql.RowDataPacket[]>("SHOW COLUMNS FROM crm_contacts LIKE 'is_primary'");
+    expect(cols).toHaveLength(0);
+    const [[stage]] = (await pool.query<mysql.RowDataPacket[]>("SELECT COUNT(*) AS n FROM crm_opportunities WHERE stage = 'qualification'")) as any;
+    expect(Number(stage.n)).toBe(0); // etapa nueva reasignada a una existente
+    await runCrmMigrations(pool, "up");
+    const [[after]] = (await pool.query<mysql.RowDataPacket[]>("SELECT COUNT(*) AS n FROM crm_companies")) as any;
+    expect(Number(after.n)).toBe(Number(before.n));
   });
 });
