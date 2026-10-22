@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
+import { usePublicContact } from "@/hooks/usePublicPhone";
 import {
   LayoutDashboard, Plus, CalendarCheck, LogOut, Loader2,
   Phone, ExternalLink, X, BellRing, BookOpen,
@@ -17,6 +18,7 @@ const CATALOG_URL = "https://www.skicenter.es/experiencias";
 function AnnouncementsModal({ partnerId }: { partnerId: number }) {
   const [open, setOpen] = useState(false);
   const { data: announcements = [] } = trpc.partners.getAnnouncements.useQuery();
+  const { brandName } = usePublicContact();
 
   useEffect(() => {
     if (!announcements || announcements.length === 0) return;
@@ -41,7 +43,7 @@ function AnnouncementsModal({ partnerId }: { partnerId: number }) {
         <div className="flex items-center justify-between px-5 py-4 border-b border-amber-500/20">
           <div className="flex items-center gap-2">
             <BellRing className="w-5 h-5 text-amber-400 animate-pulse" />
-            <span className="font-semibold text-white text-sm">Avisos de Nayade Experiences</span>
+            <span className="font-semibold text-white text-sm">{brandName ? `Avisos de ${brandName}` : "Avisos"}</span>
           </div>
           <button onClick={dismiss} className="text-white/40 hover:text-white/80 transition-colors">
             <X className="w-4 h-4" />
@@ -110,7 +112,10 @@ function PartnerLayoutInner({ user, location, navigate, logout, children, bgImag
   const { data: announcements = [] } = trpc.partners.getAnnouncements.useQuery(undefined, { staleTime: 2 * 60 * 1000 });
   const canReserve = partner?.canCreateReservations ?? false;
 
-  const brandLogo = (publicSettings as any)?.brand_logo_url || LOGO_FALLBACK;
+  const { neutral, brandName, phone } = usePublicContact();
+  // Web neutra de cada empresa: su logo y su teléfono, nunca los de la instalación original
+  const brandLogo = (publicSettings as any)?.brand_logo_url || (neutral ? null : LOGO_FALLBACK);
+  const contactPhone = neutral ? phone : NAYADE_PHONE;
   const userName = (user as any).name ?? (user as any).email ?? "Colaborador";
   const partnerName = partner?.name ?? "";
 
@@ -148,7 +153,7 @@ function PartnerLayoutInner({ user, location, navigate, logout, children, bgImag
           <div className="flex items-center justify-between h-14">
             {/* Logo */}
             <Link href="/partner/dashboard" className="flex items-center gap-2.5">
-              <img src={brandLogo} alt="Nayade Experiences" className="h-7 w-auto object-contain" />
+              {brandLogo ? <img src={brandLogo} alt={brandName} className="h-7 w-auto object-contain" /> : <span className="font-semibold text-white text-sm">{brandName}</span>}
             </Link>
 
             {/* Partner + usuario */}
@@ -161,16 +166,18 @@ function PartnerLayoutInner({ user, location, navigate, logout, children, bgImag
 
             {/* Acciones rápidas */}
             <div className="flex items-center gap-2">
-              <a
-                href={`https://wa.me/${NAYADE_PHONE.replace(/\s/g, "").replace("+", "")}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="hidden sm:flex items-center gap-1.5 text-xs text-white/50 hover:text-green-400 transition-colors border border-white/10 hover:border-green-500/30 rounded-lg px-2.5 py-1.5"
-                title="WhatsApp Nayade"
-              >
-                <Phone className="w-3.5 h-3.5" />
-                {NAYADE_PHONE}
-              </a>
+              {contactPhone && (
+                <a
+                  href={`https://wa.me/${contactPhone.replace(/\s/g, "").replace("+", "")}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hidden sm:flex items-center gap-1.5 text-xs text-white/50 hover:text-green-400 transition-colors border border-white/10 hover:border-green-500/30 rounded-lg px-2.5 py-1.5"
+                  title={brandName ? `WhatsApp ${brandName}` : "WhatsApp"}
+                >
+                  <Phone className="w-3.5 h-3.5" />
+                  {contactPhone}
+                </a>
+              )}
               <a
                 href={CATALOG_URL}
                 target="_blank"
@@ -234,11 +241,13 @@ function PartnerLayoutInner({ user, location, navigate, logout, children, bgImag
       {/* Footer */}
       <footer className="border-t border-white/[0.06] py-4 mt-8">
         <div className="max-w-5xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2 text-[11px] text-white/25">
-          <span>Portal de Colaboradores · Nayade Experiences</span>
+          <span>Portal de Colaboradores{brandName && ` · ${brandName}`}</span>
           <div className="flex items-center gap-4">
-            <a href={`tel:${NAYADE_PHONE}`} className="hover:text-white/50 transition-colors flex items-center gap-1">
-              <Phone className="w-3 h-3" /> {NAYADE_PHONE}
-            </a>
+{contactPhone && (
+              <a href={`tel:${contactPhone}`} className="hover:text-white/50 transition-colors flex items-center gap-1">
+                <Phone className="w-3 h-3" /> {contactPhone}
+              </a>
+            )}
             <a href={CATALOG_URL} target="_blank" rel="noopener noreferrer" className="hover:text-white/50 transition-colors flex items-center gap-1">
               <ExternalLink className="w-3 h-3" /> Ver catálogo
             </a>

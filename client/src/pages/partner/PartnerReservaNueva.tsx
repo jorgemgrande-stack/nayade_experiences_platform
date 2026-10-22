@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
+import { usePublicContact } from "@/hooks/usePublicPhone";
 import PartnerLayout from "./PartnerLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,6 +11,7 @@ import { toast } from "sonner";
 import { CheckCircle, Loader2, Users, Calendar, Euro, Search } from "lucide-react";
 
 export default function PartnerReservaNueva() {
+  const { brandName } = usePublicContact();
   const [, navigate] = useLocation();
   const [submitted, setSubmitted] = useState(false);
   const [submittedData, setSubmittedData] = useState<{ reservationNumber: string } | null>(null);
@@ -103,7 +105,7 @@ export default function PartnerReservaNueva() {
       <PartnerLayout bgImage="/images/partner/bg-dashboard_3.png">
         <div className="flex flex-col items-center justify-center min-h-[50vh] text-center">
           <p className="text-gray-500">Tu cuenta no tiene permiso para crear reservas directas.</p>
-          <p className="text-gray-400 text-sm mt-1">Contacta con el administrador de Nayade Experiences.</p>
+          <p className="text-gray-400 text-sm mt-1">Contacta con el administrador{brandName && ` de ${brandName}`}.</p>
         </div>
       </PartnerLayout>
     );

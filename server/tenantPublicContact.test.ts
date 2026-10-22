@@ -19,6 +19,15 @@ describe("contacto de la web pública de cada empresa", () => {
     "CanjearCupon.tsx",
     "QuoteAcceptance.tsx",
     "RegistrarGasto.tsx",
+    "RestauranteReservaOk.tsx",
+    "RestauranteReservaKo.tsx",
+    "RestauranteDetail.tsx",
+    "SolicitarAnulacion.tsx",
+    "ExperienceDetail.tsx",
+    "partner/PartnerLayout.tsx",
+    "partner/PartnerLeadNuevo.tsx",
+    "partner/PartnerReservaNueva.tsx",
+    "supplier/SupplierDashboard.tsx",
   ])("%s no escribe a mano el email ni el nombre de la instalación original", (file) => {
     const src = read(`client/src/pages/${file}`);
     expect(src).toContain("usePublicContact()");
