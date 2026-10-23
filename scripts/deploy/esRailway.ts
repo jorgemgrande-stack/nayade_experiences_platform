@@ -373,6 +373,16 @@ async function main() {
         const h = ((det.j.HttpHeaders as Array<{ Name: string; Value: string }>) ?? []).find((x) => x.Name.toLowerCase() === "x-elephant-webhook-token");
         webhookHeaderFp[w.ID] = h ? huella(h.Value) : "";
         console.log(`  webhook ${w.ID}: token ${h ? `huella ${huella(h.Value)}` : "AUSENTE"} · plano de control ${cpToken ? `huella ${huella(cpToken)}` : "sin token"} → ${h && cpToken && huella(h.Value) === huella(cpToken) ? "coinciden" : "NO coinciden"}`);
+        const tr = (det.j.Triggers as Record<string, { Enabled?: boolean }>) ?? {};
+        console.log(`  webhook ${w.ID}: eventos activos ${Object.entries(tr).filter(([, v]) => v?.Enabled).map(([k]) => k).join(", ") || "ninguno"}`);
+      }
+      // El plano de control registra cada llamada del webhook (MailWebhook processed/rejected/apply_failed)
+      {
+        const sid = await serviceId("controlplane");
+        const cur = (await deployments(sid, sc.environmentId)).find((x) => x.status === "SUCCESS");
+        const lines = cur ? (await logs(cur.id, 3000)).split("\n").filter((l) => /MailWebhook/.test(l)) : [];
+        console.log(`Registro del plano de control (despliegue activo): ${lines.length} líneas MailWebhook`);
+        for (const l of lines.slice(-15)) console.log(`  ${l.slice(0, 240)}`);
       }
       const out = await pm("GET", "/messages/outbound?count=100&offset=0");
       console.log(`Postmark envíos registrados: ${out.status === 200 ? out.j.TotalCount : `HTTP ${out.status}`}`);
