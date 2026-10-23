@@ -40,3 +40,11 @@ export function publicBaseUrl(): string {
   return "";
 }
 let warned = false;
+
+/**
+ * Enlace de los DATOS DE EJEMPLO de las vistas previas y envíos de prueba: el dominio público de la empresa (o uno
+ * reservado `.example` si no lo hay), nunca el dominio real de un tercero.
+ */
+export function sampleUrl(path: string): string {
+  return `${publicBaseUrl().replace(/\/+$/, "") || "https://tu-empresa.example"}${path}`;
+}

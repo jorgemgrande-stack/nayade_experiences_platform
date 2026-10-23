@@ -18,6 +18,7 @@
  */
 
 import { brandSetting } from "./tenantBrand";
+import { BIG_ELEPHANT, contrastRatio } from "../shared/loginBrand";
 import { isMultiTenant } from "./_core/tenant";
 import { publicBaseUrl } from "./_core/productIdentity";
 
@@ -44,7 +45,7 @@ function headerLogo(mso: boolean): string {
   if (!getBrandLogo()) return "";
   return mso
     ? `<table cellpadding="0" cellspacing="0" border="0"><tr>
-                <td align="center" style="border:3px solid #ffffff;padding:4px;background-color:#1e3a6e;">
+                <td align="center" style="border:3px solid #ffffff;padding:4px;background-color:${BRAND_MID_BLUE()};">
                   <img src="${getBrandLogo()}" alt="${escAttr(getBrandName())}" width="72" height="72" style="display:block;border:0;" />
                 </td>
               </tr></table>`
@@ -59,33 +60,42 @@ function headerLogo(mso: boolean): string {
 function headerBrand(): { title: string; subtitle: string } {
   return { title: escAttr(getBrandName()), subtitle: "" };
 }
-const BRAND_BLUE     = "#0a1628";
-const BRAND_MID_BLUE = "#1e3a6e";
-const BRAND_ORANGE   = "#f97316";
+/**
+ * Colores de los correos de la EMPRESA: los suyos (brand_primary_color / brand_accent_color); sin ellos, o si no se
+ * leen sobre blanco (4,5:1), la identidad predeterminada de Big Elephant. Se calculan en cada envío (empresa en curso).
+ */
+const HEX_COLOR = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
+function brandColor(key: string, fallback: string): string {
+  const v = brandSetting(key, "").trim();
+  return HEX_COLOR.test(v) && (contrastRatio(v, "#ffffff") ?? 0) >= 4.5 ? v : fallback;
+}
+const BRAND_BLUE = () => brandColor("brand_primary_color", BIG_ELEPHANT.ink);
+const BRAND_MID_BLUE = () => BRAND_BLUE();
+const BRAND_ORANGE = () => brandColor("brand_accent_color", BIG_ELEPHANT.redInk);
 const BRAND_SAND     = "#f5f0e8";  // beige arena para footer
 const BRAND_SAND_MID = "#ede8dc";
 
 // ─── SVG icons inline (email-safe) ───────────────────────────────────────────
 const SVG = {
-  calendar: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f97316" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`,
-  users:    `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f97316" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`,
-  star:     `<svg width="16" height="16" viewBox="0 0 24 24" fill="#f97316" stroke="#f97316" stroke-width="1" style="display:inline-block;vertical-align:middle;"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`,
-  key:      `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f97316" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;"><circle cx="7.5" cy="15.5" r="5.5"/><path d="M21 2l-9.6 9.6"/><path d="M15.5 7.5l3 3L22 7l-3-3"/></svg>`,
-  fork:     `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f97316" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2v0a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></svg>`,
-  clock:    `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f97316" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`,
-  phone:    `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f97316" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.61 3.41 2 2 0 0 1 3.6 1.21h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 8.91a16 16 0 0 0 6 6l.81-.81a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 21.73 16a2 2 0 0 1 .27.92z"/></svg>`,
-  mail:     `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f97316" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>`,
-  map:      `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f97316" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>`,
-  person:   `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f97316" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`,
-  tag:      `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f97316" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>`,
-  chat:     `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f97316" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`,
-  lock:     `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f97316" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`,
+  get calendar() { return `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="${BRAND_ORANGE()}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`; },
+  get users() { return `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="${BRAND_ORANGE()}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`; },
+  get star() { return `<svg width="16" height="16" viewBox="0 0 24 24" fill="${BRAND_ORANGE()}" stroke="${BRAND_ORANGE()}" stroke-width="1" style="display:inline-block;vertical-align:middle;"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`; },
+  get key() { return `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="${BRAND_ORANGE()}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;"><circle cx="7.5" cy="15.5" r="5.5"/><path d="M21 2l-9.6 9.6"/><path d="M15.5 7.5l3 3L22 7l-3-3"/></svg>`; },
+  get fork() { return `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="${BRAND_ORANGE()}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2v0a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></svg>`; },
+  get clock() { return `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="${BRAND_ORANGE()}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`; },
+  get phone() { return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${BRAND_ORANGE()}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.61 3.41 2 2 0 0 1 3.6 1.21h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 8.91a16 16 0 0 0 6 6l.81-.81a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 21.73 16a2 2 0 0 1 .27.92z"/></svg>`; },
+  get mail() { return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${BRAND_ORANGE()}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>`; },
+  get map() { return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${BRAND_ORANGE()}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>`; },
+  get person() { return `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="${BRAND_ORANGE()}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`; },
+  get tag() { return `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="${BRAND_ORANGE()}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>`; },
+  get chat() { return `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="${BRAND_ORANGE()}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`; },
+  get lock() { return `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="${BRAND_ORANGE()}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`; },
   check:    `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;"><polyline points="20 6 9 17 4 12"/></svg>`,
   alert:    `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
   error:    `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>`,
-  child:    `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f97316" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;"><circle cx="12" cy="5" r="3"/><path d="M12 8v8"/><path d="M9 14l3 4 3-4"/></svg>`,
-  ref:      `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f97316" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>`,
-  wave:     `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f97316" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;"><path d="M2 12c.5-2 2-3 4-3s3.5 1 5 3 2.5 3 5 3 3.5-1 4-3"/><path d="M2 6c.5-2 2-3 4-3s3.5 1 5 3 2.5 3 5 3 3.5-1 4-3"/><path d="M2 18c.5-2 2-3 4-3s3.5 1 5 3 2.5 3 5 3 3.5-1 4-3"/></svg>`,
+  get child() { return `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="${BRAND_ORANGE()}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;"><circle cx="12" cy="5" r="3"/><path d="M12 8v8"/><path d="M9 14l3 4 3-4"/></svg>`; },
+  get ref() { return `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="${BRAND_ORANGE()}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>`; },
+  get wave() { return `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="${BRAND_ORANGE()}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;"><path d="M2 12c.5-2 2-3 4-3s3.5 1 5 3 2.5 3 5 3 3.5-1 4-3"/><path d="M2 6c.5-2 2-3 4-3s3.5 1 5 3 2.5 3 5 3 3.5-1 4-3"/><path d="M2 18c.5-2 2-3 4-3s3.5 1 5 3 2.5 3 5 3 3.5-1 4-3"/></svg>`; },
 };
 
 // ─── COMPONENTE 1: Cabecera hero con imagen aérea del lago ────────────────────
@@ -101,7 +111,7 @@ function emailHeader(subtitle?: string, tagline?: string): string {
       <!--[if gte mso 9]>
       <v:rect xmlns:v="urn:schemas-microsoft-com:vml" fill="true" stroke="false"
               style="width:600px;height:${heroHeight}px;display:block;">
-        <v:fill type="frame" src="${getBrandHero()}" color="${BRAND_BLUE}" />
+        <v:fill type="frame" src="${getBrandHero()}" color="${BRAND_BLUE()}" />
         <v:textbox inset="0,0,0,0">
         <table width="600" cellpadding="0" cellspacing="0" border="0">
           <tr>
@@ -112,7 +122,7 @@ function emailHeader(subtitle?: string, tagline?: string): string {
                 ${headerBrand().subtitle ? `<tr><td align="center" style="color:#c8d8f0;font-size:10px;letter-spacing:6px;text-transform:uppercase;font-family:Arial,sans-serif;padding-top:2px;">${headerBrand().subtitle}</td></tr>` : ""}
               </table>
               ${subtitle ? `<table cellpadding="0" cellspacing="0" border="0" style="margin-top:14px;">
-                <tr><td align="center" style="background-color:${BRAND_ORANGE};color:#ffffff;font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;padding:6px 20px;font-family:Arial,sans-serif;">${subtitle}</td></tr>
+                <tr><td align="center" style="background-color:${BRAND_ORANGE()};color:#ffffff;font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;padding:6px 20px;font-family:Arial,sans-serif;">${subtitle}</td></tr>
               </table>` : ""}
               ${tagline ? `<table width="100%" cellpadding="0" cellspacing="0" border="0">
                 <tr><td align="center" style="color:#c8d8f0;font-size:13px;font-family:Arial,sans-serif;line-height:1.5;font-style:italic;padding-top:8px;">${tagline}</td></tr>
@@ -128,8 +138,8 @@ function emailHeader(subtitle?: string, tagline?: string): string {
       <![endif]-->
 
       <!--[if !mso]><!-->
-      <table width="600" cellpadding="0" cellspacing="0" border="0"
-             style="background-color:${BRAND_BLUE};background-image:url('${getBrandHero()}');background-size:cover;background-position:center top;">
+      <table width="100%" cellpadding="0" cellspacing="0" border="0"
+             style="background-color:${BRAND_BLUE()};background-image:url('${getBrandHero()}');background-size:cover;background-position:center top;">
         <tr>
           <td align="center" style="padding:36px 40px 28px;background:linear-gradient(180deg,rgba(10,22,40,0.72) 0%,rgba(10,22,40,0.88) 100%);">
             ${headerLogo(false)}
@@ -138,7 +148,7 @@ function emailHeader(subtitle?: string, tagline?: string): string {
               ${headerBrand().subtitle ? `<tr><td align="center" style="color:rgba(255,255,255,0.65);font-size:10px;letter-spacing:7px;text-transform:uppercase;margin-top:2px;font-family:Arial,sans-serif;padding-top:2px;">${headerBrand().subtitle}</td></tr>` : ""}
             </table>
             ${subtitle ? `<table cellpadding="0" cellspacing="0" border="0" style="margin-top:14px;">
-              <tr><td align="center" style="background:${BRAND_ORANGE};color:#ffffff;font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;padding:6px 20px;border-radius:20px;font-family:Arial,sans-serif;">${subtitle}</td></tr>
+              <tr><td align="center" style="background:${BRAND_ORANGE()};color:#ffffff;font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;padding:6px 20px;border-radius:20px;font-family:Arial,sans-serif;">${subtitle}</td></tr>
             </table>` : ""}
             ${tagline ? `<table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:10px;">
               <tr><td align="center" style="color:rgba(255,255,255,0.80);font-size:13px;font-family:Arial,sans-serif;line-height:1.5;font-style:italic;">${tagline}</td></tr>
@@ -146,9 +156,9 @@ function emailHeader(subtitle?: string, tagline?: string): string {
           </td>
         </tr>
       </table>
-      <table width="600" cellpadding="0" cellspacing="0" border="0" style="background:${BRAND_BLUE};"><tr>
+      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:600px;background:${BRAND_BLUE()};"><tr>
         <td style="line-height:0;padding:0;font-size:0;">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 32" preserveAspectRatio="none" width="600" height="32" style="display:block;">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 32" preserveAspectRatio="none" width="100%" height="32" style="display:block;width:100%;">
             <path d="M0,16 C100,32 200,0 300,16 C400,32 500,0 600,16 L600,32 L0,32 Z" fill="#ffffff"/>
           </svg>
         </td>
@@ -180,7 +190,7 @@ function tenantEmailFooter(): string {
   return `
   <tr>
     <td style="padding:0;">
-      <table width="600" cellpadding="0" cellspacing="0" border="0" style="background:${BRAND_SAND};"><tr>
+      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:600px;background:${BRAND_SAND};"><tr>
         <td style="padding:24px 40px 20px;text-align:center;">
           ${contact ? `<p style="color:#6b5c3e;font-size:13px;margin:0 0 6px;font-family:Arial,sans-serif;line-height:1.8;">${contact}</p>` : ""}
           ${location ? `<p style="color:#8b7355;font-size:12px;margin:0 0 12px;font-family:Arial,sans-serif;">${SVG.map}&nbsp;${escAttr(location)}</p>` : ""}
@@ -218,8 +228,8 @@ function emailWrapper(title: string, bodyRows: string): string {
       <!--[if (gte mso 9)|(IE)]>
       <table width="600" align="center" cellpadding="0" cellspacing="0" border="0"><tr><td>
       <![endif]-->
-      <table width="600" cellpadding="0" cellspacing="0" border="0"
-             style="background:#ffffff;border-radius:12px;overflow:hidden;max-width:600px;box-shadow:0 4px 24px rgba(10,22,40,0.12);">
+      <table width="100%" cellpadding="0" cellspacing="0" border="0"
+             style="width:100%;background:#ffffff;border-radius:12px;overflow:hidden;max-width:600px;box-shadow:0 4px 24px rgba(10,22,40,0.12);">
         ${bodyRows}
       </table>
       <!--[if (gte mso 9)|(IE)]>
@@ -238,7 +248,7 @@ function detailRow(icon: string, label: string, value: string): string {
       <table width="100%" cellpadding="0" cellspacing="0"><tr>
         <td width="26" style="vertical-align:middle;">${icon}</td>
         <td style="color:#6b7280;font-size:13px;vertical-align:middle;font-family:Arial,sans-serif;">${label}</td>
-        <td align="right" style="color:${BRAND_BLUE};font-size:13px;font-weight:700;vertical-align:middle;font-family:Arial,sans-serif;">${value}</td>
+        <td align="right" style="color:${BRAND_BLUE()};font-size:13px;font-weight:700;vertical-align:middle;font-family:Arial,sans-serif;">${value}</td>
       </tr></table>
     </td>
   </tr>`;
@@ -290,7 +300,7 @@ function detailsCard(rows: string, cardTitle?: string): string {
   return `<tr><td style="padding:0 32px 12px;">
     <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border-radius:10px;border:1px solid #e8eef7;">
       <tr><td style="padding:18px 22px;">
-        <p style="color:${BRAND_MID_BLUE};font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 12px;font-family:Arial,sans-serif;">
+        <p style="color:${BRAND_MID_BLUE()};font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 12px;font-family:Arial,sans-serif;">
           ${cardTitle ?? "DETALLES DE TU EXPERIENCIA"}
         </p>
         <table width="100%" cellpadding="0" cellspacing="0">${rows}</table>
@@ -305,7 +315,7 @@ function emotionalBlock(text: string): string {
   // Outlook no renderiza linear-gradient — sin fallback, el fondo se queda blanco
   // y el texto blanco queda invisible.
   return `<tr><td style="padding:0 32px 16px;">
-    <table width="100%" cellpadding="0" cellspacing="0" bgcolor="${BRAND_MID_BLUE}" style="background-color:${BRAND_MID_BLUE};background:linear-gradient(135deg,${BRAND_BLUE},${BRAND_MID_BLUE});border-radius:10px;">
+    <table width="100%" cellpadding="0" cellspacing="0" bgcolor="${BRAND_MID_BLUE()}" style="background-color:${BRAND_MID_BLUE()};background:linear-gradient(135deg,${BRAND_BLUE()},${BRAND_MID_BLUE()});border-radius:10px;">
       <tr><td style="padding:20px 24px;text-align:center;">
         <p style="color:#ffffff;font-size:14px;font-family:Georgia,'Times New Roman',serif;font-style:italic;line-height:1.7;margin:0;">${text}</p>
       </td></tr>
@@ -383,7 +393,7 @@ export function buildReservationConfirmHtml(d: ReservationConfirmData): string {
       </table>
     </td></tr>` : ""}
     <tr><td style="padding:0 32px 12px;">
-      <table width="100%" cellpadding="0" cellspacing="0" bgcolor="${BRAND_MID_BLUE}" style="background-color:${BRAND_MID_BLUE};background:linear-gradient(135deg,${BRAND_BLUE},${BRAND_MID_BLUE});border-radius:10px;">
+      <table width="100%" cellpadding="0" cellspacing="0" bgcolor="${BRAND_MID_BLUE()}" style="background-color:${BRAND_MID_BLUE()};background:linear-gradient(135deg,${BRAND_BLUE()},${BRAND_MID_BLUE()});border-radius:10px;">
         <tr>
           <td style="padding:14px 20px;color:#ffffff;font-size:13px;font-family:Arial,sans-serif;">Total pagado</td>
           <td align="right" style="padding:14px 20px;color:#ffffff;font-size:26px;font-weight:900;font-family:Georgia,serif;">${d.amount}</td>
@@ -391,10 +401,10 @@ export function buildReservationConfirmHtml(d: ReservationConfirmData): string {
       </table>
     </td></tr>
     <tr><td style="padding:0 32px 12px;">
-      <table width="100%" cellpadding="0" cellspacing="0" style="background:#fff7ed;border-left:4px solid ${BRAND_ORANGE};border-radius:0 8px 8px 0;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="background:#fff7ed;border-left:4px solid ${BRAND_ORANGE()};border-radius:0 8px 8px 0;">
         <tr><td style="padding:14px 18px;">
           <p style="color:#374151;font-size:13px;margin:0;line-height:1.6;font-family:Arial,sans-serif;">
-            ${SVG.ref}&nbsp;<strong>Referencia de reserva:</strong> <span style="color:${BRAND_ORANGE};font-weight:700;">${d.merchantOrder}</span><br/>
+            ${SVG.ref}&nbsp;<strong>Referencia de reserva:</strong> <span style="color:${BRAND_ORANGE()};font-weight:700;">${d.merchantOrder}</span><br/>
             <span style="color:#9ca3af;font-size:12px;">Guarda este n&uacute;mero para cualquier consulta.</span>
           </p>
         </td></tr>
@@ -410,8 +420,8 @@ export function buildReservationConfirmHtml(d: ReservationConfirmData): string {
     <tr><td style="padding:0 32px 28px;">
       <p style="color:#9ca3af;font-size:13px;margin:0;line-height:1.6;font-family:Arial,sans-serif;">
         &iquest;Necesitas modificar tu reserva? Escrb&iacute;benos a
-        <a href="mailto:${getContactEmail()}" style="color:${BRAND_ORANGE};text-decoration:none;font-weight:600;">${getContactEmail()}</a>
-        ${callUs("o ll&aacute;manos al ", BRAND_ORANGE, 600, "&nbsp;(tambi&eacute;n WhatsApp).")}
+        <a href="mailto:${getContactEmail()}" style="color:${BRAND_ORANGE()};text-decoration:none;font-weight:600;">${getContactEmail()}</a>
+        ${callUs("o ll&aacute;manos al ", BRAND_ORANGE(), 600, "&nbsp;(tambi&eacute;n WhatsApp).")}
       </p>
     </td></tr>
     ${emailFooter()}`;
@@ -461,10 +471,10 @@ export function buildPartnerReservationConfirmHtml(d: PartnerReservationConfirmD
       </table>
     </td></tr>` : ""}
     <tr><td style="padding:0 32px 12px;">
-      <table width="100%" cellpadding="0" cellspacing="0" style="background:#fff7ed;border-left:4px solid ${BRAND_ORANGE};border-radius:0 8px 8px 0;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="background:#fff7ed;border-left:4px solid ${BRAND_ORANGE()};border-radius:0 8px 8px 0;">
         <tr><td style="padding:14px 18px;">
           <p style="color:#374151;font-size:13px;margin:0;line-height:1.6;font-family:Arial,sans-serif;">
-            ${SVG.ref}&nbsp;<strong>Referencia de reserva:</strong> <span style="color:${BRAND_ORANGE};font-weight:700;">${d.merchantOrder}</span><br/>
+            ${SVG.ref}&nbsp;<strong>Referencia de reserva:</strong> <span style="color:${BRAND_ORANGE()};font-weight:700;">${d.merchantOrder}</span><br/>
             <span style="color:#9ca3af;font-size:12px;">Guarda este n&uacute;mero para cualquier consulta.</span>
           </p>
         </td></tr>
@@ -480,8 +490,8 @@ export function buildPartnerReservationConfirmHtml(d: PartnerReservationConfirmD
     <tr><td style="padding:0 32px 28px;">
       <p style="color:#9ca3af;font-size:13px;margin:0;line-height:1.6;font-family:Arial,sans-serif;">
         &iquest;Necesitas modificar tu reserva? Escr&iacute;benos a
-        <a href="mailto:${getContactEmail()}" style="color:${BRAND_ORANGE};text-decoration:none;font-weight:600;">${getContactEmail()}</a>
-        ${callUs("o ll&aacute;manos al ", BRAND_ORANGE, 600, "&nbsp;(tambi&eacute;n WhatsApp).")}
+        <a href="mailto:${getContactEmail()}" style="color:${BRAND_ORANGE()};text-decoration:none;font-weight:600;">${getContactEmail()}</a>
+        ${callUs("o ll&aacute;manos al ", BRAND_ORANGE(), 600, "&nbsp;(tambi&eacute;n WhatsApp).")}
       </p>
     </td></tr>
     ${emailFooter()}`;
@@ -536,10 +546,10 @@ export function buildRestaurantConfirmHtml(d: RestaurantBookingData): string {
     ? statusBlock("warning", "Dep&oacute;sito pendiente",
         `Tu reserva est&aacute; registrada pero necesita el pago del dep&oacute;sito (<strong>${d.depositAmount} &euro;</strong>) para quedar confirmada. Recibir&aacute;s el enlace de pago en breve.`)
     : statusBlock("success", "Reserva confirmada",
-        "&#161;Tu mesa est&aacute; reservada! Te esperamos para disfrutar de la mejor gastronom&iacute;a junto al lago.");
+        "&#161;Tu mesa est&aacute; reservada! Te esperamos para disfrutar de la mejor gastronom&iacute;a.");
 
   const body = `
-    ${emailHeader(`Mesa en ${d.restaurantName}`, "Gastronom&iacute;a junto al lago")}
+    ${emailHeader(`Mesa en ${d.restaurantName}`, "Tu mesa est&aacute; reservada")}
     <tr><td style="padding:28px 32px 0;">
       <p style="color:#1e293b;font-size:17px;margin:0 0 8px;font-family:Arial,sans-serif;">Hola <strong>${d.guestName}</strong>,</p>
       <p style="color:#6b7280;font-size:15px;margin:0 0 16px;line-height:1.7;font-family:Arial,sans-serif;">
@@ -552,14 +562,14 @@ export function buildRestaurantConfirmHtml(d: RestaurantBookingData): string {
       ${detailRow(SVG.calendar, "Fecha",        d.date)}
       ${detailRow(SVG.clock,    "Hora",         d.time)}
       ${detailRow(SVG.users,    "Comensales",   `${d.guests} persona${d.guests !== 1 ? "s" : ""}`)}
-      ${detailRow(SVG.key,      "Localizador",  `<span style="font-size:17px;color:${BRAND_ORANGE};font-weight:900;">${d.locator}</span>`)}
+      ${detailRow(SVG.key,      "Localizador",  `<span style="font-size:17px;color:${BRAND_ORANGE()};font-weight:900;">${d.locator}</span>`)}
     `)}
-    ${emotionalBlock("Una mesa con vistas al lago, la mejor gastronom&iacute;a y momentos inolvidables te esperan.")}
+    ${emotionalBlock("La mejor gastronom&iacute;a y momentos inolvidables te esperan.")}
     <tr><td style="padding:0 32px 28px;">
       <p style="color:#9ca3af;font-size:13px;margin:0;line-height:1.6;font-family:Arial,sans-serif;">
         &iquest;Necesitas modificar tu reserva? Escrb&iacute;benos a
-        <a href="mailto:${getContactEmail()}" style="color:${BRAND_ORANGE};text-decoration:none;font-weight:600;">${getContactEmail()}</a>
-        ${callUs("o ll&aacute;manos al ", BRAND_ORANGE, 600, "&nbsp;(tambi&eacute;n WhatsApp).")}
+        <a href="mailto:${getContactEmail()}" style="color:${BRAND_ORANGE()};text-decoration:none;font-weight:600;">${getContactEmail()}</a>
+        ${callUs("o ll&aacute;manos al ", BRAND_ORANGE(), 600, "&nbsp;(tambi&eacute;n WhatsApp).")}
       </p>
     </td></tr>
     ${emailFooter()}`;
@@ -591,7 +601,7 @@ export function buildRestaurantPaymentLinkHtml(d: RestaurantPaymentLinkData): st
       <p style="color:#1e293b;font-size:17px;margin:0 0 8px;font-family:Arial,sans-serif;">Hola <strong>${d.guestName}</strong>,</p>
       <p style="color:#6b7280;font-size:15px;margin:0 0 16px;line-height:1.7;font-family:Arial,sans-serif;">
         Tu reserva en <strong>${d.restaurantName}</strong> est&aacute; casi lista.
-        Para confirmarla, abona el dep&oacute;sito de <strong style="color:${BRAND_ORANGE};font-size:17px;">${d.depositAmount} &euro;</strong>.
+        Para confirmarla, abona el dep&oacute;sito de <strong style="color:${BRAND_ORANGE()};font-size:17px;">${d.depositAmount} &euro;</strong>.
       </p>
     </td></tr>
     ${detailsCard(`
@@ -599,7 +609,7 @@ export function buildRestaurantPaymentLinkHtml(d: RestaurantPaymentLinkData): st
       ${detailRow(SVG.calendar, "Fecha",        d.date)}
       ${detailRow(SVG.clock,    "Hora",         d.time)}
       ${detailRow(SVG.users,    "Comensales",   `${d.guests} persona${d.guests !== 1 ? "s" : ""}`)}
-      ${detailRow(SVG.key,      "Localizador",  `<span style="font-size:17px;color:${BRAND_ORANGE};font-weight:900;">${d.locator}</span>`)}
+      ${detailRow(SVG.key,      "Localizador",  `<span style="font-size:17px;color:${BRAND_ORANGE()};font-weight:900;">${d.locator}</span>`)}
     `)}
     <tr><td style="padding:8px 32px 28px;text-align:center;">
       <p style="color:#374151;font-size:14px;margin:0 0 16px;font-family:Arial,sans-serif;">Haz clic para pagar el dep&oacute;sito de forma segura:</p>
@@ -613,7 +623,7 @@ export function buildRestaurantPaymentLinkHtml(d: RestaurantPaymentLinkData): st
         </button>
       </form>
       <p style="color:#9ca3af;font-size:12px;margin:14px 0 0;font-family:Arial,sans-serif;">
-        Pago seguro procesado por Redsys. Tu reserva quedar&aacute; confirmada autom&aacute;ticamente.
+        Pago seguro. Tu reserva quedar&aacute; confirmada autom&aacute;ticamente.
       </p>
     </td></tr>
     ${emailFooter()}`;
@@ -643,13 +653,13 @@ export function buildInviteHtml(d: InviteEmailData): string {
   const body = `
     ${emailHeader("Bienvenido al Equipo", `Plataforma de Gesti&oacute;n de ${escAttr(getBrandName())}`)}
     <tr><td style="padding:28px 32px 0;">
-      <h2 style="color:${BRAND_BLUE};font-size:22px;margin:0 0 12px;font-weight:700;font-family:Georgia,serif;">&#161;Hola ${d.name}!</h2>
+      <h2 style="color:${BRAND_BLUE()};font-size:22px;margin:0 0 12px;font-weight:700;font-family:Georgia,serif;">&#161;Hola ${d.name}!</h2>
       <p style="color:#6b7280;font-size:15px;line-height:1.7;margin:0 0 16px;font-family:Arial,sans-serif;">
         Se ha creado una cuenta para ti en la plataforma de gesti&oacute;n de <strong>${escAttr(getBrandName())}</strong>
         con el rol de:
       </p>
       <table cellpadding="0" cellspacing="0" style="margin-bottom:20px;"><tr>
-        <td style="background:linear-gradient(135deg,${BRAND_BLUE},${BRAND_MID_BLUE});color:#ffffff;padding:8px 22px;border-radius:20px;font-size:13px;font-weight:700;letter-spacing:1px;font-family:Arial,sans-serif;">
+        <td style="background:linear-gradient(135deg,${BRAND_BLUE()},${BRAND_MID_BLUE()});color:#ffffff;padding:8px 22px;border-radius:20px;font-size:13px;font-weight:700;letter-spacing:1px;font-family:Arial,sans-serif;">
           ${roleLabel}
         </td>
       </tr></table>
@@ -659,10 +669,10 @@ export function buildInviteHtml(d: InviteEmailData): string {
       </p>
       ${ctaButton("Activar mi cuenta", d.setPasswordUrl)}
       <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:28px;">
-        <tr><td style="background:#f8fafc;border-left:4px solid ${BRAND_BLUE};border-radius:0 8px 8px 0;padding:14px 18px;">
+        <tr><td style="background:#f8fafc;border-left:4px solid ${BRAND_BLUE()};border-radius:0 8px 8px 0;padding:14px 18px;">
           <p style="color:#374151;font-size:13px;margin:0;line-height:1.6;font-family:Arial,sans-serif;">
             Si el bot&oacute;n no funciona, copia y pega este enlace en tu navegador:<br/>
-            <a href="${d.setPasswordUrl}" style="color:${BRAND_ORANGE};word-break:break-all;font-size:12px;">${d.setPasswordUrl}</a>
+            <a href="${d.setPasswordUrl}" style="color:${BRAND_ORANGE()};word-break:break-all;font-size:12px;">${d.setPasswordUrl}</a>
           </p>
         </td></tr>
       </table>
@@ -687,7 +697,7 @@ export function buildPasswordResetHtml(d: PasswordResetData): string {
   const body = `
     ${emailHeader("Recuperar Contrase&ntilde;a")}
     <tr><td style="padding:28px 32px 0;">
-      <h2 style="color:${BRAND_BLUE};font-size:20px;margin:0 0 12px;font-weight:700;font-family:Georgia,serif;">Restablecer contrase&ntilde;a</h2>
+      <h2 style="color:${BRAND_BLUE()};font-size:20px;margin:0 0 12px;font-weight:700;font-family:Georgia,serif;">Restablecer contrase&ntilde;a</h2>
       <p style="color:#6b7280;font-size:15px;line-height:1.7;margin:0 0 12px;font-family:Arial,sans-serif;">Hola <strong>${d.name}</strong>,</p>
       <p style="color:#6b7280;font-size:15px;line-height:1.7;margin:0 0 8px;font-family:Arial,sans-serif;">
         Hemos recibido una solicitud para restablecer la contrase&ntilde;a de tu cuenta.
@@ -697,10 +707,10 @@ export function buildPasswordResetHtml(d: PasswordResetData): string {
       ${statusBlock("warning", "Enlace temporal",
         `Este enlace caduca en <strong>${d.expiryMinutes} minutos</strong>. Si no solicitaste este cambio, puedes ignorar este mensaje.`)}
       <table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 28px;">
-        <tr><td style="background:#f8fafc;border-left:4px solid ${BRAND_BLUE};border-radius:0 8px 8px 0;padding:14px 18px;">
+        <tr><td style="background:#f8fafc;border-left:4px solid ${BRAND_BLUE()};border-radius:0 8px 8px 0;padding:14px 18px;">
           <p style="color:#374151;font-size:13px;margin:0;line-height:1.6;font-family:Arial,sans-serif;">
             Si el bot&oacute;n no funciona, copia y pega este enlace en tu navegador:<br/>
-            <a href="${d.resetUrl}" style="color:${BRAND_ORANGE};word-break:break-all;font-size:12px;">${d.resetUrl}</a>
+            <a href="${d.resetUrl}" style="color:${BRAND_ORANGE()};word-break:break-all;font-size:12px;">${d.resetUrl}</a>
           </p>
         </td></tr>
       </table>
@@ -728,10 +738,10 @@ function buildActivitiesBlock(activities: ActivityEmailEntry[]): string {
       <tr>
         <td style="padding:10px 0;border-bottom:1px solid #eef2f7;">
           <table width="100%" cellpadding="0" cellspacing="0"><tr>
-            <td style="color:${BRAND_BLUE};font-size:13px;font-weight:700;font-family:Arial,sans-serif;">
+            <td style="color:${BRAND_BLUE()};font-size:13px;font-weight:700;font-family:Arial,sans-serif;">
               ${SVG.star}&nbsp;${act.experienceTitle}
             </td>
-            <td align="right" style="color:${BRAND_ORANGE};font-size:13px;font-weight:700;font-family:Arial,sans-serif;white-space:nowrap;">
+            <td align="right" style="color:${BRAND_ORANGE()};font-size:13px;font-weight:700;font-family:Arial,sans-serif;white-space:nowrap;">
               ${act.participants} pax
             </td>
           </tr></table>
@@ -771,7 +781,7 @@ export function buildBudgetRequestUserHtml(d: BudgetRequestEmailData): string {
   const body = `
     ${emailHeader("Solicitud Recibida", "Tu experiencia perfecta empieza aqu&iacute;")}
     <tr><td style="padding:28px 32px 0;">
-      <h2 style="color:${BRAND_BLUE};font-size:22px;margin:0 0 12px;font-weight:700;font-family:Georgia,serif;">&#161;Hola ${d.name}!</h2>
+      <h2 style="color:${BRAND_BLUE()};font-size:22px;margin:0 0 12px;font-weight:700;font-family:Georgia,serif;">&#161;Hola ${d.name}!</h2>
       <p style="color:#6b7280;font-size:15px;line-height:1.7;margin:0 0 16px;font-family:Arial,sans-serif;">
         Hemos recibido tu solicitud de presupuesto y ya estamos preparando una propuesta personalizada
         para que vivas una jornada inolvidable${getBrandName() ? ` con ${escAttr(getBrandName())}` : ""}.
@@ -789,12 +799,12 @@ export function buildBudgetRequestUserHtml(d: BudgetRequestEmailData): string {
       ${detailRow(SVG.phone,    "Tel&eacute;fono de contacto", d.phone)}
     `)}
     ${d.activitiesJson?.length ? buildActivitiesBlock(d.activitiesJson) : ""}
-    ${emotionalBlock("El agua, la naturaleza y la emoci&oacute;n te esperan. &#161;Nos vemos pronto en el lago!")}
+    ${emotionalBlock("&#161;Te esperamos! Gracias por confiar en nosotros.")}
     <tr><td style="padding:0 32px 28px;">
       <p style="color:#9ca3af;font-size:13px;margin:0;line-height:1.6;font-family:Arial,sans-serif;">
         &iquest;Necesitas modificar alg&uacute;n dato? Escrb&iacute;benos a
-        <a href="mailto:${getContactEmail()}" style="color:${BRAND_ORANGE};text-decoration:none;font-weight:600;">${getContactEmail()}</a>
-        ${callUs("o ll&aacute;manos al ", BRAND_ORANGE, 600, "&nbsp;(tambi&eacute;n WhatsApp).")}
+        <a href="mailto:${getContactEmail()}" style="color:${BRAND_ORANGE()};text-decoration:none;font-weight:600;">${getContactEmail()}</a>
+        ${callUs("o ll&aacute;manos al ", BRAND_ORANGE(), 600, "&nbsp;(tambi&eacute;n WhatsApp).")}
       </p>
     </td></tr>
     ${emailFooter()}`;
@@ -805,7 +815,7 @@ export function buildBudgetRequestAdminHtml(d: BudgetRequestEmailData): string {
   const body = `
     ${emailHeader("Nueva Solicitud", "Acci&oacute;n requerida en menos de 24h")}
     <tr><td style="padding:28px 32px 0;">
-      <h2 style="color:${BRAND_BLUE};font-size:20px;margin:0 0 12px;font-weight:700;font-family:Georgia,serif;">Nueva solicitud de presupuesto</h2>
+      <h2 style="color:${BRAND_BLUE()};font-size:20px;margin:0 0 12px;font-weight:700;font-family:Georgia,serif;">Nueva solicitud de presupuesto</h2>
       ${statusBlock("warning", "Acci&oacute;n requerida",
         "Se ha recibido una nueva solicitud de presupuesto. Contacta al cliente en menos de 24 horas.")}
     </td></tr>
@@ -864,7 +874,7 @@ export function buildQuoteHtml(d: QuoteEmailData): string {
           <td style="padding:10px 0;border-bottom:1px solid #eef2f7;color:#374151;font-size:13px;font-family:Arial,sans-serif;">${item.description}</td>
           <td style="padding:10px 0;border-bottom:1px solid #eef2f7;text-align:center;color:#6b7280;font-size:13px;font-family:Arial,sans-serif;">${item.quantity}</td>
           <td style="padding:10px 0;border-bottom:1px solid #eef2f7;text-align:right;color:#6b7280;font-size:13px;font-family:Arial,sans-serif;">${Number(item.unitPrice).toFixed(2)} &euro;</td>
-          <td style="padding:10px 0;border-bottom:1px solid #eef2f7;text-align:right;color:${BRAND_ORANGE};font-size:13px;font-weight:700;font-family:Arial,sans-serif;">${Number(item.total).toFixed(2)} &euro;</td>
+          <td style="padding:10px 0;border-bottom:1px solid #eef2f7;text-align:right;color:${BRAND_ORANGE()};font-size:13px;font-weight:700;font-family:Arial,sans-serif;">${Number(item.total).toFixed(2)} &euro;</td>
         </tr>`
     )
     .join("");
@@ -872,10 +882,10 @@ export function buildQuoteHtml(d: QuoteEmailData): string {
   const totalsBlock = `<tr><td style="padding:0 32px 12px;">
     <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border-radius:10px;border:1px solid #e8eef7;">
       <tr><td style="padding:18px 22px;">
-        <p style="color:${BRAND_MID_BLUE};font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 12px;font-family:Arial,sans-serif;">${d.title}</p>
+        <p style="color:${BRAND_MID_BLUE()};font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 12px;font-family:Arial,sans-serif;">${d.title}</p>
         <table width="100%" cellpadding="0" cellspacing="0">
           <thead>
-            <tr style="background:${BRAND_BLUE};">
+            <tr style="background:${BRAND_BLUE()};">
               <th style="padding:9px 8px;text-align:left;color:#fff;font-size:11px;font-family:Arial,sans-serif;font-weight:600;">Descripci&oacute;n</th>
               <th style="padding:9px 8px;text-align:center;color:#fff;font-size:11px;font-family:Arial,sans-serif;font-weight:600;">Cant.</th>
               <th style="padding:9px 8px;text-align:right;color:#fff;font-size:11px;font-family:Arial,sans-serif;font-weight:600;">Precio</th>
@@ -887,7 +897,7 @@ export function buildQuoteHtml(d: QuoteEmailData): string {
         <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:12px;">
           ${Number(d.discount) > 0 ? `<tr><td style="padding:4px 0;color:#6b7280;font-size:13px;font-family:Arial,sans-serif;">Descuento</td><td style="padding:4px 0;text-align:right;color:#6b7280;font-size:13px;font-family:Arial,sans-serif;">-${Number(d.discount).toFixed(2)} &euro;</td></tr>` : ""}
           ${Number(d.tax) > 0 ? `<tr><td style="padding:4px 0;color:#6b7280;font-size:13px;font-family:Arial,sans-serif;">IVA</td><td style="padding:4px 0;text-align:right;color:#6b7280;font-size:13px;font-family:Arial,sans-serif;">${Number(d.tax).toFixed(2)} &euro;</td></tr>` : ""}
-          <tr style="background:${BRAND_BLUE};"><td style="padding:10px 12px;color:#fff;font-size:14px;font-weight:700;font-family:Arial,sans-serif;">TOTAL</td><td style="padding:10px 12px;text-align:right;color:${BRAND_ORANGE};font-size:22px;font-weight:900;font-family:Georgia,serif;">${Number(d.total).toFixed(2)} &euro;</td></tr>
+          <tr style="background:${BRAND_BLUE()};"><td style="padding:10px 12px;color:#fff;font-size:14px;font-weight:700;font-family:Arial,sans-serif;">TOTAL</td><td style="padding:10px 12px;text-align:right;color:${BRAND_ORANGE()};font-size:22px;font-weight:900;font-family:Georgia,serif;">${Number(d.total).toFixed(2)} &euro;</td></tr>
         </table>
       </td></tr>
     </table>
@@ -907,7 +917,7 @@ export function buildQuoteHtml(d: QuoteEmailData): string {
 
   const notesBlock = d.notes
     ? `<tr><td style="padding:0 32px 12px;">
-        <table width="100%" cellpadding="0" cellspacing="0" style="background:#fff7ed;border-left:4px solid ${BRAND_ORANGE};border-radius:0 8px 8px 0;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="background:#fff7ed;border-left:4px solid ${BRAND_ORANGE()};border-radius:0 8px 8px 0;">
           <tr><td style="padding:14px 18px;">
             <p style="color:#374151;font-size:14px;margin:0;line-height:1.6;font-family:Arial,sans-serif;">${d.notes}</p>
           </td></tr>
@@ -965,7 +975,7 @@ export function buildQuoteHtml(d: QuoteEmailData): string {
             <p style="color:#9a3412;font-size:14px;font-weight:700;margin:0 0 6px;font-family:Arial,sans-serif;">&#128274; Tu reserva est&aacute; a un clic</p>
             <p style="color:#c2410c;font-size:13px;margin:0 0 16px;font-family:Arial,sans-serif;">Haz clic en el bot&oacute;n para confirmar y pagar de forma segura</p>
             ${ctaButton("Confirmar y Pagar Ahora", d.paymentLinkUrl)}
-            <p style="color:#9ca3af;font-size:12px;margin:0;font-family:Arial,sans-serif;">&#128274; Pago 100% seguro &middot; Redsys &middot; SSL</p>
+            <p style="color:#9ca3af;font-size:12px;margin:0;font-family:Arial,sans-serif;">&#128274; Pago 100% seguro &middot; SSL</p>
           </td></tr>
         </table>
       </td></tr>`
@@ -974,8 +984,8 @@ export function buildQuoteHtml(d: QuoteEmailData): string {
           <tr><td style="padding:18px;text-align:center;">
             <p style="color:#374151;font-size:14px;margin:0;font-family:Arial,sans-serif;">
               Para confirmar tu reserva, contacta con nosotros:<br/>
-              <a href="mailto:${getContactEmail()}" style="color:${BRAND_ORANGE};font-weight:700;text-decoration:none;">${getContactEmail()}</a>
-              ${callUs("&nbsp;&middot;&nbsp;", BRAND_ORANGE, 700, "&nbsp;(WhatsApp)")}
+              <a href="mailto:${getContactEmail()}" style="color:${BRAND_ORANGE()};font-weight:700;text-decoration:none;">${getContactEmail()}</a>
+              ${callUs("&nbsp;&middot;&nbsp;", BRAND_ORANGE(), 700, "&nbsp;(WhatsApp)")}
             </p>
           </td></tr>
         </table>
@@ -985,7 +995,7 @@ export function buildQuoteHtml(d: QuoteEmailData): string {
     ? `<tr><td style="padding:0 32px 12px;">
         <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;">
           <tr><td style="padding:18px 22px;">
-            <p style="color:${BRAND_MID_BLUE};font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 10px;font-family:Arial,sans-serif;">Condiciones</p>
+            <p style="color:${BRAND_MID_BLUE()};font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 10px;font-family:Arial,sans-serif;">Condiciones</p>
             <p style="color:#6b7280;font-size:13px;line-height:1.6;margin:0;font-family:Arial,sans-serif;">${d.conditions}</p>
           </td></tr>
         </table>
@@ -1007,12 +1017,12 @@ export function buildQuoteHtml(d: QuoteEmailData): string {
     ${notesBlock}
     ${ctaBlock}
     ${conditionsBlock}
-    ${emotionalBlock("Una experiencia &uacute;nica te espera en el lago. &#161;Conf&iacute;a en nosotros para hacerla inolvidable!")}
+    ${emotionalBlock("Una experiencia &uacute;nica te espera. &#161;Conf&iacute;a en nosotros para hacerla inolvidable!")}
     <tr><td style="padding:0 32px 28px;">
       <p style="color:#9ca3af;font-size:13px;margin:0;line-height:1.6;font-family:Arial,sans-serif;">
         &iquest;Necesitas modificar algo? Escrb&iacute;benos a
-        <a href="mailto:${getContactEmail()}" style="color:${BRAND_ORANGE};text-decoration:none;font-weight:600;">${getContactEmail()}</a>
-        ${callUs("o ll&aacute;manos al ", BRAND_ORANGE, 600, "&nbsp;(tambi&eacute;n WhatsApp).")}
+        <a href="mailto:${getContactEmail()}" style="color:${BRAND_ORANGE()};text-decoration:none;font-weight:600;">${getContactEmail()}</a>
+        ${callUs("o ll&aacute;manos al ", BRAND_ORANGE(), 600, "&nbsp;(tambi&eacute;n WhatsApp).")}
       </p>
     </td></tr>
     ${emailFooter()}`;
@@ -1055,7 +1065,7 @@ export function buildConfirmationHtml(d: ConfirmationEmailData): string {
       (item) =>
         `<tr>
           <td style="padding:10px 0;border-bottom:1px solid #eef2f7;color:#374151;font-size:13px;font-family:Arial,sans-serif;">${item.description}</td>
-          <td style="padding:10px 0;border-bottom:1px solid #eef2f7;text-align:right;color:${BRAND_ORANGE};font-size:13px;font-weight:700;font-family:Arial,sans-serif;">${Number(item.total).toFixed(2)} &euro;</td>
+          <td style="padding:10px 0;border-bottom:1px solid #eef2f7;text-align:right;color:${BRAND_ORANGE()};font-size:13px;font-weight:700;font-family:Arial,sans-serif;">${Number(item.total).toFixed(2)} &euro;</td>
         </tr>`
     )
     .join("");
@@ -1085,9 +1095,9 @@ export function buildConfirmationHtml(d: ConfirmationEmailData): string {
     : "";
   const bookingDateRow = d.bookingDate
     ? `<tr><td style="padding:0 32px 12px;">
-        <table width="100%" cellpadding="0" cellspacing="0" style="background:#fffbeb;border-left:4px solid ${BRAND_ORANGE};border-radius:0 8px 8px 0;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="background:#fffbeb;border-left:4px solid ${BRAND_ORANGE()};border-radius:0 8px 8px 0;">
           <tr><td style="padding:12px 18px;">
-            <p style="color:#374151;font-size:13px;margin:0;font-family:Arial,sans-serif;">&#128197; <strong>Fecha de la actividad:</strong> <span style="color:${BRAND_ORANGE};font-weight:700;">${d.bookingDate}</span>${d.selectedTime ? ` &nbsp;&#128336; <strong>Horario:</strong> <span style="color:${BRAND_ORANGE};font-weight:700;">${d.selectedTime}</span>` : ""}</p>
+            <p style="color:#374151;font-size:13px;margin:0;font-family:Arial,sans-serif;">&#128197; <strong>Fecha de la actividad:</strong> <span style="color:${BRAND_ORANGE()};font-weight:700;">${d.bookingDate}</span>${d.selectedTime ? ` &nbsp;&#128336; <strong>Horario:</strong> <span style="color:${BRAND_ORANGE()};font-weight:700;">${d.selectedTime}</span>` : ""}</p>
           </td></tr>
         </table>
       </td></tr>`
@@ -1160,23 +1170,23 @@ export function buildConfirmationHtml(d: ConfirmationEmailData): string {
     <tr><td style="padding:0 32px 12px;">
       <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border-radius:10px;border:1px solid #e8eef7;">
         <tr><td style="padding:18px 22px;">
-          <p style="color:${BRAND_MID_BLUE};font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 12px;font-family:Arial,sans-serif;">${d.quoteTitle}</p>
+          <p style="color:${BRAND_MID_BLUE()};font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 12px;font-family:Arial,sans-serif;">${d.quoteTitle}</p>
           <table width="100%" cellpadding="0" cellspacing="0">
             <tbody>${itemRowsHtml}</tbody>
           </table>
           <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:12px;border-top:1px solid #e8eef7;">
             ${subtotalRow}
             ${taxRow}
-            <tr style="background:${BRAND_BLUE};"><td style="padding:10px 12px;color:#fff;font-size:14px;font-weight:700;font-family:Arial,sans-serif;">Total pagado</td><td style="padding:10px 12px;text-align:right;color:${BRAND_ORANGE};font-size:22px;font-weight:900;font-family:Georgia,serif;">${Number(d.total).toFixed(2)} &euro;</td></tr>
+            <tr style="background:${BRAND_BLUE()};"><td style="padding:10px 12px;color:#fff;font-size:14px;font-weight:700;font-family:Arial,sans-serif;">Total pagado</td><td style="padding:10px 12px;text-align:right;color:${BRAND_ORANGE()};font-size:22px;font-weight:900;font-family:Georgia,serif;">${Number(d.total).toFixed(2)} &euro;</td></tr>
           </table>
         </td></tr>
       </table>
     </td></tr>
     <tr><td style="padding:0 32px 12px;">
-      <table width="100%" cellpadding="0" cellspacing="0" style="background:#fff7ed;border-left:4px solid ${BRAND_ORANGE};border-radius:0 8px 8px 0;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="background:#fff7ed;border-left:4px solid ${BRAND_ORANGE()};border-radius:0 8px 8px 0;">
         <tr><td style="padding:14px 18px;">
           <p style="color:#374151;font-size:13px;margin:0;line-height:1.8;font-family:Arial,sans-serif;">
-            ${SVG.ref}&nbsp;<strong>Referencia de factura:</strong> <span style="color:${BRAND_ORANGE};font-weight:700;">${d.reservationRef}</span>
+            ${SVG.ref}&nbsp;<strong>Referencia de factura:</strong> <span style="color:${BRAND_ORANGE()};font-weight:700;">${d.reservationRef}</span>
             ${quoteRefRow}<br/>
             <span style="color:#9ca3af;font-size:12px;">Guarda este n&uacute;mero para cualquier consulta.</span>
           </p>
@@ -1186,12 +1196,12 @@ export function buildConfirmationHtml(d: ConfirmationEmailData): string {
     ${installmentBlock}
     ${quoteUrlBlock}
     ${invoiceButtonBlock}
-    ${emotionalBlock("El agua, la naturaleza y la emoci&oacute;n te esperan. &#161;Nos vemos pronto en el lago!")}
+    ${emotionalBlock("&#161;Te esperamos! Gracias por confiar en nosotros.")}
     <tr><td style="padding:0 32px 28px;">
       <p style="color:#9ca3af;font-size:13px;margin:0;line-height:1.6;font-family:Arial,sans-serif;">
         &iquest;Necesitas modificar tu reserva? Escrb&iacute;benos a
-        <a href="mailto:${contactEmail}" style="color:${BRAND_ORANGE};text-decoration:none;font-weight:600;">${contactEmail}</a>
-        o ll&aacute;manos al <a href="tel:${contactPhone.replace(/\s/g,"")}" style="color:${BRAND_ORANGE};text-decoration:none;font-weight:600;">${contactPhone}</a>.
+        <a href="mailto:${contactEmail}" style="color:${BRAND_ORANGE()};text-decoration:none;font-weight:600;">${contactEmail}</a>
+        o ll&aacute;manos al <a href="tel:${contactPhone.replace(/\s/g,"")}" style="color:${BRAND_ORANGE()};text-decoration:none;font-weight:600;">${contactPhone}</a>.
       </p>
     </td></tr>
     ${emailFooter()}`;
@@ -1232,7 +1242,7 @@ export function buildQuotePdfHtml(d: QuotePdfData): string {
           <td style="padding:10px 12px;border-bottom:1px solid #eef2f7;font-size:13px;color:#374151;">${item.description}</td>
           <td style="padding:10px 12px;border-bottom:1px solid #eef2f7;text-align:center;font-size:13px;color:#374151;">${item.quantity}</td>
           <td style="padding:10px 12px;border-bottom:1px solid #eef2f7;text-align:right;font-size:13px;color:#374151;">${Number(item.unitPrice).toFixed(2)} €</td>
-          <td style="padding:10px 12px;border-bottom:1px solid #eef2f7;text-align:right;font-size:13px;font-weight:700;color:${BRAND_ORANGE};">${Number(item.total).toFixed(2)} €</td>
+          <td style="padding:10px 12px;border-bottom:1px solid #eef2f7;text-align:right;font-size:13px;font-weight:700;color:${BRAND_ORANGE()};">${Number(item.total).toFixed(2)} €</td>
         </tr>`
     )
     .join("");
@@ -1266,7 +1276,7 @@ export function buildQuotePdfHtml(d: QuotePdfData): string {
       </div>
     </div>
     <!-- Banda naranja con tipo de documento -->
-    <div style="background:#f97316;padding:8px 40px;display:flex;align-items:center;justify-content:space-between;">
+    <div style="background:${BRAND_ORANGE()};padding:8px 40px;display:flex;align-items:center;justify-content:space-between;">
       <span style="color:#fff;font-size:12px;font-weight:700;letter-spacing:2px;text-transform:uppercase;">Presupuesto</span>
       <span style="color:#fff;font-size:13px;font-weight:700;">${d.quoteNumber} &nbsp;&middot;&nbsp; ${new Date(d.createdAt).toLocaleDateString("es-ES")}${d.validUntil ? " &nbsp;&middot;&nbsp; Válido hasta: " + new Date(d.validUntil).toLocaleDateString("es-ES") : ""}</span>
     </div>
@@ -1283,10 +1293,10 @@ export function buildQuotePdfHtml(d: QuotePdfData): string {
     <!-- Items table -->
     <div style="padding:20px 40px;">
       <div style="background:#f8fafc;border-radius:10px;padding:18px 22px;border:1px solid #e8eef7;">
-        <p style="color:${BRAND_MID_BLUE};font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 12px;font-family:Arial,sans-serif;">${d.title}</p>
+        <p style="color:${BRAND_MID_BLUE()};font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 12px;font-family:Arial,sans-serif;">${d.title}</p>
         <table width="100%" cellpadding="0" cellspacing="0">
           <thead>
-            <tr style="background:${BRAND_BLUE};">
+            <tr style="background:${BRAND_BLUE()};">
               <th style="padding:10px 12px;text-align:left;color:#fff;font-size:11px;font-weight:600;">Descripción</th>
               <th style="padding:10px 12px;text-align:center;color:#fff;font-size:11px;font-weight:600;">Cant.</th>
               <th style="padding:10px 12px;text-align:right;color:#fff;font-size:11px;font-weight:600;">Precio unit.</th>
@@ -1298,14 +1308,14 @@ export function buildQuotePdfHtml(d: QuotePdfData): string {
         <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:12px;">
           ${Number(d.discount) > 0 ? `<tr><td style="padding:4px 0;color:#6b7280;font-size:13px;">Descuento</td><td style="padding:4px 0;text-align:right;color:#6b7280;font-size:13px;">-${Number(d.discount).toFixed(2)} €</td></tr>` : ""}
           ${Number(d.tax) > 0 ? `<tr><td style="padding:4px 0;color:#6b7280;font-size:13px;">IVA</td><td style="padding:4px 0;text-align:right;color:#6b7280;font-size:13px;">${Number(d.tax).toFixed(2)} €</td></tr>` : ""}
-          <tr style="background:${BRAND_BLUE};"><td style="padding:10px 12px;color:#fff;font-size:14px;font-weight:700;">TOTAL</td><td style="padding:10px 12px;text-align:right;color:${BRAND_ORANGE};font-size:22px;font-weight:900;font-family:Georgia,serif;">${Number(d.total).toFixed(2)} €</td></tr>
+          <tr style="background:${BRAND_BLUE()};"><td style="padding:10px 12px;color:#fff;font-size:14px;font-weight:700;">TOTAL</td><td style="padding:10px 12px;text-align:right;color:${BRAND_ORANGE()};font-size:22px;font-weight:900;font-family:Georgia,serif;">${Number(d.total).toFixed(2)} €</td></tr>
         </table>
       </div>
     </div>
 
-    ${d.notes ? `<div style="padding:0 40px 16px;"><div style="background:#fff7ed;border-left:4px solid ${BRAND_ORANGE};border-radius:0 8px 8px 0;padding:14px 18px;"><p style="color:#374151;font-size:13px;margin:0;line-height:1.6;">${d.notes}</p></div></div>` : ""}
-    ${d.conditions ? `<div style="padding:0 40px 16px;"><div style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;padding:18px 22px;"><p style="color:${BRAND_MID_BLUE};font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 10px;">Condiciones</p><p style="color:#6b7280;font-size:13px;line-height:1.6;margin:0;">${d.conditions}</p></div></div>` : ""}
-    ${d.paymentLinkUrl ? `<div style="padding:0 40px 16px;text-align:center;"><div style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;padding:16px;"><p style="color:#374151;font-size:13px;margin:0 0 6px;">Enlace de pago:</p><p style="color:${BRAND_ORANGE};font-size:13px;font-weight:600;word-break:break-all;margin:0;">${d.paymentLinkUrl}</p></div></div>` : ""}
+    ${d.notes ? `<div style="padding:0 40px 16px;"><div style="background:#fff7ed;border-left:4px solid ${BRAND_ORANGE()};border-radius:0 8px 8px 0;padding:14px 18px;"><p style="color:#374151;font-size:13px;margin:0;line-height:1.6;">${d.notes}</p></div></div>` : ""}
+    ${d.conditions ? `<div style="padding:0 40px 16px;"><div style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;padding:18px 22px;"><p style="color:${BRAND_MID_BLUE()};font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 10px;">Condiciones</p><p style="color:#6b7280;font-size:13px;line-height:1.6;margin:0;">${d.conditions}</p></div></div>` : ""}
+    ${d.paymentLinkUrl ? `<div style="padding:0 40px 16px;text-align:center;"><div style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;padding:16px;"><p style="color:#374151;font-size:13px;margin:0 0 6px;">Enlace de pago:</p><p style="color:${BRAND_ORANGE()};font-size:13px;font-weight:600;word-break:break-all;margin:0;">${d.paymentLinkUrl}</p></div></div>` : ""}
 
     <!-- Footer -->
     <div style="padding:16px 40px;border-top:2px solid #1a3a6b;text-align:center;color:#9ca3af;font-size:11px;line-height:1.8;">
@@ -1347,7 +1357,7 @@ export function buildTransferConfirmationHtml(d: TransferConfirmationEmailData):
         `<tr>
           <td style="padding:10px 0;border-bottom:1px solid #eef2f7;color:#374151;font-size:13px;font-family:Arial,sans-serif;">${item.description}</td>
           <td style="padding:10px 0;border-bottom:1px solid #eef2f7;text-align:center;color:#6b7280;font-size:13px;font-family:Arial,sans-serif;">${item.quantity}</td>
-          <td style="padding:10px 0;border-bottom:1px solid #eef2f7;text-align:right;color:${BRAND_ORANGE};font-size:13px;font-weight:700;font-family:Arial,sans-serif;">${Number(item.total).toFixed(2)} &euro;</td>
+          <td style="padding:10px 0;border-bottom:1px solid #eef2f7;text-align:right;color:${BRAND_ORANGE()};font-size:13px;font-weight:700;font-family:Arial,sans-serif;">${Number(item.total).toFixed(2)} &euro;</td>
         </tr>`
     )
     .join("");
@@ -1386,7 +1396,7 @@ export function buildTransferConfirmationHtml(d: TransferConfirmationEmailData):
     <tr><td style="padding:0 32px 12px;">
       <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border-radius:10px;border:1px solid #e8eef7;">
         <tr><td style="padding:18px 22px;">
-          <p style="color:${BRAND_MID_BLUE};font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 12px;font-family:Arial,sans-serif;">${d.quoteTitle}</p>
+          <p style="color:${BRAND_MID_BLUE()};font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 12px;font-family:Arial,sans-serif;">${d.quoteTitle}</p>
           <table width="100%" cellpadding="0" cellspacing="0">
             <thead>
               <tr>
@@ -1400,19 +1410,19 @@ export function buildTransferConfirmationHtml(d: TransferConfirmationEmailData):
           <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:12px;border-top:1px solid #e8eef7;">
             <tr><td style="padding:6px 0;color:#6b7280;font-size:13px;font-family:Arial,sans-serif;">Subtotal</td><td style="padding:6px 0;text-align:right;color:#374151;font-size:13px;font-family:Arial,sans-serif;">${Number(d.subtotal).toFixed(2)} &euro;</td></tr>
             <tr><td style="padding:6px 0;color:#6b7280;font-size:13px;font-family:Arial,sans-serif;">IVA (21%)</td><td style="padding:6px 0;text-align:right;color:#374151;font-size:13px;font-family:Arial,sans-serif;">${Number(d.taxAmount).toFixed(2)} &euro;</td></tr>
-            <tr style="background:${BRAND_BLUE};">
+            <tr style="background:${BRAND_BLUE()};">
               <td style="padding:10px 12px;color:#fff;font-size:14px;font-weight:700;font-family:Arial,sans-serif;">Total pagado</td>
-              <td style="padding:10px 12px;text-align:right;color:${BRAND_ORANGE};font-size:22px;font-weight:900;font-family:Georgia,serif;">${Number(d.total).toFixed(2)} &euro;</td>
+              <td style="padding:10px 12px;text-align:right;color:${BRAND_ORANGE()};font-size:22px;font-weight:900;font-family:Georgia,serif;">${Number(d.total).toFixed(2)} &euro;</td>
             </tr>
           </table>
         </td></tr>
       </table>
     </td></tr>
     <tr><td style="padding:0 32px 12px;">
-      <table width="100%" cellpadding="0" cellspacing="0" style="background:#fff7ed;border-left:4px solid ${BRAND_ORANGE};border-radius:0 8px 8px 0;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="background:#fff7ed;border-left:4px solid ${BRAND_ORANGE()};border-radius:0 8px 8px 0;">
         <tr><td style="padding:14px 18px;">
           <p style="color:#374151;font-size:13px;margin:0;line-height:1.8;font-family:Arial,sans-serif;">
-            ${SVG.ref}&nbsp;<strong>N&uacute;mero de factura:</strong> <span style="color:${BRAND_ORANGE};font-weight:700;">${d.invoiceNumber}</span>
+            ${SVG.ref}&nbsp;<strong>N&uacute;mero de factura:</strong> <span style="color:${BRAND_ORANGE()};font-weight:700;">${d.invoiceNumber}</span>
             ${quoteRefRow}
             ${confirmedByRow}<br/>
             <span style="color:#9ca3af;font-size:12px;">Guarda este n&uacute;mero para cualquier consulta.</span>
@@ -1421,12 +1431,12 @@ export function buildTransferConfirmationHtml(d: TransferConfirmationEmailData):
       </table>
     </td></tr>
     ${invoiceButtonBlock}
-    ${emotionalBlock("El agua, la naturaleza y la emoci&oacute;n te esperan. &#161;Nos vemos pronto en el lago!")}
+    ${emotionalBlock("&#161;Te esperamos! Gracias por confiar en nosotros.")}
     <tr><td style="padding:0 32px 28px;">
       <p style="color:#9ca3af;font-size:13px;margin:0;line-height:1.6;font-family:Arial,sans-serif;">
         &iquest;Tienes alguna pregunta sobre tu reserva? Escrb&iacute;benos a
-        <a href="mailto:${getContactEmail()}" style="color:${BRAND_ORANGE};text-decoration:none;font-weight:600;">${getContactEmail()}</a>
-        ${callUs("o ll&aacute;manos al ", BRAND_ORANGE, 600, "&nbsp;(tambi&eacute;n WhatsApp).")}
+        <a href="mailto:${getContactEmail()}" style="color:${BRAND_ORANGE()};text-decoration:none;font-weight:600;">${getContactEmail()}</a>
+        ${callUs("o ll&aacute;manos al ", BRAND_ORANGE(), 600, "&nbsp;(tambi&eacute;n WhatsApp).")}
       </p>
     </td></tr>
     ${emailFooter()}`;
@@ -1458,7 +1468,7 @@ export function buildCancellationReceivedHtml(d: {
     <tr><td style="padding:0 32px 12px;">
       <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border-radius:10px;border:1px solid #e8eef7;">
         <tr><td style="padding:18px 22px;">
-          <p style="color:#1e3a6e;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 12px;font-family:Arial,sans-serif;">Datos de tu solicitud</p>
+          <p style="color:${BRAND_MID_BLUE()};font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 12px;font-family:Arial,sans-serif;">Datos de tu solicitud</p>
           ${detailRow(SVG.ref, "Número de solicitud", `#${d.requestId}`)}
           ${d.locator ? detailRow(SVG.tag, "Localizador de reserva", d.locator) : ""}
           ${d.reason ? detailRow(SVG.alert, "Motivo indicado", d.reason) : ""}
@@ -1466,11 +1476,11 @@ export function buildCancellationReceivedHtml(d: {
       </table>
     </td></tr>
     <tr><td style="padding:0 32px 12px;">
-      <table width="100%" cellpadding="0" cellspacing="0" style="background:#fff7ed;border-left:4px solid #f97316;border-radius:0 8px 8px 0;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="background:#fff7ed;border-left:4px solid ${BRAND_ORANGE()};border-radius:0 8px 8px 0;">
         <tr><td style="padding:14px 18px;">
           <p style="color:#374151;font-size:13px;margin:0;line-height:1.8;font-family:Arial,sans-serif;">
             Si tienes alguna duda, contacta en
-            <a href="mailto:${getContactEmail()}" style="color:#f97316;text-decoration:none;font-weight:600;">${getContactEmail()}</a>
+            <a href="mailto:${getContactEmail()}" style="color:${BRAND_ORANGE()};text-decoration:none;font-weight:600;">${getContactEmail()}</a>
             indicando tu número de solicitud <strong>#${d.requestId}</strong>.
           </p>
         </td></tr>
@@ -1501,7 +1511,7 @@ export function buildCancellationRejectedHtml(d: {
     <tr><td style="padding:0 32px 12px;">
       <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border-radius:10px;border:1px solid #e8eef7;">
         <tr><td style="padding:18px 22px;">
-          <p style="color:#1e3a6e;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 10px;font-family:Arial,sans-serif;">Nota del equipo</p>
+          <p style="color:${BRAND_MID_BLUE()};font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 10px;font-family:Arial,sans-serif;">Nota del equipo</p>
           <p style="color:#374151;font-size:14px;margin:0;line-height:1.7;font-family:Arial,sans-serif;">${d.adminText}</p>
         </td></tr>
       </table>
@@ -1509,7 +1519,7 @@ export function buildCancellationRejectedHtml(d: {
     <tr><td style="padding:0 32px 28px;">
       <p style="color:#9ca3af;font-size:13px;margin:0;line-height:1.6;font-family:Arial,sans-serif;">
         Si tienes alguna pregunta, escríbenos a
-        <a href="mailto:${getContactEmail()}" style="color:#f97316;text-decoration:none;font-weight:600;">${getContactEmail()}</a>.
+        <a href="mailto:${getContactEmail()}" style="color:${BRAND_ORANGE()};text-decoration:none;font-weight:600;">${getContactEmail()}</a>.
       </p>
     </td></tr>
     ${emailFooter()}`;
@@ -1532,7 +1542,7 @@ export function buildCancellationAcceptedRefundHtml(d: {
         Nos complace informarte que tu solicitud de anulación ha sido <strong>aceptada</strong>.
       </p>
       ${statusBlock("success", `Devolución ${tipo} aprobada`,
-        `Devolución de <strong style="color:#f97316;font-size:18px;">${d.amount} €</strong> en 5-10 días hábiles.`)}
+        `Devolución de <strong style="color:${BRAND_ORANGE()};font-size:18px;">${d.amount} €</strong> en 5-10 días hábiles.`)}
     </td></tr>
     <tr><td style="padding:0 32px 12px;">
       <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border-radius:10px;border:1px solid #e8eef7;">
@@ -1578,13 +1588,13 @@ export function buildCancellationAcceptedVoucherHtml(d: {
       ${statusBlock("success", `Bono de compensación ${tipo}`, "Tu bono está listo para ser utilizado.")}
     </td></tr>
     <tr><td style="padding:0 32px 12px;">
-      <table width="100%" cellpadding="0" cellspacing="0" style="background:#0a1628;border-radius:12px;text-align:center;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="background:${BRAND_BLUE()};border-radius:12px;text-align:center;">
         <tr><td style="padding:28px 32px;">
           <p style="color:rgba(255,255,255,0.6);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:3px;margin:0 0 8px;font-family:Arial,sans-serif;">Código de bono</p>
-          <p style="color:#f97316;font-size:32px;font-weight:900;letter-spacing:4px;margin:0 0 12px;font-family:Georgia,serif;">${d.voucherCode}</p>
+          <p style="color:${BRAND_ORANGE()};font-size:32px;font-weight:900;letter-spacing:4px;margin:0 0 12px;font-family:Georgia,serif;">${d.voucherCode}</p>
           <p style="color:#ffffff;font-size:15px;font-weight:600;margin:0 0 4px;font-family:Arial,sans-serif;">${d.activityName}</p>
           <p style="color:rgba(255,255,255,0.6);font-size:13px;margin:0;font-family:Arial,sans-serif;">
-            Valor: <strong style="color:#f97316;">${d.value} €</strong> &nbsp;·&nbsp; Caduca: ${d.expiresAt}
+            Valor: <strong style="color:${BRAND_ORANGE()};">${d.value} €</strong> &nbsp;·&nbsp; Caduca: ${d.expiresAt}
           </p>
         </td></tr>
       </table>
@@ -1611,9 +1621,9 @@ export function buildCancellationAcceptedVoucherHtml(d: {
     <tr><td style="padding:12px 32px 28px;">
       <p style="color:#9ca3af;font-size:12px;margin:0;line-height:1.6;font-family:Arial,sans-serif;">
         También puedes consultar el estado de tu bono en cualquier momento en
-        <a href="${verifyUrl}" style="color:#f97316;text-decoration:none;font-weight:600;">${verifyUrl}</a>.
+        <a href="${verifyUrl}" style="color:${BRAND_ORANGE()};text-decoration:none;font-weight:600;">${verifyUrl}</a>.
         Si tienes dudas, contacta en
-        <a href="mailto:${getContactEmail()}" style="color:#f97316;text-decoration:none;font-weight:600;">${getContactEmail()}</a>
+        <a href="mailto:${getContactEmail()}" style="color:${BRAND_ORANGE()};text-decoration:none;font-weight:600;">${getContactEmail()}</a>
         indicando el código <strong>${d.voucherCode}</strong>.
       </p>
     </td></tr>
@@ -1639,7 +1649,7 @@ export function buildCancellationDocumentationHtml(d: {
     <tr><td style="padding:0 32px 12px;">
       <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border-radius:10px;border:1px solid #e8eef7;">
         <tr><td style="padding:18px 22px;">
-          <p style="color:#1e3a6e;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 10px;font-family:Arial,sans-serif;">Documentación solicitada</p>
+          <p style="color:${BRAND_MID_BLUE()};font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 10px;font-family:Arial,sans-serif;">Documentación solicitada</p>
           <p style="color:#374151;font-size:14px;margin:0;line-height:1.7;font-family:Arial,sans-serif;">${d.adminText}</p>
         </td></tr>
       </table>
@@ -1647,7 +1657,7 @@ export function buildCancellationDocumentationHtml(d: {
     <tr><td style="padding:0 32px 28px;">
       <p style="color:#9ca3af;font-size:13px;margin:0;line-height:1.6;font-family:Arial,sans-serif;">
         Envía la documentación a
-        <a href="mailto:${getContactEmail()}" style="color:#f97316;text-decoration:none;font-weight:600;">${getContactEmail()}</a>
+        <a href="mailto:${getContactEmail()}" style="color:${BRAND_ORANGE()};text-decoration:none;font-weight:600;">${getContactEmail()}</a>
         indicando tu número de solicitud <strong>#${d.requestId}</strong>.
       </p>
     </td></tr>
@@ -1692,7 +1702,7 @@ export function buildCancellationRefundExecutedHtml(d: {
       <p style="color:#9ca3af;font-size:13px;margin:0;line-height:1.6;font-family:Arial,sans-serif;">
         El plazo de recepción depende de tu entidad bancaria (habitualmente 1-5 días hábiles).
         Si pasados 10 días hábiles no recibes el importe, contáctanos en
-        <a href="mailto:${getContactEmail()}" style="color:#f97316;text-decoration:none;font-weight:600;">${getContactEmail()}</a>
+        <a href="mailto:${getContactEmail()}" style="color:${BRAND_ORANGE()};text-decoration:none;font-weight:600;">${getContactEmail()}</a>
         indicando la referencia <strong>#${d.requestId}</strong>.
       </p>
     </td></tr>
@@ -1742,7 +1752,7 @@ export function buildTpvTicketHtml(d: {
     <tr><td style="padding:0 32px 12px;">
       <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border-radius:10px;border:1px solid #e8eef7;">
         <tr><td style="padding:18px 22px;">
-          <p style="color:#1e3a6e;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 12px;font-family:Arial,sans-serif;">Detalle de la compra</p>
+          <p style="color:${BRAND_MID_BLUE()};font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 12px;font-family:Arial,sans-serif;">Detalle de la compra</p>
           <table width="100%" cellpadding="0" cellspacing="0">
             <thead><tr>
               <th style="text-align:left;color:#9ca3af;font-size:10px;padding:0 4px 8px;font-family:Arial,sans-serif;">Producto</th>
@@ -1755,9 +1765,9 @@ export function buildTpvTicketHtml(d: {
           <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:12px;border-top:1px solid #e8eef7;">
             ${d.subtotal !== undefined ? `<tr><td style="padding:6px 4px;color:#6b7280;font-size:13px;font-family:Arial,sans-serif;">Subtotal</td><td style="padding:6px 4px;text-align:right;color:#374151;font-size:13px;font-family:Arial,sans-serif;">${d.subtotal.toFixed(2)} €</td></tr>` : ""}
             ${d.taxAmount !== undefined ? `<tr><td style="padding:6px 4px;color:#6b7280;font-size:13px;font-family:Arial,sans-serif;">IVA (21%)</td><td style="padding:6px 4px;text-align:right;color:#374151;font-size:13px;font-family:Arial,sans-serif;">${d.taxAmount.toFixed(2)} €</td></tr>` : ""}
-            <tr style="background:#0a1628;">
+            <tr style="background:${BRAND_BLUE()};">
               <td style="padding:10px 12px;color:#fff;font-size:14px;font-weight:700;font-family:Arial,sans-serif;">TOTAL</td>
-              <td style="padding:10px 12px;text-align:right;color:#f97316;font-size:22px;font-weight:900;font-family:Georgia,serif;">${d.total.toFixed(2)} €</td>
+              <td style="padding:10px 12px;text-align:right;color:${BRAND_ORANGE()};font-size:22px;font-weight:900;font-family:Georgia,serif;">${d.total.toFixed(2)} €</td>
             </tr>
           </table>
         </td></tr>
@@ -1766,12 +1776,12 @@ export function buildTpvTicketHtml(d: {
     <tr><td style="padding:0 32px 12px;">
       <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border-radius:10px;border:1px solid #e8eef7;">
         <tr><td style="padding:18px 22px;">
-          <p style="color:#1e3a6e;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 12px;font-family:Arial,sans-serif;">Forma de pago</p>
+          <p style="color:${BRAND_MID_BLUE()};font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 12px;font-family:Arial,sans-serif;">Forma de pago</p>
           <table width="100%" cellpadding="0" cellspacing="0"><tbody>${paymentRowsHtml}</tbody></table>
         </td></tr>
       </table>
     </td></tr>
-    ${emotionalBlock("¡Gracias por tu visita! Esperamos verte pronto de nuevo en el lago.")}
+    ${emotionalBlock("¡Gracias por tu visita! Esperamos verte pronto de nuevo.")}
     <tr><td style="padding:0 32px 28px;">
       <p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.6;font-family:Arial,sans-serif;text-align:center;">
         NEXTAIR, S.L. &middot; CIF: B16408031 &middot; C/JOSE LUIS PEREZ PUJADAS, Nº 14, PLTA.1, PUERTA D EDIFICIO FORUM &middot; 18006 GRANADA
@@ -1796,8 +1806,8 @@ export function buildCouponRedemptionReceivedHtml(d: {
   const couponRowsHtml = d.coupons.map(c => `
     <tr>
       <td style="padding:8px 4px;color:#374151;font-size:13px;font-family:Arial,sans-serif;">${c.provider}</td>
-      <td style="padding:8px 4px;text-align:center;font-family:monospace;color:#f97316;font-size:13px;font-weight:700;">${c.couponCode}</td>
-      <td style="padding:8px 4px;text-align:right;font-family:monospace;color:#1e3a6e;font-size:13px;font-weight:700;">${c.securityCode || "—"}</td>
+      <td style="padding:8px 4px;text-align:center;font-family:monospace;color:${BRAND_ORANGE()};font-size:13px;font-weight:700;">${c.couponCode}</td>
+      <td style="padding:8px 4px;text-align:right;font-family:monospace;color:${BRAND_MID_BLUE()};font-size:13px;font-weight:700;">${c.securityCode || "—"}</td>
     </tr>`).join("");
   const body = `
     ${emailHeader("Solicitud de Canje", "Hemos recibido tu solicitud")}
@@ -1812,7 +1822,7 @@ export function buildCouponRedemptionReceivedHtml(d: {
     <tr><td style="padding:0 32px 12px;">
       <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border-radius:10px;border:1px solid #e8eef7;">
         <tr><td style="padding:18px 22px;">
-          <p style="color:#1e3a6e;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 12px;font-family:Arial,sans-serif;">Cupones incluidos</p>
+          <p style="color:${BRAND_MID_BLUE()};font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 12px;font-family:Arial,sans-serif;">Cupones incluidos</p>
           <table width="100%" cellpadding="0" cellspacing="0">
             <thead><tr>
               <th style="text-align:left;color:#9ca3af;font-size:10px;padding:0 4px 8px;font-family:Arial,sans-serif;">Proveedor</th>
@@ -1824,7 +1834,7 @@ export function buildCouponRedemptionReceivedHtml(d: {
         </td></tr>
       </table>
     </td></tr>
-    ${emotionalBlock("¡Nos vemos pronto en el lago! Tu aventura acuática está a punto de comenzar.")}
+    ${emotionalBlock("¡Nos vemos pronto! Tu experiencia está a punto de comenzar.")}
     ${emailFooter()}`;
   return emailWrapper("Solicitud de canje recibida · " + getBrandName(), body);
 }
@@ -1858,7 +1868,7 @@ export function buildCouponPostponedHtml(d: {
     <tr><td style="padding:0 32px 28px;">
       <p style="color:#9ca3af;font-size:13px;margin:0;line-height:1.6;font-family:Arial,sans-serif;">
         Nos pondremos en contacto para ofrecerte fechas alternativas. Escríbenos a
-        <a href="mailto:${getContactEmail()}" style="color:#f97316;text-decoration:none;font-weight:600;">${getContactEmail()}</a>.
+        <a href="mailto:${getContactEmail()}" style="color:${BRAND_ORANGE()};text-decoration:none;font-weight:600;">${getContactEmail()}</a>.
       </p>
     </td></tr>
     ${emailFooter()}`;
@@ -1878,8 +1888,8 @@ export function buildCouponInternalAlertHtml(d: {
   const couponRowsHtml = d.coupons.map(c => `
     <tr>
       <td style="padding:6px 4px;color:#374151;font-size:13px;font-family:Arial,sans-serif;">${c.provider}</td>
-      <td style="padding:6px 4px;text-align:center;font-family:monospace;color:#f97316;font-size:13px;font-weight:700;">${c.couponCode}</td>
-      <td style="padding:6px 4px;text-align:right;font-family:monospace;color:#1e3a6e;font-size:13px;font-weight:700;">${c.securityCode || "—"}</td>
+      <td style="padding:6px 4px;text-align:center;font-family:monospace;color:${BRAND_ORANGE()};font-size:13px;font-weight:700;">${c.couponCode}</td>
+      <td style="padding:6px 4px;text-align:right;font-family:monospace;color:${BRAND_MID_BLUE()};font-size:13px;font-weight:700;">${c.securityCode || "—"}</td>
     </tr>`).join("");
   const body = `
     ${emailHeader("Alerta Interna", "Nuevo envío de cupones")}
@@ -1890,7 +1900,7 @@ export function buildCouponInternalAlertHtml(d: {
     <tr><td style="padding:0 32px 12px;">
       <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border-radius:10px;border:1px solid #e8eef7;">
         <tr><td style="padding:18px 22px;">
-          <p style="color:#1e3a6e;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 12px;font-family:Arial,sans-serif;">Datos del cliente</p>
+          <p style="color:${BRAND_MID_BLUE()};font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 12px;font-family:Arial,sans-serif;">Datos del cliente</p>
           ${detailRow(SVG.person, "Nombre", d.customerName)}
           ${detailRow(SVG.mail, "Email", d.email)}
           ${d.phone ? detailRow(SVG.phone, "Teléfono", d.phone) : ""}
@@ -1903,7 +1913,7 @@ export function buildCouponInternalAlertHtml(d: {
     <tr><td style="padding:0 32px 12px;">
       <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border-radius:10px;border:1px solid #e8eef7;">
         <tr><td style="padding:18px 22px;">
-          <p style="color:#1e3a6e;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 12px;font-family:Arial,sans-serif;">Cupones enviados</p>
+          <p style="color:${BRAND_MID_BLUE()};font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 12px;font-family:Arial,sans-serif;">Cupones enviados</p>
           <table width="100%" cellpadding="0" cellspacing="0">
             <thead><tr>
               <th style="text-align:left;color:#9ca3af;font-size:10px;padding:0 4px 8px;font-family:Arial,sans-serif;">Proveedor</th>
@@ -1934,7 +1944,7 @@ export function buildPendingPaymentHtml(d: PendingPaymentEmailData): string {
   const body = `
     ${emailHeader("Pago Pendiente", "Tu reserva está confirmada")}
     <tr><td style="padding:28px 32px 8px;">
-      <h2 style="color:#1e3a6e;font-size:22px;font-weight:800;margin:0 0 6px;font-family:Arial,sans-serif;">
+      <h2 style="color:${BRAND_MID_BLUE()};font-size:22px;font-weight:800;margin:0 0 6px;font-family:Arial,sans-serif;">
         Reserva confirmada — Pago pendiente
       </h2>
       <p style="color:#64748b;font-size:14px;margin:0;font-family:Arial,sans-serif;">
@@ -1944,19 +1954,19 @@ export function buildPendingPaymentHtml(d: PendingPaymentEmailData): string {
     <tr><td style="padding:16px 32px 8px;">
       <table width="100%" cellpadding="0" cellspacing="0" style="background:#f0f7ff;border-radius:10px;border:1px solid #bfdbfe;">
         <tr><td style="padding:20px 22px;">
-          <p style="color:#1e3a6e;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 14px;font-family:Arial,sans-serif;">Detalle de la reserva</p>
+          <p style="color:${BRAND_MID_BLUE()};font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 14px;font-family:Arial,sans-serif;">Detalle de la reserva</p>
           <table width="100%" cellpadding="0" cellspacing="0">
             <tr>
               <td style="color:#64748b;font-size:13px;padding:4px 0;font-family:Arial,sans-serif;">Actividad</td>
-              <td style="color:#1e3a6e;font-size:13px;font-weight:700;text-align:right;font-family:Arial,sans-serif;">${d.productName}</td>
+              <td style="color:${BRAND_MID_BLUE()};font-size:13px;font-weight:700;text-align:right;font-family:Arial,sans-serif;">${d.productName}</td>
             </tr>
             <tr>
               <td style="color:#64748b;font-size:13px;padding:4px 0;font-family:Arial,sans-serif;">Importe total</td>
-              <td style="color:#1e3a6e;font-size:15px;font-weight:800;text-align:right;font-family:Arial,sans-serif;">${d.amountFormatted}</td>
+              <td style="color:${BRAND_MID_BLUE()};font-size:15px;font-weight:800;text-align:right;font-family:Arial,sans-serif;">${d.amountFormatted}</td>
             </tr>
             <tr>
               <td style="color:#64748b;font-size:13px;padding:4px 0;font-family:Arial,sans-serif;">Fecha límite de pago</td>
-              <td style="color:#f97316;font-size:13px;font-weight:700;text-align:right;font-family:Arial,sans-serif;">${d.dueDate}</td>
+              <td style="color:${BRAND_ORANGE()};font-size:13px;font-weight:700;text-align:right;font-family:Arial,sans-serif;">${d.dueDate}</td>
             </tr>
           </table>
         </td></tr>
@@ -1966,14 +1976,14 @@ export function buildPendingPaymentHtml(d: PendingPaymentEmailData): string {
     <tr><td style="padding:8px 32px;">
       <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border-radius:10px;border:1px solid #e8eef7;">
         <tr><td style="padding:18px 22px;">
-          <p style="color:#1e3a6e;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 10px;font-family:Arial,sans-serif;">Datos para el pago</p>
+          <p style="color:${BRAND_MID_BLUE()};font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 10px;font-family:Arial,sans-serif;">Datos para el pago</p>
           <p style="color:#374151;font-size:13px;margin:0;font-family:Arial,sans-serif;white-space:pre-line;">${d.ibanInfo}</p>
         </td></tr>
       </table>
     </td></tr>` : ""}
     <tr><td style="padding:8px 32px 20px;">
       <p style="color:#64748b;font-size:12px;margin:0;font-family:Arial,sans-serif;">
-        Si tienes alguna duda, contacta con nosotros en <a href="mailto:${getContactEmail()}" style="color:#f97316;">${getContactEmail()}</a>
+        Si tienes alguna duda, contacta con nosotros en <a href="mailto:${getContactEmail()}" style="color:${BRAND_ORANGE()};">${getContactEmail()}</a>
       </p>
     </td></tr>
     ${emailFooter()}`;
@@ -2000,7 +2010,7 @@ export function buildPendingPaymentReminderHtml(d: PendingPaymentEmailData): str
           <table width="100%" cellpadding="0" cellspacing="0">
             <tr>
               <td style="color:#64748b;font-size:13px;padding:4px 0;font-family:Arial,sans-serif;">Actividad</td>
-              <td style="color:#1e3a6e;font-size:13px;font-weight:700;text-align:right;font-family:Arial,sans-serif;">${d.productName}</td>
+              <td style="color:${BRAND_MID_BLUE()};font-size:13px;font-weight:700;text-align:right;font-family:Arial,sans-serif;">${d.productName}</td>
             </tr>
             <tr>
               <td style="color:#64748b;font-size:13px;padding:4px 0;font-family:Arial,sans-serif;">Importe pendiente</td>
@@ -2018,14 +2028,14 @@ export function buildPendingPaymentReminderHtml(d: PendingPaymentEmailData): str
     <tr><td style="padding:8px 32px;">
       <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border-radius:10px;border:1px solid #e8eef7;">
         <tr><td style="padding:18px 22px;">
-          <p style="color:#1e3a6e;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 10px;font-family:Arial,sans-serif;">Datos para el pago</p>
+          <p style="color:${BRAND_MID_BLUE()};font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 10px;font-family:Arial,sans-serif;">Datos para el pago</p>
           <p style="color:#374151;font-size:13px;margin:0;font-family:Arial,sans-serif;white-space:pre-line;">${d.ibanInfo}</p>
         </td></tr>
       </table>
     </td></tr>` : ""}
     <tr><td style="padding:8px 32px 20px;">
       <p style="color:#64748b;font-size:12px;margin:0;font-family:Arial,sans-serif;">
-        Para cualquier consulta urgente: <a href="mailto:${getContactEmail()}" style="color:#f97316;">${getContactEmail()}</a>
+        Para cualquier consulta urgente: <a href="mailto:${getContactEmail()}" style="color:${BRAND_ORANGE()};">${getContactEmail()}</a>
       </p>
     </td></tr>
     ${emailFooter()}`;
@@ -2049,7 +2059,7 @@ export function buildInstallmentReminderHtml(d: InstallmentReminderData): string
   const body = `
     ${emailHeader("Recordatorio de Cuota", `Cuota ${d.installmentNumber} de ${d.totalInstallments}`)}
     <tr><td style="padding:28px 32px 8px;">
-      <h2 style="color:#1e3a6e;font-size:22px;font-weight:800;margin:0 0 6px;font-family:Arial,sans-serif;">
+      <h2 style="color:${BRAND_MID_BLUE()};font-size:22px;font-weight:800;margin:0 0 6px;font-family:Arial,sans-serif;">
         Recordatorio: cuota ${d.installmentNumber}/${d.totalInstallments}
       </h2>
       <p style="color:#64748b;font-size:14px;margin:0;font-family:Arial,sans-serif;">
@@ -2064,11 +2074,11 @@ export function buildInstallmentReminderHtml(d: InstallmentReminderData): string
           <table width="100%" cellpadding="0" cellspacing="0">
             <tr>
               <td style="color:#64748b;font-size:13px;padding:4px 0;font-family:Arial,sans-serif;">Presupuesto</td>
-              <td style="color:#1e3a6e;font-size:13px;font-weight:700;text-align:right;font-family:Arial,sans-serif;">${d.quoteNumber}</td>
+              <td style="color:${BRAND_MID_BLUE()};font-size:13px;font-weight:700;text-align:right;font-family:Arial,sans-serif;">${d.quoteNumber}</td>
             </tr>
             <tr>
               <td style="color:#64748b;font-size:13px;padding:4px 0;font-family:Arial,sans-serif;">Cuota</td>
-              <td style="color:#1e3a6e;font-size:13px;font-weight:700;text-align:right;font-family:Arial,sans-serif;">${d.installmentNumber} de ${d.totalInstallments}</td>
+              <td style="color:${BRAND_MID_BLUE()};font-size:13px;font-weight:700;text-align:right;font-family:Arial,sans-serif;">${d.installmentNumber} de ${d.totalInstallments}</td>
             </tr>
             <tr>
               <td style="color:#64748b;font-size:13px;padding:4px 0;font-family:Arial,sans-serif;">Importe</td>
@@ -2076,7 +2086,7 @@ export function buildInstallmentReminderHtml(d: InstallmentReminderData): string
             </tr>
             <tr>
               <td style="color:#64748b;font-size:13px;padding:4px 0;font-family:Arial,sans-serif;">Fecha límite</td>
-              <td style="color:#f97316;font-size:13px;font-weight:700;text-align:right;font-family:Arial,sans-serif;">${d.dueDate}</td>
+              <td style="color:${BRAND_ORANGE()};font-size:13px;font-weight:700;text-align:right;font-family:Arial,sans-serif;">${d.dueDate}</td>
             </tr>
           </table>
         </td></tr>
@@ -2091,14 +2101,14 @@ export function buildInstallmentReminderHtml(d: InstallmentReminderData): string
     <tr><td style="padding:8px 32px;">
       <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border-radius:10px;border:1px solid #e8eef7;">
         <tr><td style="padding:18px 22px;">
-          <p style="color:#1e3a6e;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 10px;font-family:Arial,sans-serif;">Datos bancarios para el pago</p>
+          <p style="color:${BRAND_MID_BLUE()};font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 10px;font-family:Arial,sans-serif;">Datos bancarios para el pago</p>
           <p style="color:#374151;font-size:13px;margin:0;font-family:Arial,sans-serif;white-space:pre-line;">${d.ibanInfo}</p>
         </td></tr>
       </table>
     </td></tr>` : ""}
     <tr><td style="padding:8px 32px 20px;">
       <p style="color:#64748b;font-size:12px;margin:0;font-family:Arial,sans-serif;">
-        Para cualquier consulta: <a href="mailto:${getContactEmail()}" style="color:#f97316;">${getContactEmail()}</a>
+        Para cualquier consulta: <a href="mailto:${getContactEmail()}" style="color:${BRAND_ORANGE()};">${getContactEmail()}</a>
       </p>
     </td></tr>
     ${emailFooter()}`;
@@ -2131,7 +2141,7 @@ export function buildCashOpenHtml(d: CashOpenParams): string {
     <tr><td style="padding:16px 32px 24px;">
       <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border-radius:10px;border:1px solid #e2e8f0;">
         <tr><td style="padding:20px 24px;">
-          <p style="color:#1e3a6e;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 14px;font-family:Arial,sans-serif;">Detalles de apertura</p>
+          <p style="color:${BRAND_MID_BLUE()};font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 14px;font-family:Arial,sans-serif;">Detalles de apertura</p>
           <table width="100%" cellpadding="0" cellspacing="0">
             <tr>
               <td style="color:#64748b;font-size:13px;padding:5px 0;font-family:Arial,sans-serif;">${SVG.person}&nbsp; Cajero</td>
@@ -2247,7 +2257,7 @@ function channelRowsLegacy(channels: ChannelSummary[]): string {
       <td style="color:#15803d;font-size:12px;text-align:right;font-family:Arial,sans-serif;">${c.totalEfectivo > 0 ? c.totalEfectivo.toFixed(2) + " €" : "—"}</td>
       <td style="color:#1d4ed8;font-size:12px;text-align:right;font-family:Arial,sans-serif;">${c.totalTarjeta > 0 ? c.totalTarjeta.toFixed(2) + " €" : "—"}</td>
       <td style="color:#7c3aed;font-size:12px;text-align:right;font-family:Arial,sans-serif;">${c.totalBizum > 0 ? c.totalBizum.toFixed(2) + " €" : "—"}</td>
-      <td style="color:#1e3a6e;font-size:13px;font-weight:700;text-align:right;font-family:Arial,sans-serif;">${c.totalVentas.toFixed(2)} €</td>
+      <td style="color:${BRAND_MID_BLUE()};font-size:13px;font-weight:700;text-align:right;font-family:Arial,sans-serif;">${c.totalVentas.toFixed(2)} €</td>
     </tr>`).join("") : "";
 }
 
@@ -2265,7 +2275,7 @@ function renderLegacyChannelTable(
 ): string {
   return `
     <tr><td style="padding:16px 32px 8px;">
-      <p style="color:#1e3a6e;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 10px;font-family:Arial,sans-serif;">Desglose por canal</p>
+      <p style="color:${BRAND_MID_BLUE()};font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 10px;font-family:Arial,sans-serif;">Desglose por canal</p>
       <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border-radius:10px;border:1px solid #e2e8f0;">
         <tr><td style="padding:16px 20px;">
           <table width="100%" cellpadding="0" cellspacing="0">
@@ -2283,12 +2293,12 @@ function renderLegacyChannelTable(
               <td style="color:#15803d;font-size:12px;text-align:right;font-family:Arial,sans-serif;">${d.totalCash > 0 ? d.totalCash.toFixed(2) + " €" : "—"}</td>
               <td style="color:#1d4ed8;font-size:12px;text-align:right;font-family:Arial,sans-serif;">${d.totalCard > 0 ? d.totalCard.toFixed(2) + " €" : "—"}</td>
               <td style="color:#7c3aed;font-size:12px;text-align:right;font-family:Arial,sans-serif;">${d.totalBizum > 0 ? d.totalBizum.toFixed(2) + " €" : "—"}</td>
-              <td style="color:#1e3a6e;font-size:13px;font-weight:700;text-align:right;font-family:Arial,sans-serif;">${totalTPV.toFixed(2)} €</td>
+              <td style="color:${BRAND_MID_BLUE()};font-size:13px;font-weight:700;text-align:right;font-family:Arial,sans-serif;">${totalTPV.toFixed(2)} €</td>
             </tr>
             ${channelRowsHtml}
             <tr>
-              <td colspan="5" style="color:#1e3a6e;font-size:13px;font-weight:800;padding:10px 0 4px;font-family:Arial,sans-serif;border-top:2px solid #e2e8f0;">TOTAL GENERAL</td>
-              <td style="color:#f97316;font-size:16px;font-weight:800;text-align:right;padding:10px 0 4px;font-family:Arial,sans-serif;border-top:2px solid #e2e8f0;">${totalAllChannels.toFixed(2)} €</td>
+              <td colspan="5" style="color:${BRAND_MID_BLUE()};font-size:13px;font-weight:800;padding:10px 0 4px;font-family:Arial,sans-serif;border-top:2px solid #e2e8f0;">TOTAL GENERAL</td>
+              <td style="color:${BRAND_ORANGE()};font-size:16px;font-weight:800;text-align:right;padding:10px 0 4px;font-family:Arial,sans-serif;border-top:2px solid #e2e8f0;">${totalAllChannels.toFixed(2)} €</td>
             </tr>
           </table>
         </td></tr>
@@ -2319,13 +2329,13 @@ function renderEnrichedChannelTable(channels: CashCloseDailyControl["channels"])
       <td style="color:#64748b;font-size:12px;text-align:center;font-family:Arial,sans-serif;">${c.people}</td>
       <td style="color:#15803d;font-size:12px;text-align:right;font-family:Arial,sans-serif;font-weight:600;">${eur(c.paid)}</td>
       <td style="color:${c.pending > 0 ? "#d97706" : "#94a3b8"};font-size:12px;text-align:right;font-family:Arial,sans-serif;${c.pending > 0 ? "font-weight:600;" : ""}">${c.pending > 0 ? eur(c.pending) : "—"}</td>
-      <td style="color:#1e3a6e;font-size:13px;font-weight:700;text-align:right;font-family:Arial,sans-serif;">${eur(c.total)}</td>
+      <td style="color:${BRAND_MID_BLUE()};font-size:13px;font-weight:700;text-align:right;font-family:Arial,sans-serif;">${eur(c.total)}</td>
       <td style="color:#64748b;font-size:12px;text-align:right;font-family:Arial,sans-serif;">${eur(c.ticketMedio)}</td>
     </tr>`).join("");
 
   return `
     <tr><td style="padding:16px 32px 8px;">
-      <p style="color:#1e3a6e;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 10px;font-family:Arial,sans-serif;">Desglose por canal</p>
+      <p style="color:${BRAND_MID_BLUE()};font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 10px;font-family:Arial,sans-serif;">Desglose por canal</p>
       <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border-radius:10px;border:1px solid #e2e8f0;">
         <tr><td style="padding:16px 20px;">
           <table width="100%" cellpadding="0" cellspacing="0">
@@ -2340,13 +2350,13 @@ function renderEnrichedChannelTable(channels: CashCloseDailyControl["channels"])
             </tr>
             ${rows || `<tr><td colspan="7" style="text-align:center;color:#94a3b8;font-size:12px;padding:14px 0;font-family:Arial,sans-serif;">Sin operaciones por canal en el día.</td></tr>`}
             <tr>
-              <td style="color:#1e3a6e;font-size:13px;font-weight:800;padding:10px 0 4px;font-family:Arial,sans-serif;border-top:2px solid #e2e8f0;">TOTAL GENERAL</td>
-              <td style="color:#1e3a6e;font-size:12px;font-weight:800;text-align:center;padding:10px 0 4px;font-family:Arial,sans-serif;border-top:2px solid #e2e8f0;">${totals.count}</td>
-              <td style="color:#1e3a6e;font-size:12px;font-weight:800;text-align:center;padding:10px 0 4px;font-family:Arial,sans-serif;border-top:2px solid #e2e8f0;">${totals.people}</td>
+              <td style="color:${BRAND_MID_BLUE()};font-size:13px;font-weight:800;padding:10px 0 4px;font-family:Arial,sans-serif;border-top:2px solid #e2e8f0;">TOTAL GENERAL</td>
+              <td style="color:${BRAND_MID_BLUE()};font-size:12px;font-weight:800;text-align:center;padding:10px 0 4px;font-family:Arial,sans-serif;border-top:2px solid #e2e8f0;">${totals.count}</td>
+              <td style="color:${BRAND_MID_BLUE()};font-size:12px;font-weight:800;text-align:center;padding:10px 0 4px;font-family:Arial,sans-serif;border-top:2px solid #e2e8f0;">${totals.people}</td>
               <td style="color:#15803d;font-size:13px;font-weight:800;text-align:right;padding:10px 0 4px;font-family:Arial,sans-serif;border-top:2px solid #e2e8f0;">${eur(totals.paid)}</td>
               <td style="color:${totals.pending > 0 ? "#d97706" : "#94a3b8"};font-size:13px;font-weight:800;text-align:right;padding:10px 0 4px;font-family:Arial,sans-serif;border-top:2px solid #e2e8f0;">${totals.pending > 0 ? eur(totals.pending) : "—"}</td>
-              <td style="color:#f97316;font-size:16px;font-weight:800;text-align:right;padding:10px 0 4px;font-family:Arial,sans-serif;border-top:2px solid #e2e8f0;">${eur(totals.total)}</td>
-              <td style="color:#1e3a6e;font-size:12px;font-weight:800;text-align:right;padding:10px 0 4px;font-family:Arial,sans-serif;border-top:2px solid #e2e8f0;">${eur(avgTicket)}</td>
+              <td style="color:${BRAND_ORANGE()};font-size:16px;font-weight:800;text-align:right;padding:10px 0 4px;font-family:Arial,sans-serif;border-top:2px solid #e2e8f0;">${eur(totals.total)}</td>
+              <td style="color:${BRAND_MID_BLUE()};font-size:12px;font-weight:800;text-align:right;padding:10px 0 4px;font-family:Arial,sans-serif;border-top:2px solid #e2e8f0;">${eur(avgTicket)}</td>
             </tr>
           </table>
         </td></tr>
@@ -2370,19 +2380,19 @@ export function buildCashCloseHtml(d: CashCloseParams): string {
   // Mismos KPIs que /admin/contabilidad/control-diario en un grid 3x2.
   const executiveBlock = d.dailyControl ? `
     <tr><td style="padding:16px 32px 8px;">
-      <p style="color:#1e3a6e;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 10px;font-family:Arial,sans-serif;">Resumen ejecutivo del día</p>
+      <p style="color:${BRAND_MID_BLUE()};font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 10px;font-family:Arial,sans-serif;">Resumen ejecutivo del día</p>
       <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border-radius:10px;border:1px solid #e2e8f0;">
         <tr><td style="padding:18px 20px;">
           <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:separate;border-spacing:8px;">
             <tr>
-              ${kpiTile("Facturación total", eur(d.dailyControl.kpis.facturacionTotal), "#1e3a6e")}
+              ${kpiTile("Facturación total", eur(d.dailyControl.kpis.facturacionTotal), "${BRAND_MID_BLUE()}")}
               ${kpiTile("Cobrado hoy", eur(d.dailyControl.kpis.cobradoHoy), "#15803d")}
               ${kpiTile("Pendiente de cobro", eur(d.dailyControl.kpis.pendienteCobro), d.dailyControl.kpis.pendienteCobro > 0 ? "#d97706" : "#64748b")}
             </tr>
             <tr>
-              ${kpiTile("Operaciones totales", `${d.dailyControl.kpis.nReservasEjecutadas + d.dailyControl.kpis.nOperacionesTPV}`, "#1e3a6e", `${d.dailyControl.kpis.nReservasEjecutadas} reservas · ${d.dailyControl.kpis.nOperacionesTPV} TPV`)}
-              ${kpiTile("Personas atendidas", `${d.dailyControl.kpis.nPersonasAtendidas}`, "#1e3a6e")}
-              ${kpiTile("Ticket medio", eur(d.dailyControl.kpis.ticketMedio), "#1e3a6e", "Por operación")}
+              ${kpiTile("Operaciones totales", `${d.dailyControl.kpis.nReservasEjecutadas + d.dailyControl.kpis.nOperacionesTPV}`, "${BRAND_MID_BLUE()}", `${d.dailyControl.kpis.nReservasEjecutadas} reservas · ${d.dailyControl.kpis.nOperacionesTPV} TPV`)}
+              ${kpiTile("Personas atendidas", `${d.dailyControl.kpis.nPersonasAtendidas}`, "${BRAND_MID_BLUE()}")}
+              ${kpiTile("Ticket medio", eur(d.dailyControl.kpis.ticketMedio), "${BRAND_MID_BLUE()}", "Por operación")}
             </tr>
           </table>
         </td></tr>
@@ -2414,7 +2424,7 @@ export function buildCashCloseHtml(d: CashCloseParams): string {
     ${channelBlock}
 
     <tr><td style="padding:8px 32px 8px;">
-      <p style="color:#1e3a6e;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 10px;font-family:Arial,sans-serif;">Arqueo de caja (efectivo)</p>
+      <p style="color:${BRAND_MID_BLUE()};font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 10px;font-family:Arial,sans-serif;">Arqueo de caja (efectivo)</p>
       <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border-radius:10px;border:1px solid #e2e8f0;">
         <tr><td style="padding:20px 24px;">
           <table width="100%" cellpadding="0" cellspacing="0">
@@ -2438,8 +2448,8 @@ export function buildCashCloseHtml(d: CashCloseParams): string {
               <td colspan="2" style="padding:4px 0;"><hr style="border:none;border-top:1px solid #e2e8f0;" /></td>
             </tr>
             <tr>
-              <td style="color:#1e3a6e;font-size:13px;padding:5px 0;font-family:Arial,sans-serif;font-weight:700;">Efectivo esperado</td>
-              <td style="color:#1e3a6e;font-size:14px;font-weight:800;text-align:right;font-family:Arial,sans-serif;">${d.closingAmount.toFixed(2)} €</td>
+              <td style="color:${BRAND_MID_BLUE()};font-size:13px;padding:5px 0;font-family:Arial,sans-serif;font-weight:700;">Efectivo esperado</td>
+              <td style="color:${BRAND_MID_BLUE()};font-size:14px;font-weight:800;text-align:right;font-family:Arial,sans-serif;">${d.closingAmount.toFixed(2)} €</td>
             </tr>
             <tr>
               <td style="color:#64748b;font-size:13px;padding:5px 0;font-family:Arial,sans-serif;">Efectivo contado</td>
@@ -2467,7 +2477,7 @@ export function buildCashCloseHtml(d: CashCloseParams): string {
     ${d.notes ? `<tr><td style="padding:8px 32px 8px;">
       <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border-radius:10px;border:1px solid #e2e8f0;">
         <tr><td style="padding:16px 24px;">
-          <p style="color:#1e3a6e;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 8px;font-family:Arial,sans-serif;">Notas</p>
+          <p style="color:${BRAND_MID_BLUE()};font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 8px;font-family:Arial,sans-serif;">Notas</p>
           <p style="color:#374151;font-size:13px;margin:0;font-family:Arial,sans-serif;line-height:1.6;">${d.notes}</p>
         </td></tr>
       </table>
@@ -2539,19 +2549,19 @@ export function buildProposalHtml(d: ProposalEmailData): string {
       </td>
       <td style="padding:10px 0;border-bottom:1px solid #eef2f7;text-align:center;color:#6b7280;font-size:13px;font-family:Arial,sans-serif;">${item.quantity}</td>
       <td style="padding:10px 0;border-bottom:1px solid #eef2f7;text-align:right;color:#6b7280;font-size:13px;font-family:Arial,sans-serif;">${Number(item.unitPrice).toFixed(2)} &euro;</td>
-      <td style="padding:10px 0;border-bottom:1px solid #eef2f7;text-align:right;color:${BRAND_ORANGE};font-size:13px;font-weight:700;font-family:Arial,sans-serif;">${Number(item.total).toFixed(2)} &euro;</td>
+      <td style="padding:10px 0;border-bottom:1px solid #eef2f7;text-align:right;color:${BRAND_ORANGE()};font-size:13px;font-weight:700;font-family:Arial,sans-serif;">${Number(item.total).toFixed(2)} &euro;</td>
     </tr>`).join("");
   }
 
   function itemsTableBlock(title: string, items: { description: string; quantity: number; unitPrice: number; total: number; isOptional?: boolean }[], subtotal: string, tax: string, total: string, discount?: string, isRecommended?: boolean): string {
-    return `<table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border-radius:10px;border:${isRecommended ? `2px solid ${BRAND_ORANGE}` : "1px solid #e8eef7"};margin-bottom:12px;">
+    return `<table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border-radius:10px;border:${isRecommended ? `2px solid ${BRAND_ORANGE()}` : "1px solid #e8eef7"};margin-bottom:12px;">
       <tr><td style="padding:18px 22px;">
-        <p style="color:${BRAND_MID_BLUE};font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 4px;font-family:Arial,sans-serif;">
-          ${title}${isRecommended ? ' <span style="color:' + BRAND_ORANGE + ';">★ Recomendada</span>' : ""}
+        <p style="color:${BRAND_MID_BLUE()};font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 4px;font-family:Arial,sans-serif;">
+          ${title}${isRecommended ? ' <span style="color:' + BRAND_ORANGE() + ';">★ Recomendada</span>' : ""}
         </p>
         <table width="100%" cellpadding="0" cellspacing="0">
           <thead>
-            <tr style="background:${BRAND_BLUE};">
+            <tr style="background:${BRAND_BLUE()};">
               <th style="padding:9px 8px;text-align:left;color:#fff;font-size:11px;font-family:Arial,sans-serif;font-weight:600;">Descripci&oacute;n</th>
               <th style="padding:9px 8px;text-align:center;color:#fff;font-size:11px;font-family:Arial,sans-serif;font-weight:600;">Cant.</th>
               <th style="padding:9px 8px;text-align:right;color:#fff;font-size:11px;font-family:Arial,sans-serif;font-weight:600;">Precio</th>
@@ -2563,7 +2573,7 @@ export function buildProposalHtml(d: ProposalEmailData): string {
         <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:12px;">
           ${Number(discount ?? 0) > 0 ? `<tr><td style="padding:4px 0;color:#6b7280;font-size:13px;font-family:Arial,sans-serif;">Descuento</td><td style="padding:4px 0;text-align:right;color:#6b7280;font-size:13px;font-family:Arial,sans-serif;">-${Number(discount).toFixed(2)} &euro;</td></tr>` : ""}
           ${Number(tax) > 0 ? `<tr><td style="padding:4px 0;color:#6b7280;font-size:13px;font-family:Arial,sans-serif;">IVA</td><td style="padding:4px 0;text-align:right;color:#6b7280;font-size:13px;font-family:Arial,sans-serif;">${Number(tax).toFixed(2)} &euro;</td></tr>` : ""}
-          <tr style="background:${BRAND_BLUE};"><td style="padding:10px 12px;color:#fff;font-size:14px;font-weight:700;font-family:Arial,sans-serif;">TOTAL</td><td style="padding:10px 12px;text-align:right;color:${BRAND_ORANGE};font-size:22px;font-weight:900;font-family:Georgia,serif;">${Number(total).toFixed(2)} &euro;</td></tr>
+          <tr style="background:${BRAND_BLUE()};"><td style="padding:10px 12px;color:#fff;font-size:14px;font-weight:700;font-family:Arial,sans-serif;">TOTAL</td><td style="padding:10px 12px;text-align:right;color:${BRAND_ORANGE()};font-size:22px;font-weight:900;font-family:Georgia,serif;">${Number(total).toFixed(2)} &euro;</td></tr>
         </table>
       </td></tr>
     </table>`;
@@ -2571,7 +2581,7 @@ export function buildProposalHtml(d: ProposalEmailData): string {
 
   const contentBlock = d.mode === "multi_option" && d.options?.length
     ? `<tr><td style="padding:0 32px 12px;">
-        <p style="color:${BRAND_MID_BLUE};font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 12px;font-family:Arial,sans-serif;">Elige la opci&oacute;n que mejor se adapte a ti</p>
+        <p style="color:${BRAND_MID_BLUE()};font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 12px;font-family:Arial,sans-serif;">Elige la opci&oacute;n que mejor se adapte a ti</p>
         ${d.options.map(opt => itemsTableBlock(opt.title, opt.items, opt.subtotal, opt.tax, opt.total, "0", opt.isRecommended)).join("")}
       </td></tr>`
     : `<tr><td style="padding:0 32px 12px;">
@@ -2591,7 +2601,7 @@ export function buildProposalHtml(d: ProposalEmailData): string {
 
   const notesBlock = d.notes
     ? `<tr><td style="padding:0 32px 12px;">
-        <table width="100%" cellpadding="0" cellspacing="0" style="background:#fff7ed;border-left:4px solid ${BRAND_ORANGE};border-radius:0 8px 8px 0;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="background:#fff7ed;border-left:4px solid ${BRAND_ORANGE()};border-radius:0 8px 8px 0;">
           <tr><td style="padding:14px 18px;">
             <p style="color:#374151;font-size:14px;margin:0;line-height:1.6;font-family:Arial,sans-serif;">${d.notes}</p>
           </td></tr>
@@ -2602,7 +2612,7 @@ export function buildProposalHtml(d: ProposalEmailData): string {
     ? `<tr><td style="padding:0 32px 12px;">
         <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;">
           <tr><td style="padding:18px 22px;">
-            <p style="color:${BRAND_MID_BLUE};font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 10px;font-family:Arial,sans-serif;">Condiciones</p>
+            <p style="color:${BRAND_MID_BLUE()};font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 10px;font-family:Arial,sans-serif;">Condiciones</p>
             <p style="color:#6b7280;font-size:13px;line-height:1.6;margin:0;font-family:Arial,sans-serif;">${d.conditions}</p>
           </td></tr>
         </table>
@@ -2614,7 +2624,7 @@ export function buildProposalHtml(d: ProposalEmailData): string {
         <p style="color:#9a3412;font-size:14px;font-weight:700;margin:0 0 6px;font-family:Arial,sans-serif;">&#128203; Ver tu propuesta completa</p>
         <p style="color:#c2410c;font-size:13px;margin:0 0 16px;font-family:Arial,sans-serif;">Accede a todos los detalles y conf&iacute;rmanos tu elecci&oacute;n</p>
         ${ctaButton("Ver Propuesta Completa", d.publicUrl)}
-        <p style="color:#9ca3af;font-size:12px;margin:8px 0 0;font-family:Arial,sans-serif;">O contacta con nosotros en <a href="mailto:${getContactEmail()}" style="color:${BRAND_ORANGE};font-weight:700;text-decoration:none;">${getContactEmail()}</a></p>
+        <p style="color:#9ca3af;font-size:12px;margin:8px 0 0;font-family:Arial,sans-serif;">O contacta con nosotros en <a href="mailto:${getContactEmail()}" style="color:${BRAND_ORANGE()};font-weight:700;text-decoration:none;">${getContactEmail()}</a></p>
       </td></tr>
     </table>
   </td></tr>`;
@@ -2633,12 +2643,12 @@ export function buildProposalHtml(d: ProposalEmailData): string {
     ${notesBlock}
     ${ctaBlock}
     ${conditionsBlock}
-    ${emotionalBlock("Una experiencia &uacute;nica te espera en el lago. &#161;Conf&iacute;a en nosotros para hacerla inolvidable!")}
+    ${emotionalBlock("Una experiencia &uacute;nica te espera. &#161;Conf&iacute;a en nosotros para hacerla inolvidable!")}
     <tr><td style="padding:0 32px 28px;">
       <p style="color:#9ca3af;font-size:13px;margin:0;line-height:1.6;font-family:Arial,sans-serif;">
         &iquest;Necesitas modificar algo? Escrb&iacute;benos a
-        <a href="mailto:${getContactEmail()}" style="color:${BRAND_ORANGE};text-decoration:none;font-weight:600;">${getContactEmail()}</a>
-        ${callUs("o ll&aacute;manos al ", BRAND_ORANGE, 600, "&nbsp;(tambi&eacute;n WhatsApp).")}
+        <a href="mailto:${getContactEmail()}" style="color:${BRAND_ORANGE()};text-decoration:none;font-weight:600;">${getContactEmail()}</a>
+        ${callUs("o ll&aacute;manos al ", BRAND_ORANGE(), 600, "&nbsp;(tambi&eacute;n WhatsApp).")}
       </p>
     </td></tr>
     ${emailFooter()}`;
@@ -2671,10 +2681,10 @@ function buildCommercialReminderHtml(
   const body = `
     ${emailHeader(subtitle, tagline)}
     <tr><td style="padding:28px 32px 8px;">
-      <p style="color:#1e3a6e;font-size:22px;font-weight:700;margin:0 0 6px;font-family:Georgia,serif;">
+      <p style="color:${BRAND_MID_BLUE()};font-size:22px;font-weight:700;margin:0 0 6px;font-family:Georgia,serif;">
         Hola, ${escHtml(d.clientName)}
       </p>
-      ${d.quoteNumber ? `<p style="color:#6b7280;font-size:12px;margin:0;font-family:Arial,sans-serif;">Presupuesto <strong>${escHtml(d.quoteNumber)}</strong>${d.total ? ` · <strong style="color:${BRAND_ORANGE};">${escHtml(d.total)} €</strong>` : ""}</p>` : ""}
+      ${d.quoteNumber ? `<p style="color:#6b7280;font-size:12px;margin:0;font-family:Arial,sans-serif;">Presupuesto <strong>${escHtml(d.quoteNumber)}</strong>${d.total ? ` · <strong style="color:${BRAND_ORANGE()};">${escHtml(d.total)} €</strong>` : ""}</p>` : ""}
     </td></tr>
     <tr><td style="padding:8px 32px 16px;">
       ${bodyHtml}
@@ -2682,17 +2692,17 @@ function buildCommercialReminderHtml(
     ${buildReminderCtaBlock(d.paymentLinkUrl)}
     <tr><td style="padding:20px 32px 8px;">
       <table width="100%" cellpadding="0" cellspacing="0" border="0"
-             style="background:#f0f4ff;border-radius:8px;border-left:4px solid ${BRAND_MID_BLUE};">
+             style="background:#f0f4ff;border-radius:8px;border-left:4px solid ${BRAND_MID_BLUE()};">
         <tr><td style="padding:14px 18px;">
           <p style="color:#374151;font-size:13px;margin:0;line-height:1.6;font-family:Arial,sans-serif;">
             ¿Tienes alguna duda o quieres ajustar algo? Escríbenos a
-            <a href="mailto:${getContactEmail()}" style="color:${BRAND_ORANGE};text-decoration:none;font-weight:600;">${getContactEmail()}</a>
-            ${callUs("o llámanos al ", BRAND_ORANGE, 600, " — también por WhatsApp.")}
+            <a href="mailto:${getContactEmail()}" style="color:${BRAND_ORANGE()};text-decoration:none;font-weight:600;">${getContactEmail()}</a>
+            ${callUs("o llámanos al ", BRAND_ORANGE(), 600, " — también por WhatsApp.")}
           </p>
         </td></tr>
       </table>
     </td></tr>
-    ${emotionalBlock("Cada experiencia en el lago es única. Estamos aquí para hacer la tuya inolvidable.")}
+    ${emotionalBlock("Cada experiencia es única. Estamos aquí para hacer la tuya inolvidable.")}
     ${emailFooter()}`;
   return emailWrapper(`${d.customSubject ?? subtitle} — ${getBrandName()}`, body);
 }
@@ -2705,7 +2715,7 @@ export function buildCommercialReminder1Html(d: CommercialReminderEmailData): st
   const bodyHtml = `
     <p style="color:#374151;font-size:15px;line-height:1.8;margin:0;font-family:Arial,sans-serif;">
       Te escribimos porque hace unas horas te enviamos tu propuesta para disfrutar de
-      <strong style="color:${BRAND_MID_BLUE};">${getBrandName()}</strong>.
+      <strong style="color:${BRAND_MID_BLUE()};">${getBrandName()}</strong>.
     </p>
     <p style="color:#374151;font-size:15px;line-height:1.8;margin:12px 0 0;font-family:Arial,sans-serif;">
       Si tienes cualquier duda, podemos ayudarte a terminar la reserva o ajustar

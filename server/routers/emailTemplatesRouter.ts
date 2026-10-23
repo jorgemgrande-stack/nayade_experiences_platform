@@ -51,6 +51,7 @@ import { getCapabilityAccess } from "../_core/capabilities/access";
 import { buildSubscriptionOverview } from "../subscriptionOverview";
 import { templatesForCapabilities } from "../../shared/emailTemplateCapabilities";
 import { brandName } from "../tenantBrand";
+import { sampleUrl } from "../_core/productIdentity";
 
 // --- Admin guard --------------------------------------------------------------
 const adminProcedure = permissionProcedure("settings.manage", ["admin"]);
@@ -69,7 +70,7 @@ interface SeedTemplate {
   buildHtml: () => string;
 }
 
-const SYSTEM_TEMPLATES: SeedTemplate[] = [
+export const SYSTEM_TEMPLATES: SeedTemplate[] = [
   {
     id: "reservation_confirm",
     name: "Confirmación de Reserva",
@@ -158,7 +159,7 @@ const SYSTEM_TEMPLATES: SeedTemplate[] = [
     subject: "?? Tu presupuesto personalizado · {{marca}}",
     headerTitle: "Tu Presupuesto", headerSubtitle: "Hemos preparado una propuesta a tu medida",
     variables: JSON.stringify(["quoteNumber","title","clientName","items","total","validUntil","paymentLinkUrl"]),
-    buildHtml: () => buildQuoteHtml({ quoteNumber:"PRE-2026-0015", title:"Jornada de team building", clientName:"Laura Fernández", items:[{description:"Alquiler de material (12 uds)",quantity:12,unitPrice:35,total:420},{description:"SUP (8 uds)",quantity:8,unitPrice:30,total:240}], subtotal:"660.00", discount:"0", tax:"138.60", total:"798.60", validUntil:new Date("2026-10-30"), paymentLinkUrl:"https://tuempresa.es/pago/PRE-2026-0015" }),
+    buildHtml: () => buildQuoteHtml({ quoteNumber:"PRE-2026-0015", title:"Jornada de team building", clientName:"Laura Fernández", items:[{description:"Alquiler de material (12 uds)",quantity:12,unitPrice:35,total:420},{description:"SUP (8 uds)",quantity:8,unitPrice:30,total:240}], subtotal:"660.00", discount:"0", tax:"138.60", total:"798.60", validUntil:new Date("2026-10-30"), paymentLinkUrl:sampleUrl("/pago/PRE-2026-0015") }),
   },
   {
     id: "cancellation_received",
@@ -268,7 +269,7 @@ const SYSTEM_TEMPLATES: SeedTemplate[] = [
     subject: "? Tu propuesta te está esperando · {{marca}}",
     headerTitle: "Tu Propuesta Te Espera", headerSubtitle: "Queremos que disfrutes de una experiencia única",
     variables: JSON.stringify(["clientName","quoteNumber","quoteTitle","total","paymentLinkUrl"]),
-    buildHtml: () => buildCommercialReminder1Html({ clientName:"Laura Fernández", quoteNumber:"PRE-2026-0015", quoteTitle:"Jornada de team building", total:"798.60", paymentLinkUrl:"https://tuempresa.es/pago/PRE-2026-0015" }),
+    buildHtml: () => buildCommercialReminder1Html({ clientName:"Laura Fernández", quoteNumber:"PRE-2026-0015", quoteTitle:"Jornada de team building", total:"798.60", paymentLinkUrl:sampleUrl("/pago/PRE-2026-0015") }),
   },
   {
     id: "commercial_reminder_2",
@@ -278,7 +279,7 @@ const SYSTEM_TEMPLATES: SeedTemplate[] = [
     subject: "?? Tu propuesta sigue disponible · {{marca}}",
     headerTitle: "Plazas Limitadas", headerSubtitle: "Confirma antes de que se agoten",
     variables: JSON.stringify(["clientName","quoteNumber","quoteTitle","total","paymentLinkUrl"]),
-    buildHtml: () => buildCommercialReminder2Html({ clientName:"Laura Fernández", quoteNumber:"PRE-2026-0015", quoteTitle:"Jornada de team building", total:"798.60", paymentLinkUrl:"https://tuempresa.es/pago/PRE-2026-0015" }),
+    buildHtml: () => buildCommercialReminder2Html({ clientName:"Laura Fernández", quoteNumber:"PRE-2026-0015", quoteTitle:"Jornada de team building", total:"798.60", paymentLinkUrl:sampleUrl("/pago/PRE-2026-0015") }),
   },
   {
     id: "commercial_reminder_3",
@@ -288,7 +289,7 @@ const SYSTEM_TEMPLATES: SeedTemplate[] = [
     subject: "?? Última llamada para tu experiencia · {{marca}}",
     headerTitle: "Última Oportunidad", headerSubtitle: "No queremos que te la pierdas",
     variables: JSON.stringify(["clientName","quoteNumber","quoteTitle","total","paymentLinkUrl"]),
-    buildHtml: () => buildCommercialReminder3Html({ clientName:"Laura Fernández", quoteNumber:"PRE-2026-0015", quoteTitle:"Jornada de team building", total:"798.60", paymentLinkUrl:"https://tuempresa.es/pago/PRE-2026-0015" }),
+    buildHtml: () => buildCommercialReminder3Html({ clientName:"Laura Fernández", quoteNumber:"PRE-2026-0015", quoteTitle:"Jornada de team building", total:"798.60", paymentLinkUrl:sampleUrl("/pago/PRE-2026-0015") }),
   },
   {
     id: "proposal",
@@ -298,7 +299,7 @@ const SYSTEM_TEMPLATES: SeedTemplate[] = [
     subject: "?? Tu propuesta personalizada · {{marca}}",
     headerTitle: "Tu Propuesta", headerSubtitle: "Hemos preparado varias opciones para ti",
     variables: JSON.stringify(["proposalNumber","title","clientName","total","publicUrl"]),
-    buildHtml: () => buildProposalHtml({ proposalNumber:"PROP-2026-0003", title:"Jornada de team building", clientName:"Laura Fernández", mode:"configurable", items:[{description:"Alquiler de material (12 uds)",quantity:12,unitPrice:35,total:420},{description:"SUP (8 uds)",quantity:8,unitPrice:30,total:240}], subtotal:"660.00", discount:"0", tax:"138.60", total:"798.60", publicUrl:"https://tuempresa.es/propuesta/PROP-2026-0003" }),
+    buildHtml: () => buildProposalHtml({ proposalNumber:"PROP-2026-0003", title:"Jornada de team building", clientName:"Laura Fernández", mode:"configurable", items:[{description:"Alquiler de material (12 uds)",quantity:12,unitPrice:35,total:420},{description:"SUP (8 uds)",quantity:8,unitPrice:30,total:240}], subtotal:"660.00", discount:"0", tax:"138.60", total:"798.60", publicUrl:sampleUrl("/propuesta/PROP-2026-0003") }),
   },
   {
     id: "pending_payment",
@@ -358,7 +359,7 @@ const SYSTEM_TEMPLATES: SeedTemplate[] = [
     subject: "?? Invitación al panel de gestión · {{marca}}",
     headerTitle: "Bienvenido al Equipo", headerSubtitle: "Has sido invitado al panel de gestión",
     variables: JSON.stringify(["name","role","setPasswordUrl"]),
-    buildHtml: () => buildInviteHtml({ name:"Nuevo Usuario", role:"agente", setPasswordUrl:"https://tuempresa.es/set-password?token=abc123xyz" }),
+    buildHtml: () => buildInviteHtml({ name:"Nuevo Usuario", role:"agente", setPasswordUrl:sampleUrl("/set-password?token=abc123xyz") }),
   },
   {
     id: "password_reset",
@@ -368,7 +369,7 @@ const SYSTEM_TEMPLATES: SeedTemplate[] = [
     subject: "?? Restablece tu contraseña · {{marca}}",
     headerTitle: "Restablecer Contraseña", headerSubtitle: "Solicitud de cambio de contraseña",
     variables: JSON.stringify(["name","resetUrl","expiryMinutes"]),
-    buildHtml: () => buildPasswordResetHtml({ name:"María García", resetUrl:"https://tuempresa.es/reset-password?token=xyz789abc", expiryMinutes:60 }),
+    buildHtml: () => buildPasswordResetHtml({ name:"María García", resetUrl:sampleUrl("/reset-password?token=xyz789abc"), expiryMinutes:60 }),
   },
 ];
 

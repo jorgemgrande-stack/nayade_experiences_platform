@@ -222,6 +222,7 @@ import { getAllCounters, updateCounterPrefix, resetCounter, getDocumentNumberLog
 import type { DocumentType } from "./documentNumbers";
 import { integrationEnv } from "./_core/tenantConfig";
 import { protectLegacySecret, revealLegacySecret } from "./_core/credentials/legacyFields";
+import { sampleUrl } from "./_core/productIdentity";
 const adminProcedure = permissionProcedure("settings.manage", ["admin"]);
 
 
@@ -1699,19 +1700,19 @@ export const appRouter = router({
         },
         "password-reset": {
           subject: `[PREVIEW] Recuperar contraseña — ${companyName()}`,
-          html: buildPasswordResetHtml({ name: "Carlos Pedraza", resetUrl: "https://tuempresa.es/reset?token=abc123", expiryMinutes: 30 }),
+          html: buildPasswordResetHtml({ name: "Carlos Pedraza", resetUrl: sampleUrl("/reset?token=abc123"), expiryMinutes: 30 }),
         },
         "quote": {
           subject: `[PREVIEW] Presupuesto PRE-2026-001 — ${companyName()}`,
-          html: buildQuoteHtml({ quoteNumber: "PRE-2026-001", title: "Pack Experiencia + Restaurante", clientName: "Carlos Pedraza", items: [{ description: "Pack Experiencia (5 pax)", quantity: 5, unitPrice: 35, total: 175 }, { description: "Menú del día (8 pax)", quantity: 8, unitPrice: 28, total: 224 }], subtotal: "399", discount: "0", tax: "83.79", total: "482.79", validUntil: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), notes: "Precio especial por grupo. Incluye alquiler de neopreno.", conditions: "Reserva sujeta a disponibilidad. Cancelación gratuita hasta 48h antes.", paymentLinkUrl: "https://tuempresa.es/pago/PRE-2026-001" }),
+          html: buildQuoteHtml({ quoteNumber: "PRE-2026-001", title: "Pack Experiencia + Restaurante", clientName: "Carlos Pedraza", items: [{ description: "Pack Experiencia (5 pax)", quantity: 5, unitPrice: 35, total: 175 }, { description: "Menú del día (8 pax)", quantity: 8, unitPrice: 28, total: 224 }], subtotal: "399", discount: "0", tax: "83.79", total: "482.79", validUntil: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), notes: "Precio especial por grupo. Incluye alquiler de neopreno.", conditions: "Reserva sujeta a disponibilidad. Cancelación gratuita hasta 48h antes.", paymentLinkUrl: sampleUrl("/pago/PRE-2026-001") }),
         },
         "confirmation": {
           subject: `[PREVIEW] Reserva Confirmada FAC-2026-001 — ${companyName()}`,
-          html: buildConfirmationHtml({ clientName: "Carlos Pedraza", reservationRef: "FAC-2026-001", quoteNumber: "PRE-2026-001", quoteTitle: "Pack Experiencia + Restaurante", items: [{ description: "Pack Experiencia (5 pax)", quantity: 5, unitPrice: 35, total: 175 }, { description: "Menú del día (8 pax)", quantity: 8, unitPrice: 28, total: 224 }], subtotal: "399", taxAmount: "83.79", total: "482.79", invoiceUrl: "https://tuempresa.es/facturas/FAC-2026-001.pdf", bookingDate: "23 de marzo de 2026" }),
+          html: buildConfirmationHtml({ clientName: "Carlos Pedraza", reservationRef: "FAC-2026-001", quoteNumber: "PRE-2026-001", quoteTitle: "Pack Experiencia + Restaurante", items: [{ description: "Pack Experiencia (5 pax)", quantity: 5, unitPrice: 35, total: 175 }, { description: "Menú del día (8 pax)", quantity: 8, unitPrice: 28, total: 224 }], subtotal: "399", taxAmount: "83.79", total: "482.79", invoiceUrl: sampleUrl("/facturas/FAC-2026-001.pdf"), bookingDate: "23 de marzo de 2026" }),
         },
         "transfer-confirm": {
           subject: `[PREVIEW] Pago por transferencia confirmado — ${companyName()}`,
-          html: buildTransferConfirmationHtml({ clientName: "Carlos Pedraza", invoiceNumber: "FAC-2026-001", reservationRef: "RES-2026-001", quoteTitle: "Pack Experiencia + Restaurante", quoteNumber: "PRE-2026-001", items: [{ description: "Pack Experiencia (5 pax)", quantity: 5, unitPrice: 35, total: 175 }, { description: "Menú del día (8 pax)", quantity: 8, unitPrice: 28, total: 224 }], subtotal: "399", taxAmount: "83.79", total: "482.79", invoiceUrl: "https://tuempresa.es/facturas/FAC-2026-001.pdf", confirmedBy: "Administración", confirmedAt: new Date() }),
+          html: buildTransferConfirmationHtml({ clientName: "Carlos Pedraza", invoiceNumber: "FAC-2026-001", reservationRef: "RES-2026-001", quoteTitle: "Pack Experiencia + Restaurante", quoteNumber: "PRE-2026-001", items: [{ description: "Pack Experiencia (5 pax)", quantity: 5, unitPrice: 35, total: 175 }, { description: "Menú del día (8 pax)", quantity: 8, unitPrice: 28, total: 224 }], subtotal: "399", taxAmount: "83.79", total: "482.79", invoiceUrl: sampleUrl("/facturas/FAC-2026-001.pdf"), confirmedBy: "Administración", confirmedAt: new Date() }),
         },
       };
       const tpl = TEMPLATES[input.templateId];
