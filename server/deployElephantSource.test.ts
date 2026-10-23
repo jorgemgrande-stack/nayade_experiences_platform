@@ -156,3 +156,13 @@ describe("preparar-pruebas-live (autorizado por el propietario el 23/10/2026)", 
     expect(src).not.toMatch(/PUBLIC_HOSTS|APP_ENTRY_HOST/);
   });
 });
+
+describe("órdenes de restore-drill", () => {
+  it("una orden que no termina en SUCCESS hace fallar el paso (detectado: copia de production CRASHED dada por buena)", () => {
+    const src = fs.readFileSync(path.resolve(__dirname, "../scripts/deploy/esRailway.ts"), "utf8");
+    const body = src.slice(src.indexOf('if (cmd === "drill") {'));
+    expect(body).toMatch(/if \(d\.status !== "SUCCESS"\) \{[\s\S]*?process\.exit\(1\);/);
+    // Siempre se devuelve el servicio a «list» antes de fallar
+    expect(body.indexOf("await setAndDeploy(DRILL_IDLE);")).toBeLessThan(body.indexOf('if (d.status !== "SUCCESS")'));
+  });
+});
