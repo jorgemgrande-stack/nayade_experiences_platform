@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { Plus, Pencil, Trash2, Tag, ImageIcon, X, MoreVertical, Copy, PowerOff, Power, ChevronUp, ChevronDown } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
+import { PanelEmpty } from "@/components/admin/PanelStates";
 
 interface CategoryForm {
   name: string;
@@ -143,7 +144,7 @@ export default function CategoriesManager() {
     <AdminLayout title="Categorías">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h2 className="text-xl font-semibold text-foreground">Categorías de Experiencias</h2>
+          <h2 className="text-xl font-semibold text-foreground">Categorías de productos y servicios</h2>
           <p className="text-sm text-muted-foreground mt-1">{categories?.length ?? 0} categorías registradas</p>
         </div>
         <Button onClick={openCreate} className="bg-primary hover:bg-primary/90">
@@ -155,6 +156,16 @@ export default function CategoriesManager() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {[...Array(6)].map((_, i) => <div key={i} className="h-32 bg-muted animate-pulse rounded-xl" />)}
         </div>
+      ) : sortedCategories.length === 0 ? (
+        <PanelEmpty
+          icon={<Tag className="w-6 h-6" />}
+          title="Todavía no tienes categorías"
+          description="Agrupa tus productos y servicios por categorías: tus clientes los encontrarán antes en tu web."
+        >
+          <Button onClick={openCreate}>
+            <Plus className="w-4 h-4 mr-2" /> Crear la primera categoría
+          </Button>
+        </PanelEmpty>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {sortedCategories.map((cat, idx) => (

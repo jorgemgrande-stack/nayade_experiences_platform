@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { toast } from "sonner";
 import { Plus, Pencil, Trash2, MapPin, MoreVertical, Copy, PowerOff, Power, ChevronUp, ChevronDown } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { PanelEmpty } from "@/components/admin/PanelStates";
 
 interface LocationForm {
   name: string;
@@ -98,8 +99,8 @@ export default function LocationsManager() {
     <AdminLayout title="Ubicaciones">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h2 className="text-xl font-semibold text-foreground">Ubicaciones del Complejo</h2>
-          <p className="text-sm text-muted-foreground mt-1">{locations?.length ?? 0} ubicaciones registradas</p>
+          <h2 className="text-xl font-semibold text-foreground">Lugares de servicio</h2>
+          <p className="text-sm text-muted-foreground mt-1">{locations?.length ?? 0} lugares registrados</p>
         </div>
         <Button onClick={openCreate} className="bg-primary hover:bg-primary/90">
           <Plus className="w-4 h-4 mr-2" /> Nueva Ubicación
@@ -108,6 +109,16 @@ export default function LocationsManager() {
 
       {isLoading ? (
         <div className="space-y-3">{[...Array(4)].map((_, i) => <div key={i} className="h-24 bg-muted animate-pulse rounded-xl" />)}</div>
+      ) : sortedLocations.length === 0 ? (
+        <PanelEmpty
+          icon={<MapPin className="w-6 h-6" />}
+          title="Todavía no tienes lugares de servicio"
+          description="Dónde prestas tus servicios o entregas tus productos: tu local, una sede, a domicilio u online."
+        >
+          <Button onClick={openCreate}>
+            <Plus className="w-4 h-4 mr-2" /> Añadir el primer lugar
+          </Button>
+        </PanelEmpty>
       ) : (
         <div className="space-y-3">
           {sortedLocations.map((loc, idx) => (
