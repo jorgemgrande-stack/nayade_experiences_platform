@@ -15,7 +15,15 @@ describe("validar-cms-live", () => {
   it("sin ES_APLICAR=si no crea nada (las altas van después de la salida en seco)", () => {
     const dry = src.indexOf("if (!APPLY) {");
     expect(dry).toBeGreaterThan(0);
-    expect(src.indexOf('await createTenant("a"')).toBeGreaterThan(dry);
+    expect(src.indexOf('const a = await open("a"')).toBeGreaterThan(dry);
+  });
+
+  it("licencias solo para empresas de prueba; credenciales solo en la carpeta privada; soporte auditado y temporal", () => {
+    expect(src).toContain("if (!TENANT_RE.test(tenantId)) throw new Error(`solo empresas de prueba: ${tenantId}`);");
+    expect(src).toContain('const CMS_CAPABILITIES = ["cms-editor", "cms-domain", "cms-pages-forms", "cms-blog", "cms-seo"];');
+    expect(src).toContain("path.join(process.env.ES_PRIVATE_DIR, `validacion-cms-${tenantId}.json`)");
+    expect(src).toContain("{ mode: 0o600 }");
+    expect(src).toContain('minutes: 30, readOnly: false');
     expect(src).toContain('const APPLY = process.env.ES_APLICAR === "si";');
   });
 

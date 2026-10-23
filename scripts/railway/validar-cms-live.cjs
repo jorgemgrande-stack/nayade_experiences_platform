@@ -13,8 +13,13 @@
 // ES_EMPRESAS=cms-prueba-a-AAAAMMDD,cms-prueba-b-AAAAMMDD fija los identificadores (en live, cada empresa necesita
 // una pasarela con el dominio <empresa>.up.railway.app: gw-demo-a y gw-demo-b).
 // ES_PLAN=<plan> inicia la prueba de ese plan en las dos empresas (si live aplica licencias por capacidad).
+// Licencias: a las empresas de prueba (solo cms-prueba-…) se les activan las capacidades CMS de Essential, como en una
+// prueba Essential real. ES_REUTILIZAR=si repite la prueba sobre las empresas ya creadas: entra con su administrador
+// (credencial guardada en la carpeta privada al crearlas) o, si no la hay, con un acceso de soporte auditado de 30 min.
 // Nunca imprime contraseñas, tokens ni cookies. No envía correos (el alta asistida devuelve la invitación al operador).
 const crypto = require("crypto");
+const fs = require("fs");
+const path = require("path");
 const { call, gatewayAuth } = require("./cp.cjs");
 
 if (process.env.ES_ENV !== "live") throw new Error("Esta validación es para live: define ES_ENV=live (production exige otra aprobación)");
@@ -22,6 +27,9 @@ const APPLY = process.env.ES_APLICAR === "si";
 const TENANTS = (process.env.ES_EMPRESAS || "").split(",").map((s) => s.trim()).filter(Boolean);
 const TENANT_RE = /^cms-prueba-[ab]-\d{8}(-[a-z0-9]{4})?$/;
 const PLAN = (process.env.ES_PLAN || "").trim();
+const REUSE = process.env.ES_REUTILIZAR === "si";
+const CMS_CAPABILITIES = ["cms-editor", "cms-domain", "cms-pages-forms", "cms-blog", "cms-seo"];
+const credFile = (tenantId) => path.join(process.env.ES_PRIVATE_DIR, `validacion-cms-${tenantId}.json`);
 const ARCHIVE = (process.env.ES_ARCHIVAR || "").split(",").map((s) => s.trim()).filter(Boolean);
 
 const results = [];
@@ -48,7 +56,7 @@ function core(host) {
     });
     const set = typeof r.headers.getSetCookie === "function" ? r.headers.getSetCookie() : [];
     const c = set.map((x) => x.split(";")[0]).find((x) => /=.+/.test(x) && !/=;?$/.test(x));
-    if (c && path === "/api/auth/login") cookie = c;
+    if (c && (path === "/api/auth/login" || path.startsWith("/_support/enter"))) cookie = c;
     const text = await r.text();
     let json = null;
     try {
@@ -63,7 +71,8 @@ function core(host) {
     q: async (proc, input) => data(await req("GET", `/api/trpc/${proc}` + (input === undefined ? "" : `?input=${encodeURIComponent(JSON.stringify({ json: input }))}`))),
     m: async (proc, input) => {
       const r = await req("POST", `/api/trpc/${proc}`, { json: input ?? null });
-      return { status: r.status, data: data(r), error: r.json?.error?.json?.data?.code ?? null };
+      const e = r.json?.error?.json;
+      return { status: r.status, data: data(r), error: e ? `${e.data?.code ?? ""} ${String(e.message ?? "").slice(0, 160)}`.trim() : null };
     },
   };
 }
@@ -72,6 +81,36 @@ async function cp(method, route, body) {
   const r = await call(method, route, body);
   if (r.status >= 400) throw new Error(`${method} ${route} → ${r.status} ${(r.json && (r.json.message || r.json.error)) || ""}`);
   return r.json;
+}
+
+/** Capacidades CMS de Essential para una empresa de PRUEBA (como una prueba Essential real). */
+async function grantCms(tenantId) {
+  if (!TENANT_RE.test(tenantId)) throw new Error(`solo empresas de prueba: ${tenantId}`);
+  for (const cap of CMS_CAPABILITIES) {
+    await cp("PUT", `/cp/v1/tenants/${tenantId}/capabilities/${cap}`, { status: "active", reason: "Validación del CMS en live (empresa de prueba)" });
+  }
+  const { capabilities } = await cp("GET", `/cp/v1/tenants/${tenantId}/capabilities`);
+  const active = new Set((capabilities || []).filter((c) => c.status === "active").map((c) => c.capabilityId));
+  must(`${tenantId}: capacidades CMS de Essential activas`, CMS_CAPABILITIES.every((c) => active.has(c)), [...active].join(", "));
+}
+
+/** Empresa ya creada: su administrador (credencial guardada) o un acceso de soporte auditado de 30 minutos. */
+async function reuseTenant(label, tenantId, platformDomain) {
+  const host = `${tenantId}.${platformDomain}`;
+  const site = core(host);
+  if (fs.existsSync(credFile(tenantId))) {
+    const c = JSON.parse(fs.readFileSync(credFile(tenantId), "utf8"));
+    const login = await site.raw("POST", "/api/auth/login", { email: c.email, password: c.password });
+    must(`${tenantId}: inicio de sesión del administrador`, login.status === 200, String(login.status));
+  } else {
+    const g = await cp("POST", `/cp/v1/tenants/${tenantId}/support-access`, { reason: "Validación del CMS en live (empresa de prueba)", minutes: 30, readOnly: false });
+    must(`${tenantId}: acceso de soporte auditado (30 min)`, typeof g?.enterUrl === "string");
+    const u = new URL(g.enterUrl);
+    const enter = await site.raw("GET", u.pathname + u.search);
+    must(`${tenantId}: sesión de soporte en su panel`, enter.status === 302, String(enter.status));
+  }
+  await grantCms(tenantId);
+  return { tenantId, host, site };
 }
 
 async function createTenant(label, tenantId, platformDomain) {
@@ -93,6 +132,9 @@ async function createTenant(label, tenantId, platformDomain) {
   must(`${tenantId}: contraseña definida con la invitación`, sp.status === 200, String(sp.error ?? sp.status));
   const login = await site.raw("POST", "/api/auth/login", { email, password });
   must(`${tenantId}: inicio de sesión del administrador`, login.status === 200, String(login.status));
+  // Credencial de la empresa de prueba en la carpeta privada (nunca en el repositorio ni en el registro)
+  fs.writeFileSync(credFile(tenantId), JSON.stringify({ email, password }), { mode: 0o600 });
+  await grantCms(tenantId);
   return { tenantId, host, site };
 }
 
@@ -110,21 +152,24 @@ async function browserChecks(a, b, nonce, newSlug) {
   }
   const browser = await chromium.launch();
   try {
-    const text = async (url) => {
+    // La aplicación mantiene conexiones abiertas («networkidle» no llega): se espera al texto buscado o, si no debe
+    // aparecer, a que la página haya pintado su contenido
+    const text = async (url, expected) => {
       const g = gatewayAuth();
       const ctx = await browser.newContext({ httpCredentials: { username: g.username, password: g.password } });
       const page = await ctx.newPage();
-      await page.goto(url, { waitUntil: "networkidle", timeout: 45000 });
-      await page.waitForTimeout(800);
+      await page.goto(url, { waitUntil: "domcontentloaded", timeout: 45000 });
+      await page.waitForFunction((e) => document.body.innerText.includes(e), expected, { timeout: 20000 }).catch(() => undefined);
+      await page.waitForTimeout(3000);
       const t = (await page.locator("body").innerText()).replace(/\s+/g, " ");
       await ctx.close();
       return t;
     };
-    check("navegador: la portada de A muestra su texto nuevo", (await text(`${a.site.base}/`)).includes(nonce));
-    check("navegador: la página nueva de A se ve publicada", (await text(`${a.site.base}/${newSlug}`)).includes(nonce));
-    const bHome = await text(`${b.site.base}/`);
-    check("navegador: la web de B no muestra nada de A", !bHome.includes(nonce) && !bHome.includes(a.tenantId));
-    check("navegador: la página nueva de A no existe en B", !(await text(`${b.site.base}/${newSlug}`)).includes(nonce));
+    check("navegador: la portada de A muestra su texto nuevo", (await text(`${a.site.base}/`, nonce)).includes(nonce));
+    check("navegador: la página nueva de A se ve publicada", (await text(`${a.site.base}/${newSlug}`, nonce)).includes(nonce));
+    const bHome = await text(`${b.site.base}/`, nonce);
+    check("navegador: la web de B no muestra nada de A", bHome.length > 0 && !bHome.includes(nonce) && !bHome.includes(a.tenantId));
+    check("navegador: la página nueva de A no existe en B", !(await text(`${b.site.base}/${newSlug}`, nonce)).includes(nonce));
   } finally {
     await browser.close();
   }
@@ -164,8 +209,9 @@ async function browserChecks(a, b, nonce, newSlug) {
   const stamp = crypto.randomBytes(3).toString("hex");
   const nonce = `Validación CMS ${stamp}`;
   const newSlug = `novedades-${stamp}`;
-  const a = await createTenant("a", ids[0], platformDomain);
-  const b = await createTenant("b", ids[1], platformDomain);
+  const open = REUSE ? reuseTenant : createTenant;
+  const a = await open("a", ids[0], platformDomain);
+  const b = await open("b", ids[1], platformDomain);
 
   // Estado inicial: plantilla sembrada, legales en borrador
   check("A: portada de plantilla publicada", !!(await a.site.q("public.getTenantPage", { slug: "inicio" })));
