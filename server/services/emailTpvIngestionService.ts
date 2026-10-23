@@ -23,12 +23,7 @@ import { tenantImapConfig, type ImapConfig } from "./imapConfig";
 
 // CONFIG
 
-const IMAP_HOST = process.env.IMAP_TPV_HOST ?? "skicenter.es.correoseguro.dinaserver.com";
-const IMAP_PORT = parseInt(process.env.IMAP_TPV_PORT ?? "993");
-const IMAP_SECURE = (process.env.IMAP_TPV_SECURE ?? "true") === "true";
-const IMAP_USER = process.env.IMAP_TPV_USER ?? "administracion@skicenter.es";
-const IMAP_PASS = process.env.IMAP_TPV_PASS ?? "";
-const IMAP_MAILBOX = process.env.IMAP_TPV_MAILBOX ?? "INBOX";
+// Buzón: `tenantImapConfig("IMAP_TPV")` (entorno en la instalación de una sola empresa, bóveda en multiempresa)
 const IMAP_ALLOWED_SENDER = process.env.IMAP_TPV_ALLOWED_SENDER ?? "copia@ticket.comerciaglobalpay.com";
 const IMAP_BATCH_SIZE = parseInt(process.env.IMAP_TPV_BATCH_SIZE ?? "50");
 
@@ -661,10 +656,8 @@ function emptyResult(extra?: Partial<IngestionResult>): IngestionResult {
 // CORE INGESTION
 
 export async function runEmailIngestion(retryErrors = false): Promise<IngestionResult> {
-  // Multiempresa: solo el buzón de la propia empresa (bóveda); sin él, no se lee nada
-  const cfg: ImapConfig | null = isMultiTenant()
-    ? tenantImapConfig("IMAP_TPV")
-    : { host: IMAP_HOST, port: IMAP_PORT, secure: IMAP_SECURE, user: IMAP_USER, pass: IMAP_PASS, mailbox: IMAP_MAILBOX, allowedSender: IMAP_ALLOWED_SENDER };
+  // Solo un buzón configurado (servidor, usuario y contraseña); sin él, no se lee nada
+  const cfg: ImapConfig | null = tenantImapConfig("IMAP_TPV");
   // Empresa sin buzón propio: nada que leer (sin aviso: la tarea corre cada 5 minutos por empresa)
   if (!cfg) return emptyResult();
   const allowedSender = cfg.allowedSender ?? IMAP_ALLOWED_SENDER;

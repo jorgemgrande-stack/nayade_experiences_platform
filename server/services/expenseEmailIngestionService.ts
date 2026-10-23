@@ -5,12 +5,11 @@
  * Formato esperado: "#gasto #123,45€ Concepto opcional"
  *
  * Variables de entorno:
- *   IMAP_EXPENSE_HOST    (default: same as IMAP_TPV_HOST)
+ *   IMAP_EXPENSE_HOST, IMAP_EXPENSE_USER, IMAP_EXPENSE_PASS — obligatorias; sin ellas el job no lee nada
  *   IMAP_EXPENSE_PORT    (default: 993)
  *   IMAP_EXPENSE_SECURE  (default: true)
- *   IMAP_EXPENSE_USER    (default: administracion@skicenter.es)
- *   IMAP_EXPENSE_PASS    — obligatoria; sin ella el job no arranca
  *   IMAP_EXPENSE_MAILBOX (default: INBOX)
+ *   En multiempresa, los mismos campos de la bóveda de cada empresa (proveedor imap_expenses).
  *
  * Feature flag: expense_email_ingestion_enabled
  */
@@ -28,12 +27,7 @@ import { tenantImapConfig, type ImapConfig } from "./imapConfig";
 
 // ─── CONFIG ──────────────────────────────────────────────────────────────────
 
-const IMAP_HOST    = process.env.IMAP_EXPENSE_HOST    ?? process.env.IMAP_TPV_HOST    ?? "skicenter.es.correoseguro.dinaserver.com";
-const IMAP_PORT    = parseInt(process.env.IMAP_EXPENSE_PORT    ?? process.env.IMAP_TPV_PORT    ?? "993");
-const IMAP_SECURE  = (process.env.IMAP_EXPENSE_SECURE  ?? process.env.IMAP_TPV_SECURE  ?? "true") === "true";
-const IMAP_USER    = process.env.IMAP_EXPENSE_USER    ?? process.env.IMAP_TPV_USER    ?? "administracion@skicenter.es";
-const IMAP_PASS    = process.env.IMAP_EXPENSE_PASS    ?? process.env.IMAP_TPV_PASS    ?? "";
-const IMAP_MAILBOX = process.env.IMAP_EXPENSE_MAILBOX ?? "INBOX";
+// Buzón: `tenantImapConfig("IMAP_EXPENSE")` (entorno en la instalación de una sola empresa, bóveda en multiempresa)
 
 // Tipos MIME y extensiones aceptadas como justificante
 const ACCEPTED_MIMES = new Set([
@@ -131,10 +125,8 @@ async function getDefaultCostCenterId(): Promise<number> {
 export async function runExpenseEmailIngestion(): Promise<{ processed: number; duplicated: number; errors: number }> {
   const result = { processed: 0, duplicated: 0, errors: 0 };
 
-  // Multiempresa: solo el buzón de la propia empresa (bóveda); sin él, no se lee nada
-  const cfg: ImapConfig | null = isMultiTenant()
-    ? tenantImapConfig("IMAP_EXPENSE")
-    : { host: IMAP_HOST, port: IMAP_PORT, secure: IMAP_SECURE, user: IMAP_USER, pass: IMAP_PASS, mailbox: IMAP_MAILBOX, allowedSender: null };
+  // Solo un buzón configurado (servidor, usuario y contraseña); sin él, no se lee nada
+  const cfg: ImapConfig | null = tenantImapConfig("IMAP_EXPENSE");
   if (!cfg) return result;
 
   if (!cfg.pass) {

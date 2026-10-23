@@ -49,9 +49,16 @@ describe("ingesta IMAP con credenciales globales en multiempresa", () => {
     warn.mockRestore();
   });
 
-  it("single: la guarda no interviene (Náyade sigue igual)", async () => {
+  it("single: con un buzón configurado en el entorno, se conecta a él (y sin él, a ninguno)", async () => {
+    process.env.IMAP_TPV_HOST = "imap.instalacion.example";
+    process.env.IMAP_TPV_USER = "tickets@instalacion.example";
     const r = await runEmailIngestion(false).catch((e) => ({ errors: [String(e)] }));
+    delete process.env.IMAP_TPV_HOST;
+    delete process.env.IMAP_TPV_USER;
     expect(JSON.stringify(r)).not.toMatch(/multiempresa/);
-    expect(imap.created).toBeGreaterThan(0); // intenta conectar, como hoy
+    expect(imap.created).toBeGreaterThan(0);
+    const before = imap.created;
+    await runEmailIngestion(false);
+    expect(imap.created).toBe(before);
   });
 });

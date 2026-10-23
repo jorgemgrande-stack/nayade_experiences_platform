@@ -2,7 +2,6 @@ import { eq } from "drizzle-orm";
 import { getDb } from "../db";
 import { featureFlags, systemSettings } from "../../drizzle/schema";
 import { TenantCache } from "../_core/tenantScope";
-import { getTenantMode } from "../_core/tenant";
 
 // ─── In-memory cache (60s TTL) ────────────────────────────────────────────────
 
@@ -84,15 +83,7 @@ export function getSystemSettingSync(key: string, fallback = ""): string {
 }
 
 // ─── Business Email helper ───────────────────────────────────────────────────
-// Generic fallbacks — deployment-specific values must be set in system_settings.
-
-const EMAIL_FALLBACKS: Record<string, string> = {
-  reservations:  "reservas@nayadeexperiences.es",
-  admin_alerts:  "admin@tuempresa.com",
-  accounting:    "admin@tuempresa.com",
-  cancellations: "reservas@nayadeexperiences.es",
-  tpv_ingestion: "admin@tuempresa.com",
-};
+// Los correos de la empresa salen de sus ajustes (system_settings); sin ajuste, ninguno.
 
 const EMAIL_SETTING_KEYS: Record<string, string> = {
   reservations:  "email_reservations",
@@ -106,11 +97,9 @@ export async function getBusinessEmail(
   type: "reservations" | "admin_alerts" | "accounting" | "cancellations" | "tpv_ingestion"
 ): Promise<string> {
   const settingKey = EMAIL_SETTING_KEYS[type];
-  // En multiempresa no existe «el correo de la casa»: sin ajuste del tenant no se inventa uno
-  // (los respaldos son de Náyade o genéricos y llegarían a un tercero).
-  const fallback = getTenantMode() === "multi" ? "" : EMAIL_FALLBACKS[type];
+  // Sin ajuste de la empresa no se inventa un correo: llegaría a un tercero
   const fromDb = await getSystemSetting(settingKey, "");
-  return fromDb.trim() || fallback;
+  return fromDb.trim();
 }
 
 // ─── Cache warming (call at server startup to pre-populate sync cache) ────────

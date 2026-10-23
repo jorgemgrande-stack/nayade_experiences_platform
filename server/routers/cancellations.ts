@@ -1421,7 +1421,7 @@ export const cancellationsRouter = router({
             SAMPLE_NAME,
             SAMPLE_ID,
             "BON-2026-TEST1",
-            "Cableski & Wakeboard Angeles de San Rafael",
+            "Experiencia de ejemplo",
             "405.00",
             "31 de diciembre de 2026",
             false
@@ -1433,7 +1433,7 @@ export const cancellationsRouter = router({
             SAMPLE_NAME,
             SAMPLE_ID,
             "BON-2026-TEST2",
-            "Cableski & Wakeboard Angeles de San Rafael",
+            "Experiencia de ejemplo",
             "135.00",
             "31 de diciembre de 2026",
             true
