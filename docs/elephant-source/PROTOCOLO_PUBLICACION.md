@@ -38,6 +38,12 @@
 - Si un servicio no queda en `SUCCESS` o falla una comprobación, **todos** los servicios publicados en esa ejecución vuelven a su despliegue anterior.
 - Para volver atrás a mano: `revertir-<servicio>`. Reactiva el despliegue anterior del servicio sin compilar.
 
+## CRM (repositorio privado `big-elephant-crm`)
+
+- **Acceso del flujo:** clave de despliegue de **solo lectura** registrada en `big-elephant-crm` («Despliegue Elephant Source (GitHub Actions, solo lectura)»). Su parte privada es el secreto `CRM_DEPLOY_KEY` de los entornos `elephant-source-live` y `elephant-source-production`, y no existe en ningún otro sitio. Para retirar el acceso, se borra la clave en *big-elephant-crm → Settings → Deploy keys*.
+- **`desplegar-crm`:** despliega el último commit de `integration/elephant-source` del CRM, solo en el servicio `crm`. En live no requiere aprobación; en production es protegido (con aprobación).
+- **`revertir-crm`:** vuelve al despliegue anterior del CRM.
+
 ## Concurrencia
 
 - Hay un solo despliegue a la vez por entorno (grupo `deploy-elephant-source-<entorno>`), compartido entre la publicación automática y las acciones manuales.

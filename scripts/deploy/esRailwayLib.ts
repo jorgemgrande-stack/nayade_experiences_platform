@@ -7,7 +7,7 @@ import { createHash } from "node:crypto";
 export interface DeployConfig {
   projectId: string;
   environments: string[];
-  services: Record<string, { kind: "core" | "gateway" | "ops" }>;
+  services: Record<string, { kind: "core" | "gateway" | "ops" | "crm" }>;
 }
 
 

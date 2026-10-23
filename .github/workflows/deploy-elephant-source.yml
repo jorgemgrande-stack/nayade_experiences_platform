@@ -31,6 +31,7 @@ on:
           - revertir-controlplane
           - revertir-core
           - revertir-core-gateway
+          - revertir-crm
           - verificar-token
           - estado
           - diagnostico-almacenamiento
@@ -47,6 +48,7 @@ on:
           - desplegar-controlplane
           - desplegar-core
           - desplegar-core-gateway
+          - desplegar-crm
           - comprobar-salud
           - preparar-production
           - aplicar-production
@@ -279,11 +281,32 @@ jobs:
         run: pnpm exec tsx scripts/deploy/esRailway.ts test-gateways --env "${ES_ENV}" --only "${ES_ONLY}" --dir "${RUNNER_TEMP}/export" --sha "${ES_DEPLOY_SHA}"
 
       - name: Desplegar el servicio
-        if: startsWith(inputs.action, 'desplegar-') || inputs.action == 'preparar-pruebas-live'
+        if: (startsWith(inputs.action, 'desplegar-') && inputs.action != 'desplegar-crm') || inputs.action == 'preparar-pruebas-live'
         run: |
           SERVICE="${ES_ACTION#desplegar-}"
           if [ "${ES_ACTION}" = "preparar-pruebas-live" ]; then SERVICE="core"; fi
           pnpm exec tsx scripts/deploy/esRailway.ts deploy --env "${ES_ENV}" --service "${SERVICE}" --dir "${RUNNER_TEMP}/export" --sha "${ES_DEPLOY_SHA}"
+
+      # CRM: el último commit de integration/elephant-source del repositorio privado big-elephant-crm, leído con una
+      # clave de despliegue de SOLO LECTURA (secreto CRM_DEPLOY_KEY del entorno). Solo va al servicio crm.
+      - name: CRM — código de big-elephant-crm (integration/elephant-source)
+        if: inputs.action == 'desplegar-crm'
+        uses: actions/checkout@v4
+        with:
+          repository: jorgemgrande-stack/big-elephant-crm
+          ref: integration/elephant-source
+          ssh-key: ${{ secrets.CRM_DEPLOY_KEY }}
+          persist-credentials: false
+          path: crm-src
+
+      - name: CRM — export y despliegue
+        if: inputs.action == 'desplegar-crm'
+        run: |
+          CRM_SHA=$(git -C crm-src rev-parse HEAD)
+          mkdir -p "${RUNNER_TEMP}/crm-export"
+          git -C crm-src archive --format=tar HEAD | tar -x -C "${RUNNER_TEMP}/crm-export"
+          echo "CRM ${CRM_SHA}: $(git -C crm-src log -1 --format=%s)"
+          pnpm exec tsx scripts/deploy/esRailway.ts deploy --env "${ES_ENV}" --service crm --repo crm --dir "${RUNNER_TEMP}/crm-export" --sha "${CRM_SHA}"
 
       - name: Pruebas de live — las pasarelas de prueba responden en su dominio
         if: inputs.action == 'preparar-pruebas-live'

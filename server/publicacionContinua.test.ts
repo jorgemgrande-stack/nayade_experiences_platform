@@ -80,6 +80,16 @@ describe("publicación continua", () => {
     expect(src).toContain("deploymentRollback(id:$id)");
   });
 
+  it("el CRM se lee con la clave de solo lectura, solo de su rama de integración y solo va al servicio crm", () => {
+    const co = step("CRM — código de big-elephant-crm (integration/elephant-source)");
+    expect(co).toContain("ssh-key: ${{ secrets.CRM_DEPLOY_KEY }}");
+    expect(co).toContain("ref: integration/elephant-source");
+    expect(co).toContain("persist-credentials: false");
+    expect(step("CRM — export y despliegue")).toContain("--service crm --repo crm");
+    expect(src).toContain('if ((service === "crm") !== (repo === REPOSITORIES.crm)) throw new Error(');
+    expect(wf).toContain("if: (startsWith(inputs.action, 'desplegar-') && inputs.action != 'desplegar-crm') || inputs.action == 'preparar-pruebas-live'");
+  });
+
   it("live se publica solo desde el CI de integration/elephant-source y nunca en paralelo", () => {
     expect(ci).toMatch(/branches: \[main, integration\/elephant-source\]/);
     const job = ci.slice(ci.indexOf("  publicar-live:"));

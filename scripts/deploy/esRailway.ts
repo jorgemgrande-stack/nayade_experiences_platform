@@ -546,19 +546,23 @@ async function main() {
     const sid = await serviceId(service!);
     const list = await deployments(sid, sc.environmentId, 20);
     const i = list.findIndex((x) => x.status === "SUCCESS");
-    const prev = i >= 0 ? list.slice(i + 1).find((x) => x.status === "REMOVED" && shaFromDeployMeta(x.meta, REPOSITORIES.core)) : undefined;
+    const repo = service === "crm" ? REPOSITORIES.crm : REPOSITORIES.core;
+    const prev = i >= 0 ? list.slice(i + 1).find((x) => x.status === "REMOVED" && shaFromDeployMeta(x.meta, repo)) : undefined;
     if (!prev) throw new Error(`${service}: no hay un despliegue anterior al que volver`);
-    console.log(`${service}: vuelve a ${prev.id} (commit ${shaFromDeployMeta(prev.meta, REPOSITORIES.core)?.slice(0, 12)}) → ${await rollback(sid, sc.environmentId, prev.id)}`);
+    console.log(`${service}: vuelve a ${prev.id} (commit ${shaFromDeployMeta(prev.meta, repo)?.slice(0, 12)}) → ${await rollback(sid, sc.environmentId, prev.id)}`);
     if (!(await functional(env))) process.exit(1);
     return;
   }
   if (cmd === "deploy") {
     const dir = path.resolve(arg("dir"));
     const sha = arg("sha");
+    // El CRM se despliega SOLO desde su repositorio (--repo crm) y ese código solo va al servicio crm
+    const repo = arg("repo", false) === "crm" ? REPOSITORIES.crm : REPOSITORIES.core;
+    if ((service === "crm") !== (repo === REPOSITORIES.crm)) throw new Error("el servicio crm solo se despliega con --repo crm, y --repo crm solo en el servicio crm");
     for (const f of EXCLUDED_FROM_EXPORT) if (fs.existsSync(path.join(dir, f))) throw new Error(`el export contiene ${f}: no se despliega`);
     const sid = await serviceId(service!);
     const before = (await latest(sid, sc.environmentId))?.id ?? null;
-    const r = spawnSync("railway", ["up", dir, "--path-as-root", "-s", service!, "-e", env, "--detach", "-m", `${REPOSITORIES.core} ${sha}`], { encoding: "utf8", env: process.env });
+    const r = spawnSync("railway", ["up", dir, "--path-as-root", "-s", service!, "-e", env, "--detach", "-m", `${repo} ${sha}`], { encoding: "utf8", env: process.env });
     if (r.status !== 0) throw new Error(`railway up falló: ${scrub(r.stderr || r.stdout || "").slice(0, 400)}`);
     const d = await waitFor(sid, sc.environmentId, before);
     console.log(`${service}: despliegue ${d.id} → ${d.status}`);
