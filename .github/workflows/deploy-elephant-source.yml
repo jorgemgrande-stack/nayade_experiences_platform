@@ -28,6 +28,7 @@ on:
           - desplegar-restore-drill
           - desplegar-backup-job
           - copia-de-seguridad
+          - verificar-copia
           - migraciones-plataforma-simulacion
           - migraciones-plataforma-aplicar
           - migraciones-simulacion
@@ -161,6 +162,10 @@ jobs:
       - name: Copia de seguridad (todas o las indicadas)
         if: inputs.action == 'copia-de-seguridad'
         run: pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --command "node dist-cp/backup-job.js run${ES_ONLY:+ --only ${ES_ONLY}}"
+
+      - name: Verificar la copia en el bucket (solo lectura; últimas 24 h)
+        if: inputs.action == 'verificar-copia'
+        run: pnpm exec tsx scripts/deploy/esRailway.ts backup-check --env "${ES_ENV}"
 
       - name: Migraciones de plataforma, registro y CRM (simulación)
         if: inputs.action == 'migraciones-plataforma-simulacion'

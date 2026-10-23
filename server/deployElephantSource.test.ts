@@ -169,3 +169,16 @@ describe("órdenes de restore-drill", () => {
     expect(body.indexOf("await setAndDeploy(DRILL_IDLE);")).toBeLessThan(body.indexOf('if (d.status !== "SUCCESS")'));
   });
 });
+
+describe("verificación independiente de la copia", () => {
+  it("solo lectura, sin imprimir claves; sin copias de las últimas 24 h, falla", () => {
+    const src = fs.readFileSync(path.resolve(__dirname, "../scripts/deploy/esRailway.ts"), "utf8");
+    const body = src.slice(src.indexOf('if (cmd === "backup-check") {'), src.indexOf('if (cmd === "status") {'));
+    expect(body).toContain("ListObjectsV2Command");
+    expect(body).not.toMatch(/PutObject|DeleteObject|variableUpsert/);
+    for (const line of body.split("\n").filter((l) => /console\.(log|error)/.test(l))) expect(line, line.trim()).not.toMatch(/SECRET|ACCESS_KEY/);
+    expect(body).toMatch(/if \(!recent\.length\) \{[\s\S]*?process\.exit\(1\)/);
+    const wf = fs.readFileSync(path.resolve(__dirname, "../.github/workflows/deploy-elephant-source.yml"), "utf8");
+    expect(wf.indexOf("- copia-de-seguridad")).toBeLessThan(wf.indexOf("- verificar-copia"));
+  });
+});
