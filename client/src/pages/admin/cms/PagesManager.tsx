@@ -11,9 +11,11 @@ import { toast } from "sonner";
 import {
   ArrowLeft, Plus, Save, Eye, ChevronUp, ChevronDown, Trash2,
   Type, Image, Layout, AlignLeft, Link2, Grid, ChevronRight,
-  EyeOff, GripVertical, FileText, Globe, Settings
+  EyeOff, GripVertical, FileText, Globe, Settings, Pencil
 } from "lucide-react";
 import ImageUploader from "@/components/ImageUploader";
+import { PageContentDialog, type EditablePage } from "@/components/admin/PageContentDialog";
+import { PanelEmpty } from "@/components/admin/PanelStates";
 
 // ─── Block Types ──────────────────────────────────────────────────────────────
 type BlockType = "hero" | "text" | "image_text" | "cta" | "gallery" | "accordion" | "features" | "spacer";
@@ -239,6 +241,8 @@ export default function PagesManager() {
   const [isDirty, setIsDirty] = useState(false);
 
   const { data: pages, isLoading, refetch } = trpc.cms.getPages.useQuery();
+  // Contenido de la página (lo que muestra la web de la empresa): null = cerrado; «nueva» = crear
+  const [contentPage, setContentPage] = useState<EditablePage | "nueva" | null>(null);
   const { data: rawBlocks } = trpc.cms.getPageBlocks.useQuery(
     { pageSlug: editingSlug! },
     { enabled: !!editingSlug }
@@ -434,13 +438,32 @@ export default function PagesManager() {
       <div className="p-6">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-2xl font-bold">Páginas del Sitio</h1>
+            <h1 className="text-2xl font-bold">Páginas de tu web</h1>
             <p className="text-sm text-muted-foreground mt-1">{pages?.length ?? 0} páginas en el sitio</p>
           </div>
+          <Button onClick={() => setContentPage("nueva")}>
+            <Plus size={14} className="mr-1.5" /> Nueva página
+          </Button>
         </div>
+        <PageContentDialog
+          open={contentPage !== null}
+          page={contentPage === "nueva" ? null : contentPage}
+          onClose={() => setContentPage(null)}
+          onSaved={() => refetch()}
+        />
 
         {isLoading ? (
           <div className="text-center py-12 text-muted-foreground">Cargando páginas...</div>
+        ) : !pages?.length ? (
+          <PanelEmpty
+            icon={<FileText className="w-6 h-6" />}
+            title="Todavía no tienes páginas"
+            description="Crea la portada de tu web (dirección «inicio») y las páginas que necesites: quiénes somos, contacto, aviso legal…"
+          >
+            <Button onClick={() => setContentPage("nueva")}>
+              <Plus size={14} className="mr-1.5" /> Crear la primera página
+            </Button>
+          </PanelEmpty>
         ) : (
           <div className="bg-background border border-border rounded-xl overflow-hidden">
             <table className="w-full">
@@ -481,7 +504,10 @@ export default function PagesManager() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1 justify-end">
-                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => window.open(`/${page.slug}`, "_blank")}>
+                        <Button variant="ghost" size="sm" className="h-8" onClick={() => setContentPage(page)}>
+                          <Pencil size={14} className="mr-1.5" /> Editar contenido
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Ver en la web" onClick={() => window.open(`/${page.slug === "inicio" ? "" : page.slug}`, "_blank")}>
                           <Globe size={14} />
                         </Button>
                         <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => { setBlocks([]); setEditingSlug(page.slug); }}>
