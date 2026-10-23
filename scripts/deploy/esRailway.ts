@@ -30,7 +30,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { MAIL_TEST_SERVICES, POSTMARK_WEBHOOK_TRIGGERS, mailSandboxPlan, parseMailAllowlist } from "./esRailwayLib";
-import { DRILL_IDLE, EXCLUDED_FROM_EXPORT, GATEWAY_COPIED_VARS, GATEWAY_TEMPLATE_SERVICE, STORAGE_BUCKETS, STORAGE_VARS, describeStorageVar, guard, isAllowedDrill, scrub, storageReferences, testTenantDomains, type DeployConfig, type TokenScope } from "./esRailwayLib";
+import { DRILL_IDLE, EXCLUDED_FROM_EXPORT, GATEWAY_COPIED_VARS, GATEWAY_TEMPLATE_SERVICE, STORAGE_BUCKETS, STORAGE_VARS, describeStorageVar, guard, isAllowedDrill, scrub, meteringReferences, storageReferences, testTenantDomains, type DeployConfig, type TokenScope } from "./esRailwayLib";
 import { FUNCTIONAL_CHECKS, ORDINARY_SERVICES, hasMigrations, protectedChanges, shaFromDeployMeta } from "./esRailwayLib";
 import { REPOSITORIES } from "../../shared/repositories";
 
@@ -253,7 +253,7 @@ async function main() {
     const q = "query($p:String!,$e:String!,$s:String!,$u:Boolean){ variables(projectId:$p, environmentId:$e, serviceId:$s, unrendered:$u) }";
     const upsert = (sid: string, name: string, value: string) =>
       api("mutation($i:VariableUpsertInput!){ variableUpsert(input:$i) }", { i: { projectId: t.projectToken.projectId, environmentId: sc.environmentId, serviceId: sid, name, value, skipDeploys: true } });
-    for (const [service, wanted] of Object.entries(storageReferences(env))) {
+    for (const [service, wanted] of Object.entries({ ...storageReferences(env), ...meteringReferences(env) })) {
       if (!sc.services.includes(service)) throw new Error(`el servicio ${service} no existe en el entorno`);
       const sid = await serviceId(service);
       const vars = { p: t.projectToken.projectId, e: sc.environmentId, s: sid };
