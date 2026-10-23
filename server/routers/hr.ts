@@ -41,6 +41,7 @@ import { getUserByInviteToken, setUserPassword } from "../db";
 import { getDefaultCashAccountId, createCashMovementIfNotExists } from "./cashRegisterHelper";
 import { legacyDb, legacyPool } from "../_core/legacyDb";
 import { isAcceptableFileUrl } from "../_core/files/service";
+import { buildNoticeHtml } from "../emailTemplates";
 
 // Permisos: lecturas RRHH accesibles para admin (con fallback a rol legacy).
 const hrViewProc = permissionProcedure("hr.view", ["admin"]);
@@ -397,20 +398,7 @@ const employeesRouter = router({
           await sendEmail({
             to: employee.email,
             subject: `Acceso al Portal del Empleado — ${companyName()}`,
-            html: `
-              <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px;">
-                <h2 style="color:#ea580c">Bienvenido al Portal del Empleado</h2>
-                <p>Hola <strong>${employee.fullName}</strong>,</p>
-                <p>Te damos acceso al portal interno de <strong>${companyName()}</strong> donde podrás consultar
-                tu información personal, documentos y futuras funcionalidades (fichaje, nóminas, vacaciones).</p>
-                <p style="margin:24px 0">
-                  <a href="${inviteUrl}" style="background:#ea580c;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold">
-                    Activar mi cuenta
-                  </a>
-                </p>
-                <p style="color:#666;font-size:13px">Este enlace caduca en 7 días. Si no funciona, copia y pega esta URL en tu navegador:<br>${inviteUrl}</p>
-              </div>
-            `,
+            html: buildNoticeHtml({ badge: "Acceso", title: "Bienvenido al Portal del Empleado", greetingName: employee.fullName, paragraphs: [`Te damos acceso al portal interno de ${companyName()}, donde podrás consultar tu información personal, tus documentos y las próximas funcionalidades (fichaje, nóminas, vacaciones).`], cta: { label: "Activar mi cuenta", url: inviteUrl }, note: "Este enlace caduca en 7 días." }),
           });
           emailSent = true;
         } catch (e) {

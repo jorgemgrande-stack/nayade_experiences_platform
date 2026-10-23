@@ -275,7 +275,7 @@ function statusBlock(type: "success" | "warning" | "error", title: string, body:
 // Botón a prueba de clientes: VML (roundrect) para Outlook + <a> con color
 // SÓLIDO para el resto. Sin degradados (Outlook no los soporta) y SIEMPRE con
 // texto blanco explícito, para que la tipografía nunca quede invisible.
-function ctaButton(text: string, href: string, fillColor: string = "#E85D04"): string {
+function ctaButton(text: string, href: string, fillColor: string = BRAND_ORANGE()): string {
   return `<table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0;">
     <tr><td align="center">
       <!--[if mso]>
@@ -618,7 +618,7 @@ export function buildRestaurantPaymentLinkHtml(d: RestaurantPaymentLinkData): st
         <input type="hidden" name="Ds_MerchantParameters" value="${d.merchantParams}" />
         <input type="hidden" name="Ds_Signature" value="${d.signature}" />
         <button type="submit"
-          style="display:inline-block;background-color:#E85D04;background:#E85D04;color:#ffffff;border:none;padding:16px 44px;border-radius:8px;font-size:16px;font-weight:900;cursor:pointer;letter-spacing:0.5px;font-family:Arial,sans-serif;">
+          style="display:inline-block;background-color:${BRAND_ORANGE()};background:${BRAND_ORANGE()};color:#ffffff;border:none;padding:16px 44px;border-radius:8px;font-size:16px;font-weight:900;cursor:pointer;letter-spacing:0.5px;font-family:Arial,sans-serif;">
           Pagar ${d.depositAmount} &euro;
         </button>
       </form>
@@ -653,7 +653,7 @@ export function buildInviteHtml(d: InviteEmailData): string {
   const body = `
     ${emailHeader("Bienvenido al Equipo", `Plataforma de Gesti&oacute;n de ${escAttr(getBrandName())}`)}
     <tr><td style="padding:28px 32px 0;">
-      <h2 style="color:${BRAND_BLUE()};font-size:22px;margin:0 0 12px;font-weight:700;font-family:Georgia,serif;">&#161;Hola ${d.name}!</h2>
+      <h2 style="color:${BRAND_BLUE()};font-size:22px;margin:0 0 12px;font-weight:700;font-family:Georgia,serif;">&#161;Hola ${escAttr(d.name)}!</h2>
       <p style="color:#6b7280;font-size:15px;line-height:1.7;margin:0 0 16px;font-family:Arial,sans-serif;">
         Se ha creado una cuenta para ti en la plataforma de gesti&oacute;n de <strong>${escAttr(getBrandName())}</strong>
         con el rol de:
@@ -777,11 +777,27 @@ export interface BudgetRequestEmailData {
   activitiesJson?: ActivityEmailEntry[];
 }
 
-export function buildBudgetRequestUserHtml(d: BudgetRequestEmailData): string {
+/** Los datos de la solicitud llegan de un formulario PÚBLICO: nunca entran sin escapar en el HTML. */
+function safeBudget(d: BudgetRequestEmailData): BudgetRequestEmailData {
+  return {
+    ...d,
+    name: escAttr(d.name ?? ""),
+    email: escAttr(d.email ?? ""),
+    phone: escAttr(d.phone ?? ""),
+    arrivalDate: escAttr(d.arrivalDate ?? ""),
+    selectedCategory: escAttr(d.selectedCategory ?? ""),
+    selectedProduct: escAttr(d.selectedProduct ?? ""),
+    comments: escAttr(d.comments ?? ""),
+    submittedAt: escAttr(d.submittedAt ?? ""),
+  };
+}
+
+export function buildBudgetRequestUserHtml(raw: BudgetRequestEmailData): string {
+  const d = safeBudget(raw);
   const body = `
     ${emailHeader("Solicitud Recibida", "Tu experiencia perfecta empieza aqu&iacute;")}
     <tr><td style="padding:28px 32px 0;">
-      <h2 style="color:${BRAND_BLUE()};font-size:22px;margin:0 0 12px;font-weight:700;font-family:Georgia,serif;">&#161;Hola ${d.name}!</h2>
+      <h2 style="color:${BRAND_BLUE()};font-size:22px;margin:0 0 12px;font-weight:700;font-family:Georgia,serif;">&#161;Hola ${escAttr(d.name)}!</h2>
       <p style="color:#6b7280;font-size:15px;line-height:1.7;margin:0 0 16px;font-family:Arial,sans-serif;">
         Hemos recibido tu solicitud de presupuesto y ya estamos preparando una propuesta personalizada
         para que vivas una jornada inolvidable${getBrandName() ? ` con ${escAttr(getBrandName())}` : ""}.
@@ -811,7 +827,8 @@ export function buildBudgetRequestUserHtml(d: BudgetRequestEmailData): string {
   return emailWrapper("Solicitud de presupuesto recibida — " + getBrandName(), body);
 }
 
-export function buildBudgetRequestAdminHtml(d: BudgetRequestEmailData): string {
+export function buildBudgetRequestAdminHtml(raw: BudgetRequestEmailData): string {
+  const d = safeBudget(raw);
   const body = `
     ${emailHeader("Nueva Solicitud", "Acci&oacute;n requerida en menos de 24h")}
     <tr><td style="padding:28px 32px 0;">
@@ -2768,4 +2785,90 @@ export function buildCommercialReminder3Html(d: CommercialReminderEmailData): st
       ? `<p style="color:#374151;font-size:15px;line-height:1.8;margin:0;font-family:Arial,sans-serif;">${escHtml(d.customBody).replace(/\n/g, "<br>")}</p>`
       : bodyHtml,
   );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// AVISO GENÉRICO DE LA EMPRESA (invitaciones a portales, envío de facturas y liquidaciones…)
+// ═══════════════════════════════════════════════════════════════════════════════
+export interface NoticeEmailData {
+  /** Título del cuerpo («Bienvenido al portal de colaboradores»). */
+  title: string;
+  /** Etiqueta de la cabecera, en mayúsculas pequeñas («Invitación»). */
+  badge?: string;
+  greetingName?: string | null;
+  /** Párrafos en TEXTO PLANO: se escapan (nunca HTML de quien llama). */
+  paragraphs: string[];
+  cta?: { label: string; url: string } | null;
+  /** Nota final en texto plano («Este enlace caduca en 7 días»). */
+  note?: string | null;
+}
+
+/** Aviso de la empresa con su diseño (cabecera, colores, pie y adaptación a móvil); todo el texto se escapa. */
+export function buildNoticeHtml(d: NoticeEmailData): string {
+  const esc = (v: string) => escAttr(v);
+  const paras = d.paragraphs.map((p) => `<p style="color:#4b5563;font-size:15px;line-height:1.7;margin:0 0 14px;font-family:Arial,sans-serif;">${esc(p)}</p>`).join("");
+  const body = `
+    ${emailHeader(d.badge ? esc(d.badge) : undefined)}
+    <tr><td style="padding:28px 32px 8px;">
+      <h2 style="color:${BRAND_BLUE()};font-size:21px;margin:0 0 14px;font-weight:700;font-family:Georgia,serif;">${esc(d.title)}</h2>
+      ${d.greetingName ? `<p style="color:#111827;font-size:15px;margin:0 0 12px;font-family:Arial,sans-serif;">Hola <strong>${esc(d.greetingName)}</strong>,</p>` : ""}
+      ${paras}
+      ${d.cta ? ctaButton(esc(d.cta.label), escAttr(d.cta.url)) : ""}
+      ${d.cta ? `<p style="color:#6b7280;font-size:12px;line-height:1.6;margin:0 0 14px;font-family:Arial,sans-serif;">Si el bot&oacute;n no funciona, copia esta direcci&oacute;n en tu navegador:<br/><a href="${escAttr(d.cta.url)}" style="color:${BRAND_ORANGE()};word-break:break-all;">${esc(d.cta.url)}</a></p>` : ""}
+      ${d.note ? `<p style="color:#9ca3af;font-size:13px;line-height:1.6;margin:0 0 24px;font-family:Arial,sans-serif;">${esc(d.note)}</p>` : ""}
+    </td></tr>
+    ${emailFooter()}`;
+  return emailWrapper(d.title, body);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ENVÍO DE FACTURA (o factura de abono) al cliente, con el PDF adjunto
+// ═══════════════════════════════════════════════════════════════════════════════
+export interface InvoiceEmailData {
+  clientName: string;
+  invoiceNumber: string;
+  isCreditNote: boolean;
+  items: { description: string; quantity: number; unitPrice: number; total: number }[];
+  subtotal: number;
+  taxRate: string | number;
+  taxAmount: number;
+  total: number;
+  /** URL pública del PDF (también va adjunto), o null. */
+  pdfUrl: string | null;
+}
+
+export function buildInvoiceEmailHtml(d: InvoiceEmailData): string {
+  const eur = (n: number) => `${Number(n).toFixed(2).replace(".", ",")}&nbsp;&euro;`;
+  const kind = d.isCreditNote ? "la factura de abono" : "tu factura";
+  const rows = d.items
+    .map(
+      (i) => `<tr>
+        <td style="padding:10px 8px;border-bottom:1px solid #eef2f7;color:#374151;font-size:13px;font-family:Arial,sans-serif;">${escAttr(String(i.description ?? ""))}</td>
+        <td align="right" style="padding:10px 8px;border-bottom:1px solid #eef2f7;color:#6b7280;font-size:13px;font-family:Arial,sans-serif;">${Number(i.quantity)}</td>
+        <td align="right" style="padding:10px 8px;border-bottom:1px solid #eef2f7;color:#6b7280;font-size:13px;font-family:Arial,sans-serif;">${eur(i.unitPrice)}</td>
+        <td align="right" style="padding:10px 8px;border-bottom:1px solid #eef2f7;color:${BRAND_BLUE()};font-size:13px;font-weight:700;font-family:Arial,sans-serif;">${eur(i.total)}</td>
+      </tr>`,
+    )
+    .join("");
+  const body = `
+    ${emailHeader(d.isCreditNote ? "Factura de abono" : "Factura")}
+    <tr><td style="padding:28px 32px 8px;">
+      <p style="color:#111827;font-size:15px;margin:0 0 12px;font-family:Arial,sans-serif;">Hola <strong>${escAttr(d.clientName)}</strong>,</p>
+      <p style="color:#4b5563;font-size:15px;line-height:1.7;margin:0 0 16px;font-family:Arial,sans-serif;">Te enviamos ${kind} <strong>${escAttr(d.invoiceNumber)}</strong>. La encontrar&aacute;s adjunta a este correo en PDF.</p>
+      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;margin:8px 0 16px;">
+        <tr>
+          <th align="left" style="padding:8px;background:${BRAND_BLUE()};color:#ffffff;font-size:12px;font-family:Arial,sans-serif;">Concepto</th>
+          <th align="right" style="padding:8px;background:${BRAND_BLUE()};color:#ffffff;font-size:12px;font-family:Arial,sans-serif;">Cant.</th>
+          <th align="right" style="padding:8px;background:${BRAND_BLUE()};color:#ffffff;font-size:12px;font-family:Arial,sans-serif;">Precio</th>
+          <th align="right" style="padding:8px;background:${BRAND_BLUE()};color:#ffffff;font-size:12px;font-family:Arial,sans-serif;">Total</th>
+        </tr>
+        ${rows}
+        <tr><td colspan="3" align="right" style="padding:8px;color:#6b7280;font-size:13px;font-family:Arial,sans-serif;">Base imponible</td><td align="right" style="padding:8px;color:#374151;font-size:13px;font-family:Arial,sans-serif;">${eur(d.subtotal)}</td></tr>
+        <tr><td colspan="3" align="right" style="padding:8px;color:#6b7280;font-size:13px;font-family:Arial,sans-serif;">IVA (${escAttr(String(d.taxRate))}&nbsp;%)</td><td align="right" style="padding:8px;color:#374151;font-size:13px;font-family:Arial,sans-serif;">${eur(d.taxAmount)}</td></tr>
+        <tr><td colspan="3" align="right" style="padding:10px 8px;color:${BRAND_BLUE()};font-size:15px;font-weight:800;font-family:Arial,sans-serif;">Total</td><td align="right" style="padding:10px 8px;color:${BRAND_ORANGE()};font-size:17px;font-weight:800;font-family:Arial,sans-serif;">${eur(d.total)}</td></tr>
+      </table>
+      ${d.pdfUrl ? ctaButton("Descargar la factura", escAttr(d.pdfUrl)) : ""}
+    </td></tr>
+    ${emailFooter()}`;
+  return emailWrapper(`${d.isCreditNote ? "Factura de abono" : "Factura"} ${d.invoiceNumber}`, body);
 }

@@ -22,6 +22,7 @@ import { htmlToPdf } from "../pdfGenerator";
 import { createGHLContact, triggerGHLWorkflow, syncLeadUrlsToGHL } from "../ghl";
 import { legacyDb, legacyPool } from "../_core/legacyDb";
 import { integrationEnv } from "../_core/tenantConfig";
+import { buildNoticeHtml } from "../emailTemplates";
 
 const _pool = legacyPool();
 const db = legacyDb();
@@ -443,19 +444,7 @@ export const partnersRouter = router({
       await sendEmail({
         to: input.email,
         subject: `Invitación al portal de colaboradores — ${partner.name}`,
-        html: `
-          <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px;">
-            <h2 style="color:#ea580c">Bienvenido al portal de colaboradores</h2>
-            <p>Hola <strong>${input.name}</strong>,</p>
-            <p>Has sido invitado a acceder al portal de colaboradores de <strong>${companyName()}</strong> como miembro de <strong>${partner.name}</strong>.</p>
-            <p style="margin:24px 0">
-              <a href="${inviteUrl}" style="background:#ea580c;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold">
-                Activar mi cuenta
-              </a>
-            </p>
-            <p style="color:#666;font-size:13px">Este enlace caduca en 7 días.</p>
-          </div>
-        `,
+        html: buildNoticeHtml({ badge: "Invitación", title: "Bienvenido al portal de colaboradores", greetingName: input.name, paragraphs: [`Te han invitado al portal de colaboradores de ${companyName()} como miembro de ${partner.name}.`], cta: { label: "Activar mi cuenta", url: inviteUrl }, note: "Este enlace caduca en 7 días." }),
       }).catch(() => {});
 
       return { ok: true };
