@@ -1764,6 +1764,20 @@ export async function upsertPage(data: { slug: string; title: string; isPublishe
   return { success: true };
 }
 
+/**
+ * Crea o actualiza una página de la web de la empresa con su contenido (HTML). Se guarda ya saneado con la lista blanca
+ * de las páginas (`sanitizeRichHtml`), la misma que se aplica al servirlo.
+ */
+export async function savePageContent(data: { slug: string; title: string; content: string; isPublished: boolean; metaTitle?: string | null; metaDescription?: string | null }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const { sanitizeRichHtml } = await import("./_core/htmlSanitize");
+  const content = sanitizeRichHtml(data.content);
+  const values = { title: data.title, content, isPublished: data.isPublished, metaTitle: data.metaTitle ?? null, metaDescription: data.metaDescription ?? null };
+  await db.insert(staticPages).values({ slug: data.slug, ...values }).onDuplicateKeyUpdate({ set: { ...values, updatedAt: new Date() } });
+  return { success: true, slug: data.slug };
+}
+
 export async function getPageBlocks(pageSlug: string) {
   const db = await getDb();
   if (!db) return [];

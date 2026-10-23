@@ -106,6 +106,7 @@ import {
   getAllPages,
   getPageBySlug,
   upsertPage,
+  savePageContent,
   getPageBlocks,
   savePageBlocks,
   createReavExpedient,
@@ -766,6 +767,20 @@ export const appRouter = router({
       }))
       .mutation(async ({ input }) => {
         return savePageBlocks(input.pageSlug, input.blocks as any[]);
+      }),
+
+    /** Contenido de una página de la web (crea la página si no existe). El HTML se sanea al guardar y al servir. */
+    savePageContent: adminProcedure
+      .input(z.object({
+        slug: z.string().regex(/^[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?$/, "La dirección solo puede llevar minúsculas, números y guiones"),
+        title: z.string().trim().min(1, "Indica el título").max(200),
+        content: z.string().max(200_000),
+        isPublished: z.boolean(),
+        metaTitle: z.string().trim().max(200).optional(),
+        metaDescription: z.string().trim().max(300).optional(),
+      }))
+      .mutation(async ({ input }) => {
+        return savePageContent(input);
       }),
 
     upsertPage: adminProcedure
