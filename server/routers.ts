@@ -195,7 +195,7 @@ import { operationsRouter } from "./routers/operations";
 import { hrRouter } from "./routers/hr";
 import { bankMovementsRouter } from "./routers/bankMovements";
 import { cashRegisterRouter } from "./routers/cashRegister";
-import { getBusinessEmail } from "./config";
+import { getBusinessEmail, internalNoticeEmail } from "./config";
 import { cardTerminalOperationsRouter } from "./routers/cardTerminalOperations";
 import { cardTerminalBatchesRouter } from "./routers/cardTerminalBatches";
 import { notificationsRouter } from "./routers/notifications";
@@ -476,7 +476,7 @@ export const appRouter = router({
         }).catch(err => console.error("[submitBudget] Email al usuario fallido:", err));
 
         // Email al administrador
-        const adminEmail = process.env.ADMIN_EMAIL ?? await getBusinessEmail('reservations');
+        const adminEmail = await internalNoticeEmail();
         sendManagedEmail({
           templateKey: "budget_request_admin",
           triggerEvent: "lead_submitted",
@@ -530,7 +530,7 @@ export const appRouter = router({
           leadSourceCode: "LANDING_COLEGIOS",
         });
 
-        const adminEmail = process.env.ADMIN_EMAIL ?? await getBusinessEmail('reservations');
+        const adminEmail = await internalNoticeEmail();
         const msgLines = [
           `Organización: ${input.organizationName}`,
           `Tipo de grupo: ${input.groupType ?? "—"}`,
