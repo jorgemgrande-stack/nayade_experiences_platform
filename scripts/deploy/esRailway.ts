@@ -283,8 +283,20 @@ async function main() {
       const wh = await pm("GET", "/webhooks?MessageStream=outbound");
       webhooks = ((wh.j.Webhooks as Array<{ ID: number; Url: string }>) ?? []);
       console.log(`Postmark webhooks: ${webhooks.length ? webhooks.map((w) => w.Url).join(", ") : "ninguno"}`);
-      const out = await pm("GET", "/messages/outbound?count=10&offset=0");
+      const out = await pm("GET", "/messages/outbound?count=100&offset=0");
       console.log(`Postmark envíos registrados: ${out.status === 200 ? out.j.TotalCount : `HTTP ${out.status}`}`);
+      // Estado real de cada mensaje (evidencia sin depender del webhook): destinatario enmascarado, asunto y eventos
+      const msgs = ((out.j.Messages as Array<{ MessageID: string; Subject: string; Status: string; To: Array<{ Email: string }>; ReceivedAt: string }>) ?? []);
+      const mask = (e: string) => e.replace(/^(.).*(@.*)$/, "$1***$2");
+      const tally: Record<string, number> = {};
+      for (const m of msgs) {
+        const det = await pm("GET", `/messages/outbound/${m.MessageID}/details`);
+        const events = ((det.j.MessageEvents as Array<{ Type: string }>) ?? []).map((e) => e.Type);
+        const final = events.includes("Bounced") ? "Bounced" : events.includes("Delivered") ? "Delivered" : m.Status;
+        tally[final] = (tally[final] ?? 0) + 1;
+        console.log(`  ${m.ReceivedAt.slice(0, 19)} ${final.padEnd(10)} ${mask(m.To?.[0]?.Email ?? "")} · ${m.Subject.slice(0, 90)}`);
+      }
+      console.log(`Postmark por estado: ${JSON.stringify(tally)}`);
     }
     const allowRaw = arg("allow", false);
     if (!allowRaw) return;
