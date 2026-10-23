@@ -13,7 +13,7 @@
  *   tsx scripts/deploy/esRailway.ts health  --url https://... [--expect 200]
  *   tsx scripts/deploy/esRailway.ts storage --env live            (almacenamiento de cada servicio, sin secretos)
  *   tsx scripts/deploy/esRailway.ts storage-fix --env live        (almacenamiento como referencias a los buckets de live)
- *   tsx scripts/deploy/esRailway.ts test-domains --env live --only <a>,<b>  (dominio de las pasarelas de prueba)
+ *   tsx scripts/deploy/esRailway.ts test-gateways --env live --only <a>,<b> --dir <dir> --sha <commit>  (pasarelas de prueba)
  *
  * `drill` ejecuta una orden de operación PERMITIDA (copias, simulación y aplicación de migraciones, verificación)
  * en el servicio restore-drill de la red privada, espera a que termine, muestra su registro (sin DSN ni claves) y
@@ -23,7 +23,7 @@ import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { DRILL_IDLE, EXCLUDED_FROM_EXPORT, STORAGE_BUCKETS, STORAGE_VARS, describeStorageVar, guard, isAllowedDrill, scrub, storageReferences, testTenantDomains, type DeployConfig, type TokenScope } from "./esRailwayLib";
+import { DRILL_IDLE, EXCLUDED_FROM_EXPORT, GATEWAY_COPIED_VARS, GATEWAY_TEMPLATE_SERVICE, STORAGE_BUCKETS, STORAGE_VARS, describeStorageVar, guard, isAllowedDrill, scrub, storageReferences, testTenantDomains, type DeployConfig, type TokenScope } from "./esRailwayLib";
 import { REPOSITORIES } from "../../shared/repositories";
 
 const CONFIG_PATH = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../deploy/railway/elephant-source.deploy.json");
@@ -129,7 +129,7 @@ async function main() {
   const env = arg("env");
   const sc = await scope();
   const service = cmd === "deploy" ? arg("service") : cmd === "drill" ? "restore-drill" : undefined;
-  if (!["verify", "status", "deploy", "drill", "storage", "storage-fix", "test-domains"].includes(cmd)) throw new Error(`orden desconocida: ${cmd}`);
+  if (!["verify", "status", "deploy", "drill", "storage", "storage-fix", "test-gateways"].includes(cmd)) throw new Error(`orden desconocida: ${cmd}`);
   const problems = guard(cfg, sc, { env, service });
   if (problems.length) {
     console.error(`Detenido antes de tocar nada:\n - ${problems.join("\n - ")}`);
@@ -188,15 +188,51 @@ async function main() {
     }
     return;
   }
-  if (cmd === "test-domains") {
-    // Pasarelas de las empresas de prueba de live: su dominio generado pasa a <empresa>.up.railway.app
+  if (cmd === "test-gateways") {
+    // Pasarelas de las empresas de prueba, SOLO en live: se crean en este entorno (environmentId) si no existen, con la
+    // construcción y las variables de core-gateway, se despliegan desde el mismo export y reciben <empresa>.up.railway.app
     const t = await api<{ projectToken: { projectId: string } }>("query { projectToken { projectId } }");
+    const p = t.projectToken.projectId;
+    const dir = path.resolve(arg("dir"));
+    const sha = arg("sha");
+    for (const f of EXCLUDED_FROM_EXPORT) if (fs.existsSync(path.join(dir, f))) throw new Error(`el export contiene ${f}: no se despliega`);
+    const tplId = await serviceId(GATEWAY_TEMPLATE_SERVICE);
+    const tplInstance = await api<{ serviceInstance: { builder: string | null; dockerfilePath: string | null; rootDirectory: string | null; healthcheckPath: string | null } }>(
+      "query($e:String!,$s:String!){ serviceInstance(environmentId:$e, serviceId:$s){ builder dockerfilePath rootDirectory healthcheckPath } }",
+      { e: sc.environmentId, s: tplId },
+    );
+    const tplVars = (await api<{ variables: Record<string, string> }>("query($p:String!,$e:String!,$s:String!){ variables(projectId:$p, environmentId:$e, serviceId:$s, unrendered:true) }", { p, e: sc.environmentId, s: tplId })).variables;
+    for (const k of GATEWAY_COPIED_VARS) if (!tplVars[k]) throw new Error(`${GATEWAY_TEMPLATE_SERVICE} no tiene ${k}`);
+    const cfg = tplInstance.serviceInstance;
     for (const g of testTenantDomains(env, arg("only"))) {
-      if (!sc.services.includes(g.service)) throw new Error(`la pasarela ${g.service} no existe en el entorno`);
-      const sid = await serviceId(g.service);
+      let sid: string;
+      const known = (await scope()).services.includes(g.service);
+      if (known) sid = await serviceId(g.service);
+      else {
+        const c = await api<{ serviceCreate: { id: string } }>("mutation($i:ServiceCreateInput!){ serviceCreate(input:$i){ id } }", { i: { projectId: p, environmentId: sc.environmentId, name: g.service } });
+        sid = c.serviceCreate.id;
+        console.log(`${g.service}: creada en «${env}»`);
+      }
+      for (const k of GATEWAY_COPIED_VARS) {
+        await api("mutation($i:VariableUpsertInput!){ variableUpsert(input:$i) }", { i: { projectId: p, environmentId: sc.environmentId, serviceId: sid, name: k, value: tplVars[k], skipDeploys: true } });
+      }
+      await api("mutation($s:String!,$e:String!,$i:ServiceInstanceUpdateInput!){ serviceInstanceUpdate(serviceId:$s, environmentId:$e, input:$i) }", {
+        s: sid,
+        e: sc.environmentId,
+        i: { ...(cfg.builder ? { builder: cfg.builder } : {}), dockerfilePath: cfg.dockerfilePath, rootDirectory: cfg.rootDirectory, healthcheckPath: cfg.healthcheckPath },
+      });
+      const before = (await latest(sid, sc.environmentId))?.id ?? null;
+      const r = spawnSync("railway", ["up", dir, "--path-as-root", "-s", g.service, "-e", env, "--detach", "-m", `${REPOSITORIES.core} ${sha}`], { encoding: "utf8", env: process.env });
+      if (r.status !== 0) throw new Error(`railway up falló: ${scrub(r.stderr || r.stdout || "").slice(0, 400)}`);
+      const d = await waitFor(sid, sc.environmentId, before);
+      console.log(`${g.service}: despliegue ${d.id} → ${d.status}`);
+      if (d.status !== "SUCCESS") {
+        console.log((await logs(d.id, 120)).split("\n").slice(-40).join("\n"));
+        process.exit(1);
+      }
       const dm = await api<{ domains: { serviceDomains: Array<{ id: string; domain: string }> } }>(
         "query($p:String!,$e:String!,$s:String!){ domains(projectId:$p, environmentId:$e, serviceId:$s){ serviceDomains { id domain } } }",
-        { p: t.projectToken.projectId, e: sc.environmentId, s: sid },
+        { p, e: sc.environmentId, s: sid },
       );
       const current = dm.domains.serviceDomains[0];
       if (current?.domain === g.domain) {

@@ -9,7 +9,7 @@
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
-import { DRILL_ALLOWED, EXCLUDED_FROM_EXPORT, describeStorageVar, guard, isAllowedDrill, scrub, storageReferences, testTenantDomains, type DeployConfig } from "../scripts/deploy/esRailwayLib";
+import { DRILL_ALLOWED, EXCLUDED_FROM_EXPORT, describeStorageVar, guard, isAllowedDrill, scrub, storageReferences, testTenantDomains, GATEWAY_COPIED_VARS, GATEWAY_TEMPLATE_SERVICE, type DeployConfig } from "../scripts/deploy/esRailwayLib";
 
 const cfg = JSON.parse(fs.readFileSync(path.resolve(__dirname, "../deploy/railway/elephant-source.deploy.json"), "utf8")) as DeployConfig;
 const wf = fs.readFileSync(path.resolve(__dirname, "../.github/workflows/deploy-elephant-source.yml"), "utf8");
@@ -128,10 +128,10 @@ describe("preparar-pruebas-live (autorizado por el propietario el 23/10/2026)", 
     expect(() => storageReferences("production")).toThrow();
   });
 
-  it("dominios: solo dos empresas de prueba, en orden, en las pasarelas gw-demo-a/b de live", () => {
+  it("dominios: solo dos empresas de prueba, en orden, en las pasarelas gw-prueba-a/b de live", () => {
     expect(testTenantDomains("live", "cms-prueba-a-20261023,cms-prueba-b-20261023")).toEqual([
-      { service: "gw-demo-a", tenantId: "cms-prueba-a-20261023", domain: "cms-prueba-a-20261023.up.railway.app" },
-      { service: "gw-demo-b", tenantId: "cms-prueba-b-20261023", domain: "cms-prueba-b-20261023.up.railway.app" },
+      { service: "gw-prueba-a", tenantId: "cms-prueba-a-20261023", domain: "cms-prueba-a-20261023.up.railway.app" },
+      { service: "gw-prueba-b", tenantId: "cms-prueba-b-20261023", domain: "cms-prueba-b-20261023.up.railway.app" },
     ]);
     for (const bad of ["skibox,cms-prueba-b-20261023", "cms-prueba-a-20261023", "app,bigelephant", "cms-prueba-a-20261023,cms-prueba-a-20261023"]) {
       expect(() => testTenantDomains("live", bad), bad).toThrow();
@@ -144,5 +144,15 @@ describe("preparar-pruebas-live (autorizado por el propietario el 23/10/2026)", 
     expect(wf).toContain('if [ "${ES_ENV}" != "live" ]; then echo "preparar-pruebas-live solo existe en live"; exit 1; fi');
     expect(wf).toContain("grep -Eq '^cms-prueba-a-[0-9]{8},cms-prueba-b-[0-9]{8}$'");
     expect(wf.indexOf("storage-fix --env")).toBeLessThan(wf.indexOf('if [ "${ES_ACTION}" = "preparar-pruebas-live" ]; then SERVICE="core"; fi'));
+    expect(wf.indexOf("test-gateways --env")).toBeLessThan(wf.indexOf('if [ "${ES_ACTION}" = "preparar-pruebas-live" ]; then SERVICE="core"; fi'));
+  });
+
+  it("pasarelas de prueba: se crean solo en el entorno del token, copian de core-gateway solo usuario, hash y destino", () => {
+    expect(GATEWAY_TEMPLATE_SERVICE).toBe("core-gateway");
+    expect([...GATEWAY_COPIED_VARS]).toEqual(["GATEWAY_USER", "GATEWAY_PASSWORD_HASH", "UPSTREAM"]);
+    const src = fs.readFileSync(path.resolve(__dirname, "../scripts/deploy/esRailway.ts"), "utf8");
+    // serviceCreate siempre con environmentId (sin él, Railway crea el servicio en todos los entornos)
+    expect(src).toContain('serviceCreate(input:$i){ id } }", { i: { projectId: p, environmentId: sc.environmentId, name: g.service } }');
+    expect(src).not.toMatch(/PUBLIC_HOSTS|APP_ENTRY_HOST/);
   });
 });
