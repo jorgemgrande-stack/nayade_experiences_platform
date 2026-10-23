@@ -160,7 +160,9 @@ export function mailSandboxPlan(env: string, vars: Record<string, Record<string,
   const changes: MailChange[] = [];
   for (const s of MAIL_TEST_SERVICES) {
     if (!has(s, "POSTMARK_SERVER_TOKEN") && tokenAt.length) changes.push({ service: s, name: "POSTMARK_SERVER_TOKEN", copyFrom: tokenAt[0] });
-    const want: Record<string, string> = { MAIL_PROVIDER: "postmark", MAIL_MODE: "sandbox", MAIL_SENDING_DOMAIN: MAIL_SENDING_DOMAIN_LIVE, MAIL_SANDBOX_ALLOWLIST: allow.join(",") };
+    // En el sandbox de pruebas la batería completa (≈80 correos) va a 1-10 buzones propios: el límite por destinatario
+    // de producción (8/h) la retendría. Solo aquí; en production no se toca.
+    const want: Record<string, string> = { MAIL_PROVIDER: "postmark", MAIL_MODE: "sandbox", MAIL_SENDING_DOMAIN: MAIL_SENDING_DOMAIN_LIVE, MAIL_SANDBOX_ALLOWLIST: allow.join(","), MAIL_RATE_RECIPIENT_PER_HOUR: "200" };
     for (const [k, v] of Object.entries(want)) if ((vars[s]?.[k] ?? "") !== v) changes.push({ service: s, name: k, value: v });
     if ((vars[s]?.MAIL_LIVE_AUTHORIZED ?? "") === "1") problems.push(`${s} tiene MAIL_LIVE_AUTHORIZED=1: no se toca sin el propietario`);
   }
