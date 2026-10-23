@@ -204,8 +204,8 @@ async function sendViaSMTP(params: MailParams): Promise<boolean> {
 
 // ─── CC global ───────────────────────────────────────────────────────────────
 // Dirección que recibe copia de TODOS los emails salientes.
-// Se puede sobreescribir con la variable de entorno GLOBAL_CC_EMAIL.
-const GLOBAL_CC_EMAIL = process.env.GLOBAL_CC_EMAIL ?? "reservas@nayadeexperiences.es";
+// Solo la configurada (GLOBAL_CC_EMAIL); sin ella, ninguna.
+const globalCcEmail = () => (process.env.GLOBAL_CC_EMAIL ?? "").trim();
 
 /**
  * Correos con enlaces de acceso de un solo uso (crear o restablecer contraseña, verificar el correo): nunca
@@ -220,7 +220,7 @@ function mergeGlobalCc(params: MailParams): MailParams {
     ? (Array.isArray(params.cc) ? params.cc : [params.cc])
     : [];
   // En multiempresa la copia global es un ajuste del propio tenant: nunca la dirección de Náyade
-  const cc = isMultiTenant() ? getSystemSettingSync("email_cc_all", "") : GLOBAL_CC_EMAIL;
+  const cc = isMultiTenant() ? getSystemSettingSync("email_cc_all", "") : globalCcEmail();
   const merged = Array.from(new Set([...existing, ...(cc ? [cc] : [])]));
   return { ...params, cc: merged.length ? merged : undefined };
 }

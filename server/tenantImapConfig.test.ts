@@ -58,8 +58,11 @@ describe("buzones IMAP de cada empresa", () => {
     expect(resolveEnvName("IMAP_EXPENSE_HOST")).toEqual({ provider: "imap_expenses", field: "host" });
   });
 
-  it("las ingestas usan en multiempresa solo la configuración de la empresa", () => {
-    expect(read("services/emailTpvIngestionService.ts")).toContain('? tenantImapConfig("IMAP_TPV")');
-    expect(read("services/expenseEmailIngestionService.ts")).toContain('? tenantImapConfig("IMAP_EXPENSE")');
+  it("las ingestas usan solo un buzón configurado, sin respaldos fijos de otra instalación", () => {
+    const tpv = read("services/emailTpvIngestionService.ts");
+    const gastos = read("services/expenseEmailIngestionService.ts");
+    expect(tpv).toContain('const cfg: ImapConfig | null = tenantImapConfig("IMAP_TPV");');
+    expect(gastos).toContain('const cfg: ImapConfig | null = tenantImapConfig("IMAP_EXPENSE");');
+    for (const src of [tpv, gastos]) expect(src).not.toMatch(/skicenter|dinaserver/);
   });
 });

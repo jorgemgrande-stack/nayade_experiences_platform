@@ -3,7 +3,7 @@
  * Gestión de seguimiento de presupuestos no convertidos.
  */
 import { router, staffProcedure } from "../_core/trpc";
-import { legacyBrandText } from "../tenantBrand";
+import { companyName } from "../tenantBrand";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import {
@@ -482,7 +482,7 @@ export const commercialFollowupRouter = router({
         customBody: input.customBody,
       };
 
-      const subject = input.customSubject ?? `Recordatorio — tu propuesta ${quote.quoteNumber} · ${legacyBrandText(process.env.BRAND_NAME ?? "Náyade Experiences")}`;
+      const subject = input.customSubject ?? `Recordatorio — tu propuesta ${quote.quoteNumber} · ${companyName()}`;
       const html = pickReminderTemplate(newCount, emailData);
 
       const templateKey = `commercial_reminder_${Math.min(newCount, 3)}` as "commercial_reminder_1" | "commercial_reminder_2" | "commercial_reminder_3";

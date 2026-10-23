@@ -17,15 +17,9 @@ const ORIGINAL = /N[aá]yade|N&[aA]acute;[yY][aA][dD][eE]|nayadeexperiences|skic
 const BASELINE: Record<string, number> = {
   "_core/index.ts": 24,
   "_core/vite.ts": 19,
-  "config/index.ts": 2,
   "mail/policy.ts": 1,
-  "mailer.ts": 1,
-  "routers/cancellations.ts": 2,
-  "routers/commercialFollowup.ts": 1,
   "routers/emailTemplatesRouter.ts": 30,
   "routers/pdfTemplatesRouter.ts": 29,
-  "services/emailTpvIngestionService.ts": 2,
-  "services/expenseEmailIngestionService.ts": 2,
 };
 
 function walk(dir: string): string[] {
