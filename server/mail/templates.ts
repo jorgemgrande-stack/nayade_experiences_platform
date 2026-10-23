@@ -66,7 +66,8 @@ export function layout(brand: LayoutBrand, title: string, paragraphs: string[], 
     : `<span style="${font};font-size:15px;font-weight:700;letter-spacing:.01em;color:${C.ink}">${esc(brand.name)}</span>`;
   const button = link
     ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0 8px"><tr>` +
-      `<td style="border-radius:8px;background:${C.ink}"><a href="${esc(link)}" target="_blank" style="display:inline-block;padding:13px 24px;${font};font-size:15px;font-weight:600;line-height:1.2;color:#ffffff;text-decoration:none;border-radius:8px">${esc(cta!.label)}</a></td>` +
+      // Relleno y color en la CELDA (Outlook de escritorio ignora el relleno de los enlaces y pegaba el texto al borde)
+      `<td bgcolor="${C.ink}" style="border-radius:8px;background:${C.ink};padding:13px 24px;mso-padding-alt:13px 24px"><a href="${esc(link)}" target="_blank" style="display:inline-block;${font};font-size:15px;font-weight:600;line-height:1.2;color:#ffffff;text-decoration:none">${esc(cta!.label)}</a></td>` +
       `</tr></table>` +
       `<p style="margin:12px 0 0;${font};font-size:13px;line-height:1.5;color:${C.muted}">Si el botón no funciona, copia esta dirección en el navegador:<br><span style="word-break:break-all">${esc(link)}</span></p>`
     : "";
