@@ -21,11 +21,16 @@ repositorio) en la consola operativa del negocio SaaS. Encargo del 24/10/2026.
 | B | Resource Manager: el plano de control no tenía `ERM_DATABASE_URL` | P0 | **Corregido y verificado en live** (#302, #303). Production: operación protegida pendiente |
 | B | Estados de empresa, prueba y suscripción separados | P1 | Desarrollado (CRM #35); el estado técnico, pendiente |
 | C | Listado de empresas (orden, avisos «requieren atención») | P1 | Desarrollado (CRM #35) |
-| C | Ficha 360° | P1 | Pendiente |
+| C | Ficha 360° (resumen por dimensión, copias, comunicaciones) | P1 | **Desplegado en live** (CRM #36, #40, #41, #42) |
 | G | Etiqueta de entorno: el CRM de live decía «Producción» | P0 | **Corregido** (CRM #34) |
-| C | Alta guiada | P1 | Pendiente |
-| D | Dashboard, tareas y tickets | P1 | Pendiente |
-| E | Versiones, migraciones, backups y salud | P2 | Pendiente |
+| C | Alta guiada (reutiliza el asistente; alta técnica como avanzada) | P1 | Desplegado en live (CRM #39) |
+| D | Dashboard: sección Clientes SaaS | P1 | **Desplegado en live** (CRM #38) |
+| D | Tareas: alta, filtros por vencimiento, enlace a empresa | P1 | Desplegado en live (CRM #37) |
+| D | Tickets: ya era funcional (estaba vacío por no haber registros); ciclo completo verificado en live | P1 | **Verificado** |
+| D | Tareas: responsable y prioridad | P2 | Bloqueado: requiere migración del CRM |
+| E | Versiones de esquema por empresa (API + vista) | P2 | Core #306 y CRM #43 (pendiente de publicar en live) |
+| E | Copias por empresa en la ficha | P2 | Desplegado en live (CRM #41) |
+| G | Publicación: referencia común de servicios (evita copia+migración en cada publicación) | P2 | Core #305 |
 | F | Web comercial | P2 | Pendiente |
 
 ## Decisiones técnicas
@@ -69,3 +74,6 @@ repositorio) en la consola operativa del negocio SaaS. Encargo del 24/10/2026.
 1. Despliegues protegidos de controlplane, core y CRM para que Accesos llegue a `admin.bigelephant.es` (caso Skibox).
 2. `ERM_DATABASE_URL` en el plano de control de production (referencia a la del Core, si el Core de production la tiene).
 3. Token de Railway para el entorno `elephant-source-production-despliegue`.
+  - CRM #35–#43 en live (salvo #43, pendiente del Core #306): estados por dimensión, ficha 360°, tareas, dashboard SaaS, alta guiada, copias, comunicaciones y versiones.
+  - Tickets: alta, asignación, nota interna, estado y cierre verificados con la API real de live.
+  - Incidencias abiertas en live (del dashboard): «Stripe: la tarea periódica falla repetidamente» (ventana de Stripe, no tocada) y «Fallos de envío de correo repetidos» (los 412 del 23/10, anteriores a la aprobación de Postmark).
