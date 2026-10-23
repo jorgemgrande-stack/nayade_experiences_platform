@@ -384,6 +384,21 @@ async function main() {
         console.log(`Registro del plano de control (despliegue activo): ${lines.length} líneas MailWebhook`);
         for (const l of lines.slice(-15)) console.log(`  ${l.slice(0, 240)}`);
       }
+      // Prueba del lado propio: el evento de entrega REAL del último mensaje entregado (sus metadatos de Postmark),
+      // enviado al webhook con la cabecera configurada. Respuesta del plano de control: recibidos/aplicados/ignorados
+      if (webhooks.length) {
+        const last = await pm("GET", "/messages/outbound?count=1&offset=0&status=sent");
+        const m = ((last.j.Messages as Array<{ MessageID: string; Recipients?: string[] }>) ?? [])[0];
+        const det = m ? await pm("GET", `/messages/outbound/${m.MessageID}/details`) : null;
+        const hook = await pm("GET", `/webhooks/${webhooks[0].ID}`);
+        const h = ((hook.j.HttpHeaders as Array<{ Name: string; Value: string }>) ?? []).find((x) => x.Name.toLowerCase() === "x-elephant-webhook-token");
+        if (m && det && h) {
+          const ev = { RecordType: "Delivery", MessageID: m.MessageID, Recipient: m.Recipients?.[0], DeliveredAt: new Date().toISOString(), Details: "prueba del webhook", Metadata: det.j.Metadata ?? {}, MessageStream: "outbound" };
+          const r = await fetch(webhooks[0].Url, { method: "POST", headers: { "content-type": "application/json", "x-elephant-webhook-token": h.Value }, body: JSON.stringify(ev) });
+          const txt = (await r.text()).slice(0, 200);
+          console.log(`Prueba del webhook: metadatos ${Object.keys((det.j.Metadata as object) ?? {}).join(",") || "NINGUNO"} → HTTP ${r.status} ${scrub(txt)}`);
+        } else console.log("Prueba del webhook: sin mensaje entregado o sin cabecera");
+      }
       const out = await pm("GET", "/messages/outbound?count=100&offset=0");
       console.log(`Postmark envíos registrados: ${out.status === 200 ? out.j.TotalCount : `HTTP ${out.status}`}`);
       // Estado real de cada mensaje (evidencia sin depender del webhook): destinatario enmascarado, asunto y eventos
