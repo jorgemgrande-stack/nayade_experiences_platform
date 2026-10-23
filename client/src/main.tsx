@@ -1,7 +1,8 @@
 import { trpc } from "@/lib/trpc";
 import { UNAUTHED_ERR_MSG } from '@shared/const';
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { httpBatchLink, TRPCClientError } from "@trpc/client";
+import { httpBatchLink, httpLink, TRPCClientError } from "@trpc/client";
+import { isTenantSite } from "@/lib/tenantSite";
 import { createRoot } from "react-dom/client";
 import superjson from "superjson";
 import App from "./App";
@@ -38,19 +39,21 @@ queryClient.getMutationCache().subscribe(event => {
   }
 });
 
+const linkOptions = {
+  url: "/api/trpc",
+  transformer: superjson,
+  fetch(input: RequestInfo | URL, init?: RequestInit) {
+    return globalThis.fetch(input, {
+      ...(init ?? {}),
+      credentials: "include",
+    });
+  },
+};
+
+// Web de una empresa (multiempresa): consultas sueltas. Las licencias y los módulos se comprueban por petición HTTP, y
+// en una petición agrupada bastaba una consulta no contratada para tumbar también las públicas (tema, menú, página)
 const trpcClient = trpc.createClient({
-  links: [
-    httpBatchLink({
-      url: "/api/trpc",
-      transformer: superjson,
-      fetch(input, init) {
-        return globalThis.fetch(input, {
-          ...(init ?? {}),
-          credentials: "include",
-        });
-      },
-    }),
-  ],
+  links: [isTenantSite() ? httpLink(linkOptions) : httpBatchLink(linkOptions)],
 });
 
 createRoot(document.getElementById("root")!).render(
