@@ -21,12 +21,13 @@ describe("páginas propias de la instalación original en la web de cada empresa
   ])("%s pasa por SingleOnlyPage (en la web neutra, la página propia «%s» no se sirve)", (route, component, slug) => {
     const line = app.split(/\r?\n/).find((l) => l.includes(`<Route path="${route}"`));
     expect(line, route).toBeDefined();
-    expect(line).toContain(`<SingleOnlyPage Single={${component}} slug="${slug}" />`);
+    // Sin `Tenant`, la página propia del CMS; con `Tenant`, la versión genérica alimentada con los datos de la empresa
+    expect(line).toMatch(new RegExp(`<SingleOnlyPage Single=\\{${component}\\} slug="${slug}"( Tenant=\\{Tenant[A-Za-z]+\\})? />`));
   });
 
   it("SingleOnlyPage: en la web neutra, la página de la empresa (o 404); solo en la instalación propia, la original", () => {
     const body = theme.slice(theme.indexOf("export function SingleOnlyPage"), theme.indexOf("export function SlugGate"));
-    expect(body).toMatch(/if \(theme\?\.neutralSite\) return <TenantPage slug=\{slug\} \/>;/);
+    expect(body).toMatch(/if \(theme\?\.neutralSite\) return Tenant \? <Tenant \/> : <TenantPage slug=\{slug\} \/>;/);
     expect(body.indexOf("neutralSite")).toBeLessThan(body.indexOf("return <Single />"));
   });
 

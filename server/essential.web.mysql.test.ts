@@ -72,6 +72,17 @@ describe.skipIf(!URL_)("Essential — Web y CMS (aplicación real, dos empresas 
     expect(pub?.title).toBe("Quiénes somos");
   });
 
+  it("ubicaciones: cada web muestra solo sus lugares de servicio y su texto de presentación", async () => {
+    expect((await ess.m("a", "products.createLocation", { slug: "sede-a", name: "Sede de A", address: "Calle de A 1" }, admA)).status).toBe(200);
+    expect((await ess.m("b", "products.createLocation", { slug: "sede-b", name: "Sede de B", address: "Calle de B 2" }, admB)).status).toBe(200);
+    expect(data(await ess.q("a", "public.getLocations")).map((l: any) => l.name)).toEqual(["Sede de A"]);
+    expect(data(await ess.q("b", "public.getLocations")).map((l: any) => l.name)).toEqual(["Sede de B"]);
+
+    expect((await ess.m("a", "cms.savePageContent", { slug: "ubicaciones", title: "Ubicaciones", content: "<p>Cómo llegar a A</p>", isPublished: true }, admA)).status).toBe(200);
+    expect(data(await ess.q("a", "public.getTenantPage", { slug: "ubicaciones" })).html).toContain("Cómo llegar a A");
+    expect(data(await ess.q("b", "public.getTenantPage", { slug: "ubicaciones" })) ?? null).toBeNull();
+  });
+
   it("cms-content: portada y páginas propias; la web de cada empresa solo sirve su contenido; legales en borrador fuera del menú", async () => {
     // A edita su portada y publica una página nueva
     expect((await ess.m("a", "cms.savePageContent", { slug: "inicio", title: "Inicio", content: "<h1>Portada de A</h1><script>x()</script>", isPublished: true }, admA)).status).toBe(200);
