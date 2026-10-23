@@ -275,4 +275,18 @@ describe.skipIf(!URL_)("Essential — Web y CMS (aplicación real, dos empresas 
     expect((await ess.m("a", "blog.remove", { id: draftId }, admA)).status).toBe(200);
     expect((await ess.sql("a", "SELECT COUNT(*) AS n FROM blog_posts"))[0].n).toBe(2);
   });
+
+  it("legales de relleno publicados (altas anteriores): no se sirven, ni en el menú ni en el sitemap, hasta redactarlos", async () => {
+    const relleno = "<h1>Política de privacidad</h1><p>A trata los datos personales. Complete este texto con su política.</p>";
+    expect((await ess.m("a", "cms.savePageContent", { slug: "politica-de-privacidad", title: "Privacidad", content: relleno, isPublished: true }, admA)).status).toBe(200);
+    expect((await ess.m("a", "cms.createMenuItem", { label: "Privacidad", url: "/privacidad", menuZone: "footer" }, admA)).status).toBe(200);
+    expect(data(await ess.q("a", "public.getTenantPage", { slug: "politica-de-privacidad" })) ?? null).toBeNull();
+    expect(data(await ess.q("a", "public.getMenuItems", { zone: "footer" })).map((m: any) => m.url)).not.toContain("/privacidad");
+    expect((await ess.call("a", "GET", "/sitemap.xml")).text).not.toContain("/politica-de-privacidad");
+    // Redactado por la empresa: se publica
+    expect((await ess.m("a", "cms.savePageContent", { slug: "politica-de-privacidad", title: "Privacidad", content: "<p>Responsable: A, S.L.</p>", isPublished: true }, admA)).status).toBe(200);
+    expect(data(await ess.q("a", "public.getTenantPage", { slug: "politica-de-privacidad" })).html).toContain("Responsable: A");
+    expect(data(await ess.q("a", "public.getMenuItems", { zone: "footer" })).map((m: any) => m.url)).toContain("/privacidad");
+    expect((await ess.call("a", "GET", "/sitemap.xml")).text).toContain("/politica-de-privacidad");
+  });
 });
