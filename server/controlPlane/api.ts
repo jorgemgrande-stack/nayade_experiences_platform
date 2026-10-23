@@ -131,6 +131,7 @@ import { diagnoseTenant } from "../_core/ops/diagnostics";
 import type { BackupInventory, BackupRecord } from "../_core/ops/backupInventory";
 import type { BackupCopyLedger } from "../_core/ops/backupCopies";
 import { BACKUP_TENANT_STATUSES } from "../_core/ops/backupJob";
+import { registerTenantAccessRoutes, type CoreAccessClient } from "./tenantAccess";
 
 export interface ControlPlaneDeps {
   tokens: ServiceToken[];
@@ -176,6 +177,8 @@ export interface ControlPlaneDeps {
   /** Orígenes del navegador autorizados (CORS). Vacío = ninguno. Nunca comodín. */
   allowedOrigins?: string[];
   supportSecret?: string;
+  /** Accesos de las empresas (Clientes SaaS → Accesos): el Core ejecuta cada acción en el contexto de la empresa. */
+  tenantAccess?: { client: CoreAccessClient };
   /** Operadores humanos con usuario y contraseña (sesión por cookie HttpOnly + CSRF). */
   operators?: OperatorAuthService;
   /** Atributo Secure de la cookie de sesión: `auto` (HTTPS) por defecto. */
@@ -1722,6 +1725,25 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         res.status(204).end();
       }),
     );
+  }
+
+  // ── Accesos de las empresas clientes ─────────────────────────────────────────
+  if (d.tenantAccess) {
+    registerTenantAccessRoutes(router, {
+      client: d.tenantAccess.client,
+      tenantExists: async (id) => {
+        const t = await d.reader.getTenant(id);
+        return !!t && t.status !== "deleted" && t.status !== "deleting";
+      },
+      record: (req, id, action, details) => d.registry.recordEvent(id, actor(req), action, details),
+      operatorOf: (req) => {
+        const a = getAuth(req)!.actor;
+        return `${a.type}:${a.id}`;
+      },
+      requireRead: requireScope("tenants:read"),
+      requireWrite: requireScope("support:write"),
+      wrap,
+    });
   }
 
   // ── Uso ────────────────────────────────────────────────────────────────────

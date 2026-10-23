@@ -30,6 +30,8 @@ import { centralLoginHost, createCentralAuthRouter, tenantUserFinder } from "../
 import { runWithTenant } from "../tenant";
 import { passwordFingerprint } from "../../localAuth";
 import { requestPasswordReset } from "../../passwordReset";
+import { createOpsAccessRouter } from "../opsAccess/router";
+import { runAccessAction } from "../opsAccess/actions";
 
 export function installTenantResolution(app: Express, env: NodeJS.ProcessEnv = process.env): TenantRuntime | null {
   const mode = getTenantMode();
@@ -68,6 +70,25 @@ export function installTenantResolution(app: Express, env: NodeJS.ProcessEnv = p
         }),
       );
       console.log(JSON.stringify({ ctx: "CentralAuth", event: "enabled", host: central }));
+    }
+    // Accesos de una empresa desde el plano de control (red privada, token firmado de un solo uso): antes de resolver
+    // la empresa por el host; la empresa sale del token y la acción corre en su contexto
+    {
+      const reader = rt.reader;
+      app.use(
+        createOpsAccessRouter({
+          secret: env.SUPPORT_JWT_SECRET,
+          tenantAllowed: async (id) => {
+            const t = await reader.getTenant(id);
+            return !!t && t.status !== "deleted" && t.status !== "deleting";
+          },
+          run: (id, act, uid, confirm) =>
+            runWithTenant(id, async () => {
+              await Promise.all([warmConfigCache(), warmIntegrationCreds(), warmTenantIdentity()]);
+              return runAccessAction(act, uid, confirm);
+            }),
+        }),
+      );
     }
     app.use(resolveTenantMiddleware(rt.resolver));
     // Salud (/readyz): BD del registro y, si el host es de una empresa servible, la BD de esa empresa
