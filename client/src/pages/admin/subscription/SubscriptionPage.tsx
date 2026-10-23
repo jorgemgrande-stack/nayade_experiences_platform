@@ -258,6 +258,9 @@ export default function SubscriptionPage() {
                 <Button asChild>
                   <Link href="/admin/suscripcion/modulos">Ver módulos y ampliaciones</Link>
                 </Button>
+                <Button asChild variant="outline">
+                  <Link href="/admin/suscripcion/consumo">Ver consumo</Link>
+                </Button>
                 <UpgradeAction url={data.upgradeUrl} label="Ver planes" />
               </div>
               <p className="text-xs text-muted-foreground">

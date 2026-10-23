@@ -91,6 +91,7 @@ import type { InvoiceLineStore } from "../stripe/invoiceLines";
 import { ModulePurchaseService } from "../stripe/purchases";
 import { createBillingPortalRouter, createPurchasesRouter } from "../stripe/purchasesApi";
 import { createPanelCatalogRouter } from "../commerce/panelCatalog";
+import { createPanelUsageRouter } from "../commerce/panelUsage";
 import { BillingPortalService } from "../stripe/billingPortal";
 import { StripeReconciler, startStripeWorker } from "../stripe/reconcile";
 import { stripeWebhookHandler } from "../stripe/webhook";
@@ -798,6 +799,8 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
       });
     }),
   );
+  // Consumo de la propia empresa para su panel (solo lectura, mismo token que la compra)
+  router.use("/commerce", createPanelUsageRouter({ quotas: d.quotas, usage: d.usage, defaults: quotaDefaults }));
 
   // Diagnóstico de una empresa (registro, dominios, BD de la empresa, esquema, licencias): solo operadores
   router.get(

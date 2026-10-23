@@ -87,6 +87,7 @@ describe("API del Resource Manager", () => {
   const OPS = "erm-ops-token-aaaaaaaaaaaaaaaaaaaaaaaa";
   const USAGE_ONLY = "erm-usage-token-bbbbbbbbbbbbbbbbbbbbb";
   const READER = "erm-read-token-cccccccccccccccccccccc";
+  const CORE = "erm-core-token-dddddddddddddddddddddd";
   const OP: Actor = { type: "operator", id: "test" };
 
   beforeAll(async () => {
@@ -117,6 +118,7 @@ describe("API del Resource Manager", () => {
         { id: "ops", sha256: hashToken(OPS), scopes: ["usage:read", "tenants:read", "quotas:write", "ops:read"] as const },
         { id: "usage", sha256: hashToken(USAGE_ONLY), scopes: ["usage:read"] as const },
         { id: "reader", sha256: hashToken(READER), scopes: ["tenants:read"] as const },
+        { id: "core", sha256: hashToken(CORE), scopes: ["commerce:purchase"] as const },
       ].map((t) => ({ ...t, scopes: [...t.scopes] })),
       registry,
       reader,
@@ -199,5 +201,25 @@ describe("API del Resource Manager", () => {
 
   it("sin medición configurada lo indica en lugar de inventar ceros", async () => {
     expect((await call("GET", "/resources/overview", OPS, port2)).json).toMatchObject({ available: false });
+  });
+
+  it("panel de la empresa: solo su consumo, con nombres legibles y sin límites de ritmo", async () => {
+    const r = await call("GET", "/commerce/tenants/alerta/usage", CORE);
+    expect(r.status).toBe(200);
+    expect(r.json.usage.available).toBe(true);
+    const email = r.json.usage.rows.find((x: any) => x.metric === "email.sent");
+    expect(email).toMatchObject({ label: "Correos enviados", period: "day", periodLabel: "hoy", used: 85, limit: 100, state: "warning", enforcement: "hard" });
+    expect(r.json.usage.rows.some((x: any) => x.metric === "http.request")).toBe(false);
+    // Aislamiento: otra empresa ve solo su propio consumo
+    const calma = (await call("GET", "/commerce/tenants/calma/usage", CORE)).json.usage.rows.find((x: any) => x.metric === "email.sent");
+    expect(calma).toMatchObject({ used: 1, state: "ok" });
+    const lleno = (await call("GET", "/commerce/tenants/lleno/usage", CORE)).json.usage.rows.find((x: any) => x.metric === "email.sent");
+    expect(lleno).toMatchObject({ used: 150, state: "exceeded" });
+  });
+
+  it("panel de la empresa: exige el ámbito del Core y, sin medición, no inventa cifras", async () => {
+    expect((await call("GET", "/commerce/tenants/alerta/usage", USAGE_ONLY)).status).toBe(403);
+    expect((await call("GET", "/commerce/tenants/alerta/usage", CORE, port2)).json.usage).toMatchObject({ available: false, rows: [] });
+    expect((await call("GET", "/commerce/tenants/NO%20VALIDO/usage", CORE)).status).toBe(400);
   });
 });
