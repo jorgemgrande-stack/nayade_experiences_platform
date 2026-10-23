@@ -513,6 +513,8 @@ export const appRouter = router({
       }))
       .mutation(async ({ input, ctx }) => {
         if (input.honeypot) return { success: true };
+        const { isMultiTenant } = await import("./_core/tenant");
+        const groupCategory = isMultiTenant() ? "Grupos" : "Colegios y Campamentos";
 
         const lead = await createLead({
           name: input.name,
@@ -524,7 +526,7 @@ export const appRouter = router({
           numberOfAdults: input.monitorsCount,
           numberOfChildren: input.childrenCount,
           numberOfPersons: input.monitorsCount + input.childrenCount,
-          selectedCategory: "Colegios y Campamentos",
+          selectedCategory: groupCategory,
           selectedProduct: input.experienceType ?? "Sin especificar",
           source: "landing_colegios",
           leadSourceCode: "LANDING_COLEGIOS",
@@ -546,7 +548,9 @@ export const appRouter = router({
           templateKey: "budget_request_admin",
           triggerEvent: "lead_submitted",
           recipientEmail: adminEmail,
-          subject: `⚠️ Lead Colegios — ${input.name} (${input.organizationName})`,
+          subject: isMultiTenant()
+            ? `Nueva solicitud de grupo — ${input.name} (${input.organizationName})`
+            : `⚠️ Lead Colegios — ${input.name} (${input.organizationName})`,
           html: buildBudgetRequestAdminHtml({
             name: input.name,
             email: input.email,
@@ -554,7 +558,7 @@ export const appRouter = router({
             arrivalDate: input.preferredDate ?? "Sin especificar",
             adults: input.monitorsCount,
             children: input.childrenCount,
-            selectedCategory: "Colegios y Campamentos",
+            selectedCategory: groupCategory,
             selectedProduct: input.experienceType ?? "Sin especificar",
             comments: msgLines,
             submittedAt: new Date().toLocaleString("es-ES", { timeZone: "Europe/Madrid" }),
@@ -576,7 +580,7 @@ export const appRouter = router({
             arrivalDate: input.preferredDate ?? "Sin especificar",
             adults: input.monitorsCount,
             children: input.childrenCount,
-            selectedCategory: "Colegios y Campamentos",
+            selectedCategory: groupCategory,
             selectedProduct: input.experienceType ?? "Sin especificar",
             comments: input.comments ?? "",
             submittedAt: new Date().toLocaleString("es-ES", { timeZone: "Europe/Madrid" }),
@@ -600,7 +604,7 @@ export const appRouter = router({
           event_id: capiEventId,
           event_source_url: input.eventSourceUrl,
           custom_data: {
-            content_name: "Colegios y Campamentos",
+            content_name: groupCategory,
             content_category: "B2B Escolar",
             content_ids: ["landing_colegios"],
             value: 26.00,
