@@ -19,6 +19,7 @@ import ExperienceDetail from "./pages/ExperienceDetail";
 import Gallery from "./pages/Gallery";
 import BudgetRequest from "./pages/BudgetRequest";
 import Colegios from "./pages/Colegios";
+import TenantGroups from "./pages/TenantGroups";
 import CanjearCupon from "./pages/CanjearCupon";
 import VerificarBono from "./pages/VerificarBono";
 import RegistrarGasto from "./pages/RegistrarGasto";
@@ -223,7 +224,8 @@ function Router() {
       <Route path="/experiencias/:slug" component={ExperienceDetail} />
       <Route path="/galeria" component={Gallery} />
       <Route path="/presupuesto" component={BudgetRequest} />
-      <Route path="/colegios">{() => <SingleOnlyPage Single={Colegios} slug="colegios" />}</Route>
+      <Route path="/colegios">{() => <SingleOnlyPage Single={Colegios} slug="colegios" Tenant={TenantGroups} />}</Route>
+      <Route path="/grupos">{() => <SingleOnlyPage Single={Colegios} slug="colegios" Tenant={TenantGroups} />}</Route>
       <Route path="/canjear-cupon" component={CanjearCupon} />
       <Route path="/verificar-bono" component={VerificarBono} />
       <Route path="/registrar-gasto" component={RegistrarGasto} />

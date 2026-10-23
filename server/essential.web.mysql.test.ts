@@ -115,6 +115,18 @@ describe.skipIf(!URL_)("Essential — Web y CMS (aplicación real, dos empresas 
     expect(errCode(await ess.m("a", "cms.savePageContent", { slug: "x", title: "X", content: "", isPublished: true }, agA))).toBe("FORBIDDEN");
   });
 
+  it("grupos: la solicitud de un grupo llega solo al CRM de su empresa, como solicitud «Grupos»", async () => {
+    const r = await ess.m("a", "public.submitColegiosLead", {
+      name: "Laura Coordinadora", email: "laura@colegio-a.example", phone: "600000000", organizationName: "Colegio de prueba",
+      groupType: "Colegio o instituto", childrenCount: 40, monitorsCount: 4, comments: "Excursión de fin de curso",
+    });
+    expect(r.status).toBe(200);
+    const [lead] = await ess.sql("a", "SELECT company, selectedCategory, numberOfPersons FROM leads WHERE email = 'laura@colegio-a.example'");
+    expect(lead).toEqual({ company: "Colegio de prueba", selectedCategory: "Grupos", numberOfPersons: 44 });
+    expect((await ess.sql("b", "SELECT COUNT(*) AS n FROM leads WHERE email = 'laura@colegio-a.example'"))[0].n).toBe(0);
+    expect(errCode(await ess.m("a", "public.submitColegiosLead", { name: "X", email: "mal", phone: "1", organizationName: "" }))).toBe("BAD_REQUEST");
+  });
+
   it("cms-seo: título y descripción por página; sitemap y robots con la URL de la empresa y sin rutas de otra instalación", async () => {
     expect((await ess.m("a", "cms.upsertPage", { slug: "servicios", title: "Servicios", isPublished: true, metaTitle: "Servicios | A", metaDescription: "Lo que hacemos" }, admA)).status).toBe(200);
     expect((await ess.sql("a", "SELECT metaTitle, metaDescription FROM static_pages WHERE slug = 'servicios'"))[0]).toEqual({ metaTitle: "Servicios | A", metaDescription: "Lo que hacemos" });
