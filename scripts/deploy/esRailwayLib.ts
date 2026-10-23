@@ -123,3 +123,50 @@ export const scrub = (s: string) =>
     .replace(/(sk|rk|whsec|pk)_(live|test)_[A-Za-z0-9]+/g, "***")
     .replace(/(token|password|secret|key)=([^\s&"']+)/gi, "$1=***");
 
+
+/**
+ * Correo de PRUEBAS en live con Postmark (autorizado por el propietario el 23/10/2026): MAIL_MODE=sandbox, que solo
+ * entrega a la lista de destinatarios autorizados. Nunca en production (allí MAIL_MODE sigue en off).
+ */
+export const MAIL_TEST_SERVICES = ["controlplane", "core"] as const;
+export const MAIL_SENDING_DOMAIN_LIVE = "bigelephant.es";
+const ALLOW_EMAIL = /^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/i;
+
+/** Destinatarios de prueba: direcciones completas (sin dominios enteros ni comodines), entre 1 y 10. */
+export function parseMailAllowlist(raw: string): string[] {
+  const list = raw.split(",").map((x) => x.trim().toLowerCase()).filter(Boolean);
+  if (!list.length || list.length > 10) throw new Error("la lista de destinatarios de prueba debe tener entre 1 y 10 direcciones");
+  for (const a of list) if (!ALLOW_EMAIL.test(a)) throw new Error(`no es una dirección de correo completa: ${a}`);
+  return Array.from(new Set(list));
+}
+
+export type MailChange = { service: string; name: string; value?: string; generate?: true; copyFrom?: string };
+
+/** Qué hay que poner en cada servicio para el sandbox; sin token de Postmark en ningún servicio, no se puede (acción humana). */
+export function mailSandboxPlan(env: string, vars: Record<string, Record<string, string>>, allow: string[]): { changes: MailChange[]; problems: string[] } {
+  const problems: string[] = [];
+  if (env !== "live") problems.push("el correo de pruebas solo se configura en live (production sigue en off)");
+  const has = (s: string, k: string) => !!(vars[s]?.[k] ?? "").trim();
+  const tokenAt = MAIL_TEST_SERVICES.filter((s) => has(s, "POSTMARK_SERVER_TOKEN"));
+  if (!tokenAt.length) problems.push("falta POSTMARK_SERVER_TOKEN en controlplane y core (lo pone el propietario desde Postmark)");
+  const changes: MailChange[] = [];
+  for (const s of MAIL_TEST_SERVICES) {
+    if (!has(s, "POSTMARK_SERVER_TOKEN") && tokenAt.length) changes.push({ service: s, name: "POSTMARK_SERVER_TOKEN", copyFrom: tokenAt[0] });
+    const want: Record<string, string> = { MAIL_PROVIDER: "postmark", MAIL_MODE: "sandbox", MAIL_SENDING_DOMAIN: MAIL_SENDING_DOMAIN_LIVE, MAIL_SANDBOX_ALLOWLIST: allow.join(",") };
+    for (const [k, v] of Object.entries(want)) if ((vars[s]?.[k] ?? "") !== v) changes.push({ service: s, name: k, value: v });
+    if ((vars[s]?.MAIL_LIVE_AUTHORIZED ?? "") === "1") problems.push(`${s} tiene MAIL_LIVE_AUTHORIZED=1: no se toca sin el propietario`);
+  }
+  if ((vars.controlplane?.POSTMARK_WEBHOOK_TOKEN ?? "").length < 32) changes.push({ service: "controlplane", name: "POSTMARK_WEBHOOK_TOKEN", generate: true });
+  if ((vars.crm?.POSTMARK_WEBHOOK_PUBLIC ?? "") !== "1") changes.push({ service: "crm", name: "POSTMARK_WEBHOOK_PUBLIC", value: "1" });
+  return { changes, problems };
+}
+
+/** Eventos del webhook de Postmark (sin aperturas ni clics: no se hace seguimiento). */
+export const POSTMARK_WEBHOOK_TRIGGERS = {
+  Open: { Enabled: false },
+  Click: { Enabled: false },
+  Delivery: { Enabled: true },
+  Bounce: { Enabled: true, IncludeContent: false },
+  SpamComplaint: { Enabled: true, IncludeContent: false },
+  SubscriptionChange: { Enabled: true },
+};

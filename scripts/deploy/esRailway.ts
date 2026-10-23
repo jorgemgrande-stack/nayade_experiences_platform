@@ -13,6 +13,7 @@
  *   tsx scripts/deploy/esRailway.ts health  --url https://... [--expect 200]
  *   tsx scripts/deploy/esRailway.ts storage --env live            (almacenamiento de cada servicio, sin secretos)
  *   tsx scripts/deploy/esRailway.ts storage-fix --env live        (almacenamiento como referencias a los buckets de live)
+ *   tsx scripts/deploy/esRailway.ts mail-live --env live [--allow a@x,b@y]  (diagnóstico de Postmark; con --allow, sandbox)
  *   tsx scripts/deploy/esRailway.ts test-gateways --env live --only <a>,<b> --dir <dir> --sha <commit>  (pasarelas de prueba)
  *
  * `drill` ejecuta una orden de operación PERMITIDA (copias, simulación y aplicación de migraciones, verificación)
@@ -23,6 +24,7 @@ import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { MAIL_TEST_SERVICES, POSTMARK_WEBHOOK_TRIGGERS, mailSandboxPlan, parseMailAllowlist } from "./esRailwayLib";
 import { DRILL_IDLE, EXCLUDED_FROM_EXPORT, GATEWAY_COPIED_VARS, GATEWAY_TEMPLATE_SERVICE, STORAGE_BUCKETS, STORAGE_VARS, describeStorageVar, guard, isAllowedDrill, scrub, storageReferences, testTenantDomains, type DeployConfig, type TokenScope } from "./esRailwayLib";
 import { REPOSITORIES } from "../../shared/repositories";
 
@@ -129,7 +131,7 @@ async function main() {
   const env = arg("env");
   const sc = await scope();
   const service = cmd === "deploy" ? arg("service") : cmd === "drill" ? "restore-drill" : undefined;
-  if (!["verify", "status", "deploy", "drill", "storage", "storage-fix", "test-gateways"].includes(cmd)) throw new Error(`orden desconocida: ${cmd}`);
+  if (!["verify", "status", "deploy", "drill", "storage", "storage-fix", "test-gateways", "mail-live"].includes(cmd)) throw new Error(`orden desconocida: ${cmd}`);
   const problems = guard(cfg, sc, { env, service });
   if (problems.length) {
     console.error(`Detenido antes de tocar nada:\n - ${problems.join("\n - ")}`);
@@ -246,6 +248,79 @@ async function main() {
         await api("mutation($i:ServiceDomainUpdateInput!){ serviceDomainUpdate(input:$i) }", { i: { serviceDomainId: c.serviceDomainCreate.id, domain: g.domain, environmentId: sc.environmentId, serviceId: sid } });
       }
       console.log(`${g.service}: ${current ? current.domain : "sin dominio"} → ${g.domain}`);
+    }
+    return;
+  }
+  if (cmd === "mail-live") {
+    // Correo de pruebas en live con Postmark. Sin --allow: solo diagnóstico (lectura). Con --allow: MAIL_MODE=sandbox
+    // limitado a esos destinatarios, webhook de Postmark y nada más. Nunca imprime el valor de un token.
+    if (env !== "live") throw new Error("mail-live solo existe en live");
+    const crypto = await import("node:crypto");
+    const t = await api<{ projectToken: { projectId: string } }>("query { projectToken { projectId } }");
+    const p = t.projectToken.projectId;
+    const q = "query($p:String!,$e:String!,$s:String!,$u:Boolean){ variables(projectId:$p, environmentId:$e, serviceId:$s, unrendered:$u) }";
+    const huella = (v: string) => crypto.createHash("sha256").update(v).digest("hex").slice(0, 8);
+    const vars: Record<string, Record<string, string>> = {};
+    for (const svc of [...MAIL_TEST_SERVICES, "crm"]) {
+      if (!sc.services.includes(svc)) throw new Error(`el servicio ${svc} no existe en el entorno`);
+      vars[svc] = (await api<{ variables: Record<string, string> }>(q, { p, e: sc.environmentId, s: await serviceId(svc), u: false })).variables;
+      const shown = Object.keys(vars[svc]).filter((k) => /^(MAIL_|POSTMARK_)/.test(k)).sort();
+      console.log(`${svc}: ${shown.length ? "" : "sin variables de correo"}`);
+      for (const k of shown) console.log(`  ${k.padEnd(28)} ${/TOKEN/.test(k) ? `definido · huella ${huella(vars[svc][k])}` : vars[svc][k]}`);
+    }
+    // Postmark: estado real del servidor y webhooks (con el token ya configurado)
+    const token = MAIL_TEST_SERVICES.map((svc) => vars[svc].POSTMARK_SERVER_TOKEN).find((v) => v && v.trim());
+    const pm = async (method: string, path: string, body?: unknown) => {
+      const r = await fetch(`https://api.postmarkapp.com${path}`, { method, headers: { Accept: "application/json", "Content-Type": "application/json", "X-Postmark-Server-Token": token! }, body: body ? JSON.stringify(body) : undefined });
+      const j = (await r.json().catch(() => ({}))) as Record<string, unknown>;
+      return { status: r.status, j };
+    };
+    let webhooks: Array<{ ID: number; Url: string }> = [];
+    if (!token) console.log("Postmark: sin token de servidor en live");
+    else {
+      const sv = await pm("GET", "/server");
+      console.log(`Postmark servidor: HTTP ${sv.status} · ${sv.status === 200 ? `«${sv.j.Name}» · color ${sv.j.Color ?? "—"} · entrada ${sv.j.InboundAddress ? "sí" : "no"}` : String(sv.j.Message ?? "")}`);
+      const wh = await pm("GET", "/webhooks?MessageStream=outbound");
+      webhooks = ((wh.j.Webhooks as Array<{ ID: number; Url: string }>) ?? []);
+      console.log(`Postmark webhooks: ${webhooks.length ? webhooks.map((w) => w.Url).join(", ") : "ninguno"}`);
+      const out = await pm("GET", "/messages/outbound?count=10&offset=0");
+      console.log(`Postmark envíos registrados: ${out.status === 200 ? out.j.TotalCount : `HTTP ${out.status}`}`);
+    }
+    const allowRaw = arg("allow", false);
+    if (!allowRaw) return;
+    const plan = mailSandboxPlan(env, vars, parseMailAllowlist(allowRaw));
+    if (plan.problems.length) throw new Error(`No se configura el sandbox:\n - ${plan.problems.join("\n - ")}`);
+    const upsert = async (svc: string, name: string, value: string) =>
+      api("mutation($i:VariableUpsertInput!){ variableUpsert(input:$i) }", { i: { projectId: p, environmentId: sc.environmentId, serviceId: await serviceId(svc), name, value, skipDeploys: true } });
+    let webhookToken = vars.controlplane.POSTMARK_WEBHOOK_TOKEN ?? "";
+    for (const c of plan.changes) {
+      const value = c.generate ? crypto.randomBytes(32).toString("base64url") : c.copyFrom ? vars[c.copyFrom].POSTMARK_SERVER_TOKEN : c.value!;
+      if (c.service === "controlplane" && c.name === "POSTMARK_WEBHOOK_TOKEN") webhookToken = value;
+      await upsert(c.service, c.name, value);
+      console.log(`${c.service}: ${c.name} → ${/TOKEN/.test(c.name) ? (c.generate ? "generado" : `copiado de ${c.copyFrom}`) : value}`);
+    }
+    // Webhook en Postmark hacia el CRM de live (mismo origen que el plano de control), con la cabecera de su token
+    const dm = await api<{ domains: { customDomains: Array<{ domain: string }>; serviceDomains: Array<{ domain: string }> } }>(
+      "query($p:String!,$e:String!,$s:String!){ domains(projectId:$p, environmentId:$e, serviceId:$s){ customDomains { domain } serviceDomains { domain } } }",
+      { p, e: sc.environmentId, s: await serviceId("crm") },
+    );
+    const crmHost = dm.domains.customDomains[0]?.domain ?? dm.domains.serviceDomains[0]?.domain;
+    if (!crmHost) throw new Error("el CRM de live no tiene dominio");
+    const url = `https://${crmHost}/cp/v1/mail/postmark/webhook`;
+    const hook = { Url: url, MessageStream: "outbound", HttpHeaders: [{ Name: "x-elephant-webhook-token", Value: webhookToken }], Triggers: POSTMARK_WEBHOOK_TRIGGERS };
+    const existing = webhooks.find((w) => w.Url === url);
+    const r = existing ? await pm("PUT", `/webhooks/${existing.ID}`, hook) : await pm("POST", "/webhooks", hook);
+    if (r.status !== 200) throw new Error(`Postmark no aceptó el webhook: HTTP ${r.status} ${String(r.j.Message ?? "")}`);
+    console.log(`Postmark webhook ${existing ? "actualizado" : "creado"}: ${url} (entrega, rebote, queja y baja)`);
+    // El CRM (otro repositorio) toma su variable al redesplegar la MISMA imagen que ya sirve (sin recompilar su código)
+    if (plan.changes.some((c) => c.service === "crm")) {
+      const crmId = await serviceId("crm");
+      const before = await latest(crmId, sc.environmentId);
+      if (!before) throw new Error("el CRM de live no tiene despliegue que redesplegar");
+      await api("mutation($id:String!){ deploymentRedeploy(id:$id, usePreviousImageTag:true){ id } }", { id: before.id });
+      const d = await waitFor(crmId, sc.environmentId, before.id);
+      console.log(`crm: redesplegado con su misma imagen → ${d.status}`);
+      if (d.status !== "SUCCESS") process.exit(1);
     }
     return;
   }
