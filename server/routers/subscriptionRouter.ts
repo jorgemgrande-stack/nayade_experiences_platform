@@ -20,6 +20,7 @@ import { getTrustedBaseUrl } from "../_core/publicUrl";
 import { panelModules, type PanelCatalogItemView } from "../panelModules";
 import { getLimitAccess } from "../_core/limits/access";
 import { LIMIT_METRICS } from "../_core/limits/store";
+import type { PanelUsage } from "../commerce/panelUsage";
 
 /** Qué se quiere comprar: solo claves y totales. Importes y derechos los calcula el plano de control. */
 const purchaseInput = z
@@ -97,6 +98,20 @@ export const subscriptionRouter = router({
       return { ...out, totals, usedUsers: await countPanelUsers().catch(() => null), canPurchase: String(ctx.user.role) === "admin" && out.purchasesEnabled };
     } catch {
       throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "No se pudo consultar el catálogo de módulos. Inténtalo de nuevo en unos minutos." });
+    }
+  }),
+  /**
+   * Consumo de la empresa frente a los límites de su plan (correo, IA, ficheros, exportaciones), medido por Elephant
+   * Resource Manager. Solo lectura. `null` fuera de multiempresa o sin canal con el plano de control.
+   */
+  usage: protectedProcedure.query(async ({ ctx }) => {
+    if (!(PANEL_ROLES as readonly string[]).includes(String(ctx.user.role))) throw new TRPCError({ code: "FORBIDDEN" });
+    const client = commerceClientFromEnv();
+    if (getTenantMode() !== "multi" || !client) return null;
+    try {
+      return (await client.usage(getTenantId())) as PanelUsage;
+    } catch {
+      throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "No se pudo consultar el consumo. Inténtalo de nuevo en unos minutos." });
     }
   }),
   /** Vista previa de una compra: partidas y prorrateo calculados por el plano de control (no cambia nada). */
