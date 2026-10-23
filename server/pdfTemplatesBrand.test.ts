@@ -28,6 +28,8 @@ describe("marca de las plantillas PDF del sistema", () => {
       const out = brandedPdfTemplate(tpl);
       for (const field of ["companyName", "companyAddress", "companyPhone", "companyEmail", "footerText", "bodyHtml"] as const) {
         expect(String(out[field]), `${tpl.id}.${field}`).not.toMatch(ORIGINAL);
+        // Ningún marcador sin sustituir
+        expect(String(out[field]), `${tpl.id}.${field}`).not.toMatch(/\{\{(marca|web|direccion|telefono|email)\}\}/);
       }
       expect(out.companyName).toBe("Aventuras Sierra");
       expect(out.companyNif).toBe("B99999999");

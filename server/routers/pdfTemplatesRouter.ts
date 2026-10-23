@@ -18,12 +18,12 @@ export const SYSTEM_PDF_TEMPLATES = [
     category: "facturacion",
     headerColor: "#0a1628",
     accentColor: "#f97316",
-    companyName: "Náyade Experiences S.L.",
+    companyName: "{{marca}}",
     companyNif: "B-XXXXXXXX",
-    companyAddress: "Embalse de Los Ángeles, Ávila",
-    companyPhone: "+34 639 57 66 27",
-    companyEmail: "reservas@nayadeexperiences.es",
-    footerText: "Gracias por confiar en Náyade Experiences · www.skicenter.es",
+    companyAddress: "{{direccion}}",
+    companyPhone: "{{telefono}}",
+    companyEmail: "{{email}}",
+    footerText: "Gracias por confiar en {{marca}}{{web}}",
     legalText: "Documento emitido conforme a la normativa fiscal española.",
     showLogo: true,
     showWatermark: false,
@@ -96,7 +96,7 @@ export const SYSTEM_PDF_TEMPLATES = [
     </table>
   </div>
   <div class="footer">
-    <p>Gracias por confiar en Náyade Experiences · www.skicenter.es</p>
+    <p>Gracias por confiar en {{marca}}{{web}}</p>
     <p>Documento emitido por <strong>{{issuerName}}</strong> — CIF: {{issuerCif}} — {{issuerAddress}}</p>
   </div>
 </div>
@@ -110,12 +110,12 @@ export const SYSTEM_PDF_TEMPLATES = [
     category: "presupuestos",
     headerColor: "#0a1628",
     accentColor: "#f97316",
-    companyName: "Náyade Experiences S.L.",
+    companyName: "{{marca}}",
     companyNif: "B-XXXXXXXX",
-    companyAddress: "Embalse de Los Ángeles, Ávila",
-    companyPhone: "+34 639 57 66 27",
-    companyEmail: "reservas@nayadeexperiences.es",
-    footerText: "Náyade Experiences · www.skicenter.es",
+    companyAddress: "{{direccion}}",
+    companyPhone: "{{telefono}}",
+    companyEmail: "{{email}}",
+    footerText: "{{marca}}{{web}}",
     legalText: "Presupuesto válido según condiciones indicadas. Sujeto a disponibilidad.",
     showLogo: true,
     showWatermark: false,
@@ -141,9 +141,9 @@ export const SYSTEM_PDF_TEMPLATES = [
       conditions: "Reserva sujeta a disponibilidad. Cancelación gratuita hasta 48h antes.",
       paymentLinkUrl: "https://tuempresa.es/pago/PRE-2026-001",
       createdAt: new Date(),
-      issuerName: "Náyade Experiences S.L.",
+      issuerName: "{{marca}}",
       issuerCif: "B-XXXXXXXX",
-      issuerAddress: "Embalse de Los Ángeles, Ávila",
+      issuerAddress: "{{direccion}}",
     });
     },
   },
@@ -154,12 +154,12 @@ export const SYSTEM_PDF_TEMPLATES = [
     category: "tpv",
     headerColor: "#0a1628",
     accentColor: "#f97316",
-    companyName: "Náyade Experiences S.L.",
+    companyName: "{{marca}}",
     companyNif: "B-XXXXXXXX",
-    companyAddress: "Embalse de Los Ángeles, Ávila",
-    companyPhone: "+34 639 57 66 27",
-    companyEmail: "reservas@nayadeexperiences.es",
-    footerText: "Gracias por su visita · Náyade Experiences",
+    companyAddress: "{{direccion}}",
+    companyPhone: "{{telefono}}",
+    companyEmail: "{{email}}",
+    footerText: "Gracias por su visita · {{marca}}",
     legalText: "Conserve este ticket como justificante de compra.",
     showLogo: true,
     showWatermark: false,
@@ -211,7 +211,7 @@ export const SYSTEM_PDF_TEMPLATES = [
     <div class="ticket-row" style="margin-top:8px;"><span class="label">Atendido por</span><span class="value">{{operatorName}}</span></div>
   </div>
   <div class="ticket-footer">
-    <p>Gracias por su visita · Náyade Experiences</p>
+    <p>Gracias por su visita · {{marca}}</p>
     <p>Conserve este ticket como justificante de compra</p>
   </div>
 </div>
@@ -225,12 +225,12 @@ export const SYSTEM_PDF_TEMPLATES = [
     category: "proveedores",
     headerColor: "#0a1628",
     accentColor: "#f97316",
-    companyName: "Náyade Experiences S.L.",
+    companyName: "{{marca}}",
     companyNif: "B-XXXXXXXX",
-    companyAddress: "Embalse de Los Ángeles, Ávila",
-    companyPhone: "+34 639 57 66 27",
-    companyEmail: "reservas@nayadeexperiences.es",
-    footerText: "Náyade Experiences · www.skicenter.es",
+    companyAddress: "{{direccion}}",
+    companyPhone: "{{telefono}}",
+    companyEmail: "{{email}}",
+    footerText: "{{marca}}{{web}}",
     legalText: "Liquidación emitida conforme al contrato de colaboración vigente.",
     showLogo: true,
     showWatermark: false,
@@ -299,11 +299,11 @@ export const SYSTEM_PDF_TEMPLATES = [
   </table>
   <div class="summary-box">
     <div class="summary-row"><span>Total ventas brutas</span><span>{{grossAmount}} €</span></div>
-    <div class="summary-row"><span>Comisión Náyade</span><span>- {{commissionAmount}} €</span></div>
+    <div class="summary-row"><span>Comisión</span><span>- {{commissionAmount}} €</span></div>
     <div class="summary-row total"><span>NETO A PAGAR AL PROVEEDOR</span><span>{{netAmountProvider}} €</span></div>
   </div>
   <div class="footer">
-    <p>Náyade Experiences · www.skicenter.es</p>
+    <p>{{marca}}{{web}}</p>
     <p>Liquidación emitida conforme al contrato de colaboración vigente.</p>
   </div>
 </div>
@@ -327,16 +327,13 @@ export function brandedPdfTemplate<T extends Pick<SystemPdfTemplate, "companyNam
     companyPhone: brandSetting("brand_phone", ""),
     companyEmail: brandSetting("site_business_email", ""),
   };
+  // Marcadores de los textos de ejemplo → datos de la empresa (vacíos si no los ha configurado; nunca los de otra)
   const brand = (t: string) =>
-    t.split("Náyade Experiences S.L.").join(name)
-      .split(" · www.skicenter.es").join(host ? ` · ${host}` : "")
-      .split("https://skicenter.es").join(host ? `https://${host}` : "")
-      .split("Comisión Náyade").join("Comisión")
-      .split("Menú Náyade").join("Menú")
-      .split("Náyade Experiences").join(name)
-      .split("Embalse de Los Ángeles, Ávila").join(company.companyAddress)
-      .split("+34 639 57 66 27").join(company.companyPhone)
-      .split("reservas@nayadeexperiences.es").join(company.companyEmail);
+    t.split("{{web}}").join(host ? ` · ${host}` : "")
+      .split("{{marca}}").join(name)
+      .split("{{direccion}}").join(company.companyAddress)
+      .split("{{telefono}}").join(company.companyPhone)
+      .split("{{email}}").join(company.companyEmail);
   return {
     ...tpl,
     companyName: name,

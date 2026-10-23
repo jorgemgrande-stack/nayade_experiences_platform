@@ -14,10 +14,9 @@ import path from "node:path";
 const ROOT = __dirname;
 const ORIGINAL = /N[aá]yade|N&[aA]acute;[yY][aA][dD][eE]|nayadeexperiences|skicenter\.es|639 ?57 ?66 ?27|34639576627|San Rafael/;
 
+// Solo queda la guardia que BLOQUEA enlaces al dominio de la instalación original en correos de otras empresas
 const BASELINE: Record<string, number> = {
   "mail/policy.ts": 1,
-  "routers/emailTemplatesRouter.ts": 30,
-  "routers/pdfTemplatesRouter.ts": 29,
 };
 
 function walk(dir: string): string[] {
