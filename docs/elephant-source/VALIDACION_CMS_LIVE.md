@@ -58,6 +58,25 @@ El script termina con código 0 solo si todas las comprobaciones pasan, e imprim
 
 No hay borrado físico de empresas: la supresión es manual y exige doble aprobación (`CICLO_VIDA_TENANT.md`). Las empresas de prueba se **archivan** (`ES_ARCHIVAR`). Su base de datos se conserva hasta que exista la supresión.
 
-## Resultado
+## Resultado (23/10/2026, `live`): 30/30 en verde
 
-Pendiente de ejecutar en `live`. Faltan los requisitos 1 a 4.
+- **Entorno:** Core desplegado en `bc7ed959` y plano de control en `cc5f4063`, ambos desde `integration/elephant-source`. Las variables S3 de `live` son referencias a sus buckets. Las pasarelas de prueba `gw-prueba-a` y `gw-prueba-b` existen solo en `live`.
+- **Empresas de prueba:** `cms-prueba-a-20261023` y `cms-prueba-b-20261023`, con la plantilla «generico» y las capacidades CMS de Essential.
+  - La primera ejecución comprobó el alta completa: invitación devuelta al operador, contraseña definida e inicio de sesión del administrador de cada empresa.
+  - La ejecución final reutilizó las empresas (`ES_REUTILIZAR=si`) mediante un acceso de soporte auditado de 30 minutos.
+- **Comprobaciones:**
+  - legales de plantilla en borrador, sin servir y fuera del pie;
+  - A guarda su portada y publica una página nueva;
+  - ambas se ven en la API, en el sitemap y en un navegador real;
+  - B no ve nada de A en su web, su panel, su HTML ni su sitemap.
+
+### Fallos encontrados y corregidos durante la validación
+
+1. **Sin pasarela por empresa en `live`.** `CP_PLATFORM_DOMAIN=up.railway.app` y las pasarelas `gw-demo-a/b` no tienen instancia en `live`. Se resolvió con la acción `preparar-pruebas-live` (#278, #279), autorizada por el propietario.
+2. **S3 de `live` con claves copiadas a mano y equivocadas.** La clave secreta de ficheros de `core` y la de copias de `restore-drill` no coincidían con las del bucket. Ahora son referencias (#278).
+3. **Editor bloqueado sin capacidades.** Una empresa dada de alta sin plan no tiene licencias por capacidad. El script activa a las empresas de prueba las capacidades CMS de Essential, igual que una prueba Essential real (#280).
+4. **Web de la empresa en blanco en el navegador.** Las consultas tRPC agrupadas recibían un 403 entero si una sola no estaba contratada (#281):
+   - en la web de cada empresa las consultas van sueltas;
+   - `config.getPublicSettings` es público.
+
+Las empresas de prueba siguen activas para su revisión. Se archivan con `ES_ARCHIVAR=cms-prueba-a-20261023,cms-prueba-b-20261023`.
