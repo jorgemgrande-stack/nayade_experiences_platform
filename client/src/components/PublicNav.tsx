@@ -173,7 +173,10 @@ export default function PublicNav() {
 
   // Construir estructura de navegación a partir de los datos de BD
   const navLinks: NavItem[] = (() => {
-    if (!menuData || menuData.length === 0) return FALLBACK_NAV;
+    // Web de una empresa: solo su propio menú (vacío mientras no tenga), nunca el de respaldo de la instalación
+    if (tenantTheme?.neutralSite) {
+      if (!menuData) return [];
+    } else if (!menuData || menuData.length === 0) return FALLBACK_NAV;
 
     // Ítems raíz (sin parentId), activos, ordenados
     const roots = menuData

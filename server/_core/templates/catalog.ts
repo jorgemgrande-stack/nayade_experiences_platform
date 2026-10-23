@@ -13,6 +13,8 @@ export interface TemplatePage {
   /** HTML sencillo y seguro (sin scripts ni atributos de evento). */
   content: string;
   metaDescription?: string;
+  /** Se siembra como borrador: la empresa lo revisa y lo publica ella (los textos legales nunca se publican solos). */
+  draft?: boolean;
 }
 
 export interface TemplateMenuItem {
@@ -36,11 +38,13 @@ const legal: TemplatePage[] = [
   {
     slug: "aviso-legal",
     title: "Aviso legal",
+    draft: true,
     content: "<h1>Aviso legal</h1><p>Titular del sitio: {{brand}}. Complete en este apartado los datos identificativos exigidos por la normativa aplicable.</p>",
   },
   {
     slug: "politica-de-privacidad",
     title: "Política de privacidad",
+    draft: true,
     content: "<h1>Política de privacidad</h1><p>{{brand}} trata los datos personales de sus clientes conforme a la normativa de protección de datos. Complete este texto con su política.</p>",
   },
 ];

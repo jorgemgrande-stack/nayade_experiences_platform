@@ -94,6 +94,7 @@ import {
   hardDeletePack,
   clonePack,
   getAllMenuItems,
+  getUnpublishedPageSlugs,
   createMenuItem,
   updateMenuItem,
   deleteMenuItem,
@@ -375,7 +376,12 @@ export const appRouter = router({
     getMenuItems: publicProcedure
       .input(z.object({ zone: z.enum(["header", "footer"]).default("header") }))
       .query(async ({ input }) => {
-        return getAllMenuItems(input.zone);
+        const items = await getAllMenuItems(input.zone);
+        // Web de cada empresa: sin enlaces a sus páginas en borrador (p. ej. textos legales aún sin revisar)
+        const { isMultiTenant } = await import("./_core/tenant");
+        if (!isMultiTenant()) return items;
+        const { hideUnpublishedPageLinks } = await import("../shared/tenantNav");
+        return hideUnpublishedPageLinks(items, new Set(await getUnpublishedPageSlugs()));
       }),
 
     submitLead: publicProcedure
