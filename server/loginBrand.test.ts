@@ -6,7 +6,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { buildTheme, cleanThemeValues, safeImageUrl, LOGIN_BACKGROUND_NONE, ThemeValueError, THEME_EDITABLE_KEYS, PUBLIC_THEME_KEYS } from "./_core/theme";
-import { loginLook, contrastRatio, readableOn, NEUTRAL_INK } from "../shared/loginBrand";
+import { loginLook, contrastRatio, readableOn, NEUTRAL_INK, BIG_ELEPHANT } from "../shared/loginBrand";
 import { loginErrorMessage, validateEmail, validateLogin } from "../shared/authForm";
 import { SETUP_STEPS, markStep, nextPendingStep, parseProgress, progressPercent } from "../shared/setupWizard";
 
@@ -77,12 +77,25 @@ describe("aspecto del acceso (contraste y valores predeterminados)", () => {
     expect(readableOn("#0b3d91")).toBe("#ffffff");
   });
 
-  it("sin colores: grafito neutro con el nombre de la empresa (nunca el rojo de Big Elephant ni otra marca)", () => {
+  it("sin ninguna personalización: identidad predeterminada de Big Elephant (decisión 23/10/2026), con el nombre de la empresa", () => {
     const l = loginLook(multi());
-    expect(l).toMatchObject({ panelBg: NEUTRAL_INK, panelFg: "#ffffff", button: NEUTRAL_INK, buttonFg: "#ffffff", link: NEUTRAL_INK, backgroundUrl: null });
+    expect(l).toMatchObject({ panelBg: BIG_ELEPHANT.ink, panelFg: "#ffffff", highlight: BIG_ELEPHANT.red, button: BIG_ELEPHANT.redInk, buttonFg: "#ffffff", link: BIG_ELEPHANT.redInk, backgroundUrl: null });
+    expect(l.brand).toMatchObject({ logoUrl: "https://www.bigelephant.es/brand/big-elephant-logo.png", logoAlt: "Big Elephant", name: "Skibox" });
     expect(l.title).toBe("Te damos la bienvenida a Skibox");
-    expect(l.titleHighlight).toBe("Skibox");
-    expect(JSON.stringify(l)).not.toMatch(/#ff3035|#d0161c|N[ÁA]YADE|Big Elephant/i);
+    expect(JSON.stringify(l)).not.toMatch(/N[ÁA]YADE|skicenter/i);
+    // Contraste: texto del botón y enlaces sobre blanco ≥ 4,5:1; resaltado del titular sobre el panel ≥ 3:1
+    expect(contrastRatio(l.buttonFg, l.button)!).toBeGreaterThanOrEqual(4.5);
+    expect(contrastRatio(l.link, "#ffffff")!).toBeGreaterThanOrEqual(4.5);
+    expect(contrastRatio(l.highlight, l.panelBg)!).toBeGreaterThanOrEqual(3);
+  });
+
+  it("con cualquier personalización propia (logotipo, color o fondo) conserva lo suyo, nunca Big Elephant", () => {
+    for (const o of [{ logoUrl: "https://cdn.example/skibox.png" }, { primaryColor: "#0b3d91" }, { accentColor: "#f5a623" }, { login: { backgroundUrl: "https://cdn.example/f.jpg", title: null, message: null } }]) {
+      const l = loginLook(multi(o));
+      expect(l.brand.logoUrl, JSON.stringify(o)).not.toBe(BIG_ELEPHANT.logoUrl);
+      expect(l.button, JSON.stringify(o)).not.toBe(BIG_ELEPHANT.redInk);
+    }
+    expect(loginLook(multi({ logoUrl: "https://cdn.example/skibox.png" })).brand.logoUrl).toBe("https://cdn.example/skibox.png");
   });
 
   it("color principal legible: panel, botón y enlaces de la empresa; acento solo si se lee", () => {

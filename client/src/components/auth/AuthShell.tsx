@@ -36,7 +36,7 @@ export function AuthBrandLogo({ look, onPanel }: { look: LoginLook; onPanel: boo
   if (brand.logoUrl) {
     return (
       <span className={onPanel ? "inline-flex max-w-[260px] rounded-xl bg-white/95 px-3 py-2 shadow-sm" : "inline-flex max-w-[220px]"}>
-        <img src={brand.logoUrl} alt={brand.fullName || "Logotipo"} className="h-10 w-auto max-w-full object-contain" />
+        <img src={brand.logoUrl} alt={brand.logoAlt || brand.fullName || "Logotipo"} className="h-10 w-auto max-w-full object-contain" />
       </span>
     );
   }
