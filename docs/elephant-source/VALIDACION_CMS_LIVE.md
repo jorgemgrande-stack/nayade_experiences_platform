@@ -19,10 +19,10 @@ Hasta que esta prueba se supere en `live`, la funcionalidad no se da por termina
 | # | Requisito | Quién | Cómo comprobarlo |
 |---|---|---|---|
 | 1 | Desplegar en `live` el Core y el plano de control con los PR de la web multiempresa (#268 en adelante: contenido de páginas, legales, ubicaciones, grupos y portada) | Jorge aprueba el despliegue (entorno `elephant-source-live`, con revisores obligatorios) | Workflow `deploy-elephant-source.yml` con entorno `live` y acciones `desplegar-controlplane` y `desplegar-core`. En los registros: `Server running on http://localhost:3000/` |
-| 2 | Variables S3 de `live` corregidas | Jorge, en Railway | Lista del diagnóstico 39822663135, ya entregada |
-| 3 | `CP_PLATFORM_DOMAIN` de `live` con DNS comodín hacia el `core-gateway` de `live` | Jorge, en Railway y DNS | Lo indica el primer paso del script (`el comodín *.dominio llega a la pasarela del Core`) |
-| 4 | Que la pasarela del Core sirva sin autenticación básica los hosts de las empresas de prueba, o que se ejecute desde un origen autorizado | Configuración de `PUBLIC_HOSTS` de la pasarela | Lo indica el script: un 401 en la web de A indica que falta |
-| 5 | Operador `jorge` con verificación en dos pasos | — | `ES_TOTP` o se pide por la terminal |
+| 2 | Un host por empresa de prueba. En `live`, `CP_PLATFORM_DOMAIN=up.railway.app`: no hay comodín propio y Railway da un dominio por servicio. Por eso cada empresa usa una pasarela (`gw-demo-a`, `gw-demo-b`) con el dominio `<empresa>.up.railway.app` (runbook `RAILWAY_ELEPHANT_SOURCE.md` §6). No se tocan dominios comerciales | Jorge, en Railway (`live`) | Lo comprueba el script antes de crear nada: el host debe llegar a una pasarela (no a la respuesta por defecto de Railway) y aceptar su credencial |
+| 3 | Credencial de la pasarela de `live` | — | La carpeta privada de `live` (`pasarela-<usuario>.txt`). Las webs de prueba siguen tras la autenticación básica; no hace falta `PUBLIC_HOSTS` |
+| 4 | Operador `jorge` (con verificación en dos pasos, si la tiene activa) | — | `ES_TOTP` o se pide por la terminal |
+| 5 | Variables S3 de `live` como referencias a los buckets. No afecta a esta prueba, que no sube ficheros | Jorge, en Railway | Diagnóstico 39822663135 |
 | 6 | Si `live` aplica licencias por capacidad: un plan con el editor web | — | `ES_PLAN=<plan>`. Sin él, el paso «A: portada guardada» falla con un código de licencia |
 
 ## Ejecución
@@ -33,7 +33,7 @@ ES_ENV=live ES_CP_BASE=https://elephant-source-crm-live.up.railway.app ES_PRIVAT
   node scripts/railway/validar-cms-live.cjs
 
 # Prueba real (crea dos empresas de prueba en live)
-ES_ENV=live ES_CP_BASE=... ES_PRIVATE_DIR=... ES_APLICAR=si [ES_PLAN=<plan>] \
+ES_ENV=live ES_CP_BASE=... ES_PRIVATE_DIR=... ES_EMPRESAS=cms-prueba-a-AAAAMMDD,cms-prueba-b-AAAAMMDD ES_APLICAR=si [ES_PLAN=<plan>] \
   node scripts/railway/validar-cms-live.cjs
 
 # Al terminar la revisión, archivarlas (solo admite identificadores cms-prueba-…)

@@ -10,13 +10,17 @@
 //     → crea las dos empresas y ejecuta la prueba (escribe en el entorno; no hay borrado físico, quedan archivables).
 //   ... ES_ARCHIVAR=<empresaA>,<empresaB> node scripts/railway/validar-cms-live.cjs
 //     → archiva las empresas de prueba al terminar la revisión.
+// ES_EMPRESAS=cms-prueba-a-AAAAMMDD,cms-prueba-b-AAAAMMDD fija los identificadores (en live, cada empresa necesita
+// una pasarela con el dominio <empresa>.up.railway.app: gw-demo-a y gw-demo-b).
 // ES_PLAN=<plan> inicia la prueba de ese plan en las dos empresas (si live aplica licencias por capacidad).
 // Nunca imprime contraseñas, tokens ni cookies. No envía correos (el alta asistida devuelve la invitación al operador).
 const crypto = require("crypto");
-const { call } = require("./cp.cjs");
+const { call, gatewayAuth } = require("./cp.cjs");
 
 if (process.env.ES_ENV !== "live") throw new Error("Esta validación es para live: define ES_ENV=live (production exige otra aprobación)");
 const APPLY = process.env.ES_APLICAR === "si";
+const TENANTS = (process.env.ES_EMPRESAS || "").split(",").map((s) => s.trim()).filter(Boolean);
+const TENANT_RE = /^cms-prueba-[ab]-\d{8}(-[a-z0-9]{4})?$/;
 const PLAN = (process.env.ES_PLAN || "").trim();
 const ARCHIVE = (process.env.ES_ARCHIVAR || "").split(",").map((s) => s.trim()).filter(Boolean);
 
@@ -38,7 +42,8 @@ function core(host) {
     const r = await fetch(base + path, {
       method,
       redirect: "manual",
-      headers: { ...(cookie ? { cookie } : {}), ...(body ? { "content-type": "application/json" } : {}), origin: base },
+      // La pasarela del entorno pide autenticación básica; la aplicación usa su propia cookie
+      headers: { authorization: gatewayAuth().header, ...(cookie ? { cookie } : {}), ...(body ? { "content-type": "application/json" } : {}), origin: base },
       body: body ? JSON.stringify(body) : undefined,
     });
     const set = typeof r.headers.getSetCookie === "function" ? r.headers.getSetCookie() : [];
@@ -69,12 +74,11 @@ async function cp(method, route, body) {
   return r.json;
 }
 
-async function createTenant(label, stamp, platformDomain) {
-  const tenantId = `cms-prueba-${label}-${stamp}`;
+async function createTenant(label, tenantId, platformDomain) {
   const pre = await cp("GET", `/cp/v1/crm/onboarding/check?tenantId=${encodeURIComponent(tenantId)}`);
   must(`${tenantId}: identificador libre`, pre?.available === true, pre?.reason ?? "");
-  const { company } = await cp("POST", "/cp/v1/crm/companies", { name: `Prueba CMS ${label.toUpperCase()} ${stamp} (no comercial)`, status: "active" });
-  const email = `cms-prueba-${label}-${stamp}@example.com`;
+  const { company } = await cp("POST", "/cp/v1/crm/companies", { name: `Prueba CMS ${label.toUpperCase()} ${tenantId} (no comercial)`, status: "active" });
+  const email = `${tenantId}@example.com`;
   const { contact } = await cp("POST", `/cp/v1/crm/companies/${company.id}/contacts`, { name: `Administración ${label.toUpperCase()}`, email });
   // Plan de prueba opcional (ES_PLAN): si el entorno exige licencias por capacidad, sin plan el editor de la web estaría bloqueado
   const ob = await cp("POST", `/cp/v1/crm/companies/${company.id}/onboard`, { tenantId, adminContactId: contact.id, templateId: "generico", modules: ["cms"], ...(PLAN ? { planId: PLAN } : {}) });
@@ -107,7 +111,8 @@ async function browserChecks(a, b, nonce, newSlug) {
   const browser = await chromium.launch();
   try {
     const text = async (url) => {
-      const ctx = await browser.newContext();
+      const g = gatewayAuth();
+      const ctx = await browser.newContext({ httpCredentials: { username: g.username, password: g.password } });
       const page = await ctx.newPage();
       await page.goto(url, { waitUntil: "networkidle", timeout: 45000 });
       await page.waitForTimeout(800);
@@ -118,7 +123,7 @@ async function browserChecks(a, b, nonce, newSlug) {
     check("navegador: la portada de A muestra su texto nuevo", (await text(`${a.site.base}/`)).includes(nonce));
     check("navegador: la página nueva de A se ve publicada", (await text(`${a.site.base}/${newSlug}`)).includes(nonce));
     const bHome = await text(`${b.site.base}/`);
-    check("navegador: la web de B no muestra nada de A", !bHome.includes(nonce) && !bHome.includes("Prueba CMS A"));
+    check("navegador: la web de B no muestra nada de A", !bHome.includes(nonce) && !bHome.includes(a.tenantId));
     check("navegador: la página nueva de A no existe en B", !(await text(`${b.site.base}/${newSlug}`)).includes(nonce));
   } finally {
     await browser.close();
@@ -128,7 +133,7 @@ async function browserChecks(a, b, nonce, newSlug) {
 (async () => {
   if (ARCHIVE.length) {
     for (const t of ARCHIVE) {
-      if (!/^cms-prueba-[ab]-\d{8}-[a-z0-9]{4}$/.test(t)) throw new Error(`Solo se archivan empresas de esta prueba (cms-prueba-…): ${t}`);
+      if (!TENANT_RE.test(t)) throw new Error(`Solo se archivan empresas de esta prueba (cms-prueba-…): ${t}`);
       await cp("POST", `/cp/v1/tenants/${t}/status`, { status: "archived", reason: "Fin de la validación del CMS en live" });
       check(`${t}: archivada`, true);
     }
@@ -139,19 +144,28 @@ async function browserChecks(a, b, nonce, newSlug) {
   must("alta asistida disponible en el entorno", cfg?.available === true);
   const platformDomain = cfg.platformDomain;
   must("dominio de plataforma configurado", typeof platformDomain === "string" && platformDomain.includes("."), platformDomain);
-  const probe = await fetch(`https://comprobacion-dns.${platformDomain}/`, { redirect: "manual" }).then((r) => r.status).catch((e) => `error ${e.cause?.code || e.message}`);
-  check("el comodín *.dominio llega a la pasarela del Core", typeof probe === "number", String(probe));
+  const d = new Date();
+  const day = `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, "0")}${String(d.getUTCDate()).padStart(2, "0")}`;
+  const ids = TENANTS.length ? TENANTS : [`cms-prueba-a-${day}-${crypto.randomBytes(2).toString("hex")}`, `cms-prueba-b-${day}-${crypto.randomBytes(2).toString("hex")}`];
+  must("dos empresas de prueba (cms-prueba-…)", ids.length === 2 && ids.every((t) => TENANT_RE.test(t)) && ids[0] !== ids[1], ids.join(", "));
+  // El host de cada empresa debe llegar a una pasarela del entorno (no a la respuesta por defecto del proveedor)
+  let reachable = true;
+  for (const t of ids) {
+    const r = await fetch(`https://${t}.${platformDomain}/`, { redirect: "manual", headers: { authorization: gatewayAuth().header } }).catch(() => null);
+    const ok = !!r && r.headers.get("x-railway-fallback") !== "true" && r.status !== 401;
+    reachable = check(`${t}.${platformDomain} llega a una pasarela del entorno con su credencial`, ok, r ? String(r.status) : "sin respuesta") && reachable;
+  }
+  must("los hosts de las empresas de prueba son accesibles", reachable, "en live: dominio de gw-demo-a/gw-demo-b = <empresa>.up.railway.app");
   if (!APPLY) {
     console.log("\nComprobaciones previas hechas. Para ejecutar la prueba (escribe en el entorno): ES_APLICAR=si");
     return;
   }
 
-  const d = new Date();
-  const stamp = `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, "0")}${String(d.getUTCDate()).padStart(2, "0")}-${crypto.randomBytes(2).toString("hex")}`;
+  const stamp = crypto.randomBytes(3).toString("hex");
   const nonce = `Validación CMS ${stamp}`;
-  const newSlug = `novedades-${stamp.slice(-4)}`;
-  const a = await createTenant("a", stamp, platformDomain);
-  const b = await createTenant("b", stamp, platformDomain);
+  const newSlug = `novedades-${stamp}`;
+  const a = await createTenant("a", ids[0], platformDomain);
+  const b = await createTenant("b", ids[1], platformDomain);
 
   // Estado inicial: plantilla sembrada, legales en borrador
   check("A: portada de plantilla publicada", !!(await a.site.q("public.getTenantPage", { slug: "inicio" })));
@@ -174,7 +188,7 @@ async function browserChecks(a, b, nonce, newSlug) {
   const bPages = await b.site.q("cms.getPages");
   check("B (panel): ninguna página de A", Array.isArray(bPages) && !bPages.some((p) => p.slug === newSlug || String(p.content || "").includes(nonce)));
   const html = await b.site.raw("GET", "/");
-  check("B: el HTML de su web no contiene la marca de A", html.status === 200 && !html.text.includes(`Prueba CMS A ${stamp}`));
+  check("B: el HTML de su web no contiene la marca de A", html.status === 200 && !html.text.includes(a.tenantId));
   const sm = await a.site.raw("GET", "/sitemap.xml");
   check("A: la página nueva está en su sitemap", sm.status === 200 && sm.text.includes(`/${newSlug}`));
   const smB = await b.site.raw("GET", "/sitemap.xml");
