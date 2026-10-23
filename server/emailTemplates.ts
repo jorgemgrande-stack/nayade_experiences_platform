@@ -115,7 +115,7 @@ function emailHeader(subtitle?: string, tagline?: string): string {
         <v:textbox inset="0,0,0,0">
         <table width="600" cellpadding="0" cellspacing="0" border="0">
           <tr>
-            <td align="center" style="padding:36px 40px 28px;background-color:#0d1f3c;">
+            <td align="center" style="padding:36px 40px 28px;background-color:${BRAND_BLUE()};">
               ${headerLogo(true)}
               <table width="100%" cellpadding="0" cellspacing="0" border="0">
                 <tr><td align="center" style="color:#ffffff;font-size:28px;font-weight:900;letter-spacing:5px;font-family:Georgia,serif;padding-top:12px;">${headerBrand().title}</td></tr>
@@ -276,6 +276,8 @@ function statusBlock(type: "success" | "warning" | "error", title: string, body:
 // SÓLIDO para el resto. Sin degradados (Outlook no los soporta) y SIEMPRE con
 // texto blanco explícito, para que la tipografía nunca quede invisible.
 function ctaButton(text: string, href: string, fillColor: string = BRAND_ORANGE()): string {
+  // Sin correo de contacto configurado, un botón «mailto:» vacío no lleva a ningún sitio: no se pinta
+  if (/^mailto:\s*$/i.test(href)) return "";
   return `<table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0;">
     <tr><td align="center">
       <!--[if mso]>
@@ -419,7 +421,7 @@ export function buildReservationConfirmHtml(d: ReservationConfirmData): string {
     ${emotionalBlock("El agua, la naturaleza y la emoci&oacute;n te esperan. &#161;Nos vemos pronto!")}
     <tr><td style="padding:0 32px 28px;">
       <p style="color:#9ca3af;font-size:13px;margin:0;line-height:1.6;font-family:Arial,sans-serif;">
-        &iquest;Necesitas modificar tu reserva? Escrb&iacute;benos a
+        &iquest;Necesitas modificar tu reserva? Escr&iacute;benos a
         <a href="mailto:${getContactEmail()}" style="color:${BRAND_ORANGE()};text-decoration:none;font-weight:600;">${getContactEmail()}</a>
         ${callUs("o ll&aacute;manos al ", BRAND_ORANGE(), 600, "&nbsp;(tambi&eacute;n WhatsApp).")}
       </p>
@@ -567,7 +569,7 @@ export function buildRestaurantConfirmHtml(d: RestaurantBookingData): string {
     ${emotionalBlock("La mejor gastronom&iacute;a y momentos inolvidables te esperan.")}
     <tr><td style="padding:0 32px 28px;">
       <p style="color:#9ca3af;font-size:13px;margin:0;line-height:1.6;font-family:Arial,sans-serif;">
-        &iquest;Necesitas modificar tu reserva? Escrb&iacute;benos a
+        &iquest;Necesitas modificar tu reserva? Escr&iacute;benos a
         <a href="mailto:${getContactEmail()}" style="color:${BRAND_ORANGE()};text-decoration:none;font-weight:600;">${getContactEmail()}</a>
         ${callUs("o ll&aacute;manos al ", BRAND_ORANGE(), 600, "&nbsp;(tambi&eacute;n WhatsApp).")}
       </p>
@@ -818,7 +820,7 @@ export function buildBudgetRequestUserHtml(raw: BudgetRequestEmailData): string 
     ${emotionalBlock("&#161;Te esperamos! Gracias por confiar en nosotros.")}
     <tr><td style="padding:0 32px 28px;">
       <p style="color:#9ca3af;font-size:13px;margin:0;line-height:1.6;font-family:Arial,sans-serif;">
-        &iquest;Necesitas modificar alg&uacute;n dato? Escrb&iacute;benos a
+        &iquest;Necesitas modificar alg&uacute;n dato? Escr&iacute;benos a
         <a href="mailto:${getContactEmail()}" style="color:${BRAND_ORANGE()};text-decoration:none;font-weight:600;">${getContactEmail()}</a>
         ${callUs("o ll&aacute;manos al ", BRAND_ORANGE(), 600, "&nbsp;(tambi&eacute;n WhatsApp).")}
       </p>
@@ -1037,7 +1039,7 @@ export function buildQuoteHtml(d: QuoteEmailData): string {
     ${emotionalBlock("Una experiencia &uacute;nica te espera. &#161;Conf&iacute;a en nosotros para hacerla inolvidable!")}
     <tr><td style="padding:0 32px 28px;">
       <p style="color:#9ca3af;font-size:13px;margin:0;line-height:1.6;font-family:Arial,sans-serif;">
-        &iquest;Necesitas modificar algo? Escrb&iacute;benos a
+        &iquest;Necesitas modificar algo? Escr&iacute;benos a
         <a href="mailto:${getContactEmail()}" style="color:${BRAND_ORANGE()};text-decoration:none;font-weight:600;">${getContactEmail()}</a>
         ${callUs("o ll&aacute;manos al ", BRAND_ORANGE(), 600, "&nbsp;(tambi&eacute;n WhatsApp).")}
       </p>
@@ -1216,7 +1218,7 @@ export function buildConfirmationHtml(d: ConfirmationEmailData): string {
     ${emotionalBlock("&#161;Te esperamos! Gracias por confiar en nosotros.")}
     <tr><td style="padding:0 32px 28px;">
       <p style="color:#9ca3af;font-size:13px;margin:0;line-height:1.6;font-family:Arial,sans-serif;">
-        &iquest;Necesitas modificar tu reserva? Escrb&iacute;benos a
+        &iquest;Necesitas modificar tu reserva? Escr&iacute;benos a
         <a href="mailto:${contactEmail}" style="color:${BRAND_ORANGE()};text-decoration:none;font-weight:600;">${contactEmail}</a>
         o ll&aacute;manos al <a href="tel:${contactPhone.replace(/\s/g,"")}" style="color:${BRAND_ORANGE()};text-decoration:none;font-weight:600;">${contactPhone}</a>.
       </p>
@@ -1451,7 +1453,7 @@ export function buildTransferConfirmationHtml(d: TransferConfirmationEmailData):
     ${emotionalBlock("&#161;Te esperamos! Gracias por confiar en nosotros.")}
     <tr><td style="padding:0 32px 28px;">
       <p style="color:#9ca3af;font-size:13px;margin:0;line-height:1.6;font-family:Arial,sans-serif;">
-        &iquest;Tienes alguna pregunta sobre tu reserva? Escrb&iacute;benos a
+        &iquest;Tienes alguna pregunta sobre tu reserva? Escr&iacute;benos a
         <a href="mailto:${getContactEmail()}" style="color:${BRAND_ORANGE()};text-decoration:none;font-weight:600;">${getContactEmail()}</a>
         ${callUs("o ll&aacute;manos al ", BRAND_ORANGE(), 600, "&nbsp;(tambi&eacute;n WhatsApp).")}
       </p>
@@ -2663,7 +2665,7 @@ export function buildProposalHtml(d: ProposalEmailData): string {
     ${emotionalBlock("Una experiencia &uacute;nica te espera. &#161;Conf&iacute;a en nosotros para hacerla inolvidable!")}
     <tr><td style="padding:0 32px 28px;">
       <p style="color:#9ca3af;font-size:13px;margin:0;line-height:1.6;font-family:Arial,sans-serif;">
-        &iquest;Necesitas modificar algo? Escrb&iacute;benos a
+        &iquest;Necesitas modificar algo? Escr&iacute;benos a
         <a href="mailto:${getContactEmail()}" style="color:${BRAND_ORANGE()};text-decoration:none;font-weight:600;">${getContactEmail()}</a>
         ${callUs("o ll&aacute;manos al ", BRAND_ORANGE(), 600, "&nbsp;(tambi&eacute;n WhatsApp).")}
       </p>

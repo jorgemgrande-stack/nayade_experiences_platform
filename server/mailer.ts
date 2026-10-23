@@ -29,6 +29,7 @@ import { brandName, tenantCommsConfig } from "./tenantBrand";
 import type { MailCategory } from "./mail/types";
 import { readStoredFile } from "./storage";
 import { objectIdFromUrl } from "./_core/files/service";
+import { cleanSubject } from "./mail/plainText";
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 export interface MailParams {
@@ -107,7 +108,7 @@ async function sendViaBrevoApi(params: MailParams): Promise<boolean> {
     sender,
     ...(replyToEmail ? { replyTo: { email: replyToEmail } } : {}),
     to: toList,
-    subject: params.subject,
+    subject: cleanSubject(params.subject),
     htmlContent: params.html,
     ...(params.text ? { textContent: params.text } : {}),
     ...(ccList ? { cc: ccList } : {}),
@@ -186,7 +187,7 @@ async function sendViaSMTP(params: MailParams): Promise<boolean> {
     await transporter.sendMail({
       from: fromAddress,
       to: Array.isArray(params.to) ? params.to.join(", ") : params.to,
-      subject: params.subject,
+      subject: cleanSubject(params.subject),
       html: params.html,
       ...(params.text ? { text: params.text } : {}),
       ...(params.cc ? { cc: Array.isArray(params.cc) ? params.cc.join(", ") : params.cc } : {}),

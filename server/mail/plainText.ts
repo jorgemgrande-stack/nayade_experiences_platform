@@ -41,3 +41,19 @@ export function htmlToText(html: string): string {
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 }
+
+/**
+ * Asunto limpio: quita los «?» sueltos del principio (emojis que se perdieron al guardarse en una codificación sin
+ * soporte; las plantillas ya guardadas por cada empresa los conservan), también tras un prefijo como «[PRUEBA]».
+ */
+export function cleanSubject(subject: string): string {
+  return subject.replace(/^(\s*\[[^\]]*\]\s*)?\?+\s+/, "$1").trim();
+}
+
+/**
+ * Sin correo de contacto configurado, las frases «Escríbenos a …» quedarían colgando con un enlace vacío: se quita
+ * el párrafo entero que contiene un `mailto:` vacío (también en las plantillas ya guardadas por cada empresa).
+ */
+export function dropEmptyContactLinks(html: string): string {
+  return html.replace(/<p\b[^>]*>(?:(?!<\/p>)[\s\S])*?<a href="mailto:\s*"[^>]*>\s*<\/a>(?:(?!<\/p>)[\s\S])*?<\/p>/gi, "");
+}
