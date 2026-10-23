@@ -98,10 +98,14 @@ export function storageReferences(env: string): Record<string, Record<string, st
 
 /**
  * Pasarelas de las empresas de PRUEBA de live: Railway da un dominio por servicio y el Core elige la empresa por el
- * host, así que cada empresa de prueba usa una pasarela (`gw-demo-a`, `gw-demo-b`) con el dominio
- * `<empresa>.up.railway.app`. Solo identificadores de empresas de prueba; nunca dominios comerciales.
+ * host, así que cada empresa de prueba usa una pasarela propia de live (`gw-prueba-a`, `gw-prueba-b`; autorizadas por el
+ * propietario el 23/10/2026) con el dominio `<empresa>.up.railway.app`. Solo identificadores de empresas de prueba;
+ * nunca dominios comerciales.
  */
-export const TEST_TENANT_GATEWAYS = ["gw-demo-a", "gw-demo-b"] as const;
+export const TEST_TENANT_GATEWAYS = ["gw-prueba-a", "gw-prueba-b"] as const;
+/** Pasarela de referencia de live: de ella se copian la construcción y estas variables (nunca PUBLIC_HOSTS: siguen protegidas). */
+export const GATEWAY_TEMPLATE_SERVICE = "core-gateway";
+export const GATEWAY_COPIED_VARS = ["GATEWAY_USER", "GATEWAY_PASSWORD_HASH", "UPSTREAM"] as const;
 export const TEST_TENANT_RE = /^cms-prueba-[ab]-\d{8}$/;
 export function testTenantDomains(env: string, only: string): Array<{ service: string; tenantId: string; domain: string }> {
   if (env !== "live") throw new Error("las pasarelas de prueba solo existen en live");

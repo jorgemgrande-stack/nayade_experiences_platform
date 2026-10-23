@@ -109,8 +109,8 @@ jobs:
         run: pnpm exec tsx scripts/deploy/esRailway.ts storage --env "${ES_ENV}"
 
       # Pruebas de live (autorizado por el propietario el 23/10/2026): almacenamiento como referencias a los buckets de
-      # live y pasarelas gw-demo-a/gw-demo-b con el dominio de las dos empresas de prueba (only). Después se despliega
-      # el Core para que tome las variables. Nunca en production.
+      # live y pasarelas propias de live gw-prueba-a/gw-prueba-b (creadas solo en live con la configuración de
+      # core-gateway) con el dominio de las dos empresas de prueba (only). Después se despliega el Core. Nunca en production.
       - name: Pruebas de live — solo live y dos empresas de prueba
         if: inputs.action == 'preparar-pruebas-live'
         run: |
@@ -120,10 +120,6 @@ jobs:
       - name: Pruebas de live — almacenamiento como referencias a los buckets
         if: inputs.action == 'preparar-pruebas-live'
         run: pnpm exec tsx scripts/deploy/esRailway.ts storage-fix --env "${ES_ENV}"
-
-      - name: Pruebas de live — dominio de las pasarelas de prueba
-        if: inputs.action == 'preparar-pruebas-live'
-        run: pnpm exec tsx scripts/deploy/esRailway.ts test-domains --env "${ES_ENV}" --only "${ES_ONLY}"
 
       - name: Commit a desplegar (debe pertenecer a integration/elephant-source)
         if: startsWith(inputs.action, 'desplegar-') || inputs.action == 'preparar-pruebas-live'
@@ -165,6 +161,10 @@ jobs:
       - name: Export del commit (sin railway.toml ni datos de semilla)
         if: startsWith(inputs.action, 'desplegar-') || inputs.action == 'preparar-pruebas-live'
         run: pnpm exec tsx scripts/deploy/esRailway.ts export --sha "${ES_DEPLOY_SHA}" --out "${RUNNER_TEMP}/export"
+
+      - name: Pruebas de live — pasarelas de las empresas de prueba (crear solo en live, desplegar y dominio)
+        if: inputs.action == 'preparar-pruebas-live'
+        run: pnpm exec tsx scripts/deploy/esRailway.ts test-gateways --env "${ES_ENV}" --only "${ES_ONLY}" --dir "${RUNNER_TEMP}/export" --sha "${ES_DEPLOY_SHA}"
 
       - name: Desplegar el servicio
         if: startsWith(inputs.action, 'desplegar-') || inputs.action == 'preparar-pruebas-live'
