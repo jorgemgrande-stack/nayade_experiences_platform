@@ -24,6 +24,7 @@ on:
           - verificar-token
           - estado
           - diagnostico-almacenamiento
+          - almacenamiento-referencias
           - desplegar-restore-drill
           - desplegar-backup-job
           - copia-de-seguridad
@@ -114,6 +115,12 @@ jobs:
       - name: Diagnóstico del almacenamiento (solo lectura; sin valores de claves)
         if: inputs.action == 'diagnostico-almacenamiento'
         run: pnpm exec tsx scripts/deploy/esRailway.ts storage --env "${ES_ENV}"
+
+      # Variables de almacenamiento como REFERENCIAS a los buckets del entorno (production: solo backup-job y
+      # restore-drill, autorizado por el propietario el 23/10/2026). Si una referencia no da valor, se restaura y se para.
+      - name: Almacenamiento como referencias a los buckets (sin desplegar)
+        if: inputs.action == 'almacenamiento-referencias'
+        run: pnpm exec tsx scripts/deploy/esRailway.ts storage-fix --env "${ES_ENV}"
 
       # Pruebas de live (autorizado por el propietario el 23/10/2026): almacenamiento como referencias a los buckets de
       # live y pasarelas propias de live gw-prueba-a/gw-prueba-b (creadas solo en live con la configuración de

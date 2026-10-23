@@ -125,7 +125,10 @@ describe("preparar-pruebas-live (autorizado por el propietario el 23/10/2026)", 
     });
     expect(refs["restore-drill"].BACKUP_S3_SECRET_KEY).toBe("${{es-live-backups.SECRET_ACCESS_KEY}}");
     expect(refs["backup-job"].BACKUP_S3_ACCESS_KEY).toBe("${{es-live-backups.ACCESS_KEY_ID}}");
-    expect(() => storageReferences("production")).toThrow();
+    // Production: solo los servicios de copias (backup-job y restore-drill), nunca el Core
+    expect(Object.keys(storageReferences("production")).sort()).toEqual(["backup-job", "restore-drill"]);
+    expect(storageReferences("production")["restore-drill"].BACKUP_S3_SECRET_KEY).toBe("${{elephant-source-backups.SECRET_ACCESS_KEY}}");
+    expect(() => storageReferences("staging")).toThrow();
   });
 
   it("dominios: solo dos empresas de prueba, en orden, en las pasarelas gw-prueba-a/b de live", () => {
