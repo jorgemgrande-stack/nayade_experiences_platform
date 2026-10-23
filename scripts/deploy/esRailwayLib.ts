@@ -105,6 +105,14 @@ export function storageReferences(env: string): Record<string, Record<string, st
 }
 
 /**
+ * Medición (Resource Manager): el plano de control lee el consumo de la MISMA base del ERM que escribe el Core, por
+ * referencia a su variable (sin copiar credenciales). Solo live; en production es una operación protegida aparte.
+ */
+export function meteringReferences(env: string): Record<string, Record<string, string>> {
+  return env === "live" ? { controlplane: { ERM_DATABASE_URL: "${{core.ERM_DATABASE_URL}}" } } : {};
+}
+
+/**
  * Pasarelas de las empresas de PRUEBA de live: Railway da un dominio por servicio y el Core elige la empresa por el
  * host, así que cada empresa de prueba usa una pasarela propia de live (`gw-prueba-a`, `gw-prueba-b`; autorizadas por el
  * propietario el 23/10/2026) con el dominio `<empresa>.up.railway.app`. Solo identificadores de empresas de prueba;
