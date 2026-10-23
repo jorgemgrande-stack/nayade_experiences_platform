@@ -5,6 +5,7 @@ import { eq } from "drizzle-orm";
 import { buildQuotePdfHtml } from "../emailTemplates";
 import { legacyDb, legacyPool } from "../_core/legacyDb";
 import { brandSetting, companyName, legacySiteHost } from "../tenantBrand";
+import { sampleUrl } from "../_core/productIdentity";
 
 const _pool = legacyPool();
 const db = legacyDb();
@@ -139,7 +140,7 @@ export const SYSTEM_PDF_TEMPLATES = [
       validUntil: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
       notes: "Precio especial por grupo. Incluye alquiler de neopreno.",
       conditions: "Reserva sujeta a disponibilidad. Cancelación gratuita hasta 48h antes.",
-      paymentLinkUrl: "https://tuempresa.es/pago/PRE-2026-001",
+      paymentLinkUrl: sampleUrl("/pago/PRE-2026-001"),
       createdAt: new Date(),
       issuerName: "{{marca}}",
       issuerCif: "B-XXXXXXXX",
