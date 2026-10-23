@@ -11,7 +11,7 @@ import { notifyOwner } from "./_core/notification";
 import { buildReservationConfirmHtml, buildReservationFailedHtml } from "./emailTemplates";
 import { sendEmail } from "./mailer";
 import { sendManagedEmail, logDirectEmail } from "./emailManager";
-import { getBusinessEmail } from "./config";
+import { getBusinessEmail, installationAdminCopy } from "./config";
 import { brandName, companyName } from "./tenantBrand";
 import { getDb } from "./db";
 import { reservations } from "../drizzle/schema";
@@ -108,7 +108,7 @@ export async function sendReservationPaidNotifications(
 
   // ── 2. Email de confirmación al cliente ───────────────────────────────────
   const copyEmail = await getBusinessEmail('reservations');
-  const adminEmail = process.env.ADMIN_EMAIL;
+  const adminEmail = installationAdminCopy();
   const bccList = [copyEmail, ...(adminEmail ? [adminEmail] : [])];
 
   const confirmSubject = `✅ Reserva confirmada — ${reservation.productName} — ${brandName()}`;
