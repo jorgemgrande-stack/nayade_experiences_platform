@@ -22,6 +22,7 @@ import { isStripeProvider, STRIPE_LIVE_PAYMENT_PROVIDER, type OrderNotifier } fr
 import type { OrderStore } from "../orchestrator/store";
 import type { OrderPayment, PaymentMode } from "../orchestrator/types";
 import type { TrialNotifier } from "../trials/onboarding";
+import type { UsageNotice } from "../commerce/usageNotices";
 import type { WithdrawalNotifier } from "../withdrawals/service";
 import type { IncidentNotifier } from "../_core/ops/incidents";
 import type { TicketNotifier } from "../_core/support/tickets";
@@ -94,6 +95,13 @@ export class PlatformMailer {
         return queued(await this.send(r.tenantId, `withdrawal:${r.reference}:receipt`, "withdrawal_receipt", to, this.t.withdrawalReceipt({ reference: r.reference, requestedAt: r.requestedAt, withinTerm: r.assessment.withinTerm, deadlineAt: r.assessment.deadlineAt })));
       },
       resolution: async (to, r) => queued(await this.send(r.tenantId, `withdrawal:${r.reference}:${r.status}`, "withdrawal_resolution", to, this.t.withdrawalResolution({ reference: r.reference, status: r.status, note: r.resolution?.note ?? null }))),
+    };
+  }
+
+  /** Avisos de consumo al 80 % / 100 % de un límite del plan (idempotentes por su clave). */
+  usageNotifier(): (to: string, n: UsageNotice) => Promise<void> {
+    return async (to, n) => {
+      await this.send(n.tenantId, n.key, "usage_threshold", to, this.t.usageThreshold({ label: n.label, periodLabel: n.periodLabel, used: n.used, limit: n.limit, level: n.level, hard: n.hard, host: n.host }));
     };
   }
 

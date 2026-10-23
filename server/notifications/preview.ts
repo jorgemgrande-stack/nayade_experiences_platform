@@ -48,6 +48,8 @@ const LEGACY: Record<string, () => MailContent> = (() => {
     "trial.started": () => t.trialActivated({ host: HOST, setPasswordUrl: `https://${HOST}/establecer-contrasena?muestra=1`, endsAt: PREVIEW_NOW + 15 * DAY }),
     "trial.reminder": () => t.trialExpiry({ endsAt: PREVIEW_NOW + 7 * DAY, daysLeft: 7, pricingUrl: PRICING }),
     "trial.ended": () => t.trialExpiry({ endsAt: PREVIEW_NOW, daysLeft: 0, pricingUrl: PRICING }),
+    "usage.near_limit": () => t.usageThreshold({ label: "Correos enviados", periodLabel: "hoy", used: "85", limit: "100", level: "warning", hard: true, host: HOST }),
+    "usage.limit_reached": () => t.usageThreshold({ label: "Inteligencia artificial: texto enviado", periodLabel: "este mes", used: "2.000.000 tokens", limit: "2.000.000 tokens", level: "exceeded", hard: false, host: HOST }),
     "trial.extended": () => t.trialStatus({ kind: "extended", endsAt: PREVIEW_NOW + 20 * DAY, host: HOST }),
     "trial.suspended": () => t.trialStatus({ kind: "suspended", endsAt: null, host: HOST }),
     "trial.reactivated": () => t.trialStatus({ kind: "reactivated", endsAt: PREVIEW_NOW + 10 * DAY, host: HOST }),
