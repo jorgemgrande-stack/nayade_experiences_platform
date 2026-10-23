@@ -173,6 +173,18 @@ export function platformTemplates(o: PlatformTemplateOptions = {}) {
         ]);
       return layout(b, `Tu prueba de ${PLATFORM_BRAND} vuelve a estar activa`, ["Ya puedes volver a usar tu plataforma con normalidad.", ...(until ? [until] : [])], enter);
     },
+    /** Consumo al 80 % o al 100 % de un límite del plan: qué recurso, cuánto y qué pasa ahora. */
+    usageThreshold(i: { label: string; periodLabel: string; used: string; limit: string; level: "warning" | "exceeded"; hard: boolean; host: string | null }) {
+      const cta = i.host ? { label: "Ver el consumo", url: hostUrl(i.host, "/admin/suscripcion/consumo")! } : null;
+      const now = `${i.label} (${i.periodLabel}): ${i.used} de ${i.limit}.`;
+      if (i.level === "warning")
+        return layout(b, `Estás cerca del límite: ${i.label.toLowerCase()}`, [now, "Has superado el 80 % del límite de tu plan para este periodo.", "Si crees que lo vas a necesitar, puedes ampliar tu plan desde el panel."], cta);
+      return layout(b, `Has alcanzado el límite: ${i.label.toLowerCase()}`, [
+        now,
+        i.hard ? "Hasta el próximo periodo no se puede usar más este recurso." : "Puedes seguir usándolo, pero conviene revisar tu plan.",
+        "Si lo necesitas, amplía tu plan desde el panel.",
+      ], cta);
+    },
     contractConfirmed(i: { companyName: string; reference: string | null; host: string | null }) {
       return layout(b, `Contratación confirmada${i.reference ? ` · ${i.reference}` : ""}`, [
         `La contratación de ${PLATFORM_BRAND} para ${i.companyName} está activa.`,

@@ -39,6 +39,8 @@ export type MailCategory =
   | "trial_expiry"
   // Ampliación, pausa o reactivación de la prueba decidida por el equipo
   | "trial_status"
+  // Consumo de la empresa al 80 % o al 100 % de un límite de su plan (server/commerce/usageNotices.ts)
+  | "usage_threshold"
   | "contract_confirmed"
   | "test_payment_confirmed"
   | "payment_confirmed"

@@ -21,7 +21,9 @@ import path from "node:path";
 import mysql from "mysql2/promise";
 import { EntitlementAdmin } from "../_core/modules/mysqlEntitlements";
 import { QuotaAdmin } from "../_core/erm/mysqlQuotas";
-import { parseDefaultQuotas } from "../_core/erm/quota";
+import { DEFAULT_QUOTAS, parseDefaultQuotas } from "../_core/erm/quota";
+import { crmContactOf, runUsageNotices } from "../commerce/usageNotices";
+import { choosePublicDomain } from "../_core/tenantIdentity";
 import { MysqlUsageStore } from "../_core/erm/usage";
 import { keyringFromEnv } from "../_core/tenantRegistry/crypto";
 import { MysqlTenantRegistryStore } from "../_core/tenantRegistry/mysqlStore";
@@ -228,6 +230,28 @@ async function main() {
         ? createContractActivation({ provisioning, platformDomain, actor: { type: "crm", id: "crm-contracts" }, notifyWelcome: platformMail.mailer?.assistedWelcome() })
         : undefined;
     crm = { service: new CrmService({ store, activation }), store };
+  }
+
+  // Avisos de consumo a cada empresa (80 % / 100 % de un límite de su plan), con el mismo ritmo que las alertas
+  if (usage && crm && platformMail.mailer && process.env.CP_ALERTS_EVERY_SECONDS) {
+    const crmStore = crm.store;
+    const notify = platformMail.mailer.usageNotifier();
+    const defaults = parseDefaultQuotas(process.env.ERM_DEFAULT_QUOTAS) ?? DEFAULT_QUOTAS;
+    const every = Math.max(60, Number(process.env.CP_ALERTS_EVERY_SECONDS)) * 1000;
+    const t = setInterval(
+      () =>
+        void runUsageNotices({
+          reader: store,
+          quotas,
+          usage,
+          defaults,
+          recipientOf: (id) => crmContactOf(crmStore, id),
+          hostOf: async (id) => choosePublicDomain(await store.listDomains(id))?.domain ?? null,
+          notify,
+        }).catch((e) => console.error(JSON.stringify({ ctx: "UsageNotices", event: "run_failed", error: e instanceof Error ? e.name : "error" }))),
+      every,
+    );
+    t.unref?.();
   }
 
   // Operadores humanos (usuario y contraseña): solo si la migración 0007 está aplicada
