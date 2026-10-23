@@ -39,6 +39,7 @@ import {
   computeCorporate, lines200,
 } from "../gestoriaTax";
 import { legacyDb, legacyPool } from "../_core/legacyDb";
+import { buildNoticeHtml } from "../emailTemplates";
 
 /** Línea de desglose para persistir en tax_obligation_lines. */
 type EstimateLine = { concept: string; base: string; rate: string | null; amount: string; sourceType: string };
@@ -642,20 +643,7 @@ export const gestoriaRouter = router({
           await sendEmail({
             to: input.email,
             subject: `Acceso al Portal de Gestoría — ${companyName()}`,
-            html: `
-              <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px;">
-                <h2 style="color:#ea580c">Portal de Gestoría</h2>
-                <p>Hola <strong>${input.name}</strong>,</p>
-                <p>${companyName()} le da acceso a su Portal de Gestoría, donde podrá consultar
-                las obligaciones fiscales, descargar los expedientes del ejercicio y marcar los
-                modelos como presentados.</p>
-                <p style="margin:24px 0">
-                  <a href="${inviteUrl}" style="background:#ea580c;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold">
-                    Activar mi cuenta
-                  </a>
-                </p>
-                <p style="color:#666;font-size:13px">El enlace caduca en 7 días.<br>${inviteUrl}</p>
-              </div>`,
+            html: buildNoticeHtml({ badge: "Acceso", title: "Portal de Gestoría", greetingName: input.name, paragraphs: [`${companyName()} le da acceso a su Portal de Gestoría, donde podrá consultar las obligaciones fiscales, descargar los expedientes del ejercicio y marcar los modelos como presentados.`], cta: { label: "Activar mi cuenta", url: inviteUrl }, note: "El enlace caduca en 7 días." }),
           });
         } catch (e) {
           console.warn("[gestoria.createPortalAccess] Email no enviado:", e);

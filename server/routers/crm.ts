@@ -91,6 +91,7 @@ import { logActivity } from "../db";
 import { legacyDb, legacyPool } from "../_core/legacyDb";
 import { integrationEnv } from "../_core/tenantConfig";
 import { hasTagCondition } from "../crmTagsDb";
+import { buildInvoiceEmailHtml } from "../emailTemplates";
 
 // generateInvoiceNumber y generateQuoteNumber reemplazadas por el helper centralizado
 // Ver server/documentNumbers.ts
@@ -5896,19 +5897,17 @@ export const crmRouter = router({
             : `Tu factura ${invoice.invoiceNumber} — ${companyName()}`;
 
           const items = (invoice.itemsJson as { description: string; quantity: number; unitPrice: number; total: number }[]) ?? [];
-          const htmlBody = `
-            <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
-              <h2 style="color:#f97316;">${companyName()}</h2>
-              <p>Estimado/a <strong>${invoice.clientName}</strong>,</p>
-              <p>Adjuntamos ${invoice.invoiceType === "abono" ? "la factura de abono" : "tu factura"} <strong>${invoice.invoiceNumber}</strong>.</p>
-              <table style="width:100%;border-collapse:collapse;margin:16px 0;">
-                <tr style="background:#f3f4f6;"><th style="padding:8px;text-align:left;">Descripción</th><th style="padding:8px;text-align:right;">Cant.</th><th style="padding:8px;text-align:right;">Precio</th><th style="padding:8px;text-align:right;">Total</th></tr>
-                ${items.map(i => `<tr><td style="padding:8px;border-bottom:1px solid #e5e7eb;">${i.description}</td><td style="padding:8px;text-align:right;border-bottom:1px solid #e5e7eb;">${i.quantity}</td><td style="padding:8px;text-align:right;border-bottom:1px solid #e5e7eb;">${Number(i.unitPrice).toFixed(2)}€</td><td style="padding:8px;text-align:right;border-bottom:1px solid #e5e7eb;">${Number(i.total).toFixed(2)}€</td></tr>`).join("")}
-              </table>
-              <p><strong>Subtotal:</strong> ${Number(invoice.subtotal).toFixed(2)}€ | <strong>IVA (${invoice.taxRate}%):</strong> ${Number(invoice.taxAmount).toFixed(2)}€ | <strong>TOTAL: ${Number(invoice.total).toFixed(2)}€</strong></p>
-              ${invoice.pdfUrl ? `<p>Encontrarás tu factura <strong>adjunta a este correo</strong> en PDF.${invoice.pdfUrl ? ` También puedes <a href="${externalFileUrl(invoice.pdfUrl)}" style="color:#f97316;">descargarla aquí</a>.` : ""}</p>` : ""}
-              <hr/><p style="color:#6b7280;font-size:12px;">${companyName()} — ${COPY_EMAIL} — ${brandSetting("brand_support_phone", "")} (también WhatsApp)</p>
-            </div>`;
+          const htmlBody = buildInvoiceEmailHtml({
+            clientName: invoice.clientName ?? "",
+            invoiceNumber: invoice.invoiceNumber,
+            isCreditNote: invoice.invoiceType === "abono",
+            items,
+            subtotal: Number(invoice.subtotal),
+            taxRate: invoice.taxRate ?? "",
+            taxAmount: Number(invoice.taxAmount),
+            total: Number(invoice.total),
+            pdfUrl: invoice.pdfUrl ? externalFileUrl(invoice.pdfUrl) : null,
+          });
 
           // El PDF se adjunta al correo (Brevo lo descarga del CDN), para que el
           // cliente lo tenga aunque el enlace de descarga falle.
@@ -5917,7 +5916,7 @@ export const crmRouter = router({
             : undefined;
 
           await sharedSendEmail({ to: recipient, subject, html: htmlBody, attachments: pdfAttachment });
-          await sharedSendEmail({ to: COPY_EMAIL, subject: `[COPIA] ${subject}`, html: htmlBody, attachments: pdfAttachment });
+          if (COPY_EMAIL) await sharedSendEmail({ to: COPY_EMAIL, subject: `[COPIA] ${subject}`, html: htmlBody, attachments: pdfAttachment });
 
           await db.update(invoices).set({
             status: invoice.status === "generada" ? "enviada" : invoice.status,

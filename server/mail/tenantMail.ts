@@ -21,6 +21,7 @@ import { tenantOwnSmtp } from "./ownSmtp";
 import { MailService } from "./service";
 import { MysqlMailStore } from "./store";
 import type { MailCategory, MailProviderPort } from "./types";
+import { htmlToText } from "./plainText";
 
 export interface TenantMailParams {
   to: string | string[];
@@ -101,7 +102,8 @@ export async function sendTenantMail(p: TenantMailParams): Promise<boolean> {
       cc: list(p.cc),
       subject: p.subject,
       html: p.html,
-      text: p.text,
+      // Sin versión de texto, se genera a partir del HTML (mejor entrega y accesibilidad)
+      text: p.text || htmlToText(p.html),
       // Contenido de ficheros privados del almacenamiento (ya leído por el mailer) en base64 para la bandeja
       attachments: p.attachments?.map((a) => (a.content ? { name: a.name, url: a.url, content: a.content.toString("base64") } : { name: a.name, url: a.url })),
       // La dirección propia de la empresa (si la configuró) recibe las respuestas; nunca es el From

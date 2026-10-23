@@ -37,6 +37,7 @@ import { generateDocumentNumber } from "../documentNumbers";
 import { htmlToPdf } from "../pdfGenerator";
 import { assertModuleEnabled } from "../_core/flagGuard";
 import { legacyDb, legacyPool } from "../_core/legacyDb";
+import { buildNoticeHtml } from "../emailTemplates";
 
 const _pool = legacyPool();
 const db = legacyDb();
@@ -614,16 +615,7 @@ export const suppliersRouter = router({
       await sendEmail({
         to: email,
         subject: `Invitación al portal de proveedores — ${companyName()}`,
-        html: `
-          <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px;">
-            <h2 style="color:#ea580c">Portal de Proveedores</h2>
-            <p>Hola <strong>${name}</strong>,</p>
-            <p>Has sido invitado al portal de proveedores de <strong>${companyName()}</strong>, donde podrás ver las ventas de tus productos por todos los canales y tus liquidaciones.</p>
-            <p style="margin:24px 0">
-              <a href="${inviteUrl}" style="background:#ea580c;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold">Activar mi cuenta</a>
-            </p>
-            <p style="color:#666;font-size:13px">Este enlace caduca en 7 días.</p>
-          </div>`,
+        html: buildNoticeHtml({ badge: "Invitación", title: "Portal de proveedores", greetingName: name, paragraphs: [`Te han invitado al portal de proveedores de ${companyName()}, donde podrás ver las ventas de tus productos por todos los canales y tus liquidaciones.`], cta: { label: "Activar mi cuenta", url: inviteUrl }, note: "Este enlace caduca en 7 días." }),
       }).catch(() => {});
       return { ok: true, email };
     }),
@@ -1758,15 +1750,17 @@ export const settlementsRouter = router({
       await sendEmail({
         to: toEmail,
         subject: `Liquidación ${settlement.settlementNumber} — ${companyName()}`,
-        html: `
-          <h2>Liquidación de servicios</h2>
-          <p>Estimado/a ${settlement.supplierName},</p>
-          <p>Adjuntamos la liquidación <strong>${settlement.settlementNumber}</strong> correspondiente al periodo <strong>${settlement.periodFrom} — ${settlement.periodTo}</strong>.</p>
-          <p>Importe neto a abonar: <strong>${parseFloat(settlement.netAmountProvider ?? "0").toFixed(2)} €</strong></p>
-          ${settlement.pdfUrl ? `<p><a href="${externalFileUrl(settlement.pdfUrl)}">Descargar liquidación en PDF</a></p>` : ""}
-          <p>Gracias por su colaboración.</p>
-          <p>${companyName()}</p>
-        `,
+        html: buildNoticeHtml({
+          badge: "Liquidación",
+          title: "Liquidación de servicios",
+          greetingName: settlement.supplierName,
+          paragraphs: [
+            `Te enviamos la liquidación ${settlement.settlementNumber} correspondiente al periodo ${settlement.periodFrom} — ${settlement.periodTo}.`,
+            `Importe neto a abonar: ${parseFloat(settlement.netAmountProvider ?? "0").toFixed(2).replace(".", ",")} €.`,
+            "Gracias por tu colaboración.",
+          ],
+          cta: settlement.pdfUrl ? { label: "Descargar la liquidación (PDF)", url: externalFileUrl(settlement.pdfUrl) } : null,
+        }),
       });
 
       await db.update(supplierSettlements).set({ sentAt: new Date() }).where(eq(supplierSettlements.id, input.id));

@@ -46,6 +46,8 @@ const { platformTemplates } = await import("./mail/templates");
 const { SYSTEM_TEMPLATES, brandedTemplateTexts } = await import("./routers/emailTemplatesRouter");
 const { passwordChangedContent } = await import("./mail/securityTemplates");
 const { exportReadyContent, exportFailedContent } = await import("./mail/exportTemplates");
+const { htmlToText } = await import("./mail/plainText");
+const { buildBudgetRequestAdminHtml, buildBudgetRequestUserHtml, buildNoticeHtml, buildInvoiceEmailHtml } = await import("./emailTemplates");
 
 export interface RenderedMail {
   id: string;
@@ -75,7 +77,7 @@ function renderAll(): RenderedMail[] {
     } catch (e) {
       html = `ERROR AL RENDERIZAR: ${(e as Error).message}`;
     }
-    out.push({ id: `empresa.${t.id}`, side: "empresa", subject: b.subject, html, text: "" });
+    out.push({ id: `empresa.${t.id}`, side: "empresa", subject: b.subject, html, text: html.startsWith("ERROR") ? "" : htmlToText(html) });
   }
   const pc = passwordChangedContent(COMPANY.brand_name, "Lucía Martín", new Date(Date.UTC(2026, 9, 23, 9, 30)));
   out.push({ id: "empresa.security.password_changed", side: "empresa", subject: pc.subject, html: pc.html, text: pc.text ?? "" });
@@ -83,6 +85,11 @@ function renderAll(): RenderedMail[] {
   out.push({ id: "empresa.data.export_ready", side: "empresa", subject: er.subject, html: er.html, text: er.text ?? "" });
   const ef = exportFailedContent(COMPANY.brand_name, { name: "Lucía Martín", reason: "Tiempo de espera agotado", panelUrl: `https://${HOST}/admin/suscripcion/exportar` });
   out.push({ id: "empresa.data.export_failed", side: "empresa", subject: ef.subject, html: ef.html, text: ef.text ?? "" });
+  // Correos que antes se escribían a mano en los procedimientos
+  const notice = buildNoticeHtml({ badge: "Invitación", title: "Bienvenido al portal de colaboradores", greetingName: "Lucía Martín", paragraphs: [`Te han invitado al portal de colaboradores de ${COMPANY.brand_name} como miembro de Viajes Norte.`], cta: { label: "Activar mi cuenta", url: `https://${HOST}/partner/activar?token=demo-token` }, note: "Este enlace caduca en 7 días." });
+  out.push({ id: "empresa.portal_invite", side: "empresa", subject: `Invitación al portal de colaboradores — Viajes Norte`, html: notice, text: htmlToText(notice) });
+  const invoice = buildInvoiceEmailHtml({ clientName: "Lucía Martín", invoiceNumber: "FAC-2026-0042", isCreditNote: false, items: [{ description: "Ruta guiada (2 personas)", quantity: 2, unitPrice: 35, total: 70 }], subtotal: 70, taxRate: 21, taxAmount: 14.7, total: 84.7, pdfUrl: `https://${HOST}/api/ficheros/demo/FAC-2026-0042.pdf` });
+  out.push({ id: "empresa.invoice_email", side: "empresa", subject: `Tu factura FAC-2026-0042 — ${COMPANY.brand_name}`, html: invoice, text: htmlToText(invoice) });
   return out;
 }
 
@@ -119,7 +126,9 @@ export function problemsOf(m: RenderedMail): string[] {
     if (!/name="viewport"/i.test(m.html)) p.push("sin meta viewport (móvil)");
     if (!/max-width:\s*\d+px/i.test(m.html)) p.push("sin ancho máximo");
   }
-  if (m.side === "plataforma" && !m.text.trim()) p.push("sin versión de texto");
+  if (!m.text.trim()) p.push("sin versión de texto");
+  else if (/<[a-z][^>]*>|&[a-z]+;/i.test(m.text)) p.push("versión de texto con etiquetas o entidades HTML");
+  if (m.side === "empresa" && /#f97316|#e85d04|#ea580c/i.test(m.html)) p.push("naranja heredado en lugar del color de la empresa");
   return p;
 }
 
@@ -166,6 +175,33 @@ describe("calidad de todos los correos", () => {
       COMPANY.brand_primary_color = saved.p;
       COMPANY.brand_accent_color = saved.a;
     }
+  });
+
+  it("solicitud de presupuesto (formulario público): el HTML del cliente nunca se inserta sin escapar", () => {
+    const evil = { name: "<script>alert(1)</script>", email: "x@ejemplo.example", phone: "<b>600</b>", arrivalDate: "hoy", adults: 2, children: 0, selectedCategory: "<i>x</i>", selectedProduct: "<img src=x onerror=alert(1)>", comments: '"><a href="https://malo.example">pincha</a>', submittedAt: "ahora" };
+    for (const html of [buildBudgetRequestAdminHtml(evil), buildBudgetRequestUserHtml(evil)]) {
+      expect(html).not.toMatch(/<script|<img src=x|href="https:\/\/malo\.example"|<b>600<\/b>|<i>x<\/i>/i);
+    }
+    expect(buildBudgetRequestAdminHtml(evil)).toContain("&lt;script&gt;");
+  });
+
+  it("versión de texto: enlaces legibles y sin HTML", () => {
+    const t = htmlToText('<html><head><style>p{}</style></head><body><p>Hola&nbsp;<strong>Ana</strong>,</p><a href="https://x.example/pago?a=1&amp;b=2">Pagar ahora</a><br><a href="mailto:hola@x.example">hola@x.example</a></body></html>');
+    expect(t).toBe("Hola Ana,\nPagar ahora (https://x.example/pago?a=1&b=2)\nhola@x.example");
+  });
+
+  it("los correos escritos a mano en los procedimientos usan ya las plantillas comunes (sin naranja ni HTML suelto)", () => {
+    for (const [f, fn] of [["./routers/partners.ts", "buildNoticeHtml"], ["./routers/suppliers.ts", "buildNoticeHtml"], ["./routers/hr.ts", "buildNoticeHtml"], ["./routers/gestoria.ts", "buildNoticeHtml"], ["./routers/crm.ts", "buildInvoiceEmailHtml"]]) {
+      const src = fs.readFileSync(new URL(f, import.meta.url), "utf8");
+      expect(src, f).toContain(fn);
+      expect(src, f).not.toMatch(/<h2 style="color:#(ea580c|f97316)/i);
+    }
+  });
+
+  it("aviso genérico: todo el texto de quien llama se escapa", () => {
+    const html = buildNoticeHtml({ title: "<b>t</b>", greetingName: "<script>x</script>", paragraphs: ['<a href="https://malo.example">x</a>'], cta: { label: "<i>y</i>", url: "https://ok.example/a?b=1&c=2" } });
+    expect(html).not.toMatch(/<script|<b>t<\/b>|href="https:\/\/malo|<i>y<\/i>/);
+    expect(html).toContain('href="https://ok.example/a?b=1&amp;c=2"');
   });
 
   it("móvil: la tabla principal de los correos de empresa se adapta (sin ancho fijo fuera de Outlook)", () => {
