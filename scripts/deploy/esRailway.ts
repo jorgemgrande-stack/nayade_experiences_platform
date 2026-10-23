@@ -131,7 +131,7 @@ async function main() {
   const env = arg("env");
   const sc = await scope();
   const service = cmd === "deploy" ? arg("service") : cmd === "drill" ? "restore-drill" : undefined;
-  if (!["verify", "status", "deploy", "drill", "storage", "storage-fix", "test-gateways", "mail-live"].includes(cmd)) throw new Error(`orden desconocida: ${cmd}`);
+  if (!["verify", "status", "deploy", "drill", "storage", "storage-fix", "test-gateways", "mail-live", "backup-check"].includes(cmd)) throw new Error(`orden desconocida: ${cmd}`);
   const problems = guard(cfg, sc, { env, service });
   if (problems.length) {
     console.error(`Detenido antes de tocar nada:\n - ${problems.join("\n - ")}`);
@@ -321,6 +321,42 @@ async function main() {
       const d = await waitFor(crmId, sc.environmentId, before.id);
       console.log(`crm: redesplegado con su misma imagen → ${d.status}`);
       if (d.status !== "SUCCESS") process.exit(1);
+    }
+    return;
+  }
+  if (cmd === "backup-check") {
+    // Verificación INDEPENDIENTE de las copias (solo lectura): con las credenciales de restore-drill, qué objetos hay en el
+    // bucket de copias de las últimas 24 h, por carpeta (empresa o base de plataforma). Nunca imprime una clave.
+    const { S3Client, ListObjectsV2Command } = await import("@aws-sdk/client-s3");
+    const t = await api<{ projectToken: { projectId: string } }>("query { projectToken { projectId } }");
+    const v = (await api<{ variables: Record<string, string> }>("query($p:String!,$e:String!,$s:String!){ variables(projectId:$p, environmentId:$e, serviceId:$s, unrendered:false) }", { p: t.projectToken.projectId, e: sc.environmentId, s: await serviceId("restore-drill") })).variables;
+    for (const k of ["BACKUP_S3_BUCKET", "BACKUP_S3_ACCESS_KEY", "BACKUP_S3_SECRET_KEY"]) if (!v[k]) throw new Error(`restore-drill no tiene ${k}`);
+    const client = new S3Client({ region: v.BACKUP_S3_REGION || "auto", endpoint: v.BACKUP_S3_ENDPOINT || undefined, forcePathStyle: v.BACKUP_S3_FORCE_PATH_STYLE === "1", credentials: { accessKeyId: v.BACKUP_S3_ACCESS_KEY, secretAccessKey: v.BACKUP_S3_SECRET_KEY } });
+    const prefix = (v.BACKUP_S3_PREFIX ?? "").replace(/^/+/, "");
+    const since = Date.now() - 24 * 3600_000;
+    const recent: Array<{ key: string; bytes: number; at: number }> = [];
+    let total = 0;
+    let token: string | undefined;
+    do {
+      const r = await client.send(new ListObjectsV2Command({ Bucket: v.BACKUP_S3_BUCKET, Prefix: prefix, ContinuationToken: token }));
+      for (const o of r.Contents ?? []) {
+        total++;
+        const at = o.LastModified ? o.LastModified.getTime() : 0;
+        if (at >= since && o.Key) recent.push({ key: o.Key.slice(prefix.length), bytes: Number(o.Size ?? 0), at });
+      }
+      token = r.IsTruncated ? r.NextContinuationToken : undefined;
+    } while (token);
+    const byFolder = new Map<string, { n: number; bytes: number; last: number }>();
+    for (const o of recent) {
+      const folder = o.key.split("/").slice(0, 2).join("/");
+      const cur = byFolder.get(folder) ?? { n: 0, bytes: 0, last: 0 };
+      byFolder.set(folder, { n: cur.n + 1, bytes: cur.bytes + o.bytes, last: Math.max(cur.last, o.at) });
+    }
+    console.log(`Bucket de copias: ${total} objetos en total; ${recent.length} de las últimas 24 h`);
+    for (const [folder, x] of Array.from(byFolder.entries()).sort()) console.log(`  ${folder.padEnd(48)} ${String(x.n).padStart(4)} objetos · ${(x.bytes / 1024 / 1024).toFixed(2)} MB · último ${new Date(x.last).toISOString()}`);
+    if (!recent.length) {
+      console.error("No hay ninguna copia de las últimas 24 h: no se puede continuar con las migraciones.");
+      process.exit(1);
     }
     return;
   }
