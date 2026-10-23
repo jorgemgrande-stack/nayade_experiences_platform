@@ -19,6 +19,9 @@
     },
     "restore-drill": {
       "kind": "ops"
+    },
+    "crm": {
+      "kind": "crm"
     }
   }
 }

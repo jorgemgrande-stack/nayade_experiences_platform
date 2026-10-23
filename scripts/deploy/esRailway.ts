@@ -14,6 +14,11 @@
  *   tsx scripts/deploy/esRailway.ts storage --env live            (almacenamiento de cada servicio, sin secretos)
  *   tsx scripts/deploy/esRailway.ts storage-fix --env live        (almacenamiento como referencias a los buckets de live)
  *   tsx scripts/deploy/esRailway.ts mail-live --env live [--allow a@x,b@y]  (diagnóstico de Postmark; con --allow, sandbox)
+ *   tsx scripts/deploy/esRailway.ts active-sha --env live          (commit activo de los servicios ordinarios; vacío si no se sabe)
+ *   tsx scripts/deploy/esRailway.ts changes --from <commit> --to <commit> [--production]  (qué exige el procedimiento protegido)
+ *   tsx scripts/deploy/esRailway.ts publish --env live --dir <dir> --sha <commit>   (despliegue ordinario con vuelta atrás automática)
+ *   tsx scripts/deploy/esRailway.ts functional --env live          (comprobaciones funcionales)
+ *   tsx scripts/deploy/esRailway.ts revert --env live --service core   (vuelve al despliegue anterior del servicio)
  *   tsx scripts/deploy/esRailway.ts test-gateways --env live --only <a>,<b> --dir <dir> --sha <commit>  (pasarelas de prueba)
  *
  * `drill` ejecuta una orden de operación PERMITIDA (copias, simulación y aplicación de migraciones, verificación)
@@ -26,6 +31,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { MAIL_TEST_SERVICES, POSTMARK_WEBHOOK_TRIGGERS, mailSandboxPlan, parseMailAllowlist } from "./esRailwayLib";
 import { DRILL_IDLE, EXCLUDED_FROM_EXPORT, GATEWAY_COPIED_VARS, GATEWAY_TEMPLATE_SERVICE, STORAGE_BUCKETS, STORAGE_VARS, describeStorageVar, guard, isAllowedDrill, scrub, storageReferences, testTenantDomains, type DeployConfig, type TokenScope } from "./esRailwayLib";
+import { FUNCTIONAL_CHECKS, ORDINARY_SERVICES, hasMigrations, protectedChanges, shaFromDeployMeta } from "./esRailwayLib";
 import { REPOSITORIES } from "../../shared/repositories";
 
 const CONFIG_PATH = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../deploy/railway/elephant-source.deploy.json");
@@ -88,6 +94,49 @@ async function logs(deploymentId: string, limit = 400): Promise<string> {
   return scrub(d.deploymentLogs.map((l) => l.message).join("\n"));
 }
 
+type DeploymentNode = { id: string; status: string; createdAt: string; meta: unknown };
+async function deployments(serviceIdValue: string, environmentId: string, n = 10): Promise<DeploymentNode[]> {
+  const d = await api<{ deployments: { edges: Array<{ node: DeploymentNode }> } }>(
+    "query($s:String!,$e:String!,$n:Int){ deployments(first:$n, input:{serviceId:$s, environmentId:$e}){ edges { node { id status createdAt meta } } } }",
+    { s: serviceIdValue, e: environmentId, n },
+  );
+  return d.deployments.edges.map((x) => x.node);
+}
+/** Despliegue activo (el último que terminó bien) y su commit. */
+async function active(serviceIdValue: string, environmentId: string) {
+  const a = (await deployments(serviceIdValue, environmentId)).find((x) => x.status === "SUCCESS");
+  return a ? { id: a.id, sha: shaFromDeployMeta(a.meta, REPOSITORIES.core) } : null;
+}
+/** Vuelve a un despliegue anterior (misma imagen) y espera a que quede activo. */
+async function rollback(serviceIdValue: string, environmentId: string, deploymentId: string): Promise<string> {
+  const before = (await latest(serviceIdValue, environmentId))?.id ?? null;
+  await api("mutation($id:String!){ deploymentRollback(id:$id) }", { id: deploymentId });
+  return (await waitFor(serviceIdValue, environmentId, before)).status;
+}
+/** Comprobaciones funcionales del entorno; la credencial de la pasarela de live llega por ES_GATEWAY_AUTH (usuario:clave). */
+async function functional(env: string): Promise<boolean> {
+  const checks = FUNCTIONAL_CHECKS[env];
+  if (!checks) throw new Error(`sin comprobaciones funcionales para «${env}»`);
+  const auth = (process.env.ES_GATEWAY_AUTH ?? "").trim();
+  let ok = true;
+  for (const c of checks) {
+    if (c.auth && !auth) {
+      console.error(`${c.url}: falta ES_GATEWAY_AUTH`);
+      ok = false;
+      continue;
+    }
+    const headers: Record<string, string> = c.auth ? { authorization: "Basic " + Buffer.from(auth).toString("base64") } : {};
+    let got = 0;
+    for (let i = 0; i < 8 && got !== c.expect; i++) {
+      if (i) await new Promise((r) => setTimeout(r, 15_000));
+      got = (await fetch(c.url, { redirect: "manual", headers }).catch(() => null))?.status ?? 0;
+    }
+    console.log(`${got === c.expect ? "OK" : "FALLO"} ${c.url} → ${got}`);
+    if (got !== c.expect) ok = false;
+  }
+  return ok;
+}
+
 // ── Órdenes ─────────────────────────────────────────────────────────────────────
 
 function arg(name: string, required = true): string {
@@ -118,6 +167,39 @@ async function main() {
     console.log(`export de ${sha} en ${out} (sin ${EXCLUDED_FROM_EXPORT.join(", ")})`);
     return;
   }
+  if (cmd === "changes") {
+    // Sin red: qué trae el rango. --production: falla (5) si hay algo que exige el procedimiento protegido
+    const from = arg("from", false);
+    const to = arg("to");
+    for (const c of [from, to]) if (c && !/^[0-9a-f]{7,40}$/.test(c)) throw new Error("commit no válido");
+    if (!from) {
+      console.log("No se sabe qué versión está activa: se trata como cambio protegido.");
+      console.log("migrations=unknown");
+      if (process.argv.includes("--production")) process.exit(5);
+      return;
+    }
+    const git = (a: string[]) => {
+      const r = spawnSync("git", a, { encoding: "utf8", maxBuffer: 256 * 1024 * 1024 });
+      if (r.status !== 0) throw new Error(`git ${a[0]} falló: ${(r.stderr ?? "").slice(0, 200)}`);
+      return r.stdout ?? "";
+    };
+    const files = git(["diff", "--name-only", `${from}..${to}`]).split("\n").filter(Boolean);
+    console.log(`${files.length} ficheros cambiados entre ${from.slice(0, 12)} y ${to.slice(0, 12)}`);
+    console.log(`migrations=${hasMigrations(files) ? "yes" : "no"}`);
+    if (process.argv.includes("--production")) {
+      const blocked = protectedChanges(files, git(["diff", "--unified=0", `${from}..${to}`, "--", "server", "shared", "client", ":!*.test.ts", ":!*.test.tsx"]));
+      if (blocked.length) {
+        console.error(`Este despliegue no es ordinario; usa el procedimiento protegido (con aprobación):\n - ${blocked.join("\n - ")}`);
+        process.exit(5);
+      }
+      console.log("Cambio ordinario: sin migraciones, infraestructura ni funciones bloqueadas.");
+    }
+    return;
+  }
+  if (cmd === "functional") {
+    if (!(await functional(arg("env")))) process.exit(1);
+    return;
+  }
   if (cmd === "health") {
     const url = arg("url");
     const expect = Number(arg("expect", false) || 200);
@@ -130,8 +212,8 @@ async function main() {
   }
   const env = arg("env");
   const sc = await scope();
-  const service = cmd === "deploy" ? arg("service") : cmd === "drill" ? "restore-drill" : undefined;
-  if (!["verify", "status", "deploy", "drill", "storage", "storage-fix", "test-gateways", "mail-live", "backup-check"].includes(cmd)) throw new Error(`orden desconocida: ${cmd}`);
+  const service = cmd === "deploy" || cmd === "revert" ? arg("service") : cmd === "drill" ? "restore-drill" : undefined;
+  if (!["verify", "status", "deploy", "drill", "active-sha", "publish", "revert", "storage", "storage-fix", "test-gateways", "mail-live", "backup-check"].includes(cmd)) throw new Error(`orden desconocida: ${cmd}`);
   const problems = guard(cfg, sc, { env, service });
   if (problems.length) {
     console.error(`Detenido antes de tocar nada:\n - ${problems.join("\n - ")}`);
@@ -404,13 +486,83 @@ async function main() {
     }
     return;
   }
+  if (cmd === "active-sha") {
+    // Commit activo común de los servicios ordinarios; vacío si alguno no se sabe o difieren (se tratará como protegido)
+    const shas: Array<string | null> = [];
+    for (const name of ORDINARY_SERVICES) {
+      const sha = (await active(await serviceId(name), sc.environmentId))?.sha ?? null;
+      console.error(`${name}: ${sha ?? "desconocido"}`);
+      shas.push(sha);
+    }
+    console.log(shas.every((x) => x && x === shas[0]) ? shas[0] : "");
+    return;
+  }
+  if (cmd === "publish") {
+    // Despliegue ORDINARIO: solo sube el código de los servicios ordinarios (sin variables, migraciones ni
+    // infraestructura). Si un servicio no queda bien o fallan las comprobaciones funcionales, todos los publicados en
+    // esta ejecución vuelven a su despliegue anterior.
+    const dir = path.resolve(arg("dir"));
+    const sha = arg("sha");
+    if (!/^[0-9a-f]{40}$/.test(sha)) throw new Error("commit no válido");
+    for (const f of EXCLUDED_FROM_EXPORT) if (fs.existsSync(path.join(dir, f))) throw new Error(`el export contiene ${f}: no se despliega`);
+    const done: Array<{ name: string; sid: string; prev: string | null }> = [];
+    const rollbackAll = async () => {
+      for (const d of done.reverse()) {
+        if (!d.prev) {
+          console.error(`${d.name}: sin despliegue anterior al que volver`);
+          continue;
+        }
+        console.error(`${d.name}: vuelta atrás a ${d.prev} → ${await rollback(d.sid, sc.environmentId, d.prev)}`);
+      }
+    };
+    for (const name of ORDINARY_SERVICES) {
+      if (!sc.services.includes(name)) throw new Error(`el servicio ${name} no existe en el entorno`);
+      const sid = await serviceId(name);
+      const cur = await active(sid, sc.environmentId);
+      if (cur?.sha === sha) {
+        console.log(`${name}: ya sirve ${sha.slice(0, 12)}`);
+        continue;
+      }
+      const before = (await latest(sid, sc.environmentId))?.id ?? null;
+      done.push({ name, sid, prev: cur?.id ?? null });
+      const r = spawnSync("railway", ["up", dir, "--path-as-root", "-s", name, "-e", env, "--detach", "-m", `${REPOSITORIES.core} ${sha}`], { encoding: "utf8", env: process.env });
+      const d = r.status === 0 ? await waitFor(sid, sc.environmentId, before) : null;
+      console.log(`${name}: ${d ? `despliegue ${d.id} → ${d.status}` : `railway up falló: ${scrub(r.stderr || r.stdout || "").slice(0, 300)}`}`);
+      if (d?.status !== "SUCCESS") {
+        if (d) console.log((await logs(d.id, 120)).split("\n").slice(-40).join("\n"));
+        await rollbackAll();
+        process.exit(1);
+      }
+    }
+    if (!(await functional(env))) {
+      await rollbackAll();
+      process.exit(1);
+    }
+    console.log(`Publicado ${sha.slice(0, 12)} en ${env}`);
+    return;
+  }
+  if (cmd === "revert") {
+    // Vuelta atrás rápida: el despliegue anterior del servicio (ya construido), sin compilar de nuevo
+    const sid = await serviceId(service!);
+    const list = await deployments(sid, sc.environmentId, 20);
+    const i = list.findIndex((x) => x.status === "SUCCESS");
+    const repo = service === "crm" ? REPOSITORIES.crm : REPOSITORIES.core;
+    const prev = i >= 0 ? list.slice(i + 1).find((x) => x.status === "REMOVED" && shaFromDeployMeta(x.meta, repo)) : undefined;
+    if (!prev) throw new Error(`${service}: no hay un despliegue anterior al que volver`);
+    console.log(`${service}: vuelve a ${prev.id} (commit ${shaFromDeployMeta(prev.meta, repo)?.slice(0, 12)}) → ${await rollback(sid, sc.environmentId, prev.id)}`);
+    if (!(await functional(env))) process.exit(1);
+    return;
+  }
   if (cmd === "deploy") {
     const dir = path.resolve(arg("dir"));
     const sha = arg("sha");
+    // El CRM se despliega SOLO desde su repositorio (--repo crm) y ese código solo va al servicio crm
+    const repo = arg("repo", false) === "crm" ? REPOSITORIES.crm : REPOSITORIES.core;
+    if ((service === "crm") !== (repo === REPOSITORIES.crm)) throw new Error("el servicio crm solo se despliega con --repo crm, y --repo crm solo en el servicio crm");
     for (const f of EXCLUDED_FROM_EXPORT) if (fs.existsSync(path.join(dir, f))) throw new Error(`el export contiene ${f}: no se despliega`);
     const sid = await serviceId(service!);
     const before = (await latest(sid, sc.environmentId))?.id ?? null;
-    const r = spawnSync("railway", ["up", dir, "--path-as-root", "-s", service!, "-e", env, "--detach", "-m", `${REPOSITORIES.core} ${sha}`], { encoding: "utf8", env: process.env });
+    const r = spawnSync("railway", ["up", dir, "--path-as-root", "-s", service!, "-e", env, "--detach", "-m", `${repo} ${sha}`], { encoding: "utf8", env: process.env });
     if (r.status !== 0) throw new Error(`railway up falló: ${scrub(r.stderr || r.stdout || "").slice(0, 400)}`);
     const d = await waitFor(sid, sc.environmentId, before);
     console.log(`${service}: despliegue ${d.id} → ${d.status}`);

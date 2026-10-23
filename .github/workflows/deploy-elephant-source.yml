@@ -1,11 +1,17 @@
 # Despliegue de Elephant Source en Railway (proyecto propio, aislado de Náyade y Skicenter).
 #
-# - SOLO manual (workflow_dispatch) y SOLO desde integration/elephant-source: ningún push despliega.
-# - Entorno de GitHub protegido «elephant-source-<entorno>» (revisores obligatorios) con el secreto
-#   RAILWAY_TOKEN = token de PROYECTO de Railway para ese entorno. Sin él, el flujo se detiene sin hacer nada.
+# - Manual (workflow_dispatch) o llamado por el CI de integration/elephant-source (workflow_call, solo «publicar» en
+#   live), y SOLO desde integration/elephant-source. main nunca publica Elephant Source.
+# - Entorno de GitHub «elephant-source-<entorno>» con el secreto RAILWAY_TOKEN = token de PROYECTO de Railway para ese
+#   entorno. Sin él, el flujo se detiene sin hacer nada.
 # - Antes de tocar nada, scripts/deploy/esRailway.ts comprueba que el token es del proyecto de Elephant Source y
 #   del entorno elegido (deploy/railway/elephant-source.deploy.json); si no, se detiene.
 # - Una acción por ejecución, en el orden del plan (docs/elephant-source/PLAN_PUBLICACION.md).
+# - Publicación continua (docs/elephant-source/PROTOCOLO_PUBLICACION.md): «publicar» y «revertir-*» son despliegues
+#   ORDINARIOS (solo el código de controlplane, core y core-gateway, con vuelta atrás automática). En production usan el
+#   entorno «elephant-source-production-despliegue» (sin aprobación) y solo publican un commit que ya superó el CI y live
+#   y que no trae migraciones, infraestructura ni interruptores de funciones bloqueadas. Todo lo demás en production usa
+#   «elephant-source-production» (con aprobación obligatoria).
 name: Despliegue Elephant Source
 
 on:
@@ -21,6 +27,11 @@ on:
         required: true
         type: choice
         options:
+          - publicar
+          - revertir-controlplane
+          - revertir-core
+          - revertir-core-gateway
+          - revertir-crm
           - verificar-token
           - estado
           - diagnostico-almacenamiento
@@ -37,6 +48,7 @@ on:
           - desplegar-controlplane
           - desplegar-core
           - desplegar-core-gateway
+          - desplegar-crm
           - comprobar-salud
           - preparar-production
           - aplicar-production
@@ -59,10 +71,24 @@ on:
         description: "Escribe el nombre del entorno para confirmar"
         required: true
         type: string
+  workflow_call:
+    inputs:
+      environment:
+        required: true
+        type: string
+      action:
+        required: true
+        type: string
+      confirm:
+        required: true
+        type: string
 
 permissions:
   contents: read
+  checks: read
+  statuses: write
 
+# Un solo despliegue a la vez por entorno, también entre la publicación automática y las acciones manuales
 concurrency:
   group: deploy-elephant-source-${{ inputs.environment }}
   cancel-in-progress: false
@@ -71,10 +97,12 @@ jobs:
   run:
     name: ${{ inputs.action }} (${{ inputs.environment }})
     runs-on: ubuntu-24.04
-    environment: elephant-source-${{ inputs.environment }}
+    environment: ${{ inputs.environment == 'production' && (inputs.action == 'publicar' || startsWith(inputs.action, 'revertir-')) && 'elephant-source-production-despliegue' || format('elephant-source-{0}', inputs.environment) }}
     timeout-minutes: 60
     env:
       RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+      ES_GATEWAY_AUTH: ${{ secrets.ES_GATEWAY_AUTH }}
+      GH_TOKEN: ${{ github.token }}
       ES_ENV: ${{ inputs.environment }}
       ES_ONLY: ${{ inputs.only }}
       ES_ACTION: ${{ inputs.action }}
@@ -105,7 +133,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: CLI de Railway (versión fijada)
-        if: startsWith(inputs.action, 'desplegar-') || inputs.action == 'preparar-pruebas-live' || inputs.action == 'correo-pruebas-live' || inputs.action == 'preparar-production' || inputs.action == 'aplicar-production'
+        if: startsWith(inputs.action, 'desplegar-') || inputs.action == 'publicar' || inputs.action == 'preparar-pruebas-live' || inputs.action == 'correo-pruebas-live' || inputs.action == 'preparar-production' || inputs.action == 'aplicar-production'
         run: npm install -g @railway/cli@5.68.0
 
       - name: Verificar que el token es de Elephant Source y del entorno elegido
@@ -155,7 +183,7 @@ jobs:
         run: pnpm exec tsx scripts/deploy/esRailway.ts mail-live --env "${ES_ENV}" --allow "${ES_MAIL_ALLOW}"
 
       - name: Commit a desplegar (debe pertenecer a integration/elephant-source)
-        if: startsWith(inputs.action, 'desplegar-') || inputs.action == 'preparar-pruebas-live' || inputs.action == 'correo-pruebas-live' || inputs.action == 'preparar-production' || inputs.action == 'aplicar-production'
+        if: startsWith(inputs.action, 'desplegar-') || inputs.action == 'publicar' || inputs.action == 'preparar-pruebas-live' || inputs.action == 'correo-pruebas-live' || inputs.action == 'preparar-production' || inputs.action == 'aplicar-production'
         run: |
           SHA="${ES_COMMIT:-${GITHUB_SHA}}"
           git merge-base --is-ancestor "${SHA}" "${GITHUB_SHA}" || { echo "El commit ${SHA} no es de integration/elephant-source"; exit 1; }
@@ -196,19 +224,89 @@ jobs:
         run: pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --command "node dist-cp/backup-job.js check-data-exports${ES_ONLY:+ --only ${ES_ONLY}}"
 
       - name: Export del commit (sin railway.toml ni datos de semilla)
-        if: startsWith(inputs.action, 'desplegar-') || inputs.action == 'preparar-pruebas-live' || inputs.action == 'correo-pruebas-live' || inputs.action == 'preparar-production' || inputs.action == 'aplicar-production'
+        if: startsWith(inputs.action, 'desplegar-') || inputs.action == 'publicar' || inputs.action == 'preparar-pruebas-live' || inputs.action == 'correo-pruebas-live' || inputs.action == 'preparar-production' || inputs.action == 'aplicar-production'
         run: pnpm exec tsx scripts/deploy/esRailway.ts export --sha "${ES_DEPLOY_SHA}" --out "${RUNNER_TEMP}/export"
+
+      # ── Despliegue ordinario (publicar) ──
+      - name: Publicar — production solo con CI y live superados por el mismo commit
+        if: inputs.action == 'publicar' && inputs.environment == 'production'
+        run: |
+          LIVE=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${ES_DEPLOY_SHA}/status" --jq '.statuses[] | select(.context == "elephant-source/live") | .state' | head -1)
+          if [ "${LIVE}" != "success" ]; then echo "El commit ${ES_DEPLOY_SHA} no ha superado live (estado: ${LIVE:-ninguno}). No se publica."; exit 1; fi
+          RUNS=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${ES_DEPLOY_SHA}/check-runs?per_page=100" --jq '.check_runs[] | "\(.name)|\(.conclusion)"')
+          for JOB in "Suites del Core multiempresa (bloqueante)" "Secretos y ficheros sensibles (bloqueante)"; do
+            if ! printf '%s\n' "${RUNS}" | grep -Fxq "${JOB}|success"; then echo "El CI «${JOB}» no está en verde para ${ES_DEPLOY_SHA}. No se publica."; exit 1; fi
+          done
+          echo "CI y live superados por ${ES_DEPLOY_SHA}"
+
+      - name: Publicar — qué trae respecto a lo activo (en production, nada que exija el procedimiento protegido)
+        if: inputs.action == 'publicar'
+        run: |
+          FROM=$(pnpm exec tsx scripts/deploy/esRailway.ts active-sha --env "${ES_ENV}")
+          if [ "${ES_ENV}" = "production" ]; then
+            pnpm exec tsx scripts/deploy/esRailway.ts changes ${FROM:+--from "${FROM}"} --to "${ES_DEPLOY_SHA}" --production
+          else
+            pnpm exec tsx scripts/deploy/esRailway.ts changes ${FROM:+--from "${FROM}"} --to "${ES_DEPLOY_SHA}" | tee "${RUNNER_TEMP}/changes.txt"
+            if ! grep -qx "migrations=no" "${RUNNER_TEMP}/changes.txt"; then echo "ES_LIVE_MIGRATE=1" >> "${GITHUB_ENV}"; fi
+          fi
+
+      # En live (entorno de pruebas) las migraciones nuevas se aplican solas, con copia antes; en production, nunca aquí
+      - name: Publicar — live, copia y migraciones nuevas
+        if: inputs.action == 'publicar' && inputs.environment == 'live' && env.ES_LIVE_MIGRATE == '1'
+        run: |
+          pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --command "node dist-cp/backup-job.js run"
+          pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --command "node .mig/run.cjs registry apply"
+          pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --command "node .mig/run.cjs crm apply"
+          pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --command "node dist-cp/backup-job.js migrate-tenants --apply"
+          pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --command "node dist-cp/backup-job.js check-data-exports"
+
+      - name: Publicar — controlplane, core y core-gateway (vuelta atrás automática si algo falla)
+        if: inputs.action == 'publicar'
+        run: pnpm exec tsx scripts/deploy/esRailway.ts publish --env "${ES_ENV}" --dir "${RUNNER_TEMP}/export" --sha "${ES_DEPLOY_SHA}"
+
+      - name: Publicar — marcar el commit como superado en live
+        if: inputs.action == 'publicar' && inputs.environment == 'live'
+        run: gh api "repos/${GITHUB_REPOSITORY}/statuses/${ES_DEPLOY_SHA}" -f state=success -f context=elephant-source/live -f description="Publicado y comprobado en live" -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" > /dev/null
+
+      - name: Publicar — marcar el commit como fallido en live
+        if: failure() && inputs.action == 'publicar' && inputs.environment == 'live' && env.ES_DEPLOY_SHA != ''
+        run: gh api "repos/${GITHUB_REPOSITORY}/statuses/${ES_DEPLOY_SHA}" -f state=failure -f context=elephant-source/live -f description="No superó live" -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" > /dev/null
+
+      - name: Vuelta atrás rápida del servicio (despliegue anterior, sin compilar)
+        if: startsWith(inputs.action, 'revertir-')
+        run: pnpm exec tsx scripts/deploy/esRailway.ts revert --env "${ES_ENV}" --service "${ES_ACTION#revertir-}"
 
       - name: Pruebas de live — pasarelas de las empresas de prueba (crear solo en live, desplegar y dominio)
         if: inputs.action == 'preparar-pruebas-live'
         run: pnpm exec tsx scripts/deploy/esRailway.ts test-gateways --env "${ES_ENV}" --only "${ES_ONLY}" --dir "${RUNNER_TEMP}/export" --sha "${ES_DEPLOY_SHA}"
 
       - name: Desplegar el servicio
-        if: startsWith(inputs.action, 'desplegar-') || inputs.action == 'preparar-pruebas-live'
+        if: (startsWith(inputs.action, 'desplegar-') && inputs.action != 'desplegar-crm') || inputs.action == 'preparar-pruebas-live'
         run: |
           SERVICE="${ES_ACTION#desplegar-}"
           if [ "${ES_ACTION}" = "preparar-pruebas-live" ]; then SERVICE="core"; fi
           pnpm exec tsx scripts/deploy/esRailway.ts deploy --env "${ES_ENV}" --service "${SERVICE}" --dir "${RUNNER_TEMP}/export" --sha "${ES_DEPLOY_SHA}"
+
+      # CRM: el último commit de integration/elephant-source del repositorio privado big-elephant-crm, leído con una
+      # clave de despliegue de SOLO LECTURA (secreto CRM_DEPLOY_KEY del entorno). Solo va al servicio crm.
+      - name: CRM — código de big-elephant-crm (integration/elephant-source)
+        if: inputs.action == 'desplegar-crm'
+        uses: actions/checkout@v4
+        with:
+          repository: jorgemgrande-stack/big-elephant-crm
+          ref: integration/elephant-source
+          ssh-key: ${{ secrets.CRM_DEPLOY_KEY }}
+          persist-credentials: false
+          path: crm-src
+
+      - name: CRM — export y despliegue
+        if: inputs.action == 'desplegar-crm'
+        run: |
+          CRM_SHA=$(git -C crm-src rev-parse HEAD)
+          mkdir -p "${RUNNER_TEMP}/crm-export"
+          git -C crm-src archive --format=tar HEAD | tar -x -C "${RUNNER_TEMP}/crm-export"
+          echo "CRM ${CRM_SHA}: $(git -C crm-src log -1 --format=%s)"
+          pnpm exec tsx scripts/deploy/esRailway.ts deploy --env "${ES_ENV}" --service crm --repo crm --dir "${RUNNER_TEMP}/crm-export" --sha "${CRM_SHA}"
 
       - name: Pruebas de live — las pasarelas de prueba responden en su dominio
         if: inputs.action == 'preparar-pruebas-live'
