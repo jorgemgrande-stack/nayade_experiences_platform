@@ -25,6 +25,10 @@ describe("correos de empresa en Outlook", () => {
     expect(dropEmptyContactLinks(empty)).toBe(`<p style="a">Antes</p><p>Después</p>`);
     const full = `<p>Escríbenos a <a href="mailto:hola@empresa.es">hola@empresa.es</a></p>`;
     expect(dropEmptyContactLinks(full)).toBe(full);
+    const button = `<table><tr><td>Fila</td></tr></table><table width="100%" style="margin:24px 0;"><tr><td align="center"><!--[if mso]><v:roundrect href="mailto:"></v:roundrect><![endif]--><a href="mailto:">Contactar ahora</a></td></tr></table><p>Fin</p>`;
+    expect(dropEmptyContactLinks(button)).toBe(`<table><tr><td>Fila</td></tr></table><p>Fin</p>`);
+    const ok = `<table><tr><td><a href="mailto:hola@empresa.es">Contactar</a></td></tr></table>`;
+    expect(dropEmptyContactLinks(ok)).toBe(ok);
   });
 
   it("la cabecera de Outlook usa el color de la marca y no hay erratas en «Escríbenos»", () => {

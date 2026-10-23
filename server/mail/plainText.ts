@@ -55,5 +55,8 @@ export function cleanSubject(subject: string): string {
  * el párrafo entero que contiene un `mailto:` vacío (también en las plantillas ya guardadas por cada empresa).
  */
 export function dropEmptyContactLinks(html: string): string {
-  return html.replace(/<p\b[^>]*>(?:(?!<\/p>)[\s\S])*?<a href="mailto:\s*"[^>]*>\s*<\/a>(?:(?!<\/p>)[\s\S])*?<\/p>/gi, "");
+  return html
+    .replace(/<p\b[^>]*>(?:(?!<\/p>)[\s\S])*?<a href="mailto:\s*"[^>]*>\s*<\/a>(?:(?!<\/p>)[\s\S])*?<\/p>/gi, "")
+    // Botón «Contactar» (tabla de un botón) que apunta a un mailto vacío
+    .replace(/<table\b[^>]*>(?:(?!<\/?table\b)[\s\S])*?href="mailto:\s*"(?:(?!<\/?table\b)[\s\S])*?<\/table>/gi, "");
 }
