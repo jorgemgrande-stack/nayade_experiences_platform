@@ -12,6 +12,8 @@
  *   tsx scripts/deploy/esRailway.ts drill   --env live --command "node dist-cp/backup-job.js migrate-tenants"
  *   tsx scripts/deploy/esRailway.ts health  --url https://... [--expect 200]
  *   tsx scripts/deploy/esRailway.ts storage --env live            (almacenamiento de cada servicio, sin secretos)
+ *   tsx scripts/deploy/esRailway.ts storage-fix --env live        (almacenamiento como referencias a los buckets de live)
+ *   tsx scripts/deploy/esRailway.ts test-domains --env live --only <a>,<b>  (dominio de las pasarelas de prueba)
  *
  * `drill` ejecuta una orden de operación PERMITIDA (copias, simulación y aplicación de migraciones, verificación)
  * en el servicio restore-drill de la red privada, espera a que termine, muestra su registro (sin DSN ni claves) y
@@ -21,7 +23,7 @@ import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { DRILL_IDLE, EXCLUDED_FROM_EXPORT, STORAGE_VARS, describeStorageVar, guard, isAllowedDrill, scrub, type DeployConfig, type TokenScope } from "./esRailwayLib";
+import { DRILL_IDLE, EXCLUDED_FROM_EXPORT, STORAGE_BUCKETS, STORAGE_VARS, describeStorageVar, guard, isAllowedDrill, scrub, storageReferences, testTenantDomains, type DeployConfig, type TokenScope } from "./esRailwayLib";
 import { REPOSITORIES } from "../../shared/repositories";
 
 const CONFIG_PATH = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../deploy/railway/elephant-source.deploy.json");
@@ -127,7 +129,7 @@ async function main() {
   const env = arg("env");
   const sc = await scope();
   const service = cmd === "deploy" ? arg("service") : cmd === "drill" ? "restore-drill" : undefined;
-  if (!["verify", "status", "deploy", "drill", "storage"].includes(cmd)) throw new Error(`orden desconocida: ${cmd}`);
+  if (!["verify", "status", "deploy", "drill", "storage", "storage-fix", "test-domains"].includes(cmd)) throw new Error(`orden desconocida: ${cmd}`);
   const problems = guard(cfg, sc, { env, service });
   if (problems.length) {
     console.error(`Detenido antes de tocar nada:\n - ${problems.join("\n - ")}`);
@@ -148,6 +150,66 @@ async function main() {
       }
       const lines = STORAGE_VARS.filter((k) => raw.variables[k] !== undefined).map((k) => `  ${k.padEnd(34)} ${describeStorageVar(k, raw.variables[k], eff?.variables[k])}`);
       console.log(`${name}:${lines.length ? "\n" + lines.join("\n") : " sin variables de almacenamiento"}`);
+    }
+    return;
+  }
+  if (cmd === "storage-fix") {
+    // Variables de almacenamiento → referencias a los buckets del entorno. Sin desplegar (lo hace el paso siguiente).
+    // Si una referencia no da valor, se restaura el valor anterior y se detiene: nunca se deja un servicio sin almacenamiento.
+    const buckets = STORAGE_BUCKETS[env];
+    if (!buckets) throw new Error(`sin buckets definidos para «${env}»`);
+    // Los buckets no siempre figuran como servicios: su existencia la prueba el valor efectivo de cada referencia (abajo)
+    const t = await api<{ projectToken: { projectId: string } }>("query { projectToken { projectId } }");
+    const q = "query($p:String!,$e:String!,$s:String!,$u:Boolean){ variables(projectId:$p, environmentId:$e, serviceId:$s, unrendered:$u) }";
+    const upsert = (sid: string, name: string, value: string) =>
+      api("mutation($i:VariableUpsertInput!){ variableUpsert(input:$i) }", { i: { projectId: t.projectToken.projectId, environmentId: sc.environmentId, serviceId: sid, name, value, skipDeploys: true } });
+    for (const [service, wanted] of Object.entries(storageReferences(env))) {
+      if (!sc.services.includes(service)) throw new Error(`el servicio ${service} no existe en el entorno`);
+      const sid = await serviceId(service);
+      const vars = { p: t.projectToken.projectId, e: sc.environmentId, s: sid };
+      const before = (await api<{ variables: Record<string, string> }>(q, { ...vars, u: true })).variables;
+      const changed: string[] = [];
+      for (const [name, value] of Object.entries(wanted)) {
+        if (before[name] === value) continue;
+        await upsert(sid, name, value);
+        changed.push(name);
+      }
+      const eff = (await api<{ variables: Record<string, string> }>(q, { ...vars, u: false })).variables;
+      const empty = Object.keys(wanted).filter((k) => !eff[k]);
+      if (empty.length) {
+        for (const name of changed) {
+          if (before[name] !== undefined) await upsert(sid, name, before[name]);
+          else await api("mutation($i:VariableDeleteInput!){ variableDelete(input:$i) }", { i: { projectId: t.projectToken.projectId, environmentId: sc.environmentId, serviceId: sid, name } });
+        }
+        throw new Error(`${service}: referencias sin valor (${empty.join(", ")}); restaurados los valores anteriores`);
+      }
+      console.log(`${service}: ${changed.length ? `${changed.length} variables pasan a referencia` : "ya usaba referencias"}`);
+      for (const k of Object.keys(wanted)) console.log(`  ${k.padEnd(34)} ${describeStorageVar(k, wanted[k], eff[k])}`);
+    }
+    return;
+  }
+  if (cmd === "test-domains") {
+    // Pasarelas de las empresas de prueba de live: su dominio generado pasa a <empresa>.up.railway.app
+    const t = await api<{ projectToken: { projectId: string } }>("query { projectToken { projectId } }");
+    for (const g of testTenantDomains(env, arg("only"))) {
+      if (!sc.services.includes(g.service)) throw new Error(`la pasarela ${g.service} no existe en el entorno`);
+      const sid = await serviceId(g.service);
+      const dm = await api<{ domains: { serviceDomains: Array<{ id: string; domain: string }> } }>(
+        "query($p:String!,$e:String!,$s:String!){ domains(projectId:$p, environmentId:$e, serviceId:$s){ serviceDomains { id domain } } }",
+        { p: t.projectToken.projectId, e: sc.environmentId, s: sid },
+      );
+      const current = dm.domains.serviceDomains[0];
+      if (current?.domain === g.domain) {
+        console.log(`${g.service}: ya sirve ${g.domain}`);
+        continue;
+      }
+      if (current) {
+        await api("mutation($i:ServiceDomainUpdateInput!){ serviceDomainUpdate(input:$i) }", { i: { serviceDomainId: current.id, domain: g.domain, environmentId: sc.environmentId, serviceId: sid } });
+      } else {
+        const c = await api<{ serviceDomainCreate: { id: string } }>("mutation($i:ServiceDomainCreateInput!){ serviceDomainCreate(input:$i){ id } }", { i: { environmentId: sc.environmentId, serviceId: sid } });
+        await api("mutation($i:ServiceDomainUpdateInput!){ serviceDomainUpdate(input:$i) }", { i: { serviceDomainId: c.serviceDomainCreate.id, domain: g.domain, environmentId: sc.environmentId, serviceId: sid } });
+      }
+      console.log(`${g.service}: ${current ? current.domain : "sin dominio"} → ${g.domain}`);
     }
     return;
   }

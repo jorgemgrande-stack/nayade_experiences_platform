@@ -9,7 +9,7 @@
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
-import { DRILL_ALLOWED, EXCLUDED_FROM_EXPORT, describeStorageVar, guard, isAllowedDrill, scrub, type DeployConfig } from "../scripts/deploy/esRailwayLib";
+import { DRILL_ALLOWED, EXCLUDED_FROM_EXPORT, describeStorageVar, guard, isAllowedDrill, scrub, storageReferences, testTenantDomains, type DeployConfig } from "../scripts/deploy/esRailwayLib";
 
 const cfg = JSON.parse(fs.readFileSync(path.resolve(__dirname, "../deploy/railway/elephant-source.deploy.json"), "utf8")) as DeployConfig;
 const wf = fs.readFileSync(path.resolve(__dirname, "../.github/workflows/deploy-elephant-source.yml"), "utf8");
@@ -109,5 +109,40 @@ describe("export y flujo", () => {
     const order = ["desplegar-restore-drill", "desplegar-backup-job", "copia-de-seguridad", "migraciones-plataforma-simulacion", "migraciones-plataforma-aplicar", "migraciones-simulacion", "migraciones-aplicar", "verificar-migraciones", "desplegar-controlplane", "desplegar-core"].map((a) => wf.indexOf(`- ${a}`));
     expect(order.every((x) => x > 0)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
+  });
+});
+
+describe("preparar-pruebas-live (autorizado por el propietario el 23/10/2026)", () => {
+  it("almacenamiento: referencias a los buckets de live para core, backup-job y restore-drill; ningún otro entorno", () => {
+    const refs = storageReferences("live");
+    expect(Object.keys(refs).sort()).toEqual(["backup-job", "core", "restore-drill"]);
+    expect(refs.core).toEqual({
+      S3_ENDPOINT: "${{es-live-media.ENDPOINT}}",
+      S3_BUCKET: "${{es-live-media.BUCKET}}",
+      S3_REGION: "${{es-live-media.REGION}}",
+      S3_ACCESS_KEY: "${{es-live-media.ACCESS_KEY_ID}}",
+      S3_SECRET_KEY: "${{es-live-media.SECRET_ACCESS_KEY}}",
+    });
+    expect(refs["restore-drill"].BACKUP_S3_SECRET_KEY).toBe("${{es-live-backups.SECRET_ACCESS_KEY}}");
+    expect(refs["backup-job"].BACKUP_S3_ACCESS_KEY).toBe("${{es-live-backups.ACCESS_KEY_ID}}");
+    expect(() => storageReferences("production")).toThrow();
+  });
+
+  it("dominios: solo dos empresas de prueba, en orden, en las pasarelas gw-demo-a/b de live", () => {
+    expect(testTenantDomains("live", "cms-prueba-a-20261023,cms-prueba-b-20261023")).toEqual([
+      { service: "gw-demo-a", tenantId: "cms-prueba-a-20261023", domain: "cms-prueba-a-20261023.up.railway.app" },
+      { service: "gw-demo-b", tenantId: "cms-prueba-b-20261023", domain: "cms-prueba-b-20261023.up.railway.app" },
+    ]);
+    for (const bad of ["skibox,cms-prueba-b-20261023", "cms-prueba-a-20261023", "app,bigelephant", "cms-prueba-a-20261023,cms-prueba-a-20261023"]) {
+      expect(() => testTenantDomains("live", bad), bad).toThrow();
+    }
+    expect(() => testTenantDomains("production", "cms-prueba-a-20261023,cms-prueba-b-20261023")).toThrow();
+  });
+
+  it("el flujo la limita a live y a cms-prueba-a/b, y despliega el Core después", () => {
+    expect(wf).toContain("- preparar-pruebas-live");
+    expect(wf).toContain('if [ "${ES_ENV}" != "live" ]; then echo "preparar-pruebas-live solo existe en live"; exit 1; fi');
+    expect(wf).toContain("grep -Eq '^cms-prueba-a-[0-9]{8},cms-prueba-b-[0-9]{8}$'");
+    expect(wf.indexOf("storage-fix --env")).toBeLessThan(wf.indexOf('if [ "${ES_ACTION}" = "preparar-pruebas-live" ]; then SERVICE="core"; fi'));
   });
 });

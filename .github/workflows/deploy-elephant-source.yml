@@ -36,6 +36,7 @@ on:
           - desplegar-core
           - desplegar-core-gateway
           - comprobar-salud
+          - preparar-pruebas-live
       commit:
         description: "Commit a desplegar (opcional; por defecto, el último de la rama). Para volver atrás: uno anterior de la misma rama"
         required: false
@@ -93,7 +94,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: CLI de Railway (versión fijada)
-        if: startsWith(inputs.action, 'desplegar-')
+        if: startsWith(inputs.action, 'desplegar-') || inputs.action == 'preparar-pruebas-live'
         run: npm install -g @railway/cli@5.68.0
 
       - name: Verificar que el token es de Elephant Source y del entorno elegido
@@ -107,8 +108,25 @@ jobs:
         if: inputs.action == 'diagnostico-almacenamiento'
         run: pnpm exec tsx scripts/deploy/esRailway.ts storage --env "${ES_ENV}"
 
+      # Pruebas de live (autorizado por el propietario el 23/10/2026): almacenamiento como referencias a los buckets de
+      # live y pasarelas gw-demo-a/gw-demo-b con el dominio de las dos empresas de prueba (only). Después se despliega
+      # el Core para que tome las variables. Nunca en production.
+      - name: Pruebas de live — solo live y dos empresas de prueba
+        if: inputs.action == 'preparar-pruebas-live'
+        run: |
+          if [ "${ES_ENV}" != "live" ]; then echo "preparar-pruebas-live solo existe en live"; exit 1; fi
+          if ! printf '%s' "${ES_ONLY}" | grep -Eq '^cms-prueba-a-[0-9]{8},cms-prueba-b-[0-9]{8}$'; then echo "only: cms-prueba-a-AAAAMMDD,cms-prueba-b-AAAAMMDD"; exit 1; fi
+
+      - name: Pruebas de live — almacenamiento como referencias a los buckets
+        if: inputs.action == 'preparar-pruebas-live'
+        run: pnpm exec tsx scripts/deploy/esRailway.ts storage-fix --env "${ES_ENV}"
+
+      - name: Pruebas de live — dominio de las pasarelas de prueba
+        if: inputs.action == 'preparar-pruebas-live'
+        run: pnpm exec tsx scripts/deploy/esRailway.ts test-domains --env "${ES_ENV}" --only "${ES_ONLY}"
+
       - name: Commit a desplegar (debe pertenecer a integration/elephant-source)
-        if: startsWith(inputs.action, 'desplegar-')
+        if: startsWith(inputs.action, 'desplegar-') || inputs.action == 'preparar-pruebas-live'
         run: |
           SHA="${ES_COMMIT:-${GITHUB_SHA}}"
           git merge-base --is-ancestor "${SHA}" "${GITHUB_SHA}" || { echo "El commit ${SHA} no es de integration/elephant-source"; exit 1; }
@@ -145,14 +163,22 @@ jobs:
         run: pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --command "node dist-cp/backup-job.js check-data-exports${ES_ONLY:+ --only ${ES_ONLY}}"
 
       - name: Export del commit (sin railway.toml ni datos de semilla)
-        if: startsWith(inputs.action, 'desplegar-')
+        if: startsWith(inputs.action, 'desplegar-') || inputs.action == 'preparar-pruebas-live'
         run: pnpm exec tsx scripts/deploy/esRailway.ts export --sha "${ES_DEPLOY_SHA}" --out "${RUNNER_TEMP}/export"
 
       - name: Desplegar el servicio
-        if: startsWith(inputs.action, 'desplegar-')
+        if: startsWith(inputs.action, 'desplegar-') || inputs.action == 'preparar-pruebas-live'
         run: |
           SERVICE="${ES_ACTION#desplegar-}"
+          if [ "${ES_ACTION}" = "preparar-pruebas-live" ]; then SERVICE="core"; fi
           pnpm exec tsx scripts/deploy/esRailway.ts deploy --env "${ES_ENV}" --service "${SERVICE}" --dir "${RUNNER_TEMP}/export" --sha "${ES_DEPLOY_SHA}"
+
+      - name: Pruebas de live — las pasarelas de prueba responden en su dominio
+        if: inputs.action == 'preparar-pruebas-live'
+        run: |
+          for T in ${ES_ONLY//,/ }; do
+            pnpm exec tsx scripts/deploy/esRailway.ts health --url "https://${T}.up.railway.app/__gateway/health" --expect 200
+          done
 
       - name: Salud pública
         if: inputs.action == 'comprobar-salud'
