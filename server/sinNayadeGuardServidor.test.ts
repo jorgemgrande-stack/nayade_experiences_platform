@@ -15,7 +15,6 @@ const ROOT = __dirname;
 const ORIGINAL = /N[aá]yade|N&[aA]acute;[yY][aA][dD][eE]|nayadeexperiences|skicenter\.es|639 ?57 ?66 ?27|34639576627|San Rafael/;
 
 const BASELINE: Record<string, number> = {
-  "_core/index.ts": 24,
   "mail/policy.ts": 1,
   "routers/emailTemplatesRouter.ts": 30,
   "routers/pdfTemplatesRouter.ts": 29,
