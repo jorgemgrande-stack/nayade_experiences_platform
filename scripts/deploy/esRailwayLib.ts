@@ -85,15 +85,19 @@ const s3Refs = (prefix: string, bucket: string): Record<string, string> => ({
   [`${prefix}ACCESS_KEY`]: ref(bucket, "ACCESS_KEY_ID"),
   [`${prefix}SECRET_KEY`]: ref(bucket, "SECRET_ACCESS_KEY"),
 });
-export const STORAGE_BUCKETS: Record<string, { backups: string; media: string }> = { live: { backups: "es-live-backups", media: "es-live-media" } };
+export const STORAGE_BUCKETS: Record<string, { backups: string; media: string }> = {
+  live: { backups: "es-live-backups", media: "es-live-media" },
+  // Production (autorizado por el propietario el 23/10/2026): SOLO los servicios de copias, nunca el Core
+  production: { backups: "elephant-source-backups", media: "elephant-source-media" },
+};
 export function storageReferences(env: string): Record<string, Record<string, string>> {
   const b = STORAGE_BUCKETS[env];
   if (!b) throw new Error(`sin buckets definidos para el entorno «${env}»`);
-  return {
+  const ops = {
     "backup-job": { ...s3Refs("BACKUP_S3_", b.backups), ...s3Refs("S3_", b.media) },
     "restore-drill": { ...s3Refs("BACKUP_S3_", b.backups), ...s3Refs("S3_", b.media) },
-    core: s3Refs("S3_", b.media),
   };
+  return env === "production" ? ops : { ...ops, core: s3Refs("S3_", b.media) };
 }
 
 /**
