@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { getDb } from "../db";
 import { featureFlags, systemSettings } from "../../drizzle/schema";
 import { TenantCache } from "../_core/tenantScope";
+import { isMultiTenant } from "../_core/tenant";
 
 // ─── In-memory cache (60s TTL) ────────────────────────────────────────────────
 
@@ -100,6 +101,22 @@ export async function getBusinessEmail(
   // Sin ajuste de la empresa no se inventa un correo: llegaría a un tercero
   const fromDb = await getSystemSetting(settingKey, "");
   return fromDb.trim();
+}
+
+/**
+ * Destinatario de los avisos internos (nueva solicitud, nueva reserva). En multiempresa, solo el correo de reservas de la
+ * propia empresa: ADMIN_EMAIL es de la instalación y recibiría las solicitudes de todas las empresas.
+ */
+export async function internalNoticeEmail(): Promise<string> {
+  const own = await getBusinessEmail("reservations");
+  if (isMultiTenant()) return own;
+  return process.env.ADMIN_EMAIL ?? own;
+}
+
+/** Copia oculta de la instalación en las confirmaciones (solo con una única empresa). */
+export function installationAdminCopy(): string | null {
+  if (isMultiTenant()) return null;
+  return process.env.ADMIN_EMAIL || null;
 }
 
 // ─── Cache warming (call at server startup to pre-populate sync cache) ────────
