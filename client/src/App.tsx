@@ -14,6 +14,7 @@ import { HomeGate, SingleOnlyPage, SlugGate, TenantThemeLoader } from "./compone
 
 // ── PUBLIC PAGES (carga inmediata — visibles sin autenticación) ──────────────
 import Home from "./pages/Home";
+import TenantHome from "./pages/TenantHome";
 import Experiences from "./pages/Experiences";
 import ExperienceDetail from "./pages/ExperienceDetail";
 import Gallery from "./pages/Gallery";
@@ -219,7 +220,7 @@ function Router() {
   return (
     <Switch>
       {/* ── PUBLIC ROUTES ── */}
-      <Route path="/">{() => <HomeGate Fallback={Home} />}</Route>
+      <Route path="/">{() => <HomeGate Fallback={Home} Tenant={TenantHome} />}</Route>
       <Route path="/experiencias" component={Experiences} />
       <Route path="/experiencias/:slug" component={ExperienceDetail} />
       <Route path="/galeria" component={Gallery} />

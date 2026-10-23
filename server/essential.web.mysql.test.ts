@@ -127,6 +127,13 @@ describe.skipIf(!URL_)("Essential — Web y CMS (aplicación real, dos empresas 
     expect(errCode(await ess.m("a", "public.submitColegiosLead", { name: "X", email: "mal", phone: "1", organizationName: "" }))).toBe("BAD_REQUEST");
   });
 
+  it("portada: el carrusel y los destacados de cada web son solo los de su empresa", async () => {
+    expect((await ess.m("a", "cms.createSlideshowItem", { imageUrl: "https://cdn.example/a-portada.jpg", title: "Bienvenidos a A" }, admA)).status).toBe(200);
+    expect(data(await ess.q("a", "public.getSlideshowItems")).map((x: any) => x.title)).toEqual(["Bienvenidos a A"]);
+    expect(data(await ess.q("b", "public.getSlideshowItems"))).toEqual([]);
+    expect(data(await ess.q("b", "public.getFeaturedExperiences"))).toEqual([]);
+  });
+
   it("cms-seo: título y descripción por página; sitemap y robots con la URL de la empresa y sin rutas de otra instalación", async () => {
     expect((await ess.m("a", "cms.upsertPage", { slug: "servicios", title: "Servicios", isPublished: true, metaTitle: "Servicios | A", metaDescription: "Lo que hacemos" }, admA)).status).toBe(200);
     expect((await ess.sql("a", "SELECT metaTitle, metaDescription FROM static_pages WHERE slug = 'servicios'"))[0]).toEqual({ metaTitle: "Servicios | A", metaDescription: "Lo que hacemos" });
