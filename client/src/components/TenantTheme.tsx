@@ -158,16 +158,17 @@ export function TenantPage({ slug }: { slug: string }) {
 
 /**
  * "/" : en multiempresa, la página «inicio» del tenant; si aún no la ha publicado (toda empresa recién dada de
- * alta), su inicio de sesión en lugar de un 404. Sin web neutra, la home actual. Lógica en lib/homeRoute.ts.
+ * alta), su inicio de sesión en lugar de un 404. Sin web neutra, la home actual. Lógica en lib/homeRoute.ts. Con `Tenant`,
+ * la portada genérica de la empresa (su carrusel, su texto y sus destacados).
  */
-export function HomeGate({ Fallback }: { Fallback: ComponentType }) {
+export function HomeGate({ Fallback, Tenant }: { Fallback: ComponentType; Tenant?: ComponentType }) {
   const { theme, isLoading } = useTenantTheme();
   const neutralSite = !!theme?.neutralSite;
   const page = trpc.public.getTenantPage.useQuery({ slug: HOME_PAGE_SLUG }, { retry: false, enabled: neutralSite });
   const view = resolveHome({ themeLoading: isLoading, neutralSite, pageLoading: neutralSite && page.isLoading, hasPage: !!page.data });
   if (view.kind === "loading") return <Spinner />;
   if (view.kind === "redirect") return <Redirect to={view.to} replace />;
-  if (view.kind === "page") return <TenantPage slug={HOME_PAGE_SLUG} />;
+  if (view.kind === "page") return Tenant ? <Tenant /> : <TenantPage slug={HOME_PAGE_SLUG} />;
   return <Fallback />;
 }
 
