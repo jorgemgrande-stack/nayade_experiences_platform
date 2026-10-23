@@ -270,6 +270,17 @@ export class TenantRegistryService {
     return decryptDsn(ref.dsnCipher, ref.keyId, ref.tenantId, this.ring());
   }
 
+  /**
+   * Deja constancia en el historial de la empresa de una actuación que no cambia el registro (p. ej. la gestión de
+   * accesos de sus usuarios desde el plano de control). Solo anexa; sin secretos en los detalles.
+   */
+  async recordEvent(tenantId: string, actor: Actor, action: string, details?: Record<string, unknown>): Promise<void> {
+    await this.store.transaction(async (tx) => {
+      await this.mustTenant(tx, tenantId);
+      await this.audit(tx, actor, tenantId, action.slice(0, 60), null, null, details);
+    });
+  }
+
   /** Descifra el DSN activo (uso interno del resolvedor de conexiones; nunca se registra). */
   async getActiveDsn(tenantId: string): Promise<string | null> {
     const ref = await this.store.getActiveDatabase(tenantId);

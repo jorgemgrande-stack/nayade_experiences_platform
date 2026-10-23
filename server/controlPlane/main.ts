@@ -84,6 +84,7 @@ import { STRIPE_FAILURE_RULES } from "../stripe/alerts";
 import { SsoService, parseSsoUsers } from "./sso";
 import { createRemoteJWKSet } from "jose";
 import { operatorAuthFromEnv } from "./operatorSetup";
+import { DEFAULT_CORE_INTERNAL_URL, coreAccessClient } from "./tenantAccess";
 import { outboxResetMailer } from "./operatorResetMail";
 
 async function main() {
@@ -489,6 +490,11 @@ async function main() {
     support: new SupportAdmin(pool),
     allowedOrigins: (process.env.CP_ALLOWED_ORIGINS ?? "").split(",").map((x) => x.trim()).filter(Boolean),
     supportSecret: process.env.SUPPORT_JWT_SECRET && process.env.SUPPORT_JWT_SECRET.length >= 32 ? process.env.SUPPORT_JWT_SECRET : undefined,
+    // Accesos de las empresas: el Core por la red privada (el mismo destino que su pasarela), con el secreto compartido
+    tenantAccess:
+      process.env.SUPPORT_JWT_SECRET && process.env.SUPPORT_JWT_SECRET.length >= 32
+        ? { client: coreAccessClient({ baseUrl: process.env.CP_CORE_INTERNAL_URL || DEFAULT_CORE_INTERNAL_URL, secret: process.env.SUPPORT_JWT_SECRET }) }
+        : undefined,
     operators: operators.service,
     cookieSecure: operators.cookieSecure,
     trustProxy: process.env.CP_TRUST_PROXY ? Number(process.env.CP_TRUST_PROXY) || process.env.CP_TRUST_PROXY : undefined,
