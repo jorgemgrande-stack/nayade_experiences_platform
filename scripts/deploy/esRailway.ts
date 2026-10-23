@@ -358,6 +358,7 @@ async function main() {
       return { status: r.status, j };
     };
     let webhooks: Array<{ ID: number; Url: string }> = [];
+    const webhookHeaderFp: Record<number, string> = {};
     if (!token) console.log("Postmark: sin token de servidor en live");
     else {
       const sv = await pm("GET", "/server");
@@ -365,6 +366,14 @@ async function main() {
       const wh = await pm("GET", "/webhooks?MessageStream=outbound");
       webhooks = ((wh.j.Webhooks as Array<{ ID: number; Url: string }>) ?? []);
       console.log(`Postmark webhooks: ${webhooks.length ? webhooks.map((w) => w.Url).join(", ") : "ninguno"}`);
+      // ¿La cabecera de cada webhook lleva el token actual del plano de control? Solo huellas, nunca valores
+      const cpToken = vars.controlplane.POSTMARK_WEBHOOK_TOKEN ?? "";
+      for (const w of webhooks) {
+        const det = await pm("GET", `/webhooks/${w.ID}`);
+        const h = ((det.j.HttpHeaders as Array<{ Name: string; Value: string }>) ?? []).find((x) => x.Name.toLowerCase() === "x-elephant-webhook-token");
+        webhookHeaderFp[w.ID] = h ? huella(h.Value) : "";
+        console.log(`  webhook ${w.ID}: token ${h ? `huella ${huella(h.Value)}` : "AUSENTE"} · plano de control ${cpToken ? `huella ${huella(cpToken)}` : "sin token"} → ${h && cpToken && huella(h.Value) === huella(cpToken) ? "coinciden" : "NO coinciden"}`);
+      }
       const out = await pm("GET", "/messages/outbound?count=100&offset=0");
       console.log(`Postmark envíos registrados: ${out.status === 200 ? out.j.TotalCount : `HTTP ${out.status}`}`);
       // Estado real de cada mensaje (evidencia sin depender del webhook): destinatario enmascarado, asunto y eventos
@@ -404,7 +413,9 @@ async function main() {
     const hook = { Url: url, MessageStream: "outbound", HttpHeaders: [{ Name: "x-elephant-webhook-token", Value: webhookToken }], Triggers: POSTMARK_WEBHOOK_TRIGGERS };
     const existing = webhooks.find((w) => w.Url === url);
     const tokenChanged = plan.changes.some((c) => c.service === "controlplane" && c.name === "POSTMARK_WEBHOOK_TOKEN");
-    if (existing && !tokenChanged) console.log(`Postmark webhook ya configurado: ${url} (sin cambios)`);
+    // Se reescribe si el token cambió o si la cabecera guardada no lleva el token actual (o falta)
+    const headerOk = !!existing && !!webhookToken && webhookHeaderFp[existing.ID] === huella(webhookToken);
+    if (existing && !tokenChanged && headerOk) console.log(`Postmark webhook ya configurado: ${url} (sin cambios)`);
     else {
       const r = existing ? await pm("PUT", `/webhooks/${existing.ID}`, hook) : await pm("POST", "/webhooks", hook);
       // Postmark verifica el destino al guardar: si la pasarela del CRM aún no abre la ruta (imagen anterior a su
