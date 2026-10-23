@@ -1,0 +1,50 @@
+/**
+ * Actualización de production en DOS aprobaciones (autorizada por el propietario el 23/10/2026): preparar (copia,
+ * verificación, restauración en base nueva y simulación; nunca aplica) y aplicar (en el orden del plan: copia justo
+ * antes, plataforma, canario antes que Skibox, despliegues y salud). Sin tocar correo, cobros ni autoservicio.
+ */
+import fs from "node:fs";
+import path from "node:path";
+import { describe, expect, it } from "vitest";
+import { DRILL_ALLOWED, isAllowedDrill, storageReferences } from "../scripts/deploy/esRailwayLib";
+
+const wf = fs.readFileSync(path.resolve(__dirname, "../.github/workflows/deploy-elephant-source.yml"), "utf8").replace(/\r\n/g, "\n");
+const steps = (action: string) => wf.split("\n      - name: ").filter((b) => b.includes(`if: inputs.action == '${action}'`)).join("\n");
+
+describe("actualización de production", () => {
+  it("prueba de restauración solo en una base NUEVA (nunca --switch)", () => {
+    expect(isAllowedDrill("node dist-cp/backup-job.js restore-tenant t5-skibox --apply")).toBe(true);
+    expect(isAllowedDrill("node dist-cp/backup-job.js restore-tenant t5-skibox --apply --switch")).toBe(false);
+    expect(isAllowedDrill("node dist-cp/backup-job.js restore-platform crm --apply")).toBe(false);
+    expect(DRILL_ALLOWED.length).toBe(8);
+  });
+
+  it("el Core de production usa la referencia al bucket de ficheros", () => {
+    expect(storageReferences("production").core.S3_SECRET_KEY).toBe("${{elephant-source-media.SECRET_ACCESS_KEY}}");
+  });
+
+  it("preparar-production nunca aplica migraciones", () => {
+    const p = steps("preparar-production");
+    expect(p).not.toMatch(/registry apply|crm apply|migrate-tenants[^"\n]*--apply/);
+    expect(p).toContain("backup-check");
+    expect(p).toContain('restore-tenant t5-skibox --apply"');
+    expect(p).toContain("registry plan");
+    expect(p).not.toContain("--switch");
+  });
+
+  it("aplicar-production: copia justo antes, plataforma, canario antes que Skibox, despliegues y salud", () => {
+    const a = steps("aplicar-production");
+    const i = (x: string) => a.indexOf(x);
+    expect(i("backup-job.js run")).toBeGreaterThan(-1);
+    expect(i("backup-job.js run")).toBeLessThan(i("registry apply"));
+    expect(i("crm apply")).toBeLessThan(i("--only t3-empresa-demo-elephant-01 --apply"));
+    expect(i("--only t3-empresa-demo-elephant-01 --apply")).toBeLessThan(i("--only t5-skibox --apply"));
+    expect(i("--only t5-skibox --apply")).toBeLessThan(i("--service controlplane"));
+    expect(i("--service core ")).toBeLessThan(i("skibox.app.bigelephant.es/login"));
+    expect(a).not.toMatch(/MAIL_MODE|MAIL_LIVE_AUTHORIZED|CHECKOUT|SELF_SERVICE/);
+  });
+
+  it("las dos acciones se niegan fuera de production", () => {
+    for (const n of ["preparar-production", "aplicar-production"]) expect(wf).toContain(`echo "${n} solo existe en production"; exit 1; fi`);
+  });
+});
