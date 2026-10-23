@@ -12,6 +12,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { Plus, Pencil, Trash2, Tag, Euro, Info, MoreVertical } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { PanelEmpty } from "@/components/admin/PanelStates";
+import { Link } from "wouter";
 
 const PRICE_TYPE_LABELS: Record<string, string> = {
   fixed: "Precio fijo (€)",
@@ -164,7 +166,7 @@ export default function VariantsManager() {
       <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-xl flex gap-3 text-sm text-blue-800">
         <Info className="w-4 h-4 mt-0.5 shrink-0 text-blue-500" />
         <div>
-          <strong>Cómo funcionan las variantes:</strong> Al añadir variantes a una experiencia, el cliente podrá elegir entre ellas en el modal de reserva. El precio de la variante seleccionada reemplaza el precio base en el cálculo del total enviado a Redsys.
+          <strong>Cómo funcionan las variantes:</strong> Al añadir variantes a una experiencia, el cliente podrá elegir entre ellas en el modal de reserva. El precio de la variante seleccionada sustituye al precio base en el total del pago.
           <br />
           <strong>Tipos:</strong> <em>Precio fijo</em> = precio total por persona; <em>Por persona</em> = igual que fijo; <em>Porcentaje</em> = ajuste sobre el precio base.
         </div>
@@ -172,6 +174,18 @@ export default function VariantsManager() {
 
       {loadingExp || loadingVariants ? (
         <div className="text-center py-12 text-muted-foreground">Cargando...</div>
+      ) : !experiences?.length ? (
+        <PanelEmpty
+          icon={<Tag className="w-6 h-6" />}
+          title="Primero crea un producto o servicio"
+          description="Las variantes son opciones de un producto (duración, tamaño, tarifa) con su propio precio."
+        >
+          <Button asChild>
+            <Link href="/admin/productos/experiencias">
+              <Plus className="w-4 h-4 mr-2" /> Crear un producto
+            </Link>
+          </Button>
+        </PanelEmpty>
       ) : (
         <div className="space-y-6">
           {filtered?.map((exp) => {
