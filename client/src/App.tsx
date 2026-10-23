@@ -24,6 +24,7 @@ import VerificarBono from "./pages/VerificarBono";
 import RegistrarGasto from "./pages/RegistrarGasto";
 import Contact from "./pages/Contact";
 import Locations from "./pages/Locations";
+import TenantLocations from "./pages/TenantLocations";
 import LegoPacksHome from "./pages/LegoPacksHome";
 import LegoPacksList from "./pages/LegoPacksList";
 import LegoPackDetail from "./pages/LegoPackDetail";
@@ -230,8 +231,8 @@ function Router() {
       <Route path="/presupuesto/:token" component={QuoteAcceptance} />
       <Route path="/propuesta/:token" component={ProposalView} />
       <Route path="/contacto" component={Contact} />
-      <Route path="/ubicaciones">{() => <SingleOnlyPage Single={Locations} slug="ubicaciones" />}</Route>
-      <Route path="/ubicaciones/:slug">{() => <SingleOnlyPage Single={Locations} slug="ubicaciones" />}</Route>
+      <Route path="/ubicaciones">{() => <SingleOnlyPage Single={Locations} slug="ubicaciones" Tenant={TenantLocations} />}</Route>
+      <Route path="/ubicaciones/:slug">{() => <SingleOnlyPage Single={Locations} slug="ubicaciones" Tenant={TenantLocations} />}</Route>
       <Route path="/lego-packs" component={LegoPacksHome} />
       <Route path="/lego-packs/detalle/:slug" component={LegoPackDetail} />
       <Route path="/lego-packs/:category" component={LegoPacksList} />

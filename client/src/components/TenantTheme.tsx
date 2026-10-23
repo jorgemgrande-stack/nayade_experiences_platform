@@ -165,12 +165,13 @@ export function HomeGate({ Fallback }: { Fallback: ComponentType }) {
 /**
  * Páginas propias de la instalación original (textos legales y de marketing escritos a mano). En la web neutra de cada
  * empresa NUNCA se sirven: se muestra la página equivalente de la propia empresa (su CMS, `slug`) o «no encontrada».
- * Así ninguna empresa publica el aviso legal, la privacidad o las condiciones de otra.
+ * Así ninguna empresa publica el aviso legal, la privacidad o las condiciones de otra. Con `Tenant`, la versión
+ * genérica de la funcionalidad, alimentada solo con los datos de la propia empresa.
  */
-export function SingleOnlyPage({ Single, slug }: { Single: ComponentType; slug: string }) {
+export function SingleOnlyPage({ Single, slug, Tenant }: { Single: ComponentType; slug: string; Tenant?: ComponentType }) {
   const { theme, isLoading } = useTenantTheme();
   if (isLoading) return <Spinner />;
-  if (theme?.neutralSite) return <TenantPage slug={slug} />;
+  if (theme?.neutralSite) return Tenant ? <Tenant /> : <TenantPage slug={slug} />;
   return <Single />;
 }
 
