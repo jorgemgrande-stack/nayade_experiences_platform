@@ -1,6 +1,7 @@
 # CI informativo (Fase 01A-00).
 # Objetivo: medir y dejar visible el estado de calidad del repositorio SIN bloquear nada.
-#  - No despliega, no fusiona, no toca la base de datos ni servicios externos.
+#  - No fusiona, no toca la base de datos ni servicios externos. Solo despliega el job «publicar-live»: en un push a
+#    integration/elephant-source con las suites bloqueantes en verde publica en live (nunca desde main ni en production).
 #  - Todos los pasos de verificación usan continue-on-error: el job no falla por errores
 #    previos; el resultado de cada paso queda en el resumen del job.
 #  - No usa secretos del repositorio. Las variables de abajo son marcadores de posición.
@@ -10,7 +11,7 @@ name: CI (informativo)
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, integration/elephant-source]
   workflow_dispatch:
 
 permissions:
@@ -18,7 +19,8 @@ permissions:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  # En integration/elephant-source no se cancela: el CI de cada fusión termina y publica en live
+  cancel-in-progress: ${{ github.ref != 'refs/heads/integration/elephant-source' }}
 
 jobs:
   quality:
@@ -307,3 +309,21 @@ jobs:
 
       - name: Pruebas de los controles
         run: pnpm exec vitest run server/sensitiveFiles
+
+  # Publicación continua en live (docs/elephant-source/PROTOCOLO_PUBLICACION.md): cada fusión en
+  # integration/elephant-source con las suites bloqueantes en verde se publica en live y, si supera las comprobaciones
+  # funcionales, el commit queda marcado «elephant-source/live» (requisito para publicarlo en production). Nunca desde main.
+  publicar-live:
+    name: Publicar en live
+    needs: [quality, core-suites, secrets]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/integration/elephant-source'
+    permissions:
+      contents: read
+      checks: read
+      statuses: write
+    uses: ./.github/workflows/deploy-elephant-source.yml
+    with:
+      environment: live
+      action: publicar
+      confirm: live
+    secrets: inherit

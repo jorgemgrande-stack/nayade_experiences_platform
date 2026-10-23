@@ -180,3 +180,72 @@ export const POSTMARK_WEBHOOK_TRIGGERS = {
   SpamComplaint: { Enabled: true, IncludeContent: false },
   SubscriptionChange: { Enabled: true },
 };
+
+// ── Publicación continua (docs/elephant-source/PROTOCOLO_PUBLICACION.md) ─────────
+
+/** Servicios que publica un despliegue ordinario, en este orden. Nada de copias, restore-drill ni pasarelas de prueba. */
+export const ORDINARY_SERVICES = ["controlplane", "core", "core-gateway"] as const;
+
+/** Commit de un despliegue a partir de sus metadatos de Railway (mensaje «<repositorio> <commit>» de `railway up`). */
+export function shaFromDeployMeta(meta: unknown, repository: string): string | null {
+  const text = typeof meta === "string" ? meta : JSON.stringify(meta ?? {});
+  const i = text.indexOf(`${repository} `);
+  const m = i >= 0 ? /^[0-9a-f]{40}\b/.exec(text.slice(i + repository.length + 1)) : null;
+  return m ? m[0] : null;
+}
+
+/**
+ * Cambios que un despliegue ORDINARIO de production no puede llevar: migraciones y esquema, infraestructura de
+ * construcción (imágenes, dependencias, configuración de compilación) y los interruptores de funciones comerciales
+ * bloqueadas. Si aparecen, hay que usar el procedimiento protegido (con aprobación).
+ */
+export const PROTECTED_PATHS: Array<{ re: RegExp; why: string }> = [
+  { re: /^db\//, why: "migraciones o esquema" },
+  { re: /^drizzle\//, why: "migraciones o esquema" },
+  { re: /(^|\/)migrations?\//, why: "migraciones" },
+  { re: /^scripts\/db\//, why: "herramienta de migraciones" },
+  { re: /^deploy\//, why: "infraestructura (imágenes y configuración de Railway)" },
+  { re: /(^|\/)Dockerfile[^/]*$/, why: "infraestructura (imagen)" },
+  { re: /(^|\/)(railway[^/]*\.(toml|json)|nixpacks\.toml|Caddyfile[^/]*)$/, why: "infraestructura" },
+  { re: /^server\/mail\/policy\.ts$/, why: "política del correo real" },
+  { re: /^(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|\.npmrc|tsconfig[^/]*\.json|vite\.config\.ts|esbuild[^/]*)$/, why: "dependencias o compilación" },
+];
+
+/** Interruptores de funciones bloqueadas (cobros, autoservicio, IA y correo real): una línea del diff que los toque es protegida. */
+export const LOCKED_SWITCHES = /\b(CP_[A-Z_]*_ENABLED|CP_STRIPE_MODE|MAIL_MODE|MAIL_LIVE_AUTHORIZED|MAIL_SANDBOX_ALLOWLIST|LLM_[A-Z_]+|ES_AI_[A-Z_]+|IMAGE_MODEL|TENANT_MODE)\b/;
+
+export function protectedChanges(files: string[], diff = ""): string[] {
+  const out: string[] = [];
+  for (const f of files) {
+    const hit = PROTECTED_PATHS.find((p) => p.re.test(f));
+    if (hit) out.push(`${f} — ${hit.why}`);
+  }
+  for (const line of diff.split("\n")) {
+    if (!/^[+-](?![+-])/.test(line)) continue;
+    const m = line.match(LOCKED_SWITCHES);
+    if (m) out.push(`cambio en ${m[1]} — funciones bloqueadas`);
+  }
+  return [...new Set(out)];
+}
+
+/** ¿El diff trae migraciones? En live se aplican solas antes de publicar; en production, nunca en un despliegue ordinario. */
+export const hasMigrations = (files: string[]) => files.some((f) => /^db\/|(^|\/)migrations?\//.test(f));
+
+/** Comprobaciones funcionales tras publicar. `auth`: credencial de la pasarela de live (secreto del entorno). */
+export const FUNCTIONAL_CHECKS: Record<string, Array<{ url: string; expect: number; auth?: boolean }>> = {
+  live: [
+    { url: "https://cms-prueba-a-20261023.up.railway.app/readyz", expect: 200, auth: true },
+    { url: "https://cms-prueba-a-20261023.up.railway.app/", expect: 200, auth: true },
+    { url: "https://cms-prueba-a-20261023.up.railway.app/login", expect: 200, auth: true },
+    { url: "https://elephant-source-crm-live.up.railway.app/healthz", expect: 200, auth: true },
+  ],
+  production: [
+    { url: "https://app.bigelephant.es/readyz", expect: 200 },
+    { url: "https://app.bigelephant.es/", expect: 200 },
+    { url: "https://skibox.app.bigelephant.es/readyz", expect: 200 },
+    { url: "https://skibox.app.bigelephant.es/login", expect: 200 },
+  ],
+};
+
+/** Estado de commit que deja live al superar la publicación: production solo publica commits que lo tengan. */
+export const LIVE_STATUS_CONTEXT = "elephant-source/live";

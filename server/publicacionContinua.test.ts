@@ -1,0 +1,94 @@
+/**
+ * Publicación continua de Elephant Source (docs/elephant-source/PROTOCOLO_PUBLICACION.md): live automático tras el CI,
+ * production ordinario sin aprobación pero solo con lo superado en live y nada que exija el procedimiento protegido.
+ */
+import fs from "node:fs";
+import path from "node:path";
+import { describe, expect, it } from "vitest";
+import { FUNCTIONAL_CHECKS, LIVE_STATUS_CONTEXT, ORDINARY_SERVICES, hasMigrations, protectedChanges, shaFromDeployMeta } from "../scripts/deploy/esRailwayLib";
+
+const read = (p: string) => fs.readFileSync(path.resolve(__dirname, "..", p), "utf8").replace(/\r\n/g, "\n");
+const wf = read(".github/workflows/deploy-elephant-source.yml");
+const ci = read(".github/workflows/ci.yml");
+const src = read("scripts/deploy/esRailway.ts");
+const step = (name: string) => {
+  const i = wf.indexOf(`- name: ${name}`);
+  expect(i, name).toBeGreaterThan(0);
+  return wf.slice(i, wf.indexOf("\n      - name:", i + 10) >>> 0 || undefined);
+};
+
+describe("publicación continua", () => {
+  it("el despliegue ordinario solo publica controlplane, core y core-gateway", () => {
+    expect([...ORDINARY_SERVICES]).toEqual(["controlplane", "core", "core-gateway"]);
+  });
+
+  it("migraciones, infraestructura, dependencias e interruptores bloqueados exigen el procedimiento protegido", () => {
+    for (const f of [
+      "db/migrations/0014_x.sql",
+      "db/crm/migrations/0024_x.sql",
+      "drizzle/schema.ts",
+      "deploy/railway/Dockerfile",
+      "Dockerfile.controlplane",
+      "package.json",
+      "pnpm-lock.yaml",
+      "railway.controlplane.toml",
+      "server/mail/policy.ts",
+    ])
+      expect(protectedChanges([f]), f).toHaveLength(1);
+    expect(protectedChanges(["server/x.ts"], "+  if (process.env.CP_PUBLIC_CHECKOUT_ENABLED === '1') {")).toHaveLength(1);
+    expect(protectedChanges(["server/x.ts"], "-  const mode = env.MAIL_MODE ?? 'off';")).toHaveLength(1);
+    expect(protectedChanges(["server/x.ts"], "+  const model = process.env.LLM_MODEL;")).toHaveLength(1);
+  });
+
+  it("el código ordinario pasa", () => {
+    expect(protectedChanges(["server/routers.ts", "client/src/pages/TenantHome.tsx", "shared/tenantNav.ts", "docs/x.md"], "+const a = 1;\n--- a/x\n+++ b/x")).toEqual([]);
+    expect(hasMigrations(["server/routers.ts"])).toBe(false);
+    expect(hasMigrations(["db/registry/migrations/0014.sql"])).toBe(true);
+  });
+
+  it("lee el commit del mensaje del despliegue y no inventa uno", () => {
+    const sha = "d67516fc2c47a2b5b8ef3a8b0f6c3a1c0d9e8f71";
+    expect(shaFromDeployMeta({ commitMessage: `nayade_experiences_platform ${sha}` }, "nayade_experiences_platform")).toBe(sha);
+    expect(shaFromDeployMeta({ reason: "redeploy" }, "nayade_experiences_platform")).toBeNull();
+    expect(shaFromDeployMeta({ commitMessage: "otro-repo " + sha }, "nayade_experiences_platform")).toBeNull();
+  });
+
+  it("comprobaciones funcionales en los dos entornos; las de live con la credencial de la pasarela", () => {
+    expect(FUNCTIONAL_CHECKS.live.length).toBeGreaterThan(0);
+    expect(FUNCTIONAL_CHECKS.live.every((c) => c.auth)).toBe(true);
+    expect(FUNCTIONAL_CHECKS.production.map((c) => c.url)).toContain("https://skibox.app.bigelephant.es/readyz");
+    expect(FUNCTIONAL_CHECKS.production.some((c) => c.auth)).toBe(false);
+  });
+
+  it("production ordinario: entorno propio sin aprobación solo para publicar y revertir; lo demás, el protegido", () => {
+    expect(wf).toContain("'elephant-source-production-despliegue'");
+    expect(wf).toContain("format('elephant-source-{0}', inputs.environment)");
+    const gate = step("Publicar — production solo con CI y live superados por el mismo commit");
+    expect(gate).toContain(`select(.context == "${LIVE_STATUS_CONTEXT}")`);
+    expect(gate).toContain("Suites del Core multiempresa (bloqueante)");
+    expect(gate).toContain("Secretos y ficheros sensibles (bloqueante)");
+    expect(step("Publicar — qué trae respecto a lo activo (en production, nada que exija el procedimiento protegido)")).toContain("--production");
+    // Las migraciones del despliegue ordinario solo existen en live
+    expect(step("Publicar — live, copia y migraciones nuevas")).toContain("inputs.environment == 'live'");
+  });
+
+  it("el despliegue ordinario no toca variables, dominios ni servicios y vuelve atrás si algo falla", () => {
+    const body = src.slice(src.indexOf('if (cmd === "publish")'), src.indexOf('if (cmd === "revert")'));
+    expect(body).not.toMatch(/variableUpsert|variableDelete|serviceCreate|serviceInstanceUpdate|customDomainCreate|serviceDomainCreate/);
+    expect(body).toContain("await rollbackAll();");
+    expect(body.match(/process\.exit\(1\)/g)?.length).toBe(2);
+    expect(src).toContain("deploymentRollback(id:$id)");
+  });
+
+  it("live se publica solo desde el CI de integration/elephant-source y nunca en paralelo", () => {
+    expect(ci).toMatch(/branches: \[main, integration\/elephant-source\]/);
+    const job = ci.slice(ci.indexOf("  publicar-live:"));
+    expect(job).toContain("needs: [quality, core-suites, secrets]");
+    expect(job).toContain("if: github.event_name == 'push' && github.ref == 'refs/heads/integration/elephant-source'");
+    expect(job).toContain("environment: live");
+    expect(job).toContain("action: publicar");
+    expect(job).not.toContain("production");
+    expect(wf).toMatch(/concurrency:\n {2}group: deploy-elephant-source-\$\{\{ inputs\.environment \}\}\n {2}cancel-in-progress: false/);
+    expect(ci).toContain("cancel-in-progress: ${{ github.ref != 'refs/heads/integration/elephant-source' }}");
+  });
+});

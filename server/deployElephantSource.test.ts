@@ -93,7 +93,9 @@ describe("export y flujo", () => {
     expect(wf).toMatch(/^on:\n {2}workflow_dispatch:/m);
     expect(wf).not.toMatch(/^\s+(push|pull_request|schedule|workflow_run):/m);
     expect(wf).toContain('"refs/heads/integration/elephant-source"');
-    expect(wf).toMatch(/environment: elephant-source-\$\{\{ inputs\.environment \}\}/);
+    expect(wf).toContain(
+      "environment: ${{ inputs.environment == 'production' && (inputs.action == 'publicar' || startsWith(inputs.action, 'revertir-')) && 'elephant-source-production-despliegue' || format('elephant-source-{0}', inputs.environment) }}",
+    );
     expect(wf).toMatch(/RAILWAY_TOKEN: \$\{\{ secrets\.RAILWAY_TOKEN \}\}/);
     // Las entradas solo en env:, nunca dentro de run:
     const runBlocks = wf.split(/\n\s+run: /).slice(1).map((b) => b.split(/\n\s{6}- /)[0]);
