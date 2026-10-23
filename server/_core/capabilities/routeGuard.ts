@@ -77,8 +77,15 @@ export const TRPC_ROUTER_CAPABILITIES: Record<string, string> = {
   reav: "travel-net",
 };
 
+/**
+ * Procedimientos públicos dentro de un namespace licenciado: los lee la web de cada empresa (aviso de cookies,
+ * contacto…) y no exigen capacidad, como el resto de lo público.
+ */
+export const PUBLIC_PROCEDURES: ReadonlySet<string> = new Set(["config.getPublicSettings"]);
+
 /** Capacidad que licencia un procedimiento: procedimiento completo, después sub-router, después namespace. */
 export function capabilityForProcedure(proc: string, map: Record<string, string> = TRPC_ROUTER_CAPABILITIES): string | undefined {
+  if (PUBLIC_PROCEDURES.has(proc)) return undefined;
   const parts = proc.split(".");
   return map[proc] ?? (parts.length > 2 ? map[`${parts[0]}.${parts[1]}`] : undefined) ?? map[parts[0]];
 }
