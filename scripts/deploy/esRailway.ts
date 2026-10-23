@@ -234,6 +234,12 @@ async function main() {
       }
       const lines = STORAGE_VARS.filter((k) => raw.variables[k] !== undefined).map((k) => `  ${k.padEnd(34)} ${describeStorageVar(k, raw.variables[k], eff?.variables[k])}`);
       console.log(`${name}:${lines.length ? "\n" + lines.join("\n") : " sin variables de almacenamiento"}`);
+      // Otras dependencias del backoffice (medición, canal interno con el Core): presencia y tipo, nunca el valor
+      for (const k of ["ERM_DATABASE_URL", "CP_CORE_INTERNAL_URL", "SUPPORT_JWT_SECRET"]) {
+        if (raw.variables[k] === undefined) continue;
+        const ref = /\$\{\{[^}]+\}\}/.test(raw.variables[k]);
+        console.log(`  ${k.padEnd(34)} definida · ${ref ? `referencia ${raw.variables[k].match(/\$\{\{\s*([A-Za-z0-9_.-]+)\s*\}\}/)?.[1] ?? ""}` : "valor fijo"}${eff?.variables[k] ? "" : " · SIN VALOR EFECTIVO"}`);
+      }
     }
     return;
   }
