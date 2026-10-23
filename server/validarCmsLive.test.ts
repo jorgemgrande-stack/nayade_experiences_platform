@@ -27,7 +27,13 @@ describe("validar-cms-live", () => {
   });
 
   it("solo archiva empresas creadas por esta prueba", () => {
-    expect(src).toContain("if (!/^cms-prueba-[ab]-\\d{8}-[a-z0-9]{4}$/.test(t)) throw new Error(");
+    expect(src).toContain("const TENANT_RE = /^cms-prueba-[ab]-\\d{8}(-[a-z0-9]{4})?$/;");
+    expect(src).toContain("if (!TENANT_RE.test(t)) throw new Error(");
+  });
+
+  it("los hosts de las empresas deben llegar a una pasarela del entorno antes de crear nada", () => {
+    expect(src).toContain('r.headers.get("x-railway-fallback") !== "true"');
+    expect(src.indexOf('must("los hosts de las empresas de prueba son accesibles"')).toBeLessThan(src.indexOf("if (!APPLY) {"));
   });
 
   it("comprueba aislamiento y contenido en la web pública, no solo en la API del panel", () => {

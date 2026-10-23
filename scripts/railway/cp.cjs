@@ -15,7 +15,14 @@ const ENVS = { production: "https://elephant-source-crm.up.railway.app" };
 const ENV = process.env.ES_ENV || "production";
 const BASE = (process.env.ES_CP_BASE || ENVS[ENV] || "").replace(/\/+$/, "");
 if (!BASE) throw new Error(`Sin origen del CRM para ES_ENV=${ENV}: define ES_CP_BASE (p. ej. el dominio del CRM de live)`);
-const s = JSON.parse(fs.readFileSync(path.join(PRIV, "secretos.json"), "utf8"));
+// Credencial de la pasarela: secretos.json (gateway_user/gateway_password) o, en la carpeta de live, pasarela-<usuario>.txt
+const SECRETS = path.join(PRIV, "secretos.json");
+const s = fs.existsSync(SECRETS) ? JSON.parse(fs.readFileSync(SECRETS, "utf8")) : gatewayFromFile();
+function gatewayFromFile() {
+  const f = fs.readdirSync(PRIV).find((n) => /^pasarela-[a-z0-9_-]+.txt$/i.test(n));
+  if (!f) throw new Error("La carpeta privada no tiene secretos.json ni pasarela-<usuario>.txt");
+  return { gateway_user: f.slice("pasarela-".length, -".txt".length), gateway_password: fs.readFileSync(path.join(PRIV, f), "utf8").trim() };
+}
 const opText = fs.readFileSync(path.join(PRIV, "operador-jorge.txt"), "utf8");
 const m = opText.match(/(?:contrase(?:ñ|n)a|password)\s*[:=]\s*(\S+)/i);
 const opPassword = m ? m[1] : opText.trim().split(/\s+/).pop();
@@ -85,4 +92,6 @@ if (require.main === module) {
     process.exit(1);
   });
 }
-module.exports = { call };
+/** Credencial de la pasarela (autenticación básica), para llegar a las webs de las empresas de este entorno. */
+const gatewayAuth = () => ({ username: s.gateway_user, password: s.gateway_password, header: basic });
+module.exports = { call, gatewayAuth };
