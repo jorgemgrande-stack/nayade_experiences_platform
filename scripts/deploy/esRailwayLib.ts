@@ -72,6 +72,46 @@ export function describeStorageVar(name: string, unrendered: string | undefined,
   return isRef ? `referencia ${unrendered.trim()} → ${rendered ?? "?"}` : unrendered;
 }
 
+/**
+ * Almacenamiento de live como REFERENCIAS de Railway a sus buckets (se renuevan solas si se rota una clave), en lugar de
+ * valores fijos copiados a mano. Copias: bucket `es-live-backups`; ficheros de las empresas: `es-live-media`.
+ * Solo live: production tiene sus propios buckets y su propia aprobación.
+ */
+const ref = (bucket: string, v: string) => `\${{${bucket}.${v}}}`;
+const s3Refs = (prefix: string, bucket: string): Record<string, string> => ({
+  [`${prefix}ENDPOINT`]: ref(bucket, "ENDPOINT"),
+  [`${prefix}BUCKET`]: ref(bucket, "BUCKET"),
+  [`${prefix}REGION`]: ref(bucket, "REGION"),
+  [`${prefix}ACCESS_KEY`]: ref(bucket, "ACCESS_KEY_ID"),
+  [`${prefix}SECRET_KEY`]: ref(bucket, "SECRET_ACCESS_KEY"),
+});
+export const STORAGE_BUCKETS: Record<string, { backups: string; media: string }> = { live: { backups: "es-live-backups", media: "es-live-media" } };
+export function storageReferences(env: string): Record<string, Record<string, string>> {
+  const b = STORAGE_BUCKETS[env];
+  if (!b) throw new Error(`sin buckets definidos para el entorno «${env}»`);
+  return {
+    "backup-job": { ...s3Refs("BACKUP_S3_", b.backups), ...s3Refs("S3_", b.media) },
+    "restore-drill": { ...s3Refs("BACKUP_S3_", b.backups), ...s3Refs("S3_", b.media) },
+    core: s3Refs("S3_", b.media),
+  };
+}
+
+/**
+ * Pasarelas de las empresas de PRUEBA de live: Railway da un dominio por servicio y el Core elige la empresa por el
+ * host, así que cada empresa de prueba usa una pasarela (`gw-demo-a`, `gw-demo-b`) con el dominio
+ * `<empresa>.up.railway.app`. Solo identificadores de empresas de prueba; nunca dominios comerciales.
+ */
+export const TEST_TENANT_GATEWAYS = ["gw-demo-a", "gw-demo-b"] as const;
+export const TEST_TENANT_RE = /^cms-prueba-[ab]-\d{8}$/;
+export function testTenantDomains(env: string, only: string): Array<{ service: string; tenantId: string; domain: string }> {
+  if (env !== "live") throw new Error("las pasarelas de prueba solo existen en live");
+  const ids = only.split(",").map((x) => x.trim()).filter(Boolean);
+  if (ids.length !== TEST_TENANT_GATEWAYS.length) throw new Error(`hacen falta ${TEST_TENANT_GATEWAYS.length} empresas de prueba (only)`);
+  for (const id of ids) if (!TEST_TENANT_RE.test(id)) throw new Error(`no es una empresa de prueba: ${id}`);
+  if (new Set(ids).size !== ids.length) throw new Error("empresas repetidas");
+  return ids.map((tenantId, i) => ({ service: TEST_TENANT_GATEWAYS[i], tenantId, domain: `${tenantId}.up.railway.app` }));
+}
+
 /** Quita del registro cualquier cosa con forma de DSN, clave o token antes de mostrarlo. */
 export const scrub = (s: string) =>
   s
