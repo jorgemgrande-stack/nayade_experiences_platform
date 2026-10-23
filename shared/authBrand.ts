@@ -22,6 +22,8 @@ export interface AuthBrand {
   /** Descripción del panel de acceso. */
   description: string;
   logoUrl: string | null;
+  /** Texto alternativo del logotipo si no es el de la empresa (p. ej. el predeterminado de Big Elephant). */
+  logoAlt?: string;
 }
 
 export const LEGACY_AUTH_BRAND: AuthBrand = {

@@ -43,6 +43,13 @@ export const NEUTRAL_INK = "#171d28";
 const WHITE = "#ffffff";
 const LEGACY = { panel: "#0d1b2a", accent: "#f5a623" };
 const DEFAULT_MESSAGE = "Accede a tu panel para gestionar tu negocio.";
+/** Identidad oficial de Big Elephant (tokens de bigelephant.es: --ink, --red, --red-ink; logotipo de /brand). */
+export const BIG_ELEPHANT = {
+  ink: "#171d28",
+  red: "#ff3035",
+  redInk: "#d0161c",
+  logoUrl: "https://www.bigelephant.es/brand/big-elephant-logo.png",
+} as const;
 
 const HEX = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
 
@@ -99,6 +106,27 @@ export function loginLook(theme: LoginThemeInput | null | undefined): LoginLook 
   const primary = hex(theme?.primaryColor);
   const accent = hex(theme?.accentColor);
   const backgroundUrl = theme?.login?.backgroundUrl ?? null;
+
+  // Empresa sin ninguna personalización (ni logotipo, ni colores, ni fondo): identidad predeterminada de Big Elephant
+  // (decisión del propietario, 23/10/2026). En cuanto configure algo propio, se usa lo suyo.
+  if (theme && !theme.logoUrl && !primary && !accent && !backgroundUrl) {
+    const name = brand.name;
+    return {
+      brand: { ...brand, logoUrl: BIG_ELEPHANT.logoUrl, logoAlt: "Big Elephant" },
+      panelBg: BIG_ELEPHANT.ink,
+      panelFg: WHITE,
+      panelMuted: "rgba(255,255,255,0.78)",
+      highlight: BIG_ELEPHANT.red,
+      backgroundUrl: null,
+      button: BIG_ELEPHANT.redInk,
+      buttonFg: WHITE,
+      link: BIG_ELEPHANT.redInk,
+      title: theme.login?.title || (name ? `Te damos la bienvenida a ${name}` : "Te damos la bienvenida"),
+      titleHighlight: theme.login?.title ? "" : name,
+      message: theme.login?.message || DEFAULT_MESSAGE,
+      poweredBy: theme.poweredBy ?? null,
+    };
+  }
 
   const panelBg = primary ?? NEUTRAL_INK;
   // Con imagen, velo oscuro y texto blanco; sin ella, el que más se lee sobre el color del panel
