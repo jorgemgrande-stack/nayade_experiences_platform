@@ -529,14 +529,25 @@ async function main() {
     return;
   }
   if (cmd === "active-sha") {
-    // Commit activo común de los servicios ordinarios; vacío si alguno no se sabe o difieren (se tratará como protegido)
+    // Commit de referencia de los servicios ordinarios: el común o, si difieren, su antepasado común (el diff desde
+    // ahí cubre lo de todos). Vacío si alguno no se sabe o no está en la historia (se tratará como protegido)
     const shas: Array<string | null> = [];
     for (const name of ORDINARY_SERVICES) {
       const sha = (await active(await serviceId(name), sc.environmentId))?.sha ?? null;
       console.error(`${name}: ${sha ?? "desconocido"}`);
       shas.push(sha);
     }
-    console.log(shas.every((x) => x && x === shas[0]) ? shas[0] : "");
+    const known = shas.filter((x): x is string => !!x);
+    let base = "";
+    if (known.length === shas.length) {
+      if (new Set(known).size === 1) base = known[0];
+      else {
+        const r = spawnSync("git", ["merge-base", "--octopus", ...new Set(known)], { encoding: "utf8" });
+        base = r.status === 0 && /^[0-9a-f]{40}$/.test((r.stdout ?? "").trim()) ? r.stdout.trim() : "";
+        console.error(`servicios en commits distintos; referencia: ${base || "ninguna (se trata como protegido)"}`);
+      }
+    }
+    console.log(base);
     return;
   }
   if (cmd === "publish") {
