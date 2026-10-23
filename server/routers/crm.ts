@@ -69,7 +69,7 @@ import {
 } from "../emailTemplates";
 import { buildInvoiceHtml, getLegalCompanySettings } from "../invoiceHtml";
 import { syncLeadUrlsToGHL, createGHLContact, getGHLTagsFromSource, triggerGHLWorkflow } from "../ghl";
-import { getSystemSettingSync, getBusinessEmail } from "../config";
+import { getSystemSettingSync, getBusinessEmail, internalNoticeEmail } from "../config";
 import { groupTaxBreakdown, totalTaxAmount } from "../taxUtils";
 import { reservationProductFromQuoteItems } from "../reservationUtils";
 
@@ -1284,7 +1284,7 @@ export const crmRouter = router({
           relatedEntityId: result.id,
           leadId: result.id,
         }).catch(err => console.error("[leads.create] Email al usuario fallido:", err));
-        const adminEmail = process.env.ADMIN_EMAIL ?? await getBusinessEmail("reservations");
+        const adminEmail = await internalNoticeEmail();
         sendManagedEmail({
           templateKey: "budget_request_admin",
           triggerEvent: "lead_submitted",
