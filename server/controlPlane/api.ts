@@ -12,7 +12,7 @@ import express, { type Express, type NextFunction, type Request, type Response }
 import { BUILTIN_MODULES } from "../_core/modules/builtin";
 import type { CommercialEventDispatchQueue, CommercialEventReader } from "../commercialEvents/log";
 import { TEMPLATE_CATALOG, catalogView } from "../notifications/catalog";
-import { hasPreview, previewTemplate } from "../notifications/preview";
+import { allPreviews, hasPreview, previewTemplate } from "../notifications/preview";
 import { MAIL_STATUSES } from "../mail/types";
 import type { MailLedgerReader } from "../mail/store";
 import { choosePublicDomain } from "../_core/tenantIdentity";
@@ -1394,6 +1394,27 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
       res.json({ preview: p });
     }),
   );
+
+  // Envío de PRUEBA de las comunicaciones de plataforma (datos ficticios) a UN destinatario, por la bandeja real. Solo con
+  // MAIL_MODE=sandbox: la política entrega únicamente a la lista de autorizados. En live u off, 409 (nunca a clientes).
+  if (d.mail?.platform) {
+    const mailer = d.mail.platform;
+    router.post(
+      "/notifications/test-send",
+      requireScope("ops:write"),
+      wrap(async (req, res) => {
+        const b = z.object({ to: z.string().trim().email().max(254), ids: z.array(z.string().max(80)).max(100).optional() }).strict().parse(req.body);
+        if (mailer.policy.mode !== "sandbox") return void res.status(409).json({ error: "not_sandbox", message: "El envío de prueba solo funciona con MAIL_MODE=sandbox" });
+        const run = Date.now().toString(36);
+        const results: Array<{ id: string; status: string; reason: string | null }> = [];
+        for (const p of allPreviews().filter((x) => !b.ids || b.ids.includes(x.id))) {
+          const r = await mailer.send(null, `test:${run}:${p.id}`, "operational", b.to, { subject: `[Prueba] ${p.subject}`, html: p.html, text: p.text });
+          results.push({ id: p.id, status: r.status, reason: r.reason });
+        }
+        res.json({ run, sent: results.length, results });
+      }),
+    );
+  }
 
   // Trazabilidad de los avisos de plataforma: qué se envió, a quién (enmascarado), por qué evento, cuándo, estado,
   // error e historial (incluidos los eventos del proveedor). Solo lectura; sin direcciones completas ni cuerpos.
