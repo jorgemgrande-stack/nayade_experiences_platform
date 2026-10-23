@@ -21,6 +21,7 @@ import {
 } from "../drizzle/schema";
 import { legacyDb, legacyPool } from "./_core/legacyDb";
 import { isMultiTenant } from "./_core/tenant";
+import { isLegalPlaceholder } from "../shared/tenantNav";
 import { publicBaseUrl } from "./_core/productIdentity";
 import { getCapabilityAccess } from "./_core/capabilities/access";
 import { listPublishedForSitemap } from "./blogDb";
@@ -103,7 +104,7 @@ sitemapRouter.get("/sitemap.xml", async (_req, res) => {
     const BASE_URL = publicBaseUrl().replace(/\/+$/, "");
     const url = (loc: string, lastmod?: string, changefreq?: string, priority?: string) => urlEntry(BASE_URL, loc, lastmod, changefreq, priority);
     const pageRows = multi
-      ? await db.select({ slug: staticPages.slug, updatedAt: staticPages.updatedAt }).from(staticPages).where(eq(staticPages.isPublished, true))
+      ? (await db.select({ slug: staticPages.slug, content: staticPages.content, updatedAt: staticPages.updatedAt }).from(staticPages).where(eq(staticPages.isPublished, true))).filter((r) => !isLegalPlaceholder(r.slug, r.content))
       : [];
     // Blog (solo multi y con la capacidad contratada): /blog y sus entradas publicadas, nunca borradores
     const blogRows = multi && (await blogLicensed()) ? await listPublishedForSitemap(Date.now()) : null;

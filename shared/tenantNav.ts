@@ -10,6 +10,18 @@ export function isLegalPageSlug(slug: string): boolean {
   return (LEGAL_PAGE_SLUGS as readonly string[]).includes(slug);
 }
 
+/** Frases de los textos legales de relleno de las plantillas (server/_core/templates/catalog.ts). */
+export const LEGAL_PLACEHOLDER_MARKERS = ["Complete en este apartado los datos identificativos", "Complete este texto con su política"] as const;
+
+/**
+ * Texto legal que sigue siendo el de relleno de la plantilla, sin completar por la empresa. Las empresas dadas de alta
+ * antes de sembrar los legales en borrador lo tienen publicado: no se sirve ni se enlaza hasta que lo redacten.
+ */
+export function isLegalPlaceholder(slug: string, content: string | null | undefined): boolean {
+  if (!isLegalPageSlug(slug) || !content) return false;
+  return LEGAL_PLACEHOLDER_MARKERS.some((m) => content.includes(m));
+}
+
 /** Rutas cortas que sirven una página de la empresa con otra dirección (ver App.tsx). */
 const ROUTE_ALIASES: Record<string, string> = {
   privacidad: "politica-de-privacidad",

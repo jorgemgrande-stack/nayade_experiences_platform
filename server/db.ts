@@ -1604,12 +1604,13 @@ export async function deleteUser(userId: number) {
 
 // --- MENU ITEMS --------------------------------------------------------------
 
-/** Direcciones de las páginas que existen pero no están publicadas. */
+/** Direcciones de las páginas que existen pero no se sirven: sin publicar, o textos legales de relleno sin completar. */
 export async function getUnpublishedPageSlugs(): Promise<string[]> {
   const db = await getDb();
   if (!db) return [];
-  const rows = await db.select({ slug: staticPages.slug }).from(staticPages).where(eq(staticPages.isPublished, false));
-  return rows.map((r) => r.slug);
+  const { isLegalPlaceholder } = await import("../shared/tenantNav");
+  const rows = await db.select({ slug: staticPages.slug, content: staticPages.content, isPublished: staticPages.isPublished }).from(staticPages);
+  return rows.filter((r) => !r.isPublished || isLegalPlaceholder(r.slug, r.content)).map((r) => r.slug);
 }
 
 export async function getAllMenuItems(zone: "header" | "footer" = "header") {

@@ -357,6 +357,9 @@ export const appRouter = router({
         const { sanitizeRichHtml } = await import("./_core/htmlSanitize");
         const [row] = await db.select().from(staticPages).where(eq(staticPages.slug, input.slug)).limit(1);
         if (!row || !row.isPublished) return null;
+        // Texto legal de relleno de la plantilla, sin completar: nunca se publica en nombre de la empresa
+        const { isLegalPlaceholder } = await import("../shared/tenantNav");
+        if (isLegalPlaceholder(row.slug, row.content)) return null;
         return {
           slug: row.slug,
           title: row.title,

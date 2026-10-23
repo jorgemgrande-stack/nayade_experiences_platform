@@ -5,7 +5,7 @@
 import fs from "node:fs";
 import { describe, expect, it } from "vitest";
 import { TEMPLATES } from "./_core/templates/catalog";
-import { LEGAL_PAGE_SLUGS, hideUnpublishedPageLinks, isLegalPageSlug, pageSlugOfUrl } from "../shared/tenantNav";
+import { LEGAL_PAGE_SLUGS, LEGAL_PLACEHOLDER_MARKERS, hideUnpublishedPageLinks, isLegalPageSlug, isLegalPlaceholder, pageSlugOfUrl } from "../shared/tenantNav";
 
 describe("plantillas: textos legales en borrador", () => {
   it("toda página legal de toda plantilla se siembra sin publicar; el resto sí se publica", () => {
@@ -21,6 +21,21 @@ describe("plantillas: textos legales en borrador", () => {
     const src = fs.readFileSync(new URL("./_core/provisioning/mysqlAdapters.ts", import.meta.url), "utf8");
     expect(src).toContain("p.draft ? 0 : 1");
     expect(src).not.toMatch(/INSERT IGNORE INTO static_pages[^"]*VALUES \(\?,\?,\?,\?,\?,1\)/);
+  });
+});
+
+describe("textos legales de relleno (empresas dadas de alta antes)", () => {
+  it("cada texto legal de plantilla lleva una frase de relleno reconocible", () => {
+    for (const t of TEMPLATES) for (const p of t.pages.filter((p) => isLegalPageSlug(p.slug))) {
+      expect(LEGAL_PLACEHOLDER_MARKERS.some((m) => p.content.includes(m)), `${t.id}/${p.slug}`).toBe(true);
+      expect(isLegalPlaceholder(p.slug, p.content)).toBe(true);
+    }
+  });
+
+  it("un texto redactado por la empresa, o una página que no es legal, se sirve", () => {
+    expect(isLegalPlaceholder("aviso-legal", "<p>Titular: Empresa SL, NIF B12345678</p>")).toBe(false);
+    expect(isLegalPlaceholder("inicio", "<p>Complete este texto con su política</p>")).toBe(false);
+    expect(isLegalPlaceholder("aviso-legal", null)).toBe(false);
   });
 });
 
