@@ -123,9 +123,13 @@ describe.skipIf(!URL_)("aprovisionamiento con MySQL real", () => {
       expect(u).toEqual([{ email: "admin@prov-real.example", role: "admin" }]);
       const [s] = await conn.query<mysql.RowDataPacket[]>("SELECT value FROM system_settings WHERE `key` = 'brand_name'");
       expect(s[0].value).toBe("Prov Real");
-      const [pg] = await conn.query<mysql.RowDataPacket[]>("SELECT slug, content FROM static_pages ORDER BY slug");
+      const [pg] = await conn.query<mysql.RowDataPacket[]>("SELECT slug, content, isPublished FROM static_pages ORDER BY slug");
       expect(pg.map((p) => p.slug)).toEqual(expect.arrayContaining(["habitaciones", "inicio", "politica-de-privacidad"]));
       expect(pg.find((p) => p.slug === "inicio")!.content).toContain("Prov Real");
+      // Textos legales de plantilla: en borrador hasta que la empresa los revise; el resto, publicado
+      expect(Number(pg.find((p) => p.slug === "politica-de-privacidad")!.isPublished)).toBe(0);
+      expect(Number(pg.find((p) => p.slug === "aviso-legal")!.isPublished)).toBe(0);
+      expect(Number(pg.find((p) => p.slug === "inicio")!.isPublished)).toBe(1);
       const [mn] = await conn.query<mysql.RowDataPacket[]>("SELECT COUNT(*) AS n FROM menu_items");
       expect(Number(mn[0].n)).toBeGreaterThan(3);
       // aislamiento de privilegios: no puede leer la BD del registro

@@ -278,8 +278,8 @@ export class MysqlTenantSeeder implements TenantSeeder {
       }
       for (const p of tpl.pages) {
         await conn.query(
-          "INSERT IGNORE INTO static_pages (slug, title, content, metaTitle, metaDescription, isPublished) VALUES (?,?,?,?,?,1)",
-          [p.slug, p.title, renderTemplateText(p.content, brand), p.title, p.metaDescription ? renderTemplateText(p.metaDescription, brand) : null],
+          "INSERT IGNORE INTO static_pages (slug, title, content, metaTitle, metaDescription, isPublished) VALUES (?,?,?,?,?,?)",
+          [p.slug, p.title, renderTemplateText(p.content, brand), p.title, p.metaDescription ? renderTemplateText(p.metaDescription, brand) : null, p.draft ? 0 : 1],
         );
       }
       const [m] = await conn.query<mysql.RowDataPacket[]>("SELECT COUNT(*) AS n FROM menu_items");
