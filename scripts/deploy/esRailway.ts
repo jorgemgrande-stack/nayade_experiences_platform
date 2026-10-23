@@ -338,7 +338,7 @@ async function main() {
     const v = (await api<{ variables: Record<string, string> }>("query($p:String!,$e:String!,$s:String!){ variables(projectId:$p, environmentId:$e, serviceId:$s, unrendered:false) }", { p: t.projectToken.projectId, e: sc.environmentId, s: await serviceId("restore-drill") })).variables;
     for (const k of ["BACKUP_S3_BUCKET", "BACKUP_S3_ACCESS_KEY", "BACKUP_S3_SECRET_KEY"]) if (!v[k]) throw new Error(`restore-drill no tiene ${k}`);
     const client = new S3Client({ region: v.BACKUP_S3_REGION || "auto", endpoint: v.BACKUP_S3_ENDPOINT || undefined, forcePathStyle: v.BACKUP_S3_FORCE_PATH_STYLE === "1", credentials: { accessKeyId: v.BACKUP_S3_ACCESS_KEY, secretAccessKey: v.BACKUP_S3_SECRET_KEY } });
-    const prefix = (v.BACKUP_S3_PREFIX ?? "").replace(/^/+/, "");
+    const prefix = (v.BACKUP_S3_PREFIX ?? "").replace(/^\/+/, "");
     const since = Date.now() - 24 * 3600_000;
     const recent: Array<{ key: string; bytes: number; at: number }> = [];
     let total = 0;
