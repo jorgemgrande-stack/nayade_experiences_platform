@@ -309,9 +309,15 @@ async function main() {
     const url = `https://${crmHost}/cp/v1/mail/postmark/webhook`;
     const hook = { Url: url, MessageStream: "outbound", HttpHeaders: [{ Name: "x-elephant-webhook-token", Value: webhookToken }], Triggers: POSTMARK_WEBHOOK_TRIGGERS };
     const existing = webhooks.find((w) => w.Url === url);
-    const r = existing ? await pm("PUT", `/webhooks/${existing.ID}`, hook) : await pm("POST", "/webhooks", hook);
-    if (r.status !== 200) throw new Error(`Postmark no aceptó el webhook: HTTP ${r.status} ${String(r.j.Message ?? "")}`);
-    console.log(`Postmark webhook ${existing ? "actualizado" : "creado"}: ${url} (entrega, rebote, queja y baja)`);
+    const tokenChanged = plan.changes.some((c) => c.service === "controlplane" && c.name === "POSTMARK_WEBHOOK_TOKEN");
+    if (existing && !tokenChanged) console.log(`Postmark webhook ya configurado: ${url} (sin cambios)`);
+    else {
+      const r = existing ? await pm("PUT", `/webhooks/${existing.ID}`, hook) : await pm("POST", "/webhooks", hook);
+      // Postmark verifica el destino al guardar: si la pasarela del CRM aún no abre la ruta (imagen anterior a su
+      // excepción), no se guarda, pero el correo de pruebas puede seguir (la entrega se comprueba por la API de Postmark)
+      if (r.status !== 200) console.log(`AVISO: Postmark no guardó el webhook (HTTP ${r.status}: ${String(r.j.Message ?? "")}). Revisar la pasarela del CRM; se continúa.`);
+      else console.log(`Postmark webhook ${existing ? "actualizado" : "creado"}: ${url} (entrega, rebote, queja y baja)`);
+    }
     // El CRM (otro repositorio) toma su variable al redesplegar la MISMA imagen que ya sirve (sin recompilar su código)
     if (plan.changes.some((c) => c.service === "crm")) {
       const crmId = await serviceId("crm");
