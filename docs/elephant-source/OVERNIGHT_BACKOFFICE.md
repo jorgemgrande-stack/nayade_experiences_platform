@@ -14,13 +14,15 @@ repositorio) en la consola operativa del negocio SaaS. Encargo del 24/10/2026.
 
 | Bloque | Tarea | Prioridad | Estado |
 |---|---|---|---|
-| A | Accesos de las empresas: API Core + plano de control | P0 | Desarrollado y probado (PR en curso) |
-| A | Pestaña «Accesos» en la ficha SaaS (CRM) | P0 | Pendiente |
-| A | Caso Skibox: localizar al administrador (sin enviar nada) | P0 | Pendiente |
+| A | Accesos de las empresas: API Core + plano de control | P0 | **Verificado en live** (Core #301). Production: pendiente de despliegue protegido |
+| A | Pestaña «Accesos» en la ficha SaaS (CRM) | P0 | **Verificado en live** (CRM #33). Production: pendiente |
+| A | Caso Skibox: localizar al administrador (sin enviar nada) | P0 | Bloqueado: necesita los despliegues de production (aprobación) |
 | A | Revocar sesiones sin desactivar | P1 | Bloqueado: requiere migración (versión de sesión por usuario) |
-| B | Resource Manager: diagnóstico de `ERM_DATABASE_URL` | P0 | Pendiente |
-| B | Estados de empresa, prueba, suscripción y técnico separados | P1 | Pendiente |
-| C | Listado de empresas y ficha 360° | P1 | Pendiente |
+| B | Resource Manager: el plano de control no tenía `ERM_DATABASE_URL` | P0 | **Corregido y verificado en live** (#302, #303). Production: operación protegida pendiente |
+| B | Estados de empresa, prueba y suscripción separados | P1 | Desarrollado (CRM #35); el estado técnico, pendiente |
+| C | Listado de empresas (orden, avisos «requieren atención») | P1 | Desarrollado (CRM #35) |
+| C | Ficha 360° | P1 | Pendiente |
+| G | Etiqueta de entorno: el CRM de live decía «Producción» | P0 | **Corregido** (CRM #34) |
 | C | Alta guiada | P1 | Pendiente |
 | D | Dashboard, tareas y tickets | P1 | Pendiente |
 | E | Versiones, migraciones, backups y salud | P2 | Pendiente |
@@ -50,3 +52,20 @@ repositorio) en la consola operativa del negocio SaaS. Encargo del 24/10/2026.
   - Análisis del bloque A: no existían rutas de usuarios por empresa en el plano de control.
   - Implementados el canal y las rutas `GET /cp/v1/tenants/:id/access` y `POST /cp/v1/tenants/:id/access/users/:uid/{reset|invite|unlock|activate|deactivate}`.
   - 11 pruebas nuevas; suites del plano de control y del registro en verde; sin errores de tipos nuevos.
+  - Live: Core #301 publicado automáticamente (CI → live → estado `elephant-source/live`).
+    - API real con la empresa de prueba A: lista de usuarios OK.
+    - Salvaguardas comprobadas: propietario protegido (409), confirmación obligatoria (400), confirmación distinta (409), destinatario fuera del sandbox (`sandbox_blocked`, sin enlace) y desbloqueo (200).
+    - Todo, incluidos los rechazos, queda en `tenant_events`.
+  - CRM #33 desplegado en live: pestaña Accesos verificada en el navegador.
+  - CRM #34: el CRM de live se presentaba como «Producción»; ahora «Live · pruebas».
+  - Resource Manager:
+    - el Core de live mide en `es_erm`, pero el plano de control no tenía `ERM_DATABASE_URL`;
+    - ahora la lee por referencia a la variable del Core (`almacenamiento-referencias`, solo en live);
+    - `/tenants/:id/resources` y `/usage/:id` devuelven datos reales.
+  - CRM #35: estados por dimensión en el listado de empresas.
+
+## Pendiente de aprobación humana (production)
+
+1. Despliegues protegidos de controlplane, core y CRM para que Accesos llegue a `admin.bigelephant.es` (caso Skibox).
+2. `ERM_DATABASE_URL` en el plano de control de production (referencia a la del Core, si el Core de production la tiene).
+3. Token de Railway para el entorno `elephant-source-production-despliegue`.
