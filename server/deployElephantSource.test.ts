@@ -46,7 +46,8 @@ describe("órdenes de operación permitidas", () => {
       expect(isAllowedDrill(ok), ok).toBe(true);
     for (const bad of [
       "node dist-cp/backup-job.js retention --apply",
-      "node dist-cp/backup-job.js restore-tenant acme --apply",
+      // Restaurar EN una base nueva está permitido (prueba de restauración); conmutar la empresa a ella, nunca
+      "node dist-cp/backup-job.js restore-tenant acme --apply --switch",
       "node dist-cp/backup-job.js rebuild --apply",
       "node dist-cp/backup-job.js run; rm -rf /",
       "node dist-cp/backup-job.js migrate-tenants --only ACME",
@@ -56,7 +57,7 @@ describe("órdenes de operación permitidas", () => {
       "node .mig/run.cjs registry status; rm -rf /",
     ])
       expect(isAllowedDrill(bad), bad).toBe(false);
-    expect(DRILL_ALLOWED.length).toBe(7);
+    expect(DRILL_ALLOWED.length).toBe(8);
   });
 
   it("el registro mostrado no lleva DSN, claves ni tokens", () => {
@@ -126,7 +127,7 @@ describe("preparar-pruebas-live (autorizado por el propietario el 23/10/2026)", 
     expect(refs["restore-drill"].BACKUP_S3_SECRET_KEY).toBe("${{es-live-backups.SECRET_ACCESS_KEY}}");
     expect(refs["backup-job"].BACKUP_S3_ACCESS_KEY).toBe("${{es-live-backups.ACCESS_KEY_ID}}");
     // Production: solo los servicios de copias (backup-job y restore-drill), nunca el Core
-    expect(Object.keys(storageReferences("production")).sort()).toEqual(["backup-job", "restore-drill"]);
+    expect(Object.keys(storageReferences("production")).sort()).toEqual(["backup-job", "core", "restore-drill"]);
     expect(storageReferences("production")["restore-drill"].BACKUP_S3_SECRET_KEY).toBe("${{elephant-source-backups.SECRET_ACCESS_KEY}}");
     expect(() => storageReferences("staging")).toThrow();
   });

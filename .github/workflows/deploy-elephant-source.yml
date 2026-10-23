@@ -38,6 +38,8 @@ on:
           - desplegar-core
           - desplegar-core-gateway
           - comprobar-salud
+          - preparar-production
+          - aplicar-production
           - preparar-pruebas-live
           - diagnostico-correo-live
           - correo-pruebas-live
@@ -103,7 +105,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: CLI de Railway (versión fijada)
-        if: startsWith(inputs.action, 'desplegar-') || inputs.action == 'preparar-pruebas-live' || inputs.action == 'correo-pruebas-live'
+        if: startsWith(inputs.action, 'desplegar-') || inputs.action == 'preparar-pruebas-live' || inputs.action == 'correo-pruebas-live' || inputs.action == 'preparar-production' || inputs.action == 'aplicar-production'
         run: npm install -g @railway/cli@5.68.0
 
       - name: Verificar que el token es de Elephant Source y del entorno elegido
@@ -153,7 +155,7 @@ jobs:
         run: pnpm exec tsx scripts/deploy/esRailway.ts mail-live --env "${ES_ENV}" --allow "${ES_MAIL_ALLOW}"
 
       - name: Commit a desplegar (debe pertenecer a integration/elephant-source)
-        if: startsWith(inputs.action, 'desplegar-') || inputs.action == 'preparar-pruebas-live' || inputs.action == 'correo-pruebas-live'
+        if: startsWith(inputs.action, 'desplegar-') || inputs.action == 'preparar-pruebas-live' || inputs.action == 'correo-pruebas-live' || inputs.action == 'preparar-production' || inputs.action == 'aplicar-production'
         run: |
           SHA="${ES_COMMIT:-${GITHUB_SHA}}"
           git merge-base --is-ancestor "${SHA}" "${GITHUB_SHA}" || { echo "El commit ${SHA} no es de integration/elephant-source"; exit 1; }
@@ -194,7 +196,7 @@ jobs:
         run: pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --command "node dist-cp/backup-job.js check-data-exports${ES_ONLY:+ --only ${ES_ONLY}}"
 
       - name: Export del commit (sin railway.toml ni datos de semilla)
-        if: startsWith(inputs.action, 'desplegar-') || inputs.action == 'preparar-pruebas-live' || inputs.action == 'correo-pruebas-live'
+        if: startsWith(inputs.action, 'desplegar-') || inputs.action == 'preparar-pruebas-live' || inputs.action == 'correo-pruebas-live' || inputs.action == 'preparar-production' || inputs.action == 'aplicar-production'
         run: pnpm exec tsx scripts/deploy/esRailway.ts export --sha "${ES_DEPLOY_SHA}" --out "${RUNNER_TEMP}/export"
 
       - name: Pruebas de live — pasarelas de las empresas de prueba (crear solo en live, desplegar y dominio)
@@ -220,6 +222,76 @@ jobs:
         run: |
           pnpm exec tsx scripts/deploy/esRailway.ts deploy --env "${ES_ENV}" --service controlplane --dir "${RUNNER_TEMP}/export" --sha "${ES_DEPLOY_SHA}"
           pnpm exec tsx scripts/deploy/esRailway.ts deploy --env "${ES_ENV}" --service core --dir "${RUNNER_TEMP}/export" --sha "${ES_DEPLOY_SHA}"
+
+      # Actualización de production en DOS aprobaciones (autorizada por el propietario el 23/10/2026), en el orden del plan
+      # (PLAN_PUBLICACION.md). 1) preparar-production: copia, verificación, prueba de restauración y SIMULACIÓN de todas
+      # las migraciones (no aplica nada). 2) aplicar-production: solo tras revisar ese plan; aplica en orden, despliega y
+      # comprueba. Cada paso falla si no termina bien. MAIL_MODE, cobros, autoservicio e IA no se tocan.
+      - name: preparar-production — solo production
+        if: inputs.action == 'preparar-production'
+        run: if [ "${ES_ENV}" != "production" ]; then echo "preparar-production solo existe en production"; exit 1; fi
+
+      - name: "Preparar production 1/4 — almacenamiento como referencias (backup-job, restore-drill y core; sin desplegar)"
+        if: inputs.action == 'preparar-production'
+        run: pnpm exec tsx scripts/deploy/esRailway.ts storage-fix --env "${ES_ENV}"
+
+      - name: "Preparar production 2/4 — desplegar backup-job (copias automáticas)"
+        if: inputs.action == 'preparar-production'
+        run: pnpm exec tsx scripts/deploy/esRailway.ts deploy --env "${ES_ENV}" --service backup-job --dir "${RUNNER_TEMP}/export" --sha "${ES_DEPLOY_SHA}"
+
+      - name: "Preparar production 3/4 — copia, verificación en el bucket y prueba de restauración de Skibox (base nueva)"
+        if: inputs.action == 'preparar-production'
+        run: |
+          pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --command "node dist-cp/backup-job.js run"
+          pnpm exec tsx scripts/deploy/esRailway.ts backup-check --env "${ES_ENV}"
+          pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --command "node dist-cp/backup-job.js restore-tenant t5-skibox --apply"
+
+      - name: "Preparar production 4/4 — simulación de todas las migraciones (plataforma y empresas; no aplica nada)"
+        if: inputs.action == 'preparar-production'
+        run: |
+          pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --command "node .mig/run.cjs registry plan"
+          pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --command "node .mig/run.cjs crm status"
+          pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --command "node .mig/run.cjs crm plan"
+          pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --command "node dist-cp/backup-job.js migrate-tenants"
+
+      - name: aplicar-production — solo production
+        if: inputs.action == 'aplicar-production'
+        run: if [ "${ES_ENV}" != "production" ]; then echo "aplicar-production solo existe en production"; exit 1; fi
+
+      - name: "Aplicar production 1/5 — copia inmediatamente antes de migrar"
+        if: inputs.action == 'aplicar-production'
+        run: |
+          pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --command "node dist-cp/backup-job.js run"
+          pnpm exec tsx scripts/deploy/esRailway.ts backup-check --env "${ES_ENV}"
+
+      - name: "Aplicar production 2/5 — migraciones de plataforma (registro y CRM)"
+        if: inputs.action == 'aplicar-production'
+        run: |
+          pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --command "node .mig/run.cjs registry apply"
+          pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --command "node .mig/run.cjs crm apply"
+          pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --command "node .mig/run.cjs crm status"
+
+      - name: "Aplicar production 3/5 — migraciones de las empresas (canario, después Skibox, después el resto)"
+        if: inputs.action == 'aplicar-production'
+        run: |
+          pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --command "node dist-cp/backup-job.js migrate-tenants --only t3-empresa-demo-elephant-01 --apply"
+          pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --command "node dist-cp/backup-job.js check-data-exports --only t3-empresa-demo-elephant-01"
+          pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --command "node dist-cp/backup-job.js migrate-tenants --only t5-skibox --apply"
+          pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --command "node dist-cp/backup-job.js migrate-tenants --apply"
+          pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --command "node dist-cp/backup-job.js check-data-exports"
+
+      - name: "Aplicar production 4/5 — desplegar plano de control, Core y pasarela"
+        if: inputs.action == 'aplicar-production'
+        run: |
+          pnpm exec tsx scripts/deploy/esRailway.ts deploy --env "${ES_ENV}" --service controlplane --dir "${RUNNER_TEMP}/export" --sha "${ES_DEPLOY_SHA}"
+          pnpm exec tsx scripts/deploy/esRailway.ts deploy --env "${ES_ENV}" --service core --dir "${RUNNER_TEMP}/export" --sha "${ES_DEPLOY_SHA}"
+          pnpm exec tsx scripts/deploy/esRailway.ts deploy --env "${ES_ENV}" --service core-gateway --dir "${RUNNER_TEMP}/export" --sha "${ES_DEPLOY_SHA}"
+
+      - name: "Aplicar production 5/5 — salud pública y acceso de Skibox"
+        if: inputs.action == 'aplicar-production'
+        run: |
+          pnpm exec tsx scripts/deploy/esRailway.ts health --url "https://app.bigelephant.es/" --expect 200
+          pnpm exec tsx scripts/deploy/esRailway.ts health --url "https://skibox.app.bigelephant.es/login" --expect 200
 
       - name: Salud pública
         if: inputs.action == 'comprobar-salud'

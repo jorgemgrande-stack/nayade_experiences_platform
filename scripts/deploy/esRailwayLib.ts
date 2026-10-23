@@ -23,6 +23,9 @@ export const DRILL_ALLOWED: RegExp[] = [
   // Migraciones de plataforma con el paquete auditado de la imagen (sin --database: nunca otra base)
   /^node \.mig\/run\.cjs registry (plan|apply)$/,
   /^node \.mig\/run\.cjs crm (status|plan|apply)$/,
+  // Prueba de restauración: restaura la copia de UNA empresa en una base NUEVA y la verifica; sin --switch, la base real
+  // no se toca (autorizado por el propietario el 23/10/2026)
+  /^node dist-cp\/backup-job\.js restore-tenant [a-z0-9][a-z0-9-]{1,62} --apply$/,
 ];
 export const isAllowedDrill = (cmd: string) => DRILL_ALLOWED.some((r) => r.test(cmd.trim()));
 export const DRILL_IDLE = `${BJ} list`;
@@ -87,7 +90,7 @@ const s3Refs = (prefix: string, bucket: string): Record<string, string> => ({
 });
 export const STORAGE_BUCKETS: Record<string, { backups: string; media: string }> = {
   live: { backups: "es-live-backups", media: "es-live-media" },
-  // Production (autorizado por el propietario el 23/10/2026): SOLO los servicios de copias, nunca el Core
+  // Production (autorizado por el propietario el 23/10/2026)
   production: { backups: "elephant-source-backups", media: "elephant-source-media" },
 };
 export function storageReferences(env: string): Record<string, Record<string, string>> {
@@ -97,7 +100,8 @@ export function storageReferences(env: string): Record<string, Record<string, st
     "backup-job": { ...s3Refs("BACKUP_S3_", b.backups), ...s3Refs("S3_", b.media) },
     "restore-drill": { ...s3Refs("BACKUP_S3_", b.backups), ...s3Refs("S3_", b.media) },
   };
-  return env === "production" ? ops : { ...ops, core: s3Refs("S3_", b.media) };
+  // Production: también el Core desde el 23/10/2026 (autorizado: sus claves de ficheros eran incorrectas)
+  return { ...ops, core: s3Refs("S3_", b.media) };
 }
 
 /**
