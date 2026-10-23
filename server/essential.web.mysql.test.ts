@@ -83,6 +83,38 @@ describe.skipIf(!URL_)("Essential — Web y CMS (aplicación real, dos empresas 
     expect(data(await ess.q("b", "public.getTenantPage", { slug: "ubicaciones" })) ?? null).toBeNull();
   });
 
+  it("cms-content: portada y páginas propias; la web de cada empresa solo sirve su contenido; legales en borrador fuera del menú", async () => {
+    // A edita su portada y publica una página nueva
+    expect((await ess.m("a", "cms.savePageContent", { slug: "inicio", title: "Inicio", content: "<h1>Portada de A</h1><script>x()</script>", isPublished: true }, admA)).status).toBe(200);
+    expect((await ess.m("a", "cms.savePageContent", { slug: "novedades", title: "Novedades", content: "<p>Solo de A</p>", isPublished: true }, admA)).status).toBe(200);
+    const home = data(await ess.q("a", "public.getTenantPage", { slug: "inicio" }));
+    expect(home.html).toContain("Portada de A");
+    expect(home.html).not.toContain("<script");
+    expect(data(await ess.q("a", "public.getTenantPage", { slug: "novedades" })).html).toContain("Solo de A");
+
+    // B no ve nada de A
+    expect(data(await ess.q("b", "public.getTenantPage", { slug: "inicio" })) ?? null).toBeNull();
+    expect(data(await ess.q("b", "public.getTenantPage", { slug: "novedades" })) ?? null).toBeNull();
+    expect((await ess.sql("b", "SELECT COUNT(*) AS n FROM static_pages WHERE content LIKE '%de A%'"))[0].n).toBe(0);
+
+    // B edita su propia portada: cada web, la suya
+    expect((await ess.m("b", "cms.savePageContent", { slug: "inicio", title: "Inicio", content: "<h1>Portada de B</h1>", isPublished: true }, admB)).status).toBe(200);
+    expect(data(await ess.q("b", "public.getTenantPage", { slug: "inicio" })).html).toContain("Portada de B");
+    expect(data(await ess.q("a", "public.getTenantPage", { slug: "inicio" })).html).toContain("Portada de A");
+
+    // Texto legal en borrador: ni se sirve ni aparece en el menú de pie; al publicarlo, sí
+    expect((await ess.m("a", "cms.savePageContent", { slug: "aviso-legal", title: "Aviso legal", content: "<p>Pendiente de revisar</p>", isPublished: false }, admA)).status).toBe(200);
+    expect((await ess.m("a", "cms.createMenuItem", { label: "Aviso legal", url: "/aviso-legal", menuZone: "footer" }, admA)).status).toBe(200);
+    expect(data(await ess.q("a", "public.getTenantPage", { slug: "aviso-legal" })) ?? null).toBeNull();
+    expect(data(await ess.q("a", "public.getMenuItems", { zone: "footer" })).map((m: any) => m.url)).not.toContain("/aviso-legal");
+    expect((await ess.m("a", "cms.savePageContent", { slug: "aviso-legal", title: "Aviso legal", content: "<p>Titular: A</p>", isPublished: true }, admA)).status).toBe(200);
+    expect(data(await ess.q("a", "public.getMenuItems", { zone: "footer" })).map((m: any) => m.url)).toContain("/aviso-legal");
+    expect(data(await ess.q("b", "public.getMenuItems", { zone: "footer" })).map((m: any) => m.url)).not.toContain("/aviso-legal");
+
+    // Solo administradores
+    expect(errCode(await ess.m("a", "cms.savePageContent", { slug: "x", title: "X", content: "", isPublished: true }, agA))).toBe("FORBIDDEN");
+  });
+
   it("cms-seo: título y descripción por página; sitemap y robots con la URL de la empresa y sin rutas de otra instalación", async () => {
     expect((await ess.m("a", "cms.upsertPage", { slug: "servicios", title: "Servicios", isPublished: true, metaTitle: "Servicios | A", metaDescription: "Lo que hacemos" }, admA)).status).toBe(200);
     expect((await ess.sql("a", "SELECT metaTitle, metaDescription FROM static_pages WHERE slug = 'servicios'"))[0]).toEqual({ metaTitle: "Servicios | A", metaDescription: "Lo que hacemos" });

@@ -86,6 +86,11 @@ export function PoweredBy({ theme }: { theme: Theme }) {
 
 export function TenantFooter({ theme }: { theme: Theme }) {
   const c = theme.contact;
+  // El servidor ya quita los enlaces a páginas en borrador
+  const menu = trpc.public.getMenuItems.useQuery({ zone: "footer" }, { staleTime: 5 * 60_000, retry: false });
+  const footerLinks = (menu.data ?? [])
+    .filter((m) => m.isActive && !m.parentId && m.url)
+    .sort((a, b) => a.sortOrder - b.sortOrder) as Array<{ id: number; label: string; url: string; target?: string | null }>;
   return (
     <footer className="bg-lago-dark text-white">
       <div className="container py-10 grid gap-6 md:grid-cols-3">
@@ -97,15 +102,19 @@ export function TenantFooter({ theme }: { theme: Theme }) {
           {c.phone && <p>{c.phone}</p>}
           {c.email && <p>{c.email}</p>}
         </div>
-        <div className="text-sm text-white/60 space-y-1">
-          <Link href="/aviso-legal">
-            <span className="cursor-pointer hover:text-white">Aviso legal</span>
-          </Link>
-          <br />
-          <Link href="/politica-de-privacidad">
-            <span className="cursor-pointer hover:text-white">Privacidad</span>
-          </Link>
-        </div>
+        <nav aria-label="Enlaces del pie" className="text-sm text-white/60 flex flex-col items-start gap-1">
+          {footerLinks.map((l) =>
+            /^https?:\/\//.test(l.url) ? (
+              <a key={l.id} href={l.url} target={l.target ?? "_self"} rel="noopener noreferrer" className="hover:text-white">
+                {l.label}
+              </a>
+            ) : (
+              <Link key={l.id} href={l.url}>
+                <span className="cursor-pointer hover:text-white">{l.label}</span>
+              </Link>
+            ),
+          )}
+        </nav>
       </div>
       <div className="border-t border-white/10">
         <div className="container py-4 flex flex-col md:flex-row items-center justify-between gap-2">

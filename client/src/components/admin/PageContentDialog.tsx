@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { isLegalPageSlug } from "@shared/tenantNav";
 
 export interface EditablePage {
   slug: string;
@@ -63,6 +64,7 @@ export function PageContentDialog({ page, open, onClose, onSaved }: { page: Edit
   });
 
   const slugValid = SLUG_RE.test(slug);
+  const legal = isLegalPageSlug(slug);
   const canSave = title.trim().length > 0 && slugValid && !save.isPending;
 
   return (
@@ -82,7 +84,11 @@ export function PageContentDialog({ page, open, onClose, onSaved }: { page: Edit
                 maxLength={200}
                 onChange={(e) => {
                   setTitle(e.target.value);
-                  if (isNew && !slugTouched) setSlug(slugFromTitle(e.target.value));
+                  if (isNew && !slugTouched) {
+                    const next = slugFromTitle(e.target.value);
+                    setSlug(next);
+                    if (isLegalPageSlug(next)) setIsPublished(false);
+                  }
                 }}
               />
             </div>
@@ -96,7 +102,9 @@ export function PageContentDialog({ page, open, onClose, onSaved }: { page: Edit
                 aria-describedby="page-slug-hint"
                 onChange={(e) => {
                   setSlugTouched(true);
-                  setSlug(e.target.value.toLowerCase());
+                  const next = e.target.value.toLowerCase();
+                  setSlug(next);
+                  if (isLegalPageSlug(next)) setIsPublished(false);
                 }}
               />
               <p id="page-slug-hint" className="text-xs text-muted-foreground">
@@ -112,6 +120,11 @@ export function PageContentDialog({ page, open, onClose, onSaved }: { page: Edit
             <Label htmlFor="page-meta">Descripción para buscadores (opcional)</Label>
             <Input id="page-meta" value={metaDescription} maxLength={300} onChange={(e) => setMetaDescription(e.target.value)} />
           </div>
+          {legal && (
+            <p role="note" className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              Texto legal: revísalo con tu asesor y complétalo con los datos de tu empresa antes de publicarlo. Mientras esté en borrador no aparece en tu web ni en su menú.
+            </p>
+          )}
           <div className="flex items-center gap-2">
             <Switch id="page-published" checked={isPublished} onCheckedChange={setIsPublished} />
             <Label htmlFor="page-published">Publicada (visible en tu web)</Label>
