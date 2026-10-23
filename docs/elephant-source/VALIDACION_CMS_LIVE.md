@@ -18,7 +18,7 @@ Hasta que esta prueba se supere en `live`, la funcionalidad no se da por termina
 
 | # | Requisito | Quién | Cómo comprobarlo |
 |---|---|---|---|
-| 1 | Desplegar en `live` el Core y el plano de control con los PR #268–#273 | Jorge aprueba el despliegue (entorno `elephant-source-live`, con revisores obligatorios) | Workflow `deploy-elephant-source.yml` con entorno `live` y acciones `desplegar-controlplane` y `desplegar-core`. En los registros: `Server running on http://localhost:3000/` |
+| 1 | Desplegar en `live` el Core y el plano de control con los PR de la web multiempresa (#268 en adelante: contenido de páginas, legales, ubicaciones, grupos y portada) | Jorge aprueba el despliegue (entorno `elephant-source-live`, con revisores obligatorios) | Workflow `deploy-elephant-source.yml` con entorno `live` y acciones `desplegar-controlplane` y `desplegar-core`. En los registros: `Server running on http://localhost:3000/` |
 | 2 | Variables S3 de `live` corregidas | Jorge, en Railway | Lista del diagnóstico 39822663135, ya entregada |
 | 3 | `CP_PLATFORM_DOMAIN` de `live` con DNS comodín hacia el `core-gateway` de `live` | Jorge, en Railway y DNS | Lo indica el primer paso del script (`el comodín *.dominio llega a la pasarela del Core`) |
 | 4 | Que la pasarela del Core sirva sin autenticación básica los hosts de las empresas de prueba, o que se ejecute desde un origen autorizado | Configuración de `PUBLIC_HOSTS` de la pasarela | Lo indica el script: un 401 en la web de A indica que falta |
