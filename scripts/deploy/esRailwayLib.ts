@@ -222,7 +222,8 @@ export function mailAccessPlan(
   for (const t of tenants) if (!TENANT_ID_SHAPE.test(t)) problems.push(`identificador de empresa no válido: ${t}`);
   if (tenants.length > 5) problems.push("como máximo 5 empresas por activación");
   if (!(core.POSTMARK_SERVER_TOKEN ?? "").trim()) problems.push("falta POSTMARK_SERVER_TOKEN en core (lo pone el propietario en Railway, como variable sellada)");
-  if ((cp.MAIL_MODE ?? "off") !== "off") problems.push(`el plano de control tiene MAIL_MODE=${cp.MAIL_MODE}: debe seguir en off (avisos comerciales y de prueba)`);
+  // El plano de control (avisos comerciales y de prueba) nunca en live; off o sandbox (solo buzones propios) se respetan
+  if ((cp.MAIL_MODE ?? "off") === "live") problems.push("el plano de control tiene MAIL_MODE=live: los avisos comerciales y de prueba no se activan con el correo de acceso");
   // Orden: primero el ámbito y el proveedor, al final el modo (un fallo a mitad deja el correo como estaba: off)
   const want: Array<[string, string]> = [
     ["MAIL_PROVIDER", "postmark"],

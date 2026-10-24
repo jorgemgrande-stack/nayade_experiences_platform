@@ -78,6 +78,10 @@ describe("correo de acceso limitado en production (mailAccessPlan)", () => {
     expect(mailAccessPlan("production", { core: {}, controlplane: {} }, { action: "activar", tenants: ["t5-skibox"] }).problems.join()).toMatch(/POSTMARK_SERVER_TOKEN/);
     expect(mailAccessPlan("live", prod(), { action: "activar", tenants: ["t5-skibox"] }).problems.join()).toMatch(/solo en production/);
     expect(mailAccessPlan("production", prod({}, { MAIL_MODE: "live" }), { action: "activar", tenants: ["t5-skibox"] }).problems.join()).toMatch(/plano de control/);
+    // El sandbox del plano de control (solo buzones propios) no impide activar el de acceso, y no se toca
+    const sb = mailAccessPlan("production", prod({}, { MAIL_MODE: "sandbox" }), { action: "activar", tenants: ["t5-skibox"] });
+    expect(sb.problems).toEqual([]);
+    expect(sb.changes.some((x) => x.service !== "core")).toBe(false);
   });
   it("idempotente y con marcha atrás que solo apaga el modo", () => {
     const done = { MAIL_PROVIDER: "postmark", MAIL_SENDING_DOMAIN: "bigelephant.es", MAIL_SCOPE_CATEGORIES: MAIL_ACCESS_CATEGORIES, MAIL_SCOPE_TENANTS: "t5-skibox", MAIL_LIVE_AUTHORIZED: "1", MAIL_MODE: "live" };
