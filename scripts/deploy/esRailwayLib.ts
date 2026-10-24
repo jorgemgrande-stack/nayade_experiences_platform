@@ -193,6 +193,49 @@ export const POSTMARK_WEBHOOK_TRIGGERS = {
   SubscriptionChange: { Enabled: true },
 };
 
+/**
+ * Correo de ACCESO de las empresas en production (docs/runbooks/CORREO_ACCESO_EMPRESAS.md): solo el servicio `core`,
+ * solo las empresas indicadas y solo invitación, restablecimiento y aviso de contraseña cambiada. El plano de control
+ * (avisos de prueba y comerciales) se queda en off. El token de Postmark lo pone el propietario en Railway: aquí solo se
+ * comprueba que existe, nunca se copia ni se imprime.
+ */
+export const MAIL_ACCESS_CATEGORIES = "user_invite,password_reset,security_notice";
+export const MAIL_ACCESS_SENDING_DOMAIN = "bigelephant.es";
+const TENANT_ID_SHAPE = /^[a-z0-9][a-z0-9-]{1,62}$/;
+
+export function mailAccessPlan(
+  env: string,
+  vars: Record<string, Record<string, string>>,
+  o: { action: "activar" | "desactivar"; tenants: string[] },
+): { changes: MailChange[]; problems: string[] } {
+  const problems: string[] = [];
+  const changes: MailChange[] = [];
+  if (env !== "production") problems.push("el correo de acceso limitado se gestiona solo en production (live usa el sandbox)");
+  const core = vars.core ?? {};
+  const cp = vars.controlplane ?? {};
+  if (o.action === "desactivar") {
+    if ((core.MAIL_MODE ?? "off") !== "off") changes.push({ service: "core", name: "MAIL_MODE", value: "off" });
+    return { changes, problems };
+  }
+  const tenants = Array.from(new Set(o.tenants.map((t) => t.trim()).filter(Boolean)));
+  if (!tenants.length) problems.push("indica las empresas (ES_ONLY), p. ej. t5-skibox: nunca se activa para todas");
+  for (const t of tenants) if (!TENANT_ID_SHAPE.test(t)) problems.push(`identificador de empresa no válido: ${t}`);
+  if (tenants.length > 5) problems.push("como máximo 5 empresas por activación");
+  if (!(core.POSTMARK_SERVER_TOKEN ?? "").trim()) problems.push("falta POSTMARK_SERVER_TOKEN en core (lo pone el propietario en Railway, como variable sellada)");
+  if ((cp.MAIL_MODE ?? "off") !== "off") problems.push(`el plano de control tiene MAIL_MODE=${cp.MAIL_MODE}: debe seguir en off (avisos comerciales y de prueba)`);
+  // Orden: primero el ámbito y el proveedor, al final el modo (un fallo a mitad deja el correo como estaba: off)
+  const want: Array<[string, string]> = [
+    ["MAIL_PROVIDER", "postmark"],
+    ["MAIL_SENDING_DOMAIN", MAIL_ACCESS_SENDING_DOMAIN],
+    ["MAIL_SCOPE_CATEGORIES", MAIL_ACCESS_CATEGORIES],
+    ["MAIL_SCOPE_TENANTS", tenants.join(",")],
+    ["MAIL_LIVE_AUTHORIZED", "1"],
+    ["MAIL_MODE", "live"],
+  ];
+  for (const [k, v] of want) if ((core[k] ?? "") !== v) changes.push({ service: "core", name: k, value: v });
+  return { changes, problems };
+}
+
 // ── Publicación continua (docs/elephant-source/PROTOCOLO_PUBLICACION.md) ─────────
 
 /** Servicios que publica un despliegue ordinario, en este orden. Nada de copias, restore-drill ni pasarelas de prueba. */

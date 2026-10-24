@@ -19,6 +19,8 @@ import { FakeProvider, MemoryBillingStore, RecordingEffects } from "./_core/bill
 import type { Catalog } from "./_core/billing/types";
 import { createControlPlaneApp } from "./controlPlane/api";
 import { hashToken } from "./controlPlane/auth";
+import { deliverAdminInvite, withAdminInviteDelivery } from "./controlPlane/adminInviteDelivery";
+import type { CoreAccessClient } from "./controlPlane/tenantAccess";
 
 const OP: Actor = { type: "operator", id: "ana" };
 const catalog: Catalog = {
@@ -228,5 +230,69 @@ describe("API de onboarding", () => {
     expect(r.status).toBe(201);
     expect(r.json).toMatchObject({ status: "completed", domain: "api-co.elephantsource.es", company: { tenantId: "api-co" }, subscription: { status: "trialing" } });
     expect((await call("POST", `/companies/${ids.c}/onboard`, FULL, { tenantId: "api-co", adminContactId: ids.k })).status).toBe(409);
+  });
+});
+
+describe("entrega de la invitación del administrador tras el alta", () => {
+  // Core simulado: lista de Accesos con el modo y el ámbito del correo, e invitación con el resultado del envío
+  function core(o: { mailMode: "off" | "sandbox" | "live"; invite?: boolean; mail?: string; status?: number }) {
+    const calls: Array<{ act: string; uid?: number; confirm?: string; tenantId: string }> = [];
+    const client: CoreAccessClient = {
+      async call(x) {
+        calls.push({ act: x.act, uid: x.uid, confirm: x.confirm, tenantId: x.tenantId });
+        if (o.status) return { status: o.status, body: { error: "core_unreachable" } };
+        if (x.act === "list") return { status: 200, body: { mailMode: o.mailMode, accessMail: { invite: o.invite ?? true, reset: true }, users: [{ id: 7, email: "Eva@Acme.example" }] } };
+        return { status: 200, body: { ok: true, mail: o.mail ?? "sent" } };
+      },
+    };
+    return { client, calls };
+  }
+  const delivered = (k: ReturnType<typeof core>) => () => deliverAdminInvite(k.client, { tenantId: "acme", adminEmail: "eva@acme.example", operator: "operator:ana" });
+
+  it("con el correo de acceso operativo: sale por correo y el enlace NO se devuelve al operador", async () => {
+    const k = core({ mailMode: "live" });
+    const r = await withAdminInviteDelivery({ status: "completed", adminInviteToken: "INV-secreto" }, delivered(k));
+    expect(r).not.toHaveProperty("adminInviteToken");
+    expect(JSON.stringify(r)).not.toContain("INV-secreto");
+    expect(r.adminInvite).toEqual({ delivery: "email" });
+    expect(k.calls.map((x) => [x.act, x.uid, x.confirm])).toEqual([["list", undefined, undefined], ["invite", 7, "eva@acme.example"]]);
+  });
+
+  it("correo apagado o empresa fuera de ámbito: no se invita y el enlace se muestra una vez, como antes", async () => {
+    for (const [k, reason] of [[core({ mailMode: "off" }), "mail_disabled"], [core({ mailMode: "live", invite: false }), "scope_blocked"]] as const) {
+      const r = await withAdminInviteDelivery({ status: "completed", adminInviteToken: "INV-1" }, delivered(k));
+      expect(r.adminInviteToken).toBe("INV-1");
+      expect(r.adminInvite).toEqual({ delivery: "operator", reason });
+      expect(k.calls.map((x) => x.act)).toEqual(["list"]);
+    }
+  });
+
+  it("sandbox que no deja salir al destinatario, o Core caído: se conserva la entrega manual y el alta no falla", async () => {
+    const sb = await withAdminInviteDelivery({ status: "completed", adminInviteToken: "INV-2" }, delivered(core({ mailMode: "sandbox", mail: "sandbox_blocked" })));
+    expect(sb).toMatchObject({ adminInviteToken: "INV-2", adminInvite: { delivery: "operator", reason: "sandbox_blocked" } });
+    const down = await withAdminInviteDelivery({ status: "completed", adminInviteToken: "INV-3" }, delivered(core({ mailMode: "live", status: 503 })));
+    expect(down).toMatchObject({ adminInviteToken: "INV-3", adminInvite: { delivery: "operator", reason: "core_unavailable" } });
+    const thrown = await withAdminInviteDelivery({ status: "completed", adminInviteToken: "INV-4" }, async () => { throw new Error("x"); });
+    expect(thrown.adminInviteToken).toBe("INV-4");
+  });
+
+  it("sin token (alta reanudada o incompleta) no se llama al Core", async () => {
+    const k = core({ mailMode: "live" });
+    expect(await withAdminInviteDelivery({ status: "completed" }, delivered(k))).toEqual({ status: "completed" });
+    expect(await withAdminInviteDelivery({ status: "failed", adminInviteToken: "x" }, delivered(k))).toMatchObject({ adminInviteToken: "x" });
+    expect(k.calls).toEqual([]);
+  });
+
+  it("alta desde el CRM con correo operativo: la respuesta no lleva el enlace y se anota el envío", async () => {
+    const w = world();
+    const k = core({ mailMode: "live" });
+    const onboarding = new CrmOnboarding({ store: w.store, crm: w.crm, provisioning: w.provisioning, registry: w.reg, billing: w.billing, platformDomain: "elephantsource.es", deliverInvite: (t, e, a) => deliverAdminInvite(k.client, { tenantId: t, adminEmail: e, operator: `${a.type}:${a.id}` }) });
+    const { c, k: contact } = await companyWithAdmin(w);
+    const r = await onboarding.onboard(c.id, { tenantId: "acme-correo", adminContactId: contact.id }, OP);
+    expect(r.status).toBe("completed");
+    expect(r.provisioning.adminInviteToken).toBeUndefined();
+    expect(JSON.stringify(r)).not.toMatch(/INV-/);
+    expect(r.notes).toContain("Invitación enviada por correo a eva@acme.example");
+    expect(k.calls.find((x) => x.act === "invite")).toMatchObject({ tenantId: "acme-correo", confirm: "eva@acme.example" });
   });
 });

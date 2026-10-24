@@ -60,6 +60,8 @@ export interface ProvisionResult {
   error?: string;
   /** Solo presente en la ejecución que creó al administrador; nunca se persiste. */
   adminInviteToken?: string;
+  /** Cómo se entregó la invitación: por correo desde el Core (sin enlace en la respuesta) o al operador. */
+  adminInvite?: { delivery: "email" } | { delivery: "operator"; reason: string };
   domain?: string;
 }
 
