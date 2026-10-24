@@ -563,6 +563,9 @@ jobs:
         run: |
           pnpm exec tsx scripts/deploy/esRailway.ts health --url "https://app.bigelephant.es/" --expect 200
           pnpm exec tsx scripts/deploy/esRailway.ts health --url "https://skibox.app.bigelephant.es/login" --expect 200
+          # Diagnóstico de solo lectura en la misma ejecución aprobada: presencia (nunca valores) de SUPPORT_JWT_SECRET,
+          # ERM_DATABASE_URL y CP_CORE_INTERNAL_URL, de los que dependen Accesos y el Resource Manager
+          pnpm exec tsx scripts/deploy/esRailway.ts storage --env "${ES_ENV}"
 
       - name: Salud pública
         if: inputs.action == 'comprobar-salud'
