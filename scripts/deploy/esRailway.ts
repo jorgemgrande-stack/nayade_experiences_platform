@@ -37,7 +37,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { MAIL_TEST_SERVICES, POSTMARK_WEBHOOK_TRIGGERS, mailSandboxPlan, parseMailAllowlist } from "./esRailwayLib";
 import { DRILL_IDLE, EXCLUDED_FROM_EXPORT, GATEWAY_COPIED_VARS, GATEWAY_TEMPLATE_SERVICE, STORAGE_BUCKETS, STORAGE_VARS, describeStorageVar, guard, isAllowedDrill, scrub, meteringReferences, storageReferences, testTenantDomains, type DeployConfig, type TokenScope } from "./esRailwayLib";
-import { LIVE_PLATFORM_DOMAIN_DEFAULT, livePlatformDomainProblems, platformDomainsValue } from "./esRailwayLib";
+import { ERM_DB_SERVICE, ERM_PASSWORD_VAR, LIVE_PLATFORM_DOMAIN_DEFAULT, livePlatformDomainProblems, meteringPlan, platformDomainsValue } from "./esRailwayLib";
 import { CRM_CHECKS, EXTERNAL_LOCKED_SWITCHES, FUNCTIONAL_CHECKS, ORDINARY_SERVICES, WEB_CHECKS, crmProtectedChanges, hasMigrations, isExternalService, protectedChanges, shaFromDeployMeta } from "./esRailwayLib";
 import { REPOSITORIES } from "../../shared/repositories";
 
@@ -275,7 +275,7 @@ async function main() {
   const env = arg("env");
   const sc = await scope();
   const service = cmd === "deploy" || cmd === "revert" ? arg("service") : cmd === "drill" ? "restore-drill" : undefined;
-  if (!["verify", "status", "deploy", "drill", "active-sha", "publish", "revert", "active-crm", "publish-crm", "storage", "storage-fix", "test-gateways", "mail-live", "backup-check", "platform-domain"].includes(cmd)) throw new Error(`orden desconocida: ${cmd}`);
+  if (!["verify", "status", "deploy", "drill", "active-sha", "publish", "revert", "active-crm", "publish-crm", "storage", "storage-fix", "test-gateways", "mail-live", "backup-check", "platform-domain", "metering"].includes(cmd)) throw new Error(`orden desconocida: ${cmd}`);
   const problems = guard(cfg, sc, { env, service });
   if (problems.length) {
     console.error(`Detenido antes de tocar nada:\n - ${problems.join("\n - ")}`);
@@ -303,6 +303,59 @@ async function main() {
         console.log(`  ${k.padEnd(34)} definida · ${ref ? `referencia ${raw.variables[k].match(/\$\{\{\s*([A-Za-z0-9_.-]+)\s*\}\}/)?.[1] ?? ""}` : "valor fijo"}${eff?.variables[k] ? "" : " · SIN VALOR EFECTIVO"}`);
       }
     }
+    return;
+  }
+  if (cmd === "metering") {
+    // Medición del Resource Manager por referencias (ver meteringPlan). --secret: contraseña del usuario es_erm en
+    // MySQL.ES_ERM_PASSWORD si falta (nunca se imprime) y su referencia en restore-drill. --refs: URL del core y del plano
+    // de control; si una referencia no da valor, se restaura lo anterior y falla. Sin opciones: solo lectura.
+    const crypto = await import("node:crypto");
+    const t = await api<{ projectToken: { projectId: string } }>("query { projectToken { projectId } }");
+    const pid = t.projectToken.projectId;
+    const q = "query($p:String!,$e:String!,$s:String!,$u:Boolean){ variables(projectId:$p, environmentId:$e, serviceId:$s, unrendered:$u) }";
+    const vars = async (sid: string, unrendered: boolean) => (await api<{ variables: Record<string, string> }>(q, { p: pid, e: sc.environmentId, s: sid, u: unrendered })).variables;
+    const upsert = (sid: string, name: string, value: string) =>
+      api("mutation($i:VariableUpsertInput!){ variableUpsert(input:$i) }", { i: { projectId: pid, environmentId: sc.environmentId, serviceId: sid, name, value, skipDeploys: true } });
+    const remove = (sid: string, name: string) => api("mutation($i:VariableDeleteInput!){ variableDelete(input:$i) }", { i: { projectId: pid, environmentId: sc.environmentId, serviceId: sid, name } });
+    const dbSid = await serviceId(ERM_DB_SERVICE);
+    const db = await vars(dbSid, true);
+    const hostVar = "MYSQLHOST" in db ? "MYSQLHOST" : "RAILWAY_PRIVATE_DOMAIN";
+    if (!("MYSQLPORT" in db)) throw new Error(`${ERM_DB_SERVICE} no expone MYSQLPORT: no se puede componer la URL por referencias`);
+    const coreRaw = await vars(await serviceId("core"), true);
+    const plan = meteringPlan(hostVar, "MYSQLPORT", coreRaw.ERM_DATABASE_URL);
+    console.log(`${ERM_DB_SERVICE}: ${ERM_PASSWORD_VAR} ${db[ERM_PASSWORD_VAR] ? "definida" : "NO definida"} · host por ${hostVar}, puerto por MYSQLPORT`);
+    for (const [service, wanted] of Object.entries(plan)) {
+      const cur = await vars(await serviceId(service), true);
+      for (const [k, v] of Object.entries(wanted)) console.log(`${service}: ${k} ${cur[k] === v ? "ya como debe" : cur[k] ? "con otro valor" : "sin definir"}`);
+    }
+    if (process.argv.includes("--secret") && !db[ERM_PASSWORD_VAR]) {
+      await upsert(dbSid, ERM_PASSWORD_VAR, crypto.randomBytes(32).toString("base64url"));
+      console.log(`${ERM_DB_SERVICE}: ${ERM_PASSWORD_VAR} creada (aleatoria, 43 caracteres; no se muestra)`);
+    }
+    const apply = async (services: string[]) => {
+      for (const service of services) {
+        const sid = await serviceId(service);
+        const before = await vars(sid, true);
+        const changed: string[] = [];
+        for (const [k, v] of Object.entries(plan[service])) {
+          if (before[k] === v) continue;
+          await upsert(sid, k, v);
+          changed.push(k);
+        }
+        const eff = await vars(sid, false);
+        const empty = Object.keys(plan[service]).filter((k) => !eff[k]);
+        if (empty.length) {
+          for (const k of changed) {
+            if (before[k] !== undefined) await upsert(sid, k, before[k]);
+            else await remove(sid, k);
+          }
+          throw new Error(`${service}: referencias sin valor (${empty.join(", ")}); restaurados los valores anteriores`);
+        }
+        console.log(`${service}: ${changed.length ? `${changed.join(", ")} por referencia` : "sin cambios"} · valor efectivo presente`);
+      }
+    };
+    if (process.argv.includes("--secret")) await apply(["restore-drill"]);
+    if (process.argv.includes("--refs")) await apply(["core", "controlplane"]);
     return;
   }
   if (cmd === "platform-domain") {
