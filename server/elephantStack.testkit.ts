@@ -53,6 +53,8 @@ export interface ElephantStack {
   /** Correos que la aplicación intentó enviar por la API HTTP del proveedor (bloqueados). */
   blockedFetches: string[];
   adminToken: string;
+  /** Token de operador solo de lectura (tenants:read), para las pruebas de permisos. */
+  readerToken: string;
   cpPort: number;
   appPort: number;
   request(port: number, method: string, p: string, o?: ReqOpts): Promise<Res>;
@@ -74,11 +76,12 @@ export interface ElephantStack {
 export const data = (r: Res) => r.json?.result?.data?.json;
 export const errCode = (r: Res) => r.json?.error?.json?.data?.code;
 
-export async function startElephantStack(url: string, o: { label: string; perMinute?: number } = { label: "e2e" }): Promise<ElephantStack> {
+export async function startElephantStack(url: string, o: { label: string; perMinute?: number; opsAccessSecret?: string } = { label: "e2e" }): Promise<ElephantStack> {
   const run = crypto.randomBytes(3).toString("hex");
   const REG_DB = `${o.label}_reg_${run}`;
   const CRM_DB = `${o.label}_crm_${run}`;
   const ADMIN = `stack-admin-${run}-${crypto.randomBytes(12).toString("hex")}`;
+  const READER = `stack-reader-${run}-${crypto.randomBytes(12).toString("hex")}`;
   const PAY_SECRET = `secreto-pagos-de-pruebas-${crypto.randomBytes(16).toString("hex")}`;
   const clock = { now: Date.now() };
   const u = new URL(url);
@@ -97,7 +100,9 @@ export async function startElephantStack(url: string, o: { label: string; perMin
   process.env.INTEGRATION_ACTIVE_KEY_ID = "ik1";
   process.env.JWT_SECRET = `jwt-secret-de-prueba-${run}-${crypto.randomBytes(12).toString("hex")}`;
   process.env.DATABASE_URL = "mysql://nadie:nada@127.0.0.1:1/no_debe_usarse";
-  delete process.env.SUPPORT_JWT_SECRET;
+  // Canal de Accesos plano de control → Core (opcional): el mismo secreto en los dos lados, como en Railway
+  if (o.opsAccessSecret) process.env.SUPPORT_JWT_SECRET = o.opsAccessSecret;
+  else delete process.env.SUPPORT_JWT_SECRET;
   for (const k of ["SMTP_HOST", "SMTP_USER", "SMTP_PASS", "REDSYS_MERCHANT_KEY", "REDSYS_MERCHANT_CODE", "ADMIN_EMAIL", "S3_ENDPOINT", "BUILT_IN_FORGE_API_URL", "BREVO_API_KEY", "ERM_DATABASE_URL"]) delete process.env[k];
   // Ninguna salida de red real desde la aplicación
   const blockedFetches: string[] = [];
@@ -135,6 +140,7 @@ export async function startElephantStack(url: string, o: { label: string; perMin
   const { MysqlTenantLimitStore } = await import("./_core/limits/store");
   const { configureLimitAccess } = await import("./_core/limits/access");
   const { createControlPlaneApp } = await import("./controlPlane/api");
+  const { coreAccessClient } = await import("./controlPlane/tenantAccess");
   const { hashToken } = await import("./controlPlane/auth");
   const { CrmService } = await import("./crm/service");
   const { createContractActivation } = await import("./crm/activation");
@@ -171,9 +177,17 @@ export async function startElephantStack(url: string, o: { label: string; perMin
   const crmStore = new MysqlCrmStore(crmPool);
   const port = memoryEmailPort();
   const provider = new SignedTestProvider({ webhookSecret: PAY_SECRET });
-  const scopes = ["tenants:read", "provisioning:write", "subscriptions:read", "subscriptions:write", "entitlements:write", "crm:read", "crm:write", "web:read", "orders:read", "orders:write", "orders:approve", "billing:write"] as const;
+  const scopes = ["tenants:read", "provisioning:write", "subscriptions:read", "subscriptions:write", "entitlements:write", "crm:read", "crm:write", "web:read", "orders:read", "orders:write", "orders:approve", "billing:write", ...(o.opsAccessSecret ? (["support:write"] as const) : [])] as const;
+  // El Core escucha después que el plano de control: su dirección se resuelve al llamar
+  let coreBase = "";
   const cpApp = createControlPlaneApp({
-    tokens: [{ id: "admin", sha256: hashToken(ADMIN), scopes: [...scopes] }],
+    tokens: [
+      { id: "admin", sha256: hashToken(ADMIN), scopes: [...scopes] },
+      { id: "reader", sha256: hashToken(READER), scopes: ["tenants:read"] },
+    ],
+    ...(o.opsAccessSecret
+      ? { tenantAccess: { client: { call: (c: Parameters<ReturnType<typeof coreAccessClient>["call"]>[0]) => coreAccessClient({ baseUrl: coreBase, secret: o.opsAccessSecret!, fetch: realFetch }).call(c) } } }
+      : {}),
     registry,
     reader: store,
     entitlements: new EntitlementAdmin(regPool),
@@ -238,6 +252,7 @@ export async function startElephantStack(url: string, o: { label: string; perMin
   const appServer = http.createServer(a);
   await new Promise<void>((r) => appServer.listen(0, "127.0.0.1", r));
   const appPort = (appServer.address() as AddressInfo).port;
+  coreBase = `http://127.0.0.1:${appPort}`;
 
   const agent = new http.Agent({ keepAlive: true, maxSockets: 256 });
   const request = (p0: number, method: string, p: string, ro: ReqOpts = {}) =>
@@ -290,6 +305,7 @@ export async function startElephantStack(url: string, o: { label: string; perMin
     trialOutbox: outbox,
     blockedFetches,
     adminToken: ADMIN,
+    readerToken: READER,
     cpPort,
     appPort,
     request,
