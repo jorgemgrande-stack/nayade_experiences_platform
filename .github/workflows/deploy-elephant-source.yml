@@ -58,6 +58,7 @@ on:
           - diagnostico-correo-live
           - correo-pruebas-live
           - medicion-preparar
+          - medicion-comprobar
           - dominio-plataforma-live-estado
           - dominio-plataforma-live-crear
           - dominio-plataforma-live-activar
@@ -269,6 +270,14 @@ jobs:
           pnpm exec tsx scripts/deploy/esRailway.ts deploy --env "${ES_ENV}" --service controlplane --dir "${RUNNER_TEMP}/export" --sha "${ES_DEPLOY_SHA}"
           pnpm exec tsx scripts/deploy/esRailway.ts functional --env "${ES_ENV}"
           pnpm exec tsx scripts/deploy/esRailway.ts storage --env "${ES_ENV}"
+          # Prueba de que llega consumo real: tras un volcado del agregador (15 s), el agregado de 24 h por empresa
+          sleep 90
+          pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --command "node dist-cp/backup-job.js erm-setup"
+
+      # Comprobación de solo lectura de la medición: consumo agregado de 24 h por empresa (sin cambios ni datos personales)
+      - name: Medición — comprobar (solo lectura)
+        if: inputs.action == 'medicion-comprobar'
+        run: pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --command "node dist-cp/backup-job.js erm-setup"
 
       # ── Despliegue ordinario (publicar) ──
       - name: Publicar — production solo con CI y live superados por el mismo commit
