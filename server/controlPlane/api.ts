@@ -1032,7 +1032,8 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
             .map((o) => ({ value: o.displayName, label: o.displayName }))
       : undefined;
     const crmQuote = webAdmin ? async (r: QuoteRequest) => quote(quoteCatalogFromSite(await webAdmin!.site("published")), r) : undefined;
-    router.use("/crm", createCrmRouter(d.crm.service, d.crm.store, { billing: d.billingStore, onboarding, requests: webRequests, assignees, quote: crmQuote }));
+    const knownTenants = async () => new Set((await d.reader.listTenants()).filter((t) => t.status !== "deleted").map((t) => t.id));
+    router.use("/crm", createCrmRouter(d.crm.service, d.crm.store, { billing: d.billingStore, onboarding, requests: webRequests, assignees, quote: crmQuote, knownTenants }));
   }
 
   if (webAdmin) {

@@ -14,6 +14,7 @@ import type { CrmService } from "./service";
 import type { CrmStore, Tables } from "./store";
 import type { BillingStore } from "../_core/billing/ports";
 import { billingSummary } from "./dashboard";
+import { crmReports, madridMonth, toCsv } from "./reports";
 import type { CrmOnboarding } from "./onboarding";
 import type { ContractConfiguration } from "./types";
 import { parseQuoteRequest } from "../catalog/request";
@@ -133,10 +134,63 @@ export function createCrmRouter(
     assignees?: () => Promise<Array<{ value: string; label: string }>>;
     /** Cotizador sobre el catálogo publicado (contratos con configuración de Elephant Source). */
     quote?: (r: QuoteRequest) => Promise<QuoteResult>;
+    /** Empresas del registro (para detectar fichas comerciales con una plataforma inexistente). */
+    knownTenants?: () => Promise<Set<string>>;
   } = {},
 ): Router {
   const r = express.Router();
   const who = (req: Request) => `${getAuth(req)!.actor.type}:${getAuth(req)!.actor.id}`;
+
+  // ── Informes (solo lectura). Fechas AAAA-MM-DD en hora de Madrid; «to» incluido; máximo 2 años ──
+  const REPORT_SCAN = 20_000;
+  const reportRange = (q: Record<string, unknown>) => {
+    const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+    const f = z.object({ from: day, to: day }).parse({ from: q.from, to: q.to });
+    const midnight = (iso: string) => {
+      // Desfase de Madrid ese día (a mediodía UTC no hay cambio de hora): hora local − 12
+      const noon = Date.parse(`${iso}T12:00:00Z`);
+      if (!Number.isFinite(noon) || new Date(noon).toISOString().slice(0, 10) !== iso) throw new CrmError("invalid_input", `Fecha no válida: ${iso}`);
+      const hour = Number(new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Madrid", hour: "2-digit", hourCycle: "h23" }).format(noon));
+      return Date.parse(`${iso}T00:00:00Z`) - (hour - 12) * 3_600_000;
+    };
+    const from = midnight(f.from);
+    const to = midnight(f.to) + 86_400_000;
+    if (!(from < to) || to - from > 731 * 86_400_000) throw new CrmError("invalid_input", "Periodo no válido (máximo 2 años)");
+    return { from, to };
+  };
+  const reportData = async () => {
+    const [leads, opportunities, companies, contacts, activities] = await Promise.all([
+      store.list("leads", {}, { limit: REPORT_SCAN }),
+      store.list("opportunities", {}, { limit: REPORT_SCAN }),
+      store.list("companies", {}, { limit: REPORT_SCAN }),
+      store.list("contacts", {}, { limit: REPORT_SCAN }),
+      store.list("activities", {}, { limit: REPORT_SCAN }),
+    ]);
+    // Si se alcanza el límite, el informe lo dice: nunca se presenta como completo un recuento truncado
+    const truncated = [leads, opportunities, companies, contacts, activities].some((x) => x.length >= REPORT_SCAN);
+    return { data: { leads, opportunities, companies, contacts, activities }, truncated };
+  };
+  r.get("/reports", requireScope("crm:read"), wrap(async (req, res) => {
+    const range = reportRange(req.query as Record<string, unknown>);
+    const { data, truncated } = await reportData();
+    const knownTenants = opts.knownTenants ? await opts.knownTenants().catch(() => undefined) : undefined;
+    res.json({ ...crmReports(data, { ...range, now: Date.now(), knownTenants }), truncated });
+  }));
+  r.get("/reports/export", requireScope("crm:read"), wrap(async (req, res) => {
+    const range = reportRange(req.query as Record<string, unknown>);
+    const kind = z.enum(["leads", "opportunities"]).parse(req.query.kind);
+    const { data } = await reportData();
+    const inR = (t: number | null) => t !== null && t >= range.from && t < range.to;
+    // Sin datos de contacto personales (correo, teléfono): solo lo necesario para el seguimiento comercial
+    const rows =
+      kind === "leads"
+        ? data.leads.filter((l) => inR(l.createdAt)).map((l) => ({ id: l.id, mes: madridMonth(l.createdAt), origen: l.source ?? "", estado: l.status, prioridad: l.priority, responsable: l.owner ?? "", empresa: l.companyName ?? "" }))
+        : data.opportunities.filter((o) => inR(o.createdAt)).map((o) => ({ id: o.id, mes: madridMonth(o.createdAt), titulo: o.title, etapa: o.stage, importe_cent: o.amountCents ?? null, responsable: o.owner ?? "", cerrada: o.closedAt ? new Date(o.closedAt).toISOString().slice(0, 10) : "" }));
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="${kind}-${String(req.query.from)}-${String(req.query.to)}.csv"`);
+    res.setHeader("Cache-Control", "no-store");
+    res.send("﻿" + toCsv(rows));
+  }));
 
   r.get("/dashboard", requireScope("crm:read"), wrap(async (req, res) => {
     const base = await crm.dashboard();
