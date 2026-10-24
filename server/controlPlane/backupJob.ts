@@ -18,6 +18,7 @@
  *   node dist-cp/backup-job.js migrate-tenants [--only a,b] [--apply]   carril de la app en cada empresa (red privada)
  *   node dist-cp/backup-job.js check-data-exports [--only a,b]          verificación (solo lectura) de 0011/0012/0013
  *   node dist-cp/backup-job.js erm-setup [--apply]                       base de medición es_erm (idempotente; ES_ERM_PASSWORD)
+ *   node dist-cp/backup-job.js orphans                                   recursos huérfanos del aprovisionamiento (solo lectura)
  *
  * (en desarrollo: `pnpm exec tsx server/controlPlane/backupJob.ts <orden>`)
  *
@@ -34,6 +35,7 @@
  */
 import path from "node:path";
 import { runErmSetup } from "../_core/erm/setup";
+import { orphanReport } from "../_core/provisioning/orphans";
 import mysql from "mysql2/promise";
 import { keyringFromEnv } from "../_core/tenantRegistry/crypto";
 import { MysqlTenantRegistryStore } from "../_core/tenantRegistry/mysqlStore";
@@ -379,6 +381,27 @@ async function main() {
       case "restore-files": {
         const id = pos[0] ?? die("Falta <empresa>");
         print(await restoreTenantFiles({ storage: sourceStorageOrDie(source), ring: backupKeyringFromEnv(process.env), copies, source, actor: actorLabel }, id, filesOutOrDie()));
+        break;
+      }
+      case "orphans": {
+        // Solo lectura: bases y usuarios de los servidores frente al registro (nunca borra nada)
+        if (!servers) die("Falta PROVISIONING_DB_SERVERS o PROVISIONING_DB_ADMIN_URL");
+        const serverDatabases: Record<string, string[]> = {};
+        const serverUsers: Record<string, string[]> = {};
+        for (const alias of servers.aliases()) {
+          const admin = servers.admin(alias);
+          serverDatabases[alias] = ((await admin.query<mysql.RowDataPacket[]>("SELECT SCHEMA_NAME AS n FROM information_schema.SCHEMATA WHERE SCHEMA_NAME LIKE 'es\\_%'"))[0]).map((r) => String(r.n));
+          serverUsers[alias] = ((await admin.query<mysql.RowDataPacket[]>("SELECT DISTINCT User AS u FROM mysql.user WHERE User LIKE 'esu\\_%' OR User LIKE 'esr\\_%'"))[0]).map((r) => String(r.u));
+        }
+        const tenants = [];
+        for (const t of await store.listTenants()) {
+          if (t.status === "deleted") continue;
+          const dsn = await registry.getActiveDsn(t.id).catch(() => null);
+          tenants.push({ id: t.id, status: t.status, activeDatabase: dsn ? dbNameOf(dsn) : null });
+        }
+        const rep = orphanReport({ serverDatabases, serverUsers, tenants });
+        print({ empresas: tenants.length, servidores: servers.aliases(), ...rep });
+        if (!rep.ok) process.exitCode = 1;
         break;
       }
       case "erm-setup": {
