@@ -135,6 +135,7 @@ import type { BackupInventory, BackupRecord } from "../_core/ops/backupInventory
 import type { BackupCopyLedger } from "../_core/ops/backupCopies";
 import { BACKUP_TENANT_STATUSES } from "../_core/ops/backupJob";
 import { registerTenantAccessRoutes, type CoreAccessClient } from "./tenantAccess";
+import { integrationStatus, mysqlIntegrationRows, type IntegrationRow } from "./tenantIntegrations";
 import { pendingCount, schemaState, tenantMigrations } from "./schemaVersions";
 
 export interface ControlPlaneDeps {
@@ -189,6 +190,8 @@ export interface ControlPlaneDeps {
   supportSecret?: string;
   /** Accesos de las empresas (Clientes SaaS → Accesos): el Core ejecuta cada acción en el contexto de la empresa. */
   tenantAccess?: { client: CoreAccessClient };
+  /** Lectura de las integraciones de una empresa (solo proveedor, campo, fecha y autor); por defecto, con su DSN. */
+  integrationRows?: (tenantId: string) => Promise<IntegrationRow[] | null>;
   /** Migraciones de empresa disponibles en esta versión del código (por defecto, db/migrations de la imagen). */
   schemaMigrations?: () => string[];
   /** Operadores humanos con usuario y contraseña (sesión por cookie HttpOnly + CSRF). */
@@ -952,6 +955,21 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
       const out = await diagnoseTenant({ reader: d.reader, registry: d.registry, entitlements: d.entitlements, quotas: d.quotas, expectedSchemaVersion }, id);
       if (!out.ok) opsLog("warn", "Diagnostics", "tenant_not_healthy", { tenantId: id, failed: out.checks.filter((c) => !c.ok).map((c) => c.name) });
       res.json(out);
+    }),
+  );
+
+  // Integraciones de la empresa sin secretos (ficha 360°): proveedor, campos configurados y obligatorios que faltan
+  const integrationRows = d.integrationRows ?? mysqlIntegrationRows((id) => d.registry.getActiveDsn(id), (dsn) => mysql.createConnection({ uri: dsn, connectTimeout: 5_000 }));
+  router.get(
+    "/tenants/:id/integrations",
+    requireScope("tenants:read"),
+    wrap(async (req, res) => {
+      const id = idSchema.parse(req.params.id);
+      const t = await d.reader.getTenant(id);
+      if (!t || t.status === "deleted") throw new RegistryError("not_found", "Tenant no encontrado");
+      const rows = ["provisioning", "archived", "deleting"].includes(t.status) ? null : await integrationRows(id).catch(() => null);
+      if (!rows) return void res.json({ tenantId: id, available: false, reason: "No se pudo consultar la base de la empresa", integrations: [] });
+      res.json({ tenantId: id, available: true, integrations: integrationStatus(rows) });
     }),
   );
 
