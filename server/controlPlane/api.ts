@@ -137,6 +137,8 @@ import { BACKUP_TENANT_STATUSES } from "../_core/ops/backupJob";
 import { registerTenantAccessRoutes, type CoreAccessClient } from "./tenantAccess";
 import { deliverAdminInvite, withAdminInviteDelivery } from "./adminInviteDelivery";
 import type { IntegrationHealth } from "../_core/credentials/health";
+import type { ModulesTechnicalReport } from "../_core/modules/technical";
+import { moduleLayers } from "./tenantModulesTechnical";
 import { integrationStatus, mysqlIntegrationRows, type IntegrationRow } from "./tenantIntegrations";
 import { pendingCount, schemaState, tenantMigrations } from "./schemaVersions";
 
@@ -793,6 +795,36 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
       const sub = d.billingStore ? await d.billingStore.getSubscriptionByTenant(id) : null;
       const planModules = [...(cat?.plans.find((p) => p.id === sub?.planId)?.includedModules ?? []), ...(sub?.modules ?? [])];
       res.json({ modules: tenantModules(BUILTIN_MODULES, await d.entitlements.listEntitlements(id), Date.now(), planModules) });
+    }),
+  );
+  // Capas de cada módulo para la empresa: instalado (Core), habilitado (Core), contratado y comercializable
+  router.get(
+    "/tenants/:id/modules/technical",
+    requireScope("tenants:read"),
+    wrap(async (req, res) => {
+      const id = idSchema.parse(req.params.id);
+      const t = await d.reader.getTenant(id);
+      if (!t || t.status === "deleted") throw new RegistryError("not_found", "Tenant no encontrado");
+      const cat = billingCatalog();
+      const sub = d.billingStore ? await d.billingStore.getSubscriptionByTenant(id) : null;
+      const planModules = [...(cat?.plans.find((p) => p.id === sub?.planId)?.includedModules ?? []), ...(sub?.modules ?? [])];
+      const licensed = tenantModules(BUILTIN_MODULES, await d.entitlements.listEntitlements(id), Date.now(), planModules);
+      let report: ModulesTechnicalReport | null = null;
+      if (d.tenantAccess && !["provisioning", "archived", "deleting"].includes(t.status)) {
+        const a = getAuth(req)!.actor;
+        const r = await d.tenantAccess.client.call({ tenantId: id, act: "modules", operator: `${a.type}:${a.id}` }).catch(() => null);
+        if (r?.status === 200 && r.body.modules) report = r.body.modules as ModulesTechnicalReport;
+      }
+      res.json({
+        tenantId: id,
+        technicalAvailable: report !== null,
+        commercialCatalog: cat !== null,
+        coreVersion: report?.coreVersion ?? null,
+        contractVersion: report?.contractVersion ?? null,
+        modules: moduleLayers(licensed, report, cat),
+        loadFailures: report?.loadFailures ?? [],
+        obsolete: report?.obsolete ?? [],
+      });
     }),
   );
 
