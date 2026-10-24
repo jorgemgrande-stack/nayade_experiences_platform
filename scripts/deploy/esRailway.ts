@@ -91,7 +91,11 @@ async function waitFor(serviceIdValue: string, environmentId: string, after: str
 
 async function logs(deploymentId: string, limit = 400): Promise<string> {
   const d = await api<{ deploymentLogs: Array<{ message: string }> }>("query($id:String!,$n:Int){ deploymentLogs(deploymentId:$id, limit:$n){ message } }", { id: deploymentId, n: limit });
-  return scrub(d.deploymentLogs.map((l) => l.message).join("\n"));
+  const run = scrub(d.deploymentLogs.map((l) => l.message).join("\n"));
+  if (run.trim()) return run;
+  // Si falló la construcción no hay registro de ejecución: el motivo está en el de construcción
+  const b = await api<{ buildLogs: Array<{ message: string }> }>("query($id:String!,$n:Int){ buildLogs(deploymentId:$id, limit:$n){ message } }", { id: deploymentId, n: limit }).catch(() => null);
+  return b ? `(registro de construcción)\n${scrub(b.buildLogs.map((l) => l.message).join("\n"))}` : "";
 }
 
 type DeploymentNode = { id: string; status: string; createdAt: string; meta: unknown };
