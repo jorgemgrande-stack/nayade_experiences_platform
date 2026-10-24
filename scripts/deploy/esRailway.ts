@@ -14,6 +14,7 @@
  *   tsx scripts/deploy/esRailway.ts storage --env live            (almacenamiento de cada servicio, sin secretos)
  *   tsx scripts/deploy/esRailway.ts storage-fix --env live        (almacenamiento como referencias a los buckets de live)
  *   tsx scripts/deploy/esRailway.ts mail-live --env live [--allow a@x,b@y]  (diagnóstico de Postmark; con --allow, sandbox)
+ *   tsx scripts/deploy/esRailway.ts mail-access --env production --accion estado|activar|desactivar [--tenants t5-skibox]
  *   tsx scripts/deploy/esRailway.ts active-sha --env live          (commit activo de los servicios ordinarios; vacío si no se sabe)
  *   tsx scripts/deploy/esRailway.ts changes --from <commit> --to <commit> [--production]  (qué exige el procedimiento protegido)
  *   tsx scripts/deploy/esRailway.ts publish --env live --dir <dir> --sha <commit>   (despliegue ordinario con vuelta atrás automática)
@@ -35,7 +36,7 @@ import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { MAIL_TEST_SERVICES, POSTMARK_WEBHOOK_TRIGGERS, mailSandboxPlan, parseMailAllowlist } from "./esRailwayLib";
+import { MAIL_TEST_SERVICES, POSTMARK_WEBHOOK_TRIGGERS, mailAccessPlan, mailSandboxPlan, parseMailAllowlist } from "./esRailwayLib";
 import { DRILL_IDLE, EXCLUDED_FROM_EXPORT, GATEWAY_COPIED_VARS, GATEWAY_TEMPLATE_SERVICE, STORAGE_BUCKETS, STORAGE_VARS, describeStorageVar, guard, isAllowedDrill, scrub, meteringReferences, storageReferences, testTenantDomains, type DeployConfig, type TokenScope } from "./esRailwayLib";
 import { ERM_DB_SERVICE, ERM_PASSWORD_VAR, LIVE_PLATFORM_DOMAIN_DEFAULT, livePlatformDomainProblems, meteringPlan, platformDomainsValue } from "./esRailwayLib";
 import { CRM_CHECKS, EXTERNAL_LOCKED_SWITCHES, FUNCTIONAL_CHECKS, ORDINARY_SERVICES, WEB_CHECKS, crmProtectedChanges, hasMigrations, isExternalService, protectedChanges, shaFromDeployMeta } from "./esRailwayLib";
@@ -275,7 +276,7 @@ async function main() {
   const env = arg("env");
   const sc = await scope();
   const service = cmd === "deploy" || cmd === "revert" ? arg("service") : cmd === "drill" ? "restore-drill" : undefined;
-  if (!["verify", "status", "deploy", "drill", "active-sha", "publish", "revert", "active-crm", "publish-crm", "storage", "storage-fix", "test-gateways", "mail-live", "backup-check", "platform-domain", "metering"].includes(cmd)) throw new Error(`orden desconocida: ${cmd}`);
+  if (!["verify", "status", "deploy", "drill", "active-sha", "publish", "revert", "active-crm", "publish-crm", "storage", "storage-fix", "test-gateways", "mail-live", "backup-check", "platform-domain", "metering", "mail-access"].includes(cmd)) throw new Error(`orden desconocida: ${cmd}`);
   const problems = guard(cfg, sc, { env, service });
   if (problems.length) {
     console.error(`Detenido antes de tocar nada:\n - ${problems.join("\n - ")}`);
@@ -684,6 +685,63 @@ async function main() {
       console.log(`crm: redesplegado con su misma imagen → ${d.status}`);
       if (d.status !== "SUCCESS") process.exit(1);
     }
+    return;
+  }
+  if (cmd === "mail-access") {
+    // Correo de ACCESO limitado en production (CORREO_ACCESO_EMPRESAS.md). estado: solo lectura (variables sin valores
+    // secretos y validez del token de Postmark, sin enviar nada). activar: solo core, solo las empresas indicadas y solo
+    // invitación/restablecimiento/aviso. desactivar: MAIL_MODE=off. Nunca imprime ni copia un token.
+    const accion = arg("accion");
+    if (!["estado", "activar", "desactivar"].includes(accion)) throw new Error("--accion estado|activar|desactivar");
+    const tenants = (arg("tenants", false) || "").split(",").map((x) => x.trim()).filter(Boolean);
+    const crypto = await import("node:crypto");
+    const huella = (v: string) => crypto.createHash("sha256").update(v).digest("hex").slice(0, 8);
+    const t = await api<{ projectToken: { projectId: string } }>("query { projectToken { projectId } }");
+    const p = t.projectToken.projectId;
+    const q = "query($p:String!,$e:String!,$s:String!){ variables(projectId:$p, environmentId:$e, serviceId:$s, unrendered:false) }";
+    const vars: Record<string, Record<string, string>> = {};
+    for (const svc of ["core", "controlplane"]) {
+      vars[svc] = (await api<{ variables: Record<string, string> }>(q, { p, e: sc.environmentId, s: await serviceId(svc) })).variables;
+      const shown = Object.keys(vars[svc]).filter((k) => /^(MAIL_|POSTMARK_)/.test(k)).sort();
+      console.log(`${svc}: ${shown.length ? "" : "sin variables de correo"}`);
+      for (const k of shown) console.log(`  ${k.padEnd(28)} ${/TOKEN|KEY|PASS/.test(k) ? `definido · huella ${huella(vars[svc][k])}` : vars[svc][k]}`);
+    }
+    const token = (vars.core.POSTMARK_SERVER_TOKEN ?? "").trim();
+    let tokenOk = false;
+    if (!token) console.log("Postmark: core NO tiene POSTMARK_SERVER_TOKEN");
+    else {
+      const r = await fetch("https://api.postmarkapp.com/server", { headers: { Accept: "application/json", "X-Postmark-Server-Token": token } });
+      const j = (await r.json().catch(() => ({}))) as Record<string, unknown>;
+      tokenOk = r.status === 200;
+      console.log(`Postmark servidor (token de core): HTTP ${r.status} · ${tokenOk ? `«${j.Name}»` : String(j.Message ?? "token no válido")}`);
+      if (tokenOk) {
+        const wh = await fetch("https://api.postmarkapp.com/webhooks?MessageStream=outbound", { headers: { Accept: "application/json", "X-Postmark-Server-Token": token } });
+        const hooks = (((await wh.json().catch(() => ({}))) as { Webhooks?: Array<{ Url: string }> }).Webhooks ?? []).map((w) => w.Url);
+        console.log(`Postmark webhooks de ese servidor: ${hooks.length ? hooks.join(", ") : "ninguno"}`);
+        if (hooks.some((u) => /live/.test(u))) console.log("AVISO: el servidor envía sus eventos a live. Production debe usar un servidor propio de Postmark.");
+      }
+    }
+    const plan = mailAccessPlan(env, vars, { action: accion === "desactivar" ? "desactivar" : "activar", tenants: tenants.length ? tenants : accion === "estado" ? ["t5-skibox"] : [] });
+    if (accion === "estado") {
+      console.log(plan.problems.length ? `Falta para activar:\n - ${plan.problems.join("\n - ")}` : "Requisitos técnicos para activar: cumplidos");
+      console.log(`Cambios que haría la activación (core): ${plan.changes.map((x) => `${x.name}=${x.value}`).join(" · ") || "ninguno"}`);
+      return;
+    }
+    if (plan.problems.length) throw new Error(`No se cambia nada:\n - ${plan.problems.join("\n - ")}`);
+    if (accion === "activar" && !tokenOk) throw new Error("No se cambia nada: el token de Postmark de core no es válido");
+    if (!plan.changes.length) return void console.log("Sin cambios: ya estaba así");
+    const coreId = await serviceId("core");
+    for (const x of plan.changes) {
+      await api("mutation($i:VariableUpsertInput!){ variableUpsert(input:$i) }", { i: { projectId: p, environmentId: sc.environmentId, serviceId: coreId, name: x.name, value: x.value!, skipDeploys: true } });
+      console.log(`core: ${x.name} → ${x.value}`);
+    }
+    // El Core toma las variables al redesplegar la MISMA imagen que ya sirve (sin compilar ni cambiar de commit)
+    const before = await latest(coreId, sc.environmentId);
+    if (!before) throw new Error("core no tiene despliegue que redesplegar");
+    await api("mutation($id:String!){ deploymentRedeploy(id:$id, usePreviousImageTag:true){ id } }", { id: before.id });
+    const d = await waitFor(coreId, sc.environmentId, before.id);
+    console.log(`core: redesplegado con su misma imagen → ${d.status}`);
+    if (d.status !== "SUCCESS") process.exit(1);
     return;
   }
   if (cmd === "backup-check") {

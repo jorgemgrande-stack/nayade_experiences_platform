@@ -5,7 +5,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { mailSandboxPlan, parseMailAllowlist, POSTMARK_WEBHOOK_TRIGGERS } from "../scripts/deploy/esRailwayLib";
+import { mailSandboxPlan, parseMailAllowlist, POSTMARK_WEBHOOK_TRIGGERS, MAIL_ACCESS_CATEGORIES, mailAccessPlan } from "../scripts/deploy/esRailwayLib";
 
 const src = fs.readFileSync(path.resolve(__dirname, "../scripts/deploy/esRailway.ts"), "utf8");
 const wf = fs.readFileSync(path.resolve(__dirname, "../.github/workflows/deploy-elephant-source.yml"), "utf8").replace(/\r\n/g, "\n");
@@ -52,5 +52,46 @@ describe("orden y flujo", () => {
     for (const line of body.split("\n").filter((l) => /console\.log/.test(l))) expect(line, line.trim()).not.toMatch(/\$\{(token|webhookToken|value)\}/);
     expect(wf).toContain('if [ "${ES_ENV}" != "live" ]; then echo "El correo de pruebas solo existe en live"; exit 1; fi');
     expect(wf).toContain("ES_MAIL_ALLOW: ${{ inputs.destinatarios }}");
+  });
+});
+
+describe("correo de acceso limitado en production (mailAccessPlan)", () => {
+  const prod = (core: Record<string, string> = {}, cp: Record<string, string> = {}) => ({ core: { POSTMARK_SERVER_TOKEN: "tok", ...core }, controlplane: { MAIL_MODE: "off", ...cp } });
+  it("activa solo core, solo las empresas indicadas y solo los tipos de acceso; el modo va el último", () => {
+    const r = mailAccessPlan("production", prod(), { action: "activar", tenants: ["t5-skibox"] });
+    expect(r.problems).toEqual([]);
+    expect(r.changes.every((x) => x.service === "core")).toBe(true);
+    expect(r.changes.map((x) => [x.name, x.value])).toEqual([
+      ["MAIL_PROVIDER", "postmark"],
+      ["MAIL_SENDING_DOMAIN", "bigelephant.es"],
+      ["MAIL_SCOPE_CATEGORIES", MAIL_ACCESS_CATEGORIES],
+      ["MAIL_SCOPE_TENANTS", "t5-skibox"],
+      ["MAIL_LIVE_AUTHORIZED", "1"],
+      ["MAIL_MODE", "live"],
+    ]);
+    expect(MAIL_ACCESS_CATEGORIES.split(",")).toEqual(["user_invite", "password_reset", "security_notice"]);
+    expect(r.changes.some((x) => /TOKEN/.test(x.name))).toBe(false);
+  });
+  it("se niega sin empresas, con identificadores raros, sin token, fuera de production o con el plano de control encendido", () => {
+    expect(mailAccessPlan("production", prod(), { action: "activar", tenants: [] }).problems.join()).toMatch(/nunca se activa para todas/);
+    expect(mailAccessPlan("production", prod(), { action: "activar", tenants: ["T5;DROP"] }).problems.join()).toMatch(/no válido/);
+    expect(mailAccessPlan("production", { core: {}, controlplane: {} }, { action: "activar", tenants: ["t5-skibox"] }).problems.join()).toMatch(/POSTMARK_SERVER_TOKEN/);
+    expect(mailAccessPlan("live", prod(), { action: "activar", tenants: ["t5-skibox"] }).problems.join()).toMatch(/solo en production/);
+    expect(mailAccessPlan("production", prod({}, { MAIL_MODE: "live" }), { action: "activar", tenants: ["t5-skibox"] }).problems.join()).toMatch(/plano de control/);
+  });
+  it("idempotente y con marcha atrás que solo apaga el modo", () => {
+    const done = { MAIL_PROVIDER: "postmark", MAIL_SENDING_DOMAIN: "bigelephant.es", MAIL_SCOPE_CATEGORIES: MAIL_ACCESS_CATEGORIES, MAIL_SCOPE_TENANTS: "t5-skibox", MAIL_LIVE_AUTHORIZED: "1", MAIL_MODE: "live" };
+    expect(mailAccessPlan("production", prod(done), { action: "activar", tenants: ["t5-skibox"] }).changes).toEqual([]);
+    expect(mailAccessPlan("production", prod(done), { action: "desactivar", tenants: [] }).changes).toEqual([{ service: "core", name: "MAIL_MODE", value: "off" }]);
+    expect(mailAccessPlan("production", prod(), { action: "desactivar", tenants: [] }).changes).toEqual([]);
+  });
+  it("el flujo solo ofrece estas acciones en production y nunca interpola el token", () => {
+    expect(wf).toContain('correo-acceso-activar) pnpm exec tsx scripts/deploy/esRailway.ts mail-access --env "${ES_ENV}" --accion activar --tenants "${ES_ONLY}"');
+    expect(wf).toContain("El correo de acceso limitado solo se gestiona en production");
+    expect(wf).not.toMatch(/POSTMARK_SERVER_TOKEN:\s*\$\{\{/);
+    // La orden comprueba el token contra Postmark pero nunca lo imprime ni lo copia a otro servicio
+    const cmd = src.slice(src.indexOf('if (cmd === "mail-access")'), src.indexOf('if (cmd === "backup-check")'));
+    expect(cmd).not.toMatch(/\$\{token\}|console\.log\(token\b|POSTMARK_SERVER_TOKEN\]\}/);
+    expect(cmd).not.toMatch(/name: "POSTMARK_SERVER_TOKEN"/);
   });
 });

@@ -58,6 +58,9 @@ on:
           - diagnostico-correo-live
           - correo-pruebas-live
           - huerfanos
+          - correo-acceso-estado
+          - correo-acceso-activar
+          - correo-acceso-desactivar
           - medicion-preparar
           - medicion-comprobar
           - dominio-plataforma-live-estado
@@ -254,6 +257,19 @@ jobs:
       - name: Recursos huérfanos (solo lectura)
         if: inputs.action == 'huerfanos'
         run: pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --command "node dist-cp/backup-job.js orphans"
+
+      # Correo de ACCESO de las empresas (docs/runbooks/CORREO_ACCESO_EMPRESAS.md), solo production y solo core:
+      # estado (lectura; validez del token sin enviar nada), activar (solo las empresas de «only» y solo invitación,
+      # restablecimiento y aviso; el plano de control sigue en off) y desactivar (MAIL_MODE=off). Nunca imprime un token.
+      - name: Correo de acceso de las empresas
+        if: startsWith(inputs.action, 'correo-acceso-')
+        run: |
+          if [ "${ES_ENV}" != "production" ]; then echo "El correo de acceso limitado solo se gestiona en production"; exit 1; fi
+          case "${ES_ACTION}" in
+            correo-acceso-estado) pnpm exec tsx scripts/deploy/esRailway.ts mail-access --env "${ES_ENV}" --accion estado ${ES_ONLY:+--tenants "${ES_ONLY}"} ;;
+            correo-acceso-activar) pnpm exec tsx scripts/deploy/esRailway.ts mail-access --env "${ES_ENV}" --accion activar --tenants "${ES_ONLY}" ;;
+            correo-acceso-desactivar) pnpm exec tsx scripts/deploy/esRailway.ts mail-access --env "${ES_ENV}" --accion desactivar ;;
+          esac
 
       - name: Verificar el esquema de la exportación (0011, 0012, 0013)
         if: inputs.action == 'verificar-migraciones'

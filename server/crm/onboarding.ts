@@ -8,6 +8,7 @@ import type { Actor } from "../_core/tenantRegistry/service";
 import type { TenantRegistryReader } from "../_core/tenantRegistry/store";
 import type { ProvisioningService } from "../_core/provisioning/service";
 import { ProvisioningError, TENANT_ID_RE, type ProvisionResult } from "../_core/provisioning/types";
+import { withAdminInviteDelivery, type AdminInviteDelivery } from "../controlPlane/adminInviteDelivery";
 import type { SubscriptionService } from "../_core/billing/service";
 import { BillingError, type Subscription } from "../_core/billing/types";
 import type { CrmService } from "./service";
@@ -28,6 +29,8 @@ export interface OnboardingDeps {
   billing?: Pick<SubscriptionService, "startTrial">;
   /** Dominio base: el subdominio del cliente es `<tenantId>.<platformDomain>`. */
   platformDomain: string;
+  /** Entrega de la invitación por correo desde el Core; si sale, el enlace no se devuelve al operador. */
+  deliverInvite?: (tenantId: string, adminEmail: string, actor: Actor) => Promise<AdminInviteDelivery>;
 }
 
 export interface OnboardingInput {
@@ -134,6 +137,10 @@ export class CrmOnboarding {
       await this.d.crm.log("company", companyId, "note", `Alta de plataforma incompleta (${provisioning.failedStep ?? "pendiente"}): reintentar`, author);
       return { status: "incomplete", provisioning, subscription: null, notes, company, domain: avail.domain };
     }
+
+    const deliver = this.d.deliverInvite;
+    provisioning = await withAdminInviteDelivery(provisioning, deliver ? () => deliver(input.tenantId, contact.email!, actor) : null);
+    if (provisioning.adminInvite?.delivery === "email") notes.push(`Invitación enviada por correo a ${contact.email}`);
 
     let subscription: Subscription | null = null;
     if (input.planId && this.d.billing) {

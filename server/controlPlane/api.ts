@@ -135,6 +135,7 @@ import type { BackupInventory, BackupRecord } from "../_core/ops/backupInventory
 import type { BackupCopyLedger } from "../_core/ops/backupCopies";
 import { BACKUP_TENANT_STATUSES } from "../_core/ops/backupJob";
 import { registerTenantAccessRoutes, type CoreAccessClient } from "./tenantAccess";
+import { deliverAdminInvite, withAdminInviteDelivery } from "./adminInviteDelivery";
 import { integrationStatus, mysqlIntegrationRows, type IntegrationRow } from "./tenantIntegrations";
 import { pendingCount, schemaState, tenantMigrations } from "./schemaVersions";
 
@@ -1135,7 +1136,15 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
   if (d.crm) {
     const onboarding =
       d.provisioning && d.platformDomain
-        ? new CrmOnboarding({ store: d.crm.store, crm: d.crm.service, provisioning: d.provisioning, registry: d.reader, billing: d.billing, platformDomain: d.platformDomain })
+        ? new CrmOnboarding({
+            store: d.crm.store,
+            crm: d.crm.service,
+            provisioning: d.provisioning,
+            registry: d.reader,
+            billing: d.billing,
+            platformDomain: d.platformDomain,
+            deliverInvite: d.tenantAccess ? (tenantId, adminEmail, a) => deliverAdminInvite(d.tenantAccess!.client, { tenantId, adminEmail, operator: `${a.type}:${a.id}` }) : undefined,
+          })
         : undefined;
     // Responsables posibles: operadores activos con permisos de escritura en el CRM
     const ops = d.operators;
@@ -1723,7 +1732,12 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
             templateId: z.string().max(64).optional(),
           })
           .parse(req.body);
-        const r = await d.provisioning!.run(b, actor(req));
+        const a = actor(req);
+        const access = d.tenantAccess;
+        const r = await withAdminInviteDelivery(
+          await d.provisioning!.run(b, a),
+          access ? () => deliverAdminInvite(access.client, { tenantId: b.tenantId, adminEmail: b.adminEmail, operator: `${a.type}:${a.id}` }) : null,
+        );
         res.status(r.status === "completed" ? 201 : 202).json(r);
       }),
     );
