@@ -517,6 +517,20 @@ async function main() {
       const active = d.deployments.edges.map((x) => x.node).find((x) => x.status === "SUCCESS");
       console.log(`${name.padEnd(14)} ${active ? `${active.id} ${active.createdAt} «${String(active.meta?.commitMessage ?? active.meta?.reason ?? "").slice(0, 80)}»${active.meta?.commitHash ? ` commit ${String(active.meta.commitHash).slice(0, 12)}` : ""}` : "sin despliegue activo"}`);
     }
+    // Imagen base REAL de cada despliegue activo (registro de construcción): versión de Node.js y huella de la imagen
+    console.log(`\nImagen base de cada servicio activo («${env}»):`);
+    for (const name of sc.services) {
+      const sid = await serviceId(name).catch(() => null);
+      if (!sid) continue;
+      const cur = (await deployments(sid, sc.environmentId).catch(() => [])).find((x) => x.status === "SUCCESS");
+      if (!cur) continue;
+      const b = await api<{ buildLogs: Array<{ message: string }> }>("query($id:String!,$n:Int){ buildLogs(deploymentId:$id, limit:$n){ message } }", { id: cur.id, n: 3000 }).catch(() => null);
+      const lines = (b?.buildLogs ?? []).map((l) => l.message);
+      const from = [...new Set(lines.filter((l) => /\b(FROM|resolve|load metadata for)\b.*(node|caddy)[:@]/i.test(l)).map((l) => scrub(l).trim().slice(0, 180)))].slice(0, 4);
+      const nodeV = lines.map((l) => /\bv?(2[0-9]\.\d+\.\d+)\b.*node|node[^\n]{0,20}\bv?(2[0-9]\.\d+\.\d+)\b/i.exec(l)).find(Boolean);
+      console.log(`  ${name.padEnd(14)} ${cur.createdAt}${nodeV ? ` · node ${nodeV[1] ?? nodeV[2]}` : ""}${from.length ? "" : " · sin registro de la imagen base"}`);
+      for (const l of from) console.log(`      ${l}`);
+    }
     // Qué dominios sirve ESTE entorno (todos los servicios del proyecto): fija cuál es el de ensayo y cuál el comercial
     const t = await api<{ projectToken: { projectId: string } }>("query { projectToken { projectId } }");
     console.log(`\nDominios del entorno «${env}»:`);
