@@ -57,6 +57,7 @@ on:
           - preparar-pruebas-live
           - diagnostico-correo-live
           - correo-pruebas-live
+          - huerfanos
           - medicion-preparar
           - dominio-plataforma-live-estado
           - dominio-plataforma-live-crear
@@ -245,6 +246,11 @@ jobs:
       - name: Migraciones de las empresas (aplicar; canario primero)
         if: inputs.action == 'migraciones-aplicar'
         run: pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --command "node dist-cp/backup-job.js migrate-tenants${ES_ONLY:+ --only ${ES_ONLY}} --apply"
+
+      # Recursos huérfanos del aprovisionamiento (solo lectura): bases y usuarios sin empresa, empresas sin base
+      - name: Recursos huérfanos (solo lectura)
+        if: inputs.action == 'huerfanos'
+        run: pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --command "node dist-cp/backup-job.js orphans"
 
       - name: Verificar el esquema de la exportación (0011, 0012, 0013)
         if: inputs.action == 'verificar-migraciones'
