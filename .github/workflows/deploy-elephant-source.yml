@@ -32,6 +32,7 @@ on:
           - revertir-core
           - revertir-core-gateway
           - revertir-crm
+          - revertir-web
           - verificar-token
           - estado
           - diagnostico-almacenamiento
@@ -49,6 +50,7 @@ on:
           - desplegar-core
           - desplegar-core-gateway
           - desplegar-crm
+          - desplegar-web
           - comprobar-salud
           - preparar-production
           - aplicar-production
@@ -115,6 +117,8 @@ jobs:
       ES_COMMIT: ${{ inputs.commit }}
       ES_MAIL_ALLOW: ${{ inputs.destinatarios }}
       ES_AUTO: ${{ inputs.auto }}
+      # La web comercial entra en la publicación solo si el entorno tiene su clave de lectura (si no, se omite con aviso)
+      ES_WEB_ENABLED: ${{ secrets.WEB_DEPLOY_KEY != '' }}
     steps:
       - name: Comprobaciones previas (rama, confirmación y credencial)
         run: |
@@ -334,6 +338,64 @@ jobs:
             gh api "repos/${GITHUB_REPOSITORY}/statuses/${ES_DEPLOY_SHA}" -f state=success -f context=elephant-source/crm-live -f description="crm ${CRM_SHA}" -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" > /dev/null
           fi
 
+      # Web comercial (repositorio bigelephant-web, clave de solo lectura WEB_DEPLOY_KEY del entorno), mismo modelo que el
+      # CRM: live publica el último commit de su rama y lo anota (elephant-source/web-live); production publica SOLO ese
+      # commit, sin infraestructura, dependencias ni interruptores bloqueados. Vuelta atrás automática si algo falla.
+      - name: Publicar — web, commit a publicar
+        if: inputs.action == 'publicar'
+        run: |
+          if [ "${ES_WEB_ENABLED}" != "true" ]; then
+            echo "::notice title=Web no publicada::el entorno no tiene WEB_DEPLOY_KEY"
+            echo "ES_WEB_SKIP=1" >> "${GITHUB_ENV}"
+            exit 0
+          fi
+          if [ "${ES_ENV}" = "live" ]; then
+            echo "ES_WEB_REF=feat/elephant-web-portfolio" >> "${GITHUB_ENV}"
+          else
+            WEB=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${ES_DEPLOY_SHA}/status" --jq '.statuses[] | select(.context == "elephant-source/web-live") | .description' | head -1 | sed -n 's/^web \([0-9a-f]\{40\}\)$/\1/p')
+            if [ -z "${WEB}" ]; then
+              echo "::notice title=Web no publicada::ningún commit de la web superó live con ${ES_DEPLOY_SHA}"
+              echo "ES_WEB_SKIP=1" >> "${GITHUB_ENV}"
+            else
+              echo "ES_WEB_REF=${WEB}" >> "${GITHUB_ENV}"
+            fi
+          fi
+
+      - name: Publicar — web, código (solo lectura)
+        if: inputs.action == 'publicar' && env.ES_WEB_SKIP != '1'
+        uses: actions/checkout@v4
+        with:
+          repository: jorgemgrande-stack/bigelephant-web
+          ref: ${{ env.ES_WEB_REF }}
+          ssh-key: ${{ secrets.WEB_DEPLOY_KEY }}
+          persist-credentials: false
+          fetch-depth: 0
+          path: web-src
+
+      - name: Publicar — web (vuelta atrás automática si algo falla)
+        if: inputs.action == 'publicar' && env.ES_WEB_SKIP != '1'
+        run: |
+          WEB_SHA=$(git -C web-src rev-parse HEAD)
+          FROM=$(pnpm exec tsx scripts/deploy/esRailway.ts active-crm --env "${ES_ENV}" --service web)
+          if [ "${ES_ENV}" = "production" ]; then
+            set +e
+            pnpm exec tsx scripts/deploy/esRailway.ts crm-changes ${FROM:+--from "${FROM}"} --to "${WEB_SHA}" --dir web-src --production
+            RC=$?
+            set -e
+            if [ "${RC}" = "5" ] && [ "${ES_AUTO}" = "true" ]; then
+              echo "::warning title=Web no publicada en production::${WEB_SHA} exige el procedimiento protegido (con aprobación)"
+              exit 0
+            elif [ "${RC}" != "0" ]; then
+              exit "${RC}"
+            fi
+          fi
+          mkdir -p "${RUNNER_TEMP}/web-export"
+          git -C web-src archive --format=tar HEAD | tar -x -C "${RUNNER_TEMP}/web-export"
+          pnpm exec tsx scripts/deploy/esRailway.ts publish-crm --service web --env "${ES_ENV}" --dir "${RUNNER_TEMP}/web-export" --sha "${WEB_SHA}"
+          if [ "${ES_ENV}" = "live" ]; then
+            gh api "repos/${GITHUB_REPOSITORY}/statuses/${ES_DEPLOY_SHA}" -f state=success -f context=elephant-source/web-live -f description="web ${WEB_SHA}" -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" > /dev/null
+          fi
+
       - name: Publicar — marcar el commit como superado en live
         if: inputs.action == 'publicar' && inputs.environment == 'live'
         run: gh api "repos/${GITHUB_REPOSITORY}/statuses/${ES_DEPLOY_SHA}" -f state=success -f context=elephant-source/live -f description="Publicado y comprobado en live" -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" > /dev/null
@@ -351,7 +413,7 @@ jobs:
         run: pnpm exec tsx scripts/deploy/esRailway.ts test-gateways --env "${ES_ENV}" --only "${ES_ONLY}" --dir "${RUNNER_TEMP}/export" --sha "${ES_DEPLOY_SHA}"
 
       - name: Desplegar el servicio
-        if: (startsWith(inputs.action, 'desplegar-') && inputs.action != 'desplegar-crm') || inputs.action == 'preparar-pruebas-live'
+        if: (startsWith(inputs.action, 'desplegar-') && inputs.action != 'desplegar-crm' && inputs.action != 'desplegar-web') || inputs.action == 'preparar-pruebas-live'
         run: |
           SERVICE="${ES_ACTION#desplegar-}"
           if [ "${ES_ACTION}" = "preparar-pruebas-live" ]; then SERVICE="core"; fi
@@ -377,6 +439,27 @@ jobs:
           git -C crm-src archive --format=tar HEAD | tar -x -C "${RUNNER_TEMP}/crm-export"
           echo "CRM ${CRM_SHA}: $(git -C crm-src log -1 --format=%s)"
           pnpm exec tsx scripts/deploy/esRailway.ts deploy --env "${ES_ENV}" --service crm --repo crm --dir "${RUNNER_TEMP}/crm-export" --sha "${CRM_SHA}"
+
+      # Web comercial: el último commit de feat/elephant-web-portfolio de bigelephant-web (clave de solo lectura
+      # WEB_DEPLOY_KEY). Solo va al servicio web. En production, con aprobación (entorno protegido).
+      - name: Web — código de bigelephant-web (feat/elephant-web-portfolio)
+        if: inputs.action == 'desplegar-web'
+        uses: actions/checkout@v4
+        with:
+          repository: jorgemgrande-stack/bigelephant-web
+          ref: feat/elephant-web-portfolio
+          ssh-key: ${{ secrets.WEB_DEPLOY_KEY }}
+          persist-credentials: false
+          path: web-src
+
+      - name: Web — export y despliegue
+        if: inputs.action == 'desplegar-web'
+        run: |
+          WEB_SHA=$(git -C web-src rev-parse HEAD)
+          mkdir -p "${RUNNER_TEMP}/web-export"
+          git -C web-src archive --format=tar HEAD | tar -x -C "${RUNNER_TEMP}/web-export"
+          echo "Web ${WEB_SHA}: $(git -C web-src log -1 --format=%s)"
+          pnpm exec tsx scripts/deploy/esRailway.ts deploy --env "${ES_ENV}" --service web --repo web --dir "${RUNNER_TEMP}/web-export" --sha "${WEB_SHA}"
 
       - name: Pruebas de live — las pasarelas de prueba responden en su dominio
         if: inputs.action == 'preparar-pruebas-live'

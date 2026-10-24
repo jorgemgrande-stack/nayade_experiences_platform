@@ -34,7 +34,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { MAIL_TEST_SERVICES, POSTMARK_WEBHOOK_TRIGGERS, mailSandboxPlan, parseMailAllowlist } from "./esRailwayLib";
 import { DRILL_IDLE, EXCLUDED_FROM_EXPORT, GATEWAY_COPIED_VARS, GATEWAY_TEMPLATE_SERVICE, STORAGE_BUCKETS, STORAGE_VARS, describeStorageVar, guard, isAllowedDrill, scrub, meteringReferences, storageReferences, testTenantDomains, type DeployConfig, type TokenScope } from "./esRailwayLib";
-import { CRM_CHECKS, FUNCTIONAL_CHECKS, ORDINARY_SERVICES, crmProtectedChanges, hasMigrations, protectedChanges, shaFromDeployMeta } from "./esRailwayLib";
+import { CRM_CHECKS, EXTERNAL_LOCKED_SWITCHES, FUNCTIONAL_CHECKS, ORDINARY_SERVICES, WEB_CHECKS, crmProtectedChanges, hasMigrations, isExternalService, protectedChanges, shaFromDeployMeta } from "./esRailwayLib";
 import { REPOSITORIES } from "../../shared/repositories";
 
 const CONFIG_PATH = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../deploy/railway/elephant-source.deploy.json");
@@ -153,6 +153,12 @@ function arg(name: string, required = true): string {
   return v ?? "";
 }
 
+/** Servicio de otro repositorio (CRM o web comercial): repositorio del mensaje de despliegue y comprobaciones. */
+function externalOf(service: string) {
+  if (!isExternalService(service)) throw new Error(`servicio externo no admitido: ${service}`);
+  return service === "crm" ? { service, repo: REPOSITORIES.crm, checks: CRM_CHECKS, label: "CRM" } : { service, repo: REPOSITORIES.web, checks: WEB_CHECKS, label: "Web" };
+}
+
 async function main() {
   const cmd = process.argv[2];
   const cfg = loadConfig();
@@ -190,6 +196,14 @@ async function main() {
     console.log(`CRM: ${files.length} ficheros cambiados entre ${from.slice(0, 12)} y ${to.slice(0, 12)}`);
     if (process.argv.includes("--production")) {
       const blocked = crmProtectedChanges(files);
+      // Interruptores de funciones comerciales bloqueadas (checkout, autoservicio, Stripe): un cambio que los toque no es ordinario
+      const d = spawnSync("git", ["-C", dir, "diff", "--unified=0", `${from}..${to}`], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+      if (d.status !== 0) throw new Error("git diff del repositorio externo falló");
+      for (const line of (d.stdout ?? "").split("\n")) {
+        if (!/^[+-](?![+-])/.test(line)) continue;
+        const m = EXTERNAL_LOCKED_SWITCHES.exec(line);
+        if (m) blocked.push(`cambio en ${m[0]} — funciones bloqueadas`);
+      }
       if (blocked.length) {
         console.error(`El CRM trae cambios que exigen el procedimiento protegido (con aprobación):\n - ${blocked.join("\n - ")}`);
         process.exit(5);
@@ -657,11 +671,13 @@ async function main() {
     return;
   }
   if (cmd === "active-crm") {
-    const a = await active(await serviceId("crm"), sc.environmentId);
-    const sha = a ? (await deployments(await serviceId("crm"), sc.environmentId)).find((x) => x.id === a.id) : undefined;
-    const crmSha = sha ? shaFromDeployMeta(sha.meta, REPOSITORIES.crm) : null;
-    console.error(`crm: ${crmSha ?? "desconocido"}`);
-    console.log(crmSha ?? "");
+    // Commit activo de un servicio de otro repositorio (--service crm, por defecto, o web)
+    const ext = externalOf(arg("service", false) || "crm");
+    const sid = await serviceId(ext.service);
+    const cur = (await deployments(sid, sc.environmentId)).find((x) => x.status === "SUCCESS");
+    const extSha = cur ? shaFromDeployMeta(cur.meta, ext.repo) : null;
+    console.error(`${ext.service}: ${extSha ?? "desconocido"}`);
+    console.log(extSha ?? "");
     return;
   }
   if (cmd === "publish-crm") {
@@ -670,24 +686,25 @@ async function main() {
     const dir = path.resolve(arg("dir"));
     const sha = arg("sha");
     if (!/^[0-9a-f]{40}$/.test(sha)) throw new Error("commit no válido");
-    if (!sc.services.includes("crm")) throw new Error("el servicio crm no existe en el entorno");
-    const sid = await serviceId("crm");
+    const ext = externalOf(arg("service", false) || "crm");
+    if (!sc.services.includes(ext.service)) throw new Error(`el servicio ${ext.service} no existe en el entorno`);
+    const sid = await serviceId(ext.service);
     const curNode = (await deployments(sid, sc.environmentId)).find((x) => x.status === "SUCCESS");
-    if (curNode && shaFromDeployMeta(curNode.meta, REPOSITORIES.crm) === sha) {
-      console.log(`crm: ya sirve ${sha.slice(0, 12)}`);
+    if (curNode && shaFromDeployMeta(curNode.meta, ext.repo) === sha) {
+      console.log(`${ext.service}: ya sirve ${sha.slice(0, 12)}`);
       return;
     }
     const before = (await latest(sid, sc.environmentId))?.id ?? null;
-    const r = spawnSync("railway", ["up", dir, "--path-as-root", "-s", "crm", "-e", env, "--detach", "-m", `${REPOSITORIES.crm} ${sha}`], { encoding: "utf8", env: process.env });
+    const r = spawnSync("railway", ["up", dir, "--path-as-root", "-s", ext.service, "-e", env, "--detach", "-m", `${ext.repo} ${sha}`], { encoding: "utf8", env: process.env });
     const d = r.status === 0 ? await waitFor(sid, sc.environmentId, before) : null;
-    console.log(`crm: ${d ? `despliegue ${d.id} → ${d.status}` : `railway up falló: ${scrub(r.stderr || r.stdout || "").slice(0, 300)}`}`);
-    const ok = d?.status === "SUCCESS" && (await functional(env, CRM_CHECKS));
+    console.log(`${ext.service}: ${d ? `despliegue ${d.id} → ${d.status}` : `railway up falló: ${scrub(r.stderr || r.stdout || "").slice(0, 300)}`}`);
+    const ok = d?.status === "SUCCESS" && (await functional(env, ext.checks));
     if (!ok) {
       if (d && d.status !== "SUCCESS") console.log((await logs(d.id, 120)).split("\n").slice(-40).join("\n"));
-      if (curNode) console.error(`crm: vuelta atrás a ${curNode.id} → ${await rollback(sid, sc.environmentId, curNode.id)}`);
+      if (curNode) console.error(`${ext.service}: vuelta atrás a ${curNode.id} → ${await rollback(sid, sc.environmentId, curNode.id)}`);
       process.exit(1);
     }
-    console.log(`CRM publicado ${sha.slice(0, 12)} en ${env}`);
+    console.log(`${ext.label} publicado ${sha.slice(0, 12)} en ${env}`);
     return;
   }
   if (cmd === "revert") {
@@ -695,7 +712,7 @@ async function main() {
     const sid = await serviceId(service!);
     const list = await deployments(sid, sc.environmentId, 20);
     const i = list.findIndex((x) => x.status === "SUCCESS");
-    const repo = service === "crm" ? REPOSITORIES.crm : REPOSITORIES.core;
+    const repo = service === "crm" ? REPOSITORIES.crm : service === "web" ? REPOSITORIES.web : REPOSITORIES.core;
     const prev = i >= 0 ? list.slice(i + 1).find((x) => x.status === "REMOVED" && shaFromDeployMeta(x.meta, repo)) : undefined;
     if (!prev) throw new Error(`${service}: no hay un despliegue anterior al que volver`);
     console.log(`${service}: vuelve a ${prev.id} (commit ${shaFromDeployMeta(prev.meta, repo)?.slice(0, 12)}) → ${await rollback(sid, sc.environmentId, prev.id)}`);
@@ -706,8 +723,10 @@ async function main() {
     const dir = path.resolve(arg("dir"));
     const sha = arg("sha");
     // El CRM se despliega SOLO desde su repositorio (--repo crm) y ese código solo va al servicio crm
-    const repo = arg("repo", false) === "crm" ? REPOSITORIES.crm : REPOSITORIES.core;
+    const repoArg = arg("repo", false);
+    const repo = repoArg === "crm" ? REPOSITORIES.crm : repoArg === "web" ? REPOSITORIES.web : REPOSITORIES.core;
     if ((service === "crm") !== (repo === REPOSITORIES.crm)) throw new Error("el servicio crm solo se despliega con --repo crm, y --repo crm solo en el servicio crm");
+    if ((service === "web") !== (repo === REPOSITORIES.web)) throw new Error("el servicio web solo se despliega con --repo web, y --repo web solo en el servicio web");
     for (const f of EXCLUDED_FROM_EXPORT) if (fs.existsSync(path.join(dir, f))) throw new Error(`el export contiene ${f}: no se despliega`);
     const sid = await serviceId(service!);
     const before = (await latest(sid, sc.environmentId))?.id ?? null;
