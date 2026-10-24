@@ -189,7 +189,9 @@ export function createPasswordResetRouter(): Router {
       const passwordHash = await bcrypt.hash(String(password), BCRYPT_ROUNDS);
       await db
         .update(users)
-        .set({ passwordHash, updatedAt: now })
+        // También deja sin efecto una invitación pendiente: quien restablece ya ha demostrado el control de su correo, y
+        // una invitación viva podría volver a cambiar la contraseña después
+        .set({ passwordHash, inviteToken: null, inviteTokenExpiry: null, inviteAccepted: true, updatedAt: now })
         .where(eq(users.id, resetToken.userId));
 
       // Aviso de seguridad a la propia persona (sin enlaces); un fallo del aviso no cambia la respuesta
