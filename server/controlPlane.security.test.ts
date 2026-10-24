@@ -36,6 +36,11 @@ async function start(over: Record<string, unknown> = {}) {
       grant: async (_t: string, m: string, _a: unknown, o: { validUntil: Date | null }) => void ents.set(m, { moduleId: m, status: "active", validUntil: o.validUntil }),
       setStatus: async (_t: string, m: string, s: string) => void ents.set(m, { ...ents.get(m)!, status: s }),
       revoke: async (_t: string, m: string) => void ents.delete(m),
+      apply: async (t: string, m: string, target: { status: string; validUntil: Date | null }) => {
+        const previous = ents.get(m) ?? null;
+        ents.set(m, { moduleId: m, ...target });
+        return { changed: true, previous, entitlement: { tenantId: t, moduleId: m, ...target, source: "operator" } };
+      },
     } as never,
     quotas: { listQuotas: async () => [], set: async () => undefined, remove: async () => undefined },
     platformTarget: "edge.example.com",

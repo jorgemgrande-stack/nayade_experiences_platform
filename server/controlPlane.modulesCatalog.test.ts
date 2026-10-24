@@ -121,6 +121,16 @@ describe("API del catálogo", () => {
           const i = ents.findIndex((e) => e.tenantId === t && e.moduleId === m);
           if (i >= 0) ents.splice(i, 1);
         },
+        apply: async (t, m, target) => {
+          const entitlement = { ...ent(m, target), tenantId: t };
+          ents.push(entitlement);
+          return { changed: true, previous: null, entitlement };
+        },
+        remove: async (t, m) => {
+          const i = ents.findIndex((e) => e.tenantId === t && e.moduleId === m);
+          const previous = i >= 0 ? ents.splice(i, 1)[0] : null;
+          return { changed: previous !== null, previous };
+        },
       },
       quotas: { listQuotas: async () => [], set: async () => undefined, remove: async () => undefined },
       platformTarget: "edge.example.com",
@@ -172,7 +182,7 @@ describe("API del catálogo", () => {
   it("desactivar un módulo incluido en la base → 409; activar y retirar un sectorial", async () => {
     expect((await call("DELETE", "/tenants/uno/entitlements/cms", WRITE)).status).toBe(409);
     expect((await call("PUT", "/tenants/dos/entitlements/restaurants", WRITE, {})).status).toBe(200);
-    expect((await call("DELETE", "/tenants/dos/entitlements/restaurants", WRITE)).status).toBe(204);
+    expect((await call("DELETE", "/tenants/dos/entitlements/restaurants", WRITE)).json).toMatchObject({ changed: true });
     expect((await call("PUT", "/tenants/dos/entitlements/restaurants", READ, {})).status).toBe(403);
   });
 });
