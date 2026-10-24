@@ -96,6 +96,16 @@ beforeAll(async () => {
       grant: async (t, m, _a, o) => void ents.push({ tenantId: t, moduleId: m, status: "active", validUntil: o?.validUntil ?? null, source: "crm" }),
       setStatus: async (t, m, s) => void (ents.find((e) => e.tenantId === t && e.moduleId === m)!.status = s),
       revoke: async (t, m) => void ents.splice(ents.findIndex((e) => e.tenantId === t && e.moduleId === m), 1),
+      apply: async (t, m, target) => {
+        const entitlement: Entitlement = { tenantId: t, moduleId: m, ...target, source: "crm" };
+        ents.push(entitlement);
+        return { changed: true, previous: null, entitlement };
+      },
+      remove: async (t, m) => {
+        const i = ents.findIndex((e) => e.tenantId === t && e.moduleId === m);
+        const previous = i >= 0 ? ents.splice(i, 1)[0] : null;
+        return { changed: previous !== null, previous };
+      },
     },
     quotas: {
       listQuotas: async (t) => quotas.filter((q) => q.tenantId === t),
@@ -241,7 +251,9 @@ describe("operaciones", () => {
     });
     expect(q.json.quotas).toHaveLength(1);
     expect((await call("PUT", "/cp/v1/tenants/acme/quotas", { token: FULL, body: { metric: "email.sent", period: "year", limit: 1 } })).status).toBe(400);
-    expect((await call("DELETE", "/cp/v1/tenants/acme/entitlements/hotel", { token: FULL })).status).toBe(204);
+    const del = await call("DELETE", "/cp/v1/tenants/acme/entitlements/hotel", { token: FULL });
+    expect(del.status).toBe(200);
+    expect(del.json).toMatchObject({ changed: true, previous: { moduleId: "hotel", status: "active" } });
   });
 
   it("webhook de facturación: firma inválida → 400 sin efectos", async () => {

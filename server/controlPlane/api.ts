@@ -139,7 +139,9 @@ export interface ControlPlaneDeps {
   tokens: ServiceToken[];
   registry: TenantRegistryService;
   reader: TenantRegistryReader;
-  entitlements: Pick<EntitlementAdmin, "listEntitlements" | "grant" | "setStatus" | "revoke">;
+  /** `apply`/`remove`/`listModuleTenants`/`activeCounts` los da `EntitlementAdmin` (MySQL); sin ellos esas rutas responden 501. */
+  entitlements: Pick<EntitlementAdmin, "listEntitlements" | "grant" | "setStatus" | "revoke"> &
+    Partial<Pick<EntitlementAdmin, "apply" | "remove" | "listModuleTenants" | "activeCounts">>;
   quotas: Pick<QuotaAdmin, "listQuotas" | "set" | "remove">;
   provisioning?: ProvisioningService;
   billing?: SubscriptionService;
@@ -643,34 +645,68 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
     }),
   );
 
+  const reasonSchema = z
+    .string()
+    .trim()
+    .min(5, "El motivo debe tener al menos 5 caracteres")
+    .max(300, "El motivo admite como máximo 300 caracteres")
+    .optional();
+  const unknownModule = (res: Response) => void res.status(404).json({ error: "not_found", message: "Módulo desconocido" });
+  const notAvailable = (res: Response) =>
+    void res.status(501).json({ error: "not_implemented", message: "Operación de licencias no disponible en este despliegue" });
+  const entitlementView = (e: { moduleId: string; status: string; validUntil: Date | null; source: string }) => ({
+    moduleId: e.moduleId,
+    status: e.status,
+    validUntil: e.validUntil ? e.validUntil.toISOString() : null,
+    source: e.source,
+  });
+
+  // PUT = estado final de la licencia (status por defecto «active»; validUntil omitido = sin caducidad).
+  // Idempotente y en una sola transacción: repetir la misma petición no deja evento ni sube la versión.
   router.put(
     "/tenants/:id/entitlements/:module",
     requireScope("entitlements:write"),
     wrap(async (req, res) => {
       const id = idSchema.parse(req.params.id);
       const body = z
-        .object({ status: z.enum(["active", "suspended", "expired"]).optional(), validUntil: z.string().datetime().nullable().optional() })
+        .object({
+          status: z.enum(["active", "suspended", "expired"]).optional(),
+          validUntil: z.string().datetime().nullable().optional(),
+          reason: reasonSchema,
+        })
         .parse(req.body ?? {});
       const mod = req.params.module;
-      if (!BUILTIN_MODULES.some((m) => m.id === mod)) return void res.status(404).json({ error: "not_found", message: "Módulo desconocido" });
+      if (!BUILTIN_MODULES.some((m) => m.id === mod)) return unknownModule(res);
+      if (!d.entitlements.apply) return notAvailable(res);
+      const status = body.status ?? "active";
       const current = await d.entitlements.listEntitlements(id);
       // Activar comprueba dependencias; suspender o caducar, que nada activo dependa de él (igual que DELETE)
-      if (!body.status || body.status === "active") assertCanActivate(BUILTIN_MODULES, current, mod, Date.now());
+      if (status === "active") assertCanActivate(BUILTIN_MODULES, current, mod, Date.now());
       else assertCanDeactivate(BUILTIN_MODULES, current, mod, Date.now());
-      await d.entitlements.grant(id, mod, actor(req), { validUntil: body.validUntil ? new Date(body.validUntil) : null });
-      if (body.status && body.status !== "active") await d.entitlements.setStatus(id, mod, body.status, actor(req));
-      res.json({ entitlements: await d.entitlements.listEntitlements(id) });
+      const r = await d.entitlements.apply(id, mod, { status, validUntil: body.validUntil ? new Date(body.validUntil) : null }, actor(req), body.reason);
+      res.json({
+        changed: r.changed,
+        previous: r.previous ? entitlementView(r.previous) : null,
+        entitlement: entitlementView(r.entitlement),
+        entitlements: await d.entitlements.listEntitlements(id),
+      });
     }),
   );
 
+  // Retira solo la licencia: los datos de la empresa no se tocan. Sin licencia → sin cambios ni evento.
   router.delete(
     "/tenants/:id/entitlements/:module",
     requireScope("entitlements:write"),
     wrap(async (req, res) => {
       const id = idSchema.parse(req.params.id);
-      assertCanDeactivate(BUILTIN_MODULES, await d.entitlements.listEntitlements(id), req.params.module, Date.now());
-      await d.entitlements.revoke(id, req.params.module, actor(req));
-      res.status(204).end();
+      const mod = req.params.module;
+      if (!BUILTIN_MODULES.some((m) => m.id === mod)) return unknownModule(res);
+      if (!d.entitlements.remove) return notAvailable(res);
+      const rawReason = typeof req.query.reason === "string" ? req.query.reason : (req.body as { reason?: unknown } | undefined)?.reason;
+      const reason = reasonSchema.parse(rawReason);
+      assertCanDeactivate(BUILTIN_MODULES, await d.entitlements.listEntitlements(id), mod, Date.now());
+      const r = await d.entitlements.remove(id, mod, actor(req), reason);
+      res.json({ changed: r.changed, previous: r.previous ? entitlementView(r.previous) : null });
     }),
   );
 
@@ -686,16 +722,55 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
     wrap(async (_req, res) => {
       const tenants = (await d.reader.listTenants()).filter((t) => t.status !== "deleted" && t.status !== "archived");
       const now = Date.now();
-      const counts = new Map<string, number>();
-      for (const t of tenants) {
-        for (const e of await d.entitlements.listEntitlements(t.id)) {
-          if (e.status === "active" && (!e.validUntil || e.validUntil.getTime() > now)) counts.set(e.moduleId, (counts.get(e.moduleId) ?? 0) + 1);
+      let counts = new Map<string, number>();
+      if (d.entitlements.activeCounts) counts = await d.entitlements.activeCounts(new Date(now));
+      else {
+        for (const t of tenants) {
+          for (const e of await d.entitlements.listEntitlements(t.id)) {
+            if (e.status === "active" && (!e.validUntil || e.validUntil.getTime() > now)) counts.set(e.moduleId, (counts.get(e.moduleId) ?? 0) + 1);
+          }
         }
       }
       const cat = billingCatalog();
       res.json({
         ...buildCatalog({ manifests: BUILTIN_MODULES, coreVersion: CORE_VERSION, plans: cat?.plans, modulePrices: cat?.modules, activeCounts: counts, tenantCount: tenants.length }),
         commercialCatalog: cat !== null,
+      });
+    }),
+  );
+  // Qué empresas usan un módulo: una sola consulta al registro, sin datos empresariales.
+  router.get(
+    "/modules/:module/tenants",
+    requireScope("tenants:read"),
+    wrap(async (req, res) => {
+      const m = BUILTIN_MODULES.find((x) => x.id === req.params.module);
+      if (!m) return unknownModule(res);
+      if (!d.entitlements.listModuleTenants) return notAvailable(res);
+      const base = Boolean(m.includedInBase);
+      const now = Date.now();
+      const tenants = (await d.entitlements.listModuleTenants(m.id, base)).map((r) => {
+        const lapsed = r.licenseStatus === "active" && r.validUntil !== null && r.validUntil.getTime() <= now;
+        return {
+          tenantId: r.tenantId,
+          displayName: r.displayName,
+          tenantStatus: r.tenantStatus,
+          included: base,
+          state: base ? "included" : lapsed ? "expired" : r.licenseStatus,
+          license: r.licenseStatus
+            ? {
+                status: r.licenseStatus,
+                validUntil: r.validUntil ? r.validUntil.toISOString() : null,
+                source: r.source,
+                updatedAt: r.updatedAt ? r.updatedAt.toISOString() : null,
+              }
+            : null,
+        };
+      });
+      res.json({
+        module: { id: m.id, name: m.name, kind: m.kind, includedInBase: base },
+        total: tenants.length,
+        active: tenants.filter((t) => t.state === "included" || t.state === "active").length,
+        tenants,
       });
     }),
   );
