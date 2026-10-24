@@ -5,7 +5,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { FUNCTIONAL_CHECKS, LIVE_STATUS_CONTEXT, ORDINARY_SERVICES, hasMigrations, protectedChanges, shaFromDeployMeta } from "../scripts/deploy/esRailwayLib";
+import { FUNCTIONAL_CHECKS, LIVE_STATUS_CONTEXT, ORDINARY_SERVICES, crmProtectedChanges, crmShaFromStatus, hasMigrations, protectedChanges, shaFromDeployMeta } from "../scripts/deploy/esRailwayLib";
 
 const read = (p: string) => fs.readFileSync(path.resolve(__dirname, "..", p), "utf8").replace(/\r\n/g, "\n");
 const wf = read(".github/workflows/deploy-elephant-source.yml");
@@ -73,7 +73,11 @@ describe("publicación continua", () => {
   });
 
   it("el despliegue ordinario no toca variables, dominios ni servicios y vuelve atrás si algo falla", () => {
-    const body = src.slice(src.indexOf('if (cmd === "publish")'), src.indexOf('if (cmd === "revert")'));
+    const body = src.slice(src.indexOf('if (cmd === "publish")'), src.indexOf('if (cmd === "active-crm")'));
+    const crm = src.slice(src.indexOf('if (cmd === "publish-crm")'), src.indexOf('if (cmd === "revert")'));
+    expect(crm).not.toMatch(/variableUpsert|variableDelete|serviceCreate|serviceInstanceUpdate|customDomainCreate|serviceDomainCreate/);
+    expect(crm).toContain("await rollback(sid, sc.environmentId, curNode.id)");
+    expect(crm).toContain("functional(env, CRM_CHECKS)");
     expect(body).not.toMatch(/variableUpsert|variableDelete|serviceCreate|serviceInstanceUpdate|customDomainCreate|serviceDomainCreate/);
     expect(body).toContain("await rollbackAll();");
     expect(body.match(/process\.exit\(1\)/g)?.length).toBe(2);
@@ -92,13 +96,44 @@ describe("publicación continua", () => {
 
   it("live se publica solo desde el CI de integration/elephant-source y nunca en paralelo", () => {
     expect(ci).toMatch(/branches: \[main, integration\/elephant-source\]/);
-    const job = ci.slice(ci.indexOf("  publicar-live:"));
+    const job = ci.slice(ci.indexOf("  publicar-live:"), ci.indexOf("  # Production ORDINARIO"));
     expect(job).toContain("needs: [quality, core-suites, secrets]");
-    expect(job).toContain("if: github.event_name == 'push' && github.ref == 'refs/heads/integration/elephant-source'");
+    expect(job).toContain("if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/integration/elephant-source'");
+    expect(job).toContain("auto: true");
     expect(job).toContain("environment: live");
     expect(job).toContain("action: publicar");
     expect(job).not.toContain("production");
     expect(wf).toMatch(/concurrency:\n {2}group: deploy-elephant-source-\$\{\{ inputs\.environment \}\}\n {2}cancel-in-progress: false/);
     expect(ci).toContain("cancel-in-progress: ${{ github.ref != 'refs/heads/integration/elephant-source' }}");
+  });
+
+  it("production ordinario automático solo después de live; lo protegido se omite con aviso en automático y falla en manual", () => {
+    const job = ci.slice(ci.indexOf("  publicar-production:"));
+    expect(job).toContain("needs: [publicar-live]");
+    expect(job).toContain("environment: production");
+    expect(job).toContain("action: publicar");
+    expect(job).toContain("auto: true");
+    expect(wf).toContain("'elephant-source-production-despliegue'");
+    const changes = step("Publicar — qué trae respecto a lo activo (en production, nada que exija el procedimiento protegido)");
+    expect(changes).toContain('if [ "${RC}" = "5" ] && [ "${ES_AUTO}" = "true" ]; then');
+    expect(changes).toContain('echo "ES_PROD_SKIP=1" >> "${GITHUB_ENV}"');
+    expect(changes).toContain('exit "${RC}"');
+    expect(step("Publicar — controlplane, core y core-gateway (vuelta atrás automática si algo falla)")).toContain("env.ES_PROD_SKIP != '1'");
+  });
+
+  it("CRM: en production solo el commit que superó live, sin infraestructura ni dependencias, con su clave de solo lectura", () => {
+    const pick = step("Publicar — CRM, commit a publicar");
+    expect(pick).toContain('select(.context == "elephant-source/crm-live")');
+    const co = step("Publicar — CRM, código (solo lectura)");
+    expect(co).toContain("ssh-key: ${{ secrets.CRM_DEPLOY_KEY }}");
+    expect(co).toContain("persist-credentials: false");
+    const pub = step("Publicar — CRM (vuelta atrás automática si algo falla)");
+    expect(pub).toContain("crm-changes");
+    expect(pub).toContain("--production");
+    expect(pub).toContain("publish-crm");
+    expect(pub).toContain("-f context=elephant-source/crm-live");
+    expect(crmProtectedChanges(["deploy/railway/Caddyfile", "package.json", "src/pages/X.tsx"])).toHaveLength(2);
+    expect(crmShaFromStatus(`crm ${"a".repeat(40)}`)).toBe("a".repeat(40));
+    expect(crmShaFromStatus("otra cosa")).toBeNull();
   });
 });

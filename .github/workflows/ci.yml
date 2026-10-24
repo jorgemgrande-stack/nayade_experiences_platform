@@ -316,7 +316,7 @@ jobs:
   publicar-live:
     name: Publicar en live
     needs: [quality, core-suites, secrets]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/integration/elephant-source'
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/integration/elephant-source'
     permissions:
       contents: read
       checks: read
@@ -326,4 +326,26 @@ jobs:
       environment: live
       action: publicar
       confirm: live
+      auto: true
+    secrets: inherit
+
+  # Production ORDINARIO automático, solo tras superar live el mismo commit (Core, plano de control, pasarela y CRM).
+  # Entorno elephant-source-production-despliegue (sin aprobación, solo integration/elephant-source). Barreras en el
+  # flujo de despliegue: CI y live en verde y nada de migraciones, infraestructura, dependencias ni interruptores
+  # bloqueados; si los hay, NO publica y deja un aviso (eso va por el procedimiento protegido, con aprobación).
+  # También con workflow_dispatch del CI en integration/elephant-source (p. ej. tras fusionar solo en el CRM).
+  publicar-production:
+    name: Publicar en production (ordinario)
+    needs: [publicar-live]
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/integration/elephant-source'
+    permissions:
+      contents: read
+      checks: read
+      statuses: write
+    uses: ./.github/workflows/deploy-elephant-source.yml
+    with:
+      environment: production
+      action: publicar
+      confirm: production
+      auto: true
     secrets: inherit
