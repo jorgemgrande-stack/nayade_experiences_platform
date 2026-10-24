@@ -23,3 +23,14 @@ describe("sessionRevoked: cierre de sesiones por el administrador central", () =
     expect(sessionRevoked(undefined, at)).toBe(true);
   });
 });
+
+describe("revocationInstant: el segundo se trunca, nunca se redondea al alza", () => {
+  it("una sesión iniciada en el segundo siguiente a la revocación vale", async () => {
+    const { revocationInstant } = await import("./_core/opsAccess/actions");
+    const at = Date.parse("2026-10-24T10:00:10.900Z");
+    const r = revocationInstant(at);
+    expect(r.toISOString()).toBe("2026-10-24T10:00:10.000Z");
+    expect(sessionRevoked(Math.floor(at / 1000) + 1, r)).toBe(false);
+    expect(sessionRevoked(Math.floor(at / 1000), r)).toBe(true);
+  });
+});
