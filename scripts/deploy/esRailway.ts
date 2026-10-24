@@ -19,6 +19,9 @@
  *   tsx scripts/deploy/esRailway.ts publish --env live --dir <dir> --sha <commit>   (despliegue ordinario con vuelta atrás automática)
  *   tsx scripts/deploy/esRailway.ts functional --env live          (comprobaciones funcionales)
  *   tsx scripts/deploy/esRailway.ts revert --env live --service core   (vuelve al despliegue anterior del servicio)
+ *   tsx scripts/deploy/esRailway.ts active-crm --env live          (commit del CRM activo; vacío si no se sabe)
+ *   tsx scripts/deploy/esRailway.ts crm-changes --from <c> --to <c> --dir <crm> [--production]  (cambios protegidos del CRM)
+ *   tsx scripts/deploy/esRailway.ts publish-crm --env live --dir <dir> --sha <commit>   (CRM ordinario con vuelta atrás)
  *   tsx scripts/deploy/esRailway.ts test-gateways --env live --only <a>,<b> --dir <dir> --sha <commit>  (pasarelas de prueba)
  *
  * `drill` ejecuta una orden de operación PERMITIDA (copias, simulación y aplicación de migraciones, verificación)
@@ -31,7 +34,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { MAIL_TEST_SERVICES, POSTMARK_WEBHOOK_TRIGGERS, mailSandboxPlan, parseMailAllowlist } from "./esRailwayLib";
 import { DRILL_IDLE, EXCLUDED_FROM_EXPORT, GATEWAY_COPIED_VARS, GATEWAY_TEMPLATE_SERVICE, STORAGE_BUCKETS, STORAGE_VARS, describeStorageVar, guard, isAllowedDrill, scrub, meteringReferences, storageReferences, testTenantDomains, type DeployConfig, type TokenScope } from "./esRailwayLib";
-import { FUNCTIONAL_CHECKS, ORDINARY_SERVICES, hasMigrations, protectedChanges, shaFromDeployMeta } from "./esRailwayLib";
+import { CRM_CHECKS, FUNCTIONAL_CHECKS, ORDINARY_SERVICES, crmProtectedChanges, hasMigrations, protectedChanges, shaFromDeployMeta } from "./esRailwayLib";
 import { REPOSITORIES } from "../../shared/repositories";
 
 const CONFIG_PATH = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../deploy/railway/elephant-source.deploy.json");
@@ -118,8 +121,8 @@ async function rollback(serviceIdValue: string, environmentId: string, deploymen
   return (await waitFor(serviceIdValue, environmentId, before)).status;
 }
 /** Comprobaciones funcionales del entorno; la credencial de la pasarela de live llega por ES_GATEWAY_AUTH (usuario:clave). */
-async function functional(env: string): Promise<boolean> {
-  const checks = FUNCTIONAL_CHECKS[env];
+async function functional(env: string, set: Record<string, Array<{ url: string; expect: number; auth?: boolean }>> = FUNCTIONAL_CHECKS): Promise<boolean> {
+  const checks = set[env];
   if (!checks) throw new Error(`sin comprobaciones funcionales para «${env}»`);
   const auth = (process.env.ES_GATEWAY_AUTH ?? "").trim();
   let ok = true;
@@ -171,6 +174,30 @@ async function main() {
     console.log(`export de ${sha} en ${out} (sin ${EXCLUDED_FROM_EXPORT.join(", ")})`);
     return;
   }
+  if (cmd === "crm-changes") {
+    const from = arg("from", false);
+    const to = arg("to");
+    const dir = path.resolve(arg("dir"));
+    for (const c of [from, to]) if (c && !/^[0-9a-f]{7,40}$/.test(c)) throw new Error("commit no válido");
+    if (!from) {
+      console.log("No se sabe qué versión del CRM está activa: se trata como cambio protegido.");
+      if (process.argv.includes("--production")) process.exit(5);
+      return;
+    }
+    const r = spawnSync("git", ["-C", dir, "diff", "--name-only", `${from}..${to}`], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+    if (r.status !== 0) throw new Error(`git diff del CRM falló: ${(r.stderr ?? "").slice(0, 200)}`);
+    const files = (r.stdout ?? "").split("\n").filter(Boolean);
+    console.log(`CRM: ${files.length} ficheros cambiados entre ${from.slice(0, 12)} y ${to.slice(0, 12)}`);
+    if (process.argv.includes("--production")) {
+      const blocked = crmProtectedChanges(files);
+      if (blocked.length) {
+        console.error(`El CRM trae cambios que exigen el procedimiento protegido (con aprobación):\n - ${blocked.join("\n - ")}`);
+        process.exit(5);
+      }
+      console.log("CRM: cambio ordinario (sin infraestructura ni dependencias).");
+    }
+    return;
+  }
   if (cmd === "changes") {
     // Sin red: qué trae el rango. --production: falla (5) si hay algo que exige el procedimiento protegido
     const from = arg("from", false);
@@ -217,7 +244,7 @@ async function main() {
   const env = arg("env");
   const sc = await scope();
   const service = cmd === "deploy" || cmd === "revert" ? arg("service") : cmd === "drill" ? "restore-drill" : undefined;
-  if (!["verify", "status", "deploy", "drill", "active-sha", "publish", "revert", "storage", "storage-fix", "test-gateways", "mail-live", "backup-check"].includes(cmd)) throw new Error(`orden desconocida: ${cmd}`);
+  if (!["verify", "status", "deploy", "drill", "active-sha", "publish", "revert", "active-crm", "publish-crm", "storage", "storage-fix", "test-gateways", "mail-live", "backup-check"].includes(cmd)) throw new Error(`orden desconocida: ${cmd}`);
   const problems = guard(cfg, sc, { env, service });
   if (problems.length) {
     console.error(`Detenido antes de tocar nada:\n - ${problems.join("\n - ")}`);
@@ -596,6 +623,40 @@ async function main() {
       process.exit(1);
     }
     console.log(`Publicado ${sha.slice(0, 12)} en ${env}`);
+    return;
+  }
+  if (cmd === "active-crm") {
+    const a = await active(await serviceId("crm"), sc.environmentId);
+    const sha = a ? (await deployments(await serviceId("crm"), sc.environmentId)).find((x) => x.id === a.id) : undefined;
+    const crmSha = sha ? shaFromDeployMeta(sha.meta, REPOSITORIES.crm) : null;
+    console.error(`crm: ${crmSha ?? "desconocido"}`);
+    console.log(crmSha ?? "");
+    return;
+  }
+  if (cmd === "publish-crm") {
+    // CRM ORDINARIO: solo sube su código (sin variables ni infraestructura); si no queda bien o fallan sus
+    // comprobaciones, vuelve a su despliegue anterior
+    const dir = path.resolve(arg("dir"));
+    const sha = arg("sha");
+    if (!/^[0-9a-f]{40}$/.test(sha)) throw new Error("commit no válido");
+    if (!sc.services.includes("crm")) throw new Error("el servicio crm no existe en el entorno");
+    const sid = await serviceId("crm");
+    const curNode = (await deployments(sid, sc.environmentId)).find((x) => x.status === "SUCCESS");
+    if (curNode && shaFromDeployMeta(curNode.meta, REPOSITORIES.crm) === sha) {
+      console.log(`crm: ya sirve ${sha.slice(0, 12)}`);
+      return;
+    }
+    const before = (await latest(sid, sc.environmentId))?.id ?? null;
+    const r = spawnSync("railway", ["up", dir, "--path-as-root", "-s", "crm", "-e", env, "--detach", "-m", `${REPOSITORIES.crm} ${sha}`], { encoding: "utf8", env: process.env });
+    const d = r.status === 0 ? await waitFor(sid, sc.environmentId, before) : null;
+    console.log(`crm: ${d ? `despliegue ${d.id} → ${d.status}` : `railway up falló: ${scrub(r.stderr || r.stdout || "").slice(0, 300)}`}`);
+    const ok = d?.status === "SUCCESS" && (await functional(env, CRM_CHECKS));
+    if (!ok) {
+      if (d && d.status !== "SUCCESS") console.log((await logs(d.id, 120)).split("\n").slice(-40).join("\n"));
+      if (curNode) console.error(`crm: vuelta atrás a ${curNode.id} → ${await rollback(sid, sc.environmentId, curNode.id)}`);
+      process.exit(1);
+    }
+    console.log(`CRM publicado ${sha.slice(0, 12)} en ${env}`);
     return;
   }
   if (cmd === "revert") {

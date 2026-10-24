@@ -82,6 +82,11 @@ on:
       confirm:
         required: true
         type: string
+      # Publicación automática encadenada por el CI (no una ejecución manual): lo protegido se omite con aviso
+      auto:
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -109,6 +114,7 @@ jobs:
       ES_CONFIRM: ${{ inputs.confirm }}
       ES_COMMIT: ${{ inputs.commit }}
       ES_MAIL_ALLOW: ${{ inputs.destinatarios }}
+      ES_AUTO: ${{ inputs.auto }}
     steps:
       - name: Comprobaciones previas (rama, confirmación y credencial)
         run: |
@@ -244,7 +250,18 @@ jobs:
         run: |
           FROM=$(pnpm exec tsx scripts/deploy/esRailway.ts active-sha --env "${ES_ENV}")
           if [ "${ES_ENV}" = "production" ]; then
+            set +e
             pnpm exec tsx scripts/deploy/esRailway.ts changes ${FROM:+--from "${FROM}"} --to "${ES_DEPLOY_SHA}" --production
+            RC=$?
+            set -e
+            # Automático (encadenado por el CI): un cambio que exige el procedimiento protegido NO se publica y queda el
+            # aviso; manual: falla. Nunca se publica en ninguno de los dos casos.
+            if [ "${RC}" = "5" ] && [ "${ES_AUTO}" = "true" ]; then
+              echo "::warning title=Core no publicado en production::${ES_DEPLOY_SHA} exige el procedimiento protegido (con aprobación)"
+              echo "ES_PROD_SKIP=1" >> "${GITHUB_ENV}"
+            elif [ "${RC}" != "0" ]; then
+              exit "${RC}"
+            fi
           else
             pnpm exec tsx scripts/deploy/esRailway.ts changes ${FROM:+--from "${FROM}"} --to "${ES_DEPLOY_SHA}" | tee "${RUNNER_TEMP}/changes.txt"
             if ! grep -qx "migrations=no" "${RUNNER_TEMP}/changes.txt"; then echo "ES_LIVE_MIGRATE=1" >> "${GITHUB_ENV}"; fi
@@ -261,8 +278,61 @@ jobs:
           pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --command "node dist-cp/backup-job.js check-data-exports"
 
       - name: Publicar — controlplane, core y core-gateway (vuelta atrás automática si algo falla)
-        if: inputs.action == 'publicar'
+        if: inputs.action == 'publicar' && env.ES_PROD_SKIP != '1'
         run: pnpm exec tsx scripts/deploy/esRailway.ts publish --env "${ES_ENV}" --dir "${RUNNER_TEMP}/export" --sha "${ES_DEPLOY_SHA}"
+
+      # CRM (repositorio big-elephant-crm, clave de solo lectura CRM_DEPLOY_KEY del entorno). Live: el último de su rama de
+      # integración; production: SOLO el commit del CRM que superó live con este mismo commit del Core (estado
+      # elephant-source/crm-live) y sin infraestructura ni dependencias. Vuelta atrás automática si algo falla.
+      - name: Publicar — CRM, commit a publicar
+        if: inputs.action == 'publicar'
+        run: |
+          if [ "${ES_ENV}" = "live" ]; then
+            echo "ES_CRM_REF=integration/elephant-source" >> "${GITHUB_ENV}"
+          else
+            CRM=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${ES_DEPLOY_SHA}/status" --jq '.statuses[] | select(.context == "elephant-source/crm-live") | .description' | head -1 | sed -n 's/^crm \([0-9a-f]\{40\}\)$/\1/p')
+            if [ -z "${CRM}" ]; then
+              echo "::notice title=CRM no publicado::ningún commit del CRM superó live con ${ES_DEPLOY_SHA}"
+              echo "ES_CRM_SKIP=1" >> "${GITHUB_ENV}"
+            else
+              echo "ES_CRM_REF=${CRM}" >> "${GITHUB_ENV}"
+            fi
+          fi
+
+      - name: Publicar — CRM, código (solo lectura)
+        if: inputs.action == 'publicar' && env.ES_CRM_SKIP != '1'
+        uses: actions/checkout@v4
+        with:
+          repository: jorgemgrande-stack/big-elephant-crm
+          ref: ${{ env.ES_CRM_REF }}
+          ssh-key: ${{ secrets.CRM_DEPLOY_KEY }}
+          persist-credentials: false
+          fetch-depth: 0
+          path: crm-src
+
+      - name: Publicar — CRM (vuelta atrás automática si algo falla)
+        if: inputs.action == 'publicar' && env.ES_CRM_SKIP != '1'
+        run: |
+          CRM_SHA=$(git -C crm-src rev-parse HEAD)
+          FROM=$(pnpm exec tsx scripts/deploy/esRailway.ts active-crm --env "${ES_ENV}")
+          if [ "${ES_ENV}" = "production" ]; then
+            set +e
+            pnpm exec tsx scripts/deploy/esRailway.ts crm-changes ${FROM:+--from "${FROM}"} --to "${CRM_SHA}" --dir crm-src --production
+            RC=$?
+            set -e
+            if [ "${RC}" = "5" ] && [ "${ES_AUTO}" = "true" ]; then
+              echo "::warning title=CRM no publicado en production::${CRM_SHA} exige el procedimiento protegido (con aprobación)"
+              exit 0
+            elif [ "${RC}" != "0" ]; then
+              exit "${RC}"
+            fi
+          fi
+          mkdir -p "${RUNNER_TEMP}/crm-export"
+          git -C crm-src archive --format=tar HEAD | tar -x -C "${RUNNER_TEMP}/crm-export"
+          pnpm exec tsx scripts/deploy/esRailway.ts publish-crm --env "${ES_ENV}" --dir "${RUNNER_TEMP}/crm-export" --sha "${CRM_SHA}"
+          if [ "${ES_ENV}" = "live" ]; then
+            gh api "repos/${GITHUB_REPOSITORY}/statuses/${ES_DEPLOY_SHA}" -f state=success -f context=elephant-source/crm-live -f description="crm ${CRM_SHA}" -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" > /dev/null
+          fi
 
       - name: Publicar — marcar el commit como superado en live
         if: inputs.action == 'publicar' && inputs.environment == 'live'

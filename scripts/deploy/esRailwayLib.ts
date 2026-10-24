@@ -257,3 +257,38 @@ export const FUNCTIONAL_CHECKS: Record<string, Array<{ url: string; expect: numb
 
 /** Estado de commit que deja live al superar la publicación: production solo publica commits que lo tengan. */
 export const LIVE_STATUS_CONTEXT = "elephant-source/live";
+
+// ── CRM en la publicación continua ─────────────────────────────────────────────
+
+/** Comprobaciones funcionales del CRM tras publicarlo (live, tras la pasarela del equipo; production, público). */
+export const CRM_CHECKS: Record<string, Array<{ url: string; expect: number; auth?: boolean }>> = {
+  live: [{ url: "https://elephant-source-crm-live.up.railway.app/healthz", expect: 200, auth: true }],
+  production: [
+    { url: "https://admin.bigelephant.es/__gateway/health", expect: 200 },
+    { url: "https://admin.bigelephant.es/healthz", expect: 200 },
+    { url: "https://admin.bigelephant.es/", expect: 200 },
+  ],
+};
+
+/** Cambios del CRM que un despliegue ORDINARIO de production no puede llevar: imagen, pasarela, Railway y dependencias. */
+export const CRM_PROTECTED_PATHS: Array<{ re: RegExp; why: string }> = [
+  { re: /^deploy\//, why: "infraestructura (imagen, pasarela o configuración de Railway)" },
+  { re: /(^|\/)(Dockerfile[^/]*|Caddyfile[^/]*|railway[^/]*\.(toml|json)|nixpacks\.toml)$/, why: "infraestructura" },
+  { re: /^(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|\.npmrc)$/, why: "dependencias" },
+];
+export function crmProtectedChanges(files: string[]): string[] {
+  const out: string[] = [];
+  for (const f of files) {
+    const hit = CRM_PROTECTED_PATHS.find((p) => p.re.test(f));
+    if (hit) out.push(`${f} — ${hit.why}`);
+  }
+  return out;
+}
+
+/** Estado que deja live con el commit del CRM que ha superado live (production solo publica ese). */
+export const CRM_LIVE_STATUS_CONTEXT = "elephant-source/crm-live";
+export const crmLiveStatusDescription = (sha: string) => `crm ${sha}`;
+export function crmShaFromStatus(description: string | null | undefined): string | null {
+  const m = /^crm ([0-9a-f]{40})$/.exec((description ?? "").trim());
+  return m ? m[1] : null;
+}
