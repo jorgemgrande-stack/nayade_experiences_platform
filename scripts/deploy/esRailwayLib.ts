@@ -317,3 +317,23 @@ export const externalProtectedChanges = (files: string[]) => crmProtectedChanges
 
 /** Interruptores bloqueados en los repositorios externos (web y CRM): checkout, autoservicio, Stripe y la pasarela. */
 export const EXTERNAL_LOCKED_SWITCHES = /\b(?:VITE_)?(?:PUBLIC_CHECKOUT_ENABLED|CHECKOUT_ENABLED|SELF_SERVICE[A-Z_]*|STRIPE_[A-Z_]+|GATEWAY_(?:USER|PASSWORD[A-Z_]*)|POSTMARK_WEBHOOK_PUBLIC|STRIPE_WEBHOOK_PUBLIC)\b/;
+
+/**
+ * Dominio de plataforma de LIVE (subdominios automáticos de las empresas de prueba): un comodín propio
+ * `*.<dominio>` en la pasarela compartida core-gateway, como `*.app.bigelephant.es` en production. Railway no enruta
+ * subdominios arbitrarios de `up.railway.app` (cada uno exige un servicio), así que ese dominio no sirve para altas.
+ * Solo subdominios de bigelephant.es que no sean los de production ni corporativos.
+ */
+export const LIVE_PLATFORM_DOMAIN_DEFAULT = "live.bigelephant.es";
+export function livePlatformDomainProblems(env: string, domain: string): string[] {
+  const p: string[] = [];
+  if (env !== "live") p.push("el dominio de plataforma de pruebas solo se prepara en live (production ya tiene *.app.bigelephant.es)");
+  if (!/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.bigelephant\.es$/.test(domain)) p.push(`«${domain}» debe ser <etiqueta>.bigelephant.es`);
+  if (["app.bigelephant.es", "www.bigelephant.es", "admin.bigelephant.es", "api.bigelephant.es", "mail.bigelephant.es"].includes(domain)) p.push(`«${domain}» es un dominio de production o corporativo`);
+  return p;
+}
+/** Valor de CP_PLATFORM_DOMAINS: el comodín nuevo primero (altas nuevas) y los anteriores después (transición). */
+export function platformDomainsValue(domain: string, current: string | undefined): string {
+  const rest = (current ?? "").split(",").map((x) => x.trim().toLowerCase()).filter((x) => x && x !== domain);
+  return [domain, ...rest].join(",");
+}
