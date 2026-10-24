@@ -719,6 +719,15 @@ async function main() {
         const hooks = (((await wh.json().catch(() => ({}))) as { Webhooks?: Array<{ Url: string }> }).Webhooks ?? []).map((w) => w.Url);
         console.log(`Postmark webhooks de ese servidor: ${hooks.length ? hooks.join(", ") : "ninguno"}`);
         if (hooks.some((u) => /live/.test(u))) console.log("AVISO: el servidor envía sus eventos a live. Production debe usar un servidor propio de Postmark.");
+        // Últimos envíos y su estado real en Postmark (destinatario enmascarado; nunca el contenido ni el enlace)
+        const pmGet = async (p: string) => (await (await fetch(`https://api.postmarkapp.com${p}`, { headers: { Accept: "application/json", "X-Postmark-Server-Token": token } })).json().catch(() => ({}))) as Record<string, unknown>;
+        const msgs = ((await pmGet("/messages/outbound?count=10&offset=0")).Messages as Array<{ MessageID: string; Subject: string; Status: string; To: Array<{ Email: string }>; ReceivedAt: string }>) ?? [];
+        console.log(`Postmark últimos envíos: ${msgs.length}`);
+        for (const m of msgs) {
+          const det = await pmGet(`/messages/outbound/${m.MessageID}/details`);
+          const ev = ((det.MessageEvents as Array<{ Type: string; ReceivedAt: string }>) ?? []).map((e) => `${e.Type}@${e.ReceivedAt.slice(0, 19)}`).join(", ");
+          console.log(`  ${m.ReceivedAt.slice(0, 19)} · ${(m.To?.[0]?.Email ?? "").replace(/^(.).*(@.*)$/, "$1***$2")} · ${m.Subject.slice(0, 70)} · ${m.Status} · ${ev || "sin eventos"}`);
+        }
       }
     }
     const plan = mailAccessPlan(env, vars, { action: accion === "desactivar" ? "desactivar" : "activar", tenants: tenants.length ? tenants : accion === "estado" ? ["t5-skibox"] : [] });
