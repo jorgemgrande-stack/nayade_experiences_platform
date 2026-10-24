@@ -1,5 +1,25 @@
 # Dominios definitivos del entorno `live` y cambios de DNS
 
+> **Actualización 24/10/2026 — sustituye a las fases A y B de abajo para las empresas de live.** Production es ya el
+> entorno comercial (Skibox, `*.app.bigelephant.es`): sus dominios NO se mueven a live. Live tiene su propio comodín.
+>
+> **Causa del 404 de las altas en live:** con `CP_PLATFORM_DOMAIN=up.railway.app`, cada empresa recibía
+> `<empresa>.up.railway.app`. Railway solo enruta dominios dados de alta en un servicio (`x-railway-fallback: true`), así que
+> esas direcciones nunca llegaban a la pasarela. En `up.railway.app` no caben comodines.
+>
+> **Solución (misma arquitectura que production: un despliegue compartido, una base por empresa, tenant por host):**
+>
+> | Paso | Cómo | Estado |
+> |---|---|---|
+> | 1. `*.live.bigelephant.es` en `core-gateway` de live, puerto 8080 | Acción `dominio-plataforma-live-crear` (run 40103055188) | Hecho |
+> | 2. DNS en `gestiondecuenta.com`: `*.live` CNAME `pji3td3w.up.railway.app` y `_acme-challenge.live` CNAME `pji3td3w.authorize.railwaydns.net` (TTL 300; valores devueltos por la API de Railway) | **Manual** (sin acceso por API al proveedor) | Pendiente |
+> | 3. Certificado comodín | Railway, al ver el reto ACME (`dominio-plataforma-live-estado`) | Tras el paso 2 |
+> | 4. `CP_PLATFORM_DOMAINS=live.bigelephant.es,up.railway.app` en el plano de control de live | Acción `dominio-plataforma-live-activar` (exige DNS y certificado verificados) | Tras el paso 3 |
+> | 5. Dominio nuevo para las empresas de prueba existentes | `ES_ENV=live … node scripts/railway/dominios-app.cjs --platform live.bigelephant.es --apply` | Tras el paso 4 |
+>
+> Las empresas de live siguen tras la autenticación básica de la pasarela (`PUBLIC_HOSTS` no cambia). **Marcha atrás:**
+> quitar `live.bigelephant.es` de `CP_PLATFORM_DOMAINS` y el dominio de `core-gateway`; los dominios anteriores siguen.
+
 **Estado (19/10/2026):** preparado. **No se ha aplicado nada:** ningún cambio de DNS, de dominios de Railway ni de variables.
 
 - DNS de `bigelephant.es`: servidores `ns*.gestiondecuenta.com`.
