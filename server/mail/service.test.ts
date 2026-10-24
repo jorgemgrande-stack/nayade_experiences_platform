@@ -5,7 +5,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { setLogSink } from "../_core/ops/log";
-import { mailPolicyFromEnv, recipientHash } from "./policy";
+import { mailPolicyFromEnv, recipientHash, scopeAllows } from "./policy";
 import { brevoProvider, memoryProvider } from "./providers";
 import { MailService, contentKey, mailRef, parseMailRef, type SendInput } from "./service";
 import { MemoryMailStore } from "./store";
@@ -42,6 +42,27 @@ beforeEach(() => {
   setLogSink((_l, line) => void lines.push(line));
 });
 afterEach(() => setLogSink(null));
+
+describe("ámbito de envío (MAIL_SCOPE_TENANTS / MAIL_SCOPE_CATEGORIES)", () => {
+  it("sin variables no restringe; definidas solo dejan pasar lo listado; vacías o mal escritas = nada", () => {
+    expect(mailPolicyFromEnv({ ...BASE_ENV } as NodeJS.ProcessEnv).scope).toEqual({ tenants: null, categories: null });
+    const p = mailPolicyFromEnv({ ...BASE_ENV, MAIL_SCOPE_TENANTS: " Acme , t5-skibox ", MAIL_SCOPE_CATEGORIES: "user_invite" } as NodeJS.ProcessEnv);
+    expect(scopeAllows(p, "acme", "user_invite")).toBe(true);
+    expect(scopeAllows(p, "otra", "user_invite")).toBe(false);
+    expect(scopeAllows(p, "acme", "password_reset")).toBe(false);
+    expect(scopeAllows(p, null, "user_invite")).toBe(false);
+    expect(scopeAllows(mailPolicyFromEnv({ ...BASE_ENV, MAIL_SCOPE_TENANTS: "" } as NodeJS.ProcessEnv), "acme", "user_invite")).toBe(false);
+    expect(scopeAllows(mailPolicyFromEnv({ ...BASE_ENV, MAIL_SCOPE_TENANTS: "ACME;;**" } as NodeJS.ProcessEnv), "acme", "user_invite")).toBe(false);
+  });
+  it("un correo fuera de ámbito se cierra como omitido y no llega al proveedor", async () => {
+    const { svc, provider } = make({ MAIL_SCOPE_TENANTS: "acme", MAIL_SCOPE_CATEGORIES: "user_invite" });
+    const r = await svc.send(msg());
+    expect(JSON.stringify(r)).toContain("scope_not_allowed");
+    expect(provider.sent.length).toBe(0);
+    const ok = await svc.send(msg({ idempotencyKey: "invite:1", category: "user_invite" }));
+    expect(JSON.stringify(ok)).not.toContain("scope_not_allowed");
+  });
+});
 
 describe("modo de envío", () => {
   it("por defecto off: no sale nada y no se guarda el cuerpo", async () => {

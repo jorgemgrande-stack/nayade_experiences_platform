@@ -16,7 +16,7 @@
 import crypto from "node:crypto";
 import { opsLog } from "../_core/ops/log";
 import { recordFailure } from "../_core/ops/failureAlerts";
-import { backoffMs, maskRecipient, normalizeEmail, recipientAllowed, recipientHash, senderFor, type MailPolicy } from "./policy";
+import { backoffMs, maskRecipient, normalizeEmail, recipientAllowed, recipientHash, scopeAllows, senderFor, type MailPolicy } from "./policy";
 import type { MailStore } from "./store";
 import { MailProviderError, type EnqueueInput, type MailLane, type MailProviderPort, type MailStatus, type OutboxRow, type ProviderEvent } from "./types";
 
@@ -104,6 +104,8 @@ export class MailService {
     if (guarded) return guarded;
     if (this.d.policy.mode === "off") return "mode_off";
     if (!recipientAllowed(this.d.policy, to)) return "sandbox_recipient_not_allowed";
+    // Ámbito (MAIL_SCOPE_TENANTS / MAIL_SCOPE_CATEGORIES): fuera de él no sale nada, aunque el modo lo permita
+    if (!scopeAllows(this.d.policy, input.tenantId, input.category)) return "scope_not_allowed";
     if (await this.d.store.isSuppressed(input.tenantId, hash)) return "suppressed";
     const since = this.now() - HOUR;
     if ((await this.d.store.countSince(input.tenantId, since)) >= this.d.policy.limits.tenantPerHour) return "rate_limited_tenant";
@@ -192,6 +194,10 @@ export class MailService {
     // El modo puede haber cambiado desde que se encoló (p. ej. vuelta a off): se revalida
     if (!recipientAllowed(this.d.policy, row.toEmail)) {
       await this.d.store.settle(id, { status: "skipped", reason: this.d.policy.mode === "off" ? "mode_off" : "sandbox_recipient_not_allowed", purge: true }, now);
+      return this.d.store.get(id);
+    }
+    if (!scopeAllows(this.d.policy, row.tenantId, row.category)) {
+      await this.d.store.settle(id, { status: "skipped", reason: "scope_not_allowed", purge: true }, now);
       return this.d.store.get(id);
     }
     try {

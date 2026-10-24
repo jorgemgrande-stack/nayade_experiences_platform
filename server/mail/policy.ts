@@ -10,6 +10,10 @@
  *   ELEPHANT_SUPPORT_EMAIL    Reply-To de los avisos de plataforma (si falta, no se muestra)
  *   MAIL_RATE_TENANT_PER_HOUR / MAIL_RATE_RECIPIENT_PER_HOUR   límites (300 / 8)
  *   MAIL_MAX_ATTEMPTS         intentos de envío antes de «failed» (5)
+ *   MAIL_SCOPE_TENANTS        (opcional) solo estas empresas pueden enviar (ids separados por comas)
+ *   MAIL_SCOPE_CATEGORIES     (opcional) solo estos tipos de correo (p. ej. user_invite,password_reset,security_notice)
+ *   Las dos solo RESTRINGEN: sin ellas, el comportamiento es el de siempre. Sirven para abrir, por ejemplo, solo los
+ *   correos de acceso de una empresa concreta sin habilitar ningún otro envío.
  */
 import crypto from "node:crypto";
 import { maskEmail } from "../_core/ops/log";
@@ -26,6 +30,8 @@ export interface MailPolicy {
   supportEmail: string | null;
   limits: { tenantPerHour: number; recipientPerHour: number };
   retry: { maxAttempts: number; baseMs: number; capMs: number; lockMs: number };
+  /** Ámbito permitido (null = sin restricción). */
+  scope: { tenants: ReadonlySet<string> | null; categories: ReadonlySet<string> | null };
 }
 
 const EMAIL_RE = /^[^\s@<>"',;:()\\[\]]+@[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/;
@@ -78,7 +84,24 @@ export function mailPolicyFromEnv(env: NodeJS.ProcessEnv): MailPolicy {
     supportEmail: normalizeEmail(env.ELEPHANT_SUPPORT_EMAIL ?? ""),
     limits: { tenantPerHour: int(env.MAIL_RATE_TENANT_PER_HOUR, 300, 1, 100_000), recipientPerHour: int(env.MAIL_RATE_RECIPIENT_PER_HOUR, 8, 1, 1000) },
     retry: { maxAttempts: int(env.MAIL_MAX_ATTEMPTS, 5, 1, 20), baseMs: 60_000, capMs: 3_600_000, lockMs: 120_000 },
+    scope: { tenants: scopeList(env.MAIL_SCOPE_TENANTS, /^[a-z0-9][a-z0-9-]{1,62}$/), categories: scopeList(env.MAIL_SCOPE_CATEGORIES, /^[a-z][a-z0-9_.]{1,63}$/) },
   };
+}
+
+/**
+ * Lista de ámbito: elementos válidos separados por comas. Definida pero vacía o sin ningún elemento válido = NADA
+ * permitido (nunca se interpreta como «sin restricción» una lista mal escrita).
+ */
+function scopeList(raw: string | undefined, re: RegExp): ReadonlySet<string> | null {
+  if (raw === undefined || raw.trim() === "") return raw === undefined ? null : new Set();
+  return new Set(raw.split(",").map((x) => x.trim().toLowerCase()).filter((x) => re.test(x)));
+}
+
+/** ¿Entra este correo (empresa y tipo) en el ámbito permitido? Sin empresa o sin tipo, solo si no hay restricción. */
+export function scopeAllows(p: Pick<MailPolicy, "scope">, tenantId: string | null | undefined, category: string | null | undefined): boolean {
+  if (p.scope.tenants && !(tenantId && p.scope.tenants.has(tenantId))) return false;
+  if (p.scope.categories && !(category && p.scope.categories.has(category))) return false;
+  return true;
 }
 
 /** ¿Puede salir un correo hacia esta dirección (ya normalizada) con el modo efectivo? */

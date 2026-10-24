@@ -212,6 +212,7 @@ describe("S5 — enlaces de recuperación e invitación", () => {
   });
 
   it("resendInvite ignora el origin y sigue aceptando clientes que no lo envían", async () => {
+    state.users.push({ ...baseUser, id: 5, email: "x@example.invalid", role: "user", inviteAccepted: false, isActive: true });
     const caller = appRouter.createCaller(ctx({ ...baseUser }));
     await caller.admin.resendInvite({ userId: 5, email: "x@example.invalid", name: "X", origin: "https://atacante.example" });
     await caller.admin.resendInvite({ userId: 5, email: "x@example.invalid", name: "X" });
@@ -219,5 +220,18 @@ describe("S5 — enlaces de recuperación e invitación", () => {
     for (const s of state.sentInvites) {
       expect(s.setPasswordUrl.startsWith("https://app.ejemplo.test/establecer-contrasena?token=")).toBe(true);
     }
+  });
+
+  it("resendInvite envía al correo de la BASE (no al del cuerpo) y no reabre invitaciones aceptadas", async () => {
+    state.users.push({ ...baseUser, id: 5, email: "real@example.invalid", role: "user", inviteAccepted: false, isActive: true });
+    state.users.push({ ...baseUser, id: 6, email: "aceptado@example.invalid", role: "user", inviteAccepted: true, isActive: true });
+    state.users.push({ ...baseUser, id: 7, email: "baja@example.invalid", role: "user", inviteAccepted: false, isActive: false });
+    const caller = appRouter.createCaller(ctx({ ...baseUser }));
+    await caller.admin.resendInvite({ userId: 5, email: "atacante@example.invalid", name: "X" });
+    expect(state.sentInvites.map((x) => x.email)).toEqual(["real@example.invalid"]);
+    await expect(caller.admin.resendInvite({ userId: 6, email: "aceptado@example.invalid", name: "X" })).rejects.toMatchObject({ code: "CONFLICT" });
+    await expect(caller.admin.resendInvite({ userId: 7, email: "baja@example.invalid", name: "X" })).rejects.toMatchObject({ code: "CONFLICT" });
+    await expect(caller.admin.resendInvite({ userId: 999, email: "x@example.invalid", name: "X" })).rejects.toMatchObject({ code: "NOT_FOUND" });
+    expect(state.sentInvites).toHaveLength(1);
   });
 });

@@ -37,8 +37,8 @@ export default function SetPassword() {
 
   const passwordStrength = (pw: string): { level: number; label: string; color: string } => {
     if (pw.length === 0) return { level: 0, label: "", color: "" };
-    if (pw.length < 6) return { level: 1, label: "Muy corta", color: "bg-red-500" };
-    if (pw.length < 8) return { level: 2, label: "Débil", color: "bg-orange-400" };
+    if (pw.length < 8) return { level: 1, label: "Muy corta", color: "bg-red-500" };
+    if (pw.length < 10) return { level: 2, label: "Débil", color: "bg-orange-400" };
     const hasUpper = /[A-Z]/.test(pw);
     const hasNumber = /[0-9]/.test(pw);
     const hasSpecial = /[^A-Za-z0-9]/.test(pw);
@@ -58,8 +58,8 @@ export default function SetPassword() {
       setValidationError("Token inválido. Usa el enlace del email.");
       return;
     }
-    if (password.length < 6) {
-      setValidationError("La contraseña debe tener al menos 6 caracteres.");
+    if (password.length < 8) {
+      setValidationError("La contraseña debe tener al menos 8 caracteres.");
       return;
     }
     if (password !== confirm) {
@@ -143,7 +143,7 @@ export default function SetPassword() {
                 <Input
                   id="password"
                   type={showPass ? "text" : "password"}
-                  placeholder="Mínimo 6 caracteres"
+                  placeholder="Mínimo 8 caracteres"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="pr-10"

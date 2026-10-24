@@ -14,7 +14,8 @@ import { getDb } from "../../db";
 import { users } from "../../../drizzle/schema";
 import { getCompanyOwnerEmail } from "../companyOwner";
 import { loginLockRemaining, recordLoginSuccess } from "../loginThrottle";
-import { mailPolicyFromEnv, type MailPolicy } from "../../mail/policy";
+import { mailPolicyFromEnv, scopeAllows, type MailPolicy } from "../../mail/policy";
+import { getTenantIdOrDefault } from "../tenant";
 import type { OpsAccessAction } from "./token";
 
 export interface AccessUserView {
@@ -34,11 +35,11 @@ export interface AccessUserView {
 }
 
 export type AccessResult =
-  | { ok: true; action: OpsAccessAction; users?: AccessUserView[]; mailMode?: MailPolicy["mode"]; mail?: MailOutcome; active?: boolean }
+  | { ok: true; action: OpsAccessAction; users?: AccessUserView[]; mailMode?: MailPolicy["mode"]; accessMail?: { invite: boolean; reset: boolean }; mail?: MailOutcome; active?: boolean }
   | { ok: false; error: AccessError; message: string };
 
 export type AccessError = "not_found" | "confirm_mismatch" | "owner_protected" | "last_admin" | "no_email" | "inactive" | "already_accepted" | "seat_limit" | "db_unavailable";
-export type MailOutcome = "sent" | "mail_disabled" | "sandbox_blocked";
+export type MailOutcome = "sent" | "mail_disabled" | "sandbox_blocked" | "scope_blocked";
 
 const fail = (error: AccessError, message: string): AccessResult => ({ ok: false, error, message });
 
@@ -46,8 +47,14 @@ const fail = (error: AccessError, message: string): AccessResult => ({ ok: false
 export const revocationInstant = (now = Date.now()): Date => new Date(Math.floor(now / 1000) * 1000);
 
 /** ¿Saldría el correo? off: no sale nada; sandbox: solo a la lista autorizada. Se decide ANTES de crear enlaces. */
-export function mailGate(policy: Pick<MailPolicy, "mode" | "allowAddresses" | "allowDomains">, email: string): MailOutcome {
+export function mailGate(
+  policy: Pick<MailPolicy, "mode" | "allowAddresses" | "allowDomains"> & Partial<Pick<MailPolicy, "scope">>,
+  email: string,
+  ctx: { tenantId?: string | null; category?: string } = {},
+): MailOutcome {
   if (policy.mode === "off") return "mail_disabled";
+  // Ámbito (MAIL_SCOPE_TENANTS / MAIL_SCOPE_CATEGORIES): fuera de él no se crea ningún enlace
+  if (policy.scope && !scopeAllows({ scope: policy.scope }, ctx.tenantId, ctx.category)) return "scope_blocked";
   if (policy.mode === "sandbox") {
     const e = email.trim().toLowerCase();
     const domain = e.split("@")[1] ?? "";
@@ -69,6 +76,22 @@ export interface AccessActionDeps {
   requestReset?: (email: string) => Promise<unknown>;
   sendInvite?: (u: { id: number; name: string; email: string; role: string }) => Promise<unknown>;
   seatAvailable?: () => Promise<void>;
+  /** Empresa en cuyo contexto se ejecuta (por defecto, la del contexto actual). */
+  tenantId?: string | null;
+}
+
+const currentTenant = (): string | null => {
+  try {
+    return getTenantIdOrDefault();
+  } catch {
+    return null;
+  }
+};
+
+/** Correos de acceso que pueden salir para una empresa (sin mirar el destinatario, que se valida en el envío). */
+export function accessMailFor(p: MailPolicy, tenantId: string | null): { invite: boolean; reset: boolean } {
+  if (p.mode === "off") return { invite: false, reset: false };
+  return { invite: scopeAllows(p, tenantId, "user_invite"), reset: scopeAllows(p, tenantId, "password_reset") };
 }
 
 export async function runAccessAction(act: OpsAccessAction, uid: number | undefined, confirm: string | undefined, deps: AccessActionDeps = {}): Promise<AccessResult> {
@@ -83,6 +106,8 @@ export async function runAccessAction(act: OpsAccessAction, uid: number | undefi
       action: act,
       // Modo de correo EFECTIVO de esta instalación: la interfaz avisa antes de ofrecer un envío que no saldría
       mailMode: (deps.policy ?? (() => mailPolicyFromEnv(process.env)))().mode,
+      // ¿Pueden salir los correos de acceso DE ESTA EMPRESA? (modo y ámbito; el destinatario se comprueba al enviar)
+      accessMail: accessMailFor((deps.policy ?? (() => mailPolicyFromEnv(process.env)))(), deps.tenantId ?? currentTenant()),
       users: rows.map((u) => ({
         id: u.id,
         name: u.name ?? null,
@@ -113,7 +138,7 @@ export async function runAccessAction(act: OpsAccessAction, uid: number | undefi
     if ((confirm ?? "").trim().toLowerCase() !== email) return fail("confirm_mismatch", "El correo de confirmación no coincide con el del usuario");
     if (!u.isActive) return fail("inactive", "El usuario está desactivado");
     if (act === "invite" && u.inviteAccepted) return fail("already_accepted", "La invitación ya se aceptó: usa el restablecimiento");
-    const gate = mailGate(policy, email);
+    const gate = mailGate(policy, email, { tenantId: deps.tenantId ?? currentTenant(), category: act === "reset" ? "password_reset" : "user_invite" });
     // Sin envío posible no se crea ningún enlace (nadie lo recibiría): la contraseña y los enlaces vigentes no cambian
     if (gate !== "sent") return { ok: true, action: act, mail: gate };
     if (act === "reset") {

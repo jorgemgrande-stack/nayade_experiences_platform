@@ -1512,12 +1512,18 @@ export const appRouter = router({
       role: z.string().optional(),
       origin: z.string().optional(), // ignorado: el enlace usa una URL de confianza
     })).mutation(async ({ input }) => {
+      // El destinatario y el estado se leen de la BASE, nunca del cuerpo: una invitación solo va al correo del propio
+      // usuario y no se reabre una cuenta ya aceptada (el enlace sobrescribiría su contraseña)
+      const target = (await getAllUsers()).find((u) => u.id === input.userId);
+      if (!target?.email) throw new TRPCError({ code: "NOT_FOUND", message: "El usuario no existe o no tiene correo" });
+      if (target.inviteAccepted) throw new TRPCError({ code: "CONFLICT", message: "La invitación ya se aceptó: usa la recuperación de contraseña" });
+      if (!target.isActive) throw new TRPCError({ code: "CONFLICT", message: "El usuario está desactivado" });
       const { nanoid } = await import("nanoid");
       const token = nanoid(48);
       const expiry = new Date(Date.now() + 72 * 60 * 60 * 1000);
       await resendUserInvite(input.userId, token, expiry);
       const setPasswordUrl = `${getTrustedBaseUrl()}/establecer-contrasena?token=${token}`;
-      await sendInviteEmail({ name: input.name, email: input.email, setPasswordUrl, role: input.role ?? "user" });
+      await sendInviteEmail({ name: target.name ?? input.name, email: target.email, setPasswordUrl, role: String(target.role ?? input.role ?? "user") });
       return { success: true };
     }),
     setUserPassword: adminProcedure.input(z.object({
