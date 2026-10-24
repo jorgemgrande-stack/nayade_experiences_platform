@@ -23,6 +23,9 @@
  *   tsx scripts/deploy/esRailway.ts crm-changes --from <c> --to <c> --dir <crm> [--production]  (cambios protegidos del CRM)
  *   tsx scripts/deploy/esRailway.ts publish-crm --env live --dir <dir> --sha <commit>   (CRM ordinario con vuelta atrás)
  *   tsx scripts/deploy/esRailway.ts test-gateways --env live --only <a>,<b> --dir <dir> --sha <commit>  (pasarelas de prueba)
+ *   tsx scripts/deploy/esRailway.ts platform-domain --env live [--domain live.bigelephant.es] [--apply | --variables]
+ *       (comodín *.<dominio> en core-gateway: estado y registros DNS; --apply lo crea; --variables, con el DNS verificado,
+ *        pone CP_PLATFORM_DOMAINS en el plano de control)
  *
  * `drill` ejecuta una orden de operación PERMITIDA (copias, simulación y aplicación de migraciones, verificación)
  * en el servicio restore-drill de la red privada, espera a que termine, muestra su registro (sin DSN ni claves) y
@@ -34,6 +37,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { MAIL_TEST_SERVICES, POSTMARK_WEBHOOK_TRIGGERS, mailSandboxPlan, parseMailAllowlist } from "./esRailwayLib";
 import { DRILL_IDLE, EXCLUDED_FROM_EXPORT, GATEWAY_COPIED_VARS, GATEWAY_TEMPLATE_SERVICE, STORAGE_BUCKETS, STORAGE_VARS, describeStorageVar, guard, isAllowedDrill, scrub, meteringReferences, storageReferences, testTenantDomains, type DeployConfig, type TokenScope } from "./esRailwayLib";
+import { LIVE_PLATFORM_DOMAIN_DEFAULT, livePlatformDomainProblems, platformDomainsValue } from "./esRailwayLib";
 import { CRM_CHECKS, EXTERNAL_LOCKED_SWITCHES, FUNCTIONAL_CHECKS, ORDINARY_SERVICES, WEB_CHECKS, crmProtectedChanges, hasMigrations, isExternalService, protectedChanges, shaFromDeployMeta } from "./esRailwayLib";
 import { REPOSITORIES } from "../../shared/repositories";
 
@@ -258,7 +262,7 @@ async function main() {
   const env = arg("env");
   const sc = await scope();
   const service = cmd === "deploy" || cmd === "revert" ? arg("service") : cmd === "drill" ? "restore-drill" : undefined;
-  if (!["verify", "status", "deploy", "drill", "active-sha", "publish", "revert", "active-crm", "publish-crm", "storage", "storage-fix", "test-gateways", "mail-live", "backup-check"].includes(cmd)) throw new Error(`orden desconocida: ${cmd}`);
+  if (!["verify", "status", "deploy", "drill", "active-sha", "publish", "revert", "active-crm", "publish-crm", "storage", "storage-fix", "test-gateways", "mail-live", "backup-check", "platform-domain"].includes(cmd)) throw new Error(`orden desconocida: ${cmd}`);
   const problems = guard(cfg, sc, { env, service });
   if (problems.length) {
     console.error(`Detenido antes de tocar nada:\n - ${problems.join("\n - ")}`);
@@ -285,6 +289,58 @@ async function main() {
         const ref = /\$\{\{[^}]+\}\}/.test(raw.variables[k]);
         console.log(`  ${k.padEnd(34)} definida · ${ref ? `referencia ${raw.variables[k].match(/\$\{\{\s*([A-Za-z0-9_.-]+)\s*\}\}/)?.[1] ?? ""}` : "valor fijo"}${eff?.variables[k] ? "" : " · SIN VALOR EFECTIVO"}`);
       }
+    }
+    return;
+  }
+  if (cmd === "platform-domain") {
+    // Subdominios automáticos de las empresas de LIVE con la misma arquitectura que production: un comodín propio en la
+    // pasarela compartida (nunca un servicio por empresa). Sin opciones: solo lectura.
+    const domain = (arg("domain", false) || LIVE_PLATFORM_DOMAIN_DEFAULT).toLowerCase();
+    const bad = livePlatformDomainProblems(env, domain);
+    if (bad.length) throw new Error(bad.join("; "));
+    const wildcard = `*.${domain}`;
+    const t = await api<{ projectToken: { projectId: string } }>("query { projectToken { projectId } }");
+    const pid = t.projectToken.projectId;
+    const gw = await serviceId("core-gateway");
+    type Rec = { hostlabel?: string; fqdn?: string; recordType?: string; requiredValue?: string; currentValue?: string; status?: string };
+    type Dom = { id: string; domain: string; status?: { dnsRecords?: Rec[]; certificateStatus?: string } | null };
+    const FULL = "customDomains { id domain status { dnsRecords { hostlabel fqdn recordType requiredValue currentValue status } certificateStatus } }";
+    const read = async (): Promise<Dom[]> => {
+      const q = (f: string) => api<{ domains: { customDomains: Dom[] } }>(`query($p:String!,$e:String!,$s:String!){ domains(projectId:$p, environmentId:$e, serviceId:$s){ ${f} } }`, { p: pid, e: sc.environmentId, s: gw });
+      // Si la API no expone el detalle de estado, al menos los dominios
+      return (await q(FULL).catch(() => q("customDomains { id domain }"))).domains.customDomains;
+    };
+    const show = (d: Dom) => {
+      console.log(`core-gateway (${env}): ${d.domain} · certificado: ${d.status?.certificateStatus ?? "desconocido"}`);
+      const recs = d.status?.dnsRecords ?? [];
+      if (!recs.length) console.log("  (Railway no devuelve los registros DNS: consúltalos en Settings → Domains)");
+      for (const r of recs) console.log(`  DNS ${(r.recordType ?? "").replace("DNS_RECORD_TYPE_", "")} ${r.fqdn ?? r.hostlabel} → ${r.requiredValue} · actual: ${r.currentValue || "—"} · ${(r.status ?? "").replace("DNS_RECORD_STATUS_", "")}`);
+      return recs.length > 0 && recs.every((r) => /PROPAGATED|VALID/i.test(r.status ?? ""));
+    };
+    let mine = (await read()).find((d) => d.domain === wildcard);
+    if (!mine && process.argv.includes("--apply")) {
+      // Puerto de la pasarela (Caddy escucha en $PORT=8080 en Railway, como el resto de dominios de core-gateway)
+      const c = await api<{ customDomainCreate: { id: string } }>("mutation($i:CustomDomainCreateInput!){ customDomainCreate(input:$i){ id } }", {
+        i: { domain: wildcard, environmentId: sc.environmentId, projectId: pid, serviceId: gw, targetPort: 8080 },
+      });
+      console.log(`core-gateway: creado ${wildcard} (${c.customDomainCreate.id})`);
+      mine = (await read()).find((d) => d.domain === wildcard);
+    }
+    if (!mine) {
+      console.log(`core-gateway (${env}): sin ${wildcard}. Con --apply se crea (sin efecto hasta que exista el DNS).`);
+      return;
+    }
+    const ready = show(mine);
+    if (process.argv.includes("--variables")) {
+      if (!ready) throw new Error("el DNS y el certificado aún no están verificados: no se cambia CP_PLATFORM_DOMAINS");
+      const cp = await serviceId("controlplane");
+      const q = "query($p:String!,$e:String!,$s:String!,$u:Boolean){ variables(projectId:$p, environmentId:$e, serviceId:$s, unrendered:$u) }";
+      const cur = (await api<{ variables: Record<string, string> }>(q, { p: pid, e: sc.environmentId, s: cp, u: true })).variables;
+      const value = platformDomainsValue(domain, cur.CP_PLATFORM_DOMAINS || cur.CP_PLATFORM_DOMAIN);
+      if (cur.CP_PLATFORM_DOMAINS === value) return void console.log(`controlplane: CP_PLATFORM_DOMAINS ya es ${value}`);
+      // Sin skipDeploys: Railway vuelve a desplegar el plano de control con la variable nueva (mismo código)
+      await api("mutation($i:VariableUpsertInput!){ variableUpsert(input:$i) }", { i: { projectId: pid, environmentId: sc.environmentId, serviceId: cp, name: "CP_PLATFORM_DOMAINS", value } });
+      console.log(`controlplane: CP_PLATFORM_DOMAINS = ${value} (antes: ${cur.CP_PLATFORM_DOMAINS ?? cur.CP_PLATFORM_DOMAIN ?? "—"})`);
     }
     return;
   }

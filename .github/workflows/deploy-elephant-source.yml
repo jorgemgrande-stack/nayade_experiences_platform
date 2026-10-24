@@ -57,6 +57,9 @@ on:
           - preparar-pruebas-live
           - diagnostico-correo-live
           - correo-pruebas-live
+          - dominio-plataforma-live-estado
+          - dominio-plataforma-live-crear
+          - dominio-plataforma-live-activar
       commit:
         description: "Commit a desplegar (opcional; por defecto, el último de la rama). Para volver atrás: uno anterior de la misma rama"
         required: false
@@ -187,6 +190,19 @@ jobs:
       - name: Correo de pruebas — diagnóstico de Postmark (solo lectura)
         if: inputs.action == 'diagnostico-correo-live'
         run: pnpm exec tsx scripts/deploy/esRailway.ts mail-live --env "${ES_ENV}"
+
+      # Subdominios automáticos de las empresas de LIVE (como *.app.bigelephant.es en production): comodín *.live.bigelephant.es
+      # en la pasarela compartida core-gateway. estado: solo lectura (registros DNS y certificado); crear: añade el dominio
+      # en Railway (sin efecto hasta que exista el DNS); activar: con el DNS verificado, CP_PLATFORM_DOMAINS. Nunca en production.
+      - name: Dominio de plataforma de live
+        if: startsWith(inputs.action, 'dominio-plataforma-live-')
+        run: |
+          if [ "${ES_ENV}" != "live" ]; then echo "El dominio de plataforma de pruebas solo existe en live"; exit 1; fi
+          case "${ES_ACTION}" in
+            dominio-plataforma-live-estado) pnpm exec tsx scripts/deploy/esRailway.ts platform-domain --env "${ES_ENV}" ;;
+            dominio-plataforma-live-crear) pnpm exec tsx scripts/deploy/esRailway.ts platform-domain --env "${ES_ENV}" --apply ;;
+            dominio-plataforma-live-activar) pnpm exec tsx scripts/deploy/esRailway.ts platform-domain --env "${ES_ENV}" --variables ;;
+          esac
 
       - name: Correo de pruebas — sandbox, webhook y variables
         if: inputs.action == 'correo-pruebas-live'
