@@ -160,3 +160,31 @@ export function loginLook(theme: LoginThemeInput | null | undefined): LoginLook 
     poweredBy: theme?.poweredBy ?? null,
   };
 }
+
+/**
+ * Variables CSS de la identidad de una empresa en TODA su experiencia (acceso, panel, primeros pasos, avisos), para
+ * que el paso de una pantalla a otra no parezca otro producto:
+ *  - sin colores propios: la identidad de Big Elephant (rojo corporativo sobre grafito y blanco);
+ *  - con color propio: el suyo, pero solo si se lee (≥ 3:1 sobre blanco); si no, el grafito neutro, para no romper la
+ *    legibilidad. El acento propio solo se usa si también se lee.
+ * Instalación de una sola empresa (Náyade): `null`, su aspecto no cambia.
+ */
+export function brandTokens(theme: Pick<LoginThemeInput, "neutralSite" | "primaryColor" | "accentColor"> | null | undefined): Record<string, string> | null {
+  if (!theme || !theme.neutralSite) return null;
+  const own = hex(theme.primaryColor);
+  const primary = own ? ((contrastRatio(own, WHITE) ?? 0) >= 3 ? own : NEUTRAL_INK) : BIG_ELEPHANT.redInk;
+  const ownAccent = hex(theme.accentColor);
+  const accent = ownAccent && (contrastRatio(ownAccent, WHITE) ?? 0) >= 3 ? ownAccent : own ? primary : BIG_ELEPHANT.red;
+  const fg = readableOn(primary);
+  return {
+    "--primary": primary,
+    "--primary-foreground": fg,
+    "--ring": primary,
+    "--accent": accent,
+    "--accent-foreground": readableOn(accent),
+    "--sidebar-primary": primary,
+    "--sidebar-primary-foreground": fg,
+    "--sidebar-ring": primary,
+    "--brand-accent": accent,
+  };
+}

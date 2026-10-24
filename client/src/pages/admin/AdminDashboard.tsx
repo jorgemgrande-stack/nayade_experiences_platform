@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils";
 import { usePanelSubscription } from "@/hooks/usePanelSubscription";
 import { PanelLoading } from "@/components/admin/PanelStates";
 import EssentialHome from "./home/EssentialHome";
+import { AuthRequired, PanelSpinner } from "@/components/auth/AuthRequired";
 import { usePanelBrand } from "@/hooks/usePanelBrand";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -344,31 +345,10 @@ function LegacyDashboard() {
   });
 
   // ── Auth guards ──────────────────────────────────────────────────────────
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="animate-spin w-8 h-8 border-2 border-blue-400 border-t-transparent rounded-full" />
-      </div>
-    );
-  }
+  if (loading) return <PanelSpinner />;
 
-  if (!isAuthenticated) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="text-center">
-          <div className="w-16 h-16 rounded-2xl bg-blue-500/10 border border-blue-500/30 flex items-center justify-center mx-auto mb-4">
-            <AlertCircle className="w-8 h-8 text-blue-400" />
-          </div>
-          <h2 className="text-2xl font-black text-foreground mb-2">Acceso Restringido</h2>
-          <p className="text-muted-foreground mb-6">Debes iniciar sesión para acceder al panel de administración.</p>
-          <button className="bg-blue-600 hover:bg-blue-500 text-white font-semibold px-8 py-3 rounded-xl transition-colors" onClick={() => { window.location.href = getLoginUrl("/admin"); }}>
-            Iniciar Sesión
-          </button>
-          <p className="mt-4 text-sm text-muted-foreground/60">{isLocalAuth() ? "Accede con tu email y contraseña de administrador." : "Accede con tu cuenta de Manus."}</p>
-        </div>
-      </div>
-    );
-  }
+  // Sin sesión: al inicio de sesión de la empresa (mismo aspecto que el resto del acceso), y de vuelta aquí
+  if (!isAuthenticated) return <AuthRequired returnTo="/admin" />;
 
   // ── Derived values ───────────────────────────────────────────────────────
   const firstName = user?.name?.split(" ")[0] ?? "Administrador";

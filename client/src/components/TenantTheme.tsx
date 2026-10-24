@@ -13,6 +13,7 @@ import { trpc } from "@/lib/trpc";
 import { HOME_PAGE_SLUG, resolveHome } from "@/lib/homeRoute";
 import PublicLayout from "@/components/PublicLayout";
 import NotFound from "@/pages/NotFound";
+import { brandTokens } from "@shared/loginBrand";
 
 export function useTenantTheme() {
   const q = trpc.public.getTheme.useQuery(undefined, { staleTime: 5 * 60_000, retry: false, refetchOnWindowFocus: false });
@@ -34,13 +35,17 @@ export function TenantThemeLoader() {
   useEffect(() => {
     if (!theme) return;
     const root = document.documentElement;
-    if (theme.primaryColor) {
+    // Multiempresa: identidad de la empresa en toda su experiencia (Big Elephant hasta que configure la suya), en modo
+    // claro y oscuro. En línea sobre <html>, así manda sobre los valores de :root y .dark de index.css.
+    const tokens = brandTokens(theme);
+    if (tokens) for (const [k, v] of Object.entries(tokens)) root.style.setProperty(k, v);
+    else if (theme.primaryColor) {
       root.style.setProperty("--primary", theme.primaryColor);
       root.style.setProperty("--ring", theme.primaryColor);
       const fg = contrast(theme.primaryColor);
       if (fg) root.style.setProperty("--primary-foreground", fg);
     }
-    if (theme.accentColor) root.style.setProperty("--brand-accent", theme.accentColor);
+    if (!tokens && theme.accentColor) root.style.setProperty("--brand-accent", theme.accentColor);
     if (theme.radius) root.style.setProperty("--radius", theme.radius);
     if (theme.fontFamily) document.body.style.fontFamily = theme.fontFamily;
     if (theme.faviconUrl) {

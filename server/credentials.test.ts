@@ -127,7 +127,7 @@ describe("pruebas de proveedor", () => {
     });
     expect(ok.ok).toBe(true);
     const bad = await testProvider("ghl", { apiKey: "x", locationId: "L" }, async () => ({ ok: false, status: 401 }));
-    expect(bad).toEqual({ ok: false, message: "Credenciales rechazadas por el proveedor" });
+    expect(bad).toEqual({ ok: false, message: "Credenciales rechazadas por el proveedor", outcome: "rejected" });
     const down = await testProvider("vapi", { apiKey: "k" }, async () => {
       throw new Error("ECONNRESET secreto-ghl-xyz");
     });
