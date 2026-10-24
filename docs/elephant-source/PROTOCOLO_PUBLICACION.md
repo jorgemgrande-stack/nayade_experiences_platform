@@ -12,7 +12,7 @@
 | Tipo | Qué hace | Cómo se lanza | Entorno de GitHub | Aprobación |
 |---|---|---|---|---|
 | **Live** | Publica controlplane, core y core-gateway en live. Si hay migraciones nuevas, antes hace una copia y las aplica en live | Automático en cada fusión en `integration/elephant-source`, cuando las suites bloqueantes del CI están en verde (job `publicar-live`) | `elephant-source-live` | No |
-| **Production ordinario** | Publica controlplane, core, core-gateway y CRM. Si el cambio exige el procedimiento protegido, no publica y deja un aviso (automático) o falla (manual) | **Automático** justo después de superar live (job `publicar-production` del CI, en cada fusión en `integration/elephant-source` o con `workflow_dispatch` del CI tras fusionar solo en el CRM), o manual con `Despliegue Elephant Source` → `publicar` · `production` | `elephant-source-production-despliegue` | No |
+| **Production ordinario** | Publica controlplane, core, core-gateway, CRM y web comercial. Si el cambio exige el procedimiento protegido, no publica y deja un aviso (automático) o falla (manual) | **Automático** justo después de superar live (job `publicar-production` del CI, en cada fusión en `integration/elephant-source` o con `workflow_dispatch` del CI tras fusionar solo en el CRM), o manual con `Despliegue Elephant Source` → `publicar` · `production` | `elephant-source-production-despliegue` | No |
 | **Vuelta atrás** | Devuelve un servicio a su despliegue anterior, ya construido | `revertir-controlplane`, `revertir-core` o `revertir-core-gateway` | El ordinario del entorno | No |
 | **Protegido** | Migraciones, bases de datos, copias y restauraciones, infraestructura, variables y secretos, operaciones destructivas y cambios críticos | Resto de acciones (`preparar-production`, `aplicar-production`, `migraciones-*`, `almacenamiento-referencias`, `desplegar-*`…) | `elephant-source-production` | **Sí, obligatoria** |
 
@@ -46,6 +46,17 @@
 - **Acceso del flujo:** clave de despliegue de **solo lectura** registrada en `big-elephant-crm` («Despliegue Elephant Source (GitHub Actions, solo lectura)»). Su parte privada es el secreto `CRM_DEPLOY_KEY` de los entornos `elephant-source-live` y `elephant-source-production`, y no existe en ningún otro sitio. Para retirar el acceso, se borra la clave en *big-elephant-crm → Settings → Deploy keys*.
 - **`desplegar-crm`:** despliega el último commit de `integration/elephant-source` del CRM, solo en el servicio `crm`. En live no requiere aprobación; en production es protegido (con aprobación).
 - **`revertir-crm`:** vuelve al despliegue anterior del CRM.
+
+## Web comercial (repositorio privado `bigelephant-web`)
+
+- **Rama publicada:** `feat/elephant-web-portfolio`.
+- **Publicación ordinaria:** mismo modelo que el CRM.
+  - live despliega el último commit de esa rama y anota cuál superó live (estado `elephant-source/web-live`);
+  - production publica **solo ese commit** y solo si no toca `deploy/`, `Dockerfile`, `Caddyfile`, `railway.*`, dependencias ni interruptores bloqueados (`PUBLIC_CHECKOUT_ENABLED`, autoservicio, Stripe, credenciales de la pasarela);
+  - vuelta atrás automática si sus comprobaciones fallan (`www.bigelephant.es`).
+- **Acceso del flujo:** clave de despliegue de **solo lectura** `WEB_DEPLOY_KEY` en los entornos. Sin ella, la web se omite con aviso y no bloquea el resto de la publicación.
+- **`desplegar-web` / `revertir-web`:** despliegue protegido (production, con aprobación) y vuelta atrás. Ya no se usa `railway up` a mano.
+- **Variables y pasarela:** el despliegue ordinario solo sube código; no cambia variables (`PUBLIC_CHECKOUT_ENABLED` sigue sin definir) ni la autenticación básica de live.
 
 ## Concurrencia
 

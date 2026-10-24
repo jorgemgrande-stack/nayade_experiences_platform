@@ -7,7 +7,7 @@ import { createHash } from "node:crypto";
 export interface DeployConfig {
   projectId: string;
   environments: string[];
-  services: Record<string, { kind: "core" | "gateway" | "ops" | "crm" }>;
+  services: Record<string, { kind: "core" | "gateway" | "ops" | "crm" | "web" }>;
 }
 
 
@@ -292,3 +292,28 @@ export function crmShaFromStatus(description: string | null | undefined): string
   const m = /^crm ([0-9a-f]{40})$/.exec((description ?? "").trim());
   return m ? m[1] : null;
 }
+
+// ── Web comercial en la publicación continua (mismo modelo que el CRM) ──────────
+
+/** Rama del repositorio bigelephant-web que se publica (la de los despliegues de production hasta ahora). */
+export const WEB_BRANCH = "feat/elephant-web-portfolio";
+
+/** Comprobaciones de la web comercial tras publicarla (pública en los dos entornos). */
+export const WEB_CHECKS: Record<string, Array<{ url: string; expect: number; auth?: boolean }>> = {
+  live: [{ url: "https://elephant-source-web-live.up.railway.app/", expect: 200 }],
+  production: [
+    { url: "https://www.bigelephant.es/", expect: 200 },
+    { url: "https://elephant-source-web.up.railway.app/", expect: 200 },
+  ],
+};
+
+export const WEB_LIVE_STATUS_CONTEXT = "elephant-source/web-live";
+
+/** Servicios de otros repositorios que la publicación continua despliega por su commit verificado. */
+export type ExternalService = "crm" | "web";
+export const isExternalService = (s: string): s is ExternalService => s === "crm" || s === "web";
+/** Mismas reglas para los dos: imagen, pasarela, Railway y dependencias exigen el procedimiento protegido. */
+export const externalProtectedChanges = (files: string[]) => crmProtectedChanges(files);
+
+/** Interruptores bloqueados en los repositorios externos (web y CRM): checkout, autoservicio, Stripe y la pasarela. */
+export const EXTERNAL_LOCKED_SWITCHES = /\b(?:VITE_)?(?:PUBLIC_CHECKOUT_ENABLED|CHECKOUT_ENABLED|SELF_SERVICE[A-Z_]*|STRIPE_[A-Z_]+|GATEWAY_(?:USER|PASSWORD[A-Z_]*)|POSTMARK_WEBHOOK_PUBLIC|STRIPE_WEBHOOK_PUBLIC)\b/;

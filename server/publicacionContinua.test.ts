@@ -5,7 +5,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { FUNCTIONAL_CHECKS, LIVE_STATUS_CONTEXT, ORDINARY_SERVICES, crmProtectedChanges, crmShaFromStatus, hasMigrations, protectedChanges, shaFromDeployMeta } from "../scripts/deploy/esRailwayLib";
+import { FUNCTIONAL_CHECKS, LIVE_STATUS_CONTEXT, ORDINARY_SERVICES, EXTERNAL_LOCKED_SWITCHES, crmProtectedChanges, crmShaFromStatus, hasMigrations, protectedChanges, shaFromDeployMeta } from "../scripts/deploy/esRailwayLib";
 
 const read = (p: string) => fs.readFileSync(path.resolve(__dirname, "..", p), "utf8").replace(/\r\n/g, "\n");
 const wf = read(".github/workflows/deploy-elephant-source.yml");
@@ -77,7 +77,7 @@ describe("publicación continua", () => {
     const crm = src.slice(src.indexOf('if (cmd === "publish-crm")'), src.indexOf('if (cmd === "revert")'));
     expect(crm).not.toMatch(/variableUpsert|variableDelete|serviceCreate|serviceInstanceUpdate|customDomainCreate|serviceDomainCreate/);
     expect(crm).toContain("await rollback(sid, sc.environmentId, curNode.id)");
-    expect(crm).toContain("functional(env, CRM_CHECKS)");
+    expect(crm).toContain("functional(env, ext.checks)");
     expect(body).not.toMatch(/variableUpsert|variableDelete|serviceCreate|serviceInstanceUpdate|customDomainCreate|serviceDomainCreate/);
     expect(body).toContain("await rollbackAll();");
     expect(body.match(/process\.exit\(1\)/g)?.length).toBe(2);
@@ -91,7 +91,7 @@ describe("publicación continua", () => {
     expect(co).toContain("persist-credentials: false");
     expect(step("CRM — export y despliegue")).toContain("--service crm --repo crm");
     expect(src).toContain('if ((service === "crm") !== (repo === REPOSITORIES.crm)) throw new Error(');
-    expect(wf).toContain("if: (startsWith(inputs.action, 'desplegar-') && inputs.action != 'desplegar-crm') || inputs.action == 'preparar-pruebas-live'");
+    expect(wf).toContain("if: (startsWith(inputs.action, 'desplegar-') && inputs.action != 'desplegar-crm' && inputs.action != 'desplegar-web') || inputs.action == 'preparar-pruebas-live'");
   });
 
   it("live se publica solo desde el CI de integration/elephant-source y nunca en paralelo", () => {
@@ -135,5 +135,21 @@ describe("publicación continua", () => {
     expect(crmProtectedChanges(["deploy/railway/Caddyfile", "package.json", "src/pages/X.tsx"])).toHaveLength(2);
     expect(crmShaFromStatus(`crm ${"a".repeat(40)}`)).toBe("a".repeat(40));
     expect(crmShaFromStatus("otra cosa")).toBeNull();
+  });
+
+  it("web comercial: mismo modelo que el CRM (live anota el commit, production solo ese, clave de solo lectura)", () => {
+    const pick = step("Publicar — web, commit a publicar");
+    expect(pick).toContain('select(.context == "elephant-source/web-live")');
+    expect(pick).toContain("feat/elephant-web-portfolio");
+    const co = step("Publicar — web, código (solo lectura)");
+    expect(co).toContain("ssh-key: ${{ secrets.WEB_DEPLOY_KEY }}");
+    expect(co).toContain("persist-credentials: false");
+    const pub = step("Publicar — web (vuelta atrás automática si algo falla)");
+    expect(pub).toContain("--service web");
+    expect(pub).toContain("--production");
+    expect(pub).toContain("-f context=elephant-source/web-live");
+    expect(src).toContain('if ((service === "web") !== (repo === REPOSITORIES.web)) throw new Error(');
+    expect(EXTERNAL_LOCKED_SWITCHES.test("+  if (env.PUBLIC_CHECKOUT_ENABLED) {")).toBe(true);
+    expect(EXTERNAL_LOCKED_SWITCHES.test("+  const titulo = \"Hola\";")).toBe(false);
   });
 });

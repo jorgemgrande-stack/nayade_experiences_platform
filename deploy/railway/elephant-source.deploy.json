@@ -22,6 +22,9 @@
     },
     "crm": {
       "kind": "crm"
+    },
+    "web": {
+      "kind": "web"
     }
   }
 }
