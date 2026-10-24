@@ -132,6 +132,7 @@ import type { BackupInventory, BackupRecord } from "../_core/ops/backupInventory
 import type { BackupCopyLedger } from "../_core/ops/backupCopies";
 import { BACKUP_TENANT_STATUSES } from "../_core/ops/backupJob";
 import { registerTenantAccessRoutes, type CoreAccessClient } from "./tenantAccess";
+import { pendingCount, schemaState, tenantMigrations } from "./schemaVersions";
 
 export interface ControlPlaneDeps {
   tokens: ServiceToken[];
@@ -179,6 +180,8 @@ export interface ControlPlaneDeps {
   supportSecret?: string;
   /** Accesos de las empresas (Clientes SaaS → Accesos): el Core ejecuta cada acción en el contexto de la empresa. */
   tenantAccess?: { client: CoreAccessClient };
+  /** Migraciones de empresa disponibles en esta versión del código (por defecto, db/migrations de la imagen). */
+  schemaMigrations?: () => string[];
   /** Operadores humanos con usuario y contraseña (sesión por cookie HttpOnly + CSRF). */
   operators?: OperatorAuthService;
   /** Atributo Secure de la cookie de sesión: `auto` (HTTPS) por defecto. */
@@ -811,9 +814,25 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
     requireScope("ops:read"),
     wrap(async (req, res) => {
       const id = idSchema.parse(req.params.id);
-      const out = await diagnoseTenant({ reader: d.reader, registry: d.registry, entitlements: d.entitlements, quotas: d.quotas }, id);
+      const expectedSchemaVersion = (d.schemaMigrations ?? tenantMigrations)().at(-1);
+      const out = await diagnoseTenant({ reader: d.reader, registry: d.registry, entitlements: d.entitlements, quotas: d.quotas, expectedSchemaVersion }, id);
       if (!out.ok) opsLog("warn", "Diagnostics", "tenant_not_healthy", { tenantId: id, failed: out.checks.filter((c) => !c.ok).map((c) => c.name) });
       res.json(out);
+    }),
+  );
+
+  // Versiones de esquema: la última migración de empresa de este código frente a la aplicada en cada una
+  router.get(
+    "/platform/versions",
+    requireScope("tenants:read"),
+    wrap(async (_req, res) => {
+      const known = (d.schemaMigrations ?? tenantMigrations)();
+      const latest = known.at(-1) ?? null;
+      const tenants = (await d.reader.listTenants())
+        .filter((t) => t.status !== "deleted")
+        .map((t) => ({ tenantId: t.id, displayName: t.displayName, status: t.status, schemaVersion: t.schemaVersion ?? null, state: schemaState(t.schemaVersion ?? null, latest, known), pending: pendingCount(t.schemaVersion ?? null, known) }));
+      const n = (st: string) => tenants.filter((t) => t.state === st).length;
+      res.json({ tenantSchema: { latest, available: known.length }, summary: { upToDate: n("up_to_date"), behind: n("behind"), ahead: n("ahead"), unknown: n("unknown") }, tenants });
     }),
   );
 
