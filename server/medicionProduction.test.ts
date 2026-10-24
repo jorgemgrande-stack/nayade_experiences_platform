@@ -25,10 +25,14 @@ describe("medición por referencias", () => {
   });
   it("el workflow despliega restore-drill con el commit antes de erm-setup y lo exige", () => {
     const wf = fs.readFileSync(path.resolve(__dirname, "../.github/workflows/deploy-elephant-source.yml"), "utf8").replace(/\r\n/g, "\n");
-    const b = wf.slice(wf.indexOf("- name: Medición — base es_erm"), wf.indexOf("# Subdominios automáticos de las empresas de LIVE"));
+    const i = wf.indexOf("- name: Medición — base es_erm");
+    const b = wf.slice(i, wf.indexOf("\n\n", i));
     expect(b.indexOf("--service restore-drill")).toBeGreaterThan(0);
     expect(b.indexOf("--service restore-drill")).toBeLessThan(b.indexOf("erm-setup --apply"));
     expect(b).toContain('--expect-sha "${ES_DEPLOY_SHA}" --command "node dist-cp/backup-job.js erm-setup --apply"');
     expect(b.indexOf("metering --env \"${ES_ENV}\" --refs")).toBeGreaterThan(b.indexOf("erm-setup --apply"));
+    // Regresión 24/10: el paso debe ir DESPUÉS del commit y del export (si no, --sha y --dir llegan vacíos)
+    expect(wf.indexOf("- name: Medición — base es_erm")).toBeGreaterThan(wf.indexOf("- name: Export del commit"));
+    expect(wf.indexOf("- name: Export del commit")).toBeGreaterThan(wf.indexOf("- name: Commit a desplegar"));
   });
 });

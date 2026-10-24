@@ -192,22 +192,6 @@ jobs:
         if: inputs.action == 'diagnostico-correo-live'
         run: pnpm exec tsx scripts/deploy/esRailway.ts mail-live --env "${ES_ENV}"
 
-      # Medición del Resource Manager (base es_erm, como live desde el 21/10/2026): contraseña del usuario es_erm en
-      # MySQL.ES_ERM_PASSWORD (generada si falta; nunca se imprime) y referencias; restore-drill con ESTE commit crea o ajusta
-      # la base y el usuario (idempotente, permisos mínimos, sonda sin restos); core y controlplane por referencia y se
-      # despliegan. En production, entorno protegido (aprobación). Si una referencia no da valor, se restaura y se para.
-      - name: Medición — base es_erm, referencias y despliegue
-        if: inputs.action == 'medicion-preparar'
-        run: |
-          pnpm exec tsx scripts/deploy/esRailway.ts metering --env "${ES_ENV}" --secret
-          pnpm exec tsx scripts/deploy/esRailway.ts deploy --env "${ES_ENV}" --service restore-drill --dir "${RUNNER_TEMP}/export" --sha "${ES_DEPLOY_SHA}"
-          pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --expect-sha "${ES_DEPLOY_SHA}" --command "node dist-cp/backup-job.js erm-setup --apply"
-          pnpm exec tsx scripts/deploy/esRailway.ts metering --env "${ES_ENV}" --refs
-          pnpm exec tsx scripts/deploy/esRailway.ts deploy --env "${ES_ENV}" --service core --dir "${RUNNER_TEMP}/export" --sha "${ES_DEPLOY_SHA}"
-          pnpm exec tsx scripts/deploy/esRailway.ts deploy --env "${ES_ENV}" --service controlplane --dir "${RUNNER_TEMP}/export" --sha "${ES_DEPLOY_SHA}"
-          pnpm exec tsx scripts/deploy/esRailway.ts functional --env "${ES_ENV}"
-          pnpm exec tsx scripts/deploy/esRailway.ts storage --env "${ES_ENV}"
-
       # Subdominios automáticos de las empresas de LIVE (como *.app.bigelephant.es en production): comodín *.live.bigelephant.es
       # en la pasarela compartida core-gateway. estado: solo lectura (registros DNS y certificado); crear: añade el dominio
       # en Railway (sin efecto hasta que exista el DNS); activar: con el DNS verificado, CP_PLATFORM_DOMAINS. Nunca en production.
@@ -269,6 +253,22 @@ jobs:
       - name: Export del commit (sin railway.toml ni datos de semilla)
         if: startsWith(inputs.action, 'desplegar-') || inputs.action == 'publicar' || inputs.action == 'preparar-pruebas-live' || inputs.action == 'correo-pruebas-live' || inputs.action == 'preparar-production' || inputs.action == 'aplicar-production' || inputs.action == 'medicion-preparar'
         run: pnpm exec tsx scripts/deploy/esRailway.ts export --sha "${ES_DEPLOY_SHA}" --out "${RUNNER_TEMP}/export"
+
+      # Medición del Resource Manager (base es_erm, como live desde el 21/10/2026): contraseña del usuario es_erm en
+      # MySQL.ES_ERM_PASSWORD (generada si falta; nunca se imprime) y referencias; restore-drill con ESTE commit crea o ajusta
+      # la base y el usuario (idempotente, permisos mínimos, sonda sin restos); core y controlplane por referencia y se
+      # despliegan. En production, entorno protegido (aprobación). Si una referencia no da valor, se restaura y se para.
+      - name: Medición — base es_erm, referencias y despliegue
+        if: inputs.action == 'medicion-preparar'
+        run: |
+          pnpm exec tsx scripts/deploy/esRailway.ts metering --env "${ES_ENV}" --secret
+          pnpm exec tsx scripts/deploy/esRailway.ts deploy --env "${ES_ENV}" --service restore-drill --dir "${RUNNER_TEMP}/export" --sha "${ES_DEPLOY_SHA}"
+          pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --expect-sha "${ES_DEPLOY_SHA}" --command "node dist-cp/backup-job.js erm-setup --apply"
+          pnpm exec tsx scripts/deploy/esRailway.ts metering --env "${ES_ENV}" --refs
+          pnpm exec tsx scripts/deploy/esRailway.ts deploy --env "${ES_ENV}" --service core --dir "${RUNNER_TEMP}/export" --sha "${ES_DEPLOY_SHA}"
+          pnpm exec tsx scripts/deploy/esRailway.ts deploy --env "${ES_ENV}" --service controlplane --dir "${RUNNER_TEMP}/export" --sha "${ES_DEPLOY_SHA}"
+          pnpm exec tsx scripts/deploy/esRailway.ts functional --env "${ES_ENV}"
+          pnpm exec tsx scripts/deploy/esRailway.ts storage --env "${ES_ENV}"
 
       # ── Despliegue ordinario (publicar) ──
       - name: Publicar — production solo con CI y live superados por el mismo commit
