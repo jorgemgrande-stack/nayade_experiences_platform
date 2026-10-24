@@ -26,6 +26,8 @@ export const DRILL_ALLOWED: RegExp[] = [
   // Prueba de restauración: restaura la copia de UNA empresa en una base NUEVA y la verifica; sin --switch, la base real
   // no se toca (autorizado por el propietario el 23/10/2026)
   /^node dist-cp\/backup-job\.js restore-tenant [a-z0-9][a-z0-9-]{1,62} --apply$/,
+  // Base de medición del Resource Manager (es_erm): idempotente, permisos mínimos y sonda sin restos
+  new RegExp(`^${BJ} erm-setup( --apply)?$`),
 ];
 export const isAllowedDrill = (cmd: string) => DRILL_ALLOWED.some((r) => r.test(cmd.trim()));
 export const DRILL_IDLE = `${BJ} list`;
@@ -336,4 +338,26 @@ export function livePlatformDomainProblems(env: string, domain: string): string[
 export function platformDomainsValue(domain: string, current: string | undefined): string {
   const rest = (current ?? "").split(",").map((x) => x.trim().toLowerCase()).filter((x) => x && x !== domain);
   return [domain, ...rest].join(",");
+}
+
+/**
+ * Medición del Resource Manager (base `es_erm`, como live desde el 21/10/2026). Todo por REFERENCIA: la contraseña del
+ * usuario `es_erm` vive solo en `MySQL.ES_ERM_PASSWORD` (generada si falta; nunca se imprime ni se copia).
+ *  - restore-drill: `ES_ERM_PASSWORD` → la usa `backup-job erm-setup` para crear o ajustar el usuario;
+ *  - core: `ERM_DATABASE_URL` (escribe el consumo);
+ *  - controlplane: la misma URL por referencia al core (lee el consumo: Resource Manager y costes).
+ */
+export const ERM_PASSWORD_VAR = "ES_ERM_PASSWORD";
+export const ERM_DB_SERVICE = "MySQL";
+const ermRef = (service: string, name: string) => "${{" + service + "." + name + "}}";
+export function ermUrlTemplate(hostVar: string, portVar: string): string {
+  return `mysql://es_erm:${ermRef(ERM_DB_SERVICE, ERM_PASSWORD_VAR)}@${ermRef(ERM_DB_SERVICE, hostVar)}:${ermRef(ERM_DB_SERVICE, portVar)}/es_erm`;
+}
+/** Variables por servicio (sin valores en claro). `coreCurrent`: la URL actual del core, que se respeta si ya existe. */
+export function meteringPlan(hostVar: string, portVar: string, coreCurrent?: string): Record<string, Record<string, string>> {
+  return {
+    "restore-drill": { [ERM_PASSWORD_VAR]: ermRef(ERM_DB_SERVICE, ERM_PASSWORD_VAR) },
+    core: { ERM_DATABASE_URL: coreCurrent || ermUrlTemplate(hostVar, portVar) },
+    controlplane: { ERM_DATABASE_URL: ermRef("core", "ERM_DATABASE_URL") },
+  };
 }

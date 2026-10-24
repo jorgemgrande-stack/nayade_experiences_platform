@@ -17,6 +17,7 @@
  *        [--crm-db es_crm] [--to-media] [--only a,b] [--apply]                     reconstrucción total (RECUPERACION_TOTAL.md)
  *   node dist-cp/backup-job.js migrate-tenants [--only a,b] [--apply]   carril de la app en cada empresa (red privada)
  *   node dist-cp/backup-job.js check-data-exports [--only a,b]          verificación (solo lectura) de 0011/0012/0013
+ *   node dist-cp/backup-job.js erm-setup [--apply]                       base de medición es_erm (idempotente; ES_ERM_PASSWORD)
  *
  * (en desarrollo: `pnpm exec tsx server/controlPlane/backupJob.ts <orden>`)
  *
@@ -32,6 +33,7 @@
  * sigue siendo válida).
  */
 import path from "node:path";
+import { runErmSetup } from "../_core/erm/setup";
 import mysql from "mysql2/promise";
 import { keyringFromEnv } from "../_core/tenantRegistry/crypto";
 import { MysqlTenantRegistryStore } from "../_core/tenantRegistry/mysqlStore";
@@ -377,6 +379,16 @@ async function main() {
       case "restore-files": {
         const id = pos[0] ?? die("Falta <empresa>");
         print(await restoreTenantFiles({ storage: sourceStorageOrDie(source), ring: backupKeyringFromEnv(process.env), copies, source, actor: actorLabel }, id, filesOutOrDie()));
+        break;
+      }
+      case "erm-setup": {
+        // Base del Resource Manager en el servidor de BD de la plataforma (el primero o el por defecto), en la red privada
+        if (!servers) die("Falta PROVISIONING_DB_SERVERS o PROVISIONING_DB_ADMIN_URL (servidor de la base de medición)");
+        const alias = process.env.PROVISIONING_DB_DEFAULT_SERVER || servers.aliases()[0];
+        const srv = servers.server(alias);
+        const res = await runErmSetup({ admin: servers.admin(alias), host: srv.host, port: srv.port, password: process.env.ES_ERM_PASSWORD, apply: flag("--apply") });
+        print({ servidor: alias, ...res });
+        if (res.grants === "excess" || (res.probe && !(res.probe.write && res.probe.deleteDenied && res.probe.ddlDenied && res.probe.otherDbDenied))) process.exitCode = 1;
         break;
       }
       case "restore-tenant": {
