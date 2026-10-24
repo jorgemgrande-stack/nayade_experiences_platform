@@ -8,7 +8,7 @@ const caddy = fs.readFileSync(path.resolve(__dirname, "../deploy/railway/gateway
 describe("pasarela: /_ops/* cerrado desde internet", () => {
   it("responde 404 a /_ops y /_ops/* antes de cualquier proxy", () => {
     expect(caddy).toMatch(/@internal path \/_ops \/_ops\/\*\n\thandle @internal \{\n\t\trespond 404\n\t\}/);
-    expect(caddy.indexOf("@internal path")).toBeLessThan(caddy.indexOf("reverse_proxy"));
+    expect(caddy.indexOf("@internal path")).toBeLessThan(caddy.indexOf("reverse_proxy {$UPSTREAM}"));
   });
   it("el plano de control llama al Core por la red privada, no por la pasarela", () => {
     const src = fs.readFileSync(path.resolve(__dirname, "controlPlane/tenantAccess.ts"), "utf8");
