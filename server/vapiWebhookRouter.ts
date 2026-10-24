@@ -24,6 +24,7 @@ import { integrationEnv } from "./_core/tenantConfig";
 import { isMultiTenant } from "./_core/tenant";
 import { checkWebhookSecret, webhookSecretMatches } from "./_core/webhookSecret";
 import { placeholderEmail } from "../shared/placeholderEmail";
+import { recordSync } from "./_core/credentials/health";
 import { publicBaseUrl } from "./_core/productIdentity";
 
 const _pool = legacyPool();
@@ -152,6 +153,7 @@ vapiWebhookRouter.post("/api/vapi/webhook", express.json({ limit: "1mb" }), asyn
       return res.status(401).json({ ok: false, error: "Unauthorized" });
     }
   }
+  if (isMultiTenant()) void recordSync("vapi", true, "Webhook de llamadas recibido (secreto correcto)").catch(() => undefined);
 
   const payload = req.body ?? {};
 

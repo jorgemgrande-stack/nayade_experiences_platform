@@ -20,7 +20,7 @@ import express from "express";
 import { eq, desc, and, sql } from "drizzle-orm";
 import { ghlConversations, ghlMessages, ghlWebhookEvents, siteSettings } from "../../drizzle/schema";
 import { ghlInboxEmitter } from "../ghlInboxEvents";
-import { getTenantIdOrDefault } from "../_core/tenant";
+import { getTenantIdOrDefault, isMultiTenant } from "../_core/tenant";
 import rateLimit from "express-rate-limit";
 import { requireStaff, getAuthUser } from "../_core/expressAuth";
 import type { Response } from "express";
@@ -28,6 +28,7 @@ import { legacyDb, legacyPool } from "../_core/legacyDb";
 import { integrationEnv } from "../_core/tenantConfig";
 import { revealLegacySecret } from "../_core/credentials/legacyFields";
 import { checkWebhookSecret } from "../_core/webhookSecret";
+import { recordSync } from "../_core/credentials/health";
 import { companyName } from "../tenantBrand";
 
 const _pool = legacyPool();
@@ -550,6 +551,7 @@ ghlInboxRouter.post(
       log("warn", "Webhook con secreto inválido — ignorado silenciosamente");
       return res.status(200).json({ ok: true }); // Siempre 200 para evitar reintentos de GHL
     }
+    if (isMultiTenant()) void recordSync("ghl", true, "Webhook de la bandeja recibido (secreto correcto)").catch(() => undefined);
 
     const payload = req.body ?? {};
     const eventType = extractEventType(payload);
