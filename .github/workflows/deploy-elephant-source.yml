@@ -201,7 +201,7 @@ jobs:
         run: |
           if [ "${ES_ENV}" != "live" ]; then echo "El dominio de plataforma de pruebas solo existe en live"; exit 1; fi
           case "${ES_ACTION}" in
-            dominio-plataforma-live-estado) pnpm exec tsx scripts/deploy/esRailway.ts platform-domain --env "${ES_ENV}" ;;
+            dominio-plataforma-live-estado) pnpm exec tsx scripts/deploy/esRailway.ts platform-domain --env "${ES_ENV}" --operaciones ;;
             dominio-plataforma-live-crear) pnpm exec tsx scripts/deploy/esRailway.ts platform-domain --env "${ES_ENV}" --apply ;;
             dominio-plataforma-live-activar) pnpm exec tsx scripts/deploy/esRailway.ts platform-domain --env "${ES_ENV}" --variables ;;
           esac
