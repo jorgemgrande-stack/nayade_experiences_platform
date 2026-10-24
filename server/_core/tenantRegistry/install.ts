@@ -23,7 +23,7 @@ import { createTenantRuntime, type TenantRuntime } from "./runtime";
 import { setJobAdminTenantLister, setJobPrelude, setJobTenantLister } from "./scheduler";
 import { shadowMiddleware } from "./shadow";
 import { configureHealthChecks } from "../health";
-import { getTenantDatabase } from "../dbRegistry";
+import { getTenantDatabase, leaseTenantDatabase } from "../dbRegistry";
 import { sql } from "drizzle-orm";
 import { bindTenantMiddleware, resolveTenantMiddleware } from "./tenantMiddleware";
 import { centralLoginHost, createCentralAuthRouter, tenantUserFinder } from "../centralAuth";
@@ -32,6 +32,7 @@ import { passwordFingerprint } from "../../localAuth";
 import { requestPasswordReset } from "../../passwordReset";
 import { createOpsAccessRouter } from "../opsAccess/router";
 import { runIntegrationAction } from "../opsAccess/integrations";
+import { modulesTechnicalReport } from "../modules/technical";
 import { runAccessAction } from "../opsAccess/actions";
 
 export function installTenantResolution(app: Express, env: NodeJS.ProcessEnv = process.env): TenantRuntime | null {
@@ -88,6 +89,15 @@ export function installTenantResolution(app: Express, env: NodeJS.ProcessEnv = p
               await Promise.all([warmConfigCache(), warmIntegrationCreds(), warmTenantIdentity()]);
               // Integraciones (estado y comprobación de solo lectura) o accesos, según la acción firmada
               if (act === "integrations" || act === "integration_check") return runIntegrationAction(act, ctx.provider, ctx.operator);
+              // Estado técnico de los módulos (solo lectura): versiones, compatibilidad, migraciones y errores de carga
+              if (act === "modules") {
+                const lease = await leaseTenantDatabase().catch(() => null);
+                try {
+                  return { ok: true as const, action: act, modules: await modulesTechnicalReport(id, lease?.pool ?? null) };
+                } finally {
+                  lease?.release();
+                }
+              }
               return runAccessAction(act, uid, confirm);
             }),
         }),

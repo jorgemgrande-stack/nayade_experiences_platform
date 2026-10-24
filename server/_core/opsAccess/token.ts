@@ -12,9 +12,9 @@ import { SignJWT, jwtVerify } from "jose";
 
 export const OPS_ACCESS_AUDIENCE = "elephant-source:ops-access";
 export const OPS_ACCESS_PATH = "/_ops/access";
-export const OPS_ACCESS_ACTIONS = ["list", "reset", "invite", "unlock", "activate", "deactivate", "revoke", "integrations", "integration_check"] as const;
+export const OPS_ACCESS_ACTIONS = ["list", "reset", "invite", "unlock", "activate", "deactivate", "revoke", "integrations", "integration_check", "modules"] as const;
 /** Acciones sin usuario de la empresa (todas las demás exigen `uid`). */
-const NO_USER_ACTIONS: readonly string[] = ["list", "integrations", "integration_check"];
+const NO_USER_ACTIONS: readonly string[] = ["list", "integrations", "integration_check", "modules"];
 const PROVIDER_RE = /^[a-z][a-z_]{1,31}$/;
 export type OpsAccessAction = (typeof OPS_ACCESS_ACTIONS)[number];
 const MAX_TTL_SECONDS = 120;

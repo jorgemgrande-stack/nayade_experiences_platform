@@ -30,6 +30,12 @@ export interface LoadReport {
 }
 
 const loadedModules: LoadedModule[] = [];
+/** Fallos de la última carga (para la ficha técnica de módulos): ruta, motivo y cuándo. */
+let lastFailures: Array<{ spec: string; error: string; at: string }> = [];
+
+export function getModuleLoadFailures(): Array<{ spec: string; error: string; at: string }> {
+  return lastFailures.slice();
+}
 
 /** Módulos externos cargados en este proceso. */
 export function getLoadedModules(): LoadedModule[] {
@@ -39,6 +45,7 @@ export function getLoadedModules(): LoadedModule[] {
 /** Solo pruebas. */
 export function _resetLoadedModulesForTests(): void {
   loadedModules.length = 0;
+  lastFailures = [];
 }
 
 const context: ModuleContext = {
@@ -87,6 +94,8 @@ export async function loadModules(
       report.failed.push({ spec, error: e instanceof Error ? e.message.slice(0, 200) : "error" });
     }
   }
+  const at = new Date().toISOString();
+  lastFailures = report.failed.map((f) => ({ ...f, at }));
   return report;
 }
 
