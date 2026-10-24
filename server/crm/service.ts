@@ -33,6 +33,7 @@ import {
   type LeadStatus,
   type Opportunity,
   type OpportunityStage,
+  type TaskPriority,
 } from "./types";
 
 export interface ContractActivationPort {
@@ -87,6 +88,8 @@ const STAGE_NAME: Record<OpportunityStage, string> = {
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MODULE_RE = /^[a-z][a-z0-9_]{1,31}$/;
 const SCAN_LIMIT = 5000;
+/** Responsable de una tarea: texto recortado (como `owner`); vacío = sin asignar. */
+const cleanAssignee = (v: string | null | undefined): string | null => (v && v.trim() ? v.trim().slice(0, 100) : null);
 
 const clean = (s: string | null | undefined, max = 300): string | null => {
   const t = (s ?? "").trim();
@@ -1026,7 +1029,14 @@ export class CrmService {
 
   // ── Actividad y seguimiento ────────────────────────────────────────────────
 
-  async log(entityType: EntityType, entityId: number, kind: ActivityKind, summary: string, author: string, opts: { dueAt?: number } = {}): Promise<Activity> {
+  async log(
+    entityType: EntityType,
+    entityId: number,
+    kind: ActivityKind,
+    summary: string,
+    author: string,
+    opts: { dueAt?: number; assignee?: string | null; priority?: TaskPriority } = {},
+  ): Promise<Activity> {
     return this.store.insert("activities", {
       entityType,
       entityId,
@@ -1035,13 +1045,37 @@ export class CrmService {
       dueAt: opts.dueAt ?? null,
       doneAt: null,
       author: author.slice(0, 100),
+      assignee: kind === "task" ? cleanAssignee(opts.assignee) : null,
+      priority: kind === "task" ? (opts.priority ?? "normal") : "normal",
       createdAt: this.now(),
     });
   }
 
-  async addTask(entityType: EntityType, entityId: number, summary: string, dueAt: number, author: string): Promise<Activity> {
+  async addTask(
+    entityType: EntityType,
+    entityId: number,
+    summary: string,
+    dueAt: number,
+    author: string,
+    opts: { assignee?: string | null; priority?: TaskPriority } = {},
+  ): Promise<Activity> {
     if (!Number.isFinite(dueAt)) throw new CrmError("invalid_input", "Fecha no válida");
-    return this.log(entityType, entityId, "task", summary, author, { dueAt });
+    return this.log(entityType, entityId, "task", summary, author, { dueAt, ...opts });
+  }
+
+  /** Reasignar, cambiar la prioridad, la fecha o el texto de una tarea pendiente (una hecha no se reabre aquí). */
+  async updateTask(id: number, patch: { assignee?: string | null; priority?: TaskPriority; dueAt?: number; summary?: string }): Promise<Activity> {
+    const a = await this.must("activities", id);
+    if (a.kind !== "task") throw new CrmError("invalid_state", "No es una tarea");
+    if (a.doneAt !== null) throw new CrmError("invalid_state", "La tarea ya está hecha");
+    if (patch.dueAt !== undefined && !Number.isFinite(patch.dueAt)) throw new CrmError("invalid_input", "Fecha no válida");
+    const next: Partial<Activity> = {};
+    if (patch.assignee !== undefined) next.assignee = cleanAssignee(patch.assignee);
+    if (patch.priority !== undefined) next.priority = patch.priority;
+    if (patch.dueAt !== undefined) next.dueAt = patch.dueAt;
+    if (patch.summary !== undefined) next.summary = patch.summary.slice(0, 1000);
+    if (!Object.keys(next).length) return a;
+    return this.store.update("activities", id, next);
   }
 
   async completeTask(id: number): Promise<Activity> {
@@ -1051,13 +1085,17 @@ export class CrmService {
     return this.store.update("activities", id, { doneAt: this.now() });
   }
 
-  async tasks(opts: { author?: string; until?: number; includeDone?: boolean } = {}): Promise<Activity[]> {
+  async tasks(opts: { author?: string; until?: number; includeDone?: boolean; assignee?: string | null; priority?: TaskPriority } = {}): Promise<Activity[]> {
     const all = await this.store.list("activities", { kind: "task" }, { limit: SCAN_LIMIT });
+    const rank: Record<TaskPriority, number> = { high: 0, normal: 1, low: 2 };
     return all
       .filter((a) => (opts.includeDone ? true : a.doneAt === null))
       .filter((a) => !opts.author || a.author === opts.author)
+      // assignee: null = sin asignar; texto = de ese responsable
+      .filter((a) => opts.assignee === undefined || (opts.assignee === null ? !a.assignee : a.assignee === opts.assignee))
+      .filter((a) => !opts.priority || (a.priority ?? "normal") === opts.priority)
       .filter((a) => opts.until === undefined || (a.dueAt ?? Infinity) <= opts.until)
-      .sort((a, b) => (a.dueAt ?? Infinity) - (b.dueAt ?? Infinity));
+      .sort((a, b) => (a.dueAt ?? Infinity) - (b.dueAt ?? Infinity) || rank[a.priority ?? "normal"] - rank[b.priority ?? "normal"]);
   }
 
   async timeline(entityType: EntityType, entityId: number): Promise<Activity[]> {

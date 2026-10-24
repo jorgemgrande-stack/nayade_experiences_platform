@@ -49,6 +49,15 @@ describe.skipIf(!URL_)("CRM con MySQL real", () => {
     await admin?.end();
   });
 
+  it("tareas con responsable y prioridad (migración 0024)", async () => {
+    const co = await crm.createCompany({ name: "Tareas MySQL" }, "t");
+    const t = await crm.addTask("company", co.id, "Llamar", Date.now() + 1000, "t", { assignee: "Laura", priority: "high" });
+    expect(t).toMatchObject({ assignee: "Laura", priority: "high" });
+    const u = await crm.updateTask(t.id, { assignee: null, priority: "low" });
+    expect(u).toMatchObject({ assignee: null, priority: "low" });
+    expect((await crm.tasks({ assignee: null, priority: "low" })).map((x) => x.id)).toContain(t.id);
+  });
+
   it("flujo lead → empresa → oportunidad → contrato activo", async () => {
     const lead = await crm.createLead({ name: "Ana Ñ", email: "ana@mysql.example", companyName: "Empresa Ñ" }, "t");
     const r = await crm.convertLead(lead.id, { opportunity: { title: "Alta", amountCents: 250000 } }, "t");

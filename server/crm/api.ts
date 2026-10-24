@@ -446,17 +446,27 @@ export function createCrmRouter(
     const b = z.object({
       entityType: z.enum(["lead", "company", "contact", "opportunity", "contract"]), entityId: id,
       kind: z.enum(["call", "email", "meeting", "note", "task"]), summary: z.string().min(1).max(1000), dueAt: time.optional(),
+      assignee: nullStr(100).optional(), priority: z.enum(["low", "normal", "high"]).optional(),
     }).parse(req.body);
     // La actividad solo se registra sobre una entidad existente
     if (!(await store.get(ENTITY_TABLE[b.entityType], b.entityId))) throw new CrmError("not_found", "Entidad no encontrada");
     const a = b.kind === "task" && b.dueAt
-      ? await crm.addTask(b.entityType, b.entityId, b.summary, b.dueAt, who(req))
+      ? await crm.addTask(b.entityType, b.entityId, b.summary, b.dueAt, who(req), { assignee: b.assignee, priority: b.priority })
       : await crm.log(b.entityType, b.entityId, b.kind, b.summary, who(req), { dueAt: b.dueAt });
     res.status(201).json({ activity: a });
   }));
   r.get("/tasks", requireScope("crm:read"), wrap(async (req, res) => {
     const until = req.query.until ? z.coerce.number().int().min(0).parse(req.query.until) : undefined;
-    res.json({ tasks: await crm.tasks({ until, includeDone: req.query.done === "1" }) });
+    // assignee: nombre del responsable, o «none» para las tareas sin asignar
+    const f = z.object({ assignee: z.string().trim().min(1).max(100).optional(), priority: z.enum(["low", "normal", "high"]).optional() }).parse(req.query);
+    res.json({ tasks: await crm.tasks({ until, includeDone: req.query.done === "1", assignee: f.assignee === undefined ? undefined : f.assignee === "none" ? null : f.assignee, priority: f.priority }) });
+  }));
+  r.patch("/tasks/:id", requireScope("crm:write"), wrap(async (req, res) => {
+    const b = z
+      .object({ assignee: nullStr(100).optional(), priority: z.enum(["low", "normal", "high"]).optional(), dueAt: time.optional(), summary: z.string().trim().min(1).max(1000).optional() })
+      .strict()
+      .parse(req.body ?? {});
+    res.json({ task: await crm.updateTask(id.parse(req.params.id), b) });
   }));
   r.post("/tasks/:id/done", requireScope("crm:write"), wrap(async (req, res) => void res.json({ task: await crm.completeTask(id.parse(req.params.id)) })));
 
