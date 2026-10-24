@@ -6,9 +6,16 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import crypto from "node:crypto";
 import mysql from "mysql2/promise";
-import { grantsState, runErmSetup } from "./_core/erm/setup";
+import { USAGE_TABLE_DDL, grantsState, runErmSetup, usageTableDdlFromFile } from "./_core/erm/setup";
 
 const URL_ = process.env.REGISTRY_TEST_DATABASE_URL;
+
+describe("DDL de la tabla de uso", () => {
+  it("el DDL del código coincide con db/erm/0000_usage.sql (la imagen de restore-drill no lleva db/erm)", () => {
+    const norm = (x: string) => x.replace(/\s+/g, " ").trim();
+    expect(norm(USAGE_TABLE_DDL)).toBe(norm(usageTableDdlFromFile()));
+  });
+});
 
 describe("grantsState (lógica pura)", () => {
   it("exactamente SELECT, INSERT y UPDATE sobre es_erm.usage_hourly", () => {

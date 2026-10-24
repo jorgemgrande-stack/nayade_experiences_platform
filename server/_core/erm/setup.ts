@@ -24,8 +24,21 @@ export interface ErmSetupResult {
   last24h?: Array<{ tenant: string; metrics: number; rows: number; lastHour: string }>;
 }
 
-/** DDL de la tabla (el mismo fichero que ya usa live), sin comentarios. */
-export function usageTableDdl(root = process.cwd()): string {
+/**
+ * DDL de la tabla, EN EL CÓDIGO: la imagen de restore-drill no lleva `db/erm/` (production falló al buscar el fichero,
+ * 24/10/2026). Una prueba exige que coincida con `db/erm/0000_usage.sql`, que sigue siendo la referencia.
+ */
+export const USAGE_TABLE_DDL = `CREATE TABLE IF NOT EXISTS usage_hourly (
+  tenant_id  VARCHAR(63)  NOT NULL,
+  metric     VARCHAR(64)  NOT NULL,
+  hour_start TIMESTAMP(3) NOT NULL,
+  quantity   DOUBLE       NOT NULL DEFAULT 0,
+  PRIMARY KEY (tenant_id, metric, hour_start),
+  KEY idx_usage_metric_hour (metric, hour_start)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`;
+
+/** DDL del fichero de referencia sin comentarios (para comprobar que el del código coincide). */
+export function usageTableDdlFromFile(root = process.cwd()): string {
   const raw = fs.readFileSync(path.resolve(root, "db/erm/0000_usage.sql"), "utf8");
   return raw
     .replace(/^--.*$/gm, "")
@@ -51,7 +64,7 @@ export function grantsState(grants: string[]): "ok" | "missing" | "excess" {
   return ["SELECT", "INSERT", "UPDATE"].every((p) => privs.has(p)) ? "ok" : "missing";
 }
 
-export async function runErmSetup(o: { admin: mysql.Pool; host: string; port: number; password: string | undefined; apply: boolean; root?: string }): Promise<ErmSetupResult> {
+export async function runErmSetup(o: { admin: mysql.Pool; host: string; port: number; password: string | undefined; apply: boolean }): Promise<ErmSetupResult> {
   if (o.apply && (!o.password || o.password.length < 24)) throw new Error("ES_ERM_PASSWORD no está definida o es demasiado corta (mínimo 24 caracteres)");
   const [dbs] = await o.admin.query<mysql.RowDataPacket[]>("SELECT SCHEMA_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = ?", [ERM_DATABASE]);
   const hasDb = dbs.length > 0;
@@ -90,7 +103,7 @@ export async function runErmSetup(o: { admin: mysql.Pool; host: string; port: nu
     const c = await o.admin.getConnection();
     try {
       await c.query(`USE \`${ERM_DATABASE}\``);
-      for (const s of usageTableDdl(o.root).split(";\n")) await c.query(s);
+      await c.query(USAGE_TABLE_DDL);
     } finally {
       c.release();
     }
