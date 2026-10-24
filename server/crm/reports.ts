@@ -21,6 +21,33 @@ export interface ReportData {
 }
 
 export const madridMonth = (ms: number) => madridDate(new Date(ms)).slice(0, 7);
+
+/** Desfase de Madrid (ms) en un instante: hora local − UTC. */
+function madridOffset(t: number): number {
+  const p = Object.fromEntries(
+    new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Madrid", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" })
+      .formatToParts(t)
+      .map((x) => [x.type, x.value]),
+  );
+  return Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute, +p.second) - Math.floor(t / 1000) * 1000;
+}
+
+/**
+ * Instante UTC de las 00:00 de Madrid de un día (AAAA-MM-DD). Se calcula con el desfase de ESA medianoche, no con el
+ * del mediodía: el día del cambio de hora de octubre la medianoche aún es de verano (UTC+2) y el mediodía, de invierno.
+ */
+export function madridMidnight(iso: string): number {
+  const base = Date.parse(`${iso}T00:00:00Z`);
+  let t = base - madridOffset(base);
+  t = base - madridOffset(t);
+  return t;
+}
+
+/** Periodo [desde las 00:00 del primer día, hasta las 00:00 del día siguiente al último) en hora de Madrid. */
+export function madridDayRange(from: string, to: string): { from: number; to: number } {
+  const next = new Date(Date.parse(`${to}T12:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
+  return { from: madridMidnight(from), to: madridMidnight(next) };
+}
 const inRange = (t: number | null | undefined, from: number, to: number) => t !== null && t !== undefined && t >= from && t < to;
 const DAY = 86_400_000;
 

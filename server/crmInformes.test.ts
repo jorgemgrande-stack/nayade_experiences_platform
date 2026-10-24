@@ -3,7 +3,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import crypto from "node:crypto";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
-import { crmReports, madridMonth, toCsv } from "./crm/reports";
+import { crmReports, madridMonth, toCsv, madridDayRange, madridMidnight } from "./crm/reports";
 import { CrmService } from "./crm/service";
 import { MemoryCrmStore } from "./crm/store";
 import { createControlPlaneApp } from "./controlPlane/api";
@@ -141,5 +141,28 @@ describe("informes: API", () => {
     expect((await get(`/reports/export?kind=contactos&from=2026-01-01&to=${today}`, READ)).status).toBe(400);
     expect((await get(`/reports?from=2026-01-01&to=${today}`, OTHER)).status).toBe(403);
     expect((await get(`/reports?from=2026-01-01&to=${today}`)).status).toBe(401);
+  });
+});
+
+describe("periodos en hora de Madrid, también el día del cambio de hora", () => {
+  const iso = (t: number) => new Date(t).toISOString();
+  it("día normal: 00:00 de Madrid y 24 horas", () => {
+    expect(iso(madridMidnight("2026-10-20"))).toBe("2026-10-19T22:00:00.000Z");
+    const r = madridDayRange("2026-10-20", "2026-10-20");
+    expect((r.to - r.from) / 3_600_000).toBe(24);
+  });
+  it("25/10/2026 (fin del horario de verano): empieza a las 22:00 UTC del 24 y dura 25 horas", () => {
+    expect(iso(madridMidnight("2026-10-25"))).toBe("2026-10-24T22:00:00.000Z");
+    const r = madridDayRange("2026-10-25", "2026-10-25");
+    expect(iso(r.to)).toBe("2026-10-25T23:00:00.000Z");
+    expect((r.to - r.from) / 3_600_000).toBe(25);
+    // Un registro de las 00:30 de Madrid del día 25 (22:30 UTC del 24) está dentro
+    const t = Date.parse("2026-10-24T22:30:00Z");
+    expect(t >= r.from && t < r.to).toBe(true);
+  });
+  it("28/03/2027 (inicio del horario de verano): dura 23 horas", () => {
+    expect(iso(madridMidnight("2027-03-28"))).toBe("2027-03-27T23:00:00.000Z");
+    const r = madridDayRange("2027-03-28", "2027-03-28");
+    expect((r.to - r.from) / 3_600_000).toBe(23);
   });
 });
