@@ -38,6 +38,13 @@
 		respond "ok" 200
 	}
 
+	# Canales internos del Core (/_ops/*: Accesos desde el plano de control) SOLO por la red privada
+	# (core.railway.internal). Nunca desde internet, aunque exijan un token firmado de un solo uso.
+	@internal path /_ops /_ops/*
+	handle @internal {
+		respond 404
+	}
+
 	@protected {
 		not path /__gateway/health
 		not host {$PUBLIC_HOSTS:public-hosts.invalid}
