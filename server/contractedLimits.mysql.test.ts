@@ -26,7 +26,7 @@ describe.skipIf(!URL_)("límites contratados con MySQL real (registro 0013)", ()
     u.pathname = `/${DB}`;
     pool = mysql.createPool({ uri: u.toString(), connectionLimit: 5, multipleStatements: true });
     const r = await migrateRegistry(pool, path.resolve(__dirname, "../db/registry"), { dryRun: false });
-    expect(r).toMatchObject({ target: "0013", incomplete: [] });
+    expect(r).toMatchObject({ target: "0014", incomplete: [] });
     expect(r.applied).toContain("0013");
     store = new MysqlTenantLimitStore(pool);
   }, 120_000);

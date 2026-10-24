@@ -58,7 +58,7 @@ export const ESTIMATED_COST_MODEL: CostModel = {
 };
 
 const metricRe = /^[a-z][a-z0-9_.]{1,63}$/;
-const modelSchema = z
+export const costModelInputSchema = z
   .object({
     note: z.string().max(300).optional(),
     rates: z
@@ -84,7 +84,7 @@ export function costModelFromEnv(env: NodeJS.ProcessEnv): { model: CostModel; er
   const raw = env.ERM_COST_MODEL?.trim();
   if (!raw) return { model: ESTIMATED_COST_MODEL, error: null };
   try {
-    const m = modelSchema.parse(JSON.parse(raw));
+    const m = costModelInputSchema.parse(JSON.parse(raw));
     return { model: { source: "configuración", note: m.note ?? "Tarifas configuradas en ERM_COST_MODEL", currency: "EUR", rates: m.rates, sharedMonthlyCents: m.sharedMonthlyCents, sharedBasis: m.sharedBasis }, error: null };
   } catch {
     return { model: ESTIMATED_COST_MODEL, error: "ERM_COST_MODEL no es válido: se usa la estimación" };

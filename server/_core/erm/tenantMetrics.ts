@@ -33,7 +33,9 @@ export const METRIC_CATALOG: MetricDef[] = [
   { id: "users.active", label: "Usuarios activos (30 días)", unit: "count", kind: "calculated", source: "Base de la empresa: usuarios activos con inicio de sesión en los últimos 30 días", group: "usuarios" },
   { id: "users.enabled", label: "Usuarios habilitados", unit: "count", kind: "calculated", source: "Base de la empresa: usuarios no desactivados", group: "usuarios" },
   { id: "users.contracted", label: "Usuarios contratados", unit: "count", kind: "calculated", source: "Límite de usuarios del plan de la suscripción", group: "usuarios" },
-  { id: "storage.total.bytes", label: "Almacenamiento ocupado", unit: "bytes", kind: "unavailable", source: "No se mide la ocupación total del almacenamiento por empresa (solo lo escrito)", group: "almacenamiento" },
+  { id: "storage.total.bytes", label: "Almacenamiento ocupado", unit: "bytes", kind: "calculated", source: "Base de la empresa: suma de los ficheros vigentes (stored_objects; sin exportaciones de datos), en el momento", group: "almacenamiento" },
+  { id: "email.delivered.30d", label: "Correos entregados (30 días)", unit: "count", kind: "calculated", source: "Bandeja de salida de la empresa (mail_outbox): aceptados o entregados por el proveedor", group: "comunicaciones" },
+  { id: "email.problems.30d", label: "Correos con problemas (30 días)", unit: "count", kind: "calculated", source: "Bandeja de salida de la empresa: rebotados, bloqueados, con queja o fallidos", group: "comunicaciones" },
   { id: "jobs.queued", label: "Trabajos en cola", unit: "count", kind: "unavailable", source: "No hay cola por empresa medida (solo la duración de las tareas)", group: "procesamiento" },
   { id: "messaging.sms_whatsapp", label: "SMS y WhatsApp", unit: "count", kind: "unavailable", source: "Sin medición de mensajería", group: "comunicaciones" },
   { id: "integrations.outbound", label: "Llamadas a integraciones", unit: "count", kind: "unavailable", source: "Sin medición de llamadas salientes (GHL, webhooks)", group: "integraciones" },
@@ -50,7 +52,7 @@ export interface TenantMetric extends MetricDef {
 
 export interface TenantDbProbe {
   /** Tamaño de la base (datos + índices) y usuarios, con las credenciales PROPIAS de la empresa. */
-  (tenantId: string): Promise<{ dbSizeBytes: number; usersEnabled: number; usersActive30d: number } | null>;
+  (tenantId: string): Promise<{ dbSizeBytes: number; usersEnabled: number; usersActive30d: number; storageBytes?: number | null; emailDelivered30d?: number | null; emailProblems30d?: number | null } | null>;
 }
 
 export async function tenantMetrics(
@@ -86,7 +88,15 @@ export async function tenantMetrics(
       return seats === null ? { ...m, value: null, missing: "Sin límite técnico (según contrato)" } : { ...m, value: seats };
     }
     if (!probe) return { ...m, value: null, missing: "No se pudo consultar la base de la empresa" };
-    const v = m.id === "db.size.bytes" ? probe.dbSizeBytes : m.id === "users.active" ? probe.usersActive30d : probe.usersEnabled;
+    const v =
+      m.id === "db.size.bytes" ? probe.dbSizeBytes
+      : m.id === "users.active" ? probe.usersActive30d
+      : m.id === "users.enabled" ? probe.usersEnabled
+      : m.id === "storage.total.bytes" ? probe.storageBytes
+      : m.id === "email.delivered.30d" ? probe.emailDelivered30d
+      : m.id === "email.problems.30d" ? probe.emailProblems30d
+      : undefined;
+    if (v === undefined || v === null) return { ...m, value: null, missing: "La base de la empresa aún no tiene este dato" };
     return { ...m, value: v };
   });
   return { metrics, measurement: d.usage ? "ok" : "not_configured", days, daily, trend };
@@ -133,7 +143,27 @@ export function mysqlTenantDbProbe(getDsn: (tenantId: string) => Promise<string 
       const [u] = (await c.query(
         "SELECT SUM(isActive = 1) AS enabled, SUM(isActive = 1 AND lastSignedIn >= NOW() - INTERVAL 30 DAY AND lastSignedIn > createdAt + INTERVAL 2 SECOND) AS active FROM users",
       )) as [Array<{ enabled: number | string | null; active: number | string | null }>, unknown];
-      return { dbSizeBytes: Number(size[0]?.b ?? 0), usersEnabled: Number(u[0]?.enabled ?? 0), usersActive30d: Number(u[0]?.active ?? 0) };
+      // Tablas de módulos posteriores al alta de algunas empresas: sin ellas, el dato queda «sin dato» (nunca 0 inventado)
+      const optional = async (sql: string): Promise<Array<Record<string, unknown>> | null> => {
+        try {
+          return ((await c.query(sql)) as [Array<Record<string, unknown>>, unknown])[0];
+        } catch (e) {
+          if (/ER_NO_SUCH_TABLE|doesn't exist|ER_BAD_FIELD/i.test(String((e as { code?: string }).code ?? "") + String((e as Error).message))) return null;
+          throw e;
+        }
+      };
+      const st = await optional("SELECT COALESCE(SUM(size_bytes), 0) AS n FROM stored_objects WHERE status IN ('pending', 'active') AND category <> 'data-export'");
+      const ml = await optional(
+        "SELECT SUM(status IN ('accepted','delivered')) AS ok, SUM(status IN ('bounced','soft_bounced','blocked','complained','failed')) AS bad FROM mail_outbox WHERE created_at >= (UNIX_TIMESTAMP() - 30 * 86400) * 1000",
+      );
+      return {
+        dbSizeBytes: Number(size[0]?.b ?? 0),
+        usersEnabled: Number(u[0]?.enabled ?? 0),
+        usersActive30d: Number(u[0]?.active ?? 0),
+        storageBytes: st ? Number(st[0]?.n ?? 0) : null,
+        emailDelivered30d: ml ? Number(ml[0]?.ok ?? 0) : null,
+        emailProblems30d: ml ? Number(ml[0]?.bad ?? 0) : null,
+      };
     } finally {
       await c.end().catch(() => undefined);
     }

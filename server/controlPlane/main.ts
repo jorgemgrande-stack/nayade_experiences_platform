@@ -26,6 +26,7 @@ import { crmContactOf, runUsageNotices } from "../commerce/usageNotices";
 import { choosePublicDomain } from "../_core/tenantIdentity";
 import { MysqlUsageStore } from "../_core/erm/usage";
 import { costModelFromEnv } from "../_core/erm/costs";
+import { MysqlCostModelStore } from "../_core/erm/costModelStore";
 import { keyringFromEnv } from "../_core/tenantRegistry/crypto";
 import { MysqlTenantRegistryStore } from "../_core/tenantRegistry/mysqlStore";
 import { TenantRegistryService } from "../_core/tenantRegistry/service";
@@ -293,6 +294,10 @@ async function main() {
   const limitsReady = await pool.query("SELECT 1 FROM tenant_entitlement_limits LIMIT 0").then(() => true, () => false);
   const limits = limitsReady ? new MysqlTenantLimitStore(pool) : undefined;
   console.log(JSON.stringify({ ctx: "Limits", enabled: limitsReady, ...(limitsReady ? {} : { reason: "registry_migration_0013_missing" }) }));
+  // Tarifas del Resource Manager editables (registro 0014): sin la migración, solo las del entorno o la estimación
+  const costRatesReady = await pool.query("SELECT 1 FROM erm_cost_model LIMIT 0").then(() => true, () => false);
+  const costModelStore = costRatesReady ? new MysqlCostModelStore(pool) : undefined;
+  console.log(JSON.stringify({ ctx: "CostRates", editable: costRatesReady, ...(costRatesReady ? {} : { reason: "registry_migration_0014_missing" }) }));
   // Sedes y entidades fiscales: solo si la migración 0009 del registro está aplicada
   const organizationReady = await pool.query("SELECT 1 FROM tenant_sites LIMIT 0").then(() => true, () => false);
   const organization = organizationReady ? new MysqlOrganizationStore(pool) : undefined;
@@ -486,6 +491,7 @@ async function main() {
     provisioning,
     usage,
     costModel: costModelFromEnv(process.env),
+    costModelStore,
     quotaDefaults: parseDefaultQuotas(process.env.ERM_DEFAULT_QUOTAS) ?? undefined,
     platformTarget: process.env.CP_PLATFORM_TARGET ?? "",
     platformDomain,
