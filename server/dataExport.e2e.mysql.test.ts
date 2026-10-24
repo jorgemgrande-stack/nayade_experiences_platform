@@ -111,8 +111,15 @@ describe.skipIf(!URL_)("exportación de datos de punta a punta (aplicación real
     const old = Date.now() - 3600_000;
     await ess.sql("a", "INSERT INTO data_exports (requested_by, status, requested_at, attempts, started_at, heartbeat_at) VALUES (1, 'pending', ?, 1, ?, ?)", [old, old, old]);
     const [row] = await ess.sql("a", "SELECT id FROM data_exports WHERE status = 'pending'");
-    await tick();
-    const [after] = await ess.sql("a", "SELECT status, attempts FROM data_exports WHERE id = ?", [row.id]);
+    // Varias pasadas como en el resto del fichero: una sola podía coincidir con el cerrojo de la tarea y dejarla
+    // pendiente (prueba inestable). Lo que se comprueba no cambia: se retoma una vez y termina.
+    let after: { status: string; attempts: number } | undefined;
+    for (let i = 0; i < 20; i++) {
+      await tick();
+      [after] = await ess.sql("a", "SELECT status, attempts FROM data_exports WHERE id = ?", [row.id]);
+      if (after?.status !== "pending") break;
+      await new Promise((r) => setTimeout(r, 200));
+    }
     expect(after).toMatchObject({ status: "ready", attempts: 2 });
   });
 
