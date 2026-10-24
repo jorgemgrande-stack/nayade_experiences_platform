@@ -49,3 +49,11 @@ export function assertPlatformSubdomain(domain: string, platformDomains: readonl
   if (!LABEL.test(label)) throw new RegistryError("invalid_domain", "La etiqueta del subdominio no es válida (minúsculas, cifras y guiones; máx. 63)");
   if (isReservedPlatformLabel(label)) throw new RegistryError("invalid_domain", "Etiqueta reservada para Big Elephant");
 }
+
+/**
+ * Dominios en los que el proveedor NO enruta subdominios arbitrarios (cada `<x>.up.railway.app` exige un servicio propio):
+ * una empresa dada de alta bajo ellos queda registrada pero inaccesible. Las altas lo avisan; la solución es un comodín
+ * propio en la pasarela compartida (`*.app.bigelephant.es`, `*.live.bigelephant.es`).
+ */
+export const NON_WILDCARD_PLATFORM_SUFFIXES: readonly string[] = ["up.railway.app", "railway.app"];
+export const isNonWildcardPlatformDomain = (d: string | undefined): boolean => !!d && NON_WILDCARD_PLATFORM_SUFFIXES.some((x) => d === x || d.endsWith(`.${x}`));
