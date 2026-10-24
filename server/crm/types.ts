@@ -17,6 +17,9 @@ export type OpportunityStage =
   | "lost";
 export type ContractStatus = "draft" | "sent" | "signed" | "active" | "cancelled";
 export type ActivityKind = "call" | "email" | "meeting" | "note" | "task";
+/** Prioridad de una tarea (db/crm/migrations/0024_crm_task_assignment.sql). */
+export type TaskPriority = "low" | "normal" | "high";
+export const TASK_PRIORITIES: TaskPriority[] = ["low", "normal", "high"];
 export type EntityType = "lead" | "company" | "contact" | "opportunity" | "contract";
 /** Estado comercial gestionado por el operador. */
 export type CompanyStatus = "active" | "inactive" | "churned";
@@ -201,6 +204,9 @@ export interface Activity {
   dueAt: number | null;
   doneAt: number | null;
   author: string;
+  /** Responsable de la tarea (nombre del operador); null = sin asignar. */
+  assignee: string | null;
+  priority: TaskPriority;
   createdAt: number;
 }
 

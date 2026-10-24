@@ -50,7 +50,7 @@ const DEFS: Record<keyof Tables, { table: string; cols: Col[] }> = {
   },
   activities: {
     table: "crm_activities",
-    cols: [t("entityType"), t("entityId"), t("kind"), t("summary"), t("dueAt"), t("doneAt"), t("author"), t("createdAt")],
+    cols: [t("entityType"), t("entityId"), t("kind"), t("summary"), t("dueAt"), t("doneAt"), t("author"), t("assignee"), t("priority"), t("createdAt")],
   },
   leadRequests: {
     table: "crm_lead_requests",

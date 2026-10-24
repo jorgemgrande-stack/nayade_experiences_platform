@@ -68,6 +68,8 @@ describe.skipIf(!URL_)("referencias de contrato (MySQL real)", () => {
       const [again] = await p.query<mysql.RowDataPacket[]>("SELECT id, reference FROM crm_contracts WHERE id IN (7, 999999) ORDER BY id");
       expect(again.map((r) => r.reference)).toEqual(["CT-MANUAL-1", "CT-2026-999999"]);
       // Un contrato nuevo (código) tras los rellenados: id siguiente y sin colisión
+      // El código corre con TODAS las migraciones aplicadas (las posteriores a la 0002 añaden columnas que usa)
+      for (const m of migrations.slice(2)) for (const st of splitStatements(m.up)) await p.query(st);
       const svc = new CrmService({
         store: new MysqlCrmStore(p),
         activation: { activate: async () => ({ tenantId: "x" }) },
