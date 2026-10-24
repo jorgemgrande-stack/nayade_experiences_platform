@@ -8,6 +8,7 @@
  *  - No expone datos empresariales de los tenants ni secretos (DSN, claves, invitaciones
  *    persistentes): solo hechos operativos del registro.
  */
+import mysql from "mysql2/promise";
 import express, { type Express, type NextFunction, type Request, type Response } from "express";
 import { BUILTIN_MODULES } from "../_core/modules/builtin";
 import type { CommercialEventDispatchQueue, CommercialEventReader } from "../commercialEvents/log";
@@ -26,6 +27,7 @@ import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import { DEFAULT_QUOTAS, type DefaultQuota } from "../_core/erm/quota";
 import { UNMEASURED, WARNING_RATIO, tenantResources, type ResourceState } from "../_core/erm/overview";
 import { ESTIMATED_COST_MODEL, tenantCosts, type CostModel } from "../_core/erm/costs";
+import { mysqlTenantDbProbe, tenantMetrics, type TenantDbProbe } from "../_core/erm/tenantMetrics";
 import { z } from "zod";
 import { RegistryError } from "../_core/tenantRegistry/contract";
 import type { TenantRegistryService } from "../_core/tenantRegistry/service";
@@ -147,6 +149,8 @@ export interface ControlPlaneDeps {
   usage?: UsageStore;
   /** Modelo de costes del Resource Manager (ERM_COST_MODEL); por defecto, la estimación. */
   costModel?: { model: CostModel; error: string | null };
+  /** Sonda de agregados de la base de cada empresa (tamaño y usuarios); por defecto, con su DSN del registro. */
+  tenantDbProbe?: TenantDbProbe;
   /** Cuotas por defecto de plataforma (ERM_DEFAULT_QUOTAS); por defecto, las del ERM. */
   quotaDefaults?: DefaultQuota[];
   /** Destino CNAME de la plataforma para verificar dominios propios. */
@@ -771,6 +775,8 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
   const quotaDefaults = d.quotaDefaults ?? DEFAULT_QUOTAS;
   const rankState: Record<ResourceState, number> = { not_applicable: 0, ok: 1, warning: 2, exceeded: 3 };
   const notConfigured = { available: false, reason: "Medición no configurada (ERM_DATABASE_URL)", unmeasured: UNMEASURED };
+  // Límite de usuarios del plan (se asigna si hay organización y suscripciones; si no, «sin información del plan»)
+  let seatLimitOf: ((tenantId: string) => Promise<number | null>) | undefined;
   router.get(
     "/tenants/:id/resources",
     requireScope("usage:read"),
@@ -780,6 +786,21 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
       if (!d.usage) return void res.json(notConfigured);
       const r = await tenantResources({ quotas: d.quotas, usage: d.usage, defaults: quotaDefaults }, id, Date.now());
       res.json({ available: true, ...r, thresholds: { warning: WARNING_RATIO, exceeded: 1 }, unmeasured: UNMEASURED });
+    }),
+  );
+  // Métricas de la empresa con su procedencia (medida / calculada / no disponible). Las calculadas leen agregados de la
+  // base de la empresa con SUS credenciales (tamaño y usuarios); nunca datos personales
+  const tenantProbe = d.tenantDbProbe ?? mysqlTenantDbProbe((id) => d.registry.getActiveDsn(id), (dsn) => mysql.createConnection({ uri: dsn, connectTimeout: 5_000 }));
+  router.get(
+    "/tenants/:id/metrics",
+    requireScope("usage:read"),
+    wrap(async (req, res) => {
+      const id = idSchema.parse(req.params.id);
+      const t = await d.reader.getTenant(id);
+      if (!t || t.status === "deleted") throw new RegistryError("not_found", "Tenant no encontrado");
+      const days = z.coerce.number().int().min(1).max(90).default(30).parse(req.query.days ?? undefined);
+      const live = !["provisioning", "archived", "deleting"].includes(t.status);
+      res.json({ tenantId: id, ...(await tenantMetrics({ usage: d.usage, probe: live ? tenantProbe : undefined, seatLimit: seatLimitOf }, id, Date.now(), days)) });
     }),
   );
   router.get(
@@ -1141,6 +1162,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
     }
     if (d.organization) {
       const org = new OrganizationService({ store: d.organization, subscriptions: d.subscriptions.store, catalog: async () => quoteCatalogFromSite(await webAdmin!.site("published")), now: d.subscriptions.now });
+      seatLimitOf = async (tenantId) => (await org.limits(tenantId)).users;
       const orgErr = (res: express.Response, e: unknown) => {
         if (e instanceof OrganizationError) return void res.status(e.code === "not_found" ? 404 : e.code === "invalid_input" ? 400 : e.code === "limit" ? 422 : 409).json({ error: e.code, message: e.message });
         throw e;
