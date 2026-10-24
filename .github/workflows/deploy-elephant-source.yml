@@ -291,11 +291,13 @@ jobs:
       - name: Publicar — live, copia y migraciones nuevas
         if: inputs.action == 'publicar' && inputs.environment == 'live' && env.ES_LIVE_MIGRATE == '1'
         run: |
-          pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --command "node dist-cp/backup-job.js run"
-          pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --command "node .mig/run.cjs registry apply"
-          pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --command "node .mig/run.cjs crm apply"
-          pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --command "node dist-cp/backup-job.js migrate-tenants --apply"
-          pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --command "node dist-cp/backup-job.js check-data-exports"
+          # Las migraciones viajan en la imagen de restore-drill: primero, la de ESTE commit (si no, no aplicaría las nuevas)
+          pnpm exec tsx scripts/deploy/esRailway.ts deploy --env "${ES_ENV}" --service restore-drill --dir "${RUNNER_TEMP}/export" --sha "${ES_DEPLOY_SHA}"
+          pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --expect-sha "${ES_DEPLOY_SHA}" --command "node dist-cp/backup-job.js run"
+          pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --expect-sha "${ES_DEPLOY_SHA}" --command "node .mig/run.cjs registry apply"
+          pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --expect-sha "${ES_DEPLOY_SHA}" --command "node .mig/run.cjs crm apply"
+          pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --expect-sha "${ES_DEPLOY_SHA}" --command "node dist-cp/backup-job.js migrate-tenants --apply"
+          pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --expect-sha "${ES_DEPLOY_SHA}" --command "node dist-cp/backup-job.js check-data-exports"
 
       - name: Publicar — controlplane, core y core-gateway (vuelta atrás automática si algo falla)
         if: inputs.action == 'publicar' && env.ES_PROD_SKIP != '1'
@@ -528,24 +530,26 @@ jobs:
       - name: "Aplicar production 1/5 — copia inmediatamente antes de migrar"
         if: inputs.action == 'aplicar-production'
         run: |
-          pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --command "node dist-cp/backup-job.js run"
+          # Las migraciones viajan en la imagen de restore-drill: primero, la de ESTE commit (si no, no aplicaría las nuevas)
+          pnpm exec tsx scripts/deploy/esRailway.ts deploy --env "${ES_ENV}" --service restore-drill --dir "${RUNNER_TEMP}/export" --sha "${ES_DEPLOY_SHA}"
+          pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --expect-sha "${ES_DEPLOY_SHA}" --command "node dist-cp/backup-job.js run"
           pnpm exec tsx scripts/deploy/esRailway.ts backup-check --env "${ES_ENV}"
 
       - name: "Aplicar production 2/5 — migraciones de plataforma (registro y CRM)"
         if: inputs.action == 'aplicar-production'
         run: |
-          pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --command "node .mig/run.cjs registry apply"
-          pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --command "node .mig/run.cjs crm apply"
-          pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --command "node .mig/run.cjs crm status"
+          pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --expect-sha "${ES_DEPLOY_SHA}" --command "node .mig/run.cjs registry apply"
+          pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --expect-sha "${ES_DEPLOY_SHA}" --command "node .mig/run.cjs crm apply"
+          pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --expect-sha "${ES_DEPLOY_SHA}" --command "node .mig/run.cjs crm status"
 
       - name: "Aplicar production 3/5 — migraciones de las empresas (canario, después Skibox, después el resto)"
         if: inputs.action == 'aplicar-production'
         run: |
-          pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --command "node dist-cp/backup-job.js migrate-tenants --only t3-empresa-demo-elephant-01 --apply"
-          pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --command "node dist-cp/backup-job.js check-data-exports --only t3-empresa-demo-elephant-01"
-          pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --command "node dist-cp/backup-job.js migrate-tenants --only t5-skibox --apply"
-          pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --command "node dist-cp/backup-job.js migrate-tenants --apply"
-          pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --command "node dist-cp/backup-job.js check-data-exports"
+          pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --expect-sha "${ES_DEPLOY_SHA}" --command "node dist-cp/backup-job.js migrate-tenants --only t3-empresa-demo-elephant-01 --apply"
+          pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --expect-sha "${ES_DEPLOY_SHA}" --command "node dist-cp/backup-job.js check-data-exports --only t3-empresa-demo-elephant-01"
+          pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --expect-sha "${ES_DEPLOY_SHA}" --command "node dist-cp/backup-job.js migrate-tenants --only t5-skibox --apply"
+          pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --expect-sha "${ES_DEPLOY_SHA}" --command "node dist-cp/backup-job.js migrate-tenants --apply"
+          pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --expect-sha "${ES_DEPLOY_SHA}" --command "node dist-cp/backup-job.js check-data-exports"
 
       - name: "Aplicar production 4/5 — desplegar plano de control, Core y pasarela"
         if: inputs.action == 'aplicar-production'
@@ -559,6 +563,9 @@ jobs:
         run: |
           pnpm exec tsx scripts/deploy/esRailway.ts health --url "https://app.bigelephant.es/" --expect 200
           pnpm exec tsx scripts/deploy/esRailway.ts health --url "https://skibox.app.bigelephant.es/login" --expect 200
+          # Diagnóstico de solo lectura en la misma ejecución aprobada: presencia (nunca valores) de SUPPORT_JWT_SECRET,
+          # ERM_DATABASE_URL y CP_CORE_INTERNAL_URL, de los que dependen Accesos y el Resource Manager
+          pnpm exec tsx scripts/deploy/esRailway.ts storage --env "${ES_ENV}"
 
       - name: Salud pública
         if: inputs.action == 'comprobar-salud'

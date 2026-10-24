@@ -86,6 +86,19 @@ async function latest(serviceIdValue: string, environmentId: string) {
 }
 
 const FINAL = new Set(["SUCCESS", "FAILED", "CRASHED", "REMOVED", "SKIPPED"]);
+/**
+ * Como waitFor, pero una espera agotada es un FALLO normal (estado «TIMEOUT»): se cancela el despliegue en curso para
+ * que no se active después y quien llama vuelve atrás como en cualquier otro fallo, en lugar de terminar sin hacerlo.
+ */
+async function waitOrCancel(serviceIdValue: string, environmentId: string, after: string | null): Promise<{ id: string; status: string }> {
+  try {
+    return await waitFor(serviceIdValue, environmentId, after);
+  } catch {
+    const pending = await latest(serviceIdValue, environmentId).catch(() => null);
+    if (pending && pending.id !== after && !FINAL.has(pending.status)) await api("mutation($id:String!){ deploymentCancel(id:$id) }", { id: pending.id }).catch(() => undefined);
+    return { id: pending?.id ?? "?", status: "TIMEOUT" };
+  }
+}
 async function waitFor(serviceIdValue: string, environmentId: string, after: string | null, timeoutMs = 25 * 60_000) {
   const t0 = Date.now();
   for (;;) {
@@ -711,10 +724,10 @@ async function main() {
       const before = (await latest(sid, sc.environmentId))?.id ?? null;
       done.push({ name, sid, prev: cur?.id ?? null });
       const r = spawnSync("railway", ["up", dir, "--path-as-root", "-s", name, "-e", env, "--detach", "-m", `${REPOSITORIES.core} ${sha}`], { encoding: "utf8", env: process.env });
-      const d = r.status === 0 ? await waitFor(sid, sc.environmentId, before) : null;
+      const d = r.status === 0 ? await waitOrCancel(sid, sc.environmentId, before) : null;
       console.log(`${name}: ${d ? `despliegue ${d.id} → ${d.status}` : `railway up falló: ${scrub(r.stderr || r.stdout || "").slice(0, 300)}`}`);
       if (d?.status !== "SUCCESS") {
-        if (d) console.log((await logs(d.id, 120)).split("\n").slice(-40).join("\n"));
+        if (d && d.status !== "TIMEOUT") console.log((await logs(d.id, 120)).split("\n").slice(-40).join("\n"));
         await rollbackAll();
         process.exit(1);
       }
@@ -752,11 +765,11 @@ async function main() {
     }
     const before = (await latest(sid, sc.environmentId))?.id ?? null;
     const r = spawnSync("railway", ["up", dir, "--path-as-root", "-s", ext.service, "-e", env, "--detach", "-m", `${ext.repo} ${sha}`], { encoding: "utf8", env: process.env });
-    const d = r.status === 0 ? await waitFor(sid, sc.environmentId, before) : null;
+    const d = r.status === 0 ? await waitOrCancel(sid, sc.environmentId, before) : null;
     console.log(`${ext.service}: ${d ? `despliegue ${d.id} → ${d.status}` : `railway up falló: ${scrub(r.stderr || r.stdout || "").slice(0, 300)}`}`);
     const ok = d?.status === "SUCCESS" && (await functional(env, ext.checks));
     if (!ok) {
-      if (d && d.status !== "SUCCESS") console.log((await logs(d.id, 120)).split("\n").slice(-40).join("\n"));
+      if (d && d.status !== "SUCCESS" && d.status !== "TIMEOUT") console.log((await logs(d.id, 120)).split("\n").slice(-40).join("\n"));
       if (curNode) console.error(`${ext.service}: vuelta atrás a ${curNode.id} → ${await rollback(sid, sc.environmentId, curNode.id)}`);
       process.exit(1);
     }
@@ -798,6 +811,17 @@ async function main() {
     const command = arg("command");
     if (!isAllowedDrill(command)) throw new Error(`orden no permitida: ${command}`);
     const sid = await serviceId("restore-drill");
+    // Las migraciones van DENTRO de la imagen de restore-drill: con una imagen anterior «aplicaría» 0 migraciones y diría
+    // que todo está al día. --expect-sha exige que la última imagen subida (los redespliegues de drill la reutilizan) sea
+    // la de ese commit; si no, se detiene sin ejecutar nada.
+    const expectSha = arg("expect-sha", false);
+    if (expectSha) {
+      const img = (await deployments(sid, sc.environmentId, 30)).map((x) => shaFromDeployMeta(x.meta, REPOSITORIES.core)).find(Boolean) ?? null;
+      if (img !== expectSha) {
+        console.error(`restore-drill tiene la imagen de ${img ? img.slice(0, 12) : "un commit desconocido"}, no la de ${expectSha.slice(0, 12)}: despliégalo antes de migrar. No se ejecuta «${command}».`);
+        process.exit(1);
+      }
+    }
     const setAndDeploy = async (start: string) => {
       const before = (await latest(sid, sc.environmentId))?.id ?? null;
       await api("mutation($s:String!,$e:String!,$i:ServiceInstanceUpdateInput!){ serviceInstanceUpdate(serviceId:$s, environmentId:$e, input:$i) }", { s: sid, e: sc.environmentId, i: { startCommand: start } });
