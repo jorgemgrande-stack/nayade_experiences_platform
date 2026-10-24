@@ -12,7 +12,7 @@ import { z } from "zod";
 import { OPS_ACCESS_PATH, signOpsAccessToken, type OpsAccessAction } from "../_core/opsAccess/token";
 
 export const DEFAULT_CORE_INTERNAL_URL = "http://core.railway.internal:3000";
-export const ACCESS_ACTIONS = ["reset", "invite", "unlock", "activate", "deactivate"] as const;
+export const ACCESS_ACTIONS = ["reset", "invite", "unlock", "activate", "deactivate", "revoke"] as const;
 export type AccessUserAction = (typeof ACCESS_ACTIONS)[number];
 
 export interface CoreAccessClient {

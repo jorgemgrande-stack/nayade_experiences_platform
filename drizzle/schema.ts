@@ -34,6 +34,8 @@ export const users = mysqlTable("users", {
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
+  // Sesiones emitidas hasta este instante revocadas (db/migrations/0014_user_sessions_revoked.sql)
+  sessionsRevokedAt: timestamp("sessionsRevokedAt"),
 });
 
 export type User = typeof users.$inferSelect;

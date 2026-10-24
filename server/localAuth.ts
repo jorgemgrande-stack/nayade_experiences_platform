@@ -60,7 +60,7 @@ export async function signSessionToken(userId: number, passwordHash?: string | n
     .sign(getSecret());
 }
 
-async function verifySessionClaims(token: string): Promise<{ userId: number; pwv?: string } | null> {
+async function verifySessionClaims(token: string): Promise<{ userId: number; pwv?: string; iat?: number } | null> {
   const secret = sessionSecret();
   if (!secret) return null;
   try {
@@ -69,10 +69,21 @@ async function verifySessionClaims(token: string): Promise<{ userId: number; pwv
     if (!sessionTenantAllowed(payload.tid)) return null;
     const id = parseInt(String(payload.sub ?? ""), 10);
     if (isNaN(id)) return null;
-    return { userId: id, pwv: typeof payload.pwv === "string" ? payload.pwv : undefined };
+    return { userId: id, pwv: typeof payload.pwv === "string" ? payload.pwv : undefined, iat: typeof payload.iat === "number" ? payload.iat : undefined };
   } catch {
     return null;
   }
+}
+
+/**
+ * ¿Sesión revocada? `iat` (segundos) frente a `sessionsRevokedAt`: se revoca todo lo emitido hasta el segundo de la
+ * revocación, incluido (un inicio de sesión en ese mismo segundo debe repetirse). Sin `iat` no se puede demostrar que
+ * sea posterior: revocada.
+ */
+export function sessionRevoked(iat: number | undefined, revokedAt: Date | null | undefined): boolean {
+  if (!revokedAt) return false;
+  if (iat === undefined) return true;
+  return iat <= Math.floor(revokedAt.getTime() / 1000);
 }
 
 export async function verifySessionToken(token: string): Promise<number | null> {
@@ -105,6 +116,8 @@ export async function getUserFromRequest(req: Request) {
   // Sesión emitida con una contraseña anterior: revocada. Los tokens previos a esta huella (sin
   // `pwv`) siguen valiendo hasta caducar, para no cerrar todas las sesiones al desplegar.
   if (user && claims.pwv && claims.pwv !== passwordFingerprint(user.passwordHash)) return null;
+  // Sesiones cerradas por el administrador central: vale solo la emitida DESPUÉS de la revocación
+  if (user && sessionRevoked(claims.iat, user.sessionsRevokedAt)) return null;
   return user;
 }
 
