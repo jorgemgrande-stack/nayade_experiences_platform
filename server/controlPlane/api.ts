@@ -139,6 +139,9 @@ import { deliverAdminInvite, withAdminInviteDelivery } from "./adminInviteDelive
 import type { IntegrationHealth } from "../_core/credentials/health";
 import type { ModulesTechnicalReport } from "../_core/modules/technical";
 import { moduleLayers } from "./tenantModulesTechnical";
+import { CostModelConflict, activeCostModel, type CostModelStore } from "../_core/erm/costModelStore";
+import { costModelInputSchema } from "../_core/erm/costs";
+import { OVERAGE_POLICY, WATCHED, collectorStatus, dailyUsage, detectAnomalies, exportDailyCsv, lastFullMadridDay } from "../_core/erm/insights";
 import { integrationStatus, mysqlIntegrationRows, type IntegrationRow } from "./tenantIntegrations";
 import { pendingCount, schemaState, tenantMigrations } from "./schemaVersions";
 
@@ -156,6 +159,8 @@ export interface ControlPlaneDeps {
   usage?: UsageStore;
   /** Modelo de costes del Resource Manager (ERM_COST_MODEL); por defecto, la estimación. */
   costModel?: { model: CostModel; error: string | null };
+  /** Tarifas editables desde Admin (registro 0014); sin ella, solo las del entorno o la estimación. */
+  costModelStore?: CostModelStore;
   /** Sonda de agregados de la base de cada empresa (tamaño y usuarios); por defecto, con su DSN del registro. */
   tenantDbProbe?: TenantDbProbe;
   /** Cuotas por defecto de plataforma (ERM_DEFAULT_QUOTAS); por defecto, las del ERM. */
@@ -951,7 +956,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
       if (!d.usage) return void res.json(notConfigured);
       const days = z.coerce.number().int().min(1).max(90).default(30).parse(req.query.days ?? undefined);
       const only = req.query.tenant === undefined ? undefined : idSchema.parse(req.query.tenant);
-      const { model, error } = d.costModel ?? { model: ESTIMATED_COST_MODEL, error: null };
+      const { model, error, origin, version } = activeCostModel(d.costModelStore ? await d.costModelStore.get() : null, d.costModel ?? { model: ESTIMATED_COST_MODEL, error: null });
       const all = (await d.reader.listTenants()).filter((t) => t.status !== "deleted");
       if (only && !all.some((t) => t.id === only)) throw new RegistryError("not_found", "Tenant no encontrado");
       const now = Date.now();
@@ -967,7 +972,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         generatedAt: now,
         days,
         currency: model.currency,
-        model: { source: model.source, note: model.note, rates: model.rates, sharedMonthlyCents: model.sharedMonthlyCents, sharedBasis: model.sharedBasis, error },
+        model: { source: model.source, origin, version, note: model.note, rates: model.rates, sharedMonthlyCents: model.sharedMonthlyCents, sharedBasis: model.sharedBasis, error },
         sharedPeriodCents: r.sharedPeriodCents,
         totals: { variableCents: Math.round(rows.reduce((s, t) => s + t.variableCents, 0) * 100) / 100, totalCents: Math.round(rows.reduce((s, t) => s + t.totalCents, 0) * 100) / 100 },
         tenants: rows,
@@ -976,6 +981,105 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
       });
     }),
   );
+  // Tarifas de coste: vigentes, de dónde salen e historial de cambios. Editar exige billing:write, motivo y la versión
+  // sobre la que se cambia (dos personas no se pisan). Sin tarifas guardadas, sigue la estimación declarada.
+  router.get(
+    "/resources/rates",
+    requireScope("usage:read"),
+    requireScope("billing:read"),
+    wrap(async (_req, res) => {
+      const stored = d.costModelStore ? await d.costModelStore.get() : null;
+      const a = activeCostModel(stored, d.costModel ?? { model: ESTIMATED_COST_MODEL, error: null });
+      res.json({
+        editable: !!d.costModelStore,
+        origin: a.origin,
+        version: a.version ?? 0,
+        model: { note: a.model.note, currency: a.model.currency, rates: a.model.rates, sharedMonthlyCents: a.model.sharedMonthlyCents, sharedBasis: a.model.sharedBasis },
+        error: a.error,
+        updatedBy: stored?.updatedBy ?? null,
+        updatedAt: stored?.updatedAt ?? null,
+        history: d.costModelStore ? await d.costModelStore.history(20) : [],
+      });
+    }),
+  );
+  router.put(
+    "/resources/rates",
+    requireScope("billing:write"),
+    wrap(async (req, res) => {
+      if (!d.costModelStore) return void res.status(501).json({ error: "not_available", message: "Tarifas editables no disponibles: falta la migración 0014 del registro" });
+      const b = z.object({ model: costModelInputSchema, expectedVersion: z.number().int().min(0), reason: z.string().trim().min(5).max(300) }).strict().parse(req.body ?? {});
+      const a = getAuth(req)!.actor;
+      try {
+        const saved = await d.costModelStore.save(b.model, { expectedVersion: b.expectedVersion, reason: b.reason, actor: `${a.type}:${a.id}`, now: Date.now() });
+        res.json({ version: saved.version, updatedBy: saved.updatedBy, updatedAt: saved.updatedAt });
+      } catch (e) {
+        if (e instanceof CostModelConflict) return void res.status(409).json({ error: "conflict", message: e.message, currentVersion: e.current });
+        throw e;
+      }
+    }),
+  );
+  // Anomalías del último día completo frente a los 14 anteriores (solo consumo medido)
+  router.get(
+    "/resources/anomalies",
+    requireScope("usage:read"),
+    requireScope("tenants:read"),
+    wrap(async (_req, res) => {
+      if (!d.usage) return void res.json(notConfigured);
+      const usage = d.usage;
+      const now = Date.now();
+      const day = lastFullMadridDay(now);
+      const tenants = (await d.reader.listTenants()).filter((t) => t.status !== "deleted" && t.status !== "archived");
+      const anomalies = [];
+      for (const t of tenants) anomalies.push(...detectAnomalies(t.id, await dailyUsage(usage, t.id, now - 17 * 86_400_000, now), day).map((x) => ({ ...x, displayName: t.displayName })));
+      res.json({ available: true, generatedAt: now, day, reference: "14 días anteriores", watched: WATCHED, anomalies });
+    }),
+  );
+  // Estado de la medición por empresa: cuándo llegó el último dato
+  router.get(
+    "/resources/collectors",
+    requireScope("usage:read"),
+    requireScope("tenants:read"),
+    wrap(async (_req, res) => {
+      if (!d.usage) return void res.json(notConfigured);
+      const now = Date.now();
+      const tenants = (await d.reader.listTenants()).filter((t) => t.status !== "deleted" && t.status !== "archived");
+      const name = new Map(tenants.map((t) => [t.id, t.displayName]));
+      const rows = (await collectorStatus(d.usage, tenants.map((t) => t.id), now)).map((r) => ({ ...r, displayName: name.get(r.tenantId) ?? r.tenantId }));
+      res.json({
+        available: true,
+        generatedAt: now,
+        staleAfterHours: 3,
+        collectors: rows,
+        summary: { ok: rows.filter((r) => r.state === "ok").length, stale: rows.filter((r) => r.state === "stale").length, noData: rows.filter((r) => r.state === "no_data").length },
+      });
+    }),
+  );
+  // Exportación diaria del consumo medido (CSV, día de Madrid; máximo 92 días; sin datos personales)
+  router.get(
+    "/resources/export",
+    requireScope("usage:read"),
+    requireScope("tenants:read"),
+    wrap(async (req, res) => {
+      if (!d.usage) return void res.json(notConfigured);
+      const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+      const q = z.object({ from: day, to: day, tenant: idSchema.optional() }).strict().parse(req.query);
+      // Margen de 2 h por la diferencia con Madrid; las filas se filtran después por su día de Madrid
+      const from = Date.parse(`${q.from}T00:00:00Z`) - 2 * 3_600_000;
+      const to = Date.parse(`${q.to}T00:00:00Z`) + 86_400_000;
+      if (!Number.isFinite(from) || !Number.isFinite(to) || q.to < q.from) return void res.status(400).json({ error: "invalid_input", message: "Periodo no válido" });
+      if (to - from > 93 * 86_400_000) return void res.status(400).json({ error: "invalid_input", message: "Como máximo 92 días por exportación" });
+      const all = (await d.reader.listTenants()).filter((t) => t.status !== "deleted");
+      if (q.tenant && !all.some((t) => t.id === q.tenant)) throw new RegistryError("not_found", "Tenant no encontrado");
+      const ids = q.tenant ? [q.tenant] : all.map((t) => t.id);
+      const lines = (await exportDailyCsv(d.usage, ids, from, to)).split("\r\n");
+      const csv = lines.filter((l, i) => i === 0 || l === "" || (l.split(",")[2] >= q.from && l.split(",")[2] <= q.to)).join("\r\n");
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader("Content-Disposition", `attachment; filename="consumo-${q.from}-${q.to}.csv"`);
+      res.send(csv);
+    }),
+  );
+  // Política de exceso de cuota vigente (qué pasa al aviso y al límite; la suspensión nunca es automática)
+  router.get("/resources/policy", requireScope("usage:read"), (_req, res) => void res.json(OVERAGE_POLICY));
   // Consumo de la propia empresa para su panel (solo lectura, mismo token que la compra)
   router.use("/commerce", createPanelUsageRouter({ quotas: d.quotas, usage: d.usage, defaults: quotaDefaults }));
 
