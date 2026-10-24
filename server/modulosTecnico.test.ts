@@ -4,7 +4,10 @@
  * comercializable) sin confundirlas.
  */
 import { describe, it, expect, beforeAll } from "vitest";
-import { modulesTechnicalReport, type ModulesTechnicalReport } from "./_core/modules/technical";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { modulesTechnicalReport, pendingFromFiles, type ModulesTechnicalReport } from "./_core/modules/technical";
 import { getModuleRegistry } from "./_core/modules/runtime";
 import { BUILTIN_MODULES, registerBuiltinModules } from "./_core/modules/builtin";
 import { moduleLayers } from "./controlPlane/tenantModulesTechnical";
@@ -108,5 +111,14 @@ describe("capas de la ficha: instalado, habilitado, contratado, comercializable"
   it("un módulo que el Core no tiene cargado no figura como instalado", () => {
     const l = by(moduleLayers(licensed, report((r) => void (r.modules = r.modules.filter((m) => m.id !== "spa"))), null));
     expect(l.spa.install).toBe("not_installed");
+  });
+});
+
+describe("migraciones pendientes de un módulo externo", () => {
+  it("las del directorio del módulo que no constan en el historial, en orden y sin reversiones", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "mod-mig-"));
+    for (const f of ["0001_init.sql", "0001_init.down.sql", "0002_tarifas.sql", "0003_extra.sql", "notas.txt", "0004_Mal.sql"]) fs.writeFileSync(path.join(dir, f), "SELECT 1;");
+    expect(pendingFromFiles(dir, new Set(["0001_init"]))).toEqual(["0002_tarifas", "0003_extra"]);
+    fs.rmSync(dir, { recursive: true, force: true });
   });
 });
