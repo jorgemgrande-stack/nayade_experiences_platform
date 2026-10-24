@@ -19,6 +19,7 @@ import { Metrics, meter } from "../metering";
 import { DbCapacityError, leaseTenantDatabase } from "../dbRegistry";
 import { runWithTenant } from "../tenant";
 import type { ResolvedTenant, TenantResolver } from "./resolver";
+import { statusPageHtml, wantsHtml } from "./statusPage";
 
 /** Tenant resuelto por el registro para cada petición (nunca por entrada del cliente). */
 const resolved = new WeakMap<Request, ResolvedTenant>();
@@ -67,8 +68,13 @@ export function isSessionPath(p: string): boolean {
   return procs.length > 0 && procs.every((x) => x.startsWith("auth.") || READ_ONLY_ALLOWED.has(x));
 }
 
-function send(res: Response, status: number, retryAfter?: number): void {
+function send(res: Response, status: number, retryAfter?: number, req?: Request, o: { adminLink?: boolean } = {}): void {
   if (retryAfter) res.setHeader("Retry-After", String(retryAfter));
+  // Navegador (y nunca la API): página con la identidad de Big Elephant; el resto, el texto plano de siempre
+  if (req && req.method === "GET" && !req.path.startsWith("/api/") && wantsHtml(req.headers.accept)) {
+    res.setHeader("Cache-Control", "no-store");
+    return void res.status(status).type("text/html").send(statusPageHtml(status, o));
+  }
   res.status(status).type("text/plain").send(status === 404 ? "Not found" : status === 410 ? "Gone" : "Service unavailable");
 }
 
@@ -84,16 +90,16 @@ export function resolveTenantMiddleware(resolver: TenantResolver, opts: TenantMi
         {
           const pol = out.tenant.policy;
           // Suspendido: sin web pública (solo panel/API); sin escrituras de negocio salvo sesión
-          if (!pol.publicWeb && !isOperatorPath(req.path)) return send(res, pol.blockedStatus ?? 503, 30);
+          if (!pol.publicWeb && !isOperatorPath(req.path)) return send(res, pol.blockedStatus ?? 503, 30, req, { adminLink: pol.admin });
           if (!pol.writes && !SAFE_METHODS.has(req.method) && !isSessionPath(req.path)) return send(res, 403);
           resolved.set(req, out.tenant);
           return next();
         }
         case "unknown_domain":
           meter(Metrics.TENANT_SHADOW, 1, "count", { verdict: "unknown_domain", enforced: true });
-          return send(res, 404);
+          return send(res, 404, undefined, req);
         case "blocked":
-          return send(res, out.status, out.status === 503 ? 30 : undefined);
+          return send(res, out.status, out.status === 503 ? 30 : undefined, req);
         case "unavailable":
           log(JSON.stringify({ ctx: "TenantResolution", event: "registry_unavailable" }));
           return send(res, 503, 5);

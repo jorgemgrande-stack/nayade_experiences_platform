@@ -210,8 +210,8 @@ const DocumentNumbersAdmin = lazy(() => import("./pages/admin/DocumentNumbersAdm
 // Fallback de carga para páginas admin
 function AdminLoadingFallback() {
   return (
-    <div className="min-h-screen bg-[#080e1c] flex items-center justify-center">
-      <div className="w-8 h-8 border-2 border-orange-500 border-t-transparent rounded-full animate-spin" />
+    <div className="min-h-screen bg-background flex items-center justify-center" role="status" aria-label="Cargando">
+      <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
     </div>
   );
 }

@@ -21,7 +21,7 @@ import { loginErrorMessage, validateLogin, type LoginErrors } from "@shared/auth
  * Nota: 'monitor' sí tiene acceso al panel de admin (Operaciones), por eso
  * no se redirige al portal — va a /admin como el resto.
  */
-function homeForRole(role: string | undefined): string {
+export function homeForRole(role: string | undefined): string {
   if (role === "partner_admin" || role === "partner_user") return "/partner/dashboard";
   if (role === "supplier") return "/supplier/dashboard";
   if (role === "employee") return "/empleado";

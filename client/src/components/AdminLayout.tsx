@@ -25,6 +25,7 @@ import {
   type NavIcon, type ResolvedItem, type ResolvedSection,
 } from "@shared/adminNav";
 import { helpForLocation } from "@shared/helpCenter";
+import { AuthRequired, PanelSpinner } from "@/components/auth/AuthRequired";
 
 /** Iconos del menú (el modelo de navegación vive en shared/adminNav.ts, sin React). */
 const NAV_ICONS: Record<NavIcon, React.ComponentType<{ className?: string }>> = {
@@ -222,34 +223,10 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
   }, [loading, isAuthenticated, userRole, navigate]);
 
   // ── Loading state ──
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="animate-spin w-8 h-8 border-2 border-accent border-t-transparent rounded-full" />
-      </div>
-    );
-  }
+  if (loading) return <PanelSpinner />;
 
-  // ── Not authenticated ──
-  if (!isAuthenticated) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="text-center max-w-sm px-4">
-          <div className="w-16 h-16 rounded-2xl bg-accent/10 flex items-center justify-center mx-auto mb-4">
-            <AlertCircle className="w-8 h-8 text-accent" />
-          </div>
-          <h2 className="text-2xl font-display font-bold text-foreground mb-2">Acceso Restringido</h2>
-          <p className="text-muted-foreground mb-6">Debes iniciar sesión para acceder al panel de administración.</p>
-          <Button
-            className="bg-primary text-white hover:bg-primary/90 px-8 py-3 text-base font-semibold w-full"
-            onClick={() => { window.location.href = getLoginUrl(location); }}
-          >
-            Iniciar Sesión
-          </Button>
-        </div>
-      </div>
-    );
-  }
+  // ── Sin sesión: al inicio de sesión de la empresa y de vuelta a esta pantalla ──
+  if (!isAuthenticated) return <AuthRequired returnTo={location} />;
 
   // ── Role not allowed for any admin section ──
   if (!["admin", "agente", "monitor", "adminrest", "controler", "readonly"].includes(userRole)) {
@@ -343,7 +320,7 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
                         "flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-all",
                         focusRing,
                         childActive
-                          ? "bg-sidebar-accent text-amber-400"
+                          ? "bg-sidebar-accent text-accent"
                           : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground",
                       )}
                     >
@@ -445,7 +422,7 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
               isTaskNav ? (
                 <span className="text-sm font-display font-semibold text-sidebar-foreground truncate">{brandName}</span>
               ) : (
-                <span className="text-xs text-amber-400 tracking-widest uppercase font-display font-bold shrink-0">
+                <span className="text-xs text-accent tracking-widest uppercase font-display font-bold shrink-0">
                   {userRole === "adminrest" ? "Restaurantes" : userRole === "controler" ? "Control" : "Admin"}
                 </span>
               )
@@ -521,8 +498,8 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
         {/* User Profile */}
         <div className="border-t border-sidebar-border p-3 shrink-0">
           <div className={cn("flex items-center gap-3", !showLabels && "justify-center")}>
-            <div className="w-8 h-8 rounded-full bg-amber-500/20 flex items-center justify-center shrink-0" aria-hidden="true">
-              <User className="w-4 h-4 text-amber-400" />
+            <div className="w-8 h-8 rounded-full bg-accent/20 flex items-center justify-center shrink-0" aria-hidden="true">
+              <User className="w-4 h-4 text-accent" />
             </div>
             {showLabels && (
               <div className="flex-1 min-w-0">

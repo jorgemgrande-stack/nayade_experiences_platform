@@ -1,237 +1,186 @@
-import { useState, useEffect } from "react";
-import { useLocation } from "wouter";
+/**
+ * SetPassword.tsx — /establecer-contrasena?token=xxx (invitación de un usuario).
+ *
+ * Mismo armazón que el inicio de sesión y la recuperación (AuthShell): identidad de la empresa, o la de Big Elephant
+ * mientras no configure la suya. Al establecer la contraseña se inicia sesión por el inicio de sesión normal y se entra
+ * directamente en el panel (sin pasar por «Acceso restringido»).
+ */
+import { useEffect, useState } from "react";
+import { Link, useLocation } from "wouter";
+import { AlertCircle, CheckCircle2, Eye, EyeOff, Lock, XCircle } from "lucide-react";
 import { trpc } from "@/lib/trpc";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { CheckCircle, Eye, EyeOff, Lock, AlertCircle, Loader2 } from "lucide-react";
-import { useAuthBrand } from "@/components/AuthBrandMark";
+import { AuthAlert, AuthLoading, AuthShell, AuthSubmit, authInputClass, authLinkClass, useLoginLook } from "@/components/auth/AuthShell";
+import { homeForRole } from "./Login";
 
+function PasswordInput({ id, label, value, onChange, describedBy }: { id: string; label: string; value: string; onChange: (v: string) => void; describedBy?: string }) {
+  const [show, setShow] = useState(false);
+  return (
+    <div className="space-y-2">
+      <Label htmlFor={id} className="text-slate-800 text-sm font-medium">
+        {label}
+      </Label>
+      <div className="relative">
+        <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" aria-hidden="true" />
+        <Input
+          id={id}
+          type={show ? "text" : "password"}
+          autoComplete="new-password"
+          required
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          aria-describedby={describedBy}
+          className={`pl-10 pr-12 ${authInputClass}`}
+        />
+        <button
+          type="button"
+          onClick={() => setShow((v) => !v)}
+          aria-label={show ? "Ocultar contraseña" : "Mostrar contraseña"}
+          aria-pressed={show}
+          aria-controls={id}
+          className="absolute right-1.5 top-1/2 -translate-y-1/2 flex h-9 w-9 items-center justify-center rounded-md text-slate-500 hover:text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--auth-link)]"
+        >
+          {show ? <EyeOff className="w-4 h-4" aria-hidden="true" /> : <Eye className="w-4 h-4" aria-hidden="true" />}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** Misma escala que la recuperación de contraseña (colores funcionales: rojo, ámbar, verde). */
+export function passwordStrength(password: string): { level: "weak" | "medium" | "strong"; label: string; color: string } | null {
+  if (password.length === 0) return null;
+  if (password.length < 8) return { level: "weak", label: "Muy corta (mínimo 8 caracteres)", color: "bg-red-600" };
+  if (password.length < 12 || !/[A-Z]/.test(password) || !/[0-9]/.test(password)) return { level: "medium", label: "Aceptable", color: "bg-amber-500" };
+  return { level: "strong", label: "Segura", color: "bg-emerald-600" };
+}
 
 export default function SetPassword() {
-  // Marca de la empresa que sirve el dominio (en instalación única, la de siempre)
-  const brand = useAuthBrand();
-  const [, setLocation] = useLocation();
-  const [token, setToken] = useState<string | null>(null);
+  const { look } = useLoginLook();
+  const [, navigate] = useLocation();
+  const utils = trpc.useUtils();
+  const [token, setToken] = useState<string | null | undefined>(undefined);
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
-  const [showPass, setShowPass] = useState(false);
-  const [showConfirm, setShowConfirm] = useState(false);
-  const [done, setDone] = useState(false);
-  const [userName, setUserName] = useState("");
-  const [validationError, setValidationError] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState<{ name: string | null; signedIn: boolean } | null>(null);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const t = params.get("token");
-    setToken(t);
+    setToken(new URLSearchParams(window.location.search).get("token"));
   }, []);
+  useEffect(() => {
+    if (look?.brand.fullName) document.title = `Establecer contraseña · ${look.brand.fullName}`;
+  }, [look?.brand.fullName]);
 
-  const setPasswordMutation = trpc.public.setPassword.useMutation({
-    onSuccess: (data) => {
-      setUserName(data.name ?? "");
-      setDone(true);
-    },
-    onError: () => {},
-  });
-
-  const passwordStrength = (pw: string): { level: number; label: string; color: string } => {
-    if (pw.length === 0) return { level: 0, label: "", color: "" };
-    if (pw.length < 8) return { level: 1, label: "Muy corta", color: "bg-red-500" };
-    if (pw.length < 10) return { level: 2, label: "Débil", color: "bg-orange-400" };
-    const hasUpper = /[A-Z]/.test(pw);
-    const hasNumber = /[0-9]/.test(pw);
-    const hasSpecial = /[^A-Za-z0-9]/.test(pw);
-    const score = [hasUpper, hasNumber, hasSpecial].filter(Boolean).length;
-    if (score >= 2 && pw.length >= 10) return { level: 4, label: "Fuerte", color: "bg-green-500" };
-    if (score >= 1) return { level: 3, label: "Media", color: "bg-yellow-400" };
-    return { level: 2, label: "Débil", color: "bg-orange-400" };
-  };
-
+  const setPasswordMutation = trpc.public.setPassword.useMutation();
   const strength = passwordStrength(password);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setValidationError("");
-
-    if (!token) {
-      setValidationError("Token inválido. Usa el enlace del email.");
-      return;
-    }
-    if (password.length < 8) {
-      setValidationError("La contraseña debe tener al menos 8 caracteres.");
-      return;
-    }
-    if (password !== confirm) {
-      setValidationError("Las contraseñas no coinciden.");
-      return;
-    }
-
-    setPasswordMutation.mutate({ token, password });
-  };
-
-  // Success screen
-  if (done) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-blue-100 flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl shadow-xl p-8 max-w-md w-full text-center">
-          <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <CheckCircle className="w-8 h-8 text-green-600" />
-          </div>
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">
-            ¡Contraseña establecida!
-          </h1>
-          <p className="text-gray-600 mb-6">
-            {userName ? `Bienvenido, ${userName}. ` : ""}Tu cuenta está lista. Ya puedes acceder al panel de administración.
-          </p>
-          <Button
-            onClick={() => setLocation("/admin")}
-            className="w-full bg-blue-700 hover:bg-blue-800 text-white"
-          >
-            Ir al panel de administración
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
-  // No token
-  if (token === null && typeof window !== "undefined") {
-    const params = new URLSearchParams(window.location.search);
-    if (!params.get("token")) {
-      return (
-        <div className="min-h-screen bg-gradient-to-br from-blue-50 to-blue-100 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-xl p-8 max-w-md w-full text-center">
-            <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <AlertCircle className="w-8 h-8 text-red-600" />
-            </div>
-            <h1 className="text-xl font-bold text-gray-900 mb-2">Enlace inválido</h1>
-            <p className="text-gray-600">
-              Este enlace no es válido o ha expirado. Contacta con el administrador para solicitar un nuevo enlace.
-            </p>
-          </div>
-        </div>
-      );
+    setError(null);
+    if (!token) return setError("El enlace no es válido. Usa el enlace del correo de invitación.");
+    if (password.length < 8) return setError("La contraseña debe tener al menos 8 caracteres.");
+    if (password !== confirm) return setError("Las contraseñas no coinciden.");
+    setLoading(true);
+    try {
+      const r = await setPasswordMutation.mutateAsync({ token, password });
+      // Inicio de sesión normal con la contraseña recién elegida: así se entra directamente en el panel
+      let signedIn = false;
+      if (r.email) {
+        const res = await fetch("/api/auth/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ email: r.email.trim().toLowerCase(), password }),
+        }).catch(() => null);
+        signedIn = !!res?.ok;
+      }
+      setDone({ name: r.name ?? null, signedIn });
+      if (signedIn) {
+        await utils.auth.me.invalidate();
+        const me = await utils.auth.me.fetch().catch(() => null);
+        setTimeout(() => navigate(homeForRole((me as { role?: string } | null)?.role)), 1500);
+      }
+    } catch (err) {
+      setError(err instanceof Error && err.message ? err.message : "No se ha podido establecer la contraseña. El enlace puede haber caducado.");
+    } finally {
+      setLoading(false);
     }
   }
+
+  if (!look || token === undefined) return <AuthLoading />;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-900 via-blue-800 to-blue-700 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-2xl overflow-hidden max-w-md w-full">
-        {/* Header */}
-        <div className="bg-gradient-to-r from-blue-900 to-blue-700 px-8 py-6 text-center">
-          {brand.logoUrl && <img src={brand.logoUrl} alt={brand.fullName} className="h-14 w-14 rounded-full mx-auto mb-3 object-cover border-2 border-white/30" />}
-          <div className="text-white font-bold text-lg tracking-wide">{brand.name}</div>
-          {brand.tagline && <div className="text-blue-200 text-xs tracking-widest uppercase">{brand.tagline}</div>}
-        </div>
-
-        {/* Form */}
-        <div className="px-8 py-7">
-          <div className="flex items-center gap-2 mb-1">
-            <Lock className="w-5 h-5 text-blue-700" />
-            <h2 className="text-xl font-bold text-gray-900">Establece tu contraseña</h2>
+    <AuthShell look={look} title="Establece tu contraseña" titleHighlight="contraseña" message={`Crea una contraseña segura para acceder al panel de ${look.brand.fullName || "tu empresa"}.`}>
+      {!token && (
+        <div className="text-center">
+          <div className="w-16 h-16 rounded-full bg-red-50 flex items-center justify-center mx-auto mb-6">
+            <XCircle className="w-8 h-8 text-red-700" aria-hidden="true" />
           </div>
-          <p className="text-sm text-gray-500 mb-6">
-            Crea una contraseña segura para acceder al panel{brand.fullName ? ` de ${brand.fullName}` : ""}.
-          </p>
+          <h2 className="text-2xl font-bold text-slate-900 mb-3">Enlace no válido</h2>
+          <p className="text-slate-600 leading-relaxed mb-8">Este enlace de invitación no es válido. Pide al administrador de tu empresa que te reenvíe la invitación.</p>
+          <Link href="/login" className={authLinkClass}>
+            Ir al inicio de sesión
+          </Link>
+        </div>
+      )}
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Password */}
-            <div className="space-y-1.5">
-              <Label htmlFor="password">Nueva contraseña</Label>
-              <div className="relative">
-                <Input
-                  id="password"
-                  type={showPass ? "text" : "password"}
-                  placeholder="Mínimo 8 caracteres"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="pr-10"
-                  required
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPass((v) => !v)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                  tabIndex={-1}
-                >
-                  {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
-              {/* Strength bar */}
-              {password.length > 0 && (
-                <div className="space-y-1">
-                  <div className="flex gap-1 h-1">
-                    {[1, 2, 3, 4].map((i) => (
-                      <div
-                        key={i}
-                        className={`flex-1 rounded-full transition-colors ${
-                          i <= strength.level ? strength.color : "bg-gray-200"
-                        }`}
-                      />
-                    ))}
+      {token && done && (
+        <div className="text-center" role="status">
+          <div className="w-16 h-16 rounded-full bg-emerald-50 flex items-center justify-center mx-auto mb-6">
+            <CheckCircle2 className="w-8 h-8 text-emerald-700" aria-hidden="true" />
+          </div>
+          <h2 className="text-2xl font-bold text-slate-900 mb-3">Contraseña establecida</h2>
+          <p className="text-slate-600 leading-relaxed mb-2">{done.name ? `Te damos la bienvenida, ${done.name}. ` : ""}Tu cuenta está lista.</p>
+          {done.signedIn ? (
+            <p className="text-slate-500 text-sm">Entrando en tu panel…</p>
+          ) : (
+            <>
+              <p className="text-slate-500 text-sm mb-8">Inicia sesión con tu correo y la contraseña que acabas de elegir.</p>
+              <Link href="/login" className={authLinkClass}>
+                Ir al inicio de sesión
+              </Link>
+            </>
+          )}
+        </div>
+      )}
+
+      {token && !done && (
+        <>
+          <div className="mb-8">
+            <h2 className="text-2xl font-bold text-slate-900 mb-2">Crea tu contraseña</h2>
+            <p className="text-slate-600">Elige una contraseña segura de al menos 8 caracteres.</p>
+          </div>
+          <form onSubmit={handleSubmit} className="space-y-5" noValidate>
+            <div>
+              <PasswordInput id="password" label="Nueva contraseña" value={password} onChange={setPassword} describedBy={strength ? "strength" : undefined} />
+              {strength && (
+                <div className="space-y-1 mt-2" id="strength">
+                  <div className="h-1 rounded-full bg-slate-200 overflow-hidden" aria-hidden="true">
+                    <div className={`h-full rounded-full transition-all ${strength.color}`} style={{ width: strength.level === "weak" ? "33%" : strength.level === "medium" ? "66%" : "100%" }} />
                   </div>
-                  {strength.label && (
-                    <p className="text-xs text-gray-500">Seguridad: <span className="font-medium">{strength.label}</span></p>
-                  )}
+                  <p className="text-xs text-slate-600">Seguridad: {strength.label}</p>
                 </div>
               )}
             </div>
-
-            {/* Confirm */}
-            <div className="space-y-1.5">
-              <Label htmlFor="confirm">Confirmar contraseña</Label>
-              <div className="relative">
-                <Input
-                  id="confirm"
-                  type={showConfirm ? "text" : "password"}
-                  placeholder="Repite la contraseña"
-                  value={confirm}
-                  onChange={(e) => setConfirm(e.target.value)}
-                  className={`pr-10 ${confirm && confirm !== password ? "border-red-400 focus-visible:ring-red-400" : ""}`}
-                  required
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowConfirm((v) => !v)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                  tabIndex={-1}
-                >
-                  {showConfirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
-              {confirm && confirm !== password && (
-                <p className="text-xs text-red-500">Las contraseñas no coinciden</p>
+            <div>
+              <PasswordInput id="confirm" label="Repite la contraseña" value={confirm} onChange={setConfirm} describedBy={confirm ? "match" : undefined} />
+              {confirm && (
+                <p id="match" className={`mt-2 text-xs flex items-center gap-1 ${password === confirm ? "text-emerald-700" : "text-red-700"}`}>
+                  {password === confirm ? <CheckCircle2 className="w-3 h-3" aria-hidden="true" /> : <AlertCircle className="w-3 h-3" aria-hidden="true" />}
+                  {password === confirm ? "Las contraseñas coinciden" : "Las contraseñas no coinciden"}
+                </p>
               )}
             </div>
-
-            {/* Errors */}
-            {(validationError || setPasswordMutation.error) && (
-              <div className="rounded-lg bg-red-50 border border-red-200 p-3 flex items-start gap-2">
-                <AlertCircle className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5" />
-                <p className="text-sm text-red-700">
-                  {validationError || setPasswordMutation.error?.message}
-                </p>
-              </div>
-            )}
-
-            <Button
-              type="submit"
-              disabled={setPasswordMutation.isPending}
-              className="w-full bg-blue-700 hover:bg-blue-800 text-white h-11 text-base font-semibold mt-2"
-            >
-              {setPasswordMutation.isPending ? (
-                <span className="flex items-center gap-2">
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Guardando...
-                </span>
-              ) : (
-                "Establecer contraseña"
-              )}
-            </Button>
+            <div aria-live="assertive">{error && <AuthAlert>{error}</AuthAlert>}</div>
+            <AuthSubmit loading={loading} loadingLabel="Guardando contraseña…" disabled={!password || !confirm}>
+              Establecer contraseña
+            </AuthSubmit>
           </form>
-        </div>
-      </div>
-    </div>
+        </>
+      )}
+    </AuthShell>
   );
 }

@@ -331,7 +331,9 @@ export const appRouter = router({
       if (!(await redeemInviteToken(user.id, input.token, passwordHash))) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Token inválido o expirado" });
       }
-      return { success: true, name: user.name };
+      // El correo de la propia cuenta (quien tiene el enlace ya lo conoce): la pantalla inicia sesión con él por el
+      // inicio de sesión normal, así no hay un paso intermedio de «Acceso restringido»
+      return { success: true, name: user.name, email: user.email ?? null };
     }),
 
     getCategories: publicProcedure.query(async () => {
