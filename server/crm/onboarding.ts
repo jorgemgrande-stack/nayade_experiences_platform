@@ -13,9 +13,12 @@ import { BillingError, type Subscription } from "../_core/billing/types";
 import type { CrmService } from "./service";
 import type { CrmStore } from "./store";
 import { CrmError, type Company } from "./types";
+import { isNonWildcardPlatformDomain } from "../_core/tenantRegistry/platformDomains";
 
 const MODULE_RE = /^[a-z][a-z0-9_]{1,31}$/;
 const DEFAULT_TRIAL_DAYS = 15;
+const NON_ROUTABLE_WARNING =
+  "El dominio de plataforma de este entorno no admite subdominios automáticos: la empresa queda creada pero su dirección no responde hasta configurar el comodín del entorno (*.live.bigelephant.es en live).";
 
 export interface OnboardingDeps {
   store: CrmStore;
@@ -51,7 +54,15 @@ export class CrmOnboarding {
   constructor(private d: OnboardingDeps) {}
 
   config() {
-    return { platformDomain: this.d.platformDomain, billing: Boolean(this.d.billing), defaultTrialDays: DEFAULT_TRIAL_DAYS };
+    const routable = !isNonWildcardPlatformDomain(this.d.platformDomain);
+    return {
+      platformDomain: this.d.platformDomain,
+      billing: Boolean(this.d.billing),
+      defaultTrialDays: DEFAULT_TRIAL_DAYS,
+      // Bajo un dominio sin comodín (p. ej. up.railway.app) la empresa queda registrada pero no se puede abrir
+      subdomainsRoutable: routable,
+      ...(routable ? {} : { subdomainWarning: NON_ROUTABLE_WARNING }),
+    };
   }
 
   /** Disponibilidad del identificador/subdominio (sin efectos). */
@@ -92,6 +103,7 @@ export class CrmOnboarding {
     if (!avail.available) throw new CrmError(TENANT_ID_RE.test(input.tenantId) ? "conflict" : "invalid_input", avail.reason ?? "Identificador no disponible");
 
     const notes: string[] = [];
+    if (isNonWildcardPlatformDomain(this.d.platformDomain)) notes.push(NON_ROUTABLE_WARNING);
     if (input.planId && !this.d.billing) notes.push("Facturación no configurada: no se inicia la prueba del plan");
 
     let provisioning: ProvisionResult;
