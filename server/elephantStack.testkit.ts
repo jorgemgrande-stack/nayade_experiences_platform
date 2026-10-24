@@ -177,7 +177,7 @@ export async function startElephantStack(url: string, o: { label: string; perMin
   const crmStore = new MysqlCrmStore(crmPool);
   const port = memoryEmailPort();
   const provider = new SignedTestProvider({ webhookSecret: PAY_SECRET });
-  const scopes = ["tenants:read", "provisioning:write", "subscriptions:read", "subscriptions:write", "entitlements:write", "crm:read", "crm:write", "web:read", "orders:read", "orders:write", "orders:approve", "billing:write", ...(o.opsAccessSecret ? (["support:write"] as const) : [])] as const;
+  const scopes = ["tenants:read", "provisioning:write", "subscriptions:read", "subscriptions:write", "entitlements:write", "crm:read", "crm:write", "web:read", "orders:read", "orders:write", "orders:approve", "billing:write", "usage:read", ...(o.opsAccessSecret ? (["support:write"] as const) : [])] as const;
   // El Core escucha después que el plano de control: su dirección se resuelve al llamar
   let coreBase = "";
   const cpApp = createControlPlaneApp({
