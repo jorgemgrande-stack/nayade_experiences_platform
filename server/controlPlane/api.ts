@@ -25,6 +25,7 @@ import { assertCanActivate, assertCanDeactivate, buildCatalog, tenantModules, ty
 import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import { DEFAULT_QUOTAS, type DefaultQuota } from "../_core/erm/quota";
 import { UNMEASURED, WARNING_RATIO, tenantResources, type ResourceState } from "../_core/erm/overview";
+import { ESTIMATED_COST_MODEL, tenantCosts, type CostModel } from "../_core/erm/costs";
 import { z } from "zod";
 import { RegistryError } from "../_core/tenantRegistry/contract";
 import type { TenantRegistryService } from "../_core/tenantRegistry/service";
@@ -144,6 +145,8 @@ export interface ControlPlaneDeps {
   billing?: SubscriptionService;
   billingStore?: BillingStore;
   usage?: UsageStore;
+  /** Modelo de costes del Resource Manager (ERM_COST_MODEL); por defecto, la estimación. */
+  costModel?: { model: CostModel; error: string | null };
   /** Cuotas por defecto de plataforma (ERM_DEFAULT_QUOTAS); por defecto, las del ERM. */
   quotaDefaults?: DefaultQuota[];
   /** Destino CNAME de la plataforma para verificar dominios propios. */
@@ -802,6 +805,41 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         measurementLagSeconds: 15,
         tenants: rows,
         unmeasured: UNMEASURED,
+      });
+    }),
+  );
+  // Coste atribuible por empresa (solo lectura): consumo medido × tarifa + parte del coste compartido. Dato económico
+  // interno: exige también billing:read
+  router.get(
+    "/resources/costs",
+    requireScope("usage:read"),
+    requireScope("billing:read"),
+    wrap(async (req, res) => {
+      if (!d.usage) return void res.json(notConfigured);
+      const days = z.coerce.number().int().min(1).max(90).default(30).parse(req.query.days ?? undefined);
+      const only = req.query.tenant === undefined ? undefined : idSchema.parse(req.query.tenant);
+      const { model, error } = d.costModel ?? { model: ESTIMATED_COST_MODEL, error: null };
+      const all = (await d.reader.listTenants()).filter((t) => t.status !== "deleted");
+      if (only && !all.some((t) => t.id === only)) throw new RegistryError("not_found", "Tenant no encontrado");
+      const now = Date.now();
+      // El reparto del coste compartido siempre se calcula entre TODAS las empresas, aunque se pida una sola
+      const r = await tenantCosts(d.usage, model, all.map((t) => t.id), now, days);
+      const name = new Map(all.map((t) => [t.id, t] as const));
+      const rows = r.tenants
+        .filter((t) => !only || t.tenantId === only)
+        .map((t) => ({ ...t, displayName: name.get(t.tenantId)?.displayName ?? t.tenantId, status: name.get(t.tenantId)?.status ?? null }))
+        .sort((a, b) => b.totalCents - a.totalCents);
+      res.json({
+        available: true,
+        generatedAt: now,
+        days,
+        currency: model.currency,
+        model: { source: model.source, note: model.note, rates: model.rates, sharedMonthlyCents: model.sharedMonthlyCents, sharedBasis: model.sharedBasis, error },
+        sharedPeriodCents: r.sharedPeriodCents,
+        totals: { variableCents: Math.round(rows.reduce((s, t) => s + t.variableCents, 0) * 100) / 100, totalCents: Math.round(rows.reduce((s, t) => s + t.totalCents, 0) * 100) / 100 },
+        tenants: rows,
+        // Lo que no se mide no se atribuye (suele ser el mayor coste: almacenamiento y bases de datos)
+        unattributed: UNMEASURED,
       });
     }),
   );
