@@ -31,10 +31,11 @@ describe.skipIf(!URL_)("comprobación de integraciones desde Admin (MySQL real, 
     s = await startElephantStack(URL_!, { label: "intchk", opsAccessSecret: crypto.randomBytes(32).toString("base64url") });
     A = await signUp("Empresa Comprobación A", `a-${s.run}@comprobacion-a.example`);
     B = await signUp("Empresa Comprobación B", `b-${s.run}@comprobacion-b.example`);
-    // A: GoHighLevel con API key pero SIN Location ID → la comprobación termina sin red («Faltan …»)
+    // A: GoHighLevel con Location ID y una API key ilegible (sin cifrar con la clave de la empresa): la bóveda la omite y la
+    // comprobación termina sin red («Faltan API key o Location ID»)
     const c = await s.tenantConn(A);
     try {
-      await c.query("INSERT INTO integration_credentials (provider, field, is_secret, value, updated_by) VALUES ('ghl', 'apiKey', 1, ?, 'admin:1')", [SECRET]);
+      await c.query("INSERT INTO integration_credentials (provider, field, is_secret, value, updated_by) VALUES ('ghl', 'apiKey', 1, ?, 'admin:1'), ('ghl', 'locationId', 0, 'loc12345678', 'admin:1')", [SECRET]);
     } finally {
       await c.end();
     }
