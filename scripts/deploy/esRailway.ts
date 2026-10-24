@@ -798,6 +798,17 @@ async function main() {
     const command = arg("command");
     if (!isAllowedDrill(command)) throw new Error(`orden no permitida: ${command}`);
     const sid = await serviceId("restore-drill");
+    // Las migraciones van DENTRO de la imagen de restore-drill: con una imagen anterior «aplicaría» 0 migraciones y diría
+    // que todo está al día. --expect-sha exige que la última imagen subida (los redespliegues de drill la reutilizan) sea
+    // la de ese commit; si no, se detiene sin ejecutar nada.
+    const expectSha = arg("expect-sha", false);
+    if (expectSha) {
+      const img = (await deployments(sid, sc.environmentId, 30)).map((x) => shaFromDeployMeta(x.meta, REPOSITORIES.core)).find(Boolean) ?? null;
+      if (img !== expectSha) {
+        console.error(`restore-drill tiene la imagen de ${img ? img.slice(0, 12) : "un commit desconocido"}, no la de ${expectSha.slice(0, 12)}: despliégalo antes de migrar. No se ejecuta «${command}».`);
+        process.exit(1);
+      }
+    }
     const setAndDeploy = async (start: string) => {
       const before = (await latest(sid, sc.environmentId))?.id ?? null;
       await api("mutation($s:String!,$e:String!,$i:ServiceInstanceUpdateInput!){ serviceInstanceUpdate(serviceId:$s, environmentId:$e, input:$i) }", { s: sid, e: sc.environmentId, i: { startCommand: start } });
