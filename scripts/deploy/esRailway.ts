@@ -344,6 +344,28 @@ async function main() {
       return;
     }
     const ready = show(mine);
+    // Detalle completo de verificación y certificado: los campos escalares que Railway expone (por introspección; no se
+    // suponen nombres). Solo lectura; no contiene secretos (estados, fechas, registros públicos de DNS y mensajes).
+    {
+      const typeFields = async (name: string) =>
+        ((await api<{ __type: { fields: Array<{ name: string; type: { kind: string; name: string | null; ofType: { kind: string; name: string | null } | null } }> } | null }>(
+          "query($n:String!){ __type(name:$n){ fields { name type { kind name ofType { kind name } } } } }",
+          { n: name },
+        ).catch(() => ({ __type: null }))).__type?.fields ?? []);
+      const scalars = (fs: Awaited<ReturnType<typeof typeFields>>) =>
+        fs.filter((f) => ["SCALAR", "ENUM"].includes(f.type.kind) || ["SCALAR", "ENUM"].includes(f.type.ofType?.kind ?? "")).map((f) => f.name);
+      const domFields = scalars(await typeFields("CustomDomain"));
+      const statusFields = scalars(await typeFields("CustomDomainStatus"));
+      if (domFields.length || statusFields.length) {
+        const sel = `customDomains { ${domFields.join(" ")} ${statusFields.length ? `status { ${statusFields.join(" ")} }` : ""} }`;
+        const all = await api<{ domains: { customDomains: Array<Record<string, unknown>> } }>(
+          `query($p:String!,$e:String!,$s:String!){ domains(projectId:$p, environmentId:$e, serviceId:$s){ ${sel} } }`,
+          { p: pid, e: sc.environmentId, s: gw },
+        ).catch((e: Error) => (console.log(`  detalle no disponible: ${scrub(e.message).slice(0, 160)}`), null));
+        const d = all?.domains.customDomains.find((x) => x.domain === wildcard);
+        if (d) console.log(`  detalle: ${scrub(JSON.stringify(d))}`);
+      }
+    }
     if (process.argv.includes("--variables")) {
       if (!ready) throw new Error("el DNS y el certificado aún no están verificados: no se cambia CP_PLATFORM_DOMAINS");
       const cp = await serviceId("controlplane");
