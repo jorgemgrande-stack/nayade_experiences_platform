@@ -18,6 +18,7 @@ import { legacyDb, legacyPool } from "./_core/legacyDb";
 import { integrationEnv } from "./_core/tenantConfig";
 import { isMultiTenant } from "./_core/tenant";
 import { checkWebhookSecret, webhookSecretMatches } from "./_core/webhookSecret";
+import { recordSync } from "./_core/credentials/health";
 import { placeholderEmail } from "../shared/placeholderEmail";
 
 const _pool = legacyPool();
@@ -60,6 +61,8 @@ ghlWebhookRouter.post("/api/ghl/webhook", express.json({ limit: "1mb" }), async 
       return res.status(401).json({ ok: false });
     }
   }
+  // Última sincronización de la integración (ficha de la empresa): solo con la firma correcta y en multiempresa
+  if (isMultiTenant()) void recordSync("ghl", true, "Webhook de leads recibido (secreto correcto)").catch(() => undefined);
 
   const payload = req.body ?? {};
 
