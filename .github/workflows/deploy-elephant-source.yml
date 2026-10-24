@@ -62,6 +62,7 @@ on:
           - dominio-plataforma-live-estado
           - dominio-plataforma-live-crear
           - dominio-plataforma-live-activar
+          - dominio-plataforma-live-certificado
       commit:
         description: "Commit a desplegar (opcional; por defecto, el último de la rama). Para volver atrás: uno anterior de la misma rama"
         required: false
@@ -204,6 +205,7 @@ jobs:
             dominio-plataforma-live-estado) pnpm exec tsx scripts/deploy/esRailway.ts platform-domain --env "${ES_ENV}" --operaciones ;;
             dominio-plataforma-live-crear) pnpm exec tsx scripts/deploy/esRailway.ts platform-domain --env "${ES_ENV}" --apply ;;
             dominio-plataforma-live-activar) pnpm exec tsx scripts/deploy/esRailway.ts platform-domain --env "${ES_ENV}" --variables ;;
+            dominio-plataforma-live-certificado) pnpm exec tsx scripts/deploy/esRailway.ts platform-domain --env "${ES_ENV}" --emitir-certificado ;;
           esac
 
       - name: Correo de pruebas — sandbox, webhook y variables

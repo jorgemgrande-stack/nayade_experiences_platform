@@ -435,6 +435,21 @@ async function main() {
           console.log(`  operación ${f.name}(${f.args.map((a) => `${a.name}: ${a.type.name ?? a.type.ofType?.name ?? "?"}`).join(", ")})`);
       }
     }
+    if (process.argv.includes("--emitir-certificado")) {
+      // Nuevo intento de emisión con la operación de Railway (customDomainIssueCertificate), sin recrear el dominio (los
+      // CNAME no cambian). Solo con la propiedad verificada y sin certificado válido.
+      const st = (await api<{ domains: { customDomains: Array<{ id: string; domain: string; status: { verified: boolean | null; certificateStatus: string | null } | null }> } }>(
+        "query($p:String!,$e:String!,$s:String!){ domains(projectId:$p, environmentId:$e, serviceId:$s){ customDomains { id domain status { verified certificateStatus } } } }",
+        { p: pid, e: sc.environmentId, s: gw },
+      )).domains.customDomains.find((x) => x.domain === wildcard);
+      if (!st?.status?.verified) throw new Error("la propiedad del dominio no está verificada: no se pide el certificado");
+      if (/VALID|ISSUED/.test(st.status.certificateStatus ?? "") && !/FAILED/.test(st.status.certificateStatus ?? "")) {
+        console.log(`core-gateway: el certificado ya está en ${st.status.certificateStatus}`);
+      } else {
+        await api("mutation($id:String!){ customDomainIssueCertificate(id:$id) }", { id: st.id });
+        console.log(`core-gateway: pedida la emisión del certificado de ${wildcard} (antes: ${st.status.certificateStatus})`);
+      }
+    }
     if (process.argv.includes("--variables")) {
       if (!ready) throw new Error("el DNS y el certificado aún no están verificados: no se cambia CP_PLATFORM_DOMAINS");
       const cp = await serviceId("controlplane");
