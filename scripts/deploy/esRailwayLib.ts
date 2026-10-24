@@ -106,10 +106,12 @@ export function storageReferences(env: string): Record<string, Record<string, st
 
 /**
  * Medición (Resource Manager): el plano de control lee el consumo de la MISMA base del ERM que escribe el Core, por
- * referencia a su variable (sin copiar credenciales). Solo live; en production es una operación protegida aparte.
+ * referencia a su variable (sin copiar credenciales). En production se aplica solo con `almacenamiento-referencias`
+ * en el entorno protegido (aprobación humana); si el Core no tiene la variable, la referencia queda vacía y se
+ * restaura el estado anterior (el paso falla sin dejar nada a medias).
  */
 export function meteringReferences(env: string): Record<string, Record<string, string>> {
-  return env === "live" ? { controlplane: { ERM_DATABASE_URL: "${{core.ERM_DATABASE_URL}}" } } : {};
+  return env === "live" || env === "production" ? { controlplane: { ERM_DATABASE_URL: "${{core.ERM_DATABASE_URL}}" } } : {};
 }
 
 /**
