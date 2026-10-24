@@ -28,7 +28,7 @@ repositorio) en la consola operativa del negocio SaaS. Encargo del 24/10/2026.
 | D | Tareas: alta, filtros por vencimiento, enlace a empresa | P1 | Desplegado en live (CRM #37) |
 | D | Tickets: ya era funcional (estaba vacío por no haber registros); ciclo completo verificado en live | P1 | **Verificado** |
 | D | Tareas: responsable y prioridad | P2 | Bloqueado: requiere migración del CRM |
-| E | Versiones de esquema por empresa (API + vista) | P2 | Core #306 y CRM #43 (pendiente de publicar en live) |
+| E | Versiones de esquema por empresa (API + vista) | P2 | **Verificado en live** (Core #306, CRM #43) |
 | E | Copias por empresa en la ficha | P2 | Desplegado en live (CRM #41) |
 | G | Publicación: referencia común de servicios (evita copia+migración en cada publicación) | P2 | Core #305 |
 | F | Web comercial | P2 | Pendiente |
@@ -71,9 +71,14 @@ repositorio) en la consola operativa del negocio SaaS. Encargo del 24/10/2026.
 
 ## Pendiente de aprobación humana (production)
 
-1. Despliegues protegidos de controlplane, core y CRM para que Accesos llegue a `admin.bigelephant.es` (caso Skibox).
-2. `ERM_DATABASE_URL` en el plano de control de production (referencia a la del Core, si el Core de production la tiene).
-3. Token de Railway para el entorno `elephant-source-production-despliegue`.
+1. **Actualización protegida de production** con el commit `607e7651` (verificado en live; sin cambios de esquema desde production): run 40047931208 (`aplicar-production`). Lleva Accesos, versiones y medición a `admin.bigelephant.es`.
+2. **CRM en production** (`desplegar-crm`, con aprobación), después del punto 1 (solo cabe una ejecución en espera).
+3. **PR #309:** `ERM_DATABASE_URL` del plano de control en production por el procedimiento protegido. Después, `almacenamiento-referencias` en production (con aprobación).
+4. Token de Railway para el entorno `elephant-source-production-despliegue`.
+5. Caso Skibox: con 1 y 2 aplicados, Skibox → Accesos muestra al administrador. El envío del enlace espera tu confirmación expresa (y con `MAIL_MODE=off` no se crea ningún enlace).
   - CRM #35–#43 en live (salvo #43, pendiente del Core #306): estados por dimensión, ficha 360°, tareas, dashboard SaaS, alta guiada, copias, comunicaciones y versiones.
   - Tickets: alta, asignación, nota interna, estado y cierre verificados con la API real de live.
   - Incidencias abiertas en live (del dashboard): «Stripe: la tarea periódica falla repetidamente» (ventana de Stripe, no tocada) y «Fallos de envío de correo repetidos» (los 412 del 23/10, anteriores a la aprobación de Postmark).
+  - Core #305 (referencia común de servicios), #308 (registro de construcción en fallos) y #310 (estabiliza la prueba `dataExport.e2e`, que bloqueó #306/#307).
+  - Live: un fallo de construcción transitorio del Core (703879d) se revirtió solo (core y controlplane a su versión anterior); la publicación siguiente salió bien.
+  - CRM #44 (auditoría legible) y #45 (coherencia entre lo publicado y la disponibilidad técnica en el catálogo).
