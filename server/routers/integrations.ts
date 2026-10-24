@@ -11,6 +11,7 @@ import { isMultiTenant } from "../_core/tenant";
 import { getVault } from "../_core/credentials/runtime";
 import { getProvider } from "../_core/credentials/catalog";
 import { testProvider } from "../_core/credentials/testers";
+import { integrationHealth, recordCheck } from "../_core/credentials/health";
 import { getDb } from "../db";
 import { sql } from "drizzle-orm";
 import { getSystemSetting, invalidateConfigCache } from "../config";
@@ -97,9 +98,19 @@ export const integrationsRouter = router({
     return { ok: true };
   }),
 
-  test: adminProcedure.input(z.object({ provider: providerSchema })).mutation(async ({ input }) => {
+  test: adminProcedure.input(z.object({ provider: providerSchema })).mutation(async ({ ctx, input }) => {
     requireMulti();
+    if (!getProvider(input.provider)) throw new TRPCError({ code: "BAD_REQUEST", message: "Proveedor desconocido" });
     const values = await getVault().resolve(input.provider);
-    return testProvider(input.provider, values);
+    const r = await testProvider(input.provider, values);
+    // El resultado queda registrado (sin secretos) y se ve también en la ficha de la empresa del plano de control
+    if (r.outcome && r.outcome !== "unsupported") await recordCheck(input.provider, r.outcome, r.message, `user:${ctx.user.id}`).catch(() => undefined);
+    return r;
+  }),
+
+  /** Estado real (última comprobación, sincronización, error e incidencias) de cada integración. */
+  health: adminProcedure.query(async () => {
+    requireMulti();
+    return integrationHealth();
   }),
 });
