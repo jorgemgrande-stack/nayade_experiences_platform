@@ -2,6 +2,10 @@
 
 **Norma permanente** (autorizada por el propietario el 23/10/2026). Se aplica sin pedir autorizaciones rutinarias.
 
+## Responsable técnico
+
+Claude publica sin consultar todo lo ordinario (Diseña → Implementa → Prueba → Corrige → Fusiona → Publica → Verifica → Informa). Solo pide la aprobación protegida cuando la cadena la exige y nunca sortea un control de seguridad: ver «Protocolo de autonomía» en `CLAUDE.md`.
+
 ## Ramas
 
 - Elephant Source se publica **solo** desde `integration/elephant-source`, siempre vía PR (CI en verde y fusión automática).

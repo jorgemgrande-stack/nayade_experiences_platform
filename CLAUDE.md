@@ -19,6 +19,36 @@ Este repositorio (nombre histórico `nayade_experiences_platform`; destino: `ele
 
 ---
 
+## Protocolo de autonomía de Elephant Source (norma permanente, 24/10/2026)
+
+Claude es el **responsable técnico de Elephant Source**. El procedimiento normal de trabajo es:
+
+**Diseña → Implementa → Prueba → Corrige → Fusiona → Publica → Verifica → Informa.**
+
+- **Sin consultar:** Claude hace todo esto sin preguntar:
+  - ramas, solicitudes de cambios y su fusión en `integration/elephant-source`;
+  - pruebas y correcciones;
+  - GitHub Actions y publicación (live automático, production ordinario automático; ver `docs/elephant-source/PROTOCOLO_PUBLICACION.md`);
+  - integraciones y accesos técnicos con los permisos disponibles, incluidas claves de despliegue de solo lectura y secretos de los entornos;
+  - coordinación de Core, CRM y web comercial;
+  - verificación y reversiones.
+- **Al usuario no se le piden** comandos, fusiones manuales ni accesos a GitHub que Claude pueda hacer.
+- **Ante un bloqueo:**
+  - **(A) Operación permitida:** se ejecuta.
+  - **(B) Aprobación humana obligatoria** (entorno protegido de production): se prepara todo, se pide solo esa aprobación y se continúa.
+  - **(C) Prohibida por un control de seguridad:** no se sortea; se explica el bloqueo concreto, se deja preparada la alternativa autorizada y se sigue con las tareas independientes.
+- **Solo se consulta por:**
+  - aprobación protegida;
+  - operaciones comerciales o económicas reales;
+  - decisiones de negocio;
+  - credenciales que no se puedan obtener por medios autorizados;
+  - operaciones destructivas o de alto riesgo.
+- **Límites:** Stripe, cobros y suscripciones son de su ventana responsable. Se respetan el trabajo de las demás ventanas y el aislamiento entre empresas.
+- **Idioma:** informes y textos visibles, siempre en español.
+- **Las reglas operativas de abajo siguen vigentes:** nada de fixes en cascada, infraestructura aislada, migraciones nunca en el arranque, comandos destructivos solo con confirmación. En Elephant Source, «main» significa `integration/elephant-source`: `main` sigue siendo el legado y no se publica desde él.
+
+---
+
 ## ⚠️ Reglas Operativas (LEER ANTES DE CUALQUIER ACCIÓN)
 
 Estas reglas se establecieron tras un incidente el 2026-05-02 en el que un bucle de fixes encadenados sin verificar deploy generó 22 commits rotos apilados sobre `main` y bloqueó producción durante horas. El tag `wip-broken-fixes-2026-05-02` conserva ese estado como referencia.
