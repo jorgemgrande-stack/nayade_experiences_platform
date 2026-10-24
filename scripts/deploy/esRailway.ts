@@ -426,6 +426,29 @@ async function main() {
           ready = false;
         } else if (st.verified === true) console.log("  Propiedad verificada");
       }
+      // Operaciones disponibles en la API para dominios y certificados (solo se listan; ninguna se ejecuta aquí)
+      if (process.argv.includes("--operaciones")) {
+        const m = await api<{ __type: { fields: Array<{ name: string; args: Array<{ name: string; type: { name: string | null; ofType: { name: string | null } | null } }> }> } | null }>(
+          "query { __type(name:\"Mutation\"){ fields { name args { name type { name ofType { name } } } } } }",
+        ).catch(() => ({ __type: null }));
+        for (const f of (m.__type?.fields ?? []).filter((x) => /domain|certificate|cert/i.test(x.name)))
+          console.log(`  operación ${f.name}(${f.args.map((a) => `${a.name}: ${a.type.name ?? a.type.ofType?.name ?? "?"}`).join(", ")})`);
+      }
+    }
+    if (process.argv.includes("--emitir-certificado")) {
+      // Nuevo intento de emisión con la operación de Railway (customDomainIssueCertificate), sin recrear el dominio (los
+      // CNAME no cambian). Solo con la propiedad verificada y sin certificado válido.
+      const st = (await api<{ domains: { customDomains: Array<{ id: string; domain: string; status: { verified: boolean | null; certificateStatus: string | null } | null }> } }>(
+        "query($p:String!,$e:String!,$s:String!){ domains(projectId:$p, environmentId:$e, serviceId:$s){ customDomains { id domain status { verified certificateStatus } } } }",
+        { p: pid, e: sc.environmentId, s: gw },
+      )).domains.customDomains.find((x) => x.domain === wildcard);
+      if (!st?.status?.verified) throw new Error("la propiedad del dominio no está verificada: no se pide el certificado");
+      if (/VALID|ISSUED/.test(st.status.certificateStatus ?? "") && !/FAILED/.test(st.status.certificateStatus ?? "")) {
+        console.log(`core-gateway: el certificado ya está en ${st.status.certificateStatus}`);
+      } else {
+        await api("mutation($id:String!){ customDomainIssueCertificate(id:$id) }", { id: st.id });
+        console.log(`core-gateway: pedida la emisión del certificado de ${wildcard} (antes: ${st.status.certificateStatus})`);
+      }
     }
     if (process.argv.includes("--variables")) {
       if (!ready) throw new Error("el DNS y el certificado aún no están verificados: no se cambia CP_PLATFORM_DOMAINS");

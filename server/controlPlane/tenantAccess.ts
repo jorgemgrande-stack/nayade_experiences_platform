@@ -73,7 +73,7 @@ export function registerTenantAccessRoutes(router: Router, d: TenantAccessRouteD
       if (!(await d.tenantExists(id))) return void res.status(404).json({ error: "not_found", message: "Empresa no encontrada" });
       const r = await d.client.call({ tenantId: id, act: "list", operator: d.operatorOf(req) });
       if (r.status !== 200) return send(res, r.status, r.body);
-      res.json({ tenantId: id, mailMode: r.body.mailMode ?? null, users: r.body.users ?? [] });
+      res.json({ tenantId: id, mailMode: r.body.mailMode ?? null, accessMail: r.body.accessMail ?? null, users: r.body.users ?? [] });
     }
   }));
 

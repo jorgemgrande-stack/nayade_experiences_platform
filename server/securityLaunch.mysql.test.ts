@@ -511,6 +511,20 @@ describe.skipIf(!URL_)("seguridad de lanzamiento en multiempresa (aplicación re
       expect((await m(A, "public.setPassword", { token: inv2.token, password: "clave-invitado-9" }, undefined)).status).toBe(400);
     });
 
+    it("un restablecimiento deja sin efecto la invitación pendiente (no puede volver a cambiar la contraseña)", async () => {
+      const email = `inv-reset-${run}@empresa.example`;
+      const inv = data(await m(A, "admin.createUser", { name: "Invitado R", email, role: "agente" }));
+      const [row] = await sql<any[]>(A, "SELECT id FROM users WHERE email = ?", [email]);
+      const token = crypto.randomBytes(48).toString("hex");
+      await sql(A, "INSERT INTO password_reset_tokens (userId, token, expiresAt) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 1 HOUR))", [row.id, token]);
+      expect((await call(host(A), "POST", "/api/auth/reset-password", { body: { token, password: "clave-restablecida-1" } })).status).toBe(200);
+      expect((await m(A, "public.setPassword", { token: inv.token, password: "clave-por-invitacion" }, undefined)).status).toBe(404);
+      const [after] = await sql<any[]>(A, "SELECT inviteToken, inviteAccepted FROM users WHERE id = ?", [row.id]);
+      expect(after).toMatchObject({ inviteToken: null });
+      expect(Boolean(after.inviteAccepted)).toBe(true);
+      expect((await login(A, email, "clave-restablecida-1")).status).toBe(200);
+    });
+
     it("cambio de contraseña por un administrador: revoca las sesiones del usuario", async () => {
       const email = `revocar-${run}@empresa.example`;
       const uid = await addUser(A, email, "agente");

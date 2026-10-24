@@ -59,9 +59,11 @@ on:
           - correo-pruebas-live
           - huerfanos
           - medicion-preparar
+          - medicion-comprobar
           - dominio-plataforma-live-estado
           - dominio-plataforma-live-crear
           - dominio-plataforma-live-activar
+          - dominio-plataforma-live-certificado
       commit:
         description: "Commit a desplegar (opcional; por defecto, el último de la rama). Para volver atrás: uno anterior de la misma rama"
         required: false
@@ -201,9 +203,10 @@ jobs:
         run: |
           if [ "${ES_ENV}" != "live" ]; then echo "El dominio de plataforma de pruebas solo existe en live"; exit 1; fi
           case "${ES_ACTION}" in
-            dominio-plataforma-live-estado) pnpm exec tsx scripts/deploy/esRailway.ts platform-domain --env "${ES_ENV}" ;;
+            dominio-plataforma-live-estado) pnpm exec tsx scripts/deploy/esRailway.ts platform-domain --env "${ES_ENV}" --operaciones ;;
             dominio-plataforma-live-crear) pnpm exec tsx scripts/deploy/esRailway.ts platform-domain --env "${ES_ENV}" --apply ;;
             dominio-plataforma-live-activar) pnpm exec tsx scripts/deploy/esRailway.ts platform-domain --env "${ES_ENV}" --variables ;;
+            dominio-plataforma-live-certificado) pnpm exec tsx scripts/deploy/esRailway.ts platform-domain --env "${ES_ENV}" --emitir-certificado ;;
           esac
 
       - name: Correo de pruebas — sandbox, webhook y variables
@@ -275,6 +278,14 @@ jobs:
           pnpm exec tsx scripts/deploy/esRailway.ts deploy --env "${ES_ENV}" --service controlplane --dir "${RUNNER_TEMP}/export" --sha "${ES_DEPLOY_SHA}"
           pnpm exec tsx scripts/deploy/esRailway.ts functional --env "${ES_ENV}"
           pnpm exec tsx scripts/deploy/esRailway.ts storage --env "${ES_ENV}"
+          # Prueba de que llega consumo real: tras un volcado del agregador (15 s), el agregado de 24 h por empresa
+          sleep 90
+          pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --command "node dist-cp/backup-job.js erm-setup"
+
+      # Comprobación de solo lectura de la medición: consumo agregado de 24 h por empresa (sin cambios ni datos personales)
+      - name: Medición — comprobar (solo lectura)
+        if: inputs.action == 'medicion-comprobar'
+        run: pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --command "node dist-cp/backup-job.js erm-setup"
 
       # ── Despliegue ordinario (publicar) ──
       - name: Publicar — production solo con CI y live superados por el mismo commit

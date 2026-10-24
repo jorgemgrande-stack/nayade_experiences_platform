@@ -6,7 +6,8 @@ import { SignJWT } from "jose";
 import { describe, expect, it } from "vitest";
 import { OPS_ACCESS_PATH, signOpsAccessToken, verifyOpsAccessToken } from "../_core/opsAccess/token";
 import { createOpsAccessRouter } from "../_core/opsAccess/router";
-import { invitationState, mailGate } from "../_core/opsAccess/actions";
+import { accessMailFor, invitationState, mailGate } from "../_core/opsAccess/actions";
+import { mailPolicyFromEnv } from "../mail/policy";
 import { registerTenantAccessRoutes, type CoreAccessClient } from "./tenantAccess";
 
 const SECRET = "s".repeat(40);
@@ -93,6 +94,21 @@ describe("reglas de envío e invitaciones", () => {
     expect(mailGate(policy("sandbox", ["jgrande@bigelephant.es"]), "admin@skibox.es")).toBe("sandbox_blocked");
     expect(mailGate(policy("sandbox", ["jgrande@bigelephant.es"]), "JGrande@bigelephant.es")).toBe("sent");
     expect(mailGate(policy("live"), "admin@skibox.es")).toBe("sent");
+  });
+  it("ámbito por empresa y tipo: fuera de él no se crea ningún enlace", () => {
+    const env = { MAIL_MODE: "live", MAIL_LIVE_AUTHORIZED: "1", MAIL_SENDING_DOMAIN: "bigelephant.example", MAIL_SCOPE_TENANTS: "t5-skibox", MAIL_SCOPE_CATEGORIES: "user_invite,password_reset" } as NodeJS.ProcessEnv;
+    const p = mailPolicyFromEnv(env);
+    expect(mailGate(p, "admin@skibox.es", { tenantId: "t5-skibox", category: "user_invite" })).toBe("sent");
+    expect(mailGate(p, "admin@skibox.es", { tenantId: "t5-skibox", category: "password_reset" })).toBe("sent");
+    expect(mailGate(p, "admin@otra.es", { tenantId: "t6-otra", category: "user_invite" })).toBe("scope_blocked");
+    expect(mailGate(p, "admin@skibox.es", { tenantId: "t5-skibox", category: "marketing" })).toBe("scope_blocked");
+    expect(mailGate(p, "admin@skibox.es")).toBe("scope_blocked"); // sin empresa conocida, nada
+    expect(accessMailFor(p, "t5-skibox")).toEqual({ invite: true, reset: true });
+    expect(accessMailFor(p, "t6-otra")).toEqual({ invite: false, reset: false });
+    // Solo invitaciones: el restablecimiento queda fuera
+    expect(accessMailFor(mailPolicyFromEnv({ ...env, MAIL_SCOPE_CATEGORIES: "user_invite" }), "t5-skibox")).toEqual({ invite: true, reset: false });
+    // Con MAIL_MODE=off el ámbito no habilita nada
+    expect(accessMailFor(mailPolicyFromEnv({ ...env, MAIL_MODE: "off" }), "t5-skibox")).toEqual({ invite: false, reset: false });
   });
   it("estado de la invitación", () => {
     const now = Date.now();
