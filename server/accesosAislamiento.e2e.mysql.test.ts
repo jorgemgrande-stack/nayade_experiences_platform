@@ -8,6 +8,7 @@
  *  - una acción sobre el usuario N de A no toca al usuario N de B (desactivar, reactivar, confirmación de correo);
  *  - la empresa sale del token firmado: el host de otra empresa, un token de otro secreto, un token reutilizado o uno
  *    para una empresa inexistente no sirven;
+ *  - cerrar las sesiones del usuario N de A no cierra las del usuario N de B, y A puede volver a entrar;
  *  - sin `support:write` no se ejecuta nada y el historial de cada empresa solo recoge lo suyo.
  *
  *   REGISTRY_TEST_DATABASE_URL=mysql://root:ci_only@127.0.0.1:3418/registry_test \
@@ -16,7 +17,8 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import crypto from "node:crypto";
 import mysql from "mysql2/promise";
-import { startElephantStack, type ElephantStack } from "./elephantStack.testkit";
+import bcrypt from "bcryptjs";
+import { startElephantStack, data, type ElephantStack } from "./elephantStack.testkit";
 import { signOpsAccessToken } from "./_core/opsAccess/token";
 
 const URL_ = process.env.REGISTRY_TEST_DATABASE_URL;
@@ -26,6 +28,7 @@ describe.skipIf(!URL_)("Accesos: aislamiento entre dos empresas reales (MySQL re
   let s: ElephantStack;
   const A = { tenantId: "", owner: "", employee: "", employeeId: 0 };
   const B = { tenantId: "", owner: "", employee: "", employeeId: 0 };
+  const PASSWORD = `clave-empleado-${crypto.randomBytes(8).toString("hex")}`;
 
   const db = async <T = any>(tenantId: string, q: string, params: unknown[] = []) => {
     const c = await s.tenantConn(tenantId);
@@ -64,10 +67,11 @@ describe.skipIf(!URL_)("Accesos: aislamiento entre dos empresas reales (MySQL re
     expect(A.tenantId).not.toBe(B.tenantId);
     // Un empleado en cada empresa con el MISMO id (las bases son independientes)
     for (const t of [A, B]) {
-      await db(t.tenantId, "INSERT INTO users (id, openId, name, email, loginMethod, role, isActive, inviteAccepted) VALUES (100, ?, ?, ?, 'local', 'agente', 1, 1)", [
+      await db(t.tenantId, "INSERT INTO users (id, openId, name, email, loginMethod, role, isActive, inviteAccepted, passwordHash) VALUES (100, ?, ?, ?, 'local', 'agente', 1, 1, ?)", [
         `acc-${crypto.randomBytes(8).toString("hex")}`,
         t === A ? "Empleado A" : "Empleada B",
         t.employee,
+        await bcrypt.hash(PASSWORD, 4),
       ]);
       t.employeeId = 100;
     }
@@ -139,6 +143,31 @@ describe.skipIf(!URL_)("Accesos: aislamiento entre dos empresas reales (MySQL re
     expect((await access("empresa-que-no-existe")).status).toBe(404);
   });
 
+  it("cerrar las sesiones del usuario 100 de A: su sesión deja de valer, la del 100 de B no; A puede volver a entrar", async () => {
+    const login = async (t: typeof A) => {
+      const r = await s.app(t.tenantId, "POST", "/api/auth/login", { body: { email: t.employee, password: PASSWORD } });
+      expect(r.status).toBe(200);
+      return r.cookie!;
+    };
+    const me = async (t: typeof A, cookie: string) => data(await s.q(t.tenantId, "auth.me", undefined, cookie))?.email ?? null;
+    const ca = await login(A);
+    const cb = await login(B);
+    expect(await me(A, ca)).toBe(A.employee);
+    expect(await me(B, cb)).toBe(B.employee);
+    const r = await act(A.tenantId, A.employeeId, "revoke", { reason: "Prueba de cierre de sesiones" });
+    expect(r.status).toBe(200);
+    expect(r.json).toMatchObject({ ok: true, action: "revoke" });
+    expect(await me(A, ca)).toBeNull();
+    expect(await me(B, cb)).toBe(B.employee);
+    // La cuenta sigue activa y con su contraseña: un inicio de sesión posterior vale (el mismo segundo se revoca)
+    expect(await active(A.tenantId, A.employeeId)).toBe(1);
+    await new Promise((x) => setTimeout(x, 1100));
+    expect(await me(A, await login(A))).toBe(A.employee);
+    const list = await access(A.tenantId);
+    expect(list.json.users.find((u: any) => u.id === A.employeeId)?.sessionsRevokedAt).toBeTruthy();
+    expect((await access(B.tenantId)).json.users.find((u: any) => u.id === B.employeeId)?.sessionsRevokedAt).toBeNull();
+  });
+
   it("sin support:write no se ejecuta nada; con solo lectura se puede consultar", async () => {
     const r = await act(A.tenantId, A.employeeId, "deactivate", { reason: "Intento sin permiso de escritura" }, s.readerToken);
     expect(r.status).toBe(403);
@@ -150,10 +179,11 @@ describe.skipIf(!URL_)("Accesos: aislamiento entre dos empresas reales (MySQL re
   it("el historial de cada empresa recoge solo sus acciones, sin correos", async () => {
     const ea = await events(A.tenantId);
     const eb = await events(B.tenantId);
-    expect(ea.map((e) => e.action)).toEqual(["access.deactivate", "access.activate", "access.reset"]);
+    expect(ea.map((e) => e.action)).toEqual(["access.deactivate", "access.activate", "access.reset", "access.revoke"]);
     // Las llamadas directas al Core (sin plano de control) no se anotan en el registro; en B no hubo ninguna por la API
     expect(eb).toEqual([]);
     expect(JSON.stringify(ea)).not.toMatch(/@/);
-    expect(ea.at(-1)?.details).toMatchObject({ userId: A.employeeId, result: "confirm_mismatch" });
+    expect(ea[2]?.details).toMatchObject({ userId: A.employeeId, result: "confirm_mismatch" });
+    expect(ea[3]?.details).toMatchObject({ userId: A.employeeId, result: "ok" });
   });
 });

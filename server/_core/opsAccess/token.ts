@@ -12,7 +12,7 @@ import { SignJWT, jwtVerify } from "jose";
 
 export const OPS_ACCESS_AUDIENCE = "elephant-source:ops-access";
 export const OPS_ACCESS_PATH = "/_ops/access";
-export const OPS_ACCESS_ACTIONS = ["list", "reset", "invite", "unlock", "activate", "deactivate"] as const;
+export const OPS_ACCESS_ACTIONS = ["list", "reset", "invite", "unlock", "activate", "deactivate", "revoke"] as const;
 export type OpsAccessAction = (typeof OPS_ACCESS_ACTIONS)[number];
 const MAX_TTL_SECONDS = 120;
 

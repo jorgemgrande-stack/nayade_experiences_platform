@@ -4,7 +4,8 @@
  *  - restablecimiento: `requestPasswordReset` (enlace de un solo uso, 60 min, invalida los anteriores);
  *  - invitación: `resendUserInvite` + `sendInviteEmail` (72 h, como el panel de la empresa);
  *  - bloqueo por intentos: `loginThrottle` (desbloquear = limpiar el contador de esa cuenta);
- *  - activar/desactivar: `users.isActive` (desactivar corta las sesiones: el Core lo comprueba en cada petición).
+ *  - activar/desactivar: `users.isActive` (desactivar corta las sesiones: el Core lo comprueba en cada petición);
+ *  - cerrar sesiones: `users.sessionsRevokedAt` (las sesiones emitidas hasta ahora dejan de valer; puede volver a entrar).
  * Salvaguardas: nunca se devuelve ni se fija una contraseña; la persona propietaria y el último administrador activo
  * no se desactivan; reactivar ocupa plaza; los envíos exigen el correo tecleado por el operador y respetan MAIL_MODE.
  */
@@ -27,6 +28,7 @@ export interface AccessUserView {
   invitation: "accepted" | "pending" | "expired" | "none";
   invitationExpiresAt: string | null;
   lastSignedIn: string | null;
+  sessionsRevokedAt: string | null;
   createdAt: string | null;
   lockedForSeconds: number;
 }
@@ -89,6 +91,7 @@ export async function runAccessAction(act: OpsAccessAction, uid: number | undefi
         invitation: invitationState({ inviteAccepted: !!u.inviteAccepted, inviteToken: u.inviteToken ?? null, inviteTokenExpiry: u.inviteTokenExpiry ?? null }),
         invitationExpiresAt: iso(u.inviteTokenExpiry),
         lastSignedIn: iso(u.lastSignedIn),
+        sessionsRevokedAt: iso(u.sessionsRevokedAt),
         createdAt: iso(u.createdAt),
         lockedForSeconds: u.email ? Math.ceil(loginLockRemaining(u.email) / 1000) : 0,
       })),
@@ -129,6 +132,12 @@ export async function runAccessAction(act: OpsAccessAction, uid: number | undefi
 
   if (act === "unlock") {
     if (email) recordLoginSuccess(email);
+    return { ok: true, action: act };
+  }
+
+  if (act === "revoke") {
+    // Todas las sesiones emitidas hasta este segundo dejan de valer en la siguiente petición (ver localAuth)
+    await db.update(users).set({ sessionsRevokedAt: new Date(), updatedAt: new Date() }).where(eq(users.id, u.id));
     return { ok: true, action: act };
   }
 

@@ -64,9 +64,11 @@ describe.skipIf(!URL_)("ensayo de migración 0011–0013 con copia y reversión 
   let storage: FsBackupStorage;
   let work: string;
   let preDir: string;
+  /** Hasta la 0013: el ensayo es de 0011–0013 aunque después haya migraciones nuevas. */
+  let exportDir: string;
   const ring = backupKeyringFromEnv({ BACKUP_KEYS: `k1:${crypto.randomBytes(32).toString("base64")}`, BACKUP_ACTIVE_KEY_ID: "k1" } as NodeJS.ProcessEnv);
   const before = new Map<string, Record<string, string>>();
-  const full = () => new MysqlSchemaApplier({ baselinePath: path.join(ROOT, "db/baseline/0000_baseline.sql"), migrationsDir: path.join(ROOT, "db/migrations") });
+  const full = () => new MysqlSchemaApplier({ baselinePath: path.join(ROOT, "db/baseline/0000_baseline.sql"), migrationsDir: exportDir });
   const conn = async (id: string) => mysql.createConnection({ uri: (await svc.getActiveDsn(id))! });
   const checksums = async (id: string) => {
     const c = await conn(id);
@@ -119,6 +121,9 @@ describe.skipIf(!URL_)("ensayo de migración 0011–0013 con copia y reversión 
     preDir = path.join(work, "migraciones-previas");
     fs.mkdirSync(preDir);
     for (const f of fs.readdirSync(path.join(ROOT, "db/migrations")).filter((x) => /^00(0\d|10)_/.test(x))) fs.copyFileSync(path.join(ROOT, "db/migrations", f), path.join(preDir, f));
+    exportDir = path.join(work, "migraciones-exportacion");
+    fs.mkdirSync(exportDir);
+    for (const f of fs.readdirSync(path.join(ROOT, "db/migrations")).filter((x) => /^00(0d|1[0-3])_/.test(x))) fs.copyFileSync(path.join(ROOT, "db/migrations", f), path.join(exportDir, f));
     const prov = new ProvisioningService({
       registry: svc,
       reader: store,
