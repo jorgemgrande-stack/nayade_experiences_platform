@@ -204,7 +204,9 @@ describe("operaciones", () => {
 
   it("transiciones no permitidas y datos no válidos devuelven 409/400", async () => {
     expect((await call("POST", "/cp/v1/tenants/acme/status", { token: FULL, body: { status: "provisioning" } })).status).toBe(400);
-    expect((await call("POST", "/cp/v1/tenants/acme/status", { token: FULL, body: { status: "deleted" } })).status).toBe(409);
+    expect((await call("POST", "/cp/v1/tenants/acme/status", { token: FULL, body: { status: "deleted", reason: "Prueba de transición" } })).status).toBe(409);
+    // Sin motivo no se suspende, archiva ni borra
+    for (const status of ["suspended", "archived", "deleted"]) expect((await call("POST", "/cp/v1/tenants/acme/status", { token: FULL, body: { status, reason: " " } })).status).toBe(400);
     expect((await call("GET", "/cp/v1/tenants/..%2Fetc", { token: FULL })).status).toBe(400);
     expect((await call("GET", "/cp/v1/tenants/no-existe", { token: FULL })).status).toBe(404);
   });

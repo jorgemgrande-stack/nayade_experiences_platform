@@ -578,9 +578,13 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
       const body = z
         .object({
           status: z.enum(["trial", "active", "grace", "suspended", "archived", "deleting", "deleted"]),
-          reason: z.string().max(200).optional(),
+          reason: z.string().trim().max(200).optional(),
         })
         .parse(req.body);
+      // Suspender, archivar o borrar deja a la empresa sin servicio: siempre con un motivo que quede en la auditoría
+      if (["suspended", "archived", "deleting", "deleted"].includes(body.status) && (body.reason ?? "").length < 5) {
+        return void res.status(400).json({ error: "reason_required", message: "Indica el motivo (al menos 5 caracteres) para suspender, archivar o borrar una empresa" });
+      }
       res.json({ tenant: await d.registry.setStatus(id, body.status, actor(req), { reason: body.reason }) });
     }),
   );
