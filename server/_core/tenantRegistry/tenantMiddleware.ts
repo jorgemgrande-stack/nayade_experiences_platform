@@ -38,9 +38,18 @@ const DEFAULT_EXEMPT = new Set(["/healthz", "/readyz"]);
 
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
-/** Rutas del panel y de la API: siguen disponibles cuando la web pública no se sirve (suspendido). */
+/**
+ * Pantallas de acceso del panel: con la empresa suspendida la administración sigue disponible (política del ciclo de
+ * vida), así que también el inicio de sesión y la recuperación o el establecimiento de la contraseña.
+ */
+const ACCESS_PAGES = new Set(["/login", "/recuperar-contrasena", "/nueva-contrasena", "/establecer-contrasena"]);
+
+/**
+ * Rutas del panel y de la API: siguen disponibles cuando la web pública no se sirve (suspendido). Incluye los ficheros
+ * estáticos de la aplicación (`/assets/`), sin los que el panel no carga, y las pantallas de acceso.
+ */
 export function isOperatorPath(p: string): boolean {
-  return p === "/admin" || p.startsWith("/admin/") || p.startsWith("/api/");
+  return p === "/admin" || p.startsWith("/admin/") || p.startsWith("/api/") || p.startsWith("/assets/") || ACCESS_PAGES.has(p) || p === "/favicon.ico";
 }
 
 /** Inicio/cierre de sesión: única escritura permitida a un tenant sin escrituras de negocio. */
