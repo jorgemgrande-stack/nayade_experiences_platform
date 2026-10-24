@@ -25,6 +25,7 @@ import { DEFAULT_QUOTAS, parseDefaultQuotas } from "../_core/erm/quota";
 import { crmContactOf, runUsageNotices } from "../commerce/usageNotices";
 import { choosePublicDomain } from "../_core/tenantIdentity";
 import { MysqlUsageStore } from "../_core/erm/usage";
+import { costModelFromEnv } from "../_core/erm/costs";
 import { keyringFromEnv } from "../_core/tenantRegistry/crypto";
 import { MysqlTenantRegistryStore } from "../_core/tenantRegistry/mysqlStore";
 import { TenantRegistryService } from "../_core/tenantRegistry/service";
@@ -484,6 +485,7 @@ async function main() {
     quotas,
     provisioning,
     usage,
+    costModel: costModelFromEnv(process.env),
     quotaDefaults: parseDefaultQuotas(process.env.ERM_DEFAULT_QUOTAS) ?? undefined,
     platformTarget: process.env.CP_PLATFORM_TARGET ?? "",
     platformDomain,
