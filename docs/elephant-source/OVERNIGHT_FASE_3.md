@@ -31,3 +31,8 @@ ni Náyade; `MAIL_MODE=off` en production; aprobación solo para lo protegido.
 | 17:40 | Medición | Orden del paso de medición en el workflow (fallaba «Falta --sha» en live) | #336 | En CI |
 | 17:45 | Seguridad | Pruebas negativas en production: 13 rutas del plano de control → 401; hosts de empresa sin `/_ops`, sin ficheros ni API internas | — | Verificado en production |
 | 17:50 | Experiencia de usuario | Recorrido real de 34 rutas en escritorio y móvil: sin errores de consola ni peticiones fallidas; 4 problemas (desbordes en móvil, contraste en el alta, campos sin etiqueta, ruta inexistente) | — | Corrección en curso |
+| 18:30 | Experiencia de usuario | Correcciones del recorrido (CRM #57, #58); 68/68 limpias en live | CRM #57, #58 | Verificado en live |
+| 19:23 | Dominios | Certificado de `*.live.bigelephant.es` emitido; alta real con subdominio en 21 s | #342 | Verificado en live |
+| 20:08 | Resource Manager | Medición en production: `es_erm`, referencias, Core y plano de control desplegados; datos reales de las 7 empresas | #343 | Verificado en production |
+| 20:15 | Correo de acceso | Ámbito por empresa y tipo, tres defectos de invitación corregidos y prueba de punta a punta en live | #344, #345, CRM #61 | Verificado en live |
+| 20:45 | Despliegue | Core, plano de control y pasarela en `55451c2d` (ejecución 40128876983) | — | Verificado en production |
