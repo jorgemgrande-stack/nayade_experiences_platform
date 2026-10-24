@@ -396,7 +396,7 @@ async function main() {
       console.log(`core-gateway (${env}): sin ${wildcard}. Con --apply se crea (sin efecto hasta que exista el DNS).`);
       return;
     }
-    const ready = show(mine);
+    let ready = show(mine);
     // Detalle completo de verificación y certificado: los campos escalares que Railway expone (por introspección; no se
     // suponen nombres). Solo lectura; no contiene secretos (estados, fechas, registros públicos de DNS y mensajes).
     {
@@ -417,6 +417,14 @@ async function main() {
         ).catch((e: Error) => (console.log(`  detalle no disponible: ${scrub(e.message).slice(0, 160)}`), null));
         const d = all?.domains.customDomains.find((x) => x.domain === wildcard);
         if (d) console.log(`  detalle: ${scrub(JSON.stringify(d))}`);
+        // Verificación de PROPIEDAD (TXT) que Railway exige aparte y no incluye en dnsRecords: sin ella no emite el
+        // certificado aunque los CNAME estén bien (24/10/2026). Es un registro público, no un secreto.
+        const st = (d?.status ?? {}) as { verified?: boolean; verificationDnsHost?: string; verificationToken?: string };
+        if (st.verified === false && st.verificationDnsHost && st.verificationToken) {
+          const parent = domain.split(".").slice(-2).join(".");
+          console.log(`  DNS TXT ${st.verificationDnsHost}.${parent} → ${st.verificationToken} · NO VERIFICADO (obligatorio para el certificado)`);
+          ready = false;
+        } else if (st.verified === true) console.log("  Propiedad verificada");
       }
     }
     if (process.argv.includes("--variables")) {
