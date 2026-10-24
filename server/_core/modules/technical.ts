@@ -9,10 +9,11 @@
  *    ya no están disponibles en la plataforma (obsoletos).
  * Las migraciones se aplican solo por el procedimiento protegido; aquí únicamente se informa.
  */
+import fs from "node:fs";
+import path from "node:path";
 import type mysql from "mysql2/promise";
 import { CORE_VERSION, getModuleAccess, getModuleRegistry } from "./runtime";
 import { getLoadedModules, getModuleLoadFailures } from "./loader";
-import { planModuleMigrations } from "./migrations";
 import { satisfies } from "./semver";
 import { MODULE_CONTRACT_VERSION, type ModuleManifest } from "./contract";
 
@@ -42,6 +43,19 @@ export interface ModulesTechnicalReport {
 
 type Pool = Pick<mysql.Pool, "query">;
 
+/**
+ * Migraciones del módulo que aún no constan en el historial de la empresa. Se leen los nombres de fichero del módulo
+ * (NNNN_nombre.sql, sin las reversiones) sin cargar el aplicador de migraciones, que no forma parte del binario del Core.
+ */
+export function pendingFromFiles(dir: string, applied: Set<string>): string[] {
+  return fs
+    .readdirSync(dir)
+    .filter((f) => /^d{4}_[a-z0-9_]+.sql$/.test(f) && !f.endsWith(".down.sql"))
+    .map((f) => f.replace(/.sql$/, ""))
+    .sort()
+    .filter((id) => !applied.has(id));
+}
+
 async function historyRows(pool: Pool | null): Promise<Array<{ module_id: string; migration_id: string; applied_at: Date | null }>> {
   if (!pool) return [];
   try {
@@ -67,7 +81,7 @@ export async function modulesTechnicalReport(tenantId: string, pool: Pool | null
     let error: string | null = null;
     if (ext && m.migrationsDir && pool) {
       try {
-        pending = (await planModuleMigrations(pool, m, ext.root)).pending.map((x) => x.id);
+        pending = pendingFromFiles(path.resolve(ext.root, m.migrationsDir), new Set(history.filter((h) => h.module_id === m.id).map((h) => h.migration_id)));
       } catch (e) {
         error = e instanceof Error ? e.message.slice(0, 200) : "error";
       }
