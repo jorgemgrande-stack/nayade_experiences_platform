@@ -136,6 +136,7 @@ import type { BackupCopyLedger } from "../_core/ops/backupCopies";
 import { BACKUP_TENANT_STATUSES } from "../_core/ops/backupJob";
 import { registerTenantAccessRoutes, type CoreAccessClient } from "./tenantAccess";
 import { deliverAdminInvite, withAdminInviteDelivery } from "./adminInviteDelivery";
+import type { IntegrationHealth } from "../_core/credentials/health";
 import { integrationStatus, mysqlIntegrationRows, type IntegrationRow } from "./tenantIntegrations";
 import { pendingCount, schemaState, tenantMigrations } from "./schemaVersions";
 
@@ -970,9 +971,43 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
       if (!t || t.status === "deleted") throw new RegistryError("not_found", "Tenant no encontrado");
       const rows = ["provisioning", "archived", "deleting"].includes(t.status) ? null : await integrationRows(id).catch(() => null);
       if (!rows) return void res.json({ tenantId: id, available: false, reason: "No se pudo consultar la base de la empresa", integrations: [] });
-      res.json({ tenantId: id, available: true, integrations: integrationStatus(rows) });
+      // Estado real desde el Core (comprobaciones y sincronizaciones registradas en la base de la empresa)
+      let health: IntegrationHealth[] | null = null;
+      let healthAvailable = false;
+      if (d.tenantAccess) {
+        const a = getAuth(req)!.actor;
+        const r = await d.tenantAccess.client.call({ tenantId: id, act: "integrations", operator: `${a.type}:${a.id}` }).catch(() => null);
+        const h = r?.status === 200 ? (r.body.integrations as { available?: boolean; providers?: IntegrationHealth[] } | undefined) : undefined;
+        if (h?.available) {
+          health = h.providers ?? [];
+          healthAvailable = true;
+        }
+      }
+      res.json({ tenantId: id, available: true, healthAvailable, integrations: integrationStatus(rows, health) });
     }),
   );
+  // Comprobación de una integración AHORA, de solo lectura y con las credenciales de la empresa (nunca vistas aquí)
+  if (d.tenantAccess) {
+    const access = d.tenantAccess;
+    router.post(
+      "/tenants/:id/integrations/:provider/check",
+      requireScope("support:write"),
+      wrap(async (req, res) => {
+        const id = idSchema.parse(req.params.id);
+        const provider = z.string().regex(/^[a-z][a-z_]{1,31}$/).parse(req.params.provider);
+        const b = z.object({ reason: z.string().trim().min(5).max(300) }).strict().parse(req.body ?? {});
+        const t = await d.reader.getTenant(id);
+        if (!t || t.status === "deleted" || t.status === "deleting") throw new RegistryError("not_found", "Tenant no encontrado");
+        const a = getAuth(req)!.actor;
+        const r = await access.client.call({ tenantId: id, act: "integration_check", prv: provider, operator: `${a.type}:${a.id}` });
+        const ok = r.status === 200;
+        const check = ok ? (r.body.check as { outcome: string; message: string }) : null;
+        await d.registry.recordEvent(id, actor(req), "integration.check", { provider, reason: b.reason, result: ok ? check!.outcome : String(r.body.error ?? r.status) });
+        if (!ok) return void res.status(r.status === 503 ? 503 : r.status === 404 ? 404 : 409).json({ error: r.body.error ?? "check_failed", message: String(r.body.message ?? "No se pudo comprobar") });
+        res.json({ tenantId: id, provider, ...check });
+      }),
+    );
+  }
 
   // Versiones de esquema: la última migración de empresa de este código frente a la aplicada en cada una
   router.get(

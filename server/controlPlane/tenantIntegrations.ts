@@ -1,9 +1,11 @@
 /**
  * Ficha 360° → Integraciones de una empresa, SIN secretos: qué proveedores tiene configurados y qué campos obligatorios
  * faltan. Se lee de la tabla cifrada de la propia empresa (`integration_credentials`) solo el proveedor, el campo, la
- * fecha y el autor; NUNCA el valor (ni cifrado). El estado de conexión no se registra hoy: se dice «no comprobado».
+ * fecha y el autor; NUNCA el valor (ni cifrado). El estado de conexión sale de las comprobaciones y sincronizaciones
+ * REALES que registra el Core (0015_integration_health); sin ellas, «no comprobado». Tener credenciales no es estar conectado.
  */
 import { PROVIDERS } from "../_core/credentials/catalog";
+import type { IntegrationHealth } from "../_core/credentials/health";
 
 export type IntegrationState = "not_configured" | "incomplete" | "configured";
 
@@ -24,11 +26,22 @@ export interface IntegrationStatus {
   missingRequired: string[];
   lastChangedAt: string | null;
   lastChangedBy: string | null;
-  /** Hoy no se guarda ninguna comprobación de conexión ni sincronización: nunca se presenta como «correcta». */
-  connection: "not_checked";
+  /** connected / disconnected (credenciales rechazadas) / error / not_checked. Sin configurar, siempre not_checked. */
+  connection: IntegrationHealth["connection"];
+  stateAt: string | null;
+  lastCheck: IntegrationHealth["lastCheck"];
+  lastSync: IntegrationHealth["lastSync"];
+  lastOkSyncAt: string | null;
+  lastError: IntegrationHealth["lastError"];
+  incidents: IntegrationHealth["incidents"];
+  capabilities: string[];
+  /** Cómo se comprueba (solo lectura); null si el proveedor no lo permite. */
+  checkMethod: string | null;
+  /** Operaciones disponibles desde Admin. Cambiar credenciales es cosa de la empresa: el operador nunca las ve. */
+  operations: Array<"check">;
 }
 
-export function integrationStatus(rows: IntegrationRow[]): IntegrationStatus[] {
+export function integrationStatus(rows: IntegrationRow[], health: IntegrationHealth[] | null = null): IntegrationStatus[] {
   return PROVIDERS.map((p) => {
     const mine = rows.filter((r) => r.provider === p.id && p.fields.some((f) => f.key === r.field));
     const keys = new Set(mine.map((r) => r.field));
@@ -49,9 +62,18 @@ export function integrationStatus(rows: IntegrationRow[]): IntegrationStatus[] {
       missingRequired,
       lastChangedAt: last ? new Date(last.at).toISOString() : null,
       lastChangedBy: last?.by ?? null,
-      connection: "not_checked",
+      ...healthOf(state, health?.find((h) => h.provider === p.id) ?? null),
+      capabilities: p.capabilities,
+      checkMethod: p.check,
+      operations: state !== "not_configured" && p.check ? ["check"] : [],
     };
   });
+}
+
+function healthOf(state: IntegrationState, h: IntegrationHealth | null) {
+  // Sin credenciales no hay conexión que valorar, aunque quede historial de cuando las tuvo
+  const conn = state === "not_configured" || !h ? { connection: "not_checked" as const, stateAt: null } : { connection: h.connection, stateAt: h.stateAt };
+  return { ...conn, lastCheck: h?.lastCheck ?? null, lastSync: h?.lastSync ?? null, lastOkSyncAt: h?.lastOkSyncAt ?? null, lastError: h?.lastError ?? null, incidents: h?.incidents ?? [] };
 }
 
 /** Lectura en la base de la empresa con SUS credenciales; solo columnas no sensibles. */

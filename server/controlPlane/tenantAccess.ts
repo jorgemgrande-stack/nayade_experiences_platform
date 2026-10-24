@@ -16,7 +16,7 @@ export const ACCESS_ACTIONS = ["reset", "invite", "unlock", "activate", "deactiv
 export type AccessUserAction = (typeof ACCESS_ACTIONS)[number];
 
 export interface CoreAccessClient {
-  call(c: { tenantId: string; act: OpsAccessAction; uid?: number; confirm?: string; operator: string }): Promise<{ status: number; body: Record<string, unknown> }>;
+  call(c: { tenantId: string; act: OpsAccessAction; uid?: number; confirm?: string; prv?: string; operator: string }): Promise<{ status: number; body: Record<string, unknown> }>;
 }
 
 export function coreAccessClient(o: { baseUrl: string; secret: string; fetch?: typeof fetch; timeoutMs?: number }): CoreAccessClient {
@@ -24,7 +24,7 @@ export function coreAccessClient(o: { baseUrl: string; secret: string; fetch?: t
   const base = o.baseUrl.replace(/\/+$/, "");
   return {
     async call(c) {
-      const token = await signOpsAccessToken({ tid: c.tenantId, act: c.act, uid: c.uid, confirm: c.confirm, op: c.operator }, o.secret, 60);
+      const token = await signOpsAccessToken({ tid: c.tenantId, act: c.act, uid: c.uid, confirm: c.confirm, prv: c.prv, op: c.operator }, o.secret, 60);
       const ctl = new AbortController();
       const timer = setTimeout(() => ctl.abort(), o.timeoutMs ?? 15_000);
       try {

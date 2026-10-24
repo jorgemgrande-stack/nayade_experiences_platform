@@ -13,12 +13,12 @@ export interface OpsAccessRouterDeps {
   /** ¿La empresa existe y admite la gestión de accesos? (registro; nunca borrada) */
   tenantAllowed: (tenantId: string) => Promise<boolean>;
   /** Ejecuta en el contexto de la empresa (pool, configuración, identidad y correo de esa empresa). */
-  run: (tenantId: string, act: OpsAccessAction, uid: number | undefined, confirm: string | undefined) => Promise<AccessResult>;
+  run: (tenantId: string, act: OpsAccessAction, uid: number | undefined, confirm: string | undefined, ctx: { provider?: string; operator: string }) => Promise<AccessResult>;
   log?: (event: string, data: Record<string, unknown>) => void;
   now?: () => number;
 }
 
-const STATUS: Record<string, number> = { not_found: 404, confirm_mismatch: 409, owner_protected: 409, last_admin: 409, no_email: 409, inactive: 409, already_accepted: 409, seat_limit: 409, db_unavailable: 503 };
+const STATUS: Record<string, number> = { not_found: 404, confirm_mismatch: 409, owner_protected: 409, last_admin: 409, no_email: 409, inactive: 409, already_accepted: 409, seat_limit: 409, db_unavailable: 503, unknown_provider: 404, not_configured: 409 };
 
 export function createOpsAccessRouter(d: OpsAccessRouterDeps): Router {
   const r = express.Router();
@@ -43,9 +43,9 @@ export function createOpsAccessRouter(d: OpsAccessRouterDeps): Router {
     seen.set(c.jti, c.exp);
     if (!(await d.tenantAllowed(c.tid).catch(() => false))) return void res.status(404).json({ error: "tenant_not_found" });
     try {
-      const out = await d.run(c.tid, c.act, c.uid, c.confirm);
+      const out = await d.run(c.tid, c.act, c.uid, c.confirm, { provider: c.prv, operator: c.op });
       // Sin correos ni nombres en el registro: empresa, acción, usuario (id), operador y resultado
-      log("done", { tenantId: c.tid, action: c.act, userId: c.uid ?? null, operator: c.op, ok: out.ok, ...(out.ok ? { mail: out.mail ?? null } : { error: out.error }) });
+      log("done", { tenantId: c.tid, action: c.act, userId: c.uid ?? null, ...(c.prv ? { provider: c.prv } : {}), operator: c.op, ok: out.ok, ...(out.ok ? { mail: out.mail ?? null } : { error: out.error }) });
       if (!out.ok) return void res.status(STATUS[out.error] ?? 400).json({ error: out.error, message: out.message });
       res.json(out);
     } catch (e) {

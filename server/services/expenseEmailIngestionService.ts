@@ -15,6 +15,7 @@
  */
 
 import { eq, desc } from "drizzle-orm";
+import { recordSync } from "../_core/credentials/health";
 import { ImapFlow } from "imapflow";
 import { simpleParser } from "mailparser";
 import cron from "node-cron";
@@ -140,6 +141,7 @@ export async function runExpenseEmailIngestion(): Promise<{ processed: number; d
   }
 
   isRunning = true;
+  let connectionFailed = false;
 
   const client = new ImapFlow({
     host: cfg.host,
@@ -317,8 +319,11 @@ export async function runExpenseEmailIngestion(): Promise<{ processed: number; d
   } catch (imapErr: any) {
     console.error("[ExpenseMailIngestion] Error de conexión IMAP:", imapErr.message);
     result.errors++;
+    connectionFailed = true;
   } finally {
     isRunning = false;
+    // Estado de la integración para la ficha (sin datos del buzón)
+    await recordSync("imap_expenses", !connectionFailed, connectionFailed ? "No se pudo leer el buzón (conexión o credenciales)" : "Lectura del buzón correcta").catch(() => undefined);
   }
 
   return result;

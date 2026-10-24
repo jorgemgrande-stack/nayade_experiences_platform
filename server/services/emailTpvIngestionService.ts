@@ -1,4 +1,5 @@
 import "dotenv/config";
+import { recordSync } from "../_core/credentials/health";
 import { eq, like, and, gte, lte, inArray, sql } from "drizzle-orm";
 import { ImapFlow } from "imapflow";
 import { simpleParser } from "mailparser";
@@ -889,6 +890,9 @@ export async function runEmailIngestion(retryErrors = false): Promise<IngestionR
     isRunning = false;
     try { await client.logout(); } catch {}
   }
+  // Estado de la integración para la ficha (sin datos del buzón): correcta o con el error de conexión
+  const connErr = result.errors.find((e) => e.startsWith("IMAP connection failed"));
+  await recordSync("imap_tpv", !connErr, connErr ? "No se pudo leer el buzón (conexión o credenciales)" : "Lectura del buzón correcta").catch(() => undefined);
 
   return result;
 }

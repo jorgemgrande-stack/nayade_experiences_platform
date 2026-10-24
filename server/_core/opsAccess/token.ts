@@ -12,7 +12,10 @@ import { SignJWT, jwtVerify } from "jose";
 
 export const OPS_ACCESS_AUDIENCE = "elephant-source:ops-access";
 export const OPS_ACCESS_PATH = "/_ops/access";
-export const OPS_ACCESS_ACTIONS = ["list", "reset", "invite", "unlock", "activate", "deactivate", "revoke"] as const;
+export const OPS_ACCESS_ACTIONS = ["list", "reset", "invite", "unlock", "activate", "deactivate", "revoke", "integrations", "integration_check"] as const;
+/** Acciones sin usuario de la empresa (todas las demás exigen `uid`). */
+const NO_USER_ACTIONS: readonly string[] = ["list", "integrations", "integration_check"];
+const PROVIDER_RE = /^[a-z][a-z_]{1,31}$/;
 export type OpsAccessAction = (typeof OPS_ACCESS_ACTIONS)[number];
 const MAX_TTL_SECONDS = 120;
 
@@ -26,6 +29,8 @@ export interface OpsAccessClaims {
   confirm?: string;
   /** Operador autenticado en el plano de control (para la auditoría del Core). */
   op: string;
+  /** Proveedor de la integración que se comprueba (solo `integration_check`). */
+  prv?: string;
 }
 
 const TENANT_RE = /^[a-z0-9][a-z0-9-]{1,62}$/;
@@ -36,7 +41,7 @@ export function opsAccessKey(secret: string): Uint8Array {
 
 export async function signOpsAccessToken(c: OpsAccessClaims, secret: string, ttlSeconds = 60): Promise<string> {
   if (!secret || secret.length < 32) throw new Error("secreto del canal interno no configurado");
-  return new SignJWT({ tid: c.tid, act: c.act, ...(c.uid !== undefined ? { uid: c.uid } : {}), ...(c.confirm ? { confirm: c.confirm } : {}), op: c.op })
+  return new SignJWT({ tid: c.tid, act: c.act, ...(c.uid !== undefined ? { uid: c.uid } : {}), ...(c.confirm ? { confirm: c.confirm } : {}), ...(c.prv ? { prv: c.prv } : {}), op: c.op })
     .setProtectedHeader({ alg: "HS256" })
     .setAudience(OPS_ACCESS_AUDIENCE)
     .setJti(randomUUID())
@@ -53,8 +58,10 @@ export async function verifyOpsAccessToken(token: string, secret: string | undef
     if (typeof p.act !== "string" || !(OPS_ACCESS_ACTIONS as readonly string[]).includes(p.act)) return null;
     if (typeof p.jti !== "string" || typeof p.exp !== "number" || typeof p.op !== "string") return null;
     const uid = p.uid === undefined ? undefined : Number(p.uid);
-    if (p.act !== "list" && !(Number.isInteger(uid) && uid! > 0)) return null;
-    return { tid: p.tid, act: p.act as OpsAccessAction, uid, confirm: typeof p.confirm === "string" ? p.confirm : undefined, op: p.op.slice(0, 100), jti: p.jti, exp: p.exp };
+    if (!NO_USER_ACTIONS.includes(p.act) && !(Number.isInteger(uid) && uid! > 0)) return null;
+    const prv = typeof p.prv === "string" ? p.prv : undefined;
+    if (p.act === "integration_check" ? !(prv && PROVIDER_RE.test(prv)) : prv !== undefined) return null;
+    return { tid: p.tid, act: p.act as OpsAccessAction, uid, confirm: typeof p.confirm === "string" ? p.confirm : undefined, ...(prv ? { prv } : {}), op: p.op.slice(0, 100), jti: p.jti, exp: p.exp };
   } catch {
     return null;
   }

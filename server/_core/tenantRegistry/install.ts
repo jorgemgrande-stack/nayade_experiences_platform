@@ -31,6 +31,7 @@ import { runWithTenant } from "../tenant";
 import { passwordFingerprint } from "../../localAuth";
 import { requestPasswordReset } from "../../passwordReset";
 import { createOpsAccessRouter } from "../opsAccess/router";
+import { runIntegrationAction } from "../opsAccess/integrations";
 import { runAccessAction } from "../opsAccess/actions";
 
 export function installTenantResolution(app: Express, env: NodeJS.ProcessEnv = process.env): TenantRuntime | null {
@@ -82,9 +83,11 @@ export function installTenantResolution(app: Express, env: NodeJS.ProcessEnv = p
             const t = await reader.getTenant(id);
             return !!t && t.status !== "deleted" && t.status !== "deleting";
           },
-          run: (id, act, uid, confirm) =>
+          run: (id, act, uid, confirm, ctx) =>
             runWithTenant(id, async () => {
               await Promise.all([warmConfigCache(), warmIntegrationCreds(), warmTenantIdentity()]);
+              // Integraciones (estado y comprobación de solo lectura) o accesos, según la acción firmada
+              if (act === "integrations" || act === "integration_check") return runIntegrationAction(act, ctx.provider, ctx.operator);
               return runAccessAction(act, uid, confirm);
             }),
         }),
