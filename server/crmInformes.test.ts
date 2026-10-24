@@ -114,7 +114,8 @@ describe("informes: API", () => {
         })
         .on("error", reject);
     });
-  const today = new Date().toISOString().slice(0, 10);
+  // «Hoy» en Madrid, como los informes: entre las 00:00 y las 02:00 de Madrid la fecha UTC aún es la del día anterior
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Madrid", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
 
   it("informe del periodo, sin truncar", async () => {
     const r = await get(`/reports?from=2026-01-01&to=${today}`, READ);
