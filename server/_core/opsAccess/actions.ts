@@ -42,6 +42,9 @@ export type MailOutcome = "sent" | "mail_disabled" | "sandbox_blocked";
 
 const fail = (error: AccessError, message: string): AccessResult => ({ ok: false, error, message });
 
+/** Instante de una revocación, truncado al segundo (la comparación con `iat` es por segundos). */
+export const revocationInstant = (now = Date.now()): Date => new Date(Math.floor(now / 1000) * 1000);
+
 /** ¿Saldría el correo? off: no sale nada; sandbox: solo a la lista autorizada. Se decide ANTES de crear enlaces. */
 export function mailGate(policy: Pick<MailPolicy, "mode" | "allowAddresses" | "allowDomains">, email: string): MailOutcome {
   if (policy.mode === "off") return "mail_disabled";
@@ -137,7 +140,8 @@ export async function runAccessAction(act: OpsAccessAction, uid: number | undefi
 
   if (act === "revoke") {
     // Todas las sesiones emitidas hasta este segundo dejan de valer en la siguiente petición (ver localAuth)
-    await db.update(users).set({ sessionsRevokedAt: new Date(), updatedAt: new Date() }).where(eq(users.id, u.id));
+    // Segundo TRUNCADO: TIMESTAMP de MySQL redondea las fracciones y podría revocar una sesión iniciada después
+    await db.update(users).set({ sessionsRevokedAt: revocationInstant(), updatedAt: new Date() }).where(eq(users.id, u.id));
     return { ok: true, action: act };
   }
 

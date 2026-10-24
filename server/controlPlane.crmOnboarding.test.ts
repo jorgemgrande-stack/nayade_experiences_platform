@@ -212,7 +212,7 @@ describe("API de onboarding", () => {
     });
 
   it("configuración y comprobación de subdominio", async () => {
-    expect((await call("GET", "/onboarding/config", NOPROV)).json).toEqual({ available: true, platformDomain: "elephantsource.es", billing: true, defaultTrialDays: 15 });
+    expect((await call("GET", "/onboarding/config", NOPROV)).json).toEqual({ available: true, platformDomain: "elephantsource.es", billing: true, defaultTrialDays: 15, subdomainsRoutable: true });
     expect((await call("GET", `/onboarding/check?tenantId=api-co&companyId=${ids.c}`, NOPROV)).json).toMatchObject({ available: true, domain: "api-co.elephantsource.es" });
   });
 
