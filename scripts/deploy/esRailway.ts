@@ -558,6 +558,23 @@ async function main() {
       console.log(`  ${name.padEnd(14)} ${cur.createdAt}${nodeV ? ` · node ${nodeV[1] ?? nodeV[2]}` : ""}${from.length ? "" : " · sin registro de la imagen base"}`);
       for (const l of from) console.log(`      ${l}`);
     }
+    // Indicios relacionados con el aviso de Node.js de 21/10/2026 (Brotli/zlib, memoria, TLS/DNS) y caídas: historial de
+    // despliegues (fallidos o caídos) y registro de ejecución del despliegue activo. Solo lectura; registro saneado.
+    const SIGNS = /brotli|Z_DATA_ERROR|Z_BUF_ERROR|zlib|ERR_ZLIB|SIGSEGV|SIGABRT|segmentation fault|out of memory|heap out of memory|core dumped|ERR_TLS_CERT_ALTNAME|ERR_INVALID_IP|ENOTFOUND .*\\0|uncaughtException|unhandledRejection/i;
+    const since = Date.parse("2026-10-14T00:00:00Z");
+    console.log(`\nIndicios en los registros («${env}», desde el 14/10):`);
+    for (const name of sc.services) {
+      const sid = await serviceId(name).catch(() => null);
+      if (!sid) continue;
+      const list = await deployments(sid, sc.environmentId, 50).catch(() => []);
+      const recent = list.filter((x) => Date.parse(x.createdAt) >= since);
+      const bad = recent.filter((x) => x.status === "CRASHED" || x.status === "FAILED");
+      const cur = list.find((x) => x.status === "SUCCESS");
+      const run = cur ? await api<{ deploymentLogs: Array<{ message: string }> }>("query($id:String!,$n:Int){ deploymentLogs(deploymentId:$id, limit:$n){ message } }", { id: cur.id, n: 5000 }).catch(() => null) : null;
+      const hits = (run?.deploymentLogs ?? []).map((l) => l.message).filter((m) => SIGNS.test(m));
+      console.log(`  ${name.padEnd(14)} despliegues ${recent.length} · fallidos/caídos ${bad.length}${bad.length ? ` (${bad.map((x) => `${x.status} ${x.createdAt.slice(0, 16)}`).slice(0, 4).join(", ")})` : ""} · líneas con indicios ${hits.length}`);
+      for (const h of hits.slice(0, 5)) console.log(`      ${scrub(h).slice(0, 200)}`);
+    }
     // Qué dominios sirve ESTE entorno (todos los servicios del proyecto): fija cuál es el de ensayo y cuál el comercial
     const t = await api<{ projectToken: { projectId: string } }>("query { projectToken { projectId } }");
     console.log(`\nDominios del entorno «${env}»:`);
