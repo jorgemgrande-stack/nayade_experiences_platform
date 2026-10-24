@@ -39,42 +39,31 @@ Las dos variables de ámbito **solo restringen**: quitarlas abre el envío a tod
 otra empresa se añade su id a `MAIL_SCOPE_TENANTS`. El CRM solo habilita «Reenviar invitación» y «Enviar
 restablecimiento» cuando la empresa está en el ámbito (`accessMail` en `GET /cp/v1/tenants/:id/access`).
 
+## Estado comprobado (24/10/2026, ejecución 40132881414, solo lectura)
+
+- La cuenta de Postmark ya no está en Test mode: hay 72 entregas a `gmail.com`.
+- El servicio `core` de production **no tiene `POSTMARK_SERVER_TOKEN`**. Es el único bloqueo técnico.
+- El plano de control de production está en `sandbox` y solo envía al buzón del propietario. No se toca.
+
 ## Pasos para production
 
-1. **[TÚ] Postmark fuera de Test mode.** Solicitar la aprobación de la cuenta (Account → Request approval). Mientras
-   siga en Test mode, Postmark solo entrega a direcciones de `bigelephant.es`.
-2. **[TÚ] Token de production.** Crear en Postmark el servidor de production (stream transaccional) y guardar su
-   token en Railway → production → `core` → `POSTMARK_SERVER_TOKEN`, como variable sellada. No se pega en ningún chat.
-3. **[Equipo técnico] Comprobaciones previas, solo lectura:**
-   - el dominio público de Skibox resuelve y sirve su acceso;
-   - DKIM y Return-Path de `bigelephant.es` siguen verificados en Postmark;
-   - el webhook de production apunta al plano de control de production.
-4. **[TÚ] Autorización expresa** de la activación limitada para `t5-skibox`.
-5. **[Equipo técnico] Variables** de la tabla anterior en `core`, por el procedimiento protegido (`MAIL_MODE` y
-   `MAIL_LIVE_AUTHORIZED` son interruptores bloqueados). Al cambiarlas, Railway vuelve a desplegar `core`.
-6. **[Equipo técnico] Verificación sin enviar nada:** Accesos de Skibox muestra «Correo activo» y los botones
-   habilitados. La pestaña de otra empresa muestra «no habilitado para esta empresa».
-7. **[TÚ] Envío:** en Accesos de Skibox, «Reenviar invitación» y escribir el correo del administrador para confirmar.
-   El administrador recibe un enlace de 72 h a su propio dominio y define su contraseña.
-8. **[Equipo técnico]** Auditoría, estado del envío (entregado o rebotado) y primer acceso registrado en Accesos.
+1. **[TÚ] Servidor de Postmark propio de production.** En Postmark: Servers → Create Server, con el nombre
+   `Elephant Source - production real` y el tipo **Live**.
+   - No se reutiliza «Elephant Source - Production»: lo usa live, y su webhook apunta al CRM de live.
+   - El dominio `bigelephant.es` ya está verificado en la cuenta.
+2. **[TÚ] Token.** En el servidor nuevo, API Tokens → Server API token.
+   - Guárdalo en Railway → production → `core` → Variables → `POSTMARK_SERVER_TOKEN` y márcalo como **Sealed**.
+   - No se pega en ningún chat.
+3. **[Equipo técnico] `correo-acceso-estado`** (production, `only=t5-skibox`; necesita aprobación).
+   - Comprueba las variables sin mostrar valores y que el token responde en Postmark. No envía nada.
+4. **[TÚ] Autorización expresa** de la activación para `t5-skibox`. Concedida el 24/10/2026.
+5. **[Equipo técnico] `correo-acceso-activar`** (production, `only=t5-skibox`; necesita aprobación).
+   - Solo cambia `core`: proveedor, dominio, ámbito y, al final, `MAIL_MODE=live`.
+   - Redespliega la misma imagen.
+   - Se niega sin token válido, sin empresas o con el plano de control en `live`.
+6. **[Equipo técnico] Comprobación:** Accesos de Skibox muestra «Correo activo» y los botones habilitados. En otra empresa aparece «no habilitado para esta empresa».
+7. **[TÚ, sesión de operador con autenticación multifactor] Envío:** en Accesos de Skibox, pulsar «Reenviar invitación» y escribir el correo del administrador.
+   - Solo se admite el correo registrado del administrador.
+   - Una invitación aceptada no se reabre.
+8. **[Equipo técnico] Seguimiento:** aceptación y entrega en Postmark, auditoría, y el primer acceso en Accesos.
 
-## Marcha atrás
-
-`MAIL_MODE=off` en `core`. No se borra nada, y los enlaces ya enviados siguen caducando solos. Si un enlace se
-hubiera enviado por error, «Reenviar invitación» o «Enviar restablecimiento» lo sustituye, y «Cerrar sesiones»
-cierra cualquier acceso abierto.
-
-## Prueba en live (24/10/2026, `sandbox`)
-
-Se dio de alta la empresa de prueba `alta-correo-20261024c`, cuyo administrador es el buzón de pruebas autorizado. La prueba no tocó Skibox ni production.
-
-| Paso | Resultado |
-|---|---|
-| Accesos: modo y ámbito | `sandbox` · `accessMail {invite: true, reset: true}` · invitación pendiente, sin contraseña |
-| Reenviar invitación con un correo de confirmación distinto | 409 `confirm_mismatch`, sin enlace |
-| Reenviar invitación | 200 · `sent` · nueva caducidad a 72 h |
-| Enlace de la invitación anterior tras reenviar | 404: anulado |
-| Enviar restablecimiento | 200 · `sent` |
-| Auditoría | Cada acción registrada con operador, motivo y resultado del envío |
-
-Lo comprobado con MySQL real en la CI: un solo uso (también en paralelo), caducidad, token inválido en otra empresa, el restablecimiento anula la invitación y el reenvío va al correo de la base.

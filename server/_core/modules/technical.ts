@@ -50,8 +50,8 @@ type Pool = Pick<mysql.Pool, "query">;
 export function pendingFromFiles(dir: string, applied: Set<string>): string[] {
   return fs
     .readdirSync(dir)
-    .filter((f) => /^d{4}_[a-z0-9_]+.sql$/.test(f) && !f.endsWith(".down.sql"))
-    .map((f) => f.replace(/.sql$/, ""))
+    .filter((f) => /^\d{4}_[a-z0-9_]+\.sql$/.test(f) && !f.endsWith(".down.sql"))
+    .map((f) => f.replace(/\.sql$/, ""))
     .sort()
     .filter((id) => !applied.has(id));
 }
