@@ -14,7 +14,7 @@ import type { CrmService } from "./service";
 import type { CrmStore, Tables } from "./store";
 import type { BillingStore } from "../_core/billing/ports";
 import { billingSummary } from "./dashboard";
-import { crmReports, madridMonth, toCsv } from "./reports";
+import { crmReports, madridMonth, toCsv, madridDayRange } from "./reports";
 import type { CrmOnboarding } from "./onboarding";
 import type { ContractConfiguration } from "./types";
 import { parseQuoteRequest } from "../catalog/request";
@@ -146,15 +146,12 @@ export function createCrmRouter(
   const reportRange = (q: Record<string, unknown>) => {
     const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
     const f = z.object({ from: day, to: day }).parse({ from: q.from, to: q.to });
-    const midnight = (iso: string) => {
-      // Desfase de Madrid ese día (a mediodía UTC no hay cambio de hora): hora local − 12
+    for (const iso of [f.from, f.to]) {
       const noon = Date.parse(`${iso}T12:00:00Z`);
       if (!Number.isFinite(noon) || new Date(noon).toISOString().slice(0, 10) !== iso) throw new CrmError("invalid_input", `Fecha no válida: ${iso}`);
-      const hour = Number(new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Madrid", hour: "2-digit", hourCycle: "h23" }).format(noon));
-      return Date.parse(`${iso}T00:00:00Z`) - (hour - 12) * 3_600_000;
-    };
-    const from = midnight(f.from);
-    const to = midnight(f.to) + 86_400_000;
+    }
+    // Medianoches reales de Madrid (también los días del cambio de hora, de 23 o 25 horas)
+    const { from, to } = madridDayRange(f.from, f.to);
     if (!(from < to) || to - from > 731 * 86_400_000) throw new CrmError("invalid_input", "Periodo no válido (máximo 2 años)");
     return { from, to };
   };
