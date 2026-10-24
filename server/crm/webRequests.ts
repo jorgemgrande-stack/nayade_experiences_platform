@@ -104,6 +104,9 @@ export class WebRequestService {
     const recent = (await this.d.store.list("leadRequests", { leadId: lead.id, type: input.type, status: "pending" }, { desc: true, limit: 50 })).find(
       (r) => r.payloadHash === hash && this.now() - r.createdAt < DUPLICATE_WINDOW_MS,
     );
+    // Carrera entre réplicas con la MISMA clave: otra instancia la insertó entre la consulta de la clave y esta. Es un
+    // reintento, no una solicitud repetida (ni se anota como tal en el lead)
+    if (recent && recent.idempotencyKey === ctx.idempotencyKey) return { outcome: "replayed" as const, request: recent };
     if (recent) {
       await this.d.crm.log("lead", lead.id, "note", `Solicitud web repetida: ${LEAD_REQUEST_LABEL[input.type]} (${recent.reference}); no se ha duplicado`, WEB_AUTHOR);
       return { outcome: "duplicate" as const, request: recent };
