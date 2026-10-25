@@ -41,3 +41,12 @@
 | 02:10 | Guía | [GUIA_PRUEBAS_HUMANAS.md](GUIA_PRUEBAS_HUMANAS.md): recorrido completo con empresa de prueba, consulta segura de Skibox, comprobaciones por pantalla y registro de incidencias | — | Redactada |
 
 **Bloqueo operativo (01:30):** la activación del correo de Skibox espera la aprobación del propietario y retiene la cola de production. Mientras tanto no se publica nada en live: cada fusión dispara una CI que termina con la publicación ordinaria en production y queda en espera detrás de esa aprobación.
+
+**Incidencia de Skibox (01:05–01:30):** se relanzó la activación limitada y el propietario la aprobó. El botón quedó habilitado en production y la invitación se envió y se entregó. Después se entregaron el restablecimiento y el aviso de contraseña cambiada (Postmark, ejecución 40142763109).
+
+| Hora | Área | Cambio | PR | Estado |
+|---|---|---|---|---|
+| 01:10 | Correo de acceso | Consulta de entregas de Postmark en la acción de estado | #357 | Verificado en production |
+| 02:00 | Identidad visual | Un solo sistema de tokens (Big Elephant por defecto; la marca de la empresa con el contraste protegido), «Establecer contraseña» con el armazón común e inicio de sesión al terminar, sin «Acceso restringido», página de estado con identidad | #358 | Verificado en live |
+| 02:50 | Identidad visual | El aviso de cookies sin los colores fijos de Náyade | #359 | En CI |
+| 02:55 | Verificación | Fase 4 en live: 16/16 comprobaciones correctas | — | Verificado en live |

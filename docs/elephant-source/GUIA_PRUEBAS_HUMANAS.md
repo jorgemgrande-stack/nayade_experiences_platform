@@ -101,7 +101,24 @@ Nada de este recorrido cambia datos ni envía correos.
 
 ---
 
-## 4. Registro de incidencias
+## 4. Revisión visual (identidad corporativa)
+
+Hazla en escritorio y en el móvil, con una empresa **sin marca** y con otra **con marca** (en live: Configuración › Marca del panel de la empresa). Usa enlaces de prueba, nunca uno real de Skibox.
+
+| Pantalla | Empresa sin marca | Empresa con marca |
+|---|---|---|
+| `/login`, `/recuperar-contrasena`, `/nueva-contrasena` y `/establecer-contrasena` | El mismo armazón: panel grafito con el logotipo rojo de Big Elephant y botón rojo | Su logotipo y sus colores en las cuatro. Si su color no se lee bien, botón grafito |
+| Enlace caducado o inválido | El mismo armazón, mensaje claro y enlace para pedir otro | Igual, con su marca |
+| `/admin` sin sesión | Pasa directamente al inicio de sesión, sin «Acceso restringido» | Igual |
+| Al establecer la contraseña | Entra directamente en el panel | Igual |
+| Primeros pasos y panel | Acentos rojos (menú activo, botones, pasos), sin naranja | Sus colores |
+| Web de una empresa suspendida | Página «Servicio no disponible temporalmente» con el logotipo de Big Elephant y «Entrar en el panel» | La misma (no muestra datos de la empresa) |
+| Cambiar la marca en una empresa | — | No cambia nada en otra empresa |
+| Cerrar sesión y volver | — | La marca se mantiene |
+
+Anota como incidencia cualquier pantalla de este recorrido que aparezca en azul, naranja o con otro logotipo.
+
+## 5. Registro de incidencias
 
 Una fila por incidencia. Copia la tabla en un documento o en un mensaje y envíamela tal cual.
 
