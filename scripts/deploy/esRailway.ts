@@ -1011,15 +1011,16 @@ async function main() {
     return;
   }
   /** Versión del catálogo publicado en el export de la web: invalida la caché de compilación cuando el catálogo cambia. */
-  async function stampWebCatalog(dir: string) {
+  async function stampWebCatalog(dir: string): Promise<string | null> {
     const url = WEB_CATALOG_SITE[env];
-    if (!url) return;
+    if (!url) return null;
     const r = await fetch(url, { headers: { Accept: "application/json", Origin: new URL(url).origin } });
     if (r.status !== 200) throw new Error(`no se pudo leer el catálogo publicado (${url} → HTTP ${r.status}): la web no se compila sin él`);
     const version = String(((await r.json()) as { version?: string }).version ?? "");
     if (!/^[0-9a-f]{8,64}$/.test(version)) throw new Error("el catálogo publicado no trae una versión válida");
     fs.writeFileSync(path.join(dir, CATALOG_STAMP_FILE), `${version}\n`);
     console.log(`web: catálogo publicado ${version}`);
+    return version;
   }
   if (cmd === "publish-crm") {
     // CRM ORDINARIO: solo sube su código (sin variables ni infraestructura); si no queda bien o fallan sus
@@ -1029,15 +1030,17 @@ async function main() {
     if (!/^[0-9a-f]{40}$/.test(sha)) throw new Error("commit no válido");
     const ext = externalOf(arg("service", false) || "crm");
     if (!sc.services.includes(ext.service)) throw new Error(`el servicio ${ext.service} no existe en el entorno`);
-    if (ext.service === "web") await stampWebCatalog(dir);
+    // Web: la versión del catálogo publicado va en el export y en la nota del despliegue (otro catálogo = otro despliegue)
+    const catalog = ext.service === "web" ? await stampWebCatalog(dir) : null;
+    const note = `${ext.repo} ${sha}${catalog ? ` catalogo:${catalog}` : ""}`;
     const sid = await serviceId(ext.service);
     const curNode = (await deployments(sid, sc.environmentId)).find((x) => x.status === "SUCCESS");
-    if (curNode && shaFromDeployMeta(curNode.meta, ext.repo) === sha) {
+    if (curNode && shaFromDeployMeta(curNode.meta, ext.repo) === sha && (!catalog || JSON.stringify(curNode.meta ?? "").includes(`catalogo:${catalog}`))) {
       console.log(`${ext.service}: ya sirve ${sha.slice(0, 12)}`);
       return;
     }
     const before = (await latest(sid, sc.environmentId))?.id ?? null;
-    const r = spawnSync("railway", ["up", dir, "--path-as-root", "-s", ext.service, "-e", env, "--detach", "-m", `${ext.repo} ${sha}`], { encoding: "utf8", env: process.env });
+    const r = spawnSync("railway", ["up", dir, "--path-as-root", "-s", ext.service, "-e", env, "--detach", "-m", note], { encoding: "utf8", env: process.env });
     const d = r.status === 0 ? await waitOrCancel(sid, sc.environmentId, before) : null;
     console.log(`${ext.service}: ${d ? `despliegue ${d.id} → ${d.status}` : `railway up falló: ${scrub(r.stderr || r.stdout || "").slice(0, 300)}`}`);
     const ok = d?.status === "SUCCESS" && (await functional(env, ext.checks));
@@ -1070,10 +1073,10 @@ async function main() {
     if ((service === "crm") !== (repo === REPOSITORIES.crm)) throw new Error("el servicio crm solo se despliega con --repo crm, y --repo crm solo en el servicio crm");
     if ((service === "web") !== (repo === REPOSITORIES.web)) throw new Error("el servicio web solo se despliega con --repo web, y --repo web solo en el servicio web");
     for (const f of EXCLUDED_FROM_EXPORT) if (fs.existsSync(path.join(dir, f))) throw new Error(`el export contiene ${f}: no se despliega`);
-    if (service === "web") await stampWebCatalog(dir);
+    const webCatalog = service === "web" ? await stampWebCatalog(dir) : null;
     const sid = await serviceId(service!);
     const before = (await latest(sid, sc.environmentId))?.id ?? null;
-    const r = spawnSync("railway", ["up", dir, "--path-as-root", "-s", service!, "-e", env, "--detach", "-m", `${repo} ${sha}`], { encoding: "utf8", env: process.env });
+    const r = spawnSync("railway", ["up", dir, "--path-as-root", "-s", service!, "-e", env, "--detach", "-m", `${repo} ${sha}${webCatalog ? ` catalogo:${webCatalog}` : ""}`], { encoding: "utf8", env: process.env });
     if (r.status !== 0) throw new Error(`railway up falló: ${scrub(r.stderr || r.stdout || "").slice(0, 400)}`);
     const d = await waitFor(sid, sc.environmentId, before);
     console.log(`${service}: despliegue ${d.id} → ${d.status}`);
