@@ -115,6 +115,9 @@ export class WebAdminService {
       sortOrder: e.sortOrder,
       name: String((e.draft as { name?: string; title?: string }).name ?? (e.draft as { title?: string }).title ?? e.key),
       technicalStatus: (e.draft as { technicalStatus?: string }).technicalStatus ?? null,
+      // Disponibilidad comercial (borrador) y si su evidencia está registrada (el texto es interno y no viaja aquí)
+      commercialStatus: e.kind === "product" ? ((e.draft as { catalog?: { commercialStatus?: string } }).catalog?.commercialStatus ?? "on_request") : null,
+      hasEvidence: e.kind === "product" ? !!(e.draft as { internal?: { evidence?: string | null } }).internal?.evidence : null,
       publication: e.publication,
       draftVersion: e.draftVersion,
       publishedVersion: e.publishedVersion,
@@ -415,7 +418,7 @@ export class WebAdminService {
     // enlazado aún a un plan de facturación (ref null): hoy nada se contrata automáticamente.
     if (d.activation.kind === "module" && !d.activation.ref && d.technicalStatus !== "planned") throw new WebError("invalid_input", "Indica el módulo de licencia");
     const cat = d.catalog;
-    if (cat.commercialStatus === "available" && d.technicalStatus !== "available") throw new WebError("invalid_input", "«Disponible» exige que el producto esté técnicamente disponible: usa «Solicitar activación» o «Próximamente»");
+    if (cat.commercialStatus === "available" && d.technicalStatus !== "available") throw new WebError("invalid_input", "«Disponible» exige que el producto esté técnicamente disponible: usa «Implantación acompañada», «En preparación» o «Próximamente»");
     if (BUNDLE_FAMILIES.includes(family) && cat.bundleOf.length < 2) throw new WebError("invalid_input", "Un paquete incluye al menos dos productos");
     if (!BUNDLE_FAMILIES.includes(family) && cat.bundleOf.length) throw new WebError("invalid_input", "Solo los paquetes tienen componentes");
     if (cat.internalOnly && family === "core_plan") throw new WebError("invalid_input", "Un plan de Elephant Core no puede ser interno: los planes son públicos");

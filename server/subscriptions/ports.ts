@@ -12,7 +12,7 @@ export interface CatalogProduct {
   family: Family;
   technicalStatus: "available" | "partial" | "planned";
   /** Estado comercial del catálogo de Elephant Source (las entradas anteriores: «on_request»). */
-  commercialStatus: "unpublished" | "coming_soon" | "on_request" | "available";
+  commercialStatus: "unpublished" | "coming_soon" | "in_preparation" | "on_request" | "available";
   /** Producto interno de pruebas: nunca público; solo lo compran las empresas de prueba autorizadas. */
   internalOnly?: boolean;
   activationKind: string;

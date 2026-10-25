@@ -30,6 +30,8 @@ export const DRILL_ALLOWED: RegExp[] = [
   new RegExp(`^${BJ} erm-setup( --apply)?$`),
   // Recursos huérfanos del aprovisionamiento (solo lectura)
   new RegExp(`^${BJ} orphans$`),
+  // Revisión de estados comerciales del catálogo por el flujo del CRM (simulación o --apply; nunca precios ni licencias)
+  new RegExp(`^${BJ} catalog-review( --apply)?$`),
 ];
 export const isAllowedDrill = (cmd: string) => DRILL_ALLOWED.some((r) => r.test(cmd.trim()));
 export const DRILL_IDLE = `${BJ} list`;

@@ -33,7 +33,7 @@ export interface QuoteCatalogProduct {
   name: string;
   family: string;
   technicalStatus: string;
-  commercialStatus: "unpublished" | "coming_soon" | "on_request" | "available";
+  commercialStatus: "unpublished" | "coming_soon" | "in_preparation" | "on_request" | "available";
   capabilities: string[];
   inherits: string | null;
   group: string | null;
@@ -304,7 +304,7 @@ export function quote(catalog: QuoteCatalog, req: QuoteRequest): QuoteResult {
     .filter((p) => p?.thirdPartyCosts)
     .map((p) => ({ key: p.key, text: p.thirdPartyCosts! }));
   const charged = lines.filter((l) => l.status !== "included_in_bundle");
-  const notYet = (l: QuoteLine) => l.commercialStatus === "coming_soon" || l.commercialStatus === "unpublished" || byKey.get(l.key)?.technicalStatus === "planned";
+  const notYet = (l: QuoteLine) => l.commercialStatus === "coming_soon" || l.commercialStatus === "in_preparation" || l.commercialStatus === "unpublished" || byKey.get(l.key)?.technicalStatus === "planned";
   const blocking = Array.from(new Set(lines.filter(notYet).map((l) => l.name)));
   const contractable: QuoteResult["contractable"] = blocking.length ? "not_available" : charged.every((l) => l.commercialStatus === "available") && !lines.some((l) => l.status === "no_price") ? "self_service" : "request";
 

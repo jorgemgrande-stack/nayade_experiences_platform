@@ -18,13 +18,23 @@ export type Family = (typeof FAMILIES)[number];
 /** Familias que son paquetes: su precio sustituye al de sus componentes (`catalog.bundleOf`). */
 export const BUNDLE_FAMILIES: readonly Family[] = ["net_bundle", "connect_bundle"];
 /**
- * Estado COMERCIAL (qué puede hacer el visitante), independiente del técnico:
+ * Estado COMERCIAL (qué puede hacer el visitante), independiente del técnico (instalado, habilitado, contratado):
  *  - unpublished: no se muestra
- *  - coming_soon: «Próximamente» (se muestra con su precio aprobado, no se contrata)
- *  - on_request: «Solicitar activación» (lo activa el equipo tras revisarlo)
- *  - available: «Disponible» (contratable directamente; exige estado técnico «available»)
+ *  - coming_soon: «Próximamente» — previsto, todavía no se puede implantar (no se contrata)
+ *  - in_preparation: «En preparación» — en desarrollo o validación (no se contrata)
+ *  - on_request: «Implantación acompañada» — operativo; lo implanta el equipo con el cliente (exige estado técnico
+ *    «available» o «partial»)
+ *  - available: «Disponible» — completo, comprobado y preparado para ofrecerse (exige estado técnico «available»)
  */
-export const COMMERCIAL_STATUS = ["unpublished", "coming_soon", "on_request", "available"] as const;
+export const COMMERCIAL_STATUS = ["unpublished", "coming_soon", "in_preparation", "on_request", "available"] as const;
+/** Etiquetas comerciales normalizadas (las mismas en el CRM, la web y el panel de la empresa). */
+export const COMMERCIAL_STATUS_LABEL: Record<(typeof COMMERCIAL_STATUS)[number], string> = {
+  unpublished: "No publicado",
+  coming_soon: "Próximamente",
+  in_preparation: "En preparación",
+  on_request: "Implantación acompañada",
+  available: "Disponible",
+};
 export type CommercialStatus = (typeof COMMERCIAL_STATUS)[number];
 /** Mecanismo técnico de activación (independiente de la familia y de la facturación). */
 export const ACTIVATIONS = ["plan", "module", "feature", "usage", "service", "none"] as const;
@@ -106,7 +116,16 @@ export const productDraft = z
       .strict()
       .prefault({}),
     /** Solo para el equipo: nunca se publica. */
-    internal: z.object({ notes: optText(2000), costCents: z.number().int().min(0).nullable().default(null), marginNote: optText(300) }).strict().prefault({}),
+    internal: z
+      .object({
+        notes: optText(2000),
+        costCents: z.number().int().min(0).nullable().default(null),
+        marginNote: optText(300),
+        /** Evidencia del estado comercial (código, pruebas, verificaciones): sin ella, el CRM lo marca como pendiente. */
+        evidence: optText(1000),
+      })
+      .strict()
+      .prefault({}),
   })
   .strict();
 export type ProductDraft = z.infer<typeof productDraft>;
