@@ -188,3 +188,20 @@ describe("verificación independiente de la copia", () => {
     expect(wf.indexOf("- copia-de-seguridad")).toBeLessThan(wf.indexOf("- verificar-copia"));
   });
 });
+
+describe("órdenes del script de despliegue", () => {
+  it("toda orden que maneja el script o que invoca el flujo está en la lista de órdenes admitidas", async () => {
+    const fs = await import("node:fs");
+    const src = fs.readFileSync("scripts/deploy/esRailway.ts", "utf8");
+    const listed = new Set(JSON.parse(/if \(!(\[[^\]]+\])\.includes\(cmd\)\) throw new Error\(`orden desconocida/.exec(src)![1]) as string[]);
+    // Las órdenes que se resuelven ANTES de la lista (sin token del entorno) no la necesitan
+    const at = src.indexOf("orden desconocida");
+    const before = new Set([...src.slice(0, at).matchAll(/cmd === "([a-z-]+)"/g)].map((m) => m[1]));
+    const handled = new Set([...src.slice(at).matchAll(/cmd === "([a-z-]+)"/g)].map((m) => m[1]));
+    const wf = fs.readFileSync(".github/workflows/deploy-elephant-source.yml", "utf8");
+    const invoked = new Set([...wf.matchAll(/pnpm exec tsx scripts\/deploy\/esRailway\.ts ([a-z-]+)/g)].map((m) => m[1]));
+    for (const c of handled) expect(listed.has(c), `orden manejada sin admitir: ${c}`).toBe(true);
+    for (const c of invoked) expect(listed.has(c) || before.has(c), `orden del flujo sin admitir: ${c}`).toBe(true);
+    expect(listed.has("lead-notices-mail")).toBe(true);
+  });
+});
