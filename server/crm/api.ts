@@ -136,6 +136,8 @@ export function createCrmRouter(
     quote?: (r: QuoteRequest) => Promise<QuoteResult>;
     /** Empresas del registro (para detectar fichas comerciales con una plataforma inexistente). */
     knownTenants?: () => Promise<Set<string>>;
+    /** Estado del aviso interno de cada solicitud (server/crm/leadNotices.ts). */
+    noticeSummaries?: (requestIds: number[]) => Promise<Record<number, unknown>>;
   } = {},
 ): Router {
   const r = express.Router();
@@ -219,7 +221,10 @@ export function createCrmRouter(
     if (!opts.requests) return void res.json({ available: false, requests: [], total: 0, limit: f.limit, offset: f.offset });
     if (f.companyId !== undefined && !(await store.get("companies", f.companyId))) throw new CrmError("not_found", "Empresa no encontrada");
     const p = await opts.requests.list({ ...f, type: f.type as LeadRequestType | undefined, status: f.status as LeadRequestStatus | undefined });
-    res.json({ available: true, requests: p.rows, total: p.total, limit: f.limit, offset: f.offset });
+    // El estado del aviso nunca impide ver la bandeja
+    const notices = opts.noticeSummaries ? await opts.noticeSummaries(p.rows.map((x) => x.request.id)).catch(() => null) : null;
+    const rows = notices ? p.rows.map((x) => ({ ...x, notice: notices[x.request.id] ?? null })) : p.rows;
+    res.json({ available: true, requests: rows, total: p.total, limit: f.limit, offset: f.offset });
   }));
   r.post("/requests/:id/status", requireScope("crm:write"), wrap(async (req, res) => {
     if (!opts.requests) throw new CrmError("invalid_state", "Las solicitudes web no están configuradas");

@@ -62,6 +62,8 @@ import { createCustomerTicketsRouter } from "../support/customerTickets";
 import type { SupportAdmin } from "../_core/support/grants";
 import { createPublicIntakeRouter, type PublicIntakeConfig } from "../crm/publicApi";
 import { WebRequestService } from "../crm/webRequests";
+import type { LeadNoticeService } from "../crm/leadNotices";
+import { createLeadNoticesRouter } from "../crm/leadNoticesApi";
 import { WebAdminService } from "../web/service";
 import type { WebStore } from "../web/store";
 import { createWebAdminRouter } from "../web/api";
@@ -318,6 +320,8 @@ export interface ControlPlaneDeps {
    * corte (ms): nada anterior se notifica. Sin él, solo se publica el catálogo (no se despacha nada).
    */
   notifications?: { since: number };
+  /** Avisos internos de las solicitudes web al equipo (server/crm/leadNotices.ts; CRM 0025). */
+  leadNotices?: LeadNoticeService | null;
 }
 
 const idSchema = z.string().regex(/^[a-z0-9][a-z0-9_-]{0,62}$/);
@@ -503,7 +507,8 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
   // Login y restablecimiento de contraseña de operadores: sin sesión previa
   if (operatorRoutes) router.use(createPublicAuthRouter(operatorRoutes));
   // Solicitudes comerciales de la web: cuelgan de los leads del CRM
-  const webRequests = d.crm ? new WebRequestService({ store: d.crm.store, crm: d.crm.service }) : undefined;
+  const leadNotices = d.leadNotices ?? null;
+  const webRequests = d.crm ? new WebRequestService({ store: d.crm.store, crm: d.crm.service, onCreated: leadNotices ? (r) => leadNotices.onCreated(r) : undefined }) : undefined;
   // Catálogo y contenidos de la web comercial (las referencias técnicas se leen del Core, no se copian)
   const webAdmin = d.web
     ? new WebAdminService({
@@ -1331,7 +1336,11 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
       : undefined;
     const crmQuote = webAdmin ? async (r: QuoteRequest) => quote(quoteCatalogFromSite(await webAdmin!.site("published")), r) : undefined;
     const knownTenants = async () => new Set((await d.reader.listTenants()).filter((t) => t.status !== "deleted").map((t) => t.id));
-    router.use("/crm", createCrmRouter(d.crm.service, d.crm.store, { billing: d.billingStore, onboarding, requests: webRequests, assignees, quote: crmQuote, knownTenants }));
+    if (leadNotices) router.use("/crm/lead-notices", createLeadNoticesRouter(leadNotices));
+    router.use(
+      "/crm",
+      createCrmRouter(d.crm.service, d.crm.store, { billing: d.billingStore, onboarding, requests: webRequests, assignees, quote: crmQuote, knownTenants, noticeSummaries: leadNotices ? (ids) => leadNotices.summaries(ids) : undefined }),
+    );
   }
 
   if (webAdmin) {

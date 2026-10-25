@@ -67,6 +67,8 @@ export type MailCategory =
   | "billing_incident"
   | "quote_sent"
   | "operational"
+  // Aviso INTERNO al equipo comercial de una solicitud nueva de la web (server/crm/leadNotices.ts)
+  | "lead_request_notice"
   | "legacy";
 
 /** Clave de la plantilla del gestor de comunicaciones del Core → categoría del servicio. */

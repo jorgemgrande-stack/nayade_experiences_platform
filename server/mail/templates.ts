@@ -278,6 +278,39 @@ export function platformTemplates(o: PlatformTemplateOptions = {}) {
     opsNotice(i: { title: string; lines: string[] }) {
       return layout(b, `[Elephant Source] ${i.title}`, [...i.lines, "Aviso interno del equipo de Elephant Source. Revisa el detalle en el panel de operaciones."]);
     },
+    /**
+     * Aviso INTERNO de una solicitud nueva de la web al equipo comercial: solo lo que la persona escribió en el
+     * formulario y el enlace a su ficha del CRM (que exige iniciar sesión). Nunca tokens, claves ni datos internos.
+     */
+    leadRequestNotice(i: {
+      typeLabel: string;
+      reference: string;
+      receivedAt: number;
+      company: string | null;
+      name: string;
+      email: string | null;
+      phone: string | null;
+      sector: string | null;
+      product: string | null;
+      message: string | null;
+      sourcePage: string | null;
+      owner: string | null;
+      crmUrl: string | null;
+    }) {
+      const at = new Date(i.receivedAt).toLocaleString("es-ES", { timeZone: "Europe/Madrid", dateStyle: "long", timeStyle: "short" });
+      const lines = [
+        `Nueva solicitud desde la web: ${i.typeLabel}.`,
+        `Recibida el ${at} (hora de Madrid) · referencia ${i.reference}.`,
+        `Empresa: ${i.company || "—"}${i.sector ? ` · sector: ${i.sector}` : ""}.`,
+        `Contacto: ${i.name}${i.email ? ` · ${i.email}` : ""}${i.phone ? ` · ${i.phone}` : ""}.`,
+        ...(i.product ? [`Producto o servicio: ${i.product}.`] : []),
+        ...(i.message ? [`Mensaje: «${i.message.slice(0, 600)}${i.message.length > 600 ? "…" : ""}»`] : []),
+        ...(i.sourcePage ? [`Enviada desde la página ${i.sourcePage}.`] : []),
+        `Responsable: ${i.owner ?? "sin asignar"}.`,
+        i.crmUrl ? "Abre la ficha en el CRM para atenderla (necesitas iniciar sesión)." : "Atiéndela desde Big Elephant CRM → Leads → Solicitudes web.",
+      ];
+      return layout(b, `[Big Elephant CRM] ${i.typeLabel} · ${i.company || i.name} · ${i.reference}`, lines, i.crmUrl ? { label: "Abrir en el CRM", url: i.crmUrl } : null);
+    },
     /** Ticket de soporte: recibido, respondido, resuelto o reabierto (para quien lo abrió). */
     supportTicket(i: { kind: "received" | "replied" | "resolved" | "reopened"; ticketRef: string; subject: string }) {
       const head =

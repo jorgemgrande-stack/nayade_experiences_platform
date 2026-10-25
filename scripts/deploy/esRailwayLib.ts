@@ -237,6 +237,52 @@ export function mailAccessPlan(
   return { changes, problems };
 }
 
+/**
+ * Avisos INTERNOS de solicitudes web en production (server/crm/leadNotices.ts): solo el plano de control, en modo
+ * `sandbox` (solo a los buzones internos indicados), solo la empresa «platform» y solo la categoría
+ * `lead_request_notice`. Cualquier otro correo del plano de control (pruebas, pedidos, clientes) sigue sin salir.
+ * El token de Postmark es el del servidor de PRODUCTION que ya usa `core` (mismo entorno, nunca el de live).
+ */
+export const LEAD_NOTICE_CATEGORY = "lead_request_notice";
+export const LEAD_NOTICE_CRM_URL = "https://admin.bigelephant.es";
+export function leadNoticesMailPlan(
+  env: string,
+  vars: Record<string, Record<string, string>>,
+  o: { action: "activar" | "desactivar"; recipients: string[] },
+): { changes: MailChange[]; problems: string[] } {
+  const problems: string[] = [];
+  const changes: MailChange[] = [];
+  if (env !== "production") problems.push("los avisos de solicitudes se gestionan aquí solo en production (live usa el sandbox de pruebas)");
+  const cp = vars.controlplane ?? {};
+  if (o.action === "desactivar") {
+    if ((cp.MAIL_MODE ?? "off") !== "off") changes.push({ service: "controlplane", name: "MAIL_MODE", value: "off" });
+    return { changes, problems };
+  }
+  if (!o.recipients.length) problems.push("indica los buzones internos que reciben los avisos (destinatarios)");
+  if ((cp.MAIL_MODE ?? "off") === "live" || cp.MAIL_LIVE_AUTHORIZED === "1") problems.push("el plano de control tiene correo live autorizado: no se toca sin el propietario");
+  const scopeTenants = (cp.MAIL_SCOPE_TENANTS ?? "").trim();
+  if (scopeTenants && scopeTenants !== "platform") problems.push(`el plano de control tiene otro ámbito de empresas (${scopeTenants}): no se amplía`);
+  if (!(cp.POSTMARK_SERVER_TOKEN ?? "").trim()) {
+    if ((vars.core?.POSTMARK_SERVER_TOKEN ?? "").trim()) changes.push({ service: "controlplane", name: "POSTMARK_SERVER_TOKEN", copyFrom: "core" });
+    else problems.push("falta POSTMARK_SERVER_TOKEN en core y en controlplane (lo pone el propietario desde Postmark)");
+  }
+  if ((cp.POSTMARK_WEBHOOK_TOKEN ?? "").length < 32) changes.push({ service: "controlplane", name: "POSTMARK_WEBHOOK_TOKEN", generate: true });
+  // Orden: ámbito, destinatarios y proveedor primero; el modo al final (un fallo a mitad deja el correo en off)
+  const want: Array<[string, string]> = [
+    ["MAIL_PROVIDER", "postmark"],
+    ["MAIL_SENDING_DOMAIN", MAIL_ACCESS_SENDING_DOMAIN],
+    ["MAIL_SCOPE_TENANTS", "platform"],
+    ["MAIL_SCOPE_CATEGORIES", LEAD_NOTICE_CATEGORY],
+    ["MAIL_SANDBOX_ALLOWLIST", o.recipients.join(",")],
+    // Varias solicitudes seguidas no deben quedarse sin aviso por el límite general (8/h por destinatario)
+    ["MAIL_RATE_RECIPIENT_PER_HOUR", "30"],
+    ["CP_CRM_URL", LEAD_NOTICE_CRM_URL],
+    ["MAIL_MODE", "sandbox"],
+  ];
+  for (const [k, v] of want) if ((cp[k] ?? "") !== v) changes.push({ service: "controlplane", name: k, value: v });
+  return { changes, problems };
+}
+
 // ── Publicación continua (docs/elephant-source/PROTOCOLO_PUBLICACION.md) ─────────
 
 /** Servicios que publica un despliegue ordinario, en este orden. Nada de copias, restore-drill ni pasarelas de prueba. */
