@@ -63,6 +63,9 @@ on:
           - correo-acceso-desactivar
           - catalogo-revision
           - catalogo-revision-aplicar
+          - avisos-solicitudes-estado
+          - avisos-solicitudes-activar
+          - avisos-solicitudes-desactivar
           - medicion-preparar
           - medicion-comprobar
           - dominio-plataforma-live-estado
@@ -78,7 +81,7 @@ on:
         required: false
         type: string
       destinatarios:
-        description: "Correo de pruebas (solo live): direcciones autorizadas, separadas por comas"
+        description: "Correo: direcciones autorizadas, separadas por comas (pruebas de live o buzones internos de los avisos de solicitudes)"
         required: false
         type: string
       confirm:
@@ -271,6 +274,19 @@ jobs:
             correo-acceso-estado) pnpm exec tsx scripts/deploy/esRailway.ts mail-access --env "${ES_ENV}" --accion estado ${ES_ONLY:+--tenants "${ES_ONLY}"} ;;
             correo-acceso-activar) pnpm exec tsx scripts/deploy/esRailway.ts mail-access --env "${ES_ENV}" --accion activar --tenants "${ES_ONLY}" ;;
             correo-acceso-desactivar) pnpm exec tsx scripts/deploy/esRailway.ts mail-access --env "${ES_ENV}" --accion desactivar ;;
+          esac
+
+      # Avisos INTERNOS de solicitudes web (docs/runbooks/AVISOS_SOLICITUDES_WEB.md), solo production y solo el plano de
+      # control: estado (lectura), activar (sandbox: solo los buzones de «destinatarios» y solo la categoría
+      # lead_request_notice; core y el correo de acceso de Skibox no se tocan) y desactivar (MAIL_MODE=off del plano de control).
+      - name: Avisos de solicitudes web
+        if: startsWith(inputs.action, 'avisos-solicitudes-')
+        run: |
+          if [ "${ES_ENV}" != "production" ]; then echo "Los avisos de solicitudes se gestionan aquí solo en production"; exit 1; fi
+          case "${ES_ACTION}" in
+            avisos-solicitudes-estado) pnpm exec tsx scripts/deploy/esRailway.ts lead-notices-mail --env "${ES_ENV}" --accion estado ;;
+            avisos-solicitudes-activar) pnpm exec tsx scripts/deploy/esRailway.ts lead-notices-mail --env "${ES_ENV}" --accion activar --allow "${ES_MAIL_ALLOW}" ;;
+            avisos-solicitudes-desactivar) pnpm exec tsx scripts/deploy/esRailway.ts lead-notices-mail --env "${ES_ENV}" --accion desactivar ;;
           esac
 
       - name: Verificar el esquema de la exportación (0011, 0012, 0013)
