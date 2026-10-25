@@ -72,7 +72,15 @@ export class WebRequestService {
   private locks = new Map<string, Promise<unknown>>();
   private now: () => number;
 
-  constructor(private d: { store: CrmStore; crm: CrmService; now?: () => number }) {
+  constructor(
+    private d: {
+      store: CrmStore;
+      crm: CrmService;
+      now?: () => number;
+      /** Tras registrar una solicitud NUEVA (aviso interno al equipo). Nunca retrasa ni rompe la respuesta. */
+      onCreated?: (r: LeadRequest) => void | Promise<void>;
+    },
+  ) {
     this.now = d.now ?? Date.now;
   }
 
@@ -138,6 +146,9 @@ export class WebRequestService {
           createdAt: now,
         });
         await this.d.crm.log("lead", lead.id, "note", this.describe(request), WEB_AUTHOR);
+        // La solicitud ya está guardada: el aviso va aparte, sin esperar, y su fallo nunca afecta a la captación
+        const notify = this.d.onCreated;
+        if (notify) setImmediate(() => void Promise.resolve().then(() => notify(request)).catch(() => undefined));
         return { outcome: "created" as const, request };
       } catch (e) {
         if (!(e instanceof DuplicateKeyError)) throw e;

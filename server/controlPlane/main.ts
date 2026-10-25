@@ -50,6 +50,7 @@ import { blockedDomainsFromEnv } from "../trials/service";
 import type { TrialNotifier } from "../trials/onboarding";
 import { platformMailFromEnv, tenantLaneResolver } from "../mail/platform";
 import { MysqlMailStore } from "../mail/store";
+import { scopeAllows } from "../mail/policy";
 import { brevoDiagnostics, mailProviderConfig } from "../mail/providers";
 import { MysqlOrganizationStore } from "../organization/service";
 import { MysqlOrderStore } from "../orchestrator/store";
@@ -88,6 +89,7 @@ import { createRemoteJWKSet } from "jose";
 import { operatorAuthFromEnv } from "./operatorSetup";
 import { DEFAULT_CORE_INTERNAL_URL, coreAccessClient } from "./tenantAccess";
 import { outboxResetMailer } from "./operatorResetMail";
+import { LeadNoticeService, MysqlSettingsStore, crmUrlFromEnv, settingsTablesReady } from "../crm/leadNotices";
 
 async function main() {
   const tokens = parseTokens(process.env.CP_TOKENS);
@@ -261,8 +263,29 @@ async function main() {
   // (segundo factor TOTP con la migración 0012; el secreto se cifra con el llavero del registro)
   // Restablecimiento de operadores: sin SMTP propio, por la bandeja de la plataforma (Brevo, dominio corporativo),
   // solo si el correo no está apagado (con MAIL_MODE=off no se ofrece en vez de fingir un envío)
-  const operatorResetMailer = platformMail.mailer && mailPolicy.mode !== "off" ? outboxResetMailer(platformMail.mailer) : undefined;
+  // Tampoco si el ámbito del correo lo deja fuera (p. ej. production solo con los avisos de solicitudes)
+  const operatorResetMailer = platformMail.mailer && mailPolicy.mode !== "off" && scopeAllows(mailPolicy, "platform", "password_reset") ? outboxResetMailer(platformMail.mailer) : undefined;
   const operators = await operatorAuthFromEnv(pool, process.env, { keyring: ring, resetMailer: operatorResetMailer });
+  // Avisos internos de solicitudes web (CRM 0025): destinatarios elegidos en el CRM entre los operadores; salen por la
+  // bandeja de la plataforma con su política (modo, destinatarios autorizados, ámbito). Sin migración, no se monta.
+  let leadNotices: LeadNoticeService | null = null;
+  if (crm && crmPool && operators.service && (await settingsTablesReady(crmPool))) {
+    const ops = operators.service;
+    leadNotices = new LeadNoticeService({
+      settings: new MysqlSettingsStore(crmPool),
+      store: crm.store,
+      crm: crm.service,
+      mailer: platformMail.mailer,
+      ledger: platformMail.mailer ? new MysqlMailStore(crmPool) : null,
+      operators: async () => (await ops.list()).map((o) => ({ id: o.id, email: o.email, displayName: o.displayName, role: o.role, status: o.status })),
+      crmUrl: crmUrlFromEnv(process.env),
+      killSwitch: (process.env.CP_LEAD_NOTICES ?? "").trim().toLowerCase() === "off",
+    });
+    const every = Math.max(60, Number(process.env.CP_LEAD_NOTICES_SWEEP_SECONDS ?? 300) || 300) * 1000;
+    const t = setInterval(() => void leadNotices!.sweep().catch(() => undefined), every);
+    t.unref?.();
+  }
+  console.log(JSON.stringify({ ctx: "LeadNotices", mounted: !!leadNotices, ...(leadNotices ? leadNotices.status() : { reason: !crm ? "crm_not_configured" : "migration_0025_missing_or_no_operators" }), crmLink: !!crmUrlFromEnv(process.env) }));
   console.log(JSON.stringify({ ctx: "OperatorAuth", enabled: !!operators.service, ...(operators.reason ? { reason: operators.reason } : {}), passwordReset: !!operators.service?.resetAvailable, resetTransport: operators.resetTransport ?? null, mfa: operators.mfa ?? null }));
 
   // Web comercial (catálogo y contenidos): misma BD del CRM; solo si la migración 0004 está aplicada
@@ -518,6 +541,7 @@ async function main() {
     lifecycle,
     stripe,
     commercialEvents,
+    leadNotices,
     notifications: notificationsFromEnv(process.env),
     mail: {
       platform: platformMail.mailer,

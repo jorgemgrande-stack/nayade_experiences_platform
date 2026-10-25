@@ -36,7 +36,7 @@ import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { MAIL_TEST_SERVICES, POSTMARK_WEBHOOK_TRIGGERS, mailAccessPlan, mailSandboxPlan, parseMailAllowlist } from "./esRailwayLib";
+import { MAIL_TEST_SERVICES, POSTMARK_WEBHOOK_TRIGGERS, leadNoticesMailPlan, mailAccessPlan, mailSandboxPlan, parseMailAllowlist } from "./esRailwayLib";
 import { DRILL_IDLE, EXCLUDED_FROM_EXPORT, GATEWAY_COPIED_VARS, GATEWAY_TEMPLATE_SERVICE, STORAGE_BUCKETS, STORAGE_VARS, describeStorageVar, guard, isAllowedDrill, scrub, meteringReferences, storageReferences, testTenantDomains, type DeployConfig, type TokenScope } from "./esRailwayLib";
 import { ERM_DB_SERVICE, ERM_PASSWORD_VAR, LIVE_PLATFORM_DOMAIN_DEFAULT, livePlatformDomainProblems, meteringPlan, platformDomainsValue } from "./esRailwayLib";
 import { CRM_CHECKS, EXTERNAL_LOCKED_SWITCHES, FUNCTIONAL_CHECKS, ORDINARY_SERVICES, WEB_CHECKS, crmProtectedChanges, hasMigrations, isExternalService, protectedChanges, shaFromDeployMeta } from "./esRailwayLib";
@@ -751,6 +751,93 @@ async function main() {
     const d = await waitFor(coreId, sc.environmentId, before.id);
     console.log(`core: redesplegado con su misma imagen → ${d.status}`);
     if (d.status !== "SUCCESS") process.exit(1);
+    return;
+  }
+  if (cmd === "lead-notices-mail") {
+    // Avisos INTERNOS de solicitudes web en production (docs/runbooks/AVISOS_SOLICITUDES_WEB.md): estado (lectura, sin
+    // valores secretos ni envíos), activar (plano de control en sandbox: solo los buzones indicados, solo la categoría
+    // lead_request_notice, servidor de Postmark de production con su webhook hacia el CRM de production) y desactivar
+    // (MAIL_MODE=off en el plano de control). Nunca toca core (correo de acceso de Skibox) ni imprime un token.
+    const accion = arg("accion");
+    if (!["estado", "activar", "desactivar"].includes(accion)) throw new Error("--accion estado|activar|desactivar");
+    if (env !== "production") throw new Error("lead-notices-mail solo existe en production");
+    const recipients = accion === "activar" ? parseMailAllowlist(arg("allow")) : [];
+    const crypto = await import("node:crypto");
+    const huella = (v: string) => crypto.createHash("sha256").update(v).digest("hex").slice(0, 8);
+    const t = await api<{ projectToken: { projectId: string } }>("query { projectToken { projectId } }");
+    const p = t.projectToken.projectId;
+    const q = "query($p:String!,$e:String!,$s:String!){ variables(projectId:$p, environmentId:$e, serviceId:$s, unrendered:false) }";
+    const vars: Record<string, Record<string, string>> = {};
+    for (const svc of ["controlplane", "core", "crm"]) {
+      vars[svc] = (await api<{ variables: Record<string, string> }>(q, { p, e: sc.environmentId, s: await serviceId(svc) })).variables;
+      const shown = Object.keys(vars[svc]).filter((k) => /^(MAIL_|POSTMARK_|CP_CRM_URL|CP_LEAD_NOTICES)/.test(k)).sort();
+      console.log(`${svc}: ${shown.length ? "" : "sin variables de correo"}`);
+      for (const k of shown) console.log(`  ${k.padEnd(28)} ${/TOKEN|KEY|PASS/.test(k) ? `definido · huella ${huella(vars[svc][k])}` : vars[svc][k]}`);
+    }
+    const token = (vars.controlplane.POSTMARK_SERVER_TOKEN || vars.core.POSTMARK_SERVER_TOKEN || "").trim();
+    const pm = async (method: string, path: string, body?: unknown) => {
+      const r = await fetch(`https://api.postmarkapp.com${path}`, { method, headers: { Accept: "application/json", "Content-Type": "application/json", "X-Postmark-Server-Token": token }, body: body ? JSON.stringify(body) : undefined });
+      return { status: r.status, j: (await r.json().catch(() => ({}))) as Record<string, unknown> };
+    };
+    let webhooks: Array<{ ID: number; Url: string }> = [];
+    let serverOk = false;
+    if (!token) console.log("Postmark: sin token de servidor en production");
+    else {
+      const sv = await pm("GET", "/server");
+      serverOk = sv.status === 200;
+      console.log(`Postmark servidor: HTTP ${sv.status} · ${serverOk ? `«${sv.j.Name}»` : String(sv.j.Message ?? "token no válido")}`);
+      if (serverOk) {
+        webhooks = ((await pm("GET", "/webhooks?MessageStream=outbound")).j.Webhooks as Array<{ ID: number; Url: string }>) ?? [];
+        console.log(`Postmark webhooks: ${webhooks.length ? webhooks.map((w) => w.Url).join(", ") : "ninguno"}`);
+        const msgs = ((await pm("GET", "/messages/outbound?count=10&offset=0&tag=lead_request_notice")).j.Messages as Array<{ MessageID: string; Subject: string; To: Array<{ Email: string }>; ReceivedAt: string }>) ?? [];
+        console.log(`Postmark avisos de solicitudes recientes: ${msgs.length}`);
+        for (const m of msgs) {
+          const det = await pm("GET", `/messages/outbound/${m.MessageID}/details`);
+          const ev = ((det.j.MessageEvents as Array<{ Type: string; ReceivedAt: string }>) ?? []).map((e) => `${e.Type}@${e.ReceivedAt.slice(0, 19)}`).join(", ");
+          console.log(`  ${m.ReceivedAt.slice(0, 19)} · ${(m.To?.[0]?.Email ?? "").replace(/^(.).*(@.*)$/, "$1***$2")} · ${m.Subject.slice(0, 80)} · ${ev || "sin eventos"}`);
+        }
+      }
+    }
+    const crmHost = "admin.bigelephant.es";
+    const hookUrl = `https://${crmHost}/cp/v1/mail/postmark/webhook`;
+    const plan = leadNoticesMailPlan(env, vars, { action: accion === "desactivar" ? "desactivar" : "activar", recipients: accion === "estado" ? ["estado@ejemplo.invalid"] : recipients });
+    // El servidor de production nunca debe mandar sus eventos a live
+    if (webhooks.some((w) => /live|railway\.app/.test(w.Url))) plan.problems.push("el servidor de Postmark envía eventos a live o a un dominio de Railway: production necesita su propio servidor");
+    if (token && !serverOk) plan.problems.push("el token de Postmark no es válido");
+    if ((vars.crm.POSTMARK_WEBHOOK_PUBLIC ?? "") !== "1") plan.changes.push({ service: "crm", name: "POSTMARK_WEBHOOK_PUBLIC", value: "1" });
+    if (accion === "estado") {
+      console.log(plan.problems.length ? `Falta para activar:\n - ${plan.problems.join("\n - ")}` : "Requisitos técnicos para activar: cumplidos");
+      console.log(`Cambios que haría la activación: ${plan.changes.filter((c) => c.name !== "MAIL_SANDBOX_ALLOWLIST").map((c) => `${c.service}.${c.name}${c.value ? `=${c.value}` : c.generate ? " (generado)" : " (copiado de core)"}`).join(" · ") || "ninguno"}`);
+      return;
+    }
+    if (plan.problems.length) throw new Error(`No se cambia nada:\n - ${plan.problems.join("\n - ")}`);
+    if (accion === "desactivar") plan.changes = plan.changes.filter((c) => c.service === "controlplane");
+    if (!plan.changes.length) return void console.log("Sin cambios: ya estaba así");
+    const upsert = async (svc: string, name: string, value: string) =>
+      api("mutation($i:VariableUpsertInput!){ variableUpsert(input:$i) }", { i: { projectId: p, environmentId: sc.environmentId, serviceId: await serviceId(svc), name, value, skipDeploys: true } });
+    let webhookToken = vars.controlplane.POSTMARK_WEBHOOK_TOKEN ?? "";
+    for (const c of plan.changes) {
+      const value = c.generate ? crypto.randomBytes(32).toString("base64url") : c.copyFrom ? vars[c.copyFrom].POSTMARK_SERVER_TOKEN : c.value!;
+      if (c.service === "controlplane" && c.name === "POSTMARK_WEBHOOK_TOKEN") webhookToken = value;
+      await upsert(c.service, c.name, value);
+      console.log(`${c.service}: ${c.name} → ${/TOKEN/.test(c.name) ? (c.generate ? "generado" : `copiado de ${c.copyFrom}`) : c.name === "MAIL_SANDBOX_ALLOWLIST" ? `${value.split(",").length} buzón(es)` : value}`);
+    }
+    if (accion === "activar") {
+      // Webhook del servidor de production hacia el CRM de production, con la cabecera del token del plano de control
+      const hook = { Url: hookUrl, MessageStream: "outbound", HttpHeaders: [{ Name: "x-elephant-webhook-token", Value: webhookToken }], Triggers: POSTMARK_WEBHOOK_TRIGGERS };
+      const existing = webhooks.find((w) => w.Url === hookUrl);
+      const r = existing ? await pm("PUT", `/webhooks/${existing.ID}`, hook) : await pm("POST", "/webhooks", hook);
+      console.log(r.status === 200 ? `Postmark webhook ${existing ? "actualizado" : "creado"}: ${hookUrl}` : `AVISO: Postmark no guardó el webhook (HTTP ${r.status}: ${String(r.j.Message ?? "")}); los rebotes se verán por la API de Postmark`);
+    }
+    for (const svc of Array.from(new Set(plan.changes.map((c) => c.service)))) {
+      const id = await serviceId(svc);
+      const before = await latest(id, sc.environmentId);
+      if (!before) throw new Error(`${svc} no tiene despliegue que redesplegar`);
+      await api("mutation($id:String!){ deploymentRedeploy(id:$id, usePreviousImageTag:true){ id } }", { id: before.id });
+      const d = await waitFor(id, sc.environmentId, before.id);
+      console.log(`${svc}: redesplegado con su misma imagen → ${d.status}`);
+      if (d.status !== "SUCCESS") process.exit(1);
+    }
     return;
   }
   if (cmd === "backup-check") {
