@@ -18,21 +18,34 @@ Claude publica sin consultar todo lo ordinario (Diseña → Implementa → Prueb
 | **Live** | Publica controlplane, core y core-gateway en live. Si hay migraciones nuevas, antes hace una copia y las aplica en live | Automático en cada fusión en `integration/elephant-source`, cuando las suites bloqueantes del CI están en verde (job `publicar-live`) | `elephant-source-live` | No |
 | **Production ordinario** | Publica controlplane, core, core-gateway, CRM y web comercial. Si el cambio exige el procedimiento protegido, no publica y deja un aviso (automático) o falla (manual) | **Automático** justo después de superar live (job `publicar-production` del CI, en cada fusión en `integration/elephant-source` o con `workflow_dispatch` del CI tras fusionar solo en el CRM), o manual con `Despliegue Elephant Source` → `publicar` · `production` | `elephant-source-production-despliegue` | No |
 | **Vuelta atrás** | Devuelve un servicio a su despliegue anterior, ya construido | `revertir-controlplane`, `revertir-core` o `revertir-core-gateway` | El ordinario del entorno | No |
-| **Protegido** | Migraciones, bases de datos, copias y restauraciones, infraestructura, variables y secretos, operaciones destructivas y cambios críticos | Resto de acciones (`preparar-production`, `aplicar-production`, `migraciones-*`, `almacenamiento-referencias`, `desplegar-*`…) | `elephant-source-production` | **Sí, obligatoria** |
+| **Ordinario de production sin aprobación** | Solo lectura, copias y revisiones auditadas: `estado`, `verificar-token`, `comprobar-salud`, `diagnostico-almacenamiento`, `copia-de-seguridad`, `verificar-copia`, simulaciones y verificación de migraciones, `huerfanos`, estados del correo y de los avisos, `medicion-comprobar`, `catalogo-revision(-aplicar)` (lista `ORDINARY_PRODUCTION_ACTIONS`) | Manual | `elephant-source-production-despliegue` | No |
+| **Extraordinario** | Migraciones destructivas, variables y secretos, correo real, almacenamiento, aplicar a mano migraciones o restauraciones, y cambios críticos | Resto de acciones (`preparar-production`, `aplicar-production`, `migraciones-*-aplicar`, `almacenamiento-referencias`, `correo-acceso-activar`, `avisos-solicitudes-activar`, `desplegar-*`…) | `elephant-source-production` | **Sí, obligatoria** |
+
+**Orden permanente del propietario (26/10/2026):** lo ordinario se publica en production sin intervención humana. Lo extraordinario conserva la aprobación del propietario.
 
 ## Barreras del despliegue ordinario en production
 
 1. **Mismo commit, CI en verde.** El commit debe tener en verde las suites bloqueantes del CI.
 2. **Mismo commit, superado en live.** El commit debe tener el estado `elephant-source/live` = `success`. Solo lo marca la publicación automática en live, cuando terminan bien el despliegue y las comprobaciones funcionales.
-3. **Nada que exija el procedimiento protegido.** Se comparan el commit que sirve production y el que se quiere publicar. El despliegue se detiene si el cambio trae alguna de estas cosas:
-   - migraciones o esquema (`db/`, `drizzle/`, `migrations/`, `scripts/db/`);
-   - infraestructura (`deploy/`, `Dockerfile*`, `railway*.toml`, `Caddyfile`);
-   - dependencias o configuración de compilación;
-   - la política del correo real;
-   - alguna lectura de un interruptor de funciones bloqueadas (`CP_*_ENABLED`, `CP_STRIPE_MODE`, `MAIL_MODE`, `MAIL_LIVE_AUTHORIZED`, `MAIL_SANDBOX_ALLOWLIST`, `LLM_*`, `ES_AI_*`, `IMAGE_MODEL`, `TENANT_MODE`).
+3. **Nada extraordinario.** Se comparan el commit que sirve production y el que se quiere publicar (`extraordinaryChanges`). El despliegue se detiene si el cambio trae alguna de estas cosas:
+   - una migración **no aditiva**: borra, vacía, reescribe, renombra o cambia el tipo de algo, o contiene una sentencia no reconocida como aditiva (`destructiveMigration`);
+   - la política del correo real (`server/mail/policy.ts`);
+   - alguna lectura de un interruptor de funciones bloqueadas (`CP_*_ENABLED`, `CP_STRIPE_MODE`, `MAIL_MODE`, `MAIL_LIVE_AUTHORIZED`, `MAIL_SANDBOX_ALLOWLIST`, `LLM_*`, `ES_AI_*`, `IMAGE_MODEL`, `TENANT_MODE`);
+   - en el CRM o la web, la pasarela de seguridad (`Caddyfile`) o los interruptores de cobros, autoservicio y Stripe.
 
-   Si no se sabe qué versión está activa, también se considera protegido.
-4. **Solo código.** Sube el código de los tres servicios. No toca variables, secretos, dominios, servicios ni bases de datos. `MAIL_MODE=off` y los bloqueos comerciales siguen como estén.
+   Si no se sabe qué versión está activa, también se considera extraordinario.
+
+   Son **ordinarios**:
+   - las dependencias, la compilación y las imágenes (`deploy/`, `Dockerfile*`), porque ya se probaron en live y tienen vuelta atrás automática;
+   - las migraciones **aditivas** (crear tablas, añadir columnas o índices e insertar datos nuevos).
+4. **Migraciones aditivas, automáticas y controladas.** Antes de desplegar el código:
+   1. restore-drill pasa a ese mismo commit;
+   2. copia de seguridad y verificación de la copia en el bucket;
+   3. migraciones de registro y CRM;
+   4. migraciones de las empresas: canario (`t3-empresa-demo-elephant-01`) con comprobación, después Skibox y después el resto, con comprobación final.
+
+   Cualquier fallo detiene la publicación, y production sigue con la versión anterior.
+5. **No toca configuración.** Sube el código y aplica las migraciones aditivas. No toca variables, secretos, dominios ni servicios, y los bloqueos comerciales siguen como estén.
 5. **Ramas.** El entorno solo admite `integration/elephant-source`, y el flujo comprueba además la rama y que el commit pertenece a ella.
 
 ## Comprobaciones funcionales y vuelta atrás
