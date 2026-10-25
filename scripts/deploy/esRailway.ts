@@ -39,6 +39,7 @@ import { fileURLToPath } from "node:url";
 import { MAIL_TEST_SERVICES, POSTMARK_WEBHOOK_TRIGGERS, leadNoticesMailPlan, mailAccessPlan, mailSandboxPlan, parseMailAllowlist } from "./esRailwayLib";
 import { DRILL_IDLE, EXCLUDED_FROM_EXPORT, GATEWAY_COPIED_VARS, GATEWAY_TEMPLATE_SERVICE, STORAGE_BUCKETS, STORAGE_VARS, describeStorageVar, guard, isAllowedDrill, scrub, meteringReferences, storageReferences, testTenantDomains, type DeployConfig, type TokenScope } from "./esRailwayLib";
 import { ERM_DB_SERVICE, ERM_PASSWORD_VAR, LIVE_PLATFORM_DOMAIN_DEFAULT, livePlatformDomainProblems, meteringPlan, platformDomainsValue } from "./esRailwayLib";
+import { CATALOG_STAMP_FILE, WEB_CATALOG_SITE } from "./esRailwayLib";
 import { CRM_CHECKS, EXTERNAL_LOCKED_SWITCHES, FUNCTIONAL_CHECKS, ORDINARY_SERVICES, WEB_CHECKS, crmProtectedChanges, hasMigrations, isExternalService, protectedChanges, shaFromDeployMeta } from "./esRailwayLib";
 import { REPOSITORIES } from "../../shared/repositories";
 
@@ -1009,6 +1010,17 @@ async function main() {
     console.log(extSha ?? "");
     return;
   }
+  /** Versión del catálogo publicado en el export de la web: invalida la caché de compilación cuando el catálogo cambia. */
+  async function stampWebCatalog(dir: string) {
+    const url = WEB_CATALOG_SITE[env];
+    if (!url) return;
+    const r = await fetch(url, { headers: { Accept: "application/json", Origin: new URL(url).origin } });
+    if (r.status !== 200) throw new Error(`no se pudo leer el catálogo publicado (${url} → HTTP ${r.status}): la web no se compila sin él`);
+    const version = String(((await r.json()) as { version?: string }).version ?? "");
+    if (!/^[0-9a-f]{8,64}$/.test(version)) throw new Error("el catálogo publicado no trae una versión válida");
+    fs.writeFileSync(path.join(dir, CATALOG_STAMP_FILE), `${version}\n`);
+    console.log(`web: catálogo publicado ${version}`);
+  }
   if (cmd === "publish-crm") {
     // CRM ORDINARIO: solo sube su código (sin variables ni infraestructura); si no queda bien o fallan sus
     // comprobaciones, vuelve a su despliegue anterior
@@ -1017,6 +1029,7 @@ async function main() {
     if (!/^[0-9a-f]{40}$/.test(sha)) throw new Error("commit no válido");
     const ext = externalOf(arg("service", false) || "crm");
     if (!sc.services.includes(ext.service)) throw new Error(`el servicio ${ext.service} no existe en el entorno`);
+    if (ext.service === "web") await stampWebCatalog(dir);
     const sid = await serviceId(ext.service);
     const curNode = (await deployments(sid, sc.environmentId)).find((x) => x.status === "SUCCESS");
     if (curNode && shaFromDeployMeta(curNode.meta, ext.repo) === sha) {
@@ -1057,6 +1070,7 @@ async function main() {
     if ((service === "crm") !== (repo === REPOSITORIES.crm)) throw new Error("el servicio crm solo se despliega con --repo crm, y --repo crm solo en el servicio crm");
     if ((service === "web") !== (repo === REPOSITORIES.web)) throw new Error("el servicio web solo se despliega con --repo web, y --repo web solo en el servicio web");
     for (const f of EXCLUDED_FROM_EXPORT) if (fs.existsSync(path.join(dir, f))) throw new Error(`el export contiene ${f}: no se despliega`);
+    if (service === "web") await stampWebCatalog(dir);
     const sid = await serviceId(service!);
     const before = (await latest(sid, sc.environmentId))?.id ?? null;
     const r = spawnSync("railway", ["up", dir, "--path-as-root", "-s", service!, "-e", env, "--detach", "-m", `${repo} ${sha}`], { encoding: "utf8", env: process.env });

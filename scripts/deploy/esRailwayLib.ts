@@ -413,6 +413,17 @@ export const WEB_CHECKS: Record<string, Array<{ url: string; expect: number; aut
 
 export const WEB_LIVE_STATUS_CONTEXT = "elephant-source/web-live";
 
+/**
+ * Catálogo publicado que la web toma AL COMPILARSE. Su versión se escribe en el export (`CATALOG_STAMP_FILE`) antes de
+ * subirlo: así la capa `RUN pnpm build` de la imagen solo se reutiliza si el catálogo no ha cambiado (sin esto, un
+ * cambio de estado o de precio publicado desde el CRM no llegaba a la web hasta el siguiente cambio de código).
+ */
+export const WEB_CATALOG_SITE: Record<string, string> = {
+  live: "https://elephant-source-web-live.up.railway.app/cp/v1/public/site",
+  production: "https://www.bigelephant.es/cp/v1/public/site",
+};
+export const CATALOG_STAMP_FILE = "catalog-version.txt";
+
 /** Servicios de otros repositorios que la publicación continua despliega por su commit verificado. */
 export type ExternalService = "crm" | "web";
 export const isExternalService = (s: string): s is ExternalService => s === "crm" || s === "web";
