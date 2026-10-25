@@ -99,6 +99,13 @@ describe("pantallas del recorrido del cliente", () => {
     }
     expect(read("client/src/App.tsx")).not.toMatch(/border-orange-500|bg-\[#080e1c\]/);
   });
+  it("el aviso de cookies usa los tokens de la marca; los colores de Náyade solo quedan como respaldo", () => {
+    const src = read("client/src/components/CookieBanner.tsx");
+    // Cada oklch( aparece dentro de un var(--brand-…, respaldo): nunca como color directo
+    const direct = src.replace(/var\(--brand-[a-z0-9-]+, [^"`]*\)/g, "");
+    expect(direct).not.toMatch(/oklch\(/);
+    expect(src).toContain("var(--brand-accent");
+  });
   it("establecer contraseña entra directamente en el panel por el inicio de sesión normal", () => {
     const src = read("client/src/pages/SetPassword.tsx");
     expect(src).toContain('fetch("/api/auth/login"');
