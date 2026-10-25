@@ -312,3 +312,15 @@ describe("límite por hora: los avisos de solicitudes se retienen, nunca se pier
     expect(await mailer.send(null, "ops:b", "operational", "comercial@equipo.example", { subject: "b", html: "<p>b</p>" })).toMatchObject({ status: "skipped", reason: "rate_limited_recipient" });
   });
 });
+
+describe("activación en production: orden de los pasos", () => {
+  it("redespliega antes de crear el webhook (Postmark lo verifica al guardarlo) y lo reintenta aunque no haya variables que cambiar", async () => {
+    const fs = await import("node:fs");
+    const src = fs.readFileSync("scripts/deploy/esRailway.ts", "utf8");
+    const block = src.slice(src.indexOf('if (cmd === "lead-notices-mail")'), src.indexOf('if (cmd === "backup-check")'));
+    expect(block.indexOf("deploymentRedeploy")).toBeGreaterThan(0);
+    expect(block.indexOf("deploymentRedeploy")).toBeLessThan(block.indexOf('pm("POST", "/webhooks"'));
+    expect(block).toContain("if (!plan.changes.length && !needsHook)");
+    expect(block).toMatch(/Postmark no guardó el webhook[\s\S]{0,200}process\.exit\(1\)/);
+  });
+});
