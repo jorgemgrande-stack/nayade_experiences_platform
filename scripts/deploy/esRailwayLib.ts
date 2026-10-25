@@ -346,12 +346,20 @@ export function crmShaFromStatus(description: string | null | undefined): string
 /** Rama del repositorio bigelephant-web que se publica (la de los despliegues de production hasta ahora). */
 export const WEB_BRANCH = "feat/elephant-web-portfolio";
 
-/** Comprobaciones de la web comercial tras publicarla (pública en los dos entornos). */
+/**
+ * Comprobaciones de la web comercial tras publicarla. Desde el 25/10/2026 la web es pública SOLO en el dominio
+ * público (www.bigelephant.es); en los dominios de Railway sigue la contraseña de la pasarela salvo la salud y las
+ * páginas de vuelta del pago. Se comprueban rutas abiertas antes y después de ese cambio, para que publicar una
+ * versión anterior o la nueva no dispare una vuelta atrás.
+ */
 export const WEB_CHECKS: Record<string, Array<{ url: string; expect: number; auth?: boolean }>> = {
-  live: [{ url: "https://elephant-source-web-live.up.railway.app/", expect: 200 }],
+  live: [
+    { url: "https://elephant-source-web-live.up.railway.app/__gateway/health", expect: 200 },
+    { url: "https://elephant-source-web-live.up.railway.app/contratacion/estado", expect: 200 },
+  ],
   production: [
     { url: "https://www.bigelephant.es/", expect: 200 },
-    { url: "https://elephant-source-web.up.railway.app/", expect: 200 },
+    { url: "https://elephant-source-web.up.railway.app/contratacion/estado", expect: 200 },
   ],
 };
 
