@@ -381,6 +381,104 @@ export function crmProtectedChanges(files: string[]): string[] {
   return out;
 }
 
+// ── Ordinario frente a extraordinario (orden permanente del propietario, 26/10/2026) ─────────────────────────────
+//
+// ORDINARIO (production sin aprobación, tras CI y live superados por el mismo commit): código, interfaces, catálogos,
+// dependencias, compilación e imágenes (probadas en live, con vuelta atrás automática) y migraciones ADITIVAS (copia y
+// verificación de la copia antes; registro y CRM; empresas con canario primero).
+// EXTRAORDINARIO (con aprobación del propietario): migraciones destructivas, interruptores de funciones bloqueadas
+// (cobros, autoservicio, correo real, IA), la política del correo real y la pasarela de seguridad (quién accede).
+
+/** Ficheros cuyo cambio sigue siendo extraordinario en el Core. */
+export const EXTRAORDINARY_PATHS: Array<{ re: RegExp; why: string }> = [{ re: /^server\/mail\/policy\.ts$/, why: "política del correo real" }];
+
+/**
+ * ¿Una migración (solo el fichero de subida) borra o reescribe datos o esquema? Aditivo = crear tablas, añadir columnas
+ * o índices y datos nuevos. Devuelve el motivo, o null si es aditiva. Ante la duda (sentencia no reconocida), extraordinaria.
+ */
+export function destructiveMigration(sql: string): string | null {
+  const code = sql
+    .replace(/--[^\n]*/g, "")
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .toUpperCase();
+  const rules: Array<[RegExp, string]> = [
+    [/\bDROP\s+(TABLE|DATABASE|SCHEMA|VIEW|TRIGGER|PROCEDURE|FUNCTION)\b/, "borra objetos"],
+    [/\bDROP\s+(COLUMN|INDEX|KEY|FOREIGN\s+KEY|PRIMARY\s+KEY|CONSTRAINT|CHECK)\b/, "quita columnas, índices o restricciones"],
+    [/\bALTER\s+TABLE\s+\S+\s+DROP\b/, "quita partes de una tabla"],
+    [/\bTRUNCATE\b/, "vacía tablas"],
+    [/\bDELETE\s+FROM\b/, "borra datos"],
+    [/\bUPDATE\s+\S+\s+SET\b/, "reescribe datos"],
+    [/\b(MODIFY|CHANGE)\s+(COLUMN\s+)?\S+/, "cambia el tipo o el nombre de columnas"],
+    [/\bRENAME\s+(TABLE|COLUMN|TO|AS)\b/, "renombra"],
+  ];
+  for (const [re, why] of rules) if (re.test(code)) return why;
+  for (const stmt of code.split(";").map((s) => s.trim()).filter(Boolean)) {
+    if (!/^(CREATE\s+(TABLE|INDEX|UNIQUE\s+INDEX)|ALTER\s+TABLE\s+\S+\s+(ADD|ALTER\s+COLUMN\s+\S+\s+SET\s+DEFAULT)|INSERT\s+INTO|SET\s|SELECT\b)/.test(stmt)) return `sentencia no reconocida como aditiva: ${stmt.slice(0, 60)}`;
+  }
+  return null;
+}
+
+/** Ficheros de migración de SUBIDA (los `.down.sql` no se aplican al publicar). */
+export const migrationUpFiles = (files: string[]) => files.filter((f) => /(^db\/.*|(^|\/)migrations?\/.*)\.sql$/.test(f) && !/\.down\.sql$/.test(f) && !/(^|\/)README/i.test(f) && !/(^|\/)baseline\//.test(f));
+
+/**
+ * Lo que un despliegue de production del Core NO puede publicar por sí solo. `sqlOf` lee el contenido de una migración en
+ * el commit de destino (null si se borró: borrar una migración es extraordinario).
+ */
+export function extraordinaryChanges(files: string[], diff: string, sqlOf: (file: string) => string | null): string[] {
+  const out: string[] = [];
+  for (const f of files) {
+    const hit = EXTRAORDINARY_PATHS.find((p) => p.re.test(f));
+    if (hit) out.push(`${f} — ${hit.why}`);
+  }
+  for (const f of migrationUpFiles(files)) {
+    const sql = sqlOf(f);
+    const why = sql === null ? "migración borrada" : destructiveMigration(sql);
+    if (why) out.push(`${f} — migración no aditiva (${why})`);
+  }
+  for (const line of diff.split("\n")) {
+    if (!/^[+-](?![+-])/.test(line)) continue;
+    const m = line.match(LOCKED_SWITCHES);
+    if (m) out.push(`cambio en ${m[1]} — funciones bloqueadas`);
+  }
+  return [...new Set(out)];
+}
+
+/** CRM y web: extraordinario solo la pasarela de seguridad (Caddyfile: quién accede y qué es público). */
+export const EXTERNAL_EXTRAORDINARY_PATHS: Array<{ re: RegExp; why: string }> = [{ re: /(^|\/)Caddyfile[^/]*$/, why: "pasarela de seguridad (accesos y rutas públicas)" }];
+export function externalExtraordinaryChanges(files: string[]): string[] {
+  const out: string[] = [];
+  for (const f of files) {
+    const hit = EXTERNAL_EXTRAORDINARY_PATHS.find((p) => p.re.test(f));
+    if (hit) out.push(`${f} — ${hit.why}`);
+  }
+  return out;
+}
+
+/**
+ * Acciones de production que no cambian nada sensible (solo lectura, copias o revisiones auditadas y reversibles): van
+ * por el entorno de despliegue ordinario, sin aprobación. El resto (variables, secretos, almacenamiento, correo real,
+ * aplicar a mano migraciones o restauraciones) sigue en el entorno protegido.
+ */
+export const ORDINARY_PRODUCTION_ACTIONS = [
+  "publicar",
+  "estado",
+  "verificar-token",
+  "comprobar-salud",
+  "diagnostico-almacenamiento",
+  "copia-de-seguridad",
+  "verificar-copia",
+  "migraciones-plataforma-simulacion",
+  "migraciones-simulacion",
+  "verificar-migraciones",
+  "huerfanos",
+  "correo-acceso-estado",
+  "avisos-solicitudes-estado",
+  "medicion-comprobar",
+  "catalogo-revision",
+  "catalogo-revision-aplicar",
+] as const;
+
 /** Estado que deja live con el commit del CRM que ha superado live (production solo publica ese). */
 export const CRM_LIVE_STATUS_CONTEXT = "elephant-source/crm-live";
 export const crmLiveStatusDescription = (sha: string) => `crm ${sha}`;

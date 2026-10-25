@@ -41,6 +41,7 @@ import { MAIL_TEST_SERVICES, POSTMARK_WEBHOOK_TRIGGERS, leadNoticesMailPlan, mai
 import { DRILL_IDLE, EXCLUDED_FROM_EXPORT, GATEWAY_COPIED_VARS, GATEWAY_TEMPLATE_SERVICE, STORAGE_BUCKETS, STORAGE_VARS, describeStorageVar, guard, isAllowedDrill, scrub, meteringReferences, storageReferences, testTenantDomains, type DeployConfig, type TokenScope } from "./esRailwayLib";
 import { ERM_DB_SERVICE, ERM_PASSWORD_VAR, LIVE_PLATFORM_DOMAIN_DEFAULT, livePlatformDomainProblems, meteringPlan, platformDomainsValue } from "./esRailwayLib";
 import { CATALOG_STAMP_FILE, WEB_CATALOG_SITE } from "./esRailwayLib";
+import { externalExtraordinaryChanges, extraordinaryChanges } from "./esRailwayLib";
 import { CRM_CHECKS, EXTERNAL_LOCKED_SWITCHES, FUNCTIONAL_CHECKS, ORDINARY_SERVICES, WEB_CHECKS, crmProtectedChanges, hasMigrations, isExternalService, protectedChanges, shaFromDeployMeta } from "./esRailwayLib";
 import { REPOSITORIES } from "../../shared/repositories";
 
@@ -215,7 +216,8 @@ async function main() {
     const files = (r.stdout ?? "").split("\n").filter(Boolean);
     console.log(`CRM: ${files.length} ficheros cambiados entre ${from.slice(0, 12)} y ${to.slice(0, 12)}`);
     if (process.argv.includes("--production")) {
-      const blocked = crmProtectedChanges(files);
+      // Dependencias e imagen son ordinarias (probadas en live, vuelta atrás automática); la pasarela, extraordinaria
+      const blocked = externalExtraordinaryChanges(files);
       // Interruptores de funciones comerciales bloqueadas (checkout, autoservicio, Stripe): un cambio que los toque no es ordinario
       const d = spawnSync("git", ["-C", dir, "diff", "--unified=0", `${from}..${to}`], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
       if (d.status !== 0) throw new Error("git diff del repositorio externo falló");
@@ -228,7 +230,7 @@ async function main() {
         console.error(`El CRM trae cambios que exigen el procedimiento protegido (con aprobación):\n - ${blocked.join("\n - ")}`);
         process.exit(5);
       }
-      console.log("CRM: cambio ordinario (sin infraestructura ni dependencias).");
+      console.log("CRM: cambio ordinario (sin cambios en la pasarela ni en funciones bloqueadas).");
     }
     return;
   }
@@ -252,12 +254,17 @@ async function main() {
     console.log(`${files.length} ficheros cambiados entre ${from.slice(0, 12)} y ${to.slice(0, 12)}`);
     console.log(`migrations=${hasMigrations(files) ? "yes" : "no"}`);
     if (process.argv.includes("--production")) {
-      const blocked = protectedChanges(files, git(["diff", "--unified=0", `${from}..${to}`, "--", "server", "shared", "client", ":!*.test.ts", ":!*.test.tsx"]));
+      // Orden permanente del propietario (26/10/2026): migraciones aditivas, dependencias e imágenes son ordinarias
+      const sqlOf = (f: string) => {
+        const r = spawnSync("git", ["show", `${to}:${f}`], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+        return r.status === 0 ? (r.stdout ?? "") : null;
+      };
+      const blocked = extraordinaryChanges(files, git(["diff", "--unified=0", `${from}..${to}`, "--", "server", "shared", "client", ":!*.test.ts", ":!*.test.tsx"]), sqlOf);
       if (blocked.length) {
-        console.error(`Este despliegue no es ordinario; usa el procedimiento protegido (con aprobación):\n - ${blocked.join("\n - ")}`);
+        console.error(`Este despliegue es extraordinario; usa el procedimiento protegido (con aprobación):\n - ${blocked.join("\n - ")}`);
         process.exit(5);
       }
-      console.log("Cambio ordinario: sin migraciones, infraestructura ni funciones bloqueadas.");
+      console.log(`Cambio ordinario${hasMigrations(files) ? " con migraciones aditivas (copia, verificación y aplicación automáticas)" : ""}.`);
     }
     return;
   }
