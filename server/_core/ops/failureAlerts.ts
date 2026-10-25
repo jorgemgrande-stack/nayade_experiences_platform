@@ -31,6 +31,7 @@ export const DEFAULT_FAILURE_RULES: Record<string, FailureRule> = {
   // Seguimiento del proveedor (webhooks): una queja basta para revisar; los rebotes, solo si se repiten
   "mail.complaint": { threshold: 1, windowMs: 24 * 60 * MIN, severity: "warning", title: "Correo: un destinatario ha marcado un aviso como spam (dirección suprimida)" },
   "mail.hard_bounce": { threshold: 5, windowMs: 60 * MIN, severity: "warning", title: "Correo: rebotes permanentes repetidos (revisar direcciones y reputación del dominio)" },
+  "mail.rate_limited_deferred": { threshold: 1, windowMs: 60 * MIN, severity: "warning", title: "Avisos de solicitudes retenidos por el límite por hora (se envían solos en la siguiente franja)" },
 };
 
 export class FailureAlerts {
