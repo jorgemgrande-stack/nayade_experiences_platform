@@ -50,3 +50,4 @@
 | 02:00 | Identidad visual | Un solo sistema de tokens (Big Elephant por defecto; la marca de la empresa con el contraste protegido), «Establecer contraseña» con el armazón común e inicio de sesión al terminar, sin «Acceso restringido», página de estado con identidad | #358 | Verificado en live |
 | 02:50 | Identidad visual | El aviso de cookies sin los colores fijos de Náyade | #359 | En CI |
 | 02:55 | Verificación | Fase 4 en live: 16/16 comprobaciones correctas | — | Verificado en live |
+| 04:00 | Publicación | Fase 4 completa en production (40172036024): migraciones 0014 y 0015, despliegue, salud e identidad visual verificada | #350–#359 | Verificado en production |

@@ -7,20 +7,26 @@
 
 **Cómo leer este informe:** fusionado, publicado en live y publicado en production se indican por separado. «Verificado» solo se usa cuando lo comprobé con la API real, el navegador o los registros de una ejecución.
 
-**Estado (25/10/2026, 03:00):**
-- Todo lo de la fase 4 está fusionado y verificado en live, incluida la identidad visual (#358). El aviso de cookies (#359) está fusionado y publicado en live.
-- Production: el Core sirve el correo de acceso de Skibox. El resto espera una sola aprobación protegida (sección 3).
+**Estado final (25/10/2026):**
+- Toda la fase 4 está publicada en production: commit `58ac43d6`, ejecución aprobada 40172036024.
+  - Copia previa y migraciones 0014 (registro) y 0015 (las siete empresas) aplicadas.
+  - Plano de control, Core y pasarela desplegados.
+  - Salud en 200.
+- Verificado en production:
+  - las rutas nuevas responden 401 sin sesión;
+  - la identidad de Big Elephant aparece en las pantallas de acceso de Skibox (escritorio y móvil, capturas);
+  - el aviso de cookies ya está corregido.
 
 ---
 
 ## 1. Avance
 
-**Avance del encargo original: 82 %**, frente al 78 % de partida.
+**Avance del encargo original: 86 %**, frente al 78 % de partida.
 
 - Solo cuenta lo terminado, publicado y comprobado.
-- Todo el desarrollo de la fase está verificado en **live**.
-- En **production** solo está la parte del correo de acceso de Skibox. El resto de la fase 4 espera a una sola aprobación protegida (sección 3).
-- Al publicarse y verificarse en production, el avance sería del **86–87 %**.
+- Todo el desarrollo de la fase está verificado en **live**, con 16/16 comprobaciones funcionales.
+- Está publicado en **production**, donde he comprobado el despliegue, las migraciones, la protección de las rutas nuevas y la identidad visual.
+- Las pantallas nuevas del CRM sobre datos reales de production requieren una sesión de operador con MFA: van en la guía de pruebas humanas.
 
 ## 2. Desarrollos
 
@@ -42,11 +48,11 @@
 |---|---|---|---|
 | Correo de acceso (#344–#348) | Fusionado | Verificado | Core #344 desplegado (`55451c2d`). #347 y #348 solo afectan al alta y a las herramientas de despliegue; pendientes de la aprobación siguiente |
 | Activación del correo de Skibox | — | — | **Verificado** (ejecución 40141253411) |
-| Integraciones, módulos, Resource Manager, ciclo de vida e informes (#350–#357) | Fusionado | **Verificado** (16/16 comprobaciones) | Pendiente de **una aprobación protegida** (`aplicar-production`): incluye las migraciones 0015 (empresas) y 0014 (registro) |
-| Identidad visual (#358) | Fusionado | **Verificado** (capturas en escritorio y móvil con dos empresas de prueba) | Pendiente de la misma aprobación |
+| Integraciones, módulos, Resource Manager, ciclo de vida e informes (#350–#357) | Fusionado | **Verificado** (16/16 comprobaciones) | **Publicado** (40172036024): migraciones 0014 y 0015 aplicadas; rutas protegidas (401 sin sesión) |
+| Identidad visual (#358, #359) | Fusionado | **Verificado** (capturas en escritorio y móvil con dos empresas de prueba) | **Verificado** (capturas de Skibox en escritorio y móvil) |
 | Pantallas del CRM (#61–#64) | Fusionado | Publicado | Publicado por la publicación ordinaria. Las de la fase 4 muestran «sin datos» hasta que el Core de production tenga sus rutas |
 
-**Aprobación pendiente:** `aplicar-production` con el commit `58ac43d6`, que incluye toda la fase 4, la identidad visual (#358 y #359) y las migraciones 0014 y 0015: https://github.com/jorgemgrande-stack/nayade_experiences_platform/actions/runs/40172036024. Hace la copia previa, aplica las migraciones (primero en la empresa canario, después en Skibox y después en el resto), despliega y comprueba la salud.
+**Aprobaciones:** ninguna pendiente. La publicación de la fase 4 (40172036024) se aprobó y terminó correctamente.
 
 ## 4. Unificación visual (#358)
 
@@ -123,7 +129,7 @@
   - tarifas reales de coste;
   - política de suspensión por exceso de cuota;
   - borrar las bases de pruebas de restauración de live (18–21/10).
-- **Autorizaciones:** la aprobación de `aplicar-production` (sección 3).
+- **Autorizaciones:** ninguna pendiente.
 
 ## 8. Pruebas humanas
 
@@ -143,7 +149,7 @@ Se ha añadido la revisión visual (sección 4 de la guía).
   - alta asistida por el equipo;
   - gestión de accesos, licencias, cuotas y ficha 360°;
   - CRM comercial.
-- **Solo en pruebas (live)**, hasta la aprobación pendiente: todo lo nuevo de la fase 4.
+- **Publicado y pendiente de vuestra revisión en production:** todo lo nuevo de la fase 4 (guía de pruebas humanas).
 - **Impide todavía la comercialización general:**
   - cobro y autoservicio de pago (Stripe);
   - correo de acceso habilitado solo para Skibox, que hay que ampliar empresa a empresa o de forma general con tu autorización;
@@ -151,6 +157,6 @@ Se ha añadido la revisión visual (sección 4 de la guía).
 
 ## 10. Antes de las pruebas humanas (imprescindible)
 
-1. Aprobar `aplicar-production` (fase 4 e identidad visual) y verificarlo en production.
+1. Revisar en production, con la guía, las pantallas nuevas de la ficha (Integraciones, Licencias › Estado técnico) y el Resource Manager.
 2. Confirmar el primer acceso del administrador de Skibox.
 3. Decidir si el correo de acceso se amplía a las empresas que se usarán en las pruebas.
