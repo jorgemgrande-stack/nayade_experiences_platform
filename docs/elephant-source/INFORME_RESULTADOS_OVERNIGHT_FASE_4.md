@@ -90,7 +90,7 @@
 | Invitación real enviada y **entregada** | Verificado | Postmark: «Bienvenido a Skibox — Activa tu cuenta», entregado a las 01:16 |
 | Enlace abierto en `skibox.app.bigelephant.es/establecer-contrasena` | Verificado | Captura del propietario |
 | Recuperación de contraseña entregada y **contraseña cambiada** | Verificado | Postmark: «Recuperar contraseña» (01:23) y «Tu contraseña se ha cambiado» (01:24), los dos entregados |
-| Inicio de sesión del administrador en su panel | **Falta confirmación humana** | Entrar en `skibox.app.bigelephant.es/login` con `jgrande@skicenter.es` |
+| Inicio de sesión del administrador en su panel | **Verificado** | Confirmado por el propietario el 25/10/2026. Incidencia cerrada |
 
 ## 6. Pruebas
 
@@ -158,5 +158,4 @@ Se ha añadido la revisión visual (sección 4 de la guía).
 ## 10. Antes de las pruebas humanas (imprescindible)
 
 1. Revisar en production, con la guía, las pantallas nuevas de la ficha (Integraciones, Licencias › Estado técnico) y el Resource Manager.
-2. Confirmar el primer acceso del administrador de Skibox.
-3. Decidir si el correo de acceso se amplía a las empresas que se usarán en las pruebas.
+2. Decidir si el correo de acceso se amplía a las empresas que se usarán en las pruebas.
