@@ -15,6 +15,7 @@
  *   tsx scripts/deploy/esRailway.ts storage-fix --env live        (almacenamiento como referencias a los buckets de live)
  *   tsx scripts/deploy/esRailway.ts mail-live --env live [--allow a@x,b@y]  (diagnóstico de Postmark; con --allow, sandbox)
  *   tsx scripts/deploy/esRailway.ts mail-access --env production --accion estado|activar|desactivar [--tenants t5-skibox]
+ *   tsx scripts/deploy/esRailway.ts lead-notices-mail --env production --accion estado|activar|desactivar [--allow buzón]
  *   tsx scripts/deploy/esRailway.ts active-sha --env live          (commit activo de los servicios ordinarios; vacío si no se sabe)
  *   tsx scripts/deploy/esRailway.ts changes --from <commit> --to <commit> [--production]  (qué exige el procedimiento protegido)
  *   tsx scripts/deploy/esRailway.ts publish --env live --dir <dir> --sha <commit>   (despliegue ordinario con vuelta atrás automática)
@@ -277,7 +278,7 @@ async function main() {
   const env = arg("env");
   const sc = await scope();
   const service = cmd === "deploy" || cmd === "revert" ? arg("service") : cmd === "drill" ? "restore-drill" : undefined;
-  if (!["verify", "status", "deploy", "drill", "active-sha", "publish", "revert", "active-crm", "publish-crm", "storage", "storage-fix", "test-gateways", "mail-live", "backup-check", "platform-domain", "metering", "mail-access"].includes(cmd)) throw new Error(`orden desconocida: ${cmd}`);
+  if (!["verify", "status", "deploy", "drill", "active-sha", "publish", "revert", "active-crm", "publish-crm", "storage", "storage-fix", "test-gateways", "mail-live", "backup-check", "platform-domain", "metering", "mail-access", "lead-notices-mail"].includes(cmd)) throw new Error(`orden desconocida: ${cmd}`);
   const problems = guard(cfg, sc, { env, service });
   if (problems.length) {
     console.error(`Detenido antes de tocar nada:\n - ${problems.join("\n - ")}`);
@@ -803,7 +804,8 @@ async function main() {
     const hookUrl = `https://${crmHost}/cp/v1/mail/postmark/webhook`;
     const plan = leadNoticesMailPlan(env, vars, { action: accion === "desactivar" ? "desactivar" : "activar", recipients: accion === "estado" ? ["estado@ejemplo.invalid"] : recipients });
     // El servidor de production nunca debe mandar sus eventos a live
-    if (webhooks.some((w) => /live|railway\.app/.test(w.Url))) plan.problems.push("el servidor de Postmark envía eventos a live o a un dominio de Railway: production necesita su propio servidor");
+    // (mismo criterio que el correo de acceso: un webhook hacia live delata un servidor compartido con live)
+    if (webhooks.some((w) => /live/.test(w.Url))) plan.problems.push("el servidor de Postmark envía eventos a live: production necesita su propio servidor");
     if (token && !serverOk) plan.problems.push("el token de Postmark no es válido");
     if ((vars.crm.POSTMARK_WEBHOOK_PUBLIC ?? "") !== "1") plan.changes.push({ service: "crm", name: "POSTMARK_WEBHOOK_PUBLIC", value: "1" });
     if (accion === "estado") {
