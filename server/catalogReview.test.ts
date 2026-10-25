@@ -142,3 +142,16 @@ describe("revisión del 25/10/2026", () => {
     expect(productDraft.parse((await k.store.getEntry("product", "connect-voice"))!.draft).catalog.commercialStatus).toBe("in_preparation");
   });
 });
+
+describe("publicación del catálogo en la web", () => {
+  it("cada despliegue de la web lleva la versión del catálogo publicado: un cambio desde el CRM invalida la caché de compilación", async () => {
+    const fs = await import("node:fs");
+    const { CATALOG_STAMP_FILE, WEB_CATALOG_SITE } = await import("../scripts/deploy/esRailwayLib");
+    expect(Object.keys(WEB_CATALOG_SITE).sort()).toEqual(["live", "production"]);
+    for (const u of Object.values(WEB_CATALOG_SITE)) expect(u).toMatch(/^https:\/\/[^/]+\/cp\/v1\/public\/site$/);
+    const src = fs.readFileSync("scripts/deploy/esRailway.ts", "utf8");
+    expect(src.match(/await stampWebCatalog\(dir\)/g)).toHaveLength(2);
+    expect(src).toContain("CATALOG_STAMP_FILE");
+    expect(CATALOG_STAMP_FILE).not.toMatch(/^\./); // los ficheros ocultos no deben quedar fuera de COPY . .
+  });
+});
