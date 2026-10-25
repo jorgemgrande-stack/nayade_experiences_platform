@@ -27,7 +27,15 @@ export interface SendInput extends EnqueueInput {
   sender: SenderIdentity;
   /** Comprobación adicional del contenido (p. ej. enlaces prohibidos): devuelve el motivo para no enviar. */
   guard?: (html: string) => string | null;
+  /**
+   * Si se alcanza un límite por hora, retener el mensaje (pendiente, `reason = rate_limited_deferred`) para la siguiente
+   * franja en vez de descartarlo. Solo lo piden los avisos internos que no se pueden perder (solicitudes de la web).
+   */
+  deferOnRateLimit?: boolean;
 }
+
+/** Motivo de un mensaje retenido por el límite por hora (sale solo al abrirse la siguiente franja). */
+export const RATE_DEFERRED = "rate_limited_deferred";
 
 export interface SendResult {
   id: number | null;
@@ -132,8 +140,20 @@ export class MailService {
         const c = normalizeEmail(raw);
         if (c && c !== to && !cc.includes(c) && recipientAllowed(this.d.policy, c) && !(await this.d.store.isSuppressed(input.tenantId, recipientHash(c)))) cc.push(c);
       }
-    const status: MailStatus = skip ? "skipped" : this.d.provider ? "pending" : "failed";
-    const reason = skip ?? (this.d.provider ? null : "no_provider");
+    // Límite por hora alcanzado con `deferOnRateLimit`: no se descarta; se retiene y sale solo en la siguiente franja con
+    // hueco (escalonado, como mucho el límite por hora), sin avalanchas al reabrirse
+    const limits = this.d.policy.limits;
+    const defer = !!input.deferOnRateLimit && !!this.d.provider && (skip === "rate_limited_recipient" || skip === "rate_limited_tenant");
+    let deferUntil: number | null = null;
+    if (defer) {
+      const since = now - HOUR;
+      const [n, cap] = skip === "rate_limited_tenant" ? [await this.d.store.countSince(input.tenantId, since), limits.tenantPerHour] : [await this.d.store.countSince(input.tenantId, since, hash), limits.recipientPerHour];
+      deferUntil = now + HOUR * (1 + Math.floor(Math.max(0, n - cap) / cap));
+      this.log("warn", "rate_limit_deferred", { lane: this.d.lane, tenantId: input.tenantId, category: input.category, limit: skip, inMs: deferUntil - now });
+      recordFailure("mail.rate_limited_deferred", input.tenantId);
+    }
+    const status: MailStatus = defer ? "pending" : skip ? "skipped" : this.d.provider ? "pending" : "failed";
+    const reason = defer ? RATE_DEFERRED : (skip ?? (this.d.provider ? null : "no_provider"));
     const keep = status === "pending";
     const { row, created } = await this.d.store.insert({
       tenantId: input.tenantId,
@@ -152,7 +172,7 @@ export class MailService {
       html: keep ? input.html : null,
       text: keep ? (input.text ?? null) : null,
       attachments: keep ? (input.attachments ?? []) : [],
-      nextAttemptAt: keep ? now : null,
+      nextAttemptAt: keep ? (deferUntil ?? now) : null,
       createdAt: now,
     });
     if (!created) {

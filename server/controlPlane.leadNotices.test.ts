@@ -278,3 +278,37 @@ describe("activación de los avisos en production (plan del despliegue)", () => 
     expect(leadNoticesMailPlan("production", { controlplane: { MAIL_MODE: "sandbox" }, core: { MAIL_MODE: "live" } }, { action: "desactivar", recipients: [] }).changes).toEqual([{ service: "controlplane", name: "MAIL_MODE", value: "off" }]);
   });
 });
+
+describe("límite por hora: los avisos de solicitudes se retienen, nunca se pierden", () => {
+  it("al superar el límite el aviso queda retenido, sale solo en la siguiente franja y se escalona", async () => {
+    const k = make({ MAIL_RATE_RECIPIENT_PER_HOUR: "2" });
+    await k.notices.save(on({ contact: [1] }), 0, "operator:1");
+    const ids: number[] = [];
+    for (let i = 0; i < 5; i++) ids.push((await k.web.receive(input({ email: `c${i}@cliente.example` }), { idempotencyKey: crypto.randomUUID(), ipHash: null })).request.id);
+    await flush();
+    await flush();
+    await flush();
+    // 2 enviados; 3 retenidos (ninguno descartado)
+    expect(k.provider.sent).toHaveLength(2);
+    const states = await Promise.all(ids.map(async (id) => summarize(await k.notices.notices(id)).state));
+    expect(states.filter((s) => s === "deferred")).toHaveLength(3);
+    expect(states).not.toContain("skipped");
+    expect((await k.notices.deferred()).count).toBe(3);
+    // Siguiente franja: salen como mucho 2; la siguiente, el resto
+    k.clock.set(T0 + 61 * 60_000);
+    await k.service.drain(50);
+    expect(k.provider.sent.length).toBeGreaterThanOrEqual(3);
+    expect(k.provider.sent.length).toBeLessThanOrEqual(4);
+    k.clock.set(T0 + 3 * 60 * 60_000);
+    await k.service.drain(50);
+    expect(k.provider.sent).toHaveLength(5);
+    expect((await k.notices.deferred()).count).toBe(0);
+  });
+
+  it("el resto de correos de la plataforma sigue descartándose al superar el límite (sin cambios de política)", async () => {
+    const k = make({ MAIL_RATE_RECIPIENT_PER_HOUR: "1", MAIL_SCOPE_CATEGORIES: "lead_request_notice,operational" });
+    const mailer = new PlatformMailer(k.service, mailPolicyFromEnv({ MAIL_MODE: "sandbox", MAIL_SENDING_DOMAIN: "bigelephant.example", MAIL_SANDBOX_ALLOWLIST: "equipo.example", MAIL_SCOPE_TENANTS: "platform", MAIL_SCOPE_CATEGORIES: "lead_request_notice,operational", MAIL_RATE_RECIPIENT_PER_HOUR: "1" } as NodeJS.ProcessEnv));
+    await mailer.send(null, "ops:a", "operational", "comercial@equipo.example", { subject: "a", html: "<p>a</p>" });
+    expect(await mailer.send(null, "ops:b", "operational", "comercial@equipo.example", { subject: "b", html: "<p>b</p>" })).toMatchObject({ status: "skipped", reason: "rate_limited_recipient" });
+  });
+});

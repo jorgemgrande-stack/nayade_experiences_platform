@@ -24,7 +24,7 @@ import type mysql from "mysql2/promise";
 import { opsLog } from "../_core/ops/log";
 import type { MailLedgerReader } from "../mail/store";
 import type { MailCategory, MailContent, MailStatus } from "../mail/types";
-import type { SendResult } from "../mail/service";
+import { RATE_DEFERRED, type SendResult } from "../mail/service";
 import type { CrmService } from "./service";
 import type { CrmStore } from "./store";
 import { CrmError, LEAD_REQUEST_LABEL, LEAD_REQUEST_TYPES, type Lead, type LeadRequest, type LeadRequestType } from "./types";
@@ -180,7 +180,7 @@ export interface NoticeOperator {
 
 /** Lo mínimo de la bandeja de la plataforma que necesita este módulo. */
 export interface NoticeMailer {
-  send(tenantId: string | null, idempotencyKey: string, category: MailCategory, to: string, c: MailContent): Promise<SendResult>;
+  send(tenantId: string | null, idempotencyKey: string, category: MailCategory, to: string, c: MailContent, o?: { deferOnRateLimit?: boolean }): Promise<SendResult>;
   t: { leadRequestNotice(i: Parameters<LeadNoticeTemplate>[0]): MailContent };
   policy: { mode: string };
 }
@@ -212,7 +212,7 @@ export interface NoticeView {
   updatedAt: number;
 }
 /** Resumen para la bandeja: el peor estado manda (fallo > pendiente > entregado). */
-export type NoticeSummary = { state: "none" | "pending" | "sent" | "delivered" | "failed" | "skipped"; count: number };
+export type NoticeSummary = { state: "none" | "pending" | "deferred" | "sent" | "delivered" | "failed" | "skipped"; count: number };
 
 export type NotifyOutcome =
   | { status: "sent"; queued: number; results: Array<{ operatorId: number; status: MailStatus; duplicate: boolean }> }
@@ -221,12 +221,14 @@ export type NotifyOutcome =
 const FAILED: ReadonlySet<MailStatus> = new Set<MailStatus>(["failed", "bounced", "blocked", "complained"]);
 const DONE: ReadonlySet<MailStatus> = new Set<MailStatus>(["accepted", "delivered", "soft_bounced"]);
 
-export function summarize(rows: Array<{ status: MailStatus }>): NoticeSummary {
+export function summarize(rows: Array<{ status: MailStatus; reason?: string | null }>): NoticeSummary {
   if (!rows.length) return { state: "none", count: 0 };
   const has = (f: (s: MailStatus) => boolean) => rows.some((r) => f(r.status));
   const state = has((s) => FAILED.has(s))
     ? "failed"
-    : has((s) => s === "pending" || s === "sending")
+    : rows.some((r) => r.status === "pending" && r.reason === RATE_DEFERRED)
+      ? "deferred"
+      : has((s) => s === "pending" || s === "sending")
       ? "pending"
       : rows.every((r) => r.status === "delivered")
         ? "delivered"
@@ -355,7 +357,8 @@ export class LeadNoticeService {
     for (const op of to) {
       // Una entrega fallida a un destinatario no impide avisar a los demás
       try {
-        const r = await this.d.mailer!.send(PLATFORM, `lead-request:${request.id}:o${op.id}${suffix}`, LEAD_NOTICE_CATEGORY, op.email, content);
+        // Si se alcanza el límite por hora, el aviso se retiene para la siguiente franja: nunca se pierde
+        const r = await this.d.mailer!.send(PLATFORM, `lead-request:${request.id}:o${op.id}${suffix}`, LEAD_NOTICE_CATEGORY, op.email, content, { deferOnRateLimit: true });
         results.push({ operatorId: op.id, status: r.status, duplicate: r.duplicate });
       } catch (e) {
         this.log("send_failed", { requestId: request.id, operatorId: op.id, error: e instanceof Error ? e.name : "error" });
@@ -380,6 +383,14 @@ export class LeadNoticeService {
     const out: Record<number, NoticeSummary> = {};
     for (const id of requestIds) out[id] = summarize(await this.notices(id));
     return out;
+  }
+
+  /** Avisos retenidos ahora por el límite por hora (alerta del CRM): saldrán solos en la siguiente franja. */
+  async deferred(): Promise<{ count: number; nextAt: number | null }> {
+    if (!this.d.ledger) return { count: 0, nextAt: null };
+    const rows = (await this.d.ledger.list({ tenantId: PLATFORM, category: LEAD_NOTICE_CATEGORY, status: "pending", limit: 200 })).filter((r) => r.reason === RATE_DEFERRED);
+    const next = rows.map((r) => r.nextAttemptAt).filter((x): x is number => x !== null);
+    return { count: rows.length, nextAt: next.length ? Math.min(...next) : null };
   }
 
   /**

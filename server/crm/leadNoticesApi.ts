@@ -33,8 +33,8 @@ export function createLeadNoticesRouter(svc: LeadNoticeService): Router {
   const who = (req: Request) => `${getAuth(req)!.actor.type}:${getAuth(req)!.actor.id}`;
 
   r.get("/", requireScope("crm:read"), wrap(async (_req, res) => {
-    const [s, candidates] = await Promise.all([svc.settings(), svc.candidates()]);
-    res.json({ ...svc.status(), ...s, candidates });
+    const [s, candidates, deferred] = await Promise.all([svc.settings(), svc.candidates(), svc.deferred()]);
+    res.json({ ...svc.status(), ...s, candidates, deferred });
   }));
   r.put("/", requireScope("operators:write"), wrap(async (req, res) => {
     const b = z.object({ settings: z.unknown(), expectedVersion: version }).parse(req.body);
