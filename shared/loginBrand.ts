@@ -186,5 +186,11 @@ export function brandTokens(theme: Pick<LoginThemeInput, "neutralSite" | "primar
     "--sidebar-primary-foreground": fg,
     "--sidebar-ring": primary,
     "--brand-accent": accent,
+    // Superficies oscuras compartidas (aviso de cookies y paneles flotantes): grafito de Big Elephant
+    "--brand-surface": NEUTRAL_INK,
+    "--brand-surface-2": "#222a38",
+    "--brand-line": "rgba(255,255,255,0.14)",
+    "--brand-muted": "#4b5668",
+    "--brand-icon": "rgba(255,255,255,0.82)",
   };
 }
