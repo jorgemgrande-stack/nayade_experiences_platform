@@ -8,7 +8,7 @@
 **Cómo leer este informe:** fusionado, publicado en live y publicado en production se indican por separado. «Verificado» solo se usa cuando lo comprobé con la API real, el navegador o los registros de una ejecución.
 
 **Estado (25/10/2026, 03:00):**
-- Todo lo de la fase 4 está fusionado y verificado en live, incluida la identidad visual (#358). El aviso de cookies (#359), última pieza con colores de Náyade, está en CI.
+- Todo lo de la fase 4 está fusionado y verificado en live, incluida la identidad visual (#358). El aviso de cookies (#359) está fusionado y publicado en live.
 - Production: el Core sirve el correo de acceso de Skibox. El resto espera una sola aprobación protegida (sección 3).
 
 ---
@@ -46,7 +46,7 @@
 | Identidad visual (#358) | Fusionado | **Verificado** (capturas en escritorio y móvil con dos empresas de prueba) | Pendiente de la misma aprobación |
 | Pantallas del CRM (#61–#64) | Fusionado | Publicado | Publicado por la publicación ordinaria. Las de la fase 4 muestran «sin datos» hasta que el Core de production tenga sus rutas |
 
-**Aprobación pendiente:** {{APROBACION}}
+**Aprobación pendiente:** `aplicar-production` con el commit `58ac43d6`, que incluye toda la fase 4, la identidad visual (#358 y #359) y las migraciones 0014 y 0015: https://github.com/jorgemgrande-stack/nayade_experiences_platform/actions/runs/40172036024. Hace la copia previa, aplica las migraciones (primero en la empresa canario, después en Skibox y después en el resto), despliega y comprueba la salud.
 
 ## 4. Unificación visual (#358)
 
