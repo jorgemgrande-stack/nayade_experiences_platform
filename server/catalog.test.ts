@@ -251,10 +251,10 @@ describe("cotizador", () => {
 });
 
 describe("motor de suscripciones sobre el catálogo de Elephant Source", () => {
-  it("traduce las familias nuevas y expone el estado comercial (lo «Próximamente» no se contrata)", async () => {
+  it("traduce las familias nuevas y expone el estado comercial (lo «En preparación» y «Próximamente» no se contrata)", async () => {
     const { store } = await seeded();
     const port = catalogFromWebStore(store);
-    expect(await port.product("hotel-net-complete")).toMatchObject({ family: "industry_module", commercialStatus: "coming_soon" });
+    expect(await port.product("hotel-net-complete")).toMatchObject({ family: "industry_module", commercialStatus: "in_preparation" });
     expect(await port.product("connect-voice")).toMatchObject({ family: "extension", commercialStatus: "on_request" });
     expect(await port.product("essential")).toMatchObject({ family: "core_plan", commercialStatus: "on_request" });
     const offer = await port.offer();

@@ -5,7 +5,7 @@
 import type { CapabilityGrant } from "./_core/capabilities/model";
 import { effectiveStatus } from "./subscriptionOverview";
 
-export type PanelModuleState = "active" | "read_only" | "available" | "on_request" | "coming_soon";
+export type PanelModuleState = "active" | "read_only" | "available" | "on_request" | "in_preparation" | "coming_soon";
 
 export interface PanelCatalogItemView {
   key: string;
@@ -14,7 +14,7 @@ export interface PanelCatalogItemView {
   kind: "module" | "quantity";
   metric: string | null;
   step: number | null;
-  commercialStatus: "coming_soon" | "on_request" | "available";
+  commercialStatus: "coming_soon" | "in_preparation" | "on_request" | "available";
   capabilities: string[];
   monthly: { amountCents: number; currency: string; taxIncluded: boolean; unit: string | null } | null;
   purchasable: boolean;
@@ -32,7 +32,7 @@ export interface PanelModules {
 /**
  * Estado de cada módulo para esta empresa:
  *  - `active`: todas sus capacidades activas; `read_only`: todas visibles y alguna en solo lectura.
- *  - Si no lo tiene: su estado comercial (`available`, `on_request`, `coming_soon`).
+ *  - Si no lo tiene: su estado comercial (`available`, `on_request`, `in_preparation`, `coming_soon`).
  * Las ampliaciones por cantidad siempre muestran su estado comercial (se compran por unidades).
  */
 export function panelModules(catalog: { purchasesEnabled: boolean; items: PanelCatalogItemView[] }, grants: CapabilityGrant[], now: number): PanelModules {

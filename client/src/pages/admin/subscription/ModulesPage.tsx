@@ -17,7 +17,7 @@ import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
-type ModuleState = "active" | "read_only" | "available" | "on_request" | "coming_soon";
+type ModuleState = "active" | "read_only" | "available" | "on_request" | "in_preparation" | "coming_soon";
 interface PanelModule {
   key: string;
   name: string;
@@ -64,7 +64,8 @@ const STATE_META: Record<ModuleState, { label: string; icon: typeof CheckCircle2
   active: { label: "Incluido", icon: CheckCircle2, tone: "bg-emerald-100 text-emerald-900 dark:bg-emerald-500/15 dark:text-emerald-200" },
   read_only: { label: "Solo lectura", icon: Eye, tone: "bg-amber-100 text-amber-900 dark:bg-amber-500/15 dark:text-amber-200" },
   available: { label: "Disponible", icon: Sparkles, tone: "bg-sky-100 text-sky-900 dark:bg-sky-500/15 dark:text-sky-200" },
-  on_request: { label: "Bajo petición", icon: PackagePlus, tone: "bg-muted text-foreground" },
+  on_request: { label: "Implantación acompañada", icon: PackagePlus, tone: "bg-muted text-foreground" },
+  in_preparation: { label: "En preparación", icon: Clock, tone: "bg-muted text-muted-foreground" },
   coming_soon: { label: "Próximamente", icon: Clock, tone: "bg-muted text-muted-foreground" },
 };
 
@@ -311,7 +312,8 @@ export default function ModulesPage() {
                     <div className="flex items-center gap-2">
                       {m.state === "active" && <span className="text-xs text-muted-foreground">Ya forma parte de tu plataforma.</span>}
                       {m.state === "read_only" && <span className="text-xs text-muted-foreground">Puedes consultarlo; para seguir usándolo, reactiva tu suscripción.</span>}
-                      {m.state === "coming_soon" && <span className="text-xs text-muted-foreground">Te avisaremos cuando esté disponible.</span>}
+                      {(m.state === "coming_soon" || m.state === "in_preparation") && <span className="text-xs text-muted-foreground">Te avisaremos cuando esté disponible.</span>}
+                      {m.state === "on_request" && <span className="text-xs text-muted-foreground">Lo implanta nuestro equipo contigo.</span>}
                       {buyable(m) && (
                         <Button type="button" size="sm" onClick={() => setBuying(m)}>
                           <PackagePlus className="w-4 h-4 mr-1.5" aria-hidden="true" /> {m.kind === "quantity" ? "Ampliar" : "Añadir"}

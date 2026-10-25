@@ -61,6 +61,8 @@ on:
           - correo-acceso-estado
           - correo-acceso-activar
           - correo-acceso-desactivar
+          - catalogo-revision
+          - catalogo-revision-aplicar
           - medicion-preparar
           - medicion-comprobar
           - dominio-plataforma-live-estado
@@ -153,7 +155,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: CLI de Railway (versión fijada)
-        if: startsWith(inputs.action, 'desplegar-') || inputs.action == 'publicar' || inputs.action == 'preparar-pruebas-live' || inputs.action == 'correo-pruebas-live' || inputs.action == 'preparar-production' || inputs.action == 'aplicar-production' || inputs.action == 'medicion-preparar'
+        if: startsWith(inputs.action, 'desplegar-') || inputs.action == 'publicar' || inputs.action == 'preparar-pruebas-live' || inputs.action == 'correo-pruebas-live' || inputs.action == 'preparar-production' || inputs.action == 'aplicar-production' || inputs.action == 'medicion-preparar' || startsWith(inputs.action, 'catalogo-revision')
         run: npm install -g @railway/cli@5.68.0
 
       - name: Verificar que el token es de Elephant Source y del entorno elegido
@@ -217,7 +219,7 @@ jobs:
         run: pnpm exec tsx scripts/deploy/esRailway.ts mail-live --env "${ES_ENV}" --allow "${ES_MAIL_ALLOW}"
 
       - name: Commit a desplegar (debe pertenecer a integration/elephant-source)
-        if: startsWith(inputs.action, 'desplegar-') || inputs.action == 'publicar' || inputs.action == 'preparar-pruebas-live' || inputs.action == 'correo-pruebas-live' || inputs.action == 'preparar-production' || inputs.action == 'aplicar-production' || inputs.action == 'medicion-preparar'
+        if: startsWith(inputs.action, 'desplegar-') || inputs.action == 'publicar' || inputs.action == 'preparar-pruebas-live' || inputs.action == 'correo-pruebas-live' || inputs.action == 'preparar-production' || inputs.action == 'aplicar-production' || inputs.action == 'medicion-preparar' || startsWith(inputs.action, 'catalogo-revision')
         run: |
           SHA="${ES_COMMIT:-${GITHUB_SHA}}"
           git merge-base --is-ancestor "${SHA}" "${GITHUB_SHA}" || { echo "El commit ${SHA} no es de integration/elephant-source"; exit 1; }
@@ -276,8 +278,20 @@ jobs:
         run: pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --command "node dist-cp/backup-job.js check-data-exports${ES_ONLY:+ --only ${ES_ONLY}}"
 
       - name: Export del commit (sin railway.toml ni datos de semilla)
-        if: startsWith(inputs.action, 'desplegar-') || inputs.action == 'publicar' || inputs.action == 'preparar-pruebas-live' || inputs.action == 'correo-pruebas-live' || inputs.action == 'preparar-production' || inputs.action == 'aplicar-production' || inputs.action == 'medicion-preparar'
+        if: startsWith(inputs.action, 'desplegar-') || inputs.action == 'publicar' || inputs.action == 'preparar-pruebas-live' || inputs.action == 'correo-pruebas-live' || inputs.action == 'preparar-production' || inputs.action == 'aplicar-production' || inputs.action == 'medicion-preparar' || startsWith(inputs.action, 'catalogo-revision')
         run: pnpm exec tsx scripts/deploy/esRailway.ts export --sha "${ES_DEPLOY_SHA}" --out "${RUNNER_TEMP}/export"
+
+      # Revisión de estados comerciales del catálogo (docs/runbooks/CATALOGO_ESTADOS_COMERCIALES.md): restore-drill con ESTE
+      # commit y la orden catalog-review (simulación, o aplicación con autor e historial; solo cambia lo que sigue en su
+      # estado de partida). En production, entorno protegido (aprobación). Nunca toca precios, licencias, Stripe ni cobros.
+      - name: Revisión de estados del catálogo
+        if: startsWith(inputs.action, 'catalogo-revision')
+        run: |
+          pnpm exec tsx scripts/deploy/esRailway.ts deploy --env "${ES_ENV}" --service restore-drill --dir "${RUNNER_TEMP}/export" --sha "${ES_DEPLOY_SHA}"
+          pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --expect-sha "${ES_DEPLOY_SHA}" --command "node dist-cp/backup-job.js catalog-review"
+          if [ "${ES_ACTION}" = "catalogo-revision-aplicar" ]; then
+            pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --expect-sha "${ES_DEPLOY_SHA}" --command "node dist-cp/backup-job.js catalog-review --apply"
+          fi
 
       # Medición del Resource Manager (base es_erm, como live desde el 21/10/2026): contraseña del usuario es_erm en
       # MySQL.ES_ERM_PASSWORD (generada si falta; nunca se imprime) y referencias; restore-drill con ESTE commit crea o ajusta
@@ -607,6 +621,11 @@ jobs:
           pnpm exec tsx scripts/deploy/esRailway.ts deploy --env "${ES_ENV}" --service controlplane --dir "${RUNNER_TEMP}/export" --sha "${ES_DEPLOY_SHA}"
           pnpm exec tsx scripts/deploy/esRailway.ts deploy --env "${ES_ENV}" --service core --dir "${RUNNER_TEMP}/export" --sha "${ES_DEPLOY_SHA}"
           pnpm exec tsx scripts/deploy/esRailway.ts deploy --env "${ES_ENV}" --service core-gateway --dir "${RUNNER_TEMP}/export" --sha "${ES_DEPLOY_SHA}"
+
+      # Revisiones de estados del catálogo pendientes (idempotente: lo ya revisado o cambiado desde el CRM no se toca)
+      - name: "Aplicar production 4b — revisión de estados del catálogo"
+        if: inputs.action == 'aplicar-production'
+        run: pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --expect-sha "${ES_DEPLOY_SHA}" --command "node dist-cp/backup-job.js catalog-review --apply"
 
       - name: "Aplicar production 5/5 — salud pública y acceso de Skibox"
         if: inputs.action == 'aplicar-production'

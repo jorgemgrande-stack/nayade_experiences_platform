@@ -61,6 +61,11 @@ import { DatabaseServers, parseDatabaseServers } from "../_core/provisioning/ser
 import { MysqlSchemaApplier } from "../_core/provisioning/mysqlAdapters";
 import { migrateAllTenants } from "../_core/ops/tenantMigrations";
 import { dataExportSchemaStatus } from "../_core/ops/dataExportCheck";
+import { BUILTIN_MODULES } from "../_core/modules/builtin";
+import { MysqlWebStore } from "../web/store";
+import { WebAdminService } from "../web/service";
+import { applyStatusReview, fillEvidence } from "../catalog/review";
+import { EVIDENCE_2026_10_25, REVIEW_ID, STATUS_REVIEW_2026_10_25 } from "../catalog/review20261025";
 
 const args = process.argv.slice(2);
 const cmd = args[0] && !args[0].startsWith("--") ? args[0] : "run";
@@ -402,6 +407,25 @@ async function main() {
         const rep = orphanReport({ serverDatabases, serverUsers, tenants });
         print({ empresas: tenants.length, servidores: servers.aliases(), ...rep });
         if (!rep.ok) process.exitCode = 1;
+        break;
+      }
+      case "catalog-review": {
+        // Revisión de estados comerciales del catálogo (server/catalog/review20261025.ts) por el flujo normal del CRM,
+        // con autor e historial; simulación salvo --apply. Nunca toca precios, licencias, Stripe ni cobros.
+        const crmUrl = process.env.CRM_DATABASE_URL || die("Falta CRM_DATABASE_URL (base del CRM con el catálogo)");
+        const crmPool = mysql.createPool({ uri: crmUrl, connectionLimit: 2 });
+        try {
+          const webStore = new MysqlWebStore(crmPool);
+          const svc = new WebAdminService({ store: webStore, refs: { moduleIds: BUILTIN_MODULES.map((m) => m.id), planIds: () => null } });
+          const author = `operacion:${REVIEW_ID}`;
+          const apply = flag("--apply");
+          const rep = await applyStatusReview(svc, webStore, STATUS_REVIEW_2026_10_25, { apply, author });
+          const evidence = await fillEvidence(svc, webStore, EVIDENCE_2026_10_25, { apply, author });
+          print({ revision: REVIEW_ID, ...rep, evidenciaRellenada: evidence });
+          // Un conflicto (estado cambiado desde el CRM o borrador ajeno) no es un fallo: se informa y se respeta
+        } finally {
+          await crmPool.end().catch(() => undefined);
+        }
         break;
       }
       case "erm-setup": {

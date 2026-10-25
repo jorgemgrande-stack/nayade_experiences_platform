@@ -12,9 +12,11 @@
  * Importes en céntimos, EUR, SIN IVA (21 % aparte). Las tarifas anuales son las expresamente
  * aprobadas (no 12 × mensual). Solo los planes Core tienen tarifa anual.
  *
- * Estados (honestidad): ningún producto es «available»: no hay instalación multiempresa desplegada.
- *   - on_request («Solicitar activación»): hay código reutilizable y el equipo puede activarlo tras revisarlo.
- *   - coming_soon («Próximamente»): no hay código, o el que hay tiene defectos que impiden venderlo.
+ * Estados (honestidad; revisados el 25/10/2026 en review20261025.ts, con su evidencia): ninguno es todavía «available».
+ *   - on_request («Implantación acompañada»): operativo; el equipo lo implanta con el cliente.
+ *   - in_preparation («En preparación»): hay código, pero falta desarrollo o validación para implantarlo.
+ *   - coming_soon («Próximamente»): previsto, sin código que se pueda implantar.
+ * La semilla solo crea lo que falta: en una BD existente, el estado comercial lo decide el CRM (seed.ts).
  *
  * Composición de los paquetes Connect: APROBADA por negocio (16/10/2026).
  *
@@ -23,10 +25,13 @@
  *   - qué incluye Travel Net Complete respecto a los conectores (se asume 1 integración).
  */
 import { capabilitiesOfTier } from "./capabilities";
+import { EVIDENCE_2026_10_25, STATUS_REVIEW_2026_10_25 } from "./review20261025";
 import type { ProductDraft } from "../web/schemas";
 
 type Fam = "core_plan" | "net_module" | "net_bundle" | "connect" | "connect_bundle" | "extra" | "addon" | "service";
-type Commercial = "coming_soon" | "on_request";
+type Commercial = "coming_soon" | "in_preparation" | "on_request";
+/** Evidencia del estado comercial (revisión del 25/10/2026). */
+const evidenceOf = (key: string): string | null => STATUS_REVIEW_2026_10_25.find((c) => c.key === key)?.evidence ?? EVIDENCE_2026_10_25[key] ?? null;
 type Tech = "partial" | "planned";
 
 export interface SeedPrice {
@@ -120,7 +125,7 @@ function product(p: P): SeedProduct {
       addonFor: p.addonFor ? { metric: p.addonFor.metric, step: p.addonFor.step, plans: p.addonFor.plans ?? [] } : null,
       chargeUnit: p.chargeUnit ?? null,
     },
-    internal: { notes: p.notes ?? null, costCents: null, marginNote: null },
+    internal: { notes: p.notes ?? null, costCents: null, marginNote: null, evidence: evidenceOf(p.key) },
   };
   const prices: SeedPrice[] = [];
   if (p.monthly !== undefined) prices.push({ kind: "monthly", amountCents: eur(p.monthly), unit: p.unit ?? null });
@@ -198,7 +203,7 @@ const CORE: SeedProduct[] = [
     tagline: "Varias entidades fiscales, API e integraciones a medida y trazabilidad avanzada.",
     description: "Todo Business, más varias entidades jurídicas o fiscales, API e integraciones personalizadas y auditoría de actividad avanzada. Precio de entrada para la modalidad SaaS compartida; los entornos dedicados se presupuestan aparte.",
     tech: "planned",
-    commercial: "on_request",
+    commercial: "in_preparation",
     monthly: 199,
     yearly: 1899,
     capabilities: capabilitiesOfTier("enterprise"),
@@ -224,21 +229,21 @@ const netBundle = (p: Omit<P, "family" | "scope">) => product({ ...p, family: "n
 const DEPS_NOTE = `Dependencias entre submódulos: ${PROPOSAL}`;
 
 const HOTEL: SeedProduct[] = [
-  net({ key: "hotel-net-pms", name: "Hotel Net · PMS", group: "hotel", tagline: "Gestión de alojamiento hasta 20 habitaciones.", tech: "partial", commercial: "coming_soon", monthly: 59, capabilities: ["hotel-net"], quotas: [{ metric: "rooms", included: 20 }], limits: [{ label: "Habitaciones", value: "Hasta 20", metric: "rooms" }], includes: ["Tipos de habitación, temporadas y tarifas", "Disponibilidad y bloqueos", "Reservas y estancias"], activation: { kind: "module", ref: "hotel" }, icon: "bed", notes: "Hay código reutilizable (módulo hotel), pero la disponibilidad no descuenta reservas: no se vende hasta corregirlo." }),
+  net({ key: "hotel-net-pms", name: "Hotel Net · PMS", group: "hotel", tagline: "Gestión de alojamiento hasta 20 habitaciones.", tech: "partial", commercial: "on_request", monthly: 59, capabilities: ["hotel-net"], quotas: [{ metric: "rooms", included: 20 }], limits: [{ label: "Habitaciones", value: "Hasta 20", metric: "rooms" }], includes: ["Tipos de habitación, temporadas y tarifas", "Disponibilidad y bloqueos", "Reservas y estancias"], activation: { kind: "module", ref: "hotel" }, icon: "bed", notes: "Reutilizable (módulo hotel). La disponibilidad descuenta reservas y ocupación (retención atómica de plazas). Lo implanta el equipo." }),
   net({ key: "hotel-net-channel-manager", name: "Hotel Net · Channel Manager", group: "hotel", tagline: "Sincroniza disponibilidad y tarifas con los canales de venta.", tech: "planned", commercial: "coming_soon", monthly: 39, capabilities: ["hotel-net"], dependencies: ["hotel-net-pms"], icon: "share", thirdPartyCosts: "Las comisiones de los canales (OTAs) se pagan aparte a cada canal.", notes: DEPS_NOTE }),
-  net({ key: "hotel-net-booking-engine", name: "Hotel Net · Motor de reservas", group: "hotel", tagline: "Reservas directas en tu web, con pago online.", tech: "partial", commercial: "coming_soon", monthly: 29, capabilities: ["hotel-net"], dependencies: ["hotel-net-pms"], icon: "calendar", notes: DEPS_NOTE }),
+  net({ key: "hotel-net-booking-engine", name: "Hotel Net · Motor de reservas", group: "hotel", tagline: "Reservas directas en tu web, con pago online.", tech: "partial", commercial: "on_request", monthly: 29, capabilities: ["hotel-net"], dependencies: ["hotel-net-pms"], icon: "calendar", notes: DEPS_NOTE }),
   net({ key: "hotel-net-housekeeping", name: "Hotel Net · Housekeeping", group: "hotel", tagline: "Limpieza y estado de habitaciones.", tech: "planned", commercial: "coming_soon", monthly: 19, capabilities: ["hotel-net"], dependencies: ["hotel-net-pms"], icon: "sparkles", notes: DEPS_NOTE }),
-  netBundle({ key: "hotel-net-complete", name: "Hotel Net Complete", group: "hotel", tagline: "PMS, Channel Manager, motor de reservas y housekeeping.", description: "La suite completa para hoteles y alojamientos, con descuento frente a los submódulos por separado.", tech: "partial", commercial: "coming_soon", monthly: 119, bundleOf: ["hotel-net-pms", "hotel-net-channel-manager", "hotel-net-booking-engine", "hotel-net-housekeeping"], forWho: "Hoteles, apartamentos turísticos, casas rurales y alojamientos.", icon: "hotel" }),
+  netBundle({ key: "hotel-net-complete", name: "Hotel Net Complete", group: "hotel", tagline: "PMS, Channel Manager, motor de reservas y housekeeping.", description: "La suite completa para hoteles y alojamientos, con descuento frente a los submódulos por separado.", tech: "partial", commercial: "in_preparation", monthly: 119, bundleOf: ["hotel-net-pms", "hotel-net-channel-manager", "hotel-net-booking-engine", "hotel-net-housekeeping"], forWho: "Hoteles, apartamentos turísticos, casas rurales y alojamientos.", icon: "hotel" }),
 ];
 const SKI: SeedProduct[] = [
   net({ key: "ski-net-school", name: "Ski Net · Escuela", group: "ski", tagline: "Clases y reservas de tu escuela, hasta 10 profesores.", tech: "planned", commercial: "coming_soon", monthly: 49, capabilities: ["ski-school"], quotas: [{ metric: "instructors", included: 10 }], limits: [{ label: "Profesores", value: "Hasta 10", metric: "instructors" }], icon: "graduation" }),
-  net({ key: "ski-net-rental", name: "Ski Net · Alquiler", group: "ski", tagline: "Alquiler de material, hasta 300 equipos. Se contrata sin la escuela.", tech: "planned", commercial: "coming_soon", monthly: 39, capabilities: ["ski-rental"], quotas: [{ metric: "equipment", included: 300 }], limits: [{ label: "Equipos", value: "Hasta 300", metric: "equipment" }], icon: "package" }),
+  net({ key: "ski-net-rental", name: "Ski Net · Alquiler", group: "ski", tagline: "Alquiler de material, hasta 300 equipos. Se contrata sin la escuela.", tech: "planned", commercial: "in_preparation", monthly: 39, capabilities: ["ski-rental"], quotas: [{ metric: "equipment", included: 300 }], limits: [{ label: "Equipos", value: "Hasta 300", metric: "equipment" }], icon: "package" }),
   net({ key: "ski-net-courses", name: "Ski Net · Cursillos y grupos", group: "ski", tagline: "Cursillos, grupos y niveles.", tech: "planned", commercial: "coming_soon", monthly: 19, capabilities: ["ski-school"], dependencies: ["ski-net-school"], icon: "users", notes: DEPS_NOTE }),
   net({ key: "ski-net-instructors", name: "Ski Net · Profesores y liquidaciones", group: "ski", tagline: "Horas, disponibilidad y liquidaciones de profesores.", tech: "planned", commercial: "coming_soon", monthly: 19, capabilities: ["ski-school"], dependencies: ["ski-net-school"], icon: "wallet", notes: DEPS_NOTE }),
   netBundle({ key: "ski-net-complete", name: "Ski Net Complete", group: "ski", tagline: "Escuela, alquiler, cursillos y profesores.", description: "Todo lo que necesita una escuela de esquí y su tienda de alquiler.", tech: "planned", commercial: "coming_soon", monthly: 99, bundleOf: ["ski-net-school", "ski-net-rental", "ski-net-courses", "ski-net-instructors"], forWho: "Escuelas de esquí y snowboard y tiendas de alquiler de material.", icon: "mountain" }),
 ];
 const TRAVEL: SeedProduct[] = [
-  net({ key: "travel-net-agency", name: "Travel Net · Agencias", group: "travel", scope: "company", tagline: "Gestión de agencia, hasta 5 agentes.", tech: "partial", commercial: "coming_soon", monthly: 79, capabilities: ["travel-net"], quotas: [{ metric: "agents", included: 5 }], limits: [{ label: "Agentes", value: "Hasta 5", metric: "agents" }], icon: "plane", notes: "Reutilizable: régimen especial de agencias (REAV). Falta la gestión de agencia completa." }),
+  net({ key: "travel-net-agency", name: "Travel Net · Agencias", group: "travel", scope: "company", tagline: "Gestión de agencia, hasta 5 agentes.", tech: "partial", commercial: "in_preparation", monthly: 79, capabilities: ["travel-net"], quotas: [{ metric: "agents", included: 5 }], limits: [{ label: "Agentes", value: "Hasta 5", metric: "agents" }], icon: "plane", notes: "Reutilizable: régimen especial de agencias (REAV). Falta la gestión de agencia completa." }),
   net({ key: "travel-net-packages", name: "Travel Net · Paquetes y circuitos", group: "travel", scope: "company", tagline: "Diseña y vende paquetes y circuitos.", tech: "planned", commercial: "coming_soon", monthly: 39, capabilities: ["travel-net"], dependencies: ["travel-net-agency"], icon: "map", notes: DEPS_NOTE }),
   net({ key: "travel-net-connectors", name: "Travel Net · Conectores de proveedores", group: "travel", scope: "company", tagline: "Integración con proveedores, por integración.", tech: "planned", commercial: "coming_soon", monthly: 29, unit: "integración", chargeUnit: "por integración", capabilities: ["travel-net"], dependencies: ["travel-net-agency"], icon: "plug", thirdPartyCosts: "Las tarifas de los proveedores conectados se pagan aparte.", notes: DEPS_NOTE }),
   netBundle({ key: "travel-net-complete", name: "Travel Net Complete", group: "travel", tagline: "Agencias, paquetes y circuitos y conectores.", description: "La suite para agencias de viajes.", tech: "planned", commercial: "coming_soon", monthly: 119, bundleOf: ["travel-net-agency", "travel-net-packages", "travel-net-connectors"], forWho: "Agencias de viajes y operadores de circuitos.", icon: "globe", notes: `Incluye 1 integración de conectores: ${PROPOSAL}` }),
@@ -247,13 +252,13 @@ const RESTAURANT: SeedProduct[] = [
   net({ key: "restaurant-net-floor", name: "Restaurant Net · Sala y comandas", group: "restaurant", tagline: "Mesas, comandas y cobro en sala.", tech: "planned", commercial: "coming_soon", monthly: 39, capabilities: ["restaurant-net"], icon: "utensils" }),
   net({ key: "restaurant-net-bookings", name: "Restaurant Net · Reservas y mesas", group: "restaurant", tagline: "Reservas online con turnos, cierres y depósito.", tech: "partial", commercial: "on_request", monthly: 19, capabilities: ["restaurant-net"], activation: { kind: "module", ref: "restaurants" }, includes: ["Turnos y cierres", "Reservas con localizador", "Depósito por comensal con pago online"], icon: "calendar", notes: "Reutilizable (módulo restaurants). Plano de mesas pendiente." }),
   net({ key: "restaurant-net-kds", name: "Restaurant Net · Cocina/KDS", group: "restaurant", tagline: "Pantalla de cocina para las comandas.", tech: "planned", commercial: "coming_soon", monthly: 19, capabilities: ["restaurant-net"], dependencies: ["restaurant-net-floor"], icon: "monitor", notes: DEPS_NOTE }),
-  netBundle({ key: "restaurant-net-complete", name: "Restaurant Net Complete", group: "restaurant", tagline: "Sala y comandas, reservas y mesas y cocina.", description: "La suite completa para restaurantes.", tech: "partial", commercial: "coming_soon", monthly: 59, bundleOf: ["restaurant-net-floor", "restaurant-net-bookings", "restaurant-net-kds"], forWho: "Restaurantes, bares y grupos de restauración.", icon: "chef" }),
+  netBundle({ key: "restaurant-net-complete", name: "Restaurant Net Complete", group: "restaurant", tagline: "Sala y comandas, reservas y mesas y cocina.", description: "La suite completa para restaurantes.", tech: "partial", commercial: "in_preparation", monthly: 59, bundleOf: ["restaurant-net-floor", "restaurant-net-bookings", "restaurant-net-kds"], forWho: "Restaurantes, bares y grupos de restauración.", icon: "chef" }),
 ];
 const CARE: SeedProduct[] = [
-  net({ key: "care-net-agenda", name: "Care Net · Agenda", group: "care", tagline: "Agenda y citas, hasta 3 profesionales.", tech: "partial", commercial: "coming_soon", monthly: 29, capabilities: ["care-net"], quotas: [{ metric: "professionals", included: 3 }], limits: [{ label: "Profesionales", value: "Hasta 3", metric: "professionals" }], activation: { kind: "module", ref: "spa" }, icon: "calendar", notes: "Reutilizable (módulo spa), pero el aforo de las franjas no se actualiza al reservar: no se vende hasta corregirlo." }),
+  net({ key: "care-net-agenda", name: "Care Net · Agenda", group: "care", tagline: "Agenda y citas, hasta 3 profesionales.", tech: "partial", commercial: "on_request", monthly: 29, capabilities: ["care-net"], quotas: [{ metric: "professionals", included: 3 }], limits: [{ label: "Profesionales", value: "Hasta 3", metric: "professionals" }], activation: { kind: "module", ref: "spa" }, icon: "calendar", notes: "Reutilizable (módulo spa). El aforo de las franjas se actualiza al reservar. Lo implanta el equipo." }),
   net({ key: "care-net-clinical", name: "Care Net · Gestión clínica especializada", group: "care", tagline: "Historia y seguimiento especializados.", tech: "planned", commercial: "coming_soon", monthly: 39, capabilities: ["care-net"], dependencies: ["care-net-agenda"], icon: "stethoscope", requirements: ["Datos de salud: requiere evaluación de impacto y medidas reforzadas (RGPD)."], notes: DEPS_NOTE }),
-  net({ key: "care-net-treatments", name: "Care Net · Tratamientos y bonos", group: "care", tagline: "Tratamientos, bonos y sesiones.", tech: "partial", commercial: "coming_soon", monthly: 19, capabilities: ["care-net"], dependencies: ["care-net-agenda"], icon: "ticket", notes: DEPS_NOTE }),
-  netBundle({ key: "care-net-complete", name: "Care Net Complete", group: "care", tagline: "Agenda, gestión clínica y tratamientos y bonos.", description: "La suite para centros de salud, bienestar y estética.", tech: "partial", commercial: "coming_soon", monthly: 69, bundleOf: ["care-net-agenda", "care-net-clinical", "care-net-treatments"], forWho: "Clínicas, centros de bienestar, estética y fisioterapia.", icon: "heart" }),
+  net({ key: "care-net-treatments", name: "Care Net · Tratamientos y bonos", group: "care", tagline: "Tratamientos, bonos y sesiones.", tech: "partial", commercial: "in_preparation", monthly: 19, capabilities: ["care-net"], dependencies: ["care-net-agenda"], icon: "ticket", notes: DEPS_NOTE }),
+  netBundle({ key: "care-net-complete", name: "Care Net Complete", group: "care", tagline: "Agenda, gestión clínica y tratamientos y bonos.", description: "La suite para centros de salud, bienestar y estética.", tech: "partial", commercial: "in_preparation", monthly: 69, bundleOf: ["care-net-agenda", "care-net-clinical", "care-net-treatments"], forWho: "Clínicas, centros de bienestar, estética y fisioterapia.", icon: "heart" }),
 ];
 const LIFE: SeedProduct[] = [net({ key: "life-net", name: "Life Net", group: "life", scope: "company", tagline: "Organización personal y familiar.", tech: "planned", commercial: "coming_soon", monthly: 9, capabilities: ["life-net"], forWho: "Profesionales y familias.", icon: "leaf" })];
 const SOCIAL: SeedProduct[] = [
@@ -265,7 +270,7 @@ const SOCIAL: SeedProduct[] = [
 // ── Elephant Connect ───────────────────────────────────────────────────────────
 const connect = (p: Omit<P, "family">) => product({ ...p, family: "connect" });
 const CONNECT: SeedProduct[] = [
-  connect({ key: "connect-whatsapp-ai", name: "Elephant WhatsApp AI", group: "communications", tagline: "WhatsApp Business automatizado con IA.", tech: "partial", commercial: "coming_soon", monthly: 29, capabilities: ["whatsapp-ai"], thirdPartyCosts: "Las conversaciones de WhatsApp (Meta) y el consumo de IA se facturan aparte según uso.", icon: "message", notes: "Hoy existe la bandeja de WhatsApp a través de GoHighLevel, sin IA ni API directa." }),
+  connect({ key: "connect-whatsapp-ai", name: "Elephant WhatsApp AI", group: "communications", tagline: "WhatsApp Business automatizado con IA.", tech: "partial", commercial: "in_preparation", monthly: 29, capabilities: ["whatsapp-ai"], thirdPartyCosts: "Las conversaciones de WhatsApp (Meta) y el consumo de IA se facturan aparte según uso.", icon: "message", notes: "Hoy existe la bandeja de WhatsApp a través de GoHighLevel, sin IA ni API directa." }),
   connect({ key: "connect-voice", name: "Elephant Voice", group: "communications", tagline: "Centralita y llamadas con IA.", tech: "partial", commercial: "on_request", monthly: 39, capabilities: ["voice-ai"], thirdPartyCosts: "Los minutos de telefonía y el consumo de IA se facturan aparte según uso.", icon: "phone" }),
   connect({ key: "connect-reception-ai", name: "Elephant Reception AI", group: "communications", tagline: "Recepcionista virtual con IA.", tech: "planned", commercial: "coming_soon", monthly: 49, capabilities: ["reception-ai"], thirdPartyCosts: "Telefonía, mensajería y consumo de IA aparte según uso.", icon: "bot" }),
   connect({ key: "connect-people", name: "Elephant People", group: "people", tagline: "Empleados, fichajes, horarios y nóminas.", tech: "partial", commercial: "on_request", monthly: 19, capabilities: ["people-hr"], icon: "id-card" }),
@@ -279,14 +284,14 @@ const CONNECT: SeedProduct[] = [
   connect({ key: "connect-campaigns", name: "Elephant Campaigns", group: "marketing", tagline: "Email marketing y campañas.", tech: "planned", commercial: "coming_soon", monthly: 19, capabilities: ["email-campaigns"], thirdPartyCosts: "Los envíos por encima del volumen incluido se facturan aparte.", icon: "mail" }),
   connect({ key: "connect-seo-control", name: "Elephant SEO Control", group: "marketing", tagline: "Control y seguimiento SEO.", tech: "planned", commercial: "coming_soon", monthly: 29, capabilities: ["seo-control"], icon: "search" }),
   connect({ key: "connect-geo-control", name: "Elephant GEO Control", group: "marketing", tagline: "Visibilidad en motores de IA generativa (GEO).", tech: "planned", commercial: "coming_soon", monthly: 29, capabilities: ["geo-control"], icon: "compass" }),
-  connect({ key: "connect-automations", name: "Automatizaciones avanzadas", group: "ai", tagline: "Reglas, flujos y automatizaciones avanzadas.", tech: "partial", commercial: "coming_soon", monthly: 29, capabilities: ["automations-advanced"], icon: "workflow", notes: "Hay un motor de automatizaciones de correo reutilizable (apagado por defecto y sin pruebas)." }),
+  connect({ key: "connect-automations", name: "Automatizaciones avanzadas", group: "ai", tagline: "Reglas, flujos y automatizaciones avanzadas.", tech: "partial", commercial: "in_preparation", monthly: 29, capabilities: ["automations-advanced"], icon: "workflow", notes: "Hay un motor de automatizaciones de correo reutilizable (apagado por defecto y sin pruebas)." }),
 ];
 const connectBundle = (p: Omit<P, "family">) => product({ ...p, family: "connect_bundle", notes: "Composición aprobada por negocio (16/10/2026)." });
 const CONNECT_BUNDLES: SeedProduct[] = [
-  connectBundle({ key: "connect-pack-communications", name: "Paquete Communications", group: "communications", tagline: "WhatsApp AI, Voice y Reception AI.", tech: "partial", commercial: "coming_soon", monthly: 99, bundleOf: ["connect-whatsapp-ai", "connect-voice", "connect-reception-ai"], icon: "messages" }),
+  connectBundle({ key: "connect-pack-communications", name: "Paquete Communications", group: "communications", tagline: "WhatsApp AI, Voice y Reception AI.", tech: "partial", commercial: "in_preparation", monthly: 99, bundleOf: ["connect-whatsapp-ai", "connect-voice", "connect-reception-ai"], icon: "messages" }),
   connectBundle({ key: "connect-pack-marketing", name: "Paquete Marketing", group: "marketing", tagline: "Ads Manager, Campaigns, SEO Control y GEO Control.", tech: "planned", commercial: "coming_soon", monthly: 79, bundleOf: ["connect-ads-manager", "connect-campaigns", "connect-seo-control", "connect-geo-control"], icon: "megaphone" }),
   connectBundle({ key: "connect-pack-finance", name: "Paquete Finance", group: "finance", tagline: "Tax, Finance Sync y Partners.", tech: "partial", commercial: "on_request", monthly: 45, bundleOf: ["connect-tax", "connect-finance-sync", "connect-partners"], icon: "banknote" }),
-  connectBundle({ key: "connect-pack-ai", name: "Paquete AI Suite", group: "ai", tagline: "Copilot avanzado y Automatizaciones avanzadas.", tech: "partial", commercial: "coming_soon", monthly: 49, bundleOf: ["connect-copilot", "connect-automations"], icon: "sparkles" }),
+  connectBundle({ key: "connect-pack-ai", name: "Paquete AI Suite", group: "ai", tagline: "Copilot avanzado y Automatizaciones avanzadas.", tech: "partial", commercial: "in_preparation", monthly: 49, bundleOf: ["connect-copilot", "connect-automations"], icon: "sparkles" }),
 ];
 
 // ── Otros servicios y complementos ─────────────────────────────────────────────
@@ -299,7 +304,7 @@ const EXTRAS: SeedProduct[] = [
   product({ key: "service-domain", family: "service", name: "Dominios", tagline: "Registro y renovación de dominios.", description: "Se facturan según la extensión y el proveedor.", tech: "partial", commercial: "on_request", icon: "globe", chargeUnit: "según extensión y proveedor" }),
   product({ key: "addon-user-essential", family: "addon", name: "Usuario adicional Essential", tech: "partial", commercial: "on_request", monthly: 6, unit: "usuario", chargeUnit: "por usuario", addonFor: { metric: "users", step: 1, plans: ["essential"] }, icon: "user-plus" }),
   product({ key: "addon-user-business", family: "addon", name: "Usuario adicional Business", tech: "partial", commercial: "on_request", monthly: 5, unit: "usuario", chargeUnit: "por usuario", addonFor: { metric: "users", step: 1, plans: ["business"] }, icon: "user-plus" }),
-  product({ key: "addon-site-business", family: "addon", name: "Sede adicional Business", tech: "planned", commercial: "on_request", monthly: 12, unit: "sede", chargeUnit: "por sede", addonFor: { metric: "sites", step: 1, plans: ["business"] }, icon: "map-pin" }),
+  product({ key: "addon-site-business", family: "addon", name: "Sede adicional Business", tech: "planned", commercial: "in_preparation", monthly: 12, unit: "sede", chargeUnit: "por sede", addonFor: { metric: "sites", step: 1, plans: ["business"] }, icon: "map-pin" }),
   product({ key: "addon-storage-10gb", family: "addon", name: "Almacenamiento adicional 10 GB", tech: "partial", commercial: "on_request", monthly: 5, unit: "10 GB", chargeUnit: "por bloque de 10 GB", addonFor: { metric: "storage_gb", step: 10 }, icon: "database" }),
 ];
 

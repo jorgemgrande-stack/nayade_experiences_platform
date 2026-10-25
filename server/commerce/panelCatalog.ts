@@ -21,7 +21,7 @@ export interface PanelCatalogItem {
   kind: "module" | "quantity";
   metric: string | null;
   step: number | null;
-  commercialStatus: "coming_soon" | "on_request" | "available";
+  commercialStatus: "coming_soon" | "in_preparation" | "on_request" | "available";
   capabilities: string[];
   /** Precio mensual publicado (sin calcular prorrateos ni impuestos de la empresa). */
   monthly: { amountCents: number; currency: string; taxIncluded: boolean; unit: string | null } | null;

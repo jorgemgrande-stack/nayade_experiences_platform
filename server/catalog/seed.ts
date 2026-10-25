@@ -8,7 +8,7 @@
  */
 import { CAPABILITIES } from "./capabilities";
 import { CATALOG_VERSION, PRODUCTS, TAX_RATE_BP } from "./elephantSourceV1";
-import { DRAFT_SCHEMAS, type EntryKind } from "../web/schemas";
+import { DRAFT_SCHEMAS, productDraft, type EntryKind } from "../web/schemas";
 import type { WebAdminService } from "../web/service";
 import type { WebStore } from "../web/store";
 
@@ -26,13 +26,23 @@ export interface SeedReport {
 
 const same = (kind: EntryKind, a: unknown, b: unknown) => JSON.stringify(DRAFT_SCHEMAS[kind].parse(a)) === JSON.stringify(DRAFT_SCHEMAS[kind].parse(b));
 
+/** El borrador de la semilla con el estado comercial (y su evidencia) que ya tiene la BD. */
+export function keepCommercialState(seedDraft: unknown, dbDraft: unknown): unknown {
+  const s = productDraft.parse(seedDraft);
+  const d = productDraft.parse(dbDraft);
+  return { ...s, catalog: { ...s.catalog, commercialStatus: d.catalog.commercialStatus }, internal: { ...s.internal, evidence: d.internal.evidence ?? s.internal.evidence } };
+}
+
 export async function seedElephantSource(svc: WebAdminService, store: WebStore, opts: { dryRun?: boolean; author?: string } = {}): Promise<SeedReport> {
   const dryRun = !!opts.dryRun;
   const author = opts.author ?? SEED_AUTHOR;
   const r: SeedReport = { dryRun, created: [], updated: [], published: [], pricesApproved: [], unchanged: 0, conflicts: [] };
 
-  const upsert = async (kind: EntryKind, key: string, draft: unknown, sortOrder: number, family: string | null) => {
+  const upsert = async (kind: EntryKind, key: string, seedDraft: unknown, sortOrder: number, family: string | null) => {
     const cur = await store.getEntry(kind, key);
+    // Fuente de verdad única: en una BD existente, el estado comercial y su evidencia los decide el CRM (con historial);
+    // la semilla nunca los revierte. Para cambiarlos en bloque, una revisión con estado de partida (review*.ts)
+    const draft = kind === "product" && cur ? keepCommercialState(seedDraft, cur.draft) : seedDraft;
     let changed = false;
     if (!cur) {
       r.created.push(`${kind}:${key}`);
