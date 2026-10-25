@@ -815,7 +815,10 @@ async function main() {
     }
     if (plan.problems.length) throw new Error(`No se cambia nada:\n - ${plan.problems.join("\n - ")}`);
     if (accion === "desactivar") plan.changes = plan.changes.filter((c) => c.service === "controlplane");
-    if (!plan.changes.length) return void console.log("Sin cambios: ya estaba así");
+    // El webhook se (re)crea si falta o si cambia su token, aunque no haya variables que cambiar
+    const existingHook = webhooks.find((w) => w.Url === hookUrl);
+    const needsHook = accion === "activar" && (!existingHook || plan.changes.some((c) => c.name === "POSTMARK_WEBHOOK_TOKEN"));
+    if (!plan.changes.length && !needsHook) return void console.log("Sin cambios: ya estaba así");
     const upsert = async (svc: string, name: string, value: string) =>
       api("mutation($i:VariableUpsertInput!){ variableUpsert(input:$i) }", { i: { projectId: p, environmentId: sc.environmentId, serviceId: await serviceId(svc), name, value, skipDeploys: true } });
     let webhookToken = vars.controlplane.POSTMARK_WEBHOOK_TOKEN ?? "";
@@ -825,13 +828,8 @@ async function main() {
       await upsert(c.service, c.name, value);
       console.log(`${c.service}: ${c.name} → ${/TOKEN/.test(c.name) ? (c.generate ? "generado" : `copiado de ${c.copyFrom}`) : c.name === "MAIL_SANDBOX_ALLOWLIST" ? `${value.split(",").length} buzón(es)` : value}`);
     }
-    if (accion === "activar") {
-      // Webhook del servidor de production hacia el CRM de production, con la cabecera del token del plano de control
-      const hook = { Url: hookUrl, MessageStream: "outbound", HttpHeaders: [{ Name: "x-elephant-webhook-token", Value: webhookToken }], Triggers: POSTMARK_WEBHOOK_TRIGGERS };
-      const existing = webhooks.find((w) => w.Url === hookUrl);
-      const r = existing ? await pm("PUT", `/webhooks/${existing.ID}`, hook) : await pm("POST", "/webhooks", hook);
-      console.log(r.status === 200 ? `Postmark webhook ${existing ? "actualizado" : "creado"}: ${hookUrl}` : `AVISO: Postmark no guardó el webhook (HTTP ${r.status}: ${String(r.j.Message ?? "")}); los rebotes se verán por la API de Postmark`);
-    }
+    // Primero los redespliegues: Postmark verifica el webhook al guardarlo, y la ruta solo responde cuando el CRM ya
+    // tiene POSTMARK_WEBHOOK_PUBLIC y el plano de control su token (antes se creaba antes y Postmark lo rechazaba)
     for (const svc of Array.from(new Set(plan.changes.map((c) => c.service)))) {
       const id = await serviceId(svc);
       const before = await latest(id, sc.environmentId);
@@ -840,6 +838,17 @@ async function main() {
       const d = await waitFor(id, sc.environmentId, before.id);
       console.log(`${svc}: redesplegado con su misma imagen → ${d.status}`);
       if (d.status !== "SUCCESS") process.exit(1);
+    }
+    if (needsHook) {
+      if (webhookToken.length < 32) throw new Error("el plano de control no tiene POSTMARK_WEBHOOK_TOKEN: no se crea el webhook");
+      // Webhook del servidor de production hacia el CRM de production, con la cabecera del token del plano de control
+      const hook = { Url: hookUrl, MessageStream: "outbound", HttpHeaders: [{ Name: "x-elephant-webhook-token", Value: webhookToken }], Triggers: POSTMARK_WEBHOOK_TRIGGERS };
+      const r = existingHook ? await pm("PUT", `/webhooks/${existingHook.ID}`, hook) : await pm("POST", "/webhooks", hook);
+      if (r.status !== 200) {
+        console.error(`Postmark no guardó el webhook (HTTP ${r.status}: ${String(r.j.Message ?? "")}). El correo restringido sigue activo; sin webhook, entregas y rebotes solo se ven en Postmark.`);
+        process.exit(1);
+      }
+      console.log(`Postmark webhook ${existingHook ? "actualizado" : "creado"}: ${hookUrl} (entrega, rebote, queja y baja)`);
     }
     return;
   }
