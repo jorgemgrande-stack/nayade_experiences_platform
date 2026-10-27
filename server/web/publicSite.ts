@@ -15,7 +15,8 @@
 import crypto from "node:crypto";
 import express, { type Router } from "express";
 import rateLimit, { ipKeyGenerator } from "express-rate-limit";
-import { quote } from "../catalog/quote";
+import { quoteResponse } from "../catalog/commercial/commercialQuote";
+import { policyFromProducts, type PolicySource } from "../catalog/commercial/fromCatalog";
 import { parseQuoteRequest } from "../catalog/request";
 import { quoteCatalogFromSite } from "../catalog/snapshot";
 import type { WebAdminService } from "./service";
@@ -84,14 +85,16 @@ export function createPublicSiteRouter(cfg: { service: WebAdminService; secret: 
     }
   });
 
-  // Cotización del configurador: SIEMPRE sobre el catálogo publicado (precios aprobados). Un solo
-  // cálculo para la web, el CRM y las pruebas (server/catalog/quote.ts). No guarda nada.
+  // Cotización del configurador: SIEMPRE sobre el catálogo publicado (precios aprobados) y solo con las reglas
+  // comerciales aprobadas y publicadas. Un solo cálculo para la web, el CRM y las pruebas
+  // (server/catalog/commercial/commercialQuote.ts sobre server/catalog/quote.ts). No guarda nada.
   r.post("/quote", async (req, res) => {
     res.setHeader("Cache-Control", "no-store");
     const parsed = parseQuoteRequest(req.body, { allowOwned: false });
     if (!parsed.ok) return void res.status(400).json({ error: "invalid_input", message: parsed.message });
     try {
-      res.json(quote(quoteCatalogFromSite(await cfg.service.publicSite("published")), parsed.value));
+      const site = await cfg.service.publicSite("published");
+      res.json(quoteResponse(quoteCatalogFromSite(site), policyFromProducts(site.catalog.products as unknown as PolicySource[], "published"), parsed.value));
     } catch {
       unavailable(res);
     }

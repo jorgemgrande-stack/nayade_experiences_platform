@@ -26,11 +26,21 @@ export interface SeedReport {
 
 const same = (kind: EntryKind, a: unknown, b: unknown) => JSON.stringify(DRAFT_SCHEMAS[kind].parse(a)) === JSON.stringify(DRAFT_SCHEMAS[kind].parse(b));
 
-/** El borrador de la semilla con el estado comercial (y su evidencia) que ya tiene la BD. */
+/**
+ * El borrador de la semilla con lo que decide el CRM y ya tiene la BD: estado comercial y su evidencia, ficha
+ * comercial, política (inclusiones, cupos propuestos, ampliación por presupuesto, regla de paquetes, nivel de
+ * implantación) y su información interna de revisión. La semilla nunca los borra ni los revierte.
+ */
 export function keepCommercialState(seedDraft: unknown, dbDraft: unknown): unknown {
   const s = productDraft.parse(seedDraft);
   const d = productDraft.parse(dbDraft);
-  return { ...s, catalog: { ...s.catalog, commercialStatus: d.catalog.commercialStatus }, internal: { ...s.internal, evidence: d.internal.evidence ?? s.internal.evidence } };
+  const kept = <T extends object>(o: T, keys: Array<keyof T>) => Object.fromEntries(keys.filter((k) => o[k] !== undefined).map((k) => [k, o[k]]));
+  return {
+    ...s,
+    ...(d.commercial ? { commercial: d.commercial } : {}),
+    catalog: { ...s.catalog, commercialStatus: d.catalog.commercialStatus, ...kept(d.catalog, ["inclusions", "quotaProposals", "quoteOnRequest", "bundleRule", "implementationLevel"]) },
+    internal: { ...s.internal, evidence: d.internal.evidence ?? s.internal.evidence, ...kept(d.internal, ["functionalGrade", "sources", "pendingDecisions"]) },
+  };
 }
 
 export async function seedElephantSource(svc: WebAdminService, store: WebStore, opts: { dryRun?: boolean; author?: string } = {}): Promise<SeedReport> {
