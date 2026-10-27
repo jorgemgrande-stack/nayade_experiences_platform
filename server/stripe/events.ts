@@ -124,6 +124,14 @@ export interface ProcessorDeps {
    * al activarse el pedido (`DeferredItemsService.attach`). Sin ella no se añaden.
    */
   deferredItems?: (order: CommercialOrder, sub: GwSubscription) => Promise<string>;
+  /**
+   * Servicios de clientes externos (server/external): su autorización del método de pago (Checkout setup) y su
+   * suscripción no son de ningún pedido. null: no es de un servicio externo.
+   */
+  external?: {
+    handleSetupSession(sessionId: string): Promise<string | null>;
+    handleSubscription(sub: GwSubscription, hint?: GwInvoice): Promise<string>;
+  };
 }
 
 /** Estado de un cargo que deja sin cobertura el periodo que pagó. */
@@ -387,7 +395,11 @@ export class StripeEventProcessor {
 
   private async handleSession(id: string): Promise<Outcome> {
     const local = await this.d.store.session(id);
-    if (!local) return { outcome: "ignored", detail: "Sesión no creada por Elephant Source" };
+    if (!local) {
+      const ext = this.d.external ? await this.d.external.handleSetupSession(id) : null;
+      if (ext !== null) return { outcome: "processed", detail: ext };
+      return { outcome: "ignored", detail: "Sesión no creada por Elephant Source" };
+    }
     const s = await this.d.gateway.checkoutSession(id);
     if (!s) return { outcome: "ignored", detail: "La sesión no existe en Stripe" };
     if (s.metadata.es_order_id !== String(local.orderId) || s.clientReferenceId !== `es-order-${local.orderId}`) throw new StripeMismatchError("La sesión no corresponde a su pedido");
@@ -408,6 +420,11 @@ export class StripeEventProcessor {
   async handleSubscription(id: string, hint?: GwInvoice): Promise<Outcome> {
     const sub = await this.d.gateway.subscription(id);
     if (!sub) return { outcome: "ignored", detail: "La suscripción no existe en Stripe" };
+    // Servicio de un cliente externo: sin pedido ni licencias; solo su estado de cobro
+    if (sub.metadata.es_external_id) {
+      if (!this.d.external || sub.metadata.es_env !== this.namespace) return { outcome: "ignored", detail: "Servicio externo de otro entorno o sin módulo" };
+      return { outcome: "processed", detail: await this.d.external.handleSubscription(sub, hint) };
+    }
     const v = await this.verified(sub);
     if ("ignored" in v) return v.ignored;
     if (v.change) return this.withOrder(v.order.id, () => this.applyPlanChange(v.order, sub, v.change!, v.link.tenantId, hint));

@@ -4,7 +4,7 @@
  * sesiones se pueden caducar. Registra cada llamada para poder comprobar qué se envió.
  */
 import type { GwPortalConfig } from "./portal";
-import { StripeGatewayError, type CheckoutSessionInput, type CustomerInput, type GwCharge, type GwCheckoutSession, type GwEvent, type GwInvoice, type GwInvoiceLine, type GwInvoicePreview, type GwPrice, type GwProduct, type GwSubscription, type GwSubscriptionItem, type StripeGateway, type SubscriptionItemsChange } from "./gateway";
+import { StripeGatewayError, type CheckoutSessionInput, type CustomerInput, type GwCharge, type GwCheckoutSession, type GwEvent, type GwInvoice, type GwInvoiceLine, type GwInvoicePreview, type GwPrice, type GwProduct, type GwSubscription, type GwSubscriptionItem, type GwSetupSession, type ServiceSubscriptionInput, type SetupSessionInput, type StripeGateway, type SubscriptionItemsChange } from "./gateway";
 import { prorationCents, supportsPendingUpdate } from "./multipart";
 
 export class FakeStripeGateway implements StripeGateway {
@@ -360,6 +360,100 @@ export class FakeStripeGateway implements StripeGateway {
     this.events.unshift(ev);
     return ev;
   }
+  // --- Servicios de clientes externos (Checkout setup, suscripción con primer cargo diferido, IVA fijo) ---
+  setupSessions = new Map<string, GwSetupSession>();
+  defaultPaymentMethod = new Map<string, string>();
+  taxRates: Array<{ id: string; bp: number; country: string }> = [];
+  serviceSubs = new Map<string, { unitAmount: number; taxBp: number; trialEnd: number }>();
+  testClocks = new Map<string, { id: string; status: string; frozenTime: number }>();
+  async createSetupSession(i: SetupSessionInput, key: string) {
+    this.calls.push({ op: "checkout.sessions.create(setup)", key, input: i });
+    const prev = this.idem.get(`setup:${key}`);
+    if (prev) return { ...this.setupSessions.get(prev)! };
+    const id = this.next("cs");
+    this.setupSessions.set(id, { id, url: `https://checkout.stripe.test/c/setup/${id}`, status: "open", customerId: i.customerId, setupIntentId: this.next("seti"), paymentMethodId: null, metadata: { ...i.metadata }, expiresAt: i.expiresAt });
+    this.idem.set(`setup:${key}`, id);
+    return { ...this.setupSessions.get(id)! };
+  }
+  async setupSession(id: string) {
+    const s = this.setupSessions.get(id);
+    return s ? { ...s, metadata: { ...s.metadata } } : null;
+  }
+  /** El cliente registra la tarjeta en la página de Stripe (modo setup): ningún cargo. */
+  completeSetupSession(id: string, paymentMethodId = this.next("pm")) {
+    const s = this.setupSessions.get(id)!;
+    this.setupSessions.set(id, { ...s, status: "complete", paymentMethodId, url: null });
+    this.emit("checkout.session.completed", "checkout.session", id);
+    return paymentMethodId;
+  }
+  async setDefaultPaymentMethod(customerId: string, paymentMethodId: string) {
+    this.calls.push({ op: "customers.update(default_payment_method)", input: { customerId, paymentMethodId } });
+    this.defaultPaymentMethod.set(customerId, paymentMethodId);
+  }
+  async ensureServiceProduct(p: { id: string; name: string; metadata: Record<string, string> }) {
+    if (!this.products.has(p.id)) this.addProduct({ id: p.id, name: p.name, metadata: p.metadata });
+    return p.id;
+  }
+  async ensureTaxRate(t: { percentageBp: number; country: string }) {
+    const cur = this.taxRates.find((r) => r.bp === t.percentageBp && r.country === t.country);
+    if (cur) return cur.id;
+    const id = this.next("txr");
+    this.taxRates.push({ id, bp: t.percentageBp, country: t.country });
+    return id;
+  }
+  async createServiceSubscription(i: ServiceSubscriptionInput, key: string) {
+    this.calls.push({ op: "subscriptions.create(service)", key, input: i });
+    const prev = this.idem.get(`svcsub:${key}`);
+    if (prev) return this.subView(this.subscriptions.get(prev)!);
+    const id = this.next("sub");
+    const taxBp = this.taxRates.find((r) => r.id === i.taxRateId)?.bp ?? 0;
+    const priceId = this.next("price");
+    // Sin cargo hasta el primer vencimiento (trial_end); ninguna factura todavía
+    this.subscriptions.set(id, { id, customerId: i.customerId, status: "trialing", cancelAt: null, cancelAtPeriodEnd: false, currentPeriodEnd: i.trialEnd, currentPeriodStart: this.nowSec(), latestInvoiceId: null, priceIds: [priceId], metadata: { ...i.metadata }, items: [{ id: this.next("si"), priceId, quantity: 1 }], pendingUpdate: null, billingMode: "flexible" });
+    this.serviceSubs.set(id, { unitAmount: i.unitAmount, taxBp, trialEnd: i.trialEnd });
+    this.idem.set(`svcsub:${key}`, id);
+    this.emit("customer.subscription.created", "subscription", id);
+    return this.subView(this.subscriptions.get(id)!);
+  }
+  /**
+   * Stripe llega al día de cobro de una suscripción de servicio: una factura del periodo (neto + IVA fijo), cobrada o
+   * pendiente (cobro fallido; Stripe la reintentará). Devuelve la factura.
+   */
+  chargeServicePeriod(subId: string, periodStart: number, periodEnd: number, outcome: "paid" | "open") {
+    const s = this.subscriptions.get(subId)!;
+    const svc = this.serviceSubs.get(subId)!;
+    const tax = Math.round((svc.unitAmount * svc.taxBp) / 10_000);
+    const reason = s.latestInvoiceId ? "subscription_cycle" : "subscription_cycle";
+    const id = this.addInvoice(subId, s.customerId, reason, outcome, svc.unitAmount, [{ id: this.next("il"), subscriptionItemId: s.items![0].id, priceId: s.items![0].priceId, quantity: 1, amount: svc.unitAmount, taxCents: tax, proration: false, periodStart, periodEnd }]);
+    const inv = this.invoices.get(id)!;
+    this.invoices.set(id, { ...inv, periodStart, taxCents: tax, total: svc.unitAmount + tax, amountPaid: outcome === "paid" ? svc.unitAmount + tax : 0 });
+    this.subscriptions.set(subId, { ...this.subscriptions.get(subId)!, status: outcome === "paid" ? "active" : "past_due", currentPeriodStart: periodStart, currentPeriodEnd: periodEnd, latestInvoiceId: id });
+    this.emit(outcome === "paid" ? "invoice.paid" : "invoice.payment_failed", "invoice", id);
+    this.emit("customer.subscription.updated", "subscription", subId);
+    return id;
+  }
+  /** Reintento de Stripe con éxito (o el cliente paga con otro método): la MISMA factura queda cobrada. */
+  recoverServiceInvoice(invoiceId: string) {
+    const inv = this.invoices.get(invoiceId)!;
+    this.invoices.set(invoiceId, { ...inv, status: "paid", amountPaid: inv.total ?? inv.subtotal ?? 0 });
+    this.subscriptions.set(inv.subscriptionId!, { ...this.subscriptions.get(inv.subscriptionId!)!, status: "active" });
+    this.emit("invoice.paid", "invoice", invoiceId);
+    this.emit("customer.subscription.updated", "subscription", inv.subscriptionId!);
+  }
+  async createTestClock(frozenTime: number) {
+    const id = this.next("clock");
+    this.testClocks.set(id, { id, status: "ready", frozenTime });
+    return { id };
+  }
+  async advanceTestClock(id: string, frozenTime: number) {
+    const c = this.testClocks.get(id)!;
+    this.testClocks.set(id, { ...c, frozenTime });
+    return { id, status: "ready" };
+  }
+  async testClock(id: string) {
+    return this.testClocks.get(id) ?? null;
+  }
+
   private guard() {
     if (this.down) throw Object.assign(new Error("Stripe no responde"), { name: "StripeGatewayError", code: "network_error", retryable: true });
   }

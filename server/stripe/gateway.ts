@@ -208,6 +208,8 @@ export interface CustomerInput {
   address?: { country: string; postalCode: string | null; line1?: string | null; line2?: string | null; city?: string | null; state?: string | null };
   /** Identificadores fiscales verificados (p. ej. NIF-IVA comprobado en VIES). */
   taxIds?: Array<{ type: "eu_vat" | "es_cif"; value: string }>;
+  /** SOLO PRUEBAS: reloj de prueba de Stripe al que queda ligado el Customer. */
+  testClock?: string;
 }
 
 export interface StripeGateway {
@@ -238,6 +240,59 @@ export interface StripeGateway {
   voidInvoice(id: string): Promise<GwInvoice>;
   /** Tipo del método de pago con el que se cobra la suscripción (card, sepa_debit…); null si no hay. */
   paymentMethodTypeOf(subscriptionId: string): Promise<string | null>;
+  // ── Servicios de clientes externos (server/external) ──
+  /** Checkout en modo `setup`: el cliente registra y autoriza su método de pago SIN ningún cargo. */
+  createSetupSession?(input: SetupSessionInput, idempotencyKey: string): Promise<GwSetupSession>;
+  setupSession?(id: string): Promise<GwSetupSession | null>;
+  /** Método de pago por defecto del Customer para las facturas (el autorizado en el modo setup). */
+  setDefaultPaymentMethod?(customerId: string, paymentMethodId: string): Promise<void>;
+  /** Product de un servicio externo con id estable (`es_ext_<servicio>`): lo crea si no existe. */
+  ensureServiceProduct?(input: { id: string; name: string; metadata: Record<string, string> }): Promise<string>;
+  /** Tipo de IVA exclusivo (p. ej. 21 % IVA España): reutiliza uno activo idéntico o lo crea. */
+  ensureTaxRate?(input: { percentageBp: number; displayName: string; country: string; description: string }): Promise<string>;
+  /** Suscripción recurrente sin cargo hasta `trialEnd` (primer vencimiento), con el método y el IVA indicados. */
+  createServiceSubscription?(input: ServiceSubscriptionInput, idempotencyKey: string): Promise<GwSubscription>;
+  /** SOLO PRUEBAS: relojes de prueba de Stripe para simular el paso del tiempo (renovaciones, impagos). */
+  createTestClock?(frozenTime: number, name: string): Promise<{ id: string }>;
+  advanceTestClock?(id: string, frozenTime: number): Promise<{ id: string; status: string }>;
+  testClock?(id: string): Promise<{ id: string; status: string; frozenTime: number } | null>;
+}
+
+export interface SetupSessionInput {
+  customerId: string;
+  currency: string;
+  metadata: Record<string, string>;
+  successUrl: string;
+  cancelUrl: string;
+  /** Segundos desde epoch (entre 30 min y 24 h). */
+  expiresAt: number;
+  /** Texto visible junto al botón: autorización de cobros recurrentes, importe y calendario. */
+  notice: string;
+}
+export interface GwSetupSession {
+  id: string;
+  url: string | null;
+  status: string | null;
+  customerId: string | null;
+  setupIntentId: string | null;
+  /** Método de pago autorizado (solo su id). */
+  paymentMethodId: string | null;
+  metadata: Record<string, string>;
+  expiresAt: number;
+}
+export interface ServiceSubscriptionInput {
+  customerId: string;
+  productId: string;
+  /** Cuota neta por periodo (céntimos, sin IVA). */
+  unitAmount: number;
+  currency: string;
+  interval: "month";
+  taxRateId: string;
+  /** Primer cargo (segundos desde epoch). Hasta entonces no se cobra nada; después, cada mes ese día y hora. */
+  trialEnd: number;
+  defaultPaymentMethod: string;
+  metadata: Record<string, string>;
+  description: string;
 }
 
 export class StripeGatewayError extends Error {
@@ -400,6 +455,21 @@ function wrapError(e: unknown): never {
 
 const notFound = (e: unknown) => (e as { statusCode?: number })?.statusCode === 404;
 
+/** Sesión de Checkout en modo setup: solo ids (método de pago incluido), nunca datos de la tarjeta. */
+function setupOf(s: Stripe.Checkout.Session): GwSetupSession {
+  const si = s.setup_intent && typeof s.setup_intent === "object" ? s.setup_intent : null;
+  return {
+    id: s.id,
+    url: s.url ?? null,
+    status: s.status ?? null,
+    customerId: idOf(s.customer),
+    setupIntentId: idOf(s.setup_intent),
+    paymentMethodId: si ? idOf(si.payment_method) : null,
+    metadata: meta(s.metadata),
+    expiresAt: s.expires_at,
+  };
+}
+
 /** Adaptador con el SDK oficial. Solo se crea con una configuración validada; comprueba cada objeto con su modo. */
 export function stripeGateway(
   config: StripeConfig,
@@ -466,6 +536,7 @@ export function stripeGateway(
                 }
               : {}),
             ...(input.taxIds?.length ? { tax_id_data: input.taxIds.map((t) => ({ type: t.type, value: t.value })) } : {}),
+            ...(input.testClock && mode === "test" ? { test_clock: input.testClock } : {}),
           },
           { idempotencyKey },
         );
@@ -480,6 +551,132 @@ export function stripeGateway(
         const c = await client.customers.retrieve(id);
         assertModeObject(c as { livemode?: unknown }, mode);
         return { id: c.id, deleted: !!(c as { deleted?: boolean }).deleted };
+      } catch (e) {
+        if (notFound(e)) return null;
+        wrapError(e);
+      }
+    },
+    async createSetupSession(i, idempotencyKey) {
+      try {
+        const s = await client.checkout.sessions.create(
+          {
+            mode: "setup",
+            customer: i.customerId,
+            currency: i.currency.toLowerCase(),
+            metadata: i.metadata,
+            setup_intent_data: { metadata: i.metadata },
+            success_url: i.successUrl,
+            cancel_url: i.cancelUrl,
+            expires_at: i.expiresAt,
+            locale: "es",
+            custom_text: { submit: { message: i.notice.slice(0, 1200) } },
+          },
+          { idempotencyKey },
+        );
+        assertModeObject(s, mode);
+        return setupOf(s);
+      } catch (e) {
+        wrapError(e);
+      }
+    },
+    async setupSession(id) {
+      try {
+        const s = await client.checkout.sessions.retrieve(id, { expand: ["setup_intent"] });
+        assertModeObject(s, mode);
+        return setupOf(s);
+      } catch (e) {
+        if (notFound(e)) return null;
+        wrapError(e);
+      }
+    },
+    async setDefaultPaymentMethod(customerId, paymentMethodId) {
+      try {
+        const c = await client.customers.update(customerId, { invoice_settings: { default_payment_method: paymentMethodId } });
+        assertModeObject(c, mode);
+      } catch (e) {
+        wrapError(e);
+      }
+    },
+    async ensureServiceProduct(p) {
+      try {
+        const cur = await client.products.retrieve(p.id).catch((e) => (notFound(e) ? null : Promise.reject(e)));
+        if (cur) {
+          assertModeObject(cur, mode);
+          return cur.id;
+        }
+        const created = await client.products.create({ id: p.id, name: p.name, metadata: p.metadata }, { idempotencyKey: `es-product-${p.id}` });
+        assertModeObject(created, mode);
+        return created.id;
+      } catch (e) {
+        wrapError(e);
+      }
+    },
+    async ensureTaxRate(t) {
+      try {
+        const pct = t.percentageBp / 100;
+        for await (const r of client.taxRates.list({ active: true, inclusive: false, limit: 100 })) {
+          if (r.percentage === pct && r.country === t.country && r.metadata?.es_tax_bp === String(t.percentageBp)) {
+            assertModeObject(r, mode);
+            return r.id;
+          }
+        }
+        const created = await client.taxRates.create(
+          { display_name: t.displayName, percentage: pct, inclusive: false, country: t.country, description: t.description, metadata: { es_tax_bp: String(t.percentageBp) } },
+          { idempotencyKey: `es-taxrate-${t.country}-${t.percentageBp}` },
+        );
+        assertModeObject(created, mode);
+        return created.id;
+      } catch (e) {
+        wrapError(e);
+      }
+    },
+    async createServiceSubscription(i, idempotencyKey) {
+      try {
+        const s = await client.subscriptions.create(
+          {
+            customer: i.customerId,
+            items: [{ price_data: { currency: i.currency.toLowerCase(), product: i.productId, unit_amount: i.unitAmount, recurring: { interval: i.interval }, tax_behavior: "exclusive" }, quantity: 1 }],
+            default_tax_rates: [i.taxRateId],
+            default_payment_method: i.defaultPaymentMethod,
+            // Sin cargo hasta el primer vencimiento; desde ahí Stripe cobra cada mes el mismo día y hora
+            trial_end: i.trialEnd,
+            proration_behavior: "none",
+            collection_method: "charge_automatically",
+            off_session: true,
+            payment_behavior: "allow_incomplete",
+            description: i.description.slice(0, 500),
+            metadata: i.metadata,
+          },
+          { idempotencyKey },
+        );
+        return toSubscription(s, mode);
+      } catch (e) {
+        wrapError(e);
+      }
+    },
+    async createTestClock(frozenTime, name) {
+      if (mode === "live") throw new StripeConfigError("Los relojes de prueba solo existen en modo pruebas");
+      try {
+        const c = await client.testHelpers.testClocks.create({ frozen_time: frozenTime, name: name.slice(0, 300) });
+        return { id: c.id };
+      } catch (e) {
+        wrapError(e);
+      }
+    },
+    async advanceTestClock(id, frozenTime) {
+      if (mode === "live") throw new StripeConfigError("Los relojes de prueba solo existen en modo pruebas");
+      try {
+        const c = await client.testHelpers.testClocks.advance(id, { frozen_time: frozenTime });
+        return { id: c.id, status: c.status };
+      } catch (e) {
+        wrapError(e);
+      }
+    },
+    async testClock(id) {
+      if (mode === "live") return null;
+      try {
+        const c = await client.testHelpers.testClocks.retrieve(id);
+        return { id: c.id, status: c.status, frozenTime: c.frozen_time };
       } catch (e) {
         if (notFound(e)) return null;
         wrapError(e);
