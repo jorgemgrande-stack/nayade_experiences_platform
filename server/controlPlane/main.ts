@@ -60,6 +60,7 @@ import { stripeGateway, stripeWebhookVerifier } from "../stripe/gateway";
 import { MysqlStripeStore } from "../stripe/store";
 import { MysqlSubscriptionChangeStore } from "../stripe/changes";
 import { MysqlExternalStore } from "../external/store";
+import { crmPublicOrigin } from "../external/urls";
 import type { ExternalUrls } from "../external/service";
 import { internalTenantsFromEnv } from "../stripe/purchases";
 import { MysqlInvoiceLineStore } from "../stripe/invoiceLines";
@@ -463,8 +464,8 @@ async function main() {
         ...(linesReady ? { invoiceLines: new MysqlInvoiceLineStore(crmPool!, stripeConfig.mode) } : {}),
       };
     const externalReady = (await hasTable("external_subscriptions")) && (await hasTable("crm_contract_acceptances")) && (await hasTable("external_subscription_events"));
-    // La página pública de aceptación y las vueltas de Stripe van en el dominio del CRM (sirve /cp/v1): el primer origen https
-    const crmOrigin = (process.env.CP_ALLOWED_ORIGINS ?? "").split(",").map((x) => x.trim()).find((x) => /^https:\/\/[a-z0-9.-]+(:\d+)?$/i.test(x));
+    // La página pública de aceptación y las vueltas de Stripe van en el dominio del CRM (sirve /cp/v1)
+    const crmOrigin = crmPublicOrigin(process.env);
     if (ready && externalReady && crmOrigin) {
       const pub = `${crmOrigin}/cp/v1/public/contract-acceptance`;
       external = { store: new MysqlExternalStore(crmPool!, stripeConfig.mode), urls: { acceptance: pub, setupSuccess: `${pub}/autorizado`, setupCancel: `${pub}/cancelado`, portalReturn: `${pub}/portal` }, ipSalt: (process.env.CP_PUBLIC_FORM_SECRET ?? "").trim() || undefined, liveEnabled: process.env.CP_EXTERNAL_LIVE_ENABLED === "1" };
