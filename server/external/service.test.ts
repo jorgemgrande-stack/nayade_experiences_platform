@@ -37,3 +37,14 @@ describe("servicios externos: reglas", () => {
     expect(new Date(nextChargeAfter(chargeInstant("2026-11-01", 8, "Europe/Madrid"), 1, 8, "Europe/Madrid")).toISOString()).toBe("2026-12-01T07:00:00.000Z");
   });
 });
+
+describe("dominio público del CRM para la aceptación", () => {
+  it("toma el primer origen https de CP_ALLOWED_ORIGINS aunque lleve barra o espacios; si no, el del entorno", async () => {
+    const { crmPublicOrigin } = await import("./urls");
+    expect(crmPublicOrigin({ CP_ALLOWED_ORIGINS: "https://admin.bigelephant.es/" })).toBe("https://admin.bigelephant.es");
+    expect(crmPublicOrigin({ CP_ALLOWED_ORIGINS: " http://localhost:5173 , https://admin.bigelephant.es " })).toBe("https://admin.bigelephant.es");
+    expect(crmPublicOrigin({ CP_ALLOWED_ORIGINS: "", RAILWAY_ENVIRONMENT_NAME: "production" })).toBe("https://admin.bigelephant.es");
+    expect(crmPublicOrigin({ RAILWAY_ENVIRONMENT_NAME: "live" })).toBe("https://elephant-source-crm-live.up.railway.app");
+    expect(crmPublicOrigin({})).toBeNull();
+  });
+});
