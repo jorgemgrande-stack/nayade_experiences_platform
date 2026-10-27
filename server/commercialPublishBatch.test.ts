@@ -148,6 +148,9 @@ describe("reglas de contenido de la ficha", () => {
     expect(textProblems("Hasta 10 sedes", { approvedQuotas: [{ metric: "sites", included: 5 }] }).join()).toMatch(/cupo aprobado/);
     expect(textProblems("Automatizaciones avanzadas", { planInclusions: ["connect-automations"] }).join()).toMatch(/connect-automations/);
     expect(textProblems("Caja de mostrador incluida")).toEqual([]);
+    // Las mismas afirmaciones que rechaza la web pública: servicio continuo, certificaciones, valoraciones
+    for (const t of ["Atención 24 horas", "Soporte 24/7", "Certificado ISO 27001", "Valoración media de 4,8", "Garantía de devolución"]) expect(textProblems(t).join(), t).toMatch(/no verificados/);
+    expect(textProblems("Atiende llamadas y mensajes cuando tu equipo no puede")).toEqual([]);
   });
 
   it("la importación aparta esos textos como decisiones pendientes y la ficha publicable queda limpia", async () => {

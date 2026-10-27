@@ -591,7 +591,7 @@ export const PRODUCT_SPECS: readonly ProductSpec[] = [
     implementation: { level: 3, requirements: ["Desarrollo sobre una base parcial"], sources: ["Skicenter (parcial)"] },
     integrations: ["Telefonía propia"],
     verified: { grade: "prototype", evidence: "Base parcial en Skicenter" },
-    publicContent: { headline: "Próximamente: tu recepcionista virtual.", benefits: ["Atención 24 horas"], cta: "waitlist" },
+    publicContent: { headline: "Próximamente: tu recepcionista virtual.", benefits: ["Atiende llamadas y mensajes cuando tu equipo no puede"], cta: "waitlist" },
     seo: { slug: "reception-ai", title: "Recepcionista virtual con IA (próximamente) | Big Elephant", description: "Próximamente: recepcionista virtual con IA que atiende llamadas y mensajes de tus clientes." },
     admin: { pendingDecisions: ["Límite de IA (decisión 6)"] },
   }),
