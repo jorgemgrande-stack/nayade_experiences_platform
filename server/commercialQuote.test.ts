@@ -54,7 +54,8 @@ describe("las seis simulaciones de la especificación (§14)", () => {
     expect(q(P, { plan: "essential", interval: "month", users: 3, employees: 8, items: [{ key: "restaurant-net-bookings" }, { key: "connect-people" }] }).recurring.monthlyCents).toBe(eur(67));
     const b = q(P, { plan: "business", interval: "month", users: 3, employees: 8, items: [{ key: "restaurant-net-bookings" }, { key: "connect-people" }] });
     expect(b.recurring.monthlyCents).toBe(eur(98));
-    expect(q(P, { plan: "essential", interval: "month", users: 3, items: [{ key: "restaurant-net-complete" }, { key: "connect-people" }] }).recurring.monthlyCents).toBe(eur(107));
+    // Desde el 27/10/2026 la solución Elephant Net completa incluye Elephant Core Essential: 59 + 19 (antes 29 + 59 + 19 = 107)
+    expect(q(P, { plan: "essential", interval: "month", users: 3, items: [{ key: "restaurant-net-complete" }, { key: "connect-people" }] }).recurring.monthlyCents).toBe(eur(78));
   });
   it("5. hotel: Business + PMS + Motor + Voice = 206 €; 2.283 € al año con plan anual", () => {
     const items = [{ key: "hotel-net-pms" }, { key: "hotel-net-booking-engine" }, { key: "connect-voice" }];

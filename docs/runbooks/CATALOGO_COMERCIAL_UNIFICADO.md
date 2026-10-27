@@ -80,3 +80,76 @@ La semilla (`seed-elephant-source.ts`) ya no publica borradores pendientes que n
 5. Copilot con consumo medido. Su límite es `null` hasta que se decida.
 6. Implantación separada de la cuota.
 7. Ampliaciones de Enterprise por presupuesto.
+
+## Elephant Net completo con Elephant Core incluido (decisión del 27/10/2026)
+
+**Modelo.** Una solución Elephant Net completa equivale a Elephant Core Essential más la solución sectorial, por el precio total del paquete. Essential incluye 3 usuarios, 1 sede y sus capacidades. Una empresa nunca paga Elephant Core dos veces.
+
+**Qué productos lo llevan.** Solo las soluciones completas (familia `net_bundle`):
+
+| Solución | Precio mensual |
+|---|---|
+| Hotel | 119 € |
+| Ski | 99 € |
+| Travel | 119 € |
+| Restaurant | 59 € |
+| Care | 69 € |
+| Social Token | 59 € |
+
+Los módulos Net sueltos (`net_module`, incluido Life Net, que no tiene paquete) siguen siendo módulos individuales que requieren un plan de Elephant Core. Las extensiones, extras, servicios y complementos no cambian.
+
+**Dato.** `catalog.coreIncluded` del paquete contiene:
+
+- `plan` y `status`;
+- `upgrade` (`difference`);
+- `additional` (`core_credit`).
+
+La política lo lee de los productos (`fromCatalog.ts`). La importación lo carga en los borradores con este estado:
+
+| Regla | Estado |
+|---|---|
+| Inclusión de Core | Aprobada |
+| Ampliación (`upgrade`) | Propuesta |
+| Net adicional (`additional`) | Propuesta |
+
+La proyección pública lo quita mientras la política esté apagada y, con la política activa, solo publica lo aprobado.
+
+**Cotizador** (`commercialQuote.ts`, `composeNetCore`):
+
+| Caso | Cálculo |
+|---|---|
+| Plan incluido o inferior | 0 € (`included_in_net`) |
+| Business o Enterprise | Solo la diferencia de tarifas aprobadas en la misma periodicidad (`core_upgrade`) |
+| Net adicional, o más unidades del mismo | Su precio menos la tarifa mensual de Essential (`net_additional`) |
+| Sin la regla aprobada de ampliación o de Net adicional | Por presupuesto (`on_quote`) |
+
+`discounts.coreIncludedCents` y `netCore` explican la composición. Con la política vigente o publicada, los importes son los de siempre (prueba de regresión en `server/netCoreIncluded.test.ts`).
+
+**Simulaciones.** `GET /cp/v1/web/commercial/net-simulations?policy=proposed|published` (`web:read`) cubre cada solución con siete escenarios:
+
+1. Net solo.
+2. Net + Business.
+3. Net + Enterprise.
+4. Dos Nets.
+5. Net + extensión.
+6. Net con plan anual.
+7. Bajada de Business a Essential.
+
+Detecta:
+
+- Core cobrado dos veces;
+- precio mostrado distinto del calculado;
+- partidas duplicadas;
+- componentes ya contratados que se cobran otra vez;
+- incompatibilidades;
+- derechos de uso incompletos;
+- Nets sin Core incluido.
+
+**Texto.** Mientras la inclusión no se aplique en la contratación, ninguna ficha puede decir «Elephant Core incluido» (`NET_CORE_RE`).
+
+**Activación.** Requiere el producto compuesto en pedidos, licencias y Stripe (contrato v3 de `docs/elephant-source/CONTRATO_CATALOGO_COMERCIAL_STRIPE.md`). Después:
+
+1. Encender la política.
+2. Volver a publicar los seis Net.
+
+Los contratos existentes no se migran. Cada contratación debe guardar la versión del catálogo y de la política con que se calculó, para poder reproducir su precio.

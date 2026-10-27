@@ -12,6 +12,7 @@ import { issuePreviewToken } from "./publicSite";
 import { commercialQuote, previewPlanChange, quoteResponse, recommendPlan } from "../catalog/commercial/commercialQuote";
 import { isNeutral } from "../catalog/commercial/fromCatalog";
 import { pendingRules } from "../catalog/commercial/policy";
+import { netSimulations } from "../catalog/commercial/netSimulations";
 import { parseQuoteRequest } from "../catalog/request";
 import { quoteCatalogFromSite } from "../catalog/snapshot";
 
@@ -130,6 +131,12 @@ export function createWebAdminRouter(svc: WebAdminService, opts: { previewSecret
 
   // ── Política comercial: revisión y simulador (nunca crean presupuestos ni cambian nada) ──
   r.get("/commercial/review", requireScope("web:read"), wrap(async (_req, res) => void res.json(await svc.commercialReview())));
+  // Simulaciones de las soluciones Elephant Net completas con Core incluido (borradores o lo publicado). Nunca cobra.
+  r.get("/commercial/net-simulations", requireScope("web:read"), wrap(async (req, res) => {
+    const mode = req.query.policy === "published" ? "published" : "proposed";
+    const { catalog, policy } = await svc.commercialCatalog(mode);
+    res.json({ policy: mode, policyEnabled: (await svc.commercialReview()).policyEnabled, ...netSimulations(catalog, policy) });
+  }));
   r.post("/commercial/simulate", requireScope("web:read"), wrap(async (req, res) => {
     const b = z
       .object({

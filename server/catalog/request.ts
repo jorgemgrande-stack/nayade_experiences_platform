@@ -18,11 +18,16 @@ export function quoteRequestSchema(opts: { allowOwned: boolean }) {
       fiscalEntities: z.number().int().min(1).max(100).optional(),
       /** Empleados gestionados en People (con o sin usuario): tope de la inclusión parcial del plan. */
       employees: count.optional(),
+      /**
+       * Modelo del contrato para Elephant Net: «legacy» (histórico: Core y Net como dos cuotas, nunca se migra),
+       * «composite» (Core incluido en el Net, también en lo ya contratado). Sin indicar, solo los Net nuevos componen.
+       */
+      contractModel: z.enum(["legacy", "composite"]).optional(),
     })
     .strict();
 }
 
-export function parseQuoteRequest(body: unknown, opts: { allowOwned: boolean }): { ok: true; value: QuoteRequest & { employees?: number } } | { ok: false; message: string } {
+export function parseQuoteRequest(body: unknown, opts: { allowOwned: boolean }): { ok: true; value: QuoteRequest & { employees?: number; contractModel?: "legacy" | "composite" } } | { ok: false; message: string } {
   const r = quoteRequestSchema(opts).safeParse(body);
   if (!r.success) return { ok: false, message: r.error.issues.map((i) => `${i.path.join(".") || "petición"}: ${i.message}`).join("; ") };
   return { ok: true, value: r.data as QuoteRequest & { employees?: number } };

@@ -164,6 +164,20 @@ export const productDraft = z
         quoteOnRequest: z.object({ status: decision }).strict().optional(),
         /** Solo paquetes: cómo se resuelve un paquete con componentes incluidos en el plan. */
         bundleRule: z.object({ kind: z.enum(["catalog", "min2"]), status: decision }).strict().optional(),
+        /**
+         * Solo soluciones Elephant Net completas: Elephant Core (nivel `plan`) incluido en el precio total. `upgrade`:
+         * ampliar Core cobrando la diferencia de tarifas aprobadas; `additional`: Net adicional sin volver a pagar Core.
+         * Sin la regla aprobada correspondiente, esa parte se presupuesta (nunca se cobra Core dos veces).
+         */
+        coreIncluded: z
+          .object({
+            plan: entryKey,
+            status: decision,
+            upgrade: z.object({ kind: z.literal("difference"), status: decision }).strict().optional(),
+            additional: z.object({ kind: z.literal("core_credit"), status: decision }).strict().optional(),
+          })
+          .strict()
+          .optional(),
         /** 1 activable desde el Core · 2 portable desde otro desarrollo · 3 desarrollo nuevo. */
         implementationLevel: z.union([z.literal(1), z.literal(2), z.literal(3)]).optional(),
       })
@@ -275,15 +289,20 @@ export function publicView(kind: EntryKind, draft: Record<string, unknown>, opts
  * propuestos, y regla de paquetes y ampliación por presupuesto solo si están aprobadas. Sin política, no añade nada.
  */
 function publicCatalog(cat: Record<string, unknown>, policy: boolean): Record<string, unknown> {
-  const { quotaProposals: _q, inclusions, quoteOnRequest, bundleRule, ...rest } = cat as Record<string, unknown> & {
+  const { quotaProposals: _q, inclusions, quoteOnRequest, bundleRule, coreIncluded, ...rest } = cat as Record<string, unknown> & {
     inclusions?: PlanInclusionDraft[];
     quoteOnRequest?: { status: string };
     bundleRule?: { status: string };
+    coreIncluded?: { status: string; upgrade?: { status: string }; additional?: { status: string } };
   };
   const out: Record<string, unknown> = { ...rest };
   if (!policy) return out;
   if (inclusions) out.inclusions = inclusions.filter((i) => i.status === "approved" && (!i.cap || i.cap.status === "approved"));
   if (quoteOnRequest?.status === "approved") out.quoteOnRequest = quoteOnRequest;
   if (bundleRule?.status === "approved") out.bundleRule = bundleRule;
+  if (coreIncluded?.status === "approved") {
+    const { upgrade, additional, ...ci } = coreIncluded;
+    out.coreIncluded = { ...ci, ...(upgrade?.status === "approved" ? { upgrade } : {}), ...(additional?.status === "approved" ? { additional } : {}) };
+  }
   return out;
 }

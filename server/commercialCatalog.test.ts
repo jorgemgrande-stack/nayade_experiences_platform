@@ -126,7 +126,7 @@ describe("importación de fichas comerciales", () => {
   it("barrera: nunca cambia precios, cupos, estado ni nada fuera de la ficha y la política", async () => {
     const { store, svc } = await seeded();
     const dry = await importCommercialSpecs(svc, store);
-    for (const [key, fields] of Object.entries(dry.fields)) for (const f of fields) expect(f, key).toMatch(/^(commercial|catalog.(implementationLevel|inclusions|quotaProposals|quoteOnRequest|bundleRule)|internal.(evidence|functionalGrade|sources|pendingDecisions))$/);
+    for (const [key, fields] of Object.entries(dry.fields)) for (const f of fields) expect(f, key).toMatch(/^(commercial|catalog.(implementationLevel|inclusions|quotaProposals|quoteOnRequest|bundleRule|coreIncluded)|internal.(evidence|functionalGrade|sources|pendingDecisions))$/);
     const biz = productDraft.parse((await store.getEntry("product", "business"))!.draft);
     const touched = { ...biz, catalog: { ...biz.catalog, inclusions: [] }, commercial: { headline: "x" } };
     expect(foreignChanges(biz as unknown as Record<string, unknown>, touched as unknown as Record<string, unknown>)).toEqual([]);
@@ -374,6 +374,21 @@ describe("API: cotizador comercial, revisión y simulador", () => {
     expect((await call("GET", "/web/commercial/review", { token: TOK.crm })).status).toBe(403);
     expect((await call("POST", "/web/commercial/simulate", { token: TOK.crm, body: { request: { plan: "business", interval: "month" } } })).status).toBe(403);
     expect((await call("GET", "/web/commercial/review", { token: TOK.read })).status).toBe(200);
+    expect((await call("GET", "/web/commercial/net-simulations")).status).toBe(401);
+    expect((await call("GET", "/web/commercial/net-simulations", { token: TOK.crm })).status).toBe(403);
+  });
+
+  it("simulaciones Elephant Net: con los borradores componen el Core; con lo publicado (política apagada), nada", async () => {
+    const prop = await call("GET", "/web/commercial/net-simulations?policy=proposed", { token: TOK.read });
+    expect(prop.status).toBe(200);
+    expect(prop.json.policyEnabled).toBe(false);
+    expect(prop.json.nets.length).toBe(6);
+    const ski = prop.json.nets.find((n: { key: string }) => n.key === "ski-net-complete");
+    expect(ski.scenarios[0].composed.monthlyCents).toBe(9900);
+    expect(ski.issues).toEqual([]);
+    const pub = await call("GET", "/web/commercial/net-simulations?policy=published", { token: TOK.read });
+    expect(pub.json.nets).toEqual([]);
+    expect(pub.json.withoutCore.length).toBe(6);
   });
 
   it("cotizador público y del CRM: mismos importes que siempre y desglose comercial sin nada interno", async () => {
