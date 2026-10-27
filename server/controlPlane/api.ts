@@ -1647,6 +1647,12 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         const wa = webAdmin;
         router.use("/commerce", createPanelCatalogRouter({ site: () => wa.site("published"), purchasesEnabled: !!d.stripe?.purchases?.enabled, internalTenants: d.stripe?.purchases?.internalTenants }));
       }
+      // Servicios externos en un entorno sin Stripe: contrato, aceptación y seguimiento (sin autorización de pago ni cobros)
+      if (d.external && !d.stripe) {
+        const svc = new ExternalService({ store: d.external.store, crm: d.crm.service, crmStore: d.crm.store, mode: "test", namespace: "sin-stripe", urls: d.external.urls, ipSalt: d.external.ipSalt, now: d.subscriptions.now });
+        router.use("/external", createExternalRouter(svc));
+        publicAcceptance = createContractAcceptanceRouter(svc);
+      }
       if (d.stripe) {
         const st = d.stripe;
         const stripeCatalog = catalogFromWebStore(d.web.store);

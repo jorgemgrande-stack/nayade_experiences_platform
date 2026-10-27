@@ -107,3 +107,12 @@ Comercial → Empresas → <empresa> → Nueva contratación de servicio externo
    - el portal de facturación.
 4. Aplicar la migración 0026 en el entorno con Stripe live. Allí el módulo solo se monta con la tabla y un origen https del CRM en `CP_ALLOWED_ORIGINS`.
 5. Con autorización expresa: enviar el contrato real a la representante de Nextair, que autoriza su tarjeta real. El primer cargo será el 01/11/2026 si la autorización llega antes.
+
+## Entornos y Stripe (comprobado el 27/10/2026 en los registros de arranque)
+
+| Entorno | Stripe | Módulo de clientes externos |
+|---|---|---|
+| production (`admin.bigelephant.es`) | **Sin configurar** | Contrato, aceptación y seguimiento. La autorización de pago y los cobros responden que Stripe no está configurado |
+| live (`elephant-source-crm-live.up.railway.app`) | Cuenta **real** (clave restringida live) | Completo, con los cobros bloqueados salvo `CP_EXTERNAL_LIVE_ENABLED=1` |
+
+El sandbox de Stripe no está configurado en ningún entorno. La validación en sandbox se hace con `scripts/stripe/externalSandboxE2E.ts` y una clave de pruebas.
