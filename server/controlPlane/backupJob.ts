@@ -67,6 +67,8 @@ import { WebAdminService } from "../web/service";
 import { applyStatusReview, fillEvidence } from "../catalog/review";
 import { EVIDENCE_2026_10_25, REVIEW_ID, STATUS_REVIEW_2026_10_25 } from "../catalog/review20261025";
 import { IMPORT_AUTHOR, importCommercialSpecs } from "../catalog/commercial/importSpecs";
+import { publishBatch, revertLastBatch } from "../catalog/commercial/publishBatch";
+import { commercialIntegrity } from "../catalog/commercial/integrity";
 
 const args = process.argv.slice(2);
 const cmd = args[0] && !args[0].startsWith("--") ? args[0] : "run";
@@ -445,6 +447,42 @@ async function main() {
           const count = (m: Record<string, string[]>) => Object.values(m).flat().reduce<Record<string, number>>((o, k) => ((o[k] = (o[k] ?? 0) + 1), o), {});
           console.log(JSON.stringify({ simulacion: rep.dryRun, actualizables: rep.updated.length, sinCambios: rep.unchanged, faltan: rep.missing, fallos: rep.failed, campos: count(rep.fields), normalizados: count(rep.normalized), publicado: { antes: before?.version ?? null, despues: after?.version ?? null } }));
           if (rep.failed.length || rep.missing.length || before?.version !== after?.version) process.exitCode = 1;
+        } finally {
+          await crmPool.end().catch(() => undefined);
+        }
+        break;
+      }
+      case "catalog-commercial-publish":
+      case "catalog-commercial-revert": {
+        // Publicación por lotes de las fichas comerciales (server/catalog/commercial/publishBatch.ts) o reversión del último
+        // lote; simulación salvo --apply. Solo vuelve a publicar productos ya publicados cuyo borrador solo cambia en la ficha;
+        // lo bloqueado queda en borrador con su causa. Nunca toca precios, licencias, Stripe ni cobros.
+        const crmUrl = process.env.CRM_DATABASE_URL || die("Falta CRM_DATABASE_URL (base del CRM con el catálogo)");
+        const crmPool = mysql.createPool({ uri: crmUrl, connectionLimit: 2 });
+        try {
+          const webStore = new MysqlWebStore(crmPool);
+          const svc = new WebAdminService({ store: webStore, refs: { moduleIds: BUILTIN_MODULES.map((m) => m.id), planIds: () => null } });
+          const before = await svc.publicSite("published").catch(() => null);
+          const prices = JSON.stringify((await webStore.listPrices()).map((p) => [p.id, p.status, p.amountCents]));
+          const apply = flag("--apply");
+          const rep = cmd === "catalog-commercial-publish" ? await publishBatch(svc, webStore, { apply }) : await revertLastBatch(svc, webStore, { apply });
+          const after = await svc.publicSite("published").catch(() => null);
+          const pricesSame = JSON.stringify((await webStore.listPrices()).map((p) => [p.id, p.status, p.amountCents])) === prices;
+          // Una sola línea (el registro de Railway la guarda en los atributos si es JSON)
+          console.log(JSON.stringify({ orden: cmd, ...rep, preciosIntactos: pricesSame, publicado: { antes: before?.version ?? null, despues: after?.version ?? null } }));
+          if (rep.failed.length || !pricesSame) process.exitCode = 1;
+        } finally {
+          await crmPool.end().catch(() => undefined);
+        }
+        break;
+      }
+      case "commercial-integrity": {
+        // Solo lectura: recuentos y huellas de suscripciones, partidas, pedidos, pagos, Stripe y licencias (sin datos
+        // personales) para comprobar que una operación del catálogo no ha tocado nada de eso.
+        const crmUrl = process.env.CRM_DATABASE_URL || die("Falta CRM_DATABASE_URL (base del CRM)");
+        const crmPool = mysql.createPool({ uri: crmUrl, connectionLimit: 2 });
+        try {
+          console.log(JSON.stringify({ orden: cmd, ...(await commercialIntegrity(crmPool, pool)) }));
         } finally {
           await crmPool.end().catch(() => undefined);
         }

@@ -65,6 +65,11 @@ on:
           - catalogo-revision-aplicar
           - catalogo-fichas
           - catalogo-fichas-aplicar
+          - catalogo-fichas-publicar
+          - catalogo-fichas-publicar-aplicar
+          - catalogo-fichas-revertir
+          - catalogo-fichas-revertir-aplicar
+          - catalogo-fichas-integridad
           - avisos-solicitudes-estado
           - avisos-solicitudes-activar
           - avisos-solicitudes-desactivar
@@ -124,7 +129,7 @@ jobs:
     # Production: lo ordinario (publicar, revertir, solo lectura, copias y revisiones auditadas; ORDINARY_PRODUCTION_ACTIONS
     # en scripts/deploy/esRailwayLib.ts) va sin aprobación; lo extraordinario (variables, secretos, correo real, almacenamiento,
     # migraciones o restauraciones a mano), por el entorno protegido. Orden permanente del propietario (26/10/2026).
-    environment: ${{ inputs.environment == 'production' && (contains(fromJSON('["publicar","estado","verificar-token","comprobar-salud","diagnostico-almacenamiento","copia-de-seguridad","verificar-copia","migraciones-plataforma-simulacion","migraciones-simulacion","verificar-migraciones","huerfanos","correo-acceso-estado","avisos-solicitudes-estado","medicion-comprobar","catalogo-revision","catalogo-revision-aplicar","catalogo-fichas","catalogo-fichas-aplicar"]'), inputs.action) || startsWith(inputs.action, 'revertir-')) && 'elephant-source-production-despliegue' || format('elephant-source-{0}', inputs.environment) }}
+    environment: ${{ inputs.environment == 'production' && (contains(fromJSON('["publicar","estado","verificar-token","comprobar-salud","diagnostico-almacenamiento","copia-de-seguridad","verificar-copia","migraciones-plataforma-simulacion","migraciones-simulacion","verificar-migraciones","huerfanos","correo-acceso-estado","avisos-solicitudes-estado","medicion-comprobar","catalogo-revision","catalogo-revision-aplicar","catalogo-fichas","catalogo-fichas-aplicar","catalogo-fichas-publicar","catalogo-fichas-publicar-aplicar","catalogo-fichas-revertir","catalogo-fichas-revertir-aplicar","catalogo-fichas-integridad"]'), inputs.action) || startsWith(inputs.action, 'revertir-')) && 'elephant-source-production-despliegue' || format('elephant-source-{0}', inputs.environment) }}
     timeout-minutes: 60
     env:
       RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
@@ -318,13 +323,30 @@ jobs:
       # catalog-commercial-import (simulación, o borradores con autor e historial). Nunca publica: cada ficha se publica
       # desde el CRM. Nunca toca precios, licencias, Stripe ni cobros; el interruptor de la política sigue apagado.
       - name: Fichas comerciales del catálogo (borradores)
-        if: startsWith(inputs.action, 'catalogo-fichas')
+        if: inputs.action == 'catalogo-fichas' || inputs.action == 'catalogo-fichas-aplicar'
         run: |
           pnpm exec tsx scripts/deploy/esRailway.ts deploy --env "${ES_ENV}" --service restore-drill --dir "${RUNNER_TEMP}/export" --sha "${ES_DEPLOY_SHA}"
           pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --expect-sha "${ES_DEPLOY_SHA}" --command "node dist-cp/backup-job.js catalog-commercial-import"
           if [ "${ES_ACTION}" = "catalogo-fichas-aplicar" ]; then
             pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --expect-sha "${ES_DEPLOY_SHA}" --command "node dist-cp/backup-job.js catalog-commercial-import --apply"
           fi
+
+      # Publicación por lotes de las fichas (publishBatch.ts) o reversión del último lote, con simulación siempre antes y
+      # foto de integridad (suscripciones, pedidos, pagos y licencias) antes y después. Solo vuelve a publicar fichas de
+      # productos ya publicados; lo bloqueado queda en borrador con su causa. La web se regenera con la siguiente
+      # publicación del Core. «catalogo-fichas-integridad»: solo la foto, sin cambiar nada.
+      - name: Fichas comerciales del catálogo (publicación por lotes, reversión e integridad)
+        if: startsWith(inputs.action, 'catalogo-fichas-publicar') || startsWith(inputs.action, 'catalogo-fichas-revertir') || inputs.action == 'catalogo-fichas-integridad'
+        run: |
+          drill() { pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --expect-sha "${ES_DEPLOY_SHA}" --command "node dist-cp/backup-job.js $1"; }
+          pnpm exec tsx scripts/deploy/esRailway.ts deploy --env "${ES_ENV}" --service restore-drill --dir "${RUNNER_TEMP}/export" --sha "${ES_DEPLOY_SHA}"
+          drill "commercial-integrity"
+          case "${ES_ACTION}" in
+            catalogo-fichas-publicar) drill "catalog-commercial-publish" ;;
+            catalogo-fichas-publicar-aplicar) drill "catalog-commercial-publish" && drill "catalog-commercial-publish --apply" && drill "commercial-integrity" ;;
+            catalogo-fichas-revertir) drill "catalog-commercial-revert" ;;
+            catalogo-fichas-revertir-aplicar) drill "catalog-commercial-revert" && drill "catalog-commercial-revert --apply" && drill "commercial-integrity" ;;
+          esac
 
       # Medición del Resource Manager (base es_erm, como live desde el 21/10/2026): contraseña del usuario es_erm en
       # MySQL.ES_ERM_PASSWORD (generada si falta; nunca se imprime) y referencias; restore-drill con ESTE commit crea o ajusta

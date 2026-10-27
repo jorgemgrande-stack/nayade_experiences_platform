@@ -21,6 +21,7 @@ import crypto from "node:crypto";
 import { ZodError } from "zod";
 import { CAPABILITY_IDS } from "../catalog/capabilities";
 import { commercialChecks, shapeProblems, type CheckEntry, type CommercialCheck } from "../catalog/commercial/checks";
+import { rulesStatus } from "../catalog/commercial/rules";
 import { policyFromProducts, type PolicyMode, type PolicySource } from "../catalog/commercial/fromCatalog";
 import type { CommercialPolicy } from "../catalog/commercial/policy";
 import type { QuoteCatalog } from "../catalog/quote";
@@ -274,6 +275,43 @@ export class WebAdminService {
     return e;
   }
 
+  /** Lo que impediría publicar el borrador actual (vacío = publicable). No publica nada. */
+  async publishProblems(kind: EntryKind, key: string): Promise<string[]> {
+    const cur = await this.must(kind, key);
+    try {
+      const draft = this.parse(kind, cur.draft);
+      if (kind === "product") await this.checkPublishable(cur, draft as ProductDraft);
+      return [];
+    } catch (e) {
+      if (!(e instanceof WebError)) throw e;
+      const problems = (e.details as { problems?: string[] } | undefined)?.problems;
+      return problems?.length ? problems : [e.message];
+    }
+  }
+
+  /** Lo que se publicaría con una versión del historial (para comprobar y deshacer publicaciones). */
+  async publishedViewOf(kind: EntryKind, key: string, version: number): Promise<Record<string, unknown>> {
+    const cur = await this.must(kind, key);
+    const v = (await this.d.store.versions(cur.id)).find((x) => x.version === version);
+    if (!v) throw new WebError("not_found", "Versión no encontrada");
+    return publicView(kind, this.parse(kind, v.snapshot), { policy: !!this.d.commercialPolicy });
+  }
+
+  /**
+   * Vuelve a dejar publicada una versión anterior (deshacer una publicación), sin tocar el borrador. Solo si lo
+   * publicado sigue siendo `expectedPublished` (nadie lo ha cambiado desde entonces).
+   */
+  async republishVersion(kind: EntryKind, key: string, version: number, expectedPublished: number, author: string, note: string): Promise<WebEntry> {
+    const cur = await this.must(kind, key);
+    if (cur.publication !== "published" || cur.publishedVersion !== expectedPublished) throw new WebError("version_conflict", `Lo publicado cambió (v${cur.publishedVersion ?? "—"}, se esperaba v${expectedPublished})`);
+    const published = await this.publishedViewOf(kind, key, version);
+    const now = this.now();
+    const e = await this.d.store.setPublication(cur.id, { publication: "published", published, publishedVersion: version, publishedAt: now, publishedBy: author, updatedAt: now, updatedBy: author });
+    await this.audit(kind, key, "publish", author, `Vuelve a publicarse la v${version} (${note})`);
+    await this.notify();
+    return e;
+  }
+
   async unpublish(kind: EntryKind, key: string, author: string): Promise<WebEntry> {
     const cur = await this.must(kind, key);
     if (cur.publication !== "published") throw new WebError("invalid_state", "No está publicada");
@@ -426,7 +464,7 @@ export class WebAdminService {
   // ── Política comercial ─────────────────────────────────────────────────────
 
   /** Revisión comercial de todos los productos (borradores): bloqueos de publicación, avisos y reglas pendientes. */
-  async commercialReview(): Promise<{ policyEnabled: boolean; products: Array<CommercialCheck & { name: string; family: string | null; publication: string; pendingChanges: boolean }> }> {
+  async commercialReview(): Promise<{ policyEnabled: boolean; products: Array<CommercialCheck & { name: string; family: string | null; publication: string; pendingChanges: boolean }>; rules: ReturnType<typeof rulesStatus> }> {
     const entries = (await this.d.store.listEntries({ kind: "product" })).filter((e) => e.publication !== "unpublished");
     const all = checkEntries(entries);
     const policyEnabled = !!this.d.commercialPolicy;
@@ -442,7 +480,7 @@ export class WebAdminService {
       if (!policyEnabled && approved.length) check.warnings.push(`Reglas aprobadas sin efecto todavía (política comercial desactivada en este entorno): ${approved.join(", ")}`);
       return { ...check, name: c.draft.name, family: c.family, publication: e.publication, pendingChanges: hasPendingChanges(e) };
     });
-    return { policyEnabled, products };
+    return { policyEnabled, products, rules: rulesStatus(policyEnabled) };
   }
 
   /**

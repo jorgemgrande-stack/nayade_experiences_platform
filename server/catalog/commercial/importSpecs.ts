@@ -18,21 +18,31 @@
 import { productDraft, type ProductDraft } from "../../web/schemas";
 import type { WebAdminService } from "../../web/service";
 import type { WebStore } from "../../web/store";
-import { PLAN_RULE_RE, PROPOSAL_RE } from "./checks";
+import { textProblems } from "./checks";
 import { PROPOSED_POLICY, type CommercialPolicy } from "./policy";
 import { PRODUCT_SPECS, type ProductSpec } from "./specs";
 
 export const IMPORT_AUTHOR = "catalogo:especificaciones-comerciales";
 const RETAINED = "Texto retenido hasta aprobar y activar la regla: ";
 
-/** ¿Este texto puede ir a la ficha pública? (si no, se retiene como decisión pendiente) */
-const publishable = (t: string) => !PROPOSAL_RE.test(t) && !PLAN_RULE_RE.test(t);
 const clip = (t: string, n: number) => (t.length <= n ? t : `${t.slice(0, n - 1)}…`);
+
+/** Herencia de los planes de Elephant Core (para las inclusiones heredadas). */
+const PARENT: Record<string, string | null> = { essential: null, business: "essential", enterprise: "business" };
 
 export function draftWithSpec(draft: ProductDraft, family: string, spec: ProductSpec, policy: CommercialPolicy = PROPOSED_POLICY): ProductDraft {
   const retained: string[] = [];
-  const keep = (t: string) => (publishable(t) ? true : (retained.push(t), false));
+  // ¿Puede ir a la ficha pública? Si no, se retiene como decisión pendiente (mismas reglas que al publicar). En un plan,
+  // nombrar una extensión cuya inclusión no se aplica todavía (propia o heredada) la presentaría como incluida.
+  const chain: string[] = [spec.key];
+  for (let p = draft.catalog.inherits; p && !chain.includes(p); p = PARENT[p] ?? null) chain.push(p);
+  const planInclusions = family === "core_plan" ? policy.inclusions.filter((i) => chain.includes(i.plan)).map((i) => i.key) : [];
+  const approvedQuotas = family === "core_plan" ? draft.catalog.quotas : [];
+  const ok = (t: string, inclusions = planInclusions) => textProblems(t, { approvedQuotas, planInclusions: inclusions }).length === 0;
+  const keep = (t: string) => (ok(t) ? true : (retained.push(t), false));
   const list = (xs: string[]) => xs.filter(keep);
+  // Las exclusiones pueden nombrar extensiones del plan para decir que no están incluidas
+  const keepExcluded = (t: string) => (ok(t, []) ? true : (retained.push(t), false));
   // La descripción completa se filtra frase a frase
   const longDescription = spec.longDescription
     .split(/(?<=\.)\s+/)
@@ -53,7 +63,7 @@ export function draftWithSpec(draft: ProductDraft, family: string, spec: Product
     longDescription,
     problem: keep(spec.problem) ? spec.problem : "",
     benefits: list(spec.publicContent.benefits),
-    excludes: list(spec.excludes),
+    excludes: spec.excludes.filter(keepExcluded),
     compatibleExtensions: spec.compatibleExtensions,
     capacityRules: list(spec.capacityRules),
     integrations: list(spec.integrations),

@@ -45,6 +45,18 @@ async function seeded(opts: { commercialPolicy?: boolean } = {}) {
   return { store, svc };
 }
 
+/**
+ * SEO neutro en planes cuya ficha nombra extensiones con la inclusión aún no aplicada (esa ficha no se publica tal
+ * cual; estas pruebas comprueban la proyección de las reglas, no el texto).
+ */
+async function neutralSeo(svc: WebAdminService, store: MemoryWebStore, keys: string[]) {
+  for (const k of keys) {
+    const e = (await store.getEntry("product", k))!;
+    const d = productDraft.parse(e.draft);
+    await svc.save("product", k, { draft: { ...d, commercial: { ...d.commercial!, seo: { ...d.commercial!.seo!, description: `${d.name}, plan de Big Elephant.` } } }, expectedVersion: e.draftVersion }, "operator:test");
+  }
+}
+
 /** Barrido de configuraciones: cada producto suelto en cada plan y periodicidad, paquetes con componentes, contratado, cupos. */
 function sweep(): QuoteRequest[] {
   const plans = ["essential", "business", "enterprise"];
@@ -207,6 +219,7 @@ describe("publicación: lo propuesto nunca sale; lo aprobado solo con la políti
   it("política desactivada (por defecto): publicar los planes no publica ninguna regla ni nada interno", async () => {
     const { store, svc } = await seeded();
     await importCommercialSpecs(svc, store, { dryRun: false });
+    await neutralSeo(svc, store, ["business", "enterprise"]);
     for (const k of ["essential", "business", "enterprise"]) await svc.publish("product", k, (await store.getEntry("product", k))!.draftVersion, "operator:test");
     const site = await svc.publicSite("published");
     const raw = JSON.stringify(site);
@@ -228,6 +241,7 @@ describe("publicación: lo propuesto nunca sale; lo aprobado solo con la políti
   it("política activa: solo inclusiones aprobadas con tope aprobado; nunca cupos ni reglas propuestas", async () => {
     const { store, svc } = await seeded({ commercialPolicy: true });
     await importCommercialSpecs(svc, store, { dryRun: false });
+    await neutralSeo(svc, store, ["business", "enterprise"]);
     for (const k of ["essential", "business", "enterprise"]) await svc.publish("product", k, (await store.getEntry("product", k))!.draftVersion, "operator:test");
     const site = await svc.publicSite("published");
     const cat = (k: string) => (site.catalog.products.find((p) => p.key === k) as { catalog: Record<string, unknown> }).catalog;
@@ -245,6 +259,7 @@ describe("publicación: lo propuesto nunca sale; lo aprobado solo con la políti
   it("no se despublica una extensión que un plan publicado incluye", async () => {
     const { store, svc } = await seeded({ commercialPolicy: true });
     await importCommercialSpecs(svc, store, { dryRun: false, keys: ["business"] });
+    await neutralSeo(svc, store, ["business"]);
     await svc.publish("product", "business", (await store.getEntry("product", "business"))!.draftVersion, "operator:test");
     await expect(svc.unpublish("product", "connect-automations", "operator:test")).rejects.toThrow(/business/);
   });
@@ -295,10 +310,12 @@ describe("validaciones comerciales", () => {
     expect(r.policyEnabled).toBe(false);
     expect(r.products).toHaveLength(PRODUCTS.length);
     const biz = r.products.find((p) => p.key === "business")!;
-    expect(biz.blocking).toEqual([]);
+    // El SEO de Business nombra extensiones cuya inclusión aún no se aplica: no se publica tal cual
+    expect(biz.blocking.join(" ")).toMatch(/connect-automations/);
     expect(biz.pending).toEqual(expect.arrayContaining(["Tope propuesto de connect-people: 15 empleados más los usuarios adicionales"]));
     expect(biz.warnings.some((w) => /sin efecto todavía/.test(w))).toBe(true);
-    expect(r.products.filter((p) => p.blocking.length)).toEqual([]);
+    // Solo los dos planes con inclusiones y Copilot (límite de IA sin decidir) quedan bloqueados
+    expect(r.products.filter((p) => p.blocking.length).map((p) => p.key).sort()).toEqual(["business", "connect-copilot", "enterprise"]);
   });
 });
 

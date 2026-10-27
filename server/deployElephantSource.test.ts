@@ -57,7 +57,13 @@ describe("órdenes de operación permitidas", () => {
       "node .mig/run.cjs registry status; rm -rf /",
     ])
       expect(isAllowedDrill(bad), bad).toBe(false);
-    expect(DRILL_ALLOWED.length).toBe(12);
+    expect(DRILL_ALLOWED.length).toBe(14);
+    expect(isAllowedDrill("node dist-cp/backup-job.js catalog-commercial-publish")).toBe(true);
+    expect(isAllowedDrill("node dist-cp/backup-job.js catalog-commercial-publish --apply")).toBe(true);
+    expect(isAllowedDrill("node dist-cp/backup-job.js catalog-commercial-revert --apply")).toBe(true);
+    expect(isAllowedDrill("node dist-cp/backup-job.js catalog-commercial-publish --apply --force")).toBe(false);
+    expect(isAllowedDrill("node dist-cp/backup-job.js commercial-integrity")).toBe(true);
+    expect(isAllowedDrill("node dist-cp/backup-job.js commercial-integrity --apply")).toBe(false);
     expect(isAllowedDrill("node dist-cp/backup-job.js catalog-review")).toBe(true);
     expect(isAllowedDrill("node dist-cp/backup-job.js catalog-review --apply")).toBe(true);
     expect(isAllowedDrill("node dist-cp/backup-job.js catalog-review --apply --force")).toBe(false);
