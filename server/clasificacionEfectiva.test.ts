@@ -21,7 +21,7 @@ describe("líneas sin comentarios", () => {
   });
   it("descarta documentación, pruebas, e2e y ejemplos de variables", () => {
     const diff = [diffOf("docs/x.md", "+ CP_STRIPE_MODE"), diffOf("src/a.test.ts", "+ env.CHECKOUT_ENABLED"), diffOf("e2e/b.ts", "+ process.env.STRIPE_KEY"), diffOf("env.example", "+VITE_CHECKOUT_ENABLED=1"), diffOf("src/c.ts", "+ const ok = 1;")].join("\n");
-    expect(effectiveChangedLines(diff)).toEqual([{ file: "src/c.ts", code: " const ok = 1;" }]);
+    expect(effectiveChangedLines(diff)).toEqual([{ file: "src/c.ts", code: " const ok = 1;", sign: "+" }]);
   });
 });
 
@@ -109,7 +109,10 @@ describe("cobros, autorización, seguridad y borrados: protegidos aunque no toqu
     expect(x(["server/a.ts"], diffOf("server/a.ts", "+  await databases.dropDatabase(tenantId);"))).not.toEqual([]);
     expect(x(["server/a.ts"], diffOf("server/a.ts", "+  fs.rmSync(dir, { recursive: true, force: true });"))).not.toEqual([]);
     expect(x(["server/stripe/gateway.ts"], diffOf("server/stripe/gateway.ts", "-  assertModeObject(c, mode);"))).not.toEqual([]);
-    expect(x(["server/stripe/gateway.ts"], diffOf("server/stripe/gateway.ts", "+  const e = stripe.webhooks.constructEvent(raw, sig, secret, 600);"))).not.toEqual([]);
+    // Cambiar la verificación de firma (p. ej. la tolerancia) debilita; una comprobación nueva no
+    expect(x(["server/stripe/gateway.ts"], diffOf("server/stripe/gateway.ts", "-  const e = stripe.webhooks.constructEvent(raw, sig, secret, 300);", "+  const e = stripe.webhooks.constructEvent(raw, sig, secret, 600);"))).not.toEqual([]);
+    expect(x(["server/stripe/gateway.ts"], diffOf("server/stripe/gateway.ts", "+    assertModeObject(created, mode);"))).toEqual([]);
+    expect(x(["server/a.ts"], diffOf("server/a.ts", "+  const k = \"sk_live_abc\";"))).not.toEqual([]);
     // En un comentario, no
     expect(x(["server/a.ts"], diffOf("server/a.ts", "+  // nunca DELETE FROM: se archiva"))).toEqual([]);
   });
@@ -134,5 +137,26 @@ describe("vuelta atrás emparejada de Core y CRM", () => {
     const src = fs.readFileSync("scripts/deploy/esRailway.ts", "utf8");
     expect(src).toContain('if (cmd === "rollback-recorded")');
     expect(src).toContain("if (!(ORDINARY_SERVICES as readonly string[]).includes(d.name))");
+  });
+});
+
+describe("debilitamiento frente a salvaguardas nuevas (clientes externos, #380)", () => {
+  const none = () => null;
+  it("un interruptor NUEVO (no existía en lo publicado) es ordinario; uno existente o modificado, extraordinario", () => {
+    const nuevo = diffOf("server/external/service.ts", '+    if (this.d.mode === "live" && !this.d.liveEnabled) throw new Error("CP_EXTERNAL_LIVE_ENABLED");', '+  liveEnabled: process.env.CP_EXTERNAL_LIVE_ENABLED === "1",');
+    expect(extraordinaryChanges(["server/external/service.ts"], nuevo, none, { existsInBase: () => false })).toEqual([]);
+    // Si ya existía en lo publicado, añadir una lectura puede encender algo con él
+    expect(extraordinaryChanges(["server/x.ts"], nuevo, none, { existsInBase: () => true })).not.toEqual([]);
+    // Sin saber qué hay publicado, lo prudente: extraordinario
+    expect(extraordinaryChanges(["server/x.ts"], nuevo, none)).not.toEqual([]);
+    // Cambiar la lectura de un interruptor existente (aunque sea nuevo en la petición) siempre es extraordinario
+    const cambio = diffOf("server/x.ts", '-  const on = process.env.CP_EXTERNAL_LIVE_ENABLED === "1";', '+  const on = process.env.CP_EXTERNAL_LIVE_ENABLED !== "0";');
+    expect(extraordinaryChanges(["server/x.ts"], cambio, none, { existsInBase: () => false })).not.toEqual([]);
+  });
+  it("separación live/pruebas: filas nuevas con livemode son ordinarias; cambiar el filtro existente, no", () => {
+    expect(extraordinaryChanges(["server/external/store.ts"], diffOf("server/external/store.ts", '+    const [rows] = await this.pool.query("SELECT * FROM external_subscriptions WHERE id = ? AND livemode = ?", [id, this.lm]);'), none)).toEqual([]);
+    expect(extraordinaryChanges(["server/stripe/store.ts"], diffOf("server/stripe/store.ts", '-    "SELECT * FROM stripe_prices WHERE livemode = ?"', '+    "SELECT * FROM stripe_prices WHERE livemode IN (0, 1)"'), none)).not.toEqual([]);
+    // Mover una línea sin cambiarla no debilita nada
+    expect(extraordinaryChanges(["server/stripe/store.ts"], diffOf("server/stripe/store.ts", "-    assertModeObject(c, mode);", "+    assertModeObject(c, mode);"), none)).toEqual([]);
   });
 });
