@@ -33,6 +33,9 @@ export const STRIPE_FAILURE_RULES: Record<string, FailureRule> = {
   // Facturación por líneas y conciliación de partidas (nunca se corrige solo: lo revisa el equipo)
   "stripe.items_drift": once("Stripe: las partidas de una suscripción no coinciden con lo contratado para el próximo periodo"),
   "stripe.refund_unallocated": once("Stripe: un reembolso supera lo cobrado en las líneas de su factura (revisar)", "warning"),
+  // Partidas mensuales de un plan anual (primer mes cobrado en el Checkout; recurrentes al activarse)
+  "stripe.deferred_items_pending": once("Stripe: no se pudieron añadir las partidas mensuales de un plan anual (la conciliación lo reintenta; hasta entonces no se renuevan)", "warning"),
+  "stripe.deferred_items_blocked": once("Stripe: las partidas mensuales de un plan anual no se añadieron y requieren revisión (no se renovarán solas)"),
   // Compras y reducciones desde la plataforma
   "purchases.reduction_stuck": once("Compra de módulos: una reducción no quedó activa (revisar el pedido)"),
   "purchases.reduction_stripe_pending": once("Compra de módulos: Stripe no aplicó una reducción ya programada (la conciliación la reenvía; revisar)"),

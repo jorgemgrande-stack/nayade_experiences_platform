@@ -366,6 +366,7 @@ export class CommercialOrchestrator {
       currency: q.currency,
       contractAmountCents: o.request.interval === "month" ? t.monthlyCents : t.annualizedCents,
       firstPeriodCents: o.request.interval === "month" ? t.monthlyCents + t.monthlyTaxCents : t.yearlyCents + t.yearlyTaxCents + t.monthlyCents + t.monthlyTaxCents,
+      firstPeriodNetCents: o.request.interval === "month" ? t.monthlyCents : t.yearlyCents + t.monthlyCents,
       capabilities: q.capabilities,
       blocking: q.blocking,
       onRequest: q.lines.filter((l) => l.commercialStatus === "on_request").map((l) => l.name),

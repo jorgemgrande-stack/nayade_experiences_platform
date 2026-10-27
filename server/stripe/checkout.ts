@@ -7,7 +7,7 @@
  *    `stripe_tax_exclusive`, la sesión activa Stripe Tax (`automatic_tax`) sobre precios sin IVA, con
  *    recogida de NIF y dirección de facturación obligatoria, y un aviso legal con el emisor.
  *
- *  - Un pedido en `contracted` (alta nueva o conversión de prueba) de Essential o Business, sin
+ *  - Un pedido en `contracted` (alta nueva o conversión de prueba) de Essential o Business, con sus módulos y
  *    complementos, abre una Checkout Session en modo suscripción. El Price sale del catálogo aprobado
  *    y enlazado (`stripe_prices`); NUNCA del navegador.
  *  - Un Customer de Stripe por empresa (`stripe_customers`), resuelto en el servidor.
@@ -30,7 +30,9 @@ import type { CatalogPort } from "../subscriptions/ports";
 import { SELF_SERVICE_PLANS, desiredCatalog, type SelfServicePlan } from "./catalog";
 import type { StripeMode, StripeTaxPolicy } from "./config";
 import { issuerLine } from "./issuer";
-import { StripeGatewayError, type StripeGateway } from "./gateway";
+import { StripeGatewayError, type CheckoutLineItem, type StripeGateway } from "./gateway";
+import { CheckoutLinesError, planCheckoutLines, type CheckoutLinePlan } from "./checkoutLines";
+import type { QuoteRequest, QuoteResult } from "../catalog/quote";
 import { StripeStoreError, type StripeStore } from "./store";
 import type { BuyerProfile, FiscalScenario, TaxTreatment } from "./buyerProfile";
 import { checkEligibility, type EligibilityConfig } from "./eligibility";
@@ -118,6 +120,16 @@ export interface CheckoutDeps {
   eligibility?: Partial<Pick<EligibilityConfig, "countries" | "consumerRates" | "consent">>;
   /** Verificación de NIF-IVA en VIES (inversión del sujeto pasivo). Sin ella, la inversión no se cobra en live. */
   vat?: Pick<VatVerifier, "verify">;
+  /**
+   * Cotizador del servidor (catálogo publicado). Con él se cobran el plan, los módulos y las ampliaciones del pedido
+   * (`checkoutLines.ts`); sin él, solo un plan sin complementos.
+   */
+  quote?: (r: QuoteRequest) => Promise<QuoteResult>;
+  /**
+   * ¿Se añaden tras la activación las partidas mensuales de un plan anual (`deferredItems.ts`)? Sin ello, esa
+   * combinación no se cobra por Checkout (se cobraría el primer mes sin que Stripe lo renovase).
+   */
+  deferredItems?: boolean;
 }
 
 /** Mensaje del bloqueo por elegibilidad: el primer motivo en claro y la lista completa de códigos. */
@@ -211,26 +223,20 @@ export class StripeCheckoutService {
     const plan = o.request.plan as SelfServicePlan;
     if (!SELF_SERVICE_PLANS.includes(plan)) throw new StripeCheckoutError("unsupported", "Este plan se contrata por propuesta comercial, no por Checkout");
     if (o.request.interval !== "month" && o.request.interval !== "year") throw new StripeCheckoutError("unsupported", "Periodicidad no admitida");
-    const r = o.request as typeof o.request & { users?: number; sites?: number; storageGb?: number; fiscalEntities?: number };
-    if ((o.request.items ?? []).length || r.users != null || r.sites != null || r.storageGb != null || r.fiscalEntities != null) {
-      throw new StripeCheckoutError("unsupported", "Los complementos y ampliaciones todavía no se contratan por Checkout");
-    }
-    const kind = o.request.interval === "year" ? "yearly" : "monthly";
-    const desired = (await desiredCatalog(this.d.catalog)).find((x) => x.productKey === plan && x.kind === kind);
-    if (!desired) throw new StripeCheckoutError("unavailable", "El catálogo no tiene precio para este plan");
-    const link = await this.d.store.priceForWebPrice(desired.webPriceId);
-    if (!link) throw new StripeCheckoutError("unavailable", "El catálogo de Stripe no está sincronizado para este precio");
-    // Presupuesto y Stripe nunca muestran importes distintos: el neto del presupuesto es el precio de Stripe
+    // Presupuesto y Stripe nunca muestran importes distintos: el neto del presupuesto es el de los Prices de Stripe
     if (!o.quote) throw new StripeCheckoutError("invalid_state", "El pedido no tiene presupuesto");
-    // Se compara con el Price REAL de Stripe (lo que se cobrará), no solo con el catálogo web
-    const live = (await this.d.gateway.pricesByLookupKeys([link.lookupKey])).find((p) => p.id === link.stripePriceId);
-    const quoteCur = o.quote.currency.toUpperCase();
-    if (!live || !live.active || live.unitAmount !== o.quote.contractAmountCents || live.currency.toUpperCase() !== quoteCur || desired.amountCents !== o.quote.contractAmountCents) {
-      throw new StripeCheckoutError("conflict", `El importe del presupuesto (${o.quote.contractAmountCents} ${quoteCur}, sin IVA) no coincide con el precio de Stripe (${live?.unitAmount ?? "?"} ${live?.currency ?? ""})`);
-    }
-    // Con Stripe Tax el impuesto se añade al neto: el Price tiene que ser sin IVA (tax_behavior exclusive)
-    if (policy === LIVE_TAX_TREATMENT && live.taxBehavior !== "exclusive") throw new StripeCheckoutError("conflict", "El precio de Stripe no está marcado sin IVA (tax_behavior exclusive): no se cobra con Stripe Tax");
-    const charge = { amountCents: live.unitAmount, currency: quoteCur, taxTreatment: policy };
+    const lines = this.d.quote ? await this.modularLines(o, policy) : await this.planOnlyLines(o, plan, policy);
+    const priceIds = lines.recurring.map((l) => l.stripePriceId);
+    // Solo el plan: la sesión de siempre (mismos parámetros que antes de la fase 2)
+    const lineItems: CheckoutLineItem[] | undefined =
+      lines.recurring.length === 1 && lines.recurring[0].quantity === 1 && !lines.deferred.length
+        ? undefined
+        : [
+            ...lines.recurring.map((l) => ({ priceId: l.stripePriceId, quantity: l.quantity })),
+            // Primer mes de las partidas mensuales de un plan anual, en el mismo pago (importe único aprobado)
+            ...lines.deferred.map((l) => ({ oneTime: { productId: l.stripeProductId, unitAmount: l.unitAmountCents, currency: "EUR" }, quantity: l.quantity })),
+          ];
+    const charge = { amountCents: lines.firstChargeCents, currency: o.quote.currency.toUpperCase(), taxTreatment: policy };
 
     const company = await this.d.crmStore.get("companies", o.companyId);
     if (!company) throw new StripeCheckoutError("not_found", "Empresa no encontrada");
@@ -271,7 +277,7 @@ export class StripeCheckoutService {
     const lockTaxId = !!fixedTaxId && customerCreated;
 
     const now = this.now();
-    await this.adoptOrphans(orderId, customerId, link.stripePriceId, now);
+    await this.adoptOrphans(orderId, customerId, priceIds, now);
     if (await this.d.store.hasCompletedSession(orderId)) throw new StripeCheckoutError("invalid_state", "El pago de este pedido ya se completó en Stripe; falta su confirmación (webhook)");
     const open = await this.d.store.openSession(orderId);
     if (open) {
@@ -308,7 +314,8 @@ export class StripeCheckoutService {
         s = await this.d.gateway.createCheckoutSession(
           {
             customerId,
-            priceId: link.stripePriceId,
+            priceId: priceIds[0],
+            ...(lineItems ? { lineItems } : {}),
             clientReferenceId: `es-order-${orderId}`,
             metadata,
             successUrl: `${this.d.urls.success}?session_id={CHECKOUT_SESSION_ID}`,
@@ -341,7 +348,7 @@ export class StripeCheckoutService {
       const closed = await this.closeOrphan(s.id);
       const status = closed.status === "complete" ? "complete" : "expired";
       await this.d.store
-        .insertSession({ orderId, stripeSessionId: s.id, idempotencyKey, priceIds: [link.stripePriceId], status, paymentStatus: closed.paymentStatus, expiresAt: s.expiresAt * 1000, createdAt: now, completedAt: status === "complete" ? now : null })
+        .insertSession({ orderId, stripeSessionId: s.id, idempotencyKey, priceIds, status, paymentStatus: closed.paymentStatus, expiresAt: s.expiresAt * 1000, createdAt: now, completedAt: status === "complete" ? now : null })
         .catch((e) => {
           if (!(e instanceof StripeStoreError)) throw e;
         });
@@ -350,7 +357,7 @@ export class StripeCheckoutService {
     }
     if (!session) throw new StripeCheckoutError("unavailable", "Stripe no devolvió una sesión utilizable: inténtalo de nuevo");
     try {
-      await this.d.store.insertSession({ orderId, stripeSessionId: session.id, idempotencyKey, priceIds: [link.stripePriceId], status: "open", paymentStatus: session.paymentStatus, expiresAt: session.expiresAt * 1000, createdAt: now, completedAt: null });
+      await this.d.store.insertSession({ orderId, stripeSessionId: session.id, idempotencyKey, priceIds, status: "open", paymentStatus: session.paymentStatus, expiresAt: session.expiresAt * 1000, createdAt: now, completedAt: null });
     } catch (e) {
       if (e instanceof StripeStoreError && e.code === "open_session_exists") {
         // Otra petición simultánea abrió antes la suya. Si Stripe devolvió la MISMA (misma clave), es esa
@@ -370,13 +377,13 @@ export class StripeCheckoutService {
    * B2: sesiones de ESTE pedido y entorno que existen en Stripe pero no constan aquí (caída entre crearlas y
    * guardarlas). Se cierran si siguen abiertas y se registran; una pagada queda completada.
    */
-  private async adoptOrphans(orderId: number, customerId: string, priceId: string, now: number) {
+  private async adoptOrphans(orderId: number, customerId: string, priceIds: string[], now: number) {
     for (const s of await this.d.gateway.sessionsOfCustomer(customerId)) {
       if (s.metadata.es_order_id !== String(orderId) || s.metadata.es_env !== this.ns || (await this.d.store.session(s.id))) continue;
       const closed = await this.closeOrphan(s.id);
       const status = closed.status === "complete" ? "complete" : "expired";
       await this.d.store
-        .insertSession({ orderId, stripeSessionId: s.id, idempotencyKey: `orphan:${s.id}`.slice(0, 80), priceIds: [priceId], status, paymentStatus: closed.paymentStatus, expiresAt: s.expiresAt * 1000, createdAt: now, completedAt: status === "complete" ? now : null })
+        .insertSession({ orderId, stripeSessionId: s.id, idempotencyKey: `orphan:${s.id}`.slice(0, 80), priceIds, status, paymentStatus: closed.paymentStatus, expiresAt: s.expiresAt * 1000, createdAt: now, completedAt: status === "complete" ? now : null })
         .catch((e) => {
           if (!(e instanceof StripeStoreError)) throw e;
         });
@@ -446,6 +453,41 @@ export class StripeCheckoutService {
     const link = await this.d.store.customerByCompany(companyId);
     if (!link) throw new StripeCheckoutError("not_found", "La empresa no tiene cliente en Stripe");
     return (await this.d.gateway.createPortalSession({ customerId: link.stripeCustomerId, returnUrl: this.d.urls.portalReturn })).url;
+  }
+
+  /** Plan, módulos y ampliaciones del pedido con sus Prices de Stripe (fase 2). */
+  private async modularLines(o: NonNullable<Awaited<ReturnType<CheckoutDeps["orders"]["get"]>>>, policy: StripeTaxPolicy): Promise<CheckoutLinePlan> {
+    try {
+      const lines = await planCheckoutLines({ catalog: this.d.catalog, store: this.d.store, gateway: this.d.gateway }, o, await this.d.quote!(o.request), { requireExclusive: policy === LIVE_TAX_TREATMENT });
+      if (lines.deferred.length && !this.d.deferredItems) throw new StripeCheckoutError("unsupported", `Incluye partidas mensuales con un plan anual (${lines.deferred.map((l) => l.name).join(", ")}) y este entorno no las renueva en Stripe: contrata el plan mensual o sin ellas`);
+      return lines;
+    } catch (e) {
+      if (e instanceof CheckoutLinesError) throw new StripeCheckoutError(e.code, e.message);
+      throw e;
+    }
+  }
+
+  /** Sin cotizador: solo el plan, sin complementos (comportamiento anterior a la fase 2). */
+  private async planOnlyLines(o: NonNullable<Awaited<ReturnType<CheckoutDeps["orders"]["get"]>>>, plan: SelfServicePlan, policy: StripeTaxPolicy): Promise<CheckoutLinePlan> {
+    const r = o.request as typeof o.request & { users?: number; sites?: number; storageGb?: number; fiscalEntities?: number };
+    if ((o.request.items ?? []).length || r.users != null || r.sites != null || r.storageGb != null || r.fiscalEntities != null) {
+      throw new StripeCheckoutError("unsupported", "Los complementos y ampliaciones todavía no se contratan por Checkout");
+    }
+    const kind = o.request.interval === "year" ? "yearly" : "monthly";
+    const desired = (await desiredCatalog(this.d.catalog)).find((x) => x.productKey === plan && x.kind === kind);
+    if (!desired) throw new StripeCheckoutError("unavailable", "El catálogo no tiene precio para este plan");
+    const link = await this.d.store.priceForWebPrice(desired.webPriceId);
+    if (!link) throw new StripeCheckoutError("unavailable", "El catálogo de Stripe no está sincronizado para este precio");
+    // Se compara con el Price REAL de Stripe (lo que se cobrará), no solo con el catálogo web
+    const live = (await this.d.gateway.pricesByLookupKeys([link.lookupKey])).find((p) => p.id === link.stripePriceId);
+    const quoteCur = o.quote!.currency.toUpperCase();
+    if (!live || !live.active || live.unitAmount !== o.quote!.contractAmountCents || live.currency.toUpperCase() !== quoteCur || desired.amountCents !== o.quote!.contractAmountCents) {
+      throw new StripeCheckoutError("conflict", `El importe del presupuesto (${o.quote!.contractAmountCents} ${quoteCur}, sin IVA) no coincide con el precio de Stripe (${live?.unitAmount ?? "?"} ${live?.currency ?? ""})`);
+    }
+    // Con Stripe Tax el impuesto se añade al neto: el Price tiene que ser sin IVA (tax_behavior exclusive)
+    if (policy === LIVE_TAX_TREATMENT && live.taxBehavior !== "exclusive") throw new StripeCheckoutError("conflict", "El precio de Stripe no está marcado sin IVA (tax_behavior exclusive): no se cobra con Stripe Tax");
+    const line = { productKey: plan, name: desired.productName, interval: o.request.interval, quantity: 1, unitAmountCents: live.unitAmount, stripePriceId: link.stripePriceId, stripeProductId: link.stripeProductId };
+    return { recurring: [line], deferred: [], firstChargeCents: live.unitAmount, monthlyCents: kind === "monthly" ? live.unitAmount : 0, yearlyCents: kind === "yearly" ? live.unitAmount : 0 };
   }
 
   private eligibilityConfig(): EligibilityConfig {

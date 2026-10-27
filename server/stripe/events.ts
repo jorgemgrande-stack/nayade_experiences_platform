@@ -119,6 +119,11 @@ export interface ProcessorDeps {
    * ella se avisa de descuadres entre Stripe y lo contratado (nunca se corrigen solos).
    */
   contractedItems?: (order: CommercialOrder) => Promise<Map<string, number> | null>;
+  /**
+   * Partidas mensuales de un plan anual cobradas como primer mes en el Checkout del alta: se añaden a la suscripción
+   * al activarse el pedido (`DeferredItemsService.attach`). Sin ella no se añaden.
+   */
+  deferredItems?: (order: CommercialOrder, sub: GwSubscription) => Promise<string>;
 }
 
 /** Estado de un cargo que deja sin cobertura el periodo que pagó. */
@@ -458,10 +463,13 @@ export class StripeEventProcessor {
       const r = await this.d.orchestrator.advance(orderId, this.actor);
       // Un paso del alta falló (p. ej. aprovisionamiento): se reintenta el evento; nunca se da por hecho
       if (r.error) throw new Error(`Alta pendiente: ${r.error}`);
+      if (LIVE_OR_SCHEDULED.includes(r.order.state)) await this.attachDeferred(r.order, sub);
       return { outcome: "processed", detail: `Pedido ${r.order.state}` };
     }
     if (!LIVE_OR_SCHEDULED.includes(order.state)) return { outcome: "processed", detail: `Pedido en ${order.state}: sin cambios` };
-    await this.checkItems(order, sub);
+    // Recién añadidas o pendientes de añadir, la copia leída aún no las tiene: no es un descuadre
+    const deferred = await this.attachDeferred(order, sub);
+    if (deferred !== "attached" && deferred !== "pending") await this.checkItems(order, sub);
     if (payment?.created && payment.purpose === "renewal") await this.d.orchestrator.renew(orderId, this.actor).catch((e) => opsLog("warn", "StripeEvents", "renew_skipped", { orderId, error: e instanceof Error ? e.name : "error" }));
     // Aviso de la renovación (o del cambio) cobrada y de su factura: solo la primera vez que se registra el pago
     if (payment?.created && payment.purpose !== "initial" && this.d.orchestrator.paymentRecorded)
@@ -482,8 +490,9 @@ export class StripeEventProcessor {
     const purpose = inv.billingReason === "subscription_cycle" ? ("renewal" as const) : inv.billingReason === "subscription_update" ? ("change" as const) : ("initial" as const);
     // El primer periodo facturado es exactamente el neto del presupuesto (subtotal: antes de impuestos y del
     // saldo a favor que el cliente pudiera tener en Stripe). Vale para pruebas (sin IVA) y para live con
-    // Stripe Tax sobre precios sin IVA (el impuesto se suma después del subtotal)
-    if (purpose === "initial" && order.quote && (inv.subtotal ?? inv.amountPaid) !== order.quote.contractAmountCents) throw new StripeMismatchError("El importe facturado no es el del presupuesto (sin IVA)");
+    // Stripe Tax sobre precios sin IVA (el impuesto se suma después del subtotal). Con un plan anual y partidas
+    // mensuales, el primer periodo es lo anual + el primer mes de lo mensual (no el coste anualizado)
+    if (purpose === "initial" && order.quote && (inv.subtotal ?? inv.amountPaid) !== (order.quote.firstPeriodNetCents ?? order.quote.contractAmountCents)) throw new StripeMismatchError("El importe facturado no es el del presupuesto (sin IVA)");
     const r = await this.d.orders.insertPayment({
       orderId: order.id,
       idempotencyKey: `stripe:inv:${inv.id}`,
@@ -583,6 +592,16 @@ export class StripeEventProcessor {
       opsLog("warn", "StripeEvents", "refund_unallocated", { orderId, invoiceId, unallocated });
       recordFailure("stripe.refund_unallocated");
     }
+  }
+
+  /** Partidas mensuales pendientes del alta (plan anual). Un fallo no detiene el evento: la conciliación lo reintenta. */
+  private async attachDeferred(order: CommercialOrder, sub: GwSubscription): Promise<string> {
+    if (!this.d.deferredItems || sub.pendingUpdate) return "none";
+    return this.d.deferredItems(order, sub).catch((e) => {
+      opsLog("warn", "StripeEvents", "deferred_items_failed", { orderId: order.id, error: e instanceof Error ? e.name : "error" });
+      recordFailure("stripe.deferred_items_pending");
+      return "pending";
+    });
   }
 
   /** Avisa si las partidas de Stripe no son las contratadas para el próximo periodo (no corrige nada). */

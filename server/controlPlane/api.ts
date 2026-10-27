@@ -94,6 +94,7 @@ import { StripeEventProcessor } from "../stripe/events";
 import type { SubscriptionChangeStore } from "../stripe/changes";
 import type { InvoiceLineStore } from "../stripe/invoiceLines";
 import { ModulePurchaseService } from "../stripe/purchases";
+import { DeferredItemsService } from "../stripe/deferredItems";
 import { createBillingPortalRouter, createPurchasesRouter } from "../stripe/purchasesApi";
 import { createPanelCatalogRouter } from "../commerce/panelCatalog";
 import { createPanelUsageRouter } from "../commerce/panelUsage";
@@ -1640,9 +1641,14 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         const stripeCatalog = catalogFromWebStore(d.web.store);
         // VIES con registro (CRM 0021) y reutilización de comprobaciones recientes
         const vat = st.vies ? new VatVerifier({ vies: st.vies.client, store: st.store, now: d.subscriptions.now, maxAgeDays: st.vies.maxAgeDays }) : undefined;
+        // Cotizador del servidor (catálogo publicado): plan, módulos y ampliaciones del Checkout y de las compras
+        const siteAdmin = webAdmin;
+        const serverQuote = siteAdmin ? async (r: QuoteRequest) => quote(quoteCatalogFromSite(await siteAdmin.site("published")), r) : undefined;
+        // Partidas mensuales de un plan anual: primer mes en el Checkout y recurrentes al activarse (mismo almacén de cambios)
+        const deferredItems = serverQuote && st.purchases?.changes ? new DeferredItemsService({ namespace: st.config.namespace, catalog: stripeCatalog, store: st.store, gateway: st.gateway, changes: st.purchases.changes, quote: serverQuote, now: d.subscriptions.now }) : null;
         // En live sin política fiscal, Checkout no se monta aunque se pida (y el servicio también lo rechazaría)
         const checkout = st.checkoutEnabled && st.urls && !checkoutBlockedReason(st.config)
-          ? new StripeCheckoutService({ store: st.store, gateway: st.gateway, orders: d.orders.store, crmStore: d.crm.store, catalog: stripeCatalog, urls: st.urls, now: d.subscriptions.now, namespace: st.config.namespace, mode: st.config.mode, taxPolicy: st.config.taxPolicy, fiscalScenarios: st.fiscal?.scenarios, taxExpectations: st.fiscal?.taxExpectations, vat, eligibility: { countries: st.fiscal?.countries, consumerRates: st.fiscal?.consumerRates, consent: st.fiscal?.consent } })
+          ? new StripeCheckoutService({ store: st.store, gateway: st.gateway, orders: d.orders.store, crmStore: d.crm.store, catalog: stripeCatalog, urls: st.urls, now: d.subscriptions.now, namespace: st.config.namespace, mode: st.config.mode, taxPolicy: st.config.taxPolicy, fiscalScenarios: st.fiscal?.scenarios, taxExpectations: st.fiscal?.taxExpectations, vat, eligibility: { countries: st.fiscal?.countries, consumerRates: st.fiscal?.consumerRates, consent: st.fiscal?.consent }, quote: serverQuote, deferredItems: !!deferredItems })
           : null;
         // Partidas contratadas para el PRÓXIMO periodo (las que Stripe debe cobrar en la renovación): conciliación
         const subItems = d.subscriptions.store;
@@ -1656,7 +1662,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
               out.set(i.productKey, (out.get(i.productKey) ?? 0) + i.quantity);
           return out;
         };
-        const processor = new StripeEventProcessor({ store: st.store, gateway: st.gateway, orders: d.orders.store, orchestrator, now: d.subscriptions.now, namespace: st.config.namespace, mode: st.config.mode, taxExpectations: st.fiscal?.taxExpectations, vat, catalog: stripeCatalog, changes: st.purchases?.changes, invoiceLines: st.invoiceLines, contractedItems });
+        const processor = new StripeEventProcessor({ store: st.store, gateway: st.gateway, orders: d.orders.store, orchestrator, now: d.subscriptions.now, namespace: st.config.namespace, mode: st.config.mode, taxExpectations: st.fiscal?.taxExpectations, vat, catalog: stripeCatalog, changes: st.purchases?.changes, invoiceLines: st.invoiceLines, contractedItems, deferredItems: deferredItems ? (o, s) => deferredItems.attach(o, s) : undefined });
         const reconciler = new StripeReconciler({ store: st.store, gateway: st.gateway, processor, now: d.subscriptions.now, retentionDays: st.config.eventsRetentionDays, mode: st.config.mode });
         const rechecks = new Map<string, number>();
         const stripeNow = d.subscriptions.now;
