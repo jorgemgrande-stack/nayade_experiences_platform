@@ -52,8 +52,9 @@ export async function liveOrdersProblem(pool: Q, namespace: string): Promise<str
     [TERMINAL],
   );
   if (testPaid.length) return "test_payments_in_live";
-  // Sin la tabla de Stripe (0012 sin aplicar) no hay prefijo guardado que comparar
-  const saved = await rows(pool, "SELECT value_json AS v FROM stripe_sync_state WHERE name = 'namespace'").catch(() => [] as Row[]);
+  // Sin la tabla de Stripe (0012 sin aplicar) no hay prefijo guardado que comparar. El prefijo se fija POR MODO
+  // (main.ts): el de live va en «namespace:live»; el de pruebas («namespace») no ata al de live
+  const saved = await rows(pool, "SELECT value_json AS v FROM stripe_sync_state WHERE name = 'namespace:live'").catch(() => [] as Row[]);
   if (saved[0]) {
     const v = typeof saved[0].v === "string" ? JSON.parse(saved[0].v) : saved[0].v;
     if ((v as { namespace?: unknown })?.namespace !== namespace) return "namespace_mismatch";
