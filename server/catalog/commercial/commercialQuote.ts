@@ -25,6 +25,11 @@ export interface CommercialQuoteRequest extends QuoteRequest {
 export type CommercialLineStatus = QuoteLine["status"] | "included_in_plan" | "partially_included" | "bundle_adjusted" | "on_quote" | "included_in_net" | "core_upgrade" | "net_additional";
 export interface CommercialLine extends Omit<QuoteLine, "status"> {
   status: CommercialLineStatus;
+  /**
+   * Crédito de Elephant Core incluido en un Elephant Net (por unidad): el cobro usa la tarifa completa del producto
+   * menos este crédito, que es la tarifa aprobada de `plan` en `interval`. `unitCents` ya es el neto.
+   */
+  credit?: { kind: "core_included" | "core_upgrade" | "net_additional"; cents: number; plan: string; interval: "month" | "year" };
 }
 
 export interface CommercialQuote {
@@ -164,7 +169,7 @@ function composeNetCore(baseLines: QuoteLine[], byKey: Map<string, QuoteCatalogP
     if (PLAN_RANK.indexOf(planLine.key) <= PLAN_RANK.indexOf(corePlan)) {
       coreIncludedCents += planLine.amountCents;
       // Sin cuota anual separada: el Core incluido no se factura por su cuenta en ninguna periodicidad
-      Object.assign(planLine, { unitCents: 0, amountCents: 0, interval: "month", status: "included_in_net", note: `${coreName} incluido en ${by}${planLine.interval === "year" ? "; sin cuota anual separada" : ""}` });
+      Object.assign(planLine, { credit: { kind: "core_included", cents: planLine.unitCents ?? 0, plan: corePlan, interval: planLine.interval }, unitCents: 0, amountCents: 0, interval: "month", status: "included_in_net", note: `${coreName} incluido en ${by}${planLine.interval === "year" ? "; sin cuota anual separada" : ""}` });
       annualPlanCents = 0;
     } else {
       const rule = rules[providedBy].upgrade;
@@ -173,7 +178,7 @@ function composeNetCore(baseLines: QuoteLine[], byKey: Map<string, QuoteCatalogP
         if (rule.status === "proposed") used.push(`ampliación de Core en ${providedBy}`);
         const diff = Math.max(0, planLine.amountCents - included);
         coreIncludedCents += planLine.amountCents - diff;
-        Object.assign(planLine, { unitCents: diff, amountCents: diff, status: "core_upgrade", note: `Ampliación de Elephant Core a ${planLine.name}: solo la diferencia con ${core?.name ?? corePlan}, ya incluido en ${by}` });
+        Object.assign(planLine, { credit: { kind: "core_upgrade", cents: planLine.amountCents - diff, plan: corePlan, interval: planLine.interval }, unitCents: diff, amountCents: diff, status: "core_upgrade", note: `Ampliación de Elephant Core a ${planLine.name}: solo la diferencia con ${core?.name ?? corePlan}, ya incluido en ${by}` });
         if (planLine.interval === "year") {
           const m = (priceOf(planLine.key, "monthly") ?? 0) - (priceOf(corePlan, "monthly") ?? 0);
           annualPlanCents = Math.max(0, m * 12 - diff);
@@ -199,7 +204,7 @@ function composeNetCore(baseLines: QuoteLine[], byKey: Map<string, QuoteCatalogP
       if (rule.status === "proposed") used.push(`Net adicional ${l.key}`);
       const unit = Math.max(0, (l.unitCents ?? 0) - coreMonthly);
       coreIncludedCents += ((l.unitCents ?? 0) - unit) * extraUnits;
-      out.push({ ...l, quantity: extraUnits, unitCents: unit, amountCents: unit * extraUnits, status: "net_additional", note: `${coreName} ya incluido en ${by}: no se vuelve a cobrar` });
+      out.push({ ...l, quantity: extraUnits, unitCents: unit, amountCents: unit * extraUnits, status: "net_additional", credit: { kind: "net_additional", cents: (l.unitCents ?? 0) - unit, plan: corePlan, interval: "month" }, note: `${coreName} ya incluido en ${by}: no se vuelve a cobrar` });
     } else out.push({ ...l, quantity: extraUnits, unitCents: null, amountCents: 0, status: "on_quote", note: `Solución Elephant Net adicional (Core ya incluido en ${by}): por presupuesto, sin regla aprobada` });
   }
   return { lines: out, coreIncludedCents, annualPlanCents, used, nets, corePlan, providedBy, errors };
