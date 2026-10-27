@@ -9,7 +9,7 @@ Estado a 27/10/2026: la política Elephant Net + Core está implementada y despl
 | Área | Responsable | Notas |
 |---|---|---|
 | Catálogo, fichas, reglas, cotizador comercial (`server/catalog/**`, `server/web/**`), web y CRM de catálogo | Ventana de Catálogo | |
-| **Validación y adaptación de cobros de Net + Core** (contrato v3 §8 P0-A … P0-J, pruebas §9, sandbox) | **Ventana de Catálogo** (asignado por Jorge el 27/10/2026) | Reutiliza el cotizador y sus pruebas; no lo reconstruye |
+| **Validación y adaptación de cobros de Net + Core** (contrato v3 §8 P0-A … P0-J, pruebas §9, sandbox), incluidos #390 y #392 | **Ventana de cobros** (una tercera ventana, distinta de la de Stripe Live; aclarado por Jorge el 27/10/2026) | La ventana de Catálogo no toca esos PR, sus ramas ni los componentes de cobro |
 | Stripe Live, servicios externos (Nextair), arranque y configuración de Stripe en production | Ventana de Stripe | Recibe aviso antes de fusionar nada en `server/stripe/**` u `server/orchestrator/**`, y da el visto bueno |
 | Encender la política | Nadie solo: requiere §5 completo y autorización de Jorge | |
 
@@ -70,3 +70,4 @@ _Para la ventana de Stripe: avisos sobre Stripe Live, Nextair y cualquier cambio
 - 27/10/2026 · Catálogo: documento creado.
 - 27/10/2026 · Jorge asigna a la ventana de Catálogo la validación y adaptación de cobros de Net + Core (la de Stripe sigue con Stripe Live y Nextair).
 - 27/10/2026 · Catálogo: #390 (P0-A, P0-D) y #392 (P0-C, precio contractual, cotejo de cambios) abiertos; en espera de fusión por petición de la ventana de Stripe.
+- 27/10/2026 · Jorge aclara: la validación de cobros, con #390 y #392, es de la ventana de cobros (la de Stripe Live solo lleva Stripe Live y Nextair). La ventana de Catálogo vuelve en exclusiva al sistema comercial (catálogo, administrador, fichas y web).
