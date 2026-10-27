@@ -332,7 +332,7 @@ export const PRODUCT_SPECS: readonly ProductSpec[] = [
     integrations: ["Las de sus submódulos"],
     verified: { grade: "partial", evidence: "Agencia, combinados y conectores en Skicenter; circuitos sin desarrollo" },
     publicContent: { headline: "Tu agencia completa: expedientes, paquetes y proveedores.", benefits: ["Descuento frente a los módulos sueltos"], cta: "demo" },
-    seo: { slug: "travel-net", title: "Software para agencias de viajes | Big Elephant Travel Net", description: "Expedientes, REAV, paquetes y conectores con proveedores para agencias de viajes." },
+    seo: { slug: "travel-net", title: "Travel Net completo para agencias de viajes | Big Elephant", description: "Expedientes, REAV, paquetes y conectores con proveedores para agencias de viajes." },
     admin: { pendingDecisions: ["Integraciones incluidas en el paquete (propuesta del catálogo: una)"] },
   }),
   // ── Restaurant Net ─────────────────────────────────────────────────────────

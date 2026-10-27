@@ -34,6 +34,10 @@ export const DRILL_ALLOWED: RegExp[] = [
   new RegExp(`^${BJ} catalog-review( --apply)?$`),
   // Fichas comerciales en borradores (simulación o --apply; nunca publica, ni precios ni licencias)
   new RegExp(`^${BJ} catalog-commercial-import( --apply)?$`),
+  // Publicación por lotes de las fichas o reversión del último lote (simulación o --apply; solo fichas ya publicadas)
+  new RegExp(`^${BJ} catalog-commercial-(publish|revert)( --apply)?$`),
+  // Foto de solo lectura de suscripciones, pedidos, pagos y licencias (recuentos y huellas)
+  new RegExp(`^${BJ} commercial-integrity$`),
 ];
 export const isAllowedDrill = (cmd: string) => DRILL_ALLOWED.some((r) => r.test(cmd.trim()));
 export const DRILL_IDLE = `${BJ} list`;
@@ -480,6 +484,11 @@ export const ORDINARY_PRODUCTION_ACTIONS = [
   "catalogo-revision-aplicar",
   "catalogo-fichas",
   "catalogo-fichas-aplicar",
+  "catalogo-fichas-publicar",
+  "catalogo-fichas-publicar-aplicar",
+  "catalogo-fichas-revertir",
+  "catalogo-fichas-revertir-aplicar",
+  "catalogo-fichas-integridad",
 ] as const;
 
 /** Estado que deja live con el commit del CRM que ha superado live (production solo publica ese). */

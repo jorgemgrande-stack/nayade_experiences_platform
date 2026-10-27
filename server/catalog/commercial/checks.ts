@@ -22,6 +22,65 @@ export const PROPOSAL_RE = /propuest[oa]s?\b|pendientes? de (aprobaci|ratificaci
  * `catalog.inclusions` (dato estructurado), no desde texto libre.
  */
 export const PLAN_RULE_RE = /incluid[oa]s? en (tu plan|business|enterprise|essential)|derechos? del plan|tope de empleados|en enterprise sin tope/i;
+/** Estados internos («pendiente») escritos en un texto público: son decisiones del equipo, no información al cliente. */
+export const PENDING_RE = /\bpendiente\b/i;
+/** Límites o usos de IA incluidos: el límite de consumo de IA aún no está decidido. */
+export const AI_LIMIT_RE = /(uso|consumo) mensual incluido|l[ií]mite (econ[oó]mico )?(mensual )?(de (consumo|IA)|propio)|por encima del l[ií]mite|l[ií]mite controlado|l[ií]mite mensual/i;
+/** Referencias internas (códigos de requisitos o de decisiones). */
+export const INTERNAL_REF_RE = /\b[A-Z]{1,3}-[A-Z]{2,5}-[A-Z]?\d{1,3}\b|\(decisi[oó]n \d+\)/;
+/** Límites numéricos escritos (usuarios, sedes, sociedades, empleados): solo valen si son cupos aprobados del plan. */
+export const NUMBER_LIMIT_RE = /(\d[\d.]*)\s+(usuarios?|sedes?|sociedad(?:es)?|entidades fiscales|empleados?)\b/gi;
+const LIMIT_METRIC: Array<[RegExp, string]> = [
+  [/^usuarios?$/i, "users"],
+  [/^sedes?$/i, "sites"],
+  [/^(sociedad(es)?|entidades fiscales)$/i, "fiscal_entities"],
+  [/^empleados?$/i, "employees"],
+];
+/**
+ * Cómo se nombra en un texto cada extensión que un plan puede incluir. Mientras su inclusión no esté activa (política
+ * apagada o regla propuesta), mencionarla en la ficha del plan la presenta como incluida y el configurador la cobra
+ * aparte. Para el resto, el nombre del producto.
+ */
+export const INCLUSION_ALIAS: Record<string, RegExp> = {
+  "connect-automations": /automatizaci/i,
+  "connect-people": /\bpersonal\b|\bpeople\b|fichaj|n[oó]minas?/i,
+  "extra-contracts-esign": /\bfirma\b/i,
+  "connect-pack-finance": /\bfinanzas\b|conciliaci/i,
+  "extra-accounting": /contabilidad/i,
+  "connect-copilot": /asistente de IA|\bcopilot\b/i,
+};
+
+/**
+ * Problemas de un texto público (los mismos al importar, que lo retiene como decisión pendiente, y al publicar, que lo
+ * bloquea). `planInclusions`: en un plan, las extensiones cuya inclusión todavía no se aplica.
+ */
+export function textProblems(t: string, opts: { policyEnabled?: boolean; planInclusions?: string[]; approvedQuotas?: Array<{ metric: string; included: number | null }> } = {}): string[] {
+  const out: string[] = [];
+  const q = `«${t.slice(0, 60)}»`;
+  if (MONEY_RE.test(t)) out.push(`importe escrito a mano (${q}): los precios salen de los precios aprobados`);
+  if (INSTANT_RE.test(t)) out.push(`promete activación inmediata (${q})`);
+  if (PROPOSAL_RE.test(t)) out.push(`publica una regla sin aprobar (${q})`);
+  if (!opts.policyEnabled && PLAN_RULE_RE.test(t)) out.push(`afirma una inclusión en un plan (${q}) y la política comercial no está activa`);
+  if (PENDING_RE.test(t)) out.push(`muestra un estado interno «pendiente» (${q})`);
+  if (AI_LIMIT_RE.test(t)) out.push(`afirma un límite o un uso de IA incluido (${q}) y el límite de IA no está decidido`);
+  if (INTERNAL_REF_RE.test(t)) out.push(`lleva una referencia interna (${q})`);
+  for (const k of opts.planInclusions ?? []) {
+    const re = INCLUSION_ALIAS[k] ?? new RegExp(k.replace(/^(connect|extra)-/, "").replace(/-/g, " "), "i");
+    if (re.test(t)) out.push(`presenta «${k}» como parte del plan (${q}) y esa inclusión aún no se aplica`);
+  }
+  for (const m of Array.from(t.matchAll(NUMBER_LIMIT_RE))) {
+    const metric = LIMIT_METRIC.find(([re]) => re.test(m[2]))?.[1];
+    const n = Number(m[1].replace(/\./g, ""));
+    if (!(opts.approvedQuotas ?? []).some((x) => x.metric === metric && x.included === n)) out.push(`límite «${m[0]}» que no es un cupo aprobado (${q})`);
+  }
+  return out;
+}
+
+/** Inclusiones de un plan que todavía no se aplican (con la política apagada, todas). */
+export function inactiveInclusions(d: ProductDraft, policyEnabled = false): string[] {
+  return (d.catalog.inclusions ?? []).filter((i) => !policyEnabled || i.status !== "approved" || (i.cap && i.cap.status !== "approved")).map((i) => i.key);
+}
+
 /** Familias que un plan puede incluir (nunca soluciones sectoriales). */
 export const INCLUDABLE = ["connect", "connect_bundle", "extra"];
 const BUNDLES = ["net_bundle", "connect_bundle"];
@@ -63,10 +122,10 @@ export function shapeProblems(family: string, d: ProductDraft): string[] {
   return out;
 }
 
-function publicTexts(d: ProductDraft): string[] {
+function publicTexts(d: ProductDraft, opts: { withExcludes?: boolean } = {}): string[] {
   const m = d.commercial;
   if (!m) return [];
-  return [m.headline, m.longDescription, m.problem, ...m.benefits, ...m.excludes, ...m.capacityRules, ...m.integrations, ...(m.seo ? [m.seo.title, m.seo.description] : [])].filter(Boolean);
+  return [m.headline, m.longDescription, m.problem, ...m.benefits, ...(opts.withExcludes === false ? [] : m.excludes), ...m.capacityRules, ...m.integrations, ...(m.seo ? [m.seo.title, m.seo.description] : [])].filter(Boolean);
 }
 
 /** Revisión completa de un producto frente al resto del catálogo (borradores). */
@@ -102,12 +161,11 @@ export function commercialChecks(entry: CheckEntry, all: readonly CheckEntry[], 
   const m = d.commercial;
   if (!m) warnings.push("sin ficha comercial (descripción completa, beneficios, SEO)");
   else {
-    for (const t of publicTexts(d)) {
-      if (MONEY_RE.test(t)) blocking.push(`la ficha lleva un importe escrito a mano («${t.slice(0, 60)}»): los precios salen de los precios aprobados`);
-      if (INSTANT_RE.test(t)) blocking.push(`la ficha promete activación inmediata («${t.slice(0, 60)}»)`);
-      if (PROPOSAL_RE.test(t)) blocking.push(`la ficha publica una regla sin aprobar («${t.slice(0, 60)}»): pásala a decisiones pendientes`);
-      if (!opts.policyEnabled && PLAN_RULE_RE.test(t)) blocking.push(`la ficha afirma una inclusión en un plan («${t.slice(0, 60)}») y la política comercial no está activa: el configurador la cobraría aparte`);
-    }
+    // Las exclusiones pueden nombrar extensiones del plan («no incluye…»); el resto de reglas también las cubre
+    const approvedQuotas = entry.family === "core_plan" ? c.quotas : [];
+    const inactive = entry.family === "core_plan" ? inactiveInclusions(d, opts.policyEnabled) : [];
+    for (const t of publicTexts(d)) for (const p of textProblems(t, { policyEnabled: opts.policyEnabled, approvedQuotas })) blocking.push(`la ficha ${p}`);
+    for (const t of publicTexts(d, { withExcludes: false })) for (const p of textProblems(t, { policyEnabled: true, planInclusions: inactive, approvedQuotas })) if (/presenta «/.test(p)) blocking.push(`la ficha ${p}`);
     for (const k of m.compatibleExtensions) {
       const p = byKey.get(k);
       if (!p) blocking.push(`la extensión compatible «${k}» no existe`);
@@ -131,7 +189,14 @@ export function commercialChecks(entry: CheckEntry, all: readonly CheckEntry[], 
     if (!notYet) blocking.push("sin desarrollo: el estado comercial debe ser «Próximamente» o «En preparación»");
   }
   if (c.implementationLevel === 3 && m?.cta === "demo" && notYet) blocking.push("desarrollo nuevo (nivel 3) que todavía no se contrata: no se ofrece demostración");
-  if (c.commercialStatus === "available" && grade && grade !== "in_use") warnings.push(`«Disponible» con estado funcional «${grade}»: revisa la evidencia`);
+  // «Disponible» es activable: lo desarrollado en otro sistema o en parte no se vende como disponible
+  if (c.commercialStatus === "available" && grade && grade !== "in_use") blocking.push(`«Disponible» con estado funcional «${grade}»: debe ser «Implantación acompañada» o «En preparación»`);
+  if (c.implementationLevel === 3 && ["available", "on_request"].includes(c.commercialStatus)) blocking.push("desarrollo nuevo (nivel 3): no se vende como disponible ni con implantación acompañada");
+  if (m?.cta === "waitlist" && ["available", "on_request"].includes(c.commercialStatus)) blocking.push("lista de espera en un producto que ya se contrata: la web lo mostraría como «Próximamente»");
+  if (m?.seo) {
+    const twin = all.find((e) => e.key !== entry.key && e.draft.commercial?.seo?.title === m.seo!.title);
+    if (twin) blocking.push(`el título SEO ya lo usa «${twin.key}»`);
+  }
   if (!d.internal.evidence && entry.family !== "addon") warnings.push("sin evidencia del estado comercial");
   if (!grade) warnings.push("sin estado funcional verificado");
 

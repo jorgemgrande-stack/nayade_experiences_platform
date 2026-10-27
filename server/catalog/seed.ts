@@ -22,6 +22,8 @@ export interface SeedReport {
   pricesApproved: string[];
   unchanged: number;
   conflicts: string[];
+  /** Borradores pendientes que no son de la semilla (fichas importadas, ediciones del CRM): no los publica. */
+  pending: string[];
 }
 
 const same = (kind: EntryKind, a: unknown, b: unknown) => JSON.stringify(DRAFT_SCHEMAS[kind].parse(a)) === JSON.stringify(DRAFT_SCHEMAS[kind].parse(b));
@@ -46,7 +48,7 @@ export function keepCommercialState(seedDraft: unknown, dbDraft: unknown): unkno
 export async function seedElephantSource(svc: WebAdminService, store: WebStore, opts: { dryRun?: boolean; author?: string } = {}): Promise<SeedReport> {
   const dryRun = !!opts.dryRun;
   const author = opts.author ?? SEED_AUTHOR;
-  const r: SeedReport = { dryRun, created: [], updated: [], published: [], pricesApproved: [], unchanged: 0, conflicts: [] };
+  const r: SeedReport = { dryRun, created: [], updated: [], published: [], pricesApproved: [], unchanged: 0, conflicts: [], pending: [] };
 
   const upsert = async (kind: EntryKind, key: string, seedDraft: unknown, sortOrder: number, family: string | null) => {
     const cur = await store.getEntry(kind, key);
@@ -70,14 +72,26 @@ export async function seedElephantSource(svc: WebAdminService, store: WebStore, 
       }
     }
     const now = dryRun ? cur : await store.getEntry(kind, key);
-    const needsPublish = !now || now.publication !== "published" || now.publishedVersion !== now.draftVersion || changed;
+    // Un borrador pendiente que no ha escrito la semilla (una ficha importada, una edición del CRM) se publica desde el
+    // CRM o con la publicación por lotes, con sus comprobaciones: la semilla nunca lo publica de rebote
+    if (now && !changed && now.publication === "published" && now.publishedVersion !== now.draftVersion) {
+      r.pending.push(`${kind}:${key}`);
+      return;
+    }
+    const needsPublish = !now || now.publication !== "published" || changed;
     if (needsPublish) {
       r.published.push(`${kind}:${key}`);
       if (!dryRun) {
         const e = (await store.getEntry(kind, key))!;
-        await svc.publish(kind, key, e.draftVersion, author);
+        try {
+          await svc.publish(kind, key, e.draftVersion, author);
+        } catch (err) {
+          // Queda en borrador con su causa (p. ej. una ficha que todavía no puede publicarse)
+          r.published.pop();
+          r.conflicts.push(`${key}: no publicado (${err instanceof Error ? err.message : String(err)})`);
+        }
       }
-    } else if (!changed) r.unchanged++;
+    } else r.unchanged++;
   };
 
   // 1. Capacidades (antes que los productos que las referencian)
