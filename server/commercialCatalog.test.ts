@@ -125,6 +125,25 @@ describe("importación de fichas comerciales", () => {
     expect(foreignChanges(biz as unknown as Record<string, unknown>, pricier).sort()).toEqual(["billingModel", "catalog.commercialStatus", "catalog.quotas"]);
   });
 
+  it("borradores guardados sin valores por defecto (como en live): se importan; esos campos solo se normalizan", async () => {
+    const { store, svc } = await seeded();
+    const e = (await store.getEntry("product", "essential"))!;
+    const raw = JSON.parse(JSON.stringify(e.draft));
+    delete raw.presentation;
+    delete raw.activation.ref;
+    for (const q of raw.catalog.quotas) delete q.unit;
+    await store.saveDraft(e.id, e.draftVersion, raw, e.sortOrder, "prueba", Date.now());
+    const dry = await importCommercialSpecs(svc, store, { keys: ["essential"] });
+    expect(dry.failed).toEqual([]);
+    expect(dry.updated).toEqual(["essential"]);
+    expect(dry.normalized.essential?.sort()).toEqual(["activation", "catalog.quotas", "presentation"]);
+    const run = await importCommercialSpecs(svc, store, { dryRun: false, keys: ["essential"] });
+    expect(run.failed).toEqual([]);
+    const saved = productDraft.parse((await store.getEntry("product", "essential"))!.draft);
+    expect(saved.catalog.quotas).toEqual(productDraft.parse(raw).catalog.quotas);
+    expect(saved.commercial?.seo).toBeTruthy();
+  });
+
   it("los textos con inclusiones en planes o reglas propuestas no van a la ficha pública: quedan como decisión pendiente", () => {
     for (const p of PRODUCTS) {
       const spec = PRODUCT_SPECS.find((s) => s.key === p.key)!;

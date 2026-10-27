@@ -116,6 +116,11 @@ export interface ImportReport {
   updated: string[];
   /** Por producto actualizado, los campos (siempre de la ficha o la política) que cambian */
   fields: Record<string, string[]>;
+  /**
+   * Campos que la base guarda sin sus valores por defecto y que el esquema completa al guardar (como cualquier guardado
+   * desde el CRM): no cambian el significado del producto. Por producto.
+   */
+  normalized: Record<string, string[]>;
   unchanged: number;
   missing: string[];
   failed: Array<{ key: string; error: string }>;
@@ -123,7 +128,7 @@ export interface ImportReport {
 
 export async function importCommercialSpecs(svc: WebAdminService, store: WebStore, opts: { dryRun?: boolean; author?: string; keys?: string[] } = {}): Promise<ImportReport> {
   const dryRun = opts.dryRun !== false;
-  const r: ImportReport = { dryRun, updated: [], fields: {}, unchanged: 0, missing: [], failed: [] };
+  const r: ImportReport = { dryRun, updated: [], fields: {}, normalized: {}, unchanged: 0, missing: [], failed: [] };
   for (const spec of PRODUCT_SPECS) {
     if (opts.keys && !opts.keys.includes(spec.key)) continue;
     const cur = await store.getEntry("product", spec.key);
@@ -138,13 +143,16 @@ export async function importCommercialSpecs(svc: WebAdminService, store: WebStor
         r.unchanged++;
         continue;
       }
-      const foreign = foreignChanges(cur.draft as Record<string, unknown>, next as unknown as Record<string, unknown>);
+      // La barrera compara con el borrador interpretado por el esquema (lo mismo que leen la publicación y el CRM)
+      const foreign = foreignChanges(now as unknown as Record<string, unknown>, next as unknown as Record<string, unknown>);
       if (foreign.length) {
         r.failed.push({ key: spec.key, error: `cambiaría campos fuera de la ficha: ${foreign.join(", ")}` });
         continue;
       }
       r.updated.push(spec.key);
-      r.fields[spec.key] = ownedChanges(cur.draft as Record<string, unknown>, next as unknown as Record<string, unknown>);
+      r.fields[spec.key] = ownedChanges(now as unknown as Record<string, unknown>, next as unknown as Record<string, unknown>);
+      const normalized = foreignChanges(cur.draft as Record<string, unknown>, now as unknown as Record<string, unknown>);
+      if (normalized.length) r.normalized[spec.key] = normalized;
       if (!dryRun) await svc.save("product", spec.key, { draft: next, expectedVersion: cur.draftVersion }, opts.author ?? IMPORT_AUTHOR);
     } catch (e) {
       r.failed.push({ key: spec.key, error: e instanceof Error ? e.message : String(e) });
