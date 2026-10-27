@@ -431,7 +431,7 @@ export const migrationUpFiles = (files: string[]) => files.filter((f) => /(^db\/
  * Lo que un despliegue de production del Core NO puede publicar por sí solo. `sqlOf` lee el contenido de una migración en
  * el commit de destino (null si se borró: borrar una migración es extraordinario).
  */
-export function extraordinaryChanges(files: string[], diff: string, sqlOf: (file: string) => string | null): string[] {
+export function extraordinaryChanges(files: string[], diff: string, sqlOf: (file: string) => string | null, opts: { existsInBase?: (name: string) => boolean } = {}): string[] {
   const out: string[] = [];
   for (const f of files) {
     const hit = EXTRAORDINARY_PATHS.find((p) => p.re.test(f));
@@ -443,7 +443,7 @@ export function extraordinaryChanges(files: string[], diff: string, sqlOf: (file
     if (why) out.push(`${f} — migración no aditiva (${why})`);
   }
   // Solo el código que se ejecuta: un comentario o un documento que mencionen un interruptor no lo cambian
-  out.push(...coreLockedChanges(diff));
+  out.push(...coreLockedChanges(diff, opts));
   // Cobros, autorización, seguridad y borrados aunque no toquen ningún interruptor
   out.push(...criticalChanges(files, diff));
   return [...new Set(out)];
@@ -641,8 +641,8 @@ export function codeOfLine(line: string, lang: "js" | "hash" | "html" = "js"): s
  * Líneas añadidas o quitadas de un diff unificado, con su fichero y sin comentarios; sin los ficheros que no se
  * ejecutan. Un diff sin cabeceras (fragmento suelto) se trata como código.
  */
-export function effectiveChangedLines(diff: string): Array<{ file: string; code: string }> {
-  const out: Array<{ file: string; code: string }> = [];
+export function effectiveChangedLines(diff: string): Array<{ file: string; code: string; sign: "+" | "-" }> {
+  const out: Array<{ file: string; code: string; sign: "+" | "-" }> = [];
   let file = "";
   for (const line of diff.split("\n")) {
     const h = /^diff --git a\/\S+ b\/(\S+)/.exec(line);
@@ -654,7 +654,28 @@ export function effectiveChangedLines(diff: string): Array<{ file: string; code:
     if (!/^[+-]/.test(line) || NON_EFFECTIVE.test(file)) continue;
     const lang = HASH_COMMENTS.test(file) ? "hash" : /\.html?$/i.test(file) ? "html" : "js";
     const code = codeOfLine(line.slice(1), lang);
-    if (code.trim()) out.push({ file, code });
+    if (code.trim()) out.push({ file, code, sign: line[0] === "-" ? "-" : "+" });
+  }
+  return out;
+}
+
+/** Línea normalizada (sin espacios) para reconocer una línea movida sin cambios. */
+const norm = (code: string) => code.replace(/\s+/g, "");
+
+/**
+ * Líneas que DEBILITAN una salvaguarda: una línea existente con el patrón que desaparece o cambia (quitada y no vuelta a
+ * añadir idéntica en el mismo fichero). Añadir líneas nuevas con el patrón no debilita nada.
+ */
+export function weakenedLines(lines: Array<{ file: string; code: string; sign: "+" | "-" }>, re: RegExp): Array<{ file: string; code: string }> {
+  const key = (l: { file: string; code: string }) => `${l.file}\u0000${norm(l.code)}`;
+  const added = new Map<string, number>();
+  for (const l of lines) if (l.sign === "+" && re.test(l.code)) added.set(key(l), (added.get(key(l)) ?? 0) + 1);
+  const out: Array<{ file: string; code: string }> = [];
+  for (const l of lines) {
+    if (l.sign !== "-" || !re.test(l.code)) continue;
+    const n = added.get(key(l)) ?? 0;
+    if (n > 0) added.set(key(l), n - 1);
+    else out.push(l);
   }
   return out;
 }
@@ -682,12 +703,24 @@ export function externalLockedChanges(diff: string): string[] {
   return Array.from(out);
 }
 
-/** Interruptores del Core tocados en código efectivo (sin comentarios): cualquier aparición en código o en cadenas. */
-export function coreLockedChanges(diff: string): string[] {
+/**
+ * Interruptores del Core tocados en código efectivo (sin comentarios; las cadenas cuentan):
+ *  - quitar o cambiar una línea existente que lee un interruptor → extraordinario (puede encender o apagar algo);
+ *  - añadir lecturas de un interruptor que YA existía en lo publicado → extraordinario (puede encender algo con él);
+ *  - añadir un interruptor NUEVO (no existía en lo publicado) → ordinario: nace desactivado y activarlo exige su variable,
+ *    que es una operación protegida aparte. Sin `existsInBase` se supone que existía (lo prudente).
+ */
+export function coreLockedChanges(diff: string, opts: { existsInBase?: (name: string) => boolean } = {}): string[] {
   const out = new Set<string>();
-  for (const { file, code } of effectiveChangedLines(diff)) {
-    const m = code.match(LOCKED_SWITCHES);
-    if (m) out.add(`${file ? `${file}: ` : ""}cambio en ${m[1]} — funciones bloqueadas`);
+  const lines = effectiveChangedLines(diff);
+  for (const { file, code } of weakenedLines(lines, LOCKED_SWITCHES)) out.add(`${file ? `${file}: ` : ""}cambio en ${code.match(LOCKED_SWITCHES)![1]} — funciones bloqueadas`);
+  const all = new RegExp(LOCKED_SWITCHES.source, "g");
+  for (const { file, code, sign } of lines) {
+    if (sign !== "+") continue;
+    for (const m of code.matchAll(all)) {
+      const brandNew = opts.existsInBase ? !opts.existsInBase(m[1]) : false;
+      if (!brandNew) out.add(`${file ? `${file}: ` : ""}cambio en ${m[1]} — funciones bloqueadas`);
+    }
   }
   return Array.from(out);
 }
@@ -736,8 +769,14 @@ export const CRITICAL_PATHS: Array<{ re: RegExp; why: string }> = [
 export const CRITICAL_CODE: Array<{ re: RegExp; why: string }> = [
   { re: /\b(DROP\s+(TABLE|DATABASE|SCHEMA|USER)|TRUNCATE\s+(TABLE\s+)?[`\w]+|DELETE\s+FROM)\b/i, why: "operación destructiva de datos" },
   { re: /\b(dropDatabase|deleteTenant\w*|purgeTenant\w*)\s*\(|rmSync\s*\([^)]*recursive/, why: "borrado de bases, empresas o ficheros" },
-  { re: /\b(constructEvent|generateTestHeaderString|assertModeObject|livemode)\b|\b(sk|rk)_live_/, why: "cobros: firma de webhooks o modo live de Stripe" },
+  { re: /\b(sk|rk)_live_/, why: "clave live de Stripe en el código" },
 ];
+
+/**
+ * Salvaguardas de cobro (firma de webhooks, separación entre live y pruebas): quitarlas o cambiarlas es extraordinario;
+ * añadir comprobaciones nuevas (p. ej. assertModeObject en una operación nueva) no debilita nada y es ordinario.
+ */
+export const STRIPE_SAFEGUARDS = /\b(constructEvent|generateTestHeaderString|assertModeObject|livemode)\b/;
 
 /**
  * Comprobaciones de autorización de un fichero (permiso exacto incluido). Que una desaparezca, o cambie de permiso, es
@@ -773,5 +812,6 @@ export function criticalChanges(files: string[], diff: string): string[] {
   }
   for (const [f, counts] of Array.from(auth.entries()))
     for (const [k, n] of Array.from(counts.entries())) if (n > 0) out.add(`${f ? `${f}: ` : ""}se retira una comprobación de autorización (${k.slice(0, 60)})`);
+  for (const { file: f } of weakenedLines(effectiveChangedLines(diff), STRIPE_SAFEGUARDS)) out.add(`${f ? `${f}: ` : ""}cobros: se quita o cambia una salvaguarda de Stripe (firma de webhooks o modo live)`);
   return Array.from(out);
 }

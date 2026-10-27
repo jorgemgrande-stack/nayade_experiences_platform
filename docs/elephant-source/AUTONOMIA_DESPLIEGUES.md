@@ -130,3 +130,34 @@ Las reglas comparan el comando literal: hay que usar las formas exactas de la ta
 | Verificar el CRM en el dominio real | `curl -sS https://admin.bigelephant.es/version.txt` |
 
 **Opcional:** para que una fusión en el CRM publique sola, el repositorio del CRM necesitaría un flujo que lance el CI del Core. Requiere un token con `actions:write` sobre el Core guardado como secreto del CRM; es una decisión del propietario.
+
+## Debilitamiento frente a salvaguardas nuevas (27/10/2026)
+
+**Por qué hacía falta.** El Core #380 (clientes externos) no llegó solo a production. El motivo no fue su migración 0026, que es aditiva y ya entra por la vía ordinaria con copia verificada y canario. Lo frenaron dos reglas que marcaban la mera **aparición** de un patrón:
+
+- cualquier `livemode` o `assertModeObject`, aunque se **añadieran** comprobaciones;
+- cualquier lectura de un interruptor, aunque fuera uno **nuevo** que nace desactivado (`CP_EXTERNAL_LIVE_ENABLED`).
+
+Ahora la clasificación compara las líneas quitadas con las añadidas (`weakenedLines` en `scripts/deploy/esRailwayLib.ts`).
+
+| Cambio | Clasificación |
+|---|---|
+| Quitar o cambiar una línea existente con una salvaguarda de Stripe (`constructEvent`, `assertModeObject`, `livemode`) | Extraordinario |
+| Añadir salvaguardas nuevas en operaciones nuevas | Ordinario |
+| Quitar o cambiar una lectura existente de un interruptor bloqueado | Extraordinario |
+| Añadir lecturas de un interruptor que **ya existía** en lo publicado | Extraordinario: puede encender algo con él |
+| Añadir un interruptor **nuevo**, que no existía en lo publicado (`git grep` sobre el commit de production) | Ordinario: nace apagado, y activarlo exige su variable, que es una operación protegida aparte |
+| Clave live de Stripe (`sk_live_`, `rk_live_`) en el código | Siempre extraordinario |
+| Borrados (`DROP`, `TRUNCATE`, `DELETE FROM`, borrado de bases o empresas), migraciones no aditivas, autorización y seguridad | Sin cambios: extraordinario |
+
+**Medición.**
+- El #380 pasa a ordinario.
+- De las últimas 60 fusiones, 6 siguen siendo extraordinarias, todas por algo sensible de verdad:
+  - una migración que reescribe datos;
+  - el canal firmado de operaciones;
+  - la política del correo y la recuperación de contraseña;
+  - dos `DELETE FROM` nuevos.
+
+**Migraciones aditivas.** Las aplica la publicación **ordinaria** de production (`publicar`) cuando el SQL real solo crea tablas o índices, añade columnas o inserta datos (`destructiveMigration` analiza cada sentencia, no el nombre del fichero). Antes aplica la copia de seguridad verificada y el canario. Por eso `preparar-production` y `aplicar-production` siguen protegidas en GitHub y denegadas en `.claude/settings.json`: son la vía de **lo extraordinario**, y Claude Code no las necesita para lo ordinario.
+
+**«Workflow dispatch failed» en GitHub.** El formulario «Run workflow» usa por defecto la rama `main`, cuya copia del workflow es antigua y no tiene esas acciones. Hay que elegir `integration/elephant-source` en «Use workflow from». Desde la línea de comandos: `--ref integration/elephant-source`.

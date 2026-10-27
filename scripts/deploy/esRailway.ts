@@ -280,7 +280,9 @@ async function main() {
         const r = spawnSync("git", ["show", `${to}:${f}`], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
         return r.status === 0 ? (r.stdout ?? "") : null;
       };
-      const blocked = extraordinaryChanges(files, git(["diff", "--unified=0", `${from}..${to}`, "--", "server", "shared", "client", ":!*.test.ts", ":!*.test.tsx"]), sqlOf);
+      // Un interruptor que no existía en lo publicado nace desactivado (activarlo exige su variable, protegida aparte)
+      const existsInBase = (name: string) => spawnSync("git", ["grep", "-q", "-w", name, from, "--", "server", "shared", "client"], { encoding: "utf8" }).status === 0;
+      const blocked = extraordinaryChanges(files, git(["diff", "--unified=0", `${from}..${to}`, "--", "server", "shared", "client", ":!*.test.ts", ":!*.test.tsx"]), sqlOf, { existsInBase });
       if (blocked.length) {
         console.error(`Este despliegue es extraordinario; usa el procedimiento protegido (con aprobación):\n - ${blocked.join("\n - ")}`);
         process.exit(5);
