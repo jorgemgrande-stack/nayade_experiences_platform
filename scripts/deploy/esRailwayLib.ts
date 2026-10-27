@@ -32,6 +32,8 @@ export const DRILL_ALLOWED: RegExp[] = [
   new RegExp(`^${BJ} orphans$`),
   // Revisión de estados comerciales del catálogo por el flujo del CRM (simulación o --apply; nunca precios ni licencias)
   new RegExp(`^${BJ} catalog-review( --apply)?$`),
+  // Fichas comerciales en borradores (simulación o --apply; nunca publica, ni precios ni licencias)
+  new RegExp(`^${BJ} catalog-commercial-import( --apply)?$`),
 ];
 export const isAllowedDrill = (cmd: string) => DRILL_ALLOWED.some((r) => r.test(cmd.trim()));
 export const DRILL_IDLE = `${BJ} list`;
@@ -477,6 +479,8 @@ export const ORDINARY_PRODUCTION_ACTIONS = [
   "medicion-comprobar",
   "catalogo-revision",
   "catalogo-revision-aplicar",
+  "catalogo-fichas",
+  "catalogo-fichas-aplicar",
 ] as const;
 
 /** Estado que deja live con el commit del CRM que ha superado live (production solo publica ese). */

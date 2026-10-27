@@ -66,6 +66,7 @@ import { MysqlWebStore } from "../web/store";
 import { WebAdminService } from "../web/service";
 import { applyStatusReview, fillEvidence } from "../catalog/review";
 import { EVIDENCE_2026_10_25, REVIEW_ID, STATUS_REVIEW_2026_10_25 } from "../catalog/review20261025";
+import { IMPORT_AUTHOR, importCommercialSpecs } from "../catalog/commercial/importSpecs";
 
 const args = process.argv.slice(2);
 const cmd = args[0] && !args[0].startsWith("--") ? args[0] : "run";
@@ -423,6 +424,25 @@ async function main() {
           const evidence = await fillEvidence(svc, webStore, EVIDENCE_2026_10_25, { apply, author });
           print({ revision: REVIEW_ID, ...rep, evidenciaRellenada: evidence });
           // Un conflicto (estado cambiado desde el CRM o borrador ajeno) no es un fallo: se informa y se respeta
+        } finally {
+          await crmPool.end().catch(() => undefined);
+        }
+        break;
+      }
+      case "catalog-commercial-import": {
+        // Fichas comerciales y política propuesta en los BORRADORES del catálogo (server/catalog/commercial/importSpecs.ts)
+        // por el flujo normal del CRM, con autor e historial; simulación salvo --apply. Nunca publica ni toca precios,
+        // licencias, Stripe ni cobros; un producto que cambiaría algo fuera de la ficha no se guarda.
+        const crmUrl = process.env.CRM_DATABASE_URL || die("Falta CRM_DATABASE_URL (base del CRM con el catálogo)");
+        const crmPool = mysql.createPool({ uri: crmUrl, connectionLimit: 2 });
+        try {
+          const webStore = new MysqlWebStore(crmPool);
+          const svc = new WebAdminService({ store: webStore, refs: { moduleIds: BUILTIN_MODULES.map((m) => m.id), planIds: () => null } });
+          const before = await svc.publicSite("published").catch(() => null);
+          const rep = await importCommercialSpecs(svc, webStore, { dryRun: !flag("--apply"), author: IMPORT_AUTHOR });
+          const after = await svc.publicSite("published").catch(() => null);
+          print({ ...rep, publicado: { antes: before?.version ?? null, despues: after?.version ?? null } });
+          if (rep.failed.length || rep.missing.length || before?.version !== after?.version) process.exitCode = 1;
         } finally {
           await crmPool.end().catch(() => undefined);
         }

@@ -12,7 +12,8 @@
  *    extensiones.
  *  - Interno: estado funcional verificado, orígenes y decisiones pendientes. La evidencia ya registrada se respeta.
  *
- * Idempotente: lo que ya coincide no se toca. Por defecto solo simula.
+ * Idempotente: lo que ya coincide no se toca. Por defecto solo simula. Barrera: si al aplicar la ficha cambiara algo
+ * fuera de esos campos (precios, cupos, estado, familia, textos del catálogo…), ese producto NO se guarda.
  */
 import { productDraft, type ProductDraft } from "../../web/schemas";
 import type { WebAdminService } from "../../web/service";
@@ -74,9 +75,47 @@ export function draftWithSpec(draft: ProductDraft, family: string, spec: Product
   });
 }
 
+/** Campos que escribe la importación; todo lo demás del borrador debe quedar igual. */
+const OWNED: Record<string, string[] | true> = {
+  commercial: true,
+  catalog: ["implementationLevel", "inclusions", "quotaProposals", "quoteOnRequest", "bundleRule"],
+  internal: ["evidence", "functionalGrade", "sources", "pendingDecisions"],
+};
+
+/** Rutas que difieren entre dos borradores, sin contar los campos de la importación. */
+export function foreignChanges(before: Record<string, unknown>, after: Record<string, unknown>): string[] {
+  const out: string[] = [];
+  const obj = (v: unknown) => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
+  for (const k of Array.from(new Set([...Object.keys(before), ...Object.keys(after)]))) {
+    const own = OWNED[k];
+    if (own === true) continue;
+    if (!own) {
+      if (JSON.stringify(before[k]) !== JSON.stringify(after[k])) out.push(k);
+      continue;
+    }
+    const [b, a] = [obj(before[k]), obj(after[k])];
+    for (const sub of Array.from(new Set([...Object.keys(b), ...Object.keys(a)]))) if (!own.includes(sub) && JSON.stringify(b[sub]) !== JSON.stringify(a[sub])) out.push(`${k}.${sub}`);
+  }
+  return out;
+}
+
+/** Campos de la importación que cambian (para el informe). */
+function ownedChanges(before: Record<string, unknown>, after: Record<string, unknown>): string[] {
+  const out: string[] = [];
+  const obj = (v: unknown) => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
+  for (const [k, own] of Object.entries(OWNED)) {
+    if (own === true) {
+      if (JSON.stringify(before[k]) !== JSON.stringify(after[k])) out.push(k);
+    } else for (const sub of own) if (JSON.stringify(obj(before[k])[sub]) !== JSON.stringify(obj(after[k])[sub])) out.push(`${k}.${sub}`);
+  }
+  return out;
+}
+
 export interface ImportReport {
   dryRun: boolean;
   updated: string[];
+  /** Por producto actualizado, los campos (siempre de la ficha o la política) que cambian */
+  fields: Record<string, string[]>;
   unchanged: number;
   missing: string[];
   failed: Array<{ key: string; error: string }>;
@@ -84,7 +123,7 @@ export interface ImportReport {
 
 export async function importCommercialSpecs(svc: WebAdminService, store: WebStore, opts: { dryRun?: boolean; author?: string; keys?: string[] } = {}): Promise<ImportReport> {
   const dryRun = opts.dryRun !== false;
-  const r: ImportReport = { dryRun, updated: [], unchanged: 0, missing: [], failed: [] };
+  const r: ImportReport = { dryRun, updated: [], fields: {}, unchanged: 0, missing: [], failed: [] };
   for (const spec of PRODUCT_SPECS) {
     if (opts.keys && !opts.keys.includes(spec.key)) continue;
     const cur = await store.getEntry("product", spec.key);
@@ -99,7 +138,13 @@ export async function importCommercialSpecs(svc: WebAdminService, store: WebStor
         r.unchanged++;
         continue;
       }
+      const foreign = foreignChanges(cur.draft as Record<string, unknown>, next as unknown as Record<string, unknown>);
+      if (foreign.length) {
+        r.failed.push({ key: spec.key, error: `cambiaría campos fuera de la ficha: ${foreign.join(", ")}` });
+        continue;
+      }
       r.updated.push(spec.key);
+      r.fields[spec.key] = ownedChanges(cur.draft as Record<string, unknown>, next as unknown as Record<string, unknown>);
       if (!dryRun) await svc.save("product", spec.key, { draft: next, expectedVersion: cur.draftVersion }, opts.author ?? IMPORT_AUTHOR);
     } catch (e) {
       r.failed.push({ key: spec.key, error: e instanceof Error ? e.message : String(e) });
