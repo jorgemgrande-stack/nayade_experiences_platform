@@ -423,13 +423,16 @@ async function main() {
     // En live, la BD debe admitir filas live (migración 0013 entera y registrada, sin migraciones a medias)
     const liveSchema = stripeConfig.mode === "live" && migrated ? await liveSchemaProblem(crmPool!).catch(() => "migration_0013_missing") : null;
     const liveMigrated = stripeConfig.mode !== "live" || (migrated && !liveSchema);
-    // El prefijo del entorno no puede cambiar: los objetos ya creados en Stripe dejarían de reconocerse
+    // El prefijo del entorno no puede cambiar: los objetos ya creados en Stripe dejarían de reconocerse. Se fija POR MODO:
+    // los objetos de pruebas y los live son de cuentas distintas, así que el prefijo de pruebas no ata al de live
     let namespaceOk = true;
     if (migrated && liveMigrated) {
       const st = new MysqlStripeStore(crmPool!, stripeConfig.mode);
-      const saved = await st.getState("namespace");
-      if (!saved) await st.setState("namespace", { namespace: stripeConfig.namespace }, Date.now());
+      const stateKey = stripeConfig.mode === "live" ? "namespace:live" : "namespace";
+      const saved = await st.getState(stateKey);
+      if (!saved) await st.setState(stateKey, { namespace: stripeConfig.namespace }, Date.now());
       else namespaceOk = saved.namespace === stripeConfig.namespace;
+      if (!namespaceOk) console.log(JSON.stringify({ ctx: "Stripe", event: "namespace_mismatch", mode: stripeConfig.mode, saved: saved?.namespace, configured: stripeConfig.namespace }));
     }
     const ready = migrated && liveMigrated && namespaceOk;
     // Compra de módulos (CRM 0018) y líneas de factura (CRM 0019): solo si la tabla existe; la compra, además,
