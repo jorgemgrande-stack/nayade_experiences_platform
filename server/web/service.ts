@@ -13,14 +13,23 @@
  *  - Honestidad: «Disponible» (commercialStatus available) exige estado técnico «available».
  *  - El catálogo público solo contiene lo publicado y nunca datos internos (costes, márgenes, notas).
  *  - Nada de esto toca facturación ni contratos: los contratos guardan su propio importe.
+ *  - Política comercial (inclusiones de los planes, cupos propuestos, regla de paquetes): vive en los borradores con
+ *    su estado (aprobada o propuesta). Lo propuesto se simula en el CRM pero nunca se publica
+ *    (server/catalog/commercial/checks.ts y la proyección pública de schemas.ts).
  */
 import crypto from "node:crypto";
 import { ZodError } from "zod";
 import { CAPABILITY_IDS } from "../catalog/capabilities";
+import { commercialChecks, shapeProblems, type CheckEntry, type CommercialCheck } from "../catalog/commercial/checks";
+import { policyFromProducts, type PolicyMode, type PolicySource } from "../catalog/commercial/fromCatalog";
+import type { CommercialPolicy } from "../catalog/commercial/policy";
+import type { QuoteCatalog } from "../catalog/quote";
+import { quoteCatalogFromSite } from "../catalog/snapshot";
 import {
   BUNDLE_FAMILIES,
   DRAFT_SCHEMAS,
   FAMILIES,
+  productDraft,
   KEY_RE,
   PRICE_KINDS,
   publicView,
@@ -100,7 +109,20 @@ const publicPrice = (p: WebPrice, draft = false): PublicPrice => ({
 
 export class WebAdminService {
   private now: () => number;
-  constructor(private d: { store: WebStore; refs: WebRefs; now?: () => number; onPublish?: (version: string) => void }) {
+  constructor(
+    private d: {
+      store: WebStore;
+      refs: WebRefs;
+      now?: () => number;
+      onPublish?: (version: string) => void;
+      /**
+       * Política comercial activa en este entorno (por defecto, no): solo entonces se publican las reglas aprobadas
+       * (inclusiones de los planes, ampliación por presupuesto, regla de paquetes). Activarla exige antes que los
+       * pedidos y los cobros (orquestador y Stripe) usen el mismo cotizador comercial.
+       */
+      commercialPolicy?: boolean;
+    },
+  ) {
     this.now = d.now ?? Date.now;
   }
 
@@ -240,7 +262,7 @@ export class WebAdminService {
     const now = this.now();
     const e = await this.d.store.setPublication(cur.id, {
       publication: "published",
-      published: publicView(kind, draft),
+      published: publicView(kind, draft, { policy: !!this.d.commercialPolicy }),
       publishedVersion: cur.draftVersion,
       publishedAt: now,
       publishedBy: author,
@@ -257,10 +279,16 @@ export class WebAdminService {
     if (cur.publication !== "published") throw new WebError("invalid_state", "No está publicada");
     if (kind === "product" || kind === "capability") {
       const refsOf = (e: WebEntry) => {
-        const p = (e.published ?? {}) as { dependencies?: string[]; compatibleWith?: string[]; catalog?: { bundleOf?: string[]; inherits?: string | null; capabilities?: string[] } };
+        const p = (e.published ?? {}) as { dependencies?: string[]; compatibleWith?: string[]; catalog?: { bundleOf?: string[]; inherits?: string | null; capabilities?: string[]; inclusions?: Array<{ key: string; overflowKey?: string }> } };
         return kind === "capability"
           ? p.catalog?.capabilities ?? []
-          : [...(p.dependencies ?? []), ...(p.compatibleWith ?? []), ...(p.catalog?.bundleOf ?? []), ...(p.catalog?.inherits ? [p.catalog.inherits] : [])];
+          : [
+              ...(p.dependencies ?? []),
+              ...(p.compatibleWith ?? []),
+              ...(p.catalog?.bundleOf ?? []),
+              ...(p.catalog?.inherits ? [p.catalog.inherits] : []),
+              ...(p.catalog?.inclusions ?? []).flatMap((i) => [i.key, ...(i.overflowKey ? [i.overflowKey] : [])]),
+            ];
       };
       const dependents = (await this.d.store.listEntries({ kind: "product" })).filter((e) => e.publication === "published" && e.key !== key && refsOf(e).includes(key));
       const promos = (await this.d.store.listEntries({ kind: "promotion" })).filter((e) => e.publication === "published" && ((e.published as { products?: string[] })?.products ?? []).includes(key));
@@ -355,7 +383,7 @@ export class WebAdminService {
     const now = this.now();
     // Vista previa: todo lo que no esté retirado, con su borrador actual (como quedaría al publicarlo)
     const visible = (e: WebEntry) => (preview ? e.publication !== "unpublished" : e.publication === "published");
-    const body = (e: WebEntry) => (preview ? publicView(e.kind, e.draft) : (e.published as Record<string, unknown>));
+    const body = (e: WebEntry) => (preview ? publicView(e.kind, e.draft, { policy: !!this.d.commercialPolicy }) : (e.published as Record<string, unknown>));
     const products = entries
       .filter((e) => e.kind === "product" && visible(e))
       .map((e) => {
@@ -395,6 +423,45 @@ export class WebAdminService {
     return withoutInternal(await this.site(mode));
   }
 
+  // ── Política comercial ─────────────────────────────────────────────────────
+
+  /** Revisión comercial de todos los productos (borradores): bloqueos de publicación, avisos y reglas pendientes. */
+  async commercialReview(): Promise<{ policyEnabled: boolean; products: Array<CommercialCheck & { name: string; family: string | null; publication: string; pendingChanges: boolean }> }> {
+    const entries = (await this.d.store.listEntries({ kind: "product" })).filter((e) => e.publication !== "unpublished");
+    const all = checkEntries(entries);
+    const policyEnabled = !!this.d.commercialPolicy;
+    const products = all.map((c) => {
+      const e = entries.find((x) => x.key === c.key)!;
+      const check = commercialChecks(c, all, { policyEnabled: !!this.d.commercialPolicy });
+      const cat = c.draft.catalog;
+      const approved = [
+        ...(cat.inclusions ?? []).filter((i) => i.status === "approved" && (!i.cap || i.cap.status === "approved")).map((i) => `inclusión ${i.key}`),
+        ...(cat.quoteOnRequest?.status === "approved" ? ["ampliaciones por presupuesto"] : []),
+        ...(cat.bundleRule?.status === "approved" ? [`regla de paquetes ${cat.bundleRule.kind}`] : []),
+      ];
+      if (!policyEnabled && approved.length) check.warnings.push(`Reglas aprobadas sin efecto todavía (política comercial desactivada en este entorno): ${approved.join(", ")}`);
+      return { ...check, name: c.draft.name, family: c.family, publication: e.publication, pendingChanges: hasPendingChanges(e) };
+    });
+    return { policyEnabled, products };
+  }
+
+  /**
+   * Catálogo del cotizador y política comercial. «published»: lo publicado, solo reglas aprobadas (propuestas del
+   * CRM). «proposed»: los borradores con sus reglas propuestas y los precios aprobados (solo el simulador del CRM).
+   */
+  async commercialCatalog(mode: PolicyMode): Promise<{ catalog: QuoteCatalog; policy: CommercialPolicy }> {
+    if (mode === "published") {
+      const site = await this.site("published");
+      return { catalog: quoteCatalogFromSite(site), policy: policyFromProducts(site.catalog.products as unknown as PolicySource[], "published") };
+    }
+    const [entries, prices] = await Promise.all([this.d.store.listEntries({ kind: "product" }), this.d.store.listPrices()]);
+    const products = entries
+      .filter((e) => e.publication !== "unpublished")
+      .map((e) => ({ ...e.draft, key: e.key, family: e.family as string, sortOrder: e.sortOrder, prices: prices.filter((p) => p.entryId === e.id && p.status === "approved").map((p) => publicPrice(p)) }));
+    const version = `borradores-${crypto.createHash("sha256").update(JSON.stringify(products)).digest("hex").slice(0, 12)}`;
+    return { catalog: quoteCatalogFromSite({ version, catalog: { products, promotions: [], capabilities: [] } }), policy: policyFromProducts(products as unknown as PolicySource[], "proposed") };
+  }
+
   // ── Interno ────────────────────────────────────────────────────────────────
 
   private parse(kind: EntryKind, draft: unknown): Record<string, unknown> {
@@ -425,6 +492,8 @@ export class WebAdminService {
     if (cat.inherits && family !== "core_plan") throw new WebError("invalid_input", "Solo un plan de Elephant Core hereda de otro plan");
     if (family === "addon" && !cat.addonFor) throw new WebError("invalid_input", "Un complemento de cantidad indica la métrica que amplía");
     if (family !== "addon" && cat.addonFor) throw new WebError("invalid_input", "Solo los complementos de cantidad amplían una métrica");
+    const policyProblems = shapeProblems(family, d);
+    if (policyProblems.length) throw new WebError("invalid_input", policyProblems.join("; "));
     const unknown = cat.capabilities.filter((x) => !this.capabilityIds().includes(x));
     if (unknown.length) throw new WebError("invalid_input", `Capacidades desconocidas: ${unknown.join(", ")}`);
     if (new Set(cat.capabilities).size !== cat.capabilities.length) throw new WebError("invalid_input", "Capacidades repetidas");
@@ -464,6 +533,8 @@ export class WebAdminService {
       const caps = await this.d.store.listEntries({ kind: "capability" });
       for (const x of d.catalog.capabilities) if (caps.find((e) => e.key === x)?.publication !== "published") problems.push(`la capacidad «${x}» no está publicada`);
     }
+    const all = checkEntries(products.filter((p) => p.key !== cur.key)).concat({ key: cur.key, family: cur.family, publication: cur.publication, draft: d });
+    problems.push(...commercialChecks(all[all.length - 1], all, { policyEnabled: !!this.d.commercialPolicy }).blocking);
     if (problems.length) throw new WebError("invalid_state", `No se puede publicar: ${problems.join("; ")}`, { problems });
   }
 
@@ -489,6 +560,17 @@ export class WebAdminService {
       /* un aviso fallido nunca deshace una publicación */
     }
   }
+}
+
+/** Productos con su borrador validado (los que no validan se omiten: el CRM ya los marca al abrirlos). */
+function checkEntries(entries: WebEntry[]): CheckEntry[] {
+  const out: CheckEntry[] = [];
+  for (const e of entries) {
+    if (e.kind !== "product") continue;
+    const r = productDraft.safeParse(e.draft);
+    if (r.success) out.push({ key: e.key, family: e.family, publication: e.publication, draft: r.data });
+  }
+  return out;
 }
 
 /** Pendiente de publicar: borrador nunca publicado o publicada con cambios posteriores. Lo retirado no lo está: se retiró a propósito. */

@@ -9,7 +9,9 @@ import { getAuth, requireScope } from "../controlPlane/auth";
 import { ENTRY_KINDS, FAMILIES, PRICE_KINDS, type EntryKind, type PriceKind } from "./schemas";
 import { WebError, type WebAdminService } from "./service";
 import { issuePreviewToken } from "./publicSite";
-import { quote } from "../catalog/quote";
+import { commercialQuote, previewPlanChange, quoteResponse, recommendPlan } from "../catalog/commercial/commercialQuote";
+import { isNeutral } from "../catalog/commercial/fromCatalog";
+import { pendingRules } from "../catalog/commercial/policy";
 import { parseQuoteRequest } from "../catalog/request";
 import { quoteCatalogFromSite } from "../catalog/snapshot";
 
@@ -117,10 +119,41 @@ export function createWebAdminRouter(svc: WebAdminService, opts: { previewSecret
     const site = await svc.site("published");
     res.json({ catalog: quoteCatalogFromSite(site), capabilities: site.catalog.capabilities });
   }));
+  // Propuestas del CRM: SIEMPRE con lo publicado y solo con las reglas comerciales aprobadas. Sin reglas aprobadas,
+  // el resultado es idéntico al cotizador del catálogo (mismos importes); `commercial` trae el desglose completo.
   r.post("/quote", requireScope("web:read"), wrap(async (req, res) => {
     const parsed = parseQuoteRequest(req.body, { allowOwned: true });
     if (!parsed.ok) return void res.status(400).json({ error: "invalid_input", message: parsed.message });
-    res.json(quote(quoteCatalogFromSite(await svc.site("published")), parsed.value));
+    const { catalog, policy } = await svc.commercialCatalog("published");
+    res.json(quoteResponse(catalog, policy, parsed.value));
+  }));
+
+  // ── Política comercial: revisión y simulador (nunca crean presupuestos ni cambian nada) ──
+  r.get("/commercial/review", requireScope("web:read"), wrap(async (_req, res) => void res.json(await svc.commercialReview())));
+  r.post("/commercial/simulate", requireScope("web:read"), wrap(async (req, res) => {
+    const b = z
+      .object({
+        /** published: reglas aprobadas (lo que verá el cliente); proposed: borradores con las reglas propuestas. */
+        policy: z.enum(["published", "proposed"]).default("published"),
+        request: z.unknown(),
+        changeTo: z.enum(["essential", "business", "enterprise"]).optional(),
+        recommend: z.boolean().optional(),
+        fiscalEntities: z.number().int().min(1).max(100).optional(),
+      })
+      .strict()
+      .parse(req.body);
+    const parsed = parseQuoteRequest(b.request, { allowOwned: true });
+    if (!parsed.ok) return void res.status(400).json({ error: "invalid_input", message: parsed.message });
+    const { catalog, policy } = await svc.commercialCatalog(b.policy);
+    const { plan: _p, ...needs } = parsed.value;
+    res.json({
+      mode: b.policy,
+      catalogVersion: catalog.version,
+      policy: { id: policy.id, neutral: isNeutral(policy), pendingRules: pendingRules(policy) },
+      quote: commercialQuote(catalog, policy, parsed.value),
+      ...(b.changeTo ? { change: previewPlanChange(catalog, policy, { ...parsed.value, fiscalEntities: b.fiscalEntities ?? parsed.value.fiscalEntities }, b.changeTo) } : {}),
+      ...(b.recommend ? { recommendation: recommendPlan(catalog, policy, needs) } : {}),
+    });
   }));
   r.get("/site", requireScope("web:read"), wrap(async (req, res) => {
     const q = z.object({ mode: z.enum(["published", "preview"]).default("published") }).parse(req.query);

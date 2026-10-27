@@ -16,12 +16,14 @@ export function quoteRequestSchema(opts: { allowOwned: boolean }) {
       sites: z.number().int().min(1).max(1000).optional(),
       storageGb: count.optional(),
       fiscalEntities: z.number().int().min(1).max(100).optional(),
+      /** Empleados gestionados en People (con o sin usuario): tope de la inclusión parcial del plan. */
+      employees: count.optional(),
     })
     .strict();
 }
 
-export function parseQuoteRequest(body: unknown, opts: { allowOwned: boolean }): { ok: true; value: QuoteRequest } | { ok: false; message: string } {
+export function parseQuoteRequest(body: unknown, opts: { allowOwned: boolean }): { ok: true; value: QuoteRequest & { employees?: number } } | { ok: false; message: string } {
   const r = quoteRequestSchema(opts).safeParse(body);
   if (!r.success) return { ok: false, message: r.error.issues.map((i) => `${i.path.join(".") || "petición"}: ${i.message}`).join("; ") };
-  return { ok: true, value: r.data as QuoteRequest };
+  return { ok: true, value: r.data as QuoteRequest & { employees?: number } };
 }
