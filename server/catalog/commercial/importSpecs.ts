@@ -58,6 +58,9 @@ export function draftWithSpec(draft: ProductDraft, family: string, spec: Product
     if (policy.quoteOnRequestPlans.includes(spec.key)) cat.quoteOnRequest = { status: "proposed" };
   }
   if (family === "connect_bundle") cat.bundleRule = { ...(policy.bundleRules?.[spec.key] ?? policy.bundleRule) };
+  // Soluciones Elephant Net completas: Elephant Core incluido en el precio total (y sus reglas de ampliación)
+  const core = policy.coreIncluded?.[spec.key];
+  if (family === "net_bundle" && core) cat.coreIncluded = JSON.parse(JSON.stringify(core));
   const commercial = {
     headline: keep(spec.publicContent.headline) ? spec.publicContent.headline : "",
     longDescription,
@@ -88,7 +91,7 @@ export function draftWithSpec(draft: ProductDraft, family: string, spec: Product
 /** Campos que escribe la importación; todo lo demás del borrador debe quedar igual. */
 const OWNED: Record<string, string[] | true> = {
   commercial: true,
-  catalog: ["implementationLevel", "inclusions", "quotaProposals", "quoteOnRequest", "bundleRule"],
+  catalog: ["implementationLevel", "inclusions", "quotaProposals", "quoteOnRequest", "bundleRule", "coreIncluded"],
   internal: ["evidence", "functionalGrade", "sources", "pendingDecisions"],
 };
 

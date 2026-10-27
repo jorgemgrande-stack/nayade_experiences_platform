@@ -19,7 +19,7 @@ export interface CommercialQuoteRequest extends QuoteRequest {
   employees?: number;
 }
 
-export type CommercialLineStatus = QuoteLine["status"] | "included_in_plan" | "partially_included" | "bundle_adjusted" | "on_quote";
+export type CommercialLineStatus = QuoteLine["status"] | "included_in_plan" | "partially_included" | "bundle_adjusted" | "on_quote" | "included_in_net" | "core_upgrade" | "net_additional";
 export interface CommercialLine extends Omit<QuoteLine, "status"> {
   status: CommercialLineStatus;
 }
@@ -44,7 +44,11 @@ export interface CommercialQuote {
     planInclusionCents: number;
     /** Ahorro de la tarifa anual del plan frente a 12 mensualidades (solo con periodicidad anual). */
     annualPlanCents: number;
+    /** Elephant Core que no se cobra porque ya lo incluye una solución Elephant Net (en el periodo de cada línea). */
+    coreIncludedCents: number;
   };
+  /** Soluciones Elephant Net completas con Core incluido que intervienen (la primera aporta el Core). */
+  netCore: { nets: string[]; corePlan: string | null; providedBy: string | null };
   taxes: { rateBp: number; monthlyCents: number; yearlyCents: number; annualizedCents: number };
   /** Productos ya contratados que el plan pasa a incluir: dejan de facturarse aparte. */
   absorbedByPlan: string[];
@@ -106,6 +110,82 @@ function quotaOf(byKey: Map<string, QuoteCatalogProduct>, planKey: string, metri
 
 function mkLine(p: QuoteCatalogProduct, qty: number, unitCents: number | null, status: CommercialLineStatus, note: string | null): CommercialLine {
   return { key: p.key, name: p.name, family: p.family, quantity: qty, unitCents, amountCents: (unitCents ?? 0) * qty, interval: "month", status, commercialStatus: p.commercialStatus, note };
+}
+
+const PLAN_RANK = ["essential", "business", "enterprise"];
+
+/**
+ * Elephant Core incluido en las soluciones Elephant Net completas (`policy.coreIncluded`). Sobre las líneas del
+ * cotizador del catálogo:
+ *  - el Net que aporta el Core es el ya contratado o, si no hay, el de mayor precio (empate: por clave);
+ *  - plan igual o inferior al incluido → 0 € («Incluido en tu solución Elephant Net»);
+ *  - plan superior → solo la diferencia de tarifas aprobadas de la misma periodicidad (regla `upgrade`); sin regla,
+ *    por presupuesto;
+ *  - cada Net adicional (u otra unidad del mismo) → su precio menos la tarifa mensual del plan incluido (regla
+ *    `additional`); sin regla, por presupuesto.
+ * Nunca se cobra Elephant Core dos veces y nunca se inventa una tarifa.
+ */
+function composeNetCore(baseLines: QuoteLine[], byKey: Map<string, QuoteCatalogProduct>, policy: CommercialPolicy, owned: Set<string>) {
+  const rules = policy.coreIncluded ?? {};
+  const lines: CommercialLine[] = baseLines.map((l) => ({ ...l }));
+  const charged = lines.filter((l) => l.family === "net_bundle" && l.status === "charged" && rules[l.key]);
+  const ownedNets = Array.from(owned).filter((k) => rules[k]);
+  const used: string[] = [];
+  if (!charged.length && !ownedNets.length) return { lines, coreIncludedCents: 0, annualPlanCents: null as number | null, used, nets: [] as string[], corePlan: null as string | null, providedBy: null as string | null };
+  const nets = [...ownedNets, ...charged.map((l) => l.key)];
+  const corePlan = nets.map((k) => rules[k].plan).sort((a, b) => PLAN_RANK.indexOf(b) - PLAN_RANK.indexOf(a))[0];
+  for (const k of nets) if (rules[k].status === "proposed") used.push(`Core incluido en ${k}`);
+  const providedBy = ownedNets[0] ?? [...charged].sort((a, b) => (b.unitCents ?? 0) - (a.unitCents ?? 0) || a.key.localeCompare(b.key))[0].key;
+  const by = byKey.get(providedBy)?.name ?? providedBy;
+  const core = byKey.get(corePlan);
+  const coreName = `Elephant Core ${core?.name ?? corePlan}`;
+  const priceOf = (key: string, kind: "monthly" | "yearly") => byKey.get(key)?.prices.find((p) => p.kind === kind)?.amountCents;
+  let coreIncludedCents = 0;
+  let annualPlanCents: number | null = null;
+
+  const planLine = lines.find((l) => l.family === "core_plan");
+  if (planLine) {
+    const kind = planLine.interval === "year" ? "yearly" : "monthly";
+    const included = priceOf(corePlan, kind);
+    if (PLAN_RANK.indexOf(planLine.key) <= PLAN_RANK.indexOf(corePlan)) {
+      coreIncludedCents += planLine.amountCents;
+      Object.assign(planLine, { unitCents: 0, amountCents: 0, status: "included_in_net", note: `${coreName} incluido en ${by}` });
+      annualPlanCents = 0;
+    } else {
+      const rule = rules[providedBy].upgrade;
+      if (rule && included !== undefined) {
+        if (rule.status === "proposed") used.push(`ampliación de Core en ${providedBy}`);
+        const diff = Math.max(0, planLine.amountCents - included);
+        coreIncludedCents += planLine.amountCents - diff;
+        Object.assign(planLine, { unitCents: diff, amountCents: diff, status: "core_upgrade", note: `Ampliación de Elephant Core a ${planLine.name}: solo la diferencia con ${core?.name ?? corePlan}, ya incluido en ${by}` });
+        if (planLine.interval === "year") {
+          const m = (priceOf(planLine.key, "monthly") ?? 0) - (priceOf(corePlan, "monthly") ?? 0);
+          annualPlanCents = Math.max(0, m * 12 - diff);
+        }
+      } else Object.assign(planLine, { unitCents: null, amountCents: 0, status: "on_quote", note: `Ampliación de Elephant Core sobre ${by}: por presupuesto (sin regla aprobada)` });
+    }
+  }
+
+  // Net adicionales: los demás Net y las unidades de más del que aporta el Core
+  const coreMonthly = priceOf(corePlan, "monthly");
+  const out: CommercialLine[] = [];
+  for (const l of lines) {
+    const isNet = charged.includes(l);
+    const extraUnits = !isNet ? 0 : l.key === providedBy && !ownedNets.length ? l.quantity - 1 : l.quantity;
+    if (!isNet || extraUnits <= 0) {
+      out.push(l);
+      continue;
+    }
+    if (extraUnits < l.quantity) out.push({ ...l, quantity: l.quantity - extraUnits, amountCents: (l.unitCents ?? 0) * (l.quantity - extraUnits) });
+    const rule = rules[l.key].additional;
+    if (rule && coreMonthly !== undefined && l.interval === "month") {
+      if (rule.status === "proposed") used.push(`Net adicional ${l.key}`);
+      const unit = Math.max(0, (l.unitCents ?? 0) - coreMonthly);
+      coreIncludedCents += ((l.unitCents ?? 0) - unit) * extraUnits;
+      out.push({ ...l, quantity: extraUnits, unitCents: unit, amountCents: unit * extraUnits, status: "net_additional", note: `${coreName} ya incluido en ${by}: no se vuelve a cobrar` });
+    } else out.push({ ...l, quantity: extraUnits, unitCents: null, amountCents: 0, status: "on_quote", note: `Solución Elephant Net adicional (Core ya incluido en ${by}): por presupuesto, sin regla aprobada` });
+  }
+  return { lines: out, coreIncludedCents, annualPlanCents, used, nets, corePlan, providedBy };
 }
 
 const notYet = (p: QuoteCatalogProduct) => p.commercialStatus === "coming_soon" || p.commercialStatus === "in_preparation" || p.commercialStatus === "unpublished" || p.technicalStatus === "planned";
@@ -211,13 +291,16 @@ export function commercialQuote(rawCatalog: QuoteCatalog, policy: CommercialPoli
   }
 
   const base = quote(catalog, baseReq);
-  const lines: CommercialLine[] = [...base.lines, ...extraLines];
+  // ── Elephant Core incluido en las soluciones Elephant Net completas ─────────
+  const net = composeNetCore(base.lines, byKey, policy, owned);
+  usedRules.push(...net.used);
+  const lines: CommercialLine[] = [...net.lines, ...extraLines];
   const all = [...base.errors, ...errors];
   const monthlyCents = lines.filter((l) => l.interval === "month").reduce((a, l) => a + l.amountCents, 0);
   const yearlyCents = lines.filter((l) => l.interval === "year").reduce((a, l) => a + l.amountCents, 0);
   const rateBp = base.totals.taxRateBp;
   const plan = byKey.get(req.plan);
-  const annualPlanCents = req.interval === "year" && plan ? Math.max(0, monthly(plan) * 12 - (plan.prices.find((x) => x.kind === "yearly")?.amountCents ?? 0)) : 0;
+  const annualPlanCents = net.annualPlanCents !== null ? net.annualPlanCents : req.interval === "year" && plan ? Math.max(0, monthly(plan) * 12 - (plan.prices.find((x) => x.kind === "yearly")?.amountCents ?? 0)) : 0;
   const extraBlocking = extraLines.map((l) => byKey.get(l.key)).filter((p): p is QuoteCatalogProduct => !!p && notYet(p)).map((p) => p.name);
   const blocking = Array.from(new Set([...base.blocking, ...extraBlocking]));
   const chargedOrIncluded = lines.filter((l) => l.status !== "on_quote" && byKey.has(l.key) && byKey.get(l.key)!.family !== "addon" && byKey.get(l.key)!.family !== "core_plan");
@@ -251,7 +334,8 @@ export function commercialQuote(rawCatalog: QuoteCatalog, policy: CommercialPoli
     initial: { recurringCents: yearlyCents + monthlyCents, implementationKnown: false },
     implementation,
     variableCosts: variable,
-    discounts: { bundleCents: base.bundleSavings.reduce((a, s) => a + s.savingCents, 0) + bundleCents, planInclusionCents, annualPlanCents },
+    discounts: { bundleCents: base.bundleSavings.reduce((a, s) => a + s.savingCents, 0) + bundleCents, planInclusionCents, annualPlanCents, coreIncludedCents: net.coreIncludedCents },
+    netCore: { nets: net.nets, corePlan: net.corePlan, providedBy: net.providedBy },
     taxes: { rateBp, monthlyCents: tax(monthlyCents, rateBp), yearlyCents: tax(yearlyCents, rateBp), annualizedCents: tax(yearlyCents, rateBp) + tax(monthlyCents, rateBp) * 12 },
     absorbedByPlan,
     bundleSavings: base.bundleSavings,

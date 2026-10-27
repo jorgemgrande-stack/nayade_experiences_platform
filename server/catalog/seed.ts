@@ -40,7 +40,7 @@ export function keepCommercialState(seedDraft: unknown, dbDraft: unknown): unkno
   return {
     ...s,
     ...(d.commercial ? { commercial: d.commercial } : {}),
-    catalog: { ...s.catalog, commercialStatus: d.catalog.commercialStatus, ...kept(d.catalog, ["inclusions", "quotaProposals", "quoteOnRequest", "bundleRule", "implementationLevel"]) },
+    catalog: { ...s.catalog, commercialStatus: d.catalog.commercialStatus, ...kept(d.catalog, ["inclusions", "quotaProposals", "quoteOnRequest", "bundleRule", "coreIncluded", "implementationLevel"]) },
     internal: { ...s.internal, evidence: d.internal.evidence ?? s.internal.evidence, ...kept(d.internal, ["functionalGrade", "sources", "pendingDecisions"]) },
   };
 }

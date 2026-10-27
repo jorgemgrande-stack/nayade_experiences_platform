@@ -22,6 +22,8 @@ export const PROPOSAL_RE = /propuest[oa]s?\b|pendientes? de (aprobaci|ratificaci
  * `catalog.inclusions` (dato estructurado), no desde texto libre.
  */
 export const PLAN_RULE_RE = /incluid[oa]s? en (tu plan|business|enterprise|essential)|derechos? del plan|tope de empleados|en enterprise sin tope/i;
+/** Elephant Core incluido en una solución Elephant Net, afirmado en texto: solo cuando la contratación lo aplica. */
+export const NET_CORE_RE = /(elephant )?core (essential )?incluid[oa]|incluye (elephant )?core|plataforma de gesti[oó]n (big elephant )?incluida|sin plan (de elephant core|core) aparte/i;
 /** Estados internos («pendiente») escritos en un texto público: son decisiones del equipo, no información al cliente. */
 export const PENDING_RE = /\bpendiente\b/i;
 /** Límites o usos de IA incluidos: el límite de consumo de IA aún no está decidido. */
@@ -61,6 +63,7 @@ export function textProblems(t: string, opts: { policyEnabled?: boolean; planInc
   if (INSTANT_RE.test(t)) out.push(`promete activación inmediata (${q})`);
   if (PROPOSAL_RE.test(t)) out.push(`publica una regla sin aprobar (${q})`);
   if (!opts.policyEnabled && PLAN_RULE_RE.test(t)) out.push(`afirma una inclusión en un plan (${q}) y la política comercial no está activa`);
+  if (!opts.policyEnabled && NET_CORE_RE.test(t)) out.push(`afirma que Elephant Core está incluido (${q}) y esa inclusión todavía no se aplica en la contratación`);
   if (PENDING_RE.test(t)) out.push(`muestra un estado interno «pendiente» (${q})`);
   if (AI_LIMIT_RE.test(t)) out.push(`afirma un límite o un uso de IA incluido (${q}) y el límite de IA no está decidido`);
   if (INTERNAL_REF_RE.test(t)) out.push(`lleva una referencia interna (${q})`);
@@ -111,6 +114,7 @@ export function shapeProblems(family: string, d: ProductDraft): string[] {
     if (c.quoteOnRequest) out.push("Solo un plan de Elephant Core presupuesta ampliaciones");
   }
   if (c.bundleRule && !BUNDLES.includes(family)) out.push("Solo un paquete tiene regla de paquetes");
+  if (c.coreIncluded && family !== "net_bundle") out.push("Solo una solución Elephant Net completa incluye Elephant Core");
   if (c.implementationLevel && (family === "core_plan" || family === "addon")) out.push("El nivel de implantación es de soluciones, extensiones, extras y servicios");
   const keys = (c.inclusions ?? []).map((i) => i.key);
   if (new Set(keys).size !== keys.length) out.push("Inclusiones repetidas");
@@ -155,6 +159,29 @@ export function commercialChecks(entry: CheckEntry, all: readonly CheckEntry[], 
   for (const q of c.quotaProposals ?? []) pending.push(`Cupo propuesto: ${q.metric} = ${q.included}`);
   if (c.quoteOnRequest?.status === "proposed") pending.push("Ampliaciones por presupuesto (propuesta)");
   if (c.bundleRule?.status === "proposed") pending.push(`Regla de paquetes «${c.bundleRule.kind}» (propuesta)`);
+
+  // ── Elephant Core incluido en las soluciones Elephant Net completas ──
+  if (entry.family === "net_bundle") {
+    const ci = c.coreIncluded;
+    if (!ci) warnings.push("Elephant Net sin Elephant Core incluido: se vendería sumado a un plan (dos cuotas)");
+    else {
+      const plan = byKey.get(ci.plan);
+      if (!plan || plan.family !== "core_plan") blocking.push(`el Core incluido «${ci.plan}» no es un plan de Elephant Core`);
+      else {
+        if (ci.status === "approved" && plan.publication !== "published") blocking.push(`el Core incluido «${ci.plan}» no está publicado`);
+        // Derechos de uso: el plan incluido debe fijar usuarios y sedes
+        for (const m of ["users", "sites"]) if (typeof plan.draft.catalog.quotas.find((q) => q.metric === m)?.included !== "number") warnings.push(`derechos de uso incompletos: «${ci.plan}» no fija «${m}»`);
+      }
+      if (ci.status === "proposed") pending.push(`Core incluido (${ci.plan}): propuesta`);
+      if (!ci.upgrade) warnings.push("sin regla de ampliación de Core: subir a Business o Enterprise se presupuestaría");
+      else if (ci.upgrade.status === "proposed") pending.push("Ampliación de Core cobrando la diferencia de tarifas (propuesta)");
+      if (!ci.additional) warnings.push("sin regla de Net adicional: una segunda solución Elephant Net se presupuestaría");
+      else if (ci.additional.status === "proposed") pending.push("Net adicional sin volver a cobrar Core (propuesta)");
+      if (ci.status === "approved" && !opts.policyEnabled) warnings.push("Core incluido aprobado sin efecto todavía (política comercial desactivada): la web y los cobros siguen sumando el plan");
+    }
+    // Un paquete Net no incluye otro paquete ni un plan (Core se cuenta una vez)
+    for (const k of c.bundleOf) if (["net_bundle", "core_plan"].includes(byKey.get(k)?.family ?? "")) blocking.push(`«${k}» no puede ser componente de una solución Elephant Net`);
+  }
   for (const x of d.internal.pendingDecisions ?? []) pending.push(`Decisión pendiente: ${x}`);
 
   // ── Ficha comercial ──

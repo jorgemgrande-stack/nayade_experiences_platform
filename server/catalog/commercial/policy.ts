@@ -42,7 +42,35 @@ export interface CommercialPolicy {
   bundleRules?: Record<string, { kind: "catalog" | "min2"; status: DecisionStatus }>;
   /** Planes donde una ampliación sin complemento en el catálogo se presupuesta en vez de exigir otro plan. */
   quoteOnRequestPlans: string[];
+  /**
+   * Elephant Core incluido en las soluciones Elephant Net completas (paquete `net_bundle` → regla). Sin entradas, el
+   * Net se suma al plan como siempre. Ver `NetCoreInclusion`.
+   */
+  coreIncluded?: Record<string, NetCoreInclusion>;
 }
+
+/**
+ * Elephant Net completo = Elephant Core (nivel `plan`) + solución sectorial, por el precio total del paquete
+ * (decisión de la dirección comercial del 27/10/2026). Una empresa nunca paga Elephant Core dos veces:
+ *  - con el plan incluido (o uno inferior), la línea del plan sale a 0 € («Incluido en tu solución Elephant Net»);
+ *  - `upgrade` (ampliar Core a Business o Enterprise): «difference» cobra solo la diferencia entre la tarifa aprobada
+ *    del plan elegido y la del plan incluido, con la misma periodicidad;
+ *  - `additional` (varios Net en la misma empresa): «core_credit» cobra cada Net adicional a su precio menos la
+ *    tarifa mensual del plan incluido (el Core ya lo aporta el primero).
+ * Nunca se inventan tarifas: todo sale de precios aprobados del catálogo.
+ */
+export interface NetCoreInclusion {
+  plan: string;
+  status: DecisionStatus;
+  /** Sin regla: la ampliación de Core se presupuesta. */
+  upgrade?: { kind: "difference"; status: DecisionStatus };
+  /** Sin regla: el Net adicional se presupuesta. */
+  additional?: { kind: "core_credit"; status: DecisionStatus };
+}
+
+/** Soluciones Elephant Net completas (paquetes de la familia net_bundle) con Elephant Core Essential incluido. */
+export const NET_COMPLETE = ["hotel-net-complete", "ski-net-complete", "travel-net-complete", "restaurant-net-complete", "care-net-complete", "social-token-net-complete"] as const;
+const NET_CORE: NetCoreInclusion = { plan: "essential", status: "approved", upgrade: { kind: "difference", status: "proposed" }, additional: { kind: "core_credit", status: "proposed" } };
 
 /** Comportamiento vigente: sin inclusiones, sin cupos de Enterprise, paquetes como hoy. */
 export const CATALOG_POLICY: CommercialPolicy = {
@@ -84,6 +112,7 @@ export const PROPOSED_POLICY: CommercialPolicy = {
   ],
   bundleRule: { kind: "min2", status: "proposed" },
   quoteOnRequestPlans: ["enterprise"],
+  coreIncluded: Object.fromEntries(NET_COMPLETE.map((k) => [k, { ...NET_CORE, upgrade: { ...NET_CORE.upgrade! }, additional: { ...NET_CORE.additional! } }])),
 };
 
 /** Reglas pendientes de aprobación de una política (para avisos en el CRM y en las pruebas). */
@@ -94,5 +123,6 @@ export function pendingRules(policy: CommercialPolicy): string[] {
     ...policy.quotaOverrides.filter((q) => q.status === "proposed").map((q) => `cupo ${q.plan}:${q.metric}`),
     ...(policy.bundleRule.status === "proposed" ? [`regla de paquetes ${policy.bundleRule.kind}`] : []),
     ...Object.entries(policy.bundleRules ?? {}).filter(([, r]) => r.status === "proposed").map(([k, r]) => `regla de paquetes ${r.kind} en ${k}`),
+    ...Object.entries(policy.coreIncluded ?? {}).flatMap(([k, r]) => [...(r.status === "proposed" ? [`Core incluido en ${k}`] : []), ...(r.upgrade?.status === "proposed" ? [`ampliación de Core en ${k}`] : []), ...(r.additional?.status === "proposed" ? [`Net adicional ${k}`] : [])]),
   ];
 }

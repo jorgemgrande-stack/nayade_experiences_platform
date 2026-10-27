@@ -8,13 +8,14 @@
  *  - "proposed": los borradores tal cual, con las reglas propuestas marcadas como tales. Solo para el simulador
  *    del administrador (nunca para un presupuesto ni para la web).
  */
-import type { CommercialPolicy, DecisionStatus, PlanInclusion } from "./policy";
+import type { CommercialPolicy, DecisionStatus, NetCoreInclusion, PlanInclusion } from "./policy";
 
 interface CatalogFields {
   inclusions?: Array<Omit<PlanInclusion, "plan">>;
   quotaProposals?: Array<{ metric: string; included: number }>;
   quoteOnRequest?: { status: DecisionStatus };
   bundleRule?: { kind: "catalog" | "min2"; status: DecisionStatus };
+  coreIncluded?: NetCoreInclusion;
 }
 export interface PolicySource {
   key: string;
@@ -31,6 +32,7 @@ export function policyFromProducts(products: readonly PolicySource[], mode: Poli
   const quotaOverrides: CommercialPolicy["quotaOverrides"] = [];
   const quoteOnRequestPlans: string[] = [];
   const bundleRules: NonNullable<CommercialPolicy["bundleRules"]> = {};
+  const coreIncluded: NonNullable<CommercialPolicy["coreIncluded"]> = {};
   for (const p of products) {
     const c = p.catalog ?? {};
     if (p.family === "core_plan") {
@@ -38,6 +40,11 @@ export function policyFromProducts(products: readonly PolicySource[], mode: Poli
       if (!approvedOnly) for (const q of c.quotaProposals ?? []) quotaOverrides.push({ plan: p.key, metric: q.metric, included: q.included, status: "proposed" });
       if (c.quoteOnRequest && ok(c.quoteOnRequest.status)) quoteOnRequestPlans.push(p.key);
     } else if (c.bundleRule && ok(c.bundleRule.status)) bundleRules[p.key] = { ...c.bundleRule };
+    // Elephant Core incluido en las soluciones Elephant Net completas (y sus reglas de ampliación y Net adicional)
+    if (p.family === "net_bundle" && c.coreIncluded && ok(c.coreIncluded.status)) {
+      const { upgrade, additional, ...ci } = c.coreIncluded;
+      coreIncluded[p.key] = { ...ci, ...(upgrade && ok(upgrade.status) ? { upgrade: { ...upgrade } } : {}), ...(additional && ok(additional.status) ? { additional: { ...additional } } : {}) };
+    }
   }
   return {
     id: mode === "published" ? "publicada" : "simulacion-borradores",
@@ -46,10 +53,11 @@ export function policyFromProducts(products: readonly PolicySource[], mode: Poli
     bundleRule: { kind: "catalog", status: "approved" },
     bundleRules,
     quoteOnRequestPlans,
+    coreIncluded,
   };
 }
 
 /** ¿La política cambia algún cálculo frente al cotizador del catálogo? (sin reglas = mismos importes que siempre) */
 export function isNeutral(policy: CommercialPolicy): boolean {
-  return !policy.inclusions.length && !policy.quotaOverrides.length && !policy.quoteOnRequestPlans.length && policy.bundleRule.kind === "catalog" && Object.values(policy.bundleRules ?? {}).every((r) => r.kind === "catalog");
+  return !policy.inclusions.length && !policy.quotaOverrides.length && !policy.quoteOnRequestPlans.length && policy.bundleRule.kind === "catalog" && Object.values(policy.bundleRules ?? {}).every((r) => r.kind === "catalog") && !Object.keys(policy.coreIncluded ?? {}).length;
 }

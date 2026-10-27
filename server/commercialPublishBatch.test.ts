@@ -120,10 +120,10 @@ describe("publicación por lotes de las fichas", () => {
 });
 
 describe("reglas comerciales preparadas", () => {
-  it("las siete reglas están registradas, ninguna activa y sin límites inventados", async () => {
+  it("las reglas preparadas están registradas, ninguna activa y sin límites inventados", async () => {
     const { svc } = await imported();
     const r = await svc.commercialReview();
-    expect(r.rules.map((x) => x.id)).toEqual(["enterprise-cupos-base", "people-business-15", "pos-caja-basica", "paquetes-solo-facturables", "copilot-consumo-medido", "implantacion-separada", "enterprise-ampliaciones-presupuesto"]);
+    expect(r.rules.map((x) => x.id)).toEqual(["enterprise-cupos-base", "people-business-15", "pos-caja-basica", "paquetes-solo-facturables", "copilot-consumo-medido", "implantacion-separada", "net-core-incluido", "net-ampliacion-core", "net-adicionales", "enterprise-ampliaciones-presupuesto"]);
     expect(r.rules.filter((x) => x.active)).toEqual([]);
     expect(r.rules.find((x) => x.id === "copilot-consumo-medido")?.limit).toBeNull();
     for (const x of r.rules) expect(x.requires.length, x.id).toBeGreaterThan(0);
