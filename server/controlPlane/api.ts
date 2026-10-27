@@ -115,6 +115,7 @@ import type { StripeStore } from "../stripe/store";
 import type { OrderStore } from "../orchestrator/store";
 import type { TestPaymentPort } from "../orchestrator/payments";
 import { createOrdersRouter, paymentsWebhookHandler } from "../orchestrator/api";
+import { subscriptionBilling } from "../orchestrator/subscriptionBilling";
 import { buildRelationshipExport, RelationshipNotFoundError } from "./relationshipExport";
 import { CalendarUnavailableError } from "./madridCalendar";
 import { createContractActivation } from "../crm/activation";
@@ -1730,7 +1731,9 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
       // Webhook del proveedor de PRUEBAS: autenticado por firma (antes del montaje del router con tokens)
       if (d.orders.payments) app.post("/cp/v1/payments/test/webhook", paymentsWebhookHandler(orchestrator));
     }
-    router.use("/subscriptions", createSubscriptionsRouter(svc, shadowBilling));
+    // Origen del cobro (Stripe o simulación) desde los pedidos; sin pedidos activos, todo es simulación
+    const orderStore = d.orders?.store;
+    router.use("/subscriptions", createSubscriptionsRouter(svc, shadowBilling, orderStore ? (sid) => subscriptionBilling(orderStore, sid) : undefined));
     // Catálogo de comunicaciones (solo lectura) y despacho manual de las pendientes
     router.get("/notifications/catalog", requireScope("ops:read"), wrap(async (_req, res) => void res.json({ templates: catalogView() })));
     const queue = d.commercialEvents as (typeof d.commercialEvents & Partial<CommercialEventDispatchQueue>) | undefined;
