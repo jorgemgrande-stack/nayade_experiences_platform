@@ -438,11 +438,8 @@ export function extraordinaryChanges(files: string[], diff: string, sqlOf: (file
     const why = sql === null ? "migración borrada" : destructiveMigration(sql);
     if (why) out.push(`${f} — migración no aditiva (${why})`);
   }
-  for (const line of diff.split("\n")) {
-    if (!/^[+-](?![+-])/.test(line)) continue;
-    const m = line.match(LOCKED_SWITCHES);
-    if (m) out.push(`cambio en ${m[1]} — funciones bloqueadas`);
-  }
+  // Solo el código que se ejecuta: un comentario o un documento que mencionen un interruptor no lo cambian
+  out.push(...coreLockedChanges(diff));
   return [...new Set(out)];
 }
 
@@ -576,3 +573,120 @@ export function meteringPlan(hostVar: string, portVar: string, coreCurrent?: str
     controlplane: { ERM_DATABASE_URL: ermRef("core", "ERM_DATABASE_URL") },
   };
 }
+
+// ── Clasificación por cambios EFECTIVOS (docs/elephant-source/AUTONOMIA_DESPLIEGUES.md) ───────────────────────────
+//
+// Un despliegue no se vuelve extraordinario porque un comentario, un documento o una prueba mencionen un interruptor:
+// solo cuenta el código que se ejecuta. Se descartan documentación, pruebas y e2e; en cada línea cambiada se quitan los
+// comentarios (con las cadenas respetadas: lo que va dentro de una cadena sí cuenta). Ante la duda, cuenta como código.
+
+/** Ficheros que no se ejecutan en el servicio: documentación, imágenes, pruebas, e2e y ejemplos de variables. */
+const NON_EFFECTIVE = /(^|\/)(docs?|e2e|__tests__)\/|\.(md|mdx|txt|png|jpe?g|gif|svg|webp|ico|pdf)$|\.(test|spec|e2e)\.[cm]?[jt]sx?$|(^|\/)\.?env\.example$/i;
+const HASH_COMMENTS = /(^|\/)(Caddyfile[^/]*|Dockerfile[^/]*|[^/]*\.(ya?ml|toml|sh|conf)|\.env[^/]*)$/i;
+
+/** Línea sin comentarios. `lang` js (por defecto): //, /* *\/ y continuaciones de JSDoc; hash: #; html: <!-- -->. */
+export function codeOfLine(line: string, lang: "js" | "hash" | "html" = "js"): string {
+  if (lang === "html") return line.replace(/<!--[\s\S]*?(-->|$)/g, "");
+  const t = line.trim();
+  // Continuación de un bloque de comentario (JSDoc): solo cuenta lo que haya tras su cierre
+  if (lang === "js" && (t.startsWith("*") || t.startsWith("/*"))) {
+    const end = line.indexOf("*/");
+    if (end < 0) return "";
+    line = line.slice(end + 2);
+  }
+  let out = "";
+  let quote: string | null = null;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (c === "\\") {
+      out += line.slice(i, i + 2);
+      i++;
+      continue;
+    }
+    if (quote) {
+      out += c;
+      if (c === quote) quote = null;
+      continue;
+    }
+    if (c === '"' || c === "'" || (lang === "js" && c === "`")) {
+      quote = c;
+      out += c;
+      continue;
+    }
+    if (lang === "hash" && c === "#") break;
+    if (lang === "js" && c === "/" && line[i + 1] === "/") break;
+    if (lang === "js" && c === "/" && line[i + 1] === "*") {
+      const end = line.indexOf("*/", i + 2);
+      if (end < 0) break;
+      i = end + 1;
+      continue;
+    }
+    out += c;
+  }
+  return out;
+}
+
+/**
+ * Líneas añadidas o quitadas de un diff unificado, con su fichero y sin comentarios; sin los ficheros que no se
+ * ejecutan. Un diff sin cabeceras (fragmento suelto) se trata como código.
+ */
+export function effectiveChangedLines(diff: string): Array<{ file: string; code: string }> {
+  const out: Array<{ file: string; code: string }> = [];
+  let file = "";
+  for (const line of diff.split("\n")) {
+    const h = /^diff --git a\/\S+ b\/(\S+)/.exec(line);
+    if (h) {
+      file = h[1];
+      continue;
+    }
+    if (/^(\+\+\+|---) /.test(line)) continue;
+    if (!/^[+-]/.test(line) || NON_EFFECTIVE.test(file)) continue;
+    const lang = HASH_COMMENTS.test(file) ? "hash" : /\.html?$/i.test(file) ? "html" : "js";
+    const code = codeOfLine(line.slice(1), lang);
+    if (code.trim()) out.push({ file, code });
+  }
+  return out;
+}
+
+/** Ficheros de configuración del CRM o la web donde un interruptor cuenta en cualquier parte del código (no solo leído). */
+const EXTERNAL_CONFIG_FILES = /(^|\/)(\.env[^/]*|vite\.config\.[cm]?[jt]s|Dockerfile[^/]*|railway[^/]*\.(json|toml)|nixpacks\.toml|index\.html)$/i;
+const ENV_READ = /(?:import\.meta\.env|process\.env|\benv)\s*(?:\.\s*|\[\s*["'`])([A-Z][A-Z0-9_]*)/g;
+
+/**
+ * Interruptores de funciones bloqueadas (cobros, autoservicio, Stripe, accesos de la pasarela) que un cambio del CRM o
+ * de la web toca DE VERDAD: una lectura de variable en el código (`import.meta.env.X`, `process.env.X`, `env.X`) o
+ * el nombre en un fichero de configuración (variables, compilación, imagen). Un comentario, una constante con un
+ * nombre parecido (p. ej. `STRIPE_LIVE_PROVIDER`) o un texto no lo son. La pasarela (Caddyfile) ya es extraordinaria.
+ */
+export function externalLockedChanges(diff: string): string[] {
+  const out = new Set<string>();
+  const anywhere = new RegExp(EXTERNAL_LOCKED_SWITCHES.source, "g");
+  for (const { file, code } of effectiveChangedLines(diff)) {
+    if (EXTERNAL_CONFIG_FILES.test(file)) {
+      for (const m of code.matchAll(anywhere)) out.add(`${file}: cambio en ${m[0]} — funciones bloqueadas`);
+      continue;
+    }
+    for (const m of code.matchAll(ENV_READ)) if (EXTERNAL_LOCKED_SWITCHES.test(m[1])) out.add(`${file}: lectura de ${m[1]} — funciones bloqueadas`);
+  }
+  return Array.from(out);
+}
+
+/** Interruptores del Core tocados en código efectivo (sin comentarios): cualquier aparición en código o en cadenas. */
+export function coreLockedChanges(diff: string): string[] {
+  const out = new Set<string>();
+  for (const { file, code } of effectiveChangedLines(diff)) {
+    const m = code.match(LOCKED_SWITCHES);
+    if (m) out.add(`${file ? `${file}: ` : ""}cambio en ${m[1]} — funciones bloqueadas`);
+  }
+  return Array.from(out);
+}
+
+/**
+ * Commit del CRM sellado en cada despliegue (se sirve como fichero estático): tras publicar se comprueba que el dominio
+ * REAL sirve ese commit; si no, vuelta atrás.
+ */
+export const CRM_VERSION_FILE = "public/version.txt";
+export const CRM_VERSION_URL: Record<string, { url: string; auth?: boolean }> = {
+  live: { url: "https://elephant-source-crm-live.up.railway.app/version.txt", auth: true },
+  production: { url: "https://admin.bigelephant.es/version.txt" },
+};

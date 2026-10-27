@@ -42,7 +42,7 @@ import { DRILL_IDLE, EXCLUDED_FROM_EXPORT, GATEWAY_COPIED_VARS, GATEWAY_TEMPLATE
 import { ERM_DB_SERVICE, ERM_PASSWORD_VAR, LIVE_PLATFORM_DOMAIN_DEFAULT, livePlatformDomainProblems, meteringPlan, platformDomainsValue } from "./esRailwayLib";
 import { CATALOG_STAMP_FILE, WEB_CATALOG_SITE } from "./esRailwayLib";
 import { externalExtraordinaryChanges, extraordinaryChanges } from "./esRailwayLib";
-import { CRM_CHECKS, EXTERNAL_LOCKED_SWITCHES, FUNCTIONAL_CHECKS, ORDINARY_SERVICES, WEB_CHECKS, crmProtectedChanges, hasMigrations, isExternalService, protectedChanges, shaFromDeployMeta } from "./esRailwayLib";
+import { CRM_CHECKS, CRM_VERSION_FILE, CRM_VERSION_URL, externalLockedChanges, FUNCTIONAL_CHECKS, ORDINARY_SERVICES, WEB_CHECKS, crmProtectedChanges, hasMigrations, isExternalService, protectedChanges, shaFromDeployMeta } from "./esRailwayLib";
 import { REPOSITORIES } from "../../shared/repositories";
 
 const CONFIG_PATH = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../deploy/railway/elephant-source.deploy.json");
@@ -165,6 +165,30 @@ async function functional(env: string, set: Record<string, Array<{ url: string; 
   return ok;
 }
 
+/**
+ * ¿Sirve el dominio real del CRM el commit recién publicado? Lee el sello estático (CRM_VERSION_URL) con reintentos:
+ * un despliegue en verde que no llega al dominio (caché, enrutado, otro servicio) se trata como fallo y vuelve atrás.
+ */
+async function servedCrmVersion(env: string, sha: string, attempts = 8): Promise<boolean> {
+  const target = CRM_VERSION_URL[env];
+  if (!target) throw new Error(`sin URL de versión del CRM para «${env}»`);
+  const auth = (process.env.ES_GATEWAY_AUTH ?? "").trim();
+  if (target.auth && !auth) {
+    console.error(`${target.url}: falta ES_GATEWAY_AUTH`);
+    return false;
+  }
+  const headers: Record<string, string> = { "cache-control": "no-cache", ...(target.auth ? { authorization: "Basic " + Buffer.from(auth).toString("base64") } : {}) };
+  let got = "";
+  for (let i = 0; i < attempts; i++) {
+    if (i) await new Promise((r) => setTimeout(r, 15_000));
+    const res = await fetch(`${target.url}?t=${Date.now()}`, { redirect: "manual", headers }).catch(() => null);
+    got = res && res.status === 200 ? (await res.text()).trim().slice(0, 64) : `HTTP ${res?.status ?? 0}`;
+    if (got === sha) break;
+  }
+  console.log(`${got === sha ? "OK" : "FALLO"} ${target.url} → ${/^[0-9a-f]{40}$/.test(got) ? got.slice(0, 12) : got.slice(0, 40)} (esperado ${sha.slice(0, 12)})`);
+  return got === sha;
+}
+
 // ── Órdenes ─────────────────────────────────────────────────────────────────────
 
 function arg(name: string, required = true): string {
@@ -218,14 +242,11 @@ async function main() {
     if (process.argv.includes("--production")) {
       // Dependencias e imagen son ordinarias (probadas en live, vuelta atrás automática); la pasarela, extraordinaria
       const blocked = externalExtraordinaryChanges(files);
-      // Interruptores de funciones comerciales bloqueadas (checkout, autoservicio, Stripe): un cambio que los toque no es ordinario
+      // Interruptores de funciones comerciales bloqueadas (checkout, autoservicio, Stripe, accesos): solo cuenta un cambio
+      // EFECTIVO (lectura de la variable o fichero de configuración), nunca un comentario, un documento o una prueba
       const d = spawnSync("git", ["-C", dir, "diff", "--unified=0", `${from}..${to}`], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
       if (d.status !== 0) throw new Error("git diff del repositorio externo falló");
-      for (const line of (d.stdout ?? "").split("\n")) {
-        if (!/^[+-](?![+-])/.test(line)) continue;
-        const m = EXTERNAL_LOCKED_SWITCHES.exec(line);
-        if (m) blocked.push(`cambio en ${m[0]} — funciones bloqueadas`);
-      }
+      blocked.push(...externalLockedChanges(d.stdout ?? ""));
       if (blocked.length) {
         console.error(`El CRM trae cambios que exigen el procedimiento protegido (con aprobación):\n - ${blocked.join("\n - ")}`);
         process.exit(5);
@@ -1057,11 +1078,16 @@ async function main() {
       console.log(`${ext.service}: ya sirve ${sha.slice(0, 12)}`);
       return;
     }
+    // CRM: el commit va sellado en un fichero estático para comprobar después qué sirve el dominio REAL
+    if (ext.service === "crm") {
+      fs.mkdirSync(path.dirname(path.join(dir, CRM_VERSION_FILE)), { recursive: true });
+      fs.writeFileSync(path.join(dir, CRM_VERSION_FILE), `${sha}\n`);
+    }
     const before = (await latest(sid, sc.environmentId))?.id ?? null;
     const r = spawnSync("railway", ["up", dir, "--path-as-root", "-s", ext.service, "-e", env, "--detach", "-m", note], { encoding: "utf8", env: process.env });
     const d = r.status === 0 ? await waitOrCancel(sid, sc.environmentId, before) : null;
     console.log(`${ext.service}: ${d ? `despliegue ${d.id} → ${d.status}` : `railway up falló: ${scrub(r.stderr || r.stdout || "").slice(0, 300)}`}`);
-    const ok = d?.status === "SUCCESS" && (await functional(env, ext.checks));
+    const ok = d?.status === "SUCCESS" && (await functional(env, ext.checks)) && (ext.service !== "crm" || (await servedCrmVersion(env, sha)));
     if (!ok) {
       if (d && d.status !== "SUCCESS" && d.status !== "TIMEOUT") console.log((await logs(d.id, 120)).split("\n").slice(-40).join("\n"));
       if (curNode) console.error(`${ext.service}: vuelta atrás a ${curNode.id} → ${await rollback(sid, sc.environmentId, curNode.id)}`);

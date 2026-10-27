@@ -1,0 +1,42 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(git fetch:*)",
+      "Bash(git checkout:*)",
+      "Bash(git switch:*)",
+      "Bash(git branch:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git merge:*)",
+      "Bash(git worktree:*)",
+      "Bash(git push -u origin feat/*)",
+      "Bash(git push -u origin fix/*)",
+      "Bash(git push -u origin chore/*)",
+      "Bash(git push -u origin docs/*)",
+      "Bash(gh pr create:*)",
+      "Bash(gh pr view:*)",
+      "Bash(gh pr checks:*)",
+      "Bash(gh pr list:*)",
+      "Bash(gh pr merge:*)",
+      "Bash(gh run view:*)",
+      "Bash(gh run list:*)",
+      "Bash(gh run watch:*)",
+      "Bash(gh workflow run ci.yml --ref integration/elephant-source)",
+      "Bash(gh workflow run deploy-elephant-source.yml --ref integration/elephant-source -f environment=live:*)",
+      "Bash(gh workflow run deploy-elephant-source.yml --ref integration/elephant-source -f environment=production -f action=revertir-:*)"
+    ],
+    "deny": [
+      "Bash(git push --force:*)",
+      "Bash(git push -f:*)",
+      "Bash(git push --force-with-lease:*)",
+      "Bash(git tag -d:*)",
+      "Bash(git push origin --delete:*)",
+      "Bash(gh workflow run deploy-elephant-source.yml --ref integration/elephant-source -f environment=production -f action=desplegar-:*)",
+      "Bash(gh workflow run deploy-elephant-source.yml --ref integration/elephant-source -f environment=production -f action=aplicar-production:*)"
+    ]
+  }
+}
