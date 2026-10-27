@@ -65,9 +65,12 @@ describe.skipIf(!URL_)("arranque del modo live con MySQL real", () => {
 
   it("datos: un pago de prueba cobrado en un pedido vivo, o otro prefijo guardado, impiden montar pedidos en live", async () => {
     expect(await liveOrdersProblem(pool, "live")).toBeNull();
+    // El prefijo de pruebas guardado no ata al de live
     await pool.query("INSERT INTO stripe_sync_state (name, value_json, locked_until, updated_at) VALUES ('namespace', ?, NULL, ?)", [JSON.stringify({ namespace: "beta" }), now]);
+    expect(await liveOrdersProblem(pool, "live")).toBeNull();
+    await pool.query("INSERT INTO stripe_sync_state (name, value_json, locked_until, updated_at) VALUES ('namespace:live', ?, NULL, ?)", [JSON.stringify({ namespace: "otro" }), now]);
     expect(await liveOrdersProblem(pool, "live")).toBe("namespace_mismatch");
-    await pool.query("UPDATE stripe_sync_state SET value_json = ? WHERE name = 'namespace'", [JSON.stringify({ namespace: "live" })]);
+    await pool.query("UPDATE stripe_sync_state SET value_json = ? WHERE name = 'namespace:live'", [JSON.stringify({ namespace: "live" })]);
     expect(await liveOrdersProblem(pool, "live")).toBeNull();
     const pay = (key: string, mode: string, status: string) =>
       pool.query("INSERT INTO commercial_payments (order_id, idempotency_key, purpose, amount_cents, currency, status, provider, mode, created_at) VALUES (?, ?, 'initial', 2900, 'EUR', ?, 'simulated', ?, ?)", [orderId, key, status, mode, now]);
