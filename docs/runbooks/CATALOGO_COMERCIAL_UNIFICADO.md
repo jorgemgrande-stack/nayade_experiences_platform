@@ -34,4 +34,6 @@ CATALOG_DATABASE_URL=mysql://…/crm pnpm exec tsx scripts/catalog/import-commer
 CATALOG_DATABASE_URL=mysql://…/crm pnpm exec tsx scripts/catalog/import-commercial-specs.ts --apply --confirm-database <bd>
 ```
 
+En live y production, con el flujo «Despliegue Elephant Source»: `catalogo-fichas` (simulación) y `catalogo-fichas-aplicar` (borradores; ordinario, sin aprobación). Informa de los campos que cambia en cada producto y no guarda ningún producto en el que cambiaría algo fuera de la ficha y la política (precios, cupos, estados…); falla si cambia la versión publicada.
+
 Solo guarda borradores (nunca publica). Los textos con inclusiones o reglas propuestas quedan como «Texto retenido…» en `internal.pendingDecisions`. La semilla (`seed-elephant-source.ts`) conserva todo lo anterior al repetirse.

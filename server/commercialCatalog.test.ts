@@ -20,7 +20,7 @@ import { PRODUCTS } from "./catalog/elephantSourceV1";
 import { commercialQuote, quoteResponse } from "./catalog/commercial/commercialQuote";
 import { CATALOG_POLICY, PROPOSED_POLICY } from "./catalog/commercial/policy";
 import { isNeutral, policyFromProducts } from "./catalog/commercial/fromCatalog";
-import { draftWithSpec, importCommercialSpecs } from "./catalog/commercial/importSpecs";
+import { draftWithSpec, foreignChanges, importCommercialSpecs } from "./catalog/commercial/importSpecs";
 import { PLAN_RULE_RE, PROPOSAL_RE } from "./catalog/commercial/checks";
 import { PRODUCT_SPECS } from "./catalog/commercial/specs";
 import { productDraft } from "./web/schemas";
@@ -109,6 +109,20 @@ describe("importación de fichas comerciales", () => {
     expect(ess.publishedVersion).not.toBe(ess.draftVersion);
     // Idempotente
     expect((await importCommercialSpecs(svc, store, { dryRun: false })).updated).toEqual([]);
+  });
+
+  it("barrera: nunca cambia precios, cupos, estado ni nada fuera de la ficha y la política", async () => {
+    const { store, svc } = await seeded();
+    const dry = await importCommercialSpecs(svc, store);
+    for (const [key, fields] of Object.entries(dry.fields)) for (const f of fields) expect(f, key).toMatch(/^(commercial|catalog.(implementationLevel|inclusions|quotaProposals|quoteOnRequest|bundleRule)|internal.(evidence|functionalGrade|sources|pendingDecisions))$/);
+    const biz = productDraft.parse((await store.getEntry("product", "business"))!.draft);
+    const touched = { ...biz, catalog: { ...biz.catalog, inclusions: [] }, commercial: { headline: "x" } };
+    expect(foreignChanges(biz as unknown as Record<string, unknown>, touched as unknown as Record<string, unknown>)).toEqual([]);
+    const pricier = JSON.parse(JSON.stringify(biz));
+    pricier.catalog.quotas = [];
+    pricier.catalog.commercialStatus = "retired";
+    pricier.billingModel = "one_off";
+    expect(foreignChanges(biz as unknown as Record<string, unknown>, pricier).sort()).toEqual(["billingModel", "catalog.commercialStatus", "catalog.quotas"]);
   });
 
   it("los textos con inclusiones en planes o reglas propuestas no van a la ficha pública: quedan como decisión pendiente", () => {
