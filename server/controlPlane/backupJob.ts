@@ -441,7 +441,9 @@ async function main() {
           const before = await svc.publicSite("published").catch(() => null);
           const rep = await importCommercialSpecs(svc, webStore, { dryRun: !flag("--apply"), author: IMPORT_AUTHOR });
           const after = await svc.publicSite("published").catch(() => null);
-          print({ ...rep, publicado: { antes: before?.version ?? null, despues: after?.version ?? null } });
+          // Una sola línea: el registro de Railway puede llegar desordenado o recortado si la salida ocupa muchas líneas
+          const count = (m: Record<string, string[]>) => Object.values(m).flat().reduce<Record<string, number>>((o, k) => ((o[k] = (o[k] ?? 0) + 1), o), {});
+          console.log(JSON.stringify({ simulacion: rep.dryRun, actualizables: rep.updated.length, sinCambios: rep.unchanged, faltan: rep.missing, fallos: rep.failed, campos: count(rep.fields), normalizados: count(rep.normalized), publicado: { antes: before?.version ?? null, despues: after?.version ?? null } }));
           if (rep.failed.length || rep.missing.length || before?.version !== after?.version) process.exitCode = 1;
         } finally {
           await crmPool.end().catch(() => undefined);
