@@ -1,57 +1,72 @@
-# Coordinación: ventana de Catálogo y ventana de Stripe (Elephant Net + Core)
+# Coordinación: catálogo, validación de cobros Net + Core y ventana de Stripe
 
-Documento vivo entre las dos ventanas. Cada ventana edita **solo su sección** y añade entradas fechadas al registro; nadie reescribe lo de la otra. El contrato técnico es [CONTRATO_CATALOGO_COMERCIAL_STRIPE.md](CONTRATO_CATALOGO_COMERCIAL_STRIPE.md) (v3); este documento solo dice quién hace qué y en qué punto está.
+Documento vivo. Cada ventana edita **solo su sección** y añade entradas fechadas al registro; nadie reescribe lo de otra. El contrato técnico es [CONTRATO_CATALOGO_COMERCIAL_STRIPE.md](CONTRATO_CATALOGO_COMERCIAL_STRIPE.md) (v3); este documento dice quién hace qué y en qué punto está.
 
 Estado a 27/10/2026: la política Elephant Net + Core está implementada y desplegada **apagada** (`commercialPolicy` desactivada en live y production). Ninguna suscripción real cambia.
 
 ## 1. Reparto
 
-| Área | Responsable | La otra ventana |
+| Área | Responsable | Notas |
 |---|---|---|
-| Catálogo, fichas, reglas, cotizador comercial (`server/catalog/**`, `server/web/**`), web y CRM de catálogo | Catálogo | No lo reconstruye; pide cambios aquí o por mensaje |
-| Cobros: pasarela, Checkout, compras, cambios de plan, conciliación, fiscalidad (`server/stripe/**`, `server/orchestrator/**`, `server/subscriptions/**`, `server/controlPlane/**` de cobro) | Stripe | No lo toca; avisa antes de fusionar algo que lo afecte |
-| Pruebas de sandbox (`scripts/catalog/netCoreStripeSandbox.ts`) | Stripe las ejecuta y adapta | Catálogo mantiene los importes esperados |
-| Encender la política | Ninguna sola: requiere §5 completo y autorización de Jorge | — |
+| Catálogo, fichas, reglas, cotizador comercial (`server/catalog/**`, `server/web/**`), web y CRM de catálogo | Ventana de Catálogo | |
+| **Validación y adaptación de cobros de Net + Core** (contrato v3 §8 P0-A … P0-J, pruebas §9, sandbox) | **Ventana de Catálogo** (asignado por Jorge el 27/10/2026) | Reutiliza el cotizador y sus pruebas; no lo reconstruye |
+| Stripe Live, servicios externos (Nextair), arranque y configuración de Stripe en production | Ventana de Stripe | Recibe aviso antes de fusionar nada en `server/stripe/**` u `server/orchestrator/**`, y da el visto bueno |
+| Encender la política | Nadie solo: requiere §5 completo y autorización de Jorge | |
 
 ## 2. Lo que el catálogo ya entrega (Core #383, #387; CRM #73, #74; web #23, #24)
 
 - **Reglas** (`server/catalog/commercial/policy.ts`, `rules.ts`): Essential incluido en cada Net completo; ampliación a Business +50 €/mes o +480 €/año; Enterprise +170 €/mes (anual por presupuesto); Net adicional −29 €/mes; mismo Net duplicado = error; sin cuota anual de Essential si va incluido.
-- **Cotización** (`commercialQuote.ts`), campos que Stripe debe consumir:
+- **Cotización** (`commercialQuote.ts`), campos que consume el cobro:
   - `policyVersion`: huella inmutable (16 hex) de la política aplicada.
   - `lines[].status`: `included_in_net` (0 €, forzada a mensual), `core_upgrade` (diferencia de tarifas), `net_additional` (precio − 2900).
+  - `lines[].credit` (#392): tipo, importe, plan y periodicidad del crédito de Core por unidad.
   - `discounts.coreIncludedCents`, `netCore { nets, corePlan, providedBy }`.
   - `contractModel`: `"legacy"` = sin composición (importes históricos); `"composite"` = los Net ya contratados también aportan Core; sin valor = solo los Net nuevos componen.
 - **Auditoría** (`integrity.ts`, `coreAudit`): `coreCobradoDosVeces`, `netConCoreAparte`, `netSinCore`, expuesta en `commercial-integrity` como `coreUnico`.
 - **Simulaciones** (`GET /web/commercial/net-simulations`): 7 escenarios por Net, 0 incidencias en live.
-- **Pruebas existentes a reutilizar**: `server/netCoreIncluded.test.ts`, `server/commercialQuote.test.ts`, `server/commercialIntegrity.test.ts`, `server/commercialCatalog.test.ts`.
 
-## 3. Comparación del código de cobro con la v3 (27/10/2026)
+## 3. Estado de las adaptaciones de cobro (v3 §8)
 
-Búsqueda en `server/` fuera de `catalog/` y `web/`: no aparecen `net_inclusion`, `totalExcludingTax`, `included_in_net`, `core_upgrade`, `net_additional`, `policyVersion`, `contractModel`, `providedBy` ni `proration_date`. Es decir, **P0-A … P0-J (v3 §8) están sin empezar** en el lado de cobro. Core #388 (espacios de nombres por modo) no los cubre.
+| Punto | Estado | PR |
+|---|---|---|
+| P0-A Neto después de descuentos en el cotejo del primer cobro y en la base fiscal | Hecho (sin cupones, idéntico a hoy) | #390 |
+| P0-D Cupones en la pasarela (Checkout, cambios, vistas previas, `ensureCoupon`, doble de pruebas) | Hecho | #390 |
+| P0-C Partidas del Checkout con los estados nuevos | Hecho | #392 |
+| Precio contractual desde la instantánea y cotejo de cambios con crédito (§5-§6) | Hecho (módulo puro; aún sin enchufar a compras) | #392 |
+| P0-B Instantánea en el pedido (`credit`, `netCore`, `policyVersion`, `providedBy` fijado) | Pendiente | |
+| P0-F Partida interna `net_inclusion` (migración aislada) y `specs()` del orquestador | Pendiente | |
+| P0-E Compras con crédito (`purchases.ts`) | Pendiente | |
+| P0-G Conciliación de cupones (`itemsDrift`, `contractedItems`) | Pendiente | |
+| P0-H Modelo por contrato en los pedidos (pasar `contractModel` guardado) | Pendiente (el cotizador ya lo admite) | |
+| P0-I CRM muestra lo que se cobra | Pendiente | |
+| P0-J Vía de cambio de plan (subida y bajada) | Pendiente | |
+
+#390 y #392 están **sin fusionar**: la ventana de Stripe pidió esperar a que Nextair quede operativo en production.
 
 ## 4. Sección de la ventana de Stripe
 
-_Pendiente de completar por la ventana de Stripe: estado de P0-A … P0-J, PR, mecánica elegida y resultados del sandbox._
+_Para la ventana de Stripe: avisos sobre Stripe Live, Nextair y cualquier cambio en `server/stripe/**` que afecte a lo anterior._
 
-## 5. Pruebas que faltan para autorizar la activación
+## 5. Pruebas para autorizar la activación
 
-Unitarias con `FakeStripeGateway` (v3 §9, U1–U20) y sandbox con *test clocks* (S1–S5 de la v2 y S-N1 … S-N8). Las decisivas:
-
-| Prueba | Qué decide |
-|---|---|
-| S-N2 prorrateo del cupón en subida a mitad de periodo | Cupón (A) si da (79 − 29) × f; tarifas derivadas (B) si da 79 × f − 29 |
-| S-N1 / U3 neto tras cupón = `firstPeriodNetCents` y base fiscal | Aceptado = cobrado |
-| S-N5 renovaciones 13 meses (Business anual + Net + Net adicional) | Sin duplicados ni importes desviados |
-| U8 / U9 / U10 / U11 / U12 cambios de plan y Nets | Vía de cambio de plan (P0-J) |
-| U15 tarifas republicadas tras contratar | Precio contractual protegido |
-| U16 / U17 histórico y política apagada | Contratos históricos intactos |
-| U18 / U19 / S-N7 idempotencia, fallo de pago y 3DS | Sin cobros dobles ni capacidades sin pago |
+| Prueba | Estado | Qué decide |
+|---|---|---|
+| U1–U7, U17 Checkout compuesto con las tarifas del catálogo | Pasan (doble de Stripe) | Partidas y créditos correctos |
+| Aceptado = cobrado en el alta (neto tras cupón = presupuesto, IVA sobre el neto) | Pasa (doble) | |
+| U8, U10 cambios a mitad de periodo con prorrateo fijado y cotejo previo | Pasan (doble) | |
+| U15 tarifas republicadas tras contratar | Pasa | Precio contractual protegido |
+| U16 contrato histórico | Pasa | Históricos intactos |
+| Renovaciones con cupones por partida | Pasa (doble) | |
+| **S-N2 prorrateo del cupón en sandbox** | **Bloqueada: sin clave de sandbox** | Cupón (A) si (79 − 29) × f; tarifas derivadas (B) si 79 × f − 29. El cotejo previo ya impide cobrar si Stripe hace B |
+| **S-N1 cupón de sesión con varias partidas, S-N3 … S-N8** | **Bloqueadas: sin clave de sandbox** | Reparto del cupón, renovaciones reales de 13 meses, 3DS, `proration_date` en el pasado |
+| U9, U11–U14, U18–U20 | Pendientes de P0-B/E/F/J | |
 
 ## 6. Bloqueos externos
 
-- **Clave de sandbox de Stripe** (`ES_SANDBOX_STRIPE_KEY`, `sk_test_` o `rk_test_`): no existe en ningún entorno; la facilita Jorge a la ventana de Stripe. Sin ella no se ejecuta ninguna prueba S-*.
-- **Production**: `CP_STRIPE_MODE=live` con `CP_STRIPE_NAMESPACE=beta` impide arrancar el plano de control; cada publicación vuelve atrás. La cambia Jorge. Mientras tanto, conviene no fusionar en integración salvo lo imprescindible.
+- **Clave de sandbox de Stripe** (`ES_SANDBOX_STRIPE_KEY`, `sk_test_` o `rk_test_`): no existe en ningún entorno. La facilita Jorge. Sin ella no se ejecuta ninguna prueba S-* ni se decide la mecánica.
 
 ## 7. Registro
 
-- 27/10/2026 · Catálogo: documento creado; encargo de validación de cobros reenviado a la ventana de Stripe.
+- 27/10/2026 · Catálogo: documento creado.
+- 27/10/2026 · Jorge asigna a la ventana de Catálogo la validación y adaptación de cobros de Net + Core (la de Stripe sigue con Stripe Live y Nextair).
+- 27/10/2026 · Catálogo: #390 (P0-A, P0-D) y #392 (P0-C, precio contractual, cotejo de cambios) abiertos; en espera de fusión por petición de la ventana de Stripe.
