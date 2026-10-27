@@ -75,8 +75,16 @@ describe("Elephant Net completo con Core incluido", () => {
     expect(m({ plan: "enterprise", interval: "month", items: [{ key: "ski-net-complete" }] })).toBe(eur(99 + 170));
     const y = q({ plan: "business", interval: "year", items: [{ key: "ski-net-complete" }] });
     expect(y.recurring).toMatchObject({ monthlyCents: eur(99), yearlyCents: eur(759 - 279) });
-    expect(q({ plan: "essential", interval: "year", items: [{ key: "ski-net-complete" }] }).recurring).toMatchObject({ monthlyCents: eur(99), yearlyCents: 0 });
-    expect(b.pendingRules).toEqual(expect.arrayContaining(["ampliación de Core en ski-net-complete"]));
+    // Essential incluido con plan anual: sin cuota anual separada de Essential (regla 9)
+    const ey = q({ plan: "essential", interval: "year", items: [{ key: "ski-net-complete" }] });
+    expect(ey.recurring).toMatchObject({ monthlyCents: eur(99), yearlyCents: 0 });
+    expect(ey.lines.find((l) => l.key === "essential")).toMatchObject({ status: "included_in_net", interval: "month", amountCents: 0 });
+    // Enterprise anual: sin tarifa anual aprobada para la ampliación → por presupuesto (nunca se inventa)
+    const enty = q({ plan: "enterprise", interval: "year", items: [{ key: "ski-net-complete" }] });
+    expect(enty.lines.find((l) => l.key === "enterprise")?.status).toBe("on_quote");
+    expect(enty.recurring.yearlyCents).toBe(0);
+    // Reglas aprobadas: no quedan reglas pendientes en el presupuesto
+    expect(b.pendingRules).toEqual([]);
   });
 
   it("dos Net en una empresa: un solo Core (el de mayor precio lo aporta; el otro, sin Essential)", () => {
@@ -97,9 +105,18 @@ describe("Elephant Net completo con Core incluido", () => {
     const histPlan = q({ plan: "business", interval: "month", owned: ["ski-net-complete"], items: [] });
     expect(histPlan.lines.find((l) => l.key === "business")).toMatchObject({ status: "charged", amountCents: eur(79) });
     expect(q({ plan: "business", interval: "month", contractModel: "composite", owned: ["ski-net-complete"], items: [] }).lines.find((l) => l.key === "business")).toMatchObject({ status: "core_upgrade", amountCents: eur(50) });
-    // Varias unidades del mismo Net: el Core se cuenta una vez
+    // No se permiten dos contrataciones del mismo Net (regla 7)
     const two = q({ ...ess, items: [{ key: "ski-net-complete", quantity: 2 }] });
-    expect(two.recurring.monthlyCents).toBe(eur(99 + 70));
+    expect(two.ok).toBe(false);
+    expect(two.errors.join()).toMatch(/misma solución Elephant Net/);
+    // Tres Net: uno aporta el Core, los otros dos −29 € cada uno
+    expect(m({ ...ess, items: [{ key: "ski-net-complete" }, { key: "hotel-net-complete" }, { key: "care-net-complete" }] })).toBe(eur(119 + 70 + 40));
+    // Capacidades adicionales con su producto: usuarios de Essential sobre el Core incluido
+    // (el complemento se calcula solo a partir del total: 5 usuarios = 3 incluidos + 2 adicionales)
+    const users = q({ ...ess, users: 5, items: [{ key: "ski-net-complete" }] });
+    expect(users.recurring.monthlyCents).toBe(eur(99 + 2 * 6));
+    expect(users.errors).toEqual([]);
+    expect(users.lines.find((l) => l.key === "addon-user-essential")).toMatchObject({ status: "charged", quantity: 2 });
   });
 
   it("sin regla aprobada de Net adicional o de ampliación: por presupuesto, nunca dos cuotas de Core", () => {
@@ -140,6 +157,27 @@ describe("Elephant Net completo con Core incluido", () => {
   });
 });
 
+describe("versión inmutable de la política y contratos históricos", () => {
+  it("cada presupuesto lleva la huella de la política aplicada: misma política, misma huella; otra regla, otra huella", () => {
+    const a = q({ ...ess, items: [{ key: "ski-net-complete" }] });
+    expect(a.policyVersion).toMatch(/^[0-9a-f]{16}$/);
+    expect(q({ ...ess, items: [{ key: "hotel-net-complete" }] }).policyVersion).toBe(a.policyVersion);
+    expect(commercialQuote(cat, CATALOG_POLICY, { ...ess, items: [] }).policyVersion).not.toBe(a.policyVersion);
+    const otherId = commercialQuote(cat, { ...NET_ONLY, id: "otro-nombre" }, { ...ess, items: [] });
+    expect(otherId.policyVersion).toBe(a.policyVersion);
+  });
+
+  it("contratos históricos: mismos importes con «legacy» para todas las soluciones, planes y periodicidades", () => {
+    for (const k of NET_COMPLETE) for (const plan of ["essential", "business", "enterprise"]) for (const interval of ["month", "year"] as const) {
+      const r: CommercialQuoteRequest = { plan, interval, contractModel: "legacy", items: [{ key: k }] };
+      const c = commercialQuote(cat, PROPOSED_POLICY, r);
+      const old = commercialQuote(cat, { ...PROPOSED_POLICY, coreIncluded: {} }, r);
+      expect(c.recurring, `${k} ${plan} ${interval}`).toEqual(old.recurring);
+      expect(c.netCore.nets).toEqual([]);
+    }
+  });
+});
+
 describe("simulaciones de todas las soluciones Net y detección de incidencias", () => {
   it("las seis soluciones, siete escenarios cada una, sin incidencias", () => {
     const s = netSimulations(cat, NET_ONLY);
@@ -170,13 +208,13 @@ describe("catálogo: importación, publicación y validaciones", () => {
     await seedElephantSource(svc, store);
     const before = await svc.publicSite("published");
     await importCommercialSpecs(svc, store, { dryRun: false });
-    for (const k of NET_COMPLETE) expect(productDraft.parse((await store.getEntry("product", k))!.draft).catalog.coreIncluded, k).toMatchObject({ plan: "essential", status: "approved", upgrade: { status: "proposed" }, additional: { status: "proposed" } });
+    for (const k of NET_COMPLETE) expect(productDraft.parse((await store.getEntry("product", k))!.draft).catalog.coreIncluded, k).toEqual({ plan: "essential", status: "approved", upgrade: { kind: "difference", status: "approved", yearlyPlans: ["business"] }, additional: { kind: "core_credit", status: "approved" } });
     expect((await svc.publicSite("published")).version).toBe(before.version);
     const d = productDraft.parse((await store.getEntry("product", "ski-net-complete"))!.draft);
     expect((publicView("product", d as unknown as Record<string, unknown>) as { catalog: Record<string, unknown> }).catalog.coreIncluded).toBeUndefined();
-    // Con la política activa solo sale lo aprobado: la inclusión sí, la ampliación y el Net adicional (propuestos) no
+    // Con la política activa sale lo aprobado: la inclusión, la ampliación (anual solo Business) y el Net adicional
     const on = (publicView("product", d as unknown as Record<string, unknown>, { policy: true }) as { catalog: Record<string, unknown> }).catalog.coreIncluded;
-    expect(on).toEqual({ plan: "essential", status: "approved" });
+    expect(on).toEqual({ plan: "essential", status: "approved", upgrade: { kind: "difference", status: "approved", yearlyPlans: ["business"] }, additional: { kind: "core_credit", status: "approved" } });
     // El simulador con los borradores ya compone el Net
     const { catalog, policy } = await svc.commercialCatalog("proposed");
     expect(commercialQuote(catalog, policy, { ...ess, items: [{ key: "ski-net-complete" }] }).recurring.monthlyCents).toBe(eur(99));
@@ -186,7 +224,8 @@ describe("catálogo: importación, publicación y validaciones", () => {
     const rev = await svc.commercialReview();
     const ski = rev.products.find((p) => p.key === "ski-net-complete")!;
     expect(ski.warnings.join()).toMatch(/Core incluido aprobado sin efecto/);
-    expect(ski.pending.join()).toMatch(/Ampliación de Core/);
+    expect(ski.pending.join()).not.toMatch(/Ampliación de Core|Net adicional/);
+    expect(ski.blocking).toEqual([]);
     expect(rev.rules.filter((x) => x.id.startsWith("net-")).map((x) => `${x.id}:${x.active}`)).toEqual(["net-core-incluido:false", "net-ampliacion-core:false", "net-adicionales:false"]);
   });
 

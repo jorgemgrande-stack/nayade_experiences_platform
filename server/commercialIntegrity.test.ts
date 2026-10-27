@@ -4,7 +4,7 @@
  */
 import { describe, it, expect } from "vitest";
 import type { Pool } from "mysql2/promise";
-import { commercialIntegrity } from "./catalog/commercial/integrity";
+import { commercialIntegrity, coreAudit } from "./catalog/commercial/integrity";
 
 function fakePool(tables: Record<string, Array<Record<string, unknown>>>, queries: string[] = []) {
   return {
@@ -39,5 +39,23 @@ describe("integridad comercial", () => {
     expect((c.subscription_items as { huella: string }).huella).not.toBe((a.subscription_items as { huella: string }).huella);
     expect(c.subscriptions).toEqual(a.subscriptions);
     expect(q.every((s) => /^SELECT /.test(s))).toBe(true);
+  });
+});
+
+describe("ninguna empresa paga Elephant Core dos veces", () => {
+  it("detecta Core cobrado dos veces, distingue los históricos (Net + Core aparte) y los Net sin partida de Core", async () => {
+    const rows = [
+      { company_id: 1, family: "core_plan", product_key: "essential", unit_amount_cents: 2900, discount_kind: null, discount_value: null },
+      { company_id: 1, family: "core_plan", product_key: "business", unit_amount_cents: 7900, discount_kind: null, discount_value: null },
+      { company_id: 2, family: "core_plan", product_key: "essential", unit_amount_cents: 2900, discount_kind: null, discount_value: null },
+      { company_id: 2, family: "industry_module", product_key: "ski-net-complete", unit_amount_cents: 9900, discount_kind: null, discount_value: null },
+      { company_id: 3, family: "core_plan", product_key: "essential", unit_amount_cents: 2900, discount_kind: "percent", discount_value: 100 },
+      { company_id: 3, family: "industry_module", product_key: "hotel-net-complete", unit_amount_cents: 11900, discount_kind: null, discount_value: null },
+      { company_id: 4, family: "industry_module", product_key: "care-net-complete", unit_amount_cents: 6900, discount_kind: null, discount_value: null },
+    ];
+    const queries: string[] = [];
+    const pool = { query: async (sql: string) => (queries.push(sql), [rows]) } as unknown as Pool;
+    expect(await coreAudit(pool)).toEqual({ empresas: 4, coreCobradoDosVeces: [1], netConCoreAparte: [2], netSinCore: [4] });
+    expect(queries.every((q) => /^SELECT /.test(q))).toBe(true);
   });
 });
