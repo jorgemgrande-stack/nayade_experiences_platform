@@ -1,0 +1,156 @@
+/**
+ * Servicios de clientes externos (`/cp/v1/external/*`, operadores del CRM) y aceptación pública del contrato
+ * (`/cp/v1/public/contract-acceptance`, sin sesión: solo con el token de un solo uso del enlace).
+ *
+ *   GET  /external?companyId=                 crm:read        contrataciones externas
+ *   POST /external                            orders:write    nueva contratación (contrato del CRM + calendario)
+ *   GET  /external/:id                        crm:read        detalle: contrato, aceptaciones, cobros e historial
+ *   GET  /external/:id/document               crm:read        documento contractual exacto y su huella
+ *   POST /external/:id/acceptance             orders:write    enlace de aceptación para el representante
+ *   POST /external/:id/payment-setup          orders:write    enlace de Stripe para autorizar el método de pago (sin cargo)
+ *   POST /external/:id/decision               orders:approve  primera mensualidad cuando el método llegó tarde
+ *   POST /external/:id/portal                 orders:write    enlace al portal de facturación de Stripe
+ *   POST /external/evaluate                   ops:write       evaluación del margen de cobro (día 5)
+ */
+import express, { type NextFunction, type Request, type Response, type Router } from "express";
+import rateLimit, { ipKeyGenerator } from "express-rate-limit";
+import { z } from "zod";
+import { getAuth, requireScope } from "../controlPlane/auth";
+import { opsLog } from "../_core/ops/log";
+import { recordFailure } from "../_core/ops/failureAlerts";
+import { StripeGatewayError } from "../stripe/gateway";
+import { ExternalError } from "./types";
+import type { ExternalService } from "./service";
+
+const STATUS: Record<ExternalError["code"], number> = { not_found: 404, invalid_input: 400, invalid_state: 409, conflict: 409, unavailable: 503 };
+
+const wrap =
+  (fn: (req: Request, res: Response) => Promise<void>) =>
+  (req: Request, res: Response, _next: NextFunction) => {
+    fn(req, res).catch((e) => {
+      if (e instanceof ExternalError) return void res.status(STATUS[e.code]).json({ error: e.code, message: e.message });
+      if (e instanceof z.ZodError) return void res.status(400).json({ error: "invalid_request", message: "Parámetros no válidos" });
+      if (e instanceof StripeGatewayError) {
+        opsLog("warn", "External", "gateway_error", { code: e.code, retryable: e.retryable });
+        return void res.status(e.retryable ? 503 : 502).json({ error: "stripe_error", code: e.code, retryable: e.retryable, message: "Stripe ha devuelto un error" });
+      }
+      opsLog("error", "External", "internal_error", { method: req.method, error: e instanceof Error ? e.name : "error" });
+      recordFailure("external.failed");
+      res.status(500).json({ error: "internal_error", message: "Error interno" });
+    });
+  };
+
+const createBody = z
+  .object({
+    companyId: z.number().int().positive(),
+    service: z.object({ key: z.string().max(50), name: z.string().max(160) }).strict(),
+    amountCents: z.number().int(),
+    currency: z.string().length(3).optional(),
+    taxRateBp: z.number().int(),
+    billingDay: z.number().int().optional(),
+    firstChargeDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    graceDays: z.number().int().optional(),
+    externalRef: z.string().max(200).nullable().optional(),
+    conditions: z.string().max(15000),
+    noticeDays: z.number().int().min(0).max(365).optional(),
+    /** SOLO sandbox: fecha simulada inicial del reloj de prueba de Stripe (ms). */
+    testClock: z.object({ frozenTime: z.number().int() }).strict().optional(),
+  })
+  .strict();
+const id = (req: Request) => z.coerce.number().int().positive().parse(req.params.id);
+const actor = (req: Request) => `${getAuth(req)!.actor.type}:${getAuth(req)!.actor.id}`.slice(0, 100);
+
+export function createExternalRouter(svc: ExternalService): Router {
+  const r = express.Router();
+  r.get("/", requireScope("crm:read"), wrap(async (req, res) => {
+    const companyId = req.query.companyId === undefined ? undefined : z.coerce.number().int().positive().parse(req.query.companyId);
+    res.json({ external: await svc.list({ companyId }) });
+  }));
+  r.post("/evaluate", requireScope("ops:write"), wrap(async (_req, res) => void res.json({ overdue: await svc.evaluateOverdue() })));
+  r.post("/", requireScope("orders:write"), wrap(async (req, res) => {
+    const x = await svc.create(createBody.parse(req.body ?? {}), actor(req));
+    opsLog("info", "External", "created", { externalId: x.id, companyId: x.companyId });
+    res.status(201).json({ external: x });
+  }));
+  r.get("/:id", requireScope("crm:read"), wrap(async (req, res) => void res.json(await svc.detail(id(req)))));
+  r.get("/:id/document", requireScope("crm:read"), wrap(async (req, res) => {
+    const d = await svc.detail(id(req));
+    const doc = await svc.document(d.external);
+    res.json({ text: doc.text, sha256: doc.sha256, version: doc.version });
+  }));
+  r.post("/:id/acceptance", requireScope("orders:write"), wrap(async (req, res) => {
+    const signer = z.object({ name: z.string().max(160), email: z.string().max(254), role: z.string().max(120).nullable().optional(), taxId: z.string().max(32).nullable().optional() }).strict().parse(req.body ?? {});
+    res.status(201).json({ acceptance: await svc.requestAcceptance(id(req), signer, actor(req)) });
+  }));
+  r.post("/:id/payment-setup", requireScope("orders:write"), wrap(async (req, res) => void res.json({ setup: await svc.paymentSetup(id(req), actor(req)) })));
+  r.post("/:id/decision", requireScope("orders:approve"), wrap(async (req, res) => {
+    const body = z.object({ firstChargeDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), reason: z.string().max(300) }).strict().parse(req.body ?? {});
+    res.json({ external: await svc.decideFirstCharge(id(req), body, actor(req)) });
+  }));
+  r.post("/:id/portal", requireScope("orders:write"), wrap(async (req, res) => void res.json({ url: await svc.portalLink(id(req)) })));
+  return r;
+}
+
+// ── Página pública de aceptación (sin scripts: formulario HTML) ───────────────
+
+const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
+const page = (title: string, body: string) =>
+  `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>${esc(title)}</title><style>body{font:16px/1.5 system-ui,sans-serif;max-width:760px;margin:0 auto;padding:24px 16px;color:#1b1b1b;background:#fff}pre{white-space:pre-wrap;background:#f6f6f4;border:1px solid #ddd;padding:16px;border-radius:8px;font:14px/1.5 ui-monospace,monospace}label{display:block;margin:12px 0}input[type=text]{width:100%;padding:8px;font:inherit;box-sizing:border-box}button{padding:10px 18px;font:inherit;background:#1b1b1b;color:#fff;border:0;border-radius:6px;cursor:pointer}.muted{color:#666;font-size:14px}.ok{background:#eef8ee;border:1px solid #9c9;padding:16px;border-radius:8px}.err{background:#fdf0f0;border:1px solid #d99;padding:16px;border-radius:8px}</style></head><body>${body}</body></html>`;
+
+function send(res: Response, status: number, html: string) {
+  res.status(status);
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.setHeader("Cache-Control", "no-store");
+  res.setHeader("Referrer-Policy", "no-referrer");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'");
+  res.send(html);
+}
+
+export function createContractAcceptanceRouter(svc: ExternalService): Router {
+  const r = express.Router();
+  r.use(rateLimit({ windowMs: 60_000, limit: 30, standardHeaders: true, legacyHeaders: false, keyGenerator: (req) => `ip:${ipKeyGenerator(req.ip ?? "")}` }));
+  const fail = (res: Response, e: unknown) => {
+    if (e instanceof ExternalError) return send(res, STATUS[e.code], page("Aceptación del contrato", `<h1>Aceptación del contrato</h1><p class="err">${esc(e.message)}</p>`));
+    opsLog("error", "External", "acceptance_page_error", { error: e instanceof Error ? e.name : "error" });
+    send(res, 500, page("Aceptación del contrato", `<h1>Aceptación del contrato</h1><p class="err">No se ha podido completar la operación. Inténtalo más tarde.</p>`));
+  };
+  // Vueltas desde Stripe: solo informan (la autorización se confirma con el webhook firmado, nunca con esta página)
+  r.get("/autorizado", (_req, res) => send(res, 200, page("Método de pago autorizado", `<h1>Método de pago autorizado</h1><p class="ok">Gracias. Hemos recibido la autorización de tu método de pago. No se ha realizado ningún cobro: el primer cargo será en la fecha indicada en el contrato.</p>`)));
+  r.get("/cancelado", (_req, res) => send(res, 200, page("Autorización no completada", `<h1>Autorización no completada</h1><p>No se ha registrado ningún método de pago ni se ha cobrado nada. Puedes volver a usar el enlace que te enviamos mientras siga vigente.</p>`)));
+  r.get("/portal", (_req, res) => send(res, 200, page("Portal de facturación", `<h1>Portal de facturación</h1><p>Has salido del portal de facturación. Puedes cerrar esta ventana.</p>`)));
+  r.get("/", (req, res) => {
+    const token = String(req.query.token ?? "");
+    svc
+      .viewAcceptance(token)
+      .then((v) =>
+        send(
+          res,
+          200,
+          page(
+            "Aceptación del contrato",
+            `<h1>Aceptación del contrato</h1><p>Cliente: <strong>${esc(v.company)}</strong>. Firmante: <strong>${esc(v.signerName)}</strong>${v.signerRole ? ` (${esc(v.signerRole)})` : ""}.</p>
+<pre>${esc(v.document)}</pre>
+<p class="muted">Versión ${v.version} · huella SHA-256 del documento: <code>${esc(v.documentSha256)}</code></p>
+<form method="post" action="">
+<input type="hidden" name="token" value="${esc(token)}">
+<label>Nombre completo<input type="text" name="name" required maxlength="160" autocomplete="name"></label>
+<label>NIF del firmante (opcional)<input type="text" name="taxId" maxlength="32"></label>
+<label><input type="checkbox" name="accept" value="1" required> ${esc(v.declaration)}</label>
+<p class="muted">Aceptar el contrato no autoriza ningún cobro: después recibirás un enlace seguro de Stripe para autorizar el método de pago.</p>
+<button type="submit">Aceptar el contrato</button>
+</form>`,
+          ),
+        ),
+      )
+      .catch((e) => fail(res, e));
+  });
+  r.post("/", express.urlencoded({ extended: false, limit: "8kb" }), (req, res) => {
+    const b = (req.body ?? {}) as Record<string, string>;
+    svc
+      .accept(String(b.token ?? req.query.token ?? ""), { name: String(b.name ?? ""), taxId: b.taxId ? String(b.taxId) : null, accept: b.accept === "1" }, { ip: req.ip ?? null, userAgent: req.get("user-agent") ?? null })
+      .then((a) => send(res, 200, page("Contrato aceptado", `<h1>Contrato aceptado</h1><p class="ok">Hemos registrado tu aceptación (versión ${a.version}, ${esc(new Date(a.acceptedAt).toISOString())}).</p><p>El siguiente paso es autorizar el método de pago en Stripe: te enviaremos el enlace. No se ha realizado ningún cobro.</p>`)))
+      .catch((e) => fail(res, e));
+  });
+  return r;
+}

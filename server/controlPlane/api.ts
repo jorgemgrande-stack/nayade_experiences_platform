@@ -95,6 +95,9 @@ import type { SubscriptionChangeStore } from "../stripe/changes";
 import type { InvoiceLineStore } from "../stripe/invoiceLines";
 import { ModulePurchaseService } from "../stripe/purchases";
 import { DeferredItemsService } from "../stripe/deferredItems";
+import { ExternalService, type ExternalUrls } from "../external/service";
+import type { ExternalStore } from "../external/store";
+import { createContractAcceptanceRouter, createExternalRouter } from "../external/api";
 import { createBillingPortalRouter, createPurchasesRouter } from "../stripe/purchasesApi";
 import { createPanelCatalogRouter } from "../commerce/panelCatalog";
 import { createPanelUsageRouter } from "../commerce/panelUsage";
@@ -251,6 +254,11 @@ export interface ControlPlaneDeps {
   orders?: { store: OrderStore; payments?: TestPaymentPort | null; graceDays?: number; mode?: StripeConfig["mode"] };
   /** Desistimiento de consumidores (CRM 0022). Sin él, la función de desistimiento no se monta. */
   withdrawals?: { store: WithdrawalStore };
+  /**
+   * Servicios recurrentes de clientes externos (server/external, CRM 0026): contrato, aceptación digital, autorización
+   * del método de pago y cobro con Stripe Billing, sin aprovisionar nada en Elephant Core. Requiere `stripe`.
+   */
+  external?: { store: ExternalStore; urls: ExternalUrls; ipSalt?: string; liveEnabled?: boolean };
   /**
    * Motor de transiciones temporales (server/lifecycle). Requiere `orders`. El plan (solo lectura) siempre
    * se puede consultar; la tarea periódica solo con `policy.enabled` y aplica solo en modo «apply».
@@ -535,6 +543,9 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
   // Estado público del alta tras Stripe Checkout: reservado ANTES del router de captación; se asigna con
   // el procesador de Stripe y solo con CP_PUBLIC_CHECKOUT_ENABLED=1
   let publicCheckout: express.Router | null = null;
+  // Aceptación pública de contratos de servicios externos (solo con el token del enlace): se asigna con Stripe
+  let publicAcceptance: express.Router | null = null;
+  router.use("/public/contract-acceptance", (req, res, next) => (publicAcceptance ? publicAcceptance(req, res, next) : void res.status(404).json({ error: "not_found" })));
   router.use("/public/checkout", (req, res, next) => (publicCheckout ? publicCheckout(req, res, next) : void res.status(404).json({ error: "not_found" })));
   if (webRequests && d.publicIntake) router.use("/public", createPublicIntakeRouter({ ...d.publicIntake, origins: publicOrigins, service: webRequests }));
   router.use(
@@ -1662,13 +1673,22 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
               out.set(i.productKey, (out.get(i.productKey) ?? 0) + i.quantity);
           return out;
         };
-        const processor = new StripeEventProcessor({ store: st.store, gateway: st.gateway, orders: d.orders.store, orchestrator, now: d.subscriptions.now, namespace: st.config.namespace, mode: st.config.mode, taxExpectations: st.fiscal?.taxExpectations, vat, catalog: stripeCatalog, changes: st.purchases?.changes, invoiceLines: st.invoiceLines, contractedItems, deferredItems: deferredItems ? (o, s) => deferredItems.attach(o, s) : undefined });
+        // Servicios de clientes externos: mismo Stripe (Customer por empresa, webhooks, conciliación), sin pedidos ni licencias
+        const externalSvc = d.external
+          ? new ExternalService({ store: d.external.store, crm: d.crm.service, crmStore: d.crm.store, stripeStore: st.store, gateway: st.gateway, mode: st.config.mode, namespace: st.config.namespace, urls: d.external.urls, ipSalt: d.external.ipSalt, liveEnabled: d.external.liveEnabled, now: d.subscriptions.now })
+          : null;
+        const externalStore = d.external?.store;
+        const processor = new StripeEventProcessor({ store: st.store, gateway: st.gateway, orders: d.orders.store, orchestrator, now: d.subscriptions.now, namespace: st.config.namespace, mode: st.config.mode, taxExpectations: st.fiscal?.taxExpectations, vat, catalog: stripeCatalog, changes: st.purchases?.changes, invoiceLines: st.invoiceLines, contractedItems, deferredItems: deferredItems ? (o, s) => deferredItems.attach(o, s) : undefined, external: externalSvc && externalStore ? { handleSetupSession: async (id) => ((await externalStore.bySetupSession(id)) ? externalSvc.handleSetupSession(id) : null), handleSubscription: (sub, hint) => externalSvc.handleSubscription(sub, hint) } : undefined });
+        if (externalSvc) {
+          router.use("/external", createExternalRouter(externalSvc));
+          publicAcceptance = createContractAcceptanceRouter(externalSvc);
+        }
         const reconciler = new StripeReconciler({ store: st.store, gateway: st.gateway, processor, now: d.subscriptions.now, retentionDays: st.config.eventsRetentionDays, mode: st.config.mode });
         const rechecks = new Map<string, number>();
         const stripeNow = d.subscriptions.now;
         // Tras guardar un evento del webhook se procesa enseguida (los fallos quedan para el reintento)
         stripeKick = () => void processor.processDue(10).catch(() => undefined);
-        if (st.workerEnabled) startStripeWorker({ processor, reconciler });
+        if (st.workerEnabled) startStripeWorker({ processor, reconciler, ...(externalSvc ? { extra: () => externalSvc.evaluateOverdue() } : {}) });
         const selfServiceOk = st.selfService && !!checkout && !!d.publicIntake && publicOrigins.size > 0;
         if (st.publicStatus || selfServiceOk) {
           const pc = express.Router();

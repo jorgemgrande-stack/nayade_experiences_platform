@@ -178,7 +178,7 @@ export class StripeReconciler {
  * Programación: procesa eventos pendientes cada `everyMs` y concilia cada `reconcileEveryMs`. APAGADO
  * salvo CP_STRIPE_WORKER_ENABLED=1. Devuelve la función que la detiene.
  */
-export function startStripeWorker(d: { processor: Pick<StripeEventProcessor, "processDue">; reconciler: StripeReconciler; everyMs?: number; reconcileEveryMs?: number }): () => void {
+export function startStripeWorker(d: { processor: Pick<StripeEventProcessor, "processDue">; reconciler: StripeReconciler; everyMs?: number; reconcileEveryMs?: number; /** Tareas periódicas junto a la conciliación (p. ej. el margen de cobro de los servicios externos). */ extra?: () => Promise<unknown> }): () => void {
   let busy = false;
   let lastReconcile = 0;
   const every = Math.max(10_000, d.everyMs ?? 60_000);
@@ -187,7 +187,7 @@ export function startStripeWorker(d: { processor: Pick<StripeEventProcessor, "pr
     if (busy) return;
     busy = true;
     const now = Date.now();
-    const job = now - lastReconcile >= reconcileEvery ? d.reconciler.tick().then(() => void (lastReconcile = now)) : d.processor.processDue(50);
+    const job = now - lastReconcile >= reconcileEvery ? d.reconciler.tick().then(async () => void ((lastReconcile = now), await d.extra?.())) : d.processor.processDue(50);
     void job
       .catch((e) => {
         opsLog("error", "StripeWorker", "tick_failed", { error: e instanceof Error ? e.name : "error" });

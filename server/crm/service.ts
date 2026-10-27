@@ -26,6 +26,7 @@ import {
   type Contract,
   type ContractConfiguration,
   type ContractStatus,
+  type SignatureMethod,
   type ContractVersion,
   type EntityType,
   type Lead,
@@ -877,7 +878,7 @@ export class CrmService {
     return upd;
   }
 
-  async setContractStatus(id: number, to: ContractStatus, author: string, opts: { signatureRef?: string; approvalReason?: string } = {}): Promise<Contract> {
+  async setContractStatus(id: number, to: ContractStatus, author: string, opts: { signatureRef?: string; approvalReason?: string; signatureMethod?: SignatureMethod } = {}): Promise<Contract> {
     const c = await this.must("contracts", id);
     if (c.status === to) return c;
     if (!CONTRACT_TRANSITIONS[c.status].includes(to)) throw new CrmError("invalid_state", `Transición no permitida: ${c.status} → ${to}`);
@@ -896,13 +897,13 @@ export class CrmService {
     if (to === "active") return this.activateContract(c, author);
     const patch: Partial<Contract> = { status: to, updatedAt: this.now() };
     if (to === "signed") {
-      // Firma registrada por el operador (aún no hay firma electrónica): queda trazada
+      // Firma registrada por el operador, o aceptación electrónica con evidencias (servicios externos): queda trazada
       patch.signedAt = this.now();
-      patch.signatureMethod = "manual";
+      patch.signatureMethod = opts.signatureMethod === "electronic" ? "electronic" : "manual";
       patch.signatureRef = clean(opts.signatureRef, 200);
     }
     const upd = await this.store.update("contracts", id, patch);
-    await this.log("contract", id, "note", `Estado: ${CONTRACT_NAME[c.status]} → ${CONTRACT_NAME[to]}${to === "signed" ? " (firma registrada manualmente)" : ""}`, author);
+    await this.log("contract", id, "note", `Estado: ${CONTRACT_NAME[c.status]} → ${CONTRACT_NAME[to]}${to === "signed" ? (opts.signatureMethod === "electronic" ? " (aceptación electrónica con evidencias)" : " (firma registrada manualmente)") : ""}`, author);
     return upd;
   }
 

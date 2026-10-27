@@ -59,6 +59,8 @@ import { checkoutBlockedReason, describeStripeConfig, liveStartupProblem, stripe
 import { stripeGateway, stripeWebhookVerifier } from "../stripe/gateway";
 import { MysqlStripeStore } from "../stripe/store";
 import { MysqlSubscriptionChangeStore } from "../stripe/changes";
+import { MysqlExternalStore } from "../external/store";
+import type { ExternalUrls } from "../external/service";
 import { internalTenantsFromEnv } from "../stripe/purchases";
 import { MysqlInvoiceLineStore } from "../stripe/invoiceLines";
 import { notificationsFromEnv } from "../notifications/config";
@@ -402,6 +404,8 @@ async function main() {
       withdrawal: consumerWithdrawalFromEnv(process.env),
     },
   };
+  // Servicios de clientes externos (CRM 0026): solo con Stripe montado, sus tablas y un origen https del CRM
+  let external: { store: MysqlExternalStore; urls: ExternalUrls; ipSalt?: string; liveEnabled?: boolean } | undefined;
   let stripe: { config: NonNullable<typeof stripeConfig>; store: MysqlStripeStore; gateway: ReturnType<typeof stripeGateway>; urls: ReturnType<typeof checkoutUrlsFromEnv>; checkoutEnabled: boolean; verifyWebhook: ReturnType<typeof stripeWebhookVerifier>; workerEnabled: boolean; publicStatus: boolean; selfService: boolean; termsVersion: string | null; fiscal: typeof fiscal; purchases?: { enabled: boolean; changes: MysqlSubscriptionChangeStore; internalTenants: ReadonlySet<string> }; invoiceLines?: MysqlInvoiceLineStore; vies?: { client: ReturnType<typeof viesClient>; maxAgeDays: number }; billingPortal?: { enabled: boolean; configurationId: string | null } } | undefined;
   if (stripeConfig) {
     const urls = checkoutUrlsFromEnv(process.env);
@@ -458,6 +462,14 @@ async function main() {
         },
         ...(linesReady ? { invoiceLines: new MysqlInvoiceLineStore(crmPool!, stripeConfig.mode) } : {}),
       };
+    const externalReady = (await hasTable("external_subscriptions")) && (await hasTable("crm_contract_acceptances")) && (await hasTable("external_subscription_events"));
+    // La página pública de aceptación y las vueltas de Stripe van en el dominio del CRM (sirve /cp/v1): el primer origen https
+    const crmOrigin = (process.env.CP_ALLOWED_ORIGINS ?? "").split(",").map((x) => x.trim()).find((x) => /^https:\/\/[a-z0-9.-]+(:\d+)?$/i.test(x));
+    if (ready && externalReady && crmOrigin) {
+      const pub = `${crmOrigin}/cp/v1/public/contract-acceptance`;
+      external = { store: new MysqlExternalStore(crmPool!, stripeConfig.mode), urls: { acceptance: pub, setupSuccess: `${pub}/autorizado`, setupCancel: `${pub}/cancelado`, portalReturn: `${pub}/portal` }, ipSalt: (process.env.CP_PUBLIC_FORM_SECRET ?? "").trim() || undefined, liveEnabled: process.env.CP_EXTERNAL_LIVE_ENABLED === "1" };
+    }
+    console.log(JSON.stringify({ ctx: "External", mounted: !!external, liveCharges: !!external?.liveEnabled && stripeConfig.mode === "live", ...(ready && !externalReady ? { reason: "migration_0026_missing" } : ready && !crmOrigin ? { reason: "crm_origin_missing" } : {}) }));
     console.log(JSON.stringify({ ctx: "Commerce", purchases: { mounted: changesReady, enabled: changesReady && purchasesEnabled, internalTenants: internalTenants.size, ...(ready && !changesReady ? { reason: "migration_0018_missing" } : {}) }, invoiceLines: { mounted: linesReady, ...(ready && !linesReady ? { reason: "migration_0019_missing" } : {}) } }));
     console.log(
       JSON.stringify({
@@ -540,6 +552,7 @@ async function main() {
     withdrawals,
     lifecycle,
     stripe,
+    external,
     commercialEvents,
     leadNotices,
     notifications: notificationsFromEnv(process.env),
