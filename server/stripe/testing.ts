@@ -4,7 +4,7 @@
  * sesiones se pueden caducar. Registra cada llamada para poder comprobar qué se envió.
  */
 import type { GwPortalConfig } from "./portal";
-import { StripeGatewayError, type CheckoutSessionInput, type CustomerInput, type GwCharge, type GwCheckoutSession, type GwEvent, type GwInvoice, type GwInvoiceLine, type GwInvoicePreview, type GwPrice, type GwProduct, type GwSubscription, type GwSubscriptionItem, type GwSetupSession, type ServiceSubscriptionInput, type SetupSessionInput, type StripeGateway, type SubscriptionItemsChange } from "./gateway";
+import { StripeGatewayError, type CheckoutSessionInput, type CouponSpec, type CustomerInput, type GwCharge, type GwCheckoutSession, type GwEvent, type GwInvoice, type GwInvoiceLine, type GwInvoicePreview, type GwPrice, type GwProduct, type GwSubscription, type GwSubscriptionItem, type GwSetupSession, type ServiceSubscriptionInput, type SetupSessionInput, type StripeGateway, type SubscriptionItemsChange } from "./gateway";
 import { prorationCents, supportsPendingUpdate } from "./multipart";
 
 export class FakeStripeGateway implements StripeGateway {
@@ -115,24 +115,41 @@ export class FakeStripeGateway implements StripeGateway {
   /** Cambios pendientes de cobro: suscripción → partidas que se aplicarían, factura y caducidad. */
   pending = new Map<string, { items: GwSubscriptionItem[]; invoiceId: string; expiresAt: number }>();
   private nowSec = () => this.now ?? Math.floor(Date.now() / 1000);
+  /** Cupones creados (id determinista → condiciones). */
+  coupons = new Map<string, CouponSpec>();
+  /**
+   * Cómo se prorratea el cupón de una partida (riesgo R-J, por verificar en sandbox con S-N2): `proportional`
+   * descuenta el cupón × fracción restante, (P − cupón) × f; `flat` descuenta el cupón entero, P × f − cupón.
+   */
+  couponProration: "proportional" | "flat" = "proportional";
+  /** Descuento de una partida por periodo completo: suma de sus cupones (Stripe lo aplica una vez por línea). */
+  private offOf = (item: Pick<GwSubscriptionItem, "discounts"> | undefined) => (item?.discounts ?? []).reduce((a, c) => a + (this.coupons.get(c)?.amountOffCents ?? 0), 0);
+  async ensureCoupon(spec: CouponSpec) {
+    this.calls.push({ op: "coupons.ensure", input: spec });
+    const cur = this.coupons.get(spec.id);
+    if (cur && (cur.amountOffCents !== spec.amountOffCents || cur.currency.toUpperCase() !== spec.currency.toUpperCase())) throw new StripeGatewayError("coupon_mismatch", `El cupón ${spec.id} ya existe con otras condiciones: no se reutiliza`, false);
+    if (!cur) this.coupons.set(spec.id, { ...spec, metadata: { ...spec.metadata } });
+    return spec.id;
+  }
 
   /** Partidas resultantes y líneas de prorrateo de un cambio (sin efectos). */
-  private planChange(s: GwSubscription, change: Pick<SubscriptionItemsChange, "items" | "prorationBehavior">) {
+  private planChange(s: GwSubscription, change: Pick<SubscriptionItemsChange, "items" | "prorationBehavior" | "prorationDate">) {
     const items = (s.items ?? []).map((i) => ({ ...i }));
     for (const c of change.items) {
       const idx = c.id ? items.findIndex((i) => i.id === c.id) : -1;
       if (c.id && idx < 0) throw new StripeGatewayError("resource_missing", `Stripe respondió 400 (resource_missing: ${c.id})`, false);
       if (c.deleted) items.splice(idx, 1);
-      else if (idx >= 0) items[idx] = { ...items[idx], ...(c.priceId ? { priceId: c.priceId } : {}), ...(c.quantity !== undefined ? { quantity: c.quantity } : {}) };
+      else if (idx >= 0) items[idx] = { ...items[idx], ...(c.priceId ? { priceId: c.priceId } : {}), ...(c.quantity !== undefined ? { quantity: c.quantity } : {}), ...(c.discounts ? { discounts: [...c.discounts] } : {}) };
       else {
         if (!c.priceId || !this.prices.some((p) => p.id === c.priceId)) throw new StripeGatewayError("resource_missing", "Stripe respondió 400 (precio inexistente)", false);
         if (items.some((i) => i.priceId === c.priceId)) throw new StripeGatewayError("invalid_request_error", "Stripe respondió 400 (precio repetido en la suscripción)", false);
-        items.push({ id: this.next("si"), priceId: c.priceId, quantity: c.quantity ?? 1 });
+        items.push({ id: this.next("si"), priceId: c.priceId, quantity: c.quantity ?? 1, ...(c.discounts?.length ? { discounts: [...c.discounts] } : {}) });
       }
+      for (const coupon of c.discounts ?? []) if (!this.coupons.has(coupon)) throw new StripeGatewayError("resource_missing", `Stripe respondió 400 (cupón inexistente: ${coupon})`, false);
     }
     const intervals = new Set(items.map((i) => this.prices.find((p) => p.id === i.priceId)?.interval ?? "month"));
     if (intervals.size > 1 && s.billingMode !== "flexible") throw new StripeGatewayError("invalid_request_error", "Stripe respondió 400 (periodicidades distintas en modo clásico)", false);
-    const at = this.nowSec();
+    const at = change.prorationDate ?? this.nowSec();
     const start = s.currentPeriodStart ?? at;
     const end = s.currentPeriodEnd ?? at;
     const lines: GwInvoiceLine[] = [];
@@ -143,20 +160,24 @@ export class FakeStripeGateway implements StripeGateway {
         const b = before.get(id);
         const a = after.get(id);
         if (b && a && b.priceId !== a.priceId) {
-          lines.push(this.prorationLine(id, b.priceId, b.quantity, 0, start, end, at));
-          lines.push(this.prorationLine(id, a.priceId, 0, a.quantity, start, end, at));
+          lines.push(this.prorationLine(id, b.priceId, b.quantity, 0, start, end, at, this.offOf(b)));
+          lines.push(this.prorationLine(id, a.priceId, 0, a.quantity, start, end, at, this.offOf(a)));
         } else if ((b?.quantity ?? 0) !== (a?.quantity ?? 0)) {
-          lines.push(this.prorationLine(id, (a ?? b)!.priceId, b?.quantity ?? 0, a?.quantity ?? 0, start, end, at));
+          lines.push(this.prorationLine(id, (a ?? b)!.priceId, b?.quantity ?? 0, a?.quantity ?? 0, start, end, at, this.offOf(a ?? b)));
         }
       }
     }
     return { items, lines: lines.filter((l) => l.amount !== 0) };
   }
-  private prorationLine(siId: string, priceId: string, from: number, to: number, start: number, end: number, at: number): GwInvoiceLine {
+  private prorationLine(siId: string, priceId: string, from: number, to: number, start: number, end: number, at: number, off = 0): GwInvoiceLine {
     const unit = this.prices.find((p) => p.id === priceId)?.unitAmount ?? 0;
     const amount = prorationCents(unit, from, to, start, end, at);
-    const taxCents = this.invoiceTaxBp === null ? null : Math.round((amount * this.invoiceTaxBp) / 10_000);
-    return { id: this.next("il"), subscriptionItemId: siId, priceId, quantity: Math.abs(to - from), amount, taxCents, proration: true, periodStart: at, periodEnd: end };
+    // El cupón (una vez por línea) acompaña al cargo o al abono: proporcional o entero según `couponProration`
+    const sign = Math.sign(to - from);
+    const discount = !off || !sign ? 0 : sign * Math.min(Math.abs(amount), this.couponProration === "flat" ? off : Math.abs(prorationCents(off, 0, 1, start, end, at)));
+    const net = amount - discount;
+    const taxCents = this.invoiceTaxBp === null ? null : Math.round((net * this.invoiceTaxBp) / 10_000);
+    return { id: this.next("il"), subscriptionItemId: siId, priceId, quantity: Math.abs(to - from), amount, ...(discount ? { discountCents: discount } : {}), taxCents, proration: true, periodStart: at, periodEnd: end };
   }
   private applyItems(subId: string, items: GwSubscriptionItem[], metadata?: Record<string, string>) {
     const s = this.subscriptions.get(subId)!;
@@ -186,7 +207,8 @@ export class FakeStripeGateway implements StripeGateway {
       this.pending.delete(s.id);
       this.subscriptions.set(s.id, { ...s, pendingUpdate: null });
     }
-    const net = lines.reduce((a, l) => a + l.amount, 0);
+    const gross = lines.reduce((a, l) => a + l.amount, 0);
+    const net = gross - lines.reduce((a, l) => a + (l.discountCents ?? 0), 0);
     if (!lines.length) {
       this.applyItems(s.id, items, change.metadata);
       this.idem.set(`sub-upd:${key}`, "");
@@ -195,7 +217,7 @@ export class FakeStripeGateway implements StripeGateway {
     }
     const outcome = net <= 0 ? "succeed" : (this.paymentOutcome.get(s.customerId) ?? "succeed");
     if (outcome !== "succeed" && change.paymentBehavior === "error_if_incomplete") throw new StripeGatewayError("card_declined", "Stripe respondió 402 (card_declined)", false);
-    const invId = this.addInvoice(s.id, s.customerId, "subscription_update", outcome === "succeed" ? "paid" : "open", net, lines);
+    const invId = this.addInvoice(s.id, s.customerId, "subscription_update", outcome === "succeed" ? "paid" : "open", gross, lines);
     if (outcome === "succeed") {
       this.applyItems(s.id, items, change.metadata);
       this.emit("invoice.paid", "invoice", invId);
@@ -217,8 +239,10 @@ export class FakeStripeGateway implements StripeGateway {
     if (!s) throw new StripeGatewayError("resource_missing", "Stripe respondió 404 (resource_missing)", false);
     const { lines } = this.planChange(s, change);
     const subtotal = lines.reduce((a, l) => a + l.amount, 0);
+    const discountCents = lines.reduce((a, l) => a + (l.discountCents ?? 0), 0);
+    const net = subtotal - discountCents;
     const taxCents = this.invoiceTaxBp === null ? null : lines.reduce((a, l) => a + (l.taxCents ?? 0), 0);
-    return { currency: "EUR", subtotal, taxCents, amountDue: Math.max(subtotal + (taxCents ?? 0), 0), lines };
+    return { currency: "EUR", subtotal, ...(discountCents ? { discountCents, totalExcludingTax: net } : {}), taxCents, amountDue: Math.max(net + (taxCents ?? 0), 0), lines };
   }
   async voidInvoice(id: string) {
     this.guard();
@@ -324,30 +348,40 @@ export class FakeStripeGateway implements StripeGateway {
     const lineItems = s.input.lineItems ?? [{ priceId: s.input.priceId, quantity: 1 }];
     const recurring = lineItems.filter((l): l is { priceId: string; quantity: number } => "priceId" in l);
     amount ??= lineItems.reduce((a, l) => a + ("priceId" in l ? (this.prices.find((p) => p.id === l.priceId)?.unitAmount ?? 2900) : l.oneTime.unitAmount) * l.quantity, 0);
+    // Cupón de la sesión: descuenta en la primera factura y queda en la primera partida recurrente a la que se aplica
+    const coupon = s.input.discounts?.[0] ? this.coupons.get(s.input.discounts[0]) : undefined;
+    const target = coupon ? recurring.find((l) => !coupon.appliesToProducts?.length || coupon.appliesToProducts.includes(this.prices.find((p) => p.id === l.priceId)?.productId ?? "")) : undefined;
     const subId = this.next("sub");
-    const inv = this.addInvoice(subId, s.customerId!, "subscription_create", status === "active" ? "paid" : "open", amount);
+    const inv = this.addInvoice(subId, s.customerId!, "subscription_create", status === "active" ? "paid" : "open", amount, undefined, target ? coupon!.amountOffCents : undefined);
     const end = s.expiresAt + 30 * 86_400;
     // Checkout crea la suscripción en modo flexible (gateway.ts): admite añadir partidas de otra periodicidad
-    const items = recurring.map((l) => ({ id: this.next("si"), priceId: l.priceId, quantity: l.quantity }));
+    const items = recurring.map((l) => ({ id: this.next("si"), priceId: l.priceId, quantity: l.quantity, ...(l === target ? { discounts: [coupon!.id] } : {}) }));
     this.subscriptions.set(subId, { id: subId, customerId: s.customerId!, status, cancelAt: null, cancelAtPeriodEnd: false, currentPeriodEnd: end, currentPeriodStart: end - 30 * 86_400, latestInvoiceId: inv, priceIds: items.map((i) => i.priceId), metadata: { ...s.metadata }, items, pendingUpdate: null, billingMode: "flexible" });
     this.sessions.set(id, { ...s, status: "complete", paymentStatus: status === "active" ? "paid" : "unpaid", subscriptionId: subId, url: null });
     this.emit("checkout.session.completed", "checkout.session", id);
     return subId;
   }
-  /** Nueva factura de la suscripción (renovación, cambio…) y la deja como última. */
-  addInvoice(subId: string, customerId: string, reason: string, status: GwInvoice["status"], amount: number, lines?: GwInvoiceLine[]) {
+  /**
+   * Nueva factura de la suscripción (renovación, cambio…) y la deja como última. `amount` es el subtotal ANTES de
+   * descuentos; `discount`, el de la factura (sin indicarlo: la suma de los cupones de sus líneas).
+   */
+  addInvoice(subId: string, customerId: string, reason: string, status: GwInvoice["status"], amount: number, lines?: GwInvoiceLine[], discount?: number) {
     const id = this.next("in");
     const addr = this.customers.get(customerId)?.address;
-    // Como en Stripe: el subtotal es el neto y lo pagado es el total (neto + impuesto de Stripe Tax)
-    const tax = this.invoiceTaxBp === null ? null : lines ? lines.reduce((a, l) => a + (l.taxCents ?? 0), 0) : Math.round((amount * this.invoiceTaxBp) / 10_000);
-    const total = amount + (tax ?? 0);
     const sub = this.subscriptions.get(subId);
+    const given = lines;
     lines ??= (sub?.items ?? []).map((i) => {
       const unit = this.prices.find((p) => p.id === i.priceId)?.unitAmount ?? 0;
-      const net = unit * i.quantity;
-      return { id: this.next("il"), subscriptionItemId: i.id, priceId: i.priceId, quantity: i.quantity, amount: net, taxCents: this.invoiceTaxBp === null ? null : Math.round((net * this.invoiceTaxBp) / 10_000), proration: false, periodStart: sub?.currentPeriodStart ?? null, periodEnd: sub?.currentPeriodEnd ?? null };
+      const gross = unit * i.quantity;
+      const off = Math.min(gross, this.offOf(i));
+      return { id: this.next("il"), subscriptionItemId: i.id, priceId: i.priceId, quantity: i.quantity, amount: gross, ...(off ? { discountCents: off } : {}), taxCents: this.invoiceTaxBp === null ? null : Math.round(((gross - off) * this.invoiceTaxBp) / 10_000), proration: false, periodStart: sub?.currentPeriodStart ?? null, periodEnd: sub?.currentPeriodEnd ?? null };
     });
-    this.invoices.set(id, { id, status, subscriptionId: subId, customerId, amountPaid: status === "paid" ? total : 0, currency: "EUR", billingReason: reason, periodStart: 1_800_000_000 + this.seq, subtotal: amount, customerCountry: addr?.country ?? null, customerPostalCode: addr?.postalCode ?? null, customerTaxIds: this.taxIdsOf.get(customerId) ?? 0, taxCents: tax, number: `ES-${String(this.seq).padStart(4, "0")}`, total, hostedInvoiceUrl: `https://invoice.stripe.test/i/${id}`, lines });
+    discount ??= lines.reduce((a, l) => a + (l.discountCents ?? 0), 0);
+    // Como en Stripe: el subtotal es antes de descuentos, la base es el neto y lo pagado es el total (neto + impuesto)
+    const net = amount - discount;
+    const tax = this.invoiceTaxBp === null ? null : given ? given.reduce((a, l) => a + (l.taxCents ?? 0), 0) : Math.round((net * this.invoiceTaxBp) / 10_000);
+    const total = net + (tax ?? 0);
+    this.invoices.set(id, { id, status, subscriptionId: subId, customerId, amountPaid: status === "paid" ? total : 0, currency: "EUR", billingReason: reason, periodStart: 1_800_000_000 + this.seq, subtotal: amount, ...(discount ? { discountCents: discount, totalExcludingTax: net } : {}), customerCountry: addr?.country ?? null, customerPostalCode: addr?.postalCode ?? null, customerTaxIds: this.taxIdsOf.get(customerId) ?? 0, taxCents: tax, number: `ES-${String(this.seq).padStart(4, "0")}`, total, hostedInvoiceUrl: `https://invoice.stripe.test/i/${id}`, lines });
     if (sub) this.subscriptions.set(subId, { ...this.subscriptions.get(subId)!, latestInvoiceId: id });
     return id;
   }

@@ -34,7 +34,7 @@ import type { OrderStore } from "../orchestrator/store";
 import type { CommercialOrder } from "../orchestrator/types";
 import { stripePaymentProvider } from "../orchestrator/service";
 import type { StripeMode } from "./config";
-import type { GwCharge, GwInvoice, GwSubscription, StripeGateway } from "./gateway";
+import { invoiceNetCents, type GwCharge, type GwInvoice, type GwSubscription, type StripeGateway } from "./gateway";
 import type { StripeEventRow, StripeStore } from "./store";
 import { checkInvoiceTax, classifyTerritory, territoryGroup, type FiscalScenario, type TaxTreatment } from "./buyerProfile";
 import { invoiceDocumentOf, invoiceRecordOf, invoiceSourceKey, pendingSink, rectificationOf, type FiscalDocument, type FiscalDocumentSink, type InvoicePurpose } from "./fiscalDocuments";
@@ -508,8 +508,9 @@ export class StripeEventProcessor {
     // El primer periodo facturado es exactamente el neto del presupuesto (subtotal: antes de impuestos y del
     // saldo a favor que el cliente pudiera tener en Stripe). Vale para pruebas (sin IVA) y para live con
     // Stripe Tax sobre precios sin IVA (el impuesto se suma después del subtotal). Con un plan anual y partidas
-    // mensuales, el primer periodo es lo anual + el primer mes de lo mensual (no el coste anualizado)
-    if (purpose === "initial" && order.quote && (inv.subtotal ?? inv.amountPaid) !== (order.quote.firstPeriodNetCents ?? order.quote.contractAmountCents)) throw new StripeMismatchError("El importe facturado no es el del presupuesto (sin IVA)");
+    // mensuales, el primer periodo es lo anual + el primer mes de lo mensual (no el coste anualizado). Con cupones
+    // (crédito de Core incluido) se coteja el neto DESPUÉS de los descuentos
+    if (purpose === "initial" && order.quote && invoiceNetCents(inv) !==(order.quote.firstPeriodNetCents ?? order.quote.contractAmountCents)) throw new StripeMismatchError("El importe facturado no es el del presupuesto (sin IVA)");
     const r = await this.d.orders.insertPayment({
       orderId: order.id,
       idempotencyKey: `stripe:inv:${inv.id}`,

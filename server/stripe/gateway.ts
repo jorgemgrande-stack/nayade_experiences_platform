@@ -71,6 +71,8 @@ export interface GwSubscriptionItem {
   id: string;
   priceId: string;
   quantity: number;
+  /** Cupones aplicados a la partida (solo si Stripe devuelve sus descuentos expandidos). */
+  discounts?: string[];
 }
 
 /** Línea de una factura: partida, precio, cantidad, importe sin impuestos, impuesto, periodo y si es prorrateo. */
@@ -79,8 +81,10 @@ export interface GwInvoiceLine {
   subscriptionItemId: string | null;
   priceId: string | null;
   quantity: number | null;
-  /** Céntimos sin impuestos (negativo en un abono por prorrateo). */
+  /** Céntimos sin impuestos (negativo en un abono por prorrateo), ANTES de los descuentos de la línea. */
   amount: number;
+  /** Descuentos (cupones) aplicados a la línea; 0 o ausente: ninguno. */
+  discountCents?: number;
   taxCents: number | null;
   proration: boolean;
   periodStart: number | null;
@@ -94,8 +98,11 @@ export interface GwInvoiceLine {
  */
 export interface SubscriptionItemsChange {
   subscriptionId: string;
-  items: Array<{ id?: string; priceId?: string; quantity?: number; deleted?: true }>;
+  /** `discounts`: cupones de la partida (lista vacía: los quita; ausente: no los toca). */
+  items: Array<{ id?: string; priceId?: string; quantity?: number; deleted?: true; discounts?: string[] }>;
   prorationBehavior: "always_invoice" | "none";
+  /** Instante fijado del prorrateo (segundos): la vista previa aceptada y el cambio cobran lo mismo. */
+  prorationDate?: number;
   paymentBehavior: "pending_if_incomplete" | "error_if_incomplete";
   metadata?: Record<string, string>;
 }
@@ -105,6 +112,10 @@ export interface GwInvoicePreview {
   /** Total a pagar ahora (con impuestos si Stripe los calcula). */
   amountDue: number;
   subtotal: number;
+  /** Descuentos (cupones) y neto después de ellos, sin impuestos. */
+  discountCents?: number;
+  totalExcludingTax?: number | null;
+  total?: number | null;
   taxCents: number | null;
   lines: GwInvoiceLine[];
 }
@@ -122,6 +133,9 @@ export interface GwInvoice {
   periodStart: number | null;
   /** Antes de impuestos, descuentos aplicados en factura y saldo a favor del cliente. */
   subtotal: number | null;
+  /** Descuentos de la factura (cupones) y neto después de ellos, sin impuestos (`total_excluding_tax`). */
+  discountCents?: number;
+  totalExcludingTax?: number | null;
   /** Dirección del cliente fijada en la factura al finalizarla (la que usó Stripe Tax). */
   customerCountry?: string | null;
   customerPostalCode?: string | null;
@@ -136,6 +150,16 @@ export interface GwInvoice {
   hostedInvoiceUrl?: string | null;
   /** Líneas de la factura (las primeras que devuelve Stripe con la factura). */
   lines?: GwInvoiceLine[];
+}
+
+/**
+ * Base sin impuestos de una factura, DESPUÉS de sus descuentos (cupones): lo que se cotejó con el presupuesto y lo
+ * que se declara. Sin descuentos es el `subtotal` de siempre (o lo cobrado si Stripe no lo informa).
+ */
+export function invoiceNetCents(inv: Pick<GwInvoice, "subtotal" | "amountPaid" | "discountCents" | "totalExcludingTax">): number {
+  const base = inv.subtotal ?? inv.amountPaid;
+  if (!inv.discountCents) return base;
+  return inv.totalExcludingTax ?? base - inv.discountCents;
 }
 
 /** Evento de Stripe reducido a lo que usamos: el efecto siempre se calcula releyendo el objeto. */
@@ -198,6 +222,22 @@ export interface CheckoutSessionInput {
    * del sujeto pasivo se aplica sobre el verificado).
    */
   lockTaxId?: boolean;
+  /** Cupones de la sesión (Stripe admite uno por Checkout Session). */
+  discounts?: string[];
+}
+
+/**
+ * Cupón de crédito (por ejemplo, Elephant Core incluido): importe fijo, para siempre, con identificador determinista.
+ * En Stripe el importe de un cupón no se edita: otro importe es otro cupón.
+ */
+export interface CouponSpec {
+  id: string;
+  name: string;
+  amountOffCents: number;
+  currency: string;
+  /** Products a los que puede aplicarse (defensa adicional; el descuento va por partida). */
+  appliesToProducts?: string[];
+  metadata: Record<string, string>;
 }
 
 /** Datos del Customer al crearlo. Sin domicilio completo, la dirección la pide y confirma Checkout. */
@@ -238,6 +278,8 @@ export interface StripeGateway {
   previewSubscriptionChange(change: Omit<SubscriptionItemsChange, "paymentBehavior" | "metadata">): Promise<GwInvoicePreview>;
   /** Anula una factura abierta (y con ella el cambio pendiente que la generó). */
   voidInvoice(id: string): Promise<GwInvoice>;
+  /** Cupón de crédito con id determinista: lo crea si no existe; si existe con otras condiciones, error. */
+  ensureCoupon?(spec: CouponSpec): Promise<string>;
   /** Tipo del método de pago con el que se cobra la suscripción (card, sepa_debit…); null si no hay. */
   paymentMethodTypeOf(subscriptionId: string): Promise<string | null>;
   // ── Servicios de clientes externos (server/external) ──
@@ -362,7 +404,7 @@ export function toSubscription(s: Stripe.Subscription, mode: StripeMode = "test"
     latestInvoiceId: idOf(s.latest_invoice),
     priceIds: items.map((i) => i.price?.id).filter((x): x is string => !!x),
     metadata: meta(s.metadata),
-    items: items.filter((i) => i.price?.id).map((i) => ({ id: i.id, priceId: i.price.id, quantity: i.quantity ?? 1 })),
+    items: items.filter((i) => i.price?.id).map((i) => ({ id: i.id, priceId: i.price.id, quantity: i.quantity ?? 1, ...couponsOf(i) })),
     pendingUpdate: pending ? { expiresAt: pending.expires_at ?? 0 } : null,
     billingMode: billingMode === "flexible" ? "flexible" : billingMode === "classic" ? "classic" : null,
     currentPeriodStart: starts.length ? Math.min(...starts) : null,
@@ -383,6 +425,7 @@ export function toInvoice(i: Stripe.Invoice, mode: StripeMode = "test"): GwInvoi
     billingReason: (i.billing_reason as string | null) ?? null,
     periodStart: typeof i.period_start === "number" ? i.period_start : null,
     subtotal: typeof i.subtotal === "number" ? i.subtotal : null,
+    ...discountOf((i as unknown as { total_discount_amounts?: Array<{ amount?: number }> | null }).total_discount_amounts, (i as unknown as { total_excluding_tax?: unknown }).total_excluding_tax),
     customerCountry: i.customer_address?.country ?? null,
     customerPostalCode: i.customer_address?.postal_code ?? null,
     customerTaxIds: Array.isArray(i.customer_tax_ids) ? i.customer_tax_ids.length : 0,
@@ -402,6 +445,7 @@ export function toInvoiceLine(l: Stripe.InvoiceLineItem): GwInvoiceLine {
     quantity?: number | null;
     period?: { start?: number; end?: number } | null;
     taxes?: Array<{ amount?: number }> | null;
+    discount_amounts?: Array<{ amount?: number }> | null;
     parent?: { subscription_item_details?: { subscription_item?: string | null; proration?: boolean } | null } | null;
     pricing?: { price_details?: { price?: unknown } | null } | null;
     price?: unknown;
@@ -415,12 +459,35 @@ export function toInvoiceLine(l: Stripe.InvoiceLineItem): GwInvoiceLine {
     priceId: idOf(x.pricing?.price_details?.price) ?? idOf(x.price),
     quantity: typeof x.quantity === "number" ? x.quantity : null,
     amount: x.amount ?? 0,
+    ...discountOf(x.discount_amounts),
     taxCents: Array.isArray(x.taxes) ? x.taxes.reduce((a, t) => a + (t.amount ?? 0), 0) : null,
     proration: !!(details?.proration ?? x.proration),
     periodStart: x.period?.start ?? null,
     periodEnd: x.period?.end ?? null,
   };
 }
+
+/** Descuentos (y neto sin impuestos) solo si los hay: sin cupones, el objeto queda exactamente como antes. */
+function discountOf(list: Array<{ amount?: number }> | null | undefined, totalExcludingTax?: unknown): { discountCents?: number; totalExcludingTax?: number | null } {
+  const cents = Array.isArray(list) ? list.reduce((a, d) => a + (d.amount ?? 0), 0) : 0;
+  if (!cents) return {};
+  return totalExcludingTax === undefined ? { discountCents: cents } : { discountCents: cents, totalExcludingTax: typeof totalExcludingTax === "number" ? totalExcludingTax : null };
+}
+
+/** Cupones de una partida cuando Stripe devuelve sus descuentos expandidos (un id `di_` suelto no dice el cupón). */
+function couponsOf(i: unknown): { discounts?: string[] } {
+  const list = (i as { discounts?: unknown[] }).discounts;
+  if (!Array.isArray(list) || !list.some((d) => d && typeof d === "object")) return {};
+  const ids = list.map((d) => {
+    const x = d as { coupon?: unknown; source?: { coupon?: unknown } };
+    return idOf(x.source?.coupon) ?? idOf(x.coupon);
+  });
+  return { discounts: ids.filter((x): x is string => !!x) };
+}
+
+/** Partidas de un cambio en el formato de la API (con los cupones por partida). */
+const itemParams = (items: SubscriptionItemsChange["items"]) =>
+  items.map((i) => (i.deleted ? { id: i.id, deleted: true } : { ...(i.id ? { id: i.id } : {}), ...(i.priceId ? { price: i.priceId } : {}), ...(i.quantity !== undefined ? { quantity: i.quantity } : {}), ...(i.discounts ? { discounts: i.discounts.map((coupon) => ({ coupon })) } : {}) }));
 
 /** Impuestos de la factura: desde la API 2025-03-31 en `total_taxes` (lista); antes, en `tax`. */
 function taxOf(i: Stripe.Invoice): number | null {
@@ -705,6 +772,7 @@ export function stripeGateway(
         locale: "es",
         ...(i.notice ? { custom_text: { submit: { message: i.notice.slice(0, 1200) } } } : {}),
         ...(i.automaticTax ? { automatic_tax: { enabled: true } } : {}),
+        ...(i.discounts?.length ? { discounts: i.discounts.map((coupon) => ({ coupon })) } : {}),
         integration_identifier: i.integrationIdentifier,
       };
       try {
@@ -754,8 +822,9 @@ export function stripeGateway(
     async updateSubscriptionItems(c, idempotencyKey) {
       try {
         const params = {
-          items: c.items.map((i) => (i.deleted ? { id: i.id, deleted: true } : { ...(i.id ? { id: i.id } : {}), ...(i.priceId ? { price: i.priceId } : {}), ...(i.quantity !== undefined ? { quantity: i.quantity } : {}) })),
+          items: itemParams(c.items),
           proration_behavior: c.prorationBehavior,
+          ...(c.prorationDate !== undefined ? { proration_date: c.prorationDate } : {}),
           payment_behavior: c.paymentBehavior,
           ...(c.metadata ? { metadata: c.metadata } : {}),
         };
@@ -768,10 +837,10 @@ export function stripeGateway(
     },
     async previewSubscriptionChange(c) {
       try {
-        const items = c.items.map((i) => (i.deleted ? { id: i.id, deleted: true } : { ...(i.id ? { id: i.id } : {}), ...(i.priceId ? { price: i.priceId } : {}), ...(i.quantity !== undefined ? { quantity: i.quantity } : {}) }));
-        const inv = await client.invoices.createPreview({ subscription: c.subscriptionId, subscription_details: { items, proration_behavior: c.prorationBehavior } } as Stripe.InvoiceCreatePreviewParams);
+        const items = itemParams(c.items);
+        const inv = await client.invoices.createPreview({ subscription: c.subscriptionId, subscription_details: { items, proration_behavior: c.prorationBehavior, ...(c.prorationDate !== undefined ? { proration_date: c.prorationDate } : {}) } } as Stripe.InvoiceCreatePreviewParams);
         const g = toInvoice(inv as Stripe.Invoice, mode);
-        return { currency: g.currency, amountDue: (inv as { amount_due?: number }).amount_due ?? 0, subtotal: g.subtotal ?? 0, taxCents: g.taxCents ?? null, lines: g.lines ?? [] };
+        return { currency: g.currency, amountDue: (inv as { amount_due?: number }).amount_due ?? 0, subtotal: g.subtotal ?? 0, ...(g.discountCents ? { discountCents: g.discountCents, totalExcludingTax: g.totalExcludingTax ?? null } : {}), total: g.total ?? null, taxCents: g.taxCents ?? null, lines: g.lines ?? [] };
       } catch (e) {
         wrapError(e);
       }
@@ -779,6 +848,28 @@ export function stripeGateway(
     async voidInvoice(id) {
       try {
         return toInvoice(await client.invoices.voidInvoice(id), mode);
+      } catch (e) {
+        wrapError(e);
+      }
+    },
+    async ensureCoupon(c) {
+      const same = (x: Stripe.Coupon) => x.amount_off === c.amountOffCents && (x.currency ?? "").toUpperCase() === c.currency.toUpperCase() && x.duration === "forever" && x.valid !== false;
+      try {
+        const cur = await client.coupons.retrieve(c.id);
+        assertModeObject(cur, mode);
+        if (!same(cur)) throw new StripeGatewayError("coupon_mismatch", `El cupón ${c.id} ya existe con otras condiciones: no se reutiliza`, false);
+        return cur.id;
+      } catch (e) {
+        if (e instanceof StripeGatewayError) throw e;
+        if (!notFound(e)) wrapError(e);
+      }
+      try {
+        const created = await client.coupons.create(
+          { id: c.id, name: c.name.slice(0, 40), amount_off: c.amountOffCents, currency: c.currency.toLowerCase(), duration: "forever", metadata: c.metadata, ...(c.appliesToProducts?.length ? { applies_to: { products: c.appliesToProducts } } : {}) },
+          { idempotencyKey: `es-coupon-${c.id}` },
+        );
+        assertModeObject(created, mode);
+        return created.id;
       } catch (e) {
         wrapError(e);
       }

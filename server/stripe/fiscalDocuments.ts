@@ -13,7 +13,7 @@
  * El reparto base/impuesto de una rectificativa es PROPORCIONAL a la factura original (provisional): el
  * sistema legal es quien lo confirma.
  */
-import type { GwInvoice } from "./gateway";
+import { invoiceNetCents, type GwInvoice } from "./gateway";
 
 export type InvoicePurpose = "initial" | "renewal" | "change";
 
@@ -69,7 +69,8 @@ export const refundSourceKey = (chargeId: string, refundedTotalCents: number) =>
 
 /** Copia local de una factura cobrada (la de Stripe es la fuente de verdad). */
 export function invoiceRecordOf(inv: GwInvoice, d: { orderId: number; purpose: InvoicePurpose; buyerScenario: string | null; now: number; refundedCents?: number }): StripeInvoiceRecord {
-  const subtotal = inv.subtotal ?? inv.amountPaid;
+  // Base imponible después de los descuentos: con un cupón, el impuesto se calcula sobre el neto
+  const subtotal = invoiceNetCents(inv);
   const total = inv.total ?? inv.amountPaid;
   return {
     stripeInvoiceId: inv.id,
