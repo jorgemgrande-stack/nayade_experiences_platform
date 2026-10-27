@@ -493,6 +493,19 @@ async function main() {
       }),
     );
   }
+  // Sin Stripe en el entorno, los servicios externos también se montan: contrato, aceptación y seguimiento funcionan; la
+  // autorización del método de pago y los cobros responden que Stripe no está configurado
+  if (!stripe && crmPool && crm) {
+    const pool = crmPool;
+    const has = (t: string) => pool.query(`SELECT 1 FROM ${t} LIMIT 0`).then(() => true, () => false);
+    const origin = crmPublicOrigin(process.env);
+    const tables = (await has("external_subscriptions")) && (await has("crm_contract_acceptances")) && (await has("external_subscription_events"));
+    if (tables && origin) {
+      const pub = `${origin}/cp/v1/public/contract-acceptance`;
+      external = { store: new MysqlExternalStore(pool, "test"), urls: { acceptance: pub, setupSuccess: `${pub}/autorizado`, setupCancel: `${pub}/cancelado`, portalReturn: `${pub}/portal` }, ipSalt: (process.env.CP_PUBLIC_FORM_SECRET ?? "").trim() || undefined, liveEnabled: false };
+    }
+    console.log(JSON.stringify({ ctx: "External", mounted: !!external, stripe: false, ...(!tables ? { reason: "migration_0026_missing" } : !origin ? { reason: "crm_origin_missing" } : {}) }));
+  }
 
   // API pública de captación de la web comercial: solo con CRM, orígenes explícitos y secreto propio
   const publicOrigins = (process.env.CP_PUBLIC_ORIGINS ?? "").split(",").map((x) => x.trim()).filter(Boolean);
