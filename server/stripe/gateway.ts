@@ -163,9 +163,18 @@ export interface GwCharge {
   disputeStatus: string | null;
 }
 
+/**
+ * Partida de una Checkout Session: un Price recurrente enlazado o un importe único (primer mes de una partida
+ * mensual en un plan anual) con el Product y el importe aprobados.
+ */
+export type CheckoutLineItem = { priceId: string; quantity: number } | { oneTime: { productId: string; unitAmount: number; currency: string }; quantity: number };
+
 export interface CheckoutSessionInput {
   customerId: string;
+  /** Price del plan. Sin `lineItems`, es la única partida. */
   priceId: string;
+  /** Todas las partidas (plan incluido), en lugar de solo `priceId`. */
+  lineItems?: CheckoutLineItem[];
   clientReferenceId: string;
   metadata: Record<string, string>;
   successUrl: string;
@@ -480,7 +489,9 @@ export function stripeGateway(
       const params: Stripe.Checkout.SessionCreateParams & { integration_identifier?: string } = {
         mode: "subscription",
         customer: i.customerId,
-        line_items: [{ price: i.priceId, quantity: 1 }],
+        line_items: i.lineItems
+          ? i.lineItems.map((l) => ("priceId" in l ? { price: l.priceId, quantity: l.quantity } : { price_data: { currency: l.oneTime.currency.toLowerCase(), product: l.oneTime.productId, unit_amount: l.oneTime.unitAmount, tax_behavior: "exclusive" as const }, quantity: l.quantity }))
+          : [{ price: i.priceId, quantity: 1 }],
         client_reference_id: i.clientReferenceId,
         metadata: i.metadata,
         subscription_data: {

@@ -320,11 +320,16 @@ export class FakeStripeGateway implements StripeGateway {
   /** Simula que el cliente paga la sesión en Stripe (lo que en la realidad hace la página de Checkout). */
   completeSession(id: string, status: GwSubscription["status"] = "active", amount?: number) {
     const s = this.sessions.get(id)!;
-    amount ??= this.prices.find((p) => p.id === s.input.priceId)?.unitAmount ?? 2900;
+    // Partidas recurrentes de la sesión (las de importe único solo van en la primera factura)
+    const lineItems = s.input.lineItems ?? [{ priceId: s.input.priceId, quantity: 1 }];
+    const recurring = lineItems.filter((l): l is { priceId: string; quantity: number } => "priceId" in l);
+    amount ??= lineItems.reduce((a, l) => a + ("priceId" in l ? (this.prices.find((p) => p.id === l.priceId)?.unitAmount ?? 2900) : l.oneTime.unitAmount) * l.quantity, 0);
     const subId = this.next("sub");
     const inv = this.addInvoice(subId, s.customerId!, "subscription_create", status === "active" ? "paid" : "open", amount);
     const end = s.expiresAt + 30 * 86_400;
-    this.subscriptions.set(subId, { id: subId, customerId: s.customerId!, status, cancelAt: null, cancelAtPeriodEnd: false, currentPeriodEnd: end, currentPeriodStart: end - 30 * 86_400, latestInvoiceId: inv, priceIds: [s.input.priceId], metadata: { ...s.metadata }, items: [{ id: this.next("si"), priceId: s.input.priceId, quantity: 1 }], pendingUpdate: null, billingMode: "classic" });
+    // Checkout crea la suscripción en modo flexible (gateway.ts): admite añadir partidas de otra periodicidad
+    const items = recurring.map((l) => ({ id: this.next("si"), priceId: l.priceId, quantity: l.quantity }));
+    this.subscriptions.set(subId, { id: subId, customerId: s.customerId!, status, cancelAt: null, cancelAtPeriodEnd: false, currentPeriodEnd: end, currentPeriodStart: end - 30 * 86_400, latestInvoiceId: inv, priceIds: items.map((i) => i.priceId), metadata: { ...s.metadata }, items, pendingUpdate: null, billingMode: "flexible" });
     this.sessions.set(id, { ...s, status: "complete", paymentStatus: status === "active" ? "paid" : "unpaid", subscriptionId: subId, url: null });
     this.emit("checkout.session.completed", "checkout.session", id);
     return subId;

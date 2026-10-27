@@ -71,6 +71,11 @@ export interface OrderQuote {
   contractAmountCents: number;
   /** Importe del primer periodo a pagar (con IVA). */
   firstPeriodCents: number;
+  /**
+   * Neto del primer periodo (sin IVA): mensual, o anual + primer mes de las partidas mensuales de un plan anual.
+   * Ausente en pedidos anteriores (entonces coincide con `contractAmountCents`).
+   */
+  firstPeriodNetCents?: number;
   capabilities: string[];
   blocking: string[];
   /** Productos «bajo solicitud»: exigen aprobación motivada al firmar. */

@@ -34,7 +34,7 @@ import type { SubscriptionStore } from "../subscriptions/store";
 import { PURCHASABLE_FAMILIES } from "./catalog";
 import type { StripeBillingMode, StripeMode } from "./config";
 import type { GwInvoice, GwSubscription, StripeGateway } from "./gateway";
-import { itemChanges, supportsPendingUpdate } from "./multipart";
+import { intervalCompatible, itemChanges, supportsPendingUpdate } from "./multipart";
 import type { StripeStore } from "./store";
 import { SubscriptionChangeError, sameItems, type ExpectedItem, type SubscriptionChange, type SubscriptionChangeStore } from "./changes";
 
@@ -72,6 +72,9 @@ export interface PurchaseLine {
   stripePriceId: string;
   fromQuantity: number;
   toQuantity: number;
+  /** Periodicidad de la partida (puede ser mensual con un plan anual) y precio unitario aprobado (sin IVA). */
+  interval?: "month" | "year";
+  unitAmountCents?: number;
 }
 
 export interface PurchasePreview {
@@ -85,6 +88,8 @@ export interface PurchasePreview {
   lines: PurchaseLine[];
   /** Importe recurrente de las partidas nuevas por periodo (sin impuestos). */
   recurringDeltaCents: number;
+  /** El mismo importe separado por periodicidad (un plan anual puede llevar partidas mensuales). */
+  recurringDelta: { monthlyCents: number; yearlyCents: number };
   interval: "month" | "year";
 }
 
@@ -160,6 +165,14 @@ export class ModulePurchaseService {
     if (!this.d.enabled) throw new PurchaseError("disabled", "La compra de módulos en línea no está habilitada");
   }
 
+  /** Tenant de una empresa (compras de un operador desde el CRM). Sin plataforma todavía, no hay nada que ampliar. */
+  async tenantOfCompany(companyId: number): Promise<string> {
+    const c = (await this.d.crmStore.list("companies", { id: companyId }, { limit: 2 }))[0] as { id: number; tenantId?: string | null } | undefined;
+    if (!c || c.id !== companyId) throw new PurchaseError("not_found", "Empresa no encontrada");
+    if (!c.tenantId) throw new PurchaseError("invalid_state", "La empresa todavía no tiene plataforma: contrata primero el plan");
+    return c.tenantId;
+  }
+
   /** Empresa del tenant de la sesión y su pedido vigente (solo activo: en gracia, suspendido o en baja no se compra). */
   private async context(tenantId: string) {
     if (!/^[a-z0-9][a-z0-9-]{1,62}$/.test(tenantId)) throw new PurchaseError("invalid_input", "Empresa no válida");
@@ -216,19 +229,23 @@ export class ModulePurchaseService {
     if (q.blocking.length) throw new PurchaseError("unavailable", `Incluye productos que aún no se pueden contratar: ${q.blocking.join(", ")}`);
     const before = await this.d.quote(r);
     const qtyBefore = new Map(before.ok ? before.lines.filter((l) => l.family === "addon").map((l) => [l.key, l.quantity]) : []);
-    const kind = request.interval === "year" ? "yearly" : "monthly";
     const offer = await this.d.catalog.offer();
     const curItems = new Map((sub.items ?? []).map((i) => [i.priceId, i.quantity]));
     const desired = new Map(curItems);
     const lines: PurchaseLine[] = [];
     let recurringDeltaCents = 0;
+    const recurringDelta = { monthlyCents: 0, yearlyCents: 0 };
     for (const l of q.lines) {
       const isAddon = l.family === "addon";
       if (!isAddon && !add.includes(l.key)) continue;
       const product = offer.find((p) => p.key === l.key);
       if (!product || product.commercialStatus !== "available" || (product.internalOnly && !this.internalAllowed(current.tenantId))) throw new PurchaseError("unavailable", `«${l.name}» no está disponible para compra en línea`);
+      // Cada partida con el precio de SU periodicidad (un módulo sin tarifa anual es mensual también en un plan anual)
+      const kind = l.interval === "year" ? "yearly" : "monthly";
       const price = product.prices.find((p) => p.kind === kind && p.status === "approved" && p.currency.toUpperCase() === "EUR");
-      if (!price) throw new PurchaseError("unavailable", `«${l.name}» no tiene precio ${request.interval === "year" ? "anual" : "mensual"} aprobado`);
+      if (!price) throw new PurchaseError("unavailable", `«${l.name}» no tiene precio ${l.interval === "year" ? "anual" : "mensual"} aprobado`);
+      // Mezclar periodicidades exige el modo flexible de Stripe (las suscripciones de Checkout lo están; las antiguas, no)
+      if (!intervalCompatible(sub.billingMode ?? "classic", request.interval, l.interval)) throw new PurchaseError("unavailable", `«${l.name}» se cobra ${l.interval === "year" ? "anualmente" : "mensualmente"} y esta suscripción de Stripe no admite periodicidades distintas: lo contrata tu gestor`);
       const link = await this.d.stripeStore.priceForWebPrice(price.id);
       if (!link || link.status !== "active") throw new PurchaseError("unavailable", `«${l.name}» no tiene precio enlazado en Stripe`);
       const from = isAddon ? (qtyBefore.get(l.key) ?? 0) : 0;
@@ -236,8 +253,9 @@ export class ModulePurchaseService {
       if (l.quantity === from) continue;
       if (isAddon && (curItems.get(link.stripePriceId) ?? 0) !== from) throw new PurchaseError("conflict", `Las unidades de «${l.name}» en Stripe no coinciden con las contratadas: lo revisa el equipo`);
       desired.set(link.stripePriceId, l.quantity);
-      lines.push({ productKey: l.key, name: l.name, kind: isAddon ? "quantity" : "module", stripePriceId: link.stripePriceId, fromQuantity: from, toQuantity: l.quantity });
+      lines.push({ productKey: l.key, name: l.name, kind: isAddon ? "quantity" : "module", stripePriceId: link.stripePriceId, fromQuantity: from, toQuantity: l.quantity, interval: l.interval, unitAmountCents: price.amountCents });
       recurringDeltaCents += price.amountCents * (l.quantity - from);
+      recurringDelta[l.interval === "year" ? "yearlyCents" : "monthlyCents"] += price.amountCents * (l.quantity - from);
     }
     // Una reducción declarada (menos usuarios que ahora) nunca entra por aquí
     for (const [key, qty] of Array.from(qtyBefore.entries())) if (!q.lines.some((l) => l.key === key && l.quantity >= qty)) throw new PurchaseError("invalid_input", "Para reducir una ampliación usa la reducción a fin de periodo");
@@ -250,7 +268,7 @@ export class ModulePurchaseService {
     const onRequest = q.lines.filter((l) => l.commercialStatus === "on_request");
     if (onRequest.some((l) => !owned.has(l.key))) throw new PurchaseError("unavailable", "La compra incluye productos que requieren aprobación comercial");
     const approvalReason = onRequest.length ? `Ya aprobado en el pedido vigente ${current.reference ?? current.id}; la compra solo añade productos disponibles` : undefined;
-    return { request, lines, expected, items, recurringDeltaCents, approvalReason };
+    return { request, lines, expected, items, recurringDeltaCents, recurringDelta, approvalReason };
   }
 
   private async assertPaymentMethod(sub: GwSubscription) {
@@ -266,7 +284,7 @@ export class ModulePurchaseService {
     const { current, sub } = await this.context(tenantId);
     const p = await this.plan(current, sub, input);
     const inv = await this.d.gateway.previewSubscriptionChange({ subscriptionId: sub.id, items: p.items, prorationBehavior: "always_invoice" });
-    return { orderId: current.id, subscriptionId: sub.id, currency: inv.currency, amountDueCents: inv.amountDue, subtotalCents: inv.subtotal, taxCents: inv.taxCents, lines: p.lines, recurringDeltaCents: p.recurringDeltaCents, interval: current.request.interval };
+    return { orderId: current.id, subscriptionId: sub.id, currency: inv.currency, amountDueCents: inv.amountDue, subtotalCents: inv.subtotal, taxCents: inv.taxCents, lines: p.lines, recurringDeltaCents: p.recurringDeltaCents, recurringDelta: p.recurringDelta, interval: current.request.interval };
   }
 
   /**
@@ -421,9 +439,11 @@ export class ModulePurchaseService {
     const qtyBefore = new Map(before.ok ? before.lines.filter((l) => l.family === "addon").map((l) => [l.key, l.quantity]) : []);
     const qtyAfter = new Map(q.lines.filter((l) => l.family === "addon").map((l) => [l.key, l.quantity]));
     for (const [key, n] of Array.from(qtyAfter.entries())) if (n > (qtyBefore.get(key) ?? 0)) throw new PurchaseError("invalid_input", "Para ampliar usa la compra (se cobra el prorrateo)");
-    const kind = request.interval === "year" ? "yearly" : "monthly";
     const offer = await this.d.catalog.offer();
+    // Periodicidad de cada partida contratada (un módulo mensual en un plan anual se busca con su precio mensual)
+    const intervalOf = new Map(before.ok ? before.lines.map((l) => [l.key, l.interval]) : []);
     const linkOf = async (key: string) => {
+      const kind = (intervalOf.get(key) ?? request.interval) === "year" ? "yearly" : "monthly";
       const price = offer.find((p) => p.key === key)?.prices.find((p) => p.kind === kind && p.status === "approved" && p.currency.toUpperCase() === "EUR");
       const link = price ? await this.d.stripeStore.priceForWebPrice(price.id) : null;
       return link ? { link, price: price! } : null;
@@ -445,7 +465,7 @@ export class ModulePurchaseService {
       }
       if (to === 0) desired.delete(l.link.stripePriceId);
       else desired.set(l.link.stripePriceId, to);
-      lines.push({ productKey: key, name, kind: kindOf, stripePriceId: l.link.stripePriceId, fromQuantity: from, toQuantity: to });
+      lines.push({ productKey: key, name, kind: kindOf, stripePriceId: l.link.stripePriceId, fromQuantity: from, toQuantity: to, interval: intervalOf.get(key) ?? request.interval, unitAmountCents: l.price.amountCents });
       recurringDeltaCents -= l.price.amountCents * (from - to);
     };
     for (const key of remove) await reduce(key, offer.find((p) => p.key === key)?.name ?? key, "module", 1, 0);

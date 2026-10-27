@@ -10,6 +10,14 @@
  *   POST /commerce/tenants/:tenantId/reductions/preview          commerce:purchase   bajas y reducciones a fin de periodo (no cambia nada)
  *   POST /commerce/tenants/:tenantId/reductions                  commerce:purchase   baja o reducción (idempotente; nunca bajo el uso real)
  *   POST /commerce/purchases/sync                                orders:write        conciliación de compras pendientes
+ *
+ * Las mismas compras y reducciones, hechas por un operador desde el CRM para una empresa (la empresa se traduce a su
+ * tenant EN EL SERVIDOR; mismo motor, mismos importes y misma idempotencia):
+ *
+ *   POST /commerce/companies/:companyId/purchases/preview        orders:write
+ *   POST /commerce/companies/:companyId/purchases                orders:write
+ *   POST /commerce/companies/:companyId/reductions/preview       orders:write
+ *   POST /commerce/companies/:companyId/reductions               orders:write
  */
 import express, { type NextFunction, type Request, type Response, type Router } from "express";
 import { z } from "zod";
@@ -87,6 +95,31 @@ export function createPurchasesRouter(svc: ModulePurchaseService): Router {
     const t = tenant.parse(req.params.tenantId);
     const orderId = z.coerce.number().int().positive().parse(req.params.orderId);
     res.json({ purchase: await svc.statusOf(t, orderId) });
+  }));
+
+  // Operadores (CRM): la empresa de la ruta → su tenant, resuelto en el servidor
+  const company = async (req: Request) => svc.tenantOfCompany(z.coerce.number().int().positive().parse(req.params.companyId));
+  const operator = (req: Request) => `${getAuth(req)!.actor.type}:${getAuth(req)!.actor.id}/crm`.slice(0, 100);
+  const keyBody = z.object({ idempotencyKey: z.string() }).passthrough();
+  r.post("/companies/:companyId/purchases/preview", requireScope("orders:write"), wrap(async (req, res) => {
+    res.json({ preview: await svc.preview(await company(req), body.parse(req.body ?? {})) });
+  }));
+  r.post("/companies/:companyId/purchases", requireScope("orders:write"), wrap(async (req, res) => {
+    const t = await company(req);
+    const { idempotencyKey, ...input } = keyBody.parse(req.body ?? {});
+    const result = await svc.purchase(t, body.parse(input), { idempotencyKey, actor: operator(req) });
+    opsLog("info", "Purchases", "operator_purchase", { tenantId: t, orderId: result.orderId, status: result.status, created: result.created });
+    res.status(result.created ? 201 : 200).json({ purchase: result });
+  }));
+  r.post("/companies/:companyId/reductions/preview", requireScope("orders:write"), wrap(async (req, res) => {
+    res.json({ preview: await svc.previewReduction(await company(req), reductionBody.parse(req.body ?? {})) });
+  }));
+  r.post("/companies/:companyId/reductions", requireScope("orders:write"), wrap(async (req, res) => {
+    const t = await company(req);
+    const { idempotencyKey, ...input } = keyBody.parse(req.body ?? {});
+    const result = await svc.reduce(t, reductionBody.parse(input), { idempotencyKey, actor: operator(req) });
+    opsLog("info", "Purchases", "operator_reduction", { tenantId: t, orderId: result.orderId, status: result.status, created: result.created });
+    res.status(result.created ? 201 : 200).json({ reduction: result });
   }));
   return r;
 }
