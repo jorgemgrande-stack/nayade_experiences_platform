@@ -438,11 +438,10 @@ export function extraordinaryChanges(files: string[], diff: string, sqlOf: (file
     const why = sql === null ? "migración borrada" : destructiveMigration(sql);
     if (why) out.push(`${f} — migración no aditiva (${why})`);
   }
-  for (const line of diff.split("\n")) {
-    if (!/^[+-](?![+-])/.test(line)) continue;
-    const m = line.match(LOCKED_SWITCHES);
-    if (m) out.push(`cambio en ${m[1]} — funciones bloqueadas`);
-  }
+  // Solo el código que se ejecuta: un comentario o un documento que mencionen un interruptor no lo cambian
+  out.push(...coreLockedChanges(diff));
+  // Cobros, autorización, seguridad y borrados aunque no toquen ningún interruptor
+  out.push(...criticalChanges(files, diff));
   return [...new Set(out)];
 }
 
@@ -575,4 +574,195 @@ export function meteringPlan(hostVar: string, portVar: string, coreCurrent?: str
     core: { ERM_DATABASE_URL: coreCurrent || ermUrlTemplate(hostVar, portVar) },
     controlplane: { ERM_DATABASE_URL: ermRef("core", "ERM_DATABASE_URL") },
   };
+}
+
+// ── Clasificación por cambios EFECTIVOS (docs/elephant-source/AUTONOMIA_DESPLIEGUES.md) ───────────────────────────
+//
+// Un despliegue no se vuelve extraordinario porque un comentario, un documento o una prueba mencionen un interruptor:
+// solo cuenta el código que se ejecuta. Se descartan documentación, pruebas y e2e; en cada línea cambiada se quitan los
+// comentarios (con las cadenas respetadas: lo que va dentro de una cadena sí cuenta). Ante la duda, cuenta como código.
+
+/** Ficheros que no se ejecutan en el servicio: documentación, imágenes, pruebas, e2e y ejemplos de variables. */
+const NON_EFFECTIVE = /(^|\/)(docs?|e2e|__tests__)\/|\.(md|mdx|txt|png|jpe?g|gif|svg|webp|ico|pdf)$|\.(test|spec|e2e)\.[cm]?[jt]sx?$|(^|\/)\.?env\.example$/i;
+const HASH_COMMENTS = /(^|\/)(Caddyfile[^/]*|Dockerfile[^/]*|[^/]*\.(ya?ml|toml|sh|conf)|\.env[^/]*)$/i;
+
+/** Línea sin comentarios. `lang` js (por defecto): //, /* *\/ y continuaciones de JSDoc; hash: #; html: <!-- -->. */
+export function codeOfLine(line: string, lang: "js" | "hash" | "html" = "js"): string {
+  if (lang === "html") return line.replace(/<!--[\s\S]*?(-->|$)/g, "");
+  const t = line.trim();
+  // Continuación de un bloque de comentario (JSDoc): solo cuenta lo que haya tras su cierre
+  if (lang === "js" && (t.startsWith("*") || t.startsWith("/*"))) {
+    const end = line.indexOf("*/");
+    if (end < 0) return "";
+    line = line.slice(end + 2);
+  }
+  let out = "";
+  let quote: string | null = null;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (c === "\\") {
+      out += line.slice(i, i + 2);
+      i++;
+      continue;
+    }
+    if (quote) {
+      out += c;
+      if (c === quote) quote = null;
+      continue;
+    }
+    if (c === '"' || c === "'" || (lang === "js" && c === "`")) {
+      quote = c;
+      out += c;
+      continue;
+    }
+    if (lang === "hash" && c === "#") break;
+    if (lang === "js" && c === "/" && line[i + 1] === "/") break;
+    if (lang === "js" && c === "/" && line[i + 1] === "*") {
+      const end = line.indexOf("*/", i + 2);
+      if (end < 0) break;
+      i = end + 1;
+      continue;
+    }
+    out += c;
+  }
+  return out;
+}
+
+/**
+ * Líneas añadidas o quitadas de un diff unificado, con su fichero y sin comentarios; sin los ficheros que no se
+ * ejecutan. Un diff sin cabeceras (fragmento suelto) se trata como código.
+ */
+export function effectiveChangedLines(diff: string): Array<{ file: string; code: string }> {
+  const out: Array<{ file: string; code: string }> = [];
+  let file = "";
+  for (const line of diff.split("\n")) {
+    const h = /^diff --git a\/\S+ b\/(\S+)/.exec(line);
+    if (h) {
+      file = h[1];
+      continue;
+    }
+    if (/^(\+\+\+|---) /.test(line)) continue;
+    if (!/^[+-]/.test(line) || NON_EFFECTIVE.test(file)) continue;
+    const lang = HASH_COMMENTS.test(file) ? "hash" : /\.html?$/i.test(file) ? "html" : "js";
+    const code = codeOfLine(line.slice(1), lang);
+    if (code.trim()) out.push({ file, code });
+  }
+  return out;
+}
+
+/** Ficheros de configuración del CRM o la web donde un interruptor cuenta en cualquier parte del código (no solo leído). */
+const EXTERNAL_CONFIG_FILES = /(^|\/)(\.env[^/]*|vite\.config\.[cm]?[jt]s|Dockerfile[^/]*|railway[^/]*\.(json|toml)|nixpacks\.toml|index\.html)$/i;
+const ENV_READ = /(?:import\.meta\.env|process\.env|\benv)\s*(?:\.\s*|\[\s*["'`])([A-Z][A-Z0-9_]*)/g;
+
+/**
+ * Interruptores de funciones bloqueadas (cobros, autoservicio, Stripe, accesos de la pasarela) que un cambio del CRM o
+ * de la web toca DE VERDAD: una lectura de variable en el código (`import.meta.env.X`, `process.env.X`, `env.X`) o
+ * el nombre en un fichero de configuración (variables, compilación, imagen). Un comentario, una constante con un
+ * nombre parecido (p. ej. `STRIPE_LIVE_PROVIDER`) o un texto no lo son. La pasarela (Caddyfile) ya es extraordinaria.
+ */
+export function externalLockedChanges(diff: string): string[] {
+  const out = new Set<string>();
+  const anywhere = new RegExp(EXTERNAL_LOCKED_SWITCHES.source, "g");
+  for (const { file, code } of effectiveChangedLines(diff)) {
+    if (EXTERNAL_CONFIG_FILES.test(file)) {
+      for (const m of code.matchAll(anywhere)) out.add(`${file}: cambio en ${m[0]} — funciones bloqueadas`);
+      continue;
+    }
+    for (const m of code.matchAll(ENV_READ)) if (EXTERNAL_LOCKED_SWITCHES.test(m[1])) out.add(`${file}: lectura de ${m[1]} — funciones bloqueadas`);
+  }
+  return Array.from(out);
+}
+
+/** Interruptores del Core tocados en código efectivo (sin comentarios): cualquier aparición en código o en cadenas. */
+export function coreLockedChanges(diff: string): string[] {
+  const out = new Set<string>();
+  for (const { file, code } of effectiveChangedLines(diff)) {
+    const m = code.match(LOCKED_SWITCHES);
+    if (m) out.add(`${file ? `${file}: ` : ""}cambio en ${m[1]} — funciones bloqueadas`);
+  }
+  return Array.from(out);
+}
+
+/**
+ * Commit del CRM sellado en cada despliegue (se sirve como fichero estático): tras publicar se comprueba que el dominio
+ * REAL sirve ese commit; si no, vuelta atrás.
+ */
+export const CRM_VERSION_FILE = "public/version.txt";
+export const CRM_VERSION_URL: Record<string, { url: string; auth?: boolean }> = {
+  live: { url: "https://elephant-source-crm-live.up.railway.app/version.txt", auth: true },
+  production: { url: "https://admin.bigelephant.es/version.txt" },
+};
+
+// ── Puntos críticos sin variables de entorno: cobros, autorización, seguridad y borrados ───────────────────────────
+//
+// Un cambio real en estas piezas es extraordinario aunque no toque ningún interruptor. Se protege la ENVOLVENTE (lo que
+// decide si se cobra de verdad, quién entra y qué se borra), no cada línea de una funcionalidad: los flujos de Checkout,
+// compras o suscripciones siguen siendo ordinarios porque en live los cobros dependen de esta envolvente y de sus
+// interruptores, que sí están protegidos.
+
+/** Ficheros del Core cuyo cambio (fuera de las pruebas) exige el procedimiento protegido. */
+export const CRITICAL_PATHS: Array<{ re: RegExp; why: string }> = [
+  // Cobros: modo live/test, claves, interruptores, política fiscal, firma de webhooks y quién puede pagar
+  { re: /^server\/stripe\/(config|liveReadiness|webhook|eligibility)\.ts$/, why: "cobros: modo, claves, firma de webhooks o elegibilidad" },
+  // Autorización: tokens y permisos del plano de control, operadores, MFA, sesiones y roles
+  { re: /^server\/controlPlane\/(auth|operatorAuth|operatorRoles|operatorMfaKeys)\.ts$/, why: "autorización del plano de control y operadores" },
+  { re: /^server\/(authGuard|localAuth|passwordReset)\.ts$/, why: "autenticación y sesiones" },
+  { re: /^server\/_core\/(centralAuth|expressAuth|oauth|rbac|cookies|loginThrottle|companyOwner)\.ts$/, why: "autenticación, roles o sesiones" },
+  // Canal interno firmado plano de control → Core (las acciones que transporta son funcionalidad ordinaria)
+  { re: /^server\/_core\/opsAccess\/(token|router)\.ts$/, why: "canal firmado de acceso de operaciones" },
+  // Seguridad: bóveda y cifrado de credenciales (el catálogo y la salud de las integraciones son ordinarios), claves del
+  // registro, guardas de endpoints públicos y saneado
+  { re: /^server\/_core\/credentials\/(vault|runtime|cache|legacyFields|legacyMigration)\.ts$/, why: "bóveda y cifrado de credenciales" },
+  { re: /^server\/_core\/tenantRegistry\/crypto\.ts$/, why: "cifrado del registro de empresas" },
+  { re: /^server\/_core\/(publicEndpointGuards|safeRedirect|htmlSanitize|requestOrigin)\.ts$/, why: "guardas de seguridad" },
+  { re: /(^|\/)\.gitleaks[^/]*$/, why: "control de secretos" },
+];
+
+/**
+ * Cambios efectivos de código que son extraordinarios estén donde estén (sin comentarios ni pruebas):
+ *  - borrados destructivos (DROP, TRUNCATE, DELETE FROM, borrado de bases o de empresas, borrado recursivo);
+ *  - verificación de firmas y modo live de Stripe;
+ *  - RETIRAR una comprobación de autorización (añadir una ruta con un permiso existente es ordinario).
+ */
+export const CRITICAL_CODE: Array<{ re: RegExp; why: string }> = [
+  { re: /\b(DROP\s+(TABLE|DATABASE|SCHEMA|USER)|TRUNCATE\s+(TABLE\s+)?[`\w]+|DELETE\s+FROM)\b/i, why: "operación destructiva de datos" },
+  { re: /\b(dropDatabase|deleteTenant\w*|purgeTenant\w*)\s*\(|rmSync\s*\([^)]*recursive/, why: "borrado de bases, empresas o ficheros" },
+  { re: /\b(constructEvent|generateTestHeaderString|assertModeObject|livemode)\b|\b(sk|rk)_live_/, why: "cobros: firma de webhooks o modo live de Stripe" },
+];
+
+/**
+ * Comprobaciones de autorización de un fichero (permiso exacto incluido). Que una desaparezca, o cambie de permiso, es
+ * extraordinario; moverla o añadir otras iguales, no.
+ */
+const AUTH_CHECK = /\b(?:requireScope|requireRole|requireOperator\w*)\s*\([^)]*\)|\b(?:protectedProcedure|adminProcedure)\b|ctx\.user\.role\s*[!=]==?\s*["'`][^"'`]+["'`]/g;
+
+export function criticalChanges(files: string[], diff: string): string[] {
+  const out = new Set<string>();
+  for (const f of files) {
+    if (NON_EFFECTIVE.test(f)) continue;
+    const hit = CRITICAL_PATHS.find((p) => p.re.test(f));
+    if (hit) out.add(`${f} — ${hit.why}`);
+  }
+  // Comprobaciones de autorización por fichero: quitadas frente a añadidas (con su permiso exacto)
+  const auth = new Map<string, Map<string, number>>();
+  let file = "";
+  for (const line of diff.split("\n")) {
+    const h = /^diff --git a\/\S+ b\/(\S+)/.exec(line);
+    if (h) {
+      file = h[1];
+      continue;
+    }
+    if (/^(\+\+\+|---) /.test(line) || !/^[+-]/.test(line) || NON_EFFECTIVE.test(file)) continue;
+    const code = codeOfLine(line.slice(1), HASH_COMMENTS.test(file) ? "hash" : "js");
+    for (const c of CRITICAL_CODE) if (c.re.test(code)) out.add(`${file ? `${file}: ` : ""}${c.why}`);
+    const counts = auth.get(file) ?? new Map<string, number>();
+    for (const m of code.matchAll(AUTH_CHECK)) {
+      const k = m[0].replace(/\s+/g, "");
+      counts.set(k, (counts.get(k) ?? 0) + (line[0] === "-" ? 1 : -1));
+    }
+    auth.set(file, counts);
+  }
+  for (const [f, counts] of Array.from(auth.entries()))
+    for (const [k, n] of Array.from(counts.entries())) if (n > 0) out.add(`${f ? `${f}: ` : ""}se retira una comprobación de autorización (${k.slice(0, 60)})`);
+  return Array.from(out);
 }

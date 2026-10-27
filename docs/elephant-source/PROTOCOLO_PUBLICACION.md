@@ -30,8 +30,8 @@ Claude publica sin consultar todo lo ordinario (Diseña → Implementa → Prueb
 3. **Nada extraordinario.** Se comparan el commit que sirve production y el que se quiere publicar (`extraordinaryChanges`). El despliegue se detiene si el cambio trae alguna de estas cosas:
    - una migración **no aditiva**: borra, vacía, reescribe, renombra o cambia el tipo de algo, o contiene una sentencia no reconocida como aditiva (`destructiveMigration`);
    - la política del correo real (`server/mail/policy.ts`);
-   - alguna lectura de un interruptor de funciones bloqueadas (`CP_*_ENABLED`, `CP_STRIPE_MODE`, `MAIL_MODE`, `MAIL_LIVE_AUTHORIZED`, `MAIL_SANDBOX_ALLOWLIST`, `LLM_*`, `ES_AI_*`, `IMAGE_MODEL`, `TENANT_MODE`);
-   - en el CRM o la web, la pasarela de seguridad (`Caddyfile`) o los interruptores de cobros, autoservicio y Stripe.
+   - alguna lectura de un interruptor de funciones bloqueadas (`CP_*_ENABLED`, `CP_STRIPE_MODE`, `MAIL_MODE`, `MAIL_LIVE_AUTHORIZED`, `MAIL_SANDBOX_ALLOWLIST`, `LLM_*`, `ES_AI_*`, `IMAGE_MODEL`, `TENANT_MODE`) en código efectivo: los comentarios, la documentación y las pruebas no cuentan ([AUTONOMIA_DESPLIEGUES.md](AUTONOMIA_DESPLIEGUES.md));
+   - en el CRM o la web, la pasarela de seguridad (`Caddyfile`) o una lectura real de los interruptores de cobros, autoservicio y Stripe (o su nombre en un fichero de configuración).
 
    Si no se sabe qué versión está activa, también se considera extraordinario.
 

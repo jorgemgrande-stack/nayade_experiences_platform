@@ -2,6 +2,12 @@
 
 Este archivo proporciona a Claude (en VS Code o cualquier entorno de desarrollo) todo el contexto necesario para trabajar de forma efectiva en el **Core de Elephant Source**. Léelo al inicio de cada sesión de trabajo.
 
+> **Despliegues de Elephant Source (Core y CRM): procedimiento permanente en [docs/elephant-source/AUTONOMIA_DESPLIEGUES.md](docs/elephant-source/AUTONOMIA_DESPLIEGUES.md).**
+> - Se integra en `integration/elephant-source` y la cadena automática publica en live y en production.
+> - Nunca se despliega production a mano. Para un cambio que solo toca el CRM: `gh workflow run ci.yml --ref integration/elephant-source`.
+> - El resultado se verifica en `https://admin.bigelephant.es/version.txt`.
+> - Lo extraordinario (cobros, autorización, seguridad, borrados, migraciones destructivas, interruptores) espera la aprobación del propietario.
+
 ---
 
 ## Identidad del Proyecto
