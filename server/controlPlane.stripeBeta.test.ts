@@ -287,4 +287,66 @@ describe("contratación con Stripe por HTTP (doble de Stripe, firma real)", () =
     expect(gw.calls.length).toBe(before);
     expect((await call("GET", "/stripe/catalog/yearly-proposals", { token: null })).status).toBe(401);
   });
+
+  it("suscripciones: la de una prueba gratuita sigue siendo simulación", async () => {
+    const email = "beta-sombra@empresa.example";
+    await ok(call("POST", "/public/trial", { token: null, body: { email, companyName: "Sombra SL", idempotencyKey: key() } }), 202);
+    const v = outbox.filter((m) => m.kind === "verification" && m.to === email).at(-1)!;
+    await ok(call("POST", "/public/trial/verify", { token: null, body: { id: v.data.trialId, token: v.data.token } }));
+    const t = (await trialStore.get(v.data.trialId as number))!;
+    const company = (await crmStore.list("companies", { tenantId: t.tenantId! }))[0];
+    const sub = (await subsStore.list({ companyId: company.id }))[0];
+    expect((await ok(call("GET", `/subscriptions/${sub.id}`))).billing).toEqual({ source: "shadow" });
+    expect((await ok(call("GET", `/subscriptions?companyId=${company.id}`))).subscriptions[0].billing).toEqual({ source: "shadow" });
+    // Las operaciones de simulación siguen disponibles
+    expect((await call("POST", `/subscriptions/${sub.id}/shadow`, { body: {} })).status).toBe(200);
+  });
+
+  it("suscripciones: la cobrada en Stripe muestra su contratación, rechaza la simulación y renueva por webhook", async () => {
+    const { orderId, companyId } = await contractedOrder("Beta Suscripción SL");
+    const s = await ok(call("POST", `/stripe/orders/${orderId}/checkout`));
+    // Repetir la petición reutiliza la sesión abierta: un solo enlace por contratación
+    expect(await ok(call("POST", `/stripe/orders/${orderId}/checkout`))).toMatchObject({ sessionId: s.sessionId, reused: true });
+    const subId = gw.completeSession(s.sessionId);
+    await ok(stripeWebhook(gw.events[0]));
+    await until(async () => (await orderState(orderId)) === "active");
+    const sub = (await subsStore.list({ companyId }))[0];
+    expect((await ok(call("GET", `/subscriptions/${sub.id}`))).billing).toMatchObject({
+      source: "stripe",
+      mode: "test",
+      orderId,
+      orderState: "active",
+      lastPayment: { status: "succeeded", purpose: "initial", amountCents: 2900, currency: "EUR" },
+    });
+    expect((await ok(call("GET", `/subscriptions?companyId=${companyId}`))).subscriptions[0].billing).toMatchObject({ source: "stripe", orderId });
+    // Una segunda contratación para la misma empresa se rechaza: nunca dos suscripciones ni dos cobros
+    expect((await call("POST", "/orders", { body: { idempotencyKey: key(), companyId, request: { plan: "business", interval: "month", items: [] } } })).status).toBe(409);
+
+    // Ninguna operación de simulación sobre una suscripción cobrada en Stripe
+    const blocked: Array<[string, unknown]> = [
+      ["/shadow", {}],
+      ["/renewals", {}],
+      ["/cancel", { reason: "Prueba", expectedVersion: sub.version }],
+      ["/reactivate", { expectedVersion: sub.version }],
+      ["/interval", { interval: "year", prices: [], expectedVersion: sub.version }],
+    ];
+    for (const [path, body] of blocked) {
+      const r = await call("POST", `/subscriptions/${sub.id}${path}`, { body });
+      expect(r.status, path).toBe(409);
+      expect(r.json).toMatchObject({ error: "invalid_state", details: { reason: "stripe_billed", orderId } });
+    }
+    expect((await ok(call("GET", `/subscriptions/${sub.id}`))).shadowInvoices).toEqual([]);
+
+    // Renovación: Stripe cobra el periodo siguiente y avisa; el periodo interno avanza y el cobro queda registrado
+    const periodEndBefore = (await subsStore.get(sub.id))!.currentPeriodEnd;
+    const stripeSub = (await gw.subscription(subId))!;
+    clock = Math.max(clock, stripeSub.currentPeriodEnd * 1000, periodEndBefore) + 86_400_000;
+    gw.updateSubscription(subId, { currentPeriodStart: stripeSub.currentPeriodEnd, currentPeriodEnd: stripeSub.currentPeriodEnd + 30 * 86_400 });
+    gw.emit("invoice.paid", "invoice", gw.addInvoice(subId, stripeSub.customerId, "subscription_cycle", "paid", 2900));
+    await ok(stripeWebhook(gw.events[0]));
+    await until(async () => (await subsStore.get(sub.id))!.currentPeriodEnd > periodEndBefore);
+    const after = await ok(call("GET", `/subscriptions/${sub.id}`));
+    expect(after.subscription.currentPeriodEnd).toBeGreaterThan(periodEndBefore);
+    expect(after.billing).toMatchObject({ orderState: "active", lastPayment: { status: "succeeded", purpose: "renewal", amountCents: 2900 } });
+  });
 });
