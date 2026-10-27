@@ -53,6 +53,49 @@ const optText = (max: number) => z.string().trim().max(max).nullable().default(n
 const href = z.string().trim().max(300).regex(/^(\/[^\s]*|https:\/\/[^\s]+|mailto:[^\s@]+@[^\s]+)$/);
 /** Métrica de consumo o cupo (users, sites, storage_gb…), igual que las de ERM. */
 const metric = z.string().regex(/^[a-z][a-z0-9_.]{1,63}$/);
+/**
+ * Estado de una regla comercial: approved = decidida por el propietario; proposed = pendiente de aprobación.
+ * Lo propuesto se guarda y se simula en el CRM, pero NUNCA sale en la proyección pública ni en el cotizador público.
+ */
+export const DECISION_STATUS = ["approved", "proposed"] as const;
+const decision = z.enum(DECISION_STATUS);
+/** Extensión incluida en un plan (solo en core_plan; los planes superiores la heredan). */
+const planInclusion = z
+  .object({
+    key: entryKey,
+    mode: z.enum(["full", "partial"]),
+    status: decision,
+    /** Tope de una inclusión parcial: empleados base más, si se indica, los usuarios por encima del cupo. */
+    cap: z.object({ metric: z.literal("employees"), base: z.number().int().min(0).max(100_000), plusExtraOf: z.literal("users").optional(), status: decision }).strict().optional(),
+    /** Qué se contrata al superar el tope (a precio de catálogo). */
+    overflowKey: entryKey.optional(),
+    /** Lo que la inclusión no cubre (se muestra en el desglose). */
+    excludes: text(300).optional(),
+  })
+  .strict()
+  .refine((i) => i.mode !== "partial" || !!i.cap, { path: ["cap"], message: "una inclusión parcial necesita tope" })
+  .refine((i) => i.mode !== "full" || (!i.cap && !i.overflowKey), { path: ["cap"], message: "una inclusión completa no tiene tope" });
+export type PlanInclusionDraft = z.infer<typeof planInclusion>;
+/** Llamada a la acción de la ficha: demostración, contacto o lista de espera. */
+export const COMMERCIAL_CTA = ["demo", "contact", "waitlist"] as const;
+/** Estado funcional verificado en el ecosistema (interno): en uso, parcial, prototipo, sin desarrollo. */
+export const FUNCTIONAL_GRADES = ["in_use", "partial", "prototype", "none"] as const;
+/** Ficha comercial pública (contenido, sin precios: los importes solo viven en los precios aprobados). */
+const commercialBlock = z
+  .object({
+    headline: text(200).default(""),
+    longDescription: text(2000).default(""),
+    problem: text(300).default(""),
+    benefits: z.array(text(160).min(1)).max(6).default([]),
+    excludes: z.array(text(200).min(1)).max(30).default([]),
+    compatibleExtensions: z.array(entryKey).max(20).default([]),
+    capacityRules: z.array(text(200).min(1)).max(12).default([]),
+    integrations: z.array(text(200).min(1)).max(12).default([]),
+    cta: z.enum(COMMERCIAL_CTA).default("contact"),
+    seo: z.object({ slug: entryKey, title: text(70).min(1), description: text(160).min(1) }).strict().nullable().default(null),
+  })
+  .strict();
+export type CommercialBlock = z.infer<typeof commercialBlock>;
 
 export const productDraft = z
   .object({
@@ -112,9 +155,22 @@ export const productDraft = z
         addonFor: z.object({ metric, step: z.number().int().min(1), plans: z.array(entryKey).max(5).default([]) }).strict().nullable().default(null),
         /** Unidad de cobro legible («por sede», «por integración»…). */
         chargeUnit: optText(60),
+        // ── Política comercial (todo opcional: sin estos campos, el comportamiento es el de siempre) ──
+        /** Solo planes: extensiones incluidas. Al público solo llegan las aprobadas. */
+        inclusions: z.array(planInclusion).max(30).optional(),
+        /** Solo planes: cupos propuestos para los que el catálogo deja «por contrato». Nunca se publican. */
+        quotaProposals: z.array(z.object({ metric, included: z.number().int().min(0).max(100_000_000) }).strict()).max(20).optional(),
+        /** Solo planes: por encima del cupo y sin complemento, la ampliación se presupuesta (nunca se inventa tarifa). */
+        quoteOnRequest: z.object({ status: decision }).strict().optional(),
+        /** Solo paquetes: cómo se resuelve un paquete con componentes incluidos en el plan. */
+        bundleRule: z.object({ kind: z.enum(["catalog", "min2"]), status: decision }).strict().optional(),
+        /** 1 activable desde el Core · 2 portable desde otro desarrollo · 3 desarrollo nuevo. */
+        implementationLevel: z.union([z.literal(1), z.literal(2), z.literal(3)]).optional(),
       })
       .strict()
       .prefault({}),
+    /** Ficha comercial pública (descripción completa, beneficios, exclusiones, SEO…). */
+    commercial: commercialBlock.optional(),
     /** Solo para el equipo: nunca se publica. */
     internal: z
       .object({
@@ -123,6 +179,11 @@ export const productDraft = z
         marginNote: optText(300),
         /** Evidencia del estado comercial (código, pruebas, verificaciones): sin ella, el CRM lo marca como pendiente. */
         evidence: optText(1000),
+        functionalGrade: z.enum(FUNCTIONAL_GRADES).optional(),
+        /** Repositorios e identificadores F-… de origen. */
+        sources: z.array(text(200).min(1)).max(20).optional(),
+        /** Decisiones comerciales pendientes que afectan al producto. */
+        pendingDecisions: z.array(text(200).min(1)).max(20).optional(),
       })
       .strict()
       .prefault({}),
@@ -192,11 +253,37 @@ export const DRAFT_SCHEMAS: Record<EntryKind, z.ZodTypeAny> = {
   capability: capabilityDraft,
 };
 
-/** Proyección pública: quita todo lo interno. */
-export function publicView(kind: EntryKind, draft: Record<string, unknown>): Record<string, unknown> {
-  if (kind === "product" || kind === "promotion") {
+/**
+ * Proyección pública: quita todo lo interno y toda regla comercial que no esté aprobada. Con la política comercial
+ * desactivada en el entorno (`policy: false`, por defecto) tampoco publica las aprobadas: el cotizador público, las
+ * propuestas, los contratos, los pedidos y los cobros siguen calculando con el catálogo como hasta ahora.
+ */
+export function publicView(kind: EntryKind, draft: Record<string, unknown>, opts: { policy?: boolean } = {}): Record<string, unknown> {
+  if (kind === "product") {
+    const { internal: _i, ...rest } = draft;
+    return rest.catalog ? { ...rest, catalog: publicCatalog(rest.catalog as Record<string, unknown>, !!opts.policy) } : rest;
+  }
+  if (kind === "promotion") {
     const { internal: _i, ...rest } = draft;
     return rest;
   }
   return draft;
+}
+
+/**
+ * Política comercial publicable: solo inclusiones aprobadas (y, si son parciales, con el tope aprobado), sin cupos
+ * propuestos, y regla de paquetes y ampliación por presupuesto solo si están aprobadas. Sin política, no añade nada.
+ */
+function publicCatalog(cat: Record<string, unknown>, policy: boolean): Record<string, unknown> {
+  const { quotaProposals: _q, inclusions, quoteOnRequest, bundleRule, ...rest } = cat as Record<string, unknown> & {
+    inclusions?: PlanInclusionDraft[];
+    quoteOnRequest?: { status: string };
+    bundleRule?: { status: string };
+  };
+  const out: Record<string, unknown> = { ...rest };
+  if (!policy) return out;
+  if (inclusions) out.inclusions = inclusions.filter((i) => i.status === "approved" && (!i.cap || i.cap.status === "approved"));
+  if (quoteOnRequest?.status === "approved") out.quoteOnRequest = quoteOnRequest;
+  if (bundleRule?.status === "approved") out.bundleRule = bundleRule;
+  return out;
 }
