@@ -1,388 +1,407 @@
-# Contrato técnico v2: ventana de Stripe y catálogo comercial unificado
+# Contrato técnico v3: ventana de Stripe, catálogo comercial y producto compuesto «Elephant Net completo con Elephant Core incluido»
 
 Destinatario: la sesión responsable de Stripe, pedidos y suscripciones de Elephant Source.
+Fecha: 27/10/2026. Documento de coordinación: no cambia código, Stripe ni bases de datos.
 
 **Base leída**
-- Core: `origin/integration/elephant-source` en `ada7a677`. Incluye la fusión de #375 (`425bc642`, «plan, módulos y ampliaciones en una única suscripción de Stripe»).
-- CRM: `origin/integration/elephant-source` en `86e1dfc`. Incluye #68 (`4ae445e`) y #70 (`9492b71`).
+- Core: `origin/integration/elephant-source` en `3462578d` (después de la v2, `09df3fba`). Entre `ada7a677` (base de la v2) y `3462578d` **no cambian** `checkoutLines.ts`, `deferredItems.ts`, `purchases.ts`, `checkout.ts`, `orchestrator/service.ts`, `licensing/service.ts` ni `commercialQuote.ts`. Sí cambian `controlPlane/api.ts` (+servicios externos, desplaza unas 10 líneas), `stripe/events.ts` (+servicios externos, unas 17 líneas) y `stripe/gateway.ts` (+`createSetupSession`, `createServiceSubscription`, relojes de prueba).
+- CRM: `origin/integration/elephant-source` en `8372638` (#71 clientes externos, #72 revisión de reglas). `src/orders.ts` y `src/pages/Subscriptions.tsx` no cambian desde la v2.
+- Código **sin fusionar** del producto compuesto: worktree `nayade_worktrees/catalogo-comercial`, rama `feat/net-core-incluido`, cambios sin commit en `server/catalog/commercial/{policy,commercialQuote,fromCatalog,checks}.ts` y `server/web/schemas.ts`. Las referencias a esos ficheros llevan el prefijo `WT:`; las del CRM, `CRM:`; el resto son del Core en `3462578d`.
 
-**Sustituye** a la v1 de este mismo fichero (escrita sobre `ea661a1a`; queda en el historial de git). Las reglas comerciales preparadas están en `server/catalog/commercial/rules.ts`.
+**Sustituye** a la v2 (`docs/elephant-source/CONTRATO_CATALOGO_COMERCIAL_STRIPE.md`). Todo lo que la tabla del §1 marca como vigente sigue en vigor tal cual, incluido el diseño completo de prorrateo de la v2 §2 (que aquí no se repite: se aplica a los casos nuevos en el §5).
 
-Es un documento de coordinación: no cambia código, Stripe ni bases de datos. Todas las referencias `fichero:línea` son del Core en `ada7a677`, salvo las que empiezan por `CRM:`.
-Fecha: 27/10/2026.
-
-**Qué no cambia.** El cotizador nuevo (`quoteResponse`/`commercialQuote`, `server/catalog/commercial/commercialQuote.ts`) no ha cambiado desde `ea661a1a`. Entre los ficheros del catálogo, solo cambió `importSpecs.ts`.
-
-**Interruptor.** `commercialPolicy` sigue apagado: `WebAdminService` se construye sin él en `server/controlPlane/api.ts:515-527`, y `grep COMMERCIAL_POLICY` sigue sin resultados.
+**Interruptor.** `commercialPolicy` sigue apagado: `WebAdminService` se construye sin él (`server/controlPlane/api.ts:523-535`). Con el interruptor apagado, ninguno de los cinco consumidores usa el cotizador comercial, así que **el producto compuesto no tiene hoy ningún efecto en cobros, pedidos ni licencias**.
 
 ---
 
-## 0. Qué ha cambiado desde la v1 (resumen)
+## 1. Qué cambia respecto a la v2
 
-**#375 (Core)**
+### 1.1 Resumen
 
-1. **Checkout modular.** El Checkout cobra plan, módulos y ampliaciones en **una sola suscripción de Stripe**.
-   - Las partidas salen de `planCheckoutLines` (`server/stripe/checkoutLines.ts:67-125`), con el presupuesto del servidor.
-   - Se comprueban los Prices **reales** de Stripe (`:94-101`), el importe del contrato (`:107-111`) y el primer cobro (`:113-116`).
-2. **Plan anual con partidas solo mensuales.**
-   - El primer mes va como importe único en el mismo pago (`checkout.ts:230-238`).
-   - Después, `DeferredItemsService.attach` (`server/stripe/deferredItems.ts:48-120`) añade esas partidas sin prorrateo. Lo llama `events.ts:598-605`, y la conciliación lo reintenta.
-   - Las suscripciones nuevas nacen en modo `flexible` (`gateway.ts:497-500`).
-3. **Nuevo campo `OrderQuote.firstPeriodNetCents`** (`server/orchestrator/types.ts:74-78`; se calcula en `service.ts:369`). El procesador lo exige a la primera factura (`events.ts:495`).
-4. **Compras y reducciones con la periodicidad de cada partida** (`purchases.ts:243-248, 443-450`) y `intervalCompatible` (`multipart.ts:42-44`).
-5. **Vía de operador para el CRM:** `POST /commerce/companies/:companyId/{purchases,reductions}[/preview]` (`purchasesApi.ts:100-123`). Usa el mismo motor y la misma idempotencia.
-6. **Un quinto consumidor de `quote()` antiguo:** `serverQuote` (`api.ts:1646`), que alimenta el Checkout y `DeferredItemsService`.
+1. **Decisión de negocio (27/10/2026).** Las seis soluciones Elephant Net completas (`net_bundle`: `hotel-`, `ski-`, `travel-`, `restaurant-`, `care-` y `social-token-net-complete`) incluyen **Elephant Core Essential** (3 usuarios, 1 sede, capacidades de Essential) en su precio. Los `net_module` sueltos siguen exigiendo un plan Core. Lista fija en `WT:policy.ts:72`; regla por defecto en `WT:policy.ts:73`.
+2. **Política.** Nuevo `CommercialPolicy.coreIncluded` (`WT:policy.ts:49`) con `NetCoreInclusion` (`WT:policy.ts:62-70`): `plan`, `status`, `upgrade: { kind: "difference" }` y `additional: { kind: "core_credit" }`. En `PROPOSED_POLICY` (`WT:policy.ts:115`): inclusión `approved`, ampliación y Net adicional `proposed`. `pendingRules` las enumera (`WT:policy.ts:119-127`). `isNeutral` deja de ser neutra con cualquier entrada (`WT:fromCatalog.ts:62`).
+3. **Cotizador.** `composeNetCore` (`WT:commercialQuote.ts:128-189`) se aplica sobre las líneas de `quote()` (`:295`). Tres estados nuevos (`:22`):
+   - `included_in_net`: plan igual o inferior al incluido, a 0 € (`:149-153`);
+   - `core_upgrade`: plan superior, cobra la diferencia de tarifas aprobadas de la **misma periodicidad** (`:154-166`); sin regla aprobada, `on_quote`;
+   - `net_additional`: cada Net adicional cobra su precio menos la tarifa **mensual** de Essential (`:170-187`); sin regla, `on_quote`.
+   Nuevos campos: `discounts.coreIncludedCents` (`:337`) y `netCore = { nets, corePlan, providedBy }` (`:338`).
+4. **Esquema y vista pública.** `catalog.coreIncluded` en el borrador (`WT:schemas.ts:172-179`). La proyección pública solo lo expone si está `approved`, y sus subreglas solo si lo están (`WT:schemas.ts:303-306`). `checks.ts:117` lo limita a `net_bundle`.
+5. **Ejemplos de referencia** (tarifas aprobadas del catálogo, sin IVA): Essential 29 €/mes o 279 €/año; Business 79 €/mes o 759 €/año; Ski Net 99; Hotel Net 119; Travel 119; Care 69; Restaurant 59; Social Token 59 (todos los Net, solo mensual).
+   - Ski Net + Essential = 99 €/mes (una sola cuota).
+   - Ski Net + Business mensual = 99 + (79 − 29) = 149 €/mes.
+   - Ski Net + Business anual = 99 €/mes + (759 − 279) = 480 €/año.
+   - Ski + Hotel = 119 + (99 − 29) = 189 €/mes (aporta el Core el de mayor precio, Hotel).
 
-**CRM #68 y #70**
+### 1.2 Hallazgos sobre el código nuevo que condicionan Stripe
 
-7. «Contratar con cobro en Stripe» con módulos y cantidades. El CRM muestra el presupuesto de `POST /web/quote` (`CRM:src/pages/Subscriptions.tsx:489-496`; `CRM:src/orders.ts:446-458`) y crea el pedido con `POST /orders`.
-8. Ficha de una suscripción de Stripe: altas y bajas con vista previa del prorrateo y confirmación (`CRM:src/pages/Subscriptions.tsx:1117-1185`).
-
-**El prorrateo sigue sin fijarse ni cotejarse** (§2).
-
----
-
-## 1. Tabla v1 → estado actual
-
-Leyenda: **V** = vigente (con la referencia actualizada) · **C** = cambiado · **R** = resuelto por #375/#68/#70 · **O** = obsoleto.
-
-| v1 | Afirmación o adaptación | Estado | Detalle y referencias actuales |
+| # | Hallazgo | Referencia | Consecuencia |
 |---|---|---|---|
-| §0 | Web y CRM cotizan con `quoteResponse` | V | `server/web/publicSite.ts:97`, `server/web/api.ts:124-129` (sin cambios). El CRM #68/#70 lo usa para mostrar lo que se cobrará. |
-| §0 | Contratos del CRM con `quote()` | V | `api.ts:1339` (`crmQuote`). |
-| §0 | Orquestador con `quote()` | V | `api.ts:1556`. |
-| §0 | Compras con `quote()` | V | `api.ts:1706`. |
-| §0 | — (nuevo) Checkout y partidas diferidas con `quote()` | C | `serverQuote`, `api.ts:1646-1648`. Son **cinco** consumidores, no cuatro. |
-| §0 | Licencias, límites y organización sin política | V | `api.ts:1389, 1453, 1501, 1538`. |
-| §0 | Checkout solo del plan | **R** | Ahora plan, módulos y ampliaciones: `checkout.ts:228`, `checkoutLines.ts`. Solo plan sin cotizador: `checkout.ts:471-491`. |
-| §0 | Interruptor apagado, sin variable | V | `api.ts:515-527`; `service.ts:123, 265, 386`. |
-| §0 | Proyección congelada al publicar | V | `server/web/service.ts:265, 386`. |
-| §1.1-1.2 | Petición sin incluidos; instantánea `included` | V | Sin implementar. |
-| §1.3 | Partida interna `plan_inclusion` | V | `PriceSource` sigue sin ese valor (`server/subscriptions/types.ts:15`). |
-| §1.4-1.5 | Excedente a precio de catálogo; `employees` sin métrica | V | `LIMIT_METRICS = users, sites, storage_gb` (`server/_core/limits/store.ts:13`). |
-| §2 | `OrderQuote` sin líneas | C | Añade `firstPeriodNetCents` (`types.ts:74-78`), pero sigue sin `lines`, `pricingHash`, `policyId` ni `included` (`service.ts:364-374`). |
-| §2 | `stepContract` vuelve a cotizar | V | `service.ts:404-405`. Además, `deferredItems.ts:55` vuelve a cotizar **al activar** (R-B, §6). |
-| §3.1 | Cupón para `bundle_adjusted` | V | No hay cupones en `server/stripe` (`grep coupon\|discounts` sin resultados). Hoy, una línea `bundle_adjusted` haría saltar `conflict` en `checkoutLines.ts:84`. |
-| §3.3 | La compra no puede borrar partidas | V | `purchases.ts:265`. |
-| §4 | La licencia sale de las partidas vivas | V | `server/licensing/service.ts:79-111` (sin cambios). |
-| §4.4 | `addsNoCapability` con la instantánea | V | `service.ts:457-461`. |
-| §5.1-5.2 | Absorción en subidas; conservar o soltar en bajadas | V | `applyChange` en `service.ts:575-642`. |
-| §5.3 | `applyExternalPlanChange` con `items: []` | V | `service.ts:755`. |
-| §5.4 | `amountDue` por periodos completos | V | `service.ts:464-469`. |
-| §5 | Checkout rechaza pedidos `change` | V | `checkout.ts:221`; `CRM:src/orders.ts:465-466`. |
-| §6.1 | Una sola periodicidad por pedido cobrado | **O/R** | #375 permite mezclar en **una** suscripción en modo `flexible` (primer mes como importe único y partidas diferidas). Sigue prohibida una partida **anual** con plan **mensual** (`checkoutLines.ts:76`). |
-| §6.2 | `mkLine` fuerza `month` | V | `commercialQuote.ts:107-109`. Ahora el efecto es otro (§3, P0-5): con #375 se cobraría, pero en mensual aunque exista tarifa anual. |
-| §6.3 | Opciones D11 (a/b/c) | **R (de hecho)** | #375 implanta una opción (d) que la v1 no recogía: suscripción única `flexible`. `purchases.context` sigue exigiendo una sola suscripción (`purchases.ts:189-190`). Falta la ratificación del propietario y verificar en sandbox la fecha del primer cobro mensual diferido (`SUSCRIPCIONES_COBRO_STRIPE.md:95`). |
-| §7 | Prorrateo calculado por Stripe | V | Vista previa: `purchases.ts:282-288` → `gateway.ts:572-580`. Aplicación: `purchases.ts:339-345` → `gateway.ts:557-571`. |
-| §7 | Delta por línea, no por `recurring` | V | `purchases.ts:238-259`. |
-| §7 | Reducciones sin prorrateo | V | `purchases.ts:540-559` (`prorationBehavior: "none"`). |
-| §7 | Solo se coteja el pago `initial` | V | `events.ts:490, 495`. Los pagos `change` se registran sin comparar. |
-| §7.3 | Sin `proration_date` | **V** | `grep proration_date\|prorationDate` en `server/` y `client/`: sin resultados. §2 trae el diseño completo. |
-| §8 | Inclusiones sin línea en Stripe; excluirlas de `contractedItems` | V | `contractedItems` en `api.ts:1655-1663`: cuenta las familias `core_plan`, `extension` e `industry_module`, así que una `plan_inclusion` de esas familias daría `items_drift`. |
-| §9 | Sin cobro por consumo | V | Sin meters. Un producto `service` (implantación) no tiene Price mensual o anual: `checkoutLines.ts:81-82` lo deja en `unavailable`. |
-| §10 P0-1 | Inyectar el cotizador comercial | C | Ahora en **cinco** puntos (§3). |
-| §10 P0-2 | Instantánea | V | — |
-| §10 P0-3 | `expected` en `POST /orders` | V | El CRM #68/#70 no envía lo que mostró: solo `request` e `idempotencyKey` (`CRM:src/orders.ts:496-501`). |
-| §10 P0-4 | Recotizar y comparar al cobrar | **R parcial** | `checkoutLines.ts:84, 97-98, 109-116` compara importes (no un `pricingHash`) y bloquea con `conflict`. No hay comprobación equivalente en las compras (§2). |
-| §10 P0-7 | Una sola periodicidad | O | Ver §6.1. Ahora toca alinear `mkLine` con `pickPrice` y con las partidas diferidas. |
-| §10 P1-10 | `proration_date` e importe esperado | **Sube a P0** | Las compras ya se usan desde el panel del Core (`client/src/pages/admin/subscription/ModulesPage.tsx:103-104`) y desde el CRM #70. |
-| §10 P2 | `panelCatalog`, cupos, `employees`, metadatos | V | Sin cambios. |
-| §11 | C1-C5 y pruebas 1-10 | C | Prueba 7 obsoleta; se añaden C6-C8 (§5). |
-| R1 | Prorrateo no fijado | **V, más expuesto** | Tres entradas: panel del Core, CRM (operador) y API. Ver §6, R-A. |
-| R2 | Contrato o especificaciones con otra cotización | V, ampliado | `service.ts:404, 494-511`, más `deferredItems.ts:55, 64` (R-B). |
-| R3 | Apagar no es instantáneo | V | Más un efecto nuevo: el CRM mostraría `quoteResponse` y cobraría `quote()` (R-E). |
-| R4 | Portal con `items: []` | V | `service.ts:755`; portal sin `subscription_update`. |
-| R5 | Mensual forzado | C | Ver la fila de §6.2. |
-| R6 | Comparar por `catalogVersion` | V | `checkoutLines` ya compara importes, que es lo correcto. |
+| H1 | Con `interval: "year"` y plan incluido, la línea del plan queda **anual a 0 €**. No hay ninguna partida anual cobrada. | `WT:commercialQuote.ts:147-153` | `planCheckoutLines` dejaría `recurring` vacío y todo en `deferred`: el Checkout en modo suscripción no tiene partida recurrente. Hay que **normalizar a mensual** (P0-C). |
+| H2 | `providedBy` es el primer Net de `owned` en orden de inserción, o el de mayor precio si no hay ninguno contratado. **No se guarda.** | `WT:commercialQuote.ts:138` | Con dos Net contratados, otra cotización podría elegir otro. Debe fijarse en la instantánea del pedido (P0-B). |
+| H3 | (Resuelto en el cotizador con `contractModel`, §7.3.) Basta con que `owned` contenga un Net para que el plan pase a `included_in_net`. | `WT:commercialQuote.ts:133-136` | Un cliente **histórico** (Core + Net cobrados por separado) que recotice o compre vería su plan a 0 €. El modelo compuesto debe depender de la versión de política del pedido vigente, no solo de `owned` (§7, P0-H). |
+| H4 | La diferencia y el crédito salen de `priceOf(...)` sobre el catálogo **publicado en ese momento**. | `WT:commercialQuote.ts:144, 170` | Una republicación de tarifas cambia la diferencia de futuras cotizaciones. Las contratadas se protegen con la instantánea (§6). |
+| H5 | `net_additional` exige `l.interval === "month"`. | `WT:commercialQuote.ts:181` | Coherente con «Net solo mensual». Una tarifa anual de Net futura caería en `on_quote`. |
+| H6 | Enterprise sigue en `quoteOnRequestPlans` y fuera de `SELF_SERVICE_PLANS` (`checkout.ts:224`). | `policy.ts` (PROPOSED), `checkout.ts:224` | Net + Enterprise nunca pasa por Checkout: va por contrato (`priceSource "contract"`). |
+
+### 1.3 Vigencia de la v2
+
+Leyenda: **V** = vigente · **C** = cambia o se amplía en la v3 · **O** = obsoleto.
+
+| v2 | Contenido | Estado en v3 |
+|---|---|---|
+| §0 | Resumen #375, #68, #70 | V (referencias de `api.ts` y `events.ts` desplazadas, ver §8). |
+| §1 | Tabla v1 → v2 | V. |
+| §2.1-2.4 | Prorrateo fijado con `proration_date`, `quoteToken` HMAC, `acceptedAmountDueCents`, cotejo en `events.ts`, casos límite y pruebas S1-S5 | **V íntegro.** Se aplica a los casos compuestos en el §5. El TTL de 15 minutos sigue siendo una propuesta. |
+| §3 P0-1 … P0-9 | Adaptaciones para encender la política | V. Se añaden P0-A … P0-J (§8). P0-4 (saltar las líneas a 0 €) se amplía a `included_in_net`. |
+| §3 P1-10 | `bundle_adjusted` con cupón | **C.** La mecánica de cupón por partida del §2 la generaliza; el cupón de paquete pasa a usar la misma infraestructura. |
+| §3 P1-11 … P2-19 | Absorción, `addsNoCapability`, portal, diferidas, `panelCatalog`, cupos, `employees`, metadatos, firma de reducciones | V. |
+| §4 | Reglas pendientes (Enterprise, People, POS, paquetes, Copilot, implantación) | V. Se añade la fila del producto compuesto (§2). |
+| §5 | C1-C8 y procedimiento | C: se añaden C9-C13 (§9) y los pasos del §10. |
+| §6 | R-A … R-H | V. Se añaden R-I … R-N (§10). |
 
 ---
 
-## 2. Prorrateo (prioritario)
+## 2. Modelo de suscripción del producto compuesto
 
-### 2.1 Estado actual exacto
+### 2.1 Principios
 
-| Paso | Código | Llamada a Stripe | `proration_date` | ¿Se compara el importe? |
-|---|---|---|---|---|
-| Vista previa de compra | `purchases.ts:282-288` | `invoices.createPreview({ subscription, subscription_details: { items, proration_behavior: "always_invoice" } })` (`gateway.ts:572-577`) | **No** | Devuelve `amountDue` (= `amount_due`), `subtotal` y `taxCents`. No se guarda nada. |
-| Compra | `purchases.ts:294-336` → `send` (`:339-373`) | `subscriptions.update` con `proration_behavior: always_invoice`, `payment_behavior: pending_if_incomplete` y clave `es-<ns>-order-<id>-items-v1` (`gateway.ts:557-566`) | **No** | **No.** `PurchaseInput` (`purchases.ts:53-58`) y el esquema `body` con `.strict()` (`purchasesApi.ts:33-40`) no admiten un importe. `changes.setInvoice` guarda `inv.total` (`purchases.ts:362`), pero nadie lo compara. |
-| Webhook del cobro | `events.ts:485-523` | — | — | Con `purpose = "change"` (`:490`) se registra el pago sin cotejarlo. Solo `initial` se compara (`:495`). |
-| Vista previa y aplicación de una reducción | `purchases.ts:487-492, 501-559` | `subscriptions.update` con `proration_behavior: none` y `error_if_incomplete` | No aplica | No hay cobro ni abono. Lo aceptado es la fecha `effectiveAt` y las líneas. |
-| Partidas diferidas (plan anual) | `deferredItems.ts:104-108` | `subscriptions.update` con `proration_behavior: none` | No aplica | El primer mes ya se cobró en el Checkout. |
+1. **Un Price de Stripe = una tarifa aprobada del catálogo.** No se crea ningún Price «Business menos Essential» ni «Ski Net adicional». No se usa `price_data` recurrente: `events.ts:306` rechaza cualquier Price que no esté en el catálogo enlazado, y `itemsDrift` no podría resolverlo.
+2. **El crédito de Core es un descuento explícito por partida**, con importe igual a una tarifa aprobada de Essential en la periodicidad de esa partida. Así se ve en la factura («Elephant Core Essential incluido en Ski Net Complete: −29,00 €»).
+3. **El plan incluido existe en la suscripción interna** (lo necesitan las licencias y los límites, §3), pero **no tiene línea en Stripe**.
+4. **Instantánea inmutable.** Tarifa, crédito, Net que aporta el Core y versión de la política quedan en el pedido y en las partidas. Una republicación no los toca (§6).
 
-**CRM #70** (`CRM:src/pages/Subscriptions.tsx:1153-1185`):
-1. `calc()` pide la vista previa.
-2. `confirmAction` muestra «Stripe cobrará ahora X de prorrateo».
-3. `apply()` envía `{ idempotencyKey, ...body }` **sin** importe ni fecha.
+### 2.2 Representación por caso
 
-La clave se genera en cada vista previa (`:1159`), así que reintentar la confirmación no cobra dos veces. Aun así, **Stripe recalcula el prorrateo en el momento de aplicar**.
+Notación: `SI` = `subscription_items` (suscripción interna); `Stripe` = partidas de la suscripción de Stripe.
 
-**Panel del Core.** Sigue el mismo patrón: `subscriptionRouter.ts:118-124` → `commerceClient.ts:94-95`.
+| Caso | SI (partidas vivas) | Stripe (partidas) | Crédito (cupón por partida) |
+|---|---|---|---|
+| (a) Net + Essential (incluido) | `essential` (`core_plan`, Price mensual aprobado 2900, **descuento 100 %**, origen `net_inclusion`) + `ski-net-complete` (`industry_module`, 9900) | Solo `ski-net-complete` ×1 (Price 9900/mes) | Ninguno |
+| (b) Net + Business mensual | `business` (7900, descuento `amount` 2900, nota `core_upgrade`) + `ski-net-complete` (9900) | `business` (7900/mes) + `ski-net-complete` (9900/mes) | `business`: `amount_off` 2900, `duration: forever` |
+| (b') Net + Business anual | `business` (75900 anual, descuento 27900) + `ski-net-complete` (9900 mensual) | `business` (75900/año) + `ski-net-complete` (9900/mes, partida diferida de #375) | `business`: `amount_off` 27900, `forever` |
+| (c) Dos Net, plan incluido | `essential` (100 %, `net_inclusion`) + `hotel-net-complete` (11900) + `ski-net-complete` (9900, descuento 2900, `net_additional`) | `hotel` (11900) + `ski` (9900) | `ski`: `amount_off` 2900, `forever` |
+| (c') Dos Net + Business mensual | `business` (−2900) + `hotel` + `ski` (−2900) | `business`, `hotel`, `ski` | Dos cupones por partida |
+| (e) Net + Enterprise | Partidas por contrato (`priceSource "contract"`, ya existe en `types.ts:15`) | Fuera de Checkout (`checkout.ts:224`). Si algún día se cobra por Stripe, con Price por contrato. | No aplica |
 
-**Consecuencias**
-- El importe cobrado puede diferir del mostrado.
-- Entre dos llamadas seguidas la diferencia es de céntimos, porque Stripe prorratea por segundos.
-- No hay cota si entre la vista previa y la aplicación cambian:
-  - el periodo (renovación);
-  - el impuesto (dirección o NIF del cliente);
-  - el saldo del cliente;
-  - un descuento puesto desde el Dashboard;
-  - el Price enlazado.
-- En la vía del CRM es un **operador** quien acepta, con la tarjeta del cliente. La cifra aceptada no queda registrada en ningún sitio.
+**Cupones de Stripe (propuesta; hoy no existe ningún cupón en `server/stripe`).**
+- Un cupón **por importe y periodicidad**, reutilizado por todos los clientes. Identificador determinista que incluye el importe, por ejemplo `es-<ns>-core-credit-essential-month-2900` y `es-<ns>-core-credit-essential-year-27900`.
+- Parámetros: `amount_off`, `currency: eur`, `duration: forever`. `applies_to.products` = Business y los seis Net. Es una defensa adicional: el descuento va por partida (`items[].discounts`).
+- Metadatos del cupón: `es_reason=core_included`, `es_core_plan=essential`, `es_interval`, `es_source_price_id` (id de `web_prices` de la tarifa de Essential) y `es_catalog_version`.
+- En Stripe, el `amount_off` de un cupón **no se puede editar**. Si cambia la tarifa de Essential, se crea otro cupón y los contratados siguen con el suyo (§6).
+- Metadatos de la suscripción: `es_core_provided_by=<netKey>`, `es_policy_id`, `es_policy_hash` y `es_catalog_version` (amplía v2 P2-18).
 
-**Doble de pruebas.** `FakeStripeGateway` prorratea con su reloj (`testing.ts:133`, `at = this.nowSec()`) y sobre el periodo de la **suscripción** (`:134-135`), no sobre el de la partida. En modo `flexible`, Stripe usa el periodo de cada partida. Hoy ninguna prueba avanza el reloj entre la vista previa y la compra.
+**Suscripción interna (`subscription_items`).**
+- **El crédito va en `discount`**, que ya existe: `types.ts:17-24` y `:74`; columnas `discount_kind`, `discount_value`, `discount_ends_at` y `discount_note` en `db/crm/migrations/0006_subscriptions.sql:62-65`. `ItemSpec.discount` ya se acepta (`server/subscriptions/service.ts:27-32, 117`) y `pricing.ts:76-98` lo descuenta. **No hace falta migración** para el crédito.
+  - Nota estructurada en `discount_note` (máx. 200): `core_credit;net=<key>;plan=essential;policy=<id>;v=<catalogVersion>`.
+- **El plan incluido** necesita un marcador inequívoco de que no tiene línea en Stripe. Dos opciones:
+  - **Recomendada:** nuevo valor `net_inclusion` en `PriceSource` (`types.ts:15`) y en el `ENUM` de `price_source` (`0006_subscriptions.sql:55`). Exige una **migración en commit aislado**, generada y revisada, nunca en el arranque. Además, `snapshot()` fija hoy `priceSource: "catalog"` (`service.ts:110`): hay que permitir que `ItemSpec` lo indique.
+  - Alternativa sin migración: descuento `percent` 100 con nota `core_included;…` y regla «partida sin línea en Stripe = descuento del 100 % con esa nota». Es más frágil.
+- La partida del plan incluido conserva `priceId` = la tarifa mensual aprobada de Essential. Así la factura simulada (shadow) y la reproducción del precio son exactas: bruto 2900, descuento 2900, neto 0.
 
-### 2.2 Diseño
+### 2.3 (b) Ampliación a Business: diferencia sin inventar tarifas
 
-**Invariante.** La cifra que Stripe cobra es la aceptada (neto, impuesto y total), calculada con el **mismo** `proration_date`. Si Stripe calculara otra, **no se cobra**: se devuelve `conflict` con la cifra nueva, para que se acepte de forma explícita.
+**Mecánica A (recomendada): Price completo del plan + cupón por partida igual a Essential en la misma periodicidad.**
 
-**A. Vista previa (`ModulePurchaseService.preview`)**
-1. `prorationDate = floor(now/1000)`. Debe cumplir `sub.currentPeriodStart ≤ prorationDate < sub.currentPeriodEnd`. Si no, `conflict` («se está renovando»).
-2. Llamar a `createPreview` con `subscription_details.proration_date = prorationDate`.
-3. Devolver además:
-   - `prorationDate`;
-   - `subtotalCents`, `taxCents`, `totalCents` y `amountDueCents`;
-   - `expiresAt` = ahora + TTL. Propuesta: 15 minutos (decisión del propietario). Siempre muy por debajo de las 23 h del `pending_update` y de las 24 h de idempotencia de Stripe;
-   - `quoteToken`.
-4. `quoteToken` = `base64url(payload) + "." + HMAC-SHA256(secreto, payload)`. El `payload` lleva:
-   - versión, `tenantId`, `currentOrderId` y `subscriptionId`;
-   - `items` (operaciones normalizadas y ordenadas) y `expectedItems`;
-   - `prices` (`stripePriceId` → `unitAmountCents`);
-   - `prorationDate`, `currency`, `subtotal`, `tax`, `total` y `amountDue`;
-   - `iat` y `exp`.
-5. **Secreto.** La variable `CP_PURCHASE_QUOTE_SECRET` **no existe**. Crearla es un cambio de infraestructura aislado (CLAUDE.md).
-   - Alternativa sin secreto: guardar la vista previa en una tabla nueva y devolver su id. Exige una migración.
-   - Recomendado: HMAC, que no cambia el esquema para la firma.
+Ventajas:
+- un solo Price por tarifa;
+- conciliación por `priceId` como hoy;
+- la factura muestra la tarifa completa y el crédito;
+- la reproducción del precio es `Price − cupón`, los dos inmutables.
 
-**B. Aplicación (`ModulePurchaseService.purchase`)**
-1. Nueva entrada: `{ quoteToken, acceptedAmountDueCents }`. Hay que ampliar `PurchaseInput` y `body` en `purchasesApi.ts`, y también `subscriptionRouter.ts` y `commerceClient.ts`.
-2. Mantener `replay` primero (`purchases.ts:299-300`): una repetición devuelve el mismo resultado sin volver a validar.
-3. Verificar la firma con `timingSafeEqual`, la caducidad (si caducó, `conflict` con una vista previa nueva), el tenant y que `acceptedAmountDueCents === payload.amountDue`.
-4. Llamar a `context()` y `plan()` como hoy. Si `p.items` y `p.expected` no son los del token, o si cambió algún `unitAmountCents` → `conflict`.
-5. Comprobar que `prorationDate` sigue dentro del periodo vigente. Si hubo renovación → `conflict`.
-6. **Recalcular justo antes de aplicar** con `createPreview` y el **mismo** `prorationDate`. Si difiere `subtotal`, `tax`, `total` o `amountDue` → `PurchaseError("conflict")` con `details.preview` (la vista previa nueva, con su token) y sin crear pedido ni cambio.
-   - Hoy `PurchaseError` no tiene `details`: hay que añadirlo.
-   - `purchasesApi.ts:56` debe devolver `409 { error: "conflict", preview }`.
-7. Crear el pedido y el cambio. El cambio guarda `prorationDate`, `acceptedSubtotalCents`, `acceptedTaxCents`, `acceptedTotalCents` y `quoteHash` (sha256 del payload). Requiere una **migración** de `stripe_subscription_changes`: commit aislado, generado y revisado, nunca en el arranque.
-8. `send` pasa `proration_date: change.prorationDate` en `subscriptions.update`. Los parámetros son estables porque salen de la fila guardada, así que la misma `idempotency_key` sigue siendo válida.
-9. Tras la respuesta, si `invoice.subtotal`/`total` ≠ lo aceptado:
-   - con la factura **abierta** (`pending_update`): `gateway.voidInvoice` (existe: `gateway.ts:238, 582`), que anula el cambio pendiente sin cobro, y se resuelve como `failed` con `conflict`;
-   - si ya está **pagada**: alerta (C).
+Implicaciones fiscales y de conciliación (todas son **P0** si se adopta A):
+1. **Base imponible.** En Stripe, `invoice.subtotal` es **anterior** a los descuentos. Hoy:
+   - el cotejo del primer cobro compara `inv.subtotal` con `firstPeriodNetCents` (`events.ts:512`), así que **fallaría con `StripeMismatchError`** en todo alta con crédito;
+   - el documento fiscal toma `baseCents = inv.subtotal` (`server/stripe/fiscalDocuments.ts:72`), así que **declararía una base inflada**;
+   - `GwInvoice` (`gateway.ts:112-135`) no expone `total_excluding_tax` ni `total_discount_amounts`, y `GwInvoiceLine.amount` (`gateway.ts:417`) es el importe **antes** de los descuentos de la línea.
+   Hay que añadir `totalExcludingTax` y los descuentos por línea, y usarlos en `events.ts:512`, en `invoiceRecordOf` y en las líneas de factura.
+2. **Stripe Tax** calcula el impuesto **después** del descuento. Es correcto fiscalmente: el IVA se aplica sobre 50 €, no sobre 79 €.
+3. **Deriva de partidas (`items_drift`).** `contractedItems` (`api.ts:1666-1675`) cuenta las familias `core_plan`, `extension` e `industry_module` (`:1672`):
+   - el plan incluido (`net_inclusion`) daría deriva, porque no tiene línea en Stripe: hay que **excluirlo**;
+   - hay que comparar también el cupón de cada partida. `GwSubscriptionItem` (`gateway.ts:70-74`) no expone `discounts`: hay que añadirlo, y una partida sin el cupón esperado o con otro → `stripe.items_drift` con el motivo `discount`.
+4. **Checkout admite un solo descuento por sesión** (`discounts` a nivel de sesión) y no admite descuentos por partida. **Verificar en la documentación y en sandbox.** Consecuencias:
+   - un alta con **un** crédito puede llevar el cupón en la sesión (con `applies_to`);
+   - un alta con **dos o más** créditos (por ejemplo, Business + segundo Net, o Business anual + Net mensual adicional) no cabe en un Checkout;
+   - propuesta: tras el pago, un paso idempotente, como `DeferredItemsService.attach`, pasa el descuento de la sesión a **descuento por partida** (`subscriptions.update` con `items[].discounts`, `discounts: []` en la suscripción y `proration_behavior: none`). Ese servicio **no existe**: nombre propuesto `CoreCreditService.normalize`.
+   - Mientras no esté verificado: **un solo crédito por Checkout**. El segundo Net se compra después por la vía de compras (§4) o lo contrata el gestor.
+5. **Prorrateo de un `amount_off` por partida (riesgo R-J).** Hay que verificar en sandbox si Stripe prorratea el cupón en las líneas de prorrateo, es decir, si cobra `(79 − 29) × f` o `79 × f − 29`.
+   - Si no lo prorratea de forma proporcional, la mecánica A **no sirve para subidas a mitad de periodo**: se usa B, o la subida se hace a fin de periodo.
+   - En cualquier caso, el importe que se cobra es el que se previsualiza y acepta (v2 §2). Además, el servidor compara la vista previa con el prorrateo esperado por línea (± 1 céntimo por línea) y devuelve `conflict` si difiere.
 
-**C. Cotejo tras el cobro (`events.ts`)**
+**Mecánica B (alternativa): Prices derivados aprobados como tarifas propias.**
+- Por ejemplo, «Ampliación a Business desde Elephant Net», 50 €/mes y 480 €/año, y «<Net> adicional», un Price por Net (99 − 29 = 70, y así con cada uno).
+- Son 2 + 6 = 8 Prices por versión de tarifas.
+- Ventajas: sin descuentos, `subtotal` = base, Checkout sin límite de cupones y prorrateo exacto.
+- Inconvenientes:
+  - **son tarifas nuevas que debe aprobar la dirección comercial** (este contrato no las crea);
+  - hay que redefinirlas cada vez que cambie Essential o Business;
+  - necesitan un `productKey` propio o un mapa de Price a partida para `itemsDrift`, licencias y `purchases`.
+- Queda como plan de contingencia si R-J o el límite de cupones de Checkout no se resuelven.
 
-En `recordPaidInvoice` (`events.ts:485`), con `purpose === "change"`:
-1. Buscar el cambio con `changes.ofSubscription(sub.id)` y `stripeInvoiceId === inv.id`.
-2. Si existe y tiene importe aceptado, comparar `inv.subtotal` y `inv.total`.
-3. Si difieren: `opsLog("error", …, "change_amount_mismatch")` y `recordFailure("stripe.change_amount_mismatch")`, una regla nueva en `alerts.ts`.
-4. **No se lanza** `StripeMismatchError`: el cobro ya está hecho y bloquear los derechos de algo pagado es peor. El caso queda para revisión o reembolso manual.
+**Mecánica C (descartada): `price_data` en línea con el importe de la diferencia.** Rompe `events.ts:306` (Price no enlazado), `planCheckoutLines` (`checkoutLines.ts:84-98`) e `itemsDrift`, y no deja rastro de la tarifa de origen.
 
-**Pseudocódigo orientativo (sin aplicar)**
-```ts
-// purchases.ts — vista previa
-const at = Math.floor(this.now() / 1000);
-if (sub.currentPeriodStart == null || at < sub.currentPeriodStart || at >= (sub.currentPeriodEnd ?? 0)) throw new PurchaseError("conflict", "La suscripción se está renovando");
-const inv = await gw.previewSubscriptionChange({ subscriptionId: sub.id, items: p.items, prorationBehavior: "always_invoice", prorationDate: at });
-const payload = { v: 1, tenantId, orderId: current.id, sub: sub.id, items: norm(p.items), expected: norm(p.expected), prices: priceMap(p.lines), at, cur: inv.currency, sub_c: inv.subtotal, tax_c: inv.taxCents, tot_c: inv.total, due_c: inv.amountDue, exp: at + TTL };
-return { ...hoy, prorationDate: at, totalCents: inv.total, expiresAt: payload.exp * 1000, quoteToken: sign(payload) };
+### 2.4 (c) Net adicionales
 
-// purchases.ts — compra (tras replay)
-const t = verify(input.quoteToken);                     // firma, caducidad, tenant
-if (input.acceptedAmountDueCents !== t.due_c) throw invalid_input;
-const p = await this.plan(current, sub, input);          // como hoy
-if (!sameOps(p, t)) throw conflict(await this.preview(...));
-const again = await gw.previewSubscriptionChange({ ..., prorationDate: t.at });
-if (!sameMoney(again, t)) throw conflict(await this.preview(...));   // sin crear pedido
-// … pedido, cambio con { prorationDate: t.at, accepted*: t.*, quoteHash } …
-// send(): updateSubscriptionItems({ ..., prorationDate: change.prorationDate }, change.idempotencyKey)
-```
-**Gateway** (`gateway.ts:96-102, 557-580`): campo opcional `prorationDate?: number` en `SubscriptionItemsChange`. Se traduce a `proration_date` en `subscriptions.update` y a `subscription_details.proration_date` en `createPreview`. `GwInvoicePreview` añade `total`.
+Misma mecánica A: el Net adicional lleva su Price completo y un cupón mensual de 2900 en su partida.
+- El Net que aporta el Core no lleva crédito. Se guarda en `netCore.providedBy` de la instantánea (H2) y en `es_core_provided_by` de la suscripción.
+- Con varias unidades del mismo Net (`quantity > 1`), la parte adicional es una partida con otra cantidad del **mismo** Price. Stripe no admite el mismo Price dos veces en una suscripción (`checkoutLines.ts:91`), así que un `amount_off` sobre la partida se aplicaría una sola vez, no por unidad.
+- **Propuesta:** no vender cantidades mayores que 1 de un Net completo por autoservicio; `quantity > 1` → `unsupported` (lo presupuesta el gestor).
 
-**Doble** (`testing.ts:120-136, 167, 213`): `at = change.prorationDate ?? this.nowSec()`. Conviene además un modo que prorratee por el periodo de la partida (modo `flexible`) para no ocultar la diferencia de §2.1.
+### 2.5 (d) Periodicidad: Net mensual con plan anual
 
-**CRM #70** (`CRM:src/pages/Subscriptions.tsx:1153-1185`):
-- guardar `quoteToken`, `amountDueCents` y `expiresAt` de la vista previa;
-- enviar `{ idempotencyKey, quoteToken, acceptedAmountDueCents, ...body }`;
-- ante un `409 conflict` con `preview`, mostrar «El importe ha cambiado de X a Y» y pedir una **nueva** confirmación con una clave nueva;
-- registrar en la auditoría del pedido que aceptó un operador (`actor` ya lleva `/crm`, `purchasesApi.ts:102`).
+- **Net + Business anual** encaja en la suscripción única `flexible` de #375:
+  - el plan anual con cupón anual va como partida recurrente del Checkout;
+  - el primer mes del Net va como importe único (`checkout.ts:230-238`);
+  - el Net mensual se añade después con `DeferredItemsService.attach` (`deferredItems.ts:48-120`).
+  - Primer cobro neto = (75900 − 27900) + 9900 = 57900. Debe coincidir con `firstPeriodNetCents` **ya descontado** (P0-A).
+- **Primer mes de un Net adicional con plan anual.** El importe único del primer mes debe ser el neto (P − 2900). Dos opciones:
+  - un `oneTime` con importe derivado, pero `CheckoutLineItem.oneTime` (`gateway.ts:170`) es `price_data` y no deja rastro de la tarifa;
+  - importe único completo y crédito en el mismo cupón de sesión, lo que choca con el límite de un cupón.
+  - **Propuesta:** con plan anual, el segundo Net no entra en el alta (se compra después con prorrateo).
+- **Net + Essential incluido con `interval: "year"`** (H1): no tiene sentido, porque no hay nada anual que cobrar. **Regla:** con el plan `included_in_net`, la periodicidad del pedido se fuerza a mensual. En el formulario, «anual» solo se ofrece si el plan es `core_upgrade`. El servidor rechaza (`invalid_input`) un pedido anual con plan incluido.
+- `intervalCompatible` (`multipart.ts:42-44`) ya admite el Net mensual en una suscripción anual `flexible`. Las suscripciones `classic` antiguas no lo admiten (`purchases.ts:248`).
 
-El panel del Core (`ModulesPage.tsx`) necesita el mismo flujo.
-
-**Despliegue en dos fases**
-1. Servidor que **acepta** el token como opcional, y clientes que lo envían.
-2. Token **obligatorio**.
-
-El esquema `.strict()` rechazaría campos nuevos si el CRM se adelantara al servidor.
-
-### 2.3 Casos límite
-
-| Caso | Comportamiento |
-|---|---|
-| Renovación entre la vista previa y la aplicación | `prorationDate < currentPeriodStart` → `conflict` con vista previa nueva. `purchases.ts:197-200` ya frena con la renovación interna vencida. |
-| Partida mensual en un plan anual (`flexible`) | El periodo de la partida no es el de la suscripción. `GwSubscriptionItem` no expone periodos por partida (`gateway.ts:70-74`). Si Stripe rechaza el `proration_date` → error no reintentable → `conflict`. **Verificar en sandbox.** |
-| Precio retirado o enlace inactivo | `plan()` → `unavailable` (`purchases.ts:242-250`). Un Price distinto → `conflict` (mapa de `prices` del token). |
-| Cupón o descuento en Stripe (Dashboard) | Hoy no se usan desde el código. Si existe, entra en las dos vistas previas. Si vence o cambia entre ellas → `conflict`. |
-| Impuestos | `taxCents` forma parte del token. Un cambio de dirección o NIF → `conflict`. El neto (`subtotal`) es la cifra fiscal del presupuesto; el `total` es lo cobrado. |
-| Saldo a favor del cliente | Cambia `amount_due`, no `total`. Se compara `amountDue` porque es lo que se carga a la tarjeta → `conflict`. |
-| `pending_if_incomplete` (3DS o fallo) | La factura abierta tiene el importe fijado. Al pagarla en la página de Stripe se cobra eso mismo. Caduca a las 23 h sin cobro (`purchases.ts:404-412`). C) coteja al pagarse. |
-| Reintento o doble clic | `replay` por `idempotencyKey` (`purchases.ts:297-300`) y `idempotency_key` de Stripe por pedido. El cambio guarda `prorationDate`, así que los parámetros son idénticos. Si la llamada no es concluyente → `processing` y `sync` relee sin reenviar compras (solo reenvía reducciones, `:399`). |
-| Reloj del servidor adelantado | `prorationDate` no puede ser futuro respecto a Stripe: usar el `now()` del servidor y aceptar el error de Stripe como `conflict`. |
-| Token reutilizado para otra compra | Lleva `items`, `currentOrderId` y tenant. Tras aplicarse, el pedido vigente cambia → `conflict`. |
-
-### 2.4 Pruebas que lo demuestran
-
-**Unitarias e integración** (doble `FakeStripeGateway`; ficheros `server/controlPlane.modulePurchase.test.ts` y `server/controlPlane.modularSubscriptions.test.ts`):
-1. Vista previa en `t0`, `fake.now += 2 días`, compra con token → el subtotal facturado es el de la vista previa. Exige `fake.calls` con `proration_date === t0`.
-2. Sin token (fase 2) → 400. Token alterado → 400. Token caducado → 409 con `preview`.
-3. Precio republicado entre la vista previa y la compra → 409. **Ninguna** llamada `subscriptions.update` en `fake.calls`.
-4. `fake.invoiceTaxBp` cambiado entre la vista previa y la compra → 409 con la nueva cifra.
-5. Renovación simulada (`currentPeriodStart` posterior a `prorationDate`) → 409.
-6. Misma `idempotencyKey` dos veces → una sola `subscriptions.update`.
-7. Factura de cambio pagada con un subtotal distinto del aceptado → pago registrado y alerta `stripe.change_amount_mismatch`.
-8. Factura de cambio **abierta** con importe distinto → `voidInvoice` y estado `failed`, sin derechos.
-9. CRM (`CRM:src/orders.test.ts` o un test nuevo): un 409 con `preview` pide reconfirmar y usa otra clave.
-
-**Sandbox de Stripe** (claves de prueba y *test clocks*; nunca live):
-- S1: vista previa → esperar 10 minutos → compra → `invoice.subtotal` y `total` idénticos.
-- S2: módulo mensual en una suscripción anual `flexible` con `proration_date`. Comprobar que se acepta y qué periodo prorratea.
-- S3: tarjeta 3DS (`4000002760003184`) → `pending_update` → pagar la factura alojada → importe igual.
-- S4: tarjeta rechazada (`4000000000000341`) → nada aplicado y caducidad.
-- S5: *test clock* que cruza la renovación entre la vista previa y la compra → `conflict`.
-
----
-
-## 3. Adaptaciones para encender el catálogo comercial (actualizadas a #375)
-
-### P0: imprescindibles antes de encender
-
-1. **Prorrateo fijado y cotejado** (§2). No depende del interruptor: corrige un riesgo actual.
-2. **Una sola fábrica de cotizador** para los **cinco** consumidores: `api.ts:1339` (CRM), `:1556` (orquestador), `:1646` (Checkout y partidas diferidas), `:1706` (compras), y también `quantityUnits` y `specs` (`service.ts:505-530`).
-   - Con el interruptor apagado, `quoteResponse` con política neutra (equivalencia de `commercialCatalog.test.ts:70-93`).
-   - Revisar los `status` ampliados donde hoy se filtra: `checkoutLines.ts:74-75`, `purchases.ts:231, 239`, `service.ts:528`, `deferredItems.ts:57` y `CRM:src/orders.ts:447`.
-3. **Instantánea en `OrderQuote`** (`lines` con `interval` y `status`, `recurring`, `taxes`, `included`, `pricingHash`, `policyId`, `pendingRules`). Además de `stepContract` (`service.ts:404`), deben usarla:
-   - `StripeCheckoutService.modularLines` (`checkout.ts:460`, que hoy vuelve a cotizar);
-   - `DeferredItemsService.attach` (`deferredItems.ts:55`, que vuelve a cotizar **al activar**).
-
-   Así, `planCheckoutLines` recibe las líneas del pedido, no las de otra cotización.
-4. **`planCheckoutLines` con estados nuevos:**
-   - saltar `included_in_plan` y `partially_included` (a 0 €: sin partida en Stripe; inclusión como partida interna, v1 §1.3 y §8);
-   - mantener el salto de `included_in_bundle`;
-   - `on_quote` → `unsupported`.
-
-   Hoy una línea incluida (0 €) chocaría con el precio aprobado → `conflict` en `checkoutLines.ts:84`, y no se podría vender Business con inclusiones.
-5. **`mkLine` con la tarifa de su periodicidad** (`commercialQuote.ts:107-109`): usar la anual si existe, como `pickPrice` en `quote.ts:348-354`. Si no la hay:
-   - en un plan anual, la línea es mensual y va al circuito diferido (#375);
-   - en un plan mensual, una línea anual sigue prohibida (`checkoutLines.ts:76`).
-
-   `firstPeriodNetCents` y la comprobación de `events.ts:495` deben salir de `recurring` de la instantánea, con la misma fórmula: anual + un mes.
-6. **Partidas `plan_inclusion`** en la suscripción interna y su exclusión de `contractedItems` (`api.ts:1655-1663`). Si no, `items_drift`.
-7. **`purchases.plan()` y `planReduction()`:**
-   - rechazar `add` de productos incluidos y `remove` de productos incluidos;
-   - saltar las líneas a 0 €;
-   - delta por `recurring`.
-8. **Lo que muestra el CRM = lo que cobra el servidor.** `stripeChargeSummary` (`CRM:src/orders.ts:446-458`) solo suma `status === "charged"`: con la política encendida omitiría `bundle_adjusted` y el excedente. Debe usar los totales del servidor (`recurring` e `initial`) en lugar de sumar en el navegador.
-9. **`POST /orders` con `expected`** (v1 P0-3): el CRM #68/#70 envía lo que mostró (`firstCents`, `monthlyCents`, `yearlyCents` o `pricingHash`). `stepQuote` rechaza con `conflict` si el importe difiere.
-
-### P1: cambios de plan y paquetes
-
-10. **`bundle_adjusted`:**
-    - en el Checkout: Price del paquete + `discounts` del *line item* (cupón `amount_off`, `duration: forever`, metadatos `es_reason=bundle_min2`, `es_catalog_version`); hoy `CheckoutLineItem` (`gateway.ts:170`) no admite descuentos;
-    - en las compras: el mismo cupón en `subscriptions.update` y en `createPreview`, para que el prorrateo lo refleje;
-    - absorción de componentes a fin de periodo: requiere permitir borrados programados, que hoy rechaza `purchases.ts:265`.
-11. Absorción en las subidas y conservar o soltar en las bajadas (v1 §5.1-5.2), con `previewPlanChange` como única fuente. La subida que absorbe un módulo mensual de un plan anual debe borrar esa partida en la misma actualización con `proration_date` (§2).
-12. `addsNoCapability` (`service.ts:457-461`) con las capacidades de la instantánea.
-13. `applyExternalPlanChange` (`service.ts:755`) conservando los `items` del pedido vigente.
-14. **Partidas diferidas atadas a la instantánea** (P0-3) y regla de bloqueo: si `attach` termina `blocked`, alerta **y** retención de la renovación mensual (ver R-B).
-
-### P2: coherencia de producto
-
-15. `panelCatalog` (`server/commerce/panelCatalog.ts:44-64`) marca «Incluido en tu plan».
-16. Cupos de la instantánea en `limitsFor` y `OrganizationService.limits`.
-17. Métrica `employees`.
-18. Metadatos `es_included` y `es_catalog_version` en la suscripción de Stripe.
-19. Firma (token) también en las reducciones, para fijar las líneas y `effectiveAt` aceptados.
-
----
-
-## 4. Reglas comerciales pendientes que la ventana tendrá que soportar
-
-Sin precios ni límites inventados. Estado de cada regla en `PROPOSED_POLICY` (`server/catalog/commercial/policy.ts:56-85`).
+### 2.6 Fila nueva para la tabla de reglas (v2 §4)
 
 | Regla | Estado en el código | Pedidos | Stripe | Licencias y límites |
 |---|---|---|---|---|
-| **Enterprise: 25 usuarios, 10 sedes y 3 sociedades incluidos** | `quotaOverrides` en `proposed` (`policy.ts:76-78`). `publicView` elimina siempre `quotaProposals`. Enterprise está en `quoteOnRequestPlans` y fuera de `SELF_SERVICE_PLANS` (`checkout.ts:224`). | Cupos en la instantánea (`OrderQuote.quotas`). Las cantidades por encima se presupuestan (`on_quote`). | Nada en Checkout. Si algún día se cobra en Stripe, con Price por contrato (`PriceSource "contract"` ya existe). | `limitsFor` y Organización deben leer los cupos de la instantánea. **Falta la métrica `fiscal_entities`** en `LIMIT_METRICS` (`store.ts:13`); hoy solo existe en el cotizador (`commercialQuote.ts:334-335`). |
-| **People en Business: 15 empleados incluidos y ampliaciones** | Inclusión `partial` `approved` con tope `{ base: 15, plusExtraOf: "users" }` en `proposed` (`policy.ts:60-68`). Por encima → `overflowKey: connect-people` completo. | `request.employees` obligatorio con tope; hoy `quote()` lo ignora. Las compras no lo aceptan: `PurchaseInput` (`purchases.ts:53-58`) y el esquema `.strict()` (`purchasesApi.ts:33-40`). | Excedente = partida normal de `connect-people` a su Price, con `proration_date` si se compra a mitad de periodo. «Ampliaciones» por tramo de empleados: **no existe** producto ni precio; no inventarlos. | Métrica `employees` en límites y uso, y decisión sobre qué pasa al superar el tope a mitad de periodo (v1, pregunta 4). |
-| **POS: caja básica incluida y funciones avanzadas como extensión** | **No hay regla** en la política. `PlanInclusion.partial` solo admite tope por `employees` (`policy.ts:14-28`), no por función. | Dos productos distintos (básico incluido y avanzado vendible) o ampliar `PlanInclusion` con «capacidades incluidas». | La parte avanzada es una partida con su Price aprobado. La básica no tiene línea. | La licencia concede por producto (`licensing/service.ts:84-98`). Hacen falta capacidades separadas para la caja básica y las avanzadas en `server/catalog/capabilities.ts`. |
-| **Descuento de paquete solo sobre lo facturable** | `commercialQuote.ts:186-196` ya calcula sobre los componentes pendientes (`vp`) con tope `vp`. `bundleRule` `min2` en `proposed`. | Instantánea con `discounts.bundleCents` y la base de cálculo (componentes facturables). | El cupón `amount_off` se calcula **solo** con los componentes facturables y nunca sobre `included_in_plan`. El prorrateo de compras lo incluye (§3 P1-10). | Los componentes `included_in_bundle` conceden capacidades por el paquete (`capsOf`). |
-| **Copilot: consumo limitado y medido por empresa** (límite sin decidir) | Inclusión Enterprise `approved` con «consumo por encima del límite» excluido (`policy.ts:74`). Capacidades `copilot-basic` y `copilot-advanced` en `planned` (`capabilities.ts:78, 97`). Sin meters en `server/stripe`. | `variableCosts` solo informativo. Ningún pedido lleva importe de consumo. | Ninguno hasta decidir. Después: Stripe Billing Meters o factura aparte, con un circuito propio. | Métrica de consumo por empresa (no existe) y límite configurable con valor `null` = **sin decidir** (bloquear o avisar es decisión del propietario). |
-| **Implantación con contratación y presupuesto separados** | `implementation[].amountCents` siempre `null`. Un producto `service` no tiene Price recurrente y `checkoutLines.ts:81-82` lo bloquea como `unavailable`. | Pedido o documento propio, fuera de `contractAmountCents` y `firstPeriodNetCents`. La cuota recurrente **no** debe bloquearse por llevar implantación: hay que sacarla de las líneas del pedido de suscripción. | Factura única aparte (no en la suscripción) cuando haya importe aprobado. | Sin capacidades. |
-| **Ampliaciones de Enterprise por presupuesto** | `quoteOnRequestPlans: ["enterprise"]` → líneas `on_quote`. | Rechazar en `purchases.plan()` las ampliaciones de un plan en `quoteOnRequestPlans`. Hoy calcularía usuarios o sedes a precio de catálogo **si** la empresa tuviera suscripción en Stripe (latente: Enterprise no pasa por Checkout). | Ninguno mientras no haya una tarifa aprobada. | Cupos del contrato (instantánea). |
+| **Net completo con Core Essential incluido; ampliación por diferencia; Net adicional con crédito** | Inclusión `approved`; `upgrade` y `additional` en `proposed` (`WT:policy.ts:73, 115`); sin fusionar. | Instantánea con `netCore`, `coreIncludedCents`, estado por línea y la tarifa de origen del crédito. | Price completo + cupón `amount_off` por partida (A) o Prices derivados aprobados (B). El plan incluido no tiene línea. | Partida interna `essential` con `net_inclusion`: capacidades y cupos de Essential (§3). |
 
 ---
 
-## 5. Criterios de aceptación y encendido
+## 3. Licencias
 
-### Criterios
+**Cómo funciona hoy.**
+- `LicensingService.preview` (`server/licensing/service.ts:70-140`) concede las capacidades de las **partidas vivas** de la suscripción interna: `capsOf` recorre `inherits` y `bundleOf` (`:84-90`) y concede por partida (`:91-99`).
+- `limitsFor` (`:156-184`) toma los cupos **solo** de la partida `core_plan` (`:163`). Si no hay partida de plan, `base === undefined` y **no fija ningún límite** (`:173`). Es decir: un Net sin partida de plan daría la empresa **sin tope** de usuarios ni sedes, y sin las capacidades de Essential.
+- Un `net_bundle` se contrata como `industry_module` (`server/subscriptions/ports.ts:76-77`). Sus capacidades sectoriales llegan por `bundleOf`; las de Core, no, porque `bundleOf` de los Net no incluye `essential` (`server/catalog/elephantSourceV1.ts:236-267`).
+
+**Contrato.**
+1. Toda suscripción con un Net completo bajo el modelo compuesto tiene **siempre una partida viva `core_plan`**:
+   - `essential` con `net_inclusion` y descuento del 100 %, si el plan está incluido;
+   - el plan ampliado (`business`) con su crédito.
+   Con eso, `preview` concede las capacidades de Essential (o de Business) y `limitsFor` fija 3 usuarios y 1 sede (o los de Business), **sin cambiar el código de licencias**.
+2. **No** se añade `essential` al `bundleOf` de los Net: duplicaría capacidades en un cliente con Business y no aportaría cupos (`limitsFor` solo lee `core_plan`).
+3. El módulo sectorial se concede por la partida del Net, como hoy.
+4. Una bajada de Business a Essential o un traspaso del Core **cierra y abre partidas** (`effectiveTo`/`effectiveFrom`), sin hueco. `capUntil` (`:101-110`) encadena las partidas programadas, así que las capacidades no caen en el cambio.
+5. `addsNoCapability` (`orchestrator/service.ts:457-461`) debe tratar la partida `net_inclusion` como una que no añade cobro (v2 P1-12).
+
+---
+
+## 4. Cambios de plan
+
+**Hoy no existe una vía en la plataforma para cambiar de plan sobre Stripe.**
+- `checkout.ts:221` remite al Customer Portal.
+- El portal no tiene `subscription_update` (v2 R-F).
+- `planReduction` rechaza quitar el plan (`purchases.ts:425`).
+- `ModulePurchaseService.plan` solo añade módulos y ampliaciones (`purchases.ts:205-279`).
+
+**Propuesta.** Una operación de cambio de plan en `ModulePurchaseService`, con el mismo `context()`, idempotencia, `stripe_subscription_changes` y prorrateo fijado de la v2 §2. Hoy **no existe**; nombres propuestos: `planChangePreview` y `planChange`.
+
+| Caso | Suscripción interna | Stripe | Cobro |
+|---|---|---|---|
+| Net + Essential → Business (subida, inmediata) | Cierra `essential` (`net_inclusion`) ahora; abre `business` (7900, descuento 2900) ahora. | Añade la partida `business` con el cupón de 2900 (`items[].discounts`), `always_invoice`, `pending_if_incomplete` y `proration_date` (v2 §2). | Prorrateo de **la diferencia**: (7900 − 2900) × fracción restante, previsualizado, aceptado y cotejado. Las capacidades de Business solo tras el cobro. |
+| Net + Essential → Business **anual** | Igual, con el Price anual y el cupón de 27900. | Añadir una partida anual a una suscripción con ancla mensual (`flexible`). **Verificar en sandbox** qué periodo y qué prorrateo aplica Stripe (S-N4). | Propuesta hasta verificarlo: la subida a anual solo se ofrece **en la renovación mensual**, con un cargo completo de 48000. |
+| Business → Essential (bajada, a fin de periodo) | `business.effectiveTo = fin de periodo`; nueva `essential` (`net_inclusion`) desde esa fecha. | Borrar la partida `business` (con su cupón) con `proration_behavior: none` y `error_if_incomplete`, como `reduce` (`purchases.ts:543`). | Sin cobro ni abono. El Net se conserva y el plan vuelve a quedar incluido. Hay que permitir este `remove` del plan solo en este caso, porque hoy se rechaza (`purchases.ts:425`). |
+| Añadir un segundo Net | Nueva partida del Net con descuento 2900 (`net_additional`). | Añade la partida con el cupón mensual. `purchases.plan` debe usar el neto de la línea y el cupón (P0-E). | Prorrateo de (P − 2900) × fracción, con token. |
+| Quitar el segundo Net (no aporta el Core) | `effectiveTo = fin de periodo`. | Borrar la partida y su cupón (`none`). | Sin cobro. |
+| Cancelar el Net que **aporta** el Core teniendo otro (**traspaso**) | Al fin de periodo: cierra el Net que se va; cierra la partida del otro Net con descuento y abre una nueva **sin** descuento desde esa fecha; `providedBy` pasa al Net restante (o al de mayor precio si quedan varios). El plan sigue incluido o con su crédito. | En una sola actualización con `proration_behavior: none`: borrar la partida del Net que se va y quitar el cupón de la partida del que se queda (`items[{id, discounts: []}]`). Aplicado ahora, solo afecta a la factura del periodo siguiente. Metadato `es_core_provided_by` actualizado. | Sin prorrateo: el periodo en curso ya está pagado con el crédito. Desde la renovación, el Net restante paga su precio completo. Se avisa al cliente con el importe nuevo antes de confirmar. |
+| Cancelar el único Net y conservar Core | Al fin de periodo: cierra el Net y la `essential` incluida; abre `essential` cobrada (2900) o quita el crédito de `business`. | Añadir la partida `essential` (Price 2900/mes) o quitar el cupón de `business`, con `none`. **Con Business anual:** se quita el cupón ahora, así que la próxima renovación anual se cobra completa; el resto del año ya pagado no se recalcula (decisión del propietario). | Sin prorrateo. Exige confirmar la nueva cuota. |
+| Cancelar todo | Lo existente: baja a fin de periodo de la suscripción. | `cancel_at_period_end`. | Sin abono (salvo el desistimiento, flujo propio). |
+
+**Reglas comunes.**
+- Toda operación recalcula con la **instantánea del pedido vigente** y con la política de **su versión** (§6-7). Nunca con lo publicado hoy salvo para lo **nuevo** que se añade.
+- Ningún cambio deja una suscripción interna sin `core_plan` vivo mientras haya un Net.
+- Las reducciones y los traspasos, sin cobro, llevan también token de líneas y fecha efectiva (v2 P2-19). Aquí sube a **P1**, porque cambian el importe futuro.
+
+---
+
+## 5. Prorrateo aplicado a estos casos (v2 §2, vigente)
+
+1. **Invariante (v2).** Se cobra exactamente lo aceptado (neto, impuesto, total y `amountDue`) con el mismo `proration_date`. Si Stripe calcula otra cosa → `conflict` con una vista previa nueva, sin cobro.
+2. **El token cubre también los descuentos.** El `payload` del `quoteToken` añade, por partida, `couponId` y `amountOff` además de `stripePriceId → unitAmountCents`. Un cupón distinto entre la vista previa y la compra → `conflict`.
+3. **Vista previa con los descuentos.** `previewSubscriptionChange` (`gateway.ts:769-777`) debe enviar `items[].discounts` y `proration_date`. `SubscriptionItemsChange` (`gateway.ts:95-101`) añade `discounts?` por partida y `prorationDate?`. `GwInvoicePreview` (`:103-110`) añade `total` y `totalExcludingTax`.
+4. **Importe que se compara.** El neto aceptado es `totalExcludingTax` (después de descuentos), no `subtotal`. Se compara también `amountDue` (v2 R-G).
+5. **Validez de 15 minutos (propuesta, sujeta a verificación técnica).** Es razonable con Stripe porque:
+   - queda muy por debajo de la caducidad del `pending_update` (23 h, `purchases.ts:404-412`) y de las 24 h de las claves de idempotencia de Stripe;
+   - el reintento con la misma clave y los mismos parámetros (que salen de la fila guardada, incluido `prorationDate`) devuelve el mismo resultado;
+   - en 15 minutos el prorrateo por segundos solo varía céntimos, y ese margen lo elimina `proration_date`;
+   - el riesgo real (renovación, impuesto, saldo o cupón cambiado) lo detectan la segunda vista previa y el `conflict`.
+   Hay que verificar en sandbox que Stripe acepta un `proration_date` de hasta 15 minutos en el pasado en `subscriptions.update` y en `createPreview`, también en modo `flexible` (v2 S2).
+6. **El cliente acepta el importe exacto.** La interfaz muestra neto, IVA y total, y el desglose «Business 79 € − Core Essential incluido 29 € = 50 €, prorrateado X días = Y €». La compra envía `acceptedAmountDueCents`. Si un operador del CRM acepta, queda en la auditoría (v2 §2.2).
+
+| Caso | Qué se prorratea | Qué se acepta |
+|---|---|---|
+| Subida a Business | (7900 − 2900) × f, si R-J confirma el prorrateo del cupón; si no, mecánica B o subida a fin de periodo | `totalExcludingTax`, impuesto y `amountDue` de la vista previa con `proration_date` |
+| Segundo Net | (P − 2900) × f | Ídem |
+| Bajada o traspaso | Nada (`none`) | Líneas y `effectiveAt`; el token de las reducciones (P1) |
+| Renovación entre la vista previa y la aplicación | — | `conflict` (v2 §2.3) |
+
+---
+
+## 6. Protección frente a cambios de precio
+
+1. **Instantánea en el pedido** (amplía v2 P0-3): `OrderQuote` (`server/orchestrator/types.ts:66-83`; se construye en `service.ts:364-374`) añade:
+   - `lines[]` con `status` (incluidos los tres nuevos), `interval`, `unitCents` y `amountCents`, y `credit: { kind: "core_included" | "core_upgrade" | "net_additional", cents, sourcePriceId, sourceInterval }`;
+   - `netCore: { nets, corePlan, providedBy }`;
+   - `discounts.coreIncludedCents`;
+   - `policyId`, `policyHash` (hash canónico de `coreIncluded` y del resto de reglas aplicadas), `catalogVersion` (ya existe) y `pricingHash`.
+2. **Partidas internas.** Llevan `priceId` (la versión aprobada de `web_prices`), `unitAmountCents` y el crédito en `discount`, con la nota estructurada del §2.2. Son instantáneas inmutables (`types.ts:52`): una renovación no recalcula precios.
+   - `priceSource` se queda en `catalog` para las tarifas de catálogo, `net_inclusion` para el plan incluido y `contract` para Enterprise o acuerdos negociados.
+   - **Una ampliación acordada** (la diferencia) queda fijada por la pareja Price + cupón con importes inmutables.
+3. **Stripe.** El Price y el cupón **no se editan nunca**: una tarifa nueva crea otro Price (con otra `lookup_key`) y otro cupón. Las suscripciones contratadas siguen en los suyos.
+   - La conciliación (`itemsDrift`) compara con los de la instantánea, no con los publicados.
+   - Una partida con un Price retirado sigue siendo válida si es la de la instantánea. Hoy `events.ts:306` exige que el Price esté `active` en `listPrices()`; hay que **verificar** qué ocurre al retirar uno y, si hace falta, aceptar los Prices de la instantánea del pedido vigente.
+4. **Reproducción del precio contractual.** Una función pura (propuesta; **no existe**), `contractualPrice(order)`, reconstruye cada línea desde la instantánea: `unitCents − credit.cents`, por periodicidad, con el `policyId` y la versión de catálogo guardados. No consulta el catálogo publicado. Se usa en la conciliación, en los cambios de plan (§4) y en el soporte.
+5. **Lo nuevo en un contrato existente** (un segundo Net o una subida) se cotiza con las tarifas **vigentes**, y el crédito con la tarifa vigente de Essential. Lo ya contratado no se toca.
+
+---
+
+## 7. Compatibilidad con clientes existentes
+
+1. **No se migran contratos.** Un pedido sin `policyId` o con una política sin `coreIncluded` es **histórico**: Core y Net en **dos cuotas**, calculadas con `quote()` como hoy.
+2. **Cómo se distinguen.** Por la instantánea del pedido **vigente**: modelo compuesto si `quote.netCore` existe y `quote.policyId` apunta a una política con `coreIncluded`. La fecha de contratación no es el criterio, solo un dato de auditoría.
+   - Hoy hay pocos pedidos con Net, porque los seis Net están `coming_soon` o `in_preparation` (`elephantSourceV1.ts:236-267`). Pero el motor de suscripciones admite pilotos `in_preparation` (`server/subscriptions/service.ts:82`).
+   - Antes de encender, hay que hacer un inventario de solo lectura de suscripciones con `net_bundle` (no ejecutado en este contrato).
+3. **El cotizador debe recibir el modelo del contrato** (corrige H3). **Ya implementado en el cotizador (PR #383):** el campo `contractModel` de la petición. Con `"legacy"` nunca compone, así que Core y Net siguen en dos cuotas. Con `"composite"` compone, también lo ya contratado. Sin indicar, un Net ya contratado no aporta Core: un cliente histórico no ve su plan a 0 €. A los pedidos les queda pasar el modelo guardado en el contrato. La nota original sigue a continuación. Hace falta una opción explícita, por ejemplo `req.coreModel: "compound" | "legacy"`, o una política histórica sin `coreIncluded` para los pedidos históricos. Con un pedido histórico, `owned` con un Net **no** activa `composeNetCore`. Si no, una compra de un cliente histórico recotizaría su plan a 0 €.
+4. **Reproducción.** Los históricos se reproducen con `quote()` y su `catalogVersion`; los compuestos, con `contractualPrice` (§6.4).
+5. **Paso voluntario al modelo compuesto** (cliente histórico que lo pide): es un pedido `change` que cierra la partida del plan cobrado y abre la `net_inclusion` **a fin de periodo**, y quita la partida del plan en Stripe (`none`). Es una decisión comercial (pregunta 3 del §10).
+6. **Compras de clientes históricos** (por ejemplo, un segundo Net): por defecto, cálculo **histórico** (precio completo). Aplicarles el crédito es decisión del propietario.
+
+---
+
+## 8. Adaptaciones priorizadas
+
+Siguen todas las de la v2 §3 (P0-1 … P2-19). Se añaden estas.
+
+### P0: imprescindibles para encender el producto compuesto
+
+- **P0-A. Neto después de descuentos en cobros y fiscalidad.** `GwInvoice` y `toInvoice` (`gateway.ts:112-135, 375-393`) y `toInvoiceLine` (`:417`) añaden `totalExcludingTax` y los descuentos por línea. Hay que usarlos en:
+  - el cotejo del primer cobro (`events.ts:512`);
+  - el documento fiscal (`fiscalDocuments.ts:72`, `baseCents`);
+  - el registro de líneas de factura.
+  Sin esto, la mecánica A rompe toda alta con crédito y declara una base errónea.
+- **P0-B. Instantánea del producto compuesto** (§6.1) con `providedBy` fijado. Debe usarla también `planCheckoutLines` en lugar de volver a cotizar (v2 P0-3; `checkout.ts:460`, `deferredItems.ts:55`).
+- **P0-C. `planCheckoutLines` con los estados nuevos** (`checkoutLines.ts:73-116`):
+  - saltar `included_in_net`;
+  - aceptar `core_upgrade` y `net_additional` comparando el **bruto** de la línea con el Price aprobado y el crédito con la tarifa de Essential (hoy `:84` daría `conflict`, porque `unitCents` es el neto);
+  - `on_quote` → `unsupported`;
+  - relajar la comprobación «el presupuesto empieza por el plan» (`:89`) cuando el plan está incluido;
+  - recalcular `contract` y `first` (`:107-116`) con los netos;
+  - rechazar un pedido anual con el plan incluido (H1);
+  - como máximo un crédito por Checkout mientras no exista la normalización (§2.3, punto 4).
+- **P0-D. Cupones en la pasarela.**
+  - `CheckoutSessionInput` y `createCheckoutSession` (`gateway.ts:172-185, 685-700`) con `discounts`;
+  - `SubscriptionItemsChange` y `updateSubscriptionItems`/`previewSubscriptionChange` (`:95-101, 754-777`) con `items[].discounts`;
+  - `GwSubscriptionItem` (`:70-74`) con los descuentos leídos;
+  - creación idempotente de los cupones con identificador determinista;
+  - el doble `FakeStripeGateway` (`server/stripe/testing.ts`) debe aplicar `amount_off` por partida, con prorrateo, y `totalExcludingTax`.
+- **P0-E. Compras con crédito** (`purchases.ts:205-279`). Hoy cobran `price.amountCents` del catálogo (`:244-246, 256-258`) y no conocen los cupones:
+  - el delta debe ser el neto de la línea;
+  - la partida nueva lleva su cupón;
+  - `providedBy` sale de la instantánea;
+  - `quantity > 1` de un Net → `unsupported`.
+- **P0-F. Partida interna del plan incluido**: `PriceSource` `net_inclusion` (`types.ts:15`) y su migración (`0006_subscriptions.sql:55`, commit aislado). `ItemSpec` admite `priceSource`, porque `service.ts:110` lo fija hoy. Además, `specs()`/`priceFor` del orquestador (`orchestrator/service.ts:494-512`) generan la partida `essential` con descuento del 100 % y las partidas con crédito.
+- **P0-G. Conciliación.** `contractedItems` (`api.ts:1666-1675`) excluye `net_inclusion`. `checkItems` (`events.ts:625-633`) e `itemsDrift` comparan los cupones por partida.
+- **P0-H. Modelo por contrato en el cotizador** (H3, §7.3): los pedidos históricos nunca se recalculan con `composeNetCore`.
+- **P0-I. Lo que muestra el CRM = lo que se cobra.**
+  - `CRM:src/catalog.ts:64` no conoce los tres estados nuevos;
+  - `:159-160` no los clasifica, y `:227` mostraría «Aparte» en `core_upgrade` y `net_additional`;
+  - `stripeChargeSummary` (`CRM:src/orders.ts:446-458`) solo suma `charged`.
+  Deben usarse los totales del servidor (v2 P0-8).
+- **P0-J. Vía de cambio de plan** (§4): subida con prorrateo fijado y bajada con conservación del Net. Hoy no existe.
+
+### P1
+
+- **P1-K.** `CoreCreditService.normalize` (no existe): convierte el cupón de sesión en cupón por partida tras el Checkout y permite varios créditos en el alta.
+- **P1-L.** Traspaso del Core y cancelación del único Net (§4), con aviso del importe nuevo y token de reducción.
+- **P1-M.** Metadatos `es_core_provided_by`, `es_policy_id` y `es_policy_hash` en la suscripción de Stripe, y `contractualPrice` (§6.4).
+- **P1-N.** La aceptación de Prices retirados de la instantánea en `events.ts:306` (§6.3), si la verificación lo exige.
+
+### P2
+
+- **P2-O.** `panelCatalog` (`server/commerce/panelCatalog.ts:42`) muestra «Elephant Core incluido en tu solución Net» y la diferencia de la subida.
+- **P2-P.** Paso voluntario de clientes históricos al modelo compuesto (§7.5).
+- **P2-Q.** Contingencia de la mecánica B (Prices derivados) si R-J no se resuelve.
+
+---
+
+## 9. Pruebas mínimas
+
+**Unitarias e integración** (doble `FakeStripeGateway`; `server/commercialCatalog.test.ts`, `server/controlPlane.modulePurchase.test.ts` y `server/controlPlane.modularSubscriptions.test.ts`).
+
+| # | Caso | Resultado esperado |
+|---|---|---|
+| U1 | Ski Net + Essential, mensual | Plan `included_in_net` 0 €; Checkout con una partida (Ski 9900); primer cobro neto 9900; la suscripción interna tiene `essential` (`net_inclusion`) y Ski; capacidades de Essential + Ski; límites de 3 usuarios y 1 sede. |
+| U2 | Ski Net + Essential, anual | `invalid_input` (H1). |
+| U3 | Ski Net + Business, mensual | `core_upgrade` 5000; Stripe: Business 7900 con cupón de 2900 + Ski 9900; `totalExcludingTax` = 14900 = `firstPeriodNetCents`; base fiscal 14900; sin `items_drift`. |
+| U4 | Ski Net + Business, anual | Business 75900 con cupón de 27900; Ski diferido; primer cobro neto 57900; `attach` añade Ski sin prorrateo. |
+| U5 | Ski Net + Enterprise | `on_quote` o contrato; Checkout `unsupported` (`checkout.ts:224`). |
+| U6 | Ski + Hotel en el alta | `providedBy = hotel`; Ski `net_additional` 7000; total 18900. En el Checkout, un único cupón (o `unsupported` si hay dos créditos sin P1-K). |
+| U7 | Net + extensiones (por ejemplo, `connect-*`) | Las extensiones se cobran a su Price sin crédito; `bundle_adjusted` y `included_in_plan` siguen la v2. |
+| U8 | Subida Essential incluido → Business a mitad de periodo | Vista previa con `proration_date`; cobro = aceptado; partida `essential` cerrada y `business` abierta; capacidades de Business solo tras `invoice.paid`. |
+| U9 | Bajada Business → Essential | Sin cobro; a fin de periodo el plan vuelve a estar incluido; el Net se conserva; las capacidades de Business caducan en esa fecha. |
+| U10 | Añadir un segundo Net | Delta (P − 2900) × f; cupón en la partida; `providedBy` sin cambios. |
+| U11 | Cancelar el Net que aporta el Core teniendo otro | El otro Net, sin cupón desde la renovación; `es_core_provided_by` actualizado; sin prorrateo. |
+| U12 | Cancelar el único Net conservando Core | `essential` cobrada desde la renovación; confirmación del importe nuevo. |
+| U13 | Implantación | Fuera de la cuota, del `contractAmountCents` y del `firstPeriodNetCents` (v2 §4). No bloquea el Checkout de la cuota. |
+| U14 | Consumos (Copilot) | Ningún importe en la suscripción (v2 §4). |
+| U15 | Republicar tarifas tras contratar | Renovación con el Price y el cupón de la instantánea; `contractualPrice` sin cambios; las nuevas contrataciones usan las tarifas nuevas. |
+| U16 | Pedido histórico (sin `policyId`) con un Net | Core + Net en dos cuotas; una compra posterior no pone el plan a 0 € (H3). |
+| U17 | Política neutra o interruptor apagado | Mismos importes y Prices que hoy (v2 C1), también con un Net en la petición. |
+| U18 | Reintento con la misma `idempotencyKey` y doble clic | Una sola `subscriptions.update`. |
+| U19 | Fallo de pago en una subida (`pending_if_incomplete`) | No se aplica nada; el `pending_update` caduca; sin capacidades de Business. |
+| U20 | Factura de cambio pagada con un neto distinto del aceptado | Alerta `stripe.change_amount_mismatch` (v2 §2.2 C). |
+
+**Sandbox de Stripe** (claves de prueba y *test clocks*; nunca live). Siguen S1-S5 de la v2 y se añaden:
+- **S-N1:** Checkout de Ski + Business con cupón `applies_to` → factura con descuento por partida, impuesto sobre el neto y `total_excluding_tax` correcto.
+- **S-N2:** prorrateo de un cupón `amount_off` por partida en una subida a mitad de periodo (R-J): ¿(79 − 29) × f o 79 × f − 29?
+- **S-N3:** varios créditos tras el Checkout (`items[].discounts` con `proration_behavior: none`): sin factura inmediata, y la siguiente con los dos descuentos.
+- **S-N4:** partida anual añadida a una suscripción mensual `flexible` (subida a Business anual): periodo y cargo.
+- **S-N5:** renovaciones con un *test clock* durante 13 meses con Business anual + Net mensual + Net adicional: importes de cada factura, sin duplicar el primer mes (v2 R-C).
+- **S-N6:** traspaso del Core (quitar el cupón con `none`): la factura siguiente, al precio completo.
+- **S-N7:** tarjeta 3DS y rechazada en la subida (`4000002760003184`, `4000000000000341`).
+- **S-N8:** `proration_date` 14 minutos en el pasado: aceptado.
+
+---
+
+## 10. Activación coordinada y riesgos
+
+### Procedimiento
+
+1. **Prerrequisitos de la v2, sin cambios:** prorrateo fijado en dos fases, su migración aislada, y P0-1 … P0-9 con el interruptor apagado.
+2. Fusionar el código del worktree (`feat/net-core-incluido`) con el interruptor **apagado**. Comprobar U17 (neutralidad) en CI.
+3. **Migración aislada** de `price_source` (`net_inclusion`): generada con `pnpm drizzle-kit generate` o en el circuito de migraciones del CRM, revisada y aplicada como paso explícito. Verificar el despliegue.
+4. Fusionar P0-A … P0-J con el interruptor apagado, y P0-I en el CRM. Un despliegue verificado por paso.
+5. Sandbox: S-N1 … S-N8. Si S-N2 o S-N3 fallan → mecánica B (requiere aprobar tarifas) o limitar las subidas a fin de periodo y el alta a un crédito.
+6. Inventario de solo lectura de los clientes con Net (§7.2) y comunicación comercial.
+7. Aprobar en los borradores `upgrade` y `additional`, que hoy están en `proposed`. Mientras sigan así, la ampliación y los Net adicionales salen `on_quote` y no se cobran por autoservicio (v2 C3). Comprobar que `GET /web/commercial/review` no tiene bloqueos.
+8. Cambio aislado del interruptor (`CP_COMMERCIAL_POLICY`, que **no existe**; v2 §5). Republicar los Net y los planes. Vigilar `items_drift`, `deferred_items_*`, `change_amount_mismatch`, `conflict` y la nueva alerta de descuento.
+9. Marcha atrás: interruptor apagado **y** republicación (v2 R-E). Los contratos compuestos ya firmados siguen con su instantánea.
+
+### Criterios añadidos
 
 | | Criterio |
 |---|---|
-| C1 | Con política **neutra**, orquestador, compras, contratos, Checkout y partidas diferidas dan **exactamente** los mismos importes y Prices que hoy. Barrido de `commercialCatalog.test.ts`, ampliado a `stepQuote`, `planCheckoutLines`, `DeferredItemsService.attach` y `purchases.plan`. |
-| C2 | Con política publicada no neutra, en cada caso de prueba: `pricingHash` del pedido = el de `/web/quote` = el recalculado al cobrar. La suma de Prices de Stripe (menos cupones) = `contractAmountCents`, y la primera factura = `firstPeriodNetCents`. |
-| C3 | Ningún pedido con `pendingRules` o líneas `on_quote` llega a `contracted` por autoservicio. |
-| C4 | Las licencias = las capacidades de la instantánea. |
-| C5 | Sin `stripe.items_drift` tras alta, compra, subida y bajada con inclusiones. |
-| C6 (nuevo) | **Prorrateo**: en el 100 % de las pruebas, el subtotal y el total facturados en una compra = los aceptados, o bien `conflict` sin cobro. `stripe.change_amount_mismatch` = 0 en sandbox. |
-| C7 (nuevo) | Partidas diferidas: la activación nunca vuelve a cotizar; un precio republicado entre el pago y la activación no deja una suscripción sin partidas mensuales. |
-| C8 (nuevo) | Lo que muestra el CRM (`stripeChargeSummary`) = la primera factura y las renovaciones de Stripe. |
+| C9 | En cada alta compuesta: `totalExcludingTax` de la primera factura = `firstPeriodNetCents` = lo mostrado en la web y el CRM. |
+| C10 | Ninguna suscripción con un Net vivo sin partida `core_plan` viva. Límites = cupos del plan (incluido o ampliado). |
+| C11 | Sin `items_drift` (Prices y cupones) tras alta, subida, bajada, segundo Net y traspaso. |
+| C12 | Una republicación de tarifas no altera ninguna factura de suscripciones existentes. |
+| C13 | Los pedidos históricos dan los mismos importes antes y después de encender. |
 
-### Pruebas mínimas (sandbox y BD de pruebas)
+### Riesgos nuevos (de más a menos grave)
 
-- Las pruebas 1-6 y 8-10 de la v1 siguen.
-- La 7 se sustituye por: plan anual con excedente de People → anual si hay tarifa anual; si no, mensual diferido. Primera factura = `firstPeriodNetCents`.
-- Se añaden S1-S5 (§2.4) y la comprobación pendiente de #375: fecha del primer cobro de una partida mensual diferida (`SUSCRIPCIONES_COBRO_STRIPE.md:95`).
+- **R-I (alta):** base fiscal y cotejo antes de descuentos (`events.ts:512`, `fiscalDocuments.ts:72`). Con cupones y sin P0-A: altas bloqueadas por `StripeMismatchError` y documentos fiscales con una base inflada.
+- **R-J (alta, sin verificar):** prorrateo de los cupones `amount_off` por partida en las subidas y en los Net adicionales a mitad de periodo. Puede cobrar menos de lo que dice la regla comercial.
+- **R-K (alta):** licencias sin tope. Un Net sin partida `core_plan` deja la empresa sin límites (`licensing/service.ts:163, 173`) y sin las capacidades de Essential.
+- **R-L (media-alta):** recálculo de históricos (H3). `owned` con un Net activa `composeNetCore` en clientes que pagan Core aparte.
+- **R-M (media):** límite de un descuento por Checkout. Altas con varios créditos imposibles sin P1-K, o con un cupón de sesión que se aplicaría mal en periodicidades mixtas.
+- **R-N (media):** el traspaso del Core sube la cuota del Net restante. Si no se avisa con el importe, habrá reclamaciones. Además, `providedBy` sin persistir (H2) podría quitar el crédito al Net equivocado.
 
-### Procedimiento de encendido
+### Preguntas para el propietario
 
-1. **Antes y con independencia del interruptor**, fusionar:
-   - P0-1 (prorrateo) en dos fases: servidor tolerante → CRM y panel → token obligatorio;
-   - su migración, en un commit aislado.
-
-   Verificar el despliegue de cada paso.
-2. Fusionar el resto de P0 y P1 con el interruptor **apagado**. C1 en CI y en `circuitoComercial.e2e.mysql.test.ts`.
-3. Aprobar en los borradores solo las reglas decididas. `GET /web/commercial/review` sin bloqueos.
-4. Cambio aislado: `commercialPolicy: true` en `api.ts:515-527`. Variable propuesta: `CP_COMMERCIAL_POLICY`, que hoy **no existe**.
-5. **Volver a publicar** planes y paquetes con reglas (`service.ts:265, 386`).
-6. Sandbox: pruebas, S1-S5 y C6-C8. Vigilar `items_drift`, `deferred_items_*`, `change_amount_mismatch` y los `conflict`.
-7. Marcha atrás: interruptor apagado **y** republicación (R-E).
-
----
-
-## 6. Riesgos actuales (interruptor apagado), de más a menos grave
-
-- **R-A (alta): el prorrateo cobrado puede no ser el aceptado.**
-  - Sin `proration_date` ni cotejo (`gateway.ts:557-580`; `purchases.ts:282-288, 339-345`; `events.ts:490-495`).
-  - Hay tres puertas abiertas mientras `CP_COMMERCE_PURCHASES_ENABLED` esté activo: panel del Core, CRM #70 (un operador acepta con la tarjeta del cliente) y API.
-  - Las diferencias habituales son de céntimos. No hay cota ante renovación, impuesto, saldo o descuento.
-- **R-B (alta): partidas diferidas que pueden quedar sin cobrarse.**
-  - `attach` vuelve a cotizar al activar (`deferredItems.ts:55, 64`), y `planCheckoutLines` exige que coincida con `order.quote` (`checkoutLines.ts:109-116`). Si se publica un precio entre el pago y la activación, termina `blocked`.
-  - El pedido queda activo con derechos, pero Stripe **no** cobrará las partidas mensuales desde el segundo mes. Solo queda la alerta `stripe.deferred_items_blocked` (`alerts.ts:37-38`).
-  - Mientras siga `pending`, tampoco se cobran.
-- **R-C (media-alta): comportamiento de Stripe sin verificar en sandbox.**
-  - Fecha del primer cobro de una partida mensual añadida con `proration_behavior: none` a una suscripción anual `flexible` (`SUSCRIPCIONES_COBRO_STRIPE.md:95`). Puede duplicar el primer mes o desalinear el ciclo.
-  - El doble prorratea por el periodo de la suscripción, no por el de la partida (`testing.ts:133-136`), así que las pruebas actuales no lo detectarían.
-- **R-D (media): contrato y suscripción interna con otra cotización.**
-  - `stepContract` vuelve a cotizar (`service.ts:404-405`) y `specs()`/`priceFor` toman el precio aprobado al suscribir (`service.ts:494-511`).
-  - Una publicación entre la cotización y el webhook deja la suscripción interna con un importe distinto del cobrado.
-- **R-E (media, latente): encender o apagar el interruptor.**
-  - Lo publicado queda congelado (`service.ts:265, 386`).
-  - Con reglas publicadas, el CRM (#68/#70) mostraría `quoteResponse` (`/web/quote`) y cobraría `quote()`. Es la misma divergencia de la v1 (R3), ahora visible en el formulario «Contratar con cobro en Stripe».
-- **R-F (media, latente): portal con `items: []`** (`service.ts:755`). Inactivo mientras el portal no tenga `subscription_update`.
-- **R-G (baja): dos medidas distintas del importe.** La vista previa devuelve `amount_due` (`gateway.ts:577`, neto del saldo del cliente), y el cambio guarda `inv.total` (`purchases.ts:362`). Con un saldo a favor no coinciden. §2 compara las dos.
-- **R-H (baja): drift solo de familias de producto.** `contractedItems` (`api.ts:1660`) no incluye las ampliaciones por cantidad (`addon`), así que un descuadre de usuarios o sedes en Stripe no se avisa por `items_drift`. Las compras sí lo detectan con `conflict` (`purchases.ts:254`).
-
-### Preguntas para el propietario (actualizadas)
-
-1. ¿Se ratifica la suscripción única `flexible` de #375 como decisión D11?
-2. TTL de la vista previa de prorrateo (propuesta: 15 minutos) y si un operador del CRM puede aceptar en nombre del cliente sin aviso a este.
-3. ¿Variable `CP_PURCHASE_QUOTE_SECRET` (HMAC) o una tabla de vistas previas?
-4. Las preguntas 2-7 de la v1 siguen abiertas: absorción con crédito, cupón de paquete, tope de People, venta de lo que deja de incluirse, `CP_COMMERCIAL_POLICY` y cupos de Enterprise.
-5. Copilot: límite por empresa y qué ocurre al alcanzarlo (bloquear, avisar o cobrar).
+1. ¿Mecánica A (cupón por partida) o B (Prices derivados aprobados como tarifas)?
+2. ¿Aprobar `upgrade` y `additional`? Hoy están en `proposed`.
+3. Clientes históricos: ¿pueden pasar al modelo compuesto? ¿Reciben el crédito en un segundo Net?
+4. Business anual y cancelación del único Net: ¿se mantiene el crédito hasta la renovación anual (propuesta) o se cobra la parte proporcional?
+5. ¿Se permite `quantity > 1` de un Net completo, o solo por presupuesto?
+6. Siguen abiertas las preguntas de la v2 (D11, TTL de 15 minutos, `CP_PURCHASE_QUOTE_SECRET`, Copilot).

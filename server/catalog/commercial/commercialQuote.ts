@@ -17,6 +17,8 @@ import type { CommercialPolicy, PlanInclusion } from "./policy";
 export interface CommercialQuoteRequest extends QuoteRequest {
   /** Empleados gestionados en People (con o sin usuario de acceso). */
   employees?: number;
+  /** Ver `quoteRequestSchema`: «legacy» nunca compone; los Net ya contratados solo aportan Core con «composite». */
+  contractModel?: "legacy" | "composite";
 }
 
 export type CommercialLineStatus = QuoteLine["status"] | "included_in_plan" | "partially_included" | "bundle_adjusted" | "on_quote" | "included_in_net" | "core_upgrade" | "net_additional";
@@ -292,7 +294,7 @@ export function commercialQuote(rawCatalog: QuoteCatalog, policy: CommercialPoli
 
   const base = quote(catalog, baseReq);
   // ── Elephant Core incluido en las soluciones Elephant Net completas ─────────
-  const net = composeNetCore(base.lines, byKey, policy, owned);
+  const net = req.contractModel === "legacy" ? composeNetCore(base.lines, byKey, { ...policy, coreIncluded: {} }, owned) : composeNetCore(base.lines, byKey, policy, req.contractModel === "composite" ? owned : new Set<string>());
   usedRules.push(...net.used);
   const lines: CommercialLine[] = [...net.lines, ...extraLines];
   const all = [...base.errors, ...errors];

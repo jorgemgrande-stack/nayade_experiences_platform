@@ -86,9 +86,17 @@ describe("Elephant Net completo con Core incluido", () => {
     expect(r.lines.find((l) => l.key === "ski-net-complete")).toMatchObject({ status: "net_additional", amountCents: eur(70) });
     expect(netIssues(r, { ...ess, items: [{ key: "ski-net-complete" }, { key: "hotel-net-complete" }] }, cat, NET_ONLY)).toEqual([]);
     // Ya contratado uno, el nuevo es el adicional
-    const add = q({ ...ess, owned: ["ski-net-complete"], items: [{ key: "hotel-net-complete" }] });
+    const add = q({ ...ess, contractModel: "composite", owned: ["ski-net-complete"], items: [{ key: "hotel-net-complete" }] });
     expect(add.netCore.providedBy).toBe("ski-net-complete");
     expect(add.lines.find((l) => l.key === "hotel-net-complete")).toMatchObject({ status: "net_additional", amountCents: eur(119 - 29) });
+    // Contratos históricos: nunca se migran. «legacy» suma Core y Net como siempre; sin indicar el modelo, un Net ya
+    // contratado no aporta Core (no cambia la cuota de un cliente histórico)
+    const legacy = q({ ...ess, contractModel: "legacy", items: [{ key: "hotel-net-complete" }] });
+    expect(legacy.recurring.monthlyCents).toBe(quote(cat, { ...ess, items: [{ key: "hotel-net-complete" }] }).totals.monthlyCents);
+    expect(legacy.netCore.nets).toEqual([]);
+    const histPlan = q({ plan: "business", interval: "month", owned: ["ski-net-complete"], items: [] });
+    expect(histPlan.lines.find((l) => l.key === "business")).toMatchObject({ status: "charged", amountCents: eur(79) });
+    expect(q({ plan: "business", interval: "month", contractModel: "composite", owned: ["ski-net-complete"], items: [] }).lines.find((l) => l.key === "business")).toMatchObject({ status: "core_upgrade", amountCents: eur(50) });
     // Varias unidades del mismo Net: el Core se cuenta una vez
     const two = q({ ...ess, items: [{ key: "ski-net-complete", quantity: 2 }] });
     expect(two.recurring.monthlyCents).toBe(eur(99 + 70));
