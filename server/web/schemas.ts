@@ -173,7 +173,8 @@ export const productDraft = z
           .object({
             plan: entryKey,
             status: decision,
-            upgrade: z.object({ kind: z.literal("difference"), status: decision }).strict().optional(),
+            /** `yearlyPlans`: planes con ampliación anual aprobada (sin estar en la lista, la anual se presupuesta). */
+            upgrade: z.object({ kind: z.literal("difference"), status: decision, yearlyPlans: z.array(entryKey).max(3).optional() }).strict().optional(),
             additional: z.object({ kind: z.literal("core_credit"), status: decision }).strict().optional(),
           })
           .strict()

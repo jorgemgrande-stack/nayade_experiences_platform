@@ -6,6 +6,7 @@
  */
 import crypto from "node:crypto";
 import type { Pool, RowDataPacket } from "mysql2/promise";
+import { NET_COMPLETE } from "./policy";
 
 interface TableSpec {
   table: string;
@@ -43,9 +44,42 @@ async function snapshot(pool: Pool, t: TableSpec): Promise<TableSnapshot | "ause
   }
 }
 
-export async function commercialIntegrity(crm: Pool, registry: Pool): Promise<Record<string, TableSnapshot | "ausente">> {
-  const out: Record<string, TableSnapshot | "ausente"> = {};
+/**
+ * Ninguna empresa paga Elephant Core dos veces: sobre las partidas vivas de las suscripciones no canceladas, por empresa.
+ *  - coreCobradoDosVeces: más de una licencia Core con importe (siempre un error);
+ *  - netConCoreAparte: Net completo y Core cobrado aparte (contratos históricos, legítimo: dos cuotas);
+ *  - netSinCore: Net completo sin ninguna partida de Core (debería llevar la de Core incluido cuando se active).
+ * Solo identificadores internos de empresa, nunca datos personales.
+ */
+export async function coreAudit(crm: Pool, now = Date.now()) {
+  try {
+    const [rows] = await crm.query<RowDataPacket[]>(
+      "SELECT s.company_id, i.family, i.product_key, i.unit_amount_cents, i.discount_kind, i.discount_value FROM subscription_items i JOIN subscriptions s ON s.id = i.subscription_id WHERE s.status <> 'canceled' AND (i.effective_to IS NULL OR i.effective_to > ?)",
+      [now],
+    );
+    const by = new Map<number, { paidCore: number; anyCore: number; nets: number }>();
+    for (const r of rows) {
+      const c = by.get(Number(r.company_id)) ?? { paidCore: 0, anyCore: 0, nets: 0 };
+      if (r.family === "core_plan") {
+        c.anyCore++;
+        const full = r.discount_kind === "percent" && Number(r.discount_value) >= 100;
+        if (Number(r.unit_amount_cents) > 0 && !full) c.paidCore++;
+      }
+      if ((NET_COMPLETE as readonly string[]).includes(String(r.product_key))) c.nets++;
+      by.set(Number(r.company_id), c);
+    }
+    const list = (f: (c: { paidCore: number; anyCore: number; nets: number }) => boolean) => Array.from(by).filter(([, c]) => f(c)).map(([id]) => id).sort((a, b) => a - b);
+    return { empresas: by.size, coreCobradoDosVeces: list((c) => c.paidCore > 1), netConCoreAparte: list((c) => c.nets > 0 && c.paidCore > 0), netSinCore: list((c) => c.nets > 0 && c.anyCore === 0) };
+  } catch (e) {
+    if ((e as { code?: string }).code === "ER_NO_SUCH_TABLE") return "ausente" as const;
+    throw e;
+  }
+}
+
+export async function commercialIntegrity(crm: Pool, registry: Pool): Promise<Record<string, TableSnapshot | "ausente" | Awaited<ReturnType<typeof coreAudit>>>> {
+  const out: Record<string, TableSnapshot | "ausente" | Awaited<ReturnType<typeof coreAudit>>> = {};
   for (const t of CRM_TABLES) out[t.table] = await snapshot(crm, t);
   for (const t of REGISTRY_TABLES) out[t.table] = await snapshot(registry, t);
+  out.coreUnico = await coreAudit(crm);
   return out;
 }

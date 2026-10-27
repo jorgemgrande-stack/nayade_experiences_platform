@@ -153,3 +153,39 @@ Detecta:
 2. Volver a publicar los seis Net.
 
 Los contratos existentes no se migran. Cada contratación debe guardar la versión del catálogo y de la política con que se calculó, para poder reproducir su precio.
+
+### Política final aprobada (cierre Elephant Net + Core, 27/10/2026)
+
+Todo está aprobado en los borradores y **sin efecto** mientras la política siga apagada.
+
+1. **Core incluido:** cada Net completo incorpora Core Essential en su precio anunciado.
+2. **Ampliación a Business:** +50 €/mes o +480 €/año (diferencia de tarifas aprobadas, `yearlyPlans: ["business"]`).
+3. **Ampliación a Enterprise:** +170 €/mes. La anual se presupuesta: no hay tarifa anual aprobada para esa ampliación.
+4. **Una sola licencia Core** por empresa.
+5. **Net adicionales:** −29 €/mes cada uno (solo mensuales). El mismo Net dos veces es un error.
+6. **Sin cuota anual de Essential:** con Essential incluido no existe una cuota anual aparte; la línea queda a 0 € y en mensual.
+7. **Capacidades adicionales** (usuarios, sedes y almacenamiento): con sus complementos de catálogo, calculados a partir del total pedido.
+8. **Contratos históricos:** `contractModel: "legacy"` (dos cuotas, nunca se migran). La migración es voluntaria y con aceptación expresa.
+
+**Versión inmutable.** Cada cotización lleva `policyVersion`, la huella de las reglas exactas aplicadas. Con `catalogVersion` permite reproducir el precio contractual: el pedido debe guardar ambas.
+
+**Core único por empresa.** `catalogo-fichas-integridad` devuelve `coreUnico` con tres listas de identificadores internos de empresa:
+
+| Campo | Significado |
+|---|---|
+| `coreCobradoDosVeces` | Empresas con más de una licencia Core cobrada. Una bajada programada a fin de periodo puede aparecer hasta su fecha: hay que revisarla. |
+| `netConCoreAparte` | Clientes históricos: Net y Core cobrados aparte, legítimo. |
+| `netSinCore` | Net sin partida de Core. |
+
+**Sondeo de Stripe en sandbox.** `scripts/catalog/netCoreStripeSandbox.ts` (para la ventana de Stripe, con `ES_SANDBOX_STRIPE_KEY=sk_test_…`) compara la mecánica de cupón con la de tarifa derivada en estos casos:
+
+- alta;
+- prorrateo, comprobando que el importe aceptado es el cobrado;
+- renovaciones;
+- plan anual;
+- Business → Enterprise;
+- bajada;
+- Net adicional;
+- pago rechazado y reintento;
+- precio contractual;
+- idempotencia.

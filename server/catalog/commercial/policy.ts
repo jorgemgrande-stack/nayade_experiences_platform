@@ -63,14 +63,19 @@ export interface NetCoreInclusion {
   plan: string;
   status: DecisionStatus;
   /** Sin regla: la ampliación de Core se presupuesta. */
-  upgrade?: { kind: "difference"; status: DecisionStatus };
+  upgrade?: { kind: "difference"; status: DecisionStatus; yearlyPlans?: string[] };
   /** Sin regla: el Net adicional se presupuesta. */
   additional?: { kind: "core_credit"; status: DecisionStatus };
 }
 
 /** Soluciones Elephant Net completas (paquetes de la familia net_bundle) con Elephant Core Essential incluido. */
 export const NET_COMPLETE = ["hotel-net-complete", "ski-net-complete", "travel-net-complete", "restaurant-net-complete", "care-net-complete", "social-token-net-complete"] as const;
-const NET_CORE: NetCoreInclusion = { plan: "essential", status: "approved", upgrade: { kind: "difference", status: "proposed" }, additional: { kind: "core_credit", status: "proposed" } };
+/**
+ * Decisiones comerciales del 27/10/2026 (cierre Elephant Net + Core): Core Essential incluido; ampliación a Business
+ * 50 €/mes o 480 €/año y a Enterprise 170 €/mes (sin tarifa anual de la ampliación a Enterprise: por presupuesto);
+ * cada Net adicional, −29 €/mes. Todo aprobado y sin efecto hasta encender la política.
+ */
+const NET_CORE: NetCoreInclusion = { plan: "essential", status: "approved", upgrade: { kind: "difference", status: "approved", yearlyPlans: ["business"] }, additional: { kind: "core_credit", status: "approved" } };
 
 /** Comportamiento vigente: sin inclusiones, sin cupos de Enterprise, paquetes como hoy. */
 export const CATALOG_POLICY: CommercialPolicy = {
@@ -112,7 +117,7 @@ export const PROPOSED_POLICY: CommercialPolicy = {
   ],
   bundleRule: { kind: "min2", status: "proposed" },
   quoteOnRequestPlans: ["enterprise"],
-  coreIncluded: Object.fromEntries(NET_COMPLETE.map((k) => [k, { ...NET_CORE, upgrade: { ...NET_CORE.upgrade! }, additional: { ...NET_CORE.additional! } }])),
+  coreIncluded: Object.fromEntries(NET_COMPLETE.map((k) => [k, { ...NET_CORE, upgrade: { ...NET_CORE.upgrade!, yearlyPlans: [...NET_CORE.upgrade!.yearlyPlans!] }, additional: { ...NET_CORE.additional! } }])),
 };
 
 /** Reglas pendientes de aprobación de una política (para avisos en el CRM y en las pruebas). */

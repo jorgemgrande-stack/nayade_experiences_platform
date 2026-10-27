@@ -11,6 +11,7 @@
  *  - el resultado separa cuota recurrente, implantación, consumos variables, descuentos e impuestos.
  * Importes en céntimos enteros, sin IVA.
  */
+import { createHash } from "node:crypto";
 import { quote, type QuoteCatalog, type QuoteCatalogProduct, type QuoteLine, type QuoteRequest, type QuoteResult } from "../quote";
 import type { CommercialPolicy, PlanInclusion } from "./policy";
 
@@ -33,6 +34,11 @@ export interface CommercialQuote {
   errors: string[];
   warnings: string[];
   policy: string;
+  /**
+   * Huella inmutable de la política económica aplicada (sus reglas exactas). Con `catalogVersion` permite reproducir
+   * el precio de una contratación: el pedido debe guardar ambas.
+   */
+  policyVersion: string;
   pendingRules: string[];
   plan: QuoteResult["plan"];
   lines: CommercialLine[];
@@ -59,6 +65,12 @@ export interface CommercialQuote {
   capabilities: string[];
   contractable: QuoteResult["contractable"];
   blocking: string[];
+}
+
+/** Huella estable de una política (mismas reglas → misma huella, sin depender del orden de las claves). */
+export function policyVersion(policy: CommercialPolicy): string {
+  const stable = (v: unknown): unknown => (Array.isArray(v) ? v.map(stable) : v && typeof v === "object" ? Object.fromEntries(Object.entries(v).filter(([k]) => k !== "id").sort(([a], [b]) => a.localeCompare(b)).map(([k, x]) => [k, stable(x)])) : v);
+  return createHash("sha256").update(JSON.stringify(stable(policy))).digest("hex").slice(0, 16);
 }
 
 const tax = (cents: number, bp: number) => Math.round((cents * bp) / 10_000);
@@ -133,7 +145,7 @@ function composeNetCore(baseLines: QuoteLine[], byKey: Map<string, QuoteCatalogP
   const charged = lines.filter((l) => l.family === "net_bundle" && l.status === "charged" && rules[l.key]);
   const ownedNets = Array.from(owned).filter((k) => rules[k]);
   const used: string[] = [];
-  if (!charged.length && !ownedNets.length) return { lines, coreIncludedCents: 0, annualPlanCents: null as number | null, used, nets: [] as string[], corePlan: null as string | null, providedBy: null as string | null };
+  if (!charged.length && !ownedNets.length) return { lines, coreIncludedCents: 0, annualPlanCents: null as number | null, used, nets: [] as string[], corePlan: null as string | null, providedBy: null as string | null, errors: [] as string[] };
   const nets = [...ownedNets, ...charged.map((l) => l.key)];
   const corePlan = nets.map((k) => rules[k].plan).sort((a, b) => PLAN_RANK.indexOf(b) - PLAN_RANK.indexOf(a))[0];
   for (const k of nets) if (rules[k].status === "proposed") used.push(`Core incluido en ${k}`);
@@ -151,11 +163,13 @@ function composeNetCore(baseLines: QuoteLine[], byKey: Map<string, QuoteCatalogP
     const included = priceOf(corePlan, kind);
     if (PLAN_RANK.indexOf(planLine.key) <= PLAN_RANK.indexOf(corePlan)) {
       coreIncludedCents += planLine.amountCents;
-      Object.assign(planLine, { unitCents: 0, amountCents: 0, status: "included_in_net", note: `${coreName} incluido en ${by}` });
+      // Sin cuota anual separada: el Core incluido no se factura por su cuenta en ninguna periodicidad
+      Object.assign(planLine, { unitCents: 0, amountCents: 0, interval: "month", status: "included_in_net", note: `${coreName} incluido en ${by}${planLine.interval === "year" ? "; sin cuota anual separada" : ""}` });
       annualPlanCents = 0;
     } else {
       const rule = rules[providedBy].upgrade;
-      if (rule && included !== undefined) {
+      const yearlyOk = planLine.interval !== "year" || (rule?.yearlyPlans ?? []).includes(planLine.key);
+      if (rule && included !== undefined && yearlyOk) {
         if (rule.status === "proposed") used.push(`ampliación de Core en ${providedBy}`);
         const diff = Math.max(0, planLine.amountCents - included);
         coreIncludedCents += planLine.amountCents - diff;
@@ -164,21 +178,22 @@ function composeNetCore(baseLines: QuoteLine[], byKey: Map<string, QuoteCatalogP
           const m = (priceOf(planLine.key, "monthly") ?? 0) - (priceOf(corePlan, "monthly") ?? 0);
           annualPlanCents = Math.max(0, m * 12 - diff);
         }
-      } else Object.assign(planLine, { unitCents: null, amountCents: 0, status: "on_quote", note: `Ampliación de Elephant Core sobre ${by}: por presupuesto (sin regla aprobada)` });
+      } else Object.assign(planLine, { unitCents: null, amountCents: 0, status: "on_quote", note: rule && !yearlyOk ? `Ampliación anual a ${planLine.name} sobre ${by}: por presupuesto (sin tarifa anual aprobada)` : `Ampliación de Elephant Core sobre ${by}: por presupuesto (sin regla aprobada)` });
     }
   }
 
-  // Net adicionales: los demás Net y las unidades de más del que aporta el Core
+  // Una misma solución Elephant Net no se contrata dos veces en una empresa
+  const errors = charged.filter((l) => l.quantity > 1).map((l) => `No se permiten dos contrataciones de la misma solución Elephant Net en una empresa: «${l.name}»`);
+  // Net adicionales: los demás Net (el que aporta el Core se cobra completo)
   const coreMonthly = priceOf(corePlan, "monthly");
   const out: CommercialLine[] = [];
   for (const l of lines) {
     const isNet = charged.includes(l);
-    const extraUnits = !isNet ? 0 : l.key === providedBy && !ownedNets.length ? l.quantity - 1 : l.quantity;
+    const extraUnits = !isNet || (l.key === providedBy && !ownedNets.length) ? 0 : l.quantity;
     if (!isNet || extraUnits <= 0) {
       out.push(l);
       continue;
     }
-    if (extraUnits < l.quantity) out.push({ ...l, quantity: l.quantity - extraUnits, amountCents: (l.unitCents ?? 0) * (l.quantity - extraUnits) });
     const rule = rules[l.key].additional;
     if (rule && coreMonthly !== undefined && l.interval === "month") {
       if (rule.status === "proposed") used.push(`Net adicional ${l.key}`);
@@ -187,7 +202,7 @@ function composeNetCore(baseLines: QuoteLine[], byKey: Map<string, QuoteCatalogP
       out.push({ ...l, quantity: extraUnits, unitCents: unit, amountCents: unit * extraUnits, status: "net_additional", note: `${coreName} ya incluido en ${by}: no se vuelve a cobrar` });
     } else out.push({ ...l, quantity: extraUnits, unitCents: null, amountCents: 0, status: "on_quote", note: `Solución Elephant Net adicional (Core ya incluido en ${by}): por presupuesto, sin regla aprobada` });
   }
-  return { lines: out, coreIncludedCents, annualPlanCents, used, nets, corePlan, providedBy };
+  return { lines: out, coreIncludedCents, annualPlanCents, used, nets, corePlan, providedBy, errors };
 }
 
 const notYet = (p: QuoteCatalogProduct) => p.commercialStatus === "coming_soon" || p.commercialStatus === "in_preparation" || p.commercialStatus === "unpublished" || p.technicalStatus === "planned";
@@ -296,6 +311,7 @@ export function commercialQuote(rawCatalog: QuoteCatalog, policy: CommercialPoli
   // ── Elephant Core incluido en las soluciones Elephant Net completas ─────────
   const net = req.contractModel === "legacy" ? composeNetCore(base.lines, byKey, { ...policy, coreIncluded: {} }, owned) : composeNetCore(base.lines, byKey, policy, req.contractModel === "composite" ? owned : new Set<string>());
   usedRules.push(...net.used);
+  errors.push(...net.errors);
   const lines: CommercialLine[] = [...net.lines, ...extraLines];
   const all = [...base.errors, ...errors];
   const monthlyCents = lines.filter((l) => l.interval === "month").reduce((a, l) => a + l.amountCents, 0);
@@ -324,6 +340,7 @@ export function commercialQuote(rawCatalog: QuoteCatalog, policy: CommercialPoli
     errors: all,
     warnings: [...base.warnings, ...warnings],
     policy: policy.id,
+    policyVersion: policyVersion(policy),
     pendingRules: [
       ...Array.from(inclusions.values()).filter((i) => i.status === "proposed").map((i) => `inclusión ${i.plan}:${i.key}`),
       ...Array.from(inclusions.values()).filter((i) => i.cap?.status === "proposed").map((i) => `tope ${i.plan}:${i.key}`),
