@@ -31,7 +31,7 @@ import { SELF_SERVICE_PLANS, desiredCatalog, type SelfServicePlan } from "./cata
 import type { StripeMode, StripeTaxPolicy } from "./config";
 import { issuerLine } from "./issuer";
 import { StripeGatewayError, type CheckoutLineItem, type StripeGateway } from "./gateway";
-import { CheckoutLinesError, planCheckoutLines, type CheckoutLinePlan } from "./checkoutLines";
+import { CheckoutLinesError, coreCreditCoupon, planCheckoutLines, type CheckoutLinePlan } from "./checkoutLines";
 import type { QuoteRequest, QuoteResult } from "../catalog/quote";
 import { StripeStoreError, type StripeStore } from "./store";
 import type { BuyerProfile, FiscalScenario, TaxTreatment } from "./buyerProfile";
@@ -236,6 +236,13 @@ export class StripeCheckoutService {
             // Primer mes de las partidas mensuales de un plan anual, en el mismo pago (importe único aprobado)
             ...lines.deferred.map((l) => ({ oneTime: { productId: l.stripeProductId, unitAmount: l.unitAmountCents, currency: "EUR" }, quantity: l.quantity })),
           ];
+    // Crédito de Elephant Core incluido (como mucho uno por pago): cupón de sesión con id determinista
+    const credited = lines.recurring.find((l) => l.credit);
+    let discounts: string[] | undefined;
+    if (credited) {
+      if (!this.d.gateway.ensureCoupon) throw new StripeCheckoutError("unsupported", "Esta pasarela no admite el crédito de Elephant Core incluido");
+      discounts = [await this.d.gateway.ensureCoupon(coreCreditCoupon(this.ns, credited.credit!))];
+    }
     const charge = { amountCents: lines.firstChargeCents, currency: o.quote.currency.toUpperCase(), taxTreatment: policy };
 
     const company = await this.d.crmStore.get("companies", o.companyId);
@@ -316,6 +323,7 @@ export class StripeCheckoutService {
             customerId,
             priceId: priceIds[0],
             ...(lineItems ? { lineItems } : {}),
+            ...(discounts ? { discounts } : {}),
             clientReferenceId: `es-order-${orderId}`,
             metadata,
             successUrl: `${this.d.urls.success}?session_id={CHECKOUT_SESSION_ID}`,
@@ -487,7 +495,7 @@ export class StripeCheckoutService {
     // Con Stripe Tax el impuesto se añade al neto: el Price tiene que ser sin IVA (tax_behavior exclusive)
     if (policy === LIVE_TAX_TREATMENT && live.taxBehavior !== "exclusive") throw new StripeCheckoutError("conflict", "El precio de Stripe no está marcado sin IVA (tax_behavior exclusive): no se cobra con Stripe Tax");
     const line = { productKey: plan, name: desired.productName, interval: o.request.interval, quantity: 1, unitAmountCents: live.unitAmount, stripePriceId: link.stripePriceId, stripeProductId: link.stripeProductId };
-    return { recurring: [line], deferred: [], firstChargeCents: live.unitAmount, monthlyCents: kind === "monthly" ? live.unitAmount : 0, yearlyCents: kind === "yearly" ? live.unitAmount : 0 };
+    return { recurring: [line], deferred: [], firstChargeCents: live.unitAmount, monthlyCents: kind === "monthly" ? live.unitAmount : 0, yearlyCents: kind === "yearly" ? live.unitAmount : 0, includedPlan: null };
   }
 
   private eligibilityConfig(): EligibilityConfig {

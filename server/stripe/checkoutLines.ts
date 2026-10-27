@@ -12,11 +12,15 @@
  *    todo lo contratado: ningún derecho se concede sin cobrar.
  *  - No se cobra por Checkout: lo presupuestado aparte (sin tarifa), los productos internos de pruebas, más de
  *    20 partidas (límite de Stripe) o una partida anual en un plan mensual.
+ *  - Elephant Net con Elephant Core incluido (presupuesto comercial, contrato v3 P0-C): el plan incluido no tiene
+ *    partida en Stripe; la ampliación de plan y el Net adicional se cobran con su Price COMPLETO y un crédito igual
+ *    a la tarifa aprobada del Core incluido (cupón). Sin cuota anual del plan incluido, un crédito por pago y una
+ *    unidad por partida con crédito.
  */
-import type { QuoteResult } from "../catalog/quote";
+import type { CommercialLine } from "../catalog/commercial/commercialQuote";
 import type { CommercialOrder } from "../orchestrator/types";
 import type { CatalogPort } from "../subscriptions/ports";
-import type { StripeGateway } from "./gateway";
+import type { CouponSpec, StripeGateway } from "./gateway";
 import type { StripeStore } from "./store";
 
 /** Máximo de partidas de una Checkout Session (regla de Stripe). */
@@ -30,6 +34,15 @@ export interface CheckoutLine {
   unitAmountCents: number;
   stripePriceId: string;
   stripeProductId: string;
+  /** Crédito de Core incluido por unidad (cupón): lo cobrado es `unitAmountCents − credit.cents`. */
+  credit?: NonNullable<CommercialLine["credit"]>;
+}
+
+/** Presupuesto del servidor: el del catálogo (`quote()`) o el comercial (con los estados de Elephant Net + Core). */
+export interface CheckoutQuote {
+  ok: boolean;
+  errors: string[];
+  lines: Array<Pick<CommercialLine, "key" | "name" | "interval" | "quantity" | "unitCents" | "status" | "credit">>;
 }
 
 export interface CheckoutLinePlan {
@@ -42,6 +55,22 @@ export interface CheckoutLinePlan {
   /** Importe recurrente por periodicidad (sin IVA). */
   monthlyCents: number;
   yearlyCents: number;
+  /** Plan de Core incluido en un Elephant Net (sin partida en Stripe); null si el plan se cobra. */
+  includedPlan: string | null;
+}
+
+/**
+ * Cupón del crédito de Core: uno por plan, periodicidad e importe, compartido por todos los clientes. Un importe
+ * nuevo es otro cupón (en Stripe no se edita), así lo contratado conserva el suyo.
+ */
+export function coreCreditCoupon(ns: string, c: NonNullable<CheckoutLine["credit"]>): CouponSpec {
+  return {
+    id: `es-${ns}-core-credit-${c.plan}-${c.interval}-${c.cents}`,
+    name: `Elephant Core ${c.plan} incluido`,
+    amountOffCents: c.cents,
+    currency: "EUR",
+    metadata: { es_reason: "core_included", es_core_plan: c.plan, es_interval: c.interval },
+  };
 }
 
 export class CheckoutLinesError extends Error {
@@ -64,15 +93,24 @@ export interface CheckoutLinesDeps {
  * Partidas de Stripe de la configuración del pedido. `q` es el presupuesto del servidor de `order.request`;
  * `requireExclusive` (Stripe Tax en live) exige Prices sin IVA.
  */
-export async function planCheckoutLines(d: CheckoutLinesDeps, order: Pick<CommercialOrder, "request" | "quote">, q: QuoteResult, opts: { requireExclusive?: boolean } = {}): Promise<CheckoutLinePlan> {
+export async function planCheckoutLines(d: CheckoutLinesDeps, order: Pick<CommercialOrder, "request" | "quote">, q: CheckoutQuote, opts: { requireExclusive?: boolean } = {}): Promise<CheckoutLinePlan> {
   if (!q.ok) throw new CheckoutLinesError("invalid_state", `La configuración del pedido ya no es válida: ${q.errors.join("; ")}`);
   if (!order.quote) throw new CheckoutLinesError("invalid_state", "El pedido no tiene presupuesto");
   const planInterval = order.request.interval;
   const offer = await d.catalog.offer();
   const lines: Array<CheckoutLine & { lookupKey: string }> = [];
+  let includedPlan: string | null = null;
   for (const l of q.lines) {
     if (l.status === "included_in_bundle") continue;
+    if (l.status === "included_in_net") {
+      // Sin cuota anual separada del Core incluido: no hay nada anual que cobrar (contrato v3, H1)
+      if (planInterval === "year") throw new CheckoutLinesError("unsupported", `«${l.name}» va incluido en la solución Elephant Net: la contratación es mensual (anual solo con una ampliación de plan)`);
+      includedPlan = l.key;
+      continue;
+    }
     if (l.status === "no_price" || l.unitCents === null) throw new CheckoutLinesError("unsupported", `«${l.name}» se presupuesta aparte: esta contratación no se cobra por Checkout`);
+    const credited = l.status === "core_upgrade" || l.status === "net_additional";
+    if (credited && !l.credit) throw new CheckoutLinesError("conflict", `«${l.name}» no indica el crédito de Elephant Core que descuenta`);
     if (l.interval === "year" && planInterval === "month") throw new CheckoutLinesError("unsupported", `«${l.name}» es anual y el plan es mensual`);
     const product = offer.find((p) => p.key === l.key);
     if (!product) throw new CheckoutLinesError("unavailable", `«${l.name}» no está publicado en el catálogo`);
@@ -81,12 +119,25 @@ export async function planCheckoutLines(d: CheckoutLinesDeps, order: Pick<Commer
     const approved = product.prices.filter((p) => p.kind === kind && p.status === "approved" && p.currency.toUpperCase() === "EUR");
     if (approved.length !== 1) throw new CheckoutLinesError("unavailable", `«${l.name}» no tiene un único precio ${kind === "yearly" ? "anual" : "mensual"} aprobado`);
     const price = approved[0];
-    if (price.amountCents !== l.unitCents) throw new CheckoutLinesError("conflict", `El precio aprobado de «${l.name}» no coincide con el presupuesto`);
+    // Con crédito, el Price de Stripe es la tarifa completa: presupuesto neto + crédito
+    const gross = l.unitCents + (credited ? l.credit!.cents : 0);
+    if (price.amountCents !== gross) throw new CheckoutLinesError("conflict", `El precio aprobado de «${l.name}» no coincide con el presupuesto`);
+    if (credited) {
+      const c = l.credit!;
+      if (l.quantity !== 1) throw new CheckoutLinesError("unsupported", `«${l.name}» con Elephant Core incluido se contrata de una en una: más unidades, por propuesta comercial`);
+      if (c.interval !== l.interval) throw new CheckoutLinesError("conflict", `El crédito de Elephant Core de «${l.name}» no tiene su periodicidad`);
+      const coreKind = c.interval === "year" ? "yearly" : "monthly";
+      const core = offer.find((p) => p.key === c.plan)?.prices.filter((p) => p.kind === coreKind && p.status === "approved" && p.currency.toUpperCase() === "EUR") ?? [];
+      if (core.length !== 1 || core[0].amountCents !== c.cents) throw new CheckoutLinesError("conflict", `El crédito de Elephant Core de «${l.name}» (${c.cents}) no es la tarifa aprobada de ${c.plan}`);
+    }
     const link = await d.store.priceForWebPrice(price.id);
     if (!link || link.status !== "active") throw new CheckoutLinesError("unavailable", `«${l.name}» no tiene precio enlazado en Stripe (catálogo sin sincronizar o producto no disponible para venta en línea)`);
-    lines.push({ productKey: l.key, name: l.name, interval: l.interval, quantity: l.quantity, unitAmountCents: price.amountCents, stripePriceId: link.stripePriceId, stripeProductId: link.stripeProductId, lookupKey: link.lookupKey });
+    lines.push({ productKey: l.key, name: l.name, interval: l.interval, quantity: l.quantity, unitAmountCents: price.amountCents, stripePriceId: link.stripePriceId, stripeProductId: link.stripeProductId, lookupKey: link.lookupKey, ...(credited ? { credit: { ...l.credit! } } : {}) });
   }
-  if (!lines.length || lines[0].productKey !== order.request.plan) throw new CheckoutLinesError("invalid_state", "El presupuesto no empieza por el plan");
+  if (includedPlan ? includedPlan !== order.request.plan || !lines.length : !lines.length || lines[0].productKey !== order.request.plan) throw new CheckoutLinesError("invalid_state", "El presupuesto no empieza por el plan");
+  // Checkout admite un cupón por sesión: un segundo crédito se contrata después (contrato v3 §2.3, punto 4)
+  if (lines.filter((l) => l.credit).length > 1) throw new CheckoutLinesError("unsupported", "Más de un crédito de Elephant Core en un mismo pago: contrata primero una solución y añade la otra después");
+  if (lines.some((l) => l.credit && l.interval !== planInterval)) throw new CheckoutLinesError("unsupported", "Una solución Elephant Net adicional no entra en el alta de un plan anual: se añade después");
   if (lines.length > MAX_CHECKOUT_LINES) throw new CheckoutLinesError("unsupported", `Demasiadas partidas para un pago (${lines.length}; máximo ${MAX_CHECKOUT_LINES})`);
   if (new Set(lines.map((l) => l.stripePriceId)).size !== lines.length) throw new CheckoutLinesError("conflict", "Dos partidas usan el mismo precio de Stripe");
 
@@ -100,7 +151,7 @@ export async function planCheckoutLines(d: CheckoutLinesDeps, order: Pick<Commer
     if (opts.requireExclusive && p.taxBehavior !== "exclusive") throw new CheckoutLinesError("conflict", `El precio de Stripe de «${l.name}» no está marcado sin IVA (tax_behavior exclusive): no se cobra con Stripe Tax`);
   }
 
-  const amount = (l: CheckoutLine) => l.unitAmountCents * l.quantity;
+  const amount = (l: CheckoutLine) => (l.unitAmountCents - (l.credit?.cents ?? 0)) * l.quantity;
   const monthlyCents = lines.filter((l) => l.interval === "month").reduce((a, l) => a + amount(l), 0);
   const yearlyCents = lines.filter((l) => l.interval === "year").reduce((a, l) => a + amount(l), 0);
   // Presupuesto del pedido y Stripe nunca muestran importes distintos
@@ -121,5 +172,6 @@ export async function planCheckoutLines(d: CheckoutLinesDeps, order: Pick<Commer
     firstChargeCents: first,
     monthlyCents,
     yearlyCents,
+    includedPlan,
   };
 }
