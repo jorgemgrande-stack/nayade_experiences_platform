@@ -418,7 +418,7 @@ jobs:
 
       - name: Publicar — controlplane, core y core-gateway (vuelta atrás automática si algo falla)
         if: inputs.action == 'publicar' && env.ES_PROD_SKIP != '1'
-        run: pnpm exec tsx scripts/deploy/esRailway.ts publish --env "${ES_ENV}" --dir "${RUNNER_TEMP}/export" --sha "${ES_DEPLOY_SHA}"
+        run: pnpm exec tsx scripts/deploy/esRailway.ts publish --env "${ES_ENV}" --dir "${RUNNER_TEMP}/export" --sha "${ES_DEPLOY_SHA}" --record "${RUNNER_TEMP}/es-core-published.json"
 
       # CRM (repositorio big-elephant-crm, clave de solo lectura CRM_DEPLOY_KEY del entorno). Live: el último de su rama de
       # integración; production: SOLO el commit del CRM que superó live con este mismo commit del Core (estado
@@ -450,6 +450,7 @@ jobs:
           path: crm-src
 
       - name: Publicar — CRM (vuelta atrás automática si algo falla)
+        id: crm
         if: inputs.action == 'publicar' && env.ES_CRM_SKIP != '1'
         run: |
           CRM_SHA=$(git -C crm-src rev-parse HEAD)
@@ -472,6 +473,13 @@ jobs:
           if [ "${ES_ENV}" = "live" ]; then
             gh api "repos/${GITHUB_REPOSITORY}/statuses/${ES_DEPLOY_SHA}" -f state=success -f context=elephant-source/crm-live -f description="crm ${CRM_SHA}" -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" > /dev/null
           fi
+
+      # Versiones emparejadas: si el CRM no quedó publicado (ya devuelto a su despliegue anterior), el Core publicado en ESTA
+      # ejecución vuelve también al suyo. Así nunca quedan un Core y un CRM que no se probaron juntos. El commit no recibe
+      # el estado de live, de modo que production no lo publicará.
+      - name: Publicar — vuelta atrás emparejada del Core si falló el CRM
+        if: failure() && inputs.action == 'publicar' && steps.crm.outcome == 'failure'
+        run: pnpm exec tsx scripts/deploy/esRailway.ts rollback-recorded --env "${ES_ENV}" --file "${RUNNER_TEMP}/es-core-published.json"
 
       # Web comercial (repositorio bigelephant-web, clave de solo lectura WEB_DEPLOY_KEY del entorno), mismo modelo que el
       # CRM: live publica el último commit de su rama y lo anota (elephant-source/web-live); production publica SOLO ese

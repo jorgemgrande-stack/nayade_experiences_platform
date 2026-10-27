@@ -440,6 +440,8 @@ export function extraordinaryChanges(files: string[], diff: string, sqlOf: (file
   }
   // Solo el código que se ejecuta: un comentario o un documento que mencionen un interruptor no lo cambian
   out.push(...coreLockedChanges(diff));
+  // Cobros, autorización, seguridad y borrados aunque no toquen ningún interruptor
+  out.push(...criticalChanges(files, diff));
   return [...new Set(out)];
 }
 
@@ -690,3 +692,77 @@ export const CRM_VERSION_URL: Record<string, { url: string; auth?: boolean }> = 
   live: { url: "https://elephant-source-crm-live.up.railway.app/version.txt", auth: true },
   production: { url: "https://admin.bigelephant.es/version.txt" },
 };
+
+// ── Puntos críticos sin variables de entorno: cobros, autorización, seguridad y borrados ───────────────────────────
+//
+// Un cambio real en estas piezas es extraordinario aunque no toque ningún interruptor. Se protege la ENVOLVENTE (lo que
+// decide si se cobra de verdad, quién entra y qué se borra), no cada línea de una funcionalidad: los flujos de Checkout,
+// compras o suscripciones siguen siendo ordinarios porque en live los cobros dependen de esta envolvente y de sus
+// interruptores, que sí están protegidos.
+
+/** Ficheros del Core cuyo cambio (fuera de las pruebas) exige el procedimiento protegido. */
+export const CRITICAL_PATHS: Array<{ re: RegExp; why: string }> = [
+  // Cobros: modo live/test, claves, interruptores, política fiscal, firma de webhooks y quién puede pagar
+  { re: /^server\/stripe\/(config|liveReadiness|webhook|eligibility)\.ts$/, why: "cobros: modo, claves, firma de webhooks o elegibilidad" },
+  // Autorización: tokens y permisos del plano de control, operadores, MFA, sesiones y roles
+  { re: /^server\/controlPlane\/(auth|operatorAuth|operatorRoles|operatorMfaKeys)\.ts$/, why: "autorización del plano de control y operadores" },
+  { re: /^server\/(authGuard|localAuth|passwordReset)\.ts$/, why: "autenticación y sesiones" },
+  { re: /^server\/_core\/(centralAuth|expressAuth|oauth|rbac|cookies|loginThrottle|companyOwner)\.ts$/, why: "autenticación, roles o sesiones" },
+  // Canal interno firmado plano de control → Core (las acciones que transporta son funcionalidad ordinaria)
+  { re: /^server\/_core\/opsAccess\/(token|router)\.ts$/, why: "canal firmado de acceso de operaciones" },
+  // Seguridad: bóveda y cifrado de credenciales (el catálogo y la salud de las integraciones son ordinarios), claves del
+  // registro, guardas de endpoints públicos y saneado
+  { re: /^server\/_core\/credentials\/(vault|runtime|cache|legacyFields|legacyMigration)\.ts$/, why: "bóveda y cifrado de credenciales" },
+  { re: /^server\/_core\/tenantRegistry\/crypto\.ts$/, why: "cifrado del registro de empresas" },
+  { re: /^server\/_core\/(publicEndpointGuards|safeRedirect|htmlSanitize|requestOrigin)\.ts$/, why: "guardas de seguridad" },
+  { re: /(^|\/)\.gitleaks[^/]*$/, why: "control de secretos" },
+];
+
+/**
+ * Cambios efectivos de código que son extraordinarios estén donde estén (sin comentarios ni pruebas):
+ *  - borrados destructivos (DROP, TRUNCATE, DELETE FROM, borrado de bases o de empresas, borrado recursivo);
+ *  - verificación de firmas y modo live de Stripe;
+ *  - RETIRAR una comprobación de autorización (añadir una ruta con un permiso existente es ordinario).
+ */
+export const CRITICAL_CODE: Array<{ re: RegExp; why: string }> = [
+  { re: /\b(DROP\s+(TABLE|DATABASE|SCHEMA|USER)|TRUNCATE\s+(TABLE\s+)?[`\w]+|DELETE\s+FROM)\b/i, why: "operación destructiva de datos" },
+  { re: /\b(dropDatabase|deleteTenant\w*|purgeTenant\w*)\s*\(|rmSync\s*\([^)]*recursive/, why: "borrado de bases, empresas o ficheros" },
+  { re: /\b(constructEvent|generateTestHeaderString|assertModeObject|livemode)\b|\b(sk|rk)_live_/, why: "cobros: firma de webhooks o modo live de Stripe" },
+];
+
+/**
+ * Comprobaciones de autorización de un fichero (permiso exacto incluido). Que una desaparezca, o cambie de permiso, es
+ * extraordinario; moverla o añadir otras iguales, no.
+ */
+const AUTH_CHECK = /\b(?:requireScope|requireRole|requireOperator\w*)\s*\([^)]*\)|\b(?:protectedProcedure|adminProcedure)\b|ctx\.user\.role\s*[!=]==?\s*["'`][^"'`]+["'`]/g;
+
+export function criticalChanges(files: string[], diff: string): string[] {
+  const out = new Set<string>();
+  for (const f of files) {
+    if (NON_EFFECTIVE.test(f)) continue;
+    const hit = CRITICAL_PATHS.find((p) => p.re.test(f));
+    if (hit) out.add(`${f} — ${hit.why}`);
+  }
+  // Comprobaciones de autorización por fichero: quitadas frente a añadidas (con su permiso exacto)
+  const auth = new Map<string, Map<string, number>>();
+  let file = "";
+  for (const line of diff.split("\n")) {
+    const h = /^diff --git a\/\S+ b\/(\S+)/.exec(line);
+    if (h) {
+      file = h[1];
+      continue;
+    }
+    if (/^(\+\+\+|---) /.test(line) || !/^[+-]/.test(line) || NON_EFFECTIVE.test(file)) continue;
+    const code = codeOfLine(line.slice(1), HASH_COMMENTS.test(file) ? "hash" : "js");
+    for (const c of CRITICAL_CODE) if (c.re.test(code)) out.add(`${file ? `${file}: ` : ""}${c.why}`);
+    const counts = auth.get(file) ?? new Map<string, number>();
+    for (const m of code.matchAll(AUTH_CHECK)) {
+      const k = m[0].replace(/\s+/g, "");
+      counts.set(k, (counts.get(k) ?? 0) + (line[0] === "-" ? 1 : -1));
+    }
+    auth.set(file, counts);
+  }
+  for (const [f, counts] of Array.from(auth.entries()))
+    for (const [k, n] of Array.from(counts.entries())) if (n > 0) out.add(`${f ? `${f}: ` : ""}se retira una comprobación de autorización (${k.slice(0, 60)})`);
+  return Array.from(out);
+}

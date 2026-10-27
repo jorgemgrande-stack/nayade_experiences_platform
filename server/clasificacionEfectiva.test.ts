@@ -5,7 +5,7 @@
  */
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
-import { CRM_VERSION_FILE, CRM_VERSION_URL, codeOfLine, coreLockedChanges, effectiveChangedLines, externalLockedChanges, extraordinaryChanges } from "../scripts/deploy/esRailwayLib";
+import { CRM_VERSION_FILE, CRM_VERSION_URL, codeOfLine, coreLockedChanges, criticalChanges, effectiveChangedLines, externalLockedChanges, extraordinaryChanges } from "../scripts/deploy/esRailwayLib";
 
 const diffOf = (file: string, ...lines: string[]) => [`diff --git a/${file} b/${file}`, `--- a/${file}`, `+++ b/${file}`, "@@ -1 +1 @@", ...lines].join("\n");
 
@@ -73,5 +73,66 @@ describe("verificación del dominio real del CRM", () => {
     // Si el dominio no sirve el commit, la publicación falla y vuelve atrás
     expect(src).toContain('(ext.service !== "crm" || (await servedCrmVersion(env, sha)))');
     expect(src).toContain("blocked.push(...externalLockedChanges(");
+  });
+});
+
+describe("cobros, autorización, seguridad y borrados: protegidos aunque no toquen interruptores", () => {
+  const none = () => null;
+  const x = (files: string[], diff: string) => extraordinaryChanges(files, diff, none);
+  it("la envolvente de cobros, autorización y seguridad es extraordinaria por fichero (fuera de las pruebas)", () => {
+    for (const f of [
+      "server/stripe/config.ts",
+      "server/stripe/webhook.ts",
+      "server/stripe/liveReadiness.ts",
+      "server/stripe/eligibility.ts",
+      "server/controlPlane/auth.ts",
+      "server/controlPlane/operatorAuth.ts",
+      "server/controlPlane/operatorRoles.ts",
+      "server/authGuard.ts",
+      "server/localAuth.ts",
+      "server/passwordReset.ts",
+      "server/_core/rbac.ts",
+      "server/_core/oauth.ts",
+      "server/_core/credentials/vault.ts",
+      "server/_core/opsAccess/token.ts",
+      "server/_core/tenantRegistry/crypto.ts",
+      "server/_core/publicEndpointGuards.ts",
+    ])
+      expect(x([f], diffOf(f, "+  const a = 1;")), f).not.toEqual([]);
+    expect(criticalChanges(["server/stripe/config.test.ts"], "")).toEqual([]);
+    // Los flujos que se apoyan en la envolvente siguen siendo ordinarios
+    for (const f of ["server/stripe/checkout.ts", "server/stripe/purchases.ts", "server/_core/credentials/catalog.ts", "server/_core/opsAccess/actions.ts"]) expect(x([f], diffOf(f, "+  const a = 1;")), f).toEqual([]);
+  });
+  it("borrados destructivos y modo live de Stripe en cualquier fichero de código", () => {
+    expect(x(["server/a.ts"], diffOf("server/a.ts", '+  await pool.query("DELETE FROM tenants WHERE id = ?", [id]);'))).not.toEqual([]);
+    expect(x(["server/a.ts"], diffOf("server/a.ts", "+  await db.execute(sql`TRUNCATE TABLE leads`);"))).not.toEqual([]);
+    expect(x(["server/a.ts"], diffOf("server/a.ts", "+  await databases.dropDatabase(tenantId);"))).not.toEqual([]);
+    expect(x(["server/a.ts"], diffOf("server/a.ts", "+  fs.rmSync(dir, { recursive: true, force: true });"))).not.toEqual([]);
+    expect(x(["server/stripe/gateway.ts"], diffOf("server/stripe/gateway.ts", "-  assertModeObject(c, mode);"))).not.toEqual([]);
+    expect(x(["server/stripe/gateway.ts"], diffOf("server/stripe/gateway.ts", "+  const e = stripe.webhooks.constructEvent(raw, sig, secret, 600);"))).not.toEqual([]);
+    // En un comentario, no
+    expect(x(["server/a.ts"], diffOf("server/a.ts", "+  // nunca DELETE FROM: se archiva"))).toEqual([]);
+  });
+  it("retirar o cambiar una comprobación de autorización es extraordinario; añadir rutas con permisos existentes, no", () => {
+    const f = "server/stripe/purchasesApi.ts";
+    expect(x([f], diffOf(f, '+  r.post("/companies/:id/purchases", requireScope("orders:write"), wrap(fn));'))).toEqual([]);
+    expect(x([f], diffOf(f, '-  r.post("/x", requireScope("orders:write"), wrap(fn));', '+  r.post("/x", wrap(fn));'))).not.toEqual([]);
+    expect(x([f], diffOf(f, '-  r.post("/x", requireScope("orders:write"), wrap(fn));', '+  r.post("/x", requireScope("ops:read"), wrap(fn));'))).not.toEqual([]);
+    // Reescribir la línea conservando el mismo permiso (p. ej. añadir otra guarda) es ordinario
+    expect(x([f], diffOf(f, '-  r.post("/x", requireScope("orders:write"), wrap(fn));', '+  r.post("/x", requireScope("orders:write"), wrap(async (q, s) => fn(q, s)));'))).toEqual([]);
+    expect(x(["server/routers.ts"], diffOf("server/routers.ts", "-  list: protectedProcedure.query(() => all()),", "+  list: publicProcedure.query(() => all()),"))).not.toEqual([]);
+  });
+});
+
+describe("vuelta atrás emparejada de Core y CRM", () => {
+  it("si el CRM no queda publicado, el Core de esa misma ejecución vuelve a su despliegue anterior", () => {
+    const wf = fs.readFileSync(".github/workflows/deploy-elephant-source.yml", "utf8");
+    expect(wf).toContain('--record "${RUNNER_TEMP}/es-core-published.json"');
+    expect(wf).toContain("id: crm");
+    expect(wf).toContain("if: failure() && inputs.action == 'publicar' && steps.crm.outcome == 'failure'");
+    expect(wf).toContain('rollback-recorded --env "${ES_ENV}" --file "${RUNNER_TEMP}/es-core-published.json"');
+    const src = fs.readFileSync("scripts/deploy/esRailway.ts", "utf8");
+    expect(src).toContain('if (cmd === "rollback-recorded")');
+    expect(src).toContain("if (!(ORDINARY_SERVICES as readonly string[]).includes(d.name))");
   });
 });

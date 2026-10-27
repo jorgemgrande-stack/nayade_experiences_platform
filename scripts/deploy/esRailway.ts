@@ -306,7 +306,7 @@ async function main() {
   const env = arg("env");
   const sc = await scope();
   const service = cmd === "deploy" || cmd === "revert" ? arg("service") : cmd === "drill" ? "restore-drill" : undefined;
-  if (!["verify", "status", "deploy", "drill", "active-sha", "publish", "revert", "active-crm", "publish-crm", "storage", "storage-fix", "test-gateways", "mail-live", "backup-check", "platform-domain", "metering", "mail-access", "lead-notices-mail"].includes(cmd)) throw new Error(`orden desconocida: ${cmd}`);
+  if (!["verify", "status", "deploy", "drill", "active-sha", "publish", "revert", "active-crm", "publish-crm", "rollback-recorded", "storage", "storage-fix", "test-gateways", "mail-live", "backup-check", "platform-domain", "metering", "mail-access", "lead-notices-mail"].includes(cmd)) throw new Error(`orden desconocida: ${cmd}`);
   const problems = guard(cfg, sc, { env, service });
   if (problems.length) {
     console.error(`Detenido antes de tocar nada:\n - ${problems.join("\n - ")}`);
@@ -1036,6 +1036,10 @@ async function main() {
       await rollbackAll();
       process.exit(1);
     }
+    // Lo publicado en esta ejecución y su despliegue anterior: si después falla el CRM, el Core vuelve con él
+    // (rollback-recorded) y Core y CRM nunca quedan en versiones que no se probaron juntas
+    const record = arg("record", false);
+    if (record) fs.writeFileSync(record, JSON.stringify(done.map(({ name, prev }) => ({ name, prev }))));
     console.log(`Publicado ${sha.slice(0, 12)} en ${env}`);
     return;
   }
@@ -1106,6 +1110,30 @@ async function main() {
     if (!prev) throw new Error(`${service}: no hay un despliegue anterior al que volver`);
     console.log(`${service}: vuelve a ${prev.id} (commit ${shaFromDeployMeta(prev.meta, repo)?.slice(0, 12)}) → ${await rollback(sid, sc.environmentId, prev.id)}`);
     if (!(await functional(env))) process.exit(1);
+    return;
+  }
+  if (cmd === "rollback-recorded") {
+    // Vuelta atrás emparejada: devuelve al despliegue anterior los servicios del Core publicados en ESTA ejecución
+    const file = arg("file");
+    if (!fs.existsSync(file)) {
+      console.log("Nada que devolver: esta ejecución no publicó servicios del Core");
+      return;
+    }
+    const list = JSON.parse(fs.readFileSync(file, "utf8")) as Array<{ name: string; prev: string | null }>;
+    let ok = true;
+    for (const d of list.reverse()) {
+      if (!(ORDINARY_SERVICES as readonly string[]).includes(d.name)) throw new Error(`servicio no admitido: ${d.name}`);
+      if (!d.prev) {
+        console.error(`${d.name}: sin despliegue anterior al que volver`);
+        ok = false;
+        continue;
+      }
+      const status = await rollback(await serviceId(d.name), sc.environmentId, d.prev);
+      console.error(`${d.name}: vuelta atrás a ${d.prev} → ${status}`);
+      if (status !== "SUCCESS") ok = false;
+    }
+    if (!ok || !(await functional(env))) process.exit(1);
+    console.log("Core devuelto a la versión emparejada con el CRM en servicio");
     return;
   }
   if (cmd === "deploy") {
