@@ -29,6 +29,12 @@ export interface ItemSpec {
   priceId: number;
   quantity?: number;
   discount?: Discount | null;
+  /**
+   * Precio NEGOCIADO por contrato (contrato v1, I-10): importe unitario pactado en lugar del de la tarifa `priceId`, que
+   * queda como referencia. Exige la versión del contrato que lo ampara (`contract:<id>:v<versión>`, el de la suscripción).
+   * Solo en suscripciones que no se cobran por Stripe: el Checkout cobra Prices aprobados, no importes pactados.
+   */
+  contractPrice?: { unitAmountCents: number; contractRef: string } | null;
 }
 export type When = "now" | "period_end";
 
@@ -68,8 +74,23 @@ function checkDiscount(d: Discount | null | undefined): Discount | null {
 
 export class SubscriptionService {
   private now: () => number;
-  constructor(private d: { store: SubscriptionStore; catalog: CatalogPort; crm: CrmPort; now?: () => number; usage?: UsagePort }) {
+  constructor(private d: { store: SubscriptionStore; catalog: CatalogPort; crm: CrmPort; now?: () => number; usage?: UsagePort; stripeBilled?: (subscriptionId: number) => Promise<boolean> }) {
     this.now = d.now ?? Date.now;
+  }
+
+  /**
+   * Precio de contrato: referencia `contract:<id>:v<versión>` del contrato de la suscripción, importe positivo, sin
+   * descuento añadido y nunca en una suscripción cobrada por Stripe (enlace o pagos verificados en Stripe).
+   */
+  private async checkContractPrice(spec: ItemSpec, contractId: number | null, subscriptionId: number | null) {
+    const c = spec.contractPrice;
+    if (!c) return;
+    const m = /^contract:(\d+):v(\d+)$/.exec(c.contractRef ?? "");
+    if (!m) bad("El precio de contrato exige la referencia del contrato y su versión (contract:<id>:v<versión>)");
+    if (contractId === null || Number(m[1]) !== contractId) bad("El precio de contrato debe ampararse en el contrato de esta suscripción");
+    if (!Number.isInteger(c.unitAmountCents) || c.unitAmountCents <= 0 || c.unitAmountCents > 100_000_000) bad("Importe de contrato no válido (céntimos, mayor que cero)");
+    if (spec.discount) bad("Un precio de contrato ya es el pactado: no lleva descuento añadido");
+    if (subscriptionId !== null && this.d.stripeBilled && (await this.d.stripeBilled(subscriptionId))) state("Esta suscripción se cobra por Stripe: el Checkout cobra tarifas aprobadas, no precios de contrato");
   }
 
   // ── Instantánea contractual ────────────────────────────────────────────────
@@ -107,9 +128,9 @@ export class SubscriptionService {
         activationKind: product.activationKind,
         activationRef: product.activationRef,
         priceId: price.id,
-        priceSource: "catalog",
+        priceSource: spec.contractPrice ? "contract" : "catalog",
         priceKind: price.kind,
-        unitAmountCents: price.amountCents,
+        unitAmountCents: spec.contractPrice ? spec.contractPrice.unitAmountCents : price.amountCents,
         unit: price.unit,
         quantity,
         taxRateBp: price.taxRateBp,
@@ -193,6 +214,7 @@ export class SubscriptionService {
     const anchorDay = new Date(start).getUTCDate();
     const end = periodEnd(start, input.interval, anchorDay);
     const sub = { interval: input.interval, currency };
+    for (const s of [input.plan, ...(input.addons ?? [])]) await this.checkContractPrice(s, input.contractId ?? null, null);
     const plan = await this.snapshot(input.plan, ["core_plan"], sub, start, actor);
     const addons = [];
     for (const a of input.addons ?? []) addons.push(await this.snapshot(a, ADDON_FAMILIES, sub, start, actor));
@@ -320,8 +342,9 @@ export class SubscriptionService {
       this.assertNoScheduled(items, sub, "core_plan");
       const current = activeAt(items, this.now()).find((i) => i.family === "core_plan");
       if (!current) state("La suscripción no tiene plan Core vigente");
+      await this.checkContractPrice(input.plan, sub.contractId, sub.id);
       const probe = await this.snapshot(input.plan, ["core_plan"], sub, 0, actor);
-      if (probe.item.productKey === current.productKey && probe.item.priceId === current.priceId) bad("Es el mismo plan y el mismo precio");
+      if (probe.item.productKey === current.productKey && probe.item.priceId === current.priceId && probe.item.unitAmountCents === current.unitAmountCents) bad("Es el mismo plan y el mismo precio");
       const upgrade = monthlyEquivalent(probe.item) >= monthlyEquivalent(current);
       const when: When = input.when ?? (upgrade ? "now" : "period_end");
       if (!upgrade && when === "now") state("Una bajada de plan se aplica a fin de periodo (sin abonos por la parte no consumida)");
@@ -347,6 +370,7 @@ export class SubscriptionService {
     return this.d.store.mutate(id, expectedVersion, actor, this.now(), async (tx, sub) => {
       this.assertOpen(sub);
       const items = await tx.items();
+      await this.checkContractPrice(input.item, sub.contractId, sub.id);
       const probe = await this.snapshot(input.item, ADDON_FAMILIES, sub, 0, actor);
       // Paquete con componentes ya contratados: los sustituye al final de su periodo en curso
       const liveNow = items.filter((i) => i.effectiveTo === null || i.effectiveTo > this.now());
@@ -538,6 +562,8 @@ export class SubscriptionService {
       this.assertNoScheduled(items, sub);
       const at = sub.currentPeriodEnd;
       const recurring = activeAt(items, this.now()).filter((i) => isRecurring(i.priceKind) && (i.effectiveTo === null || i.effectiveTo > at));
+      // Un precio de contrato está pactado para su periodicidad: cambiarla es una nueva versión del contrato
+      if (recurring.some((i) => i.priceSource === "contract")) state("La suscripción tiene precios de contrato: cambiar la periodicidad requiere una nueva versión del contrato");
       const map = new Map(input.prices.map((p) => [p.itemId, p.priceId]));
       const mustChange = (i: SubscriptionItem) => i.family === "core_plan" || intervalMonths(itemInterval(i.priceKind)!) > intervalMonths(input.interval);
       const missing = recurring.filter((i) => !map.has(i.id) && mustChange(i));

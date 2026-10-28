@@ -40,7 +40,9 @@ const discount = z
   .strict()
   .nullable()
   .optional();
-const itemSpec = z.object({ productKey, priceId: z.number().int().positive(), quantity: z.number().int().min(1).max(10_000).optional(), discount }).strict();
+// Precio negociado por contrato (I-10): importe pactado y la versión del contrato que lo ampara
+const contractPrice = z.object({ unitAmountCents: z.number().int().positive().max(100_000_000), contractRef: z.string().regex(/^contract:\d+:v\d+$/) }).strict();
+const itemSpec = z.object({ productKey, priceId: z.number().int().positive(), quantity: z.number().int().min(1).max(10_000).optional(), discount, contractPrice: contractPrice.nullable().optional() }).strict();
 const when = z.enum(["now", "period_end"]).optional();
 const reason = z.string().trim().max(500).nullable().optional();
 

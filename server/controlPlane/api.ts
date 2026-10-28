@@ -1399,6 +1399,16 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
           return metric === "storage_gb" ? Math.ceil(used.used / 1024 ** 3) : used.used;
         },
       },
+      // Precio de contrato (I-10): nunca en una suscripción cobrada por Stripe, por pagos verificados o por enlace
+      stripeBilled: async (sid) => {
+        if (!d.orders) return false;
+        if ((await subscriptionBilling(d.orders.store, sid)).source === "stripe") return true;
+        const orders = new Set((await d.orders.store.list({ subscriptionId: sid, limit: 50 })).map((o) => o.id));
+        if (!d.stripe || !orders.size) return false;
+        const sub = await d.subscriptions?.store.get(sid);
+        for (const id of sub ? await d.stripe.store.subscriptionsOfCompany(sub.companyId) : []) if (orders.has((await d.stripe.store.subscription(id))?.orderId ?? -1)) return true;
+        return false;
+      },
     });
     const shadowBilling = new ShadowBillingService({ store: d.subscriptions.store, crm: crmPort, now: d.subscriptions.now });
     if (d.capabilities) {
