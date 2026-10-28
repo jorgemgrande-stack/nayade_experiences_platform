@@ -46,6 +46,10 @@ describe("dominio público del CRM para la aceptación", () => {
     expect(crmPublicOrigin({ CP_ALLOWED_ORIGINS: "", RAILWAY_ENVIRONMENT_NAME: "production" })).toBe("https://admin.bigelephant.es");
     expect(crmPublicOrigin({ RAILWAY_ENVIRONMENT_NAME: "live" })).toBe("https://elephant-source-crm-live.up.railway.app");
     expect(crmPublicOrigin({})).toBeNull();
+    // El dominio de Railway de production está detrás de la autenticación de la pasarela: el enlace del correo usa el propio
+    expect(crmPublicOrigin({ CP_ALLOWED_ORIGINS: "https://elephant-source-crm.up.railway.app,https://admin.bigelephant.es", RAILWAY_ENVIRONMENT_NAME: "production" })).toBe("https://admin.bigelephant.es");
+    expect(crmPublicOrigin({ CP_ALLOWED_ORIGINS: "https://elephant-source-crm.up.railway.app", RAILWAY_ENVIRONMENT_NAME: "production" })).toBe("https://admin.bigelephant.es");
+    expect(crmPublicOrigin({ CP_ALLOWED_ORIGINS: "https://elephant-source-crm-live.up.railway.app", RAILWAY_ENVIRONMENT_NAME: "live" })).toBe("https://elephant-source-crm-live.up.railway.app");
   });
 });
 
