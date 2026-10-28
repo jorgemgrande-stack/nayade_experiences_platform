@@ -62,6 +62,7 @@ import { MysqlSubscriptionChangeStore } from "../stripe/changes";
 import { MysqlExternalStore } from "../external/store";
 import { MysqlInvoicingStore } from "../invoicing/store";
 import { MysqlChargeStore } from "../invoicing/charges";
+import { MysqlChargePaymentStore } from "../invoicing/chargePayments";
 import { crmPublicOrigin } from "../external/urls";
 import type { ExternalUrls } from "../external/service";
 import { internalTenantsFromEnv } from "../stripe/purchases";
@@ -514,7 +515,7 @@ async function main() {
 
   // Facturación propia (CRM 0027): borradores por devengo; expedir solo con CP_INVOICING_ISSUE_ENABLED=1. Mismo entorno
   // (livemode) que los servicios externos cuyos cobros lee
-  let invoicing: { store: MysqlInvoicingStore; issueEnabled: boolean; seriesCode: string; charges?: MysqlChargeStore } | undefined;
+  let invoicing: { store: MysqlInvoicingStore; issueEnabled: boolean; seriesCode: string; charges?: MysqlChargeStore; chargePayments?: MysqlChargePaymentStore } | undefined;
   if (crmPool && crm) {
     const pool = crmPool;
     const has = (t: string) => pool.query(`SELECT 1 FROM ${t} LIMIT 0`).then(() => true, () => false);
@@ -524,6 +525,10 @@ async function main() {
     // Cargos extraordinarios y gastos variables (CRM 0028): solo con su tabla
     const chargesReady = !!invoicing && (await has("billing_charges"));
     if (invoicing && chargesReady) invoicing.charges = new MysqlChargeStore(pool, external?.store.mode ?? "test");
+    // Cobro de los cargos (CRM 0029): solo con su tabla; sin ella los cargos se aprueban y facturan, pero no se cobran aquí
+    const paymentsReady = chargesReady && (await has("billing_charge_payments"));
+    if (invoicing && paymentsReady) invoicing.chargePayments = new MysqlChargePaymentStore(pool, external?.store.mode ?? "test");
+    if (invoicing && chargesReady) console.log(JSON.stringify({ ctx: "Invoicing", chargePayments: paymentsReady, ...(paymentsReady ? {} : { reason: "migration_0029_missing" }) }));
     console.log(JSON.stringify({ ctx: "Invoicing", mounted: !!invoicing, ...(invoicing ? { issueEnabled: invoicing.issueEnabled, series: invoicing.seriesCode } : { reason: "migration_0027_missing" }) }));
     if (invoicing) console.log(JSON.stringify({ ctx: "Invoicing", charges: chargesReady, ...(chargesReady ? {} : { reason: "migration_0028_missing" }) }));
   }

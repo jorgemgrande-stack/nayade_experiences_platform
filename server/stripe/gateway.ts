@@ -252,10 +252,46 @@ export interface StripeGateway {
   ensureTaxRate?(input: { percentageBp: number; displayName: string; country: string; description: string }): Promise<string>;
   /** Suscripción recurrente sin cargo hasta `trialEnd` (primer vencimiento), con el método y el IVA indicados. */
   createServiceSubscription?(input: ServiceSubscriptionInput, idempotencyKey: string): Promise<GwSubscription>;
+  // ── Cobro único de un cargo extraordinario o gasto variable (server/invoicing/chargePayments) ──
+  /** Checkout en modo `payment`: UN cobro por el importe sin IVA del cargo, con el tipo de IVA fijo indicado. */
+  createPaymentSession?(input: PaymentSessionInput, idempotencyKey: string): Promise<GwPaymentSession>;
+  paymentSession?(id: string): Promise<GwPaymentSession | null>;
   /** SOLO PRUEBAS: relojes de prueba de Stripe para simular el paso del tiempo (renovaciones, impagos). */
   createTestClock?(frozenTime: number, name: string): Promise<{ id: string }>;
   advanceTestClock?(id: string, frozenTime: number): Promise<{ id: string; status: string }>;
   testClock?(id: string): Promise<{ id: string; status: string; frozenTime: number } | null>;
+}
+
+export interface PaymentSessionInput {
+  customerId: string;
+  currency: string;
+  /** Concepto que ve el cliente en la página de pago y en el recibo. */
+  productName: string;
+  description: string | null;
+  /** Importe SIN IVA (céntimos); el IVA lo añade `taxRateId` (exclusivo). */
+  amountCents: number;
+  taxRateId: string;
+  metadata: Record<string, string>;
+  successUrl: string;
+  cancelUrl: string;
+  /** Segundos desde epoch (entre 30 min y 24 h). */
+  expiresAt: number;
+  notice: string;
+}
+export interface GwPaymentSession {
+  id: string;
+  url: string | null;
+  /** open | complete | expired */
+  status: string | null;
+  /** paid | unpaid | no_payment_required */
+  paymentStatus: string | null;
+  customerId: string | null;
+  currency: string | null;
+  amountSubtotal: number | null;
+  amountTotal: number | null;
+  paymentIntentId: string | null;
+  metadata: Record<string, string>;
+  expiresAt: number;
 }
 
 export interface SetupSessionInput {
@@ -470,6 +506,22 @@ function setupOf(s: Stripe.Checkout.Session): GwSetupSession {
   };
 }
 
+function paymentOf(s: Stripe.Checkout.Session): GwPaymentSession {
+  return {
+    id: s.id,
+    url: s.url ?? null,
+    status: s.status ?? null,
+    paymentStatus: s.payment_status ?? null,
+    customerId: idOf(s.customer),
+    currency: s.currency ?? null,
+    amountSubtotal: s.amount_subtotal ?? null,
+    amountTotal: s.amount_total ?? null,
+    paymentIntentId: idOf(s.payment_intent),
+    metadata: meta(s.metadata),
+    expiresAt: s.expires_at,
+  };
+}
+
 /** Adaptador con el SDK oficial. Solo se crea con una configuración validada; comprueba cada objeto con su modo. */
 export function stripeGateway(
   config: StripeConfig,
@@ -576,6 +628,45 @@ export function stripeGateway(
         assertModeObject(s, mode);
         return setupOf(s);
       } catch (e) {
+        wrapError(e);
+      }
+    },
+    async createPaymentSession(i, idempotencyKey) {
+      try {
+        const s = await client.checkout.sessions.create(
+          {
+            mode: "payment",
+            customer: i.customerId,
+            line_items: [
+              {
+                quantity: 1,
+                price_data: { currency: i.currency.toLowerCase(), unit_amount: i.amountCents, tax_behavior: "exclusive", product_data: { name: i.productName.slice(0, 250), ...(i.description ? { description: i.description.slice(0, 500) } : {}) } },
+                tax_rates: [i.taxRateId],
+              },
+            ],
+            metadata: i.metadata,
+            payment_intent_data: { metadata: i.metadata, description: i.productName.slice(0, 250) },
+            success_url: i.successUrl,
+            cancel_url: i.cancelUrl,
+            expires_at: i.expiresAt,
+            locale: "es",
+            custom_text: { submit: { message: i.notice.slice(0, 1200) } },
+          },
+          { idempotencyKey },
+        );
+        assertModeObject(s, mode);
+        return paymentOf(s);
+      } catch (e) {
+        wrapError(e);
+      }
+    },
+    async paymentSession(id) {
+      try {
+        const s = await client.checkout.sessions.retrieve(id);
+        assertModeObject(s, mode);
+        return paymentOf(s);
+      } catch (e) {
+        if (notFound(e)) return null;
         wrapError(e);
       }
     },
