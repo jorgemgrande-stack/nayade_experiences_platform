@@ -1219,10 +1219,26 @@ async function main() {
         process.exit(1);
       }
     }
+    // Una sola compilación por imagen: el contenedor arranca con `sh -c "$ES_DRILL_COMMAND"` y cada orden solo cambia esa
+    // variable y RELANZA la imagen ya compilada (segundos, sin compilar). Antes cada orden cambiaba el arranque y pedía un
+    // despliegue nuevo, que recompilaba la imagen (3-6 min por orden, dos veces: la orden y la vuelta al reposo). Solo la
+    // primera vez (servicio sin este arranque o sin ninguna imagen) se fija el arranque y se despliega compilando.
+    const RUNNER = 'sh -c "$ES_DRILL_COMMAND"';
+    const projectId = (await api<{ projectToken: { projectId: string } }>("query { projectToken { projectId } }")).projectToken.projectId;
+    const inst = await api<{ serviceInstance: { startCommand: string | null } | null }>("query($s:String!,$e:String!){ serviceInstance(serviceId:$s, environmentId:$e){ startCommand } }", { s: sid, e: sc.environmentId });
+    let runnerReady = inst.serviceInstance?.startCommand === RUNNER;
     const setAndDeploy = async (start: string) => {
       const before = (await latest(sid, sc.environmentId))?.id ?? null;
-      await api("mutation($s:String!,$e:String!,$i:ServiceInstanceUpdateInput!){ serviceInstanceUpdate(serviceId:$s, environmentId:$e, input:$i) }", { s: sid, e: sc.environmentId, i: { startCommand: start } });
-      await api("mutation($s:String!,$e:String!){ serviceInstanceDeployV2(serviceId:$s, environmentId:$e) }", { s: sid, e: sc.environmentId });
+      await api("mutation($i:VariableUpsertInput!){ variableUpsert(input:$i) }", { i: { projectId, environmentId: sc.environmentId, serviceId: sid, name: "ES_DRILL_COMMAND", value: start, skipDeploys: true } });
+      // Imagen ya compilada que relanzar: el último despliegue que llegó a arrancar (terminado, retirado o detenido)
+      const built = (await deployments(sid, sc.environmentId, 20)).find((x) => ["SUCCESS", "REMOVED", "CRASHED"].includes(x.status));
+      if (runnerReady && built) {
+        await api("mutation($id:String!){ deploymentRedeploy(id:$id, usePreviousImageTag:true){ id } }", { id: built.id });
+      } else {
+        await api("mutation($s:String!,$e:String!,$i:ServiceInstanceUpdateInput!){ serviceInstanceUpdate(serviceId:$s, environmentId:$e, input:$i) }", { s: sid, e: sc.environmentId, i: { startCommand: RUNNER } });
+        await api("mutation($s:String!,$e:String!){ serviceInstanceDeployV2(serviceId:$s, environmentId:$e) }", { s: sid, e: sc.environmentId });
+        runnerReady = true;
+      }
       return waitFor(sid, sc.environmentId, before);
     };
     const d = await setAndDeploy(command);
