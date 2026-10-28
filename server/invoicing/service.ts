@@ -140,6 +140,12 @@ export class InvoicingService {
     if (invoice.status !== "draft") problems.push("ya está expedida");
     if (!this.d.issueEnabled) problems.push("la expedición real está apagada en este entorno (CP_INVOICING_ISSUE_ENABLED)");
     if (invoice.operationDate > ymd(this.now())) problems.push(`la fecha de operación (${invoice.operationDate}) todavía no ha llegado`);
+    if (invoice.kind === "rectification") {
+      // Corrige una factura ya expedida: sus datos fiscales son los de esa factura, que debe seguir vigente
+      const original = invoice.originalInvoiceId ? await this.d.store.get(invoice.originalInvoiceId) : null;
+      if (!original || original.status !== "issued") problems.push("la factura que rectifica ya no está vigente");
+      return { invoice, problems };
+    }
     const company = await this.d.company(invoice.companyId);
     if (!company) problems.push("la empresa no existe");
     else problems.push(...customerOf(company).problems.map((p) => `cliente: ${p}`));
@@ -150,9 +156,54 @@ export class InvoicingService {
   async issue(id: number, actor: string): Promise<Invoice> {
     const { invoice, problems } = await this.readiness(id);
     if (problems.length) throw new InvoicingError(this.d.issueEnabled ? "invalid_state" : "unavailable", `No se puede expedir: ${problems.join("; ")}`);
-    const customer = customerOf((await this.d.company(invoice.companyId))!).party!;
+    const original = invoice.originalInvoiceId ? await this.must(invoice.originalInvoiceId) : null;
+    // Una rectificativa lleva los datos del cliente de la factura que corrige y va en su propia serie (art. 15 RD 1619/2012)
+    const customer = original?.customer ?? customerOf((await this.d.company(invoice.companyId))!).party!;
+    const seriesCode = invoice.kind === "rectification" ? `${this.d.seriesCode}R` : this.d.seriesCode;
     const now = this.now();
-    return this.d.store.issue({ id, seriesCode: this.d.seriesCode, issueDate: ymd(now), issuer: this.d.issuer, customer, issuedBy: actor, issuedAt: now });
+    const issued = await this.d.store.issue({ id, seriesCode, issueDate: ymd(now), issuer: this.d.issuer, customer, issuedBy: actor, issuedAt: now });
+    // Rectificación total: la original queda «rectificada» (una parcial la deja vigente por la diferencia)
+    if (original && issued.totalCents === -original.totalCents) await this.d.store.setStatus(original.id, "rectified", now);
+    return issued;
+  }
+
+  /**
+   * Borrador de factura rectificativa de una factura expedida (art. 15 RD 1619/2012): total (todas sus líneas en negativo)
+   * o parcial (una base menor, con un único tipo de IVA). Misma fecha de operación y cliente que la original; se expide
+   * en la serie de rectificativas. Idempotente por importe: repetir devuelve el mismo borrador.
+   */
+  async rectify(originalId: number, i: { reason: string; baseCents?: number }, actor: string): Promise<Invoice> {
+    const o = await this.must(originalId);
+    if (o.kind !== "invoice" || o.status !== "issued") throw new InvoicingError("invalid_state", "Solo se rectifica una factura expedida y vigente");
+    const reason = (i.reason ?? "").trim();
+    if (reason.length < 3 || reason.length > 300) throw new InvoicingError("invalid_input", "Indica el motivo de la rectificación (3 a 300 caracteres)");
+    const rates = Array.from(new Set(o.lines.map((l) => l.taxRateBp)));
+    const full = i.baseCents === undefined || i.baseCents === o.baseCents;
+    if (!full && (!Number.isInteger(i.baseCents) || i.baseCents! <= 0 || i.baseCents! > o.baseCents)) throw new InvoicingError("invalid_input", "La base a rectificar debe ser positiva y no mayor que la de la factura");
+    if (!full && rates.length !== 1) throw new InvoicingError("invalid_input", "Con varios tipos de IVA, solo rectificación total");
+    const lines = full ? o.lines.map((l, k) => lineOf(k + 1, `Rectificación: ${l.concept}`.slice(0, 300), l.quantity, -l.unitCents, l.taxRateBp)) : [lineOf(1, `Rectificación parcial de la factura ${o.number}`, 1, -i.baseCents!, rates[0])];
+    const t = totals(lines);
+    const { invoice } = await this.d.store.insertDraft({
+      sourceKey: `rectify:${o.id}:${-t.baseCents}`,
+      kind: "rectification",
+      paymentStatus: o.paymentStatus === "refunded" ? "refunded" : "pending",
+      companyId: o.companyId,
+      billingRef: o.billingRef,
+      paymentRef: null,
+      originalInvoiceId: o.id,
+      operationDate: o.operationDate,
+      periodStart: o.periodStart,
+      periodEnd: o.periodEnd,
+      periodLabel: o.periodLabel,
+      currency: o.currency,
+      ...t,
+      customer: o.customer,
+      notes: `Rectifica la factura ${o.number} de ${o.issueDate}. Motivo: ${reason}`.slice(0, 500),
+      createdBy: actor,
+      createdAt: this.now(),
+      lines,
+    });
+    return invoice;
   }
 
   async must(id: number) {
@@ -160,7 +211,7 @@ export class InvoicingService {
     if (!x) throw new InvoicingError("not_found", "Factura no encontrada");
     return x;
   }
-  list(f: { companyId?: number; status?: string; billingRef?: string } = {}) {
+  list(f: { companyId?: number; status?: string; billingRef?: string; limit?: number } = {}) {
     return this.d.store.list(f);
   }
 }
