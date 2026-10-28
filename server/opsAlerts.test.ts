@@ -159,3 +159,37 @@ describe("retención", () => {
     });
   });
 });
+
+describe("alerta de la medición del Resource Manager", () => {
+  const reader = { listTenants: async () => [tenant("a", "active"), tenant("b", "trial"), tenant("z", "deleted")] };
+  const H = 3_600_000;
+
+  it("sin consumo de ninguna empresa en servicio durante más de 12 h: aviso; al doble, crítico; al volver, se cierra sola", async () => {
+    const usage = new MemoryUsageStore();
+    const hour = Math.floor(T0 / H) * H;
+    await usage.add([{ tenantId: "a", metric: "http.requests", hourStart: hour - 14 * H, quantity: 5 }]);
+    let res = await runAlerts({ reader, incidents: svc, usage, now: () => now });
+    expect(res.active).toEqual(["erm.collector_stale"]);
+    const open = (await svc.list()).find((i) => i.kind === "erm.collector_stale")!;
+    expect(open.severity).toBe("warning");
+    expect(open.tenantId).toBeNull();
+    now = T0 + 12 * H;
+    await runAlerts({ reader, incidents: svc, usage, now: () => now });
+    expect((await svc.list()).find((i) => i.kind === "erm.collector_stale" && i.status !== "resolved")!.severity).toBe("critical");
+    // Vuelve a medir (basta una empresa): la incidencia se resuelve sola
+    await usage.add([{ tenantId: "b", metric: "http.requests", hourStart: Math.floor(now / H) * H, quantity: 1 }]);
+    res = await runAlerts({ reader, incidents: svc, usage, now: () => now });
+    expect(res.active).not.toContain("erm.collector_stale");
+    expect((await svc.list()).every((i) => i.kind !== "erm.collector_stale" || i.status === "resolved")).toBe(true);
+  });
+
+  it("nunca medido: crítico; con consumo reciente de una sola empresa: sin alerta; sin medición configurada: no se evalúa", async () => {
+    const empty = new MemoryUsageStore();
+    await runAlerts({ reader, incidents: svc, usage: empty, now: () => now });
+    expect((await svc.list()).find((i) => i.kind === "erm.collector_stale")!.severity).toBe("critical");
+    const fresh = new MemoryUsageStore();
+    await fresh.add([{ tenantId: "a", metric: "http.requests", hourStart: Math.floor(T0 / H) * H - 2 * H, quantity: 1 }]);
+    expect((await runAlerts({ reader, incidents: svc, usage: fresh, now: () => now })).active).not.toContain("erm.collector_stale");
+    expect((await runAlerts({ reader, incidents: svc, now: () => now })).active).not.toContain("erm.collector_stale");
+  });
+});
