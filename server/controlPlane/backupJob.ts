@@ -55,7 +55,7 @@ import { MysqlBackupInventory, safeError, type BackupTargetKind } from "../_core
 import { MysqlBackupCopyLedger, type BackupDestination, type CopyTargetKind } from "../_core/ops/backupCopies";
 import { restoreTenantFiles, runBackupJob, type SecondaryTarget } from "../_core/ops/backupJob";
 import { applyBackupRetention, applyCopyRetention, gfsPolicyFromEnv } from "../_core/ops/backupRetention";
-import { restorePlatformDatabase, restoreTenant, restoredDatabaseName } from "../_core/ops/backupRestore";
+import { restorePlatformDatabase, restoreTenant, restoredDatabaseName, restoredUserFor } from "../_core/ops/backupRestore";
 import { buildRecoveryPackage, readRecoveryPackage } from "../_core/ops/recoveryPackage";
 import { estimateMonthly } from "../_core/ops/backupEstimate";
 import { rebuildPlatform } from "../_core/ops/disasterRecovery";
@@ -411,7 +411,16 @@ async function main() {
           if (plan.problems.length) die("La simulación tiene problemas: no se purga nada");
           if (!apply) break;
           if (!dbs && plan.databases.some((x) => x.action === "drop")) die("Falta PROVISIONING_DB_SERVERS o PROVISIONING_DB_ADMIN_URL para borrar las bases de los tenants");
-          const done = await applyPurge({ crm: crmPool, registry: pool, dropDatabase: dbs ? (t) => dbs.dropDatabase(t) : undefined }, plan);
+          // Base restaurada activa (`es_<empresa>_r<fecha>`, nombre ya validado por el plan): ella y su usuario propio
+          const dropRestoredDatabase = servers
+            ? async (_t: string, database: string) => {
+                for (const a of servers.aliases()) {
+                  await servers.admin(a).query(`DROP DATABASE IF EXISTS \`${database}\``);
+                  await servers.admin(a).query("DROP USER IF EXISTS ?@?", [restoredUserFor(database), "%"]);
+                }
+              }
+            : undefined;
+          const done = await applyPurge({ crm: crmPool, registry: pool, dropDatabase: dbs ? (t) => dbs.dropDatabase(t) : undefined, dropRestoredDatabase }, plan);
           const check = await verifyPurge({ crm: crmPool, registry: pool });
           print({ aplicado: true, borrados: done.deleted, basesBorradas: done.droppedDatabases, comprobacion: check });
           if (!check.ok) process.exitCode = 1;

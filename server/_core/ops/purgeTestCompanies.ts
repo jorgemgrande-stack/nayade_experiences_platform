@@ -56,7 +56,7 @@ export interface PurgePlan {
   companies: Array<{ id: number; name: string; tenantId: string }>;
   missing: string[];
   steps: PurgeStep[];
-  databases: Array<{ tenantId: string; database: string | null; action: "drop" | "none"; reason?: string }>;
+  databases: Array<{ tenantId: string; database: string | null; action: "drop" | "none"; reason?: string; restored?: boolean }>;
   kept: string[];
   problems: string[];
 }
@@ -161,6 +161,28 @@ export async function planPurge(d: { crm: Q; registry: Q; tenantDbName?: (tenant
     }
     crmSteps.push({ db: "crm", table, where, params, rows: Number(n) });
   }
+  // Hijos por clave ajena de lo que se borra que no llevan las claves de las empresas (p. ej. commercial_payment_events →
+  // commercial_payments): se borran sus filas de esos padres, con las mismas reglas (fiscal o live → se aborta)
+  for (let added = true; added; ) {
+    added = false;
+    for (const s of [...crmSteps]) {
+      for (const f of crmFks.filter((x) => x.parent === s.table && x.child !== s.table && !crmSteps.some((y) => y.table === x.child))) {
+        const where = `\`${f.column}\` IN (SELECT \`${f.parentColumn}\` FROM \`${s.table}\` WHERE ${s.where})`;
+        const [{ n }] = await rows(d.crm, `SELECT COUNT(*) n FROM \`${f.child}\` WHERE ${where}`, s.params);
+        if (!Number(n)) continue;
+        if (CRM_PROTECTED.includes(f.child)) {
+          problems.push(`${f.child}: ${n} registro(s) de las empresas de prueba son fiscales o de cobro y se conservan: no se purga nada`);
+          continue;
+        }
+        if (crmCols.get(f.child)?.has("livemode")) {
+          const [{ n: live }] = await rows(d.crm, `SELECT COUNT(*) n FROM \`${f.child}\` WHERE livemode = 1 AND ${where}`, s.params);
+          if (Number(live)) problems.push(`${f.child}: ${live} registro(s) live de las empresas de prueba: no se purga nada`);
+        }
+        crmSteps.push({ db: "crm", table: f.child, where, params: [...s.params], rows: Number(n) });
+        added = true;
+      }
+    }
+  }
   const crmOrder = deleteOrder(crmSteps.map((s) => s.table), crmFks);
   crmSteps.sort((a, b) => crmOrder.indexOf(a.table) - crmOrder.indexOf(b.table));
   // Un hijo por clave ajena que no esté en el plan dejaría al borrar un padre una referencia rota: se aborta
@@ -202,9 +224,11 @@ export async function planPurge(d: { crm: Q; registry: Q; tenantDbName?: (tenant
     }
     const sharers = (allDbs.get(db) ?? []).filter((x) => x !== t);
     const expected = d.expectedDbName?.(t);
+    // Una base restaurada desde copia lleva el nombre propio con el sufijo de la restauración (`_r<AAAAMMDDhhmmss>`)
+    const restored = !!expected && new RegExp(`^${expected}_r\\d{14}$`).test(db);
     if (sharers.length) problems.push(`la base ${db} de ${t} la usa también ${sharers.join(", ")}: no se purga nada`);
-    else if (expected && db !== expected) problems.push(`la base de ${t} (${db}) no tiene el nombre propio del tenant (${expected}): no se purga nada`);
-    databases.push({ tenantId: t, database: db, action: "drop" });
+    else if (expected && db !== expected && !restored) problems.push(`la base de ${t} (${db}) no tiene el nombre propio del tenant (${expected}): no se purga nada`);
+    databases.push({ tenantId: t, database: db, action: "drop", ...(restored ? { restored } : {}) });
   }
 
   return {
@@ -218,7 +242,10 @@ export async function planPurge(d: { crm: Q; registry: Q; tenantDbName?: (tenant
 }
 
 /** Ejecuta el plan (cada base en una transacción) y borra las bases de los tenants. Exige un plan sin problemas. */
-export async function applyPurge(d: { crm: mysql.Pool; registry: mysql.Pool; dropDatabase?: (tenantId: string) => Promise<void> }, plan: PurgePlan): Promise<{ deleted: Array<{ db: string; table: string; rows: number }>; droppedDatabases: string[] }> {
+export async function applyPurge(
+  d: { crm: mysql.Pool; registry: mysql.Pool; dropDatabase?: (tenantId: string) => Promise<void>; dropRestoredDatabase?: (tenantId: string, database: string) => Promise<void> },
+  plan: PurgePlan,
+): Promise<{ deleted: Array<{ db: string; table: string; rows: number }>; droppedDatabases: string[] }> {
   if (plan.problems.length) throw new Error(`No se purga nada:\n - ${plan.problems.join("\n - ")}`);
   const deleted: Array<{ db: string; table: string; rows: number }> = [];
   for (const [db, pool] of [["crm", d.crm], ["registry", d.registry]] as const) {
@@ -240,7 +267,10 @@ export async function applyPurge(d: { crm: mysql.Pool; registry: mysql.Pool; dro
   const droppedDatabases: string[] = [];
   for (const x of plan.databases.filter((y) => y.action === "drop")) {
     if (!d.dropDatabase) throw new Error("Sin servidor de bases de datos (PROVISIONING_DB_*): no se pueden borrar las bases de los tenants");
+    if (x.restored && !d.dropRestoredDatabase) throw new Error(`Sin forma de borrar la base restaurada ${x.database}`);
+    // La base con el nombre propio (si aún existe) y, si la activa es una restaurada, también esa y su usuario
     await d.dropDatabase(x.tenantId);
+    if (x.restored) await d.dropRestoredDatabase!(x.tenantId, x.database!);
     droppedDatabases.push(x.database!);
   }
   return { deleted, droppedDatabases };
