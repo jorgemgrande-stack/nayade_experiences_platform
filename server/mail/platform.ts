@@ -69,8 +69,9 @@ export class PlatformMailer {
     return {
       invite: async (to, key, i) => {
         const r = await this.send(PLATFORM_TENANT, key, "contract_invitation", to, this.t.contractInvitation(i));
-        return { status: r.status, reason: r.reason, duplicate: r.duplicate };
+        return { status: r.status, reason: r.reason, duplicate: r.duplicate, id: r.id };
       },
+      status: (id) => this.service.status(id),
       opsNotice: (key, title, lines) => this.opsNotice(key, title, lines),
     };
   }

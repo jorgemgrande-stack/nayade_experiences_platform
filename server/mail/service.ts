@@ -121,6 +121,12 @@ export class MailService {
     return null;
   }
 
+  /** Estado actual de un mensaje de la bandeja (lo actualizan el envío y los eventos del proveedor: entregado, rebotado…). */
+  async status(id: number): Promise<{ status: MailStatus; reason: string | null } | null> {
+    const r = await this.d.store.get(id);
+    return r ? { status: r.status, reason: r.reason } : null;
+  }
+
   async send(input: SendInput): Promise<SendResult> {
     this.assertTenant(input.tenantId);
     const now = this.now();
