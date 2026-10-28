@@ -61,6 +61,8 @@ on:
           - correo-acceso-estado
           - correo-acceso-activar
           - correo-acceso-desactivar
+          - correo-contratos-estado
+          - correo-contratos-activar
           - catalogo-revision
           - catalogo-revision-aplicar
           - catalogo-fichas
@@ -297,6 +299,17 @@ jobs:
             avisos-solicitudes-estado) pnpm exec tsx scripts/deploy/esRailway.ts lead-notices-mail --env "${ES_ENV}" --accion estado ;;
             avisos-solicitudes-activar) pnpm exec tsx scripts/deploy/esRailway.ts lead-notices-mail --env "${ES_ENV}" --accion activar --allow "${ES_MAIL_ALLOW}" ;;
             avisos-solicitudes-desactivar) pnpm exec tsx scripts/deploy/esRailway.ts lead-notices-mail --env "${ES_ENV}" --accion desactivar ;;
+          esac
+
+      # Correo de CONTRATOS de servicios externos (contract_invitation), solo production y solo el plano de control:
+      # estado (lectura) y activar (AÑADE la categoría y los buzones de «destinatarios» al sandbox de los avisos; nunca live)
+      - name: Correo de contratos de servicios externos
+        if: startsWith(inputs.action, 'correo-contratos-')
+        run: |
+          if [ "${ES_ENV}" != "production" ]; then echo "El correo de contratos se gestiona aquí solo en production"; exit 1; fi
+          case "${ES_ACTION}" in
+            correo-contratos-estado) pnpm exec tsx scripts/deploy/esRailway.ts contract-mail --env "${ES_ENV}" --accion estado ;;
+            correo-contratos-activar) pnpm exec tsx scripts/deploy/esRailway.ts contract-mail --env "${ES_ENV}" --accion activar --allow "${ES_MAIL_ALLOW}" ;;
           esac
 
       - name: Verificar el esquema de la exportación (0011, 0012, 0013)

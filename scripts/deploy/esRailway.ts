@@ -16,6 +16,7 @@
  *   tsx scripts/deploy/esRailway.ts mail-live --env live [--allow a@x,b@y]  (diagnóstico de Postmark; con --allow, sandbox)
  *   tsx scripts/deploy/esRailway.ts mail-access --env production --accion estado|activar|desactivar [--tenants t5-skibox]
  *   tsx scripts/deploy/esRailway.ts lead-notices-mail --env production --accion estado|activar|desactivar [--allow buzón]
+ *   tsx scripts/deploy/esRailway.ts contract-mail --env production --accion estado|activar [--allow buzón]
  *   tsx scripts/deploy/esRailway.ts active-sha --env live          (commit activo de los servicios ordinarios; vacío si no se sabe)
  *   tsx scripts/deploy/esRailway.ts changes --from <commit> --to <commit> [--production]  (qué exige el procedimiento protegido)
  *   tsx scripts/deploy/esRailway.ts publish --env live --dir <dir> --sha <commit>   (despliegue ordinario con vuelta atrás automática)
@@ -37,7 +38,7 @@ import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { MAIL_TEST_SERVICES, POSTMARK_WEBHOOK_TRIGGERS, leadNoticesMailPlan, mailAccessPlan, mailSandboxPlan, parseMailAllowlist } from "./esRailwayLib";
+import { CONTRACT_MAIL_CATEGORY, MAIL_TEST_SERVICES, POSTMARK_WEBHOOK_TRIGGERS, contractMailPlan, leadNoticesMailPlan, mailAccessPlan, mailSandboxPlan, parseMailAllowlist } from "./esRailwayLib";
 import { DRILL_IDLE, EXCLUDED_FROM_EXPORT, GATEWAY_COPIED_VARS, GATEWAY_TEMPLATE_SERVICE, STORAGE_BUCKETS, STORAGE_VARS, describeStorageVar, guard, isAllowedDrill, scrub, meteringReferences, storageReferences, testTenantDomains, type DeployConfig, type TokenScope } from "./esRailwayLib";
 import { ERM_DB_SERVICE, ERM_PASSWORD_VAR, LIVE_PLATFORM_DOMAIN_DEFAULT, livePlatformDomainProblems, meteringPlan, platformDomainsValue } from "./esRailwayLib";
 import { CATALOG_STAMP_FILE, WEB_CATALOG_SITE } from "./esRailwayLib";
@@ -308,7 +309,7 @@ async function main() {
   const env = arg("env");
   const sc = await scope();
   const service = cmd === "deploy" || cmd === "revert" ? arg("service") : cmd === "drill" ? "restore-drill" : undefined;
-  if (!["verify", "status", "deploy", "drill", "active-sha", "publish", "revert", "active-crm", "publish-crm", "rollback-recorded", "storage", "storage-fix", "test-gateways", "mail-live", "backup-check", "platform-domain", "metering", "mail-access", "lead-notices-mail"].includes(cmd)) throw new Error(`orden desconocida: ${cmd}`);
+  if (!["verify", "status", "deploy", "drill", "active-sha", "publish", "revert", "active-crm", "publish-crm", "rollback-recorded", "storage", "storage-fix", "test-gateways", "mail-live", "backup-check", "platform-domain", "metering", "mail-access", "lead-notices-mail", "contract-mail"].includes(cmd)) throw new Error(`orden desconocida: ${cmd}`);
   const problems = guard(cfg, sc, { env, service });
   if (problems.length) {
     console.error(`Detenido antes de tocar nada:\n - ${problems.join("\n - ")}`);
@@ -880,6 +881,55 @@ async function main() {
       }
       console.log(`Postmark webhook ${existingHook ? "actualizado" : "creado"}: ${hookUrl} (entrega, rebote, queja y baja)`);
     }
+    return;
+  }
+  if (cmd === "contract-mail") {
+    // Correo de CONTRATOS de servicios externos en production: estado (lectura: variables de correo sin secretos y los
+    // envíos de Postmark con la etiqueta contract_invitation y sus eventos) y activar (AÑADE la categoría y los buzones
+    // indicados al sandbox del plano de control; nunca live, nunca quita nada). Nunca imprime un token ni una dirección.
+    const accion = arg("accion");
+    if (!["estado", "activar"].includes(accion)) throw new Error("--accion estado|activar");
+    if (env !== "production") throw new Error("contract-mail solo existe en production");
+    const recipients = accion === "activar" ? parseMailAllowlist(arg("allow")) : [];
+    const t = await api<{ projectToken: { projectId: string } }>("query { projectToken { projectId } }");
+    const p = t.projectToken.projectId;
+    const q = "query($p:String!,$e:String!,$s:String!){ variables(projectId:$p, environmentId:$e, serviceId:$s, unrendered:false) }";
+    const vars: Record<string, Record<string, string>> = { controlplane: (await api<{ variables: Record<string, string> }>(q, { p, e: sc.environmentId, s: await serviceId("controlplane") })).variables };
+    const cp = vars.controlplane;
+    const mask = (a: string) => a.replace(/^(.).*(@.*)$/, "$1***$2");
+    console.log(`controlplane: MAIL_MODE=${cp.MAIL_MODE ?? "off"} · MAIL_SCOPE_TENANTS=${cp.MAIL_SCOPE_TENANTS ?? "—"} · MAIL_SCOPE_CATEGORIES=${cp.MAIL_SCOPE_CATEGORIES ?? "—"} · permitidos: ${(cp.MAIL_SANDBOX_ALLOWLIST ?? "").split(",").filter(Boolean).map(mask).join(", ") || "ninguno"}`);
+    const token = (cp.POSTMARK_SERVER_TOKEN ?? "").trim();
+    if (token) {
+      const pm = async (path: string) => (await (await fetch(`https://api.postmarkapp.com${path}`, { headers: { Accept: "application/json", "X-Postmark-Server-Token": token } })).json().catch(() => ({}))) as Record<string, unknown>;
+      const msgs = ((await pm(`/messages/outbound?count=10&offset=0&tag=${CONTRACT_MAIL_CATEGORY}`)).Messages as Array<{ MessageID: string; Subject: string; To: Array<{ Email: string }>; ReceivedAt: string }>) ?? [];
+      console.log(`Postmark contratos enviados recientes: ${msgs.length}`);
+      for (const m of msgs) {
+        const ev = (((await pm(`/messages/outbound/${m.MessageID}/details`)).MessageEvents as Array<{ Type: string; ReceivedAt: string }>) ?? []).map((e) => `${e.Type}@${e.ReceivedAt.slice(0, 19)}`).join(", ");
+        console.log(`  ${m.ReceivedAt.slice(0, 19)} · ${mask(m.To?.[0]?.Email ?? "")} · ${m.Subject.slice(0, 80)} · ${ev || "sin eventos"}`);
+      }
+    }
+    const plan = contractMailPlan(env, vars, { recipients: accion === "estado" ? ["estado@ejemplo.invalid"] : recipients });
+    if (accion === "estado") {
+      console.log(plan.problems.length ? `Falta para activar:
+ - ${plan.problems.join("
+ - ")}` : "Requisitos para activar el correo de contratos: cumplidos");
+      return;
+    }
+    if (plan.problems.length) throw new Error(`No se cambia nada:
+ - ${plan.problems.join("
+ - ")}`);
+    if (!plan.changes.length) return void console.log("Sin cambios: el correo de contratos ya estaba abierto para esos buzones");
+    for (const c of plan.changes) {
+      await api("mutation($i:VariableUpsertInput!){ variableUpsert(input:$i) }", { i: { projectId: p, environmentId: sc.environmentId, serviceId: await serviceId(c.service), name: c.name, value: c.value!, skipDeploys: true } });
+      console.log(`controlplane: ${c.name} → ${c.name === "MAIL_SANDBOX_ALLOWLIST" ? `${c.value!.split(",").length} buzón(es)` : c.value}`);
+    }
+    const id = await serviceId("controlplane");
+    const before = await latest(id, sc.environmentId);
+    if (!before) throw new Error("controlplane no tiene despliegue que redesplegar");
+    await api("mutation($id:String!){ deploymentRedeploy(id:$id, usePreviousImageTag:true){ id } }", { id: before.id });
+    const d = await waitFor(id, sc.environmentId, before.id);
+    console.log(`controlplane: redesplegado con su misma imagen → ${d.status}`);
+    if (d.status !== "SUCCESS") process.exit(1);
     return;
   }
   if (cmd === "backup-check") {
