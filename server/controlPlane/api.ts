@@ -98,6 +98,11 @@ import { DeferredItemsService } from "../stripe/deferredItems";
 import { ExternalService, type ExternalUrls } from "../external/service";
 import type { ExternalStore } from "../external/store";
 import { createContractAcceptanceRouter, createExternalRouter } from "../external/api";
+import { InvoicingService } from "../invoicing/service";
+import type { InvoicingStore } from "../invoicing/store";
+import { createInvoicingRouter } from "../invoicing/api";
+import type { CompanyFiscal } from "../invoicing/rules";
+import { ISSUER } from "../stripe/issuer";
 import { createBillingPortalRouter, createPurchasesRouter } from "../stripe/purchasesApi";
 import { createPanelCatalogRouter } from "../commerce/panelCatalog";
 import { createPanelUsageRouter } from "../commerce/panelUsage";
@@ -259,6 +264,11 @@ export interface ControlPlaneDeps {
    * del método de pago y cobro con Stripe Billing, sin aprovisionar nada en Elephant Core. Requiere `stripe`.
    */
   external?: { store: ExternalStore; urls: ExternalUrls; ipSalt?: string; liveEnabled?: boolean };
+  /**
+   * Facturación propia (server/invoicing, CRM 0027): facturas por devengo de los servicios externos con el estado de
+   * cobro leído de su historial. Sin `issueEnabled` solo prepara borradores (nunca expide).
+   */
+  invoicing?: { store: InvoicingStore; issueEnabled: boolean; seriesCode: string };
   /**
    * Motor de transiciones temporales (server/lifecycle). Requiere `orders`. El plan (solo lectura) siempre
    * se puede consultar; la tarea periódica solo con `policy.enabled` y aplica solo en modo «apply».
@@ -1766,6 +1776,13 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
     // Origen del cobro (Stripe o simulación) desde los pedidos; sin pedidos activos, todo es simulación
     const orderStore = d.orders?.store;
     router.use("/subscriptions", createSubscriptionsRouter(svc, shadowBilling, orderStore ? (sid) => subscriptionBilling(orderStore, sid) : undefined));
+    // Facturación propia: emisor de las facturas = entidad jurídica de DF-1 (server/stripe/issuer.ts, solo lectura)
+    if (d.invoicing) {
+      const crmStore = d.crm.store;
+      const issuer = { legalName: ISSUER.legalName, taxId: ISSUER.taxId, address: `${ISSUER.address.line1}, ${ISSUER.address.line2}`, postalCode: ISSUER.address.postalCode, city: ISSUER.address.city, country: ISSUER.address.country };
+      const invoicing = new InvoicingService({ store: d.invoicing.store, external: d.external?.store, company: async (id) => (await crmStore.get("companies", id)) as CompanyFiscal | null, issuer, seriesCode: d.invoicing.seriesCode, issueEnabled: d.invoicing.issueEnabled, now: d.subscriptions.now });
+      router.use("/invoicing", createInvoicingRouter(invoicing, issuer));
+    }
     // Catálogo de comunicaciones (solo lectura) y despacho manual de las pendientes
     router.get("/notifications/catalog", requireScope("ops:read"), wrap(async (_req, res) => void res.json({ templates: catalogView() })));
     const queue = d.commercialEvents as (typeof d.commercialEvents & Partial<CommercialEventDispatchQueue>) | undefined;

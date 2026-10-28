@@ -60,6 +60,7 @@ import { stripeGateway, stripeWebhookVerifier } from "../stripe/gateway";
 import { MysqlStripeStore } from "../stripe/store";
 import { MysqlSubscriptionChangeStore } from "../stripe/changes";
 import { MysqlExternalStore } from "../external/store";
+import { MysqlInvoicingStore } from "../invoicing/store";
 import { crmPublicOrigin } from "../external/urls";
 import type { ExternalUrls } from "../external/service";
 import { internalTenantsFromEnv } from "../stripe/purchases";
@@ -510,6 +511,18 @@ async function main() {
     console.log(JSON.stringify({ ctx: "External", mounted: !!external, stripe: false, ...(!tables ? { reason: "migration_0026_missing" } : !origin ? { reason: "crm_origin_missing" } : {}) }));
   }
 
+  // Facturación propia (CRM 0027): borradores por devengo; expedir solo con CP_INVOICING_ISSUE_ENABLED=1. Mismo entorno
+  // (livemode) que los servicios externos cuyos cobros lee
+  let invoicing: { store: MysqlInvoicingStore; issueEnabled: boolean; seriesCode: string } | undefined;
+  if (crmPool && crm) {
+    const pool = crmPool;
+    const has = (t: string) => pool.query(`SELECT 1 FROM ${t} LIMIT 0`).then(() => true, () => false);
+    const tables = (await has("invoices")) && (await has("invoice_lines")) && (await has("invoice_series"));
+    const series = (process.env.CP_INVOICING_SERIES ?? "").trim().toUpperCase();
+    if (tables) invoicing = { store: new MysqlInvoicingStore(pool, external?.store.mode ?? "test"), issueEnabled: process.env.CP_INVOICING_ISSUE_ENABLED === "1", seriesCode: /^[A-Z]{1,8}$/.test(series) ? series : "EB" };
+    console.log(JSON.stringify({ ctx: "Invoicing", mounted: !!invoicing, ...(invoicing ? { issueEnabled: invoicing.issueEnabled, series: invoicing.seriesCode } : { reason: "migration_0027_missing" }) }));
+  }
+
   // API pública de captación de la web comercial: solo con CRM, orígenes explícitos y secreto propio
   const publicOrigins = (process.env.CP_PUBLIC_ORIGINS ?? "").split(",").map((x) => x.trim()).filter(Boolean);
   const publicSecret = process.env.CP_PUBLIC_FORM_SECRET ?? "";
@@ -570,6 +583,7 @@ async function main() {
     lifecycle,
     stripe,
     external,
+    invoicing,
     commercialEvents,
     leadNotices,
     notifications: notificationsFromEnv(process.env),

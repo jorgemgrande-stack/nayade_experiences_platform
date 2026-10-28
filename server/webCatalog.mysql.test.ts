@@ -13,11 +13,13 @@ import { loadMigrations, splitStatements } from "../scripts/db/migrationLib";
 const URL_ = process.env.REGISTRY_TEST_DATABASE_URL;
 const DIR = path.resolve(__dirname, "../db/crm/migrations");
 
+/** Reversión en la BD de prueba: la de la migración o, si es irreversible a propósito (p. ej. 0027, facturas), quitar lo que crea. */
+const downOf = (m: { up: string; down: string | null }) => m.down ?? Array.from(m.up.matchAll(/CREATE TABLE\s+`?(\w+)`?/gi)).map((x) => `DROP TABLE IF EXISTS ${x[1]};`).reverse().join("\n");
 async function migrate(pool: mysql.Pool, direction: "up" | "down") {
   const { migrations, errors } = loadMigrations(DIR);
   if (errors.length) throw new Error(errors.join("; "));
   const list = direction === "up" ? migrations : [...migrations].reverse();
-  for (const m of list) for (const s of splitStatements(direction === "up" ? m.up : m.down!)) await pool.query(s);
+  for (const m of list) for (const s of splitStatements(direction === "up" ? m.up : downOf(m))) await pool.query(s);
 }
 
 const plan = { name: "Business", technicalStatus: "available", activation: { kind: "plan", ref: "business" }, billingModel: "subscription", internal: { costCents: 500 } };
