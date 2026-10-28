@@ -7,6 +7,8 @@
  *   GET  /invoicing/invoices/:id/document                     billing:read   documento imprimible (HTML)
  *   POST /invoicing/generate                                  billing:write  borradores devengados y estado de cobro (idempotente)
  *   POST /invoicing/invoices/:id/issue                        billing:write  expedir (número, datos congelados, huella)
+ *   POST /invoicing/invoices/:id/rectify                      billing:write  borrador de rectificativa (total o parcial, con motivo)
+ *   GET  /invoicing/register.csv?from=&to=                    billing:read   libro registro de facturas expedidas (CSV)
  *   GET  /invoicing/charges?companyId=&status=                billing:read   cargos extraordinarios y gastos variables (CRM 0028)
  *   POST /invoicing/charges                                   billing:write  nuevo cargo en borrador (idempotente por clave)
  *   POST /invoicing/charges/:id/approve                       orders:approve aprobar: nace su factura por devengo
@@ -17,6 +19,7 @@ import { z } from "zod";
 import { getAuth, requireScope } from "../controlPlane/auth";
 import { opsLog } from "../_core/ops/log";
 import { invoiceHtml } from "./document";
+import { registerCsv } from "./register";
 import type { InvoicingService } from "./service";
 import type { ChargeService } from "./charges";
 import { InvoicingError, type FiscalParty } from "./types";
@@ -96,6 +99,20 @@ export function createInvoicingRouter(svc: InvoicingService, issuer: FiscalParty
     const rep = await svc.generateExternal(actorOf(req), b);
     opsLog("info", "Invoicing", "generated", { created: rep.created.length, existing: rep.existing, payments: rep.payments.length, warnings: rep.warnings.length });
     res.json(rep);
+  }));
+  r.post("/invoices/:id/rectify", requireScope("billing:write"), wrap(async (req, res) => {
+    const b = z.object({ reason: z.string().max(300), baseCents: z.number().int().positive().optional() }).parse(req.body ?? {});
+    const inv = await svc.rectify(id.parse(req.params.id), b, actorOf(req));
+    opsLog("info", "Invoicing", "rectification_draft", { invoiceId: inv.id, originalInvoiceId: inv.originalInvoiceId });
+    res.status(201).json({ invoice: inv });
+  }));
+  // Libro registro de facturas expedidas (CSV) por fecha de expedición
+  r.get("/register.csv", requireScope("billing:read"), wrap(async (req, res) => {
+    const q = z.object({ from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }).parse(req.query);
+    const all = await svc.list({ limit: 500 });
+    const inRange = all.filter((i) => i.issueDate && i.issueDate >= q.from && i.issueDate <= q.to);
+    res.type("text/csv; charset=utf-8").setHeader("Content-Disposition", `attachment; filename="libro-registro-facturas-${q.from}_${q.to}.csv"`);
+    res.send(registerCsv(inRange, new Map(all.map((i) => [i.id, i]))));
   }));
   r.post("/invoices/:id/issue", requireScope("billing:write"), wrap(async (req, res) => {
     const inv = await svc.issue(id.parse(req.params.id), actorOf(req));

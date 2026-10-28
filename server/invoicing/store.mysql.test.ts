@@ -98,6 +98,14 @@ describe.skipIf(!URL_)("facturación propia con MySQL real (CRM 0027)", () => {
     expect(p).toMatchObject({ status: "issued", number: inv.number, hash: inv.hash, paymentStatus: "paid", paymentRef: "stripe:in:in_1" });
   });
 
+  it("una expedida pasa a rectificada una sola vez; un borrador no", async () => {
+    const inv = (await test.list({ billingRef: "external:1", status: "issued" }))[0];
+    expect(await test.setStatus(inv.id, "rectified", T + 3)).toMatchObject({ status: "rectified", number: inv.number, hash: inv.hash });
+    await expect(test.setStatus(inv.id, "rectified", T + 4)).rejects.toMatchObject({ code: "invalid_state" });
+    const d = (await test.insertDraft(draft("2027-09"))).invoice;
+    await expect(test.setStatus(d.id, "rectified", T + 5)).rejects.toMatchObject({ code: "invalid_state" });
+  });
+
   it("la migración 0027 es irreversible a propósito (conservación legal de las facturas)", () => {
     const m = loadMigrations(DIR).migrations.find((x) => x.id === "0027_invoicing")!;
     expect(m.irreversible).toBe(true);

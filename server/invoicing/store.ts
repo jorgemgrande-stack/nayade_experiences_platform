@@ -28,6 +28,8 @@ export interface InvoicingStore {
   setPayment(id: number, p: { paymentStatus: PaymentStatus; paymentRef: string | null; paidAt: number | null }, now: number): Promise<Invoice>;
   /** Expide un borrador: número correlativo, datos congelados y huella encadenada. `invalid_state` si ya no es borrador. */
   issue(i: IssueInput): Promise<Invoice>;
+  /** Una factura expedida pasa a «rectificada» (su rectificativa total ya está expedida). */
+  setStatus(id: number, status: "rectified", now: number): Promise<Invoice>;
 }
 
 const yearOf = (date: string) => Number(date.slice(0, 4));
@@ -63,6 +65,13 @@ export class MemoryInvoicingStore implements InvoicingStore {
     const r = this.rows.find((x) => x.id === id);
     if (!r) throw new InvoicingError("not_found", "Factura no encontrada");
     Object.assign(r, p, { updatedAt: now, version: r.version + 1 });
+    return this.clone(r);
+  }
+  async setStatus(id: number, status: "rectified", now: number) {
+    const r = this.rows.find((x) => x.id === id);
+    if (!r) throw new InvoicingError("not_found", "Factura no encontrada");
+    if (r.status !== "issued") throw new InvoicingError("invalid_state", "Solo una factura expedida pasa a rectificada");
+    Object.assign(r, { status, updatedAt: now, version: r.version + 1 });
     return this.clone(r);
   }
   async issue(i: IssueInput) {
@@ -187,6 +196,11 @@ export class MysqlInvoicingStore implements InvoicingStore {
   async setPayment(id: number, p: { paymentStatus: PaymentStatus; paymentRef: string | null; paidAt: number | null }, now: number) {
     const [r] = await this.pool.query<mysql.ResultSetHeader>("UPDATE invoices SET payment_status = ?, payment_ref = ?, paid_at = ?, updated_at = ?, version = version + 1 WHERE id = ? AND livemode = ?", [p.paymentStatus, p.paymentRef, p.paidAt, now, id, this.lm]);
     if (!r.affectedRows) throw new InvoicingError("not_found", "Factura no encontrada");
+    return (await this.get(id))!;
+  }
+  async setStatus(id: number, status: "rectified", now: number) {
+    const [r] = await this.pool.query<mysql.ResultSetHeader>("UPDATE invoices SET status = ?, updated_at = ?, version = version + 1 WHERE id = ? AND livemode = ? AND status = 'issued'", [status, now, id, this.lm]);
+    if (!r.affectedRows) throw new InvoicingError("invalid_state", "Solo una factura expedida pasa a rectificada");
     return (await this.get(id))!;
   }
   async issue(i: IssueInput) {
