@@ -61,6 +61,7 @@ import { MysqlStripeStore } from "../stripe/store";
 import { MysqlSubscriptionChangeStore } from "../stripe/changes";
 import { MysqlExternalStore } from "../external/store";
 import { MysqlInvoicingStore } from "../invoicing/store";
+import { MysqlChargeStore } from "../invoicing/charges";
 import { crmPublicOrigin } from "../external/urls";
 import type { ExternalUrls } from "../external/service";
 import { internalTenantsFromEnv } from "../stripe/purchases";
@@ -513,14 +514,16 @@ async function main() {
 
   // Facturación propia (CRM 0027): borradores por devengo; expedir solo con CP_INVOICING_ISSUE_ENABLED=1. Mismo entorno
   // (livemode) que los servicios externos cuyos cobros lee
-  let invoicing: { store: MysqlInvoicingStore; issueEnabled: boolean; seriesCode: string } | undefined;
+  let invoicing: { store: MysqlInvoicingStore; issueEnabled: boolean; seriesCode: string; charges?: MysqlChargeStore } | undefined;
   if (crmPool && crm) {
     const pool = crmPool;
     const has = (t: string) => pool.query(`SELECT 1 FROM ${t} LIMIT 0`).then(() => true, () => false);
     const tables = (await has("invoices")) && (await has("invoice_lines")) && (await has("invoice_series"));
     const series = (process.env.CP_INVOICING_SERIES ?? "").trim().toUpperCase();
-    if (tables) invoicing = { store: new MysqlInvoicingStore(pool, external?.store.mode ?? "test"), issueEnabled: process.env.CP_INVOICING_ISSUE_ENABLED === "1", seriesCode: /^[A-Z]{1,8}$/.test(series) ? series : "EB" };
-    console.log(JSON.stringify({ ctx: "Invoicing", mounted: !!invoicing, ...(invoicing ? { issueEnabled: invoicing.issueEnabled, series: invoicing.seriesCode } : { reason: "migration_0027_missing" }) }));
+    const mode = external?.store.mode ?? "test";
+    const chargesReady = tables && (await has("billing_charges"));
+    if (tables) invoicing = { store: new MysqlInvoicingStore(pool, mode), issueEnabled: process.env.CP_INVOICING_ISSUE_ENABLED === "1", seriesCode: /^[A-Z]{1,8}$/.test(series) ? series : "EB", ...(chargesReady ? { charges: new MysqlChargeStore(pool, mode) } : {}) };
+    console.log(JSON.stringify({ ctx: "Invoicing", mounted: !!invoicing, ...(invoicing ? { issueEnabled: invoicing.issueEnabled, series: invoicing.seriesCode, charges: chargesReady || "migration_0028_missing" } : { reason: "migration_0027_missing" }) }));
   }
 
   // API pública de captación de la web comercial: solo con CRM, orígenes explícitos y secreto propio

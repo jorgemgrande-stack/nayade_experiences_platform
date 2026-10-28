@@ -10,6 +10,7 @@ import mysql from "mysql2/promise";
 import { loadMigrations, splitStatements } from "../../scripts/db/migrationLib";
 import { lineOf, totals } from "./rules";
 import { MysqlInvoicingStore } from "./store";
+import { MysqlChargeStore } from "./charges";
 import type { FiscalParty, NewInvoice } from "./types";
 
 const URL_ = process.env.REGISTRY_TEST_DATABASE_URL;
@@ -76,6 +77,19 @@ describe.skipIf(!URL_)("facturación propia con MySQL real (CRM 0027)", () => {
     // Otro año: otra numeración
     const n = (await test.insertDraft(draft("2027-04"))).invoice.id;
     expect((await test.issue({ id: n, seriesCode: "EB", issueDate: "2027-04-01", issuer: ISSUER, customer: PARTY, issuedBy: "x", issuedAt: T })).number).toBe("EB-2027-00001");
+  });
+
+  it("cargos (0028): idempotentes por clave, cambio optimista y entornos separados", async () => {
+    const charges = new MysqlChargeStore(pool, "test");
+    const base = { companyId: 7, kind: "variable_cost" as const, agreementRef: null, billingRef: "external:1", concept: "Telefonía", currency: "EUR", amountCents: 14_197, taxRateBp: 2100, dueDate: "2026-11-30", method: "payment_link" as const, mandateRef: null, detail: { provider: "Netelip", costCents: 12_345, marginBp: 1500 }, idempotencyKey: "k-1", createdBy: "operator:test", createdAt: T };
+    const a = await charges.insert(base);
+    expect(a.charge).toMatchObject({ status: "draft", amountCents: 14_197, detail: { provider: "Netelip", costCents: 12_345, marginBp: 1500 }, invoiceId: null, version: 1 });
+    expect(await charges.insert({ ...base, amountCents: 1 })).toMatchObject({ created: false, charge: { id: a.charge.id, amountCents: 14_197 } });
+    const u = await charges.update(a.charge.id, 1, { status: "approved", invoiceId: 42, decidedBy: "operator:jorge", decidedAt: T + 1 }, T + 1);
+    expect(u).toMatchObject({ status: "approved", invoiceId: 42, decidedBy: "operator:jorge", version: 2 });
+    await expect(charges.update(a.charge.id, 1, { status: "cancelled" }, T + 2)).rejects.toMatchObject({ code: "conflict" });
+    expect(await new MysqlChargeStore(pool, "live").get(a.charge.id)).toBeNull();
+    expect((await charges.list({ status: "approved" })).map((c) => c.id)).toEqual([a.charge.id]);
   });
 
   it("el estado de cobro va aparte y no toca lo expedido", async () => {

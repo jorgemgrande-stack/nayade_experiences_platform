@@ -100,6 +100,7 @@ import type { ExternalStore } from "../external/store";
 import { createContractAcceptanceRouter, createExternalRouter } from "../external/api";
 import { InvoicingService } from "../invoicing/service";
 import type { InvoicingStore } from "../invoicing/store";
+import { ChargeService, type ChargeStore } from "../invoicing/charges";
 import { createInvoicingRouter } from "../invoicing/api";
 import type { CompanyFiscal } from "../invoicing/rules";
 import { ISSUER } from "../stripe/issuer";
@@ -268,7 +269,7 @@ export interface ControlPlaneDeps {
    * Facturación propia (server/invoicing, CRM 0027): facturas por devengo de los servicios externos con el estado de
    * cobro leído de su historial. Sin `issueEnabled` solo prepara borradores (nunca expide).
    */
-  invoicing?: { store: InvoicingStore; issueEnabled: boolean; seriesCode: string };
+  invoicing?: { store: InvoicingStore; issueEnabled: boolean; seriesCode: string; charges?: ChargeStore };
   /**
    * Motor de transiciones temporales (server/lifecycle). Requiere `orders`. El plan (solo lectura) siempre
    * se puede consultar; la tarea periódica solo con `policy.enabled` y aplica solo en modo «apply».
@@ -1781,7 +1782,10 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
       const crmStore = d.crm.store;
       const issuer = { legalName: ISSUER.legalName, taxId: ISSUER.taxId, address: `${ISSUER.address.line1}, ${ISSUER.address.line2}`, postalCode: ISSUER.address.postalCode, city: ISSUER.address.city, country: ISSUER.address.country };
       const invoicing = new InvoicingService({ store: d.invoicing.store, external: d.external?.store, company: async (id) => (await crmStore.get("companies", id)) as CompanyFiscal | null, issuer, seriesCode: d.invoicing.seriesCode, issueEnabled: d.invoicing.issueEnabled, now: d.subscriptions.now });
-      router.use("/invoicing", createInvoicingRouter(invoicing, issuer));
+      // Cargos extraordinarios y gastos variables (CRM 0028): solo con su tabla
+      const company = async (id: number) => (await crmStore.get("companies", id)) as CompanyFiscal | null;
+      const charges = d.invoicing.charges ? new ChargeService({ charges: d.invoicing.charges, invoices: d.invoicing.store, company, now: d.subscriptions.now }) : undefined;
+      router.use("/invoicing", createInvoicingRouter(invoicing, issuer, charges));
     }
     // Catálogo de comunicaciones (solo lectura) y despacho manual de las pendientes
     router.get("/notifications/catalog", requireScope("ops:read"), wrap(async (_req, res) => void res.json({ templates: catalogView() })));
