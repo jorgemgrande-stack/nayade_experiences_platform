@@ -10,7 +10,7 @@ import {
   getShiftsByRestaurant, getAllShiftsByRestaurant, createShift, updateShift, deleteShift,
   getClosuresByRestaurant, createClosure, deleteClosure,
   getAvailability,
-  createBooking, getBookingByLocator, getBookingById, updateBooking, getBookings, getBookingsByDate,
+  createBooking, getBookingByLocator, publicBookingView, getBookingById, updateBooking, getBookings, getBookingsByDate,
   addBookingLog, getBookingLogs,
   getDashboardStats,
   getRestaurantsByUser, assignStaff, removeStaff, getStaffByRestaurant,
@@ -219,13 +219,13 @@ export const restaurantsRouter = router({
       return { locator: result.locator, depositAmount };
     }),
 
-  /** Consultar reserva por localizador */
+  /** Consultar reserva por localizador (público: solo la vista mínima, sin datos personales completos) */
   getBookingByLocator: publicProcedure
-    .input(z.object({ locator: z.string() }))
+    .input(z.object({ locator: z.string().max(20) }))
     .query(async ({ input }) => {
       const booking = await getBookingByLocator(input.locator);
       if (!booking) throw new TRPCError({ code: "NOT_FOUND" });
-      return booking;
+      return publicBookingView(booking);
     }),
 
   // ── ADMIN + ADMINREST ─────────────────────────────────────────────────────
