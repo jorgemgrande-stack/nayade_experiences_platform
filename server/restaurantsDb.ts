@@ -1,3 +1,4 @@
+import { randomInt } from "node:crypto";
 import { eq, and, gte, lte, like, or, desc, asc, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import { legacyDb } from "./_core/legacyDb";
@@ -18,8 +19,37 @@ import {
 function generateLocator(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   let code = "NR-";
-  for (let i = 0; i < 6; i++) code += chars[Math.floor(Math.random() * chars.length)];
+  for (let i = 0; i < 6; i++) code += chars[randomInt(chars.length)];
   return code;
+}
+
+/** Correo enmascarado para mostrarlo sin exponerlo: «j***@e***.com». */
+export function maskEmail(email: string | null | undefined): string | null {
+  if (!email) return null;
+  const [user, domain = ""] = email.split("@");
+  const dot = domain.lastIndexOf(".");
+  const host = dot > 0 ? domain.slice(0, dot) : domain;
+  const tld = dot > 0 ? domain.slice(dot) : "";
+  return `${user.slice(0, 1)}***@${host.slice(0, 1)}***${tld}`;
+}
+
+/**
+ * Vista PÚBLICA de una reserva (consulta por localizador, sin sesión): solo lo que muestran las páginas de
+ * resultado del pago. Nunca teléfono, alergias, peticiones, notas internas ni datos de pago; el correo, enmascarado.
+ */
+export function publicBookingView(b: RestaurantBooking) {
+  return {
+    locator: b.locator,
+    date: b.date,
+    time: b.time,
+    guests: b.guests,
+    depositAmount: b.depositAmount,
+    status: b.status,
+    paymentStatus: b.paymentStatus,
+    guestName: b.guestName,
+    guestLastName: b.guestLastName ? `${b.guestLastName.slice(0, 1)}.` : null,
+    guestEmail: maskEmail(b.guestEmail),
+  };
 }
 
 // ─── RESTAURANTS ─────────────────────────────────────────────────────────────
