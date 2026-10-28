@@ -1,7 +1,8 @@
 # CI informativo (Fase 01A-00).
 # Objetivo: medir y dejar visible el estado de calidad del repositorio SIN bloquear nada.
-#  - No fusiona, no toca la base de datos ni servicios externos. Solo despliega el job «publicar-live»: en un push a
-#    integration/elephant-source con las suites bloqueantes en verde publica en live (nunca desde main ni en production).
+#  - No fusiona, no despliega, no toca la base de datos ni servicios externos. Railway despliega live en nativo desde
+#    integration/elephant-source cuando este CI termina en verde («Wait for CI»); la verificación funcional, la marca
+#    «elephant-source/live» y la publicación en production van en publicacion.yml, al terminar Railway.
 #  - Todos los pasos de verificación usan continue-on-error: el job no falla por errores
 #    previos; el resultado de cada paso queda en el resumen del job.
 #  - No usa secretos del repositorio. Las variables de abajo son marcadores de posición.
@@ -19,7 +20,7 @@ permissions:
 
 concurrency:
   group: ci-${{ github.ref }}
-  # En integration/elephant-source no se cancela: el CI de cada fusión termina y publica en live
+  # En integration/elephant-source no se cancela: Railway espera al CI de cada fusión para desplegarla en live
   cancel-in-progress: ${{ github.ref != 'refs/heads/integration/elephant-source' }}
 
 jobs:
@@ -310,42 +311,16 @@ jobs:
       - name: Pruebas de los controles
         run: pnpm exec vitest run server/sensitiveFiles
 
-  # Publicación continua en live (docs/elephant-source/PROTOCOLO_PUBLICACION.md): cada fusión en
-  # integration/elephant-source con las suites bloqueantes en verde se publica en live y, si supera las comprobaciones
-  # funcionales, el commit queda marcado «elephant-source/live» (requisito para publicarlo en production). Nunca desde main.
-  publicar-live:
-    name: Publicar en live
+  # Lanzado a mano en integration/elephant-source (p. ej. tras fusionar solo en el CRM o la web): la misma publicación que
+  # sigue a cada despliegue nativo de Railway (publicacion.yml), sin subir el Core, que ya despliega Railway.
+  publicar:
+    name: Publicar (lanzado a mano)
     needs: [quality, core-suites, secrets]
-    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/integration/elephant-source'
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/integration/elephant-source'
     permissions:
       contents: read
       checks: read
       statuses: write
-    uses: ./.github/workflows/deploy-elephant-source.yml
-    with:
-      environment: live
-      action: publicar
-      confirm: live
-      auto: true
-    secrets: inherit
-
-  # Production ORDINARIO automático, solo tras superar live el mismo commit (Core, plano de control, pasarela y CRM).
-  # Entorno elephant-source-production-despliegue (sin aprobación, solo integration/elephant-source). Barreras en el
-  # flujo de despliegue: CI y live en verde y nada de migraciones, infraestructura, dependencias ni interruptores
-  # bloqueados; si los hay, NO publica y deja un aviso (eso va por el procedimiento protegido, con aprobación).
-  # También con workflow_dispatch del CI en integration/elephant-source (p. ej. tras fusionar solo en el CRM).
-  publicar-production:
-    name: Publicar en production (ordinario)
-    needs: [publicar-live]
-    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/integration/elephant-source'
-    permissions:
-      contents: read
-      checks: read
-      statuses: write
-    uses: ./.github/workflows/deploy-elephant-source.yml
-    with:
-      environment: production
-      action: publicar
-      confirm: production
-      auto: true
+      actions: write
+    uses: ./.github/workflows/publicacion.yml
     secrets: inherit

@@ -1,0 +1,75 @@
+# Publicación de Elephant Source con Railway como centro de despliegue (docs/elephant-source/PROCEDIMIENTO_RAILWAY.md).
+#  1. Railway despliega live en nativo (controlplane, core y core-gateway) desde integration/elephant-source cuando el CI
+#     termina en verde («Wait for CI»). GitHub ya no sube el código de live.
+#  2. Al terminar Railway (deployment_status del entorno «Elephant Source / live»), «disparar» comprueba que los tres
+#     servicios terminaron bien con ese commit y que es el último de la rama, y lanza este flujo en la rama
+#     (workflow_dispatch): la comprobación de rama y los entornos de despliegue exigen integration/elephant-source.
+#  3. «live»: comprobaciones funcionales, migraciones nuevas de live, CRM y web y la marca «elephant-source/live».
+#  4. «production»: production ordinario, solo con lo superado en live (mismas barreras que antes).
+# Tras fusionar solo en el CRM o la web: `gh workflow run ci.yml --ref integration/elephant-source` (llama a este flujo).
+name: Publicación (tras Railway)
+
+on:
+  deployment_status:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  disparar:
+    name: Railway terminó en live
+    if: github.event_name == 'deployment_status' && github.event.deployment_status.state == 'success' && github.event.deployment.environment == 'Elephant Source / live'
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: write
+      statuses: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SHA: ${{ github.event.deployment.sha }}
+    steps:
+      - name: Los tres servicios con el último commit de la rama, y lanzar la publicación
+        run: |
+          HEAD=$(gh api "repos/${GITHUB_REPOSITORY}/branches/integration/elephant-source" --jq .commit.sha)
+          if [ "${SHA}" != "${HEAD}" ]; then echo "${SHA} ya no es el último de integration/elephant-source (${HEAD}): lo publicará su propio despliegue"; exit 0; fi
+          STATES=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${SHA}/status" --jq '.statuses[] | "\(.context)|\(.state)"')
+          for S in controlplane core core-gateway; do
+            if ! printf '%s\n' "${STATES}" | grep -Fxq "Elephant Source - ${S}|success"; then echo "${S} aún no ha terminado bien con ${SHA}"; exit 0; fi
+          done
+          if printf '%s\n' "${STATES}" | grep -Fxq "elephant-source/live|success"; then echo "${SHA} ya superó live"; exit 0; fi
+          gh workflow run publicacion.yml --repo "${GITHUB_REPOSITORY}" --ref integration/elephant-source
+          echo "Publicación lanzada para ${SHA}"
+
+  live:
+    name: Publicar en live
+    if: github.event_name != 'deployment_status' && github.ref == 'refs/heads/integration/elephant-source'
+    permissions:
+      contents: read
+      checks: read
+      statuses: write
+    uses: ./.github/workflows/deploy-elephant-source.yml
+    with:
+      environment: live
+      action: publicar
+      confirm: live
+      auto: true
+    secrets: inherit
+
+  # Production ORDINARIO automático, solo tras superar live el mismo commit. Entorno elephant-source-production-despliegue
+  # (sin aprobación, solo integration/elephant-source). Lo extraordinario no se publica y deja aviso (procedimiento protegido).
+  production:
+    name: Publicar en production (ordinario)
+    needs: [live]
+    if: github.event_name != 'deployment_status' && github.ref == 'refs/heads/integration/elephant-source'
+    permissions:
+      contents: read
+      checks: read
+      statuses: write
+    uses: ./.github/workflows/deploy-elephant-source.yml
+    with:
+      environment: production
+      action: publicar
+      confirm: production
+      auto: true
+    secrets: inherit
