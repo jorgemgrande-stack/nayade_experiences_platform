@@ -910,14 +910,10 @@ async function main() {
     }
     const plan = contractMailPlan(env, vars, { recipients: accion === "estado" ? ["estado@ejemplo.invalid"] : recipients });
     if (accion === "estado") {
-      console.log(plan.problems.length ? `Falta para activar:
- - ${plan.problems.join("
- - ")}` : "Requisitos para activar el correo de contratos: cumplidos");
+      console.log(plan.problems.length ? `Falta para activar:\n - ${plan.problems.join("\n - ")}` : "Requisitos para activar el correo de contratos: cumplidos");
       return;
     }
-    if (plan.problems.length) throw new Error(`No se cambia nada:
- - ${plan.problems.join("
- - ")}`);
+    if (plan.problems.length) throw new Error(`No se cambia nada:\n - ${plan.problems.join("\n - ")}`);
     if (!plan.changes.length) return void console.log("Sin cambios: el correo de contratos ya estaba abierto para esos buzones");
     for (const c of plan.changes) {
       await api("mutation($i:VariableUpsertInput!){ variableUpsert(input:$i) }", { i: { projectId: p, environmentId: sc.environmentId, serviceId: await serviceId(c.service), name: c.name, value: c.value!, skipDeploys: true } });
