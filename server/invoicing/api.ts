@@ -2,6 +2,7 @@
  * Facturación propia (`/cp/v1/invoicing/*`, operadores del CRM). Contrato: docs/elephant-source/CONTRATO_COBROS_FACTURACION.md §5.
  *
  *   GET  /invoicing/invoices?companyId=&status=&billingRef=   billing:read   facturas (borradores y expedidas)
+ *   GET  /invoicing/fiscal-check?companyId=                   billing:read   ¿bastan los datos fiscales de la empresa para facturar?
  *   GET  /invoicing/invoices/:id                              billing:read   factura y lo que falta para expedirla
  *   GET  /invoicing/invoices/:id/document                     billing:read   documento imprimible (HTML)
  *   POST /invoicing/generate                                  billing:write  borradores devengados y estado de cobro (idempotente)
@@ -38,6 +39,7 @@ export function createInvoicingRouter(svc: InvoicingService, issuer: FiscalParty
     const q = z.object({ companyId: id.optional(), status: z.enum(["draft", "issued", "rectified"]).optional(), billingRef: z.string().max(80).optional() }).parse(req.query);
     res.json({ invoices: await svc.list(q) });
   }));
+  r.get("/fiscal-check", requireScope("billing:read"), wrap(async (req, res) => void res.json(await svc.fiscalCheck(z.object({ companyId: id }).parse(req.query).companyId))));
   r.get("/invoices/:id", requireScope("billing:read"), wrap(async (req, res) => void res.json(await svc.readiness(id.parse(req.params.id)))));
   r.get("/invoices/:id/document", requireScope("billing:read"), wrap(async (req, res) => {
     const inv = await svc.must(id.parse(req.params.id));

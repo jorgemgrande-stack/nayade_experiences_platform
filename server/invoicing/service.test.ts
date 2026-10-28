@@ -157,6 +157,16 @@ describe("expedición", () => {
   });
 });
 
+describe("datos fiscales de la empresa", () => {
+  it("Nextair con los datos confirmados está lista; sin domicilio, no; la emisión real se indica aparte", async () => {
+    const ok = setup({ company: { name: "Nextair", legalName: "NEXTAIR SL", taxId: "B16408031", address: "C/ José Luis Pérez Pujadas, Ed. Forum, 14, 1º D", postalCode: "18006", city: "Granada", country: "ES" }, issueEnabled: false });
+    expect(await ok.svc.fiscalCheck(7)).toEqual({ ready: true, problems: [], issueEnabled: false });
+    const ko = setup({ company: { ...NEXTAIR, address: null } });
+    expect(await ko.svc.fiscalCheck(7)).toMatchObject({ ready: false, problems: ["falta el domicilio fiscal"] });
+    await expect(setup({ company: null }).svc.fiscalCheck(7)).rejects.toMatchObject({ code: "not_found" });
+  });
+});
+
 describe("reglas fiscales", () => {
   it("NIF: CIF, DNI y NIE con control; con prefijo ES", () => {
     expect(isValidSpanishTaxId("B26987875")).toBe(true);
