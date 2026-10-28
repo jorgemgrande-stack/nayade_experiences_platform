@@ -48,3 +48,48 @@ describe("dominio público del CRM para la aceptación", () => {
     expect(crmPublicOrigin({})).toBeNull();
   });
 });
+
+describe("servicios externos: envío del contrato por correo", () => {
+  const setup = async (mail?: ConstructorParameters<typeof ExternalService>[0]["mail"]) => {
+    const crmStore = new MemoryCrmStore();
+    const crm = new CrmService({ store: crmStore, now: () => T });
+    const store = new MemoryExternalStore("test");
+    const svc = new ExternalService({ store, crm, crmStore, mode: "test", namespace: "beta", urls, mail, now: () => T });
+    const c = await crm.createCompany({ name: "Nextair", legalName: "Nextair SL" }, "operator:test");
+    const x = await svc.create({ companyId: c.id, service: { key: "skinet", name: "SkiNet" }, amountCents: 100_000, taxRateBp: 2100, firstChargeDate: "2026-11-01", conditions: "Condiciones del servicio de prueba suficientemente largas." }, "operator:test");
+    return { svc, store, x };
+  };
+  const signer = { name: "Laura Representante", email: "Laura@Nextair.example", role: "Administradora" };
+
+  it("envía la invitación al representante con su enlace; reenviar crea otro enlace y otro correo; queda en el historial", async () => {
+    const sent: Array<{ to: string; key: string; url: string; companyName: string; amountCents: number }> = [];
+    const notices: string[] = [];
+    const { svc, store, x } = await setup({
+      invite: async (to, key, i) => (sent.push({ to, key, url: i.url, companyName: i.companyName, amountCents: i.amountCents }), { status: "pending", reason: null, duplicate: false }),
+      opsNotice: async (_k, title) => void notices.push(title),
+    });
+    const a = await svc.requestAcceptance(x.id, signer, "operator:test", { send: true });
+    expect(a.mail).toEqual({ status: "pending", reason: null });
+    expect(sent).toEqual([{ to: "laura@nextair.example", key: `contract-invite:beta:${a.acceptanceId}`, url: a.url, companyName: "Nextair SL", amountCents: 100_000 }]);
+    const b = await svc.requestAcceptance(x.id, signer, "operator:test", { send: true });
+    expect(sent.map((s) => s.url)).toEqual([a.url, b.url]);
+    expect(b.url).not.toBe(a.url);
+    // Solo el último enlace sirve
+    await expect(svc.accept(new URL(a.url).searchParams.get("token")!, { name: "Laura Representante", accept: true }, { ip: null, userAgent: null })).rejects.toMatchObject({ code: "invalid_state" });
+    await svc.accept(new URL(b.url).searchParams.get("token")!, { name: "Laura Representante", accept: true }, { ip: null, userAgent: null });
+    expect(notices).toEqual(["Contrato aceptado: Nextair SL · SkiNet"]);
+    const ev = (await store.events(x.id)).filter((e) => e.kind === "acceptance_email");
+    expect(ev.map((e) => [e.ref, e.detail?.status])).toEqual([[String(a.acceptanceId), "pending"], [String(b.acceptanceId), "pending"]]);
+  });
+
+  it("sin envío o sin correo configurado: el enlace se entrega al operador y el fallo de correo no rompe la contratación", async () => {
+    const plain = await setup();
+    expect((await plain.svc.requestAcceptance(plain.x.id, signer, "operator:test")).mail).toBeNull();
+    const none = await setup();
+    expect((await none.svc.requestAcceptance(none.x.id, signer, "operator:test", { send: true })).mail).toMatchObject({ status: "unavailable" });
+    const broken = await setup({ invite: async () => { throw new Error("proveedor caído"); } });
+    const r = await broken.svc.requestAcceptance(broken.x.id, signer, "operator:test", { send: true });
+    expect(r.mail).toEqual({ status: "failed", reason: "proveedor caído" });
+    expect(r.url).toMatch(/token=/);
+  });
+});

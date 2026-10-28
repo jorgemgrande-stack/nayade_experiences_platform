@@ -55,7 +55,30 @@ export interface ExternalDeps {
    * abre la autorización del método de pago ni se crea ninguna suscripción: nunca se cobra de verdad por accidente.
    */
   liveEnabled?: boolean;
+  /**
+   * Correo de plataforma (server/mail): invitación al representante con su enlace y aviso interno de la aceptación. Sin
+   * él, el enlace se entrega solo al operador. Lo que llega de verdad lo decide la política de correo del entorno.
+   */
+  mail?: ExternalMail;
   now?: () => number;
+}
+
+export interface ContractInvitation {
+  companyName: string;
+  serviceName: string;
+  signerName: string;
+  url: string;
+  expiresAt: number;
+  amountCents: number;
+  taxRateBp: number;
+  currency: string;
+  firstChargeAt: number;
+}
+export interface ExternalMail {
+  /** Encola la invitación (idempotente por clave). `status`: el de la bandeja de salida (queued, suppressed…). */
+  invite(to: string, idempotencyKey: string, i: ContractInvitation): Promise<{ status: string; reason: string | null; duplicate: boolean }>;
+  /** Aviso interno al equipo (sin enlaces con token). */
+  opsNotice?(key: string, title: string, lines: string[]): Promise<void>;
 }
 
 export interface CreateExternalInput {
@@ -209,7 +232,7 @@ export class ExternalService {
   // ── 2. Aceptación digital ──────────────────────────────────────────────────
 
   /** Prepara (o renueva) el enlace de aceptación para el representante. Revoca los enlaces anteriores sin usar. */
-  async requestAcceptance(id: number, signer: { name: string; email: string; role?: string | null; taxId?: string | null }, actor: string) {
+  async requestAcceptance(id: number, signer: { name: string; email: string; role?: string | null; taxId?: string | null }, actor: string, opts: { send?: boolean } = {}) {
     const x = await this.must(id);
     if (x.status !== "awaiting_acceptance") throw new ExternalError("invalid_state", "El contrato ya está aceptado");
     const name = String(signer.name ?? "").trim();
@@ -243,7 +266,23 @@ export class ExternalService {
       createdAt: now,
     });
     await this.d.store.event({ externalId: x.id, kind: "acceptance_requested", ref: String(a.id), detail: { signerEmail: email, version: doc.version, documentSha256: doc.sha256 }, actor, at: now });
-    return { acceptanceId: a.id, url: `${this.d.urls.acceptance}?token=${token}`, expiresAt: a.expiresAt, documentSha256: doc.sha256, version: doc.version };
+    const url = `${this.d.urls.acceptance}?token=${token}`;
+    // Envío por correo al representante: una invitación por enlace (reenviar = enlace nuevo, que revoca el anterior)
+    let mail: { status: string; reason: string | null } | null = null;
+    if (opts.send) {
+      if (!this.d.mail) mail = { status: "unavailable", reason: "El correo de plataforma no está configurado en este entorno" };
+      else {
+        try {
+          const r = await this.d.mail.invite(email, `contract-invite:${this.d.namespace}:${a.id}`, { companyName: doc.company.legalName ?? doc.company.name, serviceName: x.serviceName, signerName: name, url, expiresAt: a.expiresAt, amountCents: x.amountCents, taxRateBp: x.taxRateBp, currency: x.currency, firstChargeAt: x.firstChargeAt });
+          mail = { status: r.status, reason: r.reason };
+        } catch (e) {
+          mail = { status: "failed", reason: (e instanceof Error ? e.message : "error").slice(0, 200) };
+        }
+      }
+      await this.d.store.event({ externalId: x.id, kind: "acceptance_email", ref: String(a.id), detail: { to: email, status: mail.status, reason: mail.reason }, actor, at: this.now() });
+      if (!["pending", "sending", "accepted", "delivered"].includes(mail.status)) opsLog("warn", "External", "acceptance_email_not_sent", { externalId: x.id, acceptanceId: a.id, status: mail.status });
+    }
+    return { acceptanceId: a.id, url, expiresAt: a.expiresAt, documentSha256: doc.sha256, version: doc.version, mail };
   }
 
   private async pendingByToken(token: string) {
@@ -295,6 +334,15 @@ export class ExternalService {
     await this.d.store.update(cur.id, cur.version, { status: "awaiting_payment_method" }, now);
     await this.d.store.event({ externalId: x.id, kind: "accepted", ref: String(a.id), detail: { acceptedName: name, version: doc.version, documentSha256: doc.sha256 }, actor: "public:acceptance", at: now });
     await this.d.crm.log("contract", x.contractId, "note", `Contrato aceptado electrónicamente por ${name} (versión ${doc.version}, huella ${doc.sha256.slice(0, 16)}…)`, "public:acceptance");
+    // Aviso interno: el siguiente paso (enlace de autorización del método de pago) lo da el equipo
+    if (this.d.mail?.opsNotice) {
+      await this.d.mail
+        .opsNotice(`external-accepted:${this.d.namespace}:${a.id}`, `Contrato aceptado: ${doc.company.legalName ?? doc.company.name} · ${x.serviceName}`, [
+          `${name} ha aceptado el contrato de ${x.serviceName} para ${doc.company.legalName ?? doc.company.name} (versión ${doc.version}).`,
+          "Siguiente paso: generar el enlace de autorización del método de pago desde la contratación.",
+        ])
+        .catch(() => opsLog("warn", "External", "accepted_notice_failed", { externalId: x.id }));
+    }
     return { accepted: true, version: doc.version, documentSha256: doc.sha256, acceptedAt: now };
   }
 

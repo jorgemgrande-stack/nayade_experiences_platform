@@ -274,6 +274,20 @@ export function platformTemplates(o: PlatformTemplateOptions = {}) {
       const head = i.status === "accepted" ? "Hemos aceptado tu desistimiento." : i.status === "completed" ? "Hemos completado tu desistimiento." : "Hemos revisado tu solicitud de desistimiento y no podemos aceptarla.";
       return layout(b, `Tu desistimiento · ${i.reference}`, [head, ...(i.note ? [i.note] : []), "Si tienes cualquier duda, responde a este correo indicando la referencia."]);
     },
+    /**
+     * Invitación al representante para revisar y aceptar el contrato de un servicio. El enlace es personal, de un solo
+     * uso y caduca; aceptar no autoriza ningún cobro (la autorización del método de pago es un paso posterior).
+     */
+    contractInvitation(i: { companyName: string; serviceName: string; signerName: string; url: string; expiresAt: number; amountCents: number; taxRateBp: number; currency: string; firstChargeAt: number }) {
+      const tax = Math.round((i.amountCents * i.taxRateBp) / 10_000);
+      return layout(b, `Contrato de ${i.serviceName} para ${i.companyName}`, [
+        `Hola, ${i.signerName}:`,
+        `Te enviamos el contrato de ${i.serviceName} para ${i.companyName}, para que lo revises y, si estás de acuerdo, lo aceptes en línea.`,
+        `Cuota: ${fmtMoney(i.amountCents, i.currency)} + IVA ${fmtMoney(tax, i.currency)} = ${fmtMoney(i.amountCents + tax, i.currency)} al mes. Primer vencimiento: ${fmtDate(i.firstChargeAt)}.`,
+        "Aceptar el contrato no autoriza ningún cobro: después te enviaremos un enlace aparte para registrar el método de pago en Stripe, sin cargo en ese momento.",
+        `El enlace es personal, solo sirve una vez y caduca el ${fmtDate(i.expiresAt)}. Si no esperabas este correo, ignóralo.`,
+      ], { label: "Revisar y aceptar el contrato", url: i.url });
+    },
     /** Aviso INTERNO al equipo (incidencias, nuevos clientes, desistimientos, tickets). Sin datos sensibles ni enlaces con token. */
     opsNotice(i: { title: string; lines: string[] }) {
       return layout(b, `[Elephant Source] ${i.title}`, [...i.lines, "Aviso interno del equipo de Elephant Source. Revisa el detalle en el panel de operaciones."]);

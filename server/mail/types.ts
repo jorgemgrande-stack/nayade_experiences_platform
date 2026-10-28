@@ -66,6 +66,8 @@ export type MailCategory =
   | "refund_recorded"
   | "billing_incident"
   | "quote_sent"
+  // Invitación a revisar y aceptar el contrato de un servicio (server/external): solo al representante indicado
+  | "contract_invitation"
   | "operational"
   // Aviso INTERNO al equipo comercial de una solicitud nueva de la web (server/crm/leadNotices.ts)
   | "lead_request_notice"
