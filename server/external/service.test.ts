@@ -93,3 +93,38 @@ describe("servicios externos: envío del contrato por correo", () => {
     expect(r.url).toMatch(/token=/);
   });
 });
+
+describe("servicios externos: estado del correo de cada enlace", () => {
+  it("sin envío, «solo enlace»; con envío, el estado actual del mensaje (entregado tras el evento del proveedor) o el motivo del bloqueo", async () => {
+    const crmStore = new MemoryCrmStore();
+    const crm = new CrmService({ store: crmStore, now: () => T });
+    const store = new MemoryExternalStore("test");
+    const outbox = new Map<number, { status: string; reason: string | null }>();
+    let next = 1;
+    const svc = new ExternalService({
+      store, crm, crmStore, mode: "test", namespace: "beta", urls, now: () => T,
+      mail: {
+        invite: async (to) => {
+          const id = next++;
+          const blocked = to.endsWith("@bloqueado.example");
+          outbox.set(id, blocked ? { status: "skipped", reason: "sandbox_recipient_not_allowed" } : { status: "pending", reason: null });
+          return { ...outbox.get(id)!, duplicate: false, id };
+        },
+        status: async (id) => outbox.get(id) ?? null,
+      },
+    });
+    const c = await crm.createCompany({ name: "Nextair", legalName: "NEXTAIR SL" }, "operator:test");
+    const x = await svc.create({ companyId: c.id, service: { key: "skinet", name: "SkiNet" }, amountCents: 100_000, taxRateBp: 2100, firstChargeDate: "2026-11-01", conditions: "Condiciones del servicio de prueba suficientemente largas." }, "operator:test");
+    await svc.requestAcceptance(x.id, { name: "Laura Representante", email: "laura@bloqueado.example" }, "operator:test", { send: true });
+    let d = await svc.detail(x.id);
+    expect(d.acceptances[0].mail).toEqual({ status: "skipped", reason: "sandbox_recipient_not_allowed", to: "laura@bloqueado.example" });
+    await svc.requestAcceptance(x.id, { name: "Laura Representante", email: "laura@nextair.example" }, "operator:test", { send: true });
+    outbox.set(2, { status: "delivered", reason: null });
+    d = await svc.detail(x.id);
+    const latest = d.acceptances.find((a) => a.status === "pending")!;
+    expect(latest.mail).toEqual({ status: "delivered", reason: null, to: "laura@nextair.example" });
+    await svc.requestAcceptance(x.id, { name: "Laura Representante", email: "laura@nextair.example" }, "operator:test");
+    d = await svc.detail(x.id);
+    expect(d.acceptances.find((a) => a.status === "pending")!.mail).toBeNull();
+  });
+});

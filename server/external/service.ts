@@ -76,8 +76,10 @@ export interface ContractInvitation {
   firstChargeAt: number;
 }
 export interface ExternalMail {
+  /** Estado actual de un mensaje de la bandeja (entregado, rebotado…). */
+  status?(outboxId: number): Promise<{ status: string; reason: string | null } | null>;
   /** Encola la invitación (idempotente por clave). `status`: el de la bandeja de salida (queued, suppressed…). */
-  invite(to: string, idempotencyKey: string, i: ContractInvitation): Promise<{ status: string; reason: string | null; duplicate: boolean }>;
+  invite(to: string, idempotencyKey: string, i: ContractInvitation): Promise<{ status: string; reason: string | null; duplicate: boolean; id?: number | null }>;
   /** Aviso interno al equipo (sin enlaces con token). */
   opsNotice?(key: string, title: string, lines: string[]): Promise<void>;
 }
@@ -269,18 +271,18 @@ export class ExternalService {
     await this.d.store.event({ externalId: x.id, kind: "acceptance_requested", ref: String(a.id), detail: { signerEmail: email, version: doc.version, documentSha256: doc.sha256 }, actor, at: now });
     const url = `${this.d.urls.acceptance}?token=${token}`;
     // Envío por correo al representante: una invitación por enlace (reenviar = enlace nuevo, que revoca el anterior)
-    let mail: { status: string; reason: string | null } | null = null;
+    let mail: { status: string; reason: string | null; outboxId?: number } | null = null;
     if (opts.send) {
       if (!this.d.mail) mail = { status: "unavailable", reason: "El correo de plataforma no está configurado en este entorno" };
       else {
         try {
           const r = await this.d.mail.invite(email, `contract-invite:${this.d.namespace}:${a.id}`, { companyName: doc.company.legalName ?? doc.company.name, serviceName: x.serviceName, signerName: name, url, expiresAt: a.expiresAt, amountCents: x.amountCents, taxRateBp: x.taxRateBp, currency: x.currency, firstChargeAt: x.firstChargeAt });
-          mail = { status: r.status, reason: r.reason };
+          mail = { status: r.status, reason: r.reason, ...(r.id ? { outboxId: r.id } : {}) };
         } catch (e) {
           mail = { status: "failed", reason: (e instanceof Error ? e.message : "error").slice(0, 200) };
         }
       }
-      await this.d.store.event({ externalId: x.id, kind: "acceptance_email", ref: String(a.id), detail: { to: email, status: mail.status, reason: mail.reason }, actor, at: this.now() });
+      await this.d.store.event({ externalId: x.id, kind: "acceptance_email", ref: String(a.id), detail: { to: email, status: mail.status, reason: mail.reason, outboxId: mail.outboxId ?? null }, actor, at: this.now() });
       if (!["pending", "sending", "accepted", "delivered"].includes(mail.status)) opsLog("warn", "External", "acceptance_email_not_sent", { externalId: x.id, acceptanceId: a.id, status: mail.status });
     }
     return { acceptanceId: a.id, url, expiresAt: a.expiresAt, documentSha256: doc.sha256, version: doc.version, mail };
@@ -608,9 +610,29 @@ export class ExternalService {
       monthly: { net: x.amountCents, tax: taxCents(x), total: x.amountCents + taxCents(x) },
       contract: doc ? { id: doc.contract.id, reference: doc.contract.reference, status: doc.contract.status, version: doc.version, signatureMethod: doc.contract.signatureMethod, signedAt: doc.contract.signedAt } : null,
       documentSha256: doc?.sha256 ?? null,
-      acceptances: (await this.d.store.acceptances(x.contractId)).map(({ acceptedIpHash: _ip, ...a }) => a),
+      acceptances: await this.acceptancesWithMail(x),
       events: await this.d.store.events(x.id),
     };
+  }
+
+  /**
+   * Enlaces de aceptación con el estado de su correo: sin envío (solo enlace), el que dio la bandeja al encolarlo o el
+   * actual del mensaje (aceptado por el proveedor, entregado, rebotado…), que actualizan los eventos del proveedor.
+   */
+  private async acceptancesWithMail(x: ExternalSubscription) {
+    const sends = (await this.d.store.events(x.id)).filter((e) => e.kind === "acceptance_email");
+    const out = [];
+    for (const { acceptedIpHash: _ip, ...a } of await this.d.store.acceptances(x.contractId)) {
+      const e = sends.filter((s) => s.ref === String(a.id)).pop();
+      let mail: { status: string; reason: string | null; to: string | null } | null = null;
+      if (e) {
+        const outboxId = Number(e.detail?.outboxId ?? 0);
+        const live = outboxId && this.d.mail?.status ? await this.d.mail.status(outboxId).catch(() => null) : null;
+        mail = { status: live?.status ?? String(e.detail?.status ?? "unknown"), reason: live ? live.reason : ((e.detail?.reason as string | null) ?? null), to: (e.detail?.to as string | null) ?? null };
+      }
+      out.push({ ...a, mail });
+    }
+    return out;
   }
 
   list(f: { companyId?: number; status?: string } = {}) {
