@@ -21,6 +21,20 @@ import { recordFailure } from "../_core/ops/failureAlerts";
 import { StripeGatewayError } from "../stripe/gateway";
 import { ExternalError } from "./types";
 import type { ExternalService } from "./service";
+import { DEFAULT_LOGO_URL, fetchBrandLogo } from "../documents/brandPdf";
+import { CONTRACT_CSS, contractBodyHtml, contractHeaderHtml, contractIssuer, contractPageHtml, renderContractPdf } from "./presentation";
+
+type Presentation = Awaited<ReturnType<ExternalService["presentation"]>>;
+const madrid = (ms: number) => new Date(ms).toLocaleString("es-ES", { timeZone: "Europe/Madrid", dateStyle: "long", timeStyle: "short" });
+/** Recuadro de aceptación del PDF del operador: aceptado (con la evidencia) o pendiente. */
+function acceptanceBox(p: Presentation): { title: string; lines: string[] } {
+  if (p.accepted?.acceptedAt) return { title: "Aceptado electrónicamente", lines: [`Aceptado por ${p.accepted.acceptedName ?? p.accepted.signerName} el ${madrid(p.accepted.acceptedAt)} (versión ${p.view.version}).`, ...(p.view.declaration ? [p.view.declaration] : [])] };
+  return { title: "Aceptación electrónica pendiente", lines: [p.view.signer ? `Firmante previsto: ${p.view.signer.name}${p.view.signer.role ? ` · ${p.view.signer.role}` : ""}.` : "Aún no se ha enviado el enlace de aceptación.", ...(p.view.declaration ? [p.view.declaration] : [])] };
+}
+function acceptanceSummaryHtml(p: Presentation): string {
+  const b = acceptanceBox(p);
+  return `<section class="accept"><h3>${esc(b.title)}</h3>${b.lines.map((l) => `<p>${esc(l)}</p>`).join("")}</section>`;
+}
 
 const STATUS: Record<ExternalError["code"], number> = { not_found: 404, invalid_input: 400, invalid_state: 409, conflict: 409, unavailable: 503 };
 
@@ -78,6 +92,18 @@ export function createExternalRouter(svc: ExternalService): Router {
     const doc = await svc.document(d.external);
     res.json({ text: doc.text, sha256: doc.sha256, version: doc.version });
   }));
+  // Presentación corporativa del documento registrado: HTML (vista previa) y PDF, con el mismo texto y huella
+  r.get("/:id/document.html", requireScope("crm:read"), wrap(async (req, res) => {
+    const p = await svc.presentation(id(req));
+    res.setHeader("Content-Security-Policy", `default-src 'none'; style-src 'unsafe-inline'; img-src ${new URL(DEFAULT_LOGO_URL).origin}; base-uri 'none'`);
+    res.setHeader("Cache-Control", "no-store");
+    res.type("html").send(contractPageHtml(p.view, { raw: p.text, acceptance: acceptanceSummaryHtml(p) }));
+  }));
+  r.get("/:id/document.pdf", requireScope("crm:read"), wrap(async (req, res) => {
+    const p = await svc.presentation(id(req));
+    const pdf = await renderContractPdf(p.view, { logoPng: await fetchBrandLogo(), acceptance: acceptanceBox(p) });
+    sendPdf(res, pdf, `${p.view.reference}-v${p.view.version}.pdf`);
+  }));
   r.post("/:id/acceptance", requireScope("orders:write"), wrap(async (req, res) => {
     const { send, ...signer } = z.object({ name: z.string().max(160), email: z.string().max(254), role: z.string().max(120).nullable().optional(), taxId: z.string().max(32).nullable().optional(), send: z.boolean().optional() }).strict().parse(req.body ?? {});
     res.status(201).json({ acceptance: await svc.requestAcceptance(id(req), signer, actor(req), { send: send === true }) });
@@ -94,8 +120,11 @@ export function createExternalRouter(svc: ExternalService): Router {
 // ── Página pública de aceptación (sin scripts: formulario HTML) ───────────────
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
-const page = (title: string, body: string) =>
-  `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>${esc(title)}</title><style>body{font:16px/1.5 system-ui,sans-serif;max-width:760px;margin:0 auto;padding:24px 16px;color:#1b1b1b;background:#fff}pre{white-space:pre-wrap;background:#f6f6f4;border:1px solid #ddd;padding:16px;border-radius:8px;font:14px/1.5 ui-monospace,monospace}label{display:block;margin:12px 0}input[type=text]{width:100%;padding:8px;font:inherit;box-sizing:border-box}button{padding:10px 18px;font:inherit;background:#1b1b1b;color:#fff;border:0;border-radius:6px;cursor:pointer}.muted{color:#666;font-size:14px}.ok{background:#eef8ee;border:1px solid #9c9;padding:16px;border-radius:8px}.err{background:#fdf0f0;border:1px solid #d99;padding:16px;border-radius:8px}</style></head><body>${body}</body></html>`;
+/** Página corporativa (logotipo, prestador y estilos del contrato) con el cuerpo ya maquetado. */
+const docPage = (title: string, body: string) =>
+  `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>${esc(title)}</title><style>${CONTRACT_CSS}</style></head><body>${body}<footer class="site">Big Elephant · ${esc(contractIssuer().legalName)}</footer></body></html>`;
+/** Mensajes sencillos (aceptado, error, vueltas de Stripe) con la misma imagen corporativa. */
+const page = (title: string, body: string) => docPage(title, `<div class="doc"><article class="sheet">${contractHeaderHtml()}<div style="margin-top:24px">${body}</div></article></div>`);
 
 function send(res: Response, status: number, html: string) {
   res.status(status);
@@ -103,8 +132,19 @@ function send(res: Response, status: number, html: string) {
   res.setHeader("Cache-Control", "no-store");
   res.setHeader("Referrer-Policy", "no-referrer");
   res.setHeader("X-Frame-Options", "DENY");
-  res.setHeader("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'");
+  // Solo el logotipo oficial como recurso externo; ni scripts ni otros orígenes
+  res.setHeader("Content-Security-Policy", `default-src 'none'; style-src 'unsafe-inline'; img-src ${new URL(DEFAULT_LOGO_URL).origin}; form-action 'self'; base-uri 'none'; frame-ancestors 'none'`);
   res.send(html);
+}
+
+function sendPdf(res: Response, pdf: Uint8Array, filename: string) {
+  res.status(200);
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", `attachment; filename="${filename.replace(/[^A-Za-z0-9._-]/g, "_")}"`);
+  res.setHeader("Cache-Control", "no-store");
+  res.setHeader("Referrer-Policy", "no-referrer");
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.send(Buffer.from(pdf));
 }
 
 export function createContractAcceptanceRouter(svc: ExternalService): Router {
@@ -123,26 +163,24 @@ export function createContractAcceptanceRouter(svc: ExternalService): Router {
     const token = String(req.query.token ?? "");
     svc
       .viewAcceptance(token)
-      .then((v) =>
-        send(
-          res,
-          200,
-          page(
-            "Aceptación del contrato",
-            `<h1>Aceptación del contrato</h1><p>Cliente: <strong>${esc(v.company)}</strong>. Firmante: <strong>${esc(v.signerName)}</strong>${v.signerRole ? ` (${esc(v.signerRole)})` : ""}.</p>
-<pre>${esc(v.document)}</pre>
-<p class="muted">Versión ${v.version} · huella SHA-256 del documento: <code>${esc(v.documentSha256)}</code></p>
+      .then(async (v) => {
+        // PDF del mismo documento (texto, versión y huella), con el firmante y la aceptación pendiente
+        if (req.query.pdf === "1") {
+          const pdf = await renderContractPdf(v.view, { logoPng: await fetchBrandLogo(), acceptance: { title: "Aceptación electrónica pendiente", lines: [v.declaration, `Enlace personal para ${v.signerName}, válido hasta el ${new Date(v.expiresAt).toLocaleDateString("es-ES", { timeZone: "Europe/Madrid" })}. Aceptar el contrato no autoriza ningún cobro.`] } });
+          return sendPdf(res, pdf, `${v.view.reference}-v${v.version}.pdf`);
+        }
+        const form = `<section class="accept" id="aceptar"><h3>Aceptación y autorización de cobros recurrentes</h3>
+<p>Firmante: <strong>${esc(v.signerName)}</strong>${v.signerRole ? ` · ${esc(v.signerRole)}` : ""}, en nombre de <strong>${esc(v.company)}</strong>.</p>
 <form method="post" action="">
 <input type="hidden" name="token" value="${esc(token)}">
 <label>Nombre completo<input type="text" name="name" required maxlength="160" autocomplete="name"></label>
 <label>NIF del firmante (opcional)<input type="text" name="taxId" maxlength="32"></label>
-<label><input type="checkbox" name="accept" value="1" required> ${esc(v.declaration)}</label>
-<p class="muted">Aceptar el contrato no autoriza ningún cobro: después recibirás un enlace seguro de Stripe para autorizar el método de pago.</p>
-<button type="submit">Aceptar el contrato</button>
-</form>`,
-          ),
-        ),
-      )
+<label class="check"><input type="checkbox" name="accept" value="1" required><span>${esc(v.declaration)}</span></label>
+<p class="muted">Aceptar el contrato no autoriza ningún cobro: después recibirás un enlace seguro de Stripe para autorizar el método de pago, sin cargo en ese momento. Los cobros recurrentes empezarán en la fecha indicada en el contrato.</p>
+<div class="actions"><button class="btn" type="submit">Aceptar el contrato</button><a class="btn ghost" href="?token=${encodeURIComponent(token)}&amp;pdf=1">Descargar PDF</a></div>
+</form></section>`;
+        send(res, 200, docPage("Aceptación del contrato", contractBodyHtml(v.view, { acceptance: form, raw: v.document })));
+      })
       .catch((e) => fail(res, e));
   });
   r.post("/", express.urlencoded({ extended: false, limit: "8kb" }), (req, res) => {

@@ -25,6 +25,7 @@ import type { StripeMode } from "../stripe/config";
 import type { GwCharge, GwInvoice, GwSubscription, StripeGateway } from "../stripe/gateway";
 import type { StripeStore } from "../stripe/store";
 import { billingTerms, renderContract, sha256, taxCents } from "./document";
+import { contractView } from "./presentation";
 import { chargeInstant, graceEnd, localDate, periodLabel } from "./schedule";
 import type { ExternalStore } from "./store";
 import { ExternalError, type ContractAcceptance, type ExternalStatus, type ExternalSubscription } from "./types";
@@ -306,7 +307,23 @@ export class ExternalService {
   /** Lo que ve el firmante: el documento exacto, su huella y la declaración que debe confirmar. */
   async viewAcceptance(token: string) {
     const { a, x, doc } = await this.pendingByToken(token);
-    return { signerName: a.signerName, signerRole: a.signerRole, company: doc.company.legalName ?? doc.company.name, document: doc.text, documentSha256: doc.sha256, version: doc.version, declaration: this.declaration(x, a), expiresAt: a.expiresAt };
+    const declaration = this.declaration(x, a);
+    const view = contractView(doc.text, { sha256: doc.sha256, reference: doc.contract.reference ?? `#${doc.contract.id}`, version: doc.version, external: x, signer: { name: a.signerName, role: a.signerRole }, declaration });
+    return { signerName: a.signerName, signerRole: a.signerRole, company: doc.company.legalName ?? doc.company.name, document: doc.text, documentSha256: doc.sha256, version: doc.version, declaration, expiresAt: a.expiresAt, view };
+  }
+
+  /**
+   * Presentación corporativa del documento registrado para el operador (mismo texto, versión y huella), con el
+   * firmante del último enlace y el estado de la aceptación.
+   */
+  async presentation(id: number) {
+    const x = await this.must(id);
+    const doc = await this.document(x);
+    const acc = (await this.d.store.acceptances(doc.contract.id)).sort((p, q) => q.createdAt - p.createdAt);
+    const accepted = acc.find((a) => a.status === "accepted" && a.documentSha256 === doc.sha256) ?? null;
+    const last = accepted ?? acc.find((a) => a.status === "pending") ?? null;
+    const view = contractView(doc.text, { sha256: doc.sha256, reference: doc.contract.reference ?? `#${doc.contract.id}`, version: doc.version, external: x, signer: last ? { name: last.signerName, role: last.signerRole } : null, declaration: last ? this.declaration(x, last) : null });
+    return { view, text: doc.text, accepted };
   }
 
   private declaration(x: ExternalSubscription, a: Pick<ContractAcceptance, "signerName">) {
