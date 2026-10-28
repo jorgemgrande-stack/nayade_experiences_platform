@@ -5,6 +5,7 @@
 import type { Entitlement } from "../modules/entitlements";
 import type { Quota, UsageStore } from "../erm/types";
 import { windowStart } from "../erm/quota";
+import { collectorStatus } from "../erm/insights";
 import type { TenantRegistryReader } from "../tenantRegistry/store";
 import type { IncidentService } from "./incidents";
 
@@ -19,6 +20,8 @@ export interface AlertDeps {
   /** Tenants con alta fallida. */
   failedProvisioning?: () => Promise<string[]>;
   now?: () => number;
+  /** Horas sin consumo registrado de NINGUNA empresa para dar la medición por caída (por defecto 12 h; crítico al doble). */
+  ermStaleHours?: number;
   /** Antigüedad máxima de un respaldo (por defecto 36 h; crítico al doble). */
   backupMaxAgeMs?: number;
   /**
@@ -136,6 +139,24 @@ export async function runAlerts(d: AlertDeps): Promise<AlertRunResult> {
     }
   }
 
+  // Medición del Resource Manager: si ninguna empresa en servicio registra consumo en muchas horas, el recolector o su
+  // base de datos están caídos (sin esta alerta, el consumo dejaría de verse sin que nadie lo supiera)
+  if (d.usage) {
+    const live = tenants.filter((t) => t.status === "active" || t.status === "trial" || t.status === "grace").map((t) => t.id);
+    if (live.length) {
+      const ages = (await collectorStatus(d.usage, live, now)).map((x) => x.ageHours);
+      const known = ages.filter((x): x is number => x !== null);
+      const freshest = known.length ? Math.min(...known) : null;
+      const limit = d.ermStaleHours ?? 12;
+      if (freshest === null || freshest > limit) {
+        await raise("erm.collector_stale", "erm.collector_stale", freshest === null || freshest > 2 * limit ? "critical" : "warning", "El Resource Manager no registra consumo de ninguna empresa", null, {
+          tenants: live.length,
+          freshestAgeHours: freshest,
+        });
+      }
+    }
+  }
+
   if (d.failedProvisioning) {
     for (const id of await d.failedProvisioning()) {
       await raise(`provisioning.failed:${id}`, "provisioning.failed", "warning", `Alta fallida: ${id}`, id);
@@ -144,7 +165,7 @@ export async function runAlerts(d: AlertDeps): Promise<AlertRunResult> {
 
   // Lo que ya no se observa se cierra solo
   let resolved = 0;
-  for (const prefix of ["tenant.", "backup.", "quota.", "entitlement.", "provisioning."]) {
+  for (const prefix of ["tenant.", "backup.", "quota.", "entitlement.", "provisioning.", "erm."]) {
     resolved += await d.incidents.autoResolve(active, prefix);
   }
   return { raised, resolved, active: Array.from(active) };
