@@ -8,7 +8,7 @@ import { issuerLine } from "../stripe/issuer";
 import { localDate } from "./schedule";
 import type { ExternalSubscription } from "./types";
 
-const eur = (cents: number, currency: string) => new Intl.NumberFormat("es-ES", { style: "currency", currency, useGrouping: "always" } as unknown as Intl.NumberFormatOptions).format(cents / 100);
+export const eur = (cents: number, currency: string) => new Intl.NumberFormat("es-ES", { style: "currency", currency, useGrouping: "always" } as unknown as Intl.NumberFormatOptions).format(cents / 100);
 const pct = (bp: number) => `${(bp / 100).toLocaleString("es-ES", { maximumFractionDigits: 2 })} %`;
 
 export const taxCents = (x: Pick<ExternalSubscription, "amountCents" | "taxRateBp">) => Math.round((x.amountCents * x.taxRateBp) / 10_000);

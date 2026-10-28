@@ -225,7 +225,7 @@ describe("clientes externos: piloto Nextair SL (SkiNet, 1.000 € + IVA, cobro e
     expect(detail.external.status).toBe("awaiting_payment_method");
     expect(detail.contract).toMatchObject({ status: "signed", signatureMethod: "electronic" });
     expect(detail.acceptances[0]).toMatchObject({ status: "accepted", acceptedName: "Laura Representante", acceptedTaxId: "00000000T", contractVersion: 1, documentSha256: a.documentSha256, acceptedUserAgent: "Prueba/1.0" });
-    expect(detail.acceptances[0].consentText).toContain("1000.00 EUR más IVA");
+    expect(detail.acceptances[0].consentText.replace(/[  ]/g, " ")).toContain("1.000,00 € más IVA");
     // La IP se guarda seudonimizada y no se devuelve
     expect(detail.acceptances[0].acceptedIpHash).toBeUndefined();
     expect((await ext.acceptances(detail.contract.id))[0].acceptedIpHash).toMatch(/^[0-9a-f]{64}$/);
