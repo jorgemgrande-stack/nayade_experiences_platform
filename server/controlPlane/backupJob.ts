@@ -18,6 +18,8 @@
  *   node dist-cp/backup-job.js migrate-tenants [--only a,b] [--apply]   carril de la app en cada empresa (red privada)
  *   node dist-cp/backup-job.js check-data-exports [--only a,b]          verificación (solo lectura) de 0011/0012/0013
  *   node dist-cp/backup-job.js erm-setup [--apply]                       base de medición es_erm (idempotente; ES_ERM_PASSWORD)
+ *   node dist-cp/backup-job.js purge-test-companies [--apply]             purga DEFINITIVA de las 5 empresas de prueba (lista
+ *                                                                        cerrada; simulación salvo --apply; ver purgeTestCompanies.ts)
  *   node dist-cp/backup-job.js orphans                                   recursos huérfanos del aprovisionamiento (solo lectura)
  *
  * (en desarrollo: `pnpm exec tsx server/controlPlane/backupJob.ts <orden>`)
@@ -57,8 +59,9 @@ import { restorePlatformDatabase, restoreTenant, restoredDatabaseName } from "..
 import { buildRecoveryPackage, readRecoveryPackage } from "../_core/ops/recoveryPackage";
 import { estimateMonthly } from "../_core/ops/backupEstimate";
 import { rebuildPlatform } from "../_core/ops/disasterRecovery";
-import { DatabaseServers, parseDatabaseServers } from "../_core/provisioning/servers";
-import { MysqlSchemaApplier } from "../_core/provisioning/mysqlAdapters";
+import { DatabaseServers, MultiServerDatabaseProvisioner, parseDatabaseServers } from "../_core/provisioning/servers";
+import { MysqlSchemaApplier, databaseNameFor } from "../_core/provisioning/mysqlAdapters";
+import { applyPurge, planPurge, verifyPurge } from "../_core/ops/purgeTestCompanies";
 import { migrateAllTenants } from "../_core/ops/tenantMigrations";
 import { dataExportSchemaStatus } from "../_core/ops/dataExportCheck";
 import { BUILTIN_MODULES } from "../_core/modules/builtin";
@@ -389,6 +392,32 @@ async function main() {
       case "restore-files": {
         const id = pos[0] ?? die("Falta <empresa>");
         print(await restoreTenantFiles({ storage: sourceStorageOrDie(source), ring: backupKeyringFromEnv(process.env), copies, source, actor: actorLabel }, id, filesOutOrDie()));
+        break;
+      }
+      case "purge-test-companies": {
+        // Purga definitiva de las cinco empresas de prueba (lista cerrada en el código, autorizada por el propietario):
+        // simulación siempre; con --apply ejecuta el plan simulado y comprueba que no queda nada ni referencias huérfanas
+        const apply = flag("--apply");
+        const crmUrl = process.env.CRM_DATABASE_URL || die("Falta CRM_DATABASE_URL");
+        const crmPool = mysql.createPool({ uri: crmUrl, connectionLimit: 2 });
+        try {
+          const dbs = servers ? new MultiServerDatabaseProvisioner(servers, { usage: async () => ({}) }) : null;
+          const tenantDbName = async (t: string) => {
+            const dsn = await registry.getActiveDsn(t).catch(() => null);
+            return dsn ? dbNameOf(dsn) : null;
+          };
+          const plan = await planPurge({ crm: crmPool, registry: pool, tenantDbName, expectedDbName: (t) => databaseNameFor(t) });
+          print({ simulacion: true, empresas: plan.companies, yaNoEstan: plan.missing, registros: plan.steps.map((s) => ({ base: s.db, tabla: s.table, filas: s.rows })), basesDeDatos: plan.databases, seConservan: plan.kept, problemas: plan.problems });
+          if (plan.problems.length) die("La simulación tiene problemas: no se purga nada");
+          if (!apply) break;
+          if (!dbs && plan.databases.some((x) => x.action === "drop")) die("Falta PROVISIONING_DB_SERVERS o PROVISIONING_DB_ADMIN_URL para borrar las bases de los tenants");
+          const done = await applyPurge({ crm: crmPool, registry: pool, dropDatabase: dbs ? (t) => dbs.dropDatabase(t) : undefined }, plan);
+          const check = await verifyPurge({ crm: crmPool, registry: pool });
+          print({ aplicado: true, borrados: done.deleted, basesBorradas: done.droppedDatabases, comprobacion: check });
+          if (!check.ok) process.exitCode = 1;
+        } finally {
+          await crmPool.end();
+        }
         break;
       }
       case "orphans": {
