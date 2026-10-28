@@ -24,7 +24,7 @@ import type { CrmStore } from "../crm/store";
 import type { StripeMode } from "../stripe/config";
 import type { GwCharge, GwInvoice, GwSubscription, StripeGateway } from "../stripe/gateway";
 import type { StripeStore } from "../stripe/store";
-import { billingTerms, renderContract, sha256, taxCents } from "./document";
+import { billingTerms, eur, renderContract, sha256, taxCents } from "./document";
 import { contractView } from "./presentation";
 import { chargeInstant, graceEnd, localDate, periodLabel } from "./schedule";
 import type { ExternalStore } from "./store";
@@ -327,7 +327,7 @@ export class ExternalService {
   }
 
   private declaration(x: ExternalSubscription, a: Pick<ContractAcceptance, "signerName">) {
-    return `Yo, ${a.signerName}, declaro que tengo poder suficiente para obligar al cliente y acepto el contrato anterior (versión y huella indicadas), incluido el cobro recurrente de ${(x.amountCents / 100).toFixed(2)} ${x.currency} más IVA cada mes.`;
+    return `Yo, ${a.signerName}, declaro que tengo poder suficiente para obligar al cliente y acepto el contrato anterior (versión y huella indicadas), incluido el cobro recurrente de ${eur(x.amountCents, x.currency)} más IVA cada mes.`;
   }
 
   /** Aceptación del firmante: evidencias (identidad declarada, fecha, versión, huella, IP seudonimizada y navegador). */
