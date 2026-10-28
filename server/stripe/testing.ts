@@ -4,7 +4,7 @@
  * sesiones se pueden caducar. Registra cada llamada para poder comprobar qué se envió.
  */
 import type { GwPortalConfig } from "./portal";
-import { StripeGatewayError, type CheckoutSessionInput, type CustomerInput, type GwCharge, type GwCheckoutSession, type GwEvent, type GwInvoice, type GwInvoiceLine, type GwInvoicePreview, type GwPrice, type GwProduct, type GwSubscription, type GwSubscriptionItem, type GwSetupSession, type ServiceSubscriptionInput, type SetupSessionInput, type StripeGateway, type SubscriptionItemsChange } from "./gateway";
+import { StripeGatewayError, type CheckoutSessionInput, type CustomerInput, type GwCharge, type GwCheckoutSession, type GwEvent, type GwInvoice, type GwInvoiceLine, type GwInvoicePreview, type GwPrice, type GwProduct, type GwSubscription, type GwSubscriptionItem, type GwSetupSession, type GwPaymentSession, type PaymentSessionInput, type ServiceSubscriptionInput, type SetupSessionInput, type StripeGateway, type SubscriptionItemsChange } from "./gateway";
 import { prorationCents, supportsPendingUpdate } from "./multipart";
 
 export class FakeStripeGateway implements StripeGateway {
@@ -385,6 +385,29 @@ export class FakeStripeGateway implements StripeGateway {
     this.setupSessions.set(id, { ...s, status: "complete", paymentMethodId, url: null });
     this.emit("checkout.session.completed", "checkout.session", id);
     return paymentMethodId;
+  }
+  // --- Cobro único de un cargo (Checkout en modo payment, IVA fijo) ---
+  paymentSessions = new Map<string, GwPaymentSession>();
+  async createPaymentSession(i: PaymentSessionInput, key: string) {
+    this.calls.push({ op: "checkout.sessions.create(payment)", key, input: i });
+    const prev = this.idem.get(`payment:${key}`);
+    if (prev) return { ...this.paymentSessions.get(prev)! };
+    const id = this.next("cs");
+    const rate = this.taxRates.find((r) => r.id === i.taxRateId);
+    const tax = rate ? Math.round((i.amountCents * rate.bp) / 10_000) : 0;
+    this.paymentSessions.set(id, { id, url: `https://checkout.stripe.test/c/pay/${id}`, status: "open", paymentStatus: "unpaid", customerId: i.customerId, currency: i.currency.toLowerCase(), amountSubtotal: i.amountCents, amountTotal: i.amountCents + tax, paymentIntentId: null, metadata: { ...i.metadata }, expiresAt: i.expiresAt });
+    this.idem.set(`payment:${key}`, id);
+    return { ...this.paymentSessions.get(id)! };
+  }
+  async paymentSession(id: string) {
+    const s = this.paymentSessions.get(id);
+    return s ? { ...s, metadata: { ...s.metadata } } : null;
+  }
+  /** El cliente paga en la página de Stripe (o la sesión caduca sin pagar). */
+  completePaymentSession(id: string, outcome: "paid" | "expired" = "paid") {
+    const s = this.paymentSessions.get(id)!;
+    this.paymentSessions.set(id, outcome === "paid" ? { ...s, status: "complete", paymentStatus: "paid", paymentIntentId: this.next("pi"), url: null } : { ...s, status: "expired", url: null });
+    return this.emit(outcome === "paid" ? "checkout.session.completed" : "checkout.session.expired", "checkout.session", id);
   }
   async setDefaultPaymentMethod(customerId: string, paymentMethodId: string) {
     this.calls.push({ op: "customers.update(default_payment_method)", input: { customerId, paymentMethodId } });

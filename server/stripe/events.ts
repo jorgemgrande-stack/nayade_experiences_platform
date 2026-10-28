@@ -134,6 +134,11 @@ export interface ProcessorDeps {
     /** Reembolso o disputa de un cargo de su suscripción (el cargo, su factura y la suscripción, releídos de Stripe). */
     handleCharge?(c: GwCharge, inv: GwInvoice, sub: GwSubscription): Promise<string>;
   };
+  /**
+   * Cobro único de un cargo extraordinario o gasto variable (server/invoicing/chargePayments): su Checkout de pago no es
+   * de ningún pedido. null: la sesión no es de un cargo.
+   */
+  charges?: { handleSession(sessionId: string): Promise<string | null> };
 }
 
 /** Estado de un cargo que deja sin cobertura el periodo que pagó. */
@@ -405,6 +410,8 @@ export class StripeEventProcessor {
     if (!local) {
       const ext = this.d.external ? await this.d.external.handleSetupSession(id) : null;
       if (ext !== null) return { outcome: "processed", detail: ext };
+      const charge = this.d.charges ? await this.d.charges.handleSession(id) : null;
+      if (charge !== null) return { outcome: "processed", detail: charge };
       return { outcome: "ignored", detail: "Sesión no creada por Elephant Source" };
     }
     const s = await this.d.gateway.checkoutSession(id);

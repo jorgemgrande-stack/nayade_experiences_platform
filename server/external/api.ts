@@ -159,6 +159,9 @@ export function createContractAcceptanceRouter(svc: ExternalService): Router {
   r.get("/autorizado", (_req, res) => send(res, 200, page("Método de pago autorizado", `<h1>Método de pago autorizado</h1><p class="ok">Gracias. Hemos recibido la autorización de tu método de pago. No se ha realizado ningún cobro: el primer cargo será en la fecha indicada en el contrato.</p>`)));
   r.get("/cancelado", (_req, res) => send(res, 200, page("Autorización no completada", `<h1>Autorización no completada</h1><p>No se ha registrado ningún método de pago ni se ha cobrado nada. Puedes volver a usar el enlace que te enviamos mientras siga vigente.</p>`)));
   r.get("/portal", (_req, res) => send(res, 200, page("Portal de facturación", `<h1>Portal de facturación</h1><p>Has salido del portal de facturación. Puedes cerrar esta ventana.</p>`)));
+  // Vueltas del enlace de pago de un cargo: solo informan (el cobro se confirma con el webhook firmado de Stripe)
+  r.get("/pago-recibido", (_req, res) => send(res, 200, page("Pago recibido", `<h1>Pago recibido</h1><p class="ok">Gracias. Stripe ha recibido tu pago. En unos minutos quedará registrado en tu factura; recibirás el justificante de Stripe en tu correo.</p>`)));
+  r.get("/pago-cancelado", (_req, res) => send(res, 200, page("Pago no completado", `<h1>Pago no completado</h1><p>No se ha realizado ningún cobro. Puedes volver a usar el enlace de pago mientras siga vigente.</p>`)));
   r.get("/", (req, res) => {
     const token = String(req.query.token ?? "");
     svc

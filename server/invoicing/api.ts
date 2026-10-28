@@ -22,6 +22,7 @@ import { invoiceHtml } from "./document";
 import { registerCsv } from "./register";
 import type { InvoicingService } from "./service";
 import type { ChargeService } from "./charges";
+import type { ChargePaymentService } from "./chargePayments";
 import { InvoicingError, type FiscalParty } from "./types";
 
 const STATUS: Record<InvoicingError["code"], number> = { not_found: 404, invalid_input: 400, invalid_state: 409, conflict: 409, unavailable: 503 };
@@ -59,9 +60,25 @@ const chargeBody = z.object({
     .optional(),
 });
 
-export function createInvoicingRouter(svc: InvoicingService, issuer: FiscalParty, charges?: ChargeService): Router {
+export function createInvoicingRouter(svc: InvoicingService, issuer: FiscalParty, charges?: ChargeService, payments?: ChargePaymentService): Router {
   const r = express.Router();
   r.use(express.json({ limit: "16kb" }));
+  // Cobro de los cargos aprobados (I-4): enlace de pago de Stripe o pago externo registrado
+  if (charges && payments) {
+    r.get("/charges/:id/payments", requireScope("billing:read"), wrap(async (req, res) => void res.json({ payments: await payments.list(id.parse(req.params.id)) })));
+    r.post("/charges/:id/payment-link", requireScope("billing:write"), wrap(async (req, res) => {
+      const out = await payments.paymentLink(id.parse(req.params.id), actorOf(req));
+      if (!out.reused) opsLog("info", "Invoicing", "charge_payment_link", { chargeId: id.parse(req.params.id), sessionId: out.sessionId });
+      res.json({ link: out });
+    }));
+    // Registrar un cobro externo da por pagada una factura: lo hace quien aprueba contrataciones
+    r.post("/charges/:id/offline-payment", requireScope("orders:approve"), wrap(async (req, res) => {
+      const b = z.object({ reference: z.string().max(120), paidAt: z.number().int().positive().nullable().optional() }).strict().parse(req.body ?? {});
+      const out = await payments.recordOffline(id.parse(req.params.id), b, actorOf(req));
+      opsLog("info", "Invoicing", "charge_paid_offline", { chargeId: out.payment.chargeId, invoiceId: out.invoice.id });
+      res.json(out);
+    }));
+  }
   if (charges) {
     r.get("/charges", requireScope("billing:read"), wrap(async (req, res) => {
       const q = z.object({ companyId: id.optional(), status: z.enum(["draft", "approved", "cancelled"]).optional() }).parse(req.query);

@@ -102,6 +102,7 @@ import { InvoicingService } from "../invoicing/service";
 import type { InvoicingStore } from "../invoicing/store";
 import { ChargeService, type ChargeStore } from "../invoicing/charges";
 import { createInvoicingRouter } from "../invoicing/api";
+import { ChargePaymentService, type ChargePaymentStore } from "../invoicing/chargePayments";
 import type { CompanyFiscal } from "../invoicing/rules";
 import { ISSUER } from "../stripe/issuer";
 import { createBillingPortalRouter, createPurchasesRouter } from "../stripe/purchasesApi";
@@ -269,7 +270,7 @@ export interface ControlPlaneDeps {
    * Facturación propia (server/invoicing, CRM 0027): facturas por devengo de los servicios externos con el estado de
    * cobro leído de su historial. Sin `issueEnabled` solo prepara borradores (nunca expide).
    */
-  invoicing?: { store: InvoicingStore; issueEnabled: boolean; seriesCode: string; charges?: ChargeStore };
+  invoicing?: { store: InvoicingStore; issueEnabled: boolean; seriesCode: string; charges?: ChargeStore; chargePayments?: ChargePaymentStore };
   /**
    * Motor de transiciones temporales (server/lifecycle). Requiere `orders`. El plan (solo lectura) siempre
    * se puede consultar; la tarea periódica solo con `policy.enabled` y aplica solo en modo «apply».
@@ -1562,6 +1563,8 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
       router.use("/trials", createTrialAdminRouter({ onboarding, trials: trialService, store: d.trials.store, convert: trialConversion }));
       if (d.trials.publicEnabled) publicTrial = createPublicTrialRouter({ onboarding, autoProvision: !!d.trials.autoProvision });
     }
+    // Cobro de cargos (server/invoicing/chargePayments): lo crea el bloque de facturación; el procesador de Stripe lo consulta
+    const chargePaymentsRef: { svc?: ChargePaymentService } = {};
     if (d.orders && d.capabilities) {
       // El modo sale de la configuración de Stripe aunque Stripe no se monte (p. ej. live sin la 0013)
       if (d.stripe && d.orders.mode && d.orders.mode !== d.stripe.config.mode) throw new Error("El modo de los pedidos no coincide con el de Stripe");
@@ -1705,7 +1708,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
           ? new ExternalService({ store: d.external.store, crm: d.crm.service, crmStore: d.crm.store, stripeStore: st.store, gateway: st.gateway, mode: st.config.mode, namespace: st.config.namespace, urls: d.external.urls, ipSalt: d.external.ipSalt, liveEnabled: d.external.liveEnabled, mail: d.mail?.platform?.externalMail(), now: d.subscriptions.now })
           : null;
         const externalStore = d.external?.store;
-        const processor = new StripeEventProcessor({ store: st.store, gateway: st.gateway, orders: d.orders.store, orchestrator, now: d.subscriptions.now, namespace: st.config.namespace, mode: st.config.mode, taxExpectations: st.fiscal?.taxExpectations, vat, catalog: stripeCatalog, changes: st.purchases?.changes, invoiceLines: st.invoiceLines, contractedItems, deferredItems: deferredItems ? (o, s) => deferredItems.attach(o, s) : undefined, external: externalSvc && externalStore ? { handleSetupSession: async (id) => ((await externalStore.bySetupSession(id)) ? externalSvc.handleSetupSession(id) : null), handleSubscription: (sub, hint) => externalSvc.handleSubscription(sub, hint), handleCharge: (c, inv, sub) => externalSvc.handleCharge(c, inv, sub) } : undefined });
+        const processor = new StripeEventProcessor({ store: st.store, gateway: st.gateway, orders: d.orders.store, orchestrator, now: d.subscriptions.now, namespace: st.config.namespace, mode: st.config.mode, taxExpectations: st.fiscal?.taxExpectations, vat, catalog: stripeCatalog, changes: st.purchases?.changes, invoiceLines: st.invoiceLines, contractedItems, deferredItems: deferredItems ? (o, s) => deferredItems.attach(o, s) : undefined, external: externalSvc && externalStore ? { handleSetupSession: async (id) => ((await externalStore.bySetupSession(id)) ? externalSvc.handleSetupSession(id) : null), handleSubscription: (sub, hint) => externalSvc.handleSubscription(sub, hint), handleCharge: (c, inv, sub) => externalSvc.handleCharge(c, inv, sub) } : undefined, charges: { handleSession: (id) => (chargePaymentsRef.svc ? chargePaymentsRef.svc.handleSession(id) : Promise.resolve(null)) } });
         if (externalSvc) {
           router.use("/external", createExternalRouter(externalSvc));
           publicAcceptance = createContractAcceptanceRouter(externalSvc);
@@ -1795,7 +1798,25 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
       // Cargos extraordinarios y gastos variables (CRM 0028): solo con su tabla
       const company = async (id: number) => (await crmStore.get("companies", id)) as CompanyFiscal | null;
       const charges = d.invoicing.charges ? new ChargeService({ charges: d.invoicing.charges, invoices: d.invoicing.store, company, now: d.subscriptions.now }) : undefined;
-      router.use("/invoicing", createInvoicingRouter(invoicing, issuer, charges));
+      // Cobro de los cargos aprobados (CRM 0029): pago externo siempre; enlace de Stripe solo con Stripe y con la página
+      // pública del CRM para las vueltas
+      if (charges && d.invoicing.chargePayments) {
+        const pub = d.external?.urls.acceptance;
+        chargePaymentsRef.svc = new ChargePaymentService({
+          payments: d.invoicing.chargePayments,
+          charges,
+          invoices: d.invoicing.store,
+          company: async (id) => (await crmStore.get("companies", id)) as Awaited<ReturnType<ConstructorParameters<typeof ChargePaymentService>[0]["company"]>>,
+          gateway: pub ? d.stripe?.gateway : undefined,
+          stripeStore: d.stripe?.store,
+          mode: d.stripe?.config.mode ?? "test",
+          namespace: d.stripe?.config.namespace ?? "sin-stripe",
+          liveEnabled: d.external?.liveEnabled,
+          urls: { success: pub ? `${pub}/pago-recibido` : "", cancel: pub ? `${pub}/pago-cancelado` : "" },
+          now: d.subscriptions.now,
+        });
+      }
+      router.use("/invoicing", createInvoicingRouter(invoicing, issuer, charges, chargePaymentsRef.svc));
     }
     // Catálogo de comunicaciones (solo lectura) y despacho manual de las pendientes
     router.get("/notifications/catalog", requireScope("ops:read"), wrap(async (_req, res) => void res.json({ templates: catalogView() })));
