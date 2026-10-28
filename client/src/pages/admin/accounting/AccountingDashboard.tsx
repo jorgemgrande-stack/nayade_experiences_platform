@@ -1,14 +1,12 @@
 import { useState } from "react";
 import { Link } from "wouter";
-import { BarChart3, TrendingUp, TrendingDown, Euro, Download, Calendar, Filter, FileText, CreditCard, CheckCircle, Clock, XCircle, AlertTriangle, Banknote, Package, Zap, TrendingDown as ExpenseIcon, Link2 } from "lucide-react";
+import { BarChart3, Euro, Calendar, Filter, CreditCard, CheckCircle, Clock, XCircle, AlertTriangle, Banknote, Package, Zap, TrendingDown as ExpenseIcon, Link2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from "recharts";
 import AdminLayout from "@/components/AdminLayout";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
-import { toast } from "sonner";
 
 function fmtEur(v: number): string {
   return v.toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " €";
@@ -47,7 +45,6 @@ const paymentStatusIcons: Record<string, any> = {
 };
 
 export default function AccountingDashboard() {
-  const [period, setPeriod] = useState("mes");
   const [reportType, setReportType] = useState("ventas");
 
   const { data: metrics } = trpc.accounting.getDashboardMetrics.useQuery();
@@ -73,16 +70,10 @@ export default function AccountingDashboard() {
     { staleTime: 60_000 },
   );
 
-  const handleExport = (format: "csv" | "excel") => {
-    toast.success(`Exportando informe en formato ${format.toUpperCase()}... (Función disponible próximamente)`);
-  };
-
   const kpis = [
     {
       label: "Ingresos Totales",
       value: `${((metrics?.totalRevenue ?? 0)).toLocaleString("es-ES")}€`,
-      change: "+18.5%",
-      positive: true,
       icon: Euro,
       color: "text-emerald-500",
       bg: "bg-emerald-50",
@@ -90,8 +81,6 @@ export default function AccountingDashboard() {
     {
       label: "Reservas Completadas",
       value: String(metrics?.totalBookings ?? 0),
-      change: "+12.3%",
-      positive: true,
       icon: CheckCircle,
       color: "text-blue-500",
       bg: "bg-blue-50",
@@ -99,8 +88,6 @@ export default function AccountingDashboard() {
     {
       label: "Ticket Medio",
       value: `${(metrics?.totalRevenue && metrics?.totalBookings ? (metrics.totalRevenue / metrics.totalBookings) : 0).toFixed(0)}€`,
-      change: "+5.7%",
-      positive: true,
       icon: CreditCard,
       color: "text-purple-500",
       bg: "bg-purple-50",
@@ -108,8 +95,6 @@ export default function AccountingDashboard() {
     {
       label: "Presupuestos Pendientes",
       value: String(metrics?.pendingQuotes ?? 0),
-      change: "-8.2%",
-      positive: false,
       icon: Clock,
       color: "text-amber-500",
       bg: "bg-amber-50",
@@ -118,37 +103,6 @@ export default function AccountingDashboard() {
 
   return (
     <AdminLayout title="Contabilidad e Informes">
-      {/* Period Selector & Export */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
-        <div className="flex items-center gap-3">
-          <Select value={period} onValueChange={setPeriod}>
-            <SelectTrigger className="w-40">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="semana">Esta Semana</SelectItem>
-              <SelectItem value="mes">Este Mes</SelectItem>
-              <SelectItem value="trimestre">Trimestre</SelectItem>
-              <SelectItem value="año">Este Año</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => handleExport("csv")}>
-            <Download className="w-3.5 h-3.5 mr-1.5" />
-            CSV
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => handleExport("excel")}>
-            <Download className="w-3.5 h-3.5 mr-1.5" />
-            Excel
-          </Button>
-          <Button className="bg-gold-gradient text-white hover:opacity-90" size="sm">
-            <FileText className="w-3.5 h-3.5 mr-1.5" />
-            Informe Completo
-          </Button>
-        </div>
-      </div>
-
       {/* ── Salud de la empresa: foto económica consolidada ──────────────── */}
       <div className="mb-8 rounded-2xl border border-amber-300/40 bg-amber-50/40 dark:bg-amber-500/[0.04] p-5">
         <div className="flex items-center justify-between mb-3">
@@ -193,13 +147,6 @@ export default function AccountingDashboard() {
             <div className="flex items-center justify-between mb-4">
               <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center", kpi.bg)}>
                 <kpi.icon className={cn("w-5 h-5", kpi.color)} />
-              </div>
-              <div className={cn(
-                "flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-full",
-                kpi.positive ? "bg-emerald-50 text-emerald-600" : "bg-red-50 text-red-600"
-              )}>
-                {kpi.positive ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-                {kpi.change}
               </div>
             </div>
             <div className="text-2xl font-display font-bold text-foreground mb-1">{kpi.value}</div>
