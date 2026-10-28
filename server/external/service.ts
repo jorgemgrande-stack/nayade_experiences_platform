@@ -22,7 +22,7 @@ import { recordFailure } from "../_core/ops/failureAlerts";
 import type { CrmService } from "../crm/service";
 import type { CrmStore } from "../crm/store";
 import type { StripeMode } from "../stripe/config";
-import type { GwInvoice, GwSubscription, StripeGateway } from "../stripe/gateway";
+import type { GwCharge, GwInvoice, GwSubscription, StripeGateway } from "../stripe/gateway";
 import type { StripeStore } from "../stripe/store";
 import { billingTerms, renderContract, sha256, taxCents } from "./document";
 import { chargeInstant, graceEnd, localDate, periodLabel } from "./schedule";
@@ -443,7 +443,7 @@ export class ExternalService {
     let status: ExternalStatus = x.status;
     if (sub.status === "canceled" || sub.status === "incomplete_expired") status = "canceled";
     else if (inv && (inv.total ?? inv.subtotal ?? 0) > 0) {
-      const periodStart = inv.periodStart !== null ? inv.periodStart * 1000 : null;
+      const periodStart = servicePeriod(inv).start;
       patch.lastInvoiceId = inv.id;
       patch.lastInvoiceStatus = inv.status;
       if (inv.status === "paid") {
@@ -451,12 +451,12 @@ export class ExternalService {
         patch.graceUntil = null;
         if (periodStart !== null) patch.currentPeriodStart = periodStart;
         if (sub.currentPeriodEnd) patch.currentPeriodEnd = sub.currentPeriodEnd * 1000;
-        const { created } = await this.d.store.event({ externalId: x.id, kind: "invoice_paid", ref: inv.id, detail: { amountPaid: inv.amountPaid, subtotal: inv.subtotal, tax: inv.taxCents, period: periodStart ? periodLabel(periodStart, x.timezone) : null, number: inv.number }, actor: "system:stripe", at: now });
+        const { created } = await this.d.store.event({ externalId: x.id, kind: "invoice_paid", ref: inv.id, detail: { amountPaid: inv.amountPaid, subtotal: inv.subtotal, tax: inv.taxCents, period: periodStart ? periodLabel(periodStart, x.timezone) : null, number: inv.number, ...billingOf(x, inv) }, actor: "system:stripe", at: now });
         if (created) opsLog("info", "External", "invoice_paid", { externalId: x.id, invoiceId: inv.id });
       } else if (inv.status === "open") {
         status = "past_due";
         if (periodStart !== null) patch.graceUntil = graceEnd(periodStart, x.graceDays, x.timezone);
-        const { created } = await this.d.store.event({ externalId: x.id, kind: "invoice_payment_failed", ref: inv.id, detail: { amountDue: inv.total ?? inv.subtotal, period: periodStart ? periodLabel(periodStart, x.timezone) : null, hostedInvoiceUrl: inv.hostedInvoiceUrl }, actor: "system:stripe", at: now });
+        const { created } = await this.d.store.event({ externalId: x.id, kind: "invoice_payment_failed", ref: inv.id, detail: { amountDue: inv.total ?? inv.subtotal, period: periodStart ? periodLabel(periodStart, x.timezone) : null, hostedInvoiceUrl: inv.hostedInvoiceUrl, ...billingOf(x, inv) }, actor: "system:stripe", at: now });
         if (created) {
           opsLog("warn", "External", "invoice_payment_failed", { externalId: x.id, invoiceId: inv.id });
           recordFailure("external.payment_failed");
@@ -467,6 +467,44 @@ export class ExternalService {
     if (!Object.keys(patch).length) return `Sin cambios (${x.status})`;
     await this.d.store.update(x.id, x.version, patch, now);
     return `${x.status} → ${status}`;
+  }
+
+  /**
+   * Reembolso o disputa de un cargo de la contratación (cargo, factura y suscripción releídos de Stripe). Cada hecho se
+   * registra una vez: el reembolso por su total acumulado (un reembolso parcial nuevo es otro evento, con lo añadido) y
+   * la disputa por su estado. Es lo que necesita la facturación para la rectificativa (CONTRATO_COBROS_FACTURACION.md).
+   */
+  async handleCharge(c: GwCharge, inv: GwInvoice, sub: GwSubscription): Promise<string> {
+    const x = await this.d.store.byStripeSubscription(sub.id);
+    if (!x) return "Suscripción no registrada";
+    if (sub.metadata.es_external_id !== String(x.id) || sub.metadata.es_env !== this.d.namespace || sub.customerId !== x.stripeCustomerId || c.customerId !== x.stripeCustomerId || inv.subscriptionId !== sub.id) {
+      throw new ExternalError("conflict", "El cargo de Stripe no corresponde a esta contratación");
+    }
+    const now = this.now();
+    const done: string[] = [];
+    const start = servicePeriod(inv).start;
+    const period = start !== null ? periodLabel(start, x.timezone) : null;
+    const base = { chargeId: c.id, amountCents: c.amount, period, number: inv.number ?? null, ...billingOf(x, inv) };
+    if (c.amountRefunded > 0) {
+      const before = (await this.d.store.events(x.id)).filter((e) => e.kind === "charge_refunded" && e.detail?.chargeId === c.id).reduce((m, e) => Math.max(m, Number(e.detail?.amountRefundedCents ?? 0)), 0);
+      if (c.amountRefunded > before) {
+        const { created } = await this.d.store.event({ externalId: x.id, kind: "charge_refunded", ref: `${c.id}:${c.amountRefunded}`, detail: { ...base, amountRefundedCents: c.amountRefunded, refundedDeltaCents: c.amountRefunded - before, fullyRefunded: c.refunded }, actor: "system:stripe", at: now });
+        if (created) {
+          opsLog("warn", "External", "charge_refunded", { externalId: x.id, chargeId: c.id, refunded: c.amountRefunded, amount: c.amount });
+          await this.d.crm.log("contract", x.contractId, "note", `Reembolso en Stripe de ${((c.amountRefunded - before) / 100).toFixed(2)} ${base.currency} del cobro ${inv.number ?? inv.id}${period ? ` (${period})` : ""}: pendiente de rectificativa`, "system:stripe");
+          done.push("reembolso registrado");
+        }
+      }
+    }
+    if (c.disputeStatus) {
+      const { created } = await this.d.store.event({ externalId: x.id, kind: "charge_dispute", ref: `${c.id}:${c.disputeStatus}`, detail: { ...base, disputeStatus: c.disputeStatus }, actor: "system:stripe", at: now });
+      if (created) {
+        opsLog("warn", "External", "charge_dispute", { externalId: x.id, chargeId: c.id, status: c.disputeStatus });
+        await this.d.crm.log("contract", x.contractId, "note", `Disputa del cobro ${inv.number ?? inv.id} en Stripe: ${c.disputeStatus}`, "system:stripe");
+        done.push(`disputa ${c.disputeStatus}`);
+      }
+    }
+    return done.length ? done.join("; ") : "Sin cambios";
   }
 
   /**
@@ -513,4 +551,37 @@ export class ExternalService {
   list(f: { companyId?: number; status?: string } = {}) {
     return this.d.store.list(f);
   }
+}
+
+/**
+ * Periodo del SERVICIO de una factura de la contratación, en ms. Sale de sus líneas de suscripción: el `period_start` de
+ * una factura de Stripe es otra cosa (desde cuándo admite partidas: en la de una suscripción mira un periodo atrás), y
+ * con él la factura del 01/11 se llamaría «octubre» y el margen del día 5 contaría desde el periodo anterior.
+ */
+function servicePeriod(inv: GwInvoice): { start: number | null; end: number | null } {
+  const lines = (inv.lines ?? []).filter((l) => !l.proration && l.periodStart !== null && l.periodEnd !== null);
+  if (!lines.length) return { start: inv.periodStart !== null ? inv.periodStart * 1000 : null, end: null };
+  return { start: Math.min(...lines.map((l) => l.periodStart!)) * 1000, end: Math.max(...lines.map((l) => l.periodEnd!)) * 1000 };
+}
+
+/**
+ * Datos de facturación del evento de cobro (I-6 de docs/elephant-source/CONTRATO_COBROS_FACTURACION.md). Se AÑADEN al
+ * detalle sin cambiar los campos anteriores (`amountPaid`, `subtotal`, `tax`, `period`, `number`). La base es el total
+ * menos los impuestos (neta de descuentos); si Stripe no informa los impuestos, el subtotal.
+ */
+function billingOf(x: ExternalSubscription, inv: GwInvoice) {
+  const total = inv.total ?? inv.amountPaid;
+  const tax = inv.taxCents ?? null;
+  const p = servicePeriod(inv);
+  return {
+    companyId: x.companyId,
+    billingRef: `external:${x.id}`,
+    paymentRef: `stripe:in:${inv.id}`,
+    currency: inv.currency.toUpperCase(),
+    baseCents: tax !== null ? total - tax : (inv.subtotal ?? total),
+    taxCents: tax,
+    totalCents: total,
+    periodStart: p.start,
+    periodEnd: p.end,
+  };
 }

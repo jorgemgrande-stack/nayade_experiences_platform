@@ -426,7 +426,10 @@ export class FakeStripeGateway implements StripeGateway {
     const reason = s.latestInvoiceId ? "subscription_cycle" : "subscription_cycle";
     const id = this.addInvoice(subId, s.customerId, reason, outcome, svc.unitAmount, [{ id: this.next("il"), subscriptionItemId: s.items![0].id, priceId: s.items![0].priceId, quantity: 1, amount: svc.unitAmount, taxCents: tax, proration: false, periodStart, periodEnd }]);
     const inv = this.invoices.get(id)!;
-    this.invoices.set(id, { ...inv, periodStart, taxCents: tax, total: svc.unitAmount + tax, amountPaid: outcome === "paid" ? svc.unitAmount + tax : 0 });
+    // Como Stripe: el period_start de la factura de una suscripción mira un periodo atrás (el de prueba en la primera);
+    // el periodo del servicio está en sus líneas
+    const lookBack = s.currentPeriodStart ?? periodStart - (periodEnd - periodStart);
+    this.invoices.set(id, { ...inv, periodStart: lookBack, taxCents: tax, total: svc.unitAmount + tax, amountPaid: outcome === "paid" ? svc.unitAmount + tax : 0 });
     this.subscriptions.set(subId, { ...this.subscriptions.get(subId)!, status: outcome === "paid" ? "active" : "past_due", currentPeriodStart: periodStart, currentPeriodEnd: periodEnd, latestInvoiceId: id });
     this.emit(outcome === "paid" ? "invoice.paid" : "invoice.payment_failed", "invoice", id);
     this.emit("customer.subscription.updated", "subscription", subId);
