@@ -39,6 +39,9 @@ const SECRET = "secreto-del-proveedor-de-pruebas-0123456789abcdef";
 const actor = "operator:mysql";
 const key = () => crypto.randomBytes(12).toString("hex");
 
+/** Reversión en la BD de prueba: la de la migración o, si es irreversible a propósito (p. ej. 0027, facturas), quitar lo que crea. */
+const downOf = (m: { up: string; down: string | null }) => m.down ?? Array.from(m.up.matchAll(/CREATE TABLE\s+`?(\w+)`?/gi)).map((x) => `DROP TABLE IF EXISTS ${x[1]};`).reverse().join("\n");
+
 describe.skipIf(!URL_)("orquestador comercial con MySQL real", () => {
   let admin: mysql.Pool;
   let pool: mysql.Pool;
@@ -195,8 +198,8 @@ describe.skipIf(!URL_)("orquestador comercial con MySQL real", () => {
     const m = all.find((x) => x.id === "0010_commercial_orders")!;
     // Como el ejecutor (`down --steps`): las posteriores se revierten antes, en orden inverso
     const later = all.filter((x) => x.number > m.number);
-    for (const l of [...later].reverse()) for (const s of splitStatements(l.down!)) await pool.query(s);
-    for (const s of splitStatements(m.down!)) await pool.query(s);
+    for (const l of [...later].reverse()) for (const s of splitStatements(downOf(l))) await pool.query(s);
+    for (const s of splitStatements(downOf(m))) await pool.query(s);
     const [t] = await pool.query<mysql.RowDataPacket[]>("SHOW TABLES LIKE 'commercial%'");
     expect(t).toHaveLength(0);
     for (const s of splitStatements(m.up)) await pool.query(s);
