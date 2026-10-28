@@ -1023,10 +1023,15 @@ async function main() {
   }
   if (cmd === "active-sha") {
     // Commit de referencia de los servicios ordinarios: el común o, si difieren, su antepasado común (el diff desde
-    // ahí cubre lo de todos). Vacío si alguno no se sabe o no está en la historia (se tratará como protegido)
+    // ahí cubre lo de todos). Vacío si alguno no se sabe o no está en la historia (se tratará como protegido).
+    // --before <commit>: lo que servía ANTES de ese commit (despliegue nativo de Railway, que ya lo ha publicado)
+    const before = arg("before", false);
     const shas: Array<string | null> = [];
     for (const name of ORDINARY_SERVICES) {
-      const sha = (await active(await serviceId(name), sc.environmentId))?.sha ?? null;
+      const sid = await serviceId(name);
+      const sha = before
+        ? ((await deployments(sid, sc.environmentId, 30)).filter((x) => x.status === "SUCCESS" || x.status === "REMOVED").map((x) => shaFromDeployMeta(x.meta, REPOSITORIES.core)).find((x) => x && x !== before) ?? null)
+        : ((await active(sid, sc.environmentId))?.sha ?? null);
       console.error(`${name}: ${sha ?? "desconocido"}`);
       shas.push(sha);
     }

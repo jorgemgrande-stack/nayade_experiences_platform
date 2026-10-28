@@ -10,6 +10,7 @@ import { FUNCTIONAL_CHECKS, LIVE_STATUS_CONTEXT, ORDINARY_SERVICES, EXTERNAL_LOC
 const read = (p: string) => fs.readFileSync(path.resolve(__dirname, "..", p), "utf8").replace(/\r\n/g, "\n");
 const wf = read(".github/workflows/deploy-elephant-source.yml");
 const ci = read(".github/workflows/ci.yml");
+const pub = read(".github/workflows/publicacion.yml");
 const src = read("scripts/deploy/esRailway.ts");
 const step = (name: string) => {
   const i = wf.indexOf(`- name: ${name}`);
@@ -51,6 +52,9 @@ describe("publicación continua", () => {
     expect(shaFromDeployMeta({ commitMessage: `nayade_experiences_platform ${sha}` }, "nayade_experiences_platform")).toBe(sha);
     expect(shaFromDeployMeta({ reason: "redeploy" }, "nayade_experiences_platform")).toBeNull();
     expect(shaFromDeployMeta({ commitMessage: "otro-repo " + sha }, "nayade_experiences_platform")).toBeNull();
+    // Despliegue nativo de Railway desde GitHub
+    expect(shaFromDeployMeta({ repo: "jorgemgrande-stack/nayade_experiences_platform", commitHash: sha, commitMessage: "Merge pull request #1" }, "nayade_experiences_platform")).toBe(sha);
+    expect(shaFromDeployMeta({ repo: "jorgemgrande-stack/big-elephant-crm", commitHash: sha }, "nayade_experiences_platform")).toBeNull();
   });
 
   it("comprobaciones funcionales en los dos entornos; las de live con la credencial de la pasarela", () => {
@@ -94,11 +98,22 @@ describe("publicación continua", () => {
     expect(wf).toContain("if: (startsWith(inputs.action, 'desplegar-') && inputs.action != 'desplegar-crm' && inputs.action != 'desplegar-web') || inputs.action == 'preparar-pruebas-live'");
   });
 
-  it("live se publica solo desde el CI de integration/elephant-source y nunca en paralelo", () => {
+  it("live lo despliega Railway en nativo tras el CI; la publicación sigue a su despliegue, solo en integration/elephant-source y nunca en paralelo", () => {
     expect(ci).toMatch(/branches: \[main, integration\/elephant-source\]/);
-    const job = ci.slice(ci.indexOf("  publicar-live:"), ci.indexOf("  # Production ORDINARIO"));
-    expect(job).toContain("needs: [quality, core-suites, secrets]");
-    expect(job).toContain("if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/integration/elephant-source'");
+    // El CI ya no sube el código de live (lo despliega Railway con «Wait for CI»); a mano llama a la publicación
+    expect(ci).not.toContain("deploy-elephant-source.yml");
+    const manual = ci.slice(ci.indexOf("  publicar:"));
+    expect(manual).toContain("needs: [quality, core-suites, secrets]");
+    expect(manual).toContain("if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/integration/elephant-source'");
+    expect(manual).toContain("uses: ./.github/workflows/publicacion.yml");
+    // Disparo: solo con los tres servicios bien en Railway, con el último commit de la rama y sin repetir lo ya superado
+    const trigger = pub.slice(pub.indexOf("  disparar:"), pub.indexOf("  live:"));
+    expect(trigger).toContain("github.event.deployment_status.state == 'success' && github.event.deployment.environment == 'Elephant Source / live'");
+    expect(trigger).toContain("for S in controlplane core core-gateway; do");
+    expect(trigger).toContain('grep -Fxq "elephant-source/live|success"');
+    expect(trigger).toContain('gh workflow run publicacion.yml --repo "${GITHUB_REPOSITORY}" --ref integration/elephant-source');
+    const job = pub.slice(pub.indexOf("  live:"), pub.indexOf("  # Production ORDINARIO"));
+    expect(job).toContain("if: github.event_name != 'deployment_status' && github.ref == 'refs/heads/integration/elephant-source'");
     expect(job).toContain("auto: true");
     expect(job).toContain("environment: live");
     expect(job).toContain("action: publicar");
@@ -108,8 +123,8 @@ describe("publicación continua", () => {
   });
 
   it("production ordinario automático solo después de live; lo protegido se omite con aviso en automático y falla en manual", () => {
-    const job = ci.slice(ci.indexOf("  publicar-production:"));
-    expect(job).toContain("needs: [publicar-live]");
+    const job = pub.slice(pub.indexOf("  production:"));
+    expect(job).toContain("needs: [live]");
     expect(job).toContain("environment: production");
     expect(job).toContain("action: publicar");
     expect(job).toContain("auto: true");

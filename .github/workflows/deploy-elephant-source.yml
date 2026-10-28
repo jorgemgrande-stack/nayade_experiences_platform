@@ -419,6 +419,8 @@ jobs:
               exit "${RC}"
             fi
           else
+            # Live se despliega en nativo desde GitHub: lo que trae se mide contra lo que servía antes de este commit
+            FROM=$(pnpm exec tsx scripts/deploy/esRailway.ts active-sha --env "${ES_ENV}" --before "${ES_DEPLOY_SHA}")
             pnpm exec tsx scripts/deploy/esRailway.ts changes ${FROM:+--from "${FROM}"} --to "${ES_DEPLOY_SHA}" | tee "${RUNNER_TEMP}/changes.txt"
             if ! grep -qx "migrations=no" "${RUNNER_TEMP}/changes.txt"; then echo "ES_LIVE_MIGRATE=1" >> "${GITHUB_ENV}"; fi
           fi

@@ -326,8 +326,15 @@ export function contractMailPlan(env: string, vars: Record<string, Record<string
 /** Servicios que publica un despliegue ordinario, en este orden. Nada de copias, restore-drill ni pasarelas de prueba. */
 export const ORDINARY_SERVICES = ["controlplane", "core", "core-gateway"] as const;
 
-/** Commit de un despliegue a partir de sus metadatos de Railway (mensaje «<repositorio> <commit>» de `railway up`). */
+/**
+ * Commit de un despliegue a partir de sus metadatos de Railway: el del despliegue nativo desde GitHub (`repo` y
+ * `commitHash`) o el mensaje «<repositorio> <commit>» de `railway up`.
+ */
 export function shaFromDeployMeta(meta: unknown, repository: string): string | null {
+  if (meta && typeof meta === "object") {
+    const { repo, commitHash } = meta as { repo?: unknown; commitHash?: unknown };
+    if (typeof repo === "string" && typeof commitHash === "string" && (repo === repository || repo.endsWith(`/${repository}`)) && /^[0-9a-f]{40}$/.test(commitHash)) return commitHash;
+  }
   const text = typeof meta === "string" ? meta : JSON.stringify(meta ?? {});
   const i = text.indexOf(`${repository} `);
   const m = i >= 0 ? /^[0-9a-f]{40}\b/.exec(text.slice(i + repository.length + 1)) : null;
