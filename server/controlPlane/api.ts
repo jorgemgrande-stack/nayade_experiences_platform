@@ -73,6 +73,7 @@ import { catalogFromWebStore, crmFromStore } from "../subscriptions/ports";
 import { SubscriptionService as ContractSubscriptionService } from "../subscriptions/service";
 import { ShadowBillingService } from "../subscriptions/shadow";
 import type { SubscriptionStore } from "../subscriptions/store";
+import { revenueMetrics } from "../revenue/metrics";
 import { Metrics } from "../_core/metering";
 import { quote, type QuoteRequest } from "../catalog/quote";
 import { CAPABILITY_STATUSES } from "../_core/capabilities/model";
@@ -1013,6 +1014,24 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         // Lo que no se mide no se atribuye (suele ser el mayor coste: almacenamiento y bases de datos)
         unattributed: UNMEASURED,
       });
+    }),
+  );
+  // Métricas de ingresos del Control Center (solo lectura): MRR real de los servicios con cobro, cobrado en la ventana,
+  // riesgo, próximos cargos y churn; el modo sombra aparte. Dato económico interno: billing:read
+  router.get(
+    "/revenue/metrics",
+    requireScope("billing:read"),
+    wrap(async (req, res) => {
+      if (!d.external && !d.subscriptions) return void res.json({ available: false, reason: "Sin servicios externos ni suscripciones montados en este plano de control" });
+      const days = z.coerce.number().int().min(1).max(365).default(30).parse(req.query.days ?? undefined);
+      const external = d.external ? await d.external.store.list() : [];
+      const events = new Map(await Promise.all(external.map(async (x) => [x.id, await d.external!.store.events(x.id)] as const)));
+      let shadow: Parameters<typeof revenueMetrics>[0]["shadow"] = null;
+      if (d.subscriptions) {
+        const subscriptions = await d.subscriptions.store.list({ status: "active", limit: 1000 });
+        shadow = { subscriptions, items: new Map(await Promise.all(subscriptions.map(async (s) => [s.id, await d.subscriptions!.store.items(s.id)] as const))) };
+      }
+      res.json({ available: true, sources: { external: !!d.external, shadow: !!d.subscriptions }, ...revenueMetrics({ external, events, shadow, now: Date.now(), windowDays: days }) });
     }),
   );
   // Tarifas de coste: vigentes, de dónde salen e historial de cambios. Editar exige billing:write, motivo y la versión
