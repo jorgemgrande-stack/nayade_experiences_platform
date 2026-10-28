@@ -520,10 +520,12 @@ async function main() {
     const has = (t: string) => pool.query(`SELECT 1 FROM ${t} LIMIT 0`).then(() => true, () => false);
     const tables = (await has("invoices")) && (await has("invoice_lines")) && (await has("invoice_series"));
     const series = (process.env.CP_INVOICING_SERIES ?? "").trim().toUpperCase();
-    const mode = external?.store.mode ?? "test";
-    const chargesReady = tables && (await has("billing_charges"));
-    if (tables) invoicing = { store: new MysqlInvoicingStore(pool, mode), issueEnabled: process.env.CP_INVOICING_ISSUE_ENABLED === "1", seriesCode: /^[A-Z]{1,8}$/.test(series) ? series : "EB", ...(chargesReady ? { charges: new MysqlChargeStore(pool, mode) } : {}) };
-    console.log(JSON.stringify({ ctx: "Invoicing", mounted: !!invoicing, ...(invoicing ? { issueEnabled: invoicing.issueEnabled, series: invoicing.seriesCode, charges: chargesReady || "migration_0028_missing" } : { reason: "migration_0027_missing" }) }));
+    if (tables) invoicing = { store: new MysqlInvoicingStore(pool, external?.store.mode ?? "test"), issueEnabled: process.env.CP_INVOICING_ISSUE_ENABLED === "1", seriesCode: /^[A-Z]{1,8}$/.test(series) ? series : "EB" };
+    // Cargos extraordinarios y gastos variables (CRM 0028): solo con su tabla
+    const chargesReady = !!invoicing && (await has("billing_charges"));
+    if (invoicing && chargesReady) invoicing.charges = new MysqlChargeStore(pool, external?.store.mode ?? "test");
+    console.log(JSON.stringify({ ctx: "Invoicing", mounted: !!invoicing, ...(invoicing ? { issueEnabled: invoicing.issueEnabled, series: invoicing.seriesCode } : { reason: "migration_0027_missing" }) }));
+    if (invoicing) console.log(JSON.stringify({ ctx: "Invoicing", charges: chargesReady, ...(chargesReady ? {} : { reason: "migration_0028_missing" }) }));
   }
 
   // API pública de captación de la web comercial: solo con CRM, orígenes explícitos y secreto propio
