@@ -125,6 +125,14 @@ export class InvoicingService {
     }
   }
 
+  /** ¿Bastan los datos fiscales de la empresa para facturarle? Las mismas reglas que al expedir. */
+  async fiscalCheck(companyId: number): Promise<{ ready: boolean; problems: string[]; issueEnabled: boolean }> {
+    const company = await this.d.company(companyId);
+    if (!company) throw new InvoicingError("not_found", "Empresa no encontrada");
+    const { problems } = customerOf(company);
+    return { ready: problems.length === 0, problems, issueEnabled: this.d.issueEnabled };
+  }
+
   /** Lo que falta para poder expedir una factura (vacío = se puede). */
   async readiness(id: number): Promise<{ invoice: Invoice; problems: string[] }> {
     const invoice = await this.must(id);
