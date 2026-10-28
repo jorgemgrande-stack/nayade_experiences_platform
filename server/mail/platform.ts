@@ -26,6 +26,7 @@ import type { UsageNotice } from "../commerce/usageNotices";
 import type { WithdrawalNotifier } from "../withdrawals/service";
 import type { IncidentNotifier } from "../_core/ops/incidents";
 import type { TicketNotifier } from "../_core/support/tickets";
+import type { ExternalMail } from "../external/service";
 import { mailPolicyFromEnv, type MailPolicy } from "./policy";
 import { mailProviderFromEnv } from "./providers";
 import { MailService, type SendResult } from "./service";
@@ -61,6 +62,17 @@ export class PlatformMailer {
   /** Aviso interno a cada destinatario del equipo (una clave por hecho y destinatario: repetir no duplica). */
   async opsNotice(key: string, title: string, lines: string[]): Promise<void> {
     for (const to of this.opsRecipients) await this.send(PLATFORM_TENANT, `ops:${key}:${short(to)}`, "operational", to, this.t.opsNotice({ title, lines }));
+  }
+
+  /** Clientes externos (server/external): invitación al contrato para el representante y aviso interno de la aceptación. */
+  externalMail(): ExternalMail {
+    return {
+      invite: async (to, key, i) => {
+        const r = await this.send(PLATFORM_TENANT, key, "contract_invitation", to, this.t.contractInvitation(i));
+        return { status: r.status, reason: r.reason, duplicate: r.duplicate };
+      },
+      opsNotice: (key, title, lines) => this.opsNotice(key, title, lines),
+    };
   }
 
   /** Incidencias operativas por correo al equipo (se suma al webhook): al abrir, reabrir y escalar. */

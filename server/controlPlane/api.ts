@@ -1649,7 +1649,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
       }
       // Servicios externos en un entorno sin Stripe: contrato, aceptación y seguimiento (sin autorización de pago ni cobros)
       if (d.external && !d.stripe) {
-        const svc = new ExternalService({ store: d.external.store, crm: d.crm.service, crmStore: d.crm.store, mode: "test", namespace: "sin-stripe", urls: d.external.urls, ipSalt: d.external.ipSalt, now: d.subscriptions.now });
+        const svc = new ExternalService({ store: d.external.store, crm: d.crm.service, crmStore: d.crm.store, mode: "test", namespace: "sin-stripe", urls: d.external.urls, ipSalt: d.external.ipSalt, mail: d.mail?.platform?.externalMail(), now: d.subscriptions.now });
         router.use("/external", createExternalRouter(svc));
         publicAcceptance = createContractAcceptanceRouter(svc);
       }
@@ -1681,7 +1681,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         };
         // Servicios de clientes externos: mismo Stripe (Customer por empresa, webhooks, conciliación), sin pedidos ni licencias
         const externalSvc = d.external
-          ? new ExternalService({ store: d.external.store, crm: d.crm.service, crmStore: d.crm.store, stripeStore: st.store, gateway: st.gateway, mode: st.config.mode, namespace: st.config.namespace, urls: d.external.urls, ipSalt: d.external.ipSalt, liveEnabled: d.external.liveEnabled, now: d.subscriptions.now })
+          ? new ExternalService({ store: d.external.store, crm: d.crm.service, crmStore: d.crm.store, stripeStore: st.store, gateway: st.gateway, mode: st.config.mode, namespace: st.config.namespace, urls: d.external.urls, ipSalt: d.external.ipSalt, liveEnabled: d.external.liveEnabled, mail: d.mail?.platform?.externalMail(), now: d.subscriptions.now })
           : null;
         const externalStore = d.external?.store;
         const processor = new StripeEventProcessor({ store: st.store, gateway: st.gateway, orders: d.orders.store, orchestrator, now: d.subscriptions.now, namespace: st.config.namespace, mode: st.config.mode, taxExpectations: st.fiscal?.taxExpectations, vat, catalog: stripeCatalog, changes: st.purchases?.changes, invoiceLines: st.invoiceLines, contractedItems, deferredItems: deferredItems ? (o, s) => deferredItems.attach(o, s) : undefined, external: externalSvc && externalStore ? { handleSetupSession: async (id) => ((await externalStore.bySetupSession(id)) ? externalSvc.handleSetupSession(id) : null), handleSubscription: (sub, hint) => externalSvc.handleSubscription(sub, hint), handleCharge: (c, inv, sub) => externalSvc.handleCharge(c, inv, sub) } : undefined });

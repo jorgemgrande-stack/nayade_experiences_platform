@@ -79,8 +79,8 @@ export function createExternalRouter(svc: ExternalService): Router {
     res.json({ text: doc.text, sha256: doc.sha256, version: doc.version });
   }));
   r.post("/:id/acceptance", requireScope("orders:write"), wrap(async (req, res) => {
-    const signer = z.object({ name: z.string().max(160), email: z.string().max(254), role: z.string().max(120).nullable().optional(), taxId: z.string().max(32).nullable().optional() }).strict().parse(req.body ?? {});
-    res.status(201).json({ acceptance: await svc.requestAcceptance(id(req), signer, actor(req)) });
+    const { send, ...signer } = z.object({ name: z.string().max(160), email: z.string().max(254), role: z.string().max(120).nullable().optional(), taxId: z.string().max(32).nullable().optional(), send: z.boolean().optional() }).strict().parse(req.body ?? {});
+    res.status(201).json({ acceptance: await svc.requestAcceptance(id(req), signer, actor(req), { send: send === true }) });
   }));
   r.post("/:id/payment-setup", requireScope("orders:write"), wrap(async (req, res) => void res.json({ setup: await svc.paymentSetup(id(req), actor(req)) })));
   r.post("/:id/decision", requireScope("orders:approve"), wrap(async (req, res) => {
