@@ -265,6 +265,9 @@ describe("clientes externos: piloto Nextair SL (SkiNet, 1.000 € + IVA, cobro e
     expect(d.external).toMatchObject({ status: "active", lastInvoiceId: nov, lastInvoiceStatus: "paid" });
     const paid = d.events.find((e: { kind: string; ref: string }) => e.kind === "invoice_paid" && e.ref === nov);
     expect(paid.detail).toMatchObject({ subtotal: 100_000, tax: 21_000, amountPaid: 121_000, period: "noviembre de 2026" });
+    // Evento de cobro para la facturación (I-6): referencias y periodo del SERVICIO (no el period_start de la factura)
+    expect(paid.detail).toMatchObject({ billingRef: `external:${id}`, paymentRef: `stripe:in:${nov}`, currency: "EUR", baseCents: 100_000, taxCents: 21_000, totalCents: 121_000, periodStart: madrid(2026, 11, 1), periodEnd: madrid(2026, 12, 1) });
+    expect(gw.invoices.get(nov)!.periodStart).toBeLessThan(sec(madrid(2026, 11, 1)));
     clock = madrid(2026, 12, 1);
     mark = gw.events.length;
     gw.chargeServicePeriod(subId, sec(madrid(2026, 12, 1)), sec(madrid(2027, 1, 1)), "paid");
@@ -304,6 +307,32 @@ describe("clientes externos: piloto Nextair SL (SkiNet, 1.000 € + IVA, cobro e
     const ofSub = Array.from(gw.invoices.values()).filter((i) => i.subscriptionId === subId);
     expect(ofSub).toHaveLength(4);
     expect(gw.calls.some((c) => /charges|paymentIntents|invoices\.create/.test(c.op))).toBe(false);
+  });
+
+  it("reembolso parcial y disputa de un cobro: un evento por hecho, con lo añadido, y nota en el contrato", async () => {
+    const d = await ok(call("GET", `/external/${id}`));
+    const nov = d.events.find((e: { kind: string; detail: { period: string } }) => e.kind === "invoice_paid" && e.detail.period === "noviembre de 2026").ref;
+    const ch = gw.chargeForInvoice(nov);
+    gw.refund(ch, 12_100);
+    const ev = gw.emit("charge.refunded", "charge", ch);
+    await ok(stripeWebhook(ev));
+    await ok(stripeWebhook(ev));
+    await settled();
+    gw.refund(ch, 6_050);
+    await ok(stripeWebhook(gw.emit("charge.refunded", "charge", ch)));
+    const dp = gw.dispute(ch, "needs_response");
+    await ok(stripeWebhook(gw.emit("charge.dispute.created", "dispute", dp)));
+    await settled();
+    const events = await ext.events(id);
+    const refunds = events.filter((e) => e.kind === "charge_refunded");
+    expect(refunds.map((e) => [e.ref, e.detail?.refundedDeltaCents, e.detail?.amountRefundedCents])).toEqual([
+      [`${ch}:12100`, 12_100, 12_100],
+      [`${ch}:18150`, 6_050, 18_150],
+    ]);
+    expect(refunds[0].detail).toMatchObject({ billingRef: `external:${id}`, paymentRef: `stripe:in:${nov}`, period: "noviembre de 2026", fullyRefunded: false });
+    expect(events.filter((e) => e.kind === "charge_dispute").map((e) => e.ref)).toEqual([`${ch}:needs_response`]);
+    // Elephant nunca crea reembolsos ni cargos propios
+    expect(gw.calls.some((c) => /refunds|charges|paymentIntents/.test(c.op))).toBe(false);
   });
 
   it("webhooks repetidos e idempotencia; ningún aprovisionamiento en Elephant Core", async () => {

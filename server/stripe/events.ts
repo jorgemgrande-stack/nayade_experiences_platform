@@ -131,6 +131,8 @@ export interface ProcessorDeps {
   external?: {
     handleSetupSession(sessionId: string): Promise<string | null>;
     handleSubscription(sub: GwSubscription, hint?: GwInvoice): Promise<string>;
+    /** Reembolso o disputa de un cargo de su suscripción (el cargo, su factura y la suscripción, releídos de Stripe). */
+    handleCharge?(c: GwCharge, inv: GwInvoice, sub: GwSubscription): Promise<string>;
   };
 }
 
@@ -223,6 +225,11 @@ export class StripeEventProcessor {
   async handleCharge(id: string): Promise<Outcome> {
     const first = await this.chargeContext(id);
     if ("ignored" in first) return first.ignored;
+    // Cargo de un servicio externo: no es de ningún pedido; lo registra su contratación
+    if (first.sub.metadata.es_external_id) {
+      if (!this.d.external?.handleCharge || first.sub.metadata.es_env !== this.namespace) return { outcome: "ignored", detail: "Servicio externo de otro entorno o sin módulo" };
+      return { outcome: "processed", detail: await this.d.external.handleCharge(first.c, first.inv, first.sub) };
+    }
     const v = await this.verified(first.sub);
     if ("ignored" in v) return v.ignored;
     return this.withOrder(v.order.id, async () => {
