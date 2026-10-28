@@ -28,6 +28,8 @@ export const DRILL_ALLOWED: RegExp[] = [
   /^node dist-cp\/backup-job\.js restore-tenant [a-z0-9][a-z0-9-]{1,62} --apply$/,
   // Base de medición del Resource Manager (es_erm): idempotente, permisos mínimos y sonda sin restos
   new RegExp(`^${BJ} erm-setup( --apply)?$`),
+  // Purga definitiva de las cinco empresas de prueba (lista cerrada en el código; simulación o --apply)
+  new RegExp(`^${BJ} purge-test-companies( --apply)?$`),
   // Recursos huérfanos del aprovisionamiento (solo lectura)
   new RegExp(`^${BJ} orphans$`),
   // Revisión de estados comerciales del catálogo por el flujo del CRM (simulación o --apply; nunca precios ni licencias)

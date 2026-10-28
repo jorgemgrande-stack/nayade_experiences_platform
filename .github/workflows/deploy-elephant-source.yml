@@ -54,6 +54,7 @@ on:
           - comprobar-salud
           - preparar-production
           - aplicar-production
+          - purgar-empresas-prueba
           - preparar-pruebas-live
           - diagnostico-correo-live
           - correo-pruebas-live
@@ -170,7 +171,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: CLI de Railway (versión fijada)
-        if: startsWith(inputs.action, 'desplegar-') || inputs.action == 'publicar' || inputs.action == 'preparar-pruebas-live' || inputs.action == 'correo-pruebas-live' || inputs.action == 'preparar-production' || inputs.action == 'aplicar-production' || inputs.action == 'medicion-preparar' || startsWith(inputs.action, 'catalogo-revision') || startsWith(inputs.action, 'catalogo-fichas')
+        if: startsWith(inputs.action, 'desplegar-') || inputs.action == 'publicar' || inputs.action == 'preparar-pruebas-live' || inputs.action == 'correo-pruebas-live' || inputs.action == 'preparar-production' || inputs.action == 'aplicar-production' || inputs.action == 'purgar-empresas-prueba' || inputs.action == 'medicion-preparar' || startsWith(inputs.action, 'catalogo-revision') || startsWith(inputs.action, 'catalogo-fichas')
         run: npm install -g @railway/cli@5.68.0
 
       - name: Verificar que el token es de Elephant Source y del entorno elegido
@@ -234,7 +235,7 @@ jobs:
         run: pnpm exec tsx scripts/deploy/esRailway.ts mail-live --env "${ES_ENV}" --allow "${ES_MAIL_ALLOW}"
 
       - name: Commit a desplegar (debe pertenecer a integration/elephant-source)
-        if: startsWith(inputs.action, 'desplegar-') || inputs.action == 'publicar' || inputs.action == 'preparar-pruebas-live' || inputs.action == 'correo-pruebas-live' || inputs.action == 'preparar-production' || inputs.action == 'aplicar-production' || inputs.action == 'medicion-preparar' || startsWith(inputs.action, 'catalogo-revision') || startsWith(inputs.action, 'catalogo-fichas')
+        if: startsWith(inputs.action, 'desplegar-') || inputs.action == 'publicar' || inputs.action == 'preparar-pruebas-live' || inputs.action == 'correo-pruebas-live' || inputs.action == 'preparar-production' || inputs.action == 'aplicar-production' || inputs.action == 'purgar-empresas-prueba' || inputs.action == 'medicion-preparar' || startsWith(inputs.action, 'catalogo-revision') || startsWith(inputs.action, 'catalogo-fichas')
         run: |
           SHA="${ES_COMMIT:-${GITHUB_SHA}}"
           git merge-base --is-ancestor "${SHA}" "${GITHUB_SHA}" || { echo "El commit ${SHA} no es de integration/elephant-source"; exit 1; }
@@ -317,7 +318,7 @@ jobs:
         run: pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --command "node dist-cp/backup-job.js check-data-exports${ES_ONLY:+ --only ${ES_ONLY}}"
 
       - name: Export del commit (sin railway.toml ni datos de semilla)
-        if: startsWith(inputs.action, 'desplegar-') || inputs.action == 'publicar' || inputs.action == 'preparar-pruebas-live' || inputs.action == 'correo-pruebas-live' || inputs.action == 'preparar-production' || inputs.action == 'aplicar-production' || inputs.action == 'medicion-preparar' || startsWith(inputs.action, 'catalogo-revision') || startsWith(inputs.action, 'catalogo-fichas')
+        if: startsWith(inputs.action, 'desplegar-') || inputs.action == 'publicar' || inputs.action == 'preparar-pruebas-live' || inputs.action == 'correo-pruebas-live' || inputs.action == 'preparar-production' || inputs.action == 'aplicar-production' || inputs.action == 'purgar-empresas-prueba' || inputs.action == 'medicion-preparar' || startsWith(inputs.action, 'catalogo-revision') || startsWith(inputs.action, 'catalogo-fichas')
         run: pnpm exec tsx scripts/deploy/esRailway.ts export --sha "${ES_DEPLOY_SHA}" --out "${RUNNER_TEMP}/export"
 
       # Revisión de estados comerciales del catálogo (docs/runbooks/CATALOGO_ESTADOS_COMERCIALES.md): restore-drill con ESTE
@@ -686,6 +687,26 @@ jobs:
       - name: aplicar-production — solo production
         if: inputs.action == 'aplicar-production'
         run: if [ "${ES_ENV}" != "production" ]; then echo "aplicar-production solo existe en production"; exit 1; fi
+
+      # Purga DEFINITIVA de las cinco empresas de prueba (lista cerrada en server/_core/ops/purgeTestCompanies.ts; autorizada
+      # por el propietario el 28/10/2026). Solo production y por el entorno protegido: imagen de este commit, copia verificada,
+      # simulación (aborta si aparece una empresa real, un registro fiscal o de cobro, un dato live o una base compartida),
+      # purga y comprobación posterior. El cliente de Stripe de PRUEBAS no se toca (modo test: se borra en su Dashboard).
+      - name: "Purga de empresas de prueba 1/3 — imagen de este commit y copia verificada"
+        if: inputs.action == 'purgar-empresas-prueba'
+        run: |
+          if [ "${ES_ENV}" != "production" ]; then echo "La purga de las empresas de prueba solo existe en production"; exit 1; fi
+          pnpm exec tsx scripts/deploy/esRailway.ts deploy --env "${ES_ENV}" --service restore-drill --dir "${RUNNER_TEMP}/export" --sha "${ES_DEPLOY_SHA}"
+          pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --expect-sha "${ES_DEPLOY_SHA}" --command "node dist-cp/backup-job.js run"
+          pnpm exec tsx scripts/deploy/esRailway.ts backup-check --env "${ES_ENV}"
+
+      - name: "Purga de empresas de prueba 2/3 — simulación (aborta si toca algo real o fiscal)"
+        if: inputs.action == 'purgar-empresas-prueba'
+        run: pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --expect-sha "${ES_DEPLOY_SHA}" --command "node dist-cp/backup-job.js purge-test-companies"
+
+      - name: "Purga de empresas de prueba 3/3 — purga y comprobación de que no queda nada"
+        if: inputs.action == 'purgar-empresas-prueba'
+        run: pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --expect-sha "${ES_DEPLOY_SHA}" --command "node dist-cp/backup-job.js purge-test-companies --apply"
 
       - name: "Aplicar production 1/5 — copia inmediatamente antes de migrar"
         if: inputs.action == 'aplicar-production'
