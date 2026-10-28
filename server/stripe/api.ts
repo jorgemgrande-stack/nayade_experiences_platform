@@ -203,7 +203,8 @@ export function createStripeRouter(d: StripeRouterDeps): Router {
     if (!d.checkout) return void res.status(409).json({ error: "checkout_disabled", message: "Checkout desactivado" });
     res.json(await d.checkout.sync(sessionId.parse(req.params.sessionId)));
   }));
-  r.get("/events", requireScope("ops:read"), wrap(async (_req, res) => void res.json({ counts: await d.store.eventCounts() })));
+  // Recuentos y los eventos fallidos (para revisarlos y reprogramarlos con /events/:id/retry); nunca el cuerpo del evento
+  r.get("/events", requireScope("ops:read"), wrap(async (_req, res) => void res.json({ counts: await d.store.eventCounts(), failed: await d.store.failedEvents(100) })));
   r.post("/events/:id/retry", requireScope("orders:write"), wrap(async (req, res) => {
     const eventId = z.string().regex(/^evt_[A-Za-z0-9]{8,240}$/).parse(req.params.id);
     const ev = await d.store.event(eventId);
