@@ -475,6 +475,13 @@ export function crmProtectedChanges(files: string[]): string[] {
 /** Ficheros cuyo cambio sigue siendo extraordinario en el Core. */
 export const EXTRAORDINARY_PATHS: Array<{ re: RegExp; why: string }> = [{ re: /^server\/mail\/policy\.ts$/, why: "política del correo real" }];
 
+/** Identidad de los avisos (marca, línea legal y logotipo) en la política del correo: textos, no deciden quién recibe. */
+export const MAIL_POLICY_IDENTITY = /^export const (PLATFORM_BRAND|PLATFORM_LEGAL_LINE|DEFAULT_MAIL_LOGO_URL) = "[^"\\]*";$/;
+const identityOnly = (file: string, diff: string) => {
+  const lines = effectiveChangedLines(diff).filter((l) => l.file === file);
+  return lines.length > 0 && lines.every((l) => MAIL_POLICY_IDENTITY.test(l.code.trim()));
+};
+
 /**
  * ¿Una migración (solo el fichero de subida) borra o reescribe datos o esquema? Aditivo = crear tablas, añadir columnas
  * o índices y datos nuevos. Devuelve el motivo, o null si es aditiva. Ante la duda (sentencia no reconocida), extraordinaria.
@@ -512,7 +519,7 @@ export function extraordinaryChanges(files: string[], diff: string, sqlOf: (file
   const out: string[] = [];
   for (const f of files) {
     const hit = EXTRAORDINARY_PATHS.find((p) => p.re.test(f));
-    if (hit) out.push(`${f} — ${hit.why}`);
+    if (hit && !identityOnly(f, diff)) out.push(`${f} — ${hit.why}`);
   }
   for (const f of migrationUpFiles(files)) {
     const sql = sqlOf(f);
@@ -781,22 +788,27 @@ export function externalLockedChanges(diff: string): string[] {
 }
 
 /**
- * Interruptores del Core tocados en código efectivo (sin comentarios; las cadenas cuentan):
+ * Interruptores del Core tocados en código efectivo: lecturas de la variable (`process.env.X`, `env.X`), su nombre exacto
+ * como cadena (`"X"`) o su asignación (`X=...`). Un nombre parecido (`Metrics.LLM_TOKENS_INPUT`) o un texto que lo cite
+ * (`"MAIL_MODE=off"`) no lo son.
  *  - quitar o cambiar una línea existente que lee un interruptor → extraordinario (puede encender o apagar algo);
  *  - añadir lecturas de un interruptor que YA existía en lo publicado → extraordinario (puede encender algo con él);
  *  - añadir un interruptor NUEVO (no existía en lo publicado) → ordinario: nace desactivado y activarlo exige su variable,
  *    que es una operación protegida aparte. Sin `existsInBase` se supone que existía (lo prudente).
  */
+const LOCKED_NAMES = LOCKED_SWITCHES.source.slice(2, -2);
+export const LOCKED_SWITCH_USE = new RegExp(`(?:process\\.env|\\benv)\\s*(?:\\.\\s*|\\[\\s*["'\`])${LOCKED_NAMES}\\b|["'\`]${LOCKED_NAMES}["'\`]|^\\s*(?:export\\s+)?${LOCKED_NAMES}\\s*=`);
 export function coreLockedChanges(diff: string, opts: { existsInBase?: (name: string) => boolean } = {}): string[] {
   const out = new Set<string>();
   const lines = effectiveChangedLines(diff);
-  for (const { file, code } of weakenedLines(lines, LOCKED_SWITCHES)) out.add(`${file ? `${file}: ` : ""}cambio en ${code.match(LOCKED_SWITCHES)![1]} — funciones bloqueadas`);
-  const all = new RegExp(LOCKED_SWITCHES.source, "g");
+  const name = (m: RegExpMatchArray) => m[1] ?? m[2] ?? m[3];
+  for (const { file, code } of weakenedLines(lines, LOCKED_SWITCH_USE)) out.add(`${file ? `${file}: ` : ""}cambio en ${name(code.match(LOCKED_SWITCH_USE)!)} — funciones bloqueadas`);
+  const all = new RegExp(LOCKED_SWITCH_USE.source, "g");
   for (const { file, code, sign } of lines) {
     if (sign !== "+") continue;
     for (const m of code.matchAll(all)) {
-      const brandNew = opts.existsInBase ? !opts.existsInBase(m[1]) : false;
-      if (!brandNew) out.add(`${file ? `${file}: ` : ""}cambio en ${m[1]} — funciones bloqueadas`);
+      const brandNew = opts.existsInBase ? !opts.existsInBase(name(m)) : false;
+      if (!brandNew) out.add(`${file ? `${file}: ` : ""}cambio en ${name(m)} — funciones bloqueadas`);
     }
   }
   return Array.from(out);

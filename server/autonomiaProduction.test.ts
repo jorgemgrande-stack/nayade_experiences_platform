@@ -58,7 +58,9 @@ describe("flujo de despliegue", () => {
   });
   it("publicar en production aplica las migraciones aditivas con copia verificada y canario, antes del código", () => {
     const step = WF.slice(WF.indexOf("Publicar — production, copia verificada y migraciones aditivas"), WF.indexOf("Publicar — controlplane, core y core-gateway"));
-    const order = ["--service restore-drill", "backup-job.js run", "backup-check", "registry apply", "crm apply", "--only t3-empresa-demo-elephant-01 --apply", "--only t5-skibox --apply", "migrate-tenants --apply", "check-data-exports\""];
+    // Sin empresas fijas: migrate-tenants hace de canario con la primera empresa pendiente
+    const order = ["--service restore-drill", "backup-job.js run", "backup-check", "registry apply", "crm apply", "migrate-tenants --apply", "check-data-exports\""];
+    expect(step).not.toMatch(/--only (t3-empresa-demo|t5-skibox)/);
     let at = 0;
     for (const s of order) {
       const i = step.indexOf(s, at);
