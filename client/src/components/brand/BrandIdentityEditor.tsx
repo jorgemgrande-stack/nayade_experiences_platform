@@ -148,7 +148,7 @@ export function BrandIdentityEditor({ variant = "full", onSaved }: { variant?: "
   if (q.isError) return <p className="text-sm text-destructive" role="alert">No se ha podido cargar la marca: {q.error.message}</p>;
 
   return (
-    <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
+    <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
       <div className="space-y-6">
         {/* Identidad (web y acceso) */}
         <section className="rounded-2xl border border-border bg-card p-5 space-y-4" aria-labelledby="brand-id">
@@ -161,7 +161,7 @@ export function BrandIdentityEditor({ variant = "full", onSaved }: { variant?: "
             <Input id="brand_name" value={v.brand_name ?? ""} maxLength={120} onChange={(e) => set("brand_name", e.target.value)} />
           </div>
           <ImageUploader label="Logotipo" value={v.brand_logo_url ?? ""} onChange={(u) => set("brand_logo_url", u)} />
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <ColorField id="theme_primary_color" label="Color principal" value={v.theme_primary_color ?? ""} onChange={(c) => set("theme_primary_color", c)} />
             <ColorField id="theme_accent_color" label="Color de acento" value={v.theme_accent_color ?? ""} onChange={(c) => set("theme_accent_color", c)} />
           </div>
@@ -259,19 +259,26 @@ export function BrandIdentityEditor({ variant = "full", onSaved }: { variant?: "
         )}
 
         <div className="flex flex-wrap items-center gap-3">
-          <Button
-            type="button"
-            onClick={() => {
-              if (bg === "custom" && !(v.login_background_url ?? "").trim()) {
-                toast.error("Sube la imagen de fondo del acceso o elige otra opción.");
-                return;
-              }
-              void persist(v, "Marca guardada: ya se ve en tu web y en tu acceso");
-            }}
-            disabled={save.isPending || !dirty}
-          >
-            {save.isPending ? "Guardando…" : "Guardar"}
-          </Button>
+          {variant === "onboarding" && !dirty ? (
+            // En Primeros pasos, quedarse con la marca tal cual también completa el paso (no es «omitirlo»)
+            <Button type="button" onClick={() => onSaved?.()}>
+              Continuar con esta marca
+            </Button>
+          ) : (
+            <Button
+              type="button"
+              onClick={() => {
+                if (bg === "custom" && !(v.login_background_url ?? "").trim()) {
+                  toast.error("Sube la imagen de fondo del acceso o elige otra opción.");
+                  return;
+                }
+                void persist(v, "Marca guardada: ya se ve en tu web y en tu acceso");
+              }}
+              disabled={save.isPending || !dirty}
+            >
+              {save.isPending ? "Guardando…" : variant === "onboarding" ? "Guardar y continuar" : "Guardar"}
+            </Button>
+          )}
           <Button
             type="button"
             variant="outline"

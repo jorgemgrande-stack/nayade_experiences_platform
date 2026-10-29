@@ -164,9 +164,12 @@ export default function PrimerosPasos() {
           )}
         </header>
 
-        <div className="grid gap-5 lg:grid-cols-[240px_1fr]">
-          <nav aria-label="Pasos de Primeros pasos">
-            <ol className="flex gap-2 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible">
+        {/* minmax(0,1fr): en móvil el índice de 8 pasos (desplazable) no puede ensanchar la columna ni la página */}
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-[240px_minmax(0,1fr)]">
+          <nav aria-label="Pasos de Primeros pasos" className="min-w-0">
+            {/* relative: los textos solo para lectores de pantalla (sr-only, absolutos) quedan dentro de la franja
+                desplazable; si no, en móvil ensanchaban el documento hasta ~1220 px */}
+            <ol className="relative flex gap-2 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible">
               {SETUP_STEPS.map((s, i) => {
                 const st = stepState(s);
                 const active = s === current;
