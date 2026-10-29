@@ -6,13 +6,20 @@
 #     (workflow_dispatch): la comprobación de rama y los entornos de despliegue exigen integration/elephant-source.
 #  3. «live»: comprobaciones funcionales, migraciones nuevas de live, CRM y web y la marca «elephant-source/live».
 #  4. «production»: production ordinario, solo con lo superado en live (mismas barreras que antes).
-# Tras fusionar solo en el CRM o la web, su propio CI lanza ci.yml en integration/elephant-source (que llama a este flujo)
-# con el secreto ES_PUBLICAR_TOKEN de su repositorio; sin él, a mano: `gh workflow run ci.yml --ref integration/elephant-source`.
+# Tras fusionar solo en el CRM o la web, su propio CI lanza este flujo con «solo: crm|web» (secreto ES_PUBLICAR_TOKEN):
+# publica únicamente ese servicio en live y production, sin repetir el CI ni tocar el Core.
 name: Publicación (tras Railway)
 
 on:
   deployment_status:
   workflow_dispatch:
+    inputs:
+      # Lo lanza el CI del CRM o de la web tras una fusión: solo ese servicio (el Core ya está publicado)
+      solo:
+        required: false
+        type: choice
+        options: [todos, crm, web]
+        default: todos
   workflow_call:
 
 permissions:
@@ -55,6 +62,7 @@ jobs:
       action: publicar
       confirm: live
       auto: true
+      servicios: ${{ inputs.solo || 'todos' }}
     secrets: inherit
 
   # Production ORDINARIO automático, solo tras superar live el mismo commit. Entorno elephant-source-production-despliegue
@@ -73,4 +81,5 @@ jobs:
       action: publicar
       confirm: production
       auto: true
+      servicios: ${{ inputs.solo || 'todos' }}
     secrets: inherit

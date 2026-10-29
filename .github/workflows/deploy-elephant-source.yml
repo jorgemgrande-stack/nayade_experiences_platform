@@ -114,6 +114,11 @@ on:
         required: false
         type: boolean
         default: false
+      # Qué publica «publicar»: todos (Core, CRM y web) o solo crm / web cuando el Core no ha cambiado
+      servicios:
+        required: false
+        type: string
+        default: todos
 
 permissions:
   contents: read
@@ -145,6 +150,7 @@ jobs:
       ES_COMMIT: ${{ inputs.commit }}
       ES_MAIL_ALLOW: ${{ inputs.destinatarios }}
       ES_AUTO: ${{ inputs.auto }}
+      ES_SERVICES: ${{ inputs.servicios || 'todos' }}
       # La web comercial entra en la publicación solo si el entorno tiene su clave de lectura (si no, se omite con aviso)
       ES_WEB_ENABLED: ${{ secrets.WEB_DEPLOY_KEY != '' }}
     steps:
@@ -155,6 +161,7 @@ jobs:
           if [ -z "${RAILWAY_TOKEN}" ]; then echo "Sin RAILWAY_TOKEN en el entorno elephant-source-${ES_ENV}: no se hace nada."; exit 1; fi
           if [ -n "${ES_COMMIT}" ] && ! printf '%s' "${ES_COMMIT}" | grep -Eq '^[0-9a-f]{7,40}$'; then echo "Commit no válido"; exit 1; fi
           if [ -n "${ES_ONLY}" ] && ! printf '%s' "${ES_ONLY}" | grep -Eq '^[a-z0-9][a-z0-9-]{1,62}(,[a-z0-9][a-z0-9-]{1,62})*$'; then echo "Lista de empresas no válida"; exit 1; fi
+          case "${ES_SERVICES}" in todos|crm|web) ;; *) echo "Servicios no válidos: ${ES_SERVICES}"; exit 1;; esac
 
       - uses: actions/checkout@v4
         with:
@@ -401,6 +408,8 @@ jobs:
       - name: Publicar — qué trae respecto a lo activo (en production, nada que exija el procedimiento protegido)
         if: inputs.action == 'publicar'
         run: |
+          # Solo CRM o web: el Core no cambia (ni migraciones, ni copias, ni despliegue de sus servicios)
+          if [ "${ES_SERVICES}" != "todos" ]; then echo "Solo ${ES_SERVICES}: el Core no se toca"; echo "ES_PROD_SKIP=1" >> "${GITHUB_ENV}"; exit 0; fi
           FROM=$(pnpm exec tsx scripts/deploy/esRailway.ts active-sha --env "${ES_ENV}")
           if [ "${ES_ENV}" = "production" ]; then
             set +e
@@ -462,6 +471,7 @@ jobs:
       - name: Publicar — CRM, commit a publicar
         if: inputs.action == 'publicar'
         run: |
+          if [ "${ES_SERVICES}" = "web" ]; then echo "ES_CRM_SKIP=1" >> "${GITHUB_ENV}"; exit 0; fi
           if [ "${ES_ENV}" = "live" ]; then
             echo "ES_CRM_REF=integration/elephant-source" >> "${GITHUB_ENV}"
           else
@@ -523,6 +533,7 @@ jobs:
       - name: Publicar — web, commit a publicar
         if: inputs.action == 'publicar'
         run: |
+          if [ "${ES_SERVICES}" = "crm" ]; then echo "ES_WEB_SKIP=1" >> "${GITHUB_ENV}"; exit 0; fi
           if [ "${ES_WEB_ENABLED}" != "true" ]; then
             echo "::notice title=Web no publicada::el entorno no tiene WEB_DEPLOY_KEY"
             echo "ES_WEB_SKIP=1" >> "${GITHUB_ENV}"
