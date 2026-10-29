@@ -3390,7 +3390,7 @@ export const crmRouter = router({
             .limit(1);
 
           if (existingReservation) {
-            const redsysForm = buildRedsysForm({
+            const redsysForm = await buildRedsysForm({
               amount: amountCents,
               merchantOrder: existingReservation.merchantOrder,
               productDescription: `Presupuesto ${quote.quoteNumber} — ${quote.title}`,
@@ -3470,7 +3470,7 @@ export const crmRouter = router({
         });
 
         // Construir formulario Redsys
-        const redsysForm = buildRedsysForm({
+        const redsysForm = await buildRedsysForm({
           amount: amountCents,
           merchantOrder,
           productDescription: `Presupuesto ${quote.quoteNumber} — ${quote.title}`,

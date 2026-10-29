@@ -1857,7 +1857,7 @@ export const appRouter = router({
         const pricingDesc = pricingType === "per_unit" && unitsBooked
           ? `${product.title} x${unitsBooked} unidad${unitsBooked !== 1 ? "es" : ""}`
           : `${product.title} x${input.people} persona${input.people !== 1 ? "s" : ""}`;
-        const redsysForm = buildRedsysForm({
+        const redsysForm = await buildRedsysForm({
           amount: amountCents,
           merchantOrder,
           productDescription: pricingDesc,
@@ -2136,7 +2136,7 @@ export const appRouter = router({
         const description = productNames.length === 1
           ? productNames[0]
           : `${productNames.length} experiencias — ${companyName()}`;
-        const redsysForm = buildRedsysForm({
+        const redsysForm = await buildRedsysForm({
           amount: finalAmountCents,
           merchantOrder,
           productDescription: description.slice(0, 125),

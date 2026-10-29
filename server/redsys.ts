@@ -14,6 +14,7 @@ import crypto from "crypto";
 import { isMultiTenant } from "./_core/tenant";
 import { getSystemSettingSync } from "./config";
 import { credentialFor } from "./_core/credentials/cache";
+import { assertRealPaymentAllowed } from "./trialPayments";
 
 // ─── Configuración ────────────────────────────────────────────────────────────
 
@@ -22,10 +23,14 @@ const REDSYS_URLS = {
   production: "https://sis.redsys.es/sis/realizarPago",
 };
 
-export function getRedsysUrl(): string {
+/** Entorno de la cuenta de cobro: `production` (dinero real) o cualquier otro valor (pruebas). */
+export function getRedsysEnvironment(): string {
   // Multiempresa: la cuenta de cobro es del tenant (sus ajustes), nunca la del entorno
-  const env = isMultiTenant() ? (credentialFor("redsys", "environment") ?? getSystemSettingSync("redsys_environment", "test")) : (process.env.REDSYS_ENVIRONMENT ?? "test");
-  return env === "production" ? REDSYS_URLS.production : REDSYS_URLS.test;
+  return isMultiTenant() ? (credentialFor("redsys", "environment") ?? getSystemSettingSync("redsys_environment", "test")) : (process.env.REDSYS_ENVIRONMENT ?? "test");
+}
+
+export function getRedsysUrl(): string {
+  return getRedsysEnvironment() === "production" ? REDSYS_URLS.production : REDSYS_URLS.test;
 }
 
 export function getMerchantCode(): string {
@@ -143,7 +148,9 @@ export interface RedsysFormData {
  * Genera los datos necesarios para el formulario de redirección a Redsys.
  * El importe SIEMPRE se calcula en backend para evitar manipulación.
  */
-export function buildRedsysForm(params: RedsysPaymentParams): RedsysFormData {
+export async function buildRedsysForm(params: RedsysPaymentParams): Promise<RedsysFormData> {
+  // Empresa en prueba o sin contratar: solo contra el entorno de pruebas (trialPayments.ts)
+  await assertRealPaymentAllowed(getRedsysEnvironment());
   const merchantCode = getMerchantCode();
   const terminal = getMerchantTerminal();
 

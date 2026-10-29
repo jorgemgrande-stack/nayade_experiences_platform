@@ -358,7 +358,7 @@ export const restaurantsRouter = router({
         const merchantOrder = generateMerchantOrder();
         // Guardar merchantOrder en la reserva para correlacionar el IPN
         await (await import("../restaurantsDb")).updateBooking(booking!.id, { merchantOrder } as any);
-        redsysForm = buildRedsysForm({
+        redsysForm = await buildRedsysForm({
           amount: amountCents,
           merchantOrder,
           productDescription: `Depósito reserva ${restaurant.name} ${input.date} ${input.time}`,

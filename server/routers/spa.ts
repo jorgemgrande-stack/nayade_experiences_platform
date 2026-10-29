@@ -424,7 +424,7 @@ export const spaRouter = router({
       // 6. Construir formulario Redsys (si falla, la plaza no se queda retenida hasta que caduque)
       let redsysForm;
       try {
-        redsysForm = buildRedsysForm({
+        redsysForm = await buildRedsysForm({
           amount: amountCents,
           merchantOrder,
           productDescription: `SPA ${treatment.name} · ${input.date} ${input.time} · ${input.persons}p`,

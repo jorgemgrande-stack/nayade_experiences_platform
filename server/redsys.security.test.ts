@@ -58,14 +58,14 @@ describe("buildRedsysForm", () => {
     koUrl: "https://app.ejemplo.test/reserva/error",
   };
 
-  it("firma con HMAC-SHA256 y clave derivada 3DES igual que la implementación de referencia", () => {
-    const f = redsys.buildRedsysForm(base);
+  it("firma con HMAC-SHA256 y clave derivada 3DES igual que la implementación de referencia", async () => {
+    const f = await redsys.buildRedsysForm(base);
     expect(f.Ds_SignatureVersion).toBe("HMAC_SHA256_V1");
     expect(f.Ds_Signature).toBe(referenceSignature(f.Ds_MerchantParameters, base.merchantOrder));
   });
 
-  it("los parámetros codifican el importe en céntimos, la moneda y el terminal con relleno", () => {
-    const f = redsys.buildRedsysForm(base);
+  it("los parámetros codifican el importe en céntimos, la moneda y el terminal con relleno", async () => {
+    const f = await redsys.buildRedsysForm(base);
     const p = JSON.parse(Buffer.from(f.Ds_MerchantParameters, "base64").toString("utf8"));
     expect(p).toMatchObject({
       DS_MERCHANT_AMOUNT: "1500",
@@ -76,29 +76,29 @@ describe("buildRedsysForm", () => {
     });
   });
 
-  it("usa el entorno de pruebas salvo que se indique producción explícitamente", () => {
-    expect(redsys.buildRedsysForm(base).url).toContain("sis-t.redsys.es");
+  it("usa el entorno de pruebas salvo que se indique producción explícitamente", async () => {
+    expect((await redsys.buildRedsysForm(base)).url).toContain("sis-t.redsys.es");
     process.env.REDSYS_ENVIRONMENT = "production";
-    expect(redsys.buildRedsysForm(base).url).toBe("https://sis.redsys.es/sis/realizarPago");
+    expect((await redsys.buildRedsysForm(base)).url).toBe("https://sis.redsys.es/sis/realizarPago");
     process.env.REDSYS_ENVIRONMENT = "cualquier-otro";
-    expect(redsys.buildRedsysForm(base).url).toContain("sis-t.redsys.es");
+    expect((await redsys.buildRedsysForm(base)).url).toContain("sis-t.redsys.es");
   });
 
-  it("rechaza importes no válidos y pedidos mal formados antes de firmar", () => {
-    expect(() => redsys.buildRedsysForm({ ...base, amount: 0 })).toThrow(/Importe/);
-    expect(() => redsys.buildRedsysForm({ ...base, amount: -5 })).toThrow(/Importe/);
-    expect(() => redsys.buildRedsysForm({ ...base, merchantOrder: "" })).toThrow(/vacío/);
-    expect(() => redsys.buildRedsysForm({ ...base, merchantOrder: "ABCD123456" })).toThrow(/numéricos/);
-    expect(() => redsys.buildRedsysForm({ ...base, merchantOrder: "12345678901234" })).toThrow(/entre 4 y 12/);
-    expect(() => redsys.buildRedsysForm({ ...base, merchantOrder: "1234-AB_12" })).toThrow(/no permitidos/);
+  it("rechaza importes no válidos y pedidos mal formados antes de firmar", async () => {
+    await expect(redsys.buildRedsysForm({ ...base, amount: 0 })).rejects.toThrow(/Importe/);
+    await expect(redsys.buildRedsysForm({ ...base, amount: -5 })).rejects.toThrow(/Importe/);
+    await expect(redsys.buildRedsysForm({ ...base, merchantOrder: "" })).rejects.toThrow(/vacío/);
+    await expect(redsys.buildRedsysForm({ ...base, merchantOrder: "ABCD123456" })).rejects.toThrow(/numéricos/);
+    await expect(redsys.buildRedsysForm({ ...base, merchantOrder: "12345678901234" })).rejects.toThrow(/entre 4 y 12/);
+    await expect(redsys.buildRedsysForm({ ...base, merchantOrder: "1234-AB_12" })).rejects.toThrow(/no permitidos/);
   });
 
-  it("falla de forma visible si falta la clave o el código de comercio", () => {
+  it("falla de forma visible si falta la clave o el código de comercio", async () => {
     delete process.env.REDSYS_MERCHANT_KEY;
-    expect(() => redsys.buildRedsysForm(base)).toThrow(/MERCHANT_KEY/);
+    await expect(redsys.buildRedsysForm(base)).rejects.toThrow(/MERCHANT_KEY/);
     process.env.REDSYS_MERCHANT_KEY = FAKE_KEY_B64;
     delete process.env.REDSYS_MERCHANT_CODE;
-    expect(() => redsys.buildRedsysForm(base)).toThrow(/MERCHANT_CODE/);
+    await expect(redsys.buildRedsysForm(base)).rejects.toThrow(/MERCHANT_CODE/);
   });
 });
 
@@ -235,9 +235,9 @@ describe("generateMerchantOrder", () => {
     expect(set.size).toBeGreaterThan(1900);
   });
 
-  it("todo pedido generado pasa la validación de buildRedsysForm", () => {
+  it("todo pedido generado pasa la validación de buildRedsysForm", async () => {
     for (let i = 0; i < 50; i++) {
-      expect(() =>
+      await expect(
         redsys.buildRedsysForm({
           amount: 100,
           merchantOrder: redsys.generateMerchantOrder(),
@@ -246,7 +246,7 @@ describe("generateMerchantOrder", () => {
           okUrl: "https://a.test/ok",
           koUrl: "https://a.test/ko",
         }),
-      ).not.toThrow();
+      ).resolves.toBeTruthy();
     }
   });
 });
