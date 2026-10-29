@@ -18,6 +18,7 @@ import {
   FileText, HelpCircle, Loader2, Package, Palette, PartyPopper, SkipForward, UserPlus, Users,
 } from "lucide-react";
 import { BrandIdentityEditor } from "@/components/brand/BrandIdentityEditor";
+import { singleLineQuoteAmounts } from "@/lib/quoteAmounts";
 import {
   BUSINESS_ACTIVITIES, COUNTRIES, CURRENCIES, SETUP_STEPS, STEP_LABELS, TIMEZONES, activityInfo, companySchema,
   type CompanyData, type SetupStep, type StepStatus,
@@ -583,9 +584,10 @@ function OperationStep({ disabled, onCreated }: { disabled: boolean; onCreated: 
       clientEmail: client.email,
       title: `Presupuesto para ${client.name}`,
       items: [{ description: product.title, quantity: 1, unitPrice: unit, total: unit, taxRate: tax, productId: product.id }],
-      subtotal: unit,
+      // El precio del producto ya incluye el impuesto (como en el editor de presupuestos): total = PVP, base = PVP − IVA
+      subtotal: singleLineQuoteAmounts(unit, tax).subtotal,
       taxRate: tax,
-      total: Math.round(unit * (1 + tax / 100) * 100) / 100,
+      total: singleLineQuoteAmounts(unit, tax).total,
       sendNow: false,
     });
   };
