@@ -1112,6 +1112,8 @@ async function main() {
         console.error(`${d.name}: vuelta atrás a ${d.prev} → ${await rollback(d.sid, sc.environmentId, d.prev)}`);
       }
     };
+    // Se suben los que cambian y Railway los compila a la vez; si alguno no queda bien, vuelven todos los de esta ejecución
+    const pending: Array<{ name: string; sid: string; before: string | null; up: ReturnType<typeof spawnSync> }> = [];
     for (const name of ORDINARY_SERVICES) {
       if (!sc.services.includes(name)) throw new Error(`el servicio ${name} no existe en el entorno`);
       const sid = await serviceId(name);
@@ -1122,14 +1124,20 @@ async function main() {
       }
       const before = (await latest(sid, sc.environmentId))?.id ?? null;
       done.push({ name, sid, prev: cur?.id ?? null });
-      const r = spawnSync("railway", ["up", dir, "--path-as-root", "-s", name, "-e", env, "--detach", "-m", `${REPOSITORIES.core} ${sha}`], { encoding: "utf8", env: process.env });
-      const d = r.status === 0 ? await waitOrCancel(sid, sc.environmentId, before) : null;
-      console.log(`${name}: ${d ? `despliegue ${d.id} → ${d.status}` : `railway up falló: ${scrub(r.stderr || r.stdout || "").slice(0, 300)}`}`);
+      pending.push({ name, sid, before, up: spawnSync("railway", ["up", dir, "--path-as-root", "-s", name, "-e", env, "--detach", "-m", `${REPOSITORIES.core} ${sha}`], { encoding: "utf8", env: process.env }) });
+    }
+    const outcomes = await Promise.all(pending.map(async (p) => ({ ...p, d: p.up.status === 0 ? await waitOrCancel(p.sid, sc.environmentId, p.before) : null })));
+    let failed = false;
+    for (const { name, up, d } of outcomes) {
+      console.log(`${name}: ${d ? `despliegue ${d.id} → ${d.status}` : `railway up falló: ${scrub(String(up.stderr || up.stdout || "")).slice(0, 300)}`}`);
       if (d?.status !== "SUCCESS") {
+        failed = true;
         if (d && d.status !== "TIMEOUT") console.log((await logs(d.id, 120)).split("\n").slice(-40).join("\n"));
-        await rollbackAll();
-        process.exit(1);
       }
+    }
+    if (failed) {
+      await rollbackAll();
+      process.exit(1);
     }
     if (!(await functional(env))) {
       await rollbackAll();
@@ -1176,6 +1184,14 @@ async function main() {
     const catalog = ext.service === "web" ? await stampWebCatalog(dir) : null;
     const note = `${ext.repo} ${sha}${catalog ? ` catalogo:${catalog}` : ""}`;
     const sid = await serviceId(ext.service);
+    // CRM conectado a GitHub: si Railway aún compila el despliegue nativo de este commit, se espera (no se sube otro)
+    if (ext.service === "crm") {
+      const building = (await deployments(sid, sc.environmentId, 3)).find((x) => !FINAL.has(x.status) && isNativeDeploy(x.meta) && shaFromDeployMeta(x.meta, ext.repo) === sha);
+      if (building) {
+        console.log(`${ext.service}: Railway ya despliega ${sha.slice(0, 12)} en nativo; se espera a que termine`);
+        await waitFor(sid, sc.environmentId, null).catch(() => null);
+      }
+    }
     const curNode = (await deployments(sid, sc.environmentId)).find((x) => x.status === "SUCCESS");
     if (curNode && shaFromDeployMeta(curNode.meta, ext.repo) === sha && (!catalog || JSON.stringify(curNode.meta ?? "").includes(`catalogo:${catalog}`))) {
       console.log(`${ext.service}: ya sirve ${sha.slice(0, 12)}`);
