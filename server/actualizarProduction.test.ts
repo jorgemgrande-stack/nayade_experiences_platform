@@ -1,7 +1,7 @@
 /**
  * Actualización de production en DOS aprobaciones (autorizada por el propietario el 23/10/2026): preparar (copia,
  * verificación, restauración en base nueva y simulación; nunca aplica) y aplicar (en el orden del plan: copia justo
- * antes, plataforma, canario antes que Skibox, despliegues y salud). Sin tocar correo, cobros ni autoservicio.
+ * antes, plataforma, migraciones de empresas con canario genérico, despliegues y salud). Sin tocar correo, cobros ni autoservicio.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -32,15 +32,16 @@ describe("actualización de production", () => {
     expect(p).not.toContain("--switch");
   });
 
-  it("aplicar-production: copia justo antes, plataforma, canario antes que Skibox, despliegues y salud", () => {
+  it("aplicar-production: copia justo antes, plataforma, empresas (canario genérico, sin empresas fijas), despliegues y salud", () => {
     const a = steps("aplicar-production");
     const i = (x: string) => a.indexOf(x);
     expect(i("backup-job.js run")).toBeGreaterThan(-1);
     expect(i("backup-job.js run")).toBeLessThan(i("registry apply"));
-    expect(i("crm apply")).toBeLessThan(i("--only t3-empresa-demo-elephant-01 --apply"));
-    expect(i("--only t3-empresa-demo-elephant-01 --apply")).toBeLessThan(i("--only t5-skibox --apply"));
-    expect(i("--only t5-skibox --apply")).toBeLessThan(i("--service controlplane"));
-    expect(i("--service core ")).toBeLessThan(i("skibox.app.bigelephant.es/login"));
+    expect(i("crm apply")).toBeLessThan(i("migrate-tenants --apply"));
+    expect(i("migrate-tenants --apply")).toBeLessThan(i("--service controlplane"));
+    expect(i("--service core ")).toBeLessThan(i("esRailway.ts access --env"));
+    // Ninguna empresa fija (demos, canarios o clientes concretos) en la publicación
+    expect(a).not.toMatch(/--only [a-z0-9]|empresa-demo|skibox/);
     expect(a).not.toMatch(/MAIL_MODE|MAIL_LIVE_AUTHORIZED|CHECKOUT|SELF_SERVICE/);
   });
 

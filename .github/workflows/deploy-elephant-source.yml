@@ -438,7 +438,7 @@ jobs:
           pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --expect-sha "${ES_DEPLOY_SHA}" --command "node dist-cp/backup-job.js check-data-exports"
 
       # Production: migraciones ADITIVAS (las destructivas son extraordinarias y no llegan aquí), con copia y verificación de
-      # la copia antes; registro y CRM; empresas con canario primero, después Skibox y después el resto. Cualquier fallo
+      # la copia antes; registro y CRM; empresas con canario genérico (la primera; si falla, ninguna más). Cualquier fallo
       # detiene la publicación antes de desplegar el código nuevo (el servicio sigue con la versión anterior).
       - name: Publicar — production, copia verificada y migraciones aditivas
         if: inputs.action == 'publicar' && inputs.environment == 'production' && env.ES_PROD_MIGRATE == '1' && env.ES_PROD_SKIP != '1'
@@ -448,9 +448,7 @@ jobs:
           pnpm exec tsx scripts/deploy/esRailway.ts backup-check --env "${ES_ENV}"
           pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --expect-sha "${ES_DEPLOY_SHA}" --command "node .mig/run.cjs registry apply"
           pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --expect-sha "${ES_DEPLOY_SHA}" --command "node .mig/run.cjs crm apply"
-          pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --expect-sha "${ES_DEPLOY_SHA}" --command "node dist-cp/backup-job.js migrate-tenants --only t3-empresa-demo-elephant-01 --apply"
-          pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --expect-sha "${ES_DEPLOY_SHA}" --command "node dist-cp/backup-job.js check-data-exports --only t3-empresa-demo-elephant-01"
-          pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --expect-sha "${ES_DEPLOY_SHA}" --command "node dist-cp/backup-job.js migrate-tenants --only t5-skibox --apply"
+          # Empresas: migrate-tenants aplica primero a UNA (canario genérico) y, si falla, no toca ninguna más
           pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --expect-sha "${ES_DEPLOY_SHA}" --command "node dist-cp/backup-job.js migrate-tenants --apply"
           pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --expect-sha "${ES_DEPLOY_SHA}" --command "node dist-cp/backup-job.js check-data-exports"
 
@@ -725,12 +723,10 @@ jobs:
           pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --expect-sha "${ES_DEPLOY_SHA}" --command "node .mig/run.cjs crm apply"
           pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --expect-sha "${ES_DEPLOY_SHA}" --command "node .mig/run.cjs crm status"
 
-      - name: "Aplicar production 3/5 — migraciones de las empresas (canario, después Skibox, después el resto)"
+      - name: "Aplicar production 3/5 — migraciones de las empresas (canario genérico y después el resto)"
         if: inputs.action == 'aplicar-production'
         run: |
-          pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --expect-sha "${ES_DEPLOY_SHA}" --command "node dist-cp/backup-job.js migrate-tenants --only t3-empresa-demo-elephant-01 --apply"
-          pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --expect-sha "${ES_DEPLOY_SHA}" --command "node dist-cp/backup-job.js check-data-exports --only t3-empresa-demo-elephant-01"
-          pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --expect-sha "${ES_DEPLOY_SHA}" --command "node dist-cp/backup-job.js migrate-tenants --only t5-skibox --apply"
+          # Empresas: migrate-tenants aplica primero a UNA (canario genérico) y, si falla, no toca ninguna más
           pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --expect-sha "${ES_DEPLOY_SHA}" --command "node dist-cp/backup-job.js migrate-tenants --apply"
           pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --expect-sha "${ES_DEPLOY_SHA}" --command "node dist-cp/backup-job.js check-data-exports"
 
@@ -746,11 +742,11 @@ jobs:
         if: inputs.action == 'aplicar-production'
         run: pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --expect-sha "${ES_DEPLOY_SHA}" --command "node dist-cp/backup-job.js catalog-review --apply"
 
-      - name: "Aplicar production 5/5 — salud pública y acceso de Skibox"
+      - name: "Aplicar production 5/5 — salud pública y acceso al administrador central"
         if: inputs.action == 'aplicar-production'
         run: |
           pnpm exec tsx scripts/deploy/esRailway.ts health --url "https://app.bigelephant.es/" --expect 200
-          pnpm exec tsx scripts/deploy/esRailway.ts health --url "https://skibox.app.bigelephant.es/login" --expect 200
+          pnpm exec tsx scripts/deploy/esRailway.ts access --env "${ES_ENV}"
           # Diagnóstico de solo lectura en la misma ejecución aprobada: presencia (nunca valores) de SUPPORT_JWT_SECRET,
           # ERM_DATABASE_URL y CP_CORE_INTERNAL_URL, de los que dependen Accesos y el Resource Manager
           pnpm exec tsx scripts/deploy/esRailway.ts storage --env "${ES_ENV}"
