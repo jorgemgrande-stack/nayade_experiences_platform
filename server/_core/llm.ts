@@ -327,7 +327,13 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
   const usage = result.usage as
     | { prompt_tokens?: number; completion_tokens?: number }
     | undefined;
-  if (usage?.prompt_tokens) meter(Metrics.LLM_TOKENS_INPUT, usage.prompt_tokens, "token");
-  if (usage?.completion_tokens) meter(Metrics.LLM_TOKENS_OUTPUT, usage.completion_tokens, "token");
+  // Con la cuenta propia de la empresa el coste lo paga ella: se mide aparte y no entra en el coste de la plataforma
+  if (provider.source === "tenant") {
+    const own = (usage?.prompt_tokens ?? 0) + (usage?.completion_tokens ?? 0);
+    if (own) meter(Metrics.LLM_OWN_TOKENS, own, "token");
+  } else {
+    if (usage?.prompt_tokens) meter(Metrics.LLM_TOKENS_INPUT, usage.prompt_tokens, "token");
+    if (usage?.completion_tokens) meter(Metrics.LLM_TOKENS_OUTPUT, usage.completion_tokens, "token");
+  }
   return result;
 }

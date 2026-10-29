@@ -40,6 +40,8 @@ export const Metrics = {
   EMAIL_SENT: "email.sent",
   LLM_TOKENS_INPUT: "llm.tokens.input",
   LLM_TOKENS_OUTPUT: "llm.tokens.output",
+  /** Tokens con la cuenta de IA PROPIA de la empresa: se miden, pero no son coste de la plataforma. */
+  LLM_OWN_TOKENS: "llm.own.tokens",
   JOB_RUN_MS: "job.run.ms",
   TENANT_SHADOW: "tenant.shadow",
   /** Espera por hueco en el presupuesto de conexiones (ms) hasta obtenerlo. */
