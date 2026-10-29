@@ -97,6 +97,19 @@ export interface ExternalMail {
   opsNotice?(key: string, title: string, lines: string[]): Promise<void>;
   /** Enlace de autorización del método de pago al firmante (idempotente por clave). */
   paymentSetup?(to: string, idempotencyKey: string, i: PaymentSetupMail): Promise<{ status: string; reason: string | null; duplicate: boolean; id?: number | null }>;
+  /** Servicio contratado: suscripción creada y programada tras la confirmación de Stripe (idempotente por clave). */
+  scheduled?(to: string, idempotencyKey: string, i: ScheduledMail): Promise<{ status: string; reason: string | null; duplicate: boolean; id?: number | null }>;
+}
+export interface ScheduledMail {
+  signerName: string | null;
+  companyName: string;
+  serviceName: string;
+  amountCents: number;
+  taxRateBp: number;
+  currency: string;
+  firstChargeAt: number;
+  acceptedAt: number | null;
+  authorizedAt: number | null;
 }
 
 export interface CreateExternalInput {
@@ -614,7 +627,39 @@ export class ExternalService {
     );
     const cur = await this.d.store.update(x.id, x.version, { status: "scheduled", stripeSubscriptionId: sub.id, decisionReason: null }, now);
     await this.d.store.event({ externalId: x.id, kind: "scheduled", ref: sub.id, detail: { firstChargeAt: x.firstChargeAt, productId, taxRateId }, actor, at: now });
+    await this.sendScheduled(cur, now);
     return cur;
+  }
+
+  /**
+   * Confirmación al firmante con HECHOS confirmados (suscripción de Stripe creada y programada). Un fallo de correo
+   * nunca deshace la programación: queda en el historial. Una vez por contratación y suscripción (idempotente).
+   */
+  private async sendScheduled(x: ExternalSubscription, now: number) {
+    if (!this.d.mail?.scheduled) return;
+    const a = (await this.d.store.acceptances(x.contractId)).find((p) => p.status === "accepted");
+    if (!a) return;
+    const events = await this.d.store.events(x.id);
+    const authorized = events.find((e) => e.kind === "payment_method_authorized");
+    let mail: { status: string; reason: string | null; outboxId?: number };
+    try {
+      const doc = await this.document(x);
+      const r = await this.d.mail.scheduled(a.signerEmail, `external-scheduled:${this.d.namespace}:${x.id}:${x.stripeSubscriptionId ?? "sub"}`, {
+        signerName: a.acceptedName ?? a.signerName,
+        companyName: doc.company.legalName ?? doc.company.name,
+        serviceName: x.serviceName,
+        amountCents: x.amountCents,
+        taxRateBp: x.taxRateBp,
+        currency: x.currency,
+        firstChargeAt: x.firstChargeAt,
+        acceptedAt: a.acceptedAt,
+        authorizedAt: authorized?.at ?? null,
+      });
+      mail = { status: r.status, reason: r.reason, ...(r.id ? { outboxId: r.id } : {}) };
+    } catch (e) {
+      mail = { status: "failed", reason: (e instanceof Error ? e.message : "error").slice(0, 200) };
+    }
+    await this.d.store.event({ externalId: x.id, kind: "scheduled_email", ref: x.stripeSubscriptionId ?? String(x.id), detail: { signerEmail: a.signerEmail, ...mail }, actor: "system:mail", at: now });
   }
 
   /** Decisión sobre la primera mensualidad (método autorizado tarde): nueva fecha de primer cargo, registrada en el contrato. */

@@ -3,7 +3,9 @@
  * eventos existentes (prueba, alta asistida, pedidos) con una bandeja en memoria.
  */
 import { describe, it, expect } from "vitest";
-import { DEFAULT_MAIL_LOGO_URL, PLATFORM_LEGAL_LINE, forbiddenLinkHosts, linkHosts, mailPolicyFromEnv } from "./policy";
+import { DEFAULT_MAIL_LOGO_URL, PLATFORM_LEGAL_LINE, forbiddenLinkHosts, linkHosts as allLinkHosts, mailPolicyFromEnv } from "./policy";
+/** Hosts de los enlaces de la operación (sin el pie corporativo: ayuda y textos legales de www.bigelephant.es). */
+const linkHosts = (html: string) => allLinkHosts(html).filter((h) => h !== "www.bigelephant.es");
 import { memoryProvider } from "./providers";
 import { MailService } from "./service";
 import { MemoryMailStore } from "./store";
@@ -27,10 +29,10 @@ describe("plantillas de plataforma", () => {
     t.cancellation({ reference: "PED-0001", cancelAt: Date.UTC(2026, 11, 1) }),
   ];
 
-  it("en español, con la marca Elephant Source, sin restos de otra instalación y sin publicidad", () => {
+  it("en español, con la marca Big Elephant, sin restos de otra instalación y sin publicidad", () => {
     for (const c of all) {
       expect(c.html).toMatch(/<html lang="es">/);
-      expect(c.html).toMatch(/Elephant Source/);
+      expect(c.html).toMatch(/Big Elephant/);
       expect(c.text).toMatch(/No es publicidad/);
       // El titular solo aparece en su línea oficial del pie; cualquier otra mención sería un resto
       expect(`${c.subject} ${c.html} ${c.text}`.split(PLATFORM_LEGAL_LINE).join("")).not.toMatch(LEFTOVERS);
@@ -45,14 +47,14 @@ describe("plantillas de plataforma", () => {
     expect(c.html).toMatch(/display:none;max-height:0[^>]*>La prueba gratuita termina el/);
     expect(c.html).toMatch(/<a href="https:\/\/web\.example\/precios" target="_blank"/);
     for (const x of [c.html, c.text]) expect(x).toContain(PLATFORM_LEGAL_LINE);
-    expect(c.text).toMatch(/^Tu prueba de Elephant Source termina en 3 días\n\nLa prueba gratuita termina el/);
+    expect(c.text).toMatch(/Te quedan 3 días de prueba\n\nLa prueba gratuita termina el/);
     // Sin logotipo configurado (MAIL_LOGO_URL vacío o no https), cabecera con el nombre
     const prev = process.env.MAIL_LOGO_URL;
     process.env.MAIL_LOGO_URL = "http://inseguro.example/logo.png";
     try {
       const sin = platformTemplates({ supportEmail: null }).trialExpired({ endsAt: Date.UTC(2026, 10, 1) });
       expect(sin.html).not.toContain("<img");
-      expect(sin.html).toMatch(/font-weight:700[^>]*>Elephant Source<\/span>/);
+      expect(sin.html).toMatch(/font-weight:700[^>]*>Big Elephant<\/span>/);
     } finally {
       if (prev === undefined) delete process.env.MAIL_LOGO_URL;
       else process.env.MAIL_LOGO_URL = prev;
@@ -83,7 +85,7 @@ describe("plantillas de plataforma", () => {
   it("aviso de empresa con su marca y su host", () => {
     const c = tenantNotice({ brandName: "Costa Ejemplo SL", title: "Nueva reserva", paragraphs: ["Tienes una reserva nueva."], host: "costa.example", path: "/admin", ctaLabel: "Abrir el panel" });
     expect(c.html).toMatch(/Costa Ejemplo SL/);
-    expect(c.html).not.toMatch(/Elephant Source/);
+    expect(c.html).not.toMatch(/Big Elephant/);
     expect(linkHosts(c.html)).toEqual(["costa.example"]);
   });
 });
@@ -115,7 +117,7 @@ describe("avisos de plataforma conectados a los eventos", () => {
     await n.expiryNotice("duena@pruebas.example", { trialId: 7, endsAt, daysLeft: 3 });
     await n.expiryNotice("duena@pruebas.example", { trialId: 7, endsAt, daysLeft: 3 });
     expect(provider.sent.map((x) => x.tag)).toEqual(["email_verification", "trial_activated", "trial_expiry"]);
-    expect(provider.sent[0].from).toEqual({ name: "Elephant Source", email: "no-reply@bigelephant.example" });
+    expect(provider.sent[0].from).toEqual({ name: "Big Elephant", email: "no-reply@bigelephant.example" });
     expect(provider.sent[0].replyTo).toBe("soporte@bigelephant.example");
     expect(linkHosts(provider.sent[1].html)).toEqual(["montana.elephantsource.example"]);
     expect(provider.sent[1].html).toMatch(/establecer-contrasena\?token=inv-1/);

@@ -77,6 +77,11 @@ export class PlatformMailer {
         const r = await this.send(PLATFORM_TENANT, key, "contract_invitation", to, this.t.contractPaymentSetup(i));
         return { status: r.status, reason: r.reason, duplicate: r.duplicate, id: r.id };
       },
+      // Mismo recorrido del contrato (categoría contract_invitation): no abre otras categorías de correo
+      scheduled: async (to, key, i) => {
+        const r = await this.send(PLATFORM_TENANT, key, "contract_invitation", to, this.t.externalScheduled(i));
+        return { status: r.status, reason: r.reason, duplicate: r.duplicate, id: r.id };
+      },
     };
   }
 

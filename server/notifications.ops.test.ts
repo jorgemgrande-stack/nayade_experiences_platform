@@ -46,7 +46,7 @@ describe("incidencias por correo al equipo", () => {
     const rows = store.rows.filter((r) => r.category === "operational");
     expect(rows).toHaveLength(2);
     expect(rows.every((r) => r.toEmail === "equipo@bigelephant.es" || r.toEmail === null)).toBe(true);
-    expect(rows.map((r) => r.subject)).toEqual(["[Elephant Source] Incidencia Aviso: Stripe: errores de la pasarela", "[Elephant Source] Incidencia CRÍTICA: Stripe: errores de la pasarela"]);
+    expect(rows.map((r) => r.subject)).toEqual(["[Big Elephant] Incidencia Aviso: Stripe: errores de la pasarela", "[Big Elephant] Incidencia CRÍTICA: Stripe: errores de la pasarela"]);
   });
 
   it("sin destinatarios internos no se envía nada (el webhook sigue siendo el canal)", async () => {
@@ -85,7 +85,10 @@ describe("aviso de seguridad tras cambiar la contraseña (Core)", () => {
   it("fecha y hora de Madrid, sin enlaces ni tokens, y el nombre escapado", () => {
     const m = passwordChangedEmail("Ana <script>", new Date(NOW));
     expect(m.subject).toMatch(/Tu contraseña se ha cambiado/);
-    expect(`${m.html}\n${m.text}`).not.toMatch(/https?:\/\/|token/);
+    // Sin enlaces de acción ni tokens: solo los del pie corporativo (ayuda y textos legales de www.bigelephant.es)
+    const links = Array.from(`${m.html}\n${m.text}`.matchAll(/https?:\/\/[^\s"<)]+/g), (x) => x[0]).filter((u) => !u.startsWith("https://www.bigelephant.es"));
+    expect(links).toEqual([]);
+    expect(`${m.html}\n${m.text}`).not.toMatch(/token/);
     expect(m.html).toContain("Ana &lt;script&gt;");
     expect(m.text).toMatch(/22 de octubre de 2026/);
   });

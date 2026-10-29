@@ -124,12 +124,12 @@ export function sanitizeDisplayName(raw: string): string {
   return raw.replace(/[<>"\r\n@\\;,]/g, " ").replace(/\s+/g, " ").trim().slice(0, 70).trim();
 }
 
-export const PLATFORM_BRAND = "Elephant Source";
+export const PLATFORM_BRAND = "Big Elephant";
 
 /** Logotipo oficial (imagen pública de la web; los correos cargan imágenes por URL absoluta). */
 export const DEFAULT_MAIL_LOGO_URL = "https://www.bigelephant.es/brand/big-elephant-logo.png";
 /** Emisor que firma los avisos de plataforma (titular confirmado del servicio). */
-export const PLATFORM_LEGAL_LINE = "Elephant Source es un servicio de IRON ELEPHANT CONSULTING, S.L. · NIF B26987875 · Calle Corazón de María, 57, 1.º D, 28002 Madrid";
+export const PLATFORM_LEGAL_LINE = "Big Elephant es un servicio de IRON ELEPHANT CONSULTING, S.L. · NIF B26987875 · Calle Corazón de María, 57, 1.º D, 28002 Madrid";
 
 /**
  * Identidad visual de los avisos de PLATAFORMA: logotipo (`MAIL_LOGO_URL`, https; vacío = sin imagen) y línea del

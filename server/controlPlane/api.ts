@@ -13,7 +13,8 @@ import express, { type Express, type NextFunction, type Request, type Response }
 import { BUILTIN_MODULES } from "../_core/modules/builtin";
 import type { CommercialEventDispatchQueue, CommercialEventReader } from "../commercialEvents/log";
 import { TEMPLATE_CATALOG, catalogView } from "../notifications/catalog";
-import { allPreviews, hasPreview, previewTemplate } from "../notifications/preview";
+import { hasPreview, previewTemplate } from "../notifications/preview";
+import { allTestEmails } from "../mail/testCatalog";
 import { MAIL_STATUSES } from "../mail/types";
 import type { MailLedgerReader } from "../mail/store";
 import { choosePublicDomain } from "../_core/tenantIdentity";
@@ -1993,6 +1994,18 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
   }
 
   // Vista previa de las comunicaciones con DATOS FICTICIOS (no envía nada ni lee datos de clientes)
+  // Centro de Plantillas: catálogo maestro (todas las comunicaciones) con metadatos y su vista previa con datos ficticios
+  router.get("/notifications/templates", requireScope("ops:read"), wrap(async (_req, res) => void res.json({ templates: allTestEmails().map(({ html: _h, text: _t, ...m }) => m) })));
+  router.get(
+    "/notifications/templates/:id",
+    requireScope("ops:read"),
+    wrap(async (req, res) => {
+      const t = allTestEmails().find((x) => x.id === String(req.params.id));
+      if (!t) return void res.status(404).json({ error: "not_found", message: "Plantilla no encontrada" });
+      res.setHeader("Cache-Control", "no-store");
+      res.json({ template: t });
+    }),
+  );
   router.get("/notifications/preview", requireScope("ops:read"), wrap(async (_req, res) => void res.json({ ids: TEMPLATE_CATALOG.filter(hasPreview).map((t) => t.id) })));
   router.get(
     "/notifications/preview/:id",
@@ -2012,14 +2025,21 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
       "/notifications/test-send",
       requireScope("ops:write"),
       wrap(async (req, res) => {
-        const b = z.object({ to: z.string().trim().email().max(254), ids: z.array(z.string().max(80)).max(100).optional() }).strict().parse(req.body);
+        const b = z.object({ to: z.string().trim().email().max(254), ids: z.array(z.string().max(80)).max(120).optional() }).strict().parse(req.body);
         if (mailer.policy.mode !== "sandbox") return void res.status(409).json({ error: "not_sandbox", message: "El envío de prueba solo funciona con MAIL_MODE=sandbox" });
         const run = Date.now().toString(36);
-        const results: Array<{ id: string; status: string; reason: string | null }> = [];
-        for (const p of allPreviews().filter((x) => !b.ids || b.ids.includes(x.id))) {
-          const r = await mailer.send(null, `test:${run}:${p.id}`, "operational", b.to, { subject: `[Prueba] ${p.subject}`, html: p.html, text: p.text });
-          results.push({ id: p.id, status: r.status, reason: r.reason });
+        // Catálogo maestro (todas las plantillas, datos ficticios); cada una, un mensaje con su número en el asunto
+        const list = allTestEmails().filter((x) => !b.ids || b.ids.includes(x.id));
+        const results: Array<{ id: string; name: string; status: string; reason: string | null; outboxId: number | null }> = [];
+        for (let n = 0; n < list.length; n++) {
+          const p = list[n];
+          const subject = `[PRUEBA ${String(n + 1).padStart(2, "0")}/${list.length}] Big Elephant — ${p.name}`;
+          const r = await mailer.send(null, `test:${run}:${p.id}`, "operational", b.to, { subject, html: p.html, text: p.text });
+          results.push({ id: p.id, name: p.name, status: r.status, reason: r.reason, outboxId: r.id });
         }
+        // Entrega inmediata (sin esperar al ciclo de la bandeja); el resultado del proveedor queda en la trazabilidad
+        await mailer.service.drain(list.length).catch(() => undefined);
+        opsLog("info", "Mail", "test_send", { run, count: results.length, by: getAuth(req)?.tokenId ?? "operador" });
         res.json({ run, sent: results.length, results });
       }),
     );

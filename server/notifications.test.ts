@@ -56,10 +56,13 @@ describe("catálogo de comunicaciones", () => {
       expect(c.subject.length).toBeGreaterThan(5);
       const body = `${c.html}\n${c.text}`;
       expect(body).not.toMatch(/establecer-contrasena|recuperar-contrasena|nueva-contrasena|token=|http:\/\//);
-      // Enlaces solo a la plataforma; la única imagen es el logotipo oficial (no es un enlace)
+      // Imágenes: el logotipo oficial y los recursos de la marca (/brand/mail); enlaces solo a la plataforma de la
+      // empresa, salvo el pie corporativo (ayuda y legales de www.bigelephant.es)
       const images = Array.from(c.html.matchAll(/<img src="([^"]+)"/g), (m) => m[1]);
-      expect(images).toEqual([DEFAULT_MAIL_LOGO_URL]);
-      for (const url of body.split(DEFAULT_MAIL_LOGO_URL).join("").match(/https:\/\/[^\s"<]+/g) ?? []) expect(url.startsWith("https://acme.elephant.test/")).toBe(true);
+      expect(images[0]).toBe(DEFAULT_MAIL_LOGO_URL);
+      const ASSET = /^https:\/\/(www\.bigelephant\.es|elephant-source-web-live\.up\.railway\.app)\/brand\/mail\/[a-z-]+\.png$/;
+      for (const src of images.slice(1)) expect(src).toMatch(ASSET);
+      for (const url of body.match(/https:\/\/[^\s"<]+/g) ?? []) if (url !== DEFAULT_MAIL_LOGO_URL && !ASSET.test(url) && !url.startsWith("https://www.bigelephant.es")) expect(url.startsWith("https://acme.elephant.test/")).toBe(true);
       expect(body).toContain("No es publicidad");
       // Sin las variables, la plantilla no falla ni muestra «undefined»
       expect(JSON.stringify(t.render({}, { supportEmail: null }))).not.toContain("undefined");

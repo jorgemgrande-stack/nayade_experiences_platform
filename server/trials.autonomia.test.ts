@@ -319,12 +319,12 @@ describe("plantillas de correo de la prueba (español, sin Náyade, sin envío r
 
   it("asuntos en español y ninguna referencia a Náyade", () => {
     expect(all.map((m) => m.subject)).toEqual([
-      "Confirma tu correo para empezar tu prueba de Elephant Source",
-      "Tu nuevo enlace para empezar la prueba de Elephant Source",
-      "Tu prueba de Elephant Source termina en 3 días",
-      "Tu prueba de Elephant Source termina mañana",
-      "Tu prueba de Elephant Source ha terminado",
-      "Tu prueba de Elephant Source ha terminado",
+      "Confirma tu correo para empezar tu prueba de Big Elephant",
+      "Tu nuevo enlace para empezar la prueba de Big Elephant",
+      "Tu prueba de Big Elephant termina en 3 días",
+      "Tu prueba de Big Elephant termina mañana",
+      "Tu prueba de Big Elephant ha terminado",
+      "Tu prueba de Big Elephant ha terminado",
     ]);
     for (const m of all) expect(`${m.subject}\n${m.html}\n${m.text}`).not.toMatch(/n[aá]yade/i);
     expect(all[1].text).toMatch(/sustituye al anterior/);
@@ -344,9 +344,9 @@ describe("plantillas de correo de la prueba (español, sin Náyade, sin envío r
     await nt.expiryNotice("a@pruebas.example", { trialId: 3, endsAt: T0, daysLeft: 0 });
     expect(provider.sent).toHaveLength(0);
     expect(mailStore.rows.map((r) => [r.category, r.status, r.subject])).toEqual([
-      ["email_verification", "skipped", "Confirma tu correo para empezar tu prueba de Elephant Source"],
-      ["email_verification", "skipped", "Tu nuevo enlace para empezar la prueba de Elephant Source"],
-      ["trial_expiry", "skipped", "Tu prueba de Elephant Source ha terminado"],
+      ["email_verification", "skipped", "Confirma tu correo para empezar tu prueba de Big Elephant"],
+      ["email_verification", "skipped", "Tu nuevo enlace para empezar la prueba de Big Elephant"],
+      ["trial_expiry", "skipped", "Tu prueba de Big Elephant ha terminado"],
     ]);
   });
 
@@ -412,7 +412,7 @@ describe("avisos de los cambios decididos por el equipo", () => {
 
   it("la bienvenida lleva la fecha de fin de la prueba", () => {
     const m = platformTemplates({ supportEmail: null }).trialActivated({ host: "t1-x.app.bigelephant.example", setPasswordUrl: "https://t1-x.app.bigelephant.example/establecer-contrasena?token=a", endsAt: T0 + 15 * DAY });
-    expect(m.text).toMatch(/La prueba gratuita dura hasta el 31 de octubre de 2026/);
+    expect(m.text).toMatch(/La prueba dura hasta: 31 de octubre de 2026/);
   });
 
   it("por la bandeja de plataforma: categoría propia, idempotente por transición y, con MAIL_MODE=off, nada sale", async () => {
@@ -426,8 +426,8 @@ describe("avisos de los cambios decididos por el equipo", () => {
     await nt.statusNotice!("a@pruebas.example", { ...info, version: 8, kind: "suspended", endsAt: null });
     expect(provider.sent).toHaveLength(0);
     expect(mailStore.rows.map((r) => [r.category, r.status, r.subject])).toEqual([
-      ["trial_status", "skipped", "Hemos ampliado tu prueba de Elephant Source"],
-      ["trial_status", "skipped", "Tu prueba de Elephant Source está en pausa"],
+      ["trial_status", "skipped", "Hemos ampliado tu prueba de Big Elephant"],
+      ["trial_status", "skipped", "Tu prueba de Big Elephant está en pausa"],
     ]);
   });
 });

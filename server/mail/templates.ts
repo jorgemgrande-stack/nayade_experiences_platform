@@ -13,10 +13,15 @@
  */
 import { PLATFORM_BRAND, platformIdentity } from "./policy";
 import type { MailContent } from "./types";
+import { CORPORATE, fmt, renderEmail, type Block, type EmailSpec } from "./design";
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
-const fmtDate = (ms: number) => new Date(ms).toLocaleDateString("es-ES", { day: "numeric", month: "long", year: "numeric", timeZone: "Europe/Madrid" });
-const fmtMoney = (cents: number, currency: string) => new Intl.NumberFormat("es-ES", { style: "currency", currency }).format(cents / 100);
+const fmtDate = fmt.date;
+const fmtShort = fmt.short;
+const fmtMoney = fmt.money;
+const SUPPORT_URL = `${CORPORATE.web}/soporte`;
+/** Cierra la frase con punto sin duplicarlo («Empresa, S.L.»). */
+const stop = (s: string) => (s.endsWith(".") ? s : `${s}.`);
 
 export interface LayoutBrand {
   /** Nombre que firma el correo (Elephant Source o la empresa). */
@@ -29,132 +34,132 @@ export interface LayoutBrand {
   legal?: string | null;
 }
 
-/** Paleta y tipografía de la marca (mismos valores que la web): grafito, rojo de acento y fondo cálido. */
-const C = { ink: "#171d28", text: "#374151", muted: "#6b7280", accent: "#ff3035", paper: "#f7f5f1", card: "#ffffff", line: "#e3ddd3" };
-const FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
 
-/** Solo https (o http a la propia máquina en desarrollo): un enlace raro no entra en un correo. */
-function safeUrl(url: string): string | null {
-  try {
-    const u = new URL(url);
-    if (u.protocol === "https:" || (u.protocol === "http:" && /^(localhost|127\.0\.0\.1)$/.test(u.hostname))) return u.toString();
-  } catch {
-    /* no válida */
-  }
-  return null;
-}
 
 /**
- * Diseño común de todos los correos: maquetación con tablas (Outlook, Gmail, Apple Mail y móviles), ancho máximo
- * de 600 px, texto previo de la bandeja (el primer párrafo), cabecera con logotipo o nombre, tarjeta con acento,
- * botón «a prueba de clientes» y pie con el aviso transaccional y, en plataforma, el emisor. Todo valor variable
- * se escapa; los enlaces solo son https (`safeUrl`). Versión de texto equivalente.
+ * Diseño común de todos los correos: el sistema de diseño de Big Elephant (./design.ts). Las plantillas que solo
+ * pasan párrafos heredan el estándar (familia transaccional); con `opts` eligen familia, antetítulo, ilustración y
+ * bloques (tarjetas, avisos, pasos, línea de progreso…). Versión de texto equivalente.
  */
-export function layout(brand: LayoutBrand, title: string, paragraphs: string[], cta?: { label: string; url: string } | null): MailContent & { text: string } {
-  const link = cta ? safeUrl(cta.url) : null;
-  const footer = [
-    `Mensaje automático de ${brand.name} relacionado con tu cuenta. No es publicidad.`,
-    ...(brand.supportEmail ? [`¿Dudas? Escríbenos a ${brand.supportEmail}.`] : []),
-    ...(brand.legal ? [brand.legal] : []),
-  ];
-  const text = [title, "", ...paragraphs, ...(link ? ["", `${cta!.label}: ${link}`] : []), "", "—", ...footer].join("\n");
-  const logo = brand.logoUrl ? safeUrl(brand.logoUrl) : null;
-  const preheader = (paragraphs[0] ?? title).slice(0, 140);
-  const font = `font-family:${FONT}`;
-  const head = logo
-    ? `<img src="${esc(logo)}" width="196" height="24" alt="${esc(brand.name)} · Big Elephant" style="display:block;border:0;outline:none;width:196px;height:auto;max-width:100%">`
-    : `<span style="${font};font-size:15px;font-weight:700;letter-spacing:.01em;color:${C.ink}">${esc(brand.name)}</span>`;
-  const button = link
-    ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0 8px"><tr>` +
-      // Relleno y color en la CELDA (Outlook de escritorio ignora el relleno de los enlaces y pegaba el texto al borde)
-      `<td bgcolor="${C.ink}" style="border-radius:8px;background:${C.ink};padding:13px 24px;mso-padding-alt:13px 24px"><a href="${esc(link)}" target="_blank" style="display:inline-block;${font};font-size:15px;font-weight:600;line-height:1.2;color:#ffffff;text-decoration:none">${esc(cta!.label)}</a></td>` +
-      `</tr></table>` +
-      `<p style="margin:12px 0 0;${font};font-size:13px;line-height:1.5;color:${C.muted}">Si el botón no funciona, copia esta dirección en el navegador:<br><span style="word-break:break-all">${esc(link)}</span></p>`
-    : "";
-  const html =
-    `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">` +
-    `<meta name="color-scheme" content="light"><meta name="supported-color-schemes" content="light"><title>${esc(title)}</title>` +
-    `<style>@media (max-width:620px){.es-outer{padding:16px 10px!important}.es-card{padding:26px 22px!important}.es-h1{font-size:20px!important}}</style></head>` +
-    `<body style="margin:0;padding:0;background:${C.paper};-webkit-text-size-adjust:100%">` +
-    `<div style="display:none;max-height:0;overflow:hidden;opacity:0;mso-hide:all">${esc(preheader)}</div>` +
-    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:${C.paper}"><tr><td align="center" class="es-outer" style="padding:32px 16px">` +
-    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:600px">` +
-    `<tr><td style="padding:0 4px 18px">${head}</td></tr>` +
-    `<tr><td class="es-card" style="background:${C.card};border:1px solid ${C.line};border-top:4px solid ${C.accent};border-radius:12px;padding:32px 36px">` +
-    `<h1 class="es-h1" style="margin:0 0 16px;${font};font-size:22px;font-weight:700;line-height:1.3;color:${C.ink}">${esc(title)}</h1>` +
-    paragraphs.map((p) => `<p style="margin:0 0 14px;${font};font-size:15px;line-height:1.6;color:${C.text}">${esc(p)}</p>`).join("") +
-    button +
-    `</td></tr>` +
-    `<tr><td style="padding:20px 8px 0">` +
-    footer.map((f) => `<p style="margin:0 0 6px;${font};font-size:12px;line-height:1.55;color:${C.muted}">${esc(f)}</p>`).join("") +
-    `</td></tr></table></td></tr></table></body></html>`;
-  return { subject: title, html, text };
+export function layout(brand: LayoutBrand, title: string, paragraphs: string[], cta?: { label: string; url: string } | null, opts: Partial<EmailSpec> = {}): MailContent & { text: string } {
+  const [first, ...rest] = paragraphs;
+  return renderEmail(brand, {
+    family: "transactional",
+    title,
+    intro: first ? [first] : [],
+    blocks: rest.map((p) => ({ p })),
+    cta: cta ?? null,
+    ...opts,
+  });
 }
 
 /** Marca de plataforma: nombre, soporte, logotipo oficial y emisor (nunca en los avisos de una empresa). */
 const platform = (supportEmail: string | null | undefined): LayoutBrand => ({ name: PLATFORM_BRAND, supportEmail: supportEmail ?? null, ...platformIdentity() });
+/** Marca de plataforma para otros módulos de correo (cuentas, seguridad, exportaciones). */
+export const platformBrand = (supportEmail: string | null | undefined = null): LayoutBrand => platform(supportEmail);
 const hostUrl = (host: string | null | undefined, path = "/") => (host ? `https://${host}${path}` : null);
 
 export interface PlatformTemplateOptions {
   supportEmail?: string | null;
 }
 
-/** Avisos de plataforma (Elephant Source). */
+/** Avisos de plataforma (Big Elephant), con el sistema de diseño aprobado. */
 export function platformTemplates(o: PlatformTemplateOptions = {}) {
   const b = platform(o.supportEmail);
+  const e = (s: EmailSpec) => renderEmail(b, s);
+  const enter = (host: string | null | undefined, label = "Entrar en la plataforma", path = "/admin") => (host ? { label, url: hostUrl(host, path)! } : null);
+  const refTitle = (r: string | null) => (r ? ` · ${r}` : "");
   /** La prueba ha terminado: solo lectura, sin borrar nada; puede contratar cuando quiera. */
   const trialExpired = (i: { endsAt: number; pricingUrl?: string | null }) =>
-    layout(b, `Tu prueba de ${PLATFORM_BRAND} ha terminado`, [
-      `La prueba gratuita terminó el ${fmtDate(i.endsAt)}.`,
-      "Tu cuenta sigue disponible en solo lectura: puedes entrar y consultar todo, pero no crear ni modificar datos. No se ha borrado nada.",
-      "Cuando contrates un plan, todo vuelve a funcionar en la misma cuenta, con tus datos tal y como los dejaste.",
-    ], i.pricingUrl ? { label: "Ver planes", url: i.pricingUrl } : null);
+    e({
+      family: "experiential", eyebrow: "Tu prueba gratuita", hero: "calendario",
+      title: "Tu prueba ha terminado", subject: `Tu prueba de ${PLATFORM_BRAND} ha terminado`,
+      intro: [`La prueba gratuita terminó el ${fmtDate(i.endsAt)}. Tu cuenta sigue disponible en solo lectura. No se ha borrado nada.`],
+      blocks: [
+        { card: { status: { label: "Solo lectura", tone: "warning" }, rows: [{ label: "Fin de la prueba", value: fmtDate(i.endsAt) }, { label: "Tus datos", value: "Conservados" }, { label: "Acceso", value: "Consulta, sin crear ni modificar" }] } },
+        { p: "Cuando contrates un plan, todo vuelve a funcionar en la misma cuenta, con tus datos tal y como los dejaste." },
+      ],
+      cta: i.pricingUrl ? { label: "Ver planes", url: i.pricingUrl } : null,
+    });
   return {
     emailVerification(i: { verifyUrl: string }) {
-      return layout(b, `Confirma tu correo para empezar tu prueba de ${PLATFORM_BRAND}`, [
-        "Hemos recibido una solicitud de prueba gratuita con esta dirección.",
-        "Para activarla, confirma que el correo es tuyo. El enlace caduca y solo sirve una vez.",
-        "Si no la has solicitado tú, ignora este mensaje: no se creará nada.",
-      ], { label: "Confirmar correo", url: i.verifyUrl });
+      return e({
+        family: "security", eyebrow: "Verificación de tu correo", hero: "seguridad",
+        title: "Confirma tu correo", subject: `Confirma tu correo para empezar tu prueba de ${PLATFORM_BRAND}`,
+        intro: ["Hemos recibido una solicitud de prueba gratuita de Big Elephant con esta dirección. Confirma que es tuya para activarla."],
+        blocks: [{ notice: { tone: "info", text: "El enlace caduca y solo puede usarse una vez." } }, { h2: "Si no lo has solicitado tú" }, { p: "Ignora este mensaje: no se creará ninguna cuenta." }],
+        cta: { label: "Confirmar correo", url: i.verifyUrl },
+      });
     },
     /** Reenvío del enlace de verificación: el anterior ya no sirve. */
     emailVerificationResent(i: { verifyUrl: string }) {
-      return layout(b, `Tu nuevo enlace para empezar la prueba de ${PLATFORM_BRAND}`, [
-        "Nos has pedido un enlace nuevo para confirmar esta dirección y activar tu prueba gratuita.",
-        "Este enlace sustituye al anterior, que ya no funciona. Caduca y solo sirve una vez.",
-        "Si no lo has pedido tú, ignora este mensaje: no se creará nada.",
-      ], { label: "Confirmar correo", url: i.verifyUrl });
+      return e({
+        family: "security", eyebrow: "Verificación de tu correo", hero: "seguridad",
+        title: "Tu nuevo enlace de verificación", subject: `Tu nuevo enlace para empezar la prueba de ${PLATFORM_BRAND}`,
+        intro: ["Nos has pedido un enlace nuevo para confirmar esta dirección y activar tu prueba gratuita."],
+        blocks: [{ notice: { tone: "info", text: "Este enlace sustituye al anterior, que ya no funciona. Caduca y solo puede usarse una vez." } }, { p: "Si no lo has pedido tú, ignora este mensaje: no se creará nada." }],
+        cta: { label: "Confirmar correo", url: i.verifyUrl },
+      });
     },
     /** Alta asistida (contrato del CRM): la plataforma de la empresa está creada. */
     tenantWelcome(i: { companyName: string; host: string | null; setPasswordUrl: string | null }) {
-      return layout(b, `La plataforma de ${i.companyName} está lista`, [
-        `Hemos creado el espacio de ${i.companyName} en ${PLATFORM_BRAND}.`,
-        i.host ? `Su dirección: https://${i.host}` : "Su dirección se comunicará en cuanto esté publicada.",
-        "Define tu contraseña de administrador para entrar. El enlace es personal y caduca.",
-      ], i.setPasswordUrl ? { label: "Definir contraseña", url: i.setPasswordUrl } : null);
+      return e({
+        family: "experiential", hero: "bienvenida", title: "Bienvenido a", titleAccent: "Big Elephant", subject: `La plataforma de ${i.companyName} está lista`,
+        intro: [`Hemos creado el espacio de ${stop(i.companyName)} Define tu contraseña de administrador para entrar.`],
+        blocks: [
+          { h2: "Tus próximos pasos" },
+          { steps: [
+            { icon: "empresa", title: "Configura tu empresa", text: "Datos fiscales, marca y preferencias de tu espacio de trabajo." },
+            { icon: "equipo", title: "Invita a tu equipo", text: "Da acceso a tus compañeros con sus propios permisos." },
+            { icon: "grafico", title: "Explora las funcionalidades", text: "Descubre los módulos que mejor se adaptan a tu negocio." },
+          ] },
+          ...(i.host ? [{ card: { rows: [{ label: "Dirección de tu plataforma", value: `https://${i.host}` }] } } as Block] : []),
+          { notice: { tone: "info", text: "El enlace es personal y caduca." } },
+          { help: { title: "¿Necesitas ayuda?", text: "Nuestro equipo está aquí para acompañarte en cada paso.", link: { label: "Contactar con soporte", url: SUPPORT_URL } } },
+        ],
+        cta: i.setPasswordUrl ? { label: "Definir contraseña", url: i.setPasswordUrl } : null,
+      });
     },
     signupConfirmation(i: { companyName: string }) {
-      return layout(b, `Hemos recibido el alta de ${i.companyName}`, [
-        `Gracias por darte de alta en ${PLATFORM_BRAND}. Estamos preparando tu espacio.`,
-        "Te escribiremos de nuevo en cuanto esté listo para entrar.",
-      ]);
+      return e({
+        family: "experiential", eyebrow: "Alta recibida", hero: "bienvenida", title: "Estamos preparando tu espacio", subject: `Hemos recibido el alta de ${i.companyName}`,
+        intro: [`Gracias por darte de alta en Big Elephant. Estamos preparando el espacio de ${stop(i.companyName)}`],
+        blocks: [{ notice: { tone: "info", text: "Te escribiremos de nuevo en cuanto esté listo para entrar." } }],
+      });
     },
     trialActivated(i: { host: string | null; setPasswordUrl: string | null; endsAt?: number | null }) {
-      return layout(b, `Tu prueba de ${PLATFORM_BRAND} está lista`, [
-        `Tu espacio de ${PLATFORM_BRAND} está activo.`,
-        i.host ? `Tu dirección: https://${i.host}` : "Tu dirección se te comunicará en cuanto esté publicada.",
-        ...(i.endsAt ? [`La prueba gratuita dura hasta el ${fmtDate(i.endsAt)}.`] : []),
-        "Define tu contraseña de administrador para entrar. El enlace es personal y caduca.",
-      ], i.setPasswordUrl ? { label: "Definir contraseña", url: i.setPasswordUrl } : null);
+      return e({
+        family: "experiential", hero: "bienvenida", title: "¡Bienvenido a", titleAccent: "Big Elephant!", subject: `Tu prueba de ${PLATFORM_BRAND} está lista`,
+        intro: ["La plataforma para equipos que quieren llevar su negocio más lejos. Tu espacio de prueba ya está activo."],
+        blocks: [
+          { h2: "Tus próximos pasos" },
+          { p: "Configura tu espacio de trabajo y empieza a sacarle el máximo partido." },
+          { steps: [
+            { icon: "empresa", title: "Configura tu empresa", text: "Añade los datos de tu negocio y personaliza tu espacio de trabajo." },
+            { icon: "equipo", title: "Invita a tu equipo", text: "Colabora de forma segura y eficiente." },
+            { icon: "grafico", title: "Explora las funcionalidades", text: "Descubre los módulos que mejor se adaptan a tus necesidades." },
+          ] },
+          { card: { rows: [...(i.host ? [{ label: "Tu dirección", value: `https://${i.host}` }] : []), { label: "Plan de prueba", value: "Essential · 15 días" }, ...(i.endsAt ? [{ label: "La prueba dura hasta", value: fmtDate(i.endsAt) }] : [])] } },
+          { notice: { tone: "info", text: "Durante la prueba no se realiza ningún cobro. El enlace para definir tu contraseña es personal y caduca." } },
+          { help: { title: "¿Necesitas ayuda?", text: "Nuestro equipo está aquí para acompañarte en cada paso.", link: { label: "Contactar con soporte", url: SUPPORT_URL } } },
+        ],
+        cta: i.setPasswordUrl ? { label: "Comenzar ahora", url: i.setPasswordUrl } : null,
+      });
     },
     /** Aviso previo al vencimiento (7, 3 y 1 días); con 0 días la prueba ya terminó: aviso de vencimiento. */
     trialExpiry(i: { endsAt: number; daysLeft: number; pricingUrl?: string | null }) {
       if (i.daysLeft <= 0) return trialExpired(i);
       const when = i.daysLeft === 1 ? "termina mañana" : `termina en ${i.daysLeft} días`;
-      return layout(b, `Tu prueba de ${PLATFORM_BRAND} ${when}`, [
-        `La prueba gratuita termina el ${fmtDate(i.endsAt)}.`,
-        "Al terminar, tu cuenta pasa a solo lectura: no se borra nada y puedes contratar cuando quieras para seguir trabajando.",
-      ], i.pricingUrl ? { label: "Ver planes", url: i.pricingUrl } : null);
+      return e({
+        family: "experiential", eyebrow: "Tu prueba gratuita", hero: "calendario",
+        title: i.daysLeft === 1 ? "Tu prueba termina mañana" : `Te quedan ${i.daysLeft} días de prueba`, subject: `Tu prueba de ${PLATFORM_BRAND} ${when}`,
+        intro: [`La prueba gratuita termina el ${fmtDate(i.endsAt)}. Elige tu plan para seguir trabajando sin interrupciones.`],
+        blocks: [
+          { card: { status: { label: i.daysLeft <= 2 ? "Termina pronto" : "En curso", tone: i.daysLeft <= 2 ? "warning" : "info" }, rows: [{ label: "Días restantes", value: String(i.daysLeft) }, { label: "Fin de la prueba", value: fmtDate(i.endsAt) }] } },
+          { p: "Al terminar, tu cuenta pasa a solo lectura: no se borra nada y puedes contratar cuando quieras para seguir trabajando." },
+        ],
+        cta: i.pricingUrl ? { label: "Ver planes", url: i.pricingUrl } : null,
+      });
     },
     trialExpired,
     /**
@@ -162,146 +167,204 @@ export function platformTemplates(o: PlatformTemplateOptions = {}) {
      * de una pausa (puede ser sensible): solo que los datos se conservan y cómo retomarla.
      */
     trialStatus(i: { kind: "extended" | "suspended" | "reactivated"; endsAt: number | null; host: string | null }) {
-      const enter = i.host ? { label: "Entrar en la plataforma", url: hostUrl(i.host)! } : null;
-      const until = i.endsAt ? `La prueba gratuita dura ahora hasta el ${fmtDate(i.endsAt)}.` : null;
+      const until = i.endsAt ? fmtDate(i.endsAt) : null;
       if (i.kind === "extended")
-        return layout(b, `Hemos ampliado tu prueba de ${PLATFORM_BRAND}`, [until ?? "Hemos ampliado el plazo de tu prueba gratuita.", "Sigues teniendo todo disponible, con tus datos tal y como los dejaste."], enter);
+        return e({ family: "experiential", eyebrow: "Tu prueba gratuita", hero: "exito", title: "Hemos ampliado tu prueba", subject: `Hemos ampliado tu prueba de ${PLATFORM_BRAND}`, intro: [until ? `Tu prueba gratuita dura ahora hasta el ${until}.` : "Hemos ampliado el plazo de tu prueba gratuita."], blocks: [{ p: "Sigues teniendo todo disponible, con tus datos tal y como los dejaste." }], cta: enter(i.host) });
       if (i.kind === "suspended")
-        return layout(b, `Tu prueba de ${PLATFORM_BRAND} está en pausa`, [
-          "Hemos pausado temporalmente el acceso a tu prueba gratuita.",
-          "Tus datos se conservan: no se ha borrado nada.",
-          "Si crees que es un error o quieres retomarla, responde a este correo o escribe a soporte.",
-        ]);
-      return layout(b, `Tu prueba de ${PLATFORM_BRAND} vuelve a estar activa`, ["Ya puedes volver a usar tu plataforma con normalidad.", ...(until ? [until] : [])], enter);
+        return e({ family: "security", eyebrow: "Tu prueba gratuita", hero: "aviso", title: "Tu prueba está en pausa", subject: `Tu prueba de ${PLATFORM_BRAND} está en pausa`, intro: ["Hemos pausado temporalmente el acceso a tu prueba gratuita."], blocks: [{ notice: { tone: "info", text: "Tus datos se conservan: no se ha borrado nada." } }, { help: { title: "¿Crees que es un error?", text: "Responde a este correo o escribe a soporte y lo revisamos contigo.", link: { label: "Contactar con soporte", url: SUPPORT_URL } } }] });
+      return e({ family: "experiential", eyebrow: "Tu prueba gratuita", hero: "exito", title: "Tu prueba vuelve a estar activa", subject: `Tu prueba de ${PLATFORM_BRAND} vuelve a estar activa`, intro: ["Ya puedes volver a usar tu plataforma con normalidad."], blocks: until ? [{ card: { rows: [{ label: "La prueba dura hasta", value: until }] } }] : [], cta: enter(i.host) });
     },
     /** Consumo al 80 % o al 100 % de un límite del plan: qué recurso, cuánto y qué pasa ahora. */
     usageThreshold(i: { label: string; periodLabel: string; used: string; limit: string; level: "warning" | "exceeded"; hard: boolean; host: string | null }) {
-      const cta = i.host ? { label: "Ver el consumo", url: hostUrl(i.host, "/admin/suscripcion/consumo")! } : null;
-      const now = `${i.label} (${i.periodLabel}): ${i.used} de ${i.limit}.`;
-      if (i.level === "warning")
-        return layout(b, `Estás cerca del límite: ${i.label.toLowerCase()}`, [now, "Has superado el 80 % del límite de tu plan para este periodo.", "Si crees que lo vas a necesitar, puedes ampliar tu plan desde el panel."], cta);
-      return layout(b, `Has alcanzado el límite: ${i.label.toLowerCase()}`, [
-        now,
-        i.hard ? "Hasta el próximo periodo no se puede usar más este recurso." : "Puedes seguir usándolo, pero conviene revisar tu plan.",
-        "Si lo necesitas, amplía tu plan desde el panel.",
-      ], cta);
+      const exceeded = i.level === "exceeded";
+      return e({
+        family: "security", eyebrow: "Consumo de tu plan", hero: exceeded ? "aviso" : "datos",
+        title: exceeded ? "Has alcanzado un límite de tu plan" : "Estás cerca de un límite de tu plan",
+        subject: `${exceeded ? "Has alcanzado el límite" : "Estás cerca del límite"}: ${i.label.toLowerCase()}`,
+        intro: [exceeded ? (i.hard ? "Hasta el próximo periodo no se puede usar más este recurso." : "Puedes seguir usándolo, pero conviene revisar tu plan.") : "Has superado el 80 % del límite de tu plan para este periodo."],
+        blocks: [
+          { card: { status: { label: exceeded ? "Límite alcanzado" : "Más del 80 %", tone: exceeded ? "error" : "warning" }, rows: [{ label: "Recurso", value: i.label }, { label: "Periodo", value: i.periodLabel }, { label: "Consumo", value: `${i.used} de ${i.limit}` }] } },
+          { p: "Si lo necesitas, puedes ampliar tu plan desde el panel." },
+        ],
+        cta: enter(i.host, "Ver el consumo", "/admin/suscripcion/consumo"),
+      });
     },
     contractConfirmed(i: { companyName: string; reference: string | null; host: string | null }) {
-      return layout(b, `Contratación confirmada${i.reference ? ` · ${i.reference}` : ""}`, [
-        `La contratación de ${PLATFORM_BRAND} para ${i.companyName} está activa.`,
-        ...(i.reference ? [`Referencia del pedido: ${i.reference}.`] : []),
-        "Las capacidades contratadas ya están disponibles en tu plataforma.",
-      ], i.host ? { label: "Entrar en la plataforma", url: hostUrl(i.host)! } : null);
+      return e({
+        family: "transactional", eyebrow: "Confirmación de contratación", hero: "contrato", title: "Tu contratación está activa", subject: `Contratación confirmada${refTitle(i.reference)}`,
+        intro: [`La contratación de Big Elephant para ${i.companyName} está activa. Las capacidades contratadas ya están disponibles en tu plataforma.`],
+        blocks: [{ card: { status: { label: "Activa", tone: "success" }, rows: [{ label: "Empresa", value: i.companyName }, ...(i.reference ? [{ label: "Referencia del pedido", value: i.reference }] : [])] } }],
+        cta: enter(i.host),
+      });
     },
     /** Pago de PRUEBA (proveedor simulado o Stripe en modo pruebas): no se ha cobrado dinero real. */
     testPaymentConfirmed(i: { reference: string | null; amountCents: number; currency: string }) {
-      return layout(b, `Pago de prueba confirmado${i.reference ? ` · ${i.reference}` : ""}`, [
-        `Hemos registrado un pago de PRUEBA de ${fmtMoney(i.amountCents, i.currency)}${i.reference ? ` para el pedido ${i.reference}` : ""}.`,
-        "Es un pago del entorno de pruebas: no se ha realizado ningún cargo real.",
-      ]);
+      return e({
+        family: "transactional", eyebrow: "Entorno de pruebas", hero: "pago", title: "Pago de prueba registrado", subject: `Pago de prueba confirmado${refTitle(i.reference)}`,
+        intro: ["Hemos registrado un pago del entorno de pruebas."],
+        blocks: [{ card: { status: { label: "Prueba", tone: "info" }, rows: [...(i.reference ? [{ label: "Pedido", value: i.reference }] : [])], total: { label: "Importe de prueba", value: fmtMoney(i.amountCents, i.currency) } } }, { notice: { tone: "info", text: "Es un pago del entorno de pruebas: no se ha realizado ningún cargo real." } }],
+      });
     },
     /**
      * Pago REAL confirmado (Stripe en modo live). El importe es el cobrado según Stripe: aquí no se
      * calcula ni se desglosa ningún impuesto.
      */
     paymentConfirmed(i: { reference: string | null; amountCents: number; currency: string }) {
-      return layout(b, `Pago confirmado${i.reference ? ` · ${i.reference}` : ""}`, [
-        `Hemos recibido tu pago${i.reference ? ` del pedido ${i.reference}` : ""}. Importe cobrado: ${fmtMoney(i.amountCents, i.currency)}.`,
-        "El cobro se ha realizado a través de Stripe. Con el pago confirmado activamos tu contratación y te avisaremos en cuanto esté lista.",
-      ]);
+      return e({
+        family: "transactional", eyebrow: "Pago recibido", hero: "pago", title: "Hemos recibido tu pago", subject: `Pago confirmado${refTitle(i.reference)}`,
+        intro: ["El cobro se ha realizado correctamente a través de Stripe. Con el pago confirmado activamos tu contratación y te avisaremos en cuanto esté lista."],
+        blocks: [{ card: { status: { label: "Pagado", tone: "success" }, rows: [...(i.reference ? [{ label: "Pedido", value: i.reference }] : []), { label: "Medio de cobro", value: "Stripe" }], total: { label: "Importe cobrado", value: fmtMoney(i.amountCents, i.currency) } } }],
+      });
     },
     /**
      * Factura disponible tras un cobro verificado en Stripe. Sin enlace: la URL alojada de la factura no
      * se guarda en el flujo de cobro, así que se remite al portal de cliente de Stripe o a soporte.
      */
     invoiceAvailable(i: { reference: string | null; invoiceRef: string | null; amountCents: number; currency: string; test: boolean }) {
-      return layout(b, `${i.test ? "Factura de prueba disponible" : "Factura disponible"}${i.reference ? ` · ${i.reference}` : ""}`, [
-        `La factura del cobro de ${fmtMoney(i.amountCents, i.currency)}${i.reference ? ` (pedido ${i.reference})` : ""} ya está emitida en Stripe.`,
-        ...(i.invoiceRef ? [`Referencia de la factura en Stripe: ${i.invoiceRef}.`] : []),
-        "Puedes consultarla y descargarla desde el portal de cliente de Stripe (Customer Portal) o pedirnos una copia respondiendo a este correo.",
-        ...(i.test ? ["Es una factura del entorno de pruebas de Stripe: no corresponde a ningún cargo real."] : []),
-      ]);
+      return e({
+        family: "transactional", eyebrow: i.test ? "Factura de prueba" : "Factura emitida", hero: "pago", title: i.test ? "Tu factura de prueba" : "Tu factura está disponible", subject: `${i.test ? "Factura de prueba disponible" : "Factura disponible"}${refTitle(i.reference)}`,
+        intro: ["La factura de tu último cobro ya está emitida en Stripe."],
+        blocks: [
+          { card: { status: { label: "Emitida", tone: "success" }, rows: [...(i.reference ? [{ label: "Pedido", value: i.reference }] : []), ...(i.invoiceRef ? [{ label: "Referencia en Stripe", value: i.invoiceRef }] : [])], total: { label: "Total", value: fmtMoney(i.amountCents, i.currency) } } },
+          { p: "Puedes consultarla y descargarla desde el portal de cliente de Stripe (Customer Portal) o pedirnos una copia respondiendo a este correo." },
+          ...(i.test ? [{ notice: { tone: "info", text: "Es una factura del entorno de pruebas de Stripe: no corresponde a ningún cargo real." } } as Block] : []),
+        ],
+      });
     },
     /** Renovación cobrada (pago verificado del periodo nuevo). */
     renewalConfirmed(i: { reference: string | null; amountCents: number; currency: string; periodStart: number | null; host: string | null; test: boolean }) {
-      return layout(b, `${i.test ? "Renovación de prueba registrada" : "Renovación confirmada"}${i.reference ? ` · ${i.reference}` : ""}`, [
-        i.test
-          ? `Hemos registrado un cobro de PRUEBA de ${fmtMoney(i.amountCents, i.currency)} por la renovación de tu suscripción de ${PLATFORM_BRAND}${i.reference ? ` (pedido ${i.reference})` : ""}.`
-          : `Hemos cobrado la renovación de tu suscripción de ${PLATFORM_BRAND}${i.reference ? ` (pedido ${i.reference})` : ""}. Importe cobrado: ${fmtMoney(i.amountCents, i.currency)}.`,
-        ...(i.periodStart ? [`El nuevo periodo empieza el ${fmtDate(i.periodStart)}.`] : []),
-        "Tu plataforma sigue activa, sin ninguna interrupción.",
-        ...(i.test ? ["Es un cobro del entorno de pruebas: no se ha realizado ningún cargo real."] : []),
-      ], i.host ? { label: "Entrar en la plataforma", url: hostUrl(i.host)! } : null);
+      return e({
+        family: "transactional", eyebrow: "Renovación de suscripción", hero: "calendario", title: i.test ? "Renovación de prueba registrada" : "Tu suscripción se ha renovado", subject: `${i.test ? "Renovación de prueba registrada" : "Renovación confirmada"}${refTitle(i.reference)}`,
+        intro: ["Tu plataforma sigue activa, sin ninguna interrupción."],
+        blocks: [
+          { card: { status: { label: i.test ? "Prueba" : "Pagada", tone: i.test ? "info" : "success" }, rows: [...(i.reference ? [{ label: "Pedido", value: i.reference }] : []), ...(i.periodStart ? [{ label: "Nuevo periodo desde", value: fmtDate(i.periodStart) }] : [])], total: { label: i.test ? "Importe de prueba" : "Importe cobrado", value: fmtMoney(i.amountCents, i.currency) } } },
+          ...(i.test ? [{ notice: { tone: "info", text: "Es un cobro del entorno de pruebas: no se ha realizado ningún cargo real." } } as Block] : []),
+        ],
+        cta: enter(i.host),
+      });
     },
     /** Reactivación: cancelación programada deshecha, o pago pendiente regularizado tras un impago. */
     subscriptionReactivated(i: { reference: string | null; reason: "cancel_undone" | "payment_recovered"; host: string | null }) {
       const recovered = i.reason === "payment_recovered";
-      return layout(b, `${recovered ? "Suscripción al corriente" : "Suscripción reactivada"}${i.reference ? ` · ${i.reference}` : ""}`, recovered
-        ? ["Hemos recibido el pago pendiente de tu suscripción.", "Tu plataforma vuelve a funcionar con normalidad. No se ha borrado ningún dato."]
-        : ["Has deshecho la cancelación programada de tu suscripción.", "Tu suscripción sigue activa y se renovará con normalidad al final del periodo en curso."],
-      i.host ? { label: "Entrar en la plataforma", url: hostUrl(i.host)! } : null);
+      return e({
+        family: "transactional", eyebrow: recovered ? "Pago regularizado" : "Suscripción reactivada", hero: "exito",
+        title: recovered ? "Tu servicio está restablecido" : "Tu suscripción sigue activa", subject: `${recovered ? "Suscripción al corriente" : "Suscripción reactivada"}${refTitle(i.reference)}`,
+        intro: [recovered ? "Hemos recibido el pago pendiente de tu suscripción. Tu plataforma vuelve a funcionar con normalidad." : "Has deshecho la cancelación programada. Tu suscripción se renovará con normalidad al final del periodo en curso."],
+        blocks: [{ card: { status: { label: "Al corriente", tone: "success" }, rows: [...(i.reference ? [{ label: "Pedido", value: i.reference }] : []), { label: "Tus datos", value: "Intactos" }] } }],
+        cta: enter(i.host),
+      });
     },
     /** Acuse de la solicitud de alta en línea (contratación aceptada en la web, pendiente del pago). */
     signupReceived(i: { companyName: string; reference: string | null; test: boolean }) {
-      return layout(b, `Hemos recibido tu solicitud de alta${i.reference ? ` · ${i.reference}` : ""}`, [
-        `Hemos registrado la solicitud de contratación de ${PLATFORM_BRAND} para ${i.companyName}${i.reference ? ` (pedido ${i.reference})` : ""}.`,
-        "Para completarla, termina el pago en la página segura de Stripe. No se activa nada hasta que Stripe confirme el pago; entonces te enviaremos el acceso a tu plataforma.",
-        "Si no has hecho tú esta solicitud, responde a este correo y la anularemos.",
-        ...(i.test ? ["Es una solicitud del entorno de pruebas: no se realizará ningún cargo real."] : []),
-      ]);
+      return e({
+        family: "transactional", eyebrow: "Solicitud de alta", hero: "contrato", title: "Hemos recibido tu solicitud", subject: `Hemos recibido tu solicitud de alta${refTitle(i.reference)}`,
+        intro: [`Hemos registrado la solicitud de contratación de Big Elephant para ${stop(i.companyName)}`],
+        blocks: [
+          { card: { status: { label: "Pendiente de pago", tone: "warning" }, rows: [{ label: "Empresa", value: i.companyName }, ...(i.reference ? [{ label: "Pedido", value: i.reference }] : [])] } },
+          { h2: "¿Qué sucede ahora?" },
+          { timeline: [{ label: "Solicitud recibida", state: "done" }, { label: "Pago en Stripe", state: "current" }, { label: "Acceso a tu plataforma", state: "todo" }] },
+          { notice: { tone: "info", text: "No se activa nada hasta que Stripe confirme el pago; entonces te enviaremos el acceso a tu plataforma." } },
+          { p: "Si no has hecho tú esta solicitud, responde a este correo y la anularemos." },
+          ...(i.test ? [{ notice: { tone: "info", text: "Es una solicitud del entorno de pruebas: no se realizará ningún cargo real." } } as Block] : []),
+        ],
+      });
     },
     paymentFailed(i: { reference: string | null; graceEndsAt: number | null; host: string | null }) {
-      return layout(b, `No hemos podido cobrar tu recibo${i.reference ? ` · ${i.reference}` : ""}`, [
-        "El último recibo de tu suscripción no se ha podido pagar.",
-        i.graceEndsAt
-          ? `Tu plataforma sigue funcionando hasta el ${fmtDate(i.graceEndsAt)}. Si para entonces no consta el pago, quedará en suspenso (sin borrar ningún dato) hasta regularizarlo.`
-          : "Tu plataforma sigue funcionando de momento. Si no consta el pago, quedará en suspenso (sin borrar ningún dato) hasta regularizarlo.",
-      ], i.host ? { label: "Revisar la suscripción", url: hostUrl(i.host)! } : null);
+      return e({
+        family: "transactional", eyebrow: "Incidencia en el cobro", hero: "aviso", title: "No hemos podido cobrar tu recibo", subject: `No hemos podido cobrar tu recibo${refTitle(i.reference)}`,
+        intro: ["El último recibo de tu suscripción no se ha podido pagar. Revisa tu método de pago para evitar la suspensión del servicio."],
+        blocks: [
+          { card: { status: { label: "Pago pendiente", tone: "warning" }, rows: [...(i.reference ? [{ label: "Pedido", value: i.reference }] : [])], ...(i.graceEndsAt ? { foot: { label: "Tu plataforma funciona hasta", value: fmtDate(i.graceEndsAt) } } : {}) } },
+          { notice: { tone: "warning", text: i.graceEndsAt ? `Si el ${fmtDate(i.graceEndsAt)} no consta el pago, la plataforma quedará en suspenso hasta regularizarlo. No se borra ningún dato.` : "Si no consta el pago, la plataforma quedará en suspenso hasta regularizarlo. No se borra ningún dato." } },
+        ],
+        cta: enter(i.host, "Revisar el método de pago", "/admin/suscripcion"),
+      });
     },
     /** Acuse de recibo del desistimiento (soporte duradero): referencia, fecha y hora, y qué pasa ahora. */
     withdrawalReceipt(i: { reference: string; requestedAt: number; withinTerm: boolean; deadlineAt: number | null }) {
-      const at = new Date(i.requestedAt).toLocaleString("es-ES", { timeZone: "Europe/Madrid" });
-      return layout(b, `Hemos recibido tu desistimiento · ${i.reference}`, [
-        `Hemos recibido tu solicitud de desistimiento del contrato el ${at} (hora de Madrid), con la referencia ${i.reference}. Guarda este correo como justificante.`,
-        i.withinTerm
-          ? `Consta presentada dentro del plazo de desistimiento${i.deadlineAt ? ` (que terminaba el ${fmtDate(i.deadlineAt)})` : ""}.`
-          : "Consta presentada fuera del plazo de desistimiento. La revisaremos igualmente y te responderemos.",
-        "Revisaremos la solicitud y te comunicaremos la resolución y, si procede, el reembolso por el mismo medio de pago. Este acuse no supone ningún cobro ni devolución.",
-      ]);
+      const at = new Date(i.requestedAt).toLocaleString("es-ES", { timeZone: "Europe/Madrid", dateStyle: "long", timeStyle: "short" });
+      return e({
+        family: "security", eyebrow: "Desistimiento del contrato", hero: "contrato", title: "Hemos recibido tu desistimiento", subject: `Hemos recibido tu desistimiento · ${i.reference}`,
+        intro: ["Guarda este correo como justificante de tu solicitud."],
+        blocks: [
+          { card: { status: { label: i.withinTerm ? "Dentro de plazo" : "Fuera de plazo", tone: i.withinTerm ? "success" : "warning" }, rows: [{ label: "Referencia", value: i.reference }, { label: "Recibida el", value: `${at} (hora de Madrid)` }, ...(i.deadlineAt ? [{ label: "El plazo terminaba el", value: fmtDate(i.deadlineAt) }] : [])] } },
+          { p: i.withinTerm ? "Revisaremos la solicitud y te comunicaremos la resolución y, si procede, el reembolso por el mismo medio de pago." : "La revisaremos igualmente y te responderemos." },
+          { notice: { tone: "info", text: "Este acuse no supone ningún cobro ni devolución." } },
+        ],
+      });
     },
     /** Resolución del desistimiento (aceptado, rechazado con motivo o completado con el reembolso). */
     withdrawalResolution(i: { reference: string; status: string; note: string | null }) {
-      const head = i.status === "accepted" ? "Hemos aceptado tu desistimiento." : i.status === "completed" ? "Hemos completado tu desistimiento." : "Hemos revisado tu solicitud de desistimiento y no podemos aceptarla.";
-      return layout(b, `Tu desistimiento · ${i.reference}`, [head, ...(i.note ? [i.note] : []), "Si tienes cualquier duda, responde a este correo indicando la referencia."]);
+      const ok = i.status === "accepted" || i.status === "completed";
+      return e({
+        family: "security", eyebrow: "Desistimiento del contrato", hero: ok ? "exito" : "contrato",
+        title: i.status === "accepted" ? "Hemos aceptado tu desistimiento" : i.status === "completed" ? "Desistimiento completado" : "Resolución de tu desistimiento", subject: `Tu desistimiento · ${i.reference}`,
+        intro: [i.status === "accepted" ? "Hemos aceptado tu solicitud de desistimiento." : i.status === "completed" ? "Hemos completado tu desistimiento." : "Hemos revisado tu solicitud de desistimiento y no podemos aceptarla."],
+        blocks: [{ card: { status: { label: ok ? "Resuelto" : "No aceptado", tone: ok ? "success" : "warning" }, rows: [{ label: "Referencia", value: i.reference }] } }, ...(i.note ? [{ p: i.note } as Block] : []), { p: "Si tienes cualquier duda, responde a este correo indicando la referencia." }],
+      });
     },
     /**
      * Invitación al representante para revisar y aceptar el contrato de un servicio. El enlace es personal, de un solo
-     * uso y caduca; aceptar no autoriza ningún cobro (la autorización del método de pago es un paso posterior).
+     * uso y caduca. En la misma página, tras aceptar, se autoriza el método de pago (sin cargo en ese momento).
      */
     contractInvitation(i: { companyName: string; serviceName: string; signerName: string; url: string; expiresAt: number; amountCents: number; taxRateBp: number; currency: string; firstChargeAt: number }) {
       const tax = Math.round((i.amountCents * i.taxRateBp) / 10_000);
-      return layout(b, `Contrato de ${i.serviceName} para ${i.companyName}`, [
-        `Hola, ${i.signerName}:`,
-        `Te enviamos el contrato de ${i.serviceName} para ${i.companyName}, para que lo revises y, si estás de acuerdo, lo aceptes en línea.`,
-        `Cuota: ${fmtMoney(i.amountCents, i.currency)} + IVA ${fmtMoney(tax, i.currency)} = ${fmtMoney(i.amountCents + tax, i.currency)} al mes. Primer vencimiento: ${fmtDate(i.firstChargeAt)}.`,
-        "Aceptar el contrato no autoriza ningún cobro: después te enviaremos un enlace aparte para registrar el método de pago en Stripe, sin cargo en ese momento.",
-        `El enlace es personal, solo sirve una vez y caduca el ${fmtDate(i.expiresAt)}. Si no esperabas este correo, ignóralo.`,
-      ], { label: "Revisar y aceptar el contrato", url: i.url });
+      return e({
+        family: "transactional", eyebrow: "Contrato disponible", hero: "contrato", title: "Tu contrato está listo para revisar", subject: `Contrato de ${i.serviceName} para ${i.companyName}`,
+        greeting: `Hola, ${i.signerName}:`,
+        intro: [`Te enviamos el contrato de ${i.serviceName} para ${i.companyName}, para que lo revises y, si estás de acuerdo, lo aceptes en línea.`],
+        blocks: [
+          { card: { status: { label: "Pendiente de aceptación", tone: "info" }, rows: [{ label: "Servicio", value: i.serviceName }, { label: "Cliente", value: i.companyName }, { label: "Cuota mensual", value: fmtMoney(i.amountCents, i.currency) }, { label: `IVA (${i.taxRateBp / 100} %)`, value: fmtMoney(tax, i.currency) }], total: { label: "Total mensual", value: fmtMoney(i.amountCents + tax, i.currency) }, foot: { label: "Primer cobro previsto", value: fmtDate(i.firstChargeAt) } } },
+          { h2: "¿Cómo funciona?" },
+          { timeline: [{ label: "Revisar el contrato", state: "current" }, { label: "Aceptar en línea", state: "todo" }, { label: "Autorizar el pago", date: "sin cargo", state: "todo" }, { label: "Primer cobro", date: fmtShort(i.firstChargeAt), state: "todo" }] },
+          { notice: { tone: "info", text: `Después de aceptar, en la misma página autorizas el método de pago en Stripe, sin ningún cargo en ese momento. El enlace es personal, solo sirve una vez y caduca el ${fmtDate(i.expiresAt)}.` } },
+        ],
+        cta: { label: "Revisar y aceptar el contrato", url: i.url },
+      });
     },
-    /** Tras aceptar el contrato: enlace para autorizar el método de pago en Stripe (hoy sin cargo). */
+    /** Acceso a la autorización del método de pago (reenvío manual del equipo desde el CRM). */
     contractPaymentSetup(i: { companyName: string; serviceName: string; signerName: string; contractReference: string; url: string; expiresAt: number; amountCents: number; taxRateBp: number; currency: string; firstChargeAt: number }) {
       const tax = Math.round((i.amountCents * i.taxRateBp) / 10_000);
-      return layout(b, `Autoriza el método de pago · contrato ${i.contractReference}`, [
-        `Hola, ${i.signerName}:`,
-        `Hemos registrado tu aceptación del contrato ${i.contractReference} de ${i.serviceName} para ${i.companyName}. Gracias.`,
-        "Falta un paso: autorizar el método de pago en Stripe, la plataforma de pagos segura que usa Big Elephant.",
-        `Al autorizarlo hoy no se realiza ningún cargo. Las cuotas del contrato (${fmtMoney(i.amountCents, i.currency)} + IVA ${fmtMoney(tax, i.currency)} = ${fmtMoney(i.amountCents + tax, i.currency)} al mes) se cobrarán desde el ${fmtDate(i.firstChargeAt)}, como se indica en el contrato.`,
-        `El enlace sirve hasta el ${fmtDate(i.expiresAt)} y puedes abrirlo de nuevo si no terminas. Si ha caducado, pide uno nuevo a tu contacto de Big Elephant.`,
-      ], { label: "Autorizar método de pago", url: i.url });
+      return e({
+        family: "transactional", eyebrow: "Autorización del método de pago", hero: "pago", title: "Autoriza tu método de pago", subject: `Autoriza el método de pago · contrato ${i.contractReference}`,
+        greeting: `Hola, ${i.signerName}:`,
+        intro: [`Tu aceptación del contrato ${i.contractReference} de ${i.serviceName} para ${i.companyName} está registrada. Falta autorizar el método de pago en Stripe.`],
+        blocks: [
+          { card: { status: { label: "Contrato aceptado", tone: "success" }, rows: [{ label: "Servicio", value: i.serviceName }, { label: "Cuota mensual", value: fmtMoney(i.amountCents, i.currency) }, { label: `IVA (${i.taxRateBp / 100} %)`, value: fmtMoney(tax, i.currency) }], total: { label: "Total mensual", value: fmtMoney(i.amountCents + tax, i.currency) }, foot: { label: "Primer cobro previsto", value: fmtDate(i.firstChargeAt) } } },
+          { notice: { tone: "info", text: `Al autorizarlo hoy no se realiza ningún cargo. El enlace sirve hasta el ${fmtDate(i.expiresAt)} y puedes abrirlo de nuevo si no terminas.` } },
+        ],
+        cta: { label: "Autorizar método de pago", url: i.url },
+      });
+    },
+    /**
+     * Servicio externo contratado: Stripe confirmó la autorización del método de pago y la suscripción quedó creada y
+     * programada para el primer cobro pactado. Solo con hechos confirmados (estado programado en Big Elephant).
+     */
+    externalScheduled(i: { signerName: string | null; companyName: string; serviceName: string; amountCents: number; taxRateBp: number; currency: string; firstChargeAt: number; acceptedAt: number | null; authorizedAt: number | null }) {
+      const tax = Math.round((i.amountCents * i.taxRateBp) / 10_000);
+      return e({
+        family: "transactional", eyebrow: "Confirmación de contratación", hero: "contrato", title: "Tu servicio está contratado", subject: `Tu servicio ${i.serviceName} está contratado`,
+        ...(i.signerName ? { greeting: `Hola, ${i.signerName}:` } : {}),
+        intro: [`Hemos registrado correctamente la contratación de ${i.serviceName} para ${stop(i.companyName)}`],
+        blocks: [
+          { card: { status: { label: "Programada", tone: "success" }, rows: [{ label: "Servicio", value: i.serviceName }, { label: "Cliente", value: i.companyName }, { label: "Cuota mensual", value: fmtMoney(i.amountCents, i.currency) }, { label: `IVA (${i.taxRateBp / 100} %)`, value: fmtMoney(tax, i.currency) }], total: { label: "Total mensual", value: fmtMoney(i.amountCents + tax, i.currency) }, foot: { label: "Primer cobro previsto", value: fmtDate(i.firstChargeAt) } } },
+          { notice: { tone: "info", text: `No se ha realizado ningún cargo en este momento. El cobro se efectuará automáticamente el ${fmtDate(i.firstChargeAt)} con el método de pago autorizado.` } },
+          { h2: "¿Qué sucede ahora?" },
+          { timeline: [
+            { label: "Contrato firmado", ...(i.acceptedAt ? { date: fmtShort(i.acceptedAt) } : {}), state: "done" },
+            { label: "Método de pago autorizado", ...(i.authorizedAt ? { date: fmtShort(i.authorizedAt) } : {}), state: "done" },
+            { label: "Primer cobro", date: fmtShort(i.firstChargeAt), state: "current" },
+            { label: "Facturas mensuales", date: `desde ${fmtShort(i.firstChargeAt)}`, state: "todo" },
+          ] },
+        ],
+      });
     },
     /** Aviso INTERNO al equipo (incidencias, nuevos clientes, desistimientos, tickets). Sin datos sensibles ni enlaces con token. */
     opsNotice(i: { title: string; lines: string[] }) {
-      return layout(b, `[Elephant Source] ${i.title}`, [...i.lines, "Aviso interno del equipo de Elephant Source. Revisa el detalle en el panel de operaciones."]);
+      return e({
+        family: "security", eyebrow: "Aviso interno del equipo", hero: "equipo", title: i.title, subject: `[Big Elephant] ${i.title}`,
+        blocks: [...i.lines.map((p) => ({ p })), { notice: { tone: "info", text: "Aviso interno del equipo de Big Elephant. Revisa el detalle en el panel de operaciones." } }],
+      });
     },
     /**
      * Aviso INTERNO de una solicitud nueva de la web al equipo comercial: solo lo que la persona escribió en el
@@ -323,37 +386,42 @@ export function platformTemplates(o: PlatformTemplateOptions = {}) {
       crmUrl: string | null;
     }) {
       const at = new Date(i.receivedAt).toLocaleString("es-ES", { timeZone: "Europe/Madrid", dateStyle: "long", timeStyle: "short" });
-      const lines = [
-        `Nueva solicitud desde la web: ${i.typeLabel}.`,
-        `Recibida el ${at} (hora de Madrid) · referencia ${i.reference}.`,
-        `Empresa: ${i.company || "—"}${i.sector ? ` · sector: ${i.sector}` : ""}.`,
-        `Contacto: ${i.name}${i.email ? ` · ${i.email}` : ""}${i.phone ? ` · ${i.phone}` : ""}.`,
-        ...(i.product ? [`Producto o servicio: ${i.product}.`] : []),
-        ...(i.message ? [`Mensaje: «${i.message.slice(0, 600)}${i.message.length > 600 ? "…" : ""}»`] : []),
-        ...(i.sourcePage ? [`Enviada desde la página ${i.sourcePage}.`] : []),
-        `Responsable: ${i.owner ?? "sin asignar"}.`,
-        i.crmUrl ? "Abre la ficha en el CRM para atenderla (necesitas iniciar sesión)." : "Atiéndela desde Big Elephant CRM → Leads → Solicitudes web.",
-      ];
-      return layout(b, `[Big Elephant CRM] ${i.typeLabel} · ${i.company || i.name} · ${i.reference}`, lines, i.crmUrl ? { label: "Abrir en el CRM", url: i.crmUrl } : null);
+      return e({
+        family: "security", eyebrow: "Nueva solicitud desde la web", hero: "equipo", title: i.typeLabel, subject: `[Big Elephant CRM] ${i.typeLabel} · ${i.company || i.name} · ${i.reference}`,
+        blocks: [
+          { card: { status: { label: i.owner ? `Responsable: ${i.owner}` : "Sin asignar", tone: i.owner ? "info" : "warning" }, rows: [
+            { label: "Referencia", value: i.reference }, { label: "Recibida", value: `${at} (hora de Madrid)` }, { label: "Empresa", value: i.company || "—" }, ...(i.sector ? [{ label: "Sector", value: i.sector }] : []),
+            { label: "Contacto", value: i.name }, ...(i.email ? [{ label: "Correo", value: i.email }] : []), ...(i.phone ? [{ label: "Teléfono", value: i.phone }] : []), ...(i.product ? [{ label: "Producto o servicio", value: i.product }] : []), ...(i.sourcePage ? [{ label: "Página", value: i.sourcePage }] : []),
+          ] } },
+          ...(i.message ? [{ p: `«${i.message.slice(0, 600)}${i.message.length > 600 ? "…" : ""}»` } as Block] : []),
+          { notice: { tone: "info", text: i.crmUrl ? "Abre la ficha en el CRM para atenderla (necesitas iniciar sesión)." : "Atiéndela desde Big Elephant CRM → Leads → Solicitudes web." } },
+        ],
+        cta: i.crmUrl ? { label: "Abrir en el CRM", url: i.crmUrl } : null,
+      });
     },
     /** Ticket de soporte: recibido, respondido, resuelto o reabierto (para quien lo abrió). */
     supportTicket(i: { kind: "received" | "replied" | "resolved" | "reopened"; ticketRef: string; subject: string }) {
-      const head =
-        i.kind === "received"
-          ? "Hemos recibido tu solicitud de soporte. Te responderemos lo antes posible."
-          : i.kind === "replied"
-            ? "El equipo de soporte ha respondido a tu solicitud. Puedes ver la respuesta en tu cuenta."
-            : i.kind === "resolved"
-              ? "Hemos dado por resuelta tu solicitud. Si el problema continúa, responde a este correo y la reabriremos."
-              : "Hemos reabierto tu solicitud y seguimos con ella.";
-      return layout(b, `Soporte · ${i.ticketRef} · ${i.subject.slice(0, 80)}`, [head, `Referencia: ${i.ticketRef}.`]);
+      const meta = {
+        received: { title: "Hemos recibido tu solicitud", text: "Te responderemos lo antes posible.", status: { label: "Recibido", tone: "info" as const } },
+        replied: { title: "Tienes una respuesta del equipo", text: "El equipo de soporte ha respondido a tu solicitud. Puedes ver la respuesta en tu cuenta.", status: { label: "Respondido", tone: "info" as const } },
+        resolved: { title: "Tu solicitud está resuelta", text: "Si el problema continúa, responde a este correo y la reabriremos.", status: { label: "Resuelto", tone: "success" as const } },
+        reopened: { title: "Hemos reabierto tu solicitud", text: "Seguimos trabajando en ella y te mantendremos informado.", status: { label: "Reabierto", tone: "warning" as const } },
+      }[i.kind];
+      return e({
+        family: "security", eyebrow: "Soporte", hero: i.kind === "resolved" ? "exito" : "soporte", title: meta.title, subject: `Soporte · ${i.ticketRef} · ${i.subject.slice(0, 80)}`,
+        intro: [meta.text],
+        blocks: [{ card: { status: meta.status, rows: [{ label: "Referencia", value: i.ticketRef }, { label: "Asunto", value: i.subject.slice(0, 120) }] } }],
+      });
     },
     cancellation(i: { reference: string | null; cancelAt: number | null }) {
-      return layout(b, `Cancelación registrada${i.reference ? ` · ${i.reference}` : ""}`, [
-        "Hemos registrado la cancelación de tu suscripción.",
-        i.cancelAt ? `Seguirás teniendo acceso hasta el ${fmtDate(i.cancelAt)}, fin del periodo en curso.` : "Seguirás teniendo acceso hasta el fin del periodo en curso.",
-        "No se borra ningún dato. Si ha sido un error, responde a este correo o contacta con nosotros.",
-      ]);
+      return e({
+        family: "transactional", eyebrow: "Cancelación confirmada", hero: "calendario", title: "Hemos registrado tu cancelación", subject: `Cancelación registrada${refTitle(i.reference)}`,
+        intro: ["Lamentamos verte marchar. Tu suscripción terminará al final del periodo en curso."],
+        blocks: [
+          { card: { status: { label: "Baja programada", tone: "warning" }, rows: [...(i.reference ? [{ label: "Pedido", value: i.reference }] : []), { label: "Acceso hasta", value: i.cancelAt ? fmtDate(i.cancelAt) : "Fin del periodo en curso" }] } },
+          { notice: { tone: "info", text: "No se borra ningún dato. Si ha sido un error, responde a este correo o contacta con nosotros." } },
+        ],
+      });
     },
   };
 }

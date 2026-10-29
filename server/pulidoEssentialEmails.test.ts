@@ -70,9 +70,9 @@ describe("multi: correos con la identidad de la empresa", () => {
     await runWithTenant("montana", () => sendInviteEmail({ name: "Eva", email: "eva@montana.example", setPasswordUrl: "https://montana.example/establecer-contrasena?token=x", role: "readonly" }));
     expect(outbox).toHaveLength(1);
     const m = outbox[0];
-    expect(m.subject).toBe("Bienvenido a Montaña Ejemplo — Activa tu cuenta");
+    expect(m.subject).toBe("Te han invitado a Montaña Ejemplo en Big Elephant");
     for (const part of [m.subject, m.html, m.text ?? ""]) expect(part).not.toMatch(NAYADE);
-    expect(m.html).toContain("Plataforma de Gesti&oacute;n de Montaña Ejemplo");
+    expect(m.html).toContain("Montaña Ejemplo");
     expect(m.html).toContain("Solo lectura");
   });
 });

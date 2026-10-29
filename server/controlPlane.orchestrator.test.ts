@@ -460,7 +460,7 @@ describe("D. avisos por correo de los eventos del pedido (bandeja de plataforma)
     const tags = mailProvider.sent.map((m) => m.tag);
     for (const t of ["test_payment_confirmed", "contract_confirmed", "tenant_welcome", "cancellation"]) expect(tags).toContain(t);
     expect(new Set(mailStore.rows.map((r) => `${r.tenantId}:${r.idempotencyKey}`)).size).toBe(mailStore.rows.length);
-    expect(mailProvider.sent.every((m) => m.from.email === "no-reply@envios.example" && m.from.name === "Elephant Source")).toBe(true);
+    expect(mailProvider.sent.every((m) => m.from.email === "no-reply@envios.example" && m.from.name === "Big Elephant")).toBe(true);
     expect(mailProvider.sent.find((m) => m.tag === "test_payment_confirmed")!.text).toMatch(/ningún cargo real/);
     expect(JSON.stringify(mailProvider.sent)).not.toMatch(/n[aá]yade/i);
   });

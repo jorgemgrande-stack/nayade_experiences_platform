@@ -119,7 +119,8 @@ describe("avisos «Exportación disponible» y «Exportación fallida»", () => 
     for (const m of [ready, failed]) {
       expect(m.html).not.toMatch(/\/api\/files\/|sig=|exp=/);
       expect(m.text).not.toMatch(/\/api\/files\/|sig=/);
-      for (const h of m.html.matchAll(/href="([^"]+)"/g)) expect(h[1]).toBe(PANEL);
+      // El único enlace de acción es la pantalla del panel; el resto, el pie corporativo (ayuda y legales)
+      for (const h of m.html.matchAll(/href="([^"]+)"/g)) if (!h[1].startsWith("https://www.bigelephant.es")) expect(h[1]).toBe(PANEL);
       expect(m.html).toMatch(/<html lang="es">/);
       expect(m.text).toMatch(/No es publicidad/);
       expect(m.html).not.toContain("Elephant Source");
@@ -129,9 +130,10 @@ describe("avisos «Exportación disponible» y «Exportación fallida»", () => 
     expect(ready.text).toMatch(/12\.000 filas/);
     expect(ready.text).toMatch(/no incluye el enlace de descarga/);
     expect(failed.subject).toMatch(/No se ha podido generar/);
-    // Sin URL del panel o con una no https: sin botón ni enlaces
-    expect(exportFailedContent("Acme", { name: null, reason: "x", panelUrl: null }).html).not.toMatch(/href=/);
-    expect(exportFailedContent("Acme", { name: null, reason: "x", panelUrl: "http://acme.example/x" }).html).not.toMatch(/href=/);
+    // Sin URL del panel o con una no https: sin botón ni enlaces de acción (solo el pie corporativo)
+    const actionLinks = (html: string) => Array.from(html.matchAll(/href="([^"]+)"/g), (m) => m[1]).filter((u) => !u.startsWith("https://www.bigelephant.es"));
+    expect(actionLinks(exportFailedContent("Acme", { name: null, reason: "x", panelUrl: null }).html)).toEqual([]);
+    expect(actionLinks(exportFailedContent("Acme", { name: null, reason: "x", panelUrl: "http://acme.example/x" }).html)).toEqual([]);
   });
 
   it("en el catálogo, con vista previa, categoría propia (sin copia global) y destinataria la propia persona", () => {

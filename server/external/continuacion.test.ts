@@ -135,3 +135,34 @@ describe("continuación tras la aceptación", () => {
     await expect(noMail.svc.setupLink(noMail.x.id, "operator:jorge", { send: true })).resolves.toMatchObject({ mail: { status: "unavailable" } });
   });
 });
+
+describe("confirmación «servicio contratado» (solo con la suscripción programada)", () => {
+  it("se envía una vez al firmante cuando Stripe confirma y la suscripción queda programada; nunca por introducir la tarjeta", async () => {
+    let now = T;
+    const crmStore = new MemoryCrmStore();
+    const crm = new CrmService({ store: crmStore, now: () => now });
+    const store = new MemoryExternalStore("test");
+    const gw = new FakeStripeGateway();
+    const scheduled: Array<{ to: string; key: string; total: number }> = [];
+    const svc = new ExternalService({
+      store, crm, crmStore, stripeStore: new MemoryStripeStore("test"), gateway: gw, mode: "test", namespace: "beta", urls, ipSalt: "sal-de-pruebas-larga-0123456789abcdef",
+      mail: { invite: async () => ({ status: "queued", reason: null, duplicate: false }), scheduled: async (to, key, i) => (scheduled.push({ to, key, total: i.amountCents }), { status: "queued", reason: null, duplicate: false, id: 1 }) },
+      now: () => now,
+    });
+    const c = await crm.createCompany({ name: "Nextair", legalName: "Nextair SL" }, "operator:test");
+    const x = await svc.create({ companyId: c.id, service: { key: "skinet", name: "SkiNet" }, amountCents: 100_000, taxRateBp: 2100, firstChargeDate: "2026-11-01", conditions: "Condiciones del servicio de prueba suficientemente largas." }, "operator:test");
+    const req = await svc.requestAcceptance(x.id, signer, "operator:test");
+    const acc = await svc.accept(new URL(req.url).searchParams.get("token")!, { name: "Laura Representante", accept: true }, { ip: null, userAgent: null });
+    await svc.continuePaymentSetup(new URL(acc.continueUrl!).searchParams.get("t")!);
+    expect(scheduled).toHaveLength(0); // abrir Stripe no confirma nada
+    const sid = (await store.get(x.id))!.stripeSetupSessionId!;
+    gw.completeSetupSession(sid);
+    expect(scheduled).toHaveLength(0); // introducir la tarjeta tampoco: falta la confirmación (webhook)
+    await svc.handleSetupSession(sid);
+    expect((await store.get(x.id))!.status).toBe("scheduled");
+    expect(scheduled).toEqual([{ to: "laura@nextair.example", key: expect.stringMatching(/^external-scheduled:beta:\d+:sub_/), total: 100_000 }]);
+    await svc.handleSetupSession(sid); // webhook repetido
+    expect(scheduled).toHaveLength(1);
+    expect((await store.events(x.id)).filter((e) => e.kind === "scheduled_email")).toHaveLength(1);
+  });
+});
