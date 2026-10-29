@@ -19,6 +19,7 @@ describe("acceso al administrador central tras publicar", () => {
   it("production exige la recuperación de contraseña; live solo la informa", () => {
     expect(ACCESS_CHECKS.production).toEqual({ base: "https://admin.bigelephant.es", resetRequired: true });
     expect(ACCESS_CHECKS.live.resetRequired).toBe(false);
+    expect(ACCESS_CHECKS.live.auth).toBe(true); // tras la pasarela del equipo
   });
 
   it("todo correcto: sin fallos", () => {
