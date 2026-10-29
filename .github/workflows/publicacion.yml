@@ -6,7 +6,8 @@
 #     (workflow_dispatch): la comprobación de rama y los entornos de despliegue exigen integration/elephant-source.
 #  3. «live»: comprobaciones funcionales, migraciones nuevas de live, CRM y web y la marca «elephant-source/live».
 #  4. «production»: production ordinario, solo con lo superado en live (mismas barreras que antes).
-# Tras fusionar solo en el CRM o la web: `gh workflow run ci.yml --ref integration/elephant-source` (llama a este flujo).
+# Tras fusionar solo en el CRM o la web, su propio CI lanza ci.yml en integration/elephant-source (que llama a este flujo)
+# con el secreto ES_PUBLICAR_TOKEN de su repositorio; sin él, a mano: `gh workflow run ci.yml --ref integration/elephant-source`.
 name: Publicación (tras Railway)
 
 on:

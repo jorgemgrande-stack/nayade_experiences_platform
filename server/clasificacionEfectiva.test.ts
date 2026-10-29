@@ -61,6 +61,25 @@ describe("Core: interruptores en código efectivo", () => {
     expect(extraordinaryChanges(["server/x.ts"], diffOf("server/x.ts", "+  // ver MAIL_MODE en la guía"), none)).toEqual([]);
     expect(extraordinaryChanges(["server/x.ts"], "+  const m = process.env.LLM_MODEL;", none)).toHaveLength(1);
   });
+  it("un nombre parecido o un texto que cita el interruptor no lo leen", () => {
+    expect(coreLockedChanges(diffOf("server/_core/llm.ts", "+    if (usage?.prompt_tokens) meter(Metrics.LLM_TOKENS_INPUT, usage.prompt_tokens, \"token\");"))).toEqual([]);
+    expect(coreLockedChanges(diffOf("server/x.ts", '+  if (o.policy.mode === "off") return "MAIL_MODE=off";'))).toEqual([]);
+    expect(coreLockedChanges(diffOf("server/x.ts", "-  const mode = env[\"MAIL_MODE\"] ?? 'off';"))).toHaveLength(1);
+    expect(coreLockedChanges(diffOf("deploy/x.env", "+MAIL_MODE=live"))).toHaveLength(1);
+  });
+});
+
+describe("política del correo real", () => {
+  const none = () => null;
+  const policy = "server/mail/policy.ts";
+  it("cambiar solo la identidad de los avisos (marca, línea legal, logotipo) es ordinario", () => {
+    const d = diffOf(policy, '-export const PLATFORM_BRAND = "Elephant Source";\n+export const PLATFORM_BRAND = "Big Elephant";\n+export const PLATFORM_LEGAL_LINE = "Big Elephant es un servicio de X";');
+    expect(extraordinaryChanges([policy], d, none)).toEqual([]);
+  });
+  it("cualquier otro cambio de la política sigue siendo extraordinario", () => {
+    expect(extraordinaryChanges([policy], diffOf(policy, '+export const PLATFORM_BRAND = "Big Elephant";\n+  if (allow.length === 0) return true;'), none)).toHaveLength(1);
+    expect(extraordinaryChanges([policy], "", none)).toHaveLength(1);
+  });
 });
 
 describe("verificación del dominio real del CRM", () => {
