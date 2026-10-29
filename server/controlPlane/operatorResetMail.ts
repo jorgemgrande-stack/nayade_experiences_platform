@@ -13,6 +13,7 @@ import crypto from "node:crypto";
 import type { PlatformMailer } from "../mail/platform";
 import { scopeAllows, type MailPolicy } from "../mail/policy";
 import type { ResetMailer } from "./operatorAuth";
+import { passwordResetContent } from "../mail/accountTemplates";
 
 /** Por qué la recuperación de contraseña de los operadores NO está disponible (null: lo está). Para el registro de arranque. */
 export function resetUnavailableReason(o: { resetUrl: string | undefined; smtp: boolean; mailer: boolean; policy: Pick<MailPolicy, "mode" | "scope"> }): string | null {
@@ -25,19 +26,13 @@ export function resetUnavailableReason(o: { resetUrl: string | undefined; smtp: 
   return null;
 }
 
-const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 
 export function outboxResetMailer(mailer: PlatformMailer): ResetMailer {
   return {
     async sendPasswordReset(to, link) {
       // Una clave por enlace (el token es aleatorio): repetir la misma petición no duplica el correo
       const key = `operator-reset:${crypto.createHash("sha256").update(link).digest("hex").slice(0, 40)}`;
-      const subject = "Big Elephant CRM — restablecer la contraseña";
-      const text = `Se ha solicitado restablecer tu contraseña de Big Elephant CRM.\n\nAbre este enlace (válido 30 minutos, un solo uso):\n${link}\n\nSi no lo has solicitado, ignora este mensaje.`;
-      const html =
-        `<p>Se ha solicitado restablecer tu contraseña de Big Elephant CRM.</p>` +
-        `<p><a href="${esc(link)}">Restablecer la contraseña</a> (válido 30 minutos, un solo uso).</p>` +
-        `<p>Si no lo has solicitado, ignora este mensaje.</p>`;
+      const { subject, html, text } = passwordResetContent({ name: null, url: link, minutes: 30, account: "Big Elephant CRM (administración central)" });
       await mailer.send(null, key, "password_reset", to, { subject, html, text });
       await mailer.service.drain(5).catch(() => undefined);
     },

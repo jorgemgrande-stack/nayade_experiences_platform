@@ -108,7 +108,7 @@ describe("avisos internos de solicitudes web", () => {
     expect(m.html).toContain("Marta Prueba");
     expect(m.html).toContain("marta@cliente.example");
     expect(m.html).toContain("hora de Madrid");
-    expect(m.html).toContain("Responsable: sin asignar");
+    expect(m.html).toContain("Sin asignar");
     expect(m.html).toContain(`https://admin.bigelephant.example/#/comercial/leads/${r.request.leadId}`);
     expect(m.html).toContain("big-elephant-logo.png");
     // Nada interno: ni la clave de idempotencia, ni la huella, ni el seudónimo de IP

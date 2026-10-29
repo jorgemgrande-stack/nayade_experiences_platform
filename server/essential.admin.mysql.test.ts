@@ -5,6 +5,7 @@
  * que solo registra: nada sale.
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { PLATFORM_LEGAL_LINE } from "./mail/policy";
 import { startEssentialApp, data, errCode, licenseMatrix, isLicenseDenied, type EssentialApp } from "./essentialApp.testkit";
 
 const URL_ = process.env.REGISTRY_TEST_DATABASE_URL;
@@ -85,7 +86,8 @@ describe.skipIf(!URL_)("Essential — Administración y comunicaciones (aplicaci
     expect(mail.replyTo).toEqual({ email: "hola@empresa-a.example" });
     expect(mail.to).toEqual([{ email: "nueva@empresa-a.example" }]);
     expect(mail.htmlContent).toContain(`https://${ess.host("a")}/establecer-contrasena`);
-    expect(`${mail.subject} ${mail.htmlContent}`).not.toMatch(LEFTOVERS);
+    // El titular solo puede aparecer en su línea legal oficial del pie de Big Elephant; cualquier otra mención es un resto
+    expect(`${mail.subject} ${mail.htmlContent}`.split(PLATFORM_LEGAL_LINE).join("")).not.toMatch(LEFTOVERS);
     // Antes del arreglo el enlace usaba la URL de la instalación (APP_URL), no la de la empresa
     expect(mail.htmlContent).not.toContain("instalacion-unica.example");
 

@@ -4,9 +4,9 @@
  * 409. Una dirección fuera de la lista no recibe nada.
  */
 import { describe, it, expect, afterEach } from "vitest";
+import { allTestEmails } from "./mail/testCatalog";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
-import { allPreviews } from "./notifications/preview";
 import { mailPolicyFromEnv } from "./mail/policy";
 import { memoryProvider } from "./mail/providers";
 import { MailService } from "./mail/service";
@@ -55,11 +55,13 @@ async function start(mode: "off" | "sandbox" | "live") {
 afterEach(() => new Promise<void>((r) => (server ? server.close(() => r()) : r())));
 
 describe("envío de prueba de plataforma", () => {
-  it("sandbox: todas las vistas previas al destinatario autorizado, con [Prueba] en el asunto", async () => {
+  it("sandbox: TODAS las plantillas del catálogo maestro al destinatario autorizado, numeradas en el asunto", async () => {
     const { post } = await start("sandbox");
     const r = await post({ to: "jorge@pruebas.example" });
     expect(r.status).toBe(200);
-    expect(r.body.sent).toBe(allPreviews().length);
+    expect(r.body.sent).toBe(allTestEmails().length);
+    expect(r.body.results[0]).toMatchObject({ id: allTestEmails()[0].id, name: allTestEmails()[0].name });
+    expect(r.body.results.every((x: any) => typeof x.outboxId === "number")).toBe(true);
     expect(r.body.results.every((x: any) => x.status !== "suppressed" && x.status !== "failed")).toBe(true);
   });
 

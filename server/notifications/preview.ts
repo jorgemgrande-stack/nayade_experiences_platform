@@ -14,7 +14,7 @@ import { TEMPLATE_CATALOG, type TemplateSpec, type Vars } from "./catalog";
 const DAY = 86_400_000;
 /** Momento fijo de las vistas previas (fechas estables): 21/10/2026 10:00, hora de Madrid. */
 export const PREVIEW_NOW = Date.UTC(2026, 9, 21, 8, 0, 0);
-const HOST = "hotel-ejemplo.app.bigelephant.example";
+const HOST = "empresa-demo.app.bigelephant.example";
 const SAMPLE: Vars = {
   reference: "PED-2026-0042",
   host: HOST,
@@ -53,8 +53,8 @@ const LEGACY: Record<string, () => MailContent> = (() => {
     "trial.extended": () => t.trialStatus({ kind: "extended", endsAt: PREVIEW_NOW + 20 * DAY, host: HOST }),
     "trial.suspended": () => t.trialStatus({ kind: "suspended", endsAt: null, host: HOST }),
     "trial.reactivated": () => t.trialStatus({ kind: "reactivated", endsAt: PREVIEW_NOW + 10 * DAY, host: HOST }),
-    "subscription.signup_received": () => t.signupReceived({ companyName: "Hotel Ejemplo, S.L.", ...order, test: false }),
-    "subscription.contract_confirmed": () => t.contractConfirmed({ companyName: "Hotel Ejemplo, S.L.", ...order, host: HOST }),
+    "subscription.signup_received": () => t.signupReceived({ companyName: "Empresa Demo, S.L.", ...order, test: false }),
+    "subscription.contract_confirmed": () => t.contractConfirmed({ companyName: "Empresa Demo, S.L.", ...order, host: HOST }),
     "subscription.initial_payment": () => t.paymentConfirmed({ ...order, amountCents: 2900, currency: "EUR" }),
     "subscription.renewal_paid": () => t.renewalConfirmed({ ...order, amountCents: 2900, currency: "EUR", periodStart: PREVIEW_NOW, host: HOST, test: false }),
     "subscription.payment_failed": () => t.paymentFailed({ ...order, graceEndsAt: PREVIEW_NOW + 7 * DAY, host: HOST }),
@@ -68,12 +68,12 @@ const LEGACY: Record<string, () => MailContent> = (() => {
     "consumer.withdrawal_receipt": () => t.withdrawalReceipt({ reference: "DS-20261021-AB12CD", requestedAt: PREVIEW_NOW, withinTerm: true, deadlineAt: PREVIEW_NOW + 10 * DAY }),
     "consumer.withdrawal_resolution": () => t.withdrawalResolution({ reference: "DS-20261021-AB12CD", status: "accepted", note: "Reembolsaremos la parte no consumida por el mismo medio de pago." }),
     "ops.incident": () => t.opsNotice({ title: "Incidencia crítica: fallos de envío de correo repetidos", lines: ["Tipo: rate.mail.send_failed · 5 fallos en 15 minutos.", "Abierta el 21/10/2026 a las 10:00 (hora de Madrid)."] }),
-    "ops.new_customer": () => t.opsNotice({ title: "Nuevo cliente activado", lines: ["Empresa: Hotel Ejemplo, S.L. · Pedido PED-2026-0042 · Plan Essential mensual."] }),
+    "ops.new_customer": () => t.opsNotice({ title: "Nuevo cliente activado", lines: ["Empresa: Empresa Demo, S.L. · Pedido PED-2026-0042 · Plan Essential mensual."] }),
     "ops.withdrawal_requested": () => t.opsNotice({ title: "Solicitud de desistimiento", lines: ["Referencia DS-20261021-AB12CD · dentro de plazo. Revísala en Atención al cliente → Desistimientos."] }),
     "ops.ticket_created": () => t.opsNotice({ title: "Nuevo ticket de soporte", lines: ["SOP-0137 · «No veo las reservas de ayer»."] }),
-    "security.password_changed": () => passwordChangedContent("Hotel Ejemplo", "Ana", new Date(PREVIEW_NOW)),
-    "data.export_ready": () => exportReadyContent("Hotel Ejemplo", { name: "Ana", tables: 84, rows: 15230, files: 312, warning: null, expiresAt: PREVIEW_NOW + DAY, panelUrl: `https://${HOST}${EXPORT_PANEL_PATH}` }),
-    "data.export_failed": () => exportFailedContent("Hotel Ejemplo", { name: "Ana", reason: "No se pudo generar la exportación. Inténtalo de nuevo o contacta con soporte.", panelUrl: `https://${HOST}${EXPORT_PANEL_PATH}` }),
+    "security.password_changed": () => passwordChangedContent("Empresa Demo", "Ana", new Date(PREVIEW_NOW)),
+    "data.export_ready": () => exportReadyContent("Empresa Demo", { name: "Ana", tables: 84, rows: 15230, files: 312, warning: null, expiresAt: PREVIEW_NOW + DAY, panelUrl: `https://${HOST}${EXPORT_PANEL_PATH}` }),
+    "data.export_failed": () => exportFailedContent("Empresa Demo", { name: "Ana", reason: "No se pudo generar la exportación. Inténtalo de nuevo o contacta con soporte.", panelUrl: `https://${HOST}${EXPORT_PANEL_PATH}` }),
   };
 })();
 

@@ -215,8 +215,8 @@ describe("calidad de todos los correos", () => {
 describe("compatibilidad con Outlook de escritorio", () => {
   it("botones de plataforma: relleno y color en la celda, no en el enlace (Outlook pegaba el texto al borde)", () => {
     const html = platformTemplates().tenantWelcome({ companyName: "Aventuras Sierra Norte", host: "a.app.bigelephant.es", setPasswordUrl: "https://a.app.bigelephant.es/establecer-contrasena?token=x" }).html;
-    const td = html.match(/<td bgcolor="[^"]+" style="[^"]*padding:13px 24px[^"]*"><a /);
-    expect(td).not.toBeNull();
-    expect(html).not.toMatch(/<a [^>]*style="[^"]*padding:13px/);
+    // Outlook de escritorio: botón VML redondeado con su propio texto; el resto, celda con fondo y enlace con relleno
+    expect(html).toMatch(/<!--\[if mso\]><v:roundrect [^>]*fillcolor="#FF3131"/);
+    expect(html).toMatch(/<td bgcolor="#FF3131"[^>]*><a href="https:\/\/a\.app\.bigelephant\.es\/establecer-contrasena/);
   });
 });

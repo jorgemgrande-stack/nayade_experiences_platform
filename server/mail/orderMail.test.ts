@@ -4,7 +4,9 @@
  * MAIL_MODE=off sin envíos y ningún correo con contraseñas. Datos sintéticos (dominios .example).
  */
 import { describe, it, expect } from "vitest";
-import { linkHosts, mailPolicyFromEnv } from "./policy";
+import { linkHosts as allLinkHosts, mailPolicyFromEnv } from "./policy";
+/** Hosts de los enlaces de la operación (sin el pie corporativo: ayuda y textos legales de www.bigelephant.es). */
+const linkHosts = (html: string) => allLinkHosts(html).filter((h) => h !== "www.bigelephant.es");
 import { memoryProvider } from "./providers";
 import { MailService } from "./service";
 import { MemoryMailStore } from "./store";
@@ -39,7 +41,7 @@ describe("plantillas para live", () => {
   it("en español, con la marca, el soporte y la referencia; sin prueba, sandbox ni ficticio; sin IVA inventado", () => {
     for (const c of live) {
       expect(c.html).toMatch(/<html lang="es">/);
-      expect(c.html).toMatch(/Elephant Source/);
+      expect(c.html).toMatch(/Big Elephant/);
       expect(c.text).toMatch(/No es publicidad/);
       expect(c.text).toMatch(/soporte@bigelephant\.example/);
       expect(c.subject).toMatch(/PED-2026-000001|Montaña Ejemplo SL/);
@@ -123,7 +125,7 @@ describe("avisos del pedido en live (Stripe, cuenta real)", () => {
     expect(provider.sent.map((x) => x.tag)).toEqual(["payment_confirmed", "invoice_available"]);
     for (const s of provider.sent) {
       expect(`${s.subject}\n${s.html}\n${s.text}`).not.toMatch(TEST_WORDS);
-      expect(s.from).toEqual({ name: "Elephant Source", email: "no-reply@bigelephant.example" });
+      expect(s.from).toEqual({ name: "Big Elephant", email: "no-reply@bigelephant.example" });
       expect(s.replyTo).toBe("soporte@bigelephant.example");
     }
     expect(provider.sent[1].text).toMatch(/in_9/);

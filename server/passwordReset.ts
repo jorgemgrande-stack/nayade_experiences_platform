@@ -14,7 +14,7 @@ import rateLimit from "express-rate-limit";
 import { and, eq, gt, isNull } from "drizzle-orm";
 import { getDb } from "./db";
 import { users, passwordResetTokens } from "../drizzle/schema";
-import { buildPasswordResetHtml } from "./emailTemplates";
+import { passwordResetContent } from "./mail/accountTemplates";
 import { sendEmail } from "./mailer";
 import { logDirectEmail } from "./emailManager";
 import { brandName } from "./tenantBrand";
@@ -34,9 +34,9 @@ export function passwordChangedEmail(name: string | null, at: Date) {
 }
 
 async function sendResetEmail(to: string, resetUrl: string, name: string) {
-  const html = buildPasswordResetHtml({ name: name ?? "", resetUrl, expiryMinutes: TOKEN_EXPIRY_MINUTES });
-  const resetSubject = `Recuperar contraseña — ${brandName()}`;
-  const sent = await sendEmail({ to, subject: resetSubject, html, category: "password_reset" });
+  const m = passwordResetContent({ name: name || null, url: resetUrl, minutes: TOKEN_EXPIRY_MINUTES, account: brandName() ? `Big Elephant CRM (${brandName()})` : "Big Elephant CRM" });
+  const resetSubject = m.subject;
+  const sent = await sendEmail({ to, subject: resetSubject, html: m.html, text: m.text, category: "password_reset" });
   logDirectEmail({ templateKey: "password_reset", triggerEvent: "password_reset_requested", recipientEmail: to, subject: resetSubject, sent }).catch(() => {});
   if (!sent) {
     if (process.env.NODE_ENV !== "production") {

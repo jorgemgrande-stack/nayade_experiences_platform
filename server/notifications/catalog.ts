@@ -109,7 +109,7 @@ export const TEMPLATE_CATALOG: readonly TemplateSpec[] = [
     sendWhen: "Al suspender el pedido",
     suppressWhen: "MAIL_MODE=off; sin contacto de facturación; destinatario suprimido",
     idempotency: EVENT_KEY,
-    render: (v, o) => layout(brand(o.supportEmail), "Tu suscripción está suspendida", [`Hemos suspendido el acceso de tu suscripción${ref(v)} porque el cobro no se ha completado.`, "Tus datos se conservan. En cuanto se regularice el pago, el acceso vuelve a activarse."], panel(v.host)),
+    render: (v, o) => layout(brand(o.supportEmail), "Tu suscripción está suspendida", [`Hemos suspendido el acceso de tu suscripción${ref(v)} porque el cobro no se ha completado.`], panel(v.host), { eyebrow: "Último aviso de cobro", hero: "aviso", blocks: [{ card: { status: { label: "Suspendida", tone: "error" }, rows: [...(v.reference ? [{ label: "Pedido", value: String(v.reference) }] : []), { label: "Tus datos", value: "Conservados" }] } }, { notice: { tone: "warning", text: "En cuanto se regularice el pago, el acceso vuelve a activarse automáticamente." } }] }),
   },
   {
     id: "subscription.plan_changed",
@@ -126,7 +126,7 @@ export const TEMPLATE_CATALOG: readonly TemplateSpec[] = [
     suppressWhen: "MAIL_MODE=off; sin contacto de facturación",
     idempotency: EVENT_KEY,
     render: (v, o) =>
-      layout(brand(o.supportEmail), "Hemos cambiado tu plan", [v.direction === "down" ? `Tu plan pasará a ${txt(v.plan, "el nuevo plan")} a partir del ${date(v.effectiveFrom)}. Hasta entonces mantienes el actual.` : `Tu plan ya es ${txt(v.plan, "el nuevo plan")}.`], panel(v.host)),
+      layout(brand(o.supportEmail), "Hemos cambiado tu plan", [v.direction === "down" ? `Tu plan pasará a ${txt(v.plan, "el nuevo plan")} a partir del ${date(v.effectiveFrom)}. Hasta entonces mantienes el actual.` : `Tu plan ya es ${txt(v.plan, "el nuevo plan")}.`], panel(v.host), { eyebrow: "Cambio de plan", hero: "modulos", blocks: [{ card: { status: { label: v.direction === "down" ? "Programado" : "Aplicado", tone: v.direction === "down" ? "info" : "success" }, rows: [{ label: "Nuevo plan", value: txt(v.plan, "—") }, { label: "Desde", value: v.direction === "down" ? date(v.effectiveFrom) : "Hoy" }] } }] }),
   },
   {
     id: "subscription.ended",
@@ -143,7 +143,7 @@ export const TEMPLATE_CATALOG: readonly TemplateSpec[] = [
     suppressWhen: "MAIL_MODE=off; sin contacto de facturación",
     idempotency: EVENT_KEY,
     render: (v, o) =>
-      layout(brand(o.supportEmail), "Tu suscripción ha terminado", [`La suscripción${ref(v)} ha llegado a su fin.`, "Durante los próximos 30 días puedes consultar tus datos y exportarlos en solo lectura. No borramos nada automáticamente."], panel(v.host)),
+      layout(brand(o.supportEmail), "Tu suscripción ha terminado", [`La suscripción${ref(v)} ha llegado a su fin.`], panel(v.host), { eyebrow: "Fin de la suscripción", hero: "calendario", blocks: [{ card: { status: { label: "Terminada", tone: "warning" }, rows: [{ label: "Consulta y exportación", value: "30 días en solo lectura" }, { label: "Tus datos", value: "Conservados" }] } }, { notice: { tone: "info", text: "No borramos nada automáticamente. Puedes exportar tus datos desde el panel." } }] }),
   },
   {
     id: "access.read_only_started",
@@ -160,7 +160,7 @@ export const TEMPLATE_CATALOG: readonly TemplateSpec[] = [
     suppressWhen: "MAIL_MODE=off; sin contacto de facturación",
     idempotency: EVENT_KEY,
     render: (v, o) =>
-      layout(brand(o.supportEmail), "Tu cuenta está en solo lectura", [`Hasta el ${date(v.readOnlyUntil)} puedes consultar y exportar tus datos (ZIP con CSV, JSON y ficheros) desde el panel.`, "Para volver a usarla con normalidad, reactiva tu suscripción."], panel(v.host)),
+      layout(brand(o.supportEmail), "Tu cuenta está en solo lectura", [`Hasta el ${date(v.readOnlyUntil)} puedes consultar y exportar tus datos (ZIP con CSV, JSON y ficheros) desde el panel.`, "Para volver a usarla con normalidad, reactiva tu suscripción."], panel(v.host), { family: "security", eyebrow: "Estado de tu cuenta", hero: "datos" }),
   },
   {
     id: "access.read_only_ended",
@@ -186,6 +186,7 @@ export const TEMPLATE_CATALOG: readonly TemplateSpec[] = [
           "Si quieres reactivar la cuenta, escríbenos.",
         ],
         panel(v.host, "/admin/suscripcion/exportar"),
+        { family: "security", eyebrow: "Estado de tu cuenta", hero: "datos" },
       ),
   },
   {
@@ -212,10 +213,14 @@ export const TEMPLATE_CATALOG: readonly TemplateSpec[] = [
           "Si quieres seguir usándola, contrata un plan o escríbenos antes de esa fecha.",
         ],
         panel(v.host, "/admin/suscripcion/exportar"),
+        { family: "security", eyebrow: "Aviso de archivado", hero: "aviso" },
       ),
   },
   // ── Módulos y ampliaciones ──
-  contract("module.purchase_requested", "module", "module_change", "Compra enviada a Stripe con cobro pendiente (purchases.ts: payment_pending)", "billing_contact", ["productName", "paymentUrl"], "Si el cobro necesita autenticación o falló"),
+  {
+    ...contract("module.purchase_requested", "module", "module_change", "Compra enviada a Stripe con cobro pendiente (purchases.ts: payment_pending)", "billing_contact", ["productName", "paymentUrl"], "Si el cobro necesita autenticación o falló"),
+    render: (v, o) => layout(brand(o.supportEmail), "Completa el pago de tu compra", [`Para activar ${txt(v.productName, "tu módulo")} falta completar el pago. No se ha aplicado ningún cambio todavía.`], typeof v.paymentUrl === "string" && v.paymentUrl ? { label: "Completar el pago", url: v.paymentUrl } : null, { eyebrow: "Compra pendiente", hero: "pago", blocks: [{ card: { status: { label: "Pago pendiente", tone: "warning" }, rows: [{ label: "Módulo", value: txt(v.productName, "—") }] } }] }),
+  },
   {
     id: "module.activated",
     version: 1,
@@ -230,7 +235,7 @@ export const TEMPLATE_CATALOG: readonly TemplateSpec[] = [
     sendWhen: "Al añadir el módulo a la suscripción",
     suppressWhen: "MAIL_MODE=off; sin contacto de facturación",
     idempotency: EVENT_KEY,
-    render: (v, o) => layout(brand(o.supportEmail), `${txt(v.productName, "Tu módulo")} ya está activo`, [`Hemos activado ${txt(v.productName, "el módulo")} en tu plataforma. El cargo proporcional de este periodo aparece en tu factura.`], panel(v.host)),
+    render: (v, o) => layout(brand(o.supportEmail), `${txt(v.productName, "Tu módulo")} ya está activo`, [`Hemos activado ${txt(v.productName, "el módulo")} en tu plataforma. El cargo proporcional de este periodo aparece en tu factura.`], panel(v.host, "/admin"), { family: "experiential", eyebrow: "Nuevo módulo activado", hero: "modulos", blocks: [{ card: { status: { label: "Activo", tone: "success" }, rows: [{ label: "Módulo", value: txt(v.productName, "—") }] } }] }),
   },
   {
     id: "module.quantity_changed",
@@ -248,8 +253,8 @@ export const TEMPLATE_CATALOG: readonly TemplateSpec[] = [
     idempotency: EVENT_KEY,
     render: (v, o) =>
       v.direction === "down"
-        ? layout(brand(o.supportEmail), "Reducción programada", [`A partir del ${date(v.effectiveFrom)} tendrás contratadas ${txt(v.quantity, "menos")} unidades adicionales de ${metric(v.metric)}. Hasta entonces mantienes las actuales. No hay abonos por la parte del periodo ya pagada.`], panel(v.host))
-        : layout(brand(o.supportEmail), "Ampliación aplicada", [`Ya tienes contratadas ${txt(v.quantity, "más")} unidades adicionales de ${metric(v.metric)}.`], panel(v.host)),
+        ? layout(brand(o.supportEmail), "Reducción programada", [`A partir del ${date(v.effectiveFrom)} tendrás contratadas ${txt(v.quantity, "menos")} unidades adicionales de ${metric(v.metric)}. Hasta entonces mantienes las actuales. No hay abonos por la parte del periodo ya pagada.`], panel(v.host), { eyebrow: "Cambio de módulos", hero: "modulos" })
+        : layout(brand(o.supportEmail), "Ampliación aplicada", [`Ya tienes contratadas ${txt(v.quantity, "más")} unidades adicionales de ${metric(v.metric)}.`], panel(v.host), { eyebrow: "Cambio de módulos", hero: "modulos", blocks: [{ card: { status: { label: "Aplicada", tone: "success" }, rows: [{ label: "Recurso", value: metric(v.metric) }, { label: "Unidades adicionales", value: txt(v.quantity, "—") }] } }] }),
   },
   {
     id: "module.removal_scheduled",
@@ -265,7 +270,7 @@ export const TEMPLATE_CATALOG: readonly TemplateSpec[] = [
     sendWhen: "Al programar la baja del módulo",
     suppressWhen: "MAIL_MODE=off; sin contacto de facturación",
     idempotency: EVENT_KEY,
-    render: (v, o) => layout(brand(o.supportEmail), `Baja de ${txt(v.productName, "un módulo")} programada`, [`${txt(v.productName, "El módulo")} seguirá activo hasta el ${date(v.effectiveTo)} y no se renovará. Tus datos se conservan.`], panel(v.host)),
+    render: (v, o) => layout(brand(o.supportEmail), `Baja de ${txt(v.productName, "un módulo")} programada`, [`${txt(v.productName, "El módulo")} seguirá activo hasta el ${date(v.effectiveTo)} y no se renovará. Tus datos se conservan.`], panel(v.host), { eyebrow: "Cambio de módulos", hero: "calendario", blocks: [{ card: { status: { label: "Baja programada", tone: "warning" }, rows: [{ label: "Módulo", value: txt(v.productName, "—") }, { label: "Activo hasta", value: date(v.effectiveTo) }] } }] }),
   },
   {
     id: "module.purchase_failed",
@@ -281,9 +286,12 @@ export const TEMPLATE_CATALOG: readonly TemplateSpec[] = [
     sendWhen: "Solo si el pedido rechazado es una compra desde la plataforma",
     suppressWhen: "Otros rechazos; MAIL_MODE=off; sin contacto de facturación",
     idempotency: EVENT_KEY,
-    render: (v, o) => layout(brand(o.supportEmail), "No hemos podido completar tu compra", ["El pago no se completó a tiempo y no se ha hecho ningún cargo ni ningún cambio en tu suscripción. Puedes intentarlo de nuevo cuando quieras."], panel(v.host)),
+    render: (v, o) => layout(brand(o.supportEmail), "No hemos podido completar tu compra", ["El pago no se completó a tiempo y no se ha hecho ningún cargo ni ningún cambio en tu suscripción. Puedes intentarlo de nuevo cuando quieras."], panel(v.host), { eyebrow: "Compra no completada", hero: "aviso" }),
   },
-  contract("module.removal_effective", "module", "module_change", "Fin efectivo de la baja de un módulo (renovación)", "billing_contact", ["productName"], "En la renovación que aplica la baja"),
+  {
+    ...contract("module.removal_effective", "module", "module_change", "Fin efectivo de la baja de un módulo (renovación)", "billing_contact", ["productName"], "En la renovación que aplica la baja"),
+    render: (v, o) => layout(brand(o.supportEmail), `${txt(v.productName, "El módulo")} ya no está activo`, ["La baja programada se ha aplicado con la renovación de tu suscripción. Tus datos se conservan."], null, { eyebrow: "Cambio de módulos", hero: "modulos" }),
+  },
   // ── Facturación ──
   legacy("billing.invoice_available", "billing", "invoice_available", "Factura de Stripe cobrada (orderNotifier)", "billing_contact", "Por cada cobro verificado en Stripe", "order:<id>:invoice_available:p<pago>"),
   {
@@ -301,9 +309,12 @@ export const TEMPLATE_CATALOG: readonly TemplateSpec[] = [
     suppressWhen: "MAIL_MODE=off; sin contacto de facturación",
     idempotency: EVENT_KEY,
     render: (v, o) =>
-      layout(brand(o.supportEmail), "Hemos registrado un reembolso", [`Se ha reembolsado ${money(v.amountCents, v.currency)}${v.full ? " (el importe completo del cobro)" : ""}. Lo verás en tu medio de pago en unos días.`, "La factura rectificativa la emite nuestro sistema de facturación."]),
+      layout(brand(o.supportEmail), "Hemos registrado un reembolso", ["Lo verás en tu medio de pago en unos días. La factura rectificativa la emite nuestro sistema de facturación."], null, { eyebrow: "Reembolso", hero: "pago", blocks: [{ card: { status: { label: v.full ? "Reembolso total" : "Reembolso parcial", tone: "info" }, rows: [], total: { label: "Importe reembolsado", value: money(v.amountCents, v.currency) } } }] }),
   },
-  contract("billing.credit_note", "billing", "refund_recorded", "Rectificativa emitida por el sistema de facturación aprobado", "billing_contact", ["documentNumber"], "Al registrar el número de la rectificativa"),
+  {
+    ...contract("billing.credit_note", "billing", "refund_recorded", "Rectificativa emitida por el sistema de facturación aprobado", "billing_contact", ["documentNumber"], "Al registrar el número de la rectificativa"),
+    render: (v, o) => layout(brand(o.supportEmail), "Tu factura rectificativa", ["Hemos emitido la factura rectificativa correspondiente a tu reembolso."], null, { eyebrow: "Factura rectificativa", hero: "pago", blocks: [{ card: { status: { label: "Emitida", tone: "success" }, rows: [{ label: "Número", value: txt(v.documentNumber, "—") }] } }] }),
+  },
   {
     id: "billing.incident",
     version: 1,
@@ -318,7 +329,7 @@ export const TEMPLATE_CATALOG: readonly TemplateSpec[] = [
     sendWhen: "Al perderse la cobertura del periodo pagado",
     suppressWhen: "MAIL_MODE=off; sin contacto de facturación",
     idempotency: EVENT_KEY,
-    render: (v, o) => layout(brand(o.supportEmail), "Incidencia en el cobro de tu suscripción", ["El cobro de tu suscripción se ha revertido y el acceso queda en pausa hasta regularizarlo. Tus datos se conservan."], panel(v.host)),
+    render: (v, o) => layout(brand(o.supportEmail), "Incidencia en el cobro de tu suscripción", ["El cobro de tu suscripción se ha revertido y el acceso queda en pausa hasta regularizarlo. Tus datos se conservan."], panel(v.host), { eyebrow: "Incidencia en el cobro", hero: "aviso" }),
   },
   // ── Soporte (contratos; el CRM de soporte no se reestructura) ──
   legacy("support.ticket_received", "support", "operational", "Ticket creado (TicketService → PlatformMailer.ticketNotifier)", "ticket_requester", "Al crear el ticket, si quien lo abre es un correo", "ticket:<id>:received:<n>"),
@@ -335,8 +346,14 @@ export const TEMPLATE_CATALOG: readonly TemplateSpec[] = [
   legacy("ops.ticket_created", "support", "operational", "Ticket creado (ticketNotifier: received)", "ops_team", "Al crear cada ticket", "ops:ticket:<id>:created:<destinatario>"),
   // ── Seguridad (contratos; la autenticación no se modifica) ──
   legacy("security.password_changed", "security", "security_notice", "Contraseña restablecida en el Core (POST /api/auth/reset-password → passwordChangedEmail)", "account_user", "Tras cada cambio (sin enlaces; sin copia global)", "bandeja de la empresa (una por cambio)"),
-  contract("security.new_login", "security", "operational", "Inicio de sesión desde un dispositivo nuevo", "account_user", ["at", "approximateLocation"], "Al detectar un dispositivo nuevo"),
-  contract("security.mfa_changed", "security", "operational", "Segundo factor activado o desactivado", "account_user", ["at", "enabled"], "Tras cada cambio"),
+  {
+    ...contract("security.new_login", "security", "operational", "Inicio de sesión desde un dispositivo nuevo", "account_user", ["at", "approximateLocation"], "Al detectar un dispositivo nuevo"),
+    render: (v, o) => layout(brand(o.supportEmail), "Nuevo inicio de sesión en tu cuenta", ["Hemos detectado un acceso a tu cuenta desde un dispositivo que no habíamos visto antes."], null, { family: "security", eyebrow: "Seguridad de tu cuenta", hero: "seguridad", blocks: [{ card: { rows: [{ label: "Fecha", value: date(v.at) }, { label: "Ubicación aproximada", value: txt(v.approximateLocation, "Desconocida") }] } }, { h2: "¿No has sido tú?" }, { p: "Cambia tu contraseña cuanto antes y revisa la verificación en dos pasos en la configuración de tu cuenta." }, { tip: { icon: "escudo", title: "Mantén tu cuenta segura", text: "Te recomendamos usar una contraseña segura y activar la verificación en dos pasos." } }] }),
+  },
+  {
+    ...contract("security.mfa_changed", "security", "operational", "Segundo factor activado o desactivado", "account_user", ["at", "enabled"], "Tras cada cambio"),
+    render: (v, o) => layout(brand(o.supportEmail), v.enabled ? "Has activado la verificación en dos pasos" : "Has desactivado la verificación en dos pasos", [`El cambio se registró el ${date(v.at)}.`], null, { family: "security", eyebrow: "Seguridad de tu cuenta", hero: "seguridad", blocks: [{ notice: { tone: v.enabled ? "success" : "warning", text: v.enabled ? "Tu cuenta tiene ahora una capa adicional de protección." : "Tu cuenta queda protegida solo por la contraseña. Te recomendamos volver a activarla." } }, { p: "Si no has hecho tú este cambio, contacta con soporte inmediatamente." }] }),
+  },
   // ── Datos de la empresa: exportación (server/dataExport; marca de la empresa, sin el enlace de descarga) ──
   legacy("data.export_ready", "data", "data_export", "Exportación generada (DataExportService → dataExport.notify); con avisos si está incompleta", "account_user", "Al terminar la generación, a la persona propietaria que la pidió (sin copia global)", "data-export:<id>:ready (bandeja de la empresa)"),
   legacy("data.export_failed", "data", "data_export", "Exportación fallida o demasiado grande (DataExportService → dataExport.notify)", "account_user", "Al fallar la generación, a la persona propietaria que la pidió (sin copia global)", "data-export:<id>:failed (bandeja de la empresa)"),

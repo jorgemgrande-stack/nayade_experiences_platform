@@ -21,12 +21,13 @@ import { keyringFromEnv } from "./_core/tenantRegistry/crypto";
 describe("vistas previas de las comunicaciones", () => {
   it("todas las que envía Elephant tienen vista previa; las de Stripe y las que aún no tienen disparador, no", () => {
     for (const t of TEMPLATE_CATALOG) {
-      const expected = t.sentBy !== "stripe" && t.status !== "contract";
+      // Las que aún no tienen disparador tienen vista previa si ya está diseñada su plantilla
+      const expected = t.sentBy !== "stripe" && (t.status !== "contract" || !!t.render);
       expect(hasPreview(t), t.id).toBe(expected);
     }
-    expect(allPreviews().length).toBe(TEMPLATE_CATALOG.filter((t) => t.sentBy !== "stripe" && t.status !== "contract").length);
+    expect(allPreviews().length).toBe(TEMPLATE_CATALOG.filter((t) => t.sentBy !== "stripe" && (t.status !== "contract" || !!t.render)).length);
     expect(previewTemplate("subscription.dunning_reminder")).toBeNull();
-    expect(previewTemplate("security.new_login")).toBeNull();
+    expect(previewTemplate("billing.invoice_document")).toBeNull();
     expect(previewTemplate("no.existe")).toBeNull();
   });
 
@@ -47,11 +48,12 @@ describe("vistas previas de las comunicaciones", () => {
     const platform = previewTemplate("subscription.renewal_paid")!;
     expect(platform.html).toContain(`<img src="${DEFAULT_MAIL_LOGO_URL}"`);
     expect(platform.text).toContain(PLATFORM_LEGAL_LINE);
+    // Cuenta de un usuario de empresa: marca de la plataforma (Big Elephant CRM), el nombre de la empresa en el texto y
+    // ningún enlace de acción (solo el pie corporativo)
     const tenant = previewTemplate("security.password_changed")!;
-    expect(tenant.html).not.toContain("<img");
-    expect(tenant.html).not.toContain("Elephant Source");
-    expect(tenant.html).not.toMatch(/https?:\/\//);
-    expect(tenant.html).toContain("Hotel Ejemplo");
+    expect(tenant.html).toContain(`<img src="${DEFAULT_MAIL_LOGO_URL}"`);
+    expect(tenant.html).toContain("Empresa Demo");
+    expect(Array.from(tenant.html.matchAll(/href="([^"]+)"/g), (m) => m[1]).filter((u) => !u.startsWith("https://www.bigelephant.es"))).toEqual([]);
   });
 
   it("los valores dinámicos se escapan siempre", () => {
@@ -165,6 +167,6 @@ describe("rutas de trazabilidad y vista previa", () => {
     const p = await get("/notifications/preview/trial.reminder");
     expect(p.body.preview).toMatchObject({ id: "trial.reminder", sample: true });
     expect(p.body.preview.subject).toMatch(/termina en 7 días/);
-    expect((await get("/notifications/preview/security.new_login")).status).toBe(404);
+    expect((await get("/notifications/preview/billing.invoice_document")).status).toBe(404);
   });
 });

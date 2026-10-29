@@ -42,13 +42,13 @@ vi.mock("./inviteEmail", () => ({
   },
 }));
 
-vi.mock("./emailTemplates", async (importOriginal) => {
+vi.mock("./mail/accountTemplates", async (importOriginal) => {
   const actual: any = await importOriginal();
   return {
     ...actual,
-    buildPasswordResetHtml: (p: { resetUrl: string }) => {
-      state.resetUrls.push(p.resetUrl);
-      return "<p>reset</p>";
+    passwordResetContent: (p: { url: string }) => {
+      state.resetUrls.push(p.url);
+      return { subject: "reset", html: "<p>reset</p>", text: "reset" };
     },
   };
 });

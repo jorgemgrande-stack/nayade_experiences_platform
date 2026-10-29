@@ -1,6 +1,6 @@
 import { sendEmail } from "./mailer";
 import { logDirectEmail } from "./emailManager";
-import { buildInviteHtml } from "./emailTemplates";
+import { inviteContent } from "./mail/accountTemplates";
 import { brandName } from "./tenantBrand";
 
 export async function sendInviteEmail(params: {
@@ -9,18 +9,9 @@ export async function sendInviteEmail(params: {
   setPasswordUrl: string;
   role: string;
 }) {
-  const inviteSubject = `Bienvenido a ${brandName()} — Activa tu cuenta`;
-  const sent = await sendEmail({
-    to: params.email,
-    subject: inviteSubject,
-    category: "user_invite",
-    html: buildInviteHtml({
-      name: params.name,
-      role: params.role,
-      setPasswordUrl: params.setPasswordUrl,
-    }),
-    text: `Hola ${params.name},\n\nSe ha creado una cuenta para ti en ${brandName()}.\n\nEstablece tu contraseña aquí: ${params.setPasswordUrl}\n\nEste enlace es válido durante 72 horas.\n\n${brandName()}`,
-  });
+  const m = inviteContent({ name: params.name || null, company: brandName() || "tu empresa", role: params.role, url: params.setPasswordUrl, hours: 72 });
+  const inviteSubject = m.subject;
+  const sent = await sendEmail({ to: params.email, subject: inviteSubject, category: "user_invite", html: m.html, text: m.text });
   logDirectEmail({ templateKey: "invite", triggerEvent: "user_invited", recipientEmail: params.email, subject: inviteSubject, sent }).catch(() => {});
   if (sent) {
     console.log(`[InviteEmail] Sent to ${params.email}`);

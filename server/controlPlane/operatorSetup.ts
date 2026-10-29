@@ -18,6 +18,7 @@
  */
 import type mysql from "mysql2/promise";
 import nodemailer from "nodemailer";
+import { passwordResetContent } from "../mail/accountTemplates";
 import type { Keyring } from "../_core/tenantRegistry/crypto";
 import { OperatorAuthService, type ResetMailer } from "./operatorAuth";
 import { isRole, type OperatorRole } from "./operatorRoles";
@@ -28,12 +29,8 @@ function smtpMailer(url: string, from: string): ResetMailer {
   const transport = nodemailer.createTransport(url);
   return {
     async sendPasswordReset(to, link) {
-      await transport.sendMail({
-        from,
-        to,
-        subject: "Big Elephant CRM — restablecer la contraseña",
-        text: `Se ha solicitado restablecer tu contraseña de Big Elephant CRM.\n\nAbre este enlace (válido 30 minutos, un solo uso):\n${link}\n\nSi no lo has solicitado, ignora este mensaje.`,
-      });
+      const m = passwordResetContent({ name: null, url: link, minutes: 30, account: "Big Elephant CRM (administración central)" });
+      await transport.sendMail({ from, to, subject: m.subject, html: m.html, text: m.text });
     },
   };
 }
