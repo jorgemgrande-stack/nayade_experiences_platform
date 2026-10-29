@@ -60,7 +60,9 @@ describe("publicación continua", () => {
   it("comprobaciones funcionales en los dos entornos; las de live con la credencial de la pasarela", () => {
     expect(FUNCTIONAL_CHECKS.live.length).toBeGreaterThan(0);
     expect(FUNCTIONAL_CHECKS.live.every((c) => c.auth)).toBe(true);
-    expect(FUNCTIONAL_CHECKS.production.map((c) => c.url)).toContain("https://skibox.app.bigelephant.es/readyz");
+    expect(FUNCTIONAL_CHECKS.production.map((c) => c.url)).toContain("https://app.bigelephant.es/readyz");
+    // Sin depender de empresas concretas (demos, pruebas o clientes): solo la salud de la plataforma
+    for (const c of [...FUNCTIONAL_CHECKS.live, ...FUNCTIONAL_CHECKS.production]) expect(c.url).not.toMatch(/cms-prueba|empresa-demo|skibox|prueba-/);
     expect(FUNCTIONAL_CHECKS.production.some((c) => c.auth)).toBe(false);
   });
 

@@ -388,16 +388,14 @@ export const hasMigrations = (files: string[]) => files.some((f) => /^db\/|(^|\/
 /** Comprobaciones funcionales tras publicar. `auth`: credencial de la pasarela de live (secreto del entorno). */
 export const FUNCTIONAL_CHECKS: Record<string, Array<{ url: string; expect: number; auth?: boolean }>> = {
   live: [
-    { url: "https://cms-prueba-a-20261023.up.railway.app/readyz", expect: 200, auth: true },
-    { url: "https://cms-prueba-a-20261023.up.railway.app/", expect: 200, auth: true },
-    { url: "https://cms-prueba-a-20261023.up.railway.app/login", expect: 200, auth: true },
+    // Salud de la plataforma, sin depender de ninguna empresa (las de prueba se purgan)
+    { url: "https://core-live-ebb6.up.railway.app/readyz", expect: 200, auth: true },
+    { url: "https://core-live-ebb6.up.railway.app/healthz", expect: 200, auth: true },
     { url: "https://elephant-source-crm-live.up.railway.app/healthz", expect: 200, auth: true },
   ],
   production: [
     { url: "https://app.bigelephant.es/readyz", expect: 200 },
     { url: "https://app.bigelephant.es/", expect: 200 },
-    { url: "https://skibox.app.bigelephant.es/readyz", expect: 200 },
-    { url: "https://skibox.app.bigelephant.es/login", expect: 200 },
   ],
 };
 
