@@ -326,6 +326,13 @@ export function contractMailPlan(env: string, vars: Record<string, Record<string
 /** Servicios que publica un despliegue ordinario, en este orden. Nada de copias, restore-drill ni pasarelas de prueba. */
 export const ORDINARY_SERVICES = ["controlplane", "core", "core-gateway"] as const;
 
+/** ¿Despliegue nativo de Railway desde GitHub (no una subida con `railway up`)? */
+export function isNativeDeploy(meta: unknown): boolean {
+  if (!meta || typeof meta !== "object") return false;
+  const { repo, commitHash } = meta as { repo?: unknown; commitHash?: unknown };
+  return typeof repo === "string" && repo.includes("/") && typeof commitHash === "string" && /^[0-9a-f]{40}$/.test(commitHash);
+}
+
 /**
  * Commit de un despliegue a partir de sus metadatos de Railway: el del despliegue nativo desde GitHub (`repo` y
  * `commitHash`) o el mensaje «<repositorio> <commit>» de `railway up`.

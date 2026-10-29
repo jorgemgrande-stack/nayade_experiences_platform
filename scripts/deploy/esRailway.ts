@@ -43,7 +43,7 @@ import { DRILL_IDLE, EXCLUDED_FROM_EXPORT, GATEWAY_COPIED_VARS, GATEWAY_TEMPLATE
 import { ERM_DB_SERVICE, ERM_PASSWORD_VAR, LIVE_PLATFORM_DOMAIN_DEFAULT, livePlatformDomainProblems, meteringPlan, platformDomainsValue } from "./esRailwayLib";
 import { CATALOG_STAMP_FILE, WEB_CATALOG_SITE } from "./esRailwayLib";
 import { externalExtraordinaryChanges, extraordinaryChanges } from "./esRailwayLib";
-import { CRM_CHECKS, CRM_VERSION_FILE, CRM_VERSION_URL, externalLockedChanges, FUNCTIONAL_CHECKS, ORDINARY_SERVICES, WEB_CHECKS, crmProtectedChanges, hasMigrations, isExternalService, protectedChanges, shaFromDeployMeta } from "./esRailwayLib";
+import { CRM_CHECKS, CRM_VERSION_FILE, CRM_VERSION_URL, externalLockedChanges, FUNCTIONAL_CHECKS, ORDINARY_SERVICES, WEB_CHECKS, crmProtectedChanges, hasMigrations, isExternalService, isNativeDeploy, protectedChanges, shaFromDeployMeta } from "./esRailwayLib";
 import { REPOSITORIES } from "../../shared/repositories";
 
 const CONFIG_PATH = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../deploy/railway/elephant-source.deploy.json");
@@ -1133,6 +1133,14 @@ async function main() {
     const curNode = (await deployments(sid, sc.environmentId)).find((x) => x.status === "SUCCESS");
     if (curNode && shaFromDeployMeta(curNode.meta, ext.repo) === sha && (!catalog || JSON.stringify(curNode.meta ?? "").includes(`catalogo:${catalog}`))) {
       console.log(`${ext.service}: ya sirve ${sha.slice(0, 12)}`);
+      return;
+    }
+    // CRM conectado a GitHub en Railway: el despliegue nativo de ese commit ES la publicación (no se vuelve a subir);
+    // solo se comprueba. La web no entra aquí: su compilación lleva la versión del catálogo publicado.
+    if (ext.service === "crm" && curNode && isNativeDeploy(curNode.meta) && shaFromDeployMeta(curNode.meta, ext.repo) === sha) {
+      const ok = (await functional(env, ext.checks)) && (await servedCrmVersion(env, sha));
+      console.log(`${ext.service}: despliegue nativo de ${sha.slice(0, 12)} → ${ok ? "comprobado" : "comprobaciones fallidas"}`);
+      if (!ok) process.exit(1);
       return;
     }
     // CRM: el commit va sellado en un fichero estático para comprobar después qué sirve el dominio REAL
