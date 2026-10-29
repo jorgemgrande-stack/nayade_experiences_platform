@@ -157,7 +157,7 @@ function pill(label: string, tone: Tone): string {
 
 function card(c: Extract<Block, { card: unknown }>["card"]): string {
   const row = (label: string, value: string, last = false) =>
-    `<tr><td style="padding:11px 18px;${F};font-size:14px;line-height:20px;color:${T.muted};border-bottom:${last ? "0" : `1px solid ${T.line}`}">${esc(label)}</td><td align="right" style="padding:11px 18px;${F};font-size:14px;line-height:20px;color:${T.ink};text-align:right;border-bottom:${last ? "0" : `1px solid ${T.line}`}">${esc(value)}</td></tr>`;
+    `<tr><td style="padding:11px 18px;${F};font-size:14px;line-height:20px;color:${T.muted};border-bottom:${last ? "0" : `1px solid ${T.line}`}">${esc(label)}</td><td align="right" style="padding:11px 18px;${F};font-size:14px;line-height:20px;color:${T.ink};text-align:right;word-break:break-word;overflow-wrap:anywhere;border-bottom:${last ? "0" : `1px solid ${T.line}`}">${esc(value)}</td></tr>`;
   const head = c.status ? `<tr><td style="padding:12px 18px;${F};font-size:13px;color:${T.muted};border-bottom:1px solid ${T.line}">Estado</td><td align="right" style="padding:12px 18px;text-align:right;border-bottom:1px solid ${T.line}">${pill(c.status.label, c.status.tone)}</td></tr>` : "";
   const rows = c.rows.map((r, i) => row(r.label, r.value, i === c.rows.length - 1 && !c.total && !c.foot)).join("");
   const total = c.total
