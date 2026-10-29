@@ -222,6 +222,12 @@ describe("clientes externos: piloto Nextair SL (SkiNet, 1.000 € + IVA, cobro e
     // Continuación inmediata: botón con un enlace propio (no el token de aceptación) que abre Stripe en modo setup
     const cont = /href="([^"]+\/autorizar\?t=[^"]+)"/.exec(accepted.raw)?.[1]?.replace(/&amp;/g, "&");
     expect(accepted.raw).toContain("Autorizar método de pago");
+    // Condiciones a la vista y ninguna URL técnica en el texto (solo en el botón)
+    expect(accepted.raw).toContain("Condiciones de cobro");
+    expect(accepted.raw.replace(/[  ]/g, " ")).toContain("1.210,00 € al mes");
+    expect(accepted.raw).toContain("1 de noviembre de 2026");
+    expect(accepted.raw.replace(/<[^>]+>/g, "")).not.toMatch(/https?:\/\/|autorizar\?t=/);
+    expect(accepted.raw).not.toContain("te hemos enviado");
     expect(cont).toBeTruthy();
     expect(cont).not.toContain(token);
     const go = await call("GET", new URL(cont!).pathname.replace("/cp/v1", "") + new URL(cont!).search, { token: null });
@@ -251,8 +257,13 @@ describe("clientes externos: piloto Nextair SL (SkiNet, 1.000 € + IVA, cobro e
     expect(input.notice).toContain("Hoy no se cobra nada");
     const invoicesBefore = gw.invoices.size;
     const mark = gw.events.length;
+    // Antes del webhook, la vuelta de Stripe NO da por completado nada (la confirmación es del webhook firmado)
+    expect((await call("GET", `/public/contract-acceptance/autorizado?session_id=${s.sessionId}`, { token: null })).raw).toContain("Confirmando la autorización");
     const pm = gw.completeSetupSession(s.sessionId);
     await deliverSince(mark);
+    const done = await call("GET", `/public/contract-acceptance/autorizado?session_id=${s.sessionId}`, { token: null });
+    expect(done.raw).toContain("Contratación completada");
+    expect(done.raw).toContain("1 de noviembre de 2026");
     const x = (await ok(call("GET", `/external/${id}`))).external;
     expect(x).toMatchObject({ status: "scheduled", stripePaymentMethodId: pm });
     subId = x.stripeSubscriptionId;
