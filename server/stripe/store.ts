@@ -133,6 +133,8 @@ export interface StripeStore {
   failEvent(eventId: string, error: string, nextAttemptAt: number | null): Promise<void>;
   event(eventId: string): Promise<StripeEventRow | null>;
   eventCounts(): Promise<Record<StripeEventRow["status"], number>>;
+  /** Eventos fallidos (con reintento programado o definitivos), los más recientes primero. */
+  failedEvents(limit: number): Promise<StripeEventRow[]>;
   // ── Conciliación ──
   /** Suscripciones no terminadas cuya copia es anterior a `syncedBefore` (las más antiguas primero). */
   subscriptionsToRefresh(syncedBefore: number, limit: number): Promise<string[]>;
@@ -268,6 +270,13 @@ export class MemoryStripeStore implements StripeStore {
     const out = { received: 0, processing: 0, processed: 0, ignored: 0, failed: 0 };
     for (const e of this.ownEvents()) out[e.status]++;
     return out;
+  }
+  async failedEvents(limit: number) {
+    return this.ownEvents()
+      .filter((e) => e.status === "failed")
+      .sort((a, b) => b.receivedAt - a.receivedAt)
+      .slice(0, limit)
+      .map(({ lockedUntil: _l, processedAt: _p, ...r }) => ({ ...r }));
   }
   async subscriptionsToRefresh(syncedBefore: number, limit: number) {
     return Array.from(this.subscriptions.values())
@@ -746,6 +755,10 @@ export class MysqlStripeStore implements StripeStore {
     const [rows] = await this.pool.query<Row[]>("SELECT status, COUNT(*) AS n FROM stripe_events WHERE livemode = ? GROUP BY status", [this.lm]);
     for (const r of rows) out[r.status as keyof typeof out] = Number(r.n);
     return out;
+  }
+  async failedEvents(limit: number) {
+    const [rows] = await this.pool.query<Row[]>("SELECT * FROM stripe_events WHERE livemode = ? AND status = 'failed' ORDER BY received_at DESC LIMIT ?", [this.lm, limit]);
+    return rows.map((r) => this.eventRow(r));
   }
   async subscriptionsToRefresh(syncedBefore: number, limit: number) {
     const [rows] = await this.pool.query<Row[]>(
