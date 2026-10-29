@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { Cookie, X, ChevronDown, ChevronUp, Shield, BarChart2, Megaphone, Settings } from "lucide-react";
 
 const STORAGE_KEY = "nayade_cookie_consent";
@@ -28,7 +28,15 @@ function saveConsent(state: ConsentState) {
   window.dispatchEvent(new Event('cookieConsentChanged'));
 }
 
+/**
+ * Páginas sin aviso de cookies: el acceso (inicio de sesión, contraseñas) y el panel solo usan cookies técnicas
+ * imprescindibles, y en móvil el aviso tapaba el botón principal (p. ej. «Establecer contraseña» del alta).
+ */
+const NO_BANNER = /^\/(admin(\/|$)|login\/?$|establecer-contrasena\/?$|recuperar-contrasena\/?$|nueva-contrasena\/?$)/;
+export const showsCookieBanner = (path: string) => !NO_BANNER.test(path);
+
 export default function CookieBanner() {
+  const [location] = useLocation();
   const [visible, setVisible] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [analytics, setAnalytics] = useState(false);
@@ -44,7 +52,7 @@ export default function CookieBanner() {
     }
   }, []);
 
-  if (!visible) return null;
+  if (!visible || !showsCookieBanner(location)) return null;
 
   const handleAcceptAll = () => {
     saveConsent({
