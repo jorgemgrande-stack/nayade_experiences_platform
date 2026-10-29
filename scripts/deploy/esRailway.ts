@@ -1184,6 +1184,14 @@ async function main() {
     const catalog = ext.service === "web" ? await stampWebCatalog(dir) : null;
     const note = `${ext.repo} ${sha}${catalog ? ` catalogo:${catalog}` : ""}`;
     const sid = await serviceId(ext.service);
+    // CRM conectado a GitHub: si Railway aún compila el despliegue nativo de este commit, se espera (no se sube otro)
+    if (ext.service === "crm") {
+      const building = (await deployments(sid, sc.environmentId, 3)).find((x) => !FINAL.has(x.status) && isNativeDeploy(x.meta) && shaFromDeployMeta(x.meta, ext.repo) === sha);
+      if (building) {
+        console.log(`${ext.service}: Railway ya despliega ${sha.slice(0, 12)} en nativo; se espera a que termine`);
+        await waitFor(sid, sc.environmentId, null).catch(() => null);
+      }
+    }
     const curNode = (await deployments(sid, sc.environmentId)).find((x) => x.status === "SUCCESS");
     if (curNode && shaFromDeployMeta(curNode.meta, ext.repo) === sha && (!catalog || JSON.stringify(curNode.meta ?? "").includes(`catalogo:${catalog}`))) {
       console.log(`${ext.service}: ya sirve ${sha.slice(0, 12)}`);
