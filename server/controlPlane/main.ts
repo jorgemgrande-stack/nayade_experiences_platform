@@ -95,7 +95,7 @@ import { SsoService, parseSsoUsers } from "./sso";
 import { createRemoteJWKSet } from "jose";
 import { operatorAuthFromEnv } from "./operatorSetup";
 import { DEFAULT_CORE_INTERNAL_URL, coreAccessClient } from "./tenantAccess";
-import { outboxResetMailer } from "./operatorResetMail";
+import { outboxResetMailer, resetUnavailableReason } from "./operatorResetMail";
 import { LeadNoticeService, MysqlSettingsStore, crmUrlFromEnv, settingsTablesReady } from "../crm/leadNotices";
 
 async function main() {
@@ -292,7 +292,7 @@ async function main() {
     t.unref?.();
   }
   console.log(JSON.stringify({ ctx: "LeadNotices", mounted: !!leadNotices, ...(leadNotices ? leadNotices.status() : { reason: !crm ? "crm_not_configured" : "migration_0025_missing_or_no_operators" }), crmLink: !!crmUrlFromEnv(process.env) }));
-  console.log(JSON.stringify({ ctx: "OperatorAuth", enabled: !!operators.service, ...(operators.reason ? { reason: operators.reason } : {}), passwordReset: !!operators.service?.resetAvailable, resetTransport: operators.resetTransport ?? null, mfa: operators.mfa ?? null }));
+  console.log(JSON.stringify({ ctx: "OperatorAuth", enabled: !!operators.service, ...(operators.reason ? { reason: operators.reason } : {}), passwordReset: !!operators.service?.resetAvailable, resetTransport: operators.resetTransport ?? null, ...(operators.service && !operators.service.resetAvailable ? { resetUnavailable: resetUnavailableReason({ resetUrl: process.env.CP_RESET_URL, smtp: !!(process.env.CP_RESET_SMTP_URL && process.env.CP_RESET_FROM), mailer: !!platformMail.mailer, policy: mailPolicy }) } : {}), mfa: operators.mfa ?? null }));
 
   // Web comercial (catálogo y contenidos): misma BD del CRM; solo si la migración 0004 está aplicada
   let web: { store: MysqlWebStore; onPublish?: (version: string) => void } | undefined;

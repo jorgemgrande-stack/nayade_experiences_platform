@@ -401,6 +401,41 @@ export const FUNCTIONAL_CHECKS: Record<string, Array<{ url: string; expect: numb
   ],
 };
 
+/**
+ * Acceso al administrador central tras cada publicación (incidencia del 29/10/2026: la recuperación de contraseña
+ * quedó apagada en production por configuración y ninguna comprobación lo vio). `resetRequired`: la recuperación
+ * por correo debe estar disponible (false: solo se informa). Nada de esto envía correos: la cuenta de la sonda
+ * no existe, y a una cuenta inexistente nunca se le envía nada.
+ */
+export const ACCESS_CHECKS: Record<string, { base: string; resetRequired: boolean }> = {
+  live: { base: "https://elephant-source-crm-live.up.railway.app", resetRequired: false },
+  production: { base: "https://admin.bigelephant.es", resetRequired: true },
+};
+export const ACCESS_PROBE_USER = "sonda-despliegue-inexistente";
+
+export interface AccessProbe {
+  options: { status: number; body: any };
+  anonSession: number;
+  anonPrivate: number;
+  badLogin: { status: number; body: any };
+  reset: { status: number; body: any; raw: string };
+}
+
+/** Fallos del acceso (vacío: todo correcto). Pura, para probarla sin red. */
+export function accessProblems(p: AccessProbe, resetRequired: boolean): string[] {
+  const out: string[] = [];
+  if (p.options.status !== 200 || p.options.body?.passwordLogin !== true) out.push(`inicio de sesión no disponible (/auth/options → ${p.options.status})`);
+  if (p.anonSession !== 401) out.push(`sesión anónima aceptada o error (/auth/session → ${p.anonSession}, se espera 401)`);
+  if (p.anonPrivate !== 401) out.push(`ruta privada sin sesión (/crm/companies → ${p.anonPrivate}, se espera 401)`);
+  if (p.badLogin.status !== 401 || p.badLogin.body?.error !== "invalid_credentials") out.push(`login con credenciales falsas → ${p.badLogin.status} ${p.badLogin.body?.error ?? ""} (se espera 401 invalid_credentials)`);
+  const resetOn = p.options.body?.passwordReset === true;
+  if (resetRequired && !resetOn) out.push("recuperación de contraseña NO disponible (/auth/options passwordReset=false: revisa CP_RESET_URL y MAIL_SCOPE_*)");
+  if (resetOn && p.reset.status !== 202) out.push(`recuperación anunciada pero la solicitud responde ${p.reset.status}`);
+  if (!resetOn && p.reset.status !== 501) out.push(`solicitud de recuperación sin recuperación disponible → ${p.reset.status} (se espera 501)`);
+  if (/token|[0-9a-f]{32,}/i.test(p.reset.raw)) out.push("la respuesta de la recuperación expone un token");
+  return out;
+}
+
 /** Estado de commit que deja live al superar la publicación: production solo publica commits que lo tengan. */
 export const LIVE_STATUS_CONTEXT = "elephant-source/live";
 
