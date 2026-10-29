@@ -803,9 +803,9 @@ export const CRITICAL_PATHS: Array<{ re: RegExp; why: string }> = [
  *  - verificación de firmas y modo live de Stripe;
  *  - RETIRAR una comprobación de autorización (añadir una ruta con un permiso existente es ordinario).
  */
-export const CRITICAL_CODE: Array<{ re: RegExp; why: string }> = [
-  { re: /\b(DROP\s+(TABLE|DATABASE|SCHEMA|USER)|TRUNCATE\s+(TABLE\s+)?[`\w]+|DELETE\s+FROM)\b/i, why: "operación destructiva de datos" },
-  { re: /\b(dropDatabase|deleteTenant\w*|purgeTenant\w*)\s*\(|rmSync\s*\([^)]*recursive/, why: "borrado de bases, empresas o ficheros" },
+export const CRITICAL_CODE: Array<{ re: RegExp; why: string; destructive?: boolean }> = [
+  { re: /\b(DROP\s+(TABLE|DATABASE|SCHEMA|USER)|TRUNCATE\s+(TABLE\s+)?[`\w]+|DELETE\s+FROM)\b/i, why: "operación destructiva de datos", destructive: true },
+  { re: /\b(dropDatabase|deleteTenant\w*|purgeTenant\w*)\s*\(|rmSync\s*\([^)]*recursive/, why: "borrado de bases, empresas o ficheros", destructive: true },
   { re: /\b(sk|rk)_live_/, why: "clave live de Stripe en el código" },
 ];
 
@@ -820,6 +820,15 @@ export const STRIPE_SAFEGUARDS = /\b(constructEvent|generateTestHeaderString|ass
  * extraordinario; moverla o añadir otras iguales, no.
  */
 const AUTH_CHECK = /\b(?:requireScope|requireRole|requireOperator\w*)\s*\([^)]*\)|\b(?:protectedProcedure|adminProcedure)\b|ctx\.user\.role\s*[!=]==?\s*["'`][^"'`]+["'`]/g;
+
+/**
+ * Código destructivo que SOLO se ejecuta mediante una acción protegida con aprobación (no al arrancar ni al publicar):
+ * desplegarlo no borra nada, así que su presencia en el historial no convierte cada publicación posterior en
+ * extraordinaria. La protección está en la ejecución: `purge-test-companies --apply` solo lo lanza la acción
+ * `purgar-empresas-prueba` (entorno con aprobación), y server/publicacionContinua.test.ts exige que solo esa orden
+ * importe el módulo. Las demás reglas críticas (claves live, autorización, Stripe) se siguen aplicando.
+ */
+export const APPROVAL_GATED_CODE: RegExp[] = [/^server\/_core\/ops\/purgeTestCompanies\.ts$/];
 
 export function criticalChanges(files: string[], diff: string): string[] {
   const out = new Set<string>();
@@ -839,7 +848,9 @@ export function criticalChanges(files: string[], diff: string): string[] {
     }
     if (/^(\+\+\+|---) /.test(line) || !/^[+-]/.test(line) || NON_EFFECTIVE.test(file)) continue;
     const code = codeOfLine(line.slice(1), HASH_COMMENTS.test(file) ? "hash" : "js");
-    for (const c of CRITICAL_CODE) if (c.re.test(code)) out.add(`${file ? `${file}: ` : ""}${c.why}`);
+    // Un borrado solo cuenta si se AÑADE fuera del código que exige una acción protegida (retirarlo no borra nada)
+    const skipDestructive = line[0] === "-" || APPROVAL_GATED_CODE.some((r) => r.test(file));
+    for (const c of CRITICAL_CODE) if (c.re.test(code) && !(skipDestructive && c.destructive)) out.add(`${file ? `${file}: ` : ""}${c.why}`);
     const counts = auth.get(file) ?? new Map<string, number>();
     for (const m of code.matchAll(AUTH_CHECK)) {
       const k = m[0].replace(/\s+/g, "");
