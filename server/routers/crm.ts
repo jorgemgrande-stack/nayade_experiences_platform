@@ -4259,7 +4259,7 @@ export const crmRouter = router({
           `
         })
         .from(sql`reservations r`)
-        .leftJoin(sql`pending_payments pp`, sql`pp.reservation_id = r.id AND pp.status = 'paid'`)
+        .leftJoin(sql`pending_payments pp`, sql`pp.reservation_id = r.id AND pp.pp_status = 'paid'`)
         .where(sql`r.booking_date = ${todayStr} AND r.status != 'cancelled'`),
         // Próximas 7 días (servicio confirmado)
         db.select({ cnt: count() }).from(reservations)

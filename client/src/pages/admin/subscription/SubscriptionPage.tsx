@@ -261,7 +261,8 @@ export default function SubscriptionPage() {
                 <Button asChild variant="outline">
                   <Link href="/admin/suscripcion/consumo">Ver consumo</Link>
                 </Button>
-                <UpgradeAction url={data.upgradeUrl} label="Ver planes" />
+                {/* Sin enlace de contratación la indicación ya aparece arriba: no se repite */}
+                {data.upgradeUrl && <UpgradeAction url={data.upgradeUrl} label="Ver planes" />}
               </div>
               <p className="text-xs text-muted-foreground">
                 Los usuarios de tu equipo se gestionan en <Link href="/admin/usuarios" className="underline underline-offset-4 hover:text-foreground">Usuarios y permisos</Link>.

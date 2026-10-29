@@ -743,7 +743,8 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
           {children}
         </main>
       </div>
-      <WhatsAppNotification />
+      {/* Solo con WhatsApp contratado: si no, consultaría cada 15 s una ruta que el servidor deniega */}
+      {subscription.mode !== "loading" && subscription.can("whatsapp-ai") && <WhatsAppNotification />}
     </div>
   );
 }
