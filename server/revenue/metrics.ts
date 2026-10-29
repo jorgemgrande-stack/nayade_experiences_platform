@@ -122,3 +122,28 @@ export function revenueMetrics(i: {
     shadow,
   };
 }
+
+/**
+ * Ingreso recurrente mensual por plataforma (tenant), para el margen del Resource Manager: el REAL (servicios con
+ * cobro programado o en curso, vía la empresa del CRM enlazada a la plataforma) y, aparte, el del modo sombra (no
+ * cobra). Lo que no se puede atribuir a una plataforma (empresa sin tenant) no aparece.
+ */
+export function revenueByTenant(i: {
+  external: ExternalSubscription[];
+  tenantOfCompany: Map<number, string | null>;
+  shadow?: { subscriptions: Subscription[]; items: Map<number, SubscriptionItem[]> } | null;
+  now: number;
+}): Map<string, { realMrrCents: number; shadowMrrCents: number }> {
+  const out = new Map<string, { realMrrCents: number; shadowMrrCents: number }>();
+  const at = (t: string) => out.get(t) ?? (out.set(t, { realMrrCents: 0, shadowMrrCents: 0 }), out.get(t)!);
+  for (const x of i.external) {
+    const t = i.tenantOfCompany.get(x.companyId);
+    if (t && BILLING.has(x.status)) at(t).realMrrCents += monthly(x);
+  }
+  for (const s of i.shadow?.subscriptions ?? []) {
+    if (s.status !== "active" || !s.tenantId) continue;
+    const cents = (i.shadow!.items.get(s.id) ?? []).filter((it) => it.effectiveFrom <= i.now && (it.effectiveTo === null || it.effectiveTo > i.now)).reduce((a, it) => a + monthlyEquivalent(it), 0);
+    at(s.tenantId).shadowMrrCents += Math.round(cents);
+  }
+  return out;
+}
