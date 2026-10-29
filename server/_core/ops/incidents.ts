@@ -217,6 +217,21 @@ export class IncidentService {
     return n;
   }
 
+  /**
+   * Cierra las incidencias abiertas cuyo tipo empieza por `kindPrefix` y que no se repiten desde hace `quietMs`
+   * (p. ej. las de ritmo de fallos «rate.*», que se abren solas pero nadie las «deja de observar»).
+   */
+  async autoResolveQuiet(kindPrefix: string, quietMs: number, now: number): Promise<number> {
+    let n = 0;
+    for (const i of await this.store.list({ limit: 500 })) {
+      if (i.status !== "resolved" && i.kind.startsWith(kindPrefix) && now - i.lastSeenAt > quietMs) {
+        await this.resolve(i.id, "auto");
+        n++;
+      }
+    }
+    return n;
+  }
+
   list(opts?: { status?: IncidentStatus; tenantId?: string; limit?: number }) {
     return this.store.list(opts);
   }

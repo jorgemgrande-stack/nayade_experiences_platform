@@ -193,3 +193,16 @@ describe("alerta de la medición del Resource Manager", () => {
     expect((await runAlerts({ reader, incidents: svc, now: () => now })).active).not.toContain("erm.collector_stale");
   });
 });
+
+describe("incidencias de ritmo de fallos (rate.*)", () => {
+  it("se cierran solas sin repeticiones en 24 h; una reciente sigue abierta; las demás familias no se tocan", async () => {
+    await svc.raise({ dedupeKey: "rate.mail.send_failed", kind: "rate.mail.send_failed", severity: "critical", title: "Correo" });
+    now = T0 + 25 * 3_600_000;
+    await svc.raise({ dedupeKey: "rate.stripe.worker_failed", kind: "rate.stripe.worker_failed", severity: "critical", title: "Stripe" });
+    await svc.raise({ dedupeKey: "manual", kind: "manual.x", severity: "warning", title: "Manual" });
+    const res = await runAlerts({ reader: { listTenants: async () => [] }, incidents: svc, now: () => now });
+    expect(res.resolved).toBe(1);
+    const st = Object.fromEntries((await svc.list()).map((i) => [i.kind, i.status]));
+    expect(st).toEqual({ "rate.mail.send_failed": "resolved", "rate.stripe.worker_failed": "open", "manual.x": "open" });
+  });
+});

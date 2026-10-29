@@ -168,5 +168,7 @@ export async function runAlerts(d: AlertDeps): Promise<AlertRunResult> {
   for (const prefix of ["tenant.", "backup.", "quota.", "entitlement.", "provisioning.", "erm."]) {
     resolved += await d.incidents.autoResolve(active, prefix);
   }
+  // Ritmo de fallos (rate.*: correo, Stripe, pedidos…): se abren al repetirse; sin repeticiones en 24 h, se cierran
+  resolved += await d.incidents.autoResolveQuiet("rate.", 24 * 3_600_000, now);
   return { raised, resolved, active: Array.from(active) };
 }
