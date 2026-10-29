@@ -138,7 +138,7 @@ export function bindTenantMiddleware(opts: Pick<TenantMiddlewareOptions, "exempt
           next();
         },
       );
-    });
+    }, { status: t.status });
   };
 }
 

@@ -19,6 +19,8 @@ import { AsyncLocalStorage } from "node:async_hooks";
 export type TenantContext = {
   /** Identificador estable del tenant. Solo [a-z0-9_-], máx. 63. */
   tenantId: string;
+  /** Estado del ciclo de vida en el registro, si lo resolvió el borde (peticiones HTTP). */
+  status?: string;
 };
 
 /**
@@ -55,11 +57,11 @@ export class TenantResolutionError extends Error {
 }
 
 /** Ejecuta `fn` con el tenant indicado. El tenant se valida: nunca se confía en entrada sin comprobar. */
-export function runWithTenant<T>(tenantId: string, fn: () => T): T {
+export function runWithTenant<T>(tenantId: string, fn: () => T, extra: { status?: string } = {}): T {
   if (!isValidTenantId(tenantId)) {
     throw new TenantResolutionError("Identificador de tenant no válido");
   }
-  return storage.run({ tenantId }, fn);
+  return storage.run(extra.status ? { tenantId, status: extra.status } : { tenantId }, fn);
 }
 
 /** Contexto actual, o `undefined` si no se ha fijado ninguno. */

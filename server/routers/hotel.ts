@@ -390,7 +390,7 @@ export const hotelRouter = router({
       // 7. Construir el formulario Redsys (si falla, la habitación no se queda retenida hasta que caduque)
       let redsysForm;
       try {
-        redsysForm = buildRedsysForm({
+        redsysForm = await buildRedsysForm({
           amount: amountCents,
           merchantOrder,
           productDescription: `Hotel ${companyName()}: ${room.name} · ${nights} noche${nights > 1 ? 's' : ''} · ${input.adults} adulto${input.adults > 1 ? 's' : ''}`,
