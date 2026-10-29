@@ -179,6 +179,10 @@ export class TrialOnboardingService {
     const tenantId = t.tenantId ?? trialTenantId(t.id, t.companyName);
     let domain: string | null = null;
 
+    // 0. Antes de crear nada: sin tarifa Essential aprobada la prueba no podría tener suscripción ni licencias, y se
+    // quedaría una plataforma a medias con la bienvenida ya enviada. La prueba sigue verificada y se puede reintentar.
+    if (t.state === "verified" && !(await this.d.priceOf(ESSENTIAL_PLAN, "monthly"))) throw new TrialError("invalid_state", "Essential no tiene tarifa mensual aprobada y publicada");
+
     // 1. Plataforma (con su administrador)
     if (t.state === "verified") t = await this.d.trials.requestProvisioning(t.id, t.version, actor);
     if (t.state === "provisioning") {

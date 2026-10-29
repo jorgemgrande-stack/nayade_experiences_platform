@@ -431,3 +431,23 @@ describe("avisos de los cambios decididos por el equipo", () => {
     ]);
   });
 });
+
+describe("activación de la prueba: nada a medias", () => {
+  it("sin tarifa Essential aprobada no se crea la plataforma ni se envía la bienvenida; la prueba sigue verificada", async () => {
+    const r = await reg("sin-tarifa@hotel.es");
+    const v = await svc.verify(r.trial.id, r.verificationToken!);
+    const provision = vi.fn(async () => ({ status: "completed", tenantId: "x", domain: "x.app", adminInviteToken: "inv" }));
+    const ob = new TrialOnboardingService({
+      trials: svc,
+      notify,
+      now: () => clock,
+      platformDomain: "app.bigelephant.example",
+      provision,
+      priceOf: async () => null,
+    } as unknown as ConstructorParameters<typeof TrialOnboardingService>[0]);
+    await expect(ob.activate(v.id, "system:trial")).rejects.toThrow(/tarifa mensual aprobada/);
+    expect(provision).not.toHaveBeenCalled();
+    expect(sent.filter((m) => m.kind === "welcome")).toEqual([]);
+    expect((await svc.must(v.id)).state).toBe("verified");
+  });
+});
