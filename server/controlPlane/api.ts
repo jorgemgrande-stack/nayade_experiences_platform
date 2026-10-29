@@ -74,7 +74,7 @@ import { catalogFromWebStore, crmFromStore } from "../subscriptions/ports";
 import { SubscriptionService as ContractSubscriptionService } from "../subscriptions/service";
 import { ShadowBillingService } from "../subscriptions/shadow";
 import type { SubscriptionStore } from "../subscriptions/store";
-import { revenueMetrics } from "../revenue/metrics";
+import { revenueByTenant, revenueMetrics } from "../revenue/metrics";
 import { Metrics } from "../_core/metering";
 import { quote, type QuoteRequest } from "../catalog/quote";
 import { CAPABILITY_STATUSES } from "../_core/capabilities/model";
@@ -928,6 +928,19 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
   const quotaDefaults = d.quotaDefaults ?? DEFAULT_QUOTAS;
   const rankState: Record<ResourceState, number> = { not_applicable: 0, ok: 1, warning: 2, exceeded: 3 };
   const notConfigured = { available: false, reason: "Medición no configurada (ERM_DATABASE_URL)", unmeasured: UNMEASURED };
+  /** Ingreso recurrente por plataforma (real y modo sombra); null si no hay fuente de ingresos montada. */
+  const tenantRevenue = async (now: number) => {
+    if (!d.external && !d.subscriptions) return null;
+    const external = d.external ? await d.external.store.list() : [];
+    const tenantOfCompany = new Map<number, string | null>();
+    if (d.crm) for (const id of Array.from(new Set(external.map((x) => x.companyId)))) tenantOfCompany.set(id, (await d.crm.store.get("companies", id))?.tenantId ?? null);
+    let shadow: Parameters<typeof revenueByTenant>[0]["shadow"] = null;
+    if (d.subscriptions) {
+      const subscriptions = await d.subscriptions.store.list({ status: "active", limit: 1000 });
+      shadow = { subscriptions, items: new Map(await Promise.all(subscriptions.map(async (x) => [x.id, await d.subscriptions!.store.items(x.id)] as const))) };
+    }
+    return revenueByTenant({ external, tenantOfCompany, shadow, now });
+  };
   // Límite de usuarios del plan (se asigna si hay organización y suscripciones; si no, «sin información del plan»)
   let seatLimitOf: ((tenantId: string) => Promise<number | null>) | undefined;
   router.get(
@@ -999,9 +1012,22 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
       // El reparto del coste compartido siempre se calcula entre TODAS las empresas, aunque se pida una sola
       const r = await tenantCosts(d.usage, model, all.map((t) => t.id), now, days);
       const name = new Map(all.map((t) => [t.id, t] as const));
+      // Ingreso recurrente por plataforma (real y modo sombra) para el margen; el coste es una estimación del modelo
+      const revenue = await tenantRevenue(now);
       const rows = r.tenants
         .filter((t) => !only || t.tenantId === only)
-        .map((t) => ({ ...t, displayName: name.get(t.tenantId)?.displayName ?? t.tenantId, status: name.get(t.tenantId)?.status ?? null }))
+        .map((t) => {
+          const rev = revenue?.get(t.tenantId) ?? null;
+          const periodRevenueCents = rev ? Math.round((rev.realMrrCents * days) / 30) : null;
+          return {
+            ...t,
+            displayName: name.get(t.tenantId)?.displayName ?? t.tenantId,
+            status: name.get(t.tenantId)?.status ?? null,
+            revenue: revenue ? { realMrrCents: rev?.realMrrCents ?? 0, shadowMrrCents: rev?.shadowMrrCents ?? 0, periodCents: periodRevenueCents ?? 0 } : null,
+            // Margen solo con ingreso real (sin él no hay margen que estimar, no un margen negativo)
+            marginCents: rev && rev.realMrrCents > 0 ? Math.round((periodRevenueCents! - t.totalCents) * 100) / 100 : null,
+          };
+        })
         .sort((a, b) => b.totalCents - a.totalCents);
       res.json({
         available: true,
@@ -1012,6 +1038,8 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         sharedPeriodCents: r.sharedPeriodCents,
         totals: { variableCents: Math.round(rows.reduce((s, t) => s + t.variableCents, 0) * 100) / 100, totalCents: Math.round(rows.reduce((s, t) => s + t.totalCents, 0) * 100) / 100 },
         tenants: rows,
+        // Qué es medido, qué es estimado y qué no está disponible
+        basis: { usage: "medido", cost: "estimado (tarifas del modelo)", revenue: revenue ? "contratado real; el modo sombra aparte y sin sumar" : "no disponible" },
         // Lo que no se mide no se atribuye (suele ser el mayor coste: almacenamiento y bases de datos)
         unattributed: UNMEASURED,
       });

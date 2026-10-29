@@ -67,3 +67,17 @@ describe("métricas de ingresos", () => {
     expect(m.churn).toEqual({ canceledCount: 0, lostMrrCents: 0, rate: null });
   });
 });
+
+describe("ingreso por plataforma para el margen del Resource Manager", () => {
+  it("real por la empresa enlazada (solo con cobro programado o en curso); modo sombra aparte; sin plataforma no se atribuye", async () => {
+    const { revenueByTenant } = await import("./revenue/metrics");
+    const a = ext({ companyId: 10, status: "active", amountCents: 100_000 });
+    const b = ext({ companyId: 10, status: "awaiting_payment_method", amountCents: 50_000 });
+    const c = ext({ companyId: 11, status: "scheduled", amountCents: 30_000 });
+    const sinPlataforma = ext({ companyId: 12, status: "active", amountCents: 99_000 });
+    const sub = { id: 1, status: "active", tenantId: "t-hotel" } as Subscription;
+    const items = new Map<number, SubscriptionItem[]>([[1, [{ unitAmountCents: 4_000, quantity: 1, priceKind: "monthly", effectiveFrom: NOW - DAY, effectiveTo: null }] as SubscriptionItem[]]]);
+    const r = revenueByTenant({ external: [a, b, c, sinPlataforma], tenantOfCompany: new Map([[10, "t-ski"], [11, "t-hotel"], [12, null]]), shadow: { subscriptions: [sub], items }, now: NOW });
+    expect(Object.fromEntries(r)).toEqual({ "t-ski": { realMrrCents: 100_000, shadowMrrCents: 0 }, "t-hotel": { realMrrCents: 30_000, shadowMrrCents: 4_000 } });
+  });
+});
