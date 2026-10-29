@@ -11,6 +11,7 @@ import { PanelError, PanelLoading } from "@/components/admin/PanelStates";
 import { usePanelSubscription } from "@/hooks/usePanelSubscription";
 import { cn } from "@/lib/utils";
 import { WithdrawalSection } from "./WithdrawalSection";
+import { PlanContractSection } from "./PlanContractSection";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 
@@ -268,6 +269,8 @@ export default function SubscriptionPage() {
                 Los usuarios de tu equipo se gestionan en <Link href="/admin/usuarios" className="underline underline-offset-4 hover:text-foreground">Usuarios y permisos</Link>.
               </p>
             </section>
+
+            <PlanContractSection isTrial={!!data.trial || data.state === "trial_expired"} />
 
             <BillingPortalSection />
 

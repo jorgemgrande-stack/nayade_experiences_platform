@@ -57,6 +57,10 @@ export interface CommerceClient {
   catalog(tenantId: string): Promise<unknown>;
   /** Consumo de la empresa frente a los límites de su plan (Elephant Resource Manager). */
   usage(tenantId: string): Promise<unknown>;
+  /** «Mi plan»: contrato vigente, periodo, cobro y facturas de la empresa (solo lectura). */
+  plan(tenantId: string): Promise<unknown>;
+  /** Documento imprimible (HTML) de una factura expedida de la empresa. */
+  invoiceDocument(tenantId: string, id: number): Promise<string>;
 }
 
 type Fetch = (url: string, init: { method: string; headers: Record<string, string>; body?: string; signal?: AbortSignal }) => Promise<{ status: number; json(): Promise<unknown> }>;
@@ -106,6 +110,8 @@ export function commerceClientFromEnv(env: NodeJS.ProcessEnv = process.env, fetc
     reopenTicket: async (tenantId, id, input) => await call("POST", `${seg(tenantId)}/tickets/${id}/reopen`, input),
     catalog: async (tenantId) => ((await call("GET", `${seg(tenantId)}/catalog`)) as { catalog: unknown }).catalog,
     usage: async (tenantId) => ((await call("GET", `${seg(tenantId)}/usage`)) as { usage: unknown }).usage,
+    plan: async (tenantId) => ((await call("GET", `${seg(tenantId)}/plan`)) as { plan: unknown }).plan,
+    invoiceDocument: async (tenantId, id) => ((await call("GET", `${seg(tenantId)}/invoices/${id}/document`)) as { html: string }).html,
     billingPortal: async (tenantId, returnUrl) => (await call("POST", `${seg(tenantId)}/billing-portal`, { returnUrl })) as { url: string },
   };
 }

@@ -21,6 +21,8 @@ import { panelModules, type PanelCatalogItemView } from "../panelModules";
 import { getLimitAccess } from "../_core/limits/access";
 import { LIMIT_METRICS } from "../_core/limits/store";
 import type { PanelUsage } from "../commerce/panelUsage";
+import type { TenantPlanSummary } from "../commerce/tenantPlan";
+import { isTrialTenant, TRIAL_PURCHASES_MESSAGE } from "../trialPayments";
 
 /** Qué se quiere comprar: solo claves y totales. Importes y derechos los calcula el plano de control. */
 const purchaseInput = z
@@ -47,6 +49,11 @@ const TRPC_CODE: Record<number, TRPCError["code"]> = { 400: "BAD_REQUEST", 403: 
  */
 async function commerce<T>(role: string, fn: (c: CommerceClient, tenantId: string) => Promise<T>, denied = "Solo la administración de la empresa puede comprar"): Promise<T> {
   if (role !== "admin") throw new TRPCError({ code: "FORBIDDEN", message: denied });
+  return reach(fn);
+}
+
+/** Canal con el plano de control para el tenant de la sesión (sin comprobar el rol: quien llama lo ha hecho). */
+async function reach<T>(fn: (c: CommerceClient, tenantId: string) => Promise<T>): Promise<T> {
   if (getTenantMode() !== "multi") throw new TRPCError({ code: "PRECONDITION_FAILED", message: "La compra en línea no está disponible" });
   const client = commerceClientFromEnv();
   if (!client) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "La compra en línea no está disponible" });
@@ -58,7 +65,24 @@ async function commerce<T>(role: string, fn: (c: CommerceClient, tenantId: strin
   }
 }
 
+/** Compras y bajas de módulos: no durante la prueba (en el servidor, también por llamada directa). */
+async function notInTrial() {
+  if (await isTrialTenant()) throw new TRPCError({ code: "FORBIDDEN", message: TRIAL_PURCHASES_MESSAGE });
+}
+
 export const subscriptionRouter = router({
+  /**
+   * «Mi plan»: contrato vigente (plan, periodicidad, importe), periodo y renovación, estado del cobro y facturas.
+   * Solo la administración. `null` sin canal con el plano de control o fuera de multiempresa (la página muestra
+   * entonces solo la licencia). Sin contrato (prueba), `contract` es null.
+   */
+  plan: protectedProcedure.query(async ({ ctx }) => {
+    if (String(ctx.user.role) !== "admin" || getTenantMode() !== "multi" || !commerceClientFromEnv()) return null;
+    return (await reach((c, t) => c.plan(t))) as TenantPlanSummary;
+  }),
+  invoiceDocument: protectedProcedure.input(z.object({ id: z.number().int().positive() })).query(({ ctx, input }) =>
+    commerce(String(ctx.user.role), (c, t) => c.invoiceDocument(t, input.id), "Solo la administración de la empresa puede ver las facturas"),
+  ),
   overview: protectedProcedure.query(async ({ ctx }) => {
     if (!(PANEL_ROLES as readonly string[]).includes(String(ctx.user.role))) throw new TRPCError({ code: "FORBIDDEN" });
     const mode = getTenantMode();
@@ -95,7 +119,7 @@ export const subscriptionRouter = router({
         const v = limitAccess ? await limitAccess.limit(m).catch(() => undefined) : undefined;
         if (v !== undefined) totals[m] = v;
       }
-      return { ...out, totals, usedUsers: await countPanelUsers().catch(() => null), canPurchase: String(ctx.user.role) === "admin" && out.purchasesEnabled };
+      return { ...out, totals, usedUsers: await countPanelUsers().catch(() => null), canPurchase: String(ctx.user.role) === "admin" && out.purchasesEnabled && !(await isTrialTenant()) };
     } catch {
       throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "No se pudo consultar el catálogo de módulos. Inténtalo de nuevo en unos minutos." });
     }
@@ -115,20 +139,28 @@ export const subscriptionRouter = router({
     }
   }),
   /** Vista previa de una compra: partidas y prorrateo calculados por el plano de control (no cambia nada). */
-  purchasePreview: protectedProcedure.input(purchaseInput).mutation(({ ctx, input }) => commerce(String(ctx.user.role), (c, t) => c.preview(t, input))),
+  purchasePreview: protectedProcedure.input(purchaseInput).mutation(async ({ ctx, input }) => {
+    await notInTrial();
+    return commerce(String(ctx.user.role), (c, t) => c.preview(t, input));
+  }),
   /** Compra (idempotente por la clave que genera el navegador para cada intento). */
   purchase: protectedProcedure
     .input(purchaseInput.extend({ idempotencyKey: z.string().regex(/^[A-Za-z0-9_-]{16,64}$/) }))
-    .mutation(({ ctx, input }) => {
+    .mutation(async ({ ctx, input }) => {
+      await notInTrial();
       const { idempotencyKey, ...what } = input;
       return commerce(String(ctx.user.role), (c, t) => c.purchase(t, what, { idempotencyKey, buyer: `user:${ctx.user.id}` }));
     }),
   purchaseStatus: protectedProcedure.input(z.object({ orderId: z.number().int().positive() })).query(({ ctx, input }) => commerce(String(ctx.user.role), (c, t) => c.status(t, input.orderId))),
   /** Bajas y reducciones a fin de periodo: qué cambiaría (sin abonos; nunca por debajo del uso real). */
-  reductionPreview: protectedProcedure.input(reductionInput).mutation(({ ctx, input }) => commerce(String(ctx.user.role), (c, t) => c.previewReduction(t, input))),
+  reductionPreview: protectedProcedure.input(reductionInput).mutation(async ({ ctx, input }) => {
+    await notInTrial();
+    return commerce(String(ctx.user.role), (c, t) => c.previewReduction(t, input));
+  }),
   reduce: protectedProcedure
     .input(reductionInput.extend({ idempotencyKey: z.string().regex(/^[A-Za-z0-9_-]{16,64}$/) }))
-    .mutation(({ ctx, input }) => {
+    .mutation(async ({ ctx, input }) => {
+      await notInTrial();
       const { idempotencyKey, ...what } = input;
       return commerce(String(ctx.user.role), (c, t) => c.reduce(t, what, { idempotencyKey, buyer: `user:${ctx.user.id}` }));
     }),
