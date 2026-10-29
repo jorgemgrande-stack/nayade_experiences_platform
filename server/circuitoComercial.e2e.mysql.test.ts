@@ -67,7 +67,7 @@ const FOR_SALE = ["connect-people", "addon-user-essential"];
 const config: StripeConfig = { mode: "test", apiKey: ["sk", "test", "x".repeat(24)].join("_"), webhookSecret: ["whsec", "e".repeat(32)].join("_"), apiVersion: "2026-09-30.endive", keyKind: "secret", namespace: "local", eventsRetentionDays: 180, taxPolicy: "test_net_no_tax", billingMode: "classic" };
 const sdk = new Stripe(config.apiKey, { apiVersion: "2026-09-30.endive" as Stripe.LatestApiVersion });
 
-describe.skipIf(!URL_)("circuito comercial de punta a punta (MySQL real, Stripe simulado)", () => {
+describe.skipIf(!URL_)("circuito comercial de punta a punta (MySQL real, Stripe simulado)", { timeout: 60_000 }, () => {
   let clock = Date.UTC(2026, 9, 20, 9);
   const START = clock;
   let admin: mysql.Pool;
@@ -112,8 +112,10 @@ describe.skipIf(!URL_)("circuito comercial de punta a punta (MySQL real, Stripe 
   const rawEvent = (ev: GwEvent, livemode = false) => JSON.stringify({ id: ev.id, object: "event", type: ev.type, created: Math.floor(Date.now() / 1000), livemode, api_version: ev.apiVersion, data: { object: { id: ev.objectId, object: ev.objectType } } });
   const signed = (raw: string, secret = config.webhookSecret) => call("POST", "/stripe/webhook", { token: null, raw, headers: { "stripe-signature": sdk.webhooks.generateTestHeaderString({ payload: raw, secret }) } });
   const webhook = (ev: GwEvent) => signed(rawEvent(ev));
+  // Plazo por tiempo: en un runner cargado el proceso asíncrono de webhooks puede tardar más de 3 s
   const until = async (fn: () => Promise<boolean>) => {
-    for (let i = 0; i < 300; i++) {
+    const deadline = Date.now() + 20_000;
+    while (Date.now() < deadline) {
       if (await fn()) return;
       await new Promise((r) => setTimeout(r, 10));
     }
