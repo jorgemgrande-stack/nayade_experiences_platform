@@ -37,13 +37,34 @@ async function setup(o: { ipSalt?: string | null; mail?: boolean } = {}) {
 const tokenOf = (url: string) => new URL(url).searchParams.get("t")!;
 
 describe("continuación tras la aceptación", () => {
-  it("la aceptación devuelve el enlace propio (no el token de aceptación) y lo envía al firmante, sin cargo", async () => {
+  it("la aceptación devuelve el enlace propio y las condiciones para la misma página; SIN segundo correo automático", async () => {
     const { accepted, sent, store, x } = await setup();
     expect(accepted.continueUrl).toMatch(/^https:\/\/admin\.example\/cp\/v1\/public\/contract-acceptance\/autorizar\?t=\d+\.\d+\.\d+\.[A-Za-z0-9_-]{43}$/);
-    expect(sent).toHaveLength(1);
-    expect(sent[0]).toMatchObject({ to: "laura@nextair.example", i: { url: accepted.continueUrl, amountCents: 100_000, serviceName: "SkiNet", companyName: "Nextair SL" } });
-    expect((await store.events(x.id)).find((e) => e.kind === "setup_link_email")?.detail).toMatchObject({ status: "queued", outboxId: 1 });
+    expect(accepted.terms).toMatchObject({ amountCents: 100_000, taxCents: 21_000, currency: "EUR", billingDay: 1, firstChargeAt: Date.UTC(2026, 10, 1, 7) });
+    expect(sent).toHaveLength(0);
+    expect((await store.events(x.id)).some((e) => e.kind === "setup_link_email")).toBe(false);
     expect((await store.get(x.id))!.status).toBe("awaiting_payment_method");
+  });
+
+  it("vuelta desde Stripe: «confirmando» hasta que el webhook lo aplica; «completada» solo con el estado real", async () => {
+    const { svc, accepted, store, x } = await setup();
+    await svc.continuePaymentSetup(tokenOf(accepted.continueUrl!));
+    const sid = (await store.get(x.id))!.stripeSetupSessionId!;
+    expect(await svc.setupReturn(sid)).toEqual({ state: "pending" });
+    const cur = (await store.get(x.id))!;
+    await store.update(cur.id, cur.version, { status: "scheduled" }, T);
+    expect(await svc.setupReturn(sid)).toMatchObject({ state: "confirmed", firstChargeAt: Date.UTC(2026, 10, 1, 7) });
+    expect(await svc.setupReturn("cs_desconocida_000000")).toEqual({ state: "unknown" });
+    expect(await svc.setupReturn("<script>")).toEqual({ state: "unknown" });
+  });
+
+  it("la sesión de Stripe vuelve al mismo enlace si el cliente cancela (reintento sin duplicar)", async () => {
+    const { svc, gw, accepted } = await setup();
+    await svc.continuePaymentSetup(tokenOf(accepted.continueUrl!));
+    const s = Array.from(gw.setupSessions.values())[0];
+    const created = gw.calls.find((c) => c.op === "checkout.sessions.create(setup)")!.input as { cancelUrl: string };
+    expect(created.cancelUrl).toBe(`https://admin.example/ko?t=${tokenOf(accepted.continueUrl!)}`);
+    expect(s.status).toBe("open");
   });
 
   it("abrir el enlace crea UNA sesión de Stripe en modo setup; volver a abrirlo la reutiliza (sin duplicar cliente ni sesión)", async () => {
@@ -99,7 +120,7 @@ describe("continuación tras la aceptación", () => {
     expect(copy.url).toMatch(/\/autorizar\?t=/);
     const resend = await svc.setupLink(x.id, "operator:jorge", { send: true });
     expect(resend.mail).toMatchObject({ status: "queued" });
-    expect(sent.map((s) => s.key)).toEqual([expect.stringMatching(/:1$/), expect.stringMatching(/:2$/)]);
+    expect(sent.map((s) => s.key)).toEqual([expect.stringMatching(/:1$/)]);
     const kinds = (await store.events(x.id)).map((e) => e.kind);
     expect(kinds).toEqual(expect.arrayContaining(["setup_link_issued", "setup_link_email"]));
     expect(gw.setupSessions.size).toBe(0);
@@ -111,6 +132,6 @@ describe("continuación tras la aceptación", () => {
     expect(noKey.accepted.continueUrl).toBeNull();
     await expect(noKey.svc.setupLink(noKey.x.id, "operator:jorge")).rejects.toMatchObject({ code: "unavailable" });
     const noMail = await setup({ mail: false });
-    expect((await noMail.store.events(noMail.x.id)).find((e) => e.kind === "setup_link_email")?.detail).toMatchObject({ status: "unavailable" });
+    await expect(noMail.svc.setupLink(noMail.x.id, "operator:jorge", { send: true })).resolves.toMatchObject({ mail: { status: "unavailable" } });
   });
 });

@@ -379,10 +379,17 @@ export class ExternalService {
         ])
         .catch(() => opsLog("warn", "External", "accepted_notice_failed", { externalId: x.id }));
     }
-    // Continuación inmediata: enlace propio (no el token de aceptación) en la página y por correo al firmante
+    // Continuación en la MISMA página (sin correo intermedio): enlace propio, no el token de aceptación. El reenvío por
+    // correo queda como acción manual del equipo (setupLink).
     const continueUrl = this.continuationUrl(x.id, a.id, now + CONTINUE_TTL_MS);
-    if (continueUrl) await this.sendSetupLink(x, a, doc.company.legalName ?? doc.company.name, doc.contract.reference ?? `#${doc.contract.id}`, continueUrl, now + CONTINUE_TTL_MS, "public:acceptance");
-    return { accepted: true, version: doc.version, documentSha256: doc.sha256, acceptedAt: now, continueUrl };
+    return {
+      accepted: true,
+      version: doc.version,
+      documentSha256: doc.sha256,
+      acceptedAt: now,
+      continueUrl,
+      terms: { amountCents: x.amountCents, taxCents: taxCents(x), currency: x.currency, billingDay: x.billingDay, firstChargeAt: x.firstChargeAt, timezone: x.timezone },
+    };
   }
 
   // ── 2b. Continuación tras la aceptación ───────────────────────────────────
@@ -436,7 +443,7 @@ export class ExternalService {
     await this.acceptedAcceptance(x, v.acceptanceId);
     if (x.status !== "awaiting_payment_method") return { kind: "done", status: x.status };
     try {
-      const s = await this.paymentSetup(x.id, "public:continuation");
+      const s = await this.paymentSetup(x.id, "public:continuation", { retryToken: t });
       if (!s.url) throw new ExternalError("unavailable", "La autorización no está disponible ahora mismo. Inténtalo en unos minutos.");
       opsLog("info", "External", "setup_continuation_opened", { externalId: x.id, reused: s.reused });
       return { kind: "redirect", url: s.url };
@@ -469,6 +476,18 @@ export class ExternalService {
     return { url, expiresAt, mail };
   }
 
+  /**
+   * Vuelta desde Stripe tras autorizar: estado REAL de la contratación de esa sesión. `confirmed` solo cuando el
+   * webhook firmado ya lo aplicó; `pending` mientras llega. Sesión desconocida: `unknown` (sin datos de nadie).
+   */
+  async setupReturn(sessionId: string): Promise<{ state: "confirmed" | "pending" | "unknown"; firstChargeAt?: number; timezone?: string }> {
+    if (!/^cs_[A-Za-z0-9_]{8,200}$/.test(String(sessionId ?? ""))) return { state: "unknown" };
+    const x = await this.d.store.bySetupSession(sessionId);
+    if (!x) return { state: "unknown" };
+    if (x.status === "awaiting_payment_method" || x.status === "awaiting_acceptance") return { state: "pending" };
+    return { state: "confirmed", firstChargeAt: x.firstChargeAt, timezone: x.timezone };
+  }
+
   /** Correo al firmante con el enlace de continuación; deja el resultado de la bandeja en el historial. */
   private async sendSetupLink(x: ExternalSubscription, a: ContractAcceptance, companyName: string, reference: string, url: string, expiresAt: number, actor: string) {
     const now = this.now();
@@ -490,7 +509,7 @@ export class ExternalService {
 
   // ── 3. Autorización del método de pago (sin cargo) ────────────────────────
 
-  async paymentSetup(id: number, actor: string): Promise<{ url: string | null; sessionId: string; expiresAt: number; reused: boolean }> {
+  async paymentSetup(id: number, actor: string, opts: { retryToken?: string } = {}): Promise<{ url: string | null; sessionId: string; expiresAt: number; reused: boolean }> {
     const x = await this.must(id);
     if (x.status !== "awaiting_payment_method") throw new ExternalError("invalid_state", x.status === "awaiting_acceptance" ? "Primero el cliente debe aceptar el contrato" : "El método de pago ya está autorizado");
     const { g } = this.stripe();
@@ -515,7 +534,7 @@ export class ExternalService {
         currency: x.currency,
         metadata: { es_external_id: String(x.id), es_contract_id: String(x.contractId), es_company_id: String(x.companyId), es_env: this.d.namespace },
         successUrl: `${this.d.urls.setupSuccess}?session_id={CHECKOUT_SESSION_ID}`,
-        cancelUrl: this.d.urls.setupCancel,
+        cancelUrl: opts.retryToken ? `${this.d.urls.setupCancel}?t=${opts.retryToken}` : this.d.urls.setupCancel,
         expiresAt: Math.floor((now + SETUP_TTL_MS) / 1000),
         notice,
       },
