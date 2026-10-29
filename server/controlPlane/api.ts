@@ -51,6 +51,7 @@ import { TEMPLATES } from "../_core/templates/catalog";
 import { renderMetrics } from "./metrics";
 import type { IncidentService } from "../_core/ops/incidents";
 import type { AlertRunResult } from "../_core/ops/alerts";
+import type { AlertSchedulerStatus } from "../_core/ops/alertScheduler";
 import { createCrmRouter } from "../crm/api";
 import { CrmOnboarding } from "../crm/onboarding";
 import type { CrmService } from "../crm/service";
@@ -198,7 +199,7 @@ export interface ControlPlaneDeps {
     secondaryMaxAgeMs?: number;
   };
   /** Incidencias operativas y evaluación de alertas. */
-  ops?: { incidents: IncidentService; runAlerts?: () => Promise<AlertRunResult> };
+  ops?: { incidents: IncidentService; runAlerts?: () => Promise<AlertRunResult | null>; alertStatus?: () => AlertSchedulerStatus };
   /** Comprobación de la BD del registro para `/readyz` (sin ella, `/readyz` solo indica que el proceso vive). */
   health?: { registryPing: () => Promise<void>; timeoutMs?: number };
   /** Tickets de soporte de clientes. */
@@ -1352,9 +1353,19 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
       router.post(
         "/alerts/run",
         requireScope("ops:write"),
-        wrap(async (_req, res) => void res.json(await ops.runAlerts!())),
+        // null: ya había una evaluación en curso (no se lanzan dos a la vez)
+        wrap(async (_req, res) => {
+          const r = await ops.runAlerts!();
+          res.json(r ?? { skipped: true, reason: "Ya hay una evaluación en curso" });
+        }),
       );
     }
+    // Estado del motor de alertas: si está programado, cada cuánto, la última evaluación y su último error
+    router.get(
+      "/alerts/status",
+      requireScope("ops:read"),
+      wrap(async (_req, res) => void res.json(ops.alertStatus ? { available: true, ...ops.alertStatus() } : { available: false })),
+    );
   }
 
   if (d.crm) {
