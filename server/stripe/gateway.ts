@@ -136,6 +136,17 @@ export interface GwInvoice {
   hostedInvoiceUrl?: string | null;
   /** Líneas de la factura (las primeras que devuelve Stripe con la factura). */
   lines?: GwInvoiceLine[];
+  /** Cobro: pendiente (céntimos), intentos y próximo reintento automático de Stripe (segundos; null = ninguno). */
+  amountRemaining?: number | null;
+  attemptCount?: number | null;
+  nextPaymentAttempt?: number | null;
+}
+
+/** Motivo del último cobro fallido de una factura (código de Stripe y mensaje del emisor). */
+export interface GwPaymentFailure {
+  code: string | null;
+  declineCode: string | null;
+  message: string | null;
 }
 
 /** Evento de Stripe reducido a lo que usamos: el efecto siempre se calcula releyendo el objeto. */
@@ -227,6 +238,10 @@ export interface StripeGateway {
   /** Configuraciones del Customer Portal (solo lectura). */
   portalConfigurations(): Promise<GwPortalConfig[]>;
   invoice(id: string): Promise<GwInvoice | null>;
+  /** Motivo del último cobro fallido de la factura (solo lectura); null si no hay ninguno. */
+  invoicePaymentFailure?(invoiceId: string): Promise<GwPaymentFailure | null>;
+  /** Reintenta el cobro de una factura abierta con el método por defecto (recuperación de impagos). */
+  payInvoice?(invoiceId: string, idempotencyKey: string): Promise<GwInvoice>;
   charge(id: string): Promise<GwCharge | null>;
   /** Cargo de un reembolso o de una disputa (para releerlo). */
   chargeIdOf(objectType: "refund" | "dispute", id: string): Promise<string | null>;
@@ -427,6 +442,9 @@ export function toInvoice(i: Stripe.Invoice, mode: StripeMode = "test"): GwInvoi
     total: typeof i.total === "number" ? i.total : null,
     hostedInvoiceUrl: i.hosted_invoice_url ?? null,
     lines: (i.lines?.data ?? []).map(toInvoiceLine),
+    amountRemaining: typeof i.amount_remaining === "number" ? i.amount_remaining : null,
+    attemptCount: typeof i.attempt_count === "number" ? i.attempt_count : null,
+    nextPaymentAttempt: typeof i.next_payment_attempt === "number" ? i.next_payment_attempt : null,
   };
 }
 
@@ -839,6 +857,27 @@ export function stripeGateway(
         return toInvoice(await client.invoices.retrieve(id), mode);
       } catch (e) {
         if (notFound(e)) return null;
+        wrapError(e);
+      }
+    },
+    async invoicePaymentFailure(invoiceId) {
+      try {
+        const list = await client.invoicePayments.list({ invoice: invoiceId, limit: 10, expand: ["data.payment.payment_intent"] });
+        for (const p of list.data) {
+          const pi = p.payment?.payment_intent;
+          const err = pi && typeof pi === "object" ? pi.last_payment_error : null;
+          if (err) return { code: err.code ?? null, declineCode: err.decline_code ?? null, message: err.message ?? null };
+        }
+        return null;
+      } catch (e) {
+        if (notFound(e)) return null;
+        wrapError(e);
+      }
+    },
+    async payInvoice(invoiceId, idempotencyKey) {
+      try {
+        return toInvoice(await client.invoices.pay(invoiceId, {}, { idempotencyKey }), mode);
+      } catch (e) {
         wrapError(e);
       }
     },

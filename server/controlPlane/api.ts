@@ -75,6 +75,7 @@ import { SubscriptionService as ContractSubscriptionService } from "../subscript
 import { ShadowBillingService } from "../subscriptions/shadow";
 import type { SubscriptionStore } from "../subscriptions/store";
 import { revenueByTenant, revenueMetrics } from "../revenue/metrics";
+import { AtRiskError, AtRiskService, type AtRiskDeps } from "../revenue/atRisk";
 import { Metrics } from "../_core/metering";
 import { quote, type QuoteRequest } from "../catalog/quote";
 import { CAPABILITY_STATUSES } from "../_core/capabilities/model";
@@ -1625,6 +1626,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
     }
     // Cobro de cargos (server/invoicing/chargePayments): lo crea el bloque de facturación; el procesador de Stripe lo consulta
     const chargePaymentsRef: { svc?: ChargePaymentService } = {};
+    const atRiskStripe: { deps?: AtRiskDeps["stripe"] } = {};
     if (d.orders && d.capabilities) {
       // El modo sale de la configuración de Stripe aunque Stripe no se monte (p. ej. live sin la 0013)
       if (d.stripe && d.orders.mode && d.orders.mode !== d.stripe.config.mode) throw new Error("El modo de los pedidos no coincide con el de Stripe");
@@ -1842,10 +1844,74 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
             }),
           ),
         );
+        // Recuperación de cobros (bandeja «Cobros en riesgo»): Stripe solo para releer, reintentar y el portal
+        atRiskStripe.deps = {
+          mode: st.config.mode,
+          liveRetryAllowed: process.env.CP_RECOVERY_LIVE_RETRY === "1",
+          invoice: (id) => st.gateway.invoice(id),
+          failure: st.gateway.invoicePaymentFailure ? (id) => st.gateway.invoicePaymentFailure!(id) : undefined,
+          pay: st.gateway.payInvoice ? (id, key) => st.gateway.payInvoice!(id, key) : undefined,
+          subscriptionOf: async (companyId) => {
+            const subs = await st.store.subscriptionsOfCompany(companyId);
+            return subs.length === 1 ? st.gateway.subscription(subs[0]) : null;
+          },
+          settle: async (sub) => String(await processor.handleSubscription(sub.id)),
+          portal: async (companyId) => {
+            const link = await st.store.customerByCompany(companyId);
+            const c = (await d.crm!.store.get("companies", companyId)) as { tenantId?: string | null } | null;
+            const domain = c?.tenantId ? (await d.reader.listDomains(c.tenantId)).find((x) => x.status === "active")?.domain : undefined;
+            if (!link || !domain) return null;
+            return st.gateway.createPortalSession({ customerId: link.stripeCustomerId, returnUrl: `https://${domain}/admin/suscripcion`, ...(st.billingPortal?.configurationId ? { configuration: st.billingPortal.configurationId } : {}) });
+          },
+        };
         router.use("/stripe", createStripeRouter({ config: st.config, store: st.store, gateway: st.gateway, catalog: stripeCatalog, checkout, processor, reconciler, now: d.subscriptions.now, orders: d.orders.store, fiscal: st.fiscal, legalUrls: st.fiscal?.legalUrls }));
       }
       // Webhook del proveedor de PRUEBAS: autenticado por firma (antes del montaje del router con tokens)
       if (d.orders.payments) app.post("/cp/v1/payments/test/webhook", paymentsWebhookHandler(orchestrator));
+      // Bandeja «Cobros en riesgo»: impagos de suscripciones SaaS y de servicios externos, con acciones de recuperación
+      const atRisk = new AtRiskService({
+        orders: () => ordersStore.list({ states: ["past_due", "suspended"], limit: 500 }),
+        company: async (id) => (await d.crm!.store.get("companies", id)) as { id: number; name: string; tenantId?: string | null } | null,
+        invoices: d.stripe ? (orderId) => d.stripe!.store.listInvoiceRecords({ orderId, limit: 20 }) : undefined,
+        events: d.commercialEvents ? (orderId) => d.commercialEvents!.list({ orderId, limit: 50 }) : undefined,
+        get stripe() {
+          return atRiskStripe.deps;
+        },
+        external: d.external
+          ? async () => {
+              const external = await d.external!.store.list();
+              const events = new Map(await Promise.all(external.filter((x) => x.status === "past_due").map(async (x) => [x.id, await d.external!.store.events(x.id)] as const)));
+              return revenueMetrics({ external, events, shadow: null, now: Date.now(), windowDays: 30 }).atRisk;
+            }
+          : undefined,
+      });
+      const atRiskWrap = (fn: (req: Request, res: Response) => Promise<void>) =>
+        wrap(async (req, res) => {
+          try {
+            await fn(req, res);
+          } catch (e) {
+            if (!(e instanceof AtRiskError)) throw e;
+            res.status(e.code === "not_found" ? 404 : e.code === "forbidden" ? 403 : 409).json({ error: e.code, message: e.message });
+          }
+        });
+      const orderParam = (req: Request) => z.coerce.number().int().positive().parse(req.params.orderId);
+      router.get("/revenue/at-risk", requireScope("billing:read"), atRiskWrap(async (_req, res) => void res.json(await atRisk.list())));
+      router.post("/revenue/at-risk/:orderId/sync", requireScope("billing:write"), atRiskWrap(async (req, res) => {
+        const out = await atRisk.sync(orderParam(req));
+        opsLog("info", "Recovery", "sync", { orderId: orderParam(req), outcome: out.outcome, by: getAuth(req)?.tokenId ?? "operador" });
+        res.json(out);
+      }));
+      router.post("/revenue/at-risk/:orderId/retry", requireScope("billing:write"), atRiskWrap(async (req, res) => {
+        const out = await atRisk.retry(orderParam(req));
+        opsLog("info", "Recovery", "retry", { orderId: orderParam(req), status: out.status, by: getAuth(req)?.tokenId ?? "operador" });
+        res.json(out);
+      }));
+      router.post("/revenue/at-risk/:orderId/portal", requireScope("billing:write"), atRiskWrap(async (req, res) => {
+        const out = await atRisk.portal(orderParam(req));
+        opsLog("info", "Recovery", "portal_link", { orderId: orderParam(req), by: getAuth(req)?.tokenId ?? "operador" });
+        res.setHeader("Cache-Control", "no-store");
+        res.json(out);
+      }));
     }
     // Origen del cobro (Stripe o simulación) desde los pedidos; sin pedidos activos, todo es simulación
     const orderStore = d.orders?.store;
