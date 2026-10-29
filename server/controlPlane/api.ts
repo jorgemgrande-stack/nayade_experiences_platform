@@ -104,6 +104,8 @@ import { InvoicingService } from "../invoicing/service";
 import type { InvoicingStore } from "../invoicing/store";
 import { ChargeService, type ChargeStore } from "../invoicing/charges";
 import { createInvoicingRouter } from "../invoicing/api";
+import { invoiceHtml } from "../invoicing/document";
+import { TenantPlanService, createTenantPlanRouter } from "../commerce/tenantPlan";
 import { ChargePaymentService, type ChargePaymentStore } from "../invoicing/chargePayments";
 import type { CompanyFiscal } from "../invoicing/rules";
 import { ISSUER } from "../stripe/issuer";
@@ -1875,6 +1877,33 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         });
       }
       router.use("/invoicing", createInvoicingRouter(invoicing, issuer, charges, chargePaymentsRef.svc));
+    }
+    // «Mi plan» de cada empresa (solo lectura, token de comercio del Core): contrato, periodo, cobro y facturas propias
+    if (orderStore) {
+      const crmStore = d.crm.store;
+      const inv = d.invoicing;
+      const stripe = d.stripe;
+      const issuer = { legalName: ISSUER.legalName, taxId: ISSUER.taxId, address: `${ISSUER.address.line1}, ${ISSUER.address.line2}`, postalCode: ISSUER.address.postalCode, city: ISSUER.address.city, country: ISSUER.address.country };
+      const plan = new TenantPlanService({
+        companyOfTenant: async (t) => {
+          const c = (await crmStore.list("companies", { tenantId: t }, { limit: 2 })) as Array<{ id: number; name: string }>;
+          return c.length === 1 ? { id: c[0].id, name: c[0].name } : null;
+        },
+        orders: (companyId) => orderStore.list({ companyId }),
+        subscription: (id) => svc.must(id).catch(() => null),
+        invoices: inv ? (companyId) => inv.store.list({ companyId, limit: 100 }) : undefined,
+        invoiceHtml: inv ? (i) => invoiceHtml(i, issuer) : undefined,
+        stripeStatus: stripe
+          ? async (companyId) => {
+              const subs = await stripe.store.subscriptionsOfCompany(companyId);
+              if (subs.length !== 1) return null;
+              const s = await stripe.gateway.subscription(subs[0]);
+              return s ? { status: s.status, cancelAtPeriodEnd: s.cancelAtPeriodEnd || !!s.cancelAt } : null;
+            }
+          : undefined,
+        billingPortalEnabled: stripe?.billingPortal?.enabled ?? false,
+      });
+      router.use("/commerce", createTenantPlanRouter(plan));
     }
     // Catálogo de comunicaciones (solo lectura) y despacho manual de las pendientes
     router.get("/notifications/catalog", requireScope("ops:read"), wrap(async (_req, res) => void res.json({ templates: catalogView() })));

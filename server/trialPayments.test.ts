@@ -10,7 +10,7 @@ vi.mock("./_core/credentials/cache", () => ({ credentialFor: (_i: string, k: str
 const grants = vi.fn();
 vi.mock("./_core/capabilities/access", () => ({ getCapabilityAccess: () => ({ grants }) }));
 
-import { grantsShowTrial, realPaymentsAllowed, assertRealPaymentAllowed, TRIAL_PAYMENTS_MESSAGE } from "./trialPayments";
+import { grantsShowTrial, realPaymentsAllowed, assertRealPaymentAllowed, isTrialTenant, TRIAL_PAYMENTS_MESSAGE } from "./trialPayments";
 import { buildRedsysForm } from "./redsys";
 import { runWithTenant } from "./_core/tenant";
 
@@ -42,6 +42,12 @@ describe("regla: quién puede cobrar dinero real", () => {
     expect(realPaymentsAllowed({ multi: true, grants: [g("subscription:7", null)] }).allowed).toBe(true);
     expect(realPaymentsAllowed({ multi: true, grants: [] }).allowed).toBe(true); // empresas anteriores al motor de licencias
     expect(realPaymentsAllowed({ multi: true, grants: "unavailable" })).toEqual({ allowed: false, reason: "unverifiable" });
+  });
+  it("estado trial con licencia de pago (alta asistida por un operador, sin pedido): cobra; sin ella, no", () => {
+    expect(realPaymentsAllowed({ multi: true, status: "trial", grants: [g("operator", null)] }).allowed).toBe(true);
+    expect(realPaymentsAllowed({ multi: true, status: "trial", grants: [g("subscription:3", Date.now() + DAY)] }).allowed).toBe(false);
+    expect(realPaymentsAllowed({ multi: true, status: "trial", grants: [] }).allowed).toBe(false);
+    expect(realPaymentsAllowed({ multi: true, status: "trial", grants: "unavailable" }).allowed).toBe(false);
   });
   it("instalación propia (single): sin cambios", () => {
     expect(realPaymentsAllowed({ multi: false, status: "trial", grants: "unavailable" }).allowed).toBe(true);
@@ -86,5 +92,19 @@ describe("punto único de cobro (buildRedsysForm, multiempresa)", () => {
   it("el entorno de pruebas nunca consulta nada ni se bloquea", async () => {
     await expect(runWithTenant("t1-demo", () => assertRealPaymentAllowed("test"), { status: "trial" })).resolves.toBeUndefined();
     expect(grants).not.toHaveBeenCalled();
+  });
+});
+
+describe("compras y bajas de módulos en el panel (isTrialTenant)", () => {
+  it("prueba: sí; contratada o alta asistida con licencia de pago: no; registro ilegible: sí (falla cerrado)", async () => {
+    grants.mockResolvedValue([g("subscription:3", Date.now() + 10 * DAY)]);
+    expect(await runWithTenant("t1-demo", () => isTrialTenant(), { status: "trial" })).toBe(true);
+    expect(await runWithTenant("t9-cliente", () => isTrialTenant(), { status: "active" })).toBe(false);
+    grants.mockResolvedValue([g("operator", null)]);
+    expect(await runWithTenant("t7-asistida", () => isTrialTenant(), { status: "trial" })).toBe(false);
+    grants.mockRejectedValue(new Error("registro caído"));
+    expect(await runWithTenant("t1-demo", () => isTrialTenant(), { status: "trial" })).toBe(true);
+    process.env.TENANT_MODE = "single";
+    expect(await isTrialTenant()).toBe(false);
   });
 });
