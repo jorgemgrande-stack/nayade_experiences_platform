@@ -39,12 +39,14 @@ export interface CostModel {
  *  - tiempo de servidor (peticiones y tareas): 20 USD por vCPU y mes (Railway) → 0,00071 cent/s. Es tiempo de reloj, no
  *    de CPU: cota superior;
  *  - correo: 15 USD por 10.000 (Postmark) → 0,14 cent/correo;
- *  - exportaciones: como tráfico saliente.
+ *  - exportaciones: como tráfico saliente;
+ *  - IA (cuenta de la plataforma): precio público del modelo por defecto (gpt-4o-mini, 0,15 USD / 0,60 USD por millón
+ *    de tokens de entrada / salida) → 14 / 55 cent por millón. Los tokens con la cuenta propia de la empresa no cuentan.
  * El coste fijo compartido no se estima (0) hasta que se configure con las facturas reales.
  */
 export const ESTIMATED_COST_MODEL: CostModel = {
   source: "estimación",
-  note: "Tarifas de referencia de los precios públicos de Railway y Postmark; sin coste fijo compartido. Configurar ERM_COST_MODEL con las facturas reales.",
+  note: "Tarifas de referencia de los precios públicos de Railway, Postmark y del modelo de IA por defecto; sin coste fijo compartido. Configurar ERM_COST_MODEL con las facturas reales.",
   currency: "EUR",
   rates: [
     { metric: "http.response.bytes", label: "Tráfico saliente", unit: "GB", per: 1e9, centsPerUnit: 4.6 },
@@ -52,6 +54,8 @@ export const ESTIMATED_COST_MODEL: CostModel = {
     { metric: "job.run.ms", label: "Tiempo de servidor (tareas)", unit: "hora", per: 3_600_000, centsPerUnit: 2.56 },
     { metric: "email.sent", label: "Correo enviado", unit: "correo", per: 1, centsPerUnit: 0.14 },
     { metric: "data_export.bytes", label: "Exportaciones de datos", unit: "GB", per: 1e9, centsPerUnit: 4.6 },
+    { metric: "llm.tokens.input", label: "IA: tokens de entrada", unit: "millón de tokens", per: 1e6, centsPerUnit: 14 },
+    { metric: "llm.tokens.output", label: "IA: tokens de salida", unit: "millón de tokens", per: 1e6, centsPerUnit: 55 },
   ],
   sharedMonthlyCents: 0,
   sharedBasis: "http.request",
