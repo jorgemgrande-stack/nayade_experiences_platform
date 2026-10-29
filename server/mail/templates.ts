@@ -288,6 +288,17 @@ export function platformTemplates(o: PlatformTemplateOptions = {}) {
         `El enlace es personal, solo sirve una vez y caduca el ${fmtDate(i.expiresAt)}. Si no esperabas este correo, ignóralo.`,
       ], { label: "Revisar y aceptar el contrato", url: i.url });
     },
+    /** Tras aceptar el contrato: enlace para autorizar el método de pago en Stripe (hoy sin cargo). */
+    contractPaymentSetup(i: { companyName: string; serviceName: string; signerName: string; contractReference: string; url: string; expiresAt: number; amountCents: number; taxRateBp: number; currency: string; firstChargeAt: number }) {
+      const tax = Math.round((i.amountCents * i.taxRateBp) / 10_000);
+      return layout(b, `Autoriza el método de pago · contrato ${i.contractReference}`, [
+        `Hola, ${i.signerName}:`,
+        `Hemos registrado tu aceptación del contrato ${i.contractReference} de ${i.serviceName} para ${i.companyName}. Gracias.`,
+        "Falta un paso: autorizar el método de pago en Stripe, la plataforma de pagos segura que usa Big Elephant.",
+        `Al autorizarlo hoy no se realiza ningún cargo. Las cuotas del contrato (${fmtMoney(i.amountCents, i.currency)} + IVA ${fmtMoney(tax, i.currency)} = ${fmtMoney(i.amountCents + tax, i.currency)} al mes) se cobrarán desde el ${fmtDate(i.firstChargeAt)}, como se indica en el contrato.`,
+        `El enlace sirve hasta el ${fmtDate(i.expiresAt)} y puedes abrirlo de nuevo si no terminas. Si ha caducado, pide uno nuevo a tu contacto de Big Elephant.`,
+      ], { label: "Autorizar método de pago", url: i.url });
+    },
     /** Aviso INTERNO al equipo (incidencias, nuevos clientes, desistimientos, tickets). Sin datos sensibles ni enlaces con token. */
     opsNotice(i: { title: string; lines: string[] }) {
       return layout(b, `[Elephant Source] ${i.title}`, [...i.lines, "Aviso interno del equipo de Elephant Source. Revisa el detalle en el panel de operaciones."]);

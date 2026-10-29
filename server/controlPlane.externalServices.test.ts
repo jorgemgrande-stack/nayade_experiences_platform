@@ -219,6 +219,15 @@ describe("clientes externos: piloto Nextair SL (SkiNet, 1.000 € + IVA, cobro e
     const accepted = await call("POST", "/public/contract-acceptance", { token: null, raw: form(true), headers: { "content-type": "application/x-www-form-urlencoded", "user-agent": "Prueba/1.0" } });
     expect(accepted.status).toBe(200);
     expect(accepted.raw).toContain("No se ha realizado ningún cobro");
+    // Continuación inmediata: botón con un enlace propio (no el token de aceptación) que abre Stripe en modo setup
+    const cont = /href="([^"]+\/autorizar\?t=[^"]+)"/.exec(accepted.raw)?.[1]?.replace(/&amp;/g, "&");
+    expect(accepted.raw).toContain("Autorizar método de pago");
+    expect(cont).toBeTruthy();
+    expect(cont).not.toContain(token);
+    const go = await call("GET", new URL(cont!).pathname.replace("/cp/v1", "") + new URL(cont!).search, { token: null });
+    expect(go.status).toBe(303);
+    // Redirección a la sesión de Stripe (express pone el destino también en el cuerpo)
+    expect(go.raw).toMatch(/https:\/\/checkout\.stripe\.test\/c\/setup\//);
     // El mismo enlace no vale dos veces
     expect((await call("POST", "/public/contract-acceptance", { token: null, raw: form(true), headers: { "content-type": "application/x-www-form-urlencoded" } })).status).toBe(409);
     const detail = await ok(call("GET", `/external/${id}`));
@@ -233,7 +242,9 @@ describe("clientes externos: piloto Nextair SL (SkiNet, 1.000 € + IVA, cobro e
 
   it("autorización de la tarjeta sin cargo; suscripción programada para el día 1 con IVA del 21 %", async () => {
     const s = (await ok(call("POST", `/external/${id}/payment-setup`))).setup;
-    expect(s).toMatchObject({ reused: false, url: expect.stringMatching(/^https:\/\//) });
+    // La sesión ya la abrió el firmante con el botón de la confirmación: el operador obtiene la MISMA (sin duplicar)
+    expect(s).toMatchObject({ reused: true, url: expect.stringMatching(/^https:\/\//) });
+    expect(gw.calls.filter((c) => c.op === "checkout.sessions.create(setup)")).toHaveLength(1);
     expect((await ok(call("POST", `/external/${id}/payment-setup`))).setup).toMatchObject({ reused: true, sessionId: s.sessionId });
     const input = gw.calls.find((c) => c.op === "checkout.sessions.create(setup)")!.input as { notice: string };
     expect(input.notice).toMatch(/1000\.00 € \+ IVA \(210\.00 €\) = 1210\.00 € al mes/);

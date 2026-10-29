@@ -8,6 +8,7 @@
  *   GET  /external/:id/document               crm:read        documento contractual exacto y su huella
  *   POST /external/:id/acceptance             orders:write    enlace de aceptación para el representante
  *   POST /external/:id/payment-setup          orders:write    enlace de Stripe para autorizar el método de pago (sin cargo)
+ *   POST /external/:id/setup-link             orders:write    enlace de continuación para el firmante (copiar o reenviar por correo)
  *   POST /external/:id/decision               orders:approve  primera mensualidad cuando el método llegó tarde
  *   POST /external/:id/portal                 orders:write    enlace al portal de facturación de Stripe
  *   POST /external/evaluate                   ops:write       evaluación del margen de cobro (día 5)
@@ -109,6 +110,11 @@ export function createExternalRouter(svc: ExternalService): Router {
     res.status(201).json({ acceptance: await svc.requestAcceptance(id(req), signer, actor(req), { send: send === true }) });
   }));
   r.post("/:id/payment-setup", requireScope("orders:write"), wrap(async (req, res) => void res.json({ setup: await svc.paymentSetup(id(req), actor(req)) })));
+  r.post("/:id/setup-link", requireScope("orders:write"), wrap(async (req, res) => {
+    const b = z.object({ send: z.boolean().optional() }).strict().parse(req.body ?? {});
+    res.setHeader("Cache-Control", "no-store");
+    res.json({ link: await svc.setupLink(id(req), actor(req), { send: b.send === true }) });
+  }));
   r.post("/:id/decision", requireScope("orders:approve"), wrap(async (req, res) => {
     const body = z.object({ firstChargeDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), reason: z.string().max(300) }).strict().parse(req.body ?? {});
     res.json({ external: await svc.decideFirstCharge(id(req), body, actor(req)) });
@@ -158,6 +164,21 @@ export function createContractAcceptanceRouter(svc: ExternalService): Router {
   // Vueltas desde Stripe: solo informan (la autorización se confirma con el webhook firmado, nunca con esta página)
   r.get("/autorizado", (_req, res) => send(res, 200, page("Método de pago autorizado", `<h1>Método de pago autorizado</h1><p class="ok">Gracias. Hemos recibido la autorización de tu método de pago. No se ha realizado ningún cobro: el primer cargo será en la fecha indicada en el contrato.</p>`)));
   r.get("/cancelado", (_req, res) => send(res, 200, page("Autorización no completada", `<h1>Autorización no completada</h1><p>No se ha registrado ningún método de pago ni se ha cobrado nada. Puedes volver a usar el enlace que te enviamos mientras siga vigente.</p>`)));
+  // Continuación tras la aceptación: abre (o reutiliza) la sesión segura de Stripe en modo setup, sin cargo
+  r.get("/autorizar", (req, res) => {
+    svc
+      .continuePaymentSetup(String(req.query.t ?? ""))
+      .then((r) => {
+        if (r.kind === "redirect") {
+          res.setHeader("Cache-Control", "no-store");
+          res.setHeader("Referrer-Policy", "no-referrer");
+          return void res.redirect(303, r.url);
+        }
+        const msg = r.status === "confirming" ? "Ya has autorizado tu método de pago: estamos recibiendo la confirmación de Stripe. No hace falta que hagas nada más." : r.status === "awaiting_acceptance" ? "El contrato todavía no está aceptado." : "Tu método de pago ya está autorizado. No hace falta que hagas nada más.";
+        send(res, 200, page("Autorización del método de pago", `<h1>Autorización del método de pago</h1><p class="ok">${esc(msg)}</p>`));
+      })
+      .catch((e) => fail(res, e));
+  });
   r.get("/portal", (_req, res) => send(res, 200, page("Portal de facturación", `<h1>Portal de facturación</h1><p>Has salido del portal de facturación. Puedes cerrar esta ventana.</p>`)));
   // Vueltas del enlace de pago de un cargo: solo informan (el cobro se confirma con el webhook firmado de Stripe)
   r.get("/pago-recibido", (_req, res) => send(res, 200, page("Pago recibido", `<h1>Pago recibido</h1><p class="ok">Gracias. Stripe ha recibido tu pago. En unos minutos quedará registrado en tu factura; recibirás el justificante de Stripe en tu correo.</p>`)));
@@ -190,7 +211,19 @@ export function createContractAcceptanceRouter(svc: ExternalService): Router {
     const b = (req.body ?? {}) as Record<string, string>;
     svc
       .accept(String(b.token ?? req.query.token ?? ""), { name: String(b.name ?? ""), taxId: b.taxId ? String(b.taxId) : null, accept: b.accept === "1" }, { ip: req.ip ?? null, userAgent: req.get("user-agent") ?? null })
-      .then((a) => send(res, 200, page("Contrato aceptado", `<h1>Contrato aceptado</h1><p class="ok">Hemos registrado tu aceptación (versión ${a.version}, ${esc(new Date(a.acceptedAt).toISOString())}).</p><p>El siguiente paso es autorizar el método de pago en Stripe: te enviaremos el enlace. No se ha realizado ningún cobro.</p>`)))
+      .then((a) =>
+        send(
+          res,
+          200,
+          page(
+            "Contrato aceptado",
+            `<h1>Contrato aceptado</h1><p class="ok">Hemos registrado tu aceptación (versión ${a.version}, ${esc(new Date(a.acceptedAt).toISOString())}).</p>` +
+              (a.continueUrl
+                ? `<p>No se ha realizado ningún cobro. Último paso: autoriza el método de pago en Stripe; hoy no se realiza ningún cargo y las cuotas se cobrarán en las fechas del contrato.</p><div class="actions"><a class="btn" href="${esc(a.continueUrl)}">Autorizar método de pago</a></div><p class="muted">También te hemos enviado este enlace por correo, para que puedas continuar más tarde.</p>`
+                : `<p>El siguiente paso es autorizar el método de pago en Stripe: te enviaremos el enlace. No se ha realizado ningún cobro.</p>`),
+          ),
+        ),
+      )
       .catch((e) => fail(res, e));
   });
   return r;
