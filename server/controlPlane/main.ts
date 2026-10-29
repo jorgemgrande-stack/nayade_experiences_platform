@@ -88,6 +88,7 @@ import { RegistryTenantEffects } from "../_core/billing/effects";
 import { IncidentService, MysqlIncidentStore, webhookNotifier, type IncidentNotifier } from "../_core/ops/incidents";
 import { MysqlTicketStore, TicketService } from "../_core/support/tickets";
 import { runAlerts } from "../_core/ops/alerts";
+import { AlertScheduler } from "../_core/ops/alertScheduler";
 import { FailureAlerts, configureFailureAlerts } from "../_core/ops/failureAlerts";
 import { STRIPE_FAILURE_RULES } from "../stripe/alerts";
 import { SsoService, parseSsoUsers } from "./sso";
@@ -200,12 +201,11 @@ async function main() {
         ? { lastSuccessAt: () => copiesLedger.lastSuccess("secondary", "tenant"), latestAttempts: () => copiesLedger.latestAttempts("secondary"), maxAgeMs: secondaryMaxAgeMs }
         : undefined,
     });
-  if (process.env.CP_ALERTS_EVERY_SECONDS) {
-    const every = Math.max(30, Number(process.env.CP_ALERTS_EVERY_SECONDS)) * 1000;
-    // Un fallo de la evaluación no puede pasar desapercibido: la monitorización quedaría muerta
-    const t = setInterval(() => void evaluate().catch((e) => console.error(JSON.stringify({ ctx: "Alerts", event: "evaluate_failed", error: e instanceof Error ? e.name : "error" }))), every);
-    t.unref?.();
-  }
+  // Una evaluación a la vez y su estado visible en el Control Center (GET /alerts/status)
+  const alertScheduler = new AlertScheduler(evaluate, { log: (event, detail) => console.error(JSON.stringify({ ctx: "Alerts", event, ...detail })) });
+  const alertsEvery = Number(process.env.CP_ALERTS_EVERY_SECONDS);
+  if (Number.isFinite(alertsEvery) && alertsEvery > 0) alertScheduler.start(alertsEvery);
+  console.log(JSON.stringify({ ctx: "Alerts", scheduled: alertScheduler.status().scheduled, everySeconds: alertScheduler.status().everySeconds }));
   // Un único pool para la BD del CRM (CRM, web, suscripciones, pruebas y pedidos) en lugar de cinco
   // pools fijos (17 conexiones): tamaño CP_CRM_POOL_CONNECTIONS, 8 por defecto.
   const crmPool = process.env.CRM_DATABASE_URL
@@ -553,7 +553,7 @@ async function main() {
     tickets,
     billing,
     billingStore,
-    ops: { incidents, runAlerts: evaluate },
+    ops: { incidents, runAlerts: () => alertScheduler.run(), alertStatus: () => alertScheduler.status() },
     backups: backupInventory ? { inventory: backupInventory, maxAgeMs: backupMaxAgeMs, copies: copiesReady ? copiesLedger : undefined, secondaryMaxAgeMs } : undefined,
     health: { registryPing: async () => void (await pool.query("SELECT 1")) },
     sso,
