@@ -1,10 +1,10 @@
 import { z } from "zod";
 import { router, permissionProcedure } from "../_core/trpc";
 
-// RBAC-aware adminProcedure. Uses accounting.expenses.view as base permission;
-// anyPermissionProcedure covers both view and manage semantics since today only
-// admin has either, and admin has all permissions. Fallback: users.role === "admin".
+// Lectura con accounting.expenses.view; toda escritura (mutaciones) exige accounting.expenses.manage.
+// Fallback sin RBAC: users.role === "admin".
 const adminProcedure = permissionProcedure("accounting.expenses.view", ["admin"]);
+const manageProcedure = permissionProcedure("accounting.expenses.manage", ["admin"]);
 const _pool = legacyPool();
 const db = legacyDb();
 import {
@@ -54,14 +54,14 @@ const costCentersRouter = router({
     return db.select().from(costCenters).orderBy(costCenters.name);
   }),
 
-  create: adminProcedure
+  create: manageProcedure
     .input(z.object({ name: z.string().min(1), description: z.string().optional() }))
     .mutation(async ({ input }) => {
       const [res] = await db.insert(costCenters).values({ name: input.name, description: input.description });
       return { id: res.insertId };
     }),
 
-  update: adminProcedure
+  update: manageProcedure
     .input(z.object({ id: z.number(), name: z.string().min(1), description: z.string().optional(), active: z.boolean().optional() }))
     .mutation(async ({ input }) => {
       const { id, ...data } = input;
@@ -69,7 +69,7 @@ const costCentersRouter = router({
       return { ok: true };
     }),
 
-  delete: adminProcedure
+  delete: manageProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
       await db.delete(costCenters).where(eq(costCenters.id, input.id));
@@ -83,14 +83,14 @@ const expenseCategoriesRouter = router({
     return db.select().from(expenseCategories).orderBy(expenseCategories.name);
   }),
 
-  create: adminProcedure
+  create: manageProcedure
     .input(z.object({ name: z.string().min(1), description: z.string().optional() }))
     .mutation(async ({ input }) => {
       const [res] = await db.insert(expenseCategories).values({ name: input.name, description: input.description });
       return { id: res.insertId };
     }),
 
-  update: adminProcedure
+  update: manageProcedure
     .input(z.object({ id: z.number(), name: z.string().min(1), description: z.string().optional(), active: z.boolean().optional() }))
     .mutation(async ({ input }) => {
       const { id, ...data } = input;
@@ -98,7 +98,7 @@ const expenseCategoriesRouter = router({
       return { ok: true };
     }),
 
-  delete: adminProcedure
+  delete: manageProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
       await db.delete(expenseCategories).where(eq(expenseCategories.id, input.id));
@@ -112,7 +112,7 @@ const expenseSuppliersRouter = router({
     return db.select().from(expenseSuppliers).orderBy(expenseSuppliers.name);
   }),
 
-  create: adminProcedure
+  create: manageProcedure
     .input(z.object({
       name: z.string().min(1),
       fiscalName: z.string().optional(),
@@ -127,7 +127,7 @@ const expenseSuppliersRouter = router({
       return { id: res.insertId };
     }),
 
-  update: adminProcedure
+  update: manageProcedure
     .input(z.object({
       id: z.number(),
       name: z.string().min(1),
@@ -145,7 +145,7 @@ const expenseSuppliersRouter = router({
       return { ok: true };
     }),
 
-  delete: adminProcedure
+  delete: manageProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
       await db.delete(expenseSuppliers).where(eq(expenseSuppliers.id, input.id));
@@ -274,7 +274,7 @@ const expensesRouter = router({
       return { ...row, files };
     }),
 
-  create: adminProcedure
+  create: manageProcedure
     .input(expenseInputSchema)
     .mutation(async ({ input, ctx }) => {
       const [res] = await db.insert(expenses).values({
@@ -308,7 +308,7 @@ const expensesRouter = router({
       return { id: expenseId };
     }),
 
-  update: adminProcedure
+  update: manageProcedure
     .input(expenseInputSchema.extend({ id: z.number() }))
     .mutation(async ({ input, ctx }) => {
       const { id, ...data } = input;
@@ -341,7 +341,7 @@ const expensesRouter = router({
       return { ok: true };
     }),
 
-  delete: adminProcedure
+  delete: manageProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
       await db.delete(expenseFiles).where(eq(expenseFiles.expenseId, input.id));
@@ -354,7 +354,7 @@ const expensesRouter = router({
    * Para los gastos antiguos sin `taxBase`, estima base/IVA al 21 % y los deja
    * en `fiscalReviewStatus = "pendiente"` para que se revisen manualmente.
    */
-  backfillFiscal: adminProcedure
+  backfillFiscal: manageProcedure
     .mutation(async () => {
       const rows = await db
         .select({ id: expenses.id, amount: expenses.amount })
@@ -376,7 +376,7 @@ const expensesRouter = router({
     }),
 
   // Upload file attachment (base64 encoded)
-  uploadFile: adminProcedure
+  uploadFile: manageProcedure
     .input(z.object({
       expenseId: z.number(),
       fileName: z.string(),
@@ -396,7 +396,7 @@ const expensesRouter = router({
       return { url };
     }),
 
-  deleteFile: adminProcedure
+  deleteFile: manageProcedure
     .input(z.object({ fileId: z.number() }))
     .mutation(async ({ input }) => {
       const [file] = await db.select({ filePath: expenseFiles.filePath }).from(expenseFiles).where(eq(expenseFiles.id, input.fileId)).limit(1);
@@ -600,7 +600,7 @@ const recurringExpensesRouter = router({
     return db.select().from(recurringExpenses).orderBy(recurringExpenses.nextExecutionDate);
   }),
 
-  create: adminProcedure
+  create: manageProcedure
     .input(z.object({
       concept: z.string().min(1),
       amount: z.string().min(1),
@@ -620,7 +620,7 @@ const recurringExpensesRouter = router({
       return { id: res.insertId };
     }),
 
-  update: adminProcedure
+  update: manageProcedure
     .input(z.object({
       id: z.number(),
       concept: z.string().min(1),
@@ -639,7 +639,7 @@ const recurringExpensesRouter = router({
       return { ok: true };
     }),
 
-  delete: adminProcedure
+  delete: manageProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
       await db.delete(recurringExpenses).where(eq(recurringExpenses.id, input.id));
@@ -647,7 +647,7 @@ const recurringExpensesRouter = router({
     }),
 
   // Manually trigger a recurring expense (creates an expense and advances next date)
-  trigger: adminProcedure
+  trigger: manageProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input, ctx }) => {
       const [rec] = await db.select().from(recurringExpenses).where(eq(recurringExpenses.id, input.id));
@@ -811,7 +811,7 @@ const profitLossRouter = router({
 
 // --- Email Ingestion sub-router ----------------------------------------------
 const emailIngestionRouter = router({
-  triggerSync: adminProcedure
+  triggerSync: manageProcedure
     .mutation(async () => {
       const { runExpenseEmailIngestion } = await import("../services/expenseEmailIngestionService");
       const result = await runExpenseEmailIngestion();
