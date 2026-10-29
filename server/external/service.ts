@@ -75,6 +75,19 @@ export interface ContractInvitation {
   currency: string;
   firstChargeAt: number;
 }
+/** Correo al firmante tras aceptar: enlace para autorizar el método de pago (sin cargo). */
+export interface PaymentSetupMail {
+  companyName: string;
+  serviceName: string;
+  signerName: string;
+  contractReference: string;
+  url: string;
+  expiresAt: number;
+  amountCents: number;
+  taxRateBp: number;
+  currency: string;
+  firstChargeAt: number;
+}
 export interface ExternalMail {
   /** Estado actual de un mensaje de la bandeja (entregado, rebotado…). */
   status?(outboxId: number): Promise<{ status: string; reason: string | null } | null>;
@@ -82,6 +95,8 @@ export interface ExternalMail {
   invite(to: string, idempotencyKey: string, i: ContractInvitation): Promise<{ status: string; reason: string | null; duplicate: boolean; id?: number | null }>;
   /** Aviso interno al equipo (sin enlaces con token). */
   opsNotice?(key: string, title: string, lines: string[]): Promise<void>;
+  /** Enlace de autorización del método de pago al firmante (idempotente por clave). */
+  paymentSetup?(to: string, idempotencyKey: string, i: PaymentSetupMail): Promise<{ status: string; reason: string | null; duplicate: boolean; id?: number | null }>;
 }
 
 export interface CreateExternalInput {
@@ -108,6 +123,8 @@ const KEY_RE = /^[a-z0-9][a-z0-9-]{1,48}$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const TOKEN_TTL_MS = 14 * 86_400_000;
 const SETUP_TTL_MS = 23 * 3600_000;
+/** Vigencia del enlace de continuación tras la aceptación (abre solo la autorización del método de pago). */
+const CONTINUE_TTL_MS = 30 * 86_400_000;
 const LIVE_STATES: ExternalStatus[] = ["awaiting_acceptance", "awaiting_payment_method", "scheduled", "active", "past_due", "needs_decision"];
 
 export class ExternalService {
@@ -362,7 +379,113 @@ export class ExternalService {
         ])
         .catch(() => opsLog("warn", "External", "accepted_notice_failed", { externalId: x.id }));
     }
-    return { accepted: true, version: doc.version, documentSha256: doc.sha256, acceptedAt: now };
+    // Continuación inmediata: enlace propio (no el token de aceptación) en la página y por correo al firmante
+    const continueUrl = this.continuationUrl(x.id, a.id, now + CONTINUE_TTL_MS);
+    if (continueUrl) await this.sendSetupLink(x, a, doc.company.legalName ?? doc.company.name, doc.contract.reference ?? `#${doc.contract.id}`, continueUrl, now + CONTINUE_TTL_MS, "public:acceptance");
+    return { accepted: true, version: doc.version, documentSha256: doc.sha256, acceptedAt: now, continueUrl };
+  }
+
+  // ── 2b. Continuación tras la aceptación ───────────────────────────────────
+  //
+  // El enlace NO es el token de aceptación (de un solo uso) ni una autorización económica: es una referencia firmada
+  // (HMAC con clave derivada de CP_PUBLIC_FORM_SECRET, separada por propósito) a ESTA contratación y ESTA aceptación,
+  // con caducidad. Solo abre la sesión de Stripe en modo setup (sin cargo) mientras falte el método de pago; reutiliza
+  // la sesión vigente o crea otra con la idempotencia de paymentSetup. Nunca cambia importes ni condiciones.
+
+  private continueKey(): Buffer | null {
+    return this.d.ipSalt ? crypto.createHmac("sha256", this.d.ipSalt).update("external-payment-setup-link:v1").digest() : null;
+  }
+
+  /** URL de continuación (null si el entorno no tiene clave para firmarla). */
+  continuationUrl(externalId: number, acceptanceId: number, expiresAt: number): string | null {
+    const key = this.continueKey();
+    if (!key) return null;
+    const payload = `${externalId}.${acceptanceId}.${expiresAt}`;
+    const sig = crypto.createHmac("sha256", key).update(payload).digest("base64url");
+    return `${this.d.urls.acceptance}/autorizar?t=${payload}.${sig}`;
+  }
+
+  private verifyContinuation(t: string): { externalId: number; acceptanceId: number } {
+    const invalid = new ExternalError("not_found", "Enlace no válido");
+    const m = /^(\d{1,12})\.(\d{1,12})\.(\d{10,15})\.([A-Za-z0-9_-]{43})$/.exec(String(t ?? ""));
+    const key = this.continueKey();
+    if (!m || !key) throw invalid;
+    const want = crypto.createHmac("sha256", key).update(`${m[1]}.${m[2]}.${m[3]}`).digest();
+    const got = Buffer.from(m[4], "base64url");
+    if (got.length !== want.length || !crypto.timingSafeEqual(got, want)) throw invalid;
+    if (Number(m[3]) <= this.now()) throw new ExternalError("invalid_state", "Este enlace ha caducado: pide uno nuevo a tu contacto de Big Elephant");
+    return { externalId: Number(m[1]), acceptanceId: Number(m[2]) };
+  }
+
+  /** Aceptación vigente (aceptada) de la contratación; con `acceptanceId`, debe ser esa. */
+  private async acceptedAcceptance(x: ExternalSubscription, acceptanceId?: number) {
+    const all = (await this.d.store.acceptances(x.contractId)).filter((a) => a.status === "accepted");
+    const a = acceptanceId === undefined ? all.sort((p, q) => (q.acceptedAt ?? 0) - (p.acceptedAt ?? 0))[0] : all.find((p) => p.id === acceptanceId);
+    if (!a) throw acceptanceId === undefined ? new ExternalError("invalid_state", "El contrato todavía no está aceptado") : new ExternalError("not_found", "Enlace no válido");
+    return a;
+  }
+
+  /**
+   * Abre la autorización del método de pago desde el enlace de continuación. `done`: ya no falta (autorizado o en
+   * confirmación); la página lo explica en lugar de abrir otra sesión.
+   */
+  async continuePaymentSetup(t: string): Promise<{ kind: "redirect"; url: string } | { kind: "done"; status: ExternalStatus | "confirming" }> {
+    const v = this.verifyContinuation(t);
+    const x = await this.d.store.get(v.externalId);
+    if (!x) throw new ExternalError("not_found", "Enlace no válido");
+    await this.acceptedAcceptance(x, v.acceptanceId);
+    if (x.status !== "awaiting_payment_method") return { kind: "done", status: x.status };
+    try {
+      const s = await this.paymentSetup(x.id, "public:continuation");
+      if (!s.url) throw new ExternalError("unavailable", "La autorización no está disponible ahora mismo. Inténtalo en unos minutos.");
+      opsLog("info", "External", "setup_continuation_opened", { externalId: x.id, reused: s.reused });
+      return { kind: "redirect", url: s.url };
+    } catch (e) {
+      // Sesión completada a la espera del webhook firmado: no se abre otra
+      if (e instanceof ExternalError && e.code === "invalid_state" && /falta su confirmación/.test(e.message)) return { kind: "done", status: "confirming" };
+      throw e;
+    }
+  }
+
+  /**
+   * Enlace de continuación para el operador (copiar) y, con `send`, reenvío del correo al firmante. Idempotente: el
+   * reenvío lleva una clave por intento y no crea sesiones de Stripe (se crean al abrir el enlace).
+   */
+  async setupLink(id: number, actor: string, opts: { send?: boolean } = {}) {
+    const x = await this.must(id);
+    if (x.status !== "awaiting_payment_method") throw new ExternalError("invalid_state", x.status === "awaiting_acceptance" ? "Primero el cliente debe aceptar el contrato" : "El método de pago ya está autorizado");
+    const a = await this.acceptedAcceptance(x);
+    const now = this.now();
+    const expiresAt = now + CONTINUE_TTL_MS;
+    const url = this.continuationUrl(x.id, a.id, expiresAt);
+    if (!url) throw new ExternalError("unavailable", "Falta la clave para firmar enlaces (CP_PUBLIC_FORM_SECRET) en este entorno");
+    let mail: { status: string; reason: string | null; outboxId?: number } | null = null;
+    if (opts.send) {
+      const doc = await this.document(x);
+      mail = await this.sendSetupLink(x, a, doc.company.legalName ?? doc.company.name, doc.contract.reference ?? `#${doc.contract.id}`, url, expiresAt, actor);
+    } else {
+      await this.d.store.event({ externalId: x.id, kind: "setup_link_issued", ref: null, detail: { expiresAt }, actor, at: now });
+    }
+    return { url, expiresAt, mail };
+  }
+
+  /** Correo al firmante con el enlace de continuación; deja el resultado de la bandeja en el historial. */
+  private async sendSetupLink(x: ExternalSubscription, a: ContractAcceptance, companyName: string, reference: string, url: string, expiresAt: number, actor: string) {
+    const now = this.now();
+    const n = (await this.d.store.events(x.id)).filter((e) => e.kind === "setup_link_email").length + 1;
+    let mail: { status: string; reason: string | null; outboxId?: number };
+    if (!this.d.mail?.paymentSetup) mail = { status: "unavailable", reason: "El correo de plataforma no está configurado en este entorno" };
+    else {
+      try {
+        const r = await this.d.mail.paymentSetup(a.signerEmail, `external-setup:${this.d.namespace}:${a.id}:${n}`, { companyName, serviceName: x.serviceName, signerName: a.acceptedName ?? a.signerName, contractReference: reference, url, expiresAt, amountCents: x.amountCents, taxRateBp: x.taxRateBp, currency: x.currency, firstChargeAt: x.firstChargeAt });
+        mail = { status: r.status, reason: r.reason, ...(r.id ? { outboxId: r.id } : {}) };
+      } catch (e) {
+        mail = { status: "failed", reason: (e instanceof Error ? e.message : "error").slice(0, 200) };
+      }
+    }
+    await this.d.store.event({ externalId: x.id, kind: "setup_link_email", ref: `${a.id}:${n}`, detail: { signerEmail: a.signerEmail, ...mail }, actor, at: now });
+    if (!["queued", "accepted", "sent", "delivered"].includes(mail.status)) opsLog("warn", "External", "setup_link_email_not_sent", { externalId: x.id, status: mail.status, reason: mail.reason });
+    return mail;
   }
 
   // ── 3. Autorización del método de pago (sin cargo) ────────────────────────

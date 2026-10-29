@@ -73,6 +73,10 @@ export class PlatformMailer {
       },
       status: (id) => this.service.status(id),
       opsNotice: (key, title, lines) => this.opsNotice(key, title, lines),
+      paymentSetup: async (to, key, i) => {
+        const r = await this.send(PLATFORM_TENANT, key, "contract_invitation", to, this.t.contractPaymentSetup(i));
+        return { status: r.status, reason: r.reason, duplicate: r.duplicate, id: r.id };
+      },
     };
   }
 
