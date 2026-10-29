@@ -45,9 +45,15 @@
 		respond 404
 	}
 
+	# Política de acceso (la misma en la web, el CRM y esta pasarela):
+	#  - production: públicos solo los dominios propios (PUBLIC_HOSTS); los técnicos de Railway, con contraseña;
+	#  - live (entorno de pruebas): igual que production en los recorridos, SIN autenticación básica en ningún host
+	#    (RAILWAY_ENVIRONMENT_NAME la pone Railway). Protegen el inicio de sesión de cada empresa y sus permisos.
+	# Los canales internos (/_ops) siguen cerrados arriba en todos los entornos.
 	@protected {
 		not path /__gateway/health
 		not host {$PUBLIC_HOSTS:public-hosts.invalid}
+		not expression `"{$RAILWAY_ENVIRONMENT_NAME:}" == "live"`
 	}
 	basic_auth @protected {
 		{$GATEWAY_USER} {$GATEWAY_PASSWORD_HASH}
