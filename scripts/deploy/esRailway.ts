@@ -21,6 +21,7 @@
  *   tsx scripts/deploy/esRailway.ts changes --from <commit> --to <commit> [--production]  (qué exige el procedimiento protegido)
  *   tsx scripts/deploy/esRailway.ts publish --env live --dir <dir> --sha <commit>   (despliegue ordinario con vuelta atrás automática)
  *   tsx scripts/deploy/esRailway.ts functional --env live          (comprobaciones funcionales)
+ *   tsx scripts/deploy/esRailway.ts access --env production        (acceso: login, recuperación y rechazo anónimo)
  *   tsx scripts/deploy/esRailway.ts revert --env live --service core   (vuelve al despliegue anterior del servicio)
  *   tsx scripts/deploy/esRailway.ts active-crm --env live          (commit del CRM activo; vacío si no se sabe)
  *   tsx scripts/deploy/esRailway.ts crm-changes --from <c> --to <c> --dir <crm> [--production]  (cambios protegidos del CRM)
@@ -34,6 +35,7 @@
  * en el servicio restore-drill de la red privada, espera a que termine, muestra su registro (sin DSN ni claves) y
  * devuelve el servicio a `list`.
  */
+import crypto from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -41,7 +43,7 @@ import { fileURLToPath } from "node:url";
 import { CONTRACT_MAIL_CATEGORY, MAIL_TEST_SERVICES, POSTMARK_WEBHOOK_TRIGGERS, contractMailPlan, leadNoticesMailPlan, mailAccessPlan, mailSandboxPlan, parseMailAllowlist } from "./esRailwayLib";
 import { DRILL_IDLE, EXCLUDED_FROM_EXPORT, GATEWAY_COPIED_VARS, GATEWAY_TEMPLATE_SERVICE, STORAGE_BUCKETS, STORAGE_VARS, describeStorageVar, guard, isAllowedDrill, scrub, meteringReferences, storageReferences, testTenantDomains, type DeployConfig, type TokenScope } from "./esRailwayLib";
 import { ERM_DB_SERVICE, ERM_PASSWORD_VAR, LIVE_PLATFORM_DOMAIN_DEFAULT, livePlatformDomainProblems, meteringPlan, platformDomainsValue } from "./esRailwayLib";
-import { CATALOG_STAMP_FILE, WEB_CATALOG_SITE } from "./esRailwayLib";
+import { ACCESS_CHECKS, ACCESS_PROBE_USER, CATALOG_STAMP_FILE, WEB_CATALOG_SITE, accessProblems } from "./esRailwayLib";
 import { externalExtraordinaryChanges, extraordinaryChanges } from "./esRailwayLib";
 import { CRM_CHECKS, CRM_VERSION_FILE, CRM_VERSION_URL, externalLockedChanges, FUNCTIONAL_CHECKS, ORDINARY_SERVICES, WEB_CHECKS, crmProtectedChanges, hasMigrations, isExternalService, isNativeDeploy, protectedChanges, shaFromDeployMeta } from "./esRailwayLib";
 import { REPOSITORIES } from "../../shared/repositories";
@@ -163,7 +165,41 @@ async function functional(env: string, set: Record<string, Array<{ url: string; 
     console.log(`${got === c.expect ? "OK" : "FALLO"} ${c.url} → ${got}`);
     if (got !== c.expect) ok = false;
   }
+  // El Core y el CRM comparten el plano de control: cada publicación de cualquiera de los dos comprueba el acceso
+  if (set !== WEB_CHECKS && ACCESS_CHECKS[env] && !(await access(env))) ok = false;
   return ok;
+}
+
+/** Acceso al administrador central: login, recuperación, rechazo anónimo. Sin efectos (la cuenta de la sonda no existe). */
+async function access(env: string): Promise<boolean> {
+  const { base, resetRequired } = ACCESS_CHECKS[env];
+  const cp = `${base}/cp/v1`;
+  const json = async (r: Response | null) => {
+    const raw = r ? await r.text().catch(() => "") : "";
+    let body: any = null;
+    try {
+      body = JSON.parse(raw);
+    } catch {}
+    return { status: r?.status ?? 0, body, raw };
+  };
+  const post = (p: string, body: unknown) =>
+    fetch(cp + p, { method: "POST", redirect: "manual", headers: { "content-type": "application/json", origin: base }, body: JSON.stringify(body) }).catch(() => null);
+  let problems: string[] = [];
+  for (let i = 0; i < 4; i++) {
+    if (i) await new Promise((r) => setTimeout(r, 15_000));
+    const probe = {
+      options: await json(await fetch(`${cp}/auth/options`).catch(() => null)),
+      anonSession: (await fetch(`${cp}/auth/session`, { redirect: "manual" }).catch(() => null))?.status ?? 0,
+      anonPrivate: (await fetch(`${cp}/crm/companies`, { redirect: "manual" }).catch(() => null))?.status ?? 0,
+      badLogin: await json(await post("/auth/login", { username: ACCESS_PROBE_USER, password: crypto.randomBytes(18).toString("base64url") })),
+      reset: await json(await post("/auth/password-reset/request", { username: ACCESS_PROBE_USER })),
+    };
+    problems = accessProblems(probe, resetRequired);
+    if (!problems.length) break;
+  }
+  for (const p of problems) console.log(`FALLO acceso ${base}: ${p}`);
+  if (!problems.length) console.log(`OK acceso ${base}: login, recuperación${resetRequired ? "" : " (informativa)"} y rechazo anónimo`);
+  return problems.length === 0;
 }
 
 /**
@@ -290,6 +326,10 @@ async function main() {
       }
       console.log(`Cambio ordinario${hasMigrations(files) ? " con migraciones aditivas (copia, verificación y aplicación automáticas)" : ""}.`);
     }
+    return;
+  }
+  if (cmd === "access") {
+    if (!(await access(arg("env")))) process.exit(1);
     return;
   }
   if (cmd === "functional") {

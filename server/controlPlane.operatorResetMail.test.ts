@@ -19,10 +19,10 @@ const RESET_URL = "https://admin.bigelephant.es/#/restablecer";
 
 const ring = keyringFromEnv({ REGISTRY_KEYS: `k1:${crypto.randomBytes(32).toString("base64")}`, REGISTRY_ACTIVE_KEY_ID: "k1" } as NodeJS.ProcessEnv);
 
-async function setup(email: string, mode = "sandbox") {
+async function setup(email: string, mode = "sandbox", extra: Record<string, string> = {}) {
   const store = new MemoryMailStore();
   const provider = memoryProvider();
-  const policy = mailPolicyFromEnv({ MAIL_MODE: mode, MAIL_SENDING_DOMAIN: "bigelephant.es", MAIL_SANDBOX_ALLOWLIST: "bigelephant.es" } as NodeJS.ProcessEnv);
+  const policy = mailPolicyFromEnv({ MAIL_MODE: mode, MAIL_SENDING_DOMAIN: "bigelephant.es", MAIL_SANDBOX_ALLOWLIST: "bigelephant.es", ...extra } as NodeJS.ProcessEnv);
   const mailer = new PlatformMailer(new MailService({ lane: "platform", store, provider, policy }), policy);
   const svc = new OperatorAuthService(new MemoryOperatorStore(), { mailer: outboxResetMailer(mailer), resetUrl: RESET_URL, mfaKeyring: ring });
   await svc.bootstrap({ username: "jorge", displayName: "Jorge", email, password: PW });
@@ -73,6 +73,17 @@ describe("restablecimiento de operadores por la bandeja de la plataforma", () =>
     await expect(svc.confirmReset(token, "Tercera-Clave-Segura-Prado-2026!")).rejects.toMatchObject({ code: "invalid_reset_token" });
   });
 
+  it("con el ámbito de production (solo platform) y password_reset en las categorías, el enlace sale (incidencia 29/10/2026)", async () => {
+    const scope = { MAIL_SCOPE_TENANTS: "platform", MAIL_SCOPE_CATEGORIES: "lead_request_notice,contract_invitation,password_reset" };
+    const { svc, store, provider } = await setup("ops@bigelephant.es", "sandbox", scope);
+    await svc.requestReset("jorge");
+    expect(provider.sent).toHaveLength(1);
+    expect(store.rows[0]).toMatchObject({ status: "accepted", tenantId: "platform", category: "password_reset" });
+    // Sin password_reset en las categorías, la bandeja lo rechaza: por eso el arranque no ofrece la recuperación
+    const sin = await setup("ops@bigelephant.es", "sandbox", { ...scope, MAIL_SCOPE_CATEGORIES: "lead_request_notice,contract_invitation" });
+    await sin.svc.requestReset("jorge");
+    expect(sin.provider.sent).toHaveLength(0);
+  });
   it("en sandbox, un destinatario fuera de la lista no recibe nada y tampoco queda el enlace", async () => {
     const { svc, store, provider } = await setup("jorge@gmail.example");
     await svc.requestReset("jorge");
