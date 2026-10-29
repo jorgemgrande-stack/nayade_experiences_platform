@@ -12,6 +12,8 @@
  *  - El cliente de Stripe de PRUEBAS no se toca aquí (no hay clave de pruebas en production): solo su enlace local.
  */
 import mysql from "mysql2/promise";
+import { databaseNameFor } from "../provisioning/mysqlAdapters";
+import { restoredUserFor } from "./backupRestore";
 
 export const PURGE_TARGETS = [
   { tenantId: "t1-empresa-demo-elephant-a", companyName: "Empresa Demo Elephant A" },
@@ -238,6 +240,27 @@ export async function planPurge(d: { crm: Q; registry: Q; tenantDbName?: (tenant
     databases,
     kept: [...REGISTRY_KEPT.map((t) => `registro.${t} (copias de seguridad)`), ...CRM_PROTECTED.map((t) => `crm.${t}`), "cliente de Stripe de pruebas (se elimina en el Dashboard de Stripe en modo test)"],
     problems,
+  };
+}
+
+/**
+ * Borra la base RESTAURADA activa de una empresa de la lista cerrada y su usuario propio en cada servidor indicado.
+ * Solo admite el nombre exacto `es_<empresa>_r<AAAAMMDDhhmmss>` de una empresa de `PURGE_TARGETS`.
+ */
+export async function dropRestoredTestDatabase(admins: Array<Pick<mysql.Pool, "query">>, tenantId: string, database: string): Promise<void> {
+  if (!PURGE_TARGETS.some((t) => t.tenantId === tenantId)) throw new Error(`${tenantId} no está en la lista cerrada de la purga`);
+  if (!new RegExp(`^${databaseNameFor(tenantId)}_r\\d{14}$`).test(database)) throw new Error(`${database} no es una base restaurada de ${tenantId}`);
+  for (const admin of admins) {
+    await admin.query(`DROP DATABASE IF EXISTS \`${database}\``);
+    await admin.query("DROP USER IF EXISTS ?@?", [restoredUserFor(database), "%"]);
+  }
+}
+
+/** Funciones de borrado de bases para `applyPurge` (sin servidor de bases de datos, ninguna). */
+export function purgeDatabaseDroppers(dbs: { dropDatabase(tenantId: string): Promise<void> } | null, admins: Array<Pick<mysql.Pool, "query">> | null) {
+  return {
+    dropDatabase: dbs ? (t: string) => dbs.dropDatabase(t) : undefined,
+    dropRestoredDatabase: admins ? (t: string, database: string) => dropRestoredTestDatabase(admins, t, database) : undefined,
   };
 }
 
