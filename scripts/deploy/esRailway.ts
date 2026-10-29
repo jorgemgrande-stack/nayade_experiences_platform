@@ -172,8 +172,14 @@ async function functional(env: string, set: Record<string, Array<{ url: string; 
 
 /** Acceso al administrador central: login, recuperación, rechazo anónimo. Sin efectos (la cuenta de la sonda no existe). */
 async function access(env: string): Promise<boolean> {
-  const { base, resetRequired } = ACCESS_CHECKS[env];
+  const { base, resetRequired, auth } = ACCESS_CHECKS[env];
   const cp = `${base}/cp/v1`;
+  const gw = (process.env.ES_GATEWAY_AUTH ?? "").trim();
+  if (auth && !gw) {
+    console.error(`${base}: falta ES_GATEWAY_AUTH`);
+    return false;
+  }
+  const gate: Record<string, string> = auth ? { authorization: "Basic " + Buffer.from(gw).toString("base64") } : {};
   const json = async (r: Response | null) => {
     const raw = r ? await r.text().catch(() => "") : "";
     let body: any = null;
@@ -183,14 +189,14 @@ async function access(env: string): Promise<boolean> {
     return { status: r?.status ?? 0, body, raw };
   };
   const post = (p: string, body: unknown) =>
-    fetch(cp + p, { method: "POST", redirect: "manual", headers: { "content-type": "application/json", origin: base }, body: JSON.stringify(body) }).catch(() => null);
+    fetch(cp + p, { method: "POST", redirect: "manual", headers: { ...gate, "content-type": "application/json", origin: base }, body: JSON.stringify(body) }).catch(() => null);
   let problems: string[] = [];
   for (let i = 0; i < 4; i++) {
     if (i) await new Promise((r) => setTimeout(r, 15_000));
     const probe = {
-      options: await json(await fetch(`${cp}/auth/options`).catch(() => null)),
-      anonSession: (await fetch(`${cp}/auth/session`, { redirect: "manual" }).catch(() => null))?.status ?? 0,
-      anonPrivate: (await fetch(`${cp}/crm/companies`, { redirect: "manual" }).catch(() => null))?.status ?? 0,
+      options: await json(await fetch(`${cp}/auth/options`, { headers: gate }).catch(() => null)),
+      anonSession: (await fetch(`${cp}/auth/session`, { redirect: "manual", headers: gate }).catch(() => null))?.status ?? 0,
+      anonPrivate: (await fetch(`${cp}/crm/companies`, { redirect: "manual", headers: gate }).catch(() => null))?.status ?? 0,
       badLogin: await json(await post("/auth/login", { username: ACCESS_PROBE_USER, password: crypto.randomBytes(18).toString("base64url") })),
       reset: await json(await post("/auth/password-reset/request", { username: ACCESS_PROBE_USER })),
     };

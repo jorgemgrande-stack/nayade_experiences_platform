@@ -405,8 +405,9 @@ export const FUNCTIONAL_CHECKS: Record<string, Array<{ url: string; expect: numb
  * por correo debe estar disponible (false: solo se informa). Nada de esto envía correos: la cuenta de la sonda
  * no existe, y a una cuenta inexistente nunca se le envía nada.
  */
-export const ACCESS_CHECKS: Record<string, { base: string; resetRequired: boolean }> = {
-  live: { base: "https://elephant-source-crm-live.up.railway.app", resetRequired: false },
+export const ACCESS_CHECKS: Record<string, { base: string; resetRequired: boolean; auth?: boolean }> = {
+  // Live va tras la pasarela del equipo (autenticación básica, que Caddy no reenvía al plano de control)
+  live: { base: "https://elephant-source-crm-live.up.railway.app", resetRequired: false, auth: true },
   production: { base: "https://admin.bigelephant.es", resetRequired: true },
 };
 export const ACCESS_PROBE_USER = "sonda-despliegue-inexistente";
