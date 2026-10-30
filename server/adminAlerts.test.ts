@@ -226,8 +226,9 @@ describe("incidencias → alertas", () => {
     expect(id({ dedupeKey: "rate:mail.send_failed", severity: "critical" })).toBe("admin.integration_error");
     expect(id({ dedupeKey: "rate:stripe.items_drift", severity: "critical" })).toBe("admin.billing_error");
     expect(id({ dedupeKey: "backup.stale:empresa" })).toBe("admin.backup_failed");
-    expect(id({ dedupeKey: "quota:empresa:users:month", severity: "warning" })).toBe("admin.quota_near");
-    expect(id({ dedupeKey: "quota:empresa:users:month", severity: "critical" })).toBe("admin.quota_reached");
+    // Las cuotas las avisa la vigilancia de consumo (umbrales 70/85/100): la incidencia no repite el aviso
+    expect(id({ dedupeKey: "quota:empresa:users:month", severity: "warning" })).toBeNull();
+    expect(id({ dedupeKey: "quota:empresa:users:month", severity: "critical" })).toBeNull();
     expect(id({ dedupeKey: "rate:provisioning.failed", severity: "critical" })).toBe("admin.provisioning_failed");
     expect(id({ dedupeKey: "algo.nuevo", severity: "critical" })).toBe("admin.critical_incident");
     expect(id({ dedupeKey: "tenant.suspended:empresa" })).toBeNull();

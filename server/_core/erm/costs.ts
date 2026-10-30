@@ -59,10 +59,31 @@ export const ESTIMATED_COST_MODEL: CostModel = {
     // Referencia pública: imagen ≈ 0,04 USD; transcripción ≈ 0,006 USD por minuto de audio
     { metric: "ai.image.generated", label: "IA: imágenes generadas", unit: "imagen", per: 1, centsPerUnit: 3.7 },
     { metric: "ai.audio.seconds", label: "IA: audio transcrito", unit: "minuto", per: 60, centsPerUnit: 0.56 },
+    // Integraciones externas: el coste se mide en micro-USD (devuelto por el proveedor o estimado con
+    // EXTERNAL_REFERENCE_PRICES) y aquí solo se convierte a euros (1 USD ≈ 0,92 EUR). GHL no tiene tarifa: su API no
+    // se cobra por llamada (va en la suscripción de la cuenta) y los mensajes que cobra no vienen en la respuesta.
+    { metric: "ext.vapi.cost.measured_microusd", label: "Vapi: coste devuelto por el proveedor", unit: "USD", per: 1e6, centsPerUnit: 92 },
+    { metric: "ext.vapi.cost.estimated_microusd", label: "Vapi: coste estimado (minutos × tarifa)", unit: "USD", per: 1e6, centsPerUnit: 92 },
+    { metric: "ext.maps.cost.estimated_microusd", label: "Google Maps: coste estimado (llamadas × tarifa)", unit: "USD", per: 1e6, centsPerUnit: 92 },
   ],
   sharedMonthlyCents: 0,
   sharedBasis: "http.request",
 };
+
+/**
+ * Precios públicos de referencia de las integraciones externas (USD por unidad), SOLO para estimar cuando la respuesta
+ * del proveedor no trae el coste. Son una ESTIMACIÓN: no descuentan los tramos gratuitos mensuales ni los precios
+ * negociados. Lo que no tiene precio público conocido no aparece (y no se estima):
+ *  - Vapi: tarifa de plataforma de 0,05 USD por minuto (sin el coste del modelo, la voz y la telefonía, que solo se
+ *    conoce cuando Vapi devuelve `cost`);
+ *  - Google Maps (lista de precios por 1.000 peticiones): geocodificación, rutas, matriz de distancias (por elemento),
+ *    elevación y zona horaria 5 USD; búsqueda de sitios (texto y cercanía) 32 USD; detalle de un sitio 17 USD.
+ * GHL (HighLevel): sin precio por llamada a la API; no se estima.
+ */
+export const EXTERNAL_REFERENCE_PRICES = {
+  vapi: { minute: 0.05 },
+  maps: { geocode: 0.005, directions: 0.005, distancematrix: 0.005, elevation: 0.005, timezone: 0.005, "place/textsearch": 0.032, "place/nearbysearch": 0.032, "place/details": 0.017 },
+} as const satisfies Record<string, Record<string, number>>;
 
 const metricRe = /^[a-z][a-z0-9_.]{1,63}$/;
 export const costModelInputSchema = z
