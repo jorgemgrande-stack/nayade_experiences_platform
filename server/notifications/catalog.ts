@@ -357,7 +357,10 @@ export const TEMPLATE_CATALOG: readonly TemplateSpec[] = [
     render: (v, o) => layout(brand(o.supportEmail), "Nuevo inicio de sesión en tu cuenta", ["Hemos detectado un acceso a tu cuenta desde un dispositivo que no habíamos visto antes."], null, { family: "security", eyebrow: "Seguridad de tu cuenta", hero: "seguridad", blocks: [{ card: { rows: [{ label: "Fecha", value: date(v.at) }, { label: "Ubicación aproximada", value: txt(v.approximateLocation, "Desconocida") }] } }, { h2: "¿No has sido tú?" }, { p: "Cambia tu contraseña cuanto antes y revisa la verificación en dos pasos en la configuración de tu cuenta." }, { tip: { icon: "escudo", title: "Mantén tu cuenta segura", text: "Te recomendamos usar una contraseña segura y activar la verificación en dos pasos." } }] }),
   },
   {
-    ...contract("security.mfa_changed", "security", "operational", "Segundo factor activado o desactivado", "account_user", ["at", "enabled"], "Tras cada cambio"),
+    ...contract("security.mfa_changed", "security", "security_notice", "Segundo factor de un operador activado o retirado (OperatorAuthService → outboxMfaNotice); las empresas aún no tienen segundo factor", "account_user", ["at", "enabled"], "Tras cada cambio"),
+    status: "legacy",
+    suppressWhen: "MAIL_MODE=off; operador sin correo; ámbito sin security_notice",
+    idempotency: "operator-mfa:<operador>:<on|off>:<instante>",
     render: (v, o) => layout(brand(o.supportEmail), v.enabled ? "Has activado la verificación en dos pasos" : "Has desactivado la verificación en dos pasos", [`El cambio se registró el ${date(v.at)}.`], null, { family: "security", eyebrow: "Seguridad de tu cuenta", hero: "seguridad", blocks: [{ notice: { tone: v.enabled ? "success" : "warning", text: v.enabled ? "Tu cuenta tiene ahora una capa adicional de protección." : "Tu cuenta queda protegida solo por la contraseña. Te recomendamos volver a activarla." } }, { p: "Si no has hecho tú este cambio, contacta con soporte inmediatamente." }] }),
   },
   // ── Datos de la empresa: exportación (server/dataExport; marca de la empresa, sin el enlace de descarga) ──

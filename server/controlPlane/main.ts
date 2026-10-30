@@ -96,7 +96,7 @@ import { SsoService, parseSsoUsers } from "./sso";
 import { createRemoteJWKSet } from "jose";
 import { operatorAuthFromEnv } from "./operatorSetup";
 import { DEFAULT_CORE_INTERNAL_URL, coreAccessClient } from "./tenantAccess";
-import { outboxResetMailer, resetUnavailableReason } from "./operatorResetMail";
+import { outboxMfaNotice, outboxResetMailer, resetUnavailableReason } from "./operatorResetMail";
 import { LeadNoticeService, MysqlSettingsStore, crmUrlFromEnv, settingsTablesReady } from "../crm/leadNotices";
 import { AdminAlertService } from "../adminAlerts/service";
 import { MysqlAdminAlertStore, adminAlertTablesReady } from "../adminAlerts/store";
@@ -283,7 +283,9 @@ async function main() {
   // solo si el correo no está apagado (con MAIL_MODE=off no se ofrece en vez de fingir un envío)
   // Tampoco si el ámbito del correo lo deja fuera (p. ej. production solo con los avisos de solicitudes)
   const operatorResetMailer = platformMail.mailer && mailPolicy.mode !== "off" && scopeAllows(mailPolicy, "platform", "password_reset") ? outboxResetMailer(platformMail.mailer) : undefined;
-  const operators = await operatorAuthFromEnv(pool, process.env, { keyring: ring, resetMailer: operatorResetMailer });
+  // Aviso de seguridad al operador al activar o retirar su segundo factor (si el ámbito del correo lo permite)
+  const operatorMfaNotice = platformMail.mailer && mailPolicy.mode !== "off" && scopeAllows(mailPolicy, "platform", "security_notice") ? outboxMfaNotice(platformMail.mailer) : undefined;
+  const operators = await operatorAuthFromEnv(pool, process.env, { keyring: ring, resetMailer: operatorResetMailer, securityNotice: operatorMfaNotice });
   // Avisos internos de solicitudes web (CRM 0025): destinatarios elegidos en el CRM entre los operadores; salen por la
   // bandeja de la plataforma con su política (modo, destinatarios autorizados, ámbito). Sin migración, no se monta.
   let leadNotices: LeadNoticeService | null = null;

@@ -14,6 +14,7 @@ import type { PlatformMailer } from "../mail/platform";
 import { scopeAllows, type MailPolicy } from "../mail/policy";
 import type { ResetMailer } from "./operatorAuth";
 import { passwordResetContent } from "../mail/accountTemplates";
+import { TEMPLATE_CATALOG } from "../notifications/catalog";
 
 /** Por qué la recuperación de contraseña de los operadores NO está disponible (null: lo está). Para el registro de arranque. */
 export function resetUnavailableReason(o: { resetUrl: string | undefined; smtp: boolean; mailer: boolean; policy: Pick<MailPolicy, "mode" | "scope"> }): string | null {
@@ -36,5 +37,17 @@ export function outboxResetMailer(mailer: PlatformMailer): ResetMailer {
       await mailer.send(null, key, "password_reset", to, { subject, html, text });
       await mailer.service.drain(5).catch(() => undefined);
     },
+  };
+}
+
+/**
+ * Aviso de seguridad al operador tras activar o retirar su verificación en dos pasos (plantilla security.mfa_changed,
+ * sin enlaces). Por la bandeja de la plataforma, con su política (modo, autorizados y ámbito).
+ */
+export function outboxMfaNotice(mailer: PlatformMailer): (to: string, i: { key: string; at: number; enabled: boolean }) => Promise<void> {
+  const spec = TEMPLATE_CATALOG.find((t) => t.id === "security.mfa_changed")!;
+  return async (to, i) => {
+    const content = spec.render!({ at: i.at, enabled: i.enabled }, { supportEmail: mailer.policy.supportEmail ?? null });
+    await mailer.send(null, i.key, "security_notice", to, content);
   };
 }
