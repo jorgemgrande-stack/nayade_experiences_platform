@@ -66,6 +66,8 @@ on:
           - correo-contratos-activar
           - correo-alertas-admin-estado
           - correo-alertas-admin-activar
+          - correo-production-estado
+          - correo-production-activar
           - catalogo-revision
           - catalogo-revision-aplicar
           - catalogo-fichas
@@ -323,6 +325,17 @@ jobs:
           esac
 
       # Alertas administrativas internas (operational): igual que los contratos, con los buzones internos en «destinatarios»
+      # Correo REAL de production (plano de control y Core): estado (lectura) y activar (sale del sandbox con la lista
+      # explícita de categorías; consentimiento, bajas, límites e idempotencia siguen en el código). Live sigue en sandbox.
+      - name: Correo real de production
+        if: startsWith(inputs.action, correo-production-)
+        run: |
+          if [ "${ES_ENV}" != "production" ]; then echo "El correo real solo se activa en production"; exit 1; fi
+          case "${ES_ACTION}" in
+            correo-production-estado) pnpm exec tsx scripts/deploy/esRailway.ts mail-production --env "${ES_ENV}" --accion estado ;;
+            correo-production-activar) pnpm exec tsx scripts/deploy/esRailway.ts mail-production --env "${ES_ENV}" --accion activar ;;
+          esac
+
       - name: Correo de alertas administrativas
         if: startsWith(inputs.action, 'correo-alertas-admin-')
         run: |
