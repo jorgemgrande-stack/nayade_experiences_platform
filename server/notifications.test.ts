@@ -22,7 +22,7 @@ const NOW = Date.UTC(2026, 9, 20, 9);
 const REQUIRED = [
   "trial.verification", "trial.started", "trial.reminder", "trial.ended",
   "subscription.signup_received", "subscription.contract_confirmed", "subscription.initial_payment", "subscription.payment_action_required", "subscription.renewal_paid",
-  "subscription.payment_failed", "subscription.dunning_reminder", "subscription.suspended", "subscription.recovered", "subscription.plan_changed", "subscription.cancellation", "subscription.ended",
+  "subscription.payment_failed", "subscription.grace_reminder", "subscription.dunning_reminder", "subscription.suspended", "subscription.recovered", "subscription.plan_changed", "subscription.cancellation", "subscription.ended",
   "module.purchase_requested", "module.activated", "module.quantity_changed", "module.removal_scheduled", "module.removal_effective", "module.purchase_failed",
   "billing.invoice_available", "billing.refund_recorded", "billing.credit_note", "billing.incident",
   "support.ticket_received", "support.ticket_replied", "support.ticket_resolved", "support.ticket_reopened",

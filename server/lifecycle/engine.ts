@@ -6,14 +6,16 @@
  *
  *   renovación o fin de periodo     → `orchestrator.review` (renew: periodo nuevo o cancelación efectiva)
  *   recibo vencido sin pagar        → `orchestrator.review` (activo → impago, con gracia)
- *   gracia agotada (sin Stripe)     → `orchestrator.review` (impago → suspendido, licencias suspendidas)
+ *   gracia agotada                  → `orchestrator.review` (impago → suspendido, licencias suspendidas; en
+ *                                     Stripe solo si su estado ACTUAL sigue impagado)
  *   partidas que empiezan o acaban  → `licensing.apply` (solo altas nuevas, bajas y cambios de fecha;
  *                                     nunca reactiva una licencia suspendida o en solo lectura)
  *
  * Lo demás solo se SEÑALA, para quien deba actuar:
- *   avisos de impago y de fin de prueba  → el futuro despachador de notificaciones (no se envía nada);
+ *   recordatorios de la gracia (día > 0) → evento `order.dunning_notice` (lo envía el despachador); el día 0 lo
+ *                                          avisa el orquestador al entrar en impago;
+ *   avisos de fin de prueba              → la tarea de pruebas existente (no se envía nada desde aquí);
  *   vencimiento de la prueba             → la tarea de pruebas existente (`CP_TRIALS_SCHEDULER_ENABLED`);
- *   impago de un pedido cobrado en Stripe → Stripe (sus reintentos deciden la suspensión);
  *   revisión de conservación (D-17)      → un operador. Nada se archiva ni se borra.
  *   aviso previo al archivado            → evento `access.archive_notice` (lo envía el despachador). No archiva.
  *
@@ -79,7 +81,7 @@ export interface LifecycleRun {
   mode: LifecyclePolicy["mode"];
   skipped: "locked" | null;
   planned: LifecyclePlan["counts"];
-  applied: { review: Record<string, number> | null; licenceSynced: number; readOnlyEnded: number; archiveNotices: number };
+  applied: { review: Record<string, number> | null; licenceSynced: number; readOnlyEnded: number; archiveNotices: number; dunningNotices: number };
   errors: number;
 }
 
@@ -175,7 +177,7 @@ export class LifecycleEngine {
       const since = o.graceEndsAt - this.d.graceMs;
       const day = this.lastReached(since, this.d.policy.dunningDays, now, 1);
       if (day !== null && now < o.graceEndsAt) out.push(this.action("dunning_notice", "notifications", since + day * DAY, ids, { day, graceEndsAt: o.graceEndsAt, managedBy: managed }));
-      if (now >= o.graceEndsAt) out.push(stripe ? this.action("stripe_dunning", "stripe", o.graceEndsAt, ids, { graceEndsAt: o.graceEndsAt }) : this.action("suspend", "engine", o.graceEndsAt, ids, { graceEndsAt: o.graceEndsAt }));
+      if (now >= o.graceEndsAt) out.push(this.action("suspend", "engine", o.graceEndsAt, ids, { graceEndsAt: o.graceEndsAt, managedBy: managed }));
     }
     const lic = await this.licencePlan(o);
     if (lic) {
@@ -227,7 +229,7 @@ export class LifecycleEngine {
 
   /** Un tick: planifica y, en modo «apply», ejecuta lo que corresponde al motor. */
   async run(now = this.now()): Promise<LifecycleRun> {
-    const out: LifecycleRun = { at: now, mode: this.d.policy.mode, skipped: null, planned: {}, applied: { review: null, licenceSynced: 0, readOnlyEnded: 0, archiveNotices: 0 }, errors: 0 };
+    const out: LifecycleRun = { at: now, mode: this.d.policy.mode, skipped: null, planned: {}, applied: { review: null, licenceSynced: 0, readOnlyEnded: 0, archiveNotices: 0, dunningNotices: 0 }, errors: 0 };
     const release = this.d.lock ? await this.d.lock.acquire(LIFECYCLE_LOCK) : async () => undefined;
     if (!release) {
       out.skipped = "locked";
@@ -291,6 +293,38 @@ export class LifecycleEngine {
             out.errors++;
           }
         }
+        // Recordatorios de la gracia: un evento por umbral y por impago (la clave lo hace idempotente). El día 0 ya lo
+        // avisa el orquestador al entrar en impago; lo envía el despachador
+        for (const a of plan.actions.filter((x) => x.kind === "dunning_notice" && typeof x.detail.day === "number" && x.detail.day > 0)) {
+          if (!this.d.events || a.orderId === null) break;
+          try {
+            const o = (await this.d.orders.list({ states: ["past_due"], limit: BATCH })).find((x) => x.id === a.orderId);
+            if (!o || o.graceEndsAt !== a.detail.graceEndsAt) continue;
+            const r = await this.d.events.append(null, [
+              {
+                key: `order:${o.id}:dunning:${o.graceEndsAt}:${a.detail.day}`,
+                type: "order.dunning_notice",
+                aggregate: { type: "order", id: String(o.id), version: o.version },
+                correlationId: `order:${o.id}`,
+                tenantId: o.tenantId,
+                companyId: o.companyId,
+                orderId: o.id,
+                subscriptionId: o.subscriptionId,
+                trialId: o.trialId,
+                paymentId: null,
+                stripeRef: null,
+                fromState: null,
+                toState: null,
+                actor: LIFECYCLE_ACTOR,
+                occurredAt: now,
+                data: { day: a.detail.day, graceEndsAt: o.graceEndsAt },
+              },
+            ]);
+            out.applied.dunningNotices += r.written;
+          } catch {
+            out.errors++;
+          }
+        }
         // Avisos previos al archivado: un evento por umbral (la clave lo hace idempotente); lo envía el despachador
         for (const a of plan.actions.filter((x) => x.kind === "archive_notice")) {
           if (!this.d.events) break;
@@ -325,7 +359,7 @@ export class LifecycleEngine {
     } finally {
       await release().catch(() => undefined);
     }
-    if (Object.keys(out.planned).length || out.errors) opsLog(out.errors ? "warn" : "info", "Lifecycle", "tick", { mode: out.mode, planned: out.planned, review: out.applied.review, licenceSynced: out.applied.licenceSynced, readOnlyEnded: out.applied.readOnlyEnded, archiveNotices: out.applied.archiveNotices, errors: out.errors });
+    if (Object.keys(out.planned).length || out.errors) opsLog(out.errors ? "warn" : "info", "Lifecycle", "tick", { mode: out.mode, planned: out.planned, review: out.applied.review, licenceSynced: out.applied.licenceSynced, readOnlyEnded: out.applied.readOnlyEnded, archiveNotices: out.applied.archiveNotices, dunningNotices: out.applied.dunningNotices, errors: out.errors });
     return out;
   }
 }

@@ -31,11 +31,10 @@ Todo eso dependía de que un operador llamara a `POST /orders/review`. El motor 
 | `renew` | El periodo de la suscripción interna terminó | Motor → `orchestrator.review` → `renew` |
 | `end_subscription` | Terminó un periodo con cancelación programada | Motor → `review` → `renew` (cancelación efectiva y licencias canceladas) |
 | `mark_past_due` | Recibo de renovación vencido sin pagar | Motor → `review` (activo → impago, gracia de 7 días) |
-| `suspend` | Gracia agotada, en un pedido **no** cobrado en Stripe | Motor → `review` (suspendido; licencias suspendidas, datos intactos) |
+| `suspend` | Gracia de 7 días agotada | Motor → `review` (suspendido; licencias suspendidas, datos intactos). En un pedido cobrado en Stripe, solo si su estado **actual** en Stripe (releído en la API) sigue `past_due` o `unpaid`; pagado, cancelado o sin respuesta → no se suspende. El pago posterior lo reactiva por webhook |
 | `licence_sync` | Partidas que empiezan o terminan por fecha | Motor → `licensing.apply`. Solo bajas, altas nuevas o cambios de fecha |
 | `licence_drift` | Diferencia que reactivaría algo suspendido, en solo lectura o cancelado | **Operador**: no se aplica |
-| `dunning_notice` | Días 0, 3 y 6 tras el impago (D-15 propuesto) | **Despachador de notificaciones** (PR futuro): no se envía nada |
-| `stripe_dunning` | Gracia agotada en un pedido cobrado en Stripe | **Stripe**: sus reintentos deciden la suspensión, que llega por webhook |
+| `dunning_notice` | Días 0, 3 y 6 tras el impago (D-15 propuesto) | Día 0: el orquestador (`subscription.payment_failed`). Días > 0: en modo `apply`, evento `order.dunning_notice` (uno por impago y umbral) que envía el despachador (`subscription.grace_reminder`) |
 | `trial_notice` | 7, 3 y 1 días antes del fin de la prueba (D-16 propuesto) | **Despachador** (PR futuro) |
 | `trial_expire` | Prueba activa con el plazo vencido | **Tarea de pruebas** existente (`CP_TRIALS_SCHEDULER_ENABLED`) |
 | `retention_review` | 30 días tras el fin de una prueba o de una suscripción (D-17 propuesto) | **Operador**. Nada se archiva ni se borra |

@@ -96,6 +96,32 @@ export const TEMPLATE_CATALOG: readonly TemplateSpec[] = [
   stripe("subscription.dunning_reminder", "subscription", "payment_failed", "Reintentos de Stripe (Smart Retries): Stripe avisa de cada intento fallido; Elephant solo avisa el día 0", "Settings → Customer emails → «Send emails when card payments fail» y reintentos de Billing"),
   stripe("billing.invoice_document", "billing", "invoice_available", "Factura y recibo de Stripe (PDF): los envía Stripe; Elephant solo avisa de que está disponible", "Settings → Customer emails → «Successful payments» y «Finalized invoices»"),
   {
+    id: "subscription.grace_reminder",
+    version: 1,
+    group: "subscription",
+    status: "active",
+    audience: "transactional",
+    trigger: "Recordatorio durante la gracia de 7 días de un impago (Elephant suspende al terminarla, aunque Stripe siga reintentando)",
+    events: ["order.dunning_notice"],
+    recipient: "billing_contact",
+    category: "payment_failed",
+    variables: ["reference", "graceEndsAt", "host"],
+    sendWhen: "En cada umbral de CP_LIFECYCLE_DUNNING_DAYS mayor que 0 (por defecto, días 3 y 6), mientras siga el impago",
+    suppressWhen: "Pago regularizado; MAIL_MODE=off; sin contacto de facturación; destinatario suprimido",
+    idempotency: EVENT_KEY,
+    render: (v, o) =>
+      layout(
+        brand(o.supportEmail),
+        `Tu suscripción se suspenderá el ${date(v.graceEndsAt)}`,
+        [
+          `Seguimos sin poder cobrar tu suscripción${ref(v)}. Si el pago no se completa, el ${date(v.graceEndsAt)} suspenderemos el acceso.`,
+          "Puedes actualizar tu método de pago desde Mi suscripción. Tus datos se conservan en todo caso.",
+        ],
+        panel(v.host),
+        { eyebrow: "Recordatorio de cobro", hero: "aviso", blocks: [{ card: { status: { label: "Pago pendiente", tone: "warning" }, rows: [...(v.reference ? [{ label: "Pedido", value: String(v.reference) }] : []), { label: "Suspensión prevista", value: date(v.graceEndsAt) }] } }, { notice: { tone: "info", text: "En cuanto se complete el pago, todo sigue igual y no tienes que hacer nada más." } }] },
+      ),
+  },
+  {
     id: "subscription.suspended",
     version: 1,
     group: "subscription",

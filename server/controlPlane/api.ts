@@ -1990,6 +1990,22 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
       // Orquestador comercial: encadena contrato → confirmación → suscripción → licencias → activación
       const licensing = new LicensingService({ capabilities: d.capabilities, subscriptions: d.subscriptions.store, crm: crmPort, catalog: async () => quoteCatalogFromSite(await webAdmin!.site("published")), now: d.subscriptions.now, limits: d.limits, events: d.commercialEvents?.append ? (d.commercialEvents as CommercialEventSink) : undefined });
       const coverageHeld = d.stripe ? async (orderId: number) => (await d.stripe!.store.activeHolds(orderId)).length > 0 : undefined;
+      // Fin de la gracia de un pedido cobrado en Stripe: su estado se relee en la API (nunca de la copia ni de un evento)
+      const stripeStatus = d.stripe
+        ? async (o: { id: number; companyId: number | null }) => {
+            const st = d.stripe!;
+            if (!o.companyId) return null;
+            for (const id of await st.store.subscriptionsOfCompany(o.companyId)) {
+              if ((await st.store.subscription(id))?.orderId !== o.id) continue;
+              const sub = await st.gateway.subscription(id);
+              if (!sub || sub.metadata.es_env !== st.config.namespace) return null;
+              if (sub.status === "past_due" || sub.status === "unpaid") return sub.status;
+              if (sub.status === "active" || sub.status === "trialing") return "active" as const;
+              return sub.status === "canceled" || sub.status === "incomplete_expired" ? ("canceled" as const) : null;
+            }
+            return null;
+          }
+        : undefined;
       const ordersStore = d.orders.store;
       const tenantStatusSync = new TenantStatusSync({
         getTenant: (id) => d.reader.getTenant(id),
@@ -2016,6 +2032,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         mode: ordersMode,
         graceDays: d.orders.graceDays,
         coverageHeld,
+        stripeStatus,
         // Estado de la empresa en el registro según su situación comercial (nunca la deja en «trial» si ya paga)
         tenantStatus: tenantStatusSync,
         now: d.subscriptions.now,

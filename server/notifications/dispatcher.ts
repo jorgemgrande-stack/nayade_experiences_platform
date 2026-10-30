@@ -75,6 +75,7 @@ export class NotificationDispatcher {
       full: scalar(data.full),
       readOnlyUntil: scalar(data.validUntil) ?? scalar(data.readOnlyUntil),
       archiveAt: scalar(data.archiveAt),
+      graceEndsAt: scalar(data.graceEndsAt),
     };
     // La dirección de un cambio de cantidad se deduce si el evento no la trae (alta = sube, baja a 0 = baja)
     if (e.type === "subscription.quantity_changed" && v.direction === null) v.direction = typeof after.quantity === "number" && after.quantity > 0 ? "up" : "down";

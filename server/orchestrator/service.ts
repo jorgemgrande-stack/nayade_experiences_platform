@@ -97,6 +97,11 @@ export interface OrchestratorDeps {
    * cada cambio de estado ya guardado; un fallo nunca deshace el cambio y lo repara `review`.
    */
   tenantStatus?: Pick<TenantStatusSync, "syncSafely">;
+  /**
+   * Estado ACTUAL en Stripe de la suscripción de un pedido cobrado allí (releído en su API, nunca de un evento), o
+   * null si no se puede saber. Sin él, un pedido de Stripe nunca se suspende por fin de gracia (solo con «unpaid»).
+   */
+  stripeStatus?: (o: CommercialOrder) => Promise<"active" | "past_due" | "unpaid" | "canceled" | null>;
 }
 
 /**
@@ -939,10 +944,15 @@ export class CommercialOrchestrator {
             out.pastDue++;
           }
         }
-        if (!stripe && cur.state === "past_due" && cur.graceEndsAt !== null && cur.graceEndsAt <= now) {
-          cur = await this.move(cur, "suspend", actor, {}, { reason: "Fin del periodo de gracia sin pago" });
-          await this.syncLicences(cur, actor, `Suspensión por impago (pedido ${cur.reference}); los datos se conservan`);
-          out.suspended++;
+        if (cur.state === "past_due" && cur.graceEndsAt !== null && cur.graceEndsAt <= now) {
+          // En Stripe, la gracia de Elephant manda aunque Stripe siga reintentando; pero se suspende solo si su
+          // estado ACTUAL sigue impagado (un pago aún no notificado, o un evento atrasado, nunca suspende)
+          const live = stripe ? await this.stripeGraceStatus(cur) : null;
+          if (!stripe || live === "past_due" || live === "unpaid") {
+            cur = await this.move(cur, "suspend", actor, {}, { reason: "Fin del periodo de gracia sin pago", ...(stripe ? { source: "stripe_grace", stripeStatus: live } : {}) });
+            await this.syncLicences(cur, actor, `Suspensión por impago (pedido ${cur.reference}); los datos se conservan`);
+            out.suspended++;
+          }
         }
       });
     }
@@ -1041,6 +1051,19 @@ export class CommercialOrchestrator {
   /** ¿El pedido se cobra en Stripe Billing? (tiene pagos verificados de Stripe). */
   private async stripeBilled(o: CommercialOrder) {
     return (await this.d.store.payments(o.id)).some((p) => isStripeProvider(p.provider));
+  }
+
+  /** Estado actual en Stripe para decidir la suspensión por fin de gracia; ante cualquier duda, null (no se suspende). */
+  private async stripeGraceStatus(o: CommercialOrder) {
+    if (!this.d.stripeStatus) return null;
+    try {
+      const s = await this.d.stripeStatus(o);
+      if (s === null || s === "active" || s === "canceled") opsLog("info", "Orders", "stripe_grace_skipped", { orderId: o.id, stripeStatus: s });
+      return s;
+    } catch (e) {
+      opsLog("warn", "Orders", "stripe_grace_unverified", { orderId: o.id, error: e instanceof Error ? e.name : "error" });
+      return null;
+    }
   }
 
   /** ¿La última cancelación del pedido vino de Stripe? Solo esa la puede deshacer Stripe. */
