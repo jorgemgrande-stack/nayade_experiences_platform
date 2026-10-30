@@ -22,7 +22,7 @@ import type { FiscalDocument } from "../stripe/fiscalDocuments";
 import type { ExternalEvent, ExternalSubscription } from "../external/types";
 import type { CommercialEvent } from "../commercialEvents/types";
 import { UNMEASURED, type ResourceState, type TenantResources } from "../_core/erm/overview";
-import { variableCost, type CostModel, type TenantCost } from "../_core/erm/costs";
+import { costEvidence, variableCost, type CostModel, type TenantCost } from "../_core/erm/costs";
 
 export type Mode = "test" | "live";
 export type RevenueSource = "own_invoices" | "stripe_fiscal" | "stripe_external" | "payment_events";
@@ -160,12 +160,18 @@ export interface CostGap {
   label: string;
 }
 
-/** Lo que falta para que el coste sea completo (vacío = completo). */
-export function costGaps(model: Pick<CostModel, "sharedMonthlyCents">, tariffOrigin: "admin" | "entorno" | "estimación"): CostGap[] {
+/**
+ * Lo que falta para que el coste sea completo (vacío = completo). Una tarifa o un coste compartido configurados sin la
+ * factura que los respalda siguen contando como referencia: guardar valores no basta para dar el margen por exacto.
+ */
+export function costGaps(model: Pick<CostModel, "sharedMonthlyCents" | "rates" | "sharedEvidence">, tariffOrigin: "admin" | "entorno" | "estimación"): CostGap[] {
   const gaps: CostGap[] = [];
   const shared = model.sharedMonthlyCents > 0;
+  const ev = costEvidence(model);
   if (!shared) gaps.push({ key: "shared", label: "Coste fijo compartido sin configurar (servidores base, bases de datos, plan del proveedor)" });
+  else if (ev.sharedWithout) gaps.push({ key: "shared_evidence", label: "Coste fijo compartido sin factura de respaldo" });
   if (tariffOrigin === "estimación") gaps.push({ key: "rates", label: "Tarifas de referencia de precios públicos, no de las facturas reales de los proveedores" });
+  else if (ev.ratesWithout.length) gaps.push({ key: "rates", label: `Tarifas sin factura de respaldo: ${ev.ratesWithout.join(", ")}` });
   for (const u of UNMEASURED) {
     const kind = COST_RELEVANT[u.resource];
     if (!kind || (kind === "infra" && shared)) continue;

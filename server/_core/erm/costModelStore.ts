@@ -43,7 +43,7 @@ export function activeCostModel(stored: StoredCostModel | null, fallback: { mode
   if (stored) {
     const m = stored.model;
     return {
-      model: { source: "configuración", note: m.note ?? "Tarifas configuradas en Admin", currency: "EUR", rates: m.rates, sharedMonthlyCents: m.sharedMonthlyCents, sharedBasis: m.sharedBasis },
+      model: { source: "configuración", note: m.note ?? "Tarifas configuradas en Admin", currency: "EUR", rates: m.rates, sharedMonthlyCents: m.sharedMonthlyCents, sharedBasis: m.sharedBasis, ...(m.sharedEvidence ? { sharedEvidence: m.sharedEvidence } : {}) },
       error: null,
       origin: "admin",
       version: stored.version,
