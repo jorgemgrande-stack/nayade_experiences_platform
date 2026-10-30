@@ -1,7 +1,7 @@
 /**
  * Envío de PRUEBA de las comunicaciones de plataforma (POST /cp/v1/notifications/test-send): por la bandeja real, solo
- * con MAIL_MODE=sandbox (la política entrega únicamente a la lista de autorizados), con ámbito ops:write; en off o live,
- * 409. Una dirección fuera de la lista no recibe nada.
+ * con ámbito ops:write. En sandbox la política entrega únicamente a la lista de autorizados; con el correo real (live),
+ * solo se aceptan buzones de prueba autorizados por su dirección exacta (nunca un cliente); en off, 409.
  */
 import { describe, it, expect, afterEach } from "vitest";
 import { allTestEmails } from "./mail/testCatalog";
@@ -72,10 +72,20 @@ describe("envío de prueba de plataforma", () => {
     expect(r.body.results[0].status).not.toMatch(/accepted|delivered|queued/);
   });
 
-  it("off y live: 409 (nunca envía a clientes reales); sin ops:write, 403", async () => {
-    for (const mode of ["off", "live"] as const) {
-      const { post } = await start(mode);
-      expect((await post({ to: "jorge@pruebas.example" })).status, mode).toBe(409);
+  it("off: 409; live: solo a buzones de prueba autorizados, nunca a un cliente; sin ops:write, 403", async () => {
+    {
+      const { post } = await start("off");
+      expect((await post({ to: "jorge@pruebas.example" })).status).toBe(409);
+      await new Promise<void>((r) => server!.close(() => r()));
+      server = null;
+    }
+    {
+      const { post, provider } = await start("live");
+      expect((await post({ to: "cliente@empresa-real.example" })).status).toBe(403);
+      expect(provider.sent).toHaveLength(0);
+      const ok = await post({ to: "Jorge@Pruebas.example", ids: [allTestEmails()[0].id] });
+      expect(ok.status).toBe(200);
+      expect(provider.sent.map((m) => m.to)).toEqual(["jorge@pruebas.example"]);
       await new Promise<void>((r) => server!.close(() => r()));
       server = null;
     }
