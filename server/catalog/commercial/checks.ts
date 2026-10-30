@@ -9,6 +9,7 @@
  *  - lo que no tiene desarrollo solo admite lista de espera.
  */
 import type { ProductDraft } from "../../web/schemas";
+import { effectiveOffer } from "./offer";
 
 /** Importes escritos a mano. */
 export const MONEY_RE = /\d\s?€|€\s?\d|\beuros?\b/i;
@@ -229,6 +230,15 @@ export function commercialChecks(entry: CheckEntry, all: readonly CheckEntry[], 
   if (m?.seo) {
     const twin = all.find((e) => e.key !== entry.key && e.draft.commercial?.seo?.title === m.seo!.title);
     if (twin) blocking.push(`el título SEO ya lo usa «${twin.key}»`);
+  }
+  // ── Modalidad comercial: lo configurado que no se puede entregar se degrada (aviso) y sus condiciones son texto público ──
+  if (c.offer) {
+    // Los precios se comprueban al construir el sitio (checkout sin precio aprobado): aquí se supone que existen
+    const offer = effectiveOffer({ technicalStatus: d.technicalStatus, catalog: c, prices: [{}] });
+    for (const r of offer.reasons) warnings.push(`modalidad comercial: ${r}`);
+    // Solo la modalidad inmediata efectiva puede hablar de activación inmediata
+    const notes = c.offer.activationNotes ? textProblems(c.offer.activationNotes, { policyEnabled: opts.policyEnabled }) : [];
+    for (const p of notes) if (offer.modality !== "immediate" || !p.startsWith("promete activación inmediata")) blocking.push(`las condiciones de activación ${p}`);
   }
   if (!d.internal.evidence && entry.family !== "addon") warnings.push("sin evidencia del estado comercial");
   if (!grade) warnings.push("sin estado funcional verificado");

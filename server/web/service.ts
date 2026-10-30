@@ -21,6 +21,7 @@ import crypto from "node:crypto";
 import { ZodError } from "zod";
 import { CAPABILITY_IDS } from "../catalog/capabilities";
 import { commercialChecks, shapeProblems, type CheckEntry, type CommercialCheck } from "../catalog/commercial/checks";
+import { effectiveOffer } from "../catalog/commercial/offer";
 import { rulesStatus } from "../catalog/commercial/rules";
 import { policyFromProducts, type PolicyMode, type PolicySource } from "../catalog/commercial/fromCatalog";
 import type { CommercialPolicy } from "../catalog/commercial/policy";
@@ -428,7 +429,8 @@ export class WebAdminService {
         const b = body(e) as Record<string, unknown> & { technicalStatus?: string };
         const own = prices.filter((p) => p.entryId === e.id);
         const list = [...own.filter((p) => p.status === "approved").map((p) => publicPrice(p)), ...(preview ? own.filter((p) => p.status === "draft").map((p) => publicPrice(p, true)) : [])];
-        return { ...b, key: e.key, family: e.family as string, sortOrder: e.sortOrder, prices: list };
+        // Modalidad comercial EFECTIVA (aditiva): lo que la plataforma puede entregar, nunca más de lo configurado
+        return { ...b, key: e.key, family: e.family as string, sortOrder: e.sortOrder, prices: list, offer: effectiveOffer({ ...b, prices: list }) };
       });
     const productKeys = new Set(products.map((p) => p.key));
     const promotions = entries
@@ -456,9 +458,10 @@ export class WebAdminService {
    * Sitio PÚBLICO: el documento de `site()` sin los productos internos de pruebas (`catalog.internalOnly`) ni
    * nada que los nombre (paquetes, dependencias o promociones). Toda salida pública usa esta vista; `site()` sigue
    * completo para los usos internos (cotización del equipo, licencias, compra de las empresas de prueba).
+   * Tampoco incluye los productos con estado comercial «No publicado» (`withoutUnpublished`).
    */
   async publicSite(mode: "published" | "preview" = "published"): Promise<SiteDocument> {
-    return withoutInternal(await this.site(mode));
+    return withoutUnpublished(withoutInternal(await this.site(mode)));
   }
 
   // ── Política comercial ─────────────────────────────────────────────────────
@@ -657,6 +660,20 @@ export function withoutInternal(site: SiteDocument): SiteDocument {
   };
   const products = site.catalog.products.filter((p) => !internal.has(p.key) && !names(p as Record<string, unknown>)).map((p) => strip(p as Record<string, unknown>) as typeof p);
   const promotions = site.catalog.promotions.filter((p) => !((p as { products?: string[] }).products ?? []).some((k) => internal.has(k)));
+  const catalog = { ...site.catalog, products, promotions };
+  const version = crypto.createHash("sha256").update(JSON.stringify({ catalog, content: site.content, preview: site.preview })).digest("hex").slice(0, 16);
+  return { ...site, catalog, version };
+}
+
+/**
+ * Quita de la salida pública los productos con estado comercial «No publicado» y las promociones que los aplican. Sin
+ * ninguno, devuelve el documento tal cual (misma versión).
+ */
+export function withoutUnpublished(site: SiteDocument): SiteDocument {
+  const hidden = new Set(site.catalog.products.filter((p) => (p as { catalog?: { commercialStatus?: string } }).catalog?.commercialStatus === "unpublished").map((p) => p.key));
+  if (!hidden.size) return site;
+  const products = site.catalog.products.filter((p) => !hidden.has(p.key));
+  const promotions = site.catalog.promotions.filter((p) => !((p as { products?: string[] }).products ?? []).some((k) => hidden.has(k)));
   const catalog = { ...site.catalog, products, promotions };
   const version = crypto.createHash("sha256").update(JSON.stringify({ catalog, content: site.content, preview: site.preview })).digest("hex").slice(0, 16);
   return { ...site, catalog, version };
