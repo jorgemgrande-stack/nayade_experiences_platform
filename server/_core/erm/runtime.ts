@@ -7,6 +7,7 @@
  */
 import mysql from "mysql2/promise";
 import { Metrics, setMeterSink } from "../metering";
+import { getTenantId } from "../tenant";
 import { tenantResourceGuard } from "./middleware";
 import { DistributedRateLimiter, TenantConcurrencyLimiter, TenantRateLimiter, type TenantRateGate } from "./limiters";
 import { QuotaEngine, parseDefaultQuotas, type DefaultQuota, type QuotaEngineOptions } from "./quota";
@@ -162,6 +163,32 @@ export async function enforceQuota(metric: string, quantity = 1): Promise<void> 
     if (e instanceof QuotaExceededError) throw e;
     // fallo del motor (p. ej. sin contexto de tenant): no se concede lo que no se pudo medir
     // en modo multi, pero tampoco se rompe el flujo por un error de medición
+  }
+}
+
+export interface QuotaReservation {
+  /** Liquida con el consumo real, ya medido con `meter` (0 si el consumo no llegó a ocurrir). Nunca lanza. */
+  settle(actual: number): Promise<void>;
+}
+
+const NO_RESERVATION: QuotaReservation = { settle: async () => undefined };
+
+/**
+ * Reserva `quantity` ANTES de un consumo cuyo tamaño real solo se conoce después (tokens de IA): con varias réplicas, la
+ * reserva atómica impide que todas concedan a la vez el final de la cuota. Lanza `QuotaExceededError` si no cabe. Sin
+ * ERM, o si el motor falla, no reserva nada (como `enforceQuota`).
+ */
+export async function reserveQuota(metric: string, quantity: number): Promise<QuotaReservation> {
+  if (!instance) return NO_RESERVATION;
+  const engine = instance.engine;
+  try {
+    const { periods } = await engine.reserve(metric, quantity);
+    if (!periods.length) return NO_RESERVATION;
+    const tenantId = getTenantId();
+    return { settle: (actual) => engine.settle(metric, periods, quantity, actual, tenantId).catch(() => undefined) };
+  } catch (e) {
+    if (e instanceof QuotaExceededError) throw e;
+    return NO_RESERVATION;
   }
 }
 

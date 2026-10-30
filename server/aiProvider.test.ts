@@ -14,7 +14,10 @@ vi.mock("./_core/metering", () => ({
   Metrics: { LLM_TOKENS_INPUT: "llm.tokens.input", LLM_TOKENS_OUTPUT: "llm.tokens.output" },
   meter: (metric: string, qty: number) => h.meters.push({ metric, qty }),
 }));
-vi.mock("./_core/erm/runtime", () => ({ enforceQuota: async (metric: string) => void h.quotas.push(metric) }));
+vi.mock("./_core/erm/runtime", () => ({
+  enforceQuota: async (metric: string) => void h.quotas.push(metric),
+  reserveQuota: async () => ({ settle: async () => undefined }),
+}));
 
 import { resolveAiProvider, AiUnavailableError } from "./ai/provider";
 import { invokeLLM } from "./_core/llm";

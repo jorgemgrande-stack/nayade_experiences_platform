@@ -1,5 +1,5 @@
 import { Metrics, meter } from "./metering";
-import { enforceQuota } from "./erm/runtime";
+import { enforceQuota, reserveQuota } from "./erm/runtime";
 import { AiUnavailableError, resolveAiProvider } from "../ai/provider";
 
 export type Role = "system" | "user" | "assistant" | "tool" | "function";
@@ -256,6 +256,23 @@ const normalizeResponseFormat = ({
   };
 };
 
+/** Tokens de salida que se reservan antes de la llamada (lo que pase de aquí entra por la medición posterior). */
+export const LLM_OUTPUT_RESERVE = 1024;
+
+/**
+ * Estimación de los tokens de entrada antes de la llamada (≈ 4 caracteres por token del texto, más 4 por mensaje). Las
+ * imágenes y ficheros no cuentan: se miden después con lo que devuelve el proveedor. Pura.
+ */
+export function estimatePromptTokens(messages: readonly Message[], tools?: readonly Tool[]): number {
+  let chars = 0;
+  for (const m of messages) {
+    const parts = Array.isArray(m.content) ? m.content : [m.content];
+    for (const p of parts) chars += typeof p === "string" ? p.length : p.type === "text" ? p.text.length : 0;
+  }
+  if (tools?.length) chars += JSON.stringify(tools).length;
+  return Math.ceil(chars / 4) + 4 * messages.length;
+}
+
 export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
   // Proveedor de la empresa en curso (propio, central de Big Elephant o ninguno); nunca la cuenta de otra instalación
   const provider = resolveAiProvider();
@@ -315,33 +332,47 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
     payload.response_format = normalizedResponseFormat;
   }
 
-  const response = await fetch(provider.chatUrl, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      authorization: `Bearer ${provider.apiKey}`,
-    },
-    body: JSON.stringify(payload),
-  });
+  // IA de la plataforma: reserva atómica entre réplicas de la entrada estimada y de una salida moderada; tras la llamada
+  // se liquida con lo que devuelve el proveedor (lo no usado vuelve; lo que exceda entra por la medición)
+  const reserveIn = provider.source !== "tenant" ? estimatePromptTokens(messages, tools) : 0;
+  const inRes = provider.source !== "tenant" ? await reserveQuota(Metrics.LLM_TOKENS_INPUT, reserveIn) : null;
+  let outRes: Awaited<ReturnType<typeof reserveQuota>> | null = null;
+  let usage: { prompt_tokens?: number; completion_tokens?: number } | undefined;
+  let result: InvokeResult;
+  try {
+    outRes = provider.source !== "tenant" ? await reserveQuota(Metrics.LLM_TOKENS_OUTPUT, LLM_OUTPUT_RESERVE) : null;
+    const response = await fetch(provider.chatUrl, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${provider.apiKey}`,
+      },
+      body: JSON.stringify(payload),
+    });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(
-      `LLM invoke failed: ${response.status} ${response.statusText} – ${errorText}`
-    );
-  }
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(
+        `LLM invoke failed: ${response.status} ${response.statusText} – ${errorText}`
+      );
+    }
 
-  const result = (await response.json()) as InvokeResult;
-  const usage = result.usage as
-    | { prompt_tokens?: number; completion_tokens?: number }
-    | undefined;
-  // Con la cuenta propia de la empresa el coste lo paga ella: se mide aparte y no entra en el coste de la plataforma
-  if (provider.source === "tenant") {
-    const own = (usage?.prompt_tokens ?? 0) + (usage?.completion_tokens ?? 0);
-    if (own) meter(Metrics.LLM_OWN_TOKENS, own, "token");
-  } else {
-    if (usage?.prompt_tokens) meter(Metrics.LLM_TOKENS_INPUT, usage.prompt_tokens, "token");
-    if (usage?.completion_tokens) meter(Metrics.LLM_TOKENS_OUTPUT, usage.completion_tokens, "token");
+    result = (await response.json()) as InvokeResult;
+    usage = result.usage as
+      | { prompt_tokens?: number; completion_tokens?: number }
+      | undefined;
+    // Con la cuenta propia de la empresa el coste lo paga ella: se mide aparte y no entra en el coste de la plataforma
+    if (provider.source === "tenant") {
+      const own = (usage?.prompt_tokens ?? 0) + (usage?.completion_tokens ?? 0);
+      if (own) meter(Metrics.LLM_OWN_TOKENS, own, "token");
+    } else {
+      if (usage?.prompt_tokens) meter(Metrics.LLM_TOKENS_INPUT, usage.prompt_tokens, "token");
+      if (usage?.completion_tokens) meter(Metrics.LLM_TOKENS_OUTPUT, usage.completion_tokens, "token");
+    }
+  } finally {
+    // Sin respuesta (error o excepción) el consumo medido es 0: se devuelve toda la reserva
+    await inRes?.settle(usage?.prompt_tokens ?? 0);
+    await outRes?.settle(usage?.completion_tokens ?? 0);
   }
   return result;
 }
