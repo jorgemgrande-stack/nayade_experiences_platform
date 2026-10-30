@@ -18,6 +18,7 @@
  */
 import crypto from "node:crypto";
 import { getLimitAccess } from "../limits/access";
+import { getQuotaExceptionAccess } from "../erm/exceptionAccess";
 import { backendFromEnv, StorageUnavailableError, type ObjectBackend } from "./backend";
 import { detectContentType, extensionFor, isSafeSvg, safeDisplayName } from "./contentType";
 import { policyOf, type FileCategory, type Visibility } from "./categories";
@@ -229,7 +230,9 @@ export class FileService {
     const contentType = this.validate(input.category, data, input.declaredType);
     // Almacenamiento contratado (plan + ampliaciones, registro 0013): nunca por encima. Sin dato, como hasta ahora
     const limits = getLimitAccess();
-    const limitGb = limits ? await limits.limit("storage_gb") : undefined;
+    // Una excepción comercial vigente (registro 0016) manda sobre lo contratado hasta que caduca o se revoca
+    const exception = limits ? await getQuotaExceptionAccess()?.active("storage_gb") : null;
+    const limitGb = exception ? exception.newLimit : limits ? await limits.limit("storage_gb") : undefined;
     // La exportación de datos no ocupa el almacenamiento contratado (es una copia de lo que ya hay)
     if (typeof limitGb === "number" && this.meta.usedBytes && input.category !== "data-export") {
       const usedBefore = await this.meta.usedBytes();

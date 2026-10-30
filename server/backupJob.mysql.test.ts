@@ -321,7 +321,7 @@ describe.skipIf(!URL_A)("copias por empresa con MySQL real", () => {
       expect(t.map((r) => r.id)).toEqual([A, B]);
       // Integridad del registro restaurado (tablas y triggers de auditoría por versión): sin pendientes
       const plan = await migrateRegistry(restoredPool, path.resolve(__dirname, "../db/registry"));
-      expect(plan).toMatchObject({ current: "0015", pending: [], incomplete: [] });
+      expect(plan).toMatchObject({ current: "0016", pending: [], incomplete: [] });
       await expect(restoredPool.query("DELETE FROM tenant_events")).rejects.toThrow(/solo anexado/);
     } finally {
       await restoredPool.end();

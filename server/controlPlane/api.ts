@@ -42,6 +42,9 @@ import { BillingError } from "../_core/billing/types";
 import type { UsageStore } from "../_core/erm/types";
 import type { EntitlementAdmin } from "../_core/modules/mysqlEntitlements";
 import type { QuotaAdmin } from "../_core/erm/mysqlQuotas";
+import { QuotaExceptionError, withState, type QuotaExceptionStore } from "../_core/erm/quotaExceptions";
+import { BUSINESS_METRICS, POLICY_CRITICAL_RATIO, POLICY_WARNING_RATIO, explainLimit } from "../_core/erm/policy";
+import { limitWithoutExceptions, tenantPolicy } from "../quotaPolicyCatalog";
 import { ModuleError } from "../_core/modules/contract";
 import { authenticate, getAuth, hashToken, readSessionCookie, requireScope, type ServiceToken } from "./auth";
 import type { OperatorAuthService } from "./operatorAuth";
@@ -259,6 +262,8 @@ export interface ControlPlaneDeps {
   capabilities?: CapabilityStore;
   /** Límites contratados y uso declarado por cada empresa (registro 0013). */
   limits?: TenantLimitStore;
+  /** Excepciones comerciales de cuota con caducidad (registro 0016). Sin ellas, las rutas de excepciones responden 501. */
+  quotaExceptions?: QuotaExceptionStore;
   /**
    * Prueba gratuita de Essential (CRM 0007). Las rutas públicas solo existen con `publicEnabled`
    * (por defecto NO); `notify` es el único canal de comunicaciones (por defecto, solo un registro
@@ -985,6 +990,119 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
     }),
   );
 
+  // ── Política de consumo: límite efectivo con su desglose y excepciones comerciales con caducidad (registro 0016) ──
+  const policyOfTenant = async (id: string, now: number) =>
+    tenantPolicy({
+      grants: d.capabilities ? await d.capabilities.list(id) : null,
+      contracted: d.limits ? await d.limits.limits(id) : [],
+      overrides: await d.quotas.listQuotas(id),
+      defaults: d.quotaDefaults ?? DEFAULT_QUOTAS,
+      exceptions: d.quotaExceptions ? await d.quotaExceptions.exceptions(id) : [],
+      now,
+    });
+  const existingTenant = async (req: Request) => {
+    const id = idSchema.parse(req.params.id);
+    const t = await d.reader.getTenant(id);
+    if (!t || t.status === "deleted") throw new RegistryError("not_found", "Tenant no encontrado");
+    return id;
+  };
+  const noExceptions = (res: express.Response) =>
+    void res.status(501).json({ error: "not_available", message: "Excepciones de cuota no disponibles: falta la migración 0016 del registro" });
+  const exceptionError = (res: express.Response, e: unknown) => {
+    if (e instanceof QuotaExceptionError) return void res.status(e.code === "not_found" ? 404 : e.code === "conflict" ? 409 : 400).json({ error: e.code, message: e.message });
+    throw e;
+  };
+  router.get(
+    "/tenants/:id/quotas/policy",
+    requireScope("tenants:read"),
+    wrap(async (req, res) => {
+      const id = await existingTenant(req);
+      const now = Date.now();
+      const p = await policyOfTenant(id, now);
+      res.json({
+        tenantId: id,
+        generatedAt: now,
+        plan: p.plan,
+        thresholds: { warning: POLICY_WARNING_RATIO, critical: POLICY_CRITICAL_RATIO },
+        business: p.business.map((b) => ({ ...b, explanation: explainLimit(b) })),
+        resources: p.resources.map((r) => ({ ...r, explanation: explainLimit(r) })),
+        exceptionsAvailable: !!d.quotaExceptions,
+        exceptions: d.quotaExceptions ? (await d.quotaExceptions.exceptions(id)).map((e) => withState(e, now)) : [],
+      });
+    }),
+  );
+  router.get(
+    "/tenants/:id/quotas/exceptions",
+    requireScope("tenants:read"),
+    wrap(async (req, res) => {
+      const id = await existingTenant(req);
+      if (!d.quotaExceptions) return noExceptions(res);
+      const now = Date.now();
+      res.json({ exceptions: (await d.quotaExceptions.exceptions(id)).map((e) => withState(e, now)) });
+    }),
+  );
+  router.get(
+    "/tenants/:id/quotas/exceptions/history",
+    requireScope("tenants:read"),
+    wrap(async (req, res) => {
+      const id = await existingTenant(req);
+      if (!d.quotaExceptions) return noExceptions(res);
+      res.json({ history: await d.quotaExceptions.history(id, 200) });
+    }),
+  );
+  router.post(
+    "/tenants/:id/quotas/exceptions",
+    requireScope("quotas:write"),
+    wrap(async (req, res) => {
+      const id = await existingTenant(req);
+      if (!d.quotaExceptions) return noExceptions(res);
+      const b = z
+        .object({
+          metric: z.string().regex(/^[a-z][a-z0-9_.]{1,63}$/),
+          period: z.enum(["total", "minute", "hour", "day", "month"]).default("total"),
+          newLimit: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).nullable(),
+          reason: z.string().max(300),
+          startsAt: z.number().int().positive().optional(),
+          expiresAt: z.number().int().positive(),
+        })
+        .strict()
+        .parse(req.body);
+      // Las cuotas de negocio no tienen periodo; las del Resource Manager, siempre
+      if ((b.period === "total") !== BUSINESS_METRICS.includes(b.metric)) {
+        return void res.status(400).json({ error: "invalid_input", message: b.period === "total" ? "Métrica de negocio desconocida (o falta el periodo de una métrica del Resource Manager)" : "Las cuotas de negocio no llevan periodo" });
+      }
+      const now = Date.now();
+      const original = limitWithoutExceptions(await policyOfTenant(id, now), b.metric, b.period);
+      const a = getAuth(req)!.actor;
+      try {
+        const e = await d.quotaExceptions.create(
+          { tenantId: id, metric: b.metric, period: b.period, originalLimit: original ?? null, newLimit: b.newLimit, reason: b.reason, operator: `${a.type}:${a.id}`, startsAt: b.startsAt ?? now, expiresAt: b.expiresAt },
+          now,
+        );
+        res.status(201).json({ exception: withState(e, now) });
+      } catch (e) {
+        exceptionError(res, e);
+      }
+    }),
+  );
+  router.post(
+    "/tenants/:id/quotas/exceptions/:eid/revoke",
+    requireScope("quotas:write"),
+    wrap(async (req, res) => {
+      const id = await existingTenant(req);
+      if (!d.quotaExceptions) return noExceptions(res);
+      const eid = z.coerce.number().int().positive().parse(req.params.eid);
+      const b = z.object({ reason: z.string().max(300) }).strict().parse(req.body);
+      const a = getAuth(req)!.actor;
+      const now = Date.now();
+      try {
+        res.json({ exception: withState(await d.quotaExceptions.revoke(id, eid, { actor: `${a.type}:${a.id}`, reason: b.reason, now }), now) });
+      } catch (e) {
+        exceptionError(res, e);
+      }
+    }),
+  );
+
   // ── Resource Manager: consumo frente a límites ─────────────────────────────
   const quotaDefaults = d.quotaDefaults ?? DEFAULT_QUOTAS;
   const rankState: Record<ResourceState, number> = { not_applicable: 0, ok: 1, warning: 2, exceeded: 3 };
@@ -1606,7 +1724,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
       );
     }
     if (d.organization) {
-      const org = new OrganizationService({ store: d.organization, subscriptions: d.subscriptions.store, catalog: async () => quoteCatalogFromSite(await webAdmin!.site("published")), now: d.subscriptions.now });
+      const org = new OrganizationService({ store: d.organization, subscriptions: d.subscriptions.store, catalog: async () => quoteCatalogFromSite(await webAdmin!.site("published")), now: d.subscriptions.now, exceptions: d.quotaExceptions });
       seatLimitOf = async (tenantId) => (await org.limits(tenantId)).users;
       const orgErr = (res: express.Response, e: unknown) => {
         if (e instanceof OrganizationError) return void res.status(e.code === "not_found" ? 404 : e.code === "invalid_input" ? 400 : e.code === "limit" ? 422 : 409).json({ error: e.code, message: e.message });

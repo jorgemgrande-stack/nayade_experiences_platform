@@ -13,6 +13,8 @@ import { getTenantId, getTenantMode } from "../tenant";
 import { Metrics } from "../metering";
 import { QuotaExceededError } from "./types";
 import type { AlertSink, Quota, QuotaDecision, QuotaPeriod, QuotaPolicyReader, UsageStore } from "./types";
+import { activeException, type QuotaException } from "./policy";
+import type { QuotaExceptionReader } from "./quotaExceptions";
 import { UsageAggregator } from "./usage";
 
 export type DefaultQuota = Omit<Quota, "tenantId">;
@@ -186,4 +188,42 @@ export class QuotaEngine {
       }
     }
   }
+}
+
+/**
+ * Cuotas del Resource Manager con las excepciones comerciales vigentes aplicadas (registro 0016). La vigencia se decide
+ * por fecha en cada lectura: una excepción caducada deja de aplicarse sin tareas. Excepción sin tope (`newLimit` null):
+ * se representa con el mayor entero seguro (nunca bloquea). Si las excepciones no se pueden leer (migración sin aplicar
+ * o registro caído), se aplican las cuotas de siempre: nunca se dan límites de más por un fallo.
+ */
+export function withQuotaExceptions(
+  reader: QuotaPolicyReader,
+  exceptions: QuotaExceptionReader,
+  now: () => number = Date.now,
+): QuotaPolicyReader {
+  return {
+    async listQuotas(tenantId: string): Promise<Quota[]> {
+      const own = await reader.listQuotas(tenantId);
+      let list: QuotaException[];
+      try {
+        list = await exceptions.exceptions(tenantId);
+      } catch {
+        return own;
+      }
+      const t = now();
+      const out = own.map((q) => ({ ...q }));
+      const periods: QuotaPeriod[] = ["minute", "hour", "day", "month"];
+      for (const period of periods) {
+        for (const metric of Array.from(new Set(list.filter((e) => e.period === period).map((e) => e.metric)))) {
+          const exc = activeException(list, metric, period, t);
+          if (!exc) continue;
+          const limit = exc.newLimit ?? Number.MAX_SAFE_INTEGER;
+          const cur = out.find((q) => q.metric === metric && q.period === period);
+          if (cur) cur.limit = limit;
+          else out.push({ tenantId, metric, period, limit, enforcement: "hard" });
+        }
+      }
+      return out;
+    },
+  };
 }

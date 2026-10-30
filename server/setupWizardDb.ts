@@ -12,6 +12,7 @@ import { getDb } from "./db";
 import { invalidateConfigCache } from "./config";
 import { getCapabilityAccess } from "./_core/capabilities/access";
 import { getLimitAccess } from "./_core/limits/access";
+import { getQuotaExceptionAccess } from "./_core/erm/exceptionAccess";
 import { SEAT_ROLES, licenceSummary, seatDecision, type LicenceSummary } from "./planSeats";
 import { PROGRESS_SETTING_KEY, parseProgress, type SetupProgress } from "../shared/setupWizard";
 
@@ -162,6 +163,9 @@ export async function currentLicence(): Promise<LicenceSummary> {
   const access = getCapabilityAccess();
   const summary = licenceSummary(await access.grants(), access.currentTime());
   if (!summary.plan) return summary;
+  // Excepción comercial vigente (registro 0016): manda sobre lo contratado hasta que caduca o se revoca
+  const exception = await getQuotaExceptionAccess()?.active("users");
+  if (exception) return { ...summary, userLimit: exception.newLimit };
   const contracted = await getLimitAccess()?.limit("users");
   return contracted === undefined ? summary : { ...summary, userLimit: contracted };
 }
