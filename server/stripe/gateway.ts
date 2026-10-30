@@ -255,6 +255,11 @@ export interface StripeGateway {
   voidInvoice(id: string): Promise<GwInvoice>;
   /** Tipo del método de pago con el que se cobra la suscripción (card, sepa_debit…); null si no hay. */
   paymentMethodTypeOf(subscriptionId: string): Promise<string | null>;
+  /**
+   * Programa (true) o deshace (false) el fin de la suscripción al final del periodo pagado (`cancel_at_period_end`),
+   * con Idempotency-Key. No cobra ni abona nada. Devuelve la suscripción resultante.
+   */
+  setCancelAtPeriodEnd?(subscriptionId: string, cancel: boolean, idempotencyKey: string): Promise<GwSubscription>;
   // ── Servicios de clientes externos (server/external) ──
   /** Checkout en modo `setup`: el cliente registra y autoriza su método de pago SIN ningún cargo. */
   createSetupSession?(input: SetupSessionInput, idempotencyKey: string): Promise<GwSetupSession>;
@@ -909,6 +914,13 @@ export function stripeGateway(
     async voidInvoice(id) {
       try {
         return toInvoice(await client.invoices.voidInvoice(id), mode);
+      } catch (e) {
+        wrapError(e);
+      }
+    },
+    async setCancelAtPeriodEnd(id, cancel, idempotencyKey) {
+      try {
+        return toSubscription(await client.subscriptions.update(id, { cancel_at_period_end: cancel }, { idempotencyKey }), mode);
       } catch (e) {
         wrapError(e);
       }
