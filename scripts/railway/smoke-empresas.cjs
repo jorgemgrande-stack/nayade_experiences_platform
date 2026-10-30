@@ -2,7 +2,7 @@
 // invitaciones. «/» debe llevar al inicio de sesión (nunca a un 404), /login debe mostrar el formulario, y una ruta
 // inexistente debe dar 404. Uso: node scripts/railway/smoke-empresas.cjs [empresa ...]  (por defecto, las de production)
 let chromium; try { ({ chromium } = require("playwright")); } catch { ({ chromium } = require("@playwright/test")); }
-const TENANTS = process.argv.slice(2).length ? process.argv.slice(2) : ["skibox", "t1-empresa-demo-elephant-a", "t2-empresa-demo-elephant-b", "t3-empresa-demo-elephant-01", "t4-empresa-demo-elephant-02", "prueba-e2e-stripe-sandbox-20261018"];
+const TENANTS = process.argv.slice(2).length ? process.argv.slice(2) : ["skibox"];
 
 (async () => {
   const browser = await chromium.launch();

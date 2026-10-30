@@ -5,6 +5,8 @@
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+// Crea empresas y datos de prueba: solo en live, nunca en production (empresas demo purgadas el 30/10/2026)
+if (process.env.ES_ENV !== "live" || !process.env.ES_CP_BASE) throw new Error("La aceptación crea empresas de prueba: solo en live (ES_ENV=live y ES_CP_BASE=<origen del CRM de live>), nunca en production");
 const { call: cp } = require("./cp.cjs");
 
 // Carpeta privada con los secretos del entorno (fuera de cualquier repositorio)
@@ -166,7 +168,7 @@ async function main() {
   const ev = JSON.stringify({ id: `evt_railway_${Date.now()}`, type: "payment.succeeded", paymentKey: p.idempotencyKey, providerRef: p.providerRef, amountCents: p.amountCents, currency: p.currency, livemode: false });
   const t = Math.floor(Date.now() / 1000);
   const sig = `t=${t},v1=${crypto.createHmac("sha256", S.cp_payments_test_webhook_secret).update(`${t}.${ev}`).digest("hex")}`;
-  const crm = "elephant-source-crm.up.railway.app";
+  const crm = new URL(process.env.ES_CP_BASE).host;
   const falsoPago = await http(crm, "POST", "/cp/v1/payments/test/webhook", { raw: ev, headers: { "content-type": "application/json", "x-test-signature": sig.replace(/v1=[0-9a-f]+/, "v1=" + "f".repeat(64)) } });
   const wh = await http(crm, "POST", "/cp/v1/payments/test/webhook", { raw: ev, headers: { "content-type": "application/json", "x-test-signature": sig } });
   esencial("A18", "Evento de pago firmado activa la suscripción; firma falsa rechazada", wh.status === 200 && falsoPago.status === 400, `válido ${wh.status} ${JSON.stringify(wh.json)} · falso ${falsoPago.status}`);
