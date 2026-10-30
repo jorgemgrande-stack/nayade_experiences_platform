@@ -132,6 +132,7 @@ import { createBillingPortalRouter, createPurchasesRouter } from "../stripe/purc
 import { createPanelCatalogRouter } from "../commerce/panelCatalog";
 import { createPanelUsageRouter } from "../commerce/panelUsage";
 import { BillingPortalService } from "../stripe/billingPortal";
+import { SubscriptionSelfService, createSubscriptionSelfServiceRouter, type SelfServiceSubscriptionFlags } from "../stripe/subscriptionSelfService";
 import { StripeReconciler, startStripeWorker } from "../stripe/reconcile";
 import { stripeWebhookHandler } from "../stripe/webhook";
 import { checkoutStatus, sessionIdRe } from "../stripe/status";
@@ -352,6 +353,11 @@ export interface ControlPlaneDeps {
     purchases?: { enabled: boolean; changes: SubscriptionChangeStore; internalTenants?: ReadonlySet<string> };
     /** Portal de facturación (CP_BILLING_PORTAL_ENABLED y CP_BILLING_PORTAL_CONFIGURATION): apagado por defecto. */
     billingPortal?: { enabled: boolean; configurationId: string | null };
+    /**
+     * Autoservicio de la suscripción cobrada en Stripe desde el panel: baja y reactivación
+     * (CP_SELF_SERVICE_CANCEL_ENABLED) y cambio de plan (CP_SELF_SERVICE_PLAN_CHANGE_ENABLED). Apagados por defecto.
+     */
+    selfServiceSubscription?: SelfServiceSubscriptionFlags;
     /** Detalle por línea de las facturas cobradas y reparto de reembolsos (CRM 0019). Sin él, como hasta ahora. */
     invoiceLines?: InvoiceLineStore;
   };
@@ -2230,6 +2236,26 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
               portalConfigurations: () => st.gateway.portalConfigurations(),
               createSession: (i) => st.gateway.createPortalSession(i),
               tenantDomains: async (t) => (await d.reader.listDomains(t)).filter((x) => x.status === "active").map((x) => x.domain),
+            }),
+          ),
+        );
+        // Baja, reactivación y cambio de plan desde el panel (apagados por defecto). Solo piden el cambio a Stripe:
+        // el reflejo en pedidos y licencias llega por el webhook de siempre
+        router.use(
+          "/commerce",
+          createSubscriptionSelfServiceRouter(
+            new SubscriptionSelfService({
+              flags: st.selfServiceSubscription ?? { cancel: false, planChange: false },
+              namespace: st.config.namespace,
+              crmStore: d.crm.store,
+              orders: d.orders.store,
+              stripeStore: st.store,
+              gateway: st.gateway,
+              catalog: stripeCatalog,
+              note: async (companyId, summary, actor) => void (await d.crm!.service.log("company", companyId, "note", summary, actor)),
+              task: async (companyId, summary, dueAt, actor) => void (await d.crm!.service.addTask("company", companyId, summary, dueAt, actor)),
+              openTasks: async (companyId) => (await d.crm!.store.list("activities", { entityType: "company", entityId: companyId, kind: "task" }, { limit: 500 })).filter((a) => a.doneAt === null).map((a) => a.summary),
+              now: d.subscriptions.now,
             }),
           ),
         );
