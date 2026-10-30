@@ -23,7 +23,9 @@ import { createTenantRuntime, type TenantRuntime } from "./runtime";
 import { setJobAdminTenantLister, setJobPrelude, setJobTenantLister } from "./scheduler";
 import { shadowMiddleware } from "./shadow";
 import { configureHealthChecks } from "../health";
-import { getTenantDatabase, leaseTenantDatabase } from "../dbRegistry";
+import { capConnectionBudget, getTenantDatabase, leaseTenantDatabase, setServerPressure } from "../dbRegistry";
+import { startDbCapacityWatch } from "../dbCapacity";
+import { tenantPoolPolicyFromEnv } from "../dbPoolConfig";
 import { sql } from "drizzle-orm";
 import { bindTenantMiddleware, resolveTenantMiddleware } from "./tenantMiddleware";
 import { centralLoginHost, createCentralAuthRouter, tenantUserFinder } from "../centralAuth";
@@ -135,6 +137,8 @@ export function installTenantResolution(app: Express, env: NodeJS.ProcessEnv = p
     configureLimitAccess(rt.limits);
     // Medición + cuotas por tenant (límites del registro; consumo en ERM_DATABASE_URL)
     installErmFromEnv(rt.quotas, env);
+    // Presupuesto de conexiones según la capacidad real del servidor MySQL compartido y las réplicas (dbCapacity.ts)
+    startDbCapacityWatch({ serverConnections: () => runtime.serverConnections(), capBudget: capConnectionBudget, setPressure: setServerPressure, configured: tenantPoolPolicyFromEnv(env) }, env);
     // Acceso delegado de soporte (inactivo sin SUPPORT_JWT_SECRET)
     configureSupport(rt.support, env.SUPPORT_JWT_SECRET);
   }
