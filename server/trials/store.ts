@@ -36,8 +36,8 @@ export interface TrialRequest {
 export interface TrialEvent {
   id: number;
   trialId: number;
-  /** `notice_queued`: aviso encolado (anotación sin cambio de estado ni de versión). */
-  action: TrialAction | "registered" | "notice_queued";
+  /** Anotaciones sin cambio de estado ni de versión: ver `TrialNoteAction`. */
+  action: TrialAction | "registered" | TrialNoteAction;
   fromState: TrialState | null;
   toState: TrialState;
   version: number;
@@ -45,6 +45,11 @@ export interface TrialEvent {
   actor: string;
   createdAt: number;
 }
+/**
+ * Anotación sin cambio de estado ni de versión: `notice_queued` (aviso encolado), `activation_retry` (reintento
+ * automático del alta incompleta) y `activation_gave_up` (reintentos agotados; queda para una persona).
+ */
+export type TrialNoteAction = "notice_queued" | "activation_retry" | "activation_gave_up";
 export type TrialPatch = Partial<Omit<TrialRequest, "id" | "email" | "emailDomain" | "idempotencyKey" | "createdAt" | "version">>;
 
 export class TrialConflict extends Error {
@@ -72,11 +77,12 @@ export interface TrialStore {
   get(id: number): Promise<TrialRequest | null>;
   /** Cambio de estado con versión esperada y evento, todo o nada. */
   transition(id: number, expectedVersion: number, patch: TrialPatch, event: { action: TrialAction; fromState: TrialState; detail: string | null; actor: string; at: number }): Promise<TrialRequest>;
-  count(f: { state?: TrialState; emailDomain?: string; ipHash?: string; since?: number }): Promise<number>;
+  /** `updatedSince`: último cambio (o el alta, si no tiene) en ese instante o después. */
+  count(f: { state?: TrialState; emailDomain?: string; ipHash?: string; since?: number; updatedSince?: number }): Promise<number>;
   list(f: TrialListFilter): Promise<TrialRequest[]>;
   events(trialId: number): Promise<TrialEvent[]>;
   /** Anotación de auditoría SIN cambio de estado ni de versión (p. ej. aviso encolado). */
-  note(trialId: number, e: { action: "notice_queued"; detail: string; actor: string; at: number }): Promise<void>;
+  note(trialId: number, e: { action: TrialNoteAction; detail: string; actor: string; at: number }): Promise<void>;
 }
 
 export interface TrialListFilter {
@@ -87,6 +93,8 @@ export interface TrialListFilter {
   verificationExpiredBefore?: number;
   /** Creadas antes de este instante. */
   createdBefore?: number;
+  /** Último cambio (o el alta, si no tiene) antes de este instante. */
+  updatedBefore?: number;
   limit?: number;
 }
 
@@ -129,7 +137,7 @@ export class MemoryTrialStore implements TrialStore {
     const r = Array.from(this.rows.values()).find((x) => !["converted", "rejected", "cancelled"].includes(x.state) && canonicalMailbox(x.email) === mailbox);
     return r ? clone(r) : null;
   }
-  async note(trialId: number, e: { action: "notice_queued"; detail: string; actor: string; at: number }) {
+  async note(trialId: number, e: { action: TrialNoteAction; detail: string; actor: string; at: number }) {
     const cur = this.rows.get(trialId);
     if (!cur) return;
     this.evs.push({ id: ++this.seq, trialId, action: e.action, fromState: cur.state, toState: cur.state, version: cur.version, detail: e.detail, actor: e.actor, createdAt: e.at });
@@ -148,9 +156,14 @@ export class MemoryTrialStore implements TrialStore {
     await this.commercialEvents?.append(null, trialChanged(next, e.action, e.fromState, e.actor, e.at));
     return clone(next);
   }
-  async count(f: { state?: TrialState; emailDomain?: string; ipHash?: string; since?: number }) {
+  async count(f: { state?: TrialState; emailDomain?: string; ipHash?: string; since?: number; updatedSince?: number }) {
     return Array.from(this.rows.values()).filter(
-      (r) => (!f.state || r.state === f.state) && (!f.emailDomain || r.emailDomain === f.emailDomain) && (!f.ipHash || r.ipHash === f.ipHash) && (f.since === undefined || r.createdAt >= f.since),
+      (r) =>
+        (!f.state || r.state === f.state) &&
+        (!f.emailDomain || r.emailDomain === f.emailDomain) &&
+        (!f.ipHash || r.ipHash === f.ipHash) &&
+        (f.since === undefined || r.createdAt >= f.since) &&
+        (f.updatedSince === undefined || (r.updatedAt ?? r.createdAt) >= f.updatedSince),
     ).length;
   }
   async list(f: TrialListFilter) {
@@ -161,7 +174,8 @@ export class MemoryTrialStore implements TrialStore {
           (f.endsBefore === undefined || (r.endsAt !== null && r.endsAt <= f.endsBefore)) &&
           (f.extensionRequested === undefined || (r.extensionRequestedAt !== null) === f.extensionRequested) &&
           (f.verificationExpiredBefore === undefined || (r.verificationExpiresAt !== null && r.verificationExpiresAt <= f.verificationExpiredBefore)) &&
-          (f.createdBefore === undefined || r.createdAt <= f.createdBefore),
+          (f.createdBefore === undefined || r.createdAt <= f.createdBefore) &&
+          (f.updatedBefore === undefined || (r.updatedAt ?? r.createdAt) <= f.updatedBefore),
       )
       .slice(0, f.limit ?? 200)
       .map(clone);
@@ -282,7 +296,7 @@ export class MysqlTrialStore implements TrialStore {
       throw e;
     }
   }
-  async note(trialId: number, e: { action: "notice_queued"; detail: string; actor: string; at: number }) {
+  async note(trialId: number, e: { action: TrialNoteAction; detail: string; actor: string; at: number }) {
     await this.pool.query(
       "INSERT INTO trial_events (trial_id, action, from_state, to_state, version, detail, actor, created_at) SELECT id, ?, state, state, version, ?, ?, ? FROM trial_requests WHERE id = ?",
       [e.action, e.detail.slice(0, 300), e.actor, e.at, trialId],
@@ -318,13 +332,14 @@ export class MysqlTrialStore implements TrialStore {
       c.release();
     }
   }
-  async count(f: { state?: TrialState; emailDomain?: string; ipHash?: string; since?: number }) {
+  async count(f: { state?: TrialState; emailDomain?: string; ipHash?: string; since?: number; updatedSince?: number }) {
     const w: string[] = [];
     const a: unknown[] = [];
     if (f.state) (w.push("state = ?"), a.push(f.state));
     if (f.emailDomain) (w.push("email_domain = ?"), a.push(f.emailDomain));
     if (f.ipHash) (w.push("ip_hash = ?"), a.push(f.ipHash));
     if (f.since !== undefined) (w.push("created_at >= ?"), a.push(f.since));
+    if (f.updatedSince !== undefined) (w.push("COALESCE(updated_at, created_at) >= ?"), a.push(f.updatedSince));
     const [r] = await this.pool.query<mysql.RowDataPacket[]>(`SELECT COUNT(*) AS n FROM trial_requests${w.length ? ` WHERE ${w.join(" AND ")}` : ""}`, a);
     return Number(r[0].n);
   }
@@ -336,6 +351,7 @@ export class MysqlTrialStore implements TrialStore {
     if (f.extensionRequested !== undefined) w.push(f.extensionRequested ? "extension_requested_at IS NOT NULL" : "extension_requested_at IS NULL");
     if (f.verificationExpiredBefore !== undefined) (w.push("verification_expires_at IS NOT NULL AND verification_expires_at <= ?"), a.push(f.verificationExpiredBefore));
     if (f.createdBefore !== undefined) (w.push("created_at <= ?"), a.push(f.createdBefore));
+    if (f.updatedBefore !== undefined) (w.push("COALESCE(updated_at, created_at) <= ?"), a.push(f.updatedBefore));
     const [r] = await this.pool.query<mysql.RowDataPacket[]>(`SELECT * FROM trial_requests${w.length ? ` WHERE ${w.join(" AND ")}` : ""} ORDER BY id LIMIT ?`, [...a, Math.min(f.limit ?? 200, 1000)]);
     return r.map(row);
   }

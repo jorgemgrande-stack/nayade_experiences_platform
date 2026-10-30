@@ -31,6 +31,11 @@ export interface TrialLimits {
   perIp24h: number;
   /** Aprovisionamientos simultáneos en curso. */
   concurrentProvisioning: number;
+  /**
+   * Un aprovisionamiento sin cambios durante este tiempo se da por interrumpido (caída del proceso): deja de
+   * contar para `concurrentProvisioning` y la tarea programada lo retoma.
+   */
+  provisioningStaleMs: number;
   /** Validez del enlace de verificación. */
   verificationTtlMs: number;
   /** Ampliaciones aprobables y días máximos por ampliación. */
@@ -50,6 +55,7 @@ export const DEFAULT_LIMITS: TrialLimits = {
   perDomain30d: 3,
   perIp24h: 5,
   concurrentProvisioning: 3,
+  provisioningStaleMs: 15 * 60_000,
   verificationTtlMs: 24 * 60 * 60 * 1000,
   maxExtensions: 1,
   maxExtensionDays: 15,
@@ -305,11 +311,14 @@ export class TrialService {
     return this.limits;
   }
 
-  /** Pide el aprovisionamiento (no lo ejecuta). Limita los aprovisionamientos simultáneos. */
+  /**
+   * Pide el aprovisionamiento (no lo ejecuta). Limita los aprovisionamientos simultáneos; los interrumpidos
+   * (sin cambios durante `provisioningStaleMs`) no cuentan.
+   */
   async requestProvisioning(id: number, expectedVersion: number, actor: string) {
     const t = await this.must(id);
     if (t.state === "provisioning") return t; // idempotente
-    if ((await this.d.store.count({ state: "provisioning" })) >= this.limits.concurrentProvisioning) {
+    if ((await this.d.store.count({ state: "provisioning", updatedSince: this.now() - this.limits.provisioningStaleMs })) >= this.limits.concurrentProvisioning) {
       throw new TrialError("limit", "Hay demasiados aprovisionamientos en curso; inténtalo en unos minutos");
     }
     return this.move(id, expectedVersion, "request_provisioning", actor, () => ({}));
