@@ -6,7 +6,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import crypto from "node:crypto";
 import mysql from "mysql2/promise";
-import { USAGE_TABLE_DDL, grantsState, runErmSetup, usageTableDdlFromFile } from "./_core/erm/setup";
+import { USAGE_TABLE_DDL, WINDOWS_TABLE_DDL, grantsState, runErmSetup, usageTableDdlFromFile } from "./_core/erm/setup";
 
 const URL_ = process.env.REGISTRY_TEST_DATABASE_URL;
 
@@ -15,11 +15,20 @@ describe("DDL de la tabla de uso", () => {
     const norm = (x: string) => x.replace(/\s+/g, " ").trim();
     expect(norm(USAGE_TABLE_DDL)).toBe(norm(usageTableDdlFromFile()));
   });
+  it("el DDL de los contadores compartidos coincide con db/erm/0001_windows.sql", () => {
+    const norm = (x: string) => x.replace(/\s+/g, " ").trim();
+    expect(norm(WINDOWS_TABLE_DDL)).toBe(norm(usageTableDdlFromFile(process.cwd(), "db/erm/0001_windows.sql")));
+  });
 });
 
 describe("grantsState (lógica pura)", () => {
-  it("exactamente SELECT, INSERT y UPDATE sobre es_erm.usage_hourly", () => {
-    expect(grantsState(["GRANT USAGE ON *.* TO `es_erm`@`%`", "GRANT SELECT, INSERT, UPDATE ON `es_erm`.`usage_hourly` TO `es_erm`@`%`"])).toBe("ok");
+  const WIN = "GRANT SELECT, INSERT, UPDATE ON `es_erm`.`usage_windows` TO `es_erm`@`%`";
+  it("exactamente SELECT, INSERT y UPDATE sobre es_erm.usage_hourly y es_erm.usage_windows", () => {
+    expect(grantsState(["GRANT USAGE ON *.* TO `es_erm`@`%`", "GRANT SELECT, INSERT, UPDATE ON `es_erm`.`usage_hourly` TO `es_erm`@`%`", WIN])).toBe("ok");
+    // Entorno anterior a los contadores compartidos: falta la tabla nueva y se aplica
+    expect(grantsState(["GRANT USAGE ON *.* TO `es_erm`@`%`", "GRANT SELECT, INSERT, UPDATE ON `es_erm`.`usage_hourly` TO `es_erm`@`%`"])).toBe("missing");
+    expect(grantsState(["GRANT SELECT, INSERT, UPDATE ON `es_erm`.`usage_hourly` TO `es_erm`@`%`", "GRANT SELECT, INSERT ON `es_erm`.`usage_windows` TO `es_erm`@`%`"])).toBe("missing");
+    expect(grantsState(["GRANT SELECT, INSERT, UPDATE ON `es_erm`.`usage_hourly` TO `es_erm`@`%`", "GRANT SELECT, INSERT, UPDATE, DELETE ON `es_erm`.`usage_windows` TO `es_erm`@`%`"])).toBe("excess");
     expect(grantsState(["GRANT USAGE ON *.* TO `es_erm`@`%`"])).toBe("missing");
     expect(grantsState(["GRANT SELECT, INSERT, UPDATE, DELETE ON `es_erm`.`usage_hourly` TO `es_erm`@`%`"])).toBe("excess");
     expect(grantsState(["GRANT SELECT ON `es_registry`.* TO `es_erm`@`%`", "GRANT SELECT, INSERT, UPDATE ON `es_erm`.`usage_hourly` TO `es_erm`@`%`"])).toBe("excess");
@@ -45,22 +54,33 @@ describe.skipIf(!URL_)("erm-setup con MySQL real", () => {
   const run = (apply: boolean, pw = password) => runErmSetup({ admin, host: u.hostname, port: Number(u.port || 3306), password: pw, apply });
 
   it("simulación sin tocar nada", async () => {
-    expect(await run(false)).toEqual({ database: "would_create", table: "would_create", user: "would_create", grants: "would_apply", probe: null });
+    expect(await run(false)).toEqual({ database: "would_create", table: "would_create", windowsTable: "would_create", user: "would_create", grants: "would_apply", probe: null });
     const [d] = await admin.query<mysql.RowDataPacket[]>("SELECT 1 FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = 'es_erm'");
     expect(d.length).toBe(0);
   });
 
   it("crea base, tabla y usuario con permisos mínimos; la sonda no deja restos", async () => {
     const r = await run(true);
-    expect(r).toMatchObject({ database: "created", table: "created", user: "created", grants: "applied" });
+    expect(r).toMatchObject({ database: "created", table: "created", windowsTable: "created", user: "created", grants: "applied" });
     expect(r.probe).toEqual({ write: true, deleteDenied: true, ddlDenied: true, otherDbDenied: true });
     const [rows] = await admin.query<mysql.RowDataPacket[]>("SELECT COUNT(*) AS n FROM es_erm.usage_hourly");
     expect(Number(rows[0].n)).toBe(0);
+    const [w] = await admin.query<mysql.RowDataPacket[]>("SELECT COUNT(*) AS n FROM es_erm.usage_windows");
+    expect(Number(w[0].n)).toBe(0);
+  });
+
+  it("entorno anterior (solo usage_hourly): crea la tabla de contadores y amplía el permiso a ella", async () => {
+    await admin.query("DROP TABLE es_erm.usage_windows");
+    await admin.query("REVOKE ALL PRIVILEGES ON es_erm.usage_windows FROM 'es_erm'@'%'");
+    expect(await run(false)).toMatchObject({ table: "exists", windowsTable: "would_create", grants: "would_apply" });
+    const r = await run(true);
+    expect(r).toMatchObject({ table: "exists", windowsTable: "created", grants: "applied" });
+    expect(r.probe).toEqual({ write: true, deleteDenied: true, ddlDenied: true, otherDbDenied: true });
   });
 
   it("idempotente: una segunda ejecución no cambia nada y la sonda sigue en verde", async () => {
     const r = await run(true);
-    expect(r).toMatchObject({ database: "exists", table: "exists", user: "exists", grants: "ok" });
+    expect(r).toMatchObject({ database: "exists", table: "exists", windowsTable: "exists", user: "exists", grants: "ok" });
     expect(r.probe?.write).toBe(true);
     const dry = await run(false);
     expect(dry).toMatchObject({ database: "exists", table: "exists", user: "exists", grants: "ok" });
