@@ -91,6 +91,7 @@ import { logActivity } from "../db";
 import { legacyDb, legacyPool } from "../_core/legacyDb";
 import { integrationEnv } from "../_core/tenantConfig";
 import { hasTagCondition } from "../crmTagsDb";
+import { assertBusinessQuota } from "../businessQuotas";
 import { buildInvoiceEmailHtml } from "../emailTemplates";
 
 // generateInvoiceNumber y generateQuoteNumber reemplazadas por el helper centralizado
@@ -6007,6 +6008,8 @@ export const crmRouter = router({
       address: z.string().optional(),
       notes: z.string().optional(),
     })).mutation(async ({ input }) => {
+      // Cuota de contactos del plan (solo el alta manual: reservas, compras y formularios nunca se bloquean)
+      await assertBusinessQuota("contacts", async () => Number((await db.select({ n: count() }).from(clients))[0]?.n ?? 0));
       try {
         const [result] = await db.execute(sql`
           INSERT INTO \`clients\` (\`name\`, \`email\`, \`phone\`, \`company\`, \`nif\`, \`address\`, \`notes\`, \`source\`)

@@ -16,7 +16,7 @@ import { accessPolicy } from "./lifecycle";
 import { MysqlEntitlementReader } from "../modules/mysqlEntitlements";
 import { MysqlCapabilityStore } from "../capabilities/store";
 import { MysqlTenantLimitStore } from "../limits/store";
-import { MysqlQuotaReader } from "../erm/mysqlQuotas";
+import { MysqlQuotaExceptionReader, MysqlQuotaReader } from "../erm/mysqlQuotas";
 import { MysqlSupportReader } from "../support/grants";
 import { MysqlOrganizationStore } from "../../organization/service";
 import { invalidateTenantIdentity, registryIdentitySource, type TenantIdentitySource } from "../tenantIdentity";
@@ -38,6 +38,8 @@ export interface TenantRuntime {
   limits: MysqlTenantLimitStore;
   /** Cuotas de recursos (solo lectura). */
   quotas: MysqlQuotaReader;
+  /** Excepciones comerciales de cuota con caducidad (registro 0016, solo lectura). */
+  quotaExceptions: MysqlQuotaExceptionReader;
   /** Identidad de cada empresa: dominio público y entidad fiscal (solo lectura). */
   identity: TenantIdentitySource;
   /** Concesiones de soporte delegado (solo lectura). */
@@ -110,6 +112,7 @@ export function createTenantRuntime(
     capabilities: new MysqlCapabilityStore(pool),
     limits: new MysqlTenantLimitStore(pool),
     quotas: new MysqlQuotaReader(pool),
+    quotaExceptions: new MysqlQuotaExceptionReader(pool),
     support: new MysqlSupportReader(pool),
     identity: registryIdentitySource(store, new MysqlOrganizationStore(pool)),
     async ping() {

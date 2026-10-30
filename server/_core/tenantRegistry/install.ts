@@ -15,6 +15,8 @@ import { getErm, installErmFromEnv } from "../erm/runtime";
 import { configureModuleAccess } from "../modules/runtime";
 import { configureCapabilityAccess } from "../capabilities/access";
 import { configureLimitAccess } from "../limits/access";
+import { configureQuotaExceptions } from "../erm/exceptionAccess";
+import { withQuotaExceptions } from "../erm/quota";
 import { warmConfigCache } from "../../config";
 import { warmIntegrationCreds } from "../credentials/runtime";
 import { configureTenantIdentity, warmTenantIdentity } from "../tenantIdentity";
@@ -143,8 +145,10 @@ export function installTenantResolution(app: Express, env: NodeJS.ProcessEnv = p
     configureCapabilityAccess(rt.capabilities);
     // Límites contratados (usuarios, almacenamiento) y uso declarado (registro 0013)
     configureLimitAccess(rt.limits);
-    // Medición + cuotas por tenant (límites del registro; consumo en ERM_DATABASE_URL)
-    installErmFromEnv(rt.quotas, env);
+    // Excepciones comerciales de cuota con caducidad (registro 0016, solo lectura)
+    configureQuotaExceptions(rt.quotaExceptions);
+    // Medición + cuotas por tenant (límites del registro con sus excepciones vigentes; consumo en ERM_DATABASE_URL)
+    installErmFromEnv(withQuotaExceptions(rt.quotas, rt.quotaExceptions), env);
     // Presupuesto de conexiones según la capacidad real del servidor MySQL compartido y las réplicas (dbCapacity.ts)
     startDbCapacityWatch({ serverConnections: () => runtime.serverConnections(), capBudget: capConnectionBudget, setPressure: setServerPressure, configured: tenantPoolPolicyFromEnv(env) }, env);
     // Acceso delegado de soporte (inactivo sin SUPPORT_JWT_SECRET)

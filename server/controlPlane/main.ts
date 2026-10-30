@@ -20,7 +20,7 @@
 import path from "node:path";
 import mysql from "mysql2/promise";
 import { EntitlementAdmin } from "../_core/modules/mysqlEntitlements";
-import { QuotaAdmin } from "../_core/erm/mysqlQuotas";
+import { MysqlQuotaExceptionStore, QuotaAdmin } from "../_core/erm/mysqlQuotas";
 import { DEFAULT_QUOTAS, parseDefaultQuotas } from "../_core/erm/quota";
 import { crmContactOf, runUsageNotices } from "../commerce/usageNotices";
 import { choosePublicDomain } from "../_core/tenantIdentity";
@@ -350,6 +350,10 @@ async function main() {
   // Tarifas del Resource Manager editables (registro 0014): sin la migración, solo las del entorno o la estimación
   const costRatesReady = await pool.query("SELECT 1 FROM erm_cost_model LIMIT 0").then(() => true, () => false);
   const costModelStore = costRatesReady ? new MysqlCostModelStore(pool) : undefined;
+  // Excepciones comerciales de cuota con caducidad (registro 0016): sin la migración, solo lo contractual
+  const quotaExceptionsReady = await pool.query("SELECT 1 FROM tenant_quota_exceptions LIMIT 0").then(() => true, () => false);
+  const quotaExceptions = quotaExceptionsReady ? new MysqlQuotaExceptionStore(pool) : undefined;
+  console.log(JSON.stringify({ ctx: "QuotaExceptions", enabled: quotaExceptionsReady, ...(quotaExceptionsReady ? {} : { reason: "registry_migration_0016_missing" }) }));
   console.log(JSON.stringify({ ctx: "CostRates", editable: costRatesReady, ...(costRatesReady ? {} : { reason: "registry_migration_0014_missing" }) }));
   // Sedes y entidades fiscales: solo si la migración 0009 del registro está aplicada
   const organizationReady = await pool.query("SELECT 1 FROM tenant_sites LIMIT 0").then(() => true, () => false);
@@ -750,6 +754,7 @@ async function main() {
     subscriptions,
     capabilities,
     limits,
+    quotaExceptions,
     trials,
     organization,
     orders,
