@@ -443,7 +443,7 @@ async function main() {
   };
   // Servicios de clientes externos (CRM 0026): solo con Stripe montado, sus tablas y un origen https del CRM
   let external: { store: MysqlExternalStore; urls: ExternalUrls; ipSalt?: string; liveEnabled?: boolean } | undefined;
-  let stripe: { config: NonNullable<typeof stripeConfig>; store: MysqlStripeStore; gateway: ReturnType<typeof stripeGateway>; urls: ReturnType<typeof checkoutUrlsFromEnv>; checkoutEnabled: boolean; verifyWebhook: ReturnType<typeof stripeWebhookVerifier>; workerEnabled: boolean; publicStatus: boolean; selfService: boolean; termsVersion: string | null; fiscal: typeof fiscal; purchases?: { enabled: boolean; changes: MysqlSubscriptionChangeStore; internalTenants: ReadonlySet<string> }; invoiceLines?: MysqlInvoiceLineStore; vies?: { client: ReturnType<typeof viesClient>; maxAgeDays: number }; billingPortal?: { enabled: boolean; configurationId: string | null } } | undefined;
+  let stripe: { config: NonNullable<typeof stripeConfig>; store: MysqlStripeStore; gateway: ReturnType<typeof stripeGateway>; urls: ReturnType<typeof checkoutUrlsFromEnv>; checkoutEnabled: boolean; verifyWebhook: ReturnType<typeof stripeWebhookVerifier>; workerEnabled: boolean; publicStatus: boolean; selfService: boolean; panelConversion: boolean; termsVersion: string | null; fiscal: typeof fiscal; purchases?: { enabled: boolean; changes: MysqlSubscriptionChangeStore; internalTenants: ReadonlySet<string> }; invoiceLines?: MysqlInvoiceLineStore; vies?: { client: ReturnType<typeof viesClient>; maxAgeDays: number }; billingPortal?: { enabled: boolean; configurationId: string | null } } | undefined;
   if (stripeConfig) {
     const urls = checkoutUrlsFromEnv(process.env);
     // La bandera sigue apagada por defecto; en live sin política fiscal, Checkout queda apagado aunque esté a 1
@@ -452,6 +452,8 @@ async function main() {
     const workerEnabled = process.env.CP_STRIPE_WORKER_ENABLED === "1";
     const publicStatus = process.env.CP_PUBLIC_CHECKOUT_ENABLED === "1";
     const selfService = process.env.CP_PUBLIC_SELF_SERVICE_ENABLED === "1";
+    // Contratación desde el panel de una empresa en prueba (conversión a pago): apagada salvo decisión comercial
+    const panelConversion = process.env.CP_PANEL_CONVERSION_ENABLED === "1";
     const termsVersion = (process.env.CP_TERMS_VERSION ?? "").trim() || null;
     // Sin proxy de confianza los límites por IP del webhook serían comunes a todo el tráfico
     const trustProxyOk = process.env.NODE_ENV !== "production" || !!process.env.CP_TRUST_PROXY;
@@ -490,6 +492,7 @@ async function main() {
         workerEnabled,
         publicStatus,
         selfService,
+        panelConversion,
         termsVersion,
         fiscal,
         // VIES (API REST de la Comisión Europea): verificación del NIF-IVA antes de la inversión del sujeto pasivo
@@ -521,6 +524,7 @@ async function main() {
         worker: ready && workerEnabled,
         publicStatus: ready && publicStatus,
         selfService: ready && selfService,
+        panelConversion: ready && panelConversion,
         termsPublished: !!termsVersion,
         fiscalScenarios: Array.from(fiscal.scenarios),
         taxExpectations: Object.fromEntries(fiscal.taxExpectations),

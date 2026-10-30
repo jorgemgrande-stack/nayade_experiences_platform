@@ -57,6 +57,26 @@ describe("cliente de compras del Core", () => {
     expect(JSON.parse(seen[1].body!)).toEqual({ idempotencyKey: "k".repeat(20), requestedBy: "user:5", contactEmail: "ana@example.com" });
   });
 
+  it("contratación desde la prueba: estado, presupuesto y pago con el tenant de la sesión y el usuario que contrata", async () => {
+    const seen: Array<{ url: string; method: string; body?: string }> = [];
+    const c = commerceClientFromEnv(env(), async (url, init) => {
+      seen.push({ url, ...init });
+      if (url.endsWith("/conversion/status")) return { status: 200, json: async () => ({ enabled: false, reasons: ["terms_unpublished"] }) };
+      if (url.endsWith("/preview")) return { status: 200, json: async () => ({ preview: { plan: "essential" } }) };
+      return { status: 200, json: async () => ({ sessionId: "cs_1", url: "https://checkout.stripe.com/c/pay/cs_1", expiresAt: 1 }) };
+    })!;
+    expect(await c.conversionStatus()).toEqual({ enabled: false, reasons: ["terms_unpublished"] });
+    expect(await c.conversionPreview("t7-acme", { plan: "essential", interval: "month" })).toEqual({ plan: "essential" });
+    const r = await c.conversionStart("t7-acme", { plan: "essential", interval: "year", add: ["crm"], idempotencyKey: "u", buyer: { type: "business" }, consents: { terms: true }, user: "user:3" });
+    expect(r.url).toBe("https://checkout.stripe.com/c/pay/cs_1");
+    expect(seen.map((x) => `${x.method} ${x.url}`)).toEqual([
+      "GET https://cp.example/cp/v1/commerce/conversion/status",
+      "POST https://cp.example/cp/v1/commerce/tenants/t7-acme/conversion/preview",
+      "POST https://cp.example/cp/v1/commerce/tenants/t7-acme/conversion",
+    ]);
+    expect(JSON.parse(seen[2].body!)).toMatchObject({ plan: "essential", interval: "year", add: ["crm"], user: "user:3" });
+  });
+
   it("errores del plano de control con su código; una caída es 503 sin detalles", async () => {
     const c = commerceClientFromEnv(env(), async () => ({ status: 409, json: async () => ({ error: "async_payment_method", message: "Tu método de pago no permite comprar en línea" }) }))!;
     await expect(c.preview("acme-01", { users: 5 })).rejects.toMatchObject({ status: 409, code: "async_payment_method" });

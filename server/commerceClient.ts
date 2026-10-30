@@ -23,6 +23,13 @@ export interface ReductionInput {
   storageGb?: number;
 }
 
+/** Contratación desde el panel durante la prueba: plan, periodicidad y módulos (importes, del plano de control). */
+export interface ConversionSelection {
+  plan: "essential" | "business";
+  interval: "month" | "year";
+  add?: string[];
+}
+
 export class CommerceError extends Error {
   constructor(
     public readonly status: number,
@@ -61,6 +68,10 @@ export interface CommerceClient {
   plan(tenantId: string): Promise<unknown>;
   /** Documento imprimible (HTML) de una factura expedida de la empresa. */
   invoiceDocument(tenantId: string, id: number): Promise<string>;
+  /** Contratación desde el panel de una empresa en prueba: ¿disponible? (y qué la impide), presupuesto y pago. */
+  conversionStatus(): Promise<{ enabled: boolean; reasons: string[] }>;
+  conversionPreview(tenantId: string, input: ConversionSelection): Promise<unknown>;
+  conversionStart(tenantId: string, input: ConversionSelection & { idempotencyKey: string; buyer: unknown; consents: unknown; user: string }): Promise<{ sessionId: string; url: string; expiresAt: number }>;
 }
 
 type Fetch = (url: string, init: { method: string; headers: Record<string, string>; body?: string; signal?: AbortSignal }) => Promise<{ status: number; json(): Promise<unknown> }>;
@@ -113,5 +124,8 @@ export function commerceClientFromEnv(env: NodeJS.ProcessEnv = process.env, fetc
     plan: async (tenantId) => ((await call("GET", `${seg(tenantId)}/plan`)) as { plan: unknown }).plan,
     invoiceDocument: async (tenantId, id) => ((await call("GET", `${seg(tenantId)}/invoices/${id}/document`)) as { html: string }).html,
     billingPortal: async (tenantId, returnUrl) => (await call("POST", `${seg(tenantId)}/billing-portal`, { returnUrl })) as { url: string },
+    conversionStatus: async () => (await call("GET", "/conversion/status")) as { enabled: boolean; reasons: string[] },
+    conversionPreview: async (tenantId, input) => ((await call("POST", `${seg(tenantId)}/conversion/preview`, input)) as { preview: unknown }).preview,
+    conversionStart: async (tenantId, input) => (await call("POST", `${seg(tenantId)}/conversion`, input)) as { sessionId: string; url: string; expiresAt: number },
   };
 }
