@@ -34,6 +34,8 @@ import { RegistryError } from "../_core/tenantRegistry/contract";
 import type { TenantRegistryService } from "../_core/tenantRegistry/service";
 import type { TenantRegistryReader } from "../_core/tenantRegistry/store";
 import { verifyDomainOwnership, type VerificationResult } from "../_core/tenantRegistry/domainVerification";
+import { accessPolicy } from "../_core/tenantRegistry/lifecycle";
+import { mapLimit } from "../_core/tenantRegistry/jobIsolation";
 import { manualDomainProvider, type DomainProvider } from "./domainProvider";
 import type { ProvisioningService } from "../_core/provisioning/service";
 import { ProvisioningError } from "../_core/provisioning/types";
@@ -146,6 +148,7 @@ import type { OrderStore } from "../orchestrator/store";
 import type { TestPaymentPort } from "../orchestrator/payments";
 import { createOrdersRouter, paymentsWebhookHandler } from "../orchestrator/api";
 import { subscriptionBilling } from "../orchestrator/subscriptionBilling";
+import { customDomainDecision, exemptTenantsFromEnv, resolveCommercialState } from "../commercialState";
 import { buildRelationshipExport, RelationshipNotFoundError } from "./relationshipExport";
 import { CalendarUnavailableError } from "./madridCalendar";
 import { createContractActivation } from "../crm/activation";
@@ -704,6 +707,17 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
       const body = z
         .object({ domain: z.string().min(3).max(253), kind: z.enum(["custom", "platform_subdomain"]), primary: z.boolean().optional() })
         .parse(req.body);
+      // Dominio propio solo tras el primer pago confirmado (flujo actual, con o sin el motor antiguo). El subdominio
+      // de plataforma se permite siempre. Estado comercial: server/commercialState.ts
+      if (body.kind === "custom") {
+        const tenant = await d.reader.getTenant(id);
+        if (tenant) {
+          const grants = d.capabilities ? await d.capabilities.list(id).catch(() => "unavailable" as const) : null;
+          const state = resolveCommercialState({ multi: true, tenantId: id, status: tenant.status, grants, now: Date.now(), exempt: exemptTenantsFromEnv() });
+          const decision = customDomainDecision(state);
+          if (!decision.allowed) return void res.status(403).json({ error: decision.code, message: decision.message });
+        }
+      }
       // Límite por plan (si hay motor de suscripciones)
       if (body.kind === "custom" && d.billing) {
         const count = (await d.reader.listDomains(id)).filter((x) => x.kind === "custom" && x.status !== "removed").length;
@@ -1371,6 +1385,34 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
       const out = await diagnoseTenant({ reader: d.reader, registry: d.registry, entitlements: d.entitlements, quotas: d.quotas, expectedSchemaVersion }, id);
       if (!out.ok) opsLog("warn", "Diagnostics", "tenant_not_healthy", { tenantId: id, failed: out.checks.filter((c) => !c.ok).map((c) => c.name) });
       res.json(out);
+    }),
+  );
+
+  // Tareas en segundo plano del Core por empresa (solo lectura): cortocircuitos y ejecuciones colgadas. Viajan con el
+  // estado técnico de la empresa (acción `modules` del canal interno), sin acción firmada nueva.
+  // Sin `tenant`, todas las empresas con panel (4 a la vez); con `?all=1`, también las que solo acumulan fallos.
+  router.get(
+    "/jobs/circuits",
+    requireScope("ops:read"),
+    wrap(async (req, res) => {
+      const access = d.tenantAccess;
+      if (!access) return void res.json({ available: false, circuits: [], hung: {}, unreachable: [] });
+      const only = typeof req.query.tenant === "string" ? idSchema.parse(req.query.tenant) : null;
+      const onlyOpen = req.query.all !== "1";
+      const tenants = only ? [only] : (await d.reader.listTenants()).filter((t) => accessPolicy(t.status).admin).map((t) => t.id);
+      const a = getAuth(req)!.actor;
+      const circuits: Array<Record<string, unknown>> = [];
+      // Ejecuciones colgadas por tarea en la réplica que responde (no son de una empresa concreta)
+      const hung: Record<string, number> = {};
+      const unreachable: string[] = [];
+      await mapLimit(tenants, 4, async (id) => {
+        const r = await access.client.call({ tenantId: id, act: "modules", operator: `${a.type}:${a.id}` }).catch(() => null);
+        const jobs = r?.status === 200 ? (r.body.jobs as { circuits?: Array<Record<string, unknown>>; hung?: Record<string, number> } | undefined) : undefined;
+        if (!jobs) return void unreachable.push(id);
+        for (const c of jobs.circuits ?? []) if (!onlyOpen || c.state !== "closed") circuits.push(c);
+        for (const [job, n] of Object.entries(jobs.hung ?? {})) hung[job] = Math.max(hung[job] ?? 0, n);
+      });
+      res.json({ available: true, checked: tenants.length, circuits, hung, unreachable: unreachable.sort() });
     }),
   );
 

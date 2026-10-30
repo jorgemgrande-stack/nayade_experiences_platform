@@ -186,6 +186,8 @@ export async function storagePut(
   const bytes = typeof data === "string" ? Buffer.byteLength(data) : data.byteLength;
   // Cuota de escritura del tenant (lanza QuotaExceededError si un límite duro se superaría)
   await enforceQuota(Metrics.STORAGE_WRITE_BYTES, bytes);
+  // Prueba gratuita: cuota de almacenamiento de prueba (server/trialRestrictions.ts)
+  await (await import("./trialRestrictions")).enforceTrialQuota(Metrics.STORAGE_WRITE_BYTES, bytes);
   if (objectStorageEnabled()) {
     normalizeKey(relKey); // la clave heredada sigue validándose (sin `..`, ni de otra empresa)
     let r: Awaited<ReturnType<ReturnType<typeof fileService>["put"]>>;

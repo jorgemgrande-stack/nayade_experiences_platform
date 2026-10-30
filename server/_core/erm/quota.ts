@@ -15,7 +15,7 @@ import { QuotaExceededError } from "./types";
 import type { AlertSink, Quota, QuotaDecision, QuotaPeriod, QuotaPolicyReader, UsageStore } from "./types";
 import { activeException, type QuotaException } from "./policy";
 import type { QuotaExceptionReader } from "./quotaExceptions";
-import { UsageAggregator } from "./usage";
+import { UsageAggregator, type SharedUsageCounters } from "./usage";
 
 export type DefaultQuota = Omit<Quota, "tenantId">;
 
@@ -78,6 +78,8 @@ export interface QuotaEngineOptions {
   alerts?: AlertSink;
   ttlMs?: number;
   now?: () => number;
+  /** Contadores compartidos entre réplicas para las cuotas día/mes (ver `SharedUsageCounters`). */
+  counters?: SharedUsageCounters;
 }
 
 type QuotaCache = { at: number; list: Quota[] };
@@ -138,11 +140,22 @@ export class QuotaEngine {
     const t = this.now();
     const from = windowStart(period, t);
     const pending = this.aggregator.pendingSum(tenantId, metric, from, t + 3_600_000);
+    let base: { used: number; reliable: boolean };
     try {
-      return { used: (await this.store.sum(tenantId, metric, from, t + 3_600_000)) + pending, reliable: true };
+      base = { used: (await this.store.sum(tenantId, metric, from, t + 3_600_000)) + pending, reliable: true };
     } catch {
-      return { used: pending, reliable: false };
+      base = { used: pending, reliable: false };
     }
+    // Día/mes: contador compartido (al día entre réplicas). El máximo con el horario cubre el mes en que nace el contador.
+    const c = this.opts.counters;
+    if (c?.tracks(metric) && (period === "day" || period === "month")) {
+      try {
+        return { used: Math.max(await c.used(tenantId, metric, period), base.used), reliable: true };
+      } catch {
+        // contador compartido caído: queda lo anterior (aviso ya registrado)
+      }
+    }
+    return base;
   }
 
   async check(metric: string, quantity = 1, tenantId: string = getTenantId()): Promise<QuotaDecision> {
@@ -168,6 +181,26 @@ export class QuotaEngine {
   async assert(metric: string, quantity = 1, tenantId: string = getTenantId()): Promise<QuotaDecision> {
     const d = await this.check(metric, quantity, tenantId);
     if (!d.allowed) throw new QuotaExceededError(metric, d);
+    // Límites duros día/mes: reserva atómica en el contador compartido (dos réplicas no conceden la misma última unidad)
+    const c = this.opts.counters;
+    if (!c || quantity <= 0 || !c.tracks(metric)) return d;
+    const hard = (await this.quotasFor(tenantId)).filter(
+      (q) => q.metric === metric && q.enforcement === "hard" && (q.period === "day" || q.period === "month"),
+    );
+    const reserved: Quota[] = [];
+    try {
+      for (const q of hard) {
+        const r = await c.reserve(tenantId, metric, q.period as "day" | "month", quantity, q.limit);
+        if (!r.ok) {
+          for (const x of reserved) await c.release(tenantId, metric, x.period as "day" | "month", quantity);
+          throw new QuotaExceededError(metric, { allowed: false, reason: "exceeded", metric, limit: q.limit, used: r.used, period: q.period });
+        }
+        reserved.push(q);
+      }
+    } catch (e) {
+      if (e instanceof QuotaExceededError) throw e;
+      // almacén compartido caído: vale la comprobación de `check()` (no se tumba el servicio)
+    }
     return d;
   }
 
