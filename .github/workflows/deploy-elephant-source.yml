@@ -64,6 +64,8 @@ on:
           - correo-acceso-desactivar
           - correo-contratos-estado
           - correo-contratos-activar
+          - correo-alertas-admin-estado
+          - correo-alertas-admin-activar
           - catalogo-revision
           - catalogo-revision-aplicar
           - catalogo-fichas
@@ -318,6 +320,16 @@ jobs:
           case "${ES_ACTION}" in
             correo-contratos-estado) pnpm exec tsx scripts/deploy/esRailway.ts contract-mail --env "${ES_ENV}" --accion estado ;;
             correo-contratos-activar) pnpm exec tsx scripts/deploy/esRailway.ts contract-mail --env "${ES_ENV}" --accion activar --allow "${ES_MAIL_ALLOW}" ;;
+          esac
+
+      # Alertas administrativas internas (operational): igual que los contratos, con los buzones internos en «destinatarios»
+      - name: Correo de alertas administrativas
+        if: startsWith(inputs.action, 'correo-alertas-admin-')
+        run: |
+          if [ "${ES_ENV}" != "production" ]; then echo "Las alertas administrativas se gestionan aquí solo en production"; exit 1; fi
+          case "${ES_ACTION}" in
+            correo-alertas-admin-estado) pnpm exec tsx scripts/deploy/esRailway.ts contract-mail --env "${ES_ENV}" --accion estado --categoria operational ;;
+            correo-alertas-admin-activar) pnpm exec tsx scripts/deploy/esRailway.ts contract-mail --env "${ES_ENV}" --accion activar --allow "${ES_MAIL_ALLOW}" --categoria operational ;;
           esac
 
       - name: Verificar el esquema de la exportación (0011, 0012, 0013)

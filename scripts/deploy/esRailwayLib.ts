@@ -283,7 +283,7 @@ export function leadNoticesMailPlan(
     ["MAIL_SENDING_DOMAIN", MAIL_ACCESS_SENDING_DOMAIN],
     ["MAIL_SCOPE_TENANTS", "platform"],
     // Conserva el correo de contratos si ya estaba abierto (contractMailPlan): reactivar los avisos no lo cierra
-    ["MAIL_SCOPE_CATEGORIES", scopeCategories(cp).includes(CONTRACT_MAIL_CATEGORY) ? `${LEAD_NOTICE_CATEGORY},${CONTRACT_MAIL_CATEGORY}` : LEAD_NOTICE_CATEGORY],
+    ["MAIL_SCOPE_CATEGORIES", [LEAD_NOTICE_CATEGORY, ...SANDBOX_EXTRA_CATEGORIES.filter((c) => scopeCategories(cp).includes(c))].join(",")],
     ["MAIL_SANDBOX_ALLOWLIST", o.recipients.join(",")],
     // Varias solicitudes seguidas no deben quedarse sin aviso por el límite general (8/h por destinatario)
     ["MAIL_RATE_RECIPIENT_PER_HOUR", "30"],
@@ -301,11 +301,19 @@ export function leadNoticesMailPlan(
  * buzones de la lista. Exige ese sandbox ya configurado (ámbito «platform», Postmark de production): no lo crea.
  */
 export const CONTRACT_MAIL_CATEGORY = "contract_invitation";
+/**
+ * Alertas administrativas internas (server/adminAlerts, categoría `operational`): mismo procedimiento que los contratos,
+ * con los buzones internos (administración y el destinatario de pruebas del CRM).
+ */
+export const ADMIN_ALERTS_MAIL_CATEGORY = "operational";
+export const SANDBOX_EXTRA_CATEGORIES = [CONTRACT_MAIL_CATEGORY, ADMIN_ALERTS_MAIL_CATEGORY] as const;
 const scopeCategories = (cp: Record<string, string>) => (cp.MAIL_SCOPE_CATEGORIES ?? "").split(",").map((s) => s.trim()).filter(Boolean);
-export function contractMailPlan(env: string, vars: Record<string, Record<string, string>>, o: { recipients: string[] }): { changes: MailChange[]; problems: string[] } {
+export function contractMailPlan(env: string, vars: Record<string, Record<string, string>>, o: { recipients: string[]; category?: (typeof SANDBOX_EXTRA_CATEGORIES)[number] }): { changes: MailChange[]; problems: string[] } {
   const problems: string[] = [];
   const changes: MailChange[] = [];
   const cp = vars.controlplane ?? {};
+  const category = o.category ?? CONTRACT_MAIL_CATEGORY;
+  if (!(SANDBOX_EXTRA_CATEGORIES as readonly string[]).includes(category)) problems.push(`categoría no prevista: ${category}`);
   if (env !== "production") problems.push("el correo de contratos se gestiona aquí solo en production");
   if (!o.recipients.length) problems.push("indica los buzones de los representantes (destinatarios)");
   if ((cp.MAIL_MODE ?? "off") !== "sandbox") problems.push(`el plano de control no está en sandbox (${cp.MAIL_MODE ?? "off"}): primero los avisos de solicitudes (avisos-solicitudes-activar)`);
@@ -314,7 +322,7 @@ export function contractMailPlan(env: string, vars: Record<string, Record<string
   if (!(cp.POSTMARK_SERVER_TOKEN ?? "").trim()) problems.push("el plano de control no tiene Postmark configurado");
   const cats = scopeCategories(cp);
   if (!cats.length) problems.push("el plano de control no tiene ámbito de categorías: abrir contratos abriría todo el correo");
-  if (!cats.includes(CONTRACT_MAIL_CATEGORY)) changes.push({ service: "controlplane", name: "MAIL_SCOPE_CATEGORIES", value: [...cats, CONTRACT_MAIL_CATEGORY].join(",") });
+  if (!cats.includes(category)) changes.push({ service: "controlplane", name: "MAIL_SCOPE_CATEGORIES", value: [...cats, category].join(",") });
   const allow = parseMailAllowlist(cp.MAIL_SANDBOX_ALLOWLIST ?? "");
   const added = o.recipients.filter((r) => !allow.includes(r));
   if (added.length) changes.push({ service: "controlplane", name: "MAIL_SANDBOX_ALLOWLIST", value: [...allow, ...added].join(",") });
