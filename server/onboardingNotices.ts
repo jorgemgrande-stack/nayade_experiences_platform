@@ -2,13 +2,14 @@
  * Avisos de «Primeros pasos» a la persona que configura la empresa (plantillas onboarding.steps y
  * onboarding.progress), por la bandeja de la empresa:
  *  - primer acceso al asistente sin ningún paso dado: guía de los primeros pasos (una sola vez);
- *  - al cruzar la mitad de los pasos sin haber terminado: progreso (una sola vez).
+ *  - al cruzar la mitad de los pasos sin haber terminado: progreso (una sola vez);
+ *  - sin terminar a los 3 días del primer acceso: recordatorio con los pasos pendientes (tarea onboarding-reminder).
  * Solo con una URL pública de la empresa (los enlaces van a su panel). Nunca rompen el asistente.
  */
 import { getTrustedBaseUrl } from "./_core/publicUrl";
 import { extraTemplates } from "./mail/extraTemplates";
 import { sendEmail } from "./mailer";
-import { progressPercent, SETUP_STEPS, type SetupProgress } from "../shared/setupWizard";
+import { progressPercent, SETUP_STEPS, STEP_LABELS, type SetupProgress } from "../shared/setupWizard";
 
 export interface OnboardingRecipient {
   email: string | null;
@@ -42,4 +43,15 @@ export async function onboardingProgressed(before: SetupProgress, after: SetupPr
   if (!h) return false;
   const c = extraTemplates.onboardingProgress({ name: to.name, host: h, done: resolved(after), total: SETUP_STEPS.length });
   return sendEmail({ to: to.email, subject: c.subject, html: c.html, text: c.text, category: "onboarding", idempotencyKey: "onboarding:progress:50" }).catch(() => false);
+}
+
+/** Recordatorio de configuración incompleta (hito en días desde el primer acceso), con los pasos que faltan. */
+export async function onboardingReminder(p: SetupProgress, to: OnboardingRecipient, days: number): Promise<boolean> {
+  if (p.completedAt !== null || !to.email) return false;
+  const h = host();
+  if (!h) return false;
+  const pending = SETUP_STEPS.filter((s) => s !== "finish" && p.steps[s].status === "pending").map((s) => STEP_LABELS[s].title);
+  if (!pending.length) return false;
+  const c = extraTemplates.onboardingReminder({ name: to.name, host: h, pending });
+  return sendEmail({ to: to.email, subject: c.subject, html: c.html, text: c.text, category: "onboarding", idempotencyKey: `onboarding:reminder:${days}` }).catch(() => false);
 }

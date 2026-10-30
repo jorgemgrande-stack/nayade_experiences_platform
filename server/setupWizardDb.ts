@@ -66,6 +66,84 @@ export async function updateProgress(change: (p: SetupProgress) => SetupProgress
   });
 }
 
+// ── Recordatorios de «Primeros pasos» (server/onboardingReminders.ts) ──────────
+
+/** Ajuste con el primer acceso al asistente y los recordatorios ya enviados (JSON). */
+export const ONBOARDING_REMINDERS_KEY = "onboarding_reminders";
+
+export interface OnboardingReminderState {
+  /** Primer acceso al asistente sin ningún paso dado (ms). */
+  firstAccessAt: number;
+  /** Quien lo abrió (destinatario de los recordatorios). */
+  userId: number | null;
+  /** Hito (días) → cuándo se envió o se dio por cubierto. */
+  sent: Record<string, number>;
+}
+
+export function parseReminderState(raw: string | null | undefined): OnboardingReminderState | null {
+  if (!raw) return null;
+  try {
+    const v = JSON.parse(raw) as Partial<OnboardingReminderState>;
+    if (typeof v.firstAccessAt !== "number") return null;
+    const sent: Record<string, number> = {};
+    for (const [k, t] of Object.entries(v.sent ?? {})) if (typeof t === "number") sent[k] = t;
+    return { firstAccessAt: v.firstAccessAt, userId: typeof v.userId === "number" ? v.userId : null, sent };
+  } catch {
+    return null;
+  }
+}
+
+/** Registra el primer acceso UNA vez (si ya existe, no cambia nada). */
+export async function recordOnboardingFirstAccess(userId: number | null, now: number): Promise<void> {
+  const db = await requireDb();
+  const value = JSON.stringify({ firstAccessAt: now, userId, sent: {} } satisfies OnboardingReminderState);
+  await db
+    .insert(systemSettings)
+    .values({ key: ONBOARDING_REMINDERS_KEY, value, label: "Recordatorios de Primeros pasos", category: "onboarding", valueType: "json" })
+    .onDuplicateKeyUpdate({ set: { key: sql`${systemSettings.key}` } });
+}
+
+export async function readOnboardingReminderState(): Promise<OnboardingReminderState | null> {
+  const s = await readSettings([ONBOARDING_REMINDERS_KEY]);
+  return parseReminderState(s[ONBOARDING_REMINDERS_KEY]);
+}
+
+/**
+ * Reserva el hito con la fila bloqueada: true solo si nadie lo había enviado (idempotencia por empresa e hito). Los
+ * hitos anteriores sin enviar quedan cubiertos por este (nunca se envían después: máximo un aviso por hito).
+ */
+export async function claimOnboardingReminder(days: number, earlier: number[], now: number): Promise<boolean> {
+  const db = await requireDb();
+  return db.transaction(async (tx) => {
+    const [row] = await tx.select({ value: systemSettings.value }).from(systemSettings).where(eq(systemSettings.key, ONBOARDING_REMINDERS_KEY)).for("update");
+    const st = parseReminderState(row?.value);
+    if (!st || st.sent[String(days)] !== undefined) return false;
+    st.sent[String(days)] = now;
+    for (const d of earlier) if (st.sent[String(d)] === undefined) st.sent[String(d)] = now;
+    await tx.update(systemSettings).set({ value: JSON.stringify(st) }).where(eq(systemSettings.key, ONBOARDING_REMINDERS_KEY));
+    return true;
+  });
+}
+
+/** Deshace la reserva de un hito cuyo correo no salió (se reintenta en la siguiente pasada). */
+export async function releaseOnboardingReminder(days: number, earlier: number[], claimedAt: number): Promise<void> {
+  const db = await requireDb();
+  await db.transaction(async (tx) => {
+    const [row] = await tx.select({ value: systemSettings.value }).from(systemSettings).where(eq(systemSettings.key, ONBOARDING_REMINDERS_KEY)).for("update");
+    const st = parseReminderState(row?.value);
+    if (!st) return;
+    for (const d of [days, ...earlier]) if (st.sent[String(d)] === claimedAt) delete st.sent[String(d)];
+    await tx.update(systemSettings).set({ value: JSON.stringify(st) }).where(eq(systemSettings.key, ONBOARDING_REMINDERS_KEY));
+  });
+}
+
+/** Correo y nombre de un usuario activo (destinatario de los recordatorios), o null. */
+export async function activeUserContact(userId: number): Promise<{ email: string; name: string | null } | null> {
+  const db = await requireDb();
+  const [u] = await db.select({ email: users.email, name: users.name, isActive: users.isActive }).from(users).where(eq(users.id, userId)).limit(1);
+  return u && u.isActive && u.email ? { email: u.email, name: u.name ?? null } : null;
+}
+
 /** Usuarios que ocupan plaza: activos y con rol de panel. */
 export async function countSeatUsers(): Promise<number> {
   const db = await requireDb();

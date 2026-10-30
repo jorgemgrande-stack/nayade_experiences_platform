@@ -65,6 +65,11 @@ export const CIRCUIT: Readonly<Record<string, TemplateCircuit>> = {
   "usage.near_limit": "programada",
   "usage.limit_reached": "programada",
   "access.archive_notice": "programada",
+  "onboarding.reminder": "programada",
+  // Alertas internas de la revisión periódica (gracia a punto de vencer y tickets sin respuesta)
+  "admin.suspension_near": "programada",
+  "admin.ticket_unanswered": "programada",
+  "admin.ticket_escalated": "programada",
   // Envíos de una persona del equipo desde el CRM
   "contract.invitation": "manual",
   "contract.payment_setup": "manual",
@@ -109,7 +114,7 @@ export const TEMPLATES: readonly TemplateEntry[] = [
   e("tenant.welcome", "Bienvenida (alta asistida)", "onboarding", "experiential", "controlplane", "Plataforma creada desde el CRM", "conectada", () => t.tenantWelcome({ companyName: "Empresa Demo, S.L.", host: HOST, setPasswordUrl: `https://${HOST}/establecer-contrasena?muestra=1` })),
   e("onboarding.steps", "Primeros pasos de configuración", "onboarding", "experiential", "core", "Primer acceso al asistente de Primeros pasos sin ningún paso dado", "conectada", () => x.onboardingSteps({ name: "Ana Demo", host: HOST })),
   e("onboarding.progress", "Progreso de la configuración", "onboarding", "experiential", "core", "La configuración cruza la mitad de los pasos", "conectada", () => x.onboardingProgress({ name: "Ana Demo", host: HOST, done: 3, total: 5 })),
-  e("onboarding.reminder", "Recordatorio de configuración incompleta", "onboarding", "experiential", "core", "Primeros pasos sin terminar a los 3 días", "sin_disparador", () => x.onboardingReminder({ name: "Ana Demo", host: HOST, pending: ["Datos de tu empresa", "Invitar a tu equipo"] })),
+  e("onboarding.reminder", "Recordatorio de configuración incompleta", "onboarding", "experiential", "core", "Primeros pasos sin terminar a los 3 días del primer acceso (tarea programada onboarding-reminder, con los pasos reales)", "conectada", () => x.onboardingReminder({ name: "Ana Demo", host: HOST, pending: ["Datos de tu empresa", "Invitar a tu equipo"] })),
   e("trial.reminder", "Prueba: quedan 7 días", "onboarding", "experiential", "controlplane", "Planificador de pruebas (aviso a 7 días)", "conectada", P("trial.reminder")),
   e("trial.reminder_2", "Prueba: quedan 2 días", "onboarding", "experiential", "controlplane", "Planificador de pruebas (umbral configurable)", "conectada", () => t.trialExpiry({ endsAt: PREVIEW_NOW + 2 * DAY, daysLeft: 2, pricingUrl: "https://www.bigelephant.example/precios" })),
   e("trial.ended", "Prueba finalizada", "onboarding", "experiential", "controlplane", "Fin de la prueba", "conectada", P("trial.ended")),
@@ -126,7 +131,7 @@ export const TEMPLATES: readonly TemplateEntry[] = [
   e("subscription.plan_changed", "Cambio de plan", "contratacion", "transactional", "controlplane", "subscription.plan_changed", "conectada", P("subscription.plan_changed")),
   e("module.quantity_changed", "Ampliación de usuarios, sedes o almacenamiento", "contratacion", "transactional", "controlplane", "subscription.quantity_changed", "conectada", P("module.quantity_changed")),
   e("module.removal_scheduled", "Baja de un módulo programada", "contratacion", "transactional", "controlplane", "subscription.module_removed", "conectada", P("module.removal_scheduled")),
-  e("module.removal_effective", "Baja de un módulo aplicada", "contratacion", "transactional", "controlplane", "Renovación que aplica la baja", "sin_disparador", P("module.removal_effective")),
+  e("module.removal_effective", "Baja de un módulo aplicada", "contratacion", "transactional", "controlplane", "subscription.module_removal_effective", "conectada", P("module.removal_effective")),
   e("module.purchase_requested", "Compra de módulo pendiente de pago", "contratacion", "transactional", "controlplane", "Compra enviada a Stripe con el cobro pendiente (autenticación o pago fallido)", "conectada", P("module.purchase_requested")),
   e("module.purchase_failed", "Compra no completada", "contratacion", "transactional", "controlplane", "order.rejected (compra desde la plataforma)", "conectada", P("module.purchase_failed")),
   e("subscription.renewal_paid", "Renovación de la suscripción", "contratacion", "transactional", "controlplane", "Renovación cobrada", "conectada", P("subscription.renewal_paid")),
@@ -152,7 +157,7 @@ export const TEMPLATES: readonly TemplateEntry[] = [
   e("access.archive_notice", "Aviso de archivado", "empresas", "security", "controlplane", "access.archive_notice", "conectada", P("access.archive_notice")),
   e("tenant.domain_connected", "Dominio propio conectado", "empresas", "transactional", "controlplane", "Dominio propio activado en la plataforma", "conectada", () => x.domainConnected({ domain: "www.empresa-demo.example" })),
   e("tenant.domain_pending", "Dominio pendiente de validación", "empresas", "transactional", "controlplane", "Alta de un dominio propio pendiente de validar", "conectada", () => x.domainPending({ domain: "www.empresa-demo.example", record: "CNAME", value: "empresa-demo.app.bigelephant.example" })),
-  e("external.changed", "Servicio externo modificado o renovado", "empresas", "transactional", "controlplane", "Cambio de condiciones del servicio", "sin_disparador", () => x.externalChanged({ ...ext, effectiveAt: PREVIEW_NOW + 10 * DAY })),
+  e("external.changed", "Servicio externo modificado o renovado", "empresas", "transactional", "controlplane", "Cambio confirmado del servicio: decisión sobre la fecha del primer cargo o versión nueva del contrato aceptada", "conectada", () => x.externalChanged({ ...ext, effectiveAt: PREVIEW_NOW + 10 * DAY, change: "first_charge", contractVersion: null })),
   e("data.export_ready", "Exportación de datos lista", "empresas", "security", "core", "Exportación generada", "conectada", P("data.export_ready")),
   e("data.export_failed", "Exportación de datos fallida", "empresas", "security", "core", "Exportación fallida", "conectada", P("data.export_failed")),
   // ── F. Producto y operaciones ──
@@ -181,9 +186,6 @@ export const TEMPLATES: readonly TemplateEntry[] = [
 
 /** Motivo funcional de cada plantilla sin disparador (lo que tendría que existir en el producto). */
 export const PENDING_REASON: Readonly<Record<string, string>> = {
-  "onboarding.reminder": "Necesita una tarea periódica nueva por empresa en el arranque del Core; es un cambio de infraestructura que va en un despliegue aislado.",
-  "module.removal_effective": "La baja efectiva la aplica la sincronización de licencias sin emitir ningún hecho con el producto retirado; solo existe el evento al programarla (que ya avisa).",
-  "external.changed": "El producto no permite modificar las condiciones de un servicio externo (solo la fecha del primer cargo).",
   ...Object.fromEntries(ADMIN_ALERTS.filter((a) => a.pending).map((a) => [a.id, a.pending!])),
 };
 
