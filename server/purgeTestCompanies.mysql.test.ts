@@ -1,7 +1,8 @@
 /**
- * Purga definitiva de las cinco empresas de prueba contra MySQL real (opt-in, REGISTRY_TEST_DATABASE_URL; bases aisladas
- * con todas las migraciones del CRM y del registro): borra solo lo de las cinco, de hijos a padres; Skibox y Nextair
- * intactas; las copias de seguridad se conservan; una factura o un dato live de una empresa de prueba bloquea todo.
+ * Purga definitiva de las empresas de prueba contra MySQL real (opt-in, REGISTRY_TEST_DATABASE_URL; bases aisladas
+ * con todas las migraciones del CRM y del registro): borra solo lo de la lista cerrada, de hijos a padres; una empresa
+ * real y Nextair intactas; las copias de seguridad se conservan; una factura o un dato live de una empresa de prueba
+ * bloquea todo. Fuera del CRM y del registro: bases restauradas sobrantes, medición (es_erm) y ficheros del bucket.
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import fs from "node:fs";
@@ -44,6 +45,11 @@ describe.skipIf(!URL_)("purga de las empresas de prueba (MySQL real)", () => {
   let crm: mysql.Pool;
   let reg: mysql.Pool;
   const realIds: number[] = [];
+  const LEFTOVERS = ["es_t5_skibox_r20261020101010", "es_t9_empresa_real_r20261020101010"];
+  // Bucket de medios simulado: ficheros de Skibox y de la empresa real
+  const bucket = new Set(["t/t5-skibox/logo.png", "t/t5-skibox/docs/a.pdf", "t/t9-empresa-real/logo.png"]);
+  const media = { describe: () => "memoria", list: async (p: string) => Array.from(bucket).filter((k) => k.startsWith(p)).map((key) => ({ key, bytes: 10 })) };
+  const resources = () => ({ servers: [{ alias: "mysql-1", admin }], media });
 
   beforeAll(async () => {
     admin = mysql.createPool({ uri: URL_!, connectionLimit: 2 });
@@ -55,7 +61,7 @@ describe.skipIf(!URL_)("purga de las empresas de prueba (MySQL real)", () => {
     await crm.query("SET FOREIGN_KEY_CHECKS = 0");
     await reg.query("SET FOREIGN_KEY_CHECKS = 0");
     const company = async (name: string, tenantId: string | null) => seed(crm, "crm_companies", { name, tenant_id: tenantId, created_at: T });
-    const all = [...PURGE_TARGETS.map((t) => ({ name: t.companyName, tenantId: t.tenantId, test: true })), { name: "Skibox", tenantId: "t5-skibox", test: false }, { name: "Nextair", tenantId: null, test: false }];
+    const all = [...PURGE_TARGETS.map((t) => ({ name: t.companyName, tenantId: t.tenantId, test: true })), { name: "Empresa Real", tenantId: "t9-empresa-real", test: false }, { name: "Nextair", tenantId: null, test: false }];
     for (const c of all) {
       const id = await company(c.name, c.tenantId);
       if (!c.test) realIds.push(id);
@@ -76,6 +82,11 @@ describe.skipIf(!URL_)("purga de las empresas de prueba (MySQL real)", () => {
     }
     await crm.query("SET FOREIGN_KEY_CHECKS = 1");
     await reg.query("SET FOREIGN_KEY_CHECKS = 1");
+    // Servidor de bases: una restauración sobrante de Skibox, otra de la empresa real y la medición de ambas
+    for (const db of LEFTOVERS) await admin.query(`CREATE DATABASE IF NOT EXISTS \`${db}\``);
+    await admin.query("CREATE DATABASE IF NOT EXISTS es_erm");
+    await admin.query("CREATE TABLE IF NOT EXISTS es_erm.usage_hourly (tenant_id VARCHAR(63) NOT NULL, metric VARCHAR(32) NOT NULL, n INT NOT NULL)");
+    await admin.query("INSERT INTO es_erm.usage_hourly VALUES ('t5-skibox','requests',3),('t5-skibox','storage',1),('t9-empresa-real','requests',7)");
   });
 
   afterAll(async () => {
@@ -83,6 +94,8 @@ describe.skipIf(!URL_)("purga de las empresas de prueba (MySQL real)", () => {
     await reg?.end();
     await admin?.query("DROP DATABASE IF EXISTS purge_test_crm");
     await admin?.query("DROP DATABASE IF EXISTS purge_test_registry");
+    for (const db of LEFTOVERS) await admin?.query(`DROP DATABASE IF EXISTS \`${db}\``);
+    await admin?.query("DROP DATABASE IF EXISTS es_erm");
     await admin?.end();
   });
 
@@ -90,7 +103,7 @@ describe.skipIf(!URL_)("purga de las empresas de prueba (MySQL real)", () => {
   const dbName = async (t: string) => `es_${t.replace(/-/g, "_")}${t === "t3-empresa-demo-elephant-01" ? "_r20261016221031" : ""}`;
 
   it("una base con un nombre ajeno (ni el propio ni el de una restauración) bloquea la purga", async () => {
-    const plan = await planPurge({ crm, registry: reg, tenantDbName: async (t) => (t === "t1-empresa-demo-elephant-a" ? "es_t5_skibox" : dbName(t)), expectedDbName: (t) => `es_${t.replace(/-/g, "_")}` });
+    const plan = await planPurge({ crm, registry: reg, tenantDbName: async (t) => (t === "t1-empresa-demo-elephant-a" ? "es_t9_empresa_real" : dbName(t)), expectedDbName: (t) => `es_${t.replace(/-/g, "_")}` });
     expect(plan.problems.join()).toMatch(/no tiene el nombre propio/);
   });
 
@@ -105,9 +118,19 @@ describe.skipIf(!URL_)("purga de las empresas de prueba (MySQL real)", () => {
     await crm.query("DELETE FROM invoices WHERE id = ?", [inv]);
   });
 
-  it("purga solo las cinco empresas, de hijos a padres, conserva las copias y deja Skibox y Nextair intactas", async () => {
-    const plan = await planPurge({ crm, registry: reg, tenantDbName: dbName, expectedDbName: (t) => `es_${t.replace(/-/g, "_")}` });
+  it("sin poder mirar el bucket de medios no se purga nada (quedarían ficheros huérfanos)", async () => {
+    const plan = await planPurge({ crm, registry: reg, tenantDbName: dbName, resources: { media: { unavailable: "BACKUP_MEDIA no activado" } } });
+    expect(plan.problems.join()).toMatch(/ficheros/);
+    expect(plan.files.checked).toBe(false);
+  });
+
+  it("purga solo la lista cerrada, de hijos a padres, conserva las copias y deja la empresa real y Nextair intactas", async () => {
+    const plan = await planPurge({ crm, registry: reg, tenantDbName: dbName, expectedDbName: (t) => `es_${t.replace(/-/g, "_")}`, resources: resources() });
     expect(plan.problems).toEqual([]);
+    expect(plan.companies.map((c) => c.name)).toContain("Skibox");
+    expect(plan.extraDatabases).toEqual([{ tenantId: "t5-skibox", server: "mysql-1", database: "es_t5_skibox_r20261020101010" }]);
+    expect(plan.measurement).toEqual([{ server: "mysql-1", table: "usage_hourly", rows: 2 }]);
+    expect(plan.files.byTenant).toEqual([{ tenantId: "t5-skibox", objects: 2, bytes: 20, keys: ["t/t5-skibox/logo.png", "t/t5-skibox/docs/a.pdf"] }]);
     expect(plan.companies.map((c) => c.tenantId).sort()).toEqual(PURGE_TARGETS.map((t) => t.tenantId).sort());
     const tables = plan.steps.map((s) => `${s.db}.${s.table}`);
     expect(tables).toEqual(expect.arrayContaining(["crm.crm_contacts", "crm.crm_contracts", "crm.subscriptions", "crm.crm_companies", "registry.tenant_domains"]));
@@ -122,19 +145,28 @@ describe.skipIf(!URL_)("purga de las empresas de prueba (MySQL real)", () => {
     expect(plan.databases.filter((x) => x.restored).map((x) => x.database)).toEqual(["es_t3_empresa_demo_elephant_01_r20261016221031"]);
     const dropped: string[] = [];
     const restored: string[] = [];
-    const done = await applyPurge({ crm, registry: reg, dropDatabase: async (t) => void dropped.push(t), dropRestoredDatabase: async (_t, db) => void restored.push(db) }, plan);
+    const done = await applyPurge(
+      { crm, registry: reg, dropDatabase: async (t) => void dropped.push(t), dropRestoredDatabase: async (_t, db) => void restored.push(db), servers: resources().servers, deleteMedia: async (k) => void bucket.delete(k) },
+      plan,
+    );
+    expect(done.deletedFiles).toBe(2);
+    expect(Array.from(bucket)).toEqual(["t/t9-empresa-real/logo.png"]);
+    const [schemas] = await admin.query<mysql.RowDataPacket[]>("SELECT SCHEMA_NAME n FROM information_schema.SCHEMATA WHERE SCHEMA_NAME IN (?)", [LEFTOVERS]);
+    expect(schemas.map((r) => r.n)).toEqual(["es_t9_empresa_real_r20261020101010"]);
+    const [usage] = await admin.query<mysql.RowDataPacket[]>("SELECT tenant_id FROM es_erm.usage_hourly");
+    expect(usage.map((r) => r.tenant_id)).toEqual(["t9-empresa-real"]);
     expect(dropped.sort()).toEqual(PURGE_TARGETS.map((t) => t.tenantId).sort());
     expect(restored).toEqual(["es_t3_empresa_demo_elephant_01_r20261016221031"]);
-    expect(done.deleted.find((d) => d.table === "commercial_payment_events")?.rows).toBe(5);
+    expect(done.deleted.find((d) => d.table === "commercial_payment_events")?.rows).toBe(PURGE_TARGETS.length);
     const [[events]] = await crm.query<mysql.RowDataPacket[]>("SELECT COUNT(*) n FROM commercial_payment_events");
     expect(Number(events.n)).toBe(2);
-    expect(done.deleted.find((d) => d.table === "crm_companies")?.rows).toBe(5);
-    expect(await verifyPurge({ crm, registry: reg })).toEqual({ ok: true, remaining: [] });
+    expect(done.deleted.find((d) => d.table === "crm_companies")?.rows).toBe(PURGE_TARGETS.length);
+    expect(await verifyPurge({ crm, registry: reg, resources: resources() })).toEqual({ ok: true, remaining: [] });
     const [left] = await crm.query<mysql.RowDataPacket[]>("SELECT name FROM crm_companies ORDER BY name");
-    expect(left.map((r) => r.name)).toEqual(["Nextair", "Skibox"]);
+    expect(left.map((r) => r.name)).toEqual(["Empresa Real", "Nextair"]);
     const [[contacts]] = await crm.query<mysql.RowDataPacket[]>("SELECT COUNT(*) n FROM crm_contacts WHERE company_id IN (?)", [realIds]);
     expect(Number(contacts.n)).toBe(2);
-    const [[sk]] = await reg.query<mysql.RowDataPacket[]>("SELECT COUNT(*) n FROM tenants WHERE id = 't5-skibox' AND status <> 'deleted'");
+    const [[sk]] = await reg.query<mysql.RowDataPacket[]>("SELECT COUNT(*) n FROM tenants WHERE id = 't9-empresa-real' AND status <> 'deleted'");
     expect(Number(sk.n)).toBe(1);
     const [states] = await reg.query<mysql.RowDataPacket[]>("SELECT id, status FROM tenants WHERE id IN (?)", [PURGE_TARGETS.map((t) => t.tenantId)]);
     expect(states.every((r) => r.status === "deleted")).toBe(true);
@@ -142,13 +174,13 @@ describe.skipIf(!URL_)("purga de las empresas de prueba (MySQL real)", () => {
     expect(Number(dom.n)).toBe(0);
     const [ev] = await reg.query<mysql.RowDataPacket[]>("SELECT tenant_id, action FROM tenant_events ORDER BY id");
     expect(ev.filter((r) => r.action === "purged").map((r) => r.tenant_id).sort()).toEqual(PURGE_TARGETS.map((t) => t.tenantId).sort());
-    expect(ev.filter((r) => r.action === "created").length).toBe(6);
+    expect(ev.filter((r) => r.action === "created").length).toBe(PURGE_TARGETS.length + 1);
     const [[backups]] = await reg.query<mysql.RowDataPacket[]>("SELECT COUNT(*) n FROM backup_inventory");
-    expect(Number(backups.n)).toBe(6);
+    expect(Number(backups.n)).toBe(PURGE_TARGETS.length + 1);
     // Repetir es inocuo: ya no queda nada que purgar
     const again = await planPurge({ crm, registry: reg, tenantDbName: async () => null });
     expect(again.steps).toEqual([]);
     expect(again.retire).toEqual([]);
-    expect(again.missing.length).toBe(5);
+    expect(again.missing.length).toBe(PURGE_TARGETS.length);
   });
 });
