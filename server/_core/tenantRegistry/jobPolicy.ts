@@ -30,6 +30,7 @@ export const JOB_MULTI_POLICIES: Readonly<Record<string, JobMultiPolicy>> = {
   "email-automation": { mode: "per-tenant", reason: "Cola de correos programados de la propia empresa" },
   "tax-reminder": { mode: "per-tenant", reason: "Obligaciones fiscales de la propia empresa" },
   "data-export": { mode: "per-tenant", reason: "Exportación de los datos de la propia empresa (también suspendida o en solo lectura)" },
+  "onboarding-reminder": { mode: "per-tenant", reason: "Recordatorios de Primeros pasos de la propia empresa, a quien abrió su asistente" },
 };
 
 export function jobMultiPolicy(name: string): JobMultiPolicy {

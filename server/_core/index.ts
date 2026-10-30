@@ -43,6 +43,7 @@ import { startCancellationStaleJob } from "../cancellationStaleJob";
 import { startEmailAutomationJob } from "../emailAutomationJob";
 import { startTaxReminderJob } from "../taxReminderJob";
 import { startDataExportJob } from "../dataExport/job";
+import { startOnboardingReminderJob } from "../onboardingReminders";
 import { startEmailIngestionJob } from "../services/emailTpvIngestionService";
 import { startExpenseEmailIngestionJob } from "../services/expenseEmailIngestionService";
 import { initCommercialEmailTables, startCommercialEmailSyncJob } from "../services/commercialEmailService";
@@ -1825,6 +1826,20 @@ const SCHEDULED_JOBS: Array<{ name: string; flag: string; start: () => void; lab
   { name: "email-automation", flag: "email_automation_job_enabled", start: startEmailAutomationJob, label: "Email Automation", def: false },
   { name: "tax-reminder", flag: "tax_reminder_job_enabled", start: startTaxReminderJob, label: "Tax Reminder", def: true },
   { name: "data-export", flag: "data_export_job_enabled", start: startDataExportJob, label: "Data Export", def: true },
+  {
+    name: "onboarding-reminder",
+    flag: "onboarding_reminder_job_enabled",
+    // Protegido: un fallo al registrar esta tarea nunca impide arrancar ni registrar las demás
+    start: () => {
+      try {
+        startOnboardingReminderJob();
+      } catch (e) {
+        console.error("[Jobs] 'Onboarding Reminder' no se ha podido registrar:", e instanceof Error ? e.message : e);
+      }
+    },
+    label: "Onboarding Reminder",
+    def: true,
+  },
 ];
 
 /**
