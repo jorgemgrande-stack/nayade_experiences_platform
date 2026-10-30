@@ -1258,7 +1258,8 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
     }),
   );
 
-  // Tareas en segundo plano del Core por empresa (solo lectura, canal interno): cortocircuitos y ejecuciones colgadas.
+  // Tareas en segundo plano del Core por empresa (solo lectura): cortocircuitos y ejecuciones colgadas. Viajan con el
+  // estado técnico de la empresa (acción `modules` del canal interno), sin acción firmada nueva.
   // Sin `tenant`, todas las empresas con panel (4 a la vez); con `?all=1`, también las que solo acumulan fallos.
   router.get(
     "/jobs/circuits",
@@ -1275,7 +1276,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
       const hung: Record<string, number> = {};
       const unreachable: string[] = [];
       await mapLimit(tenants, 4, async (id) => {
-        const r = await access.client.call({ tenantId: id, act: "jobs", operator: `${a.type}:${a.id}` }).catch(() => null);
+        const r = await access.client.call({ tenantId: id, act: "modules", operator: `${a.type}:${a.id}` }).catch(() => null);
         const jobs = r?.status === 200 ? (r.body.jobs as { circuits?: Array<Record<string, unknown>>; hung?: Record<string, number> } | undefined) : undefined;
         if (!jobs) return void unreachable.push(id);
         for (const c of jobs.circuits ?? []) if (!onlyOpen || c.state !== "closed") circuits.push(c);

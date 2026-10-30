@@ -1,6 +1,6 @@
 /**
  * Plano de control: cortocircuitos de las tareas en segundo plano del Core (solo lectura, `ops:read`), leídos por el
- * canal interno firmado (`/_ops/access`, acción `jobs`). Core simulado; empresas ficticias.
+ * canal interno firmado (`/_ops/access`, con el estado técnico de la acción `modules`). Core simulado; empresas ficticias.
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import crypto from "node:crypto";
@@ -12,12 +12,10 @@ import { keyringFromEnv } from "./_core/tenantRegistry/crypto";
 import { createControlPlaneApp } from "./controlPlane/api";
 import { hashToken } from "./controlPlane/auth";
 import type { CoreAccessClient } from "./controlPlane/tenantAccess";
-import { signOpsAccessToken, verifyOpsAccessToken } from "./_core/opsAccess/token";
 
 const OPS = "jobs-ops-token-aaaaaaaaaaaaaaaaaaaaaaaa";
 const NOOPS = "jobs-crm-token-bbbbbbbbbbbbbbbbbbbbbbbb";
 const OP: Actor = { type: "operator", id: "prueba" };
-const SECRET = "ci-only-placeholder-not-a-secret-1-ci-only-placeholder";
 
 describe("GET /jobs/circuits", () => {
   let server: http.Server;
@@ -44,7 +42,7 @@ describe("GET /jobs/circuits", () => {
                 { job: "tax-reminder", tenantId: "emp-dos", state: "closed", consecutiveFailures: 1, opens: 0, openUntil: null, lastError: "x", lastFailureAt: 1 },
               ]
             : [];
-        return { status: 200, body: { ok: true, action: "jobs", jobs: { circuits, runs: [], hung: { "email-tpv-ingestion": 1 } } } };
+        return { status: 200, body: { ok: true, action: "modules", modules: [], jobs: { circuits, runs: [], hung: { "email-tpv-ingestion": 1 } } } };
       },
     };
     server = http.createServer(
@@ -86,7 +84,7 @@ describe("GET /jobs/circuits", () => {
     expect(r.status).toBe(200);
     expect(r.json).toMatchObject({ available: true, checked: 3, unreachable: ["emp-caida"], hung: { "email-tpv-ingestion": 1 } });
     expect(r.json.circuits).toEqual([expect.objectContaining({ job: "email-tpv-ingestion", tenantId: "emp-dos", state: "open" })]);
-    expect(asked.sort()).toEqual(["jobs:emp-caida", "jobs:emp-dos", "jobs:emp-uno"]);
+    expect(asked.sort()).toEqual(["modules:emp-caida", "modules:emp-dos", "modules:emp-uno"]);
   });
 
   it("con ?all=1 también las que acumulan fallos; con ?tenant= solo esa empresa", async () => {
@@ -94,7 +92,7 @@ describe("GET /jobs/circuits", () => {
     asked.length = 0;
     const r = await get("/jobs/circuits?tenant=emp-uno", OPS);
     expect(r.json).toMatchObject({ checked: 1, circuits: [] });
-    expect(asked).toEqual(["jobs:emp-uno"]);
+    expect(asked).toEqual(["modules:emp-uno"]);
   });
 
   it("exige ops:read", async () => {
@@ -102,9 +100,3 @@ describe("GET /jobs/circuits", () => {
   });
 });
 
-describe("canal interno: acción jobs", () => {
-  it("se firma y verifica sin usuario de la empresa", async () => {
-    const t = await signOpsAccessToken({ tid: "emp-uno", act: "jobs", op: "operator:prueba" }, SECRET);
-    expect(await verifyOpsAccessToken(t, SECRET)).toMatchObject({ tid: "emp-uno", act: "jobs" });
-  });
-});

@@ -90,16 +90,15 @@ export function installTenantResolution(app: Express, env: NodeJS.ProcessEnv = p
           },
           run: (id, act, uid, confirm, ctx) =>
             runWithTenant(id, async () => {
-              // Estado de las tareas en segundo plano de la empresa en esta réplica (solo lectura, sin tocar su base)
-              if (act === "jobs") return { ok: true as const, action: act, jobs: jobHealth(id) };
               await Promise.all([warmConfigCache(), warmIntegrationCreds(), warmTenantIdentity()]);
               // Integraciones (estado y comprobación de solo lectura) o accesos, según la acción firmada
               if (act === "integrations" || act === "integration_check") return runIntegrationAction(act, ctx.provider, ctx.operator);
-              // Estado técnico de los módulos (solo lectura): versiones, compatibilidad, migraciones y errores de carga
+              // Estado técnico de los módulos (solo lectura): versiones, compatibilidad, migraciones y errores de carga;
+              // también el de sus tareas en segundo plano en esta réplica (cortocircuitos, últimas ejecuciones, colgadas)
               if (act === "modules") {
                 const lease = await leaseTenantDatabase().catch(() => null);
                 try {
-                  return { ok: true as const, action: act, modules: await modulesTechnicalReport(id, lease?.pool ?? null) };
+                  return { ok: true as const, action: act, modules: await modulesTechnicalReport(id, lease?.pool ?? null), jobs: jobHealth(id) };
                 } finally {
                   lease?.release();
                 }

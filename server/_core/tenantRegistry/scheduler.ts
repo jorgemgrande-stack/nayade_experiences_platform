@@ -16,7 +16,8 @@
  * se avisa al oyente de `setJobCircuitListener`. Las alertas administrativas (`admin.integration_error`) viven en el
  * plano de control, el único proceso con escritura en el registro: el Core no puede abrir la incidencia. El oyente
  * es el gancho para conectarlas cuando exista un canal Core → plano de control; mientras tanto el estado se consulta
- * desde el plano de control (`GET /ops/jobs/circuits`, ops:read) por el canal interno `/_ops/access`.
+ * desde el plano de control (`GET /cp/v1/jobs/circuits`, ops:read), que lo lee con el estado técnico de la empresa
+ * (acción `modules` del canal interno `/_ops/access`).
  */
 import cron from "node-cron";
 import { getFeatureFlag } from "../../config";
