@@ -477,11 +477,11 @@ export const PRODUCT_SPECS: readonly ProductSpec[] = [
   s({
     key: "life-net",
     category: "sector_module",
-    longDescription: "Organización personal y familiar. Producto previsto, sin definición funcional ni desarrollo.",
-    problem: "Pendiente de definición funcional.",
+    longDescription: "Organización personal y familiar con Big Elephant. Llegará próximamente: anunciaremos sus funciones cuando esté disponible.",
+    problem: "",
     forWho: "Profesionales y familias.",
     includes: [],
-    excludes: ["Toda funcionalidad: no hay desarrollo en ningún repositorio"],
+    excludes: [],
     compatibleExtensions: [],
     capacityRules: ["Por empresa"],
     implementation: { level: 3, requirements: ["Definición funcional y desarrollo nuevo"], sources: ["Sin desarrollo"] },
@@ -489,7 +489,7 @@ export const PRODUCT_SPECS: readonly ProductSpec[] = [
     verified: { grade: "none", evidence: "Ninguna funcionalidad identificada" },
     publicContent: { headline: "Próximamente: organización personal y familiar.", benefits: [], cta: "waitlist" },
     seo: { slug: "life-net", title: "Big Elephant Life Net (próximamente)", description: "Próximamente: organización personal y familiar con Big Elephant." },
-    admin: { pendingDecisions: ["Definición funcional antes de comprometer plazos"] },
+    admin: { pendingDecisions: ["Definición funcional antes de comprometer plazos"], notes: "Sin definición funcional ni desarrollo en ningún repositorio (dato interno, fuera de la ficha pública)." },
   }),
   // ── Social Token Net ───────────────────────────────────────────────────────
   s({
