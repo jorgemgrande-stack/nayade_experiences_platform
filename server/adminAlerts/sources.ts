@@ -188,6 +188,15 @@ export function externalEventAlerts(ev: Omit<ExternalEvent, "id">, x: ExternalSu
   switch (ev.kind) {
     case "created":
       return one("admin.external_contracted", { summary: `Alta del servicio externo «${x.serviceName}».`, status: { label: "Pendiente de contrato", tone: "info" }, amount: fee });
+    case "changed": {
+      const fields = Array.isArray(d.labels) ? d.labels.filter((v): v is string => typeof v === "string") : [];
+      return one("admin.external_changed", {
+        summary: `Condiciones de «${x.serviceName}» modificadas${fields.length ? ` (${fields.join(", ")})` : ""}. El contrato debe volver a aceptarse: no hay cobros ni suscripción en Stripe que cambien.`,
+        status: { label: "Actualizado", tone: "info" },
+        amount: fee,
+        details: [...base.details, ...(n(d.contractVersion) !== null ? [{ label: "Versión del contrato", value: String(d.contractVersion) }] : []), ...(s(d.reason) ? [{ label: "Motivo", value: String(d.reason).slice(0, 300) }] : [])],
+      });
+    }
     case "acceptance_requested":
       return one("admin.contract_sent", { summary: `Contrato de «${x.serviceName}» enviado al firmante para su revisión y aceptación.`, status: { label: "Pendiente de firma", tone: "info" } });
     case "accepted":

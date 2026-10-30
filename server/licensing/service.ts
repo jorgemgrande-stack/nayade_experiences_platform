@@ -25,7 +25,18 @@ import type { CrmPort } from "../subscriptions/ports";
 import type { SubscriptionStore } from "../subscriptions/store";
 import type { Subscription } from "../subscriptions/types";
 import { LIMIT_METRICS, type LimitChange, type LimitMetric, type TenantLimitStore } from "../_core/limits/store";
-import type { CommercialEventSink } from "../commercialEvents/types";
+import type { CommercialEventDraft, CommercialEventSink } from "../commercialEvents/types";
+import { cleanData } from "../commercialEvents/derive";
+import { opsLog } from "../_core/ops/log";
+
+/** Capacidades que concede un producto (con su herencia y, en los paquetes, las de sus componentes). */
+function capabilitiesOf(p: QuoteCatalogProduct | undefined, byKey: Map<string, QuoteCatalogProduct>, out = new Set<string>(), depth = 0): Set<string> {
+  if (!p || depth > 10) return out;
+  p.capabilities.forEach((c) => CAPABILITY_IDS.includes(c) && out.add(c));
+  if (p.inherits) capabilitiesOf(byKey.get(p.inherits), byKey, out, depth + 1);
+  for (const comp of p.bundleOf) capabilitiesOf(byKey.get(comp), byKey, out, depth + 1);
+  return out;
+}
 
 export class LicensingError extends Error {
   constructor(
@@ -80,14 +91,7 @@ export class LicensingService {
     const items = all.filter((i) => i.effectiveFrom <= now && (i.effectiveTo === null || i.effectiveTo > now));
     const catalog = await this.d.catalog();
     const byKey = new Map(catalog.products.map((p) => [p.key, p]));
-
-    const capsOf = (p: QuoteCatalogProduct | undefined, out = new Set<string>(), depth = 0): Set<string> => {
-      if (!p || depth > 10) return out;
-      p.capabilities.forEach((c) => CAPABILITY_IDS.includes(c) && out.add(c));
-      if (p.inherits) capsOf(byKey.get(p.inherits), out, depth + 1);
-      for (const comp of p.bundleOf) capsOf(byKey.get(comp), out, depth + 1);
-      return out;
-    };
+    const capsOf = (p: QuoteCatalogProduct | undefined) => capabilitiesOf(p, byKey);
     const grants = new Map<string, Set<string>>();
     if (sub.status !== "canceled") {
       for (const it of items) {
@@ -144,8 +148,53 @@ export class LicensingService {
   async apply(subscriptionId: number, o: { activate: boolean; actor: string; reason?: string | null }) {
     const plan = await this.preview(subscriptionId, { activate: o.activate });
     const events = plan.changes.length ? await this.d.capabilities.apply(plan.tenantId, plan.changes, { actor: o.actor, reason: o.reason ?? `Licencias de la suscripción #${subscriptionId}`, now: this.now() }) : [];
+    const cancelled = events.filter((e) => e.toStatus === "cancelled" && e.fromStatus !== "cancelled").map((e) => e.capabilityId);
+    if (cancelled.length) await this.removalsEffective(subscriptionId, plan.tenantId, cancelled, o.actor);
     const limits = await this.applyLimits(subscriptionId, plan.tenantId, o.actor);
     return { ...plan, applied: events, limits };
+  }
+
+  /**
+   * Baja EFECTIVA de módulos: partidas cuya baja ya se cumplió (fin <= ahora) y cuyas licencias acaba de cancelar ESTA
+   * sincronización. Un evento por partida (`subscription.module_removal_effective`) con el producto retirado. Nunca por
+   * una baja solo programada, por el plan Core (cambio de plan), por una ampliación por cantidad, por un paquete que
+   * sustituye a sus componentes (sus licencias siguen) ni por el fin de toda la suscripción (tiene su propio aviso).
+   * Mismo patrón que los límites: las licencias se escriben en su propia transacción y el evento después, idempotente
+   * por partida (repetir la sincronización no lo duplica).
+   */
+  private async removalsEffective(subscriptionId: number, tenantId: string, cancelled: string[], actor: string) {
+    if (!this.d.events) return;
+    const sub = await this.d.subscriptions.get(subscriptionId);
+    if (!sub || sub.status === "canceled") return;
+    const now = this.now();
+    const all = await this.d.subscriptions.items(sub.id);
+    const byKey = new Map((await this.d.catalog()).products.map((p) => [p.key, p]));
+    const liveKeys = new Set(all.filter((i) => i.effectiveFrom <= now && (i.effectiveTo === null || i.effectiveTo > now)).map((i) => i.productKey));
+    const gone = new Set(cancelled);
+    const drafts: CommercialEventDraft[] = all
+      .filter((i) => i.effectiveTo !== null && i.effectiveTo <= now && i.family !== "core_plan" && i.lineKind !== "quantity" && !liveKeys.has(i.productKey))
+      .map((i) => ({ item: i, caps: Array.from(capabilitiesOf(byKey.get(i.productKey), byKey)).filter((c) => gone.has(c)).sort() }))
+      .filter((x) => x.caps.length > 0)
+      .map(({ item, caps }) => ({
+        key: `subscription:${sub.id}:item:${item.id}:removal_effective`,
+        type: "subscription.module_removal_effective" as const,
+        aggregate: { type: "subscription" as const, id: String(sub.id), version: sub.version },
+        correlationId: `subscription:${sub.id}`,
+        tenantId,
+        companyId: sub.companyId,
+        orderId: null,
+        subscriptionId: sub.id,
+        trialId: null,
+        paymentId: null,
+        stripeRef: null,
+        fromState: sub.status,
+        toState: sub.status,
+        actor,
+        occurredAt: now,
+        data: cleanData({ before: { item: item.productKey, priceId: item.priceId, family: item.family }, after: { effectiveTo: item.effectiveTo }, capabilities: caps }),
+      }));
+    if (!drafts.length) return;
+    await this.d.events.append(null, drafts).catch((e) => opsLog("error", "Licensing", "removal_event_failed", { subscriptionId: sub.id, error: e instanceof Error ? e.name : "error" }));
   }
 
   /**

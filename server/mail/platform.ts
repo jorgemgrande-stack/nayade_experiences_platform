@@ -27,6 +27,7 @@ import type { WithdrawalNotifier } from "../withdrawals/service";
 import type { IncidentNotifier } from "../_core/ops/incidents";
 import type { TicketNotifier } from "../_core/support/tickets";
 import type { ExternalMail } from "../external/service";
+import { extraTemplates } from "./extraTemplates";
 import type { AlertFacts } from "../adminAlerts/catalog";
 import { incidentAlert } from "../adminAlerts/sources";
 import { mailPolicyFromEnv, type MailPolicy } from "./policy";
@@ -101,6 +102,11 @@ export class PlatformMailer {
       // Mismo recorrido del contrato (categoría contract_invitation): no abre otras categorías de correo
       scheduled: async (to, key, i) => {
         const r = await this.send(PLATFORM_TENANT, key, "contract_invitation", to, this.t.externalScheduled(i));
+        return { status: r.status, reason: r.reason, duplicate: r.duplicate, id: r.id };
+      },
+      // Condiciones modificadas antes de la aceptación (plantilla external.changed): mismo recorrido del contrato
+      changed: async (to, key, i) => {
+        const r = await this.send(PLATFORM_TENANT, key, "contract_invitation", to, extraTemplates.externalChanged(i));
         return { status: r.status, reason: r.reason, duplicate: r.duplicate, id: r.id };
       },
     };

@@ -119,6 +119,22 @@ export function createExternalRouter(svc: ExternalService): Router {
     const body = z.object({ firstChargeDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), reason: z.string().max(300) }).strict().parse(req.body ?? {});
     res.json({ external: await svc.decideFirstCharge(id(req), body, actor(req)) });
   }));
+  // Modificación de condiciones: solo antes de la aceptación (el servicio lo comprueba); nunca toca Stripe
+  r.post("/:id/modify", requireScope("orders:write"), wrap(async (req, res) => {
+    const body = z
+      .object({
+        serviceName: z.string().max(160).optional(),
+        amountCents: z.number().int().optional(),
+        taxRateBp: z.number().int().optional(),
+        billingDay: z.number().int().optional(),
+        firstChargeDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+        conditions: z.string().max(15000).optional(),
+        reason: z.string().max(300),
+      })
+      .strict()
+      .parse(req.body ?? {});
+    res.json(await svc.modify(id(req), body, actor(req)));
+  }));
   r.post("/:id/portal", requireScope("orders:write"), wrap(async (req, res) => void res.json({ url: await svc.portalLink(id(req)) })));
   return r;
 }

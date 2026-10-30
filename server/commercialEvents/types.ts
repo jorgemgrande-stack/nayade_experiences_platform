@@ -60,6 +60,8 @@ export const COMMERCIAL_EVENT_TYPES = [
   "subscription.plan_changed",
   "subscription.module_added",
   "subscription.module_removed",
+  // Baja efectiva: la sincronización de licencias retira el módulo al cumplirse la fecha de baja programada
+  "subscription.module_removal_effective",
   "subscription.quantity_changed",
   "subscription.interval_change_scheduled",
   "subscription.cancel_scheduled",

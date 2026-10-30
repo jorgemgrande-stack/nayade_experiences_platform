@@ -63,6 +63,12 @@ Comercial → Empresas → <empresa> → Nueva contratación de servicio externo
 - **Un cargo ordinario por periodo:** lo emite Stripe. Elephant nunca crea cargos sueltos. Cada factura se identifica por su mensualidad (p. ej. «noviembre de 2026»).
 - Cambiar el calendario exige registrar el cambio en el contrato.
 
+## Modificación de las condiciones
+
+- Desde el CRM («Modificar condiciones», `POST /cp/v1/external/:id/modify`, `orders:write`) se cambian servicio, cuota, IVA, día de cobro, primer vencimiento y condiciones del servicio, con motivo obligatorio.
+- **Límite deliberado: solo antes de la aceptación** (estado «Pendiente de aceptación», sin sesión ni suscripción en Stripe). Un contrato aceptado es inmutable (los cambios van en una renovación) y una suscripción de Stripe programada o activa no se modifica desde aquí: cambiar su importe o su calendario obligaría a tocar Stripe. Nunca se tocan cobros ya hechos.
+- Cada cambio crea una versión nueva del contrato (vuelve a borrador), anula los enlaces de aceptación pendientes (el documento cambió), queda en el historial (`changed`, una vez por versión) con la alerta administrativa «Modificación de un servicio externo» y avisa al representante que recibió el contrato (plantilla `external.changed`). Después hay que reenviar el enlace de aceptación.
+
 ## Impagos (días 1 a 5)
 
 - **Día 1, cobro fallido:** la contratación pasa a «Pago pendiente», con margen hasta el día 5 a las 23:59 (Madrid). Queda en el historial y salta la alerta `external.payment_failed`.

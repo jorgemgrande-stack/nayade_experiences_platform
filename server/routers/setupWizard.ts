@@ -11,7 +11,7 @@ import { router, permissionProcedure } from "../_core/trpc";
 import { getTenantMode } from "../_core/tenant";
 import { tenantFiscalIdentity } from "../tenantBrand";
 import { warmTenantIdentity } from "../_core/tenantIdentity";
-import { countSeatUsers, currentLicence, readProgress, readSettings, updateProgress, upsertSettings } from "../setupWizardDb";
+import { countSeatUsers, currentLicence, readProgress, readSettings, recordOnboardingFirstAccess, updateProgress, upsertSettings } from "../setupWizardDb";
 import { onboardingFirstAccess, onboardingProgressed } from "../onboardingNotices";
 import {
   ACTIVITY_SETTING_KEY,
@@ -78,6 +78,8 @@ export const setupWizardRouter = router({
     ]);
     // Primer acceso al asistente sin ningún paso dado: guía de los primeros pasos (una sola vez)
     void onboardingFirstAccess(progress, recipient(ctx));
+    // Y su fecha, una sola vez: de ella cuentan los recordatorios de configuración incompleta (onboardingReminders.ts)
+    if (progress.updatedAt === null && progress.completedAt === null) void recordOnboardingFirstAccess(typeof ctx.user.id === "number" ? ctx.user.id : null, Date.now()).catch(() => undefined);
     const company = {} as Record<keyof CompanyData, string>;
     for (const [field, key] of Object.entries(COMPANY_SETTING_KEYS) as Array<[keyof CompanyData, string]>) company[field] = settings[key] ?? "";
     // En multiempresa, si el registro ya tiene entidad fiscal, es la que figura en las facturas
