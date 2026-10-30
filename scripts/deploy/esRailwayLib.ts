@@ -329,42 +329,6 @@ export function contractMailPlan(env: string, vars: Record<string, Record<string
   return { changes, problems };
 }
 
-/**
- * Correo REAL de production (autorizado por el propietario el 30/10/2026): el plano de control y el Core salen del sandbox
- * y envían a los destinatarios legítimos de cada empresa. Se conservan el modo autorizado (MAIL_LIVE_AUTHORIZED), la
- * lista explícita de categorías (sin `legacy`), los límites por hora, la idempotencia, el consentimiento comercial y las
- * bajas (server/communications), y el registro de cada envío. Se quita el ámbito de empresas (MAIL_SCOPE_TENANTS): en
- * live su valor vacío no deja salir nada, así que se BORRA. Postmark (token y dominio) no se toca; live sigue en sandbox.
- */
-export const LIVE_MAIL_CATEGORIES = [
-  "email_verification", "tenant_welcome", "user_invite", "password_reset", "signup_confirmation", "signup_received",
-  "trial_activated", "trial_expiry", "trial_status", "usage_threshold", "contract_confirmed", "test_payment_confirmed",
-  "payment_confirmed", "invoice_available", "renewal_confirmed", "subscription_reactivated", "payment_failed", "cancellation",
-  "withdrawal_receipt", "security_notice", "data_export", "withdrawal_resolution", "subscription_suspended", "subscription_ended",
-  "plan_changed", "access_read_only", "module_activated", "module_change", "refund_recorded", "billing_incident", "quote_sent",
-  "contract_invitation", "tenant_domain", "onboarding", "operational", "lead_request_notice", "service_notice", "survey", "marketing",
-] as const;
-export const LIVE_MAIL_SERVICES = ["controlplane", "core"] as const;
-export type MailVarChange = MailChange & { remove?: true };
-export function productionMailPlan(env: string, vars: Record<string, Record<string, string>>): { changes: MailVarChange[]; problems: string[] } {
-  const problems: string[] = [];
-  const changes: MailVarChange[] = [];
-  if (env !== "production") problems.push("el correo real solo se activa en production (live sigue en sandbox)");
-  for (const s of LIVE_MAIL_SERVICES) {
-    const v = vars[s] ?? {};
-    if (!(v.POSTMARK_SERVER_TOKEN ?? "").trim()) problems.push(`${s}: falta POSTMARK_SERVER_TOKEN (no se crea ni se copia aquí)`);
-    if ((v.MAIL_PROVIDER ?? "postmark") !== "postmark") problems.push(`${s}: el proveedor no es Postmark (${v.MAIL_PROVIDER})`);
-    if ((v.MAIL_SENDING_DOMAIN ?? "") !== MAIL_ACCESS_SENDING_DOMAIN) problems.push(`${s}: el dominio de envío no es ${MAIL_ACCESS_SENDING_DOMAIN}`);
-    // Orden: ámbito y autorización primero; el modo al final (un fallo a mitad deja el correo como estaba)
-    const want: Array<[string, string]> = [["MAIL_SCOPE_CATEGORIES", LIVE_MAIL_CATEGORIES.join(",")], ["MAIL_LIVE_AUTHORIZED", "1"]];
-    for (const [k, val] of want) if ((v[k] ?? "") !== val) changes.push({ service: s, name: k, value: val });
-    if (hasVar(v, "MAIL_SCOPE_TENANTS")) changes.push({ service: s, name: "MAIL_SCOPE_TENANTS", remove: true });
-    if ((v.MAIL_MODE ?? "off") !== "live") changes.push({ service: s, name: "MAIL_MODE", value: "live" });
-  }
-  return { changes, problems };
-}
-const hasVar = (v: Record<string, string>, k: string) => Object.prototype.hasOwnProperty.call(v, k);
-
 // ── Publicación continua (docs/elephant-source/PROTOCOLO_PUBLICACION.md) ─────────
 
 /** Servicios que publica un despliegue ordinario, en este orden. Nada de copias, restore-drill ni pasarelas de prueba. */
