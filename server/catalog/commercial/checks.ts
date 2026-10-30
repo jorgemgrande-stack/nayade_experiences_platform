@@ -30,6 +30,8 @@ export const PENDING_RE = /\bpendiente\b/i;
 export const AI_LIMIT_RE = /(uso|consumo) mensual incluido|l[ií]mite (econ[oó]mico )?(mensual )?(de (consumo|IA)|propio)|por encima del l[ií]mite|l[ií]mite controlado|l[ií]mite mensual/i;
 /** Referencias internas (códigos de requisitos o de decisiones). */
 export const INTERNAL_REF_RE = /\b[A-Z]{1,3}-[A-Z]{2,5}-[A-Z]?\d{1,3}\b|\(decisi[oó]n \d+\)/;
+/** Notas internas: repositorios de origen, arquitectura o estado del desarrollo. Al cliente se le dice si está incluido o cuándo llega. */
+export const INTERNAL_NOTE_RE = /hotelnayade|n[aá]yade|skicenter|segolife|cristina-vive|big_elephant_platform|gohighlevel|\bGHL\b|repositori|\bstaging\b|\bportad[oa]\b|\bflag\b|sin API\b|sin (desarrollo|c[oó]digo)|se desarrollar[aá]n?\b|(en|solo) dise[ñn]o\b|instalaci[oó]n original|sistema ya en uso/i;
 /** Afirmaciones no verificadas que la web pública rechaza (mismas reglas que sus pruebas de lanzamiento). */
 export const CLAIM_RE = /24 ?h(oras)?\b|24\/7|ISO ?\d{4,5}|certificad[oa]s? (en|por|ISO)|testimonio|valoraci[oó]n media|garant[ií]a de devoluci[oó]n/i;
 /** Límites numéricos escritos (usuarios, sedes, sociedades, empleados): solo valen si son cupos aprobados del plan. */
@@ -69,6 +71,7 @@ export function textProblems(t: string, opts: { policyEnabled?: boolean; planInc
   if (PENDING_RE.test(t)) out.push(`muestra un estado interno «pendiente» (${q})`);
   if (AI_LIMIT_RE.test(t)) out.push(`afirma un límite o un uso de IA incluido (${q}) y el límite de IA no está decidido`);
   if (INTERNAL_REF_RE.test(t)) out.push(`lleva una referencia interna (${q})`);
+  if (INTERNAL_NOTE_RE.test(t)) out.push(`lleva una nota interna de repositorio, arquitectura o desarrollo (${q})`);
   if (CLAIM_RE.test(t)) out.push(`afirma un servicio continuo, una certificación o una valoración no verificados (${q})`);
   for (const k of opts.planInclusions ?? []) {
     const re = INCLUSION_ALIAS[k] ?? new RegExp(k.replace(/^(connect|extra)-/, "").replace(/-/g, " "), "i");
@@ -132,7 +135,7 @@ export function shapeProblems(family: string, d: ProductDraft): string[] {
 function publicTexts(d: ProductDraft, opts: { withExcludes?: boolean } = {}): string[] {
   const m = d.commercial;
   if (!m) return [];
-  return [m.headline, m.longDescription, m.problem, ...m.benefits, ...(opts.withExcludes === false ? [] : m.excludes), ...m.capacityRules, ...m.integrations, ...(m.seo ? [m.seo.title, m.seo.description] : [])].filter(Boolean);
+  return [m.headline, m.longDescription, m.problem, m.forWho, ...m.benefits, ...(opts.withExcludes === false ? [] : m.excludes), ...m.capacityRules, ...m.integrations, ...(m.seo ? [m.seo.title, m.seo.description] : [])].filter(Boolean);
 }
 
 /** Revisión completa de un producto frente al resto del catálogo (borradores). */

@@ -7,6 +7,7 @@ import { PRODUCTS } from "./catalog/elephantSourceV1";
 import { PRODUCT_SPECS } from "./catalog/commercial/specs";
 import { CATALOG_POLICY, PROPOSED_POLICY } from "./catalog/commercial/policy";
 import { validateSpecs } from "./catalog/commercial/validateSpecs";
+import { INTERNAL_NOTE_RE, textProblems } from "./catalog/commercial/checks";
 
 describe("especificaciones comerciales", () => {
   it("58 productos, 58 especificaciones, sin incidencias con la política propuesta ni con la vigente", () => {
@@ -40,5 +41,20 @@ describe("especificaciones comerciales", () => {
     for (const t of pub) expect(t).not.toMatch(/repositorio|desarrollo|definición funcional/i);
     expect(s.verified.grade).toBe("none");
     expect(s.publicContent.cta).toBe("waitlist");
+  });
+  it("ninguna ficha pública lleva repositorios, arquitectura interna ni comentarios de desarrollo", () => {
+    for (const s of PRODUCT_SPECS) {
+      const pub = [s.longDescription, s.problem, s.forWho, ...s.excludes, ...s.capacityRules, ...s.integrations, s.publicContent.headline, ...s.publicContent.benefits, s.seo.title, s.seo.description];
+      for (const t of pub) expect(t, s.key).not.toMatch(INTERNAL_NOTE_RE);
+    }
+    for (const t of ["SES Hospedajes (modo manual en hotelnayade)", "Channel Manager (sin desarrollo)", "Los circuitos se desarrollarán.", "Agregadores (solo diseño)", "Canje manual, sin API", "Basado en un sistema ya en uso en temporada real", "Prototipo en Skicenter con flag apagado"])
+      expect(textProblems(t).some((p) => p.includes("nota interna")), t).toBe(true);
+  });
+  it("cada extensión publica para quién es, además del problema y los beneficios", () => {
+    for (const s of PRODUCT_SPECS.filter((x) => x.category === "extension" || x.category === "extension_bundle")) {
+      expect(s.forWho, s.key).not.toBe("");
+      expect(s.problem, s.key).not.toBe("");
+      expect(s.publicContent.benefits.length, s.key).toBeGreaterThan(0);
+    }
   });
 });
