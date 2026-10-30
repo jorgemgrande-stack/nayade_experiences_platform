@@ -16,7 +16,7 @@
  *   tsx scripts/deploy/esRailway.ts mail-live --env live [--allow a@x,b@y]  (diagnóstico de Postmark; con --allow, sandbox)
  *   tsx scripts/deploy/esRailway.ts mail-access --env production --accion estado|activar|desactivar [--tenants t5-skibox]
  *   tsx scripts/deploy/esRailway.ts lead-notices-mail --env production --accion estado|activar|desactivar [--allow buzón]
- *   tsx scripts/deploy/esRailway.ts contract-mail --env production --accion estado|activar [--allow buzón]
+ *   tsx scripts/deploy/esRailway.ts contract-mail --env production --accion estado|activar [--allow buzón] [--categoria operational]
  *   tsx scripts/deploy/esRailway.ts active-sha --env live          (commit activo de los servicios ordinarios; vacío si no se sabe)
  *   tsx scripts/deploy/esRailway.ts changes --from <commit> --to <commit> [--production]  (qué exige el procedimiento protegido)
  *   tsx scripts/deploy/esRailway.ts publish --env live --dir <dir> --sha <commit>   (despliegue ordinario con vuelta atrás automática)
@@ -40,7 +40,7 @@ import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { CONTRACT_MAIL_CATEGORY, MAIL_TEST_SERVICES, POSTMARK_WEBHOOK_TRIGGERS, contractMailPlan, leadNoticesMailPlan, mailAccessPlan, mailSandboxPlan, parseMailAllowlist } from "./esRailwayLib";
+import { CONTRACT_MAIL_CATEGORY, MAIL_TEST_SERVICES, SANDBOX_EXTRA_CATEGORIES, POSTMARK_WEBHOOK_TRIGGERS, contractMailPlan, leadNoticesMailPlan, mailAccessPlan, mailSandboxPlan, parseMailAllowlist } from "./esRailwayLib";
 import { DRILL_IDLE, EXCLUDED_FROM_EXPORT, GATEWAY_COPIED_VARS, GATEWAY_TEMPLATE_SERVICE, STORAGE_BUCKETS, STORAGE_VARS, describeStorageVar, guard, isAllowedDrill, scrub, meteringReferences, storageReferences, testTenantDomains, type DeployConfig, type TokenScope } from "./esRailwayLib";
 import { ERM_DB_SERVICE, ERM_PASSWORD_VAR, LIVE_PLATFORM_DOMAIN_DEFAULT, livePlatformDomainProblems, meteringPlan, platformDomainsValue } from "./esRailwayLib";
 import { ACCESS_CHECKS, ACCESS_PROBE_USER, CATALOG_STAMP_FILE, WEB_CATALOG_SITE, accessProblems } from "./esRailwayLib";
@@ -879,7 +879,7 @@ async function main() {
     }
     const crmHost = "admin.bigelephant.es";
     const hookUrl = `https://${crmHost}/cp/v1/mail/postmark/webhook`;
-    const plan = leadNoticesMailPlan(env, vars, { action: accion === "desactivar" ? "desactivar" : "activar", recipients: accion === "estado" ? ["estado@ejemplo.invalid"] : recipients });
+    const plan = leadNoticesMailPlan(env, vars, { action: accion === "desactivar" ? "desactivar" : "activar", recipients: accion === "estado" ? ["estado@ejemplo.invalid"] : recipients, category });
     // El servidor de production nunca debe mandar sus eventos a live
     // (mismo criterio que el correo de acceso: un webhook hacia live delata un servidor compartido con live)
     if (webhooks.some((w) => /live/.test(w.Url))) plan.problems.push("el servidor de Postmark envía eventos a live: production necesita su propio servidor");
@@ -936,6 +936,9 @@ async function main() {
     const accion = arg("accion");
     if (!["estado", "activar"].includes(accion)) throw new Error("--accion estado|activar");
     if (env !== "production") throw new Error("contract-mail solo existe en production");
+    // --categoria operational: alertas administrativas internas (mismo sandbox, mismos límites)
+    const category = (arg("categoria", false) || CONTRACT_MAIL_CATEGORY) as (typeof SANDBOX_EXTRA_CATEGORIES)[number];
+    if (!(SANDBOX_EXTRA_CATEGORIES as readonly string[]).includes(category)) throw new Error(`--categoria ${SANDBOX_EXTRA_CATEGORIES.join("|")}`);
     const recipients = accion === "activar" ? parseMailAllowlist(arg("allow")) : [];
     const t = await api<{ projectToken: { projectId: string } }>("query { projectToken { projectId } }");
     const p = t.projectToken.projectId;
@@ -947,8 +950,8 @@ async function main() {
     const token = (cp.POSTMARK_SERVER_TOKEN ?? "").trim();
     if (token) {
       const pm = async (path: string) => (await (await fetch(`https://api.postmarkapp.com${path}`, { headers: { Accept: "application/json", "X-Postmark-Server-Token": token } })).json().catch(() => ({}))) as Record<string, unknown>;
-      const msgs = ((await pm(`/messages/outbound?count=10&offset=0&tag=${CONTRACT_MAIL_CATEGORY}`)).Messages as Array<{ MessageID: string; Subject: string; To: Array<{ Email: string }>; ReceivedAt: string }>) ?? [];
-      console.log(`Postmark contratos enviados recientes: ${msgs.length}`);
+      const msgs = ((await pm(`/messages/outbound?count=10&offset=0&tag=${category}`)).Messages as Array<{ MessageID: string; Subject: string; To: Array<{ Email: string }>; ReceivedAt: string }>) ?? [];
+      console.log(`Postmark ${category} enviados recientes: ${msgs.length}`);
       for (const m of msgs) {
         const ev = (((await pm(`/messages/outbound/${m.MessageID}/details`)).MessageEvents as Array<{ Type: string; ReceivedAt: string }>) ?? []).map((e) => `${e.Type}@${e.ReceivedAt.slice(0, 19)}`).join(", ");
         console.log(`  ${m.ReceivedAt.slice(0, 19)} · ${mask(m.To?.[0]?.Email ?? "")} · ${m.Subject.slice(0, 80)} · ${ev || "sin eventos"}`);

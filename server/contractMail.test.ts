@@ -32,6 +32,19 @@ describe("correo de contratos en production", () => {
     expect(p({ ...sandbox, POSTMARK_SERVER_TOKEN: "" })).not.toEqual([]);
   });
 
+  it("alertas administrativas: añade operational y los buzones internos sin tocar contratos ni el modo", () => {
+    const cp = { ...sandbox, MAIL_SCOPE_CATEGORIES: "lead_request_notice,contract_invitation" };
+    const plan = contractMailPlan("production", { controlplane: cp }, { recipients: ["administracion@bigelephant.es", "pruebas@ejemplo.es"], category: "operational" });
+    expect(plan.problems).toEqual([]);
+    expect(plan.changes).toEqual([
+      { service: "controlplane", name: "MAIL_SCOPE_CATEGORIES", value: "lead_request_notice,contract_invitation,operational" },
+      { service: "controlplane", name: "MAIL_SANDBOX_ALLOWLIST", value: "jgrande@bigelephant.es,administracion@bigelephant.es,pruebas@ejemplo.es" },
+    ]);
+    expect(contractMailPlan("production", { controlplane: cp }, { recipients: ["a@b.es"], category: "marketing" as never }).problems).not.toEqual([]);
+    const lead = leadNoticesMailPlan("production", { controlplane: { ...cp, MAIL_SCOPE_CATEGORIES: "lead_request_notice,operational", CP_CRM_URL: "https://admin.bigelephant.es", MAIL_SENDING_DOMAIN: "bigelephant.es", MAIL_RATE_RECIPIENT_PER_HOUR: "30" }, core: {} }, { action: "activar", recipients: ["jgrande@bigelephant.es"] });
+    expect(lead.changes.find((c) => c.name === "MAIL_SCOPE_CATEGORIES")).toBeUndefined();
+  });
+
   it("reactivar los avisos de solicitudes conserva la categoría de contratos", () => {
     const cp = { ...sandbox, MAIL_SCOPE_CATEGORIES: "lead_request_notice,contract_invitation", CP_CRM_URL: "https://admin.bigelephant.es", MAIL_SENDING_DOMAIN: "bigelephant.es", MAIL_RATE_RECIPIENT_PER_HOUR: "30" };
     const plan = leadNoticesMailPlan("production", { controlplane: cp, core: {} }, { action: "activar", recipients: ["jgrande@bigelephant.es"] });
