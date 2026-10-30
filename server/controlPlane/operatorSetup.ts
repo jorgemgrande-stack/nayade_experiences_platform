@@ -20,7 +20,7 @@ import type mysql from "mysql2/promise";
 import nodemailer from "nodemailer";
 import { passwordResetContent } from "../mail/accountTemplates";
 import type { Keyring } from "../_core/tenantRegistry/crypto";
-import { OperatorAuthService, type ResetMailer } from "./operatorAuth";
+import { OperatorAuthService, type OperatorAuthOptions, type ResetMailer } from "./operatorAuth";
 import { isRole, type OperatorRole } from "./operatorRoles";
 import { MysqlOperatorStore } from "./operatorStore";
 import { missingMfaKeys } from "./operatorMfaKeys";
@@ -56,7 +56,7 @@ export async function operatorAuthFromEnv(
   pool: mysql.Pool,
   env: NodeJS.ProcessEnv,
   /** `resetMailer`: alternativa al SMTP propio (p. ej. la bandeja de salida de la plataforma, operatorResetMail.ts). */
-  opts: { keyring?: Keyring; resetMailer?: ResetMailer } = {},
+  opts: { keyring?: Keyring; resetMailer?: ResetMailer; securityNotice?: OperatorAuthOptions["securityNotice"] } = {},
 ): Promise<OperatorAuthSetup> {
   const cookieSecure = env.CP_COOKIE_SECURE === "true" ? true : env.CP_COOKIE_SECURE === "false" ? false : "auto";
   if (env.CP_OPERATOR_AUTH === "off") return { cookieSecure, reason: "desactivado (CP_OPERATOR_AUTH=off)" };
@@ -101,6 +101,7 @@ export async function operatorAuthFromEnv(
     resetUrl: mail ? env.CP_RESET_URL : undefined,
     mfaKeyring: mfaColumns ? opts.keyring : undefined,
     mfaRequiredRoles: requiredRoles,
+    securityNotice: opts.securityNotice,
   });
   if (service.mfaMisconfigured) {
     console.error(
