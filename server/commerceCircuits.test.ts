@@ -31,4 +31,23 @@ describe("circuitos comerciales", () => {
     expect(c.stripe).toEqual({ enabled: false });
     expect(commerceCircuits({ stripe: null, switches: { ...off, publicTrial: true, trialsReady: false }, mailMode: "off" }).publicTrial.active).toBe(false);
   });
+  it("recorrido de venta: con la configuración de production de hoy no se puede vender y se dice qué falta; con todo encendido, sí", () => {
+    const today = commerceCircuits({ stripe: live, switches: { ...off, termsPublished: false, checkoutMounted: false, trialScheduler: false, lifecycle: { enabled: false, mode: "plan" }, notificationsDispatch: false, railwayDomains: false }, mailMode: "live" });
+    expect(today.readyToSell.ready).toBe(false);
+    const missing = today.readyToSell.missing.join(" | ");
+    for (const m of [/Registro público/, /Aprovisionamiento automático/, /CP_TRIALS_SCHEDULER_ENABLED/, /Política fiscal/, /CP_TERMS_VERSION/, /CP_PANEL_CONVERSION_ENABLED/, /CP_LIFECYCLE_MODE=apply/, /Despachador/]) expect(missing).toMatch(m);
+    // El dominio propio sin la integración funciona (alta manual): no impide vender
+    expect(today.customDomains).toMatchObject({ active: true, mode: "off" });
+    expect(missing).not.toMatch(/CP_RAILWAY_DOMAIN_TOKEN/);
+    const all = commerceCircuits({
+      stripe: { ...live, taxPolicy: "stripe_tax_exclusive" } as StripeConfig,
+      switches: { externalLiveCharges: false, trialsReady: true, publicTrial: true, autoProvision: true, panelConversion: true, termsPublished: true, checkoutMounted: true, trialScheduler: true, lifecycle: { enabled: true, mode: "apply" }, notificationsDispatch: true, railwayDomains: true },
+      mailMode: "live",
+    });
+    expect(all.readyToSell).toEqual({ ready: true, missing: [] });
+    expect(all.panelConversion).toMatchObject({ active: true, mode: "live" });
+    expect(all.dunning.active && all.notifications.active && all.trialScheduler.active && all.customDomains.mode === "live").toBe(true);
+    // Los servicios externos no forman parte del recorrido SaaS
+    expect(all.externalServices.active).toBe(false);
+  });
 });
