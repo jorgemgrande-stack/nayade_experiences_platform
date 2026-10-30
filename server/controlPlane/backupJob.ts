@@ -18,7 +18,7 @@
  *   node dist-cp/backup-job.js migrate-tenants [--only a,b] [--apply]   carril de la app en cada empresa (red privada)
  *   node dist-cp/backup-job.js check-data-exports [--only a,b]          verificación (solo lectura) de 0011/0012/0013
  *   node dist-cp/backup-job.js erm-setup [--apply]                       base de medición es_erm (idempotente; ES_ERM_PASSWORD)
- *   node dist-cp/backup-job.js purge-test-companies [--apply]             purga DEFINITIVA de las 5 empresas de prueba (lista
+ *   node dist-cp/backup-job.js purge-test-companies [--apply]             purga DEFINITIVA de las empresas de prueba (lista
  *                                                                        cerrada; simulación salvo --apply; ver purgeTestCompanies.ts)
  *   node dist-cp/backup-job.js orphans                                   recursos huérfanos del aprovisionamiento (solo lectura)
  *
@@ -61,7 +61,7 @@ import { estimateMonthly } from "../_core/ops/backupEstimate";
 import { rebuildPlatform } from "../_core/ops/disasterRecovery";
 import { DatabaseServers, MultiServerDatabaseProvisioner, parseDatabaseServers } from "../_core/provisioning/servers";
 import { MysqlSchemaApplier, databaseNameFor } from "../_core/provisioning/mysqlAdapters";
-import { applyPurge, planPurge, purgeDatabaseDroppers, verifyPurge } from "../_core/ops/purgeTestCompanies";
+import { applyPurge, planPurge, purgeDatabaseDroppers, purgeMediaDeleter, verifyPurge } from "../_core/ops/purgeTestCompanies";
 import { migrateAllTenants } from "../_core/ops/tenantMigrations";
 import { dataExportSchemaStatus } from "../_core/ops/dataExportCheck";
 import { BUILTIN_MODULES } from "../_core/modules/builtin";
@@ -396,7 +396,7 @@ async function main() {
         break;
       }
       case "purge-test-companies": {
-        // Purga definitiva de las cinco empresas de prueba (lista cerrada en el código, autorizada por el propietario):
+        // Purga definitiva de las empresas de prueba (lista cerrada en el código, autorizada por el propietario):
         // simulación siempre; con --apply ejecuta el plan simulado y comprueba que no queda nada ni referencias huérfanas
         const apply = flag("--apply");
         const crmUrl = process.env.CRM_DATABASE_URL || die("Falta CRM_DATABASE_URL");
@@ -407,15 +407,39 @@ async function main() {
             const dsn = await registry.getActiveDsn(t).catch(() => null);
             return dsn ? dbNameOf(dsn) : null;
           };
-          const plan = await planPurge({ crm: crmPool, registry: pool, tenantDbName, expectedDbName: (t) => databaseNameFor(t) });
-          print({ simulacion: true, empresas: plan.companies, yaNoEstan: plan.missing, registros: plan.steps.map((s) => ({ base: s.db, tabla: s.table, filas: s.rows })), basesDeDatos: plan.databases, seConservan: plan.kept, problemas: plan.problems });
+          // Bases sobrantes y medición en cada servidor; ficheros en el bucket de medios (solo lectura en la simulación)
+          // BACKUP_MEDIA decide si las copias replican ficheros; la purga mira el bucket siempre que esté configurado
+          const media = mediaSourceFromEnv({ ...process.env, BACKUP_MEDIA: "1" });
+          const resources = {
+            servers: servers ? servers.aliases().map((a) => ({ alias: a, admin: servers.admin(a) })) : [],
+            media: media.media ?? { unavailable: (media as { reason: string }).reason },
+          };
+          const plan = await planPurge({ crm: crmPool, registry: pool, tenantDbName, expectedDbName: (t) => databaseNameFor(t), resources });
+          // Una sola línea JSON: Railway desordena las líneas de una salida larga (llega en `attributes`)
+          console.log(JSON.stringify({
+            simulacion: true,
+            problemas: plan.problems,
+            empresas: plan.companies,
+            yaNoEstan: plan.missing,
+            registros: plan.steps.map((s) => ({ base: s.db, tabla: s.table, filas: s.rows })),
+            basesDeDatos: plan.databases,
+            seRetiran: plan.retire,
+            basesSobrantes: plan.extraDatabases,
+            medicion: plan.measurement,
+            ficheros: { comprobado: plan.files.checked, origen: plan.files.source, motivo: plan.files.reason ?? null, porEmpresa: plan.files.byTenant.map((f) => ({ empresa: f.tenantId, ficheros: f.objects, bytes: f.bytes })) },
+            servidores: resources.servers.map((s) => s.alias),
+            seConservan: plan.kept,
+          }));
           if (plan.problems.length) die("La simulación tiene problemas: no se purga nada");
           if (!apply) break;
           if (!dbs && plan.databases.some((x) => x.action === "drop")) die("Falta PROVISIONING_DB_SERVERS o PROVISIONING_DB_ADMIN_URL para borrar las bases de los tenants");
           // Borrado de las bases (propias y restauradas) desde el módulo de la purga: solo se ejecuta con esta orden
-          const done = await applyPurge({ crm: crmPool, registry: pool, ...purgeDatabaseDroppers(dbs, servers ? servers.aliases().map((a) => servers.admin(a)) : null) }, plan);
-          const check = await verifyPurge({ crm: crmPool, registry: pool });
-          print({ aplicado: true, borrados: done.deleted, basesBorradas: done.droppedDatabases, comprobacion: check });
+          const done = await applyPurge(
+            { crm: crmPool, registry: pool, ...purgeDatabaseDroppers(dbs, servers ? servers.aliases().map((a) => servers.admin(a)) : null), servers: resources.servers, deleteMedia: purgeMediaDeleter(process.env) },
+            plan,
+          );
+          const check = await verifyPurge({ crm: crmPool, registry: pool, resources });
+          console.log(JSON.stringify({ aplicado: true, borrados: done.deleted, basesBorradas: done.droppedDatabases, ficherosBorrados: done.deletedFiles, comprobacion: check }));
           if (!check.ok) process.exitCode = 1;
         } finally {
           await crmPool.end();

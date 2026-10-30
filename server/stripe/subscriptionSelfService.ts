@@ -126,8 +126,11 @@ export interface PlanChangePreview {
   effectiveAt: number | null;
 }
 export interface PlanChangeResult {
-  /** applied: Stripe ya lo aplicó (el plan se refleja al confirmarse el cobro); requested: bajada registrada. */
-  status: "applied" | "payment_pending" | "failed" | "requested";
+  /**
+   * applied: Stripe ya lo aplicó (el plan se refleja al confirmarse el cobro); scheduled: bajada programada en Stripe
+   * para el fin del periodo; requested: bajada registrada para que la gestione el equipo comercial.
+   */
+  status: "applied" | "payment_pending" | "failed" | "requested" | "scheduled";
   paymentUrl: string | null;
   amountDueCents: number | null;
   effectiveAt: number | null;
@@ -341,9 +344,28 @@ export class SubscriptionSelfService {
       return { status: "applied", paymentUrl: null, amountDueCents: null, effectiveAt: null, created: false };
     }
     if (live.pendingUpdate) throw new SelfServiceSubscriptionError("conflict", "Hay un cambio pendiente de pago: complétalo con el enlace de pago o espera a que caduque");
+    if (live.cancelAtPeriodEnd) throw new SelfServiceSubscriptionError("conflict", "Tienes la baja programada: deshazla antes de cambiar de plan");
     const t = await this.target(tenantId, input);
     if (t.direction === "downgrade") {
       const effectiveAt = ms(t.sub.currentPeriodEnd);
+      // Bajada programada en Stripe para el fin del periodo pagado (sin cobro ni abono); si no se puede, tarea del CRM
+      const schedule = this.d.gateway.scheduleItemsAtPeriodEnd;
+      if (schedule) {
+        const summary = `Bajada de plan programada en Stripe desde el panel: de ${label(t.cur)} a ${label(input)}${effectiveAt ? ` el ${new Date(effectiveAt).toISOString().slice(0, 10)}` : ""}`;
+        const open = this.d.openTasks ? await this.d.openTasks(t.company.id) : [];
+        if (live.scheduleId && open.includes(summary)) return { status: "scheduled", paymentUrl: null, amountDueCents: 0, effectiveAt, created: false };
+        try {
+          const r = await schedule.call(this.d.gateway, t.sub.id, [{ priceId: t.price.stripePriceId, quantity: 1 }], input.interval, `es-${this.d.namespace}-bajada-${t.sub.id}-${opts.idempotencyKey}`);
+          const at = ms(r.effectiveAt) ?? effectiveAt;
+          if (this.d.task && !open.includes(summary)) await this.d.task(t.company.id, summary, Math.max(this.now() + 86_400_000, (at ?? this.now()) - 3 * 86_400_000), opts.actor);
+          opsLog("info", "SelfServiceSubscription", "downgrade_scheduled", { tenantId, plan: input.plan, interval: input.interval, scheduleId: r.scheduleId });
+          return { status: "scheduled", paymentUrl: null, amountDueCents: 0, effectiveAt: at, created: true };
+        } catch (e) {
+          // Un calendario ajeno no se toca; otro fallo deja la bajada como solicitud para el equipo comercial
+          if (e instanceof StripeGatewayError && e.code === "conflict") throw new SelfServiceSubscriptionError("conflict", "Tu suscripción ya tiene un cambio programado: escríbenos para modificarlo");
+          opsLog("warn", "SelfServiceSubscription", "downgrade_schedule_failed", { tenantId, error: e instanceof Error ? e.message : String(e) });
+        }
+      }
       const summary = `Bajada de plan solicitada desde el panel: de ${label(t.cur)} a ${label(input)}, a aplicar al fin del periodo pagado${effectiveAt ? ` (${new Date(effectiveAt).toISOString().slice(0, 10)})` : ""}`;
       if (!this.d.task) throw new SelfServiceSubscriptionError("unavailable", "La bajada de plan la gestiona tu contacto comercial: escríbenos");
       const open = this.d.openTasks ? await this.d.openTasks(t.company.id) : [];
@@ -353,6 +375,7 @@ export class SubscriptionSelfService {
       opsLog("info", "SelfServiceSubscription", "downgrade_requested", { tenantId, plan: input.plan, interval: input.interval });
       return { status: "requested", paymentUrl: null, amountDueCents: 0, effectiveAt, created: true };
     }
+    if (live.scheduleId) throw new SelfServiceSubscriptionError("conflict", "Tu suscripción tiene un cambio programado para el fin del periodo: escríbenos para modificarlo");
     const type = await this.d.gateway.paymentMethodTypeOf(t.sub.id);
     if (!supportsPendingUpdate(type))
       throw new SelfServiceSubscriptionError("async_payment_method", type ? "Tu método de pago (adeudo bancario) no permite cambiar de plan en línea: añade una tarjeta o escríbenos" : "No hay método de pago: añade una tarjeta en el portal de facturación");
