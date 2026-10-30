@@ -443,7 +443,7 @@ async function main() {
   };
   // Servicios de clientes externos (CRM 0026): solo con Stripe montado, sus tablas y un origen https del CRM
   let external: { store: MysqlExternalStore; urls: ExternalUrls; ipSalt?: string; liveEnabled?: boolean } | undefined;
-  let stripe: { config: NonNullable<typeof stripeConfig>; store: MysqlStripeStore; gateway: ReturnType<typeof stripeGateway>; urls: ReturnType<typeof checkoutUrlsFromEnv>; checkoutEnabled: boolean; verifyWebhook: ReturnType<typeof stripeWebhookVerifier>; workerEnabled: boolean; publicStatus: boolean; selfService: boolean; panelConversion: boolean; termsVersion: string | null; fiscal: typeof fiscal; purchases?: { enabled: boolean; changes: MysqlSubscriptionChangeStore; internalTenants: ReadonlySet<string> }; invoiceLines?: MysqlInvoiceLineStore; vies?: { client: ReturnType<typeof viesClient>; maxAgeDays: number }; billingPortal?: { enabled: boolean; configurationId: string | null } } | undefined;
+  let stripe: { config: NonNullable<typeof stripeConfig>; store: MysqlStripeStore; gateway: ReturnType<typeof stripeGateway>; urls: ReturnType<typeof checkoutUrlsFromEnv>; checkoutEnabled: boolean; verifyWebhook: ReturnType<typeof stripeWebhookVerifier>; workerEnabled: boolean; publicStatus: boolean; selfService: boolean; panelConversion: boolean; termsVersion: string | null; fiscal: typeof fiscal; purchases?: { enabled: boolean; changes: MysqlSubscriptionChangeStore; internalTenants: ReadonlySet<string> }; invoiceLines?: MysqlInvoiceLineStore; vies?: { client: ReturnType<typeof viesClient>; maxAgeDays: number }; billingPortal?: { enabled: boolean; configurationId: string | null }; selfServiceSubscription?: { cancel: boolean; planChange: boolean } } | undefined;
   if (stripeConfig) {
     const urls = checkoutUrlsFromEnv(process.env);
     // La bandera sigue apagada por defecto; en live sin política fiscal, Checkout queda apagado aunque esté a 1
@@ -503,6 +503,8 @@ async function main() {
           enabled: process.env.CP_BILLING_PORTAL_ENABLED === "1",
           configurationId: /^bpc_[A-Za-z0-9]{8,64}$/.test((process.env.CP_BILLING_PORTAL_CONFIGURATION ?? "").trim()) ? process.env.CP_BILLING_PORTAL_CONFIGURATION!.trim() : null,
         },
+        // Baja/reactivación y cambio de plan desde el panel (solo piden el cambio a Stripe; apagados salvo =1)
+        selfServiceSubscription: { cancel: process.env.CP_SELF_SERVICE_CANCEL_ENABLED === "1", planChange: process.env.CP_SELF_SERVICE_PLAN_CHANGE_ENABLED === "1" },
         ...(linesReady ? { invoiceLines: new MysqlInvoiceLineStore(crmPool!, stripeConfig.mode) } : {}),
       };
     const externalReady = (await hasTable("external_subscriptions")) && (await hasTable("crm_contract_acceptances")) && (await hasTable("external_subscription_events"));
@@ -525,6 +527,8 @@ async function main() {
         publicStatus: ready && publicStatus,
         selfService: ready && selfService,
         panelConversion: ready && panelConversion,
+        selfServiceCancel: ready && process.env.CP_SELF_SERVICE_CANCEL_ENABLED === "1",
+        selfServicePlanChange: ready && process.env.CP_SELF_SERVICE_PLAN_CHANGE_ENABLED === "1",
         termsPublished: !!termsVersion,
         fiscalScenarios: Array.from(fiscal.scenarios),
         taxExpectations: Object.fromEntries(fiscal.taxExpectations),

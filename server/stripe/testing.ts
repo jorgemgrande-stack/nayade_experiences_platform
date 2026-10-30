@@ -240,6 +240,24 @@ export class FakeStripeGateway implements StripeGateway {
     const s = this.subscriptions.get(subscriptionId);
     return s ? (this.pmTypeOf.get(s.customerId) ?? "card") : null;
   }
+  /** Fin al final del periodo (como Stripe desde 2025: `cancel_at` pasa a ser el fin del periodo) o deshacerlo. */
+  async setCancelAtPeriodEnd(subscriptionId: string, cancel: boolean, key: string) {
+    this.guard();
+    this.calls.push({ op: "subscriptions.update(cancel_at_period_end)", key, input: { subscriptionId, cancel } });
+    const params = JSON.stringify({ subscriptionId, cancel });
+    if (this.idem.has(`sub-cancel:${key}`)) {
+      if (this.idemParams.get(key) !== params) throw new StripeGatewayError("idempotency_error", "Stripe respondió 400 (idempotency_error)", false);
+      return this.subView(this.subscriptions.get(subscriptionId)!);
+    }
+    const s = this.subscriptions.get(subscriptionId);
+    if (!s) throw new StripeGatewayError("resource_missing", "Stripe respondió 404 (resource_missing)", false);
+    if (s.status === "canceled") throw new StripeGatewayError("invalid_request_error", "Stripe respondió 400 (suscripción cancelada)", false);
+    this.idemParams.set(key, params);
+    this.idem.set(`sub-cancel:${key}`, subscriptionId);
+    this.subscriptions.set(subscriptionId, { ...s, cancelAtPeriodEnd: cancel, cancelAt: cancel ? s.currentPeriodEnd : null });
+    this.emit("customer.subscription.updated", "subscription", subscriptionId);
+    return this.subView(this.subscriptions.get(subscriptionId)!);
+  }
   /** El cliente paga (o autentica) la factura abierta: si llevaba un cambio pendiente, se aplica. */
   payInvoice(id: string) {
     const inv = this.invoices.get(id)!;

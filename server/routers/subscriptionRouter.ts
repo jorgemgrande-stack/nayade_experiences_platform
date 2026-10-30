@@ -23,6 +23,7 @@ import { LIMIT_METRICS } from "../_core/limits/store";
 import type { PanelUsage } from "../commerce/panelUsage";
 import type { TenantPlanSummary } from "../commerce/tenantPlan";
 import { isTrialTenant, TRIAL_PURCHASES_MESSAGE } from "../trialPayments";
+import type { CancellationView as SelfServiceCancellation, PlanChangeView as SelfServicePlanChange } from "../stripe/subscriptionSelfService";
 
 /** Qué se quiere comprar: solo claves y totales. Importes y derechos los calcula el plano de control. */
 const purchaseInput = z
@@ -57,6 +58,8 @@ const conversionStart = conversionSelection
     consents: z.record(z.string(), z.unknown()),
   })
   .strict();
+/** Cambio de plan: solo el destino; importes y prorrateo, del plano de control (Stripe). */
+const planTarget = z.object({ plan: z.enum(["essential", "business"]), interval: z.enum(["month", "year"]) }).strict();
 const TRPC_CODE: Record<number, TRPCError["code"]> = { 400: "BAD_REQUEST", 403: "FORBIDDEN", 404: "NOT_FOUND", 409: "CONFLICT", 503: "PRECONDITION_FAILED" };
 
 /**
@@ -232,6 +235,48 @@ export const subscriptionRouter = router({
     if (!/^https:\/\/checkout\.stripe\.com\//.test(r.url)) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "No se ha podido iniciar el pago" });
     return { url: r.url, expiresAt: r.expiresAt };
   }),
+  /**
+   * Baja de la suscripción cobrada en Stripe (al final del periodo pagado) y su reactivación: solo la persona
+   * propietaria, fuera de la prueba. `null` si no aplica (sin canal, fuera de multiempresa, en prueba o sin permiso):
+   * la sección no se muestra. El cambio en Elephant llega por el webhook de Stripe; nunca se borran datos.
+   */
+  cancellationStatus: protectedProcedure.query(async ({ ctx }) => {
+    if (getTenantMode() !== "multi" || !commerceClientFromEnv() || (await isTrialTenant().catch(() => true)) || !(await isCompanyOwnerUser(ctx.user).catch(() => false))) return null;
+    return reach((c, t) => c.cancellationStatus(t)).catch(() => null) as Promise<SelfServiceCancellation | null>;
+  }),
+  cancel: protectedProcedure
+    .input(z.object({ idempotencyKey: z.string().regex(/^[A-Za-z0-9_-]{16,64}$/), reason: z.string().trim().max(500).optional() }).strict())
+    .mutation(async ({ ctx, input }) => {
+      await notInTrial();
+      if (!(await isCompanyOwnerUser(ctx.user))) throw new TRPCError({ code: "FORBIDDEN", message: "Solo la persona propietaria de la empresa puede dar de baja la suscripción" });
+      return reach((c, t) => c.cancel(t, { idempotencyKey: input.idempotencyKey, user: `user:${ctx.user.id}`, ...(input.reason ? { reason: input.reason } : {}) }));
+    }),
+  undoCancel: protectedProcedure.input(z.object({ idempotencyKey: z.string().regex(/^[A-Za-z0-9_-]{16,64}$/) }).strict()).mutation(async ({ ctx, input }) => {
+    await notInTrial();
+    if (!(await isCompanyOwnerUser(ctx.user))) throw new TRPCError({ code: "FORBIDDEN", message: "Solo la persona propietaria de la empresa puede mantener la suscripción" });
+    return reach((c, t) => c.undoCancel(t, { idempotencyKey: input.idempotencyKey, user: `user:${ctx.user.id}` }));
+  }),
+  /**
+   * Cambio de plan o periodicidad (subida inmediata con prorrateo; bajada como solicitud para el fin del periodo):
+   * solo la administración, fuera de la prueba. `null` si no aplica: la sección no se muestra.
+   */
+  planChangeStatus: protectedProcedure.query(async ({ ctx }) => {
+    if (String(ctx.user.role) !== "admin" || getTenantMode() !== "multi" || !commerceClientFromEnv() || (await isTrialTenant().catch(() => true))) return null;
+    return reach((c, t) => c.planChangeStatus(t)).catch(() => null) as Promise<SelfServicePlanChange | null>;
+  }),
+  planChangePreview: protectedProcedure.input(planTarget).mutation(async ({ ctx, input }) => {
+    await notInTrial();
+    return commerce(String(ctx.user.role), (c, t) => c.planChangePreview(t, input), "Solo la administración de la empresa puede cambiar de plan");
+  }),
+  changePlan: protectedProcedure
+    .input(planTarget.extend({ idempotencyKey: z.string().regex(/^[A-Za-z0-9_-]{16,64}$/) }).strict())
+    .mutation(async ({ ctx, input }) => {
+      await notInTrial();
+      const r = (await commerce(String(ctx.user.role), (c, t) => c.changePlan(t, { ...input, user: `user:${ctx.user.id}` }), "Solo la administración de la empresa puede cambiar de plan")) as { paymentUrl?: string | null };
+      // Solo se devuelve una página de pago de Stripe (nunca otra dirección que devolviera el canal)
+      if (r.paymentUrl && !/^https:\/\/(invoice\.stripe\.com|pay\.stripe\.com)\//.test(r.paymentUrl)) return { ...r, paymentUrl: null };
+      return r;
+    }),
   supportContact: protectedProcedure.query(async ({ ctx }) => {
     if (!(PANEL_ROLES as readonly string[]).includes(String(ctx.user.role))) throw new TRPCError({ code: "FORBIDDEN" });
     return resolveSupportContact();

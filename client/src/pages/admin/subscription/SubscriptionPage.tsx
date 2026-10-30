@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils";
 import { WithdrawalSection } from "./WithdrawalSection";
 import { PlanContractSection } from "./PlanContractSection";
 import { ConversionSection } from "./ConversionSection";
+import { CancellationSection, PlanChangeSection } from "./SelfServiceSection";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 
@@ -276,7 +277,11 @@ export default function SubscriptionPage() {
 
             <PlanContractSection isTrial={!!data.trial || data.state === "trial_expired"} />
 
+            <PlanChangeSection />
+
             <BillingPortalSection />
+
+            <CancellationSection />
 
             {/* Tus datos: exportación (también en solo lectura y suspendida) */}
             <section className="rounded-2xl border border-border bg-card p-6 space-y-3" aria-labelledby="sub-data">

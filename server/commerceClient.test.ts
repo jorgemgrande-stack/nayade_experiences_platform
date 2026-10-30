@@ -77,6 +77,32 @@ describe("cliente de compras del Core", () => {
     expect(JSON.parse(seen[2].body!)).toMatchObject({ plan: "essential", interval: "year", add: ["crm"], user: "user:3" });
   });
 
+  it("baja y cambio de plan: rutas con el tenant de la sesión, solo lo que se pide y el usuario que lo pide", async () => {
+    const seen: Array<{ url: string; method: string; body?: string }> = [];
+    const c = commerceClientFromEnv(env(), async (url, init) => {
+      seen.push({ url, ...init });
+      if (url.includes("/cancellation")) return { status: 200, json: async () => ({ cancellation: { status: "scheduled" } }) };
+      if (url.endsWith("/preview")) return { status: 200, json: async () => ({ preview: { direction: "upgrade" } }) };
+      return { status: 200, json: async () => ({ planChange: { status: "applied" } }) };
+    })!;
+    expect(await c.cancellationStatus("acme-01")).toEqual({ status: "scheduled" });
+    expect(await c.cancel("acme-01", { idempotencyKey: "k".repeat(20), user: "user:4", reason: "Cierre" })).toEqual({ status: "scheduled" });
+    await c.undoCancel("acme-01", { idempotencyKey: "u".repeat(20), user: "user:4" });
+    await c.planChangeStatus("acme-01");
+    expect(await c.planChangePreview("acme-01", { plan: "business", interval: "month" })).toEqual({ direction: "upgrade" });
+    expect(await c.changePlan("acme-01", { plan: "business", interval: "month", idempotencyKey: "p".repeat(20), user: "user:4" })).toEqual({ status: "applied" });
+    expect(seen.map((x) => `${x.method} ${x.url.replace("https://cp.example/cp/v1/commerce", "")}`)).toEqual([
+      "GET /tenants/acme-01/cancellation",
+      "POST /tenants/acme-01/cancellation",
+      "POST /tenants/acme-01/cancellation/undo",
+      "GET /tenants/acme-01/plan-change",
+      "POST /tenants/acme-01/plan-change/preview",
+      "POST /tenants/acme-01/plan-change",
+    ]);
+    expect(JSON.parse(seen[1].body!)).toEqual({ idempotencyKey: "k".repeat(20), user: "user:4", reason: "Cierre" });
+    expect(JSON.parse(seen[5].body!)).toEqual({ plan: "business", interval: "month", idempotencyKey: "p".repeat(20), user: "user:4" });
+  });
+
   it("errores del plano de control con su código; una caída es 503 sin detalles", async () => {
     const c = commerceClientFromEnv(env(), async () => ({ status: 409, json: async () => ({ error: "async_payment_method", message: "Tu método de pago no permite comprar en línea" }) }))!;
     await expect(c.preview("acme-01", { users: 5 })).rejects.toMatchObject({ status: 409, code: "async_payment_method" });

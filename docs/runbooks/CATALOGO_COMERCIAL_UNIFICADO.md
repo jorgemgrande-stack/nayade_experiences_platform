@@ -63,11 +63,24 @@ Flujo «Despliegue Elephant Source» (acciones ordinarias, también en productio
 - **Idempotente:** repetir no publica ni registra nada nuevo.
 - **Reversión:** devuelve cada ficha del último lote a su versión anterior, salvo las que alguien haya cambiado después.
 - **Sin efectos económicos:** no cambia precios (la orden lo comprueba) ni activa reglas.
-- **La web** se regenera con la siguiente publicación del Core (`workflow_dispatch` del CI en `integration/elephant-source`).
 
 La salida de cada orden es una línea JSON. Railway la guarda en los atributos del registro de `restore-drill`.
 
 La semilla (`seed-elephant-source.ts`) ya no publica borradores pendientes que no ha escrito ella, como las fichas importadas o las ediciones del CRM. Los informa como `pending`.
+
+### Después de publicar: recompilar la web
+
+**La web pública no se actualiza sola con las fichas.** Big Elephant Web lee el catálogo **al compilar** (meta `be-site-version` de cada página). En el navegador solo se confirman precios y visibilidad, nunca textos. Una ficha publicada no aparece en www.bigelephant.es hasta que la web se vuelve a compilar.
+
+La publicación del Core no basta: compila la web **antes** de que se apliquen las fichas. Pasos, en este orden:
+
+1. Ejecutar `catalogo-fichas-publicar-aplicar` en production y en live.
+2. Comprobar que `version` de `https://www.bigelephant.es/cp/v1/public/site` ha cambiado. La acción termina «success» aunque el lote no publique nada; el informe real solo está en los registros de Railway.
+3. Recompilar la web: `gh workflow run publicacion.yml --ref integration/elephant-source -f solo=web`. Compila la rama base de la web (`WEB_BRANCH` en `scripts/deploy/esRailwayLib.ts`), nunca PR pendientes.
+4. Comprobar que `<meta name="be-site-version">` de www.bigelephant.es coincide con la versión del paso 2.
+5. Regenerar la instantánea de la web para el CI: `node scripts/sync-catalog.mjs --from-api https://www.bigelephant.es/cp/v1/public/site --expect <versión>` en el repo de la web.
+
+**Campos nuevos de la ficha:** cualquier campo que se añada a `commercialBlock` (`server/web/schemas.ts`) debe ser opcional y sin `.default()`. Con un valor por defecto, lo ya publicado deja de reconstruirse exactamente desde el historial y el lote bloquea todas las fichas (caso de `forWho`, corregido en la PR #495).
 
 ## Reglas comerciales preparadas (desactivadas)
 

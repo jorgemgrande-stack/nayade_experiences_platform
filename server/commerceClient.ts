@@ -72,6 +72,14 @@ export interface CommerceClient {
   conversionStatus(): Promise<{ enabled: boolean; reasons: string[] }>;
   conversionPreview(tenantId: string, input: ConversionSelection): Promise<unknown>;
   conversionStart(tenantId: string, input: ConversionSelection & { idempotencyKey: string; buyer: unknown; consents: unknown; user: string }): Promise<{ sessionId: string; url: string; expiresAt: number }>;
+  /** Baja de la suscripción cobrada en Stripe: estado, programarla al fin del periodo pagado y deshacerla. */
+  cancellationStatus(tenantId: string): Promise<unknown>;
+  cancel(tenantId: string, input: { idempotencyKey: string; user: string; reason?: string }): Promise<unknown>;
+  undoCancel(tenantId: string, input: { idempotencyKey: string; user: string }): Promise<unknown>;
+  /** Cambio de plan o periodicidad: opciones, importe (Stripe) y aplicación (el reflejo llega por el webhook). */
+  planChangeStatus(tenantId: string): Promise<unknown>;
+  planChangePreview(tenantId: string, input: { plan: "essential" | "business"; interval: "month" | "year" }): Promise<unknown>;
+  changePlan(tenantId: string, input: { plan: "essential" | "business"; interval: "month" | "year"; idempotencyKey: string; user: string }): Promise<unknown>;
 }
 
 type Fetch = (url: string, init: { method: string; headers: Record<string, string>; body?: string; signal?: AbortSignal }) => Promise<{ status: number; json(): Promise<unknown> }>;
@@ -127,5 +135,11 @@ export function commerceClientFromEnv(env: NodeJS.ProcessEnv = process.env, fetc
     conversionStatus: async () => (await call("GET", "/conversion/status")) as { enabled: boolean; reasons: string[] },
     conversionPreview: async (tenantId, input) => ((await call("POST", `${seg(tenantId)}/conversion/preview`, input)) as { preview: unknown }).preview,
     conversionStart: async (tenantId, input) => (await call("POST", `${seg(tenantId)}/conversion`, input)) as { sessionId: string; url: string; expiresAt: number },
+    cancellationStatus: async (tenantId) => ((await call("GET", `${seg(tenantId)}/cancellation`)) as { cancellation: unknown }).cancellation,
+    cancel: async (tenantId, input) => ((await call("POST", `${seg(tenantId)}/cancellation`, input)) as { cancellation: unknown }).cancellation,
+    undoCancel: async (tenantId, input) => ((await call("POST", `${seg(tenantId)}/cancellation/undo`, input)) as { cancellation: unknown }).cancellation,
+    planChangeStatus: async (tenantId) => ((await call("GET", `${seg(tenantId)}/plan-change`)) as { planChange: unknown }).planChange,
+    planChangePreview: async (tenantId, input) => ((await call("POST", `${seg(tenantId)}/plan-change/preview`, input)) as { preview: unknown }).preview,
+    changePlan: async (tenantId, input) => ((await call("POST", `${seg(tenantId)}/plan-change`, input)) as { planChange: unknown }).planChange,
   };
 }
