@@ -338,9 +338,9 @@ export async function dropLeftoverTestDatabase(admin: Pick<mysql.Pool, "query">,
   await dropRestoredTestDatabase([admin], tenantId, database);
 }
 
-/** Borrado de ficheros del bucket de medios para `applyPurge` (variables S3_* del Core; solo con BACKUP_MEDIA=1). */
+/** Borrado de ficheros del bucket de medios para `applyPurge` (variables S3_* del Core). */
 export function purgeMediaDeleter(env: NodeJS.ProcessEnv): ((key: string) => Promise<void>) | undefined {
-  if (env.BACKUP_MEDIA !== "1" || !env.S3_BUCKET || !env.S3_ACCESS_KEY || !env.S3_SECRET_KEY) return undefined;
+  if (!env.S3_BUCKET || !env.S3_ACCESS_KEY || !env.S3_SECRET_KEY) return undefined;
   const client = new S3Client({
     region: env.S3_REGION || "us-east-1",
     ...(env.S3_ENDPOINT ? { endpoint: env.S3_ENDPOINT, forcePathStyle: true } : {}),
