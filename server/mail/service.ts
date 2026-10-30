@@ -97,6 +97,11 @@ const EVENT_TRANSITIONS: Record<string, { to: MailStatus | null; from: MailStatu
 export class MailService {
   private now: () => number;
   private log: NonNullable<MailServiceDeps["log"]>;
+  /** Cabeceras adicionales por mensaje (List-Unsubscribe de los envíos comerciales); se calculan al enviar. */
+  private headersFor: ((row: { category: string; idempotencyKey: string }) => Record<string, string> | null) | null = null;
+  setHeaderResolver(fn: ((row: { category: string; idempotencyKey: string }) => Record<string, string> | null) | null) {
+    this.headersFor = fn;
+  }
   constructor(private d: MailServiceDeps) {
     this.now = d.now ?? Date.now;
     this.log = d.log ?? ((level, event, data) => opsLog(level, "Mail", event, data));
@@ -252,6 +257,7 @@ export class MailService {
       return this.d.store.get(id);
     }
     try {
+      const headers = this.headersFor?.({ category: row.category, idempotencyKey: row.idempotencyKey }) ?? null;
       const r = await this.d.provider.send({
         from: { name: row.senderName, email: row.senderEmail },
         replyTo: row.replyTo,
@@ -264,6 +270,7 @@ export class MailService {
         tag: row.category,
         ref: mailRef(this.d.lane, row.tenantId, id),
         idempotencyKey: `${row.tenantId}:${row.idempotencyKey}`.slice(0, 200),
+        ...(headers ? { headers } : {}),
       });
       await this.d.store.settle(id, { status: "accepted", reason: null, provider: this.d.provider.name, providerMessageId: r.messageId, purge: true }, now);
       await this.d.store.addEvent({ outboxId: id, tenantId: row.tenantId, kind: "accepted", providerEventId: null, detail: this.d.provider.name, at: now });

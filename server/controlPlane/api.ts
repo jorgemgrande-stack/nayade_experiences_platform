@@ -68,6 +68,9 @@ import type { LeadNoticeService } from "../crm/leadNotices";
 import { createLeadNoticesRouter } from "../crm/leadNoticesApi";
 import type { AdminAlertService } from "../adminAlerts/service";
 import { createAdminAlertsRouter } from "../adminAlerts/api";
+import type { CommunicationsService } from "../communications/service";
+import { createCommunicationsRouter } from "../communications/api";
+import { createCommunicationsPublicRouter } from "../communications/publicApi";
 import { LEAD_REQUEST_LABEL, type LeadRequest } from "../crm/types";
 import { creditNoteNotice, domainConnectedNotice, domainPendingNotice, purchasePendingNotice, type CustomerNoticeDeps } from "../notifications/customerTriggers";
 import { WebAdminService } from "../web/service";
@@ -361,6 +364,8 @@ export interface ControlPlaneDeps {
   leadNotices?: LeadNoticeService | null;
   /** Alertas administrativas (familia D; server/adminAlerts, CRM 0030). */
   adminAlerts?: AdminAlertService | null;
+  /** Centro de envíos del CRM y consentimiento comercial por contacto (server/communications, CRM 0031). */
+  communications?: CommunicationsService | null;
 }
 
 const idSchema = z.string().regex(/^[a-z0-9][a-z0-9_-]{0,62}$/);
@@ -605,6 +610,8 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
   let publicAcceptance: express.Router | null = null;
   router.use("/public/contract-acceptance", (req, res, next) => (publicAcceptance ? publicAcceptance(req, res, next) : void res.status(404).json({ error: "not_found" })));
   router.use("/public/checkout", (req, res, next) => (publicCheckout ? publicCheckout(req, res, next) : void res.status(404).json({ error: "not_found" })));
+  // Baja de comunicaciones comerciales y encuesta de soporte del Centro de envíos (solo con el enlace firmado)
+  if (d.communications) router.use("/public/comunicaciones", createCommunicationsPublicRouter(d.communications));
   if (webRequests && d.publicIntake) router.use("/public", createPublicIntakeRouter({ ...d.publicIntake, origins: publicOrigins, service: webRequests }));
   router.use(
     authenticate(
@@ -1471,6 +1478,8 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
     const knownTenants = async () => new Set((await d.reader.listTenants()).filter((t) => t.status !== "deleted").map((t) => t.id));
     if (leadNotices) router.use("/crm/lead-notices", createLeadNoticesRouter(leadNotices));
     if (adminAlerts) router.use("/admin-alerts", createAdminAlertsRouter(adminAlerts));
+    // Centro de envíos y consentimiento por contacto (antes del router del CRM: /crm/contacts/:id/consent)
+    if (d.communications) router.use(createCommunicationsRouter(d.communications));
     router.use(
       "/crm",
       createCrmRouter(d.crm.service, d.crm.store, { billing: d.billingStore, onboarding, requests: webRequests, assignees, quote: crmQuote, knownTenants, noticeSummaries: leadNotices ? (ids) => leadNotices.summaries(ids) : undefined }),

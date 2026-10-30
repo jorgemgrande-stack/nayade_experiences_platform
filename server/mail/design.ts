@@ -62,6 +62,8 @@ export interface EmailSpec {
   subject?: string;
   /** Comunicación comercial: añade la baja en el pie. Las de servicio no llevan nada comercial. */
   commercial?: boolean;
+  /** Enlace personal de baja (firmado) de una comunicación comercial; sin él, la página de soporte. */
+  unsubscribeUrl?: string | null;
 }
 
 /** Paleta del estándar aprobado. */
@@ -279,7 +281,8 @@ export function renderEmail(brand: EmailBrand, s: EmailSpec): MailContent & { te
     `</td></tr>`;
 
   const links = CORPORATE.links.map((l) => `<a href="${CORPORATE.web}${l.path}" style="color:#ffffff;text-decoration:underline">${esc(l.label)}</a>`).join(" &nbsp;·&nbsp; ");
-  const unsubscribe = s.commercial ? `<div style="margin-top:8px"><a href="${CORPORATE.web}/soporte" style="color:${T.navyText};text-decoration:underline">Darte de baja de las comunicaciones comerciales</a></div>` : "";
+  const unsubscribeUrl = (s.commercial && safeUrl(s.unsubscribeUrl)) || `${CORPORATE.web}/soporte`;
+  const unsubscribe = s.commercial ? `<div style="margin-top:8px"><a href="${esc(unsubscribeUrl)}" style="color:${T.navyText};text-decoration:underline">Darte de baja de las comunicaciones comerciales</a></div>` : "";
   // Línea legal oficial (titular, NIF y domicilio): la de la marca de plataforma, una sola fuente
   const legal = brand.legal ?? `${CORPORATE.name} es un servicio de ${CORPORATE.legalName} · NIF ${CORPORATE.taxId} · ${CORPORATE.address}`;
   const footer = platform
@@ -319,7 +322,7 @@ export function renderEmail(brand: EmailBrand, s: EmailSpec): MailContent & { te
     ...(cta ? [`${cta.label}: ${safeUrl(cta.url)}`, ""] : []),
     "—",
     ...(platform
-      ? [brand.legal ?? `${CORPORATE.name} es un servicio de ${CORPORATE.legalName} · NIF ${CORPORATE.taxId} · ${CORPORATE.address}`, `${support ?? CORPORATE.supportEmail} · www.bigelephant.es`, ...CORPORATE.links.map((l) => `${l.label}: ${CORPORATE.web}${l.path}`), ...(s.commercial ? [`Baja de comunicaciones comerciales: ${CORPORATE.web}/soporte`] : [s.family === "admin" ? ADMIN_FOOT : "Mensaje de servicio relacionado con tu cuenta. No es publicidad."])]
+      ? [brand.legal ?? `${CORPORATE.name} es un servicio de ${CORPORATE.legalName} · NIF ${CORPORATE.taxId} · ${CORPORATE.address}`, `${support ?? CORPORATE.supportEmail} · www.bigelephant.es`, ...CORPORATE.links.map((l) => `${l.label}: ${CORPORATE.web}${l.path}`), ...(s.commercial ? [`Baja de comunicaciones comerciales: ${unsubscribeUrl}`] : [s.family === "admin" ? ADMIN_FOOT : "Mensaje de servicio relacionado con tu cuenta. No es publicidad."])]
       : [`Mensaje automático de ${brand.name} relacionado con tu cuenta.${support ? ` ¿Dudas? Escríbenos a ${support}.` : ""}`]),
   ].join("\n");
   return { subject, html, text };

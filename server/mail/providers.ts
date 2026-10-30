@@ -39,7 +39,7 @@ export function brevoProvider(o: { apiKey: string; baseUrl?: string; fetch?: Fet
         // X-Mailin-custom vuelve en los webhooks (referencia opaca); sin seguimiento de clics para que
         // los enlaces lleguen directos. `IdempotencyKey` es una cabecera propia (Brevo no documenta
         // deduplicación): la garantía real de no duplicar es la bandeja de salida.
-        headers: { "X-Mailin-custom": m.ref, "X-Mailin-no-track": "1", IdempotencyKey: m.idempotencyKey },
+        headers: { ...m.headers, "X-Mailin-custom": m.ref, "X-Mailin-no-track": "1", IdempotencyKey: m.idempotencyKey },
       };
       let res: Awaited<ReturnType<FetchLike>>;
       try {
@@ -106,6 +106,7 @@ export function postmarkProvider(o: { serverToken: string; baseUrl?: string; mes
         MessageStream: o.messageStream ?? "outbound",
         TrackOpens: false,
         TrackLinks: "None",
+        ...(m.headers && Object.keys(m.headers).length ? { Headers: Object.entries(m.headers).map(([Name, Value]) => ({ Name, Value })) } : {}),
         ...(m.attachments?.length ? { Attachments: m.attachments.map((a) => ({ Name: a.name, Content: a.content, ContentType: MIME[a.name.split(".").pop()?.toLowerCase() ?? ""] ?? "application/octet-stream" })) } : {}),
       };
       let res: Awaited<ReturnType<FetchLike>>;
@@ -145,7 +146,7 @@ export function smtpProvider(c: { host: string; port: number; secure: boolean; u
           html: m.html,
           text: m.text,
           attachments: m.attachments?.map((a) => (a.content ? { filename: a.name, content: Buffer.from(a.content, "base64") } : { filename: a.name, path: a.url })),
-          headers: { "X-Mailin-custom": m.ref, "X-Elephant-Tag": m.tag },
+          headers: { ...m.headers, "X-Mailin-custom": m.ref, "X-Elephant-Tag": m.tag },
         });
         return { messageId: typeof info.messageId === "string" ? info.messageId.slice(0, 200) : null };
       } catch (e) {
