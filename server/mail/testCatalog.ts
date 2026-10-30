@@ -64,6 +64,11 @@ export const CIRCUIT: Readonly<Record<string, TemplateCircuit>> = {
   "usage.near_limit": "programada",
   "usage.limit_reached": "programada",
   "access.archive_notice": "programada",
+  "onboarding.reminder": "programada",
+  // Alertas internas de la revisión periódica (gracia a punto de vencer y tickets sin respuesta)
+  "admin.suspension_near": "programada",
+  "admin.ticket_unanswered": "programada",
+  "admin.ticket_escalated": "programada",
   // Envíos de una persona del equipo desde el CRM
   "contract.invitation": "manual",
   "contract.payment_setup": "manual",
