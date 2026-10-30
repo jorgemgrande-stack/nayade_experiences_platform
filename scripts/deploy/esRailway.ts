@@ -879,7 +879,7 @@ async function main() {
     }
     const crmHost = "admin.bigelephant.es";
     const hookUrl = `https://${crmHost}/cp/v1/mail/postmark/webhook`;
-    const plan = leadNoticesMailPlan(env, vars, { action: accion === "desactivar" ? "desactivar" : "activar", recipients: accion === "estado" ? ["estado@ejemplo.invalid"] : recipients, category });
+    const plan = leadNoticesMailPlan(env, vars, { action: accion === "desactivar" ? "desactivar" : "activar", recipients: accion === "estado" ? ["estado@ejemplo.invalid"] : recipients });
     // El servidor de production nunca debe mandar sus eventos a live
     // (mismo criterio que el correo de acceso: un webhook hacia live delata un servidor compartido con live)
     if (webhooks.some((w) => /live/.test(w.Url))) plan.problems.push("el servidor de Postmark envía eventos a live: production necesita su propio servidor");
@@ -957,7 +957,7 @@ async function main() {
         console.log(`  ${m.ReceivedAt.slice(0, 19)} · ${mask(m.To?.[0]?.Email ?? "")} · ${m.Subject.slice(0, 80)} · ${ev || "sin eventos"}`);
       }
     }
-    const plan = contractMailPlan(env, vars, { recipients: accion === "estado" ? ["estado@ejemplo.invalid"] : recipients });
+    const plan = contractMailPlan(env, vars, { recipients: accion === "estado" ? ["estado@ejemplo.invalid"] : recipients, category });
     if (accion === "estado") {
       console.log(plan.problems.length ? `Falta para activar:\n - ${plan.problems.join("\n - ")}` : "Requisitos para activar el correo de contratos: cumplidos");
       return;
