@@ -17,7 +17,7 @@ describe("catálogo maestro de comunicaciones", () => {
       expect(["experiential", "transactional", "security", "admin"]).toContain(e.family);
       expect(e.family === "admin", e.id).toBe(e.group === "administracion");
       expect(["controlplane", "core", "crm"]).toContain(e.service);
-      expect(["conectada", "sin_disparador", "interna"]).toContain(e.state);
+      expect(["conectada", "sin_disparador", "interna", "externa"]).toContain(e.state);
     }
   });
   it("contenido completo y seguro: asunto, HTML, texto, sin variables vacías, solo https, sin datos de clientes", () => {

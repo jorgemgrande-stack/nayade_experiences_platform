@@ -13,7 +13,16 @@ import type { MailContent } from "./types";
 import { ADMIN_ALERTS } from "../adminAlerts/catalog";
 import { alertPreview } from "../adminAlerts/service";
 
-export type TemplateState = "conectada" | "sin_disparador" | "interna";
+export type TemplateState = "conectada" | "sin_disparador" | "interna" | "externa";
+/**
+ * Circuito operativo de cada plantilla:
+ *  - automatica: la envía un hecho real del producto (evento, notificador o alerta);
+ *  - manual: la envía una persona del equipo desde el CRM (con selección de destinatarios y confirmación);
+ *  - programada: la envía una tarea periódica del plano de control o del Core;
+ *  - externa: la envía otro proveedor (Stripe) y Elephant no la duplica;
+ *  - pendiente: solo si depende de algo externo que no podemos construir (con su motivo).
+ */
+export type TemplateCircuit = "automatica" | "manual" | "programada" | "externa" | "pendiente";
 export type TemplateGroup = "acceso" | "onboarding" | "contratacion" | "facturacion" | "empresas" | "producto" | "soporte" | "comercial" | "interna" | "administracion";
 export interface TemplateEntry {
   id: string;
@@ -23,6 +32,7 @@ export interface TemplateEntry {
   service: "controlplane" | "core" | "crm";
   event: string;
   state: TemplateState;
+  circuit: TemplateCircuit;
   /** Sin disparador: por qué (hecho que todavía no existe en el producto). */
   pending?: string;
   render: () => MailContent;
@@ -42,7 +52,33 @@ const P = (id: string) => () => {
   return p;
 };
 const ext = { companyName: "Empresa Demo, S.L.", serviceName: "Servicio Demo — Mantenimiento gestionado", signerName: "Laura Demo", amountCents: 100_000, taxRateBp: 2100, currency: "EUR", firstChargeAt: Date.UTC(2026, 10, 1, 7) };
-const e = (id: string, name: string, group: TemplateGroup, family: Family, service: TemplateEntry["service"], event: string, state: TemplateState, render: () => MailContent): TemplateEntry => ({ id, name, group, family, service, event, state, render });
+/** Excepciones al circuito por defecto (conectada o interna: automática; externa: externa; sin disparador: pendiente). */
+export const CIRCUIT: Readonly<Record<string, TemplateCircuit>> = {
+  // Tareas periódicas
+  "trial.reminder": "programada",
+  "trial.reminder_2": "programada",
+  "trial.ended": "programada",
+  "usage.near_limit": "programada",
+  "usage.limit_reached": "programada",
+  "access.archive_notice": "programada",
+  // Envíos de una persona del equipo desde el CRM
+  "contract.invitation": "manual",
+  "contract.payment_setup": "manual",
+};
+export function circuitOf(id: string, state: TemplateState): TemplateCircuit {
+  return CIRCUIT[id] ?? (state === "externa" ? "externa" : state === "sin_disparador" ? "pendiente" : "automatica");
+}
+const e = (id: string, name: string, group: TemplateGroup, family: Family, service: TemplateEntry["service"], event: string, state: TemplateState, render: () => MailContent): TemplateEntry => ({
+  id,
+  name,
+  group,
+  family,
+  service,
+  event,
+  state,
+  circuit: circuitOf(id, state),
+  render,
+});
 
 export const TEMPLATES: readonly TemplateEntry[] = [
   // ── A. Acceso, identidad y seguridad ──
@@ -89,9 +125,9 @@ export const TEMPLATES: readonly TemplateEntry[] = [
   e("billing.invoice_available", "Factura emitida", "facturacion", "transactional", "controlplane", "Factura de Stripe cobrada", "conectada", P("billing.invoice_available")),
   e("subscription.initial_payment", "Pago realizado correctamente", "facturacion", "transactional", "controlplane", "Primer cobro verificado en Stripe", "conectada", P("subscription.initial_payment")),
   e("payment.test_confirmed", "Pago de prueba registrado (entorno de pruebas)", "facturacion", "transactional", "controlplane", "Pago con el proveedor simulado o Stripe en pruebas", "conectada", () => t.testPaymentConfirmed({ reference: "PED-2026-0042", amountCents: 2900, currency: "EUR" })),
-  e("billing.upcoming_charge", "Próximo cargo programado", "facturacion", "transactional", "controlplane", "Aviso previo a la renovación", "sin_disparador", () => x.upcomingCharge({ reference: "PED-2026-0042", amountCents: 121_000, currency: "EUR", at: PREVIEW_NOW + 7 * DAY, host: HOST })),
+  e("billing.upcoming_charge", "Próximo cargo programado", "facturacion", "transactional", "controlplane", "Aviso previo a la renovación (lo envía Stripe: «upcoming renewal» del Dashboard)", "externa", () => x.upcomingCharge({ reference: "PED-2026-0042", amountCents: 121_000, currency: "EUR", at: PREVIEW_NOW + 7 * DAY, host: HOST })),
   e("subscription.payment_failed", "Incidencia en el cobro", "facturacion", "transactional", "controlplane", "Renovación impagada (inicio de la gracia de 7 días)", "conectada", P("subscription.payment_failed")),
-  e("billing.payment_reminder", "Recordatorio de pago pendiente", "facturacion", "transactional", "controlplane", "Día 3 de la gracia", "sin_disparador", () => x.paymentReminder({ reference: "PED-2026-0042", amountCents: 121_000, currency: "EUR", graceEndsAt: PREVIEW_NOW + 4 * DAY, host: HOST })),
+  e("billing.payment_reminder", "Recordatorio de pago pendiente", "facturacion", "transactional", "controlplane", "Recordatorios de la gracia (los envía Stripe en cada reintento de Smart Retries)", "externa", () => x.paymentReminder({ reference: "PED-2026-0042", amountCents: 121_000, currency: "EUR", graceEndsAt: PREVIEW_NOW + 4 * DAY, host: HOST })),
   e("subscription.suspended", "Último aviso: suscripción suspendida", "facturacion", "transactional", "controlplane", "order.suspended", "conectada", P("subscription.suspended")),
   e("subscription.recovered", "Pago regularizado y servicio restablecido", "facturacion", "transactional", "controlplane", "Pago recuperado", "conectada", P("subscription.recovered")),
   e("billing.incident", "Cobro revertido", "facturacion", "transactional", "controlplane", "coverage.lost", "conectada", P("billing.incident")),
@@ -154,6 +190,6 @@ export const PENDING_REASON: Readonly<Record<string, string>> = {
 export function allTestEmails(): TestEmail[] {
   return TEMPLATES.map(({ render, ...m }) => {
     const c = render();
-    return { ...m, ...(m.state === "sin_disparador" ? { pending: PENDING_REASON[m.id] ?? "Sin hecho que la active todavía en el producto" } : {}), subject: c.subject, html: c.html, text: c.text ?? "" };
+    return { ...m, ...(m.state === "sin_disparador" || m.state === "externa" ? { pending: PENDING_REASON[m.id] ?? "Sin hecho que la active todavía en el producto" } : {}), subject: c.subject, html: c.html, text: c.text ?? "" };
   });
 }
