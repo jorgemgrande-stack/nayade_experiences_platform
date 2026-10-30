@@ -96,7 +96,7 @@ import { SsoService, parseSsoUsers } from "./sso";
 import { createRemoteJWKSet } from "jose";
 import { operatorAuthFromEnv } from "./operatorSetup";
 import { DEFAULT_CORE_INTERNAL_URL, coreAccessClient } from "./tenantAccess";
-import { outboxMfaNotice, outboxResetMailer, resetUnavailableReason } from "./operatorResetMail";
+import { outboxMfaNotice, outboxOperatorSecurityMail, outboxResetMailer, resetUnavailableReason } from "./operatorResetMail";
 import { LeadNoticeService, MysqlSettingsStore, crmUrlFromEnv, settingsTablesReady } from "../crm/leadNotices";
 import { AdminAlertService } from "../adminAlerts/service";
 import { MysqlAdminAlertStore, adminAlertTablesReady } from "../adminAlerts/store";
@@ -285,7 +285,9 @@ async function main() {
   const operatorResetMailer = platformMail.mailer && mailPolicy.mode !== "off" && scopeAllows(mailPolicy, "platform", "password_reset") ? outboxResetMailer(platformMail.mailer) : undefined;
   // Aviso de seguridad al operador al activar o retirar su segundo factor (si el ámbito del correo lo permite)
   const operatorMfaNotice = platformMail.mailer && mailPolicy.mode !== "off" && scopeAllows(mailPolicy, "platform", "security_notice") ? outboxMfaNotice(platformMail.mailer) : undefined;
-  const operators = await operatorAuthFromEnv(pool, process.env, { keyring: ring, resetMailer: operatorResetMailer, securityNotice: operatorMfaNotice });
+  // Contraseña cambiada, dispositivo nuevo y cambio de correo verificado (la confirmación, solo si el ámbito admite email_verification)
+  const operatorSecurityMail = platformMail.mailer && mailPolicy.mode !== "off" ? outboxOperatorSecurityMail(platformMail.mailer, { notices: scopeAllows(mailPolicy, "platform", "security_notice"), emailVerification: scopeAllows(mailPolicy, "platform", "email_verification"), crmUrl: crmUrlFromEnv(process.env) }) : undefined;
+  const operators = await operatorAuthFromEnv(pool, process.env, { keyring: ring, resetMailer: operatorResetMailer, securityNotice: operatorMfaNotice, securityMail: operatorSecurityMail });
   // Avisos internos de solicitudes web (CRM 0025): destinatarios elegidos en el CRM entre los operadores; salen por la
   // bandeja de la plataforma con su política (modo, destinatarios autorizados, ámbito). Sin migración, no se monta.
   let leadNotices: LeadNoticeService | null = null;
@@ -306,7 +308,7 @@ async function main() {
     t.unref?.();
   }
   console.log(JSON.stringify({ ctx: "LeadNotices", mounted: !!leadNotices, ...(leadNotices ? leadNotices.status() : { reason: !crm ? "crm_not_configured" : "migration_0025_missing_or_no_operators" }), crmLink: !!crmUrlFromEnv(process.env) }));
-  console.log(JSON.stringify({ ctx: "OperatorAuth", enabled: !!operators.service, ...(operators.reason ? { reason: operators.reason } : {}), passwordReset: !!operators.service?.resetAvailable, resetTransport: operators.resetTransport ?? null, ...(operators.service && !operators.service.resetAvailable ? { resetUnavailable: resetUnavailableReason({ resetUrl: process.env.CP_RESET_URL, smtp: !!(process.env.CP_RESET_SMTP_URL && process.env.CP_RESET_FROM), mailer: !!platformMail.mailer, policy: mailPolicy }) } : {}), mfa: operators.mfa ?? null }));
+  console.log(JSON.stringify({ ctx: "OperatorAuth", enabled: !!operators.service, ...(operators.reason ? { reason: operators.reason } : {}), passwordReset: !!operators.service?.resetAvailable, resetTransport: operators.resetTransport ?? null, ...(operators.service && !operators.service.resetAvailable ? { resetUnavailable: resetUnavailableReason({ resetUrl: process.env.CP_RESET_URL, smtp: !!(process.env.CP_RESET_SMTP_URL && process.env.CP_RESET_FROM), mailer: !!platformMail.mailer, policy: mailPolicy }) } : {}), mfa: operators.mfa ?? null, emailChange: !!operators.service?.emailChangeAvailable }));
 
   // Web comercial (catálogo y contenidos): misma BD del CRM; solo si la migración 0004 está aplicada
   let web: { store: MysqlWebStore; onPublish?: (version: string) => void } | undefined;

@@ -108,7 +108,7 @@ export function createPublicAuthRouter(cfg: OperatorRoutesConfig): Router {
   });
 
   r.get("/auth/options", (_req, res) => {
-    res.json({ passwordLogin: true, passwordReset: svc.resetAvailable, mfa: svc.mfaAvailable });
+    res.json({ passwordLogin: true, passwordReset: svc.resetAvailable, mfa: svc.mfaAvailable, emailChange: svc.emailChangeAvailable });
   });
 
   r.post(
@@ -161,7 +161,60 @@ export function createPublicAuthRouter(cfg: OperatorRoutesConfig): Router {
       res.json({ ok: true });
     }),
   );
+
+  // Confirmación del correo nuevo de un operador. El enlace del correo abre esta página (GET, sin efectos: los
+  // analizadores de enlaces de los buzones no confirman nada) y el botón envía el formulario (POST, un solo uso).
+  r.get("/auth/email-change/confirm", (req, res) => {
+    const token = typeof req.query.token === "string" ? req.query.token.slice(0, 128) : "";
+    emailChangePage(res, 200, "Confirma tu nuevo correo", "Pulsa el botón para confirmar el nuevo correo de acceso de tu cuenta de Big Elephant CRM (administración central).", token);
+  });
+
+  r.post(
+    "/auth/email-change/confirm",
+    checkOrigin(cfg),
+    limiter,
+    express.urlencoded({ extended: false, limit: "2kb" }),
+    handle(async (req, res) => {
+      // Formulario de la página (HTML) o petición de una aplicación (JSON)
+      const form = !req.is("application/json");
+      const b = z.object({ token: z.string().max(128) }).safeParse(req.body);
+      try {
+        await svc.confirmEmailChange(b.success ? b.data.token : "", ctxOf(req));
+      } catch (e) {
+        if (form && e instanceof OperatorAuthError) return void emailChangePage(res, e.status, "No se ha podido confirmar", e.message);
+        throw e;
+      }
+      if (form) return void emailChangePage(res, 200, "Correo confirmado", "El nuevo correo ya es el de acceso de tu cuenta. Hemos enviado un aviso al correo anterior y al nuevo.");
+      res.setHeader("Cache-Control", "no-store");
+      res.json({ ok: true });
+    }),
+  );
   return r;
+}
+
+const escapeHtml = (v: string) => v.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
+
+/** Página mínima y autónoma (sin scripts) de la confirmación del correo nuevo. */
+function emailChangePage(res: Response, status: number, title: string, text: string, token?: string) {
+  const form = token
+    ? `<form method="post" action="confirm"><input type="hidden" name="token" value="${escapeHtml(token)}"><button type="submit">Confirmar el nuevo correo</button></form>`
+    : "";
+  res
+    .status(status)
+    .set({
+      "Content-Type": "text/html; charset=utf-8",
+      "Cache-Control": "no-store",
+      // El token va en la URL: que no salga en el Referer hacia otros sitios ni la página se pueda incrustar.
+      // `same-origin` y no `no-referrer`: con este, el navegador enviaría «Origin: null» al confirmar y se rechazaría.
+      "Referrer-Policy": "same-origin",
+      "X-Frame-Options": "DENY",
+      "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
+    })
+    .send(
+      `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>${escapeHtml(title)}</title>` +
+        `<style>body{font-family:system-ui,sans-serif;background:#f5f5f4;color:#1c1917;margin:0;padding:48px 16px}main{max-width:480px;margin:0 auto;background:#fff;border-radius:12px;padding:32px;box-shadow:0 1px 3px rgba(0,0,0,.1)}h1{font-size:22px;margin:0 0 12px}p{line-height:1.5}button{background:#1c1917;color:#fff;border:0;border-radius:8px;padding:12px 20px;font-size:16px;cursor:pointer}</style></head>` +
+        `<body><main><h1>${escapeHtml(title)}</h1><p>${escapeHtml(text)}</p>${form}</main></body></html>`,
+    );
 }
 
 /** Rutas con sesión de operador: se montan DESPUÉS de la autenticación. */

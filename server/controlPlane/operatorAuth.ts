@@ -20,6 +20,7 @@ import type { Scope } from "./auth";
 import { decryptDsn, encryptDsn, type Keyring } from "../_core/tenantRegistry/crypto";
 import { mfaAad } from "./operatorMfaKeys";
 import { newRecoveryCodes, newTotpSecret, normalizeRecoveryCode, otpauthUri, RECOVERY_CODE_RE, verifyTotp } from "./totp";
+import { deviceLabel, deviceOf, sameDevice } from "./operatorDevice";
 
 export { SESSION_COOKIE } from "./auth";
 
@@ -38,7 +39,9 @@ export type OperatorErrorCode =
   | "already_initialized"
   | "invalid_mfa_code"
   | "mfa_unavailable"
-  | "mfa_session_expired";
+  | "mfa_session_expired"
+  | "invalid_email_change_token"
+  | "email_change_unavailable";
 
 const STATUS: Record<OperatorErrorCode, number> = {
   invalid_credentials: 401,
@@ -56,6 +59,8 @@ const STATUS: Record<OperatorErrorCode, number> = {
   invalid_mfa_code: 401,
   mfa_unavailable: 503,
   mfa_session_expired: 401,
+  invalid_email_change_token: 400,
+  email_change_unavailable: 503,
 };
 
 export class OperatorAuthError extends Error {
@@ -100,6 +105,29 @@ export interface OperatorAuthOptions {
    * Sin él no se avisa. Un fallo del aviso nunca rompe la operación.
    */
   securityNotice?: (to: string, i: { key: string; at: number; enabled: boolean }) => Promise<void>;
+  /**
+   * Avisos de seguridad y confirmación del cambio de correo (operatorResetMail.ts). Cada aviso que falta no se
+   * envía; un fallo de un aviso nunca rompe la operación que lo origina.
+   */
+  securityMail?: OperatorSecurityMail;
+  /** Página de confirmación del correo nuevo (se le añade el token). Sin ella, el cambio de correo no está disponible. */
+  emailChangeUrl?: string;
+  /** Validez del enlace de confirmación del correo nuevo (por defecto 24 h). */
+  emailChangeTtlMs?: number;
+  /** Sesiones con las que se compara el dispositivo de un inicio de sesión (por defecto, las de 90 días). */
+  newLoginLookbackMs?: number;
+}
+
+/** Correos de seguridad de los operadores. Ninguno lleva enlaces salvo la confirmación del correo nuevo. */
+export interface OperatorSecurityMail {
+  /** Contraseña cambiada (por la propia persona, por un enlace de restablecimiento o por un administrador). */
+  passwordChanged?: (to: string, i: { key: string; at: number; name: string | null }) => Promise<void>;
+  /** Inicio de sesión desde un dispositivo (navegador y sistema) que no aparece en sus sesiones recientes. */
+  newLogin?: (to: string, i: { key: string; at: number; name: string | null; device: string }) => Promise<void>;
+  /** Enlace de un solo uso al correo NUEVO para confirmar el cambio. */
+  emailChangeConfirmation?: (to: string, i: { key: string; link: string; name: string | null; newEmail: string; hours: number }) => Promise<void>;
+  /** Correo cambiado: al antiguo (aviso de seguridad) y al nuevo. */
+  emailChanged?: (to: string, i: { key: string; at: number; name: string | null; oldEmail: string; newEmail: string }) => Promise<void>;
 }
 
 export interface RequestContext {
@@ -221,6 +249,11 @@ export class OperatorAuthService {
     return !!this.opts.mailer && !!this.opts.resetUrl;
   }
 
+  /** Cambio de correo verificado disponible: envío del enlace, página de confirmación y almacén con la migración 0015. */
+  get emailChangeAvailable(): boolean {
+    return !!this.opts.securityMail?.emailChangeConfirmation && !!this.opts.emailChangeUrl && this.store.emailChangeSupported;
+  }
+
   /** Segundo factor disponible: llavero configurado y almacén con la migración 0012. */
   get mfaAvailable(): boolean {
     return !!this.opts.mfaKeyring && this.store.mfaSupported;
@@ -310,6 +343,7 @@ export class OperatorAuthService {
     await this.store.update(op.id, { failedAttempts: 0, lockedUntil: null, lastLoginAt: now });
     const { token, session } = await this.createSession(op.id, ctx, mfa);
     await this.audit("login_success", { id: op.id, username: op.username }, `operator:${op.username}`, ctx, { session: session.id.slice(0, 12), ...(mfa === "setup" ? { mfaSetupRequired: true } : {}) });
+    await this.newLoginNotice(op, session, ctx);
     return { token, session, operator: { ...op, failedAttempts: 0, lockedUntil: null, lastLoginAt: now }, mfa };
   }
 
@@ -341,6 +375,7 @@ export class OperatorAuthService {
     await this.store.revokeSession(session.id, now, "mfa_completed");
     const next = await this.createSession(op.id, ctx, "none");
     await this.audit("login_success", { id: op.id, username: op.username }, `operator:${op.username}`, ctx, { session: next.session.id.slice(0, 12), mfa: used });
+    await this.newLoginNotice(op, next.session, ctx);
     return { token: next.token, session: next.session, operator: { ...op, failedAttempts: 0, lockedUntil: null, lastLoginAt: now } };
   }
 
@@ -519,6 +554,36 @@ export class OperatorAuthService {
     await this.opts.securityNotice(op.email, { key: `operator-mfa:${op.id}:${enabled ? "on" : "off"}:${at}`, at, enabled }).catch(() => undefined);
   }
 
+  /**
+   * Aviso de inicio de sesión desde un dispositivo nuevo (plantilla security.new_login), tras un acceso completo.
+   * El dispositivo es la familia de navegador y el sistema del user-agent (no la IP). Solo avisa si hay referencia:
+   * sesiones de los últimos 90 días con un dispositivo identificable y ninguno igual. El primer acceso, un
+   * user-agent no identificable o un operador sin correo no avisan. Una clave por sesión. No toca ninguna sesión, y
+   * cualquier fallo se ignora: nunca rompe el inicio de sesión.
+   */
+  private async newLoginNotice(op: OperatorRecord, session: SessionRecord, ctx: RequestContext) {
+    const send = this.opts.securityMail?.newLogin;
+    if (!send || !op.email) return;
+    try {
+      const device = deviceOf(session.userAgent);
+      if (!device) return;
+      const since = session.createdAt - (this.opts.newLoginLookbackMs ?? 90 * 86_400_000);
+      const known = (await this.store.recentSessionAgents(op.id, since, session.id)).map(deviceOf).filter((d): d is NonNullable<typeof d> => d !== null);
+      if (known.length === 0 || known.some((d) => sameDevice(d, device))) return;
+      await send(op.email, { key: `operator-new-login:${session.id.slice(0, 40)}`, at: session.createdAt, name: op.displayName || null, device: deviceLabel(device) });
+      await this.audit("new_device_notice", { id: op.id, username: op.username }, "system", ctx, { session: session.id.slice(0, 12), device: deviceLabel(device) });
+    } catch {
+      /* el aviso es secundario: el acceso ya está concedido */
+    }
+  }
+
+  /** Aviso de contraseña cambiada a la propia persona (si tiene correo). Un fallo nunca rompe el cambio. */
+  private async passwordNotice(op: OperatorRecord, at: number) {
+    const send = this.opts.securityMail?.passwordChanged;
+    if (!send || !op.email) return;
+    await send(op.email, { key: `operator-password:${op.id}:${at}`, at, name: op.displayName || null }).catch(() => undefined);
+  }
+
   async logout(session: SessionRecord, operator: OperatorRecord, ctx: RequestContext = {}) {
     await this.store.revokeSession(session.id, this.now(), "logout");
     await this.audit("logout", { id: operator.id, username: operator.username }, `operator:${operator.username}`, ctx);
@@ -544,6 +609,7 @@ export class OperatorAuthService {
     // El cambio de contraseña cierra el resto de sesiones del operador
     const revoked = await this.store.revokeOperatorSessions(op.id, now, "password_changed", keepSessionId);
     await this.audit(kind, { id: op.id, username: op.username }, actor, ctx, { revokedSessions: revoked });
+    await this.passwordNotice(op, now);
   }
 
   /** Solicitud de restablecimiento. Siempre responde igual exista o no la cuenta. */
@@ -650,8 +716,17 @@ export class OperatorAuthService {
     const changesAccess = patch.role !== undefined || patch.status !== undefined;
     if (self && changesAccess) throw new OperatorAuthError("forbidden", "No puedes cambiar tu propio rol ni desactivar tu propia cuenta.");
     if (!self && !canManageRole(actor.role, target.role)) throw new OperatorAuthError("forbidden", "No puedes gestionar a este operador.");
-    const n = this.normalizeInput({ email: patch.email, displayName: patch.displayName });
+    const { email: nextEmail, ...n } = this.normalizeInput({ email: patch.email, displayName: patch.displayName });
     const next: Parameters<OperatorStore["update"]>[1] = { ...n, updatedAt: this.now() };
+    // Correo nuevo: no se aplica aquí. Queda pendiente hasta que el correo nuevo lo confirme (también si lo cambia un
+    // administrador). Retirarlo (sin correo) se aplica en el acto: no hay dirección nueva que verificar.
+    const emailChange = nextEmail !== undefined && nextEmail !== null && nextEmail !== target.email ? nextEmail : null;
+    if (nextEmail === null && target.email !== null) next.email = null;
+    if (emailChange) {
+      if (!this.emailChangeAvailable) throw new OperatorAuthError("email_change_unavailable", "El cambio de correo con verificación no está disponible en este entorno.");
+      const other = await this.store.findByLogin(emailChange);
+      if (other && other.id !== target.id) throw new OperatorAuthError("conflict", "Ya existe un operador con ese correo.");
+    }
     if (patch.role !== undefined) {
       if (!isRole(patch.role)) throw new OperatorAuthError("invalid_input", "Rol no válido.");
       if (!canManageRole(actor.role, patch.role)) throw new OperatorAuthError("forbidden", "No puedes asignar ese rol.");
@@ -675,7 +750,59 @@ export class OperatorAuthService {
     const changed = Object.fromEntries(Object.entries(next).filter(([k]) => k !== "updatedAt" && k !== "failedAttempts" && k !== "lockedUntil"));
     const kind = next.role && next.role !== target.role ? "role_changed" : next.status && next.status !== target.status ? "status_changed" : "operator_updated";
     await this.audit(kind, { id, username: target.username }, `operator:${actor.username}`, ctx, { from: { role: target.role, status: target.status }, changes: changed });
-    return publicOperator(await this.get(id), now);
+    const pending = emailChange ? await this.requestEmailChange(target, emailChange, `operator:${actor.username}`, ctx) : null;
+    return { ...publicOperator(await this.get(id), now), ...(pending ? { pendingEmail: pending.newEmail, pendingEmailExpiresAt: pending.expiresAt } : {}) };
+  }
+
+  // ── Cambio de correo verificado ────────────────────────────────────────────
+
+  /** Envía al correo nuevo un enlace de un solo uso (24 h). Anula los enlaces anteriores del mismo operador. */
+  private async requestEmailChange(op: OperatorRecord, newEmail: string, actor: string, ctx: RequestContext) {
+    const token = randomToken();
+    const now = this.now();
+    const ttl = this.opts.emailChangeTtlMs ?? 24 * 3600_000;
+    const expiresAt = now + ttl;
+    await this.store.cancelEmailChanges(op.id, now);
+    await this.store.insertEmailChange({ tokenHash: sha256(token), operatorId: op.id, oldEmail: op.email, newEmail, requestedBy: actor, createdAt: now, expiresAt, usedAt: null });
+    const url = this.opts.emailChangeUrl!;
+    const link = `${url}${url.includes("?") ? "&" : "?"}token=${encodeURIComponent(token)}`;
+    await this.opts.securityMail!.emailChangeConfirmation!(newEmail, { key: `operator-email-confirm:${sha256(token).slice(0, 40)}`, link, name: op.displayName || null, newEmail, hours: Math.round(ttl / 3600_000) });
+    await this.audit("email_change_requested", { id: op.id, username: op.username }, actor, ctx, { newEmail });
+    return { newEmail, expiresAt };
+  }
+
+  /**
+   * Confirma el cambio con el enlace del correo nuevo (un solo uso, caducidad). Solo si el correo vigente sigue siendo
+   * el de la solicitud y la cuenta está activa. Cierra las sesiones abiertas del operador y avisa al correo antiguo y al
+   * nuevo; un fallo del aviso no deshace nada.
+   */
+  async confirmEmailChange(token: string, ctx: RequestContext = {}) {
+    const invalid = new OperatorAuthError("invalid_email_change_token", "El enlace de confirmación no es válido, ya se ha usado o ha caducado.");
+    if (!this.store.emailChangeSupported) throw invalid;
+    if (typeof token !== "string" || token.length < 20 || token.length > 128) throw invalid;
+    const h = sha256(token);
+    const r = await this.store.getEmailChange(h);
+    const now = this.now();
+    if (!r || r.usedAt !== null || r.expiresAt <= now) throw invalid;
+    const op = await this.store.get(r.operatorId);
+    if (!op || op.status !== "active" || (op.email ?? null) !== (r.oldEmail ?? null)) throw invalid;
+    if (!(await this.store.useEmailChange(h, now))) throw invalid;
+    try {
+      await this.store.update(op.id, { email: r.newEmail, updatedAt: now });
+    } catch (e) {
+      if (e instanceof DuplicateOperatorError) throw new OperatorAuthError("conflict", "Ya existe un operador con ese correo.");
+      throw e;
+    }
+    // Como con la contraseña: el cambio de un dato de acceso cierra las sesiones abiertas del operador
+    const revoked = await this.store.revokeOperatorSessions(op.id, now, "email_changed");
+    await this.audit("email_changed", { id: op.id, username: op.username }, `operator:${op.username}`, ctx, { from: r.oldEmail, to: r.newEmail, requestedBy: r.requestedBy, revokedSessions: revoked });
+    const send = this.opts.securityMail?.emailChanged;
+    if (send) {
+      const base = { at: now, name: op.displayName || null, oldEmail: r.oldEmail ?? "(sin correo)", newEmail: r.newEmail };
+      if (r.oldEmail) await send(r.oldEmail, { ...base, key: `operator-email-changed:${h.slice(0, 40)}:old` }).catch(() => undefined);
+      await send(r.newEmail, { ...base, key: `operator-email-changed:${h.slice(0, 40)}:new` }).catch(() => undefined);
+    }
+    return { email: r.newEmail };
   }
 
   /** Contraseña nueva fijada por un administrador; cierra todas las sesiones del operador. */
