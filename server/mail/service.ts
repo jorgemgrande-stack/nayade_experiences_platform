@@ -33,6 +33,11 @@ export interface SendInput extends EnqueueInput {
    * franja en vez de descartarlo. Solo lo piden los avisos internos que no se pueden perder (solicitudes de la web).
    */
   deferOnRateLimit?: boolean;
+  /**
+   * Aviso INTERNO (alertas administrativas y sus pruebas): si el buzón está autorizado expresamente (lista del entorno o
+   * del CRM, no por dominio), no cuenta el límite por destinatario y hora. Siguen la idempotencia y el límite por empresa.
+   */
+  authorizedInternal?: boolean;
 }
 
 /** Motivo de un mensaje retenido por el límite por hora (sale solo al abrirse la siguiente franja). */
@@ -116,6 +121,11 @@ export class MailService {
     return scopeAllows({ scope: { tenants: this.d.policy.scope.tenants, categories: null } }, tenantId, category);
   }
 
+  /** Buzón autorizado por su dirección exacta: lista del entorno o, en sandbox, la del CRM. */
+  private explicitlyAuthorized(to: string): boolean {
+    return this.d.policy.allowAddresses.has(to) || (this.d.policy.mode === "sandbox" && !!this.d.sandboxAccess?.().addresses.has(to));
+  }
+
   private assertTenant(tenantId: string) {
     if (this.d.tenantId && tenantId !== this.d.tenantId) throw new Error("Mensaje de otra empresa: rechazado");
   }
@@ -132,7 +142,7 @@ export class MailService {
     if (await this.d.store.isSuppressed(input.tenantId, hash)) return "suppressed";
     const since = this.now() - HOUR;
     if ((await this.d.store.countSince(input.tenantId, since)) >= this.d.policy.limits.tenantPerHour) return "rate_limited_tenant";
-    if ((await this.d.store.countSince(input.tenantId, since, hash)) >= this.d.policy.limits.recipientPerHour) return "rate_limited_recipient";
+    if (!(input.authorizedInternal && this.explicitlyAuthorized(to)) && (await this.d.store.countSince(input.tenantId, since, hash)) >= this.d.policy.limits.recipientPerHour) return "rate_limited_recipient";
     return null;
   }
 
