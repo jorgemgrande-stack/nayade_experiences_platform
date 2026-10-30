@@ -13,7 +13,8 @@ import type { MailContent } from "./types";
 import { ADMIN_ALERTS } from "../adminAlerts/catalog";
 import { alertPreview } from "../adminAlerts/service";
 
-export type TemplateState = "conectada" | "sin_disparador" | "interna";
+/** `externa`: la comunicación la envía un proveedor (Stripe) y Elephant no la duplica; se conserva como referencia. */
+export type TemplateState = "conectada" | "sin_disparador" | "interna" | "externa";
 export type TemplateGroup = "acceso" | "onboarding" | "contratacion" | "facturacion" | "empresas" | "producto" | "soporte" | "comercial" | "interna" | "administracion";
 export interface TemplateEntry {
   id: string;
@@ -25,6 +26,8 @@ export interface TemplateEntry {
   state: TemplateState;
   /** Sin disparador: por qué (hecho que todavía no existe en el producto). */
   pending?: string;
+  /** Externa: quién la envía y por qué Elephant no la duplica. */
+  managedBy?: string;
   render: () => MailContent;
 }
 export interface TestEmail extends Omit<TemplateEntry, "render"> {
@@ -89,9 +92,9 @@ export const TEMPLATES: readonly TemplateEntry[] = [
   e("billing.invoice_available", "Factura emitida", "facturacion", "transactional", "controlplane", "Factura de Stripe cobrada", "conectada", P("billing.invoice_available")),
   e("subscription.initial_payment", "Pago realizado correctamente", "facturacion", "transactional", "controlplane", "Primer cobro verificado en Stripe", "conectada", P("subscription.initial_payment")),
   e("payment.test_confirmed", "Pago de prueba registrado (entorno de pruebas)", "facturacion", "transactional", "controlplane", "Pago con el proveedor simulado o Stripe en pruebas", "conectada", () => t.testPaymentConfirmed({ reference: "PED-2026-0042", amountCents: 2900, currency: "EUR" })),
-  e("billing.upcoming_charge", "Próximo cargo programado", "facturacion", "transactional", "controlplane", "Aviso previo a la renovación", "sin_disparador", () => x.upcomingCharge({ reference: "PED-2026-0042", amountCents: 121_000, currency: "EUR", at: PREVIEW_NOW + 7 * DAY, host: HOST })),
+  e("billing.upcoming_charge", "Próximo cargo programado", "facturacion", "transactional", "controlplane", "Aviso previo a la renovación", "externa", () => x.upcomingCharge({ reference: "PED-2026-0042", amountCents: 121_000, currency: "EUR", at: PREVIEW_NOW + 7 * DAY, host: HOST })),
   e("subscription.payment_failed", "Incidencia en el cobro", "facturacion", "transactional", "controlplane", "Renovación impagada (inicio de la gracia de 7 días)", "conectada", P("subscription.payment_failed")),
-  e("billing.payment_reminder", "Recordatorio de pago pendiente", "facturacion", "transactional", "controlplane", "Día 3 de la gracia", "sin_disparador", () => x.paymentReminder({ reference: "PED-2026-0042", amountCents: 121_000, currency: "EUR", graceEndsAt: PREVIEW_NOW + 4 * DAY, host: HOST })),
+  e("billing.payment_reminder", "Recordatorio de pago pendiente", "facturacion", "transactional", "controlplane", "Día 3 de la gracia", "externa", () => x.paymentReminder({ reference: "PED-2026-0042", amountCents: 121_000, currency: "EUR", graceEndsAt: PREVIEW_NOW + 4 * DAY, host: HOST })),
   e("subscription.suspended", "Último aviso: suscripción suspendida", "facturacion", "transactional", "controlplane", "order.suspended", "conectada", P("subscription.suspended")),
   e("subscription.recovered", "Pago regularizado y servicio restablecido", "facturacion", "transactional", "controlplane", "Pago recuperado", "conectada", P("subscription.recovered")),
   e("billing.incident", "Cobro revertido", "facturacion", "transactional", "controlplane", "coverage.lost", "conectada", P("billing.incident")),
@@ -137,8 +140,6 @@ export const PENDING_REASON: Readonly<Record<string, string>> = {
   "account.email_changed": "No existe el cambio del correo de acceso de un usuario (ni por autoservicio ni por un administrador).",
   "onboarding.reminder": "Necesita una tarea periódica nueva por empresa en el arranque del Core; es un cambio de infraestructura que va en un despliegue aislado.",
   "module.removal_effective": "La baja efectiva la aplica la sincronización de licencias sin emitir ningún hecho con el producto retirado; solo existe el evento al programarla (que ya avisa).",
-  "billing.upcoming_charge": "El importe exacto del próximo cargo (impuestos y prorrateos) solo lo conoce Stripe; se delega en su aviso de renovación próxima para no anunciar un importe distinto.",
-  "billing.payment_reminder": "Los recordatorios durante la gracia los envía Stripe en cada reintento (Smart Retries); Elephant avisa el día 0 y no los duplica.",
   "external.changed": "El producto no permite modificar las condiciones de un servicio externo (solo la fecha del primer cargo).",
   "product.update": "No existe una herramienta de comunicados de servicio con selección de destinatarios y aprobación; un envío masivo automático no está permitido.",
   "ops.maintenance": "No existen ventanas de mantenimiento ni página de estado en el producto.",
@@ -150,10 +151,16 @@ export const PENDING_REASON: Readonly<Record<string, string>> = {
   ...Object.fromEntries(ADMIN_ALERTS.filter((a) => a.pending).map((a) => [a.id, a.pending!])),
 };
 
+/** Comunicaciones que envía un proveedor externo: quién y por qué Elephant no las duplica. */
+export const MANAGED_BY: Readonly<Record<string, string>> = {
+  "billing.upcoming_charge": "Gestionada por Stripe: su aviso de renovación próxima incluye el importe exacto (impuestos y prorrateos), que solo conoce Stripe. Elephant no la duplica.",
+  "billing.payment_reminder": "Gestionada por Stripe: los recordatorios durante la gracia salen en cada reintento de cobro (Smart Retries). Elephant avisa el día 0 y no los duplica.",
+};
+
 /** Todas las comunicaciones renderizadas con datos ficticios. */
 export function allTestEmails(): TestEmail[] {
   return TEMPLATES.map(({ render, ...m }) => {
     const c = render();
-    return { ...m, ...(m.state === "sin_disparador" ? { pending: PENDING_REASON[m.id] ?? "Sin hecho que la active todavía en el producto" } : {}), subject: c.subject, html: c.html, text: c.text ?? "" };
+    return { ...m, ...(m.state === "sin_disparador" ? { pending: PENDING_REASON[m.id] ?? "Sin hecho que la active todavía en el producto" } : {}), ...(m.state === "externa" ? { managedBy: MANAGED_BY[m.id] } : {}), subject: c.subject, html: c.html, text: c.text ?? "" };
   });
 }
