@@ -64,7 +64,7 @@ describe("proveedor de IA por empresa", () => {
     const body = JSON.parse(String(init.body));
     expect(body.model).toBe("modelo-central");
     expect(body.thinking).toBeUndefined();
-    expect(h.quotas).toEqual(["llm.tokens.input"]);
+    expect(h.quotas).toEqual(["llm.tokens.input", "llm.tokens.output"]);
     expect(h.meters).toEqual([{ metric: "llm.tokens.input", qty: 12 }, { metric: "llm.tokens.output", qty: 3 }]);
     expect(JSON.stringify(fetchMock.mock.calls)).not.toContain("clave-heredada-forge");
   });

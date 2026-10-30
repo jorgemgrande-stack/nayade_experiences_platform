@@ -44,6 +44,8 @@ export interface TenantRuntime {
   support: MysqlSupportReader;
   /** Comprueba que la BD del registro responde (salud); rechaza si no. */
   ping(): Promise<void>;
+  /** Conexiones del servidor MySQL compartido (máximo y en uso, de todos los servicios): capacidad global. */
+  serverConnections(): Promise<{ max: number; used: number }>;
   /** Detiene el sondeo y cierra el pool del registro. */
   close(): Promise<void>;
 }
@@ -112,6 +114,14 @@ export function createTenantRuntime(
     identity: registryIdentitySource(store, new MysqlOrganizationStore(pool)),
     async ping() {
       await pool.query("SELECT 1");
+    },
+    async serverConnections() {
+      const [m] = await pool.query("SELECT @@max_connections AS m");
+      const [s] = await pool.query("SHOW GLOBAL STATUS LIKE 'Threads_connected'");
+      const max = Number((m as Array<{ m: unknown }>)[0]?.m);
+      const used = Number((s as Array<{ Value: unknown }>)[0]?.Value);
+      if (!Number.isFinite(max) || !Number.isFinite(used)) throw new Error("Capacidad de MySQL no disponible");
+      return { max, used };
     },
     async close() {
       clearInterval(timer);

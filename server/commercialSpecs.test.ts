@@ -34,4 +34,11 @@ describe("especificaciones comerciales", () => {
   it("Travel Net no atribuye circuitos ni transporte como existentes", () => {
     for (const s of PRODUCT_SPECS.filter((x) => x.key.startsWith("travel-net"))) for (const t of s.includes) expect(t).not.toMatch(/circuito|transporte/i);
   });
+  it("la ficha pública de Life Net no lleva notas internas de desarrollo", () => {
+    const s = PRODUCT_SPECS.find((x) => x.key === "life-net")!;
+    const pub = [s.longDescription, s.problem, s.forWho, ...s.includes, ...s.excludes, ...s.capacityRules, s.publicContent.headline, ...s.publicContent.benefits, s.seo.title, s.seo.description];
+    for (const t of pub) expect(t).not.toMatch(/repositorio|desarrollo|definición funcional/i);
+    expect(s.verified.grade).toBe("none");
+    expect(s.publicContent.cta).toBe("waitlist");
+  });
 });

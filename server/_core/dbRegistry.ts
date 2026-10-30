@@ -85,6 +85,24 @@ let resolver: ConnectionResolver | null = null;
 
 let policy: TenantPoolPolicy | null = null;
 const getPolicy = (): TenantPoolPolicy => (policy ??= tenantPoolPolicyFromEnv(process.env));
+/** Servidor MySQL cerca de su máximo (todas las réplicas y servicios): no se abren pools NUEVOS de empresa. */
+let serverPressure = false;
+
+/**
+ * Rebaja el presupuesto de conexiones de este proceso al máximo seguro calculado con la capacidad real del servidor
+ * (server/_core/dbCapacity.ts). Nunca lo sube ni lo deja por debajo de un pool. Los pools ya abiertos no se cierran.
+ */
+export function capConnectionBudget(max: number): number {
+  const p = getPolicy();
+  const budget = Math.max(p.connectionsPerTenant, Math.min(p.connectionBudget, Math.floor(max)));
+  policy = { ...p, connectionBudget: budget };
+  return budget;
+}
+
+/** Presión del servidor MySQL: con `true`, solo siguen los pools ya abiertos (los nuevos esperan o responden 503). */
+export function setServerPressure(on: boolean): void {
+  serverPressure = on;
+}
 /** Conexiones reservadas por los pools de empresa abiertos (≤ presupuesto). */
 let reservedTotal = 0;
 let reservedPools = 0;
@@ -196,11 +214,14 @@ async function createEntry(id: string, key: string, fl: Inflight): Promise<Entry
 
 function fits(need: number): boolean {
   const p = getPolicy();
+  if (serverPressure && need > 0) return false;
   return reservedTotal + need <= p.connectionBudget && reservedPools < effectiveMaxPools(p);
 }
 
 /** Expulsa pools sin arriendo, del menos al más reciente, hasta que quepa `need`. */
 function tryReserve(need: number): boolean {
+  // Con el servidor saturado no se expulsa nada para hacer sitio: no serviría de nada
+  if (serverPressure && need > 0) return false;
   if (!fits(need)) {
     for (const [key, e] of Array.from(entries)) {
       if (fits(need)) break;
@@ -455,6 +476,8 @@ export interface TenantPoolStats {
   connectionsOpen: number;
   connectionsInUse: number;
   waiting: number;
+  /** Servidor MySQL cerca de su máximo: no se abren pools nuevos de empresa. */
+  serverPressure: boolean;
   totals: { poolsCreated: number; waits: number; waitTimeouts: number; evictedLru: number; evictedIdle: number; peakReserved: number };
 }
 
@@ -490,6 +513,7 @@ export function getTenantPoolStats(): TenantPoolStats {
     connectionsOpen: open,
     connectionsInUse: Math.max(0, open - free),
     waiting: waiters.length,
+    serverPressure,
     totals: {
       poolsCreated: counters.created,
       waits: counters.waits,
@@ -533,6 +557,7 @@ export function _resetRegistryForTests(): void {
   sweepTimer = null;
   resolver = null;
   policy = null;
+  serverPressure = false;
   reservedTotal = 0;
   reservedPools = 0;
   for (const k of Object.keys(counters) as Array<keyof typeof counters>) counters[k] = 0;

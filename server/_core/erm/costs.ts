@@ -56,6 +56,9 @@ export const ESTIMATED_COST_MODEL: CostModel = {
     { metric: "data_export.bytes", label: "Exportaciones de datos", unit: "GB", per: 1e9, centsPerUnit: 4.6 },
     { metric: "llm.tokens.input", label: "IA: tokens de entrada", unit: "millón de tokens", per: 1e6, centsPerUnit: 14 },
     { metric: "llm.tokens.output", label: "IA: tokens de salida", unit: "millón de tokens", per: 1e6, centsPerUnit: 55 },
+    // Referencia pública: imagen ≈ 0,04 USD; transcripción ≈ 0,006 USD por minuto de audio
+    { metric: "ai.image.generated", label: "IA: imágenes generadas", unit: "imagen", per: 1, centsPerUnit: 3.7 },
+    { metric: "ai.audio.seconds", label: "IA: audio transcrito", unit: "minuto", per: 60, centsPerUnit: 0.56 },
   ],
   sharedMonthlyCents: 0,
   sharedBasis: "http.request",

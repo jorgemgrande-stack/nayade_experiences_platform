@@ -13,6 +13,16 @@ import type { TenantConcurrencyLimiter, TenantRateLimiter } from "./limiters";
 export const CONCURRENT_METRIC = "http.concurrent";
 const DEFAULT_PER_MINUTE = 1200;
 
+/**
+ * Rutas CRÍTICAS que los límites de tasa y concurrencia nunca cortan: salud, acceso (login, recuperación y restablecimiento
+ * de contraseña, OAuth) y notificaciones de cobro de las pasarelas. Tienen sus propias defensas (limitador de intentos de
+ * acceso, firma de la pasarela); un 429 aquí impediría entrar o perdería un cobro.
+ */
+const CRITICAL_PREFIXES = ["/api/auth/", "/api/oauth/callback", "/api/redsys/notification", "/api/redsys/restaurant-notification"];
+export function isCriticalPath(p: string): boolean {
+  return p === "/healthz" || p === "/readyz" || CRITICAL_PREFIXES.some((x) => p === x.replace(/\/$/, "") || p.startsWith(x));
+}
+
 export interface ResourceGuardOptions {
   exempt?: (path: string) => boolean;
   /** Conexiones largas (SSE): cuentan para la tasa pero no ocupan plaza de concurrencia. */
@@ -25,7 +35,7 @@ export function tenantResourceGuard(
   conc: TenantConcurrencyLimiter,
   opts: ResourceGuardOptions = {},
 ): RequestHandler {
-  const exempt = opts.exempt ?? ((p: string) => p === "/healthz" || p === "/readyz");
+  const exempt = opts.exempt ?? isCriticalPath;
   const longLived = opts.longLived ?? ((p: string) => p.endsWith("/stream"));
 
   return async (req: Request, res: Response, next: NextFunction) => {
