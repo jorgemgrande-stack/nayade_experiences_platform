@@ -109,6 +109,8 @@ import { startAlertCycle } from "../adminAlerts/runtime";
 import { DeployWatcher, RestoreDrillWatcher, SERVED_STATUSES, UptimeMonitor, githubGet, isTestTenant } from "../adminAlerts/operations";
 import { DataRequestService, operatorAssignees } from "../dataRequests/service";
 import { MysqlDataRequestStore, dataRequestTablesReady } from "../dataRequests/store";
+import { FinanceService } from "../finance/service";
+import { MysqlFinanceStore, finTablesReady } from "../finance/store";
 import { ConsentService, MysqlConsentStore, commsTablesReady } from "../communications/consent";
 import { LinkSigner, linkSecretFromDb } from "../communications/links";
 import { CommunicationsService } from "../communications/service";
@@ -597,6 +599,9 @@ async function main() {
   // Solicitudes de derechos de protección de datos (RGPD, CRM 0032): registro desde el CRM con plazo legal de 30 días
   const dataRequests = crm && crmPool && (await dataRequestTablesReady(crmPool)) ? new DataRequestService({ store: new MysqlDataRequestStore(crmPool), raise: (id, f) => (adminAlerts ? adminAlerts.raise(id, f) : Promise.resolve(null)), assignees: operators.service ? async () => operatorAssignees(await operators.service!.list()) : null }) : null;
   console.log(JSON.stringify({ ctx: "DataRequests", mounted: !!dataRequests, ...(dataRequests ? {} : { reason: !crm ? "crm_not_configured" : "migration_0032_missing" }) }));
+  // Finanzas corporativas de Big Elephant (CRM 0033): libro contable; lee las facturas expedidas de la facturación propia
+  const finance = crm && crmPool && (await finTablesReady(crmPool)) ? new FinanceService({ store: new MysqlFinanceStore(crmPool), invoices: invoicing?.store ?? null }) : null;
+  console.log(JSON.stringify({ ctx: "Finance", mounted: !!finance, ...(finance ? { invoiceSync: !!invoicing } : { reason: !crm ? "crm_not_configured" : "migration_0033_missing" }) }));
   if (crm && crmPool && (await settingsTablesReady(crmPool))) {
     const alertPool = crmPool;
     const alertStore = new MysqlAdminAlertStore(alertPool);
@@ -805,6 +810,7 @@ async function main() {
         mailMode: mailPolicy.mode,
       }),
     dataRequests,
+    finance,
     communications,
     notifications: notificationsFromEnv(process.env),
     mail: {
