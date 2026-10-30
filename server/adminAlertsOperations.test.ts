@@ -1,5 +1,5 @@
 /**
- * Alertas administrativas operativas: caída de la plataforma de un cliente (34), restauración de
+ * Alertas administrativas operativas: solicitudes RGPD (32), caída de la plataforma de un cliente (34), restauración de
  * prueba fallida (39) y publicación automática fallida (42). Cada fuente dispara solo con el hecho real, una vez.
  */
 import { describe, expect, it } from "vitest";
@@ -7,7 +7,10 @@ import { ADMIN_ALERTS } from "./adminAlerts/catalog";
 import { AdminAlertService, type AlertMailer } from "./adminAlerts/service";
 import { MemoryAdminAlertStore } from "./adminAlerts/store";
 import { DeployWatcher, RESTORE_STALE_MS, RestoreDrillWatcher, UptimeMonitor, deployFailureAlert, isTestTenant, restoreDrillAlerts, type GithubGet } from "./adminAlerts/operations";
+import { runAlertCycle } from "./adminAlerts/runtime";
 import { MemorySettingsStore } from "./crm/leadNotices";
+import { DataRequestService, dataRequestDeadlineAlerts, LEGAL_DEADLINE_DAYS } from "./dataRequests/service";
+import { MemoryDataRequestStore } from "./dataRequests/store";
 import type { RestoreLogRecord } from "./_core/ops/backupCopies";
 import type { MailContent } from "./mail/types";
 
@@ -33,14 +36,67 @@ function setup() {
 }
 
 describe("catálogo", () => {
-  it("34, 39 y 42 conectadas con su fuente", () => {
-    for (const n of [34, 39, 42]) {
+  it("32, 34, 39 y 42 conectadas con su fuente; solo queda pendiente la 14", () => {
+    for (const n of [32, 34, 39, 42]) {
       const a = ADMIN_ALERTS.find((x) => x.n === n)!;
       expect(a.state, a.id).toBe("conectada");
       expect(a.source, a.id).not.toBe("—");
       expect(a.pending, a.id).toBeUndefined();
     }
-    expect(ADMIN_ALERTS.filter((a) => a.state === "pendiente").map((a) => a.n)).toEqual([14, 32]);
+    expect(ADMIN_ALERTS.filter((a) => a.state === "pendiente").map((a) => a.n)).toEqual([14]);
+  });
+});
+
+describe("solicitudes RGPD (admin.data_request)", () => {
+  const input = { kind: "erasure", channel: "email", requesterName: "Ana Cliente", requesterEmail: "ana@cliente.example", tenantId: "empresa-real" };
+
+  it("registrar una solicitud avisa una vez, con el plazo legal de 30 días; sin registro, nada", async () => {
+    const { raise, sent, clock } = setup();
+    const svc = new DataRequestService({ store: new MemoryDataRequestStore(), raise, now: clock });
+    expect(sent).toHaveLength(0);
+    const r = await svc.register(input, "operator:1");
+    expect(r.status).toBe("received");
+    expect(r.dueAt - r.receivedAt).toBe(LEGAL_DEADLINE_DAYS * DAY);
+    expect(r.reference).toMatch(/^RGPD-20261030-[A-Z2-9]{6}$/);
+    expect(sent).toHaveLength(1);
+    expect(sent[0].c.subject).toContain("Solicitud de eliminación o exportación de datos");
+    expect(sent[0].c.text).toContain("supresión de los datos");
+    expect(sent[0].c.text).not.toContain("ana@cliente.example");
+  });
+
+  it("valida la entrada y las transiciones; cerrar exige la resolución", async () => {
+    const { clock } = setup();
+    const svc = new DataRequestService({ store: new MemoryDataRequestStore(), now: clock });
+    await expect(svc.register({ ...input, kind: "otra" }, "operator:1")).rejects.toThrow(/no válida/);
+    await expect(svc.register({ ...input, receivedAt: T0 + DAY }, "operator:1")).rejects.toThrow(/futura/);
+    const r = await svc.register(input, "operator:1");
+    await expect(svc.setStatus(r.id, "resolved", null, "operator:1")).rejects.toThrow(/resuelto/);
+    expect((await svc.setStatus(r.id, "in_progress", null, "operator:1")).status).toBe("in_progress");
+    expect((await svc.setStatus(r.id, "resolved", "Datos suprimidos el 31/10.", "operator:1")).resolvedAt).toBe(T0);
+    await expect(svc.setStatus(r.id, "in_progress", null, "operator:1")).rejects.toThrow(/No se puede pasar/);
+  });
+
+  it("escalada al acercarse el plazo y otra al vencer; nada si se resuelve; cada una una sola vez", async () => {
+    const { svc: alerts, raise, sent, clock, tick } = setup();
+    const store = new MemoryDataRequestStore();
+    const svc = new DataRequestService({ store, raise, now: clock });
+    const open = await svc.register(input, "operator:1");
+    const closed = await svc.register({ ...input, kind: "access" }, "operator:1");
+    await svc.setStatus(closed.id, "resolved", "Copia enviada.", "operator:1");
+    const cycle = () => runAlertCycle({ alerts, now: clock, operations: [{ name: "dataRequests", run: async () => { const l = dataRequestDeadlineAlerts(await svc.open(), clock()); for (const a of l) await raise(a.id, a.facts); return l.length; } }] });
+    expect(dataRequestDeadlineAlerts(await svc.open(), clock())).toEqual([]);
+    tick(23 * DAY);
+    await cycle();
+    await cycle();
+    tick(8 * DAY);
+    await cycle();
+    await cycle();
+    const subjects = sent.slice(2).map((s) => s.c.subject);
+    expect(subjects).toHaveLength(2);
+    expect(subjects.every((s) => s.startsWith("[CRÍTICO]"))).toBe(true);
+    expect(sent[2].c.text).toContain("Quedan 7 días");
+    expect(sent[3].c.text).toContain("ha superado el plazo legal");
+    expect(open.id).not.toBe(closed.id);
   });
 });
 

@@ -51,7 +51,7 @@ describe("catálogo de alertas administrativas", () => {
       expect(a.locked, a.id).toBe(a.severity === "critical");
       if (a.state === "pendiente") expect(a.pending?.length, a.id).toBeGreaterThan(40);
     }
-    expect(ADMIN_ALERTS.filter((a) => a.state === "pendiente").map((a) => a.n)).toEqual([14, 32]);
+    expect(ADMIN_ALERTS.filter((a) => a.state === "pendiente").map((a) => a.n)).toEqual([14]);
   });
   it("cada plantilla: familia D, banda interna, datos operativos, enlace https al CRM y texto plano", () => {
     const { svc } = setup();
