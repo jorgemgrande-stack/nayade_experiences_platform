@@ -147,7 +147,7 @@ import { CalendarUnavailableError } from "./madridCalendar";
 import { createContractActivation } from "../crm/activation";
 import type { PlatformMailer } from "../mail/platform";
 import type { MailService } from "../mail/service";
-import { maskRecipient, type MailPolicy } from "../mail/policy";
+import { maskRecipient, normalizeEmail, type MailPolicy } from "../mail/policy";
 import { MANAGED_CATEGORIES, MAX_MANAGED_ADDRESSES, type SandboxAccess } from "../mail/sandboxAccess";
 import { brevoWebhookHandler, postmarkWebhookHandler } from "../mail/webhook";
 
@@ -2110,7 +2110,12 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
       requireScope("ops:write"),
       wrap(async (req, res) => {
         const b = z.object({ to: z.string().trim().email().max(254), ids: z.array(z.string().max(80)).max(120).optional() }).strict().parse(req.body);
-        if (mailer.policy.mode !== "sandbox") return void res.status(409).json({ error: "not_sandbox", message: "El envío de prueba solo funciona con MAIL_MODE=sandbox" });
+        if (mailer.policy.mode === "off") return void res.status(409).json({ error: "mail_off", message: "El correo de la plataforma está desactivado (MAIL_MODE=off)" });
+        // Con el correo real, las pruebas (datos ficticios) solo van a buzones autorizados por su dirección exacta: los del
+        // entorno o los de CRM → Correo de pruebas. Nunca a un cliente.
+        const to = normalizeEmail(b.to);
+        if (mailer.policy.mode === "live" && !(to && (mailer.policy.allowAddresses.has(to) || d.mail?.sandbox?.snapshot().addresses.has(to))))
+          return void res.status(403).json({ error: "test_recipient_not_allowed", message: "Con el correo real, las pruebas solo se envían a buzones de prueba autorizados (Comunicaciones → Alertas administrativas → Correo de pruebas)" });
         const run = Date.now().toString(36);
         // Catálogo maestro (todas las plantillas, datos ficticios); cada una, un mensaje con su número en el asunto
         const list = allTestEmails().filter((x) => !b.ids || b.ids.includes(x.id));
