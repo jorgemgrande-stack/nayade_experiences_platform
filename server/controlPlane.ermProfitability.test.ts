@@ -7,7 +7,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import crypto from "node:crypto";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
-import { ESTIMATED_COST_MODEL, tenantCosts, type CostModel } from "./_core/erm/costs";
+import { ESTIMATED_COST_MODEL, costModelFromEnv, costModelInputSchema, tenantCosts, type CostModel } from "./_core/erm/costs";
 import { MemoryUsageStore, hourOf } from "./_core/erm/usage";
 import { buildProfitability, collectRevenue, costGaps, dayAxis, type RevenueInputs } from "./revenue/profitability";
 import type { Invoice } from "./invoicing/types";
@@ -30,9 +30,10 @@ const FULL_MODEL: CostModel = {
   source: "configuración",
   note: "prueba",
   currency: "EUR",
-  rates: [{ metric: "http.response.bytes", label: "Tráfico", unit: "GB", per: 1e9, centsPerUnit: 10 }],
+  rates: [{ metric: "http.response.bytes", label: "Tráfico", unit: "GB", per: 1e9, centsPerUnit: 10, evidence: "Railway, factura 2026-10" }],
   sharedMonthlyCents: 3000,
   sharedBasis: "http.request",
+  sharedEvidence: "Railway 2026-10",
 };
 
 const invoice = (p: Partial<Invoice>): Invoice =>
@@ -200,6 +201,11 @@ describe("costes completos frente a incompletos", () => {
   it("con coste compartido y tarifas reales, la infraestructura sin medir queda cubierta: completo", () => {
     expect(costGaps(FULL_MODEL, "admin")).toEqual([]);
     expect(costGaps(FULL_MODEL, "estimación").map((g) => g.key)).toEqual(["rates"]);
+    // Valores guardados sin factura: siguen siendo de referencia (el margen no es exacto)
+    const sinFactura = { ...FULL_MODEL, rates: [{ ...FULL_MODEL.rates[0], evidence: undefined }, { metric: "email.sent", label: "Correo", unit: "correo", per: 1, centsPerUnit: 0.1, evidence: "Postmark 2026-10" }], sharedEvidence: undefined };
+    const g = costGaps(sinFactura, "admin");
+    expect(g.map((x) => x.key)).toEqual(["shared_evidence", "rates"]);
+    expect(g[1].label).toBe("Tarifas sin factura de respaldo: Tráfico");
   });
 });
 
@@ -383,5 +389,16 @@ describe("API de rentabilidad", () => {
     expect(r.json.daily).toHaveLength(dayAxis(Date.now(), 90).length);
     const one = await call("/resources/profitability?tenant=pequena", FULL);
     expect(one.json.tenants.map((t: any) => t.key)).toEqual(["pequena"]);
+  });
+});
+
+describe("respaldo de factura en el modelo de costes", () => {
+  it("las tarifas y el coste compartido aceptan su factura; una referencia vacía o demasiado corta se rechaza", () => {
+    const rate = { metric: "email.sent", label: "Correo", unit: "correo", per: 1, centsPerUnit: 0.1 };
+    expect(costModelInputSchema.parse({ rates: [{ ...rate, evidence: "Postmark 2026-10" }], sharedMonthlyCents: 1000, sharedEvidence: "Railway 2026-10" }).rates[0].evidence).toBe("Postmark 2026-10");
+    expect(() => costModelInputSchema.parse({ rates: [{ ...rate, evidence: " x " }] })).toThrow();
+    const env = costModelFromEnv({ ERM_COST_MODEL: JSON.stringify({ rates: [rate], sharedMonthlyCents: 500, sharedEvidence: "Railway 2026-10" }) });
+    expect(env.model.sharedEvidence).toBe("Railway 2026-10");
+    expect(costGaps(env.model, "entorno").map((g) => g.key)).toEqual(["rates"]);
   });
 });

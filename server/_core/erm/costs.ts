@@ -20,6 +20,11 @@ export interface CostRate {
   per: number;
   /** Céntimos de euro por unidad (admite decimales). */
   centsPerUnit: number;
+  /**
+   * Factura o contrato del proveedor que respalda la tarifa (p. ej. «Railway, factura 2026-10»). Sin él la tarifa es de
+   * referencia y el margen no se da como exacto.
+   */
+  evidence?: string;
 }
 
 export interface CostModel {
@@ -31,6 +36,8 @@ export interface CostModel {
   sharedMonthlyCents: number;
   /** Métrica con la que se reparte el coste compartido. */
   sharedBasis: string;
+  /** Facturas que respaldan el coste fijo compartido (p. ej. «Railway 2026-10 + MySQL 2026-10»). */
+  sharedEvidence?: string;
 }
 
 /**
@@ -86,6 +93,7 @@ export const EXTERNAL_REFERENCE_PRICES = {
 } as const satisfies Record<string, Record<string, number>>;
 
 const metricRe = /^[a-z][a-z0-9_.]{1,63}$/;
+const evidenceSchema = z.string().trim().min(3).max(120).optional();
 export const costModelInputSchema = z
   .object({
     note: z.string().max(300).optional(),
@@ -98,14 +106,24 @@ export const costModelInputSchema = z
             unit: z.string().min(1).max(20),
             per: z.number().positive(),
             centsPerUnit: z.number().min(0).max(1_000_000),
+            evidence: evidenceSchema,
           })
           .strict(),
       )
       .max(30),
     sharedMonthlyCents: z.number().int().min(0).max(100_000_000).default(0),
     sharedBasis: z.string().regex(metricRe).default("http.request"),
+    sharedEvidence: evidenceSchema,
   })
   .strict();
+
+/** Tarifas sin factura de respaldo y si el coste compartido configurado la tiene. Pura. */
+export function costEvidence(model: Pick<CostModel, "rates" | "sharedMonthlyCents" | "sharedEvidence">): { ratesWithout: string[]; sharedWithout: boolean } {
+  return {
+    ratesWithout: model.rates.filter((r) => !r.evidence?.trim()).map((r) => r.label),
+    sharedWithout: model.sharedMonthlyCents > 0 && !model.sharedEvidence?.trim(),
+  };
+}
 
 /** Modelo de costes del entorno: `ERM_COST_MODEL` válido, o la estimación. Un JSON no válido NO se usa a medias. */
 export function costModelFromEnv(env: NodeJS.ProcessEnv): { model: CostModel; error: string | null } {
@@ -113,7 +131,7 @@ export function costModelFromEnv(env: NodeJS.ProcessEnv): { model: CostModel; er
   if (!raw) return { model: ESTIMATED_COST_MODEL, error: null };
   try {
     const m = costModelInputSchema.parse(JSON.parse(raw));
-    return { model: { source: "configuración", note: m.note ?? "Tarifas configuradas en ERM_COST_MODEL", currency: "EUR", rates: m.rates, sharedMonthlyCents: m.sharedMonthlyCents, sharedBasis: m.sharedBasis }, error: null };
+    return { model: { source: "configuración", note: m.note ?? "Tarifas configuradas en ERM_COST_MODEL", currency: "EUR", rates: m.rates, sharedMonthlyCents: m.sharedMonthlyCents, sharedBasis: m.sharedBasis, ...(m.sharedEvidence ? { sharedEvidence: m.sharedEvidence } : {}) }, error: null };
   } catch {
     return { model: ESTIMATED_COST_MODEL, error: "ERM_COST_MODEL no es válido: se usa la estimación" };
   }
