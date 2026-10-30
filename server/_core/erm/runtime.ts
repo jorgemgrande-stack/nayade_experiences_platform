@@ -9,7 +9,7 @@ import mysql from "mysql2/promise";
 import { Metrics, setMeterSink } from "../metering";
 import { tenantResourceGuard } from "./middleware";
 import { DistributedRateLimiter, TenantConcurrencyLimiter, TenantRateLimiter, type TenantRateGate } from "./limiters";
-import { QuotaEngine, parseDefaultQuotas, type DefaultQuota } from "./quota";
+import { QuotaEngine, parseDefaultQuotas, type DefaultQuota, type QuotaEngineOptions } from "./quota";
 import type { AlertSink, QuotaPolicyReader, UsageStore } from "./types";
 import { QuotaExceededError } from "./types";
 import {
@@ -53,6 +53,8 @@ export function installErm(deps: {
   counters?: SharedCounterStore;
   /** Réplicas estimadas (límite local de emergencia si el almacén compartido cae). */
   replicasEstimate?: number;
+  /** Valores por defecto de la fase comercial de cada empresa (prueba gratuita); ver `QuotaEngineOptions`. */
+  phaseDefaults?: QuotaEngineOptions["phaseDefaults"];
 }): ErmInstance {
   if (instance) void instance.stop();
   const aggregator = new UsageAggregator(deps.store, { flushMs: deps.flushMs });
@@ -62,6 +64,7 @@ export function installErm(deps: {
     alerts: deps.alerts ?? logAlertSink,
     defaults: deps.defaults,
     ...(counters ? { counters } : {}),
+    ...(deps.phaseDefaults ? { phaseDefaults: deps.phaseDefaults } : {}),
   });
   const rate: TenantRateGate = deps.counters
     ? new DistributedRateLimiter(deps.counters, { replicasEstimate: deps.replicasEstimate, onDegraded: warn })
@@ -102,7 +105,11 @@ export function replicasEstimateFromEnv(env: NodeJS.ProcessEnv = process.env): n
 }
 
 /** Instalación a partir del entorno y la conexión del registro (solo se usa en multi). */
-export function installErmFromEnv(policy: QuotaPolicyReader, env: NodeJS.ProcessEnv = process.env): ErmInstance {
+export function installErmFromEnv(
+  policy: QuotaPolicyReader,
+  env: NodeJS.ProcessEnv = process.env,
+  phaseDefaults?: QuotaEngineOptions["phaseDefaults"],
+): ErmInstance {
   let store: UsageStore;
   let counters: SharedCounterStore | undefined;
   let pool: mysql.Pool | null = null;
@@ -129,6 +136,7 @@ export function installErmFromEnv(policy: QuotaPolicyReader, env: NodeJS.Process
     defaults: parseDefaultQuotas(env.ERM_DEFAULT_QUOTAS) ?? undefined,
     counters,
     replicasEstimate: replicasEstimateFromEnv(env),
+    phaseDefaults,
   });
   const stop = inst.stop;
   inst.stop = async () => {

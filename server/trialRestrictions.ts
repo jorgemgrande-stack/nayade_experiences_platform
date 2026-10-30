@@ -3,7 +3,8 @@
  * solo se lee el estado de la petición (registro y licencias) y se aplica en los puntos de entrada:
  *  - correo a terceros (`applyTrialMailPolicy`, desde `mailer.sendEmail`);
  *  - integraciones externas de pago (`integrationAllowedNow` / `assertIntegrationAllowed`: GHL y Vapi);
- *  - cuotas de prueba (`enforceTrialQuota`: correo, IA de la plataforma y almacenamiento).
+ *  - cuotas de prueba: las aplica Elephant Resource Manager con `trialPhaseQuotas` (reserva atómica entre réplicas en
+ *    todos sus puntos de consumo); `enforceTrialQuota` sigue como comprobación previa en correo, IA y almacenamiento.
  * Fuera de multiempresa no cambia nada.
  */
 import { TRPCError } from "@trpc/server";
@@ -11,11 +12,13 @@ import { getTenantMode, peekTenantContext } from "./_core/tenant";
 import { getCapabilityAccess } from "./_core/capabilities/access";
 import { getErm } from "./_core/erm/runtime";
 import { QuotaExceededError } from "./_core/erm/types";
+import type { DefaultQuota } from "./_core/erm/quota";
 import { opsLog } from "./_core/ops/log";
 import {
   exemptTenantsFromEnv,
   integrationAllowed,
   normalizeMailbox,
+  quotaPolicyForPhase,
   resolveCommercialState,
   splitTrialRecipients,
   trialIntegrationMessage,
@@ -60,6 +63,34 @@ export async function assertIntegrationAllowed(id: PaidIntegration, state?: Comm
 }
 
 // ── Cuotas de prueba ──────────────────────────────────────────────────────────
+
+const PHASE_TTL_MS = 30_000;
+const phaseCache = new Map<string, { at: number; quotas: readonly DefaultQuota[] | null }>();
+
+/**
+ * Política de cuotas de la fase de `tenantId` para Elephant Resource Manager (`phaseDefaults`): la de prueba si la
+ * empresa en curso está en prueba y no exenta; null en otro caso. Solo decide para la empresa del contexto (las
+ * consultas de otra empresa usan los valores de plataforma). Se recuerda 30 s, como las cuotas del motor.
+ */
+export async function trialPhaseQuotas(
+  tenantId: string,
+  deps: { state?: () => Promise<CommercialState>; currentTenant?: () => string | null; now?: () => number } = {},
+): Promise<readonly DefaultQuota[] | null> {
+  const current = deps.currentTenant ? deps.currentTenant() : (peekTenantContext()?.tenantId ?? null);
+  if (current !== tenantId) return null;
+  const now = (deps.now ?? Date.now)();
+  const c = phaseCache.get(tenantId);
+  if (c && now - c.at < PHASE_TTL_MS) return c.quotas;
+  const quotas = quotaPolicyForPhase(await (deps.state ?? currentCommercialState)());
+  if (phaseCache.size > 5_000) phaseCache.clear();
+  phaseCache.set(tenantId, { at: now, quotas });
+  return quotas;
+}
+
+/** Solo pruebas. */
+export function _resetTrialPhaseCache(): void {
+  phaseCache.clear();
+}
 
 export interface TrialQuotaDeps {
   state?: () => Promise<CommercialState>;
