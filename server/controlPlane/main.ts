@@ -49,6 +49,7 @@ import { lifecyclePolicyFromEnv } from "../lifecycle/policy";
 import { blockedDomainsFromEnv } from "../trials/service";
 import type { TrialNotifier } from "../trials/onboarding";
 import { platformMailFromEnv, tenantLaneResolver } from "../mail/platform";
+import { SandboxAccess } from "../mail/sandboxAccess";
 import { MysqlMailStore } from "../mail/store";
 import { scopeAllows } from "../mail/policy";
 import { brevoDiagnostics, mailProviderConfig } from "../mail/providers";
@@ -217,7 +218,13 @@ async function main() {
     : null;
   // Correo de plataforma (CRM 0011): MAIL_MODE off por defecto; sandbox solo a MAIL_SANDBOX_ALLOWLIST;
   // live solo con MAIL_LIVE_AUTHORIZED=1. Ver docs/runbooks/CORREO_BREVO.md.
-  const platformMail = await platformMailFromEnv(crmPool, process.env);
+  // Buzones y tipos internos del correo de PRUEBAS autorizados desde el CRM (ajuste mail_sandbox, CRM 0025): solo en sandbox
+  const sandboxAccess = crmPool ? new SandboxAccess({ settings: new MysqlSettingsStore(crmPool), log: (event, data) => console.log(JSON.stringify({ ctx: "Mail", event, ...data })) }) : null;
+  if (sandboxAccess) {
+    await sandboxAccess.refresh();
+    setInterval(() => void sandboxAccess.refresh(), 60_000).unref();
+  }
+  const platformMail = await platformMailFromEnv(crmPool, process.env, { sandboxAccess: sandboxAccess ? () => sandboxAccess.snapshot() : undefined });
   const mailPolicy = platformMail.policy;
   if (platformMail.mailer?.opsRecipients.length) alertNotifiers.push(platformMail.mailer.incidentNotifier());
   // Registro de eventos comerciales (CRM 0015): pedidos y pagos, pruebas, suscripciones y cargos de Stripe
@@ -663,6 +670,8 @@ async function main() {
       tenantLane: tenantLaneResolver({ dsnOf: (id) => registry.getActiveDsn(id), policy: mailPolicy }),
       // Trazabilidad de la bandeja de plataforma (la misma tabla del CRM; solo lectura)
       ledger: platformMail.mailer && crmPool ? new MysqlMailStore(crmPool) : null,
+      sandbox: platformMail.mailer ? sandboxAccess : null,
+      policy: mailPolicy,
       diagnostics: process.env.BREVO_API_KEY ? () => brevoDiagnostics({ apiKey: process.env.BREVO_API_KEY!, sendingDomain: mailPolicy.sendingDomain, baseUrl: process.env.BREVO_API_BASE_URL }) : undefined,
     },
   });

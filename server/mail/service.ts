@@ -17,6 +17,7 @@ import crypto from "node:crypto";
 import { opsLog } from "../_core/ops/log";
 import { recordFailure } from "../_core/ops/failureAlerts";
 import { backoffMs, maskRecipient, normalizeEmail, recipientAllowed, recipientHash, scopeAllows, senderFor, type MailPolicy } from "./policy";
+import type { SandboxAccessSnapshot } from "./sandboxAccess";
 import type { MailStore } from "./store";
 import { MailProviderError, type EnqueueInput, type MailLane, type MailProviderPort, type MailStatus, type OutboxRow, type ProviderEvent } from "./types";
 
@@ -53,6 +54,8 @@ export interface MailServiceDeps {
   tenantId?: string;
   now?: () => number;
   log?: (level: "info" | "warn" | "error", event: string, data: Record<string, unknown>) => void;
+  /** Buzones y tipos internos autorizados desde el CRM (server/mail/sandboxAccess.ts); solo cuentan en sandbox. */
+  sandboxAccess?: () => SandboxAccessSnapshot;
 }
 
 const KEY_RE = /^[A-Za-z0-9:._-]{1,160}$/;
@@ -101,6 +104,18 @@ export class MailService {
     return this.d.policy.mode;
   }
 
+  /** Destinatario permitido por el entorno o, solo en sandbox, autorizado desde el CRM. */
+  private recipientOk(to: string): boolean {
+    return recipientAllowed(this.d.policy, to) || (this.d.policy.mode === "sandbox" && !!this.d.sandboxAccess?.().addresses.has(to));
+  }
+
+  /** Ámbito del entorno o, solo en sandbox, un tipo interno habilitado desde el CRM (el ámbito de empresas se mantiene). */
+  private scopeOk(tenantId: string | null | undefined, category: string | null | undefined): boolean {
+    if (scopeAllows(this.d.policy, tenantId, category)) return true;
+    if (this.d.policy.mode !== "sandbox" || !category || !this.d.sandboxAccess?.().categories.has(category)) return false;
+    return scopeAllows({ scope: { tenants: this.d.policy.scope.tenants, categories: null } }, tenantId, category);
+  }
+
   private assertTenant(tenantId: string) {
     if (this.d.tenantId && tenantId !== this.d.tenantId) throw new Error("Mensaje de otra empresa: rechazado");
   }
@@ -111,9 +126,9 @@ export class MailService {
     const guarded = input.guard?.(input.html) ?? null;
     if (guarded) return guarded;
     if (this.d.policy.mode === "off") return "mode_off";
-    if (!recipientAllowed(this.d.policy, to)) return "sandbox_recipient_not_allowed";
+    if (!this.recipientOk(to)) return "sandbox_recipient_not_allowed";
     // Ámbito (MAIL_SCOPE_TENANTS / MAIL_SCOPE_CATEGORIES): fuera de él no sale nada, aunque el modo lo permita
-    if (!scopeAllows(this.d.policy, input.tenantId, input.category)) return "scope_not_allowed";
+    if (!this.scopeOk(input.tenantId, input.category)) return "scope_not_allowed";
     if (await this.d.store.isSuppressed(input.tenantId, hash)) return "suppressed";
     const since = this.now() - HOUR;
     if ((await this.d.store.countSince(input.tenantId, since)) >= this.d.policy.limits.tenantPerHour) return "rate_limited_tenant";
@@ -144,7 +159,7 @@ export class MailService {
     if (!skip)
       for (const raw of input.cc ?? []) {
         const c = normalizeEmail(raw);
-        if (c && c !== to && !cc.includes(c) && recipientAllowed(this.d.policy, c) && !(await this.d.store.isSuppressed(input.tenantId, recipientHash(c)))) cc.push(c);
+        if (c && c !== to && !cc.includes(c) && this.recipientOk(c) && !(await this.d.store.isSuppressed(input.tenantId, recipientHash(c)))) cc.push(c);
       }
     // Límite por hora alcanzado con `deferOnRateLimit`: no se descarta; se retiene y sale solo en la siguiente franja con
     // hueco (escalonado, como mucho el límite por hora), sin avalanchas al reabrirse
@@ -218,11 +233,11 @@ export class MailService {
       return this.d.store.get(id);
     }
     // El modo puede haber cambiado desde que se encoló (p. ej. vuelta a off): se revalida
-    if (!recipientAllowed(this.d.policy, row.toEmail)) {
+    if (!this.recipientOk(row.toEmail)) {
       await this.d.store.settle(id, { status: "skipped", reason: this.d.policy.mode === "off" ? "mode_off" : "sandbox_recipient_not_allowed", purge: true }, now);
       return this.d.store.get(id);
     }
-    if (!scopeAllows(this.d.policy, row.tenantId, row.category)) {
+    if (!this.scopeOk(row.tenantId, row.category)) {
       await this.d.store.settle(id, { status: "skipped", reason: "scope_not_allowed", purge: true }, now);
       return this.d.store.get(id);
     }
@@ -231,7 +246,7 @@ export class MailService {
         from: { name: row.senderName, email: row.senderEmail },
         replyTo: row.replyTo,
         to: row.toEmail,
-        cc: row.cc.filter((c) => recipientAllowed(this.d.policy, c)),
+        cc: row.cc.filter((c) => this.recipientOk(c)),
         subject: row.subject,
         html: row.html,
         text: row.text ?? undefined,

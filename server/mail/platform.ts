@@ -32,6 +32,7 @@ import { incidentAlert } from "../adminAlerts/sources";
 import { mailPolicyFromEnv, type MailPolicy } from "./policy";
 import { mailProviderFromEnv } from "./providers";
 import { MailService, type SendResult } from "./service";
+import type { SandboxAccessSnapshot } from "./sandboxAccess";
 import { MysqlMailStore } from "./store";
 import { platformTemplates } from "./templates";
 import type { MailCategory, MailContent, MailProviderPort } from "./types";
@@ -297,14 +298,14 @@ export function opsRecipientsFromEnv(env: NodeJS.ProcessEnv): string[] {
 export async function platformMailFromEnv(
   pool: Pick<mysql.Pool, "query"> | null,
   env: NodeJS.ProcessEnv,
-  o: { provider?: MailProviderPort | null; now?: () => number } = {},
+  o: { provider?: MailProviderPort | null; now?: () => number; sandboxAccess?: () => SandboxAccessSnapshot } = {},
 ): Promise<{ mailer: PlatformMailer | null; reason: string | null; policy: MailPolicy }> {
   const policy = mailPolicyFromEnv(env);
   if (!pool) return { mailer: null, reason: "crm_not_configured", policy };
   const ready = await pool.query("SELECT 1 FROM mail_outbox LIMIT 0").then(() => true, () => false);
   if (!ready) return { mailer: null, reason: "crm_migration_0011_missing", policy };
   const provider = o.provider !== undefined ? o.provider : mailProviderFromEnv(env);
-  const service = new MailService({ lane: "platform", store: new MysqlMailStore(pool), provider, policy, now: o.now });
+  const service = new MailService({ lane: "platform", store: new MysqlMailStore(pool), provider, policy, now: o.now, sandboxAccess: o.sandboxAccess });
   return { mailer: new PlatformMailer(service, policy, { verifyUrl: env.CP_TRIAL_VERIFY_URL?.trim() || null, pricingUrl: env.CP_TRIAL_PRICING_URL?.trim() || null, opsRecipients: opsRecipientsFromEnv(env) }), reason: null, policy };
 }
 
