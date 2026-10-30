@@ -24,8 +24,12 @@ export const DEFAULT_QUOTAS: DefaultQuota[] = [
   { metric: Metrics.HTTP_REQUEST, period: "minute", limit: 1200, enforcement: "hard" },
   { metric: Metrics.STORAGE_WRITE_BYTES, period: "month", limit: 5 * 1024 ** 3, enforcement: "hard" },
   { metric: Metrics.EMAIL_SENT, period: "day", limit: 1000, enforcement: "hard" },
-  { metric: Metrics.LLM_TOKENS_INPUT, period: "month", limit: 2_000_000, enforcement: "soft" },
-  { metric: Metrics.LLM_TOKENS_OUTPUT, period: "month", limit: 1_000_000, enforcement: "soft" },
+  // IA con la cuenta de la plataforma: coste variable directo, con freno real (la cuenta propia de la empresa no cuenta).
+  // Un aumento para una empresa concreta se concede con su cuota propia (PUT /cp/v1/tenants/:id/quotas).
+  { metric: Metrics.LLM_TOKENS_INPUT, period: "month", limit: 2_000_000, enforcement: "hard" },
+  { metric: Metrics.LLM_TOKENS_OUTPUT, period: "month", limit: 1_000_000, enforcement: "hard" },
+  { metric: Metrics.AI_IMAGES, period: "month", limit: 200, enforcement: "hard" },
+  { metric: Metrics.AI_AUDIO_SECONDS, period: "month", limit: 10 * 3600, enforcement: "hard" },
   // Exportación de datos: solicitudes al día y volumen generado al mes (sin comprimir) por empresa
   { metric: Metrics.DATA_EXPORT_RUNS, period: "day", limit: 5, enforcement: "hard" },
   { metric: Metrics.DATA_EXPORT_BYTES, period: "month", limit: 20 * 1024 ** 3, enforcement: "hard" },

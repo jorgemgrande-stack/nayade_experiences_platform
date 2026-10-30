@@ -8,7 +8,7 @@ import type { Ticket, TicketEvent } from "../_core/support/tickets";
 import type { ExternalSubscription } from "../external/types";
 import type { CommercialOrder } from "../orchestrator/types";
 import type { AdminAlertService } from "./service";
-import { externalSuspensionNear, suspensionNear, ticketDeadlines, type CommercialEventWatcher } from "./sources";
+import { externalSuspensionNear, suspensionNear, ticketDeadlines, type CommercialEventWatcher, type ConsumptionWatcher } from "./sources";
 
 export interface AlertCycleDeps {
   alerts: AdminAlertService;
@@ -18,6 +18,8 @@ export interface AlertCycleDeps {
   openTickets?: () => Promise<Array<{ ticket: Ticket; events: TicketEvent[] }>>;
   /** Comprobaciones operativas (restauraciones, disponibilidad, publicación, plazos RGPD): cada una devuelve los avisos lanzados. */
   operations?: Array<{ name: string; run: () => Promise<number> }>;
+  /** Vigilancia del consumo del Resource Manager (umbrales, anomalías, coste e integraciones externas). */
+  consumption?: Pick<ConsumptionWatcher, "tick"> | null;
   now?: () => number;
 }
 
@@ -43,6 +45,7 @@ export async function runAlertCycle(d: AlertCycleDeps): Promise<Record<string, n
   if (d.pastDueExternals) await step("externalGrace", async () => raiseAll(externalSuspensionNear(await d.pastDueExternals!(), now)));
   if (d.openTickets) await step("tickets", async () => raiseAll(ticketDeadlines(await d.openTickets!(), now, (await d.alerts.settings()).settings.ticketSlaHours)));
   for (const o of d.operations ?? []) await step(o.name, o.run);
+  if (d.consumption) await step("consumption", () => d.consumption!.tick());
   await step("digests", async () => (await d.alerts.flush()).digests);
   return out;
 }

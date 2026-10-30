@@ -8,6 +8,7 @@
  */
 
 import { ENV } from "./env";
+import { mapsEndpoint, meteredFetch } from "./externalMetering";
 
 // ============================================================================
 // Configuration
@@ -71,13 +72,14 @@ export async function makeRequest<T = unknown>(
     }
   });
 
-  const response = await fetch(url.toString(), {
+  // Se mide la operación, no el coste: a través del proxy de Manus el precio no es la tarifa pública de Google
+  const response = await meteredFetch("maps", url.toString(), {
     method: options.method || "GET",
     headers: {
       "Content-Type": "application/json",
     },
     body: options.body ? JSON.stringify(options.body) : undefined,
-  });
+  }, { endpoint: mapsEndpoint(endpoint) });
 
   if (!response.ok) {
     const errorText = await response.text();

@@ -26,6 +26,9 @@
  * ```
  */
 import { ENV } from "./env";
+import { Metrics, meter } from "./metering";
+import { enforceQuota } from "./erm/runtime";
+import { QuotaExceededError } from "./erm/types";
 
 export type TranscribeOptions = {
   audioUrl: string; // URL to the audio file (e.g., S3 URL)
@@ -60,7 +63,7 @@ export type TranscriptionResponse = WhisperResponse; // Return native Whisper AP
 
 export type TranscriptionError = {
   error: string;
-  code: "FILE_TOO_LARGE" | "INVALID_FORMAT" | "TRANSCRIPTION_FAILED" | "UPLOAD_FAILED" | "SERVICE_ERROR";
+  code: "FILE_TOO_LARGE" | "INVALID_FORMAT" | "TRANSCRIPTION_FAILED" | "UPLOAD_FAILED" | "SERVICE_ERROR" | "QUOTA_EXCEEDED";
   details?: string;
 };
 
@@ -88,6 +91,14 @@ export async function transcribeAudio(
         code: "SERVICE_ERROR",
         details: "BUILT_IN_FORGE_API_KEY is not set"
       };
+    }
+
+    // Cuota mensual de audio transcrito de la empresa (servicio de la plataforma: coste variable)
+    try {
+      await enforceQuota(Metrics.AI_AUDIO_SECONDS, 0);
+    } catch (e) {
+      if (e instanceof QuotaExceededError) return { error: "Se ha alcanzado el límite mensual de transcripción de audio", code: "QUOTA_EXCEEDED" };
+      throw e;
     }
 
     // Step 2: Download audio from URL
@@ -182,6 +193,7 @@ export async function transcribeAudio(
       };
     }
 
+    if (Number.isFinite(whisperResponse.duration) && whisperResponse.duration > 0) meter(Metrics.AI_AUDIO_SECONDS, Math.ceil(whisperResponse.duration), "second");
     return whisperResponse; // Return native Whisper API response directly
 
   } catch (error) {
