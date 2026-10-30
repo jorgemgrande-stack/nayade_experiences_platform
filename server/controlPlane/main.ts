@@ -102,6 +102,9 @@ import { AdminAlertService } from "../adminAlerts/service";
 import { MysqlAdminAlertStore, adminAlertTablesReady } from "../adminAlerts/store";
 import { CommercialEventWatcher, withExternalAlerts } from "../adminAlerts/sources";
 import { startAlertCycle } from "../adminAlerts/runtime";
+import { DeployWatcher, RestoreDrillWatcher, SERVED_STATUSES, UptimeMonitor, githubGet, isTestTenant } from "../adminAlerts/operations";
+import { DataRequestService, dataRequestDeadlineAlerts } from "../dataRequests/service";
+import { MysqlDataRequestStore, dataRequestTablesReady } from "../dataRequests/store";
 
 async function main() {
   const tokens = parseTokens(process.env.CP_TOKENS);
@@ -564,6 +567,9 @@ async function main() {
   // Alertas administrativas (familia D, CRM 0030 y ajustes 0025): avisos internos a la administración por hechos
   // confirmados. Sin las tablas no se monta y los avisos internos siguen como antes (CP_ALERT_EMAIL).
   let adminAlerts: AdminAlertService | null = null;
+  // Solicitudes de derechos de protección de datos (RGPD, CRM 0034): registro desde el CRM con plazo legal de 30 días
+  const dataRequests = crm && crmPool && (await dataRequestTablesReady(crmPool)) ? new DataRequestService({ store: new MysqlDataRequestStore(crmPool), raise: (id, f) => (adminAlerts ? adminAlerts.raise(id, f) : Promise.resolve(null)) }) : null;
+  console.log(JSON.stringify({ ctx: "DataRequests", mounted: !!dataRequests, ...(dataRequests ? {} : { reason: !crm ? "crm_not_configured" : "migration_0034_missing" }) }));
   if (crm && crmPool && (await settingsTablesReady(crmPool))) {
     const alertPool = crmPool;
     const alertStore = new MysqlAdminAlertStore(alertPool);
@@ -600,6 +606,27 @@ async function main() {
       : null;
     const ordersStore = orders?.store;
     const externalStore = external?.store;
+    // Disponibilidad de cada empresa y publicación automática: por defecto solo en production (en live todas las empresas
+    // son de prueba y las publicaciones las vigila production); CP_UPTIME_WATCH / CP_DEPLOY_WATCH = 1 o 0 lo fuerzan
+    const isProduction = (process.env.RAILWAY_ENVIRONMENT_NAME ?? "").trim() === "production";
+    const watch = (v: string | undefined) => v === "1" || (v !== "0" && isProduction);
+    const uptime = watch(process.env.CP_UPTIME_WATCH)
+      ? new UptimeMonitor({
+          store: alertStore,
+          raise,
+          targets: async () => {
+            const out = [];
+            for (const t of await store.listTenants()) {
+              if (!SERVED_STATUSES.includes(t.status) || isTestTenant(t.id, t.displayName)) continue;
+              const domain = choosePublicDomain(await store.listDomains(t.id))?.domain;
+              if (domain) out.push({ tenantId: t.id, company: t.displayName, url: `https://${domain}/readyz` });
+            }
+            return out;
+          },
+        })
+      : null;
+    const deploys = watch(process.env.CP_DEPLOY_WATCH) ? new DeployWatcher({ get: githubGet(), repo: "jorgemgrande-stack/nayade_experiences_platform", branch: "integration/elephant-source", store: alertStore, raise }) : null;
+    console.log(JSON.stringify({ ctx: "AdminAlerts", uptimeWatch: !!uptime, deployWatch: !!deploys, restoreDrills: copiesReady }));
     const every = Math.max(60, Number(process.env.CP_ADMIN_ALERTS_EVERY_SECONDS ?? 120) || 120) * 1000;
     startAlertCycle(
       {
@@ -608,6 +635,12 @@ async function main() {
         pastDueOrders: ordersStore ? () => ordersStore.list({ states: ["past_due"], limit: 500 }) : undefined,
         pastDueExternals: externalStore ? () => externalStore.list({ status: "past_due" }) : undefined,
         openTickets: async () => Promise.all((await tickets.list({ status: "open", limit: 200 })).items.map(async (t) => ({ ticket: t, events: (await tickets.get(t.id)).events }))),
+        operations: [
+          ...(dataRequests ? [{ name: "dataRequests", run: async () => { const list = dataRequestDeadlineAlerts(await dataRequests.open(), Date.now()); for (const a of list) await alerts.raise(a.id, a.facts); return list.length; } }] : []),
+          ...(copiesReady ? [{ name: "restoreDrills", run: () => new RestoreDrillWatcher({ restores: () => copiesLedger.listRestores(50), store: alertStore, raise }).tick() }] : []),
+          ...(uptime ? [{ name: "uptime", run: async () => (await uptime.tick()).down }] : []),
+          ...(deploys ? [{ name: "deploys", run: () => deploys.tick() }] : []),
+        ],
       },
       every,
     );
@@ -662,6 +695,7 @@ async function main() {
     commercialEvents,
     leadNotices,
     adminAlerts,
+    dataRequests,
     notifications: notificationsFromEnv(process.env),
     mail: {
       platform: platformMail.mailer,

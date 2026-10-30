@@ -68,6 +68,8 @@ import type { LeadNoticeService } from "../crm/leadNotices";
 import { createLeadNoticesRouter } from "../crm/leadNoticesApi";
 import type { AdminAlertService } from "../adminAlerts/service";
 import { createAdminAlertsRouter } from "../adminAlerts/api";
+import type { DataRequestService } from "../dataRequests/service";
+import { createDataRequestsRouter } from "../dataRequests/api";
 import { LEAD_REQUEST_LABEL, type LeadRequest } from "../crm/types";
 import { creditNoteNotice, domainConnectedNotice, domainPendingNotice, purchasePendingNotice, type CustomerNoticeDeps } from "../notifications/customerTriggers";
 import { WebAdminService } from "../web/service";
@@ -361,6 +363,8 @@ export interface ControlPlaneDeps {
   leadNotices?: LeadNoticeService | null;
   /** Alertas administrativas (familia D; server/adminAlerts, CRM 0030). */
   adminAlerts?: AdminAlertService | null;
+  /** Solicitudes de derechos de protección de datos (RGPD; server/dataRequests, CRM 0034). */
+  dataRequests?: DataRequestService | null;
 }
 
 const idSchema = z.string().regex(/^[a-z0-9][a-z0-9_-]{0,62}$/);
@@ -1471,6 +1475,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
     const knownTenants = async () => new Set((await d.reader.listTenants()).filter((t) => t.status !== "deleted").map((t) => t.id));
     if (leadNotices) router.use("/crm/lead-notices", createLeadNoticesRouter(leadNotices));
     if (adminAlerts) router.use("/admin-alerts", createAdminAlertsRouter(adminAlerts));
+    if (d.dataRequests) router.use("/data-requests", createDataRequestsRouter(d.dataRequests));
     router.use(
       "/crm",
       createCrmRouter(d.crm.service, d.crm.store, { billing: d.billingStore, onboarding, requests: webRequests, assignees, quote: crmQuote, knownTenants, noticeSummaries: leadNotices ? (ids) => leadNotices.summaries(ids) : undefined }),
