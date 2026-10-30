@@ -8,6 +8,8 @@
  *    cargos, cola fiscal, clientes externos, aceptaciones); hay datos live (`livemode = 1`); una base de datos de
  *    tenant es compartida o no tiene el nombre propio del tenant; o queda una dependencia sin resolver.
  *  - Conserva las copias de seguridad (`backup_*` del registro): son la evidencia recuperable de lo borrado.
+ *  - Conserva la auditoría inmutable del registro (`tenant_events`, de solo anexado): el tenant no se borra, queda
+ *    como lápida en estado `deleted` (sin dominios, bases, capacidades ni aprovisionamiento) con un evento de la purga.
  *  - Después comprueba que no queda ningún registro de las cinco empresas ni referencias huérfanas.
  *  - El cliente de Stripe de PRUEBAS no se toca aquí (no hay clave de pruebas en production): solo su enlace local.
  */
@@ -28,8 +30,10 @@ export const PROTECTED_COMPANY_NAMES = ["Nextair", "NEXTAIR SL", "Skibox"];
 
 /** Tablas del CRM que se conservan siempre (fiscalidad, cobros y clientes externos): si tienen filas de las empresas, se aborta. */
 export const CRM_PROTECTED = ["invoices", "invoice_lines", "invoice_series", "fiscal_documents", "billing_charges", "billing_charge_payments", "external_subscriptions", "external_subscription_events", "crm_contract_acceptances"];
-/** Tablas del registro que se conservan (copias de seguridad: evidencia recuperable). */
-export const REGISTRY_KEPT = ["backup_inventory", "backup_copies", "backup_restores"];
+/** Tablas del registro que se conservan (copias de seguridad: evidencia recuperable; auditoría inmutable de los tenants). */
+export const REGISTRY_KEPT = ["backup_inventory", "backup_copies", "backup_restores", "tenant_events"];
+/** Motivo con el que el tenant queda retirado (lápida en `deleted`). */
+export const PURGE_REASON = "Purga de empresas de prueba autorizada por el propietario";
 
 type Q = mysql.Pool | mysql.PoolConnection;
 type Row = mysql.RowDataPacket & Record<string, unknown>;
@@ -59,6 +63,8 @@ export interface PurgePlan {
   missing: string[];
   steps: PurgeStep[];
   databases: Array<{ tenantId: string; database: string | null; action: "drop" | "none"; reason?: string; restored?: boolean }>;
+  /** Tenants que quedan como lápida en `deleted` (la auditoría, `tenant_events`, los referencia y no se borra). */
+  retire: Array<{ tenantId: string; from: string }>;
   kept: string[];
   problems: string[];
 }
@@ -195,18 +201,21 @@ export async function planPurge(d: { crm: Q; registry: Q; tenantDbName?: (tenant
     }
   }
 
-  // 4. Pasos del registro (todo lo que tenga tenant_id, salvo las copias) y el tenant al final
+  // 4. Pasos del registro (todo lo que tenga tenant_id, salvo las copias y la auditoría); el tenant no se borra: se retira
   const regCols = await columns(d.registry);
   const regSteps: PurgeStep[] = [];
   for (const [table, cols] of Array.from(regCols.entries())) {
-    if (REGISTRY_KEPT.includes(table)) continue;
-    const col = table === "tenants" ? "id" : cols.has("tenant_id") ? "tenant_id" : null;
+    if (REGISTRY_KEPT.includes(table) || table === "tenants") continue;
+    const col = cols.has("tenant_id") ? "tenant_id" : null;
     if (!col) continue;
     const [{ n }] = await rows(d.registry, `SELECT COUNT(*) n FROM \`${table}\` WHERE \`${col}\` IN (?)`, [tenants]);
     if (Number(n)) regSteps.push({ db: "registry", table, where: `\`${col}\` IN (?)`, params: [tenants], rows: Number(n) });
   }
   const regOrder = deleteOrder(regSteps.map((s) => s.table), await foreignKeys(d.registry));
-  regSteps.sort((a, b) => (a.table === "tenants" ? 1 : b.table === "tenants" ? -1 : regOrder.indexOf(a.table) - regOrder.indexOf(b.table)));
+  regSteps.sort((a, b) => regOrder.indexOf(a.table) - regOrder.indexOf(b.table));
+  const retire = regCols.has("tenants")
+    ? (await rows(d.registry, "SELECT id, status FROM tenants WHERE id IN (?) AND status <> 'deleted'", [tenants])).map((r) => ({ tenantId: String(r.id), from: String(r.status) }))
+    : [];
 
   // 5. Bases de datos de tenant: solo las propias (nombre del tenant) y no compartidas
   const databases: PurgePlan["databases"] = [];
@@ -238,7 +247,8 @@ export async function planPurge(d: { crm: Q; registry: Q; tenantDbName?: (tenant
     missing,
     steps: [...crmSteps, ...regSteps],
     databases,
-    kept: [...REGISTRY_KEPT.map((t) => `registro.${t} (copias de seguridad)`), ...CRM_PROTECTED.map((t) => `crm.${t}`), "cliente de Stripe de pruebas (se elimina en el Dashboard de Stripe en modo test)"],
+    retire,
+    kept: [...REGISTRY_KEPT.map((t) => `registro.${t} (${t === "tenant_events" ? "auditoría inmutable" : "copias de seguridad"})`), "registro.tenants (lápida en estado deleted)", ...CRM_PROTECTED.map((t) => `crm.${t}`), "cliente de Stripe de pruebas (se elimina en el Dashboard de Stripe en modo test)"],
     problems,
   };
 }
@@ -279,6 +289,12 @@ export async function applyPurge(
         const [r] = await c.query<mysql.ResultSetHeader>(`DELETE FROM \`${s.table}\` WHERE ${s.where}`, s.params);
         deleted.push({ db, table: s.table, rows: r.affectedRows });
       }
+      if (db === "registry" && plan.retire.length) {
+        const ids = plan.retire.map((x) => x.tenantId);
+        await c.query("UPDATE tenants SET status = 'deleted', status_reason = ?, registry_version = registry_version + 1 WHERE id IN (?)", [PURGE_REASON, ids]);
+        for (const x of plan.retire)
+          await c.query("INSERT INTO tenant_events (tenant_id, actor_type, actor_id, action, from_state, to_state, details) VALUES (?, 'system', 'purge-test-companies', 'purged', ?, 'deleted', ?)", [x.tenantId, x.from, JSON.stringify({ reason: PURGE_REASON })]);
+      }
       await c.commit();
     } catch (e) {
       await c.rollback().catch(() => undefined);
@@ -302,7 +318,7 @@ export async function applyPurge(
 /** Comprobación posterior: ningún registro de las cinco empresas y ninguna referencia huérfana en las tablas tocadas. */
 export async function verifyPurge(d: { crm: Q; registry: Q }): Promise<{ ok: boolean; remaining: string[] }> {
   const again = await planPurge({ crm: d.crm, registry: d.registry });
-  const remaining = again.steps.map((s) => `${s.db}.${s.table}: ${s.rows}`);
+  const remaining = [...again.steps.map((s) => `${s.db}.${s.table}: ${s.rows}`), ...again.retire.map((x) => `registry.tenants: ${x.tenantId} sigue en ${x.from}`)];
   for (const [name, q] of [["crm", d.crm], ["registry", d.registry]] as const) {
     for (const f of await foreignKeys(q)) {
       const [{ n }] = await rows(q, `SELECT COUNT(*) n FROM \`${f.child}\` c LEFT JOIN \`${f.parent}\` p ON p.\`${f.parentColumn}\` = c.\`${f.column}\` WHERE c.\`${f.column}\` IS NOT NULL AND p.\`${f.parentColumn}\` IS NULL`);

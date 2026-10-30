@@ -1311,12 +1311,15 @@ async function main() {
     const d = await setAndDeploy(command);
     // El registro tarda en estar completo tras terminar la orden: se espera un poco antes de leerlo
     await new Promise((r) => setTimeout(r, 20_000));
-    console.log(`restore-drill «${command}» → ${d.status}\n${await logs(d.id)}`);
+    const out = await logs(d.id);
+    console.log(`restore-drill «${command}» → ${d.status}\n${out}`);
     await setAndDeploy(DRILL_IDLE);
     console.log(`restore-drill devuelto a «${DRILL_IDLE}»`);
     // Una orden que no termina bien (p. ej. una copia que no se sube) es un FALLO del paso, nunca un éxito
-    if (d.status !== "SUCCESS") {
-      console.error(`La orden «${command}» terminó en ${d.status}: el paso falla.`);
+    // El contenedor puede salir con error después de que Railway lo dé por bueno: la marca del registro manda
+    const failed = /Orden fallida:/.test(out);
+    if (d.status !== "SUCCESS" || failed) {
+      console.error(`La orden «${command}» terminó en ${d.status}${failed ? " con «Orden fallida»" : ""}: el paso falla.`);
       process.exit(1);
     }
     return;
