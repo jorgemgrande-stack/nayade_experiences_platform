@@ -65,6 +65,7 @@ export const CIRCUIT: Readonly<Record<string, TemplateCircuit>> = {
   "usage.near_limit": "programada",
   "usage.limit_reached": "programada",
   "access.archive_notice": "programada",
+  "subscription.grace_reminder": "programada",
   "onboarding.reminder": "programada",
   // Alertas internas de la revisión periódica (gracia a punto de vencer y tickets sin respuesta)
   "admin.suspension_near": "programada",
@@ -146,6 +147,7 @@ export const TEMPLATES: readonly TemplateEntry[] = [
   e("billing.upcoming_charge", "Próximo cargo programado", "facturacion", "transactional", "controlplane", "Aviso previo a la renovación (lo envía Stripe: «upcoming renewal» del Dashboard)", "externa", () => x.upcomingCharge({ reference: "PED-2026-0042", amountCents: 121_000, currency: "EUR", at: PREVIEW_NOW + 7 * DAY, host: HOST })),
   e("subscription.payment_failed", "Incidencia en el cobro", "facturacion", "transactional", "controlplane", "Renovación impagada (inicio de la gracia de 7 días)", "conectada", P("subscription.payment_failed")),
   e("billing.payment_reminder", "Recordatorio de pago pendiente", "facturacion", "transactional", "controlplane", "Recordatorios de la gracia (los envía Stripe en cada reintento de Smart Retries)", "externa", () => x.paymentReminder({ reference: "PED-2026-0042", amountCents: 121_000, currency: "EUR", graceEndsAt: PREVIEW_NOW + 4 * DAY, host: HOST })),
+  e("subscription.grace_reminder", "Recordatorio de cobro durante la gracia", "facturacion", "transactional", "controlplane", "order.dunning_notice", "conectada", P("subscription.grace_reminder")),
   e("subscription.suspended", "Último aviso: suscripción suspendida", "facturacion", "transactional", "controlplane", "order.suspended", "conectada", P("subscription.suspended")),
   e("subscription.recovered", "Pago regularizado y servicio restablecido", "facturacion", "transactional", "controlplane", "Pago recuperado", "conectada", P("subscription.recovered")),
   e("billing.incident", "Cobro revertido", "facturacion", "transactional", "controlplane", "coverage.lost", "conectada", P("billing.incident")),

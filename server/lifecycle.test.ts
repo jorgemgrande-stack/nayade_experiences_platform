@@ -88,9 +88,12 @@ describe("motor con el orquestador en memoria", () => {
   let licensing: LicensingService;
   let base: LifecycleDeps;
   let ledger: MemoryCommercialEventLog;
+  /** Estado ACTUAL de la suscripción en Stripe que ve el orquestador (un Error simula Stripe sin respuesta). */
+  let stripeNow: "active" | "past_due" | "unpaid" | "canceled" | null | Error;
 
   beforeEach(async () => {
     clock = Date.UTC(2026, 9, 19, 9);
+    stripeNow = null;
     const crmStore = new MemoryCrmStore();
     subsStore = new MemorySubscriptionStore();
     caps = new MemoryCapabilityStore();
@@ -121,6 +124,10 @@ describe("motor con el orquestador en memoria", () => {
       capabilities: caps,
       platform,
       payments: provider,
+      stripeStatus: async () => {
+        if (stripeNow instanceof Error) throw stripeNow;
+        return stripeNow;
+      },
       now: () => clock,
     });
     base = {
@@ -207,16 +214,75 @@ describe("motor con el orquestador en memoria", () => {
     ]);
   });
 
-  it("pedido cobrado en Stripe: la gracia agotada no lo suspende el motor (lo decide Stripe)", async () => {
-    const o = await paidOrder("Stripe SL");
+  /** Pedido activo cobrado en Stripe que entra en impago (estado releído de Stripe: past_due). */
+  const stripePastDue = async (name: string) => {
+    const o = await paidOrder(name);
     await orders.insertPayment({ orderId: o.id, idempotencyKey: `stripe:inv:in_${key()}`, purpose: "renewal", periodStart: clock, amountCents: 3509, currency: "EUR", status: "failed", provider: "stripe_test", mode: "test", providerRef: "in_x", dueAt: null, createdAt: clock, settledAt: clock });
     await svc.applyExternalBilling(o.id, { status: "past_due", cancelAt: null }, "system:stripe");
-    clock += 8 * DAY;
+    return svc.must(o.id);
+  };
+
+  it("pedido cobrado en Stripe: al agotar los 7 días de gracia lo suspende Elephant si Stripe sigue impagado; el pago lo reactiva", async () => {
+    const o = await stripePastDue("Stripe SL");
+    expect(o.state).toBe("past_due");
     const e = new LifecycleEngine(base);
-    expect(await kinds(e, o.id)).toContain("stripe_dunning");
+    clock = o.graceEndsAt! - 1;
     expect(await kinds(e, o.id)).not.toContain("suspend");
+    clock = o.graceEndsAt!;
+    stripeNow = "past_due";
+    expect(await kinds(e, o.id)).toContain("suspend");
     await e.run();
-    expect((await svc.must(o.id)).state).toBe("past_due");
+    const s = await svc.must(o.id);
+    expect(s.state).toBe("suspended");
+    expect((await caps.list(s.tenantId!)).filter((g) => g.source === `subscription:${s.subscriptionId}`).every((g) => g.status === "suspended")).toBe(true);
+    const ev = (await orders.events(o.id)).filter((x) => x.kind === "suspend");
+    expect(ev).toHaveLength(1);
+    expect(ev[0].detail).toMatchObject({ source: "stripe_grace", stripeStatus: "past_due" });
+    // Un evento atrasado de Stripe (aún past_due) no la reactiva ni la vuelve a suspender
+    await svc.applyExternalBilling(o.id, { status: "past_due", cancelAt: null }, "system:stripe");
+    expect((await svc.must(o.id)).state).toBe("suspended");
+    // El cliente paga: Stripe vuelve a «active» → reactivación automática (dos veces el mismo estado, un solo cambio)
+    stripeNow = "active";
+    await svc.applyExternalBilling(o.id, { status: "active", cancelAt: null }, "system:stripe");
+    await svc.applyExternalBilling(o.id, { status: "active", cancelAt: null }, "system:stripe");
+    const back = await svc.must(o.id);
+    expect(back.state).toBe("active");
+    expect((await orders.events(o.id)).filter((x) => x.kind === "payment_recovered")).toHaveLength(1);
+    expect((await caps.list(back.tenantId!)).filter((g) => g.source === `subscription:${back.subscriptionId}`).every((g) => g.status === "active")).toBe(true);
+  });
+
+  it("pedido cobrado en Stripe: sin confirmar el impago en Stripe (pagado, cancelado o sin respuesta) no se suspende", async () => {
+    for (const now of ["active", "canceled", null, new Error("Stripe no responde")] as const) {
+      const o = await stripePastDue(`Stripe ${String(now)} SL`);
+      clock = o.graceEndsAt! + DAY;
+      stripeNow = now;
+      await new LifecycleEngine(base).run();
+      expect((await svc.must(o.id)).state).toBe("past_due");
+    }
+  });
+
+  it("recordatorios de la gracia: un evento en los días 3 y 6 (el 0 lo avisa el orquestador), sin duplicados y nunca tras pagar", async () => {
+    const o = await stripePastDue("Avisos SL");
+    const e = new LifecycleEngine({ ...base, events: ledger });
+    const sent = async () => (await ledger.list({ orderId: o.id, types: ["order.dunning_notice"] })).map((x) => x.data.day);
+    await e.run();
+    expect(await sent()).toEqual([]);
+    clock += 3 * DAY;
+    expect((await e.run()).applied.dunningNotices).toBe(1);
+    await e.run();
+    expect(await sent()).toEqual([3]);
+    clock += 3 * DAY;
+    await e.run();
+    await e.run();
+    expect(await sent()).toEqual([3, 6]);
+    const notice = (await ledger.list({ orderId: o.id, types: ["order.dunning_notice"] }))[1];
+    expect(notice).toMatchObject({ tenantId: o.tenantId, companyId: o.companyId, data: { day: 6, graceEndsAt: o.graceEndsAt } });
+    // Otro impago del mismo pedido tras pagar: avisos propios (otra gracia), nunca los del anterior
+    stripeNow = "active";
+    await svc.applyExternalBilling(o.id, { status: "active", cancelAt: null }, "system:stripe");
+    clock += DAY;
+    await e.run();
+    expect(await sent()).toEqual([3, 6]);
   });
 
   it("licencias: una baja por fecha se aplica; una licencia suspendida por un operador no se reactiva (solo se señala)", async () => {

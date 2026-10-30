@@ -39,6 +39,8 @@ export const COMMERCIAL_EVENT_TYPES = [
   "order.activated",
   "order.past_due",
   "order.suspended",
+  // Recordatorio durante la gracia de un impago (días 3 y 6 por defecto; el día 0 lo avisa el orquestador)
+  "order.dunning_notice",
   "order.recovered",
   "order.cancel_scheduled",
   "order.reactivated",
