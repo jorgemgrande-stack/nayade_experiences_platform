@@ -744,7 +744,7 @@ async function main() {
     commercialEvents,
     leadNotices,
     adminAlerts,
-    commerceCircuits: () => commerceCircuits({ stripe: stripeConfig, env: process.env, trialsReady: !!trials, mailMode: mailPolicy.mode }),
+    commerceCircuits: () => commerceCircuits({ stripe: stripeConfig, switches: { externalLiveCharges: !!external?.liveEnabled, trialsReady: !!trials, publicTrial: !!trials?.publicEnabled, autoProvision: !!trials?.autoProvision }, mailMode: mailPolicy.mode }),
     dataRequests,
     communications,
     notifications: notificationsFromEnv(process.env),

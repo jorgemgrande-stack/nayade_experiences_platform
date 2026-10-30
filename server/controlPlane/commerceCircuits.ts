@@ -1,14 +1,13 @@
 /**
- * Estado REAL de los circuitos comerciales, leído de la configuración (sin secretos) para el CRM y las operaciones:
+ * Estado REAL de los circuitos comerciales, para el CRM y las operaciones (sin secretos):
  *
- *  - Stripe es UNA configuración (`CP_STRIPE_MODE`) compartida por dos circuitos:
- *      1. servicios externos (contratos de clientes externos): cobros reales solo con `CP_EXTERNAL_LIVE_ENABLED=1`;
- *      2. licencias y módulos SaaS (checkout del catálogo): en live exige la política fiscal (`CP_STRIPE_TAX_POLICY`);
- *         sin ella el checkout está bloqueado (`tax_policy_pending`).
- *  - Alta comercial: registro público de pruebas (`CP_PUBLIC_TRIAL_ENABLED`) y aprovisionamiento automático
- *    (`CP_TRIAL_AUTO_PROVISION`).
+ *  - Stripe es UNA configuración compartida por dos circuitos:
+ *      1. servicios externos (contratos de clientes externos): en live, los cobros reales tienen su propio interruptor;
+ *      2. licencias y módulos SaaS (checkout del catálogo): en live exige la política fiscal; sin ella está bloqueado.
+ *  - Alta comercial: registro público de pruebas y aprovisionamiento automático.
  *
- * Solo informa: no activa nada. Cada circuito dice si está activo, en qué modo y qué le falta.
+ * Los interruptores los lee el arranque del plano de control (main.ts) y llegan ya resueltos: este módulo no los lee
+ * ni los cambia. Solo informa: cada circuito dice si está activo, en qué modo y qué le falta.
  */
 import { checkoutBlockedReason, describeStripeConfig, type StripeConfig } from "../stripe/config";
 
@@ -28,35 +27,42 @@ export interface CommerceCircuits {
   mail: { mode: string };
 }
 
-export function commerceCircuits(o: { stripe: StripeConfig | null; env: Record<string, string | undefined>; trialsReady: boolean; mailMode: string }): CommerceCircuits {
-  const mode = o.stripe ? o.stripe.mode : "off";
-  const noStripe = o.stripe ? [] : ["Stripe sin configurar (CP_STRIPE_MODE, CP_STRIPE_API_KEY, CP_STRIPE_WEBHOOK_SECRET)"];
+export interface CircuitSwitches {
+  /** Cobros reales de servicios externos habilitados (interruptor protegido). */
+  externalLiveCharges: boolean;
+  /** Pruebas gratuitas montadas (migraciones y base de pruebas). */
+  trialsReady: boolean;
+  publicTrial: boolean;
+  autoProvision: boolean;
+}
 
-  const extLive = o.env.CP_EXTERNAL_LIVE_ENABLED === "1";
+export function commerceCircuits(o: { stripe: StripeConfig | null; switches: CircuitSwitches; mailMode: string }): CommerceCircuits {
+  const s = o.switches;
+  const mode = o.stripe ? o.stripe.mode : "off";
+  const noStripe = o.stripe ? [] : ["Stripe sin configurar"];
+
   const externalServices: CircuitState = {
-    active: !!o.stripe && (mode === "test" || extLive),
+    active: !!o.stripe && (mode === "test" || s.externalLiveCharges),
     mode,
-    missing: [...noStripe, ...(mode === "live" && !extLive ? ["Cobros reales de servicios externos sin habilitar (CP_EXTERNAL_LIVE_ENABLED=1)"] : [])],
+    missing: [...noStripe, ...(mode === "live" && !s.externalLiveCharges ? ["Cobros reales de servicios externos sin habilitar"] : [])],
   };
 
   const blocked = o.stripe ? checkoutBlockedReason(o.stripe) : null;
   const saasCheckout: CircuitState = {
     active: !!o.stripe && !blocked,
     mode,
-    missing: [...noStripe, ...(blocked === "tax_policy_pending" ? ["Política fiscal de Stripe live sin definir (CP_STRIPE_TAX_POLICY)"] : [])],
+    missing: [...noStripe, ...(blocked === "tax_policy_pending" ? ["Política fiscal de Stripe live sin definir"] : [])],
   };
 
-  const trialMissing = o.trialsReady ? [] : ["Pruebas gratuitas sin montar (migraciones del registro o base de pruebas)"];
-  const publicTrial: CircuitState = {
-    active: o.trialsReady && o.env.CP_PUBLIC_TRIAL_ENABLED === "1",
-    mode: o.trialsReady && o.env.CP_PUBLIC_TRIAL_ENABLED === "1" ? "live" : "off",
-    missing: [...trialMissing, ...(o.env.CP_PUBLIC_TRIAL_ENABLED === "1" ? [] : ["Registro público de pruebas apagado (CP_PUBLIC_TRIAL_ENABLED=1)"])],
-  };
-  const autoProvision: CircuitState = {
-    active: o.trialsReady && o.env.CP_TRIAL_AUTO_PROVISION === "1",
-    mode: o.trialsReady && o.env.CP_TRIAL_AUTO_PROVISION === "1" ? "live" : "off",
-    missing: [...trialMissing, ...(o.env.CP_TRIAL_AUTO_PROVISION === "1" ? [] : ["Aprovisionamiento automático apagado (CP_TRIAL_AUTO_PROVISION=1)"])],
-  };
+  const trialMissing = s.trialsReady ? [] : ["Pruebas gratuitas sin montar (migraciones del registro o base de pruebas)"];
+  const flag = (on: boolean, off: string): CircuitState => ({ active: s.trialsReady && on, mode: s.trialsReady && on ? "live" : "off", missing: [...trialMissing, ...(on ? [] : [off])] });
 
-  return { stripe: describeStripeConfig(o.stripe), externalServices, saasCheckout, publicTrial, autoProvision, mail: { mode: o.mailMode } };
+  return {
+    stripe: describeStripeConfig(o.stripe),
+    externalServices,
+    saasCheckout,
+    publicTrial: flag(s.publicTrial, "Registro público de pruebas apagado"),
+    autoProvision: flag(s.autoProvision, "Aprovisionamiento automático apagado"),
+    mail: { mode: o.mailMode },
+  };
 }
