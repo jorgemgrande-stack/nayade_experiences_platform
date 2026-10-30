@@ -1,10 +1,10 @@
 /**
  * Recordatorios de «Primeros pasos» (plantilla onboarding.reminder), tarea `onboarding-reminder`: cada hora, en cada
- * empresa con el asistente sin terminar, recuerda los pasos pendientes a quien lo abrió a los 2 y a los 7 días de su
- * primer acceso.
+ * empresa con el asistente sin terminar, recuerda los pasos pendientes a quien lo abrió a los 3 días de su primer
+ * acceso. El estado de los pasos se relee en cada pasada, justo antes de enviar: nunca recuerda un paso hecho.
  *  - Solo con el primer acceso REGISTRADO (al abrir el asistente sin ningún paso dado): nunca para empresas que no lo
  *    han abierto ni con fechas supuestas.
- *  - Máximo dos recordatorios, uno por hito, idempotentes por empresa e hito (reserva con la fila bloqueada antes de
+ *  - Un recordatorio por hito (hoy uno: el día 3), idempotentes por empresa e hito (reserva con la fila bloqueada antes de
  *    enviar; si el correo no sale, se libera y se reintenta en la siguiente pasada).
  *  - Con la pasada tardía (tarea parada unos días) solo se envía el hito más reciente; los anteriores quedan cubiertos.
  *  - Se detienen al completar el asistente.
@@ -24,7 +24,7 @@ import type { SetupProgress } from "../shared/setupWizard";
 
 export const ONBOARDING_REMINDER_JOB_INTERVAL_MS = 3600_000;
 /** Hitos en días desde el primer acceso. */
-export const ONBOARDING_REMINDER_DAYS = [2, 7] as const;
+export const ONBOARDING_REMINDER_DAYS = [3] as const;
 const DAY = 86_400_000;
 
 /** Hito que toca enviar ahora (el más reciente alcanzado y sin enviar), o null. Puro. */

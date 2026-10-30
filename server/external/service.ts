@@ -42,7 +42,7 @@ export interface ExternalUrls {
 
 export interface ExternalDeps {
   store: ExternalStore;
-  crm: Pick<CrmService, "createContract" | "updateContract" | "setContractStatus" | "log">;
+  crm: Pick<CrmService, "createContract" | "setContractStatus" | "log">;
   crmStore: Pick<CrmStore, "get" | "list">;
   stripeStore?: Pick<StripeStore, "customerByCompany" | "linkCustomer">;
   gateway?: StripeGateway;
@@ -99,9 +99,17 @@ export interface ExternalMail {
   paymentSetup?(to: string, idempotencyKey: string, i: PaymentSetupMail): Promise<{ status: string; reason: string | null; duplicate: boolean; id?: number | null }>;
   /** Servicio contratado: suscripción creada y programada tras la confirmación de Stripe (idempotente por clave). */
   scheduled?(to: string, idempotencyKey: string, i: ScheduledMail): Promise<{ status: string; reason: string | null; duplicate: boolean; id?: number | null }>;
-  /** Condiciones del servicio modificadas (plantilla external.changed) al representante (idempotente por clave). */
+  /** Modificación CONFIRMADA del servicio (plantilla external.changed) al firmante (idempotente por clave). */
   changed?(to: string, idempotencyKey: string, i: ChangedMail): Promise<{ status: string; reason: string | null; duplicate: boolean; id?: number | null }>;
 }
+/**
+ * Modificaciones confirmadas de un servicio externo que se comunican (external.changed y admin.external_changed):
+ *  - `first_charge`: decisión registrada sobre la primera mensualidad (nueva fecha de primer cargo; pasa de «pendiente de
+ *    decisión» a «programado»);
+ *  - `contract_version`: aceptación de una versión del contrato posterior a otra ya aceptada.
+ * Nunca hay cambios de importe: el producto no los permite.
+ */
+export type ExternalChangeKind = "first_charge" | "contract_version";
 export interface ChangedMail {
   signerName: string | null;
   companyName: string;
@@ -109,21 +117,10 @@ export interface ChangedMail {
   amountCents: number;
   taxRateBp: number;
   currency: string;
-  /** Primer cargo previsto con las condiciones nuevas. */
+  /** Primer cargo vigente tras el cambio. */
   effectiveAt: number;
-}
-/** Condiciones modificables de un servicio externo (solo antes de la aceptación; ver ExternalService.modify). */
-export interface ModifyExternalInput {
-  serviceName?: string;
-  amountCents?: number;
-  taxRateBp?: number;
-  billingDay?: number;
-  /** Nuevo primer vencimiento «AAAA-MM-DD» (debe caer en el día de cobro). */
-  firstChargeDate?: string;
-  /** Condiciones del servicio (alcance, soporte, duración, baja…); sin ellas se conservan las actuales. */
-  conditions?: string;
-  /** Motivo del cambio (queda en el historial y en la versión del contrato). */
-  reason: string;
+  change: ExternalChangeKind;
+  contractVersion: number | null;
 }
 export interface ScheduledMail {
   signerName: string | null;
@@ -405,8 +402,16 @@ export class ExternalService {
     if (!ok) throw new ExternalError("invalid_state", "Este contrato ya está aceptado");
     await this.d.crm.setContractStatus(x.contractId, "signed", "public:acceptance", { signatureMethod: "electronic", signatureRef: `aceptacion:${a.id}:${doc.sha256.slice(0, 16)}` });
     const cur = await this.must(x.id);
-    await this.d.store.update(cur.id, cur.version, { status: "awaiting_payment_method" }, now);
+    const updated = await this.d.store.update(cur.id, cur.version, { status: "awaiting_payment_method" }, now);
     await this.d.store.event({ externalId: x.id, kind: "accepted", ref: String(a.id), detail: { acceptedName: name, version: doc.version, documentSha256: doc.sha256 }, actor: "public:acceptance", at: now });
+    // Nueva versión del contrato aceptada (había otra anterior ya aceptada): modificación confirmada del servicio
+    const previous = (await this.d.store.acceptances(x.contractId)).filter((p) => p.id !== a.id && p.status === "accepted" && p.contractVersion < doc.version);
+    if (previous.length) {
+      const from = Math.max(...previous.map((p) => p.contractVersion));
+      await this.notifyChanged(updated, "contract_version", { fields: ["contractVersion"], labels: ["Versión del contrato"], before: { contractVersion: from }, after: { contractVersion: doc.version }, contractVersion: doc.version }, "public:acceptance").catch(() =>
+        opsLog("warn", "External", "changed_notice_failed", { externalId: x.id }),
+      );
+    }
     await this.d.crm.log("contract", x.contractId, "note", `Contrato aceptado electrónicamente por ${name} (versión ${doc.version}, huella ${doc.sha256.slice(0, 16)}…)`, "public:acceptance");
     // Aviso interno: el siguiente paso (enlace de autorización del método de pago) lo da el equipo
     if (this.d.mail?.opsNotice) {
@@ -705,88 +710,46 @@ export class ExternalService {
     const cur = await this.d.store.update(x.id, x.version, { firstChargeAt: at }, now);
     await this.d.store.event({ externalId: x.id, kind: "first_charge_decided", ref: String(at), detail: { from: x.firstChargeAt, to: at, reason }, actor, at: now });
     await this.d.crm.log("contract", x.contractId, "note", `Cambio del calendario de cobro: primer cargo el ${input.firstChargeDate}. Motivo: ${reason}`, actor);
-    return this.schedule(cur, actor);
+    const done = await this.schedule(cur, actor);
+    // Cambio confirmado (fecha guardada y suscripción programada): aviso al firmante y alerta interna, una sola vez
+    await this.notifyChanged(done, "first_charge", { fields: ["firstChargeAt", "status"], labels: ["Primer cargo", "Estado"], before: { firstChargeAt: x.firstChargeAt, status: x.status }, after: { firstChargeAt: done.firstChargeAt, status: done.status }, reason }, actor).catch(() =>
+      opsLog("warn", "External", "changed_notice_failed", { externalId: x.id }),
+    );
+    return done;
   }
 
-  // ── 3b. Modificación de las condiciones ────────────────────────────────────
+  // ── 3b. Modificaciones confirmadas: aviso al firmante y alerta interna ────
   //
-  // Límite deliberado: solo ANTES de la aceptación (contrato en borrador o enviado, sin nada en Stripe). Un contrato
-  // aceptado es inmutable (sus cambios van en una renovación) y una suscripción de Stripe programada o activa no se toca
-  // desde aquí: cambiar su importe o su calendario exigiría modificar Stripe. Nunca se tocan cobros ya hechos.
+  // Solo REACCIONA a operaciones ya guardadas (decisión del primer cargo, nueva versión del contrato aceptada). No cambia
+  // importes ni toca Stripe. El hecho «changed» del historial (uno por servicio, versión y tipo de cambio) lanza la
+  // alerta admin.external_changed; el correo lleva la misma identidad, así que repetir nunca duplica.
 
-  /**
-   * Modifica servicio, cuota, IVA, día de cobro, primer vencimiento o condiciones de un servicio aún sin aceptar. Crea
-   * una versión nueva del contrato (con el motivo), invalida los enlaces de aceptación pendientes (el documento cambió),
-   * registra el cambio en el historial (alerta administrativa) y avisa al representante que recibió el contrato.
-   */
-  async modify(id: number, input: ModifyExternalInput, actor: string) {
-    const x = await this.must(id);
-    if (x.status !== "awaiting_acceptance" || x.stripeSubscriptionId || x.stripeSetupSessionId) {
-      throw new ExternalError("invalid_state", "Solo se pueden modificar las condiciones antes de que el cliente acepte el contrato. Después, el contrato aceptado no cambia y la suscripción de Stripe no se toca desde aquí: los cambios van en una renovación.");
+  private async notifyChanged(x: ExternalSubscription, change: ExternalChangeKind, detail: Record<string, unknown>, actor: string) {
+    const ref = `${change}:v${x.version}`;
+    const { created } = await this.d.store.event({ externalId: x.id, kind: "changed", ref, detail: { change, ...detail }, actor, at: this.now() });
+    if (!created || !this.d.mail?.changed) return;
+    // Destinatario: el firmante de la aceptación vigente (el mismo que recibe «contract.scheduled»)
+    const a = (await this.d.store.acceptances(x.contractId)).filter((p) => p.status === "accepted").sort((p, q) => (q.acceptedAt ?? 0) - (p.acceptedAt ?? 0))[0];
+    if (!a) return;
+    let mail: { status: string; reason: string | null; outboxId?: number };
+    try {
+      const company = await this.d.crmStore.get("companies", x.companyId);
+      const r = await this.d.mail.changed(a.signerEmail, `external-changed:${this.d.namespace}:${x.id}:v${x.version}:${change}`, {
+        signerName: a.acceptedName ?? a.signerName,
+        companyName: company?.legalName ?? company?.name ?? "",
+        serviceName: x.serviceName,
+        amountCents: x.amountCents,
+        taxRateBp: x.taxRateBp,
+        currency: x.currency,
+        effectiveAt: x.firstChargeAt,
+        change,
+        contractVersion: typeof detail.contractVersion === "number" ? detail.contractVersion : null,
+      });
+      mail = { status: r.status, reason: r.reason, ...(r.id ? { outboxId: r.id } : {}) };
+    } catch (e) {
+      mail = { status: "failed", reason: (e instanceof Error ? e.message : "error").slice(0, 200) };
     }
-    const reason = String(input.reason ?? "").trim();
-    if (reason.length < 10) throw new ExternalError("invalid_input", "Explica el motivo del cambio (al menos 10 caracteres)");
-    const contract = await this.contractOf(x);
-    if (contract.status !== "draft" && contract.status !== "sent") throw new ExternalError("invalid_state", `El contrato está en «${contract.status}»`);
-    const serviceName = input.serviceName === undefined ? x.serviceName : String(input.serviceName).trim();
-    if (serviceName.length < 3 || serviceName.length > 160) throw new ExternalError("invalid_input", "Nombre del servicio no válido");
-    const amountCents = input.amountCents ?? x.amountCents;
-    if (!Number.isInteger(amountCents) || amountCents < 100 || amountCents > 10_000_000) throw new ExternalError("invalid_input", "Importe no válido");
-    const taxRateBp = input.taxRateBp ?? x.taxRateBp;
-    if (!Number.isInteger(taxRateBp) || taxRateBp < 0 || taxRateBp > 3000) throw new ExternalError("invalid_input", "IVA no válido");
-    const billingDay = input.billingDay ?? x.billingDay;
-    if (!Number.isInteger(billingDay) || billingDay < 1 || billingDay > 28) throw new ExternalError("invalid_input", "El día de cobro debe estar entre el 1 y el 28");
-    let firstChargeAt = x.firstChargeAt;
-    if (input.firstChargeDate !== undefined) {
-      try {
-        firstChargeAt = chargeInstant(input.firstChargeDate, x.billingHour, x.timezone);
-      } catch {
-        throw new ExternalError("invalid_input", "Primer vencimiento no válido (AAAA-MM-DD)");
-      }
-    }
-    if (localDate(firstChargeAt, x.timezone).day !== billingDay) throw new ExternalError("invalid_input", `El primer vencimiento debe caer en el día de cobro (${billingDay})`);
-    if (firstChargeAt <= this.now()) throw new ExternalError("invalid_input", "El primer vencimiento ya ha pasado: indica uno futuro");
-    // Condiciones del servicio: las nuevas o las actuales (el texto del contrato empieza por las condiciones de cobro)
-    const prefix = [...billingTerms(x), "", ""].join("\n");
-    const current = contract.conditions?.startsWith(prefix) ? contract.conditions.slice(prefix.length) : null;
-    const conditions = input.conditions === undefined ? current : String(input.conditions).trim();
-    if (conditions === null) throw new ExternalError("invalid_input", "Indica las condiciones del servicio: las actuales no se pueden separar del contrato");
-    if (conditions.length < 20) throw new ExternalError("invalid_input", "Indica las condiciones del servicio");
-    const next = { serviceName, amountCents, taxRateBp, billingDay, firstChargeAt };
-    const LABEL: Record<keyof typeof next | "conditions", string> = { serviceName: "Servicio", amountCents: "Cuota mensual", taxRateBp: "IVA", billingDay: "Día de cobro", firstChargeAt: "Primer cargo", conditions: "Condiciones del servicio" };
-    const fields = (Object.keys(next) as Array<keyof typeof next>).filter((k) => next[k] !== x[k]);
-    const changed: Array<keyof typeof LABEL> = [...fields, ...(conditions !== current ? (["conditions"] as const) : [])];
-    if (!changed.length) throw new ExternalError("invalid_input", "No hay ningún cambio en las condiciones");
-
-    const now = this.now();
-    // Representante: quien recibió el último enlace del contrato (su enlace deja de valer con el documento nuevo)
-    const acceptances = await this.d.store.acceptances(x.contractId);
-    const signer = acceptances.sort((p, q) => q.createdAt - p.createdAt || q.id - p.id)[0] ?? null;
-    const upd = await this.d.crm.updateContract(
-      contract.id,
-      { amountCents, currency: x.currency, startDate: firstChargeAt, conditions: [...billingTerms({ ...x, ...next }), "", conditions].join("\n"), reason: `Modificación de condiciones: ${reason}`.slice(0, 300) },
-      actor,
-    );
-    for (const a of acceptances) if (a.status === "pending") await this.d.store.setAcceptanceStatus(a.id, "revoked");
-    const cur = await this.d.store.update(x.id, x.version, next, now);
-    const before = Object.fromEntries(fields.map((k) => [k, x[k]]));
-    const after = Object.fromEntries(fields.map((k) => [k, next[k]]));
-    await this.d.store.event({ externalId: x.id, kind: "changed", ref: `contract-v${upd.version}`, detail: { fields: changed, labels: changed.map((k) => LABEL[k]), before, after, reason, contractVersion: upd.version }, actor, at: now });
-    let mail: { status: string; reason: string | null; outboxId?: number } | null = null;
-    if (signer) {
-      if (!this.d.mail?.changed) mail = { status: "unavailable", reason: "El correo de plataforma no está configurado en este entorno" };
-      else {
-        try {
-          const company = await this.d.crmStore.get("companies", x.companyId);
-          const r = await this.d.mail.changed(signer.signerEmail, `external-changed:${this.d.namespace}:${x.id}:v${upd.version}`, { signerName: signer.signerName, companyName: company?.legalName ?? company?.name ?? "", serviceName, amountCents, taxRateBp, currency: x.currency, effectiveAt: firstChargeAt });
-          mail = { status: r.status, reason: r.reason, ...(r.id ? { outboxId: r.id } : {}) };
-        } catch (e) {
-          mail = { status: "failed", reason: (e instanceof Error ? e.message : "error").slice(0, 200) };
-        }
-      }
-      await this.d.store.event({ externalId: x.id, kind: "changed_email", ref: `contract-v${upd.version}`, detail: { to: signer.signerEmail, ...mail }, actor, at: this.now() });
-    }
-    return { external: cur, contractVersion: upd.version, mail };
+    await this.d.store.event({ externalId: x.id, kind: "changed_email", ref, detail: { signerEmail: a.signerEmail, ...mail }, actor: "system:mail", at: this.now() });
   }
 
   // ── 4. Cobros, renovaciones e impagos (webhooks y conciliación) ───────────

@@ -104,7 +104,7 @@ export class PlatformMailer {
         const r = await this.send(PLATFORM_TENANT, key, "contract_invitation", to, this.t.externalScheduled(i));
         return { status: r.status, reason: r.reason, duplicate: r.duplicate, id: r.id };
       },
-      // Condiciones modificadas antes de la aceptación (plantilla external.changed): mismo recorrido del contrato
+      // Modificación confirmada del servicio (plantilla external.changed): mismo recorrido del contrato
       changed: async (to, key, i) => {
         const r = await this.send(PLATFORM_TENANT, key, "contract_invitation", to, extraTemplates.externalChanged(i));
         return { status: r.status, reason: r.reason, duplicate: r.duplicate, id: r.id };

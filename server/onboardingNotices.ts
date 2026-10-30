@@ -3,7 +3,7 @@
  * onboarding.progress), por la bandeja de la empresa:
  *  - primer acceso al asistente sin ningún paso dado: guía de los primeros pasos (una sola vez);
  *  - al cruzar la mitad de los pasos sin haber terminado: progreso (una sola vez);
- *  - sin terminar a los 2 y 7 días del primer acceso: recordatorio con los pasos pendientes (tarea onboarding-reminder).
+ *  - sin terminar a los 3 días del primer acceso: recordatorio con los pasos pendientes (tarea onboarding-reminder).
  * Solo con una URL pública de la empresa (los enlaces van a su panel). Nunca rompen el asistente.
  */
 import { getTrustedBaseUrl } from "./_core/publicUrl";

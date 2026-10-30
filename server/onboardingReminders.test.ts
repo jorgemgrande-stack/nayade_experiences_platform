@@ -1,7 +1,6 @@
 /**
- * Recordatorios de «Primeros pasos» (onboarding.reminder): a los 2 y 7 días del primer acceso registrado, máximo dos,
- * idempotentes por empresa e hito, solo el más reciente con una pasada tardía, nunca sin primer acceso y se detienen al
- * completar el asistente. El correo lleva los pasos pendientes y el enlace al panel de la empresa.
+ * Recordatorios de «Primeros pasos» (onboarding.reminder): a los 3 días del primer acceso registrado, una sola vez,
+ * idempotente por empresa (reserva persistida), nunca sin primer acceso, con los pasos reales y nunca si están hechos. El correo lleva los pasos pendientes y el enlace al panel de la empresa.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -47,37 +46,38 @@ beforeEach(() => {
 });
 
 describe("recordatorios de primeros pasos", () => {
-  it("a los 2 y a los 7 días del primer acceso, una sola vez cada uno (máximo dos)", async () => {
+  it("a los 3 días del primer acceso, una sola vez (también tras reinicios: la reserva está persistida)", async () => {
     const c = company();
     expect(await runOnboardingReminders(T0 + DAY, c.deps)).toBeNull();
-    expect(await runOnboardingReminders(T0 + 2 * DAY, c.deps)).toBe(2);
-    expect(await runOnboardingReminders(T0 + 2 * DAY + 3600_000, c.deps)).toBeNull();
-    expect(await runOnboardingReminders(T0 + 6 * DAY, c.deps)).toBeNull();
-    expect(await runOnboardingReminders(T0 + 7 * DAY, c.deps)).toBe(7);
-    for (const d of [8, 15, 60]) expect(await runOnboardingReminders(T0 + d * DAY, c.deps)).toBeNull();
-    expect(sent.map((s) => s.idempotencyKey)).toEqual(["onboarding:reminder:2", "onboarding:reminder:7"]);
+    expect(await runOnboardingReminders(T0 + 3 * DAY - 1, c.deps)).toBeNull();
+    expect(await runOnboardingReminders(T0 + 3 * DAY, c.deps)).toBe(3);
+    for (const d of [3.1, 4, 8, 15, 60]) expect(await runOnboardingReminders(T0 + d * DAY, c.deps)).toBeNull();
+    expect(sent.map((s) => s.idempotencyKey)).toEqual(["onboarding:reminder:3"]);
     expect(sent[0]).toMatchObject({ to: who.email, category: "onboarding", subject: "Termina de configurar tu espacio de Big Elephant" });
     expect(sent[0].html).toContain("https://empresa-demo.app.bigelephant.example/admin/primeros-pasos");
   });
 
-  it("pasada tardía (tarea parada): solo el hito más reciente; el anterior queda cubierto y no se envía después", async () => {
+  it("pasada tardía (tarea parada): se envía una vez y no se repite", async () => {
     const c = company();
-    expect(await runOnboardingReminders(T0 + 9 * DAY, c.deps)).toBe(7);
+    expect(await runOnboardingReminders(T0 + 9 * DAY, c.deps)).toBe(3);
     expect(await runOnboardingReminders(T0 + 10 * DAY, c.deps)).toBeNull();
-    expect(sent.map((s) => s.idempotencyKey)).toEqual(["onboarding:reminder:7"]);
-    expect(Object.keys(c.state!.sent).sort()).toEqual(["2", "7"]);
+    expect(sent.map((s) => s.idempotencyKey)).toEqual(["onboarding:reminder:3"]);
+    expect(Object.keys(c.state!.sent)).toEqual(["3"]);
   });
 
-  it("se detienen al completar el asistente; llevan solo los pasos pendientes", async () => {
+  it("comprueba los pasos reales antes de enviar: solo los pendientes y nada si están hechos", async () => {
     const c = company();
     let p = markStep(emptyProgress(), "company", "done", T0 + DAY);
     p = markStep(p, "activity", "skipped", T0 + DAY);
     c.setProgress(p);
-    expect(await runOnboardingReminders(T0 + 2 * DAY, c.deps)).toBe(2);
+    expect(await runOnboardingReminders(T0 + 3 * DAY, c.deps)).toBe(3);
     expect(sent[0].html).not.toContain(">Empresa<");
     expect(sent[0].html).toContain("Primer cliente");
-    c.setProgress(markStep(p, "finish", "done", T0 + 3 * DAY));
-    expect(await runOnboardingReminders(T0 + 7 * DAY, c.deps)).toBeNull();
+    // Asistente completado antes del día 3: no se envía nada
+    const done = company();
+    done.setProgress(markStep(p, "finish", "done", T0 + 2 * DAY));
+    expect(await runOnboardingReminders(T0 + 3 * DAY, done.deps)).toBeNull();
+    expect(done.state!.sent).toEqual({});
     expect(sent).toHaveLength(1);
   });
 
@@ -88,23 +88,22 @@ describe("recordatorios de primeros pasos", () => {
     expect(sent).toHaveLength(0);
     const c = company();
     mailOk = false;
-    expect(await runOnboardingReminders(T0 + 2 * DAY, c.deps)).toBeNull();
+    expect(await runOnboardingReminders(T0 + 3 * DAY, c.deps)).toBeNull();
     expect(c.state!.sent).toEqual({});
     mailOk = true;
-    expect(await runOnboardingReminders(T0 + 2 * DAY + 3600_000, c.deps)).toBe(2);
+    expect(await runOnboardingReminders(T0 + 3 * DAY + 3600_000, c.deps)).toBe(3);
     expect(sent).toHaveLength(1);
   });
 
   it("hito debido (puro) y lectura tolerante del estado guardado", () => {
     const st = { firstAccessAt: T0, userId: 1, sent: {} };
     expect(dueReminder(null, emptyProgress(), T0 + 30 * DAY)).toBeNull();
-    expect(dueReminder(st, emptyProgress(), T0 + 2 * DAY - 1)).toBeNull();
-    expect(dueReminder(st, emptyProgress(), T0 + 2 * DAY)).toBe(2);
-    expect(dueReminder({ ...st, sent: { "2": T0 } }, emptyProgress(), T0 + 3 * DAY)).toBeNull();
-    expect(dueReminder({ ...st, sent: { "2": T0 } }, emptyProgress(), T0 + 7 * DAY)).toBe(7);
+    expect(dueReminder(st, emptyProgress(), T0 + 3 * DAY - 1)).toBeNull();
+    expect(dueReminder(st, emptyProgress(), T0 + 3 * DAY)).toBe(3);
+    expect(dueReminder({ ...st, sent: { "3": T0 } }, emptyProgress(), T0 + 7 * DAY)).toBeNull();
     expect(parseReminderState(null)).toBeNull();
     expect(parseReminderState("no-json")).toBeNull();
     expect(parseReminderState(JSON.stringify({ userId: 1 }))).toBeNull();
-    expect(parseReminderState(JSON.stringify({ firstAccessAt: T0, userId: 3, sent: { "2": T0, "7": "x" } }))).toEqual({ firstAccessAt: T0, userId: 3, sent: { "2": T0 } });
+    expect(parseReminderState(JSON.stringify({ firstAccessAt: T0, userId: 3, sent: { "3": T0, "7": "x" } }))).toEqual({ firstAccessAt: T0, userId: 3, sent: { "3": T0 } });
   });
 });
