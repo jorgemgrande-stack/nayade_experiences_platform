@@ -1,5 +1,5 @@
 /**
- * Solicitudes RGPD (CRM 0034): responsable, historial, filtros de listado y API /cp/v1/data-requests con sus permisos
+ * Solicitudes RGPD (CRM 0032): responsable, historial, filtros de listado y API /cp/v1/data-requests con sus permisos
  * (lectura con crm:read, cambios con crm:write) y el actor de cada evento.
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";

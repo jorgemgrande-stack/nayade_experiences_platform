@@ -43,7 +43,7 @@ describe("catálogo", () => {
       expect(a.source, a.id).not.toBe("—");
       expect(a.pending, a.id).toBeUndefined();
     }
-    expect(ADMIN_ALERTS.filter((a) => a.state === "pendiente").map((a) => a.n)).toEqual([14]);
+    expect(ADMIN_ALERTS.filter((a) => a.state === "pendiente").map((a) => a.n)).toEqual([]);
   });
 });
 

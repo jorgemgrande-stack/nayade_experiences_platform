@@ -65,9 +65,22 @@ export const CIRCUIT: Readonly<Record<string, TemplateCircuit>> = {
   "usage.near_limit": "programada",
   "usage.limit_reached": "programada",
   "access.archive_notice": "programada",
+  "onboarding.reminder": "programada",
+  // Alertas internas de la revisión periódica (gracia a punto de vencer y tickets sin respuesta)
+  "admin.suspension_near": "programada",
+  "admin.ticket_unanswered": "programada",
+  "admin.ticket_escalated": "programada",
   // Envíos de una persona del equipo desde el CRM
   "contract.invitation": "manual",
   "contract.payment_setup": "manual",
+  // Centro de envíos del CRM (server/communications): servicio, encuesta de soporte y comerciales con consentimiento
+  "product.update": "manual",
+  "ops.maintenance": "manual",
+  "ops.customer_incident": "manual",
+  "support.survey": "manual",
+  "marketing.news": "manual",
+  "marketing.recommendation": "manual",
+  "marketing.campaign": "manual",
 };
 export function circuitOf(id: string, state: TemplateState): TemplateCircuit {
   return CIRCUIT[id] ?? (state === "externa" ? "externa" : state === "sin_disparador" ? "pendiente" : "automatica");
@@ -90,18 +103,18 @@ export const TEMPLATES: readonly TemplateEntry[] = [
   e("trial.verification_resent", "Nuevo enlace de verificación", "acceso", "security", "controlplane", "Reenvío del enlace de verificación", "conectada", () => t.emailVerificationResent({ verifyUrl: "https://www.bigelephant.example/prueba-gratuita/verificar?muestra=2" })),
   e("account.password_reset", "Restablecimiento de contraseña (usuarios de empresa)", "acceso", "security", "core", "POST /api/auth/forgot-password", "conectada", () => passwordResetContent({ name: "Ana Demo", url: `https://${HOST}/nueva-contrasena?muestra=1`, minutes: 60, account: "Big Elephant CRM (Empresa Demo)" })),
   e("operator.password_reset", "Restablecimiento de contraseña (administración central)", "acceso", "security", "controlplane", "POST /cp/v1/auth/password-reset/request", "conectada", () => passwordResetContent({ name: null, url: "https://admin.bigelephant.example/#/restablecer?muestra=1", minutes: 30, account: "Big Elephant CRM (administración central)" })),
-  e("security.password_changed", "Contraseña modificada", "acceso", "security", "core", "Contraseña restablecida (POST /api/auth/reset-password)", "conectada", P("security.password_changed")),
-  e("security.new_login", "Inicio de sesión desde un dispositivo nuevo", "acceso", "security", "core", "Inicio de sesión desde un dispositivo no visto antes (POST /api/auth/login y acceso centralizado)", "conectada", P("security.new_login")),
+  e("security.password_changed", "Contraseña modificada", "acceso", "security", "core", "Contraseña restablecida (POST /api/auth/reset-password) · operadores del CRM: contraseña cambiada, restablecida por enlace o fijada por un administrador", "conectada", P("security.password_changed")),
+  e("security.new_login", "Inicio de sesión desde un dispositivo nuevo", "acceso", "security", "core", "Usuarios de empresa: inicio de sesión desde un dispositivo no visto antes (POST /api/auth/login y acceso centralizado) · Operadores del CRM: acceso completo (tras el segundo factor, si lo tiene) con un navegador y sistema que no aparecen en sus sesiones de los últimos 90 días; nunca en el primer acceso", "conectada", P("security.new_login")),
   e("security.mfa_changed", "Verificación en dos pasos modificada", "acceso", "security", "controlplane", "Activación o retirada del segundo factor de un operador del CRM (las empresas aún no tienen segundo factor)", "conectada", P("security.mfa_changed")),
   e("account.invite", "Invitación a un usuario de la empresa", "acceso", "security", "core", "Alta de usuario con invitación (sendInviteEmail)", "conectada", () => inviteContent({ name: "Pablo Demo", company: "Empresa Demo", role: "manager", url: `https://${HOST}/establecer-contrasena?muestra=1`, hours: 72 })),
-  e("account.email_changed", "Cambio de dirección de correo", "acceso", "security", "core", "Cambio del correo de acceso confirmado (accountSecurity.confirmEmailChange): aviso al correo anterior", "conectada", () => emailChangedContent({ brand: "Empresa Demo", name: "Ana Demo", oldEmail: "ana.antigua@empresa-demo.example", newEmail: "ana@empresa-demo.example", at: new Date(PREVIEW_NOW) })),
-  e("account.email_verify", "Verificación del nuevo correo de acceso", "acceso", "security", "core", "Solicitud de cambio del correo de acceso (accountSecurity.requestEmailChange): enlace al correo nuevo", "conectada", () => emailChangeVerifyContent({ brand: "Empresa Demo", name: "Ana Demo", newEmail: "ana@empresa-demo.example", url: `https://${HOST}/admin/verificar-correo?muestra=1`, minutes: 60 })),
+  e("account.email_changed", "Cambio de dirección de correo", "acceso", "security", "core", "Usuarios de empresa: cambio del correo de acceso confirmado (accountSecurity.confirmEmailChange), aviso al correo anterior · Operadores del CRM: cambio confirmado desde el correo nuevo (GET/POST /cp/v1/auth/email-change/confirm), aviso al anterior y al nuevo", "conectada", () => emailChangedContent({ brand: "Empresa Demo", name: "Ana Demo", oldEmail: "ana.antigua@empresa-demo.example", newEmail: "ana@empresa-demo.example", at: new Date(PREVIEW_NOW) })),
+  e("account.email_verify", "Verificación del nuevo correo de acceso", "acceso", "security", "core", "Usuarios de empresa: solicitud de cambio del correo de acceso (accountSecurity.requestEmailChange) · Operadores del CRM: cambio del correo en PATCH /cp/v1/operators/:id (también por un administrador), enlace de un solo uso de 24 h al correo nuevo", "conectada", () => emailChangeVerifyContent({ brand: "Empresa Demo", name: "Ana Demo", newEmail: "ana@empresa-demo.example", url: `https://${HOST}/admin/verificar-correo?muestra=1`, minutes: 60 })),
   // ── B. Onboarding y periodo de prueba ──
   e("trial.started", "Bienvenida a Big Elephant (prueba activada)", "onboarding", "experiential", "controlplane", "Prueba aprovisionada", "conectada", P("trial.started")),
   e("tenant.welcome", "Bienvenida (alta asistida)", "onboarding", "experiential", "controlplane", "Plataforma creada desde el CRM", "conectada", () => t.tenantWelcome({ companyName: "Empresa Demo, S.L.", host: HOST, setPasswordUrl: `https://${HOST}/establecer-contrasena?muestra=1` })),
   e("onboarding.steps", "Primeros pasos de configuración", "onboarding", "experiential", "core", "Primer acceso al asistente de Primeros pasos sin ningún paso dado", "conectada", () => x.onboardingSteps({ name: "Ana Demo", host: HOST })),
   e("onboarding.progress", "Progreso de la configuración", "onboarding", "experiential", "core", "La configuración cruza la mitad de los pasos", "conectada", () => x.onboardingProgress({ name: "Ana Demo", host: HOST, done: 3, total: 5 })),
-  e("onboarding.reminder", "Recordatorio de configuración incompleta", "onboarding", "experiential", "core", "Primeros pasos sin terminar a los 3 días", "sin_disparador", () => x.onboardingReminder({ name: "Ana Demo", host: HOST, pending: ["Datos de tu empresa", "Invitar a tu equipo"] })),
+  e("onboarding.reminder", "Recordatorio de configuración incompleta", "onboarding", "experiential", "core", "Primeros pasos sin terminar a los 3 días del primer acceso (tarea programada onboarding-reminder, con los pasos reales)", "conectada", () => x.onboardingReminder({ name: "Ana Demo", host: HOST, pending: ["Datos de tu empresa", "Invitar a tu equipo"] })),
   e("trial.reminder", "Prueba: quedan 7 días", "onboarding", "experiential", "controlplane", "Planificador de pruebas (aviso a 7 días)", "conectada", P("trial.reminder")),
   e("trial.reminder_2", "Prueba: quedan 2 días", "onboarding", "experiential", "controlplane", "Planificador de pruebas (umbral configurable)", "conectada", () => t.trialExpiry({ endsAt: PREVIEW_NOW + 2 * DAY, daysLeft: 2, pricingUrl: "https://www.bigelephant.example/precios" })),
   e("trial.ended", "Prueba finalizada", "onboarding", "experiential", "controlplane", "Fin de la prueba", "conectada", P("trial.ended")),
@@ -118,7 +131,7 @@ export const TEMPLATES: readonly TemplateEntry[] = [
   e("subscription.plan_changed", "Cambio de plan", "contratacion", "transactional", "controlplane", "subscription.plan_changed", "conectada", P("subscription.plan_changed")),
   e("module.quantity_changed", "Ampliación de usuarios, sedes o almacenamiento", "contratacion", "transactional", "controlplane", "subscription.quantity_changed", "conectada", P("module.quantity_changed")),
   e("module.removal_scheduled", "Baja de un módulo programada", "contratacion", "transactional", "controlplane", "subscription.module_removed", "conectada", P("module.removal_scheduled")),
-  e("module.removal_effective", "Baja de un módulo aplicada", "contratacion", "transactional", "controlplane", "Renovación que aplica la baja", "sin_disparador", P("module.removal_effective")),
+  e("module.removal_effective", "Baja de un módulo aplicada", "contratacion", "transactional", "controlplane", "subscription.module_removal_effective", "conectada", P("module.removal_effective")),
   e("module.purchase_requested", "Compra de módulo pendiente de pago", "contratacion", "transactional", "controlplane", "Compra enviada a Stripe con el cobro pendiente (autenticación o pago fallido)", "conectada", P("module.purchase_requested")),
   e("module.purchase_failed", "Compra no completada", "contratacion", "transactional", "controlplane", "order.rejected (compra desde la plataforma)", "conectada", P("module.purchase_failed")),
   e("subscription.renewal_paid", "Renovación de la suscripción", "contratacion", "transactional", "controlplane", "Renovación cobrada", "conectada", P("subscription.renewal_paid")),
@@ -144,26 +157,26 @@ export const TEMPLATES: readonly TemplateEntry[] = [
   e("access.archive_notice", "Aviso de archivado", "empresas", "security", "controlplane", "access.archive_notice", "conectada", P("access.archive_notice")),
   e("tenant.domain_connected", "Dominio propio conectado", "empresas", "transactional", "controlplane", "Dominio propio activado en la plataforma", "conectada", () => x.domainConnected({ domain: "www.empresa-demo.example" })),
   e("tenant.domain_pending", "Dominio pendiente de validación", "empresas", "transactional", "controlplane", "Alta de un dominio propio pendiente de validar", "conectada", () => x.domainPending({ domain: "www.empresa-demo.example", record: "CNAME", value: "empresa-demo.app.bigelephant.example" })),
-  e("external.changed", "Servicio externo modificado o renovado", "empresas", "transactional", "controlplane", "Cambio de condiciones del servicio", "sin_disparador", () => x.externalChanged({ ...ext, effectiveAt: PREVIEW_NOW + 10 * DAY })),
+  e("external.changed", "Servicio externo modificado o renovado", "empresas", "transactional", "controlplane", "Cambio confirmado del servicio: decisión sobre la fecha del primer cargo o versión nueva del contrato aceptada", "conectada", () => x.externalChanged({ ...ext, effectiveAt: PREVIEW_NOW + 10 * DAY, change: "first_charge", contractVersion: null })),
   e("data.export_ready", "Exportación de datos lista", "empresas", "security", "core", "Exportación generada", "conectada", P("data.export_ready")),
   e("data.export_failed", "Exportación de datos fallida", "empresas", "security", "core", "Exportación fallida", "conectada", P("data.export_failed")),
   // ── F. Producto y operaciones ──
   e("module.activated", "Nuevo módulo activado", "producto", "experiential", "controlplane", "subscription.module_added", "conectada", P("module.activated")),
   e("usage.near_limit", "Consumo cerca del límite", "producto", "security", "controlplane", "Consumo al 80 % (Resource Manager)", "conectada", P("usage.near_limit")),
   e("usage.limit_reached", "Límite de consumo alcanzado", "producto", "security", "controlplane", "Consumo al 100 % (Resource Manager)", "conectada", P("usage.limit_reached")),
-  e("product.update", "Actualización importante del producto", "producto", "experiential", "controlplane", "Publicación de una versión", "sin_disparador", () => x.productUpdate({ title: "Nuevos informes de ventas", points: ["Panel de ventas en tiempo real", "Exportación a Excel", "Filtros por equipo"], url: "https://www.bigelephant.example/novedades" })),
-  e("ops.maintenance", "Mantenimiento programado", "producto", "security", "controlplane", "Ventana de mantenimiento", "sin_disparador", () => x.maintenance({ start: PREVIEW_NOW + 3 * DAY, minutes: 30 })),
-  e("ops.customer_incident", "Incidencia técnica y resolución", "producto", "security", "controlplane", "Incidencia de servicio comunicada a clientes", "sin_disparador", () => x.incident({ title: "Envío de correos restablecido", resolved: true, detail: "Entre las 10:00 y las 10:40 algunos correos se enviaron con retraso. El servicio funciona con normalidad." })),
+  e("product.update", "Actualización importante del producto", "producto", "experiential", "controlplane", "Envío manual desde el Centro de envíos del CRM (Comunicaciones › Centro de envíos): contenido, destinatarios, vista previa, elegibilidad y confirmación de un operador", "conectada", () => x.productUpdate({ title: "Nuevos informes de ventas", points: ["Panel de ventas en tiempo real", "Exportación a Excel", "Filtros por equipo"], url: "https://www.bigelephant.example/novedades" })),
+  e("ops.maintenance", "Mantenimiento programado", "producto", "security", "controlplane", "Envío manual desde el Centro de envíos del CRM: ventana de mantenimiento anunciada por un operador, con vista previa, elegibilidad y confirmación", "conectada", () => x.maintenance({ start: PREVIEW_NOW + 3 * DAY, minutes: 30 })),
+  e("ops.customer_incident", "Incidencia técnica y resolución", "producto", "security", "controlplane", "Envío manual desde el Centro de envíos del CRM: incidencia (o su resolución) comunicada por un operador, con vista previa, elegibilidad y confirmación", "conectada", () => x.incident({ title: "Envío de correos restablecido", resolved: true, detail: "Entre las 10:00 y las 10:40 algunos correos se enviaron con retraso. El servicio funciona con normalidad." })),
   // ── G. Soporte ──
   e("support.ticket_received", "Ticket recibido", "soporte", "security", "controlplane", "Ticket creado", "conectada", P("support.ticket_received")),
   e("support.ticket_replied", "Respuesta a un ticket", "soporte", "security", "controlplane", "Respuesta pública del equipo", "conectada", P("support.ticket_replied")),
   e("support.ticket_resolved", "Ticket resuelto", "soporte", "security", "controlplane", "Ticket resuelto", "conectada", P("support.ticket_resolved")),
   e("support.ticket_reopened", "Ticket reabierto", "soporte", "security", "controlplane", "Ticket reabierto", "conectada", P("support.ticket_reopened")),
-  e("support.survey", "Encuesta de satisfacción", "soporte", "security", "controlplane", "Ticket resuelto (encuesta posterior)", "sin_disparador", () => x.survey({ ticketRef: "SOP-0137", url: "https://www.bigelephant.example/encuesta?muestra=1" })),
+  e("support.survey", "Encuesta de satisfacción", "soporte", "security", "controlplane", "Envío manual desde el Centro de envíos del CRM a los solicitantes de tickets resueltos; enlace firmado por ticket a la página de encuesta y valoraciones en el CRM", "conectada", () => x.survey({ ticketRef: "SOP-0137", url: "https://www.bigelephant.example/encuesta?muestra=1" })),
   // ── H. Comerciales (exigen consentimiento; baja en el pie) ──
-  e("marketing.news", "Novedades y funcionalidades", "comercial", "experiential", "crm", "Campaña manual con consentimiento", "sin_disparador", () => x.news({ url: "https://www.bigelephant.example/novedades" })),
-  e("marketing.recommendation", "Recomendación personalizada de módulos", "comercial", "experiential", "crm", "Campaña manual con consentimiento", "sin_disparador", () => x.recommendation({ module: "Reservas online", reason: "Por la actividad de tu empresa, este módulo puede ahorrarte horas de gestión cada semana.", url: "https://www.bigelephant.example/modulos" })),
-  e("marketing.campaign", "Campaña promocional o lanzamiento", "comercial", "experiential", "crm", "Campaña manual con consentimiento", "sin_disparador", () => x.campaign({ title: "Lleva tu negocio más lejos", text: "Descubre la nueva generación de Big Elephant: más automatización, más control y una experiencia pensada para crecer.", url: "https://www.bigelephant.example/" })),
+  e("marketing.news", "Novedades y funcionalidades", "comercial", "experiential", "crm", "Envío manual desde el Centro de envíos del CRM, solo a contactos con consentimiento vigente para su finalidad y sin baja; enlace de baja firmado en el pie", "conectada", () => x.news({ url: "https://www.bigelephant.example/novedades" })),
+  e("marketing.recommendation", "Recomendación personalizada de módulos", "comercial", "experiential", "crm", "Envío manual desde el Centro de envíos del CRM, solo a contactos con consentimiento vigente para su finalidad y sin baja; enlace de baja firmado en el pie", "conectada", () => x.recommendation({ module: "Reservas online", reason: "Por la actividad de tu empresa, este módulo puede ahorrarte horas de gestión cada semana.", url: "https://www.bigelephant.example/modulos" })),
+  e("marketing.campaign", "Campaña promocional o lanzamiento", "comercial", "experiential", "crm", "Envío manual desde el Centro de envíos del CRM, solo a contactos con consentimiento vigente para su finalidad y sin baja; enlace de baja firmado en el pie", "conectada", () => x.campaign({ title: "Lleva tu negocio más lejos", text: "Descubre la nueva generación de Big Elephant: más automatización, más control y una experiencia pensada para crecer.", url: "https://www.bigelephant.example/" })),
   // ── Avisos internos del equipo ──
   e("ops.lead_request", "Nueva solicitud desde la web (interno)", "interna", "security", "controlplane", "Formulario de la web comercial", "interna", () => t.leadRequestNotice({ typeLabel: "Solicitud de demostración", reference: "SOL-2026-0042", receivedAt: PREVIEW_NOW, company: "Empresa Demo, S.L.", name: "Laura Demo", email: "laura@empresa-demo.example", phone: "+34 600 000 000", sector: "Servicios", product: "Big Elephant Business", message: "Nos gustaría ver una demostración del CRM.", sourcePage: "/precios", owner: null, crmUrl: "https://admin.bigelephant.example/#/comercial/leads" })),
   // ── D. Administración Big Elephant (alertas internas; sustituyen a los avisos ops.incident, ops.new_customer,
@@ -173,16 +186,6 @@ export const TEMPLATES: readonly TemplateEntry[] = [
 
 /** Motivo funcional de cada plantilla sin disparador (lo que tendría que existir en el producto). */
 export const PENDING_REASON: Readonly<Record<string, string>> = {
-  "onboarding.reminder": "Necesita una tarea periódica nueva por empresa en el arranque del Core; es un cambio de infraestructura que va en un despliegue aislado.",
-  "module.removal_effective": "La baja efectiva la aplica la sincronización de licencias sin emitir ningún hecho con el producto retirado; solo existe el evento al programarla (que ya avisa).",
-  "external.changed": "El producto no permite modificar las condiciones de un servicio externo (solo la fecha del primer cargo).",
-  "product.update": "No existe una herramienta de comunicados de servicio con selección de destinatarios y aprobación; un envío masivo automático no está permitido.",
-  "ops.maintenance": "No existen ventanas de mantenimiento ni página de estado en el producto.",
-  "ops.customer_incident": "No hay comunicados de incidencias a clientes: requiere la herramienta de comunicados de servicio con aprobación.",
-  "support.survey": "No existe la recogida de valoraciones de soporte (página de encuesta y almacenamiento).",
-  "marketing.news": "Comunicación comercial: requiere un registro de consentimiento por contacto y gestión de bajas en el CRM, y un envío manual aprobado. No se activa sola.",
-  "marketing.recommendation": "Comunicación comercial: requiere un registro de consentimiento por contacto y gestión de bajas en el CRM, y un envío manual aprobado. No se activa sola.",
-  "marketing.campaign": "Comunicación comercial: requiere un registro de consentimiento por contacto y gestión de bajas en el CRM, y un envío manual aprobado. No se activa sola.",
   ...Object.fromEntries(ADMIN_ALERTS.filter((a) => a.pending).map((a) => [a.id, a.pending!])),
 };
 

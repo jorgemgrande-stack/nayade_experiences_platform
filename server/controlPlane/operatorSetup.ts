@@ -24,6 +24,7 @@ import { OperatorAuthService, type OperatorAuthOptions, type ResetMailer } from 
 import { isRole, type OperatorRole } from "./operatorRoles";
 import { MysqlOperatorStore } from "./operatorStore";
 import { missingMfaKeys } from "./operatorMfaKeys";
+import { crmUrlFromEnv } from "../crm/leadNotices";
 
 function smtpMailer(url: string, from: string): ResetMailer {
   const transport = nodemailer.createTransport(url);
@@ -56,7 +57,7 @@ export async function operatorAuthFromEnv(
   pool: mysql.Pool,
   env: NodeJS.ProcessEnv,
   /** `resetMailer`: alternativa al SMTP propio (p. ej. la bandeja de salida de la plataforma, operatorResetMail.ts). */
-  opts: { keyring?: Keyring; resetMailer?: ResetMailer; securityNotice?: OperatorAuthOptions["securityNotice"] } = {},
+  opts: { keyring?: Keyring; resetMailer?: ResetMailer; securityNotice?: OperatorAuthOptions["securityNotice"]; securityMail?: OperatorAuthOptions["securityMail"] } = {},
 ): Promise<OperatorAuthSetup> {
   const cookieSecure = env.CP_COOKIE_SECURE === "true" ? true : env.CP_COOKIE_SECURE === "false" ? false : "auto";
   if (env.CP_OPERATOR_AUTH === "off") return { cookieSecure, reason: "desactivado (CP_OPERATOR_AUTH=off)" };
@@ -94,7 +95,17 @@ export async function operatorAuthFromEnv(
   const smtp = env.CP_RESET_SMTP_URL && env.CP_RESET_FROM ? smtpMailer(env.CP_RESET_SMTP_URL, env.CP_RESET_FROM) : undefined;
   const mail = env.CP_RESET_URL ? (smtp ?? opts.resetMailer) : undefined;
   const resetTransport = !mail ? null : smtp ? "smtp" : "outbox";
-  const service = new OperatorAuthService(new MysqlOperatorStore(pool, { mfa: mfaColumns }), {
+  // Cambio de correo verificado: con la migración 0015. Sin ella, el cambio de correo se rechaza (no se aplica sin verificar)
+  let emailChanges = false;
+  try {
+    await pool.query("SELECT token_hash FROM cp_operator_email_changes LIMIT 0");
+    emailChanges = true;
+  } catch (e: any) {
+    if (e?.code !== "ER_NO_SUCH_TABLE") throw e;
+  }
+  // La página de confirmación la sirve el plano de control en el mismo origen que el CRM (/cp/v1 tras su pasarela)
+  const crmOrigin = crmUrlFromEnv(env);
+  const service = new OperatorAuthService(new MysqlOperatorStore(pool, { mfa: mfaColumns, emailChanges }), {
     idleMs: Math.min(Math.max(Number.isFinite(idle) ? idle : 120, 5), 24 * 60) * 60_000,
     maxMs: Math.min(Math.max(Number.isFinite(max) ? max : 12, 1), 24) * 3600_000,
     mailer: mail,
@@ -102,6 +113,8 @@ export async function operatorAuthFromEnv(
     mfaKeyring: mfaColumns ? opts.keyring : undefined,
     mfaRequiredRoles: requiredRoles,
     securityNotice: opts.securityNotice,
+    securityMail: opts.securityMail,
+    emailChangeUrl: crmOrigin ? `${crmOrigin}/cp/v1/auth/email-change/confirm` : undefined,
   });
   if (service.mfaMisconfigured) {
     console.error(

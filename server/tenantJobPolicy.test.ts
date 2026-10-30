@@ -66,7 +66,7 @@ describe("política multiempresa de las tareas programadas", () => {
     const src = fs.readFileSync(path.resolve(__dirname, "_core/index.ts"), "utf8");
     const block = src.slice(src.indexOf("const SCHEDULED_JOBS"), src.indexOf("];", src.indexOf("const SCHEDULED_JOBS")));
     const names = Array.from(block.matchAll(/name: "([^"]+)"/g)).map((m) => m[1]);
-    expect(names.length).toBe(11);
+    expect(names.length).toBe(12);
     for (const n of names) expect(JOB_MULTI_POLICIES[n], n).toBeDefined();
     expect(Object.keys(JOB_MULTI_POLICIES).sort()).toEqual([...names].sort());
   });

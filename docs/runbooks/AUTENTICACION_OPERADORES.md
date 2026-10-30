@@ -112,6 +112,16 @@ TOTP estándar (RFC 6238: 6 cifras, 30 s), compatible con Google Authenticator, 
 
   Solo después se puede valorar retirar la autenticación básica de la pasarela en `admin.bigelephant.es`.
 
+## Avisos de seguridad y cambio de correo
+
+Por la bandeja de la plataforma, con su política (modo, autorizados y ámbito `security_notice`). Un fallo de un aviso nunca rompe la operación.
+
+- **Contraseña cambiada** (`security.password_changed`): cambio propio, restablecimiento por enlace, contraseña fijada por un administrador o desde el servidor.
+- **Inicio de sesión desde un dispositivo nuevo** (`security.new_login`): tras el acceso completo (con el segundo factor, si lo tiene). El dispositivo es la familia de navegador y el sistema del user-agent (no la IP). Avisa solo si ninguna sesión de los últimos 90 días (sin contar las que se quedaron a la espera del código) tiene ese dispositivo; el primer acceso y un user-agent no identificable no avisan. Una clave por sesión. No toca ninguna sesión. Sin geolocalización: no hay ubicación en el aviso. Necesita el origen del CRM (`CP_CRM_URL` o `CP_RESET_URL`) para el botón.
+- **Cambio de correo verificado** (`account.email_verify` y `account.email_changed`): el correo nuevo de `PATCH /operators/:id` (también si lo cambia un administrador) queda **pendiente** hasta que se confirme con un enlace de un solo uso de 24 h enviado a ese correo (categoría `email_verification`). El enlace abre `GET /cp/v1/auth/email-change/confirm` (página sin efectos) y el botón confirma con `POST` (mismo origen, límite de intentos). Al confirmar se aplica, se cierran las sesiones del operador y se avisa al correo antiguo y al nuevo. Pedir otro cambio anula el enlace anterior; si el correo vigente cambia entretanto, el enlace deja de valer. Retirar el correo (sin correo) se aplica en el acto.
+- **Requisitos:** migración `db/registry/0015_operator_email_changes.sql`, origen del CRM y ámbito con `email_verification`. **Sin ellos, el cambio de correo se rechaza** (`email_change_unavailable`, 503) en lugar de aplicarse sin verificar. El arranque lo indica: `{"ctx":"OperatorAuth",…,"emailChange":false}` y `/auth/options` devuelve `emailChange`.
+- **Auditoría:** `new_device_notice`, `email_change_requested`, `email_changed`.
+
 ## Riesgos y pendientes
 
 - **Producción:** no está desplegado ni activado. Requiere revisión de seguridad, migración 0007 en el registro de producción, HTTPS con el CRM y el plano de control en el mismo sitio, `CP_TRUST_PROXY` correcto y alta del primer superadministrador.

@@ -99,6 +99,28 @@ export interface ExternalMail {
   paymentSetup?(to: string, idempotencyKey: string, i: PaymentSetupMail): Promise<{ status: string; reason: string | null; duplicate: boolean; id?: number | null }>;
   /** Servicio contratado: suscripción creada y programada tras la confirmación de Stripe (idempotente por clave). */
   scheduled?(to: string, idempotencyKey: string, i: ScheduledMail): Promise<{ status: string; reason: string | null; duplicate: boolean; id?: number | null }>;
+  /** Modificación CONFIRMADA del servicio (plantilla external.changed) al firmante (idempotente por clave). */
+  changed?(to: string, idempotencyKey: string, i: ChangedMail): Promise<{ status: string; reason: string | null; duplicate: boolean; id?: number | null }>;
+}
+/**
+ * Modificaciones confirmadas de un servicio externo que se comunican (external.changed y admin.external_changed):
+ *  - `first_charge`: decisión registrada sobre la primera mensualidad (nueva fecha de primer cargo; pasa de «pendiente de
+ *    decisión» a «programado»);
+ *  - `contract_version`: aceptación de una versión del contrato posterior a otra ya aceptada.
+ * Nunca hay cambios de importe: el producto no los permite.
+ */
+export type ExternalChangeKind = "first_charge" | "contract_version";
+export interface ChangedMail {
+  signerName: string | null;
+  companyName: string;
+  serviceName: string;
+  amountCents: number;
+  taxRateBp: number;
+  currency: string;
+  /** Primer cargo vigente tras el cambio. */
+  effectiveAt: number;
+  change: ExternalChangeKind;
+  contractVersion: number | null;
 }
 export interface ScheduledMail {
   signerName: string | null;
@@ -380,8 +402,16 @@ export class ExternalService {
     if (!ok) throw new ExternalError("invalid_state", "Este contrato ya está aceptado");
     await this.d.crm.setContractStatus(x.contractId, "signed", "public:acceptance", { signatureMethod: "electronic", signatureRef: `aceptacion:${a.id}:${doc.sha256.slice(0, 16)}` });
     const cur = await this.must(x.id);
-    await this.d.store.update(cur.id, cur.version, { status: "awaiting_payment_method" }, now);
+    const updated = await this.d.store.update(cur.id, cur.version, { status: "awaiting_payment_method" }, now);
     await this.d.store.event({ externalId: x.id, kind: "accepted", ref: String(a.id), detail: { acceptedName: name, version: doc.version, documentSha256: doc.sha256 }, actor: "public:acceptance", at: now });
+    // Nueva versión del contrato aceptada (había otra anterior ya aceptada): modificación confirmada del servicio
+    const previous = (await this.d.store.acceptances(x.contractId)).filter((p) => p.id !== a.id && p.status === "accepted" && p.contractVersion < doc.version);
+    if (previous.length) {
+      const from = Math.max(...previous.map((p) => p.contractVersion));
+      await this.notifyChanged(updated, "contract_version", { fields: ["contractVersion"], labels: ["Versión del contrato"], before: { contractVersion: from }, after: { contractVersion: doc.version }, contractVersion: doc.version }, "public:acceptance").catch(() =>
+        opsLog("warn", "External", "changed_notice_failed", { externalId: x.id }),
+      );
+    }
     await this.d.crm.log("contract", x.contractId, "note", `Contrato aceptado electrónicamente por ${name} (versión ${doc.version}, huella ${doc.sha256.slice(0, 16)}…)`, "public:acceptance");
     // Aviso interno: el siguiente paso (enlace de autorización del método de pago) lo da el equipo
     if (this.d.mail?.opsNotice) {
@@ -680,7 +710,46 @@ export class ExternalService {
     const cur = await this.d.store.update(x.id, x.version, { firstChargeAt: at }, now);
     await this.d.store.event({ externalId: x.id, kind: "first_charge_decided", ref: String(at), detail: { from: x.firstChargeAt, to: at, reason }, actor, at: now });
     await this.d.crm.log("contract", x.contractId, "note", `Cambio del calendario de cobro: primer cargo el ${input.firstChargeDate}. Motivo: ${reason}`, actor);
-    return this.schedule(cur, actor);
+    const done = await this.schedule(cur, actor);
+    // Cambio confirmado (fecha guardada y suscripción programada): aviso al firmante y alerta interna, una sola vez
+    await this.notifyChanged(done, "first_charge", { fields: ["firstChargeAt", "status"], labels: ["Primer cargo", "Estado"], before: { firstChargeAt: x.firstChargeAt, status: x.status }, after: { firstChargeAt: done.firstChargeAt, status: done.status }, reason }, actor).catch(() =>
+      opsLog("warn", "External", "changed_notice_failed", { externalId: x.id }),
+    );
+    return done;
+  }
+
+  // ── 3b. Modificaciones confirmadas: aviso al firmante y alerta interna ────
+  //
+  // Solo REACCIONA a operaciones ya guardadas (decisión del primer cargo, nueva versión del contrato aceptada). No cambia
+  // importes ni toca Stripe. El hecho «changed» del historial (uno por servicio, versión y tipo de cambio) lanza la
+  // alerta admin.external_changed; el correo lleva la misma identidad, así que repetir nunca duplica.
+
+  private async notifyChanged(x: ExternalSubscription, change: ExternalChangeKind, detail: Record<string, unknown>, actor: string) {
+    const ref = `${change}:v${x.version}`;
+    const { created } = await this.d.store.event({ externalId: x.id, kind: "changed", ref, detail: { change, ...detail }, actor, at: this.now() });
+    if (!created || !this.d.mail?.changed) return;
+    // Destinatario: el firmante de la aceptación vigente (el mismo que recibe «contract.scheduled»)
+    const a = (await this.d.store.acceptances(x.contractId)).filter((p) => p.status === "accepted").sort((p, q) => (q.acceptedAt ?? 0) - (p.acceptedAt ?? 0))[0];
+    if (!a) return;
+    let mail: { status: string; reason: string | null; outboxId?: number };
+    try {
+      const company = await this.d.crmStore.get("companies", x.companyId);
+      const r = await this.d.mail.changed(a.signerEmail, `external-changed:${this.d.namespace}:${x.id}:v${x.version}:${change}`, {
+        signerName: a.acceptedName ?? a.signerName,
+        companyName: company?.legalName ?? company?.name ?? "",
+        serviceName: x.serviceName,
+        amountCents: x.amountCents,
+        taxRateBp: x.taxRateBp,
+        currency: x.currency,
+        effectiveAt: x.firstChargeAt,
+        change,
+        contractVersion: typeof detail.contractVersion === "number" ? detail.contractVersion : null,
+      });
+      mail = { status: r.status, reason: r.reason, ...(r.id ? { outboxId: r.id } : {}) };
+    } catch (e) {
+      mail = { status: "failed", reason: (e instanceof Error ? e.message : "error").slice(0, 200) };
+    }
+    await this.d.store.event({ externalId: x.id, kind: "changed_email", ref, detail: { signerEmail: a.signerEmail, ...mail }, actor: "system:mail", at: this.now() });
   }
 
   // ── 4. Cobros, renovaciones e impagos (webhooks y conciliación) ───────────

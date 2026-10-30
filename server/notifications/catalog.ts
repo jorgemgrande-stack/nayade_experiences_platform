@@ -292,8 +292,20 @@ export const TEMPLATE_CATALOG: readonly TemplateSpec[] = [
     render: (v, o) => layout(brand(o.supportEmail), "No hemos podido completar tu compra", ["El pago no se completó a tiempo y no se ha hecho ningún cargo ni ningún cambio en tu suscripción. Puedes intentarlo de nuevo cuando quieras."], panel(v.host), { eyebrow: "Compra no completada", hero: "aviso" }),
   },
   {
-    ...contract("module.removal_effective", "module", "module_change", "Fin efectivo de la baja de un módulo (renovación)", "billing_contact", ["productName"], "En la renovación que aplica la baja"),
-    render: (v, o) => layout(brand(o.supportEmail), `${txt(v.productName, "El módulo")} ya no está activo`, ["La baja programada se ha aplicado con la renovación de tu suscripción. Tus datos se conservan."], null, { eyebrow: "Cambio de módulos", hero: "modulos" }),
+    id: "module.removal_effective",
+    version: 1,
+    group: "module",
+    status: "active",
+    audience: "transactional",
+    trigger: "Baja efectiva de un módulo: la sincronización de licencias lo retira al cumplirse la fecha de baja (LicensingService.apply)",
+    events: ["subscription.module_removal_effective"],
+    recipient: "billing_contact",
+    category: "module_change",
+    variables: ["productName"],
+    sendWhen: "Una vez por partida retirada, cuando sus licencias se cancelan de verdad (nunca al programar la baja)",
+    suppressWhen: "MAIL_MODE=off; sin contacto de facturación; paquete que sustituye al módulo (sus licencias siguen); fin de toda la suscripción",
+    idempotency: EVENT_KEY,
+    render: (v, o) => layout(brand(o.supportEmail), `${txt(v.productName, "El módulo")} ya no está activo`, ["La baja programada de tu suscripción ya se ha aplicado. Tus datos se conservan."], null, { eyebrow: "Cambio de módulos", hero: "modulos" }),
   },
   // ── Facturación ──
   legacy("billing.invoice_available", "billing", "invoice_available", "Factura de Stripe cobrada (orderNotifier)", "billing_contact", "Por cada cobro verificado en Stripe", "order:<id>:invoice_available:p<pago>"),
@@ -351,8 +363,8 @@ export const TEMPLATE_CATALOG: readonly TemplateSpec[] = [
   legacy("ops.withdrawal_requested", "support", "operational", "Solicitud de desistimiento registrada (withdrawalNotifier.receipt)", "ops_team", "Al registrar cada solicitud", "ops:withdrawal:<referencia>:<destinatario>"),
   legacy("ops.ticket_created", "support", "operational", "Ticket creado (ticketNotifier: received)", "ops_team", "Al crear cada ticket", "ops:ticket:<id>:created:<destinatario>"),
   // ── Seguridad (contratos; la autenticación no se modifica) ──
-  legacy("security.password_changed", "security", "security_notice", "Contraseña restablecida en el Core (POST /api/auth/reset-password → passwordChangedEmail)", "account_user", "Tras cada cambio (sin enlaces; sin copia global)", "bandeja de la empresa (una por cambio)"),
-  legacy("security.new_login", "security", "security_notice", "Inicio de sesión en el Core desde un dispositivo no visto antes (POST /api/auth/login y pase del acceso centralizado → accountSecurity/devices)", "account_user", "Una vez por usuario y dispositivo; el primer dispositivo registrado de cada usuario no avisa (sin copia global)", "security.new_login:<usuario>:<huella> (bandeja de la empresa)"),
+  legacy("security.password_changed", "security", "security_notice", "Contraseña restablecida en el Core (POST /api/auth/reset-password → passwordChangedEmail) o contraseña de un operador del CRM cambiada, restablecida por enlace o fijada por un administrador (OperatorAuthService → outboxOperatorSecurityMail)", "account_user", "Tras cada cambio (sin enlaces; sin copia global)", "bandeja de la empresa (una por cambio) · operator-password:<operador>:<instante>"),
+  legacy("security.new_login", "security", "security_notice", "Inicio de sesión en el Core desde un dispositivo no visto antes (POST /api/auth/login y pase del acceso centralizado → accountSecurity/devices) o de un operador del CRM con un navegador y sistema que no aparecen en sus sesiones de 90 días (OperatorAuthService → outboxOperatorSecurityMail)", "account_user", "Una vez por usuario y dispositivo; el primer dispositivo registrado de cada usuario no avisa; operadores: tras el acceso completo y nunca en el primer acceso (sin copia global)", "security.new_login:<usuario>:<huella> (bandeja de la empresa) · operator-new-login:<sesión>"),
   {
     ...contract("security.mfa_changed", "security", "security_notice", "Segundo factor de un operador activado o retirado (OperatorAuthService → outboxMfaNotice); las empresas aún no tienen segundo factor", "account_user", ["at", "enabled"], "Tras cada cambio"),
     status: "legacy",

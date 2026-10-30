@@ -33,8 +33,14 @@ export function newLoginContent(i: { brand: string; name: string | null; at: Dat
   });
 }
 
-/** Verificación del correo NUEVO: el cambio solo se aplica al abrir el enlace (un solo uso, caduca). */
-export function emailChangeVerifyContent(i: { brand: string; name: string | null; newEmail: string; url: string; minutes: number }) {
+/**
+ * Verificación del correo NUEVO: el cambio solo se aplica al abrir el enlace (un solo uso, caduca). `sessionRequired`
+ * (por defecto, sí): la confirmación exige la sesión iniciada (usuarios de empresa); los operadores del CRM confirman
+ * sin sesión. Plazos de dos horas o más se expresan en horas.
+ */
+export function emailChangeVerifyContent(i: { brand: string; name: string | null; newEmail: string; url: string; minutes: number; sessionRequired?: boolean }) {
+  const validity = i.minutes >= 120 && i.minutes % 60 === 0 ? `${i.minutes / 60} horas` : `${i.minutes} minutos`;
+  const session = i.sessionRequired === false ? "" : " Tendrás que tener la sesión iniciada con tu cuenta.";
   return renderEmail(platformBrand(null), {
     family: "security",
     eyebrow: "Seguridad de tu cuenta",
@@ -45,12 +51,12 @@ export function emailChangeVerifyContent(i: { brand: string; name: string | null
     intro: [`Se ha solicitado usar esta dirección como correo de acceso de tu cuenta de ${account(i.brand)}.`],
     blocks: [
       { card: { rows: [{ label: "Correo nuevo", value: i.newEmail }] } },
-      { notice: { tone: "info", text: `El enlace es válido durante ${i.minutes} minutos y solo puede usarse una vez. Tendrás que tener la sesión iniciada con tu cuenta.` } },
+      { notice: { tone: "info", text: `El enlace es válido durante ${validity} y solo puede usarse una vez.${session}` } },
       { button: { label: "Confirmar mi nuevo correo", url: i.url } },
       { h2: "Si no has solicitado este cambio" },
       { p: "Ignora este mensaje: el correo de tu cuenta no cambiará sin tu confirmación." },
     ],
-    preheader: `Confirma ${i.newEmail} como correo de acceso. El enlace caduca en ${i.minutes} minutos.`,
+    preheader: `Confirma ${i.newEmail} como correo de acceso. El enlace caduca en ${validity}.`,
   });
 }
 

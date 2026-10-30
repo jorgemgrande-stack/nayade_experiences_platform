@@ -12,8 +12,10 @@
 import crypto from "node:crypto";
 import type { PlatformMailer } from "../mail/platform";
 import { scopeAllows, type MailPolicy } from "../mail/policy";
-import type { ResetMailer } from "./operatorAuth";
+import type { OperatorSecurityMail, ResetMailer } from "./operatorAuth";
 import { passwordResetContent } from "../mail/accountTemplates";
+import { passwordChangedContent } from "../mail/securityTemplates";
+import { emailChangeVerifyContent, emailChangedContent, newLoginContent } from "../mail/accountSecurityTemplates";
 import { TEMPLATE_CATALOG } from "../notifications/catalog";
 
 /** Por qué la recuperación de contraseña de los operadores NO está disponible (null: lo está). Para el registro de arranque. */
@@ -50,4 +52,38 @@ export function outboxMfaNotice(mailer: PlatformMailer): (to: string, i: { key: 
     const content = spec.render!({ at: i.at, enabled: i.enabled }, { supportEmail: mailer.policy.supportEmail ?? null });
     await mailer.send(null, i.key, "security_notice", to, content);
   };
+}
+
+const OPERATOR_BRAND = "administración central";
+const OPERATOR_ACCOUNT = `Big Elephant CRM (${OPERATOR_BRAND})`;
+
+/**
+ * Correos de seguridad de los operadores por la bandeja de la plataforma, con su política (modo, autorizados y
+ * ámbito). Mismas plantillas que los usuarios de empresa: contraseña cambiada (security.password_changed), dispositivo
+ * nuevo (security.new_login), verificación del correo nuevo (account.email_verify, categoría email_verification) y
+ * correo cambiado (account.email_changed). La verificación solo se monta si el ámbito admite email_verification (si
+ * no, el cambio de correo no está disponible) y el aviso de dispositivo nuevo, si hay origen del CRM para su enlace.
+ */
+export function outboxOperatorSecurityMail(mailer: PlatformMailer, o: { notices: boolean; emailVerification: boolean; crmUrl?: string | null }): OperatorSecurityMail {
+  const out: OperatorSecurityMail = {};
+  if (o.notices) {
+    out.passwordChanged = async (to, i) => void (await mailer.send(null, i.key, "security_notice", to, passwordChangedContent(OPERATOR_ACCOUNT, i.name, new Date(i.at))));
+    // Sin geolocalización: el aviso no incluye ubicación (nunca se inventa). El botón lleva al acceso del CRM, donde
+    // está la recuperación de la contraseña
+    const crmUrl = o.crmUrl;
+    if (crmUrl) {
+      out.newLogin = async (to, i) =>
+        void (await mailer.send(null, i.key, "security_notice", to, newLoginContent({ brand: OPERATOR_BRAND, name: i.name, at: new Date(i.at), device: i.device, changePasswordUrl: `${crmUrl}/` })));
+    }
+    out.emailChanged = async (to, i) =>
+      void (await mailer.send(null, i.key, "security_notice", to, emailChangedContent({ brand: OPERATOR_BRAND, name: i.name, oldEmail: i.oldEmail, newEmail: i.newEmail, at: new Date(i.at) })));
+  }
+  if (o.emailVerification) {
+    out.emailChangeConfirmation = async (to, i) => {
+      // El enlace es un secreto: la bandeja borra cuerpo y destinatario al enviar; se intenta en el momento
+      await mailer.send(null, i.key, "email_verification", to, emailChangeVerifyContent({ brand: OPERATOR_BRAND, name: i.name, newEmail: i.newEmail, url: i.link, minutes: i.hours * 60, sessionRequired: false }));
+      await mailer.service.drain(5).catch(() => undefined);
+    };
+  }
+  return out;
 }

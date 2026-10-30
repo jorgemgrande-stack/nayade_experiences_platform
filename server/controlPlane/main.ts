@@ -96,7 +96,7 @@ import { SsoService, parseSsoUsers } from "./sso";
 import { createRemoteJWKSet } from "jose";
 import { operatorAuthFromEnv } from "./operatorSetup";
 import { DEFAULT_CORE_INTERNAL_URL, coreAccessClient } from "./tenantAccess";
-import { outboxMfaNotice, outboxResetMailer, resetUnavailableReason } from "./operatorResetMail";
+import { outboxMfaNotice, outboxOperatorSecurityMail, outboxResetMailer, resetUnavailableReason } from "./operatorResetMail";
 import { LeadNoticeService, MysqlSettingsStore, crmUrlFromEnv, settingsTablesReady } from "../crm/leadNotices";
 import { AdminAlertService } from "../adminAlerts/service";
 import { MysqlAdminAlertStore, adminAlertTablesReady } from "../adminAlerts/store";
@@ -105,6 +105,10 @@ import { startAlertCycle } from "../adminAlerts/runtime";
 import { DeployWatcher, RestoreDrillWatcher, SERVED_STATUSES, UptimeMonitor, githubGet, isTestTenant } from "../adminAlerts/operations";
 import { DataRequestService, operatorAssignees } from "../dataRequests/service";
 import { MysqlDataRequestStore, dataRequestTablesReady } from "../dataRequests/store";
+import { ConsentService, MysqlConsentStore, commsTablesReady } from "../communications/consent";
+import { LinkSigner, linkSecretFromDb } from "../communications/links";
+import { CommunicationsService } from "../communications/service";
+import { MysqlSendStore } from "../communications/store";
 
 async function main() {
   const tokens = parseTokens(process.env.CP_TOKENS);
@@ -287,7 +291,9 @@ async function main() {
   const operatorResetMailer = platformMail.mailer && mailPolicy.mode !== "off" && scopeAllows(mailPolicy, "platform", "password_reset") ? outboxResetMailer(platformMail.mailer) : undefined;
   // Aviso de seguridad al operador al activar o retirar su segundo factor (si el ámbito del correo lo permite)
   const operatorMfaNotice = platformMail.mailer && mailPolicy.mode !== "off" && scopeAllows(mailPolicy, "platform", "security_notice") ? outboxMfaNotice(platformMail.mailer) : undefined;
-  const operators = await operatorAuthFromEnv(pool, process.env, { keyring: ring, resetMailer: operatorResetMailer, securityNotice: operatorMfaNotice });
+  // Contraseña cambiada, dispositivo nuevo y cambio de correo verificado (la confirmación, solo si el ámbito admite email_verification)
+  const operatorSecurityMail = platformMail.mailer && mailPolicy.mode !== "off" ? outboxOperatorSecurityMail(platformMail.mailer, { notices: scopeAllows(mailPolicy, "platform", "security_notice"), emailVerification: scopeAllows(mailPolicy, "platform", "email_verification"), crmUrl: crmUrlFromEnv(process.env) }) : undefined;
+  const operators = await operatorAuthFromEnv(pool, process.env, { keyring: ring, resetMailer: operatorResetMailer, securityNotice: operatorMfaNotice, securityMail: operatorSecurityMail });
   // Avisos internos de solicitudes web (CRM 0025): destinatarios elegidos en el CRM entre los operadores; salen por la
   // bandeja de la plataforma con su política (modo, destinatarios autorizados, ámbito). Sin migración, no se monta.
   let leadNotices: LeadNoticeService | null = null;
@@ -308,7 +314,7 @@ async function main() {
     t.unref?.();
   }
   console.log(JSON.stringify({ ctx: "LeadNotices", mounted: !!leadNotices, ...(leadNotices ? leadNotices.status() : { reason: !crm ? "crm_not_configured" : "migration_0025_missing_or_no_operators" }), crmLink: !!crmUrlFromEnv(process.env) }));
-  console.log(JSON.stringify({ ctx: "OperatorAuth", enabled: !!operators.service, ...(operators.reason ? { reason: operators.reason } : {}), passwordReset: !!operators.service?.resetAvailable, resetTransport: operators.resetTransport ?? null, ...(operators.service && !operators.service.resetAvailable ? { resetUnavailable: resetUnavailableReason({ resetUrl: process.env.CP_RESET_URL, smtp: !!(process.env.CP_RESET_SMTP_URL && process.env.CP_RESET_FROM), mailer: !!platformMail.mailer, policy: mailPolicy }) } : {}), mfa: operators.mfa ?? null }));
+  console.log(JSON.stringify({ ctx: "OperatorAuth", enabled: !!operators.service, ...(operators.reason ? { reason: operators.reason } : {}), passwordReset: !!operators.service?.resetAvailable, resetTransport: operators.resetTransport ?? null, ...(operators.service && !operators.service.resetAvailable ? { resetUnavailable: resetUnavailableReason({ resetUrl: process.env.CP_RESET_URL, smtp: !!(process.env.CP_RESET_SMTP_URL && process.env.CP_RESET_FROM), mailer: !!platformMail.mailer, policy: mailPolicy }) } : {}), mfa: operators.mfa ?? null, emailChange: !!operators.service?.emailChangeAvailable }));
 
   // Web comercial (catálogo y contenidos): misma BD del CRM; solo si la migración 0004 está aplicada
   let web: { store: MysqlWebStore; onPublish?: (version: string) => void } | undefined;
@@ -569,9 +575,9 @@ async function main() {
   // Alertas administrativas (familia D, CRM 0030 y ajustes 0025): avisos internos a la administración por hechos
   // confirmados. Sin las tablas no se monta y los avisos internos siguen como antes (CP_ALERT_EMAIL).
   let adminAlerts: AdminAlertService | null = null;
-  // Solicitudes de derechos de protección de datos (RGPD, CRM 0034): registro desde el CRM con plazo legal de 30 días
+  // Solicitudes de derechos de protección de datos (RGPD, CRM 0032): registro desde el CRM con plazo legal de 30 días
   const dataRequests = crm && crmPool && (await dataRequestTablesReady(crmPool)) ? new DataRequestService({ store: new MysqlDataRequestStore(crmPool), raise: (id, f) => (adminAlerts ? adminAlerts.raise(id, f) : Promise.resolve(null)), assignees: operators.service ? async () => operatorAssignees(await operators.service!.list()) : null }) : null;
-  console.log(JSON.stringify({ ctx: "DataRequests", mounted: !!dataRequests, ...(dataRequests ? {} : { reason: !crm ? "crm_not_configured" : "migration_0034_missing" }) }));
+  console.log(JSON.stringify({ ctx: "DataRequests", mounted: !!dataRequests, ...(dataRequests ? {} : { reason: !crm ? "crm_not_configured" : "migration_0032_missing" }) }));
   if (crm && crmPool && (await settingsTablesReady(crmPool))) {
     const alertPool = crmPool;
     const alertStore = new MysqlAdminAlertStore(alertPool);
@@ -649,6 +655,46 @@ async function main() {
   }
   console.log(JSON.stringify({ ctx: "AdminAlerts", mounted: !!adminAlerts, ...(adminAlerts ? adminAlerts.status() : { reason: !crm ? "crm_not_configured" : "migration_0025_missing" }), crmLink: !!crmUrlFromEnv(process.env) }));
 
+  // Centro de envíos del CRM y consentimiento comercial (CRM 0031): con sus tablas y el dominio público del CRM (los
+  // enlaces de baja y de encuesta van en los correos). Nada se envía solo: cada envío lo confirma un operador.
+  let communications: CommunicationsService | null = null;
+  const commOrigin = crmPublicOrigin(process.env);
+  const commTables = !!crm && !!crmPool && (await commsTablesReady(crmPool));
+  if (crm && crmPool && commTables && commOrigin) {
+    const commPool = crmPool;
+    const crmStore = crm.store;
+    const mailer = platformMail.mailer;
+    const outbox = new MysqlMailStore(commPool);
+    const asSurvey = (t: { id: number; tenantId: string; title: string; status: string; requester: string | null; resolvedAt: number | null }) => ({ id: t.id, tenantId: t.tenantId, title: t.title, status: t.status, requester: t.requester, resolvedAt: t.resolvedAt });
+    const comms = new CommunicationsService({
+      store: new MysqlSendStore(commPool),
+      crm: crmStore,
+      consents: new ConsentService({ store: new MysqlConsentStore(commPool), contactExists: async (id) => !!(await crmStore.get("contacts", id)) }),
+      signer: new LinkSigner(await linkSecretFromDb(commPool)),
+      publicOrigin: commOrigin,
+      mailer: mailer ? { send: (t, k, c, to, content, o) => mailer.send(t, k, c, to, content, o), status: (id) => mailer.service.status(id) } : null,
+      suppressed: (tenantId, hash) => outbox.isSuppressed(tenantId, hash),
+      tickets: {
+        resolved: async (since) => {
+          const all = [...(await tickets.list({ status: "resolved", limit: 500 })).items, ...(await tickets.list({ status: "closed", limit: 500 })).items];
+          return all.filter((t) => (t.resolvedAt ?? 0) >= since).map(asSurvey);
+        },
+        get: async (id) => {
+          const r = await tickets.get(id).catch(() => null);
+          return r ? asSurvey(r.ticket) : null;
+        },
+      },
+      planOf: billingStore ? async (tenantId) => (await billingStore!.getSubscriptionByTenant(tenantId))?.planId ?? null : undefined,
+      log: (event, data) => console.log(JSON.stringify({ ctx: "Communications", event, ...data })),
+    });
+    // Baja en un clic (List-Unsubscribe) en las comerciales del centro
+    mailer?.service.setHeaderResolver((row) => comms.headersFor(row));
+    // Envíos que quedaron a medias por un reinicio: se reanudan con los pendientes (idempotentes)
+    void comms.resumeAll().catch(() => undefined);
+    communications = comms;
+  }
+  console.log(JSON.stringify({ ctx: "Communications", mounted: !!communications, mail: !!platformMail.mailer, ...(communications ? {} : { reason: !crm || !crmPool ? "crm_not_configured" : !commTables ? "migration_0031_missing" : "crm_origin_missing" }) }));
+
   const app = createControlPlaneApp({
     tickets,
     billing,
@@ -698,6 +744,7 @@ async function main() {
     leadNotices,
     adminAlerts,
     dataRequests,
+    communications,
     notifications: notificationsFromEnv(process.env),
     mail: {
       platform: platformMail.mailer,

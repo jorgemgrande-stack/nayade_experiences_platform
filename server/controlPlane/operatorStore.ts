@@ -58,6 +58,19 @@ export interface ResetRecord {
   usedAt: number | null;
 }
 
+/** Cambio de correo pendiente de confirmar desde el correo nuevo (migración 0015; solo el SHA-256 del enlace). */
+export interface EmailChangeRecord {
+  tokenHash: string;
+  operatorId: number;
+  /** Correo vigente al pedirlo: si cambia antes de confirmar, el enlace deja de valer. */
+  oldEmail: string | null;
+  newEmail: string;
+  requestedBy: string;
+  createdAt: number;
+  expiresAt: number;
+  usedAt: number | null;
+}
+
 export interface OperatorEvent {
   id: number;
   at: number;
@@ -127,6 +140,21 @@ export interface OperatorStore {
   getReset(tokenHash: string): Promise<ResetRecord | null>;
   /** Marca el enlace como usado; `false` si ya lo estaba (un solo uso, también ante carreras). */
   useReset(tokenHash: string, at: number): Promise<boolean>;
+
+  /**
+   * User-agents de las sesiones del operador abiertas desde `since` (revocadas o caducadas incluidas), salvo
+   * `exceptId` y salvo las que se quedaron a la espera del segundo factor (solo prueban la contraseña).
+   */
+  recentSessionAgents(operatorId: number, since: number, exceptId: string): Promise<string[]>;
+
+  /** El almacén guarda cambios de correo pendientes (en MySQL, con la migración 0015 aplicada). */
+  readonly emailChangeSupported: boolean;
+  insertEmailChange(r: EmailChangeRecord): Promise<void>;
+  getEmailChange(tokenHash: string): Promise<EmailChangeRecord | null>;
+  /** Marca el enlace como usado; `false` si ya lo estaba (un solo uso, también ante carreras). */
+  useEmailChange(tokenHash: string, at: number): Promise<boolean>;
+  /** Anula los cambios de correo pendientes del operador (al pedir otro): solo vale el último enlace. */
+  cancelEmailChanges(operatorId: number, at: number): Promise<void>;
 
   addEvent(e: Omit<OperatorEvent, "id">): Promise<void>;
   listEvents(q: { operatorId?: number; limit: number }): Promise<OperatorEvent[]>;
@@ -234,6 +262,29 @@ export class MemoryOperatorStore implements OperatorStore {
     if (!r || r.usedAt !== null) return false;
     r.usedAt = at;
     return true;
+  }
+  async recentSessionAgents(operatorId: number, since: number, exceptId: string) {
+    return Array.from(this.sessions.values())
+      .filter((s) => s.operatorId === operatorId && s.createdAt >= since && s.id !== exceptId && s.mfaState !== "pending" && !!s.userAgent)
+      .map((s) => s.userAgent!);
+  }
+  emailChanges = new Map<string, EmailChangeRecord>();
+  emailChangeSupported = true;
+  async insertEmailChange(r: EmailChangeRecord) {
+    this.emailChanges.set(r.tokenHash, { ...r });
+  }
+  async getEmailChange(h: string) {
+    const r = this.emailChanges.get(h);
+    return r ? { ...r } : null;
+  }
+  async useEmailChange(h: string, at: number) {
+    const r = this.emailChanges.get(h);
+    if (!r || r.usedAt !== null) return false;
+    r.usedAt = at;
+    return true;
+  }
+  async cancelEmailChanges(operatorId: number, at: number) {
+    for (const r of Array.from(this.emailChanges.values())) if (r.operatorId === operatorId && r.usedAt === null) r.usedAt = at;
   }
   async addEvent(e: Omit<OperatorEvent, "id">) {
     this.events.push({ ...e, id: this.events.length + 1 });
@@ -354,12 +405,17 @@ const dupField = (e: any): "username" | "email" => (String(e?.message ?? "").inc
 
 export class MysqlOperatorStore implements OperatorStore {
   readonly mfaSupported: boolean;
-  /** `mfa`: la migración 0012 está aplicada (lo comprueba operatorAuthFromEnv al arrancar). */
+  readonly emailChangeSupported: boolean;
+  /**
+   * `mfa`: la migración 0012 está aplicada · `emailChanges`: la 0015 está aplicada (lo comprueba
+   * operatorAuthFromEnv al arrancar).
+   */
   constructor(
     private pool: mysql.Pool,
-    opts: { mfa?: boolean } = {},
+    opts: { mfa?: boolean; emailChanges?: boolean } = {},
   ) {
     this.mfaSupported = opts.mfa ?? false;
+    this.emailChangeSupported = opts.emailChanges ?? false;
   }
 
   async countOperators() {
@@ -533,6 +589,37 @@ export class MysqlOperatorStore implements OperatorStore {
   async useReset(h: string, at: number) {
     const [res] = await this.pool.query<any>("UPDATE cp_password_resets SET used_at = ? WHERE token_hash = ? AND used_at IS NULL", [at, h]);
     return Number(res.affectedRows) === 1;
+  }
+
+  async recentSessionAgents(operatorId: number, since: number, exceptId: string) {
+    const [rows] = await this.pool.query<any[]>(
+      `SELECT DISTINCT user_agent FROM cp_operator_sessions
+        WHERE operator_id = ? AND created_at >= ? AND id <> ? AND user_agent IS NOT NULL${this.mfaSupported ? " AND mfa_state <> 'pending'" : ""}
+        LIMIT 200`,
+      [operatorId, since, exceptId],
+    );
+    return rows.map((r) => String(r.user_agent));
+  }
+
+  async insertEmailChange(r: EmailChangeRecord) {
+    await this.pool.query(
+      "INSERT INTO cp_operator_email_changes (token_hash, operator_id, old_email, new_email, requested_by, created_at, expires_at, used_at) VALUES (?,?,?,?,?,?,?,?)",
+      [r.tokenHash, r.operatorId, r.oldEmail, r.newEmail, r.requestedBy.slice(0, 100), r.createdAt, r.expiresAt, r.usedAt],
+    );
+  }
+  async getEmailChange(h: string) {
+    const [rows] = await this.pool.query<any[]>("SELECT * FROM cp_operator_email_changes WHERE token_hash = ?", [h]);
+    const r = rows[0];
+    return r
+      ? { tokenHash: r.token_hash, operatorId: Number(r.operator_id), oldEmail: r.old_email ?? null, newEmail: r.new_email, requestedBy: r.requested_by, createdAt: Number(r.created_at), expiresAt: Number(r.expires_at), usedAt: num(r.used_at) }
+      : null;
+  }
+  async useEmailChange(h: string, at: number) {
+    const [res] = await this.pool.query<any>("UPDATE cp_operator_email_changes SET used_at = ? WHERE token_hash = ? AND used_at IS NULL", [at, h]);
+    return Number(res.affectedRows) === 1;
+  }
+  async cancelEmailChanges(operatorId: number, at: number) {
+    await this.pool.query("UPDATE cp_operator_email_changes SET used_at = ? WHERE operator_id = ? AND used_at IS NULL", [at, operatorId]);
   }
 
   async addEvent(e: Omit<OperatorEvent, "id">) {

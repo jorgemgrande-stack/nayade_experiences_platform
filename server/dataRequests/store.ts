@@ -1,6 +1,6 @@
 /**
  * Solicitudes de derechos de protección de datos (RGPD: acceso, portabilidad o exportación, supresión, rectificación,
- * oposición o limitación) de clientes o contactos (CRM 0034). Una fila por solicitud con su plazo legal de respuesta y
+ * oposición o limitación) de clientes o contactos (CRM 0032). Una fila por solicitud con su plazo legal de respuesta y
  * su responsable, más el historial de lo que se ha hecho con ella (`data_request_events`, solo se añaden filas).
  * Sin documentos ni datos de identidad más allá del nombre y el correo de quien la presenta.
  */
@@ -233,7 +233,7 @@ export class MysqlDataRequestStore implements DataRequestStore {
   }
 }
 
-/** ¿Existe la migración 0034 (solicitudes e historial)? */
+/** ¿Existe la migración 0032 (solicitudes e historial)? */
 export async function dataRequestTablesReady(pool: Pick<mysql.Pool, "query">): Promise<boolean> {
   return pool.query("SELECT 1 FROM data_requests LIMIT 0").then(
     () => pool.query("SELECT 1 FROM data_request_events LIMIT 0").then(() => true, () => false),

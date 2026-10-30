@@ -74,7 +74,7 @@ describe.skipIf(!URL_)("CRM con MySQL real", () => {
     expect(await s.getState("commercial_events")).toBe(42);
   });
 
-  it("solicitudes RGPD: responsable, historial y filtros de plazo (migración 0034)", async () => {
+  it("solicitudes RGPD: responsable, historial y filtros de plazo (migración 0032)", async () => {
     const { MysqlDataRequestStore, dataRequestTablesReady } = await import("./dataRequests/store");
     const { DataRequestService } = await import("./dataRequests/service");
     expect(await dataRequestTablesReady(pool)).toBe(true);
