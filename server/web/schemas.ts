@@ -86,6 +86,8 @@ const commercialBlock = z
     headline: text(200).default(""),
     longDescription: text(2000).default(""),
     problem: text(300).default(""),
+    /** Para qué empresa resulta útil. */
+    forWho: text(300).default(""),
     benefits: z.array(text(160).min(1)).max(6).default([]),
     excludes: z.array(text(200).min(1)).max(30).default([]),
     compatibleExtensions: z.array(entryKey).max(20).default([]),

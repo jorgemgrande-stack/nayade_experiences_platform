@@ -155,7 +155,7 @@ describe("reglas de contenido de la ficha", () => {
 
   it("la importación aparta esos textos como decisiones pendientes y la ficha publicable queda limpia", async () => {
     const { store } = await imported();
-    for (const k of ["connect-whatsapp-ai", "restaurant-net-bookings", "travel-net-packages"]) {
+    for (const k of ["connect-whatsapp-ai", "restaurant-net-bookings", "connect-campaigns"]) {
       const d = productDraft.parse((await store.getEntry("product", k))!.draft);
       const m = d.commercial!;
       for (const t of [m.headline, m.problem, m.longDescription, ...m.benefits, ...m.excludes, ...m.capacityRules, ...m.integrations]) expect(textProblems(t), `${k}: ${t}`).toEqual([]);

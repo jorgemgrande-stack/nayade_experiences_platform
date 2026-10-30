@@ -65,6 +65,7 @@ export function draftWithSpec(draft: ProductDraft, family: string, spec: Product
     headline: keep(spec.publicContent.headline) ? spec.publicContent.headline : "",
     longDescription,
     problem: keep(spec.problem) ? spec.problem : "",
+    forWho: keep(spec.forWho) ? spec.forWho : "",
     benefits: list(spec.publicContent.benefits),
     excludes: spec.excludes.filter(keepExcluded),
     compatibleExtensions: spec.compatibleExtensions,
