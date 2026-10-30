@@ -53,11 +53,11 @@ describe("avisos al cliente sin evento comercial propio", () => {
   });
   it("dominio propio: registros CNAME y TXT pendientes, y aviso al conectarlo", async () => {
     const { d, sent } = deps();
-    await domainPendingNotice(d, { tenantId: "empresa-demo", domain: "www.empresa-demo.example", platformTarget: "edge.bigelephant.es", token: "tok123456789abc" });
+    await domainPendingNotice(d, { tenantId: "empresa-demo", domain: "www.empresa-demo.example", platformTarget: "edge.bigelephant.es", token: "ci-only-placeholder-not-a-secret-1" });
     await domainConnectedNotice(d, { tenantId: "empresa-demo", domain: "www.empresa-demo.example" });
     expect(sent.map((s) => s.category)).toEqual(["tenant_domain", "tenant_domain"]);
     expect(sent[0].c.text).toContain("_elephant-verify.www.empresa-demo.example");
-    expect(sent[0].c.text).toContain("elephant-verify=tok123456789abc");
+    expect(sent[0].c.text).toContain("elephant-verify=ci-only-placeholder-not-a-secret-1");
     expect(sent[1].c.subject).toBe("Tu dominio www.empresa-demo.example ya está conectado");
   });
   it("sin contacto: no envía y no falla", async () => {
