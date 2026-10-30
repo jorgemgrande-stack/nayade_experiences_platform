@@ -17,7 +17,7 @@ describe("catálogo maestro de comunicaciones", () => {
       expect(["experiential", "transactional", "security", "admin"]).toContain(e.family);
       expect(e.family === "admin", e.id).toBe(e.group === "administracion");
       expect(["controlplane", "core", "crm"]).toContain(e.service);
-      expect(["conectada", "sin_disparador", "interna"]).toContain(e.state);
+      expect(["conectada", "sin_disparador", "interna", "externa"]).toContain(e.state);
     }
   });
   it("contenido completo y seguro: asunto, HTML, texto, sin variables vacías, solo https, sin datos de clientes", () => {
@@ -102,5 +102,10 @@ describe("estado del catálogo", () => {
   it("cada plantilla sin disparador lleva su motivo funcional concreto", () => {
     const pending = allTestEmails().filter((e) => e.state === "sin_disparador");
     for (const e of pending) expect((e as { pending?: string }).pending?.length, e.id).toBeGreaterThan(40);
+  });
+  it("las que envía Stripe figuran como gestionadas externamente, no como pendientes", () => {
+    const ext = allTestEmails().filter((e) => e.state === "externa");
+    expect(ext.map((e) => e.id).sort()).toEqual(["billing.payment_reminder", "billing.upcoming_charge"]);
+    for (const e of ext) expect(e.managedBy, e.id).toMatch(/^Gestionada por Stripe/);
   });
 });
