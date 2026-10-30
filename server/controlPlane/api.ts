@@ -275,9 +275,10 @@ export interface ControlPlaneDeps {
   /**
    * Prueba gratuita de Essential (CRM 0007). Las rutas públicas solo existen con `publicEnabled`
    * (por defecto NO); `notify` es el único canal de comunicaciones (por defecto, solo un registro
-   * sin datos personales ni tokens: no se envía nada).
+   * sin datos personales ni tokens: no se envía nada). `activation`: aquí se publica la activación de la prueba
+   * (la misma instancia que usan las rutas) para que la tarea programada reintente las altas incompletas.
    */
-  trials?: { store: TrialStore; publicEnabled?: boolean; autoProvision?: boolean; notify?: TrialNotifier; limits?: Partial<TrialLimits>; blockedDomains?: string[] };
+  trials?: { store: TrialStore; publicEnabled?: boolean; autoProvision?: boolean; notify?: TrialNotifier; limits?: Partial<TrialLimits>; blockedDomains?: string[]; activation?: { activate?: (trialId: number, actor: string) => Promise<unknown> } };
   /** Sedes y entidades fiscales (registro 0009), con los límites del plan contratado. */
   organization?: OrganizationStore;
   /** Registro de eventos comerciales (CRM 0015), solo lectura. */
@@ -1979,6 +1980,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
       });
       router.use("/trials", createTrialAdminRouter({ onboarding, trials: trialService, store: d.trials.store, convert: trialConversion }));
       if (d.trials.publicEnabled) publicTrial = createPublicTrialRouter({ onboarding, autoProvision: !!d.trials.autoProvision });
+      if (d.trials.activation) d.trials.activation.activate = (trialId, actor) => onboarding.activate(trialId, actor);
     }
     // Cobro de cargos (server/invoicing/chargePayments): lo crea el bloque de facturación; el procesador de Stripe lo consulta
     const chargePaymentsRef: { svc?: ChargePaymentService } = {};

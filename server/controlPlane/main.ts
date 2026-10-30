@@ -375,19 +375,22 @@ async function main() {
   // públicas y la activación automática solo con CP_PUBLIC_TRIAL_ENABLED=1 / CP_TRIAL_AUTO_PROVISION=1.
   // No se envía ningún correo salvo con CP_TRIAL_EMAIL_MODE=sandbox|live y SMTP configurado; por defecto el
   // aviso solo deja constancia sin datos personales.
-  let trials: { store: MysqlTrialStore; publicEnabled: boolean; autoProvision: boolean; notify?: TrialNotifier; blockedDomains: string[] } | undefined;
+  let trials: { store: MysqlTrialStore; publicEnabled: boolean; autoProvision: boolean; notify?: TrialNotifier; blockedDomains: string[]; activation: { activate?: (trialId: number, actor: string) => Promise<unknown> } } | undefined;
   if (crmPool && subscriptions) {
     const trialPool = crmPool;
     const ready = await trialPool.query("SELECT 1 FROM trial_requests LIMIT 0").then(() => true, () => false);
     // Con la bandeja de plataforma, los avisos de la prueba salen por ella; si no, el notificador SMTP propio
     const email = !ready ? null : platformMail.mailer ? { notifier: platformMail.mailer.trialNotifier(), mode: mailPolicy.mode, provider: "outbox", reason: undefined as string | undefined } : trialNotifierFromEnv(process.env);
-    if (ready) trials = { store: new MysqlTrialStore(trialPool, commercialEvents), publicEnabled: process.env.CP_PUBLIC_TRIAL_ENABLED === "1", autoProvision: process.env.CP_TRIAL_AUTO_PROVISION === "1", notify: email?.notifier, blockedDomains: blockedDomainsFromEnv(process.env) };
+    if (ready) trials = { store: new MysqlTrialStore(trialPool, commercialEvents), publicEnabled: process.env.CP_PUBLIC_TRIAL_ENABLED === "1", autoProvision: process.env.CP_TRIAL_AUTO_PROVISION === "1", notify: email?.notifier, blockedDomains: blockedDomainsFromEnv(process.env), activation: {} };
     console.log(JSON.stringify({ ctx: "Trials", enabled: ready, publicEnabled: trials?.publicEnabled ?? false, autoProvision: trials?.autoProvision ?? false, email: { mode: email?.mode ?? "off", provider: email?.provider ?? null, ...(email?.reason ? { reason: email.reason } : {}) }, ...(ready ? {} : { reason: "migration_0007_missing" }) }));
     // Tarea programada de vencimiento y avisos: APAGADA salvo CP_TRIALS_SCHEDULER_ENABLED=1. Una sola réplica
     // trabaja en cada tick (GET_LOCK); nunca suspende, cancela ni borra. Sin notificador, los avisos solo se registran.
+    // Con CP_TRIAL_AUTO_PROVISION=1 también reintenta las altas incompletas con la activación que monta la API.
     if (trials) {
       const notify = trials.notify ?? { expiryNotice: async (_to: string, i: { trialId: number; daysLeft: number }) => void console.log(JSON.stringify({ ctx: "Trials", event: "expiry_notice_not_sent", trialId: i.trialId, daysLeft: i.daysLeft })) };
-      startTrialScheduler({ scheduler: new TrialScheduler({ store: trials.store, notify, lock: mysqlAdvisoryLock(trialPool) }), env: process.env });
+      const t = trials;
+      const recovery = () => (t.activation.activate ? { autoProvision: t.autoProvision, activate: t.activation.activate, raise: (id: string, f: Parameters<AdminAlertService["raise"]>[1]) => (adminAlerts ? adminAlerts.raise(id, f) : Promise.resolve(null)) } : null);
+      startTrialScheduler({ scheduler: new TrialScheduler({ store: trials.store, notify, lock: mysqlAdvisoryLock(trialPool), recovery }), env: process.env });
     }
   }
 
