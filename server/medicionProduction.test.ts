@@ -35,4 +35,17 @@ describe("medición por referencias", () => {
     expect(wf.indexOf("- name: Medición — base es_erm")).toBeGreaterThan(wf.indexOf("- name: Export del commit"));
     expect(wf.indexOf("- name: Export del commit")).toBeGreaterThan(wf.indexOf("- name: Commit a desplegar"));
   });
+  it("medicion-comprobar lee con restore-drill del commit actual (y solo erm-setup sin --apply)", () => {
+    const wf = fs.readFileSync(path.resolve(__dirname, "../.github/workflows/deploy-elephant-source.yml"), "utf8").replace(/\r\n/g, "\n");
+    const i = wf.indexOf("- name: Medición — comprobar");
+    const b = wf.slice(i, wf.indexOf("\n\n", i));
+    expect(b.indexOf("--service restore-drill")).toBeGreaterThan(0);
+    expect(b.indexOf("--service restore-drill")).toBeLessThan(b.indexOf("erm-setup"));
+    expect(b).toContain('--expect-sha "${ES_DEPLOY_SHA}" --command "node dist-cp/backup-job.js erm-setup"');
+    expect(b).not.toContain("--apply");
+    expect(i).toBeGreaterThan(wf.indexOf("- name: Export del commit"));
+    // El commit y el export también corren para esta acción
+    const at = wf.indexOf("- name: Export del commit");
+    expect(wf.slice(at, wf.indexOf("\n", wf.indexOf("if:", at)))).toContain("inputs.action == 'medicion-comprobar'");
+  });
 });
