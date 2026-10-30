@@ -41,6 +41,22 @@ const reductionInput = z
     storageGb: z.number().int().min(0).max(1_000_000).optional(),
   })
   .strict();
+/** Contratación desde el panel durante la prueba: solo QUÉ se elige; precio, impuestos y elegibilidad, del plano de control. */
+const conversionSelection = z
+  .object({
+    plan: z.enum(["essential", "business"]),
+    interval: z.enum(["month", "year"]),
+    add: z.array(z.string().regex(/^[a-z0-9][a-z0-9-]{1,63}$/)).max(20).optional(),
+  })
+  .strict();
+const conversionStart = conversionSelection
+  .extend({
+    idempotencyKey: z.string().uuid(),
+    // El perfil fiscal y los consentimientos los valida el plano de control (mismas reglas que el autoservicio)
+    buyer: z.record(z.string(), z.unknown()),
+    consents: z.record(z.string(), z.unknown()),
+  })
+  .strict();
 const TRPC_CODE: Record<number, TRPCError["code"]> = { 400: "BAD_REQUEST", 403: "FORBIDDEN", 404: "NOT_FOUND", 409: "CONFLICT", 503: "PRECONDITION_FAILED" };
 
 /**
@@ -194,6 +210,27 @@ export const subscriptionRouter = router({
   billingPortal: protectedProcedure.mutation(async ({ ctx }) => {
     if (!(await isCompanyOwnerUser(ctx.user))) throw new TRPCError({ code: "FORBIDDEN", message: "Solo la persona propietaria de la empresa puede ver las facturas de la suscripción" });
     return commerce(String(ctx.user.role), (c, t) => c.billingPortal(t, `${getTrustedBaseUrl()}/admin/suscripcion`));
+  }),
+  /**
+   * Contratación desde el panel durante la prueba (conversión a pago con Stripe Checkout). Solo la administración y
+   * solo en prueba. `null` si no aplica (sin canal, fuera de multiempresa, sin prueba o sin permiso): el bloque no se
+   * muestra. `enabled:false` con motivos si el plano de control aún no la ofrece (decisión comercial pendiente).
+   */
+  conversionStatus: protectedProcedure.query(async ({ ctx }) => {
+    if (String(ctx.user.role) !== "admin" || getTenantMode() !== "multi" || !commerceClientFromEnv() || !(await isTrialTenant())) return null;
+    return reach((c) => c.conversionStatus()).catch(() => null);
+  }),
+  conversionPreview: protectedProcedure.input(conversionSelection).mutation(async ({ ctx, input }) => {
+    if (!(await isTrialTenant())) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Tu empresa no está en periodo de prueba" });
+    return commerce(String(ctx.user.role), (c, t) => c.conversionPreview(t, input), "Solo la administración de la empresa puede contratar");
+  }),
+  /** Abre el pago en Stripe. La activación llega SOLO con el pago verificado (webhook), nunca con la vuelta del navegador. */
+  conversionStart: protectedProcedure.input(conversionStart).mutation(async ({ ctx, input }) => {
+    if (!(await isTrialTenant())) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Tu empresa no está en periodo de prueba" });
+    const r = await commerce(String(ctx.user.role), (c, t) => c.conversionStart(t, { ...input, user: `user:${ctx.user.id}` }), "Solo la administración de la empresa puede contratar");
+    // Solo se redirige a Stripe Checkout (nunca a otra dirección que devolviera el canal)
+    if (!/^https:\/\/checkout\.stripe\.com\//.test(r.url)) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "No se ha podido iniciar el pago" });
+    return { url: r.url, expiresAt: r.expiresAt };
   }),
   supportContact: protectedProcedure.query(async ({ ctx }) => {
     if (!(PANEL_ROLES as readonly string[]).includes(String(ctx.user.role))) throw new TRPCError({ code: "FORBIDDEN" });

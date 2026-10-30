@@ -12,6 +12,7 @@ import { usePanelSubscription } from "@/hooks/usePanelSubscription";
 import { cn } from "@/lib/utils";
 import { WithdrawalSection } from "./WithdrawalSection";
 import { PlanContractSection } from "./PlanContractSection";
+import { ConversionSection } from "./ConversionSection";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 
@@ -172,6 +173,9 @@ export default function SubscriptionPage() {
                 <UpgradeAction url={data.upgradeUrl} label={data.trial ? "Contratar el plan" : "Ver opciones de contratación"} />
               )}
             </section>
+
+            {/* Contratar desde la prueba (solo administración; el servidor decide si está disponible) */}
+            {(data.trial || data.state === "trial_expired") && <ConversionSection />}
 
             {/* Límites */}
             {data.limits.length > 0 && (

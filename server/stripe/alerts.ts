@@ -51,6 +51,7 @@ export const STRIPE_FAILURE_RULES: Record<string, FailureRule> = {
   "stripe.reconcile_backlog": repeated(3, 60, "Stripe: la conciliación no alcanza a revisar todos los eventos"),
   "stripe.reconcile_refresh_failed": repeated(3, 60, "Stripe: la conciliación no puede releer suscripciones"),
   "stripe.self_service_failed": repeated(3, 30, "Stripe: errores repetidos en la contratación por autoservicio", "critical"),
+  "stripe.panel_conversion_failed": repeated(3, 30, "Stripe: errores repetidos en la contratación desde el panel (prueba → pago)", "critical"),
   "stripe.events_purge_failed": repeated(3, 24 * 60, "Stripe: la purga de eventos antiguos falla"),
   "stripe.failed": repeated(3, 30, "Stripe: errores repetidos en las operaciones de Stripe"),
 };

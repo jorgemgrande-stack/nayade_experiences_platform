@@ -135,7 +135,8 @@ import { BillingPortalService } from "../stripe/billingPortal";
 import { StripeReconciler, startStripeWorker } from "../stripe/reconcile";
 import { stripeWebhookHandler } from "../stripe/webhook";
 import { checkoutStatus, sessionIdRe } from "../stripe/status";
-import { SelfServiceCheckout, createSelfServiceRouter } from "../stripe/selfService";
+import { SelfServiceCheckout, buyerEligibility, createSelfServiceRouter } from "../stripe/selfService";
+import { PanelConversionService, createPanelConversionRouter } from "../stripe/panelConversion";
 import { VatVerifier, type ViesPort } from "../stripe/vies";
 import { WithdrawalService } from "../withdrawals/service";
 import { createWithdrawalAdminRouter, createWithdrawalCommerceRouter } from "../withdrawals/api";
@@ -327,6 +328,8 @@ export interface ControlPlaneDeps {
     publicStatus: boolean;
     /** Contratación por autoservicio (`/public/checkout/start`). Apagada salvo CP_PUBLIC_SELF_SERVICE_ENABLED=1. */
     selfService: boolean;
+    /** Contratación desde el panel de una empresa en prueba (`/commerce/.../conversion`). Apagada salvo CP_PANEL_CONVERSION_ENABLED=1. */
+    panelConversion?: boolean;
     /** Versión publicada de las condiciones de contratación (CP_TERMS_VERSION); sin ella el autoservicio no funciona. */
     termsVersion: string | null;
     /**
@@ -2137,6 +2140,27 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         // Tras guardar un evento del webhook se procesa enseguida (los fallos quedan para el reintento)
         stripeKick = () => void processor.processDue(10).catch(() => undefined);
         if (st.workerEnabled) startStripeWorker({ processor, reconciler, ...(externalSvc ? { extra: () => externalSvc.evaluateOverdue() } : {}) });
+        // Contratación desde el panel (empresa en prueba → pago): el estado se informa siempre; contratar, solo con el interruptor
+        if (d.trials) {
+          const eligibilityDeps = { mode: st.config.mode, buyers: st.store, vat, consent: st.fiscal?.consent, eligibility: st.fiscal ? { scenarios: st.fiscal.scenarios, taxExpectations: st.fiscal.taxExpectations ?? new Map(), countries: st.fiscal.countries ?? new Map(), consumerRates: st.fiscal.consumerRates ?? new Map(), consent: st.fiscal.consent } : undefined };
+          const conversion = new PanelConversionService({
+            enabled: !!st.panelConversion,
+            trials: d.trials.store,
+            orders: d.orders.store,
+            orchestrator,
+            sessions: st.store,
+            checkout: checkout ?? null,
+            catalog: stripeCatalog,
+            quote: async (r) => quote(quoteCatalogFromSite(await webAdmin!.site("published")), r),
+            termsVersion: st.termsVersion,
+            consent: st.fiscal?.consent,
+            buyers: st.store,
+            eligibility: (b) => buyerEligibility(eligibilityDeps, b),
+            mode: st.config.mode,
+            now: d.subscriptions.now,
+          });
+          router.use("/commerce", createPanelConversionRouter(conversion));
+        }
         const selfServiceOk = st.selfService && !!checkout && !!d.publicIntake && publicOrigins.size > 0;
         if (st.publicStatus || selfServiceOk) {
           const pc = express.Router();

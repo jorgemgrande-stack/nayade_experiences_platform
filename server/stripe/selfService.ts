@@ -126,6 +126,21 @@ export interface SelfServiceDeps {
   perEmailPerHour?: number;
 }
 
+export type BuyerForEligibility = { type: "business" | "consumer"; country: string; postalCode?: string; taxId?: string; line1?: string; city?: string };
+
+/**
+ * Elegibilidad de un comprador con la configuración aprobada (en live, con domicilio si se puede guardar). La comparten
+ * el autoservicio público y la contratación desde el panel (./panelConversion.ts).
+ */
+export async function buyerEligibility(d: Pick<SelfServiceDeps, "eligibility" | "mode" | "buyers" | "vat" | "consent">, b: BuyerForEligibility): Promise<EligibilityResult> {
+  const cfg: EligibilityConfig = d.eligibility ?? { scenarios: new Set(), taxExpectations: new Map(), countries: new Map(), consumerRates: new Map() };
+  const requireAddress = d.mode === "live" && !!(await d.buyers?.hasBuyerAddressColumn());
+  // Inversión del sujeto pasivo: consulta (o reutiliza) la verificación en VIES ANTES de crear nada
+  const pre = checkEligibility({ type: b.type, country: b.country, postalCode: b.postalCode, taxId: b.taxId }, cfg);
+  const vat = needsVies(pre.taxExpectation) && pre.taxId && d.vat ? (await d.vat.verify(b.country, b.taxId!)).status : undefined;
+  return checkEligibility({ type: b.type, country: b.country, postalCode: b.postalCode, taxId: b.taxId, hasAddress: !!(b.line1 && b.city), vat }, { ...cfg, consent: cfg.consent ?? d.consent }, { requireAddress });
+}
+
 export class SelfServiceError extends Error {
   constructor(
     public readonly status: number,
@@ -210,13 +225,8 @@ export class SelfServiceCheckout {
   }
 
   /** Elegibilidad de un comprador con la configuración aprobada (en live, con domicilio si se puede guardar). */
-  private async eligibilityOf(b: { type: "business" | "consumer"; country: string; postalCode?: string; taxId?: string; line1?: string; city?: string }): Promise<EligibilityResult> {
-    const cfg: EligibilityConfig = this.d.eligibility ?? { scenarios: new Set(), taxExpectations: new Map(), countries: new Map(), consumerRates: new Map() };
-    const requireAddress = this.d.mode === "live" && !!(await this.d.buyers?.hasBuyerAddressColumn());
-    // Inversión del sujeto pasivo: consulta (o reutiliza) la verificación en VIES ANTES de crear nada
-    const pre = checkEligibility({ type: b.type, country: b.country, postalCode: b.postalCode, taxId: b.taxId }, cfg);
-    const vat = needsVies(pre.taxExpectation) && pre.taxId && this.d.vat ? (await this.d.vat.verify(b.country, b.taxId!)).status : undefined;
-    return checkEligibility({ type: b.type, country: b.country, postalCode: b.postalCode, taxId: b.taxId, hasAddress: !!(b.line1 && b.city), vat }, { ...cfg, consent: cfg.consent ?? this.d.consent }, { requireAddress });
+  private eligibilityOf(b: BuyerForEligibility): Promise<EligibilityResult> {
+    return buyerEligibility(this.d, b);
   }
 
   /**
