@@ -8,7 +8,7 @@
 import express, { type NextFunction, type Request, type Response, type Router } from "express";
 import { z } from "zod";
 import { getAuth, requireScope } from "./auth";
-import { TICKET_PRIORITIES, TICKET_STATUSES, TicketError, type TicketService } from "../_core/support/tickets";
+import { TICKET_PRIORITIES, TICKET_SORT_KEYS, TICKET_STATUSES, TicketError, type TicketService } from "../_core/support/tickets";
 
 const wrap =
   (fn: (req: Request, res: Response) => Promise<void>) =>
@@ -31,7 +31,7 @@ const tenantSchema = z.string().regex(/^[a-z0-9][a-z0-9_-]{0,62}$/);
 const status = z.enum(TICKET_STATUSES);
 const priority = z.enum(TICKET_PRIORITIES);
 
-const listQuery = z.object({
+export const listQuery = z.object({
   tenantId: tenantSchema.optional(),
   status: status.optional(),
   priority: priority.optional(),
@@ -39,6 +39,8 @@ const listQuery = z.object({
   q: z.string().min(1).max(100).optional(),
   limit: z.coerce.number().int().min(1).max(200).default(50),
   offset: z.coerce.number().int().min(0).max(100_000).default(0),
+  sort: z.enum(TICKET_SORT_KEYS).optional(),
+  dir: z.enum(["asc", "desc"]).optional(),
 });
 
 export function createTicketsRouter(tickets: TicketService): Router {
