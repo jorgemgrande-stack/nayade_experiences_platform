@@ -109,10 +109,12 @@ const ermUsage: NonNullable<TrialQuotaDeps["usage"]> = async (tenantId, metric, 
  * Resource Manager, con su tratamiento habitual) si se superaría.
  */
 export async function enforceTrialQuota(metric: string, quantity: number, deps: TrialQuotaDeps = {}): Promise<void> {
-  const q = TRIAL_QUOTA_POLICY.find((x) => x.metric === metric);
-  if (!q) return;
+  if (!TRIAL_QUOTA_POLICY.some((x) => x.metric === metric)) return;
   const s = await (deps.state ?? currentCommercialState)();
   if (!s.restricted || !s.tenantId) return;
+  // Prueba vigente: la cuota de prueba; vencida o detenida: la suya (sin consumo de pago)
+  const q = (quotaPolicyForPhase(s) ?? TRIAL_QUOTA_POLICY).find((x) => x.metric === metric);
+  if (!q) return;
   const used = await (deps.usage ?? ermUsage)(s.tenantId, metric, q.period).catch(() => null);
   if (used === null) return;
   if (trialQuotaExceeded(q, used, quantity)) {
