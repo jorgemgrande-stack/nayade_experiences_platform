@@ -10,6 +10,7 @@ import { z } from "zod";
 import { getAuth, requireScope } from "../controlPlane/auth";
 import { COMPANY_STATUSES, CrmError, LEAD_PRIORITIES, LEAD_REQUEST_STATUSES, LEAD_REQUEST_TYPES, LEAD_STATUSES, STAGES, type EntityType, type LeadRequestStatus, type LeadRequestType } from "./types";
 import type { WebRequestService } from "./webRequests";
+import { COMPANY_SORT, CONTACT_SORT, CONTRACT_SORT, LEAD_SORT, SORT_DIRS, sortKeys } from "./sorting";
 import type { CrmService } from "./service";
 import type { CrmStore, Tables } from "./store";
 import type { BillingStore } from "../_core/billing/ports";
@@ -52,6 +53,33 @@ const page = z.object({
   q: z.string().max(100).optional(),
   limit: z.coerce.number().int().min(1).max(500).default(200),
   offset: z.coerce.number().int().min(0).max(100_000).default(0),
+});
+
+/** Ordenación opcional: `sort` de la lista blanca del listado y `dir` asc|desc. Sin `sort`, el orden de siempre. */
+const sortQuery = <K extends string>(keys: [K, ...K[]]) => ({ sort: z.enum(keys).optional(), dir: z.enum(SORT_DIRS).optional() });
+export const leadsListQuery = page.extend({
+  status: z.enum(LEAD_STATUSES as [string, ...string[]]).optional(),
+  priority: z.enum(LEAD_PRIORITIES as [string, ...string[]]).optional(),
+  owner: optStr(100),
+  ...sortQuery(sortKeys(LEAD_SORT)),
+});
+export const companiesListQuery = page.extend({
+  status: z.enum(COMPANY_STATUSES as [string, ...string[]]).optional(),
+  lifecycle: z.enum(["prospect", "customer", "tenant"]).optional(),
+  owner: optStr(100),
+  ...sortQuery(sortKeys(COMPANY_SORT)),
+});
+export const contactsListQuery = page.extend({
+  companyId: id.optional(),
+  status: z.enum(["active", "inactive"]).optional(),
+  ...sortQuery(sortKeys(CONTACT_SORT)),
+});
+export const contractsListQuery = page.extend({
+  status: z.enum(["draft", "sent", "signed", "active", "cancelled"]).optional(),
+  companyId: id.optional(),
+  // Renovaciones próximas: contratos activos cuya renovación vence antes de esta fecha (ms)
+  renewalBefore: z.coerce.number().int().min(0).optional(),
+  ...sortQuery(sortKeys(CONTRACT_SORT)),
 });
 
 const companyBody = {
@@ -269,13 +297,7 @@ export function createCrmRouter(
 
   // ── Leads ──
   r.get("/leads", requireScope("crm:read"), wrap(async (req, res) => {
-    const f = page
-      .extend({
-        status: z.enum(LEAD_STATUSES as [string, ...string[]]).optional(),
-        priority: z.enum(LEAD_PRIORITIES as [string, ...string[]]).optional(),
-        owner: optStr(100),
-      })
-      .parse(req.query);
+    const f = leadsListQuery.parse(req.query);
     const p = await crm.listLeads(f as Parameters<CrmService["listLeads"]>[0]);
     res.json({ leads: p.items, total: p.total, limit: p.limit, offset: p.offset });
   }));
@@ -322,13 +344,7 @@ export function createCrmRouter(
 
   // ── Empresas ──
   r.get("/companies", requireScope("crm:read"), wrap(async (req, res) => {
-    const f = page
-      .extend({
-        status: z.enum(COMPANY_STATUSES as [string, ...string[]]).optional(),
-        lifecycle: z.enum(["prospect", "customer", "tenant"]).optional(),
-        owner: optStr(100),
-      })
-      .parse(req.query);
+    const f = companiesListQuery.parse(req.query);
     const p = await crm.listCompanies(f as Parameters<CrmService["listCompanies"]>[0]);
     res.json({ companies: p.items, total: p.total, limit: p.limit, offset: p.offset });
   }));
@@ -360,7 +376,7 @@ export function createCrmRouter(
     res.status(201).json({ contact: await crm.createContact(id.parse(req.params.id), b, who(req)) });
   }));
   r.get("/contacts", requireScope("crm:read"), wrap(async (req, res) => {
-    const f = page.extend({ companyId: id.optional(), status: z.enum(["active", "inactive"]).optional() }).parse(req.query);
+    const f = contactsListQuery.parse(req.query);
     const p = await crm.listContacts(f);
     res.json({ contacts: p.items, total: p.total, limit: p.limit, offset: p.offset });
   }));
@@ -408,14 +424,7 @@ export function createCrmRouter(
 
   // ── Contratos ──
   r.get("/contracts", requireScope("crm:read"), wrap(async (req, res) => {
-    const f = page
-      .extend({
-        status: z.enum(["draft", "sent", "signed", "active", "cancelled"]).optional(),
-        companyId: id.optional(),
-        // Renovaciones próximas: contratos activos cuya renovación vence antes de esta fecha (ms)
-        renewalBefore: z.coerce.number().int().min(0).optional(),
-      })
-      .parse(req.query);
+    const f = contractsListQuery.parse(req.query);
     const p = await crm.listContracts(f);
     res.json({ contracts: p.items, total: p.total, limit: p.limit, offset: p.offset });
   }));

@@ -50,6 +50,36 @@ export interface TicketFilter {
   q?: string;
   limit?: number;
   offset?: number;
+  /** Ordenación opcional; sin `sort`, por última actualización descendente. */
+  sort?: TicketSortKey;
+  dir?: "asc" | "desc";
+}
+
+export const TICKET_SORT_KEYS = ["updatedAt", "createdAt", "priority", "status"] as const;
+export type TicketSortKey = (typeof TICKET_SORT_KEYS)[number];
+
+/** Expresiones SQL fijas por clave (nunca se interpola el texto del cliente). Prioridad y estado, en su orden lógico. */
+const TICKET_SORT_SQL: Record<TicketSortKey, string> = {
+  updatedAt: "updated_at",
+  createdAt: "created_at",
+  priority: `FIELD(priority, ${TICKET_PRIORITIES.map((p) => `'${p}'`).join(", ")})`,
+  status: `FIELD(status, ${TICKET_STATUSES.map((s) => `'${s}'`).join(", ")})`,
+};
+
+/** Cláusula ORDER BY del listado, con desempate estable por `id`. */
+export function ticketOrderBy(f: Pick<TicketFilter, "sort" | "dir">): string {
+  if (!f.sort || !Object.prototype.hasOwnProperty.call(TICKET_SORT_SQL, f.sort)) return "updated_at DESC, id DESC";
+  const d = f.dir === "asc" ? "ASC" : "DESC";
+  return `${TICKET_SORT_SQL[f.sort]} ${d}, id ${d}`;
+}
+
+/** Comparador equivalente a `ticketOrderBy` para el almacén en memoria. */
+export function ticketComparator(f: Pick<TicketFilter, "sort" | "dir">): (a: Ticket, b: Ticket) => number {
+  if (!f.sort || !Object.prototype.hasOwnProperty.call(TICKET_SORT_SQL, f.sort)) return (a, b) => b.updatedAt - a.updatedAt || b.id - a.id;
+  const sign = f.dir === "asc" ? 1 : -1;
+  const key = (t: Ticket): number =>
+    f.sort === "priority" ? TICKET_PRIORITIES.indexOf(t.priority) : f.sort === "status" ? TICKET_STATUSES.indexOf(t.status) : f.sort === "createdAt" ? t.createdAt : t.updatedAt;
+  return (a, b) => sign * (key(a) - key(b) || a.id - b.id);
 }
 
 export interface TicketStore {
@@ -111,7 +141,7 @@ export class MemoryTicketStore implements TicketStore {
           (!f.assignee || r.assignee === f.assignee) &&
           (!q || r.title.toLowerCase().includes(q) || r.description.toLowerCase().includes(q)),
       )
-      .sort((a, b) => b.updatedAt - a.updatedAt || b.id - a.id);
+      .sort(ticketComparator(f));
     const off = f.offset ?? 0;
     return { items: all.slice(off, off + (f.limit ?? 50)).map((r) => ({ ...r })), total: all.length };
   }
@@ -188,7 +218,7 @@ export class MysqlTicketStore implements TicketStore {
     const limit = Math.min(200, Math.max(1, Math.trunc(f.limit ?? 50)));
     const offset = Math.max(0, Math.trunc(f.offset ?? 0));
     const [rows] = await this.pool.query<mysql.RowDataPacket[]>(
-      `SELECT * FROM support_tickets${w} ORDER BY updated_at DESC, id DESC LIMIT ${limit} OFFSET ${offset}`,
+      `SELECT * FROM support_tickets${w} ORDER BY ${ticketOrderBy(f)} LIMIT ${limit} OFFSET ${offset}`,
       args,
     );
     const [cnt] = await this.pool.query<mysql.RowDataPacket[]>(`SELECT COUNT(*) AS n FROM support_tickets${w}`, args);

@@ -8,6 +8,7 @@
  * activo) y tenant (aprovisionada en la plataforma). Registrar leads o empresas no crea tenants.
  */
 import type { CrmStore } from "./store";
+import { applySort, COMPANY_SORT, CONTACT_SORT, CONTRACT_SORT, LEAD_SORT, type CompanySortKey, type ContactSortKey, type ContractSortKey, type LeadSortKey, type SortOpts } from "./sorting";
 import {
   CONTRACT_TRANSITIONS,
   CrmError,
@@ -306,7 +307,7 @@ export class CrmService {
   }
 
   async listCompanies(
-    f: { q?: string; status?: CompanyStatus; lifecycle?: CompanyLifecycle; owner?: string } & PageOpts = {},
+    f: { q?: string; status?: CompanyStatus; lifecycle?: CompanyLifecycle; owner?: string } & PageOpts & SortOpts<CompanySortKey> = {},
   ): Promise<Page<CompanyView>> {
     let rows = await this.withLifecycle(await this.store.list("companies", f.status ? { status: f.status } : {}, { desc: true, limit: SCAN_LIMIT }));
     const q = normalizeText(f.q);
@@ -317,7 +318,7 @@ export class CrmService {
     }
     if (f.lifecycle) rows = rows.filter((c) => c.lifecycle === f.lifecycle);
     if (f.owner) rows = rows.filter((c) => c.owner === f.owner);
-    return paginate(rows, f);
+    return paginate(applySort(rows, COMPANY_SORT, f), f);
   }
 
   private async withLifecycle(companies: Company[]): Promise<CompanyView[]> {
@@ -426,7 +427,7 @@ export class CrmService {
     return upd;
   }
 
-  async listContacts(f: { q?: string; companyId?: number; status?: ContactStatus } & PageOpts = {}): Promise<Page<Contact>> {
+  async listContacts(f: { q?: string; companyId?: number; status?: ContactStatus } & PageOpts & SortOpts<ContactSortKey> = {}): Promise<Page<Contact>> {
     const filter: Partial<Contact> = {};
     if (f.companyId) filter.companyId = f.companyId;
     if (f.status) filter.status = f.status;
@@ -439,7 +440,7 @@ export class CrmService {
       );
     }
     rows.sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary));
-    return paginate(rows, f);
+    return paginate(applySort(rows, CONTACT_SORT, f), f);
   }
 
   private contactFields(input: ContactInput, cur?: Contact) {
@@ -557,7 +558,7 @@ export class CrmService {
   }
 
   async listLeads(
-    f: { q?: string; status?: LeadStatus; priority?: LeadPriority; owner?: string } & PageOpts = {},
+    f: { q?: string; status?: LeadStatus; priority?: LeadPriority; owner?: string } & PageOpts & SortOpts<LeadSortKey> = {},
   ): Promise<Page<Lead>> {
     const filter: Partial<Lead> = {};
     if (f.status) filter.status = f.status;
@@ -571,7 +572,7 @@ export class CrmService {
         (l) => [l.name, l.email, l.companyName, l.source].some((v) => normalizeText(v).includes(q)) || (qp !== "" && normalizePhone(l.phone) === qp),
       );
     }
-    return paginate(rows, f);
+    return paginate(applySort(rows, LEAD_SORT, f), f);
   }
 
   /** Posibles duplicados de un lead/contacto/empresa por correo, teléfono, nombre de empresa o NIF. */
@@ -943,7 +944,7 @@ export class CrmService {
   }
 
   async listContracts(
-    f: { q?: string; status?: ContractStatus; companyId?: number; renewalBefore?: number } & PageOpts = {},
+    f: { q?: string; status?: ContractStatus; companyId?: number; renewalBefore?: number } & PageOpts & SortOpts<ContractSortKey> = {},
   ): Promise<Page<Contract>> {
     const filter: Partial<Contract> = {};
     if (f.status) filter.status = f.status;
@@ -956,7 +957,7 @@ export class CrmService {
     }
     const q = normalizeText(f.q);
     if (q) rows = rows.filter((c) => normalizeText(c.reference).includes(q) || normalizeText(c.planId).includes(q));
-    return paginate(rows, f);
+    return paginate(applySort(rows, CONTRACT_SORT, f), f);
   }
 
   private contractTerms(input: ContractInput) {
