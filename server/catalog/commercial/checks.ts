@@ -135,7 +135,7 @@ export function shapeProblems(family: string, d: ProductDraft): string[] {
 function publicTexts(d: ProductDraft, opts: { withExcludes?: boolean } = {}): string[] {
   const m = d.commercial;
   if (!m) return [];
-  return [m.headline, m.longDescription, m.problem, m.forWho, ...m.benefits, ...(opts.withExcludes === false ? [] : m.excludes), ...m.capacityRules, ...m.integrations, ...(m.seo ? [m.seo.title, m.seo.description] : [])].filter(Boolean);
+  return [m.headline, m.longDescription, m.problem, m.forWho ?? "", ...m.benefits, ...(opts.withExcludes === false ? [] : m.excludes), ...m.capacityRules, ...m.integrations, ...(m.seo ? [m.seo.title, m.seo.description] : [])].filter(Boolean);
 }
 
 /** Revisión completa de un producto frente al resto del catálogo (borradores). */
