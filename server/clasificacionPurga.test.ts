@@ -52,7 +52,7 @@ describe("borrado de la base restaurada de una empresa de prueba", () => {
     await dropRestoredTestDatabase([admin, admin], "t3-empresa-demo-elephant-01", "es_t3_empresa_demo_elephant_01_r20261016221031");
     expect(calls.filter((c) => c.startsWith("DROP DATABASE"))).toHaveLength(2);
     expect(calls.filter((c) => c.startsWith("DROP USER"))).toHaveLength(2);
-    await expect(dropRestoredTestDatabase([admin], "t5-skibox", "es_t5_skibox_r20261016221031")).rejects.toThrow(/lista cerrada/);
+    await expect(dropRestoredTestDatabase([admin], "t9-empresa-real", "es_t9_empresa_real_r20261016221031")).rejects.toThrow(/lista cerrada/);
     await expect(dropRestoredTestDatabase([admin], "t3-empresa-demo-elephant-01", "es_t5_skibox")).rejects.toThrow(/no es una base restaurada/);
     await expect(dropRestoredTestDatabase([admin], "t3-empresa-demo-elephant-01", "es_t3_empresa_demo_elephant_01")).rejects.toThrow(/no es una base restaurada/);
     expect(calls).toHaveLength(4);

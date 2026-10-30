@@ -1,20 +1,25 @@
 /**
- * Purga DEFINITIVA de las empresas de prueba de production (autorizada por el propietario el 28/10/2026).
+ * Purga DEFINITIVA de las empresas de prueba de production (autorizada por el propietario el 28/10/2026; Skibox,
+ * declarada empresa de prueba por el propietario el 30/10/2026, se añade a la lista).
  *
- *  - Lista CERRADA: solo las cinco empresas de `PURGE_TARGETS`, identificadas a la vez por su tenant y por su nombre
+ *  - Lista CERRADA: solo las empresas de `PURGE_TARGETS`, identificadas a la vez por su tenant y por su nombre
  *    exacto en el CRM. No admite identificadores por parámetro.
  *  - Simulación por defecto: calcula y lista cada registro y recurso afectado; `apply` solo ejecuta el plan calculado.
- *  - Aborta sin tocar nada si: aparece Skibox, Nextair u otra empresa; hay registros fiscales o de cobro (facturas,
+ *  - Aborta sin tocar nada si: aparece Nextair u otra empresa; hay registros fiscales o de cobro (facturas,
  *    cargos, cola fiscal, clientes externos, aceptaciones); hay datos live (`livemode = 1`); una base de datos de
  *    tenant es compartida o no tiene el nombre propio del tenant; o queda una dependencia sin resolver.
  *  - Conserva las copias de seguridad (`backup_*` del registro): son la evidencia recuperable de lo borrado.
  *  - Conserva la auditoría inmutable del registro (`tenant_events`, de solo anexado): el tenant no se borra, queda
  *    como lápida en estado `deleted` (sin dominios, bases, capacidades ni aprovisionamiento) con un evento de la purga.
- *  - Después comprueba que no queda ningún registro de las cinco empresas ni referencias huérfanas.
+ *  - Recursos fuera del CRM y del registro (si se le dan los servidores y el bucket de medios): bases restauradas sin
+ *    uso que dejan las pruebas de restauración, medición del Resource Manager (`es_erm`) y ficheros (`t/<tenant>/`).
+ *  - Después comprueba que no queda ningún registro de las empresas ni referencias huérfanas.
  *  - El cliente de Stripe de PRUEBAS no se toca aquí (no hay clave de pruebas en production): solo su enlace local.
  */
 import mysql from "mysql2/promise";
-import { databaseNameFor } from "../provisioning/mysqlAdapters";
+import { DeleteObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { ERM_DATABASE } from "../erm/setup";
+import { databaseNameFor, userNameFor } from "../provisioning/mysqlAdapters";
 import { restoredUserFor } from "./backupRestore";
 
 export const PURGE_TARGETS = [
@@ -23,10 +28,13 @@ export const PURGE_TARGETS = [
   { tenantId: "t3-empresa-demo-elephant-01", companyName: "Empresa Demo Elephant 01" },
   { tenantId: "t4-empresa-demo-elephant-02", companyName: "Empresa Demo Elephant 02" },
   { tenantId: "prueba-e2e-stripe-sandbox-20261018", companyName: "PRUEBA E2E Stripe sandbox 20261018" },
+  { tenantId: "t5-skibox", companyName: "Skibox" },
 ] as const;
 /** Empresas reales que nunca pueden aparecer en el plan. */
-export const PROTECTED_TENANTS = ["t5-skibox"];
-export const PROTECTED_COMPANY_NAMES = ["Nextair", "NEXTAIR SL", "Skibox"];
+export const PROTECTED_TENANTS: readonly string[] = [];
+export const PROTECTED_COMPANY_NAMES = ["Nextair", "NEXTAIR SL"];
+/** Prefijo de los ficheros de una empresa en el bucket de medios. */
+export const mediaPrefixOf = (tenantId: string) => `t/${tenantId}/`;
 
 /** Tablas del CRM que se conservan siempre (fiscalidad, cobros y clientes externos): si tienen filas de las empresas, se aborta. */
 export const CRM_PROTECTED = ["invoices", "invoice_lines", "invoice_series", "fiscal_documents", "billing_charges", "billing_charge_payments", "external_subscriptions", "external_subscription_events", "crm_contract_acceptances"];
@@ -65,8 +73,22 @@ export interface PurgePlan {
   databases: Array<{ tenantId: string; database: string | null; action: "drop" | "none"; reason?: string; restored?: boolean }>;
   /** Tenants que quedan como lápida en `deleted` (la auditoría, `tenant_events`, los referencia y no se borra). */
   retire: Array<{ tenantId: string; from: string }>;
+  /** Bases restauradas sin uso (pruebas de restauración) de las empresas, en cada servidor. */
+  extraDatabases: Array<{ tenantId: string; server: string; database: string }>;
+  /** Filas de medición del Resource Manager (`es_erm`) de las empresas, por servidor y tabla. */
+  measurement: Array<{ server: string; table: string; rows: number }>;
+  /** Ficheros de las empresas en el bucket de medios (`t/<tenant>/`); `checked: false` si no se ha podido mirar. */
+  files: { checked: boolean; source: string | null; reason?: string; byTenant: Array<{ tenantId: string; objects: number; bytes: number; keys: string[] }> };
   kept: string[];
   problems: string[];
+}
+
+/** Recursos fuera de las bases del CRM y del registro (opcionales: sin ellos, el plan no los mira). */
+export interface PurgeResources {
+  /** Administradores de los servidores de bases de datos de las empresas. */
+  servers?: Array<{ alias: string; admin: Q }>;
+  /** Bucket de medios de las empresas (solo lectura), o el motivo por el que no está disponible. */
+  media?: { describe(): string; list(prefix: string): Promise<Array<{ key: string; bytes: number }>> } | { unavailable: string };
 }
 
 async function columns(q: Q): Promise<Map<string, Map<string, string>>> {
@@ -117,7 +139,7 @@ function deleteOrder(tables: string[], fks: Awaited<ReturnType<typeof foreignKey
   return out;
 }
 
-export async function planPurge(d: { crm: Q; registry: Q; tenantDbName?: (tenantId: string) => Promise<string | null>; expectedDbName?: (tenantId: string) => string }): Promise<PurgePlan> {
+export async function planPurge(d: { crm: Q; registry: Q; tenantDbName?: (tenantId: string) => Promise<string | null>; expectedDbName?: (tenantId: string) => string; resources?: PurgeResources }): Promise<PurgePlan> {
   const problems: string[] = [];
   const tenants = PURGE_TARGETS.map((t) => t.tenantId);
   if (tenants.some((t) => PROTECTED_TENANTS.includes(t))) problems.push("la lista incluye una empresa protegida");
@@ -242,13 +264,48 @@ export async function planPurge(d: { crm: Q; registry: Q; tenantDbName?: (tenant
     databases.push({ tenantId: t, database: db, action: "drop", ...(restored ? { restored } : {}) });
   }
 
+  // 6. Recursos fuera del CRM y del registro: bases sobrantes, medición y ficheros
+  const extraDatabases: PurgePlan["extraDatabases"] = [];
+  const measurement: PurgePlan["measurement"] = [];
+  for (const s of d.resources?.servers ?? []) {
+    const schemas = (await rows(s.admin, "SELECT SCHEMA_NAME n FROM information_schema.SCHEMATA WHERE SCHEMA_NAME LIKE 'es\\_%'")).map((r) => String(r.n ?? r.SCHEMA_NAME));
+    for (const t of tenants) {
+      const own = databaseNameFor(t);
+      const active = databases.find((x) => x.tenantId === t)?.database ?? null;
+      for (const db of schemas) if ((db === own || new RegExp(`^${own}_r\\d{14}$`).test(db)) && db !== active) extraDatabases.push({ tenantId: t, server: s.alias, database: db });
+    }
+    if (!schemas.includes(ERM_DATABASE)) continue;
+    for (const r of await rows(s.admin, "SELECT table_name t FROM information_schema.columns WHERE table_schema = ? AND column_name = 'tenant_id'", [ERM_DATABASE])) {
+      const table = String(r.t ?? r.TABLE_NAME);
+      const [{ n }] = await rows(s.admin, `SELECT COUNT(*) n FROM \`${ERM_DATABASE}\`.\`${table}\` WHERE tenant_id IN (?)`, [tenants]);
+      if (Number(n)) measurement.push({ server: s.alias, table, rows: Number(n) });
+    }
+  }
+  const media = d.resources?.media;
+  const files: PurgePlan["files"] = { checked: false, source: null, byTenant: [] };
+  if (media && "unavailable" in media) {
+    files.reason = media.unavailable;
+    problems.push(`no se pueden comprobar los ficheros de las empresas (${media.unavailable}): no se purga nada`);
+  } else if (media) {
+    files.checked = true;
+    files.source = media.describe();
+    for (const t of tenants) {
+      const objs = await media.list(mediaPrefixOf(t));
+      if (objs.some((o) => !o.key.startsWith(mediaPrefixOf(t)))) problems.push(`el bucket devolvió ficheros fuera de ${mediaPrefixOf(t)}: no se purga nada`);
+      if (objs.length) files.byTenant.push({ tenantId: t, objects: objs.length, bytes: objs.reduce((a, o) => a + o.bytes, 0), keys: objs.map((o) => o.key) });
+    }
+  }
+
   return {
     companies,
     missing,
     steps: [...crmSteps, ...regSteps],
     databases,
     retire,
-    kept: [...REGISTRY_KEPT.map((t) => `registro.${t} (${t === "tenant_events" ? "auditoría inmutable" : "copias de seguridad"})`), "registro.tenants (lápida en estado deleted)", ...CRM_PROTECTED.map((t) => `crm.${t}`), "cliente de Stripe de pruebas (se elimina en el Dashboard de Stripe en modo test)"],
+    extraDatabases,
+    measurement,
+    files,
+    kept: [...REGISTRY_KEPT.map((t) => `registro.${t} (${t === "tenant_events" ? "auditoría inmutable" : "copias de seguridad"})`), "registro.tenants (lápida en estado deleted)", "copias cifradas en los destinos de copia (hasta su retención)", ...CRM_PROTECTED.map((t) => `crm.${t}`), "cliente de Stripe de pruebas (se elimina en el Dashboard de Stripe en modo test)"],
     problems,
   };
 }
@@ -266,6 +323,35 @@ export async function dropRestoredTestDatabase(admins: Array<Pick<mysql.Pool, "q
   }
 }
 
+/**
+ * Borra una base SOBRANTE (sin uso) de una empresa de la lista cerrada en un servidor: la de nombre propio, con su
+ * usuario propio, o una restaurada (`_r<AAAAMMDDhhmmss>`), con el suyo.
+ */
+export async function dropLeftoverTestDatabase(admin: Pick<mysql.Pool, "query">, tenantId: string, database: string): Promise<void> {
+  if (!PURGE_TARGETS.some((t) => t.tenantId === tenantId)) throw new Error(`${tenantId} no está en la lista cerrada de la purga`);
+  const own = databaseNameFor(tenantId);
+  if (database === own) {
+    await admin.query(`DROP DATABASE IF EXISTS \`${database}\``);
+    await admin.query("DROP USER IF EXISTS ?@?", [userNameFor(tenantId), "%"]);
+    return;
+  }
+  await dropRestoredTestDatabase([admin], tenantId, database);
+}
+
+/** Borrado de ficheros del bucket de medios para `applyPurge` (variables S3_* del Core; solo con BACKUP_MEDIA=1). */
+export function purgeMediaDeleter(env: NodeJS.ProcessEnv): ((key: string) => Promise<void>) | undefined {
+  if (env.BACKUP_MEDIA !== "1" || !env.S3_BUCKET || !env.S3_ACCESS_KEY || !env.S3_SECRET_KEY) return undefined;
+  const client = new S3Client({
+    region: env.S3_REGION || "us-east-1",
+    ...(env.S3_ENDPOINT ? { endpoint: env.S3_ENDPOINT, forcePathStyle: true } : {}),
+    credentials: { accessKeyId: env.S3_ACCESS_KEY, secretAccessKey: env.S3_SECRET_KEY },
+  });
+  return async (key) => {
+    if (!PURGE_TARGETS.some((t) => key.startsWith(mediaPrefixOf(t.tenantId)))) throw new Error(`${key} no es un fichero de una empresa de la lista cerrada`);
+    await client.send(new DeleteObjectCommand({ Bucket: env.S3_BUCKET!, Key: key }));
+  };
+}
+
 /** Funciones de borrado de bases para `applyPurge` (sin servidor de bases de datos, ninguna). */
 export function purgeDatabaseDroppers(dbs: { dropDatabase(tenantId: string): Promise<void> } | null, admins: Array<Pick<mysql.Pool, "query">> | null) {
   return {
@@ -276,10 +362,23 @@ export function purgeDatabaseDroppers(dbs: { dropDatabase(tenantId: string): Pro
 
 /** Ejecuta el plan (cada base en una transacción) y borra las bases de los tenants. Exige un plan sin problemas. */
 export async function applyPurge(
-  d: { crm: mysql.Pool; registry: mysql.Pool; dropDatabase?: (tenantId: string) => Promise<void>; dropRestoredDatabase?: (tenantId: string, database: string) => Promise<void> },
+  d: {
+    crm: mysql.Pool;
+    registry: mysql.Pool;
+    dropDatabase?: (tenantId: string) => Promise<void>;
+    dropRestoredDatabase?: (tenantId: string, database: string) => Promise<void>;
+    /** Servidores de bases (bases sobrantes y medición del plan). */
+    servers?: Array<{ alias: string; admin: Q }>;
+    /** Borrado de un fichero del bucket de medios (ficheros del plan). */
+    deleteMedia?: (key: string) => Promise<void>;
+  },
   plan: PurgePlan,
-): Promise<{ deleted: Array<{ db: string; table: string; rows: number }>; droppedDatabases: string[] }> {
+): Promise<{ deleted: Array<{ db: string; table: string; rows: number }>; droppedDatabases: string[]; deletedFiles: number }> {
   if (plan.problems.length) throw new Error(`No se purga nada:\n - ${plan.problems.join("\n - ")}`);
+  // Antes de borrar nada: cada recurso del plan tiene con qué borrarse (si no, quedaría huérfano)
+  const serverOf = (alias: string) => d.servers?.find((s) => s.alias === alias)?.admin;
+  for (const x of [...plan.extraDatabases, ...plan.measurement]) if (!serverOf(x.server)) throw new Error(`Sin acceso al servidor ${x.server}: no se purga nada`);
+  if (plan.files.byTenant.length && !d.deleteMedia) throw new Error("Sin acceso de borrado al bucket de medios: no se purga nada");
   const deleted: Array<{ db: string; table: string; rows: number }> = [];
   for (const [db, pool] of [["crm", d.crm], ["registry", d.registry]] as const) {
     const c = await pool.getConnection();
@@ -312,13 +411,30 @@ export async function applyPurge(
     if (x.restored) await d.dropRestoredDatabase!(x.tenantId, x.database!);
     droppedDatabases.push(x.database!);
   }
-  return { deleted, droppedDatabases };
+  const tenants = PURGE_TARGETS.map((t) => t.tenantId);
+  for (const x of plan.extraDatabases) {
+    await dropLeftoverTestDatabase(serverOf(x.server)!, x.tenantId, x.database);
+    droppedDatabases.push(`${x.server}:${x.database}`);
+  }
+  for (const m of plan.measurement) {
+    const [r] = await serverOf(m.server)!.query<mysql.ResultSetHeader>(`DELETE FROM \`${ERM_DATABASE}\`.\`${m.table}\` WHERE tenant_id IN (?)`, [tenants]);
+    deleted.push({ db: `${m.server}:${ERM_DATABASE}`, table: m.table, rows: r.affectedRows });
+  }
+  let deletedFiles = 0;
+  for (const f of plan.files.byTenant) for (const key of f.keys) (await d.deleteMedia!(key), deletedFiles++);
+  return { deleted, droppedDatabases, deletedFiles };
 }
 
-/** Comprobación posterior: ningún registro de las cinco empresas y ninguna referencia huérfana en las tablas tocadas. */
-export async function verifyPurge(d: { crm: Q; registry: Q }): Promise<{ ok: boolean; remaining: string[] }> {
-  const again = await planPurge({ crm: d.crm, registry: d.registry });
-  const remaining = [...again.steps.map((s) => `${s.db}.${s.table}: ${s.rows}`), ...again.retire.map((x) => `registry.tenants: ${x.tenantId} sigue en ${x.from}`)];
+/** Comprobación posterior: ningún registro ni recurso de las empresas y ninguna referencia huérfana en las tablas tocadas. */
+export async function verifyPurge(d: { crm: Q; registry: Q; resources?: PurgeResources }): Promise<{ ok: boolean; remaining: string[] }> {
+  const again = await planPurge({ crm: d.crm, registry: d.registry, resources: d.resources });
+  const remaining = [
+    ...again.steps.map((s) => `${s.db}.${s.table}: ${s.rows}`),
+    ...again.retire.map((x) => `registry.tenants: ${x.tenantId} sigue en ${x.from}`),
+    ...again.extraDatabases.map((x) => `${x.server}: base ${x.database} de ${x.tenantId}`),
+    ...again.measurement.map((m) => `${m.server}:${ERM_DATABASE}.${m.table}: ${m.rows}`),
+    ...again.files.byTenant.map((f) => `ficheros de ${f.tenantId}: ${f.objects}`),
+  ];
   for (const [name, q] of [["crm", d.crm], ["registry", d.registry]] as const) {
     for (const f of await foreignKeys(q)) {
       const [{ n }] = await rows(q, `SELECT COUNT(*) n FROM \`${f.child}\` c LEFT JOIN \`${f.parent}\` p ON p.\`${f.parentColumn}\` = c.\`${f.column}\` WHERE c.\`${f.column}\` IS NOT NULL AND p.\`${f.parentColumn}\` IS NULL`);
