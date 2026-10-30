@@ -147,8 +147,11 @@ export function installTenantResolution(app: Express, env: NodeJS.ProcessEnv = p
     configureLimitAccess(rt.limits);
     // Excepciones comerciales de cuota con caducidad (registro 0016, solo lectura)
     configureQuotaExceptions(rt.quotaExceptions);
-    // Medición + cuotas por tenant (límites del registro con sus excepciones vigentes; consumo en ERM_DATABASE_URL)
-    installErmFromEnv(withQuotaExceptions(rt.quotas, rt.quotaExceptions), env);
+    // Medición + cuotas por tenant (límites del registro con sus excepciones vigentes; consumo en ERM_DATABASE_URL).
+    // Las empresas en prueba gratuita usan la política de prueba en lugar de los valores de plataforma.
+    installErmFromEnv(withQuotaExceptions(rt.quotas, rt.quotaExceptions), env, async (tenantId) =>
+      (await import("../../trialRestrictions")).trialPhaseQuotas(tenantId),
+    );
     // Presupuesto de conexiones según la capacidad real del servidor MySQL compartido y las réplicas (dbCapacity.ts)
     startDbCapacityWatch({ serverConnections: () => runtime.serverConnections(), capBudget: capConnectionBudget, setPressure: setServerPressure, configured: tenantPoolPolicyFromEnv(env) }, env);
     // Acceso delegado de soporte (inactivo sin SUPPORT_JWT_SECRET)

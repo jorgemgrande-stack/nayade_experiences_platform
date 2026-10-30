@@ -52,6 +52,8 @@ export interface TenantPolicyInput {
   overrides: readonly Quota[];
   /** Valores por defecto del Resource Manager. */
   defaults: readonly DefaultQuota[];
+  /** Política de la fase comercial (prueba gratuita: `quotaPolicyForPhase`); null o ausente = la de plataforma. */
+  phase?: readonly DefaultQuota[] | null;
   exceptions: readonly QuotaException[];
   now: number;
 }
@@ -92,12 +94,14 @@ export function tenantPolicy(i: TenantPolicyInput): TenantPolicy {
   const add = (metric: string, period: QuotaPeriod) => keys.set(`${metric}|${period}`, { metric, period });
   for (const q of i.overrides) add(q.metric, q.period);
   for (const q of i.defaults) add(q.metric, q.period);
+  for (const q of i.phase ?? []) add(q.metric, q.period);
   for (const e of i.exceptions) if (e.period !== "total") add(e.metric, e.period);
   const resources = Array.from(keys.values())
     .sort((a, b) => a.metric.localeCompare(b.metric) || a.period.localeCompare(b.period))
     .map(({ metric, period }) => {
       const own = i.overrides.find((q) => q.metric === metric && q.period === period);
       const def = i.defaults.find((q) => q.metric === metric && q.period === period);
+      const phase = i.phase?.find((q) => q.metric === metric && q.period === period);
       return resolveEffectiveLimit({
         metric,
         period,
@@ -105,8 +109,9 @@ export function tenantPolicy(i: TenantPolicyInput): TenantPolicy {
         planIncluded: undefined,
         override: own?.limit,
         exceptions: i.exceptions,
+        ...(phase ? { phaseDefault: phase.limit } : {}),
         platformDefault: def ? def.limit : null,
-        enforcement: own?.enforcement ?? def?.enforcement ?? "hard",
+        enforcement: own?.enforcement ?? phase?.enforcement ?? def?.enforcement ?? "hard",
         now: i.now,
       });
     });
@@ -120,5 +125,6 @@ export function limitWithoutExceptions(p: TenantPolicy, metric: string, period: 
   if (row.source !== "exception") return row.limit;
   if (row.breakdown.override !== null) return row.breakdown.override;
   if (row.contractual !== undefined) return row.contractual;
+  if (row.breakdown.trial !== null) return row.breakdown.trial;
   return row.breakdown.default;
 }

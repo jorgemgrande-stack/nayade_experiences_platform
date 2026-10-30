@@ -4,6 +4,7 @@
  *   límite efectivo = excepción comercial vigente
  *                   | si no, ajuste propio del operador (tenant_quotas, solo métricas del Resource Manager)
  *                   | si no, contractual = incluido en el plan + ampliaciones contratadas
+ *                   | si no, valor de la fase comercial (prueba gratuita: `TRIAL_QUOTA_POLICY`)
  *                   | si no (nada de lo anterior), valor por defecto de la plataforma.
  *
  *  - «Contractual» es lo que el plano de control escribe al aplicar las licencias (registro 0013: plan + ampliaciones)
@@ -15,7 +16,7 @@
 import type { QuotaPeriod } from "./types";
 
 export type PolicyPeriod = "total" | QuotaPeriod;
-export type PolicySource = "exception" | "override" | "plan" | "addon" | "default";
+export type PolicySource = "exception" | "override" | "plan" | "addon" | "trial" | "default";
 /** `hard`: se rechaza al superarlo. `soft`: se permite y se avisa. `none`: se informa, no se aplica todavía. */
 export type PolicyEnforcement = "hard" | "soft" | "none";
 
@@ -132,6 +133,8 @@ export interface PolicyInput {
   /** Ajuste propio del operador (tenant_quotas). */
   override?: number;
   exceptions?: readonly QuotaException[];
+  /** Valor de la fase comercial (prueba gratuita). undefined = la empresa no está en una fase con política propia. */
+  phaseDefault?: number;
   platformDefault: number | null | undefined;
   enforcement: PolicyEnforcement;
   now: number;
@@ -150,6 +153,8 @@ export interface EffectiveLimit {
     plan: { key: string | null; included: number | null } | null;
     addon: number | null;
     override: number | null;
+    /** Límite de la prueba gratuita (si la empresa está en prueba). */
+    trial: number | null;
     exception: { id: number; newLimit: number | null; originalLimit: number | null; reason: string; operator: string; startsAt: number; expiresAt: number } | null;
     default: number | null;
   };
@@ -184,6 +189,9 @@ export function resolveEffectiveLimit(i: PolicyInput): EffectiveLimit {
   } else if (contractual !== undefined) {
     limit = contractual;
     source = addon ? "addon" : "plan";
+  } else if (i.phaseDefault !== undefined) {
+    limit = i.phaseDefault;
+    source = "trial";
   } else {
     limit = def;
     source = "default";
@@ -199,6 +207,7 @@ export function resolveEffectiveLimit(i: PolicyInput): EffectiveLimit {
       plan,
       addon,
       override: i.override ?? null,
+      trial: i.phaseDefault ?? null,
       exception: exc ? { id: exc.id, newLimit: exc.newLimit, originalLimit: exc.originalLimit, reason: exc.reason, operator: exc.operator, startsAt: exc.startsAt, expiresAt: exc.expiresAt } : null,
       default: def,
     },
@@ -218,7 +227,7 @@ export function quotaVerdict(eff: Pick<EffectiveLimit, "limit" | "enforcement" |
   return { allowed: true, level: "ok" };
 }
 
-const SOURCE_LABEL: Record<PolicySource, string> = { exception: "excepción comercial", override: "ajuste del operador", plan: "plan", addon: "plan + ampliaciones", default: "valor por defecto de la plataforma" };
+const SOURCE_LABEL: Record<PolicySource, string> = { exception: "excepción comercial", override: "ajuste del operador", plan: "plan", addon: "plan + ampliaciones", trial: "prueba gratuita", default: "valor por defecto de la plataforma" };
 
 /** Explicación legible del límite (para el CRM y los registros). */
 export function explainLimit(eff: EffectiveLimit, fmt: (n: number) => string = (n) => n.toLocaleString("es-ES")): string {
@@ -228,6 +237,7 @@ export function explainLimit(eff: EffectiveLimit, fmt: (n: number) => string = (
   if (eff.breakdown.addon) parts.push(`ampliaciones: +${fmt(eff.breakdown.addon)}`);
   if (eff.breakdown.override !== null) parts.push(`ajuste del operador: ${fmt(eff.breakdown.override)}`);
   if (eff.breakdown.exception) parts.push(`excepción hasta ${new Date(eff.breakdown.exception.expiresAt).toISOString().slice(0, 10)}: ${v(eff.breakdown.exception.newLimit)}`);
+  if (eff.source === "trial") parts.push(`prueba gratuita: ${v(eff.breakdown.trial)} (fuera de la prueba: ${v(eff.breakdown.default)})`);
   if (eff.source === "default") parts.push(`por defecto: ${v(eff.breakdown.default)}`);
   return `${v(eff.limit)} (${SOURCE_LABEL[eff.source]})${parts.length ? ` · ${parts.join(" · ")}` : ""}`;
 }

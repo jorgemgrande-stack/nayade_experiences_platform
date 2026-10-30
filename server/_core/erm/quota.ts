@@ -80,6 +80,19 @@ export interface QuotaEngineOptions {
   now?: () => number;
   /** Contadores compartidos entre réplicas para las cuotas día/mes (ver `SharedUsageCounters`). */
   counters?: SharedUsageCounters;
+  /**
+   * Valores por defecto propios de la fase comercial de la empresa (p. ej. `TRIAL_QUOTA_POLICY` en la prueba gratuita):
+   * sustituyen a los de plataforma para sus métricas; los límites propios y las excepciones siguen por encima. null: los
+   * de plataforma. Un fallo al resolverla deja los de plataforma (como antes de existir la fase).
+   */
+  phaseDefaults?: (tenantId: string) => Promise<readonly DefaultQuota[] | null>;
+}
+
+/** Valores por defecto con los de la fase encima (misma métrica y periodo: gana la fase). Pura. */
+export function mergePhaseDefaults(defaults: readonly DefaultQuota[], phase: readonly DefaultQuota[] | null): DefaultQuota[] {
+  if (!phase?.length) return [...defaults];
+  const out = defaults.filter((d) => !phase.some((p) => p.metric === d.metric && p.period === d.period));
+  return [...out, ...phase];
 }
 
 type QuotaCache = { at: number; list: Quota[] };
@@ -109,7 +122,7 @@ export class QuotaEngine {
     return this.opts.applyDefaults ?? getTenantMode() === "multi";
   }
 
-  /** Límites efectivos del tenant: los propios, más los de plataforma para lo no definido. */
+  /** Límites efectivos del tenant: los propios, más los de su fase o de plataforma para lo no definido. */
   async quotasFor(tenantId: string): Promise<Quota[]> {
     const t = this.now();
     const c = this.cache.get(tenantId);
@@ -124,7 +137,8 @@ export class QuotaEngine {
       }
     }
     if (!this.applyDefaults()) return own;
-    const defaults = (this.opts.defaults ?? DEFAULT_QUOTAS).filter(
+    const phase = this.opts.phaseDefaults ? await this.opts.phaseDefaults(tenantId).catch(() => null) : null;
+    const defaults = mergePhaseDefaults(this.opts.defaults ?? DEFAULT_QUOTAS, phase).filter(
       (d) => !own.some((o) => o.metric === d.metric && o.period === d.period),
     );
     return [...own, ...defaults.map((d) => ({ ...d, tenantId }))];

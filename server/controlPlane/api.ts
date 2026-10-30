@@ -150,7 +150,7 @@ import type { OrderStore } from "../orchestrator/store";
 import type { TestPaymentPort } from "../orchestrator/payments";
 import { createOrdersRouter, paymentsWebhookHandler } from "../orchestrator/api";
 import { subscriptionBilling } from "../orchestrator/subscriptionBilling";
-import { customDomainDecision, exemptTenantsFromEnv, resolveCommercialState } from "../commercialState";
+import { customDomainDecision, exemptTenantsFromEnv, quotaPolicyForPhase, resolveCommercialState } from "../commercialState";
 import { buildRelationshipExport, RelationshipNotFoundError } from "./relationshipExport";
 import { CalendarUnavailableError } from "./madridCalendar";
 import { createContractActivation } from "../crm/activation";
@@ -1026,15 +1026,21 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
   );
 
   // ── Política de consumo: límite efectivo con su desglose y excepciones comerciales con caducidad (registro 0016) ──
-  const policyOfTenant = async (id: string, now: number) =>
-    tenantPolicy({
-      grants: d.capabilities ? await d.capabilities.list(id) : null,
+  const policyOfTenant = async (id: string, now: number) => {
+    const grants = d.capabilities ? await d.capabilities.list(id) : null;
+    // Fase comercial con la misma regla que aplica el Core (prueba gratuita no exenta: política de prueba)
+    const status = (await d.reader.getTenant(id))?.status ?? null;
+    const phase = quotaPolicyForPhase(resolveCommercialState({ multi: true, tenantId: id, status, grants, now, exempt: exemptTenantsFromEnv() }));
+    return tenantPolicy({
+      grants,
       contracted: d.limits ? await d.limits.limits(id) : [],
       overrides: await d.quotas.listQuotas(id),
       defaults: d.quotaDefaults ?? DEFAULT_QUOTAS,
+      phase,
       exceptions: d.quotaExceptions ? await d.quotaExceptions.exceptions(id) : [],
       now,
     });
+  };
   const existingTenant = async (req: Request) => {
     const id = idSchema.parse(req.params.id);
     const t = await d.reader.getTenant(id);
