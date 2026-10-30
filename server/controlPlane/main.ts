@@ -103,7 +103,7 @@ import { MysqlAdminAlertStore, adminAlertTablesReady } from "../adminAlerts/stor
 import { CommercialEventWatcher, withExternalAlerts } from "../adminAlerts/sources";
 import { startAlertCycle } from "../adminAlerts/runtime";
 import { DeployWatcher, RestoreDrillWatcher, SERVED_STATUSES, UptimeMonitor, githubGet, isTestTenant } from "../adminAlerts/operations";
-import { DataRequestService, dataRequestDeadlineAlerts } from "../dataRequests/service";
+import { DataRequestService, operatorAssignees } from "../dataRequests/service";
 import { MysqlDataRequestStore, dataRequestTablesReady } from "../dataRequests/store";
 
 async function main() {
@@ -570,7 +570,7 @@ async function main() {
   // confirmados. Sin las tablas no se monta y los avisos internos siguen como antes (CP_ALERT_EMAIL).
   let adminAlerts: AdminAlertService | null = null;
   // Solicitudes de derechos de protección de datos (RGPD, CRM 0034): registro desde el CRM con plazo legal de 30 días
-  const dataRequests = crm && crmPool && (await dataRequestTablesReady(crmPool)) ? new DataRequestService({ store: new MysqlDataRequestStore(crmPool), raise: (id, f) => (adminAlerts ? adminAlerts.raise(id, f) : Promise.resolve(null)) }) : null;
+  const dataRequests = crm && crmPool && (await dataRequestTablesReady(crmPool)) ? new DataRequestService({ store: new MysqlDataRequestStore(crmPool), raise: (id, f) => (adminAlerts ? adminAlerts.raise(id, f) : Promise.resolve(null)), assignees: operators.service ? async () => operatorAssignees(await operators.service!.list()) : null }) : null;
   console.log(JSON.stringify({ ctx: "DataRequests", mounted: !!dataRequests, ...(dataRequests ? {} : { reason: !crm ? "crm_not_configured" : "migration_0034_missing" }) }));
   if (crm && crmPool && (await settingsTablesReady(crmPool))) {
     const alertPool = crmPool;
@@ -638,7 +638,7 @@ async function main() {
         pastDueExternals: externalStore ? () => externalStore.list({ status: "past_due" }) : undefined,
         openTickets: async () => Promise.all((await tickets.list({ status: "open", limit: 200 })).items.map(async (t) => ({ ticket: t, events: (await tickets.get(t.id)).events }))),
         operations: [
-          ...(dataRequests ? [{ name: "dataRequests", run: async () => { const list = dataRequestDeadlineAlerts(await dataRequests.open(), Date.now()); for (const a of list) await alerts.raise(a.id, a.facts); return list.length; } }] : []),
+          ...(dataRequests ? [{ name: "dataRequests", run: async () => { const list = await dataRequests.escalate(Date.now()); for (const a of list) await alerts.raise(a.id, a.facts); return list.length; } }] : []),
           ...(copiesReady ? [{ name: "restoreDrills", run: () => new RestoreDrillWatcher({ restores: () => copiesLedger.listRestores(50), store: alertStore, raise }).tick() }] : []),
           ...(uptime ? [{ name: "uptime", run: async () => (await uptime.tick()).down }] : []),
           ...(deploys ? [{ name: "deploys", run: () => deploys.tick() }] : []),

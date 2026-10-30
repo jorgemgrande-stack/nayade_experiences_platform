@@ -74,6 +74,37 @@ describe.skipIf(!URL_)("CRM con MySQL real", () => {
     expect(await s.getState("commercial_events")).toBe(42);
   });
 
+  it("solicitudes RGPD: responsable, historial y filtros de plazo (migración 0034)", async () => {
+    const { MysqlDataRequestStore, dataRequestTablesReady } = await import("./dataRequests/store");
+    const { DataRequestService } = await import("./dataRequests/service");
+    expect(await dataRequestTablesReady(pool)).toBe(true);
+    const T = Date.UTC(2026, 9, 30, 10);
+    const DAY = 24 * 3600_000;
+    const svc = new DataRequestService({ store: new MysqlDataRequestStore(pool), now: () => T, assignees: async () => [{ id: "luis", name: "Luis Admin" }] });
+    const base = { kind: "erasure", channel: "email", requesterName: "Ana Cliente", requesterEmail: "ana@cliente.example" };
+    const late = await svc.register({ ...base, receivedAt: T - 31 * DAY }, "operator:marta");
+    const soon = await svc.register({ ...base, kind: "access", receivedAt: T - 25 * DAY }, "operator:marta");
+    expect((await svc.assign(soon.id, "luis", "operator:marta")).assigneeName).toBe("Luis Admin");
+    await svc.addNote(soon.id, "Llamada al cliente", "operator:luis");
+    await svc.setStatus(soon.id, "in_progress", null, "operator:luis");
+    const ids = async (q: Parameters<typeof svc.list>[0]) => (await svc.list(q)).map((x) => x.id);
+    expect(await ids({ deadline: "overdue" })).toEqual([late.id]);
+    expect(await ids({ deadline: "due_soon" })).toEqual([soon.id]);
+    expect(await ids({ assigneeId: null })).toEqual([late.id]);
+    expect(await ids({ assigneeId: "luis", kind: "access", status: "in_progress" })).toEqual([soon.id]);
+    await svc.escalate(T);
+    await svc.escalate(T + 1000);
+    const d = await svc.detail(soon.id);
+    expect(d.events.map((e) => [e.type, e.actor])).toEqual([
+      ["created", "operator:marta"],
+      ["assigned", "operator:marta"],
+      ["note", "operator:luis"],
+      ["status_changed", "operator:luis"],
+      ["escalated", "system:alertas"],
+    ]);
+    expect(d.events[0].at).toBe(T);
+  });
+
   it("tareas con responsable y prioridad (migración 0024)", async () => {
     const co = await crm.createCompany({ name: "Tareas MySQL" }, "t");
     const t = await crm.addTask("company", co.id, "Llamar", Date.now() + 1000, "t", { assignee: "Laura", priority: "high" });
