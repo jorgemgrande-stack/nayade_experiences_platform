@@ -53,8 +53,8 @@ export class PlatformMailer {
     this.t = platformTemplates({ supportEmail: policy.supportEmail });
   }
 
-  send(tenantId: string | null, idempotencyKey: string, category: MailCategory, to: string, c: MailContent, o: { deferOnRateLimit?: boolean } = {}): Promise<SendResult> {
-    return this.service.send({ tenantId: tenantId || PLATFORM_TENANT, idempotencyKey, category, to, ...c, sender: { lane: "platform" }, ...(o.deferOnRateLimit ? { deferOnRateLimit: true } : {}) });
+  send(tenantId: string | null, idempotencyKey: string, category: MailCategory, to: string, c: MailContent, o: { deferOnRateLimit?: boolean; authorizedInternal?: boolean } = {}): Promise<SendResult> {
+    return this.service.send({ tenantId: tenantId || PLATFORM_TENANT, idempotencyKey, category, to, ...c, sender: { lane: "platform" }, ...(o.deferOnRateLimit ? { deferOnRateLimit: true } : {}), ...(o.authorizedInternal ? { authorizedInternal: true } : {}) });
   }
 
   /** Destinatarios internos del equipo (CP_ALERT_EMAIL). Vacío: no hay avisos internos por correo. */

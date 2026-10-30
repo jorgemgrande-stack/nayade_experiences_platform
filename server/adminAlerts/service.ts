@@ -106,7 +106,7 @@ export function alertPreview(alertId: string, o: { test?: boolean; crmUrl?: stri
 
 /** Lo mínimo de la bandeja de la plataforma. */
 export interface AlertMailer {
-  send(tenantId: string | null, idempotencyKey: string, category: MailCategory, to: string, c: MailContent, o?: { deferOnRateLimit?: boolean }): Promise<SendResult>;
+  send(tenantId: string | null, idempotencyKey: string, category: MailCategory, to: string, c: MailContent, o?: { deferOnRateLimit?: boolean; authorizedInternal?: boolean }): Promise<SendResult>;
   policy: { mode: string };
 }
 
@@ -239,7 +239,7 @@ export class AdminAlertService {
       let queued = 0;
       for (const addr of to) {
         try {
-          await this.d.mailer.send(PLATFORM, `admin:${alertId}:${short(f.key)}:${short(addr)}`, spec.category, addr, content, { deferOnRateLimit: true });
+          await this.d.mailer.send(PLATFORM, `admin:${alertId}:${short(f.key)}:${short(addr)}`, spec.category, addr, content, { deferOnRateLimit: true, authorizedInternal: true });
           queued++;
         } catch (e) {
           opsLog("error", "AdminAlerts", "send_failed", { alertId, error: e instanceof Error ? e.name : "error" });
@@ -278,7 +278,7 @@ export class AdminAlertService {
       const to = this.recipientsOf(s, alertId);
       let queued = 0;
       for (const addr of to) {
-        await this.d.mailer.send(PLATFORM, `admin:${alertId}:${short(key)}:${short(addr)}`, spec.category, addr, content, { deferOnRateLimit: true }).then(() => queued++, () => undefined);
+        await this.d.mailer.send(PLATFORM, `admin:${alertId}:${short(key)}:${short(addr)}`, spec.category, addr, content, { deferOnRateLimit: true, authorizedInternal: true }).then(() => queued++, () => undefined);
       }
       await this.d.store.finish(logId, queued ? "sent" : "failed", queued);
       await this.d.store.markDigested(rows.map((r) => r.id), now);
@@ -306,7 +306,7 @@ export class AdminAlertService {
     const results = [];
     for (const a of list) {
       const c = alertPreview(a.id, { test: true, crmUrl: this.d.crmUrl })!;
-      const r = await this.d.mailer.send(PLATFORM, `admin-test:${run}:${a.id}`, a.category, addr, c);
+      const r = await this.d.mailer.send(PLATFORM, `admin-test:${run}:${a.id}`, a.category, addr, c, { authorizedInternal: true });
       results.push({ id: a.id, status: r.status, reason: r.reason, outboxId: r.id });
     }
     opsLog("info", "AdminAlerts", "test_sent", { run, count: results.length, by: by.slice(0, 100) });

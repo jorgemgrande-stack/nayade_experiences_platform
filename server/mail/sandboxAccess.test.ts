@@ -59,6 +59,19 @@ describe("autorizaciones del sandbox desde el CRM", () => {
     expect(() => validateSandboxAccess({ addresses: Array.from({ length: 11 }, (_, i) => `p${i}@buzon.example`), categories: [] })).toThrow(/Como mucho/);
   });
 
+  it("avisos internos a buzones autorizados: sin límite por destinatario y hora; el resto lo conserva", async () => {
+    const { access, provider, svc } = await make();
+    await access.save({ addresses: ["pruebas@buzon.example"], categories: ["operational"] }, 0, "operator:1");
+    for (let i = 0; i < 20; i++) expect(String((await svc.send(msg({ authorizedInternal: true }))).reason)).not.toMatch(/rate_limited/);
+    expect(provider.sent).toHaveLength(20);
+    // Sin la marca de aviso interno, el límite del entorno (8/h por defecto) sigue
+    expect(await svc.send(msg())).toMatchObject({ status: "skipped", reason: "rate_limited_recipient" });
+    // Autorizado solo por dominio: la marca no lo exime
+    const dom = new MailService({ lane: "platform", store: new MemoryMailStore(), provider: memoryProvider(), policy: mailPolicyFromEnv({ ...ENV, MAIL_MODE: "sandbox", MAIL_SANDBOX_ALLOWLIST: "buzon.example", MAIL_SCOPE_CATEGORIES: "operational" } as NodeJS.ProcessEnv), now: () => 1_800_000_000_000 });
+    for (let i = 0; i < 8; i++) await dom.send(msg({ authorizedInternal: true }));
+    expect(await dom.send(msg({ authorizedInternal: true }))).toMatchObject({ status: "skipped", reason: "rate_limited_recipient" });
+  });
+
   it("un valor guardado fuera de lo previsto no abre nada de más; versiones en conflicto se rechazan", async () => {
     expect(normalizeSandboxAccess({ addresses: ["ok@buzon.example", "mal", 3], categories: ["operational", "marketing"] })).toEqual({ addresses: ["ok@buzon.example"], categories: ["operational"] });
     expect(normalizeSandboxAccess(null)).toEqual({ addresses: [], categories: [] });
