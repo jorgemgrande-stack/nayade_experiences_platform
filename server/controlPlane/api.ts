@@ -35,6 +35,8 @@ import type { TenantRegistryService } from "../_core/tenantRegistry/service";
 import type { TenantRegistryReader } from "../_core/tenantRegistry/store";
 import { verifyDomainOwnership, type VerificationResult } from "../_core/tenantRegistry/domainVerification";
 import type { CommerceCircuits } from "./commerceCircuits";
+import { accessPolicy } from "../_core/tenantRegistry/lifecycle";
+import { mapLimit } from "../_core/tenantRegistry/jobIsolation";
 import { manualDomainProvider, type DomainProvider } from "./domainProvider";
 import type { ProvisioningService } from "../_core/provisioning/service";
 import { ProvisioningError } from "../_core/provisioning/types";
@@ -87,6 +89,8 @@ import { SubscriptionService as ContractSubscriptionService } from "../subscript
 import { ShadowBillingService } from "../subscriptions/shadow";
 import type { SubscriptionStore } from "../subscriptions/store";
 import { revenueByTenant, revenueMetrics } from "../revenue/metrics";
+import { buildProfitability, collectRevenue, dayAxis as profitDayAxis } from "../revenue/profitability";
+import type { CommercialEvent } from "../commercialEvents/types";
 import { AtRiskError, AtRiskService, type AtRiskDeps } from "../revenue/atRisk";
 import { Metrics } from "../_core/metering";
 import { quote, type QuoteRequest } from "../catalog/quote";
@@ -144,6 +148,7 @@ import type { OrderStore } from "../orchestrator/store";
 import type { TestPaymentPort } from "../orchestrator/payments";
 import { createOrdersRouter, paymentsWebhookHandler } from "../orchestrator/api";
 import { subscriptionBilling } from "../orchestrator/subscriptionBilling";
+import { customDomainDecision, exemptTenantsFromEnv, resolveCommercialState } from "../commercialState";
 import { buildRelationshipExport, RelationshipNotFoundError } from "./relationshipExport";
 import { CalendarUnavailableError } from "./madridCalendar";
 import { createContractActivation } from "../crm/activation";
@@ -702,6 +707,17 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
       const body = z
         .object({ domain: z.string().min(3).max(253), kind: z.enum(["custom", "platform_subdomain"]), primary: z.boolean().optional() })
         .parse(req.body);
+      // Dominio propio solo tras el primer pago confirmado (flujo actual, con o sin el motor antiguo). El subdominio
+      // de plataforma se permite siempre. Estado comercial: server/commercialState.ts
+      if (body.kind === "custom") {
+        const tenant = await d.reader.getTenant(id);
+        if (tenant) {
+          const grants = d.capabilities ? await d.capabilities.list(id).catch(() => "unavailable" as const) : null;
+          const state = resolveCommercialState({ multi: true, tenantId: id, status: tenant.status, grants, now: Date.now(), exempt: exemptTenantsFromEnv() });
+          const decision = customDomainDecision(state);
+          if (!decision.allowed) return void res.status(403).json({ error: decision.code, message: decision.message });
+        }
+      }
       // Límite por plan (si hay motor de suscripciones)
       if (body.kind === "custom" && d.billing) {
         const count = (await d.reader.listDomains(id)).filter((x) => x.kind === "custom" && x.status !== "removed").length;
@@ -1126,6 +1142,123 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
       });
     }),
   );
+  // Rentabilidad por cliente (solo lectura): ingresos FACTURADOS live con su fuente, costes medidos y estimados del
+  // Resource Manager y margen solo si los costes están completos. Dato económico interno: usage:read + billing:read
+  router.get(
+    "/resources/profitability",
+    requireScope("usage:read"),
+    requireScope("billing:read"),
+    wrap(async (req, res) => {
+      const days = z.coerce.number().int().pipe(z.union([z.literal(30), z.literal(90), z.literal(365)])).default(30).parse(req.query.days ?? undefined);
+      const only = req.query.tenant === undefined ? undefined : idSchema.parse(req.query.tenant);
+      res.json(await profitabilityReport(days, only));
+    }),
+  );
+  const profitabilityReport = async (days: number, only: string | undefined) => {
+    const now = Date.now();
+    const to = now + 3_600_000;
+    const from = to - days * 86_400_000;
+    const { model, origin } = activeCostModel(d.costModelStore ? await d.costModelStore.get() : null, d.costModel ?? { model: ESTIMATED_COST_MODEL, error: null });
+    const all = (await d.reader.listTenants()).filter((t) => t.status !== "deleted");
+    if (only && !all.some((t) => t.id === only)) throw new RegistryError("not_found", "Tenant no encontrado");
+    // Costes: la misma función que /resources/costs (el reparto del compartido, siempre entre todas las empresas)
+    const costs = d.usage ? await tenantCosts(d.usage, model, all.map((t) => t.id), now, days) : null;
+    const shown = all.filter((t) => !only || t.id === only);
+    const usageDaily = new Map<string, Map<string, Record<string, number>>>();
+    const resources = new Map<string, Awaited<ReturnType<typeof tenantResources>>>();
+    if (d.usage) {
+      for (const t of shown) {
+        usageDaily.set(t.id, await dailyUsage(d.usage, t.id, from, to));
+        resources.set(t.id, await tenantResources({ quotas: d.quotas, usage: d.usage, defaults: quotaDefaults }, t.id, now));
+      }
+    }
+    // Ingresos facturados: cada fuente con su entorno (solo live suma)
+    const limit = 2000;
+    const ownList = d.invoicing ? await d.invoicing.store.list({ limit: 500 }) : [];
+    const ownMode = (d.invoicing?.store as { mode?: "test" | "live" } | undefined)?.mode ?? d.external?.store.mode ?? "test";
+    const fiscalDocs = d.stripe ? await d.stripe.store.listFiscalDocuments({ limit }) : [];
+    const orderOf = new Map<number, { companyId: number; tenantId: string | null }>();
+    if (d.orders) {
+      for (const oid of Array.from(new Set(fiscalDocs.map((x) => x.orderId)))) {
+        const o = await d.orders.store.get(oid);
+        if (o) orderOf.set(oid, { companyId: o.companyId, tenantId: o.tenantId });
+      }
+    }
+    const externalSubs = d.external ? await d.external.store.list() : [];
+    const externalEvents = new Map(await Promise.all(externalSubs.map(async (x) => [x.id, await d.external!.store.events(x.id)] as const)));
+    let payments: CommercialEvent[] = [];
+    let paymentsTruncated = false;
+    if (d.commercialEvents) {
+      let after: number | undefined;
+      for (let page = 0; page < 20; page++) {
+        const batch = await d.commercialEvents.list({ types: ["payment.succeeded", "renewal.paid"], afterId: after, limit: 1000 });
+        payments = payments.concat(batch);
+        if (batch.length < 1000) break;
+        after = batch[batch.length - 1].id;
+        paymentsTruncated = page === 19;
+      }
+    }
+    const revenue = collectRevenue({
+      from,
+      to,
+      ownInvoices: d.invoicing ? { mode: ownMode === "live" ? "live" : "test", invoices: ownList, truncated: ownList.length >= 500 } : null,
+      stripeFiscal: d.stripe ? { mode: d.stripe.config.mode === "live" ? "live" : "test", documents: fiscalDocs, orderOf, truncated: fiscalDocs.length >= limit } : null,
+      external: d.external ? { mode: d.external.store.mode === "live" ? "live" : "test", subscriptions: externalSubs, events: externalEvents } : null,
+      paymentEvents: d.commercialEvents ? { events: payments, truncated: paymentsTruncated } : null,
+    });
+    // Empresa del CRM → plataforma, y nombre de los clientes externos
+    const tenantOfCompany = new Map<number, string | null>();
+    const companyName = new Map<number, string>();
+    const companies = new Set<number>([...revenue.entries.map((e) => e.companyId).filter((x): x is number => x !== null), ...externalSubs.map((x) => x.companyId)]);
+    if (d.crm) {
+      for (const cid of Array.from(companies)) {
+        const c = await d.crm.store.get("companies", cid);
+        tenantOfCompany.set(cid, c?.tenantId ?? null);
+        if (c) companyName.set(cid, c.name);
+      }
+    }
+    // Plan contratado y módulos activos (registro de licencias)
+    const cat = billingCatalog();
+    const plans = new Map<string, { plan: { id: string; name: string } | null; modules: Array<{ id: string; name: string }> }>();
+    for (const t of shown) {
+      const sub = d.billingStore ? await d.billingStore.getSubscriptionByTenant(t.id) : null;
+      const planModules = [...(cat?.plans.find((p) => p.id === sub?.planId)?.includedModules ?? []), ...(sub?.modules ?? [])];
+      const mods = tenantModules(BUILTIN_MODULES, await d.entitlements.listEntitlements(t.id), now, planModules).filter((m) => m.state === "active" || m.state === "included");
+      plans.set(t.id, { plan: sub ? { id: sub.planId, name: cat?.plans.find((p) => p.id === sub.planId)?.name ?? sub.planId } : null, modules: mods.map((m) => ({ id: m.id, name: m.name })) });
+    }
+    // Alertas activas: incidencias operativas abiertas o reconocidas
+    const incidents = d.ops ? (await d.ops.incidents.list({ limit: 500 })).filter((x) => x.status !== "resolved") : [];
+    const r = buildProfitability({
+      now,
+      days,
+      from,
+      to,
+      tenants: shown.map((t) => ({ id: t.id, displayName: t.displayName, status: t.status })),
+      costs,
+      model,
+      tariffOrigin: origin,
+      usageDaily,
+      dayAxis: profitDayAxis(now, days),
+      revenue,
+      tenantOfCompany,
+      companyName,
+      plans,
+      resources,
+      incidents,
+    });
+    return {
+      available: true,
+      generatedAt: now,
+      days,
+      currency: model.currency,
+      measurement: d.usage ? "configurada" : "no configurada (ERM_DATABASE_URL): sin costes",
+      model: { source: model.source, origin, sharedMonthlyCents: model.sharedMonthlyCents, sharedPeriodCents: costs?.sharedPeriodCents ?? 0 },
+      basis: { billed: "facturado (solo entorno live)", measured: "consumo medido × tarifa", estimated: "parte estimada del coste fijo compartido" },
+      ...r,
+      // Con una empresa concreta, los clientes externos no se listan
+      tenants: only ? r.tenants.filter((t) => t.tenantId === only) : r.tenants,
+    };
+  };
   // Métricas de ingresos del Control Center (solo lectura): MRR real de los servicios con cobro, cobrado en la ventana,
   // riesgo, próximos cargos y churn; el modo sombra aparte. Dato económico interno: billing:read
   router.get(
@@ -1260,6 +1393,34 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
       const out = await diagnoseTenant({ reader: d.reader, registry: d.registry, entitlements: d.entitlements, quotas: d.quotas, expectedSchemaVersion }, id);
       if (!out.ok) opsLog("warn", "Diagnostics", "tenant_not_healthy", { tenantId: id, failed: out.checks.filter((c) => !c.ok).map((c) => c.name) });
       res.json(out);
+    }),
+  );
+
+  // Tareas en segundo plano del Core por empresa (solo lectura): cortocircuitos y ejecuciones colgadas. Viajan con el
+  // estado técnico de la empresa (acción `modules` del canal interno), sin acción firmada nueva.
+  // Sin `tenant`, todas las empresas con panel (4 a la vez); con `?all=1`, también las que solo acumulan fallos.
+  router.get(
+    "/jobs/circuits",
+    requireScope("ops:read"),
+    wrap(async (req, res) => {
+      const access = d.tenantAccess;
+      if (!access) return void res.json({ available: false, circuits: [], hung: {}, unreachable: [] });
+      const only = typeof req.query.tenant === "string" ? idSchema.parse(req.query.tenant) : null;
+      const onlyOpen = req.query.all !== "1";
+      const tenants = only ? [only] : (await d.reader.listTenants()).filter((t) => accessPolicy(t.status).admin).map((t) => t.id);
+      const a = getAuth(req)!.actor;
+      const circuits: Array<Record<string, unknown>> = [];
+      // Ejecuciones colgadas por tarea en la réplica que responde (no son de una empresa concreta)
+      const hung: Record<string, number> = {};
+      const unreachable: string[] = [];
+      await mapLimit(tenants, 4, async (id) => {
+        const r = await access.client.call({ tenantId: id, act: "modules", operator: `${a.type}:${a.id}` }).catch(() => null);
+        const jobs = r?.status === 200 ? (r.body.jobs as { circuits?: Array<Record<string, unknown>>; hung?: Record<string, number> } | undefined) : undefined;
+        if (!jobs) return void unreachable.push(id);
+        for (const c of jobs.circuits ?? []) if (!onlyOpen || c.state !== "closed") circuits.push(c);
+        for (const [job, n] of Object.entries(jobs.hung ?? {})) hung[job] = Math.max(hung[job] ?? 0, n);
+      });
+      res.json({ available: true, checked: tenants.length, circuits, hung, unreachable: unreachable.sort() });
     }),
   );
 

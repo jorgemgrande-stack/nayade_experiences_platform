@@ -265,6 +265,10 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
   if (provider.source !== "tenant") {
     await enforceQuota(Metrics.LLM_TOKENS_INPUT, 0);
     await enforceQuota(Metrics.LLM_TOKENS_OUTPUT, 0);
+    // Prueba gratuita: cuota de prueba de la IA de la plataforma (server/trialRestrictions.ts)
+    const { enforceTrialQuota } = await import("../trialRestrictions");
+    await enforceTrialQuota(Metrics.LLM_TOKENS_INPUT, 0);
+    await enforceTrialQuota(Metrics.LLM_TOKENS_OUTPUT, 0);
   }
 
   const {

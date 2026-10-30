@@ -74,14 +74,14 @@ describe("scheduler: multi", () => {
     const gate = new Promise<void>((r) => (release = r));
     const first = runTenantJob("t-lock", async () => {
       calls++;
-      await gate;
+      if (getTenantId() === "a") await gate;
     });
     await new Promise((r) => setTimeout(r, 5));
     await runTenantJob("t-lock", async () => {
       calls++;
     });
-    // La primera ronda sigue ocupando `a`; la segunda lo omite y sí ejecuta b y c
-    expect(calls).toBe(3);
+    // La primera ronda sigue ocupando `a` (b y c ya terminaron); la segunda lo omite y sí ejecuta b y c
+    expect(calls).toBe(5);
     expect(jobStatus().filter((j) => j.job === "t-lock" && j.outcome === "skipped").map((j) => j.tenantId)).toEqual(["a"]);
     release();
     await first;

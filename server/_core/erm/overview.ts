@@ -44,7 +44,8 @@ export const UNMEASURED: Array<{ resource: string; note: string }> = [
   { resource: "jobs.queued", note: "Trabajos en cola por tenant (solo duración de ejecución: job.run.ms)" },
   { resource: "cpu", note: "Sin métrica de CPU por tenant" },
   { resource: "messaging.sms_whatsapp", note: "SMS y WhatsApp" },
-  { resource: "integrations.outbound", note: "Llamadas salientes a GHL/webhooks" },
+  // Las llamadas a GHL, Vapi y Google Maps sí se miden (ext.<proveedor>.*); falta su coste cuando el proveedor no lo da
+  { resource: "integrations.outbound.cost", note: "Coste de GHL (mensajes SMS/WhatsApp) y webhooks salientes; las llamadas a GHL, Vapi y Maps se miden (ext.*)" },
 ];
 
 const rank: Record<ResourceState, number> = { not_applicable: 0, ok: 1, warning: 2, exceeded: 3 };

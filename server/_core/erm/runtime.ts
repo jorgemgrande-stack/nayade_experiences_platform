@@ -8,17 +8,28 @@
 import mysql from "mysql2/promise";
 import { Metrics, setMeterSink } from "../metering";
 import { tenantResourceGuard } from "./middleware";
-import { TenantConcurrencyLimiter, TenantRateLimiter } from "./limiters";
+import { DistributedRateLimiter, TenantConcurrencyLimiter, TenantRateLimiter, type TenantRateGate } from "./limiters";
 import { QuotaEngine, parseDefaultQuotas, type DefaultQuota } from "./quota";
 import type { AlertSink, QuotaPolicyReader, UsageStore } from "./types";
 import { QuotaExceededError } from "./types";
-import { MemoryUsageStore, MysqlUsageStore, UsageAggregator } from "./usage";
+import {
+  MemoryUsageStore,
+  MysqlCounterStore,
+  MysqlUsageStore,
+  SharedUsageCounters,
+  UsageAggregator,
+  sharedStoreWarner,
+  type SharedCounterStore,
+} from "./usage";
 import { fixedPoolOptions } from "../dbPoolConfig";
+import { opsLog } from "../ops/log";
 
 export interface ErmInstance {
   aggregator: UsageAggregator;
   engine: QuotaEngine;
-  rate: TenantRateLimiter;
+  /** Contadores compartidos entre réplicas (cuotas día/mes); `null` sin almacén compartido. */
+  counters: SharedUsageCounters | null;
+  rate: TenantRateGate;
   concurrency: TenantConcurrencyLimiter;
   guard: ReturnType<typeof tenantResourceGuard>;
   stop(): Promise<void>;
@@ -38,46 +49,86 @@ export function installErm(deps: {
   alerts?: AlertSink;
   defaults?: DefaultQuota[];
   flushMs?: number;
+  /** Almacén de contadores COMPARTIDO entre réplicas. Sin él, tasa y cuotas día/mes se deciden en este proceso. */
+  counters?: SharedCounterStore;
+  /** Réplicas estimadas (límite local de emergencia si el almacén compartido cae). */
+  replicasEstimate?: number;
 }): ErmInstance {
   if (instance) void instance.stop();
   const aggregator = new UsageAggregator(deps.store, { flushMs: deps.flushMs });
+  const warn = sharedStoreWarner();
+  const counters = deps.counters ? new SharedUsageCounters(deps.counters, { warn }) : null;
   const engine = new QuotaEngine(deps.policy, deps.store, aggregator, {
     alerts: deps.alerts ?? logAlertSink,
     defaults: deps.defaults,
+    ...(counters ? { counters } : {}),
   });
-  const rate = new TenantRateLimiter();
+  const rate: TenantRateGate = deps.counters
+    ? new DistributedRateLimiter(deps.counters, { replicasEstimate: deps.replicasEstimate, onDegraded: warn })
+    : new TenantRateLimiter();
   const concurrency = new TenantConcurrencyLimiter();
-  setMeterSink(aggregator);
+  setMeterSink(
+    counters
+      ? {
+          record(e) {
+            aggregator.record(e);
+            counters.record(e);
+          },
+        }
+      : aggregator,
+  );
   aggregator.start();
+  counters?.start();
   instance = {
     aggregator,
     engine,
+    counters,
     rate,
     concurrency,
     guard: tenantResourceGuard(engine, rate, concurrency),
     async stop() {
       setMeterSink(null);
       await aggregator.stop();
+      await counters?.stop();
     },
   };
   return instance;
 }
 
+/** `ERM_REPLICAS_ESTIMATE` (1-64; por defecto 2): reparto del límite de tasa si el almacén compartido cae. */
+export function replicasEstimateFromEnv(env: NodeJS.ProcessEnv = process.env): number {
+  const n = Number(env.ERM_REPLICAS_ESTIMATE);
+  return Number.isInteger(n) && n >= 1 && n <= 64 ? n : 2;
+}
+
 /** Instalación a partir del entorno y la conexión del registro (solo se usa en multi). */
 export function installErmFromEnv(policy: QuotaPolicyReader, env: NodeJS.ProcessEnv = process.env): ErmInstance {
   let store: UsageStore;
+  let counters: SharedCounterStore | undefined;
   let pool: mysql.Pool | null = null;
   if (env.ERM_DATABASE_URL) {
-    pool = mysql.createPool({ uri: env.ERM_DATABASE_URL, ...fixedPoolOptions("DB_ERM_POOL_CONNECTIONS", 3, env) });
+    try {
+      pool = mysql.createPool({ uri: env.ERM_DATABASE_URL, ...fixedPoolOptions("DB_ERM_POOL_CONNECTIONS", 3, env) });
+    } catch (e) {
+      // URL mal formada: el servicio arranca igual, con límites por proceso, y queda constancia
+      opsLog("error", "ERM", "usage_store_url_invalid", { error: e instanceof Error ? e.name : "error" });
+    }
+  }
+  if (pool) {
     store = new MysqlUsageStore(pool);
+    // Sin la tabla `usage_windows` (falta `medicion-preparar`) cada uso falla, avisa y degrada al límite local
+    counters = new MysqlCounterStore(pool);
   } else {
-    console.warn(JSON.stringify({ ctx: "ERM", event: "usage_store_in_memory" }));
+    // Sin base compartida: cuotas y tasa por proceso; los contadores se pierden al reiniciar
+    opsLog("warn", "ERM", "usage_store_in_memory", { sharedCounters: false });
     store = new MemoryUsageStore();
   }
   const inst = installErm({
     policy,
     store,
     defaults: parseDefaultQuotas(env.ERM_DEFAULT_QUOTAS) ?? undefined,
+    counters,
+    replicasEstimate: replicasEstimateFromEnv(env),
   });
   const stop = inst.stop;
   inst.stop = async () => {

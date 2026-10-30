@@ -277,6 +277,16 @@ export async function sendEmail(params: MailParams): Promise<boolean> {
       }
     }
   }
+  // Prueba gratuita: solo a los buzones propios de la empresa y con tope diario (server/trialRestrictions.ts)
+  if (isMultiTenant()) {
+    const { applyTrialMailPolicy } = await import("./trialRestrictions");
+    const allowed = await applyTrialMailPolicy(params);
+    if (!allowed) {
+      opsLog("info", "Mailer", "trial_mail_not_sent", { category: params.category ?? null });
+      return false;
+    }
+    params = allowed;
+  }
   const enriched = mergeGlobalCc(await resolveOwnAttachments(params));
 
   // Servicio centralizado (bandeja de salida, MAIL_MODE off|sandbox|live, idempotencia, límites y
