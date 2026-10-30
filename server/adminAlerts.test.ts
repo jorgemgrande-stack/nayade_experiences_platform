@@ -159,6 +159,12 @@ describe("envío de alertas", () => {
     expect(new Set(sent.map((s) => s.to))).toEqual(new Set([DEFAULT_TEST_RECIPIENT]));
     expect(sent.every((s) => s.c.subject.startsWith("[PRUEBA]"))).toBe(true);
     expect(await store.list({})).toHaveLength(0);
+    // Enlaces al CRM real configurado, al listado de la sección (el expediente de ejemplo no existe)
+    const ctas = sent.map((s) => s.c.html.match(/href="(https:\/\/admin\.bigelephant\.example\/#\/[^"]*)"/)?.[1]);
+    expect(ctas.every(Boolean)).toBe(true);
+    expect(ctas).toContain("https://admin.bigelephant.example/#/comercial/contrataciones");
+    expect(ctas).toContain("https://admin.bigelephant.example/#/clientes");
+    expect(ctas.some((u) => /\/(42|9|12|7|empresa-demo)$/.test(u!))).toBe(false);
   });
   it("sin correo de plataforma: el hecho se registra como no disponible y nada falla", async () => {
     const svc = new AdminAlertService({ store: new MemoryAdminAlertStore(), settings: new MemorySettingsStore(), mailer: null, crmUrl: null });
