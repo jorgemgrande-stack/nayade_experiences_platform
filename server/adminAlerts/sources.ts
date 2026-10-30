@@ -188,6 +188,21 @@ export function externalEventAlerts(ev: Omit<ExternalEvent, "id">, x: ExternalSu
   switch (ev.kind) {
     case "created":
       return one("admin.external_contracted", { summary: `Alta del servicio externo «${x.serviceName}».`, status: { label: "Pendiente de contrato", tone: "info" }, amount: fee });
+    case "changed": {
+      const after = obj(d.after);
+      const summary =
+        d.change === "first_charge"
+          ? `Decisión registrada en «${x.serviceName}»: primer cargo el ${dateTime(n(after.firstChargeAt) ?? x.firstChargeAt)}${s(after.status) ? ` (estado «${after.status}»)` : ""}.`
+          : d.change === "contract_version"
+            ? `Aceptada la versión ${n(d.contractVersion) ?? "nueva"} del contrato de «${x.serviceName}».`
+            : `Modificación registrada en «${x.serviceName}».`;
+      return one("admin.external_changed", {
+        summary,
+        status: { label: "Actualizado", tone: "info" },
+        amount: fee,
+        details: [...base.details, ...(n(d.contractVersion) !== null ? [{ label: "Versión del contrato", value: String(d.contractVersion) }] : []), ...(s(d.reason) ? [{ label: "Motivo", value: String(d.reason).slice(0, 300) }] : [])],
+      });
+    }
     case "acceptance_requested":
       return one("admin.contract_sent", { summary: `Contrato de «${x.serviceName}» enviado al firmante para su revisión y aceptación.`, status: { label: "Pendiente de firma", tone: "info" } });
     case "accepted":
