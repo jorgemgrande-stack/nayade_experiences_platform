@@ -87,8 +87,9 @@ const opt = (n: string) => (args.includes(n) ? args[args.indexOf(n) + 1] : undef
 const actor: Actor = { type: "operator", id: opt("--actor") ?? process.env.USERNAME ?? process.env.USER ?? "backup-job" };
 const actorLabel = `${actor.type}:${actor.id}`;
 
+// «Orden fallida:» marca el fallo en el registro: el drill lo detecta aunque Railway dé el despliegue por bueno
 function die(msg: string): never {
-  console.error(msg);
+  console.error(`Orden fallida: ${msg}`);
   process.exit(1);
 }
 const print = (o: unknown) => console.log(JSON.stringify(o, null, 2));
@@ -635,6 +636,6 @@ async function rebuild(source: BackupDestination) {
 }
 
 main().catch((e) => {
-  console.error(safeError(e));
+  console.error(`Orden fallida: ${safeError(e)}`);
   process.exit(1);
 });

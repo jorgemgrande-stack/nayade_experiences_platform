@@ -69,6 +69,8 @@ describe.skipIf(!URL_)("purga de las empresas de prueba (MySQL real)", () => {
       if (c.tenantId) {
         await seed(reg, "tenants", { id: c.tenantId });
         await seed(reg, "tenant_domains", { tenant_id: c.tenantId, domain: `${c.tenantId}.example.test` });
+        // Auditoría inmutable (trigger de solo anexado, como en production)
+        await seed(reg, "tenant_events", { tenant_id: c.tenantId, actor_type: "system", actor_id: "alta", action: "created" });
         await seed(reg, "backup_inventory", { target_kind: "tenant", target_id: c.tenantId });
       }
     }
@@ -108,10 +110,13 @@ describe.skipIf(!URL_)("purga de las empresas de prueba (MySQL real)", () => {
     expect(plan.problems).toEqual([]);
     expect(plan.companies.map((c) => c.tenantId).sort()).toEqual(PURGE_TARGETS.map((t) => t.tenantId).sort());
     const tables = plan.steps.map((s) => `${s.db}.${s.table}`);
-    expect(tables).toEqual(expect.arrayContaining(["crm.crm_contacts", "crm.crm_contracts", "crm.subscriptions", "crm.crm_companies", "registry.tenant_domains", "registry.tenants"]));
+    expect(tables).toEqual(expect.arrayContaining(["crm.crm_contacts", "crm.crm_contracts", "crm.subscriptions", "crm.crm_companies", "registry.tenant_domains"]));
     expect(tables.some((t) => t.includes("backup_"))).toBe(false);
+    // La auditoría no se borra y el tenant queda como lápida
+    expect(tables).not.toContain("registry.tenant_events");
+    expect(tables).not.toContain("registry.tenants");
+    expect(plan.retire.map((x) => x.tenantId).sort()).toEqual(PURGE_TARGETS.map((t) => t.tenantId).sort());
     expect(tables.indexOf("crm.crm_companies")).toBeGreaterThan(tables.indexOf("crm.crm_contacts"));
-    expect(tables[tables.length - 1]).toBe("registry.tenants");
     expect(tables).toEqual(expect.arrayContaining(["crm.commercial_payment_events", "crm.commercial_payments", "crm.commercial_orders"]));
     expect(tables.indexOf("crm.commercial_payments")).toBeGreaterThan(tables.indexOf("crm.commercial_payment_events"));
     expect(plan.databases.filter((x) => x.restored).map((x) => x.database)).toEqual(["es_t3_empresa_demo_elephant_01_r20261016221031"]);
@@ -129,13 +134,21 @@ describe.skipIf(!URL_)("purga de las empresas de prueba (MySQL real)", () => {
     expect(left.map((r) => r.name)).toEqual(["Nextair", "Skibox"]);
     const [[contacts]] = await crm.query<mysql.RowDataPacket[]>("SELECT COUNT(*) n FROM crm_contacts WHERE company_id IN (?)", [realIds]);
     expect(Number(contacts.n)).toBe(2);
-    const [[sk]] = await reg.query<mysql.RowDataPacket[]>("SELECT COUNT(*) n FROM tenants WHERE id = 't5-skibox'");
+    const [[sk]] = await reg.query<mysql.RowDataPacket[]>("SELECT COUNT(*) n FROM tenants WHERE id = 't5-skibox' AND status <> 'deleted'");
     expect(Number(sk.n)).toBe(1);
+    const [states] = await reg.query<mysql.RowDataPacket[]>("SELECT id, status FROM tenants WHERE id IN (?)", [PURGE_TARGETS.map((t) => t.tenantId)]);
+    expect(states.every((r) => r.status === "deleted")).toBe(true);
+    const [[dom]] = await reg.query<mysql.RowDataPacket[]>("SELECT COUNT(*) n FROM tenant_domains WHERE tenant_id IN (?)", [PURGE_TARGETS.map((t) => t.tenantId)]);
+    expect(Number(dom.n)).toBe(0);
+    const [ev] = await reg.query<mysql.RowDataPacket[]>("SELECT tenant_id, action FROM tenant_events ORDER BY id");
+    expect(ev.filter((r) => r.action === "purged").map((r) => r.tenant_id).sort()).toEqual(PURGE_TARGETS.map((t) => t.tenantId).sort());
+    expect(ev.filter((r) => r.action === "created").length).toBe(6);
     const [[backups]] = await reg.query<mysql.RowDataPacket[]>("SELECT COUNT(*) n FROM backup_inventory");
     expect(Number(backups.n)).toBe(6);
     // Repetir es inocuo: ya no queda nada que purgar
     const again = await planPurge({ crm, registry: reg, tenantDbName: async () => null });
     expect(again.steps).toEqual([]);
+    expect(again.retire).toEqual([]);
     expect(again.missing.length).toBe(5);
   });
 });
