@@ -4,6 +4,7 @@
  * sale hacia la web: nunca notas internas, costes, márgenes ni datos de autoría.
  */
 import { z } from "zod";
+import { OFFER_CTAS, OFFER_MODALITIES } from "../catalog/commercial/offer";
 
 export const ENTRY_KINDS = ["product", "promotion", "faq", "menu", "seo", "page", "forms", "capability"] as const;
 export type EntryKind = (typeof ENTRY_KINDS)[number];
@@ -183,6 +184,22 @@ export const productDraft = z
           .optional(),
         /** 1 activable desde el Core · 2 portable desde otro desarrollo · 3 desarrollo nuevo. */
         implementationLevel: z.union([z.literal(1), z.literal(2), z.literal(3)]).optional(),
+        /**
+         * Modalidad comercial declarada: inmediata (prueba y/o checkout) o implantación asistida (propuesta). Opcional y
+         * SIN valores por defecto: lo publicado antes del campo se reconstruye igual desde el historial. Lo que se
+         * publica es el resultado efectivo (`effectiveOffer`, server/catalog/commercial/offer.ts).
+         */
+        offer: z
+          .object({
+            modality: z.enum(OFFER_MODALITIES).optional(),
+            trial: z.boolean().optional(),
+            checkout: z.boolean().optional(),
+            cta: z.enum(OFFER_CTAS).optional(),
+            /** Condiciones de activación (texto corto, público). */
+            activationNotes: text(300).optional(),
+          })
+          .strict()
+          .optional(),
       })
       .strict()
       .prefault({}),
