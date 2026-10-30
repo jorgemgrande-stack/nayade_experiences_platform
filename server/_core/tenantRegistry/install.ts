@@ -9,6 +9,7 @@
  *  - multi: resuelve el tenant por host y entra en su contexto; lo no servible se rechaza.
  */
 import type { Express } from "express";
+import mysql from "mysql2/promise";
 import { getTenantMode, isMultiTenant } from "../tenant";
 import { getErm, installErmFromEnv } from "../erm/runtime";
 import { configureModuleAccess } from "../modules/runtime";
@@ -20,7 +21,8 @@ import { configureTenantIdentity, warmTenantIdentity } from "../tenantIdentity";
 import { configureSupport, createSupportRouter, supportReadOnlyGuard } from "../support/session";
 import { adminTenantLister, writableTenantLister } from "./jobs";
 import { createTenantRuntime, type TenantRuntime } from "./runtime";
-import { setJobAdminTenantLister, setJobPrelude, setJobTenantLister } from "./scheduler";
+import { jobHealth, setJobAdminTenantLister, setJobLockProvider, setJobPrelude, setJobTenantLister } from "./scheduler";
+import { mysqlJobLockProvider } from "./jobLocks";
 import { shadowMiddleware } from "./shadow";
 import { configureHealthChecks } from "../health";
 import { getTenantDatabase, leaseTenantDatabase } from "../dbRegistry";
@@ -86,6 +88,8 @@ export function installTenantResolution(app: Express, env: NodeJS.ProcessEnv = p
           },
           run: (id, act, uid, confirm, ctx) =>
             runWithTenant(id, async () => {
+              // Estado de las tareas en segundo plano de la empresa en esta réplica (solo lectura, sin tocar su base)
+              if (act === "jobs") return { ok: true as const, action: act, jobs: jobHealth(id) };
               await Promise.all([warmConfigCache(), warmIntegrationCreds(), warmTenantIdentity()]);
               // Integraciones (estado y comprobación de solo lectura) o accesos, según la acción firmada
               if (act === "integrations" || act === "integration_check") return runIntegrationAction(act, ctx.provider, ctx.operator);
@@ -123,6 +127,11 @@ export function installTenantResolution(app: Express, env: NodeJS.ProcessEnv = p
     setJobTenantLister(writableTenantLister(rt.reader));
     // …y las que lo piden expresamente (exportación de datos), también las suspendidas o en solo lectura
     setJobAdminTenantLister(adminTenantLister(rt.reader));
+    // …sin duplicarse entre réplicas: bloqueos con nombre en la base del registro (JOBS_REPLICA_LOCKS=off los desactiva)
+    if (env.REGISTRY_DATABASE_URL && env.JOBS_REPLICA_LOCKS !== "off") {
+      const uri = env.REGISTRY_DATABASE_URL;
+      setJobLockProvider(mysqlJobLockProvider(() => mysql.createConnection({ uri, connectTimeout: 5_000 })));
+    }
     // Las tareas también necesitan las credenciales del tenant en curso
     setJobPrelude(() => Promise.all([warmConfigCache(), warmIntegrationCreds(), warmTenantIdentity()]).then(() => undefined));
     // Marca, URL pública y entidad fiscal de cada empresa (registro, solo lectura)

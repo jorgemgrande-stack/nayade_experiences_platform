@@ -35,7 +35,7 @@ export interface AccessUserView {
 }
 
 export type AccessResult =
-  | { ok: true; action: OpsAccessAction; users?: AccessUserView[]; mailMode?: MailPolicy["mode"]; accessMail?: { invite: boolean; reset: boolean }; mail?: MailOutcome; active?: boolean; integrations?: unknown; check?: unknown; modules?: unknown }
+  | { ok: true; action: OpsAccessAction; users?: AccessUserView[]; mailMode?: MailPolicy["mode"]; accessMail?: { invite: boolean; reset: boolean }; mail?: MailOutcome; active?: boolean; integrations?: unknown; check?: unknown; modules?: unknown; jobs?: unknown }
   | { ok: false; error: AccessError; message: string };
 
 export type AccessError = "not_found" | "confirm_mismatch" | "owner_protected" | "last_admin" | "no_email" | "inactive" | "already_accepted" | "seat_limit" | "db_unavailable" | "unknown_provider" | "not_configured";

@@ -43,6 +43,8 @@ export const Metrics = {
   /** Tokens con la cuenta de IA PROPIA de la empresa: se miden, pero no son coste de la plataforma. */
   LLM_OWN_TOKENS: "llm.own.tokens",
   JOB_RUN_MS: "job.run.ms",
+  /** Aperturas del cortocircuito de una tarea en una empresa (fallos seguidos). */
+  JOB_CIRCUIT_OPEN: "job.circuit.open",
   TENANT_SHADOW: "tenant.shadow",
   /** Espera por hueco en el presupuesto de conexiones (ms) hasta obtenerlo. */
   DB_POOL_WAIT_MS: "db.pool.wait.ms",
