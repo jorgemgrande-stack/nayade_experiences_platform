@@ -54,6 +54,9 @@ export const Metrics = {
   DATA_EXPORT_RUNS: "data_export.runs",
   DATA_EXPORT_BYTES: "data_export.bytes",
   DATA_EXPORT_MS: "data_export.ms",
+  /** IA de la plataforma fuera del modelo de texto: imágenes generadas y segundos de audio transcritos. */
+  AI_IMAGES: "ai.image.generated",
+  AI_AUDIO_SECONDS: "ai.audio.seconds",
 } as const;
 
 const noopSink: MeterSink = { record() {} };
