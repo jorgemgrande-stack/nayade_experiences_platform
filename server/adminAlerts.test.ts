@@ -51,7 +51,7 @@ describe("catálogo de alertas administrativas", () => {
       expect(a.locked, a.id).toBe(a.severity === "critical");
       if (a.state === "pendiente") expect(a.pending?.length, a.id).toBeGreaterThan(40);
     }
-    expect(ADMIN_ALERTS.filter((a) => a.state === "pendiente").map((a) => a.n)).toEqual([14, 32, 34, 39, 42]);
+    expect(ADMIN_ALERTS.filter((a) => a.state === "pendiente").map((a) => a.n)).toEqual([14, 32]);
   });
   it("cada plantilla: familia D, banda interna, datos operativos, enlace https al CRM y texto plano", () => {
     const { svc } = setup();
@@ -113,7 +113,7 @@ describe("envío de alertas", () => {
     s.rules["admin.renewal_paid"].enabled = false;
     await svc.save(s, 0, "operator:1");
     expect((await svc.raise("admin.renewal_paid", facts("r:1"))).status).toBe("disabled");
-    expect((await svc.raise("admin.deploy_failed", facts("d:1"))).status).toBe("unknown_alert");
+    expect((await svc.raise("admin.external_changed", facts("d:1"))).status).toBe("unknown_alert");
     expect(sent).toHaveLength(0);
     expect((await store.list({})).map((r) => r.status)).toEqual(["disabled"]);
   });
