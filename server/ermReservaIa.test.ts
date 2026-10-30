@@ -107,10 +107,11 @@ describe("reserva y liquidación de tokens de IA entre réplicas", () => {
       await gate;
       return answer(10, LLM_OUTPUT_RESERVE)();
     });
-    const runs = Array.from({ length: 6 }, () => runWithTenant("t-ia", () => invokeLLM({ messages: [{ role: "user", content: "hola" }] })));
+    // allSettled desde el principio: las que no caben se rechazan mientras las demás siguen en vuelo
+    const settled = Promise.allSettled(Array.from({ length: 6 }, () => runWithTenant("t-ia", () => invokeLLM({ messages: [{ role: "user", content: "hola" }] }))));
     await new Promise((r) => setTimeout(r, 20));
     release();
-    const r = await Promise.allSettled(runs);
+    const r = await settled;
     expect(calls).toBe(3);
     expect(r.filter((x) => x.status === "fulfilled")).toHaveLength(3);
     expect((r.filter((x) => x.status === "rejected") as PromiseRejectedResult[]).every((x) => x.reason instanceof QuotaExceededError)).toBe(true);
