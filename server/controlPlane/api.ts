@@ -142,6 +142,8 @@ import { CalendarUnavailableError } from "./madridCalendar";
 import { createContractActivation } from "../crm/activation";
 import type { PlatformMailer } from "../mail/platform";
 import type { MailService } from "../mail/service";
+import { maskRecipient, type MailPolicy } from "../mail/policy";
+import { MANAGED_CATEGORIES, MAX_MANAGED_ADDRESSES, type SandboxAccess } from "../mail/sandboxAccess";
 import { brevoWebhookHandler, postmarkWebhookHandler } from "../mail/webhook";
 
 /** Aviso por defecto: NO envía nada; solo deja constancia (sin correo ni token) de que hay un aviso pendiente. */
@@ -346,6 +348,9 @@ export interface ControlPlaneDeps {
     diagnostics?: () => Promise<unknown>;
     /** Trazabilidad de la bandeja de PLATAFORMA (solo lectura; sin direcciones completas ni cuerpos). */
     ledger?: MailLedgerReader | null;
+    /** Buzones y tipos internos del correo de pruebas autorizados desde el CRM, con la política del entorno (el techo). */
+    sandbox?: SandboxAccess | null;
+    policy?: MailPolicy;
   };
   /**
    * Comunicaciones transaccionales (server/notifications): despachador de eventos comerciales. `since` es el
@@ -2133,6 +2138,38 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         const h = await ledger.history(id);
         if (!h) return void res.status(404).json({ error: "not_found", message: "Mensaje no encontrado" });
         res.json(h);
+      }),
+    );
+  }
+
+  // Correo de pruebas gestionado desde el CRM: buzones y tipos internos que se suman a los del entorno. Solo cuentan en
+  // sandbox (no cambian el modo ni el ámbito de empresas); editar exige operators:write y queda versionado.
+  if (d.mail?.sandbox && d.mail.policy) {
+    const sandbox = d.mail.sandbox;
+    const policy = d.mail.policy;
+    const view = async () => ({
+      mode: policy.mode,
+      environment: {
+        addresses: Array.from(policy.allowAddresses).map(maskRecipient),
+        domains: Array.from(policy.allowDomains),
+        categories: policy.scope.categories ? Array.from(policy.scope.categories) : null,
+        tenants: policy.scope.tenants ? Array.from(policy.scope.tenants) : null,
+      },
+      managed: await sandbox.read(),
+      managedCategories: MANAGED_CATEGORIES,
+      maxAddresses: MAX_MANAGED_ADDRESSES,
+    });
+    const body = z.object({ addresses: z.array(z.string().max(254)).max(50), categories: z.array(z.string().max(40)).max(10), expectedVersion: z.number().int().min(0) }).strict();
+    router.get("/mail/sandbox", requireScope("ops:read"), wrap(async (_req, res) => void res.json(await view())));
+    router.get("/mail/sandbox/history", requireScope("ops:read"), wrap(async (_req, res) => void res.json({ history: await sandbox.history(20) })));
+    router.put(
+      "/mail/sandbox",
+      requireScope("operators:write"),
+      wrap(async (req, res) => {
+        const b = body.parse(req.body);
+        const auth = getAuth(req)!;
+        await sandbox.save({ addresses: b.addresses, categories: b.categories }, b.expectedVersion, `${auth.actor.type}:${auth.actor.id}`);
+        res.json(await view());
       }),
     );
   }
