@@ -96,6 +96,7 @@ import { SsoService, parseSsoUsers } from "./sso";
 import { createRemoteJWKSet } from "jose";
 import { operatorAuthFromEnv } from "./operatorSetup";
 import { DEFAULT_CORE_INTERNAL_URL, coreAccessClient } from "./tenantAccess";
+import { commerceCircuits } from "./commerceCircuits";
 import { outboxMfaNotice, outboxOperatorSecurityMail, outboxResetMailer, resetUnavailableReason } from "./operatorResetMail";
 import { LeadNoticeService, MysqlSettingsStore, crmUrlFromEnv, settingsTablesReady } from "../crm/leadNotices";
 import { AdminAlertService } from "../adminAlerts/service";
@@ -743,6 +744,7 @@ async function main() {
     commercialEvents,
     leadNotices,
     adminAlerts,
+    commerceCircuits: () => commerceCircuits({ stripe: stripeConfig, env: process.env, trialsReady: !!trials, mailMode: mailPolicy.mode }),
     dataRequests,
     communications,
     notifications: notificationsFromEnv(process.env),
