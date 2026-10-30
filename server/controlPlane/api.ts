@@ -75,6 +75,10 @@ import { createLeadNoticesRouter } from "../crm/leadNoticesApi";
 import type { AdminAlertService } from "../adminAlerts/service";
 import { createAdminAlertsRouter } from "../adminAlerts/api";
 import type { DataRequestService } from "../dataRequests/service";
+import { ImplementationService, type Assignee as ImplementationAssignee } from "../implementation/service";
+import type { ImplementationStore } from "../implementation/store";
+import { createImplementationRouter } from "../implementation/api";
+import { solutionFromWebStore, subscriptionStarter } from "../implementation/ports";
 import { createDataRequestsRouter } from "../dataRequests/api";
 import type { CommunicationsService } from "../communications/service";
 import { createCommunicationsRouter } from "../communications/api";
@@ -393,6 +397,11 @@ export interface ControlPlaneDeps {
   commerceCircuits?: () => CommerceCircuits;
   /** Solicitudes de derechos de protección de datos (RGPD; server/dataRequests, CRM 0032). */
   dataRequests?: DataRequestService | null;
+  /**
+   * Implantación asistida (server/implementation, CRM 0035): expediente, orden de implantación con hitos, habilitación,
+   * comunicación e inicio de la prueba o la suscripción. Solo con CP_ASSISTED_IMPLEMENTATION_ENABLED=1 y la migración.
+   */
+  implementation?: { store: ImplementationStore; assignees?: (() => Promise<ImplementationAssignee[]>) | null } | null;
   /** Centro de envíos del CRM y consentimiento comercial por contacto (server/communications, CRM 0031). */
   communications?: CommunicationsService | null;
 }
@@ -598,15 +607,18 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
       skipRecipients: leadNotices ? await leadNotices.noticeEmails(r.type).catch(() => []) : [],
     });
   };
+  // Implantación asistida: la solicitud de una solución asistida abre su expediente (lo monta el bloque de suscripciones)
+  const intakeImplementation: { run?: (r: LeadRequest) => Promise<unknown> } = {};
   const webRequests = d.crm
     ? new WebRequestService({
         store: d.crm.store,
         crm: d.crm.service,
         onCreated:
-          leadNotices || adminAlerts
+          leadNotices || adminAlerts || d.implementation
             ? async (r) => {
                 if (leadNotices) await leadNotices.onCreated(r);
                 await leadAlert(r).catch(() => undefined);
+                if (intakeImplementation.run) await intakeImplementation.run(r).catch(() => undefined);
               }
             : undefined,
       })
@@ -1990,6 +2002,29 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
       router.use("/trials", createTrialAdminRouter({ onboarding, trials: trialService, store: d.trials.store, convert: trialConversion }));
       if (d.trials.publicEnabled) publicTrial = createPublicTrialRouter({ onboarding, autoProvision: !!d.trials.autoProvision });
       if (d.trials.activation) d.trials.activation.activate = (trialId, actor) => onboarding.activate(trialId, actor);
+    }
+    // Implantación asistida (CRM 0035): el inicio usa la suscripción del contrato (modo sombra) y sus licencias
+    if (d.implementation && d.capabilities) {
+      const crmD = d.crm;
+      const licensingForImplementation = new LicensingService({ capabilities: d.capabilities, subscriptions: d.subscriptions.store, crm: crmPort, catalog: async () => quoteCatalogFromSite(await webAdmin!.site("published")), now: d.subscriptions.now, limits: d.limits, events: d.commercialEvents?.append ? (d.commercialEvents as CommercialEventSink) : undefined });
+      const provisioningForImplementation = d.provisioning;
+      const implementation = new ImplementationService({
+        store: d.implementation.store,
+        crm: crmD.service,
+        crmStore: crmD.store,
+        solution: solutionFromWebStore(d.web.store),
+        // Alta de la plataforma SIN bienvenida: la disponibilidad se comunica después, cuando el equipo lo decide
+        platform: provisioningForImplementation && d.platformDomain ? createContractActivation({ provisioning: provisioningForImplementation, platformDomain: d.platformDomain, actor: { type: "crm", id: "implementation" } }) : null,
+        starter: subscriptionStarter({ subscriptions: svc, licensing: licensingForImplementation, catalog: catalogFromWebStore(d.web.store) }),
+        notify: d.mail?.platform ? d.mail.platform.implementationNotifier() : null,
+        reissueInvite: provisioningForImplementation ? (tenantId) => provisioningForImplementation.reissueAdminInvite(tenantId) : null,
+        platformDomain: d.platformDomain ?? null,
+        assignees: d.implementation.assignees ?? null,
+        markAttended: webRequests ? (leadRequestId, actor) => webRequests.setStatus(leadRequestId, "attended", actor) : null,
+        now: d.subscriptions.now,
+      });
+      intakeImplementation.run = (r) => implementation.fromIntake(r);
+      router.use("/implementations", createImplementationRouter(implementation));
     }
     // Cobro de cargos (server/invoicing/chargePayments): lo crea el bloque de facturación; el procesador de Stripe lo consulta
     const chargePaymentsRef: { svc?: ChargePaymentService } = {};

@@ -74,6 +74,7 @@ export const CIRCUIT: Readonly<Record<string, TemplateCircuit>> = {
   // Envíos de una persona del equipo desde el CRM
   "contract.invitation": "manual",
   "contract.payment_setup": "manual",
+  "implementation.available": "manual",
   // Centro de envíos del CRM (server/communications): servicio, encuesta de soporte y comerciales con consentimiento
   "product.update": "manual",
   "ops.maintenance": "manual",
@@ -113,6 +114,7 @@ export const TEMPLATES: readonly TemplateEntry[] = [
   // ── B. Onboarding y periodo de prueba ──
   e("trial.started", "Bienvenida a Big Elephant (prueba activada)", "onboarding", "experiential", "controlplane", "Prueba aprovisionada", "conectada", P("trial.started")),
   e("tenant.welcome", "Bienvenida (alta asistida)", "onboarding", "experiential", "controlplane", "Plataforma creada desde el CRM", "conectada", () => t.tenantWelcome({ companyName: "Empresa Demo, S.L.", host: HOST, setPasswordUrl: `https://${HOST}/establecer-contrasena?muestra=1` })),
+  e("implementation.available", "Entorno disponible (implantación asistida)", "onboarding", "experiential", "controlplane", "El equipo comunica desde el CRM que la implantación está habilitada (inicia la prueba de 15 días o la suscripción pactada)", "conectada", P("implementation.available")),
   e("onboarding.steps", "Primeros pasos de configuración", "onboarding", "experiential", "core", "Primer acceso al asistente de Primeros pasos sin ningún paso dado", "conectada", () => x.onboardingSteps({ name: "Ana Demo", host: HOST })),
   e("onboarding.progress", "Progreso de la configuración", "onboarding", "experiential", "core", "La configuración cruza la mitad de los pasos", "conectada", () => x.onboardingProgress({ name: "Ana Demo", host: HOST, done: 3, total: 5 })),
   e("onboarding.reminder", "Recordatorio de configuración incompleta", "onboarding", "experiential", "core", "Primeros pasos sin terminar a los 3 días del primer acceso (tarea programada onboarding-reminder, con los pasos reales)", "conectada", () => x.onboardingReminder({ name: "Ana Demo", host: HOST, pending: ["Datos de tu empresa", "Invitar a tu equipo"] })),

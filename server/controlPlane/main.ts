@@ -109,6 +109,8 @@ import { startAlertCycle } from "../adminAlerts/runtime";
 import { DeployWatcher, RestoreDrillWatcher, SERVED_STATUSES, UptimeMonitor, githubGet, isTestTenant } from "../adminAlerts/operations";
 import { DataRequestService, operatorAssignees } from "../dataRequests/service";
 import { MysqlDataRequestStore, dataRequestTablesReady } from "../dataRequests/store";
+import { MysqlImplementationStore, implementationTablesReady } from "../implementation/store";
+import { assistedImplementationEnabled } from "../implementation/config";
 import { ConsentService, MysqlConsentStore, commsTablesReady } from "../communications/consent";
 import { LinkSigner, linkSecretFromDb } from "../communications/links";
 import { CommunicationsService } from "../communications/service";
@@ -597,6 +599,11 @@ async function main() {
   // Solicitudes de derechos de protección de datos (RGPD, CRM 0032): registro desde el CRM con plazo legal de 30 días
   const dataRequests = crm && crmPool && (await dataRequestTablesReady(crmPool)) ? new DataRequestService({ store: new MysqlDataRequestStore(crmPool), raise: (id, f) => (adminAlerts ? adminAlerts.raise(id, f) : Promise.resolve(null)), assignees: operators.service ? async () => operatorAssignees(await operators.service!.list()) : null }) : null;
   console.log(JSON.stringify({ ctx: "DataRequests", mounted: !!dataRequests, ...(dataRequests ? {} : { reason: !crm ? "crm_not_configured" : "migration_0032_missing" }) }));
+  // Implantación asistida (CRM 0035): apagada por defecto; con el interruptor y la migración se monta en /implementations
+  const implementationOn = assistedImplementationEnabled(process.env);
+  const implementationReady = implementationOn && !!crm && !!crmPool && (await implementationTablesReady(crmPool));
+  const implementation = implementationReady && crmPool ? { store: new MysqlImplementationStore(crmPool), assignees: operators.service ? async () => operatorAssignees(await operators.service!.list()) : null } : null;
+  console.log(JSON.stringify({ ctx: "AssistedImplementation", mounted: !!implementation, ...(implementation ? {} : { reason: !implementationOn ? "disabled" : !crm ? "crm_not_configured" : "migration_0035_missing" }) }));
   if (crm && crmPool && (await settingsTablesReady(crmPool))) {
     const alertPool = crmPool;
     const alertStore = new MysqlAdminAlertStore(alertPool);
@@ -805,6 +812,7 @@ async function main() {
         mailMode: mailPolicy.mode,
       }),
     dataRequests,
+    implementation,
     communications,
     notifications: notificationsFromEnv(process.env),
     mail: {
