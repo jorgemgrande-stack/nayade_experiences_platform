@@ -260,8 +260,12 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
   // Proveedor de la empresa en curso (propio, central de Big Elephant o ninguno); nunca la cuenta de otra instalación
   const provider = resolveAiProvider();
   if (!provider) throw new AiUnavailableError();
-  // Cuota mensual de tokens del tenant (cantidad 0: solo comprueba que no esté ya excedida)
-  await enforceQuota(Metrics.LLM_TOKENS_INPUT, 0);
+  // Cuota mensual de tokens de la plataforma (cantidad 0: solo comprueba que no esté ya excedida). Con la cuenta propia
+  // de la empresa el coste es suyo y no se frena aquí.
+  if (provider.source !== "tenant") {
+    await enforceQuota(Metrics.LLM_TOKENS_INPUT, 0);
+    await enforceQuota(Metrics.LLM_TOKENS_OUTPUT, 0);
+  }
 
   const {
     messages,

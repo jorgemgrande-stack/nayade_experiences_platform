@@ -17,6 +17,8 @@
  */
 import { storagePut } from "server/storage";
 import { ENV } from "./env";
+import { Metrics, meter } from "./metering";
+import { enforceQuota } from "./erm/runtime";
 
 export type GenerateImageOptions = {
   prompt: string;
@@ -40,6 +42,8 @@ export async function generateImage(
   if (!ENV.forgeApiKey) {
     throw new Error("BUILT_IN_FORGE_API_KEY is not configured");
   }
+  // Cuota mensual de imágenes de la empresa (servicio de la plataforma: coste variable)
+  await enforceQuota(Metrics.AI_IMAGES, 1);
 
   // Build the full URL by appending the service path to the base URL
   const baseUrl = ENV.forgeApiUrl.endsWith("/")
@@ -79,6 +83,7 @@ export async function generateImage(
   };
   const base64Data = result.image.b64Json;
   const buffer = Buffer.from(base64Data, "base64");
+  meter(Metrics.AI_IMAGES, 1, "image");
 
   // Save to S3
   const { url } = await storagePut(

@@ -246,17 +246,35 @@ async function resolveOwnAttachments(params: MailParams): Promise<MailParams> {
 
 // ─── API pública ──────────────────────────────────────────────────────────────
 
+/** Categorías que la cuota diaria de correo nunca bloquea. */
+export const CRITICAL_MAIL_CATEGORIES: ReadonlySet<MailCategory> = new Set<MailCategory>([
+  "password_reset",
+  "security_notice",
+  "email_verification",
+  "user_invite",
+  "payment_confirmed",
+  "payment_failed",
+  "invoice_available",
+  "withdrawal_receipt",
+  "withdrawal_resolution",
+  "data_export",
+]);
+
 /**
  * Envía un email usando Brevo API (primario) o SMTP (fallback).
  * Devuelve true si el envío fue exitoso.
  */
 export async function sendEmail(params: MailParams): Promise<boolean> {
-  try {
-    await enforceQuota(Metrics.EMAIL_SENT, 1);
-  } catch (e) {
-    if (e instanceof QuotaExceededError) {
-      console.warn("[Mailer] Cuota de envíos excedida: no se envía");
-      return false;
+  // Los avisos críticos (acceso, seguridad, cobros y obligaciones legales) no los corta la cuota diaria: siguen
+  // midiéndose y conservan los límites del servicio de correo (idempotencia y límites por hora).
+  if (!(params.category && CRITICAL_MAIL_CATEGORIES.has(params.category))) {
+    try {
+      await enforceQuota(Metrics.EMAIL_SENT, 1);
+    } catch (e) {
+      if (e instanceof QuotaExceededError) {
+        console.warn("[Mailer] Cuota de envíos excedida: no se envía");
+        return false;
+      }
     }
   }
   const enriched = mergeGlobalCc(await resolveOwnAttachments(params));
