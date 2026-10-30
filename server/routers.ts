@@ -191,6 +191,7 @@ import { modulesRouter } from "./routers/modulesRouter";
 import { subscriptionRouter } from "./routers/subscriptionRouter";
 import { supportRouter } from "./routers/supportRouter";
 import { dataExportRouter } from "./routers/dataExportRouter";
+import { accountSecurityRouter } from "./routers/accountSecurityRouter";
 import { operationsRouter } from "./routers/operations";
 import { hrRouter } from "./routers/hr";
 import { bankMovementsRouter } from "./routers/bankMovements";
@@ -266,6 +267,7 @@ export const appRouter = router({
   subscription: subscriptionRouter,
   support: supportRouter,
   dataExport: dataExportRouter,
+  accountSecurity: accountSecurityRouter,
   auth: router({
     me: publicProcedure.query((opts) => toPublicUser(opts.ctx.user)),
     logout: publicProcedure.mutation(({ ctx }) => {

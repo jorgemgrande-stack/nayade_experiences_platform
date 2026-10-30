@@ -142,6 +142,8 @@ const GlobalCalendar = lazy(() => import("./pages/admin/restaurants/GlobalCalend
 
 // Users & Settings
 const UsersManager = lazy(() => import("./pages/admin/users/UsersManager"));
+const MiCuenta = lazy(() => import("./pages/admin/MiCuenta"));
+const VerifyEmailChange = lazy(() => import("./pages/VerifyEmailChange"));
 const Settings = lazy(() => import("./pages/admin/settings/Settings"));
 const BrandTheme = lazy(() => import("./pages/admin/settings/BrandTheme"));
 const IntegrationsSettings = lazy(() => import("./pages/admin/settings/Integrations"));
@@ -258,6 +260,7 @@ function Router() {
       <Route path="/recuperar-contrasena" component={ForgotPassword} />
       <Route path="/nueva-contrasena" component={ResetPassword} />
       <Route path="/establecer-contrasena" component={SetPassword} />
+      <Route path="/admin/verificar-correo">{() => <Suspense fallback={<AdminLoadingFallback />}><VerifyEmailChange /></Suspense>}</Route>
 
       {/* ── PARTNER PORTAL ── */}
       <Route path="/partner/activar">{() => <Suspense fallback={<AdminLoadingFallback />}><ActivarPartner /></Suspense>}</Route>
@@ -434,6 +437,7 @@ function Router() {
 
       {/* Users & Settings */}
       <Route path="/admin/usuarios">{() => <Suspense fallback={<AdminLoadingFallback />}><UsersManager /></Suspense>}</Route>
+      <Route path="/admin/mi-cuenta">{() => <Suspense fallback={<AdminLoadingFallback />}><MiCuenta /></Suspense>}</Route>
       <Route path="/admin/configuracion">{() => <Suspense fallback={<AdminLoadingFallback />}><ConfigPanel /></Suspense>}</Route>
       <Route path="/admin/configuracion/marca">{() => <Suspense fallback={<AdminLoadingFallback />}><BrandTheme /></Suspense>}</Route>
       <Route path="/admin/configuracion/integraciones">{() => <Suspense fallback={<AdminLoadingFallback />}><IntegrationsSettings /></Suspense>}</Route>
