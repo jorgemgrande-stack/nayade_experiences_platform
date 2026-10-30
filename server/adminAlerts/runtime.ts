@@ -16,6 +16,8 @@ export interface AlertCycleDeps {
   pastDueOrders?: () => Promise<CommercialOrder[]>;
   pastDueExternals?: () => Promise<ExternalSubscription[]>;
   openTickets?: () => Promise<Array<{ ticket: Ticket; events: TicketEvent[] }>>;
+  /** Comprobaciones operativas (restauraciones, disponibilidad, publicación, plazos RGPD): cada una devuelve los avisos lanzados. */
+  operations?: Array<{ name: string; run: () => Promise<number> }>;
   now?: () => number;
 }
 
@@ -40,6 +42,7 @@ export async function runAlertCycle(d: AlertCycleDeps): Promise<Record<string, n
   if (d.pastDueOrders) await step("grace", async () => raiseAll(suspensionNear(await d.pastDueOrders!(), now)));
   if (d.pastDueExternals) await step("externalGrace", async () => raiseAll(externalSuspensionNear(await d.pastDueExternals!(), now)));
   if (d.openTickets) await step("tickets", async () => raiseAll(ticketDeadlines(await d.openTickets!(), now, (await d.alerts.settings()).settings.ticketSlaHours)));
+  for (const o of d.operations ?? []) await step(o.name, o.run);
   await step("digests", async () => (await d.alerts.flush()).digests);
   return out;
 }
