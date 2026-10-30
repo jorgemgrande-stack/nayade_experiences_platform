@@ -527,6 +527,18 @@ ghlInboxRouter.use("/api/ghl", (req, res, next) => {
   if (GHL_PUBLIC_WEBHOOK_PATHS.has(req.path)) return next();
   return requireStaff(req, res, next);
 });
+// Prueba gratuita: las llamadas salientes a GHL (responder, plantillas, nueva conversación, sincronizar) no están
+// disponibles (server/trialRestrictions.ts). Leer el inbox local sigue permitido.
+ghlInboxRouter.use("/api/ghl", (req, res, next) => {
+  if (GHL_PUBLIC_WEBHOOK_PATHS.has(req.path) || !(req.method === "POST" || req.path === "/templates")) return next();
+  import("../trialRestrictions")
+    .then(async ({ integrationAllowedNow }) => {
+      if (await integrationAllowedNow("ghl")) return next();
+      const { trialIntegrationMessage } = await import("../commercialState");
+      res.status(403).json({ ok: false, error: "trial_integration_blocked", message: trialIntegrationMessage("ghl") });
+    })
+    .catch(next);
+});
 
 // ── POST /api/ghl/inbox/webhook ───────────────────────────────────────────────
 ghlInboxRouter.post(

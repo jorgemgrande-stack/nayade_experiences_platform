@@ -47,6 +47,14 @@ function ghlLog(
   else                        console.log(line);
 }
 
+/** Prueba gratuita: la integración con GHL no está disponible (server/trialRestrictions.ts). */
+async function ghlBlockedInTrial(op: string): Promise<boolean> {
+  const { integrationAllowedNow } = await import("./trialRestrictions");
+  if (await integrationAllowedNow("ghl")) return false;
+  ghlLog("warn", op, "Integración GHL no disponible durante la prueba gratuita — omitida");
+  return true;
+}
+
 export interface GHLContactPayload {
   name: string;
   email?: string;
@@ -105,6 +113,7 @@ export async function createGHLContact(
     ghlLog("warn", "create_contact", "Credenciales GHL no configuradas — integración omitida");
     return null;
   }
+  if (await ghlBlockedInTrial("create_contact")) return null;
 
   try {
     // GHL POST /contacts/ — solo campos estándar.
@@ -197,6 +206,7 @@ export async function updateGHLContact(
     ghlLog("warn", "update_contact", "Credenciales GHL no configuradas — update omitido", { contactId });
     return false;
   }
+  if (await ghlBlockedInTrial("update_contact")) return false;
 
   try {
     // 1. Custom fields (sin tags) — puede fallar con 422 si el campo no existe en GHL
@@ -359,6 +369,7 @@ export async function triggerGHLWorkflow(
   webhookUrl: string,
   payload: Record<string, unknown>,
 ): Promise<boolean> {
+  if (await ghlBlockedInTrial("trigger_workflow")) return false;
   try {
     const response = await fetch(webhookUrl, {
       method: "POST",
