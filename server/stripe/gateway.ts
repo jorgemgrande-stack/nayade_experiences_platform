@@ -65,7 +65,12 @@ export interface GwSubscription {
   billingMode?: "classic" | "flexible" | null;
   /** Mínimo de items.data[].current_period_start. */
   currentPeriodStart?: number | null;
+  /** Calendario de cambios (Subscription Schedule) que gobierna la suscripción, si lo hay. */
+  scheduleId?: string | null;
 }
+
+/** Metadato con el que Elephant marca los calendarios de cambios que crea (los ajenos no se tocan). */
+export const SCHEDULE_ORIGIN = "elephant-period-end-change";
 
 export interface GwSubscriptionItem {
   id: string;
@@ -260,6 +265,13 @@ export interface StripeGateway {
    * con Idempotency-Key. No cobra ni abona nada. Devuelve la suscripción resultante.
    */
   setCancelAtPeriodEnd?(subscriptionId: string, cancel: boolean, idempotencyKey: string): Promise<GwSubscription>;
+  /**
+   * Programa las partidas para el FIN del periodo actual con un Subscription Schedule: la fase actual hasta su fin y
+   * una fase nueva de un periodo, `end_behavior=release` y sin prorrateo. No cobra ni abona nada ahora; al cambiar de
+   * fase, Stripe emite `customer.subscription.updated` y el webhook lo refleja. Un calendario que no sea de Elephant
+   * (`SCHEDULE_ORIGIN`) no se toca: `conflict`. Con Idempotency-Key.
+   */
+  scheduleItemsAtPeriodEnd?(subscriptionId: string, items: Array<{ priceId: string; quantity: number }>, interval: "month" | "year", idempotencyKey: string): Promise<{ scheduleId: string; effectiveAt: number | null }>;
   // ── Servicios de clientes externos (server/external) ──
   /** Checkout en modo `setup`: el cliente registra y autoriza su método de pago SIN ningún cargo. */
   createSetupSession?(input: SetupSessionInput, idempotencyKey: string): Promise<GwSetupSession>;
@@ -422,6 +434,7 @@ export function toSubscription(s: Stripe.Subscription, mode: StripeMode = "test"
     pendingUpdate: pending ? { expiresAt: pending.expires_at ?? 0 } : null,
     billingMode: billingMode === "flexible" ? "flexible" : billingMode === "classic" ? "classic" : null,
     currentPeriodStart: starts.length ? Math.min(...starts) : null,
+    scheduleId: idOf((s as unknown as { schedule?: unknown }).schedule),
   };
 }
 
@@ -922,6 +935,45 @@ export function stripeGateway(
       try {
         return toSubscription(await client.subscriptions.update(id, { cancel_at_period_end: cancel }, { idempotencyKey }), mode);
       } catch (e) {
+        wrapError(e);
+      }
+    },
+    async scheduleItemsAtPeriodEnd(id, items, interval, idempotencyKey) {
+      try {
+        const sub = await client.subscriptions.retrieve(id);
+        assertModeObject(sub, mode);
+        const existing = idOf(sub.schedule);
+        const created = !existing;
+        const sch = existing
+          ? await client.subscriptionSchedules.retrieve(existing)
+          : await client.subscriptionSchedules.create({ from_subscription: id }, { idempotencyKey: `${idempotencyKey}-crear` });
+        if (!created && sch.metadata?.es_origin !== SCHEDULE_ORIGIN) throw new StripeGatewayError("conflict", "La suscripción ya tiene un calendario de cambios en Stripe que no es de Elephant", false);
+        const now = Math.floor(Date.now() / 1000);
+        const current = sch.phases.find((p) => p.start_date <= now && now < p.end_date) ?? sch.phases[0];
+        if (!current) throw new StripeGatewayError("invalid_request_error", "El calendario de la suscripción no tiene fase actual", false);
+        const phaseItems = current.items.map((i) => ({ price: idOf(i.price) ?? "", quantity: i.quantity ?? 1 }));
+        try {
+          const updated = await client.subscriptionSchedules.update(
+            sch.id,
+            {
+              end_behavior: "release",
+              proration_behavior: "none",
+              metadata: { es_origin: SCHEDULE_ORIGIN },
+              phases: [
+                { items: phaseItems, start_date: current.start_date, end_date: current.end_date },
+                { items: items.map((i) => ({ price: i.priceId, quantity: i.quantity })), duration: { interval, interval_count: 1 } },
+              ],
+            } as Stripe.SubscriptionScheduleUpdateParams,
+            { idempotencyKey: `${idempotencyKey}-fases` },
+          );
+          return { scheduleId: updated.id, effectiveAt: current.end_date };
+        } catch (e) {
+          // Un calendario recién creado que no se pudo programar se libera: la suscripción queda como estaba
+          if (created) await client.subscriptionSchedules.release(sch.id).catch(() => undefined);
+          throw e;
+        }
+      } catch (e) {
+        if (e instanceof StripeGatewayError) throw e;
         wrapError(e);
       }
     },

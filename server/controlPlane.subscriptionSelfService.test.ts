@@ -6,7 +6,9 @@
  *  - baja al final del periodo → webhook → pedido «cancel_scheduled»; deshacer → webhook → activo; repeticiones
  *    sin otra llamada a Stripe; motivo guardado como nota del CRM; nada borrado;
  *  - subida de plan → webhook → pedido de cambio activo y licencias del nuevo plan; repetición sin otro cobro;
- *    cobro pendiente (3DS): nada cambia; bajada: solicitud registrada sin tocar Stripe;
+ *    cobro pendiente (3DS): nada cambia; bajada: programada en Stripe para el fin del periodo (Subscription
+ *    Schedule) y reflejada por el webhook al cambiar de fase; sin poder programarla, solicitud para el CRM; un
+ *    calendario ajeno no se toca;
  *  - interruptores apagados → 503; otra empresa o inexistente → 404; sin token del Core → 403; empresa no cobrada
  *    en Stripe → error claro.
  */
@@ -37,7 +39,7 @@ import { capabilitiesOfTier } from "./catalog/capabilities";
 import { MemoryOrderStore } from "./orchestrator/store";
 import { desiredCatalog, planCatalogWrites, syncCatalog } from "./stripe/catalog";
 import type { StripeConfig } from "./stripe/config";
-import { stripeWebhookVerifier, type GwEvent } from "./stripe/gateway";
+import { StripeGatewayError, stripeWebhookVerifier, type GwEvent } from "./stripe/gateway";
 import { MemoryStripeStore } from "./stripe/store";
 import { FakeStripeGateway } from "./stripe/testing";
 import { MemorySubscriptionChangeStore } from "./stripe/changes";
@@ -287,7 +289,7 @@ describe("autoservicio de la suscripción cobrada en Stripe", () => {
     expect(stripeCalls("subscriptions.update")).toBe(updates);
   });
 
-  it("subida con autenticación pendiente: nada cambia y no se admite otra; bajada: solicitud registrada sin tocar Stripe", async () => {
+  it("subida con autenticación pendiente: nada cambia y no se admite otra; bajada: programada en Stripe y reflejada al cambiar de fase", async () => {
     const a = await activeCompany("Plan Pendiente SL");
     gw.paymentOutcome.set(a.customerId, "requires_action");
     const pricesBefore = [...gw.subscriptions.get(a.subId)!.priceIds];
@@ -304,15 +306,49 @@ describe("autoservicio de la suscripción cobrada en Stripe", () => {
     const calls = gw.calls.length;
     const p = (await ok(call("POST", `${T(b.tenantId)}/plan-change/preview`, { token: CORE, body: { plan: "essential", interval: "year" } }))).preview;
     expect(p).toMatchObject({ direction: "downgrade", amountDueCents: 0, effectiveAt: gw.subscriptions.get(b.subId)!.currentPeriodEnd! * 1000 });
+    const periodEnd = gw.subscriptions.get(b.subId)!.currentPeriodEnd! * 1000;
     const d = await ok(changePlan(b.tenantId, { plan: "essential", interval: "year" }), 201);
-    expect(d.planChange).toMatchObject({ status: "requested", created: true });
-    expect((await ok(changePlan(b.tenantId, { plan: "essential", interval: "year" }), 200)).planChange).toMatchObject({ status: "requested", created: false });
+    expect(d.planChange).toMatchObject({ status: "scheduled", created: true, amountDueCents: 0, effectiveAt: periodEnd });
+    expect((await ok(changePlan(b.tenantId, { plan: "essential", interval: "year" }), 200)).planChange).toMatchObject({ status: "scheduled", created: false });
+    expect(gw.calls.slice(calls).filter((c) => c.op === "subscription_schedules.update")).toHaveLength(1);
     const tasks = await crmStore.list("activities", { entityType: "company", entityId: b.companyId, kind: "task" });
-    expect(tasks.filter((t) => t.summary.startsWith("Bajada de plan solicitada desde el panel"))).toHaveLength(1);
-    // Stripe intacto: ni cambios de partidas ni facturas
-    expect(JSON.stringify(gw.subscriptions.get(b.subId))).toBe(subBefore);
+    expect(tasks.filter((t) => t.summary.startsWith("Bajada de plan programada en Stripe desde el panel"))).toHaveLength(1);
+    // Hasta el fin del periodo nada cambia: ni partidas, ni facturas, ni el pedido
+    const { scheduleId, ...rest } = gw.subscriptions.get(b.subId)!;
+    expect(scheduleId).toMatch(/^sub_sched_/);
+    expect(rest.priceIds).toEqual(JSON.parse(subBefore).priceIds);
+    expect(rest.items).toEqual(JSON.parse(subBefore).items);
     expect(gw.calls.slice(calls).filter((c) => c.op === "subscriptions.update")).toHaveLength(0);
     expect((await liveOrder(b.companyId)).request.plan).toBe("business");
+    // Fin del periodo: Stripe pasa a la fase siguiente y el webhook lo refleja (pedido de cambio y licencias)
+    const mark = gw.events.length;
+    gw.advanceSchedule(b.subId);
+    await deliverSince(mark);
+    await settled();
+    expect(await liveOrder(b.companyId)).toMatchObject({ kind: "change", state: "active", request: { plan: "essential", interval: "year" } });
+    expect(await capsOf(b.tenantId)).not.toContain(capabilitiesOfTier("business").find((c) => !capabilitiesOfTier("essential").includes(c)));
+  });
+
+  it("bajada sin poder programarla en Stripe: solicitud para el CRM; un calendario ajeno no se toca", async () => {
+    const a = await activeCompany("Bajada Manual SL", "business", "month");
+    const orig = gw.scheduleItemsAtPeriodEnd;
+    gw.scheduleItemsAtPeriodEnd = async () => {
+      throw new StripeGatewayError("permission_error", "Stripe respondió 403 (permission_error)", false);
+    };
+    try {
+      const r = await ok(changePlan(a.tenantId, { plan: "essential", interval: "month" }), 201);
+      expect(r.planChange).toMatchObject({ status: "requested", created: true });
+      const tasks = await crmStore.list("activities", { entityType: "company", entityId: a.companyId, kind: "task" });
+      expect(tasks.filter((t) => t.summary.startsWith("Bajada de plan solicitada desde el panel"))).toHaveLength(1);
+    } finally {
+      gw.scheduleItemsAtPeriodEnd = orig;
+    }
+    const b = await activeCompany("Calendario Ajeno SL", "business", "month");
+    const sub = gw.subscriptions.get(b.subId)!;
+    gw.schedules.set("sub_sched_ajeno", { subscriptionId: b.subId, items: [], effectiveAt: null, ours: false });
+    gw.subscriptions.set(b.subId, { ...sub, scheduleId: "sub_sched_ajeno" });
+    expect((await changePlan(b.tenantId, { plan: "essential", interval: "month" })).status).toBe(409);
+    expect(gw.schedules.get("sub_sched_ajeno")).toMatchObject({ items: [], ours: false });
   });
 
   it("interruptores apagados → 503; otra empresa, permisos y empresa no cobrada en Stripe → errores claros", async () => {
