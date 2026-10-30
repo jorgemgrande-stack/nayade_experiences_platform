@@ -89,12 +89,17 @@ export function normalizeAdminSettings(raw: unknown): AdminAlertSettings {
   return out;
 }
 
-/** Vista previa de una alerta con sus DATOS FICTICIOS (pura; enlaces a un dominio de ejemplo). */
-export function alertPreview(alertId: string, o: { test?: boolean } = {}): (MailContent & { text: string }) | null {
+/**
+ * Vista previa de una alerta con sus DATOS FICTICIOS (pura). Sin `crmUrl`, enlaces a un dominio de ejemplo; con la URL
+ * real del CRM (pruebas enviadas), el enlace lleva al listado de la sección, porque el expediente de ejemplo no existe.
+ */
+export function alertPreview(alertId: string, o: { test?: boolean; crmUrl?: string | null } = {}): (MailContent & { text: string }) | null {
   const spec = alertById(alertId);
   if (!spec) return null;
   const f = spec.sample;
-  return adminAlertEmail({ alert: spec, severity: spec.severity, intervention: f.intervention ?? spec.intervention, summary: f.summary, company: f.company ?? null, tenantId: f.tenantId ?? null, occurredAt: f.occurredAt, status: f.status, amount: f.amount ?? null, reference: f.reference ?? null, details: f.details ?? [], crmUrl: f.link ? `https://admin.bigelephant.example/${f.link.replace(/^\/+/, "")}` : null, environment: "pruebas", escalated: null, grouped: 0, test: o.test });
+  const link = f.link?.replace(/^\/+/, "");
+  const crmUrl = !link ? null : o.crmUrl ? `${o.crmUrl}/${link.replace(/^(#\/(?:clientes|comercial\/[a-z-]+))\/[^/]+$/, "$1")}` : `https://admin.bigelephant.example/${link}`;
+  return adminAlertEmail({ alert: spec, severity: spec.severity, intervention: f.intervention ?? spec.intervention, summary: f.summary, company: f.company ?? null, tenantId: f.tenantId ?? null, occurredAt: f.occurredAt, status: f.status, amount: f.amount ?? null, reference: f.reference ?? null, details: f.details ?? [], crmUrl, environment: "pruebas", escalated: null, grouped: 0, test: o.test });
 }
 
 // ── Servicio ──────────────────────────────────────────────────────────────────
@@ -300,7 +305,7 @@ export class AdminAlertService {
     const run = this.now().toString(36);
     const results = [];
     for (const a of list) {
-      const c = this.preview(a.id, { test: true })!;
+      const c = alertPreview(a.id, { test: true, crmUrl: this.d.crmUrl })!;
       const r = await this.d.mailer.send(PLATFORM, `admin-test:${run}:${a.id}`, a.category, addr, c);
       results.push({ id: a.id, status: r.status, reason: r.reason, outboxId: r.id });
     }
