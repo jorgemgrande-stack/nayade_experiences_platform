@@ -25,6 +25,11 @@ export interface ErmSetupResult {
   probe: { write: boolean; deleteDenied: boolean; ddlDenied: boolean; otherDbDenied: boolean } | null;
   /** Consumo agregado de las últimas 24 h por empresa (solo en simulación y con la tabla creada): prueba de que llega. */
   last24h?: Array<{ tenant: string; metrics: number; rows: number; lastHour: string }>;
+  /**
+   * Contadores compartidos por periodo (solo en simulación y con la tabla creada): filas, empresas y la ventana más
+   * reciente. Una ventana reciente prueba que las réplicas del Core ya escriben en `usage_windows`. Sin cantidades.
+   */
+  windows?: Array<{ period: string; rows: number; tenants: number; lastWindow: string | null }>;
 }
 
 /**
@@ -118,6 +123,14 @@ export async function runErmSetup(o: { admin: mysql.Pool; host: string; port: nu
           )
         )[0].map((r) => ({ tenant: String(r.tenant_id), metrics: Number(r.metrics), rows: Number(r.n), lastHour: new Date(r.last).toISOString() }))
       : undefined;
+    const windows = hasWindows
+      ? (
+          await o.admin.query<mysql.RowDataPacket[]>(
+            `SELECT period, COUNT(*) AS n, COUNT(DISTINCT tenant_id) AS tenants, MAX(window_start) AS last FROM \`${ERM_DATABASE}\`.usage_windows
+              WHERE tenant_id <> '__sonda__' GROUP BY period ORDER BY period`,
+          )
+        )[0].map((r) => ({ period: String(r.period), rows: Number(r.n), tenants: Number(r.tenants), lastWindow: r.last === null ? null : new Date(Number(r.last)).toISOString() }))
+      : undefined;
     return {
       database: hasDb ? "exists" : "would_create",
       table: hasTable ? "exists" : "would_create",
@@ -126,6 +139,7 @@ export async function runErmSetup(o: { admin: mysql.Pool; host: string; port: nu
       grants: gState === "ok" ? "ok" : "would_apply",
       probe: null,
       ...(last24h ? { last24h } : {}),
+      ...(windows ? { windows } : {}),
     };
   }
   if (!hasDb) await o.admin.query(`CREATE DATABASE \`${ERM_DATABASE}\` CHARACTER SET utf8mb4`);
