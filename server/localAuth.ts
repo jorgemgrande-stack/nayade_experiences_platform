@@ -22,6 +22,7 @@ import { centralLoginHost, createHandoffRouter } from "./_core/centralAuth";
 import { loginLockRemaining, recordLoginFailure, recordLoginSuccess } from "./_core/loginThrottle";
 import { createHash } from "crypto";
 import { opsLog } from "./_core/ops/log";
+import { trackLoginDevice } from "./accountSecurity/devices";
 import { getDb } from "./db";
 import { users } from "../drizzle/schema";
 import { eq } from "drizzle-orm";
@@ -219,6 +220,7 @@ export function createLocalAuthRouter(): Router {
     }
 
     setSessionCookie(req, res, token, COOKIE_MAX_AGE * 1000);
+    trackLoginDevice(req, res, user.id);
 
     res.json({
       id: user.id,
@@ -279,6 +281,7 @@ export function createCentralHandoffRouter(): Router | null {
     },
     async issueSession(req, res, user) {
       setSessionCookie(req, res, await signSessionToken(user.id, user.passwordHash), COOKIE_MAX_AGE * 1000);
+      trackLoginDevice(req, res, user.id);
     },
   });
 }

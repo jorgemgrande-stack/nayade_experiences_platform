@@ -8,6 +8,7 @@ import { previewTemplate, PREVIEW_NOW } from "../notifications/preview";
 import type { Family } from "./design";
 import { platformTemplates } from "./templates";
 import { inviteContent, passwordResetContent } from "./accountTemplates";
+import { emailChangeVerifyContent, emailChangedContent } from "./accountSecurityTemplates";
 import { extraTemplates as x } from "./extraTemplates";
 import type { MailContent } from "./types";
 import { ADMIN_ALERTS } from "../adminAlerts/catalog";
@@ -90,10 +91,11 @@ export const TEMPLATES: readonly TemplateEntry[] = [
   e("account.password_reset", "Restablecimiento de contraseña (usuarios de empresa)", "acceso", "security", "core", "POST /api/auth/forgot-password", "conectada", () => passwordResetContent({ name: "Ana Demo", url: `https://${HOST}/nueva-contrasena?muestra=1`, minutes: 60, account: "Big Elephant CRM (Empresa Demo)" })),
   e("operator.password_reset", "Restablecimiento de contraseña (administración central)", "acceso", "security", "controlplane", "POST /cp/v1/auth/password-reset/request", "conectada", () => passwordResetContent({ name: null, url: "https://admin.bigelephant.example/#/restablecer?muestra=1", minutes: 30, account: "Big Elephant CRM (administración central)" })),
   e("security.password_changed", "Contraseña modificada", "acceso", "security", "core", "Contraseña restablecida (POST /api/auth/reset-password)", "conectada", P("security.password_changed")),
-  e("security.new_login", "Inicio de sesión desde un dispositivo nuevo", "acceso", "security", "core", "Detección de dispositivo nuevo", "sin_disparador", P("security.new_login")),
+  e("security.new_login", "Inicio de sesión desde un dispositivo nuevo", "acceso", "security", "core", "Inicio de sesión desde un dispositivo no visto antes (POST /api/auth/login y acceso centralizado)", "conectada", P("security.new_login")),
   e("security.mfa_changed", "Verificación en dos pasos modificada", "acceso", "security", "controlplane", "Activación o retirada del segundo factor de un operador del CRM (las empresas aún no tienen segundo factor)", "conectada", P("security.mfa_changed")),
   e("account.invite", "Invitación a un usuario de la empresa", "acceso", "security", "core", "Alta de usuario con invitación (sendInviteEmail)", "conectada", () => inviteContent({ name: "Pablo Demo", company: "Empresa Demo", role: "manager", url: `https://${HOST}/establecer-contrasena?muestra=1`, hours: 72 })),
-  e("account.email_changed", "Cambio de dirección de correo", "acceso", "security", "core", "Cambio del correo de acceso", "sin_disparador", () => x.emailChanged({ name: "Ana Demo", oldEmail: "ana.antigua@empresa-demo.example", newEmail: "ana@empresa-demo.example", at: PREVIEW_NOW })),
+  e("account.email_changed", "Cambio de dirección de correo", "acceso", "security", "core", "Cambio del correo de acceso confirmado (accountSecurity.confirmEmailChange): aviso al correo anterior", "conectada", () => emailChangedContent({ brand: "Empresa Demo", name: "Ana Demo", oldEmail: "ana.antigua@empresa-demo.example", newEmail: "ana@empresa-demo.example", at: new Date(PREVIEW_NOW) })),
+  e("account.email_verify", "Verificación del nuevo correo de acceso", "acceso", "security", "core", "Solicitud de cambio del correo de acceso (accountSecurity.requestEmailChange): enlace al correo nuevo", "conectada", () => emailChangeVerifyContent({ brand: "Empresa Demo", name: "Ana Demo", newEmail: "ana@empresa-demo.example", url: `https://${HOST}/admin/verificar-correo?muestra=1`, minutes: 60 })),
   // ── B. Onboarding y periodo de prueba ──
   e("trial.started", "Bienvenida a Big Elephant (prueba activada)", "onboarding", "experiential", "controlplane", "Prueba aprovisionada", "conectada", P("trial.started")),
   e("tenant.welcome", "Bienvenida (alta asistida)", "onboarding", "experiential", "controlplane", "Plataforma creada desde el CRM", "conectada", () => t.tenantWelcome({ companyName: "Empresa Demo, S.L.", host: HOST, setPasswordUrl: `https://${HOST}/establecer-contrasena?muestra=1` })),
@@ -171,8 +173,6 @@ export const TEMPLATES: readonly TemplateEntry[] = [
 
 /** Motivo funcional de cada plantilla sin disparador (lo que tendría que existir en el producto). */
 export const PENDING_REASON: Readonly<Record<string, string>> = {
-  "security.new_login": "El Core no registra dispositivos ni sesiones (la sesión es un JWT sin estado): hace falta un registro de dispositivos por usuario en la base de cada empresa.",
-  "account.email_changed": "No existe el cambio del correo de acceso de un usuario (ni por autoservicio ni por un administrador).",
   "onboarding.reminder": "Necesita una tarea periódica nueva por empresa en el arranque del Core; es un cambio de infraestructura que va en un despliegue aislado.",
   "module.removal_effective": "La baja efectiva la aplica la sincronización de licencias sin emitir ningún hecho con el producto retirado; solo existe el evento al programarla (que ya avisa).",
   "external.changed": "El producto no permite modificar las condiciones de un servicio externo (solo la fecha del primer cargo).",
