@@ -1,0 +1,6 @@
+{
+  "extends": "./tsconfig.json",
+  "include": ["scripts/deploy/**/*.ts"],
+  "exclude": ["node_modules"],
+  "compilerOptions": { "target": "ES2022", "incremental": false }
+}
