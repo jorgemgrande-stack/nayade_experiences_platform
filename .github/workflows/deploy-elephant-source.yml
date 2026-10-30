@@ -702,10 +702,13 @@ jobs:
       - name: "Preparar production 4/4 — simulación de todas las migraciones (plataforma y empresas; no aplica nada)"
         if: inputs.action == 'preparar-production'
         run: |
-          pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --command "node .mig/run.cjs registry plan"
-          pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --command "node .mig/run.cjs crm status"
-          pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --command "node .mig/run.cjs crm plan"
-          pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --command "node dist-cp/backup-job.js migrate-tenants"
+          # Las migraciones viajan en la imagen de restore-drill: se simula con la de ESTE commit (con la desplegada antes,
+          # el plan no veía las migraciones nuevas y daba «0 pendientes»). Desplegarla no aplica nada.
+          pnpm exec tsx scripts/deploy/esRailway.ts deploy --env "${ES_ENV}" --service restore-drill --dir "${RUNNER_TEMP}/export" --sha "${ES_DEPLOY_SHA}"
+          pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --expect-sha "${ES_DEPLOY_SHA}" --command "node .mig/run.cjs registry plan"
+          pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --expect-sha "${ES_DEPLOY_SHA}" --command "node .mig/run.cjs crm status"
+          pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --expect-sha "${ES_DEPLOY_SHA}" --command "node .mig/run.cjs crm plan"
+          pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --expect-sha "${ES_DEPLOY_SHA}" --command "node dist-cp/backup-job.js migrate-tenants"
 
       - name: aplicar-production — solo production
         if: inputs.action == 'aplicar-production'
