@@ -28,7 +28,7 @@ import {
   validateEntry,
   yearOf,
 } from "./rules";
-import type { EntryQuery, FinanceStore } from "./store";
+import { postingProblem, type EntryQuery, type FinanceStore } from "./store";
 import { FinanceError, type Account, type AccountType, type Entry, type EntryDraft, type EntryLineInput, type EntryOrigin, type FinanceActor, type FiscalYear, type JournalCode, type OpenClosed } from "./types";
 
 export interface FinanceDeps {
@@ -268,6 +268,22 @@ export class FinanceService {
     const r = await this.d.store.insertEntry(d, lines, { createdBy: actor.by, at, post: { by: actor.by, at } });
     if (r.created) await this.audit(actor, "entry.generate", "entry", r.entry.id, { sourceKey: d.sourceKey, number: r.entry.number, year: r.entry.year });
     return r;
+  }
+
+  /**
+   * ¿Se podría contabilizar este asiento generado ahora? Valida el cuadre y las cuentas y comprueba que su fecha cae en
+   * un periodo abierto, SIN guardar nada. Las operaciones (fase 1B) lo llaman antes de guardar el hecho (pago, movimiento
+   * de caja…) para no dejar filas sin asiento; `postGenerated` vuelve a comprobarlo todo dentro de su transacción.
+   */
+  async checkPostable(draft: EntryDraft): Promise<void> {
+    validateEntry(draft, await this.accountMap());
+    const problem = postingProblem(await this.d.store.getFiscalYear(yearOf(draft.date)), draft.date);
+    if (problem) throw problem;
+  }
+
+  /** Fila de auditoría de una escritura de las operaciones (fase 1B), en el mismo `fin_audit_log`. */
+  recordAudit(actor: FinanceActor, action: string, entity: string, entityId: string | number | null, summary: Record<string, unknown> | null) {
+    return this.audit(actor, action, entity, entityId, summary);
   }
 
   // ── Sincronización de facturas emitidas ───────────────────────────────────────────────────────────────────────

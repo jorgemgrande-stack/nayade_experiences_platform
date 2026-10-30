@@ -14,6 +14,9 @@ import { MysqlInvoicingStore } from "../invoicing/store";
 import type { FiscalParty } from "../invoicing/types";
 import { FinanceService } from "./service";
 import { MysqlFinanceStore, finTablesReady } from "./store";
+import { FinanceOpsService } from "./opsService";
+import { MysqlFinanceOpsStore, finOpsTablesReady } from "./opsStore";
+import { norma43Sample } from "./testkit";
 
 const URL_ = process.env.REGISTRY_TEST_DATABASE_URL;
 const DB = "finance_test";
@@ -160,5 +163,149 @@ describe.skipIf(!URL_)("libro contable con MySQL real (CRM 0033)", () => {
     for (const a of ["fiscal_year.create", "entry.create_posted", "entry.generate", "period.close", "period.reopen", "entry.post", "entry.reverse", "entry.void", "account.create", "sync.invoices", "fiscal_year.close"]) expect(actions.has(a)).toBe(true);
     const last = await store.lastAudit("sync.invoices");
     expect(last?.summary).toEqual({ posted: 0, skipped: 1, errors: 0, truncated: false });
+  });
+});
+
+/**
+ * Operaciones (CRM 0034) contra MySQL real, en otra BD aislada: siembra, unicidad en la BD (NIF, factura por proveedor y
+ * número mientras no esté anulada, extracto por sha256, movimiento por clave de duplicado, borrador recurrente por
+ * periodo), registro y conciliación simultáneos (un solo asiento), vínculo sin asiento, desvincular con reversión,
+ * documentos binarios, fechas sin desplazamiento de zona y resumen desde el libro.
+ */
+describe.skipIf(!URL_)("operaciones con MySQL real (CRM 0034)", () => {
+  const DB2 = "finance_ops_test";
+  let admin: mysql.Pool;
+  let pool: mysql.Pool;
+  let ledger: MysqlFinanceStore;
+  let finance: FinanceService;
+  let ops: FinanceOpsService;
+  const IBAN = "ES9121000418450200051332";
+  const b64 = (s: string | Buffer) => Buffer.from(s).toString("base64");
+  const ids: Record<string, number> = {};
+  const count = async (sql: string, args: unknown[] = []) => {
+    const [rows] = (await pool.query(sql, args)) as unknown as [Array<{ n: number }>];
+    return Number(rows[0].n);
+  };
+
+  beforeAll(async () => {
+    admin = mysql.createPool({ uri: URL_!, connectionLimit: 2 });
+    await admin.query(`DROP DATABASE IF EXISTS ${DB2}`);
+    await admin.query(`CREATE DATABASE ${DB2} CHARACTER SET utf8mb4`);
+    const u = new URL(URL_!);
+    u.pathname = `/${DB2}`;
+    pool = mysql.createPool({ uri: u.toString(), connectionLimit: 8 });
+    expect(await finOpsTablesReady(pool)).toBe(false);
+    const ddl = fs.readFileSync(path.resolve(__dirname, "../../db/crm/0000_crm.sql"), "utf8").replace(/^--.*$/gm, "");
+    for (const s of ddl.split(/;\s*(?:\r?\n|$)/).map((x) => x.trim()).filter(Boolean)) await pool.query(s);
+    const all = loadMigrations(DIR).migrations;
+    expect(all.map((m) => m.id)).toContain("0034_finance_operations");
+    for (const m of all) for (const s of splitStatements(m.up)) await pool.query(s);
+    ledger = new MysqlFinanceStore(pool);
+    finance = new FinanceService({ store: ledger, now: () => T });
+    ops = new FinanceOpsService({ store: new MysqlFinanceOpsStore(pool), finance, ledger, now: () => T });
+    await finance.createFiscalYear(2026, ACTOR);
+  }, 120_000);
+
+  afterAll(async () => {
+    await pool?.end();
+    await admin?.query(`DROP DATABASE IF EXISTS ${DB2}`);
+    await admin?.end();
+  });
+
+  it("siembra de 0034, proveedores (NIF único en la BD), banco con subcuenta 572000NN", async () => {
+    expect(await finOpsTablesReady(pool)).toBe(true);
+    expect((await ops.costCenters()).map((c) => c.code)).toEqual(["GENERAL"]);
+    const cats = await ops.categories();
+    expect(cats).toHaveLength(19);
+    ids.category = cats.find((c) => c.accountCode === "629" && c.name.startsWith("Hosting"))!.id;
+    const s = await ops.createSupplier({ name: "Hosting Nube SL", taxId: "B12345674", paymentTermsDays: 30 }, ACTOR);
+    ids.supplier = s.id;
+    await expect(ops.createSupplier({ name: "Otro", taxId: "B12345674" }, ACTOR)).rejects.toMatchObject({ code: "conflict" });
+    const [b1, b2] = await Promise.all([ops.createBankAccount({ name: "CaixaBank", iban: IBAN }, ACTOR), ops.createBankAccount({ name: "BBVA" }, ACTOR)]);
+    expect([b1.accountCode, b2.accountCode].sort()).toEqual(["57200001", "57200002"]);
+    ids.bank = b1.id;
+    ids.cash = (await ops.createCashAccount({ name: "Caja" }, ACTOR)).id;
+  });
+
+  it("gasto: registro simultáneo = un asiento; número único por proveedor salvo anulados; fechas exactas", async () => {
+    const mk = (n: string) => ops.createExpense({ kind: "invoice", supplierId: ids.supplier, categoryId: ids.category, invoiceNumber: n, invoiceDate: "2026-10-01", accrualDate: "2026-09-30", description: "Servidores", baseCents: 100_000, taxRateBp: 2100, withholdingRateBp: 1500 }, ACTOR);
+    const e = await mk("F-1");
+    expect(e).toMatchObject({ invoiceDate: "2026-10-01", accrualDate: "2026-09-30", dueDate: "2026-10-31", supplierName: "Hosting Nube SL", totalCents: 121_000, withholdingCents: 15_000 });
+    await expect(mk("F-1")).rejects.toMatchObject({ code: "conflict" });
+    const out = await Promise.all([1, 2, 3, 4].map(() => ops.registerExpense(e.id, ACTOR).catch((x) => x)));
+    expect(await count("SELECT COUNT(*) AS n FROM fin_entries WHERE source_key = ?", [`expense:${e.id}`])).toBe(1);
+    expect(out.filter((x) => x && x.status === "registered").length).toBeGreaterThanOrEqual(1);
+    expect(await ledger.bySource(`expense:${e.id}`)).toMatchObject({ date: "2026-09-30", status: "posted" });
+    expect((await ops.expense(e.id)).status).toBe("registered");
+    ids.expense = e.id;
+    const tmp = await mk("F-2");
+    await ops.voidExpense(tmp.id, "Repetida", ACTOR);
+    expect((await mk("F-2")).status).toBe("draft");
+    await expect(pool.query("INSERT INTO fin_expense_payments (expense_id, paid_on, amount_cents, method, status, created_by, created_at) VALUES (?, '2026-10-01', 0, 'bank', 'posted', 't', 0)", [e.id])).rejects.toThrow();
+  });
+
+  it("extracto Norma 43: una vez por cuenta (sha256) y movimientos sin repetir (clave por cuenta)", async () => {
+    const imp = await ops.importStatement({ bankAccountId: ids.bank, format: "norma43", filename: "octubre.n43", contentBase64: b64(norma43Sample()) }, ACTOR);
+    expect(imp).toMatchObject({ rows: 4, inserted: 4, duplicates: 0 });
+    await expect(ops.importStatement({ bankAccountId: ids.bank, format: "norma43", filename: "otra.n43", contentBase64: b64(norma43Sample()) }, ACTOR)).rejects.toMatchObject({ code: "conflict" });
+    expect(await ops.importStatement({ bankAccountId: ids.bank, format: "norma43", filename: "lf.n43", contentBase64: b64(norma43Sample().replace(/\r\n/g, "\n")) }, ACTOR)).toMatchObject({ inserted: 0, duplicates: 4 });
+    const movs = (await ops.movements({ bankAccountId: ids.bank, limit: 10 })).items;
+    expect(movs).toHaveLength(4);
+    expect(movs.map((m) => m.bookingDate).sort()).toEqual(["2026-10-02", "2026-10-05", "2026-10-05", "2026-10-05"]);
+    expect((await ops.documents("bank_import", imp.id))[0]).toMatchObject({ mime: "text/plain", sizeBytes: Buffer.byteLength(norma43Sample()) });
+  });
+
+  it("conciliación simultánea del mismo movimiento: gana una y hay un solo asiento bankmov:<id>; desvincular revierte", async () => {
+    const mov = (await ops.movements({ bankAccountId: ids.bank, limit: 10 })).items.find((m) => m.amountCents === -121_000)!;
+    const e = await ops.createExpense({ kind: "invoice", supplierId: ids.supplier, categoryId: ids.category, invoiceNumber: "F-3", invoiceDate: "2026-10-01", description: "Servidores", baseCents: 100_000, taxRateBp: 2100 }, ACTOR);
+    await ops.registerExpense(e.id, ACTOR);
+    const res = await Promise.all([1, 2, 3].map(() => ops.match(mov.id, { type: "expense_payment", expenseId: e.id }, ACTOR).then((m) => m, (x) => x)));
+    expect(res.filter((r) => r && r.status === "matched").length).toBeGreaterThanOrEqual(1);
+    expect(await count("SELECT COUNT(*) AS n FROM fin_entries WHERE source_key LIKE ?", [`bankmov:${mov.id}%`])).toBe(1);
+    expect(await count("SELECT COUNT(*) AS n FROM fin_expense_payments WHERE expense_id = ? AND status = 'posted'", [e.id])).toBe(1);
+    expect((await ops.expense(e.id)).paymentStatus).toBe("paid");
+    expect((await ops.unmatch(mov.id, ACTOR)).status).toBe("pending");
+    expect((await ops.expense(e.id)).paymentStatus).toBe("pending");
+    const again = await ops.match(mov.id, { type: "expense_payment", expenseId: e.id }, ACTOR);
+    expect((await ledger.getEntry(again.entryId!))!.sourceKey).toBe(`bankmov:${mov.id}:2`);
+  });
+
+  it("pago a mano y vínculo posterior: sin asiento nuevo", async () => {
+    const e = await ops.createExpense({ kind: "invoice", supplierId: ids.supplier, categoryId: ids.category, invoiceNumber: "F-4", invoiceDate: "2026-10-01", description: "Comisión", baseCents: 350, taxRateBp: 0 }, ACTOR);
+    await ops.registerExpense(e.id, ACTOR);
+    const pay = await ops.addPayment(e.id, { paidOn: "2026-10-02", amountCents: 350, method: "bank", bankAccountId: ids.bank }, ACTOR);
+    const mov = (await ops.movements({ bankAccountId: ids.bank, status: "pending", limit: 10 })).items.find((m) => m.amountCents === -350 && m.bookingDate === "2026-10-02")!;
+    expect((await ops.suggestions(mov.id))[0]).toMatchObject({ type: "expense_payment", expensePaymentId: pay.item.id });
+    const before = await count("SELECT COUNT(*) AS n FROM fin_entries");
+    const linked = await ops.match(mov.id, { type: "expense_payment", expensePaymentId: pay.item.id }, ACTOR);
+    expect(linked).toMatchObject({ status: "matched", entryId: null, matchId: pay.item.id });
+    expect(await count("SELECT COUNT(*) AS n FROM fin_entries")).toBe(before);
+    expect((await ops.unmatch(mov.id, ACTOR)).status).toBe("pending");
+    expect((await ops.expenseWithPayments(e.id)).payments[0]).toMatchObject({ status: "posted", bankMovementId: null });
+    expect(await count("SELECT COUNT(*) AS n FROM fin_entries")).toBe(before);
+  });
+
+  it("documento binario íntegro, recurrentes idempotentes en paralelo, caja, resumen y auditoría", async () => {
+    const pdf = Buffer.concat([Buffer.from("%PDF-1.7\n"), Buffer.from(Array.from({ length: 256 }, (_, i) => i))]);
+    const doc = await ops.uploadDocument({ ownerType: "expense", ownerId: ids.expense, filename: "f.pdf", contentBase64: b64(pdf) }, ACTOR);
+    expect((await ops.documentContent(doc.id)).content.equals(pdf)).toBe(true);
+    expect((await ops.archiveDocument(doc.id, ACTOR)).archivedBy).toBe("operator:luis");
+
+    const t = await ops.createRecurring({ supplierId: ids.supplier, categoryId: ids.category, description: "Licencias", baseCents: 1_000, taxRateBp: 2100, frequency: "quarterly", dayOfMonth: 10, startDate: "2026-01-10" }, ACTOR);
+    const runs = await Promise.all([1, 2, 3].map(() => ops.runRecurring("2026-10-30", ACTOR).catch(() => ({ created: 0, skipped: 0 }))));
+    expect(await count("SELECT COUNT(*) AS n FROM fin_expenses WHERE source_key LIKE ?", [`recurring:${t.id}:%`])).toBe(4);
+    expect(runs.reduce((a, r) => a + r.created, 0)).toBe(4);
+    expect((await ops.recurring()).find((x) => x.id === t.id)!.nextDate).toBe("2027-01-10");
+
+    const cm = await ops.createCashMovement({ cashAccountId: ids.cash, movedOn: "2026-10-03", amountCents: 20_000, description: "Retirada", counterpartAccountCode: "57200001" }, ACTOR);
+    expect(cm).toMatchObject({ movedOn: "2026-10-03", status: "posted" });
+    const s = await ops.summary();
+    expect(s.cash).toEqual([{ id: ids.cash, name: "Caja", accountCode: "57000001", balanceCents: 20_000 }]);
+    expect(s.banks.find((b) => b.id === ids.bank)!.balanceCents).toBe(-121_000 - 350 - 20_000);
+    // F-1 se devengó el 30/09 (tercer trimestre): en el cuarto solo cuenta F-3
+    expect(s.vatInputQuarterCents).toBe(21_000);
+    expect(s.payablesCents).toBe(106_000);
+    const [audit] = (await pool.query("SELECT DISTINCT action FROM fin_audit_log")) as unknown as [Array<{ action: string }>];
+    for (const a of ["supplier.create", "bank_account.create", "expense.register", "bank_import.create", "bank_movement.match", "bank_movement.unmatch", "bank_movement.link", "document.upload", "recurring.run", "cash_movement.create"]) expect(audit.map((r) => r.action)).toContain(a);
   });
 });

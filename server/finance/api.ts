@@ -25,14 +25,14 @@
  *   GET  /finance/sync/status                           lectura         última sincronización y facturas pendientes
  *   GET  /finance/summary                               lectura         resumen del panel (null = aún no disponible)
  */
-import express, { type NextFunction, type Request, type Response, type Router } from "express";
+import express, { type Response, type Router } from "express";
 import { z } from "zod";
-import { getAuth } from "../controlPlane/auth";
-import { requestIdOf } from "../_core/ops/requestContext";
-import { opsLog } from "../_core/ops/log";
+import { actorOf, wrap } from "./http";
+import { mountFinanceOpsRoutes } from "./opsApi";
+import type { FinanceOpsService } from "./opsService";
 import { canClose, canOperate, canPost, canRead } from "./permissions";
 import type { FinanceService } from "./service";
-import { ACCOUNT_TYPES, ENTRY_ORIGINS, ENTRY_STATUSES, FINANCE_ERROR_STATUS, FinanceError, JOURNAL_CODES, type Entry, type FinanceActor } from "./types";
+import { ACCOUNT_TYPES, ENTRY_ORIGINS, ENTRY_STATUSES, JOURNAL_CODES, type Entry } from "./types";
 
 /**
  * Forma que consume el CRM (anexo CRM-ESPERA): `entryDate`, `debitCents` = total del asiento y `accountName` en
@@ -47,22 +47,6 @@ export function entryDto(e: Entry, names: ReadonlyMap<string, string>) {
     lines: lines.map((l) => ({ ...l, accountName: names.get(l.accountCode) ?? null })),
   };
 }
-
-const wrap =
-  (fn: (req: Request, res: Response) => Promise<void>) =>
-  (req: Request, res: Response, _next: NextFunction) => {
-    fn(req, res).catch((e) => {
-      if (e instanceof FinanceError) return void res.status(FINANCE_ERROR_STATUS[e.code]).json({ error: e.code, message: e.message });
-      if (e instanceof z.ZodError) return void res.status(400).json({ error: "invalid_input", message: `Datos no válidos: ${e.issues.map((i) => `${i.path.join(".") || "petición"} (${i.message})`).join("; ")}`.slice(0, 500) });
-      opsLog("error", "Finance", "request_failed", { path: req.path, message: e instanceof Error ? e.message.slice(0, 200) : String(e) });
-      res.status(500).json({ error: "internal", message: "Error interno" });
-    });
-  };
-
-const actorOf = (req: Request): FinanceActor => {
-  const a = getAuth(req)!.actor;
-  return { by: `${a.type}:${a.id}`.slice(0, 100), requestId: requestIdOf(req) ?? null };
-};
 
 const id = z.coerce.number().int().positive();
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "fecha AAAA-MM-DD");
@@ -118,7 +102,8 @@ function sendCsv(res: Response, name: string, csv: string) {
   res.send(csv);
 }
 
-export function createFinanceRouter(svc: FinanceService): Router {
+/** Con `ops` (migración 0034) se montan también las operaciones de la fase 1B y el resumen completo. */
+export function createFinanceRouter(svc: FinanceService, ops?: FinanceOpsService | null): Router {
   const r = express.Router();
   const names = async () => new Map((await svc.accounts()).map((a) => [a.code, a.name]));
   const one = async (e: Entry) => entryDto(e, await names());
@@ -210,7 +195,10 @@ export function createFinanceRouter(svc: FinanceService): Router {
   // Sincronización con la facturación propia y resumen
   r.post("/sync/invoices", ...canPost, wrap(async (req, res) => void res.json(await svc.syncInvoices(actorOf(req)))));
   r.get("/sync/status", ...canRead, wrap(async (_req, res) => void res.json(await svc.syncStatus())));
-  r.get("/summary", ...canRead, wrap(async (_req, res) => void res.json(await svc.summary())));
+  r.get("/summary", ...canRead, wrap(async (_req, res) => void res.json(ops ? await ops.summary() : await svc.summary())));
+
+  // Fase 1B: operaciones (centros de coste, categorías, proveedores, gastos, documentos, recurrentes, bancos y caja)
+  if (ops) mountFinanceOpsRoutes(r, ops);
 
   return r;
 }
