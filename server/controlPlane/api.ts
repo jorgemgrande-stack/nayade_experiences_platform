@@ -34,6 +34,7 @@ import { RegistryError } from "../_core/tenantRegistry/contract";
 import type { TenantRegistryService } from "../_core/tenantRegistry/service";
 import type { TenantRegistryReader } from "../_core/tenantRegistry/store";
 import { verifyDomainOwnership, type VerificationResult } from "../_core/tenantRegistry/domainVerification";
+import type { CommerceCircuits } from "./commerceCircuits";
 import { collectJobCircuits } from "./jobCircuits";
 import { manualDomainProvider, type DomainProvider } from "./domainProvider";
 import type { ProvisioningService } from "../_core/provisioning/service";
@@ -378,6 +379,8 @@ export interface ControlPlaneDeps {
   leadNotices?: LeadNoticeService | null;
   /** Alertas administrativas (familia D; server/adminAlerts, CRM 0030). */
   adminAlerts?: AdminAlertService | null;
+  /** Estado real de los circuitos comerciales (Stripe externos/SaaS, pruebas, aprovisionamiento); solo lectura. */
+  commerceCircuits?: () => CommerceCircuits;
   /** Solicitudes de derechos de protección de datos (RGPD; server/dataRequests, CRM 0032). */
   dataRequests?: DataRequestService | null;
   /** Centro de envíos del CRM y consentimiento comercial por contacto (server/communications, CRM 0031). */
@@ -1490,6 +1493,10 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
   );
   // Política de exceso de cuota vigente (qué pasa al aviso y al límite; la suspensión nunca es automática)
   router.get("/resources/policy", requireScope("usage:read"), (_req, res) => void res.json(OVERAGE_POLICY));
+  if (d.commerceCircuits) {
+    const circuits = d.commerceCircuits;
+    router.get("/commerce/circuits", requireScope("ops:read"), (_req, res) => void res.json(circuits()));
+  }
   // Consumo de la propia empresa para su panel (solo lectura, mismo token que la compra)
   router.use("/commerce", createPanelUsageRouter({ quotas: d.quotas, usage: d.usage, defaults: quotaDefaults }));
 

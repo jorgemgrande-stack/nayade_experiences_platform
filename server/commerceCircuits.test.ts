@@ -1,0 +1,34 @@
+/**
+ * Estado de los circuitos comerciales (server/controlPlane/commerceCircuits.ts): Stripe compartido por servicios
+ * externos y licencias SaaS, cada uno con su interruptor; pruebas y aprovisionamiento. Sin secretos.
+ */
+import { describe, it, expect } from "vitest";
+import { commerceCircuits, type CircuitSwitches } from "./controlPlane/commerceCircuits";
+import type { StripeConfig } from "./stripe/config";
+
+const KEY = "ci-only-placeholder-not-a-secret-1";
+const live = { mode: "live", apiKey: KEY, webhookSecret: KEY, keyKind: "secret", apiVersion: "x", namespace: "live", eventsRetentionDays: 180, taxPolicy: undefined } as unknown as StripeConfig;
+const off: CircuitSwitches = { externalLiveCharges: false, trialsReady: true, publicTrial: false, autoProvision: false };
+
+describe("circuitos comerciales", () => {
+  it("Stripe live: servicios externos solo con su interruptor; SaaS bloqueado sin política fiscal", () => {
+    const c = commerceCircuits({ stripe: live, switches: off, mailMode: "live" });
+    expect(c.externalServices).toMatchObject({ active: false, mode: "live" });
+    expect(c.externalServices.missing.join(" ")).toMatch(/servicios externos sin habilitar/);
+    expect(c.saasCheckout).toMatchObject({ active: false, mode: "live" });
+    expect(c.saasCheckout.missing.join(" ")).toMatch(/Política fiscal/);
+    const on = commerceCircuits({ stripe: { ...live, taxPolicy: "stripe_tax_exclusive" } as StripeConfig, switches: { ...off, externalLiveCharges: true }, mailMode: "live" });
+    expect(on.externalServices).toMatchObject({ active: true, missing: [] });
+    expect(on.saasCheckout).toMatchObject({ active: true, missing: [] });
+    expect(JSON.stringify(on)).not.toContain(KEY);
+  });
+
+  it("alta comercial: registro público y aprovisionamiento con sus interruptores; sin Stripe, todo apagado", () => {
+    const c = commerceCircuits({ stripe: null, switches: { ...off, publicTrial: true }, mailMode: "sandbox" });
+    expect(c.publicTrial).toMatchObject({ active: true, mode: "live" });
+    expect(c.autoProvision).toMatchObject({ active: false, mode: "off" });
+    expect(c.saasCheckout).toMatchObject({ active: false, mode: "off" });
+    expect(c.stripe).toEqual({ enabled: false });
+    expect(commerceCircuits({ stripe: null, switches: { ...off, publicTrial: true, trialsReady: false }, mailMode: "off" }).publicTrial.active).toBe(false);
+  });
+});
