@@ -20,7 +20,7 @@
 import path from "node:path";
 import mysql from "mysql2/promise";
 import { EntitlementAdmin } from "../_core/modules/mysqlEntitlements";
-import { QuotaAdmin } from "../_core/erm/mysqlQuotas";
+import { MysqlQuotaExceptionStore, QuotaAdmin } from "../_core/erm/mysqlQuotas";
 import { DEFAULT_QUOTAS, parseDefaultQuotas } from "../_core/erm/quota";
 import { crmContactOf, runUsageNotices } from "../commerce/usageNotices";
 import { choosePublicDomain } from "../_core/tenantIdentity";
@@ -98,6 +98,7 @@ import { createRemoteJWKSet } from "jose";
 import { operatorAuthFromEnv } from "./operatorSetup";
 import { DEFAULT_CORE_INTERNAL_URL, coreAccessClient } from "./tenantAccess";
 import { commerceCircuits } from "./commerceCircuits";
+import { collectJobCircuits, jobCircuitAlerts } from "./jobCircuits";
 import { domainProviderFromEnv } from "./domainProvider";
 import { outboxMfaNotice, outboxOperatorSecurityMail, outboxResetMailer, resetUnavailableReason } from "./operatorResetMail";
 import { LeadNoticeService, MysqlSettingsStore, crmUrlFromEnv, settingsTablesReady } from "../crm/leadNotices";
@@ -351,6 +352,10 @@ async function main() {
   // Tarifas del Resource Manager editables (registro 0014): sin la migración, solo las del entorno o la estimación
   const costRatesReady = await pool.query("SELECT 1 FROM erm_cost_model LIMIT 0").then(() => true, () => false);
   const costModelStore = costRatesReady ? new MysqlCostModelStore(pool) : undefined;
+  // Excepciones comerciales de cuota con caducidad (registro 0016): sin la migración, solo lo contractual
+  const quotaExceptionsReady = await pool.query("SELECT 1 FROM tenant_quota_exceptions LIMIT 0").then(() => true, () => false);
+  const quotaExceptions = quotaExceptionsReady ? new MysqlQuotaExceptionStore(pool) : undefined;
+  console.log(JSON.stringify({ ctx: "QuotaExceptions", enabled: quotaExceptionsReady, ...(quotaExceptionsReady ? {} : { reason: "registry_migration_0016_missing" }) }));
   console.log(JSON.stringify({ ctx: "CostRates", editable: costRatesReady, ...(costRatesReady ? {} : { reason: "registry_migration_0014_missing" }) }));
   // Sedes y entidades fiscales: solo si la migración 0009 del registro está aplicada
   const organizationReady = await pool.query("SELECT 1 FROM tenant_sites LIMIT 0").then(() => true, () => false);
@@ -640,6 +645,9 @@ async function main() {
     // Consumo del Resource Manager (umbrales ERM_ADMIN_ALERT_THRESHOLDS, anomalías, coste e integraciones externas)
     const usageStore = usage;
     const quotaDefaults = parseDefaultQuotas(process.env.ERM_DEFAULT_QUOTAS) ?? DEFAULT_QUOTAS;
+    // Canal interno con el Core (el mismo que /cp/v1/jobs/circuits): sin el secreto compartido no se vigilan las tareas
+    const jobCircuitsClient =
+      process.env.SUPPORT_JWT_SECRET && process.env.SUPPORT_JWT_SECRET.length >= 32 ? coreAccessClient({ baseUrl: process.env.CP_CORE_INTERNAL_URL || DEFAULT_CORE_INTERNAL_URL, secret: process.env.SUPPORT_JWT_SECRET }) : null;
     const consumption = usageStore
       ? new ConsumptionWatcher({
           tenants: async () => (await store.listTenants()).filter((t) => SERVED_STATUSES.includes(t.status)).map((t) => ({ id: t.id, company: t.displayName })),
@@ -665,6 +673,10 @@ async function main() {
           ...(copiesReady ? [{ name: "restoreDrills", run: () => new RestoreDrillWatcher({ restores: () => copiesLedger.listRestores(50), store: alertStore, raise }).tick() }] : []),
           ...(uptime ? [{ name: "uptime", run: async () => (await uptime.tick()).down }] : []),
           ...(deploys ? [{ name: "deploys", run: () => deploys.tick() }] : []),
+          // Tareas en segundo plano en cortocircuito para una empresa (Core, por el canal interno): un aviso por apertura
+          ...(jobCircuitsClient
+            ? [{ name: "jobCircuits", run: async () => { const v = await collectJobCircuits({ client: jobCircuitsClient, listTenants: () => store.listTenants(), operator: "system:admin-alerts" }); const list = jobCircuitAlerts(v.circuits, Date.now()); for (const a of list) await raise(a.id, a.facts); return list.length; } }]
+            : []),
         ],
         consumption,
       },
@@ -751,6 +763,7 @@ async function main() {
     subscriptions,
     capabilities,
     limits,
+    quotaExceptions,
     trials,
     organization,
     orders,

@@ -11,6 +11,8 @@ import type mysql from "mysql2/promise";
 import type { QuoteCatalog } from "../catalog/quote";
 import type { SubscriptionStore } from "../subscriptions/store";
 import { includedUsers } from "../planSeats";
+import { activeException } from "../_core/erm/policy";
+import type { QuotaExceptionReader } from "../_core/erm/quotaExceptions";
 
 export interface Site {
   tenantId: string;
@@ -178,13 +180,32 @@ export class OrganizationService {
       subscriptions: Pick<SubscriptionStore, "list" | "items">;
       catalog: () => Promise<QuoteCatalog>;
       now?: () => number;
+      /** Excepciones comerciales de cuota (registro 0016): mandan sobre lo contratado mientras están vigentes. */
+      exceptions?: QuotaExceptionReader;
     },
   ) {
     this.now = d.now ?? Date.now;
   }
 
-  /** Límites vigentes del tenant según su suscripción viva (null = por contrato, sin tope técnico). */
+  /** Límites vigentes del tenant: su suscripción viva (null = por contrato, sin tope técnico) o la excepción comercial vigente. */
   async limits(tenantId: string): Promise<{ sites: number | null; fiscal_entities: number | null; users: number | null; source: string }> {
+    const base = await this.contractLimits(tenantId);
+    if (!this.d.exceptions) return base;
+    // Si las excepciones no se pueden leer, se aplica lo contratado (nunca más de lo contratado por un fallo)
+    const list = await this.d.exceptions.exceptions(tenantId).catch(() => []);
+    const now = this.now();
+    const out = { ...base };
+    const applied: string[] = [];
+    for (const m of ["sites", "fiscal_entities", "users"] as const) {
+      const e = activeException(list, m, "total", now);
+      if (!e) continue;
+      out[m] = e.newLimit;
+      applied.push(`excepción #${e.id} (${m})`);
+    }
+    return applied.length ? { ...out, source: `${base.source} + ${applied.join(", ")}` } : base;
+  }
+
+  private async contractLimits(tenantId: string): Promise<{ sites: number | null; fiscal_entities: number | null; users: number | null; source: string }> {
     const sub = (await this.d.subscriptions.list({})).find((s) => s.tenantId === tenantId && s.status !== "canceled");
     if (!sub) return { ...FALLBACK, source: "sin suscripción (mínimo de Essential)" };
     const now = this.now();

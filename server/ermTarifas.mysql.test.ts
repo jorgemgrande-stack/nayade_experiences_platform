@@ -24,7 +24,7 @@ describe.skipIf(!URL_)("tarifas editables con MySQL real (registro 0014)", () =>
     u.pathname = `/${DB}`;
     pool = mysql.createPool({ uri: u.toString(), connectionLimit: 5, multipleStatements: true });
     const r = await migrateRegistry(pool, path.resolve(__dirname, "../db/registry"), { dryRun: false });
-    expect(r).toMatchObject({ target: "0015", incomplete: [] });
+    expect(r).toMatchObject({ target: "0016", incomplete: [] });
     store = new MysqlCostModelStore(pool);
   }, 120_000);
   afterAll(async () => {
