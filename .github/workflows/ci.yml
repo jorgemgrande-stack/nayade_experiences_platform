@@ -26,6 +26,9 @@ concurrency:
 jobs:
   quality:
     name: Calidad (informativo)
+    permissions:
+      contents: read
+      statuses: read
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -35,43 +38,69 @@ jobs:
       EMAIL_ENCRYPTION_KEY: ci-only-placeholder-not-a-secret-000000000000
       DATABASE_URL: mysql://ci:ci@127.0.0.1:3306/ci_placeholder
     steps:
+      # Fusión de un PR cuyo árbol EXACTO ya pasó estas suites (estado elephant-source/arbol-probado en el commit del PR):
+      # no se repiten. Cualquier diferencia (otra fusión entremedias, conflicto resuelto, push directo) las ejecuta.
+      - name: Árbol ya probado en el PR
+        id: arbol
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          C=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}")
+          TREE=$(printf '%s' "${C}" | jq -r .commit.tree.sha)
+          PR_HEAD=$(printf '%s' "${C}" | jq -r '.parents[1].sha // empty')
+          if [ -n "${PR_HEAD}" ] && gh api "repos/${GITHUB_REPOSITORY}/commits/${PR_HEAD}/statuses" --jq '.[] | select(.context == "elephant-source/arbol-probado" and .state == "success") | .description' | grep -Fxq "${TREE}"; then
+            echo "Árbol ${TREE} ya probado en el PR (${PR_HEAD}): no se repite"
+            echo "probado=true" >> "${GITHUB_OUTPUT}"
+          fi
+
+
       - name: Checkout
+        if: steps.arbol.outputs.probado != 'true'
         uses: actions/checkout@v4
 
       - name: pnpm
+        if: steps.arbol.outputs.probado != 'true'
         uses: pnpm/action-setup@v4
 
       - name: Node
+        if: steps.arbol.outputs.probado != 'true'
         uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: pnpm
 
       - name: Instalar dependencias
+        if: steps.arbol.outputs.probado != 'true'
         run: pnpm install --frozen-lockfile
 
       - name: Tipos (tsc --noEmit)
+        if: steps.arbol.outputs.probado != 'true'
         id: typecheck
         continue-on-error: true
         run: pnpm check
 
       # Informativo: falla solo si aparecen errores de tipos NUEVOS fuera de docs/ci/TSC_BASELINE.txt
       - name: Línea base de tipos (sin errores nuevos)
+        if: steps.arbol.outputs.probado != 'true'
         id: tscbaseline
         continue-on-error: true
         run: node scripts/ci/tsc-baseline.mjs
 
       - name: Tests (vitest)
+        if: steps.arbol.outputs.probado != 'true'
         id: tests
         continue-on-error: true
         run: pnpm test
 
       - name: Build
+        if: steps.arbol.outputs.probado != 'true'
         id: build
         continue-on-error: true
         run: pnpm build
 
       - name: Higiene del repositorio (solo nombres de fichero, nunca contenido)
+        if: steps.arbol.outputs.probado != 'true'
         id: hygiene
         continue-on-error: true
         run: |
@@ -91,11 +120,13 @@ jobs:
           '
 
       - name: Verificar migraciones nuevas (db/migrations)
+        if: steps.arbol.outputs.probado != 'true'
         id: migrations
         continue-on-error: true
         run: pnpm exec tsx scripts/db/migrate.ts verify --dir db/migrations
 
       - name: Ratchet de deuda técnica (la deuda no puede aumentar)
+        if: steps.arbol.outputs.probado != 'true'
         id: ratchet
         continue-on-error: true
         run: node scripts/ci/ratchet.cjs
@@ -204,29 +235,54 @@ jobs:
       JWT_SECRET: ci-only-placeholder-not-a-secret-000000000000
       EMAIL_ENCRYPTION_KEY: ci-only-placeholder-not-a-secret-000000000000
       REGISTRY_TEST_DATABASE_URL: mysql://root:ci_only@127.0.0.1:3306/registry_test
+    permissions:
+      contents: read
+      statuses: write
     steps:
+      # Fusión de un PR cuyo árbol EXACTO ya pasó estas suites (estado elephant-source/arbol-probado en el commit del PR):
+      # no se repiten. Cualquier diferencia (otra fusión entremedias, conflicto resuelto, push directo) las ejecuta.
+      - name: Árbol ya probado en el PR
+        id: arbol
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          C=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}")
+          TREE=$(printf '%s' "${C}" | jq -r .commit.tree.sha)
+          PR_HEAD=$(printf '%s' "${C}" | jq -r '.parents[1].sha // empty')
+          if [ -n "${PR_HEAD}" ] && gh api "repos/${GITHUB_REPOSITORY}/commits/${PR_HEAD}/statuses" --jq '.[] | select(.context == "elephant-source/arbol-probado" and .state == "success") | .description' | grep -Fxq "${TREE}"; then
+            echo "Árbol ${TREE} ya probado en el PR (${PR_HEAD}): no se repite"
+            echo "probado=true" >> "${GITHUB_OUTPUT}"
+          fi
+
       - name: Checkout
+        if: steps.arbol.outputs.probado != 'true'
         uses: actions/checkout@v4
 
       - name: pnpm
+        if: steps.arbol.outputs.probado != 'true'
         uses: pnpm/action-setup@v4
 
       - name: Node
+        if: steps.arbol.outputs.probado != 'true'
         uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: pnpm
 
       - name: Instalar dependencias
+        if: steps.arbol.outputs.probado != 'true'
         run: pnpm install --frozen-lockfile
 
       # Todos los carriles de migraciones (app y, si existe, CRM): verify no usa base de datos.
       - name: Verificar migraciones (todos los carriles)
+        if: steps.arbol.outputs.probado != 'true'
         run: |
           pnpm exec tsx scripts/db/migrate.ts verify --dir db/migrations
           if [ -d db/crm/migrations ]; then pnpm exec tsx scripts/db/migrate.ts verify --dir db/crm/migrations; fi
 
       - name: Suites propias unitarias (en paralelo)
+        if: steps.arbol.outputs.probado != 'true'
         run: >-
           pnpm exec vitest run
           --exclude "**/*.mysql.test.ts" --exclude "node_modules/**"
@@ -247,7 +303,16 @@ jobs:
 
       # Las pruebas con MySQL comparten una base de datos: se ejecutan una a una
       - name: Suites de integración con MySQL real (en serie)
+        if: steps.arbol.outputs.probado != 'true'
         run: pnpm exec vitest run mysql --no-file-parallelism
+
+      # PR en verde: se anota el árbol probado (la fusión) en su commit, para no repetir las suites al fusionar
+      - name: Anotar el árbol probado
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: gh api "repos/${GITHUB_REPOSITORY}/statuses/${PR_HEAD}" -f state=success -f context=elephant-source/arbol-probado -f description="$(git rev-parse HEAD^{tree})" > /dev/null
 
   # Secretos y ficheros sensibles: BLOQUEANTE. Solo mira lo nuevo de cada PR o push (el historial anterior
   # se trata aparte); el árbol completo sí debe estar limpio.
