@@ -67,7 +67,8 @@ export function operatorAssignees(list: Array<{ username: string; displayName: s
     .sort((a, b) => a.name.localeCompare(b.name, "es"));
 }
 
-const linkOf = (r: DataRequest) => (r.tenantId ? `#/clientes/${r.tenantId}` : r.companyId ? `#/comercial/empresas/${r.companyId}` : "#/soporte");
+/** Ficha de la solicitud en el CRM (Atención al cliente → Solicitudes RGPD). */
+const linkOf = (r: DataRequest) => `#/soporte/rgpd/${r.id}`;
 const baseFacts = (r: DataRequest) => ({
   tenantId: r.tenantId,
   companyId: r.companyId,
