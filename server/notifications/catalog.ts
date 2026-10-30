@@ -352,10 +352,7 @@ export const TEMPLATE_CATALOG: readonly TemplateSpec[] = [
   legacy("ops.ticket_created", "support", "operational", "Ticket creado (ticketNotifier: received)", "ops_team", "Al crear cada ticket", "ops:ticket:<id>:created:<destinatario>"),
   // ── Seguridad (contratos; la autenticación no se modifica) ──
   legacy("security.password_changed", "security", "security_notice", "Contraseña restablecida en el Core (POST /api/auth/reset-password → passwordChangedEmail)", "account_user", "Tras cada cambio (sin enlaces; sin copia global)", "bandeja de la empresa (una por cambio)"),
-  {
-    ...contract("security.new_login", "security", "operational", "Inicio de sesión desde un dispositivo nuevo", "account_user", ["at", "approximateLocation"], "Al detectar un dispositivo nuevo"),
-    render: (v, o) => layout(brand(o.supportEmail), "Nuevo inicio de sesión en tu cuenta", ["Hemos detectado un acceso a tu cuenta desde un dispositivo que no habíamos visto antes."], null, { family: "security", eyebrow: "Seguridad de tu cuenta", hero: "seguridad", blocks: [{ card: { rows: [{ label: "Fecha", value: date(v.at) }, { label: "Ubicación aproximada", value: txt(v.approximateLocation, "Desconocida") }] } }, { h2: "¿No has sido tú?" }, { p: "Cambia tu contraseña cuanto antes y revisa la verificación en dos pasos en la configuración de tu cuenta." }, { tip: { icon: "escudo", title: "Mantén tu cuenta segura", text: "Te recomendamos usar una contraseña segura y activar la verificación en dos pasos." } }] }),
-  },
+  legacy("security.new_login", "security", "security_notice", "Inicio de sesión en el Core desde un dispositivo no visto antes (POST /api/auth/login y pase del acceso centralizado → accountSecurity/devices)", "account_user", "Una vez por usuario y dispositivo; el primer dispositivo registrado de cada usuario no avisa (sin copia global)", "security.new_login:<usuario>:<huella> (bandeja de la empresa)"),
   {
     ...contract("security.mfa_changed", "security", "security_notice", "Segundo factor de un operador activado o retirado (OperatorAuthService → outboxMfaNotice); las empresas aún no tienen segundo factor", "account_user", ["at", "enabled"], "Tras cada cambio"),
     status: "legacy",

@@ -503,7 +503,7 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
             </div>
             {showLabels && (
               <div className="flex-1 min-w-0">
-                <p className="text-xs font-semibold text-sidebar-foreground truncate">{user?.name ?? "Usuario"}</p>
+                <Link href="/admin/mi-cuenta" className="block text-xs font-semibold text-sidebar-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring rounded truncate" title="Mi cuenta: correo y dispositivos">{user?.name ?? "Usuario"}</Link>
                 <p className={cn("text-xs font-medium capitalize", roleMeta.color)}>{roleMeta.label}</p>
               </div>
             )}
