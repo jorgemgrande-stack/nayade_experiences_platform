@@ -73,6 +73,14 @@ export const CIRCUIT: Readonly<Record<string, TemplateCircuit>> = {
   // Envíos de una persona del equipo desde el CRM
   "contract.invitation": "manual",
   "contract.payment_setup": "manual",
+  // Centro de envíos del CRM (server/communications): servicio, encuesta de soporte y comerciales con consentimiento
+  "product.update": "manual",
+  "ops.maintenance": "manual",
+  "ops.customer_incident": "manual",
+  "support.survey": "manual",
+  "marketing.news": "manual",
+  "marketing.recommendation": "manual",
+  "marketing.campaign": "manual",
 };
 export function circuitOf(id: string, state: TemplateState): TemplateCircuit {
   return CIRCUIT[id] ?? (state === "externa" ? "externa" : state === "sin_disparador" ? "pendiente" : "automatica");
@@ -156,19 +164,19 @@ export const TEMPLATES: readonly TemplateEntry[] = [
   e("module.activated", "Nuevo módulo activado", "producto", "experiential", "controlplane", "subscription.module_added", "conectada", P("module.activated")),
   e("usage.near_limit", "Consumo cerca del límite", "producto", "security", "controlplane", "Consumo al 80 % (Resource Manager)", "conectada", P("usage.near_limit")),
   e("usage.limit_reached", "Límite de consumo alcanzado", "producto", "security", "controlplane", "Consumo al 100 % (Resource Manager)", "conectada", P("usage.limit_reached")),
-  e("product.update", "Actualización importante del producto", "producto", "experiential", "controlplane", "Publicación de una versión", "sin_disparador", () => x.productUpdate({ title: "Nuevos informes de ventas", points: ["Panel de ventas en tiempo real", "Exportación a Excel", "Filtros por equipo"], url: "https://www.bigelephant.example/novedades" })),
-  e("ops.maintenance", "Mantenimiento programado", "producto", "security", "controlplane", "Ventana de mantenimiento", "sin_disparador", () => x.maintenance({ start: PREVIEW_NOW + 3 * DAY, minutes: 30 })),
-  e("ops.customer_incident", "Incidencia técnica y resolución", "producto", "security", "controlplane", "Incidencia de servicio comunicada a clientes", "sin_disparador", () => x.incident({ title: "Envío de correos restablecido", resolved: true, detail: "Entre las 10:00 y las 10:40 algunos correos se enviaron con retraso. El servicio funciona con normalidad." })),
+  e("product.update", "Actualización importante del producto", "producto", "experiential", "controlplane", "Envío manual desde el Centro de envíos del CRM (Comunicaciones › Centro de envíos): contenido, destinatarios, vista previa, elegibilidad y confirmación de un operador", "conectada", () => x.productUpdate({ title: "Nuevos informes de ventas", points: ["Panel de ventas en tiempo real", "Exportación a Excel", "Filtros por equipo"], url: "https://www.bigelephant.example/novedades" })),
+  e("ops.maintenance", "Mantenimiento programado", "producto", "security", "controlplane", "Envío manual desde el Centro de envíos del CRM: ventana de mantenimiento anunciada por un operador, con vista previa, elegibilidad y confirmación", "conectada", () => x.maintenance({ start: PREVIEW_NOW + 3 * DAY, minutes: 30 })),
+  e("ops.customer_incident", "Incidencia técnica y resolución", "producto", "security", "controlplane", "Envío manual desde el Centro de envíos del CRM: incidencia (o su resolución) comunicada por un operador, con vista previa, elegibilidad y confirmación", "conectada", () => x.incident({ title: "Envío de correos restablecido", resolved: true, detail: "Entre las 10:00 y las 10:40 algunos correos se enviaron con retraso. El servicio funciona con normalidad." })),
   // ── G. Soporte ──
   e("support.ticket_received", "Ticket recibido", "soporte", "security", "controlplane", "Ticket creado", "conectada", P("support.ticket_received")),
   e("support.ticket_replied", "Respuesta a un ticket", "soporte", "security", "controlplane", "Respuesta pública del equipo", "conectada", P("support.ticket_replied")),
   e("support.ticket_resolved", "Ticket resuelto", "soporte", "security", "controlplane", "Ticket resuelto", "conectada", P("support.ticket_resolved")),
   e("support.ticket_reopened", "Ticket reabierto", "soporte", "security", "controlplane", "Ticket reabierto", "conectada", P("support.ticket_reopened")),
-  e("support.survey", "Encuesta de satisfacción", "soporte", "security", "controlplane", "Ticket resuelto (encuesta posterior)", "sin_disparador", () => x.survey({ ticketRef: "SOP-0137", url: "https://www.bigelephant.example/encuesta?muestra=1" })),
+  e("support.survey", "Encuesta de satisfacción", "soporte", "security", "controlplane", "Envío manual desde el Centro de envíos del CRM a los solicitantes de tickets resueltos; enlace firmado por ticket a la página de encuesta y valoraciones en el CRM", "conectada", () => x.survey({ ticketRef: "SOP-0137", url: "https://www.bigelephant.example/encuesta?muestra=1" })),
   // ── H. Comerciales (exigen consentimiento; baja en el pie) ──
-  e("marketing.news", "Novedades y funcionalidades", "comercial", "experiential", "crm", "Campaña manual con consentimiento", "sin_disparador", () => x.news({ url: "https://www.bigelephant.example/novedades" })),
-  e("marketing.recommendation", "Recomendación personalizada de módulos", "comercial", "experiential", "crm", "Campaña manual con consentimiento", "sin_disparador", () => x.recommendation({ module: "Reservas online", reason: "Por la actividad de tu empresa, este módulo puede ahorrarte horas de gestión cada semana.", url: "https://www.bigelephant.example/modulos" })),
-  e("marketing.campaign", "Campaña promocional o lanzamiento", "comercial", "experiential", "crm", "Campaña manual con consentimiento", "sin_disparador", () => x.campaign({ title: "Lleva tu negocio más lejos", text: "Descubre la nueva generación de Big Elephant: más automatización, más control y una experiencia pensada para crecer.", url: "https://www.bigelephant.example/" })),
+  e("marketing.news", "Novedades y funcionalidades", "comercial", "experiential", "crm", "Envío manual desde el Centro de envíos del CRM, solo a contactos con consentimiento vigente para su finalidad y sin baja; enlace de baja firmado en el pie", "conectada", () => x.news({ url: "https://www.bigelephant.example/novedades" })),
+  e("marketing.recommendation", "Recomendación personalizada de módulos", "comercial", "experiential", "crm", "Envío manual desde el Centro de envíos del CRM, solo a contactos con consentimiento vigente para su finalidad y sin baja; enlace de baja firmado en el pie", "conectada", () => x.recommendation({ module: "Reservas online", reason: "Por la actividad de tu empresa, este módulo puede ahorrarte horas de gestión cada semana.", url: "https://www.bigelephant.example/modulos" })),
+  e("marketing.campaign", "Campaña promocional o lanzamiento", "comercial", "experiential", "crm", "Envío manual desde el Centro de envíos del CRM, solo a contactos con consentimiento vigente para su finalidad y sin baja; enlace de baja firmado en el pie", "conectada", () => x.campaign({ title: "Lleva tu negocio más lejos", text: "Descubre la nueva generación de Big Elephant: más automatización, más control y una experiencia pensada para crecer.", url: "https://www.bigelephant.example/" })),
   // ── Avisos internos del equipo ──
   e("ops.lead_request", "Nueva solicitud desde la web (interno)", "interna", "security", "controlplane", "Formulario de la web comercial", "interna", () => t.leadRequestNotice({ typeLabel: "Solicitud de demostración", reference: "SOL-2026-0042", receivedAt: PREVIEW_NOW, company: "Empresa Demo, S.L.", name: "Laura Demo", email: "laura@empresa-demo.example", phone: "+34 600 000 000", sector: "Servicios", product: "Big Elephant Business", message: "Nos gustaría ver una demostración del CRM.", sourcePage: "/precios", owner: null, crmUrl: "https://admin.bigelephant.example/#/comercial/leads" })),
   // ── D. Administración Big Elephant (alertas internas; sustituyen a los avisos ops.incident, ops.new_customer,
@@ -178,13 +186,6 @@ export const TEMPLATES: readonly TemplateEntry[] = [
 
 /** Motivo funcional de cada plantilla sin disparador (lo que tendría que existir en el producto). */
 export const PENDING_REASON: Readonly<Record<string, string>> = {
-  "product.update": "No existe una herramienta de comunicados de servicio con selección de destinatarios y aprobación; un envío masivo automático no está permitido.",
-  "ops.maintenance": "No existen ventanas de mantenimiento ni página de estado en el producto.",
-  "ops.customer_incident": "No hay comunicados de incidencias a clientes: requiere la herramienta de comunicados de servicio con aprobación.",
-  "support.survey": "No existe la recogida de valoraciones de soporte (página de encuesta y almacenamiento).",
-  "marketing.news": "Comunicación comercial: requiere un registro de consentimiento por contacto y gestión de bajas en el CRM, y un envío manual aprobado. No se activa sola.",
-  "marketing.recommendation": "Comunicación comercial: requiere un registro de consentimiento por contacto y gestión de bajas en el CRM, y un envío manual aprobado. No se activa sola.",
-  "marketing.campaign": "Comunicación comercial: requiere un registro de consentimiento por contacto y gestión de bajas en el CRM, y un envío manual aprobado. No se activa sola.",
   ...Object.fromEntries(ADMIN_ALERTS.filter((a) => a.pending).map((a) => [a.id, a.pending!])),
 };
 
