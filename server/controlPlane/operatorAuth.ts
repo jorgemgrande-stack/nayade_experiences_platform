@@ -95,6 +95,11 @@ export interface OperatorAuthOptions {
   mfaRequiredRoles?: readonly OperatorRole[];
   /** Plazo para introducir el código tras la contraseña (por defecto 5 min). */
   mfaPendingMs?: number;
+  /**
+   * Aviso de seguridad a la propia persona tras activar o retirar su segundo factor (plantilla security.mfa_changed).
+   * Sin él no se avisa. Un fallo del aviso nunca rompe la operación.
+   */
+  securityNotice?: (to: string, i: { key: string; at: number; enabled: boolean }) => Promise<void>;
 }
 
 export interface RequestContext {
@@ -472,6 +477,7 @@ export class OperatorAuthService {
     if (actor.sessionId) await this.store.updateSession(actor.sessionId, { mfaState: "none", expiresAt: now + this.maxMs, lastSeenAt: now });
     const revoked = await this.store.revokeOperatorSessions(op.id, now, "mfa_enabled", actor.sessionId);
     await this.audit("mfa_enabled", { id: op.id, username: op.username }, `operator:${op.username}`, ctx, { revokedSessions: revoked });
+    await this.mfaNotice(op, now, true);
     return { recoveryCodes: codes };
   }
 
@@ -504,6 +510,13 @@ export class OperatorAuthService {
     await this.store.replaceRecoveryCodes(op.id, [], now);
     const revoked = await this.store.revokeOperatorSessions(op.id, now, kind, keepSessionId);
     await this.audit(kind, { id: op.id, username: op.username }, actor, ctx, { revokedSessions: revoked });
+    await this.mfaNotice(op, now, false);
+  }
+
+  /** Aviso a la propia persona (si tiene correo): un cambio, un aviso. */
+  private async mfaNotice(op: OperatorRecord, at: number, enabled: boolean) {
+    if (!this.opts.securityNotice || !op.email) return;
+    await this.opts.securityNotice(op.email, { key: `operator-mfa:${op.id}:${enabled ? "on" : "off"}:${at}`, at, enabled }).catch(() => undefined);
   }
 
   async logout(session: SessionRecord, operator: OperatorRecord, ctx: RequestContext = {}) {
