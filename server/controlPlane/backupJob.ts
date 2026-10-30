@@ -408,14 +408,17 @@ async function main() {
             return dsn ? dbNameOf(dsn) : null;
           };
           // Bases sobrantes y medición en cada servidor; ficheros en el bucket de medios (solo lectura en la simulación)
-          const media = mediaSourceFromEnv(process.env);
+          // BACKUP_MEDIA decide si las copias replican ficheros; la purga mira el bucket siempre que esté configurado
+          const media = mediaSourceFromEnv({ ...process.env, BACKUP_MEDIA: "1" });
           const resources = {
             servers: servers ? servers.aliases().map((a) => ({ alias: a, admin: servers.admin(a) })) : [],
             media: media.media ?? { unavailable: (media as { reason: string }).reason },
           };
           const plan = await planPurge({ crm: crmPool, registry: pool, tenantDbName, expectedDbName: (t) => databaseNameFor(t), resources });
-          print({
+          // Una sola línea JSON: Railway desordena las líneas de una salida larga (llega en `attributes`)
+          console.log(JSON.stringify({
             simulacion: true,
+            problemas: plan.problems,
             empresas: plan.companies,
             yaNoEstan: plan.missing,
             registros: plan.steps.map((s) => ({ base: s.db, tabla: s.table, filas: s.rows })),
@@ -426,8 +429,7 @@ async function main() {
             ficheros: { comprobado: plan.files.checked, origen: plan.files.source, motivo: plan.files.reason ?? null, porEmpresa: plan.files.byTenant.map((f) => ({ empresa: f.tenantId, ficheros: f.objects, bytes: f.bytes })) },
             servidores: resources.servers.map((s) => s.alias),
             seConservan: plan.kept,
-            problemas: plan.problems,
-          });
+          }));
           if (plan.problems.length) die("La simulación tiene problemas: no se purga nada");
           if (!apply) break;
           if (!dbs && plan.databases.some((x) => x.action === "drop")) die("Falta PROVISIONING_DB_SERVERS o PROVISIONING_DB_ADMIN_URL para borrar las bases de los tenants");
@@ -437,7 +439,7 @@ async function main() {
             plan,
           );
           const check = await verifyPurge({ crm: crmPool, registry: pool, resources });
-          print({ aplicado: true, borrados: done.deleted, basesBorradas: done.droppedDatabases, ficherosBorrados: done.deletedFiles, comprobacion: check });
+          console.log(JSON.stringify({ aplicado: true, borrados: done.deleted, basesBorradas: done.droppedDatabases, ficherosBorrados: done.deletedFiles, comprobacion: check }));
           if (!check.ok) process.exitCode = 1;
         } finally {
           await crmPool.end();
