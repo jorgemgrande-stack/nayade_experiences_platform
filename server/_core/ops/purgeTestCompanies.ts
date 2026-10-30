@@ -344,7 +344,7 @@ export function purgeMediaDeleter(env: NodeJS.ProcessEnv): ((key: string) => Pro
   const client = new S3Client({
     region: env.S3_REGION || "us-east-1",
     ...(env.S3_ENDPOINT ? { endpoint: env.S3_ENDPOINT, forcePathStyle: true } : {}),
-    credentials: { accessKeyId: env.S3_ACCESS_KEY, secretAccessKey: env.S3_SECRET_KEY },
+    credentials: { accessKeyId: env.S3_ACCESS_KEY, secretAccessKey: env.S3_SECRET_KEY }, // gitleaks:allow (referencia a variable de entorno)
   });
   return async (key) => {
     if (!PURGE_TARGETS.some((t) => key.startsWith(mediaPrefixOf(t.tenantId)))) throw new Error(`${key} no es un fichero de una empresa de la lista cerrada`);
