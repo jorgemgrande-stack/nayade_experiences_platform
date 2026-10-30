@@ -80,6 +80,8 @@ import type { ImplementationStore } from "../implementation/store";
 import { createImplementationRouter } from "../implementation/api";
 import { solutionFromWebStore, subscriptionStarter } from "../implementation/ports";
 import { createDataRequestsRouter } from "../dataRequests/api";
+import type { FinanceService } from "../finance/service";
+import { createFinanceRouter } from "../finance/api";
 import type { CommunicationsService } from "../communications/service";
 import { createCommunicationsRouter } from "../communications/api";
 import { createCommunicationsPublicRouter } from "../communications/publicApi";
@@ -397,6 +399,8 @@ export interface ControlPlaneDeps {
   commerceCircuits?: () => CommerceCircuits;
   /** Solicitudes de derechos de protección de datos (RGPD; server/dataRequests, CRM 0032). */
   dataRequests?: DataRequestService | null;
+  /** Finanzas corporativas de Big Elephant: libro contable (server/finance, CRM 0033). */
+  finance?: FinanceService | null;
   /**
    * Implantación asistida (server/implementation, CRM 0035): expediente, orden de implantación con hitos, habilitación,
    * comunicación e inicio de la prueba o la suscripción. Solo con CP_ASSISTED_IMPLEMENTATION_ENABLED=1 y la migración.
@@ -1799,6 +1803,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
     if (leadNotices) router.use("/crm/lead-notices", createLeadNoticesRouter(leadNotices));
     if (adminAlerts) router.use("/admin-alerts", createAdminAlertsRouter(adminAlerts));
     if (d.dataRequests) router.use("/data-requests", createDataRequestsRouter(d.dataRequests));
+    if (d.finance) router.use("/finance", createFinanceRouter(d.finance));
     // Centro de envíos y consentimiento por contacto (antes del router del CRM: /crm/contacts/:id/consent)
     if (d.communications) router.use(createCommunicationsRouter(d.communications));
     router.use(

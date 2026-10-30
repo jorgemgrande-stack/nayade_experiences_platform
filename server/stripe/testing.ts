@@ -258,6 +258,29 @@ export class FakeStripeGateway implements StripeGateway {
     this.emit("customer.subscription.updated", "subscription", subscriptionId);
     return this.subView(this.subscriptions.get(subscriptionId)!);
   }
+  /** Calendarios de cambios (Subscription Schedules): partidas de la fase siguiente y si son de Elephant. */
+  schedules = new Map<string, { subscriptionId: string; items: Array<{ priceId: string; quantity: number }>; effectiveAt: number | null; ours: boolean }>();
+  /** Programa partidas para el fin del periodo: no cambia nada ahora ni emite eventos. */
+  async scheduleItemsAtPeriodEnd(subscriptionId: string, items: Array<{ priceId: string; quantity: number }>, interval: "month" | "year", key: string) {
+    this.guard();
+    this.calls.push({ op: "subscription_schedules.update", key, input: { subscriptionId, items, interval } });
+    const s = this.subscriptions.get(subscriptionId);
+    if (!s) throw new StripeGatewayError("resource_missing", "Stripe respondió 404 (resource_missing)", false);
+    if (s.scheduleId && !this.schedules.get(s.scheduleId)?.ours) throw new StripeGatewayError("conflict", "La suscripción ya tiene un calendario de cambios en Stripe que no es de Elephant", false);
+    const id = s.scheduleId ?? this.next("sub_sched");
+    this.schedules.set(id, { subscriptionId, items, effectiveAt: s.currentPeriodEnd, ours: true });
+    this.subscriptions.set(subscriptionId, { ...s, scheduleId: id });
+    return { scheduleId: id, effectiveAt: s.currentPeriodEnd };
+  }
+  /** Llega el fin del periodo: Stripe pasa a la fase siguiente, libera el calendario y emite el evento. */
+  advanceSchedule(subscriptionId: string) {
+    const s = this.subscriptions.get(subscriptionId)!;
+    const sch = this.schedules.get(s.scheduleId!)!;
+    const items = sch.items.map((i, n) => ({ id: s.items?.[n]?.id ?? this.next("si"), priceId: i.priceId, quantity: i.quantity }));
+    this.schedules.delete(s.scheduleId!);
+    this.subscriptions.set(subscriptionId, { ...s, scheduleId: null, items, priceIds: items.map((i) => i.priceId), currentPeriodEnd: (s.currentPeriodEnd ?? 0) + 365 * 86_400 });
+    this.emit("customer.subscription.updated", "subscription", subscriptionId);
+  }
   /** El cliente paga (o autentica) la factura abierta: si llevaba un cambio pendiente, se aplica. */
   payInvoice(id: string) {
     const inv = this.invoices.get(id)!;

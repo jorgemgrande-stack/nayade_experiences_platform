@@ -56,6 +56,9 @@ const KEY_RE = /^[A-Za-z0-9_-]{16,80}$/;
 const LIVE: OrderState[] = ["active", "past_due", "suspended"];
 /** Un plan que el Customer Portal ofrece está aprobado al configurarlo allí (lo hace una persona). */
 const PORTAL_APPROVAL = "Plan ofrecido en el Customer Portal de Stripe (configuración aprobada)";
+/** Prefijo de la clave de los pedidos que reflejan un cambio de plan YA aplicado en Stripe (portal o calendario). */
+const STRIPE_PLAN_KEY = "stripe-plan-";
+const reflectsStripe = (o: Pick<CommercialOrder, "kind" | "idempotencyKey">) => o.kind === "change" && o.idempotencyKey.startsWith(STRIPE_PLAN_KEY);
 
 export interface PlatformPort {
   /** Alta (idempotente) de la plataforma de la empresa con su administrador. */
@@ -598,7 +601,9 @@ export class CommercialOrchestrator {
     const changePlan = async () => {
       if (core.productKey === o.request.plan) return;
       const plan = { productKey: o.request.plan, priceId: await this.priceFor(o.request.plan, sub.interval, true) };
-      sub = (await this.d.subscriptions.changePlan(sub.id, { plan, reason }, sub.version, actor)).subscription;
+      // Ya aplicado en Stripe (también una bajada): desde ahora; si no, el cliente pagaría un plan y tendría otro
+      const external = reflectsStripe(o) ? { when: "now" as const, external: true } : {};
+      sub = (await this.d.subscriptions.changePlan(sub.id, { plan, reason, ...external }, sub.version, actor)).subscription;
     };
     // Plan y periodicidad a la vez solo llega de Stripe (Customer Portal): primero el plan (la periodicidad
     // queda programada a la renovación y después no admitiría otro cambio). En el resto, el orden de siempre.
@@ -757,7 +762,7 @@ export class CommercialOrchestrator {
     }
     // Una clave por pedido de origen, destino y número de cambio: un destino al que se vuelve crea otro pedido
     const created = await this.create(
-      { idempotencyKey: `stripe-plan-${cur.id}-${target.plan}-${target.interval}-${changes.length + 1}`, changeOf: cur.id, request: { plan: target.plan, interval: target.interval, items: [] }, external: "stripe" },
+      { idempotencyKey: `${STRIPE_PLAN_KEY}${cur.id}-${target.plan}-${target.interval}-${changes.length + 1}`, changeOf: cur.id, request: { plan: target.plan, interval: target.interval, items: [] }, external: "stripe" },
       actor,
     );
     let order = created.order;

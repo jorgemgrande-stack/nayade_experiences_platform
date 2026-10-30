@@ -45,6 +45,8 @@ export interface QuoteCatalogProduct {
   addonFor: { metric: string; step: number; plans: string[] } | null;
   thirdPartyCosts: string | null;
   prices: QuoteCatalogPrice[];
+  /** Modalidad comercial efectiva (server/catalog/commercial/offer.ts). Opcional: los catálogos guardados antes no la llevan. */
+  offer?: { modality: "immediate" | "assisted"; trial: boolean; checkout: boolean; cta: string; reasons: string[]; label: string; activationNotes: string | null };
 }
 export interface QuoteCatalog {
   version: string;
