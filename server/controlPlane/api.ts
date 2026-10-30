@@ -143,6 +143,7 @@ import type { OrderStore } from "../orchestrator/store";
 import type { TestPaymentPort } from "../orchestrator/payments";
 import { createOrdersRouter, paymentsWebhookHandler } from "../orchestrator/api";
 import { subscriptionBilling } from "../orchestrator/subscriptionBilling";
+import { customDomainDecision, exemptTenantsFromEnv, resolveCommercialState } from "../commercialState";
 import { buildRelationshipExport, RelationshipNotFoundError } from "./relationshipExport";
 import { CalendarUnavailableError } from "./madridCalendar";
 import { createContractActivation } from "../crm/activation";
@@ -699,6 +700,17 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
       const body = z
         .object({ domain: z.string().min(3).max(253), kind: z.enum(["custom", "platform_subdomain"]), primary: z.boolean().optional() })
         .parse(req.body);
+      // Dominio propio solo tras el primer pago confirmado (flujo actual, con o sin el motor antiguo). El subdominio
+      // de plataforma se permite siempre. Estado comercial: server/commercialState.ts
+      if (body.kind === "custom") {
+        const tenant = await d.reader.getTenant(id);
+        if (tenant) {
+          const grants = d.capabilities ? await d.capabilities.list(id).catch(() => "unavailable" as const) : null;
+          const state = resolveCommercialState({ multi: true, tenantId: id, status: tenant.status, grants, now: Date.now(), exempt: exemptTenantsFromEnv() });
+          const decision = customDomainDecision(state);
+          if (!decision.allowed) return void res.status(403).json({ error: decision.code, message: decision.message });
+        }
+      }
       // Límite por plan (si hay motor de suscripciones)
       if (body.kind === "custom" && d.billing) {
         const count = (await d.reader.listDomains(id)).filter((x) => x.kind === "custom" && x.status !== "removed").length;

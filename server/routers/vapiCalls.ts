@@ -266,6 +266,8 @@ export const vapiCallsRouter = router({
       if (!apiKey) {
         throw new Error("API Key de Vapi no configurada. Guárdala en la sección de Configuración del módulo.");
       }
+      // Prueba gratuita: Vapi no está disponible (server/trialRestrictions.ts)
+      await (await import("../trialRestrictions")).assertIntegrationAllowed("vapi");
 
       const res = await meteredFetch("vapi", `${VAPI_BASE_URL}/call?limit=${input.limit}`, {
         headers: { Authorization: `Bearer ${apiKey}` },
