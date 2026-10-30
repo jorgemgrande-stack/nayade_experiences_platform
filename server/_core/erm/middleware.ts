@@ -7,7 +7,7 @@ import type { NextFunction, Request, RequestHandler, Response } from "express";
 import { Metrics, meter } from "../metering";
 import { isMultiTenant, peekTenantContext } from "../tenant";
 import { DEFAULT_MAX_CONCURRENT, type QuotaEngine } from "./quota";
-import type { TenantConcurrencyLimiter, TenantRateLimiter } from "./limiters";
+import type { TenantConcurrencyLimiter, TenantRateGate } from "./limiters";
 
 /** Métrica (cuota con periodo `minute`) que fija el máximo de peticiones simultáneas. */
 export const CONCURRENT_METRIC = "http.concurrent";
@@ -31,7 +31,7 @@ export interface ResourceGuardOptions {
 
 export function tenantResourceGuard(
   engine: QuotaEngine,
-  rate: TenantRateLimiter,
+  rate: TenantRateGate,
   conc: TenantConcurrencyLimiter,
   opts: ResourceGuardOptions = {},
 ): RequestHandler {
@@ -45,7 +45,7 @@ export function tenantResourceGuard(
 
     try {
       const perMinute = (await engine.limitPerMinute(Metrics.HTTP_REQUEST, tenantId)) ?? DEFAULT_PER_MINUTE;
-      const t = rate.take(tenantId, perMinute);
+      const t = await rate.take(tenantId, perMinute);
       if (!t.ok) {
         meter("erm.rejected", 1, "count", { reason: "rate" });
         res.setHeader("Retry-After", String(Math.max(1, Math.ceil(t.retryAfterMs / 1000))));
