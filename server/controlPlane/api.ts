@@ -68,6 +68,8 @@ import type { LeadNoticeService } from "../crm/leadNotices";
 import { createLeadNoticesRouter } from "../crm/leadNoticesApi";
 import type { AdminAlertService } from "../adminAlerts/service";
 import { createAdminAlertsRouter } from "../adminAlerts/api";
+import type { DataRequestService } from "../dataRequests/service";
+import { createDataRequestsRouter } from "../dataRequests/api";
 import type { CommunicationsService } from "../communications/service";
 import { createCommunicationsRouter } from "../communications/api";
 import { createCommunicationsPublicRouter } from "../communications/publicApi";
@@ -364,6 +366,8 @@ export interface ControlPlaneDeps {
   leadNotices?: LeadNoticeService | null;
   /** Alertas administrativas (familia D; server/adminAlerts, CRM 0030). */
   adminAlerts?: AdminAlertService | null;
+  /** Solicitudes de derechos de protección de datos (RGPD; server/dataRequests, CRM 0032). */
+  dataRequests?: DataRequestService | null;
   /** Centro de envíos del CRM y consentimiento comercial por contacto (server/communications, CRM 0031). */
   communications?: CommunicationsService | null;
 }
@@ -1478,6 +1482,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
     const knownTenants = async () => new Set((await d.reader.listTenants()).filter((t) => t.status !== "deleted").map((t) => t.id));
     if (leadNotices) router.use("/crm/lead-notices", createLeadNoticesRouter(leadNotices));
     if (adminAlerts) router.use("/admin-alerts", createAdminAlertsRouter(adminAlerts));
+    if (d.dataRequests) router.use("/data-requests", createDataRequestsRouter(d.dataRequests));
     // Centro de envíos y consentimiento por contacto (antes del router del CRM: /crm/contacts/:id/consent)
     if (d.communications) router.use(createCommunicationsRouter(d.communications));
     router.use(
