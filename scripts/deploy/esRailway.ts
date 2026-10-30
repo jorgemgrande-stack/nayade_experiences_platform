@@ -190,6 +190,8 @@ async function access(env: string): Promise<boolean> {
   };
   const post = (p: string, body: unknown) =>
     fetch(cp + p, { method: "POST", redirect: "manual", headers: { ...gate, "content-type": "application/json", origin: base }, body: JSON.stringify(body) }).catch(() => null);
+  // Usuario inexistente distinto en cada sonda: el bloqueo por intentos fallidos de un nombre fijo convertía el 401 en 429
+  const probeUser = `${ACCESS_PROBE_USER}-${crypto.randomBytes(4).toString("hex")}`;
   let problems: string[] = [];
   for (let i = 0; i < 4; i++) {
     if (i) await new Promise((r) => setTimeout(r, 15_000));
@@ -197,8 +199,8 @@ async function access(env: string): Promise<boolean> {
       options: await json(await fetch(`${cp}/auth/options`, { headers: gate }).catch(() => null)),
       anonSession: (await fetch(`${cp}/auth/session`, { redirect: "manual", headers: gate }).catch(() => null))?.status ?? 0,
       anonPrivate: (await fetch(`${cp}/crm/companies`, { redirect: "manual", headers: gate }).catch(() => null))?.status ?? 0,
-      badLogin: await json(await post("/auth/login", { username: ACCESS_PROBE_USER, password: crypto.randomBytes(18).toString("base64url") })),
-      reset: await json(await post("/auth/password-reset/request", { username: ACCESS_PROBE_USER })),
+      badLogin: await json(await post("/auth/login", { username: probeUser, password: crypto.randomBytes(18).toString("base64url") })),
+      reset: await json(await post("/auth/password-reset/request", { username: probeUser })),
     };
     problems = accessProblems(probe, resetRequired);
     if (!problems.length) break;
