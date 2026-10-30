@@ -97,6 +97,7 @@ import { SsoService, parseSsoUsers } from "./sso";
 import { createRemoteJWKSet } from "jose";
 import { operatorAuthFromEnv } from "./operatorSetup";
 import { DEFAULT_CORE_INTERNAL_URL, coreAccessClient } from "./tenantAccess";
+import { collectJobCircuits, jobCircuitAlerts } from "./jobCircuits";
 import { domainProviderFromEnv } from "./domainProvider";
 import { outboxMfaNotice, outboxOperatorSecurityMail, outboxResetMailer, resetUnavailableReason } from "./operatorResetMail";
 import { LeadNoticeService, MysqlSettingsStore, crmUrlFromEnv, settingsTablesReady } from "../crm/leadNotices";
@@ -643,6 +644,9 @@ async function main() {
     // Consumo del Resource Manager (umbrales ERM_ADMIN_ALERT_THRESHOLDS, anomalías, coste e integraciones externas)
     const usageStore = usage;
     const quotaDefaults = parseDefaultQuotas(process.env.ERM_DEFAULT_QUOTAS) ?? DEFAULT_QUOTAS;
+    // Canal interno con el Core (el mismo que /cp/v1/jobs/circuits): sin el secreto compartido no se vigilan las tareas
+    const jobCircuitsClient =
+      process.env.SUPPORT_JWT_SECRET && process.env.SUPPORT_JWT_SECRET.length >= 32 ? coreAccessClient({ baseUrl: process.env.CP_CORE_INTERNAL_URL || DEFAULT_CORE_INTERNAL_URL, secret: process.env.SUPPORT_JWT_SECRET }) : null;
     const consumption = usageStore
       ? new ConsumptionWatcher({
           tenants: async () => (await store.listTenants()).filter((t) => SERVED_STATUSES.includes(t.status)).map((t) => ({ id: t.id, company: t.displayName })),
@@ -668,6 +672,10 @@ async function main() {
           ...(copiesReady ? [{ name: "restoreDrills", run: () => new RestoreDrillWatcher({ restores: () => copiesLedger.listRestores(50), store: alertStore, raise }).tick() }] : []),
           ...(uptime ? [{ name: "uptime", run: async () => (await uptime.tick()).down }] : []),
           ...(deploys ? [{ name: "deploys", run: () => deploys.tick() }] : []),
+          // Tareas en segundo plano en cortocircuito para una empresa (Core, por el canal interno): un aviso por apertura
+          ...(jobCircuitsClient
+            ? [{ name: "jobCircuits", run: async () => { const v = await collectJobCircuits({ client: jobCircuitsClient, listTenants: () => store.listTenants(), operator: "system:admin-alerts" }); const list = jobCircuitAlerts(v.circuits, Date.now()); for (const a of list) await raise(a.id, a.facts); return list.length; } }]
+            : []),
         ],
         consumption,
       },

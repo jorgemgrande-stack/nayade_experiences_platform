@@ -34,8 +34,7 @@ import { RegistryError } from "../_core/tenantRegistry/contract";
 import type { TenantRegistryService } from "../_core/tenantRegistry/service";
 import type { TenantRegistryReader } from "../_core/tenantRegistry/store";
 import { verifyDomainOwnership, type VerificationResult } from "../_core/tenantRegistry/domainVerification";
-import { accessPolicy } from "../_core/tenantRegistry/lifecycle";
-import { mapLimit } from "../_core/tenantRegistry/jobIsolation";
+import { collectJobCircuits } from "./jobCircuits";
 import { manualDomainProvider, type DomainProvider } from "./domainProvider";
 import type { ProvisioningService } from "../_core/provisioning/service";
 import { ProvisioningError } from "../_core/provisioning/types";
@@ -1514,24 +1513,10 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
     "/jobs/circuits",
     requireScope("ops:read"),
     wrap(async (req, res) => {
-      const access = d.tenantAccess;
-      if (!access) return void res.json({ available: false, circuits: [], hung: {}, unreachable: [] });
       const only = typeof req.query.tenant === "string" ? idSchema.parse(req.query.tenant) : null;
-      const onlyOpen = req.query.all !== "1";
-      const tenants = only ? [only] : (await d.reader.listTenants()).filter((t) => accessPolicy(t.status).admin).map((t) => t.id);
       const a = getAuth(req)!.actor;
-      const circuits: Array<Record<string, unknown>> = [];
-      // Ejecuciones colgadas por tarea en la réplica que responde (no son de una empresa concreta)
-      const hung: Record<string, number> = {};
-      const unreachable: string[] = [];
-      await mapLimit(tenants, 4, async (id) => {
-        const r = await access.client.call({ tenantId: id, act: "modules", operator: `${a.type}:${a.id}` }).catch(() => null);
-        const jobs = r?.status === 200 ? (r.body.jobs as { circuits?: Array<Record<string, unknown>>; hung?: Record<string, number> } | undefined) : undefined;
-        if (!jobs) return void unreachable.push(id);
-        for (const c of jobs.circuits ?? []) if (!onlyOpen || c.state !== "closed") circuits.push(c);
-        for (const [job, n] of Object.entries(jobs.hung ?? {})) hung[job] = Math.max(hung[job] ?? 0, n);
-      });
-      res.json({ available: true, checked: tenants.length, circuits, hung, unreachable: unreachable.sort() });
+      const view = await collectJobCircuits({ client: d.tenantAccess?.client ?? null, listTenants: () => d.reader.listTenants(), operator: `${a.type}:${a.id}`, only, onlyOpen: req.query.all !== "1" });
+      res.json(view.available ? view : { available: false, circuits: [], hung: {}, unreachable: [] });
     }),
   );
 
