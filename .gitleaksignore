@@ -17,3 +17,5 @@ b0d886e9172925829b37c634f3c01e12e3a09746:server/legacyCredentials.test.ts:generi
 14646f61e846880c881ab8650c6ad2be05754456:server/essential.admin.mysql.test.ts:generic-api-key:116
 9b2b6d6059aabbeb1e79fa67d2db2fb730c51664:server/mail/service.test.ts:generic-api-key:32
 9b2b6d6059aabbeb1e79fa67d2db2fb730c51664:server/mail/service.test.ts:generic-api-key:33
+# 30/10/2026: token ficticio de verificación de dominio en una prueba (sustituido por el marcador del CI en el commit siguiente)
+c8592266108ce1280b9a9b474784430fca6a0541:server/customerTriggers.test.ts:generic-api-key:56

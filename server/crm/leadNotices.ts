@@ -316,6 +316,14 @@ export class LeadNoticeService {
     return this.save(value, expectedVersion, by, `Recuperada la versión ${version}`);
   }
 
+  /** Correos que recibirán el aviso comercial de un tipo (para que otro aviso del mismo hecho no les llegue dos veces). */
+  async noticeEmails(type: LeadRequestType): Promise<string[]> {
+    if (!this.status().available) return [];
+    const { settings } = await this.settings();
+    if (!settings.enabled || !settings.rules[type].enabled) return [];
+    return (await this.recipientsFor(type, settings)).map((c) => c.email.toLowerCase());
+  }
+
   /** Destinatarios efectivos de un tipo (operadores válidos AHORA). */
   private async recipientsFor(type: LeadRequestType, s: LeadNoticeSettings) {
     const ids = new Set(s.rules[type].recipients);

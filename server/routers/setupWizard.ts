@@ -12,6 +12,7 @@ import { getTenantMode } from "../_core/tenant";
 import { tenantFiscalIdentity } from "../tenantBrand";
 import { warmTenantIdentity } from "../_core/tenantIdentity";
 import { countSeatUsers, currentLicence, readProgress, readSettings, updateProgress, upsertSettings } from "../setupWizardDb";
+import { onboardingFirstAccess, onboardingProgressed } from "../onboardingNotices";
 import {
   ACTIVITY_SETTING_KEY,
   BUSINESS_ACTIVITIES,
@@ -54,9 +55,20 @@ const guard = <T>(fn: () => T): T => {
 
 const activityIds = BUSINESS_ACTIVITIES.map((a) => a.id) as [string, ...string[]];
 
+type Who = { user: { email?: string | null; name?: string | null } };
+const recipient = (ctx: Who) => ({ email: ctx.user.email ?? null, name: ctx.user.name ?? null });
+
+/** Cambia el progreso y, si cruza la mitad de los pasos, avisa del progreso (sin esperar al correo). */
+async function changeProgress(ctx: Who, change: Parameters<typeof updateProgress>[0]) {
+  const before = await readProgress();
+  const progress = await updateProgress(change);
+  void onboardingProgressed(before, progress, recipient(ctx));
+  return progress;
+}
+
 export const setupWizardRouter = router({
   /** Estado completo para pintar el asistente (y el aviso de prueba). */
-  status: adminProcedure.query(async () => {
+  status: adminProcedure.query(async ({ ctx }) => {
     const keys = Object.values(COMPANY_SETTING_KEYS);
     const [progress, settings, licence, seatsUsed] = await Promise.all([
       readProgress(),
@@ -64,6 +76,8 @@ export const setupWizardRouter = router({
       currentLicence().catch(() => null),
       countSeatUsers(),
     ]);
+    // Primer acceso al asistente sin ningún paso dado: guía de los primeros pasos (una sola vez)
+    void onboardingFirstAccess(progress, recipient(ctx));
     const company = {} as Record<keyof CompanyData, string>;
     for (const [field, key] of Object.entries(COMPANY_SETTING_KEYS) as Array<[keyof CompanyData, string]>) company[field] = settings[key] ?? "";
     // En multiempresa, si el registro ya tiene entidad fiscal, es la que figura en las facturas
@@ -85,7 +99,7 @@ export const setupWizardRouter = router({
   }),
 
   /** Paso 1: datos de la empresa en sus ajustes (los mismos que Configuración y las facturas). */
-  saveCompany: adminProcedure.input(companySchema).mutation(async ({ input }) => {
+  saveCompany: adminProcedure.input(companySchema).mutation(async ({ input, ctx }) => {
     await upsertSettings(
       (Object.keys(COMPANY_SETTING_KEYS) as Array<keyof CompanyData>).map((field) => ({
         key: COMPANY_SETTING_KEYS[field],
@@ -94,22 +108,22 @@ export const setupWizardRouter = router({
         category: field === "tradeName" ? "branding" : field === "currency" || field === "timezone" ? "general" : field.startsWith("public") ? "negocio" : "fiscal",
       })),
     );
-    const progress = await updateProgress((p) => markStep(p, "company", "done", Date.now()));
+    const progress = await changeProgress(ctx, (p) => markStep(p, "company", "done", Date.now()));
     return { progress, nextStep: nextPendingStep(progress) };
   }),
 
   /** Paso 2: tipo de actividad. Solo adapta textos y accesos; no activa módulos ni contrata nada. */
-  saveActivity: adminProcedure.input(z.object({ activity: z.enum(activityIds, { message: "Elige una actividad de la lista" }) })).mutation(async ({ input }) => {
+  saveActivity: adminProcedure.input(z.object({ activity: z.enum(activityIds, { message: "Elige una actividad de la lista" }) })).mutation(async ({ input, ctx }) => {
     await upsertSettings([{ key: ACTIVITY_SETTING_KEY, value: input.activity, label: "Tipo de actividad", category: "general" }]);
-    const progress = await updateProgress((p) => markStep(p, "activity", "done", Date.now()));
+    const progress = await changeProgress(ctx, (p) => markStep(p, "activity", "done", Date.now()));
     return { progress, nextStep: nextPendingStep(progress) };
   }),
 
   /** Marca un paso como hecho u omitido (los pasos 3 a 6 usan los procedimientos existentes). */
   setStep: adminProcedure
     .input(z.object({ step: z.enum(SETUP_STEPS), status: z.enum(["done", "skipped"]) }))
-    .mutation(async ({ input }) => {
-      const progress = await updateProgress((p) => guard(() => markStep(p, input.step, input.status, Date.now())));
+    .mutation(async ({ input, ctx }) => {
+      const progress = await changeProgress(ctx, (p) => guard(() => markStep(p, input.step, input.status, Date.now())));
       return { progress, nextStep: nextPendingStep(progress) };
     }),
 

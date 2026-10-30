@@ -66,6 +66,10 @@ import { createPublicIntakeRouter, type PublicIntakeConfig } from "../crm/public
 import { WebRequestService } from "../crm/webRequests";
 import type { LeadNoticeService } from "../crm/leadNotices";
 import { createLeadNoticesRouter } from "../crm/leadNoticesApi";
+import type { AdminAlertService } from "../adminAlerts/service";
+import { createAdminAlertsRouter } from "../adminAlerts/api";
+import { LEAD_REQUEST_LABEL, type LeadRequest } from "../crm/types";
+import { creditNoteNotice, domainConnectedNotice, domainPendingNotice, purchasePendingNotice, type CustomerNoticeDeps } from "../notifications/customerTriggers";
 import { WebAdminService } from "../web/service";
 import type { WebStore } from "../web/store";
 import { createWebAdminRouter } from "../web/api";
@@ -350,6 +354,8 @@ export interface ControlPlaneDeps {
   notifications?: { since: number };
   /** Avisos internos de las solicitudes web al equipo (server/crm/leadNotices.ts; CRM 0025). */
   leadNotices?: LeadNoticeService | null;
+  /** Alertas administrativas (familia D; server/adminAlerts, CRM 0030). */
+  adminAlerts?: AdminAlertService | null;
 }
 
 const idSchema = z.string().regex(/^[a-z0-9][a-z0-9_-]{0,62}$/);
@@ -536,7 +542,36 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
   if (operatorRoutes) router.use(createPublicAuthRouter(operatorRoutes));
   // Solicitudes comerciales de la web: cuelgan de los leads del CRM
   const leadNotices = d.leadNotices ?? null;
-  const webRequests = d.crm ? new WebRequestService({ store: d.crm.store, crm: d.crm.service, onCreated: leadNotices ? (r) => leadNotices.onCreated(r) : undefined }) : undefined;
+  const adminAlerts = d.adminAlerts ?? null;
+  const crmStoreForAlerts = d.crm?.store;
+  // Alerta administrativa de la solicitud (sin repetirla a quien ya recibe el aviso comercial de ese tipo)
+  const leadAlert = async (r: LeadRequest) => {
+    if (!adminAlerts || !crmStoreForAlerts) return;
+    const lead = (await crmStoreForAlerts.get("leads", r.leadId).catch(() => null)) as { companyName?: string | null } | null;
+    await adminAlerts.raise("admin.lead_request", {
+      key: `lead-request:${r.id}`,
+      occurredAt: r.createdAt,
+      company: lead?.companyName ?? null,
+      summary: `${LEAD_REQUEST_LABEL[r.type]} desde la web${r.sourcePage ? ` (${r.sourcePage.slice(0, 80)})` : ""}.`,
+      status: { label: "Pendiente de atender", tone: "info" },
+      reference: r.reference,
+      link: `#/comercial/leads/${r.leadId}`,
+      skipRecipients: leadNotices ? await leadNotices.noticeEmails(r.type).catch(() => []) : [],
+    });
+  };
+  const webRequests = d.crm
+    ? new WebRequestService({
+        store: d.crm.store,
+        crm: d.crm.service,
+        onCreated:
+          leadNotices || adminAlerts
+            ? async (r) => {
+                if (leadNotices) await leadNotices.onCreated(r);
+                await leadAlert(r).catch(() => undefined);
+              }
+            : undefined,
+      })
+    : undefined;
   // Catálogo y contenidos de la web comercial (las referencias técnicas se leen del Core, no se copian)
   const webAdmin = d.web
     ? new WebAdminService({
@@ -632,6 +667,9 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
     }),
   );
 
+  // Avisos al cliente sin evento comercial propio (dominio, compra pendiente, rectificativa): server/notifications/customerTriggers.ts
+  const customerNotices: CustomerNoticeDeps | null = d.mail?.platform && d.crm ? { send: (t, k, c, to, content) => d.mail!.platform!.send(t, k, c, to, content), crmStore: d.crm.store, supportEmail: d.mail.platform.policy.supportEmail ?? null } : null;
+
   // ── Dominios ───────────────────────────────────────────────────────────────
   router.post(
     "/tenants/:id/domains",
@@ -649,6 +687,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         }
       }
       const dom = await d.registry.addDomain(id, body.domain, body.kind, actor(req), { primary: body.primary });
+      if (customerNotices && dom.kind === "custom" && dom.status === "pending_verification" && d.platformTarget) void domainPendingNotice(customerNotices, { tenantId: id, domain: dom.domain, platformTarget: d.platformTarget, token: dom.verificationToken ?? null });
       res.status(201).json({ domain: dom });
     }),
   );
@@ -679,7 +718,9 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
     "/domains/:domain/activate",
     requireScope("domains:write"),
     wrap(async (req, res) => {
-      res.json({ domain: await d.registry.activateDomain(req.params.domain.toLowerCase(), actor(req)) });
+      const dom = await d.registry.activateDomain(req.params.domain.toLowerCase(), actor(req));
+      if (customerNotices && dom.kind === "custom") void domainConnectedNotice(customerNotices, { tenantId: dom.tenantId, domain: dom.domain });
+      res.json({ domain: dom });
     }),
   );
 
@@ -1424,6 +1465,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
     const crmQuote = webAdmin ? async (r: QuoteRequest) => quote(quoteCatalogFromSite(await webAdmin!.site("published")), r) : undefined;
     const knownTenants = async () => new Set((await d.reader.listTenants()).filter((t) => t.status !== "deleted").map((t) => t.id));
     if (leadNotices) router.use("/crm/lead-notices", createLeadNoticesRouter(leadNotices));
+    if (adminAlerts) router.use("/admin-alerts", createAdminAlertsRouter(adminAlerts));
     router.use(
       "/crm",
       createCrmRouter(d.crm.service, d.crm.store, { billing: d.billingStore, onboarding, requests: webRequests, assignees, quote: crmQuote, knownTenants, noticeSummaries: leadNotices ? (ids) => leadNotices.summaries(ids) : undefined }),
@@ -1823,6 +1865,15 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
             subscriptions: svc,
             subscriptionItems: d.subscriptions.store,
             settle: (subId, inv) => processor.handleSubscription(subId, inv),
+            onPaymentPending: customerNotices
+              ? async (i) => {
+                  const order = await d.orders!.store.get(i.orderId);
+                  if (!order) return;
+                  const key = order.request?.items?.[0]?.key ?? null;
+                  const productName = key ? ((await stripeCatalog.product(key).catch(() => null))?.name ?? key) : null;
+                  await purchasePendingNotice(customerNotices, { orderId: order.id, companyId: order.companyId, tenantId: order.tenantId, productName, paymentUrl: i.paymentUrl });
+                }
+              : undefined,
             now: d.subscriptions.now,
           });
           router.use("/commerce", createPurchasesRouter(purchases));
@@ -1921,7 +1972,21 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
     if (d.invoicing) {
       const crmStore = d.crm.store;
       const issuer = { legalName: ISSUER.legalName, taxId: ISSUER.taxId, address: `${ISSUER.address.line1}, ${ISSUER.address.line2}`, postalCode: ISSUER.address.postalCode, city: ISSUER.address.city, country: ISSUER.address.country };
-      const invoicing = new InvoicingService({ store: d.invoicing.store, external: d.external?.store, company: async (id) => (await crmStore.get("companies", id)) as CompanyFiscal | null, issuer, seriesCode: d.invoicing.seriesCode, issueEnabled: d.invoicing.issueEnabled, now: d.subscriptions.now });
+      const invoicing = new InvoicingService({
+        store: d.invoicing.store,
+        external: d.external?.store,
+        company: async (id) => (await crmStore.get("companies", id)) as CompanyFiscal | null,
+        issuer,
+        seriesCode: d.invoicing.seriesCode,
+        issueEnabled: d.invoicing.issueEnabled,
+        // Factura expedida: alerta a la administración y, si es rectificativa, aviso al cliente con su número
+        onIssued: async (inv) => {
+          const company = ((await crmStore.get("companies", inv.companyId)) as { name?: string } | null)?.name ?? null;
+          await adminAlerts?.raise("admin.invoice_issued", { key: `invoice:${inv.id}:issued`, occurredAt: inv.issuedAt ?? Date.now(), companyId: inv.companyId, company, summary: `${inv.kind === "rectification" ? "Factura rectificativa" : "Factura"} ${inv.number ?? ""} expedida.`.replace("  ", " "), status: { label: "Expedida", tone: "success" }, reference: inv.number, amount: { cents: inv.totalCents, currency: inv.currency }, link: "#/comercial/facturacion" });
+          if (inv.kind === "rectification" && inv.number && customerNotices) await creditNoteNotice(customerNotices, { invoiceId: inv.id, companyId: inv.companyId, number: inv.number });
+        },
+        now: d.subscriptions.now,
+      });
       // Cargos extraordinarios y gastos variables (CRM 0028): solo con su tabla
       const company = async (id: number) => (await crmStore.get("companies", id)) as CompanyFiscal | null;
       const charges = d.invoicing.charges ? new ChargeService({ charges: d.invoicing.charges, invoices: d.invoicing.store, company, now: d.subscriptions.now }) : undefined;

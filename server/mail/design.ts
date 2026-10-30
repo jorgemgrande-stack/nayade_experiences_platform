@@ -1,9 +1,10 @@
 /**
  * Sistema de diseño de los correos de Big Elephant (estándar visual aprobado por la dirección, 29/10/2026).
  *
- * Tres familias editoriales con el mismo lenguaje: A · experiencial (bienvenida, onboarding, novedades), B ·
- * transaccional premium (contratos, suscripciones, pagos, facturas) y C · seguridad y servicio (contraseñas,
- * invitaciones, soporte, avisos). Componentes: cabecera con el logotipo oficial, antetítulo, título, ilustración,
+ * Cuatro familias editoriales con el mismo lenguaje: A · experiencial (bienvenida, onboarding, novedades), B ·
+ * transaccional premium (contratos, suscripciones, pagos, facturas), C · seguridad y servicio (contraseñas,
+ * invitaciones, soporte, avisos) y D · administración de Big Elephant (avisos INTERNOS al equipo: información
+ * operativa primero, banda «Aviso interno», nada comercial). Componentes: cabecera con el logotipo oficial, antetítulo, título, ilustración,
  * tarjetas de datos con estado y total, avisos, pasos, línea de progreso, ayuda, consejos, botón «a prueba de
  * clientes» y pie corporativo. Siempre con versión de texto plano equivalente.
  *
@@ -17,7 +18,7 @@
  */
 import type { MailContent } from "./types";
 
-export type Family = "experiential" | "transactional" | "security";
+export type Family = "experiential" | "transactional" | "security" | "admin";
 export type Tone = "info" | "success" | "warning" | "error";
 export type Hero =
   | "bienvenida" | "contrato" | "seguridad" | "pago" | "calendario" | "aviso" | "exito" | "soporte" | "novedades" | "modulos" | "dominio" | "datos" | "equipo";
@@ -93,6 +94,9 @@ export const CORPORATE = {
     { label: "Términos del servicio", path: "/terminos-y-condiciones" },
   ],
 };
+
+/** Pie de la familia D (avisos internos). */
+const ADMIN_FOOT = "Aviso interno para la administración de Big Elephant. Contiene información operativa: no lo reenvíes fuera del equipo.";
 
 const esc = (s: string) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 
@@ -249,6 +253,8 @@ export function renderEmail(brand: EmailBrand, s: EmailSpec): MailContent & { te
   const header = platform
     ? `<tr><td style="padding:26px 34px 20px;border-bottom:${s.family === "experiential" ? "0" : `3px solid ${T.red}`}"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td valign="middle"><img src="${esc(safeUrl(brand.logoUrl)!)}" width="184" height="23" alt="Big Elephant" style="display:block;border:0;width:184px;height:auto;max-width:100%"></td><td align="right" valign="middle" style="${F};font-size:12px;line-height:16px;color:${T.muted}">${CORPORATE.tagline.map(esc).join("<br>")}</td></tr></table></td></tr>`
     : `<tr><td style="padding:24px 34px 18px;border-bottom:3px solid ${T.ink}"><span style="${F};font-size:18px;font-weight:700;color:${T.ink}">${esc(brand.name)}</span></td></tr>`;
+  // Familia D: banda roja que identifica el aviso como interno (se lee igual con las imágenes bloqueadas)
+  const band = s.family === "admin" ? `<tr><td bgcolor="${T.red}" style="background:${T.red};padding:8px 34px;${F};font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#ffffff">Administración Big Elephant · Aviso interno</td></tr>` : "";
 
   const titleHtml = `${esc(s.title)}${s.titleAccent ? `<br><span style="color:${T.red}">${esc(s.titleAccent)}</span>` : ""}`;
   const heroImg = hero ? `<img src="${esc(asset(`hero-${hero}`))}" width="210" height="168" alt="${esc(ALT[hero])}" class="be-hero" style="display:block;border:0;width:210px;height:auto;max-width:100%">` : "";
@@ -284,7 +290,7 @@ export function renderEmail(brand: EmailBrand, s: EmailSpec): MailContent & { te
       `<div>${esc(legal)}</div>` +
       `<div><span style="color:#ffffff">${esc(support ?? CORPORATE.supportEmail)}</span> &nbsp;·&nbsp; <a href="${CORPORATE.web}" style="color:#ffffff;text-decoration:none">www.bigelephant.es</a></div>` +
       `<div style="margin-top:8px">${links}</div>` +
-      `<div style="margin-top:8px;color:#8A93A3">${s.commercial ? "Recibes este correo porque aceptaste recibir novedades de Big Elephant." : "Mensaje de servicio relacionado con tu cuenta. No es publicidad."}</div>` +
+      `<div style="margin-top:8px;color:#8A93A3">${s.commercial ? "Recibes este correo porque aceptaste recibir novedades de Big Elephant." : s.family === "admin" ? ADMIN_FOOT : "Mensaje de servicio relacionado con tu cuenta. No es publicidad."}</div>` +
       unsubscribe +
       `</td></tr></table></td></tr>`
     : `<tr><td style="padding:18px 34px 24px;border-top:1px solid ${T.line};${F};font-size:12px;line-height:18px;color:${T.muted}">Mensaje automático de ${esc(brand.name)} relacionado con tu cuenta.${support ? ` ¿Dudas? Escríbenos a ${esc(support)}.` : ""}</td></tr>`;
@@ -299,10 +305,11 @@ export function renderEmail(brand: EmailBrand, s: EmailSpec): MailContent & { te
     `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="${T.surface}" style="background:${T.surface}"><tr><td align="center" class="be-outer" style="padding:28px 12px">` +
     `<!--[if mso]><table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0"><tr><td><![endif]-->` +
     `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="be-wrap" bgcolor="#ffffff" style="max-width:600px;background:#ffffff;border-radius:16px;border:1px solid ${T.line}">` +
-    header + top + body + footer +
+    header + band + top + body + footer +
     `</table><!--[if mso]></td></tr></table><![endif]--></td></tr></table></body></html>`;
 
   const text = [
+    ...(s.family === "admin" ? ["ADMINISTRACIÓN BIG ELEPHANT · AVISO INTERNO", ""] : []),
     ...(s.eyebrow ? [s.eyebrow.toUpperCase()] : []),
     s.title + (s.titleAccent ? ` ${s.titleAccent}` : ""),
     "",
@@ -312,7 +319,7 @@ export function renderEmail(brand: EmailBrand, s: EmailSpec): MailContent & { te
     ...(cta ? [`${cta.label}: ${safeUrl(cta.url)}`, ""] : []),
     "—",
     ...(platform
-      ? [brand.legal ?? `${CORPORATE.name} es un servicio de ${CORPORATE.legalName} · NIF ${CORPORATE.taxId} · ${CORPORATE.address}`, `${support ?? CORPORATE.supportEmail} · www.bigelephant.es`, ...CORPORATE.links.map((l) => `${l.label}: ${CORPORATE.web}${l.path}`), ...(s.commercial ? [`Baja de comunicaciones comerciales: ${CORPORATE.web}/soporte`] : ["Mensaje de servicio relacionado con tu cuenta. No es publicidad."])]
+      ? [brand.legal ?? `${CORPORATE.name} es un servicio de ${CORPORATE.legalName} · NIF ${CORPORATE.taxId} · ${CORPORATE.address}`, `${support ?? CORPORATE.supportEmail} · www.bigelephant.es`, ...CORPORATE.links.map((l) => `${l.label}: ${CORPORATE.web}${l.path}`), ...(s.commercial ? [`Baja de comunicaciones comerciales: ${CORPORATE.web}/soporte`] : [s.family === "admin" ? ADMIN_FOOT : "Mensaje de servicio relacionado con tu cuenta. No es publicidad."])]
       : [`Mensaje automático de ${brand.name} relacionado con tu cuenta.${support ? ` ¿Dudas? Escríbenos a ${support}.` : ""}`]),
   ].join("\n");
   return { subject, html, text };

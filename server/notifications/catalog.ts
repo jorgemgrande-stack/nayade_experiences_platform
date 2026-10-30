@@ -218,7 +218,10 @@ export const TEMPLATE_CATALOG: readonly TemplateSpec[] = [
   },
   // ── Módulos y ampliaciones ──
   {
-    ...contract("module.purchase_requested", "module", "module_change", "Compra enviada a Stripe con cobro pendiente (purchases.ts: payment_pending)", "billing_contact", ["productName", "paymentUrl"], "Si el cobro necesita autenticación o falló"),
+    ...contract("module.purchase_requested", "module", "module_change", "Compra enviada a Stripe con cobro pendiente (purchases.ts: payment_pending → customerTriggers.purchasePendingNotice)", "billing_contact", ["productName", "paymentUrl"], "Si el cobro necesita autenticación o falló"),
+    status: "legacy",
+    suppressWhen: "MAIL_MODE=off; sin contacto de facturación; destinatario suprimido",
+    idempotency: "notif:module.purchase_requested:v1:order:<pedido>",
     render: (v, o) => layout(brand(o.supportEmail), "Completa el pago de tu compra", [`Para activar ${txt(v.productName, "tu módulo")} falta completar el pago. No se ha aplicado ningún cambio todavía.`], typeof v.paymentUrl === "string" && v.paymentUrl ? { label: "Completar el pago", url: v.paymentUrl } : null, { eyebrow: "Compra pendiente", hero: "pago", blocks: [{ card: { status: { label: "Pago pendiente", tone: "warning" }, rows: [{ label: "Módulo", value: txt(v.productName, "—") }] } }] }),
   },
   {
@@ -312,7 +315,10 @@ export const TEMPLATE_CATALOG: readonly TemplateSpec[] = [
       layout(brand(o.supportEmail), "Hemos registrado un reembolso", ["Lo verás en tu medio de pago en unos días. La factura rectificativa la emite nuestro sistema de facturación."], null, { eyebrow: "Reembolso", hero: "pago", blocks: [{ card: { status: { label: v.full ? "Reembolso total" : "Reembolso parcial", tone: "info" }, rows: [], total: { label: "Importe reembolsado", value: money(v.amountCents, v.currency) } } }] }),
   },
   {
-    ...contract("billing.credit_note", "billing", "refund_recorded", "Rectificativa emitida por el sistema de facturación aprobado", "billing_contact", ["documentNumber"], "Al registrar el número de la rectificativa"),
+    ...contract("billing.credit_note", "billing", "refund_recorded", "Rectificativa expedida con número (InvoicingService.issue → customerTriggers.creditNoteNotice)", "billing_contact", ["documentNumber"], "Al expedir la rectificativa"),
+    status: "legacy",
+    suppressWhen: "MAIL_MODE=off; sin contacto de facturación; destinatario suprimido",
+    idempotency: "notif:billing.credit_note:v1:invoice:<factura>",
     render: (v, o) => layout(brand(o.supportEmail), "Tu factura rectificativa", ["Hemos emitido la factura rectificativa correspondiente a tu reembolso."], null, { eyebrow: "Factura rectificativa", hero: "pago", blocks: [{ card: { status: { label: "Emitida", tone: "success" }, rows: [{ label: "Número", value: txt(v.documentNumber, "—") }] } }] }),
   },
   {

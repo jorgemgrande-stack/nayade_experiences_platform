@@ -10,9 +10,11 @@ import { platformTemplates } from "./templates";
 import { inviteContent, passwordResetContent } from "./accountTemplates";
 import { extraTemplates as x } from "./extraTemplates";
 import type { MailContent } from "./types";
+import { ADMIN_ALERTS } from "../adminAlerts/catalog";
+import { alertPreview } from "../adminAlerts/service";
 
 export type TemplateState = "conectada" | "sin_disparador" | "interna";
-export type TemplateGroup = "acceso" | "onboarding" | "contratacion" | "facturacion" | "empresas" | "producto" | "soporte" | "comercial" | "interna";
+export type TemplateGroup = "acceso" | "onboarding" | "contratacion" | "facturacion" | "empresas" | "producto" | "soporte" | "comercial" | "interna" | "administracion";
 export interface TemplateEntry {
   id: string;
   name: string;
@@ -21,6 +23,8 @@ export interface TemplateEntry {
   service: "controlplane" | "core" | "crm";
   event: string;
   state: TemplateState;
+  /** Sin disparador: por qué (hecho que todavía no existe en el producto). */
+  pending?: string;
   render: () => MailContent;
 }
 export interface TestEmail extends Omit<TemplateEntry, "render"> {
@@ -48,14 +52,14 @@ export const TEMPLATES: readonly TemplateEntry[] = [
   e("operator.password_reset", "Restablecimiento de contraseña (administración central)", "acceso", "security", "controlplane", "POST /cp/v1/auth/password-reset/request", "conectada", () => passwordResetContent({ name: null, url: "https://admin.bigelephant.example/#/restablecer?muestra=1", minutes: 30, account: "Big Elephant CRM (administración central)" })),
   e("security.password_changed", "Contraseña modificada", "acceso", "security", "core", "Contraseña restablecida (POST /api/auth/reset-password)", "conectada", P("security.password_changed")),
   e("security.new_login", "Inicio de sesión desde un dispositivo nuevo", "acceso", "security", "core", "Detección de dispositivo nuevo", "sin_disparador", P("security.new_login")),
-  e("security.mfa_changed", "Verificación en dos pasos modificada", "acceso", "security", "core", "Activación o desactivación del segundo factor", "sin_disparador", P("security.mfa_changed")),
+  e("security.mfa_changed", "Verificación en dos pasos modificada", "acceso", "security", "controlplane", "Activación o retirada del segundo factor de un operador del CRM (las empresas aún no tienen segundo factor)", "sin_disparador", P("security.mfa_changed")),
   e("account.invite", "Invitación a un usuario de la empresa", "acceso", "security", "core", "Alta de usuario con invitación (sendInviteEmail)", "conectada", () => inviteContent({ name: "Pablo Demo", company: "Empresa Demo", role: "manager", url: `https://${HOST}/establecer-contrasena?muestra=1`, hours: 72 })),
   e("account.email_changed", "Cambio de dirección de correo", "acceso", "security", "core", "Cambio del correo de acceso", "sin_disparador", () => x.emailChanged({ name: "Ana Demo", oldEmail: "ana.antigua@empresa-demo.example", newEmail: "ana@empresa-demo.example", at: PREVIEW_NOW })),
   // ── B. Onboarding y periodo de prueba ──
   e("trial.started", "Bienvenida a Big Elephant (prueba activada)", "onboarding", "experiential", "controlplane", "Prueba aprovisionada", "conectada", P("trial.started")),
   e("tenant.welcome", "Bienvenida (alta asistida)", "onboarding", "experiential", "controlplane", "Plataforma creada desde el CRM", "conectada", () => t.tenantWelcome({ companyName: "Empresa Demo, S.L.", host: HOST, setPasswordUrl: `https://${HOST}/establecer-contrasena?muestra=1` })),
-  e("onboarding.steps", "Primeros pasos de configuración", "onboarding", "experiential", "core", "Primer acceso al panel", "sin_disparador", () => x.onboardingSteps({ name: "Ana Demo", host: HOST })),
-  e("onboarding.progress", "Progreso de la configuración", "onboarding", "experiential", "core", "Avance de los primeros pasos", "sin_disparador", () => x.onboardingProgress({ name: "Ana Demo", host: HOST, done: 3, total: 5 })),
+  e("onboarding.steps", "Primeros pasos de configuración", "onboarding", "experiential", "core", "Primer acceso al asistente de Primeros pasos sin ningún paso dado", "conectada", () => x.onboardingSteps({ name: "Ana Demo", host: HOST })),
+  e("onboarding.progress", "Progreso de la configuración", "onboarding", "experiential", "core", "La configuración cruza la mitad de los pasos", "conectada", () => x.onboardingProgress({ name: "Ana Demo", host: HOST, done: 3, total: 5 })),
   e("onboarding.reminder", "Recordatorio de configuración incompleta", "onboarding", "experiential", "core", "Primeros pasos sin terminar a los 3 días", "sin_disparador", () => x.onboardingReminder({ name: "Ana Demo", host: HOST, pending: ["Datos de tu empresa", "Invitar a tu equipo"] })),
   e("trial.reminder", "Prueba: quedan 7 días", "onboarding", "experiential", "controlplane", "Planificador de pruebas (aviso a 7 días)", "conectada", P("trial.reminder")),
   e("trial.reminder_2", "Prueba: quedan 2 días", "onboarding", "experiential", "controlplane", "Planificador de pruebas (umbral configurable)", "conectada", () => t.trialExpiry({ endsAt: PREVIEW_NOW + 2 * DAY, daysLeft: 2, pricingUrl: "https://www.bigelephant.example/precios" })),
@@ -74,7 +78,7 @@ export const TEMPLATES: readonly TemplateEntry[] = [
   e("module.quantity_changed", "Ampliación de usuarios, sedes o almacenamiento", "contratacion", "transactional", "controlplane", "subscription.quantity_changed", "conectada", P("module.quantity_changed")),
   e("module.removal_scheduled", "Baja de un módulo programada", "contratacion", "transactional", "controlplane", "subscription.module_removed", "conectada", P("module.removal_scheduled")),
   e("module.removal_effective", "Baja de un módulo aplicada", "contratacion", "transactional", "controlplane", "Renovación que aplica la baja", "sin_disparador", P("module.removal_effective")),
-  e("module.purchase_requested", "Compra de módulo pendiente de pago", "contratacion", "transactional", "controlplane", "Compra con cobro pendiente", "sin_disparador", P("module.purchase_requested")),
+  e("module.purchase_requested", "Compra de módulo pendiente de pago", "contratacion", "transactional", "controlplane", "Compra enviada a Stripe con el cobro pendiente (autenticación o pago fallido)", "conectada", P("module.purchase_requested")),
   e("module.purchase_failed", "Compra no completada", "contratacion", "transactional", "controlplane", "order.rejected (compra desde la plataforma)", "conectada", P("module.purchase_failed")),
   e("subscription.renewal_paid", "Renovación de la suscripción", "contratacion", "transactional", "controlplane", "Renovación cobrada", "conectada", P("subscription.renewal_paid")),
   e("subscription.cancellation", "Cancelación confirmada", "contratacion", "transactional", "controlplane", "Baja programada", "conectada", P("subscription.cancellation")),
@@ -92,13 +96,13 @@ export const TEMPLATES: readonly TemplateEntry[] = [
   e("subscription.recovered", "Pago regularizado y servicio restablecido", "facturacion", "transactional", "controlplane", "Pago recuperado", "conectada", P("subscription.recovered")),
   e("billing.incident", "Cobro revertido", "facturacion", "transactional", "controlplane", "coverage.lost", "conectada", P("billing.incident")),
   e("billing.refund_recorded", "Reembolso registrado", "facturacion", "transactional", "controlplane", "refund.recorded", "conectada", P("billing.refund_recorded")),
-  e("billing.credit_note", "Factura rectificativa", "facturacion", "transactional", "controlplane", "Rectificativa emitida", "sin_disparador", P("billing.credit_note")),
+  e("billing.credit_note", "Factura rectificativa", "facturacion", "transactional", "controlplane", "Factura rectificativa expedida con número", "conectada", P("billing.credit_note")),
   // ── E. Empresas y servicios ──
   e("access.read_only_started", "Cuenta en solo lectura", "empresas", "security", "controlplane", "access.read_only_started", "conectada", P("access.read_only_started")),
   e("access.read_only_ended", "Fin del periodo de solo lectura", "empresas", "security", "controlplane", "access.read_only_ended", "conectada", P("access.read_only_ended")),
   e("access.archive_notice", "Aviso de archivado", "empresas", "security", "controlplane", "access.archive_notice", "conectada", P("access.archive_notice")),
-  e("tenant.domain_connected", "Dominio propio conectado", "empresas", "transactional", "controlplane", "Verificación del dominio", "sin_disparador", () => x.domainConnected({ domain: "www.empresa-demo.example" })),
-  e("tenant.domain_pending", "Dominio pendiente de validación", "empresas", "transactional", "controlplane", "Alta de un dominio propio", "sin_disparador", () => x.domainPending({ domain: "www.empresa-demo.example", record: "CNAME", value: "empresa-demo.app.bigelephant.example" })),
+  e("tenant.domain_connected", "Dominio propio conectado", "empresas", "transactional", "controlplane", "Dominio propio activado en la plataforma", "conectada", () => x.domainConnected({ domain: "www.empresa-demo.example" })),
+  e("tenant.domain_pending", "Dominio pendiente de validación", "empresas", "transactional", "controlplane", "Alta de un dominio propio pendiente de validar", "conectada", () => x.domainPending({ domain: "www.empresa-demo.example", record: "CNAME", value: "empresa-demo.app.bigelephant.example" })),
   e("external.changed", "Servicio externo modificado o renovado", "empresas", "transactional", "controlplane", "Cambio de condiciones del servicio", "sin_disparador", () => x.externalChanged({ ...ext, effectiveAt: PREVIEW_NOW + 10 * DAY })),
   e("data.export_ready", "Exportación de datos lista", "empresas", "security", "core", "Exportación generada", "conectada", P("data.export_ready")),
   e("data.export_failed", "Exportación de datos fallida", "empresas", "security", "core", "Exportación fallida", "conectada", P("data.export_failed")),
@@ -121,16 +125,35 @@ export const TEMPLATES: readonly TemplateEntry[] = [
   e("marketing.campaign", "Campaña promocional o lanzamiento", "comercial", "experiential", "crm", "Campaña manual con consentimiento", "sin_disparador", () => x.campaign({ title: "Lleva tu negocio más lejos", text: "Descubre la nueva generación de Big Elephant: más automatización, más control y una experiencia pensada para crecer.", url: "https://www.bigelephant.example/" })),
   // ── Avisos internos del equipo ──
   e("ops.lead_request", "Nueva solicitud desde la web (interno)", "interna", "security", "controlplane", "Formulario de la web comercial", "interna", () => t.leadRequestNotice({ typeLabel: "Solicitud de demostración", reference: "SOL-2026-0042", receivedAt: PREVIEW_NOW, company: "Empresa Demo, S.L.", name: "Laura Demo", email: "laura@empresa-demo.example", phone: "+34 600 000 000", sector: "Servicios", product: "Big Elephant Business", message: "Nos gustaría ver una demostración del CRM.", sourcePage: "/precios", owner: null, crmUrl: "https://admin.bigelephant.example/#/comercial/leads" })),
-  e("ops.incident", "Incidencia operativa (interno)", "interna", "security", "controlplane", "Incidencia abierta, reabierta o escalada", "interna", P("ops.incident")),
-  e("ops.new_customer", "Nuevo cliente activado (interno)", "interna", "security", "controlplane", "Pedido activado", "interna", P("ops.new_customer")),
-  e("ops.withdrawal_requested", "Desistimiento solicitado (interno)", "interna", "security", "controlplane", "Solicitud de desistimiento", "interna", P("ops.withdrawal_requested")),
-  e("ops.ticket_created", "Nuevo ticket (interno)", "interna", "security", "controlplane", "Ticket creado", "interna", P("ops.ticket_created")),
+  // ── D. Administración Big Elephant (alertas internas; sustituyen a los avisos ops.incident, ops.new_customer,
+  //    ops.withdrawal_requested y ops.ticket_created, que solo quedan como respaldo sin la migración 0030) ──
+  ...ADMIN_ALERTS.map((a) => e(a.id, a.name, "administracion", "admin", "controlplane", a.trigger, a.state === "conectada" ? "conectada" : "sin_disparador", () => alertPreview(a.id)!)),
 ];
+
+/** Motivo funcional de cada plantilla sin disparador (lo que tendría que existir en el producto). */
+export const PENDING_REASON: Readonly<Record<string, string>> = {
+  "security.new_login": "El Core no registra dispositivos ni sesiones (la sesión es un JWT sin estado): hace falta un registro de dispositivos por usuario en la base de cada empresa.",
+  "security.mfa_changed": "Disparador preparado para los operadores del CRM en un cambio aparte (toca la autenticación: necesita la aprobación protegida). Los usuarios de las empresas todavía no tienen segundo factor.",
+  "account.email_changed": "No existe el cambio del correo de acceso de un usuario (ni por autoservicio ni por un administrador).",
+  "onboarding.reminder": "Necesita una tarea periódica nueva por empresa en el arranque del Core; es un cambio de infraestructura que va en un despliegue aislado.",
+  "module.removal_effective": "La baja efectiva la aplica la sincronización de licencias sin emitir ningún hecho con el producto retirado; solo existe el evento al programarla (que ya avisa).",
+  "billing.upcoming_charge": "El importe exacto del próximo cargo (impuestos y prorrateos) solo lo conoce Stripe; se delega en su aviso de renovación próxima para no anunciar un importe distinto.",
+  "billing.payment_reminder": "Los recordatorios durante la gracia los envía Stripe en cada reintento (Smart Retries); Elephant avisa el día 0 y no los duplica.",
+  "external.changed": "El producto no permite modificar las condiciones de un servicio externo (solo la fecha del primer cargo).",
+  "product.update": "No existe una herramienta de comunicados de servicio con selección de destinatarios y aprobación; un envío masivo automático no está permitido.",
+  "ops.maintenance": "No existen ventanas de mantenimiento ni página de estado en el producto.",
+  "ops.customer_incident": "No hay comunicados de incidencias a clientes: requiere la herramienta de comunicados de servicio con aprobación.",
+  "support.survey": "No existe la recogida de valoraciones de soporte (página de encuesta y almacenamiento).",
+  "marketing.news": "Comunicación comercial: requiere un registro de consentimiento por contacto y gestión de bajas en el CRM, y un envío manual aprobado. No se activa sola.",
+  "marketing.recommendation": "Comunicación comercial: requiere un registro de consentimiento por contacto y gestión de bajas en el CRM, y un envío manual aprobado. No se activa sola.",
+  "marketing.campaign": "Comunicación comercial: requiere un registro de consentimiento por contacto y gestión de bajas en el CRM, y un envío manual aprobado. No se activa sola.",
+  ...Object.fromEntries(ADMIN_ALERTS.filter((a) => a.pending).map((a) => [a.id, a.pending!])),
+};
 
 /** Todas las comunicaciones renderizadas con datos ficticios. */
 export function allTestEmails(): TestEmail[] {
   return TEMPLATES.map(({ render, ...m }) => {
     const c = render();
-    return { ...m, subject: c.subject, html: c.html, text: c.text ?? "" };
+    return { ...m, ...(m.state === "sin_disparador" ? { pending: PENDING_REASON[m.id] ?? "Sin hecho que la active todavía en el producto" } : {}), subject: c.subject, html: c.html, text: c.text ?? "" };
   });
 }

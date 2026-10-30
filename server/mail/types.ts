@@ -68,6 +68,10 @@ export type MailCategory =
   | "quote_sent"
   // Invitación a revisar y aceptar el contrato de un servicio (server/external): solo al representante indicado
   | "contract_invitation"
+  // Dominio propio de la empresa pendiente de validar o conectado (server/notifications/customerTriggers.ts)
+  | "tenant_domain"
+  // Primeros pasos de la empresa: guía del primer acceso y progreso (server/onboardingNotices.ts)
+  | "onboarding"
   | "operational"
   // Aviso INTERNO al equipo comercial de una solicitud nueva de la web (server/crm/leadNotices.ts)
   | "lead_request_notice"
