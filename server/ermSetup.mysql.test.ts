@@ -97,6 +97,21 @@ describe.skipIf(!URL_)("erm-setup con MySQL real", () => {
     await admin.query("DELETE FROM es_erm.usage_hourly");
   });
 
+  it("simulación: contadores compartidos por periodo, sin cantidades y sin la sonda", async () => {
+    expect((await run(false)).windows).toEqual([]);
+    const ms = Date.UTC(2026, 9, 30);
+    await admin.query(
+      "INSERT INTO es_erm.usage_windows (tenant_id, metric, period, window_start, value) VALUES ('t-a', 'email.sent', 'day', ?, 3), ('t-b', 'email.sent', 'day', ?, 1), ('t-a', 'http.request', 'minute', ?, 7)",
+      [ms, ms - 86_400_000, ms + 60_000],
+    );
+    const r = await run(false);
+    expect(r.windows).toEqual([
+      { period: "day", rows: 2, tenants: 2, lastWindow: new Date(ms).toISOString() },
+      { period: "minute", rows: 1, tenants: 1, lastWindow: new Date(ms + 60_000).toISOString() },
+    ]);
+    await admin.query("DELETE FROM es_erm.usage_windows");
+  });
+
   it("sin contraseña o con una corta no aplica nada", async () => {
     await expect(run(true, "")).rejects.toThrow(/ES_ERM_PASSWORD/);
     await expect(run(true, "corta")).rejects.toThrow(/ES_ERM_PASSWORD/);
