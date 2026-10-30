@@ -78,18 +78,20 @@ describe.skipIf(!URL_)("contadores compartidos con MySQL real", () => {
     expect(await s.get({ tenantId: "cnt-correo", metric: Metrics.EMAIL_SENT, period: "day", windowStart: counterWindowStart("day", Date.now()) })).toBe(7);
   });
 
-  it("volcado por lotes y retención: borra solo las ventanas vencidas", async () => {
+  it("volcado por lotes y retención sin borrados: una fila por contador, la ventana nueva empieza en cero", async () => {
     const s = new MysqlCounterStore(pools[0]);
     await s.addMany([
-      { ...k("cnt-ret", 10), delta: 3 },
-      { ...k("cnt-ret", 10), delta: 0 },
-      { ...k("cnt-ret", 5_000_000), delta: 4 },
+      { ...k("cnt-ret", 120_000), delta: 4 },
+      { ...k("cnt-ret", 60_000), delta: 3 },
+      { ...k("cnt-ret", 60_000), delta: 0 },
     ]);
-    expect(await s.get(k("cnt-ret", 10))).toBe(3);
-    const borradas = await s.purge({ minute: 1_000, day: 0, month: 0 });
-    expect(borradas).toBe(1);
-    expect(await s.get(k("cnt-ret", 10))).toBe(0);
-    expect(await s.get(k("cnt-ret", 5_000_000))).toBe(4);
+    // En orden de ventana: 3 en la de 60 000 y la de 120 000 empieza en cero con 4
+    expect(await s.get(k("cnt-ret", 120_000))).toBe(4);
+    expect(await s.incr(k("cnt-ret", 60_000), 1)).toBe(5); // reloj atrasado: suma a la vigente
+    expect(await s.incr(k("cnt-ret", 180_000), 2)).toBe(2); // ventana siguiente: misma fila, desde cero
+    expect(await s.get(k("cnt-ret", 120_000))).toBe(2);
+    const [n] = await pools[0].query<mysql.RowDataPacket[]>("SELECT COUNT(*) AS n, MAX(window_start) AS w FROM usage_windows WHERE tenant_id = 'cnt-ret'");
+    expect([Number(n[0].n), Number(n[0].w)]).toEqual([1, 180_000]);
   });
 
   it("sin la tabla (entorno sin medicion-preparar) el limitador degrada y no lanza", async () => {

@@ -22,13 +22,13 @@ describe("DDL de la tabla de uso", () => {
 });
 
 describe("grantsState (lógica pura)", () => {
-  const WIN = "GRANT SELECT, INSERT, UPDATE, DELETE ON `es_erm`.`usage_windows` TO `es_erm`@`%`";
-  it("exactamente SELECT, INSERT y UPDATE sobre es_erm.usage_hourly y además DELETE solo sobre usage_windows", () => {
+  const WIN = "GRANT SELECT, INSERT, UPDATE ON `es_erm`.`usage_windows` TO `es_erm`@`%`";
+  it("exactamente SELECT, INSERT y UPDATE sobre es_erm.usage_hourly y es_erm.usage_windows", () => {
     expect(grantsState(["GRANT USAGE ON *.* TO `es_erm`@`%`", "GRANT SELECT, INSERT, UPDATE ON `es_erm`.`usage_hourly` TO `es_erm`@`%`", WIN])).toBe("ok");
     // Entorno anterior a los contadores compartidos: falta la tabla nueva y se aplica
     expect(grantsState(["GRANT USAGE ON *.* TO `es_erm`@`%`", "GRANT SELECT, INSERT, UPDATE ON `es_erm`.`usage_hourly` TO `es_erm`@`%`"])).toBe("missing");
     expect(grantsState(["GRANT SELECT, INSERT, UPDATE ON `es_erm`.`usage_hourly` TO `es_erm`@`%`", "GRANT SELECT, INSERT ON `es_erm`.`usage_windows` TO `es_erm`@`%`"])).toBe("missing");
-    expect(grantsState(["GRANT SELECT, INSERT, UPDATE ON `es_erm`.`usage_hourly` TO `es_erm`@`%`", "GRANT SELECT, INSERT, UPDATE, DELETE, DROP ON `es_erm`.`usage_windows` TO `es_erm`@`%`"])).toBe("excess");
+    expect(grantsState(["GRANT SELECT, INSERT, UPDATE ON `es_erm`.`usage_hourly` TO `es_erm`@`%`", "GRANT SELECT, INSERT, UPDATE, DELETE ON `es_erm`.`usage_windows` TO `es_erm`@`%`"])).toBe("excess");
     expect(grantsState(["GRANT USAGE ON *.* TO `es_erm`@`%`"])).toBe("missing");
     expect(grantsState(["GRANT SELECT, INSERT, UPDATE, DELETE ON `es_erm`.`usage_hourly` TO `es_erm`@`%`"])).toBe("excess");
     expect(grantsState(["GRANT SELECT ON `es_registry`.* TO `es_erm`@`%`", "GRANT SELECT, INSERT, UPDATE ON `es_erm`.`usage_hourly` TO `es_erm`@`%`"])).toBe("excess");

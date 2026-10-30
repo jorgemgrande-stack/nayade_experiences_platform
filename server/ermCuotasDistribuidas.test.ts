@@ -6,7 +6,6 @@ import { describe, it, expect, afterEach } from "vitest";
 import type { NextFunction, Request, Response } from "express";
 import { Metrics, meter, setMeterSink } from "./_core/metering";
 import {
-  COUNTER_RETENTION_MS,
   MemoryCounterStore,
   MemoryUsageStore,
   SharedUsageCounters,
@@ -102,7 +101,6 @@ describe("limitador de tasa distribuido (leases sobre el contador compartido)", 
       incr: () => new Promise<number>(() => undefined),
       addMany: async () => undefined,
       get: async () => 0,
-      purge: async () => 0,
     };
     const r = new DistributedRateLimiter(lento, { storeTimeoutMs: 20, replicasEstimate: 1 });
     const t0 = Date.now();
@@ -200,18 +198,33 @@ describe("cuotas día/mes sobre el contador compartido", () => {
     expect(await store.get({ tenantId: "t-uno", metric: Metrics.EMAIL_SENT, period: "day", windowStart: counterWindowStart("day", T0) })).toBe(2);
   });
 
-  it("retención: el volcado borra ventanas antiguas, no las vigentes", async () => {
+  it("retención sin borrados: la ventana nueva reutiliza la fila desde cero; una escritura atrasada suma a la vigente", async () => {
     const store = new MemoryCounterStore();
-    const viejo = T0 - COUNTER_RETENTION_MS.day - 86_400_000;
+    const ayer = T0 - 86_400_000;
+    const k = (at: number): WindowKey => ({ tenantId: "t-uno", metric: Metrics.EMAIL_SENT, period: "day", windowStart: counterWindowStart("day", at) });
+    // Un lote que cruza el cambio de día, desordenado: se aplica en orden de ventana
     await store.addMany([
-      { tenantId: "t-uno", metric: Metrics.EMAIL_SENT, period: "day", windowStart: counterWindowStart("day", viejo), delta: 4 },
-      { tenantId: "t-uno", metric: Metrics.HTTP_REQUEST, period: "minute", windowStart: counterWindowStart("minute", T0 - 3 * 3_600_000), delta: 9 },
-      { tenantId: "t-uno", metric: Metrics.EMAIL_SENT, period: "day", windowStart: counterWindowStart("day", T0), delta: 1 },
-      { tenantId: "t-uno", metric: Metrics.EMAIL_SENT, period: "month", windowStart: counterWindowStart("month", viejo), delta: 1 },
+      { ...k(T0), delta: 1 },
+      { ...k(ayer), delta: 4 },
     ]);
-    const counters = new SharedUsageCounters(store, { now: () => T0, warn: () => undefined });
+    expect(store.size()).toBe(1);
+    expect(await store.get(k(T0))).toBe(1);
+    expect(await store.get(k(ayer))).toBe(1); // la fila ya guarda una ventana posterior: se cuenta de más, nunca de menos
+    expect(await store.incr(k(ayer), 2)).toBe(3); // reloj atrasado de una réplica: suma a la vigente
+    expect(await store.incr(k(T0 + 86_400_000), 5)).toBe(5); // día siguiente: misma fila, desde cero
+    expect(await store.get(k(T0))).toBe(5);
+    expect(store.size()).toBe(1);
+  });
+
+  it("lo medido en una ventana ya cerrada no se vuelca en la vigente (queda en usage_hourly)", async () => {
+    const store = new MemoryCounterStore();
+    let t = T0;
+    const counters = new SharedUsageCounters(store, { now: () => t, warn: () => undefined });
+    counters.record({ tenantId: "t-uno", metric: Metrics.EMAIL_SENT, quantity: 3, unit: "count", at: T0 });
+    t = T0 + 86_400_000;
     await counters.flush();
-    expect(store.size()).toBe(2);
+    expect(await store.get({ tenantId: "t-uno", metric: Metrics.EMAIL_SENT, period: "day", windowStart: counterWindowStart("day", t) })).toBe(0);
+    expect(await store.get({ tenantId: "t-uno", metric: Metrics.EMAIL_SENT, period: "month", windowStart: counterWindowStart("month", t) })).toBe(3);
   });
 });
 

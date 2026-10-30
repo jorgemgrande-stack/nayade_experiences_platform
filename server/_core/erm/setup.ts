@@ -3,8 +3,8 @@
  * (restore-drill → `backup-job erm-setup`), como se hizo a mano en live el 21/10/2026:
  *  - base `es_erm` con `usage_hourly` (`db/erm/0000_usage.sql`): solo cantidades agregadas por hora, sin datos personales;
  *  - tabla `usage_windows` (`db/erm/0001_windows.sql`): contadores compartidos por ventana (tasa y cuotas día/mes entre réplicas);
- *  - usuario `es_erm` con SOLO `SELECT, INSERT, UPDATE` sobre `es_erm.usage_hourly` (ni DELETE, ni DDL, ni otras bases) y
- *    `SELECT, INSERT, UPDATE, DELETE` sobre `es_erm.usage_windows` (el DELETE es la retención de ventanas antiguas);
+ *  - usuario `es_erm` con SOLO `SELECT, INSERT, UPDATE` sobre `es_erm.usage_hourly` y `es_erm.usage_windows` (ni DELETE,
+ *    ni DDL, ni otras bases: la retención de ventanas reutiliza la fila, no borra);
  *  - la contraseña llega por variable de entorno (referencia a `MySQL.ES_ERM_PASSWORD`) y nunca se imprime.
  * Sonda final con el usuario `es_erm`: escribe y lee dentro de una transacción que se deshace (sin restos) y comprueba
  * que `DELETE`, DDL y el registro le están denegados. Sin `apply` solo informa de lo que haría.
@@ -47,14 +47,13 @@ export const WINDOWS_TABLE_DDL = `CREATE TABLE IF NOT EXISTS usage_windows (
   period       VARCHAR(8)  NOT NULL,
   window_start BIGINT      NOT NULL,
   value        BIGINT      NOT NULL DEFAULT 0,
-  PRIMARY KEY (tenant_id, metric, period, window_start),
-  KEY idx_usage_windows_retention (period, window_start)
+  PRIMARY KEY (tenant_id, metric, period)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`;
 
 /** Permisos exactos del usuario `es_erm` por tabla. */
 export const ERM_TABLE_PRIVILEGES: Record<string, string[]> = {
   usage_hourly: ["SELECT", "INSERT", "UPDATE"],
-  usage_windows: ["SELECT", "INSERT", "UPDATE", "DELETE"],
+  usage_windows: ["SELECT", "INSERT", "UPDATE"],
 };
 
 /** DDL del fichero de referencia sin comentarios (para comprobar que el del código coincide). */
@@ -164,12 +163,11 @@ export async function runErmSetup(o: { admin: mysql.Pool; host: string; port: nu
     await probe.beginTransaction();
     await probe.query("INSERT INTO usage_hourly (tenant_id, metric, hour_start, quantity) VALUES ('__sonda__', 'erm.setup.probe', '2000-01-01 00:00:00', 1) ON DUPLICATE KEY UPDATE quantity = quantity + 1");
     const [r] = await probe.query<mysql.RowDataPacket[]>("SELECT quantity FROM usage_hourly WHERE tenant_id = '__sonda__'");
-    // Contadores por ventana: incremento atómico con lectura y borrado de retención (también dentro de la transacción)
-    const [inc] = await probe.query<mysql.ResultSetHeader>(
-      "INSERT INTO usage_windows (tenant_id, metric, period, window_start, value) VALUES ('__sonda__', 'erm.setup.probe', 'minute', 0, LAST_INSERT_ID(2)) ON DUPLICATE KEY UPDATE value = LAST_INSERT_ID(value + 2)",
-    );
-    const [del] = await probe.query<mysql.ResultSetHeader>("DELETE FROM usage_windows WHERE tenant_id = '__sonda__'");
-    write = r.length === 1 && Number(inc.insertId) === 2 && del.affectedRows === 1;
+    // Contadores por ventana: incremento atómico con lectura en la misma sentencia (dos veces: fila nueva y existente)
+    const incr = "INSERT INTO usage_windows (tenant_id, metric, period, window_start, value) VALUES ('__sonda__', 'erm.setup.probe', 'minute', 0, LAST_INSERT_ID(2)) ON DUPLICATE KEY UPDATE value = LAST_INSERT_ID(value + 2)";
+    const [i1] = await probe.query<mysql.ResultSetHeader>(incr);
+    const [i2] = await probe.query<mysql.ResultSetHeader>(incr);
+    write = r.length === 1 && Number(i1.insertId) === 2 && Number(i2.insertId) === 4;
     await probe.rollback();
     const deleteDenied = await denied("DELETE FROM usage_hourly WHERE tenant_id = '__sonda__'");
     const ddlDenied = await denied("CREATE TABLE sonda_no_debe_existir (x INT)");

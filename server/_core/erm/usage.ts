@@ -161,22 +161,21 @@ export interface WindowKey {
   windowStart: number;
 }
 
+/**
+ * Contador por (tenant, métrica, periodo) con su ventana vigente. Retención SIN borrados: la primera escritura de una
+ * ventana nueva reutiliza la fila y pone el valor a cero (una fila por tenant, métrica y periodo; el histórico de
+ * consumo vive en `usage_hourly`). Así el usuario `es_erm` sigue sin permiso de DELETE.
+ * Una escritura de una ventana ANTERIOR a la vigente (reloj desfasado entre réplicas) suma a la vigente: se cuenta de más,
+ * nunca de menos.
+ */
 export interface SharedCounterStore {
-  /** Suma `delta` (entero, puede ser negativo) y devuelve el valor resultante, en UNA operación atómica. */
+  /** Suma `delta` (entero, puede ser negativo; el valor nunca baja de 0) y devuelve el resultante, en UNA operación atómica. */
   incr(k: WindowKey, delta: number): Promise<number>;
   /** Suma por lotes (volcado de lo medido); no devuelve valores. */
   addMany(rows: Array<WindowKey & { delta: number }>): Promise<void>;
+  /** Valor de la ventana `k` (0 si la fila guarda una ventana anterior). */
   get(k: WindowKey): Promise<number>;
-  /** Borra ventanas anteriores a `before[period]` (ms). Devuelve las filas borradas. */
-  purge(before: Record<CounterPeriod, number>): Promise<number>;
 }
-
-/** Retención de ventanas: lo justo para depurar; el histórico de consumo vive en `usage_hourly`. */
-export const COUNTER_RETENTION_MS: Record<CounterPeriod, number> = {
-  minute: 2 * 3_600_000,
-  day: 40 * 86_400_000,
-  month: 400 * 86_400_000,
-};
 
 export function counterWindowStart(period: CounterPeriod, now: number): number {
   const d = new Date(now);
@@ -190,13 +189,14 @@ const unkey = (s: string): WindowKey => {
   const [tenantId, metric, period, w] = s.split("\u0000");
   return { tenantId, metric, period: period as CounterPeriod, windowStart: Number(w) };
 };
+const rowKey = (k: WindowKey): string => `${k.tenantId}\u0000${k.metric}\u0000${k.period}`;
 
 /**
- * Almacén en memoria. UNA instancia compartida por varios limitadores o motores simula la base común (pruebas);
- * como almacén real solo vale para una réplica sin `ERM_DATABASE_URL` (no sobrevive a reinicios).
+ * Almacén en memoria con la misma semántica que el de MySQL. UNA instancia compartida por varios limitadores o motores
+ * simula la base común (pruebas); como almacén real solo vale para una réplica (no sobrevive a reinicios).
  */
 export class MemoryCounterStore implements SharedCounterStore {
-  private rows = new Map<string, number>();
+  private rows = new Map<string, { window: number; value: number }>();
   private fail = false;
   calls = 0;
   setFailing(f: boolean): void {
@@ -206,31 +206,25 @@ export class MemoryCounterStore implements SharedCounterStore {
     this.calls++;
     if (this.fail) throw new Error("almacén de contadores no disponible");
   }
+  private apply(k: WindowKey, delta: number): number {
+    const r = this.rows.get(rowKey(k));
+    const base = !r || k.windowStart > r.window ? 0 : r.value;
+    const v = Math.max(0, base + Math.trunc(delta));
+    this.rows.set(rowKey(k), { window: Math.max(r?.window ?? k.windowStart, k.windowStart), value: v });
+    return v;
+  }
   async incr(k: WindowKey, delta: number): Promise<number> {
     this.check();
-    const v = Math.max(0, (this.rows.get(wkey(k)) ?? 0) + Math.trunc(delta));
-    this.rows.set(wkey(k), v);
-    return v;
+    return this.apply(k, delta);
   }
   async addMany(rows: Array<WindowKey & { delta: number }>): Promise<void> {
     this.check();
-    for (const r of rows) this.rows.set(wkey(r), (this.rows.get(wkey(r)) ?? 0) + r.delta);
+    for (const r of [...rows].sort((a, b) => a.windowStart - b.windowStart)) this.apply(r, r.delta);
   }
   async get(k: WindowKey): Promise<number> {
     this.check();
-    return this.rows.get(wkey(k)) ?? 0;
-  }
-  async purge(before: Record<CounterPeriod, number>): Promise<number> {
-    this.check();
-    let n = 0;
-    for (const k of Array.from(this.rows.keys())) {
-      const w = unkey(k);
-      if (w.windowStart < before[w.period]) {
-        this.rows.delete(k);
-        n++;
-      }
-    }
-    return n;
+    const r = this.rows.get(rowKey(k));
+    return r && r.window >= k.windowStart ? r.value : 0;
   }
   size(): number {
     return this.rows.size;
@@ -239,9 +233,9 @@ export class MemoryCounterStore implements SharedCounterStore {
 
 /**
  * Almacén en MySQL (`es_erm.usage_windows`). El incremento y la lectura van en la MISMA sentencia:
- * `value = LAST_INSERT_ID(value + ?)` deja el valor resultante en el `insertId` de la respuesta, sin transacción
- * ni segunda consulta, y sin carreras entre réplicas (el UPSERT bloquea la fila).
- * `LAST_INSERT_ID` es sin signo: el valor se acota en 0 (un contador nunca baja de cero; las restas deshacen reservas).
+ * `value = LAST_INSERT_ID(...)` deja el valor resultante en el `insertId` de la respuesta, sin transacción ni segunda
+ * consulta, y sin carreras entre réplicas (el UPSERT bloquea la fila). `value` se asigna antes que `window_start`, así
+ * que compara con la ventana guardada. `LAST_INSERT_ID` es sin signo: el valor se acota en 0.
  */
 export class MysqlCounterStore implements SharedCounterStore {
   constructor(private pool: Pick<mysql.Pool, "query">) {}
@@ -250,40 +244,36 @@ export class MysqlCounterStore implements SharedCounterStore {
     const d = Math.trunc(delta);
     const [r] = await this.pool.query<mysql.ResultSetHeader>(
       `INSERT INTO usage_windows (tenant_id, metric, period, window_start, value) VALUES (?, ?, ?, ?, LAST_INSERT_ID(GREATEST(?, 0)))
-       ON DUPLICATE KEY UPDATE value = LAST_INSERT_ID(GREATEST(value + ?, 0))`,
-      [k.tenantId, k.metric, k.period, k.windowStart, d, d],
+       ON DUPLICATE KEY UPDATE
+         value = LAST_INSERT_ID(GREATEST(IF(? > window_start, 0, value) + ?, 0)),
+         window_start = GREATEST(window_start, ?)`,
+      [k.tenantId, k.metric, k.period, k.windowStart, d, k.windowStart, d, k.windowStart],
     );
     return Number(r.insertId);
   }
 
   async addMany(rows: Array<WindowKey & { delta: number }>): Promise<void> {
-    const values = rows.filter((r) => Math.trunc(r.delta) !== 0).map((r) => [r.tenantId, r.metric, r.period, r.windowStart, Math.trunc(r.delta)]);
+    // En orden de ventana: si un lote cruza el cambio de ventana, la nueva empieza en cero tras sumar la anterior
+    const values = rows
+      .filter((r) => Math.trunc(r.delta) !== 0)
+      .sort((a, b) => a.windowStart - b.windowStart)
+      .map((r) => [r.tenantId, r.metric, r.period, r.windowStart, Math.trunc(r.delta)]);
     if (!values.length) return;
     await this.pool.query(
       `INSERT INTO usage_windows (tenant_id, metric, period, window_start, value) VALUES ?
-       ON DUPLICATE KEY UPDATE value = value + VALUES(value)`,
+       ON DUPLICATE KEY UPDATE
+         value = GREATEST(IF(VALUES(window_start) > window_start, 0, value) + VALUES(value), 0),
+         window_start = GREATEST(window_start, VALUES(window_start))`,
       [values],
     );
   }
 
   async get(k: WindowKey): Promise<number> {
     const [rows] = await this.pool.query<mysql.RowDataPacket[]>(
-      "SELECT value FROM usage_windows WHERE tenant_id = ? AND metric = ? AND period = ? AND window_start = ?",
+      "SELECT value FROM usage_windows WHERE tenant_id = ? AND metric = ? AND period = ? AND window_start >= ?",
       [k.tenantId, k.metric, k.period, k.windowStart],
     );
     return Number(rows[0]?.value ?? 0);
-  }
-
-  async purge(before: Record<CounterPeriod, number>): Promise<number> {
-    let n = 0;
-    for (const p of Object.keys(before) as CounterPeriod[]) {
-      const [r] = await this.pool.query<mysql.ResultSetHeader>(
-        "DELETE FROM usage_windows WHERE period = ? AND window_start < ? LIMIT 5000",
-        [p, before[p]],
-      );
-      n += r.affectedRows;
-    }
-    return n;
   }
 }
 
@@ -324,14 +314,13 @@ export class SharedUsageCounters implements MeterSink {
   private pending = new Map<string, number>();
   private credit = new Map<string, number>();
   private timer: NodeJS.Timeout | null = null;
-  private lastPurge = 0;
   private readonly metrics: Set<string>;
   private readonly now: () => number;
   private readonly warn: (op: string, e: unknown) => void;
 
   constructor(
     private store: SharedCounterStore,
-    private opts: { metrics?: readonly string[]; now?: () => number; flushMs?: number; purgeEveryMs?: number; maxPendingKeys?: number; warn?: (op: string, e: unknown) => void } = {},
+    private opts: { metrics?: readonly string[]; now?: () => number; flushMs?: number; maxPendingKeys?: number; warn?: (op: string, e: unknown) => void } = {},
   ) {
     this.metrics = new Set(opts.metrics ?? SHARED_COUNTER_METRICS);
     this.now = opts.now ?? Date.now;
@@ -414,10 +403,12 @@ export class SharedUsageCounters implements MeterSink {
   /** Vuelca lo medido. Si el almacén falla, se conserva para el siguiente intento. */
   async flush(): Promise<number> {
     const t = this.now();
-    // El crédito de ventanas pasadas ya no puede absorber nada
-    for (const k of Array.from(this.credit.keys())) {
-      const w = unkey(k);
-      if (w.windowStart < counterWindowStart(w.period, t)) this.credit.delete(k);
+    // Ventanas ya cerradas: su crédito no absorbe nada y lo medido en ellas no debe caer en la vigente (sigue en usage_hourly)
+    for (const m of [this.credit, this.pending]) {
+      for (const k of Array.from(m.keys())) {
+        const w = unkey(k);
+        if (w.windowStart < counterWindowStart(w.period, t)) m.delete(k);
+      }
     }
     let n = 0;
     if (this.pending.size) {
@@ -433,19 +424,7 @@ export class SharedUsageCounters implements MeterSink {
         return 0;
       }
     }
-    await this.maybePurge(t);
     return n;
-  }
-
-  private async maybePurge(t: number): Promise<void> {
-    if (t - this.lastPurge < (this.opts.purgeEveryMs ?? 600_000)) return;
-    this.lastPurge = t;
-    const before = {
-      minute: t - COUNTER_RETENTION_MS.minute,
-      day: t - COUNTER_RETENTION_MS.day,
-      month: t - COUNTER_RETENTION_MS.month,
-    };
-    await this.store.purge(before).catch((e) => this.warn("purge", e));
   }
 
   start(): void {
