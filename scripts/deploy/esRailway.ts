@@ -16,6 +16,7 @@
  *   tsx scripts/deploy/esRailway.ts mail-live --env live [--allow a@x,b@y]  (diagnóstico de Postmark; con --allow, sandbox)
  *   tsx scripts/deploy/esRailway.ts mail-access --env production --accion estado|activar|desactivar [--tenants t5-skibox]
  *   tsx scripts/deploy/esRailway.ts lead-notices-mail --env production --accion estado|activar|desactivar [--allow buzón]
+ *   tsx scripts/deploy/esRailway.ts mail-production --env production --accion estado|activar   (correo real: sale del sandbox)
  *   tsx scripts/deploy/esRailway.ts contract-mail --env production --accion estado|activar [--allow buzón] [--categoria operational]
  *   tsx scripts/deploy/esRailway.ts active-sha --env live          (commit activo de los servicios ordinarios; vacío si no se sabe)
  *   tsx scripts/deploy/esRailway.ts changes --from <commit> --to <commit> [--production]  (qué exige el procedimiento protegido)
@@ -40,7 +41,7 @@ import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { CONTRACT_MAIL_CATEGORY, MAIL_TEST_SERVICES, SANDBOX_EXTRA_CATEGORIES, POSTMARK_WEBHOOK_TRIGGERS, contractMailPlan, leadNoticesMailPlan, mailAccessPlan, mailSandboxPlan, parseMailAllowlist } from "./esRailwayLib";
+import { CONTRACT_MAIL_CATEGORY, LIVE_MAIL_SERVICES, MAIL_TEST_SERVICES, SANDBOX_EXTRA_CATEGORIES, productionMailPlan, POSTMARK_WEBHOOK_TRIGGERS, contractMailPlan, leadNoticesMailPlan, mailAccessPlan, mailSandboxPlan, parseMailAllowlist } from "./esRailwayLib";
 import { DRILL_IDLE, EXCLUDED_FROM_EXPORT, GATEWAY_COPIED_VARS, GATEWAY_TEMPLATE_SERVICE, STORAGE_BUCKETS, STORAGE_VARS, describeStorageVar, guard, isAllowedDrill, scrub, meteringReferences, storageReferences, testTenantDomains, type DeployConfig, type TokenScope } from "./esRailwayLib";
 import { ERM_DB_SERVICE, ERM_PASSWORD_VAR, LIVE_PLATFORM_DOMAIN_DEFAULT, livePlatformDomainProblems, meteringPlan, platformDomainsValue } from "./esRailwayLib";
 import { ACCESS_CHECKS, ACCESS_PROBE_USER, CATALOG_STAMP_FILE, WEB_CATALOG_SITE, accessProblems } from "./esRailwayLib";
@@ -357,7 +358,7 @@ async function main() {
   const env = arg("env");
   const sc = await scope();
   const service = cmd === "deploy" || cmd === "revert" ? arg("service") : cmd === "drill" ? "restore-drill" : undefined;
-  if (!["verify", "status", "deploy", "drill", "active-sha", "publish", "revert", "active-crm", "publish-crm", "rollback-recorded", "storage", "storage-fix", "test-gateways", "mail-live", "backup-check", "platform-domain", "metering", "mail-access", "lead-notices-mail", "contract-mail"].includes(cmd)) throw new Error(`orden desconocida: ${cmd}`);
+  if (!["verify", "status", "deploy", "drill", "active-sha", "publish", "revert", "active-crm", "publish-crm", "rollback-recorded", "storage", "storage-fix", "test-gateways", "mail-live", "backup-check", "platform-domain", "metering", "mail-access", "lead-notices-mail", "contract-mail", "mail-production"].includes(cmd)) throw new Error(`orden desconocida: ${cmd}`);
   const problems = guard(cfg, sc, { env, service });
   if (problems.length) {
     console.error(`Detenido antes de tocar nada:\n - ${problems.join("\n - ")}`);
@@ -928,6 +929,45 @@ async function main() {
         process.exit(1);
       }
       console.log(`Postmark webhook ${existingHook ? "actualizado" : "creado"}: ${hookUrl} (entrega, rebote, queja y baja)`);
+    }
+    return;
+  }
+  if (cmd === "mail-production") {
+    // Correo REAL de production (plano de control y Core): estado (lectura, sin valores secretos) y activar (sale del
+    // sandbox con la lista explícita de categorías y sin ámbito de empresas; ver productionMailPlan). Nunca toca Postmark.
+    const accion = arg("accion");
+    if (!["estado", "activar"].includes(accion)) throw new Error("--accion estado|activar");
+    if (env !== "production") throw new Error("mail-production solo existe en production");
+    const t = await api<{ projectToken: { projectId: string } }>("query { projectToken { projectId } }");
+    const p = t.projectToken.projectId;
+    const q = "query($p:String!,$e:String!,$s:String!){ variables(projectId:$p, environmentId:$e, serviceId:$s, unrendered:false) }";
+    const vars: Record<string, Record<string, string>> = {};
+    for (const s of LIVE_MAIL_SERVICES) vars[s] = (await api<{ variables: Record<string, string> }>(q, { p, e: sc.environmentId, s: await serviceId(s) })).variables;
+    for (const s of LIVE_MAIL_SERVICES) {
+      const v = vars[s];
+      console.log(`${s}: MAIL_MODE=${v.MAIL_MODE ?? "off"} · MAIL_LIVE_AUTHORIZED=${v.MAIL_LIVE_AUTHORIZED ?? "—"} · MAIL_SCOPE_TENANTS=${v.MAIL_SCOPE_TENANTS ?? "—"} · MAIL_SCOPE_CATEGORIES=${v.MAIL_SCOPE_CATEGORIES ?? "—"} · dominio=${v.MAIL_SENDING_DOMAIN ?? "—"} · Postmark=${(v.POSTMARK_SERVER_TOKEN ?? "").trim() ? "sí" : "no"}`);
+    }
+    const plan = productionMailPlan(env, vars);
+    for (const c of plan.changes) console.log(`${accion === "estado" ? "haría" : "cambia"} ${c.service}.${c.name}${c.remove ? " (se borra)" : ` → ${c.value}`}`);
+    if (plan.problems.length) {
+      if (accion === "estado") return void console.log(`Falta para activar:\n - ${plan.problems.join("\n - ")}`);
+      throw new Error(`No se cambia nada:\n - ${plan.problems.join("\n - ")}`);
+    }
+    if (accion === "estado") return void console.log(plan.changes.length ? "Requisitos para activar el correo real: cumplidos" : "El correo real ya está activo");
+    if (!plan.changes.length) return void console.log("Sin cambios: el correo real ya estaba activo");
+    for (const c of plan.changes) {
+      const i = { projectId: p, environmentId: sc.environmentId, serviceId: await serviceId(c.service), name: c.name };
+      if (c.remove) await api("mutation($i:VariableDeleteInput!){ variableDelete(input:$i) }", { i });
+      else await api("mutation($i:VariableUpsertInput!){ variableUpsert(input:$i) }", { i: { ...i, value: c.value!, skipDeploys: true } });
+    }
+    for (const s of Array.from(new Set(plan.changes.map((c) => c.service)))) {
+      const id = await serviceId(s);
+      const before = await latest(id, sc.environmentId);
+      if (!before) throw new Error(`${s} no tiene despliegue que redesplegar`);
+      await api("mutation($id:String!){ deploymentRedeploy(id:$id, usePreviousImageTag:true){ id } }", { id: before.id });
+      const d = await waitFor(id, sc.environmentId, before.id);
+      console.log(`${s}: redesplegado con su misma imagen → ${d.status}`);
+      if (d.status !== "SUCCESS") process.exit(1);
     }
     return;
   }
