@@ -13,6 +13,7 @@ import { legacyDb, legacyPool } from "../_core/legacyDb";
 import { integrationEnv } from "../_core/tenantConfig";
 import { MIN_WEBHOOK_SECRET_LENGTH, usableWebhookSecret } from "../_core/webhookSecret";
 import { placeholderEmail } from "../../shared/placeholderEmail";
+import { meteredFetch, meterVoiceCall } from "../_core/externalMetering";
 
 const _pool = legacyPool();
 const db = legacyDb();
@@ -266,9 +267,9 @@ export const vapiCallsRouter = router({
         throw new Error("API Key de Vapi no configurada. Guárdala en la sección de Configuración del módulo.");
       }
 
-      const res = await fetch(`${VAPI_BASE_URL}/call?limit=${input.limit}`, {
+      const res = await meteredFetch("vapi", `${VAPI_BASE_URL}/call?limit=${input.limit}`, {
         headers: { Authorization: `Bearer ${apiKey}` },
-      });
+      }, { endpoint: "call.list" });
 
       if (!res.ok) {
         const errText = await res.text();
@@ -330,6 +331,8 @@ export const vapiCallsRouter = router({
               rawPayload: c,
             });
             inserted++;
+            // Llamada que el webhook no había registrado: se mide aquí, una sola vez (minutos y coste de Vapi)
+            if (endedAt) meterVoiceCall(durationSeconds, c.cost, "sync");
           } else {
             await db.update(vapiCalls)
               .set({
