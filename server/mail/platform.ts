@@ -27,6 +27,8 @@ import type { WithdrawalNotifier } from "../withdrawals/service";
 import type { IncidentNotifier } from "../_core/ops/incidents";
 import type { TicketNotifier } from "../_core/support/tickets";
 import type { ExternalMail } from "../external/service";
+import type { AlertFacts } from "../adminAlerts/catalog";
+import { incidentAlert } from "../adminAlerts/sources";
 import { mailPolicyFromEnv, type MailPolicy } from "./policy";
 import { mailProviderFromEnv } from "./providers";
 import { MailService, type SendResult } from "./service";
@@ -59,8 +61,26 @@ export class PlatformMailer {
     return this.o.opsRecipients ?? [];
   }
 
+  /**
+   * Alertas administrativas (familia D, server/adminAlerts). Con ellas montadas, los avisos internos de este remitente
+   * salen por ahí (diseño, destinatarios del CRM, idempotencia y agrupación) y `opsNotice` deja de enviar: nunca el
+   * mismo hecho dos veces. Sin ellas (migración 0030 sin aplicar), todo sigue como antes.
+   */
+  private alertSink: { raise(alertId: string, f: AlertFacts): Promise<unknown>; active(): boolean } | null = null;
+  setAdminAlerts(a: { raise(alertId: string, f: AlertFacts): Promise<unknown>; active(): boolean } | null) {
+    this.alertSink = a;
+  }
+  /** Las alertas solo sustituyen a los avisos antiguos cuando están activas (tablas de la migración 0030 listas). */
+  private get alerts() {
+    return this.alertSink?.active() ? this.alertSink : null;
+  }
+  private async alert(alertId: string, f: AlertFacts) {
+    await this.alerts?.raise(alertId, f).catch(() => undefined);
+  }
+
   /** Aviso interno a cada destinatario del equipo (una clave por hecho y destinatario: repetir no duplica). */
   async opsNotice(key: string, title: string, lines: string[]): Promise<void> {
+    if (this.alerts) return;
     for (const to of this.opsRecipients) await this.send(PLATFORM_TENANT, `ops:${key}:${short(to)}`, "operational", to, this.t.opsNotice({ title, lines }));
   }
 
@@ -90,6 +110,11 @@ export class PlatformMailer {
     return {
       notify: async (i, event) => {
         if (event === "resolved") return;
+        if (this.alerts) {
+          const a = incidentAlert(i, event);
+          if (a) await this.alert(a.id, a.facts);
+          return;
+        }
         const sev = i.severity === "critical" ? "CRÍTICA" : i.severity === "warning" ? "Aviso" : "Info";
         await this.opsNotice(`incident:${i.id}:${event}:${i.occurrences ?? 0}`, `Incidencia ${sev}: ${i.title}`, [`Estado: ${event === "opened" ? "abierta" : event === "reopened" ? "reabierta" : "escalada"}.`, `Incidencia #${i.id}${i.tenantId ? ` · empresa ${i.tenantId}` : ""}.`]);
       },
@@ -101,6 +126,12 @@ export class PlatformMailer {
     const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
     return async (t, kind, n) => {
       const ticketRef = `T-${t.id}`;
+      const facts = (summary: string, status: AlertFacts["status"]): AlertFacts => ({ key: `ticket:${t.id}:${kind}:${n}`, occurredAt: t.updatedAt, tenantId: t.tenantId, summary, status, reference: ticketRef, details: [{ label: "Asunto", value: t.title.slice(0, 120) }, { label: "Prioridad", value: t.priority }], link: "#/soporte" });
+      if (kind === "received") await this.alert("admin.ticket_created", facts(`Nuevo ticket ${ticketRef} (prioridad ${t.priority}).`, { label: "Abierto", tone: "info" }));
+      if (kind === "urgent" || (kind === "received" && t.priority === "urgent")) await this.alert("admin.ticket_urgent", { ...facts(`El ticket ${ticketRef} tiene prioridad urgente.`, { label: "Urgente", tone: "error" }), key: `ticket:${t.id}:urgent:${n}` });
+      if (kind === "reopened") await this.alert("admin.ticket_reopened", facts(`El ticket ${ticketRef} se ha reabierto.`, { label: "Reabierto", tone: "warning" }));
+      // La urgencia es solo un aviso interno: el cliente no recibe nada
+      if (kind === "urgent") return;
       if (kind === "received") await this.opsNotice(`ticket:${t.id}:created`, `Nuevo ticket ${ticketRef} (${t.priority})`, [`Empresa: ${t.tenantId}.`, `Asunto: ${t.title.slice(0, 120)}.`]);
       if (!t.requester || !EMAIL.test(t.requester)) return;
       await this.send(t.tenantId, `ticket:${t.id}:${kind}:${n}`, "operational", t.requester, this.t.supportTicket({ kind, ticketRef, subject: t.title }));
@@ -113,6 +144,7 @@ export class PlatformMailer {
     return {
       receipt: async (to, r) => {
         // Aviso interno: hay una solicitud que resolver (sin datos del consumidor más allá de la referencia)
+        await this.alert("admin.withdrawal_requested", { key: `withdrawal:${r.reference}`, occurredAt: r.requestedAt, tenantId: r.tenantId ?? null, summary: `Solicitud de desistimiento ${r.assessment.withinTerm ? "dentro" : "fuera"} de plazo, pendiente de resolver.`, status: { label: "Pendiente de resolución", tone: "warning" }, reference: r.reference, link: "#/soporte/desistimientos" });
         await this.opsNotice(`withdrawal:${r.reference}`, `Desistimiento recibido ${r.reference}`, [`Empresa: ${r.tenantId ?? "—"}. ${r.assessment.withinTerm ? "Dentro de plazo." : "Fuera de plazo."}`, "Pendiente de resolución en Operaciones → Desistimientos."]);
         return queued(await this.send(r.tenantId, `withdrawal:${r.reference}:receipt`, "withdrawal_receipt", to, this.t.withdrawalReceipt({ reference: r.reference, requestedAt: r.requestedAt, withinTerm: r.assessment.withinTerm, deadlineAt: r.assessment.deadlineAt })));
       },
@@ -145,6 +177,9 @@ export class PlatformMailer {
       expiryNotice: async (to, i) => {
         // La fecha de fin forma parte de la clave: tras una ampliación se vuelve a avisar del nuevo fin
         await this.send(PLATFORM_TENANT, `trial:${i.trialId}:expiry:${i.endsAt}:${i.daysLeft}`, "trial_expiry", to, this.t.trialExpiry({ endsAt: i.endsAt, daysLeft: i.daysLeft, pricingUrl: this.o.pricingUrl }));
+        // Oportunidad de conversión: una vez por fin de prueba, con el primer aviso de 3 días o menos
+        if (i.daysLeft > 0 && i.daysLeft <= 3)
+          await this.alert("admin.trial_ending", { key: `trial:${i.trialId}:ending:${i.endsAt}`, occurredAt: Date.now(), summary: `La prueba termina en ${i.daysLeft} día${i.daysLeft === 1 ? "" : "s"} y todavía no se ha contratado ningún plan.`, status: { label: `Termina en ${i.daysLeft} día${i.daysLeft === 1 ? "" : "s"}`, tone: "warning" }, details: [{ label: "Fin de la prueba", value: new Date(i.endsAt).toLocaleDateString("es-ES", { timeZone: "Europe/Madrid", day: "numeric", month: "long", year: "numeric" }) }], link: "#/operacion/pruebas" });
       },
       // Una transición, un aviso: la versión de la prueba tras el cambio forma parte de la clave
       statusNotice: async (to, i) => {
@@ -216,6 +251,19 @@ export class PlatformMailer {
         const company = await d.crmStore.get("companies", order.companyId);
         mails.push({ ...stateKey("contract_confirmed"), content: this.t.contractConfirmed({ companyName: company?.name ?? "tu empresa", reference: order.reference, host: await hostOf(order.tenantId) }) });
         // Aviso interno de nuevo cliente (alta o conversión de prueba; un cambio de plan no es un cliente nuevo)
+        if (order.kind !== "change")
+          await this.alert("admin.subscription_activated", {
+            key: `order:${order.id}:activated`,
+            occurredAt: Date.now(),
+            tenantId: order.tenantId,
+            companyId: order.companyId,
+            company: company?.name ?? null,
+            summary: `Nuevo cliente activo (${order.kind === "trial_conversion" ? "conversión de prueba" : "alta"}): plan ${order.request?.plan ?? "—"} ${order.request?.interval === "year" ? "anual" : "mensual"}.`,
+            status: { label: "Activa", tone: "success" },
+            reference: order.reference,
+            details: [{ label: "Modo de cobro", value: mode === "live" ? "Real (live)" : "Pruebas" }],
+            link: `#/comercial/contrataciones/${order.id}`,
+          });
         if (order.kind !== "change")
           await this.opsNotice(`customer:${order.id}`, `Nuevo cliente activo${order.reference ? ` · ${order.reference}` : ""}`, [`Empresa: ${company?.name ?? `#${order.companyId}`}${order.tenantId ? ` (${order.tenantId})` : ""}.`, `Plan: ${order.request?.plan ?? "—"} · ${order.request?.interval === "year" ? "anual" : "mensual"} · ${mode === "live" ? "LIVE" : "pruebas"}.`]);
       } else if (action === "payment_failed") {

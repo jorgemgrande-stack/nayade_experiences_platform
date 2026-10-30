@@ -224,8 +224,9 @@ export class MysqlTicketStore implements TicketStore {
 /**
  * Avisos de un ticket (opcional): recibido, respuesta pública del equipo, resuelto o reabierto. `n` distingue
  * avisos del mismo tipo (número de eventos del ticket) para la idempotencia. Un fallo del aviso nunca rompe la operación.
+ * `urgent`: el ticket pasa a prioridad urgente (solo aviso interno al equipo, nunca al cliente).
  */
-export type TicketNotifier = (t: Ticket, kind: "received" | "replied" | "resolved" | "reopened", n: number) => Promise<void>;
+export type TicketNotifier = (t: Ticket, kind: "received" | "replied" | "resolved" | "reopened" | "urgent", n: number) => Promise<void>;
 
 export class TicketService {
   constructor(
@@ -295,6 +296,7 @@ export class TicketService {
     if (priority === tk.priority) return tk;
     const upd = await this.store.update(id, { priority, updatedAt: this.now() });
     await this.event(id, actor, "priority", tk.priority, priority, null, false);
+    if (priority === "urgent") await this.tell(upd, "urgent");
     return upd;
   }
 

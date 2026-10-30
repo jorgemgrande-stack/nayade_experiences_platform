@@ -97,6 +97,10 @@ import { operatorAuthFromEnv } from "./operatorSetup";
 import { DEFAULT_CORE_INTERNAL_URL, coreAccessClient } from "./tenantAccess";
 import { outboxResetMailer, resetUnavailableReason } from "./operatorResetMail";
 import { LeadNoticeService, MysqlSettingsStore, crmUrlFromEnv, settingsTablesReady } from "../crm/leadNotices";
+import { AdminAlertService } from "../adminAlerts/service";
+import { MysqlAdminAlertStore, adminAlertTablesReady } from "../adminAlerts/store";
+import { CommercialEventWatcher, withExternalAlerts } from "../adminAlerts/sources";
+import { startAlertCycle } from "../adminAlerts/runtime";
 
 async function main() {
   const tokens = parseTokens(process.env.CP_TOKENS);
@@ -549,6 +553,60 @@ async function main() {
     if (ready) withdrawals = { store: new MysqlWithdrawalStore(crmPool, orders.mode) };
     console.log(JSON.stringify({ ctx: "Withdrawals", mounted: ready, receipts: !!platformMail.mailer && mailPolicy.mode !== "off", ...(ready ? {} : { reason: "migration_0022_missing" }) }));
   }
+
+  // Alertas administrativas (familia D, CRM 0030 y ajustes 0025): avisos internos a la administración por hechos
+  // confirmados. Sin las tablas no se monta y los avisos internos siguen como antes (CP_ALERT_EMAIL).
+  let adminAlerts: AdminAlertService | null = null;
+  if (crm && crmPool && (await settingsTablesReady(crmPool))) {
+    const alertPool = crmPool;
+    const alertStore = new MysqlAdminAlertStore(alertPool);
+    const crmStore = crm.store;
+    const alerts = new AdminAlertService({
+      store: alertStore,
+      settings: new MysqlSettingsStore(alertPool),
+      mailer: platformMail.mailer,
+      envRecipients: platformMail.mailer?.opsRecipients ?? [],
+      crmUrl: crmUrlFromEnv(process.env),
+      environment: process.env.RAILWAY_ENVIRONMENT_NAME?.trim() || null,
+      tablesReady: () => adminAlertTablesReady(alertPool),
+    });
+    await alerts.checkReady();
+    adminAlerts = alerts;
+    platformMail.mailer?.setAdminAlerts(alerts);
+    // Las incidencias llegan también sin CP_ALERT_EMAIL (los destinatarios los decide el CRM; sin alertas activas, nada)
+    if (platformMail.mailer && !platformMail.mailer.opsRecipients.length) alertNotifiers.push(platformMail.mailer.incidentNotifier());
+    const raise = (id: string, f: Parameters<AdminAlertService["raise"]>[1]) => alerts.raise(id, f);
+    const companyName = async (id: number) => ((await crmStore.get("companies", id)) as { name?: string } | null)?.name ?? null;
+    if (external) external = { ...external, store: withExternalAlerts(external.store, { raise, companyName }) };
+    const events = commercialEvents;
+    const watcher = events
+      ? new CommercialEventWatcher({
+          events,
+          store: alertStore,
+          raise,
+          latestId: async () => {
+            const [r] = (await alertPool.query("SELECT COALESCE(MAX(id), 0) AS id FROM commercial_events WHERE environment = ?", [commercialEnvironment])) as unknown as [Array<{ id: number }>];
+            return Number(r[0]?.id ?? 0);
+          },
+          context: async (e) => ({ company: e.companyId ? await companyName(e.companyId) : null, reference: e.orderId && orders ? ((await orders.store.get(e.orderId))?.reference ?? null) : null }),
+        })
+      : null;
+    const ordersStore = orders?.store;
+    const externalStore = external?.store;
+    const every = Math.max(60, Number(process.env.CP_ADMIN_ALERTS_EVERY_SECONDS ?? 120) || 120) * 1000;
+    startAlertCycle(
+      {
+        alerts,
+        watcher,
+        pastDueOrders: ordersStore ? () => ordersStore.list({ states: ["past_due"], limit: 500 }) : undefined,
+        pastDueExternals: externalStore ? () => externalStore.list({ status: "past_due" }) : undefined,
+        openTickets: async () => Promise.all((await tickets.list({ status: "open", limit: 200 })).items.map(async (t) => ({ ticket: t, events: (await tickets.get(t.id)).events }))),
+      },
+      every,
+    );
+  }
+  console.log(JSON.stringify({ ctx: "AdminAlerts", mounted: !!adminAlerts, ...(adminAlerts ? adminAlerts.status() : { reason: !crm ? "crm_not_configured" : "migration_0025_missing" }), crmLink: !!crmUrlFromEnv(process.env) }));
+
   const app = createControlPlaneApp({
     tickets,
     billing,
@@ -596,6 +654,7 @@ async function main() {
     invoicing,
     commercialEvents,
     leadNotices,
+    adminAlerts,
     notifications: notificationsFromEnv(process.env),
     mail: {
       platform: platformMail.mailer,

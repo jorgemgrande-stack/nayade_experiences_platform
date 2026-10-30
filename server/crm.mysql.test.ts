@@ -51,6 +51,29 @@ describe.skipIf(!URL_)("CRM con MySQL real", () => {
     await admin?.end();
   });
 
+  it("alertas administrativas: idempotencia por hecho, agrupación, resúmenes y cursor (migración 0030)", async () => {
+    const { MysqlAdminAlertStore, adminAlertTablesReady } = await import("./adminAlerts/store");
+    expect(await adminAlertTablesReady(pool)).toBe(true);
+    const s = new MysqlAdminAlertStore(pool);
+    const row = { alertId: "admin.renewal_paid", eventKey: "ce:pago:1", severity: "info" as const, status: "sent" as const, tenantId: "t-1", companyId: 1, company: "Empresa", summary: "Renovación cobrada.", link: null, occurredAt: 1000, createdAt: 1000 };
+    const id = await s.insert(row);
+    expect(id).toBeGreaterThan(0);
+    expect(await s.insert(row)).toBeNull();
+    await s.finish(id!, "sent", 2);
+    expect((await s.lastSent("admin.renewal_paid", null, 0))?.recipients).toBe(2);
+    expect(await s.countSince("admin.renewal_paid", "t-1", 0)).toBe(1);
+    const g = await s.insert({ ...row, eventKey: "ce:pago:2", status: "grouped", tenantId: null });
+    await s.finish(g!, "grouped", 0);
+    expect((await s.grouped(10)).map((r) => r.id)).toEqual([g]);
+    await s.markDigested([g!], 2000);
+    expect(await s.grouped(10)).toEqual([]);
+    expect((await s.list({ alertId: "admin.renewal_paid" })).map((r) => r.status)).toEqual(["digested", "sent"]);
+    expect(await s.getState("commercial_events")).toBeNull();
+    await s.setState("commercial_events", 41, 1);
+    await s.setState("commercial_events", 42, 2);
+    expect(await s.getState("commercial_events")).toBe(42);
+  });
+
   it("tareas con responsable y prioridad (migración 0024)", async () => {
     const co = await crm.createCompany({ name: "Tareas MySQL" }, "t");
     const t = await crm.addTask("company", co.id, "Llamar", Date.now() + 1000, "t", { assignee: "Laura", priority: "high" });

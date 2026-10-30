@@ -128,6 +128,11 @@ export interface PurchaseDeps {
   subscriptionItems?: Pick<SubscriptionStore, "items">;
   /** Procesa ya la suscripción releída (el procesador de eventos): el webhook lo repetiría igual. */
   settle?: (subscriptionId: string, invoice?: GwInvoice) => Promise<unknown>;
+  /**
+   * Compra enviada a Stripe con el cobro pendiente (autenticación o pago fallido): aviso al cliente con el enlace de
+   * pago de Stripe (plantilla module.purchase_requested). Solo al enviarla; un fallo del aviso no afecta a la compra.
+   */
+  onPaymentPending?: (i: { orderId: number; paymentUrl: string | null; amountDueCents: number | null }) => Promise<void>;
   now?: () => number;
 }
 
@@ -364,6 +369,7 @@ export class ModulePurchaseService {
     );
     if (pending) {
       opsLog("info", "Purchases", "payment_pending", { orderId, changeId: change.id });
+      if (this.d.onPaymentPending) await this.d.onPaymentPending({ orderId, paymentUrl: inv?.hostedInvoiceUrl ?? null, amountDueCents: change.amountDueCents ?? null }).catch(() => undefined);
       return { ...this.result(change, orderId, "payment_pending", true), paymentUrl: inv?.hostedInvoiceUrl ?? null };
     }
     if (sameItems(r.subscription.items ?? [], change.expectedItems) && inv?.status === "paid" && this.d.settle) {

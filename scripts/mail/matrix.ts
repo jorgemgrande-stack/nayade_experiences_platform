@@ -6,6 +6,7 @@
  */
 import { TEMPLATE_CATALOG, type TemplateSpec } from "../../server/notifications/catalog";
 import { previewTemplate } from "../../server/notifications/preview";
+import { ADMIN_ALERTS } from "../../server/adminAlerts/catalog";
 
 const RECIPIENT: Record<string, string> = {
   billing_contact: "Contacto de facturación",
@@ -52,3 +53,13 @@ console.log("**Generada desde el código** (`pnpm exec tsx scripts/mail/matrix.t
 console.log(`| ${head.join(" | ")} |`);
 console.log(`|${head.map(() => "---").join("|")}|`);
 for (const r of rows) console.log(`| ${r.join(" | ")} |`);
+
+// ── D. Administración Big Elephant: alertas internas (server/adminAlerts/catalog.ts) ──
+const SEV: Record<string, string> = { info: "Informativo", important: "Importante", critical: "Crítico (no desactivable)" };
+const adminHead = ["N.º", "Id", "Alerta", "Hecho que la activa", "Fuente", "Prioridad", "Intervención", "Frecuencia por defecto", "Estado"];
+console.log("\n## D. Administración Big Elephant (alertas internas)\n");
+console.log("Destinatario por defecto: administracion@bigelephant.es, más los configurados en CRM → Comunicaciones → Alertas administrativas y CP_ALERT_EMAIL. Idempotencia: `admin:<alerta>:<hecho>:<destinatario>` y registro único por hecho (`admin_alert_log`, CRM 0030).\n");
+console.log(`| ${adminHead.join(" | ")} |`);
+console.log(`|${adminHead.map(() => "---").join("|")}|`);
+for (const a of ADMIN_ALERTS)
+  console.log(`| ${[String(a.n), `\`${a.id}\``, a.name, a.trigger, a.source, SEV[a.severity], a.intervention ? "Sí" : "No", a.frequencyMinutes ? `Agrupar ${a.frequencyMinutes} min` : "Cada hecho", a.state === "conectada" ? "✅ Conectada" : `⏸️ Pendiente: ${a.pending}`].join(" | ")} |`);

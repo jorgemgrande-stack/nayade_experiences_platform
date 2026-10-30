@@ -14,7 +14,8 @@ describe("catálogo maestro de comunicaciones", () => {
     expect(new Set(all.map((e) => e.id)).size).toBe(all.length);
     for (const e of all) {
       expect(e.name.length, e.id).toBeGreaterThan(5);
-      expect(["experiential", "transactional", "security"]).toContain(e.family);
+      expect(["experiential", "transactional", "security", "admin"]).toContain(e.family);
+      expect(e.family === "admin", e.id).toBe(e.group === "administracion");
       expect(["controlplane", "core", "crm"]).toContain(e.service);
       expect(["conectada", "sin_disparador", "interna"]).toContain(e.state);
     }
@@ -44,7 +45,10 @@ describe("catálogo maestro de comunicaciones", () => {
   it("las comerciales llevan la baja; las de servicio, nada comercial", () => {
     for (const e of all) {
       if (e.group === "comercial") expect(e.text, e.id).toMatch(/Baja de comunicaciones comerciales/);
+      // Familia D: avisos internos, con su propio pie (nada comercial)
+      else if (e.family === "admin") expect(e.text, e.id).toMatch(/Aviso interno para la administración/);
       else expect(e.text, e.id).toMatch(/No es publicidad/);
+      expect(e.text, e.id).not.toMatch(e.group === "comercial" ? /^$/ : /Baja de comunicaciones comerciales/);
     }
   });
 });
@@ -91,5 +95,12 @@ describe("componentes", () => {
     expect(assetBase({ RAILWAY_ENVIRONMENT_NAME: "production" })).toBe("https://www.bigelephant.es/brand/mail");
     expect(assetBase({ MAIL_ASSET_BASE: "https://cdn.example/m/" })).toBe("https://cdn.example/m");
     expect(assetBase({ MAIL_ASSET_BASE: "http://inseguro.example" })).toBe("https://www.bigelephant.es/brand/mail");
+  });
+});
+
+describe("estado del catálogo", () => {
+  it("cada plantilla sin disparador lleva su motivo funcional concreto", () => {
+    const pending = allTestEmails().filter((e) => e.state === "sin_disparador");
+    for (const e of pending) expect((e as { pending?: string }).pending?.length, e.id).toBeGreaterThan(40);
   });
 });

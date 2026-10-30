@@ -28,6 +28,8 @@ export interface InvoicingDeps {
   seriesCode: string;
   /** Expedición real habilitada (`CP_INVOICING_ISSUE_ENABLED=1`); apagada, solo se preparan borradores. */
   issueEnabled: boolean;
+  /** Tras expedir una factura o rectificativa (avisos). Un fallo del aviso nunca deshace la expedición. */
+  onIssued?: (invoice: Invoice) => Promise<void>;
   now?: () => number;
 }
 
@@ -164,6 +166,7 @@ export class InvoicingService {
     const issued = await this.d.store.issue({ id, seriesCode, issueDate: ymd(now), issuer: this.d.issuer, customer, issuedBy: actor, issuedAt: now });
     // Rectificación total: la original queda «rectificada» (una parcial la deja vigente por la diferencia)
     if (original && issued.totalCents === -original.totalCents) await this.d.store.setStatus(original.id, "rectified", now);
+    if (this.d.onIssued) await this.d.onIssued(issued).catch(() => undefined);
     return issued;
   }
 
