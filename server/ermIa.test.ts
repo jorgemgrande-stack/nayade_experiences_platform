@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 const provider = vi.hoisted(() => ({ source: "central" as "central" | "tenant" }));
 vi.mock("./ai/provider", () => ({ AiUnavailableError: class extends Error {}, resolveAiProvider: () => ({ source: provider.source, chatUrl: "https://ia.test/v1/chat/completions", apiKey: "k", model: "m" }) }));
-vi.mock("./_core/erm/runtime", () => ({ enforceQuota: async () => undefined }));
+vi.mock("./_core/erm/runtime", () => ({ enforceQuota: async () => undefined, reserveQuota: async () => ({ settle: async () => undefined }) }));
 
 import { invokeLLM } from "./_core/llm";
 import { Metrics, setMeterSink } from "./_core/metering";

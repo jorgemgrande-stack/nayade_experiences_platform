@@ -193,29 +193,48 @@ export class QuotaEngine {
 
   /** Lanza `QuotaExceededError` si un límite duro se superaría. */
   async assert(metric: string, quantity = 1, tenantId: string = getTenantId()): Promise<QuotaDecision> {
+    return (await this.reserve(metric, quantity, tenantId)).decision;
+  }
+
+  /**
+   * Como `assert`, devolviendo además los periodos en los que quedó reservada la cantidad en el contador compartido
+   * (para liquidarla con `settle` cuando el consumo real se conoce después, como los tokens de IA).
+   */
+  async reserve(metric: string, quantity = 1, tenantId: string = getTenantId()): Promise<{ decision: QuotaDecision; periods: Array<"day" | "month"> }> {
     const d = await this.check(metric, quantity, tenantId);
     if (!d.allowed) throw new QuotaExceededError(metric, d);
     // Límites duros día/mes: reserva atómica en el contador compartido (dos réplicas no conceden la misma última unidad)
     const c = this.opts.counters;
-    if (!c || quantity <= 0 || !c.tracks(metric)) return d;
+    if (!c || quantity <= 0 || !c.tracks(metric)) return { decision: d, periods: [] };
     const hard = (await this.quotasFor(tenantId)).filter(
       (q) => q.metric === metric && q.enforcement === "hard" && (q.period === "day" || q.period === "month"),
     );
-    const reserved: Quota[] = [];
+    const reserved: Array<"day" | "month"> = [];
     try {
       for (const q of hard) {
         const r = await c.reserve(tenantId, metric, q.period as "day" | "month", quantity, q.limit);
         if (!r.ok) {
-          for (const x of reserved) await c.release(tenantId, metric, x.period as "day" | "month", quantity);
+          for (const p of reserved) await c.release(tenantId, metric, p, quantity);
           throw new QuotaExceededError(metric, { allowed: false, reason: "exceeded", metric, limit: q.limit, used: r.used, period: q.period });
         }
-        reserved.push(q);
+        reserved.push(q.period as "day" | "month");
       }
     } catch (e) {
       if (e instanceof QuotaExceededError) throw e;
       // almacén compartido caído: vale la comprobación de `check()` (no se tumba el servicio)
     }
-    return d;
+    return { decision: d, periods: reserved };
+  }
+
+  /**
+   * Liquida una reserva de `reserved` cuando el consumo real fue `actual` (ya medido con `meter`): devuelve al contador
+   * compartido lo reservado y no usado. Lo consumido por encima de la reserva ya entra por la medición.
+   */
+  async settle(metric: string, periods: ReadonlyArray<"day" | "month">, reserved: number, actual: number, tenantId: string = getTenantId()): Promise<void> {
+    const c = this.opts.counters;
+    const unused = Math.ceil(reserved) - Math.ceil(Math.max(0, actual));
+    if (!c || unused <= 0) return;
+    for (const p of periods) await c.release(tenantId, metric, p, unused);
   }
 
   private maybeAlert(tenantId: string, q: Quota, _used: number, after: number): void {
