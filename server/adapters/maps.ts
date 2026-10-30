@@ -7,6 +7,8 @@
  * Si no está configurada, las llamadas devuelven un error descriptivo.
  */
 
+import { estimateMapsCost, mapsEndpoint, meteredFetch } from "../_core/externalMetering";
+
 const MAPS_BASE = "https://maps.googleapis.com/maps/api";
 
 function getApiKey(): string {
@@ -30,9 +32,10 @@ export async function mapsRequest<T>(
     url.searchParams.set(k, v);
   }
 
-  const res = await fetch(url.toString());
+  const res = await meteredFetch("maps", url.toString(), undefined, { endpoint: mapsEndpoint(endpoint) });
   if (!res.ok) {
     throw new Error(`[Maps] Error ${res.status} en ${endpoint}`);
   }
+  estimateMapsCost(endpoint, params);
   return res.json() as Promise<T>;
 }

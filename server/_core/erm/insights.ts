@@ -5,6 +5,7 @@
  *  - exportación diaria por empresa y métrica (día civil de Madrid);
  *  - política de exceso de cuota: qué pasa al aviso y al límite. La suspensión NUNCA es automática.
  */
+import { variableCost, type CostModel } from "./costs";
 import { madridDay } from "./tenantMetrics";
 import type { UsageStore } from "./types";
 
@@ -38,14 +39,14 @@ export const WATCHED: Record<string, number> = {
  *  - pico: valor ≥ máximo(media + 3·desviación, 3·media) y por encima del umbral mínimo de la métrica;
  *  - caída: 0 cuando la media de referencia supera el umbral (posible fallo de medición o de servicio).
  */
-export function detectAnomalies(tenantId: string, daily: Map<string, Record<string, number>>, lastFullDay: string): Anomaly[] {
+export function detectAnomalies(tenantId: string, daily: Map<string, Record<string, number>>, lastFullDay: string, watched: Record<string, number> = WATCHED): Anomaly[] {
   const back = (n: number) => {
     const t = new Date(`${lastFullDay}T12:00:00Z`);
     t.setUTCDate(t.getUTCDate() - n);
     return t.toISOString().slice(0, 10);
   };
   const out: Anomaly[] = [];
-  for (const [metric, min] of Object.entries(WATCHED)) {
+  for (const [metric, min] of Object.entries(watched)) {
     const ref = Array.from({ length: 14 }, (_, i) => daily.get(back(i + 1))?.[metric] ?? 0);
     const mean = ref.reduce((a, x) => a + x, 0) / ref.length;
     const sd = Math.sqrt(ref.reduce((a, x) => a + (x - mean) ** 2, 0) / ref.length);
@@ -54,6 +55,36 @@ export function detectAnomalies(tenantId: string, daily: Map<string, Record<stri
     else if (v === 0 && mean >= min) out.push({ tenantId, metric, date: lastFullDay, value: 0, baseline: round(mean), kind: "drop", factor: 0 });
   }
   return out;
+}
+
+/**
+ * Umbral mínimo de las métricas de integraciones externas (`ext.<proveedor>.*`) según su medida: llamadas, errores,
+ * minutos de voz (en segundos) y coste en micro-USD (2 USD al día). La latencia acumulada no se vigila.
+ */
+export const EXTERNAL_WATCHED_MIN: Record<string, number> = { calls: 200, errors: 50, seconds: 1800, "cost.measured_microusd": 2_000_000, "cost.estimated_microusd": 2_000_000 };
+
+/** Métricas externas presentes en el consumo diario, con su umbral mínimo (las que no se vigilan, fuera). */
+export function externalWatched(daily: Map<string, Record<string, number>>): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const row of Array.from(daily.values())) {
+    for (const metric of Object.keys(row)) {
+      const m = /^ext\.[a-z0-9_]+\.(.+)$/.exec(metric);
+      if (m && EXTERNAL_WATCHED_MIN[m[1]] !== undefined) out[metric] = EXTERNAL_WATCHED_MIN[m[1]];
+    }
+  }
+  return out;
+}
+
+/** Métrica derivada con el coste variable atribuible de cada día (céntimos de euro). */
+export const COST_METRIC = "cost.variable_cents";
+
+/**
+ * Subida brusca del coste atribuible: el coste variable de cada día (consumo × tarifas del modelo vigente) frente a los
+ * 14 días anteriores, con la misma regla que las anomalías de consumo. `minCents`: por debajo, no se avisa (ruido).
+ */
+export function detectCostSpike(tenantId: string, daily: Map<string, Record<string, number>>, lastFullDay: string, model: CostModel, minCents = 100): Anomaly | null {
+  const costs = new Map(Array.from(daily.entries()).map(([day, totals]) => [day, { [COST_METRIC]: variableCost(model, totals).cents }]));
+  return detectAnomalies(tenantId, costs, lastFullDay, { [COST_METRIC]: minCents }).find((a) => a.kind === "spike") ?? null;
 }
 
 const round = (x: number) => Math.round(x * 100) / 100;

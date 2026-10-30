@@ -242,6 +242,10 @@ describe("operaciones", () => {
     expect(v.json).toMatchObject({ verified: true });
     const a = await call("POST", "/cp/v1/domains/acme.example.com/activate", { token: FULL });
     expect(a.json.domain.status).toBe("active");
+    // Sin token de Railway: el alta en el proveedor queda indicada como pendiente (manual), sin deshacer la activación
+    expect(a.json.provider).toMatchObject({ provider: "manual", registered: false });
+    const p = await call("GET", "/cp/v1/domains/acme.example.com/provider", { token: FULL });
+    expect(p.json.provider).toMatchObject({ provider: "manual" });
   });
 
   it("licencias y cuotas", async () => {

@@ -34,6 +34,7 @@ import { RegistryError } from "../_core/tenantRegistry/contract";
 import type { TenantRegistryService } from "../_core/tenantRegistry/service";
 import type { TenantRegistryReader } from "../_core/tenantRegistry/store";
 import { verifyDomainOwnership, type VerificationResult } from "../_core/tenantRegistry/domainVerification";
+import { manualDomainProvider, type DomainProvider } from "./domainProvider";
 import type { ProvisioningService } from "../_core/provisioning/service";
 import { ProvisioningError } from "../_core/provisioning/types";
 import type { SubscriptionService } from "../_core/billing/service";
@@ -144,6 +145,7 @@ import type { OrderStore } from "../orchestrator/store";
 import type { TestPaymentPort } from "../orchestrator/payments";
 import { createOrdersRouter, paymentsWebhookHandler } from "../orchestrator/api";
 import { subscriptionBilling } from "../orchestrator/subscriptionBilling";
+import { customDomainDecision, exemptTenantsFromEnv, resolveCommercialState } from "../commercialState";
 import { buildRelationshipExport, RelationshipNotFoundError } from "./relationshipExport";
 import { CalendarUnavailableError } from "./madridCalendar";
 import { createContractActivation } from "../crm/activation";
@@ -201,6 +203,8 @@ export interface ControlPlaneDeps {
   /** Destino CNAME de la plataforma para verificar dominios propios. */
   platformTarget: string;
   verifyDomain?: typeof verifyDomainOwnership;
+  /** Alta de dominios propios en el proveedor (Railway con CP_RAILWAY_DOMAIN_TOKEN; si no, manual). */
+  domainProvider?: DomainProvider;
   /** Límite de peticiones por minuto y token (por defecto 120). */
   perMinute?: number;
   /** Tope de peticiones por minuto y IP para todo el plano de control (por defecto 600). */
@@ -687,6 +691,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
 
   // Avisos al cliente sin evento comercial propio (dominio, compra pendiente, rectificativa): server/notifications/customerTriggers.ts
   const customerNotices: CustomerNoticeDeps | null = d.mail?.platform && d.crm ? { send: (t, k, c, to, content) => d.mail!.platform!.send(t, k, c, to, content), crmStore: d.crm.store, supportEmail: d.mail.platform.policy.supportEmail ?? null } : null;
+  const domainProvider = d.domainProvider ?? manualDomainProvider;
 
   // ── Dominios ───────────────────────────────────────────────────────────────
   router.post(
@@ -697,6 +702,17 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
       const body = z
         .object({ domain: z.string().min(3).max(253), kind: z.enum(["custom", "platform_subdomain"]), primary: z.boolean().optional() })
         .parse(req.body);
+      // Dominio propio solo tras el primer pago confirmado (flujo actual, con o sin el motor antiguo). El subdominio
+      // de plataforma se permite siempre. Estado comercial: server/commercialState.ts
+      if (body.kind === "custom") {
+        const tenant = await d.reader.getTenant(id);
+        if (tenant) {
+          const grants = d.capabilities ? await d.capabilities.list(id).catch(() => "unavailable" as const) : null;
+          const state = resolveCommercialState({ multi: true, tenantId: id, status: tenant.status, grants, now: Date.now(), exempt: exemptTenantsFromEnv() });
+          const decision = customDomainDecision(state);
+          if (!decision.allowed) return void res.status(403).json({ error: decision.code, message: decision.message });
+        }
+      }
       // Límite por plan (si hay motor de suscripciones)
       if (body.kind === "custom" && d.billing) {
         const count = (await d.reader.listDomains(id)).filter((x) => x.kind === "custom" && x.status !== "removed").length;
@@ -738,7 +754,20 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
     wrap(async (req, res) => {
       const dom = await d.registry.activateDomain(req.params.domain.toLowerCase(), actor(req));
       if (customerNotices && dom.kind === "custom") void domainConnectedNotice(customerNotices, { tenantId: dom.tenantId, domain: dom.domain });
-      res.json({ domain: dom });
+      // Dominio propio: alta en el proveedor (certificado TLS). Un fallo del proveedor no deshace la activación: se informa
+      const provider = dom.kind === "custom" ? await domainProvider.ensure(dom.domain).catch((e: Error) => ({ provider: domainProvider.name, registered: false, certificate: "unknown" as const, detail: e.message })) : null;
+      res.json({ domain: dom, provider });
+    }),
+  );
+
+  router.get(
+    "/domains/:domain/provider",
+    requireScope("tenants:read"),
+    wrap(async (req, res) => {
+      const r = await d.reader.resolveDomain(req.params.domain.toLowerCase());
+      if (!r) throw new RegistryError("not_found", "Dominio no encontrado");
+      if (r.domain.kind !== "custom") return void res.json({ provider: null });
+      res.json({ provider: await domainProvider.status(r.domain.domain).catch((e: Error) => ({ provider: domainProvider.name, registered: false, certificate: "unknown", detail: e.message })) });
     }),
   );
 

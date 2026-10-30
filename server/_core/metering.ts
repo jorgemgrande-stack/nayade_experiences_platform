@@ -57,7 +57,28 @@ export const Metrics = {
   /** IA de la plataforma fuera del modelo de texto: imágenes generadas y segundos de audio transcritos. */
   AI_IMAGES: "ai.image.generated",
   AI_AUDIO_SECONDS: "ai.audio.seconds",
+  /** Minutos de voz de Vapi (en segundos), medidos con la duración que devuelve el proveedor. */
+  EXT_VAPI_SECONDS: "ext.vapi.seconds",
 } as const;
+
+/** Integraciones externas de pago con medición (`ext.<proveedor>.*`). */
+export type ExternalProvider = "ghl" | "vapi" | "maps";
+
+/**
+ * Métricas de una integración externa: llamadas salientes, errores (red o HTTP ≥ 400), latencia y coste en
+ * micro-USD. El coste se guarda en dos métricas según su origen, porque los cubos horarios no conservan `meta`:
+ *  - `cost.measured_microusd`: cantidad real devuelta por el proveedor (p. ej. `cost` de Vapi);
+ *  - `cost.estimated_microusd`: unidades × tarifa pública de referencia (`EXTERNAL_REFERENCE_PRICES` en costs.ts).
+ */
+export function extMetrics(provider: ExternalProvider) {
+  return {
+    calls: `ext.${provider}.calls`,
+    errors: `ext.${provider}.errors`,
+    ms: `ext.${provider}.ms`,
+    costMeasured: `ext.${provider}.cost.measured_microusd`,
+    costEstimated: `ext.${provider}.cost.estimated_microusd`,
+  } as const;
+}
 
 const noopSink: MeterSink = { record() {} };
 let sink: MeterSink = noopSink;

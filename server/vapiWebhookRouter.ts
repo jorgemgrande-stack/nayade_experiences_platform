@@ -26,6 +26,7 @@ import { checkWebhookSecret, webhookSecretMatches } from "./_core/webhookSecret"
 import { placeholderEmail } from "../shared/placeholderEmail";
 import { recordSync } from "./_core/credentials/health";
 import { publicBaseUrl } from "./_core/productIdentity";
+import { meterVoiceCall } from "./_core/externalMetering";
 
 const _pool = legacyPool();
 const _db = legacyDb();
@@ -156,6 +157,9 @@ vapiWebhookRouter.post("/api/vapi/webhook", express.json({ limit: "1mb" }), asyn
   if (isMultiTenant()) void recordSync("vapi", true, "Webhook de llamadas recibido (secreto correcto)").catch(() => undefined);
 
   const payload = req.body ?? {};
+  // Consumo de Vapi (minutos y coste) con el informe final de la llamada, que llega una vez por llamada
+  const report = payload.message ?? payload;
+  if (report?.type === "end-of-call-report") meterVoiceCall(report.durationSeconds ?? report.call?.duration, report.cost ?? report.call?.cost, "webhook");
 
   // 2. Extraer datos del contacto (VAPI puede enviarlos en distintas estructuras)
   const c = payload.contact ?? payload.customer ?? payload;

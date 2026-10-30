@@ -26,7 +26,8 @@ import { crmContactOf, runUsageNotices } from "../commerce/usageNotices";
 import { choosePublicDomain } from "../_core/tenantIdentity";
 import { MysqlUsageStore } from "../_core/erm/usage";
 import { costModelFromEnv } from "../_core/erm/costs";
-import { MysqlCostModelStore } from "../_core/erm/costModelStore";
+import { MysqlCostModelStore, activeCostModel } from "../_core/erm/costModelStore";
+import { tenantResources } from "../_core/erm/overview";
 import { keyringFromEnv } from "../_core/tenantRegistry/crypto";
 import { MysqlTenantRegistryStore } from "../_core/tenantRegistry/mysqlStore";
 import { TenantRegistryService } from "../_core/tenantRegistry/service";
@@ -96,11 +97,12 @@ import { SsoService, parseSsoUsers } from "./sso";
 import { createRemoteJWKSet } from "jose";
 import { operatorAuthFromEnv } from "./operatorSetup";
 import { DEFAULT_CORE_INTERNAL_URL, coreAccessClient } from "./tenantAccess";
+import { domainProviderFromEnv } from "./domainProvider";
 import { outboxMfaNotice, outboxOperatorSecurityMail, outboxResetMailer, resetUnavailableReason } from "./operatorResetMail";
 import { LeadNoticeService, MysqlSettingsStore, crmUrlFromEnv, settingsTablesReady } from "../crm/leadNotices";
 import { AdminAlertService } from "../adminAlerts/service";
 import { MysqlAdminAlertStore, adminAlertTablesReady } from "../adminAlerts/store";
-import { CommercialEventWatcher, withExternalAlerts } from "../adminAlerts/sources";
+import { CommercialEventWatcher, ConsumptionWatcher, usageThresholdsFromEnv, withExternalAlerts } from "../adminAlerts/sources";
 import { startAlertCycle } from "../adminAlerts/runtime";
 import { DeployWatcher, RestoreDrillWatcher, SERVED_STATUSES, UptimeMonitor, githubGet, isTestTenant } from "../adminAlerts/operations";
 import { DataRequestService, operatorAssignees } from "../dataRequests/service";
@@ -634,7 +636,21 @@ async function main() {
         })
       : null;
     const deploys = watch(process.env.CP_DEPLOY_WATCH) ? new DeployWatcher({ get: githubGet(), repo: "jorgemgrande-stack/nayade_experiences_platform", branch: "integration/elephant-source", store: alertStore, raise }) : null;
-    console.log(JSON.stringify({ ctx: "AdminAlerts", uptimeWatch: !!uptime, deployWatch: !!deploys, restoreDrills: copiesReady }));
+    // Consumo del Resource Manager (umbrales ERM_ADMIN_ALERT_THRESHOLDS, anomalías, coste e integraciones externas)
+    const usageStore = usage;
+    const quotaDefaults = parseDefaultQuotas(process.env.ERM_DEFAULT_QUOTAS) ?? DEFAULT_QUOTAS;
+    const consumption = usageStore
+      ? new ConsumptionWatcher({
+          tenants: async () => (await store.listTenants()).filter((t) => SERVED_STATUSES.includes(t.status)).map((t) => ({ id: t.id, company: t.displayName })),
+          resources: async (id, now) => (await tenantResources({ quotas, usage: usageStore, defaults: quotaDefaults }, id, now)).rows,
+          usage: usageStore,
+          costModel: async () => activeCostModel(costModelStore ? await costModelStore.get() : null, costModelFromEnv(process.env)).model,
+          thresholds: usageThresholdsFromEnv(process.env),
+          store: alertStore,
+          raise,
+        })
+      : null;
+    console.log(JSON.stringify({ ctx: "AdminAlerts", uptimeWatch: !!uptime, deployWatch: !!deploys, restoreDrills: copiesReady, consumption: !!consumption }));
     const every = Math.max(60, Number(process.env.CP_ADMIN_ALERTS_EVERY_SECONDS ?? 120) || 120) * 1000;
     startAlertCycle(
       {
@@ -649,6 +665,7 @@ async function main() {
           ...(uptime ? [{ name: "uptime", run: async () => (await uptime.tick()).down }] : []),
           ...(deploys ? [{ name: "deploys", run: () => deploys.tick() }] : []),
         ],
+        consumption,
       },
       every,
     );
@@ -715,6 +732,7 @@ async function main() {
     costModelStore,
     quotaDefaults: parseDefaultQuotas(process.env.ERM_DEFAULT_QUOTAS) ?? undefined,
     platformTarget: process.env.CP_PLATFORM_TARGET ?? "",
+    domainProvider: domainProviderFromEnv(process.env),
     platformDomain,
     support: new SupportAdmin(pool),
     allowedOrigins: (process.env.CP_ALLOWED_ORIGINS ?? "").split(",").map((x) => x.trim()).filter(Boolean),

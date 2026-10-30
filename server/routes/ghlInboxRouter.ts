@@ -28,6 +28,7 @@ import { legacyDb, legacyPool } from "../_core/legacyDb";
 import { integrationEnv } from "../_core/tenantConfig";
 import { revealLegacySecret } from "../_core/credentials/legacyFields";
 import { checkWebhookSecret } from "../_core/webhookSecret";
+import { meteredFetch } from "../_core/externalMetering";
 import { recordSync } from "../_core/credentials/health";
 import { companyName } from "../tenantBrand";
 
@@ -256,7 +257,7 @@ async function fetchLatestConversationForContact(contactId: string): Promise<any
   const { token, locationId } = creds;
 
   try {
-    const res = await fetch(
+    const res = await meteredFetch("ghl",
       `${GHL_BASE_URL}/conversations/search?contactId=${encodeURIComponent(contactId)}&locationId=${encodeURIComponent(locationId)}&limit=1`,
       {
         headers: {
@@ -282,7 +283,7 @@ async function fetchAndSyncMessages(convId: string, limit = 25): Promise<void> {
   const { token } = creds;
 
   try {
-    const res = await fetch(
+    const res = await meteredFetch("ghl",
       `${GHL_BASE_URL}/conversations/${encodeURIComponent(convId)}/messages?limit=${limit}`,
       { headers: { Authorization: `Bearer ${token}`, Version: GHL_API_VERSION } }
     );
@@ -527,6 +528,18 @@ ghlInboxRouter.use("/api/ghl", (req, res, next) => {
   if (GHL_PUBLIC_WEBHOOK_PATHS.has(req.path)) return next();
   return requireStaff(req, res, next);
 });
+// Prueba gratuita: las llamadas salientes a GHL (responder, plantillas, nueva conversación, sincronizar) no están
+// disponibles (server/trialRestrictions.ts). Leer el inbox local sigue permitido.
+ghlInboxRouter.use("/api/ghl", (req, res, next) => {
+  if (GHL_PUBLIC_WEBHOOK_PATHS.has(req.path) || !(req.method === "POST" || req.path === "/templates")) return next();
+  import("../trialRestrictions")
+    .then(async ({ integrationAllowedNow }) => {
+      if (await integrationAllowedNow("ghl")) return next();
+      const { trialIntegrationMessage } = await import("../commercialState");
+      res.status(403).json({ ok: false, error: "trial_integration_blocked", message: trialIntegrationMessage("ghl") });
+    })
+    .catch(next);
+});
 
 // ── POST /api/ghl/inbox/webhook ───────────────────────────────────────────────
 ghlInboxRouter.post(
@@ -695,7 +708,7 @@ ghlInboxRouter.post(
     audit(req, "reply", { conversationId: ghlConvId, chars: message.length });
 
     try {
-      const ghlRes = await fetch(`${GHL_BASE_URL}/conversations/messages`, {
+      const ghlRes = await meteredFetch("ghl", `${GHL_BASE_URL}/conversations/messages`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -777,7 +790,7 @@ ghlInboxRouter.get("/api/ghl/templates", readLimiter, async (req, res) => {
   if (!creds) return res.status(200).json({ ok: false, templates: [], message: "Sin credenciales" });
   const { token, locationId } = creds;
   try {
-    const r = await fetch(
+    const r = await meteredFetch("ghl",
       `${GHL_BASE_URL}/locations/${encodeURIComponent(locationId)}/templates?originId=${encodeURIComponent(locationId)}&limit=50&deleted=false`,
       { headers: { Authorization: `Bearer ${token}`, Version: GHL_API_VERSION } }
     );
@@ -816,7 +829,7 @@ ghlInboxRouter.post("/api/ghl/conversations/new", newConversationLimiter, expres
   try {
     // 1. Buscar contacto por teléfono
     let contactId: string | null = null;
-    const searchRes = await fetch(
+    const searchRes = await meteredFetch("ghl",
       `${GHL_BASE_URL}/contacts/search/duplicate?locationId=${encodeURIComponent(locationId)}&number=${encodeURIComponent(phone)}`,
       { headers }
     );
@@ -828,7 +841,7 @@ ghlInboxRouter.post("/api/ghl/conversations/new", newConversationLimiter, expres
     // 2. Crear contacto si no existe
     if (!contactId) {
       const [firstName, ...rest] = (contactName ?? "").trim().split(" ");
-      const createRes = await fetch(`${GHL_BASE_URL}/contacts/`, {
+      const createRes = await meteredFetch("ghl", `${GHL_BASE_URL}/contacts/`, {
         method: "POST",
         headers,
         body: JSON.stringify({ locationId, phone, firstName: firstName || phone, lastName: rest.join(" ") || undefined }),
@@ -844,7 +857,7 @@ ghlInboxRouter.post("/api/ghl/conversations/new", newConversationLimiter, expres
     if (!contactId) return res.status(200).json({ ok: false, message: "No se pudo obtener contactId de GHL" });
 
     // 3. Crear o recuperar conversación
-    const convRes = await fetch(`${GHL_BASE_URL}/conversations/`, {
+    const convRes = await meteredFetch("ghl", `${GHL_BASE_URL}/conversations/`, {
       method: "POST",
       headers,
       body: JSON.stringify({ locationId, contactId }),
@@ -881,7 +894,7 @@ ghlInboxRouter.post("/api/ghl/conversations/new", newConversationLimiter, expres
       if (templateId) msgBody.templateId = templateId;
       else msgBody.message = message;
 
-      const msgRes = await fetch(`${GHL_BASE_URL}/conversations/messages`, {
+      const msgRes = await meteredFetch("ghl", `${GHL_BASE_URL}/conversations/messages`, {
         method: "POST",
         headers,
         body: JSON.stringify(msgBody),
@@ -944,7 +957,7 @@ ghlInboxRouter.post("/api/ghl/inbox/sync", syncLimiter, express.json({ limit: "1
 
   try {
     // Fetch conversaciones recientes de GHL — sin filtro channel (no es param válido)
-    const ghlRes = await fetch(
+    const ghlRes = await meteredFetch("ghl",
       `${GHL_BASE_URL}/conversations/search?locationId=${encodeURIComponent(locationId)}&limit=100`,
       {
         headers: {

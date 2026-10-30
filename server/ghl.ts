@@ -1,3 +1,4 @@
+import { meteredFetch } from "./_core/externalMetering";
 import { integrationEnv } from "./_core/tenantConfig";
 import { companyName } from "./tenantBrand";
 /**
@@ -47,6 +48,14 @@ function ghlLog(
   else                        console.log(line);
 }
 
+/** Prueba gratuita: la integración con GHL no está disponible (server/trialRestrictions.ts). */
+async function ghlBlockedInTrial(op: string): Promise<boolean> {
+  const { integrationAllowedNow } = await import("./trialRestrictions");
+  if (await integrationAllowedNow("ghl")) return false;
+  ghlLog("warn", op, "Integración GHL no disponible durante la prueba gratuita — omitida");
+  return true;
+}
+
 export interface GHLContactPayload {
   name: string;
   email?: string;
@@ -75,7 +84,7 @@ export async function testGHLConnection(
   locationId: string
 ): Promise<{ ok: boolean; error?: string }> {
   try {
-    const response = await fetch(
+    const response = await meteredFetch("ghl",
       `${GHL_API_URL}/locations/${locationId}`,
       {
         headers: {
@@ -105,6 +114,7 @@ export async function createGHLContact(
     ghlLog("warn", "create_contact", "Credenciales GHL no configuradas — integración omitida");
     return null;
   }
+  if (await ghlBlockedInTrial("create_contact")) return null;
 
   try {
     // GHL POST /contacts/ — solo campos estándar.
@@ -121,7 +131,7 @@ export async function createGHLContact(
     if (payload.companyName) body.companyName = payload.companyName;
     if (payload.tags && payload.tags.length > 0) body.tags = payload.tags;
 
-    const response = await fetch(`${GHL_API_URL}/contacts/`, {
+    const response = await meteredFetch("ghl", `${GHL_API_URL}/contacts/`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -197,11 +207,12 @@ export async function updateGHLContact(
     ghlLog("warn", "update_contact", "Credenciales GHL no configuradas — update omitido", { contactId });
     return false;
   }
+  if (await ghlBlockedInTrial("update_contact")) return false;
 
   try {
     // 1. Custom fields (sin tags) — puede fallar con 422 si el campo no existe en GHL
     if (fields.customFields?.length) {
-      const cfResponse = await fetch(`${GHL_API_URL}/contacts/${contactId}`, {
+      const cfResponse = await meteredFetch("ghl", `${GHL_API_URL}/contacts/${contactId}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -222,7 +233,7 @@ export async function updateGHLContact(
 
     // 2. Tags — llamada separada para que no dependa del éxito de customFields
     if (fields.tags?.length) {
-      const tagsResponse = await fetch(`${GHL_API_URL}/contacts/${contactId}`, {
+      const tagsResponse = await meteredFetch("ghl", `${GHL_API_URL}/contacts/${contactId}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -259,7 +270,7 @@ export async function updateGHLContact(
  */
 async function addGHLNote(contactId: string, body: string, apiKey: string): Promise<void> {
   try {
-    const response = await fetch(`${GHL_API_URL}/contacts/${contactId}/notes`, {
+    const response = await meteredFetch("ghl", `${GHL_API_URL}/contacts/${contactId}/notes`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -359,8 +370,9 @@ export async function triggerGHLWorkflow(
   webhookUrl: string,
   payload: Record<string, unknown>,
 ): Promise<boolean> {
+  if (await ghlBlockedInTrial("trigger_workflow")) return false;
   try {
-    const response = await fetch(webhookUrl, {
+    const response = await meteredFetch("ghl", webhookUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
