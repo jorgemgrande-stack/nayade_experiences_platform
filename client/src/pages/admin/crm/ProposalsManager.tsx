@@ -35,6 +35,7 @@ import {
   ChevronDown,
 } from "lucide-react";
 import { CatalogConceptSelector, type CatalogProduct, type SourceType } from "@/components/CatalogConceptSelector";
+import { toastError } from "@/lib/errorMessage";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -669,11 +670,11 @@ export default function ProposalsManager({ leadId, leadName }: { leadId?: number
   const deleteMutation = trpc.proposals.delete.useMutation();
   const bulkDeleteMutation = trpc.proposals.bulkDelete.useMutation({
     onSuccess: (r) => { toast.success(`${r.deleted} propuesta(s) eliminadas${r.skipped > 0 ? ` (${r.skipped} omitidas por no ser borrador)` : ""}`); setSelected(new Set()); utils.proposals.list.invalidate(); },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toastError(e),
   });
   const bulkUpdateStatusMutation = trpc.proposals.bulkUpdateStatus.useMutation({
     onSuccess: (r) => { toast.success(`Estado actualizado en ${r.updated} propuesta(s)`); setSelected(new Set()); setBulkStatus(""); utils.proposals.list.invalidate(); },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toastError(e),
   });
 
   async function handlePreview(p: { id: number; publicUrl?: string | null }) {

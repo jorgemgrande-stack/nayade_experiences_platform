@@ -14,6 +14,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { PanelEmpty, PanelError, PanelLoading } from "@/components/admin/PanelStates";
 import { FormField, TagChip, describedBy, selectClass, useCrmCanWrite } from "@/components/admin/crm/CrmParts";
 import { TAG_COLORS, TAG_COLOR_LABELS, TAG_NAME_MAX, validateTagForm } from "@shared/crmTagsTasks";
+import { toastError } from "@/lib/errorMessage";
 
 type TagRow = { id: number; name: string; color: string | null; usage: number };
 
@@ -77,7 +78,7 @@ export default function CrmTags() {
       utils.crmTags.forEntities.invalidate();
       setDeleting(null);
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toastError(e),
   });
   const list = (tags.data ?? []) as TagRow[];
 

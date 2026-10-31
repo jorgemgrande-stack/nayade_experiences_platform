@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { usePanelSubscription } from "@/hooks/usePanelSubscription";
 import type { TagEntityType } from "@shared/crmTagsTasks";
+import { toastError } from "@/lib/errorMessage";
 
 /** Clases de color con contraste AA en tema claro y oscuro. */
 export const TAG_COLOR_CLASSES: Record<string, string> = {
@@ -87,8 +88,8 @@ export function EntityTagsDialog({
     utils.crmTags.list.invalidate();
     utils.crm.clients.list.invalidate();
   };
-  const assign = trpc.crmTags.assign.useMutation({ onSuccess: onDone, onError: (e) => toast.error(e.message), onSettled: () => setBusy(null) });
-  const unassign = trpc.crmTags.unassign.useMutation({ onSuccess: onDone, onError: (e) => toast.error(e.message), onSettled: () => setBusy(null) });
+  const assign = trpc.crmTags.assign.useMutation({ onSuccess: onDone, onError: (e) => toastError(e), onSettled: () => setBusy(null) });
+  const unassign = trpc.crmTags.unassign.useMutation({ onSuccess: onDone, onError: (e) => toastError(e), onSettled: () => setBusy(null) });
   const toggle = (tagId: number, on: boolean) => {
     setBusy(tagId);
     (on ? assign : unassign).mutate({ tagId, entityType, entityId });
