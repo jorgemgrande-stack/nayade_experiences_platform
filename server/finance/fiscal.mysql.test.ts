@@ -70,7 +70,7 @@ describe.skipIf(!URL_)("parametrización fiscal con MySQL real (CRM 0039)", () =
     for (const m of migrations.slice(i0039)) for (const st of splitStatements(m.up)) await pool.query(st);
     expect(await finFiscalTablesReady(pool)).toBe(true);
     s = await fiscalScenario({ pool });
-  });
+  }, 60_000);
 
   afterAll(async () => {
     await pool?.end();
