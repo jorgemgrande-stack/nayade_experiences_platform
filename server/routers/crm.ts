@@ -52,6 +52,7 @@ import { sendEmail as sharedSendEmail } from "../mailer";
 import { sendManagedEmail, logDirectEmail } from "../emailManager";
 import { generateDocumentNumber } from "../documentNumbers";
 import { nextCreditNoteNumber, withCreditNoteNumberRetry } from "../creditNoteNumber";
+import { computeCreditNote, computeCreditNoteFromLines, computeDirectInvoice, CreditNoteSelectionError, DIRECT_INVOICE_TAX_RATES, round2, type CreditNoteLineSelection } from "../invoiceCalc";
 import { htmlToPdf } from "../pdfGenerator";
 import { buildRedsysForm, generateMerchantOrder } from "../redsys";
 import { storagePut, hasExternalStorage, externalFileUrl } from "../storage";
@@ -97,7 +98,12 @@ import { buildInvoiceEmailHtml } from "../emailTemplates";
 // generateInvoiceNumber y generateQuoteNumber reemplazadas por el helper centralizado
 // Ver server/documentNumbers.ts
 async function generateInvoiceNumber(context?: string, userId?: string): Promise<string> {
-  return generateDocumentNumber("factura", context ?? "crm:invoice", userId ?? "system");
+  // Salta los números ya ocupados por facturas guardadas (importadas o creadas sin pasar por el contador):
+  // un número repetido haría fallar el alta de la factura por duplicado.
+  return generateDocumentNumber("factura", context ?? "crm:invoice", userId ?? "system", async (candidate) => {
+    const [hit] = await db.select({ id: invoices.id }).from(invoices).where(eq(invoices.invoiceNumber, candidate)).limit(1);
+    return !!hit;
+  });
 }
 async function generateQuoteNumber(context?: string, userId?: string): Promise<string> {
   return generateDocumentNumber("presupuesto", context ?? "crm:quote", userId ?? "system");
@@ -322,6 +328,84 @@ async function sendTransferConfirmationEmail(data: {
     subject: `?? Pago por transferencia confirmado — ${data.invoiceNumber} — ${companyName()}`,
     html,
   });
+}
+
+// --- ABONO (FACTURA RECTIFICATIVA) -------------------------------------------
+
+/**
+ * Emite un abono de `partialAmount` (o de todo lo pendiente) sobre una factura emitida. El abono copia el
+ * desglose por tipo de IVA de la factura y, si es parcial, lo reparte en proporción (ver
+ * `computeCreditNote`). Una transacción BLOQUEA la factura original: dos abonos simultáneos se serializan
+ * y nunca abonan entre los dos más de lo facturado. Si otro abono simultáneo (de otra factura) toma el
+ * mismo número, el índice único lo rechaza y la transacción completa se reintenta.
+ */
+async function issueCreditNote(input: { invoiceId: number; reason: string; partialAmount?: number; lines?: CreditNoteLineSelection[] }) {
+  return withCreditNoteNumberRetry(() => db.transaction(async (tx) => {
+    const [original] = await tx.select().from(invoices).where(eq(invoices.id, input.invoiceId)).for("update");
+    if (!original) throw new TRPCError({ code: "NOT_FOUND" });
+    if (original.invoiceType === "abono") throw new TRPCError({ code: "BAD_REQUEST", message: "No se puede abonar una factura de abono" });
+    if (original.status === "anulada") throw new TRPCError({ code: "BAD_REQUEST", message: "La factura ya está anulada" });
+
+    const now = new Date();
+    // Lo ya abonado de esta factura: el total abonado nunca supera lo facturado
+    const previous = await tx.select().from(invoices)
+      .where(and(eq(invoices.creditNoteForId, original.id), eq(invoices.invoiceType, "abono")));
+    const alreadyCredited = previous.reduce((a, r) => a + Math.abs(Number(r.total)), 0);
+    const remaining = round2(Number(original.total) - alreadyCredited);
+    if (remaining <= 0) throw new TRPCError({ code: "BAD_REQUEST", message: "Esta factura ya está abonada por completo" });
+    // Abono por líneas elegidas, por importe (repartido entre los tipos de IVA) o total
+    let byLines: ReturnType<typeof computeCreditNoteFromLines> | null = null;
+    if (input.lines?.length) {
+      try {
+        byLines = computeCreditNoteFromLines(original as any, input.lines);
+      } catch (e) {
+        if (e instanceof CreditNoteSelectionError) throw new TRPCError({ code: "BAD_REQUEST", message: e.message });
+        throw e;
+      }
+    }
+    const creditTotal = byLines ? -byLines.total : input.partialAmount !== undefined ? round2(input.partialAmount) : remaining;
+    if (!(creditTotal > 0)) throw new TRPCError({ code: "BAD_REQUEST", message: "El importe del abono debe ser mayor que cero" });
+    if (creditTotal - remaining > 0.005) throw new TRPCError({ code: "BAD_REQUEST", message: `El abono (${creditTotal.toFixed(2)}) supera lo pendiente de abonar (${remaining.toFixed(2)})` });
+
+    // Numeración en la serie vigente ABO-AAAA-MM-nnnn: máximo del mes + 1, único por índice (nunca un
+    // recuento de filas, que con dos abonos simultáneos daba el mismo número)
+    const creditNoteNumber = await nextCreditNoteNumber(tx, now);
+    const amounts = byLines ?? computeCreditNote(original as any, previous as any[], creditTotal);
+
+    const [result] = await tx.insert(invoices).values({
+      invoiceNumber: creditNoteNumber,
+      invoiceType: "abono",
+      quoteId: original.quoteId,
+      reservationId: original.reservationId,
+      clientName: original.clientName,
+      clientEmail: original.clientEmail,
+      clientPhone: original.clientPhone,
+      clientNif: original.clientNif,
+      clientAddress: original.clientAddress,
+      itemsJson: amounts.items,
+      subtotal: amounts.subtotal.toFixed(2),
+      taxRate: original.taxRate,
+      taxAmount: amounts.taxAmount.toFixed(2),
+      taxBreakdown: amounts.taxBreakdown.length > 0 ? amounts.taxBreakdown : undefined,
+      total: amounts.total.toFixed(2),
+      currency: original.currency,
+      status: "generada",
+      creditNoteForId: original.id,
+      creditNoteReason: input.reason,
+      isAutomatic: false,
+      issuedAt: now,
+      createdAt: now,
+      updatedAt: now,
+    });
+    const creditNoteId = (result as any).insertId as number;
+
+    // Abonada solo cuando el total abonado cubre la factura (un abono parcial no la cierra)
+    if (creditTotal - remaining > -0.005) {
+      await tx.update(invoices).set({ status: "abonada", updatedAt: now }).where(eq(invoices.id, input.invoiceId));
+    }
+
+    return { creditNoteId, creditNoteNumber, creditTotal, invoiceNumber: original.invoiceNumber };
+  }));
 }
 
 // --- CRM ROUTER --------------------------------------------------------------
@@ -5797,84 +5881,13 @@ export const crmRouter = router({
     createCreditNote: staff
       .input(z.object({
         invoiceId: z.number(),
-        reason: z.string().min(1),
-        partialAmount: z.number().optional(), // if undefined ? full credit note
-      }))
+        reason: z.string().trim().min(1, "Indica el motivo del abono"),
+        partialAmount: z.number().positive("El importe del abono debe ser mayor que cero").optional(), // sin importe ni líneas: abono total
+        lines: z.array(z.object({ itemIndex: z.number().int().min(0), quantity: z.number().positive("La cantidad debe ser mayor que cero").optional() })).max(200).optional(),
+      }).refine((v) => !(v.partialAmount !== undefined && v.lines?.length), { message: "Abona por importe o por líneas, no ambas cosas", path: ["lines"] }))
       .mutation(async ({ input, ctx }) => {
-        // Una transacción que BLOQUEA la factura original: dos abonos simultáneos se serializan y nunca
-        // abonan entre los dos más de lo facturado. Si otro abono simultáneo (de otra factura) toma el mismo
-        // número, el índice único lo rechaza y la transacción completa se reintenta.
-        const done = await withCreditNoteNumberRetry(() => db.transaction(async (tx) => {
-          const [original] = await tx.select().from(invoices).where(eq(invoices.id, input.invoiceId)).for("update");
-          if (!original) throw new TRPCError({ code: "NOT_FOUND" });
-          if (original.invoiceType === "abono") throw new TRPCError({ code: "BAD_REQUEST", message: "No se puede abonar una factura de abono" });
-          if (original.status === "anulada") throw new TRPCError({ code: "BAD_REQUEST", message: "La factura ya está anulada" });
-
-          const now = new Date();
-          // Lo ya abonado de esta factura: el total abonado nunca supera lo facturado
-          const previous = await tx.select({ total: invoices.total }).from(invoices)
-            .where(and(eq(invoices.creditNoteForId, original.id), eq(invoices.invoiceType, "abono")));
-          const alreadyCredited = previous.reduce((a, r) => a + Math.abs(Number(r.total)), 0);
-          const remaining = Math.round((Number(original.total) - alreadyCredited) * 100) / 100;
-          if (remaining <= 0) throw new TRPCError({ code: "BAD_REQUEST", message: "Esta factura ya está abonada por completo" });
-          const creditTotal = input.partialAmount ?? remaining;
-          if (!(creditTotal > 0)) throw new TRPCError({ code: "BAD_REQUEST", message: "El importe del abono debe ser mayor que cero" });
-          if (creditTotal - remaining > 0.005) throw new TRPCError({ code: "BAD_REQUEST", message: `El abono (${creditTotal.toFixed(2)}) supera lo pendiente de abonar (${remaining.toFixed(2)})` });
-
-          // Numeración en la serie vigente ABO-AAAA-MM-nnnn: máximo del mes + 1, único por índice (nunca un
-          // recuento de filas, que con dos abonos simultáneos daba el mismo número)
-          const creditNoteNumber = await nextCreditNoteNumber(tx, now);
-
-          const origTaxRate = parseFloat(String(original.taxRate ?? "21"));
-          const creditDivisor = 1 + origTaxRate / 100;
-          const creditSubtotal = creditTotal / creditDivisor;
-          const creditTax = creditTotal - creditSubtotal;
-
-          // Negate items for credit note
-          const creditItems = (original.itemsJson as { description: string; quantity: number; unitPrice: number; total: number }[]).map(item => ({
-            ...item,
-            unitPrice: -Math.abs(item.unitPrice),
-            total: -Math.abs(item.total),
-          }));
-
-          const [result] = await tx.insert(invoices).values({
-            invoiceNumber: creditNoteNumber,
-            invoiceType: "abono",
-            quoteId: original.quoteId,
-            reservationId: original.reservationId,
-            clientName: original.clientName,
-            clientEmail: original.clientEmail,
-            clientPhone: original.clientPhone,
-            clientNif: original.clientNif,
-            clientAddress: original.clientAddress,
-            itemsJson: creditItems,
-            subtotal: String(-creditSubtotal),
-            taxRate: original.taxRate,
-            taxAmount: String(-creditTax),
-            total: String(-creditTotal),
-            currency: original.currency,
-            status: "generada",
-            creditNoteForId: original.id,
-            creditNoteReason: input.reason,
-            isAutomatic: false,
-            issuedAt: now,
-            createdAt: now,
-            updatedAt: now,
-          });
-          const creditNoteId = (result as any).insertId;
-
-          // Abonada solo cuando el total abonado cubre la factura (un abono parcial no la cierra)
-          if (creditTotal - remaining > -0.005) {
-            await tx.update(invoices).set({
-              status: "abonada",
-              updatedAt: now,
-            }).where(eq(invoices.id, input.invoiceId));
-          }
-
-          return { creditNoteId, creditNoteNumber };
-        }));
-
-        await logActivity("invoice", input.invoiceId, "credit_note_created", ctx.user.id, ctx.user.name, { creditNoteId: done.creditNoteId, creditNoteNumber: done.creditNoteNumber, reason: input.reason });
+        const done = await issueCreditNote(input);
+        await logActivity("invoice", input.invoiceId, "credit_note_created", ctx.user.id, ctx.user.name, { creditNoteId: done.creditNoteId, creditNoteNumber: done.creditNoteNumber, reason: input.reason, amount: done.creditTotal });
         return { success: true, creditNoteId: done.creditNoteId, creditNoteNumber: done.creditNoteNumber };
       }),
 
@@ -5941,15 +5954,108 @@ export const crmRouter = router({
     void: staff
       .input(z.object({ invoiceId: z.number(), reason: z.string().optional() }))
       .mutation(async ({ input, ctx }) => {
+        // Todas las facturas están emitidas (no hay borradores): anular una factura no se limita a cambiar
+        // su estado, sino que emite un abono total (factura rectificativa) por lo pendiente de abonar. La
+        // factura conserva su número y queda «abonada»; el abono toma el siguiente número de su serie.
         const [invoice] = await db.select().from(invoices).where(eq(invoices.id, input.invoiceId));
         if (!invoice) throw new TRPCError({ code: "NOT_FOUND" });
+        if (invoice.invoiceType === "abono") {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Un abono no se anula. Si es necesario, emite una nueva factura." });
+        }
         if (["anulada", "abonada"].includes(invoice.status)) {
           throw new TRPCError({ code: "BAD_REQUEST", message: `La factura ya está ${invoice.status}` });
         }
+        const reason = input.reason?.trim() || `Anulación de la factura ${invoice.invoiceNumber}`;
+        const done = await issueCreditNote({ invoiceId: invoice.id, reason });
+        await logActivity("invoice", invoice.id, "invoice_voided", ctx.user.id, ctx.user.name, { reason, creditNoteId: done.creditNoteId, creditNoteNumber: done.creditNoteNumber, amount: done.creditTotal });
+        return { success: true, creditNoteId: done.creditNoteId, creditNoteNumber: done.creditNoteNumber };
+      }),
+
+    // --- Factura libre (sin venta, reserva, caja ni presupuesto) ---------------
+    createDirect: staff
+      .input(z.object({
+        clientId: z.number().int().positive().optional(),
+        client: z.object({
+          name: z.string().trim().min(1, "Indica el nombre o la razón social del cliente").max(256),
+          email: z.union([z.literal(""), z.string().trim().email("El correo electrónico no es válido").max(320)]).optional(),
+          phone: z.string().trim().max(32).optional(),
+          nif: z.string().trim().max(32).optional(),
+          address: z.string().trim().max(1000).optional(),
+        }).optional(),
+        lines: z.array(z.object({
+          description: z.string().trim().min(1, "Indica el concepto").max(500),
+          quantity: z.number().positive("La cantidad debe ser mayor que cero").max(1_000_000),
+          unitPrice: z.number().min(0, "El precio no puede ser negativo").max(10_000_000),
+          taxRate: z.union([z.literal(21), z.literal(10), z.literal(4), z.literal(0)], { error: `Tipo de IVA no válido (${DIRECT_INVOICE_TAX_RATES.join(", ")} %)` }),
+        })).min(1, "Añade al menos una línea").max(100, "Máximo 100 líneas por factura"),
+      }).refine((v) => v.clientId !== undefined || v.client !== undefined, { message: "Elige un cliente o escribe sus datos", path: ["client"] }))
+      .mutation(async ({ input, ctx }) => {
+        // Cliente: uno existente de esta empresa o los datos escritos en la factura
+        let client: { name: string; email: string; phone: string | null; nif: string | null; address: string | null };
+        if (input.clientId !== undefined) {
+          const [c] = await db.select().from(clients).where(eq(clients.id, input.clientId)).limit(1);
+          if (!c) throw new TRPCError({ code: "NOT_FOUND", message: "El cliente no existe" });
+          client = { name: c.company || c.name, email: c.email ?? "", phone: c.phone || null, nif: c.nif || null, address: [c.address, c.postalCode, c.city].filter(Boolean).join(", ") || null };
+        } else {
+          const c = input.client!;
+          client = { name: c.name, email: c.email ?? "", phone: c.phone || null, nif: c.nif || null, address: c.address || null };
+        }
+        const amounts = computeDirectInvoice(input.lines);
+        if (!(amounts.total > 0)) throw new TRPCError({ code: "BAD_REQUEST", message: "El total de la factura debe ser mayor que cero" });
+
+        // Número de la serie oficial de facturas (mismo contador que el resto de facturas de la empresa)
+        const invoiceNumber = await generateInvoiceNumber("crm:createDirect", String(ctx.user.id));
         const now = new Date();
-        await db.update(invoices).set({ status: "anulada", updatedAt: now }).where(eq(invoices.id, input.invoiceId));
-        await logActivity("invoice", invoice.id, "invoice_voided", ctx.user.id, ctx.user.name, { reason: input.reason });
-        return { success: true };
+        let pdfUrl: string | null = null;
+        let pdfKey: string | null = null;
+        try {
+          const pdf = await generateInvoicePdf({
+            invoiceNumber,
+            clientName: client.name,
+            clientEmail: client.email,
+            clientPhone: client.phone,
+            clientNif: client.nif,
+            clientAddress: client.address,
+            itemsJson: amounts.items,
+            subtotal: amounts.subtotal.toFixed(2),
+            taxRate: String(amounts.taxRate),
+            taxAmount: amounts.taxAmount.toFixed(2),
+            taxBreakdown: amounts.taxBreakdown,
+            total: amounts.total.toFixed(2),
+            issuedAt: now,
+          });
+          pdfUrl = pdf.url;
+          pdfKey = pdf.key;
+        } catch (e) {
+          console.error("[createDirect] PDF generation failed:", e);
+        }
+
+        const [res] = await db.insert(invoices).values({
+          invoiceNumber,
+          clientName: client.name,
+          clientEmail: client.email,
+          clientPhone: client.phone,
+          clientNif: client.nif,
+          clientAddress: client.address,
+          itemsJson: amounts.items,
+          subtotal: amounts.subtotal.toFixed(2),
+          taxRate: String(amounts.taxRate),
+          taxAmount: amounts.taxAmount.toFixed(2),
+          taxBreakdown: amounts.taxBreakdown,
+          total: amounts.total.toFixed(2),
+          pdfUrl,
+          pdfKey,
+          status: "generada",
+          invoiceType: "factura",
+          paymentMethod: "otro",
+          isAutomatic: false,
+          issuedAt: now,
+          createdAt: now,
+          updatedAt: now,
+        });
+        const invoiceId = (res as { insertId: number }).insertId;
+        await logActivity("invoice", invoiceId, "invoice_created_direct", ctx.user.id, ctx.user.name, { invoiceNumber, total: amounts.total, clientId: input.clientId ?? null });
+        return { success: true, invoiceId, invoiceNumber, total: amounts.total, pdfUrl };
       }),
 
     delete: staff

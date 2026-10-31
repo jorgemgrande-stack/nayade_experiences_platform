@@ -26,6 +26,7 @@ import {
 import { toast } from "sonner";
 import CancellationDetailModal from "./CancellationDetailModal";
 import ReservationTicket from "./ReservationTicket";
+import NewInvoiceDialog from "./NewInvoiceDialog";
 import { ProposalLeadButton } from "./ProposalsManager";
 import { CatalogConceptSelector, type CatalogProduct } from "@/components/CatalogConceptSelector";
 import {
@@ -5464,6 +5465,7 @@ export default function CRMDashboard() {
   const [confirmPaymentInvoiceId, setConfirmPaymentInvoiceId] = useState<number | null>(null);
   const [creditNoteInvoiceId, setCreditNoteInvoiceId] = useState<number | null>(null);
   const [voidInvoiceId, setVoidInvoiceId] = useState<number | null>(null);
+  const [newInvoiceOpen, setNewInvoiceOpen] = useState(false);
   const [deleteInvoiceId, setDeleteInvoiceId] = useState<number | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<"transferencia" | "efectivo" | "otro">("transferencia");
   const [creditNoteReason, setCreditNoteReason] = useState("");
@@ -7543,6 +7545,12 @@ export default function CRMDashboard() {
           {/* ─── TABLA DE FACTURAS ──────────────────────────────────────────────── */}
           {tab === "invoices" && (
             <div>
+              <div className="flex justify-end mb-3">
+                <Button size="sm" onClick={() => setNewInvoiceOpen(true)} className="bg-orange-600 hover:bg-orange-700 text-white">
+                  <Plus className="w-4 h-4 mr-1" /> Nueva factura
+                </Button>
+                <NewInvoiceDialog open={newInvoiceOpen} onOpenChange={setNewInvoiceOpen} onCreated={() => refetchInvoices()} />
+              </div>
               {/* Filtros de facturas */}
               <div className="flex flex-wrap gap-2 mb-3">
                 {(["all", "generada", "enviada", "cobrada", "anulada", "abonada"] as const).map(s => (
