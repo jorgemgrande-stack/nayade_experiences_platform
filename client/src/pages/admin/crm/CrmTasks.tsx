@@ -24,6 +24,7 @@ import {
   isTaskDueToday, isTaskOverdue, localYmd, taskEntityHref, validateTaskForm,
   type TaskEntityType, type TaskPriority,
 } from "@shared/crmTagsTasks";
+import { toastError } from "@/lib/errorMessage";
 
 type TaskRow = {
   id: number;
@@ -228,11 +229,11 @@ export default function CrmTasks() {
   };
   const setDone = trpc.crmTasks.setStatus.useMutation({
     onSuccess: (_r, v) => { toast.success(v.status === "hecha" ? "Tarea marcada como hecha" : "Tarea reabierta"); refresh(); },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toastError(e),
   });
   const del = trpc.crmTasks.delete.useMutation({
     onSuccess: () => { toast.success("Tarea eliminada"); refresh(); setDeleting(null); },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toastError(e),
   });
 
   const today = localYmd();

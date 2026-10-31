@@ -13,6 +13,7 @@ import {
   RotateCcw, Settings,
 } from "lucide-react";
 import { toast } from "sonner";
+import { toastError } from "@/lib/errorMessage";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type ActionPanel = "none" | "rechazar" | "aceptar" | "solicitar_docs" | "incidencia" | "cerrar" | "nota" | "vincular" | "reclamacion" | "marcar_devolucion" | "revertir_resolucion" | "cambiar_financiero" | "reenviar_emails";
@@ -231,12 +232,12 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
 
   const rejectMut = trpc.cancellations.rejectRequest.useMutation({
     onSuccess: () => { toast.success("Solicitud rechazada"); setActivePanel("none"); invalidate(); },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toastError(e),
   });
 
   const acceptMut = trpc.cancellations.acceptRequest.useMutation({
     onSuccess: () => { toast.success("Solicitud aceptada"); setActivePanel("none"); invalidate(); },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toastError(e),
   });
 
   const docsMut = trpc.cancellations.requestDocumentation.useMutation({
@@ -249,37 +250,37 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
       setActivePanel("none");
       invalidate();
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toastError(e),
   });
 
   const incidenceMut = trpc.cancellations.markIncidence.useMutation({
     onSuccess: () => { toast.success("Incidencia registrada"); setActivePanel("none"); invalidate(); },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toastError(e),
   });
 
   const closeMut = trpc.cancellations.closeRequest.useMutation({
     onSuccess: () => { toast.success("Expediente cerrado"); setActivePanel("none"); invalidate(); },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toastError(e),
   });
 
   const notesMut = trpc.cancellations.updateNotes.useMutation({
     onSuccess: () => { toast.success("Nota guardada"); setInternalNote(""); setActivePanel("none"); invalidate(); },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toastError(e),
   });
 
   const linkMut = trpc.cancellations.linkToReservation.useMutation({
     onSuccess: () => { toast.success("Reserva vinculada"); setActivePanel("none"); invalidate(); },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toastError(e),
   });
 
   const reclamationMut = trpc.cancellations.addClientReclamation.useMutation({
     onSuccess: () => { toast.success("Reclamación registrada"); setReclamationText(""); setActivePanel("none"); invalidate(); },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toastError(e),
   });
 
   const markRefundExecMut = trpc.cancellations.markRefundExecuted.useMutation({
     onSuccess: () => { toast.success("Devolución marcada como realizada"); setRefundExecNote(""); setRefundExecProofUrl(""); setActivePanel("none"); invalidate(); },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toastError(e),
   });
 
   const { data: searchResults } = trpc.cancellations.searchReservations.useQuery(
@@ -289,7 +290,7 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
 
   const statusMut = trpc.cancellations.updateOperationalStatus.useMutation({
     onSuccess: () => { toast.success("Estado actualizado"); invalidate(); },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toastError(e),
   });
 
   const [resendTo, setResendTo] = useState("");
@@ -303,17 +304,17 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
       }
       setActivePanel("none");
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toastError(e),
   });
 
   const revertMut = trpc.cancellations.revertResolution.useMutation({
     onSuccess: () => { toast.success("Resolución revertida — expediente en revisión"); setActivePanel("none"); invalidate(); },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toastError(e),
   });
 
   const financialOverrideMut = trpc.cancellations.updateFinancialStatus.useMutation({
     onSuccess: () => { toast.success("Estado financiero actualizado"); setActivePanel("none"); invalidate(); },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toastError(e),
   });
 
   const [revertReason, setRevertReason] = useState("");
