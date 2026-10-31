@@ -82,6 +82,8 @@ import { solutionFromWebStore, subscriptionStarter } from "../implementation/por
 import { createDataRequestsRouter } from "../dataRequests/api";
 import type { FinanceService } from "../finance/service";
 import { createFinanceRouter } from "../finance/api";
+import type { FinanceOpsService } from "../finance/opsService";
+import { FINANCE_UPLOAD_PATHS } from "../finance/opsApi";
 import type { CommunicationsService } from "../communications/service";
 import { createCommunicationsRouter } from "../communications/api";
 import { createCommunicationsPublicRouter } from "../communications/publicApi";
@@ -406,6 +408,8 @@ export interface ControlPlaneDeps {
    * comunicación e inicio de la prueba o la suscripción. Solo con CP_ASSISTED_IMPLEMENTATION_ENABLED=1 y la migración.
    */
   implementation?: { store: ImplementationStore; assignees?: (() => Promise<ImplementationAssignee[]>) | null } | null;
+  /** Operaciones de las finanzas (gastos, proveedores, bancos y caja; server/finance, CRM 0035). Requiere `finance`. */
+  financeOps?: FinanceOpsService | null;
   /** Centro de envíos del CRM y consentimiento comercial por contacto (server/communications, CRM 0031). */
   communications?: CommunicationsService | null;
 }
@@ -505,7 +509,8 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
       wrap(stripeWebhookHandler({ verify: st.verifyWebhook, store: st.store, mode: st.config.mode, onRecorded: (id) => stripeKick?.(id) })),
     );
   }
-  app.use(express.json({ limit: "256kb", verify: (req, _res, buf) => void ((req as any).rawBody = buf.toString("utf8")) }));
+  // Adjuntos y extractos de las finanzas (hasta 10 MB en base64): los lee su propia ruta, tras comprobar el permiso
+  app.use(express.json({ limit: "256kb", type: (req) => !FINANCE_UPLOAD_PATHS.test(req.url ?? "") && String(req.headers["content-type"] ?? "").toLowerCase().startsWith("application/json"), verify: (req, _res, buf) => void ((req as any).rawBody = buf.toString("utf8")) }));
   app.use(rebindRequestContext);
 
   // Webhook del proveedor de pagos: autenticado por firma, no por token
@@ -1803,7 +1808,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
     if (leadNotices) router.use("/crm/lead-notices", createLeadNoticesRouter(leadNotices));
     if (adminAlerts) router.use("/admin-alerts", createAdminAlertsRouter(adminAlerts));
     if (d.dataRequests) router.use("/data-requests", createDataRequestsRouter(d.dataRequests));
-    if (d.finance) router.use("/finance", createFinanceRouter(d.finance));
+    if (d.finance) router.use("/finance", createFinanceRouter(d.finance, d.financeOps));
     // Centro de envíos y consentimiento por contacto (antes del router del CRM: /crm/contacts/:id/consent)
     if (d.communications) router.use(createCommunicationsRouter(d.communications));
     router.use(

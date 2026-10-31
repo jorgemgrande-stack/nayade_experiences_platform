@@ -229,5 +229,6 @@ describe.skipIf(!URL_)("CRM con MySQL real", () => {
     await runCrmMigrations(pool, "up");
     const [[after]] = (await pool.query<mysql.RowDataPacket[]>("SELECT COUNT(*) AS n FROM crm_companies")) as any;
     expect(Number(after.n)).toBe(Number(before.n));
-  });
+    // Con 34 migraciones ida y vuelta tarda unos segundos: margen para cuando corre junto a otras suites MySQL
+  }, 30_000);
 });

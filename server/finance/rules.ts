@@ -92,7 +92,7 @@ export function validateEntry(d: EntryDraft, accounts: ReadonlyMap<string, Accou
 }
 
 /** Línea a partir de un importe con signo: positivo en `positiveSide`, negativo en el lado contrario; cero, ninguna. */
-function signed(accountCode: string, cents: number, positiveSide: "debit" | "credit", extra: Partial<EntryLineInput> = {}): EntryLineInput[] {
+export function signed(accountCode: string, cents: number, positiveSide: "debit" | "credit", extra: Partial<EntryLineInput> = {}): EntryLineInput[] {
   if (cents === 0) return [];
   const side = cents > 0 ? positiveSide : positiveSide === "debit" ? "credit" : "debit";
   const abs = Math.abs(cents);
