@@ -5,6 +5,7 @@ import AdminLayout from "@/components/AdminLayout";
 import { usePanelSubscription } from "@/hooks/usePanelSubscription";
 import { errorMessage } from "@/components/admin/PanelStates";
 import { useVocabulary, visibleCrmTabs } from "@/lib/vocabulary";
+import { errorToastMessage } from "@/lib/errorMessage";
 import { validateContact, validateOrder, validateQuote, hasErrors, type FieldErrors } from "@shared/crmForms";
 import {
   AlertDialog,
@@ -105,18 +106,6 @@ type Tab = "leads" | "quotes" | "reservations" | "invoices" | "anulaciones" | "p
 type OpportunityStatus = "nueva" | "enviada" | "ganada" | "perdida";
 type Priority = "baja" | "media" | "alta";
 type QuoteStatus = "borrador" | "enviado" | "visualizado" | "convertido_carrito" | "pago_fallido" | "aceptado" | "rechazado" | "expirado" | "perdido";
-
-/**
- * Mensaje de error de una acción para el usuario: conserva los avisos de negocio del servidor
- * (datos que faltan, conflictos) y oculta los detalles técnicos.
- */
-const BUSINESS_ERROR_CODES = ["BAD_REQUEST", "NOT_FOUND", "CONFLICT", "PRECONDITION_FAILED"];
-function failMsg(err: unknown, fallback = "No se ha podido completar la operación. Inténtalo de nuevo."): string {
-  const e = err as { data?: { code?: string; zodError?: unknown }; message?: string } | null;
-  const msg = e?.message?.trim();
-  const business = e?.data?.code && BUSINESS_ERROR_CODES.includes(e.data.code) && !e.data.zodError && msg && !/^[[{]/.test(msg) ? msg : null;
-  return errorMessage(err, business ?? fallback);
-}
 
 /** Error de un campo, enlazado con aria-describedby. */
 function FieldError({ id, msg }: { id: string; msg?: string | null }) {
@@ -435,7 +424,7 @@ function LeadDetailModal({
       setNote("");
       utils.crm.leads.get.invalidate({ id: leadId });
     },
-    onError: (e) => toast.error(failMsg(e)),
+    onError: (e) => toast.error(errorToastMessage(e)),
   });
 
   const updateStatus = trpc.crm.leads.update.useMutation({
@@ -467,7 +456,7 @@ function LeadDetailModal({
       // Navegar al presupuesto generado
       window.location.href = `/admin/crm?tab=quotes&quoteId=${result.quoteId}`;
     },
-    onError: (e) => toast.error(failMsg(e)),
+    onError: (e) => toast.error(errorToastMessage(e)),
   });
 
   const emailPrefsQ = trpc.emailCommunications.getCustomerPrefs.useQuery(
@@ -481,7 +470,7 @@ function LeadDetailModal({
       setShowPauseInput(false);
       emailPrefsQ.refetch();
     },
-    onError: (e) => toast.error(failMsg(e)),
+    onError: (e) => toast.error(errorToastMessage(e)),
   });
 
   if (isLoading) {
@@ -883,7 +872,7 @@ function LeadEditModal({
       utils.crm.leads.counters.invalidate();
       onClose();
     },
-    onError: (e) => toast.error(failMsg(e)),
+    onError: (e) => toast.error(errorToastMessage(e)),
   });
 
   if (isLoading || !form) {
@@ -1236,7 +1225,7 @@ function NewLeadModal({ onClose }: { onClose: () => void }) {
       utils.crm.leads.counters.invalidate();
       onClose();
     },
-    onError: (e) => toast.error(failMsg(e)),
+    onError: (e) => toast.error(errorToastMessage(e)),
   });
 
   const handleSubmit = () => {
@@ -1446,7 +1435,7 @@ function NewReservationModal({ onClose }: { onClose: () => void }) {
       setShowCreateClient(false);
       toast.success("Cliente creado y seleccionado");
     },
-    onError: (e) => toast.error(failMsg(e, "No se ha podido crear el cliente.")),
+    onError: (e) => toast.error(errorToastMessage(e, "No se ha podido crear el cliente.")),
   });
 
   const handleCreateClient = () => {
@@ -1486,7 +1475,7 @@ function NewReservationModal({ onClose }: { onClose: () => void }) {
       utils.crm.reservations.counters.invalidate();
       onClose();
     },
-    onError: (e) => toast.error(failMsg(e)),
+    onError: (e) => toast.error(errorToastMessage(e)),
   });
 
   const handleSubmit = () => {
@@ -1818,7 +1807,7 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
   const [promoData, setPromoData] = useState<{ id: number; code: string; discountPercent: number } | null>(null);
   const validatePromo = trpc.discounts.validate.useMutation({
     onSuccess: (d) => setPromoData({ id: d.id, code: d.code, discountPercent: d.discountPercent }),
-    onError: (e) => { toast.error(failMsg(e)); setPromoData(null); },
+    onError: (e) => { toast.error(errorToastMessage(e)); setPromoData(null); },
   });
 
   const subtotal = items.reduce((s, i) => s + i.total, 0);
@@ -1870,7 +1859,7 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
   };
 
   const upsertPlanDirect = trpc.crm.paymentPlans.upsert.useMutation({
-    onError: (e) => toast.error(failMsg(e, "No se ha podido guardar el plan de pago.")),
+    onError: (e) => toast.error(errorToastMessage(e, "No se ha podido guardar el plan de pago.")),
   });
 
   const createDirect = trpc.crm.quotes.createDirect.useMutation({
@@ -1893,7 +1882,7 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
       utils.crm.leads.counters.invalidate();
       onClose();
     },
-    onError: (e) => toast.error(failMsg(e)),
+    onError: (e) => toast.error(errorToastMessage(e)),
   });
 
   const handleSubmit = (andSend: boolean) => {
@@ -2313,7 +2302,7 @@ function QuoteBuilderModal({
   const [promoData, setPromoData] = useState<{ id: number; code: string; discountPercent: number } | null>(null);
   const validatePromo = trpc.discounts.validate.useMutation({
     onSuccess: (d) => setPromoData({ id: d.id, code: d.code, discountPercent: d.discountPercent }),
-    onError: (e) => { toast.error(failMsg(e)); setPromoData(null); },
+    onError: (e) => { toast.error(errorToastMessage(e)); setPromoData(null); },
   });
   const previewQuery = trpc.crm.leads.previewFromLead.useQuery(
     { leadId },
@@ -2369,11 +2358,11 @@ function QuoteBuilderModal({
 
   const sendQuote = trpc.crm.quotes.send.useMutation({
     onSuccess: () => toast.success("Presupuesto enviado al cliente"),
-    onError: (e) => toast.error(failMsg(e)),
+    onError: (e) => toast.error(errorToastMessage(e)),
   });
 
   const upsertPlanBuilder = trpc.crm.paymentPlans.upsert.useMutation({
-    onError: (e) => toast.error(failMsg(e, "No se ha podido guardar el plan de pago.")),
+    onError: (e) => toast.error(errorToastMessage(e, "No se ha podido guardar el plan de pago.")),
   });
 
   const convertToQuote = trpc.crm.leads.convertToQuote.useMutation({
@@ -2394,7 +2383,7 @@ function QuoteBuilderModal({
       }
       onClose();
     },
-    onError: (e) => toast.error(failMsg(e)),
+    onError: (e) => toast.error(errorToastMessage(e)),
   });
 
   const handleSubmit = (andSend = false) => {
@@ -2922,7 +2911,7 @@ function QuoteEditModal({
       utils.crm.quotes.get.invalidate({ id: quoteId });
       utils.crm.quotes.list.invalidate();
     },
-    onError: (e) => toast.error(failMsg(e)),
+    onError: (e) => toast.error(errorToastMessage(e)),
   });
 
   if (data && !initialized) {
@@ -2997,7 +2986,7 @@ function QuoteEditModal({
       utils.crm.quotes.get.invalidate({ id: quoteId });
       onClose();
     },
-    onError: (e) => toast.error(failMsg(e)),
+    onError: (e) => toast.error(errorToastMessage(e)),
   });
 
   if (isLoading || !initialized) {
@@ -3220,7 +3209,7 @@ function ScheduledJobsMini({ entityType, entityId }: { entityType: string; entit
       toast.success("Job cancelado");
       utils.emailCommunications.listScheduledJobs.invalidate({ relatedEntityType: entityType, relatedEntityId: entityId });
     },
-    onError: (e) => toast.error(failMsg(e)),
+    onError: (e) => toast.error(errorToastMessage(e)),
   });
 
   const rows = data?.rows ?? [];
@@ -3437,12 +3426,12 @@ function QuoteDetailModal({
       utils.crm.quotes.counters.invalidate();
       utils.crm.leads.counters.invalidate();
     },
-    onError: (e) => toast.error(failMsg(e)),
+    onError: (e) => toast.error(errorToastMessage(e)),
   });
 
   const resendQuote = trpc.crm.quotes.resend.useMutation({
     onSuccess: () => toast.success("Presupuesto reenviado"),
-    onError: (e) => toast.error(failMsg(e)),
+    onError: (e) => toast.error(errorToastMessage(e)),
   });
 
   const confirmPayment = trpc.crm.quotes.confirmPayment.useMutation({
@@ -3454,7 +3443,7 @@ function QuoteDetailModal({
       utils.crm.reservations.counters.invalidate();
       onClose();
     },
-    onError: (e) => toast.error(failMsg(e)),
+    onError: (e) => toast.error(errorToastMessage(e)),
   });
 
   const markLost = trpc.crm.quotes.markLost.useMutation({
@@ -3482,18 +3471,18 @@ function QuoteDetailModal({
       utils.crm.reservations.counters.invalidate();
       onClose();
     },
-    onError: (e) => toast.error(failMsg(e)),
+    onError: (e) => toast.error(errorToastMessage(e)),
   });
 
   const generatePdf = trpc.crm.quotes.generatePdf.useMutation({
-    onError: (e) => toast.error(failMsg(e)),
+    onError: (e) => toast.error(errorToastMessage(e)),
   });
   const uploadTransferProof = trpc.crm.quotes.uploadTransferProof.useMutation({
     onSuccess: (data) => {
       setTransferProofUrl(data.url);
       toast.success("Justificante subido correctamente");
     },
-    onError: (e) => toast.error(failMsg(e)),
+    onError: (e) => toast.error(errorToastMessage(e)),
   });
   const confirmTransfer = trpc.crm.quotes.confirmTransfer.useMutation({
     onSuccess: (data) => {
@@ -3507,7 +3496,7 @@ function QuoteDetailModal({
       setShowBankMovementSearch(false);
       onClose();
     },
-    onError: (e) => toast.error(failMsg(e)),
+    onError: (e) => toast.error(errorToastMessage(e)),
   });
 
   // FASE 2A: movimientos bancarios pendientes para vincular (transfer modal)
@@ -3535,7 +3524,7 @@ function QuoteDetailModal({
       setPendingReason("");
       onClose();
     },
-    onError: (e) => toast.error(failMsg(e)),
+    onError: (e) => toast.error(errorToastMessage(e)),
   });
 
   const planQuery = trpc.crm.paymentPlans.get.useQuery({ quoteId }, { enabled: showPlanEditor || !!data?.quote?.paymentPlanId });
@@ -3545,7 +3534,7 @@ function QuoteDetailModal({
       planQuery.refetch();
       setPlanEditMode(false);
     },
-    onError: (e) => toast.error(failMsg(e)),
+    onError: (e) => toast.error(errorToastMessage(e)),
   });
   const deletePlan = trpc.crm.paymentPlans.delete.useMutation({
     onSuccess: () => {
@@ -3554,7 +3543,7 @@ function QuoteDetailModal({
       setDraftInstallments([]);
       setPlanEditMode(false);
     },
-    onError: (e) => toast.error(failMsg(e)),
+    onError: (e) => toast.error(errorToastMessage(e)),
   });
   const confirmInstallmentMut = trpc.crm.paymentPlans.confirmInstallment.useMutation({
     onSuccess: () => {
@@ -3568,11 +3557,11 @@ function QuoteDetailModal({
       planQuery.refetch();
       utils.crm.quotes.get.invalidate({ id: quoteId });
     },
-    onError: (e) => toast.error(failMsg(e)),
+    onError: (e) => toast.error(errorToastMessage(e)),
   });
   const generateInstallmentLink = trpc.crm.paymentPlans.generateInstallmentLink.useMutation({
     onSuccess: (d) => toast.success(`Enlace enviado al cliente — Cuota #${d.installmentNumber}`),
-    onError: (e) => toast.error(failMsg(e)),
+    onError: (e) => toast.error(errorToastMessage(e)),
   });
 
   const confirmPaymentWithMethod = trpc.crm.quotes.confirmPayment.useMutation({
@@ -3594,11 +3583,11 @@ function QuoteDetailModal({
       setTpvOpSearchForConfirm("");
       onClose();
     },
-    onError: (e) => toast.error(failMsg(e)),
+    onError: (e) => toast.error(errorToastMessage(e)),
   });
 
   const uploadProofOnly = trpc.crm.quotes.uploadProofOnly.useMutation({
-    onError: (e) => toast.error(failMsg(e, "No se ha podido subir el justificante.")),
+    onError: (e) => toast.error(errorToastMessage(e, "No se ha podido subir el justificante.")),
   });
 
   const handleViewProofFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -5651,7 +5640,7 @@ export default function CRMDashboard() {
       toast.success("Aviso ignorado");
       auditQuery.refetch();
     },
-    onError: (e) => toast.error(failMsg(e, "No se ha podido ignorar el aviso.")),
+    onError: (e) => toast.error(errorToastMessage(e, "No se ha podido ignorar el aviso.")),
   });
   const { data: tpvPaymentAlerts } = trpc.cardTerminalBatches.getCrmPaymentAlerts.useQuery(undefined, {
     staleTime: 5 * 60 * 1000,
@@ -5667,7 +5656,7 @@ export default function CRMDashboard() {
       setDeleteAnulId(null);
       utils.cancellations.listRequests.invalidate();
     },
-    onError: (err) => toast.error(failMsg(err)),
+    onError: (err) => toast.error(errorToastMessage(err)),
   });
   const anulRows = anulData?.rows ?? [];
   const anulKpis = anulData?.kpis;
@@ -5677,15 +5666,15 @@ export default function CRMDashboard() {
   // ─── Acciones masivas ─────────────────────────────────────────────────────────
   const bulkDeleteLeads = trpc.crm.leads.bulkDelete.useMutation({
     onSuccess: (r) => { toast.success(`${r.deleted} lead(s) eliminados`); setSelectedLeads(new Set()); utils.crm.leads.list.invalidate(); utils.crm.leads.counters.invalidate(); },
-    onError: (e) => toast.error(failMsg(e)),
+    onError: (e) => toast.error(errorToastMessage(e)),
   });
   const bulkMarkSeenLeads = trpc.crm.leads.bulkMarkSeen.useMutation({
     onSuccess: (r) => { toast.success(`${r.updated} lead(s) marcados como leídos`); setSelectedLeads(new Set()); utils.crm.leads.list.invalidate(); utils.crm.leads.counters.invalidate(); },
-    onError: (e) => toast.error(failMsg(e)),
+    onError: (e) => toast.error(errorToastMessage(e)),
   });
   const bulkUpdateLeadsStatus = trpc.crm.leads.bulkUpdateStatus.useMutation({
     onSuccess: (r) => { toast.success(`Estado actualizado en ${r.updated} lead(s)`); setSelectedLeads(new Set()); setBulkLeadsStatus(""); utils.crm.leads.list.invalidate(); utils.crm.leads.counters.invalidate(); },
-    onError: (e) => toast.error(failMsg(e)),
+    onError: (e) => toast.error(errorToastMessage(e)),
   });
   const markLeadContacted = trpc.crm.leads.markContacted.useMutation({
     onSuccess: () => {
@@ -5694,23 +5683,23 @@ export default function CRMDashboard() {
       utils.crm.leads.counters.invalidate();
       utils.accounting.getOverview.invalidate();
     },
-    onError: (e) => toast.error(failMsg(e)),
+    onError: (e) => toast.error(errorToastMessage(e)),
   });
   const bulkDeleteQuotes = trpc.crm.quotes.bulkDelete.useMutation({
     onSuccess: (r) => { toast.success(`${r.deleted} presupuesto(s) eliminados`); setSelectedQuotes(new Set()); utils.crm.quotes.list.invalidate(); utils.crm.quotes.counters.invalidate(); },
-    onError: (e) => toast.error(failMsg(e)),
+    onError: (e) => toast.error(errorToastMessage(e)),
   });
   const bulkUpdateQuotesStatus = trpc.crm.quotes.bulkUpdateStatus.useMutation({
     onSuccess: (r) => { toast.success(`Estado actualizado en ${r.updated} presupuesto(s)`); setSelectedQuotes(new Set()); setBulkQuotesStatus(""); utils.crm.quotes.list.invalidate(); utils.crm.quotes.counters.invalidate(); },
-    onError: (e) => toast.error(failMsg(e)),
+    onError: (e) => toast.error(errorToastMessage(e)),
   });
   const bulkDeleteRes = trpc.crm.reservations.bulkDelete.useMutation({
     onSuccess: (r) => { toast.success(`${r.deleted} reserva(s) eliminadas${r.skipped > 0 ? ` (${r.skipped} omitidas por estar pagadas)` : ""}`); setSelectedRes(new Set()); utils.crm.reservations.list.invalidate(); },
-    onError: (e) => toast.error(failMsg(e)),
+    onError: (e) => toast.error(errorToastMessage(e)),
   });
   const bulkUpdateResStatus = trpc.crm.reservations.bulkUpdateStatus.useMutation({
     onSuccess: (r) => { toast.success(`Estado actualizado en ${r.updated} reserva(s)`); setSelectedRes(new Set()); setBulkResStatus(""); utils.crm.reservations.list.invalidate(); },
-    onError: (e) => toast.error(failMsg(e)),
+    onError: (e) => toast.error(errorToastMessage(e)),
   });
 
   const deleteLead = trpc.crm.leads.delete.useMutation({
@@ -5720,7 +5709,7 @@ export default function CRMDashboard() {
       utils.crm.leads.list.invalidate();
       utils.crm.leads.counters.invalidate();
     },
-    onError: (e) => toast.error(failMsg(e)),
+    onError: (e) => toast.error(errorToastMessage(e)),
   });
   const deleteQuote = trpc.crm.quotes.delete.useMutation({
     onSuccess: () => {
@@ -5730,7 +5719,7 @@ export default function CRMDashboard() {
       utils.crm.quotes.counters.invalidate();
       utils.crm.leads.counters.invalidate();
     },
-    onError: (e) => toast.error(failMsg(e)),
+    onError: (e) => toast.error(errorToastMessage(e)),
   });
 
   const sendQuoteMutation = trpc.crm.quotes.send.useMutation({
@@ -5741,7 +5730,7 @@ export default function CRMDashboard() {
       utils.crm.quotes.counters.invalidate();
       utils.crm.leads.counters.invalidate();
     },
-    onError: (e) => toast.error(failMsg(e)),
+    onError: (e) => toast.error(errorToastMessage(e)),
   });
 
   const resendQuoteMutation = trpc.crm.quotes.resend.useMutation({
@@ -5749,7 +5738,7 @@ export default function CRMDashboard() {
       toast.success("Presupuesto reenviado al cliente");
       utils.crm.quotes.list.invalidate();
     },
-    onError: (e) => toast.error(failMsg(e)),
+    onError: (e) => toast.error(errorToastMessage(e)),
   });
 
   // Queries para Modal 2 (CRMDashboard scope)
@@ -5779,11 +5768,11 @@ export default function CRMDashboard() {
       utils.bankMovements.listMovements.invalidate();
       utils.cardTerminalOperations.list.invalidate();
     },
-    onError: (e) => toast.error(failMsg(e)),
+    onError: (e) => toast.error(errorToastMessage(e)),
   });
 
   const uploadProofOnlyRow = trpc.crm.quotes.uploadProofOnly.useMutation({
-    onError: (e) => toast.error(failMsg(e, "No se ha podido subir el justificante.")),
+    onError: (e) => toast.error(errorToastMessage(e, "No se ha podido subir el justificante.")),
   });
 
   const handleRowProofFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -5823,7 +5812,7 @@ export default function CRMDashboard() {
       utils.crm.leads.counters.invalidate();
       utils.crm.reservations.list.invalidate();
     },
-    onError: (e) => toast.error(failMsg(e)),
+    onError: (e) => toast.error(errorToastMessage(e)),
   });
 
   // Mutación de pago pendiente desde fila (icono 5 — mismo flujo que el botón del modal)
@@ -5839,7 +5828,7 @@ export default function CRMDashboard() {
       utils.crm.reservations.list.invalidate();
       utils.crm.pendingPayments.list.invalidate();
     },
-    onError: (e) => toast.error(failMsg(e)),
+    onError: (e) => toast.error(errorToastMessage(e)),
   });
 
   const markLostQuoteMutation = trpc.crm.quotes.markLost.useMutation({
@@ -5850,7 +5839,7 @@ export default function CRMDashboard() {
       utils.crm.quotes.counters.invalidate();
       utils.crm.leads.counters.invalidate();
     },
-    onError: (e) => toast.error(failMsg(e)),
+    onError: (e) => toast.error(errorToastMessage(e)),
   });
 
   const duplicateQuoteMutation = trpc.crm.quotes.duplicate.useMutation({
@@ -5859,11 +5848,11 @@ export default function CRMDashboard() {
       utils.crm.quotes.list.invalidate();
       utils.crm.quotes.counters.invalidate();
     },
-    onError: (e) => toast.error(failMsg(e)),
+    onError: (e) => toast.error(errorToastMessage(e)),
   });
 
   const generatePdfMutation = trpc.crm.quotes.generatePdf.useMutation({
-    onError: (e) => toast.error(failMsg(e)),
+    onError: (e) => toast.error(errorToastMessage(e)),
   });
 
   // ─── MUTACIONES DE RESERVAS ───────────────────────────────────────────────
@@ -5874,12 +5863,12 @@ export default function CRMDashboard() {
       utils.crm.reservations.list.invalidate();
       utils.crm.reservations.counters.invalidate();
     },
-    onError: (e) => toast.error(failMsg(e)),
+    onError: (e) => toast.error(errorToastMessage(e)),
   });
 
   const resendResMutation = trpc.crm.reservations.resendConfirmation.useMutation({
     onSuccess: (data) => toast.success(`Email reenviado a ${data.sentTo}`),
-    onError: (e) => toast.error(failMsg(e)),
+    onError: (e) => toast.error(errorToastMessage(e)),
   });
 
   const deleteResMutation = trpc.crm.reservations.delete.useMutation({
@@ -5889,7 +5878,7 @@ export default function CRMDashboard() {
       utils.crm.reservations.list.invalidate();
       utils.crm.reservations.counters.invalidate();
     },
-    onError: (e) => toast.error(failMsg(e)),
+    onError: (e) => toast.error(errorToastMessage(e)),
   });
 
   const updateStatusesMutation = trpc.crm.reservations.updateStatuses.useMutation({
@@ -5897,7 +5886,7 @@ export default function CRMDashboard() {
       toast.success("Estados actualizados");
       utils.crm.reservations.list.invalidate();
     },
-    onError: (e) => toast.error(failMsg(e)),
+    onError: (e) => toast.error(errorToastMessage(e)),
   });
 
   const changeDateMutation = trpc.crm.reservations.changeDate.useMutation({
@@ -5908,7 +5897,7 @@ export default function CRMDashboard() {
       setEditResDateReason("");
       utils.crm.reservations.list.invalidate();
     },
-    onError: (e) => toast.error(failMsg(e)),
+    onError: (e) => toast.error(errorToastMessage(e)),
   });
 
   const downloadResPdfMutation = trpc.crm.reservations.downloadPdf.useMutation({
@@ -5916,7 +5905,7 @@ export default function CRMDashboard() {
       window.open(data.url, "_blank");
       toast.success("PDF generado correctamente");
     },
-    onError: (e) => toast.error(failMsg(e)),
+    onError: (e) => toast.error(errorToastMessage(e)),
   });
 
   // ─── Generar factura desde reserva TPV ─────────────────────────────────────
@@ -5932,7 +5921,7 @@ export default function CRMDashboard() {
       utils.crm.reservations.list.invalidate();
       utils.crm.invoices.listAll.invalidate();
     },
-    onError: (e) => toast.error(failMsg(e)),
+    onError: (e) => toast.error(errorToastMessage(e)),
   });
 
   const downloadQuotePdf = async (quoteId: number, quoteNumber: string) => {
@@ -5962,7 +5951,7 @@ export default function CRMDashboard() {
       utils.crm.reservations.list.invalidate();
       refetchInvoices();
     },
-    onError: (e) => toast.error(failMsg(e)),
+    onError: (e) => toast.error(errorToastMessage(e)),
   });
 
   const createCreditNoteMutation = trpc.crm.invoices.createCreditNote.useMutation({
@@ -5973,7 +5962,7 @@ export default function CRMDashboard() {
       utils.crm.invoices.listAll.invalidate();
       refetchInvoices();
     },
-    onError: (e) => toast.error(failMsg(e)),
+    onError: (e) => toast.error(errorToastMessage(e)),
   });
 
   const resendInvoiceMutation = trpc.crm.invoices.resend.useMutation({
@@ -5982,7 +5971,7 @@ export default function CRMDashboard() {
       utils.crm.invoices.listAll.invalidate();
       refetchInvoices();
     },
-    onError: (e) => toast.error(failMsg(e)),
+    onError: (e) => toast.error(errorToastMessage(e)),
   });
 
   const voidInvoiceMutation = trpc.crm.invoices.void.useMutation({
@@ -5992,7 +5981,7 @@ export default function CRMDashboard() {
       utils.crm.invoices.listAll.invalidate();
       refetchInvoices();
     },
-    onError: (e) => toast.error(failMsg(e)),
+    onError: (e) => toast.error(errorToastMessage(e)),
   });
 
   const deleteInvoiceMutation = trpc.crm.invoices.delete.useMutation({
@@ -6002,7 +5991,7 @@ export default function CRMDashboard() {
       utils.crm.invoices.listAll.invalidate();
       refetchInvoices();
     },
-    onError: (e) => toast.error(failMsg(e)),
+    onError: (e) => toast.error(errorToastMessage(e)),
   });
 
   const regenerateInvoicePdfMutation = trpc.crm.invoices.regeneratePdf.useMutation({
@@ -6010,7 +5999,7 @@ export default function CRMDashboard() {
       refetchInvoices();
       utils.crm.invoices.listAll.invalidate();
     },
-    onError: (e) => toast.error(failMsg(e)),
+    onError: (e) => toast.error(errorToastMessage(e)),
   });
 
   const viewInvoicePdf = (invoice: any) => {
@@ -9234,7 +9223,7 @@ function AnularReservaModal({
       toast.success("Expediente de anulación creado — completa la resolución");
       onCreated(data.requestId);
     },
-    onError: (e) => toast.error(failMsg(e)),
+    onError: (e) => toast.error(errorToastMessage(e)),
   });
 
   const handleSubmit = () => {
@@ -9356,22 +9345,22 @@ function BonosManager({ onOpenCancellation, onOpenReservation }: { onOpenCancell
 
   const resendMut = trpc.cancellations.resendVoucherEmail.useMutation({
     onSuccess: () => { toast.success("Email reenviado correctamente"); invalidate(); },
-    onError: (e) => toast.error(failMsg(e)),
+    onError: (e) => toast.error(errorToastMessage(e)),
   });
 
   const extendMut = trpc.cancellations.extendVoucherExpiry.useMutation({
     onSuccess: () => { toast.success("Caducidad ampliada"); setExtendModal(null); invalidate(); },
-    onError: (e) => toast.error(failMsg(e)),
+    onError: (e) => toast.error(errorToastMessage(e)),
   });
 
   const cancelMut = trpc.cancellations.cancelVoucher.useMutation({
     onSuccess: () => { toast.success("Bono anulado"); setCancelModal(null); invalidate(); },
-    onError: (e) => toast.error(failMsg(e)),
+    onError: (e) => toast.error(errorToastMessage(e)),
   });
 
   const deleteMut = trpc.cancellations.deleteVoucher.useMutation({
     onSuccess: () => { toast.success("Bono eliminado"); setDeleteConfirm(null); invalidate(); },
-    onError: (e) => toast.error(failMsg(e)),
+    onError: (e) => toast.error(errorToastMessage(e)),
   });
 
   const { data: voucherDetail } = trpc.cancellations.getVoucherById.useQuery(
@@ -9845,12 +9834,12 @@ function PagosPendientesTab() {
       setConfirmId(null);
       utils.crm.pendingPayments.list.invalidate();
     },
-    onError: (e) => toast.error(failMsg(e)),
+    onError: (e) => toast.error(errorToastMessage(e)),
   });
 
   const resendMut = trpc.crm.pendingPayments.resendReminder.useMutation({
     onSuccess: () => toast.success("Email de recordatorio enviado"),
-    onError: (e: { message: string }) => toast.error(failMsg(e)),
+    onError: (e: { message: string }) => toast.error(errorToastMessage(e)),
   });
 
   const cancelMut = trpc.crm.pendingPayments.cancel.useMutation({
@@ -9859,7 +9848,7 @@ function PagosPendientesTab() {
       setCancelId(null);
       utils.crm.pendingPayments.list.invalidate();
     },
-    onError: (e) => toast.error(failMsg(e)),
+    onError: (e) => toast.error(errorToastMessage(e)),
   });
 
   const deleteMut = trpc.crm.pendingPayments.delete.useMutation({
@@ -9868,7 +9857,7 @@ function PagosPendientesTab() {
       setDeleteId(null);
       utils.crm.pendingPayments.list.invalidate();
     },
-    onError: (e) => toast.error(failMsg(e)),
+    onError: (e) => toast.error(errorToastMessage(e)),
   });
 
   const statusBadge = (status: string) => {

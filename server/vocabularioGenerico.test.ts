@@ -175,6 +175,7 @@ describe("cableado de las pantallas (texto de Náyade no fijo en modo pyme)", ()
     expect(crm).not.toMatch(/(?<![\w`])confirm\((?!\))/);
     expect(crm).not.toMatch(/toast\.error\(e(rr)?\.message\)/);
     expect(crm).toContain("<ConfirmDialog");
+    expect(crm).toContain(`from "@/lib/errorMessage"`);
   });
 
   it("CRM: el alta de pedido busca productos en el servidor según lo escrito", () => {
