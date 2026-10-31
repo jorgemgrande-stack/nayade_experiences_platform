@@ -34,6 +34,28 @@ describe("migraciones con la imagen del commit que se publica", () => {
     expect(script).toMatch(/const expectSha = arg\("expect-sha", false\);/);
     expect(script).toMatch(/if \(img !== expectSha\) \{[\s\S]{0,300}process\.exit\(1\)/);
   });
+
+  it("acciones sueltas de migraciones (regresión 31/10): imagen del commit, después del export y cada orden lo exige", () => {
+    const exp = wf.indexOf("- name: Export del commit");
+    for (const a of ["migraciones-plataforma-simulacion", "migraciones-plataforma-aplicar", "migraciones-simulacion", "migraciones-aplicar", "verificar-migraciones"]) {
+      const at = wf.indexOf(`if: inputs.action == '${a}'`);
+      expect(at, a).toBeGreaterThan(exp);
+      const b = wf.slice(at, wf.indexOf("\n\n", at));
+      const deploy = b.indexOf('--service restore-drill --dir "${RUNNER_TEMP}/export" --sha "${ES_DEPLOY_SHA}"');
+      expect(deploy, a).toBeGreaterThan(0);
+      const drills = b.split("\n").filter((l) => l.includes(" drill "));
+      expect(drills.length, a).toBeGreaterThan(0);
+      for (const l of drills) expect(l, a).toContain('--expect-sha "${ES_DEPLOY_SHA}"');
+      expect(b.indexOf(" drill "), a).toBeGreaterThan(deploy);
+    }
+    // Aplicar: copia verificada antes de migrar
+    const ap = wf.slice(wf.indexOf("if: inputs.action == 'migraciones-plataforma-aplicar'"));
+    expect(ap.indexOf("backup-check")).toBeLessThan(ap.indexOf("registry apply"));
+    // El commit, la CLI y el export también corren para estas acciones
+    const commit = wf.indexOf("- name: Commit a desplegar");
+    expect(wf.slice(commit, wf.indexOf("\n", wf.indexOf("if:", commit)))).toContain("startsWith(inputs.action, 'migraciones-')");
+    expect(wf.slice(exp, wf.indexOf("\n", wf.indexOf("if:", exp)))).toContain("inputs.action == 'verificar-migraciones'");
+  });
 });
 
 describe("publicación: una espera agotada vuelve atrás", () => {

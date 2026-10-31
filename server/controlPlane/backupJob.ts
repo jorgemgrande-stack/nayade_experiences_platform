@@ -7,6 +7,8 @@
  *   node dist-cp/backup-job.js objects <prefijo> [--source primary|secondary]   objetos del almacenamiento (sin registro)
  *   node dist-cp/backup-job.js retention [--destination primary|secondary] [--apply]   retención 30/12/12 por destino
  *   node dist-cp/backup-job.js restore-tenant <empresa> [--source primary|secondary] [--backup <id>] [--server <alias>] [--apply] [--switch]
+ *   node dist-cp/backup-job.js restore-tenant --any --apply              prueba de restauración con la primera empresa con copia
+ *                                                                        verificada (sin ninguna: se omite, sin fallar)
  *   node dist-cp/backup-job.js restore-platform <registry|crm> --admin-url-env VAR --database <nueva>
  *        [--source primary|secondary] [--backup <id> | --manifest <clave>] [--apply]
  *   node dist-cp/backup-job.js restore-files <empresa> (--out <directorio> | --to-media) [--source primary|secondary]
@@ -75,7 +77,7 @@ import { commercialIntegrity } from "../catalog/commercial/integrity";
 
 const args = process.argv.slice(2);
 const cmd = args[0] && !args[0].startsWith("--") ? args[0] : "run";
-const BOOLEAN_FLAGS = new Set(["--apply", "--switch", "--no-platform", "--to-media"]);
+const BOOLEAN_FLAGS = new Set(["--apply", "--switch", "--no-platform", "--to-media", "--any"]);
 const pos: string[] = [];
 for (let i = args[0] === cmd ? 1 : 0; i < args.length; i++) {
   if (args[i].startsWith("--")) {
@@ -554,7 +556,23 @@ async function main() {
         break;
       }
       case "restore-tenant": {
-        const id = pos[0] ?? die("Falta <empresa>");
+        // --any: prueba de restauración sin depender de una empresa concreta (la primera no retirada con copia verificada)
+        let picked: string | null = pos[0] ?? null;
+        if (!picked && flag("--any")) {
+          if (flag("--switch")) die("--any no admite --switch: solo restaura en una base nueva");
+          for (const t of await store.listTenants()) {
+            if (t.status === "deleted" || t.status === "deleting") continue;
+            if ((await inventory.list({ targetKind: "tenant", targetId: t.id, status: "ok", limit: 1 }))[0]) {
+              picked = t.id;
+              break;
+            }
+          }
+          if (!picked) {
+            console.log(JSON.stringify({ omitido: true, motivo: "No hay ninguna empresa con copia verificada que restaurar" }));
+            break;
+          }
+        }
+        const id = picked ?? die("Falta <empresa> (o --any)");
         if (!servers) die("Falta PROVISIONING_DB_SERVERS o PROVISIONING_DB_ADMIN_URL (servidor donde restaurar)");
         const backupId = opt("--backup") ? Number(opt("--backup")) : undefined;
         if (!flag("--apply")) {
