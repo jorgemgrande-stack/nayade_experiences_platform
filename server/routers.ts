@@ -205,6 +205,7 @@ import { emailIngestionRouter } from "./routers/emailIngestion";
 import { configRouter } from "./routers/configRouter";
 import { onboardingRouter } from "./routers/onboardingRouter";
 import { setupWizardRouter } from "./routers/setupWizard";
+import { coreHomeRouter } from "./routers/coreHome";
 import { assertSeatAvailable } from "./setupWizardDb";
 import { dailyControlRouter } from "./routers/dailyControl";
 import { proposalsRouter } from "./routers/proposals";
@@ -255,6 +256,7 @@ export const appRouter = router({
   config: configRouter,
   onboarding: onboardingRouter,
   setupWizard: setupWizardRouter,
+  coreHome: coreHomeRouter,
   cancellations: cancellationsRouter,
   proposals: proposalsRouter,
   emailTemplates: emailTemplatesRouter,

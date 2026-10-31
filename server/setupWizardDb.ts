@@ -6,15 +6,16 @@
  * migraciones, y una empresa nunca puede leer ni escribir el de otra.
  */
 import { TRPCError } from "@trpc/server";
-import { and, count, eq, inArray, sql } from "drizzle-orm";
-import { systemSettings, users } from "../drizzle/schema";
+import { and, count, eq, gt, inArray, sql } from "drizzle-orm";
+import { clients, experiences, invoices, pageBlocks, quotes, reservations, staticPages, systemSettings, tpvSales, users } from "../drizzle/schema";
 import { getDb } from "./db";
 import { invalidateConfigCache } from "./config";
 import { getCapabilityAccess } from "./_core/capabilities/access";
 import { getLimitAccess } from "./_core/limits/access";
 import { getQuotaExceptionAccess } from "./_core/erm/exceptionAccess";
 import { SEAT_ROLES, licenceSummary, seatDecision, type LicenceSummary } from "./planSeats";
-import { PROGRESS_SETTING_KEY, parseProgress, type SetupProgress } from "../shared/setupWizard";
+import { decide } from "./_core/capabilities/model";
+import { PROGRESS_SETTING_KEY, STEP_CAPABILITIES, parseProgress, type SetupProgress } from "../shared/setupWizard";
 
 async function requireDb() {
   const db = await getDb();
@@ -65,6 +66,47 @@ export async function updateProgress(change: (p: SetupProgress) => SetupProgress
     await tx.update(systemSettings).set({ value: JSON.stringify(next) }).where(eq(systemSettings.key, PROGRESS_SETTING_KEY));
     return next;
   });
+}
+
+// ── Datos reales y contratación (plan del asistente) ──────────────────────────
+
+/**
+ * Cuántos datos reales tiene la empresa en curso (su propia BD): completan los pasos «de hacer» del asistente
+ * y alimentan el estado de configuración del Inicio. La web cuenta como revisada si alguna página se ha editado
+ * después de crearse o tiene bloques propios (las páginas de la plantilla inicial no cuentan).
+ */
+export async function readSetupCounts(): Promise<{ clients: number; products: number; sales: number; webEdited: boolean }> {
+  const db = await requireDb();
+  const n = async (q: Promise<Array<{ n: number | string }>>) => Number((await q)[0]?.n ?? 0);
+  const [cl, pr, qu, re, inv, tpv, blocks, edited] = await Promise.all([
+    n(db.select({ n: count() }).from(clients)),
+    n(db.select({ n: count() }).from(experiences)),
+    n(db.select({ n: count() }).from(quotes)),
+    n(db.select({ n: count() }).from(reservations)),
+    n(db.select({ n: count() }).from(invoices)),
+    n(db.select({ n: count() }).from(tpvSales)),
+    n(db.select({ n: count() }).from(pageBlocks)),
+    n(db.select({ n: count() }).from(staticPages).where(gt(staticPages.updatedAt, staticPages.createdAt))),
+  ]);
+  return { clients: cl, products: pr, sales: qu + re + inv + tpv, webEdited: blocks + edited > 0 };
+}
+
+/**
+ * Capacidades contratadas (activas o en solo lectura) que deciden qué pasos se ven. `null` sin licencias por
+ * capacidad (instalación de una sola empresa): se ve todo salvo lo sectorial. Si no pueden leerse, también null.
+ */
+export async function contractedSetupCapabilities(): Promise<Set<string> | null> {
+  const access = getCapabilityAccess();
+  let grants: Awaited<ReturnType<typeof access.grants>>;
+  try {
+    grants = await access.grants();
+  } catch {
+    return null;
+  }
+  if (!grants) return null;
+  const now = access.currentTime();
+  const ids = new Set(Object.values(STEP_CAPABILITIES).flat() as string[]);
+  return new Set(Array.from(ids).filter((id) => decide(grants!, id, { write: false, now }).allowed));
 }
 
 // ── Recordatorios de «Primeros pasos» (server/onboardingReminders.ts) ──────────

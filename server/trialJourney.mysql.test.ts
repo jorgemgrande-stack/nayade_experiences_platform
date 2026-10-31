@@ -376,7 +376,7 @@ describe.skipIf(!URL_)("prueba gratuita de Essential de punta a punta (MySQL rea
     const st = data(await q(tenantId, "setupWizard.status", undefined, cookie));
     expect(st.licence).toMatchObject({ plan: "essential", userLimit: 3, daysLeft: 15, readOnly: false });
     expect(st.seats).toEqual({ used: 1, limit: 3 });
-    expect(st.nextStep).toBe("company");
+    expect(st.nextStep).toBe("welcome");
 
     const bad = await m(tenantId, "setupWizard.saveCompany", { tradeName: "", legalName: "x", taxId: "1", address: "", country: "XX", currency: "EUR", timezone: "Europe/Madrid" }, cookie);
     expect(bad.status).toBe(400);
@@ -405,7 +405,8 @@ describe.skipIf(!URL_)("prueba gratuita de Essential de punta a punta (MySQL rea
 
     // Continuar más tarde: otra sesión ve el mismo progreso y los datos guardados en sus ajustes
     const again = data(await q(tenantId, "setupWizard.status", undefined, cookie));
-    expect(again.nextStep).toBe("users");
+    // Comercio: tras productos, ventas y CRM viene la web
+    expect(again.nextStep).toBe("web");
     expect(again.company).toMatchObject({ tradeName: "Ferretería Sol", legalName: "Ferretería Sol, S.L.", taxId: "B12345678", currency: "EUR", timezone: "Europe/Madrid", country: "ES" });
     expect(again.activity).toBe("comercio");
     const c = await tenantConn(tenantId);
@@ -486,7 +487,7 @@ describe.skipIf(!URL_)("prueba gratuita de Essential de punta a punta (MySQL rea
   it("progreso aislado por empresa: la otra empresa empieza de cero y no ve nada de la primera", async () => {
     const other = await ownerLogin(otherTenant, `ana-${run}@gemelas.example`, PASS);
     const st = data(await q(otherTenant, "setupWizard.status", undefined, other));
-    expect(st.nextStep).toBe("company");
+    expect(st.nextStep).toBe("welcome");
     expect(st.percent).toBe(0);
     expect(st.company.taxId).toBe("");
     expect(st.seats.used).toBe(1);
@@ -495,7 +496,7 @@ describe.skipIf(!URL_)("prueba gratuita de Essential de punta a punta (MySQL rea
     expect((await q(otherTenant, "setupWizard.status", undefined, cookie)).status).toBeGreaterThanOrEqual(401);
     // Avanzar aquí no cambia el progreso de la primera
     await m(otherTenant, "setupWizard.setStep", { step: "client", status: "skipped" }, other);
-    expect(data(await q(tenantId, "setupWizard.status", undefined, cookie)).nextStep).toBe("users");
+    expect(data(await q(tenantId, "setupWizard.status", undefined, cookie)).nextStep).toBe("web");
   });
 
   it("avisos de vencimiento por el puerto de correo (solo por acción explícita)", async () => {
