@@ -270,8 +270,10 @@ describe("API /cp/v1/finance, fase 1B: permisos y formas del CRM", () => {
 
   it("resumen completo: bancos, caja, acreedores e IVA soportado rellenos", async () => {
     const s = (await call("GET", "/summary", READ)).json;
-    expect(keys(s)).toEqual(["asOf", "bankBalanceCents", "banks", "cash", "cashBalanceCents", "expensesMonthCents", "expensesYearCents", "incomeMonthCents", "incomeYearCents", "payablesCents", "resultYearCents", "vatInputQuarterCents", "vatOutputQuarterCents"]);
+    expect(keys(s)).toEqual(["asOf", "bankBalanceCents", "banks", "cash", "cashBalanceCents", "expensesMonthCents", "expensesYearCents", "incomeMonthCents", "incomeYearCents", "payablesCents", "resultYearCents", "stripeBalanceCents", "vatInputQuarterCents", "vatOutputQuarterCents"]);
     for (const k of ["bankBalanceCents", "cashBalanceCents", "payablesCents", "vatInputQuarterCents", "banks", "cash"]) expect(s[k]).not.toBeNull();
+    // Fase 2 sin montar: saldo de Stripe no disponible
+    expect(s.stripeBalanceCents).toBeNull();
     expect(s.banks[0]).toEqual({ id: ids.bank, name: "CaixaBank", accountCode: "57200001", balanceCents: -121_000 - 20_000 });
     expect(s.cash[0]).toEqual({ id: ids.cash, name: "Caja", accountCode: "57000001", balanceCents: 20_000 });
     expect(s).toMatchObject({ bankBalanceCents: -141_000, cashBalanceCents: 20_000, payablesCents: 0, vatInputQuarterCents: 21_000 });

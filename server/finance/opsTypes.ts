@@ -23,7 +23,7 @@ export const IMPORT_FORMATS = ["norma43", "caixabank", "csv"] as const;
 export type ImportFormat = (typeof IMPORT_FORMATS)[number];
 export const MOVEMENT_STATUSES = ["pending", "matched", "ignored"] as const;
 export type MovementStatus = (typeof MOVEMENT_STATUSES)[number];
-export const MATCH_TYPES = ["expense_payment", "invoice_payment", "transfer", "tax", "payroll", "other"] as const;
+export const MATCH_TYPES = ["expense_payment", "invoice_payment", "stripe_payout", "transfer", "tax", "payroll", "other"] as const;
 export type MatchType = (typeof MATCH_TYPES)[number];
 /** Tipos de conciliación «contra cuenta» (movimiento sin gasto): asiento contra la cuenta que indica el operador. */
 export const ACCOUNT_MATCH_TYPES = ["transfer", "tax", "payroll", "other"] as const;

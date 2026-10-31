@@ -4,8 +4,8 @@ Contabilidad, gastos, proveedores, bancos y caja de **IRON ELEPHANT CONSULTING, 
 Vive en el **plano de control** del Core (`server/finance/`) y se usa desde el CRM (admin.bigelephant.es). Los tenants
 son clientes de Big Elephant y nada más: el módulo nunca lee ni escribe sus bases.
 
-Estado: **fase 1A (libro contable)** y **fase 1B (operaciones)** implementadas. Migraciones
-`db/crm/migrations/0033_finance_ledger.sql` y `db/crm/migrations/0035_finance_operations.sql`.
+Estado: **fase 1A (libro contable)**, **fase 1B (operaciones)** y **fase 2 (Stripe y conciliación)** implementadas.
+Migraciones `db/crm/migrations/0033_finance_ledger.sql`, `0035_finance_operations.sql` y `0036_finance_stripe.sql`.
 
 ## Arquitectura
 
@@ -23,11 +23,18 @@ Estado: **fase 1A (libro contable)** y **fase 1B (operaciones)** implementadas. 
 | Servicio 1B | `server/finance/opsService.ts` | Operaciones; contabiliza SIEMPRE con `postGenerated`/`reverse` del libro |
 | API 1B | `server/finance/opsApi.ts` | Rutas de operaciones montadas en el mismo router |
 | Tarea 1B | `server/finance/recurringScheduler.ts` | Borradores de gastos recurrentes (interruptor `CP_FINANCE_RECURRING_ENABLED`, apagado) |
+| Tipos 2 | `server/finance/stripeTypes.ts` | Transacciones de saldo, payouts, importaciones, configuración de Stripe y punto de extensión `StripeBalanceSource` |
+| Reglas puras 2 | `server/finance/stripeRules.ts` | Lectura de los informes CSV de Stripe, tipos, asientos de cobro/comisión/reembolso/disputa/payout, transferencias, incidencias, sugerencias y estado de conciliación |
+| Almacén 2 | `server/finance/stripeStore.ts` | `MemoryFinanceStripeStore` y `MysqlFinanceStripeStore`; `finStripeTablesReady`; lectura de `stripe_invoices` |
+| Servicio 2 | `server/finance/stripeService.ts` | Importación, contabilización, payouts, resumen y conciliación; extensión de la conciliación bancaria de 1B |
+| API 2 | `server/finance/stripeApi.ts` | `/finance/stripe/*` y `/finance/reconciliation/*` |
 
 Arranque (`server/controlPlane/main.ts`): el libro se monta solo con CRM y con las tablas de 0033 (`finTablesReady`); si
 no, log `{ ctx: "Finance", mounted: false, reason: "migration_0033_missing" }`. Las operaciones, además, con las tablas
 de 0035 (`finOpsTablesReady`); si no, `{ ctx: "FinanceOps", mounted: false, reason: "migration_0035_missing" }` y el libro
-funciona igual. Datos solo en la BD del CRM, tablas `fin_*`.
+funciona igual. La parte de Stripe, con las tablas de 0036 (`finStripeTablesReady`); si no,
+`{ ctx: "FinanceStripe", mounted: false, reason: "migration_0036_missing" }` y el resto funciona igual. Datos solo en la
+BD del CRM, tablas `fin_*`.
 
 ## Reglas contables
 
@@ -196,6 +203,117 @@ Errores: 400 `invalid_input`, 403 (`forbidden`, `operator_session_required`, `fo
 (sin regularización, cierre ni apertura); con 0035, además saldos de bancos y caja (desde el libro, por cuenta),
 acreedores pendientes (saldo acreedor de 400 y 410) e IVA soportado del trimestre (472). Sin 0035 esos campos son `null`.
 
+## Fase 2: Stripe como TPV principal y conciliación
+
+### Origen único de cada hecho
+
+| Hecho | Origen contable (`source_key`) | Solo referencia (nunca contabiliza) |
+|---|---|---|
+| Factura emitida | `server/invoicing` (fase 1A, `invoice:<id>`) | — |
+| Cobro con Stripe (bruto, comisión, neto) | Transacción de saldo importada (`stripe-txn:<txn>`) | `commercial_events`, `stripe_invoices`, `billing_charge_payments` |
+| Reembolso, disputa, comisiones de Stripe | Transacción de saldo (`stripe-txn:<txn>`) | `commercial_events`, `stripe_charge_adjustments` |
+| Liquidación al banco (payout) | Payout (`stripe-payout:<po>`, fecha de llegada); fallido → `reverse:<id>` | — |
+| Llegada del payout al banco | Se **vincula** el movimiento al asiento del payout: sin asiento | — |
+| Cobro de factura por transferencia | Movimiento conciliado `invoice_payment` (`bankmov:<id>`: Debe 572000NN / Haber 430) | `paymentStatus` de la factura |
+
+Nunca se contabiliza desde el webhook ni desde `commercial_events`; `order.dunning_notice` se ignora. El módulo no
+escribe nada de `server/stripe`, `server/invoicing` ni `server/commercialEvents`: solo lee `invoices` (por
+`paymentRef = stripe:in:<id>`) y `stripe_invoices` (para explicar un cobro sin factura propia).
+
+### Importación
+
+Dos informes CSV del panel de Stripe (Informes): **«Balance change from activity – itemized»** (o el export clásico
+«Itemized balance transactions») y **«Payouts – itemized»**. Las cabeceras se reconocen por nombre (sin distinguir
+mayúsculas, espacios, paréntesis ni guiones bajos: `Created (UTC)` = `created_utc`), los importes vienen en unidad mayor
+con punto decimal y se guardan en céntimos con el signo de Stripe (neto = bruto − comisión, si no cuadra la fila se
+rechaza con aviso), y las fechas UTC se pasan a Europe/Madrid. Cada fichero se importa una sola vez por tipo (sha256);
+cada transacción y cada payout una sola vez (`UNIQUE(provider, id)`): un fichero solapado cuenta duplicados y un payout
+ya conocido refresca su estado (y su llegada mientras no tenga asiento). Las monedas distintas del euro se importan como
+pendientes con la incidencia `currency` y no se contabilizan. Una fila de payout del informe de saldo da de alta el
+payout; una de `payout_reversal`, lo marca fallido.
+
+Tipos normalizados: `charge`, `refund`, `refund_failure`, `dispute`, `dispute_reversal`, `stripe_fee` (fee,
+stripe_fee, network_cost, tax), `payout`, `payout_reversal` y `other` (transferencias de Connect, recargas, ajustes sin
+disputa…: incidencia `unsupported`, no se contabilizan solas; el operador las lleva con un asiento manual).
+
+Punto de extensión: `StripeBalanceSource` (lector por API). No se implementa en esta fase; iría detrás de un
+interruptor nuevo apagado, `CP_FINANCE_STRIPE_SYNC_ENABLED`, con una clave restringida de solo lectura en variable de
+entorno, y devolvería lo mismo que los lectores de CSV.
+
+### Asientos (diario STR, origen `stripe`)
+
+Una sola fórmula con los importes con signo de Stripe: **Debe 5720 neto · Debe 626 comisión · Haber contrapartida
+bruto** (los negativos cambian de lado). Contrapartida: 430 en cobros y reembolsos (con la empresa de la factura propia
+en la línea), la cuenta de disputas configurada (430 o 436) en disputas y 626 en los cargos de Stripe por otros
+servicios. Fecha = la del cobro (`created`).
+
+- Cobro: Debe 5720 neto · Debe 626 comisión · Haber 430 bruto.
+- Reembolso: Debe 430 · Haber 5720; con comisión devuelta, además Haber 626.
+- Disputa perdida: Debe 430/436 · Debe 626 (comisión de disputa) · Haber 5720. Ganada: exactamente el inverso (y la
+  retención queda revisada sola).
+- Comisiones y servicios de Stripe: Debe 626 · Haber 5720.
+- Payout: Debe 572000NN de la cuenta configurada · Haber 5720, fecha de llegada. Fallido o cancelado con asiento:
+  reversión (fecha del fallo); sin asiento: no se contabiliza (las filas quedan `ignored`).
+
+**IVA de las comisiones de Stripe: decisión pendiente para la gestoría.** Stripe (Stripe Payments Europe, Ltd.,
+Irlanda) no repercute IVA en sus comisiones de procesamiento. Hay dos lecturas: servicios financieros exentos (art. 20.Uno.18.º
+LIVA y art. 135.1.d de la Directiva) o prestación de servicios de un proveedor de la UE sujeta con **inversión del
+sujeto pasivo** (art. 84.Uno.2.º LIVA: autoliquidación Debe 472 / Haber 477 al tipo general, que se declara en el 303 y,
+si procede, en el 349). La configuración `stripeFeeVat` lo deja en `exempt` por defecto; si la gestoría decide
+`reverse_charge`, el administrador lo cambia (`feeVatRateBp`, 2100) y los asientos posteriores llevan las dos líneas de
+IVA sobre la comisión (sin efecto en el saldo). Los asientos ya contabilizados no cambian (se corrigen con reversión).
+
+Saldo de **5720 = saldo pendiente de liquidar en Stripe**. El resumen lo compara con el neto de las transacciones en
+euros importadas: la diferencia es lo importado sin contabilizar (tipos no soportados, errores) o lo anterior a la
+primera importación (que se registra con un asiento manual de apertura).
+
+### Conciliación
+
+- **Por factura** (fechas del §3: factura, cobro, disponibilidad, payout y banco): factura → cobros de Stripe
+  (`invoice_id` de Stripe = `paymentRef` `stripe:in:<id>`; los reembolsos y disputas heredan la factura de su cobro) →
+  comisión → payout → movimiento bancario, y las transferencias conciliadas. Estados `pendiente_cobro`, `cobrada`,
+  `liquidada`, `en_banco`, `incidencia` (reembolso, disputa o importe distinto sin revisar). Un cobro que no casa queda
+  con la incidencia `no_invoice` (430 sin empresa): no se inventa el cliente.
+- **Por payout:** transacciones incluidas (`automatic_payout_id`), su suma frente al importe (diferencia visible;
+  `null` si no hay transacciones importadas de ese payout) y el movimiento bancario vinculado.
+- **Sugerencias** de un abono: payouts sin movimiento con importe exacto y llegada a ±3 días hábiles (o «STRIPE» en el
+  concepto), y facturas propias pendientes por importe exacto, número o cliente en el concepto.
+- **Acciones:** vincular/desvincular payout ↔ movimiento (sin asiento; un movimiento por payout y un payout por
+  movimiento, también en carrera), `invoice_payment` para transferencias (no supera lo pendiente: total − cobros de
+  Stripe − transferencias; la comprobación, la reserva del movimiento y el asiento van con el cerrojo
+  `GET_LOCK('fin-invoice-<id>')`: dos transferencias simultáneas que juntas superan lo pendiente → la segunda recibe
+  `exceeds_pending`), marcar una incidencia como revisada con nota.
+- **Facturas propias sin tope:** se leen de la tabla `invoices` en solo lectura (`server/finance/ownInvoices.ts`,
+  `MysqlOwnInvoiceDirectory`, del mismo entorno test/live que la facturación): por `payment_ref`, por id, paginadas y
+  candidatas a un cobro (no cobradas del último año, las 500 más recientes con total suficiente).
+
+### Redsys
+
+**No se implementa:** Big Elephant no cobra con Redsys (el Redsys del repositorio es de los tenants, que son clientes y
+no forman parte de esta contabilidad). Si algún día se usara, la columna `provider` de transacciones y payouts admite
+otra pasarela; bastaría con un lector de su informe que produzca las mismas filas y con su subcuenta de tesorería.
+
+### API de la fase 2
+
+| Ruta | Permiso | Respuesta |
+|---|---|---|
+| `GET /finance/stripe/settings` | lectura | `{ item:{stripeFeeVat,feeVatRateBp,stripePayoutBankAccountId,disputeAccountCode,updatedBy,updatedAt} }` |
+| `PATCH /finance/stripe/settings` | administración | `{ item }` |
+| `POST /finance/stripe/imports {kind,filename,contentBase64}` · `GET` | gestión · lectura | `{ item:{id,kind,filename,sha256,rows,inserted,duplicates,refreshed,nonEur,errors,problems[{line,message}],importedBy,createdAt} }` · `{ items, total }` |
+| `GET /finance/stripe/transactions?type&status&from&to&payout&issue=open&q&limit&offset` | lectura | `{ items, total }` |
+| `POST /finance/stripe/post {until?}` | contabilizar | `{ posted, skipped, errors[{transactionId,message}], truncated }` |
+| `GET /finance/stripe/payouts?status&from&to&limit&offset` | lectura | `{ items, total }` |
+| `GET /finance/stripe/summary` | lectura | ver el informe de la fase |
+| `GET /finance/reconciliation/invoices?status&from&to&q&limit&offset` | lectura | `{ items, total }` |
+| `GET /finance/reconciliation/payouts/:id` | lectura | `{ item }` |
+| `POST /finance/reconciliation/payouts/:id/link-bank {bankMovementId}` · `/unlink-bank` | contabilizar | `{ item }` |
+| `POST /finance/reconciliation/transactions/:id/review {note}` | contabilizar | `{ item }` |
+
+`/finance/bank-movements/:id/suggestions` añade `{type:"stripe_payout",payoutId,stripePayoutId,date,amountCents,reasons}`
+y `{type:"invoice",invoiceId,invoiceNumber,customerName,date,amountCents,reasons}`; `/match` admite
+`{type:"stripe_payout",payoutId}` (sin asiento) y `{type:"invoice_payment",invoiceId}`. `/finance/summary` añade
+`stripeBalanceCents` (5720 desde el libro; `null` sin la fase 2).
+
 ## Permisos (provisionales)
 
 Añadir ámbitos nuevos toca ficheros críticos del plano de control, así que la fase 1 usa los existentes, centralizados
@@ -204,9 +322,9 @@ en `server/finance/permissions.ts`:
 | Capacidad | Fase 1 |
 |---|---|
 | Consulta y exportaciones | `billing:read` |
-| Gestión: centros, categorías, proveedores, borradores de gastos, documentos, recurrentes, cuentas bancarias y cajas, importar extractos, ignorar movimientos | `billing:write` |
-| Contabilizar o revertir: asientos manuales, sincronizar facturas, registrar y anular gastos, pagos y su reversión, conciliar y desvincular, movimientos de caja | `billing:write` + sesión de operador (nunca un token de servicio) |
-| Cerrar/reabrir periodos y cerrar ejercicios, plan contable (alta de ejercicios: solo `billing:write`) | `billing:write` + sesión de operador + rol `admin` o `superadmin` |
+| Gestión: centros, categorías, proveedores, borradores de gastos, documentos, recurrentes, cuentas bancarias y cajas, importar extractos e informes de Stripe, ignorar movimientos | `billing:write` |
+| Contabilizar o revertir: asientos manuales, sincronizar facturas, registrar y anular gastos, pagos y su reversión, conciliar y desvincular (también payouts y cobros por transferencia), contabilizar Stripe, revisar incidencias, movimientos de caja | `billing:write` + sesión de operador (nunca un token de servicio) |
+| Cerrar/reabrir periodos y cerrar ejercicios, plan contable (alta de ejercicios: solo `billing:write`), configuración de Stripe | `billing:write` + sesión de operador + rol `admin` o `superadmin` |
 
 El alta de una cuenta bancaria o de una caja crea su subcuenta en el plan contable desde el servicio (alta derivada): no
 exige el rol de administración que pide el alta manual de cuentas.
@@ -216,7 +334,6 @@ Plan: en una PR protegida aparte, ámbitos propios (`finance:read`, `finance:wri
 
 ## Fases siguientes
 
-- **2 · Cobros y conciliación:** Stripe (cuenta 5720), cobros de facturas emitidas contra 430 (conciliación
-  `invoice_payment`).
+- **2 · Cobros y conciliación:** implementada (ver arriba). Pendiente: lector por API de Stripe (punto de extensión).
 - **3 · Gestoría e impuestos:** libros registro, modelos (303, 111, 115, 390…), exportación para la gestoría.
 - **4 · Análisis:** informes de resultados, tesorería y previsiones.

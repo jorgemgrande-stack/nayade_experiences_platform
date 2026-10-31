@@ -138,7 +138,7 @@ describe("API /cp/v1/finance: formas que espera el CRM", () => {
 
   it("resumen plano; lo de la fase 1B en null", async () => {
     const s = (await call("GET", "/summary", WRITE)).json;
-    expect(keys(s)).toEqual(["asOf", "bankBalanceCents", "banks", "cash", "cashBalanceCents", "expensesMonthCents", "expensesYearCents", "incomeMonthCents", "incomeYearCents", "payablesCents", "resultYearCents", "vatInputQuarterCents", "vatOutputQuarterCents"]);
+    expect(keys(s)).toEqual(["asOf", "bankBalanceCents", "banks", "cash", "cashBalanceCents", "expensesMonthCents", "expensesYearCents", "incomeMonthCents", "incomeYearCents", "payablesCents", "resultYearCents", "stripeBalanceCents", "vatInputQuarterCents", "vatOutputQuarterCents"]);
     expect(s).toMatchObject({ asOf: "2026-10-30", bankBalanceCents: null, cashBalanceCents: null, payablesCents: null, vatInputQuarterCents: null, banks: null, cash: null, incomeMonthCents: 100_000, incomeYearCents: 100_000, vatOutputQuarterCents: 21_000, expensesMonthCents: 0, resultYearCents: 100_000 });
   });
 });

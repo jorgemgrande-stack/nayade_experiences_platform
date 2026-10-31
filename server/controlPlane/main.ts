@@ -116,6 +116,9 @@ import { assistedImplementationEnabled } from "../implementation/config";
 import { FinanceOpsService } from "../finance/opsService";
 import { MysqlFinanceOpsStore, finOpsTablesReady } from "../finance/opsStore";
 import { startFinanceRecurringScheduler } from "../finance/recurringScheduler";
+import { FinanceStripeService } from "../finance/stripeService";
+import { MysqlFinanceStripeStore, MysqlStripeInvoiceDirectory, finStripeTablesReady } from "../finance/stripeStore";
+import { MysqlOwnInvoiceDirectory, mysqlKeyedLock } from "../finance/ownInvoices";
 import { ConsentService, MysqlConsentStore, commsTablesReady } from "../communications/consent";
 import { LinkSigner, linkSecretFromDb } from "../communications/links";
 import { CommunicationsService } from "../communications/service";
@@ -615,6 +618,10 @@ async function main() {
   // Operaciones (CRM 0035): gastos, proveedores, bancos y caja sobre el libro; sin la migración, solo el libro
   const financeOps = finance && crmPool && (await finOpsTablesReady(crmPool)) ? new FinanceOpsService({ store: new MysqlFinanceOpsStore(crmPool), finance, ledger: new MysqlFinanceStore(crmPool) }) : null;
   if (finance) console.log(JSON.stringify({ ctx: "FinanceOps", mounted: !!financeOps, ...(financeOps ? {} : { reason: "migration_0035_missing" }) }));
+  // Stripe como TPV (CRM 0036): importación de informes, contabilización y conciliación; sin la migración, no se monta
+  const financeStripe = financeOps && finance && crmPool && (await finStripeTablesReady(crmPool)) ? new FinanceStripeService({ store: new MysqlFinanceStripeStore(crmPool), finance, ops: new MysqlFinanceOpsStore(crmPool), ledger: new MysqlFinanceStore(crmPool), invoices: invoicing ? new MysqlOwnInvoiceDirectory(crmPool, external?.store.mode ?? "test") : null, stripeInvoices: new MysqlStripeInvoiceDirectory(crmPool), lock: mysqlKeyedLock(crmPool) }) : null;
+  if (financeOps) console.log(JSON.stringify({ ctx: "FinanceStripe", mounted: !!financeStripe, ...(financeStripe ? {} : { reason: "migration_0036_missing" }) }));
+  if (financeOps && financeStripe) financeOps.useReconciliation(financeStripe);
   // Borradores de gastos recurrentes: tarea APAGADA salvo CP_FINANCE_RECURRING_ENABLED=1 (una réplica por tick, GET_LOCK)
   if (financeOps && crmPool) startFinanceRecurringScheduler({ ops: financeOps, lock: mysqlAdvisoryLock(crmPool), env: process.env });
   if (crm && crmPool && (await settingsTablesReady(crmPool))) {
@@ -828,6 +835,7 @@ async function main() {
     finance,
     implementation,
     financeOps,
+    financeStripe,
     communications,
     notifications: notificationsFromEnv(process.env),
     mail: {
