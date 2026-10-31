@@ -9,25 +9,11 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
-  Settings as SettingsIcon, Globe, Phone, Mail, Clock,
-  CreditCard, Loader2, CheckCircle2, Info, Send, Building2,
-  Eye, EyeOff, Wifi, WifiOff, Check,
+  Globe, Phone, Mail, Clock,
+  CreditCard, Loader2, Info, Building2, Check,
 } from "lucide-react";
-
-const EMAIL_TEMPLATES = [
-  { id: "budget-user",         label: "Solicitud de presupuesto (al cliente)" },
-  { id: "budget-admin",        label: "Solicitud de presupuesto (al admin)" },
-  { id: "reservation-confirm", label: "Reserva confirmada (pago Redsys OK)" },
-  { id: "reservation-failed",  label: "Pago fallido (Redsys KO)" },
-  { id: "restaurant-confirm",  label: "Reserva de restaurante confirmada" },
-  { id: "restaurant-payment",  label: "Link de pago depósito restaurante" },
-  { id: "password-reset",      label: "Recuperar contraseña" },
-  { id: "quote",               label: "Presupuesto enviado al cliente" },
-  { id: "confirmation",        label: "Reserva confirmada (CRM admin)" },
-  { id: "transfer-confirm",    label: "Pago por transferencia validado" },
-];
+import CompanyData from "./CompanyData";
 
 // ─── Sidebar tab definitions ──────────────────────────────────────────────────
 const TABS = [
@@ -39,204 +25,6 @@ const TABS = [
 ] as const;
 
 type Tab = typeof TABS[number]["id"];
-
-// ─── GHL Section ──────────────────────────────────────────────────────────────
-function GHLSection({ plain = false }: { plain?: boolean }) {
-  const { data: status, refetch: refetchStatus } = trpc.cms.getGHLStatus.useQuery();
-  const saveMutation = trpc.cms.updateSiteSettings.useMutation({
-    onSuccess: () => { toast.success("Credenciales GHL guardadas"); refetchStatus(); },
-    onError: (e) => toast.error("Error al guardar: " + e.message),
-  });
-  const testMutation = trpc.cms.testGHLConnection.useMutation({
-    onSuccess: (res) => {
-      if (res.ok) toast.success("Conexión con GHL exitosa ✓");
-      else toast.error("Fallo de conexión: " + (res.error ?? "Error desconocido"));
-    },
-    onError: (e) => toast.error("Error: " + e.message),
-  });
-
-  const [apiKey, setApiKey] = useState("");
-  const [locationId, setLocationId] = useState("");
-  const [showKey, setShowKey] = useState(false);
-
-  const isConfigured = status?.configured;
-  const fromEnv = status?.fromEnv;
-
-  function handleSave() {
-    if (!apiKey && !locationId) return toast.error("Introduce al menos un valor");
-    const settings: Record<string, string> = {};
-    if (apiKey) settings.ghlApiKey = apiKey;
-    if (locationId) settings.ghlLocationId = locationId;
-    saveMutation.mutate({ settings });
-  }
-
-  function handleTest() {
-    const key = apiKey || "";
-    const loc = locationId || status?.locationId || "";
-    if (!key || !loc) return toast.error("Introduce API Key y Location ID para probar");
-    testMutation.mutate({ apiKey: key, locationId: loc });
-  }
-
-  const inner = (
-    <div className="space-y-4">
-      <div className="flex items-center gap-2">
-        <div className={`flex items-center gap-1.5 text-xs font-display font-medium px-2.5 py-1 rounded-full ${isConfigured ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "bg-muted text-muted-foreground"}`}>
-          {isConfigured ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
-          {isConfigured ? "Conectado" : "Sin configurar"}
-        </div>
-        {fromEnv && <span className="text-xs text-amber-500 font-display font-medium">· Variables de entorno activas (tienen prioridad)</span>}
-      </div>
-
-      {isConfigured && (
-        <div className="flex items-center gap-2 p-3 bg-emerald-500/8 border border-emerald-500/20 rounded-xl text-xs font-display text-emerald-700 dark:text-emerald-400">
-          <CheckCircle2 className="w-4 h-4 shrink-0" />
-          <span>
-            API Key: <strong>{status?.apiKeyMasked}</strong>
-            {status?.locationId && <> · Location ID: <strong>{status.locationId}</strong></>}
-          </span>
-        </div>
-      )}
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="space-y-1.5">
-          <Label className="text-sm font-display font-medium text-foreground/80">
-            API Key {isConfigured && <span className="text-xs text-muted-foreground">(dejar vacío para no cambiar)</span>}
-          </Label>
-          <div className="relative">
-            <Input
-              type={showKey ? "text" : "password"}
-              value={apiKey}
-              onChange={e => setApiKey(e.target.value)}
-              placeholder={isConfigured ? "••••••••" : "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."}
-              className="pr-10 font-mono text-xs"
-            />
-            <button
-              type="button"
-              onClick={() => setShowKey(v => !v)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-            >
-              {showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-            </button>
-          </div>
-        </div>
-        <div className="space-y-1.5">
-          <Label className="text-sm font-display font-medium text-foreground/80">Location ID</Label>
-          <Input
-            value={locationId}
-            onChange={e => setLocationId(e.target.value)}
-            placeholder={status?.locationId || "xxxxxxxxxxxxxxxxxxxxxxxx"}
-            className="font-mono text-xs"
-          />
-        </div>
-      </div>
-
-      <div className="flex gap-2 flex-wrap">
-        <Button
-          onClick={handleSave}
-          disabled={saveMutation.isPending || (!apiKey && !locationId)}
-          className="bg-blue-600 hover:bg-blue-700 text-white font-display"
-          size="sm"
-        >
-          {saveMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <CheckCircle2 className="w-4 h-4 mr-2" />}
-          Guardar credenciales
-        </Button>
-        <Button variant="outline" size="sm" onClick={handleTest} disabled={testMutation.isPending} className="font-display">
-          {testMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Wifi className="w-4 h-4 mr-2" />}
-          Probar conexión
-        </Button>
-      </div>
-
-      <div className="text-xs text-muted-foreground font-display space-y-1 pt-1 border-t border-border/40">
-        <p>Los leads del formulario web y presupuestos se sincronizan automáticamente como contactos en GHL con sus tags y notas.</p>
-        <p>Tags disponibles: <code className="bg-muted px-1 rounded">Lead Web</code> · <code className="bg-muted px-1 rounded">Experiencia</code> · <code className="bg-muted px-1 rounded">Presupuesto</code> · <code className="bg-muted px-1 rounded">Reserva Online</code></p>
-      </div>
-    </div>
-  );
-
-  if (plain) return inner;
-
-  return (
-    <div className="bg-card border border-border/50 rounded-2xl p-6">
-      <div className="flex items-center justify-between mb-1">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-xl bg-blue-500/10 flex items-center justify-center">
-            <SettingsIcon className="w-4 h-4 text-blue-500" />
-          </div>
-          <h3 className="font-heading font-semibold text-foreground">Integración GoHighLevel</h3>
-        </div>
-      </div>
-      <p className="text-xs text-muted-foreground mb-5 ml-11">
-        Sincroniza leads y contactos con tu CRM de GoHighLevel. Las credenciales se guardan de forma segura en la base de datos.
-      </p>
-      <div className="ml-11">{inner}</div>
-    </div>
-  );
-}
-
-// ─── Email Preview Section ─────────────────────────────────────────────────────
-function EmailPreviewSection({ plain = false }: { plain?: boolean }) {
-  const [templateId, setTemplateId] = useState("budget-user");
-  const [toEmail, setToEmail] = useState("");
-  const sendPreview = trpc.admin.sendEmailPreview.useMutation({
-    onSuccess: (data) => toast.success(`Email enviado a ${data.to}`),
-    onError: (err) => toast.error(`Error: ${err.message}`),
-  });
-
-  const inner = (
-    <div className="space-y-4">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="space-y-1.5">
-          <Label className="text-xs font-display text-muted-foreground">Plantilla</Label>
-          <Select value={templateId} onValueChange={setTemplateId}>
-            <SelectTrigger className="font-display">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {EMAIL_TEMPLATES.map(t => (
-                <SelectItem key={t.id} value={t.id} className="font-display">{t.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="space-y-1.5">
-          <Label className="text-xs font-display text-muted-foreground">Enviar a</Label>
-          <Input
-            type="email"
-            value={toEmail}
-            onChange={e => setToEmail(e.target.value)}
-            placeholder="tu-correo@empresa.com"
-            className="font-display"
-          />
-        </div>
-      </div>
-      <Button
-        onClick={() => sendPreview.mutate({ templateId, to: toEmail })}
-        disabled={sendPreview.isPending || !toEmail}
-        className="bg-orange-500 hover:bg-orange-600 text-white font-display"
-      >
-        {sendPreview.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
-        Enviar email de prueba
-      </Button>
-    </div>
-  );
-
-  if (plain) return inner;
-
-  return (
-    <div className="bg-card border border-border/50 rounded-2xl p-6">
-      <div className="flex items-center gap-3 mb-3">
-        <div className="w-8 h-8 rounded-xl bg-orange-500/10 flex items-center justify-center">
-          <Send className="w-4 h-4 text-orange-500" />
-        </div>
-        <h3 className="font-heading font-semibold text-foreground">Prueba de plantillas de email</h3>
-      </div>
-      <p className="text-sm font-display text-muted-foreground mb-4 ml-11">
-        Envía una muestra de cualquier plantilla de email a la dirección que elijas para verificar el diseño.
-      </p>
-      <div className="ml-11">{inner}</div>
-    </div>
-  );
-}
 
 // ─── Field helper ─────────────────────────────────────────────────────────────
 // Asocia la etiqueta, la ayuda y el error al control (accesibilidad: label + aria-describedby).
@@ -278,10 +66,10 @@ function AutoSaveStatus({ saving }: { saving: boolean }) {
 
 // ─── Página principal ─────────────────────────────────────────────────────────
 export default function Settings() {
-  const { data: rawSettings, isLoading, isError, error: loadError, refetch } = trpc.cms.getSiteSettings.useQuery();
-  // Empresas con licencias por capacidad: sin valores por defecto heredados de la instalación
-  // original y sin los campos que no aplican a su plan.
+  // Empresas con licencias por capacidad: una sola pantalla «Datos de la empresa» con los mismos
+  // datos que el asistente «Primeros pasos» (ver CompanyData). En single, la pantalla de siempre.
   const sub = usePanelSubscription();
+  const { data: rawSettings, isLoading, isError, error: loadError, refetch } = trpc.cms.getSiteSettings.useQuery(undefined, { enabled: sub.mode === "legacy" });
   const isNewCompany = sub.isLicensed;
   const hasRestaurants = sub.can("restaurant-net");
   // Valores por defecto de la instalación original solo en modo single (Náyade); en cualquier otro
@@ -425,6 +213,22 @@ export default function Settings() {
   const visibleTabs = TABS.filter((t) => !(isNewCompany && t.id === "schedule"));
   const blockedNotice = (valid: boolean) =>
     !valid && <p role="status" className="text-xs text-destructive pt-2">Corrige los campos marcados para que se guarden los cambios.</p>;
+
+  if (sub.mode === "tasks") {
+    return (
+      <AdminLayout title="Datos de la empresa">
+        <div className="max-w-3xl mx-auto px-4 py-8">
+          <div className="mb-6">
+            <h1 className="text-2xl font-heading font-bold text-foreground">Datos de la empresa</h1>
+            <p className="text-sm text-muted-foreground font-display mt-1">
+              Nombre, datos fiscales y contacto de tu empresa.
+            </p>
+          </div>
+          <CompanyData />
+        </div>
+      </AdminLayout>
+    );
+  }
 
   if (isError) {
     return (

@@ -1,5 +1,7 @@
 import AdminLayout from "@/components/AdminLayout";
 import { trpc } from "@/lib/trpc";
+import { usePanelSubscription } from "@/hooks/usePanelSubscription";
+import { COMPANY_DATA_HREF } from "./configSections";
 import {
   CheckCircle2, Circle, AlertTriangle, Loader2,
   Building2, Receipt, Mail, Palette, Settings2, Plug,
@@ -68,12 +70,18 @@ function SectionCard({ icon: Icon, title, items, editHref }: SectionCardProps) {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function ConfigStatus() {
+  // Empresa con licencias por capacidad: sin variables del servidor ni feature flags, y los datos de empresa se
+  // editan en «Datos de la empresa». En single, como siempre.
+  const sub = usePanelSubscription();
+  const technical = sub.mode === "legacy";
   const settingsQ = trpc.config.listSystemSettings.useQuery();
-  const flagsQ = trpc.config.listFeatureFlags.useQuery();
+  const flagsQ = trpc.config.listFeatureFlags.useQuery(undefined, { enabled: technical });
   const statusQ = trpc.onboarding.getStatus.useQuery();
-  const envQ = trpc.onboarding.getEnvStatus.useQuery();
+  const envQ = trpc.onboarding.getEnvStatus.useQuery(undefined, { enabled: technical });
+  const companyHref = technical ? "/admin/onboarding" : COMPANY_DATA_HREF;
+  const settingsHref = technical ? "/admin/onboarding" : "/admin/configuracion";
 
-  const isLoading = settingsQ.isLoading || flagsQ.isLoading || statusQ.isLoading || envQ.isLoading;
+  const isLoading = sub.mode === "loading" || settingsQ.isLoading || (technical && (flagsQ.isLoading || envQ.isLoading)) || statusQ.isLoading;
 
   if (isLoading) {
     return (
@@ -158,8 +166,8 @@ export default function ConfigStatus() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <SectionCard
             icon={Building2}
-            title="Información del negocio"
-            editHref="/admin/onboarding"
+            title={technical ? "Información del negocio" : "Datos de la empresa"}
+            editHref={companyHref}
             items={[
               { label: "Nombre comercial",  ok: hasValue("brand_name"),          note: getSetting("brand_name") || undefined },
               { label: "Teléfono",          ok: hasValue("brand_phone") || hasValue("brand_support_phone") },
@@ -170,7 +178,7 @@ export default function ConfigStatus() {
           <SectionCard
             icon={Receipt}
             title="Datos fiscales"
-            editHref="/admin/onboarding"
+            editHref={companyHref}
             items={[
               { label: "NIF / CIF",         ok: hasValue("brand_nif"),     note: getSetting("brand_nif") || undefined },
               { label: "Domicilio fiscal",   ok: hasValue("brand_address") },
@@ -184,7 +192,7 @@ export default function ConfigStatus() {
         <SectionCard
           icon={Mail}
           title="Emails y notificaciones"
-          editHref="/admin/onboarding"
+          editHref={settingsHref}
           items={[
             { label: "Email de reservas",    ok: hasValue("email_reservations"),   note: getSetting("email_reservations") || "(usando valor por defecto)" },
             { label: "Email alertas admin",  ok: hasValue("email_admin_alerts"),   note: getSetting("email_admin_alerts") || "(usando valor por defecto)" },
@@ -197,8 +205,8 @@ export default function ConfigStatus() {
         {/* Branding */}
         <SectionCard
           icon={Palette}
-          title="Branding"
-          editHref="/admin/onboarding"
+          title={technical ? "Branding" : "Marca"}
+          editHref={settingsHref}
           items={[
             { label: "Logotipo",        ok: hasValue("brand_logo_url") },
             { label: "Color principal", ok: hasValue("brand_primary_color"), note: getSetting("brand_primary_color") || undefined },
@@ -208,7 +216,7 @@ export default function ConfigStatus() {
         />
 
         {/* Active modules */}
-        <div className="bg-card border border-border/50 rounded-2xl overflow-hidden">
+        {technical && <div className="bg-card border border-border/50 rounded-2xl overflow-hidden">
           <div className="flex items-center justify-between px-5 py-3 bg-muted/30 border-b border-border/50">
             <div className="flex items-center gap-2">
               <Settings2 className="w-4 h-4 text-muted-foreground" />
@@ -235,10 +243,10 @@ export default function ConfigStatus() {
               </div>
             )}
           </div>
-        </div>
+        </div>}
 
         {/* Integrations / env vars */}
-        <div className="bg-card border border-border/50 rounded-2xl overflow-hidden">
+        {technical && <div className="bg-card border border-border/50 rounded-2xl overflow-hidden">
           <div className="flex items-center justify-between px-5 py-3 bg-muted/30 border-b border-border/50">
             <div className="flex items-center gap-2">
               <Plug className="w-4 h-4 text-muted-foreground" />
@@ -269,7 +277,7 @@ export default function ConfigStatus() {
               </div>
             ))}
           </div>
-        </div>
+        </div>}
       </div>
     </AdminLayout>
   );

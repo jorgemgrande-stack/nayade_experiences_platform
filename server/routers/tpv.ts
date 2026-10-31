@@ -21,6 +21,8 @@ import {
   tpvSalePayments,
   experiences,
   experienceVariants,
+  categories,
+  clients,
   packs,
   spaTreatments,
   roomTypes,
@@ -38,9 +40,11 @@ import {
   invoices,
   leads,
 } from "../../drizzle/schema";
-import { eq, and, desc, sql, gte, lte, inArray } from "drizzle-orm";
+import { eq, and, or, like, desc, sql, gte, lte, inArray } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { generateDocumentNumber } from "../documentNumbers";
+import { currentTpvScope } from "../tpvCatalogScope";
+import { computeSessionPaymentTotals, receivedSaleCondition } from "../tpvSessionTotals";
 
 const _pool = legacyPool();
 const db = legacyDb();
@@ -297,6 +301,34 @@ export const tpvRouter = router({
     return await db.select().from(cashRegisters).where(eq(cashRegisters.isActive, true));
   }),
 
+  // Cajas activas con su sesión abierta (si la hay): selector de caja de la pantalla de venta
+  getRegisterStatus: tpvAccessProc.query(async () => {
+    const regs = await db.select().from(cashRegisters).where(eq(cashRegisters.isActive, true));
+    const open = await db
+      .select({ id: cashSessions.id, registerId: cashSessions.registerId, cashierName: cashSessions.cashierName, openedAt: cashSessions.openedAt })
+      .from(cashSessions)
+      .where(eq(cashSessions.status, "open"));
+    return regs.map((r) => {
+      const s = open.find((o) => o.registerId === r.id);
+      return { id: r.id, name: r.name, location: r.location ?? null, openSession: s ? { id: s.id, cashierName: s.cashierName, openedAt: s.openedAt } : null };
+    });
+  }),
+
+  // Búsqueda de un cliente ya existente de la empresa al cobrar (nombre, email o teléfono). Al elegirlo, la venta usa
+  // su email, que es la clave única del cliente en el CRM: upsertClientFromReservation lo vincula sin duplicarlo.
+  // Adaptado de Skicenter (TpvScreen.tsx, commits e76da6d4 y 21a6f223).
+  searchClients: tpvSellProc
+    .input(z.object({ q: z.string().trim().min(3).max(100) }))
+    .query(async ({ input }) => {
+      const term = `%${input.q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+      return await db
+        .select({ id: clients.id, name: clients.name, email: clients.email, phone: clients.phone })
+        .from(clients)
+        .where(or(like(clients.name, term), like(clients.email, term), like(clients.phone, term)))
+        .orderBy(desc(clients.updatedAt))
+        .limit(8);
+    }),
+
   // Alta de caja: una empresa nueva no trae ninguna y sin caja no se puede abrir sesión
   createRegister: tpvBackofficeProc
     .input(z.object({ name: z.string().trim().min(1).max(100), location: z.string().trim().max(200).optional() }))
@@ -408,36 +440,20 @@ export const tpvRouter = router({
         throw new TRPCError({ code: "CONFLICT", message: "La sesión ya está cerrada" });
       }
 
-      // Calculate totals from payments — solo ventas confirmadas como 'paid'.
-      // Excluye 'cancelled' (anuladas por admin desde CRM, ventas de prueba, etc.)
-      // y 'pending' (rollback de createSale). Asume "anulación administrativa" —
-      // si en el futuro hay devoluciones físicas reales, deberá registrarse como
-      // movimiento de caja separado.
-      const salesRows = await db
-        .select()
-        .from(tpvSales)
-        .where(and(
-          eq(tpvSales.sessionId, input.sessionId),
-          eq(tpvSales.status, "paid"),
-        ));
-      const saleIds = salesRows.map((s) => s.id);
-
-      let totalCash = 0, totalCard = 0, totalBizum = 0, totalMixed = 0;
-      if (saleIds.length > 0) {
-        for (const saleId of saleIds) {
-          const payments = await db
-            .select()
-            .from(tpvSalePayments)
-            .where(and(eq(tpvSalePayments.saleId, saleId), eq(tpvSalePayments.status, "completed")));
-          for (const p of payments) {
-            const amt = parseFloat(String(p.amount));
-            if (p.method === "cash") totalCash += amt;
-            else if (p.method === "card") totalCard += amt;
-            else if (p.method === "bizum") totalBizum += amt;
-            else totalMixed += amt;
-          }
-        }
+      // Cierre atómico: se RECLAMA la sesión (open → closed) antes de calcular. Dos cierres a la vez no duplican el
+      // cierre contable, la alerta ni el correo, y createSale (que bloquea la fila de la sesión) ya no puede grabar
+      // ventas en una sesión cerrada. Adaptado de Skicenter (server/routers/tpv.ts, commit 3cdc678f).
+      const claimedAt = Date.now();
+      const [claim] = await db.update(cashSessions)
+        .set({ status: "closed", closedAt: claimedAt })
+        .where(and(eq(cashSessions.id, input.sessionId), eq(cashSessions.status, "open")));
+      if (Number((claim as any)?.affectedRows ?? 0) !== 1) {
+        throw new TRPCError({ code: "CONFLICT", message: "La sesión ya está cerrada" });
       }
+
+      // Cobros de todas las ventas cobradas de la sesión (también las anuladas o devueltas después: su devolución en
+      // efectivo resta como salida manual). Ver server/tpvSessionTotals.ts.
+      const { totalCash, totalCard, totalBizum, totalMixed } = await computeSessionPaymentTotals(input.sessionId);
 
       // Manual movements
       const movements = await db
@@ -455,8 +471,6 @@ export const tpvRouter = router({
       const cashDifference = input.countedCash - closingAmount;
 
       await db.update(cashSessions).set({
-        status: "closed",
-        closedAt: Date.now(),
         countedCash: String(input.countedCash),
         closingAmount: String(closingAmount),
         cashDifference: String(cashDifference),
@@ -546,10 +560,10 @@ export const tpvRouter = router({
       const [session] = await db.select().from(cashSessions).where(eq(cashSessions.id, input.sessionId));
       if (!session) throw new TRPCError({ code: "NOT_FOUND", message: "Sesión no encontrada" });
 
-      // Solo ventas 'paid' — alineado con closeSession y dailyControl.
+      // Ventas cobradas de la sesión (también las anuladas o devueltas después) — mismo criterio que closeSession.
       const sales = await db.select().from(tpvSales).where(and(
         eq(tpvSales.sessionId, input.sessionId),
-        eq(tpvSales.status, "paid"),
+        receivedSaleCondition(),
       ));
       const movements = await db.select().from(cashMovements).where(eq(cashMovements.sessionId, input.sessionId));
 
@@ -562,21 +576,7 @@ export const tpvRouter = router({
       // ANTES de cerrar. Sin esto, el frontend mostraba 0,00€ aunque hubiera
       // cobros en cash y el cajero se confundía (caso real: sesión #18, 40€
       // cobrados en efectivo aparecían como 0€ esperado).
-      let totalCash = 0, totalCard = 0, totalBizum = 0, totalMixed = 0;
-      const saleIds = sales.map((s) => s.id);
-      if (saleIds.length > 0) {
-        const payments = await db.select().from(tpvSalePayments).where(and(
-          inArray(tpvSalePayments.saleId, saleIds),
-          eq(tpvSalePayments.status, "completed"),
-        ));
-        for (const p of payments) {
-          const amt = parseFloat(String(p.amount));
-          if (p.method === "cash") totalCash += amt;
-          else if (p.method === "card") totalCard += amt;
-          else if (p.method === "bizum") totalBizum += amt;
-          else totalMixed += amt;
-        }
-      }
+      const { totalCash, totalCard, totalBizum, totalMixed } = await computeSessionPaymentTotals(input.sessionId);
 
       return {
         session, sales, movements,
@@ -793,16 +793,25 @@ export const tpvRouter = router({
       varsByExp[v.experienceId].push(v);
     }
 
+    // Pyme: sus productos por sus categorías y, de lo sectorial, solo lo contratado (tpvCatalogScope)
+    const scope = await currentTpvScope();
+    const cats = await db.select({ id: categories.id, name: categories.name })
+      .from(categories).where(eq(categories.isActive, true)).orderBy(categories.sortOrder);
+    const usedCats = new Set(exps.map(e => e.categoryId).filter((x): x is number => x != null));
+
     return {
+      licensed: scope.licensed,
+      // Solo las categorías con algo a la venta en el TPV
+      categories: cats.filter(c => usedCats.has(c.id)),
       experiences: exps.map(p => ({
         ...p,
         productType: "experience" as const,
         variants: (varsByExp[p.id] ?? []).sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)),
       })),
-      packs: pkgs.map(p => ({ ...p, productType: "pack" as const })),
-      spa: spas.map(p => ({ ...p, productType: "spa" as const })),
-      hotel: rooms.map(p => ({ ...p, productType: "hotel" as const })),
-      legoPacks: legoPkgs.map(p => ({ ...p, basePrice: null, discountPercent: null, discountExpiresAt: null, productType: "legoPack" as const })),
+      packs: scope.packs ? pkgs.map(p => ({ ...p, productType: "pack" as const })) : [],
+      spa: scope.spa ? spas.map(p => ({ ...p, productType: "spa" as const })) : [],
+      hotel: scope.hotel ? rooms.map(p => ({ ...p, productType: "hotel" as const })) : [],
+      legoPacks: scope.legoPacks ? legoPkgs.map(p => ({ ...p, basePrice: null, discountPercent: null, discountExpiresAt: null, productType: "legoPack" as const })) : [],
     };
   }),
 
@@ -878,10 +887,22 @@ export const tpvRouter = router({
         lineSubtotal: number;
       }> = [];
 
+      // Concepto libre: REAV en la instalación original (o con Travel Net); en una pyme, IVA general de la empresa
+      const scope = await currentTpvScope();
+      // Lo sectorial solo se vende si la empresa lo tiene contratado (el menú y el catálogo ya lo ocultan)
+      const allowedType: Record<string, boolean> = { pack: scope.packs, legoPack: scope.legoPacks, spa: scope.spa, hotel: scope.hotel };
+      if (input.items.some(i => !i.isManual && allowedType[i.productType] === false)) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Ese producto no está disponible en tu plan" });
+      }
+      const manualFiscal: FiscalData | null = hasManual
+        ? (scope.reav
+            ? { fiscalRegime: "reav", taxRate: 0, providerPercent: 60, agencyMarginPercent: 40 }
+            : { fiscalRegime: "general", taxRate: parseFloat(await getSystemSetting("tax_rate_general", "21")) || 21, providerPercent: 0, agencyMarginPercent: 0 })
+        : null;
       for (const item of input.items) {
         const lineSubtotal = item.unitPrice * item.quantity * (1 - item.discountPercent / 100);
-        const fiscalData = item.isManual
-          ? { fiscalRegime: "reav" as const, taxRate: 0, providerPercent: 60, agencyMarginPercent: 40 }
+        const fiscalData = item.isManual && manualFiscal
+          ? manualFiscal
           : await getProductFiscalData(item.productType, item.productId);
         const fiscal = calcLineFiscal(lineSubtotal, fiscalData.fiscalRegime, fiscalData.taxRate, fiscalData.providerPercent, fiscalData.agencyMarginPercent);
         linesFiscal.push({ fiscalRegime: fiscalData.fiscalRegime, ...fiscal, lineSubtotal });
@@ -898,16 +919,22 @@ export const tpvRouter = router({
       const fiscalSummary = hasReav && hasIva ? "mixed" : hasReav ? "reav_only" : "iva_only";
       const effectiveTaxRatePct = totalTaxBase > 0 ? (totalTaxAmount / totalTaxBase * 100) : 21;
 
+      // Solo se cobra en una sesión abierta (antes de numerar: un rechazo no deja hueco en la numeración)
+      const [saleSession] = await db.select({ status: cashSessions.status }).from(cashSessions).where(eq(cashSessions.id, input.sessionId));
+      if (!saleSession) throw new TRPCError({ code: "NOT_FOUND", message: "Sesión de caja no encontrada" });
+      if (saleSession.status !== "open") throw new TRPCError({ code: "CONFLICT", message: "La caja está cerrada. Ábrela de nuevo para cobrar." });
+
       const ticketNumber = await generateTicketNumber(String((ctx as any).user?.id ?? "system"));
       const sellerName = (ctx as any).user?.name ?? null;
       const sellerUserId = (ctx as any).user?.id ?? null;
+      // Numeración y consultas se resuelven antes de la transacción: dentro solo hay escrituras
+      const preReservationNumber = input.items[0]
+        ? await generateReservationRef(String((ctx as any).user?.id ?? "system"))
+        : null;
 
       // -- 3. Insertar venta con datos fiscales ---------------------------------
-      // Bug #2 audit: insertamos con status='pending'. Solo cambia a 'paid' al
-      // final del flujo, cuando TODOS los pasos posteriores (líneas, pagos,
-      // reserva, factura, transacción contable, REAV) han completado sin error.
-      // Si algo falla, la fila queda 'pending' y el Control Diario la filtra
-      // automáticamente (NOT IN ('cancelled','refunded') — pending no aparece).
+      // Se inserta 'pending' y pasa a 'paid' DENTRO de la transacción del núcleo (pasos 4–7). Si el núcleo falla, la
+      // venta queda anulada con motivo (ticket documentado, sin hueco de numeración) y el cajero recibe un error.
       const mainItemForDate = input.items[0]; // usado para serviceDate fallback
       const [saleResult] = await db.insert(tpvSales).values({
         ticketNumber,
@@ -937,11 +964,33 @@ export const tpvRouter = router({
       } as any);
       const saleId = (saleResult as any).insertId as number;
 
+      // -- 4–7. NÚCLEO ATÓMICO ---------------------------------------------------
+      // Líneas, cobros, reserva y asiento contable se graban en UNA transacción junto con el estado 'paid': o queda
+      // la venta entera o no queda nada a medias (antes cada paso tragaba su error y la venta podía quedar 'paid' sin
+      // reserva o sin asiento). Adaptado de Skicenter (server/routers/tpv.ts, commit 0d3c0d4c).
+      const primaryPaymentMethod = input.payments[0]?.method ?? "other";
+      // Total de personas = S(quantity × participants). Esta fórmula es la única
+      // fuente de verdad en TODO el flujo TPV (reserva, calendario, REAV, email, GHL).
+      // - Pase individual:     quantity=N, participants=1 ? N personas
+      // - Pack para K personas: quantity=N, participants=K ? N×K personas
+      const totalPeople = input.items.reduce((sum, it) => sum + (it.quantity * (it.participants ?? 1)), 0);
+      const mainItem = mainItemForDate;
+      let reservationId: number | null = null;
+      try {
+        reservationId = await db.transaction(async (tx) => {
+      let coreReservationId: number | null = null;
+      // La sesión se bloquea: un cierre de caja simultáneo espera a esta venta o la rechaza
+      const [lockedSession] = await tx.select({ status: cashSessions.status }).from(cashSessions)
+        .where(eq(cashSessions.id, input.sessionId)).for("update");
+      if (lockedSession?.status !== "open") {
+        throw new TRPCError({ code: "CONFLICT", message: "La caja se ha cerrado mientras se cobraba. Ábrela de nuevo y repite el cobro." });
+      }
+
       // -- 4. Insertar líneas con fiscalidad -----------------------------------
       for (let i = 0; i < input.items.length; i++) {
         const item = input.items[i];
         const lf   = linesFiscal[i];
-        await db.insert(tpvSaleItems).values({
+        await tx.insert(tpvSaleItems).values({
           saleId,
           productType: item.productType,
           productId: item.productId,
@@ -967,12 +1016,11 @@ export const tpvRouter = router({
       }
 
       // -- 5. Insertar pagos ----------------------------------------------------
-      const primaryPaymentMethod = input.payments[0]?.method ?? "other";
       for (const payment of input.payments) {
         const changeGiven = payment.method === "cash" && payment.amountTendered
           ? Math.max(0, payment.amountTendered - payment.amount)
           : 0;
-        await db.insert(tpvSalePayments).values({
+        await tx.insert(tpvSalePayments).values({
           saleId,
           payerName: payment.payerName,
           method: payment.method,
@@ -985,17 +1033,9 @@ export const tpvRouter = router({
       }
 
       // -- 6. Generar reserva automática siempre que haya producto principal ----
-      // Total de personas = S(quantity × participants). Esta fórmula es la única
-      // fuente de verdad en TODO el flujo TPV (reserva, calendario, REAV, email, GHL).
-      // - Pase individual:     quantity=N, participants=1 ? N personas
-      // - Pack para K personas: quantity=N, participants=K ? N×K personas
-      const totalPeople = input.items.reduce((sum, it) => sum + (it.quantity * (it.participants ?? 1)), 0);
-
-      let reservationId: number | null = null;
-      const mainItem = mainItemForDate;
-      if (mainItem) {
-        try {
-          const reservationNumber = await generateReservationRef(String((ctx as any).user?.id ?? "system"));
+      if (mainItem && preReservationNumber) {
+        {
+          const reservationNumber = preReservationNumber;
           const merchantOrder = reservationNumber; // reutilizamos el mismo número correlativo
           const amountCents = Math.round(total * 100);
           // Resumen de actividades ADICIONALES (extras) — NO incluye el item principal.
@@ -1046,31 +1086,21 @@ export const tpvRouter = router({
             updatedAt: Date.now(),
             paidAt: Date.now(),
           } as any);
-          reservationId = (resResult as any).insertId as number;
+          coreReservationId = (resResult as any).insertId as number;
           // Actualizar la venta con el ID de reserva
-          await db.update(tpvSales).set({ reservationId } as any).where(eq(tpvSales.id, saleId));
-          // Crear/actualizar cliente en el CRM
-          if (input.customerName && input.customerName !== "Cliente TPV") {
-            await upsertClientFromReservation({
-              name: input.customerName,
-              email: input.customerEmail ?? null,
-              phone: input.customerPhone ?? null,
-              source: "tpv",
-            });
-          }
-        } catch (e) {
-          console.error("[TPV] Error creando reserva automática:", e);
+          await tx.update(tpvSales).set({ reservationId: coreReservationId } as any).where(eq(tpvSales.id, saleId));
+          // El cliente del CRM se crea o vincula tras el commit (ver más abajo)
         }
       }
 
       // -- 7. Registrar transacción unificada en el libro maestro ---------------
-      try {
+      {
         const methodMap: Record<string, string> = {
           cash: "efectivo", card: "tarjeta_fisica", bizum: "otro", other: "otro"
         };
         const txMethod = methodMap[primaryPaymentMethod] ?? "otro";
         const txNumber = generateTransactionNumber();
-        await db.insert(transactions).values({
+        await tx.insert(transactions).values({
           transactionNumber: txNumber,
           type: "ingreso",
           amount: String(total.toFixed(2)),
@@ -1091,12 +1121,48 @@ export const tpvRouter = router({
           reavMargin: String(totalReavMargin.toFixed(2)),
           fiscalRegime: (fiscalSummary === "iva_only" ? "general" : fiscalSummary === "reav_only" ? "reav" : "mixed") as any,
           tpvSaleId: saleId,
-          reservationId: reservationId ?? undefined,
-          reservationRef: reservationId ? `TPV-RES-${saleId}` : undefined,
+          reservationId: coreReservationId ?? undefined,
+          reservationRef: coreReservationId ? `TPV-RES-${saleId}` : undefined,
           operationStatus: "confirmada",
         } as any);
+      }
+
+      // Venta confirmada: el estado 'paid' se escribe dentro de la misma transacción
+      await tx.update(tpvSales)
+        .set({ status: "paid", paidAt: Date.now() } as any)
+        .where(eq(tpvSales.id, saleId));
+          return coreReservationId;
+        });
       } catch (e) {
-        console.error("[TPV] Error registrando transacción:", e);
+        console.error("[TPV_CREATE_SALE_ROLLBACK]", { saleId, ticketNumber, error: e instanceof Error ? e.message : String(e) });
+        try {
+          await db.update(tpvSales).set({
+            status: "cancelled",
+            notes: [input.notes, `[VENTA NO REGISTRADA] ${ticketNumber}: error al grabarla; se deshizo por completo (sin líneas, cobros, reservas ni asientos).`].filter(Boolean).join(" · "),
+          } as any).where(and(eq(tpvSales.id, saleId), eq(tpvSales.status, "pending")));
+        } catch (markErr) {
+          console.error("[TPV_CREATE_SALE_ROLLBACK_MARK_FAILED]", { saleId, error: String(markErr) });
+        }
+        if (e instanceof TRPCError) throw e;
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `La venta ${ticketNumber} no se ha registrado: ha fallado al grabarla y se ha deshecho por completo (no queda ningún cobro, reserva ni asiento a medias). Vuelve a cobrarla; si se repite, avisa a administración con este número de ticket.`,
+        });
+      }
+
+      // -- Efectos posteriores al commit (nunca deshacen la venta ya grabada) -----
+      // Crear/actualizar cliente en el CRM
+      if (input.customerName && input.customerName !== "Cliente TPV") {
+        try {
+          await upsertClientFromReservation({
+            name: input.customerName,
+            email: input.customerEmail ?? null,
+            phone: input.customerPhone ?? null,
+            source: "tpv",
+          });
+        } catch (e) {
+          console.error("[TPV] Error vinculando el cliente CRM a la venta:", e);
+        }
       }
 
       // -- 8. Crear expediente REAV automáticamente si hay líneas REAV ----------
@@ -1273,17 +1339,7 @@ export const tpvRouter = router({
         }
       }
 
-      // -- 8b. CONFIRMAR venta TPV como pagada ----------------------------------
-      // Punto de no retorno: si llegamos aquí los pasos críticos (líneas, pagos,
-      // reserva, transacción contable, REAV, factura) han completado. Marcamos la
-      // venta como 'paid' con paidAt. Si CUALQUIERA de los pasos anteriores hubiera
-      // lanzado una excepción no capturada, llegaríamos aquí y la fila se quedaría
-      // como 'pending' — invisible para el Control Diario hasta que se revise
-      // manualmente. Los pasos siguientes (email, GHL, logActivity) son
-      // fire-and-forget — su fallo no debe afectar el estado de la venta.
-      await db.update(tpvSales)
-        .set({ status: "paid", paidAt: Date.now() } as any)
-        .where(eq(tpvSales.id, saleId));
+      // La venta ya quedó 'paid' dentro de la transacción del núcleo; lo que sigue son efectos posteriores.
 
       // -- 9. Email de confirmación (cliente si hay email + siempre a reservas@) -
       try {
@@ -1484,8 +1540,8 @@ export const tpvRouter = router({
       const registers = await db.select().from(cashRegisters);
       const registerMap = Object.fromEntries(registers.map(r => [r.id, r.name]));
 
-      // Aggregate sales per session in one batch query — solo 'paid'
-      // (mismo criterio que cierre de caja para que cuadre con el histórico real).
+      // Ventas cobradas por sesión en una sola consulta — mismo criterio que el cierre de caja
+      // (también las anuladas o devueltas después; ver server/tpvSessionTotals.ts).
       const sessionIds = sessions.map(s => s.id);
       const salesRows = sessionIds.length > 0
         ? await db
@@ -1493,7 +1549,7 @@ export const tpvRouter = router({
             .from(tpvSales)
             .where(and(
               inArray(tpvSales.sessionId, sessionIds),
-              eq(tpvSales.status, "paid"),
+              receivedSaleCondition(),
             ))
         : [];
 

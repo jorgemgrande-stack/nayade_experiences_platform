@@ -43,7 +43,7 @@ export default function TpvOpenSession({ open, registerId, onClose, onOpened }: 
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-white">
             <Lock className="w-5 h-5 text-violet-400" />
-            Apertura de Caja
+            Abrir caja
           </DialogTitle>
         </DialogHeader>
         <div className="space-y-4 pt-2">
@@ -84,7 +84,7 @@ export default function TpvOpenSession({ open, registerId, onClose, onOpened }: 
               onClick={handleOpen}
               disabled={openMut.isPending}
             >
-              {openMut.isPending ? "Abriendo..." : "Abrir Caja"}
+              {openMut.isPending ? "Abriendo..." : "Abrir caja"}
             </Button>
           </div>
         </div>
