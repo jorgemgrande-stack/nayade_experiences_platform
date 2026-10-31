@@ -1,5 +1,5 @@
 /**
- * Implantación asistida (CRM 0035): expediente de una solución que necesita preparación técnica antes de habilitarse,
+ * Implantación asistida (CRM 0034): expediente de una solución que necesita preparación técnica antes de habilitarse,
  * con su orden de implantación (hitos y pendientes) y su historial (solo se añaden filas).
  *
  *   requested ─propuesta→ proposal ─contrato aceptado→ accepted (orden de implantación en curso)
@@ -495,7 +495,7 @@ export class MysqlImplementationStore implements ImplementationStore {
   }
 }
 
-/** ¿Existe la migración 0035 (expedientes, hitos e historial)? */
+/** ¿Existe la migración 0034 (expedientes, hitos e historial)? */
 export async function implementationTablesReady(pool: Pick<mysql.Pool, "query">): Promise<boolean> {
   for (const t of ["implementation_orders", "implementation_milestones", "implementation_events"]) {
     if (!(await pool.query(`SELECT 1 FROM ${t} LIMIT 0`).then(() => true, () => false))) return false;

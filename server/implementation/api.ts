@@ -1,5 +1,5 @@
 /**
- * /cp/v1/implementations — implantación asistida (CRM 0035), detrás de CP_ASSISTED_IMPLEMENTATION_ENABLED.
+ * /cp/v1/implementations — implantación asistida (CRM 0034), detrás de CP_ASSISTED_IMPLEMENTATION_ENABLED.
  *   GET  /implementations?status=&open=1&companyId=&opportunityId=&assignee=&queue=   crm:read   listado
  *   GET  /implementations/assignees                     crm:read    responsables posibles
  *   GET  /implementations/:id                           crm:read    detalle: hitos, historial, contrato y siguiente paso

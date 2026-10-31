@@ -402,7 +402,7 @@ export interface ControlPlaneDeps {
   /** Finanzas corporativas de Big Elephant: libro contable (server/finance, CRM 0033). */
   finance?: FinanceService | null;
   /**
-   * Implantación asistida (server/implementation, CRM 0035): expediente, orden de implantación con hitos, habilitación,
+   * Implantación asistida (server/implementation, CRM 0034): expediente, orden de implantación con hitos, habilitación,
    * comunicación e inicio de la prueba o la suscripción. Solo con CP_ASSISTED_IMPLEMENTATION_ENABLED=1 y la migración.
    */
   implementation?: { store: ImplementationStore; assignees?: (() => Promise<ImplementationAssignee[]>) | null } | null;
@@ -2008,7 +2008,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
       if (d.trials.publicEnabled) publicTrial = createPublicTrialRouter({ onboarding, autoProvision: !!d.trials.autoProvision });
       if (d.trials.activation) d.trials.activation.activate = (trialId, actor) => onboarding.activate(trialId, actor);
     }
-    // Implantación asistida (CRM 0035): el inicio usa la suscripción del contrato (modo sombra) y sus licencias
+    // Implantación asistida (CRM 0034): el inicio usa la suscripción del contrato (modo sombra) y sus licencias
     if (d.implementation && d.capabilities) {
       const crmD = d.crm;
       const licensingForImplementation = new LicensingService({ capabilities: d.capabilities, subscriptions: d.subscriptions.store, crm: crmPort, catalog: async () => quoteCatalogFromSite(await webAdmin!.site("published")), now: d.subscriptions.now, limits: d.limits, events: d.commercialEvents?.append ? (d.commercialEvents as CommercialEventSink) : undefined });
