@@ -1,8 +1,11 @@
 /**
- * TPV Presencial Náyade — Pantalla principal kiosk
- * Diseño negro premium resort
+ * Punto de venta presencial — pantalla principal (modo quiosco)
+ * Usable en escritorio, tablet vertical y móvil: en pantallas estrechas el carrito se abre desde una barra inferior.
  */
 import { useState, useEffect, useCallback } from "react";
+import {
+  buildTpvFilters, matchesTpvFilter, productBadge, pickInitialRegister, LAST_REGISTER_KEY,
+} from "./tpvScreenLogic";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Button } from "@/components/ui/button";
@@ -19,8 +22,9 @@ import {
   Layers, X, User, Calendar, Clock, Users, Tag, ChevronDown, ChevronUp,
   Zap, Waves, Baby, Sparkles, Star, Sun, Filter, LogOut, Settings,
   Receipt, ArrowLeft, SplitSquareHorizontal, AlarmClock, PenLine, BarChart3,
+  Package, Search, CheckCircle2, Store,
 } from "lucide-react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import TpvOpenSession from "./TpvOpenSession";
 import TpvCloseSession from "./TpvCloseSession";
 import TpvCashMovement from "./TpvCashMovement";
@@ -81,7 +85,24 @@ interface Payment {
   payerName?: string;
 }
 
-type Filter = "all" | "experience" | "pack" | "spa" | "hotel" | "legoPack";
+/** "all", un tipo de producto o "cat:<id>" (categoría propia de la empresa). */
+type Filter = string;
+
+function readLastRegister(): number | null {
+  try {
+    const v = Number(localStorage.getItem(LAST_REGISTER_KEY));
+    return Number.isInteger(v) && v > 0 ? v : null;
+  } catch {
+    return null;
+  }
+}
+function saveLastRegister(id: number) {
+  try {
+    localStorage.setItem(LAST_REGISTER_KEY, String(id));
+  } catch {
+    /* sin almacenamiento local: se vuelve a preguntar */
+  }
+}
 
 // ─── Category colors ──────────────────────────────────────────────────────────
 
@@ -95,16 +116,6 @@ const TYPE_COLORS: Record<ProductType, string> = {
   legoPack: "from-emerald-600 to-teal-700",
 };
 
-const TYPE_LABELS: Record<string, string> = {
-  experience: "Experiencia",
-  pack: "Pack",
-  spa: "SPA",
-  hotel: "Hotel",
-  restaurant: "Restaurante",
-  extra: "Extra",
-  legoPack: "Lego Pack",
-};
-
 const FILTER_ICONS: Record<string, React.ReactNode> = {
   all: <Filter className="w-3 h-3" />,
   experience: <Waves className="w-3 h-3" />,
@@ -113,6 +124,13 @@ const FILTER_ICONS: Record<string, React.ReactNode> = {
   hotel: <Star className="w-3 h-3" />,
   legoPack: <Zap className="w-3 h-3" />,
 };
+const filterIcon = (key: string, licensed: boolean) =>
+  key.startsWith("cat:") || (licensed && key === "experience") ? <Tag className="w-3 h-3" /> : FILTER_ICONS[key];
+
+/** Icono de un producto sin imagen: el de siempre en la instalación original, uno genérico en una pyme. */
+function ProductIcon({ licensed, className }: { licensed: boolean; className: string }) {
+  return licensed ? <Package className={className} /> : <Waves className={className} />;
+}
 
 /** Descuento vigente del producto (0 si no hay descuento o ya caducó). */
 function getActiveDiscountPercent(product: CatalogProduct): number {
@@ -129,7 +147,15 @@ function getActiveDiscountPercent(product: CatalogProduct): number {
 
 export default function TpvScreen() {
   const { user } = useAuth();
-  const [registerId] = useState(1); // default register
+  const [, navigate] = useLocation();
+  // Caja: la última elegida en este dispositivo (si sigue existiendo) o la que elija el cajero
+  const [registerId, setRegisterId] = useState<number | null>(null);
+  const [choosingRegister, setChoosingRegister] = useState(false);
+  const [newRegisterName, setNewRegisterName] = useState("");
+  const [cartOpen, setCartOpen] = useState(false);
+  // Cliente existente elegido en la búsqueda (su email lo vincula en el CRM al cobrar)
+  const [clientSearch, setClientSearch] = useState("");
+  const [selectedClient, setSelectedClient] = useState<{ id: number; name: string } | null>(null);
   const [sessionId, setSessionId] = useState<number | null>(null);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [filter, setFilter] = useState<Filter>("all");
@@ -174,11 +200,42 @@ export default function TpvScreen() {
   const [manualConcept, setManualConcept] = useState("");
   const [manualPrice, setManualPrice] = useState("");
 
+  const utils = trpc.useUtils();
+  const registersQ = trpc.tpv.getRegisterStatus.useQuery(undefined, { refetchInterval: 30000 });
+  const registers = registersQ.data ?? [];
+  const currentRegister = registers.find((r) => r.id === registerId) ?? null;
+
+  useEffect(() => {
+    if (!registersQ.data || registerId !== null) return;
+    setRegisterId(pickInitialRegister(registersQ.data, readLastRegister()));
+  }, [registersQ.data, registerId]);
+
+  const chooseRegister = (id: number) => {
+    if (id !== registerId) setSessionId(null);
+    setRegisterId(id);
+    saveLastRegister(id);
+    setChoosingRegister(false);
+  };
+
+  const createRegisterMut = trpc.tpv.createRegister.useMutation({
+    onSuccess: (r) => {
+      toast.success(`Caja «${r?.name ?? ""}» creada`);
+      setNewRegisterName("");
+      utils.tpv.getRegisterStatus.invalidate();
+      if (r) chooseRegister(r.id);
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
   // Check active session
-  const { data: activeSession, refetch: refetchSession } = trpc.tpv.getActiveSession.useQuery(
-    { registerId },
-    { refetchInterval: 30000 }
+  const { data: activeSession, refetch: refetchSessionQ } = trpc.tpv.getActiveSession.useQuery(
+    { registerId: registerId ?? 0 },
+    { refetchInterval: 30000, enabled: registerId !== null }
   );
+  const refetchSession = () => {
+    refetchSessionQ();
+    utils.tpv.getRegisterStatus.invalidate();
+  };
 
   useEffect(() => {
     if (activeSession) setSessionId(activeSession.id);
@@ -189,6 +246,30 @@ export default function TpvScreen() {
   const { data: catalog } = trpc.tpv.getCatalog.useQuery(undefined, {
     enabled: !!sessionId,
   });
+  const licensed = !!catalog?.licensed;
+  const categories = catalog?.categories ?? [];
+  const filters = buildTpvFilters(catalog);
+
+  // Búsqueda de cliente existente (a partir de 3 caracteres)
+  const clientQuery = clientSearch.trim();
+  const clientResults = trpc.tpv.searchClients.useQuery(
+    { q: clientQuery },
+    { enabled: clientQuery.length >= 3 && !selectedClient, staleTime: 10_000 }
+  );
+  const pickClient = (c: { id: number; name: string; email: string; phone: string | null }) => {
+    setSelectedClient({ id: c.id, name: c.name });
+    setCustomerName(c.name);
+    setCustomerEmail(c.email);
+    setCustomerPhone(c.phone ?? "");
+    setClientSearch("");
+  };
+  const clearCustomer = () => {
+    setSelectedClient(null);
+    setClientSearch("");
+    setCustomerName("");
+    setCustomerEmail("");
+    setCustomerPhone("");
+  };
 
   // Create sale mutation
   const createSaleMut = trpc.tpv.createSale.useMutation({
@@ -204,9 +285,8 @@ export default function TpvScreen() {
       setLastSale(normalized);
       setShowTicket(true);
       setCart([]);
-      setCustomerName("");
-      setCustomerEmail("");
-      setCustomerPhone("");
+      setCartOpen(false);
+      clearCustomer();
       setDiscountAmount(0);
       setDiscountReason("");
       setPromoCode("");
@@ -231,7 +311,7 @@ export default function TpvScreen() {
   ];
 
   const filteredProducts = allProducts.filter((p) => {
-    const matchesFilter = filter === "all" || p.productType === filter;
+    const matchesFilter = matchesTpvFilter(p, filter);
     const matchesSearch =
       !searchQuery ||
       p.title.toLowerCase().includes(searchQuery.toLowerCase());
@@ -407,41 +487,122 @@ export default function TpvScreen() {
 
   // ── Render ──────────────────────────────────────────────────────────────────
 
-  if (!sessionId && !showOpenSession) {
+  if (!sessionId || choosingRegister || registerId === null) {
+    const isAdmin = user?.role === "admin";
+    const noRegisters = registersQ.isSuccess && registers.length === 0;
+    const mustChoose = choosingRegister || (registerId === null && registers.length > 0);
     return (
-      <div className="fixed inset-0 bg-gray-950 flex flex-col items-center justify-center z-50">
-        <div className="text-center space-y-6 max-w-md px-6">
+      <div className="fixed inset-0 bg-gray-950 flex flex-col items-center justify-center z-50 overflow-y-auto py-8">
+        <div className="text-center space-y-6 w-full max-w-md px-4">
           <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-violet-600 to-purple-800 flex items-center justify-center mx-auto shadow-2xl">
             <Receipt className="w-10 h-10 text-white" />
           </div>
-          <h1 className="text-3xl font-bold text-white tracking-tight">TPV</h1>
-          <p className="text-gray-400">Terminal Punto de Venta Presencial</p>
-          <Button
-            size="lg"
-            className="w-full bg-violet-600 hover:bg-violet-500 text-white font-semibold text-lg h-14 rounded-xl"
-            onClick={() => setShowOpenSession(true)}
-          >
-            Abrir Caja
-          </Button>
+          <h1 className="text-3xl font-bold text-white tracking-tight">Punto de venta</h1>
+
+          {registersQ.isLoading && <p className="text-gray-400">Cargando cajas…</p>}
+          {registersQ.isError && (
+            <p role="alert" className="text-red-400">No se han podido cargar las cajas. Comprueba la conexión e inténtalo de nuevo.</p>
+          )}
+
+          {/* Sin ninguna caja: guiar a crearla */}
+          {noRegisters && (
+            <div className="space-y-4 text-left">
+              <p className="text-gray-300 text-center">Todavía no tienes ninguna caja. Crea la primera para empezar a cobrar.</p>
+              {isAdmin ? (
+                <form
+                  className="space-y-3"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    if (newRegisterName.trim()) createRegisterMut.mutate({ name: newRegisterName.trim() });
+                  }}
+                >
+                  <Label htmlFor="tpv-new-register" className="text-gray-300">Nombre de la caja</Label>
+                  <Input
+                    id="tpv-new-register"
+                    value={newRegisterName}
+                    onChange={(e) => setNewRegisterName(e.target.value)}
+                    placeholder="Por ejemplo, Mostrador"
+                    maxLength={100}
+                    className="h-12 bg-gray-800 border-gray-700 text-white"
+                  />
+                  <Button type="submit" disabled={!newRegisterName.trim() || createRegisterMut.isPending} className="w-full h-12 bg-violet-600 hover:bg-violet-500 text-white">
+                    Crear caja
+                  </Button>
+                </form>
+              ) : (
+                <p className="text-gray-400 text-sm text-center">Pide a una persona administradora que cree una caja.</p>
+              )}
+            </div>
+          )}
+
+          {/* Elegir caja */}
+          {mustChoose && (
+            <div className="space-y-2 text-left">
+              <p className="text-gray-300 text-center">Elige la caja en la que vas a cobrar</p>
+              {registers.map((r) => (
+                <button
+                  key={r.id}
+                  type="button"
+                  onClick={() => chooseRegister(r.id)}
+                  className={`w-full min-h-14 flex items-center gap-3 rounded-xl border px-4 py-3 text-left transition-colors ${
+                    r.id === registerId ? "border-violet-500 bg-violet-900/30" : "border-gray-700 bg-gray-900 hover:border-violet-500"
+                  }`}
+                >
+                  <Store className="w-5 h-5 text-violet-400 shrink-0" />
+                  <span className="flex-1 min-w-0">
+                    <span className="block text-white font-medium truncate">{r.name}</span>
+                    {r.location && <span className="block text-xs text-gray-400 truncate">{r.location}</span>}
+                  </span>
+                  {r.openSession ? (
+                    <Badge variant="outline" className="text-green-400 border-green-700 text-xs shrink-0">Abierta · {r.openSession.cashierName}</Badge>
+                  ) : (
+                    <span className="text-xs text-gray-500 shrink-0">Cerrada</span>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Caja elegida y cerrada: abrirla */}
+          {!mustChoose && currentRegister && !sessionId && (
+            <div className="space-y-3">
+              <p className="text-gray-400">Caja: <span className="text-white font-medium">{currentRegister.name}</span></p>
+              <Button
+                size="lg"
+                className="w-full bg-violet-600 hover:bg-violet-500 text-white font-semibold text-lg h-14 rounded-xl"
+                onClick={() => setShowOpenSession(true)}
+              >
+                Abrir caja
+              </Button>
+              {registers.length > 1 && (
+                <Button variant="ghost" className="w-full h-11 text-violet-300 hover:text-violet-200" onClick={() => setChoosingRegister(true)}>
+                  Cambiar de caja
+                </Button>
+              )}
+            </div>
+          )}
+
           <Button
             variant="ghost"
-            className="text-gray-500 hover:text-gray-300"
-            onClick={() => window.history.back()}
+            className="h-11 text-gray-500 hover:text-gray-300"
+            onClick={() => navigate("/admin")}
           >
-            <ArrowLeft className="w-4 h-4 mr-2" /> Volver al Dashboard
+            <ArrowLeft className="w-4 h-4 mr-2" /> Volver al inicio
           </Button>
         </div>
 
-        <TpvOpenSession
-          open={showOpenSession}
-          registerId={registerId}
-          onClose={() => setShowOpenSession(false)}
-          onOpened={(id) => {
-            setSessionId(id);
-            setShowOpenSession(false);
-            refetchSession();
-          }}
-        />
+        {registerId !== null && (
+          <TpvOpenSession
+            open={showOpenSession}
+            registerId={registerId}
+            onClose={() => setShowOpenSession(false)}
+            onOpened={(id) => {
+              setSessionId(id);
+              setShowOpenSession(false);
+              refetchSession();
+            }}
+          />
+        )}
       </div>
     );
   }
@@ -449,65 +610,78 @@ export default function TpvScreen() {
   return (
     <div className="fixed inset-0 bg-gray-950 flex flex-col overflow-hidden z-50 text-white">
       {/* ── Header ── */}
-      <header className="flex items-center justify-between px-4 py-2 bg-gray-900 border-b border-gray-800 shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-600 to-purple-700 flex items-center justify-center">
+      <header className="flex items-center justify-between gap-2 px-2 sm:px-4 py-1.5 bg-gray-900 border-b border-gray-800 shrink-0">
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-600 to-purple-700 flex items-center justify-center shrink-0">
             <Receipt className="w-4 h-4 text-white" />
           </div>
-          <span className="font-bold text-white text-sm">TPV</span>
-          {activeSession && (
-            <Badge variant="outline" className="text-green-400 border-green-700 text-xs">
-              Caja abierta
-            </Badge>
-          )}
+          <button
+            type="button"
+            onClick={() => setChoosingRegister(true)}
+            className="min-h-11 min-w-0 flex items-center gap-2 rounded-lg px-2 hover:bg-gray-800"
+            title="Cambiar de caja"
+          >
+            <span className="font-bold text-white text-sm truncate">{currentRegister?.name ?? "Caja"}</span>
+            {activeSession && (
+              <Badge variant="outline" className="hidden sm:inline-flex text-green-400 border-green-700 text-xs">
+                Caja abierta
+              </Badge>
+            )}
+          </button>
         </div>
 
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-gray-400">{user?.name}</span>
+        <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+          <span className="hidden lg:inline text-xs text-gray-400">{user?.name}</span>
           <Link href="/admin/tpv/backoffice">
             <Button
               size="sm"
               variant="ghost"
-              className="text-violet-400 hover:text-violet-300 h-8 px-2 text-xs gap-1"
-              title="Historial de ventas y reservas del día"
+              className="text-violet-400 hover:text-violet-300 h-11 px-2 text-xs gap-1"
+              title={licensed ? "Ventas y cierres de caja" : "Historial de ventas y reservas del día"}
+              aria-label={licensed ? "Ventas y cierres de caja" : "Backoffice"}
             >
-              <Settings className="w-3 h-3" />
-              Backoffice
+              <Settings className="w-4 h-4" />
+              <span className="hidden md:inline">{licensed ? "Ventas" : "Backoffice"}</span>
             </Button>
           </Link>
-          <Link href="/admin/contabilidad/control-diario">
-            <Button
-              size="sm"
-              variant="ghost"
-              className="text-violet-400 hover:text-violet-300 h-8 px-2 text-xs gap-1"
-              title="Control de operaciones diario"
-            >
-              <BarChart3 className="w-3 h-3" />
-              Control
-            </Button>
-          </Link>
+          {!licensed && (
+            <Link href="/admin/contabilidad/control-diario">
+              <Button
+                size="sm"
+                variant="ghost"
+                className="text-violet-400 hover:text-violet-300 h-11 px-2 text-xs gap-1"
+                title="Control de operaciones diario"
+                aria-label="Control de operaciones diario"
+              >
+                <BarChart3 className="w-4 h-4" />
+                <span className="hidden md:inline">Control</span>
+              </Button>
+            </Link>
+          )}
           <Button
             size="sm"
             variant="ghost"
-            className="text-gray-400 hover:text-white h-8 px-2"
+            className="text-gray-400 hover:text-white h-11 w-11 p-0"
             onClick={() => setShowCashMovement("in")}
-            title="Entrada efectivo"
+            title="Entrada de efectivo"
+            aria-label="Entrada de efectivo"
           >
-            <Plus className="w-3 h-3" />
+            <Plus className="w-4 h-4" />
           </Button>
           <Button
             size="sm"
             variant="ghost"
-            className="text-gray-400 hover:text-white h-8 px-2"
+            className="text-gray-400 hover:text-white h-11 w-11 p-0"
             onClick={() => setShowCashMovement("out")}
-            title="Salida efectivo"
+            title="Salida de efectivo"
+            aria-label="Salida de efectivo"
           >
-            <Minus className="w-3 h-3" />
+            <Minus className="w-4 h-4" />
           </Button>
           <Button
             size="sm"
             variant="ghost"
-            className="text-amber-400 hover:text-amber-300 h-8 px-2 text-xs"
+            className="text-amber-400 hover:text-amber-300 h-11 px-2 text-xs"
             onClick={() => setShowCloseSession(true)}
           >
             Cerrar caja
@@ -515,10 +689,12 @@ export default function TpvScreen() {
           <Button
             size="sm"
             variant="ghost"
-            className="text-gray-400 hover:text-white h-8 px-2"
-            onClick={() => window.history.back()}
+            className="text-gray-400 hover:text-white h-11 w-11 p-0"
+            onClick={() => navigate("/admin")}
+            title="Volver al inicio"
+            aria-label="Volver al inicio"
           >
-            <LogOut className="w-3 h-3" />
+            <LogOut className="w-4 h-4" />
           </Button>
         </div>
       </header>
@@ -526,36 +702,38 @@ export default function TpvScreen() {
       {/* ── Main ── */}
       <div className="flex flex-1 overflow-hidden">
         {/* ── Catalog ── */}
-        <div className="flex-1 flex flex-col overflow-hidden border-r border-gray-800">
+        <div className="flex-1 min-w-0 flex flex-col overflow-hidden md:border-r border-gray-800">
           {/* Filters */}
-          <div className="flex items-center gap-2 px-4 py-2 bg-gray-900 border-b border-gray-800 shrink-0">
+          <div className="flex items-center gap-2 px-2 sm:px-4 py-2 bg-gray-900 border-b border-gray-800 shrink-0 overflow-x-auto">
             <Input
               placeholder="Buscar producto..."
+              aria-label="Buscar producto"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="h-8 text-sm bg-gray-800 border-gray-700 text-white placeholder:text-gray-500 max-w-48"
+              className="h-11 text-sm bg-gray-800 border-gray-700 text-white placeholder:text-gray-500 w-40 sm:w-48 shrink-0"
             />
-            {(["all", "experience", "pack", "spa", "hotel", "legoPack"] as Filter[]).map((f) => (
+            {filters.map((f) => (
               <Button
-                key={f}
+                key={f.key}
                 size="sm"
-                variant={filter === f ? "default" : "ghost"}
-                className={`h-7 px-3 text-xs gap-1 ${
-                  filter === f
+                variant={filter === f.key ? "default" : "ghost"}
+                aria-pressed={filter === f.key}
+                className={`h-11 px-3 text-xs gap-1 shrink-0 ${
+                  filter === f.key
                     ? "bg-violet-600 text-white hover:bg-violet-500"
                     : "text-gray-400 hover:text-white"
                 }`}
-                onClick={() => setFilter(f)}
+                onClick={() => setFilter(f.key)}
               >
-                {FILTER_ICONS[f]}
-                {f === "all" ? "Todos" : TYPE_LABELS[f]}
+                {filterIcon(f.key, licensed)}
+                {f.label}
               </Button>
             ))}
           </div>
 
           {/* Product grid */}
           <ScrollArea className="flex-1 min-h-0">
-            <div className="grid grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3 p-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-2 sm:gap-3 p-2 sm:p-4 pb-24 md:pb-4">
               {/* Producto flexible — solo admin, siempre primero */}
               {user?.role === "admin" && (
                 <button
@@ -591,7 +769,7 @@ export default function TpvScreen() {
                         />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center">
-                          <Waves className="w-8 h-8 text-white/40" />
+                          <ProductIcon licensed={licensed} className="w-8 h-8 text-white/40" />
                         </div>
                       )}
                       {discount > 0 && (
@@ -606,7 +784,7 @@ export default function TpvScreen() {
                       )}
                       <div className="absolute bottom-1 left-1">
                         <Badge className={`text-xs bg-black/50 text-white border-0`}>
-                          {TYPE_LABELS[product.productType]}
+                          {productBadge(product, licensed, categories)}
                         </Badge>
                       </div>
                     </div>
@@ -631,8 +809,14 @@ export default function TpvScreen() {
               })}
               {filteredProducts.length === 0 && (
                 <div className="col-span-full text-center py-16 text-gray-500">
-                  <Waves className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                  <ProductIcon licensed={licensed} className="w-12 h-12 mx-auto mb-3 opacity-30" />
                   <p>No hay productos disponibles</p>
+                  {licensed && user?.role === "admin" && (
+                    <p className="text-xs mt-2">
+                      Marca tus productos como «venta presencial» en{" "}
+                      <Link href="/admin/productos/experiencias" className="underline underline-offset-4 text-violet-300">Productos y servicios</Link>.
+                    </p>
+                  )}
                 </div>
               )}
             </div>
@@ -640,7 +824,12 @@ export default function TpvScreen() {
         </div>
 
         {/* ── Cart + Payment ── */}
-        <div className="w-80 xl:w-96 flex flex-col bg-gray-900 shrink-0 overflow-hidden">
+        {cartOpen && <div className="md:hidden fixed inset-0 bg-black/60 z-40" onClick={() => setCartOpen(false)} aria-hidden="true" />}
+        <div
+          role={cartOpen ? "dialog" : undefined}
+          aria-label="Carrito"
+          className={`${cartOpen ? "flex" : "hidden"} md:flex flex-col bg-gray-900 overflow-hidden fixed inset-x-0 bottom-0 top-12 z-50 rounded-t-2xl md:static md:z-auto md:rounded-none md:w-72 lg:w-80 xl:w-96 md:shrink-0`}
+        >
           {/* Cart header */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800">
             <div className="flex items-center gap-2">
@@ -650,16 +839,27 @@ export default function TpvScreen() {
                 <Badge className="bg-violet-600 text-white text-xs">{cart.reduce((a, i) => a + i.quantity, 0)}</Badge>
               )}
             </div>
-            {cart.length > 0 && (
+            <div className="flex items-center gap-1">
+              {cart.length > 0 && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="text-red-400 hover:text-red-300 h-11 px-3 text-xs"
+                  onClick={() => setCart([])}
+                >
+                  Vaciar
+                </Button>
+              )}
               <Button
                 size="sm"
                 variant="ghost"
-                className="text-red-400 hover:text-red-300 h-6 px-2 text-xs"
-                onClick={() => setCart([])}
+                className="md:hidden text-gray-400 hover:text-white h-11 w-11 p-0"
+                onClick={() => setCartOpen(false)}
+                aria-label="Cerrar carrito"
               >
-                Vaciar
+                <X className="w-5 h-5" />
               </Button>
-            )}
+            </div>
           </div>
 
           {/* ── Datos del cliente (siempre visible) ── */}
@@ -670,25 +870,70 @@ export default function TpvScreen() {
               <span className="text-[10px] text-gray-600 ml-1">(opcional)</span>
             </div>
             <div className="space-y-1.5">
+              {/* Cliente existente: búsqueda por nombre, email o teléfono */}
+              {selectedClient ? (
+                <div className="flex items-center justify-between gap-2 bg-green-900/30 border border-green-700/40 rounded px-2 py-1 min-h-11">
+                  <span className="flex items-center gap-1 text-xs text-green-300 min-w-0">
+                    <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                    <span className="truncate">Cliente existente: {selectedClient.name}</span>
+                  </span>
+                  <button type="button" onClick={clearCustomer} className="text-xs text-gray-400 hover:text-white h-11 px-2 shrink-0">Quitar</button>
+                </div>
+              ) : (
+                <div className="relative">
+                  <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500" />
+                  <Input
+                    placeholder="Buscar cliente (nombre, email o teléfono)"
+                    aria-label="Buscar cliente existente"
+                    value={clientSearch}
+                    onChange={(e) => setClientSearch(e.target.value)}
+                    className="h-11 md:h-8 pl-7 text-xs bg-gray-800 border-gray-700 text-white placeholder:text-gray-600"
+                  />
+                  {clientQuery.length >= 3 && (
+                    <div className="absolute z-10 left-0 right-0 mt-1 bg-gray-800 border border-gray-700 rounded-lg overflow-hidden shadow-xl">
+                      {clientResults.isLoading ? (
+                        <p className="text-xs text-gray-400 px-3 py-2">Buscando…</p>
+                      ) : (clientResults.data ?? []).length === 0 ? (
+                        <p className="text-xs text-gray-400 px-3 py-2">Sin coincidencias: escribe sus datos abajo y se dará de alta al cobrar.</p>
+                      ) : (
+                        (clientResults.data ?? []).map((c) => (
+                          <button
+                            key={c.id}
+                            type="button"
+                            onClick={() => pickClient(c)}
+                            className="w-full text-left px-3 py-2 min-h-11 hover:bg-gray-700"
+                          >
+                            <span className="block text-xs text-white truncate">{c.name}</span>
+                            <span className="block text-[11px] text-gray-400 truncate">{[c.email, c.phone].filter(Boolean).join(" · ")}</span>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
               <Input
                 placeholder="Nombre"
+                aria-label="Nombre del cliente"
                 value={customerName}
-                onChange={(e) => setCustomerName(e.target.value)}
-                className="h-7 text-xs bg-gray-800 border-gray-700 text-white placeholder:text-gray-600"
+                onChange={(e) => { setCustomerName(e.target.value); setSelectedClient(null); }}
+                className="h-11 md:h-8 text-xs bg-gray-800 border-gray-700 text-white placeholder:text-gray-600"
               />
               <div className="grid grid-cols-2 gap-1.5">
                 <Input
                   placeholder="Email"
+                  aria-label="Email del cliente"
                   type="email"
                   value={customerEmail}
-                  onChange={(e) => setCustomerEmail(e.target.value)}
-                  className="h-7 text-xs bg-gray-800 border-gray-700 text-white placeholder:text-gray-600"
+                  onChange={(e) => { setCustomerEmail(e.target.value); setSelectedClient(null); }}
+                  className="h-11 md:h-8 text-xs bg-gray-800 border-gray-700 text-white placeholder:text-gray-600"
                 />
                 <Input
                   placeholder="Teléfono"
+                  aria-label="Teléfono del cliente"
                   value={customerPhone}
                   onChange={(e) => setCustomerPhone(e.target.value)}
-                  className="h-7 text-xs bg-gray-800 border-gray-700 text-white placeholder:text-gray-600"
+                  className="h-11 md:h-8 text-xs bg-gray-800 border-gray-700 text-white placeholder:text-gray-600"
                 />
               </div>
             </div>
@@ -710,7 +955,7 @@ export default function TpvScreen() {
                     <div key={item.id} className="bg-gray-800 rounded-lg p-3 space-y-2">
                       <div className="flex items-start gap-2">
                         <div className={`w-8 h-8 rounded-lg bg-gradient-to-br ${TYPE_COLORS[item.product.productType]} shrink-0 flex items-center justify-center`}>
-                          <Waves className="w-3 h-3 text-white/70" />
+                          <ProductIcon licensed={licensed} className="w-3 h-3 text-white/70" />
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="text-xs font-medium text-white line-clamp-1">{item.product.title}</p>
@@ -731,23 +976,26 @@ export default function TpvScreen() {
                         </div>
                         <button
                           onClick={() => removeItem(item.id)}
-                          className="text-gray-600 hover:text-red-400 transition-colors"
+                          className="text-gray-500 hover:text-red-400 transition-colors w-11 h-11 -m-2 flex items-center justify-center shrink-0"
+                          aria-label={`Quitar ${item.product.title}`}
                         >
-                          <X className="w-3 h-3" />
+                          <X className="w-4 h-4" />
                         </button>
                       </div>
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-1">
                           <button
                             onClick={() => updateQty(item.id, -1)}
-                            className="w-6 h-6 rounded bg-gray-700 hover:bg-gray-600 flex items-center justify-center transition-colors"
+                            aria-label="Quitar una unidad"
+                            className="w-11 h-11 md:w-8 md:h-8 rounded bg-gray-700 hover:bg-gray-600 flex items-center justify-center transition-colors"
                           >
                             <Minus className="w-3 h-3" />
                           </button>
-                          <span className="w-6 text-center text-sm font-medium">{item.quantity}</span>
+                          <span className="w-8 text-center text-sm font-medium">{item.quantity}</span>
                           <button
                             onClick={() => updateQty(item.id, 1)}
-                            className="w-6 h-6 rounded bg-gray-700 hover:bg-gray-600 flex items-center justify-center transition-colors"
+                            aria-label="Añadir una unidad"
+                            className="w-11 h-11 md:w-8 md:h-8 rounded bg-gray-700 hover:bg-gray-600 flex items-center justify-center transition-colors"
                           >
                             <Plus className="w-3 h-3" />
                           </button>
@@ -784,20 +1032,21 @@ export default function TpvScreen() {
                   <div className="flex items-center justify-between bg-green-900/30 border border-green-700/40 rounded px-2 py-1">
                     <span className="text-xs text-green-400 font-mono font-bold">{promoCodeData.code}</span>
                     <span className="text-xs text-green-400">-{promoCodeData.discountPercent}% (-{promoDiscount.toFixed(2)}€)</span>
-                    <button onClick={removePromoCode} className="text-gray-500 hover:text-red-400 ml-1"><X className="w-3 h-3" /></button>
+                    <button onClick={removePromoCode} aria-label="Quitar código" className="text-gray-500 hover:text-red-400 ml-1 w-11 h-11 -my-2 flex items-center justify-center"><X className="w-4 h-4" /></button>
                   </div>
                 ) : (
                   <div className="flex gap-1">
                     <Input
                       placeholder="Código promo"
+                      aria-label="Código promocional"
                       value={promoCodeInput}
                       onChange={(e) => setPromoCodeInput(e.target.value.toUpperCase())}
                       onKeyDown={(e) => e.key === "Enter" && applyPromoCode()}
-                      className="h-7 text-xs bg-gray-800 border-gray-700 text-white font-mono uppercase"
+                      className="h-11 md:h-8 text-xs bg-gray-800 border-gray-700 text-white font-mono uppercase"
                     />
                     <Button
                       size="sm"
-                      className="h-7 px-2 text-xs bg-violet-700 hover:bg-violet-600 text-white"
+                      className="h-11 md:h-8 px-3 text-xs bg-violet-700 hover:bg-violet-600 text-white"
                       onClick={applyPromoCode}
                       disabled={promoCodeLoading || !promoCodeInput.trim()}
                     >
@@ -812,7 +1061,7 @@ export default function TpvScreen() {
             {cart.length > 0 && (
               <div className="pb-2 space-y-1 border-t border-gray-800 pt-2">
                 <button
-                  className="w-full flex items-center justify-between text-xs text-gray-400 hover:text-white py-1"
+                  className="w-full min-h-11 flex items-center justify-between text-xs text-gray-400 hover:text-white py-1"
                   onClick={() => setShowDiscountForm(!showDiscountForm)}
                 >
                   <span className="flex items-center gap-1">
@@ -826,15 +1075,17 @@ export default function TpvScreen() {
                     <Input
                       type="number"
                       placeholder="Importe descuento (€)"
+                      aria-label="Importe del descuento"
                       value={discountAmount || ""}
                       onChange={(e) => setDiscountAmount(parseFloat(e.target.value) || 0)}
-                      className="h-7 text-xs bg-gray-800 border-gray-700 text-white"
+                      className="h-11 md:h-8 text-xs bg-gray-800 border-gray-700 text-white"
                     />
                     <Input
                       placeholder="Motivo"
+                      aria-label="Motivo del descuento"
                       value={discountReason}
                       onChange={(e) => setDiscountReason(e.target.value)}
-                      className="h-7 text-xs bg-gray-800 border-gray-700 text-white"
+                      className="h-11 md:h-8 text-xs bg-gray-800 border-gray-700 text-white"
                     />
                   </div>
                 )}
@@ -842,16 +1093,17 @@ export default function TpvScreen() {
             )}
           </ScrollArea>
 
-          {/* Fecha de actividad */}
+          {/* Fecha del servicio */}
           <div className="px-4 py-2 border-t border-gray-800">
-            <label className="text-xs text-gray-400 block mb-1 flex items-center gap-1">
-              <span>📅</span> Fecha de actividad
+            <label htmlFor="tpv-service-date" className="text-xs text-gray-400 mb-1 flex items-center gap-1">
+              <Calendar className="w-3 h-3" /> {licensed ? "Fecha del servicio" : "Fecha de actividad"}
             </label>
             <input
+              id="tpv-service-date"
               type="date"
               value={serviceDate}
               onChange={(e) => setServiceDate(e.target.value)}
-              className="w-full h-8 text-xs bg-gray-800 border border-gray-700 text-white rounded px-2 focus:outline-none focus:border-violet-500"
+              className="w-full h-11 md:h-8 text-xs bg-gray-800 border border-gray-700 text-white rounded px-2 focus:outline-none focus:border-violet-500"
             />
           </div>
 
@@ -884,7 +1136,7 @@ export default function TpvScreen() {
             {cart.length > 0 && (
               <>
                 <Button
-                  className="w-full h-10 bg-violet-600 hover:bg-violet-500 text-white font-semibold gap-2"
+                  className="w-full h-11 bg-violet-600 hover:bg-violet-500 text-white font-semibold gap-2"
                   onClick={() => setShowSplitPayment(true)}
                   disabled={createSaleMut.isPending}
                 >
@@ -923,10 +1175,26 @@ export default function TpvScreen() {
         </div>
       </div>
 
+      {/* Barra inferior (móvil y tablet estrecha): abre el carrito con el total a la vista */}
+      {!cartOpen && (
+        <div className="md:hidden fixed inset-x-0 bottom-0 z-30 p-2 bg-gray-950/95 border-t border-gray-800">
+          <Button
+            className="w-full h-14 bg-violet-600 hover:bg-violet-500 text-white font-semibold text-base justify-between px-4"
+            onClick={() => setCartOpen(true)}
+          >
+            <span className="flex items-center gap-2">
+              <ShoppingCart className="w-5 h-5" />
+              Carrito{cart.length > 0 ? ` (${cart.reduce((a, i) => a + i.quantity, 0)})` : ""}
+            </span>
+            <span>{cartTotal.toFixed(2)}€</span>
+          </Button>
+        </div>
+      )}
+
       {/* ── Modals ── */}
       <TpvOpenSession
         open={showOpenSession}
-        registerId={registerId}
+        registerId={registerId ?? 0}
         onClose={() => setShowOpenSession(false)}
         onOpened={(id) => {
           setSessionId(id);
@@ -970,6 +1238,8 @@ export default function TpvScreen() {
                 setShowSplitPayment(false);
                 setShowTicket(true);
                 setCart([]);
+                setCartOpen(false);
+                clearCustomer();
               }}
             />
           )}
