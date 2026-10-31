@@ -22,6 +22,7 @@ import {
   cashEntry,
   cashMovementSourceKey,
   checkExpenseAmounts,
+  checkVatTreatment,
   decodeText,
   expenseAmounts,
   expenseEntry,
@@ -51,6 +52,7 @@ import {
   type MatchSuggestion,
 } from "./opsRules";
 import type { ExpenseEdit, ExpenseQuery, ExpenseRow, FinanceOpsStore, MovementQuery } from "./opsStore";
+import { isEu, isEuForeign } from "./taxRules";
 import type {
   AccountMatchType,
   BankAccount,
@@ -66,7 +68,10 @@ import type {
   PaymentMethod,
   RecurringExpense,
   Supplier,
+  BankFeeNature,
+  VatTreatment,
 } from "./opsTypes";
+import { BANK_FEE_NATURE_LABELS, REVERSE_CHARGE_TREATMENTS, TAX_DOCUMENT_OWNERS } from "./opsTypes";
 import { balancesOf, isValidDate, netMovement, yearOf } from "./rules";
 import { invoiceTransferEntry, type StripeMatchSuggestion } from "./stripeRules";
 import type { FinanceService } from "./service";
@@ -79,6 +84,8 @@ export interface FinanceOpsDeps {
   finance: FinanceService;
   /** Almacén del libro (solo lectura de asientos y saldos). */
   ledger: Pick<FinanceStore, "postedLines" | "bySource" | "getEntry" | "listAccounts">;
+  /** Migración 0039 aplicada: tratamiento del IVA de los gastos (sin ella, solo interior, como antes). */
+  fiscal?: boolean;
   now?: () => number;
 }
 
@@ -113,6 +120,19 @@ export interface ExpenseInput {
   deductibleBp?: number;
   withholdingRateBp?: number;
   rectifiesExpenseId?: number | null;
+  /** CRM 0039: tratamiento del IVA (null = interior) y tipo de la autoliquidación con inversión del sujeto pasivo. */
+  vatTreatment?: VatTreatment | null;
+  reverseChargeRateBp?: number | null;
+  /** CRM 0039: factura de comisiones de Stripe que liquida las ya contabilizadas al importar (per_invoice o domestic). */
+  settlesStripeFees?: boolean;
+}
+
+/** Lo que el servicio de operaciones necesita de Stripe para aceptar una factura de comisiones (CRM 0039). */
+export interface StripeFeeInvoicePolicy {
+  /** Modo del IVA de las comisiones resuelto en una fecha (reglas por tipo y periodo o modo global). */
+  feeModeOn(date: string): Promise<string>;
+  /** ¿Es el proveedor la entidad de Stripe? (nombre con «Stripe» o NIF-IVA de una regla de comisiones). */
+  isStripeIssuer(s: { name: string; legalName: string | null; taxId: string | null }): Promise<boolean>;
 }
 
 export interface PaymentInput {
@@ -143,6 +163,8 @@ export type MatchInput =
   | { type: "expense_payment"; expenseId: number; expensePaymentId?: undefined }
   | { type: "expense_payment"; expensePaymentId: number; expenseId?: undefined }
   | { type: AccountMatchType; accountCode: string; description?: string | null }
+  // CRM 0039: naturaleza de la comisión bancaria en lugar de la cuenta (se resuelve con la configuración del análisis)
+  | { type: AccountMatchType; nature: BankFeeNature; description?: string | null }
   | { type: "stripe_payout"; payoutId: number }
   | { type: "invoice_payment"; invoiceId: number };
 
@@ -184,8 +206,23 @@ export class FinanceOpsService {
   private readonly now: () => number;
   private reconciliation: BankReconciliationExtension | null = null;
   private taxOwners: ((ownerType: DocumentOwner, ownerId: number) => Promise<boolean>) | null = null;
+  private natureAccount: ((nature: BankFeeNature) => Promise<string>) | null = null;
+  private stripeFees: StripeFeeInvoicePolicy | null = null;
   constructor(private readonly d: FinanceOpsDeps) {
     this.now = d.now ?? Date.now;
+  }
+
+  /** CRM 0039: la cuenta de cada naturaleza de comisión bancaria (configuración del análisis). */
+  useBankFeeNatures(resolve: (nature: BankFeeNature) => Promise<string>) {
+    this.natureAccount = resolve;
+  }
+  /** CRM 0039: política de Stripe para las facturas de comisiones (`settlesStripeFees`). */
+  useStripeFeeInvoices(p: StripeFeeInvoicePolicy) {
+    this.stripeFees = p;
+  }
+  /** ¿Está aplicada la migración 0039 (tratamiento del IVA de los gastos)? */
+  get fiscal() {
+    return !!this.d.fiscal;
   }
 
   /** Fase 2: conciliación con payouts de Stripe y cobros de facturas por transferencia. */
@@ -442,13 +479,22 @@ export class FinanceOpsService {
     if (i.costCenterId && !(await this.s.getCostCenter(i.costCenterId))) throw bad("El centro de coste no existe");
     const invoiceNumber = text(i.invoiceNumber, 60);
     let rectifiesExpenseId: number | null = null;
+    let treatment = i.vatTreatment;
+    let rcRate = i.reverseChargeRateBp;
     if (i.kind === "rectification") {
       if (!i.rectifiesExpenseId) throw bad("Indica el gasto que rectifica");
       const orig = await this.s.getExpense(i.rectifiesExpenseId);
       if (!orig || orig.status !== "registered" || orig.kind === "rectification") throw bad("La rectificativa debe referirse a una factura registrada");
       if (orig.supplierId !== (i.supplierId ?? null)) throw bad("La rectificativa debe ser del mismo proveedor que la factura que rectifica");
       rectifiesExpenseId = orig.id;
+      // Sin tratamiento indicado, la rectificativa sigue el de la factura que rectifica
+      if (treatment === undefined) (treatment = orig.vatTreatment), (rcRate = rcRate ?? orig.reverseChargeRateBp);
     }
+    // CRM 0039: tratamiento del IVA (sin la migración solo cabe el interior, como antes)
+    if (!this.fiscal && treatment && treatment !== "domestic") throw new FinanceError("unavailable", "El tratamiento del IVA de los gastos llega con la migración 0039, que no está aplicada en este entorno");
+    const vat = this.fiscal ? checkVatTreatment(treatment, { taxRateBp: i.taxRateBp, reverseChargeRateBp: rcRate }, supplier ? { country: supplier.country, taxId: supplier.taxId } : null, { isEu, isEuForeign }) : { vatTreatment: null, reverseChargeRateBp: null };
+    const settlesStripeFees = !!i.settlesStripeFees;
+    await this.checkStripeFeeInvoice({ settlesStripeFees, kind: i.kind, date: i.accrualDate ?? i.invoiceDate, withholdingRateBp, vatTreatment: vat.vatTreatment }, supplier);
     const a = expenseAmounts({ baseCents: i.baseCents, taxRateBp: i.taxRateBp, deductibleBp, withholdingRateBp });
     const dueDate = i.dueDate ?? (supplier?.paymentTermsDays !== null && supplier?.paymentTermsDays !== undefined ? addDays(i.invoiceDate, supplier.paymentTermsDays) : null);
     return {
@@ -469,7 +515,29 @@ export class FinanceOpsService {
       withholdingCents: a.withholdingCents,
       totalCents: a.totalCents,
       rectifiesExpenseId,
+      vatTreatment: vat.vatTreatment,
+      reverseChargeRateBp: vat.reverseChargeRateBp,
+      ...(this.fiscal ? { settlesStripeFees } : {}),
     };
+  }
+
+  /**
+   * Factura de comisiones de Stripe (CRM 0039): solo si el modo resuelto de las comisiones en su fecha es `per_invoice` o
+   * `domestic`, el proveedor es la entidad de Stripe, es interior o de servicios intracomunitarios (con `domestic`, solo
+   * interior) y no lleva retención. Si no, 400 `invalid_stripe_fee_invoice`.
+   */
+  private async checkStripeFeeInvoice(i: { settlesStripeFees: boolean; kind: ExpenseKind; date: string; withholdingRateBp: number; vatTreatment: VatTreatment | null }, supplier: Supplier | null) {
+    if (!i.settlesStripeFees) return;
+    const invalid = (m: string) => new FinanceError("invalid_stripe_fee_invoice", m);
+    if (!this.fiscal || !this.stripeFees) throw new FinanceError("unavailable", "Las facturas de comisiones de Stripe necesitan la migración 0039 y Stripe montado");
+    if (i.kind === "ticket") throw invalid("Una factura de comisiones de Stripe es una factura o una rectificativa, no un tique");
+    if (i.withholdingRateBp !== 0) throw invalid("La factura de comisiones de Stripe no lleva retención");
+    if (!supplier || !(await this.stripeFees.isStripeIssuer({ name: supplier.name, legalName: supplier.legalName, taxId: supplier.taxId }))) throw invalid("El proveedor no es la entidad de Stripe (su nombre debe contener «Stripe» o su NIF-IVA ser el de una regla de comisiones)");
+    const mode = await this.stripeFees.feeModeOn(i.date);
+    if (mode !== "per_invoice" && mode !== "domestic") throw invalid(`El IVA de las comisiones de Stripe en ${i.date} está en modo «${mode}»: solo con «per_invoice» o «domestic» la factura liquida las comisiones importadas`);
+    const t = i.vatTreatment ?? "domestic";
+    if (t !== "domestic" && t !== "intra_eu_services") throw invalid("La factura de comisiones de Stripe es interior (IVA español) o de servicios intracomunitarios (inversión del sujeto pasivo)");
+    if (mode === "domestic" && t !== "domestic") throw invalid("En modo «domestic» la entidad de Stripe factura con IVA español: el tratamiento es interior");
   }
 
   async createExpense(i: ExpenseInput, actor: FinanceActor) {
@@ -498,6 +566,10 @@ export class FinanceOpsService {
       deductibleBp: p.deductibleBp ?? cur.deductibleBp,
       withholdingRateBp: p.withholdingRateBp ?? cur.withholdingRateBp,
       rectifiesExpenseId: p.rectifiesExpenseId !== undefined ? p.rectifiesExpenseId : cur.rectifiesExpenseId,
+      settlesStripeFees: p.settlesStripeFees !== undefined ? p.settlesStripeFees : cur.settlesStripeFees,
+      vatTreatment: p.vatTreatment !== undefined ? p.vatTreatment : cur.vatTreatment,
+      // Al cambiar a un tratamiento sin inversión del sujeto pasivo, el tipo de la autoliquidación se descarta
+      reverseChargeRateBp: p.reverseChargeRateBp !== undefined ? p.reverseChargeRateBp : p.vatTreatment !== undefined && !REVERSE_CHARGE_TREATMENTS.includes(p.vatTreatment ?? "domestic") ? null : cur.reverseChargeRateBp,
     };
     const e = await this.s.patchDraftExpense(id, await this.expenseFields(merged));
     await this.audit(actor, "expense.update", "expense", id, { fields: Object.keys(p), totalCents: e.totalCents });
@@ -518,6 +590,10 @@ export class FinanceOpsService {
     const cat = await this.s.getCategory(e.categoryId);
     if (!cat) throw bad("La categoría no existe");
     const supplier = e.supplierId ? await this.s.getSupplier(e.supplierId) : null;
+    // CRM 0039: el proveedor pudo cambiar desde el borrador (país, NIF-IVA): se vuelve a comprobar el tratamiento
+    if (e.vatTreatment) checkVatTreatment(e.vatTreatment, { taxRateBp: e.taxRateBp, reverseChargeRateBp: e.reverseChargeRateBp }, supplier ? { country: supplier.country, taxId: supplier.taxId } : null, { isEu, isEuForeign });
+    // y el modo de las comisiones de Stripe pudo cambiar (reglas nuevas o anuladas)
+    await this.checkStripeFeeInvoice({ settlesStripeFees: e.settlesStripeFees, kind: e.kind, date: e.accrualDate ?? e.invoiceDate, withholdingRateBp: e.withholdingRateBp, vatTreatment: e.vatTreatment }, supplier);
     if (e.kind === "rectification") {
       const orig = e.rectifiesExpenseId ? await this.s.getExpense(e.rectifiesExpenseId) : null;
       if (!orig || orig.status !== "registered") throw new FinanceError("invalid_state", "La factura que se rectifica debe estar registrada");
@@ -530,7 +606,9 @@ export class FinanceOpsService {
       if (created) await this.d.finance.reverse(entry.id, { date: this.reversalDate(entry), reason: "Gasto anulado mientras se registraba" }, actor);
       throw new FinanceError("invalid_state", "El gasto ha cambiado de estado mientras se registraba");
     }
-    await this.audit(actor, "expense.register", "expense", id, { entryId: entry.id, totalCents: e.totalCents });
+    // Factura de comisiones de Stripe: liquidada con el saldo de Stripe al importar; nace pagada y sin pagos
+    if (e.settlesStripeFees) await this.s.markExpenseSettled(id);
+    await this.audit(actor, "expense.register", "expense", id, { entryId: entry.id, totalCents: e.totalCents, ...(e.settlesStripeFees ? { settlesStripeFees: true } : {}) });
     return this.expense(id);
   }
 
@@ -557,6 +635,7 @@ export class FinanceOpsService {
   private async registeredForPayment(expenseId: number, amountCents: number) {
     const e = await this.expense(expenseId);
     if (e.status !== "registered") throw new FinanceError("invalid_state", "Solo se pagan gastos registrados");
+    if (e.settlesStripeFees) throw new FinanceError("invalid_state", "La factura de comisiones de Stripe se liquidó con el saldo de Stripe: no admite pagos");
     if (!Number.isSafeInteger(amountCents) || amountCents === 0) throw bad("El importe del pago es un número de céntimos distinto de cero");
     const pending = pendingOf(e);
     if (pending === 0) throw new FinanceError("exceeds_pending", "El gasto ya está pagado");
@@ -635,7 +714,7 @@ export class FinanceOpsService {
   // ── Documentos ────────────────────────────────────────────────────────────────────────────────────────────────
 
   private async ownerExists(ownerType: DocumentOwner, ownerId: number) {
-    if (ownerType === "tax_obligation" || ownerType === "payroll" || ownerType === "tax_dossier") {
+    if ((TAX_DOCUMENT_OWNERS as readonly DocumentOwner[]).includes(ownerType)) {
       if (!this.taxOwners) throw new FinanceError("unavailable", "La gestoría no está montada en este entorno (migración 0037)");
       if (!(await this.taxOwners(ownerType, ownerId))) throw new FinanceError("not_found", "No existe el elemento al que se adjunta el documento");
       return;
@@ -789,6 +868,10 @@ export class FinanceOpsService {
         totalCents: a.totalCents,
         currency: "EUR",
         rectifiesExpenseId: null,
+        // Las plantillas no llevan tratamiento del IVA (CRM 0039): el borrador nace interior y se ajusta antes de registrarlo
+        vatTreatment: null,
+        reverseChargeRateBp: null,
+        settlesStripeFees: false,
         sourceKey: o.sourceKey,
         createdBy: actor.by,
         createdAt: this.now(),
@@ -966,6 +1049,7 @@ export class FinanceOpsService {
     // Validar antes de reservar: los errores de datos no tocan el movimiento
     let build: (key: string) => Promise<{ draft: Parameters<FinanceService["postGenerated"]>[0]; paymentOf?: Parameters<FinanceOpsStore["insertPayment"]>[0] }>;
     let matchRef: number | null = null;
+    let matchNature: { nature: BankFeeNature; accountCode: string } | null = null;
     if (i.type === "invoice_payment") {
       // Cobro de una factura propia por transferencia: Debe banco · Haber 430 (`bankmov:<id>`)
       const inv = await this.ext.invoiceForTransfer(i.invoiceId);
@@ -983,11 +1067,16 @@ export class FinanceOpsService {
       });
     } else {
       if (!["transfer", "tax", "payroll", "other"].includes(i.type)) throw bad("Tipo de conciliación no válido");
-      const code = (i as { accountCode: string }).accountCode?.trim();
+      // CRM 0039: la naturaleza de una comisión bancaria se resuelve a su cuenta configurada y queda en la descripción
+      const nature = (i as { nature?: BankFeeNature }).nature;
+      if (nature !== undefined && !this.natureAccount) throw new FinanceError("unavailable", "Las naturalezas de las comisiones bancarias llegan con la migración 0039, que no está aplicada en este entorno");
+      const code = nature !== undefined ? await this.natureAccount!(nature) : (i as { accountCode: string }).accountCode?.trim();
       if (!code) throw bad("Elige la cuenta de contrapartida");
       if (code.startsWith("57") && i.type !== "transfer") throw bad("Contra otra cuenta de tesorería usa «Transferencia interna»");
-      const description = (i as { description?: string | null }).description ?? null;
+      const given = (i as { description?: string | null }).description ?? null;
+      const description = nature !== undefined ? `${(given?.trim() || m.description || "Comisión bancaria").trim().slice(0, 260)} · naturaleza: ${BANK_FEE_NATURE_LABELS[nature].toLowerCase()}` : given;
       build = async (key) => ({ draft: bankCounterpartEntry(m, bank.accountCode, code, description, key) });
+      if (nature !== undefined) matchNature = { nature, accountCode: code };
     }
     await this.d.finance.checkPostable((await build(bankMovementSourceKey(m.id, 1))).draft);
     const claimed = await this.s.claimMovement(m.id, { from: "pending", to: "matched", matchType: i.type, by: actor.by, at: this.now(), bump: true });
@@ -1002,7 +1091,7 @@ export class FinanceOpsService {
         await this.s.refreshExpensePaid(paymentOf!.expenseId);
       }
       await this.s.setMovementMatch(m.id, paymentId ?? matchRef, entry.id);
-      await this.audit(actor, "bank_movement.match", "bank_movement", m.id, { type: i.type, entryId: entry.id, sourceKey: entry.sourceKey, expensePaymentId: paymentId, ...(matchRef ? { invoiceId: matchRef } : {}) });
+      await this.audit(actor, "bank_movement.match", "bank_movement", m.id, { type: i.type, entryId: entry.id, sourceKey: entry.sourceKey, expensePaymentId: paymentId, ...(matchRef ? { invoiceId: matchRef } : {}), ...(matchNature ?? {}) });
     } catch (err) {
       if (paymentId) await this.s.markPayment(paymentId, "void", { by: actor.by, at: this.now(), reason: "No se pudo contabilizar" });
       await this.s.releaseMovement(m.id, "matched");

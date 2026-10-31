@@ -4,6 +4,7 @@
  * se guardan la revisión diaria (con bitácora) y la marca de coste directo de las categorías. Mismos convenios:
  * céntimos enteros, fechas «AAAA-MM-DD» (Europe/Madrid), meses «AAAA-MM» y `null` = no disponible (nunca 0).
  */
+import type { BankFeeNature } from "./opsTypes";
 import type { EntryOrigin } from "./types";
 
 /** Agregado del libro por mes, cuenta y dimensiones (lo que devuelve el GROUP BY de MySQL). */
@@ -102,6 +103,23 @@ export interface DailyCounts {
   taxDueNext15: number;
   taxOverdue: number;
   draftEntries: number;
+  /** CRM 0039: transacciones de Stripe pendientes por no tener decidido el IVA de su comisión (solo con la migración). */
+  stripeFeeVatUnset?: number;
+}
+
+/**
+ * Configuración del análisis (CRM 0039, `fin_analysis_settings`, una fila): dónde van las comisiones de Stripe en
+ * Revenue & Margin (`direct_cost`: coste del cobro de las ventas, por defecto; `structure`; `financial`: resultado
+ * financiero, fuera del margen) y la cuenta de cada naturaleza de comisión bancaria.
+ */
+export const STRIPE_FEES_TREATMENTS = ["direct_cost", "structure", "financial"] as const;
+export type StripeFeesTreatment = (typeof STRIPE_FEES_TREATMENTS)[number];
+
+export interface AnalysisSettings {
+  stripeFeesTreatment: StripeFeesTreatment;
+  bankFeeAccounts: Record<BankFeeNature, string>;
+  configuredBy: string | null;
+  configuredAt: number | null;
 }
 
 export interface DailyReviewLog {

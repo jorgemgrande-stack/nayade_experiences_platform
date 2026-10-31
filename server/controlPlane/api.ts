@@ -419,6 +419,8 @@ export interface ControlPlaneDeps {
   financeTax?: FinanceTaxService | null;
   /** Control diario, informes y análisis de las finanzas (server/finance/analysis*, CRM 0038). Requiere `financeOps`. */
   financeAnalysis?: FinanceAnalysisService | null;
+  /** Parametrización fiscal de las finanzas (CRM 0039): sin la migración, sus rutas no se montan (404). */
+  financeFiscal?: boolean;
   /** Centro de envíos del CRM y consentimiento comercial por contacto (server/communications, CRM 0031). */
   communications?: CommunicationsService | null;
 }
@@ -1823,7 +1825,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
     if (adminAlerts) router.use("/admin-alerts", createAdminAlertsRouter(adminAlerts));
     if (d.dataRequests) router.use("/data-requests", createDataRequestsRouter(d.dataRequests));
     // Fase 4: las métricas comerciales se consumen con las mismas funciones que /revenue/metrics y /resources/profitability
-    if (d.finance) router.use("/finance", createFinanceRouter(d.finance, d.financeOps, d.financeStripe, d.financeTax, d.financeAnalysis, { metrics: () => revenueMetricsReport(30), profitability: (days) => profitabilityReport(days, undefined) }));
+    if (d.finance) router.use("/finance", createFinanceRouter(d.finance, d.financeOps, d.financeStripe, d.financeTax, d.financeAnalysis, { metrics: () => revenueMetricsReport(30), profitability: (days) => profitabilityReport(days, undefined) }, !!d.financeFiscal));
     // Centro de envíos y consentimiento por contacto (antes del router del CRM: /crm/contacts/:id/consent)
     if (d.communications) router.use(createCommunicationsRouter(d.communications));
     router.use(

@@ -16,20 +16,26 @@ import JSZip from "jszip";
 import { registerCsv } from "../invoicing/register";
 import type { Invoice } from "../invoicing/types";
 import { madridDateKey } from "../utils/timezone";
-import { addDays } from "./opsRules";
+import { addDays, reverseChargeAmounts } from "./opsRules";
 import type { FinanceOpsService } from "./opsService";
 import type { ExpenseRow, FinanceOpsStore } from "./opsStore";
-import type { DocumentOwner, Supplier } from "./opsTypes";
+import { VAT_TREATMENT_LABELS, vatTreatmentOf, type DocumentOwner, type Supplier, type VatTreatment } from "./opsTypes";
 import { isValidDate, yearOf } from "./rules";
 import type { FinanceService } from "./service";
 import type { FinanceStore } from "./store";
+import { issuerFromDescription } from "./stripeRules";
 import type { FinanceStripeStore } from "./stripeStore";
 import type { FiscalInvoiceSource } from "./taxSources";
 import {
   ANNUAL,
   annualWithholdings,
   baseYearFor202,
+  checkCorporateYear,
+  CORPORATE_ENTRY_ACCOUNTS,
+  CORPORATE_PARENT_ACCOUNTS,
   corporate200,
+  corporateEntryDraft,
+  corporatePresets,
   corporateRateBp,
   daysUntil,
   deferralInstallmentEntry,
@@ -62,6 +68,7 @@ import {
   type DraftBody,
   type PayrollRow,
   type ReceivedRegisterRow,
+  type StripeIssuerGroup,
   type ThirdPartyOp,
   type VatLedgerLine,
   type WithholdingExpense,
@@ -75,6 +82,9 @@ import {
   PAYMENT_ACCOUNT,
   PRESENTED_STATUSES,
   type AdjustmentKind,
+  type CorporateEntryOrigin,
+  type CorporateEntryRecord,
+  type CorporateYearInput,
   type Deferral,
   type DeferralStatus,
   type Dossier,
@@ -83,6 +93,7 @@ import {
   type Obligation,
   type ObligationStatus,
   type Payroll,
+  type TaxDetail,
   type TaxDraft,
   type TaxModel,
   type TaxSettings,
@@ -104,6 +115,13 @@ export interface FinanceTaxDeps {
   invoices?: FiscalInvoiceSource | null;
   /** Emisor (razón social y NIF) para precargar la configuración la primera vez; nunca se escribe sin el administrador. */
   issuer?: { legalName: string; taxId: string } | null;
+  /**
+   * Migración 0039 aplicada: validación de la configuración (puerta de revisar y presentar), Impuesto sobre Sociedades
+   * por ejercicio y su asiento, tratamiento del IVA de los gastos. Sin ella, el comportamiento de la fase 3.
+   */
+  fiscal?: boolean;
+  /** Stripe (CRM 0039): transacciones pendientes por no tener decidido el IVA de su comisión, para avisar en el 303. */
+  stripeFeeVat?: { pendingFeeVatCount(from?: string, to?: string): Promise<number>; feeMonths?(from: string, to: string): Promise<Array<{ month: string; mode: string; feeBaseCents: number }>> } | null;
   now?: () => number;
 }
 
@@ -139,6 +157,9 @@ export const DEFAULT_TAX_SETTINGS: Omit<TaxSettings, "legalName" | "taxId"> = {
   version: 0,
   updatedBy: null,
   updatedAt: null,
+  validatedAt: null,
+  validatedBy: null,
+  validationNote: null,
 };
 
 export interface PresentInput {
@@ -270,10 +291,43 @@ export class FinanceTaxService {
     if (next.gestoriaEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(next.gestoriaEmail)) throw bad("Correo de la gestoría no válido");
     next.extraHolidays = Array.from(new Set((next.extraHolidays ?? []).map((x) => x.trim()))).sort();
     if (next.extraHolidays.length > 100 || next.extraHolidays.some((x) => !isValidDate(x))) throw bad("Los festivos adicionales son fechas AAAA-MM-DD (como mucho 100)");
-    const { configured: _c, version: _v, updatedBy: _u, updatedAt: _a, ...values } = next;
+    const { configured: _c, version: _v, updatedBy: _u, updatedAt: _a, validatedAt: _va, validatedBy: _vb, validationNote: _vn, ...values } = next;
     const saved = await this.s.saveSettings(values, { by: actor.by, at: this.now(), requestId: actor.requestId, expectedVersion: expectedVersion ?? null, before: cur });
     await this.audit(actor, "tax.settings", "tax_settings", 1, { version: saved.version });
+    // CRM 0039: el cambio invalida la validación con la gestoría (en el mismo guardado; queda en el historial)
+    if (this.fiscal && before?.validatedAt) await this.audit(actor, "tax.settings.invalidated", "tax_settings", 1, { version: saved.version, validatedAt: before.validatedAt, validatedBy: before.validatedBy });
     return saved;
+  }
+
+  /** ¿Está aplicada la migración 0039? */
+  get fiscal() {
+    return !!this.d.fiscal;
+  }
+  private needFiscal() {
+    if (!this.fiscal) throw new FinanceError("unavailable", "La parametrización fiscal llega con la migración 0039, que no está aplicada en este entorno");
+  }
+
+  /**
+   * Marca la configuración fiscal como validada con la gestoría (CRM 0039; finance:config y sesión de operador). Es la
+   * puerta para trabajar con datos reales: sin ella, revisar y presentar responden `tax_config_not_validated`.
+   */
+  async validateSettings(note: string | null | undefined, actor: FinanceActor): Promise<TaxSettings> {
+    this.needFiscal();
+    const n = text(note, 500);
+    if (!n || n.length < 3) throw bad("Indica con quién y cómo se ha validado la configuración (3 a 500 caracteres)");
+    const saved = await this.s.validateSettings({ by: actor.by, at: this.now(), requestId: actor.requestId, note: n });
+    await this.audit(actor, "tax.settings.validate", "tax_settings", 1, { version: saved.version, note: n });
+    return saved;
+  }
+
+  /** true/false con la migración 0039 (configuración guardada y validada); null sin ella (no hay puerta). */
+  async configValidated(): Promise<boolean | null> {
+    if (!this.fiscal) return null;
+    return !!(await this.s.getSettings())?.validatedAt;
+  }
+
+  private async requireValidated() {
+    if ((await this.configValidated()) === false) throw new FinanceError("tax_config_not_validated", "La configuración fiscal no está validada con la gestoría: los borradores se ven, pero no se revisan ni se presentan hasta validarla");
   }
 
   // ── Calendario y obligaciones ─────────────────────────────────────────────────────────────────────────────────
@@ -340,24 +394,35 @@ export class FinanceTaxService {
   /** Líneas de 477 y 472 del periodo con el origen del hecho (en las reversiones, el del asiento revertido). */
   private async vatLines(from: string, to: string): Promise<VatLedgerLine[]> {
     const lines = (await Promise.all(["477", "472"].map((accountCode) => this.d.ledger.postedLines({ from, to, accountCode, excludeOrigins: NOT_VAT })))).flat();
-    const originals = new Map<number, { origin: EntryOrigin; date: string } | null>();
+    const originals = new Map<number, { id: number; origin: EntryOrigin; date: string } | null>();
     const kindOf = (o: EntryOrigin): VatLedgerLine["kind"] => (o === "invoice" ? "sale" : o === "expense" ? "purchase" : o === "stripe" ? "stripe" : "other");
     const out: VatLedgerLine[] = [];
+    // Asiento del gasto del que sale cada línea de compra (en una reversión, el revertido): su tratamiento del IVA
+    const expenseEntryOf = new Map<VatLedgerLine, number>();
     for (const l of lines.sort((a, b) => a.date.localeCompare(b.date) || a.entryId - b.entryId || a.lineNo - b.lineNo)) {
       let kind = kindOf(l.origin);
       let originalInPeriod = true;
       const reversal = l.origin === "reversal";
+      let sourceEntry = l.entryId;
       if (reversal) {
         if (!originals.has(l.entryId)) {
           const e = await this.d.ledger.getEntry(l.entryId);
           const orig = e?.reversesEntryId ? await this.d.ledger.getEntry(e.reversesEntryId) : null;
-          originals.set(l.entryId, orig ? { origin: orig.origin, date: orig.date } : null);
+          originals.set(l.entryId, orig ? { id: orig.id, origin: orig.origin, date: orig.date } : null);
         }
         const orig = originals.get(l.entryId);
         kind = orig ? kindOf(orig.origin) : "other";
         originalInPeriod = !!orig && orig.date >= from && orig.date <= to;
+        if (orig) sourceEntry = orig.id;
       }
-      out.push({ entryId: l.entryId, entryNumber: l.number, date: l.date, description: l.description ?? l.entryDescription, account: l.accountCode as "477" | "472", kind, reversal, originalInPeriod, debitCents: l.debitCents, creditCents: l.creditCents, taxRateBp: l.taxRateBp, taxBaseCents: l.taxBaseCents });
+      const row: VatLedgerLine = { entryId: l.entryId, entryNumber: l.number, date: l.date, description: l.description ?? l.entryDescription, account: l.accountCode as "477" | "472", kind, reversal, originalInPeriod, debitCents: l.debitCents, creditCents: l.creditCents, taxRateBp: l.taxRateBp, taxBaseCents: l.taxBaseCents };
+      if (kind === "purchase") expenseEntryOf.set(row, sourceEntry);
+      out.push(row);
+    }
+    // CRM 0039: tratamiento del IVA del gasto (la «marca» de la inversión del sujeto pasivo para el 303)
+    if (expenseEntryOf.size) {
+      const treatments = await this.d.ops.expenseTreatmentsByEntries(Array.from(new Set(expenseEntryOf.values())));
+      for (const [row, entryId] of Array.from(expenseEntryOf.entries())) row.treatment = treatments.get(entryId) ?? null;
     }
     return out;
   }
@@ -465,7 +530,7 @@ export class FinanceTaxService {
           period,
           lines,
           invoices: invoices?.map((i) => ({ id: i.id, number: i.number!, date: i.issueDate!, customerName: i.customer?.legalName ?? null, customerTaxId: i.customer?.taxId ?? null, customerCountry: i.customer?.country ?? null, zeroRatedBaseCents: sumOf(i.lines.filter((l) => l.taxRateBp === 0).map((l) => l.baseCents)) })) ?? null,
-          expenses: expenses.map((e) => ({ id: e.id, number: e.invoiceNumber, date: e.invoiceDate, supplierName: e.supplierName, supplierCountry: e.supplierId ? (sup.get(e.supplierId)?.country ?? null) : null, baseCents: e.baseCents, taxRateBp: e.taxRateBp, kind: e.kind })),
+          expenses: expenses.map((e) => ({ id: e.id, number: e.invoiceNumber, date: e.invoiceDate, supplierName: e.supplierName, supplierCountry: e.supplierId ? (sup.get(e.supplierId)?.country ?? null) : null, baseCents: e.baseCents, taxRateBp: e.taxRateBp, kind: e.kind, vatTreatment: e.vatTreatment })),
           ledgerHasEntries: has,
           carriedInCents: carried,
           carriedInSource: carriedSource,
@@ -474,6 +539,10 @@ export class FinanceTaxService {
           regime: settings.vatRegime,
         });
         b.warnings.push(...extraWarnings);
+        // CRM 0039: comisiones de Stripe del periodo que no se han contabilizado por no tener decidido su IVA
+        const unset = this.fiscal && this.d.stripeFeeVat ? await this.d.stripeFeeVat.pendingFeeVatCount(from, to) : 0;
+        if (unset) b.warnings.push(`${unset} transacciones de Stripe del periodo sin tratamiento del IVA de su comisión (fee_vat_unset): no están contabilizadas; configura la regla y contabiliza antes de presentar`);
+        b.warnings.push(...(await this.stripeFeeInvoiceWarnings(from, to)).map((w) => w.message));
         return b;
       }
       case "390": {
@@ -494,14 +563,31 @@ export class FinanceTaxService {
         const sup = await this.suppliers(expenses.map((e) => e.supplierId));
         const stripeLines = lines.filter((l) => l.kind === "stripe" && l.account === "472");
         const signedBase = (l: VatLedgerLine) => Math.sign(l.debitCents - l.creditCents) * Math.abs(l.taxBaseCents ?? 0);
+        const stripeDetail = (l: VatLedgerLine): TaxDetail => ({ box: "I", source: "entry", ref: `entry:${l.entryId}`, date: l.date, description: `Asiento ${l.entryNumber ?? l.entryId}: ${l.description}`, baseCents: signedBase(l), taxCents: null, rateBp: l.taxRateBp, number: l.entryNumber === null ? null : String(l.entryNumber) });
+        // CRM 0039: clave por el tratamiento del gasto (A = bienes, I = servicios); los que no son intracomunitarios
+        // con un tratamiento explícito (importación, exenta, ISP interior…) no van al 349. Sin tratamiento: clave I, como antes
+        const keyOf = (t: VatTreatment | null): "A" | "I" | null => (t === "intra_eu_goods" ? "A" : t === null || t === "domestic" || t === "intra_eu_services" ? "I" : null);
+        // Comisiones de Stripe: un declarado por emisor (la regla aplicada queda en la línea; si no, el NIF-IVA de la configuración)
+        const groups = new Map<string, StripeIssuerGroup>();
+        for (const l of stripeLines) {
+          const issuer = this.fiscal ? issuerFromDescription(l.description) : null;
+          const taxId = issuer?.vatId ?? settings.stripeVatId;
+          const g = groups.get(taxId ?? "") ?? { taxId, name: issuer?.name ?? "Stripe Payments Europe, Limited", baseCents: 0, details: [] };
+          g.baseCents += signedBase(l);
+          g.details.push(stripeDetail(l));
+          groups.set(taxId ?? "", g);
+        }
         return m349({
           year,
           period,
           invoices: invoices?.map((i) => ({ id: i.id, number: i.number!, date: i.issueDate!, customerName: i.customer?.legalName ?? null, customerTaxId: i.customer?.taxId ?? null, customerCountry: i.customer?.country ?? null, baseCents: i.baseCents })) ?? null,
-          expenses: expenses.filter((e) => e.supplierId && isEuForeign(sup.get(e.supplierId)?.country)).map((e) => ({ id: e.id, number: e.invoiceNumber, date: e.invoiceDate, supplierName: e.supplierName, supplierTaxId: sup.get(e.supplierId!)?.taxId ?? null, supplierCountry: sup.get(e.supplierId!)?.country ?? null, baseCents: e.baseCents })),
+          expenses: expenses
+            .filter((e) => e.supplierId && isEuForeign(sup.get(e.supplierId)?.country) && keyOf(e.vatTreatment) !== null)
+            .map((e) => ({ id: e.id, number: e.invoiceNumber, date: e.invoiceDate, supplierName: e.supplierName, supplierTaxId: sup.get(e.supplierId!)?.taxId ?? null, supplierCountry: sup.get(e.supplierId!)?.country ?? null, baseCents: e.baseCents, key: keyOf(e.vatTreatment)! })),
           stripeFeeBaseCents: sumOf(stripeLines.map(signedBase)),
           stripeVatId: settings.stripeVatId,
-          stripeDetails: stripeLines.map((l) => ({ box: "I", source: "entry", ref: `entry:${l.entryId}`, date: l.date, description: `Asiento ${l.entryNumber ?? l.entryId}: ${l.description}`, baseCents: signedBase(l), taxCents: null, rateBp: l.taxRateBp, number: l.entryNumber === null ? null : String(l.entryNumber) })),
+          stripeDetails: stripeLines.map(stripeDetail),
+          ...(this.fiscal ? { stripeGroups: Array.from(groups.values()) } : {}),
         });
       }
       case "347": {
@@ -511,7 +597,7 @@ export class FinanceTaxService {
           ...(invoices ?? []).map((i) => ({ key: "B" as const, ref: `invoice:${i.id}`, source: "invoice" as const, date: i.issueDate!, number: i.number, taxId: i.customer?.taxId ?? null, name: i.customer?.legalName ?? `Cliente ${i.companyId}`, country: i.customer?.country ?? null, totalCents: i.totalCents, withholdingCents: 0 })),
           ...expenses.map((e) => {
             const s = e.supplierId ? sup.get(e.supplierId) : undefined;
-            return { key: "A" as const, ref: `expense:${e.id}`, source: "expense" as const, date: e.invoiceDate, number: e.invoiceNumber, taxId: s?.taxId ?? null, name: s?.legalName ?? s?.name ?? e.supplierName ?? "Proveedor", country: s?.country ?? null, totalCents: e.totalCents, withholdingCents: e.withholdingCents };
+            return { key: "A" as const, ref: `expense:${e.id}`, source: "expense" as const, date: e.invoiceDate, number: e.invoiceNumber, taxId: s?.taxId ?? null, name: s?.legalName ?? s?.name ?? e.supplierName ?? "Proveedor", country: s?.country ?? null, totalCents: e.totalCents, withholdingCents: e.withholdingCents, vatTreatment: e.vatTreatment };
           }),
         ];
         const b = m347(year, ops);
@@ -564,7 +650,7 @@ export class FinanceTaxService {
   private async corporateBody(year: number, settings: TaxSettings): Promise<DraftBody> {
     const from = `${year}-01-01`;
     const to = `${year}-12-31`;
-    const [lines, accounts, adjustments, paid, prev] = await Promise.all([this.resultLines(from, to), this.d.ledger.listAccounts(), this.s.listAdjustments(year), this.installmentsPaid(year), this.previousPendingLosses(year)]);
+    const [lines, accounts, adjustments, paid, prev, config] = await Promise.all([this.resultLines(from, to), this.d.ledger.listAccounts(), this.s.listAdjustments(year), this.installmentsPaid(year), this.previousPendingLosses(year), this.fiscal ? this.s.getCorporateYear(year) : Promise.resolve(null)]);
     const names = new Map(accounts.map((a) => [a.code, a.name]));
     const result = lines.filter((l) => /^[67]/.test(l.accountCode));
     const byAccount = new Map<string, number>();
@@ -585,6 +671,8 @@ export class FinanceTaxService {
       adjustments: adjustments.filter((a) => a.status === "active"),
       previousPending: prev.pending,
       previousSource: prev.source,
+      corporate: config,
+      fiscal: this.fiscal,
       details: [
         ...Array.from(byAccount.entries())
           .sort((a, b) => a[0].localeCompare(b[0]))
@@ -656,11 +744,22 @@ export class FinanceTaxService {
     return { obligation: (await this.s.getObligation(id))!, draft: prev, stale: diff };
   }
 
+  /**
+   * Puerta de la parametrización fiscal (CRM 0039) para revisar y presentar: configuración validada con la gestoría y,
+   * en el 200, el Impuesto sobre Sociedades del ejercicio configurado.
+   */
+  private async fiscalGate(o: Obligation) {
+    if (!this.fiscal) return;
+    await this.requireValidated();
+    if (o.model === "200" && !(await this.s.getCorporateYear(o.year))) throw new FinanceError("corporate_year_unset", `Configura el Impuesto sobre Sociedades del ejercicio ${o.year} (régimen y tramos) antes de revisar el 200`);
+  }
+
   async review(id: number, actor: FinanceActor, note?: string | null) {
     const o = await this.mustObligation(id);
     const draft = await this.s.getDraft(id);
     if (o.status !== "borrador" || !draft) throw new FinanceError("invalid_state", "Solo se revisa un borrador calculado");
     if (!draft.hasData) throw new FinanceError("invalid_state", "El borrador no tiene datos: completa lo que falta y vuelve a calcularlo");
+    await this.fiscalGate(o);
     if (!(await this.s.transition(id, ["borrador"], "revisado", { reviewedAt: this.now(), reviewedBy: actor.by }, this.now()))) throw new FinanceError("conflict", "La obligación ha cambiado: recárgala");
     await this.log(o, actor, "review", "revisado", text(note, 500));
     await this.audit(actor, "tax.obligation.review", "tax_obligation", id, { key: o.key, hash: draft.hash });
@@ -674,6 +773,7 @@ export class FinanceTaxService {
   async present(id: number, i: PresentInput, actor: FinanceActor) {
     const o = await this.mustObligation(id);
     if (o.status !== "borrador" && o.status !== "revisado") throw new FinanceError("invalid_state", PRESENTED_STATUSES.includes(o.status) ? "La obligación ya está presentada" : "Calcula el borrador antes de registrar la presentación");
+    await this.fiscalGate(o);
     if (!isValidDate(i.presentedOn) || i.presentedOn > this.today()) throw bad("Fecha de presentación no válida (AAAA-MM-DD, no futura)");
     const receipt = text(i.receiptNumber, 100);
     if (!receipt) throw bad("Indica el número de justificante (o el CSV) de la presentación");
@@ -825,7 +925,29 @@ export class FinanceTaxService {
     const rectified = await this.d.ops.getExpensesByIds(Array.from(new Set(expenses.map((e) => e.rectifiesExpenseId).filter((x): x is number => x !== null))));
     const rows: ReceivedRegisterRow[] = expenses.map((e) => {
       const s = e.supplierId ? sup.get(e.supplierId) : undefined;
+      // CRM 0039: con inversión del sujeto pasivo, la cuota es la autoliquidada (la factura viene sin IVA)
+      const isp = reverseChargeAmounts(e);
+      if (isp)
+        return {
+          invoiceDate: e.invoiceDate,
+          accrualDate: e.accrualDate,
+          number: e.invoiceNumber,
+          kind: e.kind === "rectification" ? "R1" : "F1",
+          supplierName: s?.legalName ?? s?.name ?? e.supplierName ?? "",
+          supplierTaxId: s?.taxId ?? null,
+          country: s?.country ?? null,
+          baseCents: e.baseCents,
+          taxRateBp: isp.rateBp,
+          taxCents: isp.taxCents,
+          deductibleTaxCents: isp.deductibleTaxCents,
+          withholdingCents: e.withholdingCents,
+          totalCents: e.totalCents,
+          rectifies: e.rectifiesExpenseId ? (rectified.find((x) => x.id === e.rectifiesExpenseId)?.invoiceNumber ?? `#${e.rectifiesExpenseId}`) : null,
+          reverseCharge: true,
+          treatment: VAT_TREATMENT_LABELS[vatTreatmentOf(e)],
+        };
       return {
+        treatment: VAT_TREATMENT_LABELS[vatTreatmentOf(e)],
         invoiceDate: e.invoiceDate,
         accrualDate: e.accrualDate,
         number: e.invoiceNumber,
@@ -857,7 +979,7 @@ export class FinanceTaxService {
     for (const [m, g] of Array.from(byMonth.entries())) {
       const [y, mm] = m.split("-").map(Number);
       const last = new Date(Date.UTC(y, mm, 0)).toISOString().slice(0, 10);
-      rows.push({ invoiceDate: last > r.to ? r.to : last, accrualDate: null, number: `STRIPE-${m}`, kind: "F1", supplierName: "Stripe Payments Europe, Limited (comisiones del mes)", supplierTaxId: settings.stripeVatId, country: settings.stripeVatId?.slice(0, 2) ?? null, baseCents: g.base, taxRateBp: g.rate ?? 0, taxCents: g.tax, deductibleTaxCents: g.tax, withholdingCents: 0, totalCents: g.base, rectifies: null, reverseCharge: true });
+      rows.push({ invoiceDate: last > r.to ? r.to : last, accrualDate: null, number: `STRIPE-${m}`, kind: "F1", supplierName: "Stripe Payments Europe, Limited (comisiones del mes)", supplierTaxId: settings.stripeVatId, country: settings.stripeVatId?.slice(0, 2) ?? null, baseCents: g.base, taxRateBp: g.rate ?? 0, taxCents: g.tax, deductibleTaxCents: g.tax, withholdingCents: 0, totalCents: g.base, rectifies: null, reverseCharge: true, treatment: "Comisiones de Stripe (ISP)" });
     }
     return { ...r, csv: receivedRegisterCsv(rows) };
   }
@@ -1023,11 +1145,37 @@ export class FinanceTaxService {
     return this.dossier(id);
   }
 
+  /**
+   * Facturas de comisiones de Stripe (CRM 0039): en los meses en modo `per_invoice` con comisiones importadas, aviso si no
+   * hay ninguna factura `settlesStripeFees` registrada con fecha de devengo (o de factura) en el mes
+   * (`stripe_fee_invoice_missing`) o si su base difiere de las comisiones importadas en más de 1 €
+   * (`stripe_fee_invoice_difference`, con la diferencia).
+   */
+  async stripeFeeInvoiceWarnings(from: string, to: string): Promise<Array<{ code: "stripe_fee_invoice_missing" | "stripe_fee_invoice_difference"; month: string; message: string; differenceCents: number | null }>> {
+    if (!this.fiscal || !this.d.stripeFeeVat?.feeMonths) return [];
+    const months = (await this.d.stripeFeeVat.feeMonths(from, to)).filter((m) => m.mode === "per_invoice");
+    if (!months.length) return [];
+    const invoices = (await this.expensesByAccrual(`${months[0].month}-01`, to)).filter((e) => e.settlesStripeFees);
+    const out: Array<{ code: "stripe_fee_invoice_missing" | "stripe_fee_invoice_difference"; month: string; message: string; differenceCents: number | null }> = [];
+    const eur = (c: number) => (c / 100).toFixed(2).replace(".", ",");
+    for (const m of months) {
+      const mine = invoices.filter((e) => (e.accrualDate ?? e.invoiceDate).startsWith(m.month));
+      if (!mine.length) {
+        out.push({ code: "stripe_fee_invoice_missing", month: m.month, differenceCents: null, message: `Comisiones de Stripe de ${m.month} importadas (${eur(m.feeBaseCents)} €) sin factura de comisiones registrada (stripe_fee_invoice_missing): regístrala con «liquida comisiones de Stripe» para declarar su IVA` });
+        continue;
+      }
+      const diff = sumOf(mine.map((e) => e.baseCents)) - m.feeBaseCents;
+      if (Math.abs(diff) > 100) out.push({ code: "stripe_fee_invoice_difference", month: m.month, differenceCents: diff, message: `La factura de comisiones de Stripe de ${m.month} difiere de las comisiones importadas en ${eur(diff)} € (stripe_fee_invoice_difference): revisa la factura o la importación` });
+    }
+    return out;
+  }
+
   /** ¿Existe el propietario de un documento de la fase 3? (enchufado al servicio de operaciones). */
   async documentOwnerExists(ownerType: DocumentOwner, ownerId: number) {
     if (ownerType === "tax_obligation") return !!(await this.s.getObligation(ownerId));
     if (ownerType === "payroll") return !!(await this.s.getPayroll(ownerId));
     if (ownerType === "tax_dossier") return !!(await this.s.getDossier(ownerId));
+    if (ownerType === "tax_200_entry" && this.fiscal) return !!(await this.s.getCorporateEntryById(ownerId));
     return false;
   }
 
@@ -1036,7 +1184,120 @@ export class FinanceTaxService {
   async corporate(year: number) {
     this.checkYear(year);
     const [draft, adjustments, obligation, installments] = await Promise.all([this.computeDraft("200", year, ANNUAL), this.s.listAdjustments(year), this.s.getObligationByKey(obligationKey("200", year, ANNUAL)), this.s.listObligations({ year, model: "202", limit: 10 })]);
-    return { draft, adjustments, obligation, installments: installments.items };
+    // CRM 0039: configuración del ejercicio, propuestas y asiento (vivo e historial de revertidos)
+    const [config, entries, log] = this.fiscal ? await Promise.all([this.s.getCorporateYear(year), this.s.listCorporateEntries(year), this.s.corporateYearLog(year)]) : [null, [] as CorporateEntryRecord[], []];
+    return { draft, adjustments, obligation, installments: installments.items, config, configLog: log, presets: this.fiscal ? corporatePresets(year) : [], entries };
+  }
+
+  corporatePresets(year: number) {
+    this.checkYear(year);
+    return corporatePresets(year);
+  }
+
+  /** Número del asiento en el libro (null si es borrador o no existe). */
+  async entryNumber(entryId: number) {
+    return (await this.d.ledger.getEntry(entryId))?.number ?? null;
+  }
+
+  /** Configuración del Impuesto sobre Sociedades del ejercicio (finance:tax); cada versión queda en su bitácora. */
+  async saveCorporateYear(year: number, i: CorporateYearInput & { expectedVersion?: number | null }, actor: FinanceActor) {
+    this.needFiscal();
+    this.checkYear(year);
+    const { expectedVersion, ...rest } = i;
+    const v = checkCorporateYear(rest);
+    const saved = await this.s.saveCorporateYear(year, v, { by: actor.by, at: this.now(), requestId: actor.requestId, expectedVersion: expectedVersion ?? null });
+    await this.audit(actor, "tax.corporate.config", "tax_corporate_year", year, { version: saved.version, regime: saved.regime, brackets: saved.brackets });
+    return saved;
+  }
+
+  /** Cuentas que el asiento necesita y el plan sembrado no trae: se dan de alta como subcuentas del PGC (auditadas). */
+  private async ensureCorporateAccounts(codes: string[], actor: FinanceActor) {
+    const existing = new Set((await this.d.ledger.listAccounts()).map((a) => a.code));
+    const all = Object.values(CORPORATE_ENTRY_ACCOUNTS);
+    for (const code of codes) {
+      if (existing.has(code)) continue;
+      const def = all.find((a) => a.code === code);
+      if (!def) continue;
+      const parent = code.slice(0, 3);
+      if (!existing.has(parent) && CORPORATE_PARENT_ACCOUNTS[parent]) {
+        await this.d.finance.createAccount({ code: parent, name: CORPORATE_PARENT_ACCOUNTS[parent].name, type: CORPORATE_PARENT_ACCOUNTS[parent].type }, actor);
+        existing.add(parent);
+      }
+      if (code !== parent) await this.d.finance.createAccount({ code, name: def.name }, actor);
+      existing.add(code);
+    }
+  }
+
+  /** Saldo deudor de la 473 (retenciones y pagos a cuenta) hasta una fecha. */
+  private async balance473(to: string) {
+    const lines = await this.d.ledger.postedLines({ to, accountCode: "473" });
+    return sumOf(lines.map((l) => l.debitCents - l.creditCents));
+  }
+
+  /**
+   * Asiento del Impuesto sobre Sociedades del ejercicio (CRM 0039; finance:tax y sesión de operador). `system` toma los
+   * importes del borrador del 200 (cuota líquida; retenciones y pagos fraccionados); `manual` y `gestoria` los teclea el
+   * operador y se guarda la diferencia con el borrador. Uno vivo por ejercicio: para corregirlo, se revierte y se
+   * registra otro (`tax:200:entry:<año>:<n>`). Traza: documento (opcional), bitácora de la obligación 200 y auditoría.
+   */
+  async corporateEntry(year: number, i: { origin: CorporateEntryOrigin; date: string; currentTaxCents?: number; deferredTaxCents?: number; withholdingsAndPaymentsCents?: number; note?: string | null; document?: { filename: string; contentBase64: string } | null }, actor: FinanceActor) {
+    this.needFiscal();
+    this.checkYear(year);
+    if (!isValidDate(i.date) || i.date < `${year}-01-01`) throw bad(`Fecha del asiento no válida (AAAA-MM-DD, desde el 1 de enero de ${year})`);
+    const entries = await this.s.listCorporateEntries(year);
+    if (entries.some((e) => e.reversedAt === null)) throw new FinanceError("conflict", `Ya hay un asiento del Impuesto sobre Sociedades vivo del ejercicio ${year}: revierte antes el anterior para registrar otro`);
+    const draft = await this.computeDraft("200", year, ANNUAL);
+    const v = (b: string) => draft.boxes.find((x) => x.box === b)?.valueCents ?? null;
+    const draftCurrent = draft.hasData ? v("00592") : null;
+    const warnings: string[] = [];
+    let current: number;
+    let withholdings: number;
+    if (i.origin === "system") {
+      if (!draft.hasData || draftCurrent === null) throw new FinanceError("invalid_state", "El borrador del 200 no tiene datos: no hay importes que proponer");
+      if (i.currentTaxCents !== undefined && i.currentTaxCents !== draftCurrent) throw bad("Con origen «system» los importes salen del borrador: usa «manual» o «gestoria» para teclearlos");
+      current = draftCurrent;
+      withholdings = (v("00595") ?? 0) + (v("00598") ?? 0);
+    } else {
+      if (i.currentTaxCents === undefined) throw bad("Indica el impuesto corriente (currentTaxCents)");
+      current = i.currentTaxCents;
+      withholdings = i.withholdingsAndPaymentsCents ?? (await this.balance473(i.date));
+    }
+    const deferred = i.deferredTaxCents ?? 0;
+    // La 473 se salda hasta su saldo: lo que exceda se avisa (retenciones que no están en el libro)
+    const available473 = Math.max(0, await this.balance473(i.date));
+    const credited = Math.min(Math.max(0, withholdings), available473);
+    if (withholdings > available473) warnings.push(`Las retenciones y pagos a cuenta (${withholdings} céntimos) superan el saldo de la 473 (${available473}): se salda solo el saldo; revisa las retenciones que no están contabilizadas`);
+    const seq = entries.length + 1;
+    const e = corporateEntryDraft({ year, seq, date: i.date, currentTaxCents: current, deferredTaxCents: deferred, withholdingsCents: credited, origin: i.origin });
+    await this.ensureCorporateAccounts(Array.from(new Set(e.lines.map((l) => l.accountCode))), actor);
+    const { entry } = await this.d.finance.postGenerated(e, actor);
+    const note = text(i.note, 500);
+    const rec = await this.s.insertCorporateEntry({ year, seq, sourceKey: e.sourceKey!, entryId: entry.id, origin: i.origin, date: i.date, currentTaxCents: current, deferredTaxCents: deferred, withholdingsCents: credited, draftCurrentTaxCents: draftCurrent, differenceFromDraftCents: draftCurrent === null ? null : current - draftCurrent, note, createdBy: actor.by, createdAt: this.now() });
+    if (i.document) {
+      const doc = await this.d.documents.uploadDocument({ ownerType: "tax_200_entry", ownerId: rec.id, filename: i.document.filename, contentBase64: i.document.contentBase64 }, actor);
+      await this.s.setCorporateEntryDocument(rec.id, doc.id);
+    }
+    const o = await this.s.getObligationByKey(obligationKey("200", year, ANNUAL));
+    if (o) await this.log(o, actor, "corporate_entry", null, note, { entryId: entry.id, origin: i.origin, currentTaxCents: current, deferredTaxCents: deferred, withholdingsCents: credited, differenceFromDraftCents: rec.differenceFromDraftCents });
+    await this.audit(actor, "tax.corporate.entry", "tax_corporate_entry", rec.id, { year, entryId: entry.id, origin: i.origin, currentTaxCents: current, deferredTaxCents: deferred, withholdingsCents: credited, differenceFromDraftCents: rec.differenceFromDraftCents });
+    return { record: (await this.s.getCorporateEntryById(rec.id))!, warnings };
+  }
+
+  /** Revierte el asiento vivo del ejercicio (asiento espejo); después se puede registrar otro. */
+  async reverseCorporateEntry(year: number, reason: string, actor: FinanceActor) {
+    this.needFiscal();
+    this.checkYear(year);
+    const why = text(reason, 300);
+    if (!why || why.length < 3) throw bad("Indica el motivo de la reversión (3 a 300 caracteres)");
+    const live = (await this.s.listCorporateEntries(year)).find((e) => e.reversedAt === null);
+    if (!live) throw new FinanceError("invalid_state", `No hay un asiento vivo del Impuesto sobre Sociedades del ejercicio ${year}`);
+    const entry = await this.d.finance.getEntry(live.entryId);
+    const r = await this.d.finance.reverse(live.entryId, { date: this.today() < entry.date ? entry.date : this.today(), reason: `Impuesto sobre Sociedades ${year}: ${why}` }, actor);
+    if (!(await this.s.markCorporateEntryReversed(live.id, { reversalEntryId: r.entry.id, by: actor.by, at: this.now(), reason: why }))) throw new FinanceError("conflict", "El asiento ya se ha revertido");
+    const o = await this.s.getObligationByKey(obligationKey("200", year, ANNUAL));
+    if (o) await this.log(o, actor, "corporate_entry_reverse", null, why, { entryId: live.entryId, reversalEntryId: r.entry.id });
+    await this.audit(actor, "tax.corporate.entry.reverse", "tax_corporate_entry", live.id, { year, entryId: live.entryId, reversalEntryId: r.entry.id, reason: why });
+    return (await this.s.getCorporateEntryById(live.id))!;
   }
 
   /**
@@ -1089,6 +1350,12 @@ export class FinanceTaxService {
     const futureDeadlines = openDossiers.map((d) => d.responseDueOn).filter((x): x is string => !!x && x >= today).sort();
     const warnings: Array<{ code: string; message: string; obligationId: number | null }> = [];
     if (!stored) warnings.push({ code: "sin_configuracion", message: "La configuración fiscal no está guardada: revísala para que el calendario refleje tus obligaciones", obligationId: null });
+    // CRM 0039: puerta para datos reales y comisiones de Stripe sin tratamiento del IVA
+    if (this.fiscal && !stored?.validatedAt) warnings.push({ code: "tax_config_not_validated", message: "Configuración fiscal sin validar con la gestoría: los borradores se calculan, pero no se pueden revisar ni presentar", obligationId: null });
+    const feeVatUnset = this.fiscal && this.d.stripeFeeVat ? await this.d.stripeFeeVat.pendingFeeVatCount() : 0;
+    // Facturas de comisiones de Stripe que faltan o no cuadran (modo per_invoice), desde enero hasta el mes en curso
+    for (const w of await this.stripeFeeInvoiceWarnings(`${year}-01-01`, today)) warnings.push({ code: w.code, message: w.message, obligationId: null });
+    if (feeVatUnset) warnings.push({ code: "fee_vat_unset", message: `${feeVatUnset} transacciones de Stripe sin tratamiento del IVA de su comisión: no se contabilizan hasta configurarlo`, obligationId: null });
     for (const o of overdue.items) warnings.push({ code: "vencida", message: `El modelo ${o.model} (${periodLabel(o.year, o.period)}) venció el ${o.dueDate} sin registrar la presentación`, obligationId: o.id });
     for (const o of upcoming.items) {
       const days = daysUntil(today, o.dueDate);

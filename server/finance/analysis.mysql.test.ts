@@ -131,7 +131,8 @@ describe.skipIf(!URL_)("control diario, informes y análisis con MySQL real (CRM
     await my.analysis.setDirectCost(my.softwareCat.id, null, ACTOR);
     const cats = await my.analysis.decorateCategories(await my.opsStore.listCategories());
     expect(cats.find((c) => c.id === my.softwareCat.id)).toMatchObject({ isDirectCost: null, directCost: false });
-    expect(cats.filter((c) => c.directCost).map((c) => c.accountCode).sort()).toEqual(["626", "626", "629"]);
+    // CRM 0039: la 626 ya no es coste directo por sí sola (lo decide el operador); solo la sugerencia de hosting
+    expect(cats.filter((c) => c.directCost).map((c) => c.accountCode).sort()).toEqual(["629"]);
     await expect(my.analysis.setDirectCost(9_999, true, ACTOR)).rejects.toMatchObject({ code: "not_found" });
   });
 

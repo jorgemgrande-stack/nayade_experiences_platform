@@ -14,12 +14,18 @@
  *   GET  /reports/:report.csv?…                                        exportar       CSV de cada informe (y del análisis)
  *   GET  /analytics/revenue-margin?year                                lectura        Revenue & Margin
  *   GET  /analytics/conversion-health?from&to                          lectura        Conversion Health
+ *
+ * Parametrización fiscal (CRM 0039; sin la migración no se montan → 404):
+ *   GET   /analysis/settings                                           lectura        { item }
+ *   PATCH /analysis/settings { stripeFeesTreatment?, bankFeeAccounts? } configuración  { item }
  */
 import type { Request, Response, Router } from "express";
 import { z } from "zod";
 import { getAuth } from "../controlPlane/auth";
 import { actorOf, wrap } from "./http";
-import { canExport, canPost, canRead } from "./permissions";
+import { canConfig, canExport, canPost, canRead } from "./permissions";
+import { BANK_FEE_NATURES } from "./opsTypes";
+import { STRIPE_FEES_TREATMENTS } from "./analysisTypes";
 import { agingCsv, balanceCsv, cashflowCsv, COMPARE_KINDS, conversionCsv, dailyCsv, EXPENSE_GROUPS, expensesCsv, GRANULARITIES, pnlCsv, revenueMarginCsv } from "./analysisRules";
 import type { CommercialSources, FinanceAnalysisService } from "./analysisService";
 
@@ -51,7 +57,22 @@ function commercialFor(req: Request, c: CommercialSources | null | undefined): C
   return { metrics: scopes?.has("billing:read") ? (c.metrics ?? null) : null, profitability: scopes?.has("usage:read") ? (c.profitability ?? null) : null };
 }
 
-export function mountFinanceAnalysisRoutes(r: Router, svc: FinanceAnalysisService, commercial?: CommercialSources | null) {
+export function mountFinanceAnalysisRoutes(r: Router, svc: FinanceAnalysisService, commercial?: CommercialSources | null, fiscal = false) {
+  if (fiscal) {
+    // Configuración del análisis: tratamiento de las comisiones de Stripe y cuenta de cada naturaleza bancaria
+    r.get("/analysis/settings", ...canRead, wrap(async (_req, res) => void res.json({ item: await svc.analysisSettings() })));
+    r.patch("/analysis/settings", ...canConfig, wrap(async (req, res) => {
+      const account = z.string().regex(/^\d{3,12}$/, "código de cuenta de 3 a 12 dígitos");
+      const b = z
+        .object({
+          stripeFeesTreatment: z.enum(STRIPE_FEES_TREATMENTS).optional(),
+          bankFeeAccounts: z.object(Object.fromEntries(BANK_FEE_NATURES.map((n) => [n, account.optional()])) as Record<(typeof BANK_FEE_NATURES)[number], z.ZodOptional<z.ZodString>>).strict().optional(),
+        })
+        .strict()
+        .parse(req.body ?? {});
+      res.json({ item: await svc.saveAnalysisSettings(b, actorOf(req)) });
+    }));
+  }
   // Control diario
   r.get("/daily", ...canRead, wrap(async (req, res) => void res.json(await svc.daily(z.object({ date: date.optional() }).strict().parse(req.query).date))));
   r.get("/daily/reviews", ...canRead, wrap(async (req, res) => {

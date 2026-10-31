@@ -1,5 +1,5 @@
 /**
- * Las migraciones 0033 (libro), 0035 (operaciones), 0036 (Stripe), 0037 (gestoría) y 0038 (análisis) y el código del módulo son ORDINARIOS para el clasificador de
+ * Las migraciones 0033 (libro), 0035 (operaciones), 0036 (Stripe), 0037 (gestoría), 0038 (análisis) y 0039 (parametrización fiscal) y el código del módulo son ORDINARIOS para el clasificador de
  * despliegue (scripts/deploy/esRailwayLib): migraciones aditivas (sin palabras prohibidas ni en comentarios), sin
  * borrados en el código de server/finance y sin cambios críticos. Los interruptores que aparecen son NUEVOS
  * (`CP_FINANCE_RECURRING_ENABLED` y `CP_FINANCE_TAX_REMINDERS_ENABLED`, apagados), ordinario porque no existe en la rama base (como lo comprueba
@@ -10,11 +10,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { destructiveMigration, extraordinaryChanges } from "../../scripts/deploy/esRailwayLib";
 import { loadMigrations, validateMigrations } from "../../scripts/db/migrationLib";
-import { MIGRATION_0033, MIGRATION_0035, MIGRATION_0036, MIGRATION_0037, MIGRATION_0038 } from "./testkit";
+import { MIGRATION_0033, MIGRATION_0035, MIGRATION_0036, MIGRATION_0037, MIGRATION_0038, MIGRATION_0039 } from "./testkit";
 
 const ROOT = path.resolve(__dirname, "../..");
 const rel = (p: string) => path.relative(ROOT, p).split(path.sep).join("/");
-const MIGRATIONS = [MIGRATION_0033, MIGRATION_0035, MIGRATION_0036, MIGRATION_0037, MIGRATION_0038];
+const MIGRATIONS = [MIGRATION_0033, MIGRATION_0035, MIGRATION_0036, MIGRATION_0037, MIGRATION_0038, MIGRATION_0039];
 const sqlOf = (f: string) => fs.readFileSync(f, "utf8");
 const moduleFiles = fs
   .readdirSync(__dirname)
@@ -32,13 +32,13 @@ const addedDiff = (files: string[]) =>
     })
     .join("\n");
 
-describe("migraciones 0033, 0035, 0036, 0037 y 0038 y módulo de finanzas: despliegue ordinario", () => {
+describe("migraciones 0033, 0035, 0036, 0037, 0038 y 0039 y módulo de finanzas: despliegue ordinario", () => {
   it("las migraciones son aditivas para el clasificador y válidas para el ejecutor (irreversibles con motivo)", () => {
     for (const f of MIGRATIONS) expect(destructiveMigration(sqlOf(f))).toBeNull();
     const { migrations, errors } = loadMigrations(path.join(ROOT, "db/crm/migrations"));
     expect(errors).toEqual([]);
     expect(validateMigrations(migrations)).toEqual([]);
-    for (const id of ["0033_finance_ledger", "0035_finance_operations", "0036_finance_stripe", "0037_finance_tax", "0038_finance_analysis"]) expect(migrations.find((x) => x.id === id)!.irreversible).toBe(true);
+    for (const id of ["0033_finance_ledger", "0035_finance_operations", "0036_finance_stripe", "0037_finance_tax", "0038_finance_analysis", "0039_finance_fiscal"]) expect(migrations.find((x) => x.id === id)!.irreversible).toBe(true);
   });
 
   it("sin palabras prohibidas en todo el fichero (también comentarios y literales) ni ';' dentro de literales", () => {
@@ -95,6 +95,30 @@ describe("migraciones 0033, 0035, 0036, 0037 y 0038 y módulo de finanzas: despl
     expect(stmts.map((s) => s.split(" (")[0])).toEqual(["CREATE TABLE fin_daily_reviews", "CREATE TABLE fin_daily_review_log", "ALTER TABLE fin_expense_categories ADD COLUMN is_direct_cost TINYINT(1) NULL", "CREATE INDEX ix_fin_expense_registered ON fin_expenses"]);
     expect(sql).not.toMatch(/INSERT INTO/i);
     expect(sql).toContain("UNIQUE KEY uq_fin_daily_review_day (review_day)");
+  });
+
+  it("0039 solo añade columnas NULL a fin_tax_settings y fin_expenses y crea las tablas de la parametrización fiscal, sin escribir filas", () => {
+    const sql = sqlOf(MIGRATION_0039);
+    const stmts = sql
+      .replace(/--[^\n]*/g, "")
+      .split(";")
+      .map((s) => s.trim().replace(/\s+/g, " "))
+      .filter(Boolean);
+    expect(stmts.map((s) => s.split(" (")[0])).toEqual([
+      "ALTER TABLE fin_tax_settings ADD COLUMN validated_at BIGINT NULL, ADD COLUMN validated_by VARCHAR(100) NULL, ADD COLUMN validation_note VARCHAR(500) NULL",
+      "ALTER TABLE fin_expenses ADD COLUMN vat_treatment VARCHAR(24) NULL, ADD COLUMN reverse_charge_rate_bp INT NULL, ADD COLUMN settles_stripe_fees TINYINT(1) NOT NULL DEFAULT 0",
+      "CREATE TABLE fin_stripe_fee_vat_rules",
+      "CREATE TABLE fin_tax_corporate_years",
+      "CREATE TABLE fin_tax_corporate_year_log",
+      "CREATE TABLE fin_tax_corporate_entries",
+      "CREATE TABLE fin_analysis_settings",
+    ]);
+    // Columnas añadidas NULL o con valor por defecto (las filas existentes no cambian: gastos interiores que no son
+    // facturas de comisiones de Stripe, configuración sin validar)
+    for (const s of stmts.filter((x) => x.startsWith("ALTER TABLE"))) for (const c of s.split("ADD COLUMN").slice(1)) expect(c.trim()).toMatch(/( NULL| NOT NULL DEFAULT 0),?$/);
+    expect(sql).not.toMatch(/INSERT INTO/i);
+    expect(sql).not.toMatch(/updated_by/i);
+    for (const k of ["uq_fin_tax_corporate_entry_source (source_key)", "uq_fin_tax_corporate_entry_live (live_year)"]) expect(sql).toContain(`UNIQUE KEY ${k}`);
   });
 
   it("el código de server/finance no borra datos y nada del conjunto es extraordinario", () => {

@@ -47,6 +47,8 @@ import {
 import { NON_FLOW_ORIGINS, type FinanceAnalysisStore } from "./analysisStore";
 import type { DailyCounts, DailyReview, PaymentEventMonth } from "./analysisTypes";
 import { FinanceError, type FinanceActor } from "./types";
+import { BANK_FEE_NATURE_LABELS, BANK_FEE_NATURES, type BankFeeNature } from "./opsTypes";
+import { STRIPE_FEES_TREATMENTS, type AnalysisSettings, type StripeFeesTreatment } from "./analysisTypes";
 
 /** Eventos de cobro del registro comercial en solo lectura (null = no se pueden leer). */
 export interface PaymentEventSource {
@@ -90,6 +92,8 @@ export interface FinanceAnalysisDeps {
   invoices?: OwnInvoiceDirectory | null;
   /** Registro comercial (solo lectura) para la tasa de pagos fallidos. */
   paymentEvents?: PaymentEventSource | null;
+  /** Migración 0039 aplicada: configuración del análisis (comisiones de Stripe y naturalezas bancarias). */
+  fiscal?: boolean;
   now?: () => number;
 }
 
@@ -156,6 +160,45 @@ export class FinanceAnalysisService {
     await this.d.finance.recordAudit(actor, "category.direct_cost", "category", id, { isDirectCost: value });
   }
 
+  // ── Configuración del análisis (CRM 0039) ─────────────────────────────────────────────────────────────────────
+
+  /** ¿Está aplicada la migración 0039? */
+  get fiscal() {
+    return !!this.d.fiscal;
+  }
+
+  /** Configuración del análisis con las naturalezas bancarias y su etiqueta (finance:read; la edición, finance:config). */
+  async analysisSettings() {
+    const s = await this.s().getAnalysisSettings();
+    return { ...s, natures: BANK_FEE_NATURES.map((key) => ({ key, label: BANK_FEE_NATURE_LABELS[key], accountCode: s.bankFeeAccounts[key] })) };
+  }
+
+  /**
+   * Guarda la configuración (cambio parcial). Cada cuenta de naturaleza debe existir, ser imputable, estar activa y ser
+   * del grupo 6.
+   */
+  async saveAnalysisSettings(p: { stripeFeesTreatment?: StripeFeesTreatment; bankFeeAccounts?: Partial<Record<BankFeeNature, string>> }, actor: FinanceActor) {
+    if (!this.fiscal) throw new FinanceError("unavailable", "La configuración del análisis llega con la migración 0039, que no está aplicada en este entorno");
+    const cur = await this.s().getAnalysisSettings();
+    const next = { stripeFeesTreatment: p.stripeFeesTreatment ?? cur.stripeFeesTreatment, bankFeeAccounts: { ...cur.bankFeeAccounts, ...Object.fromEntries(Object.entries(p.bankFeeAccounts ?? {}).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v).trim()])) } as AnalysisSettings["bankFeeAccounts"] };
+    if (!(STRIPE_FEES_TREATMENTS as readonly string[]).includes(next.stripeFeesTreatment)) throw bad("Tratamiento de las comisiones de Stripe: direct_cost, structure o financial");
+    const accounts = new Map((await this.d.finance.accounts()).map((a) => [a.code, a]));
+    for (const n of BANK_FEE_NATURES) {
+      const code = next.bankFeeAccounts[n];
+      const a = accounts.get(code);
+      if (!a || !a.active || !a.isPostable || !code.startsWith("6")) throw bad(`La cuenta de «${BANK_FEE_NATURE_LABELS[n].toLowerCase()}» debe existir, estar activa, ser imputable y del grupo 6 (${code})`);
+    }
+    const saved = await this.s().saveAnalysisSettings(next, actor.by, this.now());
+    await this.d.finance.recordAudit(actor, "analysis.settings", "analysis_settings", 1, { stripeFeesTreatment: saved.stripeFeesTreatment, bankFeeAccounts: saved.bankFeeAccounts });
+    return this.analysisSettings();
+  }
+
+  /** Cuenta de una naturaleza de comisión bancaria (enchufado al servicio de operaciones para conciliar). */
+  async natureAccount(nature: BankFeeNature): Promise<string> {
+    if (!(BANK_FEE_NATURES as readonly string[]).includes(nature)) throw bad("Naturaleza no válida");
+    return (await this.s().getAnalysisSettings()).bankFeeAccounts[nature];
+  }
+
   private async directCategories(): Promise<Set<number>> {
     return new Set((await this.decorateCategories(await this.d.ops.listCategories())).filter((c) => c.directCost).map((c) => c.id));
   }
@@ -185,7 +228,9 @@ export class FinanceAnalysisService {
     const agg = (t: string) => aggregates?.find((a) => a.type === t) ?? { count: 0, grossCents: 0, feeCents: 0, netCents: 0 };
     const charges = agg("charge");
     const refunds = { count: agg("refund").count + agg("refund_failure").count, grossCents: agg("refund").grossCents + agg("refund_failure").grossCents };
-    const counts: Record<keyof DailyCounts, number | null> = {
+    const feeVatUnset = this.fiscal && stripe ? await stripe.service.pendingFeeVatCount() : null;
+    const counts: Record<Exclude<keyof DailyCounts, "stripeFeeVatUnset">, number | null> & { stripeFeeVatUnset?: number | null } = {
+      ...(this.fiscal ? { stripeFeeVatUnset: feeVatUnset } : {}),
       invoicesIssued: invoicePage ? invoicePage.total : null,
       stripeCharges: aggregates ? charges.count : null,
       payoutsArriving: payoutsDay ? payoutsDay.total : null,
@@ -422,23 +467,26 @@ export class FinanceAnalysisService {
     const from = `${y}-01-01`;
     const to = `${y}-12-31`;
     const stripe = this.d.stripe;
-    const [facts, direct, stripeMonths, transfers] = await Promise.all([this.s().ledgerFacts({ from, to, accountPrefixes: ["6", "7"], excludeOrigins: NON_FLOW_ORIGINS }), this.directCategories(), stripe ? this.s().stripeMonthly(from, to) : Promise.resolve(null), this.s().transfersMonthly(from, to)]);
+    const [facts, direct, stripeMonths, transfers, settings] = await Promise.all([this.s().ledgerFacts({ from, to, accountPrefixes: ["6", "7"], excludeOrigins: NON_FLOW_ORIGINS }), this.directCategories(), stripe ? this.s().stripeMonthly(from, to) : Promise.resolve(null), this.s().transfersMonthly(from, to), this.s().getAnalysisSettings()]);
     const through = String(y) === today.slice(0, 4) ? today.slice(0, 7) : `${y}-12`;
-    const full = buildRevenueMargin({ facts, months, directCategories: direct, stripe: stripeMonths, transfers });
+    const stripeFeesTreatment = settings.stripeFeesTreatment;
+    const full = buildRevenueMargin({ facts, months, directCategories: direct, stripe: stripeMonths, transfers, stripeFeesTreatment });
     const ytdMonths = months.filter((m) => m <= through);
-    const ytd = buildRevenueMargin({ facts, months: ytdMonths, directCategories: direct, stripe: stripeMonths, transfers }).totals;
+    const ytd = buildRevenueMargin({ facts, months: ytdMonths, directCategories: direct, stripe: stripeMonths, transfers, stripeFeesTreatment }).totals;
     return {
       year: y,
+      stripeFeesTreatment,
       months: full.months,
       totals: full.totals,
       ytd: { through, ...ytd },
       definitions: {
         accruedRevenue: "Devengado contable: cifra de negocios (70x) del libro.",
         collected: "Cobrado: cobros de Stripe netos de reembolsos (importe bruto) más transferencias de facturas conciliadas.",
-        stripeFees: "Comisiones de Stripe: cuenta 626 de los asientos de origen Stripe; % sobre lo cobrado.",
-        directCosts: "Costes directos: gastos de las categorías marcadas como coste directo (por defecto, 626 y hosting o infraestructura).",
-        grossMargin: "Margen bruto = devengado − comisiones de Stripe − costes directos.",
-        structureCosts: "Gastos de estructura: resto del grupo 6.",
+        stripeFees: `Comisiones de Stripe: cuenta 626 de los asientos de origen Stripe; % sobre lo cobrado. Tratamiento: ${stripeFeesTreatment === "direct_cost" ? "coste directo del cobro (en el margen)" : stripeFeesTreatment === "structure" ? "gasto de estructura" : "resultado financiero (fuera del margen)"}.`,
+        directCosts: "Costes directos: gastos de las categorías marcadas como coste directo (por defecto, solo las de hosting o infraestructura; el resto lo decide el operador).",
+        grossMargin: stripeFeesTreatment === "direct_cost" ? "Margen bruto = devengado − comisiones de Stripe − costes directos." : "Margen bruto = devengado − costes directos.",
+        financialCosts: "Gastos financieros: grupo 66 (intereses, otros gastos financieros)" + (stripeFeesTreatment === "financial" ? " y las comisiones de Stripe." : "."),
+        structureCosts: "Gastos de estructura: resto del grupo 6" + (stripeFeesTreatment === "structure" ? " (incluidas las comisiones de Stripe)." : "."),
         result: "Resultado = devengado + otros ingresos − todo el grupo 6 (sin regularización ni cierre).",
       },
       commercial: await this.commercial(commercial),
