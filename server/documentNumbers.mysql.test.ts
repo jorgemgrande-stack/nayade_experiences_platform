@@ -12,12 +12,13 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import mysql from "mysql2/promise";
+import { madridYear } from "./utils/timezone";
 
 const URL_ = process.env.REGISTRY_TEST_DATABASE_URL;
 const run = crypto.randomBytes(3).toString("hex");
 const DB = `docnum_${run}`;
 const DB_DUP = `docnum_dup_${run}`;
-const YEAR = new Date().getFullYear();
+const YEAR = madridYear(); // el año de la numeración (Madrid)
 const N = 40;
 
 describe.skipIf(!URL_)("numeración de documentos (MySQL real, concurrencia)", () => {

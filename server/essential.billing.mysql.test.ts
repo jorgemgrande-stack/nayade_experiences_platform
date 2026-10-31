@@ -5,9 +5,10 @@
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { startEssentialApp, data, errCode, licenseMatrix, isLicenseDenied, type EssentialApp } from "./essentialApp.testkit";
+import { madridYear } from "./utils/timezone";
 
 const URL_ = process.env.REGISTRY_TEST_DATABASE_URL;
-const YEAR = new Date().getFullYear();
+const YEAR = madridYear(); // el año de la numeración (Madrid)
 
 describe.skipIf(!URL_)("Essential — Facturación (aplicación real, dos empresas nuevas)", () => {
   let ess: EssentialApp;
