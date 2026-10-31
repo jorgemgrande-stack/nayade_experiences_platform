@@ -6,6 +6,7 @@
 // El motor de cálculo (303/390/111/190/200/202) llega en fases posteriores.
 
 import { z } from "zod";
+import { hashOneTimeToken } from "../oneTimeToken";
 import { companyName } from "../tenantBrand";
 import { publicBaseUrl } from "../_core/productIdentity";
 import { router, permissionProcedure, publicProcedure, gestoriaProcedure } from "../_core/trpc";
@@ -619,7 +620,7 @@ export const gestoriaRouter = router({
         if (existing) {
           await db.update(users).set({
             role: "gestoria",
-            inviteToken: token,
+            inviteToken: hashOneTimeToken(token),
             inviteTokenExpiry: expiry,
             inviteAccepted: false,
           } as any).where(eq(users.id, existing.id));
@@ -629,7 +630,7 @@ export const gestoriaRouter = router({
             name: input.name,
             email: input.email,
             role: "gestoria",
-            inviteToken: token,
+            inviteToken: hashOneTimeToken(token),
             inviteTokenExpiry: expiry,
             inviteAccepted: false,
             isActive: false,
