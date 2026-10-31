@@ -19,3 +19,7 @@ b0d886e9172925829b37c634f3c01e12e3a09746:server/legacyCredentials.test.ts:generi
 9b2b6d6059aabbeb1e79fa67d2db2fb730c51664:server/mail/service.test.ts:generic-api-key:33
 # 30/10/2026: referencia a la variable de entorno S3_SECRET_KEY (no es un valor); la línea ya lleva gitleaks:allow
 ff76a281ab1e8d7fa52e3e997814f0494bf083c3:server/_core/ops/purgeTestCompanies.ts:generic-api-key:347
+# 01/11/2026: contraseña y token ficticios de pruebas y un nombre de constante importado (no son secretos)
+bf42ef9f309b5d73b7fd9c5c08bce2a3e05ed331:server/oneTimeToken.mysql.test.ts:generic-api-key:108
+bf42ef9f309b5d73b7fd9c5c08bce2a3e05ed331:server/oneTimeToken.mysql.test.ts:generic-api-key:138
+bf42ef9f309b5d73b7fd9c5c08bce2a3e05ed331:server/oneTimeToken.test.ts:generic-api-key:3
