@@ -156,6 +156,8 @@ const SubscriptionPage = lazy(() => import("./pages/admin/subscription/Subscript
 const DataExportPage = lazy(() => import("./pages/admin/subscription/DataExportPage"));
 const ModulesPage = lazy(() => import("./pages/admin/subscription/ModulesPage"));
 const UsagePage = lazy(() => import("./pages/admin/subscription/UsagePage"));
+const ConnectPage = lazy(() => import("./pages/admin/connect/ConnectPage"));
+const ConnectDetailPage = lazy(() => import("./pages/admin/connect/ConnectDetailPage"));
 const HelpCenter = lazy(() => import("./pages/admin/help/HelpCenter"));
 const SupportTicketsPage = lazy(() => import("./pages/admin/help/SupportTicketsPage"));
 const PrimerosPasos = lazy(() => import("./pages/admin/setup/PrimerosPasos"));
@@ -454,6 +456,8 @@ function Router() {
       <Route path="/admin/suscripcion/modulos">{() => <Suspense fallback={<AdminLoadingFallback />}><ModulesPage /></Suspense>}</Route>
       <Route path="/admin/suscripcion/consumo">{() => <Suspense fallback={<AdminLoadingFallback />}><UsagePage /></Suspense>}</Route>
       <Route path="/admin/suscripcion">{() => <Suspense fallback={<AdminLoadingFallback />}><SubscriptionPage /></Suspense>}</Route>
+      <Route path="/admin/ampliar/:clave">{() => <Suspense fallback={<AdminLoadingFallback />}><ConnectDetailPage /></Suspense>}</Route>
+      <Route path="/admin/ampliar">{() => <Suspense fallback={<AdminLoadingFallback />}><ConnectPage /></Suspense>}</Route>
       <Route path="/admin/soporte">{() => <Suspense fallback={<AdminLoadingFallback />}><SupportTicketsPage /></Suspense>}</Route>
       <Route path="/admin/soporte/:id">{() => <Suspense fallback={<AdminLoadingFallback />}><SupportTicketsPage /></Suspense>}</Route>
       <Route path="/admin/ayuda">{() => <Suspense fallback={<AdminLoadingFallback />}><HelpCenter /></Suspense>}</Route>

@@ -25,9 +25,9 @@ export { errorMessage, errorToastMessage, toastError } from "@/lib/errorMessage"
 
 /**
  * Pantalla que la empresa no tiene contratada (se abrió por URL): «No incluido en tu plan» con
- * enlace para ampliar. La administración puede ampliar; el resto del equipo, pedírselo.
+ * enlace a la ficha que lo incluye (o a «Amplía tu empresa»). La administración amplía; el resto del equipo, lo pide.
  */
-export function PanelNotIncluded({ canUpgrade, className }: { canUpgrade: boolean; className?: string }) {
+export function PanelNotIncluded({ canUpgrade, href = UPGRADE_PATH, className }: { canUpgrade: boolean; /** Ficha del producto que lo incluye, o la página para ampliar. */ href?: string; className?: string }) {
   return (
     <PanelEmpty
       className={className}
@@ -36,14 +36,12 @@ export function PanelNotIncluded({ canUpgrade, className }: { canUpgrade: boolea
       description={
         canUpgrade
           ? "Esta sección no forma parte de lo que tu empresa tiene contratado. Puedes añadirla cuando quieras."
-          : "Esta sección no forma parte de lo que tu empresa tiene contratado. Pide a la persona que administra la cuenta que la añada."
+          : "Esta sección no forma parte de lo que tu empresa tiene contratado. Puedes ver qué incluye y pedir a la persona que administra la cuenta que la añada."
       }
     >
-      {canUpgrade && (
-        <Button asChild>
-          <Link href={UPGRADE_PATH}>Amplía tu empresa</Link>
-        </Button>
-      )}
+      <Button asChild>
+        <Link href={href}>Amplía tu empresa</Link>
+      </Button>
       <Button asChild variant="outline">
         <Link href="/admin">Volver al inicio</Link>
       </Button>

@@ -366,7 +366,10 @@ export const TASK_NAV: NavSection[] = [
   {
     id: "suscripcion",
     label: "Suscripción",
-    items: [{ label: "Plan y uso", href: "/admin/suscripcion", key: "t-suscripcion", icon: "rocket", roles: ADMIN }],
+    items: [
+      { label: "Plan y uso", href: "/admin/suscripcion", key: "t-suscripcion", icon: "rocket", roles: ADMIN },
+      { label: "Amplía tu empresa", href: "/admin/ampliar", key: "t-ampliar", icon: "sparkles", roles: ["admin", "agente", "monitor", "adminrest", "controler"] },
+    ],
   },
   {
     id: "ayuda",

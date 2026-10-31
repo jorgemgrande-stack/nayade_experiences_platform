@@ -9,7 +9,7 @@ vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 
 import { toast } from "sonner";
 import {
-  INSTALL_MODE_SETTING, UPGRADE_PATH, capabilityStateFrom, installModeFrom, navMode, routeAccess, routeCapabilities,
+  INSTALL_MODE_SETTING, TASK_NAV, UPGRADE_PATH, capabilityStateFrom, installModeFrom, navMode, resolveNav, routeAccess, routeCapabilities,
 } from "../shared/adminNav";
 import { errorMessage, errorToastMessage, serverMessage, toastError } from "../client/src/lib/errorMessage";
 import { sanitizeErrorShape } from "./_core/trpc";
@@ -66,6 +66,17 @@ describe("config.getPublicSettings incluye el modo de instalación", () => {
     expect((await caller.getPublicSettings())[INSTALL_MODE_SETTING]).toBe("single");
     process.env.TENANT_MODE = "shadow";
     expect((await caller.getPublicSettings())[INSTALL_MODE_SETTING]).toBe("single");
+  });
+});
+
+describe("menú: «Amplía tu empresa»", () => {
+  it("aparece para un usuario Essential (administración y equipo), sin capacidad propia", () => {
+    for (const role of ["admin", "agente", "monitor"]) {
+      const items = resolveNav(TASK_NAV, { role, isFlagVisible: () => true, isModuleVisible: () => true, capabilityState: essential }).flatMap((s) => s.items);
+      const entry = items.find((i) => i.key === "t-ampliar");
+      expect(entry, role).toMatchObject({ label: "Amplía tu empresa", href: UPGRADE_PATH, readOnly: false });
+    }
+    expect(routeAccess("/admin/ampliar/connect-people", () => null)).toBe("allowed");
   });
 });
 

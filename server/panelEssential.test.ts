@@ -248,14 +248,16 @@ describe("menú del panel", () => {
 
   it("sin licencias: solo Inicio, Suscripción, Ayuda y Soporte (nada no contratado aparece como activo)", () => {
     const resolved = resolveNav(TASK_NAV, { ...allVisible, capabilityState: () => null });
-    expect(labels(resolved)).toEqual(["Inicio", "Plan y uso", "Ayuda", "Soporte"]);
+    expect(labels(resolved)).toEqual(["Inicio", "Plan y uso", "Amplía tu empresa", "Ayuda", "Soporte"]);
   });
 
   it("agente comercial: solo ventas y facturación de cara al cliente", () => {
     const resolved = resolveNav(TASK_NAV, { ...allVisible, role: "agente" });
-    expect(resolved.map((s) => s.id)).toEqual(["inicio", "ventas", "facturacion", "contratados", "ayuda"]);
+    // «Suscripción» solo con «Amplía tu empresa» (también para el equipo)
+    expect(resolved.map((s) => s.id)).toEqual(["inicio", "ventas", "facturacion", "contratados", "suscripcion", "ayuda"]);
     expect(labels(resolved)).not.toContain("Usuarios y permisos");
     expect(labels(resolved)).not.toContain("Plan y uso");
+    expect(labels(resolved)).toContain("Amplía tu empresa");
   });
 
   it("toda capacidad citada en el menú existe en el catálogo", () => {

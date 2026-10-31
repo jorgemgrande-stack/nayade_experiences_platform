@@ -109,7 +109,7 @@ test.describe("Panel Essential (empresa nueva con licencias)", () => {
     await mockTrpc(page, licensed(Date.now() + 10 * DAY), { install: "multi" });
     await page.goto("/admin/personal/empleados");
     await expect(page.getByText("No incluido en tu plan").first()).toBeVisible();
-    await expect(page.getByRole("link", { name: "Amplía tu empresa" })).toHaveAttribute("href", "/admin/ampliar");
+    await expect(page.getByRole("main").getByRole("link", { name: "Amplía tu empresa" })).toHaveAttribute("href", "/admin/ampliar");
   });
 
   test("fallo al consultar la suscripción: error con Reintentar, nunca el menú ni el logo de Náyade", async ({ page }) => {

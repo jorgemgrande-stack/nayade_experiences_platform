@@ -13,7 +13,7 @@ import { lazy, Suspense, type ReactNode } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { usePanelSubscription } from "@/hooks/usePanelSubscription";
-import { routeAccess } from "@shared/adminNav";
+import { routeAccess, routeCapabilities } from "@shared/adminNav";
 
 const AdminGateScreen = lazy(() => import("./AdminGateScreen"));
 
@@ -41,7 +41,7 @@ function PanelGate({ location, children }: { location: string; children: ReactNo
   if (!screen) return <>{children}</>;
   return (
     <Suspense fallback={null}>
-      <AdminGateScreen kind={screen} error={sub.error} onRetry={sub.retry} canUpgrade={role === "admin"} />
+      <AdminGateScreen kind={screen} error={sub.error} onRetry={sub.retry} canUpgrade={role === "admin"} capabilities={routeCapabilities(location) ?? []} />
     </Suspense>
   );
 }

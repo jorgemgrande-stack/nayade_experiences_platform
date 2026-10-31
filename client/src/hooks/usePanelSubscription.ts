@@ -22,7 +22,10 @@ export function usePanelSubscription() {
     retry: 1,
     // Con error no se reintenta al montar cada pantalla (el guardián y el menú montan otra): solo con «Reintentar»
     retryOnMount: false,
-    refetchOnWindowFocus: false,
+    // Una suspensión o una contratación se ve en el menú sin navegar (las licencias del servidor caducan a los 30 s)
+    refetchOnWindowFocus: true,
+    refetchInterval: 60_000,
+    refetchIntervalInBackground: false,
   });
   // Mismos ajustes públicos (y misma caché) que el menú: traen el modo de instalación
   const publicSettings = trpc.config.getPublicSettings.useQuery(undefined, {
