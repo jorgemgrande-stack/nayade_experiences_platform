@@ -269,3 +269,69 @@ describe("naturalezas de las comisiones bancarias y configuración del análisis
     expect((await s.analysis.daily("2026-10-31")).counts).not.toHaveProperty("stripeFeeVatUnset");
   });
 });
+
+describe("facturas de comisiones de Stripe que liquidan las importadas (settlesStripeFees)", () => {
+  async function perInvoice(mode: "per_invoice" | "domestic" = "per_invoice") {
+    const s = await fiscalScenario();
+    await s.stripe.saveSettings({ stripeFeeVat: mode }, ACTOR);
+    await s.stripe.importFile({ kind: "balance", filename: "b.csv", contentBase64: b64(stripeBalanceSample()) }, ACTOR);
+    expect((await s.stripe.post("2026-10-31", ACTOR)).pendingFeeVat).toBe(0);
+    const ie = await s.ops.createSupplier({ name: "Stripe Payments Europe, Limited", taxId: "IE3206488LH", country: "IE" }, ACTOR);
+    return { s, ie };
+  }
+  const input = (supplierId: number, p: Record<string, unknown> = {}) => ({ kind: "invoice" as const, supplierId, categoryId: 0, invoiceNumber: "STR-2026-10", invoiceDate: "2026-10-31", description: "Comisiones de Stripe de octubre", baseCents: 750, taxRateBp: 0, vatTreatment: "intra_eu_services" as const, reverseChargeRateBp: 2100, settlesStripeFees: true, ...p });
+
+  it("per_invoice con ISP: solo 472/477, sin 626 ni proveedor, nace pagada; 303 y 349 la declaran; avisos de factura que falta o no cuadra", async () => {
+    const { s, ie } = await perInvoice();
+    const cat = s.cat("626");
+    // Antes de registrarla: aviso en el panel y en el 303 del trimestre
+    expect((await s.tax.dashboard()).warnings.map((w) => w.code)).toContain("stripe_fee_invoice_missing");
+    expect((await s.tax.preview("303", 2026, "4T")).warnings.join(" ")).toMatch(/stripe_fee_invoice_missing/);
+    // Un proveedor que no es Stripe o un modo distinto: 400 invalid_stripe_fee_invoice
+    await expect(s.ops.createExpense({ ...input(s.de.id), categoryId: cat }, ACTOR)).rejects.toMatchObject({ code: "invalid_stripe_fee_invoice" });
+    await expect(s.ops.createExpense({ ...input(ie.id), categoryId: cat, invoiceDate: "2026-10-31", withholdingRateBp: 1500 }, ACTOR)).rejects.toMatchObject({ code: "invalid_stripe_fee_invoice" });
+    const e = await s.ops.createExpense({ ...input(ie.id), categoryId: cat }, ACTOR);
+    expect(s.ops.expenseDto(e)).toMatchObject({ settlesStripeFees: true, totalCents: 750 });
+    const reg = await s.ops.registerExpense(e.id, ACTOR);
+    expect(reg).toMatchObject({ paymentStatus: "paid", paidCents: 750 });
+    expect(s.ops.expenseDto(reg).pendingCents).toBe(0);
+    expect(lines(await s.finance.getEntry(reg.entryId!))).toEqual([
+      ["472", 158, 0],
+      ["477", 0, 158],
+    ]);
+    await expect(s.ops.addPayment(e.id, { paidOn: "2026-10-31", amountCents: 750, method: "stripe" }, ACTOR)).rejects.toMatchObject({ code: "invalid_state" });
+    const d = await s.tax.preview("303", 2026, "4T");
+    expect(["10", "11", "36", "37"].map((b) => box(d, b))).toEqual([750, 158, 750, 158]);
+    expect(d.warnings.join(" ")).not.toMatch(/stripe_fee_invoice/);
+    expect((await s.tax.preview("349", 2026, "4T")).declarants).toEqual([expect.objectContaining({ key: "I", taxId: "IE3206488LH", amountCents: 750 })]);
+    expect((await s.tax.receivedRegisterCsv("2026-10-01", "2026-10-31")).csv).toContain("STR-2026-10;F1;Stripe Payments Europe, Limited;IE3206488LH;IE;7,50;21,00;1,58;1,58;0,00;7,50;;Sí;Servicios intracomunitarios (ISP)");
+    // Revenue & Margin no cambia: el 626 viene de la importación
+    expect((await s.analysis.revenueMargin(2026)).months[9].stripeFeesCents).toBe(750);
+    // Si la base difiere en más de 1 €, aviso con la diferencia
+    const r = await s.ops.createExpense({ ...input(ie.id), categoryId: cat, invoiceNumber: "STR-2026-10-B", baseCents: 400 }, ACTOR);
+    await s.ops.registerExpense(r.id, ACTOR);
+    const w = await s.tax.stripeFeeInvoiceWarnings("2026-10-01", "2026-10-31");
+    expect(w).toEqual([expect.objectContaining({ code: "stripe_fee_invoice_difference", month: "2026-10", differenceCents: 400 })]);
+  });
+
+  it("domestic: interior con IVA español, Debe 472 · Haber 626 (reclasifica la cuota); con ISP no se admite; sin modo, tampoco", async () => {
+    const { s, ie } = await perInvoice("domestic");
+    const stripeEs = await s.ops.createSupplier({ name: "Stripe Payments Spain", country: "ES" }, ACTOR);
+    const cat = s.cat("626");
+    // En modo domestic la factura es interior: con un emisor de la UE e ISP, 400 invalid_stripe_fee_invoice
+    await expect(s.ops.createExpense({ ...input(ie.id), categoryId: cat }, ACTOR)).rejects.toMatchObject({ code: "invalid_stripe_fee_invoice" });
+    const e = await s.ops.createExpense({ ...input(stripeEs.id, { vatTreatment: null, reverseChargeRateBp: null, taxRateBp: 2100, baseCents: 620 }), categoryId: cat }, ACTOR);
+    const reg = await s.ops.registerExpense(e.id, ACTOR);
+    expect(lines(await s.finance.getEntry(reg.entryId!))).toEqual([
+      ["472", 130, 0],
+      ["626", 0, 130],
+    ]);
+    const d = await s.tax.preview("303", 2026, "4T");
+    expect([box(d, "28"), box(d, "29")]).toEqual([620, 130]);
+    // En modo domestic no se avisa de facturas que faltan (solo en per_invoice)
+    expect(await s.tax.stripeFeeInvoiceWarnings("2026-10-01", "2026-10-31")).toEqual([]);
+    // Con el modo sin decidir, no hay factura de comisiones posible
+    await s.stripe.saveSettings({ stripeFeeVat: "unset" }, ACTOR);
+    await expect(s.ops.createExpense({ ...input(stripeEs.id, { vatTreatment: null, reverseChargeRateBp: null, taxRateBp: 2100, invoiceNumber: "X" }), categoryId: cat }, ACTOR)).rejects.toMatchObject({ code: "invalid_stripe_fee_invoice" });
+  });
+});

@@ -66,7 +66,7 @@ export interface MovementQuery {
 }
 
 export type NewExpense = Omit<Expense, "id" | "registeredBy" | "registeredAt" | "voidedBy" | "voidedAt" | "voidReason" | "entryId" | "paidCents" | "paymentStatus" | "status"> & { status?: "draft" };
-export type ExpenseEdit = Partial<Pick<Expense, "supplierId" | "categoryId" | "costCenterId" | "invoiceNumber" | "invoiceDate" | "accrualDate" | "dueDate" | "description" | "baseCents" | "taxRateBp" | "taxCents" | "deductibleBp" | "withholdingRateBp" | "withholdingCents" | "totalCents" | "kind" | "rectifiesExpenseId" | "vatTreatment" | "reverseChargeRateBp">>;
+export type ExpenseEdit = Partial<Pick<Expense, "supplierId" | "categoryId" | "costCenterId" | "invoiceNumber" | "invoiceDate" | "accrualDate" | "dueDate" | "description" | "baseCents" | "taxRateBp" | "taxCents" | "deductibleBp" | "withholdingRateBp" | "withholdingCents" | "totalCents" | "kind" | "rectifiesExpenseId" | "vatTreatment" | "reverseChargeRateBp" | "settlesStripeFees">>;
 export type SupplierEdit = Partial<Omit<Supplier, "id" | "createdAt" | "createdBy">>;
 export type RecurringEdit = Partial<Omit<RecurringExpense, "id" | "createdAt" | "createdBy">>;
 
@@ -95,6 +95,8 @@ export interface FinanceOpsStore {
   patchDraftExpense(id: number, p: ExpenseEdit): Promise<ExpenseRow>;
   /** draft → registered con su asiento; false si ya no era borrador. */
   markExpenseRegistered(id: number, entryId: number, by: string, at: number): Promise<boolean>;
+  /** CRM 0039: factura de comisiones de Stripe registrada: pagada con el saldo de Stripe (sin pagos). */
+  markExpenseSettled(id: number): Promise<void>;
   /** `from` → void; false si ya no estaba en ese estado. */
   markExpenseVoid(id: number, from: ExpenseStatus, o: { by: string; at: number; reason: string }): Promise<boolean>;
   /** Recalcula lo pagado (pagos vigentes) y el estado de pago. */
@@ -329,6 +331,10 @@ export class MemoryFinanceOpsStore implements FinanceOpsStore {
     if (!e || e.status !== "draft") return false;
     Object.assign(e, { status: "registered", entryId, registeredBy: by, registeredAt: at });
     return true;
+  }
+  async markExpenseSettled(id: number) {
+    const e = this.expenses.find((x) => x.id === id);
+    if (e) Object.assign(e, { paidCents: e.totalCents - e.withholdingCents, paymentStatus: "paid" });
   }
   async markExpenseVoid(id: number, from: ExpenseStatus, o: { by: string; at: number; reason: string }) {
     const e = this.expenses.find((x) => x.id === id);
@@ -610,6 +616,7 @@ const expenseRow = (r: Row): ExpenseRow => ({
   // CRM 0039: sin la migración las columnas no se leen y quedan en null (interior)
   vatTreatment: (strOrNull(r.vat_treatment) as VatTreatment | null) ?? null,
   reverseChargeRateBp: numOrNull(r.reverse_charge_rate_bp),
+  settlesStripeFees: Number(r.settles_stripe_fees ?? 0) === 1,
   status: r.status as ExpenseStatus,
   entryId: numOrNull(r.entry_id),
   paymentStatus: r.payment_status as ExpensePaymentStatus,
@@ -726,10 +733,11 @@ const EXPENSE_FIELDS: Record<keyof ExpenseEdit, string> = {
   rectifiesExpenseId: "rectifies_expense_id",
   vatTreatment: "vat_treatment",
   reverseChargeRateBp: "reverse_charge_rate_bp",
+  settlesStripeFees: "settles_stripe_fees",
 };
 /** Columnas de la parametrización fiscal (CRM 0039): solo se leen y escriben con la migración aplicada. */
-const FISCAL_EXPENSE_COLS = ", x.vat_treatment, x.reverse_charge_rate_bp";
-const { vatTreatment: _vt, reverseChargeRateBp: _rc, ...LEGACY_EXPENSE_FIELDS } = EXPENSE_FIELDS;
+const FISCAL_EXPENSE_COLS = ", x.vat_treatment, x.reverse_charge_rate_bp, x.settles_stripe_fees";
+const { vatTreatment: _vt, reverseChargeRateBp: _rc, settlesStripeFees: _sf, ...LEGACY_EXPENSE_FIELDS } = EXPENSE_FIELDS;
 const SUPPLIER_FIELDS: Record<keyof SupplierEdit, string> = {
   name: "name",
   legalName: "legal_name",
@@ -908,7 +916,7 @@ export class MysqlFinanceOpsStore implements FinanceOpsStore {
       if (cur) return { expense: cur, created: false };
     }
     try {
-      const fiscal = this.opts.fiscal ? { cols: ", vat_treatment, reverse_charge_rate_bp", marks: ",?,?", args: [e.vatTreatment ?? null, e.reverseChargeRateBp ?? null] } : { cols: "", marks: "", args: [] };
+      const fiscal = this.opts.fiscal ? { cols: ", vat_treatment, reverse_charge_rate_bp, settles_stripe_fees", marks: ",?,?,?", args: [e.vatTreatment ?? null, e.reverseChargeRateBp ?? null, e.settlesStripeFees ? 1 : 0] } : { cols: "", marks: "", args: [] };
       const [r] = await this.pool.query<mysql.ResultSetHeader>(
         `INSERT INTO fin_expenses (supplier_id, category_id, cost_center_id, invoice_number, invoice_date, accrual_date, due_date, description, base_cents, tax_rate_bp, tax_cents, deductible_bp, withholding_rate_bp, withholding_cents, total_cents, paid_cents, currency, kind, rectifies_expense_id, status, payment_status, source_key, created_by, created_at${fiscal.cols}) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,?,?,?,'draft','pending',?,?,?${fiscal.marks})`,
         [e.supplierId, e.categoryId, e.costCenterId, e.invoiceNumber, e.invoiceDate, e.accrualDate, e.dueDate, e.description, e.baseCents, e.taxRateBp, e.taxCents, e.deductibleBp, e.withholdingRateBp, e.withholdingCents, e.totalCents, e.currency, e.kind, e.rectifiesExpenseId, e.sourceKey, e.createdBy, e.createdAt, ...fiscal.args],
@@ -946,6 +954,9 @@ export class MysqlFinanceOpsStore implements FinanceOpsStore {
   async markExpenseRegistered(id: number, entryId: number, by: string, at: number) {
     const [r] = await this.pool.query<mysql.ResultSetHeader>("UPDATE fin_expenses SET status = 'registered', entry_id = ?, registered_by = ?, registered_at = ? WHERE id = ? AND status = 'draft'", [entryId, by, at, id]);
     return r.affectedRows > 0;
+  }
+  async markExpenseSettled(id: number) {
+    await this.pool.query("UPDATE fin_expenses SET paid_cents = total_cents - withholding_cents, payment_status = 'paid' WHERE id = ? AND status = 'registered'", [id]);
   }
   async markExpenseVoid(id: number, from: ExpenseStatus, o: { by: string; at: number; reason: string }) {
     const [r] = await this.pool.query<mysql.ResultSetHeader>("UPDATE fin_expenses SET status = 'void', voided_by = ?, voided_at = ?, void_reason = ? WHERE id = ? AND status = ?", [o.by, o.at, o.reason, id, from]);

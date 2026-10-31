@@ -184,7 +184,21 @@ describe("API de la parametrización fiscal (CRM 0039)", () => {
     expect(ok.status).toBe(201);
     expect(ok.json.item).toMatchObject({ vatTreatment: "intra_eu_services", reverseChargeRateBp: 2100 });
     expect((await call("PATCH", `/expenses/${ok.json.item.id}`, ADMIN, { vatTreatment: "exempt" })).json.item).toMatchObject({ vatTreatment: "exempt", reverseChargeRateBp: null });
-    expect((await call("GET", `/expenses/${ok.json.item.id}`, RO)).json.item).toMatchObject({ vatTreatment: "exempt" });
+    expect((await call("GET", `/expenses/${ok.json.item.id}`, RO)).json.item).toMatchObject({ vatTreatment: "exempt", settlesStripeFees: false });
+    // Factura de comisiones de Stripe: modo sin decidir → 400 invalid_stripe_fee_invoice; en per_invoice, 201 y nace pagada
+    const stripeSup = await on.s.ops.createSupplier({ name: "Stripe Payments Europe, Limited", taxId: "IE3206488LH", country: "IE" }, ACTOR);
+    const fee = { kind: "invoice", supplierId: stripeSup.id, categoryId: on.s.cat("626"), invoiceNumber: "STR-1", invoiceDate: "2026-10-31", description: "Comisiones de Stripe", baseCents: 750, taxRateBp: 0, vatTreatment: "intra_eu_services", reverseChargeRateBp: 2100, settlesStripeFees: true };
+    const nope = await call("POST", "/expenses", ADMIN, fee);
+    expect([nope.status, nope.json.error]).toEqual([400, "invalid_stripe_fee_invoice"]);
+    await call("PATCH", "/stripe/settings", ADMIN, { stripeFeeVat: "per_invoice" });
+    const created = await call("POST", "/expenses", ADMIN, fee);
+    expect(created.status).toBe(201);
+    expect(created.json.item).toMatchObject({ settlesStripeFees: true, vatTreatment: "intra_eu_services" });
+    const regd = await call("POST", `/expenses/${created.json.item.id}/register`, ADMIN, {});
+    expect(regd.json.item).toMatchObject({ settlesStripeFees: true, paymentStatus: "paid", pendingCents: 0 });
+    const pay = await call("POST", `/expenses/${created.json.item.id}/payments`, ADMIN, { paidOn: "2026-10-31", amountCents: 750, method: "stripe" });
+    expect([pay.status, pay.json.error]).toEqual([409, "invalid_state"]);
+    await call("PATCH", "/stripe/settings", ADMIN, { stripeFeeVat: "unset" });
     const s = await call("GET", "/analysis/settings", RO);
     expect(keys(s.json.item)).toEqual(["bankFeeAccounts", "configuredAt", "configuredBy", "natures", "stripeFeesTreatment"]);
     expect(s.json.item.natures[0]).toEqual({ key: "servicio", label: "Servicio bancario", accountCode: "626" });

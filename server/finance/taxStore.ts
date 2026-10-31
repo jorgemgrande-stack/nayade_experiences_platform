@@ -1001,7 +1001,7 @@ export async function finFiscalTablesReady(pool: Pick<mysql.Pool, "query">): Pro
     "SELECT 1 FROM fin_tax_corporate_entries LIMIT 0",
     "SELECT 1 FROM fin_analysis_settings LIMIT 0",
     "SELECT validated_at, validated_by, validation_note FROM fin_tax_settings LIMIT 0",
-    "SELECT vat_treatment, reverse_charge_rate_bp FROM fin_expenses LIMIT 0",
+    "SELECT vat_treatment, reverse_charge_rate_bp, settles_stripe_fees FROM fin_expenses LIMIT 0",
   ];
   for (const sql of probes) {
     const ok = await pool.query(sql).then(

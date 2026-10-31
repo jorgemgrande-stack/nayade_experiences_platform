@@ -633,6 +633,8 @@ async function main() {
   const financeStripe = financeOps && finance && crmPool && (await finStripeTablesReady(crmPool)) ? new FinanceStripeService({ store: new MysqlFinanceStripeStore(crmPool), finance, ops: new MysqlFinanceOpsStore(crmPool, { fiscal: finFiscal }), ledger: new MysqlFinanceStore(crmPool), invoices: invoicing ? new MysqlOwnInvoiceDirectory(crmPool, external?.store.mode ?? "test") : null, stripeInvoices: new MysqlStripeInvoiceDirectory(crmPool), lock: mysqlKeyedLock(crmPool), fiscal: finFiscal }) : null;
   if (financeOps) console.log(JSON.stringify({ ctx: "FinanceStripe", mounted: !!financeStripe, ...(financeStripe ? {} : { reason: "migration_0036_missing" }) }));
   if (financeOps && financeStripe) financeOps.useReconciliation(financeStripe);
+  // CRM 0039: facturas de comisiones de Stripe que liquidan las importadas (per_invoice o domestic)
+  if (financeOps && financeStripe && finFiscal) financeOps.useStripeFeeInvoices(financeStripe);
   // Gestoría e impuestos (CRM 0037): borradores, calendario fiscal, nóminas, aplazamientos y expedientes; nunca presenta nada
   const financeTax =
     financeOps && finance && crmPool && (await finTaxTablesReady(crmPool))

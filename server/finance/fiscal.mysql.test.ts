@@ -115,6 +115,25 @@ describe.skipIf(!URL_)("parametrización fiscal con MySQL real (CRM 0039)", () =
     expect(await s.ops.patchExpense(e2.id, { vatTreatment: "exempt" }, ACTOR)).toMatchObject({ vatTreatment: "exempt", reverseChargeRateBp: null });
   });
 
+  it("factura de comisiones de Stripe (per_invoice): columna guardada, solo el IVA en el asiento y pagada sin pagos", async () => {
+    const before = await s.stripe.settings();
+    await s.stripe.saveSettings({ stripeFeeVat: "per_invoice" }, ACTOR);
+    const sup = await s.ops.createSupplier({ name: "Stripe Payments Europe, Limited", taxId: "IE3206488LH", country: "IE" }, ACTOR);
+    const e = await s.ops.createExpense({ kind: "invoice", supplierId: sup.id, categoryId: s.cat("626"), invoiceNumber: "STR-2026-09", invoiceDate: "2026-09-30", description: "Comisiones de Stripe de septiembre", baseCents: 750, taxRateBp: 0, vatTreatment: "intra_eu_services", reverseChargeRateBp: 2100, settlesStripeFees: true }, ACTOR);
+    expect(await count("SELECT COUNT(*) AS n FROM fin_expenses WHERE id = ? AND settles_stripe_fees = 1", [e.id])).toBe(1);
+    const reg = await s.ops.registerExpense(e.id, ACTOR);
+    expect(reg).toMatchObject({ settlesStripeFees: true, paymentStatus: "paid", paidCents: 750 });
+    expect((await s.finance.getEntry(reg.entryId!)).lines.map((l) => [l.accountCode, l.debitCents, l.creditCents])).toEqual([
+      ["472", 158, 0],
+      ["477", 0, 158],
+    ]);
+    expect(await count("SELECT COUNT(*) AS n FROM fin_expense_payments WHERE expense_id = ?", [e.id])).toBe(0);
+    // Al desmarcar en un borrador se guarda 0 (UPDATE condicional con la columna nueva)
+    const d = await s.ops.createExpense({ kind: "invoice", supplierId: sup.id, categoryId: s.cat("626"), invoiceNumber: "STR-2026-08", invoiceDate: "2026-08-31", description: "Comisiones", baseCents: 100, taxRateBp: 0, vatTreatment: "intra_eu_services", reverseChargeRateBp: 2100, settlesStripeFees: true }, ACTOR);
+    expect(await s.ops.patchExpense(d.id, { settlesStripeFees: false }, ACTOR)).toMatchObject({ settlesStripeFees: false });
+    await s.stripe.saveSettings({ stripeFeeVat: before.stripeFeeVat }, ACTOR);
+  });
+
   it("validación de la configuración: columnas e historial; un cambio la anula", async () => {
     await s.tax.validateSettings("Validada con la gestoría", ACTOR);
     expect(await count("SELECT COUNT(*) AS n FROM fin_tax_settings WHERE validated_at IS NOT NULL AND validation_note = 'Validada con la gestoría'")).toBe(1);

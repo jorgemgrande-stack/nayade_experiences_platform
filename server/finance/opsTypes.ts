@@ -142,6 +142,11 @@ export interface Expense {
   vatTreatment: VatTreatment | null;
   /** Tipo de la autoliquidación con inversión del sujeto pasivo (2100 = 21 %); null sin ISP. */
   reverseChargeRateBp: number | null;
+  /**
+   * CRM 0039: factura de comisiones de Stripe que liquida las comisiones ya contabilizadas al importar (modo
+   * `per_invoice` o `domestic`): su asiento solo lleva el IVA, nace pagada (con el saldo de Stripe) y no admite pagos.
+   */
+  settlesStripeFees: boolean;
   status: ExpenseStatus;
   entryId: number | null;
   paymentStatus: ExpensePaymentStatus;

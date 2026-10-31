@@ -636,6 +636,24 @@ del 303 del periodo lo avisan. La línea de IVA autoliquidado lleva la marca del
 (`emisor: Nombre (NIF-IVA)`): el 349 declara por emisor con ella (o, sin marca, con el NIF-IVA de Stripe de la
 configuración fiscal).
 
+**Factura de comisiones que liquida las importadas** (`settlesStripeFees`, columna `fin_expenses.settles_stripe_fees`): con
+`per_invoice` o `domestic` la comisión ya está en 626 desde la importación, así que la factura de Stripe registrada como
+gasto no la vuelve a llevar a 626. Solo se admite si el modo resuelto de las comisiones en su fecha de devengo (o de
+factura) es `per_invoice` o `domestic` y el proveedor es la entidad de Stripe (nombre o razón social con «Stripe», o el
+NIF-IVA de una regla de comisiones); si no, 400 `invalid_stripe_fee_invoice`. Es interior o de servicios
+intracomunitarios (con `domestic`, solo interior), sin retención. Su asiento solo lleva el IVA:
+- ISP (`intra_eu_services`): Debe 472 (y la parte no deducible a la cuenta de la categoría) · Haber 477 autoliquidado;
+- interior (`domestic`): la comisión importada ya incluía el IVA español: Debe 472 · Haber 626 (la cuota deducible sale
+  del gasto).
+
+No hay cuenta de proveedor pendiente: al registrarla nace pagada (liquidada con el saldo de Stripe), sin pagos
+(`payment_status = paid`; intentar pagarla responde 409). El 303, el 349, el libro de recibidas y el 347 la cuentan con
+su base y cuota como cualquier factura recibida (es el documento fiscal); Revenue & Margin y la cuenta de resultados no
+cambian por la base (el 626 viene de la importación). En modo `per_invoice`, si un mes tiene comisiones importadas y
+ninguna factura `settlesStripeFees` registrada, el panel fiscal y el borrador del 303 avisan
+`stripe_fee_invoice_missing`; si su base difiere de las comisiones importadas del mes (comisión de cada transacción en
+euros y los cargos de Stripe por otros servicios) en más de 1 €, `stripe_fee_invoice_difference` con la diferencia.
+
 **Vista previa** `POST /stripe/imports/preview` (finance:expenses, mismo cuerpo que `/stripe/imports`): lo que se leería,
 lo ya importado, totales en euros por tipo, cómo se resolvería el IVA de cada comisión y hasta 50 asientos propuestos.
 **Cero escrituras** (ni importación, ni transacciones, ni asientos, ni auditoría; probado contra MySQL). Es lo que se usa
@@ -729,10 +747,11 @@ los borradores (`draft` de una obligación, `/tax/models/:model/preview`, `/tax/
 `config, configLog, presets, capitalizationReserveCents, brackets:[{fromCents, uptoCents, rateBp, baseCents, quotaCents}],
 entry, entryHistory`; `GET /stripe/settings` → `item.pendingFeeVatCount` y `stripeFeeVat` con los cinco valores;
 `POST /stripe/post` → `pendingFeeVat`; `POST|PATCH /expenses` aceptan `vatTreatment, reverseChargeRateBp` y las fichas
-los devuelven; `POST /bank-movements/:id/match` acepta `{type, nature, description?}`; `GET /daily` → `counts` añade
+los devuelven, igual que `settlesStripeFees` (boolean, falso por defecto); `POST /bank-movements/:id/match` acepta `{type, nature, description?}`; `GET /daily` → `counts` añade
 `stripeFeeVatUnset`; `GET /analytics/revenue-margin` añade `stripeFeesTreatment` y `financialCostsCents` (meses, totales
-y acumulado); el panel fiscal avisa `tax_config_not_validated` y `fee_vat_unset`. Errores nuevos: 409
-`tax_config_not_validated`, 409 `corporate_year_unset`, 400 `vat_id_required`, 400 `invalid_rule`.
+y acumulado); el panel fiscal avisa `tax_config_not_validated` y `fee_vat_unset`. Avisos nuevos del panel fiscal y del 303: `stripe_fee_invoice_missing` y
+`stripe_fee_invoice_difference`. Errores nuevos: 409 `tax_config_not_validated`, 409 `corporate_year_unset`, 400
+`vat_id_required`, 400 `invalid_rule`, 400 `invalid_stripe_fee_invoice`.
 
 ## Permisos
 

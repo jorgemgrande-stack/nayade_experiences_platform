@@ -154,7 +154,8 @@ export type FinanceErrorCode =
   | "tax_config_not_validated"
   | "corporate_year_unset"
   | "vat_id_required"
-  | "invalid_rule";
+  | "invalid_rule"
+  | "invalid_stripe_fee_invoice";
 
 /** Estado HTTP de cada código (la API los traduce; el servicio solo lanza). */
 export const FINANCE_ERROR_STATUS: Record<FinanceErrorCode, number> = {
@@ -177,6 +178,8 @@ export const FINANCE_ERROR_STATUS: Record<FinanceErrorCode, number> = {
   vat_id_required: 400,
   /** Regla de IVA de las comisiones de Stripe incoherente (p. ej. inversión del sujeto pasivo con un emisor español). */
   invalid_rule: 400,
+  /** Factura de comisiones de Stripe que no casa con el modo resuelto (per_invoice o domestic) o con el emisor. */
+  invalid_stripe_fee_invoice: 400,
 };
 
 export class FinanceError extends Error {

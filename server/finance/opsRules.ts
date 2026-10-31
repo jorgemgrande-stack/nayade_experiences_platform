@@ -126,6 +126,7 @@ const short = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…
  * sale invertida (debe ↔ haber). Fecha = devengo o, si no hay, fecha de la factura. `source_key = expense:<id>`.
  */
 export function expenseEntry(e: Expense, ctx: { categoryAccount: string; supplierAccount: string; supplierName: string | null }): EntryDraft {
+  if (e.settlesStripeFees) return stripeFeeInvoiceEntry(e, ctx);
   const a = expenseAmounts(e);
   if (a.taxCents !== e.taxCents || a.withholdingCents !== e.withholdingCents || a.totalCents !== e.totalCents) throw bad(`El gasto #${e.id} no cuadra con su base y sus tipos`);
   const date = e.accrualDate ?? e.invoiceDate;
@@ -146,6 +147,47 @@ export function expenseEntry(e: Expense, ctx: { categoryAccount: string; supplie
     ...signed(ctx.supplierAccount, a.payableCents, "credit", { supplierId: e.supplierId, description: short(`${label} ${e.invoiceNumber ?? ""}`.trim(), 300) }),
   ];
   return { journalCode: "COM", date, description: short(`${label} ${e.invoiceNumber ?? `#${e.id}`}${who}`, 500), origin: "expense", sourceKey: expenseSourceKey(e.id), lines };
+}
+
+/** Cuenta de las comisiones de Stripe contabilizadas al importar (la cuota del IVA español se reclasifica desde ella). */
+export const STRIPE_FEES_ACCOUNT = "626";
+
+/**
+ * Factura de comisiones de Stripe que liquida las ya contabilizadas al importar (CRM 0039, `settlesStripeFees`): la base
+ * NO vuelve a 626 ni hay cuenta del proveedor (se pagó con el saldo de Stripe). Solo el IVA, con tipo y base en las
+ * líneas para el 303:
+ *  - con inversión del sujeto pasivo (`intra_eu_services`): Debe 472 (deducible) y la parte no deducible a la cuenta de la
+ *    categoría · Haber 477 (autoliquidada);
+ *  - interior (`domestic`): la comisión importada ya incluía el IVA español: Debe 472 · Haber 626 (la cuota deducible sale
+ *    del gasto; la no deducible se queda en él).
+ * Rectificativa: lo mismo con signo contrario. `source_key = expense:<id>`.
+ */
+export function stripeFeeInvoiceEntry(e: Expense, ctx: { categoryAccount: string; supplierName: string | null }): EntryDraft {
+  const a = expenseAmounts(e);
+  if (a.taxCents !== e.taxCents || a.withholdingCents !== e.withholdingCents || a.totalCents !== e.totalCents) throw bad(`El gasto #${e.id} no cuadra con su base y sus tipos`);
+  if (e.withholdingCents !== 0) throw new FinanceError("invalid_stripe_fee_invoice", "La factura de comisiones de Stripe no lleva retención");
+  const date = e.accrualDate ?? e.invoiceDate;
+  const label = `${e.kind === "rectification" ? "Rectificativa de comisiones de Stripe" : "Factura de comisiones de Stripe"} ${e.invoiceNumber ?? `#${e.id}`}${ctx.supplierName ? ` · ${ctx.supplierName}` : ""}`;
+  const isp = reverseChargeAmounts(e);
+  const lines: EntryLineInput[] = [];
+  if (isp) {
+    if (vatTreatmentOf(e) !== "intra_eu_services") throw new FinanceError("invalid_stripe_fee_invoice", "Con inversión del sujeto pasivo, la factura de comisiones de Stripe es de servicios intracomunitarios");
+    const text = short(`IVA autoliquidado ${isp.rateBp / 100} % · comisiones de Stripe (inversión del sujeto pasivo)`, 300);
+    lines.push(
+      ...signed(OPS_ACCOUNTS.vatInput, isp.deductibleTaxCents, "debit", { supplierId: e.supplierId, description: text, taxRateBp: isp.rateBp, taxBaseCents: e.baseCents }),
+      ...signed(ctx.categoryAccount, isp.nonDeductibleTaxCents, "debit", { supplierId: e.supplierId, costCenterId: e.costCenterId, description: "IVA no deducible de las comisiones de Stripe", taxRateBp: isp.rateBp, taxBaseCents: e.baseCents }),
+      ...signed(OPS_ACCOUNTS.vatOutput, isp.taxCents, "credit", { supplierId: e.supplierId, description: text, taxRateBp: isp.rateBp, taxBaseCents: e.baseCents }),
+    );
+  } else {
+    if (vatTreatmentOf(e) !== "domestic") throw new FinanceError("invalid_stripe_fee_invoice", "La factura de comisiones de Stripe es interior (IVA español) o de servicios intracomunitarios (ISP)");
+    const text = short(`IVA soportado ${e.taxRateBp / 100} % · comisiones de Stripe (reclasificado desde ${STRIPE_FEES_ACCOUNT})`, 300);
+    lines.push(
+      ...signed(OPS_ACCOUNTS.vatInput, a.deductibleTaxCents, "debit", { supplierId: e.supplierId, description: text, taxRateBp: e.taxRateBp, taxBaseCents: e.baseCents }),
+      ...signed(STRIPE_FEES_ACCOUNT, a.deductibleTaxCents, "credit", { supplierId: e.supplierId, costCenterId: e.costCenterId, description: text, taxRateBp: e.taxRateBp, taxBaseCents: e.baseCents }),
+    );
+  }
+  if (!lines.length) throw new FinanceError("invalid_stripe_fee_invoice", "La factura de comisiones de Stripe no tiene IVA que contabilizar (la comisión ya está en 626)");
+  return { journalCode: "COM", date, description: short(label, 500), origin: "expense", sourceKey: expenseSourceKey(e.id), lines };
 }
 
 /**

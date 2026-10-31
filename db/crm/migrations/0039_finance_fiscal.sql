@@ -4,8 +4,10 @@
 -- `fin_tax_settings` gana la validación con la gestoría (`validated_at`, `validated_by`, `validation_note`): sin validar,
 --   los borradores se calculan pero no se revisan ni se presentan; cualquier cambio posterior de la configuración la
 --   anula en el mismo guardado (queda en `fin_tax_settings_log`). Las filas existentes quedan sin validar (NULL).
--- `fin_expenses` gana el tratamiento del IVA (`vat_treatment`; NULL = interior, el comportamiento anterior) y el tipo de
---   la autoliquidación con inversión del sujeto pasivo (`reverse_charge_rate_bp`). Los gastos ya registrados no cambian.
+-- `fin_expenses` gana el tratamiento del IVA (`vat_treatment`; NULL = interior, el comportamiento anterior), el tipo de
+--   la autoliquidación con inversión del sujeto pasivo (`reverse_charge_rate_bp`) y la marca de factura de comisiones de
+--   Stripe que liquida las ya contabilizadas al importar (`settles_stripe_fees`, 0 por defecto: su asiento solo lleva el
+--   IVA y nace pagada). Los gastos ya registrados no cambian.
 -- `fin_stripe_fee_vat_rules`: IVA de las comisiones de Stripe por tipo de comisión (o `*`), entidad emisora (país y
 --   NIF-IVA) y periodo de vigencia, con el documento que lo justifica. Sin edición: una regla se anula y se crea otra.
 -- `fin_tax_corporate_years` y `fin_tax_corporate_year_log`: Impuesto sobre Sociedades por ejercicio (régimen, escala por
@@ -27,7 +29,8 @@ ALTER TABLE fin_tax_settings
 
 ALTER TABLE fin_expenses
   ADD COLUMN vat_treatment VARCHAR(24) NULL,
-  ADD COLUMN reverse_charge_rate_bp INT NULL;
+  ADD COLUMN reverse_charge_rate_bp INT NULL,
+  ADD COLUMN settles_stripe_fees TINYINT(1) NOT NULL DEFAULT 0;
 
 CREATE TABLE fin_stripe_fee_vat_rules (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,

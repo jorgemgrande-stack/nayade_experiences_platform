@@ -34,6 +34,7 @@ export async function fiscalScenario(o: { pool?: mysql.Pool; fiscal?: boolean; n
   const stripeStore = pool ? new MysqlFinanceStripeStore(pool) : new MemoryFinanceStripeStore();
   const stripe = new FinanceStripeService({ store: stripeStore, finance, ops: opsStore, ledger, now, fiscal });
   ops.useReconciliation(stripe);
+  if (fiscal) ops.useStripeFeeInvoices(stripe);
   const taxStore = pool ? new MysqlFinanceTaxStore(pool, { fiscal }) : new MemoryFinanceTaxStore();
   const tax = new FinanceTaxService({ store: taxStore, finance, ledger, ops: opsStore, documents: ops, stripe: stripeStore, issuer: { legalName: "EMPRESA DE PRUEBA, S.L.", taxId: "B00000000" }, now, fiscal, stripeFeeVat: stripe });
   ops.useTaxDocumentOwners((t, id) => tax.documentOwnerExists(t, id));

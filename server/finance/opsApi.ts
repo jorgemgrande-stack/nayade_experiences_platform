@@ -18,8 +18,8 @@
  *   GET|POST /cash-accounts                                                                lectura | gestión
  *   GET /cash-movements · POST /cash-movements                                             lectura | contabilizar
  *
- * Parametrización fiscal (CRM 0039): los cuerpos de alta y edición de gastos aceptan `vatTreatment` y
- * `reverseChargeRateBp` (y las fichas los devuelven); conciliar un movimiento sin gasto acepta `{type, nature,
+ * Parametrización fiscal (CRM 0039): los cuerpos de alta y edición de gastos aceptan `vatTreatment`,
+ * `reverseChargeRateBp` y `settlesStripeFees` (y las fichas los devuelven); conciliar un movimiento sin gasto acepta `{type, nature,
  * description?}` en lugar de `accountCode` (la cuenta sale de /analysis/settings).
  *
  * Los documentos y extractos llegan en base64 dentro del JSON (hasta 10 MB de fichero): esas dos rutas leen su cuerpo
@@ -88,6 +88,7 @@ const expenseSchema = z
     // CRM 0039: tratamiento del IVA (null = interior) y tipo de la autoliquidación con inversión del sujeto pasivo
     vatTreatment: z.enum(VAT_TREATMENTS).nullable().optional(),
     reverseChargeRateBp: bp.nullable().optional(),
+    settlesStripeFees: z.boolean().optional(),
   })
   .strict();
 

@@ -58,6 +58,12 @@ export interface FinanceStripeDeps {
   now?: () => number;
 }
 
+const nextMonth = (ym: string) => {
+  const y = Number(ym.slice(0, 4));
+  const m = Number(ym.slice(5, 7));
+  return m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, "0")}`;
+};
+
 /** Motivo que queda en una transacción pendiente por no tener decidido el IVA de su comisión. */
 export const FEE_VAT_UNSET_DETAIL = "fee_vat_unset: el IVA de la comisión de Stripe no está configurado (regla por tipo o modo global)";
 
@@ -181,6 +187,41 @@ export class FinanceStripeService implements BankReconciliationExtension {
     const s = settings ?? (await this.settings());
     const rules = this.fiscal ? await this.s.listFeeVatRules() : [];
     return (t) => resolveFeeVat(t, rules, s);
+  }
+
+  // ── Facturas de comisiones de Stripe (CRM 0039, `settlesStripeFees`) ──────────────────────────────────────────
+
+  /** Modo del IVA de las comisiones resuelto en una fecha (para un cobro: regla `charge`, después `*`, después el global). */
+  async feeModeOn(date: string): Promise<FeeVatMode> {
+    return (await this.feeResolver())({ type: "charge", rawType: "charge", createdOn: date }).treatment;
+  }
+
+  /** ¿Es el proveedor la entidad de Stripe? Nombre o razón social con «Stripe», o el NIF-IVA de una regla de comisiones. */
+  async isStripeIssuer(sup: { name: string; legalName: string | null; taxId: string | null }): Promise<boolean> {
+    if (/\bstripe\b/i.test(`${sup.name} ${sup.legalName ?? ""}`)) return true;
+    const id = (sup.taxId ?? "").toUpperCase().replace(/[\s.-]/g, "");
+    if (!id || !this.fiscal) return false;
+    return (await this.s.listFeeVatRules()).some((r) => r.issuerVatId === id);
+  }
+
+  /**
+   * Comisiones importadas por mes (base: comisión de cada transacción en euros y, en los cargos de Stripe por otros
+   * servicios, el propio cargo) y el modo resuelto ese mes (a su último día), para avisar de las facturas de comisiones
+   * que faltan o no cuadran en modo `per_invoice`.
+   */
+  async feeMonths(from: string, to: string): Promise<Array<{ month: string; mode: FeeVatMode; feeBaseCents: number }>> {
+    if (!this.fiscal) return [];
+    const resolve = await this.feeResolver();
+    const out: Array<{ month: string; mode: FeeVatMode; feeBaseCents: number }> = [];
+    for (let m = from.slice(0, 7); m <= to.slice(0, 7); m = nextMonth(m)) {
+      const first = `${m}-01` < from ? from : `${m}-01`;
+      const lastDay = new Date(Date.UTC(Number(m.slice(0, 4)), Number(m.slice(5, 7)), 0)).toISOString().slice(0, 10);
+      const last = lastDay > to ? to : lastDay;
+      const agg = await this.s.aggregates(first, last);
+      const feeBaseCents = agg.reduce((a, x) => a + x.feeCents + (x.type === "stripe_fee" ? -x.grossCents : 0), 0);
+      if (feeBaseCents !== 0) out.push({ month: m, mode: resolve({ type: "charge", rawType: "charge", createdOn: last }).treatment, feeBaseCents });
+    }
+    return out;
   }
 
   /** ¿Se queda sin contabilizar por no tener decidido el IVA de su comisión? (solo con comisión). */

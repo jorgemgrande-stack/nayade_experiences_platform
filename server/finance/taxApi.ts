@@ -126,6 +126,8 @@ export function warningCode(message: string, hasData: boolean): string {
   // CRM 0039
   if (/corporate_year_unset/.test(message)) return "corporate_year_unset";
   if (/fee_vat_unset/.test(message)) return "fee_vat_unset";
+  if (/stripe_fee_invoice_missing/.test(message)) return "stripe_fee_invoice_missing";
+  if (/stripe_fee_invoice_difference/.test(message)) return "stripe_fee_invoice_difference";
   if (/Reserva de capitalización/.test(message)) return "reserva_capitalizacion";
   if (/sin NIF|NIF-IVA|necesita su NIF|sin su NIF/i.test(message)) return "sin_nif";
   if (/inversión del sujeto pasivo/i.test(message)) return "inversion_sujeto_pasivo";

@@ -121,7 +121,7 @@ export interface FinanceTaxDeps {
    */
   fiscal?: boolean;
   /** Stripe (CRM 0039): transacciones pendientes por no tener decidido el IVA de su comisión, para avisar en el 303. */
-  stripeFeeVat?: { pendingFeeVatCount(from?: string, to?: string): Promise<number> } | null;
+  stripeFeeVat?: { pendingFeeVatCount(from?: string, to?: string): Promise<number>; feeMonths?(from: string, to: string): Promise<Array<{ month: string; mode: string; feeBaseCents: number }>> } | null;
   now?: () => number;
 }
 
@@ -542,6 +542,7 @@ export class FinanceTaxService {
         // CRM 0039: comisiones de Stripe del periodo que no se han contabilizado por no tener decidido su IVA
         const unset = this.fiscal && this.d.stripeFeeVat ? await this.d.stripeFeeVat.pendingFeeVatCount(from, to) : 0;
         if (unset) b.warnings.push(`${unset} transacciones de Stripe del periodo sin tratamiento del IVA de su comisión (fee_vat_unset): no están contabilizadas; configura la regla y contabiliza antes de presentar`);
+        b.warnings.push(...(await this.stripeFeeInvoiceWarnings(from, to)).map((w) => w.message));
         return b;
       }
       case "390": {
@@ -1144,6 +1145,31 @@ export class FinanceTaxService {
     return this.dossier(id);
   }
 
+  /**
+   * Facturas de comisiones de Stripe (CRM 0039): en los meses en modo `per_invoice` con comisiones importadas, aviso si no
+   * hay ninguna factura `settlesStripeFees` registrada con fecha de devengo (o de factura) en el mes
+   * (`stripe_fee_invoice_missing`) o si su base difiere de las comisiones importadas en más de 1 €
+   * (`stripe_fee_invoice_difference`, con la diferencia).
+   */
+  async stripeFeeInvoiceWarnings(from: string, to: string): Promise<Array<{ code: "stripe_fee_invoice_missing" | "stripe_fee_invoice_difference"; month: string; message: string; differenceCents: number | null }>> {
+    if (!this.fiscal || !this.d.stripeFeeVat?.feeMonths) return [];
+    const months = (await this.d.stripeFeeVat.feeMonths(from, to)).filter((m) => m.mode === "per_invoice");
+    if (!months.length) return [];
+    const invoices = (await this.expensesByAccrual(`${months[0].month}-01`, to)).filter((e) => e.settlesStripeFees);
+    const out: Array<{ code: "stripe_fee_invoice_missing" | "stripe_fee_invoice_difference"; month: string; message: string; differenceCents: number | null }> = [];
+    const eur = (c: number) => (c / 100).toFixed(2).replace(".", ",");
+    for (const m of months) {
+      const mine = invoices.filter((e) => (e.accrualDate ?? e.invoiceDate).startsWith(m.month));
+      if (!mine.length) {
+        out.push({ code: "stripe_fee_invoice_missing", month: m.month, differenceCents: null, message: `Comisiones de Stripe de ${m.month} importadas (${eur(m.feeBaseCents)} €) sin factura de comisiones registrada (stripe_fee_invoice_missing): regístrala con «liquida comisiones de Stripe» para declarar su IVA` });
+        continue;
+      }
+      const diff = sumOf(mine.map((e) => e.baseCents)) - m.feeBaseCents;
+      if (Math.abs(diff) > 100) out.push({ code: "stripe_fee_invoice_difference", month: m.month, differenceCents: diff, message: `La factura de comisiones de Stripe de ${m.month} difiere de las comisiones importadas en ${eur(diff)} € (stripe_fee_invoice_difference): revisa la factura o la importación` });
+    }
+    return out;
+  }
+
   /** ¿Existe el propietario de un documento de la fase 3? (enchufado al servicio de operaciones). */
   async documentOwnerExists(ownerType: DocumentOwner, ownerId: number) {
     if (ownerType === "tax_obligation") return !!(await this.s.getObligation(ownerId));
@@ -1327,6 +1353,8 @@ export class FinanceTaxService {
     // CRM 0039: puerta para datos reales y comisiones de Stripe sin tratamiento del IVA
     if (this.fiscal && !stored?.validatedAt) warnings.push({ code: "tax_config_not_validated", message: "Configuración fiscal sin validar con la gestoría: los borradores se calculan, pero no se pueden revisar ni presentar", obligationId: null });
     const feeVatUnset = this.fiscal && this.d.stripeFeeVat ? await this.d.stripeFeeVat.pendingFeeVatCount() : 0;
+    // Facturas de comisiones de Stripe que faltan o no cuadran (modo per_invoice), desde enero hasta el mes en curso
+    for (const w of await this.stripeFeeInvoiceWarnings(`${year}-01-01`, today)) warnings.push({ code: w.code, message: w.message, obligationId: null });
     if (feeVatUnset) warnings.push({ code: "fee_vat_unset", message: `${feeVatUnset} transacciones de Stripe sin tratamiento del IVA de su comisión: no se contabilizan hasta configurarlo`, obligationId: null });
     for (const o of overdue.items) warnings.push({ code: "vencida", message: `El modelo ${o.model} (${periodLabel(o.year, o.period)}) venció el ${o.dueDate} sin registrar la presentación`, obligationId: o.id });
     for (const o of upcoming.items) {

@@ -106,15 +106,16 @@ describe("migraciones 0033, 0035, 0036, 0037, 0038 y 0039 y módulo de finanzas:
       .filter(Boolean);
     expect(stmts.map((s) => s.split(" (")[0])).toEqual([
       "ALTER TABLE fin_tax_settings ADD COLUMN validated_at BIGINT NULL, ADD COLUMN validated_by VARCHAR(100) NULL, ADD COLUMN validation_note VARCHAR(500) NULL",
-      "ALTER TABLE fin_expenses ADD COLUMN vat_treatment VARCHAR(24) NULL, ADD COLUMN reverse_charge_rate_bp INT NULL",
+      "ALTER TABLE fin_expenses ADD COLUMN vat_treatment VARCHAR(24) NULL, ADD COLUMN reverse_charge_rate_bp INT NULL, ADD COLUMN settles_stripe_fees TINYINT(1) NOT NULL DEFAULT 0",
       "CREATE TABLE fin_stripe_fee_vat_rules",
       "CREATE TABLE fin_tax_corporate_years",
       "CREATE TABLE fin_tax_corporate_year_log",
       "CREATE TABLE fin_tax_corporate_entries",
       "CREATE TABLE fin_analysis_settings",
     ]);
-    // Columnas añadidas siempre NULL (las filas existentes no cambian: gastos interiores, configuración sin validar)
-    for (const s of stmts.filter((x) => x.startsWith("ALTER TABLE"))) for (const c of s.split("ADD COLUMN").slice(1)) expect(c.trim()).toMatch(/ NULL,?$/);
+    // Columnas añadidas NULL o con valor por defecto (las filas existentes no cambian: gastos interiores que no son
+    // facturas de comisiones de Stripe, configuración sin validar)
+    for (const s of stmts.filter((x) => x.startsWith("ALTER TABLE"))) for (const c of s.split("ADD COLUMN").slice(1)) expect(c.trim()).toMatch(/( NULL| NOT NULL DEFAULT 0),?$/);
     expect(sql).not.toMatch(/INSERT INTO/i);
     expect(sql).not.toMatch(/updated_by/i);
     for (const k of ["uq_fin_tax_corporate_entry_source (source_key)", "uq_fin_tax_corporate_entry_live (live_year)"]) expect(sql).toContain(`UNIQUE KEY ${k}`);

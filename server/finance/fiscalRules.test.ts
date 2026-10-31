@@ -99,7 +99,7 @@ describe("IVA de las comisiones de Stripe por tipo, emisor y periodo", () => {
   });
 });
 
-const expense = (p: Partial<Expense>): Expense => ({ id: 7, supplierId: 3, categoryId: 1, costCenterId: null, invoiceNumber: "INV-1", invoiceDate: "2026-08-10", accrualDate: null, dueDate: null, description: "Servicio en la nube", baseCents: 100_000, taxRateBp: 0, taxCents: 0, deductibleBp: 10_000, withholdingRateBp: 0, withholdingCents: 0, totalCents: 100_000, paidCents: 0, currency: "EUR", kind: "invoice", rectifiesExpenseId: null, vatTreatment: null, reverseChargeRateBp: null, status: "draft", entryId: null, paymentStatus: "pending", sourceKey: null, createdBy: "t", createdAt: 0, registeredBy: null, registeredAt: null, voidedBy: null, voidedAt: null, voidReason: null, ...p });
+const expense = (p: Partial<Expense>): Expense => ({ id: 7, supplierId: 3, categoryId: 1, costCenterId: null, invoiceNumber: "INV-1", invoiceDate: "2026-08-10", accrualDate: null, dueDate: null, description: "Servicio en la nube", baseCents: 100_000, taxRateBp: 0, taxCents: 0, deductibleBp: 10_000, withholdingRateBp: 0, withholdingCents: 0, totalCents: 100_000, paidCents: 0, currency: "EUR", kind: "invoice", rectifiesExpenseId: null, vatTreatment: null, reverseChargeRateBp: null, settlesStripeFees: false, status: "draft", entryId: null, paymentStatus: "pending", sourceKey: null, createdBy: "t", createdAt: 0, registeredBy: null, registeredAt: null, voidedBy: null, voidedAt: null, voidReason: null, ...p });
 
 describe("gastos con inversión del sujeto pasivo", () => {
   it("validación: NIF-IVA del proveedor UE (vat_id_required), factura sin IVA, tipo de la autoliquidación obligatorio", () => {
@@ -143,6 +143,43 @@ describe("gastos con inversión del sujeto pasivo", () => {
       ["472", 21_000, 0],
       ["410", 0, 121_000],
     ]);
+  });
+
+  it("factura de comisiones de Stripe (settlesStripeFees): solo el IVA, sin 626 por la base ni cuenta de proveedor", () => {
+    const ctx = { categoryAccount: "626", supplierAccount: "410", supplierName: "Stripe Payments Europe, Limited" };
+    const isp = expenseEntry(expense({ settlesStripeFees: true, baseCents: 750, totalCents: 750, vatTreatment: "intra_eu_services", reverseChargeRateBp: 2100 }), ctx);
+    expect(lines(isp)).toEqual([
+      ["472", 158, 0],
+      ["477", 0, 158],
+    ]);
+    expect(isp.lines.every((l) => l.taxRateBp === 2100 && l.taxBaseCents === 750)).toBe(true);
+    // Parte no deducible: a la cuenta de la categoría (es gasto)
+    expect(lines(expenseEntry(expense({ settlesStripeFees: true, baseCents: 1_000, totalCents: 1_000, deductibleBp: 5000, vatTreatment: "intra_eu_services", reverseChargeRateBp: 2100 }), ctx))).toEqual([
+      ["472", 105, 0],
+      ["626", 105, 0],
+      ["477", 0, 210],
+    ]);
+    // Interior: la comisión importada ya llevaba el IVA español; la cuota deducible sale de 626
+    const dom = expenseEntry(expense({ settlesStripeFees: true, baseCents: 620, taxRateBp: 2100, taxCents: 130, totalCents: 750 }), ctx);
+    expect(lines(dom)).toEqual([
+      ["472", 130, 0],
+      ["626", 0, 130],
+    ]);
+    // Rectificativa: lo mismo con signo contrario
+    expect(lines(expenseEntry(expense({ kind: "rectification", settlesStripeFees: true, baseCents: -620, taxRateBp: 2100, taxCents: -130, totalCents: -750 }), ctx))).toEqual([
+      ["472", 0, 130],
+      ["626", 130, 0],
+    ]);
+    const code = (p: Partial<Expense>) => {
+      try {
+        expenseEntry(expense({ settlesStripeFees: true, ...p }), ctx);
+        return null;
+      } catch (e) {
+        return (e as FinanceError).code;
+      }
+    };
+    expect(code({ vatTreatment: "import", taxRateBp: 2100, taxCents: 21_000, totalCents: 121_000 })).toBe("invalid_stripe_fee_invoice");
+    expect(code({})).toBe("invalid_stripe_fee_invoice"); // interior al 0 %: no hay IVA que contabilizar
   });
 
   it("303: ISP intracomunitaria 10/11 y 36/37, interior o de fuera de la UE 12/13 y 28/29, importación 32/33; sin aviso de ISP pendiente", () => {
