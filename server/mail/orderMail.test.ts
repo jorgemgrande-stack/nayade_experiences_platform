@@ -6,7 +6,9 @@
 import { describe, it, expect } from "vitest";
 import { linkHosts as allLinkHosts, mailPolicyFromEnv } from "./policy";
 /** Hosts de los enlaces de la operación (sin el pie corporativo: ayuda y textos legales de www.bigelephant.es). */
-const linkHosts = (html: string) => allLinkHosts(html).filter((h) => h !== "www.bigelephant.es");
+// Fuera de la web y de las redes del pie corporativo
+const SOCIAL = new Set(["www.instagram.com", "www.facebook.com"]);
+const linkHosts = (html: string) => allLinkHosts(html).filter((h) => h !== "www.bigelephant.es" && !SOCIAL.has(h));
 import { memoryProvider } from "./providers";
 import { MailService } from "./service";
 import { MemoryMailStore } from "./store";

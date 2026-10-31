@@ -29,7 +29,7 @@ describe("catálogo maestro de comunicaciones", () => {
       for (const x of [e.subject, e.html, e.text]) expect(x, e.id).not.toMatch(/undefined|NaN|\[object |\bnull\b/);
       for (const m of e.html.matchAll(/href="([^"]+)"/g)) expect(m[1], e.id).toMatch(/^https:\/\//);
       // Datos ficticios: enlaces de muestra a dominios de ejemplo, nunca a una cuenta real
-      for (const m of e.html.matchAll(/href="([^"]+)"/g)) expect(m[1], e.id).toMatch(/\.example\/|\.example$|^https:\/\/www\.bigelephant\.es(\/|$)/);
+      for (const m of e.html.matchAll(/href="([^"]+)"/g)) expect(m[1], e.id).toMatch(/\.example\/|\.example$|^https:\/\/www\.bigelephant\.es(\/|$)|^https:\/\/www\.(instagram|facebook)\.com\//);
     }
   });
   it("legibles sin imágenes: cada imagen tiene dimensiones y su información está también en el texto", () => {
@@ -39,7 +39,7 @@ describe("catálogo maestro de comunicaciones", () => {
         expect(img[0], e.id).toMatch(/ alt="/);
       }
       // Sin imágenes, el texto plano conserva el título y el pie corporativo
-      expect(e.text, e.id).toContain(PLATFORM_LEGAL_LINE);
+      expect(e.text, e.id).toContain("Big Elephant · www.bigelephant.es");
     }
   });
   it("las comerciales llevan la baja; las de servicio, nada comercial", () => {
@@ -54,12 +54,49 @@ describe("catálogo maestro de comunicaciones", () => {
 });
 
 describe("componentes", () => {
-  it("cabecera con el logotipo oficial sin alterar, lema y pie con la línea legal", () => {
+  it("cabecera con el logotipo oficial sin alterar y lema", () => {
     const m = renderEmail(brand, { family: "transactional", title: "Prueba", intro: ["Hola"] });
     expect(m.html).toContain(`<img src="${DEFAULT_MAIL_LOGO_URL}"`);
     expect(m.html).toContain("Tu negocio,<br>más lejos.");
-    expect(m.html).toContain(PLATFORM_LEGAL_LINE);
-    for (const l of CORPORATE.links) expect(m.html).toContain(`${CORPORATE.web}${l.path}`);
+  });
+  it("pie corporativo aprobado: blanco, logotipo oficial, redes y enlaces; sin domicilio ni bloque oscuro", () => {
+    const m = renderEmail(brand, { family: "transactional", title: "Prueba", intro: ["Hola"] });
+    const foot = m.html.slice(m.html.indexOf('class="be-foot"'));
+    // El mismo archivo oficial del logotipo que la cabecera, enlazado a la web
+    expect(foot).toContain(`<a href="${CORPORATE.web}" target="_blank" style="text-decoration:none"><img src="${DEFAULT_MAIL_LOGO_URL}"`);
+    expect(foot).toContain('href="https://www.instagram.com/bigelephantnet/"');
+    expect(foot).toContain('href="https://www.facebook.com/profile.php?id=61595651785681&amp;locale=es_ES"');
+    expect(foot).toMatch(/social-instagram\.png" width="40" height="40" alt="Instagram"/);
+    expect(foot).toMatch(/social-facebook\.png" width="40" height="40" alt="Facebook"/);
+    for (const l of CORPORATE.links) expect(foot).toContain(`<a href="${CORPORATE.web}${l.path}" target="_blank"`);
+    expect(foot.indexOf("Centro de ayuda")).toBeLessThan(foot.indexOf("Política de privacidad"));
+    expect(foot.indexOf("Política de privacidad")).toBeLessThan(foot.indexOf("Términos del servicio"));
+    for (const x of [m.html, m.text]) {
+      expect(x).not.toMatch(/Corazón de María|28002|pie-elefante|#141A26|IRON ELEPHANT/);
+      expect(x).toContain("Mensaje de servicio relacionado con tu cuenta. No es publicidad.");
+      expect(x).not.toMatch(/darte de baja|Baja de comunicaciones/i);
+    }
+    // El soporte configurado se ofrece en la línea de servicio
+    expect(m.text).toContain("¿Dudas? Escríbenos a soporte@bigelephant.es.");
+  });
+  it("pie comercial: destinatario, baja real e identificación del titular (sin domicilio)", () => {
+    const unsubscribeUrl = "https://www.bigelephant.es/cp/v1/communications/baja?t=abc";
+    const m = renderEmail(brand, { family: "experiential", title: "Novedades", commercial: true, unsubscribeUrl, recipient: "ana@cliente.example" });
+    expect(m.html).toContain('Este email se ha enviado a <span style="color:#374151">ana@cliente.example</span>.');
+    expect(m.html).toContain(`puedes <a href="${unsubscribeUrl}" target="_blank" style="color:#111827;text-decoration:underline">darte de baja aquí</a>.`);
+    expect(m.html).toContain("Big Elephant es un servicio de IRON ELEPHANT CONSULTING, S.L. · NIF B26987875");
+    expect(m.html).not.toMatch(/No es publicidad|Corazón de María/);
+    expect(m.text).toContain("Este email se ha enviado a ana@cliente.example.");
+    expect(m.text).toContain(`Baja de comunicaciones comerciales: ${unsubscribeUrl}`);
+    // Sin destinatario conocido, sin la frase; sin enlace firmado, la página de soporte
+    const anon = renderEmail(brand, { family: "experiential", title: "Novedades", commercial: true });
+    expect(anon.html).not.toContain("Este email se ha enviado");
+    expect(anon.html).toContain('<a href="https://www.bigelephant.es/soporte" target="_blank" style="color:#111827;text-decoration:underline">darte de baja aquí</a>');
+  });
+  it("misma identidad visual en las variantes del pie (servicio, interna y comercial)", () => {
+    const shell = (h: string) => h.slice(h.indexOf('class="be-foot"'), h.indexOf("margin-top:14px"));
+    const v = [renderEmail(brand, { family: "security", title: "A" }), renderEmail(brand, { family: "admin", title: "B" }), renderEmail(brand, { family: "experiential", title: "C", commercial: true })].map((m) => shell(m.html));
+    expect(new Set(v).size).toBe(1);
   });
   it("tarjeta con estado, total y pie; línea de progreso; aviso; versión de texto equivalente", () => {
     const m = renderEmail(brand, {
