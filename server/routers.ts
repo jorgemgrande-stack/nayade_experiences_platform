@@ -189,6 +189,7 @@ import { pdfTemplatesRouter } from "./routers/pdfTemplatesRouter";
 import { integrationsRouter } from "./routers/integrations";
 import { modulesRouter } from "./routers/modulesRouter";
 import { subscriptionRouter } from "./routers/subscriptionRouter";
+import { connectRouter } from "./routers/connectRouter";
 import { supportRouter } from "./routers/supportRouter";
 import { dataExportRouter } from "./routers/dataExportRouter";
 import { accountSecurityRouter } from "./routers/accountSecurityRouter";
@@ -266,6 +267,7 @@ export const appRouter = router({
   integrations: integrationsRouter,
   modules: modulesRouter,
   subscription: subscriptionRouter,
+  connect: connectRouter,
   support: supportRouter,
   dataExport: dataExportRouter,
   accountSecurity: accountSecurityRouter,

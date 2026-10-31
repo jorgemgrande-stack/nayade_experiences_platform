@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Loader2, Mail, MonitorSmartphone, Trash2 } from "lucide-react";
+import { toastError } from "@/lib/errorMessage";
 
 const fmt = (iso: string) => new Date(iso).toLocaleString("es-ES", { dateStyle: "medium", timeStyle: "short" });
 
@@ -27,7 +28,7 @@ function EmailSection() {
       setCurrentPassword("");
       pendingQ.refetch();
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toastError(e),
   });
   const pending = pendingQ.data?.pending ?? null;
   const unavailable = pendingQ.data?.available === false;
@@ -84,7 +85,7 @@ function DevicesSection() {
       toast.success("Dispositivo olvidado. Si se vuelve a usar, te avisaremos por correo.");
       devicesQ.refetch();
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toastError(e),
   });
   const data = devicesQ.data;
 

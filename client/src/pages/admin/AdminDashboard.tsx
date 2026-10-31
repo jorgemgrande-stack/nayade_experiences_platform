@@ -266,7 +266,8 @@ function SectionLabel({ label }: { label: string }) {
 export default function AdminDashboard() {
   const sub = usePanelSubscription();
   if (sub.mode === "tasks") return <EssentialHome />;
-  if (sub.mode === "loading") {
+  // Con error, el guardián de rutas (AdminRouteGate) muestra «Reintentar»: nunca el inicio de otra empresa
+  if (sub.mode === "loading" || sub.mode === "error") {
     return (
       <AdminLayout>
         <PanelLoading label="Cargando el inicio…" />

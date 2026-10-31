@@ -8,9 +8,10 @@
 import { getFeatureFlag } from "../../config";
 import { ModuleAccess, MemoryEntitlementStore, type EntitlementReader } from "./entitlements";
 import { ModuleRegistry } from "./registry";
+import { CORE_VERSION } from "../../../shared/version";
 
-/** Versión del Core frente a la que se validan los manifiestos. */
-export const CORE_VERSION = "1.0.0";
+/** Versión del Core frente a la que se validan los manifiestos (fuente única: shared/version.ts). */
+export { CORE_VERSION };
 
 const registry = new ModuleRegistry(CORE_VERSION);
 let access: ModuleAccess | null = null;

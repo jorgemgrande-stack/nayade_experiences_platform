@@ -11,6 +11,7 @@ import {
   ChevronUp, ChevronDown, ChevronRight, GripVertical, Link2, Globe,
   Loader2, RefreshCw,
 } from "lucide-react";
+import { toastError } from "@/lib/errorMessage";
 
 type MenuItem = {
   id: number;
@@ -173,19 +174,19 @@ export default function MenusManager() {
 
   const updateMut = trpc.cms.updateMenuItem.useMutation({
     onSuccess: () => utils.cms.getMenuItems.invalidate(),
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toastError(e),
   });
   const createMut = trpc.cms.createMenuItem.useMutation({
     onSuccess: () => { utils.cms.getMenuItems.invalidate(); toast.success("Ítem añadido"); },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toastError(e),
   });
   const deleteMut = trpc.cms.deleteMenuItem.useMutation({
     onSuccess: () => { utils.cms.getMenuItems.invalidate(); toast.success("Ítem eliminado"); },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toastError(e),
   });
   const reorderMut = trpc.cms.reorderMenuItems.useMutation({
     onSuccess: () => utils.cms.getMenuItems.invalidate(),
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toastError(e),
   });
 
   // Build tree
