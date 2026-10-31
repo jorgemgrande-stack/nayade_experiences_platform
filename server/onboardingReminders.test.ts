@@ -71,8 +71,10 @@ describe("recordatorios de primeros pasos", () => {
     p = markStep(p, "activity", "skipped", T0 + DAY);
     c.setProgress(p);
     expect(await runOnboardingReminders(T0 + 3 * DAY, c.deps)).toBe(3);
-    expect(sent[0].html).not.toContain(">Empresa<");
-    expect(sent[0].html).toContain("Primer cliente");
+    expect(sent[0].html).not.toContain(">Identidad de empresa<");
+    expect(sent[0].html).toContain("CRM");
+    expect(sent[0].html).toContain("Datos fiscales y comerciales");
+    expect(sent[0].html).not.toContain("Bienvenida");
     // Asistente completado antes del día 3: no se envía nada
     const done = company();
     done.setProgress(markStep(p, "finish", "done", T0 + 2 * DAY));
