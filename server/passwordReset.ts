@@ -11,7 +11,7 @@ import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import express, { type Request, type Response, type Router } from "express";
 import rateLimit from "express-rate-limit";
-import { and, eq, gt, isNull } from "drizzle-orm";
+import { and, eq, gt, inArray, isNull } from "drizzle-orm";
 import { getDb } from "./db";
 import { users, passwordResetTokens } from "../drizzle/schema";
 import { passwordResetContent } from "./mail/accountTemplates";
@@ -20,6 +20,7 @@ import { logDirectEmail } from "./emailManager";
 import { brandName } from "./tenantBrand";
 import { passwordChangedContent } from "./mail/securityTemplates";
 import { getTrustedBaseUrl } from "./_core/publicUrl";
+import { hashOneTimeToken, oneTimeTokenCandidates } from "./oneTimeToken";
 
 // ─── Configuración ────────────────────────────────────────────────────────────
 const TOKEN_EXPIRY_MINUTES = 60; // El enlace caduca en 1 hora
@@ -87,7 +88,8 @@ export async function requestPasswordReset(rawEmail: string): Promise<"sent" | "
   // Generar token seguro
   const rawToken = crypto.randomBytes(48).toString("hex");
   const expiresAt = new Date(Date.now() + TOKEN_EXPIRY_MINUTES * 60 * 1000);
-  await db.insert(passwordResetTokens).values({ userId: user.id, token: rawToken, expiresAt });
+  // Solo el hash en la BD; el valor en claro va únicamente en el enlace del correo
+  await db.insert(passwordResetTokens).values({ userId: user.id, token: hashOneTimeToken(rawToken), expiresAt });
 
   // Construir URL de reset
   const baseUrl = getTrustedBaseUrl();
@@ -160,7 +162,7 @@ export function createPasswordResetRouter(): Router {
         .from(passwordResetTokens)
         .where(
           and(
-            eq(passwordResetTokens.token, String(token)),
+            inArray(passwordResetTokens.token, oneTimeTokenCandidates(String(token))),
             isNull(passwordResetTokens.usedAt),
             gt(passwordResetTokens.expiresAt, now)
           )
@@ -232,7 +234,7 @@ export function createPasswordResetRouter(): Router {
         .from(passwordResetTokens)
         .where(
           and(
-            eq(passwordResetTokens.token, token),
+            inArray(passwordResetTokens.token, oneTimeTokenCandidates(token)),
             isNull(passwordResetTokens.usedAt),
             gt(passwordResetTokens.expiresAt, now)
           )

@@ -3,6 +3,7 @@
  * Módulo v7.0 — Gestión completa de proveedores y liquidaciones
  */
 import { z } from "zod";
+import { hashOneTimeToken } from "../oneTimeToken";
 import { publicBaseUrl } from "../_core/productIdentity";
 import { isMultiTenant } from "../_core/tenant";
 import { brandSetting, companyName, legacySiteHost, tenantIssuerData } from "../tenantBrand";
@@ -596,14 +597,14 @@ export const suppliersRouter = router({
       if (existing) {
         // Reconvertir usuario existente a proveedor (p. ej. si estaba como partner)
         await db.update(users).set({
-          role: "supplier" as any, inviteToken: token, inviteTokenExpiry: expiry,
+          role: "supplier" as any, inviteToken: hashOneTimeToken(token), inviteTokenExpiry: expiry,
           ...(({ supplierId: input.supplierId, partnerId: null }) as any),
         } as any).where(eq(users.id, existing.id));
       } else {
         await db.insert(users).values({
           openId: `invite_${token.slice(0, 16)}`,
           name, email, role: "supplier" as any,
-          inviteToken: token, inviteTokenExpiry: expiry, inviteAccepted: false, isActive: false,
+          inviteToken: hashOneTimeToken(token), inviteTokenExpiry: expiry, inviteAccepted: false, isActive: false,
           lastSignedIn: new Date(),
         } as any);
         const [nu] = await db.select({ id: users.id }).from(users).where(eq(users.email, email)).limit(1);

@@ -10,6 +10,7 @@
  */
 
 import { z } from "zod";
+import { hashOneTimeToken } from "../oneTimeToken";
 import { companyName } from "../tenantBrand";
 import { publicBaseUrl } from "../_core/productIdentity";
 import { router, permissionProcedure, publicProcedure, employeeProcedure } from "../_core/trpc";
@@ -355,7 +356,7 @@ const employeesRouter = router({
         await db.update(users)
           .set({
             role: "employee" as any,
-            inviteToken: token,
+            inviteToken: hashOneTimeToken(token),
             inviteTokenExpiry: expiry,
             inviteAccepted: false,
           } as any)
@@ -368,7 +369,7 @@ const employeesRouter = router({
           name: employee.fullName,
           email: employee.email,
           role: "employee" as any,
-          inviteToken: token,
+          inviteToken: hashOneTimeToken(token),
           inviteTokenExpiry: expiry,
           inviteAccepted: false,
           isActive: false,
