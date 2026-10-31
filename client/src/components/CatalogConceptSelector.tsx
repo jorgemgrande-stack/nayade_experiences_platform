@@ -8,6 +8,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Search, BookOpen, ChevronDown, ChevronRight } from "lucide-react";
+import { useVocabulary } from "@/lib/vocabulary";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -56,6 +57,7 @@ function CatalogModal({
   onClose: () => void;
   initialExpandKey?: string;
 }) {
+  const voc = useVocabulary();
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<FilterType>("all");
   const [expandedKey, setExpandedKey] = useState<string | null>(initialExpandKey ?? null);
@@ -64,16 +66,21 @@ function CatalogModal({
     { q: search || undefined, limit: 50, sourceType: filter }
   );
 
-  const TYPE_LABELS: Record<string, string> = {
-    experience: "Experiencia",
-    legoPack: "Lego Pack",
-  };
+  const TYPE_LABELS: Record<string, string> = voc.licensed
+    ? { experience: "Producto", legoPack: "Paquete" }
+    : { experience: "Experiencia", legoPack: "Lego Pack" };
 
-  const FILTER_OPTS: { value: FilterType; label: string }[] = [
-    { value: "all", label: "Todos" },
-    { value: "experience", label: "Experiencias" },
-    { value: "legoPack", label: "Lego Packs" },
-  ];
+  const FILTER_OPTS: { value: FilterType; label: string }[] = voc.licensed
+    ? [
+        { value: "all", label: "Todos" },
+        { value: "experience", label: "Productos y servicios" },
+        { value: "legoPack", label: "Paquetes" },
+      ]
+    : [
+        { value: "all", label: "Todos" },
+        { value: "experience", label: "Experiencias" },
+        { value: "legoPack", label: "Lego Packs" },
+      ];
 
   function handleProductClick(p: CatalogProduct) {
     const key = `${p.productType}-${p.id}`;
@@ -282,6 +289,7 @@ export function CatalogConceptSelector({
   placeholder = "Descripción o busca un producto...",
   showBadge = true,
 }: Props) {
+  const voc = useVocabulary();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [catalogOpen, setCatalogOpen] = useState(false);
   const [catalogInitialKey, setCatalogInitialKey] = useState<string | undefined>();
@@ -304,8 +312,8 @@ export function CatalogConceptSelector({
   }, []);
 
   const BADGE_CONFIG: Record<SourceType, { label: string; cls: string }> = {
-    experience: { label: "Experiencia", cls: "bg-blue-500/15 text-blue-400 border-blue-500/30" },
-    legoPack: { label: "Lego Pack", cls: "bg-purple-500/15 text-purple-400 border-purple-500/30" },
+    experience: { label: voc.licensed ? "Producto" : "Experiencia", cls: "bg-blue-500/15 text-blue-400 border-blue-500/30" },
+    legoPack: { label: voc.licensed ? "Paquete" : "Lego Pack", cls: "bg-purple-500/15 text-purple-400 border-purple-500/30" },
     manual: { label: "Manual", cls: "bg-foreground/10 text-foreground/50 border-foreground/20" },
   };
 
@@ -375,7 +383,7 @@ export function CatalogConceptSelector({
                           ? "bg-blue-500/20 text-blue-300"
                           : "bg-purple-500/20 text-purple-300"
                       }`}>
-                        {p.productType === "experience" ? "Experiencia" : "Lego Pack"}
+                        {p.productType === "experience" ? (voc.licensed ? "Producto" : "Experiencia") : (voc.licensed ? "Paquete" : "Lego Pack")}
                       </span>
                       {hasVariants && (
                         <span className="text-[10px] text-orange-400/60">

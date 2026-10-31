@@ -37,6 +37,7 @@ import { legacyDb, legacyPool } from "../_core/legacyDb";
 import { getCapabilityAccess } from "../_core/capabilities/access";
 import { dueTasksFor } from "../crmTasksDb";
 import { localYmd } from "../../shared/crmTagsTasks";
+import { panelVocabulary } from "../panelVocabulary";
 
 const _pool = legacyPool();
 const db = legacyDb();
@@ -448,6 +449,12 @@ export const notificationsRouter = router({
       sourceUpcomingReservations(userId),
       sourceTasks(userId),
     ]);
+
+    // Textos de las secciones según el modo de la empresa (pyme: oportunidades y pedidos)
+    const voc = await panelVocabulary();
+    sLeads.label = voc.leadsUnattended;
+    sUpcoming.label = voc.upcomingOrders;
+    if (voc.licensed) sPending.label = "Cobros pendientes vencidos";
 
     const sections: FeedSection[] = [
       sCancellations,  // critical primero

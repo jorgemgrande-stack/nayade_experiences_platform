@@ -495,7 +495,7 @@ export default function PagesManager() {
                           onCheckedChange={(checked) => upsertPageMutation.mutate({ slug: page.slug, title: page.title, isPublished: checked })}
                         />
                         <Badge variant={page.isPublished ? "default" : "secondary"} className="text-xs">
-                          {page.isPublished ? "Publicada" : "En Desarrollo"}
+                          {page.isPublished ? "Publicada" : "Borrador"}
                         </Badge>
                       </div>
                     </td>
