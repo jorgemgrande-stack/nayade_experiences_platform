@@ -217,10 +217,18 @@ describe("implantación asistida (memoria)", () => {
     expect((await svc.open({ opportunityId: opp.id, solutionKey: "solucion-demo" }, "operator:x")).created).toBe(true);
   });
 
-  it("la solución se lee del catálogo publicado tolerando que aún no exista `catalog.offer`", async () => {
-    const entry = (published: unknown) => ({ getEntry: async () => ({ kind: "product", publication: "published", published }) as never });
-    expect(await solutionFromWebStore(entry({ name: "Hotel", catalog: { commercialStatus: "on_request" } }))("hotel")).toEqual({ key: "hotel", name: "Hotel", mode: null, commercialStatus: "on_request" });
+  it("la solución se lee del catálogo publicado con su modalidad EFECTIVA (la que ve la web)", async () => {
+    const entry = (published: unknown, prices: unknown[] = []) => ({ getEntry: async () => ({ id: 7, kind: "product", publication: "published", published }) as never, listPrices: async () => prices as never });
+    expect(await solutionFromWebStore(entry({ name: "Hotel", catalog: { commercialStatus: "on_request" } }))("hotel")).toEqual({ key: "hotel", name: "Hotel", mode: "assisted", commercialStatus: "on_request" });
     expect((await solutionFromWebStore(entry({ name: "Hotel", catalog: { offer: { modality: "assisted" } } }))("hotel"))?.mode).toBe("assisted");
+    // Regresión 31/10/2026: sin `catalog.offer` y en un estado que no es «on_request», la web lo ofrece asistido y el expediente se abría a null
+    expect((await solutionFromWebStore(entry({ name: "Connect Tax", technicalStatus: "partial", catalog: { commercialStatus: "planned" } }))("connect-tax"))?.mode).toBe("assisted");
+    // Inmediata configurada pero no entregable (técnico parcial): asistida, como en la web
+    expect((await solutionFromWebStore(entry({ name: "X", technicalStatus: "partial", catalog: { commercialStatus: "available", offer: { modality: "immediate", trial: true } } }))("x"))?.mode).toBe("assisted");
+    // Inmediata entregable: se queda en inmediata (el autoservicio no abre expediente)
+    const live = { name: "Y", technicalStatus: "available", catalog: { commercialStatus: "available", offer: { modality: "immediate", checkout: true } } };
+    expect((await solutionFromWebStore(entry(live, [{ status: "approved" }]))("y"))?.mode).toBe("immediate");
+    expect((await solutionFromWebStore(entry(live, [{ status: "draft" }]))("y"))?.mode).toBe("assisted");
     expect(await solutionFromWebStore({ getEntry: async () => null })("x")).toBeNull();
   });
 });

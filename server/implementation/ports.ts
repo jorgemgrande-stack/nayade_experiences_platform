@@ -1,8 +1,9 @@
 /**
  * Puertos de la implantación asistida sobre los servicios existentes (sin duplicarlos):
  *  - inicio: suscripción del contrato (modo sombra: sin cargos reales) con prueba o sin ella, y sus licencias;
- *  - solución: nombre, estado comercial y modalidad de la oferta (`catalog.offer`, si ya existe) del catálogo publicado.
+ *  - solución: nombre, estado comercial y modalidad EFECTIVA de la oferta del catálogo publicado (la misma que ve la web).
  */
+import { effectiveOffer } from "../catalog/commercial/offer";
 import type { CatalogPort } from "../subscriptions/ports";
 import type { ItemSpec, SubscriptionService } from "../subscriptions/service";
 import type { LicensingService } from "../licensing/service";
@@ -51,15 +52,19 @@ export function subscriptionStarter(d: {
   };
 }
 
-/** Solución del catálogo publicado. Tolera que `catalog.offer` (modalidad inmediata o asistida) aún no exista. */
-export function solutionFromWebStore(store: Pick<WebStore, "getEntry">): (key: string) => Promise<SolutionInfo | null> {
+/**
+ * Solución del catálogo publicado con su modalidad EFECTIVA (`effectiveOffer`, la que publica el sitio): sin
+ * `catalog.offer` configurado, o con una inmediata que no puede entregarse, es implantación asistida. Leer solo lo
+ * configurado dejaba sin expediente las solicitudes de productos que la web ofrece como asistidos (31/10/2026).
+ */
+export function solutionFromWebStore(store: Pick<WebStore, "getEntry"> & Partial<Pick<WebStore, "listPrices">>): (key: string) => Promise<SolutionInfo | null> {
   return async (key) => {
     const e = await store.getEntry("product", key);
     if (!e || e.kind !== "product" || e.publication !== "published" || !e.published) return null;
-    const p = e.published as { name?: string; catalog?: { commercialStatus?: string; offer?: { mode?: string; modality?: string } | string } };
-    const offer = p.catalog?.offer;
-    const raw = typeof offer === "string" ? offer : (offer?.mode ?? offer?.modality ?? null);
-    const mode = raw === "assisted" || raw === "immediate" ? raw : null;
+    const p = e.published as { name?: string; technicalStatus?: string | null; catalog?: { commercialStatus?: string | null; offer?: unknown } | null };
+    const prices = store.listPrices ? (await store.listPrices(e.id)).filter((x) => x.status === "approved") : [];
+    const catalog = p.catalog ? { ...p.catalog, offer: p.catalog.offer && typeof p.catalog.offer === "object" ? (p.catalog.offer as object) : null } : null;
+    const mode = effectiveOffer({ technicalStatus: p.technicalStatus, catalog, prices }).modality;
     return { key, name: p.name ?? key, mode, commercialStatus: p.catalog?.commercialStatus ?? null };
   };
 }
