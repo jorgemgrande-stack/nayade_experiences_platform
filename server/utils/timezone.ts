@@ -17,6 +17,19 @@ export function madridDateKey(date: Date = new Date()): string {
 }
 
 /**
+ * Año de calendario en Europe/Madrid: el de la numeración fiscal. `getFullYear()` usa la zona del
+ * servidor (UTC), y entre las 00:00 y la 01:00 (o 02:00 en verano) de Madrid daría otro año.
+ */
+export function madridYear(date: Date = new Date()): number {
+  return Number(madridDateKey(date).slice(0, 4));
+}
+
+/** Mes (1-12) de calendario en Europe/Madrid. */
+export function madridMonth(date: Date = new Date()): number {
+  return Number(madridDateKey(date).slice(5, 7));
+}
+
+/**
  * UTC offset in minutes for Madrid at the given instant.
  * Returns +60 (winter/CET) or +120 (summer/CEST).
  */
