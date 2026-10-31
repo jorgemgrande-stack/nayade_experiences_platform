@@ -182,6 +182,8 @@ describe.skipIf(!URL_)("operaciones con MySQL real (CRM 0035)", () => {
   const IBAN = "ES9121000418450200051332";
   const b64 = (s: string | Buffer) => Buffer.from(s).toString("base64");
   const ids: Record<string, number> = {};
+  // Las dos cuentas se crean a la vez: cuál recibe 57200001 y cuál 57200002 no es fijo
+  let bankCode = "";
   const count = async (sql: string, args: unknown[] = []) => {
     const [rows] = (await pool.query(sql, args)) as unknown as [Array<{ n: number }>];
     return Number(rows[0].n);
@@ -224,6 +226,7 @@ describe.skipIf(!URL_)("operaciones con MySQL real (CRM 0035)", () => {
     const [b1, b2] = await Promise.all([ops.createBankAccount({ name: "CaixaBank", iban: IBAN }, ACTOR), ops.createBankAccount({ name: "BBVA" }, ACTOR)]);
     expect([b1.accountCode, b2.accountCode].sort()).toEqual(["57200001", "57200002"]);
     ids.bank = b1.id;
+    bankCode = b1.accountCode;
     ids.cash = (await ops.createCashAccount({ name: "Caja" }, ACTOR)).id;
   });
 
@@ -315,7 +318,7 @@ describe.skipIf(!URL_)("operaciones con MySQL real (CRM 0035)", () => {
     expect(runs.reduce((a, r) => a + r.created, 0)).toBe(4);
     expect((await ops.recurring()).find((x) => x.id === t.id)!.nextDate).toBe("2027-01-10");
 
-    const cm = await ops.createCashMovement({ cashAccountId: ids.cash, movedOn: "2026-10-03", amountCents: 20_000, description: "Retirada", counterpartAccountCode: "57200001" }, ACTOR);
+    const cm = await ops.createCashMovement({ cashAccountId: ids.cash, movedOn: "2026-10-03", amountCents: 20_000, description: "Retirada", counterpartAccountCode: bankCode }, ACTOR);
     expect(cm).toMatchObject({ movedOn: "2026-10-03", status: "posted" });
     const s = await ops.summary();
     expect(s.cash).toEqual([{ id: ids.cash, name: "Caja", accountCode: "57000001", balanceCents: 20_000 }]);
