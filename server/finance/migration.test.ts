@@ -1,5 +1,5 @@
 /**
- * Las migraciones 0033 (libro), 0035 (operaciones), 0036 (Stripe) y 0037 (gestoría) y el código del módulo son ORDINARIOS para el clasificador de
+ * Las migraciones 0033 (libro), 0035 (operaciones), 0036 (Stripe), 0037 (gestoría) y 0038 (análisis) y el código del módulo son ORDINARIOS para el clasificador de
  * despliegue (scripts/deploy/esRailwayLib): migraciones aditivas (sin palabras prohibidas ni en comentarios), sin
  * borrados en el código de server/finance y sin cambios críticos. Los interruptores que aparecen son NUEVOS
  * (`CP_FINANCE_RECURRING_ENABLED` y `CP_FINANCE_TAX_REMINDERS_ENABLED`, apagados), ordinario porque no existe en la rama base (como lo comprueba
@@ -10,11 +10,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { destructiveMigration, extraordinaryChanges } from "../../scripts/deploy/esRailwayLib";
 import { loadMigrations, validateMigrations } from "../../scripts/db/migrationLib";
-import { MIGRATION_0033, MIGRATION_0035, MIGRATION_0036, MIGRATION_0037 } from "./testkit";
+import { MIGRATION_0033, MIGRATION_0035, MIGRATION_0036, MIGRATION_0037, MIGRATION_0038 } from "./testkit";
 
 const ROOT = path.resolve(__dirname, "../..");
 const rel = (p: string) => path.relative(ROOT, p).split(path.sep).join("/");
-const MIGRATIONS = [MIGRATION_0033, MIGRATION_0035, MIGRATION_0036, MIGRATION_0037];
+const MIGRATIONS = [MIGRATION_0033, MIGRATION_0035, MIGRATION_0036, MIGRATION_0037, MIGRATION_0038];
 const sqlOf = (f: string) => fs.readFileSync(f, "utf8");
 const moduleFiles = fs
   .readdirSync(__dirname)
@@ -32,13 +32,13 @@ const addedDiff = (files: string[]) =>
     })
     .join("\n");
 
-describe("migraciones 0033, 0035, 0036 y 0037 y módulo de finanzas: despliegue ordinario", () => {
+describe("migraciones 0033, 0035, 0036, 0037 y 0038 y módulo de finanzas: despliegue ordinario", () => {
   it("las migraciones son aditivas para el clasificador y válidas para el ejecutor (irreversibles con motivo)", () => {
     for (const f of MIGRATIONS) expect(destructiveMigration(sqlOf(f))).toBeNull();
     const { migrations, errors } = loadMigrations(path.join(ROOT, "db/crm/migrations"));
     expect(errors).toEqual([]);
     expect(validateMigrations(migrations)).toEqual([]);
-    for (const id of ["0033_finance_ledger", "0035_finance_operations", "0036_finance_stripe", "0037_finance_tax"]) expect(migrations.find((x) => x.id === id)!.irreversible).toBe(true);
+    for (const id of ["0033_finance_ledger", "0035_finance_operations", "0036_finance_stripe", "0037_finance_tax", "0038_finance_analysis"]) expect(migrations.find((x) => x.id === id)!.irreversible).toBe(true);
   });
 
   it("sin palabras prohibidas en todo el fichero (también comentarios y literales) ni ';' dentro de literales", () => {
@@ -83,6 +83,18 @@ describe("migraciones 0033, 0035, 0036 y 0037 y módulo de finanzas: despliegue 
     for (const k of ["uq_fin_tax_obligation_key (obligation_key)", "uq_fin_payroll (period, employee_alias)", "uq_fin_tax_deferral_installment (deferral_id, number)"]) expect(sql).toContain(`UNIQUE KEY ${k}`);
     // Sin datos reales: el NIF del emisor solo se precarga en tiempo de ejecución, nunca en la migración
     expect(sql).not.toMatch(/B26987875/);
+  });
+
+  it("0038 solo crea las tablas de la revisión diaria, añade la columna de coste directo (NULL, sin escribir filas) y un índice", () => {
+    const sql = sqlOf(MIGRATION_0038);
+    const stmts = sql
+      .replace(/--[^\n]*/g, "")
+      .split(";")
+      .map((s) => s.trim().replace(/\s+/g, " "))
+      .filter(Boolean);
+    expect(stmts.map((s) => s.split(" (")[0])).toEqual(["CREATE TABLE fin_daily_reviews", "CREATE TABLE fin_daily_review_log", "ALTER TABLE fin_expense_categories ADD COLUMN is_direct_cost TINYINT(1) NULL", "CREATE INDEX ix_fin_expense_registered ON fin_expenses"]);
+    expect(sql).not.toMatch(/INSERT INTO/i);
+    expect(sql).toContain("UNIQUE KEY uq_fin_daily_review_day (review_day)");
   });
 
   it("el código de server/finance no borra datos y nada del conjunto es extraordinario", () => {

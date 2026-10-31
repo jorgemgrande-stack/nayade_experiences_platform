@@ -123,6 +123,8 @@ import { FinanceTaxService } from "../finance/taxService";
 import { MysqlFinanceTaxStore, finTaxTablesReady } from "../finance/taxStore";
 import { MysqlFiscalInvoiceSource } from "../finance/taxSources";
 import { runTaxReminders, taxRemindersEnabled } from "../finance/taxReminders";
+import { FinanceAnalysisService } from "../finance/analysisService";
+import { MysqlFinanceAnalysisStore, MysqlPaymentEventSource, finAnalysisTablesReady } from "../finance/analysisStore";
 import { ISSUER } from "../stripe/issuer";
 import { ConsentService, MysqlConsentStore, commsTablesReady } from "../communications/consent";
 import { LinkSigner, linkSecretFromDb } from "../communications/links";
@@ -634,6 +636,12 @@ async function main() {
       : null;
   if (financeOps) console.log(JSON.stringify({ ctx: "FinanceTax", mounted: !!financeTax, ...(financeTax ? { reminders: taxRemindersEnabled(process.env) } : { reason: "migration_0037_missing" }) }));
   if (financeOps && financeTax) financeOps.useTaxDocumentOwners((type, id) => financeTax.documentOwnerExists(type, id));
+  // Control diario, informes y análisis (CRM 0038): lectura de las fases 1–3; solo guarda la revisión diaria y la marca de coste directo
+  const financeAnalysis =
+    financeOps && finance && crmPool && (await finAnalysisTablesReady(crmPool))
+      ? new FinanceAnalysisService({ store: new MysqlFinanceAnalysisStore(crmPool), finance, ledger: new MysqlFinanceStore(crmPool), ops: new MysqlFinanceOpsStore(crmPool), stripe: financeStripe ? { service: financeStripe, store: new MysqlFinanceStripeStore(crmPool) } : null, tax: financeTax, invoices: invoicing ? new MysqlOwnInvoiceDirectory(crmPool, external?.store.mode ?? "test") : null, paymentEvents: new MysqlPaymentEventSource(crmPool, commercialEnvironment) })
+      : null;
+  if (financeOps) console.log(JSON.stringify({ ctx: "FinanceAnalysis", mounted: !!financeAnalysis, ...(financeAnalysis ? {} : { reason: "migration_0038_missing" }) }));
   // Borradores de gastos recurrentes: tarea APAGADA salvo CP_FINANCE_RECURRING_ENABLED=1 (una réplica por tick, GET_LOCK)
   if (financeOps && crmPool) startFinanceRecurringScheduler({ ops: financeOps, lock: mysqlAdvisoryLock(crmPool), env: process.env });
   if (crm && crmPool && (await settingsTablesReady(crmPool))) {
@@ -851,6 +859,7 @@ async function main() {
     financeOps,
     financeStripe,
     financeTax,
+    financeAnalysis,
     communications,
     notifications: notificationsFromEnv(process.env),
     mail: {

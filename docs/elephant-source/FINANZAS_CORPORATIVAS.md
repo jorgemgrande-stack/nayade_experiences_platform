@@ -4,9 +4,10 @@ Contabilidad, gastos, proveedores, bancos y caja de **IRON ELEPHANT CONSULTING, 
 Vive en el **plano de control** del Core (`server/finance/`) y se usa desde el CRM (admin.bigelephant.es). Los tenants
 son clientes de Big Elephant y nada más: el módulo nunca lee ni escribe sus bases.
 
-Estado: **fase 1A (libro contable)**, **fase 1B (operaciones)**, **fase 2 (Stripe y conciliación)** y **fase 3
-(gestoría e impuestos)** implementadas. Migraciones `db/crm/migrations/0033_finance_ledger.sql`,
-`0035_finance_operations.sql`, `0036_finance_stripe.sql` y `0037_finance_tax.sql`.
+Estado: **fase 1A (libro contable)**, **fase 1B (operaciones)**, **fase 2 (Stripe y conciliación)**, **fase 3
+(gestoría e impuestos)** y **fase 4 (control diario, informes y análisis)** implementadas. Migraciones
+`db/crm/migrations/0033_finance_ledger.sql`, `0035_finance_operations.sql`, `0036_finance_stripe.sql`,
+`0037_finance_tax.sql` y `0038_finance_analysis.sql`.
 
 ## Arquitectura
 
@@ -494,6 +495,102 @@ en `fin_audit_log`.
 11. **Viernes Santo** se trata como festivo nacional; el resto de festivos autonómicos y locales, por configuración.
 12. **303 mensual de julio:** vencimiento el 30 de agosto según la regla general implementada; confirmar con la gestoría.
 
+## Fase 4: control diario, informes y análisis
+
+Es LECTURA de las fases 1–3: los informes salen del libro (asientos contabilizados, agregados en la BD con `GROUP BY` por
+mes, cuenta, origen, centro, proveedor y categoría; nunca se cargan todas las líneas), de las operaciones, de Stripe y de
+la gestoría. No hay fuentes paralelas ni copias. Solo se guardan la **revisión diaria** (con bitácora) y la **marca de
+coste directo** de las categorías. `null` = no disponible (nunca 0). Migración `0038_finance_analysis.sql`.
+
+| Pieza | Fichero | Qué hace |
+|---|---|---|
+| Tipos 4 | `server/finance/analysisTypes.ts` | Hechos agregados del libro, tesorería, Stripe y transferencias por mes, revisión diaria y su bitácora |
+| Reglas puras 4 | `server/finance/analysisRules.ts` | Periodos y comparativas, partidas del PGC (pérdidas y ganancias y balance con cuadre), tesorería por naturaleza, previsión, antigüedad, gastos agrupados, Revenue & Margin, conversión, coste directo, avisos y CSV |
+| Almacén 4 | `server/finance/analysisStore.ts` | `MemoryFinanceAnalysisStore` y `MysqlFinanceAnalysisStore` (agregaciones en SQL, revisión única por día, nota con escritura condicional); `MysqlPaymentEventSource` (registro comercial en solo lectura); `finAnalysisTablesReady` |
+| Servicio 4 | `server/finance/analysisService.ts` | Control diario y revisión, informes y análisis; consume las métricas comerciales sin recalcularlas |
+| API 4 | `server/finance/analysisApi.ts` | `/finance/daily*`, `/finance/reports/*`, `/finance/analytics/*`; la marca de coste directo va en `PATCH /finance/categories/:id` (`opsApi.ts`) |
+
+Arranque: con las tablas de 0038 (`finAnalysisTablesReady`) y las operaciones montadas; si no,
+`{ ctx: "FinanceAnalysis", mounted: false, reason: "migration_0038_missing" }` y `/finance/daily` responde 404 (el CRM
+oculta esas páginas con `hiddenRoutes`). Sin Stripe (0036), lo que depende de Stripe o de la conciliación por factura es
+`null`; sin la gestoría (0037), las obligaciones fiscales son `null`.
+
+### Decisiones
+
+- **Cuenta de resultados:** asientos contabilizados sin regularización, cierre ni apertura. Partidas del modelo abreviado
+  del PGC de pymes por el **prefijo más largo** de la cuenta (toda cuenta de los grupos 6 y 7 cae en una partida: el total
+  coincide siempre con sumas y saldos). Importes con el signo de su efecto en el resultado (ingresos +, gastos −). Rango
+  en meses completos (máximo 36); comparación con el periodo anterior de la misma duración (`compare=previous`) o con el
+  mismo del año anterior (`compare=year`), periodo a periodo. Con `costCenter` solo cuentan las líneas imputadas a ese
+  centro (las facturas emitidas no llevan centro). Desglose por cuenta en cada partida: el CRM enlaza al mayor
+  (`/finance/ledger/:code?from&to`). Numeración de las partidas orientativa (1–18 y A.1–A.4).
+- **Balance:** saldos a la fecha sin los asientos de cierre y apertura (se anulan entre sí). Grupos 1, 2 y 3 con partida
+  fija; grupos 4 y 5 según el signo del saldo de cada subcuenta (un banco en descubierto va a deudas a corto plazo; un
+  cliente con saldo acreedor, a acreedores). Patrimonio neto con el resultado del ejercicio en curso (grupos 6 y 7 del
+  año) y el pendiente de aplicar (129 y los grupos 6 y 7 de ejercicios anteriores sin regularizar). Tras la regularización
+  el resultado aparece en 129. El cuadre (`check`) se muestra siempre.
+- **Tesorería:** cuentas 57… (bancos 572000NN, caja 570000NN y Stripe 5720). Saldo inicial = saldo anterior + asientos
+  del diario APE del rango (aperturas manuales). Entradas y salidas por cuenta (los traspasos entre cuentas de tesorería,
+  como un payout, se cuentan en la cuenta y aparte como `internal…`). Por naturaleza, según la contrapartida del asiento:
+  `customers` (43, 44, 438, 70), `suppliers` (40, 41), `taxes` (47 salvo 465/476, 63), `payroll` (465, 476, 64) y
+  `other`. Identidad comprobada: saldo final − inicial = entradas − salidas.
+- **Previsión (`isForecast: true`):** saldo de tesorería de hoy; cobros de facturas propias pendientes a 30 días de su
+  fecha (las ya vencidas NO se proyectan: van en `excluded`); pagos de gastos registrados pendientes a su vencimiento (los
+  vencidos, mañana); obligaciones fiscales con borrador «a ingresar» a su vencimiento (sin borrador, se listan sin importe).
+- **Antigüedad:** cobros por cliente desde la fecha de la factura (las facturas propias no tienen vencimiento), con lo
+  cobrado hasta la fecha pedida (Stripe y transferencias); pagos por proveedor desde el vencimiento (o la fecha de la
+  factura), con los pagos hasta esa fecha. Tramos `current` (no vencido), `d0_30`, `d31_60`, `d61_90`, `d90_plus`.
+- **Gastos:** grupo 6 del libro; por categoría (la del gasto cuyo asiento o reversión contiene la línea; el resto, por su
+  cuenta «sin categoría»), por centro de coste o por proveedor.
+- **Coste directo:** `fin_expense_categories.is_direct_cost` NULL = «según cuenta»: coste directo si la cuenta es 626 o el
+  nombre es de hosting o infraestructura. Por defecto lo son «Hosting e infraestructura en la nube», «Comisiones de
+  pasarelas de pago» y «Comisiones bancarias» (626); el operador lo cambia con `PATCH /finance/categories/:id
+  {isDirectCost}` (`null` vuelve a «según cuenta»). La migración no escribe filas.
+- **Revenue & Margin:** devengado = 70x del libro; cobrado = cobros de Stripe netos de reembolsos (bruto) + transferencias
+  conciliadas; comisiones de Stripe = 626 de origen `stripe` (y su % sobre lo cobrado); margen bruto = devengado −
+  comisiones − costes directos; estructura = resto del grupo 6; resultado = devengado + otros ingresos − grupo 6 (igual que
+  la cuenta de resultados). Las métricas comerciales (MRR/ARR de `/revenue/metrics`, ventana de 30 días, y el top 10 de
+  empresas por margen de `/resources/profitability`, 365 días) se consumen con las mismas funciones del plano de control,
+  aparte y rotuladas «no contables»; la rentabilidad exige además `usage:read` (como su ruta).
+- **Conversion Health:** cohorte por mes de la factura (porcentajes sobre el importe facturado): cobrado, liquidado
+  (`liquidada` o `en_banco`) y en banco, con la cadena de conciliación de la fase 2; plazos medios con sus fechas (DSO
+  factura→cobro, cobro→disponible —la última disponibilidad de los cobros positivos—, payout→banco). Por mes de la
+  transacción: reembolsos y disputas netas sobre los cobros, cobros sin factura propia y tasa de pagos fallidos
+  (`payment.failed` y `renewal.failed` frente a `payment.succeeded` y `renewal.paid` de `commercial_events`, del entorno
+  comercial, en solo lectura y agregados en la BD; `order.dunning_notice` no cuenta). `/revenue/metrics` no publica embudo
+  prueba → pago: `commercialFunnel: null`.
+- **Control diario:** fecha por defecto hoy (Madrid). Facturas emitidas, cobros de Stripe, payouts con llegada y si están
+  en banco, movimientos del día y pendientes de conciliar con antigüedad, gastos registrados ese día, pagos vencidos, de
+  hoy y de 7 días, facturas pendientes de cobro con más de 30 días, incidencias de Stripe, obligaciones fiscales en 15 días
+  y vencidas, y asientos en borrador; avisos derivados. **Revisión** idempotente: la primera guarda quién, cuándo, la nota y
+  la instantánea de los recuentos; después solo cambia la nota (escritura condicional sobre la anterior: dos ediciones
+  simultáneas no se pisan, la segunda recibe `conflict`), y cada paso queda en `fin_daily_review_log` y en
+  `fin_audit_log` (`daily.review`, `daily.note`). Un día futuro no se revisa.
+- **CSV:** `GET /finance/reports/:report.csv` para `pnl`, `balance`, `cashflow`, `aging`, `expenses`, `daily`,
+  `revenue-margin` y `conversion-health` (mismos parámetros que su informe; «;», BOM, CRLF, euros con coma).
+
+### API de la fase 4 (formas exactas)
+
+| Ruta | Permiso | Respuesta |
+|---|---|---|
+| `GET /finance/daily?date` | lectura | `{date, today, counts, alerts, invoices, stripe, payouts, bank, expenses, receivables, tax, entries:{drafts}, review}` |
+| `POST /finance/daily/:date/review {note?}` | operador | `201` o `200` `{item: Review & {log}, created}` |
+| `GET /finance/daily/reviews?from&to&limit&offset` | lectura | `{items: Review[], total}` |
+| `GET /finance/reports/pnl?from&to&granularity&compare&costCenter` | lectura | `{from, to, granularity, costCenter, periods, compare, lines, result, notes}` |
+| `GET /finance/reports/balance?date` | lectura | `{date, assets, equityAndLiabilities, check, result}` |
+| `GET /finance/reports/cashflow?from&to&forecastDays` | lectura | `{from, to, accounts, totals, months, byNature, forecast}` |
+| `GET /finance/reports/aging?side&date` | lectura | `{side, date, buckets, totals, parties, basis}` |
+| `GET /finance/reports/expenses?from&to&groupBy&compare` | lectura | `{from, to, groupBy, months, compare, items, totals}` |
+| `GET /finance/reports/:report.csv?…` | lectura | CSV |
+| `GET /finance/analytics/revenue-margin?year` | lectura (+ `usage:read` para el top de empresas) | `{year, months, totals, ytd, definitions, commercial}` |
+| `GET /finance/analytics/conversion-health?from&to` | lectura | `{from, to, asOf, months, totals, truncated, commercialFunnel, notes}` |
+| `GET /finance/categories` · `PATCH /finance/categories/:id {…, isDirectCost}` | lectura · gestión | cada categoría con `isDirectCost` (bool o null) y `directCost` (resuelta) |
+
+Valores: `granularity` = `month` | `quarter` | `year`; `compare` = `none` | `previous` | `year`; `forecastDays` = 0, 30,
+60 o 90 (90 por defecto; 0 = sin previsión); `side` = `receivable` | `payable`; `groupBy` = `category` | `costCenter` |
+`supplier`. «Operador» = `billing:write` + sesión de operador. El detalle de cada objeto está en las pruebas de formas
+(`server/finance/analysisApi.test.ts`).
+
 ## Permisos (provisionales)
 
 Añadir ámbitos nuevos toca ficheros críticos del plano de control, así que la fase 1 usa los existentes, centralizados
@@ -505,6 +602,9 @@ en `server/finance/permissions.ts`:
 | Gestión: centros, categorías, proveedores, borradores de gastos, documentos, recurrentes, cuentas bancarias y cajas, importar extractos e informes de Stripe, ignorar movimientos | `billing:write` |
 | Contabilizar o revertir: asientos manuales, sincronizar facturas, registrar y anular gastos, pagos y su reversión, conciliar y desvincular (también payouts y cobros por transferencia), contabilizar Stripe, revisar incidencias, movimientos de caja | `billing:write` + sesión de operador (nunca un token de servicio) |
 | Fase 3: calendario, borradores, presentación y pago registrados, nóminas, aplazamientos, expedientes, ajustes del 200 | `billing:write` + sesión de operador |
+| Fase 4: consulta del control diario, informes, análisis y sus CSV | `billing:read` (el top de empresas por rentabilidad, además `usage:read`) |
+| Fase 4: marca de coste directo de las categorías | `billing:write` |
+| Fase 4: revisión diaria (y su nota) | `billing:write` + sesión de operador |
 | Cerrar/reabrir periodos y cerrar ejercicios, plan contable (alta de ejercicios: solo `billing:write`), configuración de Stripe, configuración fiscal, reapertura de lo presentado y cierre del trimestre fiscal | `billing:write` + sesión de operador + rol `admin` o `superadmin` |
 
 El alta de una cuenta bancaria o de una caja crea su subcuenta en el plan contable desde el servicio (alta derivada): no
@@ -518,4 +618,5 @@ Plan: en una PR protegida aparte, ámbitos propios (`finance:read`, `finance:wri
 - **2 · Cobros y conciliación:** implementada (ver arriba). Pendiente: lector por API de Stripe (punto de extensión).
 - **3 · Gestoría e impuestos:** implementada (ver arriba). Pendiente: ejercicio no natural, 303 mensual afinado,
   autoliquidación de la ISP de gastos de la UE y asiento del gasto por Impuesto sobre Sociedades.
-- **4 · Análisis:** informes de resultados, tesorería y previsiones.
+- **4 · Análisis:** implementada (ver arriba). Pendiente: embudo comercial prueba → pago cuando `/revenue/metrics` lo
+  publique, y vencimiento propio de las facturas emitidas (hoy la antigüedad y la previsión cuentan desde su fecha).
