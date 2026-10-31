@@ -144,10 +144,18 @@ describe.skipIf(!URL_)("almacén de Stripe con MySQL real", () => {
     await expect(store.linkCustomer({ companyId: liveCompany, tenantId: null, stripeCustomerId: "cus_test_L2", now })).rejects.toMatchObject({ name: "StripeStoreError", code: "mode_mismatch" });
     expect(await live.customerByCompany(companyId)).toBeNull();
 
-    // Precios: el enlace de pruebas no existe para live y su clave única sigue ocupada
+    // Precios (0040): el enlace de pruebas no existe para live, y live enlaza el MISMO precio de la web con su Price y la
+    // misma lookup_key sin chocar con el de pruebas (production conserva los de pruebas en la misma base)
     expect(await live.listPrices()).toEqual([]);
     expect(await live.priceForWebPrice(webPriceId)).toBeNull();
-    await expect(live.upsertPrice({ webPriceId, stripeProductId: "prod_live_A", stripePriceId: "price_live_A", lookupKey: "es:live:a", now })).rejects.toThrow(StripeStoreError);
+    const testLink = (await store.listPrices()).find((p) => p.webPriceId === webPriceId)!;
+    expect(testLink).toBeTruthy();
+    await live.upsertPrice({ webPriceId, stripeProductId: "prod_live_A", stripePriceId: "price_live_A", lookupKey: testLink.lookupKey, now });
+    expect(await live.priceForWebPrice(webPriceId)).toMatchObject({ stripePriceId: "price_live_A", lookupKey: testLink.lookupKey });
+    expect(await store.priceForWebPrice(webPriceId)).toMatchObject({ stripePriceId: testLink.stripePriceId });
+    // Repetir es idempotente; otro Price para el mismo precio y modo, no
+    await live.upsertPrice({ webPriceId, stripeProductId: "prod_live_A", stripePriceId: "price_live_A", lookupKey: testLink.lookupKey, now });
+    await expect(live.upsertPrice({ webPriceId, stripeProductId: "prod_live_A", stripePriceId: "price_live_B", lookupKey: testLink.lookupKey, now })).rejects.toThrow(StripeStoreError);
 
     // Sesiones
     await live.insertSession({ orderId: liveOrder, stripeSessionId: "cs_live_L1", idempotencyKey: "k-live-l1", priceIds: ["price_live_A"], status: "open", paymentStatus: "unpaid", expiresAt: now - 1, createdAt: now, completedAt: null });
