@@ -722,12 +722,12 @@ jobs:
         if: inputs.action == 'preparar-production'
         run: pnpm exec tsx scripts/deploy/esRailway.ts deploy --env "${ES_ENV}" --service backup-job --dir "${RUNNER_TEMP}/export" --sha "${ES_DEPLOY_SHA}"
 
-      - name: "Preparar production 3/4 — copia, verificación en el bucket y prueba de restauración de Skibox (base nueva)"
+      - name: "Preparar production 3/4 — copia, verificación en el bucket y prueba de restauración de una empresa con copia verificada (base nueva)"
         if: inputs.action == 'preparar-production'
         run: |
           pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --command "node dist-cp/backup-job.js run"
           pnpm exec tsx scripts/deploy/esRailway.ts backup-check --env "${ES_ENV}"
-          pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --command "node dist-cp/backup-job.js restore-tenant t5-skibox --apply"
+          pnpm exec tsx scripts/deploy/esRailway.ts drill --env "${ES_ENV}" --command "node dist-cp/backup-job.js restore-tenant --any --apply"
 
       - name: "Preparar production 4/4 — simulación de todas las migraciones (plataforma y empresas; no aplica nada)"
         if: inputs.action == 'preparar-production'

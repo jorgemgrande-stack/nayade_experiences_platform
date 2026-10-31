@@ -15,8 +15,10 @@ describe("actualización de production", () => {
   it("prueba de restauración solo en una base NUEVA (nunca --switch)", () => {
     expect(isAllowedDrill("node dist-cp/backup-job.js restore-tenant t5-skibox --apply")).toBe(true);
     expect(isAllowedDrill("node dist-cp/backup-job.js restore-tenant t5-skibox --apply --switch")).toBe(false);
+    expect(isAllowedDrill("node dist-cp/backup-job.js restore-tenant --any --apply")).toBe(true);
+    expect(isAllowedDrill("node dist-cp/backup-job.js restore-tenant --any --apply --switch")).toBe(false);
     expect(isAllowedDrill("node dist-cp/backup-job.js restore-platform crm --apply")).toBe(false);
-    expect(DRILL_ALLOWED.length).toBe(8);
+    expect(DRILL_ALLOWED.length).toBe(16);
   });
 
   it("el Core de production usa la referencia al bucket de ficheros", () => {
@@ -27,7 +29,9 @@ describe("actualización de production", () => {
     const p = steps("preparar-production");
     expect(p).not.toMatch(/registry apply|crm apply|migrate-tenants[^"\n]*--apply/);
     expect(p).toContain("backup-check");
-    expect(p).toContain('restore-tenant t5-skibox --apply"');
+    // Sin empresa fija (Skibox es de prueba y se retirará): la primera con copia verificada
+    expect(p).toContain('restore-tenant --any --apply"');
+    expect(p).not.toContain("t5-skibox");
     expect(p).toContain("registry plan");
     expect(p).not.toContain("--switch");
   });
