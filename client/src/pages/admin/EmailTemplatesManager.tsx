@@ -2,6 +2,7 @@ import { useState } from "react";
 import AdminLayout from "@/components/AdminLayout";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
+import { useVocabulary } from "@/lib/vocabulary";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -49,6 +50,9 @@ interface CreateForm {
 }
 
 export default function EmailTemplatesManager() {
+  // Nombres de categoría y ejemplos según el modo de la empresa (pedidos en una pyme, reservas en la instalación propia)
+  const voc = useVocabulary();
+  const categoryLabels: Record<string, string> = { ...CATEGORY_LABELS, reservas: voc.orders, ticketing: voc.licensed ? "Cupones" : CATEGORY_LABELS.ticketing };
   const utils = trpc.useUtils();
   const [activeCategory, setActiveCategory] = useState<Category>("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -123,7 +127,7 @@ export default function EmailTemplatesManager() {
   const categories: { id: Category; label: string; count: number }[] = [
     { id: "all", label: "Todas", count: templates?.length ?? 0 },
     ...["reservas","presupuestos","anulaciones","tpv","ticketing","sistema"].map(c => ({
-      id: c as Category, label: CATEGORY_LABELS[c] ?? c,
+      id: c as Category, label: categoryLabels[c] ?? c,
       count: templates?.filter(t => t.category === c).length ?? 0,
     })).filter(c => c.count > 0),
   ];
@@ -192,7 +196,7 @@ export default function EmailTemplatesManager() {
                   </div>
                   <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{tpl.description}</p>
                   <div className="mt-1 flex flex-wrap gap-1">
-                    <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${CATEGORY_COLORS[tpl.category] ?? "bg-gray-100 text-gray-700"}`}>{CATEGORY_LABELS[tpl.category] ?? tpl.category}</span>
+                    <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${CATEGORY_COLORS[tpl.category] ?? "bg-gray-100 text-gray-700"}`}>{categoryLabels[tpl.category] ?? tpl.category}</span>
                     <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${RECIPIENT_COLORS[tpl.recipient] ?? "bg-gray-100 text-gray-700"}`}>{RECIPIENT_LABELS[tpl.recipient] ?? tpl.recipient}</span>
                     {!(tplAny.isActive as boolean) && <span className="rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-700">Inactiva</span>}
                   </div>
@@ -227,7 +231,7 @@ export default function EmailTemplatesManager() {
                   <Label>Categoria</Label>
                   <Select value={createForm.category} onValueChange={v => setCreateForm(f => ({ ...f, category: v }))}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>{Object.entries(CATEGORY_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}</SelectContent>
+                    <SelectContent>{Object.entries(categoryLabels).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}</SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-1">
@@ -242,16 +246,16 @@ export default function EmailTemplatesManager() {
                   </Select>
                 </div>
                 <div className="space-y-1">
-                  <Label>Titulo de cabecera</Label>
-                  <Input placeholder="ej: Bienvenido!" value={createForm.headerTitle} onChange={e => setCreateForm(f => ({ ...f, headerTitle: e.target.value }))} />
+                  <Label>Título de cabecera</Label>
+                  <Input placeholder="ej: ¡Bienvenido!" value={createForm.headerTitle} onChange={e => setCreateForm(f => ({ ...f, headerTitle: e.target.value }))} />
                 </div>
                 <div className="space-y-1">
-                  <Label>Subtitulo de cabecera</Label>
-                  <Input placeholder="ej: Tu experiencia empieza aqui" value={createForm.headerSubtitle} onChange={e => setCreateForm(f => ({ ...f, headerSubtitle: e.target.value }))} />
+                  <Label>Subtítulo de cabecera</Label>
+                  <Input placeholder={voc.licensed ? "ej: Gracias por confiar en nosotros" : "ej: Tu experiencia empieza aquí"} value={createForm.headerSubtitle} onChange={e => setCreateForm(f => ({ ...f, headerSubtitle: e.target.value }))} />
                 </div>
                 <div className="space-y-1 col-span-2">
-                  <Label>Descripcion interna</Label>
-                  <Input placeholder="Para que se usa esta plantilla" value={createForm.description} onChange={e => setCreateForm(f => ({ ...f, description: e.target.value }))} />
+                  <Label>Descripción interna</Label>
+                  <Input placeholder="Para qué se usa esta plantilla" value={createForm.description} onChange={e => setCreateForm(f => ({ ...f, description: e.target.value }))} />
                 </div>
                 <div className="space-y-1 col-span-2">
                   <Label>Cuerpo HTML <span className="text-red-500">*</span></Label>
@@ -298,15 +302,15 @@ export default function EmailTemplatesManager() {
                     <Input value={editForm.subject} onChange={e => setEditForm(f => f ? { ...f, subject: e.target.value } : f)} />
                   </div>
                   <div className="space-y-1">
-                    <Label>Titulo de cabecera</Label>
+                    <Label>Título de cabecera</Label>
                     <Input value={editForm.headerTitle} onChange={e => setEditForm(f => f ? { ...f, headerTitle: e.target.value } : f)} />
                   </div>
                   <div className="space-y-1">
-                    <Label>Subtitulo de cabecera</Label>
+                    <Label>Subtítulo de cabecera</Label>
                     <Input value={editForm.headerSubtitle} onChange={e => setEditForm(f => f ? { ...f, headerSubtitle: e.target.value } : f)} />
                   </div>
                   <div className="space-y-1 col-span-2">
-                    <Label>Descripcion interna</Label>
+                    <Label>Descripción interna</Label>
                     <Input value={editForm.description} onChange={e => setEditForm(f => f ? { ...f, description: e.target.value } : f)} />
                   </div>
                   <div className="space-y-1 col-span-2">
@@ -342,7 +346,7 @@ export default function EmailTemplatesManager() {
                   {selectedTemplate && (
                     <>
                       <span className="text-sm font-medium truncate">{selectedTemplate.name}</span>
-                      <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${CATEGORY_COLORS[selectedTemplate.category] ?? ""}`}>{CATEGORY_LABELS[selectedTemplate.category] ?? selectedTemplate.category}</span>
+                      <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${CATEGORY_COLORS[selectedTemplate.category] ?? ""}`}>{categoryLabels[selectedTemplate.category] ?? selectedTemplate.category}</span>
                       <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${RECIPIENT_COLORS[selectedTemplate.recipient] ?? ""}`}>{RECIPIENT_LABELS[selectedTemplate.recipient] ?? selectedTemplate.recipient}</span>
                       {(selectedTemplate as Record<string,unknown>).isCustom && <span className="shrink-0 rounded-full bg-violet-100 px-1.5 py-0.5 text-[10px] font-medium text-violet-700">Custom</span>}
                     </>

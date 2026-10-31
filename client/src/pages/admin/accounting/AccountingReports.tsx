@@ -5,6 +5,7 @@
 import { useState } from "react";
 import AdminLayout from "@/components/AdminLayout";
 import { trpc } from "@/lib/trpc";
+import { useVocabulary } from "@/lib/vocabulary";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -62,6 +63,8 @@ function CustomTooltip({ active, payload, label }: any) {
 
 // ─── Componente principal ─────────────────────────────────────────────────────
 export default function AccountingReports() {
+  // REAV (agencias de viaje) solo con su módulo; la instalación propia lo conserva
+  const voc = useVocabulary();
   const today = new Date();
   const firstOfMonth = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().slice(0, 10);
   const todayStr = today.toISOString().slice(0, 10);
@@ -209,6 +212,7 @@ export default function AccountingReports() {
                 </div>
               </CardContent>
             </Card>
+            {voc.showReav && (
             <Card>
               <CardContent className="pt-5">
                 <div className="flex items-center gap-3">
@@ -222,6 +226,7 @@ export default function AccountingReports() {
                 </div>
               </CardContent>
             </Card>
+            )}
           </div>
 
           {/* Gráfica de ventas por día */}
@@ -342,7 +347,7 @@ export default function AccountingReports() {
                       <Bar dataKey="total"   name="Total"        fill="#f97316" radius={[4, 4, 0, 0]} />
                       <Bar dataKey="taxBase" name="Base imponible" fill="#3b82f6" radius={[4, 4, 0, 0]} />
                       <Bar dataKey="iva"     name="IVA"           fill="#22c55e" radius={[4, 4, 0, 0]} />
-                      <Bar dataKey="reav"    name="Margen REAV"   fill="#a855f7" radius={[4, 4, 0, 0]} />
+                      {voc.showReav && <Bar dataKey="reav"    name="Margen REAV"   fill="#a855f7" radius={[4, 4, 0, 0]} />}
                     </BarChart>
                   </ResponsiveContainer>
 
@@ -355,7 +360,7 @@ export default function AccountingReports() {
                           <th className="text-right py-2 px-3 text-muted-foreground font-semibold">Total</th>
                           <th className="text-right py-2 px-3 text-muted-foreground font-semibold">Base IVA</th>
                           <th className="text-right py-2 px-3 text-muted-foreground font-semibold">IVA</th>
-                          <th className="text-right py-2 px-3 text-muted-foreground font-semibold">Margen REAV</th>
+                          {voc.showReav && <th className="text-right py-2 px-3 text-muted-foreground font-semibold">Margen REAV</th>}
                           <th className="text-right py-2 px-3 text-muted-foreground font-semibold">Operaciones</th>
                         </tr>
                       </thead>
@@ -371,7 +376,7 @@ export default function AccountingReports() {
                             <td className="py-2 px-3 text-right font-semibold">{fmtEur(f.total)}</td>
                             <td className="py-2 px-3 text-right text-muted-foreground">{fmtEur(f.taxBase)}</td>
                             <td className="py-2 px-3 text-right text-muted-foreground">{fmtEur(f.iva)}</td>
-                            <td className="py-2 px-3 text-right text-purple-600 dark:text-purple-400">{fmtEur(f.reav)}</td>
+                            {voc.showReav && <td className="py-2 px-3 text-right text-purple-600 dark:text-purple-400">{fmtEur(f.reav)}</td>}
                             <td className="py-2 px-3 text-right text-muted-foreground">{f.count}</td>
                           </tr>
                         ))}
@@ -405,7 +410,7 @@ export default function AccountingReports() {
                       <ArrowUpRight className="w-3 h-3" /> Ingresos pendientes
                     </p>
                     <p className="text-xl font-bold text-emerald-700">{fmtEurLocal(cf.pendingIncome)}</p>
-                    <p className="text-xs text-muted-foreground">{cf.pendingReservationCount} reservas confirmadas</p>
+                    <p className="text-xs text-muted-foreground">{cf.pendingReservationCount} {voc.ordersLower} {voc.agree("confirmados", "confirmadas")}</p>
                   </div>
                   <div className="rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 p-3">
                     <p className="text-xs text-amber-600 font-medium mb-1 flex items-center gap-1">

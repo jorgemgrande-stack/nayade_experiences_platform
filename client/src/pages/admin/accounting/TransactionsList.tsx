@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import { formatPaymentMethod } from "@/lib/labels";
 import AdminLayout from "@/components/AdminLayout";
 import { trpc } from "@/lib/trpc";
+import { useVocabulary } from "@/lib/vocabulary";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -49,6 +50,8 @@ const PAGE_SIZE = 50;
 
 // ─── Componente principal ─────────────────────────────────────────────────────
 export default function TransactionsList() {
+  // REAV (agencias de viaje) solo con su módulo; la instalación propia lo conserva
+  const voc = useVocabulary();
   const [search, setSearch]             = useState("");
   const [typeFilter, setTypeFilter]     = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -228,7 +231,7 @@ export default function TransactionsList() {
             <SelectContent>
               <SelectItem value="all">Todos los regímenes</SelectItem>
               <SelectItem value="general">IVA General 21%</SelectItem>
-              <SelectItem value="reav">REAV</SelectItem>
+              {voc.showReav && <SelectItem value="reav">REAV</SelectItem>}
               <SelectItem value="mixed">Mixto</SelectItem>
             </SelectContent>
           </Select>
@@ -417,13 +420,13 @@ export default function TransactionsList() {
                 ["Régimen fiscal", (txDetail as any).fiscalRegime ?? "—"],
                 ["Base imponible", (txDetail as any).taxBase ? `€${parseFloat(String((txDetail as any).taxBase)).toFixed(2)}` : "—"],
                 ["IVA", (txDetail as any).taxAmount ? `€${parseFloat(String((txDetail as any).taxAmount)).toFixed(2)}` : "—"],
-                ["Margen REAV", (txDetail as any).reavMargin ? `€${parseFloat(String((txDetail as any).reavMargin)).toFixed(2)}` : "—"],
+                ...(voc.showReav ? [["Margen REAV", (txDetail as any).reavMargin ? `€${parseFloat(String((txDetail as any).reavMargin)).toFixed(2)}` : "—"]] : []),
                 ["Cliente", (txDetail as any).clientName ?? "—"],
                 ["Producto", (txDetail as any).productName ?? "—"],
                 ["Vendedor", (txDetail as any).sellerName ?? "—"],
                 ["Centro operativo", (txDetail as any).operativeCenter ?? "—"],
                 ["Descripción", txDetail.description ?? "—"],
-                ["Ref. reserva", (txDetail as any).reservationRef ?? "—"],
+                [`Ref. ${voc.order}`, (txDetail as any).reservationRef ?? "—"],
                 ["Ref. externa", (txDetail as any).externalRef ?? "—"],
                 ["Nº factura", (txDetail as any).invoiceNumber ?? "—"],
                 ["Fecha", new Date(txDetail.createdAt).toLocaleString("es-ES")],
