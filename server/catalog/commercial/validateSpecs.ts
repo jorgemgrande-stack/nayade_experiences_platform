@@ -3,6 +3,7 @@
  * Devuelve la lista de incidencias (vacía = coherente). La usan las pruebas y el exportador del catálogo maestro.
  */
 import type { SeedProduct } from "../elephantSourceV1";
+import { effectiveOffer } from "./offer";
 import type { CommercialPolicy } from "./policy";
 import type { ProductSpec, SpecCategory } from "./specs";
 
@@ -51,6 +52,8 @@ export function validateSpecs(products: readonly SeedProduct[], specs: readonly 
     }
     if (p.draft.catalog.commercialStatus === "coming_soon" && s.implementation.level === 3 && s.publicContent.cta === "demo") issues.push(`${s.key}: próximamente sin base y con demostración`);
     if (!s.includes.length && s.verified.grade !== "none") issues.push(`${s.key}: sin funcionalidades incluidas`);
+    // Modalidad comercial declarada que la plataforma no puede entregar tal cual (se degradaría al publicarse)
+    if (p.draft.catalog.offer) for (const r of effectiveOffer({ technicalStatus: p.draft.technicalStatus, catalog: p.draft.catalog, prices: p.prices }).reasons) issues.push(`${s.key}: modalidad comercial: ${r}`);
     for (const k of s.compatibleExtensions) {
       const c = byKey.get(k);
       if (!c) issues.push(`${s.key}: extensión compatible desconocida ${k}`);

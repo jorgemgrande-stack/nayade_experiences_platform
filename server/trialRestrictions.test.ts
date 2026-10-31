@@ -22,6 +22,7 @@ import {
   resolveCommercialState,
   splitTrialRecipients,
   TRIAL_QUOTA_POLICY,
+  TRIAL_EXPIRED_QUOTA_POLICY,
   type CommercialState,
 } from "./commercialState";
 import { applyTrialMailPolicy, assertIntegrationAllowed, enforceTrialQuota } from "./trialRestrictions";
@@ -185,6 +186,23 @@ describe("cuotas de prueba", () => {
     await expect(enforceTrialQuota("llm.tokens.input", 0, { state: async () => inTrial(), usage: async () => limit - 1 })).resolves.toBeUndefined();
     await expect(enforceTrialQuota("llm.tokens.input", 0, { state: async () => inTrial(), usage: async () => limit })).rejects.toBeInstanceOf(QuotaExceededError);
     await expect(enforceTrialQuota("llm.tokens.input", 0, { state: async () => contracted(), usage: async () => limit * 10 })).resolves.toBeUndefined();
+  });
+
+  it("prueba vencida o detenida (licencias suspendidas o en solo lectura): sin IA, imágenes ni escritura; el correo conserva su tope", async () => {
+    const suspended = inTrial({ grants: [{ ...trialGrant(6), status: "suspended" as const }] });
+    const readOnly = inTrial({ grants: [{ ...trialGrant(6), status: "read_only" as const }] });
+    const expired = inTrial({ grants: [trialGrant(-1)] });
+    for (const s of [suspended, readOnly, expired]) {
+      expect(s).toMatchObject({ phase: "trial_expired", restricted: true });
+      expect(quotaPolicyForPhase(s)).toBe(TRIAL_EXPIRED_QUOTA_POLICY);
+      await expect(enforceTrialQuota("llm.tokens.input", 1, { state: async () => s, usage: async () => 0 })).rejects.toBeInstanceOf(QuotaExceededError);
+      await expect(enforceTrialQuota("storage.write.bytes", 1, { state: async () => s, usage: async () => 0 })).rejects.toBeInstanceOf(QuotaExceededError);
+      await expect(enforceTrialQuota("email.sent", 1, { state: async () => s, usage: async () => 0 })).resolves.toBeUndefined();
+    }
+    for (const q of TRIAL_EXPIRED_QUOTA_POLICY) expect(q.limit).toBe(q.metric === "email.sent" ? TRIAL_QUOTA_POLICY.find((x) => x.metric === q.metric)!.limit : 0);
+    // Una prueba vigente sigue con su cuota; una exenta, sin restricciones
+    expect(quotaPolicyForPhase(inTrial())).toBe(TRIAL_QUOTA_POLICY);
+    expect(quotaPolicyForPhase(inTrial({ grants: [{ ...trialGrant(6), status: "suspended" as const }], exempt: new Set(["t-prueba"]) }))).toBeNull();
   });
 });
 

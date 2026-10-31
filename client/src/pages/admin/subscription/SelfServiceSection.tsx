@@ -43,7 +43,7 @@ interface PlanPreview {
   effectiveAt: number | null;
 }
 interface PlanResult {
-  status: "applied" | "payment_pending" | "failed" | "requested";
+  status: "applied" | "payment_pending" | "failed" | "requested" | "scheduled";
   paymentUrl: string | null;
   effectiveAt: number | null;
 }
@@ -70,6 +70,7 @@ function PlanChangeDialog({ current, option, onClose }: { current: { plan: strin
       setResult(res);
       if (res.status === "applied") toast.success("Cambio de plan aplicado");
       if (res.status === "requested") toast.success("Solicitud de cambio registrada");
+      if (res.status === "scheduled") toast.success("Cambio de plan programado");
       void utils.subscription.plan.invalidate();
       void utils.subscription.planChangeStatus.invalidate();
       void utils.subscription.overview.invalidate();
@@ -126,6 +127,11 @@ function PlanChangeDialog({ current, option, onClose }: { current: { plan: strin
         {result?.status === "requested" && (
           <p className="text-sm text-foreground">
             Solicitud registrada. El cambio se aplicará al final del periodo pagado{result.effectiveAt ? ` (${fmtDate(result.effectiveAt)})` : ""}; te avisaremos.
+          </p>
+        )}
+        {result?.status === "scheduled" && (
+          <p className="text-sm text-foreground">
+            Cambio programado. Tu plan actual sigue hasta el final del periodo pagado{result.effectiveAt ? ` (${fmtDate(result.effectiveAt)})` : ""}; después se aplicará el nuevo, sin cargos ahora.
           </p>
         )}
         {result?.status === "payment_pending" && <p className="text-sm text-foreground">Falta completar el pago con tu banco. Hasta entonces no cambia nada ni se hace ningún cargo.</p>}

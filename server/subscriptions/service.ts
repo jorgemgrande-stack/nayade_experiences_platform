@@ -335,7 +335,8 @@ export class SubscriptionService {
   }
 
   /** Subida: inmediata (se prorratea en la simulación). Bajada: a fin de periodo (sin abonos, D-S3). */
-  async changePlan(id: number, input: { plan: ItemSpec; when?: When; reason?: string | null }, expectedVersion: number, actor: string) {
+  /** `external`: refleja un cambio ya aplicado en el proveedor de pago (una bajada puede entonces aplicarse ya). */
+  async changePlan(id: number, input: { plan: ItemSpec; when?: When; reason?: string | null; external?: boolean }, expectedVersion: number, actor: string) {
     return this.d.store.mutate(id, expectedVersion, actor, this.now(), async (tx, sub) => {
       this.assertOpen(sub);
       const items = await tx.items();
@@ -347,7 +348,7 @@ export class SubscriptionService {
       if (probe.item.productKey === current.productKey && probe.item.priceId === current.priceId && probe.item.unitAmountCents === current.unitAmountCents) bad("Es el mismo plan y el mismo precio");
       const upgrade = monthlyEquivalent(probe.item) >= monthlyEquivalent(current);
       const when: When = input.when ?? (upgrade ? "now" : "period_end");
-      if (!upgrade && when === "now") state("Una bajada de plan se aplica a fin de periodo (sin abonos por la parte no consumida)");
+      if (!upgrade && when === "now" && !input.external) state("Una bajada de plan se aplica a fin de periodo (sin abonos por la parte no consumida)");
       const at = this.effectAt(sub, when);
       const next = { ...probe.item, effectiveFrom: at };
       await this.checkComposition([...activeAt(items, at).filter((i) => i.id !== current.id && (i.effectiveTo === null || i.effectiveTo > at)), next]);

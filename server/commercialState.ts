@@ -95,7 +95,11 @@ export function resolveCommercialState(i: {
   const grants = Array.isArray(i.grants) ? i.grants : null;
   const paid = grants ? grantsShowPaid(grants) : false;
   const trialEnd = grants ? trialEndFromGrants(grants) : null;
-  const trialPhase = (): CommercialPhase => (trialEnd !== null && trialEnd <= i.now ? "trial_expired" : "trial");
+  // Prueba detenida: sus licencias ya no están activas (suspendida por un operador o en solo lectura), aunque no
+  // conste fecha de fin. Cuenta como vencida: sin esto seguiría con toda la cuota de prueba.
+  const trialGrants = grants ? grants.filter((g) => g.validUntil !== null && g.status !== "cancelled") : [];
+  const trialStopped = trialGrants.length > 0 && trialGrants.every((g) => g.status === "suspended" || g.status === "read_only");
+  const trialPhase = (): CommercialPhase => (trialStopped || (trialEnd !== null && trialEnd <= i.now) ? "trial_expired" : "trial");
 
   let phase: CommercialPhase;
   if (!i.multi) phase = "unmanaged";
@@ -202,9 +206,17 @@ export const TRIAL_QUOTA_POLICY: readonly DefaultQuota[] = [
   { metric: Metrics.STORAGE_WRITE_BYTES, period: "month", limit: 1024 ** 3, enforcement: "hard" },
 ];
 
+/**
+ * Prueba vencida o detenida: sin consumo de pago (IA, imágenes y escritura de ficheros a 0). El correo conserva el
+ * límite de la prueba: la recuperación de acceso y los avisos para regularizar deben seguir llegando (en prueba, el
+ * correo a terceros ya está limitado a los buzones propios).
+ */
+export const TRIAL_EXPIRED_QUOTA_POLICY: readonly DefaultQuota[] = TRIAL_QUOTA_POLICY.map((q) => (q.metric === Metrics.EMAIL_SENT ? q : { ...q, limit: 0 }));
+
 /** Política de cuotas propia de la fase (null: la del plan o la de la plataforma). */
-export function quotaPolicyForPhase(s: Pick<CommercialState, "restricted">): readonly DefaultQuota[] | null {
-  return s.restricted ? TRIAL_QUOTA_POLICY : null;
+export function quotaPolicyForPhase(s: Pick<CommercialState, "restricted"> & Partial<Pick<CommercialState, "phase">>): readonly DefaultQuota[] | null {
+  if (!s.restricted) return null;
+  return s.phase === "trial_expired" ? TRIAL_EXPIRED_QUOTA_POLICY : TRIAL_QUOTA_POLICY;
 }
 
 /** ¿Se superaría la cuota de prueba? `quantity` 0 comprueba que no esté ya agotada. Pura. */
