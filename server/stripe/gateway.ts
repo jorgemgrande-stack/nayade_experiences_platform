@@ -952,6 +952,8 @@ export function stripeGateway(
         const current = sch.phases.find((p) => p.start_date <= now && now < p.end_date) ?? sch.phases[0];
         if (!current) throw new StripeGatewayError("invalid_request_error", "El calendario de la suscripción no tiene fase actual", false);
         const phaseItems = current.items.map((i) => ({ price: idOf(i.price) ?? "", quantity: i.quantity ?? 1 }));
+        // Las fases conservan el Stripe Tax de la suscripción: sin indicarlo, la fase nueva tomaría el del calendario
+        const automatic_tax = { enabled: !!sub.automatic_tax?.enabled };
         try {
           const updated = await client.subscriptionSchedules.update(
             sch.id,
@@ -960,8 +962,8 @@ export function stripeGateway(
               proration_behavior: "none",
               metadata: { es_origin: SCHEDULE_ORIGIN },
               phases: [
-                { items: phaseItems, start_date: current.start_date, end_date: current.end_date },
-                { items: items.map((i) => ({ price: i.priceId, quantity: i.quantity })), duration: { interval, interval_count: 1 } },
+                { items: phaseItems, start_date: current.start_date, end_date: current.end_date, automatic_tax },
+                { items: items.map((i) => ({ price: i.priceId, quantity: i.quantity })), duration: { interval, interval_count: 1 }, automatic_tax },
               ],
             } as Stripe.SubscriptionScheduleUpdateParams,
             { idempotencyKey: `${idempotencyKey}-fases` },
