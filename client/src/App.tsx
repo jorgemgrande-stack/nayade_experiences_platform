@@ -11,6 +11,7 @@ import { MetaPixelLoader } from "./components/MetaPixelLoader";
 import { GA4Loader } from "./components/GA4Loader";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import { HomeGate, SingleOnlyPage, SlugGate, TenantThemeLoader } from "./components/TenantTheme";
+import AdminRouteGate from "./components/admin/AdminRouteGate";
 
 // ── PUBLIC PAGES (carga inmediata — visibles sin autenticación) ──────────────
 import Home from "./pages/Home";
@@ -220,6 +221,7 @@ function AdminLoadingFallback() {
 
 function Router() {
   return (
+    <AdminRouteGate>
     <Switch>
       {/* ── PUBLIC ROUTES ── */}
       <Route path="/">{() => <HomeGate Fallback={Home} Tenant={TenantHome} />}</Route>
@@ -463,6 +465,7 @@ function Router() {
       <Route path="/:slug">{(p) => <SlugGate slug={p.slug} />}</Route>
       <Route component={NotFound} />
     </Switch>
+    </AdminRouteGate>
   );
 }
 

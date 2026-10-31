@@ -34,11 +34,12 @@ const licensed = (endsAt: number) => ({
 });
 const single = { mode: "single", licensing: "legacy", plan: null, state: "none", trial: null, capabilities: [], visible: [], readOnly: [], limits: [], upgradeUrl: null };
 
-async function mockTrpc(page: Page, overview: unknown) {
+async function mockTrpc(page: Page, overview: unknown, opts: { install?: "single" | "multi"; failing?: string[] } = {}) {
+  const failing = new Set(opts.failing ?? []);
   const data: Record<string, unknown> = {
     "auth.me": { id: 1, openId: "o", name: "Ana Pérez", email: "ana@empresa.example", role: "admin" },
     "subscription.overview": overview,
-    "config.getPublicSettings": { brand_name: "Taller Ejemplo" },
+    "config.getPublicSettings": { brand_name: "Taller Ejemplo", ...(opts.install ? { panel_install_mode: opts.install } : {}) },
     "config.listFeatureFlags": [],
     "modules.active": { modules: [], navigation: [] },
     "notifications.feed": { totalAlerts: 0, sections: [] },
@@ -55,8 +56,12 @@ async function mockTrpc(page: Page, overview: unknown) {
   await page.route("**/api/trpc/**", async (route) => {
     const url = new URL(route.request().url());
     const names = decodeURIComponent(url.pathname.replace(/^.*\/api\/trpc\//, "")).split(",");
-    const body = names.map((n) => ({ result: { data: { json: n in data ? data[n] : null } } }));
-    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
+    const body = names.map((n) =>
+      failing.has(n)
+        ? { error: { json: { message: "Error interno. Inténtalo más tarde.", code: -32603, data: { code: "INTERNAL_SERVER_ERROR", httpStatus: 500, path: n } } } }
+        : { result: { data: { json: n in data ? data[n] : null } } },
+    );
+    await route.fulfill({ status: names.some((n) => failing.has(n)) ? 207 : 200, contentType: "application/json", body: JSON.stringify(body) });
   });
 }
 
@@ -100,6 +105,31 @@ test.describe("Panel Essential (empresa nueva con licencias)", () => {
     await expect(nav.getByRole("link", { name: "Clientes", exact: true })).not.toBeInViewport();
   });
 
+  test("URL de algo no contratado: «No incluido en tu plan» con enlace para ampliar", async ({ page }) => {
+    await mockTrpc(page, licensed(Date.now() + 10 * DAY), { install: "multi" });
+    await page.goto("/admin/personal/empleados");
+    await expect(page.getByText("No incluido en tu plan").first()).toBeVisible();
+    await expect(page.getByRole("link", { name: "Amplía tu empresa" })).toHaveAttribute("href", "/admin/ampliar");
+  });
+
+  test("fallo al consultar la suscripción: error con Reintentar, nunca el menú ni el logo de Náyade", async ({ page }) => {
+    await mockTrpc(page, null, { install: "multi", failing: ["subscription.overview"] });
+    await page.goto("/admin");
+    await expect(page.getByRole("button", { name: "Reintentar" }).first()).toBeVisible({ timeout: 15_000 });
+    const nav = page.getByRole("navigation", { name: "Menú del panel" });
+    for (const label of ["Dashboard", "Productos", "Lego Packs", "Gestoría e Impuestos"]) await expect(nav.getByText(label, { exact: true })).toHaveCount(0);
+    await expect(page.locator("img[src*='nayade']")).toHaveCount(0);
+  });
+
+  test("el menú plegado se conserva al cambiar de pantalla", async ({ page }) => {
+    await mockTrpc(page, licensed(Date.now() + 10 * DAY), { install: "multi" });
+    await page.setViewportSize({ width: 1366, height: 900 });
+    await page.goto("/admin");
+    await page.getByRole("button", { name: "Plegar menú lateral" }).click();
+    await page.getByRole("navigation", { name: "Menú del panel" }).getByRole("link", { name: "Clientes", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Desplegar menú lateral" })).toBeVisible();
+  });
+
   test("lista de clientes vacía con acción real que abre el alta, y validación en español", async ({ page }) => {
     await mockTrpc(page, licensed(Date.now() + 10 * DAY));
     await page.goto("/admin/crm/clientes");
@@ -117,12 +147,20 @@ test.describe("Panel Essential (empresa nueva con licencias)", () => {
 
 test.describe("Náyade (modo single)", () => {
   test("conserva el menú de siempre", async ({ page }) => {
-    await mockTrpc(page, single);
+    await mockTrpc(page, single, { install: "single" });
     await page.goto("/admin/crm/clientes");
     const nav = page.getByRole("navigation", { name: "Menú del panel" });
     for (const label of ["Dashboard", "CMS", "Productos", "CRM", "Contabilidad", "Gestoría e Impuestos", "Marketing", "Usuarios", "Configuración"]) {
       await expect(nav.getByText(label, { exact: true }).first()).toBeVisible();
     }
     await expect(nav.getByText("Clientes y ventas")).toHaveCount(0);
+  });
+
+  test("si la suscripción falla, sigue con el menú de siempre (no hay estado de error)", async ({ page }) => {
+    await mockTrpc(page, null, { install: "single", failing: ["subscription.overview"] });
+    await page.goto("/admin/crm/clientes");
+    const nav = page.getByRole("navigation", { name: "Menú del panel" });
+    await expect(nav.getByText("CRM", { exact: true }).first()).toBeVisible();
+    await expect(page.getByText("No se ha podido cargar tu panel")).toHaveCount(0);
   });
 });
