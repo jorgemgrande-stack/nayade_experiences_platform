@@ -1,5 +1,5 @@
 /**
- * Finanzas corporativas de Big Elephant, fase 1B (CRM 0034): centros de coste, categorías, proveedores, gastos
+ * Finanzas corporativas de Big Elephant, fase 1B (CRM 0035): centros de coste, categorías, proveedores, gastos
  * (facturas recibidas) y sus pagos, documentos, gastos recurrentes, bancos (cuentas, extractos, movimientos y
  * conciliación) y caja. Mismos convenios que la fase 1A: céntimos enteros, puntos básicos, fechas «AAAA-MM-DD».
  * Las formas son las que consume el CRM (anexo CRM-ESPERA).

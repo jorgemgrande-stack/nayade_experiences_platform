@@ -203,6 +203,15 @@ export class PlatformMailer {
     };
   }
 
+  /** Implantación asistida: entorno disponible (una vez por expediente; el enlace solo si aún no definió su contraseña). */
+  implementationNotifier() {
+    return async (to: string, n: { orderId: number; tenantId: string; companyName: string; solutionName: string; domain: string | null; inviteToken: string | null; startMode: "trial" | "subscription"; trialEndsAt: number | null }) => {
+      const url = n.domain && n.inviteToken ? `https://${n.domain}/establecer-contrasena?token=${encodeURIComponent(n.inviteToken)}` : null;
+      const r = await this.send(n.tenantId, `implementation:${n.orderId}:available`, "tenant_welcome", to, this.t.implementationAvailable({ companyName: n.companyName, solutionName: n.solutionName, host: n.domain, setPasswordUrl: url, startMode: n.startMode, trialEndsAt: n.trialEndsAt }));
+      return { queued: r.status !== "skipped" && r.status !== "failed" };
+    };
+  }
+
   /**
    * Avisos del orquestador comercial. Destinatario: contacto principal activo de la empresa del pedido.
    *

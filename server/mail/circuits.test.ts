@@ -3,8 +3,8 @@ import { allTestEmails, CIRCUIT, TEMPLATES } from "./testCatalog";
 
 describe("circuito de cada plantilla", () => {
   const all = allTestEmails();
-  it("las 115 plantillas (113 + verificación del correo nuevo + recordatorio de la gracia) tienen circuito y los ids son únicos", () => {
-    expect(all.length).toBe(115);
+  it("las 116 plantillas (113 + verificación del correo nuevo + recordatorio de la gracia + entorno disponible de la implantación asistida) tienen circuito y los ids son únicos", () => {
+    expect(all.length).toBe(116);
     expect(new Set(all.map((t) => t.id)).size).toBe(all.length);
     for (const t of all) expect(["automatica", "manual", "programada", "externa", "pendiente"]).toContain(t.circuit);
   });

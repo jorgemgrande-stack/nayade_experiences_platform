@@ -120,6 +120,24 @@ export function platformTemplates(o: PlatformTemplateOptions = {}) {
         cta: i.setPasswordUrl ? { label: "Definir contraseña", url: i.setPasswordUrl } : null,
       });
     },
+    /**
+     * Implantación asistida (server/implementation): el entorno preparado por el equipo está disponible. La prueba de
+     * 15 días empieza con este aviso (nunca al pedir información); en una suscripción pactada no se menciona prueba.
+     */
+    implementationAvailable(i: { companyName: string; solutionName: string; host: string | null; setPasswordUrl: string | null; startMode: "trial" | "subscription"; trialEndsAt: number | null }) {
+      const trial = i.startMode === "trial";
+      return e({
+        family: "experiential", eyebrow: "Implantación completada", hero: "bienvenida", title: "Tu entorno ya está", titleAccent: "disponible", subject: `${i.solutionName}: tu entorno de ${PLATFORM_BRAND} está disponible`,
+        intro: [`Hemos terminado de preparar ${i.solutionName} para ${stop(i.companyName)} Ya puedes empezar a trabajar.`],
+        blocks: [
+          { card: { status: { label: "Disponible", tone: "success" }, rows: [{ label: "Solución", value: i.solutionName }, ...(i.host ? [{ label: "Dirección de tu plataforma", value: `https://${i.host}` }] : []), ...(trial && i.trialEndsAt ? [{ label: "Tu prueba gratuita dura hasta", value: fmtDate(i.trialEndsAt) }] : [])] } },
+          { p: trial ? "Tu prueba gratuita de 15 días empieza hoy, con el entorno ya preparado. Durante la prueba no se realiza ningún cobro." : "Tu suscripción empieza hoy, según las condiciones que acordamos." },
+          ...(i.setPasswordUrl ? [{ notice: { tone: "info", text: "El enlace para definir tu contraseña de administrador es personal y caduca." } } as Block] : []),
+          { help: { title: "¿Necesitas ayuda?", text: "El equipo que ha preparado tu implantación sigue a tu disposición.", link: { label: "Contactar con soporte", url: SUPPORT_URL } } },
+        ],
+        cta: i.setPasswordUrl ? { label: "Definir contraseña", url: i.setPasswordUrl } : i.host ? { label: "Entrar en mi plataforma", url: `https://${i.host}` } : null,
+      });
+    },
     signupConfirmation(i: { companyName: string }) {
       return e({
         family: "experiential", eyebrow: "Alta recibida", hero: "bienvenida", title: "Estamos preparando tu espacio", subject: `Hemos recibido el alta de ${i.companyName}`,

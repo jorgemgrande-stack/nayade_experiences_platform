@@ -54,6 +54,7 @@ const LEGACY: Record<string, () => MailContent> = (() => {
     "trial.extended": () => t.trialStatus({ kind: "extended", endsAt: PREVIEW_NOW + 20 * DAY, host: HOST }),
     "trial.suspended": () => t.trialStatus({ kind: "suspended", endsAt: null, host: HOST }),
     "trial.reactivated": () => t.trialStatus({ kind: "reactivated", endsAt: PREVIEW_NOW + 10 * DAY, host: HOST }),
+    "implementation.available": () => t.implementationAvailable({ companyName: "Empresa Demo, S.L.", solutionName: "Solución Demo", host: HOST, setPasswordUrl: `https://${HOST}/establecer-contrasena?muestra=1`, startMode: "trial", trialEndsAt: PREVIEW_NOW + 15 * DAY }),
     "subscription.signup_received": () => t.signupReceived({ companyName: "Empresa Demo, S.L.", ...order, test: false }),
     "subscription.contract_confirmed": () => t.contractConfirmed({ companyName: "Empresa Demo, S.L.", ...order, host: HOST }),
     "subscription.initial_payment": () => t.paymentConfirmed({ ...order, amountCents: 2900, currency: "EUR" }),

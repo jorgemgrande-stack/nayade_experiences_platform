@@ -102,7 +102,7 @@ function sendCsv(res: Response, name: string, csv: string) {
   res.send(csv);
 }
 
-/** Con `ops` (migración 0034) se montan también las operaciones de la fase 1B y el resumen completo. */
+/** Con `ops` (migración 0035) se montan también las operaciones de la fase 1B y el resumen completo. */
 export function createFinanceRouter(svc: FinanceService, ops?: FinanceOpsService | null): Router {
   const r = express.Router();
   const names = async () => new Map((await svc.accounts()).map((a) => [a.code, a.name]));

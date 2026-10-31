@@ -111,6 +111,8 @@ import { DataRequestService, operatorAssignees } from "../dataRequests/service";
 import { MysqlDataRequestStore, dataRequestTablesReady } from "../dataRequests/store";
 import { FinanceService } from "../finance/service";
 import { MysqlFinanceStore, finTablesReady } from "../finance/store";
+import { MysqlImplementationStore, implementationTablesReady } from "../implementation/store";
+import { assistedImplementationEnabled } from "../implementation/config";
 import { FinanceOpsService } from "../finance/opsService";
 import { MysqlFinanceOpsStore, finOpsTablesReady } from "../finance/opsStore";
 import { startFinanceRecurringScheduler } from "../finance/recurringScheduler";
@@ -605,9 +607,14 @@ async function main() {
   // Finanzas corporativas de Big Elephant (CRM 0033): libro contable; lee las facturas expedidas de la facturación propia
   const finance = crm && crmPool && (await finTablesReady(crmPool)) ? new FinanceService({ store: new MysqlFinanceStore(crmPool), invoices: invoicing?.store ?? null }) : null;
   console.log(JSON.stringify({ ctx: "Finance", mounted: !!finance, ...(finance ? { invoiceSync: !!invoicing } : { reason: !crm ? "crm_not_configured" : "migration_0033_missing" }) }));
-  // Operaciones (CRM 0034): gastos, proveedores, bancos y caja sobre el libro; sin la migración, solo el libro
+  // Implantación asistida (CRM 0034): apagada por defecto; con el interruptor y la migración se monta en /implementations
+  const implementationOn = assistedImplementationEnabled(process.env);
+  const implementationReady = implementationOn && !!crm && !!crmPool && (await implementationTablesReady(crmPool));
+  const implementation = implementationReady && crmPool ? { store: new MysqlImplementationStore(crmPool), assignees: operators.service ? async () => operatorAssignees(await operators.service!.list()) : null } : null;
+  console.log(JSON.stringify({ ctx: "AssistedImplementation", mounted: !!implementation, ...(implementation ? {} : { reason: !implementationOn ? "disabled" : !crm ? "crm_not_configured" : "migration_0034_missing" }) }));
+  // Operaciones (CRM 0035): gastos, proveedores, bancos y caja sobre el libro; sin la migración, solo el libro
   const financeOps = finance && crmPool && (await finOpsTablesReady(crmPool)) ? new FinanceOpsService({ store: new MysqlFinanceOpsStore(crmPool), finance, ledger: new MysqlFinanceStore(crmPool) }) : null;
-  if (finance) console.log(JSON.stringify({ ctx: "FinanceOps", mounted: !!financeOps, ...(financeOps ? {} : { reason: "migration_0034_missing" }) }));
+  if (finance) console.log(JSON.stringify({ ctx: "FinanceOps", mounted: !!financeOps, ...(financeOps ? {} : { reason: "migration_0035_missing" }) }));
   // Borradores de gastos recurrentes: tarea APAGADA salvo CP_FINANCE_RECURRING_ENABLED=1 (una réplica por tick, GET_LOCK)
   if (financeOps && crmPool) startFinanceRecurringScheduler({ ops: financeOps, lock: mysqlAdvisoryLock(crmPool), env: process.env });
   if (crm && crmPool && (await settingsTablesReady(crmPool))) {
@@ -819,6 +826,7 @@ async function main() {
       }),
     dataRequests,
     finance,
+    implementation,
     financeOps,
     communications,
     notifications: notificationsFromEnv(process.env),
