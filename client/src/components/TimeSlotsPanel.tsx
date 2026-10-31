@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
+import { toastError } from "@/lib/errorMessage";
 
 type SlotType = "fixed" | "flexible" | "range";
 
@@ -97,7 +98,7 @@ export default function TimeSlotsPanel({ productId, hasTimeSlots, onToggle }: Pr
       setShowModal(false);
       setForm(emptySlotForm);
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toastError(e),
   });
 
   const updateMutation = trpc.timeSlots.update.useMutation({
@@ -108,7 +109,7 @@ export default function TimeSlotsPanel({ productId, hasTimeSlots, onToggle }: Pr
       setEditingId(null);
       setForm(emptySlotForm);
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toastError(e),
   });
 
   const deleteMutation = trpc.timeSlots.delete.useMutation({
@@ -116,7 +117,7 @@ export default function TimeSlotsPanel({ productId, hasTimeSlots, onToggle }: Pr
       utils.timeSlots.getByProductAdmin.invalidate({ productId });
       toast.success("Horario eliminado");
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toastError(e),
   });
 
   const reorderMutation = trpc.timeSlots.reorder.useMutation({
@@ -128,7 +129,7 @@ export default function TimeSlotsPanel({ productId, hasTimeSlots, onToggle }: Pr
       onToggle(vars.enabled);
       toast.success(vars.enabled ? "Horarios activados" : "Horarios desactivados");
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toastError(e),
   });
 
   function openCreate() {

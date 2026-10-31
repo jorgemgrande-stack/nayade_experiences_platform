@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildTenantMeta, escapeHtml, safeUrl } from "./_core/tenantSeo";
+import { buildTenantMeta, escapeHtml, pageMetaOverride, safeUrl } from "./_core/tenantSeo";
 
 describe("SEO por tenant", () => {
   it("escapa HTML y metacaracteres de reemplazo", () => {
@@ -36,5 +36,24 @@ describe("SEO por tenant", () => {
 
   it("escapeHtml", () => {
     expect(escapeHtml(`<a href="x">'&`)).toBe("&lt;a href=&quot;x&quot;&gt;&#39;&amp;");
+  });
+});
+
+describe("metadatos de una página de la empresa", () => {
+  it("portada: título propio de la página o el de la empresa; descripción propia si la hay", () => {
+    expect(pageMetaOverride({ title: "Inicio", metaTitle: null, metaDescription: null }, "Empresa A", true)).toEqual({});
+    expect(pageMetaOverride({ title: "Inicio", metaTitle: "A <la> mejor", metaDescription: "Hacemos cosas" }, "Empresa A", true)).toEqual({
+      title: "A &lt;la&gt; mejor",
+      description: "Hacemos cosas",
+    });
+  });
+
+  it("portada con descripción SEO de la empresa: manda la de la empresa", () => {
+    expect(pageMetaOverride({ title: "Inicio", metaDescription: "Empresa A" }, "Empresa A", true, { keepDescription: true })).toEqual({});
+  });
+
+  it("otra página: «Página | Empresa» y su encabezado", () => {
+    expect(pageMetaOverride({ title: "Servicios", metaTitle: "", metaDescription: "" }, "Empresa A", false)).toEqual({ title: "Servicios | Empresa A", h1: "Servicios" });
+    expect(pageMetaOverride({ title: "Servicios" }, "", false).title).toBe("Servicios");
   });
 });

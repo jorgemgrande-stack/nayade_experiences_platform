@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { formatPaymentMethod } from "@/lib/labels";
 import AdminLayout from "@/components/AdminLayout";
+import { PanelError } from "@/components/admin/PanelStates";
 import { trpc } from "@/lib/trpc";
 import { useVocabulary } from "@/lib/vocabulary";
 import { Button } from "@/components/ui/button";
@@ -15,6 +16,7 @@ import {
   CreditCard, Banknote, Smartphone, Store, Globe, Monitor,
   Eye, Trash2,
 } from "lucide-react";
+import { toastError } from "@/lib/errorMessage";
 
 // ─── Configuraciones visuales ────────────────────────────────────────────────
 const typeConfig: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
@@ -84,7 +86,7 @@ export default function TransactionsList() {
     offset:       page * PAGE_SIZE,
   };
 
-  const { data: transactions, isLoading } = trpc.accounting.getTransactions.useQuery(queryParams);
+  const { data: transactions, isLoading, error: transactionsError, refetch: refetchTransactions } = trpc.accounting.getTransactions.useQuery(queryParams);
   const { data: countData }               = trpc.accounting.getTransactionsCount.useQuery({
     type:         queryParams.type,
     status:       queryParams.status,
@@ -112,7 +114,7 @@ export default function TransactionsList() {
       utils.accounting.getTransactions.invalidate();
       utils.accounting.getTransactionsCount.invalidate();
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toastError(e),
   });
 
   const totalIngresos = txList.filter(t => t.type === "ingreso"   && t.status === "completado").reduce((s, t) => s + parseFloat(String(t.amount)), 0);
@@ -253,7 +255,9 @@ export default function TransactionsList() {
       </div>
 
       {/* Tabla */}
-      {isLoading ? (
+      {transactionsError ? (
+        <PanelError title="No se han podido cargar las transacciones" error={transactionsError} onRetry={() => void refetchTransactions()} />
+      ) : isLoading ? (
         <div className="space-y-3">
           {[...Array(8)].map((_, i) => <div key={i} className="h-14 bg-muted animate-pulse rounded-xl" />)}
         </div>

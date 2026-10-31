@@ -9,6 +9,7 @@ import type { User } from "../../drizzle/schema";
 import { brandName, tenantFiscalIdentity } from "../tenantBrand";
 import { isMultiTenant } from "../_core/tenant";
 import { warmTenantIdentity } from "../_core/tenantIdentity";
+import { INSTALL_MODE_SETTING } from "../../shared/adminNav";
 
 async function requireDb() {
   const db = await getDb();
@@ -76,17 +77,19 @@ function validateSettingValue(key: string, value: string, valueType: string): vo
 export const configRouter = router({
   // Public — no auth required. Returns only isPublic=true, isSensitive=false settings.
   // Safe to call from unauthenticated pages (sidebar, public branding).
+  // Incluye siempre el modo de instalación (single/multi): el panel no debe confundir un fallo con el modo single.
   getPublicSettings: publicProcedure.query(async (): Promise<Record<string, string>> => {
+    const install = { [INSTALL_MODE_SETTING]: isMultiTenant() ? "multi" : "single" };
     try {
       const db = await getDb();
-      if (!db) return {};
+      if (!db) return install;
       const rows = await db
         .select({ key: systemSettings.key, value: systemSettings.value })
         .from(systemSettings)
         .where(and(eq(systemSettings.isPublic, true), eq(systemSettings.isSensitive, false)));
-      return Object.fromEntries(rows.map(r => [r.key, r.value ?? ""]));
+      return { ...Object.fromEntries(rows.map(r => [r.key, r.value ?? ""])), ...install };
     } catch {
-      return {};
+      return install;
     }
   }),
 

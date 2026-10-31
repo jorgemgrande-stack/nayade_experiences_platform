@@ -4,6 +4,7 @@
  */
 import { useState } from "react";
 import AdminLayout from "@/components/AdminLayout";
+import { PanelError } from "@/components/admin/PanelStates";
 import { trpc } from "@/lib/trpc";
 import { useVocabulary } from "@/lib/vocabulary";
 import { Button } from "@/components/ui/button";
@@ -72,7 +73,7 @@ export default function AccountingReports() {
   const [fromDate, setFromDate] = useState(firstOfMonth);
   const [toDate, setToDate]     = useState(todayStr);
 
-  const { data: reports, isLoading, refetch } = trpc.accounting.getReports.useQuery({
+  const { data: reports, isLoading, error: reportsError, refetch } = trpc.accounting.getReports.useQuery({
     from: fromDate || undefined,
     to:   toDate   || undefined,
   });
@@ -163,7 +164,9 @@ export default function AccountingReports() {
         </Button>
       </div>
 
-      {isLoading ? (
+      {reportsError ? (
+        <PanelError title="No se han podido cargar los informes" error={reportsError} onRetry={() => void refetch()} />
+      ) : isLoading ? (
         <div className="grid grid-cols-2 gap-6">
           {[...Array(6)].map((_, i) => (
             <div key={i} className="h-64 bg-muted animate-pulse rounded-xl" />

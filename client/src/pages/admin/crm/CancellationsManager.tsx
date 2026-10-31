@@ -37,6 +37,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import CancellationDetailModal from "./CancellationDetailModal";
+import { toastError } from "@/lib/errorMessage";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type OperationalStatus =
@@ -141,7 +142,7 @@ function NewRequestModal({ onClose, onCreated }: { onClose: () => void; onCreate
       onCreated();
       onClose();
     },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => toastError(err),
   });
 
   const handleSubmit = () => {
@@ -283,7 +284,7 @@ export default function CancellationsManager() {
       setDeleteId(null);
       utils.cancellations.listRequests.invalidate();
     },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => toastError(err),
   });
 
   const sendTestEmails = trpc.cancellations.sendTestEmails.useMutation({
@@ -294,7 +295,7 @@ export default function CancellationsManager() {
         toast.error(`${d.failed} de ${d.total} emails fallaron. Revisa los logs del servidor.`);
       }
     },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => toastError(err),
   });
 
   const rows = data?.rows ?? [];

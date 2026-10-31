@@ -6,7 +6,8 @@ import path from "path";
 import { createServer as createViteServer } from "vite";
 import viteConfig from "../../vite.config";
 import { isMultiTenant } from "./tenant";
-import { buildTenantMeta, escapeHtml } from "./tenantSeo";
+import { buildTenantMeta, escapeHtml, pageMetaOverride } from "./tenantSeo";
+import { defaultPublicRouteDeps, resolvePublicRoute, type PublicRouteDeps } from "./publicRoutes";
 import { getSystemSetting } from "../config";
 
 export async function setupVite(app: Express, server: Server) {
@@ -129,18 +130,21 @@ function injectSeoMeta(
     );
 }
 
-export function serveStatic(app: Express) {
+export function serveStatic(app: Express, opts: { distPath?: string; routeDeps?: (multi: boolean) => PublicRouteDeps } = {}) {
   const distPath =
-    process.env.NODE_ENV === "development"
+    opts.distPath ??
+    (process.env.NODE_ENV === "development"
       ? path.resolve(import.meta.dirname, "../..", "dist", "public")
-      : path.resolve(import.meta.dirname, "public");
+      : path.resolve(import.meta.dirname, "public"));
   if (!fs.existsSync(distPath)) {
     console.error(
       `Could not find the build directory: ${distPath}, make sure to build the client first`
     );
   }
 
-  app.use(express.static(distPath));
+  // Sin índice automático: la portada también pasa por la inyección de metadatos de la empresa (si no, `/`
+  // serviría el index.html con el título vacío)
+  app.use(express.static(distPath, { index: false }));
 
   // SPA fallback: inject route-specific SEO meta before sending index.html
   app.use("*", async (req, res) => {
@@ -156,6 +160,11 @@ export function serveStatic(app: Express) {
     const pathname = req.originalUrl.split("?")[0] || "/";
     // Metadatos de la empresa (sus ajustes) en cualquier modo
     {
+      const multi = isMultiTenant();
+      // 404 real para lo que no existe en la web de la empresa (el cliente muestra su «no encontrada»)
+      const deps = (opts.routeDeps ?? defaultPublicRouteDeps)(multi);
+      const route = await resolvePublicRoute(pathname, deps);
+      const isHome = pathname.replace(/\/+$/, "") === "";
       const [brandName, description, logoUrl, ogImageUrl] = await Promise.all([
         getSystemSetting("brand_name", ""),
         getSystemSetting("seo_description", ""),
@@ -171,6 +180,9 @@ export function serveStatic(app: Express) {
         meta: { title: m.title, description: m.description, h1: m.h1, body: m.body, image: m.image },
         canonical: m.canonical,
       };
+      // Página propia de la empresa (portada «inicio» incluida): su título y descripción
+      const page = route.page ?? (multi && isHome ? await deps.tenantPage("inicio").catch(() => null) : null);
+      if (page) seo.meta = { ...seo.meta, ...pageMetaOverride(page, brandName, isHome, { keepDescription: isHome && !!description.trim() }) };
       // Blog: título, descripción e imagen de la entrada publicada (nunca de un borrador)
       if (pathname === "/blog" || pathname.startsWith("/blog/")) {
         try {
@@ -183,7 +195,8 @@ export function serveStatic(app: Express) {
       }
       let html = injectSeoMeta(_htmlCache, seo);
       if (isMultiTenant()) html = tenantSiteHtml(html, escapeHtml(brandName));
-      res.set("Content-Type", "text/html").send(html);
+      if (route.status === 404) html = html.replace(/<meta charset="UTF-8" \/>/, '<meta charset="UTF-8" />\n    <meta name="robots" content="noindex" />');
+      res.status(route.status).set("Content-Type", "text/html").send(html);
     }
   });
 }

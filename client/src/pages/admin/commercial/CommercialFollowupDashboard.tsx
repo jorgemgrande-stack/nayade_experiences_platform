@@ -27,6 +27,9 @@ import LegacyAutomationsTab from "./LegacyAutomationsTab";
 import EmailAuditTab from "./EmailAuditTab";
 import TemplateRulesTab from "./TemplateRulesTab";
 import PendingJobsTab from "./PendingJobsTab";
+import { toastError } from "@/lib/errorMessage";
+import { PanelError } from "@/components/admin/PanelStates";
+import { usePanelSubscription } from "@/hooks/usePanelSubscription";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -219,15 +222,20 @@ export default function CommercialFollowupDashboard() {
   const setSoundDisabled = (v: boolean) => { localStorage.setItem(NOTIF_SOUND_KEY, String(v)); setSoundDisabledState(v); };
 
   // ─── Queries ──────────────────────────────────────────────────────────────
-  const { data: dashboard, isLoading: dashLoading, refetch: refetchDash } =
+  // WhatsApp y llamadas solo con su módulo contratado (si no, el servidor deniega la consulta)
+  const panelSub = usePanelSubscription();
+  const hasWhatsApp = panelSub.can("whatsapp-ai");
+  const hasVoice = panelSub.can("voice-ai");
+
+  const { data: dashboard, isLoading: dashLoading, error: dashError, refetch: refetchDash } =
     trpc.commercialFollowup.getDashboard.useQuery(undefined, { enabled: tab === "dashboard" });
 
   const { data: whatsappStats } = trpc.ghlInbox.getStats.useQuery(undefined, {
-    enabled: tab === "dashboard", refetchInterval: 15000,
+    enabled: tab === "dashboard" && hasWhatsApp, refetchInterval: 15000,
   });
 
   const { data: vapiStats } = trpc.vapiCalls.getStats.useQuery(undefined, {
-    enabled: tab === "dashboard", refetchInterval: 15000,
+    enabled: tab === "dashboard" && hasVoice, refetchInterval: 15000,
   });
 
   const { data: emailStats } = trpc.emailInbox.getStats.useQuery({}, {
@@ -247,27 +255,27 @@ export default function CommercialFollowupDashboard() {
 
   const sendManualReminder = trpc.commercialFollowup.sendManualReminder.useMutation({
     onSuccess: () => { toast.success("Recordatorio enviado"); setRemindQuote(null); refetchDash(); refetchOpen(); },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toastError(e),
   });
 
   const addNote = trpc.commercialFollowup.addNote.useMutation({
     onSuccess: () => { toast.success("Nota añadida"); setNoteQuote(null); setNoteText(""); },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toastError(e),
   });
 
   const updateStatus = trpc.commercialFollowup.updateCommercialStatus.useMutation({
     onSuccess: () => { toast.success("Estado actualizado"); setLostQuote(null); setLostReason(""); refetchDash(); refetchOpen(); },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toastError(e),
   });
 
   const pauseReminders = trpc.commercialFollowup.pauseReminders.useMutation({
     onSuccess: () => { toast.success("Recordatorios pausados"); setPauseQuote(null); setPauseReason(""); refetchDash(); refetchOpen(); },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toastError(e),
   });
 
   const resumeReminders = trpc.commercialFollowup.resumeReminders.useMutation({
     onSuccess: () => { toast.success("Recordatorios reanudados"); refetchDash(); refetchOpen(); },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toastError(e),
   });
 
   // CRUD de reglas y settings eliminado en Fases 4-5. Toda la configuración
@@ -337,7 +345,9 @@ export default function CommercialFollowupDashboard() {
         {/* ── TAB: DASHBOARD ──────────────────────────────────────────────── */}
         {tab === "dashboard" && (
           <div className="space-y-6">
-            {dashLoading ? (
+            {dashError ? (
+              <PanelError title="No se ha podido cargar el seguimiento comercial" error={dashError} onRetry={() => void refetchDash()} />
+            ) : dashLoading ? (
               <div className="flex items-center justify-center h-40">
                 <RefreshCw className="w-6 h-6 animate-spin text-orange-400" />
               </div>
@@ -355,8 +365,10 @@ export default function CommercialFollowupDashboard() {
                   <KpiCard label="Perdidos" value={kpis?.lost ?? 0} color="text-red-400" icon={XCircle} />
                 </div>
 
-                {/* ─── KPIs WhatsApp + Vapi ──────────────────────────────────── */}
+                {/* ─── KPIs WhatsApp + llamadas (solo con su módulo contratado) ─ */}
+                {(hasWhatsApp || hasVoice) && (
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  {hasWhatsApp && (<>
                   <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4 flex items-center gap-3">
                     <div className="p-2 rounded-lg bg-emerald-500/15 shrink-0">
                       <MessageCircle className="w-4 h-4 text-emerald-400" />
@@ -379,6 +391,8 @@ export default function CommercialFollowupDashboard() {
                       <div className="text-xs text-foreground/50">WhatsApp no leídas</div>
                     </div>
                   </div>
+                  </>)}
+                  {hasVoice && (<>
                   <div className="rounded-xl border border-violet-500/20 bg-violet-500/5 p-4 flex items-center gap-3">
                     <div className="p-2 rounded-lg bg-violet-500/15 shrink-0">
                       <Bot className="w-4 h-4 text-violet-400" />
@@ -387,7 +401,7 @@ export default function CommercialFollowupDashboard() {
                       <div className="text-2xl font-bold text-violet-400">
                         {vapiStats?.today ?? 0}
                       </div>
-                      <div className="text-xs text-foreground/50">Vapi llamadas hoy</div>
+                      <div className="text-xs text-foreground/50">Llamadas hoy</div>
                     </div>
                   </div>
                   <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 flex items-center gap-3">
@@ -398,10 +412,12 @@ export default function CommercialFollowupDashboard() {
                       <div className="text-2xl font-bold text-amber-400">
                         {vapiStats?.unreviewed ?? 0}
                       </div>
-                      <div className="text-xs text-foreground/50">Vapi sin revisar</div>
+                      <div className="text-xs text-foreground/50">Llamadas sin revisar</div>
                     </div>
                   </div>
+                  </>)}
                 </div>
+                )}
 
                 {/* ─── KPIs Email Comercial ──────────────────────────────────── */}
                 <div className="grid grid-cols-3 gap-3">
@@ -441,6 +457,7 @@ export default function CommercialFollowupDashboard() {
                 </div>
 
                 {/* ─── Control notificaciones WhatsApp ───────────────────────── */}
+                {hasWhatsApp && (
                 <div className="rounded-xl border border-border/50 bg-card p-4">
                   <h3 className="text-sm font-semibold mb-3 flex items-center gap-2 text-foreground/70">
                     <Bell className="w-4 h-4 text-sky-400" />
@@ -481,6 +498,7 @@ export default function CommercialFollowupDashboard() {
                     </label>
                   </div>
                 </div>
+                )}
 
                 {/* Attention list */}
                 <div className="rounded-xl border border-foreground/[0.08] bg-background overflow-hidden">
