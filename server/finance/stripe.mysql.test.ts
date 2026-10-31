@@ -18,6 +18,7 @@ import { FinanceService } from "./service";
 import { MysqlFinanceStore } from "./store";
 import { FinanceStripeService } from "./stripeService";
 import { MysqlFinanceStripeStore, MysqlStripeInvoiceDirectory, finStripeTablesReady } from "./stripeStore";
+import { MysqlOwnInvoiceDirectory, mysqlKeyedLock } from "./ownInvoices";
 import { stripeBalanceSample, stripePayoutsSample } from "./testkit";
 
 const URL_ = process.env.REGISTRY_TEST_DATABASE_URL;
@@ -69,7 +70,7 @@ describe.skipIf(!URL_)("Stripe y conciliación con MySQL real (CRM 0036)", () =>
       if (ref) await invoices.setPayment(invoice.id, { paymentStatus: "paid", paymentRef: ref, paidAt: T }, T);
       invoiceIds.push(invoice.id);
     }
-    stripe = new FinanceStripeService({ store: new MysqlFinanceStripeStore(pool), finance, ops: opsStore, ledger, invoices, stripeInvoices: new MysqlStripeInvoiceDirectory(pool), now: () => T });
+    stripe = new FinanceStripeService({ store: new MysqlFinanceStripeStore(pool), finance, ops: opsStore, ledger, invoices: new MysqlOwnInvoiceDirectory(pool, "test"), stripeInvoices: new MysqlStripeInvoiceDirectory(pool), lock: mysqlKeyedLock(pool), now: () => T });
     ops.useReconciliation(stripe);
   }, 180_000);
 
@@ -160,5 +161,39 @@ describe.skipIf(!URL_)("Stripe y conciliación con MySQL real (CRM 0036)", () =>
     expect(await count("SELECT COUNT(*) AS n FROM fin_entries WHERE origin = 'reversal' AND description LIKE '%Payout po_test_1%'")).toBe(1);
     expect(await count("SELECT COUNT(*) AS n FROM fin_stripe_payouts WHERE payout_id = 'po_test_1' AND status = 'failed' AND reversal_entry_id IS NOT NULL")).toBe(1);
     expect(await stripe.ledgerBalance()).toBe(11_350);
+  });
+  it("cobros por transferencia simultáneos a la misma factura que juntos superan lo pendiente: solo uno pasa (409)", async () => {
+    const invoices = new MysqlInvoicingStore(pool, "test");
+    const lines = [lineOf(1, "Consultoría", 1, 10_000, 2100)];
+    const { invoice } = await invoices.insertDraft({ sourceKey: "charge:77", kind: "invoice", paymentStatus: "pending", companyId: 9, billingRef: "charge:77", paymentRef: null, originalInvoiceId: null, operationDate: "2026-10-20", periodStart: null, periodEnd: null, periodLabel: null, currency: "EUR", ...totals(lines), customer: PARTY, notes: null, createdBy: "t", createdAt: T, lines });
+    await invoices.issue({ id: invoice.id, seriesCode: "EB", issueDate: "2026-10-20", issuer: PARTY, customer: PARTY, issuedBy: "t", issuedAt: T });
+    await ops.importStatement({ bankAccountId: bankId, format: "csv", filename: "e2.csv", contentBase64: b64("Fecha;Importe;Concepto\n2026-10-21;80,00;TRANSF PARCIAL A\n2026-10-21;70,00;TRANSF PARCIAL B"), mapping: { delimiter: ";", headerRows: 1, date: 0, amount: 1, description: 2, balance: null, dateFormat: "yyyy-mm-dd", decimal: "," } }, ACTOR);
+    const movs = (await ops.movements({ status: "pending" })).items.filter((m) => m.amountCents === 8_000 || m.amountCents === 7_000);
+    expect(movs).toHaveLength(2);
+    const before = await count("SELECT COUNT(*) AS n FROM fin_entries");
+    const race = await Promise.allSettled(movs.map((m) => ops.match(m.id, { type: "invoice_payment", invoiceId: invoice.id }, ACTOR)));
+    expect(race.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    const lost = race.find((r) => r.status === "rejected") as PromiseRejectedResult;
+    expect(lost.reason).toMatchObject({ code: "exceeds_pending" });
+    expect(await count("SELECT COUNT(*) AS n FROM fin_entries")).toBe(before + 1);
+    expect(await count("SELECT COUNT(*) AS n FROM fin_bank_movements WHERE match_type = 'invoice_payment' AND match_id = ?", [invoice.id])).toBe(1);
+    // El movimiento perdedor sigue pendiente; lo que queda de la factura sí cabe
+    const rest = await stripe.invoiceForTransfer(invoice.id);
+    expect([4_100, 5_100]).toContain(rest.pendingCents);
+  });
+
+  it("facturas propias sin tope: lectura paginada desde la tabla (solo lectura)", async () => {
+    const dir = new MysqlOwnInvoiceDirectory(pool, "test");
+    const all = await dir.list({ limit: 500, offset: 0 });
+    expect(all.total).toBe(3);
+    const second = await dir.list({ limit: 1, offset: 1 });
+    expect(second).toMatchObject({ total: 3, items: [all.items[1]] });
+    expect((await dir.list({ limit: 10, offset: 0, q: "nextair" })).total).toBe(3);
+    expect((await dir.byStripeIds(["in_test_1"])).map((o) => o.id)).toEqual([invoiceIds[0]]);
+    expect(await dir.list({ limit: 10, offset: 0, from: "2026-10-02", to: "2026-10-02" })).toMatchObject({ total: 1, items: [{ id: invoiceIds[1], customerName: "NEXTAIR SL", totalCents: 30_250 }] });
+    expect(await new MysqlOwnInvoiceDirectory(pool, "live").list({ limit: 10, offset: 0 })).toEqual({ items: [], total: 0 });
+    const page = await stripe.reconciliationInvoices({ limit: 1, offset: 0 });
+    expect(page.total).toBe(3);
+    expect(page.items).toHaveLength(1);
   });
 });

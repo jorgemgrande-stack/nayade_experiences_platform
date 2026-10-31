@@ -9,8 +9,7 @@
  * el estado de cobro de las facturas son solo referencia: aquí nunca se escriben ni se contabilizan desde ellos.
  */
 import { madridDateKey } from "../utils/timezone";
-import type { InvoicingStore } from "../invoicing/store";
-import type { Invoice } from "../invoicing/types";
+import { invoiceLockKey, memoryKeyedLock, type KeyedLock, type OwnInvoice, type OwnInvoiceDirectory } from "./ownInvoices";
 import { decodeText, safeFilename, sha256Hex, MAX_DOCUMENT_BYTES } from "./opsRules";
 import type { FinanceOpsStore } from "./opsStore";
 import type { BankMovement } from "./opsTypes";
@@ -44,50 +43,25 @@ export interface FinanceStripeDeps {
   ops: FinanceOpsStore;
   ledger: Pick<FinanceStore, "postedLines" | "listAccounts" | "getEntry">;
   /** Facturas propias (solo lectura). Sin ellas los cobros quedan «sin factura» y no hay vista por factura. */
-  invoices?: Pick<InvoicingStore, "list" | "get"> | null;
+  invoices?: OwnInvoiceDirectory | null;
+  /** Cerrojo por clave (MySQL: GET_LOCK) que serializa los cobros por transferencia de una misma factura. */
+  lock?: KeyedLock;
   /** Facturas de Stripe registradas por el cobro (`stripe_invoices`, solo lectura), para explicar un cobro sin factura. */
   stripeInvoices?: { known(ids: string[]): Promise<Set<string>> } | null;
   now?: () => number;
 }
 
-/** Factura propia tal y como la usa la conciliación (solo lectura de `server/invoicing`). */
-export interface OwnInvoice {
-  id: number;
-  number: string | null;
-  kind: Invoice["kind"];
-  status: Invoice["status"];
-  issueDate: string | null;
-  operationDate: string;
-  companyId: number;
-  customerName: string | null;
-  totalCents: number;
-  currency: string;
-  paymentStatus: Invoice["paymentStatus"];
-  paymentRef: string | null;
-}
+export type { OwnInvoice };
 
 const bad = (m: string) => new FinanceError("invalid_input", m);
 const notFound = (what: string) => new FinanceError("not_found", `${what} no encontrado`);
-/** Facturas leídas como mucho por estado (el almacén de facturas no pagina más allá). */
-const INVOICE_SCAN = 500;
+/** Facturas leídas por página en la vista por factura con filtro de estado (se recorren todas). */
+const INVOICE_PAGE = 500;
+/** Candidatas a un cobro por transferencia que se puntúan como mucho (las más recientes del último año). */
+const INVOICE_CANDIDATES = 500;
 /** Transacciones contabilizadas como mucho por pasada (repetir si hay más: `truncated`). */
 const POST_BATCH = 5_000;
-const STRIPE_REF = /^stripe:in:(.+)$/;
 
-const ownOf = (i: Invoice): OwnInvoice => ({
-  id: i.id,
-  number: i.number,
-  kind: i.kind,
-  status: i.status,
-  issueDate: i.issueDate,
-  operationDate: i.operationDate,
-  companyId: i.companyId,
-  customerName: i.customer?.legalName ?? null,
-  totalCents: i.totalCents,
-  currency: i.currency,
-  paymentStatus: i.paymentStatus,
-  paymentRef: i.paymentRef,
-});
 const refOf = (o: OwnInvoice): InvoiceRef => ({ id: o.id, number: o.number, companyId: o.companyId, totalCents: o.totalCents });
 
 export interface PostResult {
@@ -100,8 +74,10 @@ export interface PostResult {
 
 export class FinanceStripeService implements BankReconciliationExtension {
   private readonly now: () => number;
+  private readonly lock: KeyedLock;
   constructor(private readonly d: FinanceStripeDeps) {
     this.now = d.now ?? Date.now;
+    this.lock = d.lock ?? memoryKeyedLock();
   }
 
   today(): string {
@@ -191,21 +167,16 @@ export class FinanceStripeService implements BankReconciliationExtension {
 
   // ── Facturas propias (solo lectura) ───────────────────────────────────────────────────────────────────────────
 
-  private async ownInvoices(): Promise<OwnInvoice[]> {
-    if (!this.d.invoices) return [];
-    const [issued, rectified] = await Promise.all([this.d.invoices.list({ status: "issued", limit: INVOICE_SCAN }), this.d.invoices.list({ status: "rectified", limit: INVOICE_SCAN })]);
-    return [...issued, ...rectified].map(ownOf);
+  private get invoices(): OwnInvoiceDirectory {
+    if (!this.d.invoices) throw new FinanceError("unavailable", "La facturación propia no está montada en este entorno (migración 0027)");
+    return this.d.invoices;
   }
 
-  /** Índices de las facturas propias: por id y por factura de Stripe que las cobró (`paymentRef` = `stripe:in:<id>`). */
-  private async invoiceIndex() {
-    const list = await this.ownInvoices();
-    const byStripe = new Map<string, OwnInvoice>();
-    for (const o of list) {
-      const m = STRIPE_REF.exec(o.paymentRef ?? "");
-      if (m && o.kind !== "rectification") byStripe.set(m[1], o);
-    }
-    return { list, byId: new Map(list.map((o) => [o.id, o])), byStripe };
+  /** Facturas propias por id (para mostrar su número); vacío sin facturación propia. */
+  private async invoicesById(ids: Array<number | null>): Promise<Map<number, OwnInvoice>> {
+    const want = Array.from(new Set(ids.filter((x): x is number => x !== null)));
+    if (!this.d.invoices || !want.length) return new Map();
+    return new Map((await this.d.invoices.byIds(want)).map((o) => [o.id, o]));
   }
 
   // ── Transacciones y payouts ───────────────────────────────────────────────────────────────────────────────────
@@ -279,7 +250,7 @@ export class FinanceStripeService implements BankReconciliationExtension {
     let payout = q.payout;
     if (payout && /^\d+$/.test(payout)) payout = (await this.s.getPayout(Number(payout)))?.payoutId ?? "po_inexistente";
     const out = await this.s.listTransactions({ ...q, payout });
-    const [{ byId }, pm] = await Promise.all([this.invoiceIndex(), this.payoutMap(out.items.map((t) => t.stripePayoutId))]);
+    const [byId, pm] = await Promise.all([this.invoicesById(out.items.map((t) => t.ownInvoiceId)), this.payoutMap(out.items.map((t) => t.stripePayoutId))]);
     return { items: out.items.map((t) => this.txnDto(t, byId, pm)), total: out.total };
   }
 
@@ -299,12 +270,13 @@ export class FinanceStripeService implements BankReconciliationExtension {
   /** Vista por payout (§4): transacciones incluidas, suma frente al importe y movimiento bancario vinculado. */
   async reconciliationPayout(id: number) {
     const p = await this.payout(id);
-    const [txns, banks, idx] = await Promise.all([this.s.transactionsByPayout([p.payoutId]), this.d.ops.getMovementsByIds(p.bankMovementId ? [p.bankMovementId] : []), this.invoiceIndex()]);
+    const [txns, banks] = await Promise.all([this.s.transactionsByPayout([p.payoutId]), this.d.ops.getMovementsByIds(p.bankMovementId ? [p.bankMovementId] : [])]);
+    const byId = await this.invoicesById(txns.map((t) => t.ownInvoiceId));
     const bank = banks[0] ?? null;
     const pm = new Map([[p.payoutId, p]]);
     return {
       ...this.payoutDto(p, txns, bank),
-      transactions: txns.sort((a, b) => a.createdOn.localeCompare(b.createdOn) || a.id - b.id).map((t) => this.txnDto(t, idx.byId, pm)),
+      transactions: txns.sort((a, b) => a.createdOn.localeCompare(b.createdOn) || a.id - b.id).map((t) => this.txnDto(t, byId, pm)),
       bankMovement: bank ? { id: bank.id, bankAccountId: bank.bankAccountId, bookingDate: bank.bookingDate, valueDate: bank.valueDate, amountCents: bank.amountCents, description: bank.description, status: bank.status } : null,
     };
   }
@@ -312,7 +284,7 @@ export class FinanceStripeService implements BankReconciliationExtension {
   // ── Contabilización ───────────────────────────────────────────────────────────────────────────────────────────
 
   /** Factura propia de una transacción: por su factura de Stripe o, en reembolsos y disputas, por la del cobro original. */
-  private async invoiceFor(t: StripeTxn, idx: Awaited<ReturnType<FinanceStripeService["invoiceIndex"]>>, chargeOwn: Map<string, number>) {
+  private async invoiceFor(t: StripeTxn, idx: { byStripe: Map<string, OwnInvoice>; byId: Map<number, OwnInvoice> }, chargeOwn: Map<string, number>) {
     if (t.stripeInvoiceId) {
       const o = idx.byStripe.get(t.stripeInvoiceId);
       if (o) return o;
@@ -336,10 +308,16 @@ export class FinanceStripeService implements BankReconciliationExtension {
     const out: PostResult = { posted: 0, skipped: 0, errors: [], truncated: false };
     const batch = await this.s.postableTransactions(u, POST_BATCH);
     out.truncated = batch.length >= POST_BATCH;
-    const idx = await this.invoiceIndex();
     const chargeIds = Array.from(new Set(batch.filter((t) => t.type !== "charge" && t.chargeId).map((t) => t.chargeId!)));
     const chargeOwn = new Map<string, number>();
     for (const c of await this.s.transactionsByCharge(chargeIds)) if (c.type === "charge" && c.chargeId && c.ownInvoiceId) chargeOwn.set(c.chargeId, c.ownInvoiceId);
+    // Solo las facturas que hacen falta: las de las facturas de Stripe del lote y las de los cobros originales
+    const stripeIds = Array.from(new Set(batch.map((t) => t.stripeInvoiceId).filter((x): x is string => !!x)));
+    const byStripe = new Map<string, OwnInvoice>();
+    if (this.d.invoices) for (const o of await this.d.invoices.byStripeIds(stripeIds)) byStripe.set(o.paymentRef!.slice("stripe:in:".length), o);
+    const byId = await this.invoicesById(Array.from(chargeOwn.values()));
+    for (const o of Array.from(byStripe.values())) byId.set(o.id, o);
+    const idx = { byStripe, byId };
     const known = this.d.stripeInvoices ? await this.d.stripeInvoices.known(Array.from(new Set(batch.map((t) => t.stripeInvoiceId).filter((x): x is string => !!x)))) : new Set<string>();
 
     for (const t of batch) {
@@ -364,7 +342,10 @@ export class FinanceStripeService implements BankReconciliationExtension {
               ? `Cobrado ${t.grossCents} céntimos; la factura ${own?.number ?? ""} es de ${own?.totalCents ?? 0}`
               : null;
         await this.s.markTransaction(t.id, { status: "posted", entryId: entry.id, ownInvoiceId: own?.id ?? null, issue, issueDetail, postedAt: this.now() });
-        if (t.type === "charge" && t.chargeId && own) chargeOwn.set(t.chargeId, own.id);
+        if (t.type === "charge" && t.chargeId && own) {
+          chargeOwn.set(t.chargeId, own.id);
+          idx.byId.set(own.id, own);
+        }
         // Disputa ganada: las retenciones de ese cobro quedan resueltas
         if (t.type === "dispute_reversal" && t.chargeId)
           for (const dsp of await this.s.transactionsByCharge([t.chargeId])) if (dsp.type === "dispute") await this.s.reviewIssue(dsp.id, actor.by, this.now(), `Disputa ganada (${t.balanceTransactionId})`);
@@ -445,8 +426,8 @@ export class FinanceStripeService implements BankReconciliationExtension {
     if (!t.issue) throw new FinanceError("invalid_state", "La transacción no tiene ninguna incidencia");
     if (!(await this.s.reviewIssue(id, actor.by, this.now(), n))) throw new FinanceError("invalid_state", "La incidencia ya estaba revisada");
     await this.audit(actor, "stripe_txn.review", "stripe_txn", id, { issue: t.issue, note: n });
-    const [idx, pm] = await Promise.all([this.invoiceIndex(), this.payoutMap([t.stripePayoutId])]);
-    return this.txnDto((await this.s.getTransaction(id))!, idx.byId, pm);
+    const [byId, pm] = await Promise.all([this.invoicesById([t.ownInvoiceId]), this.payoutMap([t.stripePayoutId])]);
+    return this.txnDto((await this.s.getTransaction(id))!, byId, pm);
   }
 
   // ── Resumen ───────────────────────────────────────────────────────────────────────────────────────────────────
@@ -485,24 +466,31 @@ export class FinanceStripeService implements BankReconciliationExtension {
 
   /** Vista por factura (§4 y fechas del §3): factura → cobros → comisión → payout → banco, con su estado. */
   async reconciliationInvoices(q: { status?: ReconciliationStatus; from?: string; to?: string; q?: string; limit?: number; offset?: number }) {
-    if (!this.d.invoices) throw new FinanceError("unavailable", "La facturación propia no está montada en este entorno (migración 0027)");
-    const text = q.q?.trim().toLowerCase();
-    const invoices = (await this.ownInvoices())
-      .filter((o) => o.kind !== "rectification" && o.totalCents > 0)
-      .filter((o) => {
-        const date = o.issueDate ?? o.operationDate;
-        return (!q.from || date >= q.from) && (!q.to || date <= q.to) && (!text || (o.number ?? "").toLowerCase().includes(text) || (o.customerName ?? "").toLowerCase().includes(text));
-      })
-      .sort((a, b) => (b.issueDate ?? b.operationDate).localeCompare(a.issueDate ?? a.operationDate) || b.id - a.id);
+    const dir = this.invoices;
+    const offset = Math.max(0, q.offset ?? 0);
+    const limit = Math.max(1, Math.min(q.limit ?? 50, 500));
+    const base = { from: q.from, to: q.to, q: q.q?.trim() || undefined };
+    // Sin filtro de estado pagina la propia consulta; con él, recorre todas las facturas por páginas (el estado se
+    // calcula con los cobros, payouts y movimientos de cada una)
+    if (!q.status) {
+      const page = await dir.list({ ...base, limit, offset });
+      return { items: await this.chains(page.items), total: page.total };
+    }
+    const matched: Array<ReturnType<FinanceStripeService["invoiceChain"]>> = [];
+    for (let at = 0; ; at += INVOICE_PAGE) {
+      const page = await dir.list({ ...base, limit: INVOICE_PAGE, offset: at });
+      matched.push(...(await this.chains(page.items)).filter((x) => x.status === q.status));
+      if (page.items.length < INVOICE_PAGE) break;
+    }
+    return { items: matched.slice(offset, offset + limit), total: matched.length };
+  }
+
+  private async chains(invoices: OwnInvoice[]) {
     const ids = invoices.map((o) => o.id);
     const [txns, transfers] = await Promise.all([this.s.transactionsByInvoice(ids), this.d.ops.movementsByMatch("invoice_payment", ids)]);
     const pm = await this.payoutMap(txns.map((t) => t.stripePayoutId));
     const payoutBanks = new Map((await this.d.ops.getMovementsByIds(Array.from(pm.values()).map((p) => p.bankMovementId).filter((x): x is number => x !== null))).map((b) => [b.id, b]));
-    const rows = invoices.map((o) => this.invoiceChain(o, txns.filter((t) => t.ownInvoiceId === o.id), transfers.filter((m) => m.matchId === o.id), pm, payoutBanks));
-    const filtered = q.status ? rows.filter((r) => r.status === q.status) : rows;
-    const offset = Math.max(0, q.offset ?? 0);
-    const limit = Math.max(1, Math.min(q.limit ?? 50, 500));
-    return { items: filtered.slice(offset, offset + limit), total: filtered.length };
+    return invoices.map((o) => this.invoiceChain(o, txns.filter((t) => t.ownInvoiceId === o.id), transfers.filter((m) => m.matchId === o.id), pm, payoutBanks));
   }
 
   private invoiceChain(o: OwnInvoice, txns: StripeTxn[], transfers: BankMovement[], pm: Map<string, StripePayout>, banks: Map<number, BankMovement>) {
@@ -574,10 +562,10 @@ export class FinanceStripeService implements BankReconciliationExtension {
 
   async suggestions(m: BankMovement): Promise<StripeMatchSuggestion[]> {
     if (m.amountCents <= 0) return [];
-    const [payouts, idx] = await Promise.all([this.s.openPayoutsForBank(500), this.invoiceIndex()]);
+    const [payouts, open] = await Promise.all([this.s.openPayoutsForBank(500), this.d.invoices ? this.d.invoices.openCandidates({ minTotalCents: m.amountCents, from: addDays(m.bookingDate, -365), limit: INVOICE_CANDIDATES }) : Promise.resolve([] as OwnInvoice[])]);
     const settings = await this.s.getSettings();
     const candidates = payouts.filter((p) => p.currency === "EUR" && (settings.stripePayoutBankAccountId === null || settings.stripePayoutBankAccountId === m.bankAccountId) && p.arrivalOn >= addDays(m.bookingDate, -30) && p.arrivalOn <= addDays(m.bookingDate, 30));
-    const pending = await this.pendingByInvoice(idx.list.filter((o) => o.kind !== "rectification" && o.status === "issued" && o.paymentStatus !== "paid" && o.totalCents > 0));
+    const pending = await this.pendingByInvoice(open);
     return suggestStripeMatches(
       m,
       candidates.map((p) => ({ id: p.id, payoutId: p.payoutId, arrivalOn: p.arrivalOn, amountCents: p.amountCents })),
@@ -593,14 +581,22 @@ export class FinanceStripeService implements BankReconciliationExtension {
   }
 
   async invoiceForTransfer(invoiceId: number) {
-    if (!this.d.invoices) throw new FinanceError("unavailable", "La facturación propia no está montada en este entorno (migración 0027)");
-    const inv = await this.d.invoices.get(invoiceId);
+    const [inv] = await this.invoices.byIds([invoiceId]);
     if (!inv) throw new FinanceError("not_found", "Factura no encontrada");
     if (inv.status !== "issued" || inv.kind === "rectification") throw new FinanceError("invalid_state", "Solo se cobra una factura expedida (no rectificativa)");
     if (inv.currency !== "EUR") throw bad("La factura no está en euros");
-    const [{ pendingCents }] = await this.pendingByInvoice([ownOf(inv)]);
+    const [{ pendingCents }] = await this.pendingByInvoice([inv]);
     if (pendingCents <= 0) throw new FinanceError("exceeds_pending", "La factura ya está cobrada");
     return { id: inv.id, number: inv.number, companyId: inv.companyId, pendingCents };
+  }
+
+  /**
+   * Serializa los cobros por transferencia de una misma factura: comprobar lo pendiente, reservar el movimiento y
+   * contabilizar ocurren con el cerrojo `fin-invoice-<id>` tomado (dos transferencias simultáneas que juntas superan lo
+   * pendiente: la segunda espera y recibe `exceeds_pending`).
+   */
+  withInvoiceLock<T>(invoiceId: number, fn: () => Promise<T>): Promise<T> {
+    return this.lock(invoiceLockKey(invoiceId), fn);
   }
 
   async linkPayout(m: BankMovement, payoutId: number, actor: FinanceActor) {

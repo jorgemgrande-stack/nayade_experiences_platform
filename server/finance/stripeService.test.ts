@@ -13,6 +13,7 @@ import { MemoryFinanceOpsStore } from "./opsStore";
 import { FinanceService } from "./service";
 import { MemoryFinanceStore } from "./store";
 import { FinanceStripeService } from "./stripeService";
+import { ownInvoicesFromStore } from "./ownInvoices";
 import { MemoryFinanceStripeStore } from "./stripeStore";
 import { seededOps, seededPlan, stripeBalanceSample, stripePayoutsSample } from "./testkit";
 
@@ -38,7 +39,7 @@ async function setup() {
   const inv1 = await issue("external:1:2026-10", [lineOf(1, "Plan Elephant Core", 1, 10_000, 2100)], "2026-10-01", "stripe:in:in_test_1");
   const inv2 = await issue("charge:5", [lineOf(1, "Implantación", 1, 25_000, 2100)], "2026-10-02", null);
   const store = new MemoryFinanceStripeStore();
-  const stripe = new FinanceStripeService({ store, finance, ops: opsStore, ledger, invoices, now: () => T0 });
+  const stripe = new FinanceStripeService({ store, finance, ops: opsStore, ledger, invoices: ownInvoicesFromStore(invoices), now: () => T0 });
   ops.useReconciliation(stripe);
   const entries = async () => (await ledger.listEntries({ limit: 200 })).items;
   const balance = async (code: string) => (await finance.ledger(code, "2026-01-01", "2026-12-31")).closingCents;
@@ -279,5 +280,34 @@ describe("conciliación", () => {
     await expect(stripe.saveSettings({ disputeAccountCode: "705" }, ACTOR)).rejects.toMatchObject({ code: "invalid_input" });
     await expect(stripe.saveSettings({ stripePayoutBankAccountId: 99 }, ACTOR)).rejects.toMatchObject({ code: "invalid_input" });
     expect((await ledger.lastAudit("stripe.settings"))?.summary).toMatchObject({ disputeAccountCode: "436" });
+  });
+});
+
+describe("volumen y concurrencia", () => {
+  it("más de 500 facturas: la vista por factura las recorre todas (también con filtro de estado)", async () => {
+    const { stripe, invoices } = await setup();
+    const PARTY2 = { ...PARTY, legalName: "Cliente Volumen SL" };
+    for (let n = 0; n < 520; n++) {
+      const lines = [lineOf(1, "Plan", 1, 1_000 + n, 2100)];
+      const { invoice } = await invoices.insertDraft({ sourceKey: `vol:${n}`, kind: "invoice", paymentStatus: "pending", companyId: 11, billingRef: "external:9", paymentRef: null, originalInvoiceId: null, operationDate: "2026-09-15", periodStart: null, periodEnd: null, periodLabel: null, currency: "EUR", ...totals(lines), customer: PARTY2, notes: null, createdBy: "t", createdAt: T0, lines });
+      await invoices.issue({ id: invoice.id, seriesCode: "EB", issueDate: "2026-09-15", issuer: PARTY, customer: PARTY2, issuedBy: "t", issuedAt: T0 });
+    }
+    expect((await stripe.reconciliationInvoices({ limit: 10 })).total).toBe(522);
+    const pending = await stripe.reconciliationInvoices({ status: "pendiente_cobro", limit: 10, offset: 515 });
+    expect(pending.total).toBe(522);
+    expect(pending.items).toHaveLength(7);
+    expect((await stripe.reconciliationInvoices({ q: "volumen", limit: 1 })).total).toBe(520);
+  });
+
+  it("dos transferencias simultáneas a la misma factura que juntas superan lo pendiente: solo una pasa", async () => {
+    const { ops, inv2, entries, statement } = await setup();
+    await statement(["2026-10-15;200,00;TRANSF A", "2026-10-15;150,00;TRANSF B"]);
+    const movs = (await ops.movements({})).items;
+    const n = (await entries()).length;
+    const race = await Promise.allSettled(movs.map((m) => ops.match(m.id, { type: "invoice_payment", invoiceId: inv2.id }, ACTOR)));
+    expect(race.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    expect((race.find((r) => r.status === "rejected") as PromiseRejectedResult).reason).toMatchObject({ code: "exceeds_pending" });
+    expect((await entries()).length).toBe(n + 1);
+    expect((await ops.movements({ status: "pending" })).total).toBe(1);
   });
 });

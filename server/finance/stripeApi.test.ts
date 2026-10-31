@@ -20,6 +20,7 @@ import { MemoryFinanceOpsStore } from "./opsStore";
 import { FinanceService } from "./service";
 import { MemoryFinanceStore } from "./store";
 import { FinanceStripeService } from "./stripeService";
+import { ownInvoicesFromStore } from "./ownInvoices";
 import { MemoryFinanceStripeStore } from "./stripeStore";
 import { seededOps, seededPlan, stripeBalanceSample, stripePayoutsSample } from "./testkit";
 
@@ -46,7 +47,7 @@ describe("API /cp/v1/finance, fase 2: Stripe y conciliación", () => {
   const opsStore = new MemoryFinanceOpsStore(seededOps());
   const ops = new FinanceOpsService({ store: opsStore, finance, ledger, now: () => T });
   const invoices = new MemoryInvoicingStore();
-  const stripe = new FinanceStripeService({ store: new MemoryFinanceStripeStore(), finance, ops: opsStore, ledger, invoices, now: () => T });
+  const stripe = new FinanceStripeService({ store: new MemoryFinanceStripeStore(), finance, ops: opsStore, ledger, invoices: ownInvoicesFromStore(invoices), now: () => T });
   ops.useReconciliation(stripe);
   const ids: Record<string, number> = {};
 

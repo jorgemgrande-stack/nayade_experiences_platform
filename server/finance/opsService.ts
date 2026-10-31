@@ -157,6 +157,8 @@ export interface BankReconciliationExtension {
   unlinkPayout(m: BankMovement, actor: FinanceActor): Promise<void>;
   /** Factura propia expedida que se cobra por transferencia, con lo que queda por cobrar. */
   invoiceForTransfer(invoiceId: number): Promise<{ id: number; number: string | null; companyId: number | null; pendingCents: number }>;
+  /** Ejecuta `fn` con el cerrojo de la factura (los cobros por transferencia de una misma factura, de uno en uno). */
+  withInvoiceLock<T>(invoiceId: number, fn: () => Promise<T>): Promise<T>;
 }
 
 export type BankSuggestion = Omit<MatchSuggestion, "score"> | Omit<StripeMatchSuggestion, "score">;
@@ -936,6 +938,12 @@ export class FinanceOpsService {
    *    Haber 430); asiento `bankmov:<id>`.
    */
   async match(id: number, i: MatchInput, actor: FinanceActor): Promise<BankMovement> {
+    // Cobro de factura: comprobar lo pendiente, reservar el movimiento y contabilizar con el cerrojo de la factura
+    if (i.type === "invoice_payment") return this.ext.withInvoiceLock(i.invoiceId, () => this.matchNow(id, i, actor));
+    return this.matchNow(id, i, actor);
+  }
+
+  private async matchNow(id: number, i: MatchInput, actor: FinanceActor): Promise<BankMovement> {
     const m = await this.movement(id);
     if (m.status !== "pending") throw new FinanceError("invalid_state", m.status === "matched" ? "El movimiento ya está conciliado" : "El movimiento está ignorado: desvincúlalo antes");
     const bank = await this.bank(m.bankAccountId);

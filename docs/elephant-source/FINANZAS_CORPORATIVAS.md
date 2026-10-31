@@ -280,7 +280,12 @@ primera importación (que se registra con un asiento manual de apertura).
   concepto), y facturas propias pendientes por importe exacto, número o cliente en el concepto.
 - **Acciones:** vincular/desvincular payout ↔ movimiento (sin asiento; un movimiento por payout y un payout por
   movimiento, también en carrera), `invoice_payment` para transferencias (no supera lo pendiente: total − cobros de
-  Stripe − transferencias), marcar una incidencia como revisada con nota.
+  Stripe − transferencias; la comprobación, la reserva del movimiento y el asiento van con el cerrojo
+  `GET_LOCK('fin-invoice-<id>')`: dos transferencias simultáneas que juntas superan lo pendiente → la segunda recibe
+  `exceeds_pending`), marcar una incidencia como revisada con nota.
+- **Facturas propias sin tope:** se leen de la tabla `invoices` en solo lectura (`server/finance/ownInvoices.ts`,
+  `MysqlOwnInvoiceDirectory`, del mismo entorno test/live que la facturación): por `payment_ref`, por id, paginadas y
+  candidatas a un cobro (no cobradas del último año, las 500 más recientes con total suficiente).
 
 ### Redsys
 
