@@ -203,12 +203,12 @@ describe("reparto de los ámbitos de finanzas por rol", () => {
   const fin = (role: keyof typeof ROLE_SCOPES) => ROLE_SCOPES[role].filter((s) => s.startsWith("finance:")).sort();
   const ALL = Object.values(FINANCE_SCOPE).sort();
 
-  it("superadmin y admin: todos; readonly y comercial: solo consulta; soporte: ninguno", () => {
+  it("superadmin y admin: todos; readonly: solo consulta; comercial y soporte: ninguno", () => {
     expect(fin("superadmin")).toEqual(ALL);
     expect(fin("admin")).toEqual(ALL);
     expect(fin("readonly")).toEqual(["finance:read"]);
-    // Comercial ya veía las finanzas con billing:read: conserva la consulta y nada más
-    expect(fin("sales")).toEqual(["finance:read"]);
+    // Comercial conserva su consulta comercial con billing:read; ni contabilidad, ni gestoría, ni exportaciones
+    expect(fin("sales")).toEqual([]);
     expect(fin("support")).toEqual([]);
   });
 

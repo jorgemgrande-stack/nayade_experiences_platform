@@ -610,7 +610,9 @@ exige uno distinto del previsto en su tabla de rutas.
 | `finance:sensitive` | Operaciones sensibles | sesión de operador | Cerrar y reabrir periodos, cerrar ejercicios, cerrar el trimestre fiscal y reabrir obligaciones presentadas |
 
 «Sesión de operador» = solo personas con cookie de operador; nunca un token de servicio ni una sesión SSO. Las
-capacidades sin esa marca admiten también tokens de servicio que tengan el ámbito (hoy ninguno lo tiene).
+capacidades sin esa marca admiten también tokens de servicio que tengan el ámbito. **Tokens de servicio: sin acceso a
+finanzas por defecto**; ninguno lo tiene hoy y solo se concedería, con el ámbito mínimo, a una integración existente e
+identificada que lo necesite.
 
 El alta de una cuenta bancaria o de una caja crea su subcuenta en el plan contable desde el servicio (alta derivada):
 basta `finance:expenses`, sin `finance:config`.
@@ -622,7 +624,7 @@ los roles `admin|superadmin` para cierres y configuración):
 |---|---|---|
 | `superadmin` | todo (billing:read + billing:write + rol) | los ocho `finance:*` |
 | `admin` | todo (billing:read + billing:write + rol) | los ocho `finance:*` |
-| `sales` (comercial) | consulta y exportaciones (billing:read) | `finance:read` (pierde las exportaciones CSV/ZIP) |
+| `sales` (comercial) | consulta y exportaciones (billing:read) | ninguno: conserva la consulta comercial (facturación, cobros, métricas) con `billing:read`, sin contabilidad, gestoría ni exportaciones |
 | `readonly` | consulta y exportaciones (billing:read) | `finance:read` (pierde las exportaciones CSV/ZIP) |
 | `support` | nada | nada |
 

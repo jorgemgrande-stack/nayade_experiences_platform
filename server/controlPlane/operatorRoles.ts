@@ -24,9 +24,9 @@ export const ROLE_SCOPES: Record<OperatorRole, readonly Scope[]> = {
   // Comercial edita borradores de la web; publicar queda para administración
   // Comercial consulta suscripciones; operar sobre ellas queda para administración
   // Comercial prepara pedidos (cotización, contrato, aceptación, pago de prueba); aprobar sin pago y activar, administración
-  // Comercial conserva la consulta financiera que ya tenía con billing:read (finance:read); gestionar, contabilizar,
-  // exportar, configurar y cerrar queda para administración
-  sales: ["crm:read", "crm:write", "tenants:read", "billing:read", "usage:read", "tickets:read", "web:read", "web:write", "subscriptions:read", "orders:read", "orders:write", "finance:read"],
+  // Comercial consulta lo comercial (facturación, cobros, métricas) con billing:read; la contabilidad y la gestoría
+  // (finance:*) quedan para administración
+  sales: ["crm:read", "crm:write", "tenants:read", "billing:read", "usage:read", "tickets:read", "web:read", "web:write", "subscriptions:read", "orders:read", "orders:write"],
   support: ["tickets:read", "tickets:write", "support:write", "tenants:read", "usage:read", "ops:read", "crm:read", "web:read"],
   readonly: READ,
 };
