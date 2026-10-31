@@ -262,6 +262,9 @@ export default function SubscriptionPage() {
               </p>
               <div className="flex flex-wrap gap-2">
                 <Button asChild>
+                  <Link href="/admin/ampliar">Elephant Connect — Amplía tu empresa</Link>
+                </Button>
+                <Button asChild variant="outline">
                   <Link href="/admin/suscripcion/modulos">Ver módulos y ampliaciones</Link>
                 </Button>
                 <Button asChild variant="outline">
