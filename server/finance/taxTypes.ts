@@ -82,9 +82,16 @@ export interface TaxSettings {
   version: number;
   updatedBy: string | null;
   updatedAt: number | null;
+  /**
+   * CRM 0039: validación con la gestoría (puerta para datos reales). Cualquier cambio posterior la invalida (null).
+   * Sin validar, los borradores se calculan y se ven, pero no se revisan ni se presentan.
+   */
+  validatedAt: number | null;
+  validatedBy: string | null;
+  validationNote: string | null;
 }
 
-export type TaxSettingsInput = Partial<Omit<TaxSettings, "configured" | "version" | "updatedBy" | "updatedAt">>;
+export type TaxSettingsInput = Partial<Omit<TaxSettings, "configured" | "version" | "updatedBy" | "updatedAt" | "validatedAt" | "validatedBy" | "validationNote">>;
 
 export interface TaxSettingsLogRow {
   id: number;
@@ -339,4 +346,90 @@ export interface CorporateAdjustment {
   voidedBy: string | null;
   voidedAt: number | null;
   voidReason: string | null;
+}
+
+// ── Impuesto sobre Sociedades por ejercicio (CRM 0039) ───────────────────────────────────────────────────────────
+
+/** Régimen elegido por el operador (los tramos son los que se guardan; el régimen es informativo y para los avisos). */
+export const CORPORATE_REGIMES = ["general", "nueva_creacion", "erd", "microempresa", "otro"] as const;
+export type CorporateRegime = (typeof CORPORATE_REGIMES)[number];
+
+/** Tramo de la escala: hasta `uptoCents` de base imponible (el último, sin tope: null) al tipo `rateBp`. */
+export interface CorporateBracket {
+  uptoCents: number | null;
+  rateBp: number;
+}
+
+/** Configuración del Impuesto sobre Sociedades de un ejercicio (`fin_tax_corporate_years`); nada se presupone. */
+export interface CorporateYearConfig {
+  year: number;
+  regime: CorporateRegime;
+  brackets: CorporateBracket[];
+  /** Cifra de negocios del ejercicio anterior: informativa para el régimen (microempresa < 1 M€, ERD < 10 M€). */
+  netTurnoverCents: number | null;
+  /** Reserva de capitalización (art. 25 LIS): incremento de fondos propios del ejercicio, tasa y límite sobre la base. */
+  capReserveEquityIncreaseCents: number | null;
+  capReserveRateBp: number | null;
+  capReserveLimitBp: number | null;
+  /** Reserva de nivelación (art. 105 LIS, entidades de reducida dimensión), opcional. */
+  levellingReserveCents: number | null;
+  notes: string | null;
+  configuredBy: string;
+  configuredAt: number;
+  version: number;
+}
+
+export type CorporateYearInput = Omit<CorporateYearConfig, "year" | "configuredBy" | "configuredAt" | "version">;
+
+export interface CorporateYearLogRow {
+  id: number;
+  year: number;
+  at: number;
+  actor: string;
+  requestId: string | null;
+  before: CorporateYearConfig | null;
+  after: CorporateYearConfig;
+}
+
+/** Propuesta de escala para un ejercicio: el operador la elige y la confirma; se guardan los tramos. */
+export interface CorporatePreset {
+  key: string;
+  regime: CorporateRegime;
+  label: string;
+  brackets: CorporateBracket[];
+  /** Límite sugerido de la reserva de capitalización (puntos básicos sobre la base previa). */
+  capReserveLimitBp: number;
+  citation: string;
+  notice: string;
+}
+
+/** Quién propone los importes del asiento del Impuesto sobre Sociedades. */
+export const CORPORATE_ENTRY_ORIGINS = ["system", "manual", "gestoria"] as const;
+export type CorporateEntryOrigin = (typeof CORPORATE_ENTRY_ORIGINS)[number];
+
+/** Asiento del Impuesto sobre Sociedades de un ejercicio (`fin_tax_corporate_entries`): uno vivo por ejercicio. */
+export interface CorporateEntryRecord {
+  id: number;
+  year: number;
+  /** 1, 2…: el primero es `tax:200:entry:<año>`, los siguientes `tax:200:entry:<año>:<n>`. */
+  seq: number;
+  sourceKey: string;
+  entryId: number;
+  origin: CorporateEntryOrigin;
+  date: string;
+  currentTaxCents: number;
+  deferredTaxCents: number;
+  /** Retenciones y pagos a cuenta saldados contra la 473 en el asiento. */
+  withholdingsCents: number;
+  /** Cuota líquida del borrador del 200 al registrar el asiento (null = el borrador no tenía datos). */
+  draftCurrentTaxCents: number | null;
+  differenceFromDraftCents: number | null;
+  note: string | null;
+  documentId: number | null;
+  createdBy: string;
+  createdAt: number;
+  reversalEntryId: number | null;
+  reversedBy: string | null;
+  reversedAt: number | null;
+  reverseReason: string | null;
 }

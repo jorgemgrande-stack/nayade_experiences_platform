@@ -17,6 +17,13 @@
  *   POST  /reconciliation/payouts/:id/unlink-bank            contabilizar
  *   POST  /reconciliation/transactions/:id/review            contabilizar    { note } (incidencia revisada)
  *
+ * Parametrización fiscal (CRM 0039; sin la migración estas rutas no se montan → 404):
+ *   POST  /stripe/imports/preview                            gestión         mismo cuerpo que /stripe/imports; CERO escrituras
+ *   GET   /stripe/fee-vat-rules                              lectura         { items }
+ *   POST  /stripe/fee-vat-rules                              configuración   { feeKind, issuerName, issuerCountry, issuerVatId?, treatment, rateBp?, validFrom, validTo?, documentRef?, note? }
+ *   POST  /stripe/fee-vat-rules/:id/void                     configuración   { reason }
+ * y GET /stripe/settings añade `pendingFeeVatCount`; `stripeFeeVat` admite unset|exempt|reverse_charge|domestic|per_invoice.
+ *
  * El fichero llega en base64 dentro del JSON: la ruta de importación lee su cuerpo con un límite propio DESPUÉS de
  * comprobar el permiso (ver FINANCE_UPLOAD_PATHS).
  */
@@ -27,7 +34,7 @@ import { bigJson } from "./opsApi";
 import { canConfig, canExpenses, canPost, canRead } from "./permissions";
 import type { FinanceStripeService } from "./stripeService";
 import { RECONCILIATION_STATUSES } from "./stripeRules";
-import { FEE_VAT_MODES, PAYOUT_STATUSES, STRIPE_IMPORT_KINDS, STRIPE_TXN_STATUSES, STRIPE_TXN_TYPES } from "./stripeTypes";
+import { FEE_VAT_MODES, FEE_VAT_TREATMENTS, PAYOUT_STATUSES, STRIPE_IMPORT_KINDS, STRIPE_TXN_STATUSES, STRIPE_TXN_TYPES, type StripeFeeVatRule } from "./stripeTypes";
 
 const id = z.coerce.number().int().positive();
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "fecha AAAA-MM-DD");
@@ -35,8 +42,12 @@ const limit = z.coerce.number().int().min(1).max(500).optional();
 const offset = z.coerce.number().int().min(0).optional();
 const body = (req: { body?: unknown }) => req.body ?? {};
 
-export function mountFinanceStripeRoutes(r: Router, stripe: FinanceStripeService): void {
-  r.get("/stripe/settings", ...canRead, wrap(async (_req, res) => void res.json({ item: await stripe.settings() })));
+/** Regla de IVA de las comisiones tal cual la consume el CRM (fechas «AAAA-MM-DD», `active` = sin anular). */
+export const feeVatRuleDto = (r: StripeFeeVatRule) => ({ ...r, active: r.voidedAt === null });
+
+export function mountFinanceStripeRoutes(r: Router, stripe: FinanceStripeService, fiscal = false): void {
+  // CRM 0039: además, `pendingFeeVatCount` = transacciones pendientes por no tener decidido el IVA de su comisión
+  r.get("/stripe/settings", ...canRead, wrap(async (_req, res) => void res.json({ item: fiscal ? { ...(await stripe.settings()), pendingFeeVatCount: await stripe.pendingFeeVatCount() } : await stripe.settings() })));
   r.patch("/stripe/settings", ...canConfig, wrap(async (req, res) => {
     const b = z
       .object({
@@ -58,6 +69,38 @@ export function mountFinanceStripeRoutes(r: Router, stripe: FinanceStripeService
     const items = await stripe.imports();
     res.json({ items, total: items.length });
   }));
+
+  if (fiscal) {
+    // Vista previa de una importación: mismo cuerpo que /stripe/imports, CERO escrituras
+    r.post("/stripe/imports/preview", ...canExpenses, bigJson, wrap(async (req, res) => {
+      const b = z.object({ kind: z.enum(STRIPE_IMPORT_KINDS), filename: z.string().min(1).max(255), contentBase64: z.string().min(1) }).strict().parse(body(req));
+      res.json(await stripe.previewImport(b));
+    }));
+    // Reglas de IVA de las comisiones por tipo y periodo (sin edición: se anulan)
+    r.get("/stripe/fee-vat-rules", ...canRead, wrap(async (_req, res) => void res.json({ items: (await stripe.feeVatRules()).map(feeVatRuleDto) })));
+    r.post("/stripe/fee-vat-rules", ...canConfig, wrap(async (req, res) => {
+      const b = z
+        .object({
+          feeKind: z.string().min(1).max(40),
+          issuerName: z.string().max(120),
+          issuerCountry: z.string().length(2),
+          issuerVatId: z.string().max(30).nullable().optional(),
+          treatment: z.enum(FEE_VAT_TREATMENTS),
+          rateBp: z.number().int().min(0).max(10_000).nullable().optional(),
+          validFrom: date,
+          validTo: date.nullable().optional(),
+          documentRef: z.string().max(120).nullable().optional(),
+          note: z.string().max(500).nullable().optional(),
+        })
+        .strict()
+        .parse(body(req));
+      res.status(201).json({ item: feeVatRuleDto(await stripe.createFeeVatRule(b, actorOf(req))) });
+    }));
+    r.post("/stripe/fee-vat-rules/:id/void", ...canConfig, wrap(async (req, res) => {
+      const b = z.object({ reason: z.string().max(300) }).strict().parse(body(req));
+      res.json({ item: feeVatRuleDto(await stripe.voidFeeVatRule(id.parse(req.params.id), b.reason, actorOf(req))) });
+    }));
+  }
 
   r.get("/stripe/transactions", ...canRead, wrap(async (req, res) => {
     const q = z

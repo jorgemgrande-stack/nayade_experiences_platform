@@ -130,6 +130,18 @@ const EXPECTED: Record<string, FinanceCapability> = {
   "GET /tax/export.zip": "export",
   "GET /tax/corporate/:year": "read",
   "POST /tax/corporate/:year/adjustments": "tax",
+  // Parametrización fiscal (CRM 0039)
+  "POST /tax/settings/validate": "config",
+  "GET /tax/corporate/presets": "read",
+  "PUT /tax/corporate/:year/config": "tax",
+  "POST /tax/corporate/:year/entry": "tax",
+  "POST /tax/corporate/:year/entry/reverse": "tax",
+  "POST /stripe/imports/preview": "expenses",
+  "GET /stripe/fee-vat-rules": "read",
+  "POST /stripe/fee-vat-rules": "config",
+  "POST /stripe/fee-vat-rules/:id/void": "config",
+  "GET /analysis/settings": "read",
+  "PATCH /analysis/settings": "config",
   // Análisis (fase 4)
   "GET /daily": "read",
   "GET /daily/reviews": "read",
@@ -146,10 +158,10 @@ const EXPECTED: Record<string, FinanceCapability> = {
 
 type Layer = { route?: { path: string; methods: Record<string, boolean>; stack: { handle: unknown; name?: string }[] } };
 
-/** Router completo con servicios de mentira (las rutas no se ejecutan: solo se inspecciona el montaje). */
+/** Router completo con servicios de mentira (las rutas no se ejecutan: solo se inspecciona el montaje), con la 0039. */
 function fullRouter(): Router {
   const fake = {} as never;
-  return createFinanceRouter(fake, fake, fake, fake, fake, fake);
+  return createFinanceRouter(fake, fake, fake, fake, fake, fake, true);
 }
 
 function routesOf(r: Router): { key: string; caps: FinanceCapability[]; handlers: unknown[] }[] {

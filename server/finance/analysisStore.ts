@@ -12,7 +12,8 @@ import type { MemoryFinanceOpsStore } from "./opsStore";
 import type { MemoryFinanceStore } from "./store";
 import type { MemoryFinanceStripeStore } from "./stripeStore";
 import { madridDateKey, madridEndOfDayUtc, madridStartOfDayUtc } from "../utils/timezone";
-import type { DailyReview, DailyReviewLog, DueBuckets, LedgerFact, LedgerFactQuery, NewDailyReview, PayableDoc, PaymentEventMonth, PendingMovementAges, StripeMonthFact, TransferMonthFact, TreasuryFact } from "./analysisTypes";
+import type { AnalysisSettings, DailyReview, DailyReviewLog, DueBuckets, LedgerFact, LedgerFactQuery, NewDailyReview, PayableDoc, PaymentEventMonth, PendingMovementAges, StripeMonthFact, TransferMonthFact, TreasuryFact } from "./analysisTypes";
+import { BANK_FEE_NATURES, DEFAULT_BANK_FEE_ACCOUNTS } from "./opsTypes";
 import { addDays, daysBetween } from "./opsRules";
 import { FinanceError, type EntryOrigin } from "./types";
 
@@ -48,7 +49,23 @@ export interface FinanceAnalysisStore {
   insertReview(r: NewDailyReview): Promise<{ review: DailyReview; created: boolean }>;
   /** Cambia la nota si sigue siendo `before` y deja su fila en la bitácora; false si otra edición se adelantó. */
   editReviewNote(id: number, before: string | null, after: string | null, o: { by: string; at: number; requestId: string | null }): Promise<boolean>;
+
+  /** CRM 0039: configuración del análisis (valores por defecto mientras nadie la guarda). */
+  getAnalysisSettings(): Promise<AnalysisSettings>;
+  saveAnalysisSettings(s: Pick<AnalysisSettings, "stripeFeesTreatment" | "bankFeeAccounts">, by: string, at: number): Promise<AnalysisSettings>;
 }
+
+export const DEFAULT_ANALYSIS_SETTINGS: AnalysisSettings = { stripeFeesTreatment: "direct_cost", bankFeeAccounts: { ...DEFAULT_BANK_FEE_ACCOUNTS }, configuredBy: null, configuredAt: null };
+/** Mapa guardado completado con los valores por defecto (naturalezas nuevas o JSON ilegible). */
+const bankFeeAccountsOf = (v: unknown): AnalysisSettings["bankFeeAccounts"] => {
+  let parsed: Record<string, unknown> = {};
+  try {
+    parsed = typeof v === "string" ? (JSON.parse(v) as Record<string, unknown>) : {};
+  } catch {
+    parsed = {};
+  }
+  return Object.fromEntries(BANK_FEE_NATURES.map((n) => [n, typeof parsed[n] === "string" ? (parsed[n] as string) : DEFAULT_BANK_FEE_ACCOUNTS[n]])) as AnalysisSettings["bankFeeAccounts"];
+};
 
 const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
 const ym = (d: string) => d.slice(0, 7);
@@ -206,6 +223,14 @@ export class MemoryFinanceAnalysisStore implements FinanceAnalysisStore {
     this.logs.push({ id: this.logs.length + 1, reviewId: id, at: o.at, actor: o.by, requestId: o.requestId, action: "note", noteBefore: before, noteAfter: after });
     return true;
   }
+  settings: AnalysisSettings = this.c(DEFAULT_ANALYSIS_SETTINGS);
+  async getAnalysisSettings() {
+    return this.c(this.settings);
+  }
+  async saveAnalysisSettings(s: Pick<AnalysisSettings, "stripeFeesTreatment" | "bankFeeAccounts">, by: string, at: number) {
+    this.settings = { ...this.c(s), configuredBy: by, configuredAt: at };
+    return this.c(this.settings);
+  }
 }
 
 // ── MySQL ────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -227,7 +252,27 @@ const REVIEW_COLS = "id, DATE_FORMAT(review_day, '%Y-%m-%d') AS day_key, reviewe
 const reviewRow = (r: Row): DailyReview => ({ id: num(r.id), day: String(r.day_key), reviewedBy: String(r.reviewed_by), reviewedAt: num(r.reviewed_at), note: strOrNull(r.note), snapshot: parseJson(r.snapshot_json), noteEditedBy: strOrNull(r.note_edited_by), noteEditedAt: numOrNull(r.note_edited_at), requestId: strOrNull(r.request_id) });
 
 export class MysqlFinanceAnalysisStore implements FinanceAnalysisStore {
-  constructor(private pool: mysql.Pool) {}
+  /** `fiscal`: la migración 0039 está aplicada (configuración del análisis); sin ella, los valores por defecto. */
+  constructor(
+    private pool: mysql.Pool,
+    private readonly opts: { fiscal?: boolean } = {},
+  ) {}
+
+  async getAnalysisSettings(): Promise<AnalysisSettings> {
+    if (!this.opts.fiscal) return { ...DEFAULT_ANALYSIS_SETTINGS, bankFeeAccounts: { ...DEFAULT_BANK_FEE_ACCOUNTS } };
+    const [rows] = await this.pool.query<Row[]>("SELECT * FROM fin_analysis_settings WHERE id = 1");
+    const r = rows[0];
+    if (!r) return { ...DEFAULT_ANALYSIS_SETTINGS, bankFeeAccounts: { ...DEFAULT_BANK_FEE_ACCOUNTS } };
+    return { stripeFeesTreatment: String(r.stripe_fees_treatment) as AnalysisSettings["stripeFeesTreatment"], bankFeeAccounts: bankFeeAccountsOf(r.bank_fee_accounts_json), configuredBy: strOrNull(r.configured_by), configuredAt: numOrNull(r.configured_at) };
+  }
+  async saveAnalysisSettings(s: Pick<AnalysisSettings, "stripeFeesTreatment" | "bankFeeAccounts">, by: string, at: number) {
+    if (!this.opts.fiscal) throw new FinanceError("unavailable", "La configuración del análisis llega con la migración 0039, que no está aplicada en este entorno");
+    await this.pool.query(
+      "INSERT INTO fin_analysis_settings (id, stripe_fees_treatment, bank_fee_accounts_json, configured_by, configured_at) VALUES (1,?,?,?,?) ON DUPLICATE KEY UPDATE stripe_fees_treatment = VALUES(stripe_fees_treatment), bank_fee_accounts_json = VALUES(bank_fee_accounts_json), configured_by = VALUES(configured_by), configured_at = VALUES(configured_at)",
+      [s.stripeFeesTreatment, JSON.stringify(s.bankFeeAccounts), by, at],
+    );
+    return this.getAnalysisSettings();
+  }
 
   async ledgerFacts(q: LedgerFactQuery) {
     const w = ["e.status = 'posted'"];

@@ -10,6 +10,10 @@ import type { ObligationSpec } from "./taxRules";
 import type {
   AdjustmentKind,
   CorporateAdjustment,
+  CorporateEntryRecord,
+  CorporateYearConfig,
+  CorporateYearInput,
+  CorporateYearLogRow,
   Deferral,
   DeferralInstallment,
   DeferralStatus,
@@ -47,7 +51,7 @@ export interface ObligationQuery {
   offset?: number;
 }
 
-export type SettingsValues = Omit<TaxSettings, "configured" | "version" | "updatedBy" | "updatedAt">;
+export type SettingsValues = Omit<TaxSettings, "configured" | "version" | "updatedBy" | "updatedAt" | "validatedAt" | "validatedBy" | "validationNote">;
 export type ObligationPatch = Partial<Pick<Obligation, "reviewedAt" | "reviewedBy" | "presentedAt" | "presentedBy" | "presentedOn" | "presentedAmountCents" | "receiptRef" | "receiptDocumentId" | "paidAt" | "paidBy" | "paidOn" | "paidAmountCents" | "paymentEntryId" | "settlementEntryId" | "frozenAt" | "frozenBy" | "notes" | "outcome" | "amountCents" | "stale" | "staleDetail">>;
 export type NewPayroll = Omit<Payroll, "id" | "status" | "entryId" | "paymentEntryId" | "paidOn" | "bankAccountId" | "updatedAt">;
 export type NewDeferral = Omit<Deferral, "id" | "installments" | "updatedAt">;
@@ -101,7 +105,24 @@ export interface FinanceTaxStore {
   listAdjustments(year: number): Promise<CorporateAdjustment[]>;
   insertAdjustment(a: Omit<CorporateAdjustment, "id" | "status" | "voidedBy" | "voidedAt" | "voidReason">): Promise<CorporateAdjustment>;
   voidAdjustment(id: number, o: { by: string; at: number; reason: string }): Promise<boolean>;
+
+  // CRM 0039: validación de la configuración fiscal, Impuesto sobre Sociedades por ejercicio y su asiento
+  /** Marca la configuración validada con la gestoría (y deja su versión en el historial); `invalid_state` sin configuración. */
+  validateSettings(o: { by: string; at: number; requestId: string | null; note: string | null }): Promise<TaxSettings>;
+  getCorporateYear(year: number): Promise<CorporateYearConfig | null>;
+  /** Guarda la configuración del ejercicio (versión optimista) y su fila en la bitácora (antes/después). */
+  saveCorporateYear(year: number, v: CorporateYearInput, o: { by: string; at: number; requestId: string | null; expectedVersion: number | null }): Promise<CorporateYearConfig>;
+  corporateYearLog(year: number): Promise<CorporateYearLogRow[]>;
+  listCorporateEntries(year: number): Promise<CorporateEntryRecord[]>;
+  getCorporateEntryById(id: number): Promise<CorporateEntryRecord | null>;
+  /** Alta del asiento del ejercicio; `conflict` si ya hay uno vivo (índice único sobre el ejercicio vivo). */
+  insertCorporateEntry(r: NewCorporateEntry): Promise<CorporateEntryRecord>;
+  setCorporateEntryDocument(id: number, documentId: number): Promise<void>;
+  /** Marca revertido el asiento si seguía vivo; false si no. */
+  markCorporateEntryReversed(id: number, o: { reversalEntryId: number; by: string; at: number; reason: string }): Promise<boolean>;
 }
+
+export type NewCorporateEntry = Omit<CorporateEntryRecord, "id" | "documentId" | "reversalEntryId" | "reversedBy" | "reversedAt" | "reverseReason">;
 
 const page = (limit?: number, offset?: number) => ({ limit: Math.max(1, Math.min(limit ?? 200, TAX_MAX_PAGE)), offset: Math.max(0, offset ?? 0) });
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
@@ -185,7 +206,8 @@ export class MemoryFinanceTaxStore implements FinanceTaxStore {
   async saveSettings(v: SettingsValues, o: { by: string; at: number; requestId: string | null; expectedVersion: number | null; before: TaxSettings | null }) {
     const cur = this.settings?.version ?? 0;
     if (o.expectedVersion !== null && o.expectedVersion !== cur) throw new FinanceError("conflict", "La configuración fiscal ha cambiado mientras la editabas: recárgala");
-    this.settings = { ...clone(v), configured: true, version: cur + 1, updatedBy: o.by, updatedAt: o.at };
+    // Cualquier cambio invalida la validación con la gestoría (CRM 0039)
+    this.settings = { ...clone(v), configured: true, version: cur + 1, updatedBy: o.by, updatedAt: o.at, validatedAt: null, validatedBy: null, validationNote: null };
     this.settingsRows.push({ id: this.next(), at: o.at, actor: o.by, requestId: o.requestId, before: o.before ? clone(o.before) : null, after: clone(this.settings) });
     return clone(this.settings);
   }
@@ -346,6 +368,55 @@ export class MemoryFinanceTaxStore implements FinanceTaxStore {
     Object.assign(a, { status: "void", voidedBy: o.by, voidedAt: o.at, voidReason: o.reason });
     return true;
   }
+
+  // ── CRM 0039 ──
+  async validateSettings(o: { by: string; at: number; requestId: string | null; note: string | null }) {
+    if (!this.settings) throw new FinanceError("invalid_state", "Guarda antes la configuración fiscal");
+    const before = clone(this.settings);
+    Object.assign(this.settings, { validatedAt: o.at, validatedBy: o.by, validationNote: o.note });
+    this.settingsRows.push({ id: this.next(), at: o.at, actor: o.by, requestId: o.requestId, before, after: clone(this.settings) });
+    return clone(this.settings);
+  }
+  corporateYears = new Map<number, CorporateYearConfig>();
+  corporateYearLogs: CorporateYearLogRow[] = [];
+  corporateEntries: CorporateEntryRecord[] = [];
+  async getCorporateYear(year: number) {
+    return clone(this.corporateYears.get(year) ?? null);
+  }
+  async saveCorporateYear(year: number, v: CorporateYearInput, o: { by: string; at: number; requestId: string | null; expectedVersion: number | null }) {
+    const before = this.corporateYears.get(year) ?? null;
+    if (o.expectedVersion !== null && o.expectedVersion !== (before?.version ?? 0)) throw new FinanceError("conflict", "La configuración del ejercicio ha cambiado mientras la editabas: recárgala");
+    const after: CorporateYearConfig = { ...clone(v), year, configuredBy: o.by, configuredAt: o.at, version: (before?.version ?? 0) + 1 };
+    this.corporateYears.set(year, after);
+    this.corporateYearLogs.push({ id: this.next(), year, at: o.at, actor: o.by, requestId: o.requestId, before: before ? clone(before) : null, after: clone(after) });
+    return clone(after);
+  }
+  async corporateYearLog(year: number) {
+    return clone(this.corporateYearLogs.filter((x) => x.year === year).reverse());
+  }
+  async listCorporateEntries(year: number) {
+    return clone(this.corporateEntries.filter((x) => x.year === year).sort((a, b) => a.seq - b.seq));
+  }
+  async getCorporateEntryById(id: number) {
+    return clone(this.corporateEntries.find((x) => x.id === id) ?? null);
+  }
+  async insertCorporateEntry(r: NewCorporateEntry) {
+    if (this.corporateEntries.some((x) => x.year === r.year && x.reversedAt === null)) throw new FinanceError("conflict", `Ya hay un asiento del Impuesto sobre Sociedades vivo del ejercicio ${r.year}: revísalo y revierte antes de registrar otro`);
+    if (this.corporateEntries.some((x) => x.sourceKey === r.sourceKey)) throw new FinanceError("conflict", "Ese asiento ya está registrado");
+    const row: CorporateEntryRecord = { ...clone(r), id: this.next(), documentId: null, reversalEntryId: null, reversedBy: null, reversedAt: null, reverseReason: null };
+    this.corporateEntries.push(row);
+    return clone(row);
+  }
+  async setCorporateEntryDocument(id: number, documentId: number) {
+    const r = this.corporateEntries.find((x) => x.id === id);
+    if (r) r.documentId = documentId;
+  }
+  async markCorporateEntryReversed(id: number, o: { reversalEntryId: number; by: string; at: number; reason: string }) {
+    const r = this.corporateEntries.find((x) => x.id === id);
+    if (!r || r.reversedAt !== null) return false;
+    Object.assign(r, { reversalEntryId: o.reversalEntryId, reversedBy: o.by, reversedAt: o.at, reverseReason: o.reason });
+    return true;
+  }
 }
 
 // ── MySQL ─────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -391,6 +462,10 @@ const settingsRow = (r: Row): TaxSettings => ({
   version: num(r.version),
   updatedBy: strOrNull(r.updated_by),
   updatedAt: numOrNull(r.updated_at),
+  // CRM 0039 (sin la migración las columnas no existen: null)
+  validatedAt: numOrNull(r.validated_at),
+  validatedBy: strOrNull(r.validated_by),
+  validationNote: strOrNull(r.validation_note),
 });
 
 const OBLIGATION_COLS = `id, obligation_key, model, year, period, ${day("period_from")}, ${day("period_to")}, ${day("due_date")}, status, amount_cents, outcome, draft_hash, draft_at, stale, stale_json, reviewed_at, reviewed_by, presented_at, presented_by, ${day("presented_on")}, presented_amount_cents, receipt_ref, receipt_document_id, paid_at, paid_by, ${day("paid_on")}, paid_amount_cents, payment_entry_id, settlement_entry_id, frozen_at, frozen_by, last_reminder_days, notes, created_by, created_at, updated_at`;
@@ -527,7 +602,11 @@ const adjustmentRow = (r: Row): CorporateAdjustment => ({
 const isDup = (e: unknown) => (e as { code?: string })?.code === "ER_DUP_ENTRY";
 
 export class MysqlFinanceTaxStore implements FinanceTaxStore {
-  constructor(private pool: mysql.Pool) {}
+  /** `fiscal`: la migración 0039 está aplicada (validación de la configuración, Impuesto sobre Sociedades por ejercicio). */
+  constructor(
+    private pool: mysql.Pool,
+    private readonly opts: { fiscal?: boolean } = {},
+  ) {}
 
   private async rows<T>(sql: string, args: unknown[], map: (r: Row) => T): Promise<T[]> {
     const [rows] = await this.pool.query<Row[]>(sql, args);
@@ -545,7 +624,9 @@ export class MysqlFinanceTaxStore implements FinanceTaxStore {
       const version = cur[0] ? num(cur[0].version) : 0;
       if (o.expectedVersion !== null && o.expectedVersion !== version) throw new FinanceError("conflict", "La configuración fiscal ha cambiado mientras la editabas: recárgala");
       const cols = ["legal_name", "tax_id", "fiscal_year_start_month", "vat_regime", "vat_period", "redeme", "sii", "vat390_exempt", "opening_vat_compensation_cents", "corporate_tax_rate_bp", "new_entity_first_profit_year", "has_employees", "has_professional_withholdings", "has_rent_withholdings", "intra_eu_operations", "operations_347", "installment_payments_method", "stripe_vat_id", "extra_holidays_json", "gestoria_email", "notes"];
-      const vals = [v.legalName, v.taxId, v.fiscalYearStartMonth, v.vatRegime, v.vatPeriod, v.redeme ? 1 : 0, v.sii ? 1 : 0, v.vat390Exempt ? 1 : 0, v.openingVatCompensationCents, v.corporateTaxRateBp, v.newEntityFirstProfitYear, v.hasEmployees ? 1 : 0, v.hasProfessionalWithholdings ? 1 : 0, v.hasRentWithholdings ? 1 : 0, v.intraEuOperations ? 1 : 0, v.operations347 ? 1 : 0, v.installmentPaymentsMethod, v.stripeVatId, JSON.stringify(v.extraHolidays ?? []), v.gestoriaEmail, v.notes];
+      const vals: unknown[] = [v.legalName, v.taxId, v.fiscalYearStartMonth, v.vatRegime, v.vatPeriod, v.redeme ? 1 : 0, v.sii ? 1 : 0, v.vat390Exempt ? 1 : 0, v.openingVatCompensationCents, v.corporateTaxRateBp, v.newEntityFirstProfitYear, v.hasEmployees ? 1 : 0, v.hasProfessionalWithholdings ? 1 : 0, v.hasRentWithholdings ? 1 : 0, v.intraEuOperations ? 1 : 0, v.operations347 ? 1 : 0, v.installmentPaymentsMethod, v.stripeVatId, JSON.stringify(v.extraHolidays ?? []), v.gestoriaEmail, v.notes];
+      // CRM 0039: cualquier cambio invalida la validación con la gestoría en el mismo guardado (queda en el historial)
+      if (this.opts.fiscal) (cols.push("validated_at", "validated_by", "validation_note"), vals.push(null, null, null));
       await conn.query(
         `INSERT INTO fin_tax_settings (id, ${cols.join(", ")}, version, updated_by, updated_at) VALUES (1, ${cols.map(() => "?").join(", ")}, ?, ?, ?) ON DUPLICATE KEY UPDATE ${cols.map((c) => `${c} = VALUES(${c})`).join(", ")}, version = VALUES(version), updated_by = VALUES(updated_by), updated_at = VALUES(updated_at)`,
         [...vals, version + 1, o.by, o.at],
@@ -778,6 +859,158 @@ export class MysqlFinanceTaxStore implements FinanceTaxStore {
     const [r] = await this.pool.query<mysql.ResultSetHeader>("UPDATE fin_tax_corporate_adjustments SET status = 'void', voided_by = ?, voided_at = ?, void_reason = ? WHERE id = ? AND status = 'active'", [o.by, o.at, o.reason, id]);
     return r.affectedRows === 1;
   }
+
+  // ── CRM 0039 ──
+  private needFiscal() {
+    if (!this.opts.fiscal) throw new FinanceError("unavailable", "La parametrización fiscal llega con la migración 0039, que no está aplicada en este entorno");
+  }
+  async validateSettings(o: { by: string; at: number; requestId: string | null; note: string | null }) {
+    this.needFiscal();
+    const conn = await this.pool.getConnection();
+    try {
+      await conn.beginTransaction();
+      const [cur] = await conn.query<Row[]>("SELECT * FROM fin_tax_settings WHERE id = 1 FOR UPDATE");
+      if (!cur[0]) throw new FinanceError("invalid_state", "Guarda antes la configuración fiscal");
+      const before = settingsRow(cur[0]);
+      await conn.query("UPDATE fin_tax_settings SET validated_at = ?, validated_by = ?, validation_note = ? WHERE id = 1", [o.at, o.by, o.note]);
+      const [after] = await conn.query<Row[]>("SELECT * FROM fin_tax_settings WHERE id = 1");
+      const saved = settingsRow(after[0]);
+      await conn.query("INSERT INTO fin_tax_settings_log (at, actor, request_id, before_json, after_json) VALUES (?,?,?,?,?)", [o.at, o.by, o.requestId, JSON.stringify(before), JSON.stringify(saved)]);
+      await conn.commit();
+      return saved;
+    } catch (e) {
+      await conn.rollback().catch(() => undefined);
+      throw e;
+    } finally {
+      conn.release();
+    }
+  }
+  async getCorporateYear(year: number) {
+    this.needFiscal();
+    return (await this.rows("SELECT * FROM fin_tax_corporate_years WHERE year = ?", [year], corporateYearRow))[0] ?? null;
+  }
+  async saveCorporateYear(year: number, v: CorporateYearInput, o: { by: string; at: number; requestId: string | null; expectedVersion: number | null }) {
+    this.needFiscal();
+    const conn = await this.pool.getConnection();
+    try {
+      await conn.beginTransaction();
+      const [cur] = await conn.query<Row[]>("SELECT * FROM fin_tax_corporate_years WHERE year = ? FOR UPDATE", [year]);
+      const before = cur[0] ? corporateYearRow(cur[0]) : null;
+      if (o.expectedVersion !== null && o.expectedVersion !== (before?.version ?? 0)) throw new FinanceError("conflict", "La configuración del ejercicio ha cambiado mientras la editabas: recárgala");
+      const cols = ["regime", "brackets_json", "net_turnover_cents", "cap_reserve_equity_increase_cents", "cap_reserve_rate_bp", "cap_reserve_limit_bp", "levelling_reserve_cents", "notes", "configured_by", "configured_at", "version"];
+      const vals = [v.regime, JSON.stringify(v.brackets), v.netTurnoverCents, v.capReserveEquityIncreaseCents, v.capReserveRateBp, v.capReserveLimitBp, v.levellingReserveCents, v.notes, o.by, o.at, (before?.version ?? 0) + 1];
+      try {
+        await conn.query(`INSERT INTO fin_tax_corporate_years (year, ${cols.join(", ")}) VALUES (?, ${cols.map(() => "?").join(", ")}) ON DUPLICATE KEY UPDATE ${cols.map((c) => `${c} = VALUES(${c})`).join(", ")}`, [year, ...vals]);
+      } catch (e) {
+        if (isDup(e)) throw new FinanceError("conflict", "La configuración del ejercicio ha cambiado mientras la editabas: recárgala");
+        throw e;
+      }
+      const [after] = await conn.query<Row[]>("SELECT * FROM fin_tax_corporate_years WHERE year = ?", [year]);
+      const saved = corporateYearRow(after[0]);
+      await conn.query("INSERT INTO fin_tax_corporate_year_log (year, at, actor, request_id, before_json, after_json) VALUES (?,?,?,?,?,?)", [year, o.at, o.by, o.requestId, before ? JSON.stringify(before) : null, JSON.stringify(saved)]);
+      await conn.commit();
+      return saved;
+    } catch (e) {
+      await conn.rollback().catch(() => undefined);
+      throw e;
+    } finally {
+      conn.release();
+    }
+  }
+  async corporateYearLog(year: number) {
+    this.needFiscal();
+    return this.rows("SELECT * FROM fin_tax_corporate_year_log WHERE year = ? ORDER BY id DESC LIMIT 100", [year], (r) => ({ id: num(r.id), year: num(r.year), at: num(r.at), actor: String(r.actor), requestId: strOrNull(r.request_id), before: json<CorporateYearConfig>(r.before_json), after: json<CorporateYearConfig>(r.after_json)! }));
+  }
+  async listCorporateEntries(year: number) {
+    this.needFiscal();
+    return this.rows(`SELECT ${CORPORATE_ENTRY_COLS} FROM fin_tax_corporate_entries WHERE year = ? ORDER BY seq`, [year], corporateEntryRow);
+  }
+  async getCorporateEntryById(id: number) {
+    this.needFiscal();
+    return (await this.rows(`SELECT ${CORPORATE_ENTRY_COLS} FROM fin_tax_corporate_entries WHERE id = ?`, [id], corporateEntryRow))[0] ?? null;
+  }
+  async insertCorporateEntry(r: NewCorporateEntry) {
+    this.needFiscal();
+    try {
+      const [res] = await this.pool.query<mysql.ResultSetHeader>(
+        "INSERT INTO fin_tax_corporate_entries (year, seq, source_key, entry_id, origin, entry_date, current_tax_cents, deferred_tax_cents, withholdings_cents, draft_current_tax_cents, difference_from_draft_cents, note, created_by, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        [r.year, r.seq, r.sourceKey, r.entryId, r.origin, r.date, r.currentTaxCents, r.deferredTaxCents, r.withholdingsCents, r.draftCurrentTaxCents, r.differenceFromDraftCents, r.note, r.createdBy, r.createdAt],
+      );
+      return (await this.rows(`SELECT ${CORPORATE_ENTRY_COLS} FROM fin_tax_corporate_entries WHERE id = ?`, [res.insertId], corporateEntryRow))[0];
+    } catch (e) {
+      if (isDup(e)) throw new FinanceError("conflict", `Ya hay un asiento del Impuesto sobre Sociedades vivo del ejercicio ${r.year}: revísalo y revierte antes de registrar otro`);
+      throw e;
+    }
+  }
+  async setCorporateEntryDocument(id: number, documentId: number) {
+    await this.pool.query("UPDATE fin_tax_corporate_entries SET document_id = ? WHERE id = ?", [documentId, id]);
+  }
+  async markCorporateEntryReversed(id: number, o: { reversalEntryId: number; by: string; at: number; reason: string }) {
+    const [r] = await this.pool.query<mysql.ResultSetHeader>("UPDATE fin_tax_corporate_entries SET reversal_entry_id = ?, reversed_by = ?, reversed_at = ?, reverse_reason = ? WHERE id = ? AND reversed_at IS NULL", [o.reversalEntryId, o.by, o.at, o.reason, id]);
+    return r.affectedRows === 1;
+  }
+}
+
+const corporateYearRow = (r: Row): CorporateYearConfig => ({
+  year: num(r.year),
+  regime: String(r.regime) as CorporateYearConfig["regime"],
+  brackets: json<CorporateYearConfig["brackets"]>(r.brackets_json) ?? [],
+  netTurnoverCents: numOrNull(r.net_turnover_cents),
+  capReserveEquityIncreaseCents: numOrNull(r.cap_reserve_equity_increase_cents),
+  capReserveRateBp: numOrNull(r.cap_reserve_rate_bp),
+  capReserveLimitBp: numOrNull(r.cap_reserve_limit_bp),
+  levellingReserveCents: numOrNull(r.levelling_reserve_cents),
+  notes: strOrNull(r.notes),
+  configuredBy: String(r.configured_by),
+  configuredAt: num(r.configured_at),
+  version: num(r.version),
+});
+const CORPORATE_ENTRY_COLS = `id, year, seq, source_key, entry_id, origin, ${day("entry_date", "entry_day")}, current_tax_cents, deferred_tax_cents, withholdings_cents, draft_current_tax_cents, difference_from_draft_cents, note, document_id, created_by, created_at, reversal_entry_id, reversed_by, reversed_at, reverse_reason`;
+const corporateEntryRow = (r: Row): CorporateEntryRecord => ({
+  id: num(r.id),
+  year: num(r.year),
+  seq: num(r.seq),
+  sourceKey: String(r.source_key),
+  entryId: num(r.entry_id),
+  origin: String(r.origin) as CorporateEntryRecord["origin"],
+  date: String(r.entry_day),
+  currentTaxCents: num(r.current_tax_cents),
+  deferredTaxCents: num(r.deferred_tax_cents),
+  withholdingsCents: num(r.withholdings_cents),
+  draftCurrentTaxCents: numOrNull(r.draft_current_tax_cents),
+  differenceFromDraftCents: numOrNull(r.difference_from_draft_cents),
+  note: strOrNull(r.note),
+  documentId: numOrNull(r.document_id),
+  createdBy: String(r.created_by),
+  createdAt: num(r.created_at),
+  reversalEntryId: numOrNull(r.reversal_entry_id),
+  reversedBy: strOrNull(r.reversed_by),
+  reversedAt: numOrNull(r.reversed_at),
+  reverseReason: strOrNull(r.reverse_reason),
+});
+
+/**
+ * ¿Existe la migración 0039 (parametrización fiscal)? Tablas nuevas y columnas añadidas a `fin_tax_settings` y
+ * `fin_expenses`. Sin ella el módulo sigue montado con el comportamiento anterior y lo nuevo no se monta.
+ */
+export async function finFiscalTablesReady(pool: Pick<mysql.Pool, "query">): Promise<boolean> {
+  const probes = [
+    "SELECT 1 FROM fin_stripe_fee_vat_rules LIMIT 0",
+    "SELECT 1 FROM fin_tax_corporate_years LIMIT 0",
+    "SELECT 1 FROM fin_tax_corporate_year_log LIMIT 0",
+    "SELECT 1 FROM fin_tax_corporate_entries LIMIT 0",
+    "SELECT 1 FROM fin_analysis_settings LIMIT 0",
+    "SELECT validated_at, validated_by, validation_note FROM fin_tax_settings LIMIT 0",
+    "SELECT vat_treatment, reverse_charge_rate_bp, settles_stripe_fees FROM fin_expenses LIMIT 0",
+  ];
+  for (const sql of probes) {
+    const ok = await pool.query(sql).then(
+      () => true,
+      () => false,
+    );
+    if (!ok) return false;
+  }
+  return true;
 }
 
 /** ¿Existe la migración 0037 (gestoría e impuestos)? */

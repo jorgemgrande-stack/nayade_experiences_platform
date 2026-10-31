@@ -17,12 +17,18 @@
 import { createHash } from "node:crypto";
 import { taxOf } from "../invoicing/rules";
 import { addDays } from "./opsRules";
+import { VAT_TREATMENT_LABELS, type VatTreatment } from "./opsTypes";
 import { BOM, csvText, esDate, eur, signed, toCsv } from "./rules";
 import {
+  CORPORATE_REGIMES,
   DRAFT_NOTICE,
   INFORMATIVE_MODELS,
   MODEL_NAMES,
   PAYMENT_ACCOUNT,
+  type CorporateBracket,
+  type CorporatePreset,
+  type CorporateYearConfig,
+  type CorporateYearInput,
   type Declarant,
   type InstallmentMethod,
   type Outcome,
@@ -338,6 +344,8 @@ export interface VatLedgerLine {
   creditCents: number;
   taxRateBp: number | null;
   taxBaseCents: number | null;
+  /** CRM 0039: tratamiento del IVA del gasto del que sale la línea (compras; null = interior). */
+  treatment?: VatTreatment | null;
 }
 
 /** Factura expedida del periodo (para las casillas informativas 59 y 120 y los avisos). */
@@ -362,6 +370,8 @@ export interface VatExpenseInfo {
   baseCents: number;
   taxRateBp: number;
   kind: string;
+  /** CRM 0039: con un tratamiento explícito distinto del interior no se avisa de una posible ISP sin autoliquidar. */
+  vatTreatment?: VatTreatment | null;
 }
 
 export interface Vat303Input {
@@ -420,7 +430,13 @@ export function vat303(i: Vat303Input): DraftBody {
       const modification = (l.reversal && !l.originalInPeriod) || (!l.reversal && l.kind === "sale" && cuota < 0);
       if (l.kind === "stripe") [baseBox, cuotaBox] = ["10", "11"];
       else if (modification) [baseBox, cuotaBox] = ["14", "15"];
-      else if (l.taxRateBp !== null && RATE_BOXES[l.taxRateBp]) [baseBox, cuotaBox] = RATE_BOXES[l.taxRateBp];
+      // CRM 0039: autoliquidación de un gasto con inversión del sujeto pasivo, por su tratamiento
+      else if (l.kind === "purchase" && (l.treatment === "intra_eu_services" || l.treatment === "intra_eu_goods")) [baseBox, cuotaBox] = ["10", "11"];
+      else if (l.kind === "purchase" && (l.treatment === "reverse_charge_domestic" || l.treatment === "non_eu_services")) [baseBox, cuotaBox] = ["12", "13"];
+      else if (l.kind === "purchase") {
+        [baseBox, cuotaBox] = ["12", "13"];
+        warnings.push(`IVA autoliquidado en un gasto sin tratamiento de inversión del sujeto pasivo (asiento ${l.entryNumber ?? l.entryId}): revisa el tratamiento del gasto`);
+      } else if (l.taxRateBp !== null && RATE_BOXES[l.taxRateBp]) [baseBox, cuotaBox] = RATE_BOXES[l.taxRateBp];
       else {
         [baseBox, cuotaBox] = ["otros_base", "otros_cuota"];
         warnings.push(`IVA repercutido a un tipo sin casilla propia (${l.taxRateBp === null ? "sin tipo" : `${l.taxRateBp / 100} %`}) en el asiento ${l.entryNumber ?? l.entryId}: revisa la casilla con la gestoría`);
@@ -432,6 +448,9 @@ export function vat303(i: Vat303Input): DraftBody {
       const modification = (l.reversal && !l.originalInPeriod) || (!l.reversal && l.kind === "purchase" && cuota < 0);
       if (l.kind === "stripe") [baseBox, cuotaBox] = ["36", "37"];
       else if (modification) [baseBox, cuotaBox] = ["40", "41"];
+      // CRM 0039: deducible de adquisiciones intracomunitarias (36/37) e importaciones (32/33) por el tratamiento del gasto
+      else if (l.kind === "purchase" && (l.treatment === "intra_eu_services" || l.treatment === "intra_eu_goods")) [baseBox, cuotaBox] = ["36", "37"];
+      else if (l.kind === "purchase" && l.treatment === "import") [baseBox, cuotaBox] = ["32", "33"];
       else [baseBox, cuotaBox] = ["28", "29"];
       if (l.kind === "other" && !l.reversal) warnings.push(`IVA soportado en un asiento que no es un gasto registrado (asiento ${l.entryNumber ?? l.entryId}): comprueba que tienes la factura`);
     }
@@ -459,7 +478,8 @@ export function vat303(i: Vat303Input): DraftBody {
       } else warnings.push(`Factura ${inv.number} al 0 % a un cliente en España: comprueba la exención con la gestoría`);
     }
   }
-  const possibleIsp = i.expenses.filter((e) => e.supplierCountry && e.supplierCountry.toUpperCase() !== "ES" && e.taxRateBp === 0 && e.kind !== "ticket");
+  // Solo los gastos interiores (sin tratamiento o `domestic`): con un tratamiento explícito ya está decidido
+  const possibleIsp = i.expenses.filter((e) => (e.vatTreatment ?? "domestic") === "domestic" && e.supplierCountry && e.supplierCountry.toUpperCase() !== "ES" && e.taxRateBp === 0 && e.kind !== "ticket");
   for (const e of possibleIsp.slice(0, 20)) warnings.push(`Gasto ${e.number ?? `#${e.id}`} de ${e.supplierName ?? "un proveedor"} (${e.supplierCountry}) sin IVA: si es una adquisición de servicios con inversión del sujeto pasivo, falta autoliquidarla (casillas 10/11 y 36/37)`);
   if (possibleIsp.length > 20) warnings.push(`… y ${possibleIsp.length - 20} gastos más de proveedores extranjeros sin IVA`);
   const v = (k: string) => acc.get(k) ?? 0;
@@ -495,6 +515,8 @@ export function vat303(i: Vat303Input): DraftBody {
       box("27", "Total cuota devengada", devengado),
       box("28", "Cuotas soportadas en operaciones interiores corrientes: base", v("28")),
       box("29", "Cuotas soportadas en operaciones interiores corrientes: cuota", v("29")),
+      // CRM 0039: importaciones (DUA), solo si las hay (así la huella de los borradores anteriores no cambia)
+      ...(acc.has("33") ? [box("32", "Cuotas soportadas en las importaciones de bienes corrientes: base", v("32")), box("33", "Cuotas soportadas en las importaciones de bienes corrientes: cuota", v("33"))] : []),
       box("36", "Adquisiciones intracomunitarias de bienes y servicios corrientes: base", v("36")),
       box("37", "Adquisiciones intracomunitarias de bienes y servicios corrientes: cuota", v("37")),
       box("40", "Rectificación de deducciones: base", v("40")),
@@ -527,7 +549,10 @@ export function vat390(year: number, periods: Array<{ period: string; draft: Dra
   const noData = periods.filter((p) => !p.draft.hasData).map((p) => p.period);
   if (noData.length) warnings.push(`303 sin datos en: ${noData.join(", ")}`);
   if (periods.length === 0 || noData.length === periods.length) return body("390", year, ANNUAL, { hasData: false, warnings: warnings.length ? warnings : ["No hay ningún 303 calculado del ejercicio"], boxes: [box("303.71", "Suma anual: resultado de la liquidación", null)] });
-  const keys = ["01", "03", "04", "06", "07", "09", "10", "11", "14", "15", "27", "28", "29", "36", "37", "40", "41", "45", "46", "59", "120", "78", "71"];
+  // CRM 0039: 12/13 (inversión del sujeto pasivo interior o de fuera de la UE) y 32/33 (importaciones), solo si algún
+  // periodo los tiene (así la huella de los resúmenes anteriores no cambia)
+  const used = (k: string) => periods.some((p) => (p.draft.boxes.find((b) => b.box === k)?.valueCents ?? 0) !== 0);
+  const keys = ["01", "03", "04", "06", "07", "09", "10", "11", ...(used("12") || used("13") ? ["12", "13"] : []), "14", "15", "27", "28", "29", ...(used("32") || used("33") ? ["32", "33"] : []), "36", "37", "40", "41", "45", "46", "59", "120", "78", "71"];
   const all = periods.flatMap((p) => p.draft.boxes);
   const total = (k: string) => sum(periods.map((p) => p.draft.boxes.find((b) => b.box === k)?.valueCents ?? 0));
   const labelOf = (k: string) => {
@@ -564,6 +589,16 @@ export interface IntraEuExpense {
   supplierTaxId: string | null;
   supplierCountry: string | null;
   baseCents: number;
+  /** CRM 0039: clave del 349 según el tratamiento del gasto (A = adquisición de bienes; I = servicios, por defecto). */
+  key?: "A" | "I";
+}
+
+/** Comisiones de Stripe autoliquidadas de un emisor (NIF-IVA de la regla aplicada o, si no, el de la configuración). */
+export interface StripeIssuerGroup {
+  taxId: string | null;
+  name: string;
+  baseCents: number;
+  details: TaxDetail[];
 }
 
 /** Umbral de la presentación mensual del 349: más de 50.000 € de entregas en el trimestre (o en los cuatro anteriores). */
@@ -574,7 +609,7 @@ export const M349_MONTHLY_THRESHOLD_CENTS = 5_000_000;
  * 0 % a clientes de otro Estado miembro); clave I, servicios adquiridos a empresarios de la UE con inversión del sujeto
  * pasivo (comisiones de Stripe autoliquidadas y gastos de proveedores de la UE). Las rectificativas restan en su clave.
  */
-export function m349(i: { year: number; period: string; invoices: IntraEuInvoice[] | null; expenses: IntraEuExpense[]; stripeFeeBaseCents: number; stripeVatId: string | null; stripeDetails: TaxDetail[] }): DraftBody {
+export function m349(i: { year: number; period: string; invoices: IntraEuInvoice[] | null; expenses: IntraEuExpense[]; stripeFeeBaseCents: number; stripeVatId: string | null; stripeDetails: TaxDetail[]; stripeGroups?: StripeIssuerGroup[] }): DraftBody {
   const warnings: string[] = [];
   const details: TaxDetail[] = [];
   if (i.invoices === null) warnings.push("La facturación propia no está montada: no se pueden leer los servicios prestados a la UE");
@@ -597,10 +632,19 @@ export function m349(i: { year: number; period: string; invoices: IntraEuInvoice
   for (const e of i.expenses) {
     if (!isEuForeign(e.supplierCountry) || e.baseCents === 0) continue;
     if (!e.supplierTaxId) warnings.push(`Gasto ${e.number ?? `#${e.id}`}: proveedor de la UE sin NIF-IVA`);
-    put("I", e.supplierTaxId, e.supplierName ?? "Proveedor", e.supplierCountry, e.baseCents);
-    details.push({ box: "I", source: "expense", ref: `expense:${e.id}`, date: e.date, description: `Gasto ${e.number ?? `#${e.id}`} · ${e.supplierName ?? ""}`.trim(), baseCents: e.baseCents, taxCents: null, rateBp: null, taxId: e.supplierTaxId });
+    const key = e.key ?? "I";
+    put(key, e.supplierTaxId, e.supplierName ?? "Proveedor", e.supplierCountry, e.baseCents);
+    details.push({ box: key, source: "expense", ref: `expense:${e.id}`, date: e.date, description: `Gasto ${e.number ?? `#${e.id}`} · ${e.supplierName ?? ""}`.trim(), baseCents: e.baseCents, taxCents: null, rateBp: null, taxId: e.supplierTaxId });
   }
-  if (i.stripeFeeBaseCents !== 0) {
+  if (i.stripeGroups) {
+    // CRM 0039: un declarado por emisor (NIF-IVA de la regla aplicada a cada comisión)
+    for (const g of i.stripeGroups) {
+      if (g.baseCents === 0) continue;
+      if (!g.taxId) warnings.push("Comisiones de Stripe con inversión del sujeto pasivo sin NIF-IVA del emisor: indícalo en la regla o en la configuración fiscal");
+      put("I", g.taxId, g.name, g.taxId ? g.taxId.slice(0, 2).toUpperCase() : null, g.baseCents);
+      details.push(...g.details);
+    }
+  } else if (i.stripeFeeBaseCents !== 0) {
     if (!i.stripeVatId) warnings.push("Comisiones de Stripe con inversión del sujeto pasivo: falta el NIF-IVA de Stripe en la configuración fiscal");
     put("I", i.stripeVatId, "Stripe Payments Europe, Limited", i.stripeVatId ? i.stripeVatId.slice(0, 2).toUpperCase() : null, i.stripeFeeBaseCents);
     details.push(...i.stripeDetails);
@@ -640,9 +684,12 @@ export interface ThirdPartyOp {
   /** Importe total con IVA (con signo: las rectificativas restan). */
   totalCents: number;
   withholdingCents: number;
+  /** CRM 0039: tratamiento del IVA del gasto (las intracomunitarias y las importaciones no van al 347). */
+  vatTreatment?: VatTreatment | null;
 }
 
 const quarterOf = (date: string) => Math.floor((Number(date.slice(5, 7)) - 1) / 3);
+const NOT_347: readonly VatTreatment[] = ["intra_eu_services", "intra_eu_goods", "import"];
 
 /**
  * 347 (anual): terceros con más de 3.005,06 € en el año (IVA incluido), clave A (compras: gastos registrados) y clave B
@@ -655,9 +702,14 @@ export function m347(year: number, ops: ThirdPartyOp[]): DraftBody {
   const groups = new Map<string, Declarant & { refs: ThirdPartyOp[] }>();
   let excludedForeign = 0;
   let excludedWithholding = 0;
+  let excludedTreatment = 0;
   for (const o of ops) {
     if (o.country && o.country.toUpperCase() !== "ES") {
       excludedForeign++;
+      continue;
+    }
+    if (o.vatTreatment && NOT_347.includes(o.vatTreatment)) {
+      excludedTreatment++;
       continue;
     }
     if (o.withholdingCents !== 0) {
@@ -680,6 +732,7 @@ export function m347(year: number, ops: ThirdPartyOp[]): DraftBody {
   const details: TaxDetail[] = declared.flatMap((g) => g.refs.map((o) => ({ box: g.key, source: o.source, ref: o.ref, date: o.date, description: `${o.source === "invoice" ? "Factura" : "Gasto"} ${o.number ?? ""} · ${o.name}`.trim(), baseCents: null, taxCents: null, rateBp: null, taxId: o.taxId }) as TaxDetail));
   if (excludedForeign) warnings.push(`${excludedForeign} operaciones con terceros fuera de España excluidas (intracomunitarias o no declarables)`);
   if (excludedWithholding) warnings.push(`${excludedWithholding} operaciones sujetas a retención excluidas (van al 180 o al 190)`);
+  if (excludedTreatment) warnings.push(`${excludedTreatment} operaciones intracomunitarias o importaciones excluidas por su tratamiento del IVA (van al 349 o no se declaran)`);
   warnings.push("No se incluyen los cobros en metálico de más de 6.000 € ni las subvenciones: si los hubo, añádelos con la gestoría");
   const any = declared.length > 0;
   return body("347", year, ANNUAL, {
@@ -869,6 +922,13 @@ export interface Corporate200Input {
   previousPending: Array<{ originYear: number; amountCents: number }> | null;
   previousSource: string | null;
   details: TaxDetail[];
+  /**
+   * CRM 0039: configuración del ejercicio (escala por tramos, reservas de capitalización y nivelación). null = sin
+   * configurar: tipo único de la configuración fiscal y aviso `corporate_year_unset` (con `fiscal`).
+   */
+  corporate?: Pick<CorporateYearConfig, "regime" | "brackets" | "capReserveEquityIncreaseCents" | "capReserveRateBp" | "capReserveLimitBp" | "levellingReserveCents"> | null;
+  /** Migración 0039 aplicada (cambia el aviso del tipo único por el de ejercicio sin configurar). */
+  fiscal?: boolean;
 }
 
 /** Bases negativas disponibles y su aplicación, de la más antigua a la más reciente. */
@@ -883,43 +943,148 @@ export function applyNegativeBases(bases: NegativeBase[], compensationCents: num
     });
 }
 
+// ── Impuesto sobre Sociedades por ejercicio: escala, presets y reservas (CRM 0039) ───────────────────────────────
+
+export const CORPORATE_YEAR_UNSET_WARNING = "Impuesto sobre Sociedades del ejercicio sin configurar (régimen y tramos): se calcula con el tipo único de la configuración fiscal y el 200 no se puede revisar (corporate_year_unset)";
+export const CAP_RESERVE_WARNING = "Reserva de capitalización (art. 25 LIS): exige dotar una reserva indisponible por el importe de la reducción y mantener el incremento de fondos propios durante 3 años";
+export const PRESET_NOTICE = "Propuesta: confírmala con tu gestoría";
+/** Tope de la escala de las microempresas: los primeros 50.000 € de base imponible. */
+export const MICRO_FIRST_BRACKET_CENTS = 5_000_000;
+/** Tope de la reserva de nivelación: 10 % de la base imponible y 1 millón de euros (art. 105 LIS). */
+export const LEVELLING_RATE_BP = 1000;
+export const LEVELLING_MAX_CENTS = 100_000_000;
+
+/** Escala transitoria de la Ley 7/2024 por ejercicio (2029 y siguientes, la definitiva). */
+const MICRO_RATES: Record<number, [number, number]> = { 2025: [2100, 2200], 2026: [2000, 2100], 2027: [1900, 2100], 2028: [1800, 2000] };
+const ERD_RATES: Record<number, number> = { 2025: 2400, 2026: 2300, 2027: 2200, 2028: 2100 };
+
+/**
+ * Propuestas de escala del ejercicio (el operador elige una y la confirma; se guardan sus tramos, nunca el nombre):
+ * tipo general (25 %), entidad de nueva creación (15 %, art. 29.1 LIS, primer ejercicio con base positiva y el
+ * siguiente) y, desde 2025, microempresa (cifra de negocios < 1 M€) y entidad de reducida dimensión (< 10 M€) con la
+ * escala transitoria de la Ley 7/2024. Todas llevan su cita y «Propuesta: confírmala con tu gestoría».
+ */
+export function corporatePresets(year: number): CorporatePreset[] {
+  const out: CorporatePreset[] = [
+    { key: "general", regime: "general", label: "Tipo general (25 %)", brackets: [{ uptoCents: null, rateBp: 2500 }], capReserveLimitBp: 2000, citation: "Art. 29.1 de la Ley 27/2014, del Impuesto sobre Sociedades: tipo general del 25 %", notice: PRESET_NOTICE },
+    { key: "nueva_creacion", regime: "nueva_creacion", label: "Entidad de nueva creación (15 %)", brackets: [{ uptoCents: null, rateBp: 1500 }], capReserveLimitBp: 2000, citation: "Art. 29.1 LIS: entidades de nueva creación, 15 % en el primer periodo con base imponible positiva y en el siguiente", notice: PRESET_NOTICE },
+  ];
+  if (year >= 2025) {
+    const [first, rest] = MICRO_RATES[year] ?? [1700, 2000];
+    out.push({
+      key: "microempresa",
+      regime: "microempresa",
+      label: `Microempresa: ${first / 100} % hasta 50.000 € y ${rest / 100} % el resto`,
+      brackets: [
+        { uptoCents: MICRO_FIRST_BRACKET_CENTS, rateBp: first },
+        { uptoCents: null, rateBp: rest },
+      ],
+      capReserveLimitBp: 2500,
+      citation: "Art. 29.1 LIS y su disposición transitoria (Ley 7/2024): microempresas, importe neto de la cifra de negocios del periodo anterior inferior a 1 millón de euros",
+      notice: PRESET_NOTICE,
+    });
+    const erd = ERD_RATES[year] ?? 2000;
+    out.push({ key: "erd", regime: "erd", label: `Entidad de reducida dimensión (${erd / 100} %)`, brackets: [{ uptoCents: null, rateBp: erd }], capReserveLimitBp: 2000, citation: "Art. 29.1 LIS y su disposición transitoria (Ley 7/2024): entidades de reducida dimensión (cifra de negocios inferior a 10 millones de euros) que no son microempresa", notice: PRESET_NOTICE });
+  }
+  return out;
+}
+
+/** Valida la configuración de un ejercicio: tramos ordenados con tope creciente, el último sin tope, tipos de 0 a 10000. */
+export function checkCorporateYear(i: CorporateYearInput): CorporateYearInput {
+  if (!(CORPORATE_REGIMES as readonly string[]).includes(i.regime)) throw bad("Régimen no válido: general, nueva_creacion, erd, microempresa u otro");
+  if (!Array.isArray(i.brackets) || i.brackets.length === 0 || i.brackets.length > 10) throw bad("Indica de 1 a 10 tramos");
+  let prev = 0;
+  i.brackets.forEach((b, n) => {
+    const last = n === i.brackets.length - 1;
+    if (!Number.isInteger(b.rateBp) || b.rateBp < 0 || b.rateBp > 10_000) throw bad("El tipo de cada tramo va de 0 a 10000 puntos básicos");
+    if (last && b.uptoCents !== null) throw bad("El último tramo no tiene tope (uptoCents: null)");
+    if (!last && (b.uptoCents === null || !Number.isSafeInteger(b.uptoCents) || b.uptoCents <= prev)) throw bad("Los tramos van ordenados, con tope creciente (en céntimos de base imponible), salvo el último");
+    if (!last) prev = b.uptoCents!;
+  });
+  for (const [v, what] of [[i.netTurnoverCents, "La cifra de negocios"], [i.capReserveEquityIncreaseCents, "El incremento de fondos propios"], [i.levellingReserveCents, "La reserva de nivelación"]] as const) if (v !== null && (!Number.isSafeInteger(v) || v < 0)) throw bad(`${what} es un importe en céntimos no negativo`);
+  for (const [v, what] of [[i.capReserveRateBp, "La tasa de la reserva de capitalización"], [i.capReserveLimitBp, "El límite de la reserva de capitalización"]] as const) if (v !== null && (!Number.isInteger(v) || v < 0 || v > 10_000)) throw bad(`${what} va de 0 a 10000 puntos básicos`);
+  if (i.capReserveEquityIncreaseCents !== null && (i.capReserveRateBp === null || i.capReserveLimitBp === null)) throw bad("Con reserva de capitalización indica su tasa y su límite (sugeridos 2000 y 2000; 2500 de límite con cifra de negocios < 1 M€)");
+  const notes = (i.notes ?? "").trim();
+  return { ...i, brackets: i.brackets.map((b) => ({ uptoCents: b.uptoCents, rateBp: b.rateBp })), notes: notes ? notes.slice(0, 4000) : null };
+}
+
+/** Cuota íntegra por tramos con el detalle de cada uno (base imponible positiva; cada tramo redondeado a céntimos). */
+export function bracketQuota(baseCents: number, brackets: readonly CorporateBracket[]): { quotaCents: number; rows: Array<{ fromCents: number; uptoCents: number | null; rateBp: number; baseCents: number; quotaCents: number }> } {
+  let from = 0;
+  const rows = brackets.map((b) => {
+    const top = b.uptoCents ?? Number.MAX_SAFE_INTEGER;
+    const portion = Math.max(0, Math.min(baseCents, top) - from);
+    const row = { fromCents: from, uptoCents: b.uptoCents, rateBp: b.rateBp, baseCents: portion, quotaCents: portion > 0 ? taxOf(portion, b.rateBp) : 0 };
+    from = top;
+    return row;
+  });
+  return { quotaCents: sum(rows.map((r) => r.quotaCents)), rows };
+}
+
+/**
+ * Reducción por reserva de capitalización (art. 25 LIS): el menor de incremento de fondos propios × tasa y base previa
+ * a la reducción × límite. Sin incremento o con base no positiva, cero.
+ */
+export function capitalizationReduction(basePreviaCents: number, c: { equityIncreaseCents: number | null; rateBp: number | null; limitBp: number | null }): number {
+  if (basePreviaCents <= 0 || !c.equityIncreaseCents || c.rateBp === null || c.limitBp === null) return 0;
+  return Math.max(0, Math.min(taxOf(c.equityIncreaseCents, c.rateBp), taxOf(basePreviaCents, c.limitBp)));
+}
+
 /**
  * Modelo 200 (adaptado de `computeCorporate`/`lines200`, server/gestoriaTax.ts): resultado contable, ajuste por el
  * propio impuesto, ajustes extracontables manuales, compensación de bases negativas (las más antiguas primero) con su
  * límite, cuota íntegra al tipo configurado, deducciones, retenciones (473 y manuales) y pagos fraccionados pagados →
  * cuota diferencial. Las bases negativas pendientes al final (por ejercicio de origen) las recoge el 200 siguiente.
+ * CRM 0039, con el ejercicio configurado: base previa → reducción por reserva de capitalización (casilla 01032) y de
+ * nivelación (solo entidades de reducida dimensión) → compensación de bases negativas (límite sobre la base previa) →
+ * base imponible → cuota por tramos (detalle de cada tramo). Sin configurar, el cálculo de antes (tipo único).
  */
 export function corporate200(i: Corporate200Input): DraftBody {
   const warnings: string[] = [];
   if (!i.hasData) return body("200", i.year, ANNUAL, { hasData: false, warnings: ["No hay ingresos ni gastos contabilizados en el ejercicio"], boxes: [box("00599", "Cuota diferencial", null)] });
+  const cfg = i.corporate ?? null;
   const adj = (k: string) => i.adjustments.filter((a) => a.kind === k);
   const total = (k: string) => sum(adj(k).map((a) => a.amountCents));
   const increases = total("increase");
   const decreases = total("decrease");
   const basePrevia = i.accountingResultCents + i.taxExpenseCents + increases - decreases;
+  // Reservas (solo con el ejercicio configurado)
+  const capReduction = cfg ? capitalizationReduction(basePrevia, { equityIncreaseCents: cfg.capReserveEquityIncreaseCents, rateBp: cfg.capReserveRateBp, limitBp: cfg.capReserveLimitBp }) : 0;
+  const afterCap = basePrevia - capReduction;
+  const levellingAllowed = !!cfg && (cfg.regime === "erd" || cfg.regime === "microempresa");
+  const levelling = cfg && levellingAllowed && cfg.levellingReserveCents && afterCap > 0 ? Math.min(cfg.levellingReserveCents, taxOf(afterCap, LEVELLING_RATE_BP), LEVELLING_MAX_CENTS) : 0;
+  if (cfg?.levellingReserveCents && !levellingAllowed) warnings.push("La reserva de nivelación solo la aplican las entidades de reducida dimensión: no se ha aplicado");
+  if (cfg && cfg.levellingReserveCents && levelling < cfg.levellingReserveCents && levellingAllowed) warnings.push("La reserva de nivelación se limita al 10 % de la base imponible y a 1 millón de euros");
+  const beforeBins = afterCap - levelling;
   const bases: NegativeBase[] = [
     ...(i.previousPending ?? []).map((x) => ({ ...x, source: i.previousSource ?? "obligation" })),
     ...adj("negative_base").map((a) => ({ originYear: a.originYear ?? i.year - 1, amountCents: a.amountCents, source: `adjustment:${a.id}` })),
   ];
   const available = sum(bases.map((x) => x.amountCents));
-  const compensation = Math.min(available, lossCompensationLimit(basePrevia, i.newEntity));
+  const compensation = Math.min(available, lossCompensationLimit(basePrevia, i.newEntity), Math.max(0, beforeBins));
   const applied = applyNegativeBases(bases, compensation);
-  const bi = basePrevia - compensation;
+  const bi = beforeBins - compensation;
   const pending = applied.map((x) => ({ originYear: x.originYear, amountCents: x.amountCents - x.appliedCents })).filter((x) => x.amountCents > 0);
   if (bi < 0) pending.push({ originYear: i.year, amountCents: -bi });
-  const cuotaIntegra = bi > 0 ? taxOf(bi, i.rateBp) : 0;
+  const scale = cfg ? bracketQuota(Math.max(0, bi), cfg.brackets) : null;
+  const cuotaIntegra = bi > 0 ? (scale ? scale.quotaCents : taxOf(bi, i.rateBp)) : 0;
+  // Tipo del borrador: el único configurado o, con escala, el efectivo (cuota íntegra / base imponible)
+  const rateBp = cfg ? (cfg.brackets.length === 1 ? cfg.brackets[0].rateBp : bi > 0 ? Math.round((cuotaIntegra * 10_000) / bi) : cfg.brackets[0].rateBp) : i.rateBp;
   const deductions = Math.min(total("deduction"), cuotaIntegra);
   if (total("deduction") > cuotaIntegra) warnings.push("Las deducciones superan la cuota íntegra: el exceso no se aplica este año (se arrastra según su régimen)");
   const cuotaLiquida = cuotaIntegra - deductions;
   const withholdings = i.withholdings473Cents + total("withholding");
   const differential = cuotaLiquida - withholdings - i.installmentsPaidCents;
   if (i.previousPending === null && adj("negative_base").length === 0) warnings.push("Sin 200 del ejercicio anterior en el sistema: si hay bases negativas pendientes, regístralas como ajuste «negative_base» con su ejercicio de origen");
-  warnings.push("Tipo único configurado: los tipos reducidos de microempresas (Ley 7/2024) y la reserva de capitalización no se calculan; revísalos con la gestoría");
+  if (!cfg) warnings.push(i.fiscal ? CORPORATE_YEAR_UNSET_WARNING : "Tipo único configurado: los tipos reducidos de microempresas (Ley 7/2024) y la reserva de capitalización no se calculan; revísalos con la gestoría");
+  if (cfg && cfg.capReserveEquityIncreaseCents) warnings.push(CAP_RESERVE_WARNING);
   const details: TaxDetail[] = [
     ...i.details,
     ...i.adjustments.map((a) => ({ box: a.kind, source: "adjustment" as const, ref: `adjustment:${a.id}`, date: null, description: `${a.description}${a.originYear ? ` (ejercicio ${a.originYear})` : ""}`, baseCents: null, taxCents: a.amountCents, rateBp: null })),
     ...applied.filter((x) => !x.source.startsWith("adjustment:")).map((x) => ({ box: "00547", source: "obligation" as const, ref: x.source, date: null, description: `Base negativa pendiente del ejercicio ${x.originYear}`, baseCents: x.amountCents, taxCents: x.appliedCents, rateBp: null })),
+    ...(scale && bi > 0 ? scale.rows.filter((r) => r.baseCents > 0).map((r, n) => ({ box: "00562", source: "settings" as const, ref: `corporate-year:${i.year}:tramo:${n + 1}`, date: null, description: `Tramo ${n + 1}: ${r.uptoCents === null ? `desde ${eur(r.fromCents)} €` : `de ${eur(r.fromCents)} a ${eur(r.uptoCents)} €`} al ${r.rateBp / 100} %`, baseCents: r.baseCents, taxCents: r.quotaCents, rateBp: r.rateBp })) : []),
   ];
+  const reductions = cfg ? [box("01032", "Reducción por reserva de capitalización", capReduction), ...(cfg.levellingReserveCents || levelling ? [box("nivelacion", "Reducción por reserva de nivelación", levelling)] : [])] : [];
   return body("200", i.year, ANNUAL, {
     boxes: [
       box("00501", "Resultado de la cuenta de pérdidas y ganancias", i.accountingResultCents),
@@ -927,9 +1092,10 @@ export function corporate200(i: Corporate200Input): DraftBody {
       box("ajustes_aumento", "Otros aumentos extracontables", increases),
       box("ajustes_disminucion", "Disminuciones extracontables", decreases),
       box("00550", "Base imponible previa a la compensación", basePrevia),
+      ...reductions,
       box("00547", "Compensación de bases imponibles negativas de periodos anteriores", compensation),
       box("00552", "Base imponible", bi),
-      bpBox("tipo", `Tipo de gravamen (${i.rateBp / 100} %)`, i.rateBp),
+      bpBox("tipo", cfg && cfg.brackets.length > 1 ? `Tipo de gravamen efectivo por tramos (${rateBp / 100} %)` : `Tipo de gravamen (${rateBp / 100} %)`, rateBp),
       box("00562", "Cuota íntegra", cuotaIntegra),
       box("deducciones", "Deducciones y bonificaciones", deductions),
       box("00592", "Cuota líquida positiva", cuotaLiquida),
@@ -942,7 +1108,7 @@ export function corporate200(i: Corporate200Input): DraftBody {
     outcome: outcomeOf(differential, i.accountingResultCents !== 0, "a_devolver"),
     resultCents: differential,
     extra: {
-      rateBp: i.rateBp,
+      rateBp,
       basePreviaCents: basePrevia,
       cuotaIntegraCents: cuotaIntegra,
       deduccionesCents: deductions,
@@ -950,8 +1116,52 @@ export function corporate200(i: Corporate200Input): DraftBody {
       pendingLossesAfterCents: sum(pending.map((x) => x.amountCents)),
       pendingLossesJson: JSON.stringify(pending),
       negativeBasesJson: JSON.stringify(applied.map((x) => ({ originYear: x.originYear, amountCents: x.amountCents, appliedCents: x.appliedCents, source: x.source }))),
+      // CRM 0039 (solo con el ejercicio configurado: sin él, la huella de los borradores anteriores no cambia)
+      ...(cfg ? { regime: cfg.regime, capitalizationReserveCents: capReduction, levellingReductionCents: levelling, cuotaLiquidaCents: cuotaLiquida, bracketsJson: JSON.stringify(scale ? scale.rows : []) } : {}),
     },
   });
+}
+
+// ── Asiento del Impuesto sobre Sociedades (CRM 0039) ─────────────────────────────────────────────────────────────
+
+/** Cuentas del asiento (las que falten en el plan se dan de alta como subcuentas del PGC antes de contabilizar). */
+export const CORPORATE_ENTRY_ACCOUNTS = {
+  currentTax: { code: "6300", name: "Impuesto corriente", parent: "630" },
+  deferredTax: { code: "6301", name: "Impuesto diferido", parent: "630" },
+  withholdings: { code: "473", name: "Hacienda Pública, retenciones y pagos a cuenta", parent: null },
+  payable: { code: "4752", name: "Hacienda Pública, acreedora por impuesto sobre sociedades", parent: "475" },
+  refundable: { code: "4709", name: "Hacienda Pública, deudora por devolución de impuestos", parent: "470" },
+  deferredAsset: { code: "4740", name: "Activos por diferencias temporarias deducibles", parent: "474" },
+  deferredLiability: { code: "479", name: "Pasivos por diferencias temporarias imponibles", parent: null },
+} as const;
+/** Cuentas de mayor (3 dígitos) que el PGC define y el plan sembrado no trae: se crean con su tipo si hacen falta. */
+export const CORPORATE_PARENT_ACCOUNTS: Record<string, { name: string; type: "asset" | "liability" }> = {
+  "474": { name: "Activos por impuesto diferido", type: "asset" },
+  "479": { name: "Pasivos por diferencias temporarias imponibles", type: "liability" },
+};
+
+export const corporateEntrySourceKey = (year: number, seq: number) => (seq <= 1 ? `tax:200:entry:${year}` : `tax:200:entry:${year}:${seq}`);
+
+/**
+ * Asiento del Impuesto sobre Sociedades (diario IMP): Debe 6300 (impuesto corriente) · Haber 473 (retenciones y pagos
+ * a cuenta, hasta su saldo) · Haber 4752 (a ingresar) o Debe 4709 (a devolver); el diferido opcional: gasto (> 0)
+ * Debe 6301 · Haber 479; ingreso (< 0) Debe 4740 · Haber 6301. `source_key = tax:200:entry:<año>[:<n>]`.
+ */
+export function corporateEntryDraft(i: { year: number; seq: number; date: string; currentTaxCents: number; deferredTaxCents: number; withholdingsCents: number; origin: string }): EntryDraft {
+  for (const [v, what] of [[i.currentTaxCents, "El impuesto corriente"], [i.withholdingsCents, "Las retenciones y pagos a cuenta"]] as const) if (!Number.isSafeInteger(v) || v < 0) throw bad(`${what} es un importe en céntimos no negativo`);
+  if (!Number.isSafeInteger(i.deferredTaxCents)) throw bad("El impuesto diferido es un importe en céntimos (con signo)");
+  const a = CORPORATE_ENTRY_ACCOUNTS;
+  const label = `Impuesto sobre Sociedades del ejercicio ${i.year} (${i.origin === "system" ? "borrador del sistema" : i.origin === "gestoria" ? "importes de la gestoría" : "importes manuales"})`;
+  const diff = i.currentTaxCents - i.withholdingsCents;
+  const lines: EntryLineInput[] = [
+    ...signed(a.currentTax.code, i.currentTaxCents, "debit", { description: "Impuesto corriente" }),
+    ...signed(a.withholdings.code, i.withholdingsCents, "credit", { description: "Retenciones y pagos a cuenta del ejercicio" }),
+    ...(diff > 0 ? signed(a.payable.code, diff, "credit", { description: "Impuesto a ingresar" }) : signed(a.refundable.code, -diff, "debit", { description: "Impuesto a devolver" })),
+    ...(i.deferredTaxCents > 0 ? [...signed(a.deferredTax.code, i.deferredTaxCents, "debit", { description: "Impuesto diferido (gasto)" }), ...signed(a.deferredLiability.code, i.deferredTaxCents, "credit", { description: "Pasivo por diferencias temporarias imponibles" })] : []),
+    ...(i.deferredTaxCents < 0 ? [...signed(a.deferredAsset.code, -i.deferredTaxCents, "debit", { description: "Activo por diferencias temporarias deducibles" }), ...signed(a.deferredTax.code, -i.deferredTaxCents, "credit", { description: "Impuesto diferido (ingreso)" })] : []),
+  ];
+  if (!lines.length) throw bad("No hay nada que contabilizar: el impuesto corriente, las retenciones y el diferido son cero");
+  return { journalCode: "IMP", date: i.date, description: label, origin: "tax", sourceKey: corporateEntrySourceKey(i.year, i.seq), lines };
 }
 
 // ── 202: pagos fraccionados ───────────────────────────────────────────────────────────────────────────────────────
@@ -1118,14 +1328,16 @@ export interface ReceivedRegisterRow {
   totalCents: number;
   rectifies: string | null;
   reverseCharge: boolean;
+  /** CRM 0039: tratamiento del IVA en texto («Interior» si no se indica). */
+  treatment?: string | null;
 }
 
 /** Libro registro de facturas recibidas: gastos registrados y comisiones de Stripe con inversión del sujeto pasivo. */
 export function receivedRegisterCsv(rows: ReceivedRegisterRow[]): string {
   const sorted = [...rows].sort((a, b) => a.invoiceDate.localeCompare(b.invoiceDate) || (a.number ?? "").localeCompare(b.number ?? ""));
   return toCsv(
-    ["Fecha de expedición", "Fecha de devengo", "Número", "Tipo", "Proveedor", "NIF del proveedor", "País", "Base imponible", "Tipo de IVA (%)", "Cuota de IVA", "Cuota deducible", "Retención", "Total", "Factura rectificada", "Inversión del sujeto pasivo"],
-    sorted.map((r) => [esDate(r.invoiceDate), r.accrualDate ? esDate(r.accrualDate) : "", csvText(r.number), r.kind, csvText(r.supplierName), csvText(r.supplierTaxId), csvText(r.country), eur(r.baseCents), eur(r.taxRateBp), eur(r.taxCents), eur(r.deductibleTaxCents), eur(r.withholdingCents), eur(r.totalCents), csvText(r.rectifies), r.reverseCharge ? "Sí" : "No"]),
+    ["Fecha de expedición", "Fecha de devengo", "Número", "Tipo", "Proveedor", "NIF del proveedor", "País", "Base imponible", "Tipo de IVA (%)", "Cuota de IVA", "Cuota deducible", "Retención", "Total", "Factura rectificada", "Inversión del sujeto pasivo", "Tratamiento IVA"],
+    sorted.map((r) => [esDate(r.invoiceDate), r.accrualDate ? esDate(r.accrualDate) : "", csvText(r.number), r.kind, csvText(r.supplierName), csvText(r.supplierTaxId), csvText(r.country), eur(r.baseCents), eur(r.taxRateBp), eur(r.taxCents), eur(r.deductibleTaxCents), eur(r.withholdingCents), eur(r.totalCents), csvText(r.rectifies), r.reverseCharge ? "Sí" : "No", csvText(r.treatment ?? VAT_TREATMENT_LABELS.domestic)]),
   );
 }
 
