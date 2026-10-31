@@ -5863,8 +5863,8 @@ export default function CRMDashboard() {
   });
 
   const voidInvoiceMutation = trpc.crm.invoices.void.useMutation({
-    onSuccess: () => {
-      toast.success("Factura anulada");
+    onSuccess: (data) => {
+      toast.success(`Factura anulada con el abono ${data.creditNoteNumber}`);
       setVoidInvoiceId(null);
       utils.crm.invoices.listAll.invalidate();
       refetchInvoices();
@@ -8198,7 +8198,7 @@ export default function CRMDashboard() {
               <AlertTriangle className="w-5 h-5 text-red-400" /> Anular factura
             </DialogTitle>
           </DialogHeader>
-          <p className="text-sm text-foreground/65 py-2">Esta acción marcará la factura como anulada. No se puede deshacer. Para reembolsos, usa la opción de generar abono.</p>
+          <p className="text-sm text-foreground/65 py-2">Se emitirá un abono (factura rectificativa) por el importe pendiente y la factura quedará abonada. Su número se conserva. No se puede deshacer.</p>
           <DialogFooter>
             <Button variant="outline" size="sm" onClick={() => setVoidInvoiceId(null)} className="border-foreground/[0.15] text-foreground/65">Cancelar</Button>
             <Button size="sm"

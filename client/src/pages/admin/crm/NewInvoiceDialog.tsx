@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
+import { toastError } from "@/lib/errorMessage";
 import { Plus, RefreshCw, Trash2 } from "lucide-react";
 import { computeDirectInvoice, DIRECT_INVOICE_TAX_RATES, parseAmount, validateNewInvoice, type DirectInvoiceTaxRate, type InvoiceClientDraft as ClientDraft, type InvoiceFormErrors as Errors, type InvoiceLineDraft as LineDraft } from "@shared/directInvoice";
 import { normalizeTaxId } from "@shared/formValidation";
@@ -54,7 +55,7 @@ export default function NewInvoiceDialog({ open, onOpenChange, onCreated }: { op
       onOpenChange(false);
       onCreated?.();
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toastError(e),
   });
 
   const submit = () => {
