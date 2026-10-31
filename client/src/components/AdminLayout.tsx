@@ -1,12 +1,12 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link, useLocation, useSearch } from "wouter";
 import {
   LayoutDashboard, Package, FileText, Calendar, BarChart3,
   Settings, Menu, X, LogOut, Users, Image, ChevronDown,
-  Bell, Search, User, BedDouble, Sparkles, UtensilsCrossed, AlertCircle,
+  Bell, User, BedDouble, Sparkles, UtensilsCrossed, AlertCircle,
   UserPlus, FileCheck, ChevronRight, Receipt, Truck, Monitor, Tag, Ticket,
   Sun, Moon, ExternalLink, Target, MessageCircle, Bot, Mail, Building2,
-  Briefcase, Globe, CreditCard, ShoppingCart, Rocket, ArrowUpRight, HelpCircle,
+  Briefcase, Globe, CreditCard, ShoppingCart, Rocket, ArrowUpRight, HelpCircle, RefreshCw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -26,6 +26,23 @@ import {
 } from "@shared/adminNav";
 import { helpForLocation } from "@shared/helpCenter";
 import { AuthRequired, PanelSpinner } from "@/components/auth/AuthRequired";
+
+/** El plegado del menú lateral se recuerda entre pantallas (cada página monta su propio AdminLayout). */
+const SIDEBAR_KEY = "panel.sidebarOpen";
+function readSidebarOpen(): boolean {
+  try {
+    return window.localStorage.getItem(SIDEBAR_KEY) !== "0";
+  } catch {
+    return true;
+  }
+}
+function saveSidebarOpen(open: boolean) {
+  try {
+    window.localStorage.setItem(SIDEBAR_KEY, open ? "1" : "0");
+  } catch {
+    /* almacenamiento no disponible: solo se pierde la preferencia */
+  }
+}
 
 /** Iconos del menú (el modelo de navegación vive en shared/adminNav.ts, sin React). */
 const NAV_ICONS: Record<NavIcon, React.ComponentType<{ className?: string }>> = {
@@ -53,8 +70,15 @@ interface AdminLayoutProps {
 }
 
 export default function AdminLayout({ children, title }: AdminLayoutProps) {
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpenState] = useState(readSidebarOpen);
+  const setSidebarOpen = (open: boolean) => {
+    setSidebarOpenState(open);
+    saveSidebarOpen(open);
+  };
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const asideRef = useRef<HTMLElement>(null);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
   const [expandedItems, setExpandedItems] = useState<string[]>([]);
   const [notifOpen, setNotifOpen] = useState(false);
   const [location, navigate] = useWouterLocation();
@@ -94,12 +118,35 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
   // Cerrar menú móvil al cambiar de ruta
   useEffect(() => { setMobileMenuOpen(false); }, [location]);
 
-  // Escape cierra el menú móvil
+  // Menú móvil como diálogo: foco dentro al abrir, Tab no sale del panel, Escape cierra y el foco
+  // vuelve al botón que lo abrió
   useEffect(() => {
     if (!mobileMenuOpen) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setMobileMenuOpen(false); };
+    const opener = menuButtonRef.current;
+    closeButtonRef.current?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setMobileMenuOpen(false);
+        return;
+      }
+      if (e.key !== "Tab" || !asideRef.current) return;
+      const focusables = Array.from(asideRef.current.querySelectorAll<HTMLElement>("a[href], button:not([disabled])"));
+      if (focusables.length === 0) return;
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      opener?.focus();
+    };
   }, [mobileMenuOpen]);
 
   const toggleExpanded = (href: string) => {
@@ -162,7 +209,7 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
   // Menú: el de siempre (single / sin licencias por capacidad) o por tareas filtrado por licencias.
   const subscription = usePanelSubscription();
   const navSections: ResolvedSection[] =
-    subscription.mode === "loading"
+    subscription.mode === "loading" || subscription.mode === "error"
       ? []
       : resolveNav(subscription.mode === "tasks" ? TASK_NAV : LEGACY_SECTIONS, {
           role: userRole,
@@ -176,7 +223,9 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
   const upgradeUrl = subscription.data?.upgradeUrl ?? null;
   const trialInfo = subscription.data?.trial ?? null;
   // Una empresa nueva sin logo propio no hereda el de la instalación original: se muestra su inicial.
-  const brandLogo = publicSettings?.brand_logo_url || (subscription.mode === "legacy" ? LOGO_FALLBACK : null);
+  // El logo de siempre solo en la instalación de una sola empresa (nunca por un fallo ni en multiempresa).
+  const isSingleInstall = (subscription.install ?? subscription.data?.mode) === "single";
+  const brandLogo = publicSettings?.brand_logo_url || (subscription.mode === "legacy" && isSingleInstall ? LOGO_FALLBACK : null);
 
   // ── Feed unificado de notificaciones (polling cada 60s) ─────────────────
   // El endpoint `notifications.feed` agrega 6 fuentes (leads, quotes,
@@ -384,6 +433,11 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
 
       {/* Sidebar */}
       <aside
+        ref={asideRef}
+        id="panel-sidebar"
+        role={mobileMenuOpen ? "dialog" : undefined}
+        aria-modal={mobileMenuOpen ? true : undefined}
+        aria-label={mobileMenuOpen ? "Menú del panel" : undefined}
         className={cn(
           "fixed left-0 top-0 h-full z-50 flex flex-col transition-all duration-300",
           "bg-sidebar text-sidebar-foreground border-r border-sidebar-border",
@@ -419,7 +473,7 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
               </span>
             )}
             {showLabels && (
-              isTaskNav ? (
+              isTaskNav || !isSingleInstall ? (
                 <span className="text-sm font-display font-semibold text-sidebar-foreground truncate">{brandName}</span>
               ) : (
                 <span className="text-xs text-accent tracking-widest uppercase font-display font-bold shrink-0">
@@ -430,6 +484,7 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
           </Link>
           {/* Escritorio: plegar/desplegar; móvil: cerrar el panel */}
           <button
+            ref={closeButtonRef}
             type="button"
             onClick={() => (mobileMenuOpen ? setMobileMenuOpen(false) : setSidebarOpen(!sidebarOpen))}
             aria-label={mobileMenuOpen ? "Cerrar menú" : sidebarOpen ? "Plegar menú lateral" : "Desplegar menú lateral"}
@@ -448,6 +503,22 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
               {[0, 1, 2, 3, 4, 5].map((i) => (
                 <div key={i} className="h-9 rounded-lg bg-sidebar-accent/60 animate-pulse" />
               ))}
+            </div>
+          )}
+          {subscription.mode === "error" && (
+            <div role="alert" className={cn("px-2 py-3 text-sm text-sidebar-foreground/80", !showLabels && "flex justify-center")}>
+              {showLabels && <p className="mb-2">No se ha podido cargar el menú.</p>}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={subscription.retry}
+                className={cn(showLabels ? "w-full" : "w-9 px-0")}
+                aria-label="Reintentar la carga del menú"
+              >
+                <RefreshCw className="w-4 h-4" aria-hidden="true" />
+                {showLabels && <span className="ml-1.5">Reintentar</span>}
+              </Button>
             </div>
           )}
           {navSections.map((section) => (
@@ -526,10 +597,13 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
         <header className="h-16 bg-card border-b border-border flex items-center px-4 sm:px-6 gap-3 sticky top-0 z-30">
           {/* Hamburguesa — solo en móvil */}
           <button
+            ref={menuButtonRef}
+            type="button"
             className="lg:hidden w-9 h-9 rounded-lg hover:bg-accent flex items-center justify-center text-foreground/60 hover:text-foreground transition-colors shrink-0"
             onClick={() => setMobileMenuOpen(true)}
             aria-label="Abrir menú"
             aria-expanded={mobileMenuOpen}
+            aria-controls="panel-sidebar"
           >
             <Menu className="w-5 h-5" aria-hidden="true" />
           </button>
@@ -556,11 +630,6 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
               </Link>
             )}
             {userRole === "admin" && <MaintenanceModeControl />}
-            {!isTaskNav && (
-              <Button variant="ghost" size="icon" className="w-9 h-9" aria-label="Buscar">
-                <Search className="w-4 h-4" aria-hidden="true" />
-              </Button>
-            )}
             {/* Toggle Light / Dark */}
             <Button
               variant="ghost"
@@ -593,7 +662,7 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
                 </Button>
               </PopoverTrigger>
               <PopoverContent
-                className="w-96 p-0 bg-card border border-border shadow-xl max-h-[80vh] overflow-y-auto"
+                className="w-[min(24rem,calc(100vw-1rem))] p-0 bg-card border border-border shadow-xl max-h-[80vh] overflow-y-auto"
                 align="end"
                 sideOffset={8}
               >

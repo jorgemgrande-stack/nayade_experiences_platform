@@ -41,6 +41,7 @@ import {
   X,
   Plus,
 } from "lucide-react";
+import { toastError } from "@/lib/errorMessage";
 
 // ── Categorías predefinidas ────────────────────────────────────────────────────
 const PREDEFINED_CATEGORIES = [
@@ -85,15 +86,15 @@ export default function GalleryManager() {
   // ── Mutations ──────────────────────────────────────────────────────────────
   const createMutation = trpc.gallery.adminCreate.useMutation({
     onSuccess: () => { utils.gallery.adminGetAll.invalidate(); utils.gallery.getItems.invalidate(); utils.gallery.getCategories.invalidate(); },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toastError(e),
   });
   const updateMutation = trpc.gallery.adminUpdate.useMutation({
     onSuccess: () => { utils.gallery.adminGetAll.invalidate(); utils.gallery.getItems.invalidate(); utils.gallery.getCategories.invalidate(); toast.success("Foto actualizada"); setEditItem(null); },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toastError(e),
   });
   const deleteMutation = trpc.gallery.adminDelete.useMutation({
     onSuccess: () => { utils.gallery.adminGetAll.invalidate(); utils.gallery.getItems.invalidate(); toast.success("Foto eliminada"); setDeleteId(null); },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toastError(e),
   });
   const reorderMutation = trpc.gallery.adminReorder.useMutation({
     onSuccess: () => { utils.gallery.adminGetAll.invalidate(); utils.gallery.getItems.invalidate(); },

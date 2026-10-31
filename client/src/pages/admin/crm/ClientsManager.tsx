@@ -20,6 +20,7 @@ import { Link } from "wouter";
 import { ClipboardList } from "lucide-react";
 import { usePanelSubscription } from "@/hooks/usePanelSubscription";
 import { EntityTagsDialog, TagChip, useCrmCanWrite } from "@/components/admin/crm/CrmParts";
+import { toastError } from "@/lib/errorMessage";
 
 // ─── TYPES ───────────────────────────────────────────────────────────────────
 
@@ -74,7 +75,7 @@ function ExpandDataModal({
       utils.crm.clients.list.invalidate();
       onClose();
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toastError(e),
   });
 
   return (
@@ -943,7 +944,7 @@ export default function ClientsManager() {
 
   const deleteClient = trpc.crm.clients.delete.useMutation({
     onSuccess: () => { toast.success("Cliente eliminado"); utils.crm.clients.list.invalidate(); setDeleteClientId(null); },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toastError(e),
   });
 
   // ── WhatsApp: iniciar conversación directamente desde CRM ─────────────────
@@ -970,7 +971,7 @@ export default function ClientsManager() {
         });
       }
     } catch (e: any) {
-      toast.error(e.message);
+      toastError(e);
     } finally {
       setWaSending(false);
     }

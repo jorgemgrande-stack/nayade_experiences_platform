@@ -18,6 +18,7 @@ import { PanelError, PanelLoading } from "@/components/admin/PanelStates";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { toastError } from "@/lib/errorMessage";
 
 type Status = "open" | "in_progress" | "waiting_customer" | "resolved" | "closed";
 interface TicketView {
@@ -69,7 +70,7 @@ function NewTicketForm({ onCreated }: { onCreated: (id: number) => void }) {
       void utils.support.list.invalidate();
       onCreated((r as { ticket: TicketView }).ticket.id);
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toastError(e),
   });
   const valid = title.trim().length >= 3 && description.trim().length >= 10;
   return (
@@ -117,8 +118,8 @@ function TicketDetail({ id }: { id: number }) {
     void utils.support.get.invalidate({ id });
     void utils.support.list.invalidate();
   };
-  const reply = trpc.support.reply.useMutation({ onSuccess: () => (setText(""), refresh()), onError: (e) => toast.error(e.message) });
-  const reopen = trpc.support.reopen.useMutation({ onSuccess: () => (setReason(""), refresh(), toast.success("Incidencia reabierta")), onError: (e) => toast.error(e.message) });
+  const reply = trpc.support.reply.useMutation({ onSuccess: () => (setText(""), refresh()), onError: (e) => toastError(e) });
+  const reopen = trpc.support.reopen.useMutation({ onSuccess: () => (setReason(""), refresh(), toast.success("Incidencia reabierta")), onError: (e) => toastError(e) });
   const data = q.data as { ticket: TicketView; timeline: Entry[] } | undefined;
 
   return (

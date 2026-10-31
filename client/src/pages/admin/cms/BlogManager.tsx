@@ -8,6 +8,7 @@ import AdminLayout from "@/components/AdminLayout";
 import ImageUploader from "@/components/ImageUploader";
 import { trpc } from "@/lib/trpc";
 import { usePanelSubscription } from "@/hooks/usePanelSubscription";
+import { PanelError } from "@/components/admin/PanelStates";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -25,6 +26,7 @@ import {
   BLOG_LIMITS, BLOG_STATUS_LABEL, slugify, validateBlogDraft,
   type BlogDraft, type BlogDraftErrors, type BlogStatus, type BlogVisibleStatus,
 } from "@shared/blog";
+import { toastError } from "@/lib/errorMessage";
 
 const EMPTY: BlogDraft = {
   title: "", slug: "", excerpt: "", content: "", featuredImageUrl: "", featuredImageAlt: "",
@@ -105,7 +107,7 @@ function PostEditor({ id, canWrite, categories, onClose }: { id: number | null; 
     if (id !== null) utils.blog.get.invalidate({ id });
     onClose();
   };
-  const onError = (e: { message: string }) => toast.error(e.message);
+  const onError = (e: { message: string }) => toastError(e);
   const create = trpc.blog.create.useMutation({ onSuccess: () => onSaved("Entrada creada"), onError });
   const update = trpc.blog.update.useMutation({ onSuccess: () => onSaved("Entrada guardada"), onError });
   const preview = trpc.blog.preview.useMutation({ onSuccess: (r) => setPreviewHtml(r.html), onError });
@@ -140,7 +142,7 @@ function PostEditor({ id, canWrite, categories, onClose }: { id: number | null; 
   });
 
   if (id !== null && existing.isLoading) return <p role="status" className="p-6 text-muted-foreground">Cargando entrada…</p>;
-  if (id !== null && existing.error) return <p role="alert" className="p-6 text-red-700">{existing.error.message}</p>;
+  if (id !== null && existing.error) return <PanelError className="m-6" title="No se ha podido cargar la entrada" error={existing.error} onRetry={() => void existing.refetch()} />;
 
   return (
     <form onSubmit={submit} noValidate className="p-4 md:p-6 max-w-4xl">
@@ -292,7 +294,7 @@ export default function BlogManager() {
   const list = trpc.blog.list.useQuery(undefined, { retry: false });
   const remove = trpc.blog.remove.useMutation({
     onSuccess: () => { toast.success("Entrada eliminada"); utils.blog.list.invalidate(); setToDelete(null); },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toastError(e),
   });
   const categories = useMemo(
     () => Array.from(new Set((list.data ?? []).map((p) => p.category).filter((c): c is string => !!c))).sort((a, b) => a.localeCompare(b, "es")),
@@ -333,7 +335,7 @@ export default function BlogManager() {
         {list.isLoading ? (
           <p role="status" className="py-12 text-center text-muted-foreground">Cargando entradas…</p>
         ) : list.error ? (
-          <p role="alert" className="py-12 text-center text-red-700">{list.error.message}</p>
+          <PanelError title="No se han podido cargar las entradas" error={list.error} onRetry={() => void list.refetch()} />
         ) : posts.length === 0 ? (
           <div className="text-center py-16 border-2 border-dashed border-border rounded-xl bg-background">
             <Newspaper size={32} className="mx-auto mb-3 text-muted-foreground" aria-hidden="true" />

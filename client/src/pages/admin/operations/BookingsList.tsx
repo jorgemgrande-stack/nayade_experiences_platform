@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "sonner";
 import { Search, CalendarDays, Users, CheckCircle, XCircle, Clock, PlayCircle, CreditCard, ArrowUpDown, Banknote, HelpCircle, ExternalLink } from "lucide-react";
 import { Link } from "wouter";
+import { toastError } from "@/lib/errorMessage";
 
 const statusConfig: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
   pendiente:  { label: "Pendiente",  color: "bg-amber-100 text-amber-700",  icon: <Clock className="w-3 h-3" /> },
@@ -38,7 +39,7 @@ export default function BookingsList() {
 
   const updateStatus = trpc.bookings.updateStatus.useMutation({
     onSuccess: () => { utils.bookings.getAll.invalidate(); toast.success("Estado actualizado"); },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toastError(e),
   });
 
   const filtered = bookings?.filter(b =>

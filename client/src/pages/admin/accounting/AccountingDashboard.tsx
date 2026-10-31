@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from "recharts";
 import AdminLayout from "@/components/AdminLayout";
+import { PanelError } from "@/components/admin/PanelStates";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 
@@ -47,8 +48,11 @@ const paymentStatusIcons: Record<string, any> = {
 export default function AccountingDashboard() {
   const [reportType, setReportType] = useState("ventas");
 
-  const { data: metrics } = trpc.accounting.getDashboardMetrics.useQuery();
-  const { data: transactions } = trpc.accounting.getTransactions.useQuery({ limit: 20, offset: 0 });
+  const metricsQ = trpc.accounting.getDashboardMetrics.useQuery();
+  const transactionsQ = trpc.accounting.getTransactions.useQuery({ limit: 20, offset: 0 });
+  const metrics = metricsQ.data;
+  const transactions = transactionsQ.data;
+  const mainError = metricsQ.error ?? transactionsQ.error;
   const { data: reconStats } = trpc.cardTerminalBatches.getReconciliationStats.useQuery(undefined, {
     staleTime: 5 * 60 * 1000,
   });
@@ -103,6 +107,14 @@ export default function AccountingDashboard() {
 
   return (
     <AdminLayout title="Contabilidad e Informes">
+      {mainError && (
+        <PanelError
+          className="mb-6"
+          title="No se han podido cargar los datos del resumen"
+          error={mainError}
+          onRetry={() => { void metricsQ.refetch(); void transactionsQ.refetch(); }}
+        />
+      )}
       {/* ── Salud de la empresa: foto económica consolidada ──────────────── */}
       <div className="mb-8 rounded-2xl border border-amber-300/40 bg-amber-50/40 dark:bg-amber-500/[0.04] p-5">
         <div className="flex items-center justify-between mb-3">

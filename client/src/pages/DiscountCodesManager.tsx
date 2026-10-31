@@ -1,5 +1,6 @@
 import { useState } from "react";
 import AdminLayout from "@/components/AdminLayout";
+import { PanelError } from "@/components/admin/PanelStates";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,6 +22,7 @@ import {
   Plus, Search, Edit2, Trash2, Copy, ToggleLeft, ToggleRight,
   Tag, Calendar, Users, Percent, Eye,
 } from "lucide-react";
+import { toastError } from "@/lib/errorMessage";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface DiscountCode {
@@ -81,7 +83,7 @@ export default function DiscountCodesManager() {
   const [showUses, setShowUses] = useState<number | null>(null);
 
   // Queries
-  const { data, isLoading, refetch } = trpc.discounts.list.useQuery({
+  const { data, isLoading, error: listError, refetch } = trpc.discounts.list.useQuery({
     search: search || undefined,
     status: statusFilter,
     page,
@@ -96,15 +98,15 @@ export default function DiscountCodesManager() {
   // Mutations
   const createMutation = trpc.discounts.create.useMutation({
     onSuccess: () => { toast.success("Código creado correctamente"); utils.discounts.list.invalidate(); closeForm(); },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toastError(e),
   });
   const updateMutation = trpc.discounts.update.useMutation({
     onSuccess: () => { toast.success("Código actualizado"); utils.discounts.list.invalidate(); closeForm(); },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toastError(e),
   });
   const toggleMutation = trpc.discounts.toggleStatus.useMutation({
     onSuccess: () => { utils.discounts.list.invalidate(); },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toastError(e),
   });
   const deleteMutation = trpc.discounts.delete.useMutation({
     onSuccess: (res) => {
@@ -112,11 +114,11 @@ export default function DiscountCodesManager() {
       else toast.success("Código eliminado");
       utils.discounts.list.invalidate();
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toastError(e),
   });
   const duplicateMutation = trpc.discounts.duplicate.useMutation({
     onSuccess: () => { toast.success("Código duplicado"); utils.discounts.list.invalidate(); },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toastError(e),
   });
 
   function openCreate() {
@@ -240,7 +242,9 @@ export default function DiscountCodesManager() {
         {/* Table */}
         <Card className="bg-card border-border">
           <CardContent className="p-0">
-            {isLoading ? (
+            {listError ? (
+              <PanelError className="m-4" title="No se han podido cargar los códigos de descuento" error={listError} onRetry={() => void refetch()} />
+            ) : isLoading ? (
               <div className="p-8 text-center text-muted-foreground">Cargando...</div>
             ) : items.length === 0 ? (
               <div className="p-12 text-center">

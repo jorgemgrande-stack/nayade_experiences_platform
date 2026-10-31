@@ -190,10 +190,13 @@ describe("subscription.overview (tRPC)", () => {
 });
 
 describe("menú del panel", () => {
-  it("modo de menú: cargando, legacy o por tareas", () => {
+  it("modo de menú: cargando, legacy (solo single o por el servidor), por tareas o error", () => {
     expect(navMode({ isLoading: true, isError: false })).toBe("loading");
-    expect(navMode({ isLoading: false, isError: true })).toBe("legacy");
-    expect(navMode({ isLoading: false, isError: false })).toBe("legacy");
+    // Un fallo nunca da el menú de siempre: solo el modo single lo da
+    expect(navMode({ isLoading: false, isError: true })).toBe("error");
+    expect(navMode({ isLoading: false, isError: true, install: "multi" })).toBe("error");
+    expect(navMode({ isLoading: false, isError: true, install: "single" })).toBe("legacy");
+    expect(navMode({ isLoading: false, isError: false })).toBe("loading");
     expect(navMode({ data: { licensing: "legacy", visible: [], readOnly: [] }, isLoading: false, isError: false })).toBe("legacy");
     expect(navMode({ data: { licensing: "capabilities", visible: [], readOnly: [] }, isLoading: false, isError: false })).toBe("tasks");
   });
@@ -245,14 +248,16 @@ describe("menú del panel", () => {
 
   it("sin licencias: solo Inicio, Suscripción, Ayuda y Soporte (nada no contratado aparece como activo)", () => {
     const resolved = resolveNav(TASK_NAV, { ...allVisible, capabilityState: () => null });
-    expect(labels(resolved)).toEqual(["Inicio", "Plan y uso", "Ayuda", "Soporte"]);
+    expect(labels(resolved)).toEqual(["Inicio", "Plan y uso", "Amplía tu empresa", "Ayuda", "Soporte"]);
   });
 
   it("agente comercial: solo ventas y facturación de cara al cliente", () => {
     const resolved = resolveNav(TASK_NAV, { ...allVisible, role: "agente" });
-    expect(resolved.map((s) => s.id)).toEqual(["inicio", "ventas", "facturacion", "contratados", "ayuda"]);
+    // «Suscripción» solo con «Amplía tu empresa» (también para el equipo)
+    expect(resolved.map((s) => s.id)).toEqual(["inicio", "ventas", "facturacion", "contratados", "suscripcion", "ayuda"]);
     expect(labels(resolved)).not.toContain("Usuarios y permisos");
     expect(labels(resolved)).not.toContain("Plan y uso");
+    expect(labels(resolved)).toContain("Amplía tu empresa");
   });
 
   it("toda capacidad citada en el menú existe en el catálogo", () => {
