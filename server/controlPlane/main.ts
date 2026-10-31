@@ -111,6 +111,8 @@ import { DataRequestService, operatorAssignees } from "../dataRequests/service";
 import { MysqlDataRequestStore, dataRequestTablesReady } from "../dataRequests/store";
 import { FinanceService } from "../finance/service";
 import { MysqlFinanceStore, finTablesReady } from "../finance/store";
+import { MysqlImplementationStore, implementationTablesReady } from "../implementation/store";
+import { assistedImplementationEnabled } from "../implementation/config";
 import { ConsentService, MysqlConsentStore, commsTablesReady } from "../communications/consent";
 import { LinkSigner, linkSecretFromDb } from "../communications/links";
 import { CommunicationsService } from "../communications/service";
@@ -602,6 +604,11 @@ async function main() {
   // Finanzas corporativas de Big Elephant (CRM 0033): libro contable; lee las facturas expedidas de la facturación propia
   const finance = crm && crmPool && (await finTablesReady(crmPool)) ? new FinanceService({ store: new MysqlFinanceStore(crmPool), invoices: invoicing?.store ?? null }) : null;
   console.log(JSON.stringify({ ctx: "Finance", mounted: !!finance, ...(finance ? { invoiceSync: !!invoicing } : { reason: !crm ? "crm_not_configured" : "migration_0033_missing" }) }));
+  // Implantación asistida (CRM 0034): apagada por defecto; con el interruptor y la migración se monta en /implementations
+  const implementationOn = assistedImplementationEnabled(process.env);
+  const implementationReady = implementationOn && !!crm && !!crmPool && (await implementationTablesReady(crmPool));
+  const implementation = implementationReady && crmPool ? { store: new MysqlImplementationStore(crmPool), assignees: operators.service ? async () => operatorAssignees(await operators.service!.list()) : null } : null;
+  console.log(JSON.stringify({ ctx: "AssistedImplementation", mounted: !!implementation, ...(implementation ? {} : { reason: !implementationOn ? "disabled" : !crm ? "crm_not_configured" : "migration_0034_missing" }) }));
   if (crm && crmPool && (await settingsTablesReady(crmPool))) {
     const alertPool = crmPool;
     const alertStore = new MysqlAdminAlertStore(alertPool);
@@ -811,6 +818,7 @@ async function main() {
       }),
     dataRequests,
     finance,
+    implementation,
     communications,
     notifications: notificationsFromEnv(process.env),
     mail: {
