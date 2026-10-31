@@ -15,7 +15,7 @@
 -- `fin_stripe_payouts`: liquidaciones al banco, una por identificador de Stripe; fecha de llegada, estado, su asiento
 --   (`stripe-payout:<id>`), la reversión si falló y el movimiento bancario vinculado (sin asiento nuevo; un movimiento
 --   como mucho por payout y un payout por movimiento).
--- Sin estas tablas el libro (0033) y las operaciones (0034) funcionan igual: la parte de Stripe no se monta.
+-- Sin estas tablas el libro (0033) y las operaciones (0035) funcionan igual: la parte de Stripe no se monta.
 --
 -- irreversible: son registros contables y justificantes de cobro que se conservan seis años por obligación legal (art. 30 del Código de Comercio); el código anterior ignora estas tablas, así que volver atrás no exige quitarlas.
 

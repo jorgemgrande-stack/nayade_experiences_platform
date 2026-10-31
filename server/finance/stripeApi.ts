@@ -1,5 +1,5 @@
 /**
- * Finanzas corporativas, fase 2: rutas de Stripe y conciliación bajo /cp/v1/finance (CRM 0035). Permisos
+ * Finanzas corporativas, fase 2: rutas de Stripe y conciliación bajo /cp/v1/finance (CRM 0036). Permisos
  * (./permissions.ts): lectura = billing:read; importar = billing:write; contabilizar, vincular y revisar = billing:write
  * + sesión de operador; configuración de Stripe = además rol admin|superadmin.
  *

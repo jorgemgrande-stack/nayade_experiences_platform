@@ -1,5 +1,5 @@
 /**
- * Finanzas corporativas de Big Elephant, fase 2 (CRM 0035): Stripe como TPV principal. Transacciones de saldo y payouts
+ * Finanzas corporativas de Big Elephant, fase 2 (CRM 0036): Stripe como TPV principal. Transacciones de saldo y payouts
  * importados de los informes del panel de Stripe, su contabilización (diario STR) y la conciliación factura ↔ cobro ↔
  * payout ↔ banco. Mismos convenios que las fases 1A y 1B: céntimos enteros con el signo de Stripe, puntos básicos,
  * fechas «AAAA-MM-DD» en Europe/Madrid. Ver docs/elephant-source/FINANZAS_CORPORATIVAS.md §Fase 2.

@@ -23,11 +23,11 @@ export function seededPlan(): { accounts: Array<Omit<Account, "id">>; journals: 
   return { accounts, journals };
 }
 
-export const MIGRATION_0034 = path.resolve(__dirname, "../../db/crm/migrations/0034_finance_operations.sql");
+export const MIGRATION_0035 = path.resolve(__dirname, "../../db/crm/migrations/0035_finance_operations.sql");
 
-/** Centros de coste y categorías sembrados por la migración 0034, leídos del propio fichero SQL. */
+/** Centros de coste y categorías sembrados por la migración 0035, leídos del propio fichero SQL. */
 export function seededOps(): { costCenters: Array<{ code: string; name: string; active: boolean }>; categories: Array<{ name: string; accountCode: string; defaultTaxRateBp: number | null; active: boolean }> } {
-  const sql = fs.readFileSync(MIGRATION_0034, "utf8");
+  const sql = fs.readFileSync(MIGRATION_0035, "utf8");
   const costCenters = Array.from(sql.matchAll(/\('([A-Z0-9_-]+)', '([^']+)', ([01]), 0\)/g)).map((m) => ({ code: m[1], name: m[2], active: m[3] === "1" }));
   const categories = Array.from(sql.matchAll(/\('([^']+)', '(6\d{2})', (\d+|NULL), ([01]), 0\)/g)).map((m) => ({ name: m[1], accountCode: m[2], defaultTaxRateBp: m[3] === "NULL" ? null : Number(m[3]), active: m[4] === "1" }));
   return { costCenters, categories };
@@ -63,7 +63,7 @@ export const n43 = { r11, r22, r23, r33, r88 };
 
 // ── Stripe (fase 2): migración e informes CSV SINTÉTICOS (identificadores y correos inventados, nunca datos reales) ──
 
-export const MIGRATION_0035 = path.resolve(__dirname, "../../db/crm/migrations/0035_finance_stripe.sql");
+export const MIGRATION_0036 = path.resolve(__dirname, "../../db/crm/migrations/0036_finance_stripe.sql");
 
 const csv = (rows: Array<Array<string | number>>) => rows.map((r) => r.map((c) => (/[",\n]/.test(String(c)) ? `"${String(c).replace(/"/g, '""')}"` : String(c))).join(",")).join("\n");
 

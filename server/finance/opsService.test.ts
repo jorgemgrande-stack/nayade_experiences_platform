@@ -36,7 +36,7 @@ async function setup() {
 }
 
 describe("catálogos y proveedores", () => {
-  it("siembra de 0034 (categorías y centro General), altas, duplicados y validaciones", async () => {
+  it("siembra de 0035 (categorías y centro General), altas, duplicados y validaciones", async () => {
     const { ops, supplier } = await setup();
     expect((await ops.costCenters()).map((c) => c.code)).toEqual(["GENERAL"]);
     const cats = await ops.categories();

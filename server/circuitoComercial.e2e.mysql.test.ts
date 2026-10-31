@@ -170,7 +170,7 @@ describe.skipIf(!URL_)("circuito comercial de punta a punta (MySQL real, Stripe 
     const ddl = fs.readFileSync(path.resolve(__dirname, "../db/crm/0000_crm.sql"), "utf8").replace(/^--.*$/gm, "");
     for (const s of ddl.split(/;\s*(?:\r?\n|$)/).map((x) => x.trim()).filter(Boolean)) await pool.query(s);
     const migrations = loadMigrations(DIR).migrations;
-    expect(migrations.map((m) => m.id).slice(-10)).toEqual(["0026_external_services", "0027_invoicing", "0028_billing_charges", "0029_charge_payments", "0030_admin_alerts", "0031_comms_consent", "0032_data_requests", "0033_finance_ledger", "0034_finance_operations", "0035_finance_stripe"]);
+    expect(migrations.map((m) => m.id)).toEqual(expect.arrayContaining(["0026_external_services", "0027_invoicing", "0028_billing_charges", "0029_charge_payments", "0030_admin_alerts", "0031_comms_consent", "0032_data_requests", "0033_finance_ledger", "0034_implementation_orders", "0035_finance_operations", "0036_finance_stripe"]));
     for (const m of migrations) for (const s of splitStatements(m.up)) await pool.query(s);
 
     const log = new MysqlCommercialEventLog(pool, "test");

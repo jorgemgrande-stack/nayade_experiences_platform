@@ -1,5 +1,5 @@
 /**
- * Servicio de la fase 2 (CRM 0035): Stripe como TPV principal. Importa los informes CSV de Stripe, contabiliza a través
+ * Servicio de la fase 2 (CRM 0036): Stripe como TPV principal. Importa los informes CSV de Stripe, contabiliza a través
  * del libro de la fase 1A (`FinanceService.postGenerated` / `reverse`) y concilia factura ↔ cobro ↔ payout ↔ banco.
  *
  * Origen único de cada hecho (contrato §0): el cobro, la comisión, el reembolso y la disputa salen de la transacción de

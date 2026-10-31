@@ -190,7 +190,7 @@ export class FinanceOpsService {
     this.reconciliation = ext;
   }
   private get ext() {
-    if (!this.reconciliation) throw new FinanceError("unavailable", "La conciliación con Stripe y facturas no está montada en este entorno (migración 0035)");
+    if (!this.reconciliation) throw new FinanceError("unavailable", "La conciliación con Stripe y facturas no está montada en este entorno (migración 0036)");
     return this.reconciliation;
   }
 

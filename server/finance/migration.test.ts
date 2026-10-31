@@ -1,5 +1,5 @@
 /**
- * Las migraciones 0033 (libro), 0034 (operaciones) y 0035 (Stripe) y el código del módulo son ORDINARIOS para el clasificador de
+ * Las migraciones 0033 (libro), 0035 (operaciones) y 0036 (Stripe) y el código del módulo son ORDINARIOS para el clasificador de
  * despliegue (scripts/deploy/esRailwayLib): migraciones aditivas (sin palabras prohibidas ni en comentarios), sin
  * borrados en el código de server/finance y sin cambios críticos. El único interruptor que aparece es NUEVO
  * (`CP_FINANCE_RECURRING_ENABLED`, apagado), ordinario porque no existe en la rama base (como lo comprueba
@@ -10,11 +10,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { destructiveMigration, extraordinaryChanges } from "../../scripts/deploy/esRailwayLib";
 import { loadMigrations, validateMigrations } from "../../scripts/db/migrationLib";
-import { MIGRATION_0033, MIGRATION_0034, MIGRATION_0035 } from "./testkit";
+import { MIGRATION_0033, MIGRATION_0035, MIGRATION_0036 } from "./testkit";
 
 const ROOT = path.resolve(__dirname, "../..");
 const rel = (p: string) => path.relative(ROOT, p).split(path.sep).join("/");
-const MIGRATIONS = [MIGRATION_0033, MIGRATION_0034, MIGRATION_0035];
+const MIGRATIONS = [MIGRATION_0033, MIGRATION_0035, MIGRATION_0036];
 const sqlOf = (f: string) => fs.readFileSync(f, "utf8");
 const moduleFiles = fs
   .readdirSync(__dirname)
@@ -32,13 +32,13 @@ const addedDiff = (files: string[]) =>
     })
     .join("\n");
 
-describe("migraciones 0033, 0034 y 0035 y módulo de finanzas: despliegue ordinario", () => {
+describe("migraciones 0033, 0035 y 0036 y módulo de finanzas: despliegue ordinario", () => {
   it("las migraciones son aditivas para el clasificador y válidas para el ejecutor (irreversibles con motivo)", () => {
     for (const f of MIGRATIONS) expect(destructiveMigration(sqlOf(f))).toBeNull();
     const { migrations, errors } = loadMigrations(path.join(ROOT, "db/crm/migrations"));
     expect(errors).toEqual([]);
     expect(validateMigrations(migrations)).toEqual([]);
-    for (const id of ["0033_finance_ledger", "0034_finance_operations", "0035_finance_stripe"]) expect(migrations.find((x) => x.id === id)!.irreversible).toBe(true);
+    for (const id of ["0033_finance_ledger", "0035_finance_operations", "0036_finance_stripe"]) expect(migrations.find((x) => x.id === id)!.irreversible).toBe(true);
   });
 
   it("sin palabras prohibidas en todo el fichero (también comentarios y literales) ni ';' dentro de literales", () => {
@@ -50,8 +50,8 @@ describe("migraciones 0033, 0034 y 0035 y módulo de finanzas: despliegue ordina
     }
   });
 
-  it("0034 solo crea tablas fin_* e inserta la siembra (sin importes ni datos de clientes)", () => {
-    const stmts = sqlOf(MIGRATION_0034)
+  it("0035 solo crea tablas fin_* e inserta la siembra (sin importes ni datos de clientes)", () => {
+    const stmts = sqlOf(MIGRATION_0035)
       .replace(/--[^\n]*/g, "")
       .split(";")
       .map((s) => s.trim())
@@ -60,8 +60,8 @@ describe("migraciones 0033, 0034 y 0035 y módulo de finanzas: despliegue ordina
     expect(stmts.filter((s) => s.startsWith("CREATE TABLE"))).toHaveLength(12);
   });
 
-  it("0035 solo crea las cuatro tablas fin_stripe_* (sin siembra ni datos), con la unicidad de cada hecho", () => {
-    const sql = sqlOf(MIGRATION_0035);
+  it("0036 solo crea las cuatro tablas fin_stripe_* (sin siembra ni datos), con la unicidad de cada hecho", () => {
+    const sql = sqlOf(MIGRATION_0036);
     const stmts = sql
       .replace(/--[^\n]*/g, "")
       .split(";")

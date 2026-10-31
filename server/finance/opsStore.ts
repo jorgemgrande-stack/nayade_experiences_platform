@@ -1,5 +1,5 @@
 /**
- * Almacén de las operaciones (CRM 0034): memoria (pruebas) y MySQL. Garantías:
+ * Almacén de las operaciones (CRM 0035): memoria (pruebas) y MySQL. Garantías:
  *  - nada se borra: los gastos y pagos se anulan o revierten, los documentos se archivan;
  *  - transiciones de estado CONDICIONALES (`… WHERE status = ?`): dos peticiones simultáneas sobre el mismo gasto,
  *    pago o movimiento no pueden ganar las dos;
@@ -1175,7 +1175,7 @@ export class MysqlFinanceOpsStore implements FinanceOpsStore {
   }
 }
 
-/** ¿Existe la migración 0034 (operaciones)? */
+/** ¿Existe la migración 0035 (operaciones)? */
 export async function finOpsTablesReady(pool: Pick<mysql.Pool, "query">): Promise<boolean> {
   for (const t of ["fin_cost_centers", "fin_expense_categories", "fin_suppliers", "fin_expenses", "fin_expense_payments", "fin_documents", "fin_recurring_expenses", "fin_bank_accounts", "fin_bank_imports", "fin_bank_movements", "fin_cash_accounts", "fin_cash_movements"]) {
     const ok = await pool.query(`SELECT 1 FROM ${t} LIMIT 0`).then(() => true, () => false);

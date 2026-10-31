@@ -5,8 +5,7 @@ Vive en el **plano de control** del Core (`server/finance/`) y se usa desde el C
 son clientes de Big Elephant y nada más: el módulo nunca lee ni escribe sus bases.
 
 Estado: **fase 1A (libro contable)**, **fase 1B (operaciones)** y **fase 2 (Stripe y conciliación)** implementadas.
-Migraciones `db/crm/migrations/0033_finance_ledger.sql`, `0034_finance_operations.sql` y `0035_finance_stripe.sql`
-(número provisional: se renumera al fusionar si otra rama tomó el número).
+Migraciones `db/crm/migrations/0033_finance_ledger.sql`, `0035_finance_operations.sql` y `0036_finance_stripe.sql`.
 
 ## Arquitectura
 
@@ -32,9 +31,9 @@ Migraciones `db/crm/migrations/0033_finance_ledger.sql`, `0034_finance_operation
 
 Arranque (`server/controlPlane/main.ts`): el libro se monta solo con CRM y con las tablas de 0033 (`finTablesReady`); si
 no, log `{ ctx: "Finance", mounted: false, reason: "migration_0033_missing" }`. Las operaciones, además, con las tablas
-de 0034 (`finOpsTablesReady`); si no, `{ ctx: "FinanceOps", mounted: false, reason: "migration_0034_missing" }` y el libro
-funciona igual. La parte de Stripe, con las tablas de 0035 (`finStripeTablesReady`); si no,
-`{ ctx: "FinanceStripe", mounted: false, reason: "migration_0035_missing" }` y el resto funciona igual. Datos solo en la
+de 0035 (`finOpsTablesReady`); si no, `{ ctx: "FinanceOps", mounted: false, reason: "migration_0035_missing" }` y el libro
+funciona igual. La parte de Stripe, con las tablas de 0036 (`finStripeTablesReady`); si no,
+`{ ctx: "FinanceStripe", mounted: false, reason: "migration_0036_missing" }` y el resto funciona igual. Datos solo en la
 BD del CRM, tablas `fin_*`.
 
 ## Reglas contables
@@ -201,8 +200,8 @@ Errores: 400 `invalid_input`, 403 (`forbidden`, `operator_session_required`, `fo
 (`period_closed`, `invalid_state`, `conflict`, `exceeds_pending`), 422 (`unbalanced`, `invalid_account`), 503 `unavailable`.
 
 `/finance/summary`: ingresos y gastos devengados del mes y del año, IVA repercutido del trimestre y resultado del año
-(sin regularización, cierre ni apertura); con 0034, además saldos de bancos y caja (desde el libro, por cuenta),
-acreedores pendientes (saldo acreedor de 400 y 410) e IVA soportado del trimestre (472). Sin 0034 esos campos son `null`.
+(sin regularización, cierre ni apertura); con 0035, además saldos de bancos y caja (desde el libro, por cuenta),
+acreedores pendientes (saldo acreedor de 400 y 410) e IVA soportado del trimestre (472). Sin 0035 esos campos son `null`.
 
 ## Fase 2: Stripe como TPV principal y conciliación
 

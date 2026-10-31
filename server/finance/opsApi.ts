@@ -1,5 +1,5 @@
 /**
- * Finanzas corporativas, fase 1B: rutas de operaciones bajo /cp/v1/finance (CRM 0034). Formas EXACTAS del anexo
+ * Finanzas corporativas, fase 1B: rutas de operaciones bajo /cp/v1/finance (CRM 0035). Formas EXACTAS del anexo
  * CRM-ESPERA. Permisos (./permissions.ts): lectura = billing:read; gestión = billing:write; lo que contabiliza o
  * revierte = billing:write + sesión de operador (nunca un token de servicio).
  *

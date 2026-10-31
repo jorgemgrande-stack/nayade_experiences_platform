@@ -105,8 +105,8 @@ function sendCsv(res: Response, name: string, csv: string) {
 }
 
 /**
- * Con `ops` (migración 0034) se montan también las operaciones de la fase 1B y el resumen completo; con `stripe`
- * (migración 0035, requiere `ops`) las rutas de Stripe y conciliación de la fase 2 y el saldo de 5720 en el resumen.
+ * Con `ops` (migración 0035) se montan también las operaciones de la fase 1B y el resumen completo; con `stripe`
+ * (migración 0036, requiere `ops`) las rutas de Stripe y conciliación de la fase 2 y el saldo de 5720 en el resumen.
  */
 export function createFinanceRouter(svc: FinanceService, ops?: FinanceOpsService | null, stripe?: FinanceStripeService | null): Router {
   const r = express.Router();

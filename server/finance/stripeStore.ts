@@ -1,5 +1,5 @@
 /**
- * Almacén de la fase 2 (Stripe, CRM 0035): memoria (pruebas) y MySQL. Garantías:
+ * Almacén de la fase 2 (Stripe, CRM 0036): memoria (pruebas) y MySQL. Garantías:
  *  - un fichero una sola vez por tipo de informe (sha256) y cada transacción de saldo y cada payout una sola vez
  *    (identificador de Stripe único por proveedor): reimportar no duplica nada;
  *  - transiciones condicionales: un payout se vincula a un movimiento bancario solo si no tenía otro
@@ -639,7 +639,7 @@ export class MysqlStripeInvoiceDirectory {
   }
 }
 
-/** ¿Existe la migración 0035 (Stripe)? */
+/** ¿Existe la migración 0036 (Stripe)? */
 export async function finStripeTablesReady(pool: Pick<mysql.Pool, "query">): Promise<boolean> {
   for (const t of ["fin_stripe_settings", "fin_stripe_imports", "fin_stripe_payouts", "fin_stripe_transactions"]) {
     const ok = await pool.query(`SELECT 1 FROM ${t} LIMIT 0`).then(

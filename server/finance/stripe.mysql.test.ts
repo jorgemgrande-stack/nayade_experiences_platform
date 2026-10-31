@@ -28,7 +28,7 @@ const ACTOR = { by: "operator:luis", requestId: "req-stripe-mysql" };
 const PARTY: FiscalParty = { legalName: "NEXTAIR SL", taxId: "B12345674", address: "Calle Ejemplo 1", postalCode: "28001", city: "Madrid", country: "ES" };
 const b64 = (s: string) => Buffer.from(s).toString("base64");
 
-describe.skipIf(!URL_)("Stripe y conciliación con MySQL real (CRM 0035)", () => {
+describe.skipIf(!URL_)("Stripe y conciliación con MySQL real (CRM 0036)", () => {
   let admin: mysql.Pool;
   let pool: mysql.Pool;
   let ledger: MysqlFinanceStore;

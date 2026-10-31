@@ -167,12 +167,12 @@ describe.skipIf(!URL_)("libro contable con MySQL real (CRM 0033)", () => {
 });
 
 /**
- * Operaciones (CRM 0034) contra MySQL real, en otra BD aislada: siembra, unicidad en la BD (NIF, factura por proveedor y
+ * Operaciones (CRM 0035) contra MySQL real, en otra BD aislada: siembra, unicidad en la BD (NIF, factura por proveedor y
  * número mientras no esté anulada, extracto por sha256, movimiento por clave de duplicado, borrador recurrente por
  * periodo), registro y conciliación simultáneos (un solo asiento), vínculo sin asiento, desvincular con reversión,
  * documentos binarios, fechas sin desplazamiento de zona y resumen desde el libro.
  */
-describe.skipIf(!URL_)("operaciones con MySQL real (CRM 0034)", () => {
+describe.skipIf(!URL_)("operaciones con MySQL real (CRM 0035)", () => {
   const DB2 = "finance_ops_test";
   let admin: mysql.Pool;
   let pool: mysql.Pool;
@@ -198,7 +198,7 @@ describe.skipIf(!URL_)("operaciones con MySQL real (CRM 0034)", () => {
     const ddl = fs.readFileSync(path.resolve(__dirname, "../../db/crm/0000_crm.sql"), "utf8").replace(/^--.*$/gm, "");
     for (const s of ddl.split(/;\s*(?:\r?\n|$)/).map((x) => x.trim()).filter(Boolean)) await pool.query(s);
     const all = loadMigrations(DIR).migrations;
-    expect(all.map((m) => m.id)).toContain("0034_finance_operations");
+    expect(all.map((m) => m.id)).toContain("0035_finance_operations");
     for (const m of all) for (const s of splitStatements(m.up)) await pool.query(s);
     ledger = new MysqlFinanceStore(pool);
     finance = new FinanceService({ store: ledger, now: () => T });
@@ -212,7 +212,7 @@ describe.skipIf(!URL_)("operaciones con MySQL real (CRM 0034)", () => {
     await admin?.end();
   });
 
-  it("siembra de 0034, proveedores (NIF único en la BD), banco con subcuenta 572000NN", async () => {
+  it("siembra de 0035, proveedores (NIF único en la BD), banco con subcuenta 572000NN", async () => {
     expect(await finOpsTablesReady(pool)).toBe(true);
     expect((await ops.costCenters()).map((c) => c.code)).toEqual(["GENERAL"]);
     const cats = await ops.categories();
