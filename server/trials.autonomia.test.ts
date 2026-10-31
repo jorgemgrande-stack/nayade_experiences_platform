@@ -238,6 +238,18 @@ describe("tarea programada", () => {
     expect((await reg("pend@acme.es")).created).toBe(true);
   });
 
+  it("empresas exentas (Skibox): ni vencimiento ni avisos; las demás siguen su curso", async () => {
+    const ex = await activeTrial("contacto@cliente-externo.es", "t5-skibox");
+    const t = await activeTrial("normal@hotel.es", "hotel-normal");
+    const s = new TrialScheduler({ store, notify, lock: memoryLock(), now: () => clock, log: () => undefined, exempt: new Set(["t5-skibox"]) });
+    clock = t.endsAt! - DAY + 1000;
+    expect(await s.tick()).toMatchObject({ noticesQueued: 1 });
+    clock = Math.max(t.endsAt!, ex.endsAt!) + 1000;
+    expect(await s.tick()).toMatchObject({ expired: 1 });
+    expect(sent.filter((m) => m.kind === "expiry").map((m) => m.to)).toEqual(["normal@hotel.es", "normal@hotel.es"]);
+    expect((await svc.must(ex.id)).state).toBe("active");
+  });
+
   it("no toca pruebas suspendidas, verificadas ni convertidas", async () => {
     const t = await activeTrial("sus@hotel.es", "hotel-sus");
     const susp = await svc.suspend(t.id, t.version, "Uso indebido detectado", "op");

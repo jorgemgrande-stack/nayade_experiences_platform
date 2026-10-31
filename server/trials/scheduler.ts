@@ -21,6 +21,7 @@
  */
 import type mysql from "mysql2/promise";
 import { opsLog } from "../_core/ops/log";
+import { exemptTenantsFromEnv } from "../commercialState";
 import type { AlertFacts } from "../adminAlerts/catalog";
 import { NOTICE_DAYS, type TrialNotifier } from "./onboarding";
 import { TrialError, TrialService, type TrialLimits } from "./service";
@@ -116,6 +117,11 @@ export interface TrialSchedulerDeps {
   /** Máximo de pruebas por paso y tick (el resto queda para el siguiente). */
   batch?: number;
   /**
+   * Empresas exentas de la prueba (por defecto, TRIAL_RESTRICTIONS_EXEMPT_TENANTS): ni se vencen ni reciben avisos. Sus pruebas
+   * se gestionan a mano (p. ej. Skibox, cuyo contacto es de un cliente externo).
+   */
+  exempt?: ReadonlySet<string>;
+  /**
    * Recuperación de altas incompletas. Se consulta en cada tick: sin ella (o con `null`, p. ej. si la activación
    * todavía no está montada) no se reintenta nada.
    */
@@ -127,8 +133,10 @@ export class TrialScheduler {
   private now: () => number;
   private batch: number;
   private log: NonNullable<TrialSchedulerDeps["log"]>;
+  private exempt: ReadonlySet<string>;
   constructor(private d: TrialSchedulerDeps) {
     this.now = d.now ?? Date.now;
+    this.exempt = d.exempt ?? exemptTenantsFromEnv();
     this.batch = Math.max(1, Math.min(d.batch ?? 200, 1000));
     this.log = d.log ?? ((level, event, data) => opsLog(level, "Trials", event, data));
   }
@@ -154,6 +162,10 @@ export class TrialScheduler {
     return out;
   }
 
+  private isExempt(t: TrialRequest): boolean {
+    return !!t.tenantId && this.exempt.has(t.tenantId);
+  }
+
   /** `slot`: aviso que toca (3, 1 o 0); `daysLeft`: días que quedan de verdad (para el texto). */
   private async notice(trials: TrialService, t: TrialRequest, slot: number, out: TickResult, daysLeft = slot) {
     if (t.endsAt === null) return;
@@ -172,7 +184,7 @@ export class TrialScheduler {
 
   private async expireDue(trials: TrialService, now: number, out: TickResult) {
     for (const t of await this.d.store.list({ states: ["active"], endsBefore: now, limit: this.batch })) {
-      if (t.endsAt === null || t.endsAt > now) continue;
+      if (t.endsAt === null || t.endsAt > now || this.isExempt(t)) continue;
       try {
         const e = await trials.markExpired(t.id, t.version, SCHEDULER_ACTOR);
         out.expired++;
@@ -189,7 +201,7 @@ export class TrialScheduler {
   private async queueNotices(trials: TrialService, now: number, out: TickResult) {
     const horizon = now + Math.max(...NOTICE_DAYS) * DAY;
     for (const t of await this.d.store.list({ states: ["active"], endsBefore: horizon, limit: this.batch })) {
-      if (t.endsAt === null || t.endsAt <= now) continue;
+      if (t.endsAt === null || t.endsAt <= now || this.isExempt(t)) continue;
       const daysLeft = Math.ceil((t.endsAt - now) / DAY);
       // El aviso más cercano que toca (si el proceso estuvo parado, no se manda el de 3 días el último día)
       const due = (NOTICE_DAYS as readonly number[]).filter((d) => d > 0 && d >= daysLeft).sort((a, b) => a - b)[0];
