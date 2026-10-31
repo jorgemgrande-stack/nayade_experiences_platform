@@ -139,7 +139,7 @@ export interface FinanceActor {
   requestId: string | null;
 }
 
-export type FinanceErrorCode = "not_found" | "invalid_input" | "unbalanced" | "invalid_account" | "period_closed" | "invalid_state" | "conflict" | "forbidden" | "unavailable";
+export type FinanceErrorCode = "not_found" | "invalid_input" | "unbalanced" | "invalid_account" | "period_closed" | "invalid_state" | "conflict" | "exceeds_pending" | "forbidden" | "unavailable";
 
 /** Estado HTTP de cada código (la API los traduce; el servicio solo lanza). */
 export const FINANCE_ERROR_STATUS: Record<FinanceErrorCode, number> = {
@@ -150,6 +150,8 @@ export const FINANCE_ERROR_STATUS: Record<FinanceErrorCode, number> = {
   period_closed: 409,
   invalid_state: 409,
   conflict: 409,
+  /** Un pago que supera lo pendiente del gasto (comprobado con la fila del gasto bloqueada). */
+  exceeds_pending: 409,
   forbidden: 403,
   unavailable: 503,
 };

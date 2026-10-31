@@ -524,9 +524,10 @@ export class FinanceOpsService {
     if (e.status !== "registered") throw new FinanceError("invalid_state", "Solo se pagan gastos registrados");
     if (!Number.isSafeInteger(amountCents) || amountCents === 0) throw bad("El importe del pago es un número de céntimos distinto de cero");
     const pending = pendingOf(e);
-    if (pending === 0) throw new FinanceError("invalid_state", "El gasto ya está pagado");
+    if (pending === 0) throw new FinanceError("exceeds_pending", "El gasto ya está pagado");
     if (Math.sign(amountCents) !== Math.sign(pending)) throw bad(pending > 0 ? "El importe del pago es positivo" : "En una rectificativa el importe (devolución) es negativo");
-    if (Math.abs(amountCents) > Math.abs(pending)) throw bad("El importe supera lo pendiente de pago");
+    // Comprobación temprana; la definitiva la hace el almacén con la fila del gasto bloqueada
+    if (Math.abs(amountCents) > Math.abs(pending)) throw new FinanceError("exceeds_pending", "El importe supera lo pendiente de pago");
     const supplier = e.supplierId ? await this.s.getSupplier(e.supplierId) : null;
     return { e, supplierAccount: supplier?.accountCode ?? "410", supplierName: supplier?.name ?? null };
   }

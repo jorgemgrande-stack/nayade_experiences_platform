@@ -104,6 +104,12 @@ export interface FinanceOpsStore {
 
   listPayments(expenseIds: number[]): Promise<ExpensePayment[]>;
   getPayment(id: number): Promise<ExpensePayment | null>;
+  /**
+   * Guarda un pago vigente COMPROBANDO lo pendiente con la fila del gasto bloqueada (`SELECT … FOR UPDATE` en MySQL;
+   * en memoria, sin esperas entre la comprobación y el alta): dos pagos simultáneos no pueden superar lo pendiente.
+   * `invalid_state` si el gasto no está registrado; `invalid_input` si el signo no es el de lo pendiente;
+   * `exceeds_pending` (409) si el importe supera lo pendiente (total − retención − pagos vigentes).
+   */
   insertPayment(p: Omit<ExpensePayment, "id" | "reversedBy" | "reversedAt" | "reverseReason" | "entryId" | "status">): Promise<ExpensePayment>;
   setPaymentEntry(id: number, entryId: number): Promise<void>;
   /** posted → reversed | void; false si ya no estaba vigente. */
@@ -155,6 +161,17 @@ const page = (limit: number | undefined, offset: number | undefined) => ({ limit
 const dupConflict = (what: string) => new FinanceError("conflict", what);
 const liveNumber = (e: Pick<Expense, "status" | "invoiceNumber">) => (e.status === "void" ? null : e.invoiceNumber);
 const NUMBER_TAKEN = "Ya hay una factura de este proveedor con ese número";
+
+/** Comprobación de un pago frente al gasto (bajo bloqueo). `paid` = suma de los pagos vigentes. */
+export function paymentProblem(e: Pick<Expense, "status" | "totalCents" | "withholdingCents"> | null, paid: number, amountCents: number): FinanceError | null {
+  if (!e) return new FinanceError("not_found", "Gasto no encontrado");
+  if (e.status !== "registered") return new FinanceError("invalid_state", "Solo se pagan gastos registrados");
+  const pending = payableOf(e) - paid;
+  if (pending === 0) return new FinanceError("exceeds_pending", "El gasto ya está pagado");
+  if (Math.sign(amountCents) !== Math.sign(pending)) return new FinanceError("invalid_input", pending > 0 ? "El importe del pago es positivo" : "En una rectificativa el importe (devolución) es negativo");
+  if (Math.abs(amountCents) > Math.abs(pending)) return new FinanceError("exceeds_pending", `El importe supera lo pendiente de pago (${(pending / 100).toFixed(2).replace(".", ",")} €)`);
+  return null;
+}
 
 // ── Memoria ──────────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -338,6 +355,11 @@ export class MemoryFinanceOpsStore implements FinanceOpsStore {
     return this.c(this.payments.find((x) => x.id === id) ?? null);
   }
   async insertPayment(p: Omit<ExpensePayment, "id" | "reversedBy" | "reversedAt" | "reverseReason" | "entryId" | "status">) {
+    // Sin `await` entre la comprobación y el alta: serializado frente a otros pagos del mismo gasto
+    const e = this.expenses.find((x) => x.id === p.expenseId) ?? null;
+    const paid = this.payments.filter((x) => x.expenseId === p.expenseId && x.status === "posted").reduce((a, x) => a + x.amountCents, 0);
+    const problem = paymentProblem(e, paid, p.amountCents);
+    if (problem) throw problem;
     const row: ExpensePayment = { ...p, id: this.payments.length + 1, entryId: null, status: "posted", reversedBy: null, reversedAt: null, reverseReason: null };
     this.payments.push(row);
     return this.c(row);
@@ -928,11 +950,29 @@ export class MysqlFinanceOpsStore implements FinanceOpsStore {
     return this.one(`SELECT ${PAYMENT_COLS} FROM fin_expense_payments p WHERE p.id = ?`, [id], paymentRow);
   }
   async insertPayment(p: Omit<ExpensePayment, "id" | "reversedBy" | "reversedAt" | "reverseReason" | "entryId" | "status">) {
-    const [r] = await this.pool.query<mysql.ResultSetHeader>(
-      "INSERT INTO fin_expense_payments (expense_id, paid_on, amount_cents, method, bank_account_id, cash_account_id, reference, bank_movement_id, status, created_by, created_at) VALUES (?,?,?,?,?,?,?,?,'posted',?,?)",
-      [p.expenseId, p.paidOn, p.amountCents, p.method, p.bankAccountId, p.cashAccountId, p.reference, p.bankMovementId, p.createdBy, p.createdAt],
-    );
-    return (await this.getPayment(r.insertId))!;
+    const conn = await this.pool.getConnection();
+    let id: number;
+    try {
+      await conn.beginTransaction();
+      // La fila del gasto bloqueada serializa los pagos del mismo gasto hasta el COMMIT
+      const [es] = await conn.query<Row[]>("SELECT status, total_cents, withholding_cents FROM fin_expenses WHERE id = ? FOR UPDATE", [p.expenseId]);
+      const [[sum]] = await conn.query<Row[]>("SELECT COALESCE(SUM(amount_cents), 0) AS paid FROM fin_expense_payments WHERE expense_id = ? AND status = 'posted'", [p.expenseId]);
+      const e = es[0] ? { status: es[0].status as ExpenseStatus, totalCents: num(es[0].total_cents), withholdingCents: num(es[0].withholding_cents) } : null;
+      const problem = paymentProblem(e, num(sum.paid), p.amountCents);
+      if (problem) throw problem;
+      const [r] = await conn.query<mysql.ResultSetHeader>(
+        "INSERT INTO fin_expense_payments (expense_id, paid_on, amount_cents, method, bank_account_id, cash_account_id, reference, bank_movement_id, status, created_by, created_at) VALUES (?,?,?,?,?,?,?,?,'posted',?,?)",
+        [p.expenseId, p.paidOn, p.amountCents, p.method, p.bankAccountId, p.cashAccountId, p.reference, p.bankMovementId, p.createdBy, p.createdAt],
+      );
+      id = r.insertId;
+      await conn.commit();
+    } catch (err) {
+      await conn.rollback().catch(() => undefined);
+      throw err;
+    } finally {
+      conn.release();
+    }
+    return (await this.getPayment(id))!;
   }
   async setPaymentEntry(id: number, entryId: number) {
     await this.pool.query("UPDATE fin_expense_payments SET entry_id = ? WHERE id = ?", [entryId, id]);

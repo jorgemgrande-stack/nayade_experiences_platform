@@ -155,6 +155,9 @@ describe("API /cp/v1/finance, fase 1B: permisos y formas del CRM", () => {
 
     const payBody = { paidOn: "2026-10-15", amountCents: 21_000, method: "bank", bankAccountId: ids.bank, cashAccountId: null, reference: "TR-1" };
     expect((await call("POST", `/expenses/${ids.expense}/payments`, WRITE, payBody)).status).toBe(403);
+    const over = await call("POST", `/expenses/${ids.expense}/payments`, SALES, { ...payBody, amountCents: 121_001 });
+    expect(over.status).toBe(409);
+    expect(over.json).toMatchObject({ error: "exceeds_pending" });
     const pay = await call("POST", `/expenses/${ids.expense}/payments`, SALES, payBody);
     expect(pay.status).toBe(201);
     expect(keys(pay.json.item)).toEqual(expect.arrayContaining(["id", "expenseId", "paidOn", "amountCents", "method", "bankAccountId", "cashAccountId", "reference", "bankMovementId", "entryId", "status"]));

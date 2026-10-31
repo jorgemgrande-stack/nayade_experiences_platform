@@ -133,7 +133,7 @@ describe("pagos", () => {
   it("pago manual expense-payment:<id>; parcial y total; no se paga de más; anular exige revertir los pagos", async () => {
     const { ops, newExpense, bank, entries, balance } = await setup();
     const e = await ops.registerExpense((await newExpense()).id, ACTOR);
-    await expect(ops.addPayment(e.id, { paidOn: "2026-10-15", amountCents: 121_001, method: "bank", bankAccountId: bank.id }, ACTOR)).rejects.toMatchObject({ code: "invalid_input" });
+    await expect(ops.addPayment(e.id, { paidOn: "2026-10-15", amountCents: 121_001, method: "bank", bankAccountId: bank.id }, ACTOR)).rejects.toMatchObject({ code: "exceeds_pending" });
     await expect(ops.addPayment(e.id, { paidOn: "2026-10-15", amountCents: 100, method: "bank" }, ACTOR)).rejects.toMatchObject({ message: "Elige la cuenta bancaria del pago" });
     const p1 = await ops.addPayment(e.id, { paidOn: "2026-10-15", amountCents: 21_000, method: "bank", bankAccountId: bank.id, reference: "TR-1" }, ACTOR);
     expect(p1.expense).toMatchObject({ paymentStatus: "partial", paidCents: 21_000, pendingCents: 100_000 });
@@ -157,6 +157,18 @@ describe("pagos", () => {
     const all = await entries();
     expect(all.filter((x) => x.origin === "reversal")).toHaveLength(3);
     expect(all.filter((x) => x.status === "posted" && x.origin !== "reversal").every((x) => x.reversedByEntryId !== null)).toBe(true);
+  });
+
+  it("dos pagos simultáneos que juntos superan lo pendiente: solo pasa uno (exceeds_pending)", async () => {
+    const { ops, newExpense, bank, store } = await setup();
+    const e = await ops.registerExpense((await newExpense()).id, ACTOR);
+    const res = await Promise.allSettled([1, 2].map(() => ops.addPayment(e.id, { paidOn: "2026-10-15", amountCents: 80_000, method: "bank", bankAccountId: bank.id }, ACTOR)));
+    expect(res.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    expect((res.find((r) => r.status === "rejected") as PromiseRejectedResult).reason).toMatchObject({ code: "exceeds_pending" });
+    expect(store.payments.filter((p) => p.status === "posted")).toHaveLength(1);
+    expect((await ops.expense(e.id)).paidCents).toBe(80_000);
+    // El almacén lo comprueba también sin el servicio
+    await expect(store.insertPayment({ expenseId: e.id, paidOn: "2026-10-16", amountCents: 41_001, method: "bank", bankAccountId: bank.id, cashAccountId: null, reference: null, bankMovementId: null, createdBy: "t", createdAt: 0 })).rejects.toMatchObject({ code: "exceeds_pending" });
   });
 
   it("periodo cerrado: el pago no se guarda vigente y no hay asiento", async () => {

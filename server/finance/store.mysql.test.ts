@@ -270,6 +270,24 @@ describe.skipIf(!URL_)("operaciones con MySQL real (CRM 0034)", () => {
     expect((await ledger.getEntry(again.entryId!))!.sourceKey).toBe(`bankmov:${mov.id}:2`);
   });
 
+  it("dos pagos simultáneos que juntos superan lo pendiente: el bloqueo del gasto deja pasar solo uno", async () => {
+    const e = await ops.createExpense({ kind: "invoice", supplierId: ids.supplier, categoryId: ids.category, invoiceNumber: "F-LOCK", invoiceDate: "2026-10-01", description: "Bloqueo", baseCents: 10_000, taxRateBp: 0 }, ACTOR);
+    await ops.registerExpense(e.id, ACTOR);
+    const res = await Promise.allSettled([1, 2, 3].map(() => ops.addPayment(e.id, { paidOn: "2026-10-15", amountCents: 6_000, method: "bank", bankAccountId: ids.bank }, ACTOR)));
+    expect(res.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    for (const r of res.filter((x) => x.status === "rejected") as PromiseRejectedResult[]) expect(r.reason).toMatchObject({ code: "exceeds_pending" });
+    expect(await count("SELECT COUNT(*) AS n FROM fin_expense_payments WHERE expense_id = ? AND status = 'posted'", [e.id])).toBe(1);
+    expect(await count("SELECT COUNT(*) AS n FROM fin_entries WHERE origin = 'expense_payment' AND source_key LIKE 'expense-payment:%' AND description LIKE '%F-LOCK%'")).toBe(1);
+    // Directo al almacén (sin la comprobación temprana del servicio): también lo impide la BD bloqueada
+    const store = new MysqlFinanceOpsStore(pool);
+    const direct = await Promise.allSettled([1, 2].map(() => store.insertPayment({ expenseId: e.id, paidOn: "2026-10-16", amountCents: 3_000, method: "bank", bankAccountId: ids.bank, cashAccountId: null, reference: null, bankMovementId: null, createdBy: "t", createdAt: 0 })));
+    expect(direct.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    expect((direct.find((r) => r.status === "rejected") as PromiseRejectedResult).reason).toMatchObject({ code: "exceeds_pending" });
+    // Ese pago directo no tiene asiento: se deja anulado para no alterar el resto de la suite
+    const directId = (direct.find((r) => r.status === "fulfilled") as PromiseFulfilledResult<{ id: number }>).value.id;
+    expect(await store.markPayment(directId, "void", { by: "t", at: 0, reason: "Prueba del bloqueo" })).toBe(true);
+  });
+
   it("pago a mano y vínculo posterior: sin asiento nuevo", async () => {
     const e = await ops.createExpense({ kind: "invoice", supplierId: ids.supplier, categoryId: ids.category, invoiceNumber: "F-4", invoiceDate: "2026-10-01", description: "Comisión", baseCents: 350, taxRateBp: 0 }, ACTOR);
     await ops.registerExpense(e.id, ACTOR);
@@ -301,10 +319,11 @@ describe.skipIf(!URL_)("operaciones con MySQL real (CRM 0034)", () => {
     expect(cm).toMatchObject({ movedOn: "2026-10-03", status: "posted" });
     const s = await ops.summary();
     expect(s.cash).toEqual([{ id: ids.cash, name: "Caja", accountCode: "57000001", balanceCents: 20_000 }]);
-    expect(s.banks.find((b) => b.id === ids.bank)!.balanceCents).toBe(-121_000 - 350 - 20_000);
+    expect(s.banks.find((b) => b.id === ids.bank)!.balanceCents).toBe(-121_000 - 350 - 6_000 - 20_000);
     // F-1 se devengó el 30/09 (tercer trimestre): en el cuarto solo cuenta F-3
     expect(s.vatInputQuarterCents).toBe(21_000);
-    expect(s.payablesCents).toBe(106_000);
+    // F-1 sin pagar (106.000) y lo que queda de F-LOCK (4.000)
+    expect(s.payablesCents).toBe(110_000);
     const [audit] = (await pool.query("SELECT DISTINCT action FROM fin_audit_log")) as unknown as [Array<{ action: string }>];
     for (const a of ["supplier.create", "bank_account.create", "expense.register", "bank_import.create", "bank_movement.match", "bank_movement.unmatch", "bank_movement.link", "document.upload", "recurring.run", "cash_movement.create"]) expect(audit.map((r) => r.action)).toContain(a);
   });

@@ -71,7 +71,9 @@ funciona igual. Datos solo en la BD del CRM, tablas `fin_*`.
   debe referirse a una factura registrada del mismo proveedor. Un borrador se edita; un registrado no.
 - **Pendiente de pago** = total − retención − pagos vigentes (`pendingCents`); estado `pending`/`partial`/`paid`.
 - **Pago:** Debe 400/410 · Haber tesorería: banco `572000NN`, caja `570000NN` o Stripe `5720` (diario BAN, CAJ o STR).
-  En una rectificativa el «pago» es una devolución (importe negativo, asiento invertido). No se paga más de lo pendiente.
+  En una rectificativa el «pago» es una devolución (importe negativo, asiento invertido). No se paga más de lo pendiente:
+  el pago (manual o desde la conciliación) se guarda en una transacción que bloquea la fila del gasto (`SELECT … FOR
+  UPDATE`) y comprueba lo pendiente; si lo supera, `409 exceeds_pending` (dos pagos simultáneos no pasan los dos).
   Métodos `bank`, `direct_debit` y `card` exigen cuenta bancaria; `cash`, caja; `stripe` va a 5720.
 - **Movimiento bancario contra cuenta** (comisión, impuesto, transferencia interna, nómina): abono → Debe banco · Haber
   contrapartida; cargo → al revés. Contra otra cuenta de tesorería solo como «transferencia interna».
@@ -188,7 +190,7 @@ svc.checkPostable(draft: EntryDraft): Promise<void>
 | `GET /finance/cash-movements?cashAccountId&limit&offset` · `POST` | lectura · contabilizar | `{ items, total }` · `{ item }` |
 
 Errores: 400 `invalid_input`, 403 (`forbidden`, `operator_session_required`, `forbidden_role`), 404 `not_found`, 409
-(`period_closed`, `invalid_state`, `conflict`), 422 (`unbalanced`, `invalid_account`), 503 `unavailable`.
+(`period_closed`, `invalid_state`, `conflict`, `exceeds_pending`), 422 (`unbalanced`, `invalid_account`), 503 `unavailable`.
 
 `/finance/summary`: ingresos y gastos devengados del mes y del año, IVA repercutido del trimestre y resultado del año
 (sin regularización, cierre ni apertura); con 0034, además saldos de bancos y caja (desde el libro, por cuenta),
