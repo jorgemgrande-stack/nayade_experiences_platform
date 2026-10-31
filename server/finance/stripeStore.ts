@@ -10,6 +10,8 @@ import type mysql from "mysql2/promise";
 import { FinanceError } from "./types";
 import {
   DEFAULT_STRIPE_SETTINGS,
+  type FeeVatTreatment,
+  type StripeFeeVatRule,
   type ParsedPayout,
   type ParsedStripeTxn,
   type PayoutStatus,
@@ -119,7 +121,18 @@ export interface FinanceStripeStore {
   unlinkPayoutBank(id: number, movementId: number): Promise<boolean>;
   /** Payouts vigentes contabilizados sin movimiento bancario y Σ de los que llegan en el rango. */
   payoutStats(from: string, to: string): Promise<{ withoutBank: number; arrivedCents: number }>;
+
+  // CRM 0039: reglas de IVA de las comisiones (sin edición: se anulan) y consultas sin escritura de la vista previa
+  listFeeVatRules(): Promise<StripeFeeVatRule[]>;
+  getFeeVatRule(id: number): Promise<StripeFeeVatRule | null>;
+  insertFeeVatRule(r: NewFeeVatRule): Promise<StripeFeeVatRule>;
+  /** Anula la regla si seguía vigente; false si ya estaba anulada. */
+  voidFeeVatRule(id: number, o: { by: string; at: number; reason: string }): Promise<boolean>;
+  /** Cuáles de estos identificadores de transacción ya están importados. */
+  knownTransactionIds(ids: string[]): Promise<Set<string>>;
 }
+
+export type NewFeeVatRule = Omit<StripeFeeVatRule, "id" | "voidedBy" | "voidedAt" | "voidReason">;
 
 const page = (limit: number | undefined, offset: number | undefined) => ({ limit: Math.max(1, Math.min(limit ?? 50, STRIPE_MAX_PAGE)), offset: Math.max(0, offset ?? 0) });
 const dupConflict = (what: string) => new FinanceError("conflict", what);
@@ -316,6 +329,29 @@ export class MemoryFinanceStripeStore implements FinanceStripeStore {
   async payoutStats(from: string, to: string) {
     const live = this.payouts.filter((x) => LIVE_PAYOUT_STATUSES.includes(x.status));
     return { withoutBank: live.filter((x) => x.entryId !== null && x.bankMovementId === null).length, arrivedCents: live.filter((x) => x.arrivalOn >= from && x.arrivalOn <= to).reduce((a, x) => a + x.amountCents, 0) };
+  }
+
+  rules: StripeFeeVatRule[] = [];
+  async listFeeVatRules() {
+    return this.c([...this.rules].sort((a, b) => b.id - a.id));
+  }
+  async getFeeVatRule(id: number) {
+    return this.c(this.rules.find((r) => r.id === id) ?? null);
+  }
+  async insertFeeVatRule(r: NewFeeVatRule) {
+    const row: StripeFeeVatRule = { ...r, id: this.rules.length + 1, voidedBy: null, voidedAt: null, voidReason: null };
+    this.rules.push(row);
+    return this.c(row);
+  }
+  async voidFeeVatRule(id: number, o: { by: string; at: number; reason: string }) {
+    const r = this.rules.find((x) => x.id === id);
+    if (!r || r.voidedAt !== null) return false;
+    Object.assign(r, { voidedBy: o.by, voidedAt: o.at, voidReason: o.reason });
+    return true;
+  }
+  async knownTransactionIds(ids: string[]) {
+    const want = new Set(ids);
+    return new Set(this.txns.filter((t) => want.has(t.balanceTransactionId)).map((t) => t.balanceTransactionId));
   }
 }
 
@@ -623,7 +659,54 @@ export class MysqlFinanceStripeStore implements FinanceStripeStore {
     );
     return { withoutBank: num(r.nb), arrivedCents: num(r.arr) };
   }
+
+  async listFeeVatRules() {
+    return this.rows(`SELECT ${RULE_COLS} FROM fin_stripe_fee_vat_rules ORDER BY id DESC LIMIT 500`, [], ruleRow);
+  }
+  async getFeeVatRule(id: number) {
+    return (await this.rows(`SELECT ${RULE_COLS} FROM fin_stripe_fee_vat_rules WHERE id = ?`, [id], ruleRow))[0] ?? null;
+  }
+  async insertFeeVatRule(r: NewFeeVatRule) {
+    const [res] = await this.pool.query<mysql.ResultSetHeader>(
+      "INSERT INTO fin_stripe_fee_vat_rules (fee_kind, issuer_name, issuer_country, issuer_vat_id, treatment, rate_bp, valid_from, valid_to, document_ref, note, created_by, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+      [r.feeKind, r.issuerName, r.issuerCountry, r.issuerVatId, r.treatment, r.rateBp, r.validFrom, r.validTo, r.documentRef, r.note, r.createdBy, r.createdAt],
+    );
+    return (await this.getFeeVatRule(res.insertId))!;
+  }
+  async voidFeeVatRule(id: number, o: { by: string; at: number; reason: string }) {
+    const [res] = await this.pool.query<mysql.ResultSetHeader>("UPDATE fin_stripe_fee_vat_rules SET voided_by = ?, voided_at = ?, void_reason = ? WHERE id = ? AND voided_at IS NULL", [o.by, o.at, o.reason, id]);
+    return res.affectedRows === 1;
+  }
+  async knownTransactionIds(ids: string[]) {
+    if (!ids.length) return new Set<string>();
+    const out = new Set<string>();
+    for (let i = 0; i < ids.length; i += 1000) {
+      const [rows] = await this.pool.query<Row[]>("SELECT balance_transaction_id FROM fin_stripe_transactions WHERE provider = 'stripe' AND balance_transaction_id IN (?)", [ids.slice(i, i + 1000)]);
+      for (const r of rows) out.add(String(r.balance_transaction_id));
+    }
+    return out;
+  }
 }
+
+const RULE_COLS = `id, fee_kind, issuer_name, issuer_country, issuer_vat_id, treatment, rate_bp, ${day("valid_from", "valid_from_day")}, ${day("valid_to", "valid_to_day")}, document_ref, note, created_by, created_at, voided_by, voided_at, void_reason`;
+const ruleRow = (r: Row): StripeFeeVatRule => ({
+  id: num(r.id),
+  feeKind: String(r.fee_kind),
+  issuerName: String(r.issuer_name),
+  issuerCountry: String(r.issuer_country),
+  issuerVatId: strOrNull(r.issuer_vat_id),
+  treatment: r.treatment as FeeVatTreatment,
+  rateBp: numOrNull(r.rate_bp),
+  validFrom: String(r.valid_from_day),
+  validTo: strOrNull(r.valid_to_day),
+  documentRef: strOrNull(r.document_ref),
+  note: strOrNull(r.note),
+  createdBy: String(r.created_by),
+  createdAt: num(r.created_at),
+  voidedBy: strOrNull(r.voided_by),
+  voidedAt: numOrNull(r.voided_at),
+  voidReason: strOrNull(r.void_reason),
+});
 
 /** Facturas de Stripe registradas por el cobro (`stripe_invoices`, 0016): solo lectura, para explicar un cobro sin factura propia. */
 export class MysqlStripeInvoiceDirectory {

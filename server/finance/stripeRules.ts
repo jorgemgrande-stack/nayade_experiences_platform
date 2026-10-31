@@ -11,7 +11,72 @@ import { madridDateKey } from "../utils/timezone";
 import { daysBetween, nameTokens, parseCellAmount, signedTaxOf } from "./opsRules";
 import { isValidDate, signed } from "./rules";
 import { FinanceError, type EntryDraft, type EntryLineInput } from "./types";
-import type { ParsedPayout, ParsedStripeTxn, PayoutStatus, StripeImportProblem, StripeIssue, StripeSettings, StripeTxnType } from "./stripeTypes";
+import type { FeeVatMode, ParsedPayout, ParsedStripeTxn, PayoutStatus, ResolvedFeeVat, StripeFeeVatRule, StripeImportProblem, StripeIssue, StripeSettings, StripeTxnType } from "./stripeTypes";
+
+// ── IVA de las comisiones (CRM 0039) ──────────────────────────────────────────────────────────────────────────────
+
+/** Base de la comisión de una transacción: la comisión y, en un cargo de Stripe por otros servicios, el propio cargo. */
+export const feeBaseOf = (t: Pick<ParsedStripeTxn, "type" | "feeCents" | "grossCents">) => t.feeCents + (t.type === "stripe_fee" ? -t.grossCents : 0);
+
+/**
+ * Marca del emisor en la descripción de la línea de IVA autoliquidado («emisor: Nombre (NIF-IVA)»): el 349 la lee para
+ * declarar a quién se adquirió el servicio (con la regla aplicada, sin depender de la configuración de hoy).
+ */
+export const issuerMark = (name: string, vatId: string) => `emisor: ${name.replace(/[()]/g, "").slice(0, 120)} (${vatId})`;
+const ISSUER_MARK = /emisor: ([^()]+) \(([A-Z0-9]+)\)/;
+export function issuerFromDescription(description: string | null | undefined): { name: string; vatId: string } | null {
+  const m = ISSUER_MARK.exec(description ?? "");
+  return m ? { name: m[1].trim(), vatId: m[2] } : null;
+}
+
+/** ¿Aplica la regla en esa fecha? (vigente y no anulada). */
+export const ruleActiveOn = (r: Pick<StripeFeeVatRule, "validFrom" | "validTo" | "voidedAt">, date: string) => r.voidedAt === null && r.validFrom <= date && (r.validTo === null || date <= r.validTo);
+
+/**
+ * Tratamiento del IVA de la comisión de una transacción (contrato fiscal §1): la regla vigente en su fecha con el tipo
+ * exacto (el normalizado o el original del informe); si no, la de `*`; si no, el modo global. Entre varias vigentes,
+ * la de inicio más reciente (y después la última creada).
+ */
+export function resolveFeeVat(t: Pick<ParsedStripeTxn, "type" | "rawType" | "createdOn">, rules: readonly StripeFeeVatRule[], global: { stripeFeeVat: FeeVatMode; feeVatRateBp: number }): ResolvedFeeVat {
+  const live = rules.filter((r) => ruleActiveOn(r, t.createdOn)).sort((a, b) => b.validFrom.localeCompare(a.validFrom) || b.id - a.id);
+  const raw = t.rawType.trim().toLowerCase();
+  const exact = live.find((r) => r.feeKind !== "*" && (r.feeKind === t.type || r.feeKind === raw));
+  const pick = exact ?? live.find((r) => r.feeKind === "*");
+  if (!pick) return { treatment: global.stripeFeeVat, rateBp: global.feeVatRateBp, rule: null, source: "global" };
+  const { id, feeKind, issuerName, issuerCountry, issuerVatId } = pick;
+  return { treatment: pick.treatment, rateBp: pick.rateBp ?? global.feeVatRateBp, rule: { id, feeKind, issuerName, issuerCountry, issuerVatId }, source: exact ? "rule" : "wildcard" };
+}
+
+export type FeeVatRuleInput = Pick<StripeFeeVatRule, "feeKind" | "issuerName" | "issuerCountry" | "treatment" | "validFrom"> & Partial<Pick<StripeFeeVatRule, "issuerVatId" | "rateBp" | "validTo" | "documentRef" | "note">>;
+
+/**
+ * Valida y normaliza una regla. Con inversión del sujeto pasivo el emisor es de otro Estado de la UE (si es español,
+ * `invalid_rule`: es `domestic`) y el tipo es obligatorio; exenta y por factura no llevan tipo.
+ */
+export function checkFeeVatRule(i: FeeVatRuleInput, eu: { isEu: (c: string) => boolean }): Omit<StripeFeeVatRule, "id" | "createdBy" | "createdAt" | "voidedBy" | "voidedAt" | "voidReason"> {
+  const invalid = (m: string) => new FinanceError("invalid_rule", m);
+  const feeKind = (i.feeKind ?? "").trim().toLowerCase();
+  if (!/^(\*|[a-z][a-z0-9_]{0,39})$/.test(feeKind)) throw invalid("Tipo de comisión no válido: el de la transacción o el del informe de Stripe (charge, refund, stripe_fee, application_fee, adjustment…) o «*»");
+  const issuerName = (i.issuerName ?? "").trim();
+  if (!issuerName || issuerName.length > 120) throw invalid("Indica la entidad de Stripe que factura (máximo 120 caracteres)");
+  const issuerCountry = (i.issuerCountry ?? "").trim().toUpperCase();
+  if (!/^[A-Z]{2}$/.test(issuerCountry)) throw invalid("País del emisor: código de dos letras (IE, ES…)");
+  const issuerVatId = (i.issuerVatId ?? "").toUpperCase().replace(/[\s.-]/g, "") || null;
+  if (issuerVatId && !/^[A-Z0-9]{4,30}$/.test(issuerVatId)) throw invalid("NIF-IVA del emisor no válido");
+  if (!(["exempt", "reverse_charge", "domestic", "per_invoice"] as const).includes(i.treatment)) throw invalid("Tratamiento no válido: exempt, reverse_charge, domestic o per_invoice");
+  const rateBp = i.rateBp ?? null;
+  if (rateBp !== null && (!Number.isInteger(rateBp) || rateBp < 0 || rateBp > 10_000)) throw invalid("Tipo de IVA no válido (puntos básicos, 2100 = 21 %)");
+  if (i.treatment === "reverse_charge") {
+    if (issuerCountry === "ES") throw invalid("Un emisor español factura con IVA: usa «domestic», no la inversión del sujeto pasivo");
+    if (!eu.isEu(issuerCountry)) throw invalid("La inversión del sujeto pasivo intracomunitaria exige un emisor de otro Estado de la UE");
+    if (rateBp === null) throw invalid("Indica el tipo de la autoliquidación (2100 = 21 %)");
+  } else if ((i.treatment === "exempt" || i.treatment === "per_invoice") && rateBp !== null) throw invalid("Una regla exenta o por factura no lleva tipo de IVA");
+  if (!isValidDate(i.validFrom)) throw invalid("Fecha de inicio no válida (AAAA-MM-DD)");
+  const validTo = i.validTo ?? null;
+  if (validTo !== null && (!isValidDate(validTo) || validTo < i.validFrom)) throw invalid("La fecha final no es válida o es anterior a la inicial");
+  const text = (v: string | null | undefined, n: number) => (v ?? "").trim().slice(0, n) || null;
+  return { feeKind, issuerName, issuerCountry, issuerVatId, treatment: i.treatment, rateBp, validFrom: i.validFrom, validTo, documentRef: text(i.documentRef, 120), note: text(i.note, 500) };
+}
 
 const bad = (message: string) => new FinanceError("invalid_input", message);
 const short = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
@@ -328,7 +393,7 @@ export const SELF_POSTED_TYPES: readonly StripeTxnType[] = ["charge", "refund", 
  * IVA de la comisión con inversión del sujeto pasivo: Debe 472 / Haber 477 al tipo configurado sobre la comisión
  * (autoliquidación, sin efecto en el saldo); exenta, sin líneas de IVA.
  */
-export function stripeTxnEntry(t: Pick<ParsedStripeTxn, "balanceTransactionId" | "type" | "createdOn" | "currency" | "grossCents" | "feeCents" | "netCents" | "description" | "chargeId">, settings: Pick<StripeSettings, "stripeFeeVat" | "feeVatRateBp" | "disputeAccountCode">, invoice: InvoiceRef | null): EntryDraft {
+export function stripeTxnEntry(t: Pick<ParsedStripeTxn, "balanceTransactionId" | "type" | "createdOn" | "currency" | "grossCents" | "feeCents" | "netCents" | "description" | "chargeId">, settings: Pick<StripeSettings, "stripeFeeVat" | "feeVatRateBp" | "disputeAccountCode">, invoice: InvoiceRef | null, fee?: ResolvedFeeVat): EntryDraft {
   if (!SELF_POSTED_TYPES.includes(t.type)) throw bad(`La transacción ${t.balanceTransactionId} (${TYPE_LABEL[t.type]}) no se contabiliza con su propio asiento`);
   if (t.currency !== "EUR") throw bad(`La transacción ${t.balanceTransactionId} no está en euros`);
   if (!isValidDate(t.createdOn)) throw bad(`La transacción ${t.balanceTransactionId} no tiene una fecha válida`);
@@ -339,15 +404,19 @@ export function stripeTxnEntry(t: Pick<ParsedStripeTxn, "balanceTransactionId" |
   const inv = invoice?.number ? ` · factura ${invoice.number}` : "";
   const label = short(`Stripe: ${what} ${t.chargeId ?? t.balanceTransactionId}${inv}`, 300);
   // Base de la comisión: la comisión de la transacción y, en un cargo de Stripe por otros servicios, el propio cargo
-  const feeBase = t.feeCents + (t.type === "stripe_fee" ? -t.grossCents : 0);
-  const vat = settings.stripeFeeVat === "reverse_charge" ? signedTaxOf(feeBase, settings.feeVatRateBp) : 0;
-  const vatText = `IVA comisión Stripe ${settings.feeVatRateBp / 100} % (inversión del sujeto pasivo)`;
+  const feeBase = feeBaseOf(t);
+  // CRM 0039: el tratamiento lo da la regla por tipo de comisión y periodo (o el modo global); sin decidir, no se contabiliza
+  const f: ResolvedFeeVat = fee ?? { treatment: settings.stripeFeeVat, rateBp: settings.feeVatRateBp, rule: null, source: "global" };
+  if (f.treatment === "unset" && feeBase !== 0) throw bad(`La transacción ${t.balanceTransactionId}: el IVA de la comisión de Stripe no está configurado (fee_vat_unset)`);
+  const vat = f.treatment === "reverse_charge" ? signedTaxOf(feeBase, f.rateBp) : 0;
+  const issuer = f.rule?.issuerVatId ? ` · ${issuerMark(f.rule.issuerName, f.rule.issuerVatId)}` : "";
+  const vatText = short(`IVA comisión Stripe ${f.rateBp / 100} % (inversión del sujeto pasivo)${issuer}`, 300);
   const lines: EntryLineInput[] = [
     ...signed(STRIPE_ACCOUNTS.balance, t.netCents, "debit", { description: label }),
     ...signed(STRIPE_ACCOUNTS.fees, t.feeCents, "debit", { description: short(`Comisión Stripe ${t.balanceTransactionId}`, 300) }),
     ...signed(counterpart, t.grossCents, "credit", { ...(counterpart === STRIPE_ACCOUNTS.fees ? {} : ref), description: label }),
-    ...signed(STRIPE_ACCOUNTS.vatInput, vat, "debit", { description: vatText, taxRateBp: settings.feeVatRateBp, taxBaseCents: feeBase }),
-    ...signed(STRIPE_ACCOUNTS.vatOutput, vat, "credit", { description: vatText, taxRateBp: settings.feeVatRateBp, taxBaseCents: feeBase }),
+    ...signed(STRIPE_ACCOUNTS.vatInput, vat, "debit", { description: vatText, taxRateBp: f.rateBp, taxBaseCents: feeBase }),
+    ...signed(STRIPE_ACCOUNTS.vatOutput, vat, "credit", { description: vatText, taxRateBp: f.rateBp, taxBaseCents: feeBase }),
   ];
   return { journalCode: "STR", date: t.createdOn, description: short(`Stripe: ${what} ${t.balanceTransactionId}${inv}${t.description ? ` · ${t.description}` : ""}`, 500), origin: "stripe", sourceKey: stripeTxnSourceKey(t.balanceTransactionId), lines };
 }

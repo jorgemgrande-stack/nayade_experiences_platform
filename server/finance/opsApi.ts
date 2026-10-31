@@ -18,6 +18,10 @@
  *   GET|POST /cash-accounts                                                                lectura | gestión
  *   GET /cash-movements · POST /cash-movements                                             lectura | contabilizar
  *
+ * Parametrización fiscal (CRM 0039): los cuerpos de alta y edición de gastos aceptan `vatTreatment` y
+ * `reverseChargeRateBp` (y las fichas los devuelven); conciliar un movimiento sin gasto acepta `{type, nature,
+ * description?}` en lugar de `accountCode` (la cuenta sale de /analysis/settings).
+ *
  * Los documentos y extractos llegan en base64 dentro del JSON (hasta 10 MB de fichero): esas dos rutas leen su cuerpo
  * con un límite propio DESPUÉS de comprobar el permiso (el analizador general del plano de control las deja pasar).
  */
@@ -27,11 +31,14 @@ import { actorOf, wrap } from "./http";
 import type { FinanceAnalysisService } from "./analysisService";
 import type { FinanceOpsService } from "./opsService";
 import { FinanceError } from "./types";
-import { ACCOUNT_MATCH_TYPES, DOCUMENT_OWNERS, EXPENSE_KINDS, EXPENSE_STATUSES, FREQUENCIES, IMPORT_FORMATS, MOVEMENT_STATUSES, PAYMENT_METHODS, PAYMENT_STATUSES } from "./opsTypes";
+import { ACCOUNT_MATCH_TYPES, BANK_FEE_NATURES, DOCUMENT_OWNERS, EXPENSE_KINDS, EXPENSE_STATUSES, FREQUENCIES, IMPORT_FORMATS, MOVEMENT_STATUSES, PAYMENT_METHODS, PAYMENT_STATUSES, VAT_TREATMENTS } from "./opsTypes";
 import { canExpenses, canPost, canRead, canSuppliers } from "./permissions";
 
-/** Rutas con fichero en base64: el analizador JSON general (256 kB) no las lee; aquí, hasta 15 MB y tras el permiso. */
-export const FINANCE_UPLOAD_PATHS = /^\/cp\/v1\/finance\/(documents|bank-imports|stripe\/imports|tax\/obligations\/\d+\/present)\/?(\?|$)/;
+/**
+ * Rutas con fichero en base64: el analizador JSON general (256 kB) no las lee; aquí, hasta 15 MB y tras el permiso.
+ * CRM 0039: la vista previa de una importación de Stripe y el asiento del Impuesto sobre Sociedades (con su documento).
+ */
+export const FINANCE_UPLOAD_PATHS = /^\/cp\/v1\/finance\/(documents|bank-imports|stripe\/imports|stripe\/imports\/preview|tax\/obligations\/\d+\/present|tax\/corporate\/\d+\/entry)\/?(\?|$)/;
 export const bigJson = express.json({ limit: "15mb" });
 
 const id = z.coerce.number().int().positive();
@@ -78,6 +85,9 @@ const expenseSchema = z
     deductibleBp: bp.optional(),
     withholdingRateBp: bp.optional(),
     rectifiesExpenseId: ref.nullable().optional(),
+    // CRM 0039: tratamiento del IVA (null = interior) y tipo de la autoliquidación con inversión del sujeto pasivo
+    vatTreatment: z.enum(VAT_TREATMENTS).nullable().optional(),
+    reverseChargeRateBp: bp.nullable().optional(),
   })
   .strict();
 
@@ -115,6 +125,8 @@ const matchSchema = z.union([
   z.object({ type: z.literal("expense_payment"), expenseId: ref }).strict(),
   z.object({ type: z.literal("expense_payment"), expensePaymentId: ref }).strict(),
   z.object({ type: z.enum(ACCOUNT_MATCH_TYPES), accountCode, description: z.string().max(300).nullable().optional() }).strict(),
+  // CRM 0039: naturaleza de la comisión bancaria en lugar de la cuenta (se resuelve con /analysis/settings)
+  z.object({ type: z.enum(ACCOUNT_MATCH_TYPES), nature: z.enum(BANK_FEE_NATURES), description: z.string().max(300).nullable().optional() }).strict(),
   // Fase 2: abono de un payout de Stripe (sin asiento) y cobro de una factura propia por transferencia
   z.object({ type: z.literal("stripe_payout"), payoutId: ref }).strict(),
   z.object({ type: z.literal("invoice_payment"), invoiceId: ref }).strict(),

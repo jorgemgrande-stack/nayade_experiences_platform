@@ -19,22 +19,27 @@ import { balancesOf, isValidDate } from "./rules";
 import type { FinanceService } from "./service";
 import type { FinanceStore } from "./store";
 import {
+  checkFeeVatRule,
+  feeBaseOf,
   parseBalanceCsv,
   parsePayoutsCsv,
   reconciliationStatus,
+  resolveFeeVat,
   SELF_POSTED_TYPES,
   STRIPE_ACCOUNTS,
   stripePayoutEntry,
   stripeTxnEntry,
   suggestStripeMatches,
   txnIssue,
+  type FeeVatRuleInput,
   type InvoiceRef,
   type ReconciliationStatus,
   type StripeMatchSuggestion,
 } from "./stripeRules";
 import { isPayoutType, LIVE_PAYOUT_STATUSES, type FinanceStripeStore, type PayoutQuery, type TxnQuery } from "./stripeStore";
-import type { FeeVatMode, ParsedStripeTxn, StripeImport, StripeImportKind, StripeIssue, StripePayout, StripeSettings, StripeTxn, StripeTxnStatus } from "./stripeTypes";
-import { FinanceError, type FinanceActor } from "./types";
+import { FEE_VAT_MODES, type FeeVatMode, type ParsedStripeTxn, type ResolvedFeeVat, type StripeImport, type StripeImportKind, type StripeIssue, type StripePayout, type StripeSettings, type StripeTxn, type StripeTxnStatus } from "./stripeTypes";
+import { isEu } from "./taxRules";
+import { FinanceError, type EntryDraft, type FinanceActor } from "./types";
 
 export interface FinanceStripeDeps {
   store: FinanceStripeStore;
@@ -48,8 +53,16 @@ export interface FinanceStripeDeps {
   lock?: KeyedLock;
   /** Facturas de Stripe registradas por el cobro (`stripe_invoices`, solo lectura), para explicar un cobro sin factura. */
   stripeInvoices?: { known(ids: string[]): Promise<Set<string>> } | null;
+  /** Migración 0039 aplicada: reglas de IVA de las comisiones y modo global `unset` por defecto. */
+  fiscal?: boolean;
   now?: () => number;
 }
+
+/** Motivo que queda en una transacción pendiente por no tener decidido el IVA de su comisión. */
+export const FEE_VAT_UNSET_DETAIL = "fee_vat_unset: el IVA de la comisión de Stripe no está configurado (regla por tipo o modo global)";
+
+/** Asiento de la vista previa: solo cuentas e importes (no se guarda nada). */
+const previewEntry = (id: string, d: EntryDraft) => ({ balanceTransactionId: id, date: d.date, description: d.description, lines: d.lines.map((l) => ({ account: l.accountCode, debitCents: l.debitCents, creditCents: l.creditCents })) });
 
 export type { OwnInvoice };
 
@@ -70,6 +83,8 @@ export interface PostResult {
   errors: Array<{ transactionId: string; message: string }>;
   /** Quedaron más transacciones de las que se procesan en una pasada: repetir. */
   truncated: boolean;
+  /** CRM 0039: transacciones que quedan pendientes porque el IVA de su comisión no está configurado (`fee_vat_unset`). */
+  pendingFeeVat?: number;
 }
 
 export class FinanceStripeService implements BankReconciliationExtension {
@@ -92,20 +107,32 @@ export class FinanceStripeService implements BankReconciliationExtension {
 
   // ── Configuración ─────────────────────────────────────────────────────────────────────────────────────────────
 
-  settings() {
-    return this.s.getSettings();
+  /** ¿Está aplicada la migración 0039 (reglas de IVA de las comisiones; modo global `unset` por defecto)? */
+  get fiscal() {
+    return !!this.d.fiscal;
+  }
+
+  /**
+   * Configuración vigente. CRM 0039: si nadie la ha guardado, el IVA de las comisiones queda `unset` (no se presupone
+   * la exención); sin la migración, el valor por defecto anterior (`exempt`).
+   */
+  async settings(): Promise<StripeSettings> {
+    const s = await this.s.getSettings();
+    return this.fiscal && s.updatedAt === null ? { ...s, stripeFeeVat: "unset" } : s;
   }
 
   /** Configuración de Stripe (rol admin|superadmin en la API). Cambio parcial; se valida contra el plan y los bancos. */
   async saveSettings(p: { stripeFeeVat?: FeeVatMode; feeVatRateBp?: number; stripePayoutBankAccountId?: number | null; disputeAccountCode?: string }, actor: FinanceActor): Promise<StripeSettings> {
-    const cur = await this.s.getSettings();
+    const cur = await this.settings();
+    // Siempre se escribe el valor explícito (la columna tiene un valor por defecto de la fase 2 que no se usa)
     const next = {
       stripeFeeVat: p.stripeFeeVat ?? cur.stripeFeeVat,
       feeVatRateBp: p.feeVatRateBp ?? cur.feeVatRateBp,
       stripePayoutBankAccountId: p.stripePayoutBankAccountId === undefined ? cur.stripePayoutBankAccountId : p.stripePayoutBankAccountId,
       disputeAccountCode: (p.disputeAccountCode ?? cur.disputeAccountCode).trim(),
     };
-    if (next.stripeFeeVat !== "exempt" && next.stripeFeeVat !== "reverse_charge") throw bad("IVA de las comisiones: «exempt» o «reverse_charge»");
+    const modes: readonly FeeVatMode[] = this.fiscal ? FEE_VAT_MODES : ["exempt", "reverse_charge"];
+    if (!modes.includes(next.stripeFeeVat)) throw bad(`IVA de las comisiones: ${modes.map((m) => `«${m}»`).join(", ")}`);
     if (!Number.isInteger(next.feeVatRateBp) || next.feeVatRateBp < 0 || next.feeVatRateBp > 10_000) throw bad("Tipo de IVA no válido (puntos básicos, 2100 = 21 %)");
     if (next.stripePayoutBankAccountId !== null) {
       const b = await this.d.ops.getBankAccount(next.stripePayoutBankAccountId);
@@ -116,6 +143,143 @@ export class FinanceStripeService implements BankReconciliationExtension {
     const saved = await this.s.saveSettings(next, actor.by, this.now());
     await this.audit(actor, "stripe.settings", "stripe_settings", 1, { ...next });
     return saved;
+  }
+
+  // ── IVA de las comisiones por tipo y periodo (CRM 0039) ───────────────────────────────────────────────────────
+
+  private needFiscal() {
+    if (!this.fiscal) throw new FinanceError("unavailable", "Las reglas de IVA de las comisiones llegan con la migración 0039, que no está aplicada en este entorno");
+  }
+
+  feeVatRules() {
+    this.needFiscal();
+    return this.s.listFeeVatRules();
+  }
+
+  /** Alta de una regla (sin edición: para cambiarla, se anula y se crea otra). */
+  async createFeeVatRule(i: FeeVatRuleInput, actor: FinanceActor) {
+    this.needFiscal();
+    const r = checkFeeVatRule(i, { isEu });
+    const row = await this.s.insertFeeVatRule({ ...r, createdBy: actor.by, createdAt: this.now() });
+    await this.audit(actor, "stripe.fee_vat_rule.create", "stripe_fee_vat_rule", row.id, { feeKind: row.feeKind, treatment: row.treatment, rateBp: row.rateBp, issuerCountry: row.issuerCountry, validFrom: row.validFrom, validTo: row.validTo });
+    return row;
+  }
+
+  async voidFeeVatRule(id: number, reason: string, actor: FinanceActor) {
+    this.needFiscal();
+    const why = (reason ?? "").trim();
+    if (why.length < 3 || why.length > 300) throw bad("Indica el motivo de la anulación (3 a 300 caracteres)");
+    const r = await this.s.getFeeVatRule(id);
+    if (!r) throw notFound("Regla");
+    if (!(await this.s.voidFeeVatRule(id, { by: actor.by, at: this.now(), reason: why }))) throw new FinanceError("invalid_state", "La regla ya está anulada");
+    await this.audit(actor, "stripe.fee_vat_rule.void", "stripe_fee_vat_rule", id, { reason: why });
+    return (await this.s.getFeeVatRule(id))!;
+  }
+
+  /** Resolutor del IVA de las comisiones con la configuración y las reglas de este momento (una lectura). */
+  private async feeResolver(settings?: StripeSettings): Promise<(t: Pick<ParsedStripeTxn, "type" | "rawType" | "createdOn">) => ResolvedFeeVat> {
+    const s = settings ?? (await this.settings());
+    const rules = this.fiscal ? await this.s.listFeeVatRules() : [];
+    return (t) => resolveFeeVat(t, rules, s);
+  }
+
+  /** ¿Se queda sin contabilizar por no tener decidido el IVA de su comisión? (solo con comisión). */
+  private static feeVatUnset(t: Pick<ParsedStripeTxn, "type" | "feeCents" | "grossCents">, f: ResolvedFeeVat) {
+    return f.treatment === "unset" && SELF_POSTED_TYPES.includes(t.type) && feeBaseOf(t) !== 0;
+  }
+
+  /**
+   * Transacciones en euros pendientes de contabilizar cuyo IVA de la comisión está sin decidir (`fee_vat_unset`),
+   * opcionalmente solo las de un rango de fechas. 0 sin la migración 0039 (entonces el modo global nunca es `unset`).
+   */
+  async pendingFeeVatCount(from?: string, to?: string): Promise<number> {
+    if (!this.fiscal) return 0;
+    const resolve = await this.feeResolver();
+    const pending = await this.s.postableTransactions(to ?? "9999-12-31", POST_BATCH);
+    return pending.filter((t) => (!from || t.createdOn >= from) && FinanceStripeService.feeVatUnset(t, resolve(t))).length;
+  }
+
+  /**
+   * Vista previa de una importación SIN ESCRIBIR NADA (ni la importación, ni transacciones, ni asientos, ni auditoría):
+   * lo que se leería del fichero, lo que ya está importado, los totales, cómo se resolvería el IVA de cada comisión y
+   * los asientos que se contabilizarían (hasta 50). Es lo que se usa con un CSV real antes de importarlo.
+   */
+  async previewImport(i: { kind: StripeImportKind; filename: string; contentBase64: string }) {
+    const buf = this.decode(i.contentBase64);
+    const sha = sha256Hex(buf);
+    const prev = await this.s.findImport(i.kind, sha);
+    const text = decodeText(buf);
+    const settings = await this.settings();
+    const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
+    const base = { kind: i.kind, filename: safeFilename(i.filename), alreadyImported: !!prev, previousImportId: prev?.id ?? null };
+    if (i.kind === "payouts") {
+      const { rows, problems } = parsePayoutsCsv(text);
+      const known = new Set((await this.s.payoutsByStripeIds(rows.map((r) => r.payoutId))).map((p) => p.payoutId));
+      const bank = settings.stripePayoutBankAccountId ? await this.d.ops.getBankAccount(settings.stripePayoutBankAccountId) : null;
+      const warnings = problems.map((p) => ({ line: p.line, message: p.message }));
+      if (!bank) warnings.push({ line: 0, message: "Sin cuenta bancaria de destino configurada: los payouts no se contabilizarían" });
+      const fresh = rows.filter((r) => !known.has(r.payoutId) && r.currency === "EUR" && r.status !== "failed" && r.status !== "canceled");
+      return {
+        ...base,
+        rows: rows.length + problems.length,
+        parsed: rows.length,
+        skipped: problems.length,
+        warnings,
+        duplicates: rows.filter((r) => known.has(r.payoutId)).length,
+        sample: rows.slice(0, 20),
+        totals: { grossCents: sum(rows.map((r) => r.amountCents)), feeCents: sum(rows.map((r) => r.feeCents)), netCents: sum(rows.map((r) => r.amountCents)), byType: Object.fromEntries(Array.from(new Set(rows.map((r) => r.status))).map((st) => [st, { count: rows.filter((r) => r.status === st).length, grossCents: sum(rows.filter((r) => r.status === st).map((r) => r.amountCents)), feeCents: 0, netCents: sum(rows.filter((r) => r.status === st).map((r) => r.amountCents)) }])) },
+        feeVat: null,
+        wouldPost: bank ? fresh.slice(0, 50).map((p) => previewEntry(p.payoutId, stripePayoutEntry(p, bank.accountCode))) : [],
+        nonEur: rows.filter((r) => r.currency !== "EUR").length,
+      };
+    }
+    const { rows, problems } = parseBalanceCsv(text);
+    const known = await this.s.knownTransactionIds(rows.map((r) => r.balanceTransactionId));
+    const resolve = await this.feeResolver(settings);
+    const resolved: Record<string, number> = {};
+    let unset = 0;
+    const wouldPost: ReturnType<typeof previewEntry>[] = [];
+    const warnings = problems.map((p) => ({ line: p.line, message: p.message }));
+    for (const r of rows) {
+      if (r.currency !== "EUR" || !SELF_POSTED_TYPES.includes(r.type)) continue;
+      const f = resolve(r);
+      if (FinanceStripeService.feeVatUnset(r, f)) {
+        unset++;
+        continue;
+      }
+      if (feeBaseOf(r) !== 0) resolved[f.treatment] = (resolved[f.treatment] ?? 0) + 1;
+      if (known.has(r.balanceTransactionId) || wouldPost.length >= 50) continue;
+      try {
+        wouldPost.push(previewEntry(r.balanceTransactionId, stripeTxnEntry(r, settings, null, f)));
+      } catch (e) {
+        if (!(e instanceof FinanceError)) throw e;
+        warnings.push({ line: 0, message: `${r.balanceTransactionId}: ${e.message}` });
+      }
+    }
+    if (unset) warnings.push({ line: 0, message: `${unset} transacciones con comisión sin tratamiento de IVA configurado: no se contabilizarían (fee_vat_unset)` });
+    const byType: Record<string, { count: number; grossCents: number; feeCents: number; netCents: number }> = {};
+    const eur = rows.filter((r) => r.currency === "EUR");
+    for (const r of eur) {
+      const g = (byType[r.type] ??= { count: 0, grossCents: 0, feeCents: 0, netCents: 0 });
+      g.count++;
+      g.grossCents += r.grossCents;
+      g.feeCents += r.feeCents;
+      g.netCents += r.netCents;
+    }
+    return {
+      ...base,
+      rows: rows.length + problems.length,
+      parsed: rows.length,
+      skipped: problems.length,
+      warnings,
+      duplicates: known.size,
+      sample: rows.slice(0, 20),
+      // Totales de las filas en euros (las de otra moneda se importan sin contabilizar: `nonEur`)
+      totals: { grossCents: sum(eur.map((r) => r.grossCents)), feeCents: sum(eur.map((r) => r.feeCents)), netCents: sum(eur.map((r) => r.netCents)), byType },
+      feeVat: { resolved, unset },
+      wouldPost,
+      nonEur: rows.length - eur.length,
+    };
   }
 
   // ── Importación ───────────────────────────────────────────────────────────────────────────────────────────────
@@ -304,8 +468,9 @@ export class FinanceStripeService implements BankReconciliationExtension {
   async post(until: string | undefined, actor: FinanceActor): Promise<PostResult> {
     const u = until ?? this.today();
     if (!isValidDate(u)) throw bad("Fecha no válida (AAAA-MM-DD)");
-    const settings = await this.s.getSettings();
-    const out: PostResult = { posted: 0, skipped: 0, errors: [], truncated: false };
+    const settings = await this.settings();
+    const out: PostResult = { posted: 0, skipped: 0, errors: [], truncated: false, ...(this.fiscal ? { pendingFeeVat: 0 } : {}) };
+    const resolve = await this.feeResolver(settings);
     const batch = await this.s.postableTransactions(u, POST_BATCH);
     out.truncated = batch.length >= POST_BATCH;
     const chargeIds = Array.from(new Set(batch.filter((t) => t.type !== "charge" && t.chargeId).map((t) => t.chargeId!)));
@@ -326,10 +491,17 @@ export class FinanceStripeService implements BankReconciliationExtension {
         out.skipped++;
         continue;
       }
+      // CRM 0039: sin tratamiento del IVA de la comisión, la transacción se queda pendiente (nada se contabiliza a ciegas)
+      const fee = resolve(t);
+      if (FinanceStripeService.feeVatUnset(t, fee)) {
+        out.pendingFeeVat = (out.pendingFeeVat ?? 0) + 1;
+        if (t.status !== "pending" || t.issueDetail !== FEE_VAT_UNSET_DETAIL) await this.s.markTransaction(t.id, { status: "pending", issueDetail: FEE_VAT_UNSET_DETAIL });
+        continue;
+      }
       const own = await this.invoiceFor(t, idx, chargeOwn);
       const ref = own ? refOf(own) : null;
       try {
-        const { entry, created } = await this.d.finance.postGenerated(stripeTxnEntry(t, settings, ref), actor);
+        const { entry, created } = await this.d.finance.postGenerated(stripeTxnEntry(t, settings, ref, fee), actor);
         if (created) out.posted++;
         else out.skipped++;
         const issue = txnIssue(t, ref);

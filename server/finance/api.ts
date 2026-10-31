@@ -113,8 +113,11 @@ function sendCsv(res: Response, name: string, csv: string) {
  * (migración 0036, requiere `ops`) las rutas de Stripe y conciliación de la fase 2 y el saldo de 5720 en el resumen; con
  * `tax` (migración 0037, requiere `ops`) la gestoría e impuestos de la fase 3 bajo /tax; con `analysis` (migración 0038,
  * requiere `ops`) el control diario, los informes y el análisis de la fase 4, con las métricas comerciales de `commercial`.
+ * Con `fiscal` (migración 0039) se montan además las rutas de la parametrización fiscal (reglas de IVA de las comisiones
+ * de Stripe y vista previa de importaciones, validación de la configuración fiscal, Impuesto sobre Sociedades por
+ * ejercicio y su asiento, configuración del análisis); sin ella responden 404 y lo demás funciona como antes.
  */
-export function createFinanceRouter(svc: FinanceService, ops?: FinanceOpsService | null, stripe?: FinanceStripeService | null, tax?: FinanceTaxService | null, analysis?: FinanceAnalysisService | null, commercial?: CommercialSources | null): Router {
+export function createFinanceRouter(svc: FinanceService, ops?: FinanceOpsService | null, stripe?: FinanceStripeService | null, tax?: FinanceTaxService | null, analysis?: FinanceAnalysisService | null, commercial?: CommercialSources | null, fiscal = false): Router {
   const r = express.Router();
   const names = async () => new Map((await svc.accounts()).map((a) => [a.code, a.name]));
   const one = async (e: Entry) => entryDto(e, await names());
@@ -215,11 +218,11 @@ export function createFinanceRouter(svc: FinanceService, ops?: FinanceOpsService
   // Fase 1B: operaciones (centros de coste, categorías, proveedores, gastos, documentos, recurrentes, bancos y caja)
   if (ops) mountFinanceOpsRoutes(r, ops, analysis);
   // Fase 2: Stripe (importación, contabilización, payouts) y conciliación factura ↔ cobro ↔ payout ↔ banco
-  if (ops && stripe) mountFinanceStripeRoutes(r, stripe);
+  if (ops && stripe) mountFinanceStripeRoutes(r, stripe, fiscal);
   // Fase 3: gestoría e impuestos (sin montar, /tax/* responde 404 y el CRM oculta el grupo)
-  if (ops && tax) mountFinanceTaxRoutes(r, tax);
+  if (ops && tax) mountFinanceTaxRoutes(r, tax, fiscal);
   // Fase 4: control diario, informes y análisis (sin montar, /daily responde 404 y el CRM oculta esas páginas)
-  if (ops && analysis) mountFinanceAnalysisRoutes(r, analysis, commercial);
+  if (ops && analysis) mountFinanceAnalysisRoutes(r, analysis, commercial, fiscal);
 
   return r;
 }

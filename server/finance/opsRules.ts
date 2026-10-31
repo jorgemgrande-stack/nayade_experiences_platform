@@ -9,7 +9,7 @@ import * as XLSX from "xlsx";
 import { isValidSpanishTaxId, taxOf } from "../invoicing/rules";
 import { isValidDate, signed } from "./rules";
 import { FinanceError, type EntryDraft, type EntryLineInput } from "./types";
-import type { Expense, ExpenseKind, ExpensePaymentStatus, Frequency, ParsedMovement, RecurringExpense } from "./opsTypes";
+import { REVERSE_CHARGE_TREATMENTS, VAT_TREATMENT_LABELS, VAT_TREATMENTS, vatTreatmentOf, type Expense, type ExpenseKind, type ExpensePaymentStatus, type Frequency, type ParsedMovement, type RecurringExpense, type VatTreatment } from "./opsTypes";
 
 const bad = (message: string) => new FinanceError("invalid_input", message);
 
@@ -17,6 +17,7 @@ const bad = (message: string) => new FinanceError("invalid_input", message);
 
 export const OPS_ACCOUNTS = {
   vatInput: "472",
+  vatOutput: "477",
   withholding: "4751",
   stripe: "5720",
   bankPrefix: "572000",
@@ -131,13 +132,64 @@ export function expenseEntry(e: Expense, ctx: { categoryAccount: string; supplie
   const label = e.kind === "rectification" ? "Factura rectificativa recibida" : e.kind === "ticket" ? "Tique" : "Factura recibida";
   const who = ctx.supplierName ? ` · ${ctx.supplierName}` : "";
   const ref = { supplierId: e.supplierId, costCenterId: e.costCenterId };
+  // CRM 0039: con inversión del sujeto pasivo, autoliquidación Debe 472 (parte deducible) / Haber 477 (cuota completa)
+  // y la parte no deducible a mayor gasto; las líneas llevan el tipo y la base (el 303 las lleva a sus casillas por el
+  // tratamiento del gasto)
+  const isp = reverseChargeAmounts(e);
+  const ispText = isp ? `IVA autoliquidado ${isp.rateBp / 100} % (inversión del sujeto pasivo: ${VAT_TREATMENT_LABELS[vatTreatmentOf(e)].toLowerCase()})` : "";
   const lines: EntryLineInput[] = [
-    ...signed(ctx.categoryAccount, a.expenseAccountCents, "debit", { ...ref, description: short(e.description, 300), taxRateBp: e.taxRateBp, taxBaseCents: e.baseCents }),
+    ...signed(ctx.categoryAccount, a.expenseAccountCents + (isp?.nonDeductibleTaxCents ?? 0), "debit", { ...ref, description: short(e.description, 300), taxRateBp: e.taxRateBp, taxBaseCents: e.baseCents }),
     ...signed(OPS_ACCOUNTS.vatInput, a.deductibleTaxCents, "debit", { supplierId: e.supplierId, description: `IVA soportado ${e.taxRateBp / 100} %`, taxRateBp: e.taxRateBp, taxBaseCents: e.baseCents }),
+    ...(isp ? signed(OPS_ACCOUNTS.vatInput, isp.deductibleTaxCents, "debit", { supplierId: e.supplierId, description: short(ispText, 300), taxRateBp: isp.rateBp, taxBaseCents: e.baseCents }) : []),
+    ...(isp ? signed(OPS_ACCOUNTS.vatOutput, isp.taxCents, "credit", { supplierId: e.supplierId, description: short(ispText, 300), taxRateBp: isp.rateBp, taxBaseCents: e.baseCents }) : []),
     ...signed(OPS_ACCOUNTS.withholding, a.withholdingCents, "credit", { supplierId: e.supplierId, description: `Retención ${e.withholdingRateBp / 100} %`, taxRateBp: e.withholdingRateBp, taxBaseCents: e.baseCents }),
     ...signed(ctx.supplierAccount, a.payableCents, "credit", { supplierId: e.supplierId, description: short(`${label} ${e.invoiceNumber ?? ""}`.trim(), 300) }),
   ];
   return { journalCode: "COM", date, description: short(`${label} ${e.invoiceNumber ?? `#${e.id}`}${who}`, 500), origin: "expense", sourceKey: expenseSourceKey(e.id), lines };
+}
+
+/**
+ * Autoliquidación de un gasto con inversión del sujeto pasivo (CRM 0039): cuota al tipo de la autoliquidación sobre la
+ * base (con su signo), parte deducible (472) y no deducible (mayor gasto). null si el tratamiento no lleva ISP.
+ */
+export function reverseChargeAmounts(e: Pick<Expense, "baseCents" | "deductibleBp" | "vatTreatment" | "reverseChargeRateBp">): { rateBp: number; taxCents: number; deductibleTaxCents: number; nonDeductibleTaxCents: number } | null {
+  if (!REVERSE_CHARGE_TREATMENTS.includes(vatTreatmentOf(e))) return null;
+  if (e.reverseChargeRateBp === null || e.reverseChargeRateBp === undefined) throw bad("Falta el tipo de la autoliquidación (inversión del sujeto pasivo)");
+  const taxCents = signedTaxOf(e.baseCents, e.reverseChargeRateBp);
+  const deductibleTaxCents = signedTaxOf(taxCents, e.deductibleBp);
+  return { rateBp: e.reverseChargeRateBp, taxCents, deductibleTaxCents, nonDeductibleTaxCents: taxCents - deductibleTaxCents };
+}
+
+/**
+ * Comprueba el tratamiento del IVA de un gasto con su proveedor (CRM 0039). Con ISP la factura viene sin IVA (tipo 0)
+ * y el tipo de la autoliquidación es obligatorio; las intracomunitarias exigen un proveedor de otro Estado de la UE
+ * con NIF-IVA (`vat_id_required`). Devuelve lo que se guarda (null = interior) y el tipo de la autoliquidación.
+ */
+export function checkVatTreatment(
+  treatment: VatTreatment | null | undefined,
+  i: { taxRateBp: number; reverseChargeRateBp?: number | null },
+  supplier: { country: string; taxId: string | null } | null,
+  eu: { isEu: (country: string | null | undefined) => boolean; isEuForeign: (country: string | null | undefined) => boolean },
+): { vatTreatment: VatTreatment | null; reverseChargeRateBp: number | null } {
+  const t = treatment ?? null;
+  const rc = i.reverseChargeRateBp ?? null;
+  if (t !== null && !(VAT_TREATMENTS as readonly string[]).includes(t)) throw bad("Tratamiento del IVA no válido");
+  const isp = t !== null && REVERSE_CHARGE_TREATMENTS.includes(t);
+  if (!isp && rc !== null) throw bad("El tipo de la autoliquidación solo se indica con inversión del sujeto pasivo");
+  if (isp) {
+    if (i.taxRateBp !== 0) throw bad("Con inversión del sujeto pasivo la factura viene sin IVA: el tipo de IVA de la factura es 0");
+    if (rc === null) throw bad("Indica el tipo de la autoliquidación (inversión del sujeto pasivo), p. ej. 2100 = 21 %");
+    if (!Number.isInteger(rc) || rc <= 0 || rc > 10_000) throw bad("El tipo de la autoliquidación va de 1 a 10000 puntos básicos");
+  }
+  if ((t === "exempt" || t === "not_subject") && i.taxRateBp !== 0) throw bad("Una operación exenta o no sujeta no lleva IVA: el tipo es 0");
+  if (t === "intra_eu_services" || t === "intra_eu_goods") {
+    if (!supplier) throw new FinanceError("vat_id_required", "Una operación intracomunitaria necesita el proveedor con su NIF-IVA");
+    if (!eu.isEuForeign(supplier.country)) throw bad("Una operación intracomunitaria es con un proveedor de otro Estado de la UE (no España)");
+    if (!supplier.taxId) throw new FinanceError("vat_id_required", "Falta el NIF-IVA del proveedor: complétalo en su ficha (lo pide el 349)");
+  }
+  if (t === "non_eu_services" && supplier && eu.isEu(supplier.country)) throw bad("El proveedor es de la UE: usa «servicios intracomunitarios» (o interior si es de España)");
+  if (t === "reverse_charge_domestic" && supplier && supplier.country.toUpperCase() !== "ES") throw bad("La inversión del sujeto pasivo interior es con un proveedor español");
+  return { vatTreatment: t, reverseChargeRateBp: isp ? rc : null };
 }
 
 /**

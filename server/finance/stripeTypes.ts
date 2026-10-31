@@ -41,9 +41,54 @@ export type PayoutStatus = (typeof PAYOUT_STATUSES)[number];
 export const STRIPE_IMPORT_KINDS = ["balance", "payouts"] as const;
 export type StripeImportKind = (typeof STRIPE_IMPORT_KINDS)[number];
 
-/** IVA de las comisiones de Stripe: exentas (servicios financieros, por defecto) o inversión del sujeto pasivo. */
-export const FEE_VAT_MODES = ["exempt", "reverse_charge"] as const;
+/**
+ * IVA de las comisiones de Stripe (modo global). Fase 2: exentas o inversión del sujeto pasivo. Parametrización fiscal
+ * (CRM 0039), nada se presupone:
+ *  - unset: sin decidir (por defecto con la migración 0039): las transacciones con comisión NO se contabilizan;
+ *  - exempt: exentas (servicios financieros), sin líneas de IVA;
+ *  - reverse_charge: emisor de otro Estado de la UE, autoliquidación 472/477 al tipo configurado;
+ *  - domestic: la entidad de Stripe factura con IVA español: el IVA soportado sale de su factura registrada como gasto;
+ *  - per_invoice: el tratamiento lo da la factura mensual de comisiones registrada como gasto (con su tratamiento).
+ * Con `domestic` y `per_invoice` la importación solo lleva la comisión a 626, sin líneas de IVA.
+ */
+export const FEE_VAT_MODES = ["unset", "exempt", "reverse_charge", "domestic", "per_invoice"] as const;
 export type FeeVatMode = (typeof FEE_VAT_MODES)[number];
+/** Tratamientos de una regla por tipo de comisión (los del modo global salvo `unset`). */
+export const FEE_VAT_TREATMENTS = ["exempt", "reverse_charge", "domestic", "per_invoice"] as const;
+export type FeeVatTreatment = (typeof FEE_VAT_TREATMENTS)[number];
+
+/**
+ * Regla de IVA de las comisiones de Stripe por tipo de comisión y periodo (CRM 0039, `fin_stripe_fee_vat_rules`). Sin
+ * edición: para cambiarla se anula y se crea otra. `feeKind` es el tipo de transacción de saldo o la categoría del
+ * informe (`charge`, `refund`, `stripe_fee`, `application_fee`, `adjustment`…) o `*` (cualquiera).
+ */
+export interface StripeFeeVatRule {
+  id: number;
+  feeKind: string;
+  issuerName: string;
+  issuerCountry: string;
+  issuerVatId: string | null;
+  treatment: FeeVatTreatment;
+  rateBp: number | null;
+  validFrom: string;
+  validTo: string | null;
+  /** Factura o condiciones de Stripe que justifican el tratamiento. */
+  documentRef: string | null;
+  note: string | null;
+  createdBy: string;
+  createdAt: number;
+  voidedBy: string | null;
+  voidedAt: number | null;
+  voidReason: string | null;
+}
+
+/** Tratamiento resuelto para una transacción: regla por tipo exacto, la de `*` o el modo global. */
+export interface ResolvedFeeVat {
+  treatment: FeeVatMode;
+  rateBp: number;
+  rule: Pick<StripeFeeVatRule, "id" | "feeKind" | "issuerName" | "issuerCountry" | "issuerVatId"> | null;
+  source: "rule" | "wildcard" | "global";
+}
 
 export interface StripeSettings {
   stripeFeeVat: FeeVatMode;

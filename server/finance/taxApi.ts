@@ -23,6 +23,16 @@
  *   GET   /tax/export.zip?from&to                        exportar        (máximo un año)
  *   GET   /tax/corporate/:year · POST /tax/corporate/:year/adjustments
  *
+ * Parametrización fiscal (CRM 0039; sin la migración estas rutas no se montan → 404):
+ *   POST  /tax/settings/validate                          configuración   { note } → { item: TaxSettings }
+ *   GET   /tax/corporate/presets?year                     lectura         { items: CorporatePreset[] }
+ *   PUT   /tax/corporate/:year/config                     gestoría        { regime, brackets[], … } → { item }
+ *   POST  /tax/corporate/:year/entry                      gestoría        { origin, date, currentTaxCents?, … } → { item, warnings }
+ *   POST  /tax/corporate/:year/entry/reverse              gestoría        { reason } → { item }
+ * Además: GET /tax/settings con validatedAt/validatedBy/validationNote; revisar y presentar responden 409
+ * `tax_config_not_validated` sin validar (y el 200, `corporate_year_unset` sin configurar el ejercicio); los borradores
+ * llevan el aviso `tax_config_not_validated`; GET /tax/corporate/:year añade config, presets, brackets, entry…
+ *
  * La presentación lleva el PDF del justificante en base64 en el mismo cuerpo: su ruta lee el cuerpo con el límite
  * grande DESPUÉS de comprobar el permiso (ver FINANCE_UPLOAD_PATHS).
  */
@@ -35,6 +45,8 @@ import { periodLabel } from "./taxRules";
 import type { FinanceTaxService } from "./taxService";
 import {
   ADJUSTMENT_KINDS,
+  CORPORATE_ENTRY_ORIGINS,
+  CORPORATE_REGIMES,
   DEFERRAL_STATUSES,
   DOSSIER_KINDS,
   DOSSIER_STATUSES,
@@ -45,6 +57,7 @@ import {
   VAT_PERIODS,
   VAT_REGIMES,
   type CorporateAdjustment,
+  type CorporateEntryRecord,
   type Deferral,
   type Dossier,
   type DossierLogRow,
@@ -110,6 +123,10 @@ export function obligationDto(o: Obligation) {
 /** Código estable de un aviso (el texto puede cambiar; el código no). */
 export function warningCode(message: string, hasData: boolean): string {
   if (!hasData) return "sin_datos";
+  // CRM 0039
+  if (/corporate_year_unset/.test(message)) return "corporate_year_unset";
+  if (/fee_vat_unset/.test(message)) return "fee_vat_unset";
+  if (/Reserva de capitalización/.test(message)) return "reserva_capitalizacion";
   if (/sin NIF|NIF-IVA|necesita su NIF|sin su NIF/i.test(message)) return "sin_nif";
   if (/inversión del sujeto pasivo/i.test(message)) return "inversion_sujeto_pasivo";
   if (/^Faltan|^Falta/i.test(message)) return "faltan_datos";
@@ -120,14 +137,17 @@ export function warningCode(message: string, hasData: boolean): string {
 
 const boxText = (b: TaxDraft["boxes"][number]) => (b.valueCents === null ? "Sin datos" : b.unit === "count" ? String(b.valueCents) : b.unit === "bp" ? `${(b.valueCents / 100).toLocaleString("es-ES")} %` : euro.format(b.valueCents / 100));
 
-export function draftDto(d: TaxDraft) {
+/** Aviso de los borradores mientras la configuración fiscal no esté validada (CRM 0039; no entra en la huella). */
+export const UNVALIDATED_WARNING = { code: "tax_config_not_validated", message: "Borrador · configuración fiscal sin validar: no se puede revisar ni presentar hasta validarla con la gestoría" };
+
+export function draftDto(d: TaxDraft, opts: { unvalidated?: boolean } = {}) {
   return {
     boxes: d.boxes.map((b) => ({ box: b.box, label: b.label, valueCents: b.valueCents, text: boxText(b) })),
     sources: d.details.map((x) => {
       const tail = x.ref.split(":").pop() ?? "";
       return { box: x.box, kind: x.source, id: /^\d+$/.test(tail) ? Number(tail) : null, label: x.description, date: x.date, number: x.number ?? null, taxId: x.taxId ?? null, baseCents: x.baseCents, taxCents: x.taxCents, amountCents: x.taxCents ?? x.baseCents, ref: x.ref };
     }),
-    warnings: d.warnings.map((m, i) => ({ code: warningCode(m, d.hasData || i > 0), message: m })),
+    warnings: [...(opts.unvalidated ? [UNVALIDATED_WARNING] : []), ...d.warnings.map((m, i) => ({ code: warningCode(m, d.hasData || i > 0), message: m }))],
     result: d.outcome,
     resultCents: d.resultCents,
     hash: d.hash,
@@ -174,7 +194,7 @@ export const dossierDto = (d: Dossier) => ({ ...d });
 const dossierLogDto = (l: DossierLogRow) => ({ at: l.at, actor: l.actor, note: l.note, action: l.action });
 const adjustmentDto = (a: CorporateAdjustment) => ({ id: a.id, kind: a.kind, description: a.description, amountCents: a.amountCents, originYear: a.originYear });
 
-const META = new Set(["configured", "version", "updatedBy", "updatedAt"]);
+const META = new Set(["configured", "version", "updatedBy", "updatedAt", "validatedAt", "validatedBy", "validationNote"]);
 /** Historial de la configuración con lo que cambió en cada versión: `{campo: [antes, después]}`. */
 export function settingsLogDto(rows: TaxSettingsLogRow[]) {
   return rows.map((r) => {
@@ -184,7 +204,11 @@ export function settingsLogDto(rows: TaxSettingsLogRow[]) {
       const before = r.before ? (r.before as Record<string, unknown>)[k] : undefined;
       if (JSON.stringify(before ?? null) !== JSON.stringify(v ?? null)) changes[k] = [before ?? null, v ?? null];
     }
-    return { at: r.at, actor: r.actor, changes, note: r.before?.configured ? null : "Primera configuración (antes, valores por defecto)" };
+    // CRM 0039: validación con la gestoría (y su anulación por un cambio posterior)
+    const validated = !!r.after.validatedAt && !r.before?.validatedAt;
+    const invalidated = !!r.before?.validatedAt && !r.after.validatedAt;
+    const note = validated ? `Configuración validada con la gestoría${r.after.validationNote ? `: ${r.after.validationNote}` : ""}` : invalidated ? "Cambio de la configuración: la validación con la gestoría queda anulada" : r.before?.configured ? null : "Primera configuración (antes, valores por defecto)";
+    return { at: r.at, actor: r.actor, changes, note, ...(validated || invalidated ? { validation: validated ? "validated" : "invalidated" } : {}) };
   });
 }
 
@@ -231,7 +255,51 @@ const dossierSchema = z
   })
   .strict();
 
-export function mountFinanceTaxRoutes(r: Router, tax: FinanceTaxService): void {
+/** Asiento del Impuesto sobre Sociedades tal cual lo consume el CRM (CRM 0039). */
+export function corporateEntryDto(e: CorporateEntryRecord, entryNumber: number | null) {
+  return {
+    entryId: e.entryId,
+    entryNumber,
+    origin: e.origin,
+    currentTaxCents: e.currentTaxCents,
+    deferredTaxCents: e.deferredTaxCents,
+    date: e.date,
+    createdBy: e.createdBy,
+    createdAt: e.createdAt,
+    documentId: e.documentId,
+    differenceFromDraftCents: e.differenceFromDraftCents,
+    // Datos adicionales
+    id: e.id,
+    year: e.year,
+    sourceKey: e.sourceKey,
+    withholdingsCents: e.withholdingsCents,
+    draftCurrentTaxCents: e.draftCurrentTaxCents,
+    note: e.note,
+    reversalEntryId: e.reversalEntryId,
+    reversedAt: e.reversedAt,
+    reversedBy: e.reversedBy,
+    reverseReason: e.reverseReason,
+  };
+}
+
+const bracketSchema = z.object({ uptoCents: z.number().int().positive().nullable(), rateBp: z.number().int().min(0).max(10_000) }).strict();
+const corporateConfigSchema = z
+  .object({
+    regime: z.enum(CORPORATE_REGIMES),
+    brackets: z.array(bracketSchema).min(1).max(10),
+    netTurnoverCents: cents.nullable().optional(),
+    capReserveEquityIncreaseCents: cents.nullable().optional(),
+    capReserveRateBp: z.number().int().min(0).max(10_000).nullable().optional(),
+    capReserveLimitBp: z.number().int().min(0).max(10_000).nullable().optional(),
+    levellingReserveCents: cents.nullable().optional(),
+    notes: z.string().max(4000).nullable().optional(),
+    expectedVersion: z.number().int().min(0).nullable().optional(),
+  })
+  .strict();
+
+export function mountFinanceTaxRoutes(r: Router, tax: FinanceTaxService, fiscal = false): void {
+  // CRM 0039: ¿hay que avisar de que la configuración no está validada? (nunca sin la migración)
+  const unvalidated = async () => fiscal && (await tax.configValidated()) === false;
   const obligationsOf = async (ids: number[]) => new Map((await Promise.all(Array.from(new Set(ids)).map((x) => tax.obligation(x).then((o) => o.obligation, () => null)))).filter((o): o is Obligation => !!o).map((o) => [o.id, o]));
   const deferralsDto = async (list: Deferral[]) => {
     const obs = await obligationsOf(list.map((d) => d.obligationId));
@@ -239,7 +307,7 @@ export function mountFinanceTaxRoutes(r: Router, tax: FinanceTaxService): void {
   };
   const fullObligation = async (oid: number) => {
     const o = await tax.obligation(oid);
-    return { ...obligationDto(o.obligation), draft: o.draft ? draftDto(o.draft) : null, log: o.log.map(logDto), documents: o.documents };
+    return { ...obligationDto(o.obligation), draft: o.draft ? draftDto(o.draft, { unvalidated: await unvalidated() }) : null, log: o.log.map(logDto), documents: o.documents };
   };
 
   // Configuración fiscal
@@ -251,6 +319,11 @@ export function mountFinanceTaxRoutes(r: Router, tax: FinanceTaxService): void {
     const b = settingsSchema.parse(body(req));
     res.json({ item: (await tax.saveSettings(b, actorOf(req))) as TaxSettings });
   }));
+  if (fiscal)
+    r.post("/tax/settings/validate", ...canConfig, wrap(async (req, res) => {
+      const b = z.object({ note: z.string().max(500) }).strict().parse(body(req));
+      res.json({ item: await tax.validateSettings(b.note, actorOf(req)) });
+    }));
 
   // Panel y calendario
   r.get("/tax/dashboard", ...canRead, wrap(async (_req, res) => {
@@ -316,7 +389,7 @@ export function mountFinanceTaxRoutes(r: Router, tax: FinanceTaxService): void {
   r.get("/tax/models/:model/preview", ...canRead, wrap(async (req, res) => {
     const model = z.enum(TAX_MODELS).parse(req.params.model);
     const q = z.object({ year, period: z.string().max(6) }).strict().parse(req.query);
-    res.json(draftDto(await tax.preview(model, q.year, q.period)));
+    res.json(draftDto(await tax.preview(model, q.year, q.period), { unvalidated: await unvalidated() }));
   }));
 
   // Libros registro
@@ -412,7 +485,13 @@ export function mountFinanceTaxRoutes(r: Router, tax: FinanceTaxService): void {
     res.send(out.buffer);
   }));
 
-  // Impuesto sobre Sociedades
+  // Impuesto sobre Sociedades (CRM 0039: las propuestas antes de /:year, para que no se lean como un ejercicio; sin
+  // la migración responde 404 igual que el resto de rutas nuevas)
+  r.get("/tax/corporate/presets", ...canRead, wrap(async (req, res) => {
+    if (!fiscal) return void res.status(404).json({ error: "not_found", message: "La parametrización fiscal llega con la migración 0039, que no está aplicada en este entorno" });
+    const q = z.object({ year }).strict().parse(req.query);
+    res.json({ items: tax.corporatePresets(q.year) });
+  }));
   r.get("/tax/corporate/:year", ...canRead, wrap(async (req, res) => {
     const c = await tax.corporate(year.parse(req.params.year));
     const v = (box: string) => (c.draft.hasData ? (c.draft.boxes.find((b) => b.box === box)?.valueCents ?? null) : null);
@@ -422,7 +501,28 @@ export function mountFinanceTaxRoutes(r: Router, tax: FinanceTaxService): void {
     } catch {
       negativeBases = [];
     }
-    const draft = draftDto(c.draft);
+    const draft = draftDto(c.draft, { unvalidated: await unvalidated() });
+    // CRM 0039: configuración del ejercicio, propuestas, tramos, reserva de capitalización y asiento
+    let brackets: Array<{ fromCents: number; uptoCents: number | null; rateBp: number; baseCents: number; quotaCents: number }> = [];
+    try {
+      brackets = typeof c.draft.extra.bracketsJson === "string" ? JSON.parse(c.draft.extra.bracketsJson) : [];
+    } catch {
+      brackets = [];
+    }
+    const numbers = new Map<number, number | null>();
+    for (const e of c.entries) numbers.set(e.entryId, await tax.entryNumber(e.entryId));
+    const live = c.entries.find((e) => e.reversedAt === null) ?? null;
+    const fiscalItem = fiscal
+      ? {
+          config: c.config,
+          configLog: c.configLog.map((l) => ({ at: l.at, actor: l.actor, before: l.before, after: l.after })),
+          presets: c.presets,
+          capitalizationReserveCents: c.draft.hasData && typeof c.draft.extra.capitalizationReserveCents === "number" ? c.draft.extra.capitalizationReserveCents : null,
+          brackets,
+          entry: live ? corporateEntryDto(live, numbers.get(live.entryId) ?? null) : null,
+          entryHistory: c.entries.filter((e) => e.reversedAt !== null).map((e) => corporateEntryDto(e, numbers.get(e.entryId) ?? null)),
+        }
+      : {};
     res.json({
       item: {
         year: c.draft.year,
@@ -440,9 +540,38 @@ export function mountFinanceTaxRoutes(r: Router, tax: FinanceTaxService): void {
         obligation: c.obligation ? obligationDto(c.obligation) : null,
         installments: c.installments.map(obligationDto),
         draft,
+        ...fiscalItem,
       },
     });
   }));
+  if (fiscal) {
+    r.put("/tax/corporate/:year/config", ...canTax, wrap(async (req, res) => {
+      const b = corporateConfigSchema.parse(body(req));
+      const saved = await tax.saveCorporateYear(year.parse(req.params.year), { regime: b.regime, brackets: b.brackets, netTurnoverCents: b.netTurnoverCents ?? null, capReserveEquityIncreaseCents: b.capReserveEquityIncreaseCents ?? null, capReserveRateBp: b.capReserveRateBp ?? null, capReserveLimitBp: b.capReserveLimitBp ?? null, levellingReserveCents: b.levellingReserveCents ?? null, notes: b.notes ?? null, expectedVersion: b.expectedVersion ?? null }, actorOf(req));
+      res.json({ item: saved });
+    }));
+    r.post("/tax/corporate/:year/entry", ...canTax, bigJson, wrap(async (req, res) => {
+      const b = z
+        .object({
+          origin: z.enum(CORPORATE_ENTRY_ORIGINS),
+          date,
+          currentTaxCents: cents.optional(),
+          deferredTaxCents: z.number().int().optional(),
+          withholdingsAndPaymentsCents: cents.optional(),
+          note: z.string().max(500).nullable().optional(),
+          document: z.object({ filename: z.string().min(1).max(255), contentBase64: z.string().min(1) }).strict().nullable().optional(),
+        })
+        .strict()
+        .parse(body(req));
+      const out = await tax.corporateEntry(year.parse(req.params.year), b, actorOf(req));
+      res.status(201).json({ item: corporateEntryDto(out.record, await tax.entryNumber(out.record.entryId)), warnings: out.warnings });
+    }));
+    r.post("/tax/corporate/:year/entry/reverse", ...canTax, wrap(async (req, res) => {
+      const b = z.object({ reason: z.string().max(300) }).strict().parse(body(req));
+      const e = await tax.reverseCorporateEntry(year.parse(req.params.year), b.reason, actorOf(req));
+      res.json({ item: corporateEntryDto(e, await tax.entryNumber(e.entryId)) });
+    }));
+  }
   r.post("/tax/corporate/:year/adjustments", ...canTax, wrap(async (req, res) => {
     const b = z.object({ id: z.number().int().positive().optional(), kind: z.enum(ADJUSTMENT_KINDS), description: z.string().max(300), amountCents: cents, originYear: z.number().int().min(1990).max(2100).nullable().optional() }).strict().parse(body(req));
     const a = await tax.saveAdjustment(year.parse(req.params.year), b, actorOf(req));

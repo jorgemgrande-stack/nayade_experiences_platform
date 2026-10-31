@@ -11,7 +11,7 @@
  */
 import { addDays, daysBetween } from "./opsRules";
 import { BOM, csvText, esDate, eur } from "./rules";
-import type { DailyCounts, LedgerFact, PayableDoc, StripeMonthFact, TransferMonthFact, TreasuryFact } from "./analysisTypes";
+import type { DailyCounts, LedgerFact, PayableDoc, StripeFeesTreatment, StripeMonthFact, TransferMonthFact, TreasuryFact } from "./analysisTypes";
 import { FinanceError } from "./types";
 
 const bad = (m: string) => new FinanceError("invalid_input", m);
@@ -765,12 +765,14 @@ export function buildExpenseGroups(i: { facts: ReadonlyArray<LedgerFact>; compar
 // ── Coste directo ────────────────────────────────────────────────────────────────────────────────────────────────
 
 /**
- * Marca de coste directo de una categoría: la fijada por el operador o, si es NULL («según cuenta»), coste directo si su
- * cuenta es 626 (servicios bancarios y comisiones de cobro) o su nombre es de hosting o infraestructura.
+ * Marca de coste directo de una categoría: la fijada por el operador o, si es NULL («según cuenta»), solo la sugerencia
+ * por nombre (hosting o infraestructura). CRM 0039: la cuenta 626 ya NO lo marca por sí sola: una comisión bancaria es
+ * coste directo, estructura o gasto financiero según su naturaleza, y lo decide el operador categoría a categoría (las
+ * comisiones de Stripe van según `stripe_fees_treatment` de /analysis/settings).
  */
 export function resolveDirectCost(c: { name: string; accountCode: string; isDirectCost: boolean | null }): boolean {
   if (c.isDirectCost !== null) return c.isDirectCost;
-  return c.accountCode.startsWith("626") || /hosting|infraestructura/i.test(c.name);
+  return /hosting|infraestructura/i.test(c.name);
 }
 
 // ── Revenue & Margin ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -785,6 +787,8 @@ export interface RevenueMarginMonth {
   stripeFeesCents: number;
   stripeFeesPct: number | null;
   directCostsCents: number;
+  /** CRM 0039: gastos financieros del análisis (66x y, con `financial`, las comisiones de Stripe), fuera del margen. */
+  financialCostsCents: number;
   grossMarginCents: number;
   grossMarginPct: number | null;
   structureCostsCents: number;
@@ -793,12 +797,14 @@ export interface RevenueMarginMonth {
 }
 
 /**
- * Revenue & Margin por mes desde el libro: margen bruto = devengado − comisiones de Stripe (626 de origen stripe) −
- * costes directos (líneas de gasto de categorías de coste directo); estructura = resto del grupo 6; resultado =
+ * Revenue & Margin por mes desde el libro: margen bruto = devengado − comisiones de Stripe (626 de origen stripe, con
+ * `direct_cost`) − costes directos (líneas de gasto de categorías de coste directo); gastos financieros = 66x (y las
+ * comisiones de Stripe con `financial`); estructura = resto del grupo 6 (y las comisiones con `structure`); resultado =
  * devengado + otros ingresos (resto del grupo 7) − todo el grupo 6 (sin regularización ni cierre).
  */
-export function buildRevenueMargin(i: { facts: ReadonlyArray<LedgerFact>; months: string[]; directCategories: ReadonlySet<number>; stripe: ReadonlyArray<StripeMonthFact> | null; transfers: ReadonlyArray<TransferMonthFact> | null }) {
-  const rows: RevenueMarginMonth[] = i.months.map((month) => ({ month, label: monthLabel(month), accruedRevenueCents: 0, collectedCents: 0, stripeFeesCents: 0, stripeFeesPct: null, directCostsCents: 0, grossMarginCents: 0, grossMarginPct: null, structureCostsCents: 0, otherIncomeCents: 0, resultCents: 0 }));
+export function buildRevenueMargin(i: { facts: ReadonlyArray<LedgerFact>; months: string[]; directCategories: ReadonlySet<number>; stripe: ReadonlyArray<StripeMonthFact> | null; transfers: ReadonlyArray<TransferMonthFact> | null; stripeFeesTreatment?: StripeFeesTreatment }) {
+  const treatment = i.stripeFeesTreatment ?? "direct_cost";
+  const rows: RevenueMarginMonth[] = i.months.map((month) => ({ month, label: monthLabel(month), accruedRevenueCents: 0, collectedCents: 0, stripeFeesCents: 0, stripeFeesPct: null, directCostsCents: 0, financialCostsCents: 0, grossMarginCents: 0, grossMarginPct: null, structureCostsCents: 0, otherIncomeCents: 0, resultCents: 0 }));
   const mi = new Map(i.months.map((m, n) => [m, n]));
   const expenses = i.months.map(() => 0);
   for (const f of i.facts) {
@@ -811,6 +817,7 @@ export function buildRevenueMargin(i: { facts: ReadonlyArray<LedgerFact>; months
       const v = f.debitCents - f.creditCents;
       expenses[n] += v;
       if (f.accountCode.startsWith("626") && f.origin === "stripe") r.stripeFeesCents += v;
+      else if (f.accountCode.startsWith("66")) r.financialCostsCents += v;
       else if (f.categoryId !== null && i.directCategories.has(f.categoryId)) r.directCostsCents += v;
     }
   }
@@ -825,9 +832,12 @@ export function buildRevenueMargin(i: { facts: ReadonlyArray<LedgerFact>; months
   }
   rows.forEach((r, n) => {
     r.stripeFeesPct = pctOf(r.stripeFeesCents, r.collectedCents);
-    r.grossMarginCents = r.accruedRevenueCents - r.stripeFeesCents - r.directCostsCents;
+    // Las comisiones de Stripe: en el margen (coste del cobro), en estructura o en el resultado financiero del análisis
+    const feesInMargin = treatment === "direct_cost" ? r.stripeFeesCents : 0;
+    if (treatment === "financial") r.financialCostsCents += r.stripeFeesCents;
+    r.grossMarginCents = r.accruedRevenueCents - feesInMargin - r.directCostsCents;
     r.grossMarginPct = pctOf(r.grossMarginCents, r.accruedRevenueCents);
-    r.structureCostsCents = expenses[n] - r.stripeFeesCents - r.directCostsCents;
+    r.structureCostsCents = expenses[n] - feesInMargin - r.directCostsCents - r.financialCostsCents;
     r.resultCents = r.accruedRevenueCents + r.otherIncomeCents - expenses[n];
   });
   const total = (k: keyof RevenueMarginMonth) => sum(rows.map((r) => r[k] as number));
@@ -843,6 +853,7 @@ export function buildRevenueMargin(i: { facts: ReadonlyArray<LedgerFact>; months
       stripeFeesCents: fees,
       stripeFeesPct: collectedAvailable ? pctOf(fees, collected) : null,
       directCostsCents: total("directCostsCents"),
+      financialCostsCents: total("financialCostsCents"),
       grossMarginCents: gross,
       grossMarginPct: pctOf(gross, accrued),
       structureCostsCents: total("structureCostsCents"),
@@ -958,6 +969,8 @@ export function dailyAlerts(c: Partial<Record<keyof DailyCounts, number | null>>
   add("payments_due_today", "warning", c.paymentsDueToday, (n) => `${plural(n, "pago vence", "pagos vencen")} hoy`);
   add("tax_due_soon", "info", c.taxDueNext15, (n) => `${plural(n, "obligación fiscal vence", "obligaciones fiscales vencen")} en los próximos 15 días`);
   add("draft_entries", "info", c.draftEntries, (n) => `${plural(n, "asiento en borrador", "asientos en borrador")}`);
+  // CRM 0039: nada se contabiliza a ciegas
+  add("fee_vat_unset", "warning", c.stripeFeeVatUnset, (n) => `${plural(n, "transacción de Stripe", "transacciones de Stripe")} sin tratamiento del IVA de su comisión: no se contabiliza${n === 1 ? "" : "n"} hasta configurarlo`);
   add("payments_due_next7", "info", c.paymentsDueNext7, (n) => `${plural(n, "pago vence", "pagos vencen")} en los próximos 7 días`);
   return out;
 }
@@ -1031,8 +1044,8 @@ export function expensesCsv(e: { months: string[]; items: ReadonlyArray<{ name: 
 }
 
 export function revenueMarginCsv(r: { months: ReadonlyArray<Omit<RevenueMarginMonth, "collectedCents" | "stripeFeesPct"> & { collectedCents: number | null; stripeFeesPct: number | null }> }): string {
-  const rows = r.months.map((m) => [m.label, eur(m.accruedRevenueCents), opt(m.collectedCents), eur(m.stripeFeesCents), pct(m.stripeFeesPct), eur(m.directCostsCents), eur(m.grossMarginCents), pct(m.grossMarginPct), eur(m.structureCostsCents), eur(m.otherIncomeCents), eur(m.resultCents)]);
-  return csvOf(["Mes", "Ingresos devengados", "Cobrado", "Comisiones de Stripe", "Comisiones %", "Costes directos", "Margen bruto", "Margen bruto %", "Gastos de estructura", "Otros ingresos", "Resultado"], rows);
+  const rows = r.months.map((m) => [m.label, eur(m.accruedRevenueCents), opt(m.collectedCents), eur(m.stripeFeesCents), pct(m.stripeFeesPct), eur(m.directCostsCents), eur(m.grossMarginCents), pct(m.grossMarginPct), eur(m.structureCostsCents), eur(m.otherIncomeCents), eur(m.resultCents), eur(m.financialCostsCents)]);
+  return csvOf(["Mes", "Ingresos devengados", "Cobrado", "Comisiones de Stripe", "Comisiones %", "Costes directos", "Margen bruto", "Margen bruto %", "Gastos de estructura", "Otros ingresos", "Resultado", "Gastos financieros"], rows);
 }
 
 export function conversionCsv(c: ReturnType<typeof buildConversion>): string {
@@ -1073,8 +1086,11 @@ export function dailyCsv(d: { date: string; counts: Partial<Record<keyof DailyCo
     taxDueNext15: "Obligaciones fiscales en 15 días",
     taxOverdue: "Obligaciones fiscales vencidas",
     draftEntries: "Asientos en borrador",
+    stripeFeeVatUnset: "Transacciones de Stripe sin tratamiento del IVA de la comisión",
   };
-  const rows = DAILY_COUNT_KEYS.map((k) => [esDate(d.date), csvText(labels[k]), d.counts[k] === null || d.counts[k] === undefined ? "" : String(d.counts[k])]);
+  // CRM 0039: la fila de las comisiones sin tratamiento solo aparece con la migración (si el recuento viene)
+  const keys: Array<keyof DailyCounts> = [...DAILY_COUNT_KEYS, ...("stripeFeeVatUnset" in d.counts ? (["stripeFeeVatUnset"] as const) : [])];
+  const rows = keys.map((k) => [esDate(d.date), csvText(labels[k]), d.counts[k] === null || d.counts[k] === undefined ? "" : String(d.counts[k])]);
   for (const a of d.alerts) rows.push([esDate(d.date), csvText(`Aviso: ${a.message}`), String(a.count)]);
   return csvOf(["Fecha", "Concepto", "Valor"], rows);
 }

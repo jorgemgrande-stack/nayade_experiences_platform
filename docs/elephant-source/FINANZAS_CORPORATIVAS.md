@@ -542,10 +542,11 @@ oculta esas páginas con `hiddenRoutes`). Sin Stripe (0036), lo que depende de S
   factura), con los pagos hasta esa fecha. Tramos `current` (no vencido), `d0_30`, `d31_60`, `d61_90`, `d90_plus`.
 - **Gastos:** grupo 6 del libro; por categoría (la del gasto cuyo asiento o reversión contiene la línea; el resto, por su
   cuenta «sin categoría»), por centro de coste o por proveedor.
-- **Coste directo:** `fin_expense_categories.is_direct_cost` NULL = «según cuenta»: coste directo si la cuenta es 626 o el
-  nombre es de hosting o infraestructura. Por defecto lo son «Hosting e infraestructura en la nube», «Comisiones de
-  pasarelas de pago» y «Comisiones bancarias» (626); el operador lo cambia con `PATCH /finance/categories/:id
-  {isDirectCost}` (`null` vuelve a «según cuenta»). La migración no escribe filas.
+- **Coste directo:** `fin_expense_categories.is_direct_cost` NULL = «según cuenta». Desde la parametrización fiscal
+  (0039) la cuenta 626 **ya no** marca coste directo por sí sola: con NULL solo lo son las categorías de hosting o
+  infraestructura (sugerencia por el nombre); el operador decide el resto con `PATCH /finance/categories/:id
+  {isDirectCost}` (`null` vuelve a «según cuenta»). Las comisiones de Stripe van según `stripe_fees_treatment` (ver
+  §Parametrización fiscal). La migración no escribe filas.
 - **Revenue & Margin:** devengado = 70x del libro; cobrado = cobros de Stripe netos de reembolsos (bruto) + transferencias
   conciliadas; comisiones de Stripe = 626 de origen `stripe` (y su % sobre lo cobrado); margen bruto = devengado −
   comisiones − costes directos; estructura = resto del grupo 6; resultado = devengado + otros ingresos − grupo 6 (igual que
@@ -590,6 +591,148 @@ Valores: `granularity` = `month` | `quarter` | `year`; `compare` = `none` | `pre
 60 o 90 (90 por defecto; 0 = sin previsión); `side` = `receivable` | `payable`; `groupBy` = `category` | `costCenter` |
 `supplier`. Los ámbitos de cada palabra están en «Permisos». El detalle de cada objeto está en las pruebas de formas
 (`server/finance/analysisApi.test.ts`).
+
+## Parametrización fiscal (previa a los datos reales)
+
+Regla de oro: **nada fiscal se presupone**. Si una regla no está configurada, el sistema avisa y no contabiliza a
+ciegas; nunca elige por el operador. Migración `0039_finance_fiscal.sql` (aditiva: dos `ALTER TABLE … ADD COLUMN` NULL y
+cinco tablas nuevas, sin escribir filas). Sin ella el arranque registra `{ctx:"FinanceFiscal", mounted:false,
+reason:"migration_0039_missing"}`, todo funciona como antes y las rutas nuevas responden 404.
+
+| Pieza | Fichero | Qué hace |
+|---|---|---|
+| Reglas puras | `opsRules.ts`, `stripeRules.ts`, `taxRules.ts`, `analysisRules.ts` | Tratamiento del IVA del gasto y su autoliquidación, resolución del IVA de las comisiones de Stripe, 303/349/347/libro con el tratamiento, presets y escala del 200, reservas, asiento del 200, Revenue & Margin por tratamiento |
+| Almacenes | `opsStore.ts`, `stripeStore.ts`, `taxStore.ts`, `analysisStore.ts` | Columnas y tablas de la 0039 (solo con `fiscal`: la presencia de la migración se comprueba al arrancar con `finFiscalTablesReady`) |
+| Servicios | `opsService.ts`, `stripeService.ts`, `taxService.ts`, `analysisService.ts` | Validaciones, puertas, vista previa sin escrituras, asiento del 200 |
+| Pruebas | `fiscalRules.test.ts`, `fiscalService.test.ts`, `fiscalApi.test.ts`, `fiscal.mysql.test.ts` | Reglas, servicios en memoria, API con permisos y formas, MySQL real (0039 sobre 0033–0038 y vista previa sin escrituras) |
+
+### 0. Validación de la configuración fiscal (puerta para datos reales)
+`fin_tax_settings.validated_at/validated_by/validation_note`. `POST /tax/settings/validate {note}` (finance:config, sesión
+de operador) la marca validada con la gestoría (queda en `fin_tax_settings_log` y en la auditoría). **Cualquier**
+`PATCH /tax/settings` posterior la anula en el mismo guardado (traza: historial y auditoría `tax.settings.invalidated`).
+Mientras no esté validada, los borradores se calculan y se ven con el aviso `tax_config_not_validated` («Borrador ·
+configuración fiscal sin validar», no entra en la huella), pero **revisar y presentar** responden 409
+`tax_config_not_validated`; el panel fiscal lo avisa. El historial (`GET /tax/settings` → `log`) marca la validación y su
+anulación (`validation: "validated" | "invalidated"`).
+
+### 1. IVA de las comisiones de Stripe
+Modo global `stripeFeeVat`: `unset` (por defecto con la 0039, si nadie ha guardado la configuración), `exempt`,
+`reverse_charge`, `domestic` (la entidad de Stripe factura con IVA español: el IVA soportado sale de su factura registrada
+como gasto) y `per_invoice` (lo da la factura mensual de comisiones registrada como gasto, con su tratamiento). Con
+`domestic` y `per_invoice` la importación solo lleva la comisión a 626, sin líneas de IVA; el código siempre escribe el
+valor explícito (la columna conserva su valor por defecto de la fase 2, que no se usa).
+
+Reglas `fin_stripe_fee_vat_rules` por tipo de comisión (tipo normalizado o el del informe: `charge`, `refund`,
+`stripe_fee`, `application_fee`, `adjustment`… o `*`), emisor (nombre, país, NIF-IVA), tratamiento, tipo, vigencia y
+documento que lo justifica. Sin edición: se anulan (`POST /stripe/fee-vat-rules/:id/void`) y se crea otra. Resolución
+para una transacción: la regla vigente en su fecha con el tipo exacto; si no, la de `*`; si no, el modo global (entre
+varias vigentes, la de inicio más reciente). `reverse_charge` exige un emisor de otro Estado de la UE (español → 400
+`invalid_rule`: es `domestic`) y el tipo.
+
+Si el tratamiento resuelto es `unset` y la transacción tiene comisión, **no se contabiliza**: `POST /stripe/post` la deja
+pendiente (`issueDetail` empieza por `fee_vat_unset`) y la cuenta en `pendingFeeVat`; `GET /stripe/settings` trae
+`pendingFeeVatCount`; el control diario (`counts.stripeFeeVatUnset`, aviso `fee_vat_unset`), el panel fiscal y el borrador
+del 303 del periodo lo avisan. La línea de IVA autoliquidado lleva la marca del emisor de la regla aplicada
+(`emisor: Nombre (NIF-IVA)`): el 349 declara por emisor con ella (o, sin marca, con el NIF-IVA de Stripe de la
+configuración fiscal).
+
+**Vista previa** `POST /stripe/imports/preview` (finance:expenses, mismo cuerpo que `/stripe/imports`): lo que se leería,
+lo ya importado, totales en euros por tipo, cómo se resolvería el IVA de cada comisión y hasta 50 asientos propuestos.
+**Cero escrituras** (ni importación, ni transacciones, ni asientos, ni auditoría; probado contra MySQL). Es lo que se usa
+con un CSV real en production antes de importarlo.
+
+### 2. Gastos con inversión del sujeto pasivo y operaciones intracomunitarias
+`fin_expenses.vat_treatment` (NULL = interior, como hasta ahora) y `reverse_charge_rate_bp`:
+
+| Tratamiento | Factura | Asiento | 303 | 349 | 347 |
+|---|---|---|---|---|---|
+| `domestic` (o NULL) | con IVA | 472 por la cuota deducible | 28/29 | clave I si el proveedor es de la UE (como antes, con aviso de ISP sin autoliquidar a 0 %) | sí |
+| `intra_eu_services` | sin IVA | autoliquidación Debe 472 / Haber 477 | 10/11 y 36/37 | clave I | no |
+| `intra_eu_goods` | sin IVA | autoliquidación 472/477 | 10/11 y 36/37 | clave A | no |
+| `reverse_charge_domestic` | sin IVA | autoliquidación 472/477 | 12/13 y 28/29 | no | sí |
+| `non_eu_services` | sin IVA | autoliquidación 472/477 | 12/13 y 28/29 | no | (fuera de España: no) |
+| `import` | IVA del DUA | 472 por la cuota del documento aduanero | 32/33 | no | no |
+| `exempt` / `not_subject` | sin IVA | sin IVA | — | no | sí |
+
+Con ISP la factura viene sin IVA (tipo 0) y el tipo de la autoliquidación es obligatorio (400 si falta); la parte no
+deducible (`deductibleBp < 10000`) va a mayor gasto. Las líneas 472/477 llevan tipo y base; el 303 sabe que son ISP por
+el tratamiento del gasto cuyo asiento las contiene (`expenseTreatmentsByEntries`). `intra_eu_*` exige proveedor de otro
+Estado de la UE con NIF-IVA (400 `vat_id_required` si falta), y se vuelve a comprobar al registrar. La rectificativa sigue
+el tratamiento de la factura que rectifica si no se indica otro. El libro de recibidas añade las columnas «Inversión del
+sujeto pasivo» (ya existía) y «Tratamiento IVA». Las casillas 32/33 y 12/13 del 390 solo aparecen si hay importes (así la
+huella de los borradores ya presentados no cambia). Los gastos registrados antes no cambian. Las plantillas de gastos
+recurrentes no llevan tratamiento (otra tabla): su borrador nace interior y se ajusta antes de registrarlo.
+
+### 3. Impuesto sobre Sociedades por ejercicio
+`fin_tax_corporate_years` (régimen `general|nueva_creacion|erd|microempresa|otro`, tramos `[{uptoCents|null, rateBp}]` con
+el último sin tope, cifra de negocios del ejercicio anterior, reserva de capitalización —incremento de fondos propios,
+tasa y límite— y de nivelación) con versión optimista y bitácora `fin_tax_corporate_year_log` (antes/después).
+`GET /tax/corporate/presets?year` propone, con su cita y «Propuesta: confírmala con tu gestoría»: general 25 %; nueva
+creación 15 %; desde 2025, microempresa (cifra de negocios < 1 M€: 2025 21/22 %, 2026 20/21 %, 2027 19/21 %, 2028
+18/20 %, después 17/20 %, primer tramo hasta 50.000 €) y entidad de reducida dimensión (< 10 M€: 2025 24 %, 2026 23 %,
+2027 22 %, 2028 21 %, después 20 %). Se guardan los tramos, no el nombre.
+
+El 200 configurado: base previa → reserva de capitalización (art. 25 LIS: menor de incremento × tasa y base previa ×
+límite; casilla 01032; aviso permanente de dotar la reserva indisponible y mantener el incremento 3 años) → nivelación
+(solo ERD/microempresa: hasta el 10 % de la base y 1 M€) → bases negativas (límite sobre la base previa) → base imponible
+→ cuota por tramos (detalle de cada tramo en `details` y `brackets` en la API). Sin configurar: el tipo único de la
+configuración fiscal de antes con el aviso `corporate_year_unset`, y el 200 no se puede revisar ni presentar (409
+`corporate_year_unset`). Los pagos fraccionados del art. 40.3 siguen con el tipo de la configuración fiscal.
+
+### 4. Asiento del Impuesto sobre Sociedades
+`POST /tax/corporate/:year/entry` (finance:tax, operador) `{origin: system|manual|gestoria, date, currentTaxCents?,
+deferredTaxCents?, withholdingsAndPaymentsCents?, note?, document?}`, diario **IMP** (no existen GES ni OPE), origen
+`tax`: Debe 6300 (impuesto corriente) · Haber 473 (retenciones y pagos a cuenta, **hasta su saldo**; lo que exceda se
+avisa) · Haber 4752 (a ingresar) o Debe 4709 (a devolver); diferido: gasto Debe 6301 · Haber 479; ingreso Debe 4740 ·
+Haber 6301. `system` toma la cuota líquida (00592) y las retenciones y pagos fraccionados (00595 + 00598) del borrador;
+`manual`/`gestoria` los teclea el operador (sin retenciones, el saldo de la 473) y se guarda la diferencia con el borrador.
+Las cuentas que el plan sembrado no trae (6300, 6301, 474/4740 y 479) se dan de alta por código como subcuentas del PGC
+al necesitarlas (auditadas; sin UPDATE). Registro `fin_tax_corporate_entries`: `tax:200:entry:<año>` y, tras revertir,
+`tax:200:entry:<año>:<n>`; **uno vivo por ejercicio** (columna generada `live_year` con índice único). Corrección:
+`POST /tax/corporate/:year/entry/reverse {reason}` (asiento espejo) y otro nuevo. Traza: documento en `fin_documents` con
+propietario `tax_200_entry` (la columna admite 16 caracteres), bitácora de la obligación 200 (si existe) y auditoría.
+
+### 5. Comisiones bancarias por naturaleza y análisis
+`fin_analysis_settings` (una fila): `stripe_fees_treatment` `direct_cost` (por defecto: coste del cobro, en el margen) |
+`structure` | `financial` (resultado financiero del análisis, fuera del margen) y el mapa de naturalezas → cuenta:
+`servicio` 626, `cobro` 626, `financiera` 669, `intereses` 662, `custodia` 626 (editables; cuenta existente, activa,
+imputable y del grupo 6). Conciliar un movimiento sin gasto acepta `nature` en lugar de `accountCode`
+(`POST /bank-movements/:id/match {type, nature, description?}`): se resuelve a la cuenta configurada y la naturaleza queda
+en la descripción del asiento («· naturaleza: …») y en la auditoría. Revenue & Margin añade `financialCostsCents`
+(66x y, con `financial`, las comisiones de Stripe) y `stripeFeesTreatment`; la estructura ya no incluye los 66x. La
+cuenta de resultados sigue el PGC (669/662 ya son resultado financiero).
+
+### API de la parametrización fiscal (formas exactas)
+
+| Ruta | Permiso | Petición | Respuesta |
+|---|---|---|---|
+| `POST /tax/settings/validate` | config + operador | `{note}` (3–500) | `{item: TaxSettings}` con `validatedAt, validatedBy, validationNote` |
+| `GET /tax/corporate/presets?year` | read | — | `{items: [{key, regime, label, brackets, capReserveLimitBp, citation, notice}]}` |
+| `PUT /tax/corporate/:year/config` | tax + operador | `{regime, brackets:[{uptoCents|null, rateBp}], netTurnoverCents?, capReserveEquityIncreaseCents?, capReserveRateBp?, capReserveLimitBp?, levellingReserveCents?, notes?, expectedVersion?}` | `{item: {year, regime, brackets, netTurnoverCents, capReserveEquityIncreaseCents, capReserveRateBp, capReserveLimitBp, levellingReserveCents, notes, configuredBy, configuredAt, version}}` |
+| `POST /tax/corporate/:year/entry` | tax + operador | `{origin, date, currentTaxCents?, deferredTaxCents?, withholdingsAndPaymentsCents?, note?, document?:{filename, contentBase64}}` | 201 `{item: CorporateEntry, warnings: string[]}` |
+| `POST /tax/corporate/:year/entry/reverse` | tax + operador | `{reason}` | `{item: CorporateEntry}` |
+| `POST /stripe/imports/preview` | expenses | `{kind, filename, contentBase64}` | `{kind, filename, rows, parsed, skipped, warnings:[{line, message}], alreadyImported, previousImportId, duplicates, nonEur, sample, totals:{grossCents, feeCents, netCents, byType}, feeVat:{resolved, unset}|null, wouldPost:[{balanceTransactionId, date, description, lines:[{account, debitCents, creditCents}]}]}` |
+| `GET /stripe/fee-vat-rules` | read | — | `{items: Rule[]}` |
+| `POST /stripe/fee-vat-rules` | config + operador | `{feeKind, issuerName, issuerCountry, issuerVatId?, treatment, rateBp?, validFrom, validTo?, documentRef?, note?}` | 201 `{item: Rule}` |
+| `POST /stripe/fee-vat-rules/:id/void` | config + operador | `{reason}` | `{item: Rule}` |
+| `GET /analysis/settings` | read | — | `{item: {stripeFeesTreatment, bankFeeAccounts, natures:[{key, label, accountCode}], configuredBy, configuredAt}}` |
+| `PATCH /analysis/settings` | config + operador | `{stripeFeesTreatment?, bankFeeAccounts?: {servicio?, cobro?, financiera?, intereses?, custodia?}}` | igual que el GET |
+
+`Rule` = `{id, feeKind, issuerName, issuerCountry, issuerVatId, treatment, rateBp, validFrom, validTo, documentRef, note,
+createdBy, createdAt, voidedBy, voidedAt, voidReason, active}`. `CorporateEntry` = `{entryId, entryNumber, origin,
+currentTaxCents, deferredTaxCents, date, createdBy, createdAt, documentId, differenceFromDraftCents}` más `id, year,
+sourceKey, withholdingsCents, draftCurrentTaxCents, note, reversalEntryId, reversedAt, reversedBy, reverseReason`.
+
+Cambios en formas existentes (con la 0039): `GET /tax/settings` → `item` con `validatedAt, validatedBy, validationNote`;
+los borradores (`draft` de una obligación, `/tax/models/:model/preview`, `/tax/corporate/:year`) añaden al principio de
+`warnings` `{code:"tax_config_not_validated"}` mientras no esté validada; `GET /tax/corporate/:year` → `item` añade
+`config, configLog, presets, capitalizationReserveCents, brackets:[{fromCents, uptoCents, rateBp, baseCents, quotaCents}],
+entry, entryHistory`; `GET /stripe/settings` → `item.pendingFeeVatCount` y `stripeFeeVat` con los cinco valores;
+`POST /stripe/post` → `pendingFeeVat`; `POST|PATCH /expenses` aceptan `vatTreatment, reverseChargeRateBp` y las fichas
+los devuelven; `POST /bank-movements/:id/match` acepta `{type, nature, description?}`; `GET /daily` → `counts` añade
+`stripeFeeVatUnset`; `GET /analytics/revenue-margin` añade `stripeFeesTreatment` y `financialCostsCents` (meses, totales
+y acumulado); el panel fiscal avisa `tax_config_not_validated` y `fee_vat_unset`. Errores nuevos: 409
+`tax_config_not_validated`, 409 `corporate_year_unset`, 400 `vat_id_required`, 400 `invalid_rule`.
 
 ## Permisos
 
@@ -638,7 +781,8 @@ de la ruta (sin identificadores) y sin cuerpo ni parámetros. `reason` = `missin
 ## Fases siguientes
 
 - **2 · Cobros y conciliación:** implementada (ver arriba). Pendiente: lector por API de Stripe (punto de extensión).
-- **3 · Gestoría e impuestos:** implementada (ver arriba). Pendiente: ejercicio no natural, 303 mensual afinado,
-  autoliquidación de la ISP de gastos de la UE y asiento del gasto por Impuesto sobre Sociedades.
+- **3 · Gestoría e impuestos:** implementada (ver arriba). La autoliquidación de la ISP de los gastos y el asiento del
+  Impuesto sobre Sociedades llegan con la parametrización fiscal (0039). Pendiente: ejercicio no natural, 303 mensual
+  afinado, tratamiento del IVA en las plantillas de gastos recurrentes y el art. 40.3 con escala por tramos.
 - **4 · Análisis:** implementada (ver arriba). Pendiente: embudo comercial prueba → pago cuando `/revenue/metrics` lo
   publique, y vencimiento propio de las facturas emitidas (hoy la antigüedad y la previsión cuentan desde su fecha).

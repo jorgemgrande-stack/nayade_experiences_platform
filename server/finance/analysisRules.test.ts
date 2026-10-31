@@ -376,9 +376,10 @@ describe("gastos agrupados", () => {
 });
 
 describe("coste directo, Revenue & Margin y conversión", () => {
-  it("coste directo por defecto: 626 y hosting/infraestructura; la marca del operador manda", () => {
-    expect(resolveDirectCost({ name: "Comisiones de pasarelas de pago", accountCode: "626", isDirectCost: null })).toBe(true);
-    expect(resolveDirectCost({ name: "Comisiones bancarias", accountCode: "626", isDirectCost: null })).toBe(true);
+  it("coste directo por defecto: solo hosting/infraestructura (CRM 0039: la 626 ya no lo marca sola); la marca del operador manda", () => {
+    expect(resolveDirectCost({ name: "Comisiones de pasarelas de pago", accountCode: "626", isDirectCost: null })).toBe(false);
+    expect(resolveDirectCost({ name: "Comisiones bancarias", accountCode: "626", isDirectCost: null })).toBe(false);
+    expect(resolveDirectCost({ name: "Comisiones de pasarelas de pago", accountCode: "626", isDirectCost: true })).toBe(true);
     expect(resolveDirectCost({ name: "Hosting e infraestructura en la nube", accountCode: "629", isDirectCost: null })).toBe(true);
     expect(resolveDirectCost({ name: "Software y licencias", accountCode: "629", isDirectCost: null })).toBe(false);
     expect(resolveDirectCost({ name: "Comisiones bancarias", accountCode: "626", isDirectCost: false })).toBe(false);
@@ -388,9 +389,9 @@ describe("coste directo, Revenue & Margin y conversión", () => {
   it("margen bruto = devengado − comisiones de Stripe − costes directos; resultado = el de la cuenta de resultados", () => {
     const facts = factsOf(LEDGER, { from: "2026-01-01", to: "2026-12-31", prefixes: ["6", "7"] });
     const r = buildRevenueMargin({ facts, months: ["2026-09", "2026-10"], directCategories: new Set([1]), stripe: [{ month: "2026-10", type: "charge", noInvoice: false, count: 1, grossCents: 121_000, feeCents: 3_880, netCents: 117_120 }, { month: "2026-10", type: "refund", noInvoice: false, count: 1, grossCents: -6_050, feeCents: 0, netCents: -6_050 }], transfers: [{ month: "2026-09", count: 1, amountCents: 60_500 }] });
-    expect(r.months[1]).toEqual({ month: "2026-10", label: "octubre 2026", accruedRevenueCents: 100_000, collectedCents: 114_950, stripeFeesCents: 3_880, stripeFeesPct: 3.4, directCostsCents: 50_000, grossMarginCents: 46_120, grossMarginPct: 46.1, structureCostsCents: 105_000, otherIncomeCents: 0, resultCents: -58_880 });
+    expect(r.months[1]).toEqual({ month: "2026-10", label: "octubre 2026", accruedRevenueCents: 100_000, collectedCents: 114_950, stripeFeesCents: 3_880, stripeFeesPct: 3.4, directCostsCents: 50_000, financialCostsCents: 0, grossMarginCents: 46_120, grossMarginPct: 46.1, structureCostsCents: 105_000, otherIncomeCents: 0, resultCents: -58_880 });
     expect(r.months[0]).toMatchObject({ accruedRevenueCents: 50_000, collectedCents: 60_500, grossMarginPct: 100, resultCents: 50_000 });
-    expect(r.totals).toEqual({ accruedRevenueCents: 150_000, collectedCents: 175_450, stripeFeesCents: 3_880, stripeFeesPct: 2.2, directCostsCents: 50_000, grossMarginCents: 96_120, grossMarginPct: 64.1, structureCostsCents: 105_000, otherIncomeCents: 0, resultCents: -8_880 });
+    expect(r.totals).toEqual({ accruedRevenueCents: 150_000, collectedCents: 175_450, stripeFeesCents: 3_880, stripeFeesPct: 2.2, directCostsCents: 50_000, financialCostsCents: 0, grossMarginCents: 96_120, grossMarginPct: 64.1, structureCostsCents: 105_000, otherIncomeCents: 0, resultCents: -8_880 });
     // Sin categorías directas, todo el gasto (salvo Stripe) es estructura
     const none = buildRevenueMargin({ facts, months: ["2026-10"], directCategories: new Set(), stripe: null, transfers: null });
     expect(none.months[0]).toMatchObject({ directCostsCents: 0, structureCostsCents: 155_000, collectedCents: null, stripeFeesPct: null });

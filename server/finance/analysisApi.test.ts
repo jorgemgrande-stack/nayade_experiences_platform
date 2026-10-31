@@ -205,10 +205,10 @@ describe("API /cp/v1/finance de la fase 4", () => {
 
   it("Revenue & Margin y Conversion Health: formas exactas; MRR/ARR solo con billing:read y la rentabilidad por empresa solo con usage:read", async () => {
     const admin = await call("GET", "/analytics/revenue-margin?year=2026", ADMIN);
-    expect(keys(admin.json)).toEqual(["commercial", "definitions", "months", "totals", "year", "ytd"]);
+    expect(keys(admin.json)).toEqual(["commercial", "definitions", "months", "stripeFeesTreatment", "totals", "year", "ytd"]);
     expect(admin.json.months).toHaveLength(12);
-    expect(keys(admin.json.months[0])).toEqual(["accruedRevenueCents", "collectedCents", "directCostsCents", "grossMarginCents", "grossMarginPct", "label", "month", "otherIncomeCents", "resultCents", "stripeFeesCents", "stripeFeesPct", "structureCostsCents"]);
-    expect(keys(admin.json.ytd)).toEqual(["accruedRevenueCents", "collectedCents", "directCostsCents", "grossMarginCents", "grossMarginPct", "otherIncomeCents", "resultCents", "stripeFeesCents", "stripeFeesPct", "structureCostsCents", "through"]);
+    expect(keys(admin.json.months[0])).toEqual(["accruedRevenueCents", "collectedCents", "directCostsCents", "financialCostsCents", "grossMarginCents", "grossMarginPct", "label", "month", "otherIncomeCents", "resultCents", "stripeFeesCents", "stripeFeesPct", "structureCostsCents"]);
+    expect(keys(admin.json.ytd)).toEqual(["accruedRevenueCents", "collectedCents", "directCostsCents", "financialCostsCents", "grossMarginCents", "grossMarginPct", "otherIncomeCents", "resultCents", "stripeFeesCents", "stripeFeesPct", "structureCostsCents", "through"]);
     expect(keys(admin.json.commercial)).toEqual(["label", "metrics", "topCompanies"]);
     expect(keys(admin.json.commercial.metrics)).toEqual(["arrCents", "available", "churn", "collected", "currency", "mrrCents", "payingCompanies", "windowDays"]);
     expect(keys(admin.json.commercial.topCompanies)).toEqual(["complete", "days", "items"]);

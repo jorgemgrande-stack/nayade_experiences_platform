@@ -28,6 +28,7 @@ import {
   type PaymentRowStatus,
   type RecurringExpense,
   type Supplier,
+  type VatTreatment,
 } from "./opsTypes";
 import { FinanceError } from "./types";
 
@@ -65,7 +66,7 @@ export interface MovementQuery {
 }
 
 export type NewExpense = Omit<Expense, "id" | "registeredBy" | "registeredAt" | "voidedBy" | "voidedAt" | "voidReason" | "entryId" | "paidCents" | "paymentStatus" | "status"> & { status?: "draft" };
-export type ExpenseEdit = Partial<Pick<Expense, "supplierId" | "categoryId" | "costCenterId" | "invoiceNumber" | "invoiceDate" | "accrualDate" | "dueDate" | "description" | "baseCents" | "taxRateBp" | "taxCents" | "deductibleBp" | "withholdingRateBp" | "withholdingCents" | "totalCents" | "kind" | "rectifiesExpenseId">>;
+export type ExpenseEdit = Partial<Pick<Expense, "supplierId" | "categoryId" | "costCenterId" | "invoiceNumber" | "invoiceDate" | "accrualDate" | "dueDate" | "description" | "baseCents" | "taxRateBp" | "taxCents" | "deductibleBp" | "withholdingRateBp" | "withholdingCents" | "totalCents" | "kind" | "rectifiesExpenseId" | "vatTreatment" | "reverseChargeRateBp">>;
 export type SupplierEdit = Partial<Omit<Supplier, "id" | "createdAt" | "createdBy">>;
 export type RecurringEdit = Partial<Omit<RecurringExpense, "id" | "createdAt" | "createdBy">>;
 
@@ -101,6 +102,8 @@ export interface FinanceOpsStore {
   existingExpenseSources(keys: string[]): Promise<Set<string>>;
   /** Registrados con algo pendiente (para sugerencias), como mucho `limit`. */
   openExpenses(limit: number): Promise<ExpenseRow[]>;
+  /** Tratamiento del IVA de los gastos cuyo asiento es uno de estos (CRM 0039; null = interior). */
+  expenseTreatmentsByEntries(entryIds: number[]): Promise<Map<number, VatTreatment | null>>;
 
   listPayments(expenseIds: number[]): Promise<ExpensePayment[]>;
   getPayment(id: number): Promise<ExpensePayment | null>;
@@ -342,6 +345,10 @@ export class MemoryFinanceOpsStore implements FinanceOpsStore {
   async existingExpenseSources(keys: string[]) {
     const set = new Set(keys);
     return new Set(this.expenses.filter((e) => e.sourceKey && set.has(e.sourceKey)).map((e) => e.sourceKey!));
+  }
+  async expenseTreatmentsByEntries(entryIds: number[]) {
+    const want = new Set(entryIds);
+    return new Map(this.expenses.filter((e) => e.entryId !== null && want.has(e.entryId)).map((e) => [e.entryId!, e.vatTreatment ?? null]));
   }
   async openExpenses(limit: number) {
     return this.expenses
@@ -600,6 +607,9 @@ const expenseRow = (r: Row): ExpenseRow => ({
   currency: String(r.currency),
   kind: r.kind as Expense["kind"],
   rectifiesExpenseId: numOrNull(r.rectifies_expense_id),
+  // CRM 0039: sin la migración las columnas no se leen y quedan en null (interior)
+  vatTreatment: (strOrNull(r.vat_treatment) as VatTreatment | null) ?? null,
+  reverseChargeRateBp: numOrNull(r.reverse_charge_rate_bp),
   status: r.status as ExpenseStatus,
   entryId: numOrNull(r.entry_id),
   paymentStatus: r.payment_status as ExpensePaymentStatus,
@@ -714,7 +724,12 @@ const EXPENSE_FIELDS: Record<keyof ExpenseEdit, string> = {
   totalCents: "total_cents",
   kind: "kind",
   rectifiesExpenseId: "rectifies_expense_id",
+  vatTreatment: "vat_treatment",
+  reverseChargeRateBp: "reverse_charge_rate_bp",
 };
+/** Columnas de la parametrización fiscal (CRM 0039): solo se leen y escriben con la migración aplicada. */
+const FISCAL_EXPENSE_COLS = ", x.vat_treatment, x.reverse_charge_rate_bp";
+const { vatTreatment: _vt, reverseChargeRateBp: _rc, ...LEGACY_EXPENSE_FIELDS } = EXPENSE_FIELDS;
 const SUPPLIER_FIELDS: Record<keyof SupplierEdit, string> = {
   name: "name",
   legalName: "legal_name",
@@ -761,7 +776,17 @@ function setClause<T extends object>(p: T, fields: Record<string, string>): { sq
 }
 
 export class MysqlFinanceOpsStore implements FinanceOpsStore {
-  constructor(private pool: mysql.Pool) {}
+  /** `fiscal`: la migración 0039 está aplicada (tratamiento del IVA de los gastos); sin ella, el esquema anterior. */
+  constructor(
+    private pool: mysql.Pool,
+    private readonly opts: { fiscal?: boolean } = {},
+  ) {}
+  private get expenseCols() {
+    return this.opts.fiscal ? EXPENSE_COLS + FISCAL_EXPENSE_COLS : EXPENSE_COLS;
+  }
+  private get expenseFields(): Partial<Record<keyof ExpenseEdit, string>> {
+    return this.opts.fiscal ? EXPENSE_FIELDS : LEGACY_EXPENSE_FIELDS;
+  }
 
   private async one<T>(sql: string, args: unknown[], map: (r: Row) => T): Promise<T | null> {
     const [rows] = await this.pool.query<Row[]>(sql, args);
@@ -866,31 +891,32 @@ export class MysqlFinanceOpsStore implements FinanceOpsStore {
     const p = page(q.limit, q.offset);
     const dir = q.dir === "asc" ? "ASC" : "DESC";
     const [[count]] = await this.pool.query<Row[]>(`SELECT COUNT(*) AS n FROM ${EXPENSE_FROM} ${where}`, a);
-    const [rows] = await this.pool.query<Row[]>(`SELECT ${EXPENSE_COLS} FROM ${EXPENSE_FROM} ${where} ORDER BY ${EXPENSE_SORT[q.sort ?? "invoiceDate"]} ${dir}, x.id ${dir} LIMIT ? OFFSET ?`, [...a, p.limit, p.offset]);
+    const [rows] = await this.pool.query<Row[]>(`SELECT ${this.expenseCols} FROM ${EXPENSE_FROM} ${where} ORDER BY ${EXPENSE_SORT[q.sort ?? "invoiceDate"]} ${dir}, x.id ${dir} LIMIT ? OFFSET ?`, [...a, p.limit, p.offset]);
     return { items: rows.map(expenseRow), total: num(count.n) };
   }
   getExpense(id: number) {
-    return this.one(`SELECT ${EXPENSE_COLS} FROM ${EXPENSE_FROM} WHERE x.id = ?`, [id], expenseRow);
+    return this.one(`SELECT ${this.expenseCols} FROM ${EXPENSE_FROM} WHERE x.id = ?`, [id], expenseRow);
   }
   async getExpensesByIds(ids: number[]) {
     if (!ids.length) return [];
-    const [rows] = await this.pool.query<Row[]>(`SELECT ${EXPENSE_COLS} FROM ${EXPENSE_FROM} WHERE x.id IN (?)`, [ids]);
+    const [rows] = await this.pool.query<Row[]>(`SELECT ${this.expenseCols} FROM ${EXPENSE_FROM} WHERE x.id IN (?)`, [ids]);
     return rows.map(expenseRow);
   }
   async insertExpense(e: NewExpense) {
     if (e.sourceKey) {
-      const cur = await this.one(`SELECT ${EXPENSE_COLS} FROM ${EXPENSE_FROM} WHERE x.source_key = ?`, [e.sourceKey], expenseRow);
+      const cur = await this.one(`SELECT ${this.expenseCols} FROM ${EXPENSE_FROM} WHERE x.source_key = ?`, [e.sourceKey], expenseRow);
       if (cur) return { expense: cur, created: false };
     }
     try {
+      const fiscal = this.opts.fiscal ? { cols: ", vat_treatment, reverse_charge_rate_bp", marks: ",?,?", args: [e.vatTreatment ?? null, e.reverseChargeRateBp ?? null] } : { cols: "", marks: "", args: [] };
       const [r] = await this.pool.query<mysql.ResultSetHeader>(
-        "INSERT INTO fin_expenses (supplier_id, category_id, cost_center_id, invoice_number, invoice_date, accrual_date, due_date, description, base_cents, tax_rate_bp, tax_cents, deductible_bp, withholding_rate_bp, withholding_cents, total_cents, paid_cents, currency, kind, rectifies_expense_id, status, payment_status, source_key, created_by, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,?,?,?,'draft','pending',?,?,?)",
-        [e.supplierId, e.categoryId, e.costCenterId, e.invoiceNumber, e.invoiceDate, e.accrualDate, e.dueDate, e.description, e.baseCents, e.taxRateBp, e.taxCents, e.deductibleBp, e.withholdingRateBp, e.withholdingCents, e.totalCents, e.currency, e.kind, e.rectifiesExpenseId, e.sourceKey, e.createdBy, e.createdAt],
+        `INSERT INTO fin_expenses (supplier_id, category_id, cost_center_id, invoice_number, invoice_date, accrual_date, due_date, description, base_cents, tax_rate_bp, tax_cents, deductible_bp, withholding_rate_bp, withholding_cents, total_cents, paid_cents, currency, kind, rectifies_expense_id, status, payment_status, source_key, created_by, created_at${fiscal.cols}) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,?,?,?,'draft','pending',?,?,?${fiscal.marks})`,
+        [e.supplierId, e.categoryId, e.costCenterId, e.invoiceNumber, e.invoiceDate, e.accrualDate, e.dueDate, e.description, e.baseCents, e.taxRateBp, e.taxCents, e.deductibleBp, e.withholdingRateBp, e.withholdingCents, e.totalCents, e.currency, e.kind, e.rectifiesExpenseId, e.sourceKey, e.createdBy, e.createdAt, ...fiscal.args],
       );
       return { expense: (await this.getExpense(r.insertId))!, created: true };
     } catch (err) {
       if (isDup(err) && e.sourceKey && dupKeyOf(err).includes("uq_fin_expense_source")) {
-        const cur = await this.one(`SELECT ${EXPENSE_COLS} FROM ${EXPENSE_FROM} WHERE x.source_key = ?`, [e.sourceKey], expenseRow);
+        const cur = await this.one(`SELECT ${this.expenseCols} FROM ${EXPENSE_FROM} WHERE x.source_key = ?`, [e.sourceKey], expenseRow);
         if (cur) return { expense: cur, created: false };
       }
       if (isDup(err)) throw dupConflict(NUMBER_TAKEN);
@@ -898,7 +924,7 @@ export class MysqlFinanceOpsStore implements FinanceOpsStore {
     }
   }
   async patchDraftExpense(id: number, p: ExpenseEdit) {
-    const s = setClause(p, EXPENSE_FIELDS);
+    const s = setClause(p, this.expenseFields);
     if (s.sql) {
       let r: mysql.ResultSetHeader;
       try {
@@ -944,8 +970,15 @@ export class MysqlFinanceOpsStore implements FinanceOpsStore {
     }
     return out;
   }
+  async expenseTreatmentsByEntries(entryIds: number[]) {
+    const out = new Map<number, VatTreatment | null>();
+    if (!entryIds.length) return out;
+    const [rows] = await this.pool.query<Row[]>(`SELECT entry_id${this.opts.fiscal ? ", vat_treatment" : ""} FROM fin_expenses WHERE entry_id IN (?)`, [Array.from(new Set(entryIds))]);
+    for (const r of rows) out.set(num(r.entry_id), (strOrNull(r.vat_treatment) as VatTreatment | null) ?? null);
+    return out;
+  }
   async openExpenses(limit: number) {
-    const [rows] = await this.pool.query<Row[]>(`SELECT ${EXPENSE_COLS} FROM ${EXPENSE_FROM} WHERE x.status = 'registered' AND x.payment_status <> 'paid' ORDER BY x.id DESC LIMIT ?`, [limit]);
+    const [rows] = await this.pool.query<Row[]>(`SELECT ${this.expenseCols} FROM ${EXPENSE_FROM} WHERE x.status = 'registered' AND x.payment_status <> 'paid' ORDER BY x.id DESC LIMIT ?`, [limit]);
     return rows.map(expenseRow);
   }
 
