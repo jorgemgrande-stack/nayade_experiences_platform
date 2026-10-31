@@ -89,6 +89,15 @@ async function notInTrial() {
   if (await isTrialTenant()) throw new TRPCError({ code: "FORBIDDEN", message: TRIAL_PURCHASES_MESSAGE });
 }
 
+/**
+ * Compra aplicada (licencias ya concedidas en el registro por el plano de control): se descarta la caché de licencias
+ * de la empresa para que el panel (menú y catálogo) las vea en la siguiente consulta, sin esperar a que caduque.
+ */
+function appliedRefresh<T>(tenantId: string, r: T): T {
+  if ((r as { status?: unknown } | null)?.status === "applied") getCapabilityAccess().invalidate(tenantId);
+  return r;
+}
+
 export const subscriptionRouter = router({
   /**
    * «Mi plan»: contrato vigente (plan, periodicidad, importe), periodo y renovación, estado del cobro y facturas.
@@ -168,9 +177,9 @@ export const subscriptionRouter = router({
     .mutation(async ({ ctx, input }) => {
       await notInTrial();
       const { idempotencyKey, ...what } = input;
-      return commerce(String(ctx.user.role), (c, t) => c.purchase(t, what, { idempotencyKey, buyer: `user:${ctx.user.id}` }));
+      return commerce(String(ctx.user.role), async (c, t) => appliedRefresh(t, await c.purchase(t, what, { idempotencyKey, buyer: `user:${ctx.user.id}` })));
     }),
-  purchaseStatus: protectedProcedure.input(z.object({ orderId: z.number().int().positive() })).query(({ ctx, input }) => commerce(String(ctx.user.role), (c, t) => c.status(t, input.orderId))),
+  purchaseStatus: protectedProcedure.input(z.object({ orderId: z.number().int().positive() })).query(({ ctx, input }) => commerce(String(ctx.user.role), async (c, t) => appliedRefresh(t, await c.status(t, input.orderId)))),
   /** Bajas y reducciones a fin de periodo: qué cambiaría (sin abonos; nunca por debajo del uso real). */
   reductionPreview: protectedProcedure.input(reductionInput).mutation(async ({ ctx, input }) => {
     await notInTrial();

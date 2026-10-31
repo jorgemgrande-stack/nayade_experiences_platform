@@ -12,6 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
+import { PanelError } from "@/components/admin/PanelStates";
 import { AlertTriangle, RefreshCw, Edit2, History, Hash } from "lucide-react";
 
 const DOC_TYPE_LABELS: Record<string, string> = {
@@ -37,7 +38,7 @@ const DOC_TYPE_COLORS: Record<string, string> = {
 export default function DocumentNumbersAdmin() {
   const utils = trpc.useUtils();
 
-  const { data: counters, isLoading } = trpc.documentNumbers.getCounters.useQuery();
+  const { data: counters, isLoading, error: countersError, refetch: refetchCounters } = trpc.documentNumbers.getCounters.useQuery();
 
   // Edit prefix dialog
   const [editDialog, setEditDialog] = useState<{
@@ -118,7 +119,9 @@ export default function DocumentNumbersAdmin() {
           <CardDescription>Estado actual de cada serie de numeración</CardDescription>
         </CardHeader>
         <CardContent>
-          {isLoading ? (
+          {countersError ? (
+            <PanelError title="No se han podido cargar las series" error={countersError} onRetry={() => void refetchCounters()} />
+          ) : isLoading ? (
             <div className="text-center py-8 text-muted-foreground">Cargando contadores...</div>
           ) : (
             <Table>

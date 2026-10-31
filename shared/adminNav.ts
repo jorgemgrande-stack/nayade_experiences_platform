@@ -366,7 +366,10 @@ export const TASK_NAV: NavSection[] = [
   {
     id: "suscripcion",
     label: "Suscripción",
-    items: [{ label: "Plan y uso", href: "/admin/suscripcion", key: "t-suscripcion", icon: "rocket", roles: ADMIN }],
+    items: [
+      { label: "Plan y uso", href: "/admin/suscripcion", key: "t-suscripcion", icon: "rocket", roles: ADMIN },
+      { label: "Amplía tu empresa", href: "/admin/ampliar", key: "t-ampliar", icon: "sparkles", roles: ["admin", "agente", "monitor", "adminrest", "controler"] },
+    ],
   },
   {
     id: "ayuda",
@@ -437,17 +440,35 @@ export interface NavLicensing {
   readOnly: string[];
 }
 
+/** Modo de instalación: una sola empresa (Náyade) o multiempresa. */
+export type InstallMode = "single" | "multi";
+
+/** Clave sintética que `config.getPublicSettings` añade con el modo de instalación (no es un ajuste guardado). */
+export const INSTALL_MODE_SETTING = "panel_install_mode";
+
+/** Modo de instalación a partir de los ajustes públicos; null si aún no se sabe o no viene. */
+export function installModeFrom(settings: Record<string, string> | null | undefined): InstallMode | null {
+  const v = settings?.[INSTALL_MODE_SETTING];
+  return v === "single" || v === "multi" ? v : null;
+}
+
+export type PanelMode = "loading" | "legacy" | "tasks" | "error";
+
 /**
  * Qué menú usar:
  *  - "loading": aún no se sabe (se muestra un esqueleto, nunca el menú de otra empresa).
- *  - "legacy": modo single, empresa sin licencias por capacidad o fallo al consultarlas (la
- *    autorización la sigue haciendo el servidor).
+ *  - "legacy": el menú de siempre. SOLO en la instalación de una sola empresa o en una empresa
+ *    sin licencias por capacidad (lo dice el servidor); nunca por un fallo.
  *  - "tasks": menú por tareas filtrado por licencias.
+ *  - "error": no se ha podido consultar la suscripción fuera del modo single: se muestra un
+ *    estado de error con «Reintentar», nunca el menú, el logo ni el inicio de otra empresa.
  */
-export function navMode(o: { data?: NavLicensing | null; isLoading: boolean; isError: boolean }): "loading" | "legacy" | "tasks" {
+export function navMode(o: { data?: NavLicensing | null; isLoading: boolean; isError: boolean; install?: InstallMode | null }): PanelMode {
   if (o.data) return o.data.licensing === "capabilities" ? "tasks" : "legacy";
-  if (o.isError) return "legacy";
-  return o.isLoading ? "loading" : "legacy";
+  // En la instalación de una sola empresa la suscripción siempre es «legacy»: no hace falta esperarla
+  if (o.install === "single") return "legacy";
+  if (o.isError) return "error";
+  return "loading";
 }
 
 export function capabilityStateFrom(lic: NavLicensing | null | undefined): (id: string) => "active" | "read_only" | null {
@@ -455,3 +476,84 @@ export function capabilityStateFrom(lic: NavLicensing | null | undefined): (id: 
   const ro = new Set(lic?.readOnly ?? []);
   return (id) => (!visible.has(id) ? null : ro.has(id) ? "read_only" : "active");
 }
+
+// ── Rutas no contratadas ───────────────────────────────────────────────────────
+
+/**
+ * Rutas del panel que no están en el menú por tareas (pantallas del menú de siempre, subpáginas)
+ * con la capacidad que las licencia, según la misma tabla que aplica el servidor
+ * (server/_core/capabilities/routeGuard.ts). Basta una capacidad visible.
+ */
+export const EXTRA_ROUTE_CAPABILITIES: ReadonlyArray<{ path: string; capabilities: string[] }> = [
+  { path: "/admin/productos", capabilities: ["shop-catalog"] },
+  { path: "/admin/operaciones", capabilities: ["shop-orders"] },
+  { path: "/admin/crm/leads", capabilities: ["crm-leads"] },
+  { path: "/admin/crm/presupuestos", capabilities: ["crm-quotes"] },
+  { path: "/admin/crm/reservas", capabilities: ["shop-orders"] },
+  { path: "/admin/contabilidad", capabilities: ["bill-reports"] },
+  { path: "/admin/contabilidad/caja", capabilities: ["bill-cash"] },
+  { path: "/admin/marketing", capabilities: ["deals-coupons", "shop-coupons"] },
+  { path: "/admin/marketing/plataformas", capabilities: ["deals-coupons"] },
+  { path: "/admin/marketing/codigos-descuento", capabilities: ["shop-coupons"] },
+  { path: "/admin/fiscal", capabilities: ["travel-net"] },
+  { path: "/admin/partners", capabilities: ["supplier-settlements"] },
+  { path: "/admin/onboarding", capabilities: ["admin-panel"] },
+];
+
+const pathOf = (href: string) => href.split("?")[0].split("#")[0].replace(/\/+$/, "") || "/";
+
+/** Ruta del panel → capacidades que la licencian (unión si varias entradas comparten ruta). */
+function buildRouteCapabilities(): Map<string, Set<string>> {
+  const map = new Map<string, Set<string>>();
+  const add = (href: string, caps?: string[]) => {
+    if (!caps || caps.length === 0) return;
+    const p = pathOf(href);
+    const set = map.get(p) ?? new Set<string>();
+    for (const c of caps) set.add(c);
+    map.set(p, set);
+  };
+  for (const section of TASK_NAV) {
+    for (const item of section.items) {
+      add(item.href, item.capabilities);
+      for (const ch of item.children ?? []) add(ch.href, ch.capabilities ?? item.capabilities);
+    }
+  }
+  for (const r of EXTRA_ROUTE_CAPABILITIES) add(r.path, r.capabilities);
+  return map;
+}
+const ROUTE_CAPABILITIES = buildRouteCapabilities();
+
+/**
+ * Capacidades que licencian una ruta del panel: la entrada más específica que la contiene
+ * (`/admin/personal/empleados/7` → la de `/admin/personal`). null = la ruta no depende de
+ * ninguna capacidad (inicio, suscripción, ayuda, mi cuenta…).
+ */
+export function routeCapabilities(pathname: string): string[] | null {
+  let p = pathOf(pathname);
+  while (p.startsWith("/admin/")) {
+    const caps = ROUTE_CAPABILITIES.get(p);
+    if (caps) return Array.from(caps);
+    p = p.slice(0, p.lastIndexOf("/"));
+  }
+  return null;
+}
+
+/**
+ * Acceso a una ruta del panel con el menú por tareas: "allowed" (contratada o sin capacidad),
+ * "read_only" (se ve sin poder modificar) o "not_included" (no contratada: se muestra
+ * «No incluido en tu plan»). Solo presentación: el servidor sigue autorizando cada operación.
+ */
+export function routeAccess(pathname: string, capabilityState: (id: string) => "active" | "read_only" | null): "allowed" | "read_only" | "not_included" {
+  const caps = routeCapabilities(pathname);
+  if (!caps) return "allowed";
+  let readOnly = false;
+  for (const c of caps) {
+    const s = capabilityState(c);
+    if (s === "active") return "allowed";
+    if (s === "read_only") readOnly = true;
+  }
+  return readOnly ? "read_only" : "not_included";
+}
+
+/** Página para ampliar la empresa con módulos y extras. */
+export const UPGRADE_PATH = "/admin/ampliar";

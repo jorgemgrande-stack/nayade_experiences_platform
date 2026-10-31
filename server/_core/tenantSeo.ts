@@ -70,3 +70,27 @@ export function buildTenantMeta(input: {
     canonical: escapeHtml(canonical),
   };
 }
+
+/**
+ * Título y descripción de una página propia de la empresa (su ficha del CMS). En la portada el título es el de la
+ * página o, si no tiene, el nombre de la empresa; en otra página, «Página | Empresa». Sin descripción propia se
+ * conserva la de la empresa; con `keepDescription` (portada con descripción SEO de la empresa) la de la empresa manda.
+ * Valores escapados.
+ */
+export function pageMetaOverride(
+  page: { title: string; metaTitle?: string | null; metaDescription?: string | null },
+  brandName: string,
+  isHome: boolean,
+  opts: { keepDescription?: boolean } = {},
+): { title?: string; description?: string; h1?: string } {
+  const brand = brandName.trim();
+  const own = (page.metaTitle ?? "").trim();
+  const title = (page.title ?? "").trim();
+  const out: { title?: string; description?: string; h1?: string } = {};
+  if (own) out.title = escapeHtml(clip(own, 160));
+  else if (!isHome && title) out.title = escapeHtml(clip(brand ? `${title} | ${brand}` : title, 160));
+  if (!isHome && title) out.h1 = escapeHtml(clip(title, 160));
+  const desc = (page.metaDescription ?? "").trim();
+  if (desc && !opts.keepDescription) out.description = escapeHtml(clip(desc, 300));
+  return out;
+}
