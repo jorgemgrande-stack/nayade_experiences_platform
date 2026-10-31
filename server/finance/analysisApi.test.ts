@@ -1,6 +1,6 @@
 /**
- * API de la fase 4 (/cp/v1/finance): permisos (lectura con billing:read; revisión diaria solo con sesión de operador y
- * billing:write; marca de coste directo con billing:write; rentabilidad por empresa solo con usage:read), FORMAS
+ * API de la fase 4 (/cp/v1/finance): permisos (lectura con finance:read; revisión diaria solo con sesión de operador y
+ * finance:post; marca de coste directo con finance:expenses; rentabilidad por empresa solo con usage:read), FORMAS
  * EXACTAS de cada respuesta (el CRM se construye con ellas), CSV, validación y 404 sin la migración 0038.
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -17,9 +17,9 @@ const WRITE = "ci-only-placeholder-not-a-secret-ana-w";
 const READ = "ci-only-placeholder-not-a-secret-ana-r";
 const CSRF = "csrf-de-prueba-0987654321";
 const SESSIONS: Record<string, { role: string; scopes: Scope[] }> = {
-  "sesion-admin-000000000000": { role: "admin", scopes: ["billing:read", "billing:write", "usage:read"] },
-  "sesion-lector-00000000000": { role: "sales", scopes: ["billing:read"] },
-  "sesion-contable-000000000": { role: "sales", scopes: ["billing:read", "billing:write"] },
+  "sesion-admin-000000000000": { role: "admin", scopes: ["finance:read", "finance:expenses", "finance:suppliers", "finance:post", "finance:tax", "finance:config", "finance:export", "finance:sensitive", "billing:read", "usage:read"] },
+  "sesion-lector-00000000000": { role: "sales", scopes: ["finance:read", "finance:export", "billing:read"] },
+  "sesion-contable-000000000": { role: "sales", scopes: ["finance:read", "finance:expenses", "finance:suppliers", "finance:post", "finance:tax", "finance:export"] },
 };
 const ADMIN = "sesion-admin-000000000000";
 const READER = "sesion-lector-00000000000";
@@ -50,8 +50,8 @@ describe("API /cp/v1/finance de la fase 4", () => {
     app.use(
       authenticate(
         [
-          { id: "integracion", sha256: hashToken(WRITE), scopes: ["billing:read", "billing:write"], actorType: "crm" },
-          { id: "lectura", sha256: hashToken(READ), scopes: ["billing:read"], actorType: "crm" },
+          { id: "integracion", sha256: hashToken(WRITE), scopes: ["finance:read", "finance:expenses", "finance:suppliers", "finance:post", "finance:tax", "finance:export"], actorType: "crm" },
+          { id: "lectura", sha256: hashToken(READ), scopes: ["finance:read", "finance:export"], actorType: "crm" },
         ],
         undefined,
         { operators: { validateSession: async (t: string) => fake(t) }, allowedOrigins: new Set() },
@@ -95,7 +95,7 @@ describe("API /cp/v1/finance de la fase 4", () => {
     expect(patch.json.error).toBe("unavailable");
   });
 
-  it("control diario: forma exacta; lectura con billing:read", async () => {
+  it("control diario: forma exacta; lectura con finance:read", async () => {
     const r = await call("GET", "/daily?date=2026-10-31", READ);
     expect(r.status).toBe(200);
     expect(keys(r.json)).toEqual(["alerts", "bank", "counts", "date", "entries", "expenses", "invoices", "payouts", "receivables", "review", "stripe", "tax", "today"]);
@@ -124,7 +124,7 @@ describe("API /cp/v1/finance de la fase 4", () => {
     expect((await call("GET", "/daily?otro=1", READ)).status).toBe(400);
   });
 
-  it("revisión diaria: solo operador con billing:write; 201 la primera vez, 200 después; forma exacta", async () => {
+  it("revisión diaria: solo operador con finance:post; 201 la primera vez, 200 después; forma exacta", async () => {
     expect((await call("POST", "/daily/2026-10-30/review", WRITE, { note: "x" })).json.error).toBe("operator_session_required");
     expect((await call("POST", "/daily/2026-10-30/review", READER, { note: "x" })).status).toBe(403);
     const first = await call("POST", "/daily/2026-10-30/review", ACCOUNTANT, { note: "Cuadrado" });
@@ -203,7 +203,7 @@ describe("API /cp/v1/finance de la fase 4", () => {
     expect(keys(e.json.totals)).toEqual(["compareCents", "totalCents", "values", "variationCents", "variationPct"]);
   });
 
-  it("Revenue & Margin y Conversion Health: formas exactas; la rentabilidad por empresa solo con usage:read", async () => {
+  it("Revenue & Margin y Conversion Health: formas exactas; MRR/ARR solo con billing:read y la rentabilidad por empresa solo con usage:read", async () => {
     const admin = await call("GET", "/analytics/revenue-margin?year=2026", ADMIN);
     expect(keys(admin.json)).toEqual(["commercial", "definitions", "months", "totals", "year", "ytd"]);
     expect(admin.json.months).toHaveLength(12);
@@ -216,6 +216,8 @@ describe("API /cp/v1/finance de la fase 4", () => {
     const reader = await call("GET", "/analytics/revenue-margin?year=2026", READER);
     expect(reader.json.commercial.metrics.mrrCents).toBe(50_000);
     expect(reader.json.commercial.topCompanies).toBeNull();
+    // Con finance:read pero sin billing:read no se ven las métricas comerciales (como /revenue/metrics)
+    expect((await call("GET", "/analytics/revenue-margin?year=2026", READ)).json.commercial.metrics).toBeNull();
     expect((await call("GET", "/analytics/revenue-margin?year=1999", READ)).status).toBe(400);
 
     const c = await call("GET", "/analytics/conversion-health?from=2026-09-01&to=2026-10-31", READ);
@@ -249,7 +251,7 @@ describe("API /cp/v1/finance de la fase 4", () => {
     expect((await call("GET", "/reports/aging.csv", READ)).status).toBe(400);
   });
 
-  it("marca de coste directo: billing:write; GET /categories con isDirectCost y directCost", async () => {
+  it("marca de coste directo: finance:expenses; GET /categories con isDirectCost y directCost", async () => {
     const list = await call("GET", "/categories", READ);
     const hosting = list.json.items.find((c: { id: number }) => c.id === hostingId);
     expect(keys(hosting)).toEqual(["accountCode", "active", "defaultTaxRateBp", "directCost", "id", "isDirectCost", "name"]);

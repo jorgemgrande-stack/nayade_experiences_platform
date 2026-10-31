@@ -1,6 +1,6 @@
 /**
  * API de Stripe y conciliación (fase 2) con Express real y la autenticación real del plano de control: permisos
- * (lectura billing:read; importar billing:write, también token de servicio; contabilizar, vincular y revisar solo con
+ * (lectura finance:read; importar finance:expenses, también token de servicio; contabilizar, vincular y revisar solo con
  * sesión de operador; configuración solo rol admin|superadmin), cuerpo grande solo en la importación, y las formas
  * EXACTAS que consume el CRM. Solo datos sintéticos.
  */
@@ -28,9 +28,9 @@ const READ = "ci-only-placeholder-not-a-secret-str-r";
 const WRITE = "ci-only-placeholder-not-a-secret-str-w";
 const CSRF = "csrf-de-prueba-5566778899";
 const SESSIONS: Record<string, { role: string; scopes: Scope[] }> = {
-  "sesion-admin-000000000000": { role: "admin", scopes: ["billing:read", "billing:write"] },
-  "sesion-comercial-000000000": { role: "sales", scopes: ["billing:read", "billing:write"] },
-  "sesion-lectura-00000000000": { role: "readonly", scopes: ["billing:read"] },
+  "sesion-admin-000000000000": { role: "admin", scopes: ["finance:read", "finance:expenses", "finance:suppliers", "finance:post", "finance:tax", "finance:config", "finance:export", "finance:sensitive"] },
+  "sesion-comercial-000000000": { role: "sales", scopes: ["finance:read", "finance:expenses", "finance:suppliers", "finance:post", "finance:tax", "finance:export"] },
+  "sesion-lectura-00000000000": { role: "readonly", scopes: ["finance:read", "finance:export"] },
 };
 const ADMIN = "sesion-admin-000000000000";
 const SALES = "sesion-comercial-000000000";
@@ -69,8 +69,8 @@ describe("API /cp/v1/finance, fase 2: Stripe y conciliación", () => {
     app.use(
       authenticate(
         [
-          { id: "lector", sha256: hashToken(READ), scopes: ["billing:read"], actorType: "crm" },
-          { id: "integracion", sha256: hashToken(WRITE), scopes: ["billing:read", "billing:write"], actorType: "crm" },
+          { id: "lector", sha256: hashToken(READ), scopes: ["finance:read", "finance:export"], actorType: "crm" },
+          { id: "integracion", sha256: hashToken(WRITE), scopes: ["finance:read", "finance:expenses", "finance:suppliers", "finance:post", "finance:tax", "finance:export"], actorType: "crm" },
         ],
         undefined,
         { operators: { validateSession: async (t: string) => fake(t) }, allowedOrigins: new Set() },
@@ -100,20 +100,20 @@ describe("API /cp/v1/finance, fase 2: Stripe y conciliación", () => {
     return { status: res.status, json };
   };
 
-  it("configuración: lectura con billing:read; cambiarla solo administración con sesión", async () => {
+  it("configuración: lectura con finance:read; cambiarla solo con finance:config y sesión", async () => {
     const g = await call("GET", "/stripe/settings", READ);
     expect(g.json).toEqual({ item: { stripeFeeVat: "exempt", feeVatRateBp: 2100, stripePayoutBankAccountId: null, disputeAccountCode: "430", updatedBy: null, updatedAt: null } });
     const body = { stripeFeeVat: "exempt", feeVatRateBp: 2100, stripePayoutBankAccountId: ids.bank, disputeAccountCode: "430" };
     expect((await call("PATCH", "/stripe/settings", WRITE, body)).status).toBe(403);
     const sales = await call("PATCH", "/stripe/settings", SALES, body);
     expect(sales.status).toBe(403);
-    expect(sales.json.error).toBe("forbidden_role");
+    expect(sales.json).toMatchObject({ error: "forbidden", scope: "finance:config" });
     const ok = await call("PATCH", "/stripe/settings", ADMIN, body);
     expect(ok.json.item).toMatchObject({ stripePayoutBankAccountId: ids.bank, updatedBy: "operator:admin" });
     expect((await call("PATCH", "/stripe/settings", ADMIN, { stripeFeeVat: "otro" })).status).toBe(400);
   });
 
-  it("importación: billing:write (también token de servicio), fichero grande permitido, forma exacta; repetida = 409", async () => {
+  it("importación: finance:expenses (también token de servicio), fichero grande permitido, forma exacta; repetida = 409", async () => {
     const body = { kind: "balance", filename: "balance.csv", contentBase64: b64(stripeBalanceSample()) };
     expect((await call("POST", "/stripe/imports", RO, body)).status).toBe(403);
     const r = await call("POST", "/stripe/imports", WRITE, body);

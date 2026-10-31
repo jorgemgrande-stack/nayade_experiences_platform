@@ -1,7 +1,7 @@
 /**
  * Finanzas corporativas, fase 4: rutas de control diario, informes y análisis bajo /cp/v1/finance (CRM 0038). Permisos
- * (./permissions.ts): lectura = billing:read; marcar la revisión diaria = billing:write + sesión de operador; la marca
- * de coste directo de las categorías = billing:write (en PATCH /categories/:id, ./opsApi.ts).
+ * (./permissions.ts): lectura = finance:read; marcar la revisión diaria = finance:post + sesión de operador; CSV =
+ * finance:export; la marca de coste directo de las categorías = finance:expenses (en PATCH /categories/:id, ./opsApi.ts).
  *
  *   GET  /daily?date                                                   lectura        control diario
  *   GET  /daily/reviews?from&to&limit&offset                           lectura        revisiones
@@ -11,7 +11,7 @@
  *   GET  /reports/cashflow?from&to&forecastDays                        lectura        tesorería y previsión
  *   GET  /reports/aging?side=receivable|payable&date                   lectura        antigüedad de saldos
  *   GET  /reports/expenses?from&to&groupBy&compare                     lectura        gastos agrupados
- *   GET  /reports/:report.csv?…                                        lectura        CSV de cada informe (y del análisis)
+ *   GET  /reports/:report.csv?…                                        exportar       CSV de cada informe (y del análisis)
  *   GET  /analytics/revenue-margin?year                                lectura        Revenue & Margin
  *   GET  /analytics/conversion-health?from&to                          lectura        Conversion Health
  */
@@ -19,7 +19,7 @@ import type { Request, Response, Router } from "express";
 import { z } from "zod";
 import { getAuth } from "../controlPlane/auth";
 import { actorOf, wrap } from "./http";
-import { canPost, canRead } from "./permissions";
+import { canExport, canPost, canRead } from "./permissions";
 import { agingCsv, balanceCsv, cashflowCsv, COMPARE_KINDS, conversionCsv, dailyCsv, EXPENSE_GROUPS, expensesCsv, GRANULARITIES, pnlCsv, revenueMarginCsv } from "./analysisRules";
 import type { CommercialSources, FinanceAnalysisService } from "./analysisService";
 
@@ -42,12 +42,13 @@ function sendCsv(res: Response, name: string, csv: string) {
 }
 
 /**
- * Métricas comerciales que puede ver quien pide: MRR/ARR con billing:read (como /revenue/metrics); la rentabilidad por
- * empresa exige además usage:read (como /resources/profitability).
+ * Métricas comerciales que puede ver quien pide: MRR/ARR exige además billing:read (como /revenue/metrics; la ruta solo
+ * exige finance:read); la rentabilidad por empresa exige además usage:read (como /resources/profitability).
  */
 function commercialFor(req: Request, c: CommercialSources | null | undefined): CommercialSources | null {
   if (!c) return null;
-  return { metrics: c.metrics ?? null, profitability: getAuth(req)?.scopes.has("usage:read") ? (c.profitability ?? null) : null };
+  const scopes = getAuth(req)?.scopes;
+  return { metrics: scopes?.has("billing:read") ? (c.metrics ?? null) : null, profitability: scopes?.has("usage:read") ? (c.profitability ?? null) : null };
 }
 
 export function mountFinanceAnalysisRoutes(r: Router, svc: FinanceAnalysisService, commercial?: CommercialSources | null) {
@@ -64,7 +65,7 @@ export function mountFinanceAnalysisRoutes(r: Router, svc: FinanceAnalysisServic
   }));
 
   // Informes
-  r.get("/reports/:report.csv", ...canRead, wrap(async (req, res) => {
+  r.get("/reports/:report.csv", ...canExport, wrap(async (req, res) => {
     const report = z.enum(CSV_REPORTS).parse(req.params.report);
     switch (report) {
       case "pnl": {

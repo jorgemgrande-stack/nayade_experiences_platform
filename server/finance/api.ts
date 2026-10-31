@@ -1,13 +1,13 @@
 /**
  * Finanzas corporativas de Big Elephant, fase 1A: libro contable (`/cp/v1/finance/*`, CRM 0033). Permisos en
- * ./permissions.ts (lectura = billing:read; contabilizar = billing:write + sesión de operador; cierres y configuración
- * = además rol admin o superadmin).
+ * ./permissions.ts (lectura = finance:read; contabilizar = finance:post, configuración = finance:config y cierres =
+ * finance:sensitive, los tres con sesión de operador; CSV = finance:export).
  *
  *   GET  /finance/accounts                              lectura         plan contable
  *   POST /finance/accounts                              configuración   alta de subcuenta { code, name, parentCode?, type? }
  *   PATCH /finance/accounts/:code                       configuración   nombre y activa
  *   GET  /finance/fiscal-years                          lectura         ejercicios con sus periodos
- *   POST /finance/fiscal-years                          billing:write   alta de ejercicio { year } (doce periodos)
+ *   POST /finance/fiscal-years                          configuración   alta de ejercicio { year } (doce periodos)
  *   POST /finance/periods/:year/:month/close|reopen     cierre          cerrar o reabrir un periodo
  *   POST /finance/fiscal-years/:year/close              cierre          regularización, cierre y apertura (idempotente)
  *   GET  /finance/journals                              lectura         diarios
@@ -19,8 +19,8 @@
  *   POST /finance/entries/:id/reverse                   contabilizar    revertir { date, reason } (idempotente)
  *   GET  /finance/ledger/:code?from&to                  lectura         mayor con saldo acumulado
  *   GET  /finance/trial-balance?from&to&excludeClosing  lectura         sumas y saldos
- *   GET  /finance/journal.csv?from&to                   lectura         libro diario en CSV
- *   GET  /finance/trial-balance.csv?from&to             lectura         sumas y saldos en CSV
+ *   GET  /finance/journal.csv?from&to                   exportar        libro diario en CSV
+ *   GET  /finance/trial-balance.csv?from&to             exportar        sumas y saldos en CSV
  *   POST /finance/sync/invoices                         contabilizar    asientos de las facturas expedidas (idempotente)
  *   GET  /finance/sync/status                           lectura         última sincronización y facturas pendientes
  *   GET  /finance/summary                               lectura         resumen del panel (null = aún no disponible)
@@ -32,7 +32,7 @@ import type { CommercialSources, FinanceAnalysisService } from "./analysisServic
 import { actorOf, wrap } from "./http";
 import { mountFinanceOpsRoutes } from "./opsApi";
 import type { FinanceOpsService } from "./opsService";
-import { canClose, canOperate, canPost, canRead } from "./permissions";
+import { canConfig, canExport, canPost, canRead, canSensitive } from "./permissions";
 import type { FinanceService } from "./service";
 import { mountFinanceStripeRoutes } from "./stripeApi";
 import type { FinanceStripeService } from "./stripeService";
@@ -124,11 +124,11 @@ export function createFinanceRouter(svc: FinanceService, ops?: FinanceOpsService
     const items = await svc.accounts();
     res.json({ items, total: items.length });
   }));
-  r.post("/accounts", ...canClose, wrap(async (req, res) => {
+  r.post("/accounts", ...canConfig, wrap(async (req, res) => {
     const b = z.object({ code: z.string().max(12), name: z.string().max(160), parentCode: z.string().max(12).nullable().optional(), type: z.enum(ACCOUNT_TYPES).optional() }).strict().parse(req.body);
     res.status(201).json({ item: await svc.createAccount(b, actorOf(req)) });
   }));
-  r.patch("/accounts/:code", ...canClose, wrap(async (req, res) => {
+  r.patch("/accounts/:code", ...canConfig, wrap(async (req, res) => {
     const b = z.object({ name: z.string().max(160).optional(), active: z.boolean().optional() }).strict().parse(req.body);
     res.json({ item: await svc.patchAccount(accountCode.parse(req.params.code), b, actorOf(req)) });
   }));
@@ -142,19 +142,19 @@ export function createFinanceRouter(svc: FinanceService, ops?: FinanceOpsService
     const items = await svc.fiscalYears();
     res.json({ items, total: items.length });
   }));
-  // Crear un ejercicio (doce periodos abiertos) no es sensible: basta billing:write (anexo CRM-ESPERA)
-  r.post("/fiscal-years", ...canOperate, wrap(async (req, res) => {
+  // Crear un ejercicio (doce periodos abiertos) es configuración contable (finance:config), no una operación sensible
+  r.post("/fiscal-years", ...canConfig, wrap(async (req, res) => {
     const b = z.object({ year: z.number().int() }).strict().parse(req.body);
     res.status(201).json({ item: await svc.createFiscalYear(b.year, actorOf(req)) });
   }));
-  r.post("/fiscal-years/:year/close", ...canClose, wrap(async (req, res) => {
+  r.post("/fiscal-years/:year/close", ...canSensitive, wrap(async (req, res) => {
     const out = await svc.closeFiscalYear(z.coerce.number().int().parse(req.params.year), actorOf(req));
     const n = await names();
     const dto = (e: Entry | null) => (e ? entryDto(e, n) : null);
     res.json({ item: { ...out, regularization: dto(out.regularization), closing: dto(out.closing), opening: dto(out.opening) } });
   }));
   for (const action of ["close", "reopen"] as const) {
-    r.post(`/periods/:year/:month/${action}`, ...canClose, wrap(async (req, res) => {
+    r.post(`/periods/:year/:month/${action}`, ...canSensitive, wrap(async (req, res) => {
       const year = z.coerce.number().int().parse(req.params.year);
       const month = z.coerce.number().int().parse(req.params.month);
       res.json({ item: await svc.setPeriodStatus(year, month, action === "close" ? "closed" : "open", actorOf(req)) });
@@ -192,12 +192,12 @@ export function createFinanceRouter(svc: FinanceService, ops?: FinanceOpsService
     const q = range.extend({ excludeClosing: z.enum(["1", "0"]).optional() }).parse(req.query);
     res.json(await svc.trialBalance(q.from, q.to, q.excludeClosing === "1"));
   }));
-  r.get("/journal.csv", ...canRead, wrap(async (req, res) => {
+  r.get("/journal.csv", ...canExport, wrap(async (req, res) => {
     const q = range.parse(req.query);
     const out = await svc.journalCsv(q.from, q.to);
     sendCsv(res, `libro-diario-${out.from}-${out.to}.csv`, out.csv);
   }));
-  r.get("/trial-balance.csv", ...canRead, wrap(async (req, res) => {
+  r.get("/trial-balance.csv", ...canExport, wrap(async (req, res) => {
     const q = range.extend({ excludeClosing: z.enum(["1", "0"]).optional() }).parse(req.query);
     const out = await svc.trialBalanceCsv(q.from, q.to, q.excludeClosing === "1");
     sendCsv(res, `sumas-y-saldos-${out.from}-${out.to}.csv`, out.csv);

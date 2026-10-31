@@ -1,7 +1,7 @@
 /**
  * Finanzas corporativas, fase 2: rutas de Stripe y conciliación bajo /cp/v1/finance (CRM 0036). Permisos
- * (./permissions.ts): lectura = billing:read; importar = billing:write; contabilizar, vincular y revisar = billing:write
- * + sesión de operador; configuración de Stripe = además rol admin|superadmin.
+ * (./permissions.ts): lectura = finance:read; importar = finance:expenses; contabilizar, vincular y revisar =
+ * finance:post + sesión de operador; configuración de Stripe = finance:config + sesión de operador.
  *
  *   GET   /stripe/settings                                   lectura         configuración
  *   PATCH /stripe/settings                                   configuración   { stripeFeeVat?, feeVatRateBp?, stripePayoutBankAccountId?, disputeAccountCode? }
@@ -24,7 +24,7 @@ import type { Router } from "express";
 import { z } from "zod";
 import { actorOf, wrap } from "./http";
 import { bigJson } from "./opsApi";
-import { canClose, canOperate, canPost, canRead } from "./permissions";
+import { canConfig, canExpenses, canPost, canRead } from "./permissions";
 import type { FinanceStripeService } from "./stripeService";
 import { RECONCILIATION_STATUSES } from "./stripeRules";
 import { FEE_VAT_MODES, PAYOUT_STATUSES, STRIPE_IMPORT_KINDS, STRIPE_TXN_STATUSES, STRIPE_TXN_TYPES } from "./stripeTypes";
@@ -37,7 +37,7 @@ const body = (req: { body?: unknown }) => req.body ?? {};
 
 export function mountFinanceStripeRoutes(r: Router, stripe: FinanceStripeService): void {
   r.get("/stripe/settings", ...canRead, wrap(async (_req, res) => void res.json({ item: await stripe.settings() })));
-  r.patch("/stripe/settings", ...canClose, wrap(async (req, res) => {
+  r.patch("/stripe/settings", ...canConfig, wrap(async (req, res) => {
     const b = z
       .object({
         stripeFeeVat: z.enum(FEE_VAT_MODES).optional(),
@@ -50,7 +50,7 @@ export function mountFinanceStripeRoutes(r: Router, stripe: FinanceStripeService
     res.json({ item: await stripe.saveSettings(b, actorOf(req)) });
   }));
 
-  r.post("/stripe/imports", ...canOperate, bigJson, wrap(async (req, res) => {
+  r.post("/stripe/imports", ...canExpenses, bigJson, wrap(async (req, res) => {
     const b = z.object({ kind: z.enum(STRIPE_IMPORT_KINDS), filename: z.string().min(1).max(255), contentBase64: z.string().min(1) }).strict().parse(body(req));
     res.status(201).json({ item: await stripe.importFile(b, actorOf(req)) });
   }));

@@ -16,7 +16,7 @@ export const ROLE_LABEL: Record<OperatorRole, string> = {
   readonly: "Solo lectura",
 };
 
-const READ: Scope[] = ["tenants:read", "billing:read", "usage:read", "crm:read", "ops:read", "tickets:read", "web:read", "subscriptions:read", "orders:read"];
+const READ: Scope[] = ["tenants:read", "billing:read", "usage:read", "crm:read", "ops:read", "tickets:read", "web:read", "subscriptions:read", "orders:read", "finance:read"];
 
 export const ROLE_SCOPES: Record<OperatorRole, readonly Scope[]> = {
   superadmin: SCOPES,
@@ -24,7 +24,9 @@ export const ROLE_SCOPES: Record<OperatorRole, readonly Scope[]> = {
   // Comercial edita borradores de la web; publicar queda para administración
   // Comercial consulta suscripciones; operar sobre ellas queda para administración
   // Comercial prepara pedidos (cotización, contrato, aceptación, pago de prueba); aprobar sin pago y activar, administración
-  sales: ["crm:read", "crm:write", "tenants:read", "billing:read", "usage:read", "tickets:read", "web:read", "web:write", "subscriptions:read", "orders:read", "orders:write"],
+  // Comercial conserva la consulta financiera que ya tenía con billing:read (finance:read); gestionar, contabilizar,
+  // exportar, configurar y cerrar queda para administración
+  sales: ["crm:read", "crm:write", "tenants:read", "billing:read", "usage:read", "tickets:read", "web:read", "web:write", "subscriptions:read", "orders:read", "orders:write", "finance:read"],
   support: ["tickets:read", "tickets:write", "support:write", "tenants:read", "usage:read", "ops:read", "crm:read", "web:read"],
   readonly: READ,
 };
