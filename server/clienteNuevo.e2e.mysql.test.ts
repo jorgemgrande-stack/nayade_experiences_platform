@@ -304,7 +304,9 @@ describe.skipIf(!URL_)("cliente nuevo de punta a punta: Empresa Demo Elephant 01
     ok200(await s.m(one.tenantId, "setupWizard.setStep", { step: "users", status: "done" }, one.cookie), "setStep users");
     ok200(await s.m(one.tenantId, "setupWizard.setStep", { step: "finish", status: "done" }, one.cookie), "setStep finish");
     const st = data(await s.q(one.tenantId, "setupWizard.status", undefined, one.cookie));
-    expect(st.percent).toBe(100);
+    // En marcha; el porcentaje refleja los pasos opcionales que quedan (web y comunicaciones), sin inventar un 100 %
+    expect(st.progress.completedAt).not.toBeNull();
+    expect(st.plan.steps.find((x: { id: string }) => x.id === "finish").status).toBe("done");
     note("17 empleada", `invitación en ${link.host}, contraseña definida y sesión como agente; asistente al ${st.percent} %`);
   });
 

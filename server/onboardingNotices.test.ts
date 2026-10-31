@@ -12,7 +12,7 @@ import { emptyProgress, markStep, type SetupProgress } from "../shared/setupWiza
 const who = { email: "ana@empresa-demo.example", name: "Ana Demo" };
 const steps = (n: number): SetupProgress => {
   let p = emptyProgress();
-  for (const s of (["company", "activity", "brand", "client", "product", "operation", "users"] as const).slice(0, n)) p = markStep(p, s, "done", 1);
+  for (const s of (["company", "fiscal", "brand", "activity", "client", "product", "web"] as const).slice(0, n)) p = markStep(p, s, "done", 1);
   return p;
 };
 
@@ -31,11 +31,11 @@ describe("avisos de primeros pasos", () => {
     expect(sent).toHaveLength(1);
   });
   it("progreso: solo al cruzar la mitad y sin haber terminado", async () => {
-    expect(await onboardingProgressed(steps(2), steps(3), who)).toBe(false);
-    expect(await onboardingProgressed(steps(3), steps(4), who)).toBe(true);
-    expect(await onboardingProgressed(steps(4), steps(5), who)).toBe(false);
+    expect(await onboardingProgressed(steps(3), steps(4), who)).toBe(false);
+    expect(await onboardingProgressed(steps(4), steps(5), who)).toBe(true);
+    expect(await onboardingProgressed(steps(5), steps(6), who)).toBe(false);
     expect(sent.map((s) => s.idempotencyKey)).toEqual(["onboarding:progress:50"]);
-    expect(sent[0].subject).toBe("Tu configuración va por buen camino: 4 de 8 pasos");
+    expect(sent[0].subject).toBe("Tu configuración va por buen camino: 5 de 10 pasos");
   });
   it("sin URL pública válida no se envía (los enlaces no tendrían destino)", async () => {
     base = "no es una url";

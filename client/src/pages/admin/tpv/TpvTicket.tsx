@@ -244,7 +244,7 @@ export default function TpvTicket({ open, sale, onClose }: Props) {
   // Ticket de prueba para validar ancho, fuente y corte sin generar venta
   const handleTestPrint = () => {
     const testHtml = `
-      <div class="center bold text-sm">NÁYADE EXPERIENCES</div>
+      <div class="center bold text-sm">${(company?.name ?? "").replace(/[&<>"]/g, "")}</div>
       <div class="center text-xs">TEST DE IMPRESIÓN 80mm</div>
       <div class="line"></div>
       <div class="row"><span>${new Date().toLocaleString("es-ES")}</span><span class="bold">TEST</span></div>

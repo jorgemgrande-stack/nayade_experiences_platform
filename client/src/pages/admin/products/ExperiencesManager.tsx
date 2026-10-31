@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Link } from "wouter";
 import { usePanelSubscription } from "@/hooks/usePanelSubscription";
+import { useVocabulary } from "@/lib/vocabulary";
 import { PanelError, errorMessage } from "@/components/admin/PanelStates";
 import { validateProductForm } from "@shared/formValidation";
 import { Plus, Pencil, Trash2, Star, Eye, EyeOff, Search, ImageIcon, X, MoreVertical, Copy, PowerOff, Power, ChevronUp, ChevronDown } from "lucide-react";
@@ -161,6 +162,12 @@ export default function ExperiencesManager() {
   const isNewCompany = sub.isLicensed;
   const noun = isNewCompany ? "producto" : "experiencia";
   const Noun = isNewCompany ? "Producto" : "Experiencia";
+  // Concordancia: «producto» es masculino y «experiencia», femenino
+  const g = (masculine: string, feminine: string) => (isNewCompany ? masculine : feminine);
+  const voc = useVocabulary();
+  const productTypeOptions = voc.productTypes.some((o) => o.value === form.productType)
+    ? voc.productTypes
+    : [...voc.productTypes, { value: form.productType, label: form.productType }];
   const showSuppliers = sub.can("supplier-settlements");
   const showReav = sub.can("travel-net") || form.fiscalRegime === "reav";
   const showDifficulty = !isNewCompany;
@@ -204,19 +211,19 @@ export default function ExperiencesManager() {
     onError: (e) => { setServerError(errorMessage(e, e.message || "No se han podido guardar los cambios.")); toast.error("No se han podido guardar los cambios"); },
   });
   const deleteMutation = trpc.products.delete.useMutation({
-    onSuccess: () => { toast.success("Experiencia desactivada"); refetch(); },
+    onSuccess: () => { toast.success(`${Noun} ${g("desactivado", "desactivada")}`); refetch(); },
     onError: () => toast.error("Error al eliminar"),
   });
   const hardDeleteMutation = trpc.products.hardDelete.useMutation({
-    onSuccess: () => { toast.success("Experiencia eliminada permanentemente"); refetch(); },
+    onSuccess: () => { toast.success(`${Noun} ${g("eliminado", "eliminada")} permanentemente`); refetch(); },
     onError: () => toast.error("Error al eliminar"),
   });
   const toggleActiveMutation = trpc.products.toggleActive.useMutation({
-    onSuccess: (_, vars) => { toast.success(vars.isActive ? "Experiencia activada" : "Experiencia desactivada"); refetch(); },
+    onSuccess: (_, vars) => { toast.success(`${Noun} ${vars.isActive ? g("activado", "activada") : g("desactivado", "desactivada")}`); refetch(); },
     onError: () => toast.error("Error al cambiar estado"),
   });
   const cloneMutation = trpc.products.clone.useMutation({
-    onSuccess: () => { toast.success("Experiencia clonada correctamente (inactiva, lista para editar)"); refetch(); setCloneModal(null); setCloneName(""); },
+    onSuccess: () => { toast.success(`${Noun} ${g("clonado", "clonada")} correctamente (${g("inactivo", "inactiva")}, ${g("listo", "lista")} para editar)`); refetch(); setCloneModal(null); setCloneName(""); },
     onError: () => toast.error("Error al clonar"),
   });
   const reorderMutation = trpc.products.reorder.useMutation({
@@ -519,7 +526,7 @@ export default function ExperiencesManager() {
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
                               className="text-red-600 focus:text-red-600"
-                              onClick={() => { if (confirm("¿Eliminar permanentemente esta experiencia? Esta acción no se puede deshacer.")) hardDeleteMutation.mutate({ id: exp.id }); }}
+                              onClick={() => { if (confirm(`¿Eliminar permanentemente ${g("este", "esta")} ${noun}? Esta acción no se puede deshacer.`)) hardDeleteMutation.mutate({ id: exp.id }); }}
                             >
                               <Trash2 className="w-3.5 h-3.5 mr-2" /> Borrar
                             </DropdownMenuItem>
@@ -794,11 +801,7 @@ export default function ExperiencesManager() {
                       value={form.productType}
                       onChange={(e) => setForm({ ...form, productType: e.target.value })}
                     >
-                      <option value="actividad">Actividad / Experiencia</option>
-                      <option value="alojamiento">Alojamiento</option>
-                      <option value="restauracion">Restauración</option>
-                      <option value="transporte">Transporte</option>
-                      <option value="pack">Pack combinado</option>
+                      {productTypeOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                     </select>
                   </div>
                 </div>
@@ -1003,7 +1006,7 @@ export default function ExperiencesManager() {
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Copy className="w-5 h-5 text-primary" /> Clonar experiencia
+              <Copy className="w-5 h-5 text-primary" /> Clonar {noun}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
@@ -1011,7 +1014,7 @@ export default function ExperiencesManager() {
               Clonando: <strong>{cloneModal?.originalName}</strong>
             </p>
             <div>
-              <Label htmlFor="cloneName">Nombre de la nueva experiencia</Label>
+              <Label htmlFor="cloneName">Nombre {g("del nuevo", "de la nueva")} {noun}</Label>
               <Input
                 id="cloneName"
                 autoFocus
@@ -1021,7 +1024,7 @@ export default function ExperiencesManager() {
                   if (e.key === "Enter" && cloneName.trim() && cloneModal)
                     cloneMutation.mutate({ id: cloneModal.id, newName: cloneName.trim() });
                 }}
-                placeholder="Ej: Donuts Ski"
+                placeholder={isNewCompany ? "Ej: Revisión anual" : "Ej: Donuts Ski"}
                 className="mt-1"
               />
               <p className="text-xs text-muted-foreground mt-1">

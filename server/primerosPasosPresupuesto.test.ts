@@ -14,7 +14,7 @@ describe("presupuesto de primeros pasos", () => {
     expect(singleLineQuoteAmounts(50, 0)).toEqual({ subtotal: 50, tax: 0, total: 50 });
   });
   it("el asistente ya no suma el impuesto encima del precio", () => {
-    const src = fs.readFileSync(path.resolve(__dirname, "../client/src/pages/admin/setup/PrimerosPasos.tsx"), "utf8");
+    const src = fs.readFileSync(path.resolve(__dirname, "../client/src/pages/admin/setup/PrimerosPasosSteps.tsx"), "utf8");
     expect(src).not.toContain("unit * (1 + tax / 100)");
     expect(src).toContain("total: singleLineQuoteAmounts(unit, tax).total");
   });

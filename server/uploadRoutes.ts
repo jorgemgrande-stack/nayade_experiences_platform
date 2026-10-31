@@ -4,6 +4,7 @@ import { storagePut } from "./storage";
 import { sdk } from "./_core/sdk";
 import { createMediaFile } from "./db";
 import { getUserFromRequest } from "./localAuth";
+import { isMultiTenant } from "./_core/tenant";
 
 const USE_LOCAL_AUTH = process.env.LOCAL_AUTH === "true";
 
@@ -153,6 +154,12 @@ const couponUpload = multer({
 });
 
 router.post("/api/upload-coupon", (req: Request, res: Response) => {
+  // Subida pública heredada: la web usa ticketing.uploadCouponAttachment (tRPC). En multiempresa no se ofrece,
+  // para no abrir una subida anónima sin empresa ni módulo comprobados; en una sola empresa sigue igual.
+  if (isMultiTenant()) {
+    res.status(404).json({ error: "No disponible." });
+    return;
+  }
   couponUpload.single("file")(req, res, async (err) => {
     if (err) {
       console.error("[CouponUpload] Multer error:", err);

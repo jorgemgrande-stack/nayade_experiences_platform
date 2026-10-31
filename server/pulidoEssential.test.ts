@@ -159,10 +159,13 @@ describe("páginas de acceso con la marca de la empresa", () => {
 });
 
 describe("Inicio de Essential: acceso al asistente de primeros pasos", () => {
-  it("el Inicio enlaza /admin/primeros-pasos con SetupWizardLink y la ruta existe", () => {
+  it("el Inicio enlaza /admin/primeros-pasos (estado de configuración y bienvenida) y la ruta existe", () => {
     const home = fs.readFileSync(path.join(__dirname, "../client/src/pages/admin/home/EssentialHome.tsx"), "utf8");
-    expect(home).toMatch(/import \{[^}]*\bSetupWizardLink\b[^}]*\} from "@\/components\/SetupWizardLink"/);
-    expect(home).toContain("<SetupWizardLink");
+    expect(home).toContain("<SetupStatusCard");
+    expect(home).toContain("<WelcomeScreen");
+    for (const f of ["SetupStatusCard.tsx", "WelcomeScreen.tsx"]) {
+      expect(fs.readFileSync(path.join(__dirname, "../client/src/components/onboarding", f), "utf8")).toContain('import { SETUP_WIZARD_PATH } from "@/components/SetupWizardLink"');
+    }
     const link = fs.readFileSync(path.join(__dirname, "../client/src/components/SetupWizardLink.tsx"), "utf8");
     expect(link).toContain(`SETUP_WIZARD_PATH = "/admin/primeros-pasos"`);
     expect(fs.readFileSync(path.join(__dirname, "../client/src/App.tsx"), "utf8")).toContain(`path="/admin/primeros-pasos"`);
@@ -172,7 +175,7 @@ describe("Inicio de Essential: acceso al asistente de primeros pasos", () => {
 describe("productos: textos y convención de precio unificados (Essential)", () => {
   it("gestor y asistente: «Crear producto» y precio con impuestos incluidos en ambos", () => {
     const manager = fs.readFileSync(path.join(__dirname, "../client/src/pages/admin/products/ExperiencesManager.tsx"), "utf8");
-    const wizard = fs.readFileSync(path.join(__dirname, "../client/src/pages/admin/setup/PrimerosPasos.tsx"), "utf8");
+    const wizard = fs.readFileSync(path.join(__dirname, "../client/src/pages/admin/setup/PrimerosPasosSteps.tsx"), "utf8");
     expect(manager).toContain(`isNewCompany ? "Crear producto" : "Crear Experiencia"`);
     expect(manager).toContain(`"Precio (€, impuestos incluidos)"`);
     // En el asistente, con la moneda elegida en «Empresa» (€ para el euro)

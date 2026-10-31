@@ -9,7 +9,7 @@
 import { getTrustedBaseUrl } from "./_core/publicUrl";
 import { extraTemplates } from "./mail/extraTemplates";
 import { sendEmail } from "./mailer";
-import { progressPercent, SETUP_STEPS, STEP_LABELS, type SetupProgress } from "../shared/setupWizard";
+import { FLOW_STEPS, STEP_LABELS, type SetupProgress } from "../shared/setupWizard";
 
 export interface OnboardingRecipient {
   email: string | null;
@@ -24,7 +24,11 @@ function host(): string | null {
   }
 }
 
-const resolved = (p: SetupProgress) => SETUP_STEPS.filter((s) => p.steps[s].status !== "pending").length;
+// Pasos de configuración que cuentan en los avisos: la bienvenida no es un paso de configuración y el sectorial
+// solo existe con un módulo contratado
+const COUNTED = FLOW_STEPS.filter((s) => s !== "welcome" && s !== "sector");
+const resolved = (p: SetupProgress) => COUNTED.filter((s) => p.steps[s].status !== "pending").length;
+const percent = (p: SetupProgress) => Math.round((resolved(p) / COUNTED.length) * 100);
 
 /** Primer acceso: el asistente se abre y todavía no se ha dado ningún paso. */
 export async function onboardingFirstAccess(p: SetupProgress, to: OnboardingRecipient): Promise<boolean> {
@@ -38,10 +42,10 @@ export async function onboardingFirstAccess(p: SetupProgress, to: OnboardingReci
 /** Progreso: la configuración cruza la mitad de los pasos y no ha terminado. */
 export async function onboardingProgressed(before: SetupProgress, after: SetupProgress, to: OnboardingRecipient): Promise<boolean> {
   if (after.completedAt !== null || !to.email) return false;
-  if (!(progressPercent(before) < 50 && progressPercent(after) >= 50)) return false;
+  if (!(percent(before) < 50 && percent(after) >= 50)) return false;
   const h = host();
   if (!h) return false;
-  const c = extraTemplates.onboardingProgress({ name: to.name, host: h, done: resolved(after), total: SETUP_STEPS.length });
+  const c = extraTemplates.onboardingProgress({ name: to.name, host: h, done: resolved(after), total: COUNTED.length });
   return sendEmail({ to: to.email, subject: c.subject, html: c.html, text: c.text, category: "onboarding", idempotencyKey: "onboarding:progress:50" }).catch(() => false);
 }
 
@@ -50,7 +54,7 @@ export async function onboardingReminder(p: SetupProgress, to: OnboardingRecipie
   if (p.completedAt !== null || !to.email) return false;
   const h = host();
   if (!h) return false;
-  const pending = SETUP_STEPS.filter((s) => s !== "finish" && p.steps[s].status === "pending").map((s) => STEP_LABELS[s].title);
+  const pending = COUNTED.filter((s) => s !== "finish" && p.steps[s].status === "pending").map((s) => STEP_LABELS[s].title);
   if (!pending.length) return false;
   const c = extraTemplates.onboardingReminder({ name: to.name, host: h, pending });
   return sendEmail({ to: to.email, subject: c.subject, html: c.html, text: c.text, category: "onboarding", idempotencyKey: `onboarding:reminder:${days}` }).catch(() => false);

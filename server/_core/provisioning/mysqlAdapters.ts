@@ -17,6 +17,7 @@ import type { DatabaseProvisioner, ProvisioningListFilter, ProvisioningStore, Sc
 import type { ProvisioningRecord } from "./types";
 import { TENANT_TRIGGERS, createTriggerSql } from "./tenantTriggers";
 import { getTemplate, renderTemplateText } from "../templates/catalog";
+import { hashOneTimeToken } from "../../oneTimeToken";
 
 const TABLE = "__elephant_migrations";
 /** Bloqueo con nombre de la aplicación del esquema, por base de datos (expresión SQL). */
@@ -234,7 +235,8 @@ export class MysqlTenantSeeder implements TenantSeeder {
       await conn.query(
         `INSERT INTO users (openId, name, email, loginMethod, role, isActive, inviteToken, inviteTokenExpiry, inviteAccepted)
          VALUES (?, ?, ?, 'local', 'admin', 1, ?, ?, 0)`,
-        [openId, input.name, input.email, inviteToken, new Date(Date.now() + 7 * 86_400_000)],
+        // Solo el hash en la BD; el token en claro se devuelve para el enlace del correo de bienvenida
+        [openId, input.name, input.email, hashOneTimeToken(inviteToken), new Date(Date.now() + 7 * 86_400_000)],
       );
       // Propietario de la empresa: el administrador del alta. Ajuste sensible (no editable desde el panel).
       await conn.query(
@@ -254,7 +256,7 @@ export class MysqlTenantSeeder implements TenantSeeder {
       // Solo si la invitación sigue sin aceptar (sin contraseña): nunca se toca una cuenta en uso
       const [res] = await conn.query<mysql.ResultSetHeader>(
         "UPDATE users SET inviteToken = ?, inviteTokenExpiry = ? WHERE email = ? AND role = 'admin' AND inviteAccepted = 0 AND passwordHash IS NULL",
-        [inviteToken, new Date(Date.now() + 7 * 86_400_000), input.email.toLowerCase()],
+        [hashOneTimeToken(inviteToken), new Date(Date.now() + 7 * 86_400_000), input.email.toLowerCase()],
       );
       return res.affectedRows > 0 ? { inviteToken } : null;
     } finally {

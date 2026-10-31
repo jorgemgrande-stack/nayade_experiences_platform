@@ -1,5 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { Link } from "wouter";
 import AdminLayout from "@/components/AdminLayout";
+import { usePanelSubscription } from "@/hooks/usePanelSubscription";
+import { configSectionsFor, type SectionDef, type SectionId } from "./configSections";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Switch } from "@/components/ui/switch";
@@ -13,133 +16,13 @@ import {
 } from "lucide-react";
 
 // ─── Section Definitions ──────────────────────────────────────────────────────
+// Datos y filtrado por plan en ./configSections (lógica pura, con pruebas)
 
-type SectionId =
-  | "negocio" | "fiscal" | "horarios" | "emails" | "pagos" | "tpv"
-  | "caja" | "banco" | "automatizaciones" | "integraciones" | "branding" | "avanzado";
-
-interface SectionDef {
-  id: SectionId;
-  label: string;
-  icon: React.ComponentType<{ className?: string }>;
-  description: string;
-  settingKeys: string[];
-  flagModules: string[];
-  requiredKeys: string[];
-  envVarHints?: string[];
-}
-
-const SECTIONS: SectionDef[] = [
-  {
-    id: "negocio",
-    label: "Información del negocio",
-    icon: Building2,
-    description: "Nombre, teléfono, dominio y datos de contacto de la empresa.",
-    settingKeys: ["brand_name", "brand_short_name", "brand_phone", "brand_support_phone", "brand_domain", "brand_website_url", "brand_location", "site_business_email", "site_business_description"],
-    flagModules: [],
-    requiredKeys: ["brand_name"],
-  },
-  {
-    id: "fiscal",
-    label: "Datos fiscales",
-    icon: Receipt,
-    description: "NIF/CIF, empresa facturadora, dirección fiscal y tipos de IVA.",
-    settingKeys: ["site_legal_name", "brand_nif", "site_legal_phone", "brand_address", "site_legal_zip", "site_legal_city", "site_legal_province", "site_legal_email", "site_legal_iban", "tax_rate_general", "tax_rate_reduced"],
-    flagModules: [],
-    requiredKeys: ["brand_nif", "brand_address"],
-  },
-  {
-    id: "horarios",
-    label: "Horarios",
-    icon: Clock,
-    description: "Horarios de apertura por temporada y días operativos.",
-    settingKeys: ["site_schedule_high_open", "site_schedule_high_close", "site_schedule_low_open", "site_schedule_low_close", "site_schedule_days"],
-    flagModules: [],
-    requiredKeys: [],
-  },
-  {
-    id: "emails",
-    label: "Emails y notificaciones",
-    icon: Mail,
-    description: "Direcciones de correo para cada tipo de notificación. Vacío = usa la dirección por defecto del sistema.",
-    settingKeys: ["email_reservations", "email_admin_alerts", "email_accounting", "email_cancellations", "email_tpv_ingestion", "email_noreply_sender", "email_copy_recipient", "site_notif_email_restaurant"],
-    flagModules: [],
-    requiredKeys: [],
-  },
-  {
-    id: "pagos",
-    label: "Pagos y pasarelas",
-    icon: CreditCard,
-    description: "Configuración de Redsys y otras pasarelas de pago.",
-    settingKeys: ["redsys_environment", "redsys_currency", "site_payment_currency", "site_payment_deposit_restaurant"],
-    flagModules: [],
-    requiredKeys: [],
-    envVarHints: ["REDSYS_MERCHANT_CODE", "REDSYS_SECRET_KEY", "REDSYS_TERMINAL"],
-  },
-  {
-    id: "tpv",
-    label: "TPV físico",
-    icon: Monitor,
-    description: "Punto de venta presencial, datáfono y tolerancias.",
-    settingKeys: ["card_terminal_tolerance"],
-    flagModules: ["tpv", "card_terminal"],
-    requiredKeys: [],
-  },
-  {
-    id: "caja",
-    label: "Caja",
-    icon: Wallet,
-    description: "Caja registradora, umbrales de alerta y tolerancias de cuadre.",
-    settingKeys: ["cash_register_tolerance", "cash_alert_threshold"],
-    flagModules: ["cash_register"],
-    requiredKeys: [],
-  },
-  {
-    id: "banco",
-    label: "Banco y conciliación",
-    icon: Landmark,
-    description: "Importación de extractos bancarios y tolerancias de conciliación.",
-    settingKeys: ["bank_match_tolerance", "card_batch_tolerance", "expense_bank_match_tolerance"],
-    flagModules: ["bank"],
-    requiredKeys: [],
-  },
-  {
-    id: "automatizaciones",
-    label: "Automatizaciones",
-    icon: Bot,
-    description: "Jobs automáticos: recordatorios de presupuestos, cancelaciones caducadas y más.",
-    settingKeys: ["cancellation_stale_days", "quote_reminder_days_before", "quote_validity_days", "invoice_due_days"],
-    flagModules: ["crm", "cancellations"],
-    requiredKeys: [],
-  },
-  {
-    id: "integraciones",
-    label: "Integraciones externas",
-    icon: Plug,
-    description: "GoHighLevel CRM, IMAP para ingesta de emails del datáfono y otros conectores externos.",
-    settingKeys: ["site_ghl_api_key", "site_ghl_location_id"],
-    flagModules: ["email_ingestion", "commercial_email"],
-    requiredKeys: [],
-  },
-  {
-    id: "branding",
-    label: "Branding",
-    icon: Palette,
-    description: "Logotipo, colores, imagen destacada y redes sociales.",
-    settingKeys: ["brand_logo_url", "brand_hero_image_url", "brand_primary_color", "brand_accent_color", "brand_instagram"],
-    flagModules: [],
-    requiredKeys: [],
-  },
-  {
-    id: "avanzado",
-    label: "Avanzado",
-    icon: Settings2,
-    description: "Feature flags, ajustes técnicos e historial de cambios.",
-    settingKeys: [],
-    flagModules: [],
-    requiredKeys: [],
-  },
-];
+const SECTION_ICONS: Record<SectionId, React.ComponentType<{ className?: string }>> = {
+  negocio: Building2, fiscal: Receipt, horarios: Clock, emails: Mail, pagos: CreditCard, tpv: Monitor,
+  caja: Wallet, banco: Landmark, automatizaciones: Bot, integraciones: Plug, branding: Palette, avanzado: Settings2,
+  empresa: Building2, documentos: Receipt,
+};
 
 // ─── Dangerous settings ────────────────────────────────────────────────────────
 
@@ -252,9 +135,11 @@ interface SettingFieldProps {
   description: string | null;
   value: string | null;
   isSensitive: boolean;
+  /** Muestra la clave interna y dónde se configuran las credenciales (solo instalación original). */
+  technical: boolean;
 }
 
-function SettingField({ settingKey, label, description, value, isSensitive }: SettingFieldProps) {
+function SettingField({ settingKey, label, description, value, isSensitive, technical }: SettingFieldProps) {
   const [local, setLocal] = useState(value ?? "");
   const [dirty, setDirty] = useState(false);
   const [pendingSave, setPendingSave] = useState(false);
@@ -286,27 +171,28 @@ function SettingField({ settingKey, label, description, value, isSensitive }: Se
             <Shield className="w-3.5 h-3.5 text-muted-foreground/60" />
           </div>
           {description && <p className="text-xs text-muted-foreground mt-0.5">{description}</p>}
-          <p className="text-xs font-mono text-muted-foreground/50 mt-0.5">{settingKey}</p>
+          {technical && <p className="text-xs font-mono text-muted-foreground/50 mt-0.5">{settingKey}</p>}
         </div>
-        <span className="text-xs text-muted-foreground italic shrink-0">Configurar en Railway</span>
+        <span className="text-xs text-muted-foreground italic shrink-0">{technical ? "Configurar en Railway" : "Lo gestiona el equipo de soporte"}</span>
       </div>
     );
   }
 
   return (
     <>
-      <div className="flex items-center justify-between gap-4 py-3 border-b border-border/30 last:border-0">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-4 py-3 border-b border-border/30 last:border-0">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
             <span className="text-sm font-medium text-foreground">{label}</span>
             {isDangerous && <AlertTriangle className="w-3.5 h-3.5 text-amber-500" title="Cambio crítico — requiere confirmación" />}
           </div>
           {description && <p className="text-xs text-muted-foreground mt-0.5">{description}</p>}
-          <p className="text-xs font-mono text-muted-foreground/50 mt-0.5">{settingKey}</p>
+          {technical && <p className="text-xs font-mono text-muted-foreground/50 mt-0.5">{settingKey}</p>}
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <Input
-            className="w-52 h-8 text-sm"
+            aria-label={label}
+            className="w-full sm:w-52 h-11 sm:h-8 text-sm"
             value={local}
             onChange={(e) => { setLocal(e.target.value); setDirty(true); }}
             placeholder="(valor por defecto)"
@@ -314,9 +200,10 @@ function SettingField({ settingKey, label, description, value, isSensitive }: Se
           {dirty && (
             <Button
               size="sm"
-              className="h-8 px-3"
+              className="h-11 sm:h-8 px-3"
               disabled={updateMut.isPending}
               onClick={handleSave}
+              aria-label={`Guardar ${label}`}
             >
               {updateMut.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
             </Button>
@@ -523,9 +410,10 @@ interface SectionContentProps {
   }>;
   onRequestFlagChange: (key: string, name: string, newEnabled: boolean) => void;
   isFlagPending: boolean;
+  technical: boolean;
 }
 
-function SectionContent({ section, allSettings, allFlags, onRequestFlagChange, isFlagPending }: SectionContentProps) {
+function SectionContent({ section, allSettings, allFlags, onRequestFlagChange, isFlagPending, technical }: SectionContentProps) {
   const sectionSettings = allSettings.filter(s => section.settingKeys.includes(s.key));
   const sectionFlags = allFlags.filter(f => section.flagModules.includes(f.module));
 
@@ -574,7 +462,19 @@ function SectionContent({ section, allSettings, allFlags, onRequestFlagChange, i
     );
   }
 
-  const hasContent = sectionSettings.length > 0 || sectionFlags.length > 0 || (section.envVarHints?.length ?? 0) > 0;
+  const sectionLink = section.link && (
+    <Link
+      href={section.link.href}
+      className="flex items-center justify-between gap-3 p-4 min-h-11 bg-card border border-border/50 rounded-xl hover:border-border transition-colors"
+    >
+      <span className="text-sm font-medium text-foreground">{section.link.label}</span>
+      <ExternalLink className="w-4 h-4 text-muted-foreground shrink-0" />
+    </Link>
+  );
+  const envVarHints = technical ? section.envVarHints ?? [] : [];
+  const hasContent = sectionSettings.length > 0 || sectionFlags.length > 0 || envVarHints.length > 0;
+
+  if (!hasContent && sectionLink) return sectionLink;
 
   if (!hasContent) {
     return (
@@ -587,6 +487,7 @@ function SectionContent({ section, allSettings, allFlags, onRequestFlagChange, i
 
   return (
     <div className="space-y-5">
+      {sectionLink}
       {sectionSettings.length > 0 && (
         <div className="bg-card border border-border/50 rounded-2xl overflow-hidden">
           <div className="px-5 py-3 bg-muted/30 border-b border-border/50">
@@ -601,13 +502,14 @@ function SectionContent({ section, allSettings, allFlags, onRequestFlagChange, i
                 description={s.description ?? null}
                 value={s.value ?? null}
                 isSensitive={s.isSensitive}
+                technical={technical}
               />
             ))}
           </div>
         </div>
       )}
 
-      {section.envVarHints && section.envVarHints.length > 0 && (
+      {envVarHints.length > 0 && (
         <div className="bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800 rounded-xl p-4">
           <div className="flex gap-3">
             <Shield className="w-4 h-4 text-slate-500 mt-0.5 shrink-0" />
@@ -617,7 +519,7 @@ function SectionContent({ section, allSettings, allFlags, onRequestFlagChange, i
                 Estos valores contienen credenciales y deben configurarse como variables de entorno:
               </p>
               <div className="flex flex-wrap gap-1.5">
-                {section.envVarHints.map(v => (
+                {envVarHints.map(v => (
                   <code key={v} className="text-xs bg-slate-200 dark:bg-slate-800 px-2 py-0.5 rounded font-mono">{v}</code>
                 ))}
               </div>
@@ -658,7 +560,16 @@ export default function ConfigPanel() {
   const [activeId, setActiveId] = useState<SectionId>("negocio");
   const [pendingFlag, setPendingFlag] = useState<PendingFlag | null>(null);
 
-  const flagsQ = trpc.config.listFeatureFlags.useQuery();
+  // Empresa con licencias por capacidad: solo lo de su plan y sin ajustes técnicos (en single, todo como siempre)
+  const sub = usePanelSubscription();
+  const licensed = sub.isLicensed;
+  const technical = sub.mode === "legacy";
+  const sections = configSectionsFor({ licensed, can: sub.can });
+  useEffect(() => {
+    if (!sections.some((s) => s.id === activeId)) setActiveId(sections[0].id);
+  }, [sections, activeId]);
+
+  const flagsQ = trpc.config.listFeatureFlags.useQuery(undefined, { enabled: technical });
   const settingsQ = trpc.config.listSystemSettings.useQuery();
 
   const updateFlagMut = trpc.config.updateFeatureFlag.useMutation({
@@ -674,7 +585,7 @@ export default function ConfigPanel() {
   });
 
   const allSettings = settingsQ.data ?? [];
-  const allFlags = flagsQ.data ?? [];
+  const allFlags = technical ? flagsQ.data ?? [] : [];
 
   function computeStatus(section: SectionDef): "ok" | "warning" | "neutral" {
     if (section.id === "avanzado") return "neutral";
@@ -695,9 +606,9 @@ export default function ConfigPanel() {
     }
   }
 
-  const activeSection = SECTIONS.find(s => s.id === activeId)!;
+  const activeSection = sections.find(s => s.id === activeId) ?? sections[0];
 
-  const isLoading = flagsQ.isLoading || settingsQ.isLoading;
+  const isLoading = sub.mode === "loading" || (technical && flagsQ.isLoading) || settingsQ.isLoading;
 
   return (
     <AdminLayout>
@@ -705,7 +616,7 @@ export default function ConfigPanel() {
         <div className="mb-6">
           <h1 className="text-2xl font-heading font-bold text-foreground">Configuración</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Gestiona los ajustes del negocio, notificaciones, módulos y más.
+            {licensed ? "Avisos por correo, documentos, cobros, caja y marca de tu empresa." : "Gestiona los ajustes del negocio, notificaciones, módulos y más."}
           </p>
         </div>
 
@@ -716,16 +627,32 @@ export default function ConfigPanel() {
         )}
 
         {!isLoading && (
-          <div className="flex gap-0 bg-card border border-border/50 rounded-2xl overflow-hidden">
+          <div className="flex flex-col md:flex-row gap-0 bg-card border border-border/50 rounded-2xl overflow-hidden">
+            {/* Selector de sección en móvil */}
+            <div className="md:hidden p-3 border-b border-border/50">
+              <label htmlFor="config-section" className="sr-only">Sección</label>
+              <select
+                id="config-section"
+                value={activeSection.id}
+                onChange={(e) => setActiveId(e.target.value as SectionId)}
+                className="w-full h-11 rounded-md border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+              >
+                {sections.map((s) => (
+                  <option key={s.id} value={s.id}>{s.label}</option>
+                ))}
+              </select>
+            </div>
             {/* Sidebar */}
-            <aside className="w-52 shrink-0 border-r border-border/50 py-3">
-              {SECTIONS.map(section => {
-                const Icon = section.icon;
+            <aside aria-label="Secciones de ajustes" className="hidden md:block w-52 shrink-0 border-r border-border/50 py-3">
+              {sections.map(section => {
+                const Icon = SECTION_ICONS[section.id];
                 const status = computeStatus(section);
                 const isActive = section.id === activeId;
                 return (
                   <button
                     key={section.id}
+                    type="button"
+                    aria-current={isActive ? "true" : undefined}
                     onClick={() => setActiveId(section.id)}
                     className={`w-full flex items-center gap-2.5 px-3 py-2.5 text-left transition-colors ${
                       isActive
@@ -745,10 +672,10 @@ export default function ConfigPanel() {
             </aside>
 
             {/* Content */}
-            <div className="flex-1 min-w-0 p-6">
+            <div className="flex-1 min-w-0 p-4 md:p-6">
               <div className="mb-5">
                 <div className="flex items-center gap-2 mb-1">
-                  {(() => { const Icon = activeSection.icon; return <Icon className="w-5 h-5 text-muted-foreground" />; })()}
+                  {(() => { const Icon = SECTION_ICONS[activeSection.id]; return <Icon className="w-5 h-5 text-muted-foreground" />; })()}
                   <h2 className="text-lg font-semibold text-foreground">{activeSection.label}</h2>
                 </div>
                 <p className="text-sm text-muted-foreground">{activeSection.description}</p>
@@ -760,6 +687,7 @@ export default function ConfigPanel() {
                 allFlags={allFlags as SectionContentProps["allFlags"]}
                 onRequestFlagChange={handleFlagChangeRequest}
                 isFlagPending={updateFlagMut.isPending}
+                technical={technical}
               />
             </div>
           </div>

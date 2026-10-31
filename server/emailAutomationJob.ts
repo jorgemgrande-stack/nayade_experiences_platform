@@ -21,7 +21,7 @@
  */
 
 import cron from "node-cron";
-import { eq, and, lte, isNull, sql, count } from "drizzle-orm";
+import { eq, and, lte, lt, isNull, isNotNull, sql, count } from "drizzle-orm";
 import {
   emailScheduledJobs,
   emailAutomationRules,
@@ -197,6 +197,9 @@ export async function runEmailAutomationJob(forceRun = false): Promise<Automatio
   // Auto-programar reminders comerciales antes de procesar
   await scheduleCommercialReminders();
 
+  // Recuperar envíos que quedaron bloqueados por un proceso interrumpido a mitad
+  await releaseStaleJobLocks(now);
+
   // Buscar jobs pendientes cuyo scheduledFor ya ha llegado
   const jobs = await db
     .select()
@@ -219,11 +222,12 @@ export async function runEmailAutomationJob(forceRun = false): Promise<Automatio
   let sent = 0, skipped = 0, failed = 0;
 
   for (const job of jobs) {
-    // Bloquear el job para evitar procesamiento concurrente
-    await db
-      .update(emailScheduledJobs)
-      .set({ lockedAt: new Date(), attempts: sql`${emailScheduledJobs.attempts} + 1`, lastAttemptAt: new Date() })
-      .where(and(eq(emailScheduledJobs.id, job.id), isNull(emailScheduledJobs.lockedAt)));
+    // Reclamar el job de forma atómica: dos ejecuciones solapadas (p. ej. dos contenedores durante un
+    // despliegue) no pueden enviar el mismo correo; solo procesa quien cambia exactamente una fila.
+    if (!(await claimJob(job.id))) {
+      log("info", `Job ${job.id} ya reclamado por otra ejecución — se omite`);
+      continue;
+    }
 
     let status: "sent" | "skipped" | "failed" = "skipped";
     let skipReason: string | undefined;
@@ -558,6 +562,43 @@ export async function runEmailAutomationJob(forceRun = false): Promise<Automatio
 
   log("info", `Job completado — sent:${sent} skipped:${skipped} failed:${failed}`);
   return { processed: jobs.length, sent, skipped, failed };
+}
+
+/**
+ * Reclama un job pendiente de forma atómica: devuelve true solo a quien consigue cambiar exactamente una
+ * fila (status='pending' y sin bloqueo). Cualquier otra ejecución concurrente recibe false.
+ */
+export async function claimJob(id: number): Promise<boolean> {
+  const [res] = await db
+    .update(emailScheduledJobs)
+    .set({ lockedAt: new Date(), attempts: sql`${emailScheduledJobs.attempts} + 1`, lastAttemptAt: new Date() })
+    .where(and(eq(emailScheduledJobs.id, id), eq(emailScheduledJobs.status, "pending"), isNull(emailScheduledJobs.lockedAt)));
+  return (res as unknown as { affectedRows?: number }).affectedRows === 1;
+}
+
+/** Un job bloqueado más de este tiempo se considera abandonado (un envío normal tarda segundos). */
+export const STALE_LOCK_MS = 30 * 60 * 1000;
+/** Tras este número de intentos un job abandonado se da por fallido en vez de reintentarse. */
+export const MAX_STALE_RETRIES = 3;
+
+/**
+ * Si el proceso muere tras bloquear un job, `lockedAt` queda fijado y el job no se reintentaría nunca.
+ * Libera el bloqueo de los jobs `pending` abandonados; si ya agotaron los intentos los marca `failed` con
+ * un motivo explícito, para que no se reenvíen sin fin ni queden invisibles.
+ */
+export async function releaseStaleJobLocks(now: Date = new Date()): Promise<{ released: number; failed: number }> {
+  const cutoff = new Date(now.getTime() - STALE_LOCK_MS);
+  const stale = and(eq(emailScheduledJobs.status, "pending"), isNotNull(emailScheduledJobs.lockedAt), lt(emailScheduledJobs.lockedAt, cutoff));
+  const [gaveUp] = await db.update(emailScheduledJobs)
+    .set({ status: "failed", lockedAt: null, errorMessage: "stale_lock: el proceso se interrumpió y se agotaron los reintentos", updatedAt: now })
+    .where(and(stale, sql`${emailScheduledJobs.attempts} >= ${MAX_STALE_RETRIES}`));
+  const [freed] = await db.update(emailScheduledJobs)
+    .set({ lockedAt: null, updatedAt: now })
+    .where(stale);
+  const failed = (gaveUp as unknown as { affectedRows?: number }).affectedRows ?? 0;
+  const released = (freed as unknown as { affectedRows?: number }).affectedRows ?? 0;
+  if (failed || released) log("warn", "Bloqueos abandonados recuperados", { released, failed });
+  return { released, failed };
 }
 
 async function finalize(

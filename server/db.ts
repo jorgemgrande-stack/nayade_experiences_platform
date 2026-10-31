@@ -3,6 +3,7 @@ import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
 import { nanoid } from "nanoid";
 import { getTenantDatabase } from "./_core/dbRegistry";
+import { hashOneTimeToken, oneTimeTokenCandidates } from "./oneTimeToken";
 import {
   users, InsertUser,
   experiences, categories, locations, experienceVariants,
@@ -1525,7 +1526,7 @@ export async function createInvitedUser(data: {
     role: data.role,
     loginMethod: "local",
     isActive: true,
-    inviteToken: data.inviteToken,
+    inviteToken: hashOneTimeToken(data.inviteToken), // solo el hash en la BD; el valor en claro va en el enlace
     inviteTokenExpiry: data.inviteTokenExpiry,
     inviteAccepted: false,
   });
@@ -1551,7 +1552,7 @@ export async function toggleUserActive(userId: number) {
 export async function getUserByInviteToken(token: string) {
   const db = await getDb();
   if (!db) return null;
-  const [user] = await db.select().from(users).where(eq(users.inviteToken, token));
+  const [user] = await db.select().from(users).where(inArray(users.inviteToken, oneTimeTokenCandidates(token)));
   return user ?? null;
 }
 
@@ -1583,7 +1584,7 @@ export async function redeemInviteToken(userId: number, token: string, passwordH
     inviteTokenExpiry: null,
     inviteAccepted: true,
     updatedAt: now,
-  }).where(and(eq(users.id, userId), eq(users.inviteToken, token), sql`${users.inviteTokenExpiry} IS NOT NULL AND ${users.inviteTokenExpiry} > ${now}`));
+  }).where(and(eq(users.id, userId), inArray(users.inviteToken, oneTimeTokenCandidates(token)), sql`${users.inviteTokenExpiry} IS NOT NULL AND ${users.inviteTokenExpiry} > ${now}`));
   const header = Array.isArray(result) ? result[0] : result;
   return Number((header as { affectedRows?: number } | undefined)?.affectedRows ?? 0) === 1;
 }
@@ -1591,7 +1592,7 @@ export async function redeemInviteToken(userId: number, token: string, passwordH
 export async function resendUserInvite(userId: number, inviteToken: string, inviteTokenExpiry: Date) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  await db.update(users).set({ inviteToken, inviteTokenExpiry, updatedAt: new Date() }).where(eq(users.id, userId));
+  await db.update(users).set({ inviteToken: hashOneTimeToken(inviteToken), inviteTokenExpiry, updatedAt: new Date() }).where(eq(users.id, userId));
   return { success: true };
 }
 

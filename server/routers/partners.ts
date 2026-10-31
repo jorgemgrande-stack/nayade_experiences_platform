@@ -5,6 +5,7 @@
  * Fase 2: Portal del partner — activación de cuenta, creación de leads, listado.
  */
 import { z } from "zod";
+import { hashOneTimeToken } from "../oneTimeToken";
 import { publicBaseUrl } from "../_core/productIdentity";
 import { isMultiTenant } from "../_core/tenant";
 import { brandSetting, companyName, legacySiteHost, tenantIssuerData } from "../tenantBrand";
@@ -407,7 +408,7 @@ export const partnersRouter = router({
         await db.update(users)
           .set({
             role: input.role as any,
-            inviteToken: token,
+            inviteToken: hashOneTimeToken(token),
             inviteTokenExpiry: expiry,
             ...(({ partnerId: input.partnerId }) as any),
           } as any)
@@ -419,7 +420,7 @@ export const partnersRouter = router({
           name: input.name,
           email: input.email,
           role: input.role as any,
-          inviteToken: token,
+          inviteToken: hashOneTimeToken(token),
           inviteTokenExpiry: expiry,
           inviteAccepted: false,
           isActive: false,

@@ -4,7 +4,7 @@ import { createServer } from "http";
 import net from "net";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import rateLimit from "express-rate-limit";
-import { isLeadProcedurePath, localStorageSecurityHeaders } from "./publicEndpointGuards";
+import { createTrpcRateLimitMiddleware, localStorageSecurityHeaders } from "./publicEndpointGuards";
 import { createHealthRouter } from "./health";
 import { securityHeaders } from "./securityHeaders";
 import { requestMeter } from "./requestMeter";
@@ -178,12 +178,9 @@ async function startServer() {
     registerOAuthRoutes(app);
   }
 
-  // Rate limiting en formularios públicos de lead/presupuesto (10 req/min por IP)
-  // Los procedimientos reales son public.submitLead, public.submitBudget y
-  // public.submitColegiosLead (y pueden venir agrupados: "a,public.submitLead").
-  app.use("/api/trpc", (req, res, next) =>
-    isLeadProcedurePath(req.path) ? leadRateLimit(req, res, next) : next(),
-  );
+  // Límite por procedimiento tRPC real (también en lote o codificado): formularios y pagos 10/min, subidas 20/min,
+  // códigos de descuento 20/min por IP. Listas en ./publicEndpointGuards.ts
+  app.use("/api/trpc", createTrpcRateLimitMiddleware({ form: leadRateLimit, upload: uploadRateLimit }));
 
   // -- AUDIT: log ALL incoming requests to /api/redsys/* ------------------------
   // Este middleware corre ANTES del rate-limiter para capturar si la petición llega.

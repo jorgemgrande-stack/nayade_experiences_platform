@@ -21,6 +21,10 @@ class ErrorBoundary extends Component<Props, State> {
     return { hasError: true, error };
   }
 
+  componentDidCatch(error: Error) {
+    console.error("[ErrorBoundary]", error);
+  }
+
   render() {
     if (this.state.hasError) {
       return (
@@ -31,13 +35,19 @@ class ErrorBoundary extends Component<Props, State> {
               className="text-destructive mb-6 flex-shrink-0"
             />
 
-            <h2 className="text-xl mb-4">An unexpected error occurred.</h2>
+            <h2 className="text-xl mb-2">Algo no ha ido bien al mostrar esta página.</h2>
+            <p className="text-sm text-muted-foreground mb-6 text-center">
+              Recarga la página para volver a intentarlo. Si el problema continúa, inténtalo de nuevo dentro de unos minutos.
+            </p>
 
-            <div className="p-4 w-full rounded bg-muted overflow-auto mb-6">
-              <pre className="text-sm text-muted-foreground whitespace-break-spaces">
-                {this.state.error?.stack}
-              </pre>
-            </div>
+            {/* La traza (rutas internas, nombres de módulos) solo se muestra en desarrollo */}
+            {import.meta.env.DEV && (
+              <div className="p-4 w-full rounded bg-muted overflow-auto mb-6">
+                <pre className="text-sm text-muted-foreground whitespace-break-spaces">
+                  {this.state.error?.stack}
+                </pre>
+              </div>
+            )}
 
             <button
               onClick={() => window.location.reload()}
@@ -48,7 +58,7 @@ class ErrorBoundary extends Component<Props, State> {
               )}
             >
               <RotateCcw size={16} />
-              Reload Page
+              Recargar
             </button>
           </div>
         </div>

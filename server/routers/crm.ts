@@ -94,6 +94,7 @@ import { integrationEnv } from "../_core/tenantConfig";
 import { hasTagCondition } from "../crmTagsDb";
 import { assertBusinessQuota } from "../businessQuotas";
 import { buildInvoiceEmailHtml } from "../emailTemplates";
+import { assertQuotePricedForSend } from "../quoteSendGuards";
 
 // generateInvoiceNumber y generateQuoteNumber reemplazadas por el helper centralizado
 // Ver server/documentNumbers.ts
@@ -1699,6 +1700,7 @@ export const crmRouter = router({
 
         const [lead] = await db.select().from(leads).where(eq(leads.id, quote.leadId));
         if (!lead) throw new TRPCError({ code: "NOT_FOUND", message: "Lead asociado no encontrado" });
+        assertQuotePricedForSend(quote.items);
 
         // Generar token único de aceptación si no existe ya
         const { randomBytes } = await import("crypto");
@@ -1783,6 +1785,7 @@ export const crmRouter = router({
         if (!quote) throw new TRPCError({ code: "NOT_FOUND" });
         const [lead] = await db.select().from(leads).where(eq(leads.id, quote.leadId));
         if (!lead) throw new TRPCError({ code: "NOT_FOUND" });
+        assertQuotePricedForSend(quote.items);
 
         // Si el presupuesto no tiene token de aceptación, generarlo ahora
         const { randomBytes } = await import("crypto");
@@ -2994,6 +2997,7 @@ export const crmRouter = router({
         })
       )
       .mutation(async ({ input, ctx }) => {
+        if (input.sendNow) assertQuotePricedForSend(input.items);
         // 1. Resolver leadId: lead existente ? cliente existente con lead ? crear lead nuevo
         let leadId: number;
         const [existingLead] = await db

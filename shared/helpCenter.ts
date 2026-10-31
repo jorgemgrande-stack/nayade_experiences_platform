@@ -38,7 +38,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     contexts: [{ path: "/admin/configuracion/sitio" }, { path: "/admin/primeros-pasos" }],
     steps: [
       "Tu empresa no se crea desde este panel: se crea al activar tu cuenta (por ejemplo, con la prueba gratuita). Recibirás un correo de bienvenida con el botón «Definir contraseña» para entrar por primera vez.",
-      "Ya dentro, abre el asistente «Configura tu empresa» (Primeros pasos). Tiene 8 pasos; puedes omitir cualquiera con «Omitir este paso» y el progreso se guarda solo.",
+      "Ya dentro, abre el asistente «Configura tu empresa» (Primeros pasos). Sus pasos se adaptan a tu tipo de negocio y a lo que tienes contratado; puedes omitir cualquiera con «Omitir por ahora» y el progreso se guarda solo.",
       "En el paso Empresa rellena los campos obligatorios: Nombre comercial, Razón social, NIF / CIF, Dirección fiscal, País, Moneda y Zona horaria. Pulsa «Guardar y continuar».",
       "Para revisar o cambiar los datos más adelante, ve a Organización › Datos de la empresa. La pantalla se titula «Datos del negocio» y los datos fiscales están en la pestaña «Empresa legal».",
       "En «Datos del negocio» no hay botón Guardar: los cambios se guardan automáticamente (verás «Guardando…»).",

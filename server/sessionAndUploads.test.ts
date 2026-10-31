@@ -187,4 +187,17 @@ describe("POST /api/upload-coupon", () => {
     expect(r.status).toBe(400);
     expect(state.storedKeys).toHaveLength(0);
   });
+
+  it("en multiempresa no se ofrece (la web usa la subida por tRPC)", async () => {
+    const prev = process.env.TENANT_MODE;
+    process.env.TENANT_MODE = "multi";
+    try {
+      const r = await upload("cupon.png", "image/png");
+      expect(r.status).toBe(404);
+      expect(state.storedKeys).toHaveLength(0);
+    } finally {
+      if (prev === undefined) delete process.env.TENANT_MODE;
+      else process.env.TENANT_MODE = prev;
+    }
+  });
 });

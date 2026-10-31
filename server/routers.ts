@@ -205,6 +205,7 @@ import { emailIngestionRouter } from "./routers/emailIngestion";
 import { configRouter } from "./routers/configRouter";
 import { onboardingRouter } from "./routers/onboardingRouter";
 import { setupWizardRouter } from "./routers/setupWizard";
+import { coreHomeRouter } from "./routers/coreHome";
 import { assertSeatAvailable } from "./setupWizardDb";
 import { dailyControlRouter } from "./routers/dailyControl";
 import { proposalsRouter } from "./routers/proposals";
@@ -225,6 +226,7 @@ import type { DocumentType } from "./documentNumbers";
 import { integrationEnv } from "./_core/tenantConfig";
 import { protectLegacySecret, revealLegacySecret } from "./_core/credentials/legacyFields";
 import { sampleUrl } from "./_core/productIdentity";
+import { assertCheckoutLinePriced } from "./checkoutLinePricing";
 const adminProcedure = permissionProcedure("settings.manage", ["admin"]);
 
 
@@ -254,6 +256,7 @@ export const appRouter = router({
   config: configRouter,
   onboarding: onboardingRouter,
   setupWizard: setupWizardRouter,
+  coreHome: coreHomeRouter,
   cancellations: cancellationsRouter,
   proposals: proposalsRouter,
   emailTemplates: emailTemplatesRouter,
@@ -1819,6 +1822,8 @@ export const appRouter = router({
         const { totalEuros: baseTotal, unitsBooked } = calcPricing(
           pricePerPerson, input.people, pricingType, unitCapacity, maxUnits
         );
+        // Nunca se cobra una línea a 0 € (p. ej. una opción con precio sin configurar)
+        assertCheckoutLinePriced(product.title, baseTotal, `#${input.productId}, opción ${input.variantId ?? "-"}`);
         // Los extras con precio del cliente se rechazan en el esquema de entrada (noClientPricedExtras).
         const extrasTotal = input.extras.reduce((sum, e) => sum + e.price * e.quantity, 0);
         const totalEuros = baseTotal + extrasTotal;
@@ -2030,6 +2035,8 @@ export const appRouter = router({
           const { totalEuros: itemBase, unitsBooked: itemUnits } = calcPricing(
             pricePerPerson, item.people, itemPricingType, itemUnitCap, itemMaxUnits
           );
+          // Nunca se cobra una línea a 0 € dentro del carrito (p. ej. una opción con precio sin configurar)
+          assertCheckoutLinePriced(product.title, itemBase, `#${item.productId}, opción ${item.variantId ?? "-"}`);
           const itemTotalEuros = itemBase + extrasTotal;
           const itemAmountCents = Math.round(itemTotalEuros * 100);
           totalAmountCents += itemAmountCents;
