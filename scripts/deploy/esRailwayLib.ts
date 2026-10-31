@@ -26,6 +26,8 @@ export const DRILL_ALLOWED: RegExp[] = [
   // Prueba de restauración: restaura la copia de UNA empresa en una base NUEVA y la verifica; sin --switch, la base real
   // no se toca (autorizado por el propietario el 23/10/2026)
   /^node dist-cp\/backup-job\.js restore-tenant [a-z0-9][a-z0-9-]{1,62} --apply$/,
+  // La misma prueba con la primera empresa con copia verificada (no depende de una empresa concreta)
+  /^node dist-cp\/backup-job\.js restore-tenant --any --apply$/,
   // Base de medición del Resource Manager (es_erm): idempotente, permisos mínimos y sonda sin restos
   new RegExp(`^${BJ} erm-setup( --apply)?$`),
   // Purga definitiva de las empresas de prueba (lista cerrada en el código; simulación o --apply)
