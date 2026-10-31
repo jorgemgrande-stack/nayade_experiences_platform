@@ -17,7 +17,9 @@ export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
 export type PaymentRowStatus = "posted" | "reversed" | "void";
 export const FREQUENCIES = ["monthly", "quarterly", "yearly"] as const;
 export type Frequency = (typeof FREQUENCIES)[number];
-export const DOCUMENT_OWNERS = ["expense", "supplier", "bank_import", "entry"] as const;
+/** Propietarios de un documento; los tres últimos son de la fase 3 (gestoría: justificantes, nóminas y expedientes). */
+export const DOCUMENT_OWNERS = ["expense", "supplier", "bank_import", "entry", "tax_obligation", "payroll", "tax_dossier"] as const;
+export const TAX_DOCUMENT_OWNERS = ["tax_obligation", "payroll", "tax_dossier"] as const;
 export type DocumentOwner = (typeof DOCUMENT_OWNERS)[number];
 export const IMPORT_FORMATS = ["norma43", "caixabank", "csv"] as const;
 export type ImportFormat = (typeof IMPORT_FORMATS)[number];

@@ -119,6 +119,11 @@ import { startFinanceRecurringScheduler } from "../finance/recurringScheduler";
 import { FinanceStripeService } from "../finance/stripeService";
 import { MysqlFinanceStripeStore, MysqlStripeInvoiceDirectory, finStripeTablesReady } from "../finance/stripeStore";
 import { MysqlOwnInvoiceDirectory, mysqlKeyedLock } from "../finance/ownInvoices";
+import { FinanceTaxService } from "../finance/taxService";
+import { MysqlFinanceTaxStore, finTaxTablesReady } from "../finance/taxStore";
+import { MysqlFiscalInvoiceSource } from "../finance/taxSources";
+import { runTaxReminders, taxRemindersEnabled } from "../finance/taxReminders";
+import { ISSUER } from "../stripe/issuer";
 import { ConsentService, MysqlConsentStore, commsTablesReady } from "../communications/consent";
 import { LinkSigner, linkSecretFromDb } from "../communications/links";
 import { CommunicationsService } from "../communications/service";
@@ -622,6 +627,13 @@ async function main() {
   const financeStripe = financeOps && finance && crmPool && (await finStripeTablesReady(crmPool)) ? new FinanceStripeService({ store: new MysqlFinanceStripeStore(crmPool), finance, ops: new MysqlFinanceOpsStore(crmPool), ledger: new MysqlFinanceStore(crmPool), invoices: invoicing ? new MysqlOwnInvoiceDirectory(crmPool, external?.store.mode ?? "test") : null, stripeInvoices: new MysqlStripeInvoiceDirectory(crmPool), lock: mysqlKeyedLock(crmPool) }) : null;
   if (financeOps) console.log(JSON.stringify({ ctx: "FinanceStripe", mounted: !!financeStripe, ...(financeStripe ? {} : { reason: "migration_0036_missing" }) }));
   if (financeOps && financeStripe) financeOps.useReconciliation(financeStripe);
+  // Gestoría e impuestos (CRM 0037): borradores, calendario fiscal, nóminas, aplazamientos y expedientes; nunca presenta nada
+  const financeTax =
+    financeOps && finance && crmPool && (await finTaxTablesReady(crmPool))
+      ? new FinanceTaxService({ store: new MysqlFinanceTaxStore(crmPool), finance, ledger: new MysqlFinanceStore(crmPool), ops: new MysqlFinanceOpsStore(crmPool), documents: financeOps, stripe: financeStripe ? new MysqlFinanceStripeStore(crmPool) : null, invoices: invoicing ? new MysqlFiscalInvoiceSource(crmPool, external?.store.mode ?? "test") : null, issuer: { legalName: ISSUER.legalName, taxId: ISSUER.taxId } })
+      : null;
+  if (financeOps) console.log(JSON.stringify({ ctx: "FinanceTax", mounted: !!financeTax, ...(financeTax ? { reminders: taxRemindersEnabled(process.env) } : { reason: "migration_0037_missing" }) }));
+  if (financeOps && financeTax) financeOps.useTaxDocumentOwners((type, id) => financeTax.documentOwnerExists(type, id));
   // Borradores de gastos recurrentes: tarea APAGADA salvo CP_FINANCE_RECURRING_ENABLED=1 (una réplica por tick, GET_LOCK)
   if (financeOps && crmPool) startFinanceRecurringScheduler({ ops: financeOps, lock: mysqlAdvisoryLock(crmPool), env: process.env });
   if (crm && crmPool && (await settingsTablesReady(crmPool))) {
@@ -707,6 +719,8 @@ async function main() {
         pastDueExternals: externalStore ? () => externalStore.list({ status: "past_due" }) : undefined,
         openTickets: async () => Promise.all((await tickets.list({ status: "open", limit: 200 })).items.map(async (t) => ({ ticket: t, events: (await tickets.get(t.id)).events }))),
         operations: [
+          // Vencimientos fiscales de Big Elephant (fase 3): APAGADO salvo CP_FINANCE_TAX_REMINDERS_ENABLED=1
+          ...(financeTax && taxRemindersEnabled(process.env) ? [{ name: "taxDeadlines", run: () => runTaxReminders(financeTax, raise) }] : []),
           ...(dataRequests ? [{ name: "dataRequests", run: async () => { const list = await dataRequests.escalate(Date.now()); for (const a of list) await alerts.raise(a.id, a.facts); return list.length; } }] : []),
           ...(copiesReady ? [{ name: "restoreDrills", run: () => new RestoreDrillWatcher({ restores: () => copiesLedger.listRestores(50), store: alertStore, raise }).tick() }] : []),
           ...(uptime ? [{ name: "uptime", run: async () => (await uptime.tick()).down }] : []),
@@ -836,6 +850,7 @@ async function main() {
     implementation,
     financeOps,
     financeStripe,
+    financeTax,
     communications,
     notifications: notificationsFromEnv(process.env),
     mail: {

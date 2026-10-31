@@ -10,7 +10,7 @@ export type AccountType = (typeof ACCOUNT_TYPES)[number];
 export const JOURNAL_CODES = ["GEN", "VEN", "COM", "BAN", "CAJ", "STR", "NOM", "IMP", "APE", "REG", "CIE"] as const;
 export type JournalCode = (typeof JOURNAL_CODES)[number];
 
-export const ENTRY_ORIGINS = ["manual", "invoice", "expense", "expense_payment", "bank", "cash", "recurring", "reversal", "closing", "opening", "regularization", "stripe"] as const;
+export const ENTRY_ORIGINS = ["manual", "invoice", "expense", "expense_payment", "bank", "cash", "recurring", "reversal", "closing", "opening", "regularization", "stripe", "tax", "payroll"] as const;
 export type EntryOrigin = (typeof ENTRY_ORIGINS)[number];
 
 export const ENTRY_STATUSES = ["draft", "posted", "void"] as const;

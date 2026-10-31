@@ -4,8 +4,9 @@ Contabilidad, gastos, proveedores, bancos y caja de **IRON ELEPHANT CONSULTING, 
 Vive en el **plano de control** del Core (`server/finance/`) y se usa desde el CRM (admin.bigelephant.es). Los tenants
 son clientes de Big Elephant y nada más: el módulo nunca lee ni escribe sus bases.
 
-Estado: **fase 1A (libro contable)**, **fase 1B (operaciones)** y **fase 2 (Stripe y conciliación)** implementadas.
-Migraciones `db/crm/migrations/0033_finance_ledger.sql`, `0035_finance_operations.sql` y `0036_finance_stripe.sql`.
+Estado: **fase 1A (libro contable)**, **fase 1B (operaciones)**, **fase 2 (Stripe y conciliación)** y **fase 3
+(gestoría e impuestos)** implementadas. Migraciones `db/crm/migrations/0033_finance_ledger.sql`,
+`0035_finance_operations.sql`, `0036_finance_stripe.sql` y `0037_finance_tax.sql`.
 
 ## Arquitectura
 
@@ -314,6 +315,185 @@ y `{type:"invoice",invoiceId,invoiceNumber,customerName,date,amountCents,reasons
 `{type:"stripe_payout",payoutId}` (sin asiento) y `{type:"invoice_payment",invoiceId}`. `/finance/summary` añade
 `stripeBalanceCents` (5720 desde el libro; `null` sin la fase 2).
 
+## Fase 3: gestoría e impuestos
+
+Límite inviolable: **el sistema nunca presenta nada** ante la AEAT, la Seguridad Social ni ningún organismo, ni ordena
+pagos tributarios. Calcula borradores trazables, lleva el calendario y registra lo que el operador **declara** haber
+presentado o pagado (con su justificante). Texto visible en cada modelo: «Borrador calculado por el sistema. Revísalo
+con tu gestoría: el sistema no presenta declaraciones.»
+
+| Pieza | Fichero | Qué hace |
+|---|---|---|
+| Tipos 3 | `server/finance/taxTypes.ts` | Configuración fiscal, borradores (casillas, detalle de origen, declarados), obligaciones, nóminas, aplazamientos, expedientes y ajustes del 200 |
+| Reglas puras 3 | `server/finance/taxRules.ts` | Calendario (vencimientos y traslado a hábil), aplicabilidad, modelos 303/390/349/347/111/190/115/180/200/202 y seguros sociales, huella y diferencias, avisos, asientos, libros registro y CSV de los borradores |
+| Almacén 3 | `server/finance/taxStore.ts` | `MemoryFinanceTaxStore` y `MysqlFinanceTaxStore`; `finTaxTablesReady` |
+| Facturas fiscales | `server/finance/taxSources.ts` | Lectura (solo lectura) de `invoices`/`invoice_lines` por fecha de expedición, sin el tope de 500 del almacén de la facturación |
+| Servicio 3 | `server/finance/taxService.ts` | Orquesta, audita, contabiliza por `postGenerated`/`reverse` y exporta el ZIP |
+| API 3 | `server/finance/taxApi.ts` | `/finance/tax/*` con las formas del anexo CRM-ESPERA-FASE3 |
+| Avisos 3 | `server/finance/taxReminders.ts` | Alerta `admin.tax_deadline` (n.º 43 del catálogo) en el ciclo de alertas, con `CP_FINANCE_TAX_REMINDERS_ENABLED=1` (apagado) |
+
+Arranque: con las tablas de 0037 (`finTaxTablesReady`) y las operaciones montadas; si no,
+`{ ctx: "FinanceTax", mounted: false, reason: "migration_0037_missing" }` y `/finance/tax/*` responde 404 (el CRM oculta
+el grupo GESTORÍA E IMPUESTOS). Los justificantes se guardan en `fin_documents` con propietario `tax_obligation`,
+`payroll` o `tax_dossier` (la columna es VARCHAR; el servicio de operaciones comprueba que el propietario existe).
+
+### Reutilizado del módulo de gestoría del tenant (copiado y adaptado, nunca importado: usa `legacyDb`)
+
+- `obligationSpecs`, `addMonthsISO` (server/routers/gestoria.ts) → `obligationSpecs` y `addMonthsISO` puros, con
+  vencimientos reales y sin desbordar el mes.
+- `compute303`/`lines303`, `compute111`/`lines111`, `computeCorporate`/`lines200` (server/gestoriaTax.ts) → modelos en
+  céntimos con detalle de origen por asiento, factura, gasto o nómina. El IVA sale del **libro** (líneas 477/472 con su
+  tipo y base), no de las facturas, para que la inversión del sujeto pasivo de Stripe y las reversiones cuenten.
+- `buildDossierZip` (server/gestoriaDossier.ts) → `exportZip` con `jszip` (ya en el repositorio).
+- Esquema de `tax_obligations`, `tax_deferrals`, `tax_dossiers` y `last_reminder_days` (drizzle 0112–0116) →
+  `fin_tax_*` con céntimos, fechas DATE, huella y bitácora de solo inserción; patrón `lastReminderDays` de
+  server/taxReminderJob.ts para los avisos.
+
+### Configuración fiscal
+
+Una fila (`fin_tax_settings`) que solo guarda el administrador; mientras no existe, `GET /tax/settings` devuelve
+`item: null` y `defaults` (valores neutros con la razón social y el NIF del emisor precargados en tiempo de ejecución
+desde `server/stripe/issuer.ts`; la migración no contiene datos reales). Cada versión queda en `fin_tax_settings_log`
+(la primera, con los valores por defecto como «antes»). Solo ejercicio natural (`fiscalYearStartMonth = 1`); IVA mensual
+solo con REDEME. Campos además de los del contrato: `vat390Exempt` (exoneración del 390), `openingVatCompensationCents`
+(cuotas a compensar previas al sistema, casilla 110 del primer 303 sin anterior), `stripeVatId` (NIF-IVA de Stripe para
+el 349) y `extraHolidays` (festivos autonómicos o locales).
+
+### Calendario y vencimientos
+
+`POST /tax/calendar/generate {year}` crea las obligaciones que activa la configuración (`obligation:<modelo>:<año>:<periodo>`,
+única; una fila por sentencia, así que dos generaciones simultáneas no duplican ni se bloquean). Las que dejaron de aplicar
+y siguen pendientes pasan a `no_aplica` con su motivo. Lo que no aplica no se crea y se explica en `notApplicable`.
+
+| Modelo | Periodos | Vencimiento (sin trasladar) |
+|---|---|---|
+| 303 | 1T–4T (o 01–12 con REDEME) | 20 de abril, julio y octubre; 4T, 30 de enero. Mensual: día 30 del mes siguiente (enero, fin de febrero; diciembre, 30 de enero) |
+| 111, 115 | 1T–4T | 20 de abril, julio y octubre; **4T, 20 de enero** |
+| 349 | 1T–4T | como el 303 trimestral |
+| 390 | ANUAL | 30 de enero |
+| 190, 180 | ANUAL | 31 de enero |
+| 347 | ANUAL | último día de febrero |
+| 200 | ANUAL | 25 de julio del año siguiente |
+| 202 | 1P, 2P, 3P | 20 de abril, octubre y diciembre del propio ejercicio |
+| SS (seguros sociales, RLC) | 01–12 | último día del mes siguiente |
+
+Si el último día es sábado, domingo, festivo nacional fijo (1/1, 6/1, 1/5, 15/8, 12/10, 1/11, 6/12, 8/12, 25/12),
+Viernes Santo o un festivo de `extraHolidays`, pasa al primer día hábil siguiente.
+
+### Ciclo de una obligación
+
+`pendiente` → **calcular** → `borrador` (o `no_aplica` si los datos dicen que no hay que presentarlo: 347/349 sin terceros,
+202 sin cuota) → **revisar** → `revisado` → **presentar** (fecha, número de justificante o CSV, PDF opcional en el mismo
+cuerpo) → `presentado` | `domiciliado` | `a_compensar` | `sin_actividad` → **pagar** → `pagado`. También `aplazado` al
+registrar un aplazamiento y **marcar** `a_compensar`/`sin_actividad`. Cada paso deja fila en `fin_tax_obligation_log` y
+en `fin_audit_log`.
+
+- **Huella y `stale`:** cada borrador guarda su JSON y su sha256 (sin la fecha de cálculo). Recalcular una obligación
+  revisada o presentada **no** sobrescribe el borrador: si la huella cambió, marca `stale` con la diferencia por casilla
+  (`staleDiff`). Con `force`, un revisado (no congelado) vuelve a borrador. No se presenta con `stale`.
+- **Liquidación del IVA al presentar el 303** (diario IMP, último día del periodo, `tax:303:<año>:<periodo>`): Debe 477
+  (devengado) · Haber 472 (deducible) · Haber 4700 (compensación aplicada) · Haber 4750 (a ingresar) o Debe 4700 (a
+  compensar o a devolver). Deja 472/477 del periodo a cero.
+- **Pago:** Debe 4750 (303), 4751 (111 y 115), 4752 (200), 473 (202) o 476 (seguros sociales) · Haber banco
+  (`tax-payment:<obligación>`). Los modelos informativos (390, 349, 347, 190, 180) no tienen pago.
+- **Reapertura** (solo administración): de presentado sin pago a borrador, revirtiendo la liquidación. Un trimestre
+  congelado no se reabre; una obligación pagada tampoco.
+- **Cierre del trimestre fiscal** (`POST /tax/quarters/:year/:quarter/close {closePeriods?}`, administración): exige todo
+  presentado, congela las obligaciones del trimestre y, si se pide, cierra los tres periodos contables (fase 1A).
+
+### Modelos
+
+- **303:** 01–09 por tipo (4, 10, 21 %), 10/11 adquisiciones intracomunitarias de servicios (comisiones de Stripe con ISP,
+  origen `stripe`), 14/15 modificaciones (facturas rectificativas y reversiones de otro periodo), 27, 28/29 deducible
+  interior (base proporcional a la parte deducible), 36/37 deducible intracomunitario, 40/41 rectificación de deducciones,
+  45, 46, 59 (servicios a clientes de la UE con NIF-IVA, al 0 %), 120 (no sujetas por localización: fuera de la UE), 64,
+  66, 110/78/87 (compensación arrastrada del 303 anterior), 69 y 71. Sin prorrata. Sin asientos en el periodo: «sin
+  datos» (null).
+- **390:** suma anual de las casillas de los 303 (presentados: lo guardado; el resto, calculado) con prefijo `303.`.
+- **349:** clave S (facturas al 0 % a clientes de la UE con NIF-IVA) e I (comisiones de Stripe con ISP y gastos de
+  proveedores de la UE); rectificativas restan; aviso si pasa de 50.000 € (presentación mensual).
+- **347:** terceros con más de 3.005,06 € al año IVA incluido; A compras (gastos registrados), B ventas (facturas), con
+  desglose trimestral; excluye terceros fuera de España y operaciones con retención; rectificativas restan.
+- **111 / 190:** nóminas registradas (mes de devengo) y gastos con retención que no son alquileres; con empleados y un mes
+  sin nómina, «sin datos». **115 / 180:** gastos de la cuenta 621 con retención. Los trabajadores van por alias.
+- **Seguros sociales:** cuota de la empresa y del trabajador de las nóminas registradas del mes.
+- **200:** resultado contable (grupos 6 y 7 sin regularización ni cierre), aumento por el 630, ajustes manuales,
+  compensación de bases negativas (las más antiguas primero; límite del 70 % por encima de 1 M€ de base previa; sin límite
+  los tres primeros ejercicios de una entidad nueva), cuota al tipo configurado (15 % el primer ejercicio con base
+  positiva y el siguiente si se indica `newEntityFirstProfitYear`), deducciones, retenciones (473 que no son pagos
+  fraccionados, más las manuales) y 202 pagados. Las bases negativas pendientes pasan al 200 siguiente.
+- **202:** art. 40.2, 18 % de (cuota íntegra − deducciones − retenciones) del último 200 vencido (abril: año −2; octubre y
+  diciembre: año −1); sin ese 200 en el sistema, «sin datos»; sin cuota positiva, no aplica. Art. 40.3: 5/7 del tipo
+  redondeado por defecto sobre el resultado acumulado (3, 9 y 11 meses), menos retenciones y pagos anteriores.
+
+### Nóminas, aplazamientos, expedientes y avisos
+
+- **Nóminas** (`fin_payrolls`, una por mes y alias; se rechaza un alias con forma de DNI o NIE): líquido = bruto − IRPF −
+  SS del trabajador. Asiento `payroll:<id>` (NOM, último día del mes): Debe 640 y 642 · Haber 4751, 476 y 465. Pago
+  `payroll-payment:<id>`: Debe 465 · Haber banco. En borrador se pueden sustituir; registradas, no.
+- **Aplazamientos:** sobre una obligación presentada y sin pagar (pasa a `aplazado`); las cuotas suman el principal. Cada
+  cuota pagada: Debe cuenta del modelo (principal) · Debe 669 (lo pagado de más = intereses) · Haber banco
+  (`tax-deferral:<id>:<n>`). Estados: solicitado, concedido, denegado, en_curso, pagado, cancelado.
+- **Expedientes** (requerimiento, comprobación, inspección, recurso, otro): organismo, referencia, asunto, fechas, estado
+  (abierto, en_tramite, respondido, cerrado), obligación relacionada, documentos y bitácora de solo inserción.
+- **Avisos:** a 15, 7 y 3 días del vencimiento de lo que sigue pendiente, borrador o revisado; el umbral avisado se guarda
+  en la obligación con una escritura condicional (una sola vez también entre réplicas). Alerta administrativa
+  `admin.tax_deadline` en el ciclo de alertas del plano de control **solo** con `CP_FINANCE_TAX_REMINDERS_ENABLED=1`.
+  El panel (`/tax/dashboard`) muestra los avisos siempre.
+
+### Libros registro y exportación
+
+- `GET /tax/registers/issued.csv?from&to`: `registerCsv` de la facturación propia (sin modificarlo) más, al final, los
+  cobros de Stripe sin factura propia como **incidencia** (no se inventan facturas).
+- `GET /tax/registers/received.csv?from&to`: gastos registrados (F1, F2 tique, R1 rectificativa; cuota deducible,
+  retención, rectificada) y una fila por mes con las comisiones de Stripe con ISP.
+- `GET /tax/export.zip?from&to` (máximo un año): libro diario, sumas y saldos, libros registro, borradores guardados de las
+  obligaciones del rango (CSV legibles), calendario y listado de documentos (sin su contenido). Sin datos personales.
+
+### API de la fase 3 (`/cp/v1/finance/tax`, formas del anexo del CRM)
+
+| Ruta | Permiso | Respuesta |
+|---|---|---|
+| `GET /tax/settings` | lectura | `{item: TaxSettings\|null, log:[{at, actor, changes:{campo:[antes, después]}, note}], defaults}` |
+| `PATCH /tax/settings` | administración | `{item}` |
+| `GET /tax/dashboard` | lectura | `{asOf, hasEmployees, settingsMissing, quarter:{label}, upcoming, estimates, deferrals, dossiers, warnings}` |
+| `GET /tax/calendar?year` · `POST /tax/calendar/generate` | lectura · operador | `{items, notApplicable}` · `{created, existing, retired, notApplicable}` |
+| `GET /tax/obligations?year&model&status` · `GET /tax/obligations/:id` | lectura | `{items, total}` · `{item: Obligation & {draft, log, documents}}` |
+| `POST /tax/obligations/:id/calculate\|review\|present\|pay\|mark` | operador | `{item}` |
+| `POST /tax/obligations/:id/reopen` · `POST /tax/quarters/:year/:quarter/close` | administración | `{item}` |
+| `GET /tax/models/:model/preview?year&period` | lectura | Draft |
+| `GET /tax/registers/issued.csv\|received.csv` · `GET /tax/export.zip` | lectura | CSV · ZIP |
+| `GET\|POST /tax/payrolls` · `POST /tax/payrolls/:id/post\|pay` | lectura · operador | `{items}` · `{item}` |
+| `GET\|POST /tax/deferrals` · `PATCH /tax/deferrals/:id` · `POST /tax/deferrals/:id/installments/:n/pay` | lectura · operador | `{items}` · `{item}` |
+| `GET\|POST /tax/dossiers` · `GET\|PATCH /tax/dossiers/:id` · `POST /tax/dossiers/:id/log` | lectura · operador | `{items}` · `{item: Dossier & {log, documents}}` |
+| `GET /tax/corporate/:year` · `POST /tax/corporate/:year/adjustments` | lectura · operador | `{item}` |
+
+«Operador» = `billing:write` + sesión de operador (nunca un token de servicio); «administración» = además rol `admin` o
+`superadmin`.
+
+### Decisiones fiscales que debe confirmar la gestoría
+
+1. **Comisiones de Stripe:** exentas por defecto (servicios financieros); con `reverse_charge` (fase 2) se autoliquidan
+   como adquisición intracomunitaria de servicios (303: 10/11 y 36/37; 349: clave I con `stripeVatId`). Confirmar cuál
+   aplica y el NIF-IVA de Stripe Payments Europe.
+2. **Proveedores de la UE sin IVA** (hosting, software): la fase 1B no autoliquida la ISP de los gastos; el 303 avisa y el
+   349 los declara en la clave I. Confirmar si hay que registrar la autoliquidación con un asiento manual.
+3. **Periodo del IVA:** devengado por fecha de expedición de la factura; soportado por fecha de devengo del gasto (o de
+   factura). Las rectificativas van a 14/15 y 40/41 (no restan en las casillas por tipo).
+4. **Retenciones (111/115):** por mes de devengo de la nómina y fecha de devengo del gasto, no por fecha de pago.
+5. **111 y 115 del 4T vencen el 20 de enero** (el contrato decía «igual que el 303»); el 390 vence el **30** de enero.
+6. **347:** importes con IVA por fecha de expedición o de factura recibida; no incluye cobros en metálico > 6.000 € ni
+   subvenciones; se excluyen las operaciones con retención y con terceros extranjeros.
+7. **349:** trimestral salvo aviso por superar 50.000 €; las rectificativas de otro periodo se declaran restando en el
+   periodo actual (avisa si un operador queda en negativo).
+8. **200:** tipo único configurado; no calcula los tipos reducidos de microempresas (Ley 7/2024), la reserva de
+   capitalización ni la de nivelación; el asiento del gasto por impuesto (630/4752/473) lo registra la gestoría.
+   Numeración de casillas del 200 y del 390 orientativa (el 390 se entrega como suma de las casillas del 303).
+9. **202:** por defecto art. 40.2; el art. 40.3 sin el pago mínimo de las grandes empresas.
+10. **Nóminas:** solo resúmenes por alias; el 190 no lleva NIF de los trabajadores (los añade la gestoría).
+11. **Viernes Santo** se trata como festivo nacional; el resto de festivos autonómicos y locales, por configuración.
+12. **303 mensual de julio:** vencimiento el 30 de agosto según la regla general implementada; confirmar con la gestoría.
+
 ## Permisos (provisionales)
 
 Añadir ámbitos nuevos toca ficheros críticos del plano de control, así que la fase 1 usa los existentes, centralizados
@@ -324,7 +504,8 @@ en `server/finance/permissions.ts`:
 | Consulta y exportaciones | `billing:read` |
 | Gestión: centros, categorías, proveedores, borradores de gastos, documentos, recurrentes, cuentas bancarias y cajas, importar extractos e informes de Stripe, ignorar movimientos | `billing:write` |
 | Contabilizar o revertir: asientos manuales, sincronizar facturas, registrar y anular gastos, pagos y su reversión, conciliar y desvincular (también payouts y cobros por transferencia), contabilizar Stripe, revisar incidencias, movimientos de caja | `billing:write` + sesión de operador (nunca un token de servicio) |
-| Cerrar/reabrir periodos y cerrar ejercicios, plan contable (alta de ejercicios: solo `billing:write`), configuración de Stripe | `billing:write` + sesión de operador + rol `admin` o `superadmin` |
+| Fase 3: calendario, borradores, presentación y pago registrados, nóminas, aplazamientos, expedientes, ajustes del 200 | `billing:write` + sesión de operador |
+| Cerrar/reabrir periodos y cerrar ejercicios, plan contable (alta de ejercicios: solo `billing:write`), configuración de Stripe, configuración fiscal, reapertura de lo presentado y cierre del trimestre fiscal | `billing:write` + sesión de operador + rol `admin` o `superadmin` |
 
 El alta de una cuenta bancaria o de una caja crea su subcuenta en el plan contable desde el servicio (alta derivada): no
 exige el rol de administración que pide el alta manual de cuentas.
@@ -335,5 +516,6 @@ Plan: en una PR protegida aparte, ámbitos propios (`finance:read`, `finance:wri
 ## Fases siguientes
 
 - **2 · Cobros y conciliación:** implementada (ver arriba). Pendiente: lector por API de Stripe (punto de extensión).
-- **3 · Gestoría e impuestos:** libros registro, modelos (303, 111, 115, 390…), exportación para la gestoría.
+- **3 · Gestoría e impuestos:** implementada (ver arriba). Pendiente: ejercicio no natural, 303 mensual afinado,
+  autoliquidación de la ISP de gastos de la UE y asiento del gasto por Impuesto sobre Sociedades.
 - **4 · Análisis:** informes de resultados, tesorería y previsiones.
