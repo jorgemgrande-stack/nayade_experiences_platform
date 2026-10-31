@@ -4,6 +4,18 @@ import { trpc } from "@/lib/trpc";
 import AdminLayout from "@/components/AdminLayout";
 import { usePanelSubscription } from "@/hooks/usePanelSubscription";
 import { errorMessage } from "@/components/admin/PanelStates";
+import { useVocabulary, visibleCrmTabs } from "@/lib/vocabulary";
+import { validateContact, validateOrder, validateQuote, hasErrors, type FieldErrors } from "@shared/crmForms";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -93,6 +105,51 @@ type Tab = "leads" | "quotes" | "reservations" | "invoices" | "anulaciones" | "p
 type OpportunityStatus = "nueva" | "enviada" | "ganada" | "perdida";
 type Priority = "baja" | "media" | "alta";
 type QuoteStatus = "borrador" | "enviado" | "visualizado" | "convertido_carrito" | "pago_fallido" | "aceptado" | "rechazado" | "expirado" | "perdido";
+
+/**
+ * Mensaje de error de una acción para el usuario: conserva los avisos de negocio del servidor
+ * (datos que faltan, conflictos) y oculta los detalles técnicos.
+ */
+const BUSINESS_ERROR_CODES = ["BAD_REQUEST", "NOT_FOUND", "CONFLICT", "PRECONDITION_FAILED"];
+function failMsg(err: unknown, fallback = "No se ha podido completar la operación. Inténtalo de nuevo."): string {
+  const e = err as { data?: { code?: string; zodError?: unknown }; message?: string } | null;
+  const msg = e?.message?.trim();
+  const business = e?.data?.code && BUSINESS_ERROR_CODES.includes(e.data.code) && !e.data.zodError && msg && !/^[[{]/.test(msg) ? msg : null;
+  return errorMessage(err, business ?? fallback);
+}
+
+/** Error de un campo, enlazado con aria-describedby. */
+function FieldError({ id, msg }: { id: string; msg?: string | null }) {
+  if (!msg) return null;
+  return <p id={id} role="alert" className="text-xs text-red-400 mt-1">{msg}</p>;
+}
+const invalidProps = (msg: string | undefined, id: string) =>
+  msg ? { "aria-invalid": true as const, "aria-describedby": id } : {};
+
+/** Confirmación accesible (sustituye a `confirm()` del navegador). */
+function ConfirmDialog({ open, title, description, confirmLabel = "Eliminar", onConfirm, onCancel }: {
+  open: boolean;
+  title: string;
+  description: string;
+  confirmLabel?: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <AlertDialog open={open} onOpenChange={(o) => { if (!o) onCancel(); }}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{title}</AlertDialogTitle>
+          <AlertDialogDescription>{description}</AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancelar</AlertDialogCancel>
+          <AlertDialogAction className="bg-red-600 hover:bg-red-700 text-white" onClick={onConfirm}>{confirmLabel}</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
 
 // ─── BADGE HELPERS ────────────────────────────────────────────────────────────
 
@@ -368,6 +425,7 @@ function LeadDetailModal({
   const [pauseReason, setPauseReason] = useState("");
   const [showPauseInput, setShowPauseInput] = useState(false);
   const utils = trpc.useUtils();
+  const voc = useVocabulary();
 
   const { data, isLoading } = trpc.crm.leads.get.useQuery({ id: leadId });
 
@@ -377,7 +435,7 @@ function LeadDetailModal({
       setNote("");
       utils.crm.leads.get.invalidate({ id: leadId });
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toast.error(failMsg(e)),
   });
 
   const updateStatus = trpc.crm.leads.update.useMutation({
@@ -390,7 +448,7 @@ function LeadDetailModal({
 
   const markLost = trpc.crm.leads.markLost.useMutation({
     onSuccess: () => {
-      toast.success("Lead marcado como perdido");
+      toast.success(`${voc.Lead} ${voc.agreeLead("marcado como perdido", "marcada como perdida")}`);
       utils.crm.leads.get.invalidate({ id: leadId });
       utils.crm.leads.counters.invalidate();
       onClose();
@@ -409,7 +467,7 @@ function LeadDetailModal({
       // Navegar al presupuesto generado
       window.location.href = `/admin/crm?tab=quotes&quoteId=${result.quoteId}`;
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toast.error(failMsg(e)),
   });
 
   const emailPrefsQ = trpc.emailCommunications.getCustomerPrefs.useQuery(
@@ -423,7 +481,7 @@ function LeadDetailModal({
       setShowPauseInput(false);
       emailPrefsQ.refetch();
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toast.error(failMsg(e)),
   });
 
   if (isLoading) {
@@ -498,7 +556,7 @@ function LeadDetailModal({
           )}
           {lead.preferredDate && (
             <div className="flex justify-between text-sm">
-              <span className="text-foreground/60">Fecha de la actividad</span>
+              <span className="text-foreground/60">{voc.serviceDate}</span>
               <span className="text-white font-medium">{new Date(lead.preferredDate).toLocaleDateString("es-ES")}</span>
             </div>
           )}
@@ -520,7 +578,7 @@ function LeadDetailModal({
           {/* Actividades enriquecidas desde el formulario multi-actividad */}
           {Array.isArray(lead.activitiesJson) && lead.activitiesJson.length > 0 && (
             <div className="pt-2 border-t border-foreground/[0.12]">
-              <p className="text-xs text-foreground/50 uppercase tracking-wider mb-2">Actividades solicitadas</p>
+              <p className="text-xs text-foreground/50 uppercase tracking-wider mb-2">{voc.requestedItems}</p>
               <div className="space-y-2">
                 {(lead.activitiesJson as any[]).map((act: any, i: number) => (
                   <div key={i} className="bg-white/[0.06] rounded-lg px-3 py-2.5">
@@ -737,6 +795,7 @@ function LeadEditModal({
   onClose: () => void;
 }) {
   const utils = trpc.useUtils();
+  const voc = useVocabulary();
   const { data, isLoading } = trpc.crm.leads.get.useQuery({ id: leadId });
   const { data: leadSources } = trpc.crm.leadSources.list.useQuery();
 
@@ -819,12 +878,12 @@ function LeadEditModal({
 
   const updateLead = trpc.crm.leads.update.useMutation({
     onSuccess: () => {
-      toast.success("Lead actualizado");
+      toast.success(`${voc.Lead} ${voc.agreeLead("actualizado", "actualizada")}`);
       utils.crm.leads.list.invalidate();
       utils.crm.leads.counters.invalidate();
       onClose();
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toast.error(failMsg(e)),
   });
 
   if (isLoading || !form) {
@@ -874,7 +933,7 @@ function LeadEditModal({
     <DialogContent className="max-w-xl bg-[#0d1526] border-foreground/[0.12] text-white max-h-[90vh] overflow-y-auto">
       <DialogHeader>
         <DialogTitle className="text-white flex items-center gap-2">
-          <Pencil className="w-4 h-4 text-orange-400" /> Editar Lead
+          <Pencil className="w-4 h-4 text-orange-400" /> {voc.editLead}
         </DialogTitle>
       </DialogHeader>
       <div className="space-y-4">
@@ -901,9 +960,9 @@ function LeadEditModal({
         {/* Líneas de actividad */}
         <div>
           <div className="flex items-center justify-between mb-2">
-            <Label className="text-foreground/65 text-xs">Actividades de interés</Label>
+            <Label className="text-foreground/65 text-xs">{voc.interests}</Label>
             <button type="button" onClick={addLine} className="flex items-center gap-1 text-xs text-orange-400 hover:text-orange-300 transition-colors">
-              <Plus className="w-3 h-3" /> Añadir actividad
+              <Plus className="w-3 h-3" /> {voc.addInterest}
             </button>
           </div>
           <div className="space-y-2">
@@ -917,7 +976,7 @@ function LeadEditModal({
                       onChange={e => { updateLine(idx, { search: e.target.value, experienceTitle: "", experienceId: null }); setActiveLineIdx(idx); }}
                       onFocus={() => { updateLine(idx, { showSuggestions: true }); setActiveLineIdx(idx); }}
                       onBlur={() => setTimeout(() => updateLine(idx, { showSuggestions: false }), 200)}
-                      placeholder="Buscar experiencia o pack..."
+                      placeholder={voc.productSearch}
                       className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25 text-sm h-8"
                     />
                     {line.showSuggestions && productSuggestions && productSuggestions.length > 0 && activeLineIdx === idx && (
@@ -965,7 +1024,7 @@ function LeadEditModal({
         {/* Fecha y participantes */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div className="col-span-3 sm:col-span-1">
-            <Label className="text-foreground/65 text-xs">Fecha de la actividad</Label>
+            <Label className="text-foreground/65 text-xs">{voc.serviceDate}</Label>
             <Input type="date" value={form.preferredDate} onChange={e => setForm({ ...form, preferredDate: e.target.value })} className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1" />
           </div>
           <div>
@@ -1008,7 +1067,7 @@ function LeadEditModal({
         {/* Origen del lead */}
         {leadSources && leadSources.length > 0 && (
           <div>
-            <Label className="text-foreground/65 text-xs">Origen del lead</Label>
+            <Label className="text-foreground/65 text-xs">{voc.leadOrigin}</Label>
             <Select
               value={form.leadSourceId ? String(form.leadSourceId) : "none"}
               onValueChange={v => setForm({ ...form, leadSourceId: v === "none" ? null : Number(v) })}
@@ -1089,6 +1148,7 @@ function RegimeCell({ item, onChange }: {
   item: QuoteLineItem;
   onChange: (fiscalRegime: "reav" | "general", taxRate: number) => void;
 }) {
+  const voc = useVocabulary();
   const isProduct = item.productId != null;
   const isReav = item.fiscalRegime === "reav";
   if (isProduct) {
@@ -1117,7 +1177,7 @@ function RegimeCell({ item, onChange }: {
     >
       <option value="general" className="bg-[#0d1526]">IVA 21% · manual</option>
       <option value="general_10" className="bg-[#0d1526]">IVA 10% · manual</option>
-      <option value="reav" className="bg-[#0d1526]">REAV · manual</option>
+      {(voc.showReav || isReav) && <option value="reav" className="bg-[#0d1526]">REAV · manual</option>}
     </select>
   );
 }
@@ -1128,6 +1188,8 @@ function RegimeCell({ item, onChange }: {
 
 function NewLeadModal({ onClose }: { onClose: () => void }) {
   const utils = trpc.useUtils();
+  const voc = useVocabulary();
+  const [errors, setErrors] = useState<FieldErrors<"name" | "email" | "phone">>({});
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
@@ -1169,17 +1231,19 @@ function NewLeadModal({ onClose }: { onClose: () => void }) {
 
   const createLead = trpc.crm.leads.create.useMutation({
     onSuccess: () => {
-      toast.success(`Lead de ${name} creado correctamente`);
+      toast.success(`${voc.Lead} de ${name} ${voc.agreeLead("creado", "creada")} correctamente`);
       utils.crm.leads.list.invalidate();
       utils.crm.leads.counters.invalidate();
       onClose();
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toast.error(failMsg(e)),
   });
 
   const handleSubmit = () => {
-    if (!name.trim() || !email.trim()) {
-      toast.error("Nombre y email son obligatorios");
+    const errs = validateContact({ name, email, phone });
+    setErrors(errs);
+    if (hasErrors(errs)) {
+      toast.error("Revisa los campos marcados");
       return;
     }
     const validActivities = activityLines.filter(l => l.experienceTitle.trim());
@@ -1210,36 +1274,39 @@ function NewLeadModal({ onClose }: { onClose: () => void }) {
     <DialogContent className="max-w-xl bg-[#0d1526] border-foreground/[0.12] text-white max-h-[90vh] overflow-y-auto">
       <DialogHeader>
         <DialogTitle className="text-white flex items-center gap-2">
-          <Users className="w-4 h-4 text-violet-400" /> Nuevo Lead
+          <Users className="w-4 h-4 text-violet-400" /> {voc.newLead}
         </DialogTitle>
       </DialogHeader>
       <div className="space-y-4">
         {/* Datos del cliente */}
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <Label className="text-xs text-foreground/60 mb-1 block">Nombre <span className="text-red-400">*</span></Label>
-            <Input value={name} onChange={e => setName(e.target.value)} placeholder="Ana García" className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25" />
+            <Label htmlFor="new-lead-name" className="text-xs text-foreground/60 mb-1 block">Nombre <span className="text-red-400">*</span></Label>
+            <Input id="new-lead-name" required value={name} onChange={e => setName(e.target.value)} placeholder="Ana García" className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25" {...invalidProps(errors.name, "new-lead-name-error")} />
+            <FieldError id="new-lead-name-error" msg={errors.name} />
           </div>
           <div>
-            <Label className="text-xs text-foreground/60 mb-1 block">Email <span className="text-red-400">*</span></Label>
-            <Input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="ana@ejemplo.com" className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25" />
+            <Label htmlFor="new-lead-email" className="text-xs text-foreground/60 mb-1 block">Email <span className="text-red-400">*</span></Label>
+            <Input id="new-lead-email" required type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="ana@ejemplo.com" className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25" {...invalidProps(errors.email, "new-lead-email-error")} />
+            <FieldError id="new-lead-email-error" msg={errors.email} />
           </div>
           <div>
-            <Label className="text-xs text-foreground/60 mb-1 block">Teléfono</Label>
-            <Input value={phone} onChange={e => setPhone(e.target.value)} placeholder="+34 600 000 000" className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25" />
+            <Label htmlFor="new-lead-phone" className="text-xs text-foreground/60 mb-1 block">Teléfono</Label>
+            <Input id="new-lead-phone" type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="+34 600 000 000" className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25" {...invalidProps(errors.phone, "new-lead-phone-error")} />
+            <FieldError id="new-lead-phone-error" msg={errors.phone} />
           </div>
           <div>
-            <Label className="text-xs text-foreground/60 mb-1 block">Empresa / Grupo</Label>
-            <Input value={company} onChange={e => setCompany(e.target.value)} placeholder="Empresa S.L." className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25" />
+            <Label htmlFor="new-lead-company" className="text-xs text-foreground/60 mb-1 block">Empresa / Grupo</Label>
+            <Input id="new-lead-company" value={company} onChange={e => setCompany(e.target.value)} placeholder="Empresa S.L." className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25" />
           </div>
         </div>
 
         {/* Líneas de actividad */}
         <div>
           <div className="flex items-center justify-between mb-2">
-            <Label className="text-xs text-foreground/60">Actividades de interés</Label>
+            <Label className="text-xs text-foreground/60">{voc.interests}</Label>
             <button type="button" onClick={addLine} className="flex items-center gap-1 text-xs text-violet-400 hover:text-violet-300 transition-colors">
-              <Plus className="w-3 h-3" /> Añadir actividad
+              <Plus className="w-3 h-3" /> {voc.addInterest}
             </button>
           </div>
           <div className="space-y-2">
@@ -1257,7 +1324,7 @@ function NewLeadModal({ onClose }: { onClose: () => void }) {
                       family: p.productType === "experience" ? "experience" : "pack",
                     })}
                     inputClassName="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25 text-sm h-8"
-                    placeholder="Buscar experiencia o pack..."
+                    placeholder={voc.productSearch}
                     showBadge={false}
                     sourceType={line.family === "experience" ? "experience" : line.family === "pack" ? "legoPack" : undefined}
                   />
@@ -1278,7 +1345,7 @@ function NewLeadModal({ onClose }: { onClose: () => void }) {
                 {line.experienceId && (
                   <p className="text-xs text-emerald-400 pl-6 mt-1.5 flex items-center gap-1">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
-                    {line.family === "experience" ? "Experiencia" : "Pack"} vinculado del catálogo
+                    {voc.licensed ? "Vinculado al catálogo" : <>{line.family === "experience" ? "Experiencia" : "Pack"} vinculado del catálogo</>}
                   </p>
                 )}
               </div>
@@ -1289,26 +1356,26 @@ function NewLeadModal({ onClose }: { onClose: () => void }) {
         {/* Fecha y participantes globales */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div className="col-span-3 sm:col-span-1">
-            <Label className="text-xs text-foreground/60 mb-1 block">Fecha de la actividad</Label>
-            <Input type="date" value={preferredDate} onChange={e => setPreferredDate(e.target.value)} className="bg-foreground/[0.05] border-foreground/[0.12] text-white" />
+            <Label htmlFor="new-lead-date" className="text-xs text-foreground/60 mb-1 block">{voc.serviceDate}</Label>
+            <Input id="new-lead-date" type="date" value={preferredDate} onChange={e => setPreferredDate(e.target.value)} className="bg-foreground/[0.05] border-foreground/[0.12] text-white" />
           </div>
           <div>
-            <Label className="text-xs text-foreground/60 mb-1 block">Adultos</Label>
-            <Input type="number" min={1} value={adults} onChange={e => setAdults(Number(e.target.value))} className="bg-foreground/[0.05] border-foreground/[0.12] text-white" />
+            <Label htmlFor="new-lead-adults" className="text-xs text-foreground/60 mb-1 block">Adultos</Label>
+            <Input id="new-lead-adults" type="number" min={1} value={adults} onChange={e => setAdults(Number(e.target.value))} className="bg-foreground/[0.05] border-foreground/[0.12] text-white" />
           </div>
           <div>
-            <Label className="text-xs text-foreground/60 mb-1 block">Niños</Label>
-            <Input type="number" min={0} value={children} onChange={e => setChildren(Number(e.target.value))} className="bg-foreground/[0.05] border-foreground/[0.12] text-white" />
+            <Label htmlFor="new-lead-children" className="text-xs text-foreground/60 mb-1 block">Niños</Label>
+            <Input id="new-lead-children" type="number" min={0} value={children} onChange={e => setChildren(Number(e.target.value))} className="bg-foreground/[0.05] border-foreground/[0.12] text-white" />
           </div>
         </div>
 
         {/* Canal y notas */}
         <div>
-          <Label className="text-xs text-foreground/60 mb-1 block">Canal de origen</Label>
+          <Label htmlFor="new-lead-source" className="text-xs text-foreground/60 mb-1 block">Canal de origen</Label>
           <Select value={source} onValueChange={setSource}>
-            <SelectTrigger className="bg-foreground/[0.05] border-foreground/[0.12] text-white"><SelectValue /></SelectTrigger>
+            <SelectTrigger id="new-lead-source" className="bg-foreground/[0.05] border-foreground/[0.12] text-white"><SelectValue /></SelectTrigger>
             <SelectContent className="bg-[#0d1526] border-foreground/[0.12]">
-              <SelectItem value="admin" className="text-white text-xs">💼 Admin (manual)</SelectItem>
+              <SelectItem value="admin" className="text-white text-xs">{voc.licensed ? "💼 Alta manual" : "💼 Admin (manual)"}</SelectItem>
               <SelectItem value="telefono" className="text-white text-xs">📞 Teléfono</SelectItem>
               <SelectItem value="email" className="text-white text-xs">📧 Email</SelectItem>
               <SelectItem value="whatsapp" className="text-white text-xs">💬 WhatsApp</SelectItem>
@@ -1318,14 +1385,14 @@ function NewLeadModal({ onClose }: { onClose: () => void }) {
           </Select>
         </div>
         <div>
-          <Label className="text-xs text-foreground/60 mb-1 block">Mensaje / notas</Label>
-          <Textarea value={messageText} onChange={e => setMessageText(e.target.value)} placeholder="Información adicional del cliente..." rows={3} className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25 resize-none" />
+          <Label htmlFor="new-lead-message" className="text-xs text-foreground/60 mb-1 block">Mensaje / notas</Label>
+          <Textarea id="new-lead-message" value={messageText} onChange={e => setMessageText(e.target.value)} placeholder="Información adicional del cliente..." rows={3} className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25 resize-none" />
         </div>
       </div>
       <DialogFooter className="gap-2">
         <Button variant="outline" size="sm" onClick={onClose} className="border-foreground/[0.15] text-foreground/65">Cancelar</Button>
         <Button size="sm" onClick={handleSubmit} disabled={createLead.isPending} className="bg-gradient-to-r from-violet-600 to-violet-700 hover:from-violet-700 hover:to-violet-800 text-white">
-          {createLead.isPending ? "Creando..." : "Crear Lead"}
+          {createLead.isPending ? "Creando..." : voc.createLead}
         </Button>
       </DialogFooter>
     </DialogContent>
@@ -1336,6 +1403,9 @@ function NewLeadModal({ onClose }: { onClose: () => void }) {
 
 function NewReservationModal({ onClose }: { onClose: () => void }) {
   const utils = trpc.useUtils();
+  const voc = useVocabulary();
+  const [errors, setErrors] = useState<FieldErrors<"name" | "email" | "phone" | "product" | "date" | "amount">>({});
+  const [clientErrors, setClientErrors] = useState<FieldErrors<"name" | "email" | "phone">>({});
 
   const [customerName, setCustomerName] = useState("");
   const [customerEmail, setCustomerEmail] = useState("");
@@ -1376,11 +1446,13 @@ function NewReservationModal({ onClose }: { onClose: () => void }) {
       setShowCreateClient(false);
       toast.success("Cliente creado y seleccionado");
     },
-    onError: (e) => toast.error("Error al crear cliente: " + e.message),
+    onError: (e) => toast.error(failMsg(e, "No se ha podido crear el cliente.")),
   });
 
   const handleCreateClient = () => {
-    if (!newClientName.trim() || !newClientEmail.trim()) { toast.error("Nombre y email son obligatorios"); return; }
+    const errs = validateContact({ name: newClientName, email: newClientEmail, phone: newClientPhone });
+    setClientErrors(errs);
+    if (hasErrors(errs)) return;
     createClientMutation.mutate({
       name: newClientName.trim(),
       email: newClientEmail.trim(),
@@ -1389,37 +1461,44 @@ function NewReservationModal({ onClose }: { onClose: () => void }) {
     });
   };
 
+  // Búsqueda en servidor con una pequeña espera mientras se escribe
+  const [clientQuery, setClientQuery] = useState("");
+  const [productQuery, setProductQuery] = useState("");
+  useEffect(() => { const t = setTimeout(() => setClientQuery(clientSearch.trim()), 250); return () => clearTimeout(t); }, [clientSearch]);
+  useEffect(() => { const t = setTimeout(() => setProductQuery(productSearch.trim()), 250); return () => clearTimeout(t); }, [productSearch]);
+
   const { data: clientSuggestionsRaw } = trpc.crm.clients.list.useQuery(
-    { search: clientSearch, limit: 6 },
-    { enabled: clientSearch.length >= 2 }
+    { search: clientQuery, limit: 6 },
+    { enabled: clientQuery.length >= 2 }
   );
   const clientSuggestions = clientSuggestionsRaw?.items ?? [];
 
-  const { data: allProductsRaw } = trpc.crm.products.search.useQuery({ q: "", limit: 100 });
-  const productSuggestions = useMemo(() => {
-    if (!allProductsRaw) return [];
-    if (!productSearch.trim()) return allProductsRaw as any[];
-    const q = productSearch.toLowerCase();
-    return (allProductsRaw as any[]).filter((p: any) => p.title.toLowerCase().includes(q));
-  }, [allProductsRaw, productSearch]);
+  const { data: productResults, isFetching: productsFetching } = trpc.crm.products.search.useQuery(
+    { q: productQuery || undefined, limit: 20 },
+    { placeholderData: (prev) => prev },
+  );
+  const productSuggestions = (productResults ?? []) as any[];
 
   const createManual = trpc.crm.reservations.createManual.useMutation({
     onSuccess: (data) => {
-      toast.success(`Reserva ${data.merchantOrder} creada — Factura ${data.invoiceNumber}`);
+      toast.success(`${voc.Order} ${data.merchantOrder} ${voc.agree("creado", "creada")} — Factura ${data.invoiceNumber}`);
       utils.crm.reservations.list.invalidate();
       utils.crm.reservations.counters.invalidate();
       onClose();
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toast.error(failMsg(e)),
   });
 
   const handleSubmit = () => {
-    if (!customerName.trim() || !customerEmail.trim()) { toast.error("Nombre y email del cliente son obligatorios"); return; }
-    if (!productId || !productName) { toast.error("Selecciona un producto"); return; }
-    if (!bookingDate) { toast.error("La fecha del servicio es obligatoria"); return; }
     const total = parseFloat(amountTotal);
     const paid = parseFloat(amountPaid || amountTotal);
-    if (isNaN(total) || total < 0) { toast.error("El importe total debe ser un número válido"); return; }
+    const errs = validateOrder(
+      { name: customerName, email: customerEmail, phone: customerPhone, productId: productName ? productId : null, bookingDate, amount: total },
+      { date: voc.serviceDate },
+    );
+    setErrors(errs);
+    if (hasErrors(errs)) { toast.error("Revisa los campos marcados"); return; }
+    if (!productId) return;
     createManual.mutate({
       customerName: customerName.trim(),
       customerEmail: customerEmail.trim(),
@@ -1441,7 +1520,7 @@ function NewReservationModal({ onClose }: { onClose: () => void }) {
     <DialogContent className="max-w-xl bg-[#0d1526] border-foreground/[0.12] text-white max-h-[90vh] overflow-y-auto">
       <DialogHeader>
         <DialogTitle className="text-white flex items-center gap-2">
-          <CalendarCheck className="w-5 h-5 text-emerald-400" /> Nueva Reserva
+          <CalendarCheck className="w-5 h-5 text-emerald-400" /> {voc.newOrder}
         </DialogTitle>
       </DialogHeader>
       <div className="space-y-4 py-2">
@@ -1452,8 +1531,10 @@ function NewReservationModal({ onClose }: { onClose: () => void }) {
           {/* Búsqueda de cliente existente — se oculta cuando hay cliente seleccionado o se está creando */}
           {!customerName && !showCreateClient && (
             <div className="relative">
-              <Label className="text-xs text-foreground/60 mb-1 block">Nombre completo *</Label>
+              <Label htmlFor="new-order-client" className="text-xs text-foreground/60 mb-1 block">Nombre completo *</Label>
               <Input
+                id="new-order-client"
+                {...invalidProps(errors.name, "new-order-client-error")}
                 value={clientSearch}
                 onChange={e => { setClientSearch(e.target.value); setShowClientSugg(true); }}
                 onFocus={() => setShowClientSugg(true)}
@@ -1482,6 +1563,7 @@ function NewReservationModal({ onClose }: { onClose: () => void }) {
                   Crear nuevo cliente "{clientSearch}"
                 </button>
               )}
+              <FieldError id="new-order-client-error" msg={errors.name} />
             </div>
           )}
 
@@ -1503,34 +1585,37 @@ function NewReservationModal({ onClose }: { onClose: () => void }) {
             <div className="bg-emerald-950/30 border border-emerald-500/25 rounded-lg p-3 space-y-2.5">
               <div className="flex items-center justify-between">
                 <p className="text-xs font-semibold text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
-                  <UserPlus className="w-3.5 h-3.5" /> Nuevo Cliente
+                  <UserPlus className="w-3.5 h-3.5" /> Nuevo cliente
                 </p>
-                <button type="button" onClick={() => setShowCreateClient(false)} className="text-foreground/40 hover:text-foreground/70">
+                <button type="button" onClick={() => setShowCreateClient(false)} className="text-foreground/40 hover:text-foreground/70" aria-label="Cerrar el alta de cliente">
                   <X className="w-3.5 h-3.5" />
                 </button>
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div className="col-span-2">
-                  <Label className="text-xs text-foreground/60 mb-1 block">Nombre completo *</Label>
-                  <Input value={newClientName} onChange={e => setNewClientName(e.target.value)} placeholder="Nombre completo" className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25 h-8 text-sm" />
+                  <Label htmlFor="new-client-name" className="text-xs text-foreground/60 mb-1 block">Nombre completo *</Label>
+                  <Input id="new-client-name" required value={newClientName} onChange={e => setNewClientName(e.target.value)} placeholder="Nombre completo" className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25 h-8 text-sm" {...invalidProps(clientErrors.name, "new-client-name-error")} />
+                  <FieldError id="new-client-name-error" msg={clientErrors.name} />
                 </div>
                 <div className="col-span-2">
-                  <Label className="text-xs text-foreground/60 mb-1 block">Email *</Label>
-                  <Input type="email" value={newClientEmail} onChange={e => setNewClientEmail(e.target.value)} placeholder="cliente@email.com" className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25 h-8 text-sm" />
+                  <Label htmlFor="new-client-email" className="text-xs text-foreground/60 mb-1 block">Email *</Label>
+                  <Input id="new-client-email" required type="email" value={newClientEmail} onChange={e => setNewClientEmail(e.target.value)} placeholder="cliente@email.com" className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25 h-8 text-sm" {...invalidProps(clientErrors.email, "new-client-email-error")} />
+                  <FieldError id="new-client-email-error" msg={clientErrors.email} />
                 </div>
                 <div>
-                  <Label className="text-xs text-foreground/60 mb-1 block">Teléfono</Label>
-                  <Input value={newClientPhone} onChange={e => setNewClientPhone(e.target.value)} placeholder="+34 600 000 000" className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25 h-8 text-sm" />
+                  <Label htmlFor="new-client-phone" className="text-xs text-foreground/60 mb-1 block">Teléfono</Label>
+                  <Input id="new-client-phone" type="tel" value={newClientPhone} onChange={e => setNewClientPhone(e.target.value)} placeholder="+34 600 000 000" className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25 h-8 text-sm" {...invalidProps(clientErrors.phone, "new-client-phone-error")} />
+                  <FieldError id="new-client-phone-error" msg={clientErrors.phone} />
                 </div>
                 <div>
-                  <Label className="text-xs text-foreground/60 mb-1 block">Empresa</Label>
-                  <Input value={newClientCompany} onChange={e => setNewClientCompany(e.target.value)} placeholder="Opcional" className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25 h-8 text-sm" />
+                  <Label htmlFor="new-client-company" className="text-xs text-foreground/60 mb-1 block">Empresa</Label>
+                  <Input id="new-client-company" value={newClientCompany} onChange={e => setNewClientCompany(e.target.value)} placeholder="Opcional" className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25 h-8 text-sm" />
                 </div>
               </div>
               <Button
                 size="sm"
                 onClick={handleCreateClient}
-                disabled={createClientMutation.isPending || !newClientName.trim() || !newClientEmail.trim()}
+                disabled={createClientMutation.isPending}
                 className="w-full bg-emerald-600 hover:bg-emerald-700 text-white text-xs h-8"
               >
                 {createClientMutation.isPending ? "Creando..." : "✓ Crear y usar este cliente"}
@@ -1542,12 +1627,14 @@ function NewReservationModal({ onClose }: { onClose: () => void }) {
           {customerName && (
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label className="text-xs text-foreground/60 mb-1 block">Email *</Label>
-                <Input type="email" value={customerEmail} onChange={e => setCustomerEmail(e.target.value)} placeholder="cliente@email.com" className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25" />
+                <Label htmlFor="new-order-email" className="text-xs text-foreground/60 mb-1 block">Email *</Label>
+                <Input id="new-order-email" required type="email" value={customerEmail} onChange={e => setCustomerEmail(e.target.value)} placeholder="cliente@email.com" className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25" {...invalidProps(errors.email, "new-order-email-error")} />
+                <FieldError id="new-order-email-error" msg={errors.email} />
               </div>
               <div>
-                <Label className="text-xs text-foreground/60 mb-1 block">Teléfono</Label>
-                <Input value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} placeholder="+34 600 000 000" className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25" />
+                <Label htmlFor="new-order-phone" className="text-xs text-foreground/60 mb-1 block">Teléfono</Label>
+                <Input id="new-order-phone" type="tel" value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} placeholder="+34 600 000 000" className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25" {...invalidProps(errors.phone, "new-order-phone-error")} />
+                <FieldError id="new-order-phone-error" msg={errors.phone} />
               </div>
             </div>
           )}
@@ -1556,7 +1643,7 @@ function NewReservationModal({ onClose }: { onClose: () => void }) {
         <div className="bg-foreground/[0.03] border border-foreground/[0.10] rounded-xl p-4 space-y-3">
           <p className="text-xs font-semibold text-foreground/60 uppercase tracking-wider">Producto / Servicio</p>
           <div className="relative">
-            <Label className="text-xs text-foreground/60 mb-1 block">Experiencia o pack *</Label>
+            <Label htmlFor="new-order-product" className="text-xs text-foreground/60 mb-1 block">{voc.productRequired}</Label>
             {productName ? (
               <div className="flex items-center justify-between bg-emerald-950/40 border border-emerald-500/25 rounded-lg px-3 py-2">
                 <div>
@@ -1572,11 +1659,13 @@ function NewReservationModal({ onClose }: { onClose: () => void }) {
             ) : (
               <>
                 <Input
+                  id="new-order-product"
+                  {...invalidProps(errors.product, "new-order-product-error")}
                   value={productSearch}
                   onChange={e => { setProductSearch(e.target.value); setShowProductSugg(true); }}
                   onFocus={() => setShowProductSugg(true)}
                   onBlur={() => setTimeout(() => setShowProductSugg(false), 150)}
-                  placeholder="Buscar producto o actividad..."
+                  placeholder={voc.licensed ? voc.productSearch : "Buscar producto o actividad..."}
                   className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25"
                 />
                 {showProductSugg && productSuggestions.length > 0 && (
@@ -1603,7 +1692,7 @@ function NewReservationModal({ onClose }: { onClose: () => void }) {
                             setProductSearch("");
                             setShowProductSugg(false);
                           }}>
-                          <span className="text-base leading-none">{p.productType === "experience" ? "🏊" : "📦"}</span>
+                          <span className="text-base leading-none" aria-hidden="true">{voc.licensed ? "📦" : p.productType === "experience" ? "🏊" : "📦"}</span>
                           <span className="flex-1 truncate">{p.title}</span>
                           {priceLabel && <span className="text-foreground/50 text-xs shrink-0">{priceLabel}</span>}
                         </button>
@@ -1611,22 +1700,24 @@ function NewReservationModal({ onClose }: { onClose: () => void }) {
                     })}
                   </div>
                 )}
-                {showProductSugg && productSearch.length > 0 && productSuggestions.length === 0 && (
+                {showProductSugg && productQuery.length > 0 && !productsFetching && productSuggestions.length === 0 && (
                   <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-[#0d1526] border border-foreground/[0.15] rounded-lg shadow-xl px-3 py-3 text-sm text-foreground/40">
-                    Sin resultados para "{productSearch}"
+                    Sin resultados para "{productQuery}"
                   </div>
                 )}
               </>
             )}
+            <FieldError id="new-order-product-error" msg={errors.product} />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label className="text-xs text-foreground/60 mb-1 block">Fecha del servicio *</Label>
-              <Input type="date" value={bookingDate} onChange={e => setBookingDate(e.target.value)} className="bg-foreground/[0.05] border-foreground/[0.12] text-white" />
+              <Label htmlFor="new-order-date" className="text-xs text-foreground/60 mb-1 block">{voc.licensed ? voc.serviceDate : "Fecha del servicio"} *</Label>
+              <Input id="new-order-date" required type="date" value={bookingDate} onChange={e => setBookingDate(e.target.value)} className="bg-foreground/[0.05] border-foreground/[0.12] text-white" {...invalidProps(errors.date, "new-order-date-error")} />
+              <FieldError id="new-order-date-error" msg={errors.date} />
             </div>
             <div>
-              <Label className="text-xs text-foreground/60 mb-1 block">Nº personas</Label>
-              <Input type="number" min={1} value={people} onChange={e => setPeople(Number(e.target.value))} className="bg-foreground/[0.05] border-foreground/[0.12] text-white" />
+              <Label htmlFor="new-order-people" className="text-xs text-foreground/60 mb-1 block">{voc.licensed ? "Cantidad" : "Nº personas"}</Label>
+              <Input id="new-order-people" type="number" min={1} value={people} onChange={e => setPeople(Number(e.target.value))} className="bg-foreground/[0.05] border-foreground/[0.12] text-white" />
             </div>
           </div>
         </div>
@@ -1635,35 +1726,36 @@ function NewReservationModal({ onClose }: { onClose: () => void }) {
           <p className="text-xs font-semibold text-foreground/60 uppercase tracking-wider">Datos económicos</p>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label className="text-xs text-foreground/60 mb-1 block">Importe total (€) *</Label>
-              <Input type="number" min={0} step="0.01" value={amountTotal} onChange={e => setAmountTotal(e.target.value)} placeholder="0.00" className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25" />
+              <Label htmlFor="new-order-total" className="text-xs text-foreground/60 mb-1 block">Importe total (€) *</Label>
+              <Input id="new-order-total" required type="number" min={0} step="0.01" value={amountTotal} onChange={e => setAmountTotal(e.target.value)} placeholder="0.00" className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25" {...invalidProps(errors.amount, "new-order-total-error")} />
+              <FieldError id="new-order-total-error" msg={errors.amount} />
             </div>
             <div>
-              <Label className="text-xs text-foreground/60 mb-1 block">Importe cobrado (€)</Label>
-              <Input type="number" min={0} step="0.01" value={amountPaid} onChange={e => setAmountPaid(e.target.value)} placeholder="Igual al total si pagado" className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25" />
+              <Label htmlFor="new-order-paid" className="text-xs text-foreground/60 mb-1 block">Importe cobrado (€)</Label>
+              <Input id="new-order-paid" type="number" min={0} step="0.01" value={amountPaid} onChange={e => setAmountPaid(e.target.value)} placeholder="Igual al total si pagado" className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25" />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label className="text-xs text-foreground/60 mb-1 block">Método de pago</Label>
+              <Label htmlFor="new-order-payment" className="text-xs text-foreground/60 mb-1 block">Método de pago</Label>
               <Select value={paymentMethod} onValueChange={(v) => setPaymentMethod(v as typeof paymentMethod)}>
-                <SelectTrigger className="bg-foreground/[0.05] border-foreground/[0.12] text-white"><SelectValue /></SelectTrigger>
+                <SelectTrigger id="new-order-payment" className="bg-foreground/[0.05] border-foreground/[0.12] text-white"><SelectValue /></SelectTrigger>
                 <SelectContent className="bg-[#0d1526] border-foreground/[0.12]">
                   <SelectItem value="efectivo" className="text-white text-xs">💵 Efectivo</SelectItem>
                   <SelectItem value="transferencia" className="text-white text-xs">🏦 Transferencia</SelectItem>
-                  <SelectItem value="tarjeta_fisica" className="text-white text-xs">💳 Tarjeta Física</SelectItem>
-                  <SelectItem value="tarjeta_redsys" className="text-white text-xs">💳 Tarjeta Redsys</SelectItem>
-                  <SelectItem value="redsys" className="text-white text-xs">💳 Tarjeta Redsys (legacy)</SelectItem>
+                  <SelectItem value="tarjeta_fisica" className="text-white text-xs">💳 {voc.licensed ? "Tarjeta en datáfono" : "Tarjeta Física"}</SelectItem>
+                  <SelectItem value="tarjeta_redsys" className="text-white text-xs">💳 {voc.licensed ? "Tarjeta (pago online)" : "Tarjeta Redsys"}</SelectItem>
+                  {!voc.licensed && <SelectItem value="redsys" className="text-white text-xs">💳 Tarjeta Redsys (legacy)</SelectItem>}
                   <SelectItem value="otro" className="text-white text-xs">❓ Otro</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div>
-              <Label className="text-xs text-foreground/60 mb-1 block">Canal</Label>
+              <Label htmlFor="new-order-channel" className="text-xs text-foreground/60 mb-1 block">Canal</Label>
               <Select value={channel} onValueChange={(v) => setChannel(v as typeof channel)}>
-                <SelectTrigger className="bg-foreground/[0.05] border-foreground/[0.12] text-white"><SelectValue /></SelectTrigger>
+                <SelectTrigger id="new-order-channel" className="bg-foreground/[0.05] border-foreground/[0.12] text-white"><SelectValue /></SelectTrigger>
                 <SelectContent className="bg-[#0d1526] border-foreground/[0.12]">
-                  <SelectItem value="VENTA_DELEGADA" className="text-white text-xs">💼 CRM (admin)</SelectItem>
+                  <SelectItem value="VENTA_DELEGADA" className="text-white text-xs">{voc.licensed ? "💼 Alta desde el panel" : "💼 CRM (admin)"}</SelectItem>
                   <SelectItem value="TELEFONO" className="text-white text-xs">📞 Teléfono</SelectItem>
                   <SelectItem value="EMAIL" className="text-white text-xs">📧 Email</SelectItem>
                   <SelectItem value="MANUAL" className="text-white text-xs">❓ Otro</SelectItem>
@@ -1673,8 +1765,8 @@ function NewReservationModal({ onClose }: { onClose: () => void }) {
           </div>
         </div>
         <div>
-          <Label className="text-xs text-foreground/60 mb-1 block">Notas internas</Label>
-          <Textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Notas para el equipo..." rows={2} className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25 resize-none" />
+          <Label htmlFor="new-order-notes" className="text-xs text-foreground/60 mb-1 block">Notas internas</Label>
+          <Textarea id="new-order-notes" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Notas para el equipo..." rows={2} className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25 resize-none" />
         </div>
         <label className="flex items-center gap-2 cursor-pointer">
           <input type="checkbox" checked={sendEmailConfirm} onChange={e => setSendEmailConfirm(e.target.checked)} className="rounded" />
@@ -1684,7 +1776,7 @@ function NewReservationModal({ onClose }: { onClose: () => void }) {
       <DialogFooter className="gap-2">
         <Button variant="outline" size="sm" onClick={onClose} className="border-foreground/[0.15] text-foreground/65">Cancelar</Button>
         <Button size="sm" onClick={handleSubmit} disabled={createManual.isPending} className="bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white">
-          {createManual.isPending ? "Creando reserva..." : "Crear Reserva"}
+          {createManual.isPending ? voc.creatingOrder : voc.createOrder}
         </Button>
       </DialogFooter>
     </DialogContent>
@@ -1693,6 +1785,8 @@ function NewReservationModal({ onClose }: { onClose: () => void }) {
 
 function DirectQuoteModal({ onClose }: { onClose: () => void }) {
   const utils = trpc.useUtils();
+  const voc = useVocabulary();
+  const [errors, setErrors] = useState<FieldErrors<"name" | "email" | "phone" | "lines">>({});
 
   // Paso 1: datos del cliente
   const [clientName, setClientName] = useState("");
@@ -1724,7 +1818,7 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
   const [promoData, setPromoData] = useState<{ id: number; code: string; discountPercent: number } | null>(null);
   const validatePromo = trpc.discounts.validate.useMutation({
     onSuccess: (d) => setPromoData({ id: d.id, code: d.code, discountPercent: d.discountPercent }),
-    onError: (e) => { toast.error(e.message); setPromoData(null); },
+    onError: (e) => { toast.error(failMsg(e)); setPromoData(null); },
   });
 
   const subtotal = items.reduce((s, i) => s + i.total, 0);
@@ -1753,10 +1847,12 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
   const total = parseFloat(discountedSubtotal.toFixed(2));
   const baseImponible = parseFloat((total - taxAmount).toFixed(2));
 
-  // Búsqueda de clientes existentes
+  // Búsqueda de clientes existentes (en servidor, con una pequeña espera mientras se escribe)
+  const [clientQuery, setClientQuery] = useState("");
+  useEffect(() => { const t = setTimeout(() => setClientQuery(clientSearch.trim()), 250); return () => clearTimeout(t); }, [clientSearch]);
   const { data: clientSuggestionsRaw } = trpc.crm.clients.list.useQuery(
-    { search: clientSearch, limit: 6 },
-    { enabled: clientSearch.length >= 2 }
+    { search: clientQuery, limit: 6 },
+    { enabled: clientQuery.length >= 2 }
   );
   const clientSuggestions = clientSuggestionsRaw?.items ?? [];
 
@@ -1774,7 +1870,7 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
   };
 
   const upsertPlanDirect = trpc.crm.paymentPlans.upsert.useMutation({
-    onError: (e) => toast.error(`Plan de pago: ${e.message}`),
+    onError: (e) => toast.error(failMsg(e, "No se ha podido guardar el plan de pago.")),
   });
 
   const createDirect = trpc.crm.quotes.createDirect.useMutation({
@@ -1797,16 +1893,15 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
       utils.crm.leads.counters.invalidate();
       onClose();
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toast.error(failMsg(e)),
   });
 
   const handleSubmit = (andSend: boolean) => {
-    if (!clientName || !clientEmail) {
-      toast.error("Nombre y email del cliente son obligatorios");
-      return;
-    }
-    if (items.some((i) => !i.description)) {
-      toast.error("Completa la descripción de todos los conceptos");
+    const errs = validateQuote({ name: clientName, email: clientEmail, phone: clientPhone, hasLines: items.length > 0 && items.every((i) => i.description.trim()) });
+    if (errs.lines) errs.lines = "Completa la descripción de todos los conceptos.";
+    setErrors(errs);
+    if (hasErrors(errs)) {
+      toast.error("Revisa los campos marcados");
       return;
     }
     if (draftInstallmentsD.some(i => !i.dueDate || i.amountCents <= 0)) {
@@ -1849,8 +1944,8 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
     <DialogContent className="w-[95vw] max-w-2xl bg-[#0d1526] border-foreground/[0.12] text-white max-h-[90vh] overflow-y-auto">
       <DialogHeader>
         <DialogTitle className="text-white flex items-center gap-2">
-          <Plus className="w-5 h-5 text-orange-400" /> Nuevo Presupuesto
-          <span className="text-foreground/50 text-sm font-normal ml-1">sin lead previo</span>
+          <Plus className="w-5 h-5 text-orange-400" /> {voc.licensed ? "Nuevo presupuesto" : "Nuevo Presupuesto"}
+          <span className="text-foreground/50 text-sm font-normal ml-1">sin {voc.lead} previ{voc.agreeLead("o", "a")}</span>
         </DialogTitle>
       </DialogHeader>
 
@@ -1864,10 +1959,11 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
 
           {/* Buscador de cliente existente */}
           <div className="relative">
-            <Label className="text-foreground/65 text-xs">Buscar cliente existente</Label>
+            <Label htmlFor="new-quote-client-search" className="text-foreground/65 text-xs">Buscar cliente existente</Label>
             <div className="relative mt-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-foreground/40" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-foreground/40" aria-hidden="true" />
               <Input
+                id="new-quote-client-search"
                 className="pl-9 bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-foreground/40 text-sm"
                 placeholder="Nombre o email del cliente..."
                 value={clientSearch}
@@ -1900,23 +1996,26 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label className="text-foreground/65 text-xs">Nombre *</Label>
-              <Input value={clientName} onChange={(e) => { setClientName(e.target.value); setTitle(`Presupuesto - ${e.target.value}`); }}
-                className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1 text-sm" placeholder="Nombre completo" />
+              <Label htmlFor="new-quote-name" className="text-foreground/65 text-xs">Nombre *</Label>
+              <Input id="new-quote-name" required value={clientName} onChange={(e) => { setClientName(e.target.value); setTitle(`Presupuesto - ${e.target.value}`); }}
+                className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1 text-sm" placeholder="Nombre completo" {...invalidProps(errors.name, "new-quote-name-error")} />
+              <FieldError id="new-quote-name-error" msg={errors.name} />
             </div>
             <div>
-              <Label className="text-foreground/65 text-xs">Email *</Label>
-              <Input type="email" value={clientEmail} onChange={(e) => setClientEmail(e.target.value)}
-                className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1 text-sm" placeholder="cliente@email.com" />
+              <Label htmlFor="new-quote-email" className="text-foreground/65 text-xs">Email *</Label>
+              <Input id="new-quote-email" required type="email" value={clientEmail} onChange={(e) => setClientEmail(e.target.value)}
+                className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1 text-sm" placeholder="cliente@email.com" {...invalidProps(errors.email, "new-quote-email-error")} />
+              <FieldError id="new-quote-email-error" msg={errors.email} />
             </div>
             <div>
-              <Label className="text-foreground/65 text-xs">Teléfono</Label>
-              <Input value={clientPhone} onChange={(e) => setClientPhone(e.target.value)}
-                className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1 text-sm" placeholder="+34 600 000 000" />
+              <Label htmlFor="new-quote-phone" className="text-foreground/65 text-xs">Teléfono</Label>
+              <Input id="new-quote-phone" type="tel" value={clientPhone} onChange={(e) => setClientPhone(e.target.value)}
+                className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1 text-sm" placeholder="+34 600 000 000" {...invalidProps(errors.phone, "new-quote-phone-error")} />
+              <FieldError id="new-quote-phone-error" msg={errors.phone} />
             </div>
             <div>
-              <Label className="text-foreground/65 text-xs">Empresa</Label>
-              <Input value={clientCompany} onChange={(e) => setClientCompany(e.target.value)}
+              <Label htmlFor="new-quote-company" className="text-foreground/65 text-xs">Empresa</Label>
+              <Input id="new-quote-company" value={clientCompany} onChange={(e) => setClientCompany(e.target.value)}
                 className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1 text-sm" placeholder="Nombre empresa (opcional)" />
             </div>
           </div>
@@ -1925,18 +2024,18 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
         {/* ── Asunto y fechas ── */}
         <div className="grid grid-cols-2 gap-3">
           <div className="col-span-2">
-            <Label className="text-foreground/65 text-xs">Asunto del presupuesto *</Label>
-            <Input value={title} onChange={(e) => setTitle(e.target.value)}
+            <Label htmlFor="new-quote-title" className="text-foreground/65 text-xs">Asunto del presupuesto *</Label>
+            <Input id="new-quote-title" value={title} onChange={(e) => setTitle(e.target.value)}
               className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1 text-sm" />
           </div>
           <div>
-            <Label className="text-foreground/65 text-xs">Fecha de actividad</Label>
-            <Input type="date" value={activityDate} onChange={(e) => setActivityDate(e.target.value)}
+            <Label htmlFor="new-quote-date" className="text-foreground/65 text-xs">{voc.serviceDateLabel}</Label>
+            <Input id="new-quote-date" type="date" value={activityDate} onChange={(e) => setActivityDate(e.target.value)}
               className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1" />
           </div>
           <div>
-            <Label className="text-foreground/65 text-xs">Válido hasta</Label>
-            <Input type="date" value={validUntil} onChange={(e) => setValidUntil(e.target.value)}
+            <Label htmlFor="new-quote-valid" className="text-foreground/65 text-xs">Válido hasta</Label>
+            <Input id="new-quote-valid" type="date" value={validUntil} onChange={(e) => setValidUntil(e.target.value)}
               className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1" />
           </div>
         </div>
@@ -1950,6 +2049,7 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
               <Plus className="w-3 h-3 mr-1" /> Añadir línea
             </Button>
           </div>
+          <FieldError id="new-quote-lines-error" msg={errors.lines} />
           <div className="overflow-x-auto -mx-1 px-1">
           <div className="min-w-[460px]">
           <div className="text-xs text-foreground/40 grid grid-cols-12 gap-2 mb-1">
@@ -1982,21 +2082,21 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
                   item={item as QuoteLineItem}
                   onChange={(fr, tr) => setItems(prev => prev.map((it, i) => i === idx ? { ...it, fiscalRegime: fr, taxRate: tr } : it))}
                 />
-                <Input className="col-span-2 bg-foreground/[0.05] border-foreground/[0.12] text-white text-sm text-center" type="number" min={1}
+                <Input aria-label={`Cantidad de la línea ${idx + 1}`} className="col-span-2 bg-foreground/[0.05] border-foreground/[0.12] text-white text-sm text-center" type="number" min={1}
                   value={item.quantity} onChange={(e) => updateItem(idx, "quantity", Number(e.target.value))} />
-                <Input className="col-span-2 bg-foreground/[0.05] border-foreground/[0.12] text-white text-sm text-right" type="number" min={0} step={0.01}
+                <Input aria-label={`Precio unitario de la línea ${idx + 1}`} className="col-span-2 bg-foreground/[0.05] border-foreground/[0.12] text-white text-sm text-right" type="number" min={0} step={0.01}
                   value={item.unitPrice} onChange={(e) => updateItem(idx, "unitPrice", Number(e.target.value))} />
                 <div className={`col-span-1 text-right text-sm font-semibold ${item.fiscalRegime === "reav" ? "text-amber-400" : "text-orange-400"}`}>{item.total.toFixed(2)} €</div>
-                <Button size="sm" variant="ghost" className="col-span-1 text-foreground/40 hover:text-red-400 p-1"
+                <Button size="sm" variant="ghost" className="col-span-1 text-foreground/40 hover:text-red-400 p-1" aria-label={`Quitar la línea ${idx + 1}`}
                   onClick={() => setItems((p) => p.filter((_, i) => i !== idx))} disabled={items.length === 1}>
                   <Trash2 className="w-3.5 h-3.5" />
                 </Button>
               </div>
               <div className="flex items-center gap-2 pl-1">
-                <span className="text-[11px] text-foreground/45 whitespace-nowrap">Fecha de servicio (opcional):</span>
-                <Input type="date" value={item.serviceDate ?? ""} onChange={(e) => updateItem(idx, "serviceDate", e.target.value)}
+                <label htmlFor={`new-quote-line-date-${idx}`} className="text-[11px] text-foreground/45 whitespace-nowrap">Fecha de servicio (opcional):</label>
+                <Input id={`new-quote-line-date-${idx}`} type="date" value={item.serviceDate ?? ""} onChange={(e) => updateItem(idx, "serviceDate", e.target.value)}
                   className="h-7 w-auto bg-foreground/[0.05] border-foreground/[0.12] text-white text-xs [color-scheme:dark]" />
-                <span className="text-[10px] text-foreground/30">vacío = usa la fecha de actividad del presupuesto</span>
+                <span className="text-[10px] text-foreground/30">vacío = usa la {voc.serviceDateLabel.toLowerCase()} del presupuesto</span>
               </div>
               </div>
             ))}
@@ -2177,6 +2277,7 @@ function QuoteBuilderModal({
   onClose: () => void;
 }) {
   const utils = trpc.useUtils();
+  const voc = useVocabulary();
   const [title, setTitle] = useState(`Presupuesto - ${leadName}`);
   const [description, setDescription] = useState("");
   const [conditions, setConditions] = useState("Presupuesto válido por 15 días. Sujeto a disponibilidad.");
@@ -2212,7 +2313,7 @@ function QuoteBuilderModal({
   const [promoData, setPromoData] = useState<{ id: number; code: string; discountPercent: number } | null>(null);
   const validatePromo = trpc.discounts.validate.useMutation({
     onSuccess: (d) => setPromoData({ id: d.id, code: d.code, discountPercent: d.discountPercent }),
-    onError: (e) => { toast.error(e.message); setPromoData(null); },
+    onError: (e) => { toast.error(failMsg(e)); setPromoData(null); },
   });
   const previewQuery = trpc.crm.leads.previewFromLead.useQuery(
     { leadId },
@@ -2225,7 +2326,7 @@ function QuoteBuilderModal({
       setAutoFilled(true);
       toast.success(`Lineas generadas automaticamente (${result.data.items.length})`);
     } else {
-      toast.error("Este lead no tiene actividades seleccionadas");
+      toast.error(`Est${voc.agreeLead("e", "a")} ${voc.lead} no tiene ${voc.licensed ? "productos o servicios" : "actividades"} seleccionad${voc.licensed ? "os" : "as"}`);
     }
   };
 
@@ -2268,11 +2369,11 @@ function QuoteBuilderModal({
 
   const sendQuote = trpc.crm.quotes.send.useMutation({
     onSuccess: () => toast.success("Presupuesto enviado al cliente"),
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toast.error(failMsg(e)),
   });
 
   const upsertPlanBuilder = trpc.crm.paymentPlans.upsert.useMutation({
-    onError: (e) => toast.error(`Plan de pago: ${e.message}`),
+    onError: (e) => toast.error(failMsg(e, "No se ha podido guardar el plan de pago.")),
   });
 
   const convertToQuote = trpc.crm.leads.convertToQuote.useMutation({
@@ -2293,7 +2394,7 @@ function QuoteBuilderModal({
       }
       onClose();
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toast.error(failMsg(e)),
   });
 
   const handleSubmit = (andSend = false) => {
@@ -2334,7 +2435,9 @@ function QuoteBuilderModal({
       <div className="flex items-center gap-2 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30">
         <Sparkles className="w-4 h-4 text-emerald-400 shrink-0" />
         <span className="text-emerald-300 text-sm flex-1">
-          {autoFilled ? "Conceptos generados desde las actividades del lead" : "Autogenera los conceptos del presupuesto desde las actividades seleccionadas"}
+          {voc.licensed
+            ? (autoFilled ? "Conceptos generados desde los productos o servicios de la oportunidad" : "Autogenera los conceptos del presupuesto desde los productos o servicios seleccionados")
+            : (autoFilled ? "Conceptos generados desde las actividades del lead" : "Autogenera los conceptos del presupuesto desde las actividades seleccionadas")}
         </span>
         <Button
           size="sm"
@@ -2362,7 +2465,7 @@ function QuoteBuilderModal({
             <p className="text-foreground/40 text-xs mt-1">Generado automáticamente. Puedes editarlo.</p>
           </div>
           <div>
-            <Label className="text-foreground/65 text-xs">Fecha de actividad</Label>
+            <Label className="text-foreground/65 text-xs">{voc.serviceDateLabel}</Label>
             <Input
               type="date"
               value={activityDate}
@@ -2463,7 +2566,7 @@ function QuoteBuilderModal({
                 <span className="text-[11px] text-foreground/45 whitespace-nowrap">Fecha de servicio (opcional):</span>
                 <Input type="date" value={item.serviceDate ?? ""} onChange={(e) => updateItem(idx, "serviceDate", e.target.value)}
                   className="h-7 w-auto bg-foreground/[0.05] border-foreground/[0.12] text-white text-xs [color-scheme:dark]" />
-                <span className="text-[10px] text-foreground/30">vacío = usa la fecha de actividad del presupuesto</span>
+                <span className="text-[10px] text-foreground/30">vacío = usa la {voc.serviceDateLabel.toLowerCase()} del presupuesto</span>
               </div>
               </div>
             ))}
@@ -2688,6 +2791,7 @@ function ProductAutocompleteInput({
   onSelect: (product: { title: string; unitPrice: number; fiscalRegime: "reav" | "general" }) => void;
   placeholder?: string;
 }) {
+  const voc = useVocabulary();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState(value);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -2713,11 +2817,9 @@ function ProductAutocompleteInput({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const TYPE_LABELS: Record<string, string> = {
-    experience: "Actividad",
-    pack: "Pack",
-    legopack: "Lego Pack",
-  };
+  const TYPE_LABELS: Record<string, string> = voc.licensed
+    ? { experience: "Producto", pack: "Paquete", legopack: "Paquete" }
+    : { experience: "Actividad", pack: "Pack", legopack: "Lego Pack" };
   const TYPE_COLORS: Record<string, string> = {
     experience: "text-blue-400",
     pack: "text-emerald-400",
@@ -2788,6 +2890,7 @@ function QuoteEditModal({
   onClose: () => void;
 }) {
   const utils = trpc.useUtils();
+  const voc = useVocabulary();
   const { data, isLoading } = trpc.crm.quotes.get.useQuery({ id: quoteId });
   const [title, setTitle] = useState("");
   const [conditions, setConditions] = useState("");
@@ -2819,7 +2922,7 @@ function QuoteEditModal({
       utils.crm.quotes.get.invalidate({ id: quoteId });
       utils.crm.quotes.list.invalidate();
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toast.error(failMsg(e)),
   });
 
   if (data && !initialized) {
@@ -2894,7 +2997,7 @@ function QuoteEditModal({
       utils.crm.quotes.get.invalidate({ id: quoteId });
       onClose();
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toast.error(failMsg(e)),
   });
 
   if (isLoading || !initialized) {
@@ -2921,7 +3024,7 @@ function QuoteEditModal({
             <Input value={title} onChange={(e) => setTitle(e.target.value)} className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1" />
           </div>
           <div>
-            <Label className="text-foreground/65 text-xs">Fecha de actividad</Label>
+            <Label className="text-foreground/65 text-xs">{voc.serviceDateLabel}</Label>
             <Input type="date" value={activityDate} onChange={(e) => setActivityDate(e.target.value)} className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1" />
           </div>
           <div>
@@ -2976,7 +3079,7 @@ function QuoteEditModal({
                 <span className="text-[11px] text-foreground/45 whitespace-nowrap">Fecha de servicio (opcional):</span>
                 <Input type="date" value={item.serviceDate ?? ""} onChange={(e) => updateItem(idx, "serviceDate", e.target.value)}
                   className="h-7 w-auto bg-foreground/[0.05] border-foreground/[0.12] text-white text-xs [color-scheme:dark]" />
-                <span className="text-[10px] text-foreground/30">vacío = usa la fecha de actividad del presupuesto</span>
+                <span className="text-[10px] text-foreground/30">vacío = usa la {voc.serviceDateLabel.toLowerCase()} del presupuesto</span>
               </div>
               </div>
             ))}
@@ -3117,7 +3220,7 @@ function ScheduledJobsMini({ entityType, entityId }: { entityType: string; entit
       toast.success("Job cancelado");
       utils.emailCommunications.listScheduledJobs.invalidate({ relatedEntityType: entityType, relatedEntityId: entityId });
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toast.error(failMsg(e)),
   });
 
   const rows = data?.rows ?? [];
@@ -3278,6 +3381,8 @@ function QuoteDetailModal({
   onClose: () => void;
 }) {
   const utils = trpc.useUtils();
+  const voc = useVocabulary();
+  const [confirmDeletePlan, setConfirmDeletePlan] = useState(false);
   const { data, isLoading } = trpc.crm.quotes.get.useQuery({ id: quoteId });
   const [paymentLink, setPaymentLink] = useState("");
   const [showPaymentInput, setShowPaymentInput] = useState(false);
@@ -3332,12 +3437,12 @@ function QuoteDetailModal({
       utils.crm.quotes.counters.invalidate();
       utils.crm.leads.counters.invalidate();
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toast.error(failMsg(e)),
   });
 
   const resendQuote = trpc.crm.quotes.resend.useMutation({
     onSuccess: () => toast.success("Presupuesto reenviado"),
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toast.error(failMsg(e)),
   });
 
   const confirmPayment = trpc.crm.quotes.confirmPayment.useMutation({
@@ -3349,7 +3454,7 @@ function QuoteDetailModal({
       utils.crm.reservations.counters.invalidate();
       onClose();
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toast.error(failMsg(e)),
   });
 
   const markLost = trpc.crm.quotes.markLost.useMutation({
@@ -3370,25 +3475,25 @@ function QuoteDetailModal({
 
   const convertToReservation = trpc.crm.quotes.convertToReservation.useMutation({
     onSuccess: () => {
-      toast.success("Reserva creada · Pendiente de cobro");
+      toast.success(`${voc.Order} ${voc.agree("creado", "creada")} · Pendiente de cobro`);
       utils.crm.quotes.get.invalidate({ id: quoteId });
       utils.crm.quotes.counters.invalidate();
       utils.crm.leads.counters.invalidate();
       utils.crm.reservations.counters.invalidate();
       onClose();
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toast.error(failMsg(e)),
   });
 
   const generatePdf = trpc.crm.quotes.generatePdf.useMutation({
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toast.error(failMsg(e)),
   });
   const uploadTransferProof = trpc.crm.quotes.uploadTransferProof.useMutation({
     onSuccess: (data) => {
       setTransferProofUrl(data.url);
       toast.success("Justificante subido correctamente");
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toast.error(failMsg(e)),
   });
   const confirmTransfer = trpc.crm.quotes.confirmTransfer.useMutation({
     onSuccess: (data) => {
@@ -3402,7 +3507,7 @@ function QuoteDetailModal({
       setShowBankMovementSearch(false);
       onClose();
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toast.error(failMsg(e)),
   });
 
   // FASE 2A: movimientos bancarios pendientes para vincular (transfer modal)
@@ -3430,7 +3535,7 @@ function QuoteDetailModal({
       setPendingReason("");
       onClose();
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toast.error(failMsg(e)),
   });
 
   const planQuery = trpc.crm.paymentPlans.get.useQuery({ quoteId }, { enabled: showPlanEditor || !!data?.quote?.paymentPlanId });
@@ -3440,7 +3545,7 @@ function QuoteDetailModal({
       planQuery.refetch();
       setPlanEditMode(false);
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toast.error(failMsg(e)),
   });
   const deletePlan = trpc.crm.paymentPlans.delete.useMutation({
     onSuccess: () => {
@@ -3449,7 +3554,7 @@ function QuoteDetailModal({
       setDraftInstallments([]);
       setPlanEditMode(false);
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toast.error(failMsg(e)),
   });
   const confirmInstallmentMut = trpc.crm.paymentPlans.confirmInstallment.useMutation({
     onSuccess: () => {
@@ -3463,11 +3568,11 @@ function QuoteDetailModal({
       planQuery.refetch();
       utils.crm.quotes.get.invalidate({ id: quoteId });
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toast.error(failMsg(e)),
   });
   const generateInstallmentLink = trpc.crm.paymentPlans.generateInstallmentLink.useMutation({
     onSuccess: (d) => toast.success(`Enlace enviado al cliente — Cuota #${d.installmentNumber}`),
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toast.error(failMsg(e)),
   });
 
   const confirmPaymentWithMethod = trpc.crm.quotes.confirmPayment.useMutation({
@@ -3489,11 +3594,11 @@ function QuoteDetailModal({
       setTpvOpSearchForConfirm("");
       onClose();
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toast.error(failMsg(e)),
   });
 
   const uploadProofOnly = trpc.crm.quotes.uploadProofOnly.useMutation({
-    onError: (e) => toast.error(`Error al subir el justificante: ${e.message}`),
+    onError: (e) => toast.error(failMsg(e, "No se ha podido subir el justificante.")),
   });
 
   const handleViewProofFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -3610,7 +3715,7 @@ function QuoteDetailModal({
           {quote.isAutoGenerated && (
             <span
               className="inline-flex items-center gap-1.5 text-xs font-semibold text-violet-300 bg-violet-500/15 border border-violet-500/30 px-2.5 py-1 rounded-full"
-              title="Este presupuesto fue generado automáticamente desde las actividades seleccionadas en el formulario"
+              title={`Este presupuesto fue generado automáticamente desde ${voc.licensed ? "los productos o servicios seleccionados" : "las actividades seleccionadas"} en el formulario`}
             >
               <Sparkles className="w-3 h-3" />
               Generado con IA
@@ -3861,7 +3966,7 @@ function QuoteDetailModal({
                 )}
                 {planQuery.data && !planEditMode && (
                   <button
-                    onClick={() => { if (confirm("¿Eliminar el plan de pago fraccionado?")) deletePlan.mutate({ quoteId }); }}
+                    onClick={() => setConfirmDeletePlan(true)}
                     className="text-xs text-red-400 hover:text-red-300 underline"
                   >Eliminar</button>
                 )}
@@ -4701,6 +4806,13 @@ function QuoteDetailModal({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <ConfirmDialog
+        open={confirmDeletePlan}
+        title="Eliminar el plan de pago"
+        description="Se eliminará el plan de pago fraccionado de este presupuesto."
+        onCancel={() => setConfirmDeletePlan(false)}
+        onConfirm={() => { setConfirmDeletePlan(false); deletePlan.mutate({ quoteId }); }}
+      />
     </>
   );
 }
@@ -4720,6 +4832,7 @@ function ReservationDetailModal({
   onGenerateInvoice?: (id: number) => void;
   onCancel?: (id: number, name: string) => void;
 }) {
+  const voc = useVocabulary();
   const { data, isLoading } = trpc.crm.reservations.get.useQuery({ id: reservationId });
   const planQuery = trpc.crm.paymentPlans.get.useQuery(
     { quoteId: data?.reservation?.quoteId ?? 0 },
@@ -4727,20 +4840,20 @@ function ReservationDetailModal({
   );
 
   const ACTION_LABELS: Record<string, string> = {
-    reservation_created:   "Reserva creada",
-    reservation_updated:   "Reserva actualizada",
-    reservation_paid:      "Reserva pagada online",
-    reservation_cancelled: "Reserva cancelada",
+    reservation_created:   `${voc.Order} ${voc.agree("creado", "creada")}`,
+    reservation_updated:   `${voc.Order} ${voc.agree("actualizado", "actualizada")}`,
+    reservation_paid:      `${voc.Order} ${voc.agree("pagado", "pagada")} online`,
+    reservation_cancelled: `${voc.Order} ${voc.agree("cancelado", "cancelada")}`,
     payment_confirmed:     "Pago confirmado",
     transfer_validated:    "Transferencia bancaria validada",
     invoice_generated:     "Factura generada",
-    booking_created:       "Actividad programada",
-    booking_confirmed:     "Actividad confirmada",
-    booking_completed:     "Actividad completada",
+    booking_created:       voc.licensed ? "Servicio programado" : "Actividad programada",
+    booking_confirmed:     voc.licensed ? "Servicio confirmado" : "Actividad confirmada",
+    booking_completed:     voc.licensed ? "Servicio completado" : "Actividad completada",
     email_sent:            "Email enviado al cliente",
     discount_applied:      "Descuento / bono aplicado",
     email_resent:          "Email de confirmación reenviado",
-    date_changed:          "Fecha de reserva modificada",
+    date_changed:          voc.licensed ? "Fecha de servicio modificada" : "Fecha de reserva modificada",
     status_updated:        "Estado actualizado",
   };
   const translateAction = (action: string) =>
@@ -4748,12 +4861,12 @@ function ReservationDetailModal({
 
   const getStatusBadge = (status: string) => {
     const map: Record<string, { label: string; cls: string }> = {
-      paid:            { label: "✅ Confirmada",        cls: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30" },
+      paid:            { label: `✅ ${voc.agree("Confirmado", "Confirmada")}`, cls: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30" },
       pending_payment: { label: "⏳ Pendiente de pago", cls: "bg-amber-500/15 text-amber-400 border-amber-500/30" },
-      cancelled:       { label: "❌ Cancelada",          cls: "bg-red-500/15 text-red-400 border-red-500/30" },
-      failed:          { label: "⚠️ Fallida",            cls: "bg-orange-500/15 text-orange-400 border-orange-500/30" },
+      cancelled:       { label: `❌ ${voc.agree("Cancelado", "Cancelada")}`, cls: "bg-red-500/15 text-red-400 border-red-500/30" },
+      failed:          { label: `⚠️ ${voc.agree("Fallido", "Fallida")}`, cls: "bg-orange-500/15 text-orange-400 border-orange-500/30" },
       draft:           { label: "📝 Borrador",           cls: "bg-slate-500/15 text-slate-400 border-slate-500/30" },
-      completed:       { label: "🏁 Completada",         cls: "bg-blue-500/15 text-blue-400 border-blue-500/30" },
+      completed:       { label: `🏁 ${voc.agree("Completado", "Completada")}`, cls: "bg-blue-500/15 text-blue-400 border-blue-500/30" },
     };
     const s = map[status] ?? { label: status, cls: "bg-slate-500/15 text-slate-400 border-slate-500/30" };
     return (
@@ -4766,9 +4879,9 @@ function ReservationDetailModal({
   const getPaymentBadge = (method: string | null) => {
     if (!method) return <span className="text-foreground/30 text-xs">—</span>;
     const map: Record<string, { label: string; cls: string; icon: string }> = {
-      tarjeta_fisica: { label: "Tarjeta Física",  cls: "bg-violet-500/15 text-violet-300 border-violet-500/30", icon: "💳" },
-      tarjeta_redsys: { label: "Tarjeta Redsys",  cls: "bg-violet-500/15 text-violet-300 border-violet-500/30", icon: "💳" },
-      redsys:         { label: "Tarjeta Redsys",  cls: "bg-violet-500/15 text-violet-300 border-violet-500/30", icon: "💳" },
+      tarjeta_fisica: { label: voc.licensed ? "Tarjeta en datáfono" : "Tarjeta Física",  cls: "bg-violet-500/15 text-violet-300 border-violet-500/30", icon: "💳" },
+      tarjeta_redsys: { label: voc.licensed ? "Tarjeta (pago online)" : "Tarjeta Redsys",  cls: "bg-violet-500/15 text-violet-300 border-violet-500/30", icon: "💳" },
+      redsys:         { label: voc.licensed ? "Tarjeta (pago online)" : "Tarjeta Redsys",  cls: "bg-violet-500/15 text-violet-300 border-violet-500/30", icon: "💳" },
       tarjeta:        { label: "Tarjeta",          cls: "bg-violet-500/15 text-violet-300 border-violet-500/30", icon: "💳" },
       transferencia:  { label: "Transferencia",    cls: "bg-sky-500/15 text-sky-300 border-sky-500/30",         icon: "🏦" },
       efectivo:       { label: "Efectivo",         cls: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30", icon: "💵" },
@@ -4915,14 +5028,14 @@ function ReservationDetailModal({
 
           {/* Detalles de la reserva */}
           <div className="bg-white/[0.04] border border-foreground/[0.10] rounded-xl p-4">
-            <h4 className="text-xs font-semibold text-foreground/50 uppercase tracking-wider mb-3">Detalles de la reserva</h4>
+            <h4 className="text-xs font-semibold text-foreground/50 uppercase tracking-wider mb-3">Detalles {voc.licensed ? "del pedido" : "de la reserva"}</h4>
             <div className="space-y-2">
               <div className="flex justify-between text-sm">
                 <span className="text-foreground/60">Producto</span>
                 <span className="text-white font-medium text-right max-w-[60%]">{res.productName}</span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-foreground/60">Fecha de actividad</span>
+                <span className="text-foreground/60">{voc.serviceDateLabel}</span>
                 <span className="text-white font-medium">{res.bookingDate || "—"}</span>
               </div>
               {res.selectedTime && (
@@ -5203,7 +5316,7 @@ function ReservationDetailModal({
           className="border-amber-500/30 text-amber-400 hover:bg-amber-500/10"
           onClick={() => { onClose(); onEdit(res.id, res.status); }}
         >
-          <Pencil className="w-4 h-4 mr-1" /> Editar reserva
+          <Pencil className="w-4 h-4 mr-1" /> {voc.editOrder}
         </Button>
         {relatedInvoices.length === 0 && onGenerateInvoice && (
           <Button
@@ -5231,7 +5344,7 @@ function ReservationDetailModal({
             className="border-orange-500/40 text-orange-400 hover:bg-orange-500/10 ml-auto"
             onClick={() => { onClose(); onCancel(res.id, res.customerName); }}
           >
-            <XCircle className="w-4 h-4 mr-1" /> Anular reserva
+            <XCircle className="w-4 h-4 mr-1" /> {voc.cancelOrder}
           </Button>
         )}
         {res.cancellationRequestId && (
@@ -5302,7 +5415,14 @@ function CrmTableState({
 export default function CRMDashboard() {
   // Empresas con licencias por capacidad: vocabulario genérico (pedidos en lugar de reservas)
   const panelSub = usePanelSubscription();
-  const ordersWord = panelSub.isLicensed ? "pedidos" : "reservas";
+  const voc = useVocabulary();
+  const ordersWord = voc.ordersLower;
+  // Pestañas según las licencias de la empresa (igual que el menú); en la instalación propia, todas
+  const visibleTabs = useMemo(
+    () => visibleCrmTabs(["leads", "quotes", "reservations", "invoices", "anulaciones", "pagos_pendientes", "bonos"] as const, { licensed: panelSub.isLicensed, can: panelSub.can }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [panelSub.isLicensed, panelSub.data],
+  );
   // Sincronizar tab con ?tab= de la URL (reactivo al navegar desde el sidebar)
   const searchStr = useSearch();
   const tabFromSearch = (s: string): Tab => {
@@ -5313,6 +5433,11 @@ export default function CRMDashboard() {
     return "leads";
   };
   const [tab, setTab] = useState<Tab>(() => tabFromSearch(searchStr));
+  const [bulkConfirm, setBulkConfirm] = useState<null | "leads" | "quotes" | "reservations">(null);
+  // Pestaña no contratada (enlace antiguo o sin ?tab=): se abre la primera disponible
+  useEffect(() => {
+    if (visibleTabs.length > 0 && !visibleTabs.includes(tab)) setTab(visibleTabs[0]);
+  }, [visibleTabs, tab]);
   const [search, setSearch] = useState(() => {
     try { return new URLSearchParams(searchStr).get("search") ?? ""; } catch { return ""; }
   });
@@ -5526,7 +5651,7 @@ export default function CRMDashboard() {
       toast.success("Aviso ignorado");
       auditQuery.refetch();
     },
-    onError: (e) => toast.error("Error al ignorar aviso: " + e.message),
+    onError: (e) => toast.error(failMsg(e, "No se ha podido ignorar el aviso.")),
   });
   const { data: tpvPaymentAlerts } = trpc.cardTerminalBatches.getCrmPaymentAlerts.useQuery(undefined, {
     staleTime: 5 * 60 * 1000,
@@ -5542,7 +5667,7 @@ export default function CRMDashboard() {
       setDeleteAnulId(null);
       utils.cancellations.listRequests.invalidate();
     },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => toast.error(failMsg(err)),
   });
   const anulRows = anulData?.rows ?? [];
   const anulKpis = anulData?.kpis;
@@ -5552,50 +5677,50 @@ export default function CRMDashboard() {
   // ─── Acciones masivas ─────────────────────────────────────────────────────────
   const bulkDeleteLeads = trpc.crm.leads.bulkDelete.useMutation({
     onSuccess: (r) => { toast.success(`${r.deleted} lead(s) eliminados`); setSelectedLeads(new Set()); utils.crm.leads.list.invalidate(); utils.crm.leads.counters.invalidate(); },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toast.error(failMsg(e)),
   });
   const bulkMarkSeenLeads = trpc.crm.leads.bulkMarkSeen.useMutation({
     onSuccess: (r) => { toast.success(`${r.updated} lead(s) marcados como leídos`); setSelectedLeads(new Set()); utils.crm.leads.list.invalidate(); utils.crm.leads.counters.invalidate(); },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toast.error(failMsg(e)),
   });
   const bulkUpdateLeadsStatus = trpc.crm.leads.bulkUpdateStatus.useMutation({
     onSuccess: (r) => { toast.success(`Estado actualizado en ${r.updated} lead(s)`); setSelectedLeads(new Set()); setBulkLeadsStatus(""); utils.crm.leads.list.invalidate(); utils.crm.leads.counters.invalidate(); },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toast.error(failMsg(e)),
   });
   const markLeadContacted = trpc.crm.leads.markContacted.useMutation({
     onSuccess: () => {
-      toast.success("Lead marcado como contactado");
+      toast.success(`${voc.Lead} ${voc.agreeLead("marcado", "marcada")} como contactad${voc.agreeLead("o", "a")}`);
       utils.crm.leads.list.invalidate();
       utils.crm.leads.counters.invalidate();
       utils.accounting.getOverview.invalidate();
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toast.error(failMsg(e)),
   });
   const bulkDeleteQuotes = trpc.crm.quotes.bulkDelete.useMutation({
     onSuccess: (r) => { toast.success(`${r.deleted} presupuesto(s) eliminados`); setSelectedQuotes(new Set()); utils.crm.quotes.list.invalidate(); utils.crm.quotes.counters.invalidate(); },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toast.error(failMsg(e)),
   });
   const bulkUpdateQuotesStatus = trpc.crm.quotes.bulkUpdateStatus.useMutation({
     onSuccess: (r) => { toast.success(`Estado actualizado en ${r.updated} presupuesto(s)`); setSelectedQuotes(new Set()); setBulkQuotesStatus(""); utils.crm.quotes.list.invalidate(); utils.crm.quotes.counters.invalidate(); },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toast.error(failMsg(e)),
   });
   const bulkDeleteRes = trpc.crm.reservations.bulkDelete.useMutation({
     onSuccess: (r) => { toast.success(`${r.deleted} reserva(s) eliminadas${r.skipped > 0 ? ` (${r.skipped} omitidas por estar pagadas)` : ""}`); setSelectedRes(new Set()); utils.crm.reservations.list.invalidate(); },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toast.error(failMsg(e)),
   });
   const bulkUpdateResStatus = trpc.crm.reservations.bulkUpdateStatus.useMutation({
     onSuccess: (r) => { toast.success(`Estado actualizado en ${r.updated} reserva(s)`); setSelectedRes(new Set()); setBulkResStatus(""); utils.crm.reservations.list.invalidate(); },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toast.error(failMsg(e)),
   });
 
   const deleteLead = trpc.crm.leads.delete.useMutation({
     onSuccess: () => {
-      toast.success("Lead eliminado");
+      toast.success(`${voc.Lead} ${voc.agreeLead("eliminado", "eliminada")}`);
       setDeleteLeadId(null);
       utils.crm.leads.list.invalidate();
       utils.crm.leads.counters.invalidate();
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toast.error(failMsg(e)),
   });
   const deleteQuote = trpc.crm.quotes.delete.useMutation({
     onSuccess: () => {
@@ -5605,7 +5730,7 @@ export default function CRMDashboard() {
       utils.crm.quotes.counters.invalidate();
       utils.crm.leads.counters.invalidate();
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toast.error(failMsg(e)),
   });
 
   const sendQuoteMutation = trpc.crm.quotes.send.useMutation({
@@ -5616,7 +5741,7 @@ export default function CRMDashboard() {
       utils.crm.quotes.counters.invalidate();
       utils.crm.leads.counters.invalidate();
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toast.error(failMsg(e)),
   });
 
   const resendQuoteMutation = trpc.crm.quotes.resend.useMutation({
@@ -5624,7 +5749,7 @@ export default function CRMDashboard() {
       toast.success("Presupuesto reenviado al cliente");
       utils.crm.quotes.list.invalidate();
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toast.error(failMsg(e)),
   });
 
   // Queries para Modal 2 (CRMDashboard scope)
@@ -5639,7 +5764,7 @@ export default function CRMDashboard() {
 
   const confirmPaymentMutation = trpc.crm.quotes.confirmPayment.useMutation({
     onSuccess: () => {
-      toast.success("Pago confirmado — reserva y factura generadas");
+      toast.success(`Pago confirmado — ${voc.order} y factura generad${voc.agree("os", "as")}`);
       setConfirmPaymentId(null);
       setSelectedBankMovementIdForRow(null);
       setShowBankMovementSearchForRow(false);
@@ -5654,11 +5779,11 @@ export default function CRMDashboard() {
       utils.bankMovements.listMovements.invalidate();
       utils.cardTerminalOperations.list.invalidate();
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toast.error(failMsg(e)),
   });
 
   const uploadProofOnlyRow = trpc.crm.quotes.uploadProofOnly.useMutation({
-    onError: (e) => toast.error(`Error al subir el justificante: ${e.message}`),
+    onError: (e) => toast.error(failMsg(e, "No se ha podido subir el justificante.")),
   });
 
   const handleRowProofFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -5691,20 +5816,20 @@ export default function CRMDashboard() {
 
   const convertReservationMutation = trpc.crm.quotes.convertToReservation.useMutation({
     onSuccess: () => {
-      toast.success("Convertido a reserva (pendiente de cobro)");
+      toast.success(`Convertido a ${voc.order} (pendiente de cobro)`);
       setConvertReservationId(null);
       utils.crm.quotes.list.invalidate();
       utils.crm.quotes.counters.invalidate();
       utils.crm.leads.counters.invalidate();
       utils.crm.reservations.list.invalidate();
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toast.error(failMsg(e)),
   });
 
   // Mutación de pago pendiente desde fila (icono 5 — mismo flujo que el botón del modal)
   const rowPendingPayMutation = trpc.crm.pendingPayments.create.useMutation({
     onSuccess: () => {
-      toast.success("Pago pendiente registrado · Reserva creada · Email enviado al cliente");
+      toast.success(`Pago pendiente registrado · ${voc.Order} ${voc.agree("creado", "creada")} · Email enviado al cliente`);
       setRowPendingPayQuoteId(null);
       setRowPendingPayDueDate("");
       setRowPendingPayReason("");
@@ -5714,7 +5839,7 @@ export default function CRMDashboard() {
       utils.crm.reservations.list.invalidate();
       utils.crm.pendingPayments.list.invalidate();
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toast.error(failMsg(e)),
   });
 
   const markLostQuoteMutation = trpc.crm.quotes.markLost.useMutation({
@@ -5725,7 +5850,7 @@ export default function CRMDashboard() {
       utils.crm.quotes.counters.invalidate();
       utils.crm.leads.counters.invalidate();
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toast.error(failMsg(e)),
   });
 
   const duplicateQuoteMutation = trpc.crm.quotes.duplicate.useMutation({
@@ -5734,37 +5859,37 @@ export default function CRMDashboard() {
       utils.crm.quotes.list.invalidate();
       utils.crm.quotes.counters.invalidate();
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toast.error(failMsg(e)),
   });
 
   const generatePdfMutation = trpc.crm.quotes.generatePdf.useMutation({
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toast.error(failMsg(e)),
   });
 
   // ─── MUTACIONES DE RESERVAS ───────────────────────────────────────────────
   const updateResMutation = trpc.crm.reservations.update.useMutation({
     onSuccess: () => {
-      toast.success("Reserva actualizada");
+      toast.success(`${voc.Order} ${voc.agree("actualizado", "actualizada")}`);
       setEditResId(null);
       utils.crm.reservations.list.invalidate();
       utils.crm.reservations.counters.invalidate();
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toast.error(failMsg(e)),
   });
 
   const resendResMutation = trpc.crm.reservations.resendConfirmation.useMutation({
     onSuccess: (data) => toast.success(`Email reenviado a ${data.sentTo}`),
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toast.error(failMsg(e)),
   });
 
   const deleteResMutation = trpc.crm.reservations.delete.useMutation({
     onSuccess: () => {
-      toast.success("Reserva eliminada");
+      toast.success(`${voc.Order} ${voc.agree("eliminado", "eliminada")}`);
       setDeleteResId(null);
       utils.crm.reservations.list.invalidate();
       utils.crm.reservations.counters.invalidate();
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toast.error(failMsg(e)),
   });
 
   const updateStatusesMutation = trpc.crm.reservations.updateStatuses.useMutation({
@@ -5772,18 +5897,18 @@ export default function CRMDashboard() {
       toast.success("Estados actualizados");
       utils.crm.reservations.list.invalidate();
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toast.error(failMsg(e)),
   });
 
   const changeDateMutation = trpc.crm.reservations.changeDate.useMutation({
     onSuccess: () => {
-      toast.success("Fecha de actividad actualizada");
+      toast.success(`${voc.serviceDateLabel} actualizada`);
       setShowChangeDateSection(false);
       setEditResNewDate("");
       setEditResDateReason("");
       utils.crm.reservations.list.invalidate();
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toast.error(failMsg(e)),
   });
 
   const downloadResPdfMutation = trpc.crm.reservations.downloadPdf.useMutation({
@@ -5791,7 +5916,7 @@ export default function CRMDashboard() {
       window.open(data.url, "_blank");
       toast.success("PDF generado correctamente");
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toast.error(failMsg(e)),
   });
 
   // ─── Generar factura desde reserva TPV ─────────────────────────────────────
@@ -5807,7 +5932,7 @@ export default function CRMDashboard() {
       utils.crm.reservations.list.invalidate();
       utils.crm.invoices.listAll.invalidate();
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toast.error(failMsg(e)),
   });
 
   const downloadQuotePdf = async (quoteId: number, quoteNumber: string) => {
@@ -5837,7 +5962,7 @@ export default function CRMDashboard() {
       utils.crm.reservations.list.invalidate();
       refetchInvoices();
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toast.error(failMsg(e)),
   });
 
   const createCreditNoteMutation = trpc.crm.invoices.createCreditNote.useMutation({
@@ -5848,7 +5973,7 @@ export default function CRMDashboard() {
       utils.crm.invoices.listAll.invalidate();
       refetchInvoices();
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toast.error(failMsg(e)),
   });
 
   const resendInvoiceMutation = trpc.crm.invoices.resend.useMutation({
@@ -5857,7 +5982,7 @@ export default function CRMDashboard() {
       utils.crm.invoices.listAll.invalidate();
       refetchInvoices();
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toast.error(failMsg(e)),
   });
 
   const voidInvoiceMutation = trpc.crm.invoices.void.useMutation({
@@ -5867,17 +5992,17 @@ export default function CRMDashboard() {
       utils.crm.invoices.listAll.invalidate();
       refetchInvoices();
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toast.error(failMsg(e)),
   });
 
   const deleteInvoiceMutation = trpc.crm.invoices.delete.useMutation({
     onSuccess: () => {
-      toast.success("Factura eliminada — reserva desvinculada");
+      toast.success(`Factura eliminada — ${voc.order} ${voc.agree("desvinculado", "desvinculada")}`);
       setDeleteInvoiceId(null);
       utils.crm.invoices.listAll.invalidate();
       refetchInvoices();
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toast.error(failMsg(e)),
   });
 
   const regenerateInvoicePdfMutation = trpc.crm.invoices.regeneratePdf.useMutation({
@@ -5885,7 +6010,7 @@ export default function CRMDashboard() {
       refetchInvoices();
       utils.crm.invoices.listAll.invalidate();
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toast.error(failMsg(e)),
   });
 
   const viewInvoicePdf = (invoice: any) => {
@@ -5928,8 +6053,8 @@ export default function CRMDashboard() {
     if (!method) return null;
     const map: Record<string, string> = {
       tarjeta_fisica: "💳 Tarjeta Física",
-      tarjeta_redsys: "💳 Tarjeta Redsys",
-      redsys:         "💳 Tarjeta Redsys",
+      tarjeta_redsys: voc.licensed ? "💳 Tarjeta (pago online)" : "💳 Tarjeta Redsys",
+      redsys:         voc.licensed ? "💳 Tarjeta (pago online)" : "💳 Tarjeta Redsys",
       tarjeta:        "💳 Tarjeta",
       transferencia:  "🏦 Transferencia",
       efectivo:       "💵 Efectivo",
@@ -5942,8 +6067,8 @@ export default function CRMDashboard() {
     if (!method) return <span className="text-foreground/30 text-xs">—</span>;
     const map: Record<string, { label: string; cls: string; icon: string }> = {
       tarjeta_fisica: { label: "Tarjeta Física", cls: "bg-violet-500/15 text-violet-300 border-violet-500/30", icon: "💳" },
-      tarjeta_redsys: { label: "Tarjeta Redsys", cls: "bg-violet-500/15 text-violet-300 border-violet-500/30", icon: "💳" },
-      redsys:         { label: "Tarjeta Redsys", cls: "bg-violet-500/15 text-violet-300 border-violet-500/30", icon: "💳" },
+      tarjeta_redsys: { label: voc.licensed ? "Tarjeta (pago online)" : "Tarjeta Redsys", cls: "bg-violet-500/15 text-violet-300 border-violet-500/30", icon: "💳" },
+      redsys:         { label: voc.licensed ? "Tarjeta (pago online)" : "Tarjeta Redsys", cls: "bg-violet-500/15 text-violet-300 border-violet-500/30", icon: "💳" },
       tarjeta:        { label: "Tarjeta",        cls: "bg-violet-500/15 text-violet-300 border-violet-500/30", icon: "💳" },
       transferencia:  { label: "Transferencia",  cls: "bg-sky-500/15 text-sky-300 border-sky-500/30",         icon: "🏦" },
       efectivo:       { label: "Efectivo",       cls: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30", icon: "💵" },
@@ -5965,14 +6090,14 @@ export default function CRMDashboard() {
   };
 
   return (
-    <AdminLayout title="CRM Comercial">
+    <AdminLayout title={voc.crmTitle}>
       <div className="min-h-screen bg-background text-foreground dark:bg-[#080e1c]">
         {/* Header */}
         <div className="px-4 sm:px-6 pt-4 sm:pt-6 pb-4 border-b border-foreground/[0.08]">
           <div className="flex items-center justify-between mb-1">
             <div>
-              <h1 className="text-xl sm:text-2xl font-bold text-foreground">CRM Comercial</h1>
-              <p className="text-xs sm:text-sm text-foreground/50 mt-0.5 hidden sm:block">Pipeline completo Lead → Presupuesto → Reserva → Factura</p>
+              <h1 className="text-xl sm:text-2xl font-bold text-foreground">{voc.crmTitle}</h1>
+              <p className="text-xs sm:text-sm text-foreground/50 mt-0.5 hidden sm:block">{voc.crmSubtitle}</p>
             </div>
           </div>
         </div>
@@ -6031,7 +6156,7 @@ export default function CRMDashboard() {
                   )}
                   {(resCounters?.confirmadas ?? 0) > 0 && (
                     <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-[11px] font-medium">
-                      <CheckCircle className="w-2.5 h-2.5" />{resCounters?.confirmadas} reservas
+                      <CheckCircle className="w-2.5 h-2.5" />{resCounters?.confirmadas} {voc.ordersLower}
                       {(resCounters?.importeConfirmadas ?? 0) > 0 && <span className="opacity-60">· {Math.round(resCounters!.importeConfirmadas).toLocaleString("es-ES")} €</span>}
                     </span>
                   )}
@@ -6066,10 +6191,10 @@ export default function CRMDashboard() {
           <div>
             <div className="flex items-center gap-2 mb-3">
               <div className="w-1 h-4 rounded-full bg-gradient-to-b from-blue-400 to-blue-600" />
-              <span className="text-xs font-bold uppercase tracking-[0.15em] text-foreground/50">Pipeline de Oportunidades</span>
+              <span className="text-xs font-bold uppercase tracking-[0.15em] text-foreground/50">{voc.licensed ? "Embudo de oportunidades" : "Pipeline de Oportunidades"}</span>
               <div className="flex-1 h-px bg-foreground/[0.05]" />
               {(leadCounters?.total ?? 0) > 0 && (
-                <span className="text-xs text-foreground/40">{leadCounters?.total ?? 0} leads totales</span>
+                <span className="text-xs text-foreground/40">{leadCounters?.total ?? 0} {voc.licensed ? "oportunidades en total" : "leads totales"}</span>
               )}
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -6078,7 +6203,7 @@ export default function CRMDashboard() {
                 value={leadCounters?.nueva ?? 0}
                 icon={Users}
                 color="blue"
-                subtitle="Leads sin gestionar"
+                subtitle={`${voc.leads} sin gestionar`}
                 amount={leadCounters?.valorNueva}
                 active={tab === "leads" && filterStatus === "nueva"}
                 onClick={() => { handleTabChange("leads"); setFilterStatus("nueva"); }}
@@ -6098,7 +6223,7 @@ export default function CRMDashboard() {
                 value={leadCounters?.ganada ?? 0}
                 icon={Star}
                 color="blue"
-                subtitle="Reservas confirmadas"
+                subtitle={`${voc.orders} ${voc.agree("confirmados", "confirmadas")}`}
                 amount={leadCounters?.valorGanada}
                 active={tab === "leads" && filterStatus === "ganada"}
                 onClick={() => { handleTabChange("leads"); setFilterStatus("ganada"); }}
@@ -6157,11 +6282,11 @@ export default function CRMDashboard() {
                 />
               )}
               <CounterCard
-                label="Reservas Hoy"
+                label={voc.ordersToday}
                 value={resCounters?.hoy ?? 0}
                 icon={CalendarCheck}
                 color="orange"
-                subtitle="Confirmadas hoy"
+                subtitle={voc.agree("Confirmados hoy", "Confirmadas hoy")}
                 amount={resCounters?.importeServicioHoy}
                 active={tab === "reservations"}
                 onClick={() => handleTabChange("reservations")}
@@ -6171,7 +6296,7 @@ export default function CRMDashboard() {
                 value={`${Number(resCounters?.ingresos ?? 0).toFixed(0)} €`}
                 icon={Banknote}
                 color="orange"
-                subtitle="Reservas pagadas"
+                subtitle={`${voc.orders} ${voc.agree("pagados", "pagadas")}`}
                 onClick={() => handleTabChange("reservations")}
               />
             </div>
@@ -6180,7 +6305,7 @@ export default function CRMDashboard() {
           <div>
             <div className="flex items-center gap-2 mb-3">
               <div className="w-1 h-4 rounded-full bg-gradient-to-b from-green-400 to-green-600" />
-              <span className="text-xs font-bold uppercase tracking-[0.15em] text-foreground/50">Reservas</span>
+              <span className="text-xs font-bold uppercase tracking-[0.15em] text-foreground/50">{voc.orders}</span>
               <div className="flex-1 h-px bg-foreground/[0.05]" />
               {(resCounters?.confirmadas ?? 0) > 0 && (
                 <span className="text-xs text-foreground/40">{resCounters?.confirmadas ?? 0} confirmadas</span>
@@ -6188,11 +6313,11 @@ export default function CRMDashboard() {
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <CounterCard
-                label="Confirmadas"
+                label={voc.agree("Confirmados", "Confirmadas")}
                 value={resCounters?.confirmadas ?? 0}
                 icon={CheckCircle}
                 color="green"
-                subtitle="Reservas pagadas"
+                subtitle={`${voc.orders} ${voc.agree("pagados", "pagadas")}`}
                 amount={resCounters?.importeConfirmadas}
                 active={tab === "reservations"}
                 onClick={() => handleTabChange("reservations")}
@@ -6212,7 +6337,7 @@ export default function CRMDashboard() {
                 value={resCounters?.servicioHoy ?? 0}
                 icon={CalendarCheck}
                 color="green"
-                subtitle="Actividades programadas"
+                subtitle={voc.licensed ? "Servicios programados" : "Actividades programadas"}
                 amount={resCounters?.importeServicioHoy}
                 active={tab === "reservations"}
                 onClick={() => handleTabChange("reservations")}
@@ -6232,18 +6357,18 @@ export default function CRMDashboard() {
                 value={resCounters?.esteMes ?? 0}
                 icon={Banknote}
                 color="green"
-                subtitle="Confirmadas este mes"
+                subtitle={voc.agree("Confirmados este mes", "Confirmadas este mes")}
                 amount={resCounters?.importeEsteMes}
                 active={tab === "reservations"}
                 onClick={() => handleTabChange("reservations")}
               />
               {(resCounters?.canceladas ?? 0) > 0 && (
                 <CounterCard
-                  label="Canceladas"
+                  label={voc.agree("Cancelados", "Canceladas")}
                   value={resCounters?.canceladas ?? 0}
                   icon={XCircle}
                   color="green"
-                  subtitle="Reservas anuladas"
+                  subtitle={`${voc.orders} ${voc.agree("anulados", "anuladas")}`}
                   active={tab === "reservations"}
                   onClick={() => handleTabChange("reservations")}
                 />
@@ -6384,8 +6509,8 @@ export default function CRMDashboard() {
             );
           })()}
 
-          {/* Grupo 4: Bonos compensatorios */}
-          <div>
+          {/* Grupo 4: Bonos compensatorios (solo con el módulo de cupones) */}
+          {voc.showCoupons && <div>
             <div className="flex items-center gap-2 mb-3">
               <div className="w-1 h-4 rounded-full bg-gradient-to-b from-purple-400 to-purple-600" />
               <span className="text-xs font-bold uppercase tracking-[0.15em] text-foreground/50">Bonos compensatorios</span>
@@ -6421,7 +6546,7 @@ export default function CRMDashboard() {
                 onClick={() => handleTabChange("bonos")}
               />
             </div>
-          </div>
+          </div>}
         </div>
 
         {/* Barra de ratio de conversión */}
@@ -6446,7 +6571,7 @@ export default function CRMDashboard() {
                   <span className="text-emerald-400 font-bold text-sm">
                     {leadCounters?.total ? Math.round(((leadCounters.ganada ?? 0) / leadCounters.total) * 100) : 0}%
                   </span>
-                  <span>{leadCounters?.ganada ?? 0} ganadas de {leadCounters?.total ?? 0} leads</span>
+                  <span>{leadCounters?.ganada ?? 0} ganadas de {leadCounters?.total ?? 0} {voc.leadsLower}</span>
                 </div>
               </div>
               {/* Barra segmentada */}
@@ -6502,7 +6627,7 @@ export default function CRMDashboard() {
           <div className="mx-6 mb-2 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 flex flex-col gap-2">
             <div className="flex items-center gap-2 text-amber-400 font-semibold text-sm">
               <AlertTriangle className="w-4 h-4 flex-shrink-0" />
-              Auditoría — se detectaron incidencias en reservas pagadas
+              Auditoría — se detectaron incidencias en {voc.ordersLower} {voc.agree("pagados", "pagadas")}
             </div>
             {auditData.sinFacturaCount > 0 && (() => {
               const cashItems = auditData.sinFactura.filter((r: any) => r.paymentMethod === "efectivo");
@@ -6512,7 +6637,7 @@ export default function CRMDashboard() {
                   {cashItems.length > 0 && (
                     <div>
                       <p className="text-xs text-blue-300/80 font-medium mb-1">
-                        {cashItems.length} reserva{cashItems.length !== 1 ? "s" : ""} cobrada{cashItems.length !== 1 ? "s" : ""} en efectivo — requieren factura manual:
+                        {cashItems.length} {voc.order}{cashItems.length !== 1 ? "s" : ""} {voc.agree("cobrado", "cobrada")}{cashItems.length !== 1 ? "s" : ""} en efectivo — requieren factura manual:
                       </p>
                       <div className="flex flex-wrap gap-1.5">
                         {cashItems.map((r: any) => (
@@ -6520,7 +6645,7 @@ export default function CRMDashboard() {
                             <button
                               onClick={() => setGenInvoiceResId(r.id)}
                               className="inline-flex items-center gap-1.5 px-2 py-1 hover:bg-blue-800/60 transition-colors cursor-pointer"
-                              title="Generar factura manual para esta reserva en efectivo"
+                              title={`Generar factura manual para est${voc.agree("e", "a")} ${voc.order} en efectivo`}
                             >
                               <span className="font-mono font-bold">{r.reservationNumber ?? `#${r.id}`}</span>
                               <span className="text-blue-300/60">·</span>
@@ -6543,7 +6668,7 @@ export default function CRMDashboard() {
                   {otherItems.length > 0 && (
                     <div>
                       <p className="text-xs text-amber-300/80 font-medium mb-1">
-                        {otherItems.length} reserva{otherItems.length !== 1 ? "s" : ""} pagada{otherItems.length !== 1 ? "s" : ""} sin factura asociada:
+                        {otherItems.length} {voc.order}{otherItems.length !== 1 ? "s" : ""} {voc.agree("pagado", "pagada")}{otherItems.length !== 1 ? "s" : ""} sin factura asociada:
                       </p>
                       <div className="flex flex-wrap gap-1.5">
                         {otherItems.map((r: any) => (
@@ -6551,7 +6676,7 @@ export default function CRMDashboard() {
                             <button
                               onClick={() => setGenInvoiceResId(r.id)}
                               className="inline-flex items-center gap-1.5 px-2 py-1 hover:bg-amber-800/60 transition-colors cursor-pointer"
-                              title="Generar factura para esta reserva"
+                              title={`Generar factura para est${voc.agree("e", "a")} ${voc.order}`}
                             >
                               <span className="font-mono font-bold">{r.reservationNumber ?? `#${r.id}`}</span>
                               <span className="text-amber-300/60">·</span>
@@ -6574,7 +6699,7 @@ export default function CRMDashboard() {
                 </>
               );
             })()}
-            {auditData.sinReavCount > 0 && (
+            {voc.showReav && auditData.sinReavCount > 0 && (
               <div>
                 <p className="text-xs text-amber-300/80 font-medium mb-1">
                   {auditData.sinReavCount} reserva{auditData.sinReavCount !== 1 ? "s" : ""} REAV sin expediente (revisar en Fiscal REAV):
@@ -6609,7 +6734,7 @@ export default function CRMDashboard() {
             </div>
             {(tpvPaymentAlerts?.unlinkedTpvOps ?? 0) > 0 && (
               <a href="/admin/contabilidad/operaciones-tpv" className="text-xs text-blue-300/80 hover:text-blue-200 transition-colors">
-                • {tpvPaymentAlerts!.unlinkedTpvOps} operación{tpvPaymentAlerts!.unlinkedTpvOps !== 1 ? "es" : ""} TPV sin vincular a reserva/factura → Operaciones TPV
+                • {tpvPaymentAlerts!.unlinkedTpvOps} operación{tpvPaymentAlerts!.unlinkedTpvOps !== 1 ? "es" : ""} TPV sin vincular a {voc.order}/factura → Operaciones TPV
               </a>
             )}
             {(tpvPaymentAlerts?.staleFailedPayments ?? 0) > 0 && (
@@ -6635,16 +6760,18 @@ export default function CRMDashboard() {
           <div className="overflow-x-auto -mx-1 px-1 pb-1">
           <div className="flex gap-1 bg-foreground/[0.05] rounded-xl p-1 min-w-max">
             {([
-              { key: "leads", label: "Leads", icon: Users, count: leadCounters?.total },
-              { key: "quotes", label: "Presupuestos", icon: FileText, count: quoteCounters?.enviado },
-              { key: "reservations", label: "Reservas", icon: CalendarCheck, count: resCounters?.confirmadas },
-              { key: "invoices", label: "Facturas", icon: Receipt, count: undefined },
-              { key: "anulaciones", label: "Anulaciones", icon: AlertTriangle, count: anulCounters?.pending },
-              { key: "bonos", label: "Bonos", icon: Gift, count: undefined },
-              { key: "pagos_pendientes", label: "Pagos Pendientes", icon: Clock, count: undefined },
-            ] as const).map(({ key, label, icon: Icon, count }) => (
+              { key: "leads", label: voc.leads, icon: Users, count: leadCounters?.total },
+              { key: "quotes", label: voc.quotes, icon: FileText, count: quoteCounters?.enviado },
+              { key: "reservations", label: voc.orders, icon: CalendarCheck, count: resCounters?.confirmadas },
+              { key: "invoices", label: voc.invoices, icon: Receipt, count: undefined },
+              { key: "anulaciones", label: voc.cancellations, icon: AlertTriangle, count: anulCounters?.pending },
+              { key: "bonos", label: voc.coupons, icon: Gift, count: undefined },
+              { key: "pagos_pendientes", label: voc.pendingPayments, icon: Clock, count: undefined },
+            ] as const).filter(({ key }) => visibleTabs.includes(key)).map(({ key, label, icon: Icon, count }) => (
               <button
                 key={key}
+                type="button"
+                aria-pressed={tab === key}
                 onClick={() => handleTabChange(key)}
                 className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200
                   ${tab === key ? "bg-orange-600 text-white shadow-lg shadow-orange-900/30" : "text-foreground/60 hover:text-foreground hover:bg-foreground/[0.05]"}`}
@@ -6670,7 +6797,8 @@ export default function CRMDashboard() {
             <Input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder={`Buscar ${tab === "leads" ? "leads" : tab === "quotes" ? "presupuestos" : tab === "reservations" ? "reservas" : "facturas"}...`}
+              aria-label="Buscar"
+              placeholder={`Buscar ${tab === "leads" ? voc.leadsLower : tab === "quotes" ? "presupuestos" : tab === "reservations" ? voc.ordersLower : "facturas"}...`}
               className="pl-9 bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-foreground/40"
             />
           </div>
@@ -6724,7 +6852,7 @@ export default function CRMDashboard() {
               onClick={() => setShowNewLeadModal(true)}
               className="bg-gradient-to-r from-violet-600 to-violet-700 hover:from-violet-700 hover:to-violet-800 text-white sm:ml-auto"
             >
-              <Plus className="w-4 h-4 mr-1.5" /> Nuevo Lead
+              <Plus className="w-4 h-4 mr-1.5" /> {voc.newLead}
             </Button>
           )}
           {tab === "reservations" && (
@@ -6733,7 +6861,7 @@ export default function CRMDashboard() {
               onClick={() => setShowNewReservationModal(true)}
               className="bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white sm:ml-auto"
             >
-              <Plus className="w-4 h-4 mr-1.5" /> Nueva Reserva
+              <Plus className="w-4 h-4 mr-1.5" /> {voc.newOrder}
             </Button>
           )}
           {tab === "quotes" && (
@@ -6742,7 +6870,7 @@ export default function CRMDashboard() {
               onClick={() => setShowDirectQuoteModal(true)}
               className="bg-gradient-to-r from-orange-600 to-orange-700 hover:from-orange-700 hover:to-orange-800 text-white sm:ml-auto"
             >
-              <Plus className="w-4 h-4 mr-1.5" /> Nuevo Presupuesto
+              <Plus className="w-4 h-4 mr-1.5" /> {voc.licensed ? "Nuevo presupuesto" : "Nuevo Presupuesto"}
             </Button>
           )}
         </div>
@@ -6766,7 +6894,7 @@ export default function CRMDashboard() {
                   <option value="ganada">Ganada</option>
                   <option value="perdida">Perdida</option>
                 </select>
-                <button onClick={() => { if (confirm(`¿Eliminar ${selectedLeads.size} lead(s) definitivamente?`)) bulkDeleteLeads.mutate({ ids: Array.from(selectedLeads) }); }} disabled={bulkDeleteLeads.isPending} className="flex items-center gap-1 px-2.5 py-1 text-xs rounded-md border border-red-500/40 text-red-400 hover:bg-red-500/10 transition-colors disabled:opacity-40">
+                <button type="button" onClick={() => setBulkConfirm("leads")} disabled={bulkDeleteLeads.isPending} className="flex items-center gap-1 px-2.5 py-1 text-xs rounded-md border border-red-500/40 text-red-400 hover:bg-red-500/10 transition-colors disabled:opacity-40">
                   <Trash2 className="w-3.5 h-3.5" /> Eliminar
                 </button>
                 <button onClick={() => setSelectedLeads(new Set())} className="ml-auto text-foreground/40 hover:text-foreground/70 p-1"><X className="w-4 h-4" /></button>
@@ -6782,7 +6910,7 @@ export default function CRMDashboard() {
                     <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden sm:table-cell">Recibido</th>
                     <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Cliente</th>
                     <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden md:table-cell">Producto</th>
-                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden lg:table-cell">Fecha actividad</th>
+                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden lg:table-cell">{voc.serviceDateColumn}</th>
                     <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden xl:table-cell">Origen</th>
                     <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Estado</th>
                     <th className="text-right px-4 py-3 text-xs text-foreground/50 font-medium">Acciones</th>
@@ -6894,7 +7022,7 @@ export default function CRMDashboard() {
                             variant="ghost"
                             className="text-blue-400 hover:text-blue-300 h-7 px-2 text-xs"
                             onClick={() => setEditLeadId(lead.id)}
-                            title="Editar lead"
+                            title={voc.licensed ? "Editar oportunidad" : "Editar lead"}
                           >
                             <Pencil className="w-3.5 h-3.5" />
                           </Button>
@@ -6905,7 +7033,7 @@ export default function CRMDashboard() {
                               className="text-emerald-400 hover:text-emerald-300 h-7 px-2 text-xs"
                               onClick={() => markLeadContacted.mutate({ id: lead.id })}
                               disabled={markLeadContacted.isPending}
-                              title="Marcar como contactado (lo saca 3 días del contador de leads sin atender)"
+                              title={`Marcar como contactad${voc.agreeLead("o", "a")} (lo saca 3 días del contador de ${voc.leadsLower} sin atender)`}
                             >
                               <Phone className="w-3.5 h-3.5" />
                             </Button>
@@ -6925,7 +7053,7 @@ export default function CRMDashboard() {
                             variant="ghost"
                             className="text-red-400 hover:text-red-300 h-7 px-2 text-xs"
                             onClick={() => setDeleteLeadId(lead.id)}
-                            title="Eliminar lead"
+                            title={voc.licensed ? "Eliminar oportunidad" : "Eliminar lead"}
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </Button>
@@ -6940,8 +7068,8 @@ export default function CRMDashboard() {
               <div className="flex items-center justify-between px-4 py-3 border-t border-foreground/[0.10]">
                 <span className="text-sm text-foreground/50">
                   {leadsData.total <= PAGE_SIZE
-                    ? `Mostrando ${leadsData.total} de ${leadsData.total} leads`
-                    : `Página ${leadsPage + 1} de ${Math.ceil(leadsData.total / PAGE_SIZE)} · ${leadsData.total} leads`}
+                    ? `Mostrando ${leadsData.total} de ${leadsData.total} ${voc.leadsLower}`
+                    : `Página ${leadsPage + 1} de ${Math.ceil(leadsData.total / PAGE_SIZE)} · ${leadsData.total} ${voc.leadsLower}`}
                 </span>
                 {leadsData.total > PAGE_SIZE && (
                   <div className="flex gap-2">
@@ -6977,7 +7105,7 @@ export default function CRMDashboard() {
                   <option value="perdido">Perdido</option>
                   <option value="expirado">Expirado</option>
                 </select>
-                <button onClick={() => { if (confirm(`¿Eliminar ${selectedQuotes.size} presupuesto(s) definitivamente?`)) bulkDeleteQuotes.mutate({ ids: Array.from(selectedQuotes) }); }} disabled={bulkDeleteQuotes.isPending} className="flex items-center gap-1 px-2.5 py-1 text-xs rounded-md border border-red-500/40 text-red-400 hover:bg-red-500/10 transition-colors disabled:opacity-40">
+                <button type="button" onClick={() => setBulkConfirm("quotes")} disabled={bulkDeleteQuotes.isPending} className="flex items-center gap-1 px-2.5 py-1 text-xs rounded-md border border-red-500/40 text-red-400 hover:bg-red-500/10 transition-colors disabled:opacity-40">
                   <Trash2 className="w-3.5 h-3.5" /> Eliminar
                 </button>
                 <button onClick={() => setSelectedQuotes(new Set())} className="ml-auto text-foreground/40 hover:text-foreground/70 p-1"><X className="w-4 h-4" /></button>
@@ -7055,7 +7183,7 @@ export default function CRMDashboard() {
                           {quote.isAutoGenerated && (
                             <span
                               className="inline-flex items-center gap-1 text-[10px] font-medium text-violet-400 bg-violet-500/10 border border-violet-500/20 px-1.5 py-0.5 rounded-full"
-                              title="Generado automáticamente desde las actividades del lead"
+                              title={voc.licensed ? "Generado automáticamente desde los productos o servicios de la oportunidad" : "Generado automáticamente desde las actividades del lead"}
                             >
                               <Sparkles className="w-2.5 h-2.5" />
                               Auto-IA
@@ -7135,7 +7263,7 @@ export default function CRMDashboard() {
                                 setRowPendingPayDueDate("");
                                 setRowPendingPayReason("");
                               }}
-                              title="Convertir a reserva pendiente de cobro"
+                              title={`Convertir a ${voc.order} pendiente de cobro`}
                             >
                               <Clock className="w-3.5 h-3.5" />
                             </Button>
@@ -7206,7 +7334,7 @@ export default function CRMDashboard() {
                   <option value="pending_payment">Pendiente pago</option>
                   <option value="cancelled">Cancelada</option>
                 </select>
-                <button onClick={() => { if (confirm(`¿Eliminar ${selectedRes.size} reserva(s)? Las reservas pagadas serán omitidas.`)) bulkDeleteRes.mutate({ ids: Array.from(selectedRes) }); }} disabled={bulkDeleteRes.isPending} className="flex items-center gap-1 px-2.5 py-1 text-xs rounded-md border border-red-500/40 text-red-400 hover:bg-red-500/10 transition-colors disabled:opacity-40">
+                <button type="button" onClick={() => setBulkConfirm("reservations")} disabled={bulkDeleteRes.isPending} className="flex items-center gap-1 px-2.5 py-1 text-xs rounded-md border border-red-500/40 text-red-400 hover:bg-red-500/10 transition-colors disabled:opacity-40">
                   <Trash2 className="w-3.5 h-3.5" /> Eliminar
                 </button>
                 <button onClick={() => setSelectedRes(new Set())} className="ml-auto text-foreground/40 hover:text-foreground/70 p-1"><X className="w-4 h-4" /></button>
@@ -7236,14 +7364,14 @@ export default function CRMDashboard() {
                     <th className="w-10 px-3 py-3">
                       <input type="checkbox" className="rounded border-foreground/30 bg-background cursor-pointer" checked={!!resData?.rows?.length && selectedRes.size === resData.rows.length} onChange={e => setSelectedRes(e.target.checked ? new Set(resData?.rows?.map((r: any) => r.id)) : new Set())} />
                     </th>
-                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium whitespace-nowrap">Nº Reserva</th>
+                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium whitespace-nowrap">{voc.orderNumber}</th>
                     <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Cliente</th>
                     <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden md:table-cell">Producto</th>
-                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium whitespace-nowrap">Est. Reserva</th>
+                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium whitespace-nowrap">{voc.orderStatus}</th>
                     <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium whitespace-nowrap">Est. Pago</th>
                     <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden xl:table-cell whitespace-nowrap">Canal</th>
                     <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden lg:table-cell whitespace-nowrap">F. Compra</th>
-                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden lg:table-cell whitespace-nowrap">F. Actividad</th>
+                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden lg:table-cell whitespace-nowrap">{voc.serviceDateShort}</th>
                     <th className="text-right px-4 py-3 text-xs text-foreground/50 font-medium whitespace-nowrap">Importe</th>
                     <th className="text-right px-4 py-3 text-xs text-foreground/50 font-medium whitespace-nowrap">Acciones</th>
                   </tr>
@@ -7322,11 +7450,11 @@ export default function CRMDashboard() {
                             "bg-slate-500/15 text-slate-400 border-slate-500/30"
                           }`}>
                             {res.statusReservation === "PENDIENTE_CONFIRMACION" ? "Pend. conf." :
-                             res.statusReservation === "CONFIRMADA" ? "✅ Confirmada" :
+                             res.statusReservation === "CONFIRMADA" ? `✅ ${voc.agree("Confirmado", "Confirmada")}` :
                              res.statusReservation === "EN_CURSO" ? "▶ En curso" :
-                             res.statusReservation === "FINALIZADA" ? "Finalizada" :
+                             res.statusReservation === "FINALIZADA" ? voc.agree("Finalizado", "Finalizada") :
                              res.statusReservation === "NO_SHOW" ? "⚠️ No show" :
-                             res.statusReservation === "ANULADA" ? "❌ Anulada" :
+                             res.statusReservation === "ANULADA" ? `❌ ${voc.agree("Anulado", "Anulada")}` :
                              res.statusReservation}
                           </span>
                         ) : (
@@ -7337,9 +7465,9 @@ export default function CRMDashboard() {
                             res.status === "cancelled" ? "bg-red-500/15 text-red-400 border-red-500/30" :
                             "bg-slate-500/15 text-slate-400 border-slate-500/30"
                           }`}>
-                            {res.status === "paid" || res.status === "confirmed" ? "✅ Confirmada" :
+                            {res.status === "paid" || res.status === "confirmed" ? `✅ ${voc.agree("Confirmado", "Confirmada")}` :
                              res.status === "pending_payment" ? "⏳ Pendiente" :
-                             res.status === "cancelled" ? "❌ Cancelada" : res.status}
+                             res.status === "cancelled" ? `❌ ${voc.agree("Cancelado", "Cancelada")}` : res.status}
                           </span>
                         )}
                         {res.cancellationRequestId && (
@@ -7458,7 +7586,7 @@ export default function CRMDashboard() {
                               setShowChangeDateSection(false);
                               setEditResId(res.id);
                             }}
-                            title="Editar reserva">
+                            title={voc.editOrder}>
                             <Pencil className="w-3.5 h-3.5" />
                           </Button>
                           {/* Reenviar al cliente */}
@@ -7497,14 +7625,14 @@ export default function CRMDashboard() {
                             <Button size="sm" variant="ghost"
                               className="text-foreground/50 hover:text-orange-400 h-7 w-7 p-0"
                               onClick={() => { setCancelReservationId(res.id); setCancelReservationName(res.customerName); }}
-                              title="Anular reserva">
+                              title={voc.cancelOrder}>
                               <XCircle className="w-3.5 h-3.5" />
                             </Button>
                           )}
                           {/* Eliminar */}
                           <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-red-400 h-7 w-7 p-0"
                             onClick={() => setDeleteResId(res.id)}
-                            title="Eliminar reserva">
+                            title={voc.deleteOrder}>
                             <Trash2 className="w-3.5 h-3.5" />
                           </Button>
                         </div>
@@ -7518,8 +7646,8 @@ export default function CRMDashboard() {
               <div className="flex items-center justify-between px-4 py-3 border-t border-foreground/[0.10]">
                 <span className="text-sm text-foreground/50">
                   {resData.total <= PAGE_SIZE
-                    ? `Mostrando ${resData.total} de ${resData.total} reservas`
-                    : `Página ${resPage + 1} de ${Math.ceil(resData.total / PAGE_SIZE)} · ${resData.total} reservas`}
+                    ? `Mostrando ${resData.total} de ${resData.total} ${voc.ordersLower}`
+                    : `Página ${resPage + 1} de ${Math.ceil(resData.total / PAGE_SIZE)} · ${resData.total} ${voc.ordersLower}`}
                 </span>
                 {resData.total > PAGE_SIZE && (
                 <div className="flex gap-2">
@@ -7965,9 +8093,9 @@ export default function CRMDashboard() {
                       <tr className="border-b border-foreground/[0.10] bg-foreground/[0.05]">
                         <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">#</th>
                         <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Solicitante</th>
-                        <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Reserva</th>
+                        <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">{voc.Order}</th>
                         <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Motivo</th>
-                        <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Fecha actividad</th>
+                        <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">{voc.serviceDateColumn}</th>
                         <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Estado op.</th>
                         <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Resolución</th>
                         <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Financiero</th>
@@ -8017,7 +8145,7 @@ export default function CRMDashboard() {
                               <button
                                 onClick={() => setViewResId(row.linkedReservationId!)}
                                 className="font-mono text-xs text-orange-400 hover:text-orange-300 hover:underline transition-colors"
-                                title="Ver reserva"
+                                title={voc.viewOrder}
                               >
                                 {row.reservationNumber}
                               </button>
@@ -8134,7 +8262,7 @@ export default function CRMDashboard() {
                 </SelectContent>
               </Select>
             </div>
-            <p className="text-xs text-foreground/50">Se marcará la factura como cobrada y se actualizará la reserva asociada.</p>
+            <p className="text-xs text-foreground/50">Se marcará la factura como cobrada y se actualizará {voc.theOrder} {voc.agree("asociado", "asociada")}.</p>
           </div>
           <DialogFooter>
             <Button variant="outline" size="sm" onClick={() => setConfirmPaymentInvoiceId(null)} className="border-foreground/[0.15] text-foreground/65">Cancelar</Button>
@@ -8215,7 +8343,7 @@ export default function CRMDashboard() {
           <div className="py-2 space-y-2">
             <p className="text-sm text-foreground/70">Esta acción eliminará la factura permanentemente.</p>
             <ul className="text-xs text-foreground/60 list-disc list-inside space-y-1">
-              <li>La reserva asociada quedará sin factura asignada</li>
+              <li>{voc.licensed ? "El pedido asociado" : "La reserva asociada"} quedará sin factura asignada</li>
               <li>Si venía de un presupuesto, su estado volverá a <span className="text-amber-400">pendiente</span></li>
               <li>Esta acción no se puede deshacer</li>
             </ul>
@@ -8295,15 +8423,34 @@ export default function CRMDashboard() {
         )}
       </Dialog>
 
+      {/* Confirmación de eliminación masiva */}
+      <ConfirmDialog
+        open={bulkConfirm !== null}
+        title="Eliminar definitivamente"
+        description={
+          bulkConfirm === "leads" ? `Se eliminarán ${selectedLeads.size} ${voc.leadsLower}. Esta acción no se puede deshacer.`
+          : bulkConfirm === "quotes" ? `Se eliminarán ${selectedQuotes.size} presupuestos. Esta acción no se puede deshacer.`
+          : `Se eliminarán ${selectedRes.size} ${voc.ordersLower}. ${voc.licensed ? "Los pedidos pagados" : "Las reservas pagadas"} se omitirán.`
+        }
+        onCancel={() => setBulkConfirm(null)}
+        onConfirm={() => {
+          const which = bulkConfirm;
+          setBulkConfirm(null);
+          if (which === "leads") bulkDeleteLeads.mutate({ ids: Array.from(selectedLeads) });
+          else if (which === "quotes") bulkDeleteQuotes.mutate({ ids: Array.from(selectedQuotes) });
+          else if (which === "reservations") bulkDeleteRes.mutate({ ids: Array.from(selectedRes) });
+        }}
+      />
+
       {/* Delete Lead confirmation */}
       <Dialog open={deleteLeadId !== null} onOpenChange={(o) => !o && setDeleteLeadId(null)}>
         <DialogContent className="max-w-sm bg-[#0d1526] border-foreground/[0.12] text-white">
           <DialogHeader>
             <DialogTitle className="text-white flex items-center gap-2">
-              <AlertTriangle className="w-5 h-5 text-red-400" /> Eliminar lead
+              <AlertTriangle className="w-5 h-5 text-red-400" /> {voc.licensed ? "Eliminar oportunidad" : "Eliminar lead"}
             </DialogTitle>
           </DialogHeader>
-          <p className="text-sm text-foreground/65 py-2">Esta acción es irreversible. Se eliminará el lead y toda su actividad asociada.</p>
+          <p className="text-sm text-foreground/65 py-2">Esta acción es irreversible. Se eliminará {voc.licensed ? "la oportunidad" : "el lead"} y toda su actividad asociada.</p>
           <DialogFooter>
             <Button variant="outline" size="sm" onClick={() => setDeleteLeadId(null)} className="border-foreground/[0.15] text-foreground/65">Cancelar</Button>
             <Button
@@ -8610,7 +8757,7 @@ export default function CRMDashboard() {
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
-            <p className="text-foreground/65 text-sm">Se creará la reserva en estado <strong className="text-amber-400">pendiente de cobro</strong>, se registrará el pago pendiente y se enviará un email de recordatorio al cliente con la fecha límite.</p>
+            <p className="text-foreground/65 text-sm">Se creará {voc.theOrder} en estado <strong className="text-amber-400">pendiente de cobro</strong>, se registrará el pago pendiente y se enviará un email de recordatorio al cliente con la fecha límite.</p>
             <div className="space-y-1.5">
               <Label className="text-foreground/70 text-xs">Fecha límite de pago *</Label>
               <Input
@@ -8646,7 +8793,7 @@ export default function CRMDashboard() {
                   clientName: (q as any)?.clientName ?? (q as any)?.title ?? "Cliente",
                   clientEmail: (q as any)?.clientEmail ?? undefined,
                   clientPhone: (q as any)?.clientPhone ?? undefined,
-                  productName: (q as any)?.title ?? "Experiencia",
+                  productName: (q as any)?.title ?? (voc.licensed ? "Producto o servicio" : "Experiencia"),
                   amountCents: Math.round((Number((q as any)?.total) || 0) * 100),
                   dueDate: rowPendingPayDueDate,
                   reason: rowPendingPayReason,
@@ -8729,7 +8876,7 @@ export default function CRMDashboard() {
         <DialogContent className="max-w-xl bg-[#0d1526] border-foreground/[0.12] text-white max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-white flex items-center gap-2">
-              <Pencil className="w-5 h-5 text-amber-400" /> Editar reserva
+              <Pencil className="w-5 h-5 text-amber-400" /> {voc.editOrder}
             </DialogTitle>
           </DialogHeader>
 
@@ -8763,7 +8910,7 @@ export default function CRMDashboard() {
             {/* ── Estados separados ── */}
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs text-foreground/60 mb-1.5">Estado de reserva</label>
+                <label className="block text-xs text-foreground/60 mb-1.5">{voc.licensed ? "Estado del pedido" : "Estado de reserva"}</label>
                 <select
                   value={editResStatusReservation}
                   onChange={(e) => setEditResStatusReservation(e.target.value)}
@@ -8828,7 +8975,7 @@ export default function CRMDashboard() {
                 value={editResNotes}
                 onChange={(e) => setEditResNotes(e.target.value)}
                 rows={2}
-                placeholder="Añade notas internas sobre esta reserva..."
+                placeholder={`Añade notas internas sobre est${voc.agree("e", "a")} ${voc.order}...`}
                 className="w-full bg-foreground/[0.05] border border-foreground/[0.12] rounded-lg px-3 py-2 text-sm text-white placeholder-white/20 focus:outline-none focus:border-orange-500/50 resize-none" />
             </div>
 
@@ -8839,13 +8986,13 @@ export default function CRMDashboard() {
                 onClick={() => setShowChangeDateSection(!showChangeDateSection)}
                 className="flex items-center gap-2 text-sm font-medium text-amber-400 hover:text-amber-300 transition-colors w-full text-left">
                 <Calendar className="w-4 h-4" />
-                Cambiar fecha de actividad
+                {voc.licensed ? "Cambiar fecha de servicio" : "Cambiar fecha de actividad"}
                 <span className="ml-auto text-xs text-foreground/40">{showChangeDateSection ? "▲ Ocultar" : "▼ Expandir"}</span>
               </button>
               {showChangeDateSection && (
                 <div className="mt-3 space-y-3">
                   <div>
-                    <label className="block text-xs text-foreground/60 mb-1.5">Nueva fecha de actividad *</label>
+                    <label className="block text-xs text-foreground/60 mb-1.5">{voc.licensed ? voc.newServiceDate : "Nueva fecha de actividad *"}</label>
                     <input
                       type="date"
                       value={editResNewDate}
@@ -8884,7 +9031,7 @@ export default function CRMDashboard() {
               disabled={downloadResPdfMutation.isPending}
               className="border-sky-500/30 text-sky-400 hover:bg-sky-500/10">
               {downloadResPdfMutation.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <FileDown className="w-4 h-4 mr-1" />}
-              Descargar reserva PDF
+              {voc.licensed ? "Descargar pedido en PDF" : "Descargar reserva PDF"}
             </Button>
             <div className="flex gap-2 ml-auto">
               <Button variant="outline" size="sm" onClick={() => { setEditResId(null); setEditResData(null); setShowChangeDateSection(false); }} className="border-foreground/[0.15] text-foreground/65">Cancelar</Button>
@@ -8924,10 +9071,10 @@ export default function CRMDashboard() {
         <DialogContent className="max-w-sm bg-[#0d1526] border-foreground/[0.12] text-white">
           <DialogHeader>
             <DialogTitle className="text-white flex items-center gap-2">
-              <AlertTriangle className="w-5 h-5 text-red-400" /> Eliminar reserva
+              <AlertTriangle className="w-5 h-5 text-red-400" /> {voc.deleteOrder}
             </DialogTitle>
           </DialogHeader>
-          <p className="text-sm text-foreground/65 py-2">Esta acción es irreversible. Se eliminará la reserva y sus datos asociados. Las facturas generadas no se eliminarán.</p>
+          <p className="text-sm text-foreground/65 py-2">Esta acción es irreversible. Se eliminará {voc.theOrder} y sus datos asociados. Las facturas generadas no se eliminarán.</p>
           <DialogFooter>
             <Button variant="outline" size="sm" onClick={() => setDeleteResId(null)} className="border-foreground/[0.15] text-foreground/65">Cancelar</Button>
             <Button
@@ -8936,7 +9083,7 @@ export default function CRMDashboard() {
               disabled={deleteResMutation.isPending}
               className="bg-red-600 hover:bg-red-700 text-white">
               {deleteResMutation.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <Trash2 className="w-4 h-4 mr-1" />}
-              Eliminar reserva
+              {voc.deleteOrder}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -8951,7 +9098,7 @@ export default function CRMDashboard() {
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
-            <p className="text-sm text-foreground/65">Se generará una factura formal a partir de los datos de la reserva.</p>
+            <p className="text-sm text-foreground/65">Se generará una factura formal a partir de los datos {voc.licensed ? "del pedido" : "de la reserva"}.</p>
             <div className="space-y-2">
               <Label className="text-foreground/70 text-xs">NIF / DNI del cliente (opcional)</Label>
               <Input
@@ -9077,6 +9224,7 @@ function AnularReservaModal({
   onClose: () => void;
   onCreated: (requestId: number) => void;
 }) {
+  const voc = useVocabulary();
   const [reason, setReason] = useState<"meteorologicas" | "accidente" | "enfermedad" | "desistimiento" | "otra">("otra");
   const [reasonDetail, setReasonDetail] = useState("");
   const [adminNotes, setAdminNotes] = useState("");
@@ -9086,7 +9234,7 @@ function AnularReservaModal({
       toast.success("Expediente de anulación creado — completa la resolución");
       onCreated(data.requestId);
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toast.error(failMsg(e)),
   });
 
   const handleSubmit = () => {
@@ -9118,7 +9266,7 @@ function AnularReservaModal({
 
         <div className="bg-blue-500/8 border border-blue-500/20 rounded-xl px-4 py-3 mb-5">
           <p className="text-blue-300 text-xs">
-            Se creará un expediente de anulación. En el siguiente paso podrás revisar el desglose de la reserva,
+            Se creará un expediente de anulación. En el siguiente paso podrás revisar el desglose {voc.licensed ? "del pedido" : "de la reserva"},
             elegir si cancelar líneas específicas y configurar la compensación.
           </p>
         </div>
@@ -9208,22 +9356,22 @@ function BonosManager({ onOpenCancellation, onOpenReservation }: { onOpenCancell
 
   const resendMut = trpc.cancellations.resendVoucherEmail.useMutation({
     onSuccess: () => { toast.success("Email reenviado correctamente"); invalidate(); },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toast.error(failMsg(e)),
   });
 
   const extendMut = trpc.cancellations.extendVoucherExpiry.useMutation({
     onSuccess: () => { toast.success("Caducidad ampliada"); setExtendModal(null); invalidate(); },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toast.error(failMsg(e)),
   });
 
   const cancelMut = trpc.cancellations.cancelVoucher.useMutation({
     onSuccess: () => { toast.success("Bono anulado"); setCancelModal(null); invalidate(); },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toast.error(failMsg(e)),
   });
 
   const deleteMut = trpc.cancellations.deleteVoucher.useMutation({
     onSuccess: () => { toast.success("Bono eliminado"); setDeleteConfirm(null); invalidate(); },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toast.error(failMsg(e)),
   });
 
   const { data: voucherDetail } = trpc.cancellations.getVoucherById.useQuery(
@@ -9674,6 +9822,7 @@ function BonosManager({ onOpenCancellation, onOpenReservation }: { onOpenCancell
 // ─── PAGOS PENDIENTES TAB ────────────────────────────────────────────────────
 function PagosPendientesTab() {
   const utils = trpc.useUtils();
+  const voc = useVocabulary();
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [confirmId, setConfirmId] = useState<number | null>(null);
@@ -9696,12 +9845,12 @@ function PagosPendientesTab() {
       setConfirmId(null);
       utils.crm.pendingPayments.list.invalidate();
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toast.error(failMsg(e)),
   });
 
   const resendMut = trpc.crm.pendingPayments.resendReminder.useMutation({
     onSuccess: () => toast.success("Email de recordatorio enviado"),
-    onError: (e: { message: string }) => toast.error(e.message),
+    onError: (e: { message: string }) => toast.error(failMsg(e)),
   });
 
   const cancelMut = trpc.crm.pendingPayments.cancel.useMutation({
@@ -9710,7 +9859,7 @@ function PagosPendientesTab() {
       setCancelId(null);
       utils.crm.pendingPayments.list.invalidate();
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toast.error(failMsg(e)),
   });
 
   const deleteMut = trpc.crm.pendingPayments.delete.useMutation({
@@ -9719,7 +9868,7 @@ function PagosPendientesTab() {
       setDeleteId(null);
       utils.crm.pendingPayments.list.invalidate();
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toast.error(failMsg(e)),
   });
 
   const statusBadge = (status: string) => {
@@ -9742,7 +9891,7 @@ function PagosPendientesTab() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-white font-semibold text-lg">Pagos Pendientes</h2>
+          <h2 className="text-white font-semibold text-lg">{voc.pendingPayments}</h2>
           <p className="text-foreground/50 text-sm">{total} registro{total !== 1 ? "s" : ""} en total</p>
         </div>
         <div className="flex items-center gap-2">
@@ -9905,7 +10054,7 @@ function PagosPendientesTab() {
                 </SelectContent>
               </Select>
             </div>
-            <p className="text-xs text-foreground/50">Se marcará el pago como confirmado y se actualizará la reserva asociada.</p>
+            <p className="text-xs text-foreground/50">Se marcará el pago como confirmado y se actualizará {voc.theOrder} {voc.agree("asociado", "asociada")}.</p>
           </div>
           <DialogFooter>
             <Button variant="outline" size="sm" onClick={() => setConfirmId(null)} className="border-foreground/[0.15] text-foreground/65">Cancelar</Button>
@@ -9957,7 +10106,7 @@ function PagosPendientesTab() {
           <div className="py-2 space-y-2">
             <p className="text-foreground/65 text-sm">Esta acción eliminará el registro de forma permanente y no se puede deshacer.</p>
             <p className="text-xs text-amber-400/80 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
-              Solo elimina el registro de pago pendiente. La reserva y el presupuesto asociados no se modifican.
+              Solo elimina el registro de pago pendiente. {voc.licensed ? "El pedido" : "La reserva"} y el presupuesto asociados no se modifican.
             </p>
           </div>
           <DialogFooter>
