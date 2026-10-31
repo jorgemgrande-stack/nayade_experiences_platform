@@ -85,6 +85,7 @@ import { createFinanceRouter } from "../finance/api";
 import type { FinanceOpsService } from "../finance/opsService";
 import { FINANCE_UPLOAD_PATHS } from "../finance/opsApi";
 import type { FinanceTaxService } from "../finance/taxService";
+import type { FinanceAnalysisService } from "../finance/analysisService";
 import type { FinanceStripeService } from "../finance/stripeService";
 import type { CommunicationsService } from "../communications/service";
 import { createCommunicationsRouter } from "../communications/api";
@@ -416,6 +417,8 @@ export interface ControlPlaneDeps {
   financeStripe?: FinanceStripeService | null;
   /** Gestoría e impuestos de las finanzas (server/finance/tax*, CRM 0037). Requiere `financeOps`. */
   financeTax?: FinanceTaxService | null;
+  /** Control diario, informes y análisis de las finanzas (server/finance/analysis*, CRM 0038). Requiere `financeOps`. */
+  financeAnalysis?: FinanceAnalysisService | null;
   /** Centro de envíos del CRM y consentimiento comercial por contacto (server/communications, CRM 0031). */
   communications?: CommunicationsService | null;
 }
@@ -1427,16 +1430,21 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
     wrap(async (req, res) => {
       if (!d.external && !d.subscriptions) return void res.json({ available: false, reason: "Sin servicios externos ni suscripciones montados en este plano de control" });
       const days = z.coerce.number().int().min(1).max(365).default(30).parse(req.query.days ?? undefined);
-      const external = d.external ? await d.external.store.list() : [];
-      const events = new Map(await Promise.all(external.map(async (x) => [x.id, await d.external!.store.events(x.id)] as const)));
-      let shadow: Parameters<typeof revenueMetrics>[0]["shadow"] = null;
-      if (d.subscriptions) {
-        const subscriptions = await d.subscriptions.store.list({ status: "active", limit: 1000 });
-        shadow = { subscriptions, items: new Map(await Promise.all(subscriptions.map(async (s) => [s.id, await d.subscriptions!.store.items(s.id)] as const))) };
-      }
-      res.json({ available: true, sources: { external: !!d.external, shadow: !!d.subscriptions }, ...revenueMetrics({ external, events, shadow, now: Date.now(), windowDays: days }) });
+      res.json({ available: true, sources: { external: !!d.external, shadow: !!d.subscriptions }, ...(await revenueMetricsReport(days))! });
     }),
   );
+  // Las mismas métricas para las finanzas (fase 4, Revenue & Margin): null sin servicios externos ni suscripciones
+  async function revenueMetricsReport(days: number) {
+    if (!d.external && !d.subscriptions) return null;
+    const external = d.external ? await d.external.store.list() : [];
+    const events = new Map(await Promise.all(external.map(async (x) => [x.id, await d.external!.store.events(x.id)] as const)));
+    let shadow: Parameters<typeof revenueMetrics>[0]["shadow"] = null;
+    if (d.subscriptions) {
+      const subscriptions = await d.subscriptions.store.list({ status: "active", limit: 1000 });
+      shadow = { subscriptions, items: new Map(await Promise.all(subscriptions.map(async (s) => [s.id, await d.subscriptions!.store.items(s.id)] as const))) };
+    }
+    return revenueMetrics({ external, events, shadow, now: Date.now(), windowDays: days });
+  }
   // Tarifas de coste: vigentes, de dónde salen e historial de cambios. Editar exige billing:write, motivo y la versión
   // sobre la que se cambia (dos personas no se pisan). Sin tarifas guardadas, sigue la estimación declarada.
   router.get(
@@ -1814,7 +1822,8 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
     if (leadNotices) router.use("/crm/lead-notices", createLeadNoticesRouter(leadNotices));
     if (adminAlerts) router.use("/admin-alerts", createAdminAlertsRouter(adminAlerts));
     if (d.dataRequests) router.use("/data-requests", createDataRequestsRouter(d.dataRequests));
-    if (d.finance) router.use("/finance", createFinanceRouter(d.finance, d.financeOps, d.financeStripe, d.financeTax));
+    // Fase 4: las métricas comerciales se consumen con las mismas funciones que /revenue/metrics y /resources/profitability
+    if (d.finance) router.use("/finance", createFinanceRouter(d.finance, d.financeOps, d.financeStripe, d.financeTax, d.financeAnalysis, { metrics: () => revenueMetricsReport(30), profitability: (days) => profitabilityReport(days, undefined) }));
     // Centro de envíos y consentimiento por contacto (antes del router del CRM: /crm/contacts/:id/consent)
     if (d.communications) router.use(createCommunicationsRouter(d.communications));
     router.use(

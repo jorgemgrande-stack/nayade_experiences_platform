@@ -27,6 +27,8 @@
  */
 import express, { type Response, type Router } from "express";
 import { z } from "zod";
+import { mountFinanceAnalysisRoutes } from "./analysisApi";
+import type { CommercialSources, FinanceAnalysisService } from "./analysisService";
 import { actorOf, wrap } from "./http";
 import { mountFinanceOpsRoutes } from "./opsApi";
 import type { FinanceOpsService } from "./opsService";
@@ -109,9 +111,10 @@ function sendCsv(res: Response, name: string, csv: string) {
 /**
  * Con `ops` (migración 0035) se montan también las operaciones de la fase 1B y el resumen completo; con `stripe`
  * (migración 0036, requiere `ops`) las rutas de Stripe y conciliación de la fase 2 y el saldo de 5720 en el resumen; con
- * `tax` (migración 0037, requiere `ops`) la gestoría e impuestos de la fase 3 bajo /tax.
+ * `tax` (migración 0037, requiere `ops`) la gestoría e impuestos de la fase 3 bajo /tax; con `analysis` (migración 0038,
+ * requiere `ops`) el control diario, los informes y el análisis de la fase 4, con las métricas comerciales de `commercial`.
  */
-export function createFinanceRouter(svc: FinanceService, ops?: FinanceOpsService | null, stripe?: FinanceStripeService | null, tax?: FinanceTaxService | null): Router {
+export function createFinanceRouter(svc: FinanceService, ops?: FinanceOpsService | null, stripe?: FinanceStripeService | null, tax?: FinanceTaxService | null, analysis?: FinanceAnalysisService | null, commercial?: CommercialSources | null): Router {
   const r = express.Router();
   const names = async () => new Map((await svc.accounts()).map((a) => [a.code, a.name]));
   const one = async (e: Entry) => entryDto(e, await names());
@@ -210,11 +213,13 @@ export function createFinanceRouter(svc: FinanceService, ops?: FinanceOpsService
   }));
 
   // Fase 1B: operaciones (centros de coste, categorías, proveedores, gastos, documentos, recurrentes, bancos y caja)
-  if (ops) mountFinanceOpsRoutes(r, ops);
+  if (ops) mountFinanceOpsRoutes(r, ops, analysis);
   // Fase 2: Stripe (importación, contabilización, payouts) y conciliación factura ↔ cobro ↔ payout ↔ banco
   if (ops && stripe) mountFinanceStripeRoutes(r, stripe);
   // Fase 3: gestoría e impuestos (sin montar, /tax/* responde 404 y el CRM oculta el grupo)
   if (ops && tax) mountFinanceTaxRoutes(r, tax);
+  // Fase 4: control diario, informes y análisis (sin montar, /daily responde 404 y el CRM oculta esas páginas)
+  if (ops && analysis) mountFinanceAnalysisRoutes(r, analysis, commercial);
 
   return r;
 }

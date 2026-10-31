@@ -65,6 +65,7 @@ export const n43 = { r11, r22, r23, r33, r88 };
 
 export const MIGRATION_0036 = path.resolve(__dirname, "../../db/crm/migrations/0036_finance_stripe.sql");
 export const MIGRATION_0037 = path.resolve(__dirname, "../../db/crm/migrations/0037_finance_tax.sql");
+export const MIGRATION_0038 = path.resolve(__dirname, "../../db/crm/migrations/0038_finance_analysis.sql");
 
 const csv = (rows: Array<Array<string | number>>) => rows.map((r) => r.map((c) => (/[",\n]/.test(String(c)) ? `"${String(c).replace(/"/g, '""')}"` : String(c))).join(",")).join("\n");
 

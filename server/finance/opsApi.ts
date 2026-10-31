@@ -24,7 +24,9 @@
 import express, { type Router } from "express";
 import { z } from "zod";
 import { actorOf, wrap } from "./http";
+import type { FinanceAnalysisService } from "./analysisService";
 import type { FinanceOpsService } from "./opsService";
+import { FinanceError } from "./types";
 import { ACCOUNT_MATCH_TYPES, DOCUMENT_OWNERS, EXPENSE_KINDS, EXPENSE_STATUSES, FREQUENCIES, IMPORT_FORMATS, MOVEMENT_STATUSES, PAYMENT_METHODS, PAYMENT_STATUSES } from "./opsTypes";
 import { canOperate, canPost, canRead } from "./permissions";
 
@@ -120,7 +122,7 @@ const matchSchema = z.union([
 
 const reason = z.object({ reason: z.string().max(300) }).strict();
 
-export function mountFinanceOpsRoutes(r: Router, ops: FinanceOpsService): void {
+export function mountFinanceOpsRoutes(r: Router, ops: FinanceOpsService, analysis?: FinanceAnalysisService | null): void {
   // Centros de coste
   r.get("/cost-centers", ...canRead, wrap(async (_req, res) => void res.json({ items: await ops.costCenters() })));
   r.post("/cost-centers", ...canOperate, wrap(async (req, res) => {
@@ -133,14 +135,20 @@ export function mountFinanceOpsRoutes(r: Router, ops: FinanceOpsService): void {
   }));
 
   // Categorías de gasto
-  r.get("/categories", ...canRead, wrap(async (_req, res) => void res.json({ items: await ops.categories() })));
+  // Fase 4 (CRM 0038): cada categoría lleva además su marca de coste directo (`isDirectCost`, null = según cuenta) y la resuelta (`directCost`)
+  const categoryOut = async <T extends { id: number; name: string; accountCode: string }>(items: T[]) => (analysis ? analysis.decorateCategories(items) : items);
+  r.get("/categories", ...canRead, wrap(async (_req, res) => void res.json({ items: await categoryOut(await ops.categories()) })));
   r.post("/categories", ...canOperate, wrap(async (req, res) => {
     const b = z.object({ name: z.string().max(120), accountCode, defaultTaxRateBp: bp.nullable().optional() }).strict().parse(body(req));
-    res.status(201).json({ item: await ops.createCategory(b, actorOf(req)) });
+    res.status(201).json({ item: (await categoryOut([await ops.createCategory(b, actorOf(req))]))[0] });
   }));
   r.patch("/categories/:id", ...canOperate, wrap(async (req, res) => {
-    const b = z.object({ name: z.string().max(120).optional(), accountCode: accountCode.optional(), defaultTaxRateBp: bp.nullable().optional(), active: z.boolean().optional() }).strict().parse(body(req));
-    res.json({ item: await ops.patchCategory(id.parse(req.params.id), b, actorOf(req)) });
+    const { isDirectCost, ...b } = z.object({ name: z.string().max(120).optional(), accountCode: accountCode.optional(), defaultTaxRateBp: bp.nullable().optional(), active: z.boolean().optional(), isDirectCost: z.boolean().nullable().optional() }).strict().parse(body(req));
+    if (isDirectCost !== undefined && !analysis) throw new FinanceError("unavailable", "La marca de coste directo llega con el análisis (migración 0038), que no está montado en este entorno");
+    const categoryId = id.parse(req.params.id);
+    const item = await ops.patchCategory(categoryId, b, actorOf(req));
+    if (isDirectCost !== undefined) await analysis!.setDirectCost(categoryId, isDirectCost, actorOf(req));
+    res.json({ item: (await categoryOut([item]))[0] });
   }));
 
   // Proveedores
