@@ -68,6 +68,7 @@ import type {
   Supplier,
 } from "./opsTypes";
 import { balancesOf, isValidDate, netMovement, yearOf } from "./rules";
+import { invoiceTransferEntry, type StripeMatchSuggestion } from "./stripeRules";
 import type { FinanceService } from "./service";
 import type { FinanceStore } from "./store";
 import { FinanceError, type Entry, type EntryOrigin, type FinanceActor } from "./types";
@@ -141,9 +142,26 @@ export interface RecurringInput {
 export type MatchInput =
   | { type: "expense_payment"; expenseId: number; expensePaymentId?: undefined }
   | { type: "expense_payment"; expensePaymentId: number; expenseId?: undefined }
-  | { type: AccountMatchType; accountCode: string; description?: string | null };
+  | { type: AccountMatchType; accountCode: string; description?: string | null }
+  | { type: "stripe_payout"; payoutId: number }
+  | { type: "invoice_payment"; invoiceId: number };
 
-const bad = (m: string) => new FinanceError("invalid_input", m);
+/**
+ * Conciliación de la fase 2 (Stripe y facturas propias), enchufada al servicio de operaciones con `useReconciliation`:
+ * sugerencias de payouts y facturas para un abono, vínculo payout ↔ movimiento (sin asiento) y datos de la factura que
+ * se cobra por transferencia.
+ */
+export interface BankReconciliationExtension {
+  suggestions(m: BankMovement): Promise<Array<StripeMatchSuggestion>>;
+  linkPayout(m: BankMovement, payoutId: number, actor: FinanceActor): Promise<void>;
+  unlinkPayout(m: BankMovement, actor: FinanceActor): Promise<void>;
+  /** Factura propia expedida que se cobra por transferencia, con lo que queda por cobrar. */
+  invoiceForTransfer(invoiceId: number): Promise<{ id: number; number: string | null; companyId: number | null; pendingCents: number }>;
+}
+
+export type BankSuggestion = Omit<MatchSuggestion, "score"> | Omit<StripeMatchSuggestion, "score">;
+
+const bad =(m: string) => new FinanceError("invalid_input", m);
 const notFound = (what: string) => new FinanceError("not_found", `${what} no encontrado`);
 const text = (v: string | null | undefined, max: number) => {
   const t = (v ?? "").trim();
@@ -162,8 +180,18 @@ const RECURRING_HORIZON_DAYS = 366;
 
 export class FinanceOpsService {
   private readonly now: () => number;
+  private reconciliation: BankReconciliationExtension | null = null;
   constructor(private readonly d: FinanceOpsDeps) {
     this.now = d.now ?? Date.now;
+  }
+
+  /** Fase 2: conciliación con payouts de Stripe y cobros de facturas por transferencia. */
+  useReconciliation(ext: BankReconciliationExtension) {
+    this.reconciliation = ext;
+  }
+  private get ext() {
+    if (!this.reconciliation) throw new FinanceError("unavailable", "La conciliación con Stripe y facturas no está montada en este entorno (migración 0035)");
+    return this.reconciliation;
   }
 
   today(): string {
@@ -870,9 +898,10 @@ export class FinanceOpsService {
   }
 
   /** Sugerencias de conciliación de un movimiento pendiente (importe exacto, fecha ±7 días, proveedor en el concepto). */
-  async suggestions(id: number): Promise<Array<Omit<MatchSuggestion, "score">>> {
+  async suggestions(id: number): Promise<BankSuggestion[]> {
     const m = await this.movement(id);
     if (m.status !== "pending") return [];
+    const extra = this.reconciliation ? await this.reconciliation.suggestions(m) : [];
     const [expenses, payments] = await Promise.all([this.s.openExpenses(SCAN_LIMIT), this.s.openPayments(m.bankAccountId, SCAN_LIMIT)]);
     const byId = new Map((await this.s.getExpensesByIds(Array.from(new Set(payments.map((p) => p.expenseId))))).map((e) => [e.id, e]));
     const out = suggestMatches(
@@ -880,7 +909,12 @@ export class FinanceOpsService {
       expenses.map((e) => ({ id: e.id, supplierName: e.supplierName, invoiceNumber: e.invoiceNumber, invoiceDate: e.invoiceDate, dueDate: e.dueDate, pendingCents: pendingOf(e) })),
       payments.map((p) => ({ id: p.id, expenseId: p.expenseId, supplierName: byId.get(p.expenseId)?.supplierName ?? null, invoiceNumber: byId.get(p.expenseId)?.invoiceNumber ?? null, paidOn: p.paidOn, amountCents: p.amountCents })),
     );
-    return out.map(({ score: _s, ...x }) => x);
+    // Fase 2: payouts de Stripe y facturas propias (abonos) junto a los gastos, por puntuación
+    const all: Array<MatchSuggestion | StripeMatchSuggestion> = [...extra, ...out];
+    return all
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 10)
+      .map(({ score: _s, ...x }) => x);
   }
 
   /** Primera clave libre del movimiento: `bankmov:<id>`, y tras desvincular `bankmov:<id>:2`, `:3`… */
@@ -897,15 +931,31 @@ export class FinanceOpsService {
    *  - `{type: expense_payment, expenseId}`: crea el pago desde el movimiento; asiento `bankmov:<id>`.
    *  - `{type: expense_payment, expensePaymentId}`: vincula un pago registrado a mano; NO crea asiento.
    *  - `{type: transfer|tax|payroll|other, accountCode}`: asiento contra esa cuenta; `bankmov:<id>`.
+   *  - `{type: stripe_payout, payoutId}` (fase 2): vincula la llegada del payout a su asiento; NO crea asiento.
+   *  - `{type: invoice_payment, invoiceId}` (fase 2): cobro de una factura propia por transferencia (Debe banco ·
+   *    Haber 430); asiento `bankmov:<id>`.
    */
   async match(id: number, i: MatchInput, actor: FinanceActor): Promise<BankMovement> {
     const m = await this.movement(id);
     if (m.status !== "pending") throw new FinanceError("invalid_state", m.status === "matched" ? "El movimiento ya está conciliado" : "El movimiento está ignorado: desvincúlalo antes");
     const bank = await this.bank(m.bankAccountId);
     if (i.type === "expense_payment" && i.expensePaymentId) return this.linkPayment(m, i.expensePaymentId, actor);
+    // Fase 2: el abono de un payout de Stripe se VINCULA a su asiento de liquidación, sin asiento nuevo
+    if (i.type === "stripe_payout") {
+      await this.ext.linkPayout(m, i.payoutId, actor);
+      return this.movement(m.id);
+    }
     // Validar antes de reservar: los errores de datos no tocan el movimiento
     let build: (key: string) => Promise<{ draft: Parameters<FinanceService["postGenerated"]>[0]; paymentOf?: Parameters<FinanceOpsStore["insertPayment"]>[0] }>;
-    if (i.type === "expense_payment") {
+    let matchRef: number | null = null;
+    if (i.type === "invoice_payment") {
+      // Cobro de una factura propia por transferencia: Debe banco · Haber 430 (`bankmov:<id>`)
+      const inv = await this.ext.invoiceForTransfer(i.invoiceId);
+      if (m.amountCents <= 0) throw bad("Solo un abono puede ser el cobro de una factura");
+      if (m.amountCents > inv.pendingCents) throw new FinanceError("exceeds_pending", `El abono supera lo pendiente de cobro de la factura (${(inv.pendingCents / 100).toFixed(2).replace(".", ",")} €)`);
+      matchRef = inv.id;
+      build = async (key) => ({ draft: invoiceTransferEntry(m, bank.accountCode, inv, key) });
+    } else if (i.type === "expense_payment") {
       if (!i.expenseId) throw bad("Indica el gasto o el pago con el que se concilia");
       const { e, supplierAccount, supplierName } = await this.registeredForPayment(i.expenseId, -m.amountCents);
       const label = `Pago ${e.invoiceNumber ?? `gasto #${e.id}`}${supplierName ? ` · ${supplierName}` : ""} (banco)`;
@@ -933,8 +983,8 @@ export class FinanceOpsService {
         await this.s.setPaymentEntry(paymentId, entry.id);
         await this.s.refreshExpensePaid(paymentOf!.expenseId);
       }
-      await this.s.setMovementMatch(m.id, paymentId, entry.id);
-      await this.audit(actor, "bank_movement.match", "bank_movement", m.id, { type: i.type, entryId: entry.id, sourceKey: entry.sourceKey, expensePaymentId: paymentId });
+      await this.s.setMovementMatch(m.id, paymentId ?? matchRef, entry.id);
+      await this.audit(actor, "bank_movement.match", "bank_movement", m.id, { type: i.type, entryId: entry.id, sourceKey: entry.sourceKey, expensePaymentId: paymentId, ...(matchRef ? { invoiceId: matchRef } : {}) });
     } catch (err) {
       if (paymentId) await this.s.markPayment(paymentId, "void", { by: actor.by, at: this.now(), reason: "No se pudo contabilizar" });
       await this.s.releaseMovement(m.id, "matched");
@@ -972,6 +1022,11 @@ export class FinanceOpsService {
     if (m.status === "ignored") {
       await this.s.releaseMovement(id, "ignored");
       await this.audit(actor, "bank_movement.unignore", "bank_movement", id, null);
+      return this.movement(id);
+    }
+    // Fase 2: vínculo con un payout de Stripe (sin asiento): se deshace el vínculo, el libro no cambia
+    if (m.matchType === "stripe_payout") {
+      await this.ext.unlinkPayout(m, actor);
       return this.movement(id);
     }
     if (m.entryId) {

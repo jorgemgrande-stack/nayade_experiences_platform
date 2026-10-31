@@ -60,3 +60,54 @@ export function norma43Sample() {
 }
 
 export const n43 = { r11, r22, r23, r33, r88 };
+
+// ── Stripe (fase 2): migración e informes CSV SINTÉTICOS (identificadores y correos inventados, nunca datos reales) ──
+
+export const MIGRATION_0035 = path.resolve(__dirname, "../../db/crm/migrations/0035_finance_stripe.sql");
+
+const csv = (rows: Array<Array<string | number>>) => rows.map((r) => r.map((c) => (/[",\n]/.test(String(c)) ? `"${String(c).replace(/"/g, '""')}"` : String(c))).join(",")).join("\n");
+
+/**
+ * «Balance change from activity – itemized» de octubre de 2026 (columnas con los nombres del informe de Stripe):
+ *  - txn_test_c1: cobro de la factura in_test_1 (121,00 €, comisión 3,88 €) liquidado en po_test_1;
+ *  - txn_test_c2: cobro de in_test_2 (60,50 €) sin factura propia, y txn_test_r2 su reembolso total;
+ *  - txn_test_f1: cargo de Stripe por otros servicios (1,50 €);
+ *  - txn_test_p1: el payout po_test_1 (113,50 € = suma de los netos anteriores);
+ *  - txn_test_d1 / txn_test_d2: disputa sobre el primer cobro (retención y 15 € de comisión) y su reversión (ganada);
+ *  - txn_test_usd: cobro en dólares (se importa sin contabilizar); txn_test_t1: transferencia de Connect (no soportada).
+ */
+export function stripeBalanceSample() {
+  return csv([
+    ["balance_transaction_id", "created_utc", "available_on_utc", "currency", "gross", "fee", "net", "reporting_category", "source_id", "description", "customer_id", "customer_email", "charge_id", "payment_intent_id", "invoice_id", "automatic_payout_id", "automatic_payout_effective_at_utc"],
+    ["txn_test_c1", "2026-10-05 10:00:00", "2026-10-07 00:00:00", "eur", "121.00", "3.88", "117.12", "charge", "ch_test_1", "Suscripción Elephant Core, octubre", "cus_test_1", "facturacion@cliente-a.example", "ch_test_1", "pi_test_1", "in_test_1", "po_test_1", "2026-10-08 00:00:00"],
+    ["txn_test_c2", "2026-10-06 09:30:00", "2026-10-08 00:00:00", "eur", "60.50", "2.12", "58.38", "charge", "ch_test_2", "Cargo extraordinario", "cus_test_2", "pagos@cliente-b.example", "ch_test_2", "pi_test_2", "in_test_2", "po_test_1", "2026-10-08 00:00:00"],
+    ["txn_test_r2", "2026-10-07 08:00:00", "2026-10-07 08:00:00", "eur", "-60.50", "0.00", "-60.50", "refund", "re_test_2", "Reembolso, cliente B", "cus_test_2", "pagos@cliente-b.example", "ch_test_2", "pi_test_2", "", "po_test_1", "2026-10-08 00:00:00"],
+    ["txn_test_f1", "2026-10-07 12:00:00", "2026-10-07 12:00:00", "eur", "-1.50", "0.00", "-1.50", "fee", "", "Billing - Usage Fee (2026-10-01 - 2026-10-07)", "", "", "", "", "", "po_test_1", "2026-10-08 00:00:00"],
+    ["txn_test_p1", "2026-10-08 01:00:00", "2026-10-08 01:00:00", "eur", "-113.50", "0.00", "-113.50", "payout", "po_test_1", "STRIPE PAYOUT", "", "", "", "", "", "", "2026-10-08 00:00:00"],
+    ["txn_test_d1", "2026-10-20 16:00:00", "2026-10-20 16:00:00", "eur", "-121.00", "15.00", "-136.00", "dispute", "du_test_1", "Chargeback withdrawal for ch_test_1", "cus_test_1", "facturacion@cliente-a.example", "ch_test_1", "pi_test_1", "in_test_1", "po_test_2", "2026-10-28 00:00:00"],
+    ["txn_test_d2", "2026-10-25 16:00:00", "2026-10-25 16:00:00", "eur", "121.00", "-15.00", "136.00", "dispute_reversal", "du_test_1", "Chargeback reversal for ch_test_1", "cus_test_1", "facturacion@cliente-a.example", "ch_test_1", "pi_test_1", "in_test_1", "po_test_2", "2026-10-28 00:00:00"],
+    ["txn_test_usd", "2026-10-21 10:00:00", "2026-10-23 00:00:00", "usd", "10.00", "0.59", "9.41", "charge", "ch_test_usd", "Cobro en dólares", "cus_test_3", "", "ch_test_usd", "", "", "", ""],
+    ["txn_test_t1", "2026-10-22 10:00:00", "2026-10-22 10:00:00", "eur", "-5.00", "0.00", "-5.00", "transfer", "tr_test_1", "Transferencia de Connect", "", "", "", "", "", "", ""],
+  ]);
+}
+
+/** «Payouts – itemized»: po_test_1 pagado (STRIPE PAYOUT, 113,50 €) y po_test_9 fallido (con su fila de reversión). */
+export function stripePayoutsSample() {
+  return csv([
+    ["payout_id", "effective_at_utc", "currency", "gross", "fee", "net", "reporting_category", "payout_expected_arrival_date", "payout_status", "payout_description"],
+    ["po_test_1", "2026-10-08 00:00:00", "eur", "113.50", "0.00", "113.50", "payout", "2026-10-08", "paid", "STRIPE PAYOUT"],
+    ["po_test_9", "2026-10-12 00:00:00", "eur", "40.00", "0.00", "40.00", "payout", "2026-10-12", "paid", "STRIPE PAYOUT"],
+    ["po_test_9", "2026-10-13 00:00:00", "eur", "-40.00", "0.00", "-40.00", "payout_reversal", "2026-10-12", "failed", "STRIPE PAYOUT"],
+  ]);
+}
+
+/** Export clásico del panel («Itemized balance transactions»): cabeceras con mayúsculas, espacios y paréntesis. */
+export function stripeLegacySample() {
+  return csv([
+    ["id", "Type", "Source", "Amount", "Fee", "Net", "Currency", "Created (UTC)", "Available On (UTC)", "Description", "Transfer"],
+    ["txn_test_l1", "charge", "ch_test_l1", "1,210.00", "17.19", "1,192.81", "eur", "2026-10-31 23:30", "2026-11-03 00:00", "Pago anual", "po_test_l"],
+    ["txn_test_l2", "adjustment", "adj_test_1", "-50.00", "15.00", "-65.00", "eur", "2026-10-30 10:00", "2026-10-30 10:00", "Chargeback withdrawal for ch_test_l0", ""],
+    ["txn_test_l3", "adjustment", "adj_test_2", "-2.00", "0.00", "-2.00", "eur", "2026-10-30 11:00", "2026-10-30 11:00", "Ajuste manual", ""],
+    ["txn_test_l4", "charge", "ch_test_l4", "abc", "0.00", "0.00", "eur", "2026-10-30 11:00", "", "Fila rota", ""],
+  ]);
+}

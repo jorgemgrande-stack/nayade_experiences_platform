@@ -29,8 +29,8 @@ import { ACCOUNT_MATCH_TYPES, DOCUMENT_OWNERS, EXPENSE_KINDS, EXPENSE_STATUSES, 
 import { canOperate, canPost, canRead } from "./permissions";
 
 /** Rutas con fichero en base64: el analizador JSON general (256 kB) no las lee; aquí, hasta 15 MB y tras el permiso. */
-export const FINANCE_UPLOAD_PATHS = /^\/cp\/v1\/finance\/(documents|bank-imports)\/?(\?|$)/;
-const bigJson = express.json({ limit: "15mb" });
+export const FINANCE_UPLOAD_PATHS = /^\/cp\/v1\/finance\/(documents|bank-imports|stripe\/imports)\/?(\?|$)/;
+export const bigJson = express.json({ limit: "15mb" });
 
 const id = z.coerce.number().int().positive();
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "fecha AAAA-MM-DD");
@@ -113,6 +113,9 @@ const matchSchema = z.union([
   z.object({ type: z.literal("expense_payment"), expenseId: ref }).strict(),
   z.object({ type: z.literal("expense_payment"), expensePaymentId: ref }).strict(),
   z.object({ type: z.enum(ACCOUNT_MATCH_TYPES), accountCode, description: z.string().max(300).nullable().optional() }).strict(),
+  // Fase 2: abono de un payout de Stripe (sin asiento) y cobro de una factura propia por transferencia
+  z.object({ type: z.literal("stripe_payout"), payoutId: ref }).strict(),
+  z.object({ type: z.literal("invoice_payment"), invoiceId: ref }).strict(),
 ]);
 
 const reason = z.object({ reason: z.string().max(300) }).strict();

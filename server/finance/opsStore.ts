@@ -147,6 +147,9 @@ export interface FinanceOpsStore {
   setMovementMatch(id: number, matchId: number | null, entryId: number | null): Promise<void>;
   /** Vuelve a pendiente (sin conciliación) si estaba en `from`. */
   releaseMovement(id: number, from: MovementStatus): Promise<boolean>;
+  /** Movimientos conciliados de un tipo con estos destinos (fase 2: cobros de facturas por transferencia). */
+  movementsByMatch(matchType: MatchType, matchIds: number[]): Promise<BankMovement[]>;
+  getMovementsByIds(ids: number[]): Promise<BankMovement[]>;
 
   listCashAccounts(): Promise<CashAccount[]>;
   getCashAccount(id: number): Promise<CashAccount | null>;
@@ -502,6 +505,12 @@ export class MemoryFinanceOpsStore implements FinanceOpsStore {
     if (!m || m.status !== from) return false;
     Object.assign(m, { status: "pending", matchType: null, matchId: null, entryId: null, matchedBy: null, matchedAt: null });
     return true;
+  }
+  async movementsByMatch(matchType: MatchType, matchIds: number[]) {
+    return this.c(this.movements.filter((m) => m.status === "matched" && m.matchType === matchType && m.matchId !== null && matchIds.includes(m.matchId)));
+  }
+  async getMovementsByIds(ids: number[]) {
+    return this.c(this.movements.filter((m) => ids.includes(m.id)));
   }
 
   async listCashAccounts() {
@@ -1122,6 +1131,16 @@ export class MysqlFinanceOpsStore implements FinanceOpsStore {
   async releaseMovement(id: number, from: MovementStatus) {
     const [r] = await this.pool.query<mysql.ResultSetHeader>("UPDATE fin_bank_movements SET status = 'pending', match_type = NULL, match_id = NULL, entry_id = NULL, matched_by = NULL, matched_at = NULL WHERE id = ? AND status = ?", [id, from]);
     return r.affectedRows > 0;
+  }
+  async movementsByMatch(matchType: MatchType, matchIds: number[]) {
+    if (!matchIds.length) return [];
+    const [rows] = await this.pool.query<Row[]>(`SELECT ${MOVEMENT_COLS} FROM fin_bank_movements WHERE status = 'matched' AND match_type = ? AND match_id IN (?)`, [matchType, matchIds]);
+    return rows.map(movementRow);
+  }
+  async getMovementsByIds(ids: number[]) {
+    if (!ids.length) return [];
+    const [rows] = await this.pool.query<Row[]>(`SELECT ${MOVEMENT_COLS} FROM fin_bank_movements WHERE id IN (?)`, [ids]);
+    return rows.map(movementRow);
   }
 
   // Caja

@@ -32,6 +32,8 @@ import { mountFinanceOpsRoutes } from "./opsApi";
 import type { FinanceOpsService } from "./opsService";
 import { canClose, canOperate, canPost, canRead } from "./permissions";
 import type { FinanceService } from "./service";
+import { mountFinanceStripeRoutes } from "./stripeApi";
+import type { FinanceStripeService } from "./stripeService";
 import { ACCOUNT_TYPES, ENTRY_ORIGINS, ENTRY_STATUSES, JOURNAL_CODES, type Entry } from "./types";
 
 /**
@@ -102,8 +104,11 @@ function sendCsv(res: Response, name: string, csv: string) {
   res.send(csv);
 }
 
-/** Con `ops` (migración 0034) se montan también las operaciones de la fase 1B y el resumen completo. */
-export function createFinanceRouter(svc: FinanceService, ops?: FinanceOpsService | null): Router {
+/**
+ * Con `ops` (migración 0034) se montan también las operaciones de la fase 1B y el resumen completo; con `stripe`
+ * (migración 0035, requiere `ops`) las rutas de Stripe y conciliación de la fase 2 y el saldo de 5720 en el resumen.
+ */
+export function createFinanceRouter(svc: FinanceService, ops?: FinanceOpsService | null, stripe?: FinanceStripeService | null): Router {
   const r = express.Router();
   const names = async () => new Map((await svc.accounts()).map((a) => [a.code, a.name]));
   const one = async (e: Entry) => entryDto(e, await names());
@@ -195,10 +200,16 @@ export function createFinanceRouter(svc: FinanceService, ops?: FinanceOpsService
   // Sincronización con la facturación propia y resumen
   r.post("/sync/invoices", ...canPost, wrap(async (req, res) => void res.json(await svc.syncInvoices(actorOf(req)))));
   r.get("/sync/status", ...canRead, wrap(async (_req, res) => void res.json(await svc.syncStatus())));
-  r.get("/summary", ...canRead, wrap(async (_req, res) => void res.json(ops ? await ops.summary() : await svc.summary())));
+  r.get("/summary", ...canRead, wrap(async (_req, res) => {
+    const base = ops ? await ops.summary() : await svc.summary();
+    // Fase 2: saldo pendiente de liquidar en Stripe (5720, desde el libro); null = Stripe no montado
+    res.json({ ...base, stripeBalanceCents: stripe && ops ? await stripe.ledgerBalance() : null });
+  }));
 
   // Fase 1B: operaciones (centros de coste, categorías, proveedores, gastos, documentos, recurrentes, bancos y caja)
   if (ops) mountFinanceOpsRoutes(r, ops);
+  // Fase 2: Stripe (importación, contabilización, payouts) y conciliación factura ↔ cobro ↔ payout ↔ banco
+  if (ops && stripe) mountFinanceStripeRoutes(r, stripe);
 
   return r;
 }
