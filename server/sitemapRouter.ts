@@ -4,8 +4,10 @@
  * Sitemap dinámico generado desde la base de datos.
  * Cache de 1 hora (Cache-Control + ETag implícito de Express).
  *
- * En multiempresa: URL pública de la empresa (subdominio o dominio propio verificado), solo rutas del
- * Core, sus páginas publicadas y su catálogo; y un robots.txt propio que apunta a su sitemap.
+ * En multiempresa: URL pública de la empresa (subdominio o dominio propio verificado) y solo lo que tiene
+ * publicado y contratado: portada, contacto, sus páginas, su blog (cms-blog), su catálogo si lo ha publicado
+ * y las secciones sectoriales (hotel, spa, restaurantes) solo con su módulo; y un robots.txt propio que
+ * apunta a su sitemap. La tienda online aún no tiene página pública propia, así que no figura.
  */
 
 import { Router } from "express";
@@ -25,6 +27,16 @@ import { isLegalPlaceholder } from "../shared/tenantNav";
 import { publicBaseUrl } from "./_core/productIdentity";
 import { getCapabilityAccess } from "./_core/capabilities/access";
 import { listPublishedForSitemap } from "./blogDb";
+import { getModuleAccess } from "./_core/modules/runtime";
+
+/** Módulo sectorial contratado y activo (en una sola empresa, lo instalado). */
+async function moduleOn(id: string): Promise<boolean> {
+  try {
+    return await getModuleAccess().isModuleAvailable(id);
+  } catch {
+    return false;
+  }
+}
 
 /** El blog figura en el sitemap si la empresa lo tiene contratado (activo o en solo lectura). */
 async function blogLicensed(): Promise<boolean> {
@@ -38,11 +50,9 @@ async function blogLicensed(): Promise<boolean> {
 const _pool = legacyPool();
 const db = legacyDb();
 
-/** Rutas públicas del Core disponibles para cualquier empresa. */
+/** Rutas públicas del Core disponibles para cualquier empresa (lo demás depende de lo publicado y contratado). */
 const TENANT_STATIC_URLS: Array<{ path: string; changefreq: string; priority: string }> = [
   { path: "/",             changefreq: "weekly",  priority: "1.0" },
-  { path: "/experiencias", changefreq: "weekly",  priority: "0.8" },
-  { path: "/presupuesto",  changefreq: "weekly",  priority: "0.8" },
   { path: "/contacto",     changefreq: "weekly",  priority: "0.8" },
 ];
 
@@ -108,6 +118,7 @@ sitemapRouter.get("/sitemap.xml", async (_req, res) => {
       : [];
     // Blog (solo multi y con la capacidad contratada): /blog y sus entradas publicadas, nunca borradores
     const blogRows = multi && (await blogLicensed()) ? await listPublishedForSitemap(Date.now()) : null;
+    const [hotelOn, spaOn, restaurantsOn] = await Promise.all([moduleOn("hotel"), moduleOn("spa"), moduleOn("restaurants")]);
     const [
       expRows,
       legoRows,
@@ -159,55 +170,73 @@ sitemapRouter.get("/sitemap.xml", async (_req, res) => {
     ]);
 
     const entries: string[] = [];
+    const seen = new Set<string>();
+    const add = (loc: string, lastmod?: string, changefreq?: string, priority?: string) => {
+      if (seen.has(loc)) return;
+      seen.add(loc);
+      entries.push(url(loc, lastmod, changefreq, priority));
+    };
 
-    // Rutas estáticas
+    // Rutas estáticas; en multiempresa, las sectoriales solo con su módulo y lo que la empresa ha publicado
     for (const u of multi ? TENANT_STATIC_URLS : STATIC_URLS) {
-      entries.push(url(u.path, undefined, u.changefreq, u.priority));
+      if (!multi && ((u.path === "/hotel" && !hotelOn) || (u.path === "/spa" && !spaOn) || (u.path === "/restaurantes" && !restaurantsOn))) continue;
+      add(u.path, undefined, u.changefreq, u.priority);
+    }
+    if (multi) {
+      if (expRows.length > 0) {
+        add("/experiencias", undefined, "weekly", "0.8");
+        add("/presupuesto", undefined, "weekly", "0.8");
+      }
+      if (hotelOn && roomRows.length > 0) add("/hotel", undefined, "weekly", "0.8");
+      if (spaOn && spaRows.length > 0) add("/spa", undefined, "weekly", "0.8");
+      if (restaurantsOn && restaurantRows.length > 0) add("/restaurantes", undefined, "weekly", "0.8");
+      if (legoRows.length > 0) add("/lego-packs", undefined, "weekly", "0.8");
+      if (locationRows.length > 0) add("/ubicaciones", undefined, "weekly", "0.8");
     }
 
     // Páginas propias publicadas de la empresa (/:slug); «inicio» es la portada
     for (const r of pageRows) {
-      if (/^[a-z0-9-]{1,64}$/.test(r.slug) && r.slug !== "inicio" && !(blogRows && r.slug === "blog")) entries.push(url(`/${r.slug}`, formatDate(r.updatedAt)));
+      if (/^[a-z0-9-]{1,64}$/.test(r.slug) && r.slug !== "inicio" && !(blogRows && r.slug === "blog")) add(`/${r.slug}`, formatDate(r.updatedAt));
     }
 
     if (blogRows) {
-      entries.push(url("/blog", blogRows[0] ? formatDate(blogRows[0].updatedAt) : undefined, "weekly", "0.7"));
-      for (const r of blogRows) entries.push(url(`/blog/${r.slug}`, formatDate(r.updatedAt)));
+      add("/blog", blogRows[0] ? formatDate(blogRows[0].updatedAt) : undefined, "weekly", "0.7");
+      for (const r of blogRows) add(`/blog/${r.slug}`, formatDate(r.updatedAt));
     }
 
     // /experiencias/:slug (slugs malformados ya excluidos en la query)
     for (const r of expRows) {
-      entries.push(url(`/experiencias/${r.slug}`, formatDate(r.updatedAt)));
+      add(`/experiencias/${r.slug}`, formatDate(r.updatedAt));
     }
 
     // /lego-packs/:category (DISTINCT)
     for (const r of legoCategories) {
-      entries.push(url(`/lego-packs/${r.category}`));
+      add(`/lego-packs/${r.category}`);
     }
 
     // /lego-packs/detalle/:slug
     for (const r of legoRows) {
-      entries.push(url(`/lego-packs/detalle/${r.slug}`, formatDate(r.updatedAt)));
+      add(`/lego-packs/detalle/${r.slug}`, formatDate(r.updatedAt));
     }
 
     // /restaurantes/:slug  (omitimos /reservar — formulario de acción, no indexable)
-    for (const r of restaurantRows) {
-      entries.push(url(`/restaurantes/${r.slug}`, formatDate(r.updatedAt)));
+    for (const r of restaurantsOn ? restaurantRows : []) {
+      add(`/restaurantes/${r.slug}`, formatDate(r.updatedAt));
     }
 
     // /hotel/:slug
-    for (const r of roomRows) {
-      entries.push(url(`/hotel/${r.slug}`, formatDate(r.updatedAt)));
+    for (const r of hotelOn ? roomRows : []) {
+      add(`/hotel/${r.slug}`, formatDate(r.updatedAt));
     }
 
     // /spa/:slug
-    for (const r of spaRows) {
-      entries.push(url(`/spa/${r.slug}`, formatDate(r.updatedAt)));
+    for (const r of spaOn ? spaRows : []) {
+      add(`/spa/${r.slug}`, formatDate(r.updatedAt));
     }
 
     // /ubicaciones/:slug
     for (const r of locationRows) {
-      entries.push(url(`/ubicaciones/${r.slug}`, formatDate(r.updatedAt)));
+      add(`/ubicaciones/${r.slug}`, formatDate(r.updatedAt));
     }
 
     // /pagina/* excluido — contenido duplicado de rutas canónicas

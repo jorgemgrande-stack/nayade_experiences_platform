@@ -71,7 +71,8 @@ export interface EssentialApp {
 export const data = (r: Res) => r.json?.result?.data?.json;
 export const errCode = (r: Res) => r.json?.error?.json?.data?.code;
 
-export async function startEssentialApp(url: string, label: string): Promise<EssentialApp> {
+/** `webDist`: carpeta con un index.html; monta además la web pública (servidor estático con su 404 y metadatos). */
+export async function startEssentialApp(url: string, label: string, opts: { webDist?: string } = {}): Promise<EssentialApp> {
   const run = crypto.randomBytes(3).toString("hex");
   const ids: Record<Co, string> = { a: `${label}-a-${run}`, b: `${label}-b-${run}` };
   const regDb = `ess_reg_${label.replace(/[^a-z0-9]/g, "")}_${run}`;
@@ -196,6 +197,7 @@ export async function startEssentialApp(url: string, label: string): Promise<Ess
   app.use(invoicePreviewRouter);
   app.use("/api/trpc", createExpressMiddleware({ router: appRouter, createContext: createLocalContext, onError: () => undefined }));
   app.use(sitemapRouter);
+  if (opts.webDist) (await import("./_core/vite")).serveStatic(app, { distPath: opts.webDist });
   const server = http.createServer(app);
   await new Promise<void>((res) => server.listen(0, "127.0.0.1", res));
   const port = (server.address() as AddressInfo).port;
