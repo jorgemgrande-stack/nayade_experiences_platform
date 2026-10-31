@@ -221,7 +221,7 @@ import { partnersRouter } from "./routers/partners";
 import { publicExpensesRouter } from "./routers/publicExpenses";
 import { fiscalAuditRouter } from "./routers/fiscalAuditRouter";
 import { blogRouter } from "./routers/blog";
-import { getAllCounters, updateCounterPrefix, resetCounter, getDocumentNumberLogs } from "./documentNumbers";
+import { getAllCounters, updateCounterPrefix, resetCounter, getDocumentNumberLogs, CounterResetError } from "./documentNumbers";
 import type { DocumentType } from "./documentNumbers";
 import { integrationEnv } from "./_core/tenantConfig";
 import { protectLegacySecret, revealLegacySecret } from "./_core/credentials/legacyFields";
@@ -2630,7 +2630,12 @@ export const appRouter = router({
         newValue: z.number().int().min(0),
       }))
       .mutation(async ({ input, ctx }) => {
-        await resetCounter(input.documentType as DocumentType, input.year, input.newValue, String(ctx.user.id));
+        try {
+          await resetCounter(input.documentType as DocumentType, input.year, input.newValue, String(ctx.user.id));
+        } catch (e) {
+          if (e instanceof CounterResetError) throw new TRPCError({ code: "BAD_REQUEST", message: e.message });
+          throw e;
+        }
         return { success: true };
       }),
 

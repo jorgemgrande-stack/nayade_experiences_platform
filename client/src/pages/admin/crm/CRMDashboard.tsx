@@ -39,6 +39,7 @@ import {
 import { toast } from "sonner";
 import CancellationDetailModal from "./CancellationDetailModal";
 import ReservationTicket from "./ReservationTicket";
+import NewInvoiceDialog from "./NewInvoiceDialog";
 import { ProposalLeadButton } from "./ProposalsManager";
 import { CatalogConceptSelector, type CatalogProduct } from "@/components/CatalogConceptSelector";
 import {
@@ -5578,6 +5579,7 @@ export default function CRMDashboard() {
   const [confirmPaymentInvoiceId, setConfirmPaymentInvoiceId] = useState<number | null>(null);
   const [creditNoteInvoiceId, setCreditNoteInvoiceId] = useState<number | null>(null);
   const [voidInvoiceId, setVoidInvoiceId] = useState<number | null>(null);
+  const [newInvoiceOpen, setNewInvoiceOpen] = useState(false);
   const [deleteInvoiceId, setDeleteInvoiceId] = useState<number | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<"transferencia" | "efectivo" | "otro">("transferencia");
   const [creditNoteReason, setCreditNoteReason] = useState("");
@@ -5975,8 +5977,8 @@ export default function CRMDashboard() {
   });
 
   const voidInvoiceMutation = trpc.crm.invoices.void.useMutation({
-    onSuccess: () => {
-      toast.success("Factura anulada");
+    onSuccess: (data) => {
+      toast.success(`Factura anulada con el abono ${data.creditNoteNumber}`);
       setVoidInvoiceId(null);
       utils.crm.invoices.listAll.invalidate();
       refetchInvoices();
@@ -7660,6 +7662,12 @@ export default function CRMDashboard() {
           {/* ─── TABLA DE FACTURAS ──────────────────────────────────────────────── */}
           {tab === "invoices" && (
             <div>
+              <div className="flex justify-end mb-3">
+                <Button size="sm" onClick={() => setNewInvoiceOpen(true)} className="bg-orange-600 hover:bg-orange-700 text-white">
+                  <Plus className="w-4 h-4 mr-1" /> Nueva factura
+                </Button>
+                <NewInvoiceDialog open={newInvoiceOpen} onOpenChange={setNewInvoiceOpen} onCreated={() => refetchInvoices()} />
+              </div>
               {/* Filtros de facturas */}
               <div className="flex flex-wrap gap-2 mb-3">
                 {(["all", "generada", "enviada", "cobrada", "anulada", "abonada"] as const).map(s => (
@@ -8307,7 +8315,7 @@ export default function CRMDashboard() {
               <AlertTriangle className="w-5 h-5 text-red-400" /> Anular factura
             </DialogTitle>
           </DialogHeader>
-          <p className="text-sm text-foreground/65 py-2">Esta acción marcará la factura como anulada. No se puede deshacer. Para reembolsos, usa la opción de generar abono.</p>
+          <p className="text-sm text-foreground/65 py-2">Se emitirá un abono (factura rectificativa) por el importe pendiente y la factura quedará abonada. Su número se conserva. No se puede deshacer.</p>
           <DialogFooter>
             <Button variant="outline" size="sm" onClick={() => setVoidInvoiceId(null)} className="border-foreground/[0.15] text-foreground/65">Cancelar</Button>
             <Button size="sm"

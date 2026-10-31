@@ -15,13 +15,15 @@ import type { AddressInfo } from "node:net";
 import bcrypt from "bcryptjs";
 import express from "express";
 import mysql from "mysql2/promise";
+import { madridMonth, madridYear } from "./utils/timezone";
 
 const URL_ = process.env.REGISTRY_TEST_DATABASE_URL;
 const run = crypto.randomBytes(3).toString("hex");
 const T = `fis-${run}`;
 const PASS = "clave-fiscal-" + run;
-const YEAR = new Date().getFullYear();
-const ABO = `ABO-${YEAR}-${String(new Date().getMonth() + 1).padStart(2, "0")}-`;
+// Año y mes de Madrid, como la numeración (en la CI, en UTC, la medianoche de Madrid cae en otro mes)
+const YEAR = madridYear();
+const ABO = `ABO-${YEAR}-${String(madridMonth()).padStart(2, "0")}-`;
 const ABO_RE = new RegExp(`^${ABO}\\d{4}$`);
 
 describe.skipIf(!URL_)("integridad fiscal (routers reales)", () => {

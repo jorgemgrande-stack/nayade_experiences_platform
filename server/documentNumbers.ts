@@ -18,7 +18,8 @@
 import type mysql from "mysql2/promise";
 import { legacyDb, legacyPool } from "./_core/legacyDb";
 import { eq, and, sql } from "drizzle-orm";
-import { documentCounters, documentNumberLogs } from "../drizzle/schema";
+import { documentCounters, documentNumberLogs, invoices } from "../drizzle/schema";
+import { madridYear } from "./utils/timezone";
 
 // Base de datos del registro (pool compartido, resolución perezosa).
 let _tablesReady = false;
@@ -184,21 +185,37 @@ async function createCounterIfMissing(
  * @param documentType - Tipo de documento (presupuesto, factura, etc.)
  * @param context - Contexto de generación para auditoría (ej: 'crm:confirmPayment')
  * @param generatedBy - ID de usuario o 'system'
+ * @param existsCheck - Opcional: indica si un número ya está ocupado por un documento guardado (p. ej.
+ *   documentos importados o creados sin pasar por el contador). Si lo está, el contador avanza hasta el
+ *   primer número libre en vez de devolver uno que haría fallar el alta por duplicado. Adaptado de
+ *   Skicenter (`server/documentNumbers.ts`, existsCheck).
  * @returns Número formateado, ej: "FAC-2026-0005"
  */
 export async function generateDocumentNumber(
   documentType: DocumentType,
   context?: string,
-  generatedBy?: string
+  generatedBy?: string,
+  existsCheck?: (candidateNumber: string) => Promise<boolean>
 ): Promise<string> {
   const db = getDb();
-  const year = new Date().getFullYear();
+  // El año de la serie es el de Madrid: con `getFullYear()` (zona del servidor, UTC) un documento emitido
+  // el 1 de enero entre las 00:00 y la 01:00 de Madrid salía con el año anterior.
+  const year = madridYear();
 
   // Sin DDL aquí: las tablas las garantiza el mantenimiento explícito y las vigila el arranque.
 
   // Pasos 1 y 2: incremento atómico y lectura del valor en la MISMA conexión (ver nextSequence).
-  const { sequence, prefix } = await nextSequence(documentType, year);
-  const documentNumber = `${prefix}-${year}-${String(sequence).padStart(SEQUENCE_PADDING, "0")}`;
+  let { sequence, prefix } = await nextSequence(documentType, year);
+  let documentNumber = `${prefix}-${year}-${String(sequence).padStart(SEQUENCE_PADDING, "0")}`;
+  if (existsCheck) {
+    for (let guard = 0; await existsCheck(documentNumber); guard++) {
+      if (guard >= 50) {
+        throw new Error(`[documentNumbers] No se encontró un número libre para ${documentType}/${year} tras 50 intentos`);
+      }
+      ({ sequence, prefix } = await nextSequence(documentType, year));
+      documentNumber = `${prefix}-${year}-${String(sequence).padStart(SEQUENCE_PADDING, "0")}`;
+    }
+  }
 
   // Paso 3: Registrar en el log de auditoría (no bloquea si falla)
   try {
@@ -249,9 +266,49 @@ export async function updateCounterPrefix(
   await db.update(documentCounters).set({ prefix: newPrefix }).where(where);
 }
 
+/** Series fiscales: su contador nunca puede retroceder por debajo de lo ya emitido. */
+export const FISCAL_DOCUMENT_TYPES: ReadonlySet<DocumentType> = new Set<DocumentType>(["factura", "abono"]);
+
+/** Rechazo de un ajuste de contador que reutilizaría números ya emitidos. */
+export class CounterResetError extends Error {}
+
 /**
- * Resetea manualmente el contador a un valor específico (solo admin, con auditoría).
- * USAR CON EXTREMA PRECAUCIÓN — solo para correcciones de inicio de año.
+ * Comprueba el nuevo valor de una serie fiscal: el contador guarda el ÚLTIMO número emitido, así que no
+ * puede quedar por debajo de él (el siguiente documento repetiría un número). Las series no fiscales no
+ * se comprueban.
+ */
+export function assertCounterValueAllowed(documentType: DocumentType, newValue: number, lastIssued: number): void {
+  if (!FISCAL_DOCUMENT_TYPES.has(documentType)) return;
+  if (newValue < lastIssued) {
+    throw new CounterResetError(
+      `No se puede bajar el contador por debajo del último número emitido (${lastIssued}): se repetirían números de documentos ya emitidos. Elige ${lastIssued} o un valor mayor.`
+    );
+  }
+}
+
+/** Último número emitido de una serie: el mayor entre el registro de numeración y los documentos guardados con su prefijo actual. */
+async function lastIssuedSequence(db: ReturnType<typeof getDb>, documentType: DocumentType, year: number, prefix: string): Promise<number> {
+  const [logged] = await db
+    .select({ last: sql<number | null>`MAX(${documentNumberLogs.sequence})` })
+    .from(documentNumberLogs)
+    .where(and(
+      eq(documentNumberLogs.documentType, documentType),
+      eq(documentNumberLogs.year, year),
+      sql`(${documentNumberLogs.context} IS NULL OR ${documentNumberLogs.context} <> 'admin:resetCounter')`
+    ));
+  const head = `${prefix}-${year}-`;
+  const like = head.replace(/[\\%_]/g, (c) => `\\${c}`) + "%";
+  const [stored] = await db
+    .select({ last: sql<number | null>`MAX(CAST(SUBSTRING(${invoices.invoiceNumber}, ${head.length + 1}) AS UNSIGNED))` })
+    .from(invoices)
+    .where(sql`${invoices.invoiceNumber} LIKE ${like}`);
+  return Math.max(Number(logged?.last ?? 0), Number(stored?.last ?? 0));
+}
+
+/**
+ * Ajusta manualmente el contador a un valor específico (solo admin, con auditoría).
+ * USAR CON EXTREMA PRECAUCIÓN — solo para correcciones de inicio de año. En las series fiscales
+ * (facturas y abonos) nunca por debajo del último número emitido (`CounterResetError`).
  */
 export async function resetCounter(
   documentType: DocumentType,
@@ -260,15 +317,16 @@ export async function resetCounter(
   resetBy: string
 ): Promise<void> {
   const db = getDb();
-  await db
-    .update(documentCounters)
-    .set({ currentNumber: newValue })
-    .where(
-      and(
-        eq(documentCounters.documentType, documentType),
-        eq(documentCounters.year, year)
-      )
-    );
+  const where = and(eq(documentCounters.documentType, documentType), eq(documentCounters.year, year));
+  await db.transaction(async (tx) => {
+    // El bloqueo de la fila espera a cualquier alta en curso de la serie antes de comprobar
+    const [counter] = await tx.select({ prefix: documentCounters.prefix }).from(documentCounters).where(where).for("update");
+    if (FISCAL_DOCUMENT_TYPES.has(documentType)) {
+      const last = await lastIssuedSequence(tx as unknown as ReturnType<typeof getDb>, documentType, year, counter?.prefix ?? DEFAULT_PREFIXES[documentType]);
+      assertCounterValueAllowed(documentType, newValue, last);
+    }
+    await tx.update(documentCounters).set({ currentNumber: newValue }).where(where);
+  });
 
   // Log del reset
   await db.insert(documentNumberLogs).values({
