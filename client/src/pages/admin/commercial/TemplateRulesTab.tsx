@@ -11,6 +11,7 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import { toastError } from "@/lib/errorMessage";
 
 type TemplateConfig = {
   id: number | null;
@@ -257,7 +258,7 @@ function TemplateCard({ config }: { config: TemplateConfig }) {
 
   const upsert = trpc.emailCommunications.upsertTemplateConfig.useMutation({
     onSuccess: () => { toast.success("Configuración guardada"); utils.emailCommunications.listTemplateConfigs.invalidate(); },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toastError(e),
   });
 
   const { data: rules, refetch: refetchRules } = trpc.emailCommunications.listRules.useQuery(
@@ -267,22 +268,22 @@ function TemplateCard({ config }: { config: TemplateConfig }) {
 
   const createRule = trpc.emailCommunications.createRule.useMutation({
     onSuccess: () => { toast.success("Regla creada"); setShowNewRule(false); refetchRules(); resetRuleForm(); },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toastError(e),
   });
 
   const updateRule = trpc.emailCommunications.updateRule.useMutation({
     onSuccess: () => { toast.success("Regla actualizada"); refetchRules(); },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toastError(e),
   });
 
   const deleteRule = trpc.emailCommunications.deleteRule.useMutation({
     onSuccess: () => { toast.success("Regla eliminada"); refetchRules(); },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toastError(e),
   });
 
   const sendTest = trpc.emailCommunications.sendTestEmail.useMutation({
     onSuccess: (r) => { toast.success(`Email de prueba enviado a ${r.to}`); setShowTest(false); setTestEmail(""); },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toastError(e),
   });
 
   const [ruleForm, setRuleForm] = useState({

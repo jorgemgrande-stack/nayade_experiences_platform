@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
+import { toastError } from "@/lib/errorMessage";
 
 type JobStatus = "pending" | "sent" | "skipped" | "failed" | "cancelled";
 
@@ -59,12 +60,12 @@ export default function PendingJobsTab() {
   const { data: pausedCustomers, refetch: refetchPaused } = trpc.emailCommunications.listPausedCustomers.useQuery(undefined, { retry: 1 });
   const setPrefs = trpc.emailCommunications.setCustomerPrefs.useMutation({
     onSuccess: () => { toast.success("Automatizaciones reanudadas"); refetchPaused(); },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toastError(e),
   });
 
   const cancelJob = trpc.emailCommunications.cancelJob.useMutation({
     onSuccess: () => { toast.success("Job cancelado"); refetch(); },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => toastError(e),
   });
 
   const runNow = trpc.emailCommunications.runAutomationJobNow.useMutation({

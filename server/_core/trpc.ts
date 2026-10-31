@@ -15,7 +15,7 @@ const t = initTRPC.context<TrpcContext>().create({
 export const router = t.router;
 
 /** Texto propio de errores de BD/infraestructura: nunca debe llegar al cliente. */
-const INTERNAL_DETAIL_RE = /Failed query|\bER_[A-Z_]+|ECONNREFUSED|ETIMEDOUT|PROTOCOL_|Unknown column|Table '|doesn't exist|SQL syntax|sqlMessage|TenantResolutionError|base de datos no configurada/i;
+const INTERNAL_DETAIL_RE = /Failed query|\bER_[A-Z_]+|ECONNREFUSED|ETIMEDOUT|PROTOCOL_|Unknown column|Table '|doesn't exist|SQL syntax|sqlMessage|TenantResolutionError|base de datos no configurada|Database not available|DB not available|DB no disponible|Base de datos no disponible|servidor de BD no disponible|DB connection unavailable|is not configured|DATABASE_URL|REGISTRY_[A-Z_]+|TENANT_MODE|falta la migración/i;
 
 function looksInternal(error: TRPCError): boolean {
   const cause = error.cause as (Error & { code?: unknown; sqlMessage?: unknown; sql?: unknown }) | undefined;

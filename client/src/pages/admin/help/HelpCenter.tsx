@@ -14,8 +14,38 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { trpc } from "@/lib/trpc";
 import { HELP_ARTICLES, HELP_REVIEWED_AT, getHelpArticle, searchHelp, supportMailto, type HelpArticle } from "@shared/helpCenter";
+import { CORE_RELEASED_AT, CORE_VERSION } from "@shared/version";
 
-const reviewed = new Date(`${HELP_REVIEWED_AT}T12:00:00`).toLocaleDateString("es-ES", { day: "numeric", month: "long", year: "numeric" });
+const longDate = (d: string) => new Date(`${d}T12:00:00`).toLocaleDateString("es-ES", { day: "numeric", month: "long", year: "numeric" });
+const reviewed = longDate(HELP_REVIEWED_AT);
+
+/** Versión de Elephant Core y su fecha; el commit desplegado solo llega a los administradores (lo decide el servidor). */
+export function AboutCore() {
+  const info = trpc.system.version.useQuery(undefined, { staleTime: 30 * 60_000, retry: false });
+  const version = info.data?.version ?? CORE_VERSION;
+  const releasedAt = info.data?.releasedAt ?? CORE_RELEASED_AT;
+  return (
+    <section aria-labelledby="ayuda-acerca" className="rounded-xl border border-border bg-card p-5">
+      <h2 id="ayuda-acerca" className="text-base font-semibold text-foreground">Acerca de Elephant Core</h2>
+      <dl className="mt-3 grid gap-x-6 gap-y-1 text-sm sm:grid-cols-[auto_1fr]">
+        <dt className="text-muted-foreground">Versión</dt>
+        <dd className="font-medium text-foreground">{version}</dd>
+        {releasedAt ? (
+          <>
+            <dt className="text-muted-foreground">Publicada el</dt>
+            <dd className="text-foreground">{longDate(releasedAt)}</dd>
+          </>
+        ) : null}
+        {info.data?.commit ? (
+          <>
+            <dt className="text-muted-foreground">Compilación</dt>
+            <dd className="font-mono text-foreground">{info.data.commit}</dd>
+          </>
+        ) : null}
+      </dl>
+    </section>
+  );
+}
 
 function ContactCard({ topic }: { topic?: string }) {
   const contact = trpc.subscription.supportContact.useQuery(undefined, { staleTime: 10 * 60_000, retry: false });
@@ -182,6 +212,7 @@ export default function HelpCenter() {
         ) : (
           <ArticleList />
         )}
+        {!params?.id && <AboutCore />}
         <p className="text-xs text-muted-foreground">Contenido revisado el {reviewed}.</p>
       </div>
     </AdminLayout>
