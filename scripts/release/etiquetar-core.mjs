@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 /**
  * Etiqueta una versión publicada de Elephant Core: `core-vX.Y.Z` (anotada) sobre el commit desplegado.
  *
