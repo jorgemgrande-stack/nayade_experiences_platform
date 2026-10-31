@@ -34,6 +34,8 @@ import { canClose, canOperate, canPost, canRead } from "./permissions";
 import type { FinanceService } from "./service";
 import { mountFinanceStripeRoutes } from "./stripeApi";
 import type { FinanceStripeService } from "./stripeService";
+import { mountFinanceTaxRoutes } from "./taxApi";
+import type { FinanceTaxService } from "./taxService";
 import { ACCOUNT_TYPES, ENTRY_ORIGINS, ENTRY_STATUSES, JOURNAL_CODES, type Entry } from "./types";
 
 /**
@@ -106,9 +108,10 @@ function sendCsv(res: Response, name: string, csv: string) {
 
 /**
  * Con `ops` (migración 0035) se montan también las operaciones de la fase 1B y el resumen completo; con `stripe`
- * (migración 0036, requiere `ops`) las rutas de Stripe y conciliación de la fase 2 y el saldo de 5720 en el resumen.
+ * (migración 0036, requiere `ops`) las rutas de Stripe y conciliación de la fase 2 y el saldo de 5720 en el resumen; con
+ * `tax` (migración 0037, requiere `ops`) la gestoría e impuestos de la fase 3 bajo /tax.
  */
-export function createFinanceRouter(svc: FinanceService, ops?: FinanceOpsService | null, stripe?: FinanceStripeService | null): Router {
+export function createFinanceRouter(svc: FinanceService, ops?: FinanceOpsService | null, stripe?: FinanceStripeService | null, tax?: FinanceTaxService | null): Router {
   const r = express.Router();
   const names = async () => new Map((await svc.accounts()).map((a) => [a.code, a.name]));
   const one = async (e: Entry) => entryDto(e, await names());
@@ -210,6 +213,8 @@ export function createFinanceRouter(svc: FinanceService, ops?: FinanceOpsService
   if (ops) mountFinanceOpsRoutes(r, ops);
   // Fase 2: Stripe (importación, contabilización, payouts) y conciliación factura ↔ cobro ↔ payout ↔ banco
   if (ops && stripe) mountFinanceStripeRoutes(r, stripe);
+  // Fase 3: gestoría e impuestos (sin montar, /tax/* responde 404 y el CRM oculta el grupo)
+  if (ops && tax) mountFinanceTaxRoutes(r, tax);
 
   return r;
 }

@@ -29,7 +29,7 @@ import { ACCOUNT_MATCH_TYPES, DOCUMENT_OWNERS, EXPENSE_KINDS, EXPENSE_STATUSES, 
 import { canOperate, canPost, canRead } from "./permissions";
 
 /** Rutas con fichero en base64: el analizador JSON general (256 kB) no las lee; aquí, hasta 15 MB y tras el permiso. */
-export const FINANCE_UPLOAD_PATHS = /^\/cp\/v1\/finance\/(documents|bank-imports|stripe\/imports)\/?(\?|$)/;
+export const FINANCE_UPLOAD_PATHS = /^\/cp\/v1\/finance\/(documents|bank-imports|stripe\/imports|tax\/obligations\/\d+\/present)\/?(\?|$)/;
 export const bigJson = express.json({ limit: "15mb" });
 
 const id = z.coerce.number().int().positive();

@@ -1,8 +1,8 @@
 /**
- * Las migraciones 0033 (libro), 0035 (operaciones) y 0036 (Stripe) y el código del módulo son ORDINARIOS para el clasificador de
+ * Las migraciones 0033 (libro), 0035 (operaciones), 0036 (Stripe) y 0037 (gestoría) y el código del módulo son ORDINARIOS para el clasificador de
  * despliegue (scripts/deploy/esRailwayLib): migraciones aditivas (sin palabras prohibidas ni en comentarios), sin
- * borrados en el código de server/finance y sin cambios críticos. El único interruptor que aparece es NUEVO
- * (`CP_FINANCE_RECURRING_ENABLED`, apagado), ordinario porque no existe en la rama base (como lo comprueba
+ * borrados en el código de server/finance y sin cambios críticos. Los interruptores que aparecen son NUEVOS
+ * (`CP_FINANCE_RECURRING_ENABLED` y `CP_FINANCE_TAX_REMINDERS_ENABLED`, apagados), ordinario porque no existe en la rama base (como lo comprueba
  * scripts/deploy/esRailway.ts con `git grep`). Si esta prueba falla, el despliegue pediría aprobación extraordinaria.
  */
 import { describe, expect, it } from "vitest";
@@ -10,17 +10,17 @@ import fs from "node:fs";
 import path from "node:path";
 import { destructiveMigration, extraordinaryChanges } from "../../scripts/deploy/esRailwayLib";
 import { loadMigrations, validateMigrations } from "../../scripts/db/migrationLib";
-import { MIGRATION_0033, MIGRATION_0035, MIGRATION_0036 } from "./testkit";
+import { MIGRATION_0033, MIGRATION_0035, MIGRATION_0036, MIGRATION_0037 } from "./testkit";
 
 const ROOT = path.resolve(__dirname, "../..");
 const rel = (p: string) => path.relative(ROOT, p).split(path.sep).join("/");
-const MIGRATIONS = [MIGRATION_0033, MIGRATION_0035, MIGRATION_0036];
+const MIGRATIONS = [MIGRATION_0033, MIGRATION_0035, MIGRATION_0036, MIGRATION_0037];
 const sqlOf = (f: string) => fs.readFileSync(f, "utf8");
 const moduleFiles = fs
   .readdirSync(__dirname)
   .filter((f) => f.endsWith(".ts"))
   .map((f) => path.join(__dirname, f));
-const NEW_SWITCHES = new Set(["CP_FINANCE_RECURRING_ENABLED"]);
+const NEW_SWITCHES = new Set(["CP_FINANCE_RECURRING_ENABLED", "CP_FINANCE_TAX_REMINDERS_ENABLED"]);
 
 /** Diff sintético «todo añadido» de unos ficheros, con el formato de `git diff`. */
 const addedDiff = (files: string[]) =>
@@ -32,13 +32,13 @@ const addedDiff = (files: string[]) =>
     })
     .join("\n");
 
-describe("migraciones 0033, 0035 y 0036 y módulo de finanzas: despliegue ordinario", () => {
+describe("migraciones 0033, 0035, 0036 y 0037 y módulo de finanzas: despliegue ordinario", () => {
   it("las migraciones son aditivas para el clasificador y válidas para el ejecutor (irreversibles con motivo)", () => {
     for (const f of MIGRATIONS) expect(destructiveMigration(sqlOf(f))).toBeNull();
     const { migrations, errors } = loadMigrations(path.join(ROOT, "db/crm/migrations"));
     expect(errors).toEqual([]);
     expect(validateMigrations(migrations)).toEqual([]);
-    for (const id of ["0033_finance_ledger", "0035_finance_operations", "0036_finance_stripe"]) expect(migrations.find((x) => x.id === id)!.irreversible).toBe(true);
+    for (const id of ["0033_finance_ledger", "0035_finance_operations", "0036_finance_stripe", "0037_finance_tax"]) expect(migrations.find((x) => x.id === id)!.irreversible).toBe(true);
   });
 
   it("sin palabras prohibidas en todo el fichero (también comentarios y literales) ni ';' dentro de literales", () => {
@@ -71,6 +71,20 @@ describe("migraciones 0033, 0035 y 0036 y módulo de finanzas: despliegue ordina
     for (const k of ["uq_fin_stripe_import_file (kind, sha256)", "uq_fin_stripe_payout (provider, payout_id)", "uq_fin_stripe_payout_bank (bank_movement_id)", "uq_fin_stripe_txn (provider, balance_transaction_id)"]) expect(sql).toContain(`UNIQUE KEY ${k}`);
   });
 
+  it("0037 solo crea tablas fin_tax_* y fin_payrolls, sin siembra (nada se presupone) y con la unicidad de cada obligación", () => {
+    const sql = sqlOf(MIGRATION_0037);
+    const stmts = sql
+      .replace(/--[^\n]*/g, "")
+      .split(";")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    expect(stmts.map((s) => /^CREATE TABLE (fin_\w+)/.exec(s)?.[1])).toEqual(["fin_tax_settings", "fin_tax_settings_log", "fin_tax_obligations", "fin_tax_obligation_log", "fin_payrolls", "fin_tax_deferrals", "fin_tax_deferral_installments", "fin_tax_dossiers", "fin_tax_dossier_log", "fin_tax_corporate_adjustments"]);
+    expect(sql).not.toMatch(/INSERT INTO/i);
+    for (const k of ["uq_fin_tax_obligation_key (obligation_key)", "uq_fin_payroll (period, employee_alias)", "uq_fin_tax_deferral_installment (deferral_id, number)"]) expect(sql).toContain(`UNIQUE KEY ${k}`);
+    // Sin datos reales: el NIF del emisor solo se precarga en tiempo de ejecución, nunca en la migración
+    expect(sql).not.toMatch(/B26987875/);
+  });
+
   it("el código de server/finance no borra datos y nada del conjunto es extraordinario", () => {
     for (const f of moduleFiles.filter((x) => !/\.test\.ts$/.test(x))) expect(fs.readFileSync(f, "utf8")).not.toMatch(/\b(DELETE\s+FROM|TRUNCATE|DROP\s+(TABLE|DATABASE|SCHEMA|COLUMN|INDEX))\b/i);
     const files = [...MIGRATIONS.map(rel), ...moduleFiles.map(rel)];
@@ -78,5 +92,6 @@ describe("migraciones 0033, 0035 y 0036 y módulo de finanzas: despliegue ordina
     expect(extraordinaryChanges(files, addedDiff([...MIGRATIONS, ...moduleFiles]), (f) => (f.endsWith(".sql") ? sqlOf(path.join(ROOT, f)) : null), { existsInBase })).toEqual([]);
     // Sin `existsInBase` el interruptor se trataría como uno ya existente: confirma que la prueba lo ve
     expect(extraordinaryChanges(files, addedDiff(moduleFiles), () => null).join(" ")).toMatch(/CP_FINANCE_RECURRING_ENABLED/);
+    expect(extraordinaryChanges(files, addedDiff(moduleFiles), () => null).join(" ")).toMatch(/CP_FINANCE_TAX_REMINDERS_ENABLED/);
   });
 });

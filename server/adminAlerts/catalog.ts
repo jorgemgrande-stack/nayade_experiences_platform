@@ -1,6 +1,6 @@
 /**
  * Catálogo de las alertas administrativas (familia D · Administración Big Elephant). Cada alerta tiene un id
- * ESTABLE, su número del catálogo aprobado (1–42), el hecho que la activa, la fuente técnica de ese hecho, la
+ * ESTABLE, su número del catálogo aprobado (1–42, más la 43 de vencimientos fiscales de la fase 3 de finanzas), el hecho que la activa, la fuente técnica de ese hecho, la
  * prioridad por defecto, si requiere intervención, la frecuencia por defecto y unos datos FICTICIOS para la vista
  * previa y las pruebas.
  *
@@ -126,6 +126,8 @@ export const ADMIN_ALERTS: readonly AdminAlertSpec[] = [
   a({ id: "admin.security_incident", n: 40, section: "operaciones", name: "Incidencia de seguridad", trigger: "Firmas de webhook no válidas en serie, eventos de otra cuenta o configuración insegura del portal", source: "Incidencias rate:stripe.webhook_invalid_signature · live/test_event_rejected · namespace_mismatch · portal_unsafe", severity: "critical", intervention: true, sample: { ...DEMO, tenantId: null, company: null, summary: "10 webhooks con firma no válida en 15 minutos.", status: bad("Abierta"), reference: "Incidencia #93", link: "#/dashboard" } }),
   a({ id: "admin.provisioning_failed", n: 41, section: "operaciones", name: "Error de aprovisionamiento de un nuevo tenant", trigger: "Fallo al crear la plataforma de una prueba o un alta", source: "Evento comercial trial.provisioning_failed · incidencia rate:provisioning.failed", severity: "critical", intervention: true, sample: { ...DEMO, summary: "No se ha podido crear la plataforma de la prueba.", status: bad("Alta fallida"), link: "#/operacion/errores" } }),
   a({ id: "admin.deploy_failed", n: 42, section: "operaciones", name: "Error de despliegue que afecte a clientes", trigger: "Fallo de la publicación automática en live o en production", source: "DeployWatcher: API pública de GitHub Actions (publicacion.yml y ci.yml, trabajos «Publicar en live/production»)", severity: "critical", intervention: true, sample: { ...DEMO, tenantId: null, company: null, summary: "La publicación en production ha fallado.", status: bad("Fallida"), link: "#/dashboard" } }),
+  // ── Finanzas corporativas (fase 3: gestoría e impuestos) ──
+  a({ id: "admin.tax_deadline", n: 43, section: "facturacion", name: "Vencimiento fiscal próximo", trigger: "Obligación fiscal o laboral de Big Elephant sin presentar a 15, 7 y 3 días de su vencimiento (solo con CP_FINANCE_TAX_REMINDERS_ENABLED=1)", source: "FinanceTaxService.dueReminders: calendario fiscal (CRM 0037), umbral avisado guardado en la obligación", severity: "important", intervention: true, sample: { ...DEMO, tenantId: null, company: null, summary: "Vence el modelo 303 (3.er trimestre) el 20/10/2026: quedan 7 días y aún no consta presentado.", status: warn("Próximo vencimiento"), reference: "Modelo 303 · 3T 2026", link: "#/gestoria/calendario" } }),
 ];
 
 const BY_ID = new Map(ADMIN_ALERTS.map((x) => [x.id, x]));

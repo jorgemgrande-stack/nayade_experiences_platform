@@ -43,10 +43,10 @@ function setup(o: { now?: () => number; env?: string[] } = {}) {
 const facts = (key: string, extra: Partial<AlertFacts> = {}): AlertFacts => ({ key, occurredAt: T0, tenantId: "empresa-demo", companyId: 42, company: "Empresa Demo, S.L.", summary: "Hecho de prueba.", status: { label: "Estado", tone: "info" }, link: "#/comercial/contrataciones/42", ...extra });
 
 describe("catálogo de alertas administrativas", () => {
-  it("42 alertas numeradas, ids únicos, críticas bloqueadas y pendientes con motivo", () => {
-    expect(ADMIN_ALERTS).toHaveLength(42);
-    expect(ADMIN_ALERTS.map((a) => a.n)).toEqual(Array.from({ length: 42 }, (_, i) => i + 1));
-    expect(new Set(ADMIN_ALERTS.map((a) => a.id)).size).toBe(42);
+  it("43 alertas (42 del catálogo aprobado y la de vencimientos fiscales) numeradas, ids únicos, críticas bloqueadas y pendientes con motivo", () => {
+    expect(ADMIN_ALERTS).toHaveLength(43);
+    expect(ADMIN_ALERTS.map((a) => a.n)).toEqual(Array.from({ length: 43 }, (_, i) => i + 1));
+    expect(new Set(ADMIN_ALERTS.map((a) => a.id)).size).toBe(43);
     for (const a of ADMIN_ALERTS) {
       expect(a.locked, a.id).toBe(a.severity === "critical");
       if (a.state === "pendiente") expect(a.pending?.length, a.id).toBeGreaterThan(40);
@@ -155,7 +155,7 @@ describe("envío de alertas", () => {
     const { svc, sent, store } = setup();
     await expect(svc.test(DEFAULT_ADMIN_RECIPIENT, null, "operator:1")).rejects.toThrow(/destinatario de pruebas/);
     const r = await svc.test(DEFAULT_TEST_RECIPIENT, null, "operator:1");
-    expect(r.results).toHaveLength(42);
+    expect(r.results).toHaveLength(43);
     expect(new Set(sent.map((s) => s.to))).toEqual(new Set([DEFAULT_TEST_RECIPIENT]));
     expect(sent.every((s) => s.c.subject.startsWith("[PRUEBA]"))).toBe(true);
     expect(await store.list({})).toHaveLength(0);

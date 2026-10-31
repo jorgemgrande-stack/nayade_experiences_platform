@@ -84,6 +84,7 @@ import type { FinanceService } from "../finance/service";
 import { createFinanceRouter } from "../finance/api";
 import type { FinanceOpsService } from "../finance/opsService";
 import { FINANCE_UPLOAD_PATHS } from "../finance/opsApi";
+import type { FinanceTaxService } from "../finance/taxService";
 import type { FinanceStripeService } from "../finance/stripeService";
 import type { CommunicationsService } from "../communications/service";
 import { createCommunicationsRouter } from "../communications/api";
@@ -413,6 +414,8 @@ export interface ControlPlaneDeps {
   financeOps?: FinanceOpsService | null;
   /** Stripe y conciliación de las finanzas (server/finance, CRM 0035). Requiere `financeOps`. */
   financeStripe?: FinanceStripeService | null;
+  /** Gestoría e impuestos de las finanzas (server/finance/tax*, CRM 0037). Requiere `financeOps`. */
+  financeTax?: FinanceTaxService | null;
   /** Centro de envíos del CRM y consentimiento comercial por contacto (server/communications, CRM 0031). */
   communications?: CommunicationsService | null;
 }
@@ -1811,7 +1814,7 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
     if (leadNotices) router.use("/crm/lead-notices", createLeadNoticesRouter(leadNotices));
     if (adminAlerts) router.use("/admin-alerts", createAdminAlertsRouter(adminAlerts));
     if (d.dataRequests) router.use("/data-requests", createDataRequestsRouter(d.dataRequests));
-    if (d.finance) router.use("/finance", createFinanceRouter(d.finance, d.financeOps, d.financeStripe));
+    if (d.finance) router.use("/finance", createFinanceRouter(d.finance, d.financeOps, d.financeStripe, d.financeTax));
     // Centro de envíos y consentimiento por contacto (antes del router del CRM: /crm/contacts/:id/consent)
     if (d.communications) router.use(createCommunicationsRouter(d.communications));
     router.use(

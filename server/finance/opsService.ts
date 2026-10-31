@@ -183,6 +183,7 @@ const RECURRING_HORIZON_DAYS = 366;
 export class FinanceOpsService {
   private readonly now: () => number;
   private reconciliation: BankReconciliationExtension | null = null;
+  private taxOwners: ((ownerType: DocumentOwner, ownerId: number) => Promise<boolean>) | null = null;
   constructor(private readonly d: FinanceOpsDeps) {
     this.now = d.now ?? Date.now;
   }
@@ -190,6 +191,10 @@ export class FinanceOpsService {
   /** Fase 2: conciliación con payouts de Stripe y cobros de facturas por transferencia. */
   useReconciliation(ext: BankReconciliationExtension) {
     this.reconciliation = ext;
+  }
+  /** Fase 3: comprueba que existen la obligación, la nómina o el expediente a los que se adjunta un documento. */
+  useTaxDocumentOwners(exists: (ownerType: DocumentOwner, ownerId: number) => Promise<boolean>) {
+    this.taxOwners = exists;
   }
   private get ext() {
     if (!this.reconciliation) throw new FinanceError("unavailable", "La conciliación con Stripe y facturas no está montada en este entorno (migración 0036)");
@@ -630,6 +635,11 @@ export class FinanceOpsService {
   // ── Documentos ────────────────────────────────────────────────────────────────────────────────────────────────
 
   private async ownerExists(ownerType: DocumentOwner, ownerId: number) {
+    if (ownerType === "tax_obligation" || ownerType === "payroll" || ownerType === "tax_dossier") {
+      if (!this.taxOwners) throw new FinanceError("unavailable", "La gestoría no está montada en este entorno (migración 0037)");
+      if (!(await this.taxOwners(ownerType, ownerId))) throw new FinanceError("not_found", "No existe el elemento al que se adjunta el documento");
+      return;
+    }
     const found =
       ownerType === "expense" ? await this.s.getExpense(ownerId) : ownerType === "supplier" ? await this.s.getSupplier(ownerId) : ownerType === "bank_import" ? await this.s.getImport(ownerId) : await this.d.ledger.getEntry(ownerId);
     if (!found) throw new FinanceError("not_found", "No existe el elemento al que se adjunta el documento");
