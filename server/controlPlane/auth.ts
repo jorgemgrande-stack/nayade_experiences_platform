@@ -63,6 +63,16 @@ export const SCOPES = [
   "commerce:withdrawal",
   // Soporte desde el panel de la empresa: SOLO el token de servicio del Core (también vale commerce:purchase)
   "commerce:support",
+  // Finanzas corporativas de Big Elephant (/finance): consulta, gastos, proveedores, contabilizar, gestoría, configuración,
+  // exportaciones y operaciones sensibles (cierres y reaperturas) son permisos distintos (server/finance/permissions.ts)
+  "finance:read",
+  "finance:expenses",
+  "finance:suppliers",
+  "finance:post",
+  "finance:tax",
+  "finance:config",
+  "finance:export",
+  "finance:sensitive",
 ] as const;
 export type Scope = (typeof SCOPES)[number];
 

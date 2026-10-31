@@ -2,7 +2,7 @@
  * Formas de respuesta que consume el CRM (anexo vinculante CRM-ESPERA, fase 1A): resumen, sincronización, plan
  * contable, diarios, asientos (`entryDate`, `debitCents`, líneas con `accountName`), sumas y saldos con `totals`, mayor
  * con `openingCents` y `balanceCents`, ejercicios con sus periodos anidados. También el permiso de alta de ejercicio
- * (solo billing:write) frente a cerrar/reabrir (administración).
+ * (finance:config con sesión) frente a cerrar/reabrir (finance:sensitive).
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import express from "express";
@@ -23,8 +23,8 @@ const WRITE = "ci-only-placeholder-not-a-secret-shp-w";
 const CSRF = "csrf-de-prueba-0987654321";
 const PARTY: FiscalParty = { legalName: "NEXTAIR SL", taxId: "B12345674", address: "Calle Ejemplo 1", postalCode: "28001", city: "Madrid", country: "ES" };
 const SESSIONS: Record<string, { role: string; scopes: Scope[] }> = {
-  "sesion-admin-000000000000": { role: "admin", scopes: ["billing:read", "billing:write"] },
-  "sesion-comercial-000000000": { role: "sales", scopes: ["billing:read", "billing:write"] },
+  "sesion-admin-000000000000": { role: "admin", scopes: ["finance:read", "finance:expenses", "finance:suppliers", "finance:post", "finance:tax", "finance:config", "finance:export", "finance:sensitive"] },
+  "sesion-comercial-000000000": { role: "sales", scopes: ["finance:read", "finance:expenses", "finance:suppliers", "finance:post", "finance:tax", "finance:export"] },
 };
 const ADMIN = "sesion-admin-000000000000";
 const SALES = "sesion-comercial-000000000";
@@ -47,7 +47,7 @@ describe("API /cp/v1/finance: formas que espera el CRM", () => {
       const s = SESSIONS[t];
       return s ? ({ operator: { id: 1, username: t.split("-")[1], displayName: t, role: s.role, status: "active" }, session: { id: `${t}-id-0000000000`, operatorId: 1, csrfToken: CSRF }, scopes: s.scopes } as unknown as ValidSession) : null;
     };
-    app.use(authenticate([{ id: "integracion", sha256: hashToken(WRITE), scopes: ["billing:read", "billing:write"], actorType: "crm" }], undefined, { operators: { validateSession: async (t: string) => fake(t) }, allowedOrigins: new Set() }));
+    app.use(authenticate([{ id: "integracion", sha256: hashToken(WRITE), scopes: ["finance:read", "finance:expenses", "finance:suppliers", "finance:post", "finance:tax", "finance:export"], actorType: "crm" }], undefined, { operators: { validateSession: async (t: string) => fake(t) }, allowedOrigins: new Set() }));
     app.use("/cp/v1/finance", createFinanceRouter(svc));
     server = http.createServer(app);
     await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
@@ -65,8 +65,10 @@ describe("API /cp/v1/finance: formas que espera el CRM", () => {
     return { status: res.status, json: (await res.json()) as any };
   };
 
-  it("alta de ejercicio con billing:write (sin rol de administración); cerrar y reabrir, solo administración", async () => {
-    const fy = await call("POST", "/fiscal-years", WRITE, { year: 2026 });
+  it("alta de ejercicio con finance:config y sesión; cerrar y reabrir, solo con finance:sensitive", async () => {
+    expect((await call("POST", "/fiscal-years", WRITE, { year: 2026 })).status).toBe(403);
+    expect((await call("POST", "/fiscal-years", SALES, { year: 2026 })).status).toBe(403);
+    const fy = await call("POST", "/fiscal-years", ADMIN, { year: 2026 });
     expect(fy.status).toBe(201);
     expect(fy.json.item).toMatchObject({ year: 2026, status: "open", closedAt: null, closedBy: null });
     expect(fy.json.item.periods[0]).toEqual({ year: 2026, month: 1, status: "open", closedAt: null, closedBy: null });

@@ -1,6 +1,6 @@
 /**
- * API /cp/v1/finance con Express real y la autenticación real del plano de control: lectura con billing:read,
- * escrituras con billing:write y sesión de operador, cierres solo para administración (rol), errores en español y
+ * API /cp/v1/finance con Express real y la autenticación real del plano de control: lectura con finance:read,
+ * contabilizar con finance:post y sesión de operador, cierres con finance:sensitive, errores en español y
  * exportaciones CSV.
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -19,10 +19,10 @@ const READ = "ci-only-placeholder-not-a-secret-fin-r";
 const WRITE = "ci-only-placeholder-not-a-secret-fin-w";
 const CSRF = "csrf-de-prueba-1234567890";
 const SESSIONS: Record<string, { role: string; scopes: Scope[] }> = {
-  "sesion-admin-000000000000": { role: "admin", scopes: ["billing:read", "billing:write"] },
+  "sesion-admin-000000000000": { role: "admin", scopes: ["finance:read", "finance:expenses", "finance:suppliers", "finance:post", "finance:tax", "finance:config", "finance:export", "finance:sensitive"] },
   // Comercial con permiso de escritura de facturación (hipotético): contabiliza, pero no cierra
-  "sesion-comercial-000000000": { role: "sales", scopes: ["billing:read", "billing:write"] },
-  "sesion-lectura-00000000000": { role: "readonly", scopes: ["billing:read"] },
+  "sesion-comercial-000000000": { role: "sales", scopes: ["finance:read", "finance:expenses", "finance:suppliers", "finance:post", "finance:tax", "finance:export"] },
+  "sesion-lectura-00000000000": { role: "readonly", scopes: ["finance:read", "finance:export"] },
 };
 
 function fakeSession(token: string): ValidSession | null {
@@ -45,8 +45,8 @@ describe("API /cp/v1/finance", () => {
     app.use(
       authenticate(
         [
-          { id: "lector", sha256: hashToken(READ), scopes: ["billing:read"], actorType: "crm" },
-          { id: "integracion", sha256: hashToken(WRITE), scopes: ["billing:read", "billing:write"], actorType: "crm" },
+          { id: "lector", sha256: hashToken(READ), scopes: ["finance:read", "finance:export"], actorType: "crm" },
+          { id: "integracion", sha256: hashToken(WRITE), scopes: ["finance:read", "finance:expenses", "finance:suppliers", "finance:post", "finance:tax", "finance:export"], actorType: "crm" },
         ],
         undefined,
         { operators: { validateSession: async (t: string) => fakeSession(t) }, allowedOrigins: new Set() },
@@ -83,7 +83,7 @@ describe("API /cp/v1/finance", () => {
   const RO = "sesion-lectura-00000000000";
   const entry = { date: "2026-03-10", journal: "COM", description: "Hosting marzo", lines: [{ accountCode: "629", debitCents: 10_000 }, { accountCode: "472", debitCents: 2_100 }, { accountCode: "410", creditCents: 12_100 }] };
 
-  it("lectura con billing:read (token o sesión); sin él, 403", async () => {
+  it("lectura con finance:read (token o sesión); sin él, 403", async () => {
     const accounts = await call("GET", "/accounts", READ);
     expect(accounts.status).toBe(200);
     expect(accounts.json.total).toBe(58);
@@ -92,7 +92,7 @@ describe("API /cp/v1/finance", () => {
     expect((await call("GET", "/summary", READ)).json).toMatchObject({ asOf: "2026-10-30", banks: null });
   });
 
-  it("escrituras: 403 sin billing:write, 403 con token de servicio (solo personas), 201 con sesión", async () => {
+  it("escrituras: 403 sin finance:post, 403 con token de servicio (solo personas), 201 con sesión", async () => {
     expect((await call("POST", "/entries", READ, entry)).status).toBe(403);
     expect((await call("POST", "/entries", RO, entry)).status).toBe(403);
     const svcToken = await call("POST", "/entries", WRITE, entry);
@@ -106,10 +106,10 @@ describe("API /cp/v1/finance", () => {
     expect((await call("POST", "/sync/invoices", SALES)).status).toBe(503);
   });
 
-  it("cierres, reaperturas y configuración: 403 con rol comercial, solo administración", async () => {
+  it("cierres, reaperturas y configuración: 403 sin finance:sensitive o finance:config", async () => {
     const denied = await call("POST", "/periods/2026/1/close", SALES);
     expect(denied.status).toBe(403);
-    expect(denied.json).toMatchObject({ error: "forbidden_role" });
+    expect(denied.json).toMatchObject({ error: "forbidden", scope: "finance:sensitive" });
     expect((await call("POST", "/fiscal-years/2026/close", SALES)).status).toBe(403);
     expect((await call("POST", "/accounts", SALES, { code: "57200001", name: "BBVA" })).status).toBe(403);
     expect((await call("POST", "/periods/2026/1/close", WRITE)).status).toBe(403);

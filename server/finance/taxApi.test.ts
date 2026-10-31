@@ -1,7 +1,7 @@
 /**
  * API de gestoría e impuestos (fase 3) con Express real y la autenticación real del plano de control: permisos
- * (lectura billing:read; borradores, obligaciones, nóminas, aplazamientos y expedientes solo con sesión de operador y
- * billing:write; configuración, reapertura y cierre del trimestre solo rol admin|superadmin), el PDF de la presentación
+ * (lectura finance:read; borradores, obligaciones, aplazamientos y expedientes solo con sesión de operador y finance:tax;
+ * nóminas con finance:post; configuración con finance:config; reapertura y cierre del trimestre con finance:sensitive), el PDF de la presentación
  * en el mismo cuerpo, 404 sin el módulo montado y las formas EXACTAS del anexo CRM-ESPERA-FASE3. Solo datos sintéticos.
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -28,9 +28,9 @@ const READ = "ci-only-placeholder-not-a-secret-tax-r";
 const WRITE = "ci-only-placeholder-not-a-secret-tax-w";
 const CSRF = "csrf-de-prueba-7788990011";
 const SESSIONS: Record<string, { role: string; scopes: Scope[] }> = {
-  "sesion-admin-000000000000": { role: "admin", scopes: ["billing:read", "billing:write"] },
-  "sesion-comercial-000000000": { role: "sales", scopes: ["billing:read", "billing:write"] },
-  "sesion-lectura-00000000000": { role: "readonly", scopes: ["billing:read"] },
+  "sesion-admin-000000000000": { role: "admin", scopes: ["finance:read", "finance:expenses", "finance:suppliers", "finance:post", "finance:tax", "finance:config", "finance:export", "finance:sensitive"] },
+  "sesion-comercial-000000000": { role: "sales", scopes: ["finance:read", "finance:expenses", "finance:suppliers", "finance:post", "finance:tax", "finance:export"] },
+  "sesion-lectura-00000000000": { role: "readonly", scopes: ["finance:read", "finance:export"] },
 };
 const ADMIN = "sesion-admin-000000000000";
 const SALES = "sesion-comercial-000000000";
@@ -68,8 +68,8 @@ async function app(withTax: boolean) {
   a.use(
     authenticate(
       [
-        { id: "lector", sha256: hashToken(READ), scopes: ["billing:read"], actorType: "crm" },
-        { id: "integracion", sha256: hashToken(WRITE), scopes: ["billing:read", "billing:write"], actorType: "crm" },
+        { id: "lector", sha256: hashToken(READ), scopes: ["finance:read", "finance:export"], actorType: "crm" },
+        { id: "integracion", sha256: hashToken(WRITE), scopes: ["finance:read", "finance:expenses", "finance:suppliers", "finance:post", "finance:tax", "finance:export"], actorType: "crm" },
       ],
       undefined,
       { operators: { validateSession: async (t: string) => fake(t) }, allowedOrigins: new Set() },
@@ -122,14 +122,14 @@ describe("API /cp/v1/finance/tax (fase 3)", () => {
     expect((await call("GET", "/tax/settings", READ, undefined, offBase)).status).toBe(404);
   });
 
-  it("configuración: lectura con billing:read (null hasta guardarla); cambiarla solo la administración con sesión", async () => {
+  it("configuración: lectura con finance:read (null hasta guardarla); cambiarla solo con finance:config y sesión", async () => {
     const g = await call("GET", "/tax/settings", READ);
     expect(g.status).toBe(200);
     expect(keys(g.json)).toEqual(["defaults", "item", "log"]);
     expect(g.json.item).toBeNull();
     expect(g.json.defaults).toMatchObject({ legalName: "EMPRESA DE PRUEBA, S.L.", configured: false });
     expect((await call("PATCH", "/tax/settings", WRITE, { hasEmployees: true })).status).toBe(403);
-    expect((await call("PATCH", "/tax/settings", SALES, { hasEmployees: true })).json.error).toBe("forbidden_role");
+    expect((await call("PATCH", "/tax/settings", SALES, { hasEmployees: true })).json).toMatchObject({ error: "forbidden", scope: "finance:config" });
     expect((await call("PATCH", "/tax/settings", ADMIN, { campoRaro: 1 })).status).toBe(400);
     const p = await call("PATCH", "/tax/settings", ADMIN, { hasEmployees: true, hasProfessionalWithholdings: true });
     expect(p.status).toBe(200);
@@ -140,7 +140,7 @@ describe("API /cp/v1/finance/tax (fase 3)", () => {
     expect(after.json.log[0].changes.hasEmployees).toEqual([false, true]);
   });
 
-  it("calendario: generar exige sesión de operador con billing:write; formas de la obligación", async () => {
+  it("calendario: generar exige sesión de operador con finance:tax; formas de la obligación", async () => {
     expect((await call("POST", "/tax/calendar/generate", READ, { year: 2026 })).status).toBe(403);
     expect((await call("POST", "/tax/calendar/generate", WRITE, { year: 2026 })).status).toBe(403);
     expect((await call("POST", "/tax/calendar/generate", RO, { year: 2026 })).status).toBe(403);

@@ -1,6 +1,6 @@
 /**
  * API de operaciones (fase 1B) con Express real y la autenticación real del plano de control: permisos (lectura con
- * billing:read; gestión con billing:write, también con token de servicio; contabilizar o revertir solo con sesión de
+ * finance:read; gestión con finance:expenses, también con token de servicio; contabilizar o revertir solo con sesión de
  * operador) y las formas EXACTAS que consume el CRM (anexo CRM-ESPERA, secciones 1B y resumen completo). El analizador
  * JSON general es el mismo que el del plano de control (256 kB, salvo adjuntos y extractos).
  */
@@ -23,8 +23,8 @@ const READ = "ci-only-placeholder-not-a-secret-ops-r";
 const WRITE = "ci-only-placeholder-not-a-secret-ops-w";
 const CSRF = "csrf-de-prueba-1122334455";
 const SESSIONS: Record<string, { role: string; scopes: Scope[] }> = {
-  "sesion-comercial-000000000": { role: "sales", scopes: ["billing:read", "billing:write"] },
-  "sesion-lectura-00000000000": { role: "readonly", scopes: ["billing:read"] },
+  "sesion-comercial-000000000": { role: "sales", scopes: ["finance:read", "finance:expenses", "finance:suppliers", "finance:post", "finance:tax", "finance:export"] },
+  "sesion-lectura-00000000000": { role: "readonly", scopes: ["finance:read", "finance:export"] },
 };
 const SALES = "sesion-comercial-000000000";
 const RO = "sesion-lectura-00000000000";
@@ -53,8 +53,8 @@ describe("API /cp/v1/finance, fase 1B: permisos y formas del CRM", () => {
     app.use(
       authenticate(
         [
-          { id: "lector", sha256: hashToken(READ), scopes: ["billing:read"], actorType: "crm" },
-          { id: "integracion", sha256: hashToken(WRITE), scopes: ["billing:read", "billing:write"], actorType: "crm" },
+          { id: "lector", sha256: hashToken(READ), scopes: ["finance:read", "finance:export"], actorType: "crm" },
+          { id: "integracion", sha256: hashToken(WRITE), scopes: ["finance:read", "finance:expenses", "finance:suppliers", "finance:post", "finance:tax", "finance:export"], actorType: "crm" },
         ],
         undefined,
         { operators: { validateSession: async (t: string) => fake(t) }, allowedOrigins: new Set() },
@@ -84,7 +84,7 @@ describe("API /cp/v1/finance, fase 1B: permisos y formas del CRM", () => {
     return { status: res.status, json, buf, headers: res.headers };
   };
 
-  it("catálogos: { items } con las formas del CRM; gestión con billing:write (también token de servicio)", async () => {
+  it("catálogos: { items } con las formas del CRM; gestión con finance:expenses (también token de servicio)", async () => {
     const cc = await call("GET", "/cost-centers", READ);
     expect(keys(cc.json)).toEqual(["items"]);
     expect(keys(cc.json.items[0])).toEqual(["active", "code", "id", "name"]);
@@ -121,7 +121,7 @@ describe("API /cp/v1/finance, fase 1B: permisos y formas del CRM", () => {
     expect((await call("GET", "/suppliers/999", READ)).status).toBe(404);
   });
 
-  it("bancos y caja: alta con subcuenta (billing:write, sin administración) y saldo", async () => {
+  it("bancos y caja: alta con subcuenta (finance:expenses, sin finance:config) y saldo", async () => {
     const b = await call("POST", "/bank-accounts", WRITE, { name: "CaixaBank", iban: IBAN, bankName: "CaixaBank", openingDate: "2026-01-01" });
     expect(b.status).toBe(201);
     expect(b.json.item).toMatchObject({ name: "CaixaBank", iban: IBAN, bankName: "CaixaBank", accountCode: "57200001", openingDate: "2026-01-01", active: true, balanceCents: 0 });

@@ -17,7 +17,7 @@ Estado: **fase 1A (libro contable)**, **fase 1B (operaciones)**, **fase 2 (Strip
 | Reglas puras | `server/finance/rules.ts` | Validación y cuadre, asiento de factura y rectificativa, reversión, regularización, cierre y apertura, sumas y saldos, mayor, CSV |
 | Almacén | `server/finance/store.ts` | `MemoryFinanceStore` (pruebas) y `MysqlFinanceStore`; `finTablesReady` |
 | Servicio | `server/finance/service.ts` | Orquesta, audita cada escritura y sincroniza las facturas emitidas (solo lectura de `server/invoicing`) |
-| Permisos | `server/finance/permissions.ts` | Una constante por capacidad (provisional, ver abajo) |
+| Permisos | `server/finance/permissions.ts` | Un ámbito `finance:*` por capacidad, registro de denegaciones (ver abajo) |
 | API | `server/finance/api.ts`, `server/finance/http.ts` | `/cp/v1/finance/*` con zod; errores `{ error, message }` en español |
 | Tipos 1B | `server/finance/opsTypes.ts` | Centros de coste, categorías, proveedores, gastos, pagos, documentos, recurrentes, bancos, extractos, movimientos y caja |
 | Reglas puras 1B | `server/finance/opsRules.ts` | Cálculo fiscal del gasto, asientos de gasto/pago/banco/caja, recurrentes, Norma 43, CaixaBank, CSV, duplicados, sugerencias, NIF, IBAN, firma de documentos |
@@ -180,7 +180,7 @@ svc.checkPostable(draft: EntryDraft): Promise<void>
 |---|---|---|
 | `GET /finance/cost-centers` · `POST` · `PATCH /:id` | lectura · gestión | `{ items:[{id,code,name,active}] }` · `{ item }` |
 | `GET /finance/categories` · `POST` · `PATCH /:id` | lectura · gestión | `{ items:[{id,name,accountCode,defaultTaxRateBp,active}] }` |
-| `GET /finance/suppliers?q&active&limit≤500&offset` · `POST` · `GET|PATCH /:id` | lectura · gestión | `{ items, total }` · `{ item }` |
+| `GET /finance/suppliers?q&active&limit≤500&offset` · `POST` · `GET|PATCH /:id` | lectura · proveedores | `{ items, total }` · `{ item }` |
 | `GET /finance/suppliers/:id/statement?from&to` | lectura | `{ expenses, payments, pendingCents, overdueCents, upcoming }` |
 | `GET /finance/expenses?status&paymentStatus&supplier&category&costCenter&from&to&q&due=overdue&sort&dir&limit&offset` | lectura | `{ items, total }` con `supplierName, paidCents, pendingCents` |
 | `POST /finance/expenses` · `PATCH /:id` (borrador) | gestión | `{ item }` |
@@ -300,7 +300,7 @@ otra pasarela; bastaría con un lector de su informe que produzca las mismas fil
 | Ruta | Permiso | Respuesta |
 |---|---|---|
 | `GET /finance/stripe/settings` | lectura | `{ item:{stripeFeeVat,feeVatRateBp,stripePayoutBankAccountId,disputeAccountCode,updatedBy,updatedAt} }` |
-| `PATCH /finance/stripe/settings` | administración | `{ item }` |
+| `PATCH /finance/stripe/settings` | configuración | `{ item }` |
 | `POST /finance/stripe/imports {kind,filename,contentBase64}` · `GET` | gestión · lectura | `{ item:{id,kind,filename,sha256,rows,inserted,duplicates,refreshed,nonEur,errors,problems[{line,message}],importedBy,createdAt} }` · `{ items, total }` |
 | `GET /finance/stripe/transactions?type&status&from&to&payout&issue=open&q&limit&offset` | lectura | `{ items, total }` |
 | `POST /finance/stripe/post {until?}` | contabilizar | `{ posted, skipped, errors[{transactionId,message}], truncated }` |
@@ -397,9 +397,9 @@ en `fin_audit_log`.
   compensar o a devolver). Deja 472/477 del periodo a cero.
 - **Pago:** Debe 4750 (303), 4751 (111 y 115), 4752 (200), 473 (202) o 476 (seguros sociales) · Haber banco
   (`tax-payment:<obligación>`). Los modelos informativos (390, 349, 347, 190, 180) no tienen pago.
-- **Reapertura** (solo administración): de presentado sin pago a borrador, revirtiendo la liquidación. Un trimestre
+- **Reapertura** (`finance:sensitive`): de presentado sin pago a borrador, revirtiendo la liquidación. Un trimestre
   congelado no se reabre; una obligación pagada tampoco.
-- **Cierre del trimestre fiscal** (`POST /tax/quarters/:year/:quarter/close {closePeriods?}`, administración): exige todo
+- **Cierre del trimestre fiscal** (`POST /tax/quarters/:year/:quarter/close {closePeriods?}`, `finance:sensitive`): exige todo
   presentado, congela las obligaciones del trimestre y, si se pide, cierra los tres periodos contables (fase 1A).
 
 ### Modelos
@@ -456,21 +456,21 @@ en `fin_audit_log`.
 | Ruta | Permiso | Respuesta |
 |---|---|---|
 | `GET /tax/settings` | lectura | `{item: TaxSettings\|null, log:[{at, actor, changes:{campo:[antes, después]}, note}], defaults}` |
-| `PATCH /tax/settings` | administración | `{item}` |
+| `PATCH /tax/settings` | configuración | `{item}` |
 | `GET /tax/dashboard` | lectura | `{asOf, hasEmployees, settingsMissing, quarter:{label}, upcoming, estimates, deferrals, dossiers, warnings}` |
 | `GET /tax/calendar?year` · `POST /tax/calendar/generate` | lectura · operador | `{items, notApplicable}` · `{created, existing, retired, notApplicable}` |
 | `GET /tax/obligations?year&model&status` · `GET /tax/obligations/:id` | lectura | `{items, total}` · `{item: Obligation & {draft, log, documents}}` |
 | `POST /tax/obligations/:id/calculate\|review\|present\|pay\|mark` | operador | `{item}` |
-| `POST /tax/obligations/:id/reopen` · `POST /tax/quarters/:year/:quarter/close` | administración | `{item}` |
+| `POST /tax/obligations/:id/reopen` · `POST /tax/quarters/:year/:quarter/close` | sensible | `{item}` |
 | `GET /tax/models/:model/preview?year&period` | lectura | Draft |
-| `GET /tax/registers/issued.csv\|received.csv` · `GET /tax/export.zip` | lectura | CSV · ZIP |
-| `GET\|POST /tax/payrolls` · `POST /tax/payrolls/:id/post\|pay` | lectura · operador | `{items}` · `{item}` |
+| `GET /tax/registers/issued.csv\|received.csv` · `GET /tax/export.zip` | exportar | CSV · ZIP |
+| `GET\|POST /tax/payrolls` · `POST /tax/payrolls/:id/post\|pay` | lectura · contabilizar | `{items}` · `{item}` |
 | `GET\|POST /tax/deferrals` · `PATCH /tax/deferrals/:id` · `POST /tax/deferrals/:id/installments/:n/pay` | lectura · operador | `{items}` · `{item}` |
 | `GET\|POST /tax/dossiers` · `GET\|PATCH /tax/dossiers/:id` · `POST /tax/dossiers/:id/log` | lectura · operador | `{items}` · `{item: Dossier & {log, documents}}` |
 | `GET /tax/corporate/:year` · `POST /tax/corporate/:year/adjustments` | lectura · operador | `{item}` |
 
-«Operador» = `billing:write` + sesión de operador (nunca un token de servicio); «administración» = además rol `admin` o
-`superadmin`.
+«Operador» = `finance:tax` + sesión de operador (nunca un token de servicio); «configuración» = `finance:config`,
+«sensible» = `finance:sensitive` y «exportar» = `finance:export` (ver «Permisos»).
 
 ### Decisiones fiscales que debe confirmar la gestoría
 
@@ -574,44 +574,66 @@ oculta esas páginas con `hiddenRoutes`). Sin Stripe (0036), lo que depende de S
 | Ruta | Permiso | Respuesta |
 |---|---|---|
 | `GET /finance/daily?date` | lectura | `{date, today, counts, alerts, invoices, stripe, payouts, bank, expenses, receivables, tax, entries:{drafts}, review}` |
-| `POST /finance/daily/:date/review {note?}` | operador | `201` o `200` `{item: Review & {log}, created}` |
+| `POST /finance/daily/:date/review {note?}` | contabilizar | `201` o `200` `{item: Review & {log}, created}` |
 | `GET /finance/daily/reviews?from&to&limit&offset` | lectura | `{items: Review[], total}` |
 | `GET /finance/reports/pnl?from&to&granularity&compare&costCenter` | lectura | `{from, to, granularity, costCenter, periods, compare, lines, result, notes}` |
 | `GET /finance/reports/balance?date` | lectura | `{date, assets, equityAndLiabilities, check, result}` |
 | `GET /finance/reports/cashflow?from&to&forecastDays` | lectura | `{from, to, accounts, totals, months, byNature, forecast}` |
 | `GET /finance/reports/aging?side&date` | lectura | `{side, date, buckets, totals, parties, basis}` |
 | `GET /finance/reports/expenses?from&to&groupBy&compare` | lectura | `{from, to, groupBy, months, compare, items, totals}` |
-| `GET /finance/reports/:report.csv?…` | lectura | CSV |
+| `GET /finance/reports/:report.csv?…` | exportar | CSV |
 | `GET /finance/analytics/revenue-margin?year` | lectura (+ `usage:read` para el top de empresas) | `{year, months, totals, ytd, definitions, commercial}` |
 | `GET /finance/analytics/conversion-health?from&to` | lectura | `{from, to, asOf, months, totals, truncated, commercialFunnel, notes}` |
 | `GET /finance/categories` · `PATCH /finance/categories/:id {…, isDirectCost}` | lectura · gestión | cada categoría con `isDirectCost` (bool o null) y `directCost` (resuelta) |
 
 Valores: `granularity` = `month` | `quarter` | `year`; `compare` = `none` | `previous` | `year`; `forecastDays` = 0, 30,
 60 o 90 (90 por defecto; 0 = sin previsión); `side` = `receivable` | `payable`; `groupBy` = `category` | `costCenter` |
-`supplier`. «Operador» = `billing:write` + sesión de operador. El detalle de cada objeto está en las pruebas de formas
+`supplier`. Los ámbitos de cada palabra están en «Permisos». El detalle de cada objeto está en las pruebas de formas
 (`server/finance/analysisApi.test.ts`).
 
-## Permisos (provisionales)
+## Permisos
 
-Añadir ámbitos nuevos toca ficheros críticos del plano de control, así que la fase 1 usa los existentes, centralizados
-en `server/finance/permissions.ts`:
+Cada capacidad tiene su ámbito propio (`finance:*`, en `server/controlPlane/auth.ts`), centralizado en
+`server/finance/permissions.ts` y exigido siempre en el servidor; el CRM solo oculta lo que no se puede.
+`server/finance/permissions.test.ts` recorre el router completo y falla si alguna ruta de `/finance` queda sin ámbito o
+exige uno distinto del previsto en su tabla de rutas.
 
-| Capacidad | Fase 1 |
-|---|---|
-| Consulta y exportaciones | `billing:read` |
-| Gestión: centros, categorías, proveedores, borradores de gastos, documentos, recurrentes, cuentas bancarias y cajas, importar extractos e informes de Stripe, ignorar movimientos | `billing:write` |
-| Contabilizar o revertir: asientos manuales, sincronizar facturas, registrar y anular gastos, pagos y su reversión, conciliar y desvincular (también payouts y cobros por transferencia), contabilizar Stripe, revisar incidencias, movimientos de caja | `billing:write` + sesión de operador (nunca un token de servicio) |
-| Fase 3: calendario, borradores, presentación y pago registrados, nóminas, aplazamientos, expedientes, ajustes del 200 | `billing:write` + sesión de operador |
-| Fase 4: consulta del control diario, informes, análisis y sus CSV | `billing:read` (el top de empresas por rentabilidad, además `usage:read`) |
-| Fase 4: marca de coste directo de las categorías | `billing:write` |
-| Fase 4: revisión diaria (y su nota) | `billing:write` + sesión de operador |
-| Cerrar/reabrir periodos y cerrar ejercicios, plan contable (alta de ejercicios: solo `billing:write`), configuración de Stripe, configuración fiscal, reapertura de lo presentado y cierre del trimestre fiscal | `billing:write` + sesión de operador + rol `admin` o `superadmin` |
+| Ámbito | Capacidad | Además | Rutas |
+|---|---|---|---|
+| `finance:read` | Consulta financiera | — | Todos los `GET` salvo exportaciones (libro, operaciones, Stripe y conciliación, gestoría, control diario, informes y análisis; el top de empresas por rentabilidad exige además `usage:read`) |
+| `finance:expenses` | Gestión de gastos | — | Centros de coste y categorías (también la marca de coste directo), borradores de gastos, documentos, recurrentes (y su ejecución), cuentas bancarias y cajas, importar extractos e informes de Stripe, ignorar movimientos |
+| `finance:suppliers` | Gestión de proveedores | — | `POST /suppliers` · `PATCH /suppliers/:id` |
+| `finance:post` | Contabilización | sesión de operador | Asientos manuales, contabilizar, anular borradores y revertir, sincronizar facturas, registrar y anular gastos, pagos y su reversión, conciliar y desvincular (bancos, payouts, cobros), movimientos de caja, contabilizar Stripe, revisar incidencias, nóminas (alta, asiento y pago), revisión diaria |
+| `finance:tax` | Gestión fiscal (gestoría) | sesión de operador | Generar el calendario, calcular, revisar, presentar (registro), pagar y marcar obligaciones, aplazamientos y sus cuotas, expedientes, ajustes del 200 |
+| `finance:config` | Configuración | sesión de operador | Plan contable (`POST /accounts`, `PATCH /accounts/:code`), alta de ejercicios, configuración de Stripe y configuración fiscal |
+| `finance:export` | Exportaciones | — | `journal.csv`, `trial-balance.csv`, `reports/:report.csv`, libros registro (`tax/registers/*.csv`) y `tax/export.zip` |
+| `finance:sensitive` | Operaciones sensibles | sesión de operador | Cerrar y reabrir periodos, cerrar ejercicios, cerrar el trimestre fiscal y reabrir obligaciones presentadas |
 
-El alta de una cuenta bancaria o de una caja crea su subcuenta en el plan contable desde el servicio (alta derivada): no
-exige el rol de administración que pide el alta manual de cuentas.
+«Sesión de operador» = solo personas con cookie de operador; nunca un token de servicio ni una sesión SSO. Las
+capacidades sin esa marca admiten también tokens de servicio que tengan el ámbito. **Tokens de servicio: sin acceso a
+finanzas por defecto**; ninguno lo tiene hoy y solo se concedería, con el ámbito mínimo, a una integración existente e
+identificada que lo necesite.
 
-Plan: en una PR protegida aparte, ámbitos propios (`finance:read`, `finance:write`, `finance:close`) en
-`server/controlPlane/auth.ts` y `operatorRoles.ts`, cambiando solo las constantes de `permissions.ts`.
+El alta de una cuenta bancaria o de una caja crea su subcuenta en el plan contable desde el servicio (alta derivada):
+basta `finance:expenses`, sin `finance:config`.
+
+**Reparto por rol** (`server/controlPlane/operatorRoles.ts`; antes todo dependía de `billing:read`/`billing:write` y de
+los roles `admin|superadmin` para cierres y configuración):
+
+| Rol | Antes | Después |
+|---|---|---|
+| `superadmin` | todo (billing:read + billing:write + rol) | los ocho `finance:*` |
+| `admin` | todo (billing:read + billing:write + rol) | los ocho `finance:*` |
+| `sales` (comercial) | consulta y exportaciones (billing:read) | ninguno: conserva la consulta comercial (facturación, cobros, métricas) con `billing:read`, sin contabilidad, gestoría ni exportaciones |
+| `readonly` | consulta y exportaciones (billing:read) | `finance:read` (pierde las exportaciones CSV/ZIP) |
+| `support` | nada | nada |
+
+La facturación (`billing:*`: facturas, cobros, cobros en riesgo, tarifas) no cambia: ver finanzas ya no depende de
+`billing:*` ni ver facturación de `finance:*`.
+
+**Denegaciones registradas:** cada 403 de `/finance` deja una línea en el log estructurado
+`{ctx:"Finance", event:"permission_denied", method, route, scope, reason, actorType, actorId, requestId}`, con el patrón
+de la ruta (sin identificadores) y sin cuerpo ni parámetros. `reason` = `missing_scope` | `operator_session_required`.
 
 ## Fases siguientes
 

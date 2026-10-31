@@ -1,7 +1,7 @@
 /**
  * Finanzas corporativas, fase 1B: rutas de operaciones bajo /cp/v1/finance (CRM 0035). Formas EXACTAS del anexo
- * CRM-ESPERA. Permisos (./permissions.ts): lectura = billing:read; gestión = billing:write; lo que contabiliza o
- * revierte = billing:write + sesión de operador (nunca un token de servicio).
+ * CRM-ESPERA. Permisos (./permissions.ts): lectura = finance:read; gestión = finance:expenses (proveedores:
+ * finance:suppliers); lo que contabiliza o revierte = finance:post + sesión de operador (nunca un token de servicio).
  *
  *   GET|POST /cost-centers · PATCH /cost-centers/:id                                       lectura | gestión
  *   GET|POST /categories · PATCH /categories/:id                                           lectura | gestión
@@ -28,7 +28,7 @@ import type { FinanceAnalysisService } from "./analysisService";
 import type { FinanceOpsService } from "./opsService";
 import { FinanceError } from "./types";
 import { ACCOUNT_MATCH_TYPES, DOCUMENT_OWNERS, EXPENSE_KINDS, EXPENSE_STATUSES, FREQUENCIES, IMPORT_FORMATS, MOVEMENT_STATUSES, PAYMENT_METHODS, PAYMENT_STATUSES } from "./opsTypes";
-import { canOperate, canPost, canRead } from "./permissions";
+import { canExpenses, canPost, canRead, canSuppliers } from "./permissions";
 
 /** Rutas con fichero en base64: el analizador JSON general (256 kB) no las lee; aquí, hasta 15 MB y tras el permiso. */
 export const FINANCE_UPLOAD_PATHS = /^\/cp\/v1\/finance\/(documents|bank-imports|stripe\/imports|tax\/obligations\/\d+\/present)\/?(\?|$)/;
@@ -125,11 +125,11 @@ const reason = z.object({ reason: z.string().max(300) }).strict();
 export function mountFinanceOpsRoutes(r: Router, ops: FinanceOpsService, analysis?: FinanceAnalysisService | null): void {
   // Centros de coste
   r.get("/cost-centers", ...canRead, wrap(async (_req, res) => void res.json({ items: await ops.costCenters() })));
-  r.post("/cost-centers", ...canOperate, wrap(async (req, res) => {
+  r.post("/cost-centers", ...canExpenses, wrap(async (req, res) => {
     const b = z.object({ code: z.string().max(20), name: z.string().max(120) }).strict().parse(body(req));
     res.status(201).json({ item: await ops.createCostCenter(b, actorOf(req)) });
   }));
-  r.patch("/cost-centers/:id", ...canOperate, wrap(async (req, res) => {
+  r.patch("/cost-centers/:id", ...canExpenses, wrap(async (req, res) => {
     const b = z.object({ code: z.string().max(20).optional(), name: z.string().max(120).optional(), active: z.boolean().optional() }).strict().parse(body(req));
     res.json({ item: await ops.patchCostCenter(id.parse(req.params.id), b, actorOf(req)) });
   }));
@@ -138,11 +138,11 @@ export function mountFinanceOpsRoutes(r: Router, ops: FinanceOpsService, analysi
   // Fase 4 (CRM 0038): cada categoría lleva además su marca de coste directo (`isDirectCost`, null = según cuenta) y la resuelta (`directCost`)
   const categoryOut = async <T extends { id: number; name: string; accountCode: string }>(items: T[]) => (analysis ? analysis.decorateCategories(items) : items);
   r.get("/categories", ...canRead, wrap(async (_req, res) => void res.json({ items: await categoryOut(await ops.categories()) })));
-  r.post("/categories", ...canOperate, wrap(async (req, res) => {
+  r.post("/categories", ...canExpenses, wrap(async (req, res) => {
     const b = z.object({ name: z.string().max(120), accountCode, defaultTaxRateBp: bp.nullable().optional() }).strict().parse(body(req));
     res.status(201).json({ item: (await categoryOut([await ops.createCategory(b, actorOf(req))]))[0] });
   }));
-  r.patch("/categories/:id", ...canOperate, wrap(async (req, res) => {
+  r.patch("/categories/:id", ...canExpenses, wrap(async (req, res) => {
     const { isDirectCost, ...b } = z.object({ name: z.string().max(120).optional(), accountCode: accountCode.optional(), defaultTaxRateBp: bp.nullable().optional(), active: z.boolean().optional(), isDirectCost: z.boolean().nullable().optional() }).strict().parse(body(req));
     if (isDirectCost !== undefined && !analysis) throw new FinanceError("unavailable", "La marca de coste directo llega con el análisis (migración 0038), que no está montado en este entorno");
     const categoryId = id.parse(req.params.id);
@@ -156,9 +156,9 @@ export function mountFinanceOpsRoutes(r: Router, ops: FinanceOpsService, analysi
     const q = z.object({ q: z.string().trim().max(100).optional(), active: z.enum(["true", "false", ""]).optional(), limit: limit(500), offset }).strict().parse(req.query);
     res.json(await ops.suppliers({ q: q.q || undefined, active: q.active ? q.active === "true" : undefined, limit: q.limit, offset: q.offset }));
   }));
-  r.post("/suppliers", ...canOperate, wrap(async (req, res) => void res.status(201).json({ item: await ops.createSupplier(supplierSchema.parse(body(req)), actorOf(req)) })));
+  r.post("/suppliers", ...canSuppliers, wrap(async (req, res) => void res.status(201).json({ item: await ops.createSupplier(supplierSchema.parse(body(req)), actorOf(req)) })));
   r.get("/suppliers/:id", ...canRead, wrap(async (req, res) => void res.json({ item: await ops.supplier(id.parse(req.params.id)) })));
-  r.patch("/suppliers/:id", ...canOperate, wrap(async (req, res) => {
+  r.patch("/suppliers/:id", ...canSuppliers, wrap(async (req, res) => {
     const b = supplierSchema.partial().extend({ active: z.boolean().optional() }).strict().parse(body(req));
     res.json({ item: await ops.patchSupplier(id.parse(req.params.id), b, actorOf(req)) });
   }));
@@ -190,12 +190,12 @@ export function mountFinanceOpsRoutes(r: Router, ops: FinanceOpsService, analysi
     const { supplier, category, costCenter, q: text, ...rest } = q;
     res.json(await ops.listExpenses({ ...rest, supplierId: supplier, categoryId: category, costCenterId: costCenter, q: text || undefined }));
   }));
-  r.post("/expenses", ...canOperate, wrap(async (req, res) => {
+  r.post("/expenses", ...canExpenses, wrap(async (req, res) => {
     const e = await ops.createExpense(expenseSchema.parse(body(req)), actorOf(req));
     res.status(201).json({ item: ops.expenseDto(e) });
   }));
   r.get("/expenses/:id", ...canRead, wrap(async (req, res) => void res.json(await ops.expenseWithPayments(id.parse(req.params.id)))));
-  r.patch("/expenses/:id", ...canOperate, wrap(async (req, res) => {
+  r.patch("/expenses/:id", ...canExpenses, wrap(async (req, res) => {
     const e = await ops.patchExpense(id.parse(req.params.id), expenseSchema.partial().strict().parse(body(req)), actorOf(req));
     res.json({ item: ops.expenseDto(e) });
   }));
@@ -221,7 +221,7 @@ export function mountFinanceOpsRoutes(r: Router, ops: FinanceOpsService, analysi
     const q = z.object({ ownerType: z.enum(DOCUMENT_OWNERS), ownerId: qId }).strict().parse(req.query);
     res.json({ items: await ops.documents(q.ownerType, q.ownerId) });
   }));
-  r.post("/documents", ...canOperate, bigJson, wrap(async (req, res) => {
+  r.post("/documents", ...canExpenses, bigJson, wrap(async (req, res) => {
     const b = z.object({ ownerType: z.enum(DOCUMENT_OWNERS), ownerId: ref, filename: z.string().min(1).max(255), contentBase64: z.string().min(1) }).strict().parse(body(req));
     res.status(201).json({ item: await ops.uploadDocument(b, actorOf(req)) });
   }));
@@ -234,7 +234,7 @@ export function mountFinanceOpsRoutes(r: Router, ops: FinanceOpsService, analysi
     res.setHeader("Cache-Control", "no-store");
     res.send(content);
   }));
-  r.post("/documents/:id/archive", ...canOperate, wrap(async (req, res) => void res.json({ item: await ops.archiveDocument(id.parse(req.params.id), actorOf(req)) })));
+  r.post("/documents/:id/archive", ...canExpenses, wrap(async (req, res) => void res.json({ item: await ops.archiveDocument(id.parse(req.params.id), actorOf(req)) })));
 
   // Gastos recurrentes (generan BORRADORES; no contabilizan)
   r.get("/recurring", ...canRead, wrap(async (_req, res) => void res.json({ items: await ops.recurring() })));
@@ -242,27 +242,27 @@ export function mountFinanceOpsRoutes(r: Router, ops: FinanceOpsService, analysi
     const q = z.object({ until: date }).strict().parse(req.query);
     res.json({ items: await ops.previewRecurring(q.until) });
   }));
-  r.post("/recurring/run", ...canOperate, wrap(async (req, res) => {
+  r.post("/recurring/run", ...canExpenses, wrap(async (req, res) => {
     const b = z.object({ until: date }).strict().parse(body(req));
     res.json(await ops.runRecurring(b.until, actorOf(req)));
   }));
-  r.post("/recurring", ...canOperate, wrap(async (req, res) => void res.status(201).json({ item: await ops.createRecurring(recurringSchema.parse(body(req)), actorOf(req)) })));
-  r.patch("/recurring/:id", ...canOperate, wrap(async (req, res) => {
+  r.post("/recurring", ...canExpenses, wrap(async (req, res) => void res.status(201).json({ item: await ops.createRecurring(recurringSchema.parse(body(req)), actorOf(req)) })));
+  r.patch("/recurring/:id", ...canExpenses, wrap(async (req, res) => {
     const b = recurringSchema.partial().extend({ active: z.boolean().optional() }).strict().parse(body(req));
     res.json({ item: await ops.patchRecurring(id.parse(req.params.id), b, actorOf(req)) });
   }));
 
   // Bancos
   r.get("/bank-accounts", ...canRead, wrap(async (_req, res) => void res.json({ items: await ops.bankAccounts() })));
-  r.post("/bank-accounts", ...canOperate, wrap(async (req, res) => {
+  r.post("/bank-accounts", ...canExpenses, wrap(async (req, res) => {
     const b = z.object({ name: z.string().max(120), iban: z.string().max(42).nullable().optional(), bankName: z.string().max(120).nullable().optional(), openingDate: date.nullable().optional() }).strict().parse(body(req));
     res.status(201).json({ item: await ops.createBankAccount(b, actorOf(req)) });
   }));
-  r.patch("/bank-accounts/:id", ...canOperate, wrap(async (req, res) => {
+  r.patch("/bank-accounts/:id", ...canExpenses, wrap(async (req, res) => {
     const b = z.object({ name: z.string().max(120).optional(), bankName: z.string().max(120).nullable().optional(), active: z.boolean().optional() }).strict().parse(body(req));
     res.json({ item: await ops.patchBankAccount(id.parse(req.params.id), b, actorOf(req)) });
   }));
-  r.post("/bank-imports", ...canOperate, bigJson, wrap(async (req, res) => {
+  r.post("/bank-imports", ...canExpenses, bigJson, wrap(async (req, res) => {
     const b = z.object({ bankAccountId: ref, format: z.enum(IMPORT_FORMATS), filename: z.string().min(1).max(255), contentBase64: z.string().min(1), mapping: mappingSchema.nullable().optional() }).strict().parse(body(req));
     res.status(201).json({ item: await ops.importStatement(b, actorOf(req)) });
   }));
@@ -277,11 +277,11 @@ export function mountFinanceOpsRoutes(r: Router, ops: FinanceOpsService, analysi
   r.get("/bank-movements/:id/suggestions", ...canRead, wrap(async (req, res) => void res.json({ items: await ops.suggestions(id.parse(req.params.id)) })));
   r.post("/bank-movements/:id/match", ...canPost, wrap(async (req, res) => void res.json({ item: await ops.match(id.parse(req.params.id), matchSchema.parse(body(req)), actorOf(req)) })));
   r.post("/bank-movements/:id/unmatch", ...canPost, wrap(async (req, res) => void res.json({ item: await ops.unmatch(id.parse(req.params.id), actorOf(req)) })));
-  r.post("/bank-movements/:id/ignore", ...canOperate, wrap(async (req, res) => void res.json({ item: await ops.ignore(id.parse(req.params.id), actorOf(req)) })));
+  r.post("/bank-movements/:id/ignore", ...canExpenses, wrap(async (req, res) => void res.json({ item: await ops.ignore(id.parse(req.params.id), actorOf(req)) })));
 
   // Caja
   r.get("/cash-accounts", ...canRead, wrap(async (_req, res) => void res.json({ items: await ops.cashAccounts() })));
-  r.post("/cash-accounts", ...canOperate, wrap(async (req, res) => {
+  r.post("/cash-accounts", ...canExpenses, wrap(async (req, res) => {
     const b = z.object({ name: z.string().max(120) }).strict().parse(body(req));
     res.status(201).json({ item: await ops.createCashAccount(b, actorOf(req)) });
   }));

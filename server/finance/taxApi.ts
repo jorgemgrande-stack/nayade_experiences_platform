@@ -1,9 +1,9 @@
 /**
  * Finanzas corporativas, fase 3: gestoría e impuestos bajo /cp/v1/finance/tax (CRM 0037). Formas EXACTAS del anexo
  * CRM-ESPERA-FASE3 (el CRM ya está hecho): fichas `{item}`, listas `{items}`/`{items,total}`, céntimos, null = sin datos.
- * Permisos (./permissions.ts): lectura = billing:read; borradores, obligaciones, nóminas, aplazamientos y expedientes =
- * billing:write + sesión de operador; configuración fiscal, reapertura de lo presentado y cierre del trimestre = además
- * rol admin|superadmin. El sistema NUNCA presenta nada ante ningún organismo.
+ * Permisos (./permissions.ts): lectura = finance:read; borradores, obligaciones, aplazamientos y expedientes =
+ * finance:tax; nóminas = finance:post; configuración fiscal = finance:config; reapertura de lo presentado y cierre del
+ * trimestre = finance:sensitive (todo lo que escribe, con sesión de operador); libros y ZIP = finance:export. El sistema NUNCA presenta nada ante ningún organismo.
  *
  *   GET   /tax/settings                                  lectura         { item: TaxSettings|null, log, defaults }
  *   PATCH /tax/settings                                  configuración   campos de la configuración (§1)
@@ -13,14 +13,14 @@
  *   GET   /tax/obligations?year&model&status             lectura         { items, total }
  *   GET   /tax/obligations/:id                           lectura         { item: Obligation & { draft, log, documents } }
  *   POST  /tax/obligations/:id/calculate|review|present|pay|mark      operador
- *   POST  /tax/obligations/:id/reopen                    configuración   { reason }
- *   POST  /tax/quarters/:year/:quarter/close             configuración   { closePeriods? }
+ *   POST  /tax/obligations/:id/reopen                    sensible        { reason }
+ *   POST  /tax/quarters/:year/:quarter/close             sensible        { closePeriods? }
  *   GET   /tax/models/:model/preview?year&period         lectura         Draft
- *   GET   /tax/registers/issued.csv|received.csv?from&to lectura
+ *   GET   /tax/registers/issued.csv|received.csv?from&to exportar
  *   GET|POST /tax/payrolls · POST /tax/payrolls/:id/post|pay
  *   GET|POST /tax/deferrals · PATCH /tax/deferrals/:id · POST /tax/deferrals/:id/installments/:n/pay
  *   GET|POST /tax/dossiers · GET|PATCH /tax/dossiers/:id · POST /tax/dossiers/:id/log
- *   GET   /tax/export.zip?from&to                        lectura         (máximo un año)
+ *   GET   /tax/export.zip?from&to                        exportar        (máximo un año)
  *   GET   /tax/corporate/:year · POST /tax/corporate/:year/adjustments
  *
  * La presentación lleva el PDF del justificante en base64 en el mismo cuerpo: su ruta lee el cuerpo con el límite
@@ -30,7 +30,7 @@ import type { Router } from "express";
 import { z } from "zod";
 import { actorOf, wrap } from "./http";
 import { bigJson } from "./opsApi";
-import { canClose, canPost, canRead } from "./permissions";
+import { canConfig, canExport, canPost, canRead, canSensitive, canTax } from "./permissions";
 import { periodLabel } from "./taxRules";
 import type { FinanceTaxService } from "./taxService";
 import {
@@ -247,7 +247,7 @@ export function mountFinanceTaxRoutes(r: Router, tax: FinanceTaxService): void {
     const [item, log] = await Promise.all([tax.storedSettings(), tax.settingsLog()]);
     res.json({ item, log: settingsLogDto(log), defaults: tax.defaults() });
   }));
-  r.patch("/tax/settings", ...canClose, wrap(async (req, res) => {
+  r.patch("/tax/settings", ...canConfig, wrap(async (req, res) => {
     const b = settingsSchema.parse(body(req));
     res.json({ item: (await tax.saveSettings(b, actorOf(req))) as TaxSettings });
   }));
@@ -262,7 +262,7 @@ export function mountFinanceTaxRoutes(r: Router, tax: FinanceTaxService): void {
     const c = await tax.calendar(q.year);
     res.json({ items: c.items.map(obligationDto), notApplicable: c.notApplicable });
   }));
-  r.post("/tax/calendar/generate", ...canPost, wrap(async (req, res) => {
+  r.post("/tax/calendar/generate", ...canTax, wrap(async (req, res) => {
     const b = z.object({ year: z.number().int().min(2000).max(2100) }).strict().parse(body(req));
     res.json(await tax.generateCalendar(b.year, actorOf(req)));
   }));
@@ -274,17 +274,17 @@ export function mountFinanceTaxRoutes(r: Router, tax: FinanceTaxService): void {
     res.json({ items: out.items.map(obligationDto), total: out.total });
   }));
   r.get("/tax/obligations/:id", ...canRead, wrap(async (req, res) => void res.json({ item: await fullObligation(id.parse(req.params.id)) })));
-  r.post("/tax/obligations/:id/calculate", ...canPost, wrap(async (req, res) => {
+  r.post("/tax/obligations/:id/calculate", ...canTax, wrap(async (req, res) => {
     const b = z.object({ force: z.boolean().optional() }).strict().parse(body(req));
     const oid = id.parse(req.params.id);
     await tax.calculate(oid, actorOf(req), b);
     res.json({ item: await fullObligation(oid) });
   }));
-  r.post("/tax/obligations/:id/review", ...canPost, wrap(async (req, res) => {
+  r.post("/tax/obligations/:id/review", ...canTax, wrap(async (req, res) => {
     const b = z.object({ note: z.string().max(500).nullable().optional() }).strict().parse(body(req));
     res.json({ item: obligationDto(await tax.review(id.parse(req.params.id), actorOf(req), b.note)) });
   }));
-  r.post("/tax/obligations/:id/present", ...canPost, bigJson, wrap(async (req, res) => {
+  r.post("/tax/obligations/:id/present", ...canTax, bigJson, wrap(async (req, res) => {
     const b = z
       .object({
         presentedOn: date,
@@ -298,16 +298,16 @@ export function mountFinanceTaxRoutes(r: Router, tax: FinanceTaxService): void {
       .parse(body(req));
     res.json({ item: obligationDto(await tax.present(id.parse(req.params.id), b, actorOf(req))) });
   }));
-  r.post("/tax/obligations/:id/pay", ...canPost, wrap(async (req, res) => void res.json({ item: obligationDto(await tax.pay(id.parse(req.params.id), paySchema.parse(body(req)), actorOf(req))) })));
-  r.post("/tax/obligations/:id/mark", ...canPost, wrap(async (req, res) => {
+  r.post("/tax/obligations/:id/pay", ...canTax, wrap(async (req, res) => void res.json({ item: obligationDto(await tax.pay(id.parse(req.params.id), paySchema.parse(body(req)), actorOf(req))) })));
+  r.post("/tax/obligations/:id/mark", ...canTax, wrap(async (req, res) => {
     const b = z.object({ status: z.enum(["a_compensar", "sin_actividad"]), note: z.string().max(500).nullable().optional() }).strict().parse(body(req));
     res.json({ item: obligationDto(await tax.mark(id.parse(req.params.id), b.status, b.note, actorOf(req))) });
   }));
-  r.post("/tax/obligations/:id/reopen", ...canClose, wrap(async (req, res) => {
+  r.post("/tax/obligations/:id/reopen", ...canSensitive, wrap(async (req, res) => {
     const b = z.object({ reason: z.string().max(300) }).strict().parse(body(req));
     res.json({ item: obligationDto(await tax.reopen(id.parse(req.params.id), b.reason, actorOf(req))) });
   }));
-  r.post("/tax/quarters/:year/:quarter/close", ...canClose, wrap(async (req, res) => {
+  r.post("/tax/quarters/:year/:quarter/close", ...canSensitive, wrap(async (req, res) => {
     const b = z.object({ closePeriods: z.boolean().optional() }).strict().parse(body(req));
     res.json({ item: await tax.closeQuarter(year.parse(req.params.year), z.coerce.number().int().parse(req.params.quarter), !!b.closePeriods, actorOf(req)) });
   }));
@@ -321,7 +321,7 @@ export function mountFinanceTaxRoutes(r: Router, tax: FinanceTaxService): void {
 
   // Libros registro
   for (const kind of ["issued", "received"] as const) {
-    r.get(`/tax/registers/${kind}.csv`, ...canRead, wrap(async (req, res) => {
+    r.get(`/tax/registers/${kind}.csv`, ...canExport, wrap(async (req, res) => {
       const q = z.object({ from: date.optional(), to: date.optional() }).strict().parse(req.query);
       const out = kind === "issued" ? await tax.issuedRegisterCsv(q.from, q.to) : await tax.receivedRegisterCsv(q.from, q.to);
       res.setHeader("Content-Type", "text/csv; charset=utf-8");
@@ -352,7 +352,7 @@ export function mountFinanceTaxRoutes(r: Router, tax: FinanceTaxService): void {
     const q = z.object({ status: z.enum(DEFERRAL_STATUSES).optional(), obligationId: id.optional() }).strict().parse(req.query);
     res.json({ items: await deferralsDto(await tax.listDeferrals(q)) });
   }));
-  r.post("/tax/deferrals", ...canPost, wrap(async (req, res) => {
+  r.post("/tax/deferrals", ...canTax, wrap(async (req, res) => {
     const b = z
       .object({
         obligationId: z.number().int().positive(),
@@ -367,11 +367,11 @@ export function mountFinanceTaxRoutes(r: Router, tax: FinanceTaxService): void {
       .parse(body(req));
     res.status(201).json({ item: (await deferralsDto([await tax.createDeferral(b, actorOf(req))]))[0] });
   }));
-  r.patch("/tax/deferrals/:id", ...canPost, wrap(async (req, res) => {
+  r.patch("/tax/deferrals/:id", ...canTax, wrap(async (req, res) => {
     const b = z.object({ status: z.enum(DEFERRAL_STATUSES).optional(), resolutionOn: date.nullable().optional(), reference: z.string().max(60).nullable().optional(), notes: z.string().max(500).nullable().optional() }).strict().parse(body(req));
     res.json({ item: (await deferralsDto([await tax.patchDeferral(id.parse(req.params.id), b, actorOf(req))]))[0] });
   }));
-  r.post("/tax/deferrals/:id/installments/:n/pay", ...canPost, wrap(async (req, res) => {
+  r.post("/tax/deferrals/:id/installments/:n/pay", ...canTax, wrap(async (req, res) => {
     const d = await tax.payInstallment(id.parse(req.params.id), z.coerce.number().int().positive().parse(req.params.n), paySchema.parse(body(req)), actorOf(req));
     res.json({ item: (await deferralsDto([d]))[0] });
   }));
@@ -386,16 +386,16 @@ export function mountFinanceTaxRoutes(r: Router, tax: FinanceTaxService): void {
     return { ...dossierDto(d.dossier), log: d.log.map(dossierLogDto), documents: d.documents };
   };
   r.get("/tax/dossiers/:id", ...canRead, wrap(async (req, res) => void res.json({ item: await fullDossier(id.parse(req.params.id)) })));
-  r.post("/tax/dossiers", ...canPost, wrap(async (req, res) => {
+  r.post("/tax/dossiers", ...canTax, wrap(async (req, res) => {
     const d = await tax.createDossier(dossierSchema.parse(body(req)), actorOf(req));
     res.status(201).json({ item: await fullDossier(d.id) });
   }));
-  r.patch("/tax/dossiers/:id", ...canPost, wrap(async (req, res) => {
+  r.patch("/tax/dossiers/:id", ...canTax, wrap(async (req, res) => {
     const did = id.parse(req.params.id);
     await tax.patchDossier(did, dossierSchema.partial().parse(body(req)), actorOf(req));
     res.json({ item: await fullDossier(did) });
   }));
-  r.post("/tax/dossiers/:id/log", ...canPost, wrap(async (req, res) => {
+  r.post("/tax/dossiers/:id/log", ...canTax, wrap(async (req, res) => {
     const b = z.object({ note: z.string().max(2000) }).strict().parse(body(req));
     const did = id.parse(req.params.id);
     await tax.addDossierNote(did, b.note, actorOf(req));
@@ -403,7 +403,7 @@ export function mountFinanceTaxRoutes(r: Router, tax: FinanceTaxService): void {
   }));
 
   // Exportación ZIP para la gestoría
-  r.get("/tax/export.zip", ...canRead, wrap(async (req, res) => {
+  r.get("/tax/export.zip", ...canExport, wrap(async (req, res) => {
     const q = z.object({ from: date.optional(), to: date.optional() }).strict().parse(req.query);
     const out = await tax.exportZip(q.from, q.to);
     res.setHeader("Content-Type", "application/zip");
@@ -443,7 +443,7 @@ export function mountFinanceTaxRoutes(r: Router, tax: FinanceTaxService): void {
       },
     });
   }));
-  r.post("/tax/corporate/:year/adjustments", ...canPost, wrap(async (req, res) => {
+  r.post("/tax/corporate/:year/adjustments", ...canTax, wrap(async (req, res) => {
     const b = z.object({ id: z.number().int().positive().optional(), kind: z.enum(ADJUSTMENT_KINDS), description: z.string().max(300), amountCents: cents, originYear: z.number().int().min(1990).max(2100).nullable().optional() }).strict().parse(body(req));
     const a = await tax.saveAdjustment(year.parse(req.params.year), b, actorOf(req));
     res.status(a ? 201 : 200).json({ item: a ? adjustmentDto(a) : null });
