@@ -96,7 +96,7 @@ function renderAll(): RenderedMail[] {
 const BAD_TOKEN = /\{\{\s*[\w.]+\s*\}\}|\bundefined\b|\bNaN\b|\[object [A-Za-z]+\]|>\s*null\s*<|:\s*null\b/;
 const OTHER_BRANDS = /n[aá]yade|skicenter|skibox|nayadeexperiences/i;
 /** Dominios a los que puede apuntar un enlace de estos correos de prueba. */
-const ALLOWED_HOSTS = [/\.app\.bigelephant\.es$/, /^(www\.)?bigelephant\.es$/, /\.example$/, /^sis-t\.redsys\.es$/, /^wa\.me$/, /^maps\.google\.com$/, /^www\.google\.com$/];
+const ALLOWED_HOSTS = [/\.app\.bigelephant\.es$/, /^(www\.)?bigelephant\.es$/, /\.example$/, /^sis-t\.redsys\.es$/, /^wa\.me$/, /^maps\.google\.com$/, /^www\.google\.com$/, /^www\.(instagram|facebook)\.com$/];
 
 export function problemsOf(m: RenderedMail): string[] {
   const p: string[] = [];

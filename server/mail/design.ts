@@ -6,7 +6,8 @@
  * invitaciones, soporte, avisos) y D · administración de Big Elephant (avisos INTERNOS al equipo: información
  * operativa primero, banda «Aviso interno», nada comercial). Componentes: cabecera con el logotipo oficial, antetítulo, título, ilustración,
  * tarjetas de datos con estado y total, avisos, pasos, línea de progreso, ayuda, consejos, botón «a prueba de
- * clientes» y pie corporativo. Siempre con versión de texto plano equivalente.
+ * clientes» y pie corporativo (blanco y centrado: logotipo, redes, enlaces y línea de servicio o de baja; aprobado el
+ * 31/10/2026). Siempre con versión de texto plano equivalente.
  *
  * Compatibilidad: maquetación con tablas y estilos en línea (Outlook de escritorio, Gmail, Apple Mail, móviles),
  * 600 px de ancho, imágenes con dimensiones y texto alternativo, enlaces https absolutos. Se lee igual con las
@@ -64,6 +65,8 @@ export interface EmailSpec {
   commercial?: boolean;
   /** Enlace personal de baja (firmado) de una comunicación comercial; sin él, la página de soporte. */
   unsubscribeUrl?: string | null;
+  /** Dirección del destinatario, para «Este email se ha enviado a…» del pie (cuando se conoce). */
+  recipient?: string | null;
 }
 
 /** Paleta del estándar aprobado. */
@@ -86,7 +89,6 @@ export const CORPORATE = {
   name: "BIG ELEPHANT",
   legalName: "IRON ELEPHANT CONSULTING, S.L.",
   taxId: "B26987875",
-  address: "Calle Corazón de María, 57, 1.º D · 28002 Madrid",
   supportEmail: "soporte@bigelephant.es",
   web: "https://www.bigelephant.es",
   tagline: ["Tu negocio,", "más lejos."],
@@ -95,7 +97,15 @@ export const CORPORATE = {
     { label: "Política de privacidad", path: "/politica-de-privacidad" },
     { label: "Términos del servicio", path: "/terminos-y-condiciones" },
   ],
+  social: [
+    { label: "Instagram", url: "https://www.instagram.com/bigelephantnet/", icon: "social-instagram" },
+    { label: "Facebook", url: "https://www.facebook.com/profile.php?id=61595651785681&locale=es_ES", icon: "social-facebook" },
+  ],
 };
+
+/** Identificación del remitente en las comunicaciones comerciales (LSSI, art. 20): titular y NIF, sin domicilio. */
+const COMMERCIAL_ID = `Big Elephant es un servicio de ${CORPORATE.legalName} · NIF ${CORPORATE.taxId}`;
+const SERVICE_FOOT = "Mensaje de servicio relacionado con tu cuenta. No es publicidad.";
 
 /** Pie de la familia D (avisos internos). */
 const ADMIN_FOOT = "Aviso interno para la administración de Big Elephant. Contiene información operativa: no lo reenvíes fuera del equipo.";
@@ -238,6 +248,51 @@ function blockText(b: Block): string[] {
   return [];
 }
 
+// ── Pie corporativo ──────────────────────────────────────────────────────────
+
+/** Variante del pie: comercial (destinatario y baja), interna (familia D) o de servicio (con el soporte, si se configura). */
+type FooterSpec = Pick<EmailSpec, "family" | "commercial" | "unsubscribeUrl" | "recipient"> & { support?: string | null };
+
+const serviceLine = (s: FooterSpec) => (s.family === "admin" ? ADMIN_FOOT : `${SERVICE_FOOT}${s.support ? ` ¿Dudas? Escríbenos a ${s.support}.` : ""}`);
+
+const unsubscribeLink = (s: FooterSpec) => (s.commercial && safeUrl(s.unsubscribeUrl)) || `${CORPORATE.web}/soporte`;
+
+/**
+ * Pie corporativo de Big Elephant (una sola fuente para todos sus correos): logotipo oficial (el mismo archivo de la cabecera), Instagram y Facebook,
+ * separador fino, enlaces corporativos y la línea secundaria de la variante. Sin domicilio ni fondo oscuro.
+ */
+export function corporateFooter(s: FooterSpec, logoUrl: string): string {
+  const logo = `<a href="${CORPORATE.web}" target="_blank" style="text-decoration:none"><img src="${esc(logoUrl)}" width="200" height="24" alt="Big Elephant" class="be-footLogo" style="display:block;margin:0 auto;border:0;width:200px;height:auto;max-width:100%"></a>`;
+  const social = CORPORATE.social
+    .map((n) => `<td style="padding:0 11px"><a href="${esc(n.url)}" target="_blank" title="Big Elephant en ${n.label}" style="text-decoration:none"><img src="${esc(asset(n.icon))}" width="40" height="40" alt="${n.label}" style="display:block;border:0;width:40px;height:40px"></a></td>`)
+    .join("");
+  const links = CORPORATE.links.map((l) => `<a href="${CORPORATE.web}${l.path}" target="_blank" style="color:${T.ink};text-decoration:underline;white-space:nowrap">${esc(l.label)}</a>`).join(` <span style="color:${T.muted}">&nbsp;·&nbsp;</span> `);
+  const recipient = s.recipient ? `Este email se ha enviado a <span style="color:${T.text}">${esc(s.recipient)}</span>.<br>` : "";
+  const note = s.commercial
+    ? `${recipient}Si no quieres seguir recibiendo estos mensajes, puedes <a href="${esc(unsubscribeLink(s))}" target="_blank" style="color:${T.ink};text-decoration:underline">darte de baja aquí</a>.<div style="margin-top:8px;font-size:11px;line-height:16px;color:#9CA3AF">${esc(COMMERCIAL_ID)}</div>`
+    : `${recipient}${esc(serviceLine(s))}`;
+  return (
+    `<tr><td align="center" class="be-foot" style="padding:30px 34px 28px;border-top:1px solid ${T.line};text-align:center">` +
+    logo +
+    `<table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin:20px auto 0"><tr>${social}</tr></table>` +
+    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0 18px"><tr><td height="1" bgcolor="#E5E7EB" style="height:1px;line-height:1px;font-size:1px;background:#E5E7EB">&nbsp;</td></tr></table>` +
+    `<div style="${F};font-size:13px;line-height:22px;color:${T.ink}">${links}</div>` +
+    `<div style="margin-top:14px;${F};font-size:12px;line-height:19px;color:${T.muted}">${note}</div>` +
+    `</td></tr>`
+  );
+}
+
+/** Versión de texto plano del pie corporativo (misma información). */
+export function corporateFooterText(s: FooterSpec): string[] {
+  return [
+    "Big Elephant · www.bigelephant.es",
+    CORPORATE.social.map((n) => `${n.label}: ${n.url}`).join(" · "),
+    ...CORPORATE.links.map((l) => `${l.label}: ${CORPORATE.web}${l.path}`),
+    ...(s.recipient ? [`Este email se ha enviado a ${s.recipient}.`] : []),
+    ...(s.commercial ? [`Baja de comunicaciones comerciales: ${unsubscribeLink(s)}`, COMMERCIAL_ID] : [serviceLine(s)]),
+  ];
+}
+
 // ── Composición ──────────────────────────────────────────────────────────────
 
 /** Correo completo con el estándar visual. Plataforma (con logotipo) o empresa (modo neutro). */
@@ -280,29 +335,15 @@ export function renderEmail(brand: EmailBrand, s: EmailSpec): MailContent & { te
     (cta ? `<p style="margin:14px 0 0;${F};font-size:12px;line-height:18px;color:${T.muted};text-align:center">Si el botón no funciona, copia esta dirección en el navegador:<br><span style="word-break:break-all;color:${T.text}">${esc(safeUrl(cta.url)!)}</span></p>` : "") +
     `</td></tr>`;
 
-  const links = CORPORATE.links.map((l) => `<a href="${CORPORATE.web}${l.path}" style="color:#ffffff;text-decoration:underline">${esc(l.label)}</a>`).join(" &nbsp;·&nbsp; ");
-  const unsubscribeUrl = (s.commercial && safeUrl(s.unsubscribeUrl)) || `${CORPORATE.web}/soporte`;
-  const unsubscribe = s.commercial ? `<div style="margin-top:8px"><a href="${esc(unsubscribeUrl)}" style="color:${T.navyText};text-decoration:underline">Darte de baja de las comunicaciones comerciales</a></div>` : "";
-  // Línea legal oficial (titular, NIF y domicilio): la de la marca de plataforma, una sola fuente
-  const legal = brand.legal ?? `${CORPORATE.name} es un servicio de ${CORPORATE.legalName} · NIF ${CORPORATE.taxId} · ${CORPORATE.address}`;
   const footer = platform
-    ? `<tr><td bgcolor="${T.navy}" style="background:${T.navy};border-radius:0 0 16px 16px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>` +
-      `<td width="96" valign="bottom" class="be-footArt" style="padding:0"><img src="${esc(asset("pie-elefante"))}" width="96" height="96" alt="" style="display:block;border:0;width:96px;height:96px;border-radius:0 0 0 16px"></td>` +
-      `<td valign="middle" style="padding:22px 26px 22px 14px;${F};font-size:12px;line-height:18px;color:${T.navyText}">` +
-      `<div style="font-weight:700;color:#ffffff;letter-spacing:.04em">${CORPORATE.name}</div>` +
-      `<div>${esc(legal)}</div>` +
-      `<div><span style="color:#ffffff">${esc(support ?? CORPORATE.supportEmail)}</span> &nbsp;·&nbsp; <a href="${CORPORATE.web}" style="color:#ffffff;text-decoration:none">www.bigelephant.es</a></div>` +
-      `<div style="margin-top:8px">${links}</div>` +
-      `<div style="margin-top:8px;color:#8A93A3">${s.commercial ? "Recibes este correo porque aceptaste recibir novedades de Big Elephant." : s.family === "admin" ? ADMIN_FOOT : "Mensaje de servicio relacionado con tu cuenta. No es publicidad."}</div>` +
-      unsubscribe +
-      `</td></tr></table></td></tr>`
+    ? corporateFooter({ ...s, support: brand.supportEmail }, safeUrl(brand.logoUrl)!)
     : `<tr><td style="padding:18px 34px 24px;border-top:1px solid ${T.line};${F};font-size:12px;line-height:18px;color:${T.muted}">Mensaje automático de ${esc(brand.name)} relacionado con tu cuenta.${support ? ` ¿Dudas? Escríbenos a ${esc(support)}.` : ""}</td></tr>`;
 
   const html =
     `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="X-UA-Compatible" content="IE=edge">` +
     `<meta name="color-scheme" content="light"><meta name="supported-color-schemes" content="light"><title>${esc(subject)}</title>` +
     `<!--[if mso]><noscript><xml xmlns:o="urn:schemas-microsoft-com:office:office"><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml></noscript><![endif]-->` +
-    `<style>body{margin:0;padding:0}a{color:${T.blue}}@media (max-width:620px){.be-outer{padding:0!important}.be-wrap{border-radius:0!important}.be-pad{padding-left:20px!important;padding-right:20px!important}.be-h1{font-size:24px!important;line-height:30px!important}.be-col{display:block!important;width:100%!important}.be-heroCell{padding:8px 0 0!important;text-align:center!important}.be-hero{margin:0 auto!important;width:180px!important}.be-footArt{display:none!important}}</style></head>` +
+    `<style>body{margin:0;padding:0}a{color:${T.blue}}@media (max-width:620px){.be-outer{padding:0!important}.be-wrap{border-radius:0!important}.be-pad{padding-left:20px!important;padding-right:20px!important}.be-h1{font-size:24px!important;line-height:30px!important}.be-col{display:block!important;width:100%!important}.be-heroCell{padding:8px 0 0!important;text-align:center!important}.be-hero{margin:0 auto!important;width:180px!important}.be-foot{padding:26px 20px 24px!important}.be-footLogo{width:168px!important}}</style></head>` +
     `<body style="margin:0;padding:0;background:${T.surface};-webkit-text-size-adjust:100%">` +
     `<div style="display:none;max-height:0;overflow:hidden;opacity:0;mso-hide:all">${esc(preheader)}&#8199;&#65279;&#847;&#8199;&#65279;&#847;</div>` +
     `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="${T.surface}" style="background:${T.surface}"><tr><td align="center" class="be-outer" style="padding:28px 12px">` +
@@ -322,7 +363,7 @@ export function renderEmail(brand: EmailBrand, s: EmailSpec): MailContent & { te
     ...(cta ? [`${cta.label}: ${safeUrl(cta.url)}`, ""] : []),
     "—",
     ...(platform
-      ? [brand.legal ?? `${CORPORATE.name} es un servicio de ${CORPORATE.legalName} · NIF ${CORPORATE.taxId} · ${CORPORATE.address}`, `${support ?? CORPORATE.supportEmail} · www.bigelephant.es`, ...CORPORATE.links.map((l) => `${l.label}: ${CORPORATE.web}${l.path}`), ...(s.commercial ? [`Baja de comunicaciones comerciales: ${unsubscribeUrl}`] : [s.family === "admin" ? ADMIN_FOOT : "Mensaje de servicio relacionado con tu cuenta. No es publicidad."])]
+      ? corporateFooterText({ ...s, support: brand.supportEmail })
       : [`Mensaje automático de ${brand.name} relacionado con tu cuenta.${support ? ` ¿Dudas? Escríbenos a ${support}.` : ""}`]),
   ].join("\n");
   return { subject, html, text };

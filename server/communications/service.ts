@@ -224,7 +224,7 @@ export interface EligibilityReport {
 }
 
 /** Contenido de muestra para la vista previa sin datos (el operador lo sustituye por el suyo). */
-export function renderSend(templateId: SendTemplateId, content: unknown, links: { unsubscribeUrl?: string | null; surveyUrl?: string | null; ticketRef?: string | null }): MailContent {
+export function renderSend(templateId: SendTemplateId, content: unknown, links: { unsubscribeUrl?: string | null; surveyUrl?: string | null; ticketRef?: string | null; recipient?: string | null }): MailContent {
   switch (templateId) {
     case "product.update":
       return x.productUpdate(CONTENT_SCHEMAS["product.update"].parse(content));
@@ -237,12 +237,12 @@ export function renderSend(templateId: SendTemplateId, content: unknown, links: 
       return x.survey({ ticketRef: links.ticketRef ?? "T-0000", url: links.surveyUrl ?? "https://www.bigelephant.es/soporte" });
     case "marketing.news": {
       const c = CONTENT_SCHEMAS["marketing.news"].parse(content);
-      return x.news({ url: c.url, intro: c.intro ?? null, items: c.items ?? null, unsubscribeUrl: links.unsubscribeUrl ?? null });
+      return x.news({ url: c.url, intro: c.intro ?? null, items: c.items ?? null, unsubscribeUrl: links.unsubscribeUrl ?? null, recipient: links.recipient ?? null });
     }
     case "marketing.recommendation":
-      return x.recommendation({ ...CONTENT_SCHEMAS["marketing.recommendation"].parse(content), unsubscribeUrl: links.unsubscribeUrl ?? null });
+      return x.recommendation({ ...CONTENT_SCHEMAS["marketing.recommendation"].parse(content), unsubscribeUrl: links.unsubscribeUrl ?? null, recipient: links.recipient ?? null });
     case "marketing.campaign":
-      return x.campaign({ ...CONTENT_SCHEMAS["marketing.campaign"].parse(content), unsubscribeUrl: links.unsubscribeUrl ?? null });
+      return x.campaign({ ...CONTENT_SCHEMAS["marketing.campaign"].parse(content), unsubscribeUrl: links.unsubscribeUrl ?? null, recipient: links.recipient ?? null });
   }
 }
 
@@ -638,6 +638,7 @@ export class CommunicationsService {
         unsubscribeUrl: t.purpose && r.contactId ? this.unsubscribeUrl(r.contactId, t.purpose) : null,
         surveyUrl: r.ticketId ? this.surveyUrl(r.ticketId) : null,
         ticketRef: r.ticketId ? `T-${r.ticketId}` : null,
+        recipient: cur.email,
       });
       const key = t.purpose ? `comm:${b.id}:r${r.id}:c${r.contactId}:${t.purpose}` : `comm:${b.id}:r${r.id}`;
       const res = await this.d.mailer!.send(COMMS_TENANT, key, t.category, cur.email, content, { deferOnRateLimit: true });

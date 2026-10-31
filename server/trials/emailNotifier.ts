@@ -17,6 +17,8 @@ import nodemailer from "nodemailer";
 import type { TrialNotifier } from "./onboarding";
 import { opsLog } from "../_core/ops/log";
 import { recordFailure } from "../_core/ops/failureAlerts";
+import { corporateFooter, corporateFooterText } from "../mail/design";
+import { DEFAULT_MAIL_LOGO_URL } from "../mail/policy";
 
 export interface OutgoingEmail {
   to: string;
@@ -50,13 +52,17 @@ export interface EmailTrialNotifierOptions {
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 const fmtDate = (ms: number) => new Date(ms).toLocaleDateString("es-ES", { day: "numeric", month: "long", year: "numeric", timeZone: "Europe/Madrid" });
 
+// Pie corporativo compartido con el resto de correos de Big Elephant (variante de servicio)
+const FOOT = { family: "transactional" } as const;
+
 function render(title: string, paragraphs: string[], cta?: { label: string; url: string }): { text: string; html: string } {
-  const text = [title, "", ...paragraphs, ...(cta ? ["", `${cta.label}: ${cta.url}`] : [])].join("\n");
+  const text = [title, "", ...paragraphs, ...(cta ? ["", `${cta.label}: ${cta.url}`] : []), "", "—", ...corporateFooterText(FOOT)].join("\n");
   const html =
     `<!doctype html><html lang="es"><body style="font-family:system-ui,sans-serif;color:#1a1a1a;max-width:560px;margin:auto;padding:24px">` +
     `<h1 style="font-size:20px">${esc(title)}</h1>` +
     paragraphs.map((p) => `<p style="line-height:1.5">${esc(p)}</p>`).join("") +
     (cta ? `<p><a href="${esc(cta.url)}" style="display:inline-block;background:#1a1a1a;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none">${esc(cta.label)}</a></p>` : "") +
+    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:24px">${corporateFooter(FOOT, DEFAULT_MAIL_LOGO_URL)}</table>` +
     `</body></html>`;
   return { text, html };
 }

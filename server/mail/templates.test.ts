@@ -5,7 +5,9 @@
 import { describe, it, expect } from "vitest";
 import { DEFAULT_MAIL_LOGO_URL, PLATFORM_LEGAL_LINE, forbiddenLinkHosts, linkHosts as allLinkHosts, mailPolicyFromEnv } from "./policy";
 /** Hosts de los enlaces de la operación (sin el pie corporativo: ayuda y textos legales de www.bigelephant.es). */
-const linkHosts = (html: string) => allLinkHosts(html).filter((h) => h !== "www.bigelephant.es");
+// Fuera de la web y de las redes del pie corporativo
+const SOCIAL = new Set(["www.instagram.com", "www.facebook.com"]);
+const linkHosts = (html: string) => allLinkHosts(html).filter((h) => h !== "www.bigelephant.es" && !SOCIAL.has(h));
 import { memoryProvider } from "./providers";
 import { MailService } from "./service";
 import { MemoryMailStore } from "./store";
@@ -46,7 +48,7 @@ describe("plantillas de plataforma", () => {
     expect(c.html).toMatch(/<table role="presentation"/);
     expect(c.html).toMatch(/display:none;max-height:0[^>]*>La prueba gratuita termina el/);
     expect(c.html).toMatch(/<a href="https:\/\/web\.example\/precios" target="_blank"/);
-    for (const x of [c.html, c.text]) expect(x).toContain(PLATFORM_LEGAL_LINE);
+    for (const x of [c.html, c.text]) expect(x).toContain("Mensaje de servicio relacionado con tu cuenta");
     expect(c.text).toMatch(/Te quedan 3 días de prueba\n\nLa prueba gratuita termina el/);
     // Sin logotipo configurado (MAIL_LOGO_URL vacío o no https), cabecera con el nombre
     const prev = process.env.MAIL_LOGO_URL;

@@ -47,13 +47,13 @@ describe("vistas previas de las comunicaciones", () => {
   it("plataforma: logotipo oficial y emisor; empresa (aviso de seguridad del Core): su marca, sin logotipo ni datos de la plataforma", () => {
     const platform = previewTemplate("subscription.renewal_paid")!;
     expect(platform.html).toContain(`<img src="${DEFAULT_MAIL_LOGO_URL}"`);
-    expect(platform.text).toContain(PLATFORM_LEGAL_LINE);
+    expect(platform.text).toContain("Mensaje de servicio relacionado con tu cuenta");
     // Cuenta de un usuario de empresa: marca de la plataforma (Big Elephant CRM), el nombre de la empresa en el texto y
     // ningún enlace de acción (solo el pie corporativo)
     const tenant = previewTemplate("security.password_changed")!;
     expect(tenant.html).toContain(`<img src="${DEFAULT_MAIL_LOGO_URL}"`);
     expect(tenant.html).toContain("Empresa Demo");
-    expect(Array.from(tenant.html.matchAll(/href="([^"]+)"/g), (m) => m[1]).filter((u) => !u.startsWith("https://www.bigelephant.es"))).toEqual([]);
+    expect(Array.from(tenant.html.matchAll(/href="([^"]+)"/g), (m) => m[1]).filter((u) => !/^https:\/\/www\.(bigelephant\.es|instagram\.com|facebook\.com)(\/|$)/.test(u))).toEqual([]);
   });
 
   it("los valores dinámicos se escapan siempre", () => {
