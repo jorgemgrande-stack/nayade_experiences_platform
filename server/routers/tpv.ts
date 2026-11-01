@@ -93,6 +93,7 @@ import { chargedInvoiceAmounts } from "../invoiceCalc";
 import { legacyDb, legacyPool } from "../_core/legacyDb";
 import { integrationEnv } from "../_core/tenantConfig";
 import { issuerSnapshotForNewInvoice } from "../issuerSnapshot";
+import { cashSaleDocument, formatRecipientAddress, invoicePaymentMethodFromTicket, proposeTicketInvoiceRecipient } from "../../shared/ticketInvoice";
 
 type FiscalData = { fiscalRegime: "reav" | "general" | "mixed"; taxRate: number; providerPercent: number; agencyMarginPercent: number };
 
@@ -347,11 +348,16 @@ export const tpvRouter = router({
     .query(async ({ input }) => {
       const term = `%${input.q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
       return await db
-        .select({ id: clients.id, name: clients.name, email: clients.email, phone: clients.phone })
+        .select({ id: clients.id, name: clients.name, email: clients.email, phone: clients.phone, company: clients.company, nif: clients.nif, address: clients.address, postalCode: clients.postalCode, city: clients.city })
         .from(clients)
         .where(or(like(clients.name, term), like(clients.email, term), like(clients.phone, term)))
         .orderBy(desc(clients.updatedAt))
-        .limit(8);
+        .limit(8)
+        // Con los datos de factura que ya tiene: la caja sabe si puede emitir la completa a su nombre
+        .then((rows) => rows.map(({ company, nif, address, postalCode, city, ...c }) => {
+          const { fromClient: _f, ...invoiceRecipient } = proposeTicketInvoiceRecipient({ name: c.name, company, nif, address, postalCode, city }, null);
+          return { ...c, invoiceRecipient };
+        }));
     }),
 
   // Alta de caja: una empresa nueva no trae ninguna y sin caja no se puede abrir sesión
@@ -857,6 +863,14 @@ export const tpvRouter = router({
         idempotencyKey: z.string().regex(IDEMPOTENCY_KEY_RE).optional(),
         // Cliente del CRM elegido por el cajero (tpv.searchClients)
         clientId: z.number().int().positive().optional(),
+        // Destinatario de la factura completa, si el cliente la pide en la caja (o la venta supera el límite del ticket)
+        invoiceRecipient: z.object({
+          name: z.string().max(256),
+          nif: z.string().max(32),
+          address: z.string().max(512),
+          postalCode: z.string().max(16),
+          city: z.string().max(128),
+        }).optional(),
         items: z.array(
           z.object({
             productType: z.enum(["experience", "pack", "spa", "hotel", "restaurant", "extra", "legoPack"]),
@@ -952,11 +966,19 @@ export const tpvRouter = router({
 
       // Cliente del CRM elegido por el cajero: tiene que existir en esta empresa
       let linkedClientId: number | null = null;
+      let linkedClient: Parameters<typeof proposeTicketInvoiceRecipient>[0] = null;
       if (input.clientId) {
-        const [chosen] = await db.select({ id: clients.id }).from(clients).where(eq(clients.id, input.clientId)).limit(1);
+        const [chosen] = await db.select({ id: clients.id, name: clients.name, company: clients.company, nif: clients.nif, address: clients.address, postalCode: clients.postalCode, city: clients.city })
+          .from(clients).where(eq(clients.id, input.clientId)).limit(1);
         if (!chosen) throw new TRPCError({ code: "NOT_FOUND", message: "El cliente elegido ya no existe. Búscalo de nuevo o cobra sin cliente." });
         linkedClientId = chosen.id;
+        linkedClient = chosen;
       }
+
+      // Documento fiscal de la venta (antes de numerar: un rechazo no deja hueco). Sin destinatario identificado,
+      // solo ticket (factura simplificada); nunca una factura completa a nombre de «Cliente TPV». Ver cashSaleDocument.
+      const saleDocument = cashSaleDocument({ total, requested: input.invoiceRecipient ?? null, client: linkedClient });
+      if (saleDocument.kind === "rechazo") throw new TRPCError({ code: "BAD_REQUEST", message: saleDocument.message });
 
       const sellerName = (ctx as any).user?.name ?? null;
       const sellerUserId = (ctx as any).user?.id ?? null;
@@ -1378,11 +1400,15 @@ export const tpvRouter = router({
         }
       }
 
-      // -- 8c. Generar factura automática (solo pagos con tarjeta — efectivo requiere factura manual) --
-      if (primaryPaymentMethod !== "cash") {
+      // -- 8c. Factura completa automática: solo con destinatario identificado (nombre o razón social, NIF y
+      // domicilio, art. 6 RD 1619/2012), sea cual sea la forma de pago. Sin él, el ticket es la factura
+      // simplificada (art. 4) y el cobro ya consta en contabilidad (paso 7); la completa se pide después
+      // canjeando el ticket. Antes se emitía con tarjeta a nombre de «Cliente TPV», un documento no válido.
+      if (saleDocument.kind === "factura") {
+        const recipient = saleDocument.recipient;
         try {
           const invoiceNumber = await generateDocumentNumber("factura", "tpv:createSale", "system");
-          const invoicePayMethod = primaryPaymentMethod === "card" ? "tarjeta_fisica" : "otro";
+          const invoicePayMethod = invoicePaymentMethodFromTicket(input.payments);
 
           const invoiceItems = input.items.map((item, idx) => ({
             description: item.productName,
@@ -1401,7 +1427,9 @@ export const tpvRouter = router({
             issuerSnapshot: await issuerSnapshotForNewInvoice(),
             invoiceNumber,
             reservationId:  reservationId ?? undefined,
-            clientName:     input.customerName || "Cliente TPV",
+            clientName:     recipient.name,
+            clientNif:      recipient.nif,
+            clientAddress:  formatRecipientAddress(recipient),
             clientEmail:    input.customerEmail || "",
             clientPhone:    input.customerPhone || null,
             itemsJson:      invoiceItems,
@@ -1414,6 +1442,7 @@ export const tpvRouter = router({
             total:          String(invAmounts.total.toFixed(2)),
             status:         "cobrada",
             paymentMethod:  invoicePayMethod,
+            paymentValidatedAt: now,
             issuedAt:       now,
             createdAt:      now,
             updatedAt:      now,

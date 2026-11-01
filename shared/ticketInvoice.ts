@@ -83,3 +83,63 @@ export function invoicePaymentMethodFromTicket(
   const known: InvoicePaymentMethod[] = ["redsys", "transferencia", "efectivo", "otro", "tarjeta_fisica", "tarjeta_redsys"];
   return known.includes(fallback as InvoicePaymentMethod) ? (fallback as InvoicePaymentMethod) : "otro";
 }
+
+/**
+ * Límite de la factura simplificada (ticket): 400 € IVA incluido, el general del art. 4.1 a) del
+ * Real Decreto 1619/2012. Por encima solo cabe la factura completa (art. 6). Las excepciones de hasta
+ * 3.000 € del art. 4.1 b) para determinadas actividades (comercio minorista, hostelería...) no se aplican:
+ * la caja usa siempre el límite general.
+ */
+export const SIMPLIFIED_INVOICE_LIMIT_EUR = 400;
+
+/** Si el importe cobrado (IVA incluido) supera lo que admite un ticket. */
+export function exceedsSimplifiedInvoiceLimit(total: number): boolean {
+  return Math.round(total * 100) > SIMPLIFIED_INVOICE_LIMIT_EUR * 100;
+}
+
+export type CashSaleDocument =
+  | { kind: "ticket" }
+  | { kind: "factura"; recipient: TicketInvoiceRecipient; source: "cliente" | "caja" }
+  | { kind: "rechazo"; message: string };
+
+const normalizeRecipient = (r: Partial<TicketInvoiceRecipient>): TicketInvoiceRecipient => ({
+  name: (r.name ?? "").trim(),
+  nif: (r.nif ?? "").trim().toUpperCase(),
+  address: (r.address ?? "").trim(),
+  postalCode: (r.postalCode ?? "").trim(),
+  city: (r.city ?? "").trim(),
+});
+
+/**
+ * Qué documento fiscal emite una venta de caja al cobrarla (en efectivo, con tarjeta o de otra forma):
+ *  - Datos del destinatario escritos en la caja (el cliente pide factura): factura completa a su nombre;
+ *    si están incompletos, la venta no se cobra hasta corregirlos.
+ *  - Cliente vinculado con nombre o razón social, NIF válido y domicilio: factura completa a su nombre.
+ *  - En otro caso, solo ticket (factura simplificada, art. 4 RD 1619/2012); el cliente puede pedir después
+ *    la factura completa canjeando el ticket. Nunca una factura completa sin destinatario identificado.
+ *  - Por encima del límite de la simplificada no se admite solo ticket: hay que indicar el destinatario.
+ */
+export function cashSaleDocument(params: {
+  total: number;
+  requested?: Partial<TicketInvoiceRecipient> | null;
+  client?: Parameters<typeof proposeTicketInvoiceRecipient>[0];
+}): CashSaleDocument {
+  if (params.requested) {
+    const recipient = normalizeRecipient(params.requested);
+    const errors = Object.values(validateTicketInvoiceRecipient(recipient));
+    if (errors.length) return { kind: "rechazo", message: `Faltan datos para la factura completa: ${errors.join(" ")}` };
+    return { kind: "factura", recipient, source: "caja" };
+  }
+  if (params.client) {
+    const { fromClient: _f, ...proposal } = proposeTicketInvoiceRecipient(params.client, null);
+    const recipient = normalizeRecipient(proposal);
+    if (Object.keys(validateTicketInvoiceRecipient(recipient)).length === 0) return { kind: "factura", recipient, source: "cliente" };
+  }
+  if (exceedsSimplifiedInvoiceLimit(params.total)) {
+    return {
+      kind: "rechazo",
+      message: `Esta venta supera ${SIMPLIFIED_INVOICE_LIMIT_EUR} € (IVA incluido) y no se puede cobrar solo con ticket: hace falta factura completa. Indica los datos del destinatario (nombre o razón social, NIF y dirección).`,
+    };
+  }
+  return { kind: "ticket" };
+}

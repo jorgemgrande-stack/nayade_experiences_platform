@@ -231,10 +231,10 @@ describe.skipIf(!URL_)("contabilidad y facturación Essential (aplicación real)
   });
 
   describe("caja con descuento global e IVA mixto", () => {
-    it("venta con tarjeta: venta, asiento y factura con el IVA ya descontado y su desglose; el informe de caja cuadra", async () => {
+    it("venta con tarjeta y factura pedida en caja: venta, asiento y factura con el IVA ya descontado y su desglose; el informe de caja cuadra", async () => {
       const sid = await openSession();
       // 121 € al 21 % + 2 × 55 € al 10 %, 23,10 € de descuento → 207,90 €
-      const r = ok(await ess.m("a", "tpv.createSale", { sessionId: sid, discountAmount: 23.1, discountReason: "Cliente habitual", items: [item(), item({ productId: product10Id, productName: "Curso", quantity: 2, unitPrice: 55 })], payments: [{ method: "card", amount: 207.9 }] }, agA), "venta con tarjeta");
+      const r = ok(await ess.m("a", "tpv.createSale", { sessionId: sid, discountAmount: 23.1, discountReason: "Cliente habitual", invoiceRecipient: { name: "Talleres Prueba SL", nif: "B12345674", address: "Calle Mayor 4", postalCode: "28901", city: "Getafe" }, items: [item(), item({ productId: product10Id, productName: "Curso", quantity: 2, unitPrice: 55 })], payments: [{ method: "card", amount: 207.9 }] }, agA), "venta con tarjeta");
       await ess.m("a", "tpv.closeSession", { sessionId: sid, countedCash: 0 }, agA);
       const saleId = r.sale.id as number;
       const [sale] = await ess.sql("a", "SELECT total, taxBase, taxAmount, taxRate, invoiceId FROM tpv_sales WHERE id = ?", [saleId]);
