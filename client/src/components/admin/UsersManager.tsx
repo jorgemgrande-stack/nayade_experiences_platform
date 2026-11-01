@@ -52,6 +52,7 @@ import {
   Briefcase, MonitorPlay, Info, AlertTriangle, ShoppingCart, X, BarChart3,
 } from "lucide-react";
 import { toast } from "sonner";
+import { ROLE_LABELS } from "@shared/roleLabels";
 
 // ─── FASE 3: roleCapabilities — mapa estático de capacidades por rol (UI-only) ─
 const roleCapabilities: Record<string, string[]> = {
@@ -97,7 +98,7 @@ const roleCapabilities: Record<string, string[]> = {
     "Solo acceso al portal público",
   ],
   readonly: [
-    "Consulta lo mismo que un agente comercial",
+    "Consulta lo mismo que un comercial",
     "No puede crear, modificar ni borrar nada",
     "Ocupa una plaza de usuario del plan",
   ],
@@ -109,7 +110,7 @@ const roleCapabilities: Record<string, string[]> = {
     "Sin acceso a TPV ni caja",
   ],
   sales_cashier: [
-    "Todo lo de Agente Comercial",
+    "Todo lo de Comercial",
     "TPV: crear ventas y cobrar",
     "Abrir y cerrar caja",
     "Acceso a liquidaciones del turno",
@@ -120,7 +121,7 @@ const roleCapabilities: Record<string, string[]> = {
 const ROLES = [
   {
     value: "admin",
-    label: "Administrador",
+    label: ROLE_LABELS.admin,
     description: "Acceso total al sistema",
     color: "bg-red-100 text-red-800 border-red-200",
     dotColor: "bg-red-500",
@@ -128,7 +129,7 @@ const ROLES = [
   },
   {
     value: "agente",
-    label: "Agente Comercial",
+    label: ROLE_LABELS.agente,
     description: "CRM, reservas y TPV operativo",
     color: "bg-blue-100 text-blue-800 border-blue-200",
     dotColor: "bg-blue-500",
@@ -136,7 +137,7 @@ const ROLES = [
   },
   {
     value: "monitor",
-    label: "Monitor",
+    label: ROLE_LABELS.monitor,
     description: "Calendario y actividades (lectura)",
     color: "bg-green-100 text-green-800 border-green-200",
     dotColor: "bg-green-500",
@@ -144,7 +145,7 @@ const ROLES = [
   },
   {
     value: "adminrest",
-    label: "Gestor Restaurantes",
+    label: ROLE_LABELS.adminrest,
     description: "Reservas del restaurante asignado",
     color: "bg-orange-100 text-orange-800 border-orange-200",
     dotColor: "bg-orange-500",
@@ -152,15 +153,15 @@ const ROLES = [
   },
   {
     value: "controler",
-    label: "Controler",
-    description: "Solo Control Diario de contabilidad",
+    label: ROLE_LABELS.controler,
+    description: "Solo el control diario de contabilidad",
     color: "bg-purple-100 text-purple-800 border-purple-200",
     dotColor: "bg-purple-500",
     icon: BarChart3,
   },
   {
     value: "readonly",
-    label: "Solo lectura",
+    label: ROLE_LABELS.readonly,
     description: "Consulta sin modificar nada",
     color: "bg-slate-100 text-slate-700 border-slate-200",
     dotColor: "bg-slate-500",
@@ -168,7 +169,7 @@ const ROLES = [
   },
   {
     value: "user",
-    label: "Usuario",
+    label: ROLE_LABELS.user,
     description: "Sin acceso al panel admin",
     color: "bg-gray-100 text-gray-600 border-gray-200",
     dotColor: "bg-gray-400",
@@ -182,14 +183,14 @@ type Role = (typeof ROLES)[number]["value"];
 const UPCOMING_ROLES = [
   {
     key: "commercial_agent",
-    label: "Agente Comercial",
+    label: ROLE_LABELS.commercial_agent,
     description: "Gestiona leads, presupuestos, reservas y actividad comercial. Sin acceso a TPV ni caja.",
     color: "bg-indigo-100 text-indigo-800 border-indigo-200",
     icon: Briefcase,
   },
   {
     key: "sales_cashier",
-    label: "Agente + Caja",
+    label: ROLE_LABELS.sales_cashier,
     description: "Gestiona actividad comercial y además puede operar el TPV, abrir caja, vender y cerrar caja.",
     color: "bg-violet-100 text-violet-800 border-violet-200",
     icon: ShoppingCart,

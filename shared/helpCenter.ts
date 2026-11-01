@@ -201,7 +201,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     steps: [
       "En el menú, ve a Organización › Usuarios y permisos (pantalla «Gestión de Usuarios»).",
       "Pulsa «Nuevo usuario» (o «Invitar a alguien» si todavía estás solo).",
-      "Rellena Nombre completo y Email y elige el rol (por ejemplo, Administrador o Agente Comercial).",
+      "Rellena Nombre completo y Email y elige el rol (por ejemplo, Administrador o Comercial).",
       "Pulsa «Crear y enviar invitación». La persona invitada recibe un correo con un enlace que caduca a las 72 horas para establecer su contraseña.",
       "Si el enlace caduca, usa «Reenviar invitación» en el menú del usuario.",
     ],
