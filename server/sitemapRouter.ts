@@ -28,6 +28,8 @@ import { publicBaseUrl } from "./_core/productIdentity";
 import { getCapabilityAccess } from "./_core/capabilities/access";
 import { listPublishedForSitemap } from "./blogDb";
 import { getModuleAccess } from "./_core/modules/runtime";
+import { getStorefront } from "./storefront";
+import { productPath, SECTOR_LIST_PATH, SHOP_PATH } from "../shared/storefront";
 
 /** Módulo sectorial contratado y activo (en una sola empresa, lo instalado). */
 async function moduleOn(id: string): Promise<boolean> {
@@ -119,6 +121,8 @@ sitemapRouter.get("/sitemap.xml", async (_req, res) => {
     // Blog (solo multi y con la capacidad contratada): /blog y sus entradas publicadas, nunca borradores
     const blogRows = multi && (await blogLicensed()) ? await listPublishedForSitemap(Date.now()) : null;
     const [hotelOn, spaOn, restaurantsOn] = await Promise.all([moduleOn("hotel"), moduleOn("spa"), moduleOn("restaurants")]);
+    // Catálogo en la dirección de la ficha de la empresa: /tienda en una pyme, /experiencias en la sectorial
+    const catalogKind = multi ? (await getStorefront()).kind : "sector";
     const [
       expRows,
       legoRows,
@@ -184,7 +188,7 @@ sitemapRouter.get("/sitemap.xml", async (_req, res) => {
     }
     if (multi) {
       if (expRows.length > 0) {
-        add("/experiencias", undefined, "weekly", "0.8");
+        add(catalogKind === "generic" ? SHOP_PATH : SECTOR_LIST_PATH, undefined, "weekly", "0.8");
         add("/presupuesto", undefined, "weekly", "0.8");
       }
       if (hotelOn && roomRows.length > 0) add("/hotel", undefined, "weekly", "0.8");
@@ -206,7 +210,7 @@ sitemapRouter.get("/sitemap.xml", async (_req, res) => {
 
     // /experiencias/:slug (slugs malformados ya excluidos en la query)
     for (const r of expRows) {
-      add(`/experiencias/${r.slug}`, formatDate(r.updatedAt));
+      add(productPath(r.slug, catalogKind), formatDate(r.updatedAt));
     }
 
     // /lego-packs/:category (DISTINCT)

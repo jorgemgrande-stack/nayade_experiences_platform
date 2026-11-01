@@ -18,6 +18,9 @@ import Home from "./pages/Home";
 import TenantHome from "./pages/TenantHome";
 import Experiences from "./pages/Experiences";
 import ExperienceDetail from "./pages/ExperienceDetail";
+import Shop from "./pages/Shop";
+import ProductDetail from "./pages/ProductDetail";
+import { CatalogRoute } from "./components/StorefrontRoute";
 import Gallery from "./pages/Gallery";
 import BudgetRequest from "./pages/BudgetRequest";
 import Colegios from "./pages/Colegios";
@@ -229,8 +232,11 @@ function Router() {
     <Switch>
       {/* ── PUBLIC ROUTES ── */}
       <Route path="/">{() => <HomeGate Fallback={Home} Tenant={TenantHome} />}</Route>
-      <Route path="/experiencias" component={Experiences} />
-      <Route path="/experiencias/:slug" component={ExperienceDetail} />
+      {/* Catálogo: ficha sectorial (instalación propia) o de tienda (pyme); cada empresa, en su dirección */}
+      <Route path="/experiencias">{() => <CatalogRoute Sector={Experiences} Generic={Shop} />}</Route>
+      <Route path="/experiencias/:slug">{() => <CatalogRoute Sector={ExperienceDetail} Generic={ProductDetail} />}</Route>
+      <Route path="/tienda">{() => <CatalogRoute Sector={Experiences} Generic={Shop} />}</Route>
+      <Route path="/tienda/:slug">{() => <CatalogRoute Sector={ExperienceDetail} Generic={ProductDetail} />}</Route>
       <Route path="/galeria" component={Gallery} />
       <Route path="/presupuesto" component={BudgetRequest} />
       <Route path="/colegios">{() => <SingleOnlyPage Single={Colegios} slug="colegios" Tenant={TenantGroups} />}</Route>
