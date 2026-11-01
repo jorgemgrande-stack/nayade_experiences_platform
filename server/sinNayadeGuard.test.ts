@@ -90,10 +90,35 @@ describe("vocabulario sectorial y jerga en el panel", () => {
     ["pages/admin/products/VariantsManager.tsx", /Todas las experiencias|Selecciona una experiencia"|placeholder="(Filtrar por|Seleccionar) experiencia"|<Label>Experiencia \*<\/Label>/, 0],
     ["pages/admin/cms/HomeModulesManager.tsx", /Nuestras Experiencias/, 1],
     ["pages/admin/tpv/TpvScreen.tsx", /Fecha del servicio/, 1],
+    // Formularios del catálogo: los ejemplos y valores de partida salen de `voc.catalog`
+    ["pages/admin/products/CategoriesManager.tsx", /Deportes Acu[aá]ticos|Nueva Categor[ií]a|Editar Categor[ií]a/, 0],
+    ["pages/admin/products/LocationsManager.tsx", /Embarcadero|Ubicaci[oó]n/, 0],
+    ["pages/admin/products/VariantsManager.tsx", /Grupo 10 pax|mayores de 14 años|Variantes de Precio|Variantes y Precios/, 0],
+    ["pages/admin/products/ExperiencesManager.tsx", /Destacado en Home|Descripci[oó]n Corta|Descripci[oó]n Completa|Guardar Cambios/, 0],
+    ["components/CatalogConceptSelector.tsx", /toFixed\(2\)\} €/, 0],
+    ["pages/admin/crm/CRMDashboard.tsx", /Fecha de servicio \(opcional\)|"oportunidades en total" :|ganadas de \{/, 0],
   ];
   it.each(SECTORAL)("%s: textos sectoriales fijos dentro de la línea base", (file, re, max) => {
     const unguarded = fs.readFileSync(path.join(ROOT, file), "utf8").split(/\r?\n/).filter((l) => !/licensed/.test(l)).join("\n");
     expect(count(unguarded, re)).toBeLessThanOrEqual(max);
+  });
+
+  it("formularios del catálogo de una pyme: sin ejemplos sectoriales ni valores de partida de la instalación original", async () => {
+    const { buildVocabulary } = await import("../shared/vocabulary");
+    const { restosEn } = await import("../shared/sinNayade");
+    const v = buildVocabulary({ licensed: true, can: () => false });
+    const texts = Object.values(v.catalog).filter((x) => typeof x === "string").join(" | ");
+    expect(texts).not.toMatch(/acu[aá]tic|embarcadero|\bpax\b|mayores de \d+ años|Home/i);
+    expect(restosEn(texts)).toEqual([]);
+    expect(v.catalog.defaultProductType).toBe("own");
+    expect(v.catalog.defaultVariantPriceType).toBe("fixed");
+    expect(v.productTypes[0]).toEqual({ value: "own", label: "Producto" });
+    // El formulario de producto los usa al crear y en la etiqueta del destacado
+    const exp = fs.readFileSync(path.join(ROOT, "pages/admin/products/ExperiencesManager.tsx"), "utf8");
+    expect(exp).toContain("newProductDefaults({ licensed: isNewCompany, can: sub.can })");
+    expect(exp).toContain("{voc.catalog.featured}");
+    // Constructor de presupuestos: sin la pestaña «Paquetes» en una pyme
+    expect(fs.readFileSync(path.join(ROOT, "components/CatalogConceptSelector.tsx"), "utf8")).toContain("{!voc.licensed && <div className=\"flex gap-2 flex-wrap\">");
   });
 
   it("los textos sectoriales que quedan van detrás del vocabulario o de una capacidad", () => {

@@ -98,3 +98,43 @@ export function pickInitialRegister(
 export function newSaleAttemptKey(rand: () => string = () => randomId()): string {
   return rand().replace(/[^A-Za-z0-9_-]/g, "").slice(0, 64);
 }
+
+/**
+ * Cobro en efectivo (M6): antes de cobrar se indica lo que entrega el cliente y se ve el cambio. Importes en euros
+ * redondeados al céntimo.
+ */
+const cents = (n: number) => Math.round(n * 100);
+
+/** Lee un importe escrito en la caja («20», «20,50», «20.5»); vacío o no válido: null. */
+export function parseTendered(input: string): number | null {
+  const s = input.trim().replace(/\s|€/g, "");
+  if (!s) return null;
+  // «1.234,50» (miles con punto) o «20,5»/«20.5»
+  const normal = /,/.test(s) ? s.replace(/\./g, "").replace(",", ".") : s;
+  if (!/^\d+(\.\d{0,2})?$/.test(normal)) return null;
+  const n = Number(normal);
+  return Number.isFinite(n) ? cents(n) / 100 : null;
+}
+
+/** ¿Llega lo entregado para cobrar el total? */
+export function canChargeCash(total: number, tendered: number | null): boolean {
+  return tendered !== null && cents(tendered) >= cents(total) && cents(total) > 0;
+}
+
+/** Cambio a devolver (nunca negativo). */
+export function cashChange(total: number, tendered: number | null): number {
+  if (tendered === null) return 0;
+  return Math.max(0, cents(tendered) - cents(total)) / 100;
+}
+
+/** Atajos de importe entregado: el exacto y los billetes habituales que lo cubren (sin repetir, de menor a mayor). */
+export function quickTenders(total: number): number[] {
+  const t = cents(total) / 100;
+  if (t <= 0) return [];
+  const out = new Set<number>([t]);
+  for (const step of [5, 10, 20, 50, 100]) {
+    const v = Math.ceil(t / step) * step;
+    if (v > t) out.add(v);
+  }
+  return Array.from(out).sort((a, b) => a - b).slice(0, 5);
+}

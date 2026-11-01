@@ -59,7 +59,13 @@ describe("diccionario de textos por modo", () => {
     expect(v.pendingPayments).toBe("Cobros pendientes");
     expect(v.newOrder).toBe("Nuevo pedido");
     expect(v.productRequired).toBe("Producto o servicio *");
-    expect(v.serviceDate).toBe("Fecha de servicio");
+    // Sin reservas ni citas no hay «servicio»: la fecha prevista (de entrega o del trabajo)
+    expect(v.serviceDate).toBe("Fecha prevista");
+    expect(v.serviceDateLabel).toBe("Fecha prevista");
+    const withBookings = buildVocabulary({ licensed: true, can: (id) => canEssential(id) || id === "bookings-generic" });
+    expect(withBookings.serviceDate).toBe("Fecha de servicio");
+    expect(withBookings.catalog.showPerPersonVariant).toBe(true);
+    expect(v.catalog.showPerPersonVariant).toBe(false);
     expect(v.agree("creado", "creada")).toBe("creado");
     expect(v.agreeLead("creado", "creada")).toBe("creada");
     expect(v.leadsUnattended).toBe("Oportunidades sin atender");
@@ -84,7 +90,8 @@ describe("diccionario de textos por modo", () => {
 
   it("tipos de producto de una pyme: Producto y Servicio; los sectoriales solo con módulo", () => {
     const base = buildVocabulary({ licensed: true, can: canEssential }).productTypes;
-    expect(base.map((o) => o.label)).toEqual(["Servicio", "Producto", "Paquete de varios productos"]);
+    // «Producto» primero: es el tipo con el que nace un producto nuevo
+    expect(base.map((o) => o.label)).toEqual(["Producto", "Servicio", "Paquete de varios productos"]);
     // Los valores son los que ya acepta la base de datos (sin migraciones)
     const allowed = ["own", "semi_own", "third_party", "actividad", "alojamiento", "restauracion", "transporte", "pack"];
     expect(base.every((o) => allowed.includes(o.value))).toBe(true);

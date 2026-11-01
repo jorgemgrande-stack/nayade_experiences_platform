@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { Cookie, X, ChevronDown, ChevronUp, Shield, BarChart2, Megaphone, Settings } from "lucide-react";
+import { trpc } from "@/lib/trpc";
+import { cookieBody, cookieCategories, hasOptionalCookies } from "@shared/cookieCategories";
 
 const STORAGE_KEY = "nayade_cookie_consent";
 
@@ -51,6 +53,8 @@ export const COOKIE_TEXTS = {
   preferences: "Recuerdan tus ajustes, como el idioma o la región.",
   reject: "Rechazar",
   accept: "Aceptar todas",
+  /** Sin cookies opcionales no hay nada que aceptar ni rechazar: solo se informa. */
+  understood: "Entendido",
 } as const;
 export const COOKIE_POLICY_PATH = "/cookies";
 
@@ -61,6 +65,9 @@ export default function CookieBanner() {
   const [analytics, setAnalytics] = useState(false);
   const [marketing, setMarketing] = useState(false);
   const [preferences, setPreferences] = useState(false);
+  // Solo las categorías que la web usa de verdad (misma consulta y caché que el tema de la web)
+  const { data: theme } = trpc.public.getTheme.useQuery(undefined, { staleTime: 5 * 60_000, retry: false, refetchOnWindowFocus: false });
+  const cats = cookieCategories(theme);
 
   useEffect(() => {
     const consent = loadConsent();
@@ -71,15 +78,16 @@ export default function CookieBanner() {
     }
   }, []);
 
-  if (!visible || !showsCookieBanner(location)) return null;
+  if (!visible || !cats || !showsCookieBanner(location)) return null;
+  const optional = hasOptionalCookies(cats);
 
   const handleAcceptAll = () => {
     saveConsent({
       accepted: true,
       necessary: true,
-      analytics: true,
-      marketing: true,
-      preferences: true,
+      analytics: cats.analytics,
+      marketing: cats.marketing,
+      preferences: cats.preferences,
       timestamp: Date.now(),
     });
     setVisible(false);
@@ -129,13 +137,17 @@ export default function CookieBanner() {
             <div className="min-w-0">
               <p className="text-white font-semibold text-sm mb-1">{COOKIE_TEXTS.title}</p>
               <p className="text-white/60 text-xs leading-relaxed">
-                {COOKIE_TEXTS.body}{" "}
-                <button
-                  onClick={() => setExpanded(v => !v)}
-                  className="underline underline-offset-2 text-white/80 hover:text-white transition-colors"
-                >
-                  {COOKIE_TEXTS.configure}
-                </button>.
+                {cookieBody(cats)}{" "}
+                {optional && (
+                  <>
+                    <button
+                      onClick={() => setExpanded(v => !v)}
+                      className="underline underline-offset-2 text-white/80 hover:text-white transition-colors"
+                    >
+                      {COOKIE_TEXTS.configure}
+                    </button>.
+                  </>
+                )}
                 {" "}
                 Más información en nuestra{" "}
                 <Link href={COOKIE_POLICY_PATH} className="underline underline-offset-2 text-white/80 hover:text-white transition-colors">
@@ -147,32 +159,36 @@ export default function CookieBanner() {
 
           {/* Action buttons */}
           <div className="flex flex-wrap items-center gap-2 shrink-0 w-full md:w-auto">
+            {optional && (
+              <>
+                <button
+                  onClick={() => setExpanded(v => !v)}
+                  className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium text-white/70 hover:text-white hover:bg-white/10 transition-colors border border-white/15"
+                >
+                  <Settings className="h-3.5 w-3.5" />
+                  Configurar
+                  {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                </button>
+                <button
+                  onClick={handleNecessaryOnly}
+                  className="rounded-lg px-5 py-2 text-xs font-semibold text-white hover:bg-white/10 transition-colors border border-white/40"
+                >
+                  {COOKIE_TEXTS.reject}
+                </button>
+              </>
+            )}
             <button
-              onClick={() => setExpanded(v => !v)}
-              className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium text-white/70 hover:text-white hover:bg-white/10 transition-colors border border-white/15"
-            >
-              <Settings className="h-3.5 w-3.5" />
-              Configurar
-              {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-            </button>
-            <button
-              onClick={handleNecessaryOnly}
-              className="rounded-lg px-5 py-2 text-xs font-semibold text-white hover:bg-white/10 transition-colors border border-white/40"
-            >
-              {COOKIE_TEXTS.reject}
-            </button>
-            <button
-              onClick={handleAcceptAll}
+              onClick={optional ? handleAcceptAll : handleNecessaryOnly}
               className="rounded-lg px-5 py-2 text-xs font-semibold text-white transition-all hover:opacity-90 active:scale-95"
               style={{ background: "var(--brand-accent, oklch(0.70 0.20 42))", boxShadow: `0 2px 12px color-mix(in srgb, var(--brand-accent, oklch(0.70 0.20 42)) 35%, transparent)` }}
             >
-              {COOKIE_TEXTS.accept}
+              {optional ? COOKIE_TEXTS.accept : COOKIE_TEXTS.understood}
             </button>
           </div>
         </div>
 
         {/* Expanded configuration panel */}
-        {expanded && (
+        {expanded && optional && (
           <div className="border-t px-5 pb-5 md:px-6 md:pb-6 space-y-3" style={{ borderColor: "var(--brand-line, oklch(0.30 0.08 225 / 0.4))" }}>
             <p className="text-white/50 text-xs pt-4 pb-1">Gestiona qué tipos de cookies permites:</p>
 
@@ -195,7 +211,7 @@ export default function CookieBanner() {
             </div>
 
             {/* Analytics */}
-            <div className="flex items-start justify-between gap-4 rounded-xl p-4"
+            {cats.analytics && <div className="flex items-start justify-between gap-4 rounded-xl p-4"
               style={{ background: "var(--brand-surface-2, oklch(0.20 0.07 230 / 0.5))", border: "1px solid var(--brand-line, oklch(0.32 0.08 225 / 0.4))" }}>
               <div className="flex items-start gap-3">
                 <BarChart2 className="h-4 w-4 mt-0.5 shrink-0" style={{ color: "var(--brand-icon, oklch(0.65 0.15 200))" }} />
@@ -212,10 +228,10 @@ export default function CookieBanner() {
               >
                 <div className="h-4 w-4 rounded-full bg-white shadow" />
               </button>
-            </div>
+            </div>}
 
             {/* Marketing */}
-            <div className="flex items-start justify-between gap-4 rounded-xl p-4"
+            {cats.marketing && <div className="flex items-start justify-between gap-4 rounded-xl p-4"
               style={{ background: "var(--brand-surface-2, oklch(0.20 0.07 230 / 0.5))", border: "1px solid var(--brand-line, oklch(0.32 0.08 225 / 0.4))" }}>
               <div className="flex items-start gap-3">
                 <Megaphone className="h-4 w-4 mt-0.5 shrink-0" style={{ color: "var(--brand-accent, oklch(0.70 0.20 42))" }} />
@@ -232,10 +248,10 @@ export default function CookieBanner() {
               >
                 <div className="h-4 w-4 rounded-full bg-white shadow" />
               </button>
-            </div>
+            </div>}
 
             {/* Preferences */}
-            <div className="flex items-start justify-between gap-4 rounded-xl p-4"
+            {cats.preferences && <div className="flex items-start justify-between gap-4 rounded-xl p-4"
               style={{ background: "var(--brand-surface-2, oklch(0.20 0.07 230 / 0.5))", border: "1px solid var(--brand-line, oklch(0.32 0.08 225 / 0.4))" }}>
               <div className="flex items-start gap-3">
                 <Settings className="h-4 w-4 mt-0.5 shrink-0" style={{ color: "var(--brand-icon, oklch(0.75 0.12 280))" }} />
@@ -252,7 +268,7 @@ export default function CookieBanner() {
               >
                 <div className="h-4 w-4 rounded-full bg-white shadow" />
               </button>
-            </div>
+            </div>}
 
             {/* Save custom */}
             <div className="flex justify-end pt-1">

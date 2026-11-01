@@ -180,8 +180,11 @@ describe.skipIf(!URL_)("Essential — Administración y comunicaciones (aplicaci
     // Sin número configurado no hay WhatsApp (ni el de otra empresa)
     expect(data(await ess.q("a", "public.getTheme")).contact.whatsapp).toBeNull();
     expect(JSON.stringify(data(await ess.q("a", "public.getTheme")))).not.toMatch(LEFTOVERS);
-    // Con su teléfono (ajuste editable del negocio), cada empresa expone su WhatsApp y solo el suyo
-    expect((await ess.m("a", "config.updateSystemSetting", { key: "brand_phone", value: "+34 600 11 22 33" }, admA)).status).toBe(200);
+    // Su teléfono de contacto (a menudo un fijo) no es su WhatsApp: sin WhatsApp configurado sigue sin botón
+    expect((await ess.m("a", "config.updateSystemSetting", { key: "brand_phone", value: "910 000 000" }, admA)).status).toBe(200);
+    expect(data(await ess.q("a", "public.getTheme")).contact.whatsapp).toBeNull();
+    // Con su WhatsApp (paso «Comunicaciones»), cada empresa expone el suyo, en formato internacional, y solo el suyo
+    expect((await ess.m("a", "setupWizard.saveComms", { fromName: "", replyTo: "", whatsapp: "600 11 22 33" }, admA)).status).toBe(200);
     expect(data(await ess.q("a", "public.getTheme")).contact.whatsapp).toBe("34600112233");
     expect(data(await ess.q("b", "public.getTheme")).contact.whatsapp).toBeNull();
   });

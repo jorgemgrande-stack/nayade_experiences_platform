@@ -92,6 +92,37 @@ export interface Vocabulary {
   showReav: boolean;
   showCoupons: boolean;
   productTypes: ProductTypeOption[];
+  /** Formularios del catálogo (categorías, lugares, variantes y productos). */
+  catalog: CatalogFormTexts;
+}
+
+export interface CatalogFormTexts {
+  categoryExample: string;
+  locationExample: string;
+  variantExample: string;
+  variantDescriptionExample: string;
+  /** Interruptor de destacado en la portada de la web. */
+  featured: string;
+  /** Tipo con el que nace un producto nuevo («own» = Producto; «actividad» = Servicio o Actividad). */
+  defaultProductType: string;
+  /** Tipo de precio de una variante nueva. «per_person» (€/pax) solo tiene sentido con plazas o reservas. */
+  defaultVariantPriceType: "fixed" | "per_person";
+  showPerPersonVariant: boolean;
+}
+
+/** Textos de ejemplo de los formularios del catálogo para una pyme sin módulo sectorial. */
+function smeCatalog(can: (id: string) => boolean): CatalogFormTexts {
+  const bookings = can("bookings-generic");
+  return {
+    categoryExample: "Ej: Accesorios",
+    locationExample: "Ej: Tienda principal",
+    variantExample: "Ej: Talla M, Pack de 3, Color azul",
+    variantDescriptionExample: "Ej: Medidas 40 × 60 cm",
+    featured: "Destacado en la portada",
+    defaultProductType: "own",
+    defaultVariantPriceType: "fixed",
+    showPerPersonVariant: bookings,
+  };
 }
 
 const NAYADE_PRODUCT_TYPES: ProductTypeOption[] = [
@@ -105,8 +136,8 @@ const NAYADE_PRODUCT_TYPES: ProductTypeOption[] = [
 /** Tipos de producto para una pyme: genéricos y, solo con su módulo, los sectoriales. */
 function smeProductTypes(can: (id: string) => boolean): ProductTypeOption[] {
   const out: ProductTypeOption[] = [
-    { value: "actividad", label: "Servicio" },
     { value: "own", label: "Producto" },
+    { value: "actividad", label: "Servicio" },
   ];
   if (can("hotel-net")) out.push({ value: "alojamiento", label: "Alojamiento" });
   if (can("restaurant-net")) out.push({ value: "restauracion", label: "Restauración" });
@@ -175,6 +206,16 @@ export function buildVocabulary(input: VocabularyInput): Vocabulary {
       showReav: true,
       showCoupons: true,
       productTypes: NAYADE_PRODUCT_TYPES,
+      catalog: {
+        categoryExample: "Ej: Deportes Acuáticos",
+        locationExample: "Ej: Embarcadero Principal",
+        variantExample: "Ej: Adulto, Niño, Grupo 10 pax",
+        variantDescriptionExample: "Ej: Para mayores de 14 años",
+        featured: "Destacado en Home",
+        defaultProductType: "actividad",
+        defaultVariantPriceType: "per_person",
+        showPerPersonVariant: true,
+      },
     };
   }
   return {
@@ -218,11 +259,12 @@ export function buildVocabulary(input: VocabularyInput): Vocabulary {
     requestedItems: "Productos o servicios solicitados",
     voucherItem: "Producto o servicio",
     voucherItemExample: "Ej: Revisión anual",
-    serviceDate: "Fecha de servicio",
-    serviceDateLabel: "Fecha de servicio",
-    serviceDateShort: "F. servicio",
-    serviceDateColumn: "Fecha de servicio",
-    newServiceDate: "Nueva fecha de servicio *",
+    // «Servicio» solo con reservas o citas; sin ellas, la fecha prevista de entrega o del trabajo
+    serviceDate: can("bookings-generic") ? "Fecha de servicio" : "Fecha prevista",
+    serviceDateLabel: can("bookings-generic") ? "Fecha de servicio" : "Fecha prevista",
+    serviceDateShort: can("bookings-generic") ? "F. servicio" : "F. prevista",
+    serviceDateColumn: can("bookings-generic") ? "Fecha de servicio" : "Fecha prevista",
+    newServiceDate: can("bookings-generic") ? "Nueva fecha de servicio *" : "Nueva fecha prevista *",
     quoteConditions: can("bookings-generic") ? "Presupuesto válido por 15 días. Sujeto a disponibilidad." : "Presupuesto válido por 15 días.",
     quotes: "Presupuestos",
     invoices: "Facturas",
@@ -234,6 +276,7 @@ export function buildVocabulary(input: VocabularyInput): Vocabulary {
     showReav: can("travel-net"),
     showCoupons: can("deals-coupons"),
     productTypes: smeProductTypes(can),
+    catalog: smeCatalog(can),
   };
 }
 
