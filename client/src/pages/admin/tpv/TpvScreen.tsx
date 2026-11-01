@@ -23,7 +23,7 @@ import {
   ShoppingCart, Plus, Minus, Trash2, CreditCard, Banknote, Smartphone,
   Layers, X, User, Calendar, Clock, Users, Tag, ChevronDown, ChevronUp,
   Zap, Waves, Baby, Sparkles, Star, Sun, Filter, LogOut, Settings,
-  Receipt, ArrowLeft, SplitSquareHorizontal, AlarmClock, PenLine, BarChart3,
+  ArrowLeft, SplitSquareHorizontal, AlarmClock, PenLine, BarChart3,
   Package, Search, CheckCircle2, Store,
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
@@ -31,6 +31,7 @@ import TpvOpenSession from "./TpvOpenSession";
 import TpvCloseSession from "./TpvCloseSession";
 import TpvCashMovement from "./TpvCashMovement";
 import TpvSplitPayment from "./TpvSplitPayment";
+import TpvCashPayment from "./TpvCashPayment";
 import TpvTicket from "./TpvTicket";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -178,6 +179,8 @@ export default function TpvScreen() {
   const [showCloseSession, setShowCloseSession] = useState(false);
   const [showCashMovement, setShowCashMovement] = useState<"in" | "out" | null>(null);
   const [showSplitPayment, setShowSplitPayment] = useState(false);
+  // Efectivo: antes de cobrar se indica lo entregado y se ve el cambio
+  const [showCashPayment, setShowCashPayment] = useState(false);
   const [lastSale, setLastSale] = useState<any>(null);
   const [showTicket, setShowTicket] = useState(false);
   const [showCustomerForm, setShowCustomerForm] = useState(false);
@@ -290,6 +293,7 @@ export default function TpvScreen() {
         },
       };
       setLastSale(normalized);
+      setShowCashPayment(false);
       setShowTicket(true);
       setCart([]);
       setCartOpen(false);
@@ -443,7 +447,7 @@ export default function TpvScreen() {
   };
 
   // ── Payment ─────────────────────────────────────────────────────────────────
-  const handleQuickPay = (method: PaymentMethod) => {
+  const handleQuickPay = (method: PaymentMethod, amountTendered?: number) => {
     if (!sessionId) return toast.error("No hay sesión de caja abierta");
     if (cart.length === 0) return toast.error("El carrito está vacío");
 
@@ -490,7 +494,7 @@ export default function TpvScreen() {
         legoPackLineIds: item.product.productType === 'legoPack' ? item.legoPackLineIds : undefined,
         legoPackLinePeople: item.product.productType === 'legoPack' ? item.legoPackLinePeople : undefined,
       })),
-      payments: [{ method, amount: cartTotal }],
+      payments: [{ method, amount: cartTotal, ...(method === "cash" && amountTendered !== undefined ? { amountTendered } : {}) }],
     });
   };
 
@@ -504,7 +508,7 @@ export default function TpvScreen() {
       <div className="dark fixed inset-0 bg-gray-950 flex flex-col items-center justify-center z-50 overflow-y-auto py-8">
         <div className="text-center space-y-6 w-full max-w-md px-4">
           <div className="w-20 h-20 rounded-2xl bg-primary flex items-center justify-center mx-auto shadow-2xl">
-            <Receipt className="w-10 h-10 text-primary-foreground" />
+            <Store className="w-10 h-10 text-primary-foreground" />
           </div>
           <h1 className="text-3xl font-bold text-white tracking-tight">Punto de venta</h1>
 
@@ -622,7 +626,7 @@ export default function TpvScreen() {
       <header className="flex items-center justify-between gap-2 px-2 sm:px-4 py-1.5 bg-gray-900 border-b border-gray-800 shrink-0">
         <div className="flex items-center gap-2 min-w-0">
           <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center shrink-0">
-            <Receipt className="w-4 h-4 text-primary-foreground" />
+            <Store className="w-4 h-4 text-primary-foreground" />
           </div>
           <button
             type="button"
@@ -1155,7 +1159,11 @@ export default function TpvScreen() {
                 <div className="grid grid-cols-3 gap-2">
                   <Button
                     className="h-12 bg-primary hover:bg-primary/90 text-primary-foreground flex-col gap-0.5 text-xs font-medium"
-                    onClick={() => handleQuickPay("cash")}
+                    onClick={() => {
+                      if (!sessionId) return toast.error("No hay sesión de caja abierta");
+                      if (cart.length === 0) return toast.error("El carrito está vacío");
+                      setShowCashPayment(true);
+                    }}
                     disabled={createSaleMut.isPending}
                   >
                     <Banknote className="w-4 h-4" />
@@ -1229,6 +1237,13 @@ export default function TpvScreen() {
             type={showCashMovement ?? "out"}
             sessionId={sessionId}
             onClose={() => setShowCashMovement(null)}
+          />
+          <TpvCashPayment
+            open={showCashPayment}
+            total={cartTotal}
+            pending={createSaleMut.isPending}
+            onClose={() => setShowCashPayment(false)}
+            onConfirm={(amountTendered) => handleQuickPay("cash", amountTendered)}
           />
           {showSplitPayment && (
             <TpvSplitPayment
