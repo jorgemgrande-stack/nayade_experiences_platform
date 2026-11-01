@@ -18,6 +18,8 @@ import { useMarketingConsent } from "@/hooks/useMarketingConsent";
 import { trackEvent } from "@/lib/meta-pixel/client";
 import { trackLeadFormSubmit } from "@/lib/ga4";
 import ActivityModal, { ActivityEntry, ModalState, getFamilyForSlug } from "@/components/ActivityModal";
+import { usePublicSite } from "@/hooks/usePublicSite";
+import TenantBudgetRequest from "./TenantBudgetRequest";
 
 // --- Assets -------------------------------------------------------------------
 const HERO_BG = "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/nayade/uploads/1774088145054-jpwq7l.png";
@@ -52,7 +54,16 @@ const EXP_CHIPS = [
 ];
 
 // --- Componente principal -----------------------------------------------------
+/**
+ * /presupuesto: en la instalación propia, su formulario de siempre (experiencias, packs, hotel, SPA…); en la web de una
+ * pyme, el formulario genérico (sin categorías ni productos sectoriales de otra empresa).
+ */
 export default function BudgetRequest() {
+  const { features } = usePublicSite();
+  return features && !features.licensed ? <LegacyBudgetRequest /> : <TenantBudgetRequest />;
+}
+
+function LegacyBudgetRequest() {
   const { neutral, brandName, phone, phoneTel, email, heroImage } = usePublicContact();
   const heroBg = neutral ? heroImage : HERO_BG;
   const [submitted, setSubmitted] = useState(false);

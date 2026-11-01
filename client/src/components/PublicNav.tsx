@@ -10,6 +10,7 @@ import CartIcon from "@/components/CartIcon";
 import CartDrawer from "@/components/CartDrawer";
 import { trackPhoneClick } from "@/lib/ga4";
 import { TenantBrand, useTenantTheme } from "@/components/TenantTheme";
+import { usePublicSite } from "@/hooks/usePublicSite";
 
 // Fallback estático por si la BD no responde aún
 const FALLBACK_NAV = [
@@ -164,6 +165,11 @@ export default function PublicNav() {
 
   const { phone, phoneTel } = usePublicPhone();
   const { theme: tenantTheme } = useTenantTheme();
+  // Web de una empresa: solo las secciones que tiene contratadas (nada mientras se sabe); la instalación propia, todas
+  const { features: site, text: siteText } = usePublicSite();
+  const showCoupon = !!site?.coupons;
+  const showQuote = !!site?.quotes;
+  const showCart = !!site?.store;
 
   // Cargar menú desde la BD
   const { data: menuData } = trpc.public.getMenuItems.useQuery(
@@ -202,6 +208,9 @@ export default function PublicNav() {
     setIsOpen(false);
     setExpandedMobile(null);
   }, [location]);
+
+  // Tienda de la pyme: accesible desde el menú aunque la empresa aún no la haya añadido a sus enlaces
+  const showShopLink = !!site?.licensed && site.store && !navLinks.some((l) => l.href === siteText.shopHref);
 
   const mobileNavigate = (to: string) => {
     setIsOpen(false);
@@ -296,22 +305,33 @@ export default function PublicNav() {
 
           {/* CTAs desktop */}
           <div className="hidden lg:flex items-center gap-2">
+            {showShopLink && (
+              <Link href={siteText.shopHref}>
+                <Button variant="ghost" size="sm" className="font-display font-medium rounded-full text-foreground hover:text-primary">
+                  {siteText.shopLabel}
+                </Button>
+              </Link>
+            )}
             <Link href="/contacto">
               <Button variant="ghost" size="sm" className="font-display font-medium rounded-full text-foreground hover:text-primary">
                 Contacto
               </Button>
             </Link>
+            {showCoupon && (
             <Link href="/canjear-cupon">
               <Button variant="ghost" size="sm" className="font-display font-medium rounded-full gap-1.5 text-orange-500 hover:text-orange-600 hover:bg-orange-50">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5 flex-shrink-0"><path d="M20 12V22H4V12"/><path d="M22 7H2v5h20V7z"/><path d="M12 22V7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg>
-                Canjear Cupón
+                {siteText.couponCta}
               </Button>
             </Link>
+            )}
+            {showQuote && (
             <Link href="/presupuesto">
               <Button size="sm" className="bg-accent hover:bg-accent/90 text-white font-display font-semibold rounded-full px-5 shadow-md">
-                Solicitar Presupuesto
+                {siteText.quoteCta}
               </Button>
             </Link>
+            )}
             {/* Toggle tema público */}
             <button
               onClick={togglePublicTheme}
@@ -323,7 +343,7 @@ export default function PublicNav() {
                 : <Moon className="w-4 h-4 text-foreground/60" />
               }
             </button>
-            <CartIcon />
+            {showCart && <CartIcon />}
           </div>
           {/* Botón hamburguesa mobile */}
           <button
@@ -405,16 +425,25 @@ export default function PublicNav() {
             </div>
           ))}
           <div className="pt-3 border-t border-border space-y-2">
+            {showShopLink && (
+              <Button variant="outline" className="w-full font-display font-medium rounded-full" onClick={() => mobileNavigate(siteText.shopHref)}>
+                {siteText.shopLabel}
+              </Button>
+            )}
             <Button variant="outline" className="w-full font-display font-medium rounded-full" onClick={() => mobileNavigate("/contacto")}>
               Contacto
             </Button>
+            {showCoupon && (
             <Button variant="outline" className="w-full font-display font-medium rounded-full border-orange-200 text-orange-500 hover:bg-orange-50 gap-2" onClick={() => mobileNavigate("/canjear-cupon")}>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4 flex-shrink-0"><path d="M20 12V22H4V12"/><path d="M22 7H2v5h20V7z"/><path d="M12 22V7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg>
-              Canjear Cupón
+              {siteText.couponCta}
             </Button>
+            )}
+            {showQuote && (
             <Button className="w-full bg-accent hover:bg-accent/90 text-white font-display font-semibold rounded-full" onClick={() => mobileNavigate("/presupuesto")}>
-              Solicitar Presupuesto
+              {siteText.quoteCta}
             </Button>
+            )}
           </div>
         </div>
       </div>

@@ -55,8 +55,17 @@ describe.skipIf(!URL_)("Web pública por empresa (aplicación real, dos empresas
     expect(nf.status).toBe(404);
     expect(nf.text).toContain('<meta name="robots" content="noindex" />');
     expect((await ess.call("a", "GET", "/a/b/c")).status).toBe(404);
-    // Textos legales de relleno sin redactar: no existen todavía
-    expect((await ess.call("a", "GET", "/privacidad")).status).toBe(404);
+    // Textos legales iniciales de la empresa (genéricos, con sus datos): existen desde el primer minuto
+    const priv = await ess.call("a", "GET", "/privacidad");
+    expect(priv.status).toBe(200);
+    expect(priv.text).toContain("<title>Política de privacidad | Empresa A Ejemplo SL</title>");
+    for (const p of ["/aviso-legal", "/cookies"]) expect((await ess.call("b", "GET", p)).status, p).toBe(200);
+    // Secciones según lo contratado (Essential): la tienda sí; Lego Packs y cupones de plataformas, no
+    for (const p of ["/tienda", "/experiencias", "/presupuesto"]) expect((await ess.call("a", "GET", p)).status, p).toBe(200);
+    for (const p of ["/lego-packs", "/lego-packs/dia", "/canjear-cupon"]) expect((await ess.call("a", "GET", p)).status, p).toBe(404);
+    await ess.setCapability("b", "crm-leads", null);
+    expect((await ess.call("b", "GET", "/presupuesto")).status).toBe(404);
+    await ess.setCapability("b", "crm-leads", "active");
     // Rutas del cliente y áreas privadas: se sirven
     for (const p of ["/contacto", "/login", "/admin", "/admin/ayuda"]) expect((await ess.call("a", "GET", p)).status, p).toBe(200);
     // Secciones sectoriales sin su módulo: no existen

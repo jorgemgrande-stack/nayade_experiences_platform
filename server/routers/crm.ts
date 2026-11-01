@@ -106,6 +106,9 @@ import { hasTagCondition } from "../crmTagsDb";
 import { assertBusinessQuota } from "../businessQuotas";
 import { buildInvoiceEmailHtml } from "../emailTemplates";
 import { assertQuotePricedForSend } from "../quoteSendGuards";
+import { addClientNote, clientListConditions, clientStats, deleteClientNote, deleteNotesOfClient, findClientDuplicates, listClientNotes, listFilteredClientsForExport, loadClientHistoryExtras } from "../clientProfileDb";
+import { CLIENT_KINDS, NOTE_MAX } from "../../shared/clientProfile";
+import { isValidSpanishTaxId } from "../../shared/formValidation";
 
 // generateInvoiceNumber y generateQuoteNumber reemplazadas por el helper centralizado
 // Ver server/documentNumbers.ts
@@ -6324,27 +6327,37 @@ export const crmRouter = router({
     list: staff.input(z.object({
       search: z.string().optional(),
       tagId: z.number().int().positive().optional(),
+      type: z.enum(CLIENT_KINDS).optional(),
       limit: z.number().default(50),
       offset: z.number().default(0),
     })).query(async ({ input }) => {
-      const conditions: ReturnType<typeof like>[] = [];
-      if (input.search) {
-        conditions.push(or(
-          like(clients.name, `%${input.search}%`),
-          like(clients.email, `%${input.search}%`),
-          like(clients.company, `%${input.search}%`),
-        ) as ReturnType<typeof like>);
-      }
-      if (input.tagId) conditions.push(hasTagCondition(clients.id, "client", input.tagId));
+      const where = clientListConditions(input);
       const rows = await db.select().from(clients)
-        .where(conditions.length ? and(...conditions) : undefined)
-        .orderBy(desc(clients.createdAt))
+        .where(where)
+        .orderBy(desc(clients.createdAt), desc(clients.id))
         .limit(input.limit)
         .offset(input.offset);
       const [{ total }] = await db.select({ total: count() }).from(clients)
-        .where(conditions.length ? and(...conditions) : undefined);
+        .where(where);
       return { items: rows, total };
     }),
+    stats: staff.query(() => clientStats()),
+    // Aviso de duplicados antes del alta o al cambiar el correo o el NIF
+    findDuplicates: staff.input(z.object({
+      email: z.string().max(320).optional(),
+      nif: z.string().max(64).optional(),
+      excludeId: z.number().int().positive().optional(),
+    })).query(({ input }) => findClientDuplicates(input)),
+    notes: staff.input(z.object({ clientId: z.number().int().positive() })).query(({ input }) => listClientNotes(input.clientId)),
+    addNote: staff.input(z.object({
+      clientId: z.number().int().positive(),
+      body: z.string().max(NOTE_MAX, `La nota no puede pasar de ${NOTE_MAX} caracteres.`),
+    })).mutation(({ input, ctx }) => addClientNote(input.clientId, input.body, { id: ctx.user.id, name: ctx.user.name ?? null })),
+    deleteNote: staff.input(z.object({ clientId: z.number().int().positive(), noteId: z.number().int().positive() }))
+      .mutation(async ({ input }) => {
+        await deleteClientNote(input.clientId, input.noteId);
+        return { success: true };
+      }),
     get: staff.input(z.object({ id: z.number() })).query(async ({ input }) => {
       const [client] = await db.select().from(clients).where(eq(clients.id, input.id));
       if (!client) throw new TRPCError({ code: "NOT_FOUND" });
@@ -6401,30 +6414,48 @@ export const crmRouter = router({
       }
       return applyClientImport(plan, new Set(input.excludeLines));
     }),
-    exportCsv: staff.query(async () => {
-      const rows = await listClientsForExport();
+    // Sin filtros, todos los clientes; con filtros, solo lo que se ve en el listado
+    exportCsv: staff.input(z.object({
+      search: z.string().optional(),
+      tagId: z.number().int().positive().optional(),
+      type: z.enum(CLIENT_KINDS).optional(),
+    }).optional()).query(async ({ input }) => {
+      const rows = input && (input.search?.trim() || input.tagId || input.type)
+        ? await listFilteredClientsForExport(input)
+        : await listClientsForExport();
       return { csv: toClientCsv(rows), count: rows.length };
     }),
     update: staff.input(z.object({
       id: z.number(),
-      name: z.string().min(1).optional(),
-      email: z.string().email().optional(),
-      phone: z.string().optional(),
-      company: z.string().optional(),
-      nif: z.string().optional(),
+      name: z.string().trim().min(1, "Indica el nombre del cliente.").max(256).optional(),
+      email: z.string().trim().email("El correo electrónico no es válido (por ejemplo, nombre@empresa.com).").max(256).optional(),
+      phone: z.string().max(64).optional(),
+      company: z.string().max(256).optional(),
+      nif: z.string().max(64).optional(),
       address: z.string().optional(),
-      city: z.string().optional(),
-      postalCode: z.string().optional(),
-      country: z.string().optional(),
+      city: z.string().max(128).optional(),
+      postalCode: z.string().max(16).optional(),
+      country: z.string().max(64).optional(),
       birthDate: z.string().optional(),
       notes: z.string().optional(),
     })).mutation(async ({ input }) => {
       const { id, ...data } = input;
 
       // Get current client to find its leadId for cascade
-      const [current] = await db.select({ leadId: clients.leadId }).from(clients).where(eq(clients.id, id));
+      const [current] = await db.select({ leadId: clients.leadId, nif: clients.nif, country: clients.country }).from(clients).where(eq(clients.id, id));
+      if (!current) throw new TRPCError({ code: "NOT_FOUND", message: "El cliente no existe" });
+      // NIF, NIE o CIF español: solo se valida si cambia (fichas antiguas con otros formatos se respetan)
+      const country = (data.country ?? current.country ?? "ES").trim().toUpperCase();
+      if (data.nif !== undefined && data.nif.trim() && data.nif !== current.nif && (!country || country === "ES") && !isValidSpanishTaxId(data.nif)) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "El NIF, NIE o CIF no es válido. Revisa los números y la letra." });
+      }
 
-      await db.update(clients).set(data as any).where(eq(clients.id, id));
+      try {
+        await db.update(clients).set(data as any).where(eq(clients.id, id));
+      } catch (e: any) {
+        if ((e?.cause ?? e)?.code === "ER_DUP_ENTRY") throw new TRPCError({ code: "CONFLICT", message: "Ya existe otro cliente con ese correo electrónico" });
+        throw e;
+      }
 
       // Propagate name/email/phone changes to lead, quotes and reservations
       if (current?.leadId) {
@@ -6470,6 +6501,7 @@ export const crmRouter = router({
     }),
     delete: staff.input(z.object({ id: z.number() })).mutation(async ({ input }) => {
       await db.delete(clients).where(eq(clients.id, input.id));
+      await deleteNotesOfClient(input.id);
       return { success: true };
     }),
 
@@ -6482,16 +6514,19 @@ export const crmRouter = router({
         ? (await db.select().from(leads).where(eq(leads.id, client.leadId)))[0] ?? null
         : null;
 
-      // Presupuestos vinculados al lead (o por email si no hay lead directo)
+      // Presupuestos vinculados al lead y a cualquier otra oportunidad con el correo del cliente
+      // (cada presupuesto directo a un cliente crea o reutiliza una oportunidad con su correo)
       let clientQuotes: typeof quotes.$inferSelect[] = [];
       let resolvedLeadId = client.leadId;
-      if (!resolvedLeadId && client.email) {
-        const [leadByEmail] = await db.select({ id: leads.id }).from(leads).where(eq(leads.email, client.email)).limit(1);
-        if (leadByEmail) resolvedLeadId = leadByEmail.id;
+      const quoteLeadIds = new Set<number>(client.leadId ? [client.leadId] : []);
+      if (client.email) {
+        const leadsByEmail = await db.select({ id: leads.id }).from(leads).where(eq(leads.email, client.email)).orderBy(desc(leads.createdAt));
+        for (const l of leadsByEmail) quoteLeadIds.add(l.id);
+        if (!resolvedLeadId && leadsByEmail[0]) resolvedLeadId = leadsByEmail[0].id;
       }
-      if (resolvedLeadId) {
+      if (quoteLeadIds.size) {
         clientQuotes = await db.select().from(quotes)
-          .where(eq(quotes.leadId, resolvedLeadId))
+          .where(inArray(quotes.leadId, Array.from(quoteLeadIds)))
           .orderBy(desc(quotes.createdAt));
       }
 
@@ -6516,6 +6551,9 @@ export const crmRouter = router({
       const invoiceConditions: ReturnType<typeof inArray>[] = [];
       if (quoteIds.length) invoiceConditions.push(inArray(invoices.quoteId, quoteIds));
       if (reservationIds.length) invoiceConditions.push(inArray(invoices.reservationId, reservationIds));
+      // Facturas libres y del resto de canales emitidas a nombre del cliente (mismo correo o mismo NIF)
+      if (client.email) invoiceConditions.push(eq(invoices.clientEmail, client.email) as ReturnType<typeof inArray>);
+      if ((client.nif ?? "").trim().length >= 8) invoiceConditions.push(eq(invoices.clientNif, client.nif!.trim()) as ReturnType<typeof inArray>);
 
       // Condiciones de anulaciones: por quoteId O por reservationId (las creadas manualmente usan linkedReservationId)
       const cancellationConditions: ReturnType<typeof inArray>[] = [];
@@ -6621,12 +6659,17 @@ export const crmRouter = router({
         return true;
       });
 
+      // Tickets de caja de sus pedidos y correos que se le han enviado
+      const extras = await loadClientHistoryExtras(client, { reservationIds });
+
       return {
         client,
         lead,
         quotes: clientQuotes,
         reservations: clientReservations,
         invoices: dedupedInvoices,
+        tpvTickets: extras.tpvTickets,
+        emails: extras.emails,
         cancellations: clientCancellations,
         discountUses: clientDiscountUses,
         activityLog,

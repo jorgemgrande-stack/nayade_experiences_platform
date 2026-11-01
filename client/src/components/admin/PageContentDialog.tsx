@@ -115,6 +115,12 @@ export function PageContentDialog({ page, open, onClose, onSaved }: { page: Edit
           <div className="space-y-1.5">
             <Label htmlFor="page-content">Texto de la página</Label>
             <Textarea id="page-content" rows={14} className="font-mono text-xs" value={content} maxLength={200_000} onChange={(e) => setContent(e.target.value)} placeholder="<h1>Bienvenido</h1>&#10;<p>Cuéntales a tus clientes quién eres y qué ofreces.</p>" />
+            {content.includes("{{") && (
+              <p className="text-xs text-muted-foreground">
+                Los datos entre dobles llaves, como {"{{nif}}"} o {"{{telefono}}"}, se rellenan solos con los datos de tu empresa. Si falta alguno, esa línea no
+                se muestra en tu web hasta que lo completes en Datos de la empresa.
+              </p>
+            )}
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="page-meta">Descripción para buscadores (opcional)</Label>
@@ -122,7 +128,7 @@ export function PageContentDialog({ page, open, onClose, onSaved }: { page: Edit
           </div>
           {legal && (
             <p role="note" className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-              Texto legal: revísalo con tu asesor y complétalo con los datos de tu empresa antes de publicarlo. Mientras esté en borrador no aparece en tu web ni en su menú.
+              Texto legal: revísalo con tu asesor y adáptalo a tu empresa. Mientras esté en borrador no aparece en tu web ni en su menú.
             </p>
           )}
           <div className="flex items-center gap-2">

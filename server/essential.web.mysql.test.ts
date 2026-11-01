@@ -24,6 +24,67 @@ describe.skipIf(!URL_)("Essential — Web y CMS (aplicación real, dos empresas 
     await ess?.close();
   });
 
+  it("páginas iniciales: portada y textos legales con los datos de la empresa desde el primer minuto, sin inventar nada", async () => {
+    // Recién dada de alta: aún no tiene ninguna página; al leer su web se crean las iniciales (solo las suyas)
+    expect((await ess.sql("b", "SELECT COUNT(*) AS n FROM static_pages"))[0].n).toBe(0);
+    const home = data(await ess.q("b", "public.getTenantPage", { slug: "inicio" }));
+    expect(home.html).toContain("<h1>Empresa B Ejemplo SL</h1>");
+    expect(home.html).not.toMatch(/\{\{|Empresa A/);
+    const rows = await ess.sql<{ slug: string; isPublished: number; same: number }>("b", "SELECT slug, isPublished, createdAt = updatedAt AS same FROM static_pages ORDER BY id");
+    expect(rows.map((r) => r.slug)).toEqual(["inicio", "aviso-legal", "politica-de-privacidad", "politica-de-cookies"]);
+    expect(rows.every((r) => Number(r.isPublished) === 1 && Number(r.same) === 1)).toBe(true);
+    // A todavía no las tiene: nada se comparte entre empresas
+    expect((await ess.sql("a", "SELECT COUNT(*) AS n FROM static_pages"))[0].n).toBe(0);
+
+    // Aviso legal con la entidad fiscal de B; sin correo de contacto, esa línea no aparece (ni un marcador)
+    const legal = data(await ess.q("b", "public.getTenantPage", { slug: "aviso-legal" }));
+    expect(legal.title).toBe("Aviso legal");
+    expect(legal.html).toContain("<li>NIF: B00000022</li>");
+    expect(legal.html).toContain("<li>Titular: Empresa B Ejemplo SL</li>");
+    expect(legal.html).not.toMatch(/\{\{|Correo electrónico:|B00000011/);
+    const st = data(await ess.q("b", "setupWizard.status", undefined, admB));
+    expect(st.legalMissing).toEqual(["correo electrónico de contacto"]);
+
+    // Completa sus datos: los textos legales los muestran sin volver a editarlos
+    expect((await ess.m("b", "setupWizard.saveFiscal", { legalName: "Empresa B Ejemplo SL", taxId: "B00000022", address: "Calle Prueba b, 00000 Ejemplo", publicPhone: "910 000 022", publicEmail: "hola@b.example" }, admB)).status).toBe(200);
+    const priv = data(await ess.q("b", "public.getTenantPage", { slug: "politica-de-privacidad" }));
+    expect(priv.html).toContain("<li>Correo electrónico: hola@b.example</li>");
+    expect(priv.html).toContain("Agencia Española de Protección de Datos");
+    expect(data(await ess.q("b", "setupWizard.status", undefined, admB)).legalMissing).toEqual([]);
+
+    // Lo que la empresa borra se respeta (se crean una sola vez)
+    await ess.sql("b", "DELETE FROM static_pages WHERE slug = 'politica-de-cookies'");
+    expect(data(await ess.q("b", "public.getTenantPage", { slug: "politica-de-cookies" })) ?? null).toBeNull();
+    expect(data(await ess.q("b", "cms.getPages", undefined, admB)).map((p: any) => p.slug)).not.toContain("politica-de-cookies");
+
+    // Secciones de su web según lo contratado (Essential): tienda y presupuesto; nada sectorial
+    expect(data(await ess.q("b", "public.getTheme")).siteFeatures).toEqual({ licensed: true, store: true, checkout: true, quotes: true, coupons: false, hotel: false, spa: false, restaurants: false });
+  });
+
+  it("páginas iniciales en una empresa anterior: el texto legal de relleno se sustituye por el genérico; lo redactado no se toca", async () => {
+    const relleno = "<h1>Aviso legal</h1><p>Titular del sitio: A. Complete en este apartado los datos identificativos exigidos por la normativa aplicable.</p>";
+    await ess.sql("a", "INSERT INTO static_pages (slug, title, content, isPublished) VALUES ('aviso-legal', 'Aviso legal', ?, 0), ('politica-de-privacidad', 'Privacidad', '<p>Responsable: A, S.L. (redactado)</p>', 1)", [relleno]);
+    const legal = data(await ess.q("a", "public.getTenantPage", { slug: "aviso-legal" }));
+    expect(legal.html).toContain("Ley 34/2002");
+    expect(legal.html).toContain("<li>NIF: B00000011</li>");
+    expect(data(await ess.q("a", "public.getTenantPage", { slug: "politica-de-privacidad" })).html).toBe("<p>Responsable: A, S.L. (redactado)</p>");
+    // Sin cambiar «web revisada» de Primeros pasos
+    const [row] = await ess.sql<{ same: number }>("a", "SELECT updatedAt <= createdAt AS same FROM static_pages WHERE slug = 'aviso-legal'");
+    expect(Number(row.same)).toBe(1);
+  });
+
+  it("texto sin formato: párrafos y saltos de línea; el título no se pierde", async () => {
+    expect((await ess.m("a", "cms.savePageContent", { slug: "quienes", title: "Quiénes somos", content: "Somos una asesoría.\n\nTe ayudamos con tus impuestos.", isPublished: true }, admA)).status).toBe(200);
+    const p = data(await ess.q("a", "public.getTenantPage", { slug: "quienes" }));
+    expect(p.title).toBe("Quiénes somos");
+    expect(p.html).toBe("<p>Somos una asesoría.</p><p>Te ayudamos con tus impuestos.</p>");
+    expect((await ess.m("a", "cms.savePageContent", { slug: "quienes", title: "Quiénes somos", content: "Línea uno\nLínea 2 < 3 & tres", isPublished: true }, admA)).status).toBe(200);
+    expect(data(await ess.q("a", "public.getTenantPage", { slug: "quienes" })).html).toBe("<p>Línea uno<br>Línea 2 &lt; 3 &amp; tres</p>");
+    // Con etiquetas, es HTML: se sanea y se sirve tal cual
+    expect((await ess.m("a", "cms.savePageContent", { slug: "quienes", title: "Quiénes somos", content: "<p>Hola</p><img src=x onerror=alert(1)>", isPublished: true }, admA)).status).toBe(200);
+    expect(data(await ess.q("a", "public.getTenantPage", { slug: "quienes" })).html).toBe('<p>Hola</p><img src="x">');
+  });
+
   it("cms-editor: bloques de página, menú y ajustes del sitio; publicación; aislamiento; permisos; licencia", async () => {
     const blocks = [
       { blockType: "hero", sortOrder: 0, data: { title: "Bienvenidos a A" } },
@@ -45,7 +106,7 @@ describe.skipIf(!URL_)("Essential — Web y CMS (aplicación real, dos empresas 
     // B: ni bloques, ni menú, ni página
     expect(data(await ess.q("b", "public.getPublicPageBlocks", { slug: "quienes-somos" }))).toEqual([]);
     expect(data(await ess.q("b", "public.getMenuItems", { zone: "header" }))).toEqual([]);
-    expect(data(await ess.q("b", "cms.getPages", undefined, admB))).toEqual([]);
+    expect(data(await ess.q("b", "cms.getPages", undefined, admB)).map((p: any) => p.slug)).not.toContain("quienes-somos");
     expect(errCode(await ess.m("a", "cms.createMenuItem", { label: "x" }, agA))).toBe("FORBIDDEN");
 
     const lic = await licenseMatrix(ess, "cms-editor", {
@@ -93,7 +154,8 @@ describe.skipIf(!URL_)("Essential — Web y CMS (aplicación real, dos empresas 
     expect(data(await ess.q("a", "public.getTenantPage", { slug: "novedades" })).html).toContain("Solo de A");
 
     // B no ve nada de A
-    expect(data(await ess.q("b", "public.getTenantPage", { slug: "inicio" })) ?? null).toBeNull();
+    // B tiene su propia portada inicial, nunca la de A
+    expect(data(await ess.q("b", "public.getTenantPage", { slug: "inicio" })).html).not.toContain("de A");
     expect(data(await ess.q("b", "public.getTenantPage", { slug: "novedades" })) ?? null).toBeNull();
     expect((await ess.sql("b", "SELECT COUNT(*) AS n FROM static_pages WHERE content LIKE '%de A%'"))[0].n).toBe(0);
 

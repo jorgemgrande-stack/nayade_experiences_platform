@@ -16,16 +16,14 @@ import { useCart, type CartItem } from "@/contexts/CartContext";
 import { Button } from "@/components/ui/button";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
+import { usePublicSite } from "@/hooks/usePublicSite";
+import { cartItemDate } from "@shared/publicSite";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function formatDate(dateStr: string): string {
-  try {
-    const d = new Date(dateStr + "T00:00:00");
-    return d.toLocaleDateString("es-ES", { weekday: "short", day: "numeric", month: "short" });
-  } catch {
-    return dateStr;
-  }
+/** Fecha del artículo; null si no tiene (productos de la tienda sin fecha): no se muestra. */
+function formatDate(dateStr: string): string | null {
+  return cartItemDate(dateStr, { weekday: "short", day: "numeric", month: "short" });
 }
 
 // ─── CartItemRow ──────────────────────────────────────────────────────────────
@@ -33,6 +31,9 @@ function formatDate(dateStr: string): string {
 function CartItemRow({ item }: { item: CartItem }) {
   const { removeItem, updatePeople, updateVariant } = useCart();
   const [showVariants, setShowVariants] = useState(false);
+  // Cantidad en unidades en una pyme; en personas en la instalación propia
+  const { text } = usePublicSite();
+  const date = formatDate(item.bookingDate);
 
   const minPeople = item.minPersons ?? 1;
   const maxPeople = item.maxPersons ?? 20;
@@ -86,11 +87,13 @@ function CartItemRow({ item }: { item: CartItem }) {
             </button>
           </div>
 
-          {/* Fecha */}
-          <div className="flex items-center gap-1 mt-1 text-xs text-muted-foreground">
-            <Calendar className="w-3 h-3" />
-            {formatDate(item.bookingDate)}
-          </div>
+          {/* Fecha (solo si el artículo la tiene) */}
+          {date && (
+            <div className="flex items-center gap-1 mt-1 text-xs text-muted-foreground">
+              <Calendar className="w-3 h-3" />
+              {date}
+            </div>
+          )}
           {/* Horario seleccionado (time slot) */}
           {item.selectedTimeSlotLabel && (
             <div className="flex items-center gap-1 mt-0.5 text-xs text-orange-600 font-medium">
@@ -114,7 +117,7 @@ function CartItemRow({ item }: { item: CartItem }) {
             {item.variantName ?? "Modalidad / Tarifa"}
           </span>
           <span className="flex items-center gap-1 font-bold text-orange-600">
-            {item.pricePerPerson.toFixed(2)} €/p.
+            {item.pricePerPerson.toFixed(2)} {text.perUnitShort}
             <ChevronDown className={cn("w-3 h-3 transition-transform", showVariants && "rotate-180")} />
           </span>
         </button>
@@ -133,7 +136,7 @@ function CartItemRow({ item }: { item: CartItem }) {
               )}
             >
               <span>Precio estándar</span>
-              <span className="font-bold">{item.pricePerPerson.toFixed(2)} €/p.</span>
+              <span className="font-bold">{item.pricePerPerson.toFixed(2)} {text.perUnitShort}</span>
             </button>
 
             {variants.length === 0 && (
@@ -153,7 +156,7 @@ function CartItemRow({ item }: { item: CartItem }) {
                 )}
               >
                 <span>{v.name}</span>
-                <span className="font-bold">{parseFloat(String(v.priceModifier ?? 0)).toFixed(2)} €/p.</span>
+                <span className="font-bold">{parseFloat(String(v.priceModifier ?? 0)).toFixed(2)} {text.perUnitShort}</span>
               </button>
             ))}
           </div>
@@ -170,7 +173,7 @@ function CartItemRow({ item }: { item: CartItem }) {
             onClick={() => updatePeople(item.cartItemId, Math.max(minPeople, item.people - 1))}
             disabled={item.people <= minPeople}
             className="w-7 h-7 rounded-full border border-slate-200 flex items-center justify-center hover:bg-slate-100 disabled:opacity-40 transition-colors"
-            aria-label="Reducir personas"
+            aria-label={`Reducir ${text.quantityNoun}`}
           >
             <Minus className="w-3 h-3" />
           </button>
@@ -180,11 +183,11 @@ function CartItemRow({ item }: { item: CartItem }) {
             onClick={() => updatePeople(item.cartItemId, Math.min(maxPeople, item.people + 1))}
             disabled={item.people >= maxPeople}
             className="w-7 h-7 rounded-full border border-slate-200 flex items-center justify-center hover:bg-slate-100 disabled:opacity-40 transition-colors"
-            aria-label="Aumentar personas"
+            aria-label={`Aumentar ${text.quantityNoun}`}
           >
             <Plus className="w-3 h-3" />
           </button>
-          <span className="text-xs text-muted-foreground">pers.</span>
+          <span className="text-xs text-muted-foreground">{text.quantityShort}</span>
           {item.pricingType === "per_unit" && item.unitCapacity && item.unitCapacity > 0 && (
             <span className="text-xs text-cyan-600 font-medium ml-1">
               → {Math.ceil(item.people / item.unitCapacity)} unid.
@@ -229,6 +232,13 @@ function CartItemRow({ item }: { item: CartItem }) {
 export default function CartDrawer() {
   const { items, totalItems, totalEstimated, isOpen, closeCart, clearCart } = useCart();
   const [, navigate] = useLocation();
+  // Textos de la empresa: genéricos en una pyme («productos o servicios», «tienda»), los de siempre en la instalación propia
+  const { features, text } = usePublicSite();
+
+  function browse() {
+    closeCart();
+    if (features?.licensed && features.store) navigate(text.shopHref);
+  }
 
   function goToCheckout() {
     closeCart();
@@ -250,8 +260,9 @@ export default function CartDrawer() {
       {/* Drawer */}
       <div
         className={cn(
-          "fixed top-0 right-0 z-50 h-full w-full max-w-md bg-background shadow-2xl flex flex-col transition-transform duration-300 ease-in-out",
-          isOpen ? "translate-x-0" : "translate-x-full"
+          "fixed top-0 right-0 z-50 h-full w-full max-w-md bg-background shadow-2xl flex flex-col transition-[transform,visibility] duration-300 ease-in-out",
+          // Cerrado: fuera de la pantalla y oculto (ni se lee ni recibe el foco)
+          isOpen ? "translate-x-0 visible" : "translate-x-full invisible"
         )}
         role="dialog"
         aria-modal="true"
@@ -287,18 +298,18 @@ export default function CartDrawer() {
               <div>
                 <p className="font-display font-semibold text-foreground text-lg">Tu carrito está vacío</p>
                 <p className="text-muted-foreground text-sm mt-1">
-                  Añade experiencias desde el catálogo para reservarlas juntas en un solo pago.
+                  {text.cartEmpty}
                 </p>
               </div>
-              <Button variant="outline" size="sm" onClick={closeCart} className="rounded-full">
-                Ver experiencias
+              <Button variant="outline" size="sm" onClick={browse} className="rounded-full">
+                {text.cartBrowse}
               </Button>
             </div>
           ) : (
             <div className="px-5">
               <div className="flex items-center justify-between py-3">
                 <p className="text-xs text-muted-foreground">
-                  {totalItems} {totalItems === 1 ? "experiencia" : "experiencias"} seleccionadas
+                  {text.cartCount(totalItems)}
                 </p>
                 <button
                   onClick={clearCart}
@@ -348,7 +359,7 @@ export default function CartDrawer() {
             {/* Seguridad */}
             <p className="text-center text-xs text-muted-foreground flex items-center justify-center gap-1">
               <Lock className="w-3 h-3" />
-              Pago seguro con Redsys · SSL
+              {text.securePayment}
             </p>
           </div>
         )}

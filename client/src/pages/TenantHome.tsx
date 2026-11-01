@@ -8,6 +8,7 @@ import { trpc } from "@/lib/trpc";
 import PublicLayout from "@/components/PublicLayout";
 import { Button } from "@/components/ui/button";
 import { HOME_PAGE_SLUG } from "@/lib/homeRoute";
+import { RICH_TEXT_CLASS } from "@/components/TenantTheme";
 import { useStorefront } from "@/components/StorefrontRoute";
 import { productPath } from "@shared/storefront";
 
@@ -54,7 +55,7 @@ export default function TenantHome() {
       )}
 
       {page.data && (
-        <article className="container py-12 max-w-3xl prose">
+        <article className={`container py-10 md:py-14 max-w-3xl ${RICH_TEXT_CLASS}`}>
           {/* HTML saneado en servidor con lista blanca (server/_core/htmlSanitize.ts) */}
           <div dangerouslySetInnerHTML={{ __html: page.data.html }} />
         </article>
