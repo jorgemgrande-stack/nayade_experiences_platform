@@ -1,5 +1,5 @@
 /**
- * AccountingReports — Informes BI de Contabilidad
+ * AccountingReports — Informes de ventas
  * Admin > Contabilidad > Informes
  */
 import { useState } from "react";
@@ -7,6 +7,7 @@ import AdminLayout from "@/components/AdminLayout";
 import { PanelError } from "@/components/admin/PanelStates";
 import { trpc } from "@/lib/trpc";
 import { useVocabulary } from "@/lib/vocabulary";
+import { usePanelSubscription } from "@/hooks/usePanelSubscription";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -22,29 +23,29 @@ import {
 
 // ─── Paletas de colores ───────────────────────────────────────────────────────
 const CHANNEL_COLORS: Record<string, string> = {
-  tpv: "#f97316", web: "#3b82f6", admin: "#8b5cf6", otro: "#6b7280",
+  tpv: "#f97316", web: "#3b82f6", online: "#3b82f6", crm: "#10b981", admin: "#8b5cf6", delegado: "#0ea5e9", otro: "#6b7280",
 };
 const METHOD_COLORS: Record<string, string> = {
-  efectivo: "#22c55e", tarjeta: "#3b82f6", bizum: "#a855f7",
-  redsys: "#0ea5e9", otro: "#6b7280",
+  efectivo: "#22c55e", tarjeta: "#3b82f6", tarjeta_fisica: "#3b82f6", bizum: "#a855f7",
+  redsys: "#0ea5e9", tarjeta_redsys: "#0ea5e9", link_pago: "#0ea5e9", transferencia: "#f59e0b", otro: "#6b7280",
 };
 const FISCAL_COLORS: Record<string, string> = {
   general: "#3b82f6", general_21: "#3b82f6", reav: "#a855f7", mixed: "#f59e0b",
 };
 
 const CHANNEL_LABELS: Record<string, string> = {
-  tpv: "TPV", web: "Web", admin: "Admin", otro: "Otro",
+  tpv: "Caja", web: "Web", online: "Web", crm: "Presupuestos", admin: "Panel", delegado: "Venta delegada", otro: "Otro",
 };
 const METHOD_LABELS: Record<string, string> = {
-  efectivo: "Efectivo", tarjeta: "Tarjeta", bizum: "Bizum",
-  redsys: "Redsys", otro: "Otro",
+  efectivo: "Efectivo", tarjeta: "Tarjeta", tarjeta_fisica: "Tarjeta (datáfono)", bizum: "Bizum",
+  redsys: "Tarjeta online", tarjeta_redsys: "Tarjeta online", link_pago: "Enlace de pago", transferencia: "Transferencia", otro: "Otro",
 };
 const FISCAL_LABELS: Record<string, string> = {
   general: "IVA 21%", general_21: "IVA 21%", reav: "REAV", mixed: "Mixto",
 };
 
 // ─── Formateador de moneda ────────────────────────────────────────────────────
-const fmtEur = (v: number) => `€${v.toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const fmtEur = (v: number) => `${v.toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
 
 // ─── Tooltip personalizado ────────────────────────────────────────────────────
 function CustomTooltip({ active, payload, label }: any) {
@@ -66,6 +67,9 @@ function CustomTooltip({ active, payload, label }: any) {
 export default function AccountingReports() {
   // REAV (agencias de viaje) solo con su módulo; la instalación propia lo conserva
   const voc = useVocabulary();
+  // La previsión de tesorería sale de la importación bancaria: solo con ese módulo contratado
+  const sub = usePanelSubscription();
+  const canBank = (sub.mode === "legacy" || sub.mode === "tasks") && sub.can("bank-import-pos");
   const today = new Date();
   const firstOfMonth = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().slice(0, 10);
   const todayStr = today.toISOString().slice(0, 10);
@@ -86,6 +90,7 @@ export default function AccountingReports() {
 
   const { data: cf } = trpc.bankMovements.getCashflowForecast.useQuery(undefined, {
     staleTime: 5 * 60 * 1000,
+    enabled: canBank,
   });
 
   const fmtEurLocal = (v: number) => `${v.toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
@@ -128,7 +133,7 @@ export default function AccountingReports() {
   }));
 
   return (
-    <AdminLayout title="Informes BI">
+    <AdminLayout title="Informes de ventas">
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
@@ -246,7 +251,7 @@ export default function AccountingReports() {
                   <LineChart data={byDayFormatted} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
                     <XAxis dataKey="dayLabel" tick={{ fontSize: 11 }} className="text-muted-foreground" />
-                    <YAxis tickFormatter={v => `€${v}`} tick={{ fontSize: 11 }} className="text-muted-foreground" />
+                    <YAxis tickFormatter={v => `${v} €`} tick={{ fontSize: 11 }} className="text-muted-foreground" />
                     <Tooltip content={<CustomTooltip />} />
                     <Line type="monotone" dataKey="total" name="Ventas" stroke="#f97316" strokeWidth={2} dot={false} />
                   </LineChart>
@@ -273,7 +278,7 @@ export default function AccountingReports() {
                     <BarChart data={byChannelFormatted} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
                       <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
                       <XAxis dataKey="channel" tick={{ fontSize: 11 }} />
-                      <YAxis tickFormatter={v => `€${v}`} tick={{ fontSize: 11 }} />
+                      <YAxis tickFormatter={v => `${v} €`} tick={{ fontSize: 11 }} />
                       <Tooltip content={<CustomTooltip />} />
                       <Bar dataKey="total" name="Total" radius={[4, 4, 0, 0]}>
                         {byChannelFormatted.map((entry, i) => (
@@ -344,7 +349,7 @@ export default function AccountingReports() {
                     <BarChart data={byFiscalFormatted} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
                       <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
                       <XAxis dataKey="regime" tick={{ fontSize: 11 }} />
-                      <YAxis tickFormatter={v => `€${v}`} tick={{ fontSize: 11 }} />
+                      <YAxis tickFormatter={v => `${v} €`} tick={{ fontSize: 11 }} />
                       <Tooltip content={<CustomTooltip />} />
                       <Legend />
                       <Bar dataKey="total"   name="Total"        fill="#f97316" radius={[4, 4, 0, 0]} />
@@ -490,7 +495,7 @@ export default function AccountingReports() {
                           return (
                             <tr key={r.channel} className="border-b border-border/50 hover:bg-muted/20">
                               <td className="py-2 px-3 font-medium">
-                                {({ web: "Web", tpv: "TPV", phone: "Teléfono", agency: "Agencia", direct: "Directo", admin: "Admin" } as Record<string,string>)[r.channel] ?? r.channel}
+                                {({ web: "Web", online: "Web", tpv: "Caja", crm: "Presupuestos", phone: "Teléfono", agency: "Agencia", direct: "Directo", admin: "Panel" } as Record<string,string>)[r.channel] ?? r.channel}
                               </td>
                               <td className="py-2 px-3 text-right font-semibold text-green-700">{fmtEurLocal(r.amount)}</td>
                               <td className="py-2 px-3 text-right text-muted-foreground">{r.count}</td>

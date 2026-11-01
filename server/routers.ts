@@ -1427,6 +1427,13 @@ export const appRouter = router({
     getDashboardMetrics: adminProcedure.query(async () => {
       return getDashboardMetrics();
     }),
+    // Resumen con los datos reales de la empresa (ventas, cobros, facturas y gastos por mes y por categoría)
+    getSummary: adminProcedure
+      .input(z.object({ withQuotes: z.boolean().default(false) }).optional())
+      .query(async ({ input }) => {
+        const { getAccountingSummary } = await import("./accountingSummaryDb");
+        return getAccountingSummary({ withQuotes: input?.withQuotes ?? false });
+      }),
     getOverview: adminProcedure.query(async () => {
       return getDashboardOverview();
     }),
