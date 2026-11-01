@@ -20,7 +20,7 @@
 import crypto from "node:crypto";
 import { ZodError } from "zod";
 import { CAPABILITY_IDS } from "../catalog/capabilities";
-import { commercialChecks, shapeProblems, type CheckEntry, type CommercialCheck } from "../catalog/commercial/checks";
+import { commercialChecks, shapeProblems, textProblems, type CheckEntry, type CommercialCheck } from "../catalog/commercial/checks";
 import { effectiveOffer } from "../catalog/commercial/offer";
 import { rulesStatus } from "../catalog/commercial/rules";
 import { policyFromProducts, type PolicyMode, type PolicySource } from "../catalog/commercial/fromCatalog";
@@ -33,8 +33,11 @@ import {
   FAMILIES,
   productDraft,
   KEY_RE,
+  marketplaceDraft,
   PRICE_KINDS,
   publicView,
+  type MarketplaceDraft,
+  type MarketplaceSlideDraft,
   type EntryKind,
   type Family,
   type PriceKind,
@@ -62,8 +65,9 @@ export interface WebRefs {
 }
 
 /** Singletons de contenido: claves fijas que la web sabe consumir. */
-export const DOCUMENT_KEYS: Record<Exclude<EntryKind, "product" | "promotion" | "capability">, string[]> = {
+export const DOCUMENT_KEYS: Record<Exclude<EntryKind, "product" | "promotion" | "capability" | "marketplace_slide">, string[]> = {
   faq: ["general"],
+  marketplace: ["settings"],
   menu: ["main", "footer"],
   seo: ["routes"],
   page: ["nosotros", "legal-privacidad", "legal-cookies", "legal-condiciones", "legal-prueba-y-datos"],
@@ -193,7 +197,7 @@ export class WebAdminService {
       if (!FAMILIES.includes(input.family as Family)) throw new WebError("invalid_input", "Familia no válida");
     } else if (input.kind === "capability") {
       if (!this.capabilityIds().includes(input.key)) throw new WebError("invalid_input", "Capacidad desconocida: la clave debe ser un id del registro de capacidades");
-    } else if (input.kind !== "promotion") {
+    } else if (input.kind !== "promotion" && input.kind !== "marketplace_slide") {
       if (!DOCUMENT_KEYS[input.kind].includes(input.key)) throw new WebError("invalid_input", `Clave no admitida para ${input.kind}: ${DOCUMENT_KEYS[input.kind].join(", ")}`);
     }
     const draft = this.parse(input.kind, input.draft);
@@ -255,6 +259,7 @@ export class WebAdminService {
     if (cur.draftVersion !== expectedVersion) throw new WebError("version_conflict", `El borrador cambió (versión actual ${cur.draftVersion}). Revísalo antes de publicar.`, { current: cur.draftVersion });
     const draft = this.parse(kind, cur.draft);
     if (kind === "product") await this.checkPublishable(cur, draft as ProductDraft);
+    if (kind === "marketplace_slide") await this.checkSlide(draft as MarketplaceSlideDraft);
     if (kind === "capability" && !this.capabilityIds().includes(key)) throw new WebError("invalid_state", "Capacidad desconocida en el registro");
     if (kind === "promotion") {
       const missing: string[] = [];
@@ -282,6 +287,7 @@ export class WebAdminService {
     try {
       const draft = this.parse(kind, cur.draft);
       if (kind === "product") await this.checkPublishable(cur, draft as ProductDraft);
+      if (kind === "marketplace_slide") await this.checkSlide(draft as MarketplaceSlideDraft);
       return [];
     } catch (e) {
       if (!(e instanceof WebError)) throw e;
@@ -331,8 +337,9 @@ export class WebAdminService {
       };
       const dependents = (await this.d.store.listEntries({ kind: "product" })).filter((e) => e.publication === "published" && e.key !== key && refsOf(e).includes(key));
       const promos = (await this.d.store.listEntries({ kind: "promotion" })).filter((e) => e.publication === "published" && ((e.published as { products?: string[] })?.products ?? []).includes(key));
-      if (dependents.length || promos.length) {
-        const list = [...dependents.map((e) => e.key), ...promos.map((e) => `promoción ${e.key}`)];
+      const slides = kind === "product" ? (await this.d.store.listEntries({ kind: "marketplace_slide" })).filter((e) => e.publication === "published" && slideProducts(e.published as MarketplaceSlideDraft).includes(key)) : [];
+      if (dependents.length || promos.length || slides.length) {
+        const list = [...dependents.map((e) => e.key), ...promos.map((e) => `promoción ${e.key}`), ...slides.map((e) => `campaña ${e.key}`)];
         throw new WebError("invalid_state", `Hay elementos publicados que dependen de este producto: ${list.join(", ")}. Despublícalos o cambia sus dependencias antes.`, { dependents: list });
       }
     }
@@ -503,6 +510,57 @@ export class WebAdminService {
     return { catalog: quoteCatalogFromSite({ version, catalog: { products, promotions: [], capabilities: [] } }), policy: policyFromProducts(products as unknown as PolicySource[], "proposed") };
   }
 
+  // ── Marketplace del panel ──────────────────────────────────────────────────
+
+  /**
+   * Campañas y ajustes del marketplace del panel. «published»: lo publicado y vigente ahora (fechas), sin campañas que
+   * apunten a productos que ya no están publicados. «preview»: los borradores no retirados, sin filtro de fechas (vista
+   * previa del CRM). El filtro por empresa (audiencia y productos que ve) lo hace el catálogo del panel.
+   */
+  async marketplace(mode: "published" | "preview" = "published"): Promise<MarketplaceDocument> {
+    const preview = mode === "preview";
+    const [entries, products] = await Promise.all([this.d.store.listEntries(), this.d.store.listEntries({ kind: "product" })]);
+    const now = this.now();
+    const visible = (e: WebEntry) => (preview ? e.publication !== "unpublished" : e.publication === "published");
+    const body = (e: WebEntry) => (preview ? publicView(e.kind, e.draft) : (e.published as Record<string, unknown>));
+    const live = new Set(products.filter((p) => p.publication === "published").map((p) => p.key));
+    const slides = entries
+      .filter((e) => e.kind === "marketplace_slide" && visible(e))
+      .map((e) => ({ ...(body(e) as MarketplaceSlideDraft), id: e.key, order: e.sortOrder }))
+      .filter((s) => preview || ((!s.startsAt || s.startsAt <= now) && (!s.endsAt || s.endsAt > now) && slideProducts(s).every((k) => live.has(k))))
+      .sort((a, b) => a.order - b.order || a.id.localeCompare(b.id));
+    const settingsEntry = entries.find((e) => e.kind === "marketplace" && e.key === "settings" && visible(e));
+    const settings = settingsEntry ? (body(settingsEntry) as MarketplaceDraft) : marketplaceDraft.parse({});
+    return { slides, settings };
+  }
+
+  /** Antes de publicar una campaña: destinos que existen y reglas de texto públicas. */
+  private async checkSlide(s: MarketplaceSlideDraft) {
+    const problems: string[] = [];
+    const products = await this.d.store.listEntries({ kind: "product" });
+    const product = (k: string) => products.find((p) => p.key === k);
+    const statusOf = (k: string) => ((product(k)?.published as { catalog?: { commercialStatus?: string } } | null)?.catalog?.commercialStatus ?? null);
+    for (const k of slideProducts(s)) {
+      const p = product(k);
+      const cat = (p?.draft as { catalog?: { internalOnly?: boolean } } | undefined)?.catalog;
+      if (!p) problems.push(`el producto «${k}» no existe`);
+      else if (p.publication !== "published" || statusOf(k) === "unpublished") problems.push(`el producto «${k}» no está publicado`);
+      else if (cat?.internalOnly) problems.push(`el producto «${k}» es interno`);
+    }
+    for (const c of [s.primaryCta, ...(s.secondaryCta ? [s.secondaryCta] : [])]) {
+      // Una campaña nunca se salta las reglas de contratación: «Contratar» solo hacia un producto a la venta
+      if (BUY_RE.test(c.label.normalize("NFD").replace(/[̀-ͯ]/g, "")) && (c.target.type !== "product" || statusOf(c.target.value) !== "available")) problems.push(`«${c.label}» solo puede llevar a un producto disponible para contratar`);
+    }
+    for (const plan of s.audience?.plans ?? []) {
+      const p = product(plan);
+      if (!p || p.family !== "core_plan") problems.push(`«${plan}» no es un plan de Elephant Core`);
+    }
+    if (s.endsAt && s.endsAt <= this.now()) problems.push("la campaña ya terminó");
+    const texts = [s.title, s.subtitle, s.description, s.background.alt, s.visual?.alt ?? "", s.primaryCta.label, s.secondaryCta?.label ?? ""].filter(Boolean);
+    for (const t of texts) problems.push(...textProblems(t).map((x) => `la campaña ${x}`));
+    if (problems.length) throw new WebError("invalid_state", `No se puede publicar: ${problems.join("; ")}`, { problems });
+  }
+
   // ── Interno ────────────────────────────────────────────────────────────────
 
   private parse(kind: EntryKind, draft: unknown): Record<string, unknown> {
@@ -620,6 +678,21 @@ function hasPendingChanges(e: WebEntry): boolean {
 }
 
 /** ¿Seguir las dependencias desde `start` vuelve a `start`? (con el borrador nuevo de `start`) */
+/** Campañas y ajustes del marketplace del panel (ver `WebAdminService.marketplace`). */
+export interface MarketplaceDocument {
+  slides: Array<Omit<MarketplaceSlideDraft, "internal"> & { id: string; order: number }>;
+  settings: MarketplaceDraft;
+}
+
+/** Verbos de contratación en el botón de una campaña: solo hacia un producto que se pueda contratar. */
+const BUY_RE = /\b(contrat|compr|activ|suscrib)/i;
+
+/** Productos a los que se refiere una campaña (destacado y destinos de sus botones). */
+export function slideProducts(s: Pick<MarketplaceSlideDraft, "productKey" | "primaryCta" | "secondaryCta">): string[] {
+  const keys = [s.productKey, ...[s.primaryCta, s.secondaryCta].map((c) => (c?.target.type === "product" ? c.target.value : undefined))];
+  return keys.filter((k, i, a): k is string => !!k && a.indexOf(k) === i);
+}
+
 function hasCycle(start: string, deps: string[], products: WebEntry[]): boolean {
   const graph = new Map(products.map((p) => [p.key, ((p.draft as ProductDraft).dependencies ?? []) as string[]]));
   graph.set(start, deps);

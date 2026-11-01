@@ -6,7 +6,7 @@
 import { z } from "zod";
 import { OFFER_CTAS, OFFER_MODALITIES } from "../catalog/commercial/offer";
 
-export const ENTRY_KINDS = ["product", "promotion", "faq", "menu", "seo", "page", "forms", "capability"] as const;
+export const ENTRY_KINDS = ["product", "promotion", "faq", "menu", "seo", "page", "forms", "capability", "marketplace_slide", "marketplace"] as const;
 export type EntryKind = (typeof ENTRY_KINDS)[number];
 
 /**
@@ -349,6 +349,67 @@ export const formsDraft = z
   })
   .strict();
 
+// ── Marketplace del panel: campañas del carrusel y ajustes ─────────────────────
+
+/** Secciones del marketplace del panel a las que puede llevar una campaña. */
+export const MARKETPLACE_SECTIONS = ["connect", "net", "bundles", "mine"] as const;
+/** Una campaña solo navega: la acción de contratar la decide siempre la ficha según el estado real del producto. */
+const slideCta = z
+  .object({
+    label: text(30).min(1),
+    target: z.object({ type: z.enum(["product", "category", "section", "url"]), value: z.string().trim().min(1).max(300) }).strict(),
+  })
+  .strict()
+  .refine((c) => c.target.type !== "product" || KEY_RE.test(c.target.value), { path: ["target", "value"], message: "clave de producto no válida" })
+  .refine((c) => c.target.type !== "category" || (FAMILIES as readonly string[]).includes(c.target.value), { path: ["target", "value"], message: "familia desconocida" })
+  .refine((c) => c.target.type !== "section" || (MARKETPLACE_SECTIONS as readonly string[]).includes(c.target.value), { path: ["target", "value"], message: "sección desconocida" })
+  .refine((c) => c.target.type !== "url" || isMarketplaceUrl(c.target.value), { path: ["target", "value"], message: "solo enlaces https de bigelephant.es" });
+/** Enlaces externos de una campaña: solo https de los dominios de Big Elephant. */
+export function isMarketplaceUrl(v: string): boolean {
+  try {
+    const u = new URL(v);
+    return u.protocol === "https:" && (u.hostname === "bigelephant.es" || u.hostname.endsWith(".bigelephant.es"));
+  } catch {
+    return false;
+  }
+}
+
+export const marketplaceSlideDraft = z
+  .object({
+    title: text(80).min(1),
+    subtitle: text(120).default(""),
+    description: text(300).default(""),
+    background: mediaImage.extend({ mobileSrc: httpsSrc.optional(), position: z.enum(["center", "top", "bottom", "left", "right"]).optional() }).strict(),
+    visual: mediaImage.optional(),
+    overlay: z.enum(["none", "light", "dark"]).default("dark"),
+    primaryCta: slideCta,
+    secondaryCta: slideCta.optional(),
+    /** Producto destacado de la campaña (opcional). */
+    productKey: entryKey.optional(),
+    startsAt: z.number().int().min(0).nullable().default(null),
+    endsAt: z.number().int().min(0).nullable().default(null),
+    /** Planes que ven la campaña (vacío o ausente = todos). */
+    audience: z.object({ plans: z.array(entryKey).max(10).default([]) }).strict().optional(),
+    tags: z.array(entryKey).max(10).default([]),
+    internal: z.object({ notes: optText(1000) }).strict().prefault({}),
+  })
+  .strict()
+  .refine((s) => !s.startsAt || !s.endsAt || s.startsAt < s.endsAt, { path: ["endsAt"], message: "endsAt > startsAt" });
+export type MarketplaceSlideDraft = z.infer<typeof marketplaceSlideDraft>;
+
+/** Ajustes del marketplace (clave única `settings`): ritmo del carrusel y cabeceras de marca. */
+export const marketplaceDraft = z
+  .object({
+    autoplayMs: z.number().int().min(3000).max(20000).default(6000),
+    brands: z
+      .array(z.object({ key: z.enum(["connect", "net"]), title: text(80).min(1), subtitle: text(200).default(""), background: mediaImage.optional() }).strict())
+      .max(2)
+      .refine((b) => new Set(b.map((x) => x.key)).size === b.length, "marca repetida")
+      .default([]),
+  })
+  .strict();
+export type MarketplaceDraft = z.infer<typeof marketplaceDraft>;
+
 export const DRAFT_SCHEMAS: Record<EntryKind, z.ZodTypeAny> = {
   product: productDraft,
   promotion: promotionDraft,
@@ -358,6 +419,8 @@ export const DRAFT_SCHEMAS: Record<EntryKind, z.ZodTypeAny> = {
   page: pageDraft,
   forms: formsDraft,
   capability: capabilityDraft,
+  marketplace_slide: marketplaceSlideDraft,
+  marketplace: marketplaceDraft,
 };
 
 /**
@@ -370,7 +433,7 @@ export function publicView(kind: EntryKind, draft: Record<string, unknown>, opts
     const { internal: _i, ...rest } = draft;
     return rest.catalog ? { ...rest, catalog: publicCatalog(rest.catalog as Record<string, unknown>, !!opts.policy) } : rest;
   }
-  if (kind === "promotion") {
+  if (kind === "promotion" || kind === "marketplace_slide") {
     const { internal: _i, ...rest } = draft;
     return rest;
   }
