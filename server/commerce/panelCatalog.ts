@@ -17,6 +17,8 @@ import type { QuoteCatalogProduct } from "../catalog/quote";
 import { withoutInternal, type SiteDocument } from "../web/service";
 import { videoEmbedUrl, type CommercialBlock } from "../web/schemas";
 import type { PanelActivation } from "./panelActivation";
+import { panelMarketplace, type PanelMarketplace } from "./panelMarketplace";
+import type { MarketplaceDocument } from "../web/service";
 
 export interface PanelCatalogItem {
   key: string;
@@ -51,12 +53,7 @@ export interface PanelMedia {
   screenshots: Img[];
 }
 
-/** Carrusel y cabeceras de marca del marketplace (vacío hasta que se publiquen campañas). */
-export interface PanelMarketplace {
-  slides: Array<Record<string, unknown>>;
-  settings: { autoplayMs: number };
-  brands: Array<Record<string, unknown>>;
-}
+export { DEFAULT_AUTOPLAY_MS, type PanelMarketplace } from "./panelMarketplace";
 
 /** Ficha del marketplace: solo contenido publicado; los campos que falten llegan vacíos y el panel usa su reserva. */
 export interface PanelCard {
@@ -194,16 +191,13 @@ export interface PanelCatalog {
   marketplace: PanelMarketplace;
 }
 
-/** Ritmo del carrusel por defecto mientras no haya ajuste publicado. */
-export const DEFAULT_AUTOPLAY_MS = 6000;
-
 /**
  * Familias que tienen sentido en el panel: módulos (Net, Connect, sectoriales, paquetes) y ampliaciones. Los planes se
  * cambian por otra vía; el uso y los servicios profesionales no se activan desde aquí.
  */
 const PANEL_FAMILIES = new Set(["extension", "industry_module", "net_module", "net_bundle", "connect", "connect_bundle", "addon", "extra"]);
 
-export function panelCatalog(products: QuoteCatalogProduct[], o: { version: string; purchasesEnabled: boolean; site?: Pick<SiteDocument, "catalog">; activation?: ReadonlyMap<string, PanelActivation> | null }): PanelCatalog {
+export function panelCatalog(products: QuoteCatalogProduct[], o: { version: string; purchasesEnabled: boolean; site?: Pick<SiteDocument, "catalog">; activation?: ReadonlyMap<string, PanelActivation> | null; marketplace?: { doc: MarketplaceDocument | null; plan: string | null } }): PanelCatalog {
   const items: PanelCatalogItem[] = [];
   const published = new Map((o.site?.catalog.products ?? []).map((p) => [p.key, p as Record<string, unknown>]));
   for (const p of products) {
@@ -235,7 +229,7 @@ export function panelCatalog(products: QuoteCatalogProduct[], o: { version: stri
     if (p) i.card = panelCard(p, visible);
   }
   items.sort((a, b) => a.kind.localeCompare(b.kind) || a.family.localeCompare(b.family) || a.name.localeCompare(b.name, "es"));
-  return { version: o.version, purchasesEnabled: o.purchasesEnabled, items, marketplace: { slides: [], settings: { autoplayMs: DEFAULT_AUTOPLAY_MS }, brands: [] } };
+  return { version: o.version, purchasesEnabled: o.purchasesEnabled, items, marketplace: panelMarketplace(o.marketplace?.doc ?? null, { visible, plan: o.marketplace?.plan ?? null }) };
 }
 
 const NO_ACTIVATION: PanelActivation = { state: "none", retryable: false, updatedAt: null };
@@ -243,7 +237,7 @@ const NO_ACTIVATION: PanelActivation = { state: "none", retryable: false, update
 const tenant = z.string().regex(/^[a-z0-9][a-z0-9-]{1,62}$/);
 
 /** Rutas del Core (montar bajo /commerce), con el mismo token de servicio que la compra. */
-export function createPanelCatalogRouter(d: { site: () => Promise<SiteDocument>; purchasesEnabled: boolean; internalTenants?: ReadonlySet<string>; activation?: (tenantId: string) => Promise<ReadonlyMap<string, PanelActivation>> }): Router {
+export function createPanelCatalogRouter(d: { site: () => Promise<SiteDocument>; purchasesEnabled: boolean; internalTenants?: ReadonlySet<string>; activation?: (tenantId: string) => Promise<ReadonlyMap<string, PanelActivation>>; marketplace?: () => Promise<MarketplaceDocument>; planOf?: (tenantId: string) => Promise<string | null> }): Router {
   const r = express.Router();
   r.get("/tenants/:tenantId/catalog", requireScope("commerce:purchase"), (req: Request, res: Response, _next: NextFunction) => {
     const parsed = tenant.safeParse(req.params.tenantId);
@@ -255,12 +249,20 @@ export function createPanelCatalogRouter(d: { site: () => Promise<SiteDocument>;
           return null;
         })
       : Promise.resolve(null);
-    Promise.all([d.site(), activation])
-      .then(([site, act]) => {
+    // Carrusel y plan de la empresa: si fallan, el catálogo llega con el carrusel vacío (nunca campañas sin filtrar)
+    const soft = <T,>(p: Promise<T> | undefined, event: string): Promise<T | null> =>
+      (p ?? Promise.resolve(null)).catch((e) => {
+        opsLog("warn", "Commerce", event, { error: e instanceof Error ? e.name : "error" });
+        return null;
+      });
+    const market = soft(d.marketplace?.(), "panel_marketplace_failed");
+    const plan = soft(d.planOf?.(parsed.data), "panel_plan_failed");
+    Promise.all([d.site(), activation, market, plan])
+      .then(([site, act, doc, planKey]) => {
         const visible = d.internalTenants?.has(parsed.data) ? site : withoutInternal(site);
         const c = quoteCatalogFromSite(visible);
         res.setHeader("Cache-Control", "no-store");
-        res.json({ catalog: panelCatalog(c.products, { version: c.version, purchasesEnabled: d.purchasesEnabled, site: visible, activation: act }) });
+        res.json({ catalog: panelCatalog(c.products, { version: c.version, purchasesEnabled: d.purchasesEnabled, site: visible, activation: act, marketplace: { doc, plan: planKey } }) });
       })
       .catch((e) => {
         opsLog("error", "Commerce", "panel_catalog_failed", { error: e instanceof Error ? e.name : "error" });
