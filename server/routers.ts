@@ -230,6 +230,7 @@ import { integrationEnv } from "./_core/tenantConfig";
 import { protectLegacySecret, revealLegacySecret } from "./_core/credentials/legacyFields";
 import { sampleUrl } from "./_core/productIdentity";
 import { assertCheckoutLinePriced } from "./checkoutLinePricing";
+import { assertFiscalSettingValue } from "./fiscalSettingsValidation";
 const adminProcedure = permissionProcedure("settings.manage", ["admin"]);
 
 /** Constructor de la web: los avisos para la persona (dirección repetida, portada…) llegan como petición incorrecta. */
@@ -1046,6 +1047,10 @@ export const appRouter = router({
           ghlApiKey:                "site_ghl_api_key",
           ghlLocationId:            "site_ghl_location_id",
         };
+        // Datos fiscales (NIF/CIF, código postal, correo, teléfono e IBAN): se comprueban antes de guardar nada
+        for (const [camelKey, value] of Object.entries(input.settings)) {
+          await assertFiscalSettingValue(KEY_MAP[camelKey] ?? camelKey, value ?? "");
+        }
         for (const [camelKey, value] of Object.entries(input.settings)) {
           const sysKey = KEY_MAP[camelKey] ?? camelKey;
           // El propietario de la empresa no se cambia desde el panel

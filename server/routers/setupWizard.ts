@@ -13,7 +13,8 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, permissionProcedure } from "../_core/trpc";
 import { getTenantMode } from "../_core/tenant";
-import { tenantFiscalIdentity } from "../tenantBrand";
+import { OWN_LEGAL_SETTING_KEYS, formatLegalAddress, tenantFiscalIdentity } from "../tenantBrand";
+import { currentLegalCompany } from "../invoiceHtml";
 import { warmTenantIdentity } from "../_core/tenantIdentity";
 import {
   contractedSetupCapabilities,
@@ -22,6 +23,7 @@ import {
   readProgress,
   readSettings,
   readSetupCounts,
+  settingsUpdatedAt,
   recordOnboardingFirstAccess,
   updateProgress,
   upsertSettings,
@@ -163,6 +165,19 @@ async function after(progress: SetupProgress) {
   return { progress, nextStep: s.plan.nextStep, plan: s.plan };
 }
 
+/**
+ * Emisor que figurará en las facturas, abonos y tickets que se emitan a partir de ahora, y desde cuándo (último cambio
+ * guardado de los datos fiscales). `fromSignup`: aún no ha guardado nada y se usan los de su alta.
+ */
+async function currentIssuer(): Promise<{ name: string; taxId: string; address: string; since: string | null; fromSignup: boolean } | null> {
+  try {
+    const [l, since] = await Promise.all([currentLegalCompany(), settingsUpdatedAt(Object.values(OWN_LEGAL_SETTING_KEYS))]);
+    return { name: l.name, taxId: l.cif, address: formatLegalAddress(l), since: since ? since.toISOString() : null, fromSignup: since === null };
+  } catch {
+    return null;
+  }
+}
+
 /** NIF/CIF y código postal de una empresa española: se comprueban también en el servidor, no solo en el formulario. */
 async function assertSpanishFiscal(country: string | null | undefined, v: { taxId?: string; postalCode?: string }) {
   const errors = spanishFiscalErrors(country, v);
@@ -190,7 +205,7 @@ function saveCompanyFields(fields: ReadonlyArray<keyof CompanyData>, input: Part
 export const setupWizardRouter = router({
   /** Estado completo para pintar el asistente, la bienvenida y el estado de configuración del Inicio. */
   status: adminProcedure.query(async ({ ctx }) => {
-    const [state, licence, seatsUsed, legalMissing] = await Promise.all([loadState(), currentLicence().catch(() => null), countSeatUsers(), webLegalMissing()]);
+    const [state, licence, seatsUsed, legalMissing, issuer] = await Promise.all([loadState(), currentLicence().catch(() => null), countSeatUsers(), webLegalMissing(), currentIssuer()]);
     const { progress } = state;
     // Primer acceso al asistente sin ningún paso dado: guía de los primeros pasos (una sola vez)
     void onboardingFirstAccess(progress, recipient(ctx));
@@ -212,6 +227,8 @@ export const setupWizardRouter = router({
       seats: { used: seatsUsed, limit: licence?.userLimit ?? null },
       licence: licence ?? { plan: null, userLimit: null, endsAt: null, daysLeft: null, readOnly: false },
       fiscalFromRegistry: state.fiscalFromRegistry,
+      /** Datos fiscales que figurarán en los documentos que se emitan a partir de ahora, y desde cuándo. */
+      issuer,
       /** Datos que faltan para completar los textos legales de la web (vacío si están todos). */
       legalMissing,
     };

@@ -9,6 +9,7 @@ import { eq } from "drizzle-orm";
 import { router, permissionProcedure } from "../_core/trpc";
 import { getDb } from "../db";
 import { invoices } from "../../drizzle/schema";
+import { issuerSnapshotForNewInvoice } from "../issuerSnapshot";
 
 const adminProc = permissionProcedure("settings.manage", ["admin"]);
 
@@ -148,6 +149,7 @@ export const fiscalAuditRouter = router({
 
         // Crear abono
         await db.insert(invoices).values({
+          issuerSnapshot: await issuerSnapshotForNewInvoice(),
           invoiceNumber: "ABO-2026-0120-01",
           reservationId: original.reservationId,
           clientName: original.clientName,

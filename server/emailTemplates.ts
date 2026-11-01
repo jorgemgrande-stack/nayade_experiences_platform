@@ -2819,7 +2819,7 @@ export function buildNoticeHtml(d: NoticeEmailData): string {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// ENVÍO DE FACTURA (o factura de abono) al cliente, con el PDF adjunto
+// ENVÍO DE FACTURA (o factura rectificativa) al cliente, con el PDF adjunto
 // ═══════════════════════════════════════════════════════════════════════════════
 export interface InvoiceEmailData {
   clientName: string;
@@ -2832,11 +2832,26 @@ export interface InvoiceEmailData {
   total: number;
   /** URL pública del PDF (también va adjunto), o null. */
   pdfUrl: string | null;
+  /** Abono: la factura que rectifica (número y fecha) y el motivo. */
+  rectifies?: { invoiceNumber: string; issuedAt: Date | string } | null;
+  reason?: string | null;
+  /** false: el PDF no va adjunto, solo el enlace (por defecto, adjunto si hay PDF). */
+  attached?: boolean;
+  /** Bases y cuotas por tipo de IVA (si hay más de un tipo, una línea por tipo). */
+  taxBreakdown?: { rate: number; base: number; amount: number }[] | null;
 }
 
 export function buildInvoiceEmailHtml(d: InvoiceEmailData): string {
   const eur = (n: number) => `${Number(n).toFixed(2).replace(".", ",")}&nbsp;&euro;`;
-  const kind = d.isCreditNote ? "la factura de abono" : "tu factura";
+  const kind = d.isCreditNote ? "la factura rectificativa" : "tu factura";
+  const title = d.isCreditNote ? "Factura rectificativa" : "Factura";
+  const rectDate = d.rectifies ? (d.rectifies.issuedAt instanceof Date ? d.rectifies.issuedAt : new Date(d.rectifies.issuedAt)).toLocaleDateString("es-ES") : "";
+  const rectText = d.isCreditNote && d.rectifies
+    ? ` Rectifica la factura <strong>${escAttr(d.rectifies.invoiceNumber)}</strong> de fecha ${escAttr(rectDate)}${(d.reason ?? "").trim() ? `. Motivo: ${escAttr((d.reason ?? "").trim())}` : ""}.`
+    : "";
+  const taxRows = (d.taxBreakdown?.length ?? 0) > 1
+    ? d.taxBreakdown!.map((b) => `<tr><td colspan="3" align="right" style="padding:8px;color:#6b7280;font-size:13px;font-family:Arial,sans-serif;">Base IVA ${escAttr(String(b.rate))}&nbsp;% · cuota</td><td align="right" style="padding:8px;color:#374151;font-size:13px;font-family:Arial,sans-serif;">${eur(b.base)} · ${eur(b.amount)}</td></tr>`).join("")
+    : `<tr><td colspan="3" align="right" style="padding:8px;color:#6b7280;font-size:13px;font-family:Arial,sans-serif;">IVA (${escAttr(String(d.taxRate))}&nbsp;%)</td><td align="right" style="padding:8px;color:#374151;font-size:13px;font-family:Arial,sans-serif;">${eur(d.taxAmount)}</td></tr>`;
   const rows = d.items
     .map(
       (i) => `<tr>
@@ -2848,10 +2863,10 @@ export function buildInvoiceEmailHtml(d: InvoiceEmailData): string {
     )
     .join("");
   const body = `
-    ${emailHeader(d.isCreditNote ? "Factura de abono" : "Factura")}
+    ${emailHeader(title)}
     <tr><td style="padding:28px 32px 8px;">
       <p style="color:#111827;font-size:15px;margin:0 0 12px;font-family:Arial,sans-serif;">Hola <strong>${escAttr(d.clientName)}</strong>,</p>
-      <p style="color:#4b5563;font-size:15px;line-height:1.7;margin:0 0 16px;font-family:Arial,sans-serif;">Te enviamos ${kind} <strong>${escAttr(d.invoiceNumber)}</strong>. La encontrar&aacute;s adjunta a este correo en PDF.</p>
+      <p style="color:#4b5563;font-size:15px;line-height:1.7;margin:0 0 16px;font-family:Arial,sans-serif;">Te enviamos ${kind} <strong>${escAttr(d.invoiceNumber)}</strong>.${rectText} ${d.pdfUrl ? (d.attached === false ? "Puedes verla y descargarla en PDF desde el enlace de abajo." : "La encontrar&aacute;s adjunta a este correo en PDF.") : ""}</p>
       <table width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;margin:8px 0 16px;">
         <tr>
           <th align="left" style="padding:8px;background:${BRAND_BLUE()};color:#ffffff;font-size:12px;font-family:Arial,sans-serif;">Concepto</th>
@@ -2861,13 +2876,13 @@ export function buildInvoiceEmailHtml(d: InvoiceEmailData): string {
         </tr>
         ${rows}
         <tr><td colspan="3" align="right" style="padding:8px;color:#6b7280;font-size:13px;font-family:Arial,sans-serif;">Base imponible</td><td align="right" style="padding:8px;color:#374151;font-size:13px;font-family:Arial,sans-serif;">${eur(d.subtotal)}</td></tr>
-        <tr><td colspan="3" align="right" style="padding:8px;color:#6b7280;font-size:13px;font-family:Arial,sans-serif;">IVA (${escAttr(String(d.taxRate))}&nbsp;%)</td><td align="right" style="padding:8px;color:#374151;font-size:13px;font-family:Arial,sans-serif;">${eur(d.taxAmount)}</td></tr>
+        ${taxRows}
         <tr><td colspan="3" align="right" style="padding:10px 8px;color:${BRAND_BLUE()};font-size:15px;font-weight:800;font-family:Arial,sans-serif;">Total</td><td align="right" style="padding:10px 8px;color:${BRAND_ORANGE()};font-size:17px;font-weight:800;font-family:Arial,sans-serif;">${eur(d.total)}</td></tr>
       </table>
-      ${d.pdfUrl ? ctaButton("Descargar la factura", escAttr(d.pdfUrl)) : ""}
+      ${d.pdfUrl ? ctaButton(d.isCreditNote ? "Descargar la factura rectificativa" : "Descargar la factura", escAttr(d.pdfUrl)) : ""}
     </td></tr>
     ${emailFooter()}`;
-  return emailWrapper(`${d.isCreditNote ? "Factura de abono" : "Factura"} ${d.invoiceNumber}`, body);
+  return emailWrapper(`${title} ${d.invoiceNumber}`, body);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

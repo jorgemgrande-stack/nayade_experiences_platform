@@ -109,6 +109,7 @@ import { assertQuotePricedForSend } from "../quoteSendGuards";
 import { addClientNote, clientListConditions, clientStats, deleteClientNote, deleteNotesOfClient, findClientDuplicates, listClientNotes, listFilteredClientsForExport, loadClientHistoryExtras } from "../clientProfileDb";
 import { CLIENT_KINDS, NOTE_MAX } from "../../shared/clientProfile";
 import { isValidSpanishTaxId } from "../../shared/formValidation";
+import { issuerSnapshotForNewInvoice } from "../issuerSnapshot";
 
 // generateInvoiceNumber y generateQuoteNumber reemplazadas por el helper centralizado
 // Ver server/documentNumbers.ts
@@ -378,6 +379,8 @@ const creditNoteSelectionShape = {
 };
 
 async function issueCreditNote(input:{ invoiceId: number; reason: string; partialAmount?: number; lines?: CreditNoteLineSelection[] }) {
+  // Copia del emisor antes de abrir la transacción: leerla dentro ocuparía otra conexión con la fila bloqueada
+  const issuerSnapshot = await issuerSnapshotForNewInvoice();
   return withCreditNoteNumberRetry(() => db.transaction(async (tx) => {
     const [original] = await tx.select().from(invoices).where(eq(invoices.id, input.invoiceId)).for("update");
     if (!original) throw new TRPCError({ code: "NOT_FOUND" });
@@ -404,6 +407,7 @@ async function issueCreditNote(input:{ invoiceId: number; reason: string; partia
     const creditNoteNumber = await nextCreditNoteNumber(tx, now);
 
     const [result] = await tx.insert(invoices).values({
+      issuerSnapshot,
       invoiceNumber: creditNoteNumber,
       invoiceType: "abono",
       quoteId: original.quoteId,
@@ -723,6 +727,7 @@ export async function checkAndConfirmInstallmentPlan(quoteId: number, userId: nu
     }
 
     const [invResult] = await db.insert(invoices).values({
+      issuerSnapshot: await issuerSnapshotForNewInvoice(),
       invoiceNumber,
       quoteId: quote.id,
       reservationId: reservation?.id ?? null,
@@ -2074,6 +2079,7 @@ export const crmRouter = router({
         const mainProductId = (items as { productId?: number }[]).find(i => i.productId)?.productId ?? lead.experienceId ?? 0;
 
         const [invResult] = await db.insert(invoices).values({
+          issuerSnapshot: await issuerSnapshotForNewInvoice(),
           invoiceNumber,
           quoteId: quote.id,
           ...billTo,
@@ -2664,6 +2670,7 @@ export const crmRouter = router({
         const mainProductIdT = (items as { productId?: number }[]).find(i => i.productId)?.productId ?? lead.experienceId ?? 0;
 
         const [invResult] = await db.insert(invoices).values({
+          issuerSnapshot: await issuerSnapshotForNewInvoice(),
           invoiceNumber,
           quoteId: quote.id,
           ...billTo,
@@ -4946,17 +4953,23 @@ export const crmRouter = router({
         // 2. Load TPV sale and items if available
         const tpvSaleRows = await db.select().from(tpvSales).where(eq(tpvSales.reservationId, input.reservationId));
         const tpvSale = tpvSaleRows[0] ?? null;
-        let items: { description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: "reav" | "general" }[] = [];
+        let items: { description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: "reav" | "general"; taxRate?: number }[] = [];
 
         if (tpvSale) {
           const saleItems = await db.select().from(tpvSaleItems).where(eq(tpvSaleItems.saleId, tpvSale.id));
-          items = saleItems.map(i => ({
-            description: i.productName,
-            quantity: i.quantity,
-            unitPrice: parseFloat(String(i.unitPrice)),
-            total: parseFloat(String(i.subtotal)),
-            fiscalRegime: (i.fiscalRegime === "reav" ? "reav" : "general") as "reav" | "general",
-          }));
+          // Cada línea conserva el tipo de IVA del ticket (antes se perdía y todo se facturaba al 21 %)
+          items = saleItems.map(i => {
+            const reav = i.fiscalRegime === "reav";
+            const rate = Number(i.taxRate);
+            return {
+              description: i.productName,
+              quantity: i.quantity,
+              unitPrice: parseFloat(String(i.unitPrice)),
+              total: parseFloat(String(i.subtotal)),
+              fiscalRegime: (reav ? "reav" : "general") as "reav" | "general",
+              ...(reav ? {} : { taxRate: Number.isFinite(rate) ? rate : 21 }),
+            };
+          });
         } else {
           // Fallback: single line from reservation data
           const amountEur = (res.amountPaid ?? res.amountTotal) / 100;
@@ -4965,13 +4978,23 @@ export const crmRouter = router({
 
         const now = new Date();
         const invoiceNumber = await generateInvoiceNumber("crm:invoice", String(ctx.user.id));
-        const bdTpv = groupTaxBreakdown(items.filter(i => i.fiscalRegime !== "reav"));
-        const taxAmount = totalTaxAmount(bdTpv);
-        const taxRate = bdTpv.length === 1 ? bdTpv[0].rate : 21;
+        let bdTpv = groupTaxBreakdown(items.filter(i => i.fiscalRegime !== "reav"));
+        let taxAmount = totalTaxAmount(bdTpv);
+        let taxRate = bdTpv.length === 1 ? bdTpv[0].rate : 21;
         // El total de las líneas ya incluye el IVA: la base imponible se EXTRAE
         // (total - IVA) y el total se mantiene en el bruto. No se suma el IVA encima.
-        const total = parseFloat(items.reduce((s, i) => s + i.total, 0).toFixed(2));
-        const subtotal = parseFloat((total - taxAmount).toFixed(2));
+        let total = parseFloat(items.reduce((s, i) => s + i.total, 0).toFixed(2));
+        let subtotal = parseFloat((total - taxAmount).toFixed(2));
+        if (tpvSale) {
+          // Ticket de caja: lo cobrado, con la base y la cuota de cada tipo como en el ticket (y su descuento)
+          const charged = chargedInvoiceAmounts(items, Number(tpvSale.total));
+          bdTpv = charged.taxBreakdown;
+          taxAmount = charged.taxAmount;
+          taxRate = charged.taxRate;
+          total = charged.total;
+          subtotal = charged.subtotal;
+        }
+        const ticketDiscount = tpvSale ? Number(tpvSale.discountAmount ?? 0) : 0;
 
         // 3. Generate PDF
         let pdfUrl: string | null = null;
@@ -4990,6 +5013,8 @@ export const crmRouter = router({
             taxAmount: String(taxAmount),
             total: String(total.toFixed(2)),
             taxBreakdown: bdTpv,
+            discount: ticketDiscount > 0 ? ticketDiscount.toFixed(2) : null,
+            discountReason: ticketDiscount > 0 ? tpvSale?.discountReason ?? null : null,
             issuedAt: now,
           });
           pdfUrl = pdf.url;
@@ -5000,6 +5025,7 @@ export const crmRouter = router({
 
         // 4. Insert invoice record
         const [invResult] = await db.insert(invoices).values({
+          issuerSnapshot: await issuerSnapshotForNewInvoice(),
           invoiceNumber,
           reservationId: input.reservationId,
           clientName: res.customerName,
@@ -5011,6 +5037,7 @@ export const crmRouter = router({
           taxAmount: String(taxAmount),
           taxBreakdown: bdTpv.length > 0 ? bdTpv : undefined,
           total: String(total.toFixed(2)),
+          ...(ticketDiscount > 0 ? { discount: ticketDiscount.toFixed(2), discountReason: tpvSale?.discountReason ?? null } : {}),
           pdfUrl,
           pdfKey,
           clientNif: input.clientNif ?? null,
@@ -5343,6 +5370,7 @@ export const crmRouter = router({
 
         // 5. Insertar factura
         const [invResult] = await db.insert(invoices).values({
+          issuerSnapshot: await issuerSnapshotForNewInvoice(),
           invoiceNumber,
           clientName: input.customerName,
           clientEmail: input.customerEmail,
@@ -5798,14 +5826,17 @@ export const crmRouter = router({
 
         // Batch-fetch original invoice numbers for abono rows
         const originalInvoiceMap: Record<number, string> = {}; // abonoId ? originalInvoiceNumber
+        const originalMethodMap: Record<number, string | null> = {}; // abonoId → forma de pago de la factura original
         if (originalIds.length > 0) {
-          const originals = await db.select({ id: invoices.id, invoiceNumber: invoices.invoiceNumber })
+          const originals = await db.select({ id: invoices.id, invoiceNumber: invoices.invoiceNumber, paymentMethod: invoices.paymentMethod })
             .from(invoices)
             .where(sql`${invoices.id} IN (${sql.join(originalIds.map(id => sql`${id}`), sql`, `)})`);
           for (const orig of originals) {
-            // map by creditNoteForId (the abono's FK pointing to original)
-            const abonoRow = abonoRows.find(r => r.creditNoteForId === orig.id);
-            if (abonoRow) originalInvoiceMap[abonoRow.id] = orig.invoiceNumber;
+            // map by creditNoteForId (the abono's FK pointing to original); una factura puede tener varios abonos
+            for (const abonoRow of abonoRows.filter(r => r.creditNoteForId === orig.id)) {
+              originalInvoiceMap[abonoRow.id] = orig.invoiceNumber;
+              originalMethodMap[abonoRow.id] = orig.paymentMethod ?? null;
+            }
           }
         }
 
@@ -5815,6 +5846,8 @@ export const crmRouter = router({
           creditNoteNumber: r.status === "abonada" ? (creditNoteMap[r.id] ?? null) : null,
           // Si este documento ES un abono, el nº de la factura original que rectifica
           originalInvoiceNumber: r.invoiceType === "abono" ? (originalInvoiceMap[r.id] ?? null) : null,
+          // Forma de pago que se muestra: la de la factura que rectifica el abono (el abono no guarda la suya) o «Abono»
+          paymentMethodShown: r.invoiceType === "abono" ? (originalMethodMap[r.id] ?? "abono") : r.paymentMethod,
         }));
 
         const grossTotal = Number(grandTotal);
@@ -6157,21 +6190,32 @@ export const crmRouter = router({
         const now = new Date();
 
         try {
-          const subject = invoice.invoiceType === "abono"
-            ? `Factura de abono ${invoice.invoiceNumber} — ${companyName()}`
+          const isCredit = invoice.invoiceType === "abono";
+          const subject = isCredit
+            ? `Factura rectificativa ${invoice.invoiceNumber} — ${companyName()}`
             : `Tu factura ${invoice.invoiceNumber} — ${companyName()}`;
+          // Abono: la factura que rectifica (número y fecha) y, sin PDF guardado, el enlace firmado a su documento
+          const [rectified] = isCredit && invoice.creditNoteForId
+            ? await db.select({ invoiceNumber: invoices.invoiceNumber, issuedAt: invoices.issuedAt }).from(invoices).where(eq(invoices.id, invoice.creditNoteForId)).limit(1)
+            : [];
+          const base = publicBaseUrl();
+          const docUrl = invoice.pdfUrl ? externalFileUrl(invoice.pdfUrl) : isCredit && base ? `${base}${invoicePreviewPath(invoice.invoiceNumber)}` : null;
 
           const items = (invoice.itemsJson as { description: string; quantity: number; unitPrice: number; total: number }[]) ?? [];
           const htmlBody = buildInvoiceEmailHtml({
             clientName: invoice.clientName ?? "",
             invoiceNumber: invoice.invoiceNumber,
-            isCreditNote: invoice.invoiceType === "abono",
+            isCreditNote: isCredit,
             items,
             subtotal: Number(invoice.subtotal),
             taxRate: invoice.taxRate ?? "",
             taxAmount: Number(invoice.taxAmount),
             total: Number(invoice.total),
-            pdfUrl: invoice.pdfUrl ? externalFileUrl(invoice.pdfUrl) : null,
+            pdfUrl: docUrl,
+            attached: !!invoice.pdfUrl,
+            rectifies: rectified ?? null,
+            reason: invoice.creditNoteReason ?? null,
+            taxBreakdown: (invoice.taxBreakdown as { rate: number; base: number; amount: number }[] | null) ?? null,
           });
 
           // El PDF se adjunta al correo (Brevo lo descarga del CDN), para que el
@@ -6286,6 +6330,7 @@ export const crmRouter = router({
         }
 
         const [res] = await db.insert(invoices).values({
+          issuerSnapshot: await issuerSnapshotForNewInvoice(),
           invoiceNumber,
           clientName: client.name,
           clientEmail: client.email,
@@ -7001,7 +7046,7 @@ export const crmRouter = router({
               } catch (pdfErr) {
                 console.error("[pendingPayments.confirm] PDF generation failed:", pdfErr);
               }
-              const [invRes] = await db.insert(invoices).values({ invoiceNumber, reservationId: pp.reservationId, quoteId: pp.quoteId ?? null, clientName: pp.clientName, clientEmail: pp.clientEmail ?? "", clientPhone: pp.clientPhone, itemsJson: items, subtotal: String(subtotal.toFixed(2)), taxRate: String(taxRatePp), taxAmount: String(taxAmount), taxBreakdown: bdPp.length > 0 ? bdPp : undefined, total: String(total.toFixed(2)), pdfUrl, pdfKey, isAutomatic: true, status: "cobrada", paymentMethod: input.paymentMethod as any, issuedAt: now, createdAt: now, updatedAt: now });
+              const [invRes] = await db.insert(invoices).values({ issuerSnapshot: await issuerSnapshotForNewInvoice(), invoiceNumber, reservationId: pp.reservationId, quoteId: pp.quoteId ?? null, clientName: pp.clientName, clientEmail: pp.clientEmail ?? "", clientPhone: pp.clientPhone, itemsJson: items, subtotal: String(subtotal.toFixed(2)), taxRate: String(taxRatePp), taxAmount: String(taxAmount), taxBreakdown: bdPp.length > 0 ? bdPp : undefined, total: String(total.toFixed(2)), pdfUrl, pdfKey, isAutomatic: true, status: "cobrada", paymentMethod: input.paymentMethod as any, issuedAt: now, createdAt: now, updatedAt: now });
               const invoiceId = (invRes as { insertId: number }).insertId;
               await db.update(reservations).set({ invoiceId, invoiceNumber, updatedAt: Date.now() } as any).where(eq(reservations.id, pp.reservationId));
               console.log(`[pendingPayments.confirm] Factura ${invoiceNumber} generada para reserva ${pp.reservationId}`);

@@ -48,6 +48,8 @@ describe.skipIf(!URL_)("Datos fiscales: fuente única del asistente en documento
 
   it("sin entidad fiscal: la factura nueva lleva los datos del asistente; la emitida antes, los de entonces", async () => {
     await legacy("b", { legalCompanyName: "Antigua Razón SL", legalCompanyCif: "B99999999", legalCompanyAddress: "Calle Vieja 9", legalCompanyIban: "ES00 VIEJO" });
+    // Así estaban sus ajustes al aplicar la 0020 (la fila congelada con la que se pintan las facturas sin copia del emisor)
+    await ess.sql("b", "UPDATE invoice_issuer_baseline SET legacy_json = (SELECT JSON_OBJECTAGG(`key`, value) FROM site_settings WHERE `key` LIKE 'legalCompany%') WHERE id = 1");
     const r = await ess.m("b", "setupWizard.saveCompany", company({}), admB);
     expect(r.status).toBe(200);
     await ess.sql("b", "INSERT INTO system_settings (`key`, value, category, label) VALUES ('site_legal_iban', 'ES11 NUEVO', 'fiscal', 'IBAN') ON DUPLICATE KEY UPDATE value = VALUES(value)");

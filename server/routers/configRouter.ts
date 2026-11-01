@@ -11,6 +11,7 @@ import { getLegalCompanySettings } from "../invoiceHtml";
 import { isMultiTenant } from "../_core/tenant";
 import { warmTenantIdentity } from "../_core/tenantIdentity";
 import { INSTALL_MODE_SETTING } from "../../shared/adminNav";
+import { assertFiscalSettingValue } from "../fiscalSettingsValidation";
 
 async function requireDb() {
   const db = await getDb();
@@ -189,6 +190,8 @@ export const configRouter = router({
       if (row.isSensitive) throw new TRPCError({ code: "FORBIDDEN", message: "Este ajuste es sensible y no puede modificarse desde el panel" });
 
       validateSettingValue(input.key, input.value, row.valueType);
+      // NIF/CIF, código postal, correo, teléfono e IBAN de las facturas: las mismas reglas que «Datos de la empresa»
+      await assertFiscalSettingValue(input.key, input.value, { stored: row.value ?? "" });
 
       await db.update(systemSettings)
         .set({ value: input.value })

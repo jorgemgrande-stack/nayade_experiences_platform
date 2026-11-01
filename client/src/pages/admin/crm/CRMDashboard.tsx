@@ -6060,6 +6060,7 @@ export default function CRMDashboard() {
       transferencia:  { label: "Transferencia",  cls: "bg-sky-500/15 text-sky-300 border-sky-500/30",         icon: "🏦" },
       efectivo:       { label: "Efectivo",       cls: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30", icon: "💵" },
       otro:           { label: "Otro",           cls: "bg-foreground/[0.08] text-foreground/60 border-foreground/[0.15]", icon: "❓" },
+      abono:          { label: "Abono",          cls: "bg-foreground/[0.08] text-foreground/60 border-foreground/[0.15]", icon: "" },
     };
     const s = map[method] ?? { label: method, cls: "bg-foreground/[0.08] text-foreground/60 border-foreground/[0.15]", icon: "" };
     return (
@@ -7849,7 +7850,7 @@ export default function CRMDashboard() {
                         </td>
                         <td className="px-4 py-3 hidden md:table-cell">
                           <div className="flex flex-col gap-1">
-                            {getPaymentMethodBadge(inv.paymentMethod)}
+                            {getPaymentMethodBadge(inv.paymentMethodShown ?? inv.paymentMethod)}
                             {inv.transferProofUrl && (
                               <a
                                 href={inv.transferProofUrl}
