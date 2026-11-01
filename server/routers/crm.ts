@@ -188,7 +188,7 @@ async function sendQuoteEmail(quote: {
   });
 
   const quoteSubject = `Tu propuesta de ${companyName()} — ${quote.quoteNumber}`;
-  await sendManagedEmail({
+  const result = await sendManagedEmail({
     templateKey: "quote",
     triggerEvent: "quote_sent",
     recipientEmail: quote.clientEmail,
@@ -200,6 +200,19 @@ async function sendQuoteEmail(quote: {
   });
   const _cq = getSystemSettingSync("email_copy_recipient", "");
   if (_cq) sharedSendEmail({ to: _cq, subject: `[COPIA] ${quoteSubject}`, html }).catch(() => {});
+  return quoteMailOutcome(result.sent);
+}
+
+/**
+ * Si el correo del presupuesto no ha salido, por qué: durante la prueba gratuita solo se escribe a los buzones de la
+ * propia empresa (server/trialRestrictions.ts), así que la pantalla debe pedir que se comparta el enlace a mano en vez
+ * de decir «enviado al cliente».
+ */
+async function quoteMailOutcome(emailSent: boolean): Promise<{ emailSent: boolean; trialMailBlocked: boolean }> {
+  if (emailSent) return { emailSent, trialMailBlocked: false };
+  const { currentCommercialState } = await import("../trialRestrictions");
+  const restricted = await currentCommercialState().then((st) => st.restricted).catch(() => false);
+  return { emailSent, trialMailBlocked: restricted };
 }
 
 async function sendConfirmationEmail(data: {
@@ -1740,7 +1753,7 @@ export const crmRouter = router({
           const firstReq = planInsts.find(i => i.isRequiredForConfirmation) ?? null;
           quoteInstallmentPlan = { firstRequiredAmountCents: firstReq?.amountCents ?? null, installments: planInsts };
         }
-        await sendQuoteEmail({
+        const mail = await sendQuoteEmail({
           quoteNumber: quote.quoteNumber,
           title: quote.title,
           clientName: lead.name,
@@ -1772,7 +1785,7 @@ export const crmRouter = router({
           });
         });
 
-        return { success: true, acceptUrl, token };
+        return { success: true, acceptUrl, token, ...mail };
       }),
 
     resend: staff
@@ -1814,7 +1827,7 @@ export const crmRouter = router({
           const firstReq = planInsts.find(i => i.isRequiredForConfirmation) ?? null;
           resendInstallmentPlan = { firstRequiredAmountCents: firstReq?.amountCents ?? null, installments: planInsts };
         }
-        await sendQuoteEmail({
+        const mail = await sendQuoteEmail({
           quoteNumber: quote.quoteNumber,
           title: quote.title,
           clientName: lead.name,
@@ -1844,7 +1857,7 @@ export const crmRouter = router({
           });
         });
 
-        return { success: true };
+        return { success: true, acceptUrl: paymentLinkUrl ?? null, ...mail };
       }),
 
     duplicate: staff
@@ -3094,6 +3107,7 @@ export const crmRouter = router({
         await logActivity("quote", quoteId, "quote_created_direct", ctx.user.id, ctx.user.name, { leadId, quoteNumber });
 
         // 4. Enviar inmediatamente si se solicita
+        let directMail: { emailSent: boolean; trialMailBlocked: boolean; acceptUrl?: string } | null = null;
         if (input.sendNow) {
           // Generar token de aceptación SIEMPRE antes de enviar el email
           const { randomBytes } = await import("crypto");
@@ -3109,7 +3123,7 @@ export const crmRouter = router({
             updatedAt: new Date(),
           }).where(eq(quotes.id, quoteId));
           await db.update(leads).set({ opportunityStatus: "enviada", status: "contactado", lastContactAt: new Date(), seenAt: new Date(), updatedAt: new Date() }).where(eq(leads.id, leadId));
-          await sendQuoteEmail({
+          directMail = await sendQuoteEmail({
             quoteNumber,
             title: input.title,
             clientName: input.clientName,
@@ -3124,6 +3138,7 @@ export const crmRouter = router({
             conditions: input.conditions,
             paymentLinkUrl: acceptUrl,
           });
+          directMail = { ...directMail!, acceptUrl };
           await logActivity("quote", quoteId, "quote_sent", ctx.user.id, ctx.user.name, { email: input.clientEmail, acceptUrl });
 
           // Sync GHL: crear contacto si no existe, luego sincronizar URL del presupuesto
@@ -3170,7 +3185,7 @@ export const crmRouter = router({
           });
         }
 
-        return { success: true, quoteId, quoteNumber, leadId, sent: input.sendNow };
+        return { success: true, quoteId, quoteNumber, leadId, sent: input.sendNow, emailSent: directMail?.emailSent ?? false, trialMailBlocked: directMail?.trialMailBlocked ?? false, acceptUrl: directMail?.acceptUrl ?? null };
       }),
 
     // --- FLUJO PÚBLICO: Aceptación de presupuesto por token ---------------------

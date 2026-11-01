@@ -7,6 +7,7 @@ import { errorMessage } from "@/components/admin/PanelStates";
 import { useVocabulary, visibleCrmTabs } from "@/lib/vocabulary";
 import { errorToastMessage } from "@/lib/errorMessage";
 import { validateContact, validateOrder, validateQuote, hasErrors, type FieldErrors } from "@shared/crmForms";
+import { quoteMailNotice, type QuoteMailResult } from "@shared/quoteMailNotice";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -99,6 +100,13 @@ import {
   Bell,
   UserPlus,
 } from "lucide-react";
+
+/** Aviso del envío de un presupuesto según lo que ha pasado con el correo (prueba gratuita incluida). */
+function toastQuoteMail(r: QuoteMailResult | null | undefined, sentMessage: string) {
+  const n = quoteMailNotice(r, sentMessage);
+  if (n.kind === "success") toast.success(n.message);
+  else toast.warning(n.message, { duration: 12000 });
+}
 
 // ─── TYPES ───────────────────────────────────────────────────────────────────
 
@@ -1872,11 +1880,8 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
         });
         toast.success(`Presupuesto ${data.quoteNumber} creado con plan de ${draftInstallmentsD.length} cuotas`);
       } else {
-        toast.success(
-          data.sent
-            ? `Presupuesto ${data.quoteNumber} creado y enviado al cliente`
-            : `Presupuesto ${data.quoteNumber} guardado como borrador`
-        );
+        if (data.sent) toastQuoteMail(data, `Presupuesto ${data.quoteNumber} creado y enviado al cliente`);
+        else toast.success(`Presupuesto ${data.quoteNumber} guardado como borrador`);
       }
       utils.crm.quotes.list.invalidate();
       utils.crm.quotes.counters.invalidate();
@@ -1931,11 +1936,12 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
 
   return (
     <>
-    <DialogContent className="w-[95vw] max-w-2xl bg-[#0d1526] border-foreground/[0.12] text-white max-h-[90vh] overflow-y-auto">
+    {/* *:min-w-0: la tabla de conceptos (con su propio scroll horizontal) no ensancha el diálogo en el móvil */}
+    <DialogContent className="w-[95vw] max-w-2xl bg-[#0d1526] border-foreground/[0.12] text-white max-h-[90vh] overflow-y-auto *:min-w-0">
       <DialogHeader>
-        <DialogTitle className="text-white flex items-center gap-2">
+        <DialogTitle className="text-white flex items-center gap-2 pr-6">
           <Plus className="w-5 h-5 text-orange-400" /> {voc.licensed ? "Nuevo presupuesto" : "Nuevo Presupuesto"}
-          <span className="text-foreground/50 text-sm font-normal ml-1">sin {voc.lead} previ{voc.agreeLead("o", "a")}</span>
+          <span className="hidden sm:inline text-foreground/50 text-sm font-normal ml-1">sin {voc.lead} previ{voc.agreeLead("o", "a")}</span>
         </DialogTitle>
       </DialogHeader>
 
@@ -2358,7 +2364,7 @@ function QuoteBuilderModal({
   };
 
   const sendQuote = trpc.crm.quotes.send.useMutation({
-    onSuccess: () => toast.success("Presupuesto enviado al cliente"),
+    onSuccess: (data) => toastQuoteMail(data, "Presupuesto enviado al cliente"),
     onError: (e) => toast.error(errorToastMessage(e)),
   });
 
@@ -3421,8 +3427,8 @@ function QuoteDetailModal({
   const [isUploadingInstProof, setIsUploadingInstProof] = useState(false);
 
   const sendQuote = trpc.crm.quotes.send.useMutation({
-    onSuccess: () => {
-      toast.success("Presupuesto enviado al cliente");
+    onSuccess: (data) => {
+      toastQuoteMail(data, "Presupuesto enviado al cliente");
       utils.crm.quotes.get.invalidate({ id: quoteId });
       utils.crm.quotes.counters.invalidate();
       utils.crm.leads.counters.invalidate();
@@ -3431,7 +3437,7 @@ function QuoteDetailModal({
   });
 
   const resendQuote = trpc.crm.quotes.resend.useMutation({
-    onSuccess: () => toast.success("Presupuesto reenviado"),
+    onSuccess: (data) => toastQuoteMail(data, "Presupuesto reenviado"),
     onError: (e) => toast.error(errorToastMessage(e)),
   });
 
@@ -5420,7 +5426,9 @@ export default function CRMDashboard() {
       const t = new URLSearchParams(s).get("tab");
       if (t === "leads" || t === "quotes" || t === "reservations" || t === "invoices" || t === "anulaciones" || t === "pagos_pendientes" || t === "bonos") return t;
     } catch { /* ignore */ }
-    return "leads";
+    // Rutas directas del panel (/admin/crm/presupuestos, /admin/crm/reservas): abren su pestaña
+    const byPath: Record<string, Tab> = { "/admin/crm/presupuestos": "quotes", "/admin/crm/reservas": "reservations" };
+    return byPath[window.location.pathname.replace(/\/+$/, "")] ?? "leads";
   };
   const [tab, setTab] = useState<Tab>(() => tabFromSearch(searchStr));
   const [bulkConfirm, setBulkConfirm] = useState<null | "leads" | "quotes" | "reservations">(null);
@@ -5644,11 +5652,15 @@ export default function CRMDashboard() {
     },
     onError: (e) => toast.error(errorToastMessage(e, "No se ha podido ignorar el aviso.")),
   });
+  // Avisos de datáfono y gastos: solo con la conciliación bancaria contratada (sin ella el servidor responde 403)
+  const bankLicensed = panelSub.can("bank-import-pos");
   const { data: tpvPaymentAlerts } = trpc.cardTerminalBatches.getCrmPaymentAlerts.useQuery(undefined, {
+    enabled: bankLicensed,
     staleTime: 5 * 60 * 1000,
     refetchInterval: 5 * 60 * 1000,
   });
   const { data: expenseStats } = trpc.bankMovements.getExpenseStats.useQuery(undefined, {
+    enabled: bankLicensed,
     staleTime: 5 * 60 * 1000,
     refetchInterval: 5 * 60 * 1000,
   });
@@ -5725,8 +5737,8 @@ export default function CRMDashboard() {
   });
 
   const sendQuoteMutation = trpc.crm.quotes.send.useMutation({
-    onSuccess: () => {
-      toast.success("Presupuesto enviado al cliente");
+    onSuccess: (data) => {
+      toastQuoteMail(data, "Presupuesto enviado al cliente");
       setSendQuoteId(null);
       utils.crm.quotes.list.invalidate();
       utils.crm.quotes.counters.invalidate();
@@ -5736,8 +5748,8 @@ export default function CRMDashboard() {
   });
 
   const resendQuoteMutation = trpc.crm.quotes.resend.useMutation({
-    onSuccess: () => {
-      toast.success("Presupuesto reenviado al cliente");
+    onSuccess: (data) => {
+      toastQuoteMail(data, "Presupuesto reenviado al cliente");
       utils.crm.quotes.list.invalidate();
     },
     onError: (e) => toast.error(errorToastMessage(e)),

@@ -21,6 +21,7 @@ import { ClipboardList } from "lucide-react";
 import { usePanelSubscription } from "@/hooks/usePanelSubscription";
 import { EntityTagsDialog, TagChip, useCrmCanWrite } from "@/components/admin/crm/CrmParts";
 import { toastError } from "@/lib/errorMessage";
+import { useVocabulary } from "@/lib/vocabulary";
 
 // ─── TYPES ───────────────────────────────────────────────────────────────────
 
@@ -377,6 +378,7 @@ function TimelineDot({ color }: { color: string }) {
 
 function ClientHistoryModal({ client, onClose, onStartWhatsApp }: { client: ClientRow; onClose: () => void; onStartWhatsApp?: (phone: string, name: string) => void }) {
   const [tab, setTab] = useState<HistoryTab>("resumen");
+  const voc = useVocabulary();
   const { data, isLoading } = trpc.crm.clients.getHistory.useQuery({ id: client.id });
 
   const tabs: { id: HistoryTab; label: string; icon: ReactNode }[] = [
@@ -405,7 +407,7 @@ function ClientHistoryModal({ client, onClose, onStartWhatsApp }: { client: Clie
         id: `lead-${data.lead.id}`,
         date: new Date(data.lead.createdAt),
         type: "lead",
-        title: `Lead #${data.lead.id} — ${data.lead.opportunityName ?? data.lead.name}`,
+        title: `${voc.Lead} #${data.lead.id} — ${data.lead.opportunityName ?? data.lead.name}`,
         subtitle: `Origen: ${data.lead.source ?? "—"} · Estado: ${data.lead.opportunityStatus ?? "—"}`,
         color: "border-l-blue-500",
         dotColor: "bg-blue-500 border-blue-300",
@@ -549,7 +551,7 @@ function ClientHistoryModal({ client, onClose, onStartWhatsApp }: { client: Clie
             </span>
           ) : (
             <span className="px-2 py-0.5 rounded-full bg-orange-500/10 border border-orange-500/20 text-orange-300 text-xs flex items-center gap-1">
-              <UserPlus className="w-3 h-3" /> Lead
+              <UserPlus className="w-3 h-3" /> {voc.Lead}
             </span>
           )}
         </div>
@@ -620,14 +622,14 @@ function ClientHistoryModal({ client, onClose, onStartWhatsApp }: { client: Clie
                 {/* Lead info */}
                 {data.lead && (
                   <div className="rounded-xl p-4 bg-white/[0.03] border border-white/10 space-y-2">
-                    <div className="text-white/50 text-xs font-medium uppercase tracking-wider mb-2">Lead origen</div>
+                    <div className="text-white/50 text-xs font-medium uppercase tracking-wider mb-2">{voc.leadOrigin}</div>
                     <div className="flex items-center gap-3">
                       <div className="p-2 rounded-lg bg-blue-500/10 border border-blue-500/20">
                         <UserPlus className="w-4 h-4 text-blue-400" />
                       </div>
                       <div>
                         <div className="text-white text-sm font-medium">{data.lead.opportunityName ?? data.lead.name}</div>
-                        <div className="text-white/40 text-xs">Lead #{data.lead.id} · {fmtDate(data.lead.createdAt)} · {data.lead.source ?? "—"}</div>
+                        <div className="text-white/40 text-xs">{voc.Lead} #{data.lead.id} · {fmtDate(data.lead.createdAt)} · {data.lead.source ?? "—"}</div>
                       </div>
                       <Link href={`/admin/crm?lead=${data.lead.id}`} className="ml-auto">
                         <Button size="sm" variant="ghost" className="text-blue-400 hover:text-blue-300 h-7 px-2 text-xs">
@@ -860,11 +862,12 @@ function ClientHistoryModal({ client, onClose, onStartWhatsApp }: { client: Clie
 // ─── SOURCE BADGE ─────────────────────────────────────────────────────────────
 
 function SourceBadge({ source, leadId }: { source: string; leadId: number | null }) {
+  const voc = useVocabulary();
   if (source === "lead" && leadId) {
     return (
       <Link href={`/admin/crm?lead=${leadId}`}>
         <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-300 text-[10px] cursor-pointer hover:bg-blue-500/20 transition-colors">
-          <ArrowRight className="w-2.5 h-2.5" /> Lead #{leadId}
+          <ArrowRight className="w-2.5 h-2.5" /> {voc.Lead} #{leadId}
         </span>
       </Link>
     );
@@ -882,6 +885,7 @@ function SourceBadge({ source, leadId }: { source: string; leadId: number | null
 // ─── MAIN PAGE ────────────────────────────────────────────────────────────────
 
 export default function ClientsManager() {
+  const voc = useVocabulary();
   const [search, setSearch] = useState("");
   const [editClient, setEditClient] = useState<ClientRow | null | undefined>(undefined);
   const [expandClient, setExpandClient] = useState<ClientRow | null>(null);
@@ -1035,7 +1039,7 @@ export default function ClientsManager() {
               </div>
               <div>
                 <div className="text-2xl font-bold text-orange-400">{fromLeadCount}</div>
-                <div className="text-white/40 text-xs">Desde lead</div>
+                <div className="text-white/40 text-xs">Desde {voc.lead}</div>
               </div>
             </div>
           </div>
@@ -1203,7 +1207,7 @@ export default function ClientsManager() {
                         className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-violet-500/10 border border-violet-500/20 text-violet-300 text-xs"
                         title="Cliente captado desde cupón de plataforma externa"
                       >
-                        <Ticket className="w-3 h-3" /> Lead Cupón
+                        <Ticket className="w-3 h-3" /> {voc.Lead} (cupón)
                       </span>
                     ) : (
                       <button
@@ -1211,7 +1215,7 @@ export default function ClientsManager() {
                         className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-orange-500/10 border border-orange-500/20 text-orange-300 text-xs hover:bg-orange-500/20 transition-colors cursor-pointer"
                         title="Ampliar datos para convertir en cliente"
                       >
-                        <UserPlus className="w-3 h-3" /> Lead
+                        <UserPlus className="w-3 h-3" /> {voc.Lead}
                       </button>
                     )}
                   </td>
