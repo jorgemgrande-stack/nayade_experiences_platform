@@ -39,6 +39,12 @@ describe("lectura tolerante: medios resueltos", () => {
     expect(m.card).toEqual({ src: "https://cdn.bigelephant.es/a.webp", srcset: null, mobileSrc: null, width: null, height: null, alt: "Imagen a", focal: null, kind: null });
   });
 
+  it("srcset del almacén del catálogo como objeto {webp, avif} → se usa la variante WebP", () => {
+    const base = "https://admin.bigelephant.es/cp/v1/public/media/abc";
+    const m = parseConnectCard({ commercial: { media: { card: img("a", { srcset: { webp: `${base}/w480.webp 480w, ${base}/w960.webp 960w`, avif: `${base}/w480.avif 480w` } }) } } })!.commercial!.media!;
+    expect(m.card!.srcset).toBe(`${base}/w480.webp 480w, ${base}/w960.webp 960w`);
+  });
+
   it("srcset con una fuente no https se descarta entero (la imagen sigue)", () => {
     const m = parseConnectCard({ commercial: { media: { card: img("a", { srcset: "https://cdn.bigelephant.es/a.webp 600w, http://x.es/b.webp 1200w" }) } } })!.commercial!.media!;
     expect(m.card).toMatchObject({ src: "https://cdn.bigelephant.es/a.webp", srcset: null });
