@@ -505,7 +505,10 @@ export async function checkAndConfirmInstallmentPlan(quoteId: number, userId: nu
   const breakdown = groupTaxBreakdown(items.filter(i => i.fiscalRegime !== "reav"));
   const taxAmount = totalTaxAmount(breakdown);
   const taxRateInst = breakdown.length === 1 ? breakdown[0].rate : 21;
-  const total = parseFloat((subtotal + taxAmount).toFixed(2));
+  // Lo facturado es lo cobrado: el total del presupuesto (las cuotas suman exactamente ese importe), como en
+  // el pago único. Recalcularlo como base + cuota daba otra cifra cuando las líneas no incluían el IVA.
+  const quoteTotal = Number(quote.total);
+  const total = quoteTotal > 0 ? round2(quoteTotal) : parseFloat((subtotal + taxAmount).toFixed(2));
 
   // -- FASE 1: Confirmar reserva cuando se pagan las cuotas obligatorias ------
   // Idempotente: sólo si el quote aún no está aceptado
@@ -564,9 +567,11 @@ export async function checkAndConfirmInstallmentPlan(quoteId: number, userId: nu
         .where(eq(reservations.id, reservation.id));
     }
 
+    // El enlace del presupuesto se conserva: con él el cliente paga las cuotas siguientes y vuelve a ver
+    // el presupuesto. Nunca cobra dos veces: solo inicia el pago de cuotas pendientes y, con el plan
+    // cobrado (paidAt), deja de iniciar pagos.
     await db.update(quotes).set({
       status: "aceptado",
-      paymentLinkToken: null,
       updatedAt: now,
     }).where(eq(quotes.id, quoteId));
 
@@ -3318,8 +3323,8 @@ export const crmRouter = router({
         // Obtener datos del lead/cliente
         const [lead] = await db.select().from(leads).where(eq(leads.id, quote.leadId)).limit(1);
 
-        // Verificar si ha expirado
-        const isExpired = quote.validUntil && new Date(quote.validUntil) < new Date();
+        // Verificar si ha expirado (un presupuesto ya aceptado no caduca: quedan sus cuotas por pagar)
+        const isExpired = quote.status !== "aceptado" && quote.validUntil && new Date(quote.validUntil) < new Date();
         const isPaid = !!quote.paidAt;
         const isRejected = quote.status === "rechazado";
 
@@ -3327,6 +3332,7 @@ export const crmRouter = router({
         let installmentPlan: {
           planId: number;
           firstRequiredAmountCents: number | null;
+          nextInstallment: { installmentNumber: number; amountCents: number } | null;
           installments: {
             id: number;
             installmentNumber: number;
@@ -3351,13 +3357,16 @@ export const crmRouter = router({
             .where(eq(paymentInstallments.quoteId, quote.id))
             .orderBy(paymentInstallments.installmentNumber);
 
-          const firstRequired = planInstallments.find(
-            (i) => i.isRequiredForConfirmation && i.status === "pending"
-          ) ?? planInstallments.find((i) => i.isRequiredForConfirmation) ?? null;
+          // La cuota que cobraría el enlace ahora (mismo orden que payWithToken): primero las obligatorias
+          // pendientes y después cualquier pendiente
+          const next = planInstallments.find((i) => i.isRequiredForConfirmation && i.status === "pending")
+            ?? planInstallments.find((i) => i.status === "pending")
+            ?? null;
 
           installmentPlan = {
             planId: quote.paymentPlanId,
-            firstRequiredAmountCents: firstRequired?.amountCents ?? null,
+            firstRequiredAmountCents: next?.amountCents ?? null,
+            nextInstallment: next ? { installmentNumber: next.installmentNumber, amountCents: next.amountCents } : null,
             installments: planInstallments,
           };
         }
@@ -3402,6 +3411,8 @@ export const crmRouter = router({
         if (!quote) throw new TRPCError({ code: "NOT_FOUND" });
         if (quote.paidAt) throw new TRPCError({ code: "BAD_REQUEST", message: "Este presupuesto ya ha sido pagado" });
         if (quote.status === "rechazado") return { success: true };
+        // Aceptado (con cuotas ya pagadas): el enlace sigue vivo para pagar el resto, pero ya no se rechaza
+        if (quote.status === "aceptado") throw new TRPCError({ code: "BAD_REQUEST", message: "Este presupuesto ya está confirmado. Si necesitas cambiarlo, ponte en contacto con nosotros." });
 
         await db
           .update(quotes)
@@ -3438,7 +3449,8 @@ export const crmRouter = router({
         if (!quote) throw new TRPCError({ code: "NOT_FOUND", message: "Presupuesto no encontrado" });
         if (quote.paidAt) throw new TRPCError({ code: "BAD_REQUEST", message: "Este presupuesto ya ha sido pagado" });
         if (quote.status === "rechazado") throw new TRPCError({ code: "BAD_REQUEST", message: "Este presupuesto fue rechazado" });
-        if (quote.validUntil && new Date(quote.validUntil) < new Date()) {
+        // La validez limita la aceptación; las cuotas de un presupuesto ya aceptado se pagan aunque haya pasado
+        if (quote.status !== "aceptado" && quote.validUntil && new Date(quote.validUntil) < new Date()) {
           throw new TRPCError({ code: "BAD_REQUEST", message: "Este presupuesto ha expirado" });
         }
 
@@ -3460,12 +3472,12 @@ export const crmRouter = router({
         // 1ª prioridad: cuotas requeridas para confirmar reserva
         // 2ª prioridad: cualquier cuota pendiente (cuotas posteriores a la confirmación)
         let amountCents = Math.round(totalEuros * 100);
-        let firstRequiredInstallment: { id: number; amountCents: number; installmentNumber: number } | null = null;
+        let firstRequiredInstallment: { id: number; amountCents: number; installmentNumber: number; reservationId: number | null } | null = null;
 
         if (quote.paymentPlanId) {
           // Buscar primera cuota requerida pendiente
           const [requiredInst] = await db
-            .select({ id: paymentInstallments.id, amountCents: paymentInstallments.amountCents, installmentNumber: paymentInstallments.installmentNumber })
+            .select({ id: paymentInstallments.id, amountCents: paymentInstallments.amountCents, installmentNumber: paymentInstallments.installmentNumber, reservationId: paymentInstallments.reservationId })
             .from(paymentInstallments)
             .where(and(
               eq(paymentInstallments.quoteId, quote.id),
@@ -3481,7 +3493,7 @@ export const crmRouter = router({
           } else {
             // No quedan requeridas — buscar la próxima cuota pendiente (plan en curso)
             const [nextInst] = await db
-              .select({ id: paymentInstallments.id, amountCents: paymentInstallments.amountCents, installmentNumber: paymentInstallments.installmentNumber })
+              .select({ id: paymentInstallments.id, amountCents: paymentInstallments.amountCents, installmentNumber: paymentInstallments.installmentNumber, reservationId: paymentInstallments.reservationId })
               .from(paymentInstallments)
               .where(and(
                 eq(paymentInstallments.quoteId, quote.id),
@@ -3501,9 +3513,44 @@ export const crmRouter = router({
         const customerEmail = input.customerEmail ?? lead.email ?? "";
         const customerPhone = input.customerPhone ?? lead.phone ?? "";
 
+        // Cuota con un pago ya iniciado y sin completar: se reutiliza su mismo pedido de la pasarela. Así
+        // abrir el pago dos veces no crea dos cobros de la misma cuota (la pasarela no autoriza dos veces el
+        // mismo pedido) y la notificación siempre encuentra la cuota.
+        if (firstRequiredInstallment?.reservationId) {
+          const [pendingRes] = await db
+            .select()
+            .from(reservations)
+            .where(and(
+              eq(reservations.id, firstRequiredInstallment.reservationId),
+              eq(reservations.quoteId, quote.id),
+              eq(reservations.status, "pending_payment"),
+            ))
+            .limit(1);
+          if (pendingRes && pendingRes.amountTotal === amountCents) {
+            const redsysForm = await buildRedsysForm({
+              amount: amountCents,
+              merchantOrder: pendingRes.merchantOrder,
+              productDescription: `Presupuesto ${quote.quoteNumber} — ${quote.title}`,
+              notifyUrl: `${publicBaseUrl()}/api/redsys/notification`,
+              okUrl: `${publicBaseUrl()}/reserva/ok?order=${pendingRes.merchantOrder}`,
+              koUrl: `${publicBaseUrl()}/reserva/error?order=${pendingRes.merchantOrder}`,
+              holderName: customerName,
+            });
+            return {
+              merchantOrder: pendingRes.merchantOrder,
+              amountCents,
+              amountEuros: totalEuros,
+              quoteTitle: quote.title,
+              redsysForm,
+            };
+          }
+        }
+
         // Reutilizar reserva pending_payment existente si el presupuesto ya fue convertido
         // o si el pago anterior falló y el cliente reintenta con una nueva tarjeta.
-        if ((quote.status === "convertido_carrito" || quote.status === "pago_fallido") && quote.redsysOrderId) {
+        // (Con plan de pagos solo se reutiliza la reserva de la propia cuota, tratada arriba: la de otra
+        // cuota llevaría su pedido y la notificación marcaría la cuota equivocada.)
+        if (!firstRequiredInstallment && (quote.status === "convertido_carrito" || quote.status === "pago_fallido") && quote.redsysOrderId) {
           const [existingReservation] = await db
             .select()
             .from(reservations)
