@@ -493,7 +493,10 @@ describe.skipIf(!URL_)("Escenarios v2 de usuario nuevo (aplicación real, dos em
       const ov = ok(await ess.q(co, "subscription.overview", undefined, cookie), "overview");
       const can = capabilityStateFrom(ov);
       const nav = resolveNav(TASK_NAV, { role: "admin", isFlagVisible: () => true, isModuleVisible: () => true, capabilityState: can });
-      return { can, hrefs: nav.flatMap((s) => s.items.map((i) => i.href)) };
+      // Entradas que aportan las extensiones contratadas, declaradas en su manifiesto (People → «Personal»)
+      const ext = ok(await ess.q(co, "panel.navigation", undefined, cookie), "panel.navigation") as { entries: Array<{ moduleId: string; item?: { label: string; href: string } }> };
+      const declared = ext.entries.filter((e) => e.item).map((e) => ({ moduleId: e.moduleId, label: e.item!.label, href: e.item!.href }));
+      return { can, declared, hrefs: [...nav.flatMap((s) => s.items.map((i) => i.href)), ...declared.map((d) => d.href)] };
     };
     const item = async (co: Co, cookie: string) => (ok(await ess.q(co, "connect.catalog", undefined, cookie), "catálogo Connect").items as any[]).find((i) => i.key === "connect-people");
 
@@ -541,6 +544,7 @@ describe.skipIf(!URL_)("Escenarios v2 de usuario nuevo (aplicación real, dos em
       const m = await menu("a", admA);
       expect(m.can("people-hr")).toBe("active");
       expect(m.hrefs).toContain("/admin/personal");
+      expect(m.declared).toEqual([{ moduleId: "people", label: "Personal", href: "/admin/personal" }]);
       expect((await item("a", admA)).state).toBe("active");
       // Su API funciona
       expect(ok(await ess.q("a", "hr.employees.list", {}, admA), "hr.employees.list")).toBeTruthy();
