@@ -156,8 +156,8 @@ export default function ProductDetail() {
             )}
           </div>
 
-          {/* Compra */}
-          <div className="lg:col-span-2 min-w-0">
+          {/* Compra (en móvil, el botón flotante de WhatsApp se aparta para no taparla) */}
+          <div className="lg:col-span-2 min-w-0" data-whatsapp-avoid="">
             <div className="lg:sticky lg:top-28 space-y-5">
               <h1 className="text-3xl md:text-4xl font-heading font-bold text-foreground break-words">{product.title}</h1>
               {str(product.shortDescription) && str(product.description) && <p className="text-muted-foreground">{product.shortDescription}</p>}
