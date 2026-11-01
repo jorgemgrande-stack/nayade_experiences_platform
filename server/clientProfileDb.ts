@@ -13,6 +13,7 @@ import { hasTagCondition } from "./crmTagsDb";
 import { NOTE_MAX, type ClientKind, type DuplicateMatch } from "../shared/clientProfile";
 import { normalizeTaxId } from "../shared/formValidation";
 import type { ClientCsvField } from "../shared/clientImportCsv";
+import { int, mysqlTable } from "drizzle-orm/mysql-core";
 
 async function requireDb() {
   const db = await getDb();
@@ -26,6 +27,9 @@ const errCode = (e: unknown) => {
   return err?.cause?.code ?? err?.code;
 };
 const isMissingTable = (e: unknown) => errCode(e) === "ER_NO_SUCH_TABLE";
+
+// Tabla de notas (migración 0019, fuera de drizzle/schema.ts como la 0017): solo las columnas que se usan para borrar
+const clientNotes = mysqlTable("client_notes", { id: int("id").primaryKey(), clientId: int("client_id").notNull() });
 
 // ─── Listado ────────────────────────────────────────────────────────────────
 
@@ -162,7 +166,7 @@ export async function addClientNote(clientId: number, rawBody: string, author: {
 export async function deleteClientNote(clientId: number, noteId: number): Promise<void> {
   const db = await requireDb();
   try {
-    const r = await db.execute(sql`DELETE FROM client_notes WHERE id = ${noteId} AND client_id = ${clientId}`);
+    const r = await db.delete(clientNotes).where(and(eq(clientNotes.id, noteId), eq(clientNotes.clientId, clientId)));
     const affected = Number((Array.isArray(r) ? (r[0] as { affectedRows?: number }) : (r as { affectedRows?: number }))?.affectedRows ?? 0);
     if (affected === 0) throw new TRPCError({ code: "NOT_FOUND", message: "La nota no existe" });
   } catch (e) {
@@ -175,7 +179,7 @@ export async function deleteClientNote(clientId: number, noteId: number): Promis
 export async function deleteNotesOfClient(clientId: number): Promise<void> {
   const db = await requireDb();
   try {
-    await db.execute(sql`DELETE FROM client_notes WHERE client_id = ${clientId}`);
+    await db.delete(clientNotes).where(eq(clientNotes.clientId, clientId));
   } catch (e) {
     if (!isMissingTable(e)) throw e;
   }
