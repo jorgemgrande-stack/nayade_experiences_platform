@@ -27,6 +27,7 @@ import type { WithdrawalNotifier } from "../withdrawals/service";
 import type { IncidentNotifier } from "../_core/ops/incidents";
 import type { TicketNotifier } from "../_core/support/tickets";
 import type { ExternalMail } from "../external/service";
+import type { OperationsMail } from "../external/operations";
 import { extraTemplates } from "./extraTemplates";
 import type { AlertFacts } from "../adminAlerts/catalog";
 import { incidentAlert } from "../adminAlerts/sources";
@@ -108,6 +109,16 @@ export class PlatformMailer {
       changed: async (to, key, i) => {
         const r = await this.send(PLATFORM_TENANT, key, "contract_invitation", to, extraTemplates.externalChanged(i));
         return { status: r.status, reason: r.reason, duplicate: r.duplicate, id: r.id };
+      },
+    };
+  }
+
+  /** Notas de cobro de servicios externos (cobro único o periodo de infraestructura): mismo recorrido del contrato. */
+  externalOperationsMail(): OperationsMail {
+    return {
+      paymentRequest: async (to, key, i) => {
+        const r = await this.send(PLATFORM_TENANT, key, "contract_invitation", to, extraTemplates.externalPaymentRequest(i));
+        return { status: r.status, reason: r.reason, id: r.id };
       },
     };
   }

@@ -354,7 +354,11 @@ export interface ServiceSubscriptionInput {
   /** Cuota neta por periodo (céntimos, sin IVA). */
   unitAmount: number;
   currency: string;
-  interval: "month";
+  /** Periodicidad: mensual (por defecto), trimestral (month · 3) o anual (year). */
+  interval: "month" | "year";
+  intervalCount?: number;
+  /** Fin de una duración fija (segundos): Stripe da de baja la suscripción en ese instante, sin más cargos. */
+  cancelAt?: number;
   taxRateId: string;
   /** Primer cargo (segundos desde epoch). Hasta entonces no se cobra nada; después, cada mes ese día y hora. */
   trialEnd: number;
@@ -762,11 +766,12 @@ export function stripeGateway(
         const s = await client.subscriptions.create(
           {
             customer: i.customerId,
-            items: [{ price_data: { currency: i.currency.toLowerCase(), product: i.productId, unit_amount: i.unitAmount, recurring: { interval: i.interval }, tax_behavior: "exclusive" }, quantity: 1 }],
+            items: [{ price_data: { currency: i.currency.toLowerCase(), product: i.productId, unit_amount: i.unitAmount, recurring: { interval: i.interval, ...(i.intervalCount && i.intervalCount !== 1 ? { interval_count: i.intervalCount } : {}) }, tax_behavior: "exclusive" }, quantity: 1 }],
             default_tax_rates: [i.taxRateId],
             default_payment_method: i.defaultPaymentMethod,
             // Sin cargo hasta el primer vencimiento; desde ahí Stripe cobra cada mes el mismo día y hora
             trial_end: i.trialEnd,
+            ...(i.cancelAt ? { cancel_at: i.cancelAt } : {}),
             proration_behavior: "none",
             collection_method: "charge_automatically",
             off_session: true,

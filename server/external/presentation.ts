@@ -11,6 +11,7 @@ import type { BrandIssuer, PdfBlock } from "../documents/brandPdf";
 import { DEFAULT_LOGO_URL } from "../documents/brandPdf";
 import { localDate } from "./schedule";
 import { taxCents } from "./document";
+import { cadence, isMonthly } from "./cadence";
 import type { ExternalSubscription } from "./types";
 
 export interface ContractClause {
@@ -35,7 +36,7 @@ export interface ContractView {
   sha256: string;
   parties: Array<{ label: string; value: string }>;
   sections: ContractSection[];
-  economics: { serviceName: string; baseCents: number; taxRateBp: number; taxCents: number; totalCents: number; currency: string; billingDay: number; firstCharge: string; graceUntilDay: number; timezone: string };
+  economics: { serviceName: string; baseCents: number; taxRateBp: number; taxCents: number; totalCents: number; currency: string; billingDay: number; firstCharge: string; graceUntilDay: number; timezone: string; period?: string; every?: string; graceText?: string };
   signer: { name: string; role: string | null } | null;
   declaration: string | null;
 }
@@ -48,7 +49,7 @@ const LEAD = /^([A-ZÁÉÍÓÚÜÑ¿][^.:\n]{1,40}[.:])(\s|$)/;
 /** Reparte el texto registrado en título, partes y apartados con sus cláusulas. No reescribe nada. */
 export function contractView(
   text: string,
-  meta: { sha256: string; reference: string; version: number; external: Pick<ExternalSubscription, "serviceName" | "amountCents" | "currency" | "taxRateBp" | "billingDay" | "graceDays" | "firstChargeAt" | "timezone">; signer?: { name: string; role: string | null } | null; declaration?: string | null },
+  meta: { sha256: string; reference: string; version: number; external: Pick<ExternalSubscription, "serviceName" | "amountCents" | "currency" | "taxRateBp" | "billingDay" | "graceDays" | "firstChargeAt" | "timezone"> & Partial<Pick<ExternalSubscription, "interval" | "intervalCount">>; signer?: { name: string; role: string | null } | null; declaration?: string | null },
 ): ContractView {
   const lines = text.replace(/\r\n/g, "\n").split("\n");
   const title = lines[0] ?? "";
@@ -96,7 +97,7 @@ export function contractView(
     sha256: meta.sha256,
     parties,
     sections,
-    economics: { serviceName: x.serviceName, baseCents: x.amountCents, taxRateBp: x.taxRateBp, taxCents: tax, totalCents: x.amountCents + tax, currency: x.currency, billingDay: x.billingDay, firstCharge: `${String(first.day).padStart(2, "0")}/${String(first.month).padStart(2, "0")}/${first.year}`, graceUntilDay: x.billingDay + x.graceDays - 1, timezone: x.timezone },
+    economics: { serviceName: x.serviceName, baseCents: x.amountCents, taxRateBp: x.taxRateBp, taxCents: tax, totalCents: x.amountCents + tax, currency: x.currency, billingDay: x.billingDay, firstCharge: `${String(first.day).padStart(2, "0")}/${String(first.month).padStart(2, "0")}/${first.year}`, graceUntilDay: x.billingDay + x.graceDays - 1, timezone: x.timezone, ...(isMonthly(x) ? {} : { period: cadence(x).adj, every: `del mes en que empieza cada periodo`, graceText: `${x.graceDays} días desde cada cargo` }) },
     signer: meta.signer ?? null,
     declaration: meta.declaration ?? null,
   };
@@ -203,9 +204,9 @@ export function contractBodyHtml(v: ContractView, o: { logoUrl?: string | null; 
 <p class="meta">${esc(v.title)}</p><div class="rule"></div>
 <div class="parties">${parties}</div>
 <div class="econ"><table><thead><tr><th>Concepto</th><th class="r">Base</th><th class="r">IVA ${esc(pct(e.taxRateBp))}</th><th class="r">Total</th></tr></thead><tbody>
-<tr><td class="concept">${esc(e.serviceName)} · cuota mensual</td><td class="r" data-label="Base">${esc(money(e.baseCents, e.currency))}</td><td class="r" data-label="IVA ${esc(pct(e.taxRateBp))}">${esc(money(e.taxCents, e.currency))}</td><td class="r" data-label="Total">${esc(money(e.totalCents, e.currency))}</td></tr>
-<tr class="total"><td>Total mensual</td><td class="r"></td><td class="r"></td><td class="r" data-label="Total mensual">${esc(money(e.totalCents, e.currency))}</td></tr></tbody></table>
-<div class="facts"><span>Primer cargo: <b>${esc(e.firstCharge)}</b></span><span>Cargo: <b>día ${e.billingDay} de cada mes</b></span><span>Margen de pago: <b>hasta el día ${e.graceUntilDay}</b></span><span>Periodicidad: <b>mensual</b></span></div></div>
+<tr><td class="concept">${esc(e.serviceName)} · cuota ${esc(e.period ?? "mensual")}</td><td class="r" data-label="Base">${esc(money(e.baseCents, e.currency))}</td><td class="r" data-label="IVA ${esc(pct(e.taxRateBp))}">${esc(money(e.taxCents, e.currency))}</td><td class="r" data-label="Total">${esc(money(e.totalCents, e.currency))}</td></tr>
+<tr class="total"><td>Total ${esc(e.period ?? "mensual")}</td><td class="r"></td><td class="r"></td><td class="r" data-label="Total ${esc(e.period ?? "mensual")}">${esc(money(e.totalCents, e.currency))}</td></tr></tbody></table>
+<div class="facts"><span>Primer cargo: <b>${esc(e.firstCharge)}</b></span><span>Cargo: <b>día ${e.billingDay} ${esc(e.every ?? "de cada mes")}</b></span><span>Margen de pago: <b>${esc(e.graceText ?? `hasta el día ${e.graceUntilDay}`)}</b></span><span>Periodicidad: <b>${esc(e.period ?? "mensual")}</b></span></div></div>
 ${sections}
 ${o.acceptance ?? ""}
 <div class="integrity">Documento contractual registrado: ${esc(v.reference)}, versión ${v.version}. Huella SHA-256 del texto: <code>${esc(v.sha256)}</code>. La numeración y la tabla económica facilitan la lectura; el texto de las cláusulas es el registrado.${o.raw !== undefined ? `<details class="raw"><summary>Ver el texto contractual registrado</summary><pre>${esc(o.raw)}</pre></details>` : ""}</div>
@@ -227,10 +228,10 @@ export function contractPdfBlocks(v: ContractView, acceptance?: { title: string;
     {
       kind: "table",
       columns: [{ title: "Concepto", width: 46 }, { title: "Base", width: 18, align: "right" }, { title: `IVA ${pct(e.taxRateBp)}`, width: 18, align: "right" }, { title: "Total", width: 18, align: "right" }],
-      rows: [[`${e.serviceName} · cuota mensual`, money(e.baseCents, e.currency), money(e.taxCents, e.currency), money(e.totalCents, e.currency)]],
-      totals: ["Total mensual", "", "", money(e.totalCents, e.currency)],
+      rows: [[`${e.serviceName} · cuota ${e.period ?? "mensual"}`, money(e.baseCents, e.currency), money(e.taxCents, e.currency), money(e.totalCents, e.currency)]],
+      totals: [`Total ${e.period ?? "mensual"}`, "", "", money(e.totalCents, e.currency)],
     },
-    { kind: "paragraph", text: `Primer cargo: ${e.firstCharge} · Cargo el día ${e.billingDay} de cada mes · Margen de pago hasta el día ${e.graceUntilDay} · Periodicidad mensual`, muted: true },
+    { kind: "paragraph", text: `Primer cargo: ${e.firstCharge} · Cargo el día ${e.billingDay} ${e.every ?? "de cada mes"} · Margen de pago ${e.graceText ?? `hasta el día ${e.graceUntilDay}`} · Periodicidad ${e.period ?? "mensual"}`, muted: true },
   ];
   for (const s of v.sections) {
     blocks.push({ kind: "heading", number: String(s.number), text: s.heading });

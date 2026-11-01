@@ -137,6 +137,8 @@ import { createInvoicingRouter } from "../invoicing/api";
 import { invoiceHtml } from "../invoicing/document";
 import { TenantPlanService, createTenantPlanRouter } from "../commerce/tenantPlan";
 import { ChargePaymentService, type ChargePaymentStore } from "../invoicing/chargePayments";
+import { ExternalOperationsService, type OperationStore } from "../external/operations";
+import { createExternalOperationsRouter } from "../external/operationsApi";
 import type { CompanyFiscal } from "../invoicing/rules";
 import { ISSUER } from "../stripe/issuer";
 import { createBillingPortalRouter, createPurchasesRouter } from "../stripe/purchasesApi";
@@ -314,7 +316,7 @@ export interface ControlPlaneDeps {
    * Facturación propia (server/invoicing, CRM 0027): facturas por devengo de los servicios externos con el estado de
    * cobro leído de su historial. Sin `issueEnabled` solo prepara borradores (nunca expide).
    */
-  invoicing?: { store: InvoicingStore; issueEnabled: boolean; seriesCode: string; charges?: ChargeStore; chargePayments?: ChargePaymentStore };
+  invoicing?: { store: InvoicingStore; issueEnabled: boolean; seriesCode: string; charges?: ChargeStore; chargePayments?: ChargePaymentStore; operations?: OperationStore };
   /**
    * Motor de transiciones temporales (server/lifecycle). Requiere `orders`. El plan (solo lectura) siempre
    * se puede consultar; la tarea periódica solo con `policy.enabled` y aplica solo en modo «apply».
@@ -2453,6 +2455,20 @@ export function createControlPlaneApp(d: ControlPlaneDeps): Express {
         });
       }
       router.use("/invoicing", createInvoicingRouter(invoicing, issuer, charges, chargePaymentsRef.svc));
+      // Cobros únicos e infraestructura recurrente de clientes externos (CRM 0041): emiten cargos de esta facturación
+      if (charges && d.invoicing.operations) {
+        const ops = new ExternalOperationsService({
+          store: d.invoicing.operations,
+          company: async (id) => (await crmStore.get("companies", id)) as Awaited<ReturnType<ConstructorParameters<typeof ExternalOperationsService>[0]["company"]>>,
+          charges,
+          invoices: d.invoicing.store,
+          payments: chargePaymentsRef.svc,
+          mail: d.mail?.platform?.externalOperationsMail(),
+          namespace: d.stripe?.config.namespace ?? "sin-stripe",
+          now: d.subscriptions.now,
+        });
+        router.use("/external-ops", createExternalOperationsRouter(ops));
+      }
     }
     // «Mi plan» de cada empresa (solo lectura, token de comercio del Core): contrato, periodo, cobro y facturas propias
     if (orderStore) {
