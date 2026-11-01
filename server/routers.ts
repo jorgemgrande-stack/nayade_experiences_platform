@@ -230,6 +230,16 @@ import { sampleUrl } from "./_core/productIdentity";
 import { assertCheckoutLinePriced } from "./checkoutLinePricing";
 const adminProcedure = permissionProcedure("settings.manage", ["admin"]);
 
+/** Constructor de la web: los avisos para la persona (dirección repetida, portada…) llegan como petición incorrecta. */
+async function pageBuilderCall<T>(fn: () => Promise<T>): Promise<T> {
+  const { PageBlocksError } = await import("./_core/pageBlocks");
+  try {
+    return await fn();
+  } catch (e) {
+    if (e instanceof PageBlocksError) throw new TRPCError({ code: "BAD_REQUEST", message: e.message });
+    throw e;
+  }
+}
 
 /**
  * Extras de una reserva online.
@@ -375,7 +385,10 @@ export const appRouter = router({
         if (!db) return null;
         const { staticPages } = await import("../drizzle/schema");
         const { sanitizeRichHtml } = await import("./_core/htmlSanitize");
-        const [row] = await db.select().from(staticPages).where(eq(staticPages.slug, input.slug)).limit(1);
+        // «inicio» es la portada: la página que la empresa haya elegido como tal (Web › Páginas)
+        const { resolvePublicSlug, getPublishedBlocks } = await import("./pageBuilderDb");
+        const slug = await resolvePublicSlug(input.slug);
+        const [row] = await db.select().from(staticPages).where(eq(staticPages.slug, slug)).limit(1);
         if (!row || !row.isPublished) return null;
         // Texto legal de relleno de la plantilla, sin completar: nunca se publica en nombre de la empresa
         const { isLegalPlaceholder } = await import("../shared/tenantNav");
@@ -383,11 +396,16 @@ export const appRouter = router({
         // Texto sin formato → párrafos; saneado con lista blanca; después, los datos de la empresa (ya escapados)
         const { plainTextToHtml, renderSiteTokens } = await import("./_core/templates/starterSite");
         const tokens = await readSiteTokenData();
+        // Página hecha con el constructor: sus bloques publicados (saneados), con los datos de la empresa
+        const { renderBlockTokens } = await import("./_core/pageBlocks");
+        const blocks = await getPublishedBlocks(row.slug);
         return {
           slug: row.slug,
           title: renderSiteTokens(row.title, tokens),
           html: renderSiteTokens(sanitizeRichHtml(plainTextToHtml(row.content ?? "")), tokens),
+          metaTitle: row.metaTitle ? renderSiteTokens(row.metaTitle, tokens) : null,
           metaDescription: row.metaDescription ? renderSiteTokens(row.metaDescription, tokens) : null,
+          blocks: blocks ? renderBlockTokens(blocks, tokens) : null,
         };
       }),
 
@@ -660,6 +678,9 @@ export const appRouter = router({
     getPublicPageBlocks: publicProcedure
       .input(z.object({ slug: z.string() }))
       .query(async ({ input }) => {
+        // Solo bloques de una página real (el borrador del constructor se guarda con otra clave y nunca es público)
+        const { isPageSlug } = await import("./pageBuilderDb");
+        if (!isPageSlug(input.slug)) return [];
         const page = await getPageBySlug(input.slug);
         if (page && !page.isPublished) return [];
         return getPageBlocks(input.slug);
@@ -820,6 +841,111 @@ export const appRouter = router({
       }))
       .mutation(async ({ input }) => {
         return savePageContent(input);
+      }),
+
+    // ── Constructor de la web (Web › Páginas): bloques, borrador y publicado, portada y menú (server/pageBuilderDb.ts)
+    sitePages: adminProcedure.query(async () => {
+      const { ensureStarterPages } = await import("./starterSiteDb");
+      await ensureStarterPages();
+      const { listSitePages } = await import("./pageBuilderDb");
+      return listSitePages();
+    }),
+
+    pageEditor: adminProcedure
+      .input(z.object({ slug: z.string().regex(/^[a-z0-9-]{1,64}$/) }))
+      .query(async ({ input }) => {
+        const { getPageEditor } = await import("./pageBuilderDb");
+        return getPageEditor(input.slug);
+      }),
+
+    pagePreview: adminProcedure
+      .input(z.object({ slug: z.string().regex(/^[a-z0-9-]{1,64}$/) }))
+      .query(async ({ input }) => {
+        const { getPagePreview } = await import("./pageBuilderDb");
+        const { readSiteTokenData } = await import("./starterSiteDb");
+        return getPagePreview(input.slug, await readSiteTokenData());
+      }),
+
+    savePageDraft: adminProcedure
+      .input(z.object({ slug: z.string().regex(/^[a-z0-9-]{1,64}$/), blocks: z.array(z.unknown()).max(200) }))
+      .mutation(async ({ input }) => {
+        const { savePageDraft } = await import("./pageBuilderDb");
+        return pageBuilderCall(() => savePageDraft(input.slug, input.blocks));
+      }),
+
+    publishPage: adminProcedure
+      .input(z.object({ slug: z.string().regex(/^[a-z0-9-]{1,64}$/), blocks: z.array(z.unknown()).max(200).optional() }))
+      .mutation(async ({ input }) => {
+        const { publishPage } = await import("./pageBuilderDb");
+        return pageBuilderCall(() => publishPage(input.slug, input.blocks));
+      }),
+
+    discardPageDraft: adminProcedure
+      .input(z.object({ slug: z.string().regex(/^[a-z0-9-]{1,64}$/) }))
+      .mutation(async ({ input }) => {
+        const { discardPageDraft } = await import("./pageBuilderDb");
+        return discardPageDraft(input.slug);
+      }),
+
+    setPagePublished: adminProcedure
+      .input(z.object({ slug: z.string().regex(/^[a-z0-9-]{1,64}$/), isPublished: z.boolean() }))
+      .mutation(async ({ input }) => {
+        const { setPagePublished } = await import("./pageBuilderDb");
+        return pageBuilderCall(() => setPagePublished(input.slug, input.isPublished));
+      }),
+
+    createSitePage: adminProcedure
+      .input(z.object({
+        title: z.string().trim().min(1, "Indica el título").max(200),
+        slug: z.string().trim().max(64),
+        template: z.enum(["blank", "services", "about", "contact"]).default("blank"),
+        metaDescription: z.string().trim().max(300).optional(),
+        addToMenu: z.boolean().default(true),
+      }))
+      .mutation(async ({ input }) => {
+        const { createSitePage } = await import("./pageBuilderDb");
+        return pageBuilderCall(() => createSitePage(input));
+      }),
+
+    updatePageSettings: adminProcedure
+      .input(z.object({
+        slug: z.string().regex(/^[a-z0-9-]{1,64}$/),
+        newSlug: z.string().trim().max(64).optional(),
+        title: z.string().trim().min(1, "Indica el título").max(200),
+        metaTitle: z.string().trim().max(200).optional(),
+        metaDescription: z.string().trim().max(300).optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const { updatePageSettings } = await import("./pageBuilderDb");
+        return pageBuilderCall(() => updatePageSettings(input));
+      }),
+
+    duplicateSitePage: adminProcedure
+      .input(z.object({ slug: z.string().regex(/^[a-z0-9-]{1,64}$/) }))
+      .mutation(async ({ input }) => {
+        const { duplicateSitePage } = await import("./pageBuilderDb");
+        return pageBuilderCall(() => duplicateSitePage(input.slug));
+      }),
+
+    deleteSitePage: adminProcedure
+      .input(z.object({ slug: z.string().regex(/^[a-z0-9-]{1,64}$/), confirmLegal: z.boolean().optional() }))
+      .mutation(async ({ input }) => {
+        const { deleteSitePage } = await import("./pageBuilderDb");
+        return pageBuilderCall(() => deleteSitePage(input.slug, { confirmLegal: input.confirmLegal }));
+      }),
+
+    setHomePage: adminProcedure
+      .input(z.object({ slug: z.string().regex(/^[a-z0-9-]{1,64}$/) }))
+      .mutation(async ({ input }) => {
+        const { setHomePage } = await import("./pageBuilderDb");
+        return pageBuilderCall(() => setHomePage(input.slug));
+      }),
+
+    setPageInMenu: adminProcedure
+      .input(z.object({ slug: z.string().regex(/^[a-z0-9-]{1,64}$/), zone: z.enum(["header", "footer"]), inMenu: z.boolean() }))
+      .mutation(async ({ input }) => {
+        const { setPageInMenu } = await import("./pageBuilderDb");
+        return pageBuilderCall(() => setPageInMenu(input.slug, input.zone, input.inMenu));
       }),
 
     upsertPage: adminProcedure
