@@ -8,6 +8,7 @@ import {
 } from "./tpvScreenLogic";
 import { trpc } from "@/lib/trpc";
 import { formatEur } from "@shared/creditNoteForm";
+import { cashSaleDocument, exceedsSimplifiedInvoiceLimit, SIMPLIFIED_INVOICE_LIMIT_EUR, type TicketInvoiceRecipient } from "@shared/ticketInvoice";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { usePanelSubscription } from "@/hooks/usePanelSubscription";
 import { Button } from "@/components/ui/button";
@@ -148,6 +149,8 @@ function getActiveDiscountPercent(product: CatalogProduct): number {
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
+const EMPTY_RECIPIENT: TicketInvoiceRecipient = { name: "", nif: "", address: "", postalCode: "", city: "" };
+
 export default function TpvScreen() {
   const { user } = useAuth();
   const [, navigate] = useLocation();
@@ -158,7 +161,10 @@ export default function TpvScreen() {
   const [cartOpen, setCartOpen] = useState(false);
   // Cliente existente elegido en la búsqueda (su email lo vincula en el CRM al cobrar)
   const [clientSearch, setClientSearch] = useState("");
-  const [selectedClient, setSelectedClient] = useState<{ id: number; name: string } | null>(null);
+  const [selectedClient, setSelectedClient] = useState<{ id: number; name: string; invoiceRecipient: TicketInvoiceRecipient } | null>(null);
+  // Factura completa pedida en caja: datos del destinatario (sin ellos, la venta lleva solo ticket)
+  const [wantsInvoice, setWantsInvoice] = useState(false);
+  const [recipient, setRecipient] = useState<TicketInvoiceRecipient>(EMPTY_RECIPIENT);
   const [sessionId, setSessionId] = useState<number | null>(null);
   const [cart, setCart] = useState<CartItem[]>([]);
   // Una clave por carrito: un doble clic o un reintento del mismo carrito no graba dos ventas
@@ -266,8 +272,9 @@ export default function TpvScreen() {
     { q: clientQuery },
     { enabled: clientQuery.length >= 3 && !selectedClient, staleTime: 10_000 }
   );
-  const pickClient = (c: { id: number; name: string; email: string; phone: string | null }) => {
-    setSelectedClient({ id: c.id, name: c.name });
+  const pickClient = (c: { id: number; name: string; email: string; phone: string | null; invoiceRecipient: TicketInvoiceRecipient }) => {
+    setSelectedClient({ id: c.id, name: c.name, invoiceRecipient: c.invoiceRecipient });
+    setRecipient(c.invoiceRecipient);
     setCustomerName(c.name);
     setCustomerEmail(c.email);
     setCustomerPhone(c.phone ?? "");
@@ -275,6 +282,8 @@ export default function TpvScreen() {
   };
   const clearCustomer = () => {
     setSelectedClient(null);
+    setWantsInvoice(false);
+    setRecipient(EMPTY_RECIPIENT);
     setClientSearch("");
     setCustomerName("");
     setCustomerEmail("");
@@ -420,6 +429,21 @@ export default function TpvScreen() {
   const promoDiscount = promoCodeData ? Math.round(cartSubtotal * promoCodeData.discountPercent) / 100 : 0;
   const cartTotal = Math.max(0, cartSubtotal - discountAmount - promoDiscount);
 
+  // Documento de la venta: ticket (factura simplificada) o factura completa con destinatario identificado
+  const clientForInvoice = selectedClient ? { ...selectedClient.invoiceRecipient, company: "" } : null;
+  const clientInvoiceReady = !!clientForInvoice && cashSaleDocument({ total: 0, client: clientForInvoice }).kind === "factura";
+  const overLimit = exceedsSimplifiedInvoiceLimit(cartTotal);
+  const showRecipientForm = !clientInvoiceReady && (wantsInvoice || overLimit);
+  const saleInvoiceRecipient = showRecipientForm ? recipient : undefined;
+  const saleDocument = cashSaleDocument({ total: cartTotal, requested: saleInvoiceRecipient ?? null, client: clientForInvoice });
+  /** Antes de cobrar: por encima del límite del ticket, o con la factura pedida, hacen falta los datos del destinatario. */
+  const checkSaleDocument = () => {
+    if (saleDocument.kind !== "rechazo") return true;
+    setCartOpen(true);
+    toast.error(saleDocument.message);
+    return false;
+  };
+
   // ── Promo code validation ────────────────────────────────────────────────────
   const validatePromoMut = trpc.discounts.validate.useMutation({
     onSuccess: (data) => {
@@ -450,11 +474,13 @@ export default function TpvScreen() {
   const handleQuickPay = (method: PaymentMethod, amountTendered?: number) => {
     if (!sessionId) return toast.error("No hay sesión de caja abierta");
     if (cart.length === 0) return toast.error("El carrito está vacío");
+    if (!checkSaleDocument()) return;
 
     createSaleMut.mutate({
       sessionId,
       idempotencyKey: saleAttemptKey,
       clientId: selectedClient?.id,
+      invoiceRecipient: saleInvoiceRecipient,
       customerName: customerName || undefined,
       customerEmail: customerEmail || undefined,
       customerPhone: customerPhone || undefined,
@@ -949,6 +975,34 @@ export default function TpvScreen() {
                   className="h-11 md:h-8 text-xs bg-gray-800 border-gray-700 text-white placeholder:text-gray-600"
                 />
               </div>
+              {/* Documento de la venta: ticket o factura completa (art. 4 y 6 del RD 1619/2012) */}
+              {cart.length > 0 && (
+                <div className="pt-1 space-y-1.5" aria-live="polite">
+                  {clientInvoiceReady ? (
+                    <p className="text-[11px] text-success">Factura completa a nombre de {selectedClient!.invoiceRecipient.name} (NIF {selectedClient!.invoiceRecipient.nif}).</p>
+                  ) : overLimit ? (
+                    <p role="alert" className="text-[11px] text-warning">Más de {SIMPLIFIED_INVOICE_LIMIT_EUR} € (IVA incluido): no basta con el ticket, hace falta factura completa. Indica los datos del destinatario.</p>
+                  ) : (
+                    <label className="flex items-center gap-2 min-h-11 text-xs text-gray-300 cursor-pointer">
+                      <input type="checkbox" checked={wantsInvoice} onChange={(e) => setWantsInvoice(e.target.checked)} className="w-4 h-4 accent-primary" />
+                      El cliente quiere factura completa (con NIF)
+                    </label>
+                  )}
+                  {showRecipientForm ? (
+                    <div className="space-y-1.5" role="group" aria-label="Datos para la factura completa">
+                      <Input placeholder="Nombre o razón social" aria-label="Nombre o razón social para la factura" value={recipient.name} onChange={(e) => setRecipient({ ...recipient, name: e.target.value })} className="h-11 md:h-8 text-xs bg-gray-800 border-gray-700 text-white placeholder:text-gray-600" />
+                      <div className="grid grid-cols-2 gap-1.5">
+                        <Input placeholder="NIF" aria-label="NIF para la factura" value={recipient.nif} onChange={(e) => setRecipient({ ...recipient, nif: e.target.value })} className="h-11 md:h-8 text-xs bg-gray-800 border-gray-700 text-white placeholder:text-gray-600" />
+                        <Input placeholder="Código postal" aria-label="Código postal para la factura" value={recipient.postalCode} onChange={(e) => setRecipient({ ...recipient, postalCode: e.target.value })} className="h-11 md:h-8 text-xs bg-gray-800 border-gray-700 text-white placeholder:text-gray-600" />
+                      </div>
+                      <Input placeholder="Dirección" aria-label="Dirección para la factura" value={recipient.address} onChange={(e) => setRecipient({ ...recipient, address: e.target.value })} className="h-11 md:h-8 text-xs bg-gray-800 border-gray-700 text-white placeholder:text-gray-600" />
+                      <Input placeholder="Población" aria-label="Población para la factura" value={recipient.city} onChange={(e) => setRecipient({ ...recipient, city: e.target.value })} className="h-11 md:h-8 text-xs bg-gray-800 border-gray-700 text-white placeholder:text-gray-600" />
+                    </div>
+                  ) : !clientInvoiceReady && (
+                    <p className="text-[11px] text-gray-500">Se entregará ticket (factura simplificada). Si después pide factura completa, se canjea el ticket.</p>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
@@ -1150,7 +1204,7 @@ export default function TpvScreen() {
               <>
                 <Button
                   className="w-full h-11 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold gap-2"
-                  onClick={() => setShowSplitPayment(true)}
+                  onClick={() => { if (checkSaleDocument()) setShowSplitPayment(true); }}
                   disabled={createSaleMut.isPending}
                 >
                   <SplitSquareHorizontal className="w-4 h-4" />
@@ -1162,6 +1216,7 @@ export default function TpvScreen() {
                     onClick={() => {
                       if (!sessionId) return toast.error("No hay sesión de caja abierta");
                       if (cart.length === 0) return toast.error("El carrito está vacío");
+                      if (!checkSaleDocument()) return;
                       setShowCashPayment(true);
                     }}
                     disabled={createSaleMut.isPending}
@@ -1258,6 +1313,7 @@ export default function TpvScreen() {
               discountReason={discountReason}
               idempotencyKey={saleAttemptKey}
               clientId={selectedClient?.id}
+              invoiceRecipient={saleInvoiceRecipient}
               onClose={() => setShowSplitPayment(false)}
               onCompleted={(sale) => {
                 setLastSale(sale);

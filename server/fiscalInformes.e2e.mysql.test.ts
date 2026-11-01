@@ -8,7 +8,8 @@
  *  - presupuesto de 121 € al 21 % cobrado por enlace;
  *  - factura libre de 311 € (21 %, 10 % y 0 % exento) con un abono parcial de 31,10 €;
  *  - dos ventas de caja en efectivo con ticket (34,20 € al 21 % y 0 %; 11 € al 10 %);
- *  - una venta de caja con tarjeta (ticket + factura completa automática) y otra en efectivo cuyo ticket se canjea
+ *  - una venta de caja con tarjeta a un cliente con NIF y domicilio (ticket + factura completa automática a su
+ *    nombre) y otra en efectivo cuyo ticket se canjea
  *    por factura: las dos cuentan una sola vez (la factura) y su ticket figura como sustituido.
  * Comprueba que Informes, 303, Resumen, libro CSV del ZIP e Inicio cuadran entre sí y que nada se duplica; la
  * empresa B (con su propio ticket) no ve nada de A ni A de B.
@@ -113,7 +114,8 @@ describe.skipIf(!URL_)("IVA de informes, 303, resumen, libro e Inicio cuadran y 
     await waitFor(() => ess.sql("a", "SELECT status FROM invoices"), (x) => x.length === 1 && x[0].status === "cobrada");
 
     // 2) Presupuesto de 121 € al 21 % cobrado por enlace
-    ok(await ess.m("a", "crm.clients.create", { name: "Transportes Ruiz", email: "ruiz@cliente-a.example", company: "Transportes Ruiz SL", nif: "B12345674", address: "Calle Mayor 1" }, agA), "cliente");
+    ok(await ess.m("a", "crm.clients.create", { name: "Transportes Ruiz", email: "ruiz@cliente-a.example", company: "Transportes Ruiz SL", nif: "B12345674", address: "Calle Mayor 1", postalCode: "28901", city: "Getafe" }, agA), "cliente");
+    const clientId = (await ess.sql("a", "SELECT id FROM clients WHERE nif = 'B12345674'"))[0].id as number;
     const q = ok(await ess.m("a", "crm.quotes.createDirect", { clientName: "Transportes Ruiz", clientEmail: "ruiz@cliente-a.example", title: "Cambio de escobillas flota", items: [{ description: "Servicio", quantity: 1, unitPrice: 121, total: 121, taxRate: 21 }], subtotal: 0, discount: 0, total: 121, sendNow: false }, agA), "presupuesto");
     const sent = ok(await ess.m("a", "crm.quotes.send", { id: Number(q.quoteId), origin: `https://${ess.host("a")}` }, agA), "envío");
     const token = String(sent.token ?? String(sent.acceptUrl).split("/").pop());
@@ -134,13 +136,13 @@ describe.skipIf(!URL_)("IVA de informes, 303, resumen, libro e Inicio cuadran y 
     }, agA), "factura libre");
     ok(await ess.m("a", "crm.invoices.createCreditNote", { invoiceId: free.invoiceId, reason: "Descuento posterior", partialAmount: 31.1 }, agA), "abono parcial");
 
-    // 4) Caja: dos tickets en efectivo, uno con tarjeta (factura automática) y uno canjeado por factura
+    // 4) Caja: dos tickets en efectivo, uno con tarjeta al cliente con NIF (factura automática) y uno canjeado por factura
     const sid = ok(await ess.m("a", "tpv.openSession", { registerId: ids.register, openingAmount: 0 }, agA), "abrir caja").id;
-    const sale = async (items: unknown[], method: "cash" | "card", amount: number) =>
-      ok(await ess.m("a", "tpv.createSale", { sessionId: sid, items, payments: [{ method, amount }] }, agA), `venta ${amount}`).sale;
+    const sale = async (items: unknown[], method: "cash" | "card", amount: number, extra: Record<string, unknown> = {}) =>
+      ok(await ess.m("a", "tpv.createSale", { sessionId: sid, items, payments: [{ method, amount }], ...extra }, agA), `venta ${amount}`).sale;
     await sale([line(ids.p21, "Escobillas", 24.2), line(ids.p0, "Curso reglado", 10)], "cash", 34.2);
     await sale([line(ids.p10, "Ambientador", 11)], "cash", 11);
-    const cardSale = await sale([line(ids.p21, "Escobillas", 24.2)], "card", 24.2);
+    const cardSale = await sale([line(ids.p21, "Escobillas", 24.2)], "card", 24.2, { clientId });
     const swapped = await sale([line(ids.p21, "Escobillas", 24.2)], "cash", 24.2);
     ok(await ess.m("a", "tpv.closeSession", { sessionId: sid, countedCash: 69.4 }, agA), "cerrar caja");
     expect((await ess.sql("a", "SELECT invoiceId FROM tpv_sales WHERE id = ?", [cardSale.id]))[0].invoiceId).toBeGreaterThan(0);

@@ -47,6 +47,8 @@ interface Props {
   idempotencyKey: string;
   /** Cliente del CRM elegido en la búsqueda */
   clientId?: number;
+  /** Destinatario de la factura completa pedida en caja (sin él, solo ticket) */
+  invoiceRecipient?: { name: string; nif: string; address: string; postalCode: string; city: string };
   onClose: () => void;
   onCompleted: (sale: any) => void;
 }
@@ -74,7 +76,7 @@ const METHOD_COLORS: Record<PaymentMethod, string> = {
 
 export default function TpvSplitPayment({
   open, total, sessionId, cart, customerName, customerEmail, customerPhone,
-  discountAmount, discountReason, idempotencyKey, clientId, onClose, onCompleted,
+  discountAmount, discountReason, idempotencyKey, clientId, invoiceRecipient, onClose, onCompleted,
 }: Props) {
   const [payments, setPayments] = useState<PaymentLine[]>([
     { id: "1", method: "cash", amount: total.toFixed(2), payerName: "" },
@@ -135,6 +137,7 @@ export default function TpvSplitPayment({
       sessionId,
       idempotencyKey,
       clientId,
+      invoiceRecipient,
       customerName: customerName || undefined,
       customerEmail: customerEmail || undefined,
       customerPhone: customerPhone || undefined,
