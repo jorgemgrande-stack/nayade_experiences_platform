@@ -11,6 +11,7 @@ import { useVocabulary } from "@/lib/vocabulary";
 import { usePanelSubscription } from "@/hooks/usePanelSubscription";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { formatPercentEs } from "@shared/formatPercent";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
@@ -512,7 +513,7 @@ export default function AccountingReports() {
                                   <div className="w-16 bg-muted rounded-full h-1.5 overflow-hidden">
                                     <div className="h-full bg-primary rounded-full" style={{ width: `${pct}%` }} />
                                   </div>
-                                  <span className="text-xs text-muted-foreground w-10 text-right">{pct.toFixed(1)}%</span>
+                                  <span className="text-xs text-muted-foreground w-12 text-right whitespace-nowrap">{formatPercentEs(pct)}</span>
                                 </div>
                               </td>
                             </tr>
