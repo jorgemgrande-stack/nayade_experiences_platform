@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
-import { errorMessage } from "@/components/admin/PanelStates";
+import { PanelEmpty, errorMessage } from "@/components/admin/PanelStates";
+import { PanelPageHeader } from "@/components/admin/PanelUi";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -149,49 +150,38 @@ export default function ClientsManager() {
     );
   };
 
-  const emptyState = (
-    <div className="flex flex-col items-center gap-3 px-4 py-16 text-center">
-      <div className="rounded-full bg-muted p-4" aria-hidden="true">
-        <Users className="h-8 w-8 text-muted-foreground" />
-      </div>
-      {hasFilters ? (
-        <>
-          <p className="text-sm text-foreground">
-            {search.trim() ? `Ningún cliente coincide con «${search.trim()}»` : tagFilter && canTags ? `Ningún cliente tiene la etiqueta ${tagFilterName ? `«${tagFilterName}»` : "elegida"}` : "Ningún cliente coincide con los filtros"}
-          </p>
-          <Button size="sm" variant="outline" onClick={clearFilters}>Quitar filtros</Button>
-        </>
-      ) : (
-        <>
-          <p className="text-sm font-medium text-foreground">Todavía no tienes clientes</p>
-          <p className="max-w-sm text-xs text-muted-foreground">
-            Da de alta tu primer cliente para preparar presupuestos, registrar ventas y emitir facturas. También se crean solos cuando alguien te escribe desde tu web.
-          </p>
-          {canEdit && (
-            <Button size="sm" onClick={() => setCreating(true)}>
-              <Plus className="mr-1.5 h-4 w-4" aria-hidden="true" /> Crear el primer cliente
-            </Button>
-          )}
-        </>
+  const emptyState = hasFilters ? (
+    <PanelEmpty
+      className="border-0"
+      icon={<Users />}
+      title={search.trim() ? `Ningún cliente coincide con «${search.trim()}»` : tagFilter && canTags ? `Ningún cliente tiene la etiqueta ${tagFilterName ? `«${tagFilterName}»` : "elegida"}` : "Ningún cliente coincide con los filtros"}
+    >
+      <Button size="sm" variant="outline" onClick={clearFilters}>Quitar filtros</Button>
+    </PanelEmpty>
+  ) : (
+    <PanelEmpty
+      className="border-0"
+      icon={<Users />}
+      title="Todavía no tienes clientes"
+      description="Da de alta tu primer cliente para preparar presupuestos, registrar ventas y emitir facturas. También se crean solos cuando alguien te escribe desde tu web."
+    >
+      {canEdit && (
+        <Button size="sm" onClick={() => setCreating(true)}>
+          <Plus className="mr-1.5 h-4 w-4" aria-hidden="true" /> Crear el primer cliente
+        </Button>
       )}
-    </div>
+    </PanelEmpty>
   );
 
   return (
     <AdminLayout>
       <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6">
         {/* Header */}
-        <div className="mb-6 flex flex-wrap items-center justify-between gap-3 border-b border-border pb-5">
-          <div className="flex items-center gap-3">
-            <div className="rounded-xl bg-primary/10 p-2.5" aria-hidden="true">
-              <Users className="h-5 w-5 text-primary" />
-            </div>
-            <div>
-              <h1 className="text-xl font-bold leading-none text-foreground">Clientes</h1>
-              <p className="mt-1 text-xs text-muted-foreground">Tus clientes, particulares y empresas. Pulsa un nombre para ver su ficha.</p>
-            </div>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
+        <PanelPageHeader
+          icon={<Users />}
+          title="Clientes"
+          description="Tus clientes, particulares y empresas. Pulsa un nombre para ver su ficha."
+          actions={<>
             <Button variant="outline" onClick={exportClients} disabled={exporting}>
               {exporting ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" /> : <Download className="mr-2 h-4 w-4" aria-hidden="true" />}
               {hasFilters ? "Exportar filtrados" : "Exportar"}
@@ -206,8 +196,8 @@ export default function ClientsManager() {
                 <Plus className="mr-2 h-4 w-4" aria-hidden="true" /> Nuevo cliente
               </Button>
             )}
-          </div>
-        </div>
+          </>}
+        />
 
         {/* Stats strip */}
         <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">

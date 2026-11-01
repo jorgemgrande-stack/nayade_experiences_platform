@@ -59,10 +59,10 @@ export default function TpvCloseSession({ open, sessionId, onClose, onClosed }: 
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="bg-gray-900 border-gray-700 text-white max-w-sm">
+      <DialogContent className="dark bg-gray-900 border-gray-700 text-white max-w-sm">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-white">
-            <Lock className="w-5 h-5 text-amber-400" />
+            <Lock className="w-5 h-5 text-warning" />
             Cierre de Caja
           </DialogTitle>
         </DialogHeader>
@@ -75,15 +75,15 @@ export default function TpvCloseSession({ open, sessionId, onClose, onClosed }: 
               </div>
               <div className="flex justify-between text-gray-400">
                 <span>Ventas en efectivo</span>
-                <span className="text-green-400">+{formatEur(totalCash)}</span>
+                <span className="text-success">+{formatEur(totalCash)}</span>
               </div>
               <div className="flex justify-between text-gray-400">
                 <span>Entradas manuales</span>
-                <span className="text-green-400">+{formatEur(totalIn)}</span>
+                <span className="text-success">+{formatEur(totalIn)}</span>
               </div>
               <div className="flex justify-between text-gray-400">
                 <span>Salidas de caja</span>
-                <span className="text-red-400">-{formatEur(totalOut)}</span>
+                <span className="text-danger">-{formatEur(totalOut)}</span>
               </div>
               <div className="flex justify-between font-bold text-white border-t border-gray-700 pt-2">
                 <span>Efectivo esperado</span>
@@ -99,7 +99,7 @@ export default function TpvCloseSession({ open, sessionId, onClose, onClosed }: 
               </div>
               <div className="flex justify-between text-gray-400">
                 <span>Total ventas (todos métodos)</span>
-                <span className="text-violet-400">{formatEur(totalSales)}</span>
+                <span className="text-primary">{formatEur(totalSales)}</span>
               </div>
               <div className="flex justify-between text-gray-400">
                 <span>Nº ventas</span>
@@ -126,8 +126,8 @@ export default function TpvCloseSession({ open, sessionId, onClose, onClosed }: 
           {countedCash && (
             <div className={`flex items-center gap-2 text-sm rounded-lg px-3 py-2 ${
               Math.abs(difference) < 0.01
-                ? "bg-green-900/30 text-green-400"
-                : "bg-amber-900/30 text-amber-400"
+                ? "bg-success/10 text-success"
+                : "bg-warning/10 text-warning"
             }`}>
               {Math.abs(difference) >= 0.01 && <AlertTriangle className="w-4 h-4 shrink-0" />}
               <span>
@@ -157,7 +157,7 @@ export default function TpvCloseSession({ open, sessionId, onClose, onClosed }: 
               Cancelar
             </Button>
             <Button
-              className="flex-1 bg-amber-600 hover:bg-amber-500 text-white font-semibold"
+              className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold"
               onClick={() =>
                 closeMut.mutate({
                   sessionId,

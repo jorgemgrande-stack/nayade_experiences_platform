@@ -53,7 +53,7 @@ function CatImageUpload({ value, onChange }: { value: string; onChange: (url: st
       {value ? (
         <>
           <img src={value} alt="Imagen categoría" className="w-full h-full object-cover" />
-          <button type="button" className="absolute top-1 right-1 bg-black/60 text-white rounded-full p-0.5 hover:bg-red-600"
+          <button type="button" className="absolute top-1 right-1 bg-black/60 text-white rounded-full p-0.5 hover:bg-destructive"
             onClick={(e) => { e.stopPropagation(); onChange(""); }}><X className="w-3.5 h-3.5" /></button>
         </>
       ) : (
@@ -214,7 +214,7 @@ export default function CategoriesManager() {
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
-                      className="text-red-600 focus:text-red-600"
+                      className="text-destructive focus:text-destructive"
                       onClick={() => { if (confirm("¿Eliminar permanentemente esta categoría?")) hardDeleteMut.mutate({ id: cat.id }); }}
                     >
                       <Trash2 className="w-3.5 h-3.5 mr-2" /> Borrar

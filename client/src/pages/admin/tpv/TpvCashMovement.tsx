@@ -54,13 +54,13 @@ export default function TpvCashMovement({ open, type, sessionId, onClose }: Prop
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="bg-gray-900 border-gray-700 text-white max-w-sm">
+      <DialogContent className="dark bg-gray-900 border-gray-700 text-white max-w-sm">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-white">
             {type === "in" ? (
-              <ArrowDownLeft className="w-5 h-5 text-green-400" />
+              <ArrowDownLeft className="w-5 h-5 text-success" />
             ) : (
-              <ArrowUpRight className="w-5 h-5 text-red-400" />
+              <ArrowUpRight className="w-5 h-5 text-danger" />
             )}
             {type === "in" ? "Entrada de Efectivo" : "Salida de Efectivo"}
           </DialogTitle>
@@ -91,7 +91,7 @@ export default function TpvCashMovement({ open, type, sessionId, onClose }: Prop
                   onClick={() => setOutKind("gasto")}
                   className={`text-xs font-semibold px-2 py-2.5 rounded-lg border transition-colors ${
                     outKind === "gasto"
-                      ? "bg-red-600/20 border-red-500 text-red-300"
+                      ? "bg-danger/10 border-danger text-danger"
                       : "bg-gray-800 border-gray-700 text-gray-400 hover:text-white"
                   }`}
                 >
@@ -103,7 +103,7 @@ export default function TpvCashMovement({ open, type, sessionId, onClose }: Prop
                   onClick={() => setOutKind("traspaso")}
                   className={`text-xs font-semibold px-2 py-2.5 rounded-lg border transition-colors ${
                     outKind === "traspaso"
-                      ? "bg-sky-600/20 border-sky-500 text-sky-300"
+                      ? "bg-info/10 border-info text-info"
                       : "bg-gray-800 border-gray-700 text-gray-400 hover:text-white"
                   }`}
                 >
@@ -112,7 +112,7 @@ export default function TpvCashMovement({ open, type, sessionId, onClose }: Prop
                 </button>
               </div>
               {outKind === "traspaso" && (
-                <p className="text-[11px] text-sky-300/70 pt-1">
+                <p className="text-[11px] text-info pt-1">
                   El efectivo sale del cajón pero se conserva en la Caja Central. No cuenta como gasto.
                 </p>
               )}
@@ -149,10 +149,10 @@ export default function TpvCashMovement({ open, type, sessionId, onClose }: Prop
               Cancelar
             </Button>
             <Button
-              className={`flex-1 font-semibold text-white ${
+              className={`flex-1 font-semibold ${
                 type === "in"
-                  ? "bg-green-700 hover:bg-green-600"
-                  : "bg-red-700 hover:bg-red-600"
+                  ? "bg-primary hover:bg-primary/90 text-primary-foreground"
+                  : "bg-destructive hover:bg-destructive/90 text-white"
               }`}
               onClick={() =>
                 movMut.mutate({

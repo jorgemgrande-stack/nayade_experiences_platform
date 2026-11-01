@@ -19,6 +19,7 @@ import { SETUP_WIZARD_PATH } from "@/components/SetupWizardLink";
 import { SetupStatusCard } from "@/components/onboarding/SetupStatusCard";
 import { configurationSteps, shouldOpenSetupWizard } from "@shared/setupWizard";
 import { cn } from "@/lib/utils";
+import { TONE_BADGE, TONE_SURFACE, TONE_TEXT } from "@/lib/panelTones";
 
 const FEED_LABELS: Record<string, string> = {
   lead: "Oportunidades sin atender",
@@ -241,10 +242,10 @@ export default function EssentialHome() {
                 key={n.key}
                 className={cn(
                   "rounded-2xl border p-4 flex flex-col sm:flex-row sm:items-center gap-3",
-                  n.tone === "warn" ? "border-amber-500/50 bg-amber-500/10" : "border-border bg-muted/40",
+                  TONE_SURFACE[n.tone === "warn" ? "warning" : "neutral"],
                 )}
               >
-                {n.key === "trial" ? <Rocket className="w-5 h-5 text-primary shrink-0" aria-hidden="true" /> : <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0" aria-hidden="true" />}
+                {n.key === "trial" ? <Rocket className="w-5 h-5 text-primary shrink-0" aria-hidden="true" /> : <AlertTriangle className={cn("w-5 h-5 shrink-0", TONE_TEXT.warning)} aria-hidden="true" />}
                 <p className="flex-1 text-sm text-foreground">{n.text}</p>
                 <Link href={n.href} className="text-sm font-medium text-primary underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded">
                   {n.cta}
@@ -317,13 +318,13 @@ export default function EssentialHome() {
                         href="/admin/crm/tareas"
                         className="flex items-center gap-3 py-2.5 text-sm hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
                       >
-                        <span className="min-w-[28px] h-7 px-2 rounded-full text-xs font-semibold flex items-center justify-center bg-sky-100 text-sky-900 dark:bg-sky-500/20 dark:text-sky-200">
+                        <span className={cn("min-w-[28px] h-7 px-2 rounded-full border text-xs font-semibold flex items-center justify-center", TONE_BADGE.info)}>
                           {myTasks}
                         </span>
                         <span className="flex-1 text-foreground">
                           Mis tareas pendientes
                           {(taskSummary.data?.mineOverdue ?? 0) > 0 && (
-                            <span className="ml-1 font-medium text-red-700 dark:text-red-300">({taskSummary.data!.mineOverdue} {taskSummary.data!.mineOverdue === 1 ? "vencida" : "vencidas"})</span>
+                            <span className={cn("ml-1 font-medium", TONE_TEXT.danger)}>({taskSummary.data!.mineOverdue} {taskSummary.data!.mineOverdue === 1 ? "vencida" : "vencidas"})</span>
                           )}
                         </span>
                         <ArrowRight className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
@@ -338,10 +339,8 @@ export default function EssentialHome() {
                       >
                         <span
                           className={cn(
-                            "min-w-[28px] h-7 px-2 rounded-full text-xs font-semibold flex items-center justify-center",
-                            s.severity === "critical" ? "bg-red-100 text-red-900 dark:bg-red-500/20 dark:text-red-200"
-                              : s.severity === "warning" ? "bg-amber-100 text-amber-900 dark:bg-amber-500/20 dark:text-amber-200"
-                                : "bg-sky-100 text-sky-900 dark:bg-sky-500/20 dark:text-sky-200",
+                            "min-w-[28px] h-7 px-2 rounded-full border text-xs font-semibold flex items-center justify-center",
+                            TONE_BADGE[s.severity === "critical" ? "danger" : s.severity === "warning" ? "warning" : "info"],
                           )}
                         >
                           {s.total}
@@ -377,8 +376,8 @@ export default function EssentialHome() {
                         <Link href={it.href} className="flex items-center gap-3 py-2.5 text-sm hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded">
                           <Icon className="w-4 h-4 shrink-0 text-muted-foreground" aria-hidden="true" />
                           <span className="min-w-0 flex-1">
-                            <span className="block truncate text-foreground">{it.title}</span>
-                            {it.detail && <span className="block truncate text-xs text-muted-foreground">{it.detail}</span>}
+                            <span className="block overflow-hidden text-ellipsis whitespace-nowrap text-foreground">{it.title}</span>
+                            {it.detail && <span className="block overflow-hidden text-ellipsis whitespace-nowrap text-xs text-muted-foreground">{it.detail}</span>}
                           </span>
                           <time className="shrink-0 text-xs text-muted-foreground" dateTime={new Date(it.at).toISOString()}>
                             {dateFmt.format(new Date(it.at))}

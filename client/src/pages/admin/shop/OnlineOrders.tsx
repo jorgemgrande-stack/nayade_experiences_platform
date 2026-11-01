@@ -12,6 +12,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
+import { PanelDataList, PanelPageHeader, StatusBadge, type Tone } from "@/components/admin/PanelUi";
+import { PanelEmpty } from "@/components/admin/PanelStates";
+import { TONE_TEXT } from "@/lib/panelTones";
 import { toastError } from "@/lib/errorMessage";
 import { formatEuros } from "@shared/storefront";
 import { CANCEL_PAID_ORDER_HINT, ORDER_STAGE_FLOW, ORDER_STAGE_LABELS, STAGE_ACTION_LABELS, STAGES_NOTIFIED, type OrderStage } from "@shared/shopOrders";
@@ -23,18 +26,20 @@ const fmtDate = (ms: number | null | undefined, withTime = false) => {
   return Number.isFinite(d.getTime()) ? d.toLocaleString("es-ES", { day: "2-digit", month: "short", year: "numeric", ...(withTime ? { hour: "2-digit", minute: "2-digit" } : {}) }) : "—";
 };
 
-const STAGE_STYLE: Record<OrderStage, string> = {
-  pending_payment: "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300",
-  paid: "border-primary/40 bg-primary/10 text-primary",
-  prepared: "border-sky-500/40 bg-sky-500/10 text-sky-700 dark:text-sky-300",
-  delivered: "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
-  cancelled: "border-border bg-muted text-muted-foreground",
-  failed: "border-red-500/40 bg-red-500/10 text-red-700 dark:text-red-300",
+const STAGE_TONE: Record<OrderStage, Tone> = {
+  pending_payment: "warning",
+  paid: "brand",
+  prepared: "info",
+  delivered: "success",
+  cancelled: "neutral",
+  failed: "danger",
 };
 
 export function StageBadge({ stage }: { stage: OrderStage }) {
-  return <span className={cn("inline-flex items-center whitespace-nowrap rounded-full border px-2 py-0.5 text-xs font-medium", STAGE_STYLE[stage])}>{ORDER_STAGE_LABELS[stage]}</span>;
+  return <StatusBadge tone={STAGE_TONE[stage]}>{ORDER_STAGE_LABELS[stage]}</StatusBadge>;
 }
+
+const orderHref = (merchantOrder: string) => `/admin/tienda/pedidos/${encodeURIComponent(merchantOrder)}`;
 
 const FILTERS: Array<OrderStage | "all"> = ["all", "pending_payment", "paid", "prepared", "delivered", "cancelled", "failed"];
 
@@ -48,10 +53,12 @@ export function OnlineOrdersList() {
   return (
     <AdminLayout>
       <div className="mx-auto w-full max-w-6xl space-y-5 p-4 md:p-6">
-        <header>
-          <h1 className="text-2xl font-semibold text-foreground">Pedidos de la tienda</h1>
-          <p className="text-sm text-muted-foreground">Las compras pagadas en tu tienda online. Abre un pedido para ver el detalle, avisar al cliente y cambiar su estado.</p>
-        </header>
+        <PanelPageHeader
+          className="mb-0"
+          icon={<ShoppingBag />}
+          title="Pedidos de la tienda"
+          description="Las compras pagadas en tu tienda online. Abre un pedido para ver el detalle, avisar al cliente y cambiar su estado."
+        />
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <div className="relative w-full sm:max-w-xs">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
@@ -71,43 +78,27 @@ export function OnlineOrdersList() {
         ) : q.error ? (
           <p className="flex items-center gap-2 rounded-lg border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive"><AlertCircle className="h-4 w-4" />No se han podido cargar los pedidos. Vuelve a intentarlo en unos segundos.</p>
         ) : !q.data?.items.length ? (
-          <div className="rounded-xl border border-dashed border-border p-10 text-center text-sm text-muted-foreground">
-            <ShoppingBag className="mx-auto mb-3 h-8 w-8 opacity-50" aria-hidden="true" />
-            {all === 0 ? "Todavía no hay pedidos de la tienda. Aparecerán aquí en cuanto alguien compre en tu web." : "No hay pedidos con este filtro."}
-          </div>
+          <PanelEmpty
+            icon={<ShoppingBag />}
+            title={all === 0 ? "Todavía no hay pedidos" : "No hay pedidos con este filtro"}
+            description={all === 0 ? "Aparecerán aquí en cuanto alguien compre en tu web." : undefined}
+          >
+            {all > 0 && <Button size="sm" variant="outline" onClick={() => { setStage("all"); setSearch(""); }}>Ver todos los pedidos</Button>}
+          </PanelEmpty>
         ) : (
-          <div className="overflow-hidden rounded-xl border border-border">
-            {/* Tabla en pantallas anchas */}
-            <table className="hidden w-full text-sm md:table">
-              <thead className="bg-muted/50 text-left text-xs text-muted-foreground">
-                <tr><th className="px-4 py-2 font-medium">Pedido</th><th className="px-4 py-2 font-medium">Fecha</th><th className="px-4 py-2 font-medium">Cliente</th><th className="px-4 py-2 font-medium">Artículos</th><th className="px-4 py-2 text-right font-medium">Total</th><th className="px-4 py-2 font-medium">Estado</th></tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {q.data.items.map((o) => (
-                  <tr key={o.merchantOrder} className="hover:bg-muted/30">
-                    <td className="px-4 py-2.5"><Link href={`/admin/tienda/pedidos/${encodeURIComponent(o.merchantOrder)}`} className="font-mono font-medium text-primary hover:underline">{o.merchantOrder}</Link></td>
-                    <td className="px-4 py-2.5 text-muted-foreground">{fmtDate(o.createdAt)}</td>
-                    <td className="px-4 py-2.5"><div className="max-w-[14rem] overflow-hidden text-ellipsis whitespace-nowrap text-foreground">{o.customerName}</div><div className="max-w-[14rem] overflow-hidden text-ellipsis whitespace-nowrap text-xs text-muted-foreground">{o.customerEmail}</div></td>
-                    <td className="px-4 py-2.5 text-muted-foreground"><div className="max-w-[16rem] overflow-hidden text-ellipsis whitespace-nowrap">{o.productNames.join(", ")}</div></td>
-                    <td className="px-4 py-2.5 text-right font-medium tabular-nums text-foreground">{eur(o.totalCents)}</td>
-                    <td className="px-4 py-2.5"><StageBadge stage={o.stage} /></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {/* Tarjetas en móvil */}
-            <ul className="divide-y divide-border md:hidden">
-              {q.data.items.map((o) => (
-                <li key={o.merchantOrder}>
-                  <Link href={`/admin/tienda/pedidos/${encodeURIComponent(o.merchantOrder)}`} className="block space-y-1 p-4 hover:bg-muted/30">
-                    <div className="flex items-center justify-between gap-2"><span className="font-mono text-sm font-medium text-primary">{o.merchantOrder}</span><StageBadge stage={o.stage} /></div>
-                    <div className="flex items-center justify-between gap-2 text-sm"><span className="min-w-0 break-words text-foreground">{o.customerName}</span><span className="shrink-0 font-medium tabular-nums">{eur(o.totalCents)}</span></div>
-                    <p className="break-words text-xs text-muted-foreground">{fmtDate(o.createdAt)} · {o.productNames.join(", ")}</p>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </div>
+          <PanelDataList
+            caption="Pedidos de la tienda"
+            rows={q.data.items}
+            rowKey={(o) => o.merchantOrder}
+            columns={[
+              { key: "pedido", header: "Pedido", cell: (o) => <Link href={orderHref(o.merchantOrder)} className="font-mono font-medium text-primary hover:underline">{o.merchantOrder}</Link> },
+              { key: "fecha", header: "Fecha", cell: (o) => <span className="text-muted-foreground">{fmtDate(o.createdAt)}</span> },
+              { key: "cliente", header: "Cliente", cell: (o) => <><div className="max-w-[14rem] overflow-hidden text-ellipsis whitespace-nowrap text-foreground">{o.customerName}</div><div className="max-w-[14rem] overflow-hidden text-ellipsis whitespace-nowrap text-xs text-muted-foreground">{o.customerEmail}</div></> },
+              { key: "articulos", header: "Artículos", cell: (o) => <div className="max-w-[16rem] overflow-hidden text-ellipsis whitespace-nowrap text-muted-foreground">{o.productNames.join(", ")}</div> },
+              { key: "total", header: "Total", align: "right", cell: (o) => <span className="font-medium tabular-nums text-foreground">{eur(o.totalCents)}</span> },
+              { key: "estado", header: "Estado", cell: (o) => <StageBadge stage={o.stage} /> },
+            ]}
+          />
         )}
         {q.data && q.data.total > q.data.items.length && <p className="text-xs text-muted-foreground">Se muestran los {q.data.items.length} más recientes de {q.data.total}. Usa el buscador para encontrar uno anterior.</p>}
       </div>
@@ -136,7 +127,9 @@ export function OnlineOrderDetail({ merchantOrder }: { merchantOrder: string }) 
         {q.isLoading ? (
           <div className="flex justify-center py-16" role="status" aria-label="Cargando"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
         ) : !o ? (
-          <div className="rounded-xl border border-dashed border-border p-10 text-center text-sm text-muted-foreground">No se encuentra el pedido {merchantOrder}.</div>
+          <PanelEmpty icon={<ShoppingBag />} title={`No se encuentra el pedido ${merchantOrder}`}>
+            <Button asChild size="sm" variant="outline"><Link href="/admin/tienda/pedidos">Volver a los pedidos</Link></Button>
+          </PanelEmpty>
         ) : (
           <>
             <header className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -194,7 +187,7 @@ export function OnlineOrderDetail({ merchantOrder }: { merchantOrder: string }) 
                   ))}
                 </ul>
                 <dl className="mt-3 space-y-1 border-t border-border pt-3 text-sm">
-                  {o.discountCents > 0 && <div className="flex justify-between text-emerald-700 dark:text-emerald-300"><dt>Descuento</dt><dd>-{eur(o.discountCents)}</dd></div>}
+                  {o.discountCents > 0 && <div className={cn("flex justify-between", TONE_TEXT.success)}><dt>Descuento</dt><dd>-{eur(o.discountCents)}</dd></div>}
                   <div className="flex justify-between font-semibold text-foreground"><dt>Total {o.paidCents > 0 ? "cobrado" : "del pedido"} <span className="font-normal text-muted-foreground">(IVA incluido)</span></dt><dd className="tabular-nums">{eur(o.totalCents)}</dd></div>
                 </dl>
                 {o.comments && <p className="mt-3 whitespace-pre-wrap break-words rounded-lg bg-muted/50 p-3 text-sm text-foreground"><span className="block text-xs font-medium text-muted-foreground">Comentarios del cliente</span>{o.comments}</p>}

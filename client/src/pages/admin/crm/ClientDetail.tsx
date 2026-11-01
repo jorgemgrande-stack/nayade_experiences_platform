@@ -305,7 +305,7 @@ export default function ClientDetail({ id }: { id: number }) {
                           className="mt-0.5 text-muted-foreground hover:text-foreground disabled:cursor-default"
                           aria-label={t.status === "hecha" ? `Marcar «${t.title}» como pendiente` : `Marcar «${t.title}» como hecha`}
                         >
-                          {t.status === "hecha" ? <CheckCircle2 className="h-4 w-4 text-emerald-500" aria-hidden="true" /> : <Circle className="h-4 w-4" aria-hidden="true" />}
+                          {t.status === "hecha" ? <CheckCircle2 className="h-4 w-4 text-success" aria-hidden="true" /> : <Circle className="h-4 w-4" aria-hidden="true" />}
                         </button>
                         <span className={`min-w-0 flex-1 break-words ${t.status === "hecha" ? "text-muted-foreground line-through" : "text-foreground"}`}>
                           {t.title}

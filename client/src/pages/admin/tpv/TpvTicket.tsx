@@ -284,11 +284,11 @@ export default function TpvTicket({ open, sale, onClose }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="bg-gray-900 border-gray-700 max-w-sm">
+      <DialogContent className="dark bg-gray-900 border-gray-700 max-w-sm">
         <DialogHeader>
           <DialogTitle className="flex items-center justify-between text-white" style={{ color: "white" }}>
             <span className="flex items-center gap-2">
-              <ShoppingCart className="w-5 h-5 text-green-400" />
+              <ShoppingCart className="w-5 h-5 text-success" />
               Venta completada
             </span>
           </DialogTitle>
@@ -423,7 +423,7 @@ export default function TpvTicket({ open, sale, onClose }: Props) {
               Imprimir
             </Button>
             <Button
-              className="bg-blue-700 hover:bg-blue-600 text-white gap-2"
+              className="bg-primary hover:bg-primary/90 text-primary-foreground gap-2"
               onClick={() => setShowEmailInput(!showEmailInput)}
             >
               <Mail className="w-4 h-4" />
@@ -442,7 +442,7 @@ export default function TpvTicket({ open, sale, onClose }: Props) {
               />
               <Button
                 size="sm"
-                className="bg-blue-700 hover:bg-blue-600 text-white h-9 px-3"
+                className="bg-primary hover:bg-primary/90 text-primary-foreground h-9 px-3"
                 onClick={handleSendEmail}
                 disabled={sendEmailMut.isPending}
               >
@@ -452,7 +452,7 @@ export default function TpvTicket({ open, sale, onClose }: Props) {
           )}
 
           <Button
-            className="w-full bg-violet-600 hover:bg-violet-500 text-white font-semibold gap-2"
+            className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-semibold gap-2"
             onClick={onClose}
           >
             <ShoppingCart className="w-4 h-4" />

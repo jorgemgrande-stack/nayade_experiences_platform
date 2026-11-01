@@ -147,7 +147,7 @@ function ConfirmDialog({ open, title, description, confirmLabel = "Eliminar", on
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>Cancelar</AlertDialogCancel>
-          <AlertDialogAction className="bg-red-600 hover:bg-red-700 text-white" onClick={onConfirm}>{confirmLabel}</AlertDialogAction>
+          <AlertDialogAction className="bg-destructive hover:bg-destructive/90 text-white" onClick={onConfirm}>{confirmLabel}</AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
@@ -695,7 +695,7 @@ function LeadDetailModal({
               />
               <Button
                 size="sm"
-                className="h-8 text-xs bg-amber-600 hover:bg-amber-700 text-white shrink-0"
+                className="h-8 text-xs bg-primary hover:bg-primary/90 text-primary-foreground shrink-0"
                 onClick={() => setPrefs.mutate({ email: lead.email, automationsPaused: true, pauseReason: pauseReason || null })}
                 disabled={setPrefs.isPending}
               >
@@ -739,7 +739,7 @@ function LeadDetailModal({
               size="sm"
               onClick={() => addNote.mutate({ id: leadId, text: note })}
               disabled={!note.trim() || addNote.isPending}
-              className="bg-orange-600 hover:bg-orange-700 text-white self-end"
+              className="bg-primary hover:bg-primary/90 text-primary-foreground self-end"
             >
               <MessageSquare className="w-4 h-4" />
             </Button>
@@ -1619,7 +1619,7 @@ function NewReservationModal({ onClose }: { onClose: () => void }) {
                 size="sm"
                 onClick={handleCreateClient}
                 disabled={createClientMutation.isPending}
-                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white text-xs h-8"
+                className="w-full bg-primary hover:bg-primary/90 text-primary-foreground text-xs h-8"
               >
                 {createClientMutation.isPending ? "Creando..." : "✓ Crear y usar este cliente"}
               </Button>
@@ -1696,7 +1696,7 @@ function NewReservationModal({ onClose }: { onClose: () => void }) {
                             setShowProductSugg(false);
                           }}>
                           <span className="text-base leading-none" aria-hidden="true">{voc.licensed ? "📦" : p.productType === "experience" ? "🏊" : "📦"}</span>
-                          <span className="flex-1 truncate">{p.title}</span>
+                          <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap">{p.title}</span>
                           {priceLabel && <span className="text-foreground/50 text-xs shrink-0">{priceLabel}</span>}
                         </button>
                       );
@@ -2593,7 +2593,7 @@ function QuoteBuilderModal({
                 onChange={(e) => setPromoInput(e.target.value.toUpperCase())}
                 onKeyDown={(e) => e.key === "Enter" && validatePromo.mutate({ code: promoInput })}
               />
-              <Button size="sm" className="bg-orange-600 hover:bg-orange-700 text-white shrink-0" onClick={() => validatePromo.mutate({ code: promoInput })} disabled={validatePromo.isPending || !promoInput.trim()}>
+              <Button size="sm" className="bg-primary hover:bg-primary/90 text-primary-foreground shrink-0" onClick={() => validatePromo.mutate({ code: promoInput })} disabled={validatePromo.isPending || !promoInput.trim()}>
                 {validatePromo.isPending ? "..." : "Aplicar"}
               </Button>
             </div>
@@ -2867,7 +2867,7 @@ function ProductAutocompleteInput({
                 <span className={`text-[10px] font-semibold shrink-0 ${TYPE_COLORS[r.type] ?? "text-foreground/50"}`}>
                   {TYPE_LABELS[r.type] ?? r.type}
                 </span>
-                <span className="text-sm text-white truncate group-hover:text-orange-300 transition-colors">{r.title}</span>
+                <span className="text-sm text-white overflow-hidden text-ellipsis whitespace-nowrap group-hover:text-orange-300 transition-colors">{r.title}</span>
               </div>
               <div className="flex items-center gap-2 shrink-0">
                 {r.fiscalRegime === "reav" && (
@@ -3166,7 +3166,7 @@ function QuoteEditModal({
                     {bonoPreview.value > 0 && <p className="text-white font-bold">{formatEur(bonoPreview.value)} de descuento</p>}
                     {bonoPreview.activityName && <p className="text-foreground/50">{bonoPreview.activityName}</p>}
                     {(bonoPreview.status === "enviado" || bonoPreview.status === "generado") && (
-                      <Button size="sm" className="w-full bg-purple-600 hover:bg-purple-700 text-white text-xs h-7"
+                      <Button size="sm" className="w-full bg-primary hover:bg-primary/90 text-primary-foreground text-xs h-7"
                         disabled={applyDiscountCodeMut.isPending}
                         onClick={() => applyDiscountCodeMut.mutate({ id: quoteId, code: bonoPreview.code })}
                       >
@@ -3267,7 +3267,7 @@ function ScheduledJobsMini({ entityType, entityId }: { entityType: string; entit
                   <span className="text-xs text-foreground/50 font-mono">{job.templateKey}</span>
                 </div>
                 <div className="text-xs text-foreground/40 mt-0.5">{fmtDate(job.scheduledFor)}</div>
-                {job.recipientEmail && <div className="text-xs text-foreground/35 truncate">{job.recipientEmail}</div>}
+                {job.recipientEmail && <div className="text-xs text-foreground/35 overflow-hidden text-ellipsis whitespace-nowrap">{job.recipientEmail}</div>}
               </div>
               <button
                 onClick={() => cancelJob.mutate({ id: job.id })}
@@ -3288,7 +3288,7 @@ function ScheduledJobsMini({ entityType, entityId }: { entityType: string; entit
               <div key={job.id} className="flex items-center justify-between bg-foreground/[0.03] border border-foreground/[0.07] rounded-lg px-3 py-1.5 gap-3">
                 <div className="min-w-0 flex items-center gap-2">
                   <span className={`text-xs ${s.color}`}>{s.label}</span>
-                  <span className="text-xs text-foreground/40 font-mono truncate">{job.templateKey}</span>
+                  <span className="text-xs text-foreground/40 font-mono overflow-hidden text-ellipsis whitespace-nowrap">{job.templateKey}</span>
                   {job.skipReason && <span className="text-xs text-foreground/30">({job.skipReason})</span>}
                 </div>
                 <div className="text-xs text-foreground/30 shrink-0">{fmtDate(job.scheduledFor)}</div>
@@ -4117,7 +4117,7 @@ function QuoteDetailModal({
 
                 <Button
                   size="sm"
-                  className="bg-violet-600 hover:bg-violet-700 text-white text-xs w-full"
+                  className="bg-primary hover:bg-primary/90 text-primary-foreground text-xs w-full"
                   disabled={draftInstallments.length === 0 || upsertPlan.isPending}
                   onClick={() => {
                     if (draftInstallments.some(i => !i.dueDate || i.amountCents <= 0)) {
@@ -4144,7 +4144,7 @@ function QuoteDetailModal({
         {(quote.status === "enviado" || quote.status === "borrador" || quote.status === "convertido_carrito" || quote.status === "visualizado" || quote.status === "pago_fallido") && !quote.paymentPlanId && (
           <Button
             size="sm"
-            className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold"
+            className="bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-semibold"
             onClick={() => setShowConfirmPaymentModal(true)}
           >
             <CheckCircle className="w-3.5 h-3.5 mr-1" />
@@ -4170,7 +4170,7 @@ function QuoteDetailModal({
             </Button>
             <Button
               size="sm"
-              className="bg-blue-600 hover:bg-blue-700 text-white text-xs"
+              className="bg-primary hover:bg-primary/90 text-primary-foreground text-xs"
               onClick={() => sendQuote.mutate({ id: quoteId, origin: window.location.origin })}
               disabled={sendQuote.isPending}
             >
@@ -4324,7 +4324,7 @@ function QuoteDetailModal({
                       <div className="text-foreground/70">
                         {mv.fecha} · {mv.movimiento || "–"} · <span className="text-emerald-400 font-semibold">{mv.importe ? `${parseFloat(mv.importe).toLocaleString("es-ES", { minimumFractionDigits: 2 })} €` : "–"}</span>
                       </div>
-                      {mv.masDatos && <div className="text-foreground/40 truncate">{mv.masDatos}</div>}
+                      {mv.masDatos && <div className="text-foreground/40 overflow-hidden text-ellipsis whitespace-nowrap">{mv.masDatos}</div>}
                     </div>
                   );
                 })()
@@ -4365,8 +4365,8 @@ function QuoteDetailModal({
                               <span className="text-foreground/70 font-medium">{mv.fecha}</span>
                               <span className="text-emerald-400 font-semibold">{parseFloat(mv.importe).toLocaleString("es-ES", { minimumFractionDigits: 2 })} €</span>
                             </div>
-                            <div className="text-foreground/50 truncate">{mv.movimiento || "–"}</div>
-                            {mv.masDatos && <div className="text-foreground/30 truncate">{mv.masDatos}</div>}
+                            <div className="text-foreground/50 overflow-hidden text-ellipsis whitespace-nowrap">{mv.movimiento || "–"}</div>
+                            {mv.masDatos && <div className="text-foreground/30 overflow-hidden text-ellipsis whitespace-nowrap">{mv.masDatos}</div>}
                           </button>
                         ))
                       }
@@ -4386,7 +4386,7 @@ function QuoteDetailModal({
               Cancelar
             </Button>
             <Button
-              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              className="bg-primary hover:bg-primary/90 text-primary-foreground"
               disabled={(!transferProofUrl && !selectedBankMovementId) || confirmTransfer.isPending}
               onClick={() => confirmTransfer.mutate({ quoteId, bankMovementId: selectedBankMovementId ?? undefined })}
             >
@@ -4469,7 +4469,7 @@ function QuoteDetailModal({
                 ) : (
                   <div className="flex items-center gap-2 p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
                     <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
-                    <span className="text-xs text-emerald-300 flex-1 truncate">Justificante subido</span>
+                    <span className="text-xs text-emerald-300 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">Justificante subido</span>
                     <a href={instProofUrl} target="_blank" rel="noreferrer" className="text-xs text-emerald-400 hover:underline">Ver</a>
                     <button onClick={() => { setInstProofUrl(null); setInstProofKey(null); }} className="text-foreground/40 hover:text-foreground/65 ml-1">×</button>
                   </div>
@@ -4486,7 +4486,7 @@ function QuoteDetailModal({
           <DialogFooter className="gap-2">
             <Button variant="ghost" className="text-foreground/65" onClick={() => setConfirmingInstallment(null)}>Cancelar</Button>
             <Button
-              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              className="bg-primary hover:bg-primary/90 text-primary-foreground"
               disabled={
                 confirmInstallmentMut.isPending ||
                 (instPayMethod === "tarjeta_fisica" && !instTpvOp.trim()) ||
@@ -4627,7 +4627,7 @@ function QuoteDetailModal({
                 ) : (
                   <div className="flex items-center gap-2 p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
                     <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
-                    <span className="text-xs text-emerald-300 flex-1 truncate">Justificante subido correctamente</span>
+                    <span className="text-xs text-emerald-300 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">Justificante subido correctamente</span>
                     <a href={viewProofUrl} target="_blank" rel="noreferrer" className="text-xs text-emerald-400 hover:underline">Ver</a>
                     <button onClick={() => { setViewProofUrl(null); setViewProofKey(null); }} className="text-foreground/40 hover:text-foreground/65 ml-1">×</button>
                   </div>
@@ -4662,7 +4662,7 @@ function QuoteDetailModal({
                             onClick={() => { setSelectedBankMovementIdForConfirm(null); setShowBankMovementSearchForConfirm(false); }}
                           >×</button>
                         </div>
-                        <div className="text-foreground/70 truncate">{mv.movimiento ?? "–"}</div>
+                        <div className="text-foreground/70 overflow-hidden text-ellipsis whitespace-nowrap">{mv.movimiento ?? "–"}</div>
                         <div className="flex gap-3 text-foreground/50">
                           <span>{mv.fecha ?? "–"}</span>
                           <span className="text-emerald-400 font-medium">{mv.importe != null ? `${Number(mv.importe).toLocaleString("es-ES", { minimumFractionDigits: 2 })} €` : "–"}</span>
@@ -4690,7 +4690,7 @@ function QuoteDetailModal({
                             className="w-full text-left px-2.5 py-2 rounded border border-white/10 hover:border-blue-500/40 hover:bg-blue-500/5 transition-colors"
                             onClick={() => { setSelectedBankMovementIdForConfirm(mv.id); setShowBankMovementSearchForConfirm(false); }}
                           >
-                            <div className="text-xs text-white/80 truncate">{mv.movimiento ?? "–"}</div>
+                            <div className="text-xs text-white/80 overflow-hidden text-ellipsis whitespace-nowrap">{mv.movimiento ?? "–"}</div>
                             <div className="flex gap-3 mt-0.5 text-xs text-white/50">
                               <span>{mv.fecha ?? "–"}</span>
                               <span className="text-emerald-400">{mv.importe != null ? `${Number(mv.importe).toLocaleString("es-ES", { minimumFractionDigits: 2 })} €` : "–"}</span>
@@ -4713,7 +4713,7 @@ function QuoteDetailModal({
           <DialogFooter className="gap-2">
             <Button variant="ghost" className="text-foreground/65 hover:text-foreground" onClick={() => { setShowConfirmPaymentModal(false); setPaymentMethodSelected("tarjeta"); setViewTpvOp(""); setViewPayNote(""); setViewProofUrl(null); setViewProofKey(null); setSelectedBankMovementIdForConfirm(null); setShowBankMovementSearchForConfirm(false); setBankMovementSearchForConfirm(""); setSelectedTpvOpIdForConfirm(null); setShowTpvOpSearchForConfirm(false); setTpvOpSearchForConfirm(""); }}>Cancelar</Button>
             <Button
-              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              className="bg-primary hover:bg-primary/90 text-primary-foreground"
               disabled={
                 confirmPaymentWithMethod.isPending ||
                 (paymentMethodSelected === "tarjeta" && !viewTpvOp.trim() && !selectedTpvOpIdForConfirm) ||
@@ -4781,7 +4781,7 @@ function QuoteDetailModal({
           <DialogFooter className="gap-2">
             <Button variant="ghost" className="text-foreground/65 hover:text-foreground" onClick={() => setShowPendingPaymentModal(false)}>Cancelar</Button>
             <Button
-              className="bg-amber-600 hover:bg-amber-700 text-white"
+              className="bg-primary hover:bg-primary/90 text-primary-foreground"
               disabled={!pendingDueDate || createPendingPayment.isPending}
               onClick={() => {
                 if (!data || !pendingDueDate) return;
@@ -5322,7 +5322,7 @@ function ReservationDetailModal({
         {relatedInvoices.length === 0 && onGenerateInvoice && (
           <Button
             size="sm"
-            className="bg-sky-600 hover:bg-sky-700 text-white"
+            className="bg-primary hover:bg-primary/90 text-primary-foreground"
             onClick={() => { onClose(); onGenerateInvoice(res.id); }}
           >
             <FilePlus className="w-4 h-4 mr-1" /> Generar factura
@@ -5331,7 +5331,7 @@ function ReservationDetailModal({
         {relatedInvoices[0]?.pdfUrl && (
           <Button
             size="sm"
-            className="bg-emerald-600 hover:bg-emerald-700 text-white"
+            className="bg-primary hover:bg-primary/90 text-primary-foreground"
             onClick={() => window.open(relatedInvoices[0].pdfUrl ?? undefined, "_blank")}
           >
             <FileDown className="w-4 h-4 mr-1" /> Descargar factura PDF
@@ -6762,7 +6762,7 @@ export default function CRMDashboard() {
                 aria-pressed={tab === key}
                 onClick={() => handleTabChange(key)}
                 className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200
-                  ${tab === key ? "bg-orange-600 text-white shadow-lg shadow-orange-900/30" : "text-foreground/60 hover:text-foreground hover:bg-foreground/[0.05]"}`}
+                  ${tab === key ? "bg-primary text-primary-foreground shadow-sm" : "text-foreground/60 hover:text-foreground hover:bg-foreground/[0.05]"}`}
               >
                 <Icon className="w-4 h-4" />
                 {label}
@@ -7148,10 +7148,10 @@ export default function CRMDashboard() {
                         ) : (
                           <div className="text-sm font-medium text-foreground/90">{(quote as typeof quote & { clientName?: string }).clientName ?? "—"}</div>
                         )}
-                        <div className="text-[10px] text-foreground/50 truncate max-w-[140px]">{(quote as typeof quote & { clientEmail?: string }).clientEmail ?? ""}</div>
+                        <div className="text-[10px] text-foreground/50 overflow-hidden text-ellipsis whitespace-nowrap max-w-[140px]">{(quote as typeof quote & { clientEmail?: string }).clientEmail ?? ""}</div>
                       </td>
                       <td className="px-4 py-3 hidden md:table-cell">
-                        <div className="text-sm text-foreground/70 truncate max-w-[180px]">{quote.title}</div>
+                        <div className="text-sm text-foreground/70 overflow-hidden text-ellipsis whitespace-nowrap max-w-[180px]">{quote.title}</div>
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex flex-col gap-1">
@@ -7402,18 +7402,18 @@ export default function CRMDashboard() {
                           <a
                             href={`/admin/crm/clientes?clientId=${(res as typeof res & { clientId?: number }).clientId}`}
                             onClick={(e) => e.stopPropagation()}
-                            className="text-sm font-medium text-foreground hover:text-blue-300 hover:underline transition-colors block truncate"
+                            className="text-sm font-medium text-foreground hover:text-blue-300 hover:underline transition-colors block overflow-hidden text-ellipsis whitespace-nowrap"
                           >{res.customerName}</a>
                         ) : (
-                          <div className="text-sm font-medium text-foreground truncate">{res.customerName}</div>
+                          <div className="text-sm font-medium text-foreground overflow-hidden text-ellipsis whitespace-nowrap">{res.customerName}</div>
                         )}
-                        <div className="text-xs text-foreground/50 truncate">{res.customerEmail}</div>
-                        {res.customerPhone && <div className="text-xs text-foreground/40 mt-0.5 truncate">{res.customerPhone}</div>}
-                        {res.merchantOrder && <div className="text-xs font-mono text-foreground/30 mt-0.5 truncate">{res.merchantOrder}</div>}
+                        <div className="text-xs text-foreground/50 overflow-hidden text-ellipsis whitespace-nowrap">{res.customerEmail}</div>
+                        {res.customerPhone && <div className="text-xs text-foreground/40 mt-0.5 overflow-hidden text-ellipsis whitespace-nowrap">{res.customerPhone}</div>}
+                        {res.merchantOrder && <div className="text-xs font-mono text-foreground/30 mt-0.5 overflow-hidden text-ellipsis whitespace-nowrap">{res.merchantOrder}</div>}
                       </td>
                       {/* Producto */}
                       <td className="px-4 py-3 hidden md:table-cell">
-                        <div className="text-sm text-foreground/65 truncate max-w-[200px]">{res.productName}</div>
+                        <div className="text-sm text-foreground/65 overflow-hidden text-ellipsis whitespace-nowrap max-w-[200px]">{res.productName}</div>
                         {res.paymentMethod && (
                           <div className="text-xs text-foreground/40 mt-0.5">{getPaymentMethodLabel(res.paymentMethod)}</div>
                         )}
@@ -7522,12 +7522,12 @@ export default function CRMDashboard() {
                         {res.channel === "TPV_FISICO" && (res as any).tpvOperationNumber ? (
                           <a
                             href={`/admin/contabilidad/operaciones-tpv?search=${encodeURIComponent((res as any).tpvOperationNumber)}`}
-                            className="block text-[9px] text-violet-400/70 hover:text-violet-300 hover:underline mt-0.5 font-mono truncate max-w-[80px]"
+                            className="block text-[9px] text-violet-400/70 hover:text-violet-300 hover:underline mt-0.5 font-mono overflow-hidden text-ellipsis whitespace-nowrap max-w-[80px]"
                           >
                             #{(res as any).tpvOperationNumber}
                           </a>
                         ) : res.channelDetail ? (
-                          <div className="text-[9px] text-foreground/40 mt-0.5 truncate max-w-[80px]">{res.channelDetail}</div>
+                          <div className="text-[9px] text-foreground/40 mt-0.5 overflow-hidden text-ellipsis whitespace-nowrap max-w-[80px]">{res.channelDetail}</div>
                         ) : null}
                       </td>
                       {/* F. Compra */}
@@ -7664,7 +7664,7 @@ export default function CRMDashboard() {
                   <Download className="w-4 h-4 mr-1" /> Exportar para la gestoría
                 </Button>
                 <GestoriaExportDialog open={gestoriaExportOpen} onOpenChange={setGestoriaExportOpen} />
-                <Button size="sm" onClick={() => setNewInvoiceOpen(true)} className="bg-orange-600 hover:bg-orange-700 text-white">
+                <Button size="sm" onClick={() => setNewInvoiceOpen(true)} className="bg-primary hover:bg-primary/90 text-primary-foreground">
                   <Plus className="w-4 h-4 mr-1" /> Nueva factura
                 </Button>
                 <NewInvoiceDialog open={newInvoiceOpen} onOpenChange={setNewInvoiceOpen} onCreated={() => refetchInvoices()} />
@@ -7677,7 +7677,7 @@ export default function CRMDashboard() {
                     onClick={() => setInvoiceStatusFilter(s)}
                     className={`px-3 py-1 rounded-full text-xs font-medium transition-all border ${
                       invoiceStatusFilter === s
-                        ? "bg-orange-600 text-white border-orange-600"
+                        ? "bg-primary text-primary-foreground border-primary"
                         : "bg-foreground/[0.05] text-foreground/60 border-foreground/[0.12] hover:bg-foreground/[0.08]"
                     }`}
                   >
@@ -7761,7 +7761,7 @@ export default function CRMDashboard() {
                     <div className="text-lg font-bold text-sky-400">{formatEur(invoicesData.summary.subtotal)}</div>
                   </div>
                   <div className="bg-orange-500/10 border border-orange-500/20 rounded-xl p-3 text-center">
-                    <div className="text-xs text-orange-300/60 mb-1">Bruto (IVA incl.)</div>
+                    <div className="text-xs text-warning mb-1">Bruto (IVA incl.)</div>
                     <div className="text-lg font-bold text-orange-400">{formatEur(invoicesData.summary.grandTotal)}</div>
                     <div className="text-xs text-foreground/40">IVA: {formatEur(invoicesData.summary.tax)}</div>
                   </div>
@@ -8074,7 +8074,7 @@ export default function CRMDashboard() {
                 <Button
                   size="sm"
                   onClick={() => window.open("/solicitar-anulacion", "_blank")}
-                  className="gap-1.5 bg-orange-500/80 hover:bg-orange-600 text-white h-9 ml-auto"
+                  className="gap-1.5 bg-primary hover:bg-primary/90 text-primary-foreground h-9 ml-auto"
                 >
                   <ExternalLink className="w-3.5 h-3.5" />
                   Ver formulario público
@@ -8263,7 +8263,7 @@ export default function CRMDashboard() {
             <Button variant="outline" size="sm" onClick={() => setConfirmPaymentInvoiceId(null)} className="border-foreground/[0.15] text-foreground/65">Cancelar</Button>
             <Button size="sm" onClick={() => confirmPaymentInvoiceId !== null && confirmManualPaymentMutation.mutate({ invoiceId: confirmPaymentInvoiceId, paymentMethod })}
               disabled={confirmManualPaymentMutation.isPending}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white">
+              className="bg-primary hover:bg-primary/90 text-primary-foreground">
               {confirmManualPaymentMutation.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <CheckCircle className="w-4 h-4 mr-1" />}
               Confirmar cobro
             </Button>
@@ -8288,7 +8288,7 @@ export default function CRMDashboard() {
             <Button size="sm"
               onClick={() => voidInvoiceId !== null && voidInvoiceMutation.mutate({ invoiceId: voidInvoiceId })}
               disabled={voidInvoiceMutation.isPending}
-              className="bg-red-600 hover:bg-red-700 text-white">
+              className="bg-destructive hover:bg-destructive/90 text-white">
               {voidInvoiceMutation.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <Ban className="w-4 h-4 mr-1" />}
               Anular
             </Button>
@@ -8392,7 +8392,7 @@ export default function CRMDashboard() {
               size="sm"
               onClick={() => deleteLeadId !== null && deleteLead.mutate({ id: deleteLeadId })}
               disabled={deleteLead.isPending}
-              className="bg-red-600 hover:bg-red-700 text-white"
+              className="bg-destructive hover:bg-destructive/90 text-white"
             >
               {deleteLead.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <Trash2 className="w-4 h-4 mr-1" />}
               Eliminar
@@ -8423,7 +8423,7 @@ export default function CRMDashboard() {
               size="sm"
               onClick={() => deleteQuoteId !== null && deleteQuote.mutate({ id: deleteQuoteId })}
               disabled={deleteQuote.isPending}
-              className="bg-red-600 hover:bg-red-700 text-white"
+              className="bg-destructive hover:bg-destructive/90 text-white"
             >
               {deleteQuote.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <Trash2 className="w-4 h-4 mr-1" />}
               Eliminar
@@ -8446,7 +8446,7 @@ export default function CRMDashboard() {
               size="sm"
               onClick={() => sendQuoteId !== null && sendQuoteMutation.mutate({ id: sendQuoteId, origin: window.location.origin })}
               disabled={sendQuoteMutation.isPending}
-              className="bg-orange-600 hover:bg-orange-700 text-white"
+              className="bg-primary hover:bg-primary/90 text-primary-foreground"
             >
               {sendQuoteMutation.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <Send className="w-4 h-4 mr-1" />}
               Enviar
@@ -8570,7 +8570,7 @@ export default function CRMDashboard() {
                 ) : (
                   <div className="flex items-center gap-2 p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
                     <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
-                    <span className="text-xs text-emerald-300 flex-1 truncate">Justificante subido correctamente</span>
+                    <span className="text-xs text-emerald-300 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">Justificante subido correctamente</span>
                     <a href={confirmPayRowProofUrl} target="_blank" rel="noreferrer" className="text-xs text-emerald-400 hover:underline">Ver</a>
                     <button onClick={() => { setConfirmPayRowProofUrl(null); setConfirmPayRowProofKey(null); }} className="text-foreground/40 hover:text-foreground/65 ml-1">×</button>
                   </div>
@@ -8599,7 +8599,7 @@ export default function CRMDashboard() {
                           <span className="font-medium text-emerald-300">Movimiento vinculado</span>
                           <button className="text-foreground/40 hover:text-foreground/70" onClick={() => { setSelectedBankMovementIdForRow(null); setShowBankMovementSearchForRow(false); }}>×</button>
                         </div>
-                        <div className="text-foreground/70 truncate">{mv.movimiento ?? "–"}</div>
+                        <div className="text-foreground/70 overflow-hidden text-ellipsis whitespace-nowrap">{mv.movimiento ?? "–"}</div>
                         <div className="flex gap-3 text-foreground/50">
                           <span>{mv.fecha ?? "–"}</span>
                           <span className="text-emerald-400 font-medium">{mv.importe != null ? `${Number(mv.importe).toLocaleString("es-ES", { minimumFractionDigits: 2 })} €` : "–"}</span>
@@ -8627,7 +8627,7 @@ export default function CRMDashboard() {
                             className="w-full text-left px-2.5 py-2 rounded border border-white/10 hover:border-blue-500/40 hover:bg-blue-500/5 transition-colors"
                             onClick={() => { setSelectedBankMovementIdForRow(mv.id); setShowBankMovementSearchForRow(false); }}
                           >
-                            <div className="text-xs text-white/80 truncate">{mv.movimiento ?? "–"}</div>
+                            <div className="text-xs text-white/80 overflow-hidden text-ellipsis whitespace-nowrap">{mv.movimiento ?? "–"}</div>
                             <div className="flex gap-3 mt-0.5 text-xs text-white/50">
                               <span>{mv.fecha ?? "–"}</span>
                               <span className="text-emerald-400">{mv.importe != null ? `${Number(mv.importe).toLocaleString("es-ES", { minimumFractionDigits: 2 })} €` : "–"}</span>
@@ -8671,7 +8671,7 @@ export default function CRMDashboard() {
                   cardTerminalOperationId: confirmPayMethodRow === "tarjeta" ? selectedTpvOpIdForRow ?? undefined : undefined,
                 });
               }}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              className="bg-primary hover:bg-primary/90 text-primary-foreground"
             >
               {confirmPaymentMutation.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <CheckCircle className="w-4 h-4 mr-1" />}
               {(selectedBankMovementIdForRow && confirmPayMethodRow === "transferencia") || (selectedTpvOpIdForRow && confirmPayMethodRow === "tarjeta") ? "Confirmar y conciliar" : "Confirmar y generar factura"}
@@ -8735,7 +8735,7 @@ export default function CRMDashboard() {
                   origin: window.location.origin,
                 });
               }}
-              className="bg-amber-600 hover:bg-amber-700 text-white"
+              className="bg-primary hover:bg-primary/90 text-primary-foreground"
             >
               {rowPendingPayMutation.isPending ? (
                 <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Registrando...</>
@@ -8762,7 +8762,7 @@ export default function CRMDashboard() {
               size="sm"
               onClick={() => markLostQuoteId !== null && markLostQuoteMutation.mutate({ id: markLostQuoteId })}
               disabled={markLostQuoteMutation.isPending}
-              className="bg-red-600 hover:bg-red-700 text-white"
+              className="bg-destructive hover:bg-destructive/90 text-white"
             >
               {markLostQuoteMutation.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <XCircle className="w-4 h-4 mr-1" />}
               Marcar perdido
@@ -8947,7 +8947,7 @@ export default function CRMDashboard() {
                     size="sm"
                     onClick={() => editResId !== null && changeDateMutation.mutate({ id: editResId, newDate: editResNewDate, reason: editResDateReason })}
                     disabled={changeDateMutation.isPending || !editResNewDate || editResDateReason.trim().length < 3}
-                    className="bg-amber-600 hover:bg-amber-700 text-white w-full">
+                    className="bg-primary hover:bg-primary/90 text-primary-foreground w-full">
                     {changeDateMutation.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <Calendar className="w-4 h-4 mr-1" />}
                     Confirmar cambio de fecha
                   </Button>
@@ -8992,7 +8992,7 @@ export default function CRMDashboard() {
                   });
                 }}
                 disabled={updateResMutation.isPending || updateStatusesMutation.isPending}
-                className="bg-amber-600 hover:bg-amber-700 text-white">
+                className="bg-primary hover:bg-primary/90 text-primary-foreground">
                 {(updateResMutation.isPending || updateStatusesMutation.isPending) ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <Pencil className="w-4 h-4 mr-1" />}
                 Guardar cambios
               </Button>
@@ -9016,7 +9016,7 @@ export default function CRMDashboard() {
               size="sm"
               onClick={() => deleteResId !== null && deleteResMutation.mutate({ id: deleteResId })}
               disabled={deleteResMutation.isPending}
-              className="bg-red-600 hover:bg-red-700 text-white">
+              className="bg-destructive hover:bg-destructive/90 text-white">
               {deleteResMutation.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <Trash2 className="w-4 h-4 mr-1" />}
               {voc.deleteOrder}
             </Button>
@@ -9063,7 +9063,7 @@ export default function CRMDashboard() {
                 clientAddress: genInvoiceAddress || undefined,
               })}
               disabled={generateInvoiceMutation.isPending}
-              className="bg-violet-600 hover:bg-violet-700 text-white">
+              className="bg-primary hover:bg-primary/90 text-primary-foreground">
               {generateInvoiceMutation.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <FilePlus className="w-4 h-4 mr-1" />}
               Generar factura
             </Button>
@@ -9102,7 +9102,7 @@ export default function CRMDashboard() {
               size="sm"
               onClick={() => deleteAnulId && deleteAnulMutation.mutate({ id: deleteAnulId })}
               disabled={deleteAnulMutation.isPending}
-              className="bg-red-600 hover:bg-red-700 text-white"
+              className="bg-destructive hover:bg-destructive/90 text-white"
             >
               {deleteAnulMutation.isPending ? "Eliminando..." : "Eliminar"}
             </Button>
@@ -9192,7 +9192,7 @@ function AnularReservaModal({
           </div>
           <div>
             <h2 className="text-white font-semibold">Iniciar anulación</h2>
-            <p className="text-gray-400 text-xs mt-0.5 truncate max-w-[280px]">{reservationName}</p>
+            <p className="text-gray-400 text-xs mt-0.5 overflow-hidden text-ellipsis whitespace-nowrap max-w-[280px]">{reservationName}</p>
           </div>
           <button onClick={onClose} className="ml-auto text-gray-500 hover:text-foreground">
             <X className="w-5 h-5" />
@@ -9256,7 +9256,7 @@ function AnularReservaModal({
           <button
             onClick={handleSubmit}
             disabled={createMutation.isPending}
-            className="flex-1 py-2 rounded-xl bg-orange-600 hover:bg-orange-700 text-white text-sm font-medium transition-colors disabled:opacity-50"
+            className="flex-1 py-2 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-medium transition-colors disabled:opacity-50"
           >
             {createMutation.isPending ? "Creando expediente..." : "Continuar →"}
           </button>
@@ -9403,7 +9403,7 @@ function BonosManager({ onOpenCancellation, onOpenReservation }: { onOpenCancell
                     {/* Código */}
                     <td className="px-4 py-3">
                       <span className="font-mono font-bold text-sm text-purple-300">{v.code}</span>
-                      {v.activityName && <p className="text-foreground/40 text-xs mt-0.5 truncate max-w-[160px]">{v.activityName}</p>}
+                      {v.activityName && <p className="text-foreground/40 text-xs mt-0.5 overflow-hidden text-ellipsis whitespace-nowrap max-w-[160px]">{v.activityName}</p>}
                     </td>
 
                     {/* Cliente */}
@@ -9565,7 +9565,7 @@ function BonosManager({ onOpenCancellation, onOpenReservation }: { onOpenCancell
             <Button variant="outline" size="sm" className="border-foreground/[0.15] text-foreground/65" onClick={() => setExtendModal(null)}>Cancelar</Button>
             <Button
               size="sm"
-              className="bg-amber-600 hover:bg-amber-700 text-white"
+              className="bg-primary hover:bg-primary/90 text-primary-foreground"
               disabled={!newExpiry || extendMut.isPending}
               onClick={() => extendModal && extendMut.mutate({ voucherId: extendModal.id, newExpiresAt: newExpiry })}
             >
@@ -9603,7 +9603,7 @@ function BonosManager({ onOpenCancellation, onOpenReservation }: { onOpenCancell
             <Button variant="outline" size="sm" className="border-foreground/[0.15] text-foreground/65" onClick={() => setCancelModal(null)}>Cancelar</Button>
             <Button
               size="sm"
-              className="bg-red-600 hover:bg-red-700 text-white"
+              className="bg-destructive hover:bg-destructive/90 text-white"
               disabled={cancelMut.isPending}
               onClick={() => cancelModal && cancelMut.mutate({ voucherId: cancelModal.id, reason: cancelReason || undefined })}
             >
@@ -9646,7 +9646,7 @@ function BonosManager({ onOpenCancellation, onOpenReservation }: { onOpenCancell
                 {voucherDetail.activityName && (
                   <div className="flex justify-between text-sm">
                     <span className="text-foreground/50">Actividad</span>
-                    <span className="text-foreground/80 text-right max-w-[260px] truncate">{voucherDetail.activityName}</span>
+                    <span className="text-foreground/80 text-right max-w-[260px] overflow-hidden text-ellipsis whitespace-nowrap">{voucherDetail.activityName}</span>
                   </div>
                 )}
               </div>
@@ -9741,7 +9741,7 @@ function BonosManager({ onOpenCancellation, onOpenReservation }: { onOpenCancell
             <Button variant="outline" size="sm" className="border-foreground/[0.15] text-foreground/65" onClick={() => setDeleteConfirm(null)}>Cancelar</Button>
             <Button
               size="sm"
-              className="bg-red-600 hover:bg-red-700 text-white"
+              className="bg-destructive hover:bg-destructive/90 text-white"
               disabled={deleteMut.isPending}
               onClick={() => deleteConfirm && deleteMut.mutate({ id: deleteConfirm.id })}
             >
@@ -9918,7 +9918,7 @@ function PagosPendientesTab() {
                         <span className="text-foreground/30 text-xs">—</span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-foreground/60 text-xs max-w-[160px] truncate">
+                    <td className="px-4 py-3 text-foreground/60 text-xs max-w-[160px] overflow-hidden text-ellipsis whitespace-nowrap">
                       {row.reason ?? "—"}
                     </td>
                     <td className="px-4 py-3">{statusBadge(row.status)}</td>
@@ -9997,7 +9997,7 @@ function PagosPendientesTab() {
               size="sm"
               onClick={() => confirmId !== null && confirmMut.mutate({ id: confirmId, paymentMethod: confirmMethod })}
               disabled={confirmMut.isPending}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              className="bg-primary hover:bg-primary/90 text-primary-foreground"
             >
               {confirmMut.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <CheckCircle className="w-4 h-4 mr-1" />}
               Confirmar cobro
@@ -10021,7 +10021,7 @@ function PagosPendientesTab() {
               size="sm"
               onClick={() => cancelId !== null && cancelMut.mutate({ id: cancelId })}
               disabled={cancelMut.isPending}
-              className="bg-red-600 hover:bg-red-700 text-white"
+              className="bg-destructive hover:bg-destructive/90 text-white"
             >
               {cancelMut.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <XCircle className="w-4 h-4 mr-1" />}
               Cancelar pago

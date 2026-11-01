@@ -58,7 +58,7 @@ function AutoSaveStatus({ saving }: { saving: boolean }) {
     <div className="flex items-center gap-1.5 pt-4 border-t border-border/20 text-xs text-muted-foreground">
       {saving
         ? <><Loader2 className="w-3 h-3 animate-spin" /> Guardando…</>
-        : <><Check className="w-3 h-3 text-emerald-500" /> Los cambios se guardan automáticamente</>
+        : <><Check className="w-3 h-3 text-success" /> Los cambios se guardan automáticamente</>
       }
     </div>
   );
@@ -288,7 +288,7 @@ export default function Settings() {
                 }`}
               >
                 <Icon className="w-4 h-4 shrink-0" aria-hidden="true" />
-                <span className="text-sm flex-1 truncate font-display">{label}</span>
+                <span className="text-sm flex-1 overflow-hidden text-ellipsis whitespace-nowrap font-display">{label}</span>
               </button>
             ))}
           </nav>
@@ -373,9 +373,9 @@ export default function Settings() {
             {/* ── Empresa legal ── */}
             {activeTab === "legalCompany" && (
               <div className="space-y-5">
-                <div className="flex items-start gap-2 bg-amber-500/10 border border-amber-500/20 rounded-xl p-3">
-                  <Info className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" />
-                  <p className="text-xs text-amber-600 dark:text-amber-400 font-display">
+                <div className="flex items-start gap-2 bg-warning/10 border border-warning/30 rounded-xl p-3">
+                  <Info className="w-4 h-4 text-warning mt-0.5 shrink-0" />
+                  <p className="text-xs text-warning font-display">
                     Estos datos aparecen como <strong>emisor</strong> en todas las facturas y presupuestos generados por la plataforma, y en la cabecera de los tickets del TPV. Asegúrate de que coinciden exactamente con los datos registrados en la Agencia Tributaria.
                   </p>
                 </div>
