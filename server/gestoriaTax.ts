@@ -38,6 +38,12 @@ export type Vat390 = {
   result: number;
 };
 
+/** Importe de una factura (tal cual) o de un abono (siempre restando, se guarde en negativo o en positivo). */
+function signed(sign: number, v: unknown): number {
+  const n = Number(v ?? 0) || 0;
+  return sign < 0 ? -Math.abs(n) : n;
+}
+
 /** Rango de fechas de un trimestre (q = 1..4) de un ejercicio. */
 function quarterRange(year: number, q: number) {
   const startMonth = (q - 1) * 3; // 0-indexed
@@ -78,8 +84,10 @@ export async function compute303(periodKey: string): Promise<Vat303> {
     for (const line of breakdown) {
       const rate = Number(line.rate) || 0;
       const cur = byRate.get(rate) ?? { base: 0, amount: 0 };
-      cur.base += sign * (Number(line.base) || 0);
-      cur.amount += sign * (Number(line.amount) || 0);
+      // Los abonos guardan sus importes en negativo: el signo lo pone el tipo de documento (antes un abono
+      // en negativo por -1 sumaba en vez de restar)
+      cur.base += signed(sign, line.base);
+      cur.amount += signed(sign, line.amount);
       byRate.set(rate, cur);
     }
   }
@@ -304,7 +312,7 @@ async function plUpToMonth(
     .from(invoices)
     .where(and(gte(invoices.issuedAt, start), lt(invoices.issuedAt, endExcl), ne(invoices.status, "anulada")));
   const income = round2(invRows.reduce(
-    (s, r) => s + (r.invoiceType === "abono" ? -1 : 1) * Number(r.subtotal ?? 0), 0));
+    (s, r) => s + signed(r.invoiceType === "abono" ? -1 : 1, r.subtotal), 0));
 
   const expRows = await db
     .select({

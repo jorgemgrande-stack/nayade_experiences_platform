@@ -776,16 +776,20 @@ export default function ExperiencesManager() {
                     <Label className="text-xs text-muted-foreground">Régimen fiscal</Label>
                     <select
                       className="w-full mt-1 border rounded-lg px-3 py-2 text-sm bg-background text-foreground"
-                      value={form.fiscalRegime === "reav" ? "reav" : (form.taxRate === "10" ? "iva10" : "iva21")}
+                      value={form.fiscalRegime === "reav" ? "reav" : ({ "10": "iva10", "4": "iva4", "0": "iva0" } as Record<string, string>)[String(Number(form.taxRate))] ?? "iva21"}
                       onChange={(e) => {
                         const v = e.target.value;
                         if (v === "reav") setForm({ ...form, fiscalRegime: "reav", taxRate: "0" });
                         else if (v === "iva10") setForm({ ...form, fiscalRegime: "general", taxRate: "10" });
+                        else if (v === "iva4") setForm({ ...form, fiscalRegime: "general", taxRate: "4" });
+                        else if (v === "iva0") setForm({ ...form, fiscalRegime: "general", taxRate: "0" });
                         else setForm({ ...form, fiscalRegime: "general", taxRate: "21" });
                       }}
                     >
                       <option value="iva21">IVA 21%</option>
                       <option value="iva10">IVA 10%</option>
+                      <option value="iva4">IVA 4%</option>
+                      <option value="iva0">IVA 0%</option>
                       {showReav && <option value="reav">REAV — Régimen Especial Agencias de Viaje</option>}
                     </select>
                     <p className="text-[10px] text-muted-foreground mt-1">El PVP se entiende como precio final con impuestos incluidos.</p>

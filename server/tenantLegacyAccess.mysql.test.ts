@@ -23,13 +23,14 @@ import type { AddressInfo } from "node:net";
 import bcrypt from "bcryptjs";
 import express from "express";
 import mysql from "mysql2/promise";
+import { madridYear } from "./utils/timezone";
 
 const URL_ = process.env.REGISTRY_TEST_DATABASE_URL;
 const run = crypto.randomBytes(3).toString("hex");
 const A = `leg-a-${run}`;
 const B = `leg-b-${run}`;
 const PASS: Record<string, string> = { [A]: "clave-de-A-" + run, [B]: "clave-de-B-" + run };
-const YEAR = new Date().getFullYear();
+const YEAR = madridYear(); // el año de la numeración (Madrid)
 
 describe.skipIf(!URL_)("acceso heredado en multiempresa (routers reales)", () => {
   let admin: mysql.Pool;

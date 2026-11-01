@@ -10,9 +10,11 @@
  */
 import { sql } from "drizzle-orm";
 import { invoices } from "../drizzle/schema";
+import { madridMonth, madridYear } from "./utils/timezone";
 
+/** Año y mes de Madrid (no los de la zona del servidor): el abono del 1 de enero a las 00:30 es de enero. */
 export function creditNotePrefix(date: Date): string {
-  return `ABO-${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-`;
+  return `ABO-${madridYear(date)}-${String(madridMonth(date)).padStart(2, "0")}-`;
 }
 
 export function formatCreditNoteNumber(date: Date, seq: number): string {
