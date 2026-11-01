@@ -76,5 +76,8 @@ describe("pantallas del portal del empleado sin el aspecto heredado", () => {
     }
     const hook = fs.readFileSync(path.join(dir, "usePortalLook.ts"), "utf8");
     expect(hook).toContain("trpc.public.getTheme.useQuery");
+    // Siempre claro: retira el modo oscuro del panel mientras el portal está abierto y lo restablece al salir
+    expect(hook).toContain('root.classList.remove("dark")');
+    expect(hook).toContain('if (hadDark) root.classList.add("dark")');
   });
 });

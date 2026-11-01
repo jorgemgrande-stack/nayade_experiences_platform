@@ -163,7 +163,7 @@ export default function MyTimeClock() {
           )}
 
           {!loadingHistory && history && history.length > 0 && (
-            <div className="rounded-xl border border-slate-200 overflow-hidden">
+            <div className="rounded-xl border border-slate-200 bg-white overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="bg-slate-50 border-b border-slate-200">
                   <tr className="text-left text-[10px] uppercase tracking-widest text-slate-500">

@@ -67,7 +67,7 @@ export default function MyPayslips() {
         )}
 
         {!isLoading && data && data.length > 0 && (
-          <div className="rounded-xl border border-slate-200 overflow-hidden">
+          <div className="rounded-xl border border-slate-200 bg-white overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr className="text-left text-[10px] uppercase tracking-widest text-slate-500">
@@ -113,7 +113,7 @@ export default function MyPayslips() {
             <h2 className="text-[11px] font-bold uppercase tracking-widest text-slate-500 mb-3 flex items-center gap-2">
               <TrendingUp className="w-3.5 h-3.5" /> Bonus e incentivos cobrados
             </h2>
-            <div className="rounded-xl border border-slate-200 overflow-hidden">
+            <div className="rounded-xl border border-slate-200 bg-white overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="bg-slate-50 border-b border-slate-200">
                   <tr className="text-left text-[10px] uppercase tracking-widest text-slate-500">
