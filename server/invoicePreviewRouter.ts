@@ -61,6 +61,8 @@ invoicePreviewRouter.get("/api/invoices/preview", async (req, res) => {
       discountReason: (invoice as any).discountReason ?? (invoice as any).discount_reason ?? null,
       taxRate: invoice.taxRate ?? "21",
       taxAmount: invoice.taxAmount ?? "0",
+      // Desglose por tipo guardado (con el descuento ya aplicado), no el recalculado desde las líneas
+      taxBreakdown: (invoice.taxBreakdown as any) ?? undefined,
       total: invoice.total,
       issuedAt: invoice.issuedAt,
     });

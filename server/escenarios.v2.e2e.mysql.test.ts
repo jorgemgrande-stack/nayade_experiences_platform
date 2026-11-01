@@ -243,7 +243,7 @@ describe.skipIf(!URL_)("Escenarios v2 de usuario nuevo (aplicación real, dos em
 
     it("presupuesto → envío: en la prueba gratuita NO sale al cliente y se avisa; contratada, sale con su enlace", async () => {
       const r = ok(
-        await ess.m("a", "crm.quotes.createDirect", { clientName: "Marta Cliente", clientEmail: "marta@cliente-a.example", title: "Asesoría fiscal trimestral", items: [{ description: "Sesión de asesoría (1 hora)", quantity: 2, unitPrice: 60, total: 120, taxRate: 21, productId: A.productId }], subtotal: 120, taxRate: 21, total: 145.2, sendNow: false }, agA),
+        await ess.m("a", "crm.quotes.createDirect", { clientName: "Marta Cliente", clientEmail: "marta@cliente-a.example", title: "Asesoría fiscal trimestral", items: [{ description: "Sesión de asesoría (1 hora)", quantity: 2, unitPrice: 72.6, total: 145.2, taxRate: 21, productId: A.productId }], subtotal: 120, taxRate: 21, total: 145.2, sendNow: false }, agA),
         "presupuesto",
       );
       A.quoteId = Number(r.quoteId);
@@ -301,11 +301,13 @@ describe.skipIf(!URL_)("Escenarios v2 de usuario nuevo (aplicación real, dos em
       const [res] = await ess.sql("a", "SELECT id, status, amount_total AS amountTotal FROM reservations WHERE quote_id = ?", [A.quoteId]);
       A.reservationId = Number(res.id);
       expect(res).toMatchObject({ status: "paid", amountTotal: 14520 });
-      const [inv] = await ess.sql("a", "SELECT id, invoiceNumber, total, status FROM invoices WHERE quoteId = ?", [A.quoteId]);
+      const [inv] = await ess.sql("a", "SELECT id, invoiceNumber, subtotal, taxAmount, total, taxBreakdown, status FROM invoices WHERE quoteId = ?", [A.quoteId]);
       A.invoiceId = Number(inv.id);
       A.invoiceNumber = inv.invoiceNumber;
       expect(A.invoiceNumber).toBe(`FAC-${YEAR}-0001`);
-      expect(Number(inv.total)).toBeCloseTo(145.2, 2);
+      // Líneas con IVA incluido: lo cobrado (145,20 €) es el total y se desglosa en 120,00 + 25,20
+      expect([Number(inv.subtotal), Number(inv.taxAmount), Number(inv.total)]).toEqual([120, 25.2, 145.2]);
+      expect(typeof inv.taxBreakdown === "string" ? JSON.parse(inv.taxBreakdown) : inv.taxBreakdown).toEqual([{ rate: 21, base: 120, amount: 25.2 }]);
       // El enlace ya pagado no se puede volver a cobrar
       expect(errCode(await ess.m("a", "crm.quotes.payWithToken", { token: A.token, origin: `https://${ess.host("a")}` }))).toBe("BAD_REQUEST");
       // Y el enlace del correo sigue abriendo el presupuesto, ya como pagado (con su factura)

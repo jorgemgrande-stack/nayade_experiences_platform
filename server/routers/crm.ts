@@ -52,7 +52,8 @@ import { sendEmail as sharedSendEmail } from "../mailer";
 import { sendManagedEmail, logDirectEmail } from "../emailManager";
 import { generateDocumentNumber } from "../documentNumbers";
 import { nextCreditNoteNumber, withCreditNoteNumberRetry } from "../creditNoteNumber";
-import { alreadyCredited, computeDirectInvoice, creditNoteLineStatus, CreditNoteSelectionError, DIRECT_INVOICE_TAX_RATES, planCreditNote, round2, type CreditNoteLineSelection } from "../invoiceCalc";
+import { QUOTE_DISCOUNT_DESCRIPTION, QUOTE_LINE_TOTAL_DESCRIPTION, QUOTE_TOTAL_DESCRIPTION, QUOTE_UNIT_PRICE_DESCRIPTION, linesToTaxIncluded, pricesIncludeTaxSchema, quoteTotalMismatch } from "../quoteTaxConvention";
+import { alreadyCredited, chargedInvoiceAmounts, computeDirectInvoice, creditNoteLineStatus, CreditNoteSelectionError, DIRECT_INVOICE_TAX_RATES, planCreditNote, QUOTE_DISCOUNT_REASON, round2, type CreditNoteLineSelection } from "../invoiceCalc";
 import { htmlToPdf } from "../pdfGenerator";
 import { buildRedsysForm, generateMerchantOrder } from "../redsys";
 import { storagePut, hasExternalStorage, externalFileUrl } from "../storage";
@@ -491,6 +492,35 @@ async function sanitizeQuoteItemsFiscal<
   });
 }
 
+/**
+ * La confirmación manual factura el total del presupuesto (IVA incluido). Si se indica otro importe cobrado,
+ * se rechaza en vez de emitir una factura que no corresponde a lo cobrado: los cobros por partes van con
+ * un plan de pagos.
+ */
+function assertPaidAmountMatchesQuote(paidAmount: number | undefined, quoteTotal: unknown) {
+  if (paidAmount === undefined) return;
+  const total = round2(Number(quoteTotal) || 0);
+  if (Math.abs(round2(paidAmount) - total) > 0.005) {
+    const eur = (n: number) => `${round2(n).toFixed(2).replace(".", ",")} €`;
+    throw new TRPCError({ code: "BAD_REQUEST", message: `El importe cobrado (${eur(paidAmount)}) no coincide con el total del presupuesto (${eur(total)}). Para cobrar por partes, crea un plan de pagos.` });
+  }
+}
+
+/**
+ * Líneas de un presupuesto recibido listas para guardar con el convenio de IVA incluido (ver
+ * `quoteTaxConvention`): régimen e IVA revalidados contra el producto, bases imponibles convertidas a IVA
+ * incluido si se indicó `pricesIncludeTax: false`, y rechazo con un error claro si el total no cuadra.
+ */
+async function quoteItemsTaxIncluded<
+  T extends { productId?: number; fiscalRegime?: "reav" | "general"; taxRate?: number; total: number; unitPrice: number }
+>(items: T[], pricesIncludeTax: boolean | undefined, discount: number, total: number): Promise<T[]> {
+  const sanitized = await sanitizeQuoteItemsFiscal(items);
+  const normalized = pricesIncludeTax === false ? linesToTaxIncluded(sanitized) : sanitized;
+  const mismatch = quoteTotalMismatch(normalized, discount, total);
+  if (mismatch) throw new TRPCError({ code: "BAD_REQUEST", message: mismatch });
+  return normalized;
+}
+
 export async function checkAndConfirmInstallmentPlan(quoteId: number, userId: number, userName: string) {
   const installments = await db.select().from(paymentInstallments)
     .where(eq(paymentInstallments.quoteId, quoteId));
@@ -507,14 +537,15 @@ export async function checkAndConfirmInstallmentPlan(quoteId: number, userId: nu
   const [lead] = await db.select().from(leads).where(eq(leads.id, quote.leadId)).limit(1);
   const now = new Date();
   const items = (quote.items as { description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: string }[]) ?? [];
-  const subtotal = Number(quote.subtotal);
-  const breakdown = groupTaxBreakdown(items.filter(i => i.fiscalRegime !== "reav"));
-  const taxAmount = totalTaxAmount(breakdown);
-  const taxRateInst = breakdown.length === 1 ? breakdown[0].rate : 21;
-  // Lo facturado es lo cobrado: el total del presupuesto (las cuotas suman exactamente ese importe), como en
-  // el pago único. Recalcularlo como base + cuota daba otra cifra cuando las líneas no incluían el IVA.
+  // Lo facturado es lo cobrado: con todas las cuotas pagadas, su suma; antes, el total del presupuesto (las
+  // cuotas suman ese importe). El descuento del presupuesto reduce base e IVA de cada tipo antes de desglosar.
+  const paidInstallmentsEur = installments.filter(i => i.status === "paid").reduce((s, i) => s + (i.amountCents ?? 0), 0) / 100;
   const quoteTotal = Number(quote.total);
-  const total = quoteTotal > 0 ? round2(quoteTotal) : parseFloat((subtotal + taxAmount).toFixed(2));
+  const chargedInst = allInstallmentsPaid && paidInstallmentsEur > 0 ? paidInstallmentsEur : quoteTotal;
+  const amountsInst = chargedInvoiceAmounts(items, chargedInst);
+  const { subtotal, taxAmount, total } = amountsInst;
+  const breakdown = amountsInst.taxBreakdown;
+  const taxRateInst = amountsInst.taxRate;
 
   // -- FASE 1: Confirmar reserva cuando se pagan las cuotas obligatorias ------
   // Idempotente: sólo si el quote aún no está aceptado
@@ -672,6 +703,8 @@ export async function checkAndConfirmInstallmentPlan(quoteId: number, userId: nu
         clientAddress: null,
         itemsJson: items as any,
         subtotal: String(subtotal),
+        discount: amountsInst.discount,
+        discountReason: amountsInst.discount > 0 ? QUOTE_DISCOUNT_REASON : null,
         taxRate: String(taxRateInst),
         taxAmount: String(taxAmount),
         taxBreakdown: breakdown.length > 0 ? breakdown : undefined,
@@ -693,6 +726,8 @@ export async function checkAndConfirmInstallmentPlan(quoteId: number, userId: nu
       clientPhone: lead?.phone ?? null,
       itemsJson: items as any,
       subtotal: String(subtotal),
+      discount: String(amountsInst.discount),
+      discountReason: amountsInst.discount > 0 ? QUOTE_DISCOUNT_REASON : null,
       taxRate: String(taxRateInst),
       taxAmount: String(taxAmount),
       taxBreakdown: breakdown.length > 0 ? breakdown : undefined,
@@ -1019,18 +1054,19 @@ export const crmRouter = router({
             z.object({
               description: z.string(),
               quantity: z.number(),
-              unitPrice: z.number(),
-              total: z.number(),
+              unitPrice: z.number().describe(QUOTE_UNIT_PRICE_DESCRIPTION),
+              total: z.number().describe(QUOTE_LINE_TOTAL_DESCRIPTION),
               fiscalRegime: z.enum(["reav", "general"]).optional(),
               taxRate: z.number().optional(),
               productId: z.number().optional(),
               serviceDate: z.string().optional(), // YYYY-MM-DD: fecha de servicio propia de la línea
             })
           ),
-          subtotal: z.number(),
-          discount: z.number().default(0),
+          subtotal: z.number().describe("Base imponible (se recalcula en el servidor a partir de las líneas y el total)"),
+          discount: z.number().default(0).describe(QUOTE_DISCOUNT_DESCRIPTION),
           taxRate: z.number().default(21),
-          total: z.number(),
+          total: z.number().describe(QUOTE_TOTAL_DESCRIPTION),
+          pricesIncludeTax: pricesIncludeTaxSchema,
           validUntil: z.string().optional(),
           activityDate: z.string().nullable().optional(),
           notes: z.string().optional(),
@@ -1041,12 +1077,13 @@ export const crmRouter = router({
         const [lead] = await db.select().from(leads).where(eq(leads.id, input.leadId));
         if (!lead) throw new TRPCError({ code: "NOT_FOUND", message: "Lead no encontrado" });
 
+        // Producto = fuente de verdad fiscal: revalidar régimen/IVA de cada línea contra BD. Líneas con IVA
+        // incluido; el total debe cuadrar con ellas menos el descuento (antes de consumir numeración).
+        const items = await quoteItemsTaxIncluded(input.items, input.pricesIncludeTax, input.discount, input.total);
         const quoteNumber = await generateQuoteNumber("crm:createQuote", String(ctx.user.id));
-        // Producto = fuente de verdad fiscal: revalidar régimen/IVA de cada línea contra BD.
-        const items = await sanitizeQuoteItemsFiscal(input.items);
-        // Precios ya incluyen IVA: extraer cuota con groupTaxBreakdown
-        const breakdown = groupTaxBreakdown(items.filter(i => i.fiscalRegime !== "reav"));
-        const taxAmount = totalTaxAmount(breakdown);
+        // Base y cuota del total ya descontado (el descuento reduce la base y el IVA de cada tipo)
+        const amounts = chargedInvoiceAmounts(items, input.total);
+        const taxAmount = amounts.taxAmount;
 
         const [result] = await db.insert(quotes).values({
           quoteNumber,
@@ -1055,7 +1092,7 @@ export const crmRouter = router({
           title: input.title,
           description: input.description,
           items,
-          subtotal: String(input.subtotal),
+          subtotal: String(amounts.subtotal),
           discount: String(input.discount),
           tax: String(taxAmount),
           total: String(input.total),
@@ -1680,8 +1717,8 @@ export const crmRouter = router({
               z.object({
                 description: z.string(),
                 quantity: z.number(),
-                unitPrice: z.number(),
-                total: z.number(),
+                unitPrice: z.number().describe(QUOTE_UNIT_PRICE_DESCRIPTION),
+                total: z.number().describe(QUOTE_LINE_TOTAL_DESCRIPTION),
                 fiscalRegime: z.enum(["reav", "general"]).optional(),
                 taxRate: z.number().optional(),
                 productId: z.number().optional(),
@@ -1689,10 +1726,11 @@ export const crmRouter = router({
               })
             )
             .optional(),
-          subtotal: z.number().optional(),
-          discount: z.number().optional(),
+          subtotal: z.number().optional().describe("Base imponible (se recalcula en el servidor a partir de las líneas y el total)"),
+          discount: z.number().optional().describe(QUOTE_DISCOUNT_DESCRIPTION),
           taxRate: z.number().optional(),
-          total: z.number().optional(),
+          total: z.number().optional().describe(QUOTE_TOTAL_DESCRIPTION),
+          pricesIncludeTax: pricesIncludeTaxSchema,
           validUntil: z.string().optional(),
           activityDate: z.string().nullable().optional(),
           notes: z.string().optional(),
@@ -1701,22 +1739,36 @@ export const crmRouter = router({
       )
       .mutation(async ({ input, ctx }) => {
         // `taxRate` global se ignora: la fiscalidad la define cada línea (producto = fuente de verdad).
-        const { id, taxRate: _ignoredGlobalTaxRate, ...rest } = input;
+        const { id, taxRate: _ignoredGlobalTaxRate, pricesIncludeTax, ...rest } = input;
         const updateData: Record<string, unknown> = { updatedAt: new Date() };
 
         if (rest.title !== undefined) updateData.title = rest.title;
         if (rest.description !== undefined) updateData.description = rest.description;
-        if (rest.items !== undefined) {
+        if (rest.items !== undefined || rest.discount !== undefined || rest.total !== undefined) {
+          // Importes con el convenio de IVA incluido: lo que no llega se toma del presupuesto guardado y el
+          // conjunto (líneas, descuento y total) debe cuadrar.
+          const [current] = await db.select({ items: quotes.items, discount: quotes.discount, total: quotes.total }).from(quotes).where(eq(quotes.id, id)).limit(1);
+          if (!current) throw new TRPCError({ code: "NOT_FOUND" });
+          const discount = rest.discount ?? Number(current.discount ?? 0);
+          const total = rest.total ?? Number(current.total ?? 0);
           // Producto = fuente de verdad fiscal: revalidar régimen/IVA contra BD.
-          const sanitized = await sanitizeQuoteItemsFiscal(rest.items);
-          updateData.items = sanitized;
-          // IVA recalculado por línea (PVP con IVA incluido); nunca un IVA global.
-          const breakdown = groupTaxBreakdown(sanitized.filter(i => i.fiscalRegime !== "reav"));
-          updateData.tax = String(totalTaxAmount(breakdown));
+          const items = rest.items !== undefined
+            ? await quoteItemsTaxIncluded(rest.items, pricesIncludeTax, discount, total)
+            : (current.items ?? []);
+          if (rest.items === undefined) {
+            const mismatch = quoteTotalMismatch(items, discount, total);
+            if (mismatch) throw new TRPCError({ code: "BAD_REQUEST", message: mismatch });
+          }
+          // IVA recalculado por línea sobre el total ya descontado (PVP con IVA incluido); nunca un IVA global.
+          const amounts = chargedInvoiceAmounts(items, total);
+          if (rest.items !== undefined) updateData.items = items;
+          updateData.tax = String(amounts.taxAmount);
+          updateData.subtotal = String(amounts.subtotal);
+          if (rest.discount !== undefined) updateData.discount = String(rest.discount);
+          if (rest.total !== undefined) updateData.total = String(rest.total);
+        } else if (rest.subtotal !== undefined) {
+          updateData.subtotal = String(rest.subtotal);
         }
-        if (rest.subtotal !== undefined) updateData.subtotal = String(rest.subtotal);
-        if (rest.discount !== undefined) updateData.discount = String(rest.discount);
-        if (rest.total !== undefined) updateData.total = String(rest.total);
         if (rest.validUntil) updateData.validUntil = new Date(rest.validUntil);
         if (rest.activityDate !== undefined) updateData.activityDate = rest.activityDate || null;
         if (rest.notes !== undefined) updateData.notes = rest.notes;
@@ -1977,17 +2029,18 @@ export const crmRouter = router({
           }
         }
 
+        // La factura es por lo cobrado: un importe distinto del total del presupuesto no se factura aquí
+        assertPaidAmountMatchesQuote(input.paidAmount, quote.total);
         const now = new Date();
 
         // Generate invoice
         const invoiceNumber = await generateInvoiceNumber("crm:invoice", String(ctx.user.id));
         const items = (quote.items as { description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: "reav" | "general" }[]) ?? [];
-        const subtotal = Number(quote.subtotal);
-        // Solo líneas general llevan IVA
-        const bdInv = groupTaxBreakdown(items.filter(i => i.fiscalRegime !== "reav"));
-        const taxAmount = totalTaxAmount(bdInv);
-        const taxRate = bdInv.length === 1 ? bdInv[0].rate : 21;
-        const total = parseFloat((subtotal + taxAmount).toFixed(2));
+        // Lo facturado es lo cobrado: el total del presupuesto. El descuento reduce base e IVA de cada tipo.
+        const amountsInv = chargedInvoiceAmounts(items, Number(quote.total));
+        const { subtotal, taxAmount, total } = amountsInv;
+        const bdInv = amountsInv.taxBreakdown;
+        const taxRate = amountsInv.taxRate;
         // Generate PDF
         let pdfUrl: string | null = null;
         let pdfKey: string | null = null;
@@ -1999,6 +2052,8 @@ export const crmRouter = router({
             clientPhone: lead.phone,
             itemsJson: items,
             subtotal: String(subtotal),
+            discount: amountsInv.discount,
+            discountReason: amountsInv.discount > 0 ? QUOTE_DISCOUNT_REASON : null,
             taxRate: String(taxRate),
             taxAmount: String(taxAmount),
             total: String(total),
@@ -2022,6 +2077,8 @@ export const crmRouter = router({
           clientPhone: lead.phone,
           itemsJson: items,
           subtotal: String(subtotal),
+          discount: String(amountsInv.discount),
+          discountReason: amountsInv.discount > 0 ? QUOTE_DISCOUNT_REASON : null,
           taxRate: String(taxRate),
           taxAmount: String(taxAmount),
           taxBreakdown: bdInv.length > 0 ? bdInv : undefined,
@@ -2568,15 +2625,16 @@ export const crmRouter = router({
           }
         }
 
+        // La factura es por lo cobrado: un importe distinto del total del presupuesto no se factura aquí
+        assertPaidAmountMatchesQuote(input.paidAmount, quote.total);
         const now = new Date();
         const invoiceNumber = await generateInvoiceNumber("crm:invoice", String(ctx.user.id));
         const items = (quote.items as { description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: "reav" | "general" }[]) ?? [];
-        const subtotal = Number(quote.subtotal);
-        // Solo líneas general llevan IVA
-        const bdT = groupTaxBreakdown(items.filter(i => i.fiscalRegime !== "reav"));
-        const taxAmount = totalTaxAmount(bdT);
-        const taxRate = bdT.length === 1 ? bdT[0].rate : 21;
-        const total = parseFloat((subtotal + taxAmount).toFixed(2));
+        // Lo facturado es lo cobrado: el total del presupuesto. El descuento reduce base e IVA de cada tipo.
+        const amountsT = chargedInvoiceAmounts(items, Number(quote.total));
+        const { subtotal, taxAmount, total } = amountsT;
+        const bdT = amountsT.taxBreakdown;
+        const taxRate = amountsT.taxRate;
         let pdfUrl: string | null = null;
         let pdfKey: string | null = null;
         try {
@@ -2587,6 +2645,8 @@ export const crmRouter = router({
             clientPhone: lead.phone,
             itemsJson: items,
             subtotal: String(subtotal),
+            discount: amountsT.discount,
+            discountReason: amountsT.discount > 0 ? QUOTE_DISCOUNT_REASON : null,
             taxRate: String(taxRate),
             taxAmount: String(taxAmount),
             total: String(total),
@@ -2609,6 +2669,8 @@ export const crmRouter = router({
           clientPhone: lead.phone,
           itemsJson: items,
           subtotal: String(subtotal),
+          discount: String(amountsT.discount),
+          discountReason: amountsT.discount > 0 ? QUOTE_DISCOUNT_REASON : null,
           taxRate: String(taxRate),
           taxAmount: String(taxAmount),
           taxBreakdown: bdT.length > 0 ? bdT : undefined,
@@ -3017,18 +3079,19 @@ export const crmRouter = router({
             z.object({
               description: z.string(),
               quantity: z.number(),
-              unitPrice: z.number(),
-              total: z.number(),
+              unitPrice: z.number().describe(QUOTE_UNIT_PRICE_DESCRIPTION),
+              total: z.number().describe(QUOTE_LINE_TOTAL_DESCRIPTION),
               fiscalRegime: z.enum(["reav", "general"]).optional(),
               taxRate: z.number().optional(),
               productId: z.number().optional(),
               serviceDate: z.string().optional(), // YYYY-MM-DD: fecha de servicio propia de la línea
             })
           ),
-          subtotal: z.number(),
-          discount: z.number().default(0),
+          subtotal: z.number().describe("Base imponible (se recalcula en el servidor a partir de las líneas y el total)"),
+          discount: z.number().default(0).describe(QUOTE_DISCOUNT_DESCRIPTION),
           taxRate: z.number().default(21),
-          total: z.number(),
+          total: z.number().describe(QUOTE_TOTAL_DESCRIPTION),
+          pricesIncludeTax: pricesIncludeTaxSchema,
           validUntil: z.string().optional(),
           activityDate: z.string().nullable().optional(),
           notes: z.string().optional(),
@@ -3039,6 +3102,8 @@ export const crmRouter = router({
       )
       .mutation(async ({ input, ctx }) => {
         if (input.sendNow) assertQuotePricedForSend(input.items);
+        // Producto = fuente de verdad fiscal; líneas con IVA incluido y total coherente (antes de crear nada).
+        const items = await quoteItemsTaxIncluded(input.items, input.pricesIncludeTax, input.discount, input.total);
         // 1. Resolver leadId: lead existente ? cliente existente con lead ? crear lead nuevo
         let leadId: number;
         const [existingLead] = await db
@@ -3106,10 +3171,9 @@ export const crmRouter = router({
 
         // 3. Crear el presupuesto
         const quoteNumber = await generateQuoteNumber("crm:createQuote", String(ctx.user.id));
-        // Producto = fuente de verdad fiscal: revalidar régimen/IVA de cada línea contra BD.
-        const items = await sanitizeQuoteItemsFiscal(input.items);
-        // IVA por línea (PVP con IVA incluido); nunca un IVA global de la operación.
-        const taxAmount = totalTaxAmount(groupTaxBreakdown(items.filter(i => i.fiscalRegime !== "reav")));
+        // IVA por línea (PVP con IVA incluido) sobre el total ya descontado; nunca un IVA global.
+        const amounts = chargedInvoiceAmounts(items, input.total);
+        const taxAmount = amounts.taxAmount;
 
         const [quoteResult] = await db.insert(quotes).values({
           quoteNumber,
@@ -3118,7 +3182,7 @@ export const crmRouter = router({
           title: input.title,
           description: input.description,
           items,
-          subtotal: String(input.subtotal),
+          subtotal: String(amounts.subtotal),
           discount: String(input.discount),
           tax: String(taxAmount),
           total: String(input.total),
@@ -3157,7 +3221,7 @@ export const crmRouter = router({
             clientName: input.clientName,
             clientEmail: input.clientEmail,
             items,
-            subtotal: String(input.subtotal),
+            subtotal: String(amounts.subtotal),
             discount: String(input.discount),
             tax: String(taxAmount),
             total: String(input.total),
@@ -5859,8 +5923,12 @@ export const crmRouter = router({
               clientPhone: invoice.clientPhone ?? undefined,
               itemsJson: items,
               subtotal: invoice.subtotal ?? "0",
+              // El documento con su desglose y descuento guardados (no recalculado desde las líneas)
+              discount: invoice.discount ?? null,
+              discountReason: invoice.discountReason ?? null,
               taxRate: invoice.taxRate ?? "21",
               taxAmount: invoice.taxAmount ?? "0",
+              taxBreakdown: invoice.taxBreakdown ?? undefined,
               total: invoice.total ?? "0",
               issuedAt: now,
             });
@@ -6871,11 +6939,11 @@ export const crmRouter = router({
               const invoiceNumber = await generateInvoiceNumber("crm:pendingPayment", String(ctx.user.id));
               const amountEur = pp.amountCents / 100;
               const items = [{ description: pp.productName ?? resForInv.productName, quantity: resForInv.people, unitPrice: amountEur / resForInv.people, total: amountEur }];
-              const subtotal = amountEur;
-              const bdPp = groupTaxBreakdown(items);
-              const taxAmount = totalTaxAmount(bdPp);
-              const taxRatePp = bdPp.length === 1 ? bdPp[0].rate : 21;
-              const total = parseFloat((subtotal + taxAmount).toFixed(2));
+              // Lo facturado es lo cobrado (IVA incluido): la base se extrae, no se suma el IVA encima.
+              const amountsPp = chargedInvoiceAmounts(items, amountEur);
+              const { subtotal, taxAmount, total } = amountsPp;
+              const bdPp = amountsPp.taxBreakdown;
+              const taxRatePp = amountsPp.taxRate;
               let pdfUrl: string | null = null;
               let pdfKey: string | null = null;
               try {
