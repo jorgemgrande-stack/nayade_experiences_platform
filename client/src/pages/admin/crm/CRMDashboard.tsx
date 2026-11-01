@@ -9053,9 +9053,9 @@ export default function CRMDashboard() {
               <p className="text-xs text-foreground/65">Datos propuestos del cliente vinculado a la venta. Revísalos antes de emitir.</p>
             )}
             {([
-              { k: "name", label: "Nombre o razón social", ph: "Transportes Ruiz SL", ac: "organization" },
-              { k: "nif", label: "NIF", ph: "B12345674", ac: "off" },
-              { k: "address", label: "Dirección", ph: "Calle Mayor 4", ac: "street-address" },
+              { k: "name", label: "Nombre o razón social", ph: "Nombre y apellidos o empresa", ac: "organization" },
+              { k: "nif", label: "NIF", ph: "Por ejemplo, B12345674", ac: "off" },
+              { k: "address", label: "Dirección", ph: "Calle y número", ac: "street-address" },
             ] as const).map((f) => (
               <div key={f.k} className="space-y-1">
                 <Label htmlFor={`gen-inv-${f.k}`} className="text-foreground/70 text-xs">{f.label} <span className="text-destructive" aria-hidden="true">*</span></Label>
@@ -9074,8 +9074,8 @@ export default function CRMDashboard() {
             ))}
             <div className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] gap-3">
               {([
-                { k: "postalCode", label: "Código postal", ph: "28901", ac: "postal-code" },
-                { k: "city", label: "Población", ph: "Getafe", ac: "address-level2" },
+                { k: "postalCode", label: "Código postal", ph: "5 cifras", ac: "postal-code" },
+                { k: "city", label: "Población", ph: "Localidad", ac: "address-level2" },
               ] as const).map((f) => (
                 <div key={f.k} className="space-y-1">
                   <Label htmlFor={`gen-inv-${f.k}`} className="text-foreground/70 text-xs">{f.label} <span className="text-destructive" aria-hidden="true">*</span></Label>
