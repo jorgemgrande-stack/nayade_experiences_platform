@@ -359,10 +359,19 @@ export const appRouter = router({
       return buildTheme((k) => vals[k] || undefined, { multi: isMultiTenant() });
     }),
 
+    // Secciones de la web según lo contratado (tienda, presupuesto, cupones) para su menú y sus textos
+    siteFeatures: publicProcedure.query(async () => {
+      const { readPublicSiteFeatures } = await import("./publicSite");
+      return readPublicSiteFeatures();
+    }),
+
     // Página estática del tenant, con HTML saneado (lista blanca)
     getTenantPage: publicProcedure
       .input(z.object({ slug: z.string().regex(/^[a-z0-9-]{1,64}$/) }))
       .query(async ({ input }) => {
+        // Portada y textos legales iniciales de la empresa (se crean una vez si faltan; solo multiempresa)
+        const { ensureStarterPages, readSiteTokenData } = await import("./starterSiteDb");
+        await ensureStarterPages();
         const db = await getDb();
         if (!db) return null;
         const { staticPages } = await import("../drizzle/schema");
@@ -372,11 +381,14 @@ export const appRouter = router({
         // Texto legal de relleno de la plantilla, sin completar: nunca se publica en nombre de la empresa
         const { isLegalPlaceholder } = await import("../shared/tenantNav");
         if (isLegalPlaceholder(row.slug, row.content)) return null;
+        // Texto sin formato → párrafos; saneado con lista blanca; después, los datos de la empresa (ya escapados)
+        const { plainTextToHtml, renderSiteTokens } = await import("./_core/templates/starterSite");
+        const tokens = await readSiteTokenData();
         return {
           slug: row.slug,
-          title: row.title,
-          html: sanitizeRichHtml(row.content ?? ""),
-          metaDescription: row.metaDescription ?? null,
+          title: renderSiteTokens(row.title, tokens),
+          html: renderSiteTokens(sanitizeRichHtml(plainTextToHtml(row.content ?? "")), tokens),
+          metaDescription: row.metaDescription ? renderSiteTokens(row.metaDescription, tokens) : null,
         };
       }),
 
@@ -770,6 +782,9 @@ export const appRouter = router({
 
     // ── Pages ──────────────────────────────────────────────────────────────────────────────
     getPages: adminProcedure.query(async () => {
+      // En su lista, la portada y los textos legales iniciales (se crean una vez si faltan)
+      const { ensureStarterPages } = await import("./starterSiteDb");
+      await ensureStarterPages();
       return getAllPages();
     }),
 

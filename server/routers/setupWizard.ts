@@ -27,6 +27,7 @@ import {
   upsertSettings,
 } from "../setupWizardDb";
 import { onboardingFirstAccess, onboardingProgressed } from "../onboardingNotices";
+import { ensureStarterPages, missingLegalData, readSiteTokenData } from "../starterSiteDb";
 import {
   ACTIVITY_SETTING_KEY,
   BUSINESS_ACTIVITIES,
@@ -106,6 +107,20 @@ async function registryFiscal() {
   return tenantFiscalIdentity();
 }
 
+/**
+ * Paso «Página web»: la portada y los textos legales iniciales existen desde el primer acceso (se crean si faltan) y
+ * se avisa de los datos fiscales que les faltan. Solo en multiempresa; nunca bloquea el asistente.
+ */
+async function webLegalMissing(): Promise<string[]> {
+  if (getTenantMode() !== "multi") return [];
+  try {
+    await ensureStarterPages();
+    return missingLegalData(await readSiteTokenData());
+  } catch {
+    return [];
+  }
+}
+
 /** Estado completo: progreso guardado, datos ya existentes (rellenos) y el recorrido adaptado. */
 async function loadState() {
   const keys = [...Object.values(COMPANY_SETTING_KEYS), ...Object.values(COMMS_SETTING_KEYS), ACTIVITY_SETTING_KEY, BRAND_LOGO_KEY];
@@ -160,7 +175,7 @@ function saveCompanyFields(fields: ReadonlyArray<keyof CompanyData>, input: Part
 export const setupWizardRouter = router({
   /** Estado completo para pintar el asistente, la bienvenida y el estado de configuración del Inicio. */
   status: adminProcedure.query(async ({ ctx }) => {
-    const [state, licence, seatsUsed] = await Promise.all([loadState(), currentLicence().catch(() => null), countSeatUsers()]);
+    const [state, licence, seatsUsed, legalMissing] = await Promise.all([loadState(), currentLicence().catch(() => null), countSeatUsers(), webLegalMissing()]);
     const { progress } = state;
     // Primer acceso al asistente sin ningún paso dado: guía de los primeros pasos (una sola vez)
     void onboardingFirstAccess(progress, recipient(ctx));
@@ -182,6 +197,8 @@ export const setupWizardRouter = router({
       seats: { used: seatsUsed, limit: licence?.userLimit ?? null },
       licence: licence ?? { plan: null, userLimit: null, endsAt: null, daysLeft: null, readOnly: false },
       fiscalFromRegistry: state.fiscalFromRegistry,
+      /** Datos que faltan para completar los textos legales de la web (vacío si están todos). */
+      legalMissing,
     };
   }),
 

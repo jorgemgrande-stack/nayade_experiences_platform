@@ -467,7 +467,21 @@ export function ProductStep({ noun, example, currency, count, disabled, onDone }
 
 // ─── Página web ───────────────────────────────────────────────────────────────
 
-export function WebStep({ done, onContinue }: { done: boolean; onContinue: () => void }) {
+/** Aviso de los datos fiscales que faltan para completar los textos legales de la web (no se inventa ninguno). */
+function LegalNotice({ missing }: { missing: string[] }) {
+  if (!missing.length) return null;
+  return (
+    <p role="note" className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-foreground">
+      Tu aviso legal y tu política de privacidad ya están publicados, pero les faltan estos datos: <strong>{missing.join(", ")}</strong>. Mientras
+      no los completes, esas líneas no se muestran en tu web.{" "}
+      <Link href="/admin/configuracion" className="text-primary underline underline-offset-4">
+        Completar datos de la empresa
+      </Link>
+    </p>
+  );
+}
+
+export function WebStep({ done, onContinue, legalMissing = [] }: { done: boolean; onContinue: () => void; legalMissing?: string[] }) {
   const links = (
     <div className="grid gap-2 sm:grid-cols-3">
       <Link href="/admin/cms/paginas" className="rounded-lg border border-border p-3 text-sm text-primary hover:bg-muted">
@@ -485,6 +499,7 @@ export function WebStep({ done, onContinue }: { done: boolean; onContinue: () =>
     return (
       <div className="space-y-4">
         <AlreadyDone onContinue={onContinue}>Ya has personalizado tu web. Puedes seguir editándola cuando quieras.</AlreadyDone>
+        <LegalNotice missing={legalMissing} />
         {links}
       </div>
     );
@@ -492,8 +507,9 @@ export function WebStep({ done, onContinue }: { done: boolean; onContinue: () =>
   return (
     <div className="space-y-4 text-sm">
       <p className="text-muted-foreground">
-        Tu web ya tiene unas páginas iniciales con tu nombre. Revisa los textos, añade tus fotos y publica lo que quieras mostrar. Este paso se marca solo en cuanto guardes un cambio en una página.
+        Tu web ya tiene unas páginas iniciales con tu nombre y tus datos: la portada y los textos legales (aviso legal, privacidad y cookies). Revisa los textos, añade tus fotos y publica lo que quieras mostrar. Este paso se marca solo en cuanto guardes un cambio en una página.
       </p>
+      <LegalNotice missing={legalMissing} />
       {links}
     </div>
   );
