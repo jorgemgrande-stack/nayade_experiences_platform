@@ -3,15 +3,42 @@
  * REGISTRY_TEST_DATABASE_URL). Empresas sintéticas nuevas; ningún cobro real.
  *  - Contabilidad › Resumen: vacío con guía, y con datos reales (ventas, cobros, facturas, gastos, categorías);
  *    lo que no está contratado no se consulta.
+ *  - Facturas de presupuestos (pago por enlace, cuotas, confirmación de pago y de transferencia) con el NIF,
+ *    el nombre fiscal y la dirección del cliente vinculado.
  *
  *   REGISTRY_TEST_DATABASE_URL=mysql://root:root@127.0.0.1:33441/registro_test \
  *     pnpm vitest run server/contabilidadFacturacionEssential.e2e.mysql.test.ts
  */
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
+import crypto from "node:crypto";
 import { startEssentialApp, data, isLicenseDenied, type EssentialApp, type Res } from "./essentialApp.testkit";
 
 const URL_ = process.env.REGISTRY_TEST_DATABASE_URL;
 vi.setConfig({ testTimeout: 60_000 });
+const KEY_A = crypto.randomBytes(24).toString("base64");
+
+/** Notificación de la pasarela firmada como lo haría Redsys (3DES del pedido + HMAC-SHA256), en entorno de pruebas. */
+function signed(key: string, d: Record<string, string>) {
+  const params = Buffer.from(JSON.stringify(d)).toString("base64");
+  const k = Buffer.from(key, "base64").subarray(0, 24);
+  const padded = Buffer.alloc(Math.ceil(Buffer.byteLength(d.Ds_Order) / 8) * 8, 0);
+  Buffer.from(d.Ds_Order).copy(padded);
+  const c = crypto.createCipheriv("des-ede3-cbc", k, Buffer.alloc(8, 0));
+  c.setAutoPadding(false);
+  const derived = Buffer.concat([c.update(padded), c.final()]);
+  const sig = crypto.createHmac("sha256", derived).update(params).digest("base64");
+  return new URLSearchParams({ Ds_SignatureVersion: "HMAC_SHA256_V1", Ds_MerchantParameters: params, Ds_Signature: sig }).toString();
+}
+
+async function waitFor<T>(fn: () => Promise<T>, okFn: (v: T) => boolean, ms = 10_000): Promise<T> {
+  const end = Date.now() + ms;
+  let v = await fn();
+  while (!okFn(v) && Date.now() < end) {
+    await new Promise((r) => setTimeout(r, 150));
+    v = await fn();
+  }
+  return v;
+}
 
 const json = (v: unknown) => (typeof v === "string" ? JSON.parse(v) : v);
 const r2 = (n: number) => Math.round(n * 100) / 100;
@@ -48,6 +75,7 @@ describe.skipIf(!URL_)("contabilidad y facturación Essential (aplicación real)
     product10Id = (await ess.sql("a", "SELECT id FROM experiences WHERE slug = 'curso'"))[0].id;
     await ess.sql("a", "UPDATE experiences SET isPresentialSale = 1");
     registerId = ok(await ess.m("a", "tpv.createRegister", { name: "Mostrador" }, admA), "caja").id;
+    ok(await ess.m("a", "integrations.save", { provider: "redsys", values: { environment: "test", merchantCode: "999008881", merchantTerminal: "1", merchantKey: KEY_A } }, admA), "pasarela");
   }, 300_000);
 
   afterAll(async () => {
@@ -94,6 +122,86 @@ describe.skipIf(!URL_)("contabilidad y facturación Essential (aplicación real)
       ]);
       expect(r2(s.categories.reduce((a: number, c: any) => a + c.amount, 0))).toBe(207.9);
       expect(s.pendingQuotes).toBeNull();
+    });
+  });
+
+  describe("facturas de presupuestos con los datos fiscales del cliente", () => {
+    let n = 0;
+    /** Cliente con datos fiscales y un presupuesto suyo de 121 € al 21 %. */
+    const quoteFor = async (extra: Record<string, unknown> = {}) => {
+      n += 1;
+      const k = n;
+      const email = `fiscal${k}@cliente-a.example`;
+      ok(await ess.m("a", "crm.clients.create", { name: `Contacto ${k}`, email, company: `Empresa Fiscal ${k} SL`, nif: "B12345674", address: `Calle Mayor ${k}` }, agA), "cliente");
+      await ess.sql("a", "UPDATE clients SET postalCode = '28001', city = 'Madrid' WHERE email = ?", [email]);
+      const r = ok(await ess.m("a", "crm.quotes.createDirect", { clientName: `Contacto ${k}`, clientEmail: email, title: `Presupuesto fiscal ${k}`, items: [{ description: "Servicio", quantity: 1, unitPrice: 121, total: 121, taxRate: 21 }], subtotal: 0, discount: 0, total: 121, sendNow: false, ...extra }, agA), "presupuesto");
+      return { id: Number(r.quoteId), email, n: k };
+    };
+    const send = async (quoteId: number) => {
+      const sent = ok(await ess.m("a", "crm.quotes.send", { id: quoteId, origin: `https://${ess.host("a")}` }, agA), "envío");
+      return String(sent.token ?? String(sent.acceptUrl).split("/").pop());
+    };
+    const payOrder = async (token: string) => {
+      const p = ok(await ess.m("a", "crm.quotes.payWithToken", { token, origin: `https://${ess.host("a")}` }), "pagar");
+      const params = JSON.parse(Buffer.from(p.redsysForm?.Ds_MerchantParameters ?? p.redsysForm?.params?.Ds_MerchantParameters, "base64").toString());
+      return { order: String(params.DS_MERCHANT_ORDER ?? params.Ds_Merchant_Order), amount: Number(params.DS_MERCHANT_AMOUNT ?? params.Ds_Merchant_Amount) };
+    };
+    const notify = async (order: string, amount: number) => {
+      const r = await ess.call("a", "POST", "/api/redsys/notification", {
+        raw: signed(KEY_A, { Ds_Order: order, Ds_Response: "0000", Ds_Amount: String(amount), Ds_AuthorisationCode: "123456" }),
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+      });
+      expect(r.text).toBe("OK");
+    };
+    const invoiceOf = async (quoteId: number) => {
+      const rows = await waitFor(() => ess.sql("a", "SELECT invoiceNumber, clientName, clientNif, clientAddress, total FROM invoices WHERE quoteId = ? AND invoiceType = 'factura'", [quoteId]), (r) => r.length > 0);
+      expect(rows).toHaveLength(1);
+      return rows[0];
+    };
+    const expectFiscal = (inv: any, k: number) => {
+      expect(inv.clientName).toBe(`Empresa Fiscal ${k} SL`);
+      expect(inv.clientNif).toBe("B12345674");
+      expect(inv.clientAddress).toBe(`Calle Mayor ${k}, 28001, Madrid`);
+    };
+
+    it("pago por enlace con tarjeta: la factura lleva NIF, nombre fiscal y dirección (también en el documento)", async () => {
+      const q = await quoteFor();
+      const p = await payOrder(await send(q.id));
+      await notify(p.order, p.amount);
+      const inv = await invoiceOf(q.id);
+      expectFiscal(inv, q.n);
+      const prev = await ess.call("a", "GET", `/api/invoices/preview?n=${encodeURIComponent(inv.invoiceNumber)}`, { cookie: agA });
+      expect(prev.status).toBe(200);
+      for (const t of ["B12345674", `Empresa Fiscal ${q.n} SL`, `Calle Mayor ${q.n}`]) expect(prev.text).toContain(t);
+    });
+
+    it("cuotas: la factura final lleva los datos fiscales del cliente", async () => {
+      const q = await quoteFor();
+      const today = new Date();
+      const due = (m: number) => new Date(today.getFullYear(), today.getMonth() + m, 15).toISOString().slice(0, 10);
+      const amounts = [6000, 6100];
+      ok(await ess.m("a", "crm.paymentPlans.upsert", { quoteId: q.id, installments: amounts.map((amountCents, i) => ({ installmentNumber: i + 1, amountCents, dueDate: due(i), isRequiredForConfirmation: i === 0 })) }, agA), "plan");
+      const token = await send(q.id);
+      for (let i = 0; i < amounts.length; i++) {
+        const p = await payOrder(token);
+        await notify(p.order, p.amount);
+        await waitFor(() => ess.sql("a", "SELECT COUNT(*) AS n FROM payment_installments WHERE quote_id = ? AND status = 'paid'", [q.id]), (r) => Number(r[0].n) >= i + 1);
+      }
+      expectFiscal(await invoiceOf(q.id), q.n);
+    });
+
+    it("confirmación manual de pago y de transferencia: con los datos fiscales; las facturas ya emitidas no cambian", async () => {
+      const q1 = await quoteFor();
+      ok(await ess.m("a", "crm.quotes.confirmPayment", { quoteId: q1.id, paymentMethod: "efectivo", paymentNote: "Pago en mano" }, agA), "confirmar pago");
+      const inv1 = await invoiceOf(q1.id);
+      expectFiscal(inv1, q1.n);
+      const q2 = await quoteFor();
+      await ess.sql("a", "UPDATE quotes SET transfer_proof_url = 'https://almacen.example/justificante.pdf' WHERE id = ?", [q2.id]);
+      ok(await ess.m("a", "crm.quotes.confirmTransfer", { quoteId: q2.id }, agA), "confirmar transferencia");
+      expectFiscal(await invoiceOf(q2.id), q2.n);
+      // Cambiar después los datos del cliente no toca la factura emitida
+      await ess.sql("a", "UPDATE clients SET nif = 'B76543214' WHERE email = ?", [q1.email]);
+      expect((await invoiceOf(q1.id)).clientNif).toBe("B12345674");
     });
   });
 });

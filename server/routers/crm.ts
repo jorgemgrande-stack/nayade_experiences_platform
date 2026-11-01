@@ -53,6 +53,7 @@ import { sendManagedEmail, logDirectEmail } from "../emailManager";
 import { generateDocumentNumber } from "../documentNumbers";
 import { nextCreditNoteNumber, withCreditNoteNumberRetry } from "../creditNoteNumber";
 import { QUOTE_DISCOUNT_DESCRIPTION, QUOTE_LINE_TOTAL_DESCRIPTION, QUOTE_TOTAL_DESCRIPTION, QUOTE_UNIT_PRICE_DESCRIPTION, linesToTaxIncluded, pricesIncludeTaxSchema, quoteTotalMismatch } from "../quoteTaxConvention";
+import { invoiceClientForQuote } from "../invoiceClient";
 import { alreadyCredited, chargedInvoiceAmounts, computeDirectInvoice, creditNoteLineStatus, CreditNoteSelectionError, DIRECT_INVOICE_TAX_RATES, planCreditNote, QUOTE_DISCOUNT_REASON, round2, type CreditNoteLineSelection } from "../invoiceCalc";
 import { htmlToPdf } from "../pdfGenerator";
 import { buildRedsysForm, generateMerchantOrder } from "../redsys";
@@ -691,16 +692,14 @@ export async function checkAndConfirmInstallmentPlan(quoteId: number, userId: nu
       .limit(1);
 
     const invoiceNumber = await generateInvoiceNumber("crm:installments", String(userId));
+    // Datos fiscales del cliente vinculado al presupuesto (NIF, nombre fiscal y dirección)
+    const billTo = await invoiceClientForQuote(db, quote, { name: lead?.name ?? quote.title, email: lead?.email ?? "", phone: lead?.phone ?? null });
     let pdfUrl: string | null = null;
     let pdfKey: string | null = null;
     try {
       const pdf = await generateInvoicePdf({
         invoiceNumber,
-        clientName: lead?.name ?? quote.title,
-        clientEmail: lead?.email ?? "",
-        clientPhone: lead?.phone ?? null,
-        clientNif: null,
-        clientAddress: null,
+        ...billTo,
         itemsJson: items as any,
         subtotal: String(subtotal),
         discount: amountsInst.discount,
@@ -721,9 +720,7 @@ export async function checkAndConfirmInstallmentPlan(quoteId: number, userId: nu
       invoiceNumber,
       quoteId: quote.id,
       reservationId: reservation?.id ?? null,
-      clientName: lead?.name ?? quote.title,
-      clientEmail: lead?.email ?? "",
-      clientPhone: lead?.phone ?? null,
+      ...billTo,
       itemsJson: items as any,
       subtotal: String(subtotal),
       discount: String(amountsInst.discount),
@@ -2035,6 +2032,8 @@ export const crmRouter = router({
 
         // Generate invoice
         const invoiceNumber = await generateInvoiceNumber("crm:invoice", String(ctx.user.id));
+        // Datos fiscales del cliente vinculado al presupuesto (NIF, nombre fiscal y dirección)
+        const billTo = await invoiceClientForQuote(db, quote, { name: lead.name, email: lead.email, phone: lead.phone });
         const items = (quote.items as { description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: "reav" | "general" }[]) ?? [];
         // Lo facturado es lo cobrado: el total del presupuesto. El descuento reduce base e IVA de cada tipo.
         const amountsInv = chargedInvoiceAmounts(items, Number(quote.total));
@@ -2047,9 +2046,7 @@ export const crmRouter = router({
         try {
           const pdf = await generateInvoicePdf({
             invoiceNumber,
-            clientName: lead.name,
-            clientEmail: lead.email,
-            clientPhone: lead.phone,
+            ...billTo,
             itemsJson: items,
             subtotal: String(subtotal),
             discount: amountsInv.discount,
@@ -2072,9 +2069,7 @@ export const crmRouter = router({
         const [invResult] = await db.insert(invoices).values({
           invoiceNumber,
           quoteId: quote.id,
-          clientName: lead.name,
-          clientEmail: lead.email,
-          clientPhone: lead.phone,
+          ...billTo,
           itemsJson: items,
           subtotal: String(subtotal),
           discount: String(amountsInv.discount),
@@ -2629,6 +2624,8 @@ export const crmRouter = router({
         assertPaidAmountMatchesQuote(input.paidAmount, quote.total);
         const now = new Date();
         const invoiceNumber = await generateInvoiceNumber("crm:invoice", String(ctx.user.id));
+        // Datos fiscales del cliente vinculado al presupuesto (NIF, nombre fiscal y dirección)
+        const billTo = await invoiceClientForQuote(db, quote, { name: lead.name, email: lead.email, phone: lead.phone });
         const items = (quote.items as { description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: "reav" | "general" }[]) ?? [];
         // Lo facturado es lo cobrado: el total del presupuesto. El descuento reduce base e IVA de cada tipo.
         const amountsT = chargedInvoiceAmounts(items, Number(quote.total));
@@ -2640,9 +2637,7 @@ export const crmRouter = router({
         try {
           const pdf = await generateInvoicePdf({
             invoiceNumber,
-            clientName: lead.name,
-            clientEmail: lead.email,
-            clientPhone: lead.phone,
+            ...billTo,
             itemsJson: items,
             subtotal: String(subtotal),
             discount: amountsT.discount,
@@ -2664,9 +2659,7 @@ export const crmRouter = router({
         const [invResult] = await db.insert(invoices).values({
           invoiceNumber,
           quoteId: quote.id,
-          clientName: lead.name,
-          clientEmail: lead.email,
-          clientPhone: lead.phone,
+          ...billTo,
           itemsJson: items,
           subtotal: String(subtotal),
           discount: String(amountsT.discount),
