@@ -99,7 +99,7 @@ describe("gastos con inversión del sujeto pasivo", () => {
 });
 
 describe("comisiones de Stripe: nada se contabiliza a ciegas", () => {
-  it("modo global sin decidir: las transacciones con comisión quedan pendientes (fee_vat_unset) y se avisan", async () => {
+  it("modo global sin decidir: el cobro se contabiliza con la comisión en 555 (provisional, sin IVA) y se avisa", async () => {
     const s = await fiscalScenario();
     expect((await s.stripe.settings()).stripeFeeVat).toBe("unset");
     await s.stripe.importFile({ kind: "balance", filename: "b.csv", contentBase64: b64(stripeBalanceSample()) }, ACTOR);
@@ -107,7 +107,12 @@ describe("comisiones de Stripe: nada se contabiliza a ciegas", () => {
     // Con comisión: c1, c2, f1 (cargo de Stripe), d1 y d2 (comisión de disputa); el reembolso r2 no tiene comisión
     expect(out.pendingFeeVat).toBe(5);
     const st = s.stripeStore as MemoryFinanceStripeStore;
-    expect(st.txns.find((t) => t.balanceTransactionId === "txn_test_c1")).toMatchObject({ status: "pending", issueDetail: expect.stringMatching(/^fee_vat_unset/) });
+    const c1 = st.txns.find((t) => t.balanceTransactionId === "txn_test_c1")!;
+    expect(c1).toMatchObject({ status: "posted" });
+    const lines = (await s.finance.getEntry(c1.entryId!)).lines.map((l) => [l.accountCode, l.debitCents, l.creditCents]);
+    expect(lines).toEqual(expect.arrayContaining([["5720", 11_712, 0], ["555", 388, 0], ["430", 0, 12_100]]));
+    expect(lines.map((l) => l[0])).not.toEqual(expect.arrayContaining(["626"]));
+    expect(lines.map((l) => l[0])).not.toEqual(expect.arrayContaining(["472"]));
     expect(st.txns.find((t) => t.balanceTransactionId === "txn_test_r2")).toMatchObject({ status: "posted" });
     expect(await s.stripe.pendingFeeVatCount()).toBe(5);
     expect(await s.stripe.pendingFeeVatCount("2026-10-20", "2026-10-31")).toBe(2);
@@ -115,6 +120,32 @@ describe("comisiones de Stripe: nada se contabiliza a ciegas", () => {
     expect((await s.tax.preview("303", 2026, "4T")).warnings.join(" ")).toMatch(/fee_vat_unset/);
     expect((await s.analysis.daily("2026-10-31")).counts).toMatchObject({ stripeFeeVatUnset: 5 });
     expect((await s.analysis.daily("2026-10-31")).alerts.map((a) => a.code)).toContain("fee_vat_unset");
+    // Repetir no contabiliza dos veces
+    const entries = (await s.finance.listEntries({ origin: "stripe", limit: 100 })).total;
+    await s.stripe.post("2026-10-31", ACTOR);
+    expect((await s.finance.listEntries({ origin: "stripe", limit: 100 })).total).toBe(entries);
+  });
+
+  it("al decidirse el IVA, cada comisión provisional se reclasifica una sola vez de 555 a 626 (con la autoliquidación)", async () => {
+    const s = await fiscalScenario();
+    await s.stripe.importFile({ kind: "balance", filename: "b.csv", contentBase64: b64(stripeBalanceSample()) }, ACTOR);
+    await s.stripe.post("2026-10-31", ACTOR);
+    expect(await s.stripe.pendingFeeVatCount()).toBe(5);
+    await s.stripe.createFeeVatRule({ feeKind: "*", issuerName: "Stripe Payments Europe, Limited", issuerCountry: "IE", issuerVatId: "IE9999999ZZ", treatment: "reverse_charge", rateBp: 2100, validFrom: "2026-01-01", documentRef: "Factura de comisiones de octubre" }, ACTOR);
+    const out = await s.stripe.post("2026-10-31", ACTOR);
+    expect(out).toMatchObject({ errors: [], feesClassified: 5 });
+    expect(await s.stripe.pendingFeeVatCount()).toBe(0);
+    const posted = await s.ledger.postedLines({});
+    const bal = (code: string) => posted.filter((l) => l.accountCode === code).reduce((a, l) => a + l.debitCents - l.creditCents, 0);
+    expect(bal("555")).toBe(0);
+    expect(bal("472")).toBeGreaterThan(0);
+    const c1 = (s.stripeStore as MemoryFinanceStripeStore).txns.find((t) => t.balanceTransactionId === "txn_test_c1")!;
+    const cls = (await s.finance.listEntries({ origin: "stripe", limit: 100 })).items.find((e) => e.sourceKey === "stripe-fee-class:txn_test_c1")!;
+    expect(cls.date).toBe("2026-10-05");
+    expect(cls.lines.map((l) => [l.accountCode, l.debitCents, l.creditCents])).toEqual(expect.arrayContaining([["626", 388, 0], ["555", 0, 388], ["472", 81, 0], ["477", 0, 81]]));
+    // El asiento del cobro no cambia y otra pasada no reclasifica nada más
+    expect((await s.finance.getEntry(c1.entryId!)).lines.map((l) => l.accountCode)).toContain("555");
+    expect((await s.stripe.post("2026-10-31", ACTOR)).feesClassified).toBeUndefined();
   });
 
   it("regla «*» con inversión del sujeto pasivo: se contabiliza con el emisor de la regla, que llega al 349; anular la regla", async () => {

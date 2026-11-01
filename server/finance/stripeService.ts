@@ -27,6 +27,8 @@ import {
   resolveFeeVat,
   SELF_POSTED_TYPES,
   STRIPE_ACCOUNTS,
+  stripeFeeClassEntry,
+  stripeFeeClassSourceKey,
   stripePayoutEntry,
   stripeTxnEntry,
   suggestStripeMatches,
@@ -46,7 +48,7 @@ export interface FinanceStripeDeps {
   finance: FinanceService;
   /** Operaciones (fase 1B): cuentas bancarias y movimientos para la conciliación. */
   ops: FinanceOpsStore;
-  ledger: Pick<FinanceStore, "postedLines" | "listAccounts" | "getEntry">;
+  ledger: Pick<FinanceStore, "postedLines" | "listAccounts" | "getEntry"> & Partial<Pick<FinanceStore, "listEntries" | "existingSources">>;
   /** Facturas propias (solo lectura). Sin ellas los cobros quedan «sin factura» y no hay vista por factura. */
   invoices?: OwnInvoiceDirectory | null;
   /** Cerrojo por clave (MySQL: GET_LOCK) que serializa los cobros por transferencia de una misma factura. */
@@ -66,6 +68,7 @@ const nextMonth = (ym: string) => {
 
 /** Motivo que queda en una transacción pendiente por no tener decidido el IVA de su comisión. */
 export const FEE_VAT_UNSET_DETAIL = "fee_vat_unset: el IVA de la comisión de Stripe no está configurado (regla por tipo o modo global)";
+export const FEE_PROVISIONAL_DETAIL = "fee_vat_pending: comisión contabilizada en 555 hasta decidir su IVA (exenta o inversión del sujeto pasivo)";
 
 /** Asiento de la vista previa: solo cuentas e importes (no se guarda nada). */
 const previewEntry = (id: string, d: EntryDraft) => ({ balanceTransactionId: id, date: d.date, description: d.description, lines: d.lines.map((l) => ({ account: l.accountCode, debitCents: l.debitCents, creditCents: l.creditCents })) });
@@ -89,8 +92,12 @@ export interface PostResult {
   errors: Array<{ transactionId: string; message: string }>;
   /** Quedaron más transacciones de las que se procesan en una pasada: repetir. */
   truncated: boolean;
-  /** CRM 0039: transacciones que quedan pendientes porque el IVA de su comisión no está configurado (`fee_vat_unset`). */
+  /** Transacciones cuya comisión queda en 555 (provisional) porque su IVA no está decidido. */
   pendingFeeVat?: number;
+  /** Comisiones provisionales reclasificadas en esta pasada al decidirse su IVA. */
+  feesClassified?: number;
+  /** Payouts llegados que esperan la cuenta bancaria de destino (no se dan por recibidos en ningún banco). */
+  payoutsAwaitingBank?: number;
 }
 
 export class FinanceStripeService implements BankReconciliationExtension {
@@ -236,8 +243,61 @@ export class FinanceStripeService implements BankReconciliationExtension {
   async pendingFeeVatCount(from?: string, to?: string): Promise<number> {
     if (!this.fiscal) return 0;
     const resolve = await this.feeResolver();
+    const inRange = (t: StripeTxn) => (!from || t.createdOn >= from) && (!to || t.createdOn <= to);
     const pending = await this.s.postableTransactions(to ?? "9999-12-31", POST_BATCH);
-    return pending.filter((t) => (!from || t.createdOn >= from) && FinanceStripeService.feeVatUnset(t, resolve(t))).length;
+    // Sin contabilizar con el IVA sin decidir, más las contabilizadas en provisional (555) aún sin clasificar
+    return pending.filter((t) => inRange(t) && FinanceStripeService.feeVatUnset(t, resolve(t))).length + (await this.provisionalFees()).filter(inRange).length;
+  }
+
+  /** Transacciones contabilizadas con la comisión en 555 (pendiente de clasificación fiscal) y sin reclasificar. */
+  async provisionalFees(): Promise<StripeTxn[]> {
+    const { existingSources } = this.d.ledger;
+    if (!existingSources) return [];
+    const posted = (await this.s.listTransactions({ status: "posted", limit: 500 })).items.filter((t) => t.entryId !== null && SELF_POSTED_TYPES.includes(t.type) && feeBaseOf(t) !== 0);
+    if (!posted.length) return [];
+    const done = await existingSources.call(this.d.ledger, posted.map((t) => stripeFeeClassSourceKey(t.balanceTransactionId)));
+    const out: StripeTxn[] = [];
+    for (const t of posted) {
+      if (done.has(stripeFeeClassSourceKey(t.balanceTransactionId))) continue;
+      const e = await this.d.ledger.getEntry(t.entryId!);
+      if (e?.lines.some((l) => l.accountCode === STRIPE_ACCOUNTS.feesPending)) out.push(t);
+    }
+    return out;
+  }
+
+  /**
+   * Reclasifica las comisiones provisionales cuyo tratamiento ya está decidido (regla por tipo o modo global): Debe 626 ·
+   * Haber 555 y, con inversión del sujeto pasivo, la autoliquidación. Fecha: la del cobro si su periodo sigue abierto (el
+   * IVA es de ese periodo); si no, hoy. Idempotente (`stripe-fee-class:<id>`). Las que siguen sin decidir, se quedan.
+   */
+  async classifyProvisionalFees(actor: FinanceActor): Promise<{ classified: number; pending: number; errors: string[] }> {
+    const out = { classified: 0, pending: 0, errors: [] as string[] };
+    const provisional = await this.provisionalFees();
+    if (!provisional.length) return out;
+    const resolve = await this.feeResolver();
+    for (const t of provisional) {
+      const f = resolve(t);
+      if (f.treatment === "unset") {
+        out.pending++;
+        continue;
+      }
+      try {
+        let draft = stripeFeeClassEntry(t, f, t.createdOn);
+        try {
+          await this.d.finance.checkPostable(draft);
+        } catch {
+          draft = stripeFeeClassEntry(t, f, this.today());
+        }
+        const { created } = await this.d.finance.postGenerated(draft, actor);
+        if (created) out.classified++;
+        if (t.issueDetail === FEE_PROVISIONAL_DETAIL) await this.s.markTransaction(t.id, { status: "posted", issueDetail: null });
+      } catch (e) {
+        if (!(e instanceof FinanceError)) throw e;
+        out.errors.push(`${t.balanceTransactionId}: ${e.message}`);
+      }
+    }
+    if (out.classified) await this.audit(actor, "stripe.fee_classify", "stripe", "fees", { classified: out.classified, pending: out.pending, errors: out.errors.length });
+    return out;
   }
 
   /**
@@ -552,17 +612,15 @@ export class FinanceStripeService implements BankReconciliationExtension {
         out.skipped++;
         continue;
       }
-      // CRM 0039: sin tratamiento del IVA de la comisión, la transacción se queda pendiente (nada se contabiliza a ciegas)
+      // Sin tratamiento del IVA de la comisión: el cobro se contabiliza igualmente y la comisión va a 555 (pendiente de
+      // clasificación fiscal, sin IVA); se reclasifica a 626 cuando se decide (`classifyProvisionalFees`)
       const fee = resolve(t);
-      if (FinanceStripeService.feeVatUnset(t, fee)) {
-        out.pendingFeeVat = (out.pendingFeeVat ?? 0) + 1;
-        if (t.status !== "pending" || t.issueDetail !== FEE_VAT_UNSET_DETAIL) await this.s.markTransaction(t.id, { status: "pending", issueDetail: FEE_VAT_UNSET_DETAIL });
-        continue;
-      }
+      const provisional = FinanceStripeService.feeVatUnset(t, fee);
+      if (provisional) out.pendingFeeVat = (out.pendingFeeVat ?? 0) + 1;
       const own = await this.invoiceFor(t, idx, chargeOwn);
       const ref = own ? refOf(own) : null;
       try {
-        const { entry, created } = await this.d.finance.postGenerated(stripeTxnEntry(t, settings, ref, fee), actor);
+        const { entry, created } = await this.d.finance.postGenerated(stripeTxnEntry(t, settings, ref, fee, { provisionalFee: true }), actor);
         if (created) out.posted++;
         else out.skipped++;
         const issue = txnIssue(t, ref);
@@ -573,7 +631,9 @@ export class FinanceStripeService implements BankReconciliationExtension {
               : "Ninguna factura propia tiene este cobro: revisa el cliente (no se inventa)"
             : issue === "amount_mismatch"
               ? `Cobrado ${t.grossCents} céntimos; la factura ${own?.number ?? ""} es de ${own?.totalCents ?? 0}`
-              : null;
+              : provisional
+                ? FEE_PROVISIONAL_DETAIL
+                : null;
         await this.s.markTransaction(t.id, { status: "posted", entryId: entry.id, ownInvoiceId: own?.id ?? null, issue, issueDetail, postedAt: this.now() });
         if (t.type === "charge" && t.chargeId && own) {
           chargeOwn.set(t.chargeId, own.id);
@@ -589,6 +649,12 @@ export class FinanceStripeService implements BankReconciliationExtension {
       }
     }
 
+    // Comisiones provisionales con el IVA ya decidido: reclasificación 555 → 626
+    if (this.fiscal) {
+      const cls = await this.classifyProvisionalFees(actor);
+      if (cls.classified) out.feesClassified = cls.classified;
+      for (const m of cls.errors) out.errors.push({ transactionId: m.split(":")[0], message: m });
+    }
     await this.postPayouts(u, settings, actor, out);
     await this.audit(actor, "stripe.post", "stripe", "post", { until: u, posted: out.posted, skipped: out.skipped, errors: out.errors.length, truncated: out.truncated });
     return out;
@@ -635,7 +701,9 @@ export class FinanceStripeService implements BankReconciliationExtension {
         continue;
       }
       if (!bank) {
-        out.errors.push({ transactionId: p.payoutId, message: "Configura la cuenta bancaria a la que llegan los payouts de Stripe" });
+        // Sin cuenta bancaria de destino no se contabiliza la llegada (no se da por recibido en ningún banco): pendiente
+        out.payoutsAwaitingBank = (out.payoutsAwaitingBank ?? 0) + 1;
+        out.skipped++;
         continue;
       }
       try {

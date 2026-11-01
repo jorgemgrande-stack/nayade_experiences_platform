@@ -974,7 +974,7 @@ export function dailyAlerts(c: Partial<Record<keyof DailyCounts, number | null>>
   add("tax_due_soon", "info", c.taxDueNext15, (n) => `${plural(n, "obligación fiscal vence", "obligaciones fiscales vencen")} en los próximos 15 días`);
   add("draft_entries", "info", c.draftEntries, (n) => `${plural(n, "asiento en borrador", "asientos en borrador")}`);
   // CRM 0039: nada se contabiliza a ciegas
-  add("fee_vat_unset", "warning", c.stripeFeeVatUnset, (n) => `${plural(n, "transacción de Stripe", "transacciones de Stripe")} sin tratamiento del IVA de su comisión: no se contabiliza${n === 1 ? "" : "n"} hasta configurarlo`);
+  add("fee_vat_unset", "warning", c.stripeFeeVatUnset, (n) => `${plural(n, "comisión de Stripe pendiente", "comisiones de Stripe pendientes")} de clasificación fiscal: el cobro está contabilizado y la comisión, en 555 sin IVA, hasta decidir su tratamiento con la gestoría`);
   add("payments_due_next7", "info", c.paymentsDueNext7, (n) => `${plural(n, "pago vence", "pagos vencen")} en los próximos 7 días`);
   return out;
 }
