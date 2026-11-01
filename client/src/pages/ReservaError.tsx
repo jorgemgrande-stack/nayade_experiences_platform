@@ -9,6 +9,9 @@ import { XCircle, ArrowRight, Phone, Mail, RefreshCw, AlertTriangle } from "luci
 import PublicLayout from "@/components/PublicLayout";
 import { trpc } from "@/lib/trpc";
 import { usePublicContact } from "@/hooks/usePublicPhone";
+import { usePublicSite } from "@/hooks/usePublicSite";
+import { formatEuros } from "@shared/storefront";
+import { formatDayEs } from "@shared/formatDay";
 
 const REDSYS_ERROR_MESSAGES: Record<string, string> = {
   "0180": "Tarjeta ajena al servicio.",
@@ -36,6 +39,10 @@ export default function ReservaError() {
   const { phone, phoneTel, email } = usePublicContact();
   const [merchantOrder, setMerchantOrder] = useState<string | null>(null);
   const [errorCode, setErrorCode] = useState<string | null>(null);
+  // Tienda de una pyme: «pedido», cantidades y vuelta a la tienda (sin fechas ni personas que no existen)
+  const { features, text } = usePublicSite();
+  const generic = !features || features.licensed;
+  const shopHref = features?.licensed && !features.store ? "/" : text.shopHref;
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -91,28 +98,41 @@ export default function ReservaError() {
 
         {reservation && (
           <div className="bg-muted/50 rounded-xl p-5 mb-6 space-y-2 text-sm">
-            <h3 className="font-semibold text-foreground mb-3">Datos de tu reserva</h3>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Producto</span>
-              <span className="font-medium text-foreground">{reservation.productName}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Fecha</span>
-              <span className="font-medium text-foreground">{reservation.bookingDate}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Personas</span>
-              <span className="font-medium text-foreground">{reservation.people}</span>
-            </div>
+            <h3 className="font-semibold text-foreground mb-3">{generic ? "Datos de tu pedido" : "Datos de tu reserva"}</h3>
+            {generic && reservation.lines?.length ? (
+              reservation.lines.map((l, i) => (
+                <div key={i} className="flex justify-between gap-3">
+                  <span className="min-w-0 break-words text-foreground">{l.productName} <span className="text-muted-foreground">× {l.quantity}</span></span>
+                  <span className="shrink-0 font-medium text-foreground">{formatEuros(l.amountCents / 100)}</span>
+                </div>
+              ))
+            ) : (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Producto</span>
+                <span className="font-medium text-foreground">{reservation.productName}</span>
+              </div>
+            )}
+            {!generic && (
+              <>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Fecha</span>
+                  <span className="font-medium text-foreground">{/^\d{4}-\d{2}-\d{2}$/.test(reservation.bookingDate ?? "") ? formatDayEs(reservation.bookingDate) : reservation.bookingDate}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Personas</span>
+                  <span className="font-medium text-foreground">{reservation.people}</span>
+                </div>
+              </>
+            )}
             <div className="flex justify-between">
               <span className="text-muted-foreground">Importe</span>
               <span className="font-medium text-foreground">
-                {reservation.amountTotal ? (reservation.amountTotal / 100).toFixed(2) + "€" : "—"}
+                {(generic ? reservation.orderTotalCents : reservation.amountTotal) ? formatEuros(((generic ? reservation.orderTotalCents : reservation.amountTotal) ?? 0) / 100) : "—"}
               </span>
             </div>
             {merchantOrder && (
               <div className="flex justify-between text-xs text-muted-foreground pt-2 border-t border-border">
-                <span>Referencia</span>
+                <span>{generic ? "N.º de pedido" : "Referencia"}</span>
                 <span className="font-mono">{merchantOrder}</span>
               </div>
             )}
@@ -132,18 +152,17 @@ export default function ReservaError() {
         <div className="flex flex-col sm:flex-row gap-3 justify-center mb-8">
           {canRetry && (
             <Link
-              href="/experiencias"
-              className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-lg text-white text-sm font-semibold"
-              style={{ background: 'linear-gradient(135deg, #f97316, #f59e0b)' }}
+              href={generic ? "/checkout" : "/experiencias"}
+              className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 text-sm font-semibold"
             >
               <RefreshCw className="w-4 h-4" /> Intentar de nuevo
             </Link>
           )}
           <Link
-            href="/experiencias"
+            href={shopHref}
             className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-lg border border-border hover:bg-muted transition-colors text-sm"
           >
-            Ver experiencias <ArrowRight className="w-4 h-4" />
+            {text.browseShop} <ArrowRight className="w-4 h-4" />
           </Link>
           <Link
             href="/"
@@ -156,11 +175,11 @@ export default function ReservaError() {
         <div className="text-center text-sm text-muted-foreground pt-6 border-t border-border">
           <p className="mb-3">¿Necesitas ayuda? Estamos aquí para ti:</p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <a href={phoneTel} className="flex items-center gap-2 hover:text-accent transition-colors">
+            <a href={phoneTel} className="flex items-center gap-2 hover:text-primary transition-colors">
               <Phone className="w-4 h-4" /> {phone}
             </a>
             {email && (
-              <a href={`mailto:${email}`} className="flex items-center gap-2 hover:text-accent transition-colors">
+              <a href={`mailto:${email}`} className="flex items-center gap-2 hover:text-primary transition-colors">
                 <Mail className="w-4 h-4" /> {email}
               </a>
             )}
