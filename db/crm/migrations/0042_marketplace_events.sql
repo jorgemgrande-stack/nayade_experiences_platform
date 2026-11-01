@@ -20,3 +20,27 @@ CREATE TABLE marketplace_event_keys (
   received_at DATETIME NOT NULL,
   KEY idx_marketplace_event_keys_received (received_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- `marketplace_media`: imágenes oficiales del marketplace (fichas, campañas y cabeceras), subidas desde el CRM. Una fila
+--   por imagen original (id = huella del contenido), con su texto alternativo obligatorio y quién la subió.
+-- `marketplace_media_files`: las variantes optimizadas que se sirven (formato y ancho), inmutables.
+CREATE TABLE marketplace_media (
+  id CHAR(32) NOT NULL PRIMARY KEY,
+  alt VARCHAR(160) NOT NULL,
+  width INT UNSIGNED NOT NULL,
+  height INT UNSIGNED NOT NULL,
+  bytes INT UNSIGNED NOT NULL,
+  created_at BIGINT NOT NULL,
+  created_by VARCHAR(100) NOT NULL,
+  KEY idx_marketplace_media_created (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE marketplace_media_files (
+  media_id CHAR(32) NOT NULL,
+  variant VARCHAR(24) NOT NULL,
+  content_type VARCHAR(40) NOT NULL,
+  width INT UNSIGNED NOT NULL,
+  data MEDIUMBLOB NOT NULL,
+  PRIMARY KEY (media_id, variant),
+  CONSTRAINT fk_marketplace_media_files FOREIGN KEY (media_id) REFERENCES marketplace_media (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
