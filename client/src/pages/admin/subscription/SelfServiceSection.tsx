@@ -4,6 +4,7 @@
  * control (Stripe); aquí solo se muestran y se confirman. El cambio en la plataforma llega cuando el sistema de cobros
  * lo confirma (unos instantes). Nunca se borran datos.
  */
+import { randomId } from "@shared/randomId";
 import { useEffect, useState } from "react";
 import { ArrowUpRight, CalendarX2, Repeat2 } from "lucide-react";
 import { toast } from "sonner";
@@ -52,7 +53,7 @@ const PLAN_NAMES: Record<string, string> = { essential: "Essential", business: "
 const planLabel = (p: { plan: string; interval: Interval }) => `${PLAN_NAMES[p.plan] ?? p.plan} ${p.interval === "year" ? "anual" : "mensual"}`;
 const fmtDate = (ms: number) => new Date(ms).toLocaleDateString("es-ES", { day: "numeric", month: "long", year: "numeric" });
 const money = (cents: number, currency: string) => new Intl.NumberFormat("es-ES", { style: "currency", currency }).format(cents / 100);
-const newKey = () => (crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`).replace(/[^A-Za-z0-9_-]/g, "").slice(0, 64).padEnd(16, "0");
+const newKey = () => randomId().replace(/[^A-Za-z0-9_-]/g, "").slice(0, 64).padEnd(16, "0");
 
 function PlanChangeDialog({ current, option, onClose }: { current: { plan: string; interval: Interval }; option: PlanOption; onClose: () => void }) {
   const utils = trpc.useUtils();

@@ -8,6 +8,7 @@
  * Dar de baja un módulo o reducir una ampliación usa la reducción que ya existe (subscription.reductionPreview →
  * reduce): a fin de periodo, sin abonos y nunca por debajo del uso real (lo comprueba el plano de control).
  */
+import { randomId } from "@shared/randomId";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "wouter";
 import { ArrowLeft, ArrowUpRight, CheckCircle2, Clock, Eye, PackageMinus, PackagePlus, Sparkles } from "lucide-react";
@@ -73,7 +74,7 @@ const STATE_META: Record<ModuleState, { label: string; icon: typeof CheckCircle2
 };
 
 const money = (cents: number, currency: string) => new Intl.NumberFormat("es-ES", { style: "currency", currency }).format(cents / 100);
-const newKey = () => (crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`).replace(/[^A-Za-z0-9_-]/g, "").slice(0, 64).padEnd(16, "0");
+const newKey = () => randomId().replace(/[^A-Za-z0-9_-]/g, "").slice(0, 64).padEnd(16, "0");
 
 function Price({ m }: { m: PanelModule }) {
   if (!m.monthly) return null;
