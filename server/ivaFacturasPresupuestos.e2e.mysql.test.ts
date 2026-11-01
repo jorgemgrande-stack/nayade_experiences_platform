@@ -148,9 +148,9 @@ describe.skipIf(!URL_)("IVA de las facturas de presupuestos (aplicación real)",
     // El documento muestra el descuento y las bases y cuotas ya descontadas
     const prev = await ess.call("a", "GET", `/api/invoices/preview?n=${encodeURIComponent(inv.invoiceNumber)}`, { cookie: agA });
     expect(prev.status).toBe(200);
-    for (const s of ["Descuento del presupuesto", "-23.10 €", "90.00 €", "18.90 €", "9.00 €", "207.90 €"]) expect(prev.text).toContain(s);
-    expect(prev.text).toContain("231.00 €"); // suma de los conceptos, antes del descuento
-    expect(prev.text).not.toMatch(/[^0-9]31\.00 €/); // nunca el IVA de las líneas sin descontar
+    for (const s of ["Descuento del presupuesto", "−23,10 €", "90,00 €", "18,90 €", "9,00 €", "207,90 €"]) expect(prev.text).toContain(s);
+    expect(prev.text).toContain("231,00 €"); // suma de los conceptos, antes del descuento
+    expect(prev.text).not.toMatch(/[^0-9.]31,00 €/); // nunca el IVA de las líneas sin descontar
     // Abono por líneas de la factura con descuento: la línea al 10 % se abona por lo cobrado (99 €)
     const cn = ok(await ess.m("a", "crm.invoices.createCreditNote", { invoiceId: inv.id, reason: "Devolución del servicio reducido", lines: [{ itemIndex: 1 }] }, agA), "abono por líneas");
     const [ab] = await ess.sql("a", "SELECT total, taxBreakdown FROM invoices WHERE id = ?", [cn.creditNoteId]);

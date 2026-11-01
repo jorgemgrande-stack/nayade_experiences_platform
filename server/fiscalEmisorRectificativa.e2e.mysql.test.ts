@@ -157,11 +157,11 @@ describe.skipIf(!URL_)("datos del emisor y factura rectificativa (aplicación re
       expect(html).toContain(done.creditNoteNumber);
       expect(html).toContain(`Rectifica la factura <strong>${original.invoiceNumber}</strong> de fecha ${issuedDate}.`);
       expect(html).toContain("Motivo de la rectificación: Devolución parcial");
-      expect(html).toContain("Base imponible IVA 21%</td><td>-50.00 €");
-      expect(html).toContain("IVA 21%</td><td>-10.50 €");
-      expect(html).toContain("Base imponible IVA 10%</td><td>-20.00 €");
-      expect(html).toContain("IVA 10%</td><td>-2.00 €");
-      expect(html).toContain("<td>TOTAL</td><td>-82.50 €</td>");
+      expect(html).toContain("Base imponible IVA 21%</td><td>−50,00 €");
+      expect(html).toContain("IVA 21%</td><td>−10,50 €");
+      expect(html).toContain("Base imponible IVA 10%</td><td>−20,00 €");
+      expect(html).toContain("IVA 10%</td><td>−2,00 €");
+      expect(html).toContain("<td>TOTAL</td><td>−82,50 €</td>");
       expect(html).toContain("Real Decreto 1619/2012");
       expect(html).toContain("Talleres Prueba SL");
       expect(html).toContain("background: #0b5d3b");
@@ -179,7 +179,7 @@ describe.skipIf(!URL_)("datos del emisor y factura rectificativa (aplicación re
       const html = await preview("a", done.creditNoteNumber, agA);
       expect(html).toContain("Factura rectificativa");
       expect(html).toContain("Motivo de la rectificación: Anulación del resto");
-      expect(html).toContain("<td>TOTAL</td><td>-93.50 €</td>");
+      expect(html).toContain("<td>TOTAL</td><td>−93,50 €</td>");
       const seq = numbers.map((n) => {
         expect(n.startsWith(ABO)).toBe(true);
         return Number(n.slice(ABO.length));
@@ -206,7 +206,8 @@ describe.skipIf(!URL_)("datos del emisor y factura rectificativa (aplicación re
       const { text } = await pdfParse(pdf);
       expect(text).toContain("FACTURA RECTIFICATIVA");
       expect(text).toContain(original.invoiceNumber);
-      expect(text).toContain("-82.50");
+      expect(text).toContain("−82,50 €");
+      expect(text).not.toMatch(/\d\.\d\d €/);
       expect(text).toMatch(/Real Decreto 1619\/2012/);
       const S = process.env.FISCAL_CAPTURAS_DIR;
       if (S) fs.writeFileSync(`${S}/rectificativa-${numbers[0]}.pdf`, pdf);

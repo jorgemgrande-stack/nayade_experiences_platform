@@ -264,9 +264,11 @@ interface InvoiceDocumentMeta {
   creditNoteReason: string | null;
   issuedAt: Date | null;
   rectifies: { invoiceNumber: string; issuedAt: Date | string } | null;
+  /** false: aún no está guardada (se pinta al emitirla, antes del alta con su copia del emisor). */
+  stored?: boolean;
 }
 
-/** Datos guardados de la factura con ese número (copia del emisor, tipo, factura rectificada); null si no existe. */
+/** Datos guardados de la factura con ese número (copia del emisor, tipo, factura rectificada); `stored: false` si aún no existe; null si no se pueden leer. */
 async function loadInvoiceDocumentMeta(invoiceNumber: string): Promise<InvoiceDocumentMeta | null> {
   try {
     const [rows] = await _pool.query<any[]>(
@@ -277,7 +279,7 @@ async function loadInvoiceDocumentMeta(invoiceNumber: string): Promise<InvoiceDo
       [invoiceNumber]
     );
     const r = rows?.[0];
-    if (!r) return null;
+    if (!r) return { issuerSnapshot: null, invoiceType: null, creditNoteReason: null, issuedAt: null, rectifies: null, stored: false };
     return {
       issuerSnapshot: r.issuerSnapshot ?? null,
       invoiceType: r.invoiceType ?? null,
@@ -322,6 +324,10 @@ interface InvoiceLook {
   primary: string;
   accent: string;
   docLabel: string;
+  /** Importe con su símbolo. La presentación de antes: «29.90 €»; los documentos nuevos, «29,90 €» y «−22,50 €». */
+  money: (n: number) => string;
+  /** Importe que resta (el descuento), con su signo. */
+  minusMoney: (n: number) => string;
   extraCss: string;
   /** Bloque tras las partes (factura rectificada y motivo), ya escapado. */
   afterParties: string;
@@ -330,6 +336,19 @@ interface InvoiceLook {
 }
 
 const LEGACY_COLORS = { primary: "#1a3a6b", accent: "#f97316" };
+
+/** Formato de antes, idéntico al de las facturas emitidas sin copia del emisor. */
+const legacyMoney = (n: number) => `${n.toFixed(2)} €`;
+const legacyMinusMoney = (n: number) => `-${n.toFixed(2)} €`;
+
+/** Importe en español: coma decimal, punto de millares y signo menos tipográfico («1.234,50 €», «−22,50 €»). */
+export function formatInvoiceMoney(n: number): string {
+  const cents = Math.round((Number(n) || 0) * 100);
+  const abs = Math.abs(cents) / 100;
+  const txt = abs.toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2, useGrouping: true });
+  return `${cents < 0 ? "−" : ""}${txt} €`;
+}
+const newMoneyLook = { money: formatInvoiceMoney, minusMoney: (n: number) => formatInvoiceMoney(-Math.abs(Number(n) || 0)) };
 
 /**
  * Presentación de antes (facturas sin copia del emisor): colores fijos y la marca tal y como se leía, con la marca
@@ -356,7 +375,7 @@ function legacyLook(baseline: IssuerBaseline | null): InvoiceLook {
       websiteUrl: getSystemSettingSync("brand_website_url", "") || (multi ? escapeHtml(tenantPublicUrl() ?? "") : ""),
     };
   }
-  return { brand, escapeBrand: false, ...LEGACY_COLORS, docLabel: "Factura", extraCss: "", afterParties: "", footerNote: "" };
+  return { brand, escapeBrand: false, ...LEGACY_COLORS, docLabel: "Factura", money: legacyMoney, minusMoney: legacyMinusMoney, extraCss: "", afterParties: "", footerNote: "" };
 }
 
 /** Mención legal de la rectificativa por diferencias (art. 15 del Reglamento de facturación, RD 1619/2012). */
@@ -417,7 +436,10 @@ export async function buildInvoiceHtml(rawInvoice: InvoiceHtmlParams): Promise<s
     docBrand = await currentDocumentBrand();
   }
   const colors = docBrand.primary && docBrand.accent ? { primary: docBrand.primary, accent: docBrand.accent } : await documentBrandColors();
-  const base: InvoiceLook = { ...legacyLook(null), brand: docBrand, escapeBrand: true, ...colors, extraCss: NARROW_CSS };
+  // Coma decimal solo en los documentos con copia del emisor (los nuevos, también al pintarlos para emitirlos);
+  // los demás conservan su formato
+  const issuingNow = meta?.stored === false;
+  const base: InvoiceLook = { ...legacyLook(null), brand: docBrand, escapeBrand: true, ...colors, extraCss: NARROW_CSS, ...(snapshot || issuingNow ? newMoneyLook : {}) };
   const { primary, accent } = colors;
 
   const isCredit = (rawInvoice.invoiceType !== undefined ? rawInvoice.invoiceType : meta?.invoiceType) === "abono";
@@ -450,6 +472,7 @@ function renderInvoiceHtml(rawInvoice: InvoiceHtmlParams, rawLegal: LegalCompany
   const legalAddressFull = formatLegalAddress(legal);
   const e = (v: string) => (look.escapeBrand ? escapeHtml(v) : v);
   const websiteUrl = e(look.brand.websiteUrl);
+  const { money, minusMoney } = look;
 
   const reavItems    = invoice.itemsJson.filter(i => i.fiscalRegime === "reav");
   const generalItems = invoice.itemsJson.filter(i => i.fiscalRegime !== "reav");
@@ -471,8 +494,8 @@ function renderInvoiceHtml(rawInvoice: InvoiceHtmlParams, rawLegal: LegalCompany
       `<tr${isReav ? ' class="reav-row"' : ''}>
         <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;">${item.description}${isReav ? ' <span style="font-size:10px;color:#6b7280;font-style:italic;">(REAV)</span>' : ''}</td>
         <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:center;">${item.quantity}</td>
-        <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:right;">${Number(item.unitPrice).toFixed(2)} €</td>
-        <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:right;">${Number(item.total).toFixed(2)} €</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:right;">${money(Number(item.unitPrice))}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:right;">${money(Number(item.total))}</td>
       </tr>`
     ).join("");
 
@@ -578,21 +601,21 @@ ${look.afterParties}
 
   <div class="totals-wrap"><table class="totals">
     ${hasGeneral && hasReav ? `
-    <tr><td style="color:#6b7280;font-size:13px;">Subtotal rég. general</td><td>${generalItems.reduce((s,i) => s+i.total,0).toFixed(2)} €</td></tr>
-    <tr><td style="color:#6b7280;font-size:13px;">Subtotal REAV (sin IVA)</td><td>${reavItems.reduce((s,i) => s+i.total,0).toFixed(2)} €</td></tr>
-    ` : `<tr><td>Subtotal</td><td>${(hasDiscount ? invoice.itemsJson.reduce((s, i) => s + Number(i.total), 0) : Number(invoice.subtotal)).toFixed(2)} €</td></tr>`}
-    ${hasDiscount ? `<tr><td style="color:#15803d;font-size:13px;">Descuento${invoice.discountReason ? ` <span style="color:#9ca3af;font-size:11px;">— ${invoice.discountReason}</span>` : ""}</td><td style="color:#15803d;font-weight:600;">-${Number(invoice.discount).toFixed(2)} €</td></tr>` : ""}
+    <tr><td style="color:#6b7280;font-size:13px;">Subtotal rég. general</td><td>${money(generalItems.reduce((s,i) => s+i.total,0))}</td></tr>
+    <tr><td style="color:#6b7280;font-size:13px;">Subtotal REAV (sin IVA)</td><td>${money(reavItems.reduce((s,i) => s+i.total,0))}</td></tr>
+    ` : `<tr><td>Subtotal</td><td>${money(hasDiscount ? invoice.itemsJson.reduce((s, i) => s + Number(i.total), 0) : Number(invoice.subtotal))}</td></tr>`}
+    ${hasDiscount ? `<tr><td style="color:#15803d;font-size:13px;">Descuento${invoice.discountReason ? ` <span style="color:#9ca3af;font-size:11px;">— ${invoice.discountReason}</span>` : ""}</td><td style="color:#15803d;font-weight:600;">${minusMoney(Number(invoice.discount))}</td></tr>` : ""}
     ${hasGeneral && isMultiRate ? breakdown.map(b =>
-      `<tr><td style="color:#6b7280;font-size:12px;">Base imponible IVA ${b.rate}%</td><td>${b.base.toFixed(2)} €</td></tr>` +
-      `<tr><td>IVA ${b.rate}%</td><td>${b.amount.toFixed(2)} €</td></tr>`
+      `<tr><td style="color:#6b7280;font-size:12px;">Base imponible IVA ${b.rate}%</td><td>${money(b.base)}</td></tr>` +
+      `<tr><td>IVA ${b.rate}%</td><td>${money(b.amount)}</td></tr>`
     ).join("") : ""}
     ${hasGeneral && !isMultiRate && breakdown.length === 1 ? `
-    <tr><td style="color:#6b7280;font-size:12px;">Base imponible IVA ${breakdown[0].rate}%</td><td>${breakdown[0].base.toFixed(2)} €</td></tr>
-    <tr><td>IVA (${breakdown[0].rate}%)</td><td>${breakdown[0].amount.toFixed(2)} €</td></tr>` : ""}
-    ${hasGeneral && breakdown.length === 0 ? `<tr><td>IVA (${invoice.taxRate}%)</td><td>${Number(invoice.taxAmount).toFixed(2)} €</td></tr>` : ""}
+    <tr><td style="color:#6b7280;font-size:12px;">Base imponible IVA ${breakdown[0].rate}%</td><td>${money(breakdown[0].base)}</td></tr>
+    <tr><td>IVA (${breakdown[0].rate}%)</td><td>${money(breakdown[0].amount)}</td></tr>` : ""}
+    ${hasGeneral && breakdown.length === 0 ? `<tr><td>IVA (${invoice.taxRate}%)</td><td>${money(Number(invoice.taxAmount))}</td></tr>` : ""}
     ${hasReav && !hasGeneral ? `<tr><td style="font-size:12px;color:#6b7280;font-style:italic;" colspan="2">Operación sujeta al Régimen Especial de Agencias de Viaje (REAV). No procede repercusión de IVA al cliente.</td></tr>` : ''}
     ${exemptionReasons.map((r) => `<tr><td style="font-size:12px;color:#6b7280;font-style:italic;" colspan="2">IVA 0 %: ${r}</td></tr>`).join("")}
-    <tr class="total-row"><td>TOTAL</td><td>${Number(invoice.total).toFixed(2)} €</td></tr>
+    <tr class="total-row"><td>TOTAL</td><td>${money(Number(invoice.total))}</td></tr>
   </table></div>
   </div>
   <div class="footer">
