@@ -204,6 +204,7 @@ const PlatformsManager = lazy(() => import("./pages/admin/marketing/PlatformsMan
 // TPV
 const TpvScreen = lazy(() => import("./pages/admin/tpv/TpvScreen"));
 const TpvBackoffice = lazy(() => import("./pages/admin/tpv/TpvBackoffice"));
+const TpvReports = lazy(() => import("./pages/admin/tpv/TpvReports"));
 
 // Plantillas Email
 const EmailTemplatesManager = lazy(() => import("./pages/admin/EmailTemplatesManager"));
@@ -405,6 +406,7 @@ function Router() {
       <Route path="/admin/tpv">{() => <Suspense fallback={<AdminLoadingFallback />}><TpvScreen /></Suspense>}</Route>
       <Route path="/admin/tpv/cajas">{() => <Suspense fallback={<AdminLoadingFallback />}><TpvBackoffice /></Suspense>}</Route>
       <Route path="/admin/tpv/backoffice">{() => <Suspense fallback={<AdminLoadingFallback />}><TpvBackoffice /></Suspense>}</Route>
+      <Route path="/admin/tpv/informes">{() => <Suspense fallback={<AdminLoadingFallback />}><TpvReports /></Suspense>}</Route>
 
       {/* Hotel & SPA */}
       <Route path="/admin/hotel">{() => <Suspense fallback={<AdminLoadingFallback />}><HotelManager /></Suspense>}</Route>

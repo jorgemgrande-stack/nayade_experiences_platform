@@ -110,12 +110,20 @@ export default function TpvBackoffice() {
               Historial de sesiones de caja y ventas presenciales
             </p>
           </div>
-          <Link href="/admin/tpv">
-            <Button className="bg-violet-600 hover:bg-violet-500 text-white gap-2">
-              <ExternalLink className="w-4 h-4" />
-              Abrir TPV
-            </Button>
-          </Link>
+          <div className="flex gap-2">
+            <Link href="/admin/tpv/informes">
+              <Button variant="outline" className="gap-2">
+                <TrendingUp className="w-4 h-4" aria-hidden="true" />
+                Informes
+              </Button>
+            </Link>
+            <Link href="/admin/tpv">
+              <Button className="bg-violet-600 hover:bg-violet-500 text-white gap-2">
+                <ExternalLink className="w-4 h-4" />
+                Abrir TPV
+              </Button>
+            </Link>
+          </div>
         </div>
 
         {/* Cajas */}
