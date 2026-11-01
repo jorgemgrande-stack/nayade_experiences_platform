@@ -48,6 +48,8 @@ const MIGRATED = [
   "components/connect/ConnectParts.tsx",
   "pages/admin/connect/ConnectPage.tsx",
   "pages/admin/connect/ConnectDetailPage.tsx",
+  "components/connect/Showcase.tsx",
+  "components/connect/SheetBlocks.tsx",
   "pages/admin/crm/ProposalsPage.tsx",
   "pages/admin/crm/CrmTags.tsx",
 ];
