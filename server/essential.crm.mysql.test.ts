@@ -32,13 +32,16 @@ describe.skipIf(!URL_)("Essential — CRM (aplicación real, dos empresas nuevas
   });
 
   it("crm-contacts / crm-accounts: alta de particular y de empresa con todos sus datos; aislamiento; permisos; licencia", async () => {
-    const p = await ess.m("a", "crm.clients.create", { name: "Ana Particular", email: "ana@cliente-a.example", phone: "600000001", address: "Calle Uno 1", notes: "Prefiere tardes" }, agA);
+    const p = await ess.m("a", "crm.clients.create", { name: "Ana Particular", email: "ana@cliente-a.example", phone: "600000001", address: "Calle Uno 1", city: "Santander", postalCode: "39001", country: "ES", birthDate: "", notes: "Prefiere tardes" }, agA);
     expect(p.status).toBe(200);
     const e = await ess.m("a", "crm.clients.create", { name: "Compras Ejemplo", email: "compras@empresa-a.example", company: "Empresa Cliente SL", nif: "B99999999" }, agA);
     expect(e.status).toBe(200);
     const [row] = await ess.sql("a", "SELECT name, address, notes, source FROM clients WHERE id = ?", [data(p).id]);
     // Antes del arreglo la dirección y las notas se aceptaban pero no se guardaban
     expect(row).toMatchObject({ name: "Ana Particular", address: "Calle Uno 1", notes: "Prefiere tardes", source: "manual" });
+    // Ciudad y código postal del formulario de alta (antes se descartaban)
+    const [place] = await ess.sql("a", "SELECT city, postalCode, country, birthDate FROM clients WHERE id = ?", [data(p).id]);
+    expect(place).toEqual({ city: "Santander", postalCode: "39001", country: "ES", birthDate: null });
     const [co] = await ess.sql("a", "SELECT company, nif FROM clients WHERE id = ?", [data(e).id]);
     expect(co).toEqual({ company: "Empresa Cliente SL", nif: "B99999999" });
 
