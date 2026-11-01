@@ -82,7 +82,33 @@ export const COMMERCIAL_CTA = ["demo", "contact", "waitlist"] as const;
 /** Estado funcional verificado en el ecosistema (interno): en uso, parcial, prototipo, sin desarrollo. */
 export const FUNCTIONAL_GRADES = ["in_use", "partial", "prototype", "none"] as const;
 /** Imagen real de la ficha: solo https de un almacén público, con texto alternativo. */
-const mediaImage = z.object({ src: z.string().trim().max(500).regex(/^https:\/\/[^\s]+$/), alt: text(160).min(1) }).strict();
+const httpsSrc = z.string().trim().max(500).regex(/^https:\/\/[^\s]+$/);
+const mediaImage = z.object({ src: httpsSrc, alt: text(160).min(1) }).strict();
+/** Punto de interés de una imagen (porcentaje desde la esquina superior izquierda) para recortes responsive. */
+const focal = z.object({ x: z.number().min(0).max(100), y: z.number().min(0).max(100) }).strict();
+/** Paleta cerrada de color de apoyo de la ficha: el panel la traduce a su tema (contraste garantizado). */
+export const ACCENT_COLORS = ["blue", "teal", "violet", "amber", "rose", "slate"] as const;
+export const HERO_STYLES = ["image", "split", "plain"] as const;
+/** Bloques ordenables de la ficha del marketplace. */
+export const SHEET_BLOCKS = ["problem", "benefits", "features", "howItWorks", "includes", "excludes", "integration", "gallery", "requirements", "terms", "faq", "related"] as const;
+/**
+ * Vídeo de la ficha: solo YouTube o Vimeo, servido en su modo de privacidad mejorada. Devuelve la URL para incrustar o
+ * null si el enlace no es de un proveedor admitido.
+ */
+export function videoEmbedUrl(url: string): string | null {
+  let u: URL;
+  try {
+    u = new URL(url);
+  } catch {
+    return null;
+  }
+  if (u.protocol !== "https:") return null;
+  const host = u.hostname.replace(/^www\./, "");
+  const yt = host === "youtube.com" && u.pathname === "/watch" ? u.searchParams.get("v") : host === "youtu.be" ? u.pathname.slice(1) : null;
+  if (yt !== null) return /^[\w-]{6,20}$/.test(yt) ? `https://www.youtube-nocookie.com/embed/${yt}` : null;
+  const vm = host === "vimeo.com" ? /^\/(\d{4,12})$/.exec(u.pathname) : null;
+  return vm ? `https://player.vimeo.com/video/${vm[1]}?dnt=1` : null;
+}
 /** Ficha comercial pública (contenido, sin precios: los importes solo viven en los precios aprobados). */
 const commercialBlock = z
   .object({
@@ -110,8 +136,39 @@ const commercialBlock = z
     faq: z.array(z.object({ q: text(200).min(3), a: text(1000).min(1) }).strict()).max(10).optional(),
     /** Productos relacionados (claves del catálogo). */
     related: z.array(entryKey).max(6).optional(),
-    /** Portada y capturas reales (nunca imágenes inventadas). */
-    media: z.object({ cover: mediaImage.optional(), screenshots: z.array(mediaImage.extend({ caption: text(160).optional() }).strict()).max(8).optional() }).strict().optional(),
+    /**
+     * Imágenes y vídeo reales (nunca inventados): tarjeta, cabecera, icono, galería (captura real o ilustración) y vídeo.
+     * `cover` y `screenshots` son los nombres anteriores: se aceptan y sirven de reserva de `hero` y `gallery`.
+     */
+    media: z
+      .object({
+        card: mediaImage.extend({ focal: focal.optional() }).strict().optional(),
+        hero: mediaImage.extend({ mobileSrc: httpsSrc.optional(), focal: focal.optional() }).strict().optional(),
+        icon: mediaImage.optional(),
+        gallery: z.array(mediaImage.extend({ caption: text(160).optional(), kind: z.enum(["screenshot", "illustration"]) }).strict()).max(12).optional(),
+        video: z.object({ url: z.string().trim().max(300).refine((u) => videoEmbedUrl(u) !== null, "solo YouTube o Vimeo"), title: text(120).min(1) }).strict().optional(),
+        cover: mediaImage.optional(),
+        screenshots: z.array(mediaImage.extend({ caption: text(160).optional() }).strict()).max(8).optional(),
+      })
+      .strict()
+      .optional(),
+    /** Cómo funciona, en pasos. */
+    howItWorks: z.array(z.object({ title: text(60).min(1), text: text(240).min(1) }).strict()).max(4).optional(),
+    /** Etiqueta promocional breve de la tarjeta (p. ej. «Nuevo»). */
+    promoLabel: text(30).min(1).optional(),
+    /** Diseño de la ficha: orden y visibilidad de bloques, color de apoyo de la paleta y estilo de cabecera. */
+    layout: z
+      .object({
+        blocks: z
+          .array(z.object({ id: z.enum(SHEET_BLOCKS), visible: z.boolean() }).strict())
+          .max(SHEET_BLOCKS.length)
+          .refine((b) => new Set(b.map((x) => x.id)).size === b.length, "bloque repetido")
+          .optional(),
+        accentColor: z.enum(ACCENT_COLORS).optional(),
+        heroStyle: z.enum(HERO_STYLES).optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 export type CommercialBlock = z.infer<typeof commercialBlock>;
