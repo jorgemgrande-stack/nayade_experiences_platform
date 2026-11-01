@@ -44,7 +44,9 @@ describe.skipIf(!URL_)("documento fiscal de las ventas de caja (aplicación real
   };
   const sale = async (extra: Record<string, unknown>, what: string, unitPrice = 24.2, quantity = 1) => {
     const total = Math.round(unitPrice * quantity * 100) / 100;
-    return ok(await ess.m("a", "tpv.createSale", { sessionId, items: [{ ...item(unitPrice, quantity), productId }], payments: [{ method: "card", amount: total }], ...extra }, agA), what).sale;
+    const r = ok(await ess.m("a", "tpv.createSale", { sessionId, items: [{ ...item(unitPrice, quantity), productId }], payments: [{ method: "card", amount: total }], ...extra }, agA), what);
+    // La factura emitida con la venta, tal como la recibe el diálogo de cobro
+    return Object.assign(r.sale, { invoiceRef: r.invoice });
   };
   const preview = async (n: string) => {
     const r = await ess.call("a", "GET", `/api/invoices/preview?n=${encodeURIComponent(n)}`, { cookie: agA });
@@ -87,6 +89,7 @@ describe.skipIf(!URL_)("documento fiscal de las ventas de caja (aplicación real
     const s = await sale({}, "tarjeta sin cliente");
     ids.anon = s.id;
     expect(s.status).toBe("paid");
+    expect(s.invoiceRef).toBeNull();
     expect((await ess.sql("a", "SELECT invoiceId FROM tpv_sales WHERE id = ?", [s.id]))[0].invoiceId).toBeNull();
     expect(await ess.sql("a", "SELECT COUNT(*) AS n FROM invoices")).toEqual(before);
     expect(await ess.sql("a", "SELECT COUNT(*) AS n FROM invoices WHERE clientName = 'Cliente TPV' AND invoiceNumber <> ?", [legacy.number])).toEqual([{ n: 0 }]);
@@ -106,6 +109,8 @@ describe.skipIf(!URL_)("documento fiscal de las ventas de caja (aplicación real
     expect([inv.status, inv.paymentMethod, Number(inv.total), Number(inv.taxAmount)]).toEqual(["cobrada", "tarjeta_fisica", 24.2, 4.2]);
     expect(inv.paymentValidatedAt).toBeTruthy();
     expect(inv.issuerSnapshot).toBeTruthy();
+    // El diálogo de cobro menciona la factura emitida (número y destinatario), no solo el ticket
+    expect(s.invoiceRef).toMatchObject({ id: row.invoiceId, invoiceNumber: inv.invoiceNumber, clientName: "Transportes Ruiz SL" });
     expect(json(inv.taxBreakdown)).toEqual([{ rate: 21, base: 20, amount: 4.2 }]);
     const html = await preview(inv.invoiceNumber);
     expect(html).toContain("Transportes Ruiz SL");

@@ -300,6 +300,8 @@ export default function TpvScreen() {
           items: data.items ?? [],
           payments: data.payments ?? [],
         },
+        // Factura completa emitida con la venta (cliente identificado), para mencionarla junto al ticket
+        invoice: data.invoice ?? null,
       };
       setLastSale(normalized);
       setShowCashPayment(false);

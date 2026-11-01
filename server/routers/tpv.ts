@@ -77,7 +77,12 @@ async function loadSaleResult(saleId: number) {
   const sale = row
     ? { ...row, taxBreakdown: tpvSaleTax(items.map((i) => ({ lineSubtotal: Number(i.subtotal), fiscalRegime: i.fiscalRegime, taxRate: i.taxRate })), Number(row.total)).taxBreakdown }
     : row;
-  return { sale, items, payments };
+  // Factura completa emitida con la venta (cliente identificado): para mencionarla junto al ticket
+  const invoiceId = row?.invoiceId;
+  const [invoice] = invoiceId
+    ? await db.select({ id: invoices.id, invoiceNumber: invoices.invoiceNumber, clientName: invoices.clientName, pdfUrl: invoices.pdfUrl }).from(invoices).where(eq(invoices.id, invoiceId))
+    : [];
+  return { sale, items, payments, invoice: invoice ?? null };
 }
 
 function generateTransactionNumber(): string {

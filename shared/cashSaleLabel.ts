@@ -31,3 +31,22 @@ export function orderActivityTitle(o: OrderNameInput): string {
   if (!isPlaceholder(o.invoiceClientName)) return `${CASH_SALE_LABEL} · ${(o.invoiceClientName ?? "").trim()}`;
   return CASH_SALE_LABEL;
 }
+
+export interface SaleInvoiceRef {
+  invoiceNumber: string;
+  clientName?: string | null;
+  pdfUrl?: string | null;
+}
+
+/**
+ * Aviso del diálogo de cobro cuando la venta lleva factura completa (cliente identificado): el número y el
+ * destinatario, y dónde verla (el documento si existe; si no, el listado de facturas).
+ */
+export function saleInvoiceNotice(inv: SaleInvoiceRef | null | undefined): { text: string; href: string } | null {
+  if (!inv?.invoiceNumber) return null;
+  const to = isPlaceholder(inv.clientName) ? "" : ` a ${(inv.clientName ?? "").trim()}`;
+  return {
+    text: `Factura ${inv.invoiceNumber} emitida${to}`,
+    href: inv.pdfUrl || "/admin/crm?tab=invoices",
+  };
+}
