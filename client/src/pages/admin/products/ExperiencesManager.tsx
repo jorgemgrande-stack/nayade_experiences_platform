@@ -12,6 +12,9 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import AdminLayout from "@/components/AdminLayout";
@@ -153,6 +156,7 @@ export default function ExperiencesManager() {
   const [search, setSearch] = useState("");
   const [cloneModal, setCloneModal] = useState<{ id: number; originalName: string } | null>(null);
   const [cloneName, setCloneName] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<{ id: number; title: string } | null>(null);
   const [localOrder, setLocalOrder] = useState<number[]>([]);
 
   const { data: experiences, refetch, isLoading: listLoading, isError: listIsError, error: listError } = trpc.products.getAll.useQuery();
@@ -526,7 +530,7 @@ export default function ExperiencesManager() {
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
                               className="text-red-600 focus:text-red-600"
-                              onClick={() => { if (confirm(`¿Eliminar permanentemente ${g("este", "esta")} ${noun}? Esta acción no se puede deshacer.`)) hardDeleteMutation.mutate({ id: exp.id }); }}
+                              onClick={() => setDeleteTarget({ id: exp.id, title: exp.title })}
                             >
                               <Trash2 className="w-3.5 h-3.5 mr-2" /> Borrar
                             </DropdownMenuItem>
@@ -1047,6 +1051,26 @@ export default function ExperiencesManager() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={deleteTarget !== null} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Eliminar permanentemente {g("este", "esta")} {noun}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteTarget?.title ? <>Se eliminará «{deleteTarget.title}». </> : null}Esta acción no se puede deshacer.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-white hover:bg-destructive/90"
+              onClick={() => { if (deleteTarget) hardDeleteMutation.mutate({ id: deleteTarget.id }); setDeleteTarget(null); }}
+            >
+              Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </AdminLayout>
   );
 }

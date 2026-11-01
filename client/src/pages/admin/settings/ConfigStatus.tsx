@@ -1,6 +1,7 @@
 import AdminLayout from "@/components/AdminLayout";
 import { trpc } from "@/lib/trpc";
 import { usePanelSubscription } from "@/hooks/usePanelSubscription";
+import { useVocabulary } from "@/lib/vocabulary";
 import { COMPANY_DATA_HREF } from "./configSections";
 import { SetupStatusCard } from "@/components/onboarding/SetupStatusCard";
 import { SETUP_WIZARD_PATH } from "@/components/SetupWizardLink";
@@ -76,6 +77,7 @@ export default function ConfigStatus() {
   // editan en «Datos de la empresa». En single, como siempre.
   const sub = usePanelSubscription();
   const technical = sub.mode === "legacy";
+  const voc = useVocabulary();
   const settingsQ = trpc.config.listSystemSettings.useQuery();
   const flagsQ = trpc.config.listFeatureFlags.useQuery(undefined, { enabled: technical });
   const wizard = trpc.setupWizard.status.useQuery(undefined, { retry: false, staleTime: 60_000 });
@@ -157,7 +159,7 @@ export default function ConfigStatus() {
           title="Emails y notificaciones"
           editHref={settingsHref}
           items={[
-            { label: "Email de reservas",    ok: hasValue("email_reservations"),   note: getSetting("email_reservations") || "(usando valor por defecto)" },
+            { label: `Email de ${voc.ordersLower}`, ok: hasValue("email_reservations"),   note: getSetting("email_reservations") || "(usando valor por defecto)" },
             { label: "Email alertas admin",  ok: hasValue("email_admin_alerts"),   note: getSetting("email_admin_alerts") || "(usando valor por defecto)" },
             { label: "Email contabilidad",   ok: hasValue("email_accounting"),     note: getSetting("email_accounting") || "(usando valor por defecto)" },
             { label: "Email cancelaciones",  ok: hasValue("email_cancellations"),  note: getSetting("email_cancellations") || "(usando valor por defecto)" },

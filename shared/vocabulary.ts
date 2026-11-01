@@ -64,6 +64,9 @@ export interface Vocabulary {
   interests: string;
   addInterest: string;
   requestedItems: string;
+  /** Qué cubre un bono de compensación: «Actividad» / «Producto o servicio». */
+  voucherItem: string;
+  voucherItemExample: string;
   // Fechas
   serviceDate: string;
   /** Variante corta usada en presupuestos y fichas: «Fecha de actividad» / «Fecha de servicio». */
@@ -145,6 +148,8 @@ export function buildVocabulary(input: VocabularyInput): Vocabulary {
       interests: "Actividades de interés",
       addInterest: "Añadir actividad",
       requestedItems: "Actividades solicitadas",
+      voucherItem: "Actividad",
+      voucherItemExample: "Ej: Day Pass",
       serviceDate: "Fecha de la actividad",
       serviceDateLabel: "Fecha de actividad",
       serviceDateShort: "F. Actividad",
@@ -198,6 +203,8 @@ export function buildVocabulary(input: VocabularyInput): Vocabulary {
     interests: "Productos o servicios de interés",
     addInterest: "Añadir producto o servicio",
     requestedItems: "Productos o servicios solicitados",
+    voucherItem: "Producto o servicio",
+    voucherItemExample: "Ej: Revisión anual",
     serviceDate: "Fecha de servicio",
     serviceDateLabel: "Fecha de servicio",
     serviceDateShort: "F. servicio",
