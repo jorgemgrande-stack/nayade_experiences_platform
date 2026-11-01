@@ -17,7 +17,7 @@ import { useLocation as useWouterLocation } from "wouter";
 import { getLoginUrl } from "@/const";
 import { trpc } from "@/lib/trpc";
 import { useTheme } from "@/contexts/ThemeContext";
-import MaintenanceModeControl from "./admin/MaintenanceModeControl";
+import MaintenanceModeControl, { maintenanceControlMode } from "./admin/MaintenanceModeControl";
 
 import { usePanelSubscription } from "@/hooks/usePanelSubscription";
 import {
@@ -208,6 +208,8 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
 
   // Menú: el de siempre (single / sin licencias por capacidad) o por tareas filtrado por licencias.
   const subscription = usePanelSubscription();
+  // Mantenimiento de la web: el control técnico solo en single; en multiempresa, «Web en mantenimiento» si gestiona web
+  const maintenanceMode = maintenanceControlMode({ role: userRole, install: subscription.install, canWeb: subscription.can("cms-editor") });
   const navSections: ResolvedSection[] =
     subscription.mode === "loading" || subscription.mode === "error"
       ? []
@@ -629,7 +631,7 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
                   : "Prueba finalizada"}
               </Link>
             )}
-            {userRole === "admin" && <MaintenanceModeControl />}
+            {maintenanceMode && <MaintenanceModeControl mode={maintenanceMode} />}
             {/* Toggle Light / Dark */}
             <Button
               variant="ghost"
