@@ -123,14 +123,14 @@ describe("reglas comerciales preparadas", () => {
   it("las reglas preparadas están registradas, ninguna activa y sin límites inventados", async () => {
     const { svc } = await imported();
     const r = await svc.commercialReview();
-    expect(r.rules.map((x) => x.id)).toEqual(["enterprise-cupos-base", "people-business-15", "pos-caja-basica", "paquetes-solo-facturables", "copilot-consumo-medido", "implantacion-separada", "net-core-incluido", "net-ampliacion-core", "net-adicionales", "enterprise-ampliaciones-presupuesto"]);
+    expect(r.rules.map((x) => x.id)).toEqual(["enterprise-cupos-base", "pos-caja-basica", "paquetes-solo-facturables", "copilot-consumo-medido", "implantacion-separada", "net-core-incluido", "net-ampliacion-core", "net-adicionales", "enterprise-ampliaciones-presupuesto"]);
     expect(r.rules.filter((x) => x.active)).toEqual([]);
     expect(r.rules.find((x) => x.id === "copilot-consumo-medido")?.limit).toBeNull();
     for (const x of r.rules) expect(x.requires.length, x.id).toBeGreaterThan(0);
     // Las que tienen estructura en el catálogo están en los borradores, propuestas
     const { policy } = await svc.commercialCatalog("proposed");
     expect(policy.quotaOverrides.filter((q) => q.plan === "enterprise").map((q) => `${q.metric}:${q.included}`)).toEqual(expect.arrayContaining(["users:25", "sites:10", "fiscal_entities:3"]));
-    expect(policy.inclusions.find((i) => i.plan === "business" && i.key === "connect-people")?.cap).toMatchObject({ base: 15, status: "proposed" });
+    expect(policy.inclusions.filter((i) => i.key === "connect-people")).toEqual([]);
     expect(policy.quoteOnRequestPlans).toContain("enterprise");
     expect(Object.values(policy.bundleRules ?? {}).every((b) => b.kind === "min2" && b.status === "proposed")).toBe(true);
   });
