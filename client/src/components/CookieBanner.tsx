@@ -2,6 +2,8 @@ import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { Cookie, X, ChevronDown, ChevronUp, Shield, BarChart2, Megaphone, Settings } from "lucide-react";
 import { trpc } from "@/lib/trpc";
+import { useCart } from "@/contexts/CartContext";
+import { cn } from "@/lib/utils";
 import { cookieBody, cookieCategories, hasOptionalCookies } from "@shared/cookieCategories";
 
 const STORAGE_KEY = "nayade_cookie_consent";
@@ -58,6 +60,12 @@ export const COOKIE_TEXTS = {
 } as const;
 export const COOKIE_POLICY_PATH = "/cookies";
 
+/**
+ * Capa del aviso: por encima de la página; con el carrito abierto, por debajo de su fondo (z-40) y del carrito
+ * (z-50), para no tapar «Finalizar compra». Al cerrar el carrito vuelve a quedar delante.
+ */
+export const cookieBannerLayer = (cartOpen: boolean) => (cartOpen ? "z-30" : "z-[9999]");
+
 export default function CookieBanner() {
   const [location] = useLocation();
   const [visible, setVisible] = useState(false);
@@ -68,6 +76,7 @@ export default function CookieBanner() {
   // Solo las categorías que la web usa de verdad (misma consulta y caché que el tema de la web)
   const { data: theme } = trpc.public.getTheme.useQuery(undefined, { staleTime: 5 * 60_000, retry: false, refetchOnWindowFocus: false });
   const cats = cookieCategories(theme);
+  const { isOpen: cartOpen } = useCart();
 
   useEffect(() => {
     const consent = loadConsent();
@@ -118,7 +127,7 @@ export default function CookieBanner() {
   };
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-[9999] p-4 md:p-6 pointer-events-none">
+    <div className={cn("fixed bottom-0 left-0 right-0 p-4 md:p-6 pointer-events-none", cookieBannerLayer(cartOpen))}>
       <div
         className="pointer-events-auto mx-auto max-w-4xl rounded-2xl shadow-2xl overflow-hidden"
         style={{

@@ -3,6 +3,7 @@ import { formatPaymentMethod } from "@/lib/labels";
 import AdminLayout from "@/components/AdminLayout";
 import { PanelError } from "@/components/admin/PanelStates";
 import { trpc } from "@/lib/trpc";
+import { transactionDescription } from "@shared/transactionText";
 import { useVocabulary } from "@/lib/vocabulary";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -358,7 +359,7 @@ export default function TransactionsList() {
                           </p>
                         )}
                         {!(t as any).clientName && !(t as any).productName && (
-                          <p className="text-xs text-muted-foreground truncate">{t.description ?? "—"}</p>
+                          <p className="text-xs text-muted-foreground truncate">{transactionDescription(t.description) ?? "—"}</p>
                         )}
                       </td>
                       {/* Estado */}
@@ -429,7 +430,7 @@ export default function TransactionsList() {
                 ["Producto", (txDetail as any).productName ?? "—"],
                 ["Vendedor", (txDetail as any).sellerName ?? "—"],
                 ["Centro operativo", (txDetail as any).operativeCenter ?? "—"],
-                ["Descripción", txDetail.description ?? "—"],
+                ["Descripción", transactionDescription(txDetail.description) ?? "—"],
                 [`Ref. ${voc.order}`, (txDetail as any).reservationRef ?? "—"],
                 ["Ref. externa", (txDetail as any).externalRef ?? "—"],
                 ["Nº factura", (txDetail as any).invoiceNumber ?? "—"],

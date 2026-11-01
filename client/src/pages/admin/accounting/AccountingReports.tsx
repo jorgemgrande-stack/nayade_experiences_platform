@@ -147,7 +147,7 @@ export default function AccountingReports() {
             Análisis de ventas, fiscalidad y canales de distribución
           </p>
         </div>
-        <Button variant="outline" size="sm" onClick={() => refetch()} className="gap-2">
+        <Button variant="outline" size="sm" onClick={() => refetch()} className="gap-2 text-foreground">
           <RefreshCw className="w-4 h-4" /> Actualizar
         </Button>
       </div>
@@ -504,7 +504,7 @@ export default function AccountingReports() {
                               <td className="py-2 px-3 font-medium">
                                 {PROFIT_CHANNEL_LABELS[r.channel] ?? r.channel}
                               </td>
-                              <td className="py-2 px-3 text-right font-semibold text-green-700">{fmtEurLocal(r.amount)}</td>
+                              <td className="py-2 px-3 text-right font-semibold text-success">{fmtEurLocal(r.amount)}</td>
                               <td className="py-2 px-3 text-right text-muted-foreground">{r.count}</td>
                               <td className="py-2 px-3 text-right font-semibold">{fmtEurLocal(r.ticketMedio)}</td>
                               <td className="py-2 px-3 text-right">

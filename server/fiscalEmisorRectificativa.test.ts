@@ -13,7 +13,7 @@ vi.mock("./_core/legacyDb", () => ({
   legacyDb: () => ({ select: () => ({ from: () => ({ where: async () => [{ key: "legalCompanyName", value: "Antigua SL" }, { key: "legalCompanyCif", value: "B99999999" }] }) }) }),
 }));
 
-const { buildInvoiceHtml, parseIssuerSnapshot, toIssuerSnapshot, RECTIFICATIVE_LEGAL_NOTE } = await import("./invoiceHtml");
+const { buildInvoiceHtml, formatInvoiceMoney, parseIssuerSnapshot, toIssuerSnapshot, RECTIFICATIVE_LEGAL_NOTE } = await import("./invoiceHtml");
 const { resolveCurrentLegalCompany, readableOnWhiteText, DOCUMENT_NEUTRAL_INK } = await import("./tenantBrand");
 const { fiscalSettingError } = await import("./fiscalSettingsValidation");
 const { buildInvoiceEmailHtml } = await import("./emailTemplates");
@@ -115,25 +115,45 @@ describe("plantilla de la factura", () => {
     expect(html).toContain("ABO-2026-11-0001");
     expect(html).toContain("Rectifica la factura <strong>FAC-2026-0003</strong> de fecha 20/10/2026.");
     expect(html).toContain("Motivo de la rectificación: Devolución &lt;parcial&gt;");
-    expect(html).toContain("Base imponible IVA 21%</td><td>-50.00 €");
-    expect(html).toContain("IVA 21%</td><td>-10.50 €");
-    expect(html).toContain("Base imponible IVA 10%</td><td>-20.00 €");
-    expect(html).toContain("IVA 10%</td><td>-2.00 €");
-    expect(html).toContain("<td>TOTAL</td><td>-82.50 €</td>");
+    expect(html).toContain("Base imponible IVA 21%</td><td>−50,00 €");
+    expect(html).toContain("IVA 21%</td><td>−10,50 €");
+    expect(html).toContain("Base imponible IVA 10%</td><td>−20,00 €");
+    expect(html).toContain("IVA 10%</td><td>−2,00 €");
+    expect(html).toContain("<td>TOTAL</td><td>−82,50 €</td>");
     expect(html).toContain("Real Decreto 1619/2012");
     expect(RECTIFICATIVE_LEGAL_NOTE).toMatch(/artículo 15/);
   });
 
   it("abono total guardado en positivo (documento antiguo copiado): se presenta en negativo", async () => {
     const html = await buildInvoiceHtml({ ...invoice, invoiceNumber: "ABO-2026-11-0002", issuerSnapshot: snap, invoiceType: "abono", creditNoteReason: "Anulación", rectifies: { invoiceNumber: "FAC-2026-0003", issuedAt: "2026-10-20T10:00:00Z" } });
-    expect(html).toContain("<td>TOTAL</td><td>-176.00 €</td>");
-    expect(html).toContain("-100.00 €");
+    expect(html).toContain("<td>TOTAL</td><td>−176,00 €</td>");
+    expect(html).toContain("−100,00 €");
   });
 
   it("abono sin copia del emisor (emitido antes): se ve como se emitió", async () => {
     const html = await buildInvoiceHtml({ ...invoice, issuerSnapshot: null, invoiceType: "abono", creditNoteReason: "x", rectifies: null });
     expect(html).toContain('<span class="doc-label">Factura</span>');
     expect(html).not.toContain("rectificativa");
+  });
+
+  it("importes con coma decimal solo en los documentos nuevos; los emitidos sin copia conservan «176.00 €»", async () => {
+    const nueva = await buildInvoiceHtml({ ...invoice, discount: "10.00", discountReason: "Cliente", issuerSnapshot: snap, invoiceType: "factura" });
+    expect(nueva).toContain("<td>TOTAL</td><td>176,00 €</td>");
+    expect(nueva).toContain("Base imponible IVA 21%</td><td>100,00 €");
+    expect(nueva).toContain(">50,00 €</td>");
+    expect(nueva).toContain(">−10,00 €</td>");
+    expect(nueva).not.toMatch(/\d\.\d\d €/);
+    const antigua = await buildInvoiceHtml({ ...invoice, discount: "10.00", discountReason: "Cliente", issuerSnapshot: null, invoiceType: "factura" });
+    expect(antigua).toContain("<td>TOTAL</td><td>176.00 €</td>");
+    expect(antigua).toContain(">-10.00 €</td>");
+    expect(antigua).not.toMatch(/\d,\d\d €/);
+  });
+
+  it("formato de importe de los documentos nuevos", () => {
+    expect(formatInvoiceMoney(29.9)).toBe("29,90 €");
+    expect(formatInvoiceMoney(-22.5)).toBe("−22,50 €");
+    expect(formatInvoiceMoney(12345.6)).toBe("12.345,60 €");
+    expect(formatInvoiceMoney(-0.001)).toBe("0,00 €");
   });
 });
 

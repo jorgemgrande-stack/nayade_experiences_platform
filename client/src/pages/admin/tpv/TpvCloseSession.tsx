@@ -7,6 +7,7 @@
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { formatEur } from "@shared/creditNoteForm";
+import { parseCashInput } from "@shared/cashAmount";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,7 +23,7 @@ interface Props {
 }
 
 export default function TpvCloseSession({ open, sessionId, onClose, onClosed }: Props) {
-  const [countedCash, setCountedCash] = useState("0");
+  const [countedCash, setCountedCash] = useState("");
   const [notes, setNotes] = useState("");
 
   const { data: summary } = trpc.tpv.getSessionSummary.useQuery(
@@ -55,7 +56,10 @@ export default function TpvCloseSession({ open, sessionId, onClose, onClosed }: 
   const totalSales = summary?.totalSales ?? 0;
 
   const expectedCash = openingAmt + totalCash + totalIn - totalOut;
-  const difference = parseFloat(countedCash || "0") - expectedCash;
+  // Se escribe con coma decimal («125,50»); también vale el punto
+  const counted = parseCashInput(countedCash);
+  const countedInvalid = countedCash.trim() !== "" && counted === null;
+  const difference = (counted ?? 0) - expectedCash;
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
@@ -109,21 +113,29 @@ export default function TpvCloseSession({ open, sessionId, onClose, onClosed }: 
           )}
 
           <div className="space-y-1">
-            <Label className="text-gray-300 text-sm">Efectivo real en caja (€)</Label>
+            <Label htmlFor="tpv-counted-cash" className="text-gray-300 text-sm">Efectivo real en caja (€)</Label>
             <div className="relative">
               <Banknote className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
               <Input
-                type="number"
-                step="0.01"
+                id="tpv-counted-cash"
+                type="text"
+                inputMode="decimal"
+                autoComplete="off"
                 value={countedCash}
                 onChange={(e) => setCountedCash(e.target.value)}
                 className="pl-9 bg-gray-800 border-gray-700 text-white text-lg font-bold"
-                placeholder="0.00"
+                placeholder="0,00"
+                {...(countedInvalid ? { "aria-invalid": true, "aria-describedby": "tpv-counted-cash-error" } : {})}
               />
             </div>
+            {countedInvalid && (
+              <p id="tpv-counted-cash-error" role="alert" className="text-xs text-warning">
+                Escribe el importe con coma decimal, por ejemplo 125,50.
+              </p>
+            )}
           </div>
 
-          {countedCash && (
+          {counted !== null && (
             <div className={`flex items-center gap-2 text-sm rounded-lg px-3 py-2 ${
               Math.abs(difference) < 0.01
                 ? "bg-success/10 text-success"
@@ -158,13 +170,17 @@ export default function TpvCloseSession({ open, sessionId, onClose, onClosed }: 
             </Button>
             <Button
               className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold"
-              onClick={() =>
+              onClick={() => {
+                if (counted === null) {
+                  toast.error("Escribe el efectivo que hay en la caja, por ejemplo 125,50.");
+                  return;
+                }
                 closeMut.mutate({
                   sessionId,
-                  countedCash: parseFloat(countedCash) || 0,
+                  countedCash: counted,
                   notes: notes || undefined,
-                })
-              }
+                });
+              }}
               disabled={closeMut.isPending}
             >
               {closeMut.isPending ? "Cerrando..." : "Cerrar Caja"}

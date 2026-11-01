@@ -122,6 +122,6 @@ export const PANEL_PALETTE_KEYS = Object.keys(vars(WHITE, WHITE, "light"));
  * las superficies del panel y que index.css los declara tal cual.
  */
 export const SEMANTIC_COLORS = {
-  light: { success: "#047857", warning: "#92400e", danger: "#b91c1c", info: "#0369a1" },
+  light: { success: "#046c4e", warning: "#92400e", danger: "#b91c1c", info: "#0369a1" },
   dark: { success: "#6ee7b7", warning: "#fcd34d", danger: "#fca5a5", info: "#7dd3fc" },
 } as const;
