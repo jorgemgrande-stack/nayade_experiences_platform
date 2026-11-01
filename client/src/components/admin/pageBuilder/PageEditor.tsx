@@ -24,6 +24,7 @@ import { cn } from "@/lib/utils";
 import { BLOCK_CATALOG, SEO_LIMITS, blockLabel, createBlock, duplicateBlock, pageSlugProblem, slugFromTitle, type BlockType, type PageBlock } from "@shared/pageBlocks";
 import { isLegalPageSlug } from "@shared/tenantNav";
 import { BlockEditor, blockSummary, type LinkTarget } from "./BlockEditors";
+import { TOKEN_BADGE_CLASS } from "@shared/siteTokenLabels";
 
 const ICONS: Record<BlockType, typeof FileText> = {
   hero: LayoutTemplate, text: AlignLeft, image: ImageIcon, gallery: Images, button: MousePointerClick, columns: Columns2, contact_form: Mail, separator: Minus,
@@ -220,7 +221,8 @@ export function PageEditor({ slug, pages, onBack, onSlugChange }: { slug: string
           )}
           {usesTokens && (
             <p className="rounded-lg border border-border bg-background px-4 py-3 text-sm text-muted-foreground">
-              Los datos entre dobles llaves, como {"{{telefono}}"} o {"{{email}}"}, se rellenan solos con los datos de tu empresa. Si falta alguno, esa línea no se
+              Los distintivos como <span className={TOKEN_BADGE_CLASS}>Teléfono de tu empresa</span> o{" "}
+              <span className={TOKEN_BADGE_CLASS}>Correo de tu empresa</span> se rellenan solos con los datos de tu empresa. Si falta alguno, esa línea no se
               muestra en tu web hasta que lo completes en Datos de la empresa.
             </p>
           )}

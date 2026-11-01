@@ -6,9 +6,9 @@ import { useId } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import ImageUploader from "@/components/ImageUploader";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+// Campos que muestran los datos de la empresa ({{nombre}}…) como distintivos legibles
+import { TokenInput as Input, TokenTextarea as Textarea } from "./TokenFields";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { RichTextEditor } from "./RichTextEditor";
