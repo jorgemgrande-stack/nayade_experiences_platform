@@ -39,4 +39,11 @@ describe("medición del marketplace", () => {
     expect(r).toEqual({ accepted: 3, counted: 1, stale: 2 });
     expect(await recordPanelEvents(null, "t9-demo", { events: [ev("card_view")] }, NOW)).toEqual({ accepted: 1, counted: 0, stale: 0 });
   });
+
+  it("acepta at en milisegundos o como fecha ISO (lo que envía el panel)", async () => {
+    const store = new MemoryPanelEventStore();
+    const r = await recordPanelEvents(store, "t9-demo", { events: [ev("card_view", { at: new Date(NOW - 60_000).toISOString() }), ev("card_view", { at: "2026-11-02T13:00:00+01:00" })] }, NOW);
+    expect(r).toEqual({ accepted: 2, counted: 2, stale: 0 });
+    await expect(recordPanelEvents(store, "t9-demo", { events: [ev("card_view", { at: "ayer" })] }, NOW)).rejects.toThrow();
+  });
 });

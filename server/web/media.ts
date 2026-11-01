@@ -21,7 +21,8 @@ import type { WebStore } from "./store";
 export const MEDIA_WIDTHS = [480, 960, 1600, 2400] as const;
 export const MEDIA_FORMATS = ["webp", "avif"] as const;
 export const MAX_UPLOAD_BYTES = 12 * 1024 * 1024;
-const MIN_WIDTH = 320;
+/** Mínimo de ancho: el icono de la ficha es de 256 px. */
+const MIN_WIDTH = 200;
 const ID_RE = /^[a-f0-9]{32}$/;
 const VARIANT_RE = /^w(480|960|1600|2400)\.(webp|avif)$/;
 

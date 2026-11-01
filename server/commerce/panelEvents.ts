@@ -24,7 +24,8 @@ const event = z
     type: z.enum(PANEL_EVENT_TYPES),
     productKey: key.optional(),
     slideId: key.optional(),
-    at: z.number().int(),
+    /** Momento del evento: milisegundos o fecha ISO 8601 (el panel envía ISO). */
+    at: z.union([z.number().int(), z.string().datetime({ offset: true }).transform((s) => Date.parse(s))]),
   })
   .strict();
 const body = z.object({ events: z.array(event).min(1).max(50) }).strict();

@@ -14,7 +14,7 @@ let png: Buffer;
 let small: Buffer;
 beforeAll(async () => {
   png = await sharp({ create: { width: 1200, height: 800, channels: 3, background: "#3366aa" } }).png().withMetadata({ exif: { IFD0: { Copyright: "dato privado" } } }).toBuffer();
-  small = await sharp({ create: { width: 200, height: 100, channels: 3, background: "#ffffff" } }).jpeg().toBuffer();
+  small = await sharp({ create: { width: 150, height: 100, channels: 3, background: "#ffffff" } }).jpeg().toBuffer();
 });
 
 const setup = () => {
@@ -44,7 +44,7 @@ describe("subida de imágenes del marketplace", () => {
     const { svc } = setup();
     await expect(svc.upload({ data: png, alt: "  ", author: "o" })).rejects.toThrow(/obligatorio/);
     await expect(svc.upload({ data: Buffer.from("<svg onload=alert(1)></svg>".padEnd(64)), alt: "x", author: "o" })).rejects.toThrow(/Solo imágenes/);
-    await expect(svc.upload({ data: small, alt: "x", author: "o" })).rejects.toThrow(/al menos 320/);
+    await expect(svc.upload({ data: small, alt: "x", author: "o" })).rejects.toThrow(/al menos 200/);
     const broken = Buffer.concat([png.subarray(0, 40), Buffer.alloc(200)]);
     await expect(svc.upload({ data: broken, alt: "x", author: "o" })).rejects.toBeInstanceOf(MediaError);
   });
