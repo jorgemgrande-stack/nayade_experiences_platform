@@ -16,7 +16,7 @@ describe.skipIf(!URL_)("Propuestas: no se envían con productos sin precio", () 
   beforeAll(async () => {
     ess = await startEssentialApp(URL_!, "propprecio");
     agA = await ess.login("a", "agente");
-    const r = await ess.m("a", "crm.quotes.createDirect", { clientName: "Cliente Propuesta", clientEmail: "propuesta@cliente-a.example", title: "Base", items: [{ description: "Servicio", quantity: 1, unitPrice: 10, total: 10 }], subtotal: 10, total: 12.1 }, agA);
+    const r = await ess.m("a", "crm.quotes.createDirect", { clientName: "Cliente Propuesta", clientEmail: "propuesta@cliente-a.example", title: "Base", items: [{ description: "Servicio", quantity: 1, unitPrice: 10, total: 10 }], subtotal: 10, total: 12.1, pricesIncludeTax: false }, agA);
     leadId = data(r).leadId;
   }, 300_000);
   afterAll(async () => {

@@ -7,6 +7,7 @@ import {
   buildTpvFilters, matchesTpvFilter, productBadge, pickInitialRegister, LAST_REGISTER_KEY, newSaleAttemptKey,
 } from "./tpvScreenLogic";
 import { trpc } from "@/lib/trpc";
+import { formatEur } from "@shared/creditNoteForm";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -799,9 +800,9 @@ export default function TpvScreen() {
                       </p>
                       <div className="flex items-center gap-1">
                         {discount > 0 && (
-                          <span className="text-xs text-gray-500 line-through">{price.toFixed(2)}€</span>
+                          <span className="text-xs text-gray-500 line-through">{formatEur(price)}</span>
                         )}
-                        <span className="text-sm font-bold text-violet-400">{finalPrice.toFixed(2)}€</span>
+                        <span className="text-sm font-bold text-violet-400">{formatEur(finalPrice)}</span>
                       </div>
                     </div>
                     {/* Add overlay */}
@@ -963,7 +964,7 @@ export default function TpvScreen() {
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="text-xs font-medium text-white line-clamp-1">{item.product.title}</p>
-                          <p className="text-xs text-gray-400">{item.unitPrice.toFixed(2)}€/ud</p>
+                          <p className="text-xs text-gray-400">{formatEur(item.unitPrice)}/ud</p>
                           {item.variantName && (
                             <p className="text-xs text-cyan-400 flex items-center gap-0.5 mt-0.5">
                               <Tag className="w-2.5 h-2.5" />
@@ -1004,7 +1005,7 @@ export default function TpvScreen() {
                             <Plus className="w-3 h-3" />
                           </button>
                         </div>
-                        <span className="text-sm font-bold text-violet-400">{lineTotal.toFixed(2)}€</span>
+                        <span className="text-sm font-bold text-violet-400">{formatEur(lineTotal)}</span>
                       </div>
 
                       {/* Desglose de líneas para Lego Pack */}
@@ -1035,7 +1036,7 @@ export default function TpvScreen() {
                 {promoCodeData ? (
                   <div className="flex items-center justify-between bg-green-900/30 border border-green-700/40 rounded px-2 py-1">
                     <span className="text-xs text-green-400 font-mono font-bold">{promoCodeData.code}</span>
-                    <span className="text-xs text-green-400">-{promoCodeData.discountPercent}% (-{promoDiscount.toFixed(2)}€)</span>
+                    <span className="text-xs text-green-400">-{promoCodeData.discountPercent}% (-{formatEur(promoDiscount)})</span>
                     <button onClick={removePromoCode} aria-label="Quitar código" className="text-gray-500 hover:text-red-400 ml-1 w-11 h-11 -my-2 flex items-center justify-center"><X className="w-4 h-4" /></button>
                   </div>
                 ) : (
@@ -1070,7 +1071,7 @@ export default function TpvScreen() {
                 >
                   <span className="flex items-center gap-1">
                     <Tag className="w-3 h-3" />
-                    {discountAmount > 0 ? `-${discountAmount.toFixed(2)}€` : "Descuento manual"}
+                    {discountAmount > 0 ? `-${formatEur(discountAmount)}` : "Descuento manual"}
                   </span>
                   {showDiscountForm ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
                 </button>
@@ -1115,23 +1116,23 @@ export default function TpvScreen() {
           <div className="px-4 py-3 border-t border-gray-800 space-y-1">
             <div className="flex justify-between text-xs text-gray-400">
               <span>Subtotal</span>
-              <span>{cartSubtotal.toFixed(2)}€</span>
+              <span>{formatEur(cartSubtotal)}</span>
             </div>
             {promoDiscount > 0 && (
               <div className="flex justify-between text-xs text-green-400">
                 <span>Promo {promoCodeData?.code}</span>
-                <span>-{promoDiscount.toFixed(2)}€</span>
+                <span>-{formatEur(promoDiscount)}</span>
               </div>
             )}
             {discountAmount > 0 && (
               <div className="flex justify-between text-xs text-green-400">
                 <span>Descuento manual</span>
-                <span>-{discountAmount.toFixed(2)}€</span>
+                <span>-{formatEur(discountAmount)}</span>
               </div>
             )}
             <div className="flex justify-between text-lg font-bold text-white">
               <span>TOTAL</span>
-              <span className="text-violet-400">{cartTotal.toFixed(2)}€</span>
+              <span className="text-violet-400">{formatEur(cartTotal)}</span>
             </div>
           </div>
 
@@ -1190,7 +1191,7 @@ export default function TpvScreen() {
               <ShoppingCart className="w-5 h-5" />
               Carrito{cart.length > 0 ? ` (${cart.reduce((a, i) => a + i.quantity, 0)})` : ""}
             </span>
-            <span>{cartTotal.toFixed(2)}€</span>
+            <span>{formatEur(cartTotal)}</span>
           </Button>
         </div>
       )}
@@ -1467,7 +1468,7 @@ function TpvVariantsModal({
                 >
                   <span className="font-medium">{variant.name}</span>
                   <span className={`text-base font-bold ${selected === variant.id ? "text-violet-300" : "text-violet-400"}`}>
-                    {price.toFixed(2)}€
+                    {formatEur(price)}
                   </span>
                 </button>
               );

@@ -9,6 +9,8 @@ import { Link } from "wouter";
 import { CheckCircle, Clock, XCircle, ArrowRight, Phone, Mail, RefreshCw } from "lucide-react";
 import PublicLayout from "@/components/PublicLayout";
 import { trpc } from "@/lib/trpc";
+import { formatEur } from "@shared/creditNoteForm";
+import { formatDayEs } from "@shared/formatDay";
 import { usePublicContact } from "@/hooks/usePublicPhone";
 import { useMarketingConsent } from "@/hooks/useMarketingConsent";
 import { trackEvent } from "@/lib/meta-pixel/client";
@@ -84,7 +86,7 @@ export default function ReservaOk() {
           <h1 className="text-2xl font-bold text-foreground mb-2">Enlace inválido</h1>
           <p className="text-muted-foreground mb-6">No se encontró el número de pedido en la URL.</p>
           <Link href="/experiencias" className="inline-flex items-center gap-2 text-accent hover:underline">
-            Ver experiencias <ArrowRight className="w-4 h-4" />
+            Seguir comprando <ArrowRight className="w-4 h-4" />
           </Link>
         </div>
       </PublicLayout>
@@ -126,7 +128,7 @@ export default function ReservaOk() {
           <h1 className="text-2xl font-bold text-foreground mb-2">Pago en proceso</h1>
           <p className="text-muted-foreground mb-4">
             No hemos podido confirmar el estado de tu reserva en este momento.
-            Si el pago se realizó correctamente, recibirás un email de confirmación en breve.
+            Si el pago se realizó correctamente, quedará confirmado en unos minutos: vuelve a comprobarlo con la referencia.
           </p>
           <p className="text-sm text-muted-foreground mb-8">
             Referencia: <span className="font-mono font-semibold text-foreground">{merchantOrder}</span>
@@ -139,7 +141,7 @@ export default function ReservaOk() {
               <RefreshCw className="w-4 h-4" /> Comprobar de nuevo
             </button>
             <Link href="/experiencias" className="inline-flex items-center gap-2 px-6 py-3 rounded-lg text-white text-sm" style={{ background: 'linear-gradient(135deg, #f97316, #f59e0b)' }}>
-              Ver experiencias <ArrowRight className="w-4 h-4" />
+              Seguir comprando <ArrowRight className="w-4 h-4" />
             </Link>
           </div>
           <div className="mt-8 pt-8 border-t border-border text-sm text-muted-foreground">
@@ -199,7 +201,7 @@ export default function ReservaOk() {
   if (data.status === "paid") {
     // Usar amountPaid si está disponible (importe real cobrado), si no amountTotal
     const paidCents = data.amountPaid ?? data.amountTotal;
-    const amountEuros = paidCents ? (paidCents / 100).toFixed(2) : null;
+    const amountEuros = paidCents ? formatEur(paidCents / 100) : null;
     const isQuotePayment = data.quoteSource === "presupuesto";
     return (
       <PublicLayout>
@@ -212,7 +214,7 @@ export default function ReservaOk() {
               ¡{isQuotePayment ? "Presupuesto pagado!" : "Reserva confirmada!"}
             </h1>
             <p className="text-muted-foreground">
-              Tu pago ha sido procesado correctamente. Recibirás un email de confirmación con todos los detalles en breve.
+              Tu pago se ha registrado correctamente. Guarda la referencia de pago para cualquier consulta.
             </p>
           </div>
 
@@ -228,7 +230,7 @@ export default function ReservaOk() {
               {data.bookingDate && (
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Fecha</span>
-                  <span className="font-medium text-foreground">{data.bookingDate}</span>
+                  <span className="font-medium text-foreground">{formatDayEs(data.bookingDate)}</span>
                 </div>
               )}
               {!isQuotePayment && data.people && (
@@ -242,7 +244,7 @@ export default function ReservaOk() {
                 <span className="font-medium text-foreground">{data.customerName}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Email de confirmación</span>
+                <span className="text-muted-foreground">Correo electrónico</span>
                 <span className="font-medium text-foreground break-all">{data.customerEmail}</span>
               </div>
               {data.notes && (
@@ -254,7 +256,7 @@ export default function ReservaOk() {
               {amountEuros && (
                 <div className="flex justify-between pt-3 border-t border-border">
                   <span className="font-semibold text-foreground">Total pagado</span>
-                  <span className="font-bold text-emerald-600 text-lg">{amountEuros} €</span>
+                  <span className="font-bold text-emerald-600 text-lg">{amountEuros}</span>
                 </div>
               )}
               <div className="flex justify-between text-xs text-muted-foreground pt-1">
@@ -269,30 +271,24 @@ export default function ReservaOk() {
             <ul className="space-y-2 text-sm text-muted-foreground">
               <li className="flex items-start gap-2">
                 <CheckCircle className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
-                Recibirás un email de confirmación con {isQuotePayment ? "la factura y" : ""} todos los detalles.
+                Tu pago queda registrado con la referencia indicada arriba.
               </li>
               {isQuotePayment ? (
                 <>
                   <li className="flex items-start gap-2">
                     <CheckCircle className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
-                    Tu factura ha sido generada automáticamente y estará disponible en el email.
+                    Tu factura se ha generado automáticamente.
                   </li>
-                  <li className="flex items-start gap-2">
-                    <CheckCircle className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
-                    Nuestro equipo se pondrá en contacto contigo para coordinar los detalles de la actividad.
-                  </li>
-                </>
-              ) : (
-                <>
                   <li className="flex items-start gap-2">
                     <CheckCircle className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
                     Nuestro equipo se pondrá en contacto contigo para coordinar los detalles.
                   </li>
-                  <li className="flex items-start gap-2">
-                    <CheckCircle className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
-                    Cancelación gratuita hasta 48h antes de la actividad.
-                  </li>
                 </>
+              ) : (
+                <li className="flex items-start gap-2">
+                  <CheckCircle className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                  Nuestro equipo se pondrá en contacto contigo para coordinar los detalles.
+                </li>
               )}
             </ul>
           </div>
@@ -313,7 +309,7 @@ export default function ReservaOk() {
 
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
             <Link href="/experiencias" className="inline-flex items-center gap-2 px-6 py-3 rounded-lg text-white text-sm" style={{ background: 'linear-gradient(135deg, #f97316, #f59e0b)' }}>
-              Ver más experiencias <ArrowRight className="w-4 h-4" />
+              Seguir comprando <ArrowRight className="w-4 h-4" />
             </Link>
             <Link href="/" className="inline-flex items-center gap-2 px-6 py-3 rounded-lg border border-border hover:bg-muted transition-colors text-sm">
               Volver al inicio
@@ -334,7 +330,7 @@ export default function ReservaOk() {
         <h1 className="text-2xl font-bold text-foreground mb-2">Estamos validando tu pago</h1>
         <p className="text-muted-foreground mb-4">
           Tu transacción está siendo procesada por el banco. Si el pago es correcto,
-          recibirás un email de confirmación en los próximos minutos.
+          quedará confirmado en unos minutos: vuelve a comprobar el estado con la referencia.
         </p>
         <p className="text-sm text-muted-foreground mb-8">
           Referencia: <span className="font-mono font-semibold text-foreground">{merchantOrder}</span>
@@ -347,7 +343,7 @@ export default function ReservaOk() {
             <RefreshCw className="w-4 h-4" /> Comprobar estado
           </button>
           <Link href="/experiencias" className="inline-flex items-center gap-2 px-6 py-3 rounded-lg text-white text-sm" style={{ background: 'linear-gradient(135deg, #f97316, #f59e0b)' }}>
-            Ver experiencias <ArrowRight className="w-4 h-4" />
+            Seguir comprando <ArrowRight className="w-4 h-4" />
           </Link>
         </div>
         <div className="mt-8 pt-8 border-t border-border text-sm text-muted-foreground">

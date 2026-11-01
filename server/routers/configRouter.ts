@@ -6,7 +6,8 @@ import { getDb } from "../db";
 import { featureFlags, systemSettings, configChangeLogs } from "../../drizzle/schema";
 import { invalidateConfigCache } from "../config";
 import type { User } from "../../drizzle/schema";
-import { brandName, tenantFiscalIdentity } from "../tenantBrand";
+import { brandName, formatLegalAddress, tenantFiscalIdentity } from "../tenantBrand";
+import { getLegalCompanySettings } from "../invoiceHtml";
 import { isMultiTenant } from "../_core/tenant";
 import { warmTenantIdentity } from "../_core/tenantIdentity";
 import { INSTALL_MODE_SETTING } from "../../shared/adminNav";
@@ -113,10 +114,13 @@ export const configRouter = router({
     // Multiempresa: lo que falte, de la identidad de la empresa en el registro (nunca respaldos de otra)
     if (isMultiTenant()) await warmTenantIdentity().catch(() => undefined);
     const fiscal = isMultiTenant() ? tenantFiscalIdentity() : null;
+    // Emisor: la misma fuente única que la factura. Sin datos, vacío (nunca un domicilio fijo).
+    const legal = await getLegalCompanySettings().catch(() => null);
     return {
       name: v("brand_name") ?? (isMultiTenant() ? brandName() || null : null),
-      legalName: v("site_legal_name") ?? fiscal?.legalName ?? null,
-      taxId: v("brand_nif") ?? fiscal?.taxId ?? null,
+      legalName: legal?.name.trim() || v("site_legal_name") || fiscal?.legalName || null,
+      taxId: legal?.cif.trim() || v("brand_nif") || fiscal?.taxId || null,
+      fiscalAddress: (legal ? formatLegalAddress(legal).trim() : "") || null,
       address: v("brand_address") ?? fiscal?.address ?? null,
       city: v("site_legal_city"),
       website: v("brand_website_url"),

@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import { toastError } from "@/lib/errorMessage";
 import { Download, Upload, RefreshCw, CheckCircle2, AlertCircle } from "lucide-react";
 import { CLIENT_CSV_MAX_BYTES, CLIENT_CSV_MAX_ROWS, clientCsvTemplate } from "@shared/clientImportCsv";
+import { importButtonLabel, importDoneToast, importPreviewSummary, importResultSentence } from "@shared/clientImportTexts";
 
 type Action = "create" | "update" | "unchanged" | "review" | "error";
 
@@ -61,7 +62,7 @@ export default function ClientImportDialog({ open, onClose }: { open: boolean; o
       setResult(r);
       setStep(3);
       utils.crm.clients.list.invalidate();
-      toast.success(`Importación terminada: ${r.created} altas y ${r.updated} clientes completados`);
+      toast.success(importDoneToast(r.created, r.updated));
     },
     onError: (e) => toastError(e),
   });
@@ -139,8 +140,7 @@ export default function ClientImportDialog({ open, onClose }: { open: boolean; o
         {step === 2 && plan && (
           <div className="space-y-3 text-sm">
             <p className="text-white/70">
-              <strong className="text-white">{fileName}</strong>: {plan.totals.create} altas nuevas, {plan.totals.update} clientes a completar,
-              {" "}{plan.totals.unchanged} sin cambios, {plan.totals.review} para revisar a mano y {plan.totals.error} que no se importan.
+              <strong className="text-white">{fileName}</strong>: {importPreviewSummary(plan.totals)}
             </p>
             {plan.ignoredColumns.length > 0 && (
               <p className="text-white/50 text-xs">Columnas que no se usan: {plan.ignoredColumns.join(", ")}</p>
@@ -190,7 +190,7 @@ export default function ClientImportDialog({ open, onClose }: { open: boolean; o
           <div className="flex items-start gap-3 text-sm">
             <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
             <p className="text-white/80">
-              Se han dado de alta {result.created} clientes y se han completado los datos de {result.updated}.
+              {importResultSentence(result.created, result.updated)}
               Las filas para revisar a mano no se han tocado: corrígelas en el fichero o en la ficha del cliente.
             </p>
           </div>
@@ -206,7 +206,7 @@ export default function ClientImportDialog({ open, onClose }: { open: boolean; o
                 className="bg-blue-600 hover:bg-blue-700 text-white"
               >
                 {apply.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-2" /> : chosen.length === 0 ? <AlertCircle className="w-4 h-4 mr-2" /> : null}
-                {chosen.length === 0 ? "Nada que importar" : `Importar ${chosen.length} ${chosen.length === 1 ? "cliente" : "clientes"}`}
+                {importButtonLabel(chosen.length)}
               </Button>
             </>
           )}
