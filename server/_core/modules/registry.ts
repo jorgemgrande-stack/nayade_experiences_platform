@@ -10,6 +10,9 @@ import {
   type NavigationItem,
 } from "./contract";
 import { parseVersion, satisfies } from "./semver";
+import { validatePanelContributions } from "../../../shared/panelExtensions";
+import { panelTargets } from "../../../shared/adminNav";
+import { capability as catalogCapability } from "../../catalog/capabilities";
 
 export function validateManifest(m: ModuleManifest): void {
   if (!MODULE_ID_RE.test(m.id)) throw new ModuleError("invalid_manifest", `Identificador de módulo no válido: ${m.id}`);
@@ -26,6 +29,18 @@ export function validateManifest(m: ModuleManifest): void {
     if (!PERMISSION_KEY_RE.test(p.key) || !p.key.startsWith(`${m.id}.`)) {
       throw new ModuleError("invalid_manifest", `${m.id}: el permiso ${p.key} debe empezar por "${m.id}."`);
     }
+  }
+  if (m.capability !== undefined && !catalogCapability(m.capability)) {
+    throw new ModuleError("invalid_manifest", `${m.id}: capacidad desconocida en el catálogo (${m.capability})`);
+  }
+  if (m.panel) {
+    const errors = validatePanelContributions(m.id, m.panel, {
+      capability: m.capability ?? null,
+      permissions: m.permissions,
+      isCapability: (id) => !!catalogCapability(id),
+      targets: panelTargets(),
+    });
+    if (errors.length) throw new ModuleError("invalid_manifest", errors.slice(0, 3).join("; "));
   }
   const ids = new Set<string>();
   for (const n of m.navigation ?? []) {

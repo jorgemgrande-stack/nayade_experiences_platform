@@ -74,6 +74,7 @@ function PlanChangeDialog({ current, option, onClose }: { current: { plan: strin
       void utils.subscription.plan.invalidate();
       void utils.subscription.planChangeStatus.invalidate();
       void utils.subscription.overview.invalidate();
+      void utils.panel.navigation.invalidate();
     },
     onError: (e) => toast.error(e.message),
   });

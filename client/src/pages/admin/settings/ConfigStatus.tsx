@@ -2,6 +2,8 @@ import AdminLayout from "@/components/AdminLayout";
 import { trpc } from "@/lib/trpc";
 import { usePanelSubscription } from "@/hooks/usePanelSubscription";
 import { COMPANY_DATA_HREF } from "./configSections";
+import { SetupStatusCard } from "@/components/onboarding/SetupStatusCard";
+import { SETUP_WIZARD_PATH } from "@/components/SetupWizardLink";
 import {
   CheckCircle2, Circle, AlertTriangle, Loader2,
   Building2, Receipt, Mail, Palette, Settings2, Plug,
@@ -76,12 +78,12 @@ export default function ConfigStatus() {
   const technical = sub.mode === "legacy";
   const settingsQ = trpc.config.listSystemSettings.useQuery();
   const flagsQ = trpc.config.listFeatureFlags.useQuery(undefined, { enabled: technical });
-  const statusQ = trpc.onboarding.getStatus.useQuery();
+  const wizard = trpc.setupWizard.status.useQuery(undefined, { retry: false, staleTime: 60_000 });
   const envQ = trpc.onboarding.getEnvStatus.useQuery(undefined, { enabled: technical });
-  const companyHref = technical ? "/admin/onboarding" : COMPANY_DATA_HREF;
-  const settingsHref = technical ? "/admin/onboarding" : "/admin/configuracion";
+  const companyHref = technical ? SETUP_WIZARD_PATH : COMPANY_DATA_HREF;
+  const settingsHref = technical ? SETUP_WIZARD_PATH : "/admin/configuracion";
 
-  const isLoading = sub.mode === "loading" || settingsQ.isLoading || (technical && (flagsQ.isLoading || envQ.isLoading)) || statusQ.isLoading;
+  const isLoading = sub.mode === "loading" || settingsQ.isLoading || (technical && (flagsQ.isLoading || envQ.isLoading)) || wizard.isLoading;
 
   if (isLoading) {
     return (
@@ -95,14 +97,11 @@ export default function ConfigStatus() {
 
   const settings = settingsQ.data ?? [];
   const flags = flagsQ.data ?? [];
-  const status = statusQ.data;
   const env = envQ.data ?? [];
 
   const getSetting = (key: string) => settings.find(s => s.key === key)?.value ?? "";
   const hasValue = (key: string) => getSetting(key).trim() !== "";
   const isFlagEnabled = (key: string) => flags.find(f => f.key === key)?.enabled ?? true;
-
-  const progress = status?.progress ?? 0;
 
   // Active modules (flags enabled)
   const activeModules = flags.filter(f => f.enabled && f.module !== "general");
@@ -123,44 +122,8 @@ export default function ConfigStatus() {
           </p>
         </div>
 
-        {/* Progress */}
-        <div className="bg-card border border-border/50 rounded-2xl p-5">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium text-foreground">Configuración completada</span>
-            <span className="text-lg font-bold text-foreground">{progress}%</span>
-          </div>
-          <div className="h-2.5 bg-muted rounded-full overflow-hidden">
-            <div
-              className="h-full rounded-full transition-all duration-500 bg-emerald-500"
-              style={{ width: `${progress}%` }}
-            />
-          </div>
-          <div className="flex flex-wrap gap-3 mt-4">
-            {[
-              { label: "Negocio",       done: status?.businessInfoCompleted },
-              { label: "Fiscal",        done: status?.fiscalCompleted },
-              { label: "Branding",      done: status?.brandingCompleted },
-              { label: "Emails",        done: status?.emailsCompleted },
-              { label: "Módulos",       done: status?.modulesCompleted },
-              { label: "Integraciones", done: status?.integrationsReviewed },
-            ].map(s => (
-              <div key={s.label} className="flex items-center gap-1.5">
-                {s.done
-                  ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-                  : <Circle className="w-3.5 h-3.5 text-muted-foreground/40" />}
-                <span className={`text-xs font-medium ${s.done ? "text-foreground" : "text-muted-foreground"}`}>
-                  {s.label}
-                </span>
-              </div>
-            ))}
-          </div>
-          <div className="mt-3">
-            <a href="/admin/onboarding" className="text-xs text-primary hover:underline flex items-center gap-1">
-              {progress < 100 ? "Completar configuración" : "Revisar configuración"}
-              <ExternalLink className="w-3 h-3" />
-            </a>
-          </div>
-        </div>
+        {/* Estado de la configuración: el mismo recorrido que «Primeros pasos» */}
+        {wizard.data && <SetupStatusCard plan={wizard.data.plan} />}
 
         {/* Business & Fiscal */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -222,7 +185,7 @@ export default function ConfigStatus() {
               <Settings2 className="w-4 h-4 text-muted-foreground" />
               <h3 className="text-sm font-semibold text-foreground">Módulos activos</h3>
             </div>
-            <a href="/admin/onboarding" className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-0.5 transition-colors">
+            <a href={SETUP_WIZARD_PATH} className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-0.5 transition-colors">
               Editar <ExternalLink className="w-3 h-3" />
             </a>
           </div>

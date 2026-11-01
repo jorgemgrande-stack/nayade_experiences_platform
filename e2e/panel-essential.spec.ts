@@ -34,7 +34,7 @@ const licensed = (endsAt: number) => ({
 });
 const single = { mode: "single", licensing: "legacy", plan: null, state: "none", trial: null, capabilities: [], visible: [], readOnly: [], limits: [], upgradeUrl: null };
 
-async function mockTrpc(page: Page, overview: unknown, opts: { install?: "single" | "multi"; failing?: string[] } = {}) {
+async function mockTrpc(page: Page, overview: unknown, opts: { install?: "single" | "multi"; failing?: string[]; navigation?: unknown } = {}) {
   const failing = new Set(opts.failing ?? []);
   const data: Record<string, unknown> = {
     "auth.me": { id: 1, openId: "o", name: "Ana Pérez", email: "ana@empresa.example", role: "admin" },
@@ -42,6 +42,7 @@ async function mockTrpc(page: Page, overview: unknown, opts: { install?: "single
     "config.getPublicSettings": { brand_name: "Taller Ejemplo", ...(opts.install ? { panel_install_mode: opts.install } : {}) },
     "config.listFeatureFlags": [],
     "modules.active": { modules: [], navigation: [] },
+    "panel.navigation": opts.navigation ?? { entries: [], routes: [{ path: "/admin/personal", capabilities: ["people-hr"] }] },
     "notifications.feed": { totalAlerts: 0, sections: [] },
     "crm.leads.counters": { total: 0, nueva: 0, enviada: 0, ganada: 0, perdida: 0, hoy: 0, semana: 0, sinLeer: 0 },
     "crm.quotes.counters": { borrador: 0, enviado: 0, pagoFallido: 0, pendientePago: 0, ganado: 0, perdido: 0 },
@@ -110,6 +111,21 @@ test.describe("Panel Essential (empresa nueva con licencias)", () => {
     await page.goto("/admin/personal/empleados");
     await expect(page.getByText("No incluido en tu plan").first()).toBeVisible();
     await expect(page.getByRole("main").getByRole("link", { name: "Amplía tu empresa" })).toHaveAttribute("href", "/admin/ampliar");
+  });
+
+  test("extra contratado: su entrada sale del manifiesto (panel.navigation) en «Módulos contratados»", async ({ page }) => {
+    const overview = { ...licensed(Date.now() + 10 * DAY), visible: [...ESSENTIAL, "people-hr"] };
+    const leaf = (id: string, label: string, href: string) => ({ key: `x-people-${id}`, label, href, capabilities: ["people-hr"], roles: ["admin"] });
+    const navigation = {
+      entries: [{ kind: "item", moduleId: "people", sectionId: "contratados", order: 5, item: { ...leaf("personal", "Personal", "/admin/personal"), icon: "briefcase", children: [leaf("resumen", "Resumen", "/admin/personal"), leaf("nominas", "Nóminas", "/admin/personal/nominas")] } }],
+      routes: [{ path: "/admin/personal", capabilities: ["people-hr"] }],
+    };
+    await mockTrpc(page, overview, { install: "multi", navigation });
+    await page.setViewportSize({ width: 1366, height: 900 });
+    await page.goto("/admin");
+    const nav = page.getByRole("navigation", { name: "Menú del panel" });
+    await expect(nav.getByText("Módulos contratados", { exact: true })).toBeVisible();
+    await expect(nav.getByText("Personal", { exact: true })).toBeVisible();
   });
 
   test("fallo al consultar la suscripción: error con Reintentar, nunca el menú ni el logo de Náyade", async ({ page }) => {

@@ -6,6 +6,7 @@
  * manifiesto y la extracción no cambia el comportamiento.
  */
 import type { ModuleManifest } from "./contract";
+import { CORE_EXTENSION_PANELS } from "../../../shared/panelExtensions";
 import { getModuleRegistry } from "./runtime";
 
 export const BUILTIN_MODULES: ModuleManifest[] = [
@@ -53,6 +54,7 @@ export const BUILTIN_MODULES: ModuleManifest[] = [
     description: "Habitaciones, tarifas, temporadas y reservas de alojamiento",
     resources: ["http.request", "email.sent", "storage.write.bytes"],
     source: { location: "core" },
+    ...CORE_EXTENSION_PANELS.hotel,
   },
   {
     id: "spa",
@@ -65,6 +67,7 @@ export const BUILTIN_MODULES: ModuleManifest[] = [
     description: "Tratamientos, recursos, agenda y reservas de spa",
     resources: ["http.request", "email.sent"],
     source: { location: "core" },
+    ...CORE_EXTENSION_PANELS.spa,
   },
   {
     id: "restaurants",
@@ -77,6 +80,25 @@ export const BUILTIN_MODULES: ModuleManifest[] = [
     description: "Turnos, mesas y reservas de restaurante",
     resources: ["http.request", "email.sent"],
     source: { location: "core" },
+    ...CORE_EXTENSION_PANELS.restaurants,
+  },
+];
+
+/**
+ * Extras de Elephant Connect que viven en el Core y se licencian SOLO por capacidad (sin licencia de módulo):
+ * no entran en el registro de módulos ni en su catálogo; aportan su menú, rutas y APIs por manifiesto.
+ */
+export const CONNECT_EXTENSIONS: ModuleManifest[] = [
+  {
+    id: "people",
+    name: "Elephant People",
+    version: "1.0.0",
+    kind: "addon",
+    coreRange: "^1.0.0",
+    description: "Empleados, fichajes, horarios y nóminas",
+    resources: ["http.request"],
+    source: { location: "core" },
+    ...CORE_EXTENSION_PANELS.people,
   },
 ];
 

@@ -55,7 +55,7 @@ describe("capas de la ficha: instalado, habilitado, contratado, comercializable"
   const report = (patch: (r: ModulesTechnicalReport) => void = () => undefined): ModulesTechnicalReport => {
     const r: ModulesTechnicalReport = {
       coreVersion: "1.0.0",
-      contractVersion: "1.1.0",
+      contractVersion: "1.2.0",
       loadFailures: [],
       obsolete: [],
       modules: BUILTIN_MODULES.map((m) => ({

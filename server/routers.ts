@@ -188,6 +188,7 @@ import { emailTemplatesRouter } from "./routers/emailTemplatesRouter";
 import { pdfTemplatesRouter } from "./routers/pdfTemplatesRouter";
 import { integrationsRouter } from "./routers/integrations";
 import { modulesRouter } from "./routers/modulesRouter";
+import { panelRouter } from "./routers/panelRouter";
 import { subscriptionRouter } from "./routers/subscriptionRouter";
 import { connectRouter } from "./routers/connectRouter";
 import { supportRouter } from "./routers/supportRouter";
@@ -268,6 +269,7 @@ export const appRouter = router({
   pdfTemplates: pdfTemplatesRouter,
   integrations: integrationsRouter,
   modules: modulesRouter,
+  panel: panelRouter,
   subscription: subscriptionRouter,
   connect: connectRouter,
   support: supportRouter,

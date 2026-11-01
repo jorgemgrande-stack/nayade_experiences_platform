@@ -35,6 +35,18 @@ export function usePanelSubscription() {
   const install = installModeFrom(publicSettings.data);
   const mode = navMode({ data: query.data, isLoading: query.isLoading && query.fetchStatus !== "idle", isError: query.isError, install });
   const capabilityState = capabilityStateFrom(query.data);
+  // Aportaciones de las extensiones contratadas (menú) y rutas de todas (guardián): mismo refresco que la suscripción
+  const navigation = trpc.panel.navigation.useQuery(undefined, {
+    enabled: mode === "tasks",
+    staleTime: 120_000,
+    retry: 1,
+    retryOnMount: false,
+    refetchOnWindowFocus: true,
+    refetchInterval: 60_000,
+    refetchIntervalInBackground: false,
+  });
+  const extensions = mode === "tasks" ? navigation.data?.entries ?? [] : [];
+  const extensionRoutes = mode === "tasks" ? navigation.data?.routes ?? [] : [];
   /** true si la capacidad está activa o en solo lectura (todo en el menú de siempre; nada mientras carga o con error). */
   const can = (capabilityId: string) => mode === "legacy" || (mode === "tasks" && capabilityState(capabilityId) !== null);
   /** true si la capacidad permite operar (crear/editar). */
@@ -44,5 +56,5 @@ export function usePanelSubscription() {
     void query.refetch();
     if (!install) void publicSettings.refetch();
   };
-  return { ...query, mode, install, capabilityState, can, canWrite, retry, isLicensed: mode === "tasks" };
+  return { ...query, mode, install, capabilityState, can, canWrite, retry, isLicensed: mode === "tasks", extensions, extensionRoutes };
 }
