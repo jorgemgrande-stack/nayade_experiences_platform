@@ -48,6 +48,8 @@ let crm: CrmService;
 let registry: MemoryTenantRegistryStore;
 const crmStore = new MemoryCrmStore();
 const gw = new FakeStripeGateway();
+// El doble de Stripe sigue el reloj de la prueba: con la hora real, un día 1 la suscripción nacía después del primer cobro
+Object.defineProperty(gw, "now", { get: () => Math.floor(clock / 1000), set: () => {} });
 const stripeStore = new MemoryStripeStore();
 const ext = new MemoryExternalStore();
 const caps = new MemoryCapabilityStore();
