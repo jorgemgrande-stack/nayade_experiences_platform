@@ -63,6 +63,8 @@ export interface EssentialApp {
   userId(co: Co, role: Role): Promise<number>;
   /** Cambia la licencia de una capacidad (null = no contratada). */
   setCapability(co: Co, cap: string, status: "active" | "read_only" | "suspended" | null): Promise<void>;
+  /** Convierte las licencias de Essential de la empresa en licencias de una suscripción de pago (fin de la prueba). */
+  markPaid(co: Co): Promise<void>;
   /** SQL directo en la BD de una empresa (verificación de persistencia). */
   sql<T = any>(co: Co, q: string, params?: unknown[]): Promise<T[]>;
   close(): Promise<void>;
@@ -287,6 +289,10 @@ export async function startEssentialApp(url: string, label: string, opts: { webD
     async setCapability(co, cap, status) {
       if (status === null) await regPool.query("DELETE FROM tenant_capabilities WHERE tenant_id = ? AND capability_id = ?", [ids[co], cap]);
       else await caps.apply(ids[co], [{ capabilityId: cap, siteId: "", status, validUntil: null, source: "trial:prueba" }], { actor: "operator:prueba", reason: "prueba", now: Date.now() });
+      getCapabilityAccess().invalidate(ids[co]);
+    },
+    async markPaid(co) {
+      await caps.apply(ids[co], ESSENTIAL.map((capabilityId) => ({ capabilityId, siteId: "", status: "active" as const, validUntil: null, source: "subscription:prueba" })), { actor: "operator:prueba", reason: "Suscripción de prueba", now: Date.now() });
       getCapabilityAccess().invalidate(ids[co]);
     },
     async sql(co, q, params = []) {
