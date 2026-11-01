@@ -11,12 +11,13 @@ import type { CapabilityGrant } from "./_core/capabilities/model";
 import { effectiveStatus } from "./subscriptionOverview";
 import { PRODUCTS } from "./catalog/elephantSourceV1";
 import type { PanelCatalogItemView } from "./panelModules";
-import { parseConnectCard, parseConnectOffer, parseConnectPrices } from "./connectCard";
+import { parseActivation, parseConnectCard, parseConnectOffer, parseConnectPrices } from "./connectCard";
 import { categoryOf, deriveConnectState, type ConnectCategoryId, type ConnectState } from "../shared/connectMarketplace";
-import type { ConnectPrice, ConnectSheet } from "../shared/connectCard";
+import type { ConnectGalleryItem, ConnectImage, ConnectPrice, ConnectSheet } from "../shared/connectCard";
+import type { ConnectActivation } from "../shared/connectShowcase";
 
 /** Producto tal como llega del canal: lo de siempre y, opcionalmente, la ficha y los precios aprobados. */
-export type ChannelCatalogItem = PanelCatalogItemView & { card?: unknown; prices?: unknown; offer?: unknown };
+export type ChannelCatalogItem = PanelCatalogItemView & { card?: unknown; prices?: unknown; offer?: unknown; activation?: unknown };
 
 export interface ConnectItem {
   key: string;
@@ -54,7 +55,14 @@ export interface ConnectItem {
   sheet: ConnectSheet;
   /** De dónde salen los textos: ficha del catálogo central, semilla oficial o ninguno. */
   contentSource: "card" | "seed" | "none";
+  /** Estado de activación publicado por el canal (null si no lo publica). */
+  activation: ConnectActivation | null;
+  /** Ruta real del módulo en el panel (la de su entrada de menú), para «Abrir módulo»; null si no tiene. */
+  openPath: string | null;
 }
+
+/** Imagen de la forma anterior (`cover`/`screenshots`) como imagen resuelta, mientras el canal la mande. */
+const legacyImage = (m: { src: string; alt: string } | null | undefined): ConnectImage | null => (m ? { src: m.src, srcset: null, mobileSrc: null, width: null, height: null, alt: m.alt, focal: null, kind: null } : null);
 
 type Seed = (typeof PRODUCTS)[number];
 const seedOf = (key: string): Seed | undefined => PRODUCTS.find((p) => p.key === key);
@@ -73,7 +81,13 @@ function pick<T>(card: T | null | undefined, seed: T): T {
   return card === null || card === undefined ? seed : card;
 }
 
-export function buildConnectCatalog(catalog: { items: ChannelCatalogItem[] }, grants: CapabilityGrant[], now: number, plan: string | null): ConnectItem[] {
+export function buildConnectCatalog(
+  catalog: { items: ChannelCatalogItem[] },
+  grants: CapabilityGrant[],
+  now: number,
+  plan: string | null,
+  openPathOf: (capabilities: string[]) => string | null = () => null,
+): ConnectItem[] {
   const byKey = new Map(catalog.items.map((i) => [i.key, i]));
   const capsOf = (key: string) => {
     const i = byKey.get(key);
@@ -117,8 +131,16 @@ export function buildConnectCatalog(catalog: { items: ChannelCatalogItem[] }, gr
       terms: { commitment: c?.terms?.commitment ?? null, cancellation: c?.terms?.cancellation ?? null, activation: c?.terms?.activation ?? offer?.activationNotes ?? null },
       faq: c?.faq ?? [],
       related,
-      cover: c?.media?.cover ?? null,
-      screenshots: c?.media?.screenshots ?? [],
+      media: {
+        card: c?.media?.card ?? null,
+        hero: c?.media?.hero ?? legacyImage(c?.media?.cover),
+        icon: c?.media?.icon ?? null,
+        gallery: c?.media?.gallery ?? (c?.media?.screenshots ?? []).map((m): ConnectGalleryItem => ({ src: m.src, srcset: null, mobileSrc: null, width: null, height: null, alt: m.alt, focal: null, caption: m.caption, kind: "screenshot" })),
+        video: c?.media?.video ?? null,
+      },
+      howItWorks: c?.howItWorks ?? [],
+      promoLabel: c?.promoLabel ?? null,
+      layout: c?.layout ?? { blocks: [], accentColor: null, heroStyle: null },
       offer: offer?.label ?? null,
     };
     return {
@@ -151,6 +173,8 @@ export function buildConnectCatalog(catalog: { items: ChannelCatalogItem[] }, gr
       prices: prices.length > 0 ? prices : fallbackPrices,
       sheet,
       contentSource: card ? "card" : d ? "seed" : "none",
+      activation: parseActivation(item.activation),
+      openPath: item.kind === "module" && capabilities.length > 0 ? openPathOf(capabilities) : null,
     };
   });
 }

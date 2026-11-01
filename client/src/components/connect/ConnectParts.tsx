@@ -7,7 +7,7 @@
  * Colores solo por significado (`@/lib/panelTones`) o de la marca (`primary`).
  */
 import { useEffect, useState } from "react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import {
   AlertTriangle,
   ArrowUpRight,
@@ -32,6 +32,7 @@ import {
   Handshake,
   Heart,
   Hotel,
+  Image as ImageIcon,
   IdCard,
   Landmark,
   Leaf,
@@ -80,7 +81,9 @@ import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { CONNECT_STATE_LABELS, CONNECT_STATE_SHORT, brandOf, type ConnectState } from "@shared/connectMarketplace";
-import { formatMoney, headlinePrice, periodLabel, sortPrices, taxLabel, type ConnectPrice } from "@shared/connectCard";
+import { formatMoney, headlinePrice, periodLabel, sortPrices, taxLabel, type ConnectImage, type ConnectPrice } from "@shared/connectCard";
+import { ACTIVATION_LABELS, activationOf, primaryAction, type ConnectActivation } from "@shared/connectShowcase";
+import { trackConnect, useViewTracking } from "./useConnectTracking";
 import type { PurchaseStatus } from "@shared/connectPurchase";
 import { fichaPath } from "./LockedFeature";
 import { useConnectAttempt, useOrderTracking, useRefreshLicences, type ConnectCatalogItem } from "./useConnect";
@@ -140,23 +143,87 @@ const ICONS: Record<string, LucideIcon> = {
   workflow: Workflow,
 };
 
-/** Icono del producto en su recuadro; Elephant Net con el tono de información para distinguir la línea. */
-export function ProductIcon({ item, size = "md" }: { item: Pick<ConnectCatalogItem, "icon" | "family" | "kind">; size?: "md" | "lg" }) {
+/** Icono del producto en su recuadro: el publicado por el catálogo (`media.icon`) o el de la colección del panel. */
+export function ProductIcon({ item, size = "md" }: { item: Pick<ConnectCatalogItem, "icon" | "family" | "kind"> & { sheet?: Pick<ConnectCatalogItem["sheet"], "media"> }; size?: "md" | "lg" | "xl" }) {
   const Icon = (item.icon && Object.prototype.hasOwnProperty.call(ICONS, item.icon) && ICONS[item.icon]) || Puzzle;
   const net = brandOf(item) === "net";
+  const img = item.sheet?.media.icon ?? null;
   return (
     <span
       aria-hidden="true"
       className={cn(
-        "inline-flex shrink-0 items-center justify-center rounded-xl border",
-        net ? "border-info/30 bg-info/10 text-info" : "border-primary/30 bg-primary/10 text-primary",
-        size === "lg" ? "h-14 w-14 [&_svg]:h-7 [&_svg]:w-7" : "h-11 w-11 [&_svg]:h-5 [&_svg]:w-5",
+        "inline-flex shrink-0 items-center justify-center overflow-hidden border shadow-sm",
+        net ? "border-info/40 bg-card text-info" : "border-primary/50 bg-card cx-red-text",
+        size === "xl" ? "h-20 w-20 rounded-2xl [&_svg]:h-10 [&_svg]:w-10" : size === "lg" ? "h-14 w-14 rounded-2xl [&_svg]:h-7 [&_svg]:w-7" : "h-12 w-12 rounded-xl [&_svg]:h-6 [&_svg]:w-6",
       )}
     >
-      <Icon />
+      {img ? <img src={img.src} alt="" className="h-full w-full object-cover" loading="lazy" decoding="async" /> : <Icon />}
     </span>
   );
 }
+
+/** Icono de la colección para un producto (marcadores sin imagen). */
+export function iconFor(item: Pick<ConnectCatalogItem, "icon">): LucideIcon {
+  return (item.icon && Object.prototype.hasOwnProperty.call(ICONS, item.icon) && ICONS[item.icon]) || Puzzle;
+}
+
+/** `object-position` a partir del punto de interés publicado. */
+export const focalStyle = (img: Pick<ConnectImage, "focal">) => (img.focal ? { objectPosition: `${img.focal.x}% ${img.focal.y}%` } : undefined);
+
+/**
+ * Imagen del producto (tarjeta o cabecera de la ficha). Sin imagen publicada: marcador elegante con el degradado de su
+ * línea y su icono (nunca imágenes externas ni de relleno).
+ */
+export function ProductMedia({
+  item,
+  image,
+  sizes,
+  eager = false,
+  className,
+}: {
+  item: Pick<ConnectCatalogItem, "icon" | "family" | "kind">;
+  image: ConnectImage | null;
+  sizes: string;
+  eager?: boolean;
+  className?: string;
+}) {
+  if (image) {
+    return (
+      <img
+        src={image.src}
+        srcSet={image.srcset ?? undefined}
+        sizes={image.srcset ? sizes : undefined}
+        width={image.width ?? undefined}
+        height={image.height ?? undefined}
+        alt={image.alt}
+        loading={eager ? "eager" : "lazy"}
+        decoding="async"
+        style={focalStyle(image)}
+        className={cn("h-full w-full object-cover", className)}
+      />
+    );
+  }
+  const Icon = iconFor(item);
+  return (
+    <div aria-hidden="true" className={cn("cx-placeholder relative h-full w-full overflow-hidden", className)} data-line={brandOf(item)}>
+      <div className="cx-placeholder-grid absolute inset-0" />
+      <Icon className="absolute right-[8%] top-1/2 h-[46%] w-auto -translate-y-1/2 text-foreground opacity-20" strokeWidth={1.25} />
+      <Icon className={cn("absolute left-[10%] top-[22%] h-[22%] w-auto opacity-70", brandOf(item) === "net" ? "text-info" : "cx-red-text")} strokeWidth={1.5} />
+    </div>
+  );
+}
+
+/** Aviso discreto sobre la naturaleza de una imagen (captura real o ilustración). */
+export function ImageKindNote({ kind, className }: { kind: ConnectImage["kind"]; className?: string }) {
+  if (!kind) return null;
+  return (
+    <span className={cn("inline-flex items-center gap-1 rounded-full bg-background/85 px-2 py-0.5 text-[11px] font-medium text-muted-foreground backdrop-blur", className)}>
+      {kind === "screenshot" ? <Monitor className="h-3 w-3" aria-hidden="true" /> : <ImageIcon className="h-3 w-3" aria-hidden="true" />}
+      {kind === "screenshot" ? "Captura real" : "Imagen ilustrativa"}
+    </span>
+  );
+}
+
 
 // ── Estado ─────────────────────────────────────────────────────────────────────
 
@@ -232,46 +299,130 @@ export function PriceList({ prices }: { prices: ConnectPrice[] }) {
 /** 2 o 3 puntos fuertes: los beneficios del catálogo o, si no publica, lo que incluye. Nunca rellenos. */
 export const highlightsOf = (item: Pick<ConnectCatalogItem, "sheet" | "includes">) => (item.sheet.benefits.length > 0 ? item.sheet.benefits : item.includes).slice(0, 3);
 
-export function ProductCard({ item, featured = false, headingLevel = 3 }: { item: ConnectCatalogItem; featured?: boolean; headingLevel?: 2 | 3 | 4 }) {
-  const H = `h${headingLevel}` as "h2" | "h3" | "h4";
-  const lead = item.sheet.headline ?? item.tagline;
-  const points = highlightsOf(item);
+/** Lo que la tarjeta y la ficha necesitan saber de la persona para elegir la acción. */
+export interface ConnectView {
+  canPurchase: boolean;
+  interestEnabled: boolean;
+}
+
+/** Precio destacado: importe grande, periodicidad e IVA (todo del catálogo). Sin precio: «Precio a consultar». */
+export function BigPrice({ prices, size = "md", showFrom = true, className }: { prices: ConnectPrice[]; size?: "md" | "lg"; showFrom?: boolean; className?: string }) {
+  const h = headlinePrice(prices);
+  if (!h) return <p className={cn("text-sm text-muted-foreground", className)}>Precio a consultar</p>;
+  const period = periodLabel(h.price.kind);
   return (
-    <Link
-      href={fichaPath(item.key)}
-      className={cn(
-        "group flex h-full flex-col gap-3 rounded-2xl border bg-card p-5 transition-colors hover:border-primary/50 hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-        featured ? "border-primary/40 shadow-sm" : "border-border",
-      )}
-    >
-      <div className="flex items-start gap-3">
-        <ProductIcon item={item} />
-        <div className="min-w-0 flex-1 space-y-1">
-          <H className="break-words font-semibold leading-snug text-foreground">{item.name}</H>
-          <StateBadge state={item.state} />
-        </div>
-      </div>
-      {lead && <p className="text-sm text-muted-foreground">{lead}</p>}
-      {points.length > 0 && (
-        <ul className="space-y-1 text-sm text-foreground">
-          {points.map((p) => (
-            <li key={p} className="flex items-start gap-2">
-              <Check className="mt-0.5 h-4 w-4 shrink-0 text-success" aria-hidden="true" />
-              <span className="min-w-0">{p}</span>
-            </li>
-          ))}
-        </ul>
-      )}
-      <div className="mt-auto flex flex-wrap items-end justify-between gap-3 border-t border-border pt-3">
-        {item.state === "active" ? <span className="text-sm text-muted-foreground">Ya forma parte de tu plataforma</span> : <Price item={item} />}
-        <span className="inline-flex items-center text-sm font-medium text-primary">
-          Ver ficha <ChevronRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
-          <span className="sr-only"> de {item.name}</span>
+    <div className={cn("min-w-0", className)}>
+      <p className="text-foreground">
+        {h.from && showFrom && <span className="text-sm text-muted-foreground">Desde </span>}
+        <strong className={cn("font-bold tracking-tight", size === "lg" ? "text-4xl" : "text-xl")}>{formatMoney(h.price.amountCents, h.price.currency)}</strong>
+        <span className={cn("text-muted-foreground", size === "lg" ? "text-lg" : "text-sm")}>
+          {period ? ` ${period}` : ""}
+          {unitText(h.price.unit)}
         </span>
-      </div>
-    </Link>
+      </p>
+      <p className="text-xs text-muted-foreground">{taxLabel(h.price)}</p>
+    </div>
   );
 }
+
+/** Estado de activación (pendiente, activándose, activo o con incidencia) en una línea. */
+export function ActivationLine({ activation, className }: { activation: ConnectActivation; className?: string }) {
+  if (activation.state === "none") return null;
+  const tone = activation.state === "error" ? "text-danger" : activation.state === "active" ? "text-success" : "text-warning";
+  const Icon = activation.state === "error" ? AlertTriangle : activation.state === "active" ? CheckCircle2 : activation.state === "processing" ? Loader2 : Clock;
+  return (
+    <p className={cn("flex items-center gap-1.5 text-xs font-medium", tone, className)}>
+      <Icon className={cn("h-3.5 w-3.5 shrink-0", activation.state === "processing" && "motion-safe:animate-spin")} aria-hidden="true" />
+      Activación: {ACTIVATION_LABELS[activation.state]}
+    </p>
+  );
+}
+
+export function ProductCard({
+  item,
+  view,
+  onAction,
+  headingLevel = 3,
+}: {
+  item: ConnectCatalogItem;
+  view: ConnectView;
+  /** Acciones que abren un diálogo (solicitar información, me interesa, contactar). */
+  onAction?: (item: ConnectCatalogItem, kind: RequestKind) => void;
+  headingLevel?: 2 | 3 | 4;
+}) {
+  const H = `h${headingLevel}` as "h2" | "h3" | "h4";
+  const [, navigate] = useLocation();
+  const lead = item.sheet.valueProposition ?? item.tagline ?? item.sheet.headline;
+  const points = highlightsOf(item);
+  const action = primaryAction(item, view);
+  const activation = activationOf(item);
+  const viewRef = useViewTracking<HTMLElement>("card_view", { productKey: item.key });
+  const href = fichaPath(item.key);
+  const run = () => {
+    trackConnect("cta_click", { productKey: item.key });
+    if (action.href) navigate(action.href);
+    // La compra se confirma siempre en la ficha (vista previa del importe y aceptación expresa)
+    else if (action.kind === "purchase") navigate(`${href}?contratar=1`);
+    else if (action.kind === "request") onAction ? onAction(item, "info") : navigate(href);
+    else if (action.kind === "interest") onAction ? onAction(item, "waitlist") : navigate(href);
+    else if (action.kind === "contact") onAction ? onAction(item, "contact") : navigate(href);
+  };
+  const hasAction = action.kind !== "none";
+  return (
+    <article ref={viewRef} className="group relative flex h-full flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-lg shadow-black/30 transition hover:border-primary/70 focus-within:border-primary/70">
+      <div className="relative aspect-[16/9] overflow-hidden border-b border-border">
+        <ProductMedia item={item} image={item.sheet.media.card} sizes="(min-width: 1536px) 22rem, (min-width: 768px) 45vw, 100vw" className="transition-transform duration-300 motion-safe:group-hover:scale-[1.03]" />
+        {item.sheet.promoLabel && <span className="absolute left-3 top-3 rounded-full bg-primary px-2.5 py-1 text-xs font-semibold text-primary-foreground shadow">{item.sheet.promoLabel}</span>}
+        <span className="absolute right-3 top-3 rounded-full bg-background/90 backdrop-blur">
+          <StateBadge state={item.state} />
+        </span>
+        {item.sheet.media.card?.kind === "illustration" && <ImageKindNote kind="illustration" className="absolute bottom-2 left-3" />}
+      </div>
+      <div className="flex flex-1 flex-col gap-3 px-5 pb-5">
+        <div className="-mt-6 flex items-end gap-3">
+          <ProductIcon item={item} />
+        </div>
+        <div className="space-y-1">
+          <H className="break-words text-lg font-semibold leading-snug text-foreground">
+            <Link href={href} className="rounded before:absolute before:inset-0 before:content-[''] focus-visible:outline-none">
+              {item.name}
+            </Link>
+          </H>
+          {lead && <p className="line-clamp-2 text-sm text-muted-foreground">{lead}</p>}
+          <ActivationLine activation={activation.state === "active" ? { ...activation, state: "none" } : activation} />
+        </div>
+        {points.length > 0 && (
+          <ul className="space-y-1.5 text-sm text-foreground">
+            {points.map((p) => (
+              <li key={p} className="flex items-start gap-2">
+                <Check className="mt-0.5 h-4 w-4 shrink-0 text-success" aria-hidden="true" />
+                <span className="min-w-0">{p}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+        <div className="mt-auto space-y-3 border-t border-border pt-3">
+          {item.state === "active" ? <p className="text-sm text-muted-foreground">Ya forma parte de tu plataforma</p> : <BigPrice prices={item.prices} />}
+          <div className="relative z-10 flex flex-wrap gap-2">
+            <Button asChild variant={hasAction ? "outline" : "default"} size="sm" className="flex-1">
+              <Link href={href}>
+                Ver ficha <ChevronRight className="h-4 w-4" aria-hidden="true" />
+                <span className="sr-only"> de {item.name}</span>
+              </Link>
+            </Button>
+            {hasAction && (
+              <Button type="button" size="sm" className="flex-1" onClick={run}>
+                {action.label}
+                <span className="sr-only"> · {item.name}</span>
+              </Button>
+            )}
+          </div>
+        </div>
+      </div>
+    </article>
+  );
+}
+
 
 // ── Solicitudes ────────────────────────────────────────────────────────────────
 
@@ -442,6 +593,9 @@ export function PurchaseDialog({ item, onClose }: { item: ConnectCatalogItem; on
   useEffect(() => {
     if (!ordered) requestPreview({ add: [item.key] });
   }, [requestPreview, item.key, ordered]);
+  useEffect(() => {
+    trackConnect("purchase_start", { productKey: item.key });
+  }, [item.key]);
   const p = preview.data as Preview | undefined;
   const status: PurchaseStatus | null = tracking.status ?? last?.status ?? null;
   const rawPaymentUrl = attempt?.paymentUrl ?? last?.paymentUrl ?? null;
@@ -452,6 +606,10 @@ export function PurchaseDialog({ item, onClose }: { item: ConnectCatalogItem; on
     buy.mutate({ add: [item.key], idempotencyKey: a.idempotencyKey });
   };
   const per = p?.interval === "year" ? "año" : "mes";
+  useEffect(() => {
+    if (status === "applied") trackConnect("purchase_done", { productKey: item.key });
+    if (status === "failed" || status === "expired") trackConnect("activation_error", { productKey: item.key });
+  }, [status, item.key]);
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>

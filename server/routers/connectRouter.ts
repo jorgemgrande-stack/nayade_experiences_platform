@@ -24,8 +24,11 @@ import { buildSubscriptionOverview, safeUpgradeUrl } from "../subscriptionOvervi
 import { resolveSupportContact } from "../supportContact";
 import { isTrialTenant } from "../trialPayments";
 import { buildConnectCatalog, type ChannelCatalogItem, type ConnectItem } from "../connectMarketplace";
-import { advertisesRequests, parseMarketplaceHeaders } from "../connectCard";
+import { advertisesRequests, parseMarketplaceHeaders, parseMarketplaceRoot } from "../connectCard";
 import { brandHeaders, type ConnectBrandHeaders, type PurchaseBlock } from "../../shared/connectMarketplace";
+import { CONNECT_EVENT_TYPES, autoplayDelay, resolveSlides, type ResolvedSlide } from "../../shared/connectShowcase";
+import { acceptEvents, forwardEvents, openPathResolver } from "../connectShowcase";
+import { panelExtensionSources } from "../_core/modules/panelNavigation";
 
 export interface ConnectCatalogView {
   /** false: fuera de multiempresa (la página lo explica y ofrece contacto). En multiempresa, sin canal es un error. */
@@ -45,6 +48,19 @@ export interface ConnectCatalogView {
   interestEnabled: boolean;
   /** Cabeceras de Elephant Connect y Elephant Net (del catálogo central o, si no vienen, las de siempre). */
   brands: ConnectBrandHeaders;
+  /** Diapositivas del carrusel publicadas por el canal (ya comprobadas contra el catálogo de la empresa). */
+  slides: ResolvedSlide[];
+  /** Pausa entre diapositivas (ms); 0 = sin rotación automática. */
+  autoplayMs: number;
+}
+
+/** Ruta real de cada módulo instalado (portada de su entrada de menú). Si algo falla, sin «Abrir módulo». */
+function moduleOpenPath(): (capabilities: string[]) => string | null {
+  try {
+    return openPathResolver(panelExtensionSources().map((s) => ({ capability: s.capability, panel: s.manifest.panel ?? null })));
+  } catch {
+    return () => null;
+  }
 }
 
 /**
@@ -95,7 +111,7 @@ export const connectRouter = router({
     const client = commerceClientFromEnv();
     const base = { upgradeUrl: safeUpgradeUrl(upgradeUrl), supportEmail };
     if (getTenantMode() !== "multi") {
-      return { available: false, purchasesEnabled: false, canPurchase: false, purchaseBlock: "unavailable", plan: null, items: [], requestsEnabled: false, interestEnabled: false, brands: brandHeaders(null), ...base };
+      return { available: false, purchasesEnabled: false, canPurchase: false, purchaseBlock: "unavailable", plan: null, items: [], requestsEnabled: false, interestEnabled: false, brands: brandHeaders(null), slides: [], autoplayMs: autoplayDelay(null), ...base };
     }
     // En multiempresa el catálogo existe siempre: sin canal con el plano de control es una avería (configuración del
     // Core), no un catálogo vacío. Se devuelve un error recuperable para que la página ofrezca reintentar.
@@ -109,9 +125,10 @@ export const connectRouter = router({
       const [catalog, grants] = await Promise.all([client.catalog(tenantId) as Promise<{ purchasesEnabled: boolean; items: ChannelCatalogItem[]; marketplace?: unknown }>, access.list(tenantId)]);
       const now = access.currentTime();
       const overview = buildSubscriptionOverview({ mode: "multi", enforcing: access.enforcing(), grants, now });
-      const items = buildConnectCatalog(catalog, grants, now, overview.plan?.key ?? null);
+      const items = buildConnectCatalog(catalog, grants, now, overview.plan?.key ?? null, moduleOpenPath());
       const purchaseBlock: PurchaseBlock = role !== "admin" ? "role" : (await isTrialTenant()) ? "trial" : !catalog.purchasesEnabled ? "closed" : null;
       const interestEnabled = !knownUnsupported() && (advertisesRequests(catalog) || knownSupported());
+      const showcase = parseMarketplaceRoot(catalog.marketplace);
       return {
         available: true,
         purchasesEnabled: catalog.purchasesEnabled,
@@ -122,12 +139,51 @@ export const connectRouter = router({
         requestsEnabled: true,
         interestEnabled,
         brands: brandHeaders(parseMarketplaceHeaders(catalog.marketplace)),
+        slides: resolveSlides(showcase.slides, { items, canPurchase: purchaseBlock === null, now: Date.now() }),
+        autoplayMs: autoplayDelay(showcase.autoplayMs),
         ...base,
       };
     } catch {
       throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "No se pudo consultar el catálogo. Inténtalo de nuevo en unos minutos." });
     }
   }),
+
+  /**
+   * Medición del marketplace (vistas de tarjetas, fichas y diapositivas, clics y contrataciones). Sin datos
+   * personales; deduplicada por sesión; nunca falla para la persona (si el canal no la recibe, se ignora).
+   */
+  track: protectedProcedure
+    .input(
+      z
+        .object({
+          events: z
+            .array(
+              z
+                .object({
+                  id: z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/),
+                  type: z.enum(CONNECT_EVENT_TYPES),
+                  productKey: z.string().regex(/^[a-z0-9][a-z0-9_-]{0,79}$/).optional(),
+                  slideId: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/).optional(),
+                  at: z.string().datetime(),
+                })
+                .strict(),
+            )
+            .max(50),
+        })
+        .strict(),
+    )
+    .mutation(async ({ ctx, input }): Promise<{ accepted: number }> => {
+      if (!(PANEL_ROLES as readonly string[]).includes(String(ctx.user.role))) throw new TRPCError({ code: "FORBIDDEN" });
+      if (getTenantMode() !== "multi") return { accepted: 0 };
+      const client = commerceClientFromEnv();
+      const tenantId = getTenantId();
+      const now = Date.now();
+      // La sesión se identifica en memoria (empresa + persona) y nunca se envía al canal
+      const scope = crypto.createHash("sha256").update(`${tenantId}|${ctx.user.id}`).digest("hex").slice(0, 24);
+      const events = acceptEvents(scope, input.events, now);
+      await forwardEvents(client, tenantId, events, now);
+      return { accepted: events.length };
+    }),
 
   /**
    * «Solicitar información» (`info`), «Me interesa» (`waitlist`) o aviso sobre algo ya contratado (`contact`, siempre

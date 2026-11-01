@@ -73,6 +73,8 @@ export interface CommerceClient {
   catalog(tenantId: string): Promise<unknown>;
   /** Solicitud de información o «me interesa» sobre un producto → oportunidad en el CRM (idempotente por clave). */
   request(tenantId: string, input: ModuleRequestInput): Promise<unknown>;
+  /** Medición del marketplace (lotes de como mucho 50 eventos sin datos personales). Opcional en los dobles de prueba. */
+  events?(tenantId: string, events: Array<{ id: string; type: string; productKey?: string; slideId?: string; at: string }>): Promise<unknown>;
   /** Consumo de la empresa frente a los límites de su plan (Elephant Resource Manager). */
   usage(tenantId: string): Promise<unknown>;
   /** «Mi plan»: contrato vigente, periodo, cobro y facturas de la empresa (solo lectura). */
@@ -156,6 +158,7 @@ export function commerceClientFromEnv(env: NodeJS.ProcessEnv = process.env, fetc
         throw e;
       }
     },
+    events: async (tenantId, events) => await call("POST", `${seg(tenantId)}/events`, { events }),
     usage: async (tenantId) => ((await call("GET", `${seg(tenantId)}/usage`)) as { usage: unknown }).usage,
     plan: async (tenantId) => ((await call("GET", `${seg(tenantId)}/plan`)) as { plan: unknown }).plan,
     invoiceDocument: async (tenantId, id) => ((await call("GET", `${seg(tenantId)}/invoices/${id}/document`)) as { html: string }).html,

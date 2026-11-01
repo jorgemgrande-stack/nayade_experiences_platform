@@ -118,7 +118,7 @@ describe("lectura tolerante de la ficha del canal", () => {
     expect(c.commercial?.headline).toBeNull();
     expect(c.commercial?.benefits).toEqual(["Beneficio raro (prueba)"]);
     expect(c.commercial?.faq).toEqual([]);
-    expect(c.commercial?.media).toEqual({ cover: null, screenshots: [] });
+    expect(c.commercial?.media).toMatchObject({ cover: null, screenshots: [] });
     expect(c.commercial?.terms).toBeNull();
     expect(c.prices).toEqual([]);
     expect(JSON.stringify(c)).not.toMatch(/INTERNO|costCents|campoDesconocido|javascript:|http:\/\//);
@@ -126,7 +126,7 @@ describe("lectura tolerante de la ficha del canal", () => {
 
   it("medios: solo https con texto alternativo", () => {
     const c = parseConnectCard({ commercial: { media: { cover: { src: "https://cdn.example/p.png", alt: "Pantalla" }, screenshots: [{ src: "https://cdn.example/1.png", alt: "Uno", caption: "Pie" }, { src: "https://cdn.example/2.png", alt: "" }] } } })!;
-    expect(c.commercial?.media).toEqual({ cover: { src: "https://cdn.example/p.png", alt: "Pantalla", caption: null }, screenshots: [{ src: "https://cdn.example/1.png", alt: "Uno", caption: "Pie" }] });
+    expect(c.commercial?.media).toMatchObject({ cover: { src: "https://cdn.example/p.png", alt: "Pantalla", caption: null }, screenshots: [{ src: "https://cdn.example/1.png", alt: "Uno", caption: "Pie" }] });
   });
 
   it("cabeceras del marketplace: opcionales; sin ellas, las de siempre", () => {

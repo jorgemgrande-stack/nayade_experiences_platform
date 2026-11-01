@@ -29,6 +29,80 @@ export interface ConnectMedia {
   caption: string | null;
 }
 
+/**
+ * Imagen ya resuelta por el canal (`{src, srcset?, width?, height?, alt, focal?}`): solo https y siempre con texto
+ * alternativo. `focal`: punto de interés en % (0–100) para recortar sin perderlo.
+ */
+export interface ConnectImage {
+  src: string;
+  srcset: string | null;
+  /** Versión para pantallas estrechas (otra proporción), si el canal la publica. */
+  mobileSrc: string | null;
+  width: number | null;
+  height: number | null;
+  alt: string;
+  focal: { x: number; y: number } | null;
+  /** Captura real de la pantalla o ilustración, si el canal lo dice (la ficha lo indica). */
+  kind: "screenshot" | "illustration" | null;
+}
+
+/** Imagen de la galería: siempre dice si es captura real o ilustración. */
+export interface ConnectGalleryItem extends Omit<ConnectImage, "kind"> {
+  caption: string | null;
+  kind: "screenshot" | "illustration";
+}
+
+/** Vídeo: solo la dirección de inserción normalizada por el canal (youtube-nocookie o player.vimeo). */
+export interface ConnectVideo {
+  embedUrl: string;
+  title: string;
+}
+
+export interface ConnectSheetMedia {
+  card: ConnectImage | null;
+  hero: ConnectImage | null;
+  icon: ConnectImage | null;
+  gallery: ConnectGalleryItem[];
+  video: ConnectVideo | null;
+}
+
+export interface ConnectHowStep {
+  title: string;
+  text: string;
+}
+
+/** Bloques de la ficha, en su orden por defecto. */
+export const SHEET_BLOCK_IDS = ["problem", "benefits", "features", "howItWorks", "includes", "excludes", "integration", "gallery", "requirements", "terms", "faq", "related"] as const;
+export type SheetBlockId = (typeof SHEET_BLOCK_IDS)[number];
+
+export const SHEET_ACCENTS = ["blue", "teal", "violet", "amber", "rose", "slate"] as const;
+export type SheetAccent = (typeof SHEET_ACCENTS)[number];
+export const SHEET_HERO_STYLES = ["image", "split", "plain"] as const;
+export type SheetHeroStyle = (typeof SHEET_HERO_STYLES)[number];
+
+export interface ConnectLayout {
+  /** Orden y visibilidad pedidos por el catálogo (vacío = el orden por defecto). */
+  blocks: Array<{ id: SheetBlockId; visible: boolean }>;
+  accentColor: SheetAccent | null;
+  heroStyle: SheetHeroStyle | null;
+}
+
+/**
+ * Orden final de los bloques: primero los que pide el catálogo (sin repetir), después los que no menciona en su orden
+ * por defecto; los ocultos (`visible: false`) no aparecen. Un id desconocido ya se descartó al leer.
+ */
+export function resolveBlocks(layout: Pick<ConnectLayout, "blocks"> | null | undefined): SheetBlockId[] {
+  const seen = new Set<SheetBlockId>();
+  const out: SheetBlockId[] = [];
+  for (const b of layout?.blocks ?? []) {
+    if (seen.has(b.id)) continue;
+    seen.add(b.id);
+    if (b.visible) out.push(b.id);
+  }
+  for (const id of SHEET_BLOCK_IDS) if (!seen.has(id)) out.push(id);
+  return out;
+}
+
 export interface ConnectTerms {
   commitment: string | null;
   cancellation: string | null;
@@ -49,8 +123,12 @@ export interface ConnectSheet {
   faq: ConnectFaq[];
   /** Claves de productos relacionados (solo se muestran los que existen en el catálogo de la empresa). */
   related: string[];
-  cover: ConnectMedia | null;
-  screenshots: ConnectMedia[];
+  media: ConnectSheetMedia;
+  /** Pasos de «Cómo funciona» (como mucho 4). */
+  howItWorks: ConnectHowStep[];
+  /** Etiqueta promocional publicada (≤ 30 caracteres), o null. */
+  promoLabel: string | null;
+  layout: ConnectLayout;
   /** Modalidad de contratación publicada («Implantación asistida», «Disponible»…), o null. */
   offer: string | null;
 }
@@ -67,8 +145,10 @@ export const EMPTY_SHEET: ConnectSheet = {
   terms: { commitment: null, cancellation: null, activation: null },
   faq: [],
   related: [],
-  cover: null,
-  screenshots: [],
+  media: { card: null, hero: null, icon: null, gallery: [], video: null },
+  howItWorks: [],
+  promoLabel: null,
+  layout: { blocks: [], accentColor: null, heroStyle: null },
   offer: null,
 };
 
