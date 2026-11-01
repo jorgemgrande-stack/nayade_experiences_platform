@@ -323,6 +323,20 @@ export interface SetupPlan {
   completedAt: number | null;
 }
 
+/**
+ * Pasos de configuración que se cuentan y numeran: todos menos la bienvenida y el resumen final (no son tareas que
+ * configurar). Es el único número que ven la bienvenida, el asistente («Paso X de N») y el estado del Inicio.
+ */
+export function configurationSteps<T extends { id: SetupStep }>(steps: readonly T[]): T[] {
+  return steps.filter((s) => s.id !== "welcome" && s.id !== "finish");
+}
+
+/** Número del paso entre los de configuración (1…N), o null para la bienvenida y el resumen. */
+export function configurationStepNumber(steps: readonly { id: SetupStep }[], id: SetupStep): number | null {
+  const i = configurationSteps(steps).findIndex((s) => s.id === id);
+  return i < 0 ? null : i + 1;
+}
+
 /** Contratado (activa o en solo lectura) o, sin licencias por capacidad (null), todo salvo lo sectorial. */
 export function stepVisible(step: SetupStep, capabilities: ReadonlySet<string> | null): boolean {
   const caps = STEP_CAPABILITIES[step];

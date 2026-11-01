@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect, useRef } from "react";
 import { useSearch } from "wouter";
 import { trpc } from "@/lib/trpc";
 import AdminLayout from "@/components/AdminLayout";
+import { WorkplaceLocks } from "@/components/connect/WorkplaceLocks";
 import { usePanelSubscription } from "@/hooks/usePanelSubscription";
 import { errorMessage } from "@/components/admin/PanelStates";
 import { useVocabulary, visibleCrmTabs } from "@/lib/vocabulary";
@@ -6103,6 +6104,7 @@ export default function CRMDashboard() {
               <p className="text-xs sm:text-sm text-foreground/50 mt-0.5 hidden sm:block">{voc.crmSubtitle}</p>
             </div>
           </div>
+          <WorkplaceLocks place="crm" className="mt-3" />
         </div>
 
         {/* ── Alertas de pagos fraccionados urgentes ── */}

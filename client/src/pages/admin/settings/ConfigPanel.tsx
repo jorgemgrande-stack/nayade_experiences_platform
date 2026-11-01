@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "wouter";
 import AdminLayout from "@/components/AdminLayout";
+import { WorkplaceLocks } from "@/components/connect/WorkplaceLocks";
 import { usePanelSubscription } from "@/hooks/usePanelSubscription";
 import { configSectionsFor, type SectionDef, type SectionId } from "./configSections";
 import { trpc } from "@/lib/trpc";
@@ -619,6 +620,7 @@ export default function ConfigPanel() {
             {licensed ? "Avisos por correo, documentos, cobros, caja y marca de tu empresa." : "Gestiona los ajustes del negocio, notificaciones, módulos y más."}
           </p>
         </div>
+        <WorkplaceLocks place="admin" className="mb-6" />
 
         {isLoading && (
           <div className="flex justify-center py-16">

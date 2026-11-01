@@ -5,11 +5,11 @@
 import { Link } from "wouter";
 import { ArrowRight, CheckCircle2, Circle, SkipForward } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
-import { STEP_LABELS, type SetupPlan } from "@shared/setupWizard";
+import { STEP_LABELS, configurationSteps, type SetupPlan } from "@shared/setupWizard";
 import { SETUP_WIZARD_PATH } from "@/components/SetupWizardLink";
 
 export function SetupStatusCard({ plan }: { plan: SetupPlan }) {
-  const steps = plan.steps.filter((s) => s.id !== "welcome" && s.id !== "finish");
+  const steps = configurationSteps(plan.steps);
   const pending = steps.filter((s) => s.status !== "done");
   const next = plan.nextStep && plan.nextStep !== "welcome" ? plan.nextStep : null;
   return (

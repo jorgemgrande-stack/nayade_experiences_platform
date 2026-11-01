@@ -64,7 +64,7 @@ const STEPS: WizardStep[] = [
   },
   {
     id: "branding",
-    title: "Branding",
+    title: "Marca",
     subtitle: "Logo, colores e imagen visual de la marca",
     icon: Palette,
     fields: [
@@ -274,7 +274,8 @@ function IntegrationsStep({ envStatus }: {
 export default function OnboardingWizard() {
   const sub = usePanelSubscription();
   if (sub.mode === "loading") return null;
-  if (sub.mode === "tasks") return <Redirect to="/admin/primeros-pasos" />;
+  // Multiempresa (también si la suscripción falla): el asistente «Primeros pasos»; el de siempre, solo en single
+  if (sub.mode === "tasks" || sub.install === "multi") return <Redirect to="/admin/primeros-pasos" />;
   return <OnboardingWizardLegacy />;
 }
 

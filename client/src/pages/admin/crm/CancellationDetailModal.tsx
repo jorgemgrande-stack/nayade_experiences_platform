@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { toastError } from "@/lib/errorMessage";
+import { useVocabulary } from "@/lib/vocabulary";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type ActionPanel = "none" | "rechazar" | "aceptar" | "solicitar_docs" | "incidencia" | "cerrar" | "nota" | "vincular" | "reclamacion" | "marcar_devolucion" | "revertir_resolucion" | "cambiar_financiero" | "reenviar_emails";
@@ -185,6 +186,8 @@ interface Props {
 
 export default function CancellationDetailModal({ requestId, onClose, onNavigateToReservation, autoOpenAccept }: Props) {
   const utils = trpc.useUtils();
+  const voc = useVocabulary();
+  const linkedLabel = `${voc.Order} vinculad${voc.agree("o", "a")}`;
   const [activePanel, setActivePanel] = useState<ActionPanel>("none");
   const didAutoOpen = useRef(false);
 
@@ -269,7 +272,7 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
   });
 
   const linkMut = trpc.cancellations.linkToReservation.useMutation({
-    onSuccess: () => { toast.success("Reserva vinculada"); setActivePanel("none"); invalidate(); },
+    onSuccess: () => { toast.success(linkedLabel); setActivePanel("none"); invalidate(); },
     onError: (e) => toastError(e),
   });
 
@@ -381,7 +384,7 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
               )}
               <div className="flex items-center gap-2">
                 <Calendar className="w-4 h-4 text-gray-500 flex-shrink-0" />
-                <span className="text-gray-300 text-sm">Actividad: <strong className="text-white">{req.activityDate}</strong></span>
+                <span className="text-gray-300 text-sm">{voc.serviceDateLabel}: <strong className="text-white">{req.activityDate}</strong></span>
               </div>
               {req.locator && (
                 <div className="flex items-center gap-2">
@@ -390,7 +393,7 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
                     <button
                       onClick={() => { onNavigateToReservation(req.linkedReservationId!); onClose(); }}
                       className="text-blue-400 text-sm font-mono hover:text-blue-300 hover:underline underline-offset-2 transition-colors text-left"
-                      title="Ver reserva en el CRM"
+                      title={voc.viewOrder}
                     >
                       {req.locator}
                     </button>
@@ -405,7 +408,7 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
           {/* ── Bloque 1b: Desglose de la reserva vinculada ── */}
           {linkedReservation && (
             <section>
-              <h3 className="text-gray-400 text-xs font-semibold uppercase tracking-wide mb-3">Desglose de la reserva</h3>
+              <h3 className="text-gray-400 text-xs font-semibold uppercase tracking-wide mb-3">Desglose de {voc.theOrder}</h3>
               <div className="bg-[#1a1a1a] rounded-xl border border-white/5 overflow-hidden">
                 {/* Cabecera reserva */}
                 <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-white/5">
@@ -492,7 +495,7 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
                 {/* Totales */}
                 <div className="border-t border-white/10 px-4 py-3 space-y-1.5">
                   <div className="flex items-center justify-between">
-                    <span className="text-gray-400 text-xs flex items-center gap-1.5"><Euro className="w-3 h-3" />Total reserva</span>
+                    <span className="text-gray-400 text-xs flex items-center gap-1.5"><Euro className="w-3 h-3" />Total {voc.order}</span>
                     <span className="text-white text-sm font-bold font-mono">{(linkedReservation.amountTotal / 100).toFixed(2)} €</span>
                   </div>
                   <div className="flex items-center justify-between">
@@ -594,7 +597,7 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
                   <StatusBadge label={voucher.status} className="bg-purple-500/10 text-purple-400 border-purple-500/20" />
                 </div>
                 <p className="text-gray-400 text-xs">
-                  {voucher.activityName ?? "Actividad"} · {parseFloat(voucher.value).toFixed(2)} {voucher.currency}
+                  {voucher.activityName ?? voc.voucherItem} · {parseFloat(voucher.value).toFixed(2)} {voucher.currency}
                 </p>
                 {voucher.expiresAt && (
                   <p className="text-gray-500 text-xs">
@@ -651,7 +654,7 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
               <ActionButton label="Incidencia" icon={<AlertTriangle className="w-4 h-4" />} color="orange" active={activePanel === "incidencia"} onClick={() => togglePanel("incidencia")} />
               <ActionButton label="Nota interna" icon={<Plus className="w-4 h-4" />} color="purple" active={activePanel === "nota"} onClick={() => togglePanel("nota")} />
               <ActionButton label="Cerrar" icon={<Archive className="w-4 h-4" />} color="gray" active={activePanel === "cerrar"} onClick={() => togglePanel("cerrar")} />
-              <ActionButton label="Vincular reserva" icon={<Link className="w-4 h-4" />} color="blue" active={activePanel === "vincular"} onClick={() => togglePanel("vincular")} />
+              <ActionButton label={`Vincular ${voc.order}`} icon={<Link className="w-4 h-4" />} color="blue" active={activePanel === "vincular"} onClick={() => togglePanel("vincular")} />
               <ActionButton label="Reclamación cliente" icon={<MessageSquareWarning className="w-4 h-4" />} color="red" active={activePanel === "reclamacion"} onClick={() => togglePanel("reclamacion")} />
               {req.financialStatus === "pendiente_devolucion" && (
                 <ActionButton label="Marcar devuelta" icon={<Banknote className="w-4 h-4" />} color="green" active={activePanel === "marcar_devolucion"} onClick={() => togglePanel("marcar_devolucion")} />
@@ -749,7 +752,7 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
                           onClick={() => { setAcceptScope("total"); setSelectedLineQuantities(new Map()); }}
                           className={`flex-1 py-2 rounded-lg border text-xs font-medium transition-all ${acceptScope === "total" ? "border-green-500/50 bg-green-500/10 text-green-400" : "border-white/10 text-gray-500 hover:text-gray-300"}`}
                         >
-                          Reserva completa
+                          {voc.Order} complet{voc.agree("o", "a")}
                         </button>
                         <button
                           onClick={() => setAcceptScope("lineas")}
@@ -870,8 +873,8 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
                         <Input value={voucherValue} onChange={(e) => setVoucherValue(e.target.value)} type="number" min="0" step="0.01" placeholder="0.00" className="bg-[#111] border-white/10 text-white" />
                         {isPartial && <p className="text-amber-400 text-xs mt-1">Bono parcial del importe afectado</p>}
                         <div className="mt-2">
-                          <Label className="text-gray-400 text-xs">Actividad del bono</Label>
-                          <Input value={voucherActivity} onChange={(e) => setVoucherActivity(e.target.value)} placeholder="Ej: Day Pass" className="bg-[#111] border-white/10 text-white mt-1" />
+                          <Label className="text-gray-400 text-xs">{voc.voucherItem} del bono</Label>
+                          <Input value={voucherActivity} onChange={(e) => setVoucherActivity(e.target.value)} placeholder={voc.voucherItemExample} className="bg-[#111] border-white/10 text-white mt-1" />
                         </div>
                         <div className="mt-2">
                           <Label className="text-gray-400 text-xs">Caducidad (opcional)</Label>
@@ -1017,19 +1020,19 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
 
             {/* ── Panel: Vincular reserva ── */}
             {activePanel === "vincular" && (
-              <ActionPanelWrapper title="Vincular a reserva del CRM" color="blue">
+              <ActionPanelWrapper title={`Vincular ${voc.order}`} color="blue">
                 {req.linkedReservationId && (
                   <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-3 mb-2">
-                    <p className="text-xs text-blue-300 font-medium">Reserva actualmente vinculada</p>
+                    <p className="text-xs text-blue-300 font-medium">{linkedLabel} ahora</p>
                     <p className="text-blue-400 text-sm font-mono mt-0.5">ID #{req.linkedReservationId}</p>
                   </div>
                 )}
-                <p className="text-xs text-gray-500">Busca por número de reserva, nombre del cliente o email.</p>
+                <p className="text-xs text-gray-500">Busca por número de {voc.order}, nombre del cliente o email.</p>
                 <div className="flex gap-2">
                   <Input
                     value={linkSearch}
                     onChange={(e) => setLinkSearch(e.target.value)}
-                    placeholder="RES-2026-0001 o nombre..."
+                    placeholder={voc.licensed ? "Número o nombre..." : "RES-2026-0001 o nombre..."}
                     className="bg-[#111] border-white/10 text-white placeholder:text-gray-600 flex-1"
                     onKeyDown={(e) => { if (e.key === "Enter") setLinkSearchQuery(linkSearch); }}
                   />

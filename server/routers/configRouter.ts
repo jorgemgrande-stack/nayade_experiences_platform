@@ -80,14 +80,21 @@ export const configRouter = router({
   // Incluye siempre el modo de instalación (single/multi): el panel no debe confundir un fallo con el modo single.
   getPublicSettings: publicProcedure.query(async (): Promise<Record<string, string>> => {
     const install = { [INSTALL_MODE_SETTING]: isMultiTenant() ? "multi" : "single" };
+    // Multiempresa: hasta que la empresa guarde su identidad, su nombre del registro (nunca el de otra)
+    const withName = async (s: Record<string, string>): Promise<Record<string, string>> => {
+      if (!isMultiTenant() || (s.brand_name ?? "").trim()) return s;
+      await warmTenantIdentity().catch(() => undefined);
+      const name = brandName().trim();
+      return name ? { ...s, brand_name: name } : s;
+    };
     try {
       const db = await getDb();
-      if (!db) return install;
+      if (!db) return withName(install);
       const rows = await db
         .select({ key: systemSettings.key, value: systemSettings.value })
         .from(systemSettings)
         .where(and(eq(systemSettings.isPublic, true), eq(systemSettings.isSensitive, false)));
-      return { ...Object.fromEntries(rows.map(r => [r.key, r.value ?? ""])), ...install };
+      return withName({ ...Object.fromEntries(rows.map(r => [r.key, r.value ?? ""])), ...install });
     } catch {
       return install;
     }

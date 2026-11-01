@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { CheckCircle2, CircleDashed, ExternalLink, Loader2, Pencil, SkipForward, Sparkles } from "lucide-react";
 import { singleLineQuoteAmounts } from "@/lib/quoteAmounts";
 import {
-  BUSINESS_ACTIVITIES, COUNTRIES, CURRENCIES, STEP_LABELS, TIMEZONES, commsSchema, fiscalSchema, identitySchema,
+  BUSINESS_ACTIVITIES, COUNTRIES, CURRENCIES, STEP_LABELS, TIMEZONES, commsSchema, configurationSteps, fiscalSchema, identitySchema,
   type CompanyData, type PlanStep, type SetupStep,
 } from "@shared/setupWizard";
 
@@ -80,7 +80,7 @@ function issues<T extends string>(r: { success: false; error: { issues: Array<{ 
 // ─── Bienvenida ───────────────────────────────────────────────────────────────
 
 export function WelcomeStep({ tradeName, planName, steps, disabled, onStart }: { tradeName: string; planName: string | null; steps: PlanStep[]; disabled: boolean; onStart: () => void }) {
-  const rest = steps.filter((s) => s.id !== "welcome");
+  const rest = configurationSteps(steps);
   return (
     <div className="space-y-4 text-sm">
       <p className="text-foreground">
