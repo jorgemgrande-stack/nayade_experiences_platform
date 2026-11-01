@@ -172,7 +172,7 @@ export default function VariantsManager() {
             </SelectContent>
           </Select>
           <Button onClick={() => openCreate()} className="bg-primary hover:bg-primary/90">
-            <Plus className="w-4 h-4 mr-2" /> Nueva Variante
+            <Plus className="w-4 h-4 mr-2" /> Nueva variante
           </Button>
         </div>
       </div>
