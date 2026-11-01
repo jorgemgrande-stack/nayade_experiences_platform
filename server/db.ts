@@ -170,11 +170,13 @@ export async function getPublicExperiences(params: {
   locationSlug?: string;
   limit?: number;
   offset?: number;
+  /** También los publicados que no están a la venta (la tienda de una pyme los muestra como agotados). */
+  includeSoldOut?: boolean;
 }) {
   const db = await getDb();
   if (!db) return [];
   return db.select().from(experiences)
-    .where(and(eq(experiences.isActive, true), eq(experiences.isPublished, true)))
+    .where(params.includeSoldOut ? eq(experiences.isPublished, true) : and(eq(experiences.isActive, true), eq(experiences.isPublished, true)))
     .orderBy(experiences.sortOrder)
     .limit(params.limit ?? 12)
     .offset(params.offset ?? 0);

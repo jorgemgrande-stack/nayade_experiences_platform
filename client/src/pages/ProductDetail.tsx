@@ -16,6 +16,7 @@ import { useDocumentMeta } from "@/hooks/useDocumentMeta";
 import { usePublicContact } from "@/hooks/usePublicPhone";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
+import { isPurchasable } from "@shared/shopOrders";
 import {
   buildGenericCartLine,
   clampQuantity,
@@ -97,7 +98,11 @@ export default function ProductDetail() {
   const duration = str(product.duration);
   const requirements = str(product.requirements);
 
+  // Publicado pero no a la venta: se enseña como agotado y no se puede añadir (el pago también lo rechaza)
+  const soldOut = !isPurchasable(product);
+
   const add = () => {
+    if (soldOut) return;
     const r = buildGenericCartLine({ product: { ...product, coverImageUrl: str(p.coverImageUrl), image1: str(p.image1) }, variant, quantity, date, storefront: shop }, variants);
     if (!r.ok) {
       if (r.reason === "variant_required") toast.info("Elige una opción antes de añadir al carrito");
@@ -239,9 +244,16 @@ export default function ProductDetail() {
                       <span className="text-lg" data-testid="total">{formatEuros(total)}</span>
                     </div>
                   )}
-                  <Button onClick={add} className="w-full h-12 text-base font-semibold">
-                    <ShoppingCart className="mr-2 w-4 h-4" /> Añadir al carrito
-                  </Button>
+                  {soldOut ? (
+                    <>
+                      <Button disabled className="w-full h-12 text-base font-semibold" data-testid="agotado">Agotado</Button>
+                      <p className="text-sm text-muted-foreground">Ahora mismo no está a la venta. Escríbenos si quieres saber cuándo vuelve.</p>
+                    </>
+                  ) : (
+                    <Button onClick={add} className="w-full h-12 text-base font-semibold">
+                      <ShoppingCart className="mr-2 w-4 h-4" /> Añadir al carrito
+                    </Button>
+                  )}
                 </>
               ) : (
                 <Button asChild variant="outline" className="w-full h-12">

@@ -500,7 +500,7 @@ export default function ExperiencesManager() {
                     <td className="px-4 py-4">
                       <div className="flex flex-col gap-1">
                         <Badge className={exp.isActive ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-700"}>
-                          {exp.isActive ? "Activo" : "Inactivo"}
+                          {voc.licensed ? (exp.isActive ? "A la venta" : "Agotado") : exp.isActive ? "Activo" : "Inactivo"}
                         </Badge>
                         <Badge className={(exp as Record<string,unknown>).isPublished !== false ? "bg-blue-100 text-blue-700" : "bg-orange-100 text-orange-700"}>
                           {(exp as Record<string,unknown>).isPublished !== false ? "Publicado" : "No publicado"}
@@ -521,8 +521,8 @@ export default function ExperiencesManager() {
                             </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => toggleActiveMutation.mutate({ id: exp.id, isActive: !exp.isActive })}>
                               {exp.isActive
-                                ? <><PowerOff className="w-3.5 h-3.5 mr-2" /> Desactivar</>
-                                : <><Power className="w-3.5 h-3.5 mr-2" /> Activar</>}
+                                ? <><PowerOff className="w-3.5 h-3.5 mr-2" /> {voc.licensed ? "Marcar agotado" : "Desactivar"}</>
+                                : <><Power className="w-3.5 h-3.5 mr-2" /> {voc.licensed ? "Poner a la venta" : "Activar"}</>}
                             </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => { setCloneModal({ id: exp.id, originalName: exp.title }); setCloneName(""); }}>
                               <Copy className="w-3.5 h-3.5 mr-2" /> Clonar
@@ -703,8 +703,9 @@ export default function ExperiencesManager() {
               </div>
               <div className="flex items-center gap-3">
                 <Switch checked={form.isActive} onCheckedChange={(v) => setForm({ ...form, isActive: v })} />
-                <Label>Activo</Label>
+                <Label>{voc.licensed ? "A la venta" : "Activo"}</Label>
               </div>
+              {voc.licensed && <p className="-mt-2 text-xs text-muted-foreground">Desmárcalo cuando se agote: si está publicado, sigue en la tienda como «Agotado» y no se puede comprar.</p>}
               <div className="flex items-center gap-3">
                 <Switch
                   checked={form.isPublished}

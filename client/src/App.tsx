@@ -170,6 +170,8 @@ const PrimerosPasos = lazy(() => import("./pages/admin/setup/PrimerosPasos"));
 const CRMDashboard = lazy(() => import("./pages/admin/crm/CRMDashboard"));
 const ClientsManager = lazy(() => import("./pages/admin/crm/ClientsManager"));
 const ClientDetail = lazy(() => import("./pages/admin/crm/ClientDetail"));
+const OnlineOrdersList = lazy(() => import("./pages/admin/shop/OnlineOrders"));
+const OnlineOrderDetail = lazy(() => import("./pages/admin/shop/OnlineOrders").then((m) => ({ default: m.OnlineOrderDetail })));
 const CrmTags = lazy(() => import("./pages/admin/crm/CrmTags"));
 const CrmTasks = lazy(() => import("./pages/admin/crm/CrmTasks"));
 const ProposalsPage = lazy(() => import("./pages/admin/crm/ProposalsPage"));
@@ -444,6 +446,8 @@ function Router() {
       <Route path="/admin/crm/leads">{() => <Suspense fallback={<AdminLoadingFallback />}><CRMDashboard /></Suspense>}</Route>
       <Route path="/admin/crm/presupuestos">{() => <Suspense fallback={<AdminLoadingFallback />}><CRMDashboard /></Suspense>}</Route>
       <Route path="/admin/crm/reservas">{() => <Suspense fallback={<AdminLoadingFallback />}><CRMDashboard /></Suspense>}</Route>
+      <Route path="/admin/tienda/pedidos/:pedido">{(params) => <Suspense fallback={<AdminLoadingFallback />}><OnlineOrderDetail key={params.pedido} merchantOrder={decodeURIComponent(params.pedido)} /></Suspense>}</Route>
+      <Route path="/admin/tienda/pedidos">{() => <Suspense fallback={<AdminLoadingFallback />}><OnlineOrdersList /></Suspense>}</Route>
       <Route path="/admin/crm/clientes/:id">{(params) => <Suspense fallback={<AdminLoadingFallback />}><ClientDetail key={params.id} id={Number(params.id)} /></Suspense>}</Route>
       <Route path="/admin/crm/clientes">{() => <Suspense fallback={<AdminLoadingFallback />}><ClientsManager /></Suspense>}</Route>
       <Route path="/admin/crm/etiquetas">{() => <Suspense fallback={<AdminLoadingFallback />}><CrmTags /></Suspense>}</Route>

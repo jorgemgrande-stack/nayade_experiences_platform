@@ -19,8 +19,14 @@ import { Button } from "@/components/ui/button";
 import {
   ShoppingCart, Calendar, Users, Tag, Trash2, ArrowLeft,
   Lock, CreditCard, AlertCircle, CheckCircle2, ChevronRight,
-  Phone, Mail, User, Shield, Clock,
+  Phone, Mail, User, Shield, Clock, Package, Receipt,
 } from "lucide-react";
+import { formatEuros } from "@shared/storefront";
+import { checkoutErrorMessage, validateBuyer } from "@shared/shopOrders";
+import { useStorefront } from "@/components/StorefrontRoute";
+
+/** Importe en formato es-ES («1.234,50 €»). */
+const eur = (n: number) => formatEuros(n) ?? "0,00 €";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -45,6 +51,15 @@ export default function Checkout() {
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [comments, setComments] = useState("");
+  // Factura con datos fiscales (opcional)
+  const [wantsInvoice, setWantsInvoice] = useState(false);
+  const [nif, setNif] = useState("");
+  const [billingName, setBillingName] = useState("");
+  const [billingAddress, setBillingAddress] = useState("");
+  // La confirmación por correo solo se promete si llega al comprador (no en la prueba gratuita)
+  const { storefront } = useStorefront();
+  const buyerEmails = site?.licensed ? storefront?.buyerEmails === true : true;
+  const QtyIcon = site?.licensed ? Package : Users;
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitError, setSubmitError] = useState<string | null>(null);
   // Promo code
@@ -91,10 +106,7 @@ export default function Checkout() {
   }, [hasConsent]);
 
   function validate(): boolean {
-    const errs: Record<string, string> = {};
-    if (!name.trim() || name.trim().length < 2) errs.name = "Introduce tu nombre completo.";
-    if (!email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errs.email = "Introduce un email válido.";
-    if (phone.trim() && !/^[+\d\s\-()]{7,20}$/.test(phone)) errs.phone = "Teléfono no válido.";
+    const errs: Record<string, string> = { ...validateBuyer({ name, email, phone, wantsInvoice, nif, billingName, billingAddress }) };
     setErrors(errs);
     return Object.keys(errs).length === 0;
   }
@@ -123,6 +135,8 @@ export default function Checkout() {
         // Meta CAPI attribution — solo si el usuario aceptó marketing consent
         fbp: hasConsent ? getFbp() : undefined,
         fbc: hasConsent ? getFbc() : undefined,
+        comments: comments.trim() || undefined,
+        billing: wantsInvoice ? { nif: nif.trim(), name: billingName.trim() || undefined, address: billingAddress.trim() || undefined } : undefined,
       });
 
       // AddPaymentInfo — el backend confirmó la sesión Redsys, el usuario va
@@ -137,8 +151,9 @@ export default function Checkout() {
         }, { email: email.trim() });
       }
 
-      // Vaciar carrito antes de redirigir
-      clearCart();
+      // Vaciar carrito antes de redirigir. En la tienda de una pyme se conserva hasta que el pago se confirma
+      // (página de pago correcto): si el banco lo rechaza, el comprador lo reintenta sin volver a llenarlo
+      if (!site?.licensed) clearCart();
 
       // Enviar formulario Redsys
       const form = document.createElement("form");
@@ -161,8 +176,8 @@ export default function Checkout() {
       document.body.appendChild(form);
       form.submit();
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Error al procesar el pago. Inténtalo de nuevo.";
-      setSubmitError(msg);
+      const e = err as { message?: string; data?: { code?: string } | null } | null;
+      setSubmitError(checkoutErrorMessage({ code: e?.data?.code ?? null, message: e?.message ?? null }));
     }
   }
 
@@ -177,21 +192,21 @@ export default function Checkout() {
         <div className="bg-white border-b border-slate-200">
           <div className="container max-w-5xl py-4">
             <div className="flex items-center gap-2 text-sm text-slate-500 mb-3">
-              <Link href="/" className="hover:text-orange-600 transition-colors">Inicio</Link>
+              <Link href="/" className="hover:text-primary transition-colors">Inicio</Link>
               <ChevronRight className="w-3.5 h-3.5" />
-              <Link href={shopHref} className="hover:text-orange-600 transition-colors">{text.shopLabel}</Link>
+              <Link href={shopHref} className="hover:text-primary transition-colors">{text.shopLabel}</Link>
               <ChevronRight className="w-3.5 h-3.5" />
               <span className="text-slate-900 font-medium">Finalizar compra</span>
             </div>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center">
-                  <ShoppingCart className="w-5 h-5 text-orange-600" />
+                <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                  <ShoppingCart className="w-5 h-5 text-primary" />
                 </div>
                 <div>
                   <h1 className="text-xl font-black text-slate-900">Finalizar compra</h1>
                   <p className="text-xs text-slate-500">
-                    {site?.licensed ? `${totalItems} ${totalItems === 1 ? "artículo" : "artículos"}` : `${totalItems} ${totalItems === 1 ? "experiencia" : "experiencias"}`} · Total estimado: <span className="font-bold text-orange-600">{totalEstimated.toFixed(2).replace(".", ",")} €</span>
+                    {site?.licensed ? `${totalItems} ${totalItems === 1 ? "artículo" : "artículos"}` : `${totalItems} ${totalItems === 1 ? "experiencia" : "experiencias"}`} · Total estimado: <span className="font-bold text-primary">{eur(totalEstimated)}</span>
                   </p>
                 </div>
               </div>
@@ -214,7 +229,7 @@ export default function Checkout() {
               <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
                 <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
                   <h2 className="font-bold text-slate-900 flex items-center gap-2">
-                    <ShoppingCart className="w-4 h-4 text-orange-500" />
+                    <ShoppingCart className="w-4 h-4 text-primary" />
                     Resumen del pedido
                   </h2>
                   <button
@@ -239,8 +254,8 @@ export default function Checkout() {
                             className="w-20 h-20 rounded-xl object-cover flex-shrink-0 shadow-sm"
                           />
                         ) : (
-                          <div className="w-20 h-20 rounded-xl bg-gradient-to-br from-sky-100 to-blue-200 flex items-center justify-center flex-shrink-0">
-                            <ShoppingCart className="w-7 h-7 text-sky-400" />
+                          <div className="w-20 h-20 rounded-xl bg-gradient-to-br from-primary/10 to-primary/20 flex items-center justify-center flex-shrink-0">
+                            <ShoppingCart className="w-7 h-7 text-primary/50" />
                           </div>
                         )}
 
@@ -268,12 +283,12 @@ export default function Checkout() {
                           <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-xs text-slate-600">
                             {formatDate(item.bookingDate) && (
                               <span className="flex items-center gap-1">
-                                <Calendar className="w-3 h-3 text-orange-400" />
+                                <Calendar className="w-3 h-3 text-primary" />
                                 {formatDate(item.bookingDate)}
                               </span>
                             )}
                             <span className="flex items-center gap-1">
-                              <Users className="w-3 h-3 text-orange-400" />
+                              <QtyIcon className="w-3 h-3 text-primary" aria-hidden="true" />
                               {text.quantity(item.people)}
                             </span>
                           </div>
@@ -283,7 +298,7 @@ export default function Checkout() {
                               {item.extras.map((e, i) => (
                                 <p key={i} className="text-xs text-slate-600">
                                   + {e.name} ×{e.quantity}
-                                  <span className="ml-1 text-slate-700">({(e.price * e.quantity).toFixed(2).replace(".", ",")} €)</span>
+                                  <span className="ml-1 text-slate-700">({eur(e.price * e.quantity)})</span>
                                 </p>
                               ))}
                             </div>
@@ -291,11 +306,11 @@ export default function Checkout() {
 
                           <div className="flex items-center justify-between mt-3">
                             <span className="text-xs text-slate-600">
-                              {item.pricePerPerson.toFixed(2).replace(".", ",")} {text.perUnitLong}
-                              {extrasTotal > 0 && ` + ${extrasTotal.toFixed(2).replace(".", ",")} € extras`}
+                              {eur(item.pricePerPerson)}{text.perUnitLong.replace("€", "")}
+                              {extrasTotal > 0 && ` + ${eur(extrasTotal)} extras`}
                             </span>
-                            <span className="font-black text-base text-orange-600">
-                              {item.estimatedTotal.toFixed(2).replace(".", ",")} €
+                            <span className="font-black text-base text-primary">
+                              {eur(item.estimatedTotal)}
                             </span>
                           </div>
                         </div>
@@ -307,7 +322,7 @@ export default function Checkout() {
                 {/* Código promocional */}
                 <div className="px-5 py-3 bg-slate-50 border-t border-slate-100">
                   <label className="block text-xs font-semibold text-slate-700 mb-1.5 flex items-center gap-1">
-                    <Tag className="w-3 h-3 text-orange-500" /> Código promocional
+                    <Tag className="w-3 h-3 text-primary" /> Código promocional
                   </label>
                   {promoData ? (
                     <div className="flex items-center justify-between bg-green-50 border border-green-200 rounded-xl px-3 py-2">
@@ -315,7 +330,7 @@ export default function Checkout() {
                         <span className="font-mono font-bold text-green-700 text-sm">{promoData.code}</span>
                         <span className="text-xs text-green-600 ml-2">
                           {promoData.discountType === "fixed"
-                            ? `-${promoData.discountAmount.toFixed(2).replace(".", ",")} € aplicado`
+                            ? `-${eur(promoData.discountAmount)} aplicado`
                             : `-${promoData.discountPercent}% aplicado`}
                         </span>
                       </div>
@@ -334,12 +349,12 @@ export default function Checkout() {
                         onChange={e => { setPromoInput(e.target.value.toUpperCase()); setErrors(p => ({ ...p, promo: "" })); }}
                         onKeyDown={e => e.key === "Enter" && validatePromo.mutate({ code: promoInput, amount: totalEstimated })}
                         placeholder={text.promoPlaceholder}
-                        className={`flex-1 px-3 py-2 text-sm border rounded-xl font-mono uppercase focus:outline-none focus:ring-2 focus:ring-orange-300 ${errors.promo ? "border-red-400 bg-red-50" : "border-slate-300"}`}
+                        className={`flex-1 px-3 py-2 text-sm border rounded-xl font-mono uppercase focus:outline-none focus:ring-2 focus:ring-primary/40 ${errors.promo ? "border-red-400 bg-red-50" : "border-slate-300"}`}
                       />
                       <button
                         onClick={() => validatePromo.mutate({ code: promoInput, amount: totalEstimated })}
                         disabled={validatePromo.isPending || !promoInput.trim()}
-                        className="px-3 py-2 text-sm font-semibold bg-orange-500 hover:bg-orange-600 text-white rounded-xl disabled:opacity-50 transition-colors"
+                        className="px-3 py-2 text-sm font-semibold bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl disabled:opacity-50 transition-colors"
                       >
                         {validatePromo.isPending ? "..." : "Aplicar"}
                       </button>
@@ -352,19 +367,19 @@ export default function Checkout() {
                 <div className="px-5 py-4 bg-slate-50 border-t border-slate-100">
                   <div className="flex items-center justify-between text-sm text-slate-600 mb-1">
                     <span>Subtotal ({totalItems} {totalItems === 1 ? "artículo" : "artículos"})</span>
-                    <span>{totalEstimated.toFixed(2).replace(".", ",")} €</span>
+                    <span>{eur(totalEstimated)}</span>
                   </div>
                   {promoDiscount > 0 && (
                     <div className="flex items-center justify-between text-sm text-green-600 mb-1">
                       <span>Descuento {promoData?.code}</span>
-                      <span>-{promoDiscount.toFixed(2).replace(".", ",")} €</span>
+                      <span>-{eur(promoDiscount)}</span>
                     </div>
                   )}
                   <div className="flex items-center justify-between font-black text-lg text-slate-900 border-t border-slate-200 pt-2 mt-2">
                     <span>Total</span>
-                    <span className="text-orange-600">{finalTotal.toFixed(2).replace(".", ",")} €</span>
+                    <span className="text-primary">{eur(finalTotal)}</span>
                   </div>
-                  <p className="text-xs text-slate-500 mt-1.5">* El precio final se calculará en el servidor antes del pago.</p>
+                  <p className="text-xs text-slate-500 mt-1.5">{site?.licensed ? "Precios con IVA incluido. El importe definitivo se comprueba antes de pagar." : "* El precio final se calculará en el servidor antes del pago."}</p>
                 </div>
               </div>
 
@@ -374,10 +389,12 @@ export default function Checkout() {
                   { icon: Shield, label: "Pago seguro", desc: text.secureBadge },
                   // Política de cancelación de la instalación propia: una pyme tiene la suya (no se inventa)
                   ...(text.showCancellationBadge ? [{ icon: Clock, label: "Cancelación", desc: "Hasta 48h antes" }] : []),
-                  { icon: CheckCircle2, label: "Confirmación", desc: "Email inmediato" },
+                  buyerEmails
+                    ? { icon: CheckCircle2, label: "Confirmación", desc: site?.licensed ? "Por correo al pagar" : "Email inmediato" }
+                    : { icon: CheckCircle2, label: "Confirmación", desc: "Número de pedido al pagar" },
                 ].map(({ icon: Icon, label, desc }) => (
                   <div key={label} className="bg-white rounded-xl border border-slate-200 p-3 text-center">
-                    <Icon className="w-5 h-5 text-green-500 mx-auto mb-1" />
+                    <Icon className="w-5 h-5 text-primary mx-auto mb-1" />
                     <p className="text-xs font-bold text-slate-800">{label}</p>
                     <p className="text-xs text-slate-600">{desc}</p>
                   </div>
@@ -390,10 +407,10 @@ export default function Checkout() {
               <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden sticky top-24">
                 <div className="px-5 py-4 border-b border-slate-100">
                   <h2 className="font-bold text-slate-900 flex items-center gap-2">
-                    <User className="w-4 h-4 text-orange-500" />
+                    <User className="w-4 h-4 text-primary" />
                     Tus datos de contacto
                   </h2>
-                  <p className="text-xs text-slate-600 mt-0.5">{text.contactHint}</p>
+                  <p className="text-xs text-slate-600 mt-0.5">{buyerEmails ? text.contactHint : "Para identificar tu pedido y poder contactarte."}</p>
                 </div>
 
                 <div className="px-5 py-5 space-y-4">
@@ -409,7 +426,7 @@ export default function Checkout() {
                         value={name}
                         onChange={e => { setName(e.target.value); setErrors(p => ({ ...p, name: "" })); }}
                         placeholder="Carlos García López"
-                        className={`w-full pl-9 pr-3 py-2.5 text-sm border rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-orange-300 focus:border-orange-400 transition-colors ${errors.name ? "border-red-400 bg-red-50" : "border-slate-300"}`}
+                        className={`w-full pl-9 pr-3 py-2.5 text-sm border rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-colors ${errors.name ? "border-red-400 bg-red-50" : "border-slate-300"}`}
                       />
                     </div>
                     {errors.name && <p className="text-xs text-red-500 mt-1 flex items-center gap-1"><AlertCircle className="w-3 h-3" />{errors.name}</p>}
@@ -427,7 +444,7 @@ export default function Checkout() {
                         value={email}
                         onChange={e => { setEmail(e.target.value); setErrors(p => ({ ...p, email: "" })); }}
                         placeholder="carlos@ejemplo.com"
-                        className={`w-full pl-9 pr-3 py-2.5 text-sm border rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-orange-300 focus:border-orange-400 transition-colors ${errors.email ? "border-red-400 bg-red-50" : "border-slate-300"}`}
+                        className={`w-full pl-9 pr-3 py-2.5 text-sm border rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-colors ${errors.email ? "border-red-400 bg-red-50" : "border-slate-300"}`}
                       />
                     </div>
                     {errors.email && <p className="text-xs text-red-500 mt-1 flex items-center gap-1"><AlertCircle className="w-3 h-3" />{errors.email}</p>}
@@ -445,10 +462,35 @@ export default function Checkout() {
                         value={phone}
                         onChange={e => { setPhone(e.target.value); setErrors(p => ({ ...p, phone: "" })); }}
                         placeholder="+34 600 000 000"
-                        className={`w-full pl-9 pr-3 py-2.5 text-sm border rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-orange-300 focus:border-orange-400 transition-colors ${errors.phone ? "border-red-400 bg-red-50" : "border-slate-300"}`}
+                        className={`w-full pl-9 pr-3 py-2.5 text-sm border rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-colors ${errors.phone ? "border-red-400 bg-red-50" : "border-slate-300"}`}
                       />
                     </div>
                     {errors.phone && <p className="text-xs text-red-500 mt-1 flex items-center gap-1"><AlertCircle className="w-3 h-3" />{errors.phone}</p>}
+                  </div>
+
+                  {/* Factura con NIF (opcional) */}
+                  <div className="rounded-xl border border-slate-200 p-3">
+                    <label className="flex items-start gap-2 text-sm text-slate-700 cursor-pointer">
+                      <input type="checkbox" checked={wantsInvoice} onChange={e => { setWantsInvoice(e.target.checked); setErrors(p => ({ ...p, nif: "" })); }} className="mt-0.5 h-4 w-4 accent-primary" />
+                      <span className="flex items-center gap-1.5"><Receipt className="w-4 h-4 shrink-0 text-primary" aria-hidden="true" />Quiero la factura con mi NIF o el de mi empresa</span>
+                    </label>
+                    {wantsInvoice && (
+                      <div className="mt-3 space-y-3">
+                        <div>
+                          <label htmlFor="checkout-nif" className="block text-xs font-semibold text-slate-700 mb-1.5">NIF, NIE o CIF <span className="text-red-500">*</span></label>
+                          <input id="checkout-nif" type="text" value={nif} autoComplete="off" onChange={e => { setNif(e.target.value.toUpperCase()); setErrors(p => ({ ...p, nif: "" })); }} placeholder="12345678Z" className={`w-full px-3 py-2.5 text-sm border rounded-xl bg-white uppercase focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-colors ${errors.nif ? "border-red-400 bg-red-50" : "border-slate-300"}`} />
+                          {errors.nif && <p className="text-xs text-red-500 mt-1 flex items-center gap-1"><AlertCircle className="w-3 h-3" />{errors.nif}</p>}
+                        </div>
+                        <div>
+                          <label htmlFor="checkout-billing-name" className="block text-xs font-semibold text-slate-700 mb-1.5">Nombre o razón social <span className="text-slate-500 font-normal">(si es distinto)</span></label>
+                          <input id="checkout-billing-name" type="text" value={billingName} onChange={e => setBillingName(e.target.value)} placeholder="Mi Empresa, S.L." className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-colors" />
+                        </div>
+                        <div>
+                          <label htmlFor="checkout-billing-address" className="block text-xs font-semibold text-slate-700 mb-1.5">Dirección fiscal <span className="text-slate-500 font-normal">(opcional)</span></label>
+                          <input id="checkout-billing-address" type="text" value={billingAddress} onChange={e => setBillingAddress(e.target.value)} placeholder="Calle, número, código postal y ciudad" className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-colors" />
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Comentarios */}
@@ -461,7 +503,7 @@ export default function Checkout() {
                       onChange={e => setComments(e.target.value)}
                       placeholder={text.commentsPlaceholder}
                       rows={3}
-                      className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-orange-300 focus:border-orange-400 transition-colors resize-none"
+                      className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-colors resize-none"
                     />
                   </div>
 
@@ -477,14 +519,14 @@ export default function Checkout() {
                   <div className="border-t border-slate-100 pt-4">
                     <div className="flex items-center justify-between mb-4">
                       <span className="text-sm font-semibold text-slate-700">Total a pagar</span>
-                      <span className="text-2xl font-black text-orange-600">
-                        {finalTotal.toFixed(2).replace(".", ",")} €
+                      <span className="text-2xl font-black text-primary">
+                        {eur(finalTotal)}
                       </span>
                     </div>
 
                     <Button
                       size="lg"
-                      className="w-full bg-orange-500 hover:bg-orange-600 text-white font-black text-base rounded-xl shadow-lg shadow-orange-200 transition-all"
+                      className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-black text-base rounded-xl transition-all"
                       onClick={handlePay}
                       disabled={cartCheckout.isPending}
                     >
