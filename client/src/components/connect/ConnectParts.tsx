@@ -161,12 +161,13 @@ export function ProductIcon({ item, size = "md" }: { item: Pick<ConnectCatalogIt
 // ── Estado ─────────────────────────────────────────────────────────────────────
 
 const STATE_META: Record<ConnectState, { icon: LucideIcon; tone: Tone }> = {
-  available: { icon: Sparkles, tone: "brand" },
-  active: { icon: CheckCircle2, tone: "success" },
+  // El rojo de la marca se reserva para las acciones: un estado en rojo se leería como error
+  available: { icon: Sparkles, tone: "success" },
+  active: { icon: CheckCircle2, tone: "info" },
   pending_setup: { icon: Settings2, tone: "warning" },
   activating: { icon: Loader2, tone: "info" },
   not_eligible: { icon: Lock, tone: "neutral" },
-  on_request: { icon: PackagePlus, tone: "info" },
+  on_request: { icon: PackagePlus, tone: "warning" },
   coming_soon: { icon: Clock, tone: "neutral" },
   incident: { icon: AlertTriangle, tone: "danger" },
 };
