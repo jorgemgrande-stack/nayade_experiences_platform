@@ -4,7 +4,7 @@
  */
 
 
-import { router, protectedProcedure, publicProcedure, staffProcedure, adminProcedure } from "../_core/trpc";
+import { router, protectedProcedure, publicProcedure, staffProcedure, adminProcedure, permissionProcedure } from "../_core/trpc";
 import { publicBaseUrl } from "../_core/productIdentity";
 import { brandSetting, companyName } from "../tenantBrand";
 import { invoicePreviewPath } from "../_core/signedLinks";
@@ -52,7 +52,7 @@ import { sendEmail as sharedSendEmail } from "../mailer";
 import { sendManagedEmail, logDirectEmail } from "../emailManager";
 import { generateDocumentNumber } from "../documentNumbers";
 import { nextCreditNoteNumber, withCreditNoteNumberRetry } from "../creditNoteNumber";
-import { computeCreditNote, computeCreditNoteFromLines, computeDirectInvoice, CreditNoteSelectionError, DIRECT_INVOICE_TAX_RATES, round2, type CreditNoteLineSelection } from "../invoiceCalc";
+import { alreadyCredited, computeDirectInvoice, creditNoteLineStatus, CreditNoteSelectionError, DIRECT_INVOICE_TAX_RATES, planCreditNote, round2, type CreditNoteLineSelection } from "../invoiceCalc";
 import { htmlToPdf } from "../pdfGenerator";
 import { buildRedsysForm, generateMerchantOrder } from "../redsys";
 import { storagePut, hasExternalStorage, externalFileUrl } from "../storage";
@@ -76,6 +76,9 @@ import { syncLeadUrlsToGHL, createGHLContact, getGHLTagsFromSource, triggerGHLWo
 import { getSystemSettingSync, getBusinessEmail, internalNoticeEmail } from "../config";
 import { groupTaxBreakdown, totalTaxAmount } from "../taxUtils";
 import { reservationProductFromQuoteItems } from "../reservationUtils";
+import { buildGestoriaInvoiceZip, ExportTooLargeError, MAX_EXPORT_DOCUMENTS } from "../gestoriaInvoiceExport";
+import { listInvoicesForExport, originalInvoiceNumbers, storedInvoicePdf, toExportRow } from "../gestoriaInvoiceExportDb";
+import { ExportPeriodError, resolveExportPeriod } from "../../shared/gestoriaExportPeriod";
 
 // DB helper — usa la misma pool que el resto del servidor
 const _pool = legacyPool();
@@ -356,7 +359,17 @@ async function sendTransferConfirmationEmail(data: {
  * y nunca abonan entre los dos más de lo facturado. Si otro abono simultáneo (de otra factura) toma el
  * mismo número, el índice único lo rechaza y la transacción completa se reintenta.
  */
-async function issueCreditNote(input: { invoiceId: number; reason: string; partialAmount?: number; lines?: CreditNoteLineSelection[] }) {
+/** Qué se abona (createCreditNote y su vista previa): nada = lo pendiente; o un importe; o unas líneas. */
+const creditNoteSelectionShape = {
+  partialAmount: z.number().positive("El importe del abono debe ser mayor que cero").optional(),
+  lines: z.array(z.object({
+    itemIndex: z.number().int().min(0),
+    quantity: z.number().positive("La cantidad debe ser mayor que cero").optional(),
+    amount: z.number().positive("El importe debe ser mayor que cero").optional(),
+  })).max(200).optional(),
+};
+
+async function issueCreditNote(input:{ invoiceId: number; reason: string; partialAmount?: number; lines?: CreditNoteLineSelection[] }) {
   return withCreditNoteNumberRetry(() => db.transaction(async (tx) => {
     const [original] = await tx.select().from(invoices).where(eq(invoices.id, input.invoiceId)).for("update");
     if (!original) throw new TRPCError({ code: "NOT_FOUND" });
@@ -367,27 +380,20 @@ async function issueCreditNote(input: { invoiceId: number; reason: string; parti
     // Lo ya abonado de esta factura: el total abonado nunca supera lo facturado
     const previous = await tx.select().from(invoices)
       .where(and(eq(invoices.creditNoteForId, original.id), eq(invoices.invoiceType, "abono")));
-    const alreadyCredited = previous.reduce((a, r) => a + Math.abs(Number(r.total)), 0);
-    const remaining = round2(Number(original.total) - alreadyCredited);
-    if (remaining <= 0) throw new TRPCError({ code: "BAD_REQUEST", message: "Esta factura ya está abonada por completo" });
-    // Abono por líneas elegidas, por importe (repartido entre los tipos de IVA) o total
-    let byLines: ReturnType<typeof computeCreditNoteFromLines> | null = null;
-    if (input.lines?.length) {
-      try {
-        byLines = computeCreditNoteFromLines(original as any, input.lines);
-      } catch (e) {
-        if (e instanceof CreditNoteSelectionError) throw new TRPCError({ code: "BAD_REQUEST", message: e.message });
-        throw e;
-      }
+    // Abono por líneas elegidas, por importe (repartido entre los tipos de IVA) o total; la suma de abonos
+    // nunca supera lo facturado (ni por línea). Las mismas reglas que la vista previa (`planCreditNote`).
+    let plan: ReturnType<typeof planCreditNote>;
+    try {
+      plan = planCreditNote(original as any, previous as any[], { partialAmount: input.partialAmount, lines: input.lines });
+    } catch (e) {
+      if (e instanceof CreditNoteSelectionError) throw new TRPCError({ code: "BAD_REQUEST", message: e.message });
+      throw e;
     }
-    const creditTotal = byLines ? -byLines.total : input.partialAmount !== undefined ? round2(input.partialAmount) : remaining;
-    if (!(creditTotal > 0)) throw new TRPCError({ code: "BAD_REQUEST", message: "El importe del abono debe ser mayor que cero" });
-    if (creditTotal - remaining > 0.005) throw new TRPCError({ code: "BAD_REQUEST", message: `El abono (${creditTotal.toFixed(2)}) supera lo pendiente de abonar (${remaining.toFixed(2)})` });
+    const { amounts, creditTotal } = plan;
 
     // Numeración en la serie vigente ABO-AAAA-MM-nnnn: máximo del mes + 1, único por índice (nunca un
     // recuento de filas, que con dos abonos simultáneos daba el mismo número)
     const creditNoteNumber = await nextCreditNoteNumber(tx, now);
-    const amounts = byLines ?? computeCreditNote(original as any, previous as any[], creditTotal);
 
     const [result] = await tx.insert(invoices).values({
       invoiceNumber: creditNoteNumber,
@@ -417,7 +423,7 @@ async function issueCreditNote(input: { invoiceId: number; reason: string; parti
     const creditNoteId = (result as any).insertId as number;
 
     // Abonada solo cuando el total abonado cubre la factura (un abono parcial no la cierra)
-    if (creditTotal - remaining > -0.005) {
+    if (plan.closesInvoice) {
       await tx.update(invoices).set({ status: "abonada", updatedAt: now }).where(eq(invoices.id, input.invoiceId));
     }
 
@@ -505,7 +511,10 @@ export async function checkAndConfirmInstallmentPlan(quoteId: number, userId: nu
   const breakdown = groupTaxBreakdown(items.filter(i => i.fiscalRegime !== "reav"));
   const taxAmount = totalTaxAmount(breakdown);
   const taxRateInst = breakdown.length === 1 ? breakdown[0].rate : 21;
-  const total = parseFloat((subtotal + taxAmount).toFixed(2));
+  // Lo facturado es lo cobrado: el total del presupuesto (las cuotas suman exactamente ese importe), como en
+  // el pago único. Recalcularlo como base + cuota daba otra cifra cuando las líneas no incluían el IVA.
+  const quoteTotal = Number(quote.total);
+  const total = quoteTotal > 0 ? round2(quoteTotal) : parseFloat((subtotal + taxAmount).toFixed(2));
 
   // -- FASE 1: Confirmar reserva cuando se pagan las cuotas obligatorias ------
   // Idempotente: sólo si el quote aún no está aceptado
@@ -564,9 +573,11 @@ export async function checkAndConfirmInstallmentPlan(quoteId: number, userId: nu
         .where(eq(reservations.id, reservation.id));
     }
 
+    // El enlace del presupuesto se conserva: con él el cliente paga las cuotas siguientes y vuelve a ver
+    // el presupuesto. Nunca cobra dos veces: solo inicia el pago de cuotas pendientes y, con el plan
+    // cobrado (paidAt), deja de iniciar pagos.
     await db.update(quotes).set({
       status: "aceptado",
-      paymentLinkToken: null,
       updatedAt: now,
     }).where(eq(quotes.id, quoteId));
 
@@ -3318,8 +3329,8 @@ export const crmRouter = router({
         // Obtener datos del lead/cliente
         const [lead] = await db.select().from(leads).where(eq(leads.id, quote.leadId)).limit(1);
 
-        // Verificar si ha expirado
-        const isExpired = quote.validUntil && new Date(quote.validUntil) < new Date();
+        // Verificar si ha expirado (un presupuesto ya aceptado no caduca: quedan sus cuotas por pagar)
+        const isExpired = quote.status !== "aceptado" && quote.validUntil && new Date(quote.validUntil) < new Date();
         const isPaid = !!quote.paidAt;
         const isRejected = quote.status === "rechazado";
 
@@ -3327,6 +3338,7 @@ export const crmRouter = router({
         let installmentPlan: {
           planId: number;
           firstRequiredAmountCents: number | null;
+          nextInstallment: { installmentNumber: number; amountCents: number } | null;
           installments: {
             id: number;
             installmentNumber: number;
@@ -3351,13 +3363,16 @@ export const crmRouter = router({
             .where(eq(paymentInstallments.quoteId, quote.id))
             .orderBy(paymentInstallments.installmentNumber);
 
-          const firstRequired = planInstallments.find(
-            (i) => i.isRequiredForConfirmation && i.status === "pending"
-          ) ?? planInstallments.find((i) => i.isRequiredForConfirmation) ?? null;
+          // La cuota que cobraría el enlace ahora (mismo orden que payWithToken): primero las obligatorias
+          // pendientes y después cualquier pendiente
+          const next = planInstallments.find((i) => i.isRequiredForConfirmation && i.status === "pending")
+            ?? planInstallments.find((i) => i.status === "pending")
+            ?? null;
 
           installmentPlan = {
             planId: quote.paymentPlanId,
-            firstRequiredAmountCents: firstRequired?.amountCents ?? null,
+            firstRequiredAmountCents: next?.amountCents ?? null,
+            nextInstallment: next ? { installmentNumber: next.installmentNumber, amountCents: next.amountCents } : null,
             installments: planInstallments,
           };
         }
@@ -3402,6 +3417,8 @@ export const crmRouter = router({
         if (!quote) throw new TRPCError({ code: "NOT_FOUND" });
         if (quote.paidAt) throw new TRPCError({ code: "BAD_REQUEST", message: "Este presupuesto ya ha sido pagado" });
         if (quote.status === "rechazado") return { success: true };
+        // Aceptado (con cuotas ya pagadas): el enlace sigue vivo para pagar el resto, pero ya no se rechaza
+        if (quote.status === "aceptado") throw new TRPCError({ code: "BAD_REQUEST", message: "Este presupuesto ya está confirmado. Si necesitas cambiarlo, ponte en contacto con nosotros." });
 
         await db
           .update(quotes)
@@ -3438,7 +3455,8 @@ export const crmRouter = router({
         if (!quote) throw new TRPCError({ code: "NOT_FOUND", message: "Presupuesto no encontrado" });
         if (quote.paidAt) throw new TRPCError({ code: "BAD_REQUEST", message: "Este presupuesto ya ha sido pagado" });
         if (quote.status === "rechazado") throw new TRPCError({ code: "BAD_REQUEST", message: "Este presupuesto fue rechazado" });
-        if (quote.validUntil && new Date(quote.validUntil) < new Date()) {
+        // La validez limita la aceptación; las cuotas de un presupuesto ya aceptado se pagan aunque haya pasado
+        if (quote.status !== "aceptado" && quote.validUntil && new Date(quote.validUntil) < new Date()) {
           throw new TRPCError({ code: "BAD_REQUEST", message: "Este presupuesto ha expirado" });
         }
 
@@ -3460,12 +3478,12 @@ export const crmRouter = router({
         // 1ª prioridad: cuotas requeridas para confirmar reserva
         // 2ª prioridad: cualquier cuota pendiente (cuotas posteriores a la confirmación)
         let amountCents = Math.round(totalEuros * 100);
-        let firstRequiredInstallment: { id: number; amountCents: number; installmentNumber: number } | null = null;
+        let firstRequiredInstallment: { id: number; amountCents: number; installmentNumber: number; reservationId: number | null } | null = null;
 
         if (quote.paymentPlanId) {
           // Buscar primera cuota requerida pendiente
           const [requiredInst] = await db
-            .select({ id: paymentInstallments.id, amountCents: paymentInstallments.amountCents, installmentNumber: paymentInstallments.installmentNumber })
+            .select({ id: paymentInstallments.id, amountCents: paymentInstallments.amountCents, installmentNumber: paymentInstallments.installmentNumber, reservationId: paymentInstallments.reservationId })
             .from(paymentInstallments)
             .where(and(
               eq(paymentInstallments.quoteId, quote.id),
@@ -3481,7 +3499,7 @@ export const crmRouter = router({
           } else {
             // No quedan requeridas — buscar la próxima cuota pendiente (plan en curso)
             const [nextInst] = await db
-              .select({ id: paymentInstallments.id, amountCents: paymentInstallments.amountCents, installmentNumber: paymentInstallments.installmentNumber })
+              .select({ id: paymentInstallments.id, amountCents: paymentInstallments.amountCents, installmentNumber: paymentInstallments.installmentNumber, reservationId: paymentInstallments.reservationId })
               .from(paymentInstallments)
               .where(and(
                 eq(paymentInstallments.quoteId, quote.id),
@@ -3501,9 +3519,44 @@ export const crmRouter = router({
         const customerEmail = input.customerEmail ?? lead.email ?? "";
         const customerPhone = input.customerPhone ?? lead.phone ?? "";
 
+        // Cuota con un pago ya iniciado y sin completar: se reutiliza su mismo pedido de la pasarela. Así
+        // abrir el pago dos veces no crea dos cobros de la misma cuota (la pasarela no autoriza dos veces el
+        // mismo pedido) y la notificación siempre encuentra la cuota.
+        if (firstRequiredInstallment?.reservationId) {
+          const [pendingRes] = await db
+            .select()
+            .from(reservations)
+            .where(and(
+              eq(reservations.id, firstRequiredInstallment.reservationId),
+              eq(reservations.quoteId, quote.id),
+              eq(reservations.status, "pending_payment"),
+            ))
+            .limit(1);
+          if (pendingRes && pendingRes.amountTotal === amountCents) {
+            const redsysForm = await buildRedsysForm({
+              amount: amountCents,
+              merchantOrder: pendingRes.merchantOrder,
+              productDescription: `Presupuesto ${quote.quoteNumber} — ${quote.title}`,
+              notifyUrl: `${publicBaseUrl()}/api/redsys/notification`,
+              okUrl: `${publicBaseUrl()}/reserva/ok?order=${pendingRes.merchantOrder}`,
+              koUrl: `${publicBaseUrl()}/reserva/error?order=${pendingRes.merchantOrder}`,
+              holderName: customerName,
+            });
+            return {
+              merchantOrder: pendingRes.merchantOrder,
+              amountCents,
+              amountEuros: totalEuros,
+              quoteTitle: quote.title,
+              redsysForm,
+            };
+          }
+        }
+
         // Reutilizar reserva pending_payment existente si el presupuesto ya fue convertido
         // o si el pago anterior falló y el cliente reintenta con una nueva tarjeta.
-        if ((quote.status === "convertido_carrito" || quote.status === "pago_fallido") && quote.redsysOrderId) {
+        // (Con plan de pagos solo se reutiliza la reserva de la propia cuota, tratada arriba: la de otra
+        // cuota llevaría su pedido y la notificación marcaría la cuota equivocada.)
+        if (!firstRequiredInstallment && (quote.status === "convertido_carrito" || quote.status === "pago_fallido") && quote.redsysOrderId) {
           const [existingReservation] = await db
             .select()
             .from(reservations)
@@ -5526,6 +5579,51 @@ export const crmRouter = router({
         return invoice;
       }),
 
+    // --- Exportar para la gestoría: ZIP con los PDF y el libro de facturas emitidas ----
+    // Consulta (no cambia nada): con la facturación en solo lectura se sigue pudiendo exportar. Solo quien
+    // ve los informes contables (administración por defecto). Datos de la empresa en curso, nunca de otra.
+    exportForGestoria: permissionProcedure("accounting.reports.view", ["admin"])
+      .input(z.discriminatedUnion("kind", [
+        z.object({ kind: z.literal("month"), year: z.number().int(), month: z.number().int() }),
+        z.object({ kind: z.literal("quarter"), year: z.number().int(), quarter: z.number().int() }),
+        z.object({ kind: z.literal("range"), from: z.string().max(10), to: z.string().max(10) }),
+      ]))
+      .query(async ({ input }) => {
+        let period;
+        try {
+          period = resolveExportPeriod(input);
+        } catch (e) {
+          if (e instanceof ExportPeriodError) throw new TRPCError({ code: "BAD_REQUEST", message: e.message });
+          throw e;
+        }
+        const stored = await listInvoicesForExport(period);
+        if (stored.length > MAX_EXPORT_DOCUMENTS) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: `El periodo tiene ${stored.length} documentos y el máximo por exportación es ${MAX_EXPORT_DOCUMENTS}. Exporta por meses o con un rango más corto.` });
+        }
+        const byId = new Map(stored.map((r) => [r.id, r]));
+        try {
+          const zip = await buildGestoriaInvoiceZip({
+            companyName: companyName(),
+            period,
+            rows: stored.map(toExportRow),
+            originalNumbers: await originalInvoiceNumbers(stored),
+            pdfFor: (row) => storedInvoicePdf(byId.get(row.id)!),
+          });
+          return {
+            fileName: zip.fileName,
+            mimeType: "application/zip",
+            contentBase64: zip.buffer.toString("base64"),
+            period: { from: period.from, to: period.to, label: period.label },
+            invoices: zip.invoices,
+            creditNotes: zip.creditNotes,
+            missingPdfs: zip.missingPdfs,
+          };
+        } catch (e) {
+          if (e instanceof ExportTooLargeError) throw new TRPCError({ code: "BAD_REQUEST", message: e.message });
+          throw e;
+        }
+      }),
+
     // --- Regenerar PDF de factura existente -----------------------------------
     regeneratePdf: staff
       .input(z.object({ invoiceId: z.number() }))
@@ -5918,13 +6016,62 @@ export const crmRouter = router({
       .input(z.object({
         invoiceId: z.number(),
         reason: z.string().trim().min(1, "Indica el motivo del abono"),
-        partialAmount: z.number().positive("El importe del abono debe ser mayor que cero").optional(), // sin importe ni líneas: abono total
-        lines: z.array(z.object({ itemIndex: z.number().int().min(0), quantity: z.number().positive("La cantidad debe ser mayor que cero").optional() })).max(200).optional(),
+        ...creditNoteSelectionShape,
       }).refine((v) => !(v.partialAmount !== undefined && v.lines?.length), { message: "Abona por importe o por líneas, no ambas cosas", path: ["lines"] }))
       .mutation(async ({ input, ctx }) => {
         const done = await issueCreditNote(input);
         await logActivity("invoice", input.invoiceId, "credit_note_created", ctx.user.id, ctx.user.name, { creditNoteId: done.creditNoteId, creditNoteNumber: done.creditNoteNumber, reason: input.reason, amount: done.creditTotal });
         return { success: true, creditNoteId: done.creditNoteId, creditNoteNumber: done.creditNoteNumber };
+      }),
+
+    // --- Vista previa del abono (no emite nada ni consume numeración) ------------
+    // Devuelve la factura, sus líneas con lo que queda por abonar de cada una, los abonos ya emitidos y el
+    // abono que saldría con la selección dada (las mismas reglas que createCreditNote) o el motivo por el
+    // que no se puede emitir.
+    creditNotePreview: staff
+      .input(z.object({ invoiceId: z.number(), ...creditNoteSelectionShape }))
+      .query(async ({ input }) => {
+        const [original] = await db.select().from(invoices).where(eq(invoices.id, input.invoiceId)).limit(1);
+        if (!original) throw new TRPCError({ code: "NOT_FOUND", message: "Factura no encontrada" });
+        const previous = await db.select().from(invoices)
+          .where(and(eq(invoices.creditNoteForId, original.id), eq(invoices.invoiceType, "abono")))
+          .orderBy(invoices.id);
+        const credited = alreadyCredited(previous as any[]);
+        const invoice = {
+          id: original.id,
+          invoiceNumber: original.invoiceNumber,
+          clientName: original.clientName,
+          issuedAt: original.issuedAt,
+          status: original.status,
+          total: round2(Number(original.total)),
+          credited,
+          remaining: round2(Math.max(0, Number(original.total) - credited)),
+        };
+        const lines = creditNoteLineStatus(original as any, previous as any[]);
+        const previousNotes = previous.map((p) => ({ invoiceNumber: p.invoiceNumber, total: round2(Math.abs(Number(p.total))), reason: p.creditNoteReason ?? "", issuedAt: p.issuedAt }));
+        let error: string | null = null;
+        if (original.invoiceType === "abono") error = "No se puede abonar una factura de abono";
+        else if (original.status === "anulada") error = "La factura ya está anulada";
+        let preview: null | { subtotal: number; taxAmount: number; total: number; taxBreakdown: { rate: number; base: number; amount: number }[]; items: { description: string; quantity: number; total: number; taxRate?: number }[]; closesInvoice: boolean; remainingAfter: number } = null;
+        if (!error) {
+          try {
+            const plan = planCreditNote(original as any, previous as any[], { partialAmount: input.partialAmount, lines: input.lines });
+            const a = plan.amounts;
+            preview = {
+              subtotal: a.subtotal,
+              taxAmount: a.taxAmount,
+              total: a.total,
+              taxBreakdown: a.taxBreakdown,
+              items: a.items.map((i) => ({ description: i.description, quantity: i.quantity, total: i.total, ...(i.taxRate !== undefined ? { taxRate: i.taxRate } : {}) })),
+              closesInvoice: plan.closesInvoice,
+              remainingAfter: plan.remainingAfter,
+            };
+          } catch (e) {
+            if (!(e instanceof CreditNoteSelectionError)) throw e;
+            error = e.message;
+          }
+        }
+        return { invoice, lines, previous: previousNotes, preview, error };
       }),
 
     // --- Reenviar factura por email --------------------------------------------
