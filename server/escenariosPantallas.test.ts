@@ -25,6 +25,21 @@ describe("pantallas de un usuario nuevo", () => {
     expect(tpv).not.toContain("«venta presencial»");
   });
 
+  it("CRM: las rutas directas abren su pestaña y los avisos bancarios solo se piden con su licencia", () => {
+    const crm = read("client/src/pages/admin/crm/CRMDashboard.tsx");
+    expect(crm).toContain('{ "/admin/crm/presupuestos": "quotes", "/admin/crm/reservas": "reservations" }');
+    const bank = crm.slice(crm.indexOf("const bankLicensed"), crm.indexOf("const deleteAnulMutation"));
+    expect(bank).toContain('panelSub.can("bank-import-pos")');
+    expect(bank.match(/enabled: bankLicensed/g)?.length).toBe(2);
+  });
+
+  it("clientes: sin la palabra «lead» a la vista de una pyme (vocabulario de oportunidades)", () => {
+    const src = read("client/src/pages/admin/crm/ClientsManager.tsx");
+    expect(src).not.toMatch(/>\s*(Desde lead|Lead origen)\s*</);
+    expect(src).not.toMatch(/\/> Lead #|>Lead #/);
+    expect(src).toContain("{voc.leadOrigin}");
+  });
+
   it("enviar o reenviar un presupuesto muestra lo que ha pasado con el correo, nunca un «enviado» fijo", () => {
     const crm = read("client/src/pages/admin/crm/CRMDashboard.tsx");
     expect(crm).not.toMatch(/toast\.success\("Presupuesto (enviado|reenviado)/);

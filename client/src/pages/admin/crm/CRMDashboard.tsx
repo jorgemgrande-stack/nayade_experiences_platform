@@ -5425,7 +5425,9 @@ export default function CRMDashboard() {
       const t = new URLSearchParams(s).get("tab");
       if (t === "leads" || t === "quotes" || t === "reservations" || t === "invoices" || t === "anulaciones" || t === "pagos_pendientes" || t === "bonos") return t;
     } catch { /* ignore */ }
-    return "leads";
+    // Rutas directas del panel (/admin/crm/presupuestos, /admin/crm/reservas): abren su pestaña
+    const byPath: Record<string, Tab> = { "/admin/crm/presupuestos": "quotes", "/admin/crm/reservas": "reservations" };
+    return byPath[window.location.pathname.replace(/\/+$/, "")] ?? "leads";
   };
   const [tab, setTab] = useState<Tab>(() => tabFromSearch(searchStr));
   const [bulkConfirm, setBulkConfirm] = useState<null | "leads" | "quotes" | "reservations">(null);
@@ -5649,11 +5651,15 @@ export default function CRMDashboard() {
     },
     onError: (e) => toast.error(errorToastMessage(e, "No se ha podido ignorar el aviso.")),
   });
+  // Avisos de datáfono y gastos: solo con la conciliación bancaria contratada (sin ella el servidor responde 403)
+  const bankLicensed = panelSub.can("bank-import-pos");
   const { data: tpvPaymentAlerts } = trpc.cardTerminalBatches.getCrmPaymentAlerts.useQuery(undefined, {
+    enabled: bankLicensed,
     staleTime: 5 * 60 * 1000,
     refetchInterval: 5 * 60 * 1000,
   });
   const { data: expenseStats } = trpc.bankMovements.getExpenseStats.useQuery(undefined, {
+    enabled: bankLicensed,
     staleTime: 5 * 60 * 1000,
     refetchInterval: 5 * 60 * 1000,
   });
