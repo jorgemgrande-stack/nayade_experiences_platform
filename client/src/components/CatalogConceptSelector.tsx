@@ -38,6 +38,11 @@ type FilterType = "all" | "experience" | "legoPack";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+/** Importe en formato de España: «29,90 €». */
+const eur = (n: number) => n.toLocaleString("es-ES", { style: "currency", currency: "EUR" });
+/** Tipo de IVA sin decimales de sobra: «21», «5,5». */
+const rate = (r: unknown) => Number(r).toLocaleString("es-ES", { maximumFractionDigits: 2 });
+
 function computeVariantPrice(basePrice: number, variant: CatalogVariant): number {
   const mod = Number(variant.priceModifier) || 0;
   if (variant.priceType === "fixed") return mod > 0 ? mod : basePrice;
@@ -131,8 +136,8 @@ function CatalogModal({
             />
           </div>
 
-          {/* Filtros */}
-          <div className="flex gap-2 flex-wrap">
+          {/* Filtros (solo en la instalación original, con sus paquetes combinados) */}
+          {!voc.licensed && <div className="flex gap-2 flex-wrap">
             {FILTER_OPTS.map((opt) => (
               <button
                 key={opt.value}
@@ -147,7 +152,7 @@ function CatalogModal({
                 {opt.label}
               </button>
             ))}
-          </div>
+          </div>}
 
           {/* Resultados */}
           <div className="flex-1 overflow-y-auto space-y-0.5 min-h-0">
@@ -200,13 +205,13 @@ function CatalogModal({
                             <span className="text-[10px] text-amber-400/70">REAV</span>
                           )}
                           {(p as any).taxRate && (p as any).fiscalRegime !== "reav" && (
-                            <span className="text-[10px] text-foreground/40">IVA {(p as any).taxRate}%</span>
+                            <span className="text-[10px] text-foreground/60">IVA {rate((p as any).taxRate)}%</span>
                           )}
                         </div>
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
                         <div className="text-orange-400 text-sm font-semibold">
-                          {Number(p.basePrice) > 0 ? `${Number(p.basePrice).toFixed(2)} €` : "—"}
+                          {Number(p.basePrice) > 0 ? eur(Number(p.basePrice)) : "—"}
                         </div>
                         {hasVariants && (
                           <ChevronDown className={`w-3.5 h-3.5 text-foreground/40 transition-transform ${isExpanded ? "rotate-180" : ""}`} />
@@ -247,7 +252,7 @@ function CatalogModal({
                                 )}
                               </div>
                               <div className="text-orange-400 text-sm font-semibold shrink-0">
-                                {finalPrice > 0 ? `${finalPrice.toFixed(2)} €` : "—"}
+                                {finalPrice > 0 ? eur(finalPrice) : "—"}
                               </div>
                             </button>
                           );
@@ -394,7 +399,7 @@ export function CatalogConceptSelector({
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
                     <span className="text-orange-400 text-xs">
-                      {Number(p.basePrice) > 0 ? `${Number(p.basePrice).toFixed(2)} €` : "—"}
+                      {Number(p.basePrice) > 0 ? eur(Number(p.basePrice)) : "—"}
                     </span>
                     {hasVariants && <ChevronRight className="w-3 h-3 text-foreground/30" />}
                   </div>

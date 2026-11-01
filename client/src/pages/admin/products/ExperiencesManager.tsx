@@ -23,12 +23,14 @@ import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import TimeSlotsPanel from "@/components/TimeSlotsPanel";
+import { TONE_BADGE, TONE_SURFACE } from "@/lib/panelTones";
+import { newProductDefaults, presentialSaleAllowed } from "@shared/catalogDefaults";
 
 const difficultyColors: Record<string, string> = {
-  facil: "bg-emerald-100 text-emerald-700",
-  moderado: "bg-amber-100 text-amber-700",
-  dificil: "bg-red-100 text-red-700",
-  experto: "bg-purple-100 text-purple-700",
+  facil: TONE_BADGE.success,
+  moderado: TONE_BADGE.warning,
+  dificil: TONE_BADGE.danger,
+  experto: TONE_BADGE.info,
 };
 
 const difficultyLabels: Record<string, string> = {
@@ -119,7 +121,7 @@ function ImageUploadZone({
             <img src={value} alt={label} className="w-full h-full object-cover" />
             <button
               type="button"
-              className="absolute top-1 right-1 bg-black/60 text-white rounded-full p-0.5 hover:bg-red-600 transition-colors"
+              className="absolute top-1 right-1 bg-black/60 text-white rounded-full p-0.5 hover:bg-danger transition-colors"
               onClick={(e) => { e.stopPropagation(); onChange(""); }}
             >
               <X className="w-3.5 h-3.5" />
@@ -196,6 +198,16 @@ export default function ExperiencesManager() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Valores de un producto nuevo según el plan (las licencias pueden llegar después de abrir el formulario): solo se
+  // ajustan si siguen siendo los de partida, nunca encima de lo que haya elegido el usuario
+  useEffect(() => {
+    if (!showModal || editingId || !isNewCompany) return;
+    setForm((f) => (f.productType === emptyForm.productType && f.pricingType === emptyForm.pricingType && f.isPresentialSale === emptyForm.isPresentialSale
+      ? { ...f, ...newProductDefaults({ licensed: true, can: sub.can }) }
+      : f));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showModal, editingId, isNewCompany, sub.data]);
+
   // Si solo hay una categoría o una ubicación, se preselecciona al crear
   useEffect(() => {
     if (!showModal || editingId) return;
@@ -235,7 +247,7 @@ export default function ExperiencesManager() {
     onError: () => toast.error("Error al guardar el orden"),
   });
 
-  const openCreate = () => { setEditingId(null); setForm(emptyForm); setSubmitted(false); setServerError(null); setShowModal(true); };
+  const openCreate = () => { setEditingId(null); setForm({ ...emptyForm, ...newProductDefaults({ licensed: isNewCompany, can: sub.can }) }); setSubmitted(false); setServerError(null); setShowModal(true); };
   const openEdit = (exp: Record<string, unknown>) => {
     setEditingId(Number(exp.id));
     setForm({
@@ -385,7 +397,7 @@ export default function ExperiencesManager() {
             />
           </div>
         </div>
-        <Button onClick={openCreate} style={{ background: "linear-gradient(135deg,#f97316,#f59e0b)", color: "#fff", border: "none", borderRadius: "10px", fontWeight: 600 }}>
+        <Button onClick={openCreate} className="font-semibold rounded-[10px]">
           <Plus className="w-4 h-4 mr-2" aria-hidden="true" />
           {isNewCompany ? "Nuevo producto" : "Nueva Experiencia"}
         </Button>
@@ -481,7 +493,7 @@ export default function ExperiencesManager() {
                           <p className="text-xs text-muted-foreground">{exp.slug}</p>
                         </div>
                         {exp.isFeatured && (
-                          <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400 shrink-0" />
+                          <Star className="w-3.5 h-3.5 fill-current text-warning shrink-0" aria-label={voc.catalog.featured} />
                         )}
                       </div>
                     </td>
@@ -499,10 +511,10 @@ export default function ExperiencesManager() {
                     )}
                     <td className="px-4 py-4">
                       <div className="flex flex-col gap-1">
-                        <Badge className={exp.isActive ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-700"}>
+                        <Badge variant="outline" className={exp.isActive ? TONE_BADGE.success : TONE_BADGE.neutral}>
                           {voc.licensed ? (exp.isActive ? "A la venta" : "Agotado") : exp.isActive ? "Activo" : "Inactivo"}
                         </Badge>
-                        <Badge className={(exp as Record<string,unknown>).isPublished !== false ? "bg-blue-100 text-blue-700" : "bg-orange-100 text-orange-700"}>
+                        <Badge variant="outline" className={(exp as Record<string,unknown>).isPublished !== false ? TONE_BADGE.info : TONE_BADGE.warning}>
                           {(exp as Record<string,unknown>).isPublished !== false ? "Publicado" : "No publicado"}
                         </Badge>
                       </div>
@@ -529,7 +541,7 @@ export default function ExperiencesManager() {
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
-                              className="text-red-600 focus:text-red-600"
+                              className="text-danger focus:text-danger"
                               onClick={() => setDeleteTarget({ id: exp.id, title: exp.title })}
                             >
                               <Trash2 className="w-3.5 h-3.5 mr-2" /> Borrar
@@ -651,7 +663,7 @@ export default function ExperiencesManager() {
               <div className="sm:col-span-2">
                 <div className="rounded-xl border border-border bg-muted/40 p-4 space-y-3">
                   <div className="flex items-center gap-2">
-                    <span className="inline-flex items-center justify-center w-6 h-6 rounded-lg bg-accent/15 text-accent text-xs font-bold">€</span>
+                    <span className={cn("inline-flex items-center justify-center w-6 h-6 rounded-lg border text-xs font-bold", TONE_BADGE.brand)} aria-hidden="true">€</span>
                     <span className="text-sm font-semibold text-foreground">Modelo de cobro</span>
                   </div>
                   <div>
@@ -659,8 +671,12 @@ export default function ExperiencesManager() {
                     <Select value={form.pricingType} onValueChange={(v) => setForm({ ...form, pricingType: v, unitCapacity: "", maxUnits: "" })}>
                       <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="per_person">Por persona</SelectItem>
-                        <SelectItem value="per_unit">{isNewCompany ? "Por unidad" : "Por unidad (canoa, moto de agua, etc.)"}</SelectItem>
+                        {/* En una pyme, «per_person» es el precio de cada unidad que se compra (precio × cantidad) */}
+                        <SelectItem value="per_person">{isNewCompany ? "Por unidad" : "Por persona"}</SelectItem>
+                        {/* Precio por unidad con capacidad (varias personas por unidad): solo con reservas o si ya lo usa */}
+                        {(!isNewCompany || sub.can("bookings-generic") || form.pricingType === "per_unit") && (
+                          <SelectItem value="per_unit">{isNewCompany ? "Por grupo (varias personas por unidad)" : "Por unidad (canoa, moto de agua, etc.)"}</SelectItem>
+                        )}
                       </SelectContent>
                     </Select>
                   </div>
@@ -690,16 +706,16 @@ export default function ExperiencesManager() {
               </div>
 
               <div className="sm:col-span-2">
-                <Label htmlFor="shortDescription">Descripción Corta</Label>
+                <Label htmlFor="shortDescription">Descripción corta</Label>
                 <Input id="shortDescription" value={form.shortDescription} onChange={(e) => setForm({ ...form, shortDescription: e.target.value })} className="mt-1" />
               </div>
               <div className="sm:col-span-2">
-                <Label htmlFor="description">Descripción Completa</Label>
+                <Label htmlFor="description">Descripción completa</Label>
                 <Textarea id="description" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="mt-1" rows={4} />
               </div>
               <div className="flex items-center gap-3">
                 <Switch checked={form.isFeatured} onCheckedChange={(v) => setForm({ ...form, isFeatured: v })} />
-                <Label>Destacado en Home</Label>
+                <Label>{voc.catalog.featured}</Label>
               </div>
               <div className="flex items-center gap-3">
                 <Switch checked={form.isActive} onCheckedChange={(v) => setForm({ ...form, isActive: v })} />
@@ -710,29 +726,29 @@ export default function ExperiencesManager() {
                 <Switch
                   checked={form.isPublished}
                   onCheckedChange={(v) => setForm({ ...form, isPublished: v })}
-                  className={form.isPublished ? "data-[state=checked]:bg-emerald-500" : ""}
+                  className={form.isPublished ? "data-[state=checked]:bg-success" : ""}
                 />
                 <Label className="flex items-center gap-1.5">
-                  <span className={`inline-block w-2 h-2 rounded-full ${form.isPublished ? 'bg-emerald-500' : 'bg-gray-400'}`} />
+                  <span className={`inline-block w-2 h-2 rounded-full ${form.isPublished ? 'bg-success' : 'bg-muted-foreground'}`} />
                   {form.isPublished ? 'Publicado' : 'No publicado'}
                   <span className="text-xs text-muted-foreground font-normal">(visible en la web pública)</span>
                 </Label>
               </div>
               <div className="flex items-center gap-3">
-                <Switch checked={form.isPresentialSale} onCheckedChange={(v) => setForm({ ...form, isPresentialSale: v })} />
-                <Label className="flex items-center gap-1.5"><span className="text-violet-600 font-bold">&#9679;</span> {voc.licensed ? "Vendible en caja" : "Vendible en TPV"}</Label>
+                <Switch checked={form.isPresentialSale && presentialSaleAllowed(form.productType)} disabled={!presentialSaleAllowed(form.productType)} onCheckedChange={(v) => setForm({ ...form, isPresentialSale: v })} />
+                <Label className="flex items-center gap-1.5"><span className="text-primary font-bold" aria-hidden="true">&#9679;</span> {voc.licensed ? "Vendible en caja" : "Vendible en TPV"}</Label>
               </div>
 
               {/* Descuento */}
               <div className="col-span-2">
-                <div className="border border-amber-200 bg-amber-50/60 rounded-xl p-4">
-                  <Label className="text-sm font-semibold text-amber-700 flex items-center gap-1.5 mb-3">
-                    <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-amber-100 text-amber-600 text-xs font-bold">%</span>
+                <div className={cn("border rounded-xl p-4", TONE_SURFACE.warning)}>
+                  <Label className="text-sm font-semibold text-foreground flex items-center gap-1.5 mb-3">
+                    <span className={cn("inline-flex items-center justify-center w-5 h-5 rounded-full border text-xs font-bold", TONE_BADGE.warning)} aria-hidden="true">%</span>
                     Descuento promocional
                   </Label>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <Label htmlFor="discountPercent" className="text-xs text-muted-foreground">Descuento (%)</Label>
+                      <Label htmlFor="discountPercent" className="text-xs text-foreground">Descuento (%)</Label>
                       <div className="relative mt-1">
                         <Input
                           id="discountPercent"
@@ -751,7 +767,7 @@ export default function ExperiencesManager() {
                       <ErrorText k="discountPercent" id="discountPercent" />
                     </div>
                     <div>
-                      <Label htmlFor="discountExpiresAt" className="text-xs text-muted-foreground">Válido hasta</Label>
+                      <Label htmlFor="discountExpiresAt" className="text-xs text-foreground">Válido hasta</Label>
                       <Input
                         id="discountExpiresAt"
                         type="date"
@@ -762,7 +778,7 @@ export default function ExperiencesManager() {
                     </div>
                   </div>
                   {form.discountPercent && (
-                    <p className="text-xs text-amber-600 mt-2">
+                    <p className="text-xs text-foreground mt-2">
                       El precio con descuento se calculará automáticamente y se mostrará en la ficha pública.
                       {!form.discountExpiresAt && " Sin fecha de caducidad: el descuento estará activo indefinidamente."}
                     </p>
@@ -772,9 +788,9 @@ export default function ExperiencesManager() {
 
               {/* Régimen Fiscal */}
               <div className="col-span-2">
-                <Label className="text-sm font-semibold text-blue-700 flex items-center gap-1.5 mb-3">
-                  <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-blue-100 text-blue-600 text-xs">💶</span>
-                  Régimen Fiscal
+                <Label className="text-sm font-semibold text-foreground flex items-center gap-1.5 mb-3">
+                  <span className={cn("inline-flex items-center justify-center w-5 h-5 rounded-full border text-xs font-bold", TONE_BADGE.info)} aria-hidden="true">€</span>
+                  Impuestos
                 </Label>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
@@ -804,7 +820,7 @@ export default function ExperiencesManager() {
                     <select
                       className="w-full mt-1 border rounded-lg px-3 py-2 text-sm bg-background text-foreground"
                       value={form.productType}
-                      onChange={(e) => setForm({ ...form, productType: e.target.value })}
+                      onChange={(e) => setForm({ ...form, productType: e.target.value, isPresentialSale: presentialSaleAllowed(e.target.value) ? form.isPresentialSale : false })}
                     >
                       {productTypeOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                     </select>
@@ -835,7 +851,7 @@ export default function ExperiencesManager() {
                   </div>
                 )}
                 {form.fiscalRegime === "reav" && (
-                  <p className="text-xs text-blue-600 mt-2 bg-blue-50 rounded-lg px-3 py-2">
+                  <p className={cn("text-xs text-foreground mt-2 border rounded-lg px-3 py-2", TONE_SURFACE.info)}>
                     ⚠️ Este producto tributa bajo REAV. La factura no mostrará IVA al cliente. Se generará un expediente REAV automáticamente al facturar.
                   </p>
                 )}
@@ -844,9 +860,9 @@ export default function ExperiencesManager() {
               {/* Proveedor y Liquidaciones (solo con el módulo de proveedores contratado) */}
               {showSuppliers && (
               <div className="sm:col-span-2">
-                <Label className="text-sm font-semibold text-violet-700 flex items-center gap-1.5 mb-3">
-                  <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-violet-100 text-violet-600 text-xs">🏢</span>
-                  Proveedor y Liquidaciones
+                <Label className="text-sm font-semibold text-foreground flex items-center gap-1.5 mb-3">
+                  <span className={cn("inline-flex items-center justify-center w-5 h-5 rounded-full border text-xs", TONE_BADGE.brand)} aria-hidden="true">🏢</span>
+                  Proveedor y liquidaciones
                 </Label>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
@@ -914,8 +930,8 @@ export default function ExperiencesManager() {
 
               {/* Incluye */}
               <div className="col-span-2">
-                <Label className="text-sm font-semibold text-emerald-700 flex items-center gap-1.5 mb-2">
-                  <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-emerald-100 text-emerald-600 text-xs">✓</span>
+                <Label className="text-sm font-semibold text-foreground flex items-center gap-1.5 mb-2">
+                  <span className={cn("inline-flex items-center justify-center w-5 h-5 rounded-full border text-xs", TONE_BADGE.success)} aria-hidden="true">✓</span>
                   Incluye
                 </Label>
                 <div className="space-y-2">
@@ -928,14 +944,14 @@ export default function ExperiencesManager() {
                           next[i] = e.target.value;
                           setForm(f => ({ ...f, includes: next }));
                         }}
-                        placeholder={`Item ${i + 1}`}
+                        placeholder={`Línea ${i + 1}`}
                         className="flex-1 text-sm"
                       />
                       <Button
                         type="button"
                         variant="ghost"
                         size="icon"
-                        className="shrink-0 text-red-400 hover:text-red-600 hover:bg-red-50"
+                        className="shrink-0 text-muted-foreground hover:text-danger hover:bg-danger/10"
                         onClick={() => setForm(f => ({ ...f, includes: f.includes.filter((_, idx) => idx !== i) }))}
                       >
                         <X className="w-4 h-4" />
@@ -946,18 +962,18 @@ export default function ExperiencesManager() {
                     type="button"
                     variant="outline"
                     size="sm"
-                    className="w-full border-dashed border-emerald-300 text-emerald-700 hover:bg-emerald-50 hover:border-emerald-400"
+                    className="w-full border-dashed border-success/40 text-foreground hover:bg-success/10"
                     onClick={() => setForm(f => ({ ...f, includes: [...f.includes, ""] }))}
                   >
-                    <Plus className="w-3.5 h-3.5 mr-1" /> Añadir item
+                    <Plus className="w-3.5 h-3.5 mr-1" /> Añadir línea
                   </Button>
                 </div>
               </div>
 
               {/* No incluye */}
               <div className="col-span-2">
-                <Label className="text-sm font-semibold text-red-600 flex items-center gap-1.5 mb-2">
-                  <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-red-100 text-red-500 text-xs">✕</span>
+                <Label className="text-sm font-semibold text-foreground flex items-center gap-1.5 mb-2">
+                  <span className={cn("inline-flex items-center justify-center w-5 h-5 rounded-full border text-xs", TONE_BADGE.danger)} aria-hidden="true">✕</span>
                   No incluye
                 </Label>
                 <div className="space-y-2">
@@ -970,14 +986,14 @@ export default function ExperiencesManager() {
                           next[i] = e.target.value;
                           setForm(f => ({ ...f, excludes: next }));
                         }}
-                        placeholder={`Item ${i + 1}`}
+                        placeholder={`Línea ${i + 1}`}
                         className="flex-1 text-sm"
                       />
                       <Button
                         type="button"
                         variant="ghost"
                         size="icon"
-                        className="shrink-0 text-red-400 hover:text-red-600 hover:bg-red-50"
+                        className="shrink-0 text-muted-foreground hover:text-danger hover:bg-danger/10"
                         onClick={() => setForm(f => ({ ...f, excludes: f.excludes.filter((_, idx) => idx !== i) }))}
                       >
                         <X className="w-4 h-4" />
@@ -988,18 +1004,18 @@ export default function ExperiencesManager() {
                     type="button"
                     variant="outline"
                     size="sm"
-                    className="w-full border-dashed border-red-300 text-red-600 hover:bg-red-50 hover:border-red-400"
+                    className="w-full border-dashed border-danger/40 text-foreground hover:bg-danger/10"
                     onClick={() => setForm(f => ({ ...f, excludes: [...f.excludes, ""] }))}
                   >
-                    <Plus className="w-3.5 h-3.5 mr-1" /> Añadir item
+                    <Plus className="w-3.5 h-3.5 mr-1" /> Añadir línea
                   </Button>
                 </div>
               </div>
             </div>
             <div className="flex gap-3 pt-2">
               <Button type="button" variant="outline" onClick={() => setShowModal(false)} className="flex-1">Cancelar</Button>
-              <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending} className="flex-1" style={{ background: "linear-gradient(135deg,#f97316,#f59e0b)", color: "#fff", border: "none", fontWeight: 600 }}>
-                {editingId ? "Guardar Cambios" : isNewCompany ? "Crear producto" : "Crear Experiencia"}
+              <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending} className="flex-1 font-semibold">
+                {editingId ? "Guardar cambios" : isNewCompany ? "Crear producto" : "Crear Experiencia"}
               </Button>
             </div>
           </form>
@@ -1044,8 +1060,7 @@ export default function ExperiencesManager() {
             <Button
               onClick={() => { if (cloneModal && cloneName.trim()) cloneMutation.mutate({ id: cloneModal.id, newName: cloneName.trim() }); }}
               disabled={!cloneName.trim() || cloneMutation.isPending}
-              className="flex-1"
-              style={{ background: "linear-gradient(135deg,#f97316,#f59e0b)", color: "#fff", border: "none", fontWeight: 600 }}
+              className="flex-1 font-semibold"
             >
               {cloneMutation.isPending ? "Clonando..." : "Clonar"}
             </Button>

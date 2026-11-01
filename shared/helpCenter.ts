@@ -123,7 +123,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       "Pulsa «Nuevo producto». Se abre «Nuevo producto o servicio».",
       "Campos obligatorios: Nombre, Precio (€, impuestos incluidos), Categoría y Lugar de servicio o venta. Opcionales: imágenes (hasta 4, máximo 10 MB cada una), Tipo de precio (Por persona / Por unidad), Activo, Destacado en Home y la dirección en la web.",
       "Pulsa el botón de guardar del final del formulario (se llama «Crear producto»). Un aviso confirma que el producto se ha creado.",
-      "Si necesitas una categoría nueva, ve a Catálogo y comercio › Categorías, pulsa «Nueva Categoría», rellena Nombre y Slug y pulsa «Crear Categoría».",
+      "Si necesitas una categoría nueva, ve a Catálogo y comercio › Categorías, pulsa «Nueva categoría», escribe el nombre (la dirección en la web se rellena sola) y pulsa «Crear categoría».",
       "Para precios alternativos de un mismo producto, ve a Variantes y precios, pulsa «Nueva Variante», elige el producto, el nombre de la variante y el tipo de precio (Precio fijo, Por persona o Porcentaje) y pulsa «Crear Variante».",
     ],
     notes: [
