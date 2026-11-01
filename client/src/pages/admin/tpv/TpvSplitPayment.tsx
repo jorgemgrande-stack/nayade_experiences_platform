@@ -42,6 +42,10 @@ interface Props {
   customerPhone: string;
   discountAmount: number;
   discountReason: string;
+  /** Clave del intento de cobro (la genera TpvScreen, una por carrito): un segundo «Confirmar» no graba otra venta */
+  idempotencyKey: string;
+  /** Cliente del CRM elegido en la búsqueda */
+  clientId?: number;
   onClose: () => void;
   onCompleted: (sale: any) => void;
 }
@@ -69,7 +73,7 @@ const METHOD_COLORS: Record<PaymentMethod, string> = {
 
 export default function TpvSplitPayment({
   open, total, sessionId, cart, customerName, customerEmail, customerPhone,
-  discountAmount, discountReason, onClose, onCompleted,
+  discountAmount, discountReason, idempotencyKey, clientId, onClose, onCompleted,
 }: Props) {
   const [payments, setPayments] = useState<PaymentLine[]>([
     { id: "1", method: "cash", amount: total.toFixed(2), payerName: "" },
@@ -128,6 +132,8 @@ export default function TpvSplitPayment({
   const handleConfirm = () => {
     createSaleMut.mutate({
       sessionId,
+      idempotencyKey,
+      clientId,
       customerName: customerName || undefined,
       customerEmail: customerEmail || undefined,
       customerPhone: customerPhone || undefined,

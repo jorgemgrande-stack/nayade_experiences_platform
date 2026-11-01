@@ -2,9 +2,9 @@
  * Punto de venta presencial — pantalla principal (modo quiosco)
  * Usable en escritorio, tablet vertical y móvil: en pantallas estrechas el carrito se abre desde una barra inferior.
  */
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import {
-  buildTpvFilters, matchesTpvFilter, productBadge, pickInitialRegister, LAST_REGISTER_KEY,
+  buildTpvFilters, matchesTpvFilter, productBadge, pickInitialRegister, LAST_REGISTER_KEY, newSaleAttemptKey,
 } from "./tpvScreenLogic";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
@@ -158,6 +158,8 @@ export default function TpvScreen() {
   const [selectedClient, setSelectedClient] = useState<{ id: number; name: string } | null>(null);
   const [sessionId, setSessionId] = useState<number | null>(null);
   const [cart, setCart] = useState<CartItem[]>([]);
+  // Una clave por carrito: un doble clic o un reintento del mismo carrito no graba dos ventas
+  const saleAttemptKey = useMemo(() => newSaleAttemptKey(), [cart]);
   const [filter, setFilter] = useState<Filter>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [customerName, setCustomerName] = useState("");
@@ -442,6 +444,8 @@ export default function TpvScreen() {
 
     createSaleMut.mutate({
       sessionId,
+      idempotencyKey: saleAttemptKey,
+      clientId: selectedClient?.id,
       customerName: customerName || undefined,
       customerEmail: customerEmail || undefined,
       customerPhone: customerPhone || undefined,
@@ -1232,6 +1236,8 @@ export default function TpvScreen() {
               customerPhone={customerPhone}
               discountAmount={discountAmount}
               discountReason={discountReason}
+              idempotencyKey={saleAttemptKey}
+              clientId={selectedClient?.id}
               onClose={() => setShowSplitPayment(false)}
               onCompleted={(sale) => {
                 setLastSale(sale);

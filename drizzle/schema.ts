@@ -726,6 +726,8 @@ export const reservations = mysqlTable("reservations", {
   // Partner
   partnerId: int("partner_id"),
   partnerUserId: int("partner_user_id"),
+  // Cliente del CRM (migración 0018): lo enlaza el TPV para que la venta aparezca en su historial
+  clientId: int("client_id"),
   // Meta CAPI attribution — capturados al crear la reserva para enriquecer Purchase server-side
   fbp: varchar("fbp", { length: 255 }),
   fbc: varchar("fbc", { length: 255 }),
@@ -1633,6 +1635,9 @@ export const tpvSales = mysqlTable("tpv_sales", {
   sellerUserId:   int("sellerUserId"),
   sellerName:     varchar("sellerName",     { length: 200 }),
   operativeCenter:varchar("operativeCenter",{ length: 100 }),
+  // Migración 0018: clave del intento de cobro (única; NULL no colisiona) y cliente del CRM de la venta
+  idempotencyKey: varchar("idempotencyKey", { length: 64 }),
+  clientId:       int("clientId"),
 });
 export type TpvSale = typeof tpvSales.$inferSelect;
 

@@ -6230,19 +6230,16 @@ export const crmRouter = router({
       const quoteIds = clientQuotes.map((q) => q.id);
 
       // Reservas, facturas, anulaciones en paralelo
-      // Reservas: por quoteId O por email del cliente (cubre reservas directas sin presupuesto)
-      const reservationCondition = quoteIds.length && client.email
-        ? or(inArray(reservations.quoteId, quoteIds), eq(reservations.customerEmail, client.email))
-        : quoteIds.length
-          ? inArray(reservations.quoteId, quoteIds)
-          : client.email
-            ? eq(reservations.customerEmail, client.email)
-            : null;
+      // Reservas: por quoteId, por email del cliente (cubre reservas directas sin presupuesto) o enlazadas al cliente
+      // (ventas del TPV con el cliente elegido, aunque se cobraran con otro correo)
+      const reservationCondition = or(
+        eq(reservations.clientId, client.id),
+        ...(quoteIds.length ? [inArray(reservations.quoteId, quoteIds)] : []),
+        ...(client.email ? [eq(reservations.customerEmail, client.email)] : []),
+      );
 
       // Reservas primero — necesitamos sus IDs para ampliar la búsqueda de facturas
-      const clientReservations = reservationCondition
-        ? await db.select().from(reservations).where(reservationCondition).orderBy(desc(reservations.createdAt))
-        : [];
+      const clientReservations = await db.select().from(reservations).where(reservationCondition).orderBy(desc(reservations.createdAt));
 
       const reservationIds = clientReservations.map((r) => r.id);
 
