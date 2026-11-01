@@ -1,0 +1,93 @@
+/**
+ * Ficha comercial de Elephant People (aprobada por la dirección comercial el 01/11/2026): el texto aprobado en el
+ * catálogo oficial (de donde salen las fichas de Elephant Connect) y en la especificación de la ficha pública; el precio,
+ * el estado comercial y el técnico, sin cambios; y solo para Essential y Business, como extensión de pago.
+ */
+import { describe, it, expect } from "vitest";
+import { PRODUCTS } from "./catalog/elephantSourceV1";
+import { capabilitiesOfTier } from "./catalog/capabilities";
+import { PRODUCT_SPECS } from "./catalog/commercial/specs";
+import { quoteCatalogFromSeed } from "./catalog/commercial/seedCatalog";
+import { quote } from "./catalog/quote";
+import { buildConnectCatalog } from "./connectMarketplace";
+import type { PanelCatalogItemView } from "./panelModules";
+
+const people = PRODUCTS.find((p) => p.key === "connect-people")!;
+const FEATURES = [
+  "Fichas de empleados y documentación",
+  "Control horario y registro de fichajes",
+  "Horarios semanales",
+  "Gestión de ausencias",
+  "Registro y consulta de nóminas",
+  "Portal del empleado",
+  "Acceso protegido según permisos",
+];
+
+describe("ficha de Elephant People en el catálogo oficial", () => {
+  it("precio, estado comercial y técnico sin cambios: 19 €/mes + IVA, bajo solicitud, parcial", () => {
+    expect(people.prices).toEqual([{ kind: "monthly", amountCents: 1900, unit: null }]);
+    expect(people.draft.catalog.commercialStatus).toBe("on_request");
+    expect(people.draft.technicalStatus).toBe("partial");
+    expect(people.draft.catalog.capabilities).toEqual(["people-hr"]);
+    expect(people.draft.catalog.scope).toBe("company");
+  });
+
+  it("texto aprobado: titular, descripción, funcionalidades, para quién y aviso de nóminas", () => {
+    expect(people.draft.tagline).toBe("Gestión de empleados y control horario, integrada en tu empresa.");
+    expect(people.draft.description).toContain("Organiza la información de tu equipo desde Elephant Core, sin utilizar herramientas separadas.");
+    expect(people.draft.description).toContain("El precio es por empresa.");
+    expect(people.draft.description).toContain("Importante: Elephant People permite registrar y consultar nóminas, pero no calcula salarios según convenios ni presenta modelos fiscales o laborales automáticamente.");
+    expect(people.draft.description).toContain("La activación añadirá las funcionalidades contratadas al administrador de tu empresa.");
+    expect(people.draft.includes).toEqual(FEATURES);
+    expect(people.draft.requirements).toEqual(["Disponible como extensión de Elephant Connect para clientes Essential y Business."]);
+  });
+
+  it("la ficha pública lleva el mismo texto y no promete inclusiones en planes", () => {
+    const spec = PRODUCT_SPECS.find((s) => s.key === "connect-people")!;
+    expect(spec.publicContent.headline).toBe(people.draft.tagline);
+    expect(spec.includes).toEqual(FEATURES);
+    expect(spec.excludes).toEqual(expect.arrayContaining(["Cálculo de salarios según convenios", "Presentación automática de modelos fiscales o laborales"]));
+    const all = [spec.longDescription, ...spec.capacityRules, ...spec.publicContent.benefits, spec.seo.description].join(" ");
+    expect(all).not.toMatch(/incluid[oa] en (Business|Enterprise)|sin usuario|tableta/i);
+  });
+
+  it("solo con Essential o Business; ningún plan concede la licencia gratis", () => {
+    expect(people.draft.compatibleWith).toEqual(["essential", "business"]);
+    for (const tier of ["essential", "business", "enterprise"] as const) expect(capabilitiesOfTier(tier)).not.toContain("people-hr");
+  });
+});
+
+describe("contratación de People según el plan", () => {
+  it("el cotizador la admite con Essential y Business y la rechaza con Enterprise", () => {
+    const cat = quoteCatalogFromSeed();
+    for (const plan of ["essential", "business"]) {
+      const q = quote(cat, { plan, interval: "month", items: [{ key: "connect-people" }] });
+      expect(q.errors).toEqual([]);
+      expect(q.lines.find((l) => l.key === "connect-people")).toMatchObject({ status: "charged" });
+    }
+    const ent = quote(cat, { plan: "enterprise", interval: "month", items: [{ key: "connect-people" }] });
+    expect(ent.ok).toBe(false);
+    expect(ent.errors.join(" ")).toMatch(/Elephant People» no es compatible con el plan Enterprise/);
+  });
+
+  const item = (o: Partial<PanelCatalogItemView> = {}): PanelCatalogItemView => ({
+    key: "connect-people", name: "Elephant People", family: "connect", kind: "module", metric: null, step: null,
+    commercialStatus: "on_request", capabilities: ["people-hr"], monthly: { amountCents: 1900, currency: "EUR", taxIncluded: false, unit: null }, purchasable: false, ...o,
+  });
+
+  it("en Elephant Connect: bajo solicitud para Essential y Business; no disponible para Enterprise", () => {
+    for (const plan of ["essential", "business"]) {
+      const [p] = buildConnectCatalog({ items: [item()] }, [], Date.now(), plan);
+      expect(p.state).toBe("on_request");
+      expect(p.plans).toEqual(["essential", "business"]);
+      expect(p.tagline).toBe("Gestión de empleados y control horario, integrada en tu empresa.");
+      expect(p.includes).toEqual(FEATURES);
+    }
+    const [ent] = buildConnectCatalog({ items: [item()] }, [], Date.now(), "enterprise");
+    expect(ent.state).toBe("not_eligible");
+    expect(ent.reasons).toEqual(["Disponible para el plan Essential o Business."]);
+    // A la venta tampoco se ofrece comprarla con Enterprise
+    const [sale] = buildConnectCatalog({ items: [item({ commercialStatus: "available", purchasable: true })] }, [], Date.now(), "enterprise");
+    expect(sale).toMatchObject({ state: "not_eligible", purchasable: false });
+  });
+});
