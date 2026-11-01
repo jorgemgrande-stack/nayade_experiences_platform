@@ -7,8 +7,8 @@ import { sql } from "drizzle-orm";
 import { siteSettings } from "../drizzle/schema";
 import { isMultiTenant } from "./_core/tenant";
 import { tenantPublicUrl, warmTenantIdentity } from "./_core/tenantIdentity";
-import { brandName, brandSetting, formatLegalAddress, resolveLegalCompany, tenantFiscalIdentity } from "./tenantBrand";
-import { getSystemSetting, getSystemSettingSync } from "./config";
+import { brandName, brandSetting, formatLegalAddress, preferOwnLegalSettings, readOwnLegalSettings, resolveLegalCompany, tenantFiscalIdentity } from "./tenantBrand";
+import { getSystemSettingSync } from "./config";
 import { groupTaxBreakdown, totalTaxAmount, type TaxBreakdownLine } from "./taxUtils";
 import { legacyDb, legacyPool } from "./_core/legacyDb";
 
@@ -36,22 +36,58 @@ export interface InvoiceHtmlParams {
   taxBreakdown?: TaxBreakdownLine[];
 }
 
-export async function getLegalCompanySettings(): Promise<{
+/** Migración que fija el cambio de fuente de los datos fiscales (su fecha de aplicación en cada empresa). */
+export const OWN_LEGAL_SOURCE_MIGRATION = "0018_tpv_idempotencia_cliente";
+
+/**
+ * ¿Mandan los ajustes propios para un documento de esa fecha? Un documento nuevo (sin fecha) o emitido desde que la
+ * empresa tiene el cambio, sí. Uno emitido antes se sigue viendo exactamente como se emitió. Si no se sabe desde
+ * cuándo (empresa fuera del carril de migraciones), se conserva el comportamiento anterior.
+ */
+export function ownLegalSettingsPrevail(issuedAt: Date | string | null | undefined, sinceMs: number | null): boolean {
+  if (sinceMs == null) return false;
+  if (issuedAt == null) return true;
+  const t = new Date(issuedAt).getTime();
+  return Number.isNaN(t) || t >= sinceMs;
+}
+
+/** Instante (ms) en que la empresa en curso recibió el cambio de fuente, o null si no consta. */
+async function ownLegalSourceSince(): Promise<number | null> {
+  try {
+    const [rows] = await _pool.query<any[]>(
+      "SELECT UNIX_TIMESTAMP(applied_at) * 1000 AS ms FROM __elephant_migrations WHERE id = ? LIMIT 1",
+      [OWN_LEGAL_SOURCE_MIGRATION]
+    );
+    const ms = Number(rows[0]?.ms);
+    return rows.length && Number.isFinite(ms) ? ms : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Datos del emisor. `issuedAt`: fecha de emisión del documento que se va a mostrar (facturas ya emitidas que se
+ * vuelven a ver); sin ella, es un documento nuevo.
+ */
+export async function getLegalCompanySettings(opts: { issuedAt?: Date | string | null } = {}): Promise<{
   name: string; cif: string; address: string; city: string;
   zip: string; province: string; email: string; phone: string; iban: string;
 }> {
   const rows = await db.select().from(siteSettings)
     .where(sql`\`key\` IN ('legalCompanyName','legalCompanyCif','legalCompanyAddress','legalCompanyCity','legalCompanyZip','legalCompanyProvince','legalCompanyEmail','legalCompanyPhone','legalCompanyIban')`);
-  const s: Record<string, string> = Object.fromEntries(rows.map(r => [r.key, r.value ?? ""]));
+  let s: Record<string, string> = Object.fromEntries(rows.map(r => [r.key, r.value ?? ""]));
   // single: respaldos heredados (sin cambios). multi: entidad fiscal de la empresa en el registro.
   const multi = isMultiTenant();
   if (multi) await warmTenantIdentity();
   const fiscal = multi ? tenantFiscalIdentity() : null;
-  if (multi && !fiscal) {
-    // Empresa de alta autoservicio sin entidad fiscal en el registro: los datos fiscales que guardó
-    // en «Primeros pasos» (ajustes de la propia empresa). Sin ellos la factura saldría sin emisor.
-    const own: Record<string, string> = { legalCompanyName: "site_legal_name", legalCompanyCif: "brand_nif", legalCompanyAddress: "brand_address", legalCompanyCity: "site_legal_city", legalCompanyZip: "site_legal_zip", legalCompanyProvince: "site_legal_province", legalCompanyEmail: "site_legal_email", legalCompanyPhone: "site_legal_phone", legalCompanyIban: "site_legal_iban" };
-    for (const [k, sys] of Object.entries(own)) if (!s[k]) s[k] = await getSystemSetting(sys, "");
+  if (multi && ownLegalSettingsPrevail(opts.issuedAt, await ownLegalSourceSince())) {
+    // Fuente única: lo guardado en «Datos de la empresa» o en el asistente manda sobre los ajustes antiguos
+    s = preferOwnLegalSettings(s, await readOwnLegalSettings());
+  } else if (multi && !fiscal) {
+    // Documentos emitidos antes del cambio: como se emitieron (los ajustes antiguos primero y, si faltan,
+    // los que guardó en «Primeros pasos»)
+    const own = await readOwnLegalSettings();
+    for (const [k, v] of Object.entries(own)) if (!s[k]) s[k] = v;
   }
   return resolveLegalCompany(s, { multi, fiscal });
 }
@@ -82,7 +118,7 @@ function escapeInvoiceParams(p: InvoiceHtmlParams): InvoiceHtmlParams {
 
 export async function buildInvoiceHtml(rawInvoice: InvoiceHtmlParams): Promise<string> {
   const invoice = escapeInvoiceParams(rawInvoice);
-  const rawLegal = await getLegalCompanySettings();
+  const rawLegal = await getLegalCompanySettings({ issuedAt: rawInvoice.issuedAt });
   const legal = Object.fromEntries(
     Object.entries(rawLegal).map(([k, v]) => [k, escapeHtml(v)]),
   ) as typeof rawLegal;

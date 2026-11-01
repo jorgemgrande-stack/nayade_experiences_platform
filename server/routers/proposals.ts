@@ -10,6 +10,7 @@ import { proposals, proposalOptions, leads, quotes } from "../../drizzle/schema"
 import { eq, desc, and, gte, lte, inArray, like, or, count } from "drizzle-orm";
 import { sendEmail as sharedSendEmail } from "../mailer";
 import { sendManagedEmail } from "../emailManager";
+import { assertQuotePricedForSend } from "../quoteSendGuards";
 import { generateDocumentNumber } from "../documentNumbers";
 import { getGHLCredentials } from "../db";
 import { syncLeadUrlsToGHL, createGHLContact } from "../ghl";
@@ -285,6 +286,9 @@ export const proposalsRouter = router({
       const opts = proposal.mode === "multi_option"
         ? await db.select().from(proposalOptions).where(eq(proposalOptions.proposalId, input.id)).orderBy(proposalOptions.sortOrder)
         : [];
+
+      // Igual que los presupuestos: no sale al cliente con un producto del catálogo a 0,00 € (en ninguna opción)
+      assertQuotePricedForSend([...((proposal.items as unknown[]) ?? []), ...opts.flatMap((o) => (o.items as unknown[]) ?? [])]);
 
       const html = buildProposalHtml({
         proposalNumber: proposal.proposalNumber,
