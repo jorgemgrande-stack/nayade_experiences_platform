@@ -16,6 +16,7 @@ import { quoteCatalogFromSite } from "../catalog/snapshot";
 import type { QuoteCatalogProduct } from "../catalog/quote";
 import { withoutInternal, type SiteDocument } from "../web/service";
 import { videoEmbedUrl, type CommercialBlock } from "../web/schemas";
+import { mediaSrcset } from "../web/media";
 import type { PanelActivation } from "./panelActivation";
 import { panelMarketplace, type PanelMarketplace } from "./panelMarketplace";
 import type { MarketplaceDocument } from "../web/service";
@@ -40,7 +41,7 @@ export interface PanelCatalogItem {
   activation: PanelActivation | null;
 }
 
-type Img = { src: string; alt: string; caption?: string; mobileSrc?: string; focal?: { x: number; y: number }; kind?: "screenshot" | "illustration" };
+type Img = { src: string; alt: string; caption?: string; mobileSrc?: string; focal?: { x: number; y: number }; kind?: "screenshot" | "illustration"; srcset?: { webp: string; avif: string } };
 
 /** Ficha del marketplace: imágenes y vídeo. `cover` y `screenshots` se mantienen para el panel actual (reserva de hero y galería). */
 export interface PanelMedia {
@@ -103,6 +104,7 @@ const img = (v: unknown): Img | null => {
   return {
     src: o.src,
     alt: o.alt,
+    ...(mediaSrcset(o.src) ? { srcset: mediaSrcset(o.src)! } : {}),
     ...(typeof o.caption === "string" && o.caption ? { caption: o.caption } : {}),
     ...(typeof o.mobileSrc === "string" && /^https:\/\//.test(o.mobileSrc) ? { mobileSrc: o.mobileSrc } : {}),
     ...(f && typeof f.x === "number" && typeof f.y === "number" ? { focal: { x: f.x, y: f.y } } : {}),
