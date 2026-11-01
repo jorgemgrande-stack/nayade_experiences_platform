@@ -1,6 +1,7 @@
 /**
  * Diálogo «Exportar para la gestoría»: elige un mes, un trimestre o un rango de fechas y descarga un ZIP con
- * el PDF de cada factura y abono emitidos en el periodo y el libro de facturas emitidas (CSV).
+ * el PDF de cada factura y abono emitidos en el periodo y el libro de facturas emitidas (CSV), que incluye
+ * los tickets de caja (facturas simplificadas).
  * Las fechas son las de Madrid; el servidor prepara el fichero con los documentos tal como se emitieron.
  */
 import React, { useEffect, useRef, useState } from "react";
@@ -71,7 +72,7 @@ export default function GestoriaExportDialog({ open, onOpenChange }: { open: boo
         return;
       }
       downloadBase64(res.fileName, res.mimeType, res.contentBase64);
-      const what = `${res.invoices} ${res.invoices === 1 ? "factura" : "facturas"} y ${res.creditNotes} ${res.creditNotes === 1 ? "abono" : "abonos"}`;
+      const what = `${res.invoices} ${res.invoices === 1 ? "factura" : "facturas"}, ${res.creditNotes} ${res.creditNotes === 1 ? "abono" : "abonos"} y ${res.tickets} ${res.tickets === 1 ? "ticket de caja" : "tickets de caja"}`;
       if (res.missingPdfs.length) {
         toast.warning(`Descargado (${what}). Faltan ${res.missingPdfs.length} PDF: figuran en el libro y en LEEME.txt; descárgalos uno a uno.`);
       } else {
@@ -94,7 +95,7 @@ export default function GestoriaExportDialog({ open, onOpenChange }: { open: boo
         <DialogHeader>
           <DialogTitle>Exportar para la gestoría</DialogTitle>
           <DialogDescription>
-            Un archivo ZIP con el PDF de cada factura y abono emitidos en el periodo y el libro de facturas emitidas, listo para enviar a tu gestoría.
+            Un archivo ZIP con el PDF de cada factura y abono emitidos en el periodo y el libro de facturas emitidas (con los tickets de caja), listo para enviar a tu gestoría.
           </DialogDescription>
         </DialogHeader>
 
@@ -157,7 +158,7 @@ export default function GestoriaExportDialog({ open, onOpenChange }: { open: boo
           )}
 
           <p className={`text-sm ${invalid ? "text-red-500" : "text-foreground/60"}`} aria-live="polite">
-            {invalid || `Se incluirán las facturas y abonos emitidos en ${label} (fechas de España peninsular).`}
+            {invalid || `Se incluirán las facturas, abonos y tickets de caja emitidos en ${label} (fechas de España peninsular).`}
           </p>
         </div>
 

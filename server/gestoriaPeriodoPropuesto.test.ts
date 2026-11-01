@@ -31,6 +31,9 @@ describe("periodo vacío", () => {
     expect(isEmptyExport({ invoices: 0, creditNotes: 0 })).toBe(true);
     expect(isEmptyExport({ invoices: 0, creditNotes: 1 })).toBe(false);
     expect(isEmptyExport({ invoices: 2, creditNotes: 0 })).toBe(false);
+    // Solo tickets de caja en el periodo: también se descarga (van en el libro)
+    expect(isEmptyExport({ invoices: 0, creditNotes: 0, tickets: 3 })).toBe(false);
+    expect(isEmptyExport({ invoices: 0, creditNotes: 0, tickets: 0 })).toBe(true);
   });
   it("el diálogo avisa y no descarga cuando el periodo está vacío", () => {
     const src = fs.readFileSync(path.resolve(__dirname, "../client/src/pages/admin/crm/GestoriaExportDialog.tsx"), "utf8");
@@ -54,7 +57,7 @@ describe("periodo vacío en el servidor", () => {
   it("exportForGestoria lo rechaza antes de montar el ZIP y el diálogo lo muestra como aviso", () => {
     const crm = fs.readFileSync(path.resolve(__dirname, "routers/crm.ts"), "utf8");
     const proc = crm.slice(crm.indexOf("exportForGestoria:"));
-    const empty = proc.indexOf("if (stored.length === 0) throw new TRPCError({ code: \"BAD_REQUEST\", message: emptyExportMessage(period.label) });");
+    const empty = proc.indexOf("if (stored.length === 0 && tickets.length === 0) throw new TRPCError({ code: \"BAD_REQUEST\", message: emptyExportMessage(period.label) });");
     expect(empty).toBeGreaterThan(0);
     expect(empty).toBeLessThan(proc.indexOf("buildGestoriaInvoiceZip("));
     const dialog = fs.readFileSync(path.resolve(__dirname, "../client/src/pages/admin/crm/GestoriaExportDialog.tsx"), "utf8");
