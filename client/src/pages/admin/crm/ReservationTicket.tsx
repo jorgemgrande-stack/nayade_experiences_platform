@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Printer, X } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { displayWebsite } from "@/hooks/usePanelBrand";
+import { ticketHeaderLines } from "@shared/ticketHeaderLines";
 
 interface ReservationData {
   reservationNumber?: string | null;
@@ -151,6 +152,7 @@ ${innerHtml}
 
 export default function ReservationTicket({ open, reservation, onClose }: Props) {
   const { data: company } = trpc.config.ticketHeader.useQuery(undefined, { enabled: open, staleTime: 300_000 });
+  const header = ticketHeaderLines(company);
   const ticketRef = useRef<HTMLDivElement>(null);
 
   if (!reservation) return null;
@@ -200,10 +202,10 @@ export default function ReservationTicket({ open, reservation, onClose }: Props)
               )}
             </div>
             {company?.name && <div className="center bold text-sm" style={{ fontSize: "14px" }}>{company.name.toUpperCase()}</div>}
-            {(company?.address || company?.city) && <div className="center text-xs" style={{ fontSize: "12px" }}>{[company.address, company.city].filter(Boolean).join(" · ")}</div>}
+            {header.commercial && <div className="center text-xs" style={{ fontSize: "12px" }}>{header.commercial}</div>}
             <div className="line" style={{ borderTop: "1px dashed #000", margin: "4px 0" }} />
-            {(company?.legalName || company?.taxId) && <div className="center small" style={{ fontSize: "11px" }}>{[company.legalName, company.taxId ? `CIF: ${company.taxId}` : null].filter(Boolean).join(" · ")}</div>}
-            <div className="center small" style={{ fontSize: "11px" }}>C/ Corazón de María 57, 1º D · 28002 Madrid</div>
+            {header.fiscal && <div className="center small" style={{ fontSize: "11px" }}>{header.fiscal}</div>}
+            {header.fiscalAddress && <div className="center small" style={{ fontSize: "11px" }}>{header.fiscalAddress}</div>}
             <div className="line" style={{ borderTop: "1px dashed #000", margin: "4px 0" }} />
             <div className="row" style={{ display: "flex", justifyContent: "space-between" }}>
               <span>{dateStr} {timeStr}</span>
