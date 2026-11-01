@@ -88,7 +88,7 @@ export default function AccountingDashboard() {
   const kpis = [
     { label: "Ventas (6 meses)", value: fmtEur(totals?.sales ?? 0), sub: `${totals?.salesCount ?? 0} ${voc.ordersLower} y tickets cobrados`, icon: Euro, color: "text-emerald-500", bg: "bg-emerald-50" },
     { label: "Cobrado", value: fmtEur(totals?.payments ?? 0), sub: "Entradas registradas en cobros", icon: Banknote, color: "text-blue-500", bg: "bg-blue-50" },
-    { label: "Facturado", value: fmtEur(totals?.invoiced ?? 0), sub: `${totals?.invoiceCount ?? 0} facturas, descontados los abonos`, icon: FileText, color: "text-purple-500", bg: "bg-purple-50" },
+    { label: "Facturado", value: fmtEur(totals?.invoiced ?? 0), sub: `${totals?.invoiceCount ?? 0} ${totals?.invoiceCount === 1 ? "factura" : "facturas"} y ${totals?.ticketCount ?? 0} ${totals?.ticketCount === 1 ? "ticket" : "tickets"} de caja, descontados los abonos`, icon: FileText, color: "text-purple-500", bg: "bg-purple-50" },
     summary?.pendingQuotes != null
       ? { label: "Presupuestos sin respuesta", value: String(summary.pendingQuotes), sub: "Enviados y pendientes de aceptar", icon: Clock, color: "text-amber-500", bg: "bg-amber-50" }
       : { label: "Ticket medio", value: fmtEur(totals?.averageTicket ?? 0), sub: "Venta media cobrada", icon: CreditCard, color: "text-amber-500", bg: "bg-amber-50" },

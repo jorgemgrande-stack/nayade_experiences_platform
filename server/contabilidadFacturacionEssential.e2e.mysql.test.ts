@@ -114,10 +114,11 @@ describe.skipIf(!URL_)("contabilidad y facturación Essential (aplicación real)
       const cur = s.months[s.months.length - 1];
       expect(cur.sales).toBe(207.9);
       expect(cur.payments).toBe(207.9);
-      expect(cur.invoiced).toBe(121);
+      // Facturado: documentos fiscales emitidos — la factura libre (121 €) y el ticket de caja (207,90 €)
+      expect(cur.invoiced).toBe(328.9);
       expect(cur.expenses).toBe(40);
       expect(s.hasExpenses).toBe(true);
-      expect(s.totals).toMatchObject({ sales: 207.9, salesCount: 1, invoiced: 121, invoiceCount: 1 });
+      expect(s.totals).toMatchObject({ sales: 207.9, salesCount: 1, invoiced: 328.9, invoiceCount: 1, ticketCount: 1 });
       // Ventas por categoría con el descuento del ticket repartido: 121 × 0,9 y 110 × 0,9
       expect(s.categories).toEqual([
         { name: "Asesoría", amount: 108.9, percent: 52.4 },

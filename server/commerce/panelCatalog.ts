@@ -4,6 +4,9 @@
  * Solo lectura y solo lo publicado: qué existe, en qué estado comercial está y si se puede comprar en línea HOY. No
  * calcula importes de una compra (eso es la vista previa de compra, que sigue siendo la única fuente) ni cambia
  * nada. Lo interno (`internalOnly`) solo lo ven las empresas de prueba autorizadas para comprarlo.
+ *
+ * Cada elemento lleva su ficha (`card`): la versión PUBLICADA del producto (nunca la parte interna ni precios sin
+ * aprobar), para el escaparate y la ficha del marketplace del panel. Sin ficha publicada, `card` es null.
  */
 import express, { type NextFunction, type Request, type Response, type Router } from "express";
 import { z } from "zod";
@@ -12,6 +15,7 @@ import { opsLog } from "../_core/ops/log";
 import { quoteCatalogFromSite } from "../catalog/snapshot";
 import type { QuoteCatalogProduct } from "../catalog/quote";
 import { withoutInternal, type SiteDocument } from "../web/service";
+import type { CommercialBlock } from "../web/schemas";
 
 export interface PanelCatalogItem {
   key: string;
@@ -27,6 +31,102 @@ export interface PanelCatalogItem {
   monthly: { amountCents: number; currency: string; taxIncluded: boolean; unit: string | null } | null;
   /** Se puede comprar desde el panel ahora mismo (compra en línea encendida y producto a la venta). */
   purchasable: boolean;
+  /** Ficha publicada del marketplace (null: el producto no tiene ficha publicada). */
+  card: PanelCard | null;
+}
+
+type Img = { src: string; alt: string; caption?: string };
+
+/** Ficha del marketplace: solo contenido publicado; los campos que falten llegan vacíos y el panel usa su reserva. */
+export interface PanelCard {
+  tagline: string;
+  description: string;
+  includes: string[];
+  requirements: string[];
+  dependencies: string[];
+  compatibleWith: string[];
+  thirdPartyCosts: string | null;
+  group: string | null;
+  presentation: { icon: string | null; color: string | null; highlight: boolean; forWho: string | null };
+  commercial: {
+    headline: string;
+    valueProposition: string;
+    longDescription: string;
+    problem: string;
+    forWho: string | null;
+    benefits: string[];
+    excludes: string[];
+    integrations: string[];
+    coreIntegration: string[];
+    compatibleExtensions: string[];
+    terms: { commitment: string | null; cancellation: string | null; activation: string | null };
+    faq: Array<{ q: string; a: string }>;
+    related: string[];
+    media: { cover: Img | null; screenshots: Img[] };
+    cta: string;
+    seo: { slug: string; title: string; description: string } | null;
+  } | null;
+  /** Modalidad comercial efectiva publicada (effectiveOffer). */
+  offer: Record<string, unknown> | null;
+  /** Todos los precios aprobados (mensual, anual, pago único…), con el IVA declarado. */
+  prices: Array<{ kind: string; amountCents: number; currency: string; unit: string | null; taxRateBp: number | null; taxIncluded: boolean }>;
+}
+
+const str = (v: unknown): string => (typeof v === "string" ? v : "");
+const strOrNull = (v: unknown): string | null => (typeof v === "string" && v ? v : null);
+const strs = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && !!x) : []);
+const img = (v: unknown): Img | null => {
+  const o = v as Partial<Img> | null | undefined;
+  if (!o || typeof o.src !== "string" || !/^https:\/\//.test(o.src) || typeof o.alt !== "string") return null;
+  return { src: o.src, alt: o.alt, ...(typeof o.caption === "string" && o.caption ? { caption: o.caption } : {}) };
+};
+
+/**
+ * Ficha del panel a partir de un producto PUBLICADO del sitio. `visible`: claves que esta empresa ve en el panel
+ * (relacionados y extensiones compatibles solo apuntan a productos visibles: nada interno ni retirado).
+ */
+export function panelCard(p: Record<string, unknown>, visible: ReadonlySet<string>): PanelCard {
+  const pres = (p.presentation ?? {}) as Record<string, unknown>;
+  const cat = (p.catalog ?? {}) as Record<string, unknown>;
+  const m = p.commercial as (Partial<CommercialBlock> & Record<string, unknown>) | undefined;
+  const onlyVisible = (keys: unknown) => strs(keys).filter((k) => visible.has(k) && k !== p.key);
+  const terms = (m?.terms ?? {}) as Record<string, unknown>;
+  const media = (m?.media ?? {}) as Record<string, unknown>;
+  return {
+    tagline: str(p.tagline),
+    description: str(p.description),
+    includes: strs(p.includes),
+    requirements: strs(p.requirements),
+    dependencies: strs(p.dependencies),
+    compatibleWith: strs(p.compatibleWith),
+    thirdPartyCosts: strOrNull(p.thirdPartyCosts),
+    group: strOrNull(cat.group),
+    presentation: { icon: strOrNull(pres.icon), color: strOrNull(pres.color), highlight: pres.highlight === true, forWho: strOrNull(pres.forWho) },
+    commercial: m
+      ? {
+          headline: str(m.headline),
+          valueProposition: str(m.valueProposition),
+          longDescription: str(m.longDescription),
+          problem: str(m.problem),
+          forWho: strOrNull(m.forWho),
+          benefits: strs(m.benefits),
+          excludes: strs(m.excludes),
+          integrations: strs(m.integrations),
+          coreIntegration: strs(m.coreIntegration),
+          compatibleExtensions: onlyVisible(m.compatibleExtensions),
+          terms: { commitment: strOrNull(terms.commitment), cancellation: strOrNull(terms.cancellation), activation: strOrNull(terms.activation) },
+          faq: (Array.isArray(m.faq) ? m.faq : []).filter((f): f is { q: string; a: string } => !!f && typeof f.q === "string" && typeof f.a === "string"),
+          related: onlyVisible(m.related),
+          media: { cover: img(media.cover), screenshots: (Array.isArray(media.screenshots) ? media.screenshots : []).map(img).filter((x): x is Img => !!x) },
+          cta: str(m.cta) || "contact",
+          seo: m.seo && typeof m.seo === "object" ? { slug: str(m.seo.slug), title: str(m.seo.title), description: str(m.seo.description) } : null,
+        }
+      : null,
+    offer: p.offer && typeof p.offer === "object" ? (p.offer as Record<string, unknown>) : null,
+    prices: (Array.isArray(p.prices) ? (p.prices as Array<Record<string, unknown>>) : [])
+      .filter((x) => !x.draft && typeof x.amountCents === "number")
+      .map((x) => ({ kind: str(x.kind), amountCents: x.amountCents as number, currency: str(x.currency), unit: strOrNull(x.unit), taxRateBp: typeof x.taxRateBp === "number" ? x.taxRateBp : null, taxIncluded: x.taxIncluded === true })),
+  };
 }
 
 export interface PanelCatalog {
@@ -41,8 +141,9 @@ export interface PanelCatalog {
  */
 const PANEL_FAMILIES = new Set(["extension", "industry_module", "net_module", "net_bundle", "connect", "connect_bundle", "addon", "extra"]);
 
-export function panelCatalog(products: QuoteCatalogProduct[], o: { version: string; purchasesEnabled: boolean }): PanelCatalog {
+export function panelCatalog(products: QuoteCatalogProduct[], o: { version: string; purchasesEnabled: boolean; site?: Pick<SiteDocument, "catalog"> }): PanelCatalog {
   const items: PanelCatalogItem[] = [];
+  const published = new Map((o.site?.catalog.products ?? []).map((p) => [p.key, p as Record<string, unknown>]));
   for (const p of products) {
     if (p.commercialStatus === "unpublished") continue;
     const quantity = !!p.addonFor;
@@ -61,7 +162,14 @@ export function panelCatalog(products: QuoteCatalogProduct[], o: { version: stri
       capabilities: p.capabilities,
       monthly: monthly ? { amountCents: monthly.amountCents, currency: monthly.currency, taxIncluded: monthly.taxIncluded, unit: monthly.unit } : null,
       purchasable: o.purchasesEnabled && sellable,
+      card: null,
     });
+  }
+  // Las fichas, cuando ya se sabe qué ve la empresa (relacionados solo entre productos visibles)
+  const visible = new Set(items.map((i) => i.key));
+  for (const i of items) {
+    const p = published.get(i.key);
+    if (p) i.card = panelCard(p, visible);
   }
   items.sort((a, b) => a.kind.localeCompare(b.kind) || a.family.localeCompare(b.family) || a.name.localeCompare(b.name, "es"));
   return { version: o.version, purchasesEnabled: o.purchasesEnabled, items };
@@ -80,7 +188,7 @@ export function createPanelCatalogRouter(d: { site: () => Promise<SiteDocument>;
         const visible = d.internalTenants?.has(parsed.data) ? site : withoutInternal(site);
         const c = quoteCatalogFromSite(visible);
         res.setHeader("Cache-Control", "no-store");
-        res.json({ catalog: panelCatalog(c.products, { version: c.version, purchasesEnabled: d.purchasesEnabled }) });
+        res.json({ catalog: panelCatalog(c.products, { version: c.version, purchasesEnabled: d.purchasesEnabled, site: visible }) });
       })
       .catch((e) => {
         opsLog("error", "Commerce", "panel_catalog_failed", { error: e instanceof Error ? e.name : "error" });

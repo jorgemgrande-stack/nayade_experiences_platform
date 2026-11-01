@@ -107,8 +107,8 @@ export function suggestedExportQuarter(now: Date, latestIssuedAt: Date | string 
 }
 
 /** Exportación sin ningún documento: no se descarga (sería un ZIP vacío). */
-export function isEmptyExport(r: { invoices: number; creditNotes: number }): boolean {
-  return r.invoices + r.creditNotes === 0;
+export function isEmptyExport(r: { invoices: number; creditNotes: number; tickets?: number }): boolean {
+  return r.invoices + r.creditNotes + (r.tickets ?? 0) === 0;
 }
 
 const EMPTY_EXPORT_PREFIX = "No hay facturas ni abonos emitidos en ";
