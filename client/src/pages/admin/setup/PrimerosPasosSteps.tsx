@@ -410,6 +410,8 @@ export function ProductStep({ noun, example, currency, count, disabled, onDone }
         basePrice: price.toFixed(2),
         taxRate: String(tax),
         pricingType: v.unit,
+        // El primer producto se puede cobrar ya en el TPV (en la ficha es «Vendible en TPV»)
+        isPresentialSale: true,
       });
       await Promise.all([utils.products.getCategories.invalidate(), utils.products.getLocations.invalidate(), utils.products.getAll.invalidate()]);
       toast.success(`Primer ${noun} creado`);
