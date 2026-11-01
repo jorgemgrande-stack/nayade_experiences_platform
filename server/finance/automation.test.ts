@@ -209,6 +209,24 @@ describe("facturación fiscal automática (DF-2) en la pasada contable", () => {
   });
 });
 
+describe("panel con la factura expedida y el cobro aún sin asiento (estado real de production)", () => {
+  it("el 430 de la factura cobrada en Stripe no se presenta como cobro pendiente", async () => {
+    const t = setup({ issueEnabled: true });
+    // La transacción de Stripe no se ha contabilizado (en production: falta decidir el IVA de la comisión)
+    const r = await t.automation.tick();
+    expect(r.invoiceIssue).toMatchObject({ issued: [{ number: "EB-2026-00001" }] });
+    const o = await t.integrity.overview();
+    const ind = (k: string) => o.indicators.find((i) => i.key === k)!;
+    expect(ind("receivablePending")).toMatchObject({ state: "pending", cents: 0, pendingCents: 121_000 });
+    expect(ind("collected")).toMatchObject({ state: "pending", cents: 121_000, pendingCents: 121_000 });
+    expect(ind("accruedRevenue")).toMatchObject({ state: "value", cents: 100_000 });
+    expect(ind("vatOutput")).toMatchObject({ state: "value", cents: 21_000 });
+    const alerts = await t.integrity.alerts();
+    expect(codes(alerts)).toContain("confirmed_payment_unposted");
+    expect(codes(alerts)).not.toContain("confirmed_payment_without_invoice");
+  });
+});
+
 describe("automatización contable: con la fuente de Stripe sincronizada", () => {
   it("contabiliza el cobro una sola vez (bruto, comisión y neto) y el panel lo refleja", async () => {
     const t = setup();
