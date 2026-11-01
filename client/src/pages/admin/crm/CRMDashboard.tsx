@@ -42,6 +42,7 @@ import { toast } from "sonner";
 import CancellationDetailModal from "./CancellationDetailModal";
 import ReservationTicket from "./ReservationTicket";
 import NewInvoiceDialog from "./NewInvoiceDialog";
+import GestoriaExportDialog from "./GestoriaExportDialog";
 import { ProposalLeadButton } from "./ProposalsManager";
 import { CatalogConceptSelector, type CatalogProduct } from "@/components/CatalogConceptSelector";
 import {
@@ -5589,6 +5590,7 @@ export default function CRMDashboard() {
   const [creditNoteInvoiceId, setCreditNoteInvoiceId] = useState<number | null>(null);
   const [voidInvoiceId, setVoidInvoiceId] = useState<number | null>(null);
   const [newInvoiceOpen, setNewInvoiceOpen] = useState(false);
+  const [gestoriaExportOpen, setGestoriaExportOpen] = useState(false);
   const [deleteInvoiceId, setDeleteInvoiceId] = useState<number | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<"transferencia" | "efectivo" | "otro">("transferencia");
   const [creditNoteReason, setCreditNoteReason] = useState("");
@@ -7676,7 +7678,11 @@ export default function CRMDashboard() {
           {/* ─── TABLA DE FACTURAS ──────────────────────────────────────────────── */}
           {tab === "invoices" && (
             <div>
-              <div className="flex justify-end mb-3">
+              <div className="flex justify-end gap-2 mb-3">
+                <Button size="sm" variant="outline" onClick={() => setGestoriaExportOpen(true)}>
+                  <Download className="w-4 h-4 mr-1" /> Exportar para la gestoría
+                </Button>
+                <GestoriaExportDialog open={gestoriaExportOpen} onOpenChange={setGestoriaExportOpen} />
                 <Button size="sm" onClick={() => setNewInvoiceOpen(true)} className="bg-orange-600 hover:bg-orange-700 text-white">
                   <Plus className="w-4 h-4 mr-1" /> Nueva factura
                 </Button>
