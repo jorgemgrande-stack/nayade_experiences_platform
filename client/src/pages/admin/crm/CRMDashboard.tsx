@@ -10,6 +10,7 @@ import { usePanelSubscription } from "@/hooks/usePanelSubscription";
 import { errorMessage } from "@/components/admin/PanelStates";
 import { useVocabulary, useVocabularyDefault, visibleCrmTabs } from "@/lib/vocabulary";
 import { errorToastMessage } from "@/lib/errorMessage";
+import { TONE_BADGE } from "@/lib/panelTones";
 import { validateContact, validateOrder, validateQuote, hasErrors, type FieldErrors } from "@shared/crmForms";
 import { quoteMailNotice, type QuoteMailResult } from "@shared/quoteMailNotice";
 import {
@@ -175,7 +176,7 @@ function QuoteStatusBadge({ status }: { status: QuoteStatus }) {
     visualizado:        { label: "Visualizado",       className: "bg-sky-500/15 text-sky-400 border-sky-500/30" },
     convertido_carrito: { label: "Pago iniciado",     className: "bg-violet-500/15 text-violet-400 border-violet-500/30" },
     pago_fallido:       { label: "Pago fallido",      className: "bg-orange-500/15 text-orange-400 border-orange-500/30" },
-    aceptado:           { label: "Aceptado",          className: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30" },
+    aceptado:           { label: "Aceptado",          className: TONE_BADGE.success },
     rechazado:          { label: "Rechazado",         className: "bg-red-500/15 text-red-400 border-red-500/30" },
     expirado:           { label: "Expirado",          className: "bg-orange-500/15 text-orange-400 border-orange-500/30" },
     perdido:            { label: "Perdido",           className: "bg-red-500/15 text-red-400 border-red-500/30" },
@@ -7213,7 +7214,7 @@ export default function CRMDashboard() {
                       <td className="px-4 py-3 hidden sm:table-cell">
                         <div className="text-xs text-foreground/50">
                           {quote.sentAt ? (
-                            <span className="text-blue-400/70">Env. {new Date(quote.sentAt).toLocaleDateString("es-ES")}</span>
+                            <span className="text-info">Env. {new Date(quote.sentAt).toLocaleDateString("es-ES")}</span>
                           ) : (
                             new Date(quote.createdAt).toLocaleDateString("es-ES")
                           )}
@@ -9057,7 +9058,7 @@ export default function CRMDashboard() {
               { k: "address", label: "Dirección", ph: "Calle Mayor 4", ac: "street-address" },
             ] as const).map((f) => (
               <div key={f.k} className="space-y-1">
-                <Label htmlFor={`gen-inv-${f.k}`} className="text-foreground/70 text-xs">{f.label} <span className="text-red-400">*</span></Label>
+                <Label htmlFor={`gen-inv-${f.k}`} className="text-foreground/70 text-xs">{f.label} <span className="text-destructive" aria-hidden="true">*</span></Label>
                 <Input
                   id={`gen-inv-${f.k}`}
                   required
@@ -9077,7 +9078,7 @@ export default function CRMDashboard() {
                 { k: "city", label: "Población", ph: "Getafe", ac: "address-level2" },
               ] as const).map((f) => (
                 <div key={f.k} className="space-y-1">
-                  <Label htmlFor={`gen-inv-${f.k}`} className="text-foreground/70 text-xs">{f.label} <span className="text-red-400">*</span></Label>
+                  <Label htmlFor={`gen-inv-${f.k}`} className="text-foreground/70 text-xs">{f.label} <span className="text-destructive" aria-hidden="true">*</span></Label>
                   <Input
                     id={`gen-inv-${f.k}`}
                     required

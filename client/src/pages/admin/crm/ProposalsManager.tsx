@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
+import { TONE_BADGE } from "@/lib/panelTones";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -45,7 +46,7 @@ const STATUS_MAP: Record<ProposalStatus, { label: string; className: string }> =
   borrador: { label: "Borrador", className: "bg-gray-500/15 text-gray-400 border-gray-500/30" },
   enviado: { label: "Enviado", className: "bg-blue-500/15 text-blue-400 border-blue-500/30" },
   visualizado: { label: "Visualizado", className: "bg-amber-500/15 text-amber-400 border-amber-500/30" },
-  aceptado: { label: "Aceptado", className: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30" },
+  aceptado: { label: "Aceptado", className: TONE_BADGE.success },
   rechazado: { label: "Rechazado", className: "bg-red-500/15 text-red-400 border-red-500/30" },
   expirado: { label: "Expirado", className: "bg-gray-600/15 text-gray-500 border-gray-600/30" },
 };
@@ -836,7 +837,7 @@ export default function ProposalsManager({ leadId, leadName }: { leadId?: number
                         <td className="px-4 py-3 text-right"><span className="text-sm font-bold text-foreground">{parseFloat(p.total ?? "0").toFixed(2)} €</span></td>
                         <td className="px-4 py-3 hidden sm:table-cell">
                           <div className="text-xs text-foreground/50">
-                            {p.sentAt ? <span className="text-blue-400/70">Env. {new Date(p.sentAt).toLocaleDateString("es-ES")}</span> : new Date(p.createdAt).toLocaleDateString("es-ES")}
+                            {p.sentAt ? <span className="text-info">Env. {new Date(p.sentAt).toLocaleDateString("es-ES")}</span> : new Date(p.createdAt).toLocaleDateString("es-ES")}
                           </div>
                         </td>
                         <td className="px-4 py-3 text-right">

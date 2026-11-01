@@ -197,7 +197,7 @@ export async function buildGestoriaInvoiceZip(input: GestoriaZipInput): Promise<
     "",
     `Facturas: ${invoices}`,
     `Abonos (facturas rectificativas): ${creditNotes}`,
-    `Tickets de caja (facturas simplificadas): ${tickets.length}${substituted.length ? ` (${substituted.length} sustituidos por su factura completa)` : ""}`,
+    `Tickets de caja (facturas simplificadas): ${tickets.length}${substituted.length ? ` (${substituted.length} ${substituted.length === 1 ? "sustituido" : "sustituidos"} por su factura completa)` : ""}`,
     "",
     "Contenido:",
     "  Facturas/  PDF de cada factura emitida en el periodo.",
