@@ -7,13 +7,16 @@
  * - En un solo tenant (producción actual) `neutralSite` es falso y nada cambia.
  */
 import { useEffect } from "react";
-import type { ComponentType } from "react";
-import { Link, Redirect } from "wouter";
+import type { ComponentType, ReactNode } from "react";
+import { Link, Redirect, useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { HOME_PAGE_SLUG, resolveHome } from "@/lib/homeRoute";
 import PublicLayout from "@/components/PublicLayout";
 import NotFound from "@/pages/NotFound";
 import { brandTokens } from "@shared/loginBrand";
+import { composePageTitle, publicRouteAccess } from "@shared/publicSite";
+import { pageSlugOfUrl } from "@shared/tenantNav";
+import { usePublicSite } from "@/hooks/usePublicSite";
 
 export function useTenantTheme() {
   const q = trpc.public.getTheme.useQuery(undefined, { staleTime: 5 * 60_000, retry: false, refetchOnWindowFocus: false });
@@ -57,12 +60,61 @@ export function TenantThemeLoader() {
       }
       link.href = theme.faviconUrl;
     }
-    if (theme.neutralSite && theme.brandName) document.title = theme.brandName;
+    // Título de la pestaña: «Página · Empresa» (usePageTitle) o solo la empresa
+    if (theme.neutralSite && theme.brandName) document.title = composePageTitle(currentPageTitle, theme.brandName);
   }, [theme]);
   return null;
 }
 
 type Theme = NonNullable<ReturnType<typeof useTenantTheme>["theme"]>;
+
+/** Página que se está mostrando (para componer el título cuando el tema llega después que la página). */
+let currentPageTitle: string | null = null;
+
+/**
+ * Título de la pestaña de una página de la web de la empresa: «Quiénes somos · Empresa». Al salir vuelve a solo la
+ * empresa. En la instalación de una sola empresa no cambia nada (sus títulos vienen del servidor).
+ */
+export function usePageTitle(title: string | null | undefined) {
+  const { theme } = useTenantTheme();
+  const neutral = !!theme?.neutralSite;
+  const brand = theme?.brandName ?? null;
+  useEffect(() => {
+    if (!neutral) return;
+    currentPageTitle = title?.trim() || null;
+    const t = composePageTitle(currentPageTitle, brand);
+    if (t) document.title = t;
+    return () => {
+      currentPageTitle = null;
+      if (brand) document.title = brand;
+    };
+  }, [title, neutral, brand]);
+}
+
+/** Textos legales que toda web de empresa enlaza en su pie (sus páginas iniciales, editables). */
+export const LEGAL_FOOTER_LINKS = [
+  { label: "Aviso legal", url: "/aviso-legal" },
+  { label: "Privacidad", url: "/privacidad" },
+  { label: "Cookies", url: "/cookies" },
+] as const;
+
+/**
+ * Estilo de lectura de las páginas de la empresa: texto con el color de texto del tema sobre su fondo (contraste AA
+ * en claro y en oscuro), títulos principales con su color de marca (texto grande) y enlaces subrayados con ese color.
+ */
+export const RICH_TEXT_CLASS =
+  "break-words text-base leading-relaxed text-foreground " +
+  "[&_h1]:font-heading [&_h1]:text-3xl md:[&_h1]:text-4xl [&_h1]:font-bold [&_h1]:leading-tight [&_h1]:text-primary [&_h1]:mb-6 " +
+  "[&_h2]:font-heading [&_h2]:text-2xl [&_h2]:font-semibold [&_h2]:text-foreground [&_h2]:mt-10 [&_h2]:mb-3 " +
+  "[&_h3]:text-xl [&_h3]:font-semibold [&_h3]:text-foreground [&_h3]:mt-8 [&_h3]:mb-2 " +
+  "[&_p]:my-4 [&_ul]:my-4 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:my-4 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:my-1.5 " +
+  "[&_a]:text-foreground [&_a]:underline [&_a]:decoration-primary [&_a]:decoration-2 [&_a]:underline-offset-4 " +
+  "[&_strong]:font-semibold [&_b]:font-semibold [&_img]:my-6 [&_img]:h-auto [&_img]:max-w-full [&_img]:rounded-xl " +
+  "[&_blockquote]:my-6 [&_blockquote]:border-l-4 [&_blockquote]:border-primary [&_blockquote]:pl-4 [&_blockquote]:italic " +
+  "[&_table]:my-6 [&_table]:block [&_table]:max-w-full [&_table]:overflow-x-auto [&_td]:border [&_td]:border-border [&_td]:p-2 [&_th]:border [&_th]:border-border [&_th]:p-2 [&_th]:text-left";
+
+/** El contenido ya empieza por su propio título (h1): no se repite el de la página. */
+export const startsWithHeading = (html: string) => /^\s*<h1[\s>]/i.test(html);
 
 export function TenantBrand({ theme }: { theme: Theme }) {
   return (
@@ -96,6 +148,9 @@ export function TenantFooter({ theme }: { theme: Theme }) {
   const footerLinks = (menu.data ?? [])
     .filter((m) => m.isActive && !m.parentId && m.url)
     .sort((a, b) => a.sortOrder - b.sortOrder) as Array<{ id: number; label: string; url: string; target?: string | null }>;
+  // Textos legales siempre en el pie (si la empresa ya los enlaza en su menú de pie, no se repiten)
+  const own = new Set(footerLinks.map((l) => pageSlugOfUrl(l.url)).filter(Boolean));
+  const legalLinks = LEGAL_FOOTER_LINKS.filter((l) => !own.has(pageSlugOfUrl(l.url)));
   return (
     <footer className="bg-lago-dark text-white">
       <div className="container py-10 grid gap-6 md:grid-cols-3">
@@ -119,6 +174,11 @@ export function TenantFooter({ theme }: { theme: Theme }) {
               </Link>
             ),
           )}
+          {legalLinks.map((l) => (
+            <Link key={l.url} href={l.url}>
+              <span className="cursor-pointer hover:text-white">{l.label}</span>
+            </Link>
+          ))}
         </nav>
       </div>
       <div className="border-t border-white/10">
@@ -143,6 +203,7 @@ function Spinner() {
 
 export function TenantPage({ slug }: { slug: string }) {
   const q = trpc.public.getTenantPage.useQuery({ slug }, { retry: false });
+  usePageTitle(slug === HOME_PAGE_SLUG ? null : q.data?.title);
   if (q.isLoading) {
     return (
       <PublicLayout>
@@ -153,7 +214,8 @@ export function TenantPage({ slug }: { slug: string }) {
   if (!q.data) return <NotFound />;
   return (
     <PublicLayout>
-      <article className="container py-12 max-w-3xl prose">
+      <article className={`container py-10 md:py-14 max-w-3xl ${RICH_TEXT_CLASS}`}>
+        {!startsWithHeading(q.data.html) && <h1>{q.data.title}</h1>}
         {/* HTML saneado en servidor con lista blanca (server/_core/htmlSanitize.ts) */}
         <div dangerouslySetInnerHTML={{ __html: q.data.html }} />
       </article>
@@ -196,4 +258,22 @@ export function SlugGate({ slug }: { slug: string }) {
   if (isLoading) return <Spinner />;
   if (theme?.neutralSite) return <TenantPage slug={slug} />;
   return <NotFound />;
+}
+
+/**
+ * Secciones públicas que dependen de lo contratado (tienda, presupuesto, cupones, Lego Packs): sin ellas, «no
+ * encontrada» o la sección equivalente (shared/publicSite.ts). En la instalación de una sola empresa, como siempre.
+ */
+export function SiteRouteGate({ children }: { children: ReactNode }) {
+  const [location] = useLocation();
+  const { isLoading } = useTenantTheme();
+  const { features, isLoading: siteLoading } = usePublicSite();
+  if (isLoading || siteLoading) return <Spinner />;
+  // Sin respuesta, se muestra la página: el servidor sigue comprobando cada operación. En la instalación propia,
+  // todo existe (y /tienda lleva a su catálogo de siempre).
+  if (!features) return <>{children}</>;
+  const access = publicRouteAccess(location, features);
+  if (access.kind === "notFound") return <NotFound />;
+  if (access.kind === "redirect") return <Redirect to={access.to} replace />;
+  return <>{children}</>;
 }

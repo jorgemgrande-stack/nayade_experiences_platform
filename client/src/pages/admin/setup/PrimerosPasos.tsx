@@ -246,7 +246,7 @@ export default function PrimerosPasos() {
               {shown === "product" && (
                 <ProductStep noun={activity.productNoun} example={activity.productExample} currency={d.company.currency || "EUR"} count={d.facts.products} disabled={readOnly || !sub.canWrite("shop-catalog")} onDone={advance("product")} />
               )}
-              {shown === "web" && <WebStep done={step?.status === "done"} onContinue={advance("web")} />}
+              {shown === "web" && <WebStep done={step?.status === "done"} onContinue={advance("web")} legalMissing={d.legalMissing ?? []} />}
               {shown === "operation" && <OperationStep count={d.facts.sales} can={can} disabled={readOnly || !sub.canWrite("crm-quotes")} onDone={advance("operation")} />}
               {shown === "comms" && <CommsStep initial={d.comms} tradeName={d.company.tradeName} done={step?.status === "done"} can={can} disabled={readOnly} onSaved={goNext} />}
               {shown === "sector" && <SectorStep modules={d.sectorModules} disabled={setStep.isPending || readOnly} onDone={() => void mark("sector", "done")} />}

@@ -14,8 +14,10 @@ import { toast } from "sonner";
 import { useMarketingConsent } from "@/hooks/useMarketingConsent";
 import { trackEvent } from "@/lib/meta-pixel/client";
 import { trackLeadFormSubmit } from "@/lib/ga4";
+import { usePageTitle } from "@/components/TenantTheme";
 
 export default function Contact() {
+  usePageTitle("Contacto");
   const [submitted, setSubmitted] = useState(false);
   const [formData, setFormData] = useState({
     name: "", email: "", phone: "", subject: "", message: "",
@@ -309,7 +311,7 @@ export default function Contact() {
                         onChange={(e) => setFormData({ ...formData, message: e.target.value })}
                         required
                         rows={5}
-                        placeholder="Cuéntanos más sobre tu consulta, actividad que te interesa, número de personas, fechas aproximadas..."
+                        placeholder={neutral ? "Cuéntanos tu consulta con el detalle que quieras..." : "Cuéntanos más sobre tu consulta, actividad que te interesa, número de personas, fechas aproximadas..."}
                         style={{
                           background: "rgba(255,255,255,0.06)",
                           border: "1px solid rgba(255,255,255,0.12)",
@@ -448,7 +450,7 @@ export default function Contact() {
                   ¿Prefieres hablar directamente?
                 </p>
                 <p className="text-xs text-white/60 mb-3">
-                  Llámanos y te ayudamos a diseñar tu experiencia perfecta.
+                  {neutral ? "Llámanos y te atendemos personalmente." : "Llámanos y te ayudamos a diseñar tu experiencia perfecta."}
                 </p>
                 <a
                   href={phoneTel}

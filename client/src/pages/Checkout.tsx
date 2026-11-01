@@ -12,6 +12,9 @@ import { useMarketingConsent } from "@/hooks/useMarketingConsent";
 import { trackEvent } from "@/lib/meta-pixel/client";
 import { getFbp, getFbc } from "@/lib/meta-pixel/cookies";
 import { trpc } from "@/lib/trpc";
+import { usePublicSite } from "@/hooks/usePublicSite";
+import { cartItemDate } from "@shared/publicSite";
+import { usePageTitle } from "@/components/TenantTheme";
 import { Button } from "@/components/ui/button";
 import {
   ShoppingCart, Calendar, Users, Tag, Trash2, ArrowLeft,
@@ -21,13 +24,9 @@ import {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function formatDate(dateStr: string): string {
-  try {
-    const d = new Date(dateStr + "T00:00:00");
-    return d.toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
-  } catch {
-    return dateStr;
-  }
+/** Fecha del artículo; null si no tiene (productos de la tienda sin fecha): no se muestra. */
+function formatDate(dateStr: string): string | null {
+  return cartItemDate(dateStr, { weekday: "long", day: "numeric", month: "long", year: "numeric" });
 }
 
 // ─── Checkout ─────────────────────────────────────────────────────────────────
@@ -35,6 +34,10 @@ function formatDate(dateStr: string): string {
 export default function Checkout() {
   const { items, totalItems, totalEstimated, removeItem, clearCart } = useCart();
   const [, navigate] = useLocation();
+  // Textos de la empresa: genéricos en una pyme (tienda, pedido), los de siempre en la instalación propia
+  const { features: site, text } = usePublicSite();
+  const shopHref = site?.licensed && !site.store ? "/" : text.shopHref;
+  usePageTitle("Finalizar compra");
   const hasConsent = useMarketingConsent();
   const initiateCheckoutFired = useRef(false);
 
@@ -67,10 +70,11 @@ export default function Checkout() {
 
   // Redirigir si el carrito está vacío
   useEffect(() => {
-    if (items.length === 0 && !cartCheckout.isPending) {
-      navigate("/experiencias");
+    // Se espera a saber qué web es (la tienda de una pyme o el catálogo de la instalación propia)
+    if (items.length === 0 && !cartCheckout.isPending && site) {
+      navigate(shopHref);
     }
-  }, [items.length, cartCheckout.isPending, navigate]);
+  }, [items.length, cartCheckout.isPending, navigate, shopHref, site]);
 
   // InitiateCheckout — page mount, una sola vez
   useEffect(() => {
@@ -175,7 +179,7 @@ export default function Checkout() {
             <div className="flex items-center gap-2 text-sm text-slate-500 mb-3">
               <Link href="/" className="hover:text-orange-600 transition-colors">Inicio</Link>
               <ChevronRight className="w-3.5 h-3.5" />
-              <Link href="/experiencias" className="hover:text-orange-600 transition-colors">Experiencias</Link>
+              <Link href={shopHref} className="hover:text-orange-600 transition-colors">{text.shopLabel}</Link>
               <ChevronRight className="w-3.5 h-3.5" />
               <span className="text-slate-900 font-medium">Finalizar compra</span>
             </div>
@@ -187,11 +191,11 @@ export default function Checkout() {
                 <div>
                   <h1 className="text-xl font-black text-slate-900">Finalizar compra</h1>
                   <p className="text-xs text-slate-500">
-                    {totalItems} {totalItems === 1 ? "experiencia" : "experiencias"} · Total estimado: <span className="font-bold text-orange-600">{totalEstimated.toFixed(2).replace(".", ",")} €</span>
+                    {site?.licensed ? `${totalItems} ${totalItems === 1 ? "artículo" : "artículos"}` : `${totalItems} ${totalItems === 1 ? "experiencia" : "experiencias"}`} · Total estimado: <span className="font-bold text-orange-600">{totalEstimated.toFixed(2).replace(".", ",")} €</span>
                   </p>
                 </div>
               </div>
-              <Link href="/experiencias">
+              <Link href={shopHref}>
                 <button className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-900 transition-colors">
                   <ArrowLeft className="w-4 h-4" />
                   Seguir comprando
@@ -214,7 +218,7 @@ export default function Checkout() {
                     Resumen del pedido
                   </h2>
                   <button
-                    onClick={() => { clearCart(); navigate("/experiencias"); }}
+                    onClick={() => { clearCart(); navigate(shopHref); }}
                     className="text-xs text-slate-400 hover:text-red-500 transition-colors flex items-center gap-1"
                   >
                     <Trash2 className="w-3 h-3" />
@@ -262,13 +266,15 @@ export default function Checkout() {
                           </div>
 
                           <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-xs text-slate-600">
-                            <span className="flex items-center gap-1">
-                              <Calendar className="w-3 h-3 text-orange-400" />
-                              {formatDate(item.bookingDate)}
-                            </span>
+                            {formatDate(item.bookingDate) && (
+                              <span className="flex items-center gap-1">
+                                <Calendar className="w-3 h-3 text-orange-400" />
+                                {formatDate(item.bookingDate)}
+                              </span>
+                            )}
                             <span className="flex items-center gap-1">
                               <Users className="w-3 h-3 text-orange-400" />
-                              {item.people} {item.people === 1 ? "persona" : "personas"}
+                              {text.quantity(item.people)}
                             </span>
                           </div>
 
@@ -285,7 +291,7 @@ export default function Checkout() {
 
                           <div className="flex items-center justify-between mt-3">
                             <span className="text-xs text-slate-600">
-                              {item.pricePerPerson.toFixed(2).replace(".", ",")} €/persona
+                              {item.pricePerPerson.toFixed(2).replace(".", ",")} {text.perUnitLong}
                               {extrasTotal > 0 && ` + ${extrasTotal.toFixed(2).replace(".", ",")} € extras`}
                             </span>
                             <span className="font-black text-base text-orange-600">
@@ -327,7 +333,7 @@ export default function Checkout() {
                         value={promoInput}
                         onChange={e => { setPromoInput(e.target.value.toUpperCase()); setErrors(p => ({ ...p, promo: "" })); }}
                         onKeyDown={e => e.key === "Enter" && validatePromo.mutate({ code: promoInput, amount: totalEstimated })}
-                        placeholder="VERANO25"
+                        placeholder={text.promoPlaceholder}
                         className={`flex-1 px-3 py-2 text-sm border rounded-xl font-mono uppercase focus:outline-none focus:ring-2 focus:ring-orange-300 ${errors.promo ? "border-red-400 bg-red-50" : "border-slate-300"}`}
                       />
                       <button
@@ -363,10 +369,11 @@ export default function Checkout() {
               </div>
 
               {/* Garantías */}
-              <div className="grid grid-cols-3 gap-3">
+              <div className={`grid gap-3 ${text.showCancellationBadge ? "grid-cols-3" : "grid-cols-2"}`}>
                 {[
-                  { icon: Shield, label: "Pago seguro", desc: "SSL + Redsys" },
-                  { icon: Clock, label: "Cancelación", desc: "Hasta 48h antes" },
+                  { icon: Shield, label: "Pago seguro", desc: text.secureBadge },
+                  // Política de cancelación de la instalación propia: una pyme tiene la suya (no se inventa)
+                  ...(text.showCancellationBadge ? [{ icon: Clock, label: "Cancelación", desc: "Hasta 48h antes" }] : []),
                   { icon: CheckCircle2, label: "Confirmación", desc: "Email inmediato" },
                 ].map(({ icon: Icon, label, desc }) => (
                   <div key={label} className="bg-white rounded-xl border border-slate-200 p-3 text-center">
@@ -386,7 +393,7 @@ export default function Checkout() {
                     <User className="w-4 h-4 text-orange-500" />
                     Tus datos de contacto
                   </h2>
-                  <p className="text-xs text-slate-600 mt-0.5">Para enviarte la confirmación de reserva.</p>
+                  <p className="text-xs text-slate-600 mt-0.5">{text.contactHint}</p>
                 </div>
 
                 <div className="px-5 py-5 space-y-4">
@@ -452,7 +459,7 @@ export default function Checkout() {
                     <textarea
                       value={comments}
                       onChange={e => setComments(e.target.value)}
-                      placeholder="Alergias, necesidades especiales, ocasión especial..."
+                      placeholder={text.commentsPlaceholder}
                       rows={3}
                       className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-orange-300 focus:border-orange-400 transition-colors resize-none"
                     />
@@ -500,7 +507,7 @@ export default function Checkout() {
 
                     <p className="text-center text-xs text-slate-500 mt-3 flex items-center justify-center gap-1">
                       <Lock className="w-3 h-3" />
-                      Pago seguro con Redsys · Datos cifrados SSL
+                      {text.securePaymentLong}
                     </p>
                   </div>
                 </div>

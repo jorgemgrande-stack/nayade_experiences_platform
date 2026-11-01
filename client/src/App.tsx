@@ -10,7 +10,7 @@ import MaintenanceGate from "./components/MaintenanceGate";
 import { MetaPixelLoader } from "./components/MetaPixelLoader";
 import { GA4Loader } from "./components/GA4Loader";
 import { ThemeProvider } from "./contexts/ThemeContext";
-import { HomeGate, SingleOnlyPage, SlugGate, TenantThemeLoader } from "./components/TenantTheme";
+import { HomeGate, SingleOnlyPage, SiteRouteGate, SlugGate, TenantThemeLoader } from "./components/TenantTheme";
 import AdminRouteGate from "./components/admin/AdminRouteGate";
 
 // ── PUBLIC PAGES (carga inmediata — visibles sin autenticación) ──────────────
@@ -237,10 +237,10 @@ function Router() {
       <Route path="/tienda">{() => <CatalogRoute Sector={Experiences} Generic={Shop} />}</Route>
       <Route path="/tienda/:slug">{() => <CatalogRoute Sector={ExperienceDetail} Generic={ProductDetail} />}</Route>
       <Route path="/galeria" component={Gallery} />
-      <Route path="/presupuesto" component={BudgetRequest} />
+      <Route path="/presupuesto">{() => <SiteRouteGate><BudgetRequest /></SiteRouteGate>}</Route>
       <Route path="/colegios">{() => <SingleOnlyPage Single={Colegios} slug="colegios" Tenant={TenantGroups} />}</Route>
       <Route path="/grupos">{() => <SingleOnlyPage Single={Colegios} slug="colegios" Tenant={TenantGroups} />}</Route>
-      <Route path="/canjear-cupon" component={CanjearCupon} />
+      <Route path="/canjear-cupon">{() => <SiteRouteGate><CanjearCupon /></SiteRouteGate>}</Route>
       <Route path="/verificar-bono" component={VerificarBono} />
       <Route path="/registrar-gasto" component={RegistrarGasto} />
       <Route path="/solicitar-anulacion">{() => <Suspense fallback={<AdminLoadingFallback />}><SolicitarAnulacion /></Suspense>}</Route>
@@ -249,18 +249,18 @@ function Router() {
       <Route path="/contacto" component={Contact} />
       <Route path="/ubicaciones">{() => <SingleOnlyPage Single={Locations} slug="ubicaciones" Tenant={TenantLocations} />}</Route>
       <Route path="/ubicaciones/:slug">{() => <SingleOnlyPage Single={Locations} slug="ubicaciones" Tenant={TenantLocations} />}</Route>
-      <Route path="/lego-packs" component={LegoPacksHome} />
-      <Route path="/lego-packs/detalle/:slug" component={LegoPackDetail} />
-      <Route path="/lego-packs/:category" component={LegoPacksList} />
-      <Route path="/hotel" component={Hotel} />
-      <Route path="/hotel/:slug" component={HotelRoom} />
-      <Route path="/spa" component={Spa} />
-      <Route path="/spa/:slug" component={SpaDetail} />
-      <Route path="/restaurantes" component={Restaurantes} />
-      <Route path="/restaurantes/reserva-ok" component={RestauranteReservaOk} />
-      <Route path="/restaurantes/reserva-ko" component={RestauranteReservaKo} />
-      <Route path="/restaurantes/:slug" component={RestauranteDetail} />
-      <Route path="/restaurantes/:slug/reservar" component={RestaurantBooking} />
+      <Route path="/lego-packs">{() => <SiteRouteGate><LegoPacksHome /></SiteRouteGate>}</Route>
+      <Route path="/lego-packs/detalle/:slug">{() => <SiteRouteGate><LegoPackDetail /></SiteRouteGate>}</Route>
+      <Route path="/lego-packs/:category">{() => <SiteRouteGate><LegoPacksList /></SiteRouteGate>}</Route>
+      <Route path="/hotel">{() => <SiteRouteGate><Hotel /></SiteRouteGate>}</Route>
+      <Route path="/hotel/:slug">{() => <SiteRouteGate><HotelRoom /></SiteRouteGate>}</Route>
+      <Route path="/spa">{() => <SiteRouteGate><Spa /></SiteRouteGate>}</Route>
+      <Route path="/spa/:slug">{() => <SiteRouteGate><SpaDetail /></SiteRouteGate>}</Route>
+      <Route path="/restaurantes">{() => <SiteRouteGate><Restaurantes /></SiteRouteGate>}</Route>
+      <Route path="/restaurantes/reserva-ok">{() => <SiteRouteGate><RestauranteReservaOk /></SiteRouteGate>}</Route>
+      <Route path="/restaurantes/reserva-ko">{() => <SiteRouteGate><RestauranteReservaKo /></SiteRouteGate>}</Route>
+      <Route path="/restaurantes/:slug">{() => <SiteRouteGate><RestauranteDetail /></SiteRouteGate>}</Route>
+      <Route path="/restaurantes/:slug/reservar">{() => <SiteRouteGate><RestaurantBooking /></SiteRouteGate>}</Route>
       {/* ── CHECKOUT ROUTE ── */}
       <Route path="/checkout" component={Checkout} />
       {/* ── RESERVA ROUTES ── */}
