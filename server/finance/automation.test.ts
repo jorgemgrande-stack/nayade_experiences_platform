@@ -146,6 +146,28 @@ describe("automatización contable: el estado real de Nextair el 01/11/2026", ()
     expect((await t.ledger.lastAudit("automation.run"))!.id).not.toBe(second!.id);
   });
 
+  it("impago sin recuperar, disputa (un aviso por cargo, con su último estado) y reembolso sin contabilizar", async () => {
+    const t = setup();
+    await t.automation.tick();
+    const base = { externalId: 1, actor: "system:stripe" };
+    const billing = { companyId: 7, billingRef: "external:1", paymentRef: "stripe:in:in_sint_dic", totalCents: 121_000, baseCents: 100_000, taxCents: 21_000, period: "diciembre de 2026" };
+    t.events.push(
+      { ...base, id: 30, kind: "invoice_payment_failed", ref: "in_sint_dic", detail: billing, at: NOW + 1 },
+      { ...base, id: 31, kind: "charge_dispute", ref: "ch_sint_1:needs_response", detail: { ...paidEvent.detail, disputeStatus: "needs_response" }, at: NOW + 2 },
+      { ...base, id: 32, kind: "charge_dispute", ref: "ch_sint_1:under_review", detail: { ...paidEvent.detail, disputeStatus: "under_review" }, at: NOW + 3 },
+      { ...base, id: 33, kind: "charge_refunded", ref: "ch_sint_1:12100", detail: { ...paidEvent.detail, refundedDeltaCents: 12_100, refundedCents: 12_100, fullyRefunded: false }, at: NOW + 4 },
+    );
+    const alerts = await t.integrity.alerts();
+    expect(alerts.find((a) => a.code === "payment_failed")).toMatchObject({ count: 1, amountCents: 121_000 });
+    expect(alerts.find((a) => a.code === "dispute_open")).toMatchObject({ severity: "critical", count: 1 });
+    expect(alerts.find((a) => a.code === "refund_unposted")).toMatchObject({ count: 1, amountCents: 12_100 });
+    expect((await t.integrity.overview()).indicators.find((i) => i.key === "receivablePending")).toMatchObject({ state: "value", cents: 121_000 });
+    // Cobrada después la misma factura: el impago deja de avisar; la disputa ganada se cierra
+    t.events.push({ ...base, id: 34, kind: "invoice_paid", ref: "in_sint_dic", detail: billing, at: NOW + 5 }, { ...base, id: 35, kind: "charge_dispute", ref: "ch_sint_1:won", detail: { ...paidEvent.detail, disputeStatus: "won" }, at: NOW + 6 });
+    expect(codes(await t.integrity.alerts())).not.toEqual(expect.arrayContaining(["payment_failed"]));
+    expect(codes(await t.integrity.alerts())).not.toContain("dispute_open");
+  });
+
   it("sin pasadas en dos horas, la automatización figura como parada", async () => {
     const t = setup();
     expect(codes(await t.integrity.alerts())).toContain("automation_stale");

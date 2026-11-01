@@ -51,6 +51,8 @@ export interface PaymentFact {
   period: string | null;
   at: number;
   detail: Record<string, unknown>;
+  /** Referencia del hecho (`<cargo>:<estado>` en las disputas, `<cargo>:<total>` en los reembolsos). */
+  ref: string | null;
 }
 
 export type IndicatorState = "value" | "zero" | "pending" | "unavailable";
@@ -112,7 +114,7 @@ export class FinanceIntegrity {
         if (!kind) continue;
         const d = e.detail ?? {};
         const ref = typeof d.paymentRef === "string" && d.paymentRef.startsWith("stripe:in:") ? d.paymentRef.slice("stripe:in:".length) : kind === "paid" || kind === "failed" ? e.ref : null;
-        facts.push({ kind, externalId: x.id, companyId: x.companyId, serviceName: x.serviceName, stripeInvoiceId: ref, totalCents: n(d.totalCents) ?? n(d.amountPaid) ?? 0, baseCents: n(d.baseCents), taxCents: n(d.taxCents), period: typeof d.period === "string" ? d.period : null, at: e.at, detail: d });
+        facts.push({ kind, externalId: x.id, companyId: x.companyId, serviceName: x.serviceName, stripeInvoiceId: ref, totalCents: n(d.totalCents) ?? n(d.amountPaid) ?? 0, baseCents: n(d.baseCents), taxCents: n(d.taxCents), period: typeof d.period === "string" ? d.period : null, at: e.at, detail: d, ref: e.ref });
       }
     }
     return { subscriptions, facts };
@@ -179,7 +181,8 @@ export class FinanceIntegrity {
     const refunds = c.facts.filter((f) => f.kind === "refunded" && !c.postedRefund(f.stripeInvoiceId));
     add({ code: "refund_unposted", severity: "critical", count: refunds.length, amountCents: sum(refunds.map((f) => n(f.detail.refundedDeltaCents) ?? 0)), source: "Stripe → libro diario", message: `${plural(refunds.length, "reembolso confirmado", "reembolsos confirmados")} sin reflejo contable`, action: "Contabilizar la transacción de reembolso (API de Stripe o informe CSV) y expedir la rectificativa" });
     const disputes = new Map<string, PaymentFact>();
-    for (const f of c.facts.filter((x) => x.kind === "dispute")) disputes.set(String(f.detail.chargeId ?? f.stripeInvoiceId ?? f.at), f);
+    // Un hecho por estado de la disputa: vale el último de cada cargo
+    for (const f of c.facts.filter((x) => x.kind === "dispute").sort((a, b) => a.at - b.at)) disputes.set((f.ref ?? "").split(":")[0] || String(f.detail.chargeId ?? f.at), f);
     const openDisputes = Array.from(disputes.values()).filter((f) => !["won", "lost", "closed", "charge_refunded"].includes(String(f.detail.disputeStatus ?? "")));
     add({ code: "dispute_open", severity: "critical", count: openDisputes.length, source: "Stripe (webhooks)", message: `${plural(openDisputes.length, "disputa abierta", "disputas abiertas")} en Stripe`, action: "Responder la disputa en el Dashboard de Stripe dentro de plazo" });
 
