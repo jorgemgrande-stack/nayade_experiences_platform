@@ -17,7 +17,8 @@ describe("portales y cabeceras con la marca de la empresa", () => {
 
   it("portal de empleados: logo y nombre de la empresa", () => {
     const src = read("employee/EmployeeLayout.tsx");
-    expect(src).toContain('(publicSettings as any)?.brand_logo_url || (neutral ? "" : LOGO_FALLBACK)');
+    expect(src).toContain("usePortalLook()");
+    expect(src).not.toMatch(/LOGO_FALLBACK|NAYADE_PHONE|cloudfront/);
     expect(src).not.toMatch(/N[aá]yade Experiences|Llamar a N[aá]yade/);
   });
 

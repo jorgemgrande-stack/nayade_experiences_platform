@@ -152,10 +152,10 @@ describe("vocabulario genérico de Personal", () => {
     for (const f of files) expect([f, FOREIGN.exec(read(f))?.[0] ?? null]).toEqual([f, null]);
   });
 
-  it("el portal solo usa el logotipo y teléfono originales fuera de la web neutra de cada empresa", () => {
+  it("el portal usa solo el logotipo y el teléfono de la propia empresa, nunca los originales", () => {
     const src = read("client/src/pages/employee/EmployeeLayout.tsx");
-    expect(src).toContain("neutral ? phone : NAYADE_PHONE");
-    expect(src).toContain('(neutral ? "" : LOGO_FALLBACK)');
+    expect(src).toContain("usePortalLook()");
+    expect(src).not.toMatch(/NAYADE_PHONE|LOGO_FALLBACK/);
   });
 
   it("el correo de invitación al portal describe lo que ya existe (sin «próximas funcionalidades»)", () => {

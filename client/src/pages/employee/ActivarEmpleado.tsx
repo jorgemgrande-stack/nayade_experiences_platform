@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Eye, EyeOff, Lock, Loader2, CheckCircle, AlertCircle } from "lucide-react";
+import { usePortalLook } from "./usePortalLook";
 
 export default function ActivarEmpleado() {
   const [, navigate] = useLocation();
@@ -25,6 +26,8 @@ export default function ActivarEmpleado() {
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
   const [userName, setUserName] = useState("");
+  // Identidad de la empresa que invita (sin marca configurada, aspecto neutro)
+  const look = usePortalLook();
 
   const activate = trpc.hr.portal.activate.useMutation({
     onSuccess: (data) => {
@@ -36,9 +39,9 @@ export default function ActivarEmpleado() {
 
   if (!token) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4" style={look.style}>
         <div className="text-center">
-          <AlertCircle className="w-10 h-10 text-red-400 mx-auto mb-3" />
+          <AlertCircle className="w-10 h-10 text-red-700 mx-auto mb-3" />
           <p className="text-gray-600">Enlace de activación inválido.</p>
         </div>
       </div>
@@ -47,7 +50,7 @@ export default function ActivarEmpleado() {
 
   if (done) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4" style={look.style}>
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-10 max-w-sm w-full text-center">
           <CheckCircle className="w-12 h-12 text-green-500 mx-auto mb-4" />
           <h2 className="text-xl font-semibold text-gray-800 mb-2">¡Cuenta activada!</h2>
@@ -55,7 +58,7 @@ export default function ActivarEmpleado() {
             Bienvenido, {userName}. Ya puedes acceder a tu Portal del Empleado.
           </p>
           <Button
-            className="w-full bg-orange-500 hover:bg-orange-600 text-white"
+            className="w-full bg-[var(--portal-accent)] hover:opacity-90 text-[var(--portal-accent-fg)]"
             onClick={() => navigate("/login?returnTo=/empleado")}
           >
             Ir al portal
@@ -74,12 +77,17 @@ export default function ActivarEmpleado() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4" style={look.style}>
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8 max-w-sm w-full">
         <div className="text-center mb-6">
-          <div className="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-3">
-            <Lock className="w-6 h-6 text-orange-500" />
-          </div>
+          {look.logoUrl ? (
+            <img src={look.logoUrl} alt={look.name} className="h-12 w-auto max-w-[200px] object-contain mx-auto mb-3" />
+          ) : (
+            <div className="w-12 h-12 bg-[var(--portal-accent-soft)] rounded-full flex items-center justify-center mx-auto mb-3">
+              <Lock className="w-6 h-6 text-[var(--portal-accent)]" />
+            </div>
+          )}
+          {look.name && <p className="text-xs font-medium text-gray-500 mb-1">{look.name}</p>}
           <h1 className="text-xl font-semibold text-gray-800">Activar cuenta</h1>
           <p className="text-gray-500 text-sm mt-1">Elige una contraseña para acceder al Portal del Empleado</p>
         </div>
@@ -125,7 +133,7 @@ export default function ActivarEmpleado() {
 
           <Button
             type="submit"
-            className="w-full bg-orange-500 hover:bg-orange-600 text-white"
+            className="w-full bg-[var(--portal-accent)] hover:opacity-90 text-[var(--portal-accent-fg)]"
             disabled={activate.isPending}
           >
             {activate.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
