@@ -78,3 +78,11 @@ describe("PDF completo del presupuesto", () => {
     expect(text).toContain("Asesoría Norte");
   });
 });
+
+describe("datos del emisor en el PDF del presupuesto", () => {
+  it("la dirección se compone como en la factura (sin «, ()» si falta la provincia)", () => {
+    const crm = fs.readFileSync(path.resolve(__dirname, "routers/crm.ts"), "utf8");
+    expect(crm).toContain("issuerAddress: formatLegalAddress(legalQ),");
+    expect(crm).not.toContain("(${legalQ.province})`");
+  });
+});

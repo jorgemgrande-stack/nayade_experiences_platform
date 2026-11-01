@@ -41,6 +41,8 @@ const getBrandLogo  = () => brandSetting("brand_logo_url", "");
 const getBrandHero  = () => brandSetting("brand_hero_image_url", "");
 const getBrandName  = () => brandSetting("brand_name", "");
 const getBrandShort = () => brandSetting("brand_short_name", "") || getBrandName();
+/** Web de la empresa para el pie: «www.» solo delante de un dominio raíz (no de un subdominio). */
+const webHost = (d: string) => (d.startsWith("www.") || d.split(".").length > 2 ? d : `www.${d}`);
 const escAttr = (v: string) => v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 /** Logotipo de la cabecera: en multi, sin logotipo propio no se pinta (nunca el de otra empresa). */
 function headerLogo(mso: boolean): string {
@@ -1331,7 +1333,7 @@ export function buildQuotePdfHtml(d: QuotePdfData): string {
 
     <!-- Footer -->
     <div style="padding:16px 40px;border-top:2px solid #1a3a6b;text-align:center;color:#9ca3af;font-size:11px;line-height:1.8;">
-      <p style="margin:0;">Gracias por confiar en ${brandSetting('brand_name', '')}${brandSetting('brand_domain', '') ? ` &middot; www.${brandSetting('brand_domain', '')}` : ''}</p>
+      <p style="margin:0;">Gracias por confiar en ${brandSetting('brand_name', '')}${brandSetting('brand_domain', '') ? ` &middot; ${webHost(brandSetting('brand_domain', ''))}` : ''}</p>
       <p style="margin:0;">${getSupportPhone() ? `${escAttr(getSupportPhone())} &nbsp;&middot;&nbsp; ` : ''}${escAttr(getContactEmail())}${brandSetting('brand_location', '') ? ` &nbsp;&middot;&nbsp; ${brandSetting('brand_location', '')}` : ''}</p>
     </div>
   </div>

@@ -6,7 +6,7 @@
 
 import { router, protectedProcedure, publicProcedure, staffProcedure, adminProcedure, permissionProcedure } from "../_core/trpc";
 import { publicBaseUrl } from "../_core/productIdentity";
-import { brandSetting, companyName } from "../tenantBrand";
+import { brandSetting, companyName, formatLegalAddress } from "../tenantBrand";
 import { invoicePreviewPath } from "../_core/signedLinks";
 import { createLead, createBookingFromReservation, createReavExpedient, attachReavDocument, upsertClientFromReservation, postConfirmOperation, getGHLCredentials } from "../db";
 import { confirmReservationAndNotify } from "../reservationEmails";
@@ -3036,7 +3036,8 @@ export const crmRouter = router({
           createdAt: quote.createdAt,
           issuerName: legalQ.name,
           issuerCif: legalQ.cif,
-          issuerAddress: `${legalQ.address}, ${legalQ.zip} ${legalQ.city} (${legalQ.province})`,
+          // Sin datos vacíos sueltos («, ()»): igual que en la factura
+          issuerAddress: formatLegalAddress(legalQ),
         });
 
         // Generar PDF con puppeteer-core (funciona en producción desplegada)
