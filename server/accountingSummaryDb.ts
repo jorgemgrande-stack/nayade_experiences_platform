@@ -1,10 +1,12 @@
 /**
  * Lectura de la BD de la empresa para el resumen contable (server/accountingSummary.ts).
- * Solo datos de la propia empresa: pedidos y tickets cobrados, libro de cobros, facturas, gastos y presupuestos.
+ * Solo datos de la propia empresa: pedidos y tickets cobrados, libro de cobros, documentos fiscales emitidos
+ * (server/fiscalDocumentsDb.ts, la misma regla que Informes y el Modelo 303), gastos y presupuestos.
  */
-import { and, eq, gte, inArray, ne, sql } from "drizzle-orm";
-import { categories, expenses, experiences, invoices, quotes, reservations, tpvSaleItems, tpvSales, transactions } from "../drizzle/schema";
+import { and, eq, gte, inArray, sql } from "drizzle-orm";
+import { categories, expenses, experiences, quotes, reservations, tpvSaleItems, tpvSales, transactions } from "../drizzle/schema";
 import { getDb } from "./db";
+import { listFiscalDocuments } from "./fiscalDocumentsDb";
 import { buildAccountingSummary, lastMonthKeys, periodStartMs, prorateTicket, type AccountingSummary, type SummaryInput } from "./accountingSummary";
 
 const num = (v: unknown) => {
@@ -23,8 +25,8 @@ export async function getAccountingSummary(opts: { now?: number; withQuotes?: bo
   if (!db) return buildAccountingSummary(empty);
 
   const paidAt = sql<number>`COALESCE(${reservations.paidAt}, ${reservations.createdAt})`;
-  const [salesRows, payRows, invRows, tpvRows] = await Promise.all([
-    db.select({ id: reservations.id, at: paidAt, amountTotal: reservations.amountTotal, amountPaid: reservations.amountPaid, productId: reservations.productId, channel: reservations.channel, category: categories.name })
+  const [salesRows, payRows, fiscalDocs, tpvRows] = await Promise.all([
+    db.select({ id: reservations.id, merchantOrder: reservations.merchantOrder, at: paidAt, amountTotal: reservations.amountTotal, amountPaid: reservations.amountPaid, productId: reservations.productId, channel: reservations.channel, category: categories.name })
       .from(reservations)
       .leftJoin(experiences, eq(experiences.id, reservations.productId))
       .leftJoin(categories, eq(categories.id, experiences.categoryId))
@@ -32,15 +34,15 @@ export async function getAccountingSummary(opts: { now?: number; withQuotes?: bo
     db.select({ at: transactions.createdAt, type: transactions.type, amount: transactions.amount })
       .from(transactions)
       .where(and(inArray(transactions.type, ["ingreso", "reembolso"]), eq(transactions.status, "completado"), gte(transactions.createdAt, from))),
-    db.select({ at: invoices.issuedAt, total: invoices.total })
-      .from(invoices)
-      .where(and(ne(invoices.status, "anulada"), gte(invoices.issuedAt, from))),
+    // Facturado: facturas y tickets de caja emitidos menos abonos; un ticket con su factura completa, una vez
+    listFiscalDocuments({ fromMs, toMsExclusive: now + 24 * 3600 * 1000 }),
     db.select({ id: tpvSales.id, reservationId: tpvSales.reservationId, total: tpvSales.total })
       .from(tpvSales)
       .where(and(eq(tpvSales.status, "paid"), sql`COALESCE(${tpvSales.paidAt}, ${tpvSales.createdAt}) >= ${fromMs}`)),
   ]);
 
-  const sales = salesRows.map((r) => ({ at: num(r.at), amount: (num(r.amountPaid) > 0 ? num(r.amountPaid) : num(r.amountTotal)) / 100 }));
+  // Una operación por pedido: las líneas de un pedido de la tienda comparten su número de pedido
+  const sales = salesRows.map((r) => ({ at: num(r.at), amount: (num(r.amountPaid) > 0 ? num(r.amountPaid) : num(r.amountTotal)) / 100, key: r.merchantOrder ? `p:${r.merchantOrder}` : `r:${r.id}` }));
 
   // Categorías: los tickets de caja por sus líneas (cada una con su producto); el resto, por el producto del pedido
   const cats: SummaryInput["categories"] = [];
@@ -84,7 +86,7 @@ export async function getAccountingSummary(opts: { now?: number; withQuotes?: bo
     now,
     sales,
     payments: payRows.map((p) => ({ at: ms(p.at), amount: (p.type === "reembolso" ? -1 : 1) * Math.abs(num(p.amount)) })),
-    invoices: invRows.map((i) => ({ at: ms(i.at), amount: num(i.total) })),
+    invoices: fiscalDocs.filter((d) => d.counts).map((d) => ({ at: d.issuedAt.getTime(), amount: d.total, kind: d.kind })),
     expenses: expenseRows,
     categories: cats,
     pendingQuotes,

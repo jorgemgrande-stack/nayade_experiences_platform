@@ -1,7 +1,8 @@
 // Gestoría e Impuestos — motor de cálculo del IVA (Fase 2).
 //
 // Modelo 303 (trimestral) y 390 (resumen anual). El IVA repercutido se calcula
-// sobre las FACTURAS EMITIDAS no anuladas (fuente fiscal correcta); las
+// sobre los DOCUMENTOS FISCALES EMITIDOS (facturas no anuladas, abonos y tickets
+// de caja sin factura completa, ver server/fiscalDocuments.ts); las
 // operaciones REAV se computan aparte (IVA sobre margen, no sobre venta); el
 // IVA soportado deducible sale de los gastos con su desglose y % deducible.
 //
@@ -10,7 +11,7 @@
 import { and, gte, lt, lte, ne, or, isNull, isNotNull, inArray } from "drizzle-orm";
 import { invoices, reavExpedients, expenses, hrIrpfLedger } from "../drizzle/schema";
 import { calcGeneralTax } from "./taxUtils";
-import { reportTaxBreakdown } from "./invoiceCalc";
+import { fiscalSummary } from "./fiscalDocumentsDb";
 import { madridMonthsRange, madridQuarterRange } from "./utils/timezone";
 import { legacyDb, legacyPool } from "./_core/legacyDb";
 
@@ -59,41 +60,13 @@ export async function compute303(periodKey: string): Promise<Vat303> {
   const q = Number(m[2]);
   const { start, endExcl, startStr, endStr } = quarterRange(year, q);
 
-  // ── IVA repercutido — facturas emitidas no anuladas (abonos restan) ──
-  const invRows = await db
-    .select({
-      taxBreakdown: invoices.taxBreakdown,
-      subtotal: invoices.subtotal,
-      taxRate: invoices.taxRate,
-      taxAmount: invoices.taxAmount,
-      total: invoices.total,
-      itemsJson: invoices.itemsJson,
-      invoiceType: invoices.invoiceType,
-    })
-    .from(invoices)
-    .where(and(gte(invoices.issuedAt, start), lt(invoices.issuedAt, endExcl), ne(invoices.status, "anulada")));
-
-  const byRate = new Map<number, { base: number; amount: number }>();
-  for (const inv of invRows) {
-    const sign = inv.invoiceType === "abono" ? -1 : 1;
-    // El desglose guardado; en documentos antiguos sin él, el de sus líneas (cada base a su tipo; la parte
-    // sin IVA repercutido no cuenta como base del tipo general)
-    const breakdown = reportTaxBreakdown(inv as any);
-    for (const line of breakdown) {
-      const rate = Number(line.rate) || 0;
-      const cur = byRate.get(rate) ?? { base: 0, amount: 0 };
-      // Los abonos guardan sus importes en negativo: el signo lo pone el tipo de documento (antes un abono
-      // en negativo por -1 sumaba en vez de restar)
-      cur.base += signed(sign, line.base);
-      cur.amount += signed(sign, line.amount);
-      byRate.set(rate, cur);
-    }
-  }
-  const outputByRate = Array.from(byRate.entries())
-    .map(([rate, v]) => ({ rate, base: round2(v.base), amount: round2(v.amount) }))
-    .sort((a, b) => b.rate - a.rate);
-  const outputBase = round2(outputByRate.reduce((s, l) => s + l.base, 0));
-  const outputAmount = round2(outputByRate.reduce((s, l) => s + l.amount, 0));
+  // ── IVA repercutido — documentos fiscales emitidos: facturas no anuladas, abonos (siempre restan) y
+  // tickets de caja (facturas simplificadas) sin factura completa de la misma venta. La misma regla que
+  // Contabilidad › Informes y el libro de facturas de la gestoría (server/fiscalDocuments.ts) ──
+  const output = await fiscalSummary({ fromMs: start.getTime(), toMsExclusive: endExcl.getTime() });
+  const outputByRate = output.byRate.map(({ rate, base, amount }) => ({ rate, base, amount }));
+  const outputBase = output.base;
+  const outputAmount = output.tax;
 
   // ── IVA REAV — expedientes del periodo (por fecha de servicio) ──
   const reavRows = await db
