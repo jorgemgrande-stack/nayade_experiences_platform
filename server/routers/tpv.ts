@@ -1006,13 +1006,13 @@ export const tpvRouter = router({
         const outcome = await withSaleKeyLock(idempotencyKey, async () => {
           const existing = await findSaleByIdempotencyKey(idempotencyKey);
           const replayId = existing ? await resolveExistingSale(idempotencyKey, existing, input.sessionId) : null;
-          return replayId != null ? { replayId } : { claimed: await claimSale() };
+          return replayId != null ? { replayId, claimed: null } : { replayId: null, claimed: await claimSale() };
         });
-        if ("replayId" in outcome) {
+        if (outcome.replayId != null) {
           const prev = await loadSaleResult(outcome.replayId);
           return { ...prev, reservationId: prev.sale?.reservationId ?? null, reavExpedientId: undefined as number | undefined, reavExpedientNumber: undefined as string | undefined, replayed: true };
         }
-        claimed = outcome.claimed;
+        claimed = outcome.claimed!;
       } else {
         claimed = await claimSale();
       }

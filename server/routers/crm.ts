@@ -69,6 +69,9 @@ import {
   buildBudgetRequestAdminHtml,
 } from "../emailTemplates";
 import { buildInvoiceHtml, getLegalCompanySettings } from "../invoiceHtml";
+import { ClientImportError, planClientImport } from "../clientImport";
+import { applyClientImport, listClientsForExport, loadClientsForImport } from "../clientImportDb";
+import { CLIENT_CSV_MAX_BYTES, CLIENT_CSV_MAX_ROWS, toClientCsv } from "../../shared/clientImportCsv";
 import { syncLeadUrlsToGHL, createGHLContact, getGHLTagsFromSource, triggerGHLWorkflow } from "../ghl";
 import { getSystemSettingSync, getBusinessEmail, internalNoticeEmail } from "../config";
 import { groupTaxBreakdown, totalTaxAmount } from "../taxUtils";
@@ -413,6 +416,20 @@ async function issueCreditNote(input: { invoiceId: number; reason: string; parti
 
 const staff = staffProcedure;
 const admin = adminProcedure;
+
+// Importar clientes desde CSV: el fichero llega como texto (límite de tamaño) y se planifica sin escribir nada
+const clientCsvInput = z.string().min(1, "El fichero está vacío").refine(
+  (s) => Buffer.byteLength(s, "utf8") <= CLIENT_CSV_MAX_BYTES,
+  `El fichero supera ${CLIENT_CSV_MAX_BYTES / 1024 / 1024} MB. Divídelo en varios y súbelos por partes.`,
+);
+function planImportOrThrow(csv: string, existing: Awaited<ReturnType<typeof loadClientsForImport>>) {
+  try {
+    return planClientImport(csv, existing);
+  } catch (e) {
+    if (e instanceof ClientImportError) throw new TRPCError({ code: "BAD_REQUEST", message: e.message });
+    throw e;
+  }
+}
 
 /**
  * El producto es la fuente de verdad fiscal. Para cada línea de presupuesto con
@@ -6136,6 +6153,25 @@ export const crmRouter = router({
           message: cause?.sqlMessage ?? cause?.message ?? e?.message ?? "Error al crear cliente",
         });
       }
+    }),
+    // Importar desde CSV: vista previa (no escribe nada) y confirmación con la misma huella
+    importPreview: staff.input(z.object({ csv: clientCsvInput })).mutation(async ({ input }) => {
+      return planImportOrThrow(input.csv, await loadClientsForImport());
+    }),
+    importApply: staff.input(z.object({
+      csv: clientCsvInput,
+      fingerprint: z.string().min(8).max(64),
+      excludeLines: z.array(z.number().int().positive()).max(CLIENT_CSV_MAX_ROWS).default([]),
+    })).mutation(async ({ input }) => {
+      const plan = planImportOrThrow(input.csv, await loadClientsForImport());
+      if (plan.fingerprint !== input.fingerprint) {
+        throw new TRPCError({ code: "CONFLICT", message: "Los clientes han cambiado desde la vista previa. Revisa de nuevo el fichero antes de importarlo." });
+      }
+      return applyClientImport(plan, new Set(input.excludeLines));
+    }),
+    exportCsv: staff.query(async () => {
+      const rows = await listClientsForExport();
+      return { csv: toClientCsv(rows), count: rows.length };
     }),
     update: staff.input(z.object({
       id: z.number(),
