@@ -9,6 +9,7 @@
  */
 import { z } from "zod";
 import { validatePostalCodeES, validateTaxId } from "./formValidation";
+import { normalizeWhatsapp } from "./whatsappButton";
 
 /**
  * Pasos guardables, en el orden de negocio (el mismo para todas las empresas). Compatibilidad: «brand» llegó después
@@ -177,7 +178,15 @@ export const commsSchema = z.object({
   fromName: z.string().trim().max(120, "Máximo 120 caracteres").optional().default(""),
   replyTo: z.union([z.literal(""), z.string().trim().max(160, "Máximo 160 caracteres").email("Indica un email válido")]).optional().default(""),
   whatsapp: z
-    .union([z.literal(""), z.string().trim().regex(/^\+?[0-9 ]{6,20}$/, "Indica un número de teléfono válido (solo cifras, con prefijo si es de fuera de España)")])
+    .union([
+      z.literal(""),
+      z
+        .string()
+        .trim()
+        .max(25, "Indica un móvil con WhatsApp")
+        // El mismo criterio que el botón de la web: un fijo o un número sin prefijo válido daría un enlace roto
+        .refine((v) => normalizeWhatsapp(v) !== null, "Indica un móvil con WhatsApp (un fijo no sirve); con prefijo, como +351, si es de fuera de España"),
+    ])
     .optional()
     .default(""),
 });

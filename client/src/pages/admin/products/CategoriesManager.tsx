@@ -12,6 +12,7 @@ import { Plus, Pencil, Trash2, Tag, ImageIcon, X, MoreVertical, Copy, PowerOff, 
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { PanelEmpty } from "@/components/admin/PanelStates";
+import { useVocabulary } from "@/lib/vocabulary";
 
 interface CategoryForm {
   name: string;
@@ -69,6 +70,7 @@ function CatImageUpload({ value, onChange }: { value: string; onChange: (url: st
 }
 
 export default function CategoriesManager() {
+  const voc = useVocabulary();
   const [open, setOpen] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
   const [form, setForm] = useState<CategoryForm>(emptyForm);
@@ -148,7 +150,7 @@ export default function CategoriesManager() {
           <p className="text-sm text-muted-foreground mt-1">{categories?.length ?? 0} categorías registradas</p>
         </div>
         <Button onClick={openCreate} className="bg-primary hover:bg-primary/90">
-          <Plus className="w-4 h-4 mr-2" /> Nueva Categoría
+          <Plus className="w-4 h-4 mr-2" /> Nueva categoría
         </Button>
       </div>
 
@@ -230,25 +232,28 @@ export default function CategoriesManager() {
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>{editId ? "Editar Categoría" : "Nueva Categoría"}</DialogTitle>
+            <DialogTitle>{editId ? "Editar categoría" : "Nueva categoría"}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div>
               <Label>Nombre *</Label>
-              <Input value={form.name} onChange={(e) => setForm(f => ({ ...f, name: e.target.value, slug: editId ? f.slug : toSlug(e.target.value) }))} placeholder="Ej: Deportes Acuáticos" />
+              <Input value={form.name} onChange={(e) => setForm(f => ({ ...f, name: e.target.value, slug: editId ? f.slug : toSlug(e.target.value) }))} placeholder={voc.catalog.categoryExample} />
             </div>
             <div>
-              <Label>Slug *</Label>
-              <Input value={form.slug} onChange={(e) => setForm(f => ({ ...f, slug: toSlug(e.target.value) }))} placeholder="deportes-acuaticos" />
+              <Label>{voc.licensed ? "Dirección en la web *" : "Slug *"}</Label>
+              <Input value={form.slug} onChange={(e) => setForm(f => ({ ...f, slug: toSlug(e.target.value) }))} placeholder={voc.licensed ? "accesorios" : "deportes-acuaticos"} />
+              {voc.licensed && <p className="text-xs text-muted-foreground mt-1">Se rellena sola con el nombre. Es la parte final de la dirección de la categoría en tu tienda.</p>}
             </div>
             <div>
               <Label>Descripción</Label>
               <Textarea value={form.description} onChange={(e) => setForm(f => ({ ...f, description: e.target.value }))} rows={3} />
             </div>
-            <div>
-              <Label>Icono (nombre)</Label>
-              <Input value={form.iconName} onChange={(e) => setForm(f => ({ ...f, iconName: e.target.value }))} placeholder="anchor" />
-            </div>
+            {!voc.licensed && (
+              <div>
+                <Label>Icono (nombre)</Label>
+                <Input value={form.iconName} onChange={(e) => setForm(f => ({ ...f, iconName: e.target.value }))} placeholder="anchor" />
+              </div>
+            )}
             <div>
               <Label className="block mb-1">Imagen de la categoría</Label>
               <CatImageUpload value={form.image1} onChange={(url) => setForm(f => ({ ...f, image1: url }))} />
@@ -257,7 +262,7 @@ export default function CategoriesManager() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
             <Button onClick={handleSubmit} disabled={createMut.isPending || updateMut.isPending}>
-              {editId ? "Guardar Cambios" : "Crear Categoría"}
+              {editId ? "Guardar cambios" : "Crear categoría"}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -38,6 +38,11 @@ type FilterType = "all" | "experience" | "legoPack";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+/** Importe en formato de España: «29,90 €». */
+const eur = (n: number) => n.toLocaleString("es-ES", { style: "currency", currency: "EUR" });
+/** Tipo de IVA sin decimales de sobra: «21», «5,5». */
+const rate = (r: unknown) => Number(r).toLocaleString("es-ES", { maximumFractionDigits: 2 });
+
 function computeVariantPrice(basePrice: number, variant: CatalogVariant): number {
   const mod = Number(variant.priceModifier) || 0;
   if (variant.priceType === "fixed") return mod > 0 ? mod : basePrice;
@@ -110,10 +115,10 @@ function CatalogModal({
 
   return (
     <Dialog open onOpenChange={onClose}>
-      <DialogContent className="w-[95vw] max-w-2xl max-h-[80vh] flex flex-col bg-[#0d1526] border-foreground/[0.12] text-white">
+      <DialogContent className="w-[95vw] max-w-2xl max-h-[80vh] flex flex-col bg-background border-border text-foreground">
         <DialogHeader>
-          <DialogTitle className="text-white flex items-center gap-2">
-            <BookOpen className="w-4 h-4 text-orange-400" />
+          <DialogTitle className="text-foreground flex items-center gap-2">
+            <BookOpen className="w-4 h-4 text-primary" />
             Buscar en catálogo de productos
           </DialogTitle>
         </DialogHeader>
@@ -121,18 +126,18 @@ function CatalogModal({
         <div className="flex flex-col gap-3 flex-1 min-h-0">
           {/* Buscador */}
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-foreground/40" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
             <Input
               autoFocus
               placeholder="Buscar por nombre..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="pl-9 bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-foreground/40"
+              className="pl-9 bg-foreground/[0.05] border-foreground/[0.12] text-foreground placeholder:text-muted-foreground"
             />
           </div>
 
-          {/* Filtros */}
-          <div className="flex gap-2 flex-wrap">
+          {/* Filtros (solo en la instalación original, con sus paquetes combinados) */}
+          {!voc.licensed && <div className="flex gap-2 flex-wrap">
             {FILTER_OPTS.map((opt) => (
               <button
                 key={opt.value}
@@ -140,23 +145,23 @@ function CatalogModal({
                 onClick={() => setFilter(opt.value)}
                 className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
                   filter === opt.value
-                    ? "bg-orange-500/20 border-orange-500/50 text-orange-300"
-                    : "border-foreground/20 text-foreground/50 hover:border-foreground/40"
+                    ? "bg-primary/10 border-primary/50 text-foreground"
+                    : "border-border text-muted-foreground hover:border-foreground/40"
                 }`}
               >
                 {opt.label}
               </button>
             ))}
-          </div>
+          </div>}
 
           {/* Resultados */}
           <div className="flex-1 overflow-y-auto space-y-0.5 min-h-0">
             {isLoading ? (
               <div className="flex justify-center py-8">
-                <div className="w-5 h-5 border-2 border-orange-400/30 border-t-orange-400 rounded-full animate-spin" />
+                <div className="w-5 h-5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
               </div>
             ) : !results?.length ? (
-              <div className="text-center py-8 text-foreground/30 text-sm">
+              <div className="text-center py-8 text-muted-foreground text-sm">
                 {search ? `No se encontraron productos para "${search}"` : "No hay productos en el catálogo"}
               </div>
             ) : (
@@ -179,37 +184,37 @@ function CatalogModal({
                       }`}
                     >
                       <div className="flex-1 min-w-0">
-                        <div className="text-sm text-white font-medium truncate">{p.title}</div>
+                        <div className="text-sm text-foreground font-medium overflow-hidden text-ellipsis whitespace-nowrap">{p.title}</div>
                         <div className="flex items-center gap-2 mt-0.5">
                           <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
                             p.productType === "experience"
-                              ? "bg-blue-500/20 text-blue-300"
-                              : "bg-purple-500/20 text-purple-300"
+                              ? "bg-info/10 text-info"
+                              : "bg-primary/10 text-primary"
                           }`}>
                             {TYPE_LABELS[p.productType] ?? p.productType}
                           </span>
                           {hasVariants && (
-                            <span className="text-[10px] text-orange-400/70">
+                            <span className="text-[10px] text-muted-foreground">
                               {variants.length} variante{variants.length !== 1 ? "s" : ""}
                             </span>
                           )}
                           {p.category && p.category !== "experience" && p.category !== "legoPack" && (
-                            <span className="text-[10px] text-foreground/40 capitalize">{p.category}</span>
+                            <span className="text-[10px] text-muted-foreground capitalize">{p.category}</span>
                           )}
                           {(p as any).fiscalRegime === "reav" && (
-                            <span className="text-[10px] text-amber-400/70">REAV</span>
+                            <span className="text-[10px] text-warning">REAV</span>
                           )}
                           {(p as any).taxRate && (p as any).fiscalRegime !== "reav" && (
-                            <span className="text-[10px] text-foreground/40">IVA {(p as any).taxRate}%</span>
+                            <span className="text-[10px] text-muted-foreground">IVA {rate((p as any).taxRate)}%</span>
                           )}
                         </div>
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
-                        <div className="text-orange-400 text-sm font-semibold">
-                          {Number(p.basePrice) > 0 ? `${Number(p.basePrice).toFixed(2)} €` : "—"}
+                        <div className="text-foreground text-sm font-semibold">
+                          {Number(p.basePrice) > 0 ? eur(Number(p.basePrice)) : "—"}
                         </div>
                         {hasVariants && (
-                          <ChevronDown className={`w-3.5 h-3.5 text-foreground/40 transition-transform ${isExpanded ? "rotate-180" : ""}`} />
+                          <ChevronDown className={`w-3.5 h-3.5 text-muted-foreground transition-transform ${isExpanded ? "rotate-180" : ""}`} />
                         )}
                       </div>
                     </button>
@@ -222,7 +227,7 @@ function CatalogModal({
                           <button
                             type="button"
                             onClick={() => handleSelectNoVariant(p as CatalogProduct)}
-                            className="w-full text-left px-4 py-2 text-xs text-foreground/50 hover:bg-foreground/[0.08] hover:text-foreground/70 transition-colors flex items-center gap-2 border-b border-foreground/[0.06]"
+                            className="w-full text-left px-4 py-2 text-xs text-muted-foreground hover:bg-foreground/[0.08] hover:text-foreground transition-colors flex items-center gap-2 border-b border-foreground/[0.06]"
                           >
                             <ChevronRight className="w-3 h-3" />
                             Sin variante específica — precio base
@@ -235,19 +240,19 @@ function CatalogModal({
                               key={v.id}
                               type="button"
                               onClick={() => handleVariantSelect(p as CatalogProduct, v)}
-                              className="w-full text-left px-4 py-2.5 hover:bg-orange-500/10 transition-colors flex items-center justify-between gap-3 border-b border-foreground/[0.06] last:border-0"
+                              className="w-full text-left px-4 py-2.5 hover:bg-primary/10 transition-colors flex items-center justify-between gap-3 border-b border-foreground/[0.06] last:border-0"
                             >
                               <div className="flex-1 min-w-0">
-                                <div className="text-sm text-white/90 font-medium truncate">{v.name}</div>
+                                <div className="text-sm text-foreground font-medium overflow-hidden text-ellipsis whitespace-nowrap">{v.name}</div>
                                 {v.description && (
-                                  <div className="text-[11px] text-foreground/40 truncate mt-0.5">{v.description}</div>
+                                  <div className="text-[11px] text-muted-foreground overflow-hidden text-ellipsis whitespace-nowrap mt-0.5">{v.description}</div>
                                 )}
                                 {v.isRequired && (
-                                  <span className="text-[10px] text-red-400/70">Obligatoria</span>
+                                  <span className="text-[10px] text-danger">Obligatoria</span>
                                 )}
                               </div>
-                              <div className="text-orange-400 text-sm font-semibold shrink-0">
-                                {finalPrice > 0 ? `${finalPrice.toFixed(2)} €` : "—"}
+                              <div className="text-foreground text-sm font-semibold shrink-0">
+                                {finalPrice > 0 ? eur(finalPrice) : "—"}
                               </div>
                             </button>
                           );
@@ -312,9 +317,9 @@ export function CatalogConceptSelector({
   }, []);
 
   const BADGE_CONFIG: Record<SourceType, { label: string; cls: string }> = {
-    experience: { label: voc.licensed ? "Producto" : "Experiencia", cls: "bg-blue-500/15 text-blue-400 border-blue-500/30" },
-    legoPack: { label: voc.licensed ? "Paquete" : "Lego Pack", cls: "bg-purple-500/15 text-purple-400 border-purple-500/30" },
-    manual: { label: "Manual", cls: "bg-foreground/10 text-foreground/50 border-foreground/20" },
+    experience: { label: voc.licensed ? "Producto" : "Experiencia", cls: "bg-info/10 text-info border-info/40" },
+    legoPack: { label: voc.licensed ? "Paquete" : "Lego Pack", cls: "bg-primary/10 text-primary border-primary/40" },
+    manual: { label: "Manual", cls: "bg-muted text-muted-foreground border-border" },
   };
 
   const badge = sourceType ? BADGE_CONFIG[sourceType] : null;
@@ -355,14 +360,14 @@ export function CatalogConceptSelector({
           type="button"
           title="Buscar en catálogo"
           onClick={() => { setDropdownOpen(false); setCatalogInitialKey(undefined); setCatalogOpen(true); }}
-          className="absolute right-2 top-1/2 -translate-y-1/2 text-foreground/40 hover:text-orange-400 transition-colors"
+          className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-primary transition-colors"
         >
           <BookOpen className="w-3.5 h-3.5" />
         </button>
 
         {/* Dropdown autocomplete */}
         {dropdownOpen && suggestions && suggestions.length > 0 && (
-          <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-[#0d1526] border border-foreground/[0.12] rounded-lg shadow-xl max-h-48 overflow-y-auto">
+          <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-popover text-popover-foreground border border-border rounded-lg shadow-xl max-h-48 overflow-y-auto">
             {suggestions.map((p: any) => {
               const hasVariants = (p.variants ?? []).length > 0;
               return (
@@ -373,30 +378,30 @@ export function CatalogConceptSelector({
                     e.preventDefault();
                     handleDropdownSelect(p);
                   }}
-                  className="w-full text-left px-3 py-2 hover:bg-foreground/[0.08] text-sm text-white flex justify-between items-center gap-2"
+                  className="w-full text-left px-3 py-2 hover:bg-foreground/[0.08] text-sm text-foreground flex justify-between items-center gap-2"
                 >
                   <div className="flex-1 min-w-0">
-                    <span className="truncate block">{p.title}</span>
+                    <span className="overflow-hidden text-ellipsis whitespace-nowrap block">{p.title}</span>
                     <div className="flex items-center gap-1.5 mt-0.5">
                       <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
                         p.productType === "experience"
-                          ? "bg-blue-500/20 text-blue-300"
-                          : "bg-purple-500/20 text-purple-300"
+                          ? "bg-info/10 text-info"
+                          : "bg-primary/10 text-primary"
                       }`}>
                         {p.productType === "experience" ? (voc.licensed ? "Producto" : "Experiencia") : (voc.licensed ? "Paquete" : "Lego Pack")}
                       </span>
                       {hasVariants && (
-                        <span className="text-[10px] text-orange-400/60">
+                        <span className="text-[10px] text-muted-foreground">
                           {p.variants.length} variante{p.variants.length !== 1 ? "s" : ""}
                         </span>
                       )}
                     </div>
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
-                    <span className="text-orange-400 text-xs">
-                      {Number(p.basePrice) > 0 ? `${Number(p.basePrice).toFixed(2)} €` : "—"}
+                    <span className="text-foreground text-xs">
+                      {Number(p.basePrice) > 0 ? eur(Number(p.basePrice)) : "—"}
                     </span>
-                    {hasVariants && <ChevronRight className="w-3 h-3 text-foreground/30" />}
+                    {hasVariants && <ChevronRight className="w-3 h-3 text-muted-foreground" />}
                   </div>
                 </button>
               );

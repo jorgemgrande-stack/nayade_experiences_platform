@@ -1,15 +1,47 @@
 import { trackWhatsAppClick } from '@/lib/ga4';
 import { trpc } from "@/lib/trpc";
-import { whatsappTarget } from "@shared/whatsappButton";
+import { useEffect, useRef, useState } from "react";
+import { WHATSAPP_AVOID_ATTR, whatsappHidden, whatsappTarget } from "@shared/whatsappButton";
 
 export default function WhatsAppFloatingButton() {
   // Número de la empresa que sirve la web (en single, el de siempre); sin número, sin botón
   // (misma consulta y caché que useTenantTheme; sin importarlo para no crear un ciclo con PublicLayout)
   const { data: theme } = trpc.public.getTheme.useQuery(undefined, { staleTime: 5 * 60_000, retry: false, refetchOnWindowFocus: false });
   const target = whatsappTarget(theme);
+  // En móvil no tapa el precio ni el botón de compra (zonas marcadas con data-whatsapp-avoid): se aparta mientras los pisa
+  const ref = useRef<HTMLAnchorElement>(null);
+  const [hidden, setHidden] = useState(false);
+  useEffect(() => {
+    if (!target) return;
+    let frame = 0;
+    const check = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        const el = ref.current;
+        if (!el) return;
+        const avoid = Array.from(document.querySelectorAll(`[${WHATSAPP_AVOID_ATTR}]`)).map((n) => n.getBoundingClientRect());
+        setHidden(whatsappHidden(el.getBoundingClientRect(), avoid, window.innerWidth));
+      });
+    };
+    check();
+    window.addEventListener("scroll", check, { passive: true });
+    window.addEventListener("resize", check);
+    const observer = new MutationObserver(check);
+    observer.observe(document.body, { childList: true, subtree: true });
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener("scroll", check);
+      window.removeEventListener("resize", check);
+      observer.disconnect();
+    };
+  }, [target?.url]);
   if (!target) return null;
   return (
     <a
+      ref={ref}
+      aria-hidden={hidden || undefined}
+      tabIndex={hidden ? -1 : undefined}
+      data-hidden={hidden || undefined}
       href={target.url}
       onClick={() => trackWhatsAppClick(target.phone)}
       target="_blank"
@@ -28,6 +60,7 @@ export default function WhatsAppFloatingButton() {
         hover:scale-110
         z-[9990]
         animate-wa-pulse
+        data-[hidden=true]:opacity-0 data-[hidden=true]:pointer-events-none data-[hidden=true]:scale-75
       "
       style={{ backgroundColor: "#25D366" }}
     >

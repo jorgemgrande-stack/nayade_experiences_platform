@@ -448,7 +448,10 @@ export function ReviewSection({
           className={`gap-2 ${
             theme === "dark"
               ? "border-teal-500/50 text-teal-400 hover:bg-teal-900/30 hover:border-teal-400"
-              : "border-teal-600 text-teal-600 hover:bg-teal-50 dark:border-teal-500/50 dark:text-teal-400 dark:hover:bg-teal-900/30"
+              : theme === "auto" && generic
+                // Colores de la web (los de la marca): el texto en el color de lectura, siempre con contraste AA
+                ? "border-primary text-foreground hover:bg-primary/10"
+                : "border-teal-600 text-teal-600 hover:bg-teal-50 dark:border-teal-500/50 dark:text-teal-400 dark:hover:bg-teal-900/30"
           }`}
         >
           <MessageSquare className="w-4 h-4" />

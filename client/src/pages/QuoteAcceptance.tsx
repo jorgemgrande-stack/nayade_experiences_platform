@@ -3,36 +3,44 @@
  * Ruta: /presupuesto/:token
  *
  * Flujo:
- * 1. Carga el presupuesto por token (getByToken) ? marca como "visualizado"
- * 2. Muestra resumen de líneas con precios CONGELADOS
- * 3. Cliente puede ACEPTAR (? pago Redsys) o RECHAZAR
- * 4. Tras aceptar: formulario Redsys se envía automáticamente
+ * 1. Carga el presupuesto por token (getByToken) y lo marca como «visualizado»
+ * 2. Muestra el resumen de líneas con precios CONGELADOS
+ * 3. El cliente puede ACEPTAR (pago con tarjeta en la pasarela de la empresa) o RECHAZAR
+ * 4. Tras aceptar, el formulario de la pasarela se envía automáticamente
+ *
+ * Imagen: la de la empresa que envía el presupuesto (logotipo, nombre y colores de `public.getTheme`, que
+ * TenantThemeLoader aplica como variables del tema); sin logotipo, un marcador neutro. Colores por significado de
+ * `@/lib/panelTones` (contraste AA en claro y oscuro).
  */
-import { useState, useEffect } from "react";
-import { useParams, useLocation } from "wouter";
+import { useState, useEffect, type ReactNode } from "react";
+import { useParams } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { usePublicContact } from "@/hooks/usePublicPhone";
+import { TONE_BADGE, TONE_SURFACE } from "@/lib/panelTones";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  CheckCircle,
-  XCircle,
   AlertTriangle,
-  Clock,
-  CreditCard,
-  FileText,
-  Phone,
-  Mail,
-  ShieldCheck,
-  Download,
-  Loader2,
+  Building2,
+  CalendarDays,
+  Check,
+  CheckCircle,
   ChevronDown,
   ChevronUp,
-  CalendarDays,
+  Clock,
+  CreditCard,
+  Download,
+  FileText,
+  Loader2,
+  Mail,
+  Phone,
+  ShieldCheck,
+  XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
+import { quoteStatusView } from "@shared/quotePublicView";
 
 // --- Helpers ----------------------------------------------------------------
 
@@ -46,33 +54,51 @@ function formatDate(d: Date | string | null | undefined): string {
   return new Date(d).toLocaleDateString("es-ES", { day: "2-digit", month: "long", year: "numeric" });
 }
 
-// --- Status Badge ------------------------------------------------------------
+// --- Marca de la empresa -------------------------------------------------------
 
-function StatusBadge({ status, isExpired }: { status: string; isExpired: boolean }) {
-  if (isExpired) return <Badge className="bg-red-100 text-red-700 border-red-200">Expirado</Badge>;
-  const map: Record<string, { label: string; cls: string }> = {
-    borrador:            { label: "Borrador",          cls: "bg-gray-100 text-gray-600 border-gray-200" },
-    enviado:             { label: "Pendiente",         cls: "bg-amber-100 text-amber-700 border-amber-200" },
-    visualizado:         { label: "Visto",             cls: "bg-blue-100 text-blue-700 border-blue-200" },
-    convertido_carrito:  { label: "Pago iniciado",     cls: "bg-purple-100 text-purple-700 border-purple-200" },
-    pago_fallido:        { label: "Pago no completado", cls: "bg-orange-100 text-orange-700 border-orange-200" },
-    aceptado:            { label: "Aceptado y pagado", cls: "bg-emerald-100 text-emerald-700 border-emerald-200" },
-    rechazado:           { label: "Rechazado",         cls: "bg-red-100 text-red-700 border-red-200" },
-    perdido:             { label: "Expirado",          cls: "bg-red-100 text-red-700 border-red-200" },
-  };
-  const s = map[status] ?? { label: status, cls: "bg-gray-100 text-gray-600" };
-  return <Badge className={`${s.cls} border text-xs font-medium`}>{s.label}</Badge>;
+/** Logotipo de la empresa o, si no tiene, un marcador neutro (nunca la inicial ni los colores de otra empresa). */
+function BrandMark({ logoUrl, brandName }: { logoUrl: string | null; brandName: string }) {
+  if (logoUrl) {
+    return <img src={logoUrl} alt={brandName || "Logotipo"} className="h-10 w-auto max-w-[160px] object-contain" />;
+  }
+  return (
+    <div className="w-10 h-10 rounded-full border border-border bg-muted flex items-center justify-center shrink-0" aria-hidden="true" data-testid="marca-neutra">
+      <Building2 className="w-5 h-5 text-muted-foreground" />
+    </div>
+  );
 }
 
-// --- Redsys auto-submit form -------------------------------------------------
-
-function RedsysAutoForm({ html }: { html: string }) {
-  // The HTML from buildRedsysForm contains a <form> with hidden inputs + auto-submit script
+function BrandHeader({ logoUrl, brandName, subtitle, right }: { logoUrl: string | null; brandName: string; subtitle: string; right?: ReactNode }) {
   return (
-    <div
-      className="hidden"
-      dangerouslySetInnerHTML={{ __html: html }}
-    />
+    <header className="bg-background border-b border-border">
+      <div className="max-w-3xl mx-auto px-4 py-4 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <BrandMark logoUrl={logoUrl} brandName={brandName} />
+          <div className="min-w-0">
+            {brandName && <p className="text-foreground font-semibold text-sm break-words">{brandName}</p>}
+            <p className="text-muted-foreground text-xs">{subtitle}</p>
+          </div>
+        </div>
+        {right}
+      </div>
+    </header>
+  );
+}
+
+function StatusBadge({ status, isExpired }: { status: string; isExpired: boolean }) {
+  const s = quoteStatusView(status, isExpired);
+  return <Badge variant="outline" className={`${TONE_BADGE[s.tone]} border text-xs font-medium shrink-0`}>{s.label}</Badge>;
+}
+
+/** Tarjeta centrada para los estados sin presupuesto que mostrar (enlace no válido, rechazado, expirado). */
+function NoticeCard({ icon, title, children, contact }: { icon: ReactNode; title: string; children: ReactNode; contact: ReactNode }) {
+  return (
+    <div className="bg-card text-card-foreground border border-border rounded-2xl shadow-lg p-8 max-w-md w-full text-center">
+      {icon}
+      <h1 className="text-xl font-bold text-foreground mb-2">{title}</h1>
+      <p className="text-muted-foreground text-sm">{children}</p>
+      <div className="mt-6 flex flex-col gap-2 text-sm text-muted-foreground">{contact}</div>
+    </div>
   );
 }
 
@@ -80,18 +106,16 @@ function RedsysAutoForm({ html }: { html: string }) {
 
 export default function QuoteAcceptance() {
   const { token } = useParams<{ token: string }>();
-  const [, navigate] = useLocation();
 
-  const { phone, phoneTel, email, brandName } = usePublicContact();
+  const { phone, phoneTel, email, brandName, logoUrl, neutral } = usePublicContact();
   const [showRejectForm, setShowRejectForm] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
   const [rejected, setRejected] = useState(false);
   const [redsysForm, setRedsysForm] = useState<{ url: string; Ds_MerchantParameters: string; Ds_Signature: string; Ds_SignatureVersion: string } | null>(null);
   const [showConditions, setShowConditions] = useState(false);
 
-  // -- Redsys auto-submit effect --
-  // useEffect ensures the form is submitted after render, not during it.
-  // The empty-dependency array on redsysForm means it only fires when redsysForm changes.
+  // -- Envío automático del formulario de la pasarela de pago --
+  // useEffect: el formulario se envía después del render, no durante él.
   useEffect(() => {
     if (!redsysForm) return;
     const form = document.createElement("form");
@@ -130,49 +154,41 @@ export default function QuoteAcceptance() {
 
   const payMutation = trpc.crm.quotes.payWithToken.useMutation({
     onSuccess: (data) => {
-      // Store Redsys form data — the render effect will auto-submit
+      // Datos del formulario de la pasarela: el efecto de arriba lo envía
       setRedsysForm(data.redsysForm as { url: string; Ds_MerchantParameters: string; Ds_Signature: string; Ds_SignatureVersion: string });
     },
     onError: (e) => toast.error(e.message),
   });
 
+  const callLink = phoneTel ? (
+    <a href={phoneTel} className="flex items-center justify-center gap-2 text-foreground underline-offset-2 hover:underline">
+      <Phone className="w-4 h-4" /> {brandName ? `Llamar a ${brandName}` : "Llamar"}
+    </a>
+  ) : null;
+  const mailLink = email ? (
+    <a href={`mailto:${email}`} className="flex items-center justify-center gap-2 text-foreground underline-offset-2 hover:underline">
+      <Mail className="w-4 h-4" /> {email}
+    </a>
+  ) : null;
+  const page = (content: ReactNode) => <div className="min-h-screen bg-muted/40 text-foreground">{content}</div>;
+  const centered = (content: ReactNode) => page(<div className="min-h-screen flex items-center justify-center p-4">{content}</div>);
+
   // -- Loading --
   if (isLoading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-[#0a1628] to-[#1a3a6b] flex items-center justify-center">
-        <div className="text-center text-white">
-          <Loader2 className="w-10 h-10 animate-spin mx-auto mb-4 text-orange-400" />
-          <p className="text-white/70">Cargando tu presupuesto...</p>
-        </div>
+    return centered(
+      <div className="text-center">
+        <Loader2 className="w-10 h-10 animate-spin mx-auto mb-4 text-primary" />
+        <p className="text-muted-foreground">Cargando tu presupuesto...</p>
       </div>
     );
   }
 
   // -- Error / not found --
   if (error || !quote) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-[#0a1628] to-[#1a3a6b] flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full text-center">
-          <AlertTriangle className="w-14 h-14 text-red-500 mx-auto mb-4" />
-          <h1 className="text-xl font-bold text-gray-900 mb-2">Enlace no válido</h1>
-          <p className="text-gray-500 text-sm">
-            Este enlace de presupuesto no existe o ha sido desactivado. Si crees que es un error,
-            contacta con nosotros.
-          </p>
-          <div className="mt-6 flex flex-col gap-2 text-sm text-gray-500">
-            {phoneTel && (
-              <a href={phoneTel} className="flex items-center justify-center gap-2 hover:text-orange-500">
-                <Phone className="w-4 h-4" /> {brandName ? `Llamar a ${brandName}` : "Llamar"}
-              </a>
-            )}
-            {email && (
-              <a href={`mailto:${email}`} className="flex items-center justify-center gap-2 hover:text-orange-500">
-                <Mail className="w-4 h-4" /> {email}
-              </a>
-            )}
-          </div>
-        </div>
-      </div>
+    return centered(
+      <NoticeCard icon={<AlertTriangle className="w-14 h-14 text-danger mx-auto mb-4" />} title="Enlace no válido" contact={<>{callLink}{mailLink}</>}>
+        Este enlace de presupuesto no existe o ha sido desactivado. Si crees que es un error, contacta con nosotros.
+      </NoticeCard>
     );
   }
 
@@ -192,494 +208,343 @@ export default function QuoteAcceptance() {
     return map[s] ?? s;
   }
 
+  const itemsTable = (
+    <div className="px-4 sm:px-6 py-4 overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-border">
+            <th className="text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide pb-2">Concepto</th>
+            <th className="text-center text-xs font-semibold text-muted-foreground uppercase tracking-wide pb-2 w-12">Uds.</th>
+            <th className="text-right text-xs font-semibold text-muted-foreground uppercase tracking-wide pb-2 w-24">Precio</th>
+            <th className="text-right text-xs font-semibold text-muted-foreground uppercase tracking-wide pb-2 w-24">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((item, i) => (
+            <tr key={i} className="border-b border-border/60 last:border-0">
+              <td className="py-3 pr-2 text-foreground font-medium break-words">{item.description}</td>
+              <td className="py-3 text-center text-muted-foreground">{item.quantity}</td>
+              <td className="py-3 text-right text-muted-foreground whitespace-nowrap">{formatCurrency(item.unitPrice)}</td>
+              <td className="py-3 text-right font-semibold text-foreground whitespace-nowrap">{formatCurrency(item.total)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+
+  const totals = (totalLabel: string, showSubtotalAlways: boolean) => (
+    <div className="px-4 sm:px-6 py-4 bg-muted/50 border-t border-border">
+      <div className="flex flex-col items-end gap-1 text-sm">
+        {(showSubtotalAlways || Number(quote.subtotal) > 0) && (
+          <div className="flex justify-between w-56">
+            <span className="text-muted-foreground">Subtotal</span>
+            <span className="text-foreground">{formatCurrency(quote.subtotal)}</span>
+          </div>
+        )}
+        {Number(quote.discount) > 0 && (
+          <div className="flex justify-between w-56">
+            <span className="text-muted-foreground">Descuento</span>
+            <span className="text-success">-{formatCurrency(quote.discount)}</span>
+          </div>
+        )}
+        {Number(quote.tax) > 0 && (
+          <div className="flex justify-between w-56">
+            <span className="text-muted-foreground">IVA</span>
+            <span className="text-foreground">{formatCurrency(quote.tax)}</span>
+          </div>
+        )}
+        <Separator className="w-56 my-1" />
+        <div className="flex justify-between items-baseline w-56">
+          <span className="font-bold text-foreground text-base">{totalLabel}</span>
+          <span className="font-bold text-foreground text-xl">{formatCurrency(quote.total)}</span>
+        </div>
+      </div>
+    </div>
+  );
+
+  const titleBand = (heading: "h1" | "h2") => {
+    const H = heading;
+    return (
+      <div className="bg-primary text-primary-foreground px-4 sm:px-6 py-5">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-wider mb-1">Presupuesto {quote.quoteNumber}</p>
+            <H className="text-xl font-bold leading-tight break-words">{quote.title}</H>
+          </div>
+          <FileText className="w-8 h-8 opacity-60 flex-shrink-0 mt-1" aria-hidden="true" />
+        </div>
+      </div>
+    );
+  };
+
+  const installments = (withIntro: boolean) =>
+    installmentPlan && installmentPlan.installments.length > 0 ? (
+      <div className="bg-card text-card-foreground border border-border rounded-2xl shadow-sm overflow-hidden">
+        <div className="bg-muted/60 border-b border-border px-4 sm:px-6 py-4">
+          <div className="flex items-center gap-2">
+            <CalendarDays className="w-5 h-5 text-primary" />
+            <h2 className="text-foreground font-bold text-base">Plan de pago fraccionado</h2>
+          </div>
+          {withIntro && (
+            <p className="text-muted-foreground text-xs mt-1">
+              Este presupuesto se abona en {installmentPlan.installments.length} cuota{installmentPlan.installments.length !== 1 ? "s" : ""}
+            </p>
+          )}
+        </div>
+        <div className="divide-y divide-border">
+          {installmentPlan.installments.map((inst) => {
+            const isPaid = inst.status === "paid";
+            const isOverdue = inst.status === "overdue";
+            const isRequired = (inst as { isRequiredForConfirmation?: boolean }).isRequiredForConfirmation;
+            return (
+              <div key={inst.id} className={`px-4 sm:px-6 py-4 flex items-center justify-between gap-3 ${isPaid ? "bg-success/10" : isOverdue ? "bg-danger/10" : ""}`}>
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0 border ${isPaid ? TONE_BADGE.success : isOverdue ? TONE_BADGE.danger : TONE_BADGE.neutral}`}>
+                    {isPaid ? <Check className="w-4 h-4" aria-label="Pagada" /> : inst.installmentNumber}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-foreground">
+                      Cuota {inst.installmentNumber}
+                      {withIntro && isRequired && <span className={`ml-2 text-xs font-semibold px-2 py-0.5 rounded-full border ${TONE_BADGE.brand}`}>Se paga al aceptar</span>}
+                    </p>
+                    <p className="text-xs text-muted-foreground flex items-center gap-1">
+                      <CalendarDays className="w-3 h-3" /> Vence: {formatDate(inst.dueDate)}
+                    </p>
+                  </div>
+                </div>
+                <div className="text-right shrink-0">
+                  <p className="font-bold text-base text-foreground">{formatCurrency(inst.amountCents / 100)}</p>
+                  <p className={`text-xs ${isPaid ? "text-success" : isOverdue ? "text-danger" : "text-muted-foreground"}`}>
+                    {formatInstallmentStatus(inst.status)}
+                  </p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    ) : null;
+
+  const footer = (
+    <div className="text-center text-muted-foreground text-xs pb-8 space-y-1">
+      <p>¿Tienes dudas? Contacta con nosotros</p>
+      <div className="flex flex-wrap justify-center gap-4">
+        {phoneTel && (
+          <a href={phoneTel} className="text-foreground underline-offset-2 hover:underline flex items-center gap-1">
+            <Phone className="w-3 h-3" /> {phone || "Teléfono"}
+          </a>
+        )}
+        {email && (
+          <a href={`mailto:${email}`} className="text-foreground underline-offset-2 hover:underline flex items-center gap-1">
+            <Mail className="w-3 h-3" /> {email}
+          </a>
+        )}
+      </div>
+    </div>
+  );
+
   // -- Already paid --
   if (quote.isPaid) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-[#0a1628] via-[#0d1f3c] to-[#1a3a6b]">
-        {/* Header */}
-        <header className="bg-white/5 backdrop-blur-sm border-b border-white/10">
-          <div className="max-w-3xl mx-auto px-4 py-4 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full border-2 border-orange-400 bg-white/10 flex items-center justify-center">
-                <span className="text-orange-400 font-bold text-sm">N</span>
-              </div>
-              <div>
-                <p className="text-white font-semibold text-sm">{brandName}</p>
-                <p className="text-white/50 text-xs">{brandName}{brandName && " — "}Reserva confirmada</p>
-              </div>
-            </div>
-            <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 border text-xs font-medium">
-              Aceptado y pagado
-            </Badge>
-          </div>
-        </header>
+    // En la instalación original, «reserva»; en la web de cualquier otra empresa, presupuesto pagado
+    const paidTitle = neutral ? "Presupuesto pagado" : "Reserva confirmada";
+    return page(
+      <>
+        <BrandHeader
+          logoUrl={logoUrl}
+          brandName={brandName}
+          subtitle={paidTitle}
+          right={<Badge variant="outline" className={`${TONE_BADGE.success} border text-xs font-medium shrink-0`}>Aceptado y pagado</Badge>}
+        />
 
         <main className="max-w-3xl mx-auto px-4 py-8 space-y-6">
-          {/* Confirmed banner */}
-          <div className="bg-emerald-500/15 border border-emerald-500/30 rounded-2xl px-6 py-5 flex items-center gap-4">
-            <div className="w-14 h-14 rounded-full bg-emerald-500/20 flex items-center justify-center flex-shrink-0">
-              <CheckCircle className="w-8 h-8 text-emerald-400" />
+          <div className={`border rounded-2xl px-6 py-5 flex items-center gap-4 ${TONE_SURFACE.success}`}>
+            <div className="w-14 h-14 rounded-full bg-success/15 flex items-center justify-center flex-shrink-0">
+              <CheckCircle className="w-8 h-8 text-success" />
             </div>
             <div>
-              <h1 className="text-white text-xl font-bold">¡Reserva confirmada!</h1>
-              <p className="text-white/60 text-sm mt-0.5">
-                Tu pago ha sido procesado correctamente. Recibirás la factura en tu email.
+              <h1 className="text-foreground text-xl font-bold">¡{paidTitle}!</h1>
+              <p className="text-muted-foreground text-sm mt-0.5">
+                Tu pago se ha procesado correctamente. Recibirás la factura por email.
               </p>
             </div>
           </div>
 
-          {/* Quote detail card — same layout as pending state */}
-          <div className="bg-white rounded-2xl shadow-xl overflow-hidden">
-            <div className="bg-gradient-to-r from-[#1a3a6b] to-[#0d2a5e] px-6 py-5">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-orange-400 text-xs font-semibold uppercase tracking-wider mb-1">
-                    Presupuesto {quote.quoteNumber}
-                  </p>
-                  <h2 className="text-white text-xl font-bold leading-tight">{quote.title}</h2>
-                </div>
-                <FileText className="w-8 h-8 text-white/30 flex-shrink-0 mt-1" />
-              </div>
-            </div>
-
-            <div className="px-6 py-4 bg-gray-50 border-b border-gray-100">
+          <div className="bg-card text-card-foreground border border-border rounded-2xl shadow-sm overflow-hidden">
+            {titleBand("h2")}
+            <div className="px-4 sm:px-6 py-4 bg-muted/50 border-b border-border">
               <div className="flex flex-wrap gap-4 text-sm">
                 <div>
-                  <span className="text-gray-400 text-xs uppercase tracking-wide">Cliente</span>
-                  <p className="font-medium text-gray-800">{quote.clientName}</p>
+                  <span className="text-muted-foreground text-xs uppercase tracking-wide">Cliente</span>
+                  <p className="font-medium text-foreground">{quote.clientName}</p>
                 </div>
                 {quote.invoiceNumber && (
                   <div>
-                    <span className="text-gray-400 text-xs uppercase tracking-wide">Factura</span>
-                    <p className="font-medium text-gray-800">{quote.invoiceNumber}</p>
+                    <span className="text-muted-foreground text-xs uppercase tracking-wide">Factura</span>
+                    <p className="font-medium text-foreground">{quote.invoiceNumber}</p>
                   </div>
                 )}
               </div>
             </div>
-
-            {/* Items */}
-            <div className="px-6 py-4">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-gray-100">
-                    <th className="text-left text-xs font-semibold text-gray-400 uppercase tracking-wide pb-2">Concepto</th>
-                    <th className="text-center text-xs font-semibold text-gray-400 uppercase tracking-wide pb-2 w-16">Uds.</th>
-                    <th className="text-right text-xs font-semibold text-gray-400 uppercase tracking-wide pb-2 w-24">P. Unit.</th>
-                    <th className="text-right text-xs font-semibold text-gray-400 uppercase tracking-wide pb-2 w-24">Total</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {items.map((item, i) => (
-                    <tr key={i} className="border-b border-gray-50 last:border-0">
-                      <td className="py-3 text-gray-800 font-medium">{item.description}</td>
-                      <td className="py-3 text-center text-gray-500">{item.quantity}</td>
-                      <td className="py-3 text-right text-gray-600">{formatCurrency(item.unitPrice)}</td>
-                      <td className="py-3 text-right font-semibold text-gray-800">{formatCurrency(item.total)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Totals */}
-            <div className="px-6 py-4 bg-gray-50 border-t border-gray-100">
-              <div className="flex flex-col items-end gap-1 text-sm">
-                {Number(quote.subtotal) > 0 && (
-                  <div className="flex justify-between w-48">
-                    <span className="text-gray-500">Subtotal</span>
-                    <span className="text-gray-700">{formatCurrency(quote.subtotal)}</span>
-                  </div>
-                )}
-                {Number(quote.discount) > 0 && (
-                  <div className="flex justify-between w-48">
-                    <span className="text-gray-500">Descuento</span>
-                    <span className="text-emerald-600">-{formatCurrency(quote.discount)}</span>
-                  </div>
-                )}
-                {Number(quote.tax) > 0 && (
-                  <div className="flex justify-between w-48">
-                    <span className="text-gray-500">IVA</span>
-                    <span className="text-gray-700">{formatCurrency(quote.tax)}</span>
-                  </div>
-                )}
-                <Separator className="w-48 my-1" />
-                <div className="flex justify-between w-48">
-                  <span className="font-bold text-gray-900 text-base">Total pagado</span>
-                  <span className="font-bold text-emerald-600 text-xl">{formatCurrency(quote.total)}</span>
-                </div>
-              </div>
-            </div>
+            {itemsTable}
+            {totals("Total pagado", false)}
           </div>
 
-          {/* Plan de pagos (si aplica) */}
-          {installmentPlan && installmentPlan.installments.length > 0 && (
-            <div className="bg-white rounded-2xl shadow-xl overflow-hidden">
-              <div className="bg-gradient-to-r from-purple-700 to-purple-900 px-6 py-4">
-                <div className="flex items-center gap-2">
-                  <CalendarDays className="w-5 h-5 text-purple-200" />
-                  <h2 className="text-white font-bold text-base">Plan de pago fraccionado</h2>
-                </div>
-              </div>
-              <div className="divide-y divide-gray-100">
-                {installmentPlan.installments.map((inst) => {
-                  const isPaid = inst.status === "paid";
-                  return (
-                    <div key={inst.id} className={`px-6 py-4 flex items-center justify-between ${isPaid ? "bg-emerald-50" : ""}`}>
-                      <div className="flex items-center gap-3">
-                        <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${isPaid ? "bg-emerald-500 text-white" : "bg-purple-100 text-purple-700"}`}>
-                          {isPaid ? "?" : inst.installmentNumber}
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-gray-800">Cuota {inst.installmentNumber}</p>
-                          <p className="text-xs text-gray-400 flex items-center gap-1">
-                            <CalendarDays className="w-3 h-3" /> Vence: {formatDate(inst.dueDate)}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <p className={`font-bold text-base ${isPaid ? "text-emerald-600" : "text-gray-900"}`}>
-                          {formatCurrency(inst.amountCents / 100)}
-                        </p>
-                        <p className={`text-xs ${isPaid ? "text-emerald-500" : "text-gray-400"}`}>
-                          {formatInstallmentStatus(inst.status)}
-                        </p>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
+          {installments(false)}
 
-          {/* Actions */}
           {quote.invoicePdfUrl && (
-            <div className="bg-white rounded-2xl shadow-xl p-6 text-center">
-              <a
-                href={quote.invoicePdfUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 bg-orange-500 hover:bg-orange-600 text-white px-6 py-3 rounded-xl text-sm font-semibold transition-colors shadow-lg shadow-orange-500/20"
-              >
-                <Download className="w-4 h-4" /> Descargar factura
-              </a>
+            <div className="bg-card border border-border rounded-2xl shadow-sm p-6 text-center">
+              <Button asChild className="px-6 py-3 rounded-xl text-sm font-semibold">
+                <a href={quote.invoicePdfUrl} target="_blank" rel="noopener noreferrer">
+                  <Download className="w-4 h-4 mr-2" /> Descargar factura
+                </a>
+              </Button>
             </div>
           )}
 
-          {/* Footer */}
-          <div className="text-center text-white/40 text-xs pb-8 space-y-1">
-            <p>¿Tienes dudas? Contacta con nosotros</p>
-            <div className="flex justify-center gap-4">
-              <a href={phoneTel} className="hover:text-orange-400 flex items-center gap-1">
-                <Phone className="w-3 h-3" /> {phone}
-              </a>
-              {email && (
-                <a href={`mailto:${email}`} className="hover:text-orange-400 flex items-center gap-1">
-                  <Mail className="w-3 h-3" /> {email}
-                </a>
-              )}
-            </div>
-          </div>
+          {footer}
         </main>
-      </div>
+      </>
     );
   }
 
   // -- Rejected --
   if (quote.isRejected || rejected) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-[#0a1628] to-[#1a3a6b] flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full text-center">
-          <XCircle className="w-16 h-16 text-red-400 mx-auto mb-4" />
-          <h1 className="text-xl font-bold text-gray-900 mb-2">Presupuesto rechazado</h1>
-          <p className="text-gray-500 text-sm">
-            Has rechazado este presupuesto. Si cambias de opinión o quieres hablar con nosotros,
-            no dudes en contactarnos.
-          </p>
-          <div className="mt-6 flex flex-col gap-2 text-sm text-gray-500">
-            {phoneTel && (
-              <a href={phoneTel} className="flex items-center justify-center gap-2 hover:text-orange-500">
-                <Phone className="w-4 h-4" /> {brandName ? `Llamar a ${brandName}` : "Llamar"}
-              </a>
-            )}
-          </div>
-        </div>
-      </div>
+    return centered(
+      <NoticeCard icon={<XCircle className="w-16 h-16 text-danger mx-auto mb-4" />} title="Presupuesto rechazado" contact={callLink}>
+        Has rechazado este presupuesto. Si cambias de opinión o quieres hablar con nosotros, no dudes en contactarnos.
+      </NoticeCard>
     );
   }
 
   // -- Expired --
   if (quote.isExpired) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-[#0a1628] to-[#1a3a6b] flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full text-center">
-          <Clock className="w-16 h-16 text-amber-400 mx-auto mb-4" />
-          <h1 className="text-xl font-bold text-gray-900 mb-2">Presupuesto expirado</h1>
-          <p className="text-gray-500 text-sm">
-            Este presupuesto expiró el {formatDate(quote.validUntil)}. Contacta con nosotros para
-            solicitar uno nuevo.
-          </p>
-          <div className="mt-6 flex flex-col gap-2 text-sm text-gray-500">
-            {phoneTel && (
-              <a href={phoneTel} className="flex items-center justify-center gap-2 hover:text-orange-500">
-                <Phone className="w-4 h-4" /> {brandName ? `Llamar a ${brandName}` : "Llamar"}
-              </a>
-            )}
-          </div>
-        </div>
-      </div>
+    return centered(
+      <NoticeCard icon={<Clock className="w-16 h-16 text-warning mx-auto mb-4" />} title="Presupuesto expirado" contact={callLink}>
+        Este presupuesto expiró el {formatDate(quote.validUntil)}. Contacta con nosotros para solicitar uno nuevo.
+      </NoticeCard>
     );
   }
 
   // -- Main view --
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-[#0a1628] via-[#0d1f3c] to-[#1a3a6b]">
-      {/* Redsys auto-submit is handled via useEffect above */}
+  return page(
+    <>
+      <BrandHeader logoUrl={logoUrl} brandName={brandName} subtitle="Presupuesto personalizado" right={<StatusBadge status={quote.status} isExpired={quote.isExpired} />} />
 
-      {/* Header */}
-      <header className="bg-white/5 backdrop-blur-sm border-b border-white/10">
-        <div className="max-w-3xl mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full border-2 border-orange-400 bg-white/10 flex items-center justify-center">
-              <span className="text-orange-400 font-bold text-sm">N</span>
-            </div>
-            <div>
-              <p className="text-white font-semibold text-sm">{brandName}</p>
-              <p className="text-white/50 text-xs">{brandName}{brandName && " — "}Presupuesto personalizado</p>
-            </div>
-          </div>
-          <StatusBadge status={quote.status} isExpired={quote.isExpired} />
-        </div>
-      </header>
-
-      {/* Content */}
       <main className="max-w-3xl mx-auto px-4 py-8 space-y-6">
 
         {/* Aviso de pago fallido */}
         {quote.status === "pago_fallido" && (
-          <div className="bg-orange-50 border border-orange-200 rounded-xl px-5 py-4 flex gap-3 items-start">
-            <AlertTriangle className="w-5 h-5 text-orange-500 flex-shrink-0 mt-0.5" />
+          <div className={`border rounded-xl px-5 py-4 flex gap-3 items-start ${TONE_SURFACE.warning}`}>
+            <AlertTriangle className="w-5 h-5 text-warning flex-shrink-0 mt-0.5" />
             <div>
-              <p className="text-orange-800 font-semibold text-sm">El pago anterior no se completó</p>
-              <p className="text-orange-600 text-xs mt-0.5">
-                Puedes intentarlo de nuevo con otra tarjeta o método de pago. El presupuesto sigue siendo válido.
+              <p className="text-foreground font-semibold text-sm">El pago anterior no se completó</p>
+              <p className="text-muted-foreground text-xs mt-0.5">
+                Puedes intentarlo de nuevo con otra tarjeta. El presupuesto sigue siendo válido.
               </p>
             </div>
           </div>
         )}
 
-        {/* Title card */}
-        <div className="bg-white rounded-2xl shadow-xl overflow-hidden">
-          <div className="bg-gradient-to-r from-[#1a3a6b] to-[#0d2a5e] px-6 py-5">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-orange-400 text-xs font-semibold uppercase tracking-wider mb-1">
-                  Presupuesto {quote.quoteNumber}
-                </p>
-                <h1 className="text-white text-xl font-bold leading-tight">{quote.title}</h1>
-              </div>
-              <FileText className="w-8 h-8 text-white/30 flex-shrink-0 mt-1" />
-            </div>
-          </div>
-
-          <div className="px-6 py-4 bg-gray-50 border-b border-gray-100">
+        <div className="bg-card text-card-foreground border border-border rounded-2xl shadow-sm overflow-hidden">
+          {titleBand("h1")}
+          <div className="px-4 sm:px-6 py-4 bg-muted/50 border-b border-border">
             <div className="flex flex-wrap gap-4 text-sm">
               <div>
-                <span className="text-gray-400 text-xs uppercase tracking-wide">Para</span>
-                <p className="font-medium text-gray-800">{quote.clientName}</p>
+                <span className="text-muted-foreground text-xs uppercase tracking-wide">Para</span>
+                <p className="font-medium text-foreground">{quote.clientName}</p>
               </div>
               {quote.validUntil && (
                 <div>
-                  <span className="text-gray-400 text-xs uppercase tracking-wide">Válido hasta</span>
-                  <p className="font-medium text-gray-800">{formatDate(quote.validUntil)}</p>
+                  <span className="text-muted-foreground text-xs uppercase tracking-wide">Válido hasta</span>
+                  <p className="font-medium text-foreground">{formatDate(quote.validUntil)}</p>
                 </div>
               )}
             </div>
           </div>
-
-          {/* Items */}
-          <div className="px-6 py-4">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-100">
-                  <th className="text-left text-xs font-semibold text-gray-400 uppercase tracking-wide pb-2">Concepto</th>
-                  <th className="text-center text-xs font-semibold text-gray-400 uppercase tracking-wide pb-2 w-16">Uds.</th>
-                  <th className="text-right text-xs font-semibold text-gray-400 uppercase tracking-wide pb-2 w-24">P. Unit.</th>
-                  <th className="text-right text-xs font-semibold text-gray-400 uppercase tracking-wide pb-2 w-24">Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.map((item, i) => (
-                  <tr key={i} className="border-b border-gray-50 last:border-0">
-                    <td className="py-3 text-gray-800 font-medium">{item.description}</td>
-                    <td className="py-3 text-center text-gray-500">{item.quantity}</td>
-                    <td className="py-3 text-right text-gray-600">{formatCurrency(item.unitPrice)}</td>
-                    <td className="py-3 text-right font-semibold text-gray-800">{formatCurrency(item.total)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Totals */}
-          <div className="px-6 py-4 bg-gray-50 border-t border-gray-100">
-            <div className="flex flex-col items-end gap-1 text-sm">
-              <div className="flex justify-between w-48">
-                <span className="text-gray-500">Subtotal</span>
-                <span className="text-gray-700">{formatCurrency(quote.subtotal)}</span>
-              </div>
-              {Number(quote.discount) > 0 && (
-                <div className="flex justify-between w-48">
-                  <span className="text-gray-500">Descuento</span>
-                  <span className="text-emerald-600">-{formatCurrency(quote.discount)}</span>
-                </div>
-              )}
-              {Number(quote.tax) > 0 && (
-                <div className="flex justify-between w-48">
-                  <span className="text-gray-500">IVA</span>
-                  <span className="text-gray-700">{formatCurrency(quote.tax)}</span>
-                </div>
-              )}
-              <Separator className="w-48 my-1" />
-              <div className="flex justify-between w-48">
-                <span className="font-bold text-gray-900 text-base">Total</span>
-                <span className="font-bold text-orange-500 text-xl">{formatCurrency(quote.total)}</span>
-              </div>
-            </div>
-          </div>
+          {itemsTable}
+          {totals("Total", true)}
         </div>
 
-        {/* Plan de pagos fraccionado */}
-        {installmentPlan && installmentPlan.installments.length > 0 && (
-          <div className="bg-white rounded-2xl shadow-xl overflow-hidden">
-            <div className="bg-gradient-to-r from-purple-700 to-purple-900 px-6 py-4">
-              <div className="flex items-center gap-2">
-                <CalendarDays className="w-5 h-5 text-purple-200" />
-                <h2 className="text-white font-bold text-base">Plan de pago fraccionado</h2>
-              </div>
-              <p className="text-purple-200 text-xs mt-1">
-                Este presupuesto se abona en {installmentPlan.installments.length} cuota{installmentPlan.installments.length !== 1 ? "s" : ""}
-              </p>
-            </div>
-            <div className="divide-y divide-gray-100">
-              {installmentPlan.installments.map((inst) => {
-                const isPaid = inst.status === "paid";
-                const isOverdue = inst.status === "overdue";
-                const isRequired = inst.isRequiredForConfirmation;
-                return (
-                  <div key={inst.id} className={`px-6 py-4 flex items-center justify-between ${isPaid ? "bg-emerald-50" : isOverdue ? "bg-red-50" : ""}`}>
-                    <div className="flex items-center gap-3">
-                      <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${isPaid ? "bg-emerald-500 text-white" : isOverdue ? "bg-red-500 text-white" : "bg-purple-100 text-purple-700"}`}>
-                        {isPaid ? "?" : inst.installmentNumber}
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium text-gray-800">
-                          Cuota {inst.installmentNumber}
-                          {isRequired && <span className="ml-2 text-xs text-purple-600 font-semibold bg-purple-50 px-2 py-0.5 rounded-full">Cuota inaplazable</span>}
-                        </p>
-                        <p className="text-xs text-gray-400 flex items-center gap-1">
-                          <CalendarDays className="w-3 h-3" /> Vence: {formatDate(inst.dueDate)}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <p className={`font-bold text-base ${isPaid ? "text-emerald-600" : isOverdue ? "text-red-600" : "text-gray-900"}`}>
-                        {formatCurrency(inst.amountCents / 100)}
-                      </p>
-                      <p className={`text-xs ${isPaid ? "text-emerald-500" : isOverdue ? "text-red-500" : "text-gray-400"}`}>
-                        {formatInstallmentStatus(inst.status)}
-                      </p>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
+        {installments(true)}
 
-        {/* Notes */}
         {quote.notes && (
-          <div className="bg-white rounded-xl shadow p-5">
-            <h3 className="text-sm font-semibold text-gray-700 mb-2">Notas del presupuesto</h3>
-            <p className="text-sm text-gray-600 whitespace-pre-wrap leading-relaxed">{quote.notes}</p>
+          <div className="bg-card border border-border rounded-xl shadow-sm p-5">
+            <h3 className="text-sm font-semibold text-foreground mb-2">Notas del presupuesto</h3>
+            <p className="text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed">{quote.notes}</p>
           </div>
         )}
 
-        {/* Conditions (collapsible) */}
         {quote.conditions && (
-          <div className="bg-white rounded-xl shadow overflow-hidden">
+          <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
             <button
-              className="w-full flex items-center justify-between px-5 py-4 text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors"
+              className="w-full flex items-center justify-between px-5 py-4 text-sm font-semibold text-foreground hover:bg-muted/60 transition-colors"
               onClick={() => setShowConditions(!showConditions)}
+              aria-expanded={showConditions}
             >
-              <span>Condiciones y términos</span>
-              {showConditions ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
+              <span>Condiciones</span>
+              {showConditions ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
             </button>
             {showConditions && (
-              <div className="px-5 pb-4 border-t border-gray-100">
-                <p className="text-xs text-gray-500 whitespace-pre-wrap leading-relaxed pt-3">{quote.conditions}</p>
+              <div className="px-5 pb-4 border-t border-border">
+                <p className="text-xs text-muted-foreground whitespace-pre-wrap leading-relaxed pt-3">{quote.conditions}</p>
               </div>
             )}
           </div>
         )}
 
-        {/* CTA — Accept / Reject */}
+        {/* Aceptar (pagar) o rechazar */}
         {canAct && (
-          <div className="bg-white rounded-2xl shadow-xl p-6 space-y-4">
-            <div className="flex items-center gap-2 text-sm text-gray-500 mb-2">
-              <ShieldCheck className="w-4 h-4 text-emerald-500" />
-              <span>Pago seguro procesado por Redsys · SSL cifrado</span>
+          <div className="bg-card border border-border rounded-2xl shadow-sm p-4 sm:p-6 space-y-4">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground mb-2">
+              <ShieldCheck className="w-4 h-4 text-success shrink-0" />
+              <span>Pago con tarjeta seguro · conexión cifrada</span>
             </div>
 
-            {/* Accept button */}
             <Button
-              className="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold text-base py-6 rounded-xl shadow-lg shadow-orange-500/20 transition-all"
+              className="w-full h-auto min-h-12 whitespace-normal font-bold text-base py-3 rounded-xl"
               onClick={() => payMutation.mutate({ token: token!, origin: window.location.origin })}
               disabled={payMutation.isPending}
             >
               {payMutation.isPending ? (
-                <><Loader2 className="w-5 h-5 mr-2 animate-spin" /> Preparando pago...</>
+                <><Loader2 className="w-5 h-5 mr-2 animate-spin" /> Preparando el pago...</>
               ) : installmentPlan ? (
-                <><CreditCard className="w-5 h-5 mr-2" /> Pagar cuota {nextInstallmentNumber}: {formatCurrency(payAmountEuros)}</>
+                <><CreditCard className="w-5 h-5 mr-2 shrink-0" /> Pagar cuota {nextInstallmentNumber}: {formatCurrency(payAmountEuros)}</>
               ) : (
-                <><CreditCard className="w-5 h-5 mr-2" /> Aceptar y pagar {formatCurrency(quote.total)}</>
+                <><CreditCard className="w-5 h-5 mr-2 shrink-0" /> Aceptar y pagar {formatCurrency(quote.total)}</>
               )}
             </Button>
             {installmentPlan && (
-              <p className="text-center text-xs text-gray-400">
+              <p className="text-center text-xs text-muted-foreground">
                 Importe total del presupuesto: {formatCurrency(quote.total)} · Pago fraccionado en {installmentPlan.installments.length} cuotas
               </p>
             )}
 
-            {/* Reject */}
             {alreadyAccepted ? null : !showRejectForm ? (
               <button
-                className="w-full text-sm text-gray-400 hover:text-red-500 transition-colors py-2"
+                className="w-full text-sm text-muted-foreground hover:text-danger transition-colors py-2"
                 onClick={() => setShowRejectForm(true)}
               >
                 No me interesa — Rechazar presupuesto
               </button>
             ) : (
-              <div className="border border-red-200 rounded-xl p-4 bg-red-50 space-y-3">
-                <p className="text-sm font-medium text-red-700">¿Seguro que quieres rechazar este presupuesto?</p>
+              <div className={`border rounded-xl p-4 space-y-3 ${TONE_SURFACE.danger}`}>
+                <p className="text-sm font-medium text-foreground">¿Seguro que quieres rechazar este presupuesto?</p>
                 <Textarea
                   placeholder="Motivo del rechazo (opcional)..."
-                  className="text-sm resize-none"
+                  className="text-sm resize-none bg-background"
                   rows={2}
                   value={rejectReason}
                   onChange={(e) => setRejectReason(e.target.value)}
                 />
                 <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="flex-1"
-                    onClick={() => setShowRejectForm(false)}
-                  >
+                  <Button variant="outline" size="sm" className="flex-1" onClick={() => setShowRejectForm(false)}>
                     Cancelar
                   </Button>
                   <Button
                     size="sm"
-                    className="flex-1 bg-red-500 hover:bg-red-600 text-white"
+                    variant="destructive"
+                    className="flex-1"
                     onClick={() => rejectMutation.mutate({ token: token!, reason: rejectReason || undefined })}
                     disabled={rejectMutation.isPending}
                   >
@@ -691,25 +556,8 @@ export default function QuoteAcceptance() {
           </div>
         )}
 
-        {/* Footer */}
-        <div className="text-center text-white/40 text-xs pb-8 space-y-1">
-          <p>¿Tienes dudas? Contacta con nosotros</p>
-          <div className="flex justify-center gap-4">
-            {phoneTel && (
-              <a href={phoneTel} className="hover:text-orange-400 flex items-center gap-1">
-                <Phone className="w-3 h-3" /> Teléfono
-              </a>
-            )}
-            {email && (
-              <a href={`mailto:${email}`} className="hover:text-orange-400 flex items-center gap-1">
-                <Mail className="w-3 h-3" /> Email
-              </a>
-            )}
-          </div>
-        </div>
+        {footer}
       </main>
-    </div>
+    </>
   );
 }
-
-
