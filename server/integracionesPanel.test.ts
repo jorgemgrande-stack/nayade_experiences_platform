@@ -3,6 +3,7 @@
  * avisos de formato en español. La forma de guardar y cifrar no cambia (vault.ts sigue validando con validateFields).
  */
 import { describe, it, expect } from "vitest";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { PROVIDERS, getProvider, validateFields } from "./_core/credentials/catalog";
@@ -93,7 +94,7 @@ describe("validación de formatos en español", () => {
   const redsys = getProvider("redsys")!;
 
   it("el servidor avisa con el nombre del campo y qué hacer", () => {
-    expect(fieldProblems(redsys, { merchantCode: "12AB" })).toEqual(["Número de comercio (FUC): Escribe solo cifras, entre 6 y 12 (por ejemplo, 999008881)."]);
+    expect(fieldProblems(redsys, { merchantCode: "12AB" })).toEqual(["Número de comercio (FUC): Escribe solo cifras, entre 6 y 12, sin espacios ni letras."]);
     expect(fieldProblems(redsys, { merchantKey: "con espacios no vale" })[0]).toMatch(/^Clave secreta del comercio: /);
     expect(fieldProblems(redsys, { environment: "otro" })).toEqual(["Modo: elige una de las opciones."]);
     expect(fieldProblems(redsys, { merchantCode: "999008881", merchantTerminal: "1", environment: "test" })).toEqual([]);
@@ -102,7 +103,7 @@ describe("validación de formatos en español", () => {
 
   it("acepta y rechaza exactamente lo mismo que la bóveda", () => {
     const samples: Array<[string, Record<string, string>]> = [
-      ["redsys", { merchantCode: "1" }], ["redsys", { merchantCode: "999008881" }], ["redsys", { merchantKey: "sq7HjrUOBfKmC576ILgskD5srU870gJ7" }],
+      ["redsys", { merchantCode: "1" }], ["redsys", { merchantCode: "999008881" }], ["redsys", { merchantKey: crypto.randomBytes(24).toString("base64") }],
       ["mail_smtp", { host: "smtp mal" }], ["mail_smtp", { fromEmail: "hola@empresa.es" }], ["mail_smtp", { secure: "si" }],
       ["imap_expenses", { port: "x" }], ["imap_expenses", { port: "993" }],
     ];
@@ -111,7 +112,7 @@ describe("validación de formatos en español", () => {
 
   it("la página avisa antes de guardar con el mismo patrón", () => {
     const f = panelIntegrations(all(), essential).find((p) => p.id === "redsys")!.fields.find((x) => x.key === "merchantCode")!;
-    expect(fieldFormatProblem(f, "abc")).toBe("Escribe solo cifras, entre 6 y 12 (por ejemplo, 999008881).");
+    expect(fieldFormatProblem(f, "abc")).toBe("Escribe solo cifras, entre 6 y 12, sin espacios ni letras.");
     expect(fieldFormatProblem(f, "999008881")).toBeNull();
     expect(fieldFormatProblem(f, "")).toBeNull();
     const yes = { control: "yesno" as const, options: [{ value: "true", label: "Sí" }, { value: "false", label: "No" }], pattern: null, formatMessage: null };
