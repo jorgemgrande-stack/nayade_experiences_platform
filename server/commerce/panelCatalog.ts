@@ -16,6 +16,7 @@ import { quoteCatalogFromSite } from "../catalog/snapshot";
 import type { QuoteCatalogProduct } from "../catalog/quote";
 import { withoutInternal, type SiteDocument } from "../web/service";
 import { videoEmbedUrl, type CommercialBlock } from "../web/schemas";
+import type { PanelActivation } from "./panelActivation";
 
 export interface PanelCatalogItem {
   key: string;
@@ -33,6 +34,8 @@ export interface PanelCatalogItem {
   purchasable: boolean;
   /** Ficha publicada del marketplace (null: el producto no tiene ficha publicada). */
   card: PanelCard | null;
+  /** Estado de activación de ESTA empresa (null: no se pudo consultar; el panel usa lo que sepa por su cuenta). */
+  activation: PanelActivation | null;
 }
 
 type Img = { src: string; alt: string; caption?: string; mobileSrc?: string; focal?: { x: number; y: number }; kind?: "screenshot" | "illustration" };
@@ -200,7 +203,7 @@ export const DEFAULT_AUTOPLAY_MS = 6000;
  */
 const PANEL_FAMILIES = new Set(["extension", "industry_module", "net_module", "net_bundle", "connect", "connect_bundle", "addon", "extra"]);
 
-export function panelCatalog(products: QuoteCatalogProduct[], o: { version: string; purchasesEnabled: boolean; site?: Pick<SiteDocument, "catalog"> }): PanelCatalog {
+export function panelCatalog(products: QuoteCatalogProduct[], o: { version: string; purchasesEnabled: boolean; site?: Pick<SiteDocument, "catalog">; activation?: ReadonlyMap<string, PanelActivation> | null }): PanelCatalog {
   const items: PanelCatalogItem[] = [];
   const published = new Map((o.site?.catalog.products ?? []).map((p) => [p.key, p as Record<string, unknown>]));
   for (const p of products) {
@@ -222,6 +225,7 @@ export function panelCatalog(products: QuoteCatalogProduct[], o: { version: stri
       monthly: monthly ? { amountCents: monthly.amountCents, currency: monthly.currency, taxIncluded: monthly.taxIncluded, unit: monthly.unit } : null,
       purchasable: o.purchasesEnabled && sellable,
       card: null,
+      activation: o.activation === null ? null : (o.activation?.get(p.key) ?? NO_ACTIVATION),
     });
   }
   // Las fichas, cuando ya se sabe qué ve la empresa (relacionados solo entre productos visibles)
@@ -234,20 +238,29 @@ export function panelCatalog(products: QuoteCatalogProduct[], o: { version: stri
   return { version: o.version, purchasesEnabled: o.purchasesEnabled, items, marketplace: { slides: [], settings: { autoplayMs: DEFAULT_AUTOPLAY_MS }, brands: [] } };
 }
 
+const NO_ACTIVATION: PanelActivation = { state: "none", retryable: false, updatedAt: null };
+
 const tenant = z.string().regex(/^[a-z0-9][a-z0-9-]{1,62}$/);
 
 /** Rutas del Core (montar bajo /commerce), con el mismo token de servicio que la compra. */
-export function createPanelCatalogRouter(d: { site: () => Promise<SiteDocument>; purchasesEnabled: boolean; internalTenants?: ReadonlySet<string> }): Router {
+export function createPanelCatalogRouter(d: { site: () => Promise<SiteDocument>; purchasesEnabled: boolean; internalTenants?: ReadonlySet<string>; activation?: (tenantId: string) => Promise<ReadonlyMap<string, PanelActivation>> }): Router {
   const r = express.Router();
   r.get("/tenants/:tenantId/catalog", requireScope("commerce:purchase"), (req: Request, res: Response, _next: NextFunction) => {
     const parsed = tenant.safeParse(req.params.tenantId);
     if (!parsed.success) return void res.status(400).json({ error: "invalid_request", message: "tenantId" });
-    d.site()
-      .then((site) => {
+    // Sin lector de activación (entorno sin pedidos) o si falla, la activación va a null y el catálogo sigue llegando
+    const activation = d.activation
+      ? d.activation(parsed.data).catch((e) => {
+          opsLog("warn", "Commerce", "panel_activation_failed", { error: e instanceof Error ? e.name : "error" });
+          return null;
+        })
+      : Promise.resolve(null);
+    Promise.all([d.site(), activation])
+      .then(([site, act]) => {
         const visible = d.internalTenants?.has(parsed.data) ? site : withoutInternal(site);
         const c = quoteCatalogFromSite(visible);
         res.setHeader("Cache-Control", "no-store");
-        res.json({ catalog: panelCatalog(c.products, { version: c.version, purchasesEnabled: d.purchasesEnabled, site: visible }) });
+        res.json({ catalog: panelCatalog(c.products, { version: c.version, purchasesEnabled: d.purchasesEnabled, site: visible, activation: act }) });
       })
       .catch((e) => {
         opsLog("error", "Commerce", "panel_catalog_failed", { error: e instanceof Error ? e.name : "error" });
