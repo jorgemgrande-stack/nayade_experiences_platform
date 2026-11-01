@@ -54,6 +54,7 @@ import { generateDocumentNumber } from "../documentNumbers";
 import { nextCreditNoteNumber, withCreditNoteNumberRetry } from "../creditNoteNumber";
 import { QUOTE_DISCOUNT_DESCRIPTION, QUOTE_LINE_TOTAL_DESCRIPTION, QUOTE_TOTAL_DESCRIPTION, QUOTE_UNIT_PRICE_DESCRIPTION, linesToTaxIncluded, pricesIncludeTaxSchema, quoteTotalMismatch } from "../quoteTaxConvention";
 import { invoiceClientForQuote } from "../invoiceClient";
+import { ordersWithoutInvoice } from "../invoiceAudit";
 import { alreadyCredited, chargedInvoiceAmounts, computeDirectInvoice, creditNoteLineStatus, CreditNoteSelectionError, DIRECT_INVOICE_TAX_RATES, planCreditNote, QUOTE_DISCOUNT_REASON, round2, type CreditNoteLineSelection } from "../invoiceCalc";
 import { htmlToPdf } from "../pdfGenerator";
 import { buildRedsysForm, generateMerchantOrder } from "../redsys";
@@ -4574,18 +4575,15 @@ export const crmRouter = router({
             )
         : [];
 
-      const invoicedResIds = new Set<number>();
-      for (const inv of linkedInvoices) {
-        if (inv.reservationId) invoicedResIds.add(inv.reservationId);
-      }
-      // También cubrir la relación por quoteId: si la factura tiene quoteId, marcar todas las reservas de ese quote
-      const invoicedQuoteIds = new Set(linkedInvoices.map(i => i.quoteId).filter((q): q is number => q != null));
-      for (const r of paidRes) {
-        if (r.quoteId && invoicedQuoteIds.has(r.quoteId)) invoicedResIds.add(r.id);
-        if (r.invoiceId) invoicedResIds.add(r.id); // campo directo en la reserva
-      }
+      // Ventas de caja cobradas con su ticket (factura simplificada): documentadas, no son una incidencia
+      const ticketed = paidIds.length > 0
+        ? await db.select({ reservationId: tpvSales.reservationId })
+            .from(tpvSales)
+            .where(and(inArray(tpvSales.reservationId, paidIds), eq(tpvSales.status, "paid"), sql`${tpvSales.ticketNumber} <> ''`))
+        : [];
 
-      const sinFactura = paidRes.filter(r => !invoicedResIds.has(r.id)).map(r => ({
+      // Documentada: factura por la reserva, por su presupuesto o enlazada en la reserva, o ticket de caja
+      const sinFactura = ordersWithoutInvoice(paidRes, linkedInvoices, ticketed.map(t => t.reservationId).filter((id): id is number => id != null)).map(r => ({
         id: r.id,
         reservationNumber: r.reservationNumber,
         customerName: r.customerName,

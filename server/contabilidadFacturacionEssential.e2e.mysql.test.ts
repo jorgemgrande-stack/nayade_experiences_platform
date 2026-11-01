@@ -5,6 +5,7 @@
  *    lo que no está contratado no se consulta.
  *  - Facturas de presupuestos (pago por enlace, cuotas, confirmación de pago y de transferencia) con el NIF,
  *    el nombre fiscal y la dirección del cliente vinculado.
+ *  - Revisión de facturación: una venta de caja con ticket no es una incidencia.
  *
  *   REGISTRY_TEST_DATABASE_URL=mysql://root:root@127.0.0.1:33441/registro_test \
  *     pnpm vitest run server/contabilidadFacturacionEssential.e2e.mysql.test.ts
@@ -202,6 +203,27 @@ describe.skipIf(!URL_)("contabilidad y facturación Essential (aplicación real)
       // Cambiar después los datos del cliente no toca la factura emitida
       await ess.sql("a", "UPDATE clients SET nif = 'B76543214' WHERE email = ?", [q1.email]);
       expect((await invoiceOf(q1.id)).clientNif).toBe("B12345674");
+    });
+  });
+
+  describe("revisión de facturación de los pedidos cobrados", () => {
+    it("una venta de caja en efectivo con ticket no es una incidencia; un pedido cobrado sin factura ni ticket sí", async () => {
+      const sid = await openSession();
+      const sale = ok(await ess.m("a", "tpv.createSale", { sessionId: sid, customerName: "Cliente mostrador", items: [item()], payments: [{ method: "cash", amount: 121 }] }, agA), "venta en efectivo");
+      await ess.m("a", "tpv.closeSession", { sessionId: sid, countedCash: 121 }, agA);
+      const resId = sale.sale.reservationId as number;
+      expect(resId).toBeGreaterThan(0);
+      // Sin factura (efectivo), pero con ticket
+      expect((await ess.sql("a", "SELECT invoiceId FROM reservations WHERE id = ?", [resId]))[0].invoiceId).toBeNull();
+      expect(String(sale.sale.ticketNumber)).not.toBe("");
+      const audit = ok(await ess.q("a", "crm.reservations.auditOrphans", undefined, agA), "revisión");
+      expect(audit.sinFactura.map((r: any) => r.id)).not.toContain(resId);
+      // Un pedido cobrado sin ningún documento sí se señala
+      const [r] = await ess.sql("a", "SELECT reservation_number FROM reservations WHERE id = ?", [resId]);
+      await ess.sql("a", "INSERT INTO reservations (product_id, product_name, booking_date, people, amount_total, amount_paid, status, customer_name, merchant_order, reservation_number, channel, created_at, updated_at, paymentMethod) VALUES (?, 'Asesoría fiscal', '2026-11-01', 1, 5000, 5000, 'paid', 'Cliente sin factura', 'ORD-SINFACT', 'RES-SINFACT', 'MANUAL', ?, ?, 'efectivo')", [productId, Date.now(), Date.now()]);
+      const audit2 = ok(await ess.q("a", "crm.reservations.auditOrphans", undefined, agA), "revisión 2");
+      expect(audit2.sinFactura.map((x: any) => x.reservationNumber)).toEqual(["RES-SINFACT"]);
+      expect(audit2.sinFactura.map((x: any) => x.reservationNumber)).not.toContain(r.reservation_number);
     });
   });
 });

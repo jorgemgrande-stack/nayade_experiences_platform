@@ -6623,7 +6623,7 @@ export default function CRMDashboard() {
           <div className="mx-6 mb-2 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 flex flex-col gap-2">
             <div className="flex items-center gap-2 text-amber-400 font-semibold text-sm">
               <AlertTriangle className="w-4 h-4 flex-shrink-0" />
-              Auditoría — se detectaron incidencias en {voc.ordersLower} {voc.agree("pagados", "pagadas")}
+              Revisión de facturación: hay {voc.ordersLower} {voc.agree("cobrados", "cobradas")} sin factura
             </div>
             {auditData.sinFacturaCount > 0 && (() => {
               const cashItems = auditData.sinFactura.filter((r: any) => r.paymentMethod === "efectivo");
@@ -6633,7 +6633,7 @@ export default function CRMDashboard() {
                   {cashItems.length > 0 && (
                     <div>
                       <p className="text-xs text-blue-300/80 font-medium mb-1">
-                        {cashItems.length} {voc.order}{cashItems.length !== 1 ? "s" : ""} {voc.agree("cobrado", "cobrada")}{cashItems.length !== 1 ? "s" : ""} en efectivo — requieren factura manual:
+                        {cashItems.length} {voc.order}{cashItems.length !== 1 ? "s" : ""} {voc.agree("cobrado", "cobrada")}{cashItems.length !== 1 ? "s" : ""} en efectivo sin factura ni ticket. Emite la factura o márcalo como que no la necesita:
                       </p>
                       <div className="flex flex-wrap gap-1.5">
                         {cashItems.map((r: any) => (
@@ -6664,7 +6664,7 @@ export default function CRMDashboard() {
                   {otherItems.length > 0 && (
                     <div>
                       <p className="text-xs text-amber-300/80 font-medium mb-1">
-                        {otherItems.length} {voc.order}{otherItems.length !== 1 ? "s" : ""} {voc.agree("pagado", "pagada")}{otherItems.length !== 1 ? "s" : ""} sin factura asociada:
+                        {otherItems.length} {voc.order}{otherItems.length !== 1 ? "s" : ""} {voc.agree("cobrado", "cobrada")}{otherItems.length !== 1 ? "s" : ""} sin factura. Emite la factura o márcalo como que no la necesita:
                       </p>
                       <div className="flex flex-wrap gap-1.5">
                         {otherItems.map((r: any) => (
