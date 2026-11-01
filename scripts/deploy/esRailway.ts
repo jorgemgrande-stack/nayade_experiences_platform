@@ -17,6 +17,7 @@
  *   tsx scripts/deploy/esRailway.ts mail-access --env production --accion estado|activar|desactivar [--tenants t5-skibox]
  *   tsx scripts/deploy/esRailway.ts lead-notices-mail --env production --accion estado|activar|desactivar [--allow buzón]
  *   tsx scripts/deploy/esRailway.ts mail-production --env production --accion estado|activar   (correo real: sale del sandbox)
+ *   tsx scripts/deploy/esRailway.ts connect-channel --env production --accion estado|activar   (canal del Core con el plano de control)
  *   tsx scripts/deploy/esRailway.ts contract-mail --env production --accion estado|activar [--allow buzón] [--categoria operational]
  *   tsx scripts/deploy/esRailway.ts active-sha --env live          (commit activo de los servicios ordinarios; vacío si no se sabe)
  *   tsx scripts/deploy/esRailway.ts changes --from <commit> --to <commit> [--production]  (qué exige el procedimiento protegido)
@@ -46,6 +47,7 @@ import { DRILL_IDLE, EXCLUDED_FROM_EXPORT, GATEWAY_COPIED_VARS, GATEWAY_TEMPLATE
 import { ERM_DB_SERVICE, ERM_PASSWORD_VAR, LIVE_PLATFORM_DOMAIN_DEFAULT, livePlatformDomainProblems, meteringPlan, platformDomainsValue } from "./esRailwayLib";
 import { ACCESS_CHECKS, ACCESS_PROBE_USER, CATALOG_STAMP_FILE, WEB_CATALOG_SITE, accessProblems } from "./esRailwayLib";
 import { externalExtraordinaryChanges, extraordinaryChanges } from "./esRailwayLib";
+import { CORE_COMMERCE_SCOPES, CORE_COMMERCE_TOKEN_ID, commerceChannelPlan } from "./esRailwayLib";
 import { CRM_CHECKS, CRM_VERSION_FILE, CRM_VERSION_URL, externalLockedChanges, FUNCTIONAL_CHECKS, ORDINARY_SERVICES, WEB_CHECKS, crmProtectedChanges, hasMigrations, isExternalService, isNativeDeploy, protectedChanges, shaFromDeployMeta } from "./esRailwayLib";
 import { REPOSITORIES } from "../../shared/repositories";
 
@@ -358,7 +360,7 @@ async function main() {
   const env = arg("env");
   const sc = await scope();
   const service = cmd === "deploy" || cmd === "revert" ? arg("service") : cmd === "drill" ? "restore-drill" : undefined;
-  if (!["verify", "status", "deploy", "drill", "active-sha", "publish", "revert", "active-crm", "publish-crm", "rollback-recorded", "storage", "storage-fix", "test-gateways", "mail-live", "backup-check", "platform-domain", "metering", "mail-access", "lead-notices-mail", "contract-mail", "mail-production"].includes(cmd)) throw new Error(`orden desconocida: ${cmd}`);
+  if (!["verify", "status", "deploy", "drill", "active-sha", "publish", "revert", "active-crm", "publish-crm", "rollback-recorded", "storage", "storage-fix", "test-gateways", "mail-live", "backup-check", "platform-domain", "metering", "mail-access", "lead-notices-mail", "contract-mail", "mail-production", "connect-channel"].includes(cmd)) throw new Error(`orden desconocida: ${cmd}`);
   const problems = guard(cfg, sc, { env, service });
   if (problems.length) {
     console.error(`Detenido antes de tocar nada:\n - ${problems.join("\n - ")}`);
@@ -930,6 +932,61 @@ async function main() {
       }
       console.log(`Postmark webhook ${existingHook ? "actualizado" : "creado"}: ${hookUrl} (entrega, rebote, queja y baja)`);
     }
+    return;
+  }
+  if (cmd === "connect-channel") {
+    // Canal del Core con el plano de control (catálogo de Elephant Connect, compra, desistimiento y soporte desde el
+    // panel): estado (lectura; sin valores secretos) y activar (token propio del Core en CP_TOKENS conservando las demás
+    // entradas, y CP_COMMERCE_URL/TOKEN en core; redespliega controlplane y después core con su misma imagen).
+    // Nunca imprime el token ni toca CP_COMMERCE_PURCHASES_ENABLED.
+    const accion = arg("accion");
+    if (!["estado", "activar"].includes(accion)) throw new Error("--accion estado|activar");
+    const t = await api<{ projectToken: { projectId: string } }>("query { projectToken { projectId } }");
+    const p = t.projectToken.projectId;
+    const q = "query($p:String!,$e:String!,$s:String!,$u:Boolean){ variables(projectId:$p, environmentId:$e, serviceId:$s, unrendered:$u) }";
+    const read = async (svc: string, unrendered: boolean) => (await api<{ variables: Record<string, string> }>(q, { p, e: sc.environmentId, s: await serviceId(svc), u: unrendered })).variables;
+    const raw = { controlplane: await read("controlplane", true), core: await read("core", true) };
+    // El token del Core se compara por su valor efectivo (por si fuera una referencia); solo se usa su hash
+    const coreToken = (await read("core", false)).CP_COMMERCE_TOKEN ?? "";
+    const newToken = crypto.randomBytes(32).toString("base64url");
+    // En GitHub Actions el token nuevo queda enmascarado en el registro aunque algo llegara a imprimirlo
+    if (process.env.GITHUB_ACTIONS) console.log(`::add-mask::${newToken}`);
+    const plan = commerceChannelPlan({ controlplane: raw.controlplane, core: { ...raw.core, CP_COMMERCE_TOKEN: coreToken } }, { newTokenSha256: crypto.createHash("sha256").update(newToken).digest("hex") });
+    const s = plan.status;
+    console.log(`core.CP_COMMERCE_URL    ${s.url ?? "sin definir"}`);
+    console.log(`core.CP_COMMERCE_TOKEN  ${s.tokenDefined ? "definido" : "sin definir"} · ${s.acceptedBy ? `aceptado por «${s.acceptedBy}» (${s.scopes.join(", ")})` : "el plano de control no lo acepta"}`);
+    console.log(`controlplane.CP_COMMERCE_PURCHASES_ENABLED  ${s.purchasesEnabled ? "1 (compra en línea abierta)" : "apagada (sin compras ni cobros desde el panel)"}`);
+    const summary = [...(plan.cpTokens ? [`controlplane.CP_TOKENS += «${CORE_COMMERCE_TOKEN_ID}» (${CORE_COMMERCE_SCOPES.join(", ")}; se conservan las demás entradas)`] : []), ...plan.core.map((c) => `core.${c.name}${c.generate ? " (generado)" : ` = ${c.value}`}`)];
+    if (accion === "estado") {
+      if (plan.problems.length) console.log(`Falta para activar:\n - ${plan.problems.join("\n - ")}`);
+      return void console.log(summary.length ? `Cambios que haría la activación: ${summary.join(" · ")}` : "Canal activo: el Core ya consulta el catálogo del plano de control");
+    }
+    if (plan.problems.length) throw new Error(`No se cambia nada:\n - ${plan.problems.join("\n - ")}`);
+    if (!summary.length) return void console.log("Sin cambios: el canal ya estaba activo");
+    const upsert = async (svc: string, name: string, value: string) =>
+      api("mutation($i:VariableUpsertInput!){ variableUpsert(input:$i) }", { i: { projectId: p, environmentId: sc.environmentId, serviceId: await serviceId(svc), name, value, skipDeploys: true } });
+    const redeploy = async (svc: string) => {
+      const id = await serviceId(svc);
+      const before = await latest(id, sc.environmentId);
+      if (!before) throw new Error(`${svc} no tiene despliegue que redesplegar`);
+      await api("mutation($id:String!){ deploymentRedeploy(id:$id, usePreviousImageTag:true){ id } }", { id: before.id });
+      const d = await waitFor(id, sc.environmentId, before.id);
+      console.log(`${svc}: redesplegado con su misma imagen → ${d.status}`);
+      if (d.status !== "SUCCESS") process.exit(1);
+    };
+    // Primero el plano de control (acepta el token nuevo); si falla, core no se toca
+    if (plan.cpTokens) {
+      await upsert("controlplane", "CP_TOKENS", plan.cpTokens);
+      console.log(`controlplane: CP_TOKENS con «${CORE_COMMERCE_TOKEN_ID}» (${JSON.parse(plan.cpTokens).length} entradas)`);
+      await redeploy("controlplane");
+    }
+    for (const c of plan.core) {
+      await upsert("core", c.name, c.generate ? newToken : c.value!);
+      console.log(`core: ${c.name} → ${c.generate ? "generado" : c.value}`);
+    }
+    if (plan.core.length) await redeploy("core");
+    const after = await read("controlplane", true);
+    console.log(`controlplane.CP_COMMERCE_PURCHASES_ENABLED después: ${after.CP_COMMERCE_PURCHASES_ENABLED === "1" ? "1" : "apagada"}`);
     return;
   }
   if (cmd === "mail-production") {

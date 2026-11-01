@@ -81,6 +81,8 @@ on:
           - avisos-solicitudes-estado
           - avisos-solicitudes-activar
           - avisos-solicitudes-desactivar
+          - connect-canal-estado
+          - connect-canal-activar
           - medicion-preparar
           - medicion-comprobar
           - dominio-plataforma-live-estado
@@ -142,7 +144,7 @@ jobs:
     # Production: lo ordinario (publicar, revertir, solo lectura, copias y revisiones auditadas; ORDINARY_PRODUCTION_ACTIONS
     # en scripts/deploy/esRailwayLib.ts) va sin aprobación; lo extraordinario (variables, secretos, correo real, almacenamiento,
     # migraciones o restauraciones a mano), por el entorno protegido. Orden permanente del propietario (26/10/2026).
-    environment: ${{ inputs.environment == 'production' && (contains(fromJSON('["publicar","estado","verificar-token","comprobar-salud","diagnostico-almacenamiento","copia-de-seguridad","verificar-copia","migraciones-plataforma-simulacion","migraciones-simulacion","verificar-migraciones","huerfanos","correo-acceso-estado","avisos-solicitudes-estado","medicion-comprobar","simular-purga-empresas-prueba","catalogo-revision","catalogo-revision-aplicar","catalogo-fichas","catalogo-fichas-aplicar","catalogo-fichas-publicar","catalogo-fichas-publicar-aplicar","catalogo-fichas-revertir","catalogo-fichas-revertir-aplicar","catalogo-fichas-integridad"]'), inputs.action) || startsWith(inputs.action, 'revertir-')) && 'elephant-source-production-despliegue' || format('elephant-source-{0}', inputs.environment) }}
+    environment: ${{ inputs.environment == 'production' && (contains(fromJSON('["publicar","estado","verificar-token","comprobar-salud","diagnostico-almacenamiento","copia-de-seguridad","verificar-copia","migraciones-plataforma-simulacion","migraciones-simulacion","verificar-migraciones","huerfanos","correo-acceso-estado","avisos-solicitudes-estado","connect-canal-estado","medicion-comprobar","simular-purga-empresas-prueba","catalogo-revision","catalogo-revision-aplicar","catalogo-fichas","catalogo-fichas-aplicar","catalogo-fichas-publicar","catalogo-fichas-publicar-aplicar","catalogo-fichas-revertir","catalogo-fichas-revertir-aplicar","catalogo-fichas-integridad"]'), inputs.action) || startsWith(inputs.action, 'revertir-')) && 'elephant-source-production-despliegue' || format('elephant-source-{0}', inputs.environment) }}
     timeout-minutes: 60
     env:
       RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
@@ -290,6 +292,17 @@ jobs:
             avisos-solicitudes-estado) pnpm exec tsx scripts/deploy/esRailway.ts lead-notices-mail --env "${ES_ENV}" --accion estado ;;
             avisos-solicitudes-activar) pnpm exec tsx scripts/deploy/esRailway.ts lead-notices-mail --env "${ES_ENV}" --accion activar --allow "${ES_MAIL_ALLOW}" ;;
             avisos-solicitudes-desactivar) pnpm exec tsx scripts/deploy/esRailway.ts lead-notices-mail --env "${ES_ENV}" --accion desactivar ;;
+          esac
+
+      # Canal del Core con el plano de control (catálogo de Elephant Connect, compra, desistimiento y soporte desde el
+      # panel): estado (lectura) y activar (protegida: token propio del Core en CP_TOKENS conservando las demás entradas,
+      # CP_COMMERCE_URL y CP_COMMERCE_TOKEN en core). No abre la compra en línea (CP_COMMERCE_PURCHASES_ENABLED no se toca).
+      - name: Canal del Core con el plano de control
+        if: startsWith(inputs.action, 'connect-canal-')
+        run: |
+          case "${ES_ACTION}" in
+            connect-canal-estado) pnpm exec tsx scripts/deploy/esRailway.ts connect-channel --env "${ES_ENV}" --accion estado ;;
+            connect-canal-activar) pnpm exec tsx scripts/deploy/esRailway.ts connect-channel --env "${ES_ENV}" --accion activar ;;
           esac
 
       # Correo de CONTRATOS de servicios externos (contract_invitation), solo production y solo el plano de control:

@@ -963,3 +963,93 @@ export function criticalChanges(files: string[], diff: string): string[] {
   for (const { file: f } of weakenedLines(effectiveChangedLines(diff), STRIPE_SAFEGUARDS)) out.add(`${f ? `${f}: ` : ""}cobros: se quita o cambia una salvaguarda de Stripe (firma de webhooks o modo live)`);
   return Array.from(out);
 }
+
+/**
+ * Canal del Core con el plano de control (`/cp/v1/commerce`): catálogo de Elephant Connect en el panel, compra,
+ * desistimiento y soporte. Sin `CP_COMMERCE_URL` y `CP_COMMERCE_TOKEN` en `core`, «Amplía tu empresa» no puede
+ * consultar el catálogo publicado.
+ *
+ * El token del Core es propio y mínimo: una entrada `core-commerce` en `controlplane.CP_TOKENS` (solo su hash) con
+ * los ámbitos del Core. La lista existente se conserva entera: se lee, se añade o sustituye solo `core-commerce` y se
+ * escribe. Repetirlo con el canal ya correcto no cambia nada. Nunca toca `CP_COMMERCE_PURCHASES_ENABLED`: abrir la
+ * compra en línea es otra decisión.
+ */
+export const CORE_COMMERCE_TOKEN_ID = "core-commerce";
+export const CORE_COMMERCE_SCOPES = ["commerce:purchase", "commerce:withdrawal", "commerce:support"] as const;
+export const coreCommerceUrlRef = (port: string) => `http://\${{controlplane.RAILWAY_PRIVATE_DOMAIN}}:${port}`;
+
+export interface CommerceChannelStatus {
+  url: string | null;
+  tokenDefined: boolean;
+  /** Id de la entrada de CP_TOKENS que acepta el token del Core (null: ninguna). */
+  acceptedBy: string | null;
+  scopes: string[];
+  missingScopes: string[];
+  purchasesEnabled: boolean;
+}
+
+export interface CommerceChannelPlan {
+  status: CommerceChannelStatus;
+  /** CP_TOKENS nuevo (JSON) o null si no cambia. */
+  cpTokens: string | null;
+  /** Variables de core que cambian (el token se marca como `generate`: lo crea quien aplica el plan). */
+  core: Array<{ name: string; value?: string; generate?: true }>;
+  problems: string[];
+}
+
+type TokenEntry = { id?: unknown; sha256?: unknown; scopes?: unknown };
+
+/**
+ * Qué hace falta para que el Core hable con el plano de control. `raw` son las variables SIN resolver (para ver las
+ * referencias) y `coreToken` el valor efectivo del token del Core (solo se usa su hash; nunca se devuelve).
+ * `newTokenSha256` es el hash del token que se pondría si hay que crearlo.
+ */
+export function commerceChannelPlan(raw: { controlplane: Record<string, string>; core: Record<string, string> }, o: { newTokenSha256: string }): CommerceChannelPlan {
+  const problems: string[] = [];
+  const cp = raw.controlplane;
+  const core = raw.core;
+  const port = (cp.PORT ?? cp.CP_PORT ?? "4100").trim();
+  const wantUrl = coreCommerceUrlRef(port);
+  let entries: TokenEntry[] = [];
+  const rawTokens = (cp.CP_TOKENS ?? "").trim();
+  if (!rawTokens) problems.push("controlplane no tiene CP_TOKENS: el plano de control no arrancaría sin él; no se toca");
+  else if (/\$\{\{/.test(rawTokens)) problems.push("CP_TOKENS es una referencia a otra variable: no se reescribe desde aquí");
+  else {
+    try {
+      const parsed = JSON.parse(rawTokens);
+      if (!Array.isArray(parsed)) problems.push("CP_TOKENS no es una lista JSON: no se toca");
+      else entries = parsed as TokenEntry[];
+    } catch {
+      problems.push("CP_TOKENS no es JSON válido: no se toca");
+    }
+  }
+  const coreToken = (core.CP_COMMERCE_TOKEN ?? "").trim();
+  const coreHash = coreToken && !/\$\{\{/.test(coreToken) ? createHash("sha256").update(coreToken).digest("hex") : null;
+  const accepted = coreHash ? entries.find((e) => e && e.sha256 === coreHash) : undefined;
+  const scopes = Array.isArray(accepted?.scopes) ? (accepted!.scopes as unknown[]).filter((s): s is string => typeof s === "string") : [];
+  const missingScopes = accepted ? CORE_COMMERCE_SCOPES.filter((s) => !scopes.includes(s)) : [...CORE_COMMERCE_SCOPES];
+  const url = (core.CP_COMMERCE_URL ?? "").trim() || null;
+  const status: CommerceChannelStatus = {
+    url,
+    tokenDefined: !!coreToken,
+    acceptedBy: accepted && typeof accepted.id === "string" ? accepted.id : null,
+    scopes,
+    missingScopes,
+    purchasesEnabled: cp.CP_COMMERCE_PURCHASES_ENABLED === "1",
+  };
+  const plan: CommerceChannelPlan = { status, cpTokens: null, core: [], problems };
+  if (problems.length) return plan;
+  // Un token del Core aceptado por OTRA entrada (p. ej. un token de arranque) no se toca: se informa
+  if (accepted && status.acceptedBy !== CORE_COMMERCE_TOKEN_ID) {
+    if (missingScopes.length) problems.push(`el token del Core lo acepta la entrada «${status.acceptedBy}», a la que le faltan ${missingScopes.join(", ")}: se revisa a mano`);
+  } else if (!accepted || missingScopes.length) {
+    if (!/^[a-f0-9]{64}$/.test(o.newTokenSha256)) problems.push("hash del token nuevo no válido");
+    else {
+      const kept = entries.filter((e) => !(e && e.id === CORE_COMMERCE_TOKEN_ID));
+      plan.cpTokens = JSON.stringify([...kept, { id: CORE_COMMERCE_TOKEN_ID, sha256: o.newTokenSha256, scopes: [...CORE_COMMERCE_SCOPES] }]);
+      plan.core.push({ name: "CP_COMMERCE_TOKEN", generate: true });
+    }
+  }
+  if (url !== wantUrl) plan.core.push({ name: "CP_COMMERCE_URL", value: wantUrl });
+  return plan;
+}
