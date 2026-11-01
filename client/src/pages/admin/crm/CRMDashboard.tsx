@@ -1,6 +1,8 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
 import { useSearch } from "wouter";
 import { trpc } from "@/lib/trpc";
+import { formatEur } from "@shared/creditNoteForm";
+import { formatDayEs } from "@shared/formatDay";
 import AdminLayout from "@/components/AdminLayout";
 import { WorkplaceLocks } from "@/components/connect/WorkplaceLocks";
 import { usePanelSubscription } from "@/hooks/usePanelSubscription";
@@ -459,7 +461,7 @@ function LeadDetailModal({
   const generateQuote = trpc.crm.leads.generateFromLead.useMutation({
     onSuccess: (result) => {
       toast.success(
-        `✨ Presupuesto ${result.quoteNumber} generado con ${result.itemCount} línea${result.itemCount !== 1 ? "s" : ""} — Total: ${result.total.toFixed(2)}€`,
+        `✨ Presupuesto ${result.quoteNumber} generado con ${result.itemCount} línea${result.itemCount !== 1 ? "s" : ""} — Total: ${formatEur(result.total)}`,
         { duration: 5000 }
       );
       utils.crm.leads.get.invalidate({ id: leadId });
@@ -627,7 +629,7 @@ function LeadDetailModal({
                   </div>
                   <div className="flex items-center gap-2">
                     <QuoteStatusBadge status={q.status as QuoteStatus} />
-                    <span className="text-sm font-bold text-orange-400">{Number(q.total).toFixed(2)} €</span>
+                    <span className="text-sm font-bold text-orange-400">{formatEur(Number(q.total))}</span>
                   </div>
                 </div>
               ))}
@@ -994,7 +996,7 @@ function LeadEditModal({
                             })}>
                             <span className="text-foreground/50">{p.productType === "experience" ? "🏊" : "📦"}</span>
                             <span>{p.title}</span>
-                            {p.basePrice && Number(p.basePrice) > 0 && <span className="ml-auto text-foreground/50">{Number(p.basePrice).toFixed(2)}€</span>}
+                            {p.basePrice && Number(p.basePrice) > 0 && <span className="ml-auto text-foreground/50">{formatEur(Number(p.basePrice))}</span>}
                           </button>
                         ))}
                       </div>
@@ -1675,7 +1677,7 @@ function NewReservationModal({ onClose }: { onClose: () => void }) {
                       const base = Number(p.basePrice ?? 0);
                       const pricing = p.pricingType ?? "per_person";
                       const priceLabel = base > 0
-                        ? `${base.toFixed(2)}€${pricing === "per_person" ? "/pers" : "/ud"}`
+                        ? `${formatEur(base)}${pricing === "per_person" ? "/pers" : "/ud"}`
                         : null;
                       return (
                         <button key={`${p.productType}-${p.id}`} type="button"
@@ -2085,7 +2087,7 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
                   value={item.quantity} onChange={(e) => updateItem(idx, "quantity", Number(e.target.value))} />
                 <Input aria-label={`Precio unitario de la línea ${idx + 1}`} className="col-span-2 bg-foreground/[0.05] border-foreground/[0.12] text-white text-sm text-right" type="number" min={0} step={0.01}
                   value={item.unitPrice} onChange={(e) => updateItem(idx, "unitPrice", Number(e.target.value))} />
-                <div className={`col-span-1 text-right text-sm font-semibold ${item.fiscalRegime === "reav" ? "text-amber-400" : "text-orange-400"}`}>{item.total.toFixed(2)} €</div>
+                <div className={`col-span-1 text-right text-sm font-semibold ${item.fiscalRegime === "reav" ? "text-amber-400" : "text-orange-400"}`}>{formatEur(item.total)}</div>
                 <Button size="sm" variant="ghost" className="col-span-1 text-foreground/40 hover:text-red-400 p-1" aria-label={`Quitar la línea ${idx + 1}`}
                   onClick={() => setItems((p) => p.filter((_, i) => i !== idx))} disabled={items.length === 1}>
                   <Trash2 className="w-3.5 h-3.5" />
@@ -2108,21 +2110,21 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
         <div className="bg-foreground/[0.05] rounded-xl p-4 space-y-1.5">
           {items.some(i => i.fiscalRegime === "reav") && items.some(i => i.fiscalRegime !== "reav") && (
             <>
-              <div className="flex justify-between text-sm text-foreground/65"><span>Base imponible (general)</span><span>{(discountedGeneral - taxAmount).toFixed(2)} €</span></div>
-              <div className="flex justify-between text-sm text-amber-400/70"><span>Subtotal REAV (sin IVA)</span><span>{(discountedSubtotal - discountedGeneral).toFixed(2)} €</span></div>
+              <div className="flex justify-between text-sm text-foreground/65"><span>Base imponible (general)</span><span>{formatEur((discountedGeneral - taxAmount))}</span></div>
+              <div className="flex justify-between text-sm text-amber-400/70"><span>Subtotal REAV (sin IVA)</span><span>{formatEur((discountedSubtotal - discountedGeneral))}</span></div>
             </>
           )}
           {!items.some(i => i.fiscalRegime === "reav") && (
-            <div className="flex justify-between text-sm text-foreground/65"><span>Base imponible</span><span>{baseImponible.toFixed(2)} €</span></div>
+            <div className="flex justify-between text-sm text-foreground/65"><span>Base imponible</span><span>{formatEur(baseImponible)}</span></div>
           )}
           {taxRowsD.map(row => (
-            <div key={row.rate} className="flex justify-between text-sm text-foreground/65"><span>IVA ({row.rate}%) · incluido en el PVP</span><span>{row.amount.toFixed(2)} €</span></div>
+            <div key={row.rate} className="flex justify-between text-sm text-foreground/65"><span>IVA ({row.rate}%) · incluido en el PVP</span><span>{formatEur(row.amount)}</span></div>
           ))}
           {items.every(i => i.fiscalRegime === "reav") && (
             <div className="text-xs text-amber-300/70 italic">Operación REAV — No procede IVA al cliente</div>
           )}
           <div className="flex justify-between text-base font-bold text-white border-t border-foreground/[0.12] pt-2 mt-2">
-            <span>TOTAL</span><span className="text-orange-400 text-xl">{total.toFixed(2)} €</span>
+            <span>TOTAL</span><span className="text-orange-400 text-xl">{formatEur(total)}</span>
           </div>
         </div>
 
@@ -2236,9 +2238,9 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
               const diff = Math.abs(sum - totalCents);
               return (
                 <div className={`text-xs px-3 py-1.5 rounded flex justify-between ${diff <= 1 ? "bg-emerald-500/10 text-emerald-400" : "bg-amber-500/10 text-amber-400"}`}>
-                  <span>Suma: {(sum / 100).toFixed(2)} €</span>
-                  <span>Total: {total.toFixed(2)} €</span>
-                  {diff > 1 && <span>⚠ Dif: {(diff / 100).toFixed(2)} €</span>}
+                  <span>Suma: {formatEur((sum / 100))}</span>
+                  <span>Total: {formatEur(total)}</span>
+                  {diff > 1 && <span>⚠ Dif: {formatEur((diff / 100))}</span>}
                 </div>
               );
             })()}
@@ -2549,7 +2551,7 @@ function QuoteBuilderModal({
                   onChange={(e) => updateItem(idx, "unitPrice", Number(e.target.value))}
                 />
                 <div className={`col-span-1 text-right text-sm font-semibold ${item.fiscalRegime === "reav" ? "text-amber-400" : "text-orange-400"}`}>
-                  {item.total.toFixed(2)} €
+                  {formatEur(item.total)}
                 </div>
                 <Button
                   size="sm"
@@ -2602,24 +2604,24 @@ function QuoteBuilderModal({
         <div className="bg-foreground/[0.05] rounded-xl p-4 space-y-1.5">
           {items.some(i => i.fiscalRegime === "reav") && items.some(i => i.fiscalRegime !== "reav") && (
             <>
-              <div className="flex justify-between text-sm text-foreground/65"><span>Base imponible (general)</span><span>{(discountedGeneral - taxAmount).toFixed(2)} €</span></div>
-              <div className="flex justify-between text-sm text-amber-400/70"><span>Subtotal REAV (sin IVA)</span><span>{(discountedSubtotal - discountedGeneral).toFixed(2)} €</span></div>
+              <div className="flex justify-between text-sm text-foreground/65"><span>Base imponible (general)</span><span>{formatEur((discountedGeneral - taxAmount))}</span></div>
+              <div className="flex justify-between text-sm text-amber-400/70"><span>Subtotal REAV (sin IVA)</span><span>{formatEur((discountedSubtotal - discountedGeneral))}</span></div>
             </>
           )}
           {!items.some(i => i.fiscalRegime === "reav") && (
-            <div className="flex justify-between text-sm text-foreground/65"><span>Base imponible</span><span>{baseImponible.toFixed(2)} €</span></div>
+            <div className="flex justify-between text-sm text-foreground/65"><span>Base imponible</span><span>{formatEur(baseImponible)}</span></div>
           )}
           {promoDiscount > 0 && (
-            <div className="flex justify-between text-sm text-green-400"><span>Descuento {promoData?.code}</span><span>-{promoDiscount.toFixed(2)} €</span></div>
+            <div className="flex justify-between text-sm text-green-400"><span>Descuento {promoData?.code}</span><span>-{formatEur(promoDiscount)}</span></div>
           )}
           {taxRowsB.map(row => (
-            <div key={row.rate} className="flex justify-between text-sm text-foreground/65"><span>IVA ({row.rate}%) · incluido en el PVP</span><span>{row.amount.toFixed(2)} €</span></div>
+            <div key={row.rate} className="flex justify-between text-sm text-foreground/65"><span>IVA ({row.rate}%) · incluido en el PVP</span><span>{formatEur(row.amount)}</span></div>
           ))}
           {items.every(i => i.fiscalRegime === "reav") && (
             <div className="text-xs text-amber-300/70 italic">Operación REAV — No procede IVA al cliente</div>
           )}
           <div className="flex justify-between text-base font-bold text-white border-t border-foreground/[0.12] pt-2 mt-2">
-            <span>TOTAL</span><span className="text-orange-400 text-xl">{total.toFixed(2)} €</span>
+            <span>TOTAL</span><span className="text-orange-400 text-xl">{formatEur(total)}</span>
           </div>
         </div>
 
@@ -2739,9 +2741,9 @@ function QuoteBuilderModal({
               const diff = Math.abs(sum - totalCents);
               return (
                 <div className={`text-xs px-3 py-1.5 rounded flex justify-between ${diff <= 1 ? "bg-emerald-500/10 text-emerald-400" : "bg-amber-500/10 text-amber-400"}`}>
-                  <span>Suma cuotas: {(sum / 100).toFixed(2)} €</span>
-                  <span>Total: {total.toFixed(2)} €</span>
-                  {diff > 1 && <span>⚠ Dif: {(diff / 100).toFixed(2)} €</span>}
+                  <span>Suma cuotas: {formatEur((sum / 100))}</span>
+                  <span>Total: {formatEur(total)}</span>
+                  {diff > 1 && <span>⚠ Dif: {formatEur((diff / 100))}</span>}
                 </div>
               );
             })()}
@@ -2871,7 +2873,7 @@ function ProductAutocompleteInput({
                 {r.fiscalRegime === "reav" && (
                   <span className="text-[10px] text-amber-400 font-semibold">REAV</span>
                 )}
-                <span className="text-sm font-semibold text-orange-400">{r.unitPrice.toFixed(2)} €</span>
+                <span className="text-sm font-semibold text-orange-400">{formatEur(r.unitPrice)}</span>
               </div>
             </button>
           ))}
@@ -2913,7 +2915,7 @@ function QuoteEditModal({
 
   const applyDiscountCodeMut = trpc.crm.timeline.applyDiscountCode.useMutation({
     onSuccess: (result) => {
-      toast.success(`Bono ${result.code} aplicado — ${result.discountEur.toFixed(2)} € descontados`);
+      toast.success(`Bono ${result.code} aplicado — ${formatEur(result.discountEur)} descontados`);
       setDiscount(result.discountEur);
       setShowBonoPanel(false);
       setBonoCode("");
@@ -3068,7 +3070,7 @@ function QuoteEditModal({
                   value={item.quantity} onChange={(e) => updateItem(idx, "quantity", Number(e.target.value))} />
                 <Input className="col-span-2 bg-foreground/[0.05] border-foreground/[0.12] text-white text-sm text-right" type="number" min={0} step={0.01}
                   value={item.unitPrice} onChange={(e) => updateItem(idx, "unitPrice", Number(e.target.value))} />
-                <div className={`col-span-1 text-right text-sm font-semibold ${item.fiscalRegime === "reav" ? "text-amber-400" : "text-orange-400"}`}>{item.total.toFixed(2)} €</div>
+                <div className={`col-span-1 text-right text-sm font-semibold ${item.fiscalRegime === "reav" ? "text-amber-400" : "text-orange-400"}`}>{formatEur(item.total)}</div>
                 <Button size="sm" variant="ghost" className="col-span-1 text-foreground/40 hover:text-red-400 p-1"
                   onClick={() => setItems((p) => p.filter((_, i) => i !== idx))} disabled={items.length === 1}>
                   <Trash2 className="w-3.5 h-3.5" />
@@ -3089,27 +3091,27 @@ function QuoteEditModal({
         <div className="bg-foreground/[0.05] rounded-xl p-4 space-y-1.5">
           {items.some(i => i.fiscalRegime === "reav") && items.some(i => i.fiscalRegime !== "reav") && (
             <>
-              <div className="flex justify-between text-sm text-foreground/65"><span>Base imponible (general)</span><span>{(discountedBase - taxAmount).toFixed(2)} €</span></div>
-              <div className="flex justify-between text-sm text-amber-400/70"><span>Subtotal REAV (sin IVA)</span><span>{(subtotal - generalSubtotalEdit).toFixed(2)} €</span></div>
+              <div className="flex justify-between text-sm text-foreground/65"><span>Base imponible (general)</span><span>{formatEur((discountedBase - taxAmount))}</span></div>
+              <div className="flex justify-between text-sm text-amber-400/70"><span>Subtotal REAV (sin IVA)</span><span>{formatEur((subtotal - generalSubtotalEdit))}</span></div>
             </>
           )}
           {!items.some(i => i.fiscalRegime === "reav") && (
-            <div className="flex justify-between text-sm text-foreground/65"><span>Base imponible</span><span>{baseImponible.toFixed(2)} €</span></div>
+            <div className="flex justify-between text-sm text-foreground/65"><span>Base imponible</span><span>{formatEur(baseImponible)}</span></div>
           )}
           {discount > 0 && (
             <div className="flex justify-between text-sm text-purple-300">
               <span className="flex items-center gap-1"><Gift className="w-3 h-3" /> Descuento / bono</span>
-              <span>−{discount.toFixed(2)} €</span>
+              <span>−{formatEur(discount)}</span>
             </div>
           )}
           {taxRowsE.map(row => (
-            <div key={row.rate} className="flex justify-between text-sm text-foreground/65"><span>IVA ({row.rate}%) · incluido en el PVP</span><span>{row.amount.toFixed(2)} €</span></div>
+            <div key={row.rate} className="flex justify-between text-sm text-foreground/65"><span>IVA ({row.rate}%) · incluido en el PVP</span><span>{formatEur(row.amount)}</span></div>
           ))}
           {items.every(i => i.fiscalRegime === "reav") && (
             <div className="text-xs text-amber-300/70 italic">Operación REAV — No procede IVA al cliente</div>
           )}
           <div className="flex justify-between text-base font-bold text-white border-t border-foreground/[0.12] pt-2">
-            <span>TOTAL</span><span className="text-orange-400 text-xl">{total.toFixed(2)} €</span>
+            <span>TOTAL</span><span className="text-orange-400 text-xl">{formatEur(total)}</span>
           </div>
         </div>
 
@@ -3161,14 +3163,14 @@ function QuoteEditModal({
                         {bonoPreview.status === "canjeado" ? "Ya canjeado" : bonoPreview.status === "caducado" ? "Caducado" : "Activo"}
                       </span>
                     </div>
-                    {bonoPreview.value > 0 && <p className="text-white font-bold">{bonoPreview.value.toFixed(2)} € de descuento</p>}
+                    {bonoPreview.value > 0 && <p className="text-white font-bold">{formatEur(bonoPreview.value)} de descuento</p>}
                     {bonoPreview.activityName && <p className="text-foreground/50">{bonoPreview.activityName}</p>}
                     {(bonoPreview.status === "enviado" || bonoPreview.status === "generado") && (
                       <Button size="sm" className="w-full bg-purple-600 hover:bg-purple-700 text-white text-xs h-7"
                         disabled={applyDiscountCodeMut.isPending}
                         onClick={() => applyDiscountCodeMut.mutate({ id: quoteId, code: bonoPreview.code })}
                       >
-                        {applyDiscountCodeMut.isPending ? "Aplicando..." : `Confirmar — descontar ${bonoPreview.value.toFixed(2)} €`}
+                        {applyDiscountCodeMut.isPending ? "Aplicando..." : `Confirmar — descontar ${formatEur(bonoPreview.value)}`}
                       </Button>
                     )}
                     {bonoPreview.status !== "enviado" && bonoPreview.status !== "generado" && (
@@ -3748,8 +3750,8 @@ function QuoteDetailModal({
                 <tr key={i} className="border-t border-foreground/[0.08]">
                   <td className="px-4 py-2.5 text-sm text-foreground/80">{item.description}</td>
                   <td className="px-4 py-2.5 text-sm text-foreground/65 text-center">{item.quantity}</td>
-                  <td className="px-4 py-2.5 text-sm text-foreground/65 text-right">{Number(item.unitPrice).toFixed(2)} €</td>
-                  <td className="px-4 py-2.5 text-sm font-semibold text-orange-400 text-right">{Number(item.total).toFixed(2)} €</td>
+                  <td className="px-4 py-2.5 text-sm text-foreground/65 text-right">{formatEur(Number(item.unitPrice))}</td>
+                  <td className="px-4 py-2.5 text-sm font-semibold text-orange-400 text-right">{formatEur(Number(item.total))}</td>
                 </tr>
               ))}
               {hasReav && (
@@ -3764,8 +3766,8 @@ function QuoteDetailModal({
                         <span className="ml-1.5 text-xs bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded">REAV</span>
                       </td>
                       <td className="px-4 py-2.5 text-sm text-foreground/65 text-center">{item.quantity}</td>
-                      <td className="px-4 py-2.5 text-sm text-foreground/65 text-right">{Number(item.unitPrice).toFixed(2)} €</td>
-                      <td className="px-4 py-2.5 text-sm font-semibold text-amber-400 text-right">{Number(item.total).toFixed(2)} €</td>
+                      <td className="px-4 py-2.5 text-sm text-foreground/65 text-right">{formatEur(Number(item.unitPrice))}</td>
+                      <td className="px-4 py-2.5 text-sm font-semibold text-amber-400 text-right">{formatEur(Number(item.total))}</td>
                     </tr>
                   ))}
                 </>
@@ -3775,22 +3777,22 @@ function QuoteDetailModal({
           <div className="px-4 py-3 border-t border-foreground/[0.12] space-y-1">
             {Number(quote.discount) > 0 && (
               <div className="flex justify-between text-sm text-foreground/60">
-                <span>Descuento</span><span>-{Number(quote.discount).toFixed(2)} €</span>
+                <span>Descuento</span><span>-{formatEur(Number(quote.discount))}</span>
               </div>
             )}
             {hasGeneral && hasReav && (
               <>
                 <div className="flex justify-between text-sm text-foreground/60">
-                  <span>Subtotal rég. general</span><span>{generalItems.reduce((s,i) => s+i.total,0).toFixed(2)} €</span>
+                  <span>Subtotal rég. general</span><span>{formatEur(generalItems.reduce((s,i) => s+i.total,0))}</span>
                 </div>
                 <div className="flex justify-between text-sm text-amber-400/70">
-                  <span>Subtotal REAV (sin IVA)</span><span>{reavItems.reduce((s,i) => s+i.total,0).toFixed(2)} €</span>
+                  <span>Subtotal REAV (sin IVA)</span><span>{formatEur(reavItems.reduce((s,i) => s+i.total,0))}</span>
                 </div>
               </>
             )}
             {Number(quote.tax) > 0 && (
               <div className="flex justify-between text-sm text-foreground/60">
-                <span>IVA (21%)</span><span>{Number(quote.tax).toFixed(2)} €</span>
+                <span>IVA (21%)</span><span>{formatEur(Number(quote.tax))}</span>
               </div>
             )}
             {hasReav && !hasGeneral && (
@@ -3798,7 +3800,7 @@ function QuoteDetailModal({
             )}
             <div className="flex justify-between items-center pt-1">
               <span className="font-bold text-foreground">TOTAL</span>
-              <span className="text-xl font-bold text-orange-400">{Number(quote.total).toFixed(2)} €</span>
+              <span className="text-xl font-bold text-orange-400">{formatEur(Number(quote.total))}</span>
             </div>
           </div>
         </div>
@@ -4010,7 +4012,7 @@ function QuoteDetailModal({
                     <div className="flex justify-between items-center pt-1 text-xs text-foreground/50">
                       <span>Total plan: <strong className="text-white">{(total / 100).toLocaleString("es-ES", { minimumFractionDigits: 2 })} €</strong></span>
                       {Math.abs(total - quoteTotalCents) > 1 && (
-                        <span className="text-amber-400">⚠ Diferencia con presupuesto ({(quoteTotalCents / 100).toFixed(2)} €)</span>
+                        <span className="text-amber-400">⚠ Diferencia con presupuesto ({formatEur((quoteTotalCents / 100))})</span>
                       )}
                     </div>
                   );
@@ -4106,9 +4108,9 @@ function QuoteDetailModal({
                   const diff = Math.abs(sum - quoteTotalCents);
                   return (
                     <div className={`text-xs px-3 py-1.5 rounded flex justify-between ${diff <= 1 ? "bg-emerald-500/10 text-emerald-400" : "bg-amber-500/10 text-amber-400"}`}>
-                      <span>Suma cuotas: {(sum / 100).toFixed(2)} €</span>
-                      <span>Total presupuesto: {Number(quote.total ?? 0).toFixed(2)} €</span>
-                      {diff > 1 && <span>⚠ Diferencia: {(diff / 100).toFixed(2)} €</span>}
+                      <span>Suma cuotas: {formatEur((sum / 100))}</span>
+                      <span>Total presupuesto: {formatEur(Number(quote.total ?? 0))}</span>
+                      {diff > 1 && <span>⚠ Diferencia: {formatEur((diff / 100))}</span>}
                     </div>
                   );
                 })()}
@@ -5060,7 +5062,7 @@ function ReservationDetailModal({
                     )}
                   </span>
                   <span className="text-emerald-400 font-semibold">
-                    −{Number((res as any).discountAmount ?? (res as any).discount_amount).toFixed(2)} €
+                    −{formatEur(Number((res as any).discountAmount ?? (res as any).discount_amount))}
                   </span>
                 </div>
               )}
@@ -5201,8 +5203,8 @@ function ReservationDetailModal({
                         <div key={`g-${i}`} className="grid grid-cols-12 gap-2 text-sm py-1">
                           <div className="col-span-6 text-foreground/80">{item.description}</div>
                           <div className="col-span-2 text-center text-foreground/65">{item.quantity}</div>
-                          <div className="col-span-2 text-right text-foreground/65">{Number(item.unitPrice).toFixed(2)} €</div>
-                          <div className="col-span-2 text-right text-orange-400 font-medium">{Number(item.total).toFixed(2)} €</div>
+                          <div className="col-span-2 text-right text-foreground/65">{formatEur(Number(item.unitPrice))}</div>
+                          <div className="col-span-2 text-right text-orange-400 font-medium">{formatEur(Number(item.total))}</div>
                         </div>
                       ))}
                     </>
@@ -5218,8 +5220,8 @@ function ReservationDetailModal({
                             <span className="text-[10px] font-bold text-amber-400 bg-amber-400/10 border border-amber-400/20 px-1 py-0.5 rounded">REAV</span>
                           </div>
                           <div className="col-span-2 text-center text-foreground/65">{item.quantity}</div>
-                          <div className="col-span-2 text-right text-foreground/65">{Number(item.unitPrice).toFixed(2)} €</div>
-                          <div className="col-span-2 text-right text-orange-400 font-medium">{Number(item.total).toFixed(2)} €</div>
+                          <div className="col-span-2 text-right text-foreground/65">{formatEur(Number(item.unitPrice))}</div>
+                          <div className="col-span-2 text-right text-orange-400 font-medium">{formatEur(Number(item.total))}</div>
                         </div>
                       ))}
                     </>
@@ -5229,18 +5231,18 @@ function ReservationDetailModal({
                     {generalItems.length > 0 && reavItems.length > 0 && (
                       <div className="flex justify-between text-xs text-foreground/50">
                         <span>Subtotal rég. general</span>
-                        <span>{generalItems.reduce((s, i) => s + Number(i.total), 0).toFixed(2)} €</span>
+                        <span>{formatEur(generalItems.reduce((s, i) => s + Number(i.total), 0))}</span>
                       </div>
                     )}
                     {reavItems.length > 0 && (
                       <div className="flex justify-between text-xs text-amber-400/60">
                         <span>Subtotal REAV (sin IVA)</span>
-                        <span>{reavItems.reduce((s, i) => s + Number(i.total), 0).toFixed(2)} €</span>
+                        <span>{formatEur(reavItems.reduce((s, i) => s + Number(i.total), 0))}</span>
                       </div>
                     )}
                     <div className="flex justify-between text-sm font-bold text-foreground">
                       <span>Total</span>
-                      <span className="text-orange-400">{allItems.reduce((s, i) => s + Number(i.total), 0).toFixed(2)} €</span>
+                      <span className="text-orange-400">{formatEur(allItems.reduce((s, i) => s + Number(i.total), 0))}</span>
                     </div>
                   </div>
                 </div>
@@ -5262,7 +5264,7 @@ function ReservationDetailModal({
                       </div>
                     </div>
                     <div className="flex items-center gap-3">
-                      <span className="text-sm font-bold text-orange-400">{Number(inv.total).toFixed(2)} €</span>
+                      <span className="text-sm font-bold text-orange-400">{formatEur(Number(inv.total))}</span>
                       {inv.pdfUrl && (
                         <a
                           href={inv.pdfUrl}
@@ -7193,7 +7195,7 @@ export default function CRMDashboard() {
                         </div>
                       </td>
                       <td className="px-4 py-3 text-right">
-                        <span className="text-sm font-bold text-foreground">{Number(quote.total).toFixed(2)} €</span>
+                        <span className="text-sm font-bold text-foreground">{formatEur(Number(quote.total))}</span>
                       </td>
                       <td className="px-4 py-3 hidden sm:table-cell">
                         <div className="text-xs text-foreground/50">
@@ -7534,7 +7536,7 @@ export default function CRMDashboard() {
                       {/* F. Actividad */}
                       <td className="px-4 py-3 hidden lg:table-cell">
                         {res.bookingDate ? (
-                          <div className="text-xs text-foreground/70 font-medium">{res.bookingDate}</div>
+                          <div className="text-xs text-foreground/70 font-medium">{formatDayEs(res.bookingDate)}</div>
                         ) : (
                           <span className="text-xs text-foreground/30">—</span>
                         )}
@@ -7542,9 +7544,9 @@ export default function CRMDashboard() {
                       {/* Importe */}
                       <td className="px-4 py-3 text-right whitespace-nowrap align-top">
                         <div className="flex flex-col items-end leading-tight">
-                          <span className="text-sm font-bold text-orange-400">{((res.amountPaid ?? 0) / 100).toFixed(2)} €</span>
+                          <span className="text-sm font-bold text-orange-400">{formatEur(((res.amountPaid ?? 0) / 100))}</span>
                           {res.amountPaid !== res.amountTotal && (
-                            <span className="text-xs text-foreground/40 whitespace-nowrap">{((res.amountTotal ?? 0) / 100).toFixed(2)} € total</span>
+                            <span className="text-xs text-foreground/40 whitespace-nowrap">{formatEur(((res.amountTotal ?? 0) / 100))} total</span>
                           )}
                         </div>
                       </td>
@@ -7755,23 +7757,23 @@ export default function CRMDashboard() {
                   </div>
                   <div className="bg-foreground/[0.03] border border-foreground/[0.10] rounded-xl p-3 text-center">
                     <div className="text-xs text-foreground/50 mb-1">Base imponible</div>
-                    <div className="text-lg font-bold text-sky-400">{invoicesData.summary.subtotal.toFixed(2)} €</div>
+                    <div className="text-lg font-bold text-sky-400">{formatEur(invoicesData.summary.subtotal)}</div>
                   </div>
                   <div className="bg-orange-500/10 border border-orange-500/20 rounded-xl p-3 text-center">
                     <div className="text-xs text-orange-300/60 mb-1">Bruto (IVA incl.)</div>
-                    <div className="text-lg font-bold text-orange-400">{invoicesData.summary.grandTotal.toFixed(2)} €</div>
-                    <div className="text-xs text-foreground/40">IVA: {invoicesData.summary.tax.toFixed(2)} €</div>
+                    <div className="text-lg font-bold text-orange-400">{formatEur(invoicesData.summary.grandTotal)}</div>
+                    <div className="text-xs text-foreground/40">IVA: {formatEur(invoicesData.summary.tax)}</div>
                   </div>
                   {(invoicesData.summary as any).abonosTotal > 0 && (
                     <div className="bg-violet-500/10 border border-violet-500/20 rounded-xl p-3 text-center">
                       <div className="text-xs text-violet-300/60 mb-1">Total abonos</div>
-                      <div className="text-lg font-bold text-violet-400">-{(invoicesData.summary as any).abonosTotal.toFixed(2)} €</div>
+                      <div className="text-lg font-bold text-violet-400">-{formatEur((invoicesData.summary as any).abonosTotal)}</div>
                     </div>
                   )}
                   {(invoicesData.summary as any).abonosTotal > 0 && (
                     <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-3 text-center">
                       <div className="text-xs text-emerald-300/60 mb-1">Neto real</div>
-                      <div className="text-lg font-bold text-emerald-400">{(invoicesData.summary as any).netTotal.toFixed(2)} €</div>
+                      <div className="text-lg font-bold text-emerald-400">{formatEur((invoicesData.summary as any).netTotal)}</div>
                     </div>
                   )}
                 </div>
@@ -7871,9 +7873,9 @@ export default function CRMDashboard() {
                         </td>
                         <td className="px-4 py-3 text-right">
                           {inv.invoiceType === "abono" ? (
-                            <span className="text-sm font-bold text-violet-400">{Number(inv.total).toFixed(2)} €</span>
+                            <span className="text-sm font-bold text-violet-400">{formatEur(Number(inv.total))}</span>
                           ) : (
-                            <span className="text-sm font-bold text-orange-400">{Number(inv.total).toFixed(2)} €</span>
+                            <span className="text-sm font-bold text-orange-400">{formatEur(Number(inv.total))}</span>
                           )}
                         </td>
                         <td className="px-4 py-3 hidden sm:table-cell">
@@ -9334,7 +9336,7 @@ function BonosManager({ onOpenCancellation, onOpenReservation }: { onOpenCancell
           { label: "Activos",        value: kpis?.activos ?? 0, cls: "border-green-500/20" },
           { label: "Canjeados",      value: kpis?.canjeados ?? 0, cls: "border-purple-500/20" },
           { label: "Caducados",      value: kpis?.caducados ?? 0, cls: "border-amber-500/20" },
-          { label: "Importe pend.", value: `${(kpis?.importePendiente ?? 0).toFixed(2)} €`, cls: "border-green-500/20" },
+          { label: "Importe pend.", value: `${formatEur((kpis?.importePendiente ?? 0))}`, cls: "border-green-500/20" },
         ].map(({ label, value, cls }) => (
           <div key={label} className={`bg-foreground/[0.03] border ${cls} rounded-xl p-4`}>
             <p className="text-foreground/50 text-xs font-medium uppercase tracking-wide mb-1">{label}</p>
@@ -9409,7 +9411,7 @@ function BonosManager({ onOpenCancellation, onOpenReservation }: { onOpenCancell
 
                     {/* Valor */}
                     <td className="px-4 py-3">
-                      <span className="text-orange-400 font-bold font-mono">{Number(v.value).toFixed(2)} €</span>
+                      <span className="text-orange-400 font-bold font-mono">{formatEur(Number(v.value))}</span>
                       {v.redeemedAt && (
                         <p className="text-purple-300/60 text-xs mt-0.5">
                           Canjeado {new Date(v.redeemedAt).toLocaleDateString("es-ES")}
@@ -9636,7 +9638,7 @@ function BonosManager({ onOpenCancellation, onOpenReservation }: { onOpenCancell
               <div className="bg-foreground/[0.05] rounded-xl p-3 space-y-1">
                 <div className="flex justify-between text-sm">
                   <span className="text-foreground/50">Valor</span>
-                  <span className="text-orange-400 font-bold font-mono">{Number(voucherDetail.value).toFixed(2)} €</span>
+                  <span className="text-orange-400 font-bold font-mono">{formatEur(Number(voucherDetail.value))}</span>
                 </div>
                 {voucherDetail.activityName && (
                   <div className="flex justify-between text-sm">
@@ -9900,7 +9902,7 @@ function PagosPendientesTab() {
                     </td>
                     <td className="px-4 py-3">
                       <span className="text-white font-semibold text-sm">
-                        {(row.amountCents / 100).toFixed(2)} €
+                        {formatEur((row.amountCents / 100))}
                       </span>
                     </td>
                     <td className="px-4 py-3">

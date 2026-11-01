@@ -10,6 +10,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Button } from "@/components/ui/button";
 import { Printer, X } from "lucide-react";
 import { trpc } from "@/lib/trpc";
+import { formatEur } from "@shared/creditNoteForm";
+import { formatDayEs } from "@shared/formatDay";
 import { displayWebsite } from "@/hooks/usePanelBrand";
 import { ticketHeaderLines } from "@shared/ticketHeaderLines";
 
@@ -62,7 +64,7 @@ const CHANNEL_LABELS: Record<string, string> = {
 
 const fmt = (cents: number | null | undefined): string => {
   const n = (cents ?? 0) / 100;
-  return Number.isFinite(n) ? n.toFixed(2) : "0.00";
+  return formatEur(Number.isFinite(n) ? n : 0);
 };
 
 function printThermalTicket80mm(innerHtml: string, ticketNumber: string) {
@@ -216,7 +218,7 @@ export default function ReservationTicket({ open, reservation, onClose }: Props)
             <div className="line" style={{ borderTop: "1px dashed #000", margin: "4px 0" }} />
             {r.bookingDate && (
               <div style={{ marginBottom: "2px" }}>
-                Fecha actividad: <span className="bold" style={{ fontWeight: 700 }}>{r.bookingDate}</span>
+                Fecha actividad: <span className="bold" style={{ fontWeight: 700 }}>{formatDayEs(r.bookingDate)}</span>
                 {r.selectedTime ? ` · ${r.selectedTime}` : ""}
               </div>
             )}
@@ -226,31 +228,31 @@ export default function ReservationTicket({ open, reservation, onClose }: Props)
                 {r.productName ?? "Reserva"}
               </div>
               <div className="row" style={{ display: "flex", justifyContent: "space-between" }}>
-                <span>{people} x {fmt(unitPriceCents)}€</span>
-                <span>{fmt(r.amountTotal)}€</span>
+                <span>{people} x {fmt(unitPriceCents)}</span>
+                <span>{fmt(r.amountTotal)}</span>
               </div>
             </div>
             <div className="line" style={{ borderTop: "1px dashed #000", margin: "4px 0" }} />
             <div className="row" style={{ display: "flex", justifyContent: "space-between" }}>
               <span>Subtotal</span>
-              <span>{fmt(r.amountTotal)}€</span>
+              <span>{fmt(r.amountTotal)}</span>
             </div>
             <div className="line" style={{ borderTop: "1px dashed #000", margin: "4px 0" }} />
             <div className="row total" style={{ display: "flex", justifyContent: "space-between", fontSize: "17px", fontWeight: 700, padding: "4px 0" }}>
               <span>TOTAL</span>
-              <span>{fmt(r.amountTotal)}€</span>
+              <span>{fmt(r.amountTotal)}</span>
             </div>
             {(r.amountPaid ?? 0) > 0 && (r.amountPaid ?? 0) !== (r.amountTotal ?? 0) && (
               <div className="row" style={{ display: "flex", justifyContent: "space-between" }}>
                 <span>Pagado</span>
-                <span>{fmt(r.amountPaid)}€</span>
+                <span>{fmt(r.amountPaid)}</span>
               </div>
             )}
             <div className="line" style={{ borderTop: "1px dashed #000", margin: "4px 0" }} />
             {paymentLabel && (
               <div className="row" style={{ display: "flex", justifyContent: "space-between" }}>
                 <span>{paymentLabel}</span>
-                <span>{fmt(r.amountPaid ?? r.amountTotal)}€</span>
+                <span>{fmt(r.amountPaid ?? r.amountTotal)}</span>
               </div>
             )}
             {r.invoiceNumber && (

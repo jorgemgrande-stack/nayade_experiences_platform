@@ -9,6 +9,8 @@ import { Link } from "wouter";
 import { CheckCircle, Clock, XCircle, ArrowRight, Phone, Mail, RefreshCw } from "lucide-react";
 import PublicLayout from "@/components/PublicLayout";
 import { trpc } from "@/lib/trpc";
+import { formatEur } from "@shared/creditNoteForm";
+import { formatDayEs } from "@shared/formatDay";
 import { usePublicContact } from "@/hooks/usePublicPhone";
 import { useMarketingConsent } from "@/hooks/useMarketingConsent";
 import { trackEvent } from "@/lib/meta-pixel/client";
@@ -199,7 +201,7 @@ export default function ReservaOk() {
   if (data.status === "paid") {
     // Usar amountPaid si está disponible (importe real cobrado), si no amountTotal
     const paidCents = data.amountPaid ?? data.amountTotal;
-    const amountEuros = paidCents ? (paidCents / 100).toFixed(2) : null;
+    const amountEuros = paidCents ? formatEur(paidCents / 100) : null;
     const isQuotePayment = data.quoteSource === "presupuesto";
     return (
       <PublicLayout>
@@ -228,7 +230,7 @@ export default function ReservaOk() {
               {data.bookingDate && (
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Fecha</span>
-                  <span className="font-medium text-foreground">{data.bookingDate}</span>
+                  <span className="font-medium text-foreground">{formatDayEs(data.bookingDate)}</span>
                 </div>
               )}
               {!isQuotePayment && data.people && (
@@ -254,7 +256,7 @@ export default function ReservaOk() {
               {amountEuros && (
                 <div className="flex justify-between pt-3 border-t border-border">
                   <span className="font-semibold text-foreground">Total pagado</span>
-                  <span className="font-bold text-emerald-600 text-lg">{amountEuros} €</span>
+                  <span className="font-bold text-emerald-600 text-lg">{amountEuros}</span>
                 </div>
               )}
               <div className="flex justify-between text-xs text-muted-foreground pt-1">
