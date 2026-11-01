@@ -19,7 +19,7 @@ const steps = (n: number): SetupProgress => {
 
 // Recorrido real de una empresa Essential (el mismo que ve el asistente): los pasos se completan con datos
 const ESSENTIAL = new Set(capabilitiesOfTier("essential"));
-const NO_FACTS: SetupFacts = { identity: false, fiscal: false, brand: false, activity: false, clients: 0, products: 0, sales: 0, webEdited: false, comms: false };
+const NO_FACTS: SetupFacts = { identity: false, fiscal: false, brand: false, activity: false, clients: 0, products: 0, sales: 0, documents: 0, webEdited: false, comms: false };
 const FILLS: Array<Partial<SetupFacts>> = [{ identity: true }, { fiscal: true }, { brand: true }, { activity: true }, { clients: 1 }, { products: 1 }, { webEdited: true }];
 const plan = (n: number) => buildSetupPlan({ progress: emptyProgress(), activity: n >= 4 ? "servicios" : null, capabilities: ESSENTIAL, facts: Object.assign({ ...NO_FACTS }, ...FILLS.slice(0, n)) });
 
@@ -42,9 +42,9 @@ describe("avisos de primeros pasos", () => {
     expect(await onboardingProgressed(plan(4), plan(5), who)).toBe(true);
     expect(await onboardingProgressed(plan(5), plan(6), who)).toBe(false);
     expect(sent.map((s) => s.idempotencyKey)).toEqual(["onboarding:progress:50"]);
-    // El mismo total que el asistente («9 pasos adaptados a tu negocio»)
-    expect(configurationSteps(plan(5).steps)).toHaveLength(9);
-    expect(sent[0].subject).toBe("Tu configuración va por buen camino: 5 de 9 pasos");
+    // El mismo total que el asistente («10 pasos en orden»)
+    expect(configurationSteps(plan(5).steps)).toHaveLength(10);
+    expect(sent[0].subject).toBe("Tu configuración va por buen camino: 5 de 10 pasos");
   });
   it("sin URL pública válida no se envía (los enlaces no tendrían destino)", async () => {
     base = "no es una url";

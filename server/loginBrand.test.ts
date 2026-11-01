@@ -153,15 +153,15 @@ describe("formulario de acceso", () => {
 });
 
 describe("Primeros pasos: paso «Marca»", () => {
-  it("va tras los datos fiscales; un progreso guardado sin él lo lee pendiente y conserva lo demás", () => {
-    expect(SETUP_STEPS.indexOf("brand")).toBe(SETUP_STEPS.indexOf("fiscal") + 1);
+  it("va tras los datos de la empresa y el tipo de actividad; un progreso guardado sin él lo lee pendiente y conserva lo demás", () => {
+    expect(SETUP_STEPS.indexOf("brand")).toBe(SETUP_STEPS.indexOf("activity") + 1);
     const old = JSON.stringify({ version: 1, steps: { company: { status: "done", at: 1 }, activity: { status: "done", at: 2 } }, completedAt: null, updatedAt: 2 });
     const p = parseProgress(old);
     expect(p.steps.company.status).toBe("done");
     expect(p.steps.brand.status).toBe("pending");
     expect(nextPendingStep(p)).toBe("brand");
     const done = markStep(p, "brand", "done", 3);
-    expect(nextPendingStep(done)).toBe("client");
+    expect(nextPendingStep(done)).toBe("web");
     // Progreso anterior: bienvenida dada por vista y «Empresa» incluía los datos fiscales → 5 resueltos («users» no cuenta)
     expect(progressPercent(done)).toBe(Math.round((5 / (SETUP_STEPS.length - 1)) * 100));
     // Una empresa que ya terminó el asistente lo sigue teniendo terminado

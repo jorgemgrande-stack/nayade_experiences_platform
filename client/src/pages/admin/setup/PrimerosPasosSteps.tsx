@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { CheckCircle2, CircleDashed, ExternalLink, Loader2, Pencil, SkipForward, Sparkles } from "lucide-react";
 import { singleLineQuoteAmounts } from "@/lib/quoteAmounts";
 import {
-  BUSINESS_ACTIVITIES, COUNTRIES, CURRENCIES, STEP_LABELS, TIMEZONES, commsSchema, configurationSteps, fiscalSchema, identitySchema,
+  BUSINESS_ACTIVITIES, COUNTRIES, CURRENCIES, STEP_LABELS, TIMEZONES, commsSchema, configurationSteps, fiscalSchema, identitySchema, spanishFiscalErrors,
   type CompanyData, type PlanStep, type SetupStep,
 } from "@shared/setupWizard";
 
@@ -189,7 +189,7 @@ export function IdentityStep({ initial, done, disabled, onSaved }: { initial: Re
 
 type FiscalKey = "legalName" | "taxId" | "address" | "postalCode" | "city" | "province" | "publicPhone" | "publicEmail" | "publicLocation";
 
-export function FiscalStep({ initial, done, fiscalFromRegistry, disabled, onSaved }: { initial: Record<keyof CompanyData, string>; done: boolean; fiscalFromRegistry: boolean; disabled: boolean; onSaved: () => void }) {
+export function FiscalStep({ initial, country, done, fiscalFromRegistry, disabled, onSaved }: { initial: Record<keyof CompanyData, string>; country: string; done: boolean; fiscalFromRegistry: boolean; disabled: boolean; onSaved: () => void }) {
   const utils = trpc.useUtils();
   const [editing, setEditing] = useState(!done);
   const [v, setV] = useState<Record<FiscalKey, string>>({
@@ -227,6 +227,15 @@ export function FiscalStep({ initial, done, fiscalFromRegistry, disabled, onSave
         e.preventDefault();
         const r = fiscalSchema.safeParse(v);
         if (!r.success) return setErrors(issues(r, "fi"));
+        // Empresa española: NIF/CIF con su dígito de control y código postal real
+        const es = spanishFiscalErrors(country, r.data);
+        // El NIF de la entidad fiscal registrada (el de las facturas) se acepta tal cual, como en el servidor
+        if (fiscalFromRegistry && r.data.taxId === initial.taxId.trim().toUpperCase()) delete es.taxId;
+        if (es.taxId || es.postalCode) {
+          setErrors(es);
+          document.getElementById(`fi-${es.taxId ? "taxId" : "postalCode"}`)?.focus();
+          return;
+        }
         setErrors({});
         save.mutate(r.data);
       }}
@@ -238,9 +247,9 @@ export function FiscalStep({ initial, done, fiscalFromRegistry, disabled, onSave
       )}
       <div className="grid gap-4 sm:grid-cols-2">
         {input("legalName", "Razón social", { required: true, hint: "Tal y como figura en el registro mercantil o en Hacienda." })}
-        {input("taxId", "NIF / CIF", { required: true })}
+        {input("taxId", "NIF / CIF", { required: true, hint: (country || "ES") === "ES" ? "Con su letra o dígito de control, por ejemplo B12345674." : undefined })}
         {input("address", "Dirección fiscal", { required: true, autoComplete: "street-address" })}
-        {input("postalCode", "Código postal", { autoComplete: "postal-code" })}
+        {input("postalCode", "Código postal", { autoComplete: "postal-code", hint: (country || "ES") === "ES" ? "5 cifras, por ejemplo 28001." : undefined })}
         {input("city", "Ciudad", { autoComplete: "address-level2" })}
         {input("province", "Provincia", { autoComplete: "address-level1" })}
       </div>
@@ -515,9 +524,44 @@ export function WebStep({ done, onContinue, legalMissing = [] }: { done: boolean
   );
 }
 
-// ─── Ventas, facturación y TPV ────────────────────────────────────────────────
+// ─── Primera venta (pedido o caja) ────────────────────────────────────────────
 
-export function OperationStep({ count, can, disabled, onDone }: { count: number; can: (cap: string) => boolean; disabled: boolean; onDone: () => void }) {
+export function SaleStep({ count, can, onDone }: { count: number; can: (cap: string) => boolean; onDone: () => void }) {
+  const cards = [
+    can("bill-cash") && (
+      <div key="t" className="rounded-xl border border-border p-4">
+        <h3 className="font-medium text-foreground">Venta en caja</h3>
+        <p className="mt-1 text-muted-foreground">Cobra en el mostrador con tu terminal de venta y cierra la caja al final del día.</p>
+        <Link href="/admin/tpv" className={`mt-3 ${linkClass}`}>
+          Abrir el terminal de venta
+        </Link>
+      </div>
+    ),
+    can("shop-orders") && (
+      <div key="o" className="rounded-xl border border-border p-4">
+        <h3 className="font-medium text-foreground">Pedido</h3>
+        <p className="mt-1 text-muted-foreground">Los pedidos de tu tienda online llegan solos. También puedes registrar uno a mano.</p>
+        <Link href="/admin/crm?tab=reservations&nuevo=1" className={`mt-3 ${linkClass}`}>
+          Registrar un pedido
+        </Link>
+      </div>
+    ),
+  ].filter(Boolean);
+  return (
+    <div className="space-y-4 text-sm">
+      {count > 0 ? (
+        <AlreadyDone onContinue={onDone}>Ya has registrado tu primera venta. Desde aquí tienes los accesos para seguir vendiendo.</AlreadyDone>
+      ) : (
+        <p className="text-muted-foreground">Elige cómo vas a registrar tu primera venta. Este paso se marca solo en cuanto cobres una venta en caja o registres un pedido.</p>
+      )}
+      <div className="grid gap-3 sm:grid-cols-2">{cards}</div>
+    </div>
+  );
+}
+
+// ─── Primer presupuesto o factura ─────────────────────────────────────────────
+
+export function DocumentStep({ count, can, disabled, onDone }: { count: number; can: (cap: string) => boolean; disabled: boolean; onDone: () => void }) {
   const canQuotes = can("crm-quotes");
   const clients = trpc.crm.clients.list.useQuery({ limit: 1, offset: 0 }, { enabled: canQuotes && can("crm-contacts") });
   const products = trpc.products.getAll.useQuery(undefined, { enabled: canQuotes && can("shop-catalog") });
@@ -564,30 +608,12 @@ export function OperationStep({ count, can, disabled, onDone }: { count: number;
         <p className="mt-2 text-xs text-muted-foreground">El borrador no se envía al cliente.</p>
       </div>
     ),
-    can("shop-orders") && (
-      <div key="o" className="rounded-xl border border-border p-4">
-        <h3 className="font-medium text-foreground">Pedido</h3>
-        <p className="mt-1 text-muted-foreground">Una venta ya confirmada, con su cobro.</p>
-        <Link href="/admin/crm?tab=reservations" className={`mt-3 ${linkClass}`}>
-          Ir a pedidos
-        </Link>
-      </div>
-    ),
     can("bill-invoices") && (
       <div key="i" className="rounded-xl border border-border p-4">
         <h3 className="font-medium text-foreground">Factura</h3>
         <p className="mt-1 text-muted-foreground">Con tu numeración y tus datos fiscales.</p>
-        <Link href="/admin/crm?tab=invoices" className={`mt-3 ${linkClass}`}>
-          Ir a facturas
-        </Link>
-      </div>
-    ),
-    can("bill-cash") && (
-      <div key="t" className="rounded-xl border border-border p-4">
-        <h3 className="font-medium text-foreground">Caja (TPV)</h3>
-        <p className="mt-1 text-muted-foreground">Ventas en mostrador con cierre de caja.</p>
-        <Link href="/admin/tpv" className={`mt-3 ${linkClass}`}>
-          Abrir la caja
+        <Link href="/admin/crm?tab=invoices&nuevo=1" className={`mt-3 ${linkClass}`}>
+          Emitir una factura
         </Link>
       </div>
     ),
@@ -595,9 +621,9 @@ export function OperationStep({ count, can, disabled, onDone }: { count: number;
   return (
     <div className="space-y-4 text-sm">
       {count > 0 ? (
-        <AlreadyDone onContinue={onDone}>Ya has registrado tu primera venta o documento. Desde aquí tienes los accesos a cada tipo.</AlreadyDone>
+        <AlreadyDone onContinue={onDone}>Ya tienes tu primer presupuesto o factura. Desde aquí tienes los accesos a cada uno.</AlreadyDone>
       ) : (
-        <p className="text-muted-foreground">Elige cómo quieres registrar tu primera venta. Este paso se marca solo en cuanto exista el primer documento.</p>
+        <p className="text-muted-foreground">Prepara tu primer presupuesto o emite tu primera factura. Este paso se marca solo en cuanto exista el primero.</p>
       )}
       <div className="grid gap-3 sm:grid-cols-2">{cards}</div>
     </div>
@@ -637,6 +663,13 @@ export function CommsStep({ initial, tradeName, done, can, disabled, onSaved }: 
         e.preventDefault();
         const r = commsSchema.safeParse(v);
         if (!r.success) return setErrors(issues(r, "co"));
+        // El paso se completa con un dato real: sin ninguno no hay nada que guardar (se puede omitir)
+        if (!r.data.fromName && !r.data.replyTo && !r.data.whatsapp) {
+          const first = email ? "replyTo" : "whatsapp";
+          setErrors({ [first]: "Indica al menos un dato, o pulsa «Omitir por ahora»." });
+          document.getElementById(`co-${first}`)?.focus();
+          return;
+        }
         setErrors({});
         save.mutate(r.data);
       }}

@@ -16,7 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PanelError } from "@/components/admin/PanelStates";
-import { COUNTRIES, CURRENCIES, TIMEZONES, companySchema, type CompanyData as CompanyFields } from "@shared/setupWizard";
+import { COUNTRIES, CURRENCIES, TIMEZONES, companySchema, spanishFiscalErrors, type CompanyData as CompanyFields } from "@shared/setupWizard";
 import { validateEmail, validateIban, validatePhone } from "@shared/formValidation";
 
 type Values = Record<keyof CompanyFields, string>;
@@ -109,6 +109,15 @@ export default function CompanyData() {
       if (first) document.getElementById(`co-${first}`)?.focus();
       return;
     }
+    // Empresa española: NIF/CIF con su dígito de control y código postal real (el servidor lo vuelve a comprobar)
+    const es = spanishFiscalErrors(r.data.country, r.data);
+    // El NIF de la entidad fiscal registrada (el de las facturas) se acepta tal cual, como en el servidor
+    if (status.data?.fiscalFromRegistry && r.data.taxId === (status.data.company.taxId ?? "").trim().toUpperCase()) delete es.taxId;
+    if (es.taxId || es.postalCode) {
+      setErrors(es);
+      document.getElementById(`co-${es.taxId ? "taxId" : "postalCode"}`)?.focus();
+      return;
+    }
     if (Object.values(extraErrors).some(Boolean)) return;
     setErrors({});
     try {
@@ -163,13 +172,13 @@ export default function CompanyData() {
 
       <section className="bg-card border border-border/50 rounded-2xl p-4 sm:p-6 space-y-4">
         <h2 className="text-base font-semibold">Empresa</h2>
-        <p className="text-xs text-muted-foreground">Aparecen en tus presupuestos, facturas y tickets.</p>
+        <p className="text-xs text-muted-foreground">Aparecen en tus presupuestos, facturas y tickets, y en el aviso legal y la política de privacidad de tu web.</p>
         <div className="grid gap-4 sm:grid-cols-2">
           {input("tradeName", "Nombre comercial", { required: true, autoComplete: "organization" })}
           {input("legalName", "Razón social", { required: true, hint: "Tal y como figura en el registro mercantil o en Hacienda." })}
-          {input("taxId", "NIF / CIF", { required: true })}
+          {input("taxId", "NIF / CIF", { required: true, hint: v.country === "ES" ? "Con su letra o dígito de control, por ejemplo B12345674." : undefined })}
           {input("address", "Dirección fiscal", { required: true, autoComplete: "street-address" })}
-          {input("postalCode", "Código postal", { autoComplete: "postal-code" })}
+          {input("postalCode", "Código postal", { autoComplete: "postal-code", hint: v.country === "ES" ? "5 cifras, por ejemplo 28001." : undefined })}
           {input("city", "Ciudad", { autoComplete: "address-level2" })}
           {input("province", "Provincia", { autoComplete: "address-level1" })}
           <Field id="co-country" label="País" error={errors.country} required>

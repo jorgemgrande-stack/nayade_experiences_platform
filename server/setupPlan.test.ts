@@ -1,5 +1,5 @@
 /**
- * «Primeros pasos» v2: recorrido adaptado (buildSetupPlan) — orden por tipo de actividad, pasos según lo contratado,
+ * «Primeros pasos» v3: recorrido (buildSetupPlan) — orden de negocio fijo, pasos destacados por tipo de actividad, pasos según lo contratado,
  * pasos «de hacer» completados por datos reales, reanudación y compatibilidad con progresos anteriores. Y la mezcla
  * de la actividad reciente del Inicio.
  */
@@ -26,7 +26,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 const NOW = Date.UTC(2026, 9, 31, 9);
-const NO_FACTS: SetupFacts = { identity: false, fiscal: false, brand: false, activity: false, clients: 0, products: 0, sales: 0, webEdited: false, comms: false };
+const NO_FACTS: SetupFacts = { identity: false, fiscal: false, brand: false, activity: false, clients: 0, products: 0, sales: 0, documents: 0, webEdited: false, comms: false };
 const ESSENTIAL = new Set(capabilitiesOfTier("essential"));
 const plan = (o: { progress?: SetupProgress; activity?: string | null; caps?: Set<string> | null; facts?: Partial<SetupFacts> } = {}) =>
   buildSetupPlan({ progress: o.progress ?? emptyProgress(), activity: o.activity ?? null, capabilities: o.caps === undefined ? ESSENTIAL : o.caps, facts: { ...NO_FACTS, ...o.facts } });
@@ -35,11 +35,11 @@ const ids = (p: ReturnType<typeof plan>) => p.steps.map((s) => s.id);
 describe("un único número de pasos (bienvenida, asistente e Inicio)", () => {
   it("la bienvenida y el resumen no se cuentan ni se numeran", () => {
     const p = plan();
-    expect(configurationSteps(p.steps).map((s) => s.id)).toEqual(["company", "fiscal", "brand", "activity", "client", "product", "web", "operation", "comms"]);
+    expect(configurationSteps(p.steps).map((s) => s.id)).toEqual(["company", "fiscal", "activity", "brand", "web", "client", "product", "operation", "document", "comms"]);
     expect(configurationStepNumber(p.steps, "welcome")).toBeNull();
     expect(configurationStepNumber(p.steps, "finish")).toBeNull();
     expect(configurationStepNumber(p.steps, "company")).toBe(1);
-    expect(configurationStepNumber(p.steps, "comms")).toBe(9);
+    expect(configurationStepNumber(p.steps, "comms")).toBe(10);
   });
   it("las tres pantallas usan el mismo recuento", () => {
     const src = (f: string) => fs.readFileSync(path.resolve(__dirname, "../client/src", f), "utf8");
@@ -54,9 +54,9 @@ describe("un único número de pasos (bienvenida, asistente e Inicio)", () => {
 });
 
 describe("recorrido por defecto (empresa Essential nueva)", () => {
-  it("bienvenida primero, todos los pasos del plan en el orden de referencia, sin sectorial ni «users»", () => {
+  it("bienvenida primero, todos los pasos del plan en orden de negocio, sin sectorial ni «users»", () => {
     const p = plan();
-    expect(ids(p)).toEqual(["welcome", "company", "fiscal", "brand", "activity", "client", "product", "web", "operation", "comms", "finish"]);
+    expect(ids(p)).toEqual(["welcome", ...["company", "fiscal", "activity", "brand", "web", "client", "product", "operation", "document", "comms"], "finish"]);
     expect(p.hidden).toEqual(expect.arrayContaining(["sector"]));
     expect(p.nextStep).toBe("welcome");
     expect(p.percent).toBe(0);
@@ -69,23 +69,26 @@ describe("recorrido por defecto (empresa Essential nueva)", () => {
   });
 });
 
-describe("adaptación por tipo de actividad", () => {
-  it("comercio: productos y ventas primero (prioritarios)", () => {
-    const p = plan({ activity: "comercio" });
-    expect(ids(p).slice(5, 10)).toEqual(["product", "operation", "client", "web", "comms"]);
-    expect(p.steps.filter((s) => s.recommended).map((s) => s.id)).toEqual(["product", "operation"]);
+describe("adaptación por tipo de actividad (destaca pasos; el orden de negocio no cambia)", () => {
+  const rec = (p: ReturnType<typeof plan>) => p.steps.filter((s) => s.recommended).map((s) => s.id);
+  it("el orden es el mismo con cualquier tipo de actividad", () => {
+    for (const activity of [null, "comercio", "servicios", "web"]) expect(ids(plan({ activity }))).toEqual(ids(plan()));
   });
-  it("servicios profesionales: CRM y servicios primero", () => {
-    expect(ids(plan({ activity: "servicios" })).slice(5, 7)).toEqual(["client", "product"]);
+  it("comercio: productos y primera venta destacados", () => {
+    expect(rec(plan({ activity: "comercio" }))).toEqual(["product", "operation"]);
   });
-  it("empresa con web: la página web primero", () => {
+  it("servicios profesionales: primer cliente y primer presupuesto o factura", () => {
+    expect(rec(plan({ activity: "servicios" }))).toEqual(["client", "document"]);
+  });
+  it("empresa con web: la página web destacada", () => {
     const p = plan({ activity: "web" });
-    expect(ids(p)[5]).toBe("web");
     expect(p.steps.find((s) => s.id === "web")?.recommended).toBe(true);
   });
-  it("sectorial: el módulo sectorial justo tras la actividad, solo si está contratado", () => {
+  it("sectorial: el módulo sectorial (tras el correo, antes del resumen), solo si está contratado", () => {
     const caps = new Set([...ESSENTIAL, "hotel-net"]);
-    expect(ids(plan({ activity: "sectorial", caps }))[5]).toBe("sector");
+    const p = plan({ activity: "sectorial", caps });
+    expect(ids(p).slice(-2)).toEqual(["sector", "finish"]);
+    expect(p.steps.find((s) => s.id === "sector")?.recommended).toBe(true);
     // Sin módulo sectorial no hay paso sectorial aunque el valor guardado lo pida
     expect(ids(plan({ activity: "sectorial" }))).not.toContain("sector");
   });
@@ -99,21 +102,25 @@ describe("adaptación por tipo de actividad", () => {
     expect(activityProfile("formacion")).toBe("servicios");
     expect(activityProfile("desconocido")).toBeNull();
     expect(activityInfo("formacion").clientNoun).toBe("alumno");
-    expect(ids(plan({ activity: "hosteleria" }))[5]).toBe("product");
+    expect(rec(plan({ activity: "hosteleria" }))).toEqual(["product", "operation"]);
   });
 });
 
 describe("pasos según lo contratado", () => {
-  it("sin CMS no hay paso de web; sin CRM no hay paso de clientes; sin ventas ni caja no hay paso de ventas", () => {
+  it("sin CMS no hay paso de web; sin CRM no hay paso de clientes; sin ventas ni caja no hay venta; sin presupuestos ni facturas no hay documento", () => {
     const caps = new Set(Array.from(ESSENTIAL).filter((c) => !["cms-editor", "cms-pages-forms", "crm-contacts", "crm-quotes", "shop-orders", "bill-invoices", "bill-cash"].includes(c)));
     const p = plan({ caps });
     expect(ids(p)).not.toEqual(expect.arrayContaining(["web"]));
     expect(ids(p)).not.toContain("client");
     expect(ids(p)).not.toContain("operation");
-    expect(p.hidden).toEqual(expect.arrayContaining(["web", "client", "operation", "sector"]));
+    expect(ids(p)).not.toContain("document");
+    expect(p.hidden).toEqual(expect.arrayContaining(["web", "client", "operation", "document", "sector"]));
   });
-  it("basta una de las capacidades del paso (p. ej. solo caja para «Ventas, facturación y TPV»)", () => {
+  it("basta una de las capacidades del paso (solo caja para «Primera venta»; solo facturas para «Primer presupuesto o factura»)", () => {
     expect(ids(plan({ caps: new Set(["bill-cash"]) }))).toContain("operation");
+    expect(ids(plan({ caps: new Set(["bill-cash"]) }))).not.toContain("document");
+    expect(ids(plan({ caps: new Set(["bill-invoices"]) }))).toEqual(expect.arrayContaining(["document"]));
+    expect(ids(plan({ caps: new Set(["bill-invoices"]) }))).not.toContain("operation");
   });
 });
 
@@ -134,11 +141,19 @@ describe("completado por datos reales, no por clic", () => {
     // La bienvenida sigue pendiente hasta que la empresa empieza o elige explorar
     expect(p.nextStep).toBe("welcome");
   });
-  it("logotipo y comunicaciones también se completan al guardarlos (sin dato obligatorio)", () => {
+  it("logotipo y correo tampoco se completan con un clic: hace falta el dato (logotipo subido, remitente o respuesta)", () => {
     const progress = markStep(markStep(emptyProgress(), "brand", "done", NOW), "comms", "done", NOW);
     const p = plan({ progress });
-    expect(p.steps.find((s) => s.id === "brand")?.status).toBe("done");
-    expect(p.steps.find((s) => s.id === "comms")?.status).toBe("done");
+    expect(p.steps.find((s) => s.id === "brand")?.status).toBe("pending");
+    expect(p.steps.find((s) => s.id === "comms")?.status).toBe("pending");
+  });
+  it("primera venta y primer presupuesto o factura son pasos distintos, cada uno con su dato", () => {
+    const sale = plan({ facts: { sales: 1 } });
+    expect(sale.steps.find((s) => s.id === "operation")).toMatchObject({ status: "done", byData: true });
+    expect(sale.steps.find((s) => s.id === "document")?.status).toBe("pending");
+    const doc = plan({ facts: { documents: 1 } });
+    expect(doc.steps.find((s) => s.id === "document")).toMatchObject({ status: "done", byData: true });
+    expect(doc.steps.find((s) => s.id === "operation")?.status).toBe("pending");
   });
 });
 
@@ -146,7 +161,7 @@ describe("reanudación y puesta en marcha", () => {
   it("«explorar primero» resuelve la bienvenida; se reanuda en el primer paso pendiente real", () => {
     const progress = markStep(emptyProgress(), "welcome", "skipped", NOW);
     expect(plan({ progress }).nextStep).toBe("company");
-    expect(plan({ progress, facts: { identity: true, fiscal: true } }).nextStep).toBe("brand");
+    expect(plan({ progress, facts: { identity: true, fiscal: true } }).nextStep).toBe("activity");
     // El progreso guardado sobrevive a la lectura (otra sesión, otro navegador)
     const again = parseProgress(JSON.stringify(progress));
     expect(again.steps.welcome.status).toBe("skipped");
@@ -154,7 +169,7 @@ describe("reanudación y puesta en marcha", () => {
   });
   it("con todo resuelto queda la puesta en marcha; al terminar, 100 % y sin siguiente paso", () => {
     let progress = emptyProgress();
-    for (const s of ["welcome", "company", "fiscal", "brand", "activity", "client", "product", "web", "operation", "comms"] as const) progress = markStep(progress, s, "skipped", NOW);
+    for (const s of ["welcome", ...["company", "fiscal", "activity", "brand", "web", "client", "product", "operation", "document", "comms"]] as const) progress = markStep(progress, s, "skipped", NOW);
     expect(plan({ progress }).nextStep).toBe("finish");
     progress = markStep(progress, "finish", "done", NOW + 1);
     const p = plan({ progress });
@@ -167,6 +182,12 @@ describe("reanudación y puesta en marcha", () => {
     expect(progress.steps.fiscal.status).toBe("done");
     expect(progress.steps.users.status).toBe("skipped");
     expect(plan({ progress, activity: "servicios", facts: { identity: true, fiscal: true, activity: true } }).nextStep).toBe("brand");
+  });
+  it("progreso anterior con «Ventas, facturación y TPV» omitido: quedan omitidos la primera venta y el primer documento", () => {
+    const old = JSON.stringify({ version: 1, steps: { operation: { status: "skipped", at: 5 } }, completedAt: null, updatedAt: 5 });
+    const progress = parseProgress(old);
+    expect(progress.steps.operation.status).toBe("skipped");
+    expect(progress.steps.document).toEqual({ status: "skipped", at: 5 });
   });
 });
 

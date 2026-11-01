@@ -2,9 +2,9 @@
  * «Primeros pasos»: asistente de configuración inicial de la empresa.
  *
  * El progreso se guarda en el servidor (por empresa): se puede dejar a medias, volver atrás, corregir y continuar
- * después. El recorrido lo calcula el servidor (`plan`): solo los pasos de lo contratado, en el orden que mejor
- * encaja con el tipo de actividad, y los pasos «de hacer» se marcan solos cuando el dato existe. Ningún paso
- * bloquea el uso del sistema.
+ * después, en cualquier navegador. El recorrido lo calcula el servidor (`plan`): solo los pasos de lo contratado, en
+ * orden de negocio, y cada paso se marca solo cuando el dato existe de verdad. Al terminar u omitir un paso se pasa al
+ * siguiente pendiente: lo hecho no se repite. Ningún paso bloquea el uso del sistema.
  */
 import { useEffect, useRef, useState } from "react";
 import { Link } from "wouter";
@@ -15,13 +15,13 @@ import { usePanelSubscription } from "@/hooks/usePanelSubscription";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import {
-  AlertTriangle, Blocks, Briefcase, Building2, Check, CheckCircle2, ChevronLeft, ChevronRight, Globe, Hand, HelpCircle,
-  Landmark, Loader2, Mail, Package, Palette, PartyPopper, Receipt, SkipForward, Star, UserPlus, Users,
+  AlertTriangle, Blocks, Briefcase, Building2, Check, CheckCircle2, ChevronLeft, ChevronRight, FileText, Globe, Hand, HelpCircle,
+  Landmark, Loader2, Mail, Package, Palette, PartyPopper, ShoppingCart, SkipForward, Star, UserPlus, Users,
 } from "lucide-react";
 import { BrandIdentityEditor } from "@/components/brand/BrandIdentityEditor";
-import { STEP_LABELS, activityInfo, configurationStepNumber, configurationSteps, stepAfter, type SetupStep } from "@shared/setupWizard";
+import { STEP_LABELS, activityInfo, configurationStepNumber, configurationSteps, nextOpenStep, type SetupStep } from "@shared/setupWizard";
 import {
-  ActivityStep, ClientStep, CommsStep, FinishStep, FiscalStep, IdentityStep, OperationStep, ProductStep, SectorStep, WebStep, WelcomeStep, errMsg,
+  ActivityStep, ClientStep, CommsStep, DocumentStep, FinishStep, FiscalStep, IdentityStep, ProductStep, SaleStep, SectorStep, WebStep, WelcomeStep, errMsg,
 } from "./PrimerosPasosSteps";
 
 const ICONS: Record<SetupStep, React.ComponentType<{ className?: string; "aria-hidden"?: boolean }>> = {
@@ -33,7 +33,8 @@ const ICONS: Record<SetupStep, React.ComponentType<{ className?: string; "aria-h
   client: Users,
   product: Package,
   web: Globe,
-  operation: Receipt,
+  operation: ShoppingCart,
+  document: FileText,
   comms: Mail,
   sector: Blocks,
   finish: PartyPopper,
@@ -42,15 +43,16 @@ const ICONS: Record<SetupStep, React.ComponentType<{ className?: string; "aria-h
 
 const HELP: Record<SetupStep, string> = {
   welcome: "El asistente solo te pide lo que aún no consta y se adapta a lo que tienes contratado.",
-  company: "Es el nombre con el que te ven tus clientes y la base de fechas e importes del panel. Lo puedes cambiar más tarde en Datos de la empresa.",
+  company: "Es el nombre con el que te ven tus clientes y la base de fechas e importes del panel. Lo puedes cambiar más tarde en Organización › Datos de la empresa.",
   fiscal: "Estos datos aparecen en tus presupuestos y facturas. Sin ellos no se pueden emitir facturas válidas.",
-  brand: "Tu logotipo y tus colores se aplican a la vez en tu web, en tus documentos y en la pantalla de acceso de tu equipo. Los puedes cambiar cuando quieras en Web › Marca y tema.",
-  activity: "Solo ordena los pasos y adapta los textos y ejemplos. No activa módulos ni contrata nada.",
+  brand: "Tu logotipo y tus colores se aplican a la vez en tu web, en tus documentos y en la pantalla de acceso de tu equipo. El paso se marca en cuanto subas tu logotipo. Los puedes cambiar cuando quieras en Web › Marca y tema.",
+  activity: "Solo destaca los pasos más útiles para tu negocio y adapta los textos y ejemplos. No activa módulos ni contrata nada.",
   client: "Tus clientes quedan en el CRM con su historial de presupuestos, pedidos y facturas.",
   // Misma convención que el gestor de productos: el precio guardado es el precio final, con el impuesto incluido
   product: "El precio se indica con impuestos incluidos (precio final); el impuesto se desglosa en presupuestos y facturas.",
   web: "Tu web se publica con tu dominio y tu marca. Puedes empezar con las páginas iniciales y mejorarlas poco a poco.",
-  operation: "Un presupuesto se envía al cliente para que lo acepte; un pedido es una venta confirmada; la factura es el documento fiscal; la caja registra las ventas en mostrador.",
+  operation: "Un pedido es una venta confirmada (de tu tienda online o registrada a mano); la caja registra las ventas en mostrador. El paso se marca solo con tu primera venta.",
+  document: "Un presupuesto se envía al cliente para que lo acepte; la factura es el documento fiscal, con tu numeración y tus datos fiscales. El paso se marca solo con el primero.",
   comms: "Los correos salen siempre con el nombre de tu empresa. Las respuestas de tus clientes llegan a la dirección que indiques.",
   sector: "Los módulos sectoriales tienen su propia configuración. Aquí tienes el acceso directo a cada uno.",
   finish: "Puedes volver a este asistente cuando quieras desde el Inicio.",
@@ -108,18 +110,29 @@ export default function PrimerosPasos() {
   const idx = Math.max(0, steps.findIndex((s) => s.id === shown));
   const step = steps[idx];
   const go = (s: SetupStep) => setCurrent(s);
-  // Siguiente sobre el plan más reciente (tras guardar, el servidor puede haber reordenado los pasos)
-  const goNext = () => setCurrent(stepAfter(utils.setupWizard.status.getData()?.plan.steps ?? steps, shown));
+  // Siguiente PENDIENTE sobre el plan recién leído del servidor (tras guardar, el paso guardado y otros pueden haber
+  // quedado hechos): lo hecho o lo omitido no se vuelve a mostrar
+  const goNext = async () => {
+    const fresh = await utils.setupWizard.status.fetch().catch(() => null);
+    setCurrent(nextOpenStep(fresh?.plan.steps ?? steps, shown));
+  };
   const goPrev = () => setCurrent(steps[Math.max(idx - 1, 0)].id);
   // Pasos «de hacer»: el dato real los completa; aun así queda registrado el avance
   const advance = (s: SetupStep) => async () => {
     if (!readOnly) await setStep.mutateAsync({ step: s, status: "done" }).catch(() => undefined);
     await utils.setupWizard.status.invalidate();
-    goNext();
+    await goNext();
   };
   const mark = async (s: SetupStep, st: "done" | "skipped") => {
     await setStep.mutateAsync({ step: s, status: st });
-    if (s !== "finish") goNext();
+    if (s !== "finish") await goNext();
+  };
+  // Marca y colores: hecho solo con el logotipo subido; seguir sin él queda como omitido (se puede retomar)
+  const afterBrand = async () => {
+    await utils.setupWizard.status.invalidate();
+    const fresh = await utils.setupWizard.status.fetch().catch(() => null);
+    const done = fresh?.plan.steps.find((x) => x.id === "brand")?.status === "done";
+    await mark("brand", done ? "done" : "skipped").catch(() => undefined);
   };
   const Icon = ICONS[shown];
   const activity = activityInfo(d.activity);
@@ -137,7 +150,7 @@ export default function PrimerosPasos() {
             <div>
               <h1 className="text-xl font-semibold text-foreground sm:text-2xl">Configura tu empresa</h1>
               <p className="text-sm text-muted-foreground">
-                {configCount} pasos adaptados a tu negocio. Puedes omitir cualquiera y continuar más tarde: el progreso se guarda.
+                {configCount} pasos en orden, adaptados a lo que tienes contratado. Cada uno se marca solo cuando lo haces. Puedes omitir cualquiera y retomarlo más tarde: el progreso se guarda en tu cuenta.
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -233,22 +246,26 @@ export default function PrimerosPasos() {
             {/* key: al volver a un paso se parte de los datos guardados */}
             <div key={shown}>
               {shown === "welcome" && <WelcomeStep tradeName={d.company.tradeName} planName={planName} steps={steps} disabled={setStep.isPending || readOnly} onStart={() => void mark("welcome", "done")} />}
-              {shown === "company" && <IdentityStep initial={d.company} done={step?.status === "done"} disabled={readOnly} onSaved={goNext} />}
-              {shown === "fiscal" && <FiscalStep initial={d.company} done={step?.status === "done"} fiscalFromRegistry={d.fiscalFromRegistry} disabled={readOnly} onSaved={goNext} />}
+              {shown === "company" && <IdentityStep initial={d.company} done={step?.status === "done"} disabled={readOnly} onSaved={() => void goNext()} />}
+              {shown === "fiscal" && <FiscalStep initial={d.company} country={d.company.country} done={step?.status === "done"} fiscalFromRegistry={d.fiscalFromRegistry} disabled={readOnly} onSaved={() => void goNext()} />}
               {shown === "brand" &&
                 (readOnly ? (
                   <p className="text-sm text-muted-foreground">La cuenta está en solo lectura: la marca no se puede cambiar.</p>
                 ) : (
-                  <BrandIdentityEditor variant="onboarding" onSaved={() => void mark("brand", "done")} />
+                  <>
+                    {step?.status !== "done" && <p className="mb-4 text-sm text-muted-foreground">Sube tu logotipo para completar este paso. Si sigues sin él, el paso queda pendiente para más adelante.</p>}
+                    <BrandIdentityEditor variant="onboarding" onSaved={() => void afterBrand()} />
+                  </>
                 ))}
-              {shown === "activity" && <ActivityStep initial={d.activity} allowed={d.activities} disabled={readOnly} onSaved={goNext} />}
+              {shown === "activity" && <ActivityStep initial={d.activity} allowed={d.activities} disabled={readOnly} onSaved={() => void goNext()} />}
               {shown === "client" && <ClientStep noun={activity.clientNoun} count={d.facts.clients} disabled={readOnly || !sub.canWrite("crm-contacts")} onDone={advance("client")} />}
               {shown === "product" && (
                 <ProductStep noun={activity.productNoun} example={activity.productExample} currency={d.company.currency || "EUR"} count={d.facts.products} disabled={readOnly || !sub.canWrite("shop-catalog")} onDone={advance("product")} />
               )}
               {shown === "web" && <WebStep done={step?.status === "done"} onContinue={advance("web")} legalMissing={d.legalMissing ?? []} />}
-              {shown === "operation" && <OperationStep count={d.facts.sales} can={can} disabled={readOnly || !sub.canWrite("crm-quotes")} onDone={advance("operation")} />}
-              {shown === "comms" && <CommsStep initial={d.comms} tradeName={d.company.tradeName} done={step?.status === "done"} can={can} disabled={readOnly} onSaved={goNext} />}
+              {shown === "operation" && <SaleStep count={d.facts.sales} can={can} onDone={advance("operation")} />}
+              {shown === "document" && <DocumentStep count={d.facts.documents} can={can} disabled={readOnly || !sub.canWrite("crm-quotes")} onDone={advance("document")} />}
+              {shown === "comms" && <CommsStep initial={d.comms} tradeName={d.company.tradeName} done={step?.status === "done"} can={can} disabled={readOnly} onSaved={() => void goNext()} />}
               {shown === "sector" && <SectorStep modules={d.sectorModules} disabled={setStep.isPending || readOnly} onDone={() => void mark("sector", "done")} />}
               {shown === "finish" && <FinishStep steps={steps} completedAt={d.progress.completedAt} showTeam={!d.plan.hidden.includes("users") && can("admin-users")} disabled={readOnly} onGo={go} />}
             </div>
@@ -264,7 +281,7 @@ export default function PrimerosPasos() {
                   </Button>
                 )}
                 {shown !== "finish" && step?.status === "done" && (
-                  <Button type="button" variant="outline" onClick={goNext}>
+                  <Button type="button" variant="outline" onClick={() => void goNext()}>
                     Siguiente <ChevronRight className="ml-1 h-4 w-4" aria-hidden="true" />
                   </Button>
                 )}
