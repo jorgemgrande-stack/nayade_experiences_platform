@@ -10,6 +10,8 @@ import {
   availableActivities,
   buildSetupPlan,
   commsSchema,
+  configurationStepNumber,
+  configurationSteps,
   emptyProgress,
   fiscalSchema,
   identitySchema,
@@ -20,6 +22,8 @@ import {
 } from "../shared/setupWizard";
 import { capabilitiesOfTier } from "./catalog/capabilities";
 import { mergeRecent } from "./coreHomeDb";
+import fs from "node:fs";
+import path from "node:path";
 
 const NOW = Date.UTC(2026, 9, 31, 9);
 const NO_FACTS: SetupFacts = { identity: false, fiscal: false, brand: false, activity: false, clients: 0, products: 0, sales: 0, webEdited: false, comms: false };
@@ -27,6 +31,27 @@ const ESSENTIAL = new Set(capabilitiesOfTier("essential"));
 const plan = (o: { progress?: SetupProgress; activity?: string | null; caps?: Set<string> | null; facts?: Partial<SetupFacts> } = {}) =>
   buildSetupPlan({ progress: o.progress ?? emptyProgress(), activity: o.activity ?? null, capabilities: o.caps === undefined ? ESSENTIAL : o.caps, facts: { ...NO_FACTS, ...o.facts } });
 const ids = (p: ReturnType<typeof plan>) => p.steps.map((s) => s.id);
+
+describe("un único número de pasos (bienvenida, asistente e Inicio)", () => {
+  it("la bienvenida y el resumen no se cuentan ni se numeran", () => {
+    const p = plan();
+    expect(configurationSteps(p.steps).map((s) => s.id)).toEqual(["company", "fiscal", "brand", "activity", "client", "product", "web", "operation", "comms"]);
+    expect(configurationStepNumber(p.steps, "welcome")).toBeNull();
+    expect(configurationStepNumber(p.steps, "finish")).toBeNull();
+    expect(configurationStepNumber(p.steps, "company")).toBe(1);
+    expect(configurationStepNumber(p.steps, "comms")).toBe(9);
+  });
+  it("las tres pantallas usan el mismo recuento", () => {
+    const src = (f: string) => fs.readFileSync(path.resolve(__dirname, "../client/src", f), "utf8");
+    expect(src("pages/admin/home/EssentialHome.tsx")).toContain("steps={configurationSteps(w.plan.steps).length}");
+    const wizard = src("pages/admin/setup/PrimerosPasos.tsx");
+    expect(wizard).toContain("configurationSteps(steps).length");
+    expect(wizard).toContain("Paso ${stepNumber} de ${configCount}");
+    expect(wizard).not.toContain("d.plan.total} pasos");
+    expect(src("components/onboarding/SetupStatusCard.tsx")).toContain("configurationSteps(plan.steps)");
+    expect(src("pages/admin/setup/PrimerosPasosSteps.tsx")).toContain("const rest = configurationSteps(steps)");
+  });
+});
 
 describe("recorrido por defecto (empresa Essential nueva)", () => {
   it("bienvenida primero, todos los pasos del plan en el orden de referencia, sin sectorial ni «users»", () => {

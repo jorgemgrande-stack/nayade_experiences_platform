@@ -17,7 +17,7 @@ import { PanelError } from "@/components/admin/PanelStates";
 import { WelcomeScreen } from "@/components/onboarding/WelcomeScreen";
 import { SETUP_WIZARD_PATH } from "@/components/SetupWizardLink";
 import { SetupStatusCard } from "@/components/onboarding/SetupStatusCard";
-import { shouldOpenSetupWizard } from "@shared/setupWizard";
+import { configurationSteps, shouldOpenSetupWizard } from "@shared/setupWizard";
 import { cn } from "@/lib/utils";
 
 const FEED_LABELS: Record<string, string> = {
@@ -146,7 +146,7 @@ export default function EssentialHome() {
 
   // Primera entrada del administrador de una empresa nueva: bienvenida a pantalla completa
   if (isAdmin && w && shouldOpenSetupWizard(w.progress)) {
-    return <WelcomeScreen firstName={firstName} tradeName={w.company.tradeName} steps={w.plan.total - 1} />;
+    return <WelcomeScreen firstName={firstName} tradeName={w.company.tradeName} steps={configurationSteps(w.plan.steps).length} />;
   }
   return (
     <AdminLayout>

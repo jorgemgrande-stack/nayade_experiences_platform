@@ -19,7 +19,7 @@ import {
   Landmark, Loader2, Mail, Package, Palette, PartyPopper, Receipt, SkipForward, Star, UserPlus, Users,
 } from "lucide-react";
 import { BrandIdentityEditor } from "@/components/brand/BrandIdentityEditor";
-import { STEP_LABELS, activityInfo, type SetupStep } from "@shared/setupWizard";
+import { STEP_LABELS, activityInfo, configurationStepNumber, configurationSteps, type SetupStep } from "@shared/setupWizard";
 import {
   ActivityStep, ClientStep, CommsStep, FinishStep, FiscalStep, IdentityStep, OperationStep, ProductStep, SectorStep, WebStep, WelcomeStep, errMsg,
 } from "./PrimerosPasosSteps";
@@ -124,6 +124,9 @@ export default function PrimerosPasos() {
   const activity = activityInfo(d.activity);
   const can = (cap: string) => sub.can(cap);
   const planName = d.licence.plan ? PLAN_NAMES[d.licence.plan] ?? null : null;
+  // Un único número en todo el recorrido: la bienvenida y el resumen no son pasos de configuración
+  const configCount = configurationSteps(steps).length;
+  const stepNumber = configurationStepNumber(steps, shown);
 
   return (
     <AdminLayout title="Primeros pasos">
@@ -133,7 +136,7 @@ export default function PrimerosPasos() {
             <div>
               <h1 className="text-xl font-semibold text-foreground sm:text-2xl">Configura tu empresa</h1>
               <p className="text-sm text-muted-foreground">
-                {d.plan.total} pasos adaptados a tu negocio. Puedes omitir cualquiera y continuar más tarde: el progreso se guarda.
+                {configCount} pasos adaptados a tu negocio. Puedes omitir cualquiera y continuar más tarde: el progreso se guarda.
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -165,8 +168,10 @@ export default function PrimerosPasos() {
           <nav aria-label="Pasos de Primeros pasos" className="min-w-0">
             {/* relative: los textos solo para lectores de pantalla (sr-only, absolutos) quedan dentro de la franja desplazable */}
             <ol className="relative flex gap-2 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible">
-              {steps.map((s, i) => {
+              {steps.map((s) => {
                 const active = s.id === shown;
+                const n = configurationStepNumber(steps, s.id);
+                const StepIcon = ICONS[s.id];
                 return (
                   <li key={s.id} className="shrink-0">
                     <button
@@ -183,7 +188,7 @@ export default function PrimerosPasos() {
                         }`}
                         aria-hidden="true"
                       >
-                        {s.status === "done" ? <Check className="h-3.5 w-3.5" /> : s.status === "skipped" ? <SkipForward className="h-3 w-3" /> : i + 1}
+                        {s.status === "done" ? <Check className="h-3.5 w-3.5" /> : s.status === "skipped" ? <SkipForward className="h-3 w-3" /> : n ?? <StepIcon className="h-3 w-3" />}
                       </span>
                       <span className="flex items-center gap-1.5">
                         {STEP_LABELS[s.id].title}
@@ -207,7 +212,7 @@ export default function PrimerosPasos() {
               </div>
               <div className="min-w-0">
                 <p className="text-xs text-muted-foreground">
-                  Paso {idx + 1} de {steps.length}
+                  {stepNumber !== null ? `Paso ${stepNumber} de ${configCount}` : shown === "welcome" ? "Antes de empezar" : "Para terminar"}
                   {step?.recommended && <> · recomendado para tu actividad</>}
                 </p>
                 <h2 id="paso-actual" ref={headingRef} tabIndex={-1} className="text-lg font-semibold text-foreground outline-none">
