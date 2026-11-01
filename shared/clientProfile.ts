@@ -7,6 +7,7 @@
  *  - Historial de actividad: presupuestos, pedidos, facturas, pagos, comunicaciones y notas en una sola lista.
  */
 import { isValidSpanishTaxId, normalizeTaxId, validateEmail, validatePhone, validatePostalCodeES } from "./formValidation";
+import { ORDER_STAGE_LABELS, stageOfRow } from "./shopOrders";
 
 export type ClientKind = "empresa" | "particular";
 export const CLIENT_KINDS: readonly ClientKind[] = ["particular", "empresa"] as const;
@@ -199,7 +200,7 @@ export const PAYMENT_METHOD_LABELS: Record<string, string> = {
 
 export interface ClientHistoryInput {
   quotes: Array<{ id: number; quoteNumber?: string | null; title?: string | null; status?: string | null; total?: string | number | null; createdAt: unknown }>;
-  reservations: Array<{ id: number; reservationNumber?: string | null; merchantOrder?: string | null; productName?: string | null; status?: string | null; amountTotal?: number | null; amountPaid?: number | null; paymentMethod?: string | null; createdAt: unknown; paidAt?: unknown }>;
+  reservations: Array<{ id: number; reservationNumber?: string | null; merchantOrder?: string | null; productName?: string | null; status?: string | null; amountTotal?: number | null; amountPaid?: number | null; paymentMethod?: string | null; createdAt: unknown; paidAt?: unknown; channel?: string | null; quoteId?: number | null; statusReservation?: string | null }>;
   invoices: Array<{ id: number; invoiceNumber: string; status?: string | null; total?: string | number | null; pdfUrl?: string | null; paymentMethod?: string | null; reservationId?: number | null; quoteId?: number | null; createdAt: unknown; issuedAt?: unknown; paymentValidatedAt?: unknown }>;
   tpvTickets?: Record<number, string>;
   emails?: Array<{ id: number; subject?: string | null; status?: string | null; recipientEmail?: string | null; createdAt: unknown }>;
@@ -228,19 +229,23 @@ export function buildClientActivity(h: ClientHistoryInput, labels: ActivityLabel
   }
   for (const r of h.reservations) {
     const ticket = tickets[r.id];
-    const ref = r.reservationNumber || r.merchantOrder || `#${r.id}`;
+    // Compra de la tienda online: el pedido entero (todas sus líneas) se abre en «Pedidos de la tienda»
+    const shopOrder = !ticket && r.channel === "ONLINE_DIRECTO" && !r.quoteId && !!r.merchantOrder;
+    const ref = shopOrder ? r.merchantOrder! : r.reservationNumber || r.merchantOrder || `#${r.id}`;
+    const orderHref = shopOrder ? `/admin/tienda/pedidos/${encodeURIComponent(r.merchantOrder!)}` : `/admin/crm?tab=reservations&resId=${r.id}`;
     out.push({
       id: `order-${r.id}`, kind: "order", date: toMs(r.createdAt),
       title: ticket ? `Venta en caja · ticket ${ticket}` : `${labels.order} ${ref}`, detail: r.productName ?? "",
-      amount: r.amountTotal != null ? r.amountTotal / 100 : null, status: ORDER_STATUS_LABELS[r.status ?? ""] ?? r.status ?? null,
-      href: `/admin/crm?tab=reservations&resId=${r.id}`,
+      amount: r.amountTotal != null ? r.amountTotal / 100 : null,
+      status: shopOrder ? ORDER_STAGE_LABELS[stageOfRow(r)] : ORDER_STATUS_LABELS[r.status ?? ""] ?? r.status ?? null,
+      href: orderHref,
     });
     if ((r.amountPaid ?? 0) > 0) {
       out.push({
         id: `payment-order-${r.id}`, kind: "payment", date: toMs(r.paidAt) || toMs(r.createdAt),
         title: `Pago de ${ticket ? `la venta ${ticket}` : `${labels.order.toLowerCase()} ${ref}`}`,
         detail: PAYMENT_METHOD_LABELS[r.paymentMethod ?? ""] ?? "", amount: (r.amountPaid ?? 0) / 100, status: "Cobrado",
-        href: `/admin/crm?tab=reservations&resId=${r.id}`,
+        href: orderHref,
       });
     }
   }

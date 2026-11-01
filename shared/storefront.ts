@@ -18,6 +18,8 @@ export interface Storefront {
   kind: StorefrontKind;
   /** La empresa puede vender servicios con fecha (reservas y citas genéricas contratadas). */
   datedServices: boolean;
+  /** Los correos de pedido llegan al comprador (no en la prueba gratuita). Sin dato: no se promete. */
+  buyerEmails?: boolean;
 }
 
 export interface StorefrontInput {

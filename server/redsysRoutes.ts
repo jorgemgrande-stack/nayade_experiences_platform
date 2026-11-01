@@ -33,6 +33,7 @@ import { legacyDb, legacyPool } from "./_core/legacyDb";
 import { integrationEnv } from "./_core/tenantConfig";
 import { applyPaymentToInventoryHolds } from "./inventoryHoldsDb";
 import { isMultiTenant } from "./_core/tenant";
+import { finalizePaidShopOrder, isGenericShopOrder, sendShopOrderConfirmation, sendShopOrderFailed } from "./shopOrdersDb";
 
 // Pool de BD compartido para todo el módulo — evita crear/destruir conexiones por cada IPN
 const _sharedPool = legacyPool();
@@ -485,6 +486,8 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
     // -- Booking operativo + transacción contable + REAV para CADA artículo del carrito --
     // Usamos getAllReservationsByMerchantOrder para procesar carritos con múltiples artículos.
     // postConfirmOperation es idempotente: no duplica si ya existe booking/transacción.
+    // Pedido de la tienda de una pyme: una sola factura para todo el pedido y correos genéricos (shopOrdersDb.ts)
+    const shopOrder = await isGenericShopOrder(allCartReservations).catch(() => false);
     if (result.isAuthorized) {
       const allReservations = await getAllReservationsByMerchantOrder(result.merchantOrder);
       const { getExperienceById: getExpById } = await import("./db");
@@ -497,7 +500,7 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
             reservationId: resv.id,
             productId: resv.productId,
             productName: resv.productName,
-            serviceDate: resv.bookingDate ?? new Date().toISOString().split("T")[0],
+            serviceDate: (/^\d{4}-\d{2}-\d{2}$/.test(resv.bookingDate ?? "") ? resv.bookingDate : new Date().toISOString().split("T")[0]),
             people: resv.people,
             amountCents: resv.amountPaid ?? resv.amountTotal,
             customerName: resv.customerName,
@@ -534,7 +537,7 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
                 const reavResult = await createReavExpedient({
                   reservationId: resv.id,
                   serviceDescription: resv.productName,
-                  serviceDate: resv.bookingDate ?? new Date().toISOString().split("T")[0],
+                  serviceDate: (/^\d{4}-\d{2}-\d{2}$/.test(resv.bookingDate ?? "") ? resv.bookingDate : new Date().toISOString().split("T")[0]),
                   numberOfPax: resv.people,
                   saleAmountTotal: String(amountEuros.toFixed(2)),
                   providerCostEstimated: String(reavCalcOnline.costeProveedor),
@@ -572,7 +575,8 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
         }
 
         // -- Factura automática para compras directas web (ONLINE_DIRECTO, sin quoteId) --
-        if (!resv.quoteId) {
+        // (en la tienda de una pyme, la factura es del pedido entero: se emite abajo)
+        if (!resv.quoteId && !shopOrder) {
           try {
             const productForInv = await getExpById(resv.productId);
             const totalEur = (resv.amountPaid ?? resv.amountTotal) / 100;
@@ -620,6 +624,14 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
           } catch (invoiceErr) {
             console.error(`[Redsys IPN] Error al crear factura para reserva directa ${resv.id}:`, invoiceErr);
           }
+        }
+      }
+      if (shopOrder) {
+        try {
+          const fin = await finalizePaidShopOrder(result.merchantOrder);
+          console.log(`[Redsys IPN] Pedido ${result.merchantOrder}: cliente ${fin.clientId ?? "-"}, factura ${fin.invoiceNumber ?? "-"}${fin.created ? " (nueva)" : ""}`);
+        } catch (shopErr) {
+          console.error(`[Redsys IPN] Error al cerrar el pedido ${result.merchantOrder}:`, shopErr);
         }
       }
     }
@@ -692,7 +704,8 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
         // más arriba. Clave: con un pago autorizado NUNCA se entra en el bloque
         // `else` de fallo — antes una reserva de presupuesto pagada caía ahí y
         // recibía por error el email de "Pago no completado".
-        if (!isQuoteReservation) sendReservationPaidNotifications({
+        if (shopOrder) sendShopOrderConfirmation(result.merchantOrder).catch(err => console.error("[Redsys IPN] Error en el correo del pedido:", err));
+        else if (!isQuoteReservation) sendReservationPaidNotifications({
           id: updatedReservation.id,
           merchantOrder: updatedReservation.merchantOrder,
           productName: updatedReservation.productName,
@@ -716,7 +729,8 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
       } else {
         // Pago NO autorizado (result.isAuthorized === false): email de pago
         // fallido. Aplica tanto a reservas directas como de presupuesto.
-        sendReservationFailedNotifications({
+        if (shopOrder) sendShopOrderFailed(result.merchantOrder).catch(err => console.error("[Redsys IPN] Error en el correo de pago fallido:", err));
+        else sendReservationFailedNotifications({
           id: updatedReservation.id,
           merchantOrder: updatedReservation.merchantOrder,
           productName: updatedReservation.productName,
@@ -1263,7 +1277,7 @@ redsysRouter.post("/api/admin/recover-order/:merchantOrder", async (req, res) =>
           reservationId: resv.id,
           productId: resv.productId,
           productName: resv.productName,
-          serviceDate: resv.bookingDate ?? new Date().toISOString().split("T")[0],
+          serviceDate: (/^\d{4}-\d{2}-\d{2}$/.test(resv.bookingDate ?? "") ? resv.bookingDate : new Date().toISOString().split("T")[0]),
           people: resv.people,
           amountCents: resv.amountPaid ?? resv.amountTotal,
           customerName: resv.customerName,

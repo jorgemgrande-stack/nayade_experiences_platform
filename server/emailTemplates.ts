@@ -2866,3 +2866,61 @@ export function buildInvoiceEmailHtml(d: InvoiceEmailData): string {
     ${emailFooter()}`;
   return emailWrapper(`${d.isCreditNote ? "Factura de abono" : "Factura"} ${d.invoiceNumber}`, body);
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PEDIDO DE LA TIENDA ONLINE (pyme): confirmación y cambios de estado, sin vocabulario sectorial
+// ═══════════════════════════════════════════════════════════════════════════════
+export interface ShopOrderEmailData {
+  /** Título del cuerpo («Pedido confirmado», «Tu pedido está preparado»). */
+  title: string;
+  badge?: string;
+  customerName: string;
+  orderNumber: string;
+  /** Párrafo de texto plano bajo el saludo. */
+  intro: string;
+  lines: { name: string; quantity: number; total: string }[];
+  /** Total ya formateado («48,40 €»), o null para no mostrarlo. */
+  total: string | null;
+  discount?: string | null;
+  invoiceNumber?: string | null;
+  statusLabel?: string | null;
+}
+
+/** Correo de un pedido de la tienda: líneas, total y número de pedido. Todo el texto se escapa. */
+export function buildShopOrderEmailHtml(d: ShopOrderEmailData): string {
+  const esc = (v: string) => escAttr(v);
+  const td = "padding:8px 0;font-size:14px;font-family:Arial,sans-serif;border-bottom:1px solid #f1f5f9;";
+  const rows = d.lines.map((l) => `<tr>
+        <td style="${td}color:#1e293b;">${esc(l.name)}</td>
+        <td align="center" style="${td}color:#6b7280;white-space:nowrap;">${l.quantity}</td>
+        <td align="right" style="${td}color:#1e293b;white-space:nowrap;">${esc(l.total)}</td>
+      </tr>`).join("");
+  const body = `
+    ${emailHeader(d.badge ? esc(d.badge) : undefined)}
+    <tr><td style="padding:28px 32px 8px;">
+      <h2 style="color:${BRAND_BLUE()};font-size:21px;margin:0 0 14px;font-weight:700;font-family:Georgia,serif;">${esc(d.title)}</h2>
+      <p style="color:#111827;font-size:15px;margin:0 0 12px;font-family:Arial,sans-serif;">Hola <strong>${esc(d.customerName)}</strong>,</p>
+      <p style="color:#4b5563;font-size:15px;line-height:1.7;margin:0 0 18px;font-family:Arial,sans-serif;">${esc(d.intro)}</p>
+      <table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 12px;">
+        <tr>
+          <td style="padding:6px 0;color:#9ca3af;font-size:12px;font-family:Arial,sans-serif;text-transform:uppercase;letter-spacing:1px;">Artículo</td>
+          <td align="center" style="padding:6px 0;color:#9ca3af;font-size:12px;font-family:Arial,sans-serif;text-transform:uppercase;letter-spacing:1px;">Cantidad</td>
+          <td align="right" style="padding:6px 0;color:#9ca3af;font-size:12px;font-family:Arial,sans-serif;text-transform:uppercase;letter-spacing:1px;">Importe</td>
+        </tr>
+        ${rows}
+        ${d.discount ? `<tr><td colspan="2" style="padding:8px 0;color:#16a34a;font-size:14px;font-family:Arial,sans-serif;">Descuento</td><td align="right" style="padding:8px 0;color:#16a34a;font-size:14px;font-family:Arial,sans-serif;white-space:nowrap;">-${esc(d.discount)}</td></tr>` : ""}
+        ${d.total ? `<tr><td colspan="2" style="padding:12px 0 0;color:#111827;font-size:15px;font-weight:700;font-family:Arial,sans-serif;">Total (IVA incluido)</td><td align="right" style="padding:12px 0 0;color:#111827;font-size:17px;font-weight:700;font-family:Arial,sans-serif;white-space:nowrap;">${esc(d.total)}</td></tr>` : ""}
+      </table>
+      <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border-left:4px solid ${BRAND_ORANGE()};border-radius:0 8px 8px 0;margin:8px 0 18px;">
+        <tr><td style="padding:12px 16px;color:#374151;font-size:13px;line-height:1.7;font-family:Arial,sans-serif;">
+          <strong>N.º de pedido:</strong> ${esc(d.orderNumber)}<br/>
+          ${d.statusLabel ? `<strong>Estado:</strong> ${esc(d.statusLabel)}<br/>` : ""}
+          ${d.invoiceNumber ? `<strong>Factura:</strong> ${esc(d.invoiceNumber)}<br/>` : ""}
+          <span style="color:#9ca3af;font-size:12px;">Indica el número de pedido si nos escribes.</span>
+        </td></tr>
+      </table>
+      ${getContactEmail() ? `<p style="color:#9ca3af;font-size:13px;line-height:1.6;margin:0 0 24px;font-family:Arial,sans-serif;">¿Alguna duda? Escríbenos a <a href="mailto:${escAttr(getContactEmail())}" style="color:${BRAND_ORANGE()};text-decoration:none;font-weight:600;">${esc(getContactEmail())}</a>.</p>` : ""}
+    </td></tr>
+    ${emailFooter()}`;
+  return emailWrapper(`${d.title} · ${d.orderNumber}`, body);
+}

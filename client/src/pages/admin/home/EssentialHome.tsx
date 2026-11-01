@@ -214,7 +214,7 @@ export default function EssentialHome() {
   if (ind?.pendingOnlineOrders && canOrders) {
     const x = ind.pendingOnlineOrders;
     cards.push({
-      key: "online", label: "Pedidos online pendientes", value: String(x.count), href: "/admin/crm?tab=reservations",
+      key: "online", label: "Pedidos online pendientes", value: String(x.count), href: "/admin/tienda/pedidos",
       detail: "Cobrados y aún sin finalizar",
       empty: x.count === 0 ? "No hay pedidos de tu tienda online por completar. Cuando un cliente compre en tu web, lo verás aquí." : null,
       cta: productAction ? { label: "Revisar mis productos", href: "/admin/productos/experiencias" } : null,

@@ -275,7 +275,13 @@ export const TASK_NAV: NavSection[] = [
           { label: "Seguimiento comercial", href: "/admin/atencion-comercial", key: "t-seguimiento", capabilities: ["crm-tasks"] },
         ],
       },
-      { label: "Pedidos", href: "/admin/crm?tab=reservations", key: "t-pedidos", icon: "shoppingCart", roles: SALES, capabilities: ["shop-orders"] },
+      {
+        label: "Pedidos", href: "/admin/tienda/pedidos", key: "t-pedidos", icon: "shoppingCart", roles: SALES, capabilities: ["shop-orders"],
+        children: [
+          { label: "Pedidos de la tienda", href: "/admin/tienda/pedidos", key: "t-pedidos-tienda", capabilities: ["shop-orders"] },
+          { label: "Todos los pedidos", href: "/admin/crm?tab=reservations", key: "t-pedidos-todos", capabilities: ["shop-orders"] },
+        ],
+      },
       { label: "Tareas", href: "/admin/crm/tareas", key: "t-tareas", icon: "calendar", roles: SALES, capabilities: ["crm-tasks"] },
       { label: "Etiquetas", href: "/admin/crm/etiquetas", key: "t-etiquetas", icon: "tag", roles: SALES, capabilities: ["crm-tags"] },
     ],
@@ -608,6 +614,7 @@ export const EXTRA_ROUTE_CAPABILITIES: ReadonlyArray<{ path: string; capabilitie
   { path: "/admin/crm/leads", capabilities: ["crm-leads"] },
   { path: "/admin/crm/presupuestos", capabilities: ["crm-quotes"] },
   { path: "/admin/crm/reservas", capabilities: ["shop-orders"] },
+  { path: "/admin/tienda", capabilities: ["shop-orders"] },
   { path: "/admin/contabilidad", capabilities: ["bill-reports"] },
   { path: "/admin/contabilidad/caja", capabilities: ["bill-cash"] },
   { path: "/admin/marketing", capabilities: ["deals-coupons", "shop-coupons"] },
