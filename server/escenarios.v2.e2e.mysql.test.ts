@@ -307,9 +307,11 @@ describe.skipIf(!URL_)("Escenarios v2 de usuario nuevo (aplicación real, dos em
       expect(A.invoiceNumber).toBe(`FAC-${YEAR}-0001`);
       expect(Number(inv.total)).toBeCloseTo(145.2, 2);
       // El enlace ya pagado no se puede volver a cobrar
-      expect(["BAD_REQUEST", "NOT_FOUND"]).toContain(errCode(await ess.m("a", "crm.quotes.payWithToken", { token: A.token, origin: `https://${ess.host("a")}` })));
-      // Pendiente documentado: tras pagar, el enlace del correo ya no abre el presupuesto (el pago borra el token)
-      expect(errCode(await ess.q("a", "crm.quotes.getByToken", { token: A.token }))).toBe("NOT_FOUND");
+      expect(errCode(await ess.m("a", "crm.quotes.payWithToken", { token: A.token, origin: `https://${ess.host("a")}` }))).toBe("BAD_REQUEST");
+      // Y el enlace del correo sigue abriendo el presupuesto, ya como pagado (con su factura)
+      const paidView = ok(await ess.q("a", "crm.quotes.getByToken", { token: A.token }), "ver presupuesto pagado");
+      expect(paidView).toMatchObject({ id: A.quoteId, isPaid: true, status: "aceptado", invoiceNumber: A.invoiceNumber });
+      expect(errCode(await ess.q("b", "crm.quotes.getByToken", { token: A.token }))).toBe("NOT_FOUND");
       // La misma notificación repetida no duplica la factura
       await ess.call("a", "POST", "/api/redsys/notification", { raw: signed(KEY_A, { Ds_Order: A.merchantOrder, Ds_Response: "0000", Ds_Amount: "14520", Ds_AuthorisationCode: "123456" }), headers: { "content-type": "application/x-www-form-urlencoded" } });
       expect(Number((await ess.sql("a", "SELECT COUNT(*) AS n FROM invoices WHERE quoteId = ?", [A.quoteId]))[0].n)).toBe(1);

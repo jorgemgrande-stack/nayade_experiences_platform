@@ -405,7 +405,7 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
               paidAt: now,
               redsysOrderId: result.merchantOrder,
               invoiceNumber,
-              paymentLinkToken: null,
+              // El enlace se conserva: al volver a abrirlo se ve «pagado» (paidAt impide cobrarlo dos veces)
               updatedAt: now,
             }).where(eq(quotes.id, quote.id));
 
@@ -1193,7 +1193,7 @@ redsysRouter.post("/api/admin/recover-order/:merchantOrder", async (req, res) =>
             paidAt: now,
             redsysOrderId: merchantOrder,
             invoiceNumber,
-            paymentLinkToken: null,
+            // El enlace se conserva: al volver a abrirlo se ve «pagado» (paidAt impide cobrarlo dos veces)
             updatedAt: now,
           }).where(eq(quotes.id, quote.id));
 
