@@ -22,6 +22,7 @@ import { buildSubscriptionOverview, effectiveStatus, safeUpgradeUrl } from "./su
 import {
   LEGACY_NAV, LEGACY_SECTIONS, TASK_NAV, capabilityStateFrom, navMode, resolveNav, type NavContext,
 } from "../shared/adminNav";
+import { CORE_EXTENSION_PANELS, panelEntries } from "../shared/panelExtensions";
 import {
   isValidIban, isValidSpanishTaxId, missingFiscalFields, validateEmail, validateFiscalData, validatePostalCodeES, validateProductForm,
 } from "../shared/formValidation";
@@ -232,10 +233,13 @@ describe("menú del panel", () => {
     expect(resolved.flatMap((s) => s.items).every((i) => !i.readOnly)).toBe(true);
   });
 
-  it("empresa con un extra contratado: aparece en «Módulos contratados»", () => {
+  it("empresa con un extra contratado: aparece en «Módulos contratados» (declarado en su manifiesto)", () => {
     const grants = [...essentialTrial(NOW + 5 * DAY), grant("people-hr")];
     const o = buildSubscriptionOverview({ mode: "multi", enforcing: true, grants, now: NOW });
-    const resolved = resolveNav(TASK_NAV, { ...allVisible, capabilityState: capabilityStateFrom(o) });
+    const state = capabilityStateFrom(o);
+    const { capability, panel } = CORE_EXTENSION_PANELS.people;
+    const entries = panelEntries("people", panel, capability, { roleAllowed: (r) => r.includes("admin"), hasPermission: () => true, capabilitiesVisible: (c) => c.some((x) => state(x) !== null) });
+    const resolved = resolveNav(TASK_NAV, { ...allVisible, capabilityState: state }, entries);
     expect(resolved.find((s) => s.id === "contratados")?.items.map((i) => i.label)).toEqual(["Personal"]);
   });
 
