@@ -337,6 +337,15 @@ export function configurationStepNumber(steps: readonly { id: SetupStep }[], id:
   return i < 0 ? null : i + 1;
 }
 
+/**
+ * Paso siguiente a `from` en el recorrido indicado (el último si no hay más). Se calcula sobre el plan ya
+ * actualizado: al elegir el tipo de actividad el servidor reordena los pasos y el índice anterior deja de valer.
+ */
+export function stepAfter(steps: readonly { id: SetupStep }[], from: SetupStep): SetupStep {
+  const i = steps.findIndex((s) => s.id === from);
+  return steps[Math.min(i + 1, steps.length - 1)]?.id ?? "finish";
+}
+
 /** Contratado (activa o en solo lectura) o, sin licencias por capacidad (null), todo salvo lo sectorial. */
 export function stepVisible(step: SetupStep, capabilities: ReadonlySet<string> | null): boolean {
   const caps = STEP_CAPABILITIES[step];
