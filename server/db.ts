@@ -643,11 +643,19 @@ export async function getAccountingReports(params: { from?: string; to?: string 
     count: sql<number>`COUNT(*)`,
   }).from(transactions).where(where).groupBy(sql`DATE(createdAt)`).orderBy(sql`DATE(createdAt)`);
 
+  // IVA repercutido y base: de los documentos fiscales emitidos en el periodo (facturas, abonos en negativo y
+  // tickets de caja sin factura completa), por tipo de IVA y en hora de Madrid. La misma regla que el Modelo
+  // 303 y el libro de facturas de la gestoría (server/fiscalDocuments.ts); los cobros solo dan los ingresos.
+  const { fiscalSummary, madridDayRange } = await import("./fiscalDocumentsDb");
+  const { madridDateKey } = await import("./utils/timezone");
+  const fiscal = await fiscalSummary(madridDayRange(params.from || "2000-01-01", params.to || madridDateKey()));
+
   return {
+    fiscal,
     totals: {
       revenue:     parseFloat(totals?.totalRevenue ?? "0"),
-      taxBase:     parseFloat(totals?.totalTaxBase ?? "0"),
-      taxAmount:   parseFloat(totals?.totalTaxAmount ?? "0"),
+      taxBase:     fiscal.base,
+      taxAmount:   fiscal.tax,
       reavMargin:  parseFloat(totals?.totalReavMargin ?? "0"),
       count:       Number(totals?.count ?? 0),
     },

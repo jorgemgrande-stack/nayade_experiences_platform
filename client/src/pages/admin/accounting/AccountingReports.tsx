@@ -14,7 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
-  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from "recharts";
 import {
   TrendingUp, Euro, Receipt, BarChart2, RefreshCw, Calendar,
@@ -30,9 +30,6 @@ const METHOD_COLORS: Record<string, string> = {
   efectivo: "#22c55e", tarjeta: "#3b82f6", tarjeta_fisica: "#3b82f6", bizum: "#a855f7",
   redsys: "#0ea5e9", tarjeta_redsys: "#0ea5e9", link_pago: "#0ea5e9", transferencia: "#f59e0b", otro: "#6b7280",
 };
-const FISCAL_COLORS: Record<string, string> = {
-  general: "#3b82f6", general_21: "#3b82f6", reav: "#a855f7", mixed: "#f59e0b",
-};
 
 const CHANNEL_LABELS: Record<string, string> = {
   tpv: "Caja", web: "Web", online: "Web", crm: "Presupuestos", admin: "Panel", delegado: "Venta delegada", otro: "Otro",
@@ -46,9 +43,6 @@ const PROFIT_CHANNEL_LABELS: Record<string, string> = {
 const METHOD_LABELS: Record<string, string> = {
   efectivo: "Efectivo", tarjeta: "Tarjeta", tarjeta_fisica: "Tarjeta (datáfono)", bizum: "Bizum",
   redsys: "Tarjeta online", tarjeta_redsys: "Tarjeta online", link_pago: "Enlace de pago", transferencia: "Transferencia", otro: "Otro",
-};
-const FISCAL_LABELS: Record<string, string> = {
-  general: "Régimen general (IVA)", general_21: "Régimen general (IVA)", reav: "REAV", mixed: "Mixto",
 };
 
 // ─── Formateador de moneda ────────────────────────────────────────────────────
@@ -107,8 +101,9 @@ export default function AccountingReports() {
   const byDay     = reports?.byDay     ?? [];
   const byChannel = reports?.byChannel ?? [];
   const byMethod  = reports?.byMethod  ?? [];
-  const byFiscal  = reports?.byFiscal  ?? [];
   const totals    = reports?.totals;
+  // IVA de los documentos fiscales emitidos (facturas, abonos y tickets de caja), no de los cobros
+  const fiscal    = reports?.fiscal;
 
   // Formatear fechas del eje X para la gráfica de líneas
   const byDayFormatted = byDay.map(d => ({
@@ -131,15 +126,13 @@ export default function AccountingReports() {
     color: METHOD_COLORS[m.method] ?? "#6b7280",
   }));
 
-  const byFiscalFormatted = byFiscal.map(f => ({
-    regime: FISCAL_LABELS[f.regime] ?? f.regime,
-    total:  parseFloat(String(f.total)),
-    taxBase:parseFloat(String(f.taxBase)),
-    iva:    parseFloat(String(f.iva)),
-    reav:   parseFloat(String(f.reav)),
-    count:  Number(f.count),
-    color:  FISCAL_COLORS[f.regime] ?? "#6b7280",
-  }));
+  const byRate = fiscal?.byRate ?? [];
+  const rateLabel = (rate: number) => `IVA ${rate.toLocaleString("es-ES", { maximumFractionDigits: 2 })} %`;
+  const fiscalDocsText = fiscal ? [
+    `${fiscal.invoices} ${fiscal.invoices === 1 ? "factura" : "facturas"}`,
+    `${fiscal.tickets} ${fiscal.tickets === 1 ? "ticket de caja" : "tickets de caja"}`,
+    ...(fiscal.creditNotes ? [`${fiscal.creditNotes} ${fiscal.creditNotes === 1 ? "abono" : "abonos"} (restan)`] : []),
+  ].join(", ") : "";
 
   return (
     <AdminLayout title="Informes de ventas">
@@ -236,7 +229,8 @@ export default function AccountingReports() {
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground">IVA repercutido</p>
-                    <p className="text-xl font-bold text-foreground">{fmtEur(totals?.taxAmount ?? 0)}</p>
+                    <p className="text-xl font-bold text-foreground">{fmtEur(fiscal?.tax ?? 0)}</p>
+                    <p className="text-xs text-muted-foreground">Base {fmtEur(fiscal?.base ?? 0)}</p>
                   </div>
                 </div>
               </CardContent>
@@ -353,65 +347,57 @@ export default function AccountingReports() {
             </Card>
           </div>
 
-          {/* Desglose fiscal */}
+          {/* IVA repercutido por tipo: de los documentos fiscales emitidos en el periodo */}
           <Card className="mb-6">
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <Receipt className="w-4 h-4 text-primary" />
-                Desglose por régimen fiscal
+                IVA repercutido por tipo
               </CardTitle>
+              <p className="text-xs text-muted-foreground">
+                Sale de las facturas, los abonos y los tickets de caja emitidos en el periodo{fiscalDocsText ? ` (${fiscalDocsText})` : ""}. Si una venta de caja tiene también su factura completa, cuenta solo la factura.
+                {fiscal && fiscal.substitutedTickets > 0 && ` ${fiscal.substitutedTickets} ${fiscal.substitutedTickets === 1 ? "ticket sustituido" : "tickets sustituidos"} por su factura.`}
+              </p>
             </CardHeader>
             <CardContent>
-              {byFiscalFormatted.length === 0 ? (
-                <div className="flex items-center justify-center h-40 text-muted-foreground text-sm">Sin datos fiscales</div>
+              {byRate.length === 0 ? (
+                <div className="flex items-center justify-center h-40 text-muted-foreground text-sm">No hay facturas ni tickets emitidos en este periodo</div>
               ) : (
-                <div className="space-y-4">
-                  <ResponsiveContainer width="100%" height={200}>
-                    <BarChart data={byFiscalFormatted} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
-                      <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                      <XAxis dataKey="regime" tick={{ fontSize: 11 }} />
-                      <YAxis tickFormatter={v => `${v} €`} tick={{ fontSize: 11 }} />
-                      <Tooltip content={<CustomTooltip />} />
-                      <Legend />
-                      <Bar dataKey="total"   name="Total"        fill="#f97316" radius={[4, 4, 0, 0]} />
-                      <Bar dataKey="taxBase" name="Base imponible" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-                      <Bar dataKey="iva"     name="IVA"           fill="#22c55e" radius={[4, 4, 0, 0]} />
-                      {voc.showReav && <Bar dataKey="reav"    name="Margen REAV"   fill="#a855f7" radius={[4, 4, 0, 0]} />}
-                    </BarChart>
-                  </ResponsiveContainer>
-
-                  {/* Tabla resumen fiscal */}
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-xs">
-                      <thead>
-                        <tr className="border-b border-border">
-                          <th className="text-left py-2 px-3 text-muted-foreground font-semibold">Régimen</th>
-                          <th className="text-right py-2 px-3 text-muted-foreground font-semibold">Total</th>
-                          <th className="text-right py-2 px-3 text-muted-foreground font-semibold">Base IVA</th>
-                          <th className="text-right py-2 px-3 text-muted-foreground font-semibold">IVA</th>
-                          {voc.showReav && <th className="text-right py-2 px-3 text-muted-foreground font-semibold">Margen REAV</th>}
-                          <th className="text-right py-2 px-3 text-muted-foreground font-semibold">Operaciones</th>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="border-b border-border">
+                        <th className="text-left py-2 px-3 text-muted-foreground font-semibold">Tipo</th>
+                        <th className="text-right py-2 px-3 text-muted-foreground font-semibold">Base imponible</th>
+                        <th className="text-right py-2 px-3 text-muted-foreground font-semibold">IVA</th>
+                        <th className="text-right py-2 px-3 text-muted-foreground font-semibold">Total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {byRate.map((r) => (
+                        <tr key={r.rate} className="border-b border-border/50 hover:bg-muted/20">
+                          <td className="py-2 px-3">{rateLabel(r.rate)}</td>
+                          <td className="py-2 px-3 text-right text-muted-foreground">{fmtEur(r.base)}</td>
+                          <td className="py-2 px-3 text-right text-muted-foreground">{fmtEur(r.amount)}</td>
+                          <td className="py-2 px-3 text-right font-semibold">{fmtEur(r.total)}</td>
                         </tr>
-                      </thead>
-                      <tbody>
-                        {byFiscalFormatted.map((f, i) => (
-                          <tr key={i} className="border-b border-border/50 hover:bg-muted/20">
-                            <td className="py-2 px-3">
-                              <span className="flex items-center gap-1.5">
-                                <span className="w-2 h-2 rounded-full" style={{ background: f.color }} />
-                                {f.regime}
-                              </span>
-                            </td>
-                            <td className="py-2 px-3 text-right font-semibold">{fmtEur(f.total)}</td>
-                            <td className="py-2 px-3 text-right text-muted-foreground">{fmtEur(f.taxBase)}</td>
-                            <td className="py-2 px-3 text-right text-muted-foreground">{fmtEur(f.iva)}</td>
-                            {voc.showReav && <td className="py-2 px-3 text-right text-purple-600 dark:text-purple-400">{fmtEur(f.reav)}</td>}
-                            <td className="py-2 px-3 text-right text-muted-foreground">{f.count}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                      ))}
+                      {(fiscal?.notSubject ?? 0) !== 0 && (
+                        <tr className="border-b border-border/50">
+                          <td className="py-2 px-3">Sin IVA repercutido</td>
+                          <td className="py-2 px-3 text-right text-muted-foreground">—</td>
+                          <td className="py-2 px-3 text-right text-muted-foreground">—</td>
+                          <td className="py-2 px-3 text-right font-semibold">{fmtEur(fiscal?.notSubject ?? 0)}</td>
+                        </tr>
+                      )}
+                      <tr className="font-semibold">
+                        <td className="py-2 px-3">Total</td>
+                        <td className="py-2 px-3 text-right">{fmtEur(fiscal?.base ?? 0)}</td>
+                        <td className="py-2 px-3 text-right">{fmtEur(fiscal?.tax ?? 0)}</td>
+                        <td className="py-2 px-3 text-right">{fmtEur(fiscal?.total ?? 0)}</td>
+                      </tr>
+                    </tbody>
+                  </table>
                 </div>
               )}
             </CardContent>
