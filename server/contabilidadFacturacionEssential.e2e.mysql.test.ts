@@ -7,6 +7,7 @@
  *    el nombre fiscal y la dirección del cliente vinculado.
  *  - Revisión de facturación: una venta de caja con ticket no es una incidencia.
  *  - Caja con descuento global e IVA mixto: el descuento se reparte por tipo antes de desglosar.
+ *  - Factura libre: precios con IVA incluido o sin IVA y motivo de exención obligatorio con IVA al 0 %.
  *
  *   REGISTRY_TEST_DATABASE_URL=mysql://root:root@127.0.0.1:33441/registro_test \
  *     pnpm vitest run server/contabilidadFacturacionEssential.e2e.mysql.test.ts
@@ -254,6 +255,45 @@ describe.skipIf(!URL_)("contabilidad y facturación Essential (aplicación real)
       // Ventas del día: la de efectivo del resumen y esta (207,90 € cada una, con descuento) y la de 121 € sin descuento
       expect(byRate["IVA 21 %"]).toEqual([280, 58.8]);
       expect(byRate["IVA 10 %"]).toEqual([180, 18]);
+    });
+  });
+
+  describe("factura libre: precios con IVA incluido o sin IVA y motivo de exención", () => {
+    it("con IVA incluido e IVA mixto: el total es lo escrito, con su desglose; el 0 % guarda y muestra su motivo", async () => {
+      const reason = "Operación exenta de IVA (art. 20 de la Ley 37/1992 del IVA)";
+      const r = ok(await ess.m("a", "crm.invoices.createDirect", {
+        client: { name: "Academia Ejemplo SL", nif: "B12345674" },
+        pricesIncludeTax: true,
+        lines: [
+          { description: "Consultoría", quantity: 1, unitPrice: 121, taxRate: 21 },
+          { description: "Material", quantity: 2, unitPrice: 55, taxRate: 10 },
+          { description: "Curso reglado", quantity: 1, unitPrice: 80, taxRate: 0, exemptionReason: reason },
+        ],
+      }, agA), "factura con IVA incluido");
+      expect(r.total).toBe(311);
+      const [inv] = await ess.sql("a", "SELECT subtotal, taxAmount, taxBreakdown, total, itemsJson FROM invoices WHERE id = ?", [r.invoiceId]);
+      expect([Number(inv.subtotal), Number(inv.taxAmount), Number(inv.total)]).toEqual([280, 31, 311]);
+      expect(json(inv.taxBreakdown)).toEqual([{ rate: 21, base: 100, amount: 21 }, { rate: 10, base: 100, amount: 10 }, { rate: 0, base: 80, amount: 0 }]);
+      const items = json(inv.itemsJson) as any[];
+      expect(items.map((i) => i.total)).toEqual([121, 110, 80]);
+      expect(items[2].exemptionReason).toBe(reason);
+      const prev = await ess.call("a", "GET", `/api/invoices/preview?n=${encodeURIComponent(r.invoiceNumber)}`, { cookie: agA });
+      expect(prev.status).toBe(200);
+      expect(prev.text).toContain(`IVA 0 %: ${reason}`);
+    });
+
+    it("sin indicar el modo, los precios son sin IVA (como hasta ahora)", async () => {
+      const r = ok(await ess.m("a", "crm.invoices.createDirect", { client: { name: "Cliente sin IVA" }, lines: [{ description: "Servicio", quantity: 1, unitPrice: 100, taxRate: 21 }] }, agA), "factura sin IVA");
+      expect(r.total).toBe(121);
+    });
+
+    it("IVA al 0 % sin motivo: se rechaza y no consume número de la serie", async () => {
+      const before = await ess.sql("a", "SELECT COUNT(*) AS n, MAX(invoiceNumber) AS last FROM invoices");
+      const bad = await ess.m("a", "crm.invoices.createDirect", { client: { name: "Cliente exento" }, pricesIncludeTax: true, lines: [{ description: "Curso", quantity: 1, unitPrice: 80, taxRate: 0 }] }, agA);
+      expect(bad.status).toBe(400);
+      expect(bad.text).toContain("motivo de la exención");
+      const after = await ess.sql("a", "SELECT COUNT(*) AS n, MAX(invoiceNumber) AS last FROM invoices");
+      expect(after).toEqual(before);
     });
   });
 });

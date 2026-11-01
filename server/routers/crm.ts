@@ -54,6 +54,7 @@ import { generateDocumentNumber } from "../documentNumbers";
 import { nextCreditNoteNumber, withCreditNoteNumberRetry } from "../creditNoteNumber";
 import { QUOTE_DISCOUNT_DESCRIPTION, QUOTE_LINE_TOTAL_DESCRIPTION, QUOTE_TOTAL_DESCRIPTION, QUOTE_UNIT_PRICE_DESCRIPTION, linesToTaxIncluded, pricesIncludeTaxSchema, quoteTotalMismatch } from "../quoteTaxConvention";
 import { invoiceClientForQuote } from "../invoiceClient";
+import { needsExemptionReason } from "../../shared/directInvoice";
 import { ordersWithoutInvoice } from "../invoiceAudit";
 import { alreadyCredited, chargedInvoiceAmounts, computeDirectInvoice, creditNoteLineStatus, CreditNoteSelectionError, DIRECT_INVOICE_TAX_RATES, planCreditNote, QUOTE_DISCOUNT_REASON, round2, type CreditNoteLineSelection } from "../invoiceCalc";
 import { htmlToPdf } from "../pdfGenerator";
@@ -6229,7 +6230,11 @@ export const crmRouter = router({
           quantity: z.number().positive("La cantidad debe ser mayor que cero").max(1_000_000),
           unitPrice: z.number().min(0, "El precio no puede ser negativo").max(10_000_000),
           taxRate: z.union([z.literal(21), z.literal(10), z.literal(4), z.literal(0)], { error: `Tipo de IVA no válido (${DIRECT_INVOICE_TAX_RATES.join(", ")} %)` }),
-        })).min(1, "Añade al menos una línea").max(100, "Máximo 100 líneas por factura"),
+          // Con IVA al 0 %: motivo de la exención (figura en la factura)
+          exemptionReason: z.string().trim().max(300).optional(),
+        }).refine((l) => !needsExemptionReason(l), { message: "Con IVA al 0 % indica el motivo de la exención", path: ["exemptionReason"] })).min(1, "Añade al menos una línea").max(100, "Máximo 100 líneas por factura"),
+        // true: los precios llevan el IVA incluido (como productos y presupuestos); false o sin indicar: sin IVA
+        pricesIncludeTax: z.boolean().default(false),
       }).refine((v) => v.clientId !== undefined || v.client !== undefined, { message: "Elige un cliente o escribe sus datos", path: ["client"] }))
       .mutation(async ({ input, ctx }) => {
         // Cliente: uno existente de esta empresa o los datos escritos en la factura
@@ -6242,7 +6247,7 @@ export const crmRouter = router({
           const c = input.client!;
           client = { name: c.name, email: c.email ?? "", phone: c.phone || null, nif: c.nif || null, address: c.address || null };
         }
-        const amounts = computeDirectInvoice(input.lines);
+        const amounts = computeDirectInvoice(input.lines, { pricesIncludeTax: input.pricesIncludeTax });
         if (!(amounts.total > 0)) throw new TRPCError({ code: "BAD_REQUEST", message: "El total de la factura debe ser mayor que cero" });
 
         // Número de la serie oficial de facturas (mismo contador que el resto de facturas de la empresa)
@@ -6296,7 +6301,7 @@ export const crmRouter = router({
           updatedAt: now,
         });
         const invoiceId = (res as { insertId: number }).insertId;
-        await logActivity("invoice", invoiceId, "invoice_created_direct", ctx.user.id, ctx.user.name, { invoiceNumber, total: amounts.total, clientId: input.clientId ?? null });
+        await logActivity("invoice", invoiceId, "invoice_created_direct", ctx.user.id, ctx.user.name, { invoiceNumber, total: amounts.total, clientId: input.clientId ?? null, pricesIncludeTax: input.pricesIncludeTax });
         return { success: true, invoiceId, invoiceNumber, total: amounts.total, pdfUrl };
       }),
 
